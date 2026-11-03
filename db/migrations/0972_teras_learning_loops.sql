@@ -19,7 +19,9 @@
 --    opened it to edit, discarded it, decided against a recommendation, or marked an answer helpful or not. Counts,
 --    closed-vocabulary names and references only: no words, no figures. Written by the person, under their own login,
 --    for their own turn's record. Read by the administrators of the record's company (app.is_admin_for), and by the person
---    who wrote it. Append-only.
+--    who wrote it. Append-only, with two exceptions for an answer's mark: it may be changed once (a second row,
+--    'answer_changed', which then counts instead of the first), and a "Not helpful" mark may gain its one optional reason
+--    (wrong, not what I asked, missing something) once, by the person who made it (a column grant and a trigger).
 -- 2. teras_learning_signal_review: an administrator's review of a signal (dismissed, reopened, made an eval candidate).
 --    Append-only versions; the highest version is the signal's review state.
 -- 3. teras_gap_occurrence: one row per turn AI Centre could not answer or do: an honest gap, a capability question it could
@@ -27,9 +29,13 @@
 --    from closed vocabularies (kind and product area), never from words. Written by the asker for their own record; read
 --    by the company's administrators. No login, person or name is stored. Append-only.
 -- 4. teras_gap_example: the question of a gap turn, REDACTED in code before it is written (names, ids, figures, dates,
---    emails and phone numbers replaced by placeholders, core/learning/redact.ts), kept only as long as the tenant keeps
---    chats ("Keep chats for", app.teras_chat_keep_days): a trigger stamps the expiry, reads ignore an expired example and an
---    administrator's read deletes it. Never written for a gated turn (the same record check). No login is stored.
+--    emails and phone numbers replaced by placeholders, core/learning/redact.ts). It follows the asker's stored chat: it is
+--    written only for a turn stored in the asker's own chat (teras_chat, 0952), keeps an internal link to that chat (never
+--    shown, never exported), and goes with it: ON DELETE CASCADE removes it when the chat is deleted, erased by the person,
+--    removed by retention or by person erasure. Its own expiry is the tenant's "Keep chats for" from when it was written (a
+--    trigger stamps it), and a shortened setting hides it at once, so it never outlives its chat; an administrator's read
+--    deletes an expired one. The gap's count (teras_gap_occurrence) stays. Never written
+--    for a gated turn (the same record check).
 -- 5. teras_gap_status: an administrator's status for one intent in one company: open, planned, won't do or duplicate (of
 --    another intent). Append-only versions; the latest wins; setting it back to open is a new version.
 -- 6. teras_eval_candidate: a question an administrator promoted to an eval candidate, with the corrected expectation,
@@ -81,28 +87,43 @@ CREATE TABLE public.teras_learning_signal (
  company_id uuid NOT NULL,
  record_id uuid NOT NULL,
  -- One signal per record and key: a card ('card:' || proposal id), the answer ('answer'), the recommendation.
- signal_key text NOT NULL CHECK (signal_key ~ '^(card:[0-9a-f-]{36}|answer|recommendation)$'),
+ signal_key text NOT NULL CHECK (signal_key ~ '^(card:[0-9a-f-]{36}|answer|answer_changed|recommendation)$'),
  kind text NOT NULL CHECK (kind IN ('card_confirmed','card_edited','card_discarded','recommendation_rejected','answer_helpful','answer_unhelpful')),
  action text NOT NULL CHECK (action ~ '^[a-z_-]{1,40}(\.[a-z_-]{1,40}){0,4}$'),
  area text NOT NULL CHECK (area ~ '^[a-z_]{1,40}$'),
  role text NOT NULL CHECK (role IN ('employee','manager','hr_admin','payroll','group_admin')),
  locale text NOT NULL CHECK (locale IN ('en','ms','zh','vi','ta','th')),
  proposal_id uuid,
+ -- The optional reason of a "Not helpful" mark.
+ reason text CHECK (reason IN ('wrong','not_what_asked','missing_something')),
  by_user_id uuid NOT NULL REFERENCES public.app_user(id),
  at timestamptz NOT NULL DEFAULT now(),
  UNIQUE (tenant_id,record_id,signal_key),
  FOREIGN KEY (company_id,tenant_id) REFERENCES public.company(id,tenant_id),
  FOREIGN KEY (tenant_id,record_id) REFERENCES public.teras_outcome_record(tenant_id,id),
  CHECK ((signal_key LIKE 'card:%')=(kind IN ('card_confirmed','card_edited','card_discarded'))),
- CHECK ((signal_key='answer')=(kind IN ('answer_helpful','answer_unhelpful'))),
+ CHECK ((signal_key IN ('answer','answer_changed'))=(kind IN ('answer_helpful','answer_unhelpful'))),
+ CHECK (reason IS NULL OR kind='answer_unhelpful'),
  CHECK ((signal_key='recommendation')=(kind='recommendation_rejected')),
  CHECK ((proposal_id IS NOT NULL)=(signal_key LIKE 'card:%') AND (proposal_id IS NULL OR signal_key='card:'||proposal_id::text))
 );
 --> statement-breakpoint
 CREATE INDEX teras_learning_signal_company_idx ON public.teras_learning_signal(tenant_id,company_id,at);
 --> statement-breakpoint
+-- Append-only, except that a "Not helpful" mark may gain its reason once, by the person who made it, within a day.
+CREATE FUNCTION app.teras_learning_signal_guard() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_OP='UPDATE' AND OLD.kind='answer_unhelpful' AND OLD.reason IS NULL AND NEW.reason IS NOT NULL AND OLD.at>now()-interval '1 day'
+  AND OLD.by_user_id=app.current_user_id()
+  AND (to_jsonb(NEW)-'reason')=(to_jsonb(OLD)-'reason') THEN RETURN NEW; END IF;
+ RAISE EXCEPTION 'teras_learning_signal is append-only' USING ERRCODE='42501';
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.teras_learning_signal_guard() FROM PUBLIC;
+--> statement-breakpoint
 CREATE TRIGGER teras_learning_signal_append_only BEFORE UPDATE OR DELETE ON public.teras_learning_signal
- FOR EACH ROW EXECUTE FUNCTION app.teras_learning_append_only();
+ FOR EACH ROW EXECUTE FUNCTION app.teras_learning_signal_guard();
 --> statement-breakpoint
 ALTER TABLE public.teras_learning_signal ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
@@ -116,9 +137,17 @@ CREATE POLICY teras_learning_signal_own_insert ON public.teras_learning_signal F
  WITH CHECK (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() IS TRUE
   AND by_user_id=app.current_user_id() AND app.teras_learning_own_record(record_id,company_id));
 --> statement-breakpoint
+-- The person adds the reason to their own "Not helpful" mark (the trigger above allows nothing else).
+CREATE POLICY teras_learning_signal_own_reason ON public.teras_learning_signal FOR UPDATE TO ai_hr_app
+ USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND by_user_id=app.current_user_id() AND kind='answer_unhelpful')
+ WITH CHECK (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() IS TRUE AND by_user_id=app.current_user_id()
+  AND app.teras_learning_own_record(record_id,company_id));
+--> statement-breakpoint
 REVOKE ALL ON public.teras_learning_signal FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 GRANT SELECT,INSERT ON public.teras_learning_signal TO ai_hr_app;
+--> statement-breakpoint
+GRANT UPDATE (reason) ON public.teras_learning_signal TO ai_hr_app;
 --> statement-breakpoint
 
 -- ── 2. Signal reviews ──
@@ -200,6 +229,9 @@ CREATE TABLE public.teras_gap_example (
  tenant_id uuid NOT NULL REFERENCES public.tenant(id),
  company_id uuid NOT NULL,
  record_id uuid NOT NULL,
+ -- The asker's stored chat the question came from: internal only (never read out, never exported), so the example goes
+ -- with the chat whichever way the chat is removed.
+ chat_id uuid NOT NULL REFERENCES public.teras_chat(id) ON DELETE CASCADE,
  intent_key text NOT NULL CHECK (intent_key ~ '^(cannot_answer|no_route|not_supported):[a-z_]{1,40}$'),
  -- Redacted in code; no digit survives redaction, so none may be stored.
  text text NOT NULL CHECK (char_length(text) BETWEEN 1 AND 400 AND text !~ '[0-9]' AND text !~ '[@]'),
@@ -226,6 +258,17 @@ END $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.teras_gap_example_stamp() FROM PUBLIC;
 --> statement-breakpoint
+-- Whether an example is within the tenant's "Keep chats for" as it is NOW: a shortened setting hides older examples at
+-- once, as it expires older chats at once (0952), without reading any chat (chats are their login's only).
+CREATE FUNCTION app.teras_gap_example_kept(p_tenant uuid,p_at timestamptz) RETURNS boolean
+ LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_at+make_interval(days=>app.teras_chat_keep_days(p_tenant))>now()
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.teras_gap_example_kept(uuid,timestamptz) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.teras_gap_example_kept(uuid,timestamptz) TO ai_hr_app;
+--> statement-breakpoint
 CREATE TRIGGER teras_gap_example_stamp BEFORE INSERT OR UPDATE ON public.teras_gap_example
  FOR EACH ROW EXECUTE FUNCTION app.teras_gap_example_stamp();
 --> statement-breakpoint
@@ -234,14 +277,18 @@ ALTER TABLE public.teras_gap_example ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.teras_gap_example FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
 CREATE POLICY teras_gap_example_read ON public.teras_gap_example FOR SELECT TO ai_hr_app
- USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id));
+ USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id) AND expires_at>now() AND app.teras_gap_example_kept(tenant_id,at));
 --> statement-breakpoint
+-- The chat must be the asker's own (0952 lets a login read only its own chats).
 CREATE POLICY teras_gap_example_own_insert ON public.teras_gap_example FOR INSERT TO ai_hr_app
- WITH CHECK (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() IS TRUE AND app.teras_learning_own_record(record_id,company_id));
+ WITH CHECK (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() IS TRUE AND app.teras_learning_own_record(record_id,company_id)
+  AND EXISTS(SELECT 1 FROM public.teras_chat c WHERE c.id=teras_gap_example.chat_id AND c.tenant_id=teras_gap_example.tenant_id
+   AND c.app_user_id=app.current_user_id()));
 --> statement-breakpoint
--- Only an expired example is ever deleted, by an administrator of its company.
+-- Only an expired example (its own stamp, or the tenant's "Keep chats for" as it is now) is ever deleted directly, by an
+-- administrator of its company.
 CREATE POLICY teras_gap_example_expired_delete ON public.teras_gap_example FOR DELETE TO ai_hr_app
- USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id) AND expires_at<=now());
+ USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id) AND (expires_at<=now() OR NOT app.teras_gap_example_kept(tenant_id,at)));
 --> statement-breakpoint
 REVOKE ALL ON public.teras_gap_example FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint

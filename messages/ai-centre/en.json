@@ -1491,6 +1491,20 @@
       },
       "patternUnknown": "A pay item no longer in the catalogue"
     },
+    "feedback": {
+      "label": "Was this answer helpful?",
+      "helpful": "Helpful",
+      "notHelpful": "Not helpful",
+      "reasonsLabel": "What was wrong with it?",
+      "cancel": "Cancel",
+      "thanks": "Thanks",
+      "change": "Change",
+      "reasons": {
+        "wrong": "Wrong",
+        "not_what_asked": "Not what I asked",
+        "missing_something": "Missing something"
+      }
+    },
     "quality": {
       "title": "AI quality",
       "descriptionCompany": "How people used AI Centre’s answers and prepared actions in {company}, what it could not do, and what the loops propose.",
@@ -1629,7 +1643,8 @@
         "none": "Nothing to review in this period.",
         "detail": "About {area} · {locale}",
         "promote": "Make an eval candidate",
-        "dismiss": "Dismiss"
+        "dismiss": "Dismiss",
+        "reason": "Reason: {reason}"
       },
       "candidate": {
         "question": "Question, with fictional details",
@@ -2139,6 +2154,8 @@
     "confirming": "Importing…",
     "fix": "{count, plural, one {Fix the # row} other {Fix the # rows}}",
     "openPage": "Open the import page",
+    "discard": "Discard",
+    "discarded": "Discarded. Nothing was imported.",
     "actionsLabel": "Import actions",
     "done": "{count, plural, one {# row imported.} other {# rows imported.}}",
     "doneLeftOut": "{count, plural, one {# row was not imported.} other {# rows were not imported.}}",

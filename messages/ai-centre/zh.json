@@ -1491,6 +1491,20 @@
       },
       "patternUnknown": "已不在目录中的薪资项目"
     },
+    "feedback": {
+      "label": "这个回答有帮助吗？",
+      "helpful": "有帮助",
+      "notHelpful": "没有帮助",
+      "reasonsLabel": "哪里不对？",
+      "cancel": "取消",
+      "thanks": "谢谢",
+      "change": "更改",
+      "reasons": {
+        "wrong": "答错了",
+        "not_what_asked": "不是我问的",
+        "missing_something": "缺少内容"
+      }
+    },
     "quality": {
       "title": "AI 质量",
       "descriptionCompany": "{company} 的员工如何使用 AI Centre 的回答和预备操作、它无法完成的事项，以及各循环提出的建议。",
@@ -1629,7 +1643,8 @@
         "none": "本期间没有待审核的内容。",
         "detail": "关于{area} · {locale}",
         "promote": "设为评测候选",
-        "dismiss": "忽略"
+        "dismiss": "忽略",
+        "reason": "原因：{reason}"
       },
       "candidate": {
         "question": "问题（使用虚构细节）",
@@ -2139,6 +2154,8 @@
     "confirming": "正在导入…",
     "fix": "{count, plural, other {修正这 # 行}}",
     "openPage": "打开导入页面",
+    "discard": "放弃",
+    "discarded": "已放弃。未导入任何内容。",
     "actionsLabel": "导入操作",
     "done": "{count, plural, other {已导入 # 行。}}",
     "doneLeftOut": "{count, plural, other {# 行未导入。}}",

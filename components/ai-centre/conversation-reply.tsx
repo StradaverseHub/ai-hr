@@ -11,6 +11,7 @@ import { assignedDecisionCardTitle } from '@/lib/ai-centre/assigned-decision-tit
 import { letterRequestCardTitle } from '@/lib/ai-centre/letter-request-title';
 import { ProposalCard, type ProposalCheck } from './proposal-card';
 import { InlineProposalCard } from './proposal-card-actions';
+import { AnswerFeedback } from './answer-feedback';
 import { inlineProposalKind, type InlineProposalCopy } from '@/lib/ai-centre/inline-proposal';
 import { RecommendationPanel } from './leave-recommendation';
 import { ConversationSuggestions } from '@/components/assistant/chat-reply-boundary';
@@ -48,6 +49,10 @@ export async function ConversationReply({ turn, links = new Map(), applicants = 
   const why = [...new Set(turn.reads.map(name => WHY[name]).filter((key): key is string => Boolean(key)))]
     .map(key => ({ label: t(`why.${key}`), prompt: t(`why.${key}Prompt`) }));
   const routed = turn.sensitive || turn.crisis;
+  const gated = turn.sensitive || turn.refused || turn.crisis;
+  const tf = await getTranslations('aiCentre.feedback');
+  const feedbackCopy = { label: tf('label'), helpful: tf('helpful'), notHelpful: tf('notHelpful'), reasonsLabel: tf('reasonsLabel'), cancel: tf('cancel'),
+    thanks: tf('thanks'), change: tf('change'), reasons: { wrong: tf('reasons.wrong'), not_what_asked: tf('reasons.not_what_asked'), missing_something: tf('reasons.missing_something') } };
   const inline: InlineProposalCopy = {
     confirm: t('inline.confirm'), confirming: t('inline.confirming'), edit: t('inline.edit'), opening: t('inline.opening'),
     discard: t('inline.discard'), actionsLabel: t('inline.actionsLabel'), confirmedBy: t('inline.confirmedBy'),
@@ -64,7 +69,7 @@ export async function ConversationReply({ turn, links = new Map(), applicants = 
   };
   // AI v2 slice 3 (issue 16b): an import prepared in chat has its own card (./import-proposal-card.tsx), rendered first.
   const importCards = new Map(await Promise.all(turn.proposals.filter(proposal => proposal.body.what.action === CHAT_IMPORT_ACTION && proposal.body.import)
-    .map(async proposal => [proposal.body.id, await ImportProposalCard({ proposal })] as const)));
+    .map(async proposal => [proposal.body.id, await ImportProposalCard({ proposal, turnId: turn.turnId })] as const)));
   return (
     <div data-teras-reply={turn.turnId} className="space-y-3">
       {routed && (
@@ -146,6 +151,9 @@ export async function ConversationReply({ turn, links = new Map(), applicants = 
         </p>
       )}
       {why.length > 0 && <ConversationSuggestions suggestions={why} label={t('whyLabel')} />}
+      {/* AI v2 Phase 2 P2-6: Helpful / Not helpful, never on a routed, refused or crisis turn (it stores no words and is
+          never learned from). */}
+      {!gated && <AnswerFeedback turnId={turn.turnId} copy={feedbackCopy} />}
     </div>
   );
 }

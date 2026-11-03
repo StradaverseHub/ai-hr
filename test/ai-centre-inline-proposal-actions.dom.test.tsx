@@ -34,7 +34,7 @@ vi.mock('../app/assistant/assigned-decision-proposal-actions', () => ({ confirmA
 vi.mock('../app/assistant/letter-request-proposal-actions', () => ({ confirmLetterRequestProposalAction: posts.letter_request.confirm, editLetterRequestProposalAction: posts.letter_request.edit }));
 // AI v2 Phase 2 P2-6: the learning signal each press posts (core/learning/signals.ts; its own test: test/learning-loops.test.ts).
 const learning = vi.hoisted(() => ({ signal: vi.fn(async () => ({ recorded: true })) }));
-vi.mock('../app/assistant/learning-actions', () => ({ recordCardSignalAction: learning.signal }));
+vi.mock('../app/assistant/learning-actions', () => ({ recordCardSignalAction: learning.signal, markAnswerAction: vi.fn() }));
 const messages = withAiCentre('en', en as Record<string, unknown>);
 vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: 'en', messages: messages as never, namespace }),

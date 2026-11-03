@@ -201,9 +201,14 @@ describe('the boundaries the owner set',()=>{
    expect(SQL).toMatch(new RegExp(`GRANT SELECT,INSERT(,DELETE|,UPDATE)? ON public\\.${table} TO ai_hr_app;`));
   }
   expect(SQL).toContain('GRANT SELECT,INSERT,DELETE ON public.teras_gap_example TO ai_hr_app;');
-  expect(SQL).toContain('USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id) AND expires_at<=now());');
-  // Every insert of a signal or a gap names its own, open (not private to the asker) turn.
-  expect(SQL.match(/app\.teras_learning_own_record\(record_id,company_id\)/g)).toHaveLength(3);
+  expect(SQL).toContain('USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id) AND (expires_at<=now() OR NOT app.teras_gap_example_kept(tenant_id,at)));');
+  // Every insert of a signal or a gap, and a mark's reason, names its own, open (not private to the asker) turn.
+  expect(SQL.match(/app\.teras_learning_own_record\(record_id,company_id\)/g)).toHaveLength(4);
+  // A gap example follows the asker's chat: written only for their own chat, removed with it.
+  expect(SQL).toContain('chat_id uuid NOT NULL REFERENCES public.teras_chat(id) ON DELETE CASCADE,');
+  expect(SQL).toContain('AND EXISTS(SELECT 1 FROM public.teras_chat c WHERE c.id=teras_gap_example.chat_id AND c.tenant_id=teras_gap_example.tenant_id\n   AND c.app_user_id=app.current_user_id()));');
+  // An answer's mark: only its reason may be updated, by a column grant.
+  expect(SQL).toContain('GRANT UPDATE (reason) ON public.teras_learning_signal TO ai_hr_app;');
   expect(SQL).toContain('AND r.asked_by_user_id=app.current_user_id() AND r.private_to_asker IS FALSE AND r.company_id=p_company)');
   // The journal places it by number.
   const journal=JSON.parse(readFileSync(join(root,'db/migrations/meta/_journal.json'),'utf8')) as {entries:{idx:number;when:number;tag:string}[]};
@@ -211,7 +216,7 @@ describe('the boundaries the owner set',()=>{
  });
  it('learning reads and records only: it never writes the eval set, the harness, a guard, a permission or a disclosure rule',()=>{
   const files=readdirSync(join(root,'core/learning')).filter(name=>name.endsWith('.ts'));
-  expect(files.sort()).toEqual(['access.ts','capture.ts','export.ts','gaps.ts','proposals.ts','quality-math.ts','quality.ts','recommendation-signal.ts','redact.ts','review.ts','signals.ts','types.ts']);
+  expect(files.sort()).toEqual(['access.ts','ask.ts','capture.ts','export.ts','gaps.ts','proposals.ts','quality-math.ts','quality.ts','recommendation-signal.ts','redact.ts','review.ts','signals.ts','types.ts']);
   for(const name of files){
    const text=readFileSync(join(root,'core/learning',name),'utf8').replace(/\/\*[\s\S]*?\*\//g,'').replace(/^\s*\/\/.*$/gm,'');
    expect(text,name).not.toMatch(/from ['"](?:node:)?(?:fs|child_process|net|http|https)['"]/);
@@ -220,7 +225,7 @@ describe('the boundaries the owner set',()=>{
    expect(text,name).not.toMatch(/from ['"][^'"]*assistant-smart-eval-set|writeFile|appendFile/);
    // Its only database writes are the learning tables and, through their owners, the payroll loop settings.
    for(const m of text.matchAll(/tx\.(?:insert|update|delete)\((\w+)\)/g))expect(['terasLearningSignal','terasGapOccurrence','terasGapExample','terasLearningSignalReview',
-    'terasEvalCandidate','g','c','e','terasGapStatus'],`${name}: ${m[0]}`).toContain(m[1]);
+    'terasEvalCandidate','g','c','e','s','terasGapStatus'],`${name}: ${m[0]}`).toContain(m[1]);
   }
  });
  it('no HR-staff ratio in any locale\'s AI quality copy',()=>{

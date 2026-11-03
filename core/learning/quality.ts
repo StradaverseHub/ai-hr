@@ -21,7 +21,7 @@ import {listPayComponents} from '../../packs/payroll/service';
 import {loopProposalsTx,type LoopProposalView} from './proposals';
 import {chartMonths,computeQuality,gapBacklog,loopCorrectionTrend,periodStartDate,type GapFact,type GapRow,type GapStatusFact,type LoopCardFact,
  type LoopCorrectionFact,type LoopCorrectionRow,type QualityFigures,type SignalFact} from './quality-math';
-import {CORRECTION_KINDS,isQualityPeriod,type CandidateState,type EvalFactor,type EvalKind,type LearningLocale,type LearningRole,type QualityPeriod,
+import {CORRECTION_KINDS,isQualityPeriod,type AnswerReason,type CandidateState,type EvalFactor,type EvalKind,type LearningLocale,type LearningRole,type QualityPeriod,
  type ReviewDecision,type SignalKind} from './types';
 
 export {LearningRefused,captureCtx,requireLearningAdmin} from './access';
@@ -31,6 +31,8 @@ export const CORRECTIONS_SHOWN=50;
 export const CANDIDATES_SHOWN=50;
 
 export type CorrectionView=Readonly<{id:string;companyId:string;kind:SignalKind;action:string;area:string;role:LearningRole;locale:LearningLocale;at:Date;
+ /** A "Not helpful" mark's reason, when the person gave one. */
+ reason:AnswerReason|null;
  /** A redacted example of the same turn, when that turn was also a gap. */
  example:string|null}>;
 export type CandidateView=Readonly<{id:string;companyId:string;signalId:string|null;intentKey:string|null;role:LearningRole;locale:LearningLocale;kind:EvalKind;
@@ -55,9 +57,12 @@ export type QualityView=Readonly<{
 const ids=(companyIds:readonly string[])=>sql`array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
 const day=(column:SQL)=>sql`to_char(${column} at time zone 'Asia/Kuala_Lumpur','YYYY-MM-DD')`;
 
+/** An answer's first mark that was later changed counts no more: the change counts instead (0972 'answer_changed'). */
+const CURRENT=sql`not (s.signal_key='answer' and exists (select 1 from public.teras_learning_signal c where c.tenant_id=s.tenant_id
+ and c.record_id=s.record_id and c.signal_key='answer_changed'))`;
 async function signalFactsTx(tx:Tx,ctx:SessionContext,scope:readonly string[],from:Date):Promise<SignalFact[]>{
  const rows=await tx.execute(sql`select s.company_id,s.kind,${day(sql`s.at`)} as day,count(*)::int as n from public.teras_learning_signal s
-  where s.tenant_id=${ctx.tenantId}::uuid and s.company_id=any(${ids(scope)}) and s.at>=${from.toISOString()}::timestamptz group by 1,2,3`) as unknown as {company_id:string;kind:SignalKind;day:string;n:number}[];
+  where s.tenant_id=${ctx.tenantId}::uuid and s.company_id=any(${ids(scope)}) and s.at>=${from.toISOString()}::timestamptz and ${CURRENT} group by 1,2,3`) as unknown as {company_id:string;kind:SignalKind;day:string;n:number}[];
  return Array.from(rows).map(row=>Object.freeze({companyId:row.company_id,kind:row.kind,date:row.day,count:Number(row.n)}));
 }
 async function loopCardFactsTx(tx:Tx,ctx:SessionContext,scope:readonly string[],from:Date):Promise<LoopCardFact[]>{
@@ -79,12 +84,14 @@ export async function gapStatusesTx(tx:Tx,ctx:SessionContext,scope:readonly stri
   .from(g).where(and(eq(g.tenantId,ctx.tenantId),inArray(g.companyId,[...scope]))).orderBy(g.companyId,g.intentKey,desc(g.version));
  return rows.map(row=>Object.freeze({...row}));
 }
-/** Deletes the expired examples of these companies, then reads up to EXAMPLES_PER_INTENT per intent, newest first. */
+/** Deletes the expired examples of these companies (their own stamp, or the tenant's "Keep chats for" as it is now), then
+ * reads up to EXAMPLES_PER_INTENT per intent, newest first. An example whose chat was deleted, erased or removed by
+ * retention is already gone with it (0972's ON DELETE CASCADE). */
 async function examplesTx(tx:Tx,ctx:SessionContext,scope:readonly string[],intents:readonly string[]):Promise<Map<string,string[]>>{
  const out=new Map<string,string[]>();
  if(!scope.length||!intents.length)return out;
  const e=terasGapExample;
- await tx.delete(e).where(and(eq(e.tenantId,ctx.tenantId),inArray(e.companyId,[...scope]),sql`${e.expiresAt}<=now()`));
+ await tx.delete(e).where(and(eq(e.tenantId,ctx.tenantId),inArray(e.companyId,[...scope]),sql`(${e.expiresAt}<=now() or not app.teras_gap_example_kept(${e.tenantId},${e.at}))`));
  const rows=await tx.select({intentKey:e.intentKey,text:e.text}).from(e)
   .where(and(eq(e.tenantId,ctx.tenantId),inArray(e.companyId,[...scope]),inArray(e.intentKey,[...intents]),sql`${e.expiresAt}>now()`))
   .orderBy(e.intentKey,desc(e.at),desc(e.id));
@@ -102,8 +109,9 @@ export async function reviewStatesTx(tx:Tx,ctx:SessionContext,signalIds:readonly
 async function correctionsTx(tx:Tx,ctx:SessionContext,scope:readonly string[],from:Date):Promise<CorrectionView[]>{
  const s=terasLearningSignal;
  // Read a bounded page beyond what is shown, so reviewed rows can be skipped.
- const rows=await tx.select({id:s.id,companyId:s.companyId,kind:s.kind,action:s.action,area:s.area,role:s.role,locale:s.locale,at:s.at,recordId:s.recordId}).from(s)
-  .where(and(eq(s.tenantId,ctx.tenantId),inArray(s.companyId,[...scope]),inArray(s.kind,[...CORRECTION_KINDS]),gte(s.at,from)))
+ const rows=await tx.select({id:s.id,companyId:s.companyId,kind:s.kind,action:s.action,area:s.area,role:s.role,locale:s.locale,at:s.at,recordId:s.recordId,reason:s.reason}).from(s)
+  .where(and(eq(s.tenantId,ctx.tenantId),inArray(s.companyId,[...scope]),inArray(s.kind,[...CORRECTION_KINDS]),gte(s.at,from),
+   sql`not (${s.signalKey}='answer' and exists (select 1 from public.teras_learning_signal c where c.tenant_id=${s.tenantId} and c.record_id=${s.recordId} and c.signal_key='answer_changed'))`))
   .orderBy(desc(s.at),desc(s.id)).limit(CORRECTIONS_SHOWN*4);
  const reviewed=await reviewStatesTx(tx,ctx,rows.map(row=>row.id));
  const open=rows.filter(row=>{const state=reviewed.get(row.id)?.decision;return state===undefined||state==='reopened';}).slice(0,CORRECTIONS_SHOWN);
@@ -112,7 +120,7 @@ async function correctionsTx(tx:Tx,ctx:SessionContext,scope:readonly string[],fr
   .where(and(eq(e.tenantId,ctx.tenantId),inArray(e.recordId,open.map(row=>row.recordId)),sql`${e.expiresAt}>now()`)):[];
  const byRecord=new Map(examples.map(row=>[row.recordId,row.text]));
  return open.map(row=>Object.freeze({id:row.id,companyId:row.companyId,kind:row.kind,action:row.action,area:row.area,role:row.role,locale:row.locale,at:row.at,
-  example:byRecord.get(row.recordId)??null}));
+  reason:row.reason??null,example:byRecord.get(row.recordId)??null}));
 }
 async function candidatesTx(tx:Tx,ctx:SessionContext,scope:readonly string[]):Promise<CandidateView[]>{
  const c=terasEvalCandidate;

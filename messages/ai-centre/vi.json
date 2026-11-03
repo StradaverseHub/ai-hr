@@ -1491,6 +1491,20 @@
       },
       "patternUnknown": "Một khoản lương không còn trong danh mục"
     },
+    "feedback": {
+      "label": "Câu trả lời này có hữu ích không?",
+      "helpful": "Hữu ích",
+      "notHelpful": "Không hữu ích",
+      "reasonsLabel": "Câu trả lời có vấn đề gì?",
+      "cancel": "Hủy",
+      "thanks": "Cảm ơn",
+      "change": "Thay đổi",
+      "reasons": {
+        "wrong": "Sai",
+        "not_what_asked": "Không đúng điều tôi hỏi",
+        "missing_something": "Còn thiếu"
+      }
+    },
     "quality": {
       "title": "Chất lượng AI",
       "descriptionCompany": "Cách mọi người dùng câu trả lời và các thao tác đã chuẩn bị của AI Centre tại {company}, những gì nó chưa làm được và những gì các vòng lặp đề xuất.",
@@ -1629,7 +1643,8 @@
         "none": "Không có gì cần xem xét trong khoảng thời gian này.",
         "detail": "Về {area} · {locale}",
         "promote": "Làm ứng viên đánh giá",
-        "dismiss": "Bỏ qua"
+        "dismiss": "Bỏ qua",
+        "reason": "Lý do: {reason}"
       },
       "candidate": {
         "question": "Câu hỏi, với chi tiết hư cấu",
@@ -2139,6 +2154,8 @@
     "confirming": "Đang nhập…",
     "fix": "{count, plural, other {Sửa # dòng}}",
     "openPage": "Mở trang nhập",
+    "discard": "Bỏ",
+    "discarded": "Đã bỏ. Không có gì được nhập.",
     "actionsLabel": "Thao tác nhập",
     "done": "{count, plural, other {Đã nhập # dòng.}}",
     "doneLeftOut": "{count, plural, other {# dòng không được nhập.}}",

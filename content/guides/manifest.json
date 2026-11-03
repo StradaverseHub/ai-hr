@@ -170,6 +170,13 @@
       "order": 24
     },
     {
+      "slug": "admin-ai-quality",
+      "title": "Admin Guide: AI Quality and Learning",
+      "audience": "hr_admin",
+      "category": "intelligence",
+      "order": 29
+    },
+    {
       "slug": "admin-mobile-app",
       "title": "Admin Guide: Mobile App Design & Publication",
       "audience": "hr_admin",

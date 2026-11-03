@@ -1491,6 +1491,20 @@
       },
       "patternUnknown": "Item gaji yang tiada lagi dalam katalog"
     },
+    "feedback": {
+      "label": "Adakah jawapan ini membantu?",
+      "helpful": "Membantu",
+      "notHelpful": "Tidak membantu",
+      "reasonsLabel": "Apa yang tidak kena?",
+      "cancel": "Batal",
+      "thanks": "Terima kasih",
+      "change": "Tukar",
+      "reasons": {
+        "wrong": "Salah",
+        "not_what_asked": "Bukan yang saya tanya",
+        "missing_something": "Ada yang tertinggal"
+      }
+    },
     "quality": {
       "title": "Kualiti AI",
       "descriptionCompany": "Cara orang menggunakan jawapan dan tindakan yang disediakan oleh AI Centre di {company}, perkara yang tidak dapat dilakukannya, dan cadangan gelung.",
@@ -1629,7 +1643,8 @@
         "none": "Tiada apa untuk disemak dalam tempoh ini.",
         "detail": "Tentang {area} · {locale}",
         "promote": "Jadikan calon penilaian",
-        "dismiss": "Ketepikan"
+        "dismiss": "Ketepikan",
+        "reason": "Sebab: {reason}"
       },
       "candidate": {
         "question": "Soalan, dengan butiran rekaan",
@@ -2139,6 +2154,8 @@
     "confirming": "Mengimport…",
     "fix": "{count, plural, other {Betulkan # baris}}",
     "openPage": "Buka halaman import",
+    "discard": "Buang",
+    "discarded": "Dibuang. Tiada apa yang diimport.",
     "actionsLabel": "Tindakan import",
     "done": "{count, plural, other {# baris diimport.}}",
     "doneLeftOut": "{count, plural, other {# baris tidak diimport.}}",

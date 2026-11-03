@@ -1176,9 +1176,11 @@ integration.
 
 0972 creates six FORCE row-level-security tables: `teras_learning_signal`, `teras_learning_signal_review`,
 `teras_gap_occurrence`, `teras_gap_example`, `teras_gap_status` and `teras_eval_candidate`, with the functions
-`app.teras_learning_append_only`, `app.teras_learning_own_record`, `app.teras_learning_admin`, `app.teras_gap_example_stamp`
-and `app.teras_eval_candidate_guard`. Every table is new; it alters no existing object. Writers reviewed: `core/learning/*` only.
+`app.teras_learning_append_only`, `app.teras_learning_signal_guard`, `app.teras_learning_own_record`, `app.teras_learning_admin`,
+`app.teras_gap_example_stamp`, `app.teras_gap_example_kept` and `app.teras_eval_candidate_guard`. Every table is new; it alters
+no existing object. A gap example references `teras_chat(id)` ON DELETE CASCADE (it goes with the asker's chat), and the signal
+table grants UPDATE on its `reason` column only. Writers reviewed: `core/learning/*` only.
 
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
-|776|1793330000372|0972_teras_learning_loops|c843497cf18fdf60388b5f49ebab9c91ba4d00c77188b70a5cf2e3ef7a0ca198|
+|776|1793330000372|0972_teras_learning_loops|368eb5553f232d434148eca9444a6ef12da58358287816b7e4478cd150df94d7|

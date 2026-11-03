@@ -10,7 +10,7 @@
  * deleted only once expired. A candidate is updated in place, every change the next version (a trigger checks it). */
 import {integer,pgTable,text,timestamp,uniqueIndex,uuid} from 'drizzle-orm/pg-core';
 import {appUser,company,tenant} from './schema';
-import type {CandidateState,EvalFactor,EvalKind,GapKind,GapStatus,LearningLocale,LearningRole,ReviewDecision,SignalKind} from '../core/learning/types';
+import type {AnswerReason,CandidateState,EvalFactor,EvalKind,GapKind,GapStatus,LearningLocale,LearningRole,ReviewDecision,SignalKind} from '../core/learning/types';
 
 const id=()=>uuid('id').primaryKey().defaultRandom();
 const tenantId=()=>uuid('tenant_id').notNull().references(()=>tenant.id);
@@ -21,7 +21,10 @@ export const terasLearningSignal=pgTable('teras_learning_signal',{
  id:id(),tenantId:tenantId(),companyId:companyId(),recordId:uuid('record_id').notNull(),signalKey:text('signal_key').notNull(),
  kind:text('kind').$type<SignalKind>().notNull(),action:text('action').notNull(),area:text('area').notNull(),
  role:text('role').$type<LearningRole>().notNull(),locale:text('locale').$type<LearningLocale>().notNull(),
- proposalId:uuid('proposal_id'),byUserId:uuid('by_user_id').notNull().references(()=>appUser.id),at:at('at').notNull().defaultNow(),
+ proposalId:uuid('proposal_id'),
+ /** A "Not helpful" mark's optional reason, added once by the person (0972's column grant and trigger). */
+ reason:text('reason').$type<AnswerReason>(),
+ byUserId:uuid('by_user_id').notNull().references(()=>appUser.id),at:at('at').notNull().defaultNow(),
 },t=>[uniqueIndex('teras_learning_signal_tenant_id_record_id_signal_key_key').on(t.tenantId,t.recordId,t.signalKey)]);
 
 export const terasLearningSignalReview=pgTable('teras_learning_signal_review',{
@@ -37,7 +40,9 @@ export const terasGapOccurrence=pgTable('teras_gap_occurrence',{
 },t=>[uniqueIndex('teras_gap_occurrence_tenant_id_record_id_key').on(t.tenantId,t.recordId)]);
 
 export const terasGapExample=pgTable('teras_gap_example',{
- id:id(),tenantId:tenantId(),companyId:companyId(),recordId:uuid('record_id').notNull(),intentKey:text('intent_key').notNull(),
+ id:id(),tenantId:tenantId(),companyId:companyId(),recordId:uuid('record_id').notNull(),
+ /** The asker's stored chat (teras_chat): internal only, so the example goes with the chat (ON DELETE CASCADE). */
+ chatId:uuid('chat_id').notNull(),intentKey:text('intent_key').notNull(),
  text:text('text').notNull(),redactionVersion:integer('redaction_version').notNull(),at:at('at').notNull().defaultNow(),
  /** Stamped by the 0972 trigger from the tenant's "Keep chats for"; any value the writer gives is replaced. */
  expiresAt:at('expires_at').notNull().defaultNow(),

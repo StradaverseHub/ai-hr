@@ -12,7 +12,7 @@ import { ImportProposalActions } from './import-proposal-actions';
  * few of those by row number, column and a plain reason in the person's language (never a cell value: the import page's
  * own preview shows every row). Its buttons (./import-proposal-actions.tsx) confirm through the import owner, or open the
  * import page with the file handed over. */
-export async function ImportProposalCard({ proposal }: { proposal: Proposal }) {
+export async function ImportProposalCard({ proposal, turnId }: { proposal: Proposal; turnId?: string }) {
   const t = await getTranslations('chatImport');
   const tc = await getTranslations('aiCentre.conversation');
   const format = await getFormatter();
@@ -53,7 +53,7 @@ export async function ImportProposalCard({ proposal }: { proposal: Proposal }) {
             </div>
           )}
           {more > 0 && <p className="text-xs text-muted-foreground">{t('more', { count: more })}</p>}
-          <ImportProposalActions proposal={proposal} />
+          <ImportProposalActions proposal={proposal} turnId={turnId} />
           <ul className="space-y-1 text-xs text-muted-foreground">{notes.map(line => <li key={line}>{line}</li>)}</ul>
         </div>} />
     </div>

@@ -14,6 +14,11 @@ export const CARD_SIGNALS=Object.freeze(['card_confirmed','card_edited','card_di
 export type CardSignal=(typeof CARD_SIGNALS)[number];
 export const isCardSignal=(value:unknown):value is CardSignal=>typeof value==='string'&&(CARD_SIGNALS as readonly string[]).includes(value);
 
+/** A "Not helpful" mark's optional reason (one tap on the reply). */
+export const ANSWER_REASONS=Object.freeze(['wrong','not_what_asked','missing_something'] as const);
+export type AnswerReason=(typeof ANSWER_REASONS)[number];
+export const isAnswerReason=(value:unknown):value is AnswerReason=>typeof value==='string'&&(ANSWER_REASONS as readonly string[]).includes(value);
+
 /** The role band a signal, a gap or a candidate is recorded under: the eval set's own roles
  * (core/improvement/smart-eval-score.ts SmartEvalRole). Never a person. */
 export const LEARNING_ROLES=Object.freeze(['employee','manager','hr_admin','payroll','group_admin'] as const);

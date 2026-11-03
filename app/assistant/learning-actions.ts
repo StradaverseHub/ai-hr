@@ -34,11 +34,12 @@ export async function recordCardSignalAction(input: { proposal: unknown; turnId:
   } catch { return { recorded: false }; }
 }
 
-export async function markAnswerAction(input: { turnId: unknown; helpful: unknown }): Promise<{ recorded: boolean }> {
+/** The reply's Helpful / Not helpful control (components/ai-centre/answer-feedback.tsx), with "Not helpful"'s optional reason. */
+export async function markAnswerAction(input: { turnId: unknown; helpful: unknown; reason?: unknown }): Promise<{ recorded: boolean; mark: 'helpful' | 'unhelpful' | null; canChange: boolean }> {
   try {
     const session = await getBrowserCommandSession();
-    return await recordAnswerMark(session, { turnId: input?.turnId, helpful: input?.helpful, locale: await getLocale() });
-  } catch { return { recorded: false }; }
+    return await recordAnswerMark(session, { turnId: input?.turnId, helpful: input?.helpful, reason: input?.reason, locale: await getLocale() });
+  } catch { return { recorded: false, mark: null, canChange: false }; }
 }
 
 /** The Insights view the administrator came from: its period and company filter kept. */

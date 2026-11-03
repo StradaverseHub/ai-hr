@@ -44,7 +44,8 @@ type T = Awaited<ReturnType<typeof getTranslations<'aiCentre.quality'>>>;
 type F = Awaited<ReturnType<typeof getFormatter>>;
 
 export async function AiQualitySection({ session, query }: { session: SessionContext; query: QualityQuery }) {
-  const [t, tl, tp, f] = await Promise.all([getTranslations('aiCentre.quality'), getTranslations('aiCentre.loops'), getTranslations('aiCentre.payrollCycle'), getFormatter()]);
+  const [t, tl, tp, tf, f] = await Promise.all([getTranslations('aiCentre.quality'), getTranslations('aiCentre.loops'), getTranslations('aiCentre.payrollCycle'),
+    getTranslations('aiCentre.feedback'), getFormatter()]);
   const view = await aiQuality(session, { period: query.qperiod, companyId: query.qcompany });
   const company = view.companyId;
   const keep = { qperiod: view.period, qcompany: company };
@@ -134,7 +135,7 @@ export async function AiQualitySection({ session, query }: { session: SessionCon
         </section>
 
         <GapsTable view={view} t={t} f={f} hidden={hidden} />
-        <CorrectionsTable view={view} t={t} day={day} hidden={hidden} keep={keep} promote={promoteSignal} />
+        <CorrectionsTable view={view} t={t} tf={tf} day={day} hidden={hidden} keep={keep} promote={promoteSignal} />
         <CandidatesTable view={view} t={t} day={day} hidden={hidden} keep={keep} open={openCandidate} />
         <ProposalsTable view={view} t={t} tl={tl} tp={tp} f={f} day={day} hidden={hidden} monthLabel={monthLabel} pct={pct} />
 
@@ -251,8 +252,8 @@ function CandidateFields({ t, defaults }: { t: T; defaults: Readonly<{ question?
   </>;
 }
 
-function CorrectionsTable({ view, t, day, hidden, keep, promote }: { view: QualityView; t: T; day: (at: Date) => string; hidden: ReactNode;
-  keep: Record<string, string | null>; promote?: CorrectionView }) {
+function CorrectionsTable({ view, t, tf, day, hidden, keep, promote }: { view: QualityView; t: T; tf: Awaited<ReturnType<typeof getTranslations<'aiCentre.feedback'>>>;
+  day: (at: Date) => string; hidden: ReactNode; keep: Record<string, string | null>; promote?: CorrectionView }) {
   return (
     <div className="space-y-3">
       <TableShell id="ai-quality-corrections" title={t('corrections.title')} help={t('corrections.help')}>
@@ -263,6 +264,7 @@ function CorrectionsTable({ view, t, day, hidden, keep, promote }: { view: Quali
               <tr key={row.id} data-correction={row.kind}>
                 <th scope="row" className={cn(cell, 'font-medium')}>{signalLabel(t, row)}
                   <p className="mt-1 text-xs font-normal text-muted-foreground">{t('corrections.detail', { area: t.has(`areas.${row.area}`) ? t(`areas.${row.area}`) : t('areas.general'), locale: t(`locales.${row.locale}`) })}</p>
+                  {row.reason && <p className="mt-1 text-xs font-normal text-muted-foreground" data-correction-reason>{t('corrections.reason', { reason: tf(`reasons.${row.reason}`) })}</p>}
                   {row.example && <p className="mt-1 text-xs font-normal text-muted-foreground" data-correction-example>“{row.example}”</p>}
                 </th>
                 <td className={cell}>{t(`roles.${row.role}`)}</td>

@@ -65,8 +65,8 @@ const view=(over:Record<string,unknown>={})=>({period:'last30',periodFrom:'2026-
   {intentKey:'cannot_answer:leave',kind:'cannot_answer',area:'leave',count:3,roles:['employee'],statuses:[{companyId:C1,status:'planned',duplicateOf:null},{companyId:C2,status:'open',duplicateOf:null}],status:null,rank:2,examples:[]},
  ],
  corrections:[
-  {id:S1,companyId:C1,kind:'card_edited',action:'leave.apply',area:'leave',role:'employee',locale:'ms',at:new Date('2026-11-01T02:00:00Z'),example:null},
-  {id:S2,companyId:C2,kind:'answer_unhelpful',action:'answer',area:'payroll',role:'manager',locale:'en',at:new Date('2026-10-30T02:00:00Z'),example:'How much is {{NAME_A}} paid?'},
+  {id:S1,companyId:C1,kind:'card_edited',action:'leave.apply',area:'leave',role:'employee',locale:'ms',at:new Date('2026-11-01T02:00:00Z'),reason:null,example:null},
+  {id:S2,companyId:C2,kind:'answer_unhelpful',action:'answer',area:'payroll',role:'manager',locale:'en',at:new Date('2026-10-30T02:00:00Z'),reason:'not_what_asked',example:'How much is {{NAME_A}} paid?'},
  ],
  candidates:[
   {id:K1,companyId:C1,signalId:S1,intentKey:null,role:'employee',locale:'en',kind:'do',factor:'doing',question:'Can {{NAME_A}} take leave next Friday?',expectation:'Prepares the leave card.',
@@ -183,7 +183,7 @@ describe('AI quality, as an administrator',()=>{
   const rows=[...rendered.container.querySelectorAll('[data-correction]')];
   expect(rows.map(row=>cells(row).slice(0,3))).toEqual([
    ['A prepared action was opened to editAbout leave · Malay','Employee','Nov 1, 2026'],
-   ['An answer was marked not helpfulAbout payroll · English“How much is {{NAME_A}} paid?”','Manager','Oct 30, 2026']]);
+   ['An answer was marked not helpfulAbout payroll · EnglishReason: Not what I asked“How much is {{NAME_A}} paid?”','Manager','Oct 30, 2026']]);
   const promote=within(rows[0] as HTMLElement).getByRole('link',{name:/Make an eval candidate/});
   expect(promote.getAttribute('href')).toBe(`/assistant?view=insights&qperiod=quarter&qcompany=${C1}&qpromote=${S1}#ai-quality-promote`);
   expect(within(rows[0] as HTMLElement).getByRole('button',{name:/Dismiss/})).toBeTruthy();

@@ -1491,6 +1491,20 @@
       },
       "patternUnknown": "รายการค่าจ้างที่ไม่อยู่ในแคตตาล็อกแล้ว"
     },
+    "feedback": {
+      "label": "คำตอบนี้มีประโยชน์ไหม",
+      "helpful": "มีประโยชน์",
+      "notHelpful": "ไม่มีประโยชน์",
+      "reasonsLabel": "มีอะไรผิดพลาด",
+      "cancel": "ยกเลิก",
+      "thanks": "ขอบคุณ",
+      "change": "เปลี่ยน",
+      "reasons": {
+        "wrong": "ผิด",
+        "not_what_asked": "ไม่ใช่สิ่งที่ถาม",
+        "missing_something": "ขาดบางอย่าง"
+      }
+    },
     "quality": {
       "title": "คุณภาพ AI",
       "descriptionCompany": "วิธีที่ผู้คนใช้คำตอบและการดำเนินการที่ AI Centre เตรียมไว้ใน {company} สิ่งที่ยังทำไม่ได้ และสิ่งที่ลูปเสนอ",
@@ -1629,7 +1643,8 @@
         "none": "ไม่มีสิ่งที่ต้องตรวจสอบในช่วงเวลานี้",
         "detail": "เกี่ยวกับ{area} · {locale}",
         "promote": "ทำเป็นตัวอย่างประเมิน",
-        "dismiss": "ละเว้น"
+        "dismiss": "ละเว้น",
+        "reason": "เหตุผล: {reason}"
       },
       "candidate": {
         "question": "คำถาม พร้อมรายละเอียดสมมุติ",
@@ -2139,6 +2154,8 @@
     "confirming": "กำลังนำเข้า…",
     "fix": "{count, plural, other {แก้ไข # แถว}}",
     "openPage": "เปิดหน้านำเข้า",
+    "discard": "ทิ้ง",
+    "discarded": "ทิ้งแล้ว ไม่มีการนำเข้าข้อมูลใด",
     "actionsLabel": "การดำเนินการนำเข้า",
     "done": "{count, plural, other {นำเข้าแล้ว # แถว}}",
     "doneLeftOut": "{count, plural, other {# แถวไม่ได้นำเข้า}}",

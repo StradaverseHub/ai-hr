@@ -55,6 +55,12 @@ export const EXPLAINER_CONVERSATIONS:readonly BaselineConversation[]=freeze([
   {id:'copilot-claims',question:'Is claims set up correctly?',category:'guidance',ideal:{mode:'honest_gap'}},
   {id:'copilot-login-names',question:'Which employees have no login? List their names.',category:'guidance',ideal:{mode:'honest_gap'}},
  ]},
+ // AI v2 Phase 2 P2-6: AI quality for an administrator (ai_quality_summary). The fixture has no signals or gaps yet, so the
+ // ideal reply says there is no data yet rather than giving 0%; the read never names people or shows examples.
+ {id:'ai-quality',title:'P2-6: how is AI Centre doing',persona:'admin',turns:[
+  {id:'quality-unchanged',question:'How often do people confirm what AI Centre prepares without changing it?',category:'guidance',ideal:answer('ai_quality_summary')},
+  {id:'quality-gaps',question:'What do people ask AI Centre that it cannot do yet?',category:'guidance',ideal:answer('ai_quality_summary')},
+ ]},
 ]);
 /** Reviewed against the fixture facts above, not against model output. */
 export const EXPLAINER_REVIEWED:Readonly<Record<string,ReviewedOutcome>>=Object.freeze({

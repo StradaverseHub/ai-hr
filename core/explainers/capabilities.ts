@@ -21,6 +21,7 @@ import {explainOwnPayslipStatutory} from './statutory';
 import {explainOwnPayDifference} from './pay-difference';
 import {explainOwnClaimLimit} from './claim-limit';
 import {askMyPayrollReadiness} from '../pre-salary/ask';
+import {askAiQuality} from '../learning/ask';
 
 export type TerasCapabilityScope=Readonly<{companyId:string;locale?:string}>;
 export type TerasCapability=Readonly<{name:string;module:string|null;admin:boolean;
@@ -69,6 +70,8 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'explain_claim_limit',module:'claims',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnClaimLimit(ctx,{claim_type:text(input.claim_type)})},
  // AI v2 Phase 2 P2-3: "what do I need to do before payroll?", the person's own checklist (core/pre-salary/person-items.ts).
  {name:'my_payroll_readiness',module:null,admin:false,worker:null,run:(ctx,_input,scope)=>askMyPayrollReadiness(ctx,scope)},
+ // AI v2 Phase 2 P2-6: AI quality for HR and group administrators (core/learning/ask.ts); the service checks again.
+ {name:'ai_quality_summary',module:null,admin:true,worker:null,run:(ctx,input)=>askAiQuality(ctx,input)},
 ]);
 /** Capabilities this caller may be offered. A capability that belongs to a worker is offered only while that worker's
  * run gate is open (registered, switched on, tenant not stopped), read once per call in the caller's tenant. */

@@ -128,6 +128,8 @@ const GUIDE_TOUR: Record<string, string> = {
   'admin-rewards': 'rewardsAdmin',
   'manager-rewards': 'rewardsReviewer',
   'admin-ai-reporting': 'intelligence',
+  // AI v2 Phase 2 P2-6: the AI quality guide offers the same AI Centre walkthrough.
+  'admin-ai-quality': 'intelligence',
   'admin-mobile-app': 'mobileDesign',
   'employee-notifications': 'notifications',
   'admin-communications': 'communications',
