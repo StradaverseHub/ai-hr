@@ -497,6 +497,34 @@
       "preparedByValue": "Trợ lý, từ các kiểm tra của chính hệ thống, với tư cách của bạn",
       "confirmOn": "Xác nhận tại",
       "confirmOnValue": "Trang xem xét. Không có gì thay đổi cho đến khi bạn xác nhận ở đó.",
+      "inline": {
+        "confirm": "Xác nhận và gửi",
+        "confirming": "Đang gửi…",
+        "edit": "Chỉnh sửa",
+        "opening": "Đang mở…",
+        "discard": "Bỏ qua",
+        "actionsLabel": "Xác nhận, chỉnh sửa hoặc bỏ qua",
+        "confirmedBy": "Do bạn xác nhận",
+        "openClaims": "Mở Hoàn tiền",
+        "fixIt": "Sửa trên trang của nó",
+        "error": "Thao tác chưa thành công. Vui lòng thử lại sau giây lát.",
+        "confirmOnValue": "Tại đây, khi bạn nhấn Xác nhận và gửi. Dịch vụ sẽ kiểm tra lại mọi thứ trước.",
+        "done": {
+          "leaveSubmitted": "Đã gửi để phê duyệt, chưa được duyệt.",
+          "attendanceSubmitted": "Đã gửi để phê duyệt, chưa được duyệt.",
+          "claimSubmitted": "Yêu cầu hoàn tiền đã được gửi để phê duyệt, chưa được duyệt.",
+          "claimDraftSaved": "Đã lưu bản nháp. Thêm hóa đơn ở trang Hoàn tiền để gửi.",
+          "claimCancelled": "Đã hủy yêu cầu hoàn tiền.",
+          "profileRequested": "Đã gửi cho bộ phận nhân sự. Không có gì thay đổi cho đến khi nhân sự phê duyệt."
+        },
+        "refused": {
+          "expired": "Thẻ này đã hết hạn. Hãy hỏi lại để nhận thẻ mới.",
+          "invalid": "Thẻ này không còn dùng được. Hãy hỏi lại để nhận thẻ mới.",
+          "access": "Thẻ này không còn khớp với quyền truy cập của bạn. Hãy hỏi lại để nhận thẻ mới.",
+          "retired": "Thẻ này đã được dùng hoặc đã được thay thế. Hãy kiểm tra yêu cầu trên trang của nó.",
+          "unavailable": "Hiện chưa thể kiểm tra. Vui lòng thử lại sau giây lát."
+        }
+      },
       "suggestionMeta": "Hoàn tất và xác nhận trên trang của nó",
       "readAs": "Đã đọc: {reads}, với tư cách của bạn.",
       "howAnswers": "Cách tạo câu trả lời",

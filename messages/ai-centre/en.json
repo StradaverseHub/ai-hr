@@ -497,6 +497,34 @@
       "preparedByValue": "The assistant, from the system's own checks, as you",
       "confirmOn": "Confirmed on",
       "confirmOnValue": "The review page. Nothing changes until you confirm there.",
+      "inline": {
+        "confirm": "Confirm and submit",
+        "confirming": "Submitting…",
+        "edit": "Edit",
+        "opening": "Opening…",
+        "discard": "Discard",
+        "actionsLabel": "Confirm, edit or discard",
+        "confirmedBy": "Confirmed by you",
+        "openClaims": "Open Claims",
+        "fixIt": "Fix it on its page",
+        "error": "That did not go through. Try again in a moment.",
+        "confirmOnValue": "Here, when you press Confirm and submit. The service checks everything again first.",
+        "done": {
+          "leaveSubmitted": "Submitted for approval, not approved yet.",
+          "attendanceSubmitted": "Sent for approval, not approved yet.",
+          "claimSubmitted": "Claim submitted for approval, not approved yet.",
+          "claimDraftSaved": "Saved as a draft. Add the receipt on Claims to submit it.",
+          "claimCancelled": "Claim cancelled.",
+          "profileRequested": "Sent to HR. Nothing changes until HR approves it."
+        },
+        "refused": {
+          "expired": "This card has expired. Ask again for a new one.",
+          "invalid": "This card can no longer be used. Ask again for a new one.",
+          "access": "This card no longer matches your access. Ask again for a new one.",
+          "retired": "This card was already used or replaced. Check the request on its page.",
+          "unavailable": "This could not be checked just now. Try again in a moment."
+        }
+      },
       "suggestionMeta": "Complete and confirm it on its page",
       "readAs": "Read: {reads}, as you.",
       "howAnswers": "How answers are made",

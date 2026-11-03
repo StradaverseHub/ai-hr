@@ -1,6 +1,7 @@
 /** AI v2 W2 — the chat card of an own claim or profile change, rendered by the real ConversationReply for the employee
  * it serves, in all six languages: the title names the claim type, amount and date (or what changes), the outcome says
- * what confirming does, and the one action is the review link. A bank card names the bank and last four digits only.
+ * what confirming does, and the card confirms in place (Confirm and submit, Edit, Discard; AI v2 Phase 1) instead of
+ * linking to its review page. A bank card names the bank and last four digits only.
  * Fictional values only; proposals are signed with a fictional secret; no database. */
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,6 +17,11 @@ import { withAiCentre } from './helpers/ai-centre-messages';
 const state = vi.hoisted(() => ({ locale: 'en', messages: {} as Record<string, unknown> }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/assistant', useSearchParams: () => new URLSearchParams(), useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
+// The card's server actions: rendering a card posts nothing (each is asserted untouched below).
+const posts = vi.hoisted(() => ({ confirm: vi.fn(), edit: vi.fn() }));
+vi.mock('../app/assistant/leave-apply-proposal-actions', () => ({ confirmLeaveApplyProposalAction: posts.confirm, editLeaveApplyProposalAction: posts.edit }));
+vi.mock('../app/assistant/attendance-request-proposal-actions', () => ({ confirmAttendanceRequestProposalAction: posts.confirm, editAttendanceRequestProposalAction: posts.edit }));
+vi.mock('../app/assistant/own-change-proposal-actions', () => ({ confirmOwnChangeProposalAction: posts.confirm, editOwnChangeProposalAction: posts.edit }));
 vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: state.locale, messages: state.messages as never, namespace }),
   getFormatter: async () => createFormatter({ locale: state.locale, timeZone: 'Asia/Kuala_Lumpur' }),
@@ -57,12 +63,14 @@ describe('an own claim or profile change card in chat, for the employee', () => 
     const titles = [t('claimSubmitTitle', { claimType: 'Fictional Travel', amount: '42.60', date: day }), t('claimCancelTitle', { claimType: 'Fictional Travel', amount: '42.60', date: day }),
       t('profileBankTitle', { bankName: 'Maybank', ending: '5678' }), t('profileAddressTitle')];
     const outcomes = [t('outcomes.claim_submitted_if_checks_pass'), t('outcomes.claim_cancelled_now'), t('outcomes.hr_verification_required'), t('outcomes.hr_approval_required')];
-    const hrefs = [claim, cancel, bank, address].map(row => row.body.review.href);
+    const inline = (key: string) => t(`inline.${key}`);
     cards.forEach((card, index) => {
       expect(within(card).getByRole('heading', { level: 3 })).toHaveTextContent(titles[index]);
       expect(card).toHaveTextContent(outcomes[index]);
-      const links = within(card).getAllByRole('link');
-      expect(links).toHaveLength(1);expect(links[0]).toHaveAttribute('href', hrefs[index]);
+      // AI v2 Phase 1: the three inline buttons replace the review link.
+      expect(within(card).queryAllByRole('link')).toHaveLength(0);
+      const buttons = [...card.querySelectorAll('button')];
+      expect(buttons.map(button => button.textContent)).toEqual([`${inline('confirm')} · ${titles[index]}`, `${inline('edit')} · ${titles[index]}`, `${inline('discard')} · ${titles[index]}`]);
       expect(card.textContent).not.toMatch(/[{}]/);
     });
     expect(titles[0]).toContain('42.60');expect(titles[0]).toContain(day);expect(titles[2]).toContain('5678');
@@ -70,5 +78,6 @@ describe('an own claim or profile change card in chat, for the employee', () => 
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) expect(node.textContent).not.toMatch(/\d{5,}/);
     expect(document.body.textContent).not.toContain('actor_current');
+    expect(posts.confirm).not.toHaveBeenCalled();expect(posts.edit).not.toHaveBeenCalled();
   });
 });

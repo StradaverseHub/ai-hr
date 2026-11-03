@@ -497,6 +497,34 @@
       "preparedByValue": "Pembantu, daripada semakan sistem sendiri, sebagai anda",
       "confirmOn": "Disahkan di",
       "confirmOnValue": "Halaman semakan. Tiada yang berubah sehingga anda mengesahkannya di sana.",
+      "inline": {
+        "confirm": "Sahkan dan hantar",
+        "confirming": "Menghantar…",
+        "edit": "Edit",
+        "opening": "Membuka…",
+        "discard": "Buang",
+        "actionsLabel": "Sahkan, edit atau buang",
+        "confirmedBy": "Disahkan oleh anda",
+        "openClaims": "Buka Tuntutan",
+        "fixIt": "Betulkan di halamannya",
+        "error": "Ia tidak berjaya. Cuba lagi sebentar lagi.",
+        "confirmOnValue": "Di sini, apabila anda menekan Sahkan dan hantar. Perkhidmatan menyemak semuanya sekali lagi dahulu.",
+        "done": {
+          "leaveSubmitted": "Dihantar untuk kelulusan, belum diluluskan.",
+          "attendanceSubmitted": "Dihantar untuk kelulusan, belum diluluskan.",
+          "claimSubmitted": "Tuntutan dihantar untuk kelulusan, belum diluluskan.",
+          "claimDraftSaved": "Disimpan sebagai draf. Tambah resit di Tuntutan untuk menghantarnya.",
+          "claimCancelled": "Tuntutan dibatalkan.",
+          "profileRequested": "Dihantar kepada HR. Tiada yang berubah sehingga HR meluluskannya."
+        },
+        "refused": {
+          "expired": "Kad ini telah tamat tempoh. Minta sekali lagi untuk kad baharu.",
+          "invalid": "Kad ini tidak boleh digunakan lagi. Minta sekali lagi untuk kad baharu.",
+          "access": "Kad ini tidak lagi sepadan dengan akses anda. Minta sekali lagi untuk kad baharu.",
+          "retired": "Kad ini telah digunakan atau diganti. Semak permohonan di halamannya.",
+          "unavailable": "Ini tidak dapat disemak sekarang. Cuba lagi sebentar lagi."
+        }
+      },
       "suggestionMeta": "Lengkapkan dan sahkan di halamannya",
       "readAs": "Dibaca: {reads}, sebagai anda.",
       "howAnswers": "Cara jawapan dibuat",

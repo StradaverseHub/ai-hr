@@ -7,6 +7,8 @@ import { leaveApplyCardTitle, LEAVE_APPLY_TITLE_DATE } from '@/lib/ai-centre/lea
 import { attendanceRequestCardTitle, ATTENDANCE_TITLE_DATE, ATTENDANCE_TITLE_TIME } from '@/lib/ai-centre/attendance-request-title';
 import { ownChangeCardTitle, OWN_CHANGE_TITLE_DATE } from '@/lib/ai-centre/own-change-title';
 import { ProposalCard, type ProposalCheck } from './proposal-card';
+import { InlineProposalCard } from './proposal-card-actions';
+import { inlineProposalKind, type InlineProposalCopy } from '@/lib/ai-centre/inline-proposal';
 import { RecommendationPanel } from './leave-recommendation';
 import { ConversationSuggestions } from '@/components/assistant/chat-reply-boundary';
 import { ReplyMarkdown, type ReplyLinks } from './reply-markdown';
@@ -19,12 +21,15 @@ const words = (value: string) => value.replace(/[._]+/g, ' ').trim();
  *
  * Every value comes from the turn the harness ran as this person: the reply with names and figures already
  * restored for them alone, the cards the native preparers signed this turn (each verified for this caller), the
- * reads it used and the sensitive-topic route. A card only links to its review page, where the person confirms
- * and the owning service checks everything again; nothing here completes a change. The approver recommendation
+ * reads it used and the sensitive-topic route. A card for the person's own leave application, attendance request,
+ * claim or profile change carries Confirm, Edit and Discard (AI v2 Phase 1, ./proposal-card-actions.tsx): Confirm
+ * posts the signed card to its owner, which verifies it for this caller and checks everything again; nothing posts
+ * without a press. Every other card only links to its review page, where the person confirms. The approver recommendation
  * shows only "recommend approve" or "needs your review", never a rejection. Awaited by the chat command, like the
  * closed grammar's ExchangeReply. */
 export async function ConversationReply({ turn, links = new Map() }: { turn: ConversationTurn; links?: ReplyLinks }) {
   const t = await getTranslations('aiCentre.conversation');
+  const tc = await getTranslations('aiCentre.card');
   const tr = await getTranslations('aiCentre.recommendation');
   const format = await getFormatter();
   // The internal rule reference never reaches the screen: only the kind of rule and its version number.
@@ -34,6 +39,16 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
   const why = [...new Set(turn.reads.map(name => WHY[name]).filter((key): key is string => Boolean(key)))]
     .map(key => ({ label: t(`why.${key}`), prompt: t(`why.${key}Prompt`) }));
   const routed = turn.sensitive || turn.crisis;
+  const inline: InlineProposalCopy = {
+    confirm: t('inline.confirm'), confirming: t('inline.confirming'), edit: t('inline.edit'), opening: t('inline.opening'),
+    discard: t('inline.discard'), actionsLabel: t('inline.actionsLabel'), confirmedBy: t('inline.confirmedBy'),
+    openClaims: t('inline.openClaims'), fixIt: t('inline.fixIt'), error: t('inline.error'),
+    done: { leaveSubmitted: t('inline.done.leaveSubmitted'), attendanceSubmitted: t('inline.done.attendanceSubmitted'),
+      claimSubmitted: t('inline.done.claimSubmitted'), claimDraftSaved: t('inline.done.claimDraftSaved'),
+      claimCancelled: t('inline.done.claimCancelled'), profileRequested: t('inline.done.profileRequested') },
+    refused: { expired: t('inline.refused.expired'), invalid: t('inline.refused.invalid'), access: t('inline.refused.access'),
+      retired: t('inline.refused.retired'), unavailable: t('inline.refused.unavailable') },
+  };
   return (
     <div data-teras-reply={turn.turnId} className="space-y-3">
       {routed && (
@@ -59,13 +74,21 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
           // AI v2 W2: an own claim or profile change names its type, amount and date, or what changes.
           ?? ownChangeCardTitle(body, (key, values) => t(key, values), date => format.dateTime(date, OWN_CHANGE_TITLE_DATE))
           ?? label('actions', body.what.action.replace(/\./g, '_'), t('actions.fallback'));
+        const tone = body.what.effect === 'decide' ? 'decide' as const : 'prepared' as const;
+        const expires = t('expires', { time: format.dateTime(new Date(body.expiresAt), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }) });
+        const kind = inlineProposalKind(body.what.action);
         return (
           <div key={body.id} className="space-y-1">
-            <ProposalCard icon={<CalendarDays />} tone={body.what.effect === 'decide' ? 'decide' : 'prepared'}
-              title={title} meta={meta} checks={checks}
-              href={body.review.href} cta={t('review')}
-              expires={t('expires', { time: format.dateTime(new Date(body.expiresAt), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }) })}
-              prepared={{ summary: t('howPrepared'), rows: [[t('preparedBy'), t('preparedByValue')], [t('confirmOn'), t('confirmOnValue')]] }} />
+            {kind ? (
+              <InlineProposalCard kind={kind} proposal={proposal} copy={inline} awaitingLabel={tc('awaiting')}
+                card={{ icon: <CalendarDays />, tone, title, meta, checks, expires,
+                  prepared: { summary: t('howPrepared'), rows: [[t('preparedBy'), t('preparedByValue')], [t('confirmOn'), t('inline.confirmOnValue')]] } }} />
+            ) : (
+              <ProposalCard icon={<CalendarDays />} tone={tone}
+                title={title} meta={meta} checks={checks}
+                href={body.review.href} cta={t('review')} expires={expires}
+                prepared={{ summary: t('howPrepared'), rows: [[t('preparedBy'), t('preparedByValue')], [t('confirmOn'), t('confirmOnValue')]] }} />
+            )}
             {recommendation && <RecommendationPanel view={{ kind: 'recommendation', verdict: recommendation.verdict,
               failedRules: recommendation.failedRules.map(rule => ({ check: rule.check, blocking: rule.blocking, version: ruleVersionLabel(rule.ruleVersion) })) }} />}
           </div>

@@ -9,13 +9,18 @@ export type ProposalCheck = Readonly<{ label: string; tone: 'ok' | 'warn' | 'inf
 /** The ONE card every AI centre surface renders for something waiting on a person (ADR-0170 §11.3 change 1).
  *
  * It shows what the item is, where it came from, the checks the owning service ran and how it was prepared.
- * It has exactly one action, a link to the page where the person decides: the card itself completes
- * nothing, so a review page can be redesigned but never bypassed. Presentational only; every value it
- * shows is passed in by a caller that read it from the owning module as the viewer. */
-export function ProposalCard({ icon, tone, title, meta, checks = [], href, cta, expires, awaitingLabel, prepared }: {
+ * Its one action is a link to the page where the person decides: the card itself completes nothing, so a
+ * review page can be redesigned but never bypassed. Presentational only; every value it shows is passed in
+ * by a caller that read it from the owning module as the viewer.
+ *
+ * AI v2 Phase 1: a card prepared in chat for the person's own change passes `actions` instead of the link
+ * (components/ai-centre/proposal-card-actions.tsx): Confirm posts to the owner, which checks everything again. */
+export function ProposalCard({ icon, tone, title, meta, checks = [], href, cta, expires, awaitingLabel, prepared, actions }: {
   icon: ReactNode; tone: ProposalTone; title: string; meta: readonly string[]; checks?: readonly ProposalCheck[];
-  href: string; cta: string; expires?: string; awaitingLabel?: string;
+  href?: string; cta?: string; expires?: string; awaitingLabel?: string;
   prepared?: Readonly<{ summary: string; rows: readonly (readonly [string, string])[] }>;
+  /** The inline buttons, or their outcome, in a full-width row below the checks; replaces the link. */
+  actions?: ReactNode;
 }) {
   return (
     <article data-proposal-card={tone} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1 rounded-xl border border-border bg-card p-4 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
@@ -38,12 +43,13 @@ export function ProposalCard({ icon, tone, title, meta, checks = [], href, cta, 
         </ul>
       )}
       <div className="col-span-2 mt-2 flex flex-wrap items-center justify-between gap-2 sm:col-span-1 sm:col-start-3 sm:row-span-3 sm:row-start-1 sm:mt-0 sm:flex-col sm:items-end sm:justify-center">
-        <Link href={href} className={cn('inline-flex min-h-9 items-center justify-center rounded-md px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        {!actions && href && cta && <Link href={href} className={cn('inline-flex min-h-9 items-center justify-center rounded-md px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           tone === 'finding' ? 'border border-input bg-card hover:bg-accent' : 'bg-primary text-primary-foreground hover:bg-primary/90')}>
           {/* The title rides along for screen readers, so a list of links is not N identical "Review" entries. */}
-          {cta}{' '}<span className="sr-only">· {title}</span></Link>
+          {cta}{' '}<span className="sr-only">· {title}</span></Link>}
         {expires && <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Clock aria-hidden className="size-3.5" />{expires}</span>}
       </div>
+      {actions && <div data-proposal-actions className="col-span-2 mt-3 min-w-0 sm:col-span-3">{actions}</div>}
       {prepared && (
         <details className="group col-span-2 mt-1 text-xs sm:col-span-3">
           <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">

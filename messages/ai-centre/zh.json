@@ -497,6 +497,34 @@
       "preparedByValue": "助手，依据系统自身的检查，以您的身份",
       "confirmOn": "确认位置",
       "confirmOnValue": "审核页面。在您确认之前不会有任何更改。",
+      "inline": {
+        "confirm": "确认并提交",
+        "confirming": "正在提交…",
+        "edit": "编辑",
+        "opening": "正在打开…",
+        "discard": "放弃",
+        "actionsLabel": "确认、编辑或放弃",
+        "confirmedBy": "由您确认",
+        "openClaims": "打开报销",
+        "fixIt": "在其页面上修改",
+        "error": "未能完成，请稍后再试。",
+        "confirmOnValue": "就在这里，当您按下“确认并提交”时。服务会先重新检查所有内容。",
+        "done": {
+          "leaveSubmitted": "已提交审批，尚未批准。",
+          "attendanceSubmitted": "已提交审批，尚未批准。",
+          "claimSubmitted": "报销已提交审批，尚未批准。",
+          "claimDraftSaved": "已存为草稿。请在报销页面添加收据后提交。",
+          "claimCancelled": "报销已取消。",
+          "profileRequested": "已发送给人事部。人事部批准前不会有任何更改。"
+        },
+        "refused": {
+          "expired": "此卡片已过期。请重新提问以获取新卡片。",
+          "invalid": "此卡片已无法使用。请重新提问以获取新卡片。",
+          "access": "此卡片与您当前的权限不再相符。请重新提问以获取新卡片。",
+          "retired": "此卡片已被使用或替换。请在其页面上查看该申请。",
+          "unavailable": "暂时无法检查。请稍后再试。"
+        }
+      },
       "suggestionMeta": "在其页面上完成并确认",
       "readAs": "已读取：{reads}，以您的身份。",
       "howAnswers": "回答是如何产生的",
