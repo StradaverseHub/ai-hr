@@ -6,6 +6,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {asc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
+import {publishActionCapabilityPackage,publishWorkforceActionPackage} from '../deploy/access/publish-workforce-capabilities';
 import {hireEmployee} from '../core/org';
 import {createCostCenter} from '../core/admin';
 import {getEmploymentCostAllocations,previewEmploymentCostAllocations,saveEmploymentCostAllocations} from '../core/employment-cost-allocations';
@@ -45,6 +46,36 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
   betaOnly=await scopedAdmin(betaId,'beta-admin@example.test');acmeOnly=await scopedAdmin(b.companyId,'acme-admin@example.test');
  });
  afterAll(closeAll);
+
+ it('publishes Revert and denies Execute without removing history or full-hire Delete',async()=>{
+  const {attemptId}=await importFile(a,[row('ACME','AC001','ACME-OPS','100')]);
+  await publishWorkforceActionPackage(owner.client);
+  const capability='function.workforceImports.revert.execute';
+  try{
+   await publishActionCapabilityPackage(owner.client,'workforce_imports');
+   expect(await publishActionCapabilityPackage(owner.client,'workforce_import_revert')).toMatchObject({changed:true,capabilities:3});
+   expect(await publishActionCapabilityPackage(owner.client,'workforce_import_revert')).toMatchObject({changed:false});
+   const preview=await previewImportRevertForAttempt(a,attemptId);
+   expect(preview.previewHash).toBeTruthy();
+   const [denial]=await owner.client<{id:string}[]>`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+    values(${b.tenantId}::uuid,${a.userId!}::uuid,${capability},${b.companyId}::uuid,'deny') returning id`;
+   expect(await getImportAttempt(a,attemptId)).toMatchObject({id:attemptId,canRevert:false});
+   const [flags]=await withTenant(a,tx=>tx.execute(sql`select
+    app.function_action_allowed('workforceImports.revert','view',${b.companyId}::uuid) as view,
+    app.function_action_allowed('workforceImports.revert','delete',${b.companyId}::uuid) as delete,
+    app.workforce_section_import_allowed(${b.companyId}::uuid,'execute') as "importExecute"`));
+   expect(flags).toEqual({view:true,delete:true,importExecute:true});
+   await expect(revertImportForAttempt(a,attemptId,{previewHash:preview.previewHash,reason:'Fictional permission regression'})).rejects.toThrow(/Reverting this import needs/);
+   expect((await allocation(acmeEmp)).total).toBe(10000);
+   await owner.client`delete from access_user_override where id=${denial.id}::uuid`;
+   const current=await previewImportRevertForAttempt(a,attemptId);
+   await revertImportForAttempt(a,attemptId,{previewHash:current.previewHash,reason:'Fictional verified compensation'});
+   expect((await allocation(acmeEmp)).total).toBe(0);
+  }finally{
+   await owner.client`delete from app.access_native_capability_default where capability_id like 'function.workforceImports.%'`;
+   await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.workforceImports.%'`;
+  }
+ });
 
  it('gives the application role append-only privileges with RLS enabled on all three tables',async()=>{
   for(const table of ['import_attempt','import_attempt_item','import_attempt_event']){

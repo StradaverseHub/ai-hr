@@ -4670,6 +4670,13 @@
       "when": 1793330000363,
       "tag": "0963_workforce_draft_compensation_cents",
       "breakpoints": true
+    },
+    {
+      "idx": 811,
+      "version": "7",
+      "when": 1793330000364,
+      "tag": "0964_workforce_import_revert_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

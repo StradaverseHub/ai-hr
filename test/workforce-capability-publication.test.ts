@@ -124,7 +124,7 @@ it('registers exact mixed-case native submenu IDs while preserving closed gramma
 it('reports registered actions without a package and leaves the full publisher closed',async()=>{
  const before=await snapshot();
  await expect(publishAllActionCapabilities(owner.client))
-  .rejects.toThrow(/registry coverage differs .*function\.workforceImports\.revert\.execute/);
+  .rejects.toThrow(/registry coverage differs .*function\.workforceRecords\.edit/);
  expect(await snapshot()).toEqual(before);
 });
 it('keeps Workforce Imports closed if the Qualification subject guard is disabled',async()=>{

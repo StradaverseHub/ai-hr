@@ -92,3 +92,17 @@ export const WORKFORCE_DRAFT_AUTHOR_CAPABILITY_PUBLICATION={
  legacyGroups:{},
  requiredFunctions:['app.workforce_drafts_bindings_complete()'],
 } as const;
+
+export const WORKFORCE_IMPORT_REVERT_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:WORKFORCE_IMPORT_REVERT_FUNCTIONS,
+ functionLegacyParityFunction:'app.workforce_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.workforce_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.workforce_import_revert_bindings_complete()',
+  'app.import_attempt_revert_current(uuid)',
+  'app.employment_void(uuid[],uuid,text)',
+  'app.import_employment_void_matches(public.employment,public.employment)',
+ ],
+} as const;
