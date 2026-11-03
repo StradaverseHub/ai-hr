@@ -288,7 +288,9 @@ async function seedEmployee() {
   expect(secondment, 'the fixture recorded a secondment').toBeDefined();
   const editable=rows.find(row=>row.kind==='secondment'&&row.canEdit);
   expect(editable,'the fixture provides a movement with actual edit authority').toBeDefined();
-  return { ...e, secondmentId: secondment!.id, editableMovementId:editable!.id };
+  const hired=rows.find(row=>row.kind==='hired');
+  expect(hired,'the fixture recorded an actual Hired movement').toBeDefined();
+  return { ...e, hiredMovementId:hired!.id, secondmentId:secondment!.id, editableMovementId:editable!.id };
 }
 
 import {PersonnelMovementPage} from '../app/admin/personnel/[employmentId]/movement/movement-page';
@@ -353,7 +355,7 @@ describe('r422 — the employee profile draws every date as DD-MMM-YYYY', () => 
     // eleven tabs; the views are the ones a query string opens inside the Movement tab.
     const views: Record<string, string>[] = [
       { tab: 'profile' },
-      { tab: 'careerMovement', movement: 'hired' },
+      { tab: 'careerMovement', movement: e.hiredMovementId },
       { tab: 'careerMovement', movement: e.secondmentId },
       { tab: 'careerMovement', newEvent: '1' },
       { tab: 'careerMovement', editMovement: e.editableMovementId },
