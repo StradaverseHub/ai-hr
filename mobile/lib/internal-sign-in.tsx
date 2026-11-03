@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { runSignInClientProbe } from './signin-client-probe';
 import { fetch as nativeFetch } from 'expo/fetch';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
@@ -29,6 +30,13 @@ export function InternalSignIn() {
   const [username, setUsername] = useState(''), [password, setPassword] = useState(''), [confirmation, setConfirmation] = useState(''), [code, setCode] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const pending = useRef(false), owner = useRef<number | null>(null);
+  const probeStarted = useRef(false);
+  const [probeResult, setProbeResult] = useState(process.env.EXPO_PUBLIC_SIGNIN_CLIENT_PROBE === '1' ? '{"marker":"ONEHR_CLIENT_PROBE","phase":"mounting"}' : '');
+  useEffect(() => {
+    if (process.env.EXPO_PUBLIC_SIGNIN_CLIENT_PROBE !== '1' || probeStarted.current) return;
+    probeStarted.current = true; pending.current = true; setBusy(true);
+    void runSignInClientProbe(company, setProbeResult).then(setProbeResult).finally(() => { pending.current = false; setBusy(false); });
+  }, [company]);
   async function finish(result: InternalReply) {
     if (owner.current === null || !result.access_token || !result.refresh_token) return;
     assertAuthGeneration(owner.current);
@@ -60,6 +68,9 @@ export function InternalSignIn() {
   const hasRecoveryCodes = Boolean(step?.recoveryCodes?.length);
   const loginDisabled = busy || !(workplaceOrganization || organization) || !username || !password;
   if (state === 'login') return <View style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground/>
+    {!!probeResult && <View pointerEvents="none" style={{ position: 'absolute', top: insets.top + 4, left: 8, right: 8, zIndex: 20, padding: 10, borderRadius: 8, backgroundColor: '#fff' }}>
+      <Text accessibilityLabel="Review connection diagnostic" style={{ color: '#111', fontSize: 12, lineHeight: 16 }}>{probeResult}</Text>
+    </View>}
     <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets contentContainerStyle={[styles.entry, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]}>
       <View style={styles.entryHeader}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Image accessible={false} source={require('../assets/onehr-icon.png')} style={{ width: 44, height: 44, borderRadius: 12 }}/><Text style={styles.wordmark}>{t('appName').endsWith('+') ? <>{t('appName').slice(0, -1)}<Text style={{ color: palette.accent }}>+</Text></> : t('appName')}</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel={companyCopy().change} disabled={busy} onPress={() => router.push('/company')} style={styles.workplace}>
