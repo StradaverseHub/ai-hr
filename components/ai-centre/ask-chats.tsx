@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -168,7 +168,8 @@ function ChatsPanel({ onNavigate }: { onNavigate?: () => void }) {
   const label = (chat: AskChatSummary) => labelOf(chat, key => t(key));
   const shown = s.chats.filter(chat => matchesChatSearch(label(chat), s.query));
   const groups = groupChats(shown, s.today);
-  const searchId = 'ask-chat-search';
+  // One id per panel: the desktop column and the phone drawer each label their own search box.
+  const searchId = useId();
   return <div className="flex min-h-0 flex-1 flex-col">
     <div className="shrink-0 space-y-2 pb-3">
       <Link href={s.newChatHref} scroll={false} onClick={onNavigate}
@@ -186,8 +187,8 @@ function ChatsPanel({ onNavigate }: { onNavigate?: () => void }) {
       {s.listUnavailable && <p role="status" className="py-2 text-sm text-muted-foreground">{t('listUnavailable')}</p>}
       {!s.listUnavailable && s.chats.length === 0 && <p className="py-2 text-sm text-muted-foreground">{t('noChats')}</p>}
       {s.chats.length > 0 && shown.length === 0 && <p role="status" className="py-2 text-sm text-muted-foreground">{t('noMatches')}</p>}
-      {groups.map(({ group, chats }) => <section key={group} aria-labelledby={`ask-chats-${group}`} className="pb-2">
-        <h3 id={`ask-chats-${group}`} className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">{t(`groups.${group}`)}</h3>
+      {groups.map(({ group, chats }) => <section key={group} aria-labelledby={`${searchId}-${group}`} className="pb-2">
+        <h3 id={`${searchId}-${group}`} className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">{t(`groups.${group}`)}</h3>
         <ul className="space-y-0.5">{chats.map(chat => <li key={chat.chatId}>
           <Link href={'/assistant?chat=' + encodeURIComponent(chat.chatId)} scroll={false} onClick={onNavigate}
             aria-current={s.activeChatId === chat.chatId ? 'page' : undefined}

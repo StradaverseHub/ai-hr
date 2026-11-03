@@ -100,7 +100,9 @@ import { ASK_HANDOFF_KEY } from '../lib/today/ask-handoff';
 import { chatGroupOf, groupChats, matchesChatSearch, previousDay } from '../lib/ai-centre/chat-groups';
 
 const ask = enWithAiCentre.aiAsk;
-const tr = createTranslator({ locale: 'en', messages: enWithAiCentre as never, namespace: 'aiAsk' });
+// The English formatter, for expected sentences with their plural arguments (independent of the components' call).
+const format = createTranslator({ locale: 'en', messages: enWithAiCentre as Record<string, unknown> }) as unknown as (key: string, values?: Record<string, number>) => string;
+const tr = (key: string, values?: Record<string, number>) => format('aiAsk.' + key, values);
 const TENANT = '7a000000-0000-4000-8000-000000000001';
 const sessionFor = (role: 'employee' | 'manager' | 'hr_admin', n: number) => ({
   tenantId: TENANT, userId: `7a000000-0000-4000-8000-00000000010${n}`, personId: `7a000000-0000-4000-8000-00000000020${n}`,
