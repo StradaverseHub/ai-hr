@@ -470,6 +470,12 @@
       "attendanceClockInTitle": "上班打卡更正，{date}，{time}",
       "attendanceClockBothTitle": "打卡更正，{date}，{start} – {end}",
       "overtimeRequestTitle": "加班申请，{date}，{start} – {end}",
+      "claimSubmitTitle": "{claimType}报销，RM {amount}，{date}",
+      "claimCancelTitle": "取消{claimType}报销，RM {amount}，{date}",
+      "profileAddressTitle": "更改您的住址",
+      "profileEmergencyTitle": "更改您的紧急联系人",
+      "profileDependantTitle": "添加受抚养人",
+      "profileBankTitle": "将您的银行账户更改为{bankName}，尾号{ending}",
       "review": "审核",
       "open": "打开",
       "expires": "{time} 过期",
@@ -494,7 +500,10 @@
         "leave_cancel": "取消请假待审核",
         "approvals_leave_decide": "请假决定待审核",
         "attendance_correction_request": "考勤更正待审核",
-        "attendance_overtime_request": "加班申请待审核"
+        "attendance_overtime_request": "加班申请待审核",
+        "claims_submit": "报销申请待审核",
+        "claims_cancel": "报销取消待审核",
+        "ess_profile_request": "资料更改待审核"
       },
       "checks": {
         "actor_current": "您的权限有效",
@@ -507,7 +516,13 @@
         "review_contract": "审核页面已就绪",
         "attendance_day_read": "已读取您的考勤记录",
         "attendance_request_rules": "考勤规则允许",
-        "approval_route": "已找到审批流程"
+        "approval_route": "已找到审批流程",
+        "claim_type_available": "报销类型可用",
+        "claim_draft_reviewed": "已由报销服务核对",
+        "receipt_attached": "收据要求",
+        "own_pending_claim": "报销仍待处理",
+        "profile_fields_editable": "您可以申请这些更改",
+        "profile_request_reviewed": "已与您的记录核对"
       },
       "outcomes": {
         "withdrawn_now": "立即撤回",
@@ -515,7 +530,12 @@
         "rejection_if_confirmed": "确认后将被拒绝",
         "step_decision_if_confirmed": "记录您的审批步骤",
         "approval_if_native_checks_pass": "若检查仍通过则批准",
-        "submitted_not_approved": "已提交审批，尚未批准"
+        "submitted_not_approved": "已提交审批，尚未批准",
+        "claim_submitted_if_checks_pass": "如通过报销检查，即提交审批",
+        "claim_draft_receipt_needed": "已存为草稿；请在报销页面添加收据",
+        "claim_cancelled_now": "立即取消",
+        "hr_approval_required": "发送给人事部；人事部批准后才会更改",
+        "hr_verification_required": "人事部核实新的银行资料后才会使用"
       },
       "reads": {
         "my_leave_balances": "您的假期余额",

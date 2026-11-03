@@ -5,6 +5,7 @@ import type { ConversationTurn } from '@/core/teras-wiring/turn';
 import { ruleVersionLabel } from '@/lib/ai-centre/rule-version';
 import { leaveApplyCardTitle, LEAVE_APPLY_TITLE_DATE } from '@/lib/ai-centre/leave-apply-title';
 import { attendanceRequestCardTitle, ATTENDANCE_TITLE_DATE, ATTENDANCE_TITLE_TIME } from '@/lib/ai-centre/attendance-request-title';
+import { ownChangeCardTitle, OWN_CHANGE_TITLE_DATE } from '@/lib/ai-centre/own-change-title';
 import { ProposalCard, type ProposalCheck } from './proposal-card';
 import { RecommendationPanel } from './leave-recommendation';
 import { ConversationSuggestions } from '@/components/assistant/chat-reply-boundary';
@@ -55,6 +56,8 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
         const title = leaveApplyCardTitle(body, (key, values) => t(key, values), date => format.dateTime(date, LEAVE_APPLY_TITLE_DATE))
           // AI v2 W2: an attendance correction or overtime card names its day and times.
           ?? attendanceRequestCardTitle(body, (key, values) => t(key, values), date => format.dateTime(date, ATTENDANCE_TITLE_DATE), time => format.dateTime(time, ATTENDANCE_TITLE_TIME))
+          // AI v2 W2: an own claim or profile change names its type, amount and date, or what changes.
+          ?? ownChangeCardTitle(body, (key, values) => t(key, values), date => format.dateTime(date, OWN_CHANGE_TITLE_DATE))
           ?? label('actions', body.what.action.replace(/\./g, '_'), t('actions.fallback'));
         return (
           <div key={body.id} className="space-y-1">

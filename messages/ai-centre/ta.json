@@ -470,6 +470,12 @@
       "attendanceClockInTitle": "வருகை நேரத் திருத்தம், {date}, {time}",
       "attendanceClockBothTitle": "வருகைப் பதிவுத் திருத்தம், {date}, {start} – {end}",
       "overtimeRequestTitle": "கூடுதல் நேரக் கோரிக்கை, {date}, {start} – {end}",
+      "claimSubmitTitle": "{claimType} கோரிக்கை, RM {amount}, {date}",
+      "claimCancelTitle": "{claimType} கோரிக்கையை ரத்துசெய், RM {amount}, {date}",
+      "profileAddressTitle": "உங்கள் வீட்டு முகவரியை மாற்று",
+      "profileEmergencyTitle": "உங்கள் அவசரத் தொடர்பை மாற்று",
+      "profileDependantTitle": "சார்ந்திருப்பவரைச் சேர்",
+      "profileBankTitle": "உங்கள் வங்கிக் கணக்கை {bankName} ஆக மாற்று, கடைசி இலக்கங்கள் {ending}",
       "review": "மதிப்பாய்வு",
       "open": "திற",
       "expires": "{time} அன்று காலாவதியாகும்",
@@ -494,7 +500,10 @@
         "leave_cancel": "விடுப்பு ரத்து மதிப்பாய்வுக்குத் தயார்",
         "approvals_leave_decide": "விடுப்பு முடிவு மதிப்பாய்வுக்குத் தயார்",
         "attendance_correction_request": "வருகைத் திருத்தம் மதிப்பாய்வுக்குத் தயார்",
-        "attendance_overtime_request": "கூடுதல் நேரக் கோரிக்கை மதிப்பாய்வுக்குத் தயார்"
+        "attendance_overtime_request": "கூடுதல் நேரக் கோரிக்கை மதிப்பாய்வுக்குத் தயார்",
+        "claims_submit": "செலவுக் கோரிக்கை மதிப்பாய்வுக்குத் தயார்",
+        "claims_cancel": "கோரிக்கை ரத்து மதிப்பாய்வுக்குத் தயார்",
+        "ess_profile_request": "சுயவிவர மாற்றம் மதிப்பாய்வுக்குத் தயார்"
       },
       "checks": {
         "actor_current": "உங்கள் அணுகல் நடப்பில் உள்ளது",
@@ -507,7 +516,13 @@
         "review_contract": "மதிப்பாய்வுப் பக்கம் தயார்",
         "attendance_day_read": "உங்கள் வருகைப் பதிவிலிருந்து படிக்கப்பட்டது",
         "attendance_request_rules": "வருகை விதிகள் அனுமதிக்கின்றன",
-        "approval_route": "ஒப்புதல் வழி கண்டறியப்பட்டது"
+        "approval_route": "ஒப்புதல் வழி கண்டறியப்பட்டது",
+        "claim_type_available": "கோரிக்கை வகை கிடைக்கிறது",
+        "claim_draft_reviewed": "கோரிக்கை சேவையால் சரிபார்க்கப்பட்டது",
+        "receipt_attached": "ரசீது தேவை",
+        "own_pending_claim": "கோரிக்கை இன்னும் நிலுவையில்",
+        "profile_fields_editable": "இந்த மாற்றங்களை நீங்கள் கோரலாம்",
+        "profile_request_reviewed": "உங்கள் பதிவுடன் சரிபார்க்கப்பட்டது"
       },
       "outcomes": {
         "withdrawn_now": "உடனே திரும்பப் பெறப்படும்",
@@ -515,7 +530,12 @@
         "rejection_if_confirmed": "உறுதிப்படுத்தினால் நிராகரிக்கப்படும்",
         "step_decision_if_confirmed": "உங்கள் படி பதிவு செய்யப்படும்",
         "approval_if_native_checks_pass": "சரிபார்ப்புகள் தேறினால் ஒப்புதல்",
-        "submitted_not_approved": "ஒப்புதலுக்குச் சமர்ப்பிக்கப்பட்டது, இன்னும் ஒப்புதல் இல்லை"
+        "submitted_not_approved": "ஒப்புதலுக்குச் சமர்ப்பிக்கப்பட்டது, இன்னும் ஒப்புதல் இல்லை",
+        "claim_submitted_if_checks_pass": "கோரிக்கைச் சரிபார்ப்புகள் வெற்றி பெற்றால் ஒப்புதலுக்குச் சமர்ப்பிக்கப்படும்",
+        "claim_draft_receipt_needed": "வரைவாகச் சேமிக்கப்படும்; கோரிக்கைகள் பக்கத்தில் ரசீதைச் சேர்க்கவும்",
+        "claim_cancelled_now": "உடனே ரத்து செய்யப்படும்",
+        "hr_approval_required": "HR-க்கு அனுப்பப்படும்; HR ஒப்புதல் அளித்த பின்பே மாறும்",
+        "hr_verification_required": "புதிய வங்கி விவரங்கள் பயன்படுத்தப்படும் முன் HR சரிபார்க்கும்"
       },
       "reads": {
         "my_leave_balances": "உங்கள் விடுப்பு இருப்பு",

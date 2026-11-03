@@ -20,10 +20,14 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/me/payslip',
  ],
  'readiness':[
- 'page:/claims',
+ // AI v2 W2 declared claims.submit; the claims setup stage still has no readiness owner.
+ 'action:claims.submit','page:/claims',
+ ],
+ 'readiness,corpus':[
+ 'action:claims.cancel',
  ],
  'semantic':[
- 'action:approvals.attendance.decide','action:approvals.claim.decide','action:ess.profile.request','action:knowledge_base.article.create',
+ 'action:approvals.attendance.decide','action:approvals.claim.decide','action:knowledge_base.article.create',
  'action:leave.adjustment.apply','action:notifications.email_preferences.save',
  ],
  'semantic,corpus':[
@@ -123,10 +127,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/performance/team/kpis','page:/performance/workspace','page:/reports/employee-master','page:/rewards/approvals','page:/roster/exceptions',
  'page:/roster/import','page:/system-testing','page:/tasks',
  ],
- 'semantic,readiness':[
- 'action:claims.submit',
- ],
  'semantic,readiness,corpus':[
- 'action:claims.cancel','action:claims.draft.save',
+ 'action:claims.draft.save',
  ],
 });

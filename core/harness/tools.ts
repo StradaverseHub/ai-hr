@@ -58,7 +58,11 @@ export type ToolProvider=(ctx:SessionContext,scope:ToolScope,actions:boolean)=>P
 
 const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change from available_actions. For leave.apply, details may carry leaveType, startDate and endDate (YYYY-MM-DD), durationType (full_day, half_day_am or half_day_pm) and reason, each only from the person\'s own words; leave out what they did not say. Nothing is submitted.'
  // AI v2 W2: the attendance requests prepared from chat (core/proposals/attendance-request.ts).
- +' For attendance.correction.request, details may carry date (YYYY-MM-DD), checkIn and checkOut (HH:MM, 24-hour) and reason; for attendance.overtime.request, date, plannedStartTime and plannedEndTime (HH:MM, 24-hour) and reason. The same rule applies: only what the person said.';
+ +' For attendance.correction.request, details may carry date (YYYY-MM-DD), checkIn and checkOut (HH:MM, 24-hour) and reason; for attendance.overtime.request, date, plannedStartTime and plannedEndTime (HH:MM, 24-hour) and reason. The same rule applies: only what the person said.'
+ // AI v2 W2: own claims and own profile changes (core/proposals/claim-submit.ts, claim-cancel.ts, profile-change.ts).
+ +' For claims.submit, details may carry claimType, claimItem, amount (exactly as the person stated it), incurredOn (YYYY-MM-DD) and description. For claims.cancel, details may carry incurredOn.'
+ +' For ess.profile.request, details carry change (address, emergency_contact, dependant or bank) and only what the person said: addressLine1, addressLine2, addressLine3, postcode, city, state; contactName, relationship; dependantName, relationship, dateOfBirth (YYYY-MM-DD), gender; bankName.'
+ +' Never put a bank account, phone or identity number in details: the system reads those from the person\'s own message.';
 /** Issue 10: a leave application from chat with details missing or unclear. One question, never a guess. */
 const ASK_NOTE='Some details for this leave application are missing or unclear (listed in missing). Nothing is prepared. Ask the person one short question for them; when options are listed, show them numbered as given and ask for the number. Never guess a leave type or a date.';
 /** AI v2 W2: an attendance correction or overtime request with details missing (the date, a time, a clock-in to pair with
@@ -125,7 +129,7 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
    if(result.suggested){const outcome=await prepareSuggestedProposal(ctx,result.action,input.details,scope.personWords,undefined,scope.locale);
     // A leave application with details missing or unclear: the person is asked, and nothing is suggested yet.
     if(outcome?.kind==='ask')return{ok:false,refusal:'missing_details',content:{suggested:false,action:result.action,reason:'missing_details',missing:outcome.missing,
-     ...(outcome.options.length?{options:outcome.options}:{}),note:result.action.startsWith('attendance.')?ATTENDANCE_ASK_NOTE:ASK_NOTE}};
+     ...(outcome.options.length?{options:outcome.options}:{}),note:'note' in outcome?outcome.note:result.action.startsWith('attendance.')?ATTENDANCE_ASK_NOTE:ASK_NOTE}};
     const suggestion={action:result.action,reviewRoute:result.reviewRoute,inlineCard:result.inlineCard};
     // Several pending: the person chooses; the model lists them and asks, and nothing is prepared (ADR-0170 §3.15).
     if(outcome?.kind==='choose')return{ok:true,content:{...result,pending:outcome.pending,...(outcome.more?{notListed:outcome.more}:{}),note:CHOOSE_NOTE},suggestion};

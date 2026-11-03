@@ -213,6 +213,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/analytics/ai-actions.ts":{"readProtectedAnalysisAction":"backlog:automatic"},
  "app/assistant/leave-apply-proposal-actions.ts":{"confirmLeaveApplyProposalAction":"internal:assistant_surface","editLeaveApplyProposalAction":"internal:assistant_surface"},
  "app/assistant/attendance-request-proposal-actions.ts":{"confirmAttendanceRequestProposalAction":"internal:assistant_surface","editAttendanceRequestProposalAction":"internal:assistant_surface"},
+ "app/assistant/own-change-proposal-actions.ts":{"confirmOwnChangeProposalAction":"internal:assistant_surface","editOwnChangeProposalAction":"internal:assistant_surface"},
  "app/assistant/launcher-actions.ts":{"askFromLauncherAction":"internal:assistant_surface","askFromWorkspaceAction":"internal:assistant_surface","loadEarlierChatAction":"internal:assistant_surface","loadMoreChatsAction":"internal:assistant_surface","openStoredChatAction":"internal:assistant_surface"},
  "app/assistant/chat-actions.ts":{"chatRetentionAction":"internal:assistant_surface","deleteChatAction":"internal:assistant_surface","eraseAllChatsAction":"internal:assistant_surface","listChatsAction":"internal:assistant_surface","setChatRetentionAction":"handoff:ai_governance"},
  "app/assistant/module-plan-actions.ts":{"eraseModuleProposalsAction":"internal:assistant_surface","evaluateHumanPlannerAction":"internal:assistant_surface","proposeModulePlanAction":"internal:assistant_surface"},

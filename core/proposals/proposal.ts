@@ -42,13 +42,22 @@ export const ProposalFacts=z.object({
  /** Other people the caller may see with approved or pending leave on these dates (core/read.ts plannedAbsences). */othersAway:z.number().int().nonnegative(),
  /** Approved dates the person asks to give back (approved-leave cancellation). */cancelDates:z.array(calendarDate).min(1).max(31),
  /** The person's own decision (approvals.leave.decide). */decision:z.enum(['approved','rejected']),
- /** What confirming does, in the owner's own terms. */outcome:z.enum(['withdrawn_now','give_back_requested','rejection_if_confirmed','step_decision_if_confirmed','approval_if_native_checks_pass','submitted_not_approved']),
+ /** What confirming does, in the owner's own terms. */outcome:z.enum(['withdrawn_now','give_back_requested','rejection_if_confirmed','step_decision_if_confirmed','approval_if_native_checks_pass','submitted_not_approved',
+  // AI v2 W2: an own claim and an own profile change prepared in chat (core/proposals/claim-*.ts, profile-change.ts).
+  'claim_submitted_if_checks_pass','claim_draft_receipt_needed','claim_cancelled_now','hr_approval_required','hr_verification_required']),
  /** Attendance (W2): the clock times the person asks for, and what the attendance record holds now (HH:MM, KL wall time). */
  checkIn:clockTime,checkOut:clockTime,recordedCheckIn:clockTime,recordedCheckOut:clockTime,
  /** Overtime and time off in lieu (W2): the window the person gave (HH:MM; an earlier end is the next day). */
  plannedStart:clockTime,plannedEnd:clockTime,
  /** The attendance service's own minute count for that overtime window. Never a pay figure. */overtimeMinutes:z.number().int().positive(),
  /** Days the leave service would credit for a time-off-in-lieu request, as its own review counted them. */creditDays:figure.positive(),
+ /** An own claim (claims.submit, claims.cancel): the claim type and item names, the date incurred and the amount as the
+  * claims service normalised or stored it ("42.60"), never a figure the model computed. */
+ claimType:z.string().min(1).max(64),claimItem:z.string().min(1).max(64),incurredOn:calendarDate,amount:z.string().regex(/^\d{1,9}\.\d{2}$/),
+ /** An own profile change request (ess.profile.request): which part of the record changes and how many fields; the values
+  * stay in the sealed review. A bank change names the bank and the last four digits only. */
+ profileChange:z.enum(['address','emergency_contact','dependant','bank']),fieldCount:z.number().int().min(1).max(64),
+ bankName:z.string().min(1).max(64),accountEnding:z.string().regex(/^\d{4}$/),
 }).partial().strict();
 export type ProposalFacts=z.infer<typeof ProposalFacts>;
 /** Step 5 (§3.5): the approver recommendation from native checks, when the recommender worker ran. Two verdicts
@@ -74,8 +83,8 @@ export const ProposalBody=z.object({
  authority:ProposalAuthority,
  checks:z.array(ProposalCheck).min(1).max(32),
  /** Where the person reviews and confirms. `href` carries at most the review custody handle, never a business
-  * identifier (a review page with several flows may name its flow first, as /assistant/attendance?flow=overtime does);
-  * `reference` is what that route's own confirmation takes. */
+  * identifier (a review page with several flows may name its flow first, as /assistant/attendance?flow=overtime and
+  * /assistant/claims?flow=cancel do); `reference` is what that route's own confirmation takes. */
  review:z.object({route:z.string().regex(/^\/[a-z0-9/_-]*$/),href:z.string().regex(/^\/[a-z0-9/_-]*(?:\?(?:flow=[a-z]+&)?[a-z]+=[0-9a-fA-F-]{36})?$/),reference:z.guid()}).strict(),
  /** Key facts from the native checks, for the card (step 2). Closed vocabulary; product labels, calendar
   * dates and the owner's own figures only, never a name, identifier or free text. */

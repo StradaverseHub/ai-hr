@@ -18,11 +18,20 @@ const FACT_LABELS:Readonly<Record<FactKey,string>>=Object.freeze({
  othersAway:'Others away on these dates',decision:'Your decision',outcome:'What confirming does',
  recordedCheckIn:'Clock-in on record',recordedCheckOut:'Clock-out on record',checkIn:'Clock-in asked for',checkOut:'Clock-out asked for',
  plannedStart:'Start',plannedEnd:'End',overtimeMinutes:'Overtime minutes',creditDays:'Days credited if approved',
+ claimType:'Claim type',claimItem:'Claim item',incurredOn:'Date incurred',amount:'Amount',
+ profileChange:'What changes',fieldCount:'Details changed',bankName:'Bank',accountEnding:'Account ending',
 });
 const OUTCOME_TEXT:Readonly<Record<NonNullable<ProposalFacts['outcome']>,string>>=Object.freeze({
  withdrawn_now:'The request is withdrawn at once.',give_back_requested:'Asks to give these dates back; the request goes through the usual approval before the days return.',
  rejection_if_confirmed:'The request is rejected.',step_decision_if_confirmed:'Your step is recorded; the request moves to the next approver.',
  approval_if_native_checks_pass:'The request is approved if the leave checks still pass.',submitted_not_approved:'The application is submitted for approval; it is not approved yet.',
+ claim_submitted_if_checks_pass:'The claims service checks your limits and policy; if they pass, the claim is submitted for approval.',
+ claim_draft_receipt_needed:'A draft is saved; add the receipt on Claims to submit it.',claim_cancelled_now:'The claim is cancelled at once.',
+ hr_approval_required:'The change is sent to HR; nothing changes until HR approves it.',
+ hr_verification_required:'The new bank details are sent to HR to verify; pay keeps going to the current account until HR approves them.',
+});
+const PROFILE_CHANGE_TEXT:Readonly<Record<NonNullable<ProposalFacts['profileChange']>,string>>=Object.freeze({
+ address:'Your address',emergency_contact:'Your emergency contact',dependant:'A new dependant',bank:'Your bank details',
 });
 const DECISION_TEXT={approved:'Approve',rejected:'Reject'} as const;
 const FOR_WHOM={own_employment:'You',assigned_request:'A leave request assigned to you to decide'} as const;
@@ -41,6 +50,7 @@ export const PROPOSAL_CARD_KEYS=Object.freeze(['action','expiresAt','facts','for
 const factValue=(key:FactKey,value:NonNullable<ProposalFacts[FactKey]>):string=>{
  if(key==='outcome')return OUTCOME_TEXT[value as keyof typeof OUTCOME_TEXT];
  if(key==='decision')return DECISION_TEXT[value as keyof typeof DECISION_TEXT];
+ if(key==='profileChange')return PROFILE_CHANGE_TEXT[value as keyof typeof PROFILE_CHANGE_TEXT];
  if(Array.isArray(value))return value.join(', ');
  return String(value);
 };

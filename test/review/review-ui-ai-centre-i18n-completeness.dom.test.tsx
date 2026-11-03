@@ -78,7 +78,9 @@ describe('AI centre catalogue completeness', () => {
       // Arguments of the live-chat wiring copy (aiCentre.conversation, PR 197), added by claude/teras-review-fixes.
       time: '3:00 pm', reads: 'your leave balances',
       // Arguments of the leave application card title (aiCentre.conversation.leaveApply*Title, issue 10).
-      leaveType: 'Annual Leave', start: 'Thu, Nov 5', end: 'Fri, Nov 6', days: 2 };
+      leaveType: 'Annual Leave', start: 'Thu, Nov 5', end: 'Fri, Nov 6', days: 2,
+      // Arguments of the own claim and bank change card titles (aiCentre.conversation.claim*Title, profileBankTitle; AI v2 W2).
+      claimType: 'Travel', amount: '42.60', bankName: 'Maybank', ending: '5678' };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });

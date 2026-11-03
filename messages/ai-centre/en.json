@@ -470,6 +470,12 @@
       "attendanceClockInTitle": "Clock-in correction, {date}, {time}",
       "attendanceClockBothTitle": "Clock correction, {date}, {start} – {end}",
       "overtimeRequestTitle": "Overtime request, {date}, {start} – {end}",
+      "claimSubmitTitle": "{claimType} claim, RM {amount}, {date}",
+      "claimCancelTitle": "Cancel {claimType} claim, RM {amount}, {date}",
+      "profileAddressTitle": "Change your home address",
+      "profileEmergencyTitle": "Change your emergency contact",
+      "profileDependantTitle": "Add a dependant",
+      "profileBankTitle": "Change your bank account to {bankName}, ending {ending}",
       "review": "Review",
       "open": "Open",
       "expires": "Expires {time}",
@@ -494,7 +500,10 @@
         "leave_cancel": "Leave cancellation ready to review",
         "approvals_leave_decide": "Leave decision ready to review",
         "attendance_correction_request": "Attendance correction ready to review",
-        "attendance_overtime_request": "Overtime request ready to review"
+        "attendance_overtime_request": "Overtime request ready to review",
+        "claims_submit": "Expense claim ready to review",
+        "claims_cancel": "Claim cancellation ready to review",
+        "ess_profile_request": "Profile change ready to review"
       },
       "checks": {
         "actor_current": "Your access is current",
@@ -507,7 +516,13 @@
         "review_contract": "Review page ready",
         "attendance_day_read": "Read from your attendance record",
         "attendance_request_rules": "Attendance rules allow it",
-        "approval_route": "Approval route found"
+        "approval_route": "Approval route found",
+        "claim_type_available": "Claim type available",
+        "claim_draft_reviewed": "Checked by the claims service",
+        "receipt_attached": "Receipt requirement",
+        "own_pending_claim": "Claim still pending",
+        "profile_fields_editable": "You may request these changes",
+        "profile_request_reviewed": "Checked against your record"
       },
       "outcomes": {
         "withdrawn_now": "Withdrawn at once",
@@ -515,7 +530,12 @@
         "rejection_if_confirmed": "Rejected if you confirm",
         "step_decision_if_confirmed": "Your step is recorded",
         "approval_if_native_checks_pass": "Approved if the checks still pass",
-        "submitted_not_approved": "Submitted for approval, not approved yet"
+        "submitted_not_approved": "Submitted for approval, not approved yet",
+        "claim_submitted_if_checks_pass": "Submitted for approval if the claims checks pass",
+        "claim_draft_receipt_needed": "Saved as a draft; add the receipt on Claims",
+        "claim_cancelled_now": "Cancelled at once",
+        "hr_approval_required": "Sent to HR; changes only when HR approves",
+        "hr_verification_required": "HR verifies the new bank details before they are used"
       },
       "reads": {
         "my_leave_balances": "your leave balances",
