@@ -186,7 +186,7 @@ describe('a follow-up answer picking a numbered option (revision 2)',()=>{
   ['số 2','vi'],['cái thứ hai','vi'],['thứ nhất','vi'],
   ['இரண்டாவது','ta'],['எண் 3','ta'],
   ['ข้อ 2','th'],['อันแรก','th'],
- ] as const)('%s (%s) picks an option',question=>{expect(answersNumberedChoice(question)).toBe(true);});
+ ] as const)('%s (%s) picks an option',(question,_locale)=>{expect(answersNumberedChoice(question)).toBe(true);});
  it.each([
   'how much annual leave do I have?','2 days of annual leave next week','10','I want to apply for leave','second thoughts about my request','Siti',
   'Berapa baki cuti saya?','这个月的工资处理好了吗？','',' '.repeat(3),'2, '+'x'.repeat(CHOICE_ANSWER_MAX_CHARS),
