@@ -23,7 +23,11 @@ export const DISCLOSURE_CLASSES:readonly DisclosureClass[]=Object.freeze(['never
 export type FieldType='id'|'code'|'text'|'name'|'label'|'date'|'datetime'|'time'|'period'|'number'|'integer'|'boolean'|'enum'|'list'|'object'
  /** AI v2 Phase 2 P2-5: an organisation's own APPROVED wording, published to the people it applies to (an approved Living
   * Handbook paragraph). Not `text`, which is free text a person typed about themselves or someone else and is always
-  * `never`: this is company content its readers already see, disclosed by its class like any other field. */
+  * `never`: this is company content its readers already see, disclosed by its class like any other field. Like every
+  * string the harness sends, it is screened for identifiers first (core/harness/disclosure.ts, reply-checks.ts
+  * screenIdentifiers): an email address, IC, phone, bank account or other identifier written in the policy becomes
+  * `[<kind> removed]` before the model sees it (test/handbook-policies.test.ts). Accepted by the AI v2 coordinator on that
+  * condition; it goes into the owner's next provider-data binding packet for review. */
  |'published_text';
 export type SemanticField=Readonly<{name:string;type:FieldType;disclosure:DisclosureClass;meaning:string;
  /** Closed vocabulary for `enum` fields. */values?:readonly string[];

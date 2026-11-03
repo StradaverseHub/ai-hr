@@ -6,7 +6,9 @@
  * sent for approval, a value or an approval. Of those, only the version in force today counts (the approved version with
  * the latest date on or before today). The text is split into numbered paragraphs; with a topic, the paragraphs that
  * share its words are returned first. Each policy carries the citation the reply must give: its title, version and the
- * paragraph numbers. Nothing here decides what the person may see; the harness discloses by the entity's classes. */
+ * paragraph numbers. Nothing here decides what the person may see; the harness discloses by the entity's classes, and its
+ * identifier screen turns any email address, IC, phone or bank account written in a paragraph into `[<kind> removed]`
+ * before the model sees it (the person reads the policy itself on /policies). */
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {provenance,refuse,type ExplainerOutcome} from '../explainers/outcome';

@@ -26,6 +26,7 @@ import {createEntitlementTemplate,listEntitlementTemplates,setLeaveTypeDefaultTe
 import {PolicyRefused,applyScheduledValue,approvePolicyVersion,createPolicy,decidePolicyValue,draftFromVersion,policiesView,prepareFromDrift,
  readPolicyValues,returnPolicyVersion,submitPolicyVersion} from '../core/handbook/policies';
 import {askPolicyHandbook} from '../core/handbook/ask';
+import {DisclosureLedger,discloseToolOutput} from '../core/harness/disclosure';
 import type {PolicyValueModel} from '../core/handbook/extract';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -326,5 +327,26 @@ describe('injection resistance',()=>{
   expect(state).toEqual({status:'draft',decisions:0,approvals:0,applications:0});
   expect(await companyTable(g1)).toEqual([{fromKm:0,toKm:null,ratePerKm:0.5}]);
   await refused(submitPolicyVersion(g1,{versionId:created.versionId}),'undecided');
+ });
+});
+
+describe('identifiers in an approved paragraph never reach the model',()=>{
+ it('the harness screen replaces each one with a placeholder, and a clean paragraph is quoted exactly',async()=>{
+  const clean='Claims for parking are paid at cost with a receipt, up to RM 20 a day.';
+  const personal='Questions go to Aisyah at aisyah.fictional@example.test or 012-345 6789. An identity card is written like 900101-14-5678. Refunds are paid into account 1234567890123.';
+  const created=await createPolicy(g1,{area:'other',title:'Parking and contacts',body:clean+'\n\n'+personal,effectiveFrom:todayInKualaLumpur(),companyIds:allCompanies()});
+  await submitPolicyVersion(g1,{versionId:created.versionId});await approvePolicyVersion(g1,{versionId:created.versionId});
+  const answer=await askPolicyHandbook(employee,{});
+  expect(answer.ok).toBe(true);
+  // What the owner returns to the person is their own approved policy, as written.
+  const owned=(answer as unknown as {policies:{paragraphs:{text:string}[]}[]}).policies[0]!.paragraphs.map(p=>p.text);
+  expect(owned).toEqual([clean,personal]);
+  // What the harness sends the model: the same read, through its own disclosure.
+  const disclosed=discloseToolOutput('my_policy_handbook','policy_handbook',answer,new DisclosureLedger('handbook-test'));
+  const sent=JSON.stringify(disclosed.value);
+  for(const raw of ['aisyah.fictional@example.test','012-345 6789','900101-14-5678','1234567890123'])expect(sent).not.toContain(raw);
+  const paragraphs=(disclosed.value as {policies:{paragraphs:{paragraph:number;text:string}[]}[]}).policies[0]!.paragraphs;
+  expect(paragraphs).toEqual([{paragraph:1,text:clean},
+   {paragraph:2,text:'Questions go to Aisyah at [email removed] or [phone removed]. An identity card is written like [ic removed]. Refunds are paid into account [bank_account removed].'}]);
  });
 });

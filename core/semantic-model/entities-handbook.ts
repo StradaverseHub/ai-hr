@@ -7,8 +7,9 @@
  *
  * The paragraphs are the company's own approved policy wording, published to its employees: product content an HR
  * administrator wrote for everyone in the company to read, not a person's own free text and not an HR record. They are
- * therefore disclosed as written (`full`); the harness still screens every byte it sends for identifiers. Pure
- * declarations. */
+ * therefore disclosed as written (`full`, field type published_text, ./types.ts); the harness's identifier screen still
+ * replaces every email address, IC, phone, bank account or other identifier in them with `[<kind> removed]` before the
+ * model sees them. Pure declarations. */
 import {provenanceField} from './entities-explain';
 import type {DisclosureClass,FieldType,SemanticEntity,SemanticField,SemanticRead} from './types';
 
