@@ -1,8 +1,8 @@
 -- AI Centre round, issue 8 (owner, 3 November 2026: "Store on server now", then "But with active removal in a few days
 -- or months, which are configurable") and issue 18 item 1 (the floating panel and Ask share one stored conversation).
--- Provisional DEVELOPMENT source allocation 0952 / when1793330000352 (docs/MIGRATION-ALLOCATION.md): a scan of every
--- origin ref and registered worktree on 3 November 2026 found claims through 0951 / when1793330000351. It grants no
--- installation, and the journal position is re-frozen at integration. Production is held; staging uses fictional data.
+-- Source allocation 2000 / when1793330001400 in the AI Centre block 2000-2019 (docs/MIGRATION-ALLOCATION.md), renumbered
+-- from the never-applied 0952 / when1793330000352 at the Phase 1 release integration (3 November 2026), above main's
+-- applied 0953 / when1793330000353. It grants no installation. Production is held; staging uses fictional data.
 --
 -- A stored chat is one Noveri conversation (core/teras-wiring/history.ts conversation id) of one login. Its turns hold
 -- the person's words, the reply they were shown and the model-side rows, each AES-256-GCM encrypted by the application

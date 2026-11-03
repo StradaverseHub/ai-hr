@@ -1,4 +1,5 @@
-/** Exact post-Noveri populated upgrade, on a disposable hosted localhost database only.
+/** Exact post-Noveri populated upgrade, on a disposable hosted localhost database only: the 648-entry baseline, then
+ * staging's 656-entry main ledger, then the AI v2 Phase 1 migrations 2000-2003.
  * Source bytes are pinned independently; this supplies no staging acceptance or AI approval. */
 import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -35,6 +36,11 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   {tag:'0950_contract_management',when:1793330000350},
   {tag:'0951_payroll_reprocess_correction_lineage',when:1793330000351},
   {tag:'0953_lifecycle_service_info_intents',when:1793330000353},
+  // AI v2 Phase 1 (claude/aiv2-phase1-release): the AI Centre block 2000-2019, above main's applied 0953.
+  {tag:'2000_teras_chats',when:1793330001400},
+  {tag:'2001_private_cases',when:1793330001401},
+  {tag:'2002_teras_loops',when:1793330001402},
+  {tag:'2003_letter_requests',when:1793330001403},
  ]);
  expect(hash(readFileSync('db/migrations/0935_password_account_unlock.sql'))).toBe('3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa');
  expect(hash(readFileSync('db/migrations/0946_draft_creation_cohort_custody.sql'))).toBe('cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390');
@@ -95,9 +101,13 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   await storage.client`update employee_draft set data=${JSON.stringify(historicalData)}::jsonb where id=${draft}`;
   // The original historical row is present at the upgrade boundary; the mutation above is preflight only.
   const upgradeNative=await native();
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  const afterLedger=await ledger();expect(afterLedger).toHaveLength(656);expect(afterLedger.slice(0,648)).toEqual(beforeLedger);
-  expect(afterLedger.slice(648).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
+  // Staging's ledger first: main 848c7be36's complete 656-entry journal through 0953, as staging runs it.
+  const staging=journal.entries.slice(0,656);expect(staging.at(-1)!.tag).toBe('0953_lifecycle_service_info_intents');
+  for(const row of staging.slice(boundary))copyFileSync('db/migrations/'+row.tag+'.sql',join(folder,row.tag+'.sql'));
+  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:staging}));
+  await migrate(storage.db,{migrationsFolder:folder});
+  const stagingLedger=await ledger();expect(stagingLedger).toHaveLength(656);expect(stagingLedger.slice(0,648)).toEqual(beforeLedger);
+  expect(stagingLedger.slice(648).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
    {hash:'3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa',created_at:'1793330000335'},
    {hash:'cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390',created_at:'1793330000346'},
    {hash:'f7a1e3725019d8ce09052efb3b3fe1763190622052b4f826a678f8231cf8914e',created_at:'1793330000347'},
@@ -107,6 +117,22 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
    {hash:'b65a8adc2f45165fb2bdb41b30d4ca6eeb7f7b44ef2539bcdecc7efde0322057',created_at:'1793330000351'},
    {hash:'6f71e2fe862f86c836026f3e07647ca29b913dd34b2171c98a033b43da0afa89',created_at:'1793330000353'},
   ]);
+  expect(await native()).toEqual(upgradeNative);
+  const phaseOneTables=()=>storage.client`select to_regclass('public.teras_chat')::text as chats,to_regclass('public.private_case')::text as cases,to_regclass('public.teras_loop_run')::text as loops,to_regclass('public.letter_request')::text as letters`;
+  expect(await phaseOneTables()).toEqual([{chats:null,cases:null,loops:null,letters:null}]);
+  // Then this release's four AI v2 Phase 1 migrations. Their when values sit above staging's watermark 1793330000353,
+  // so the ordinary migrator applies them on this populated ledger instead of silently skipping them.
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  const afterLedger=await ledger();expect(afterLedger).toHaveLength(660);expect(afterLedger.slice(0,656)).toEqual(stagingLedger);
+  expect(afterLedger.slice(656).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
+   {hash:'8cd50320de942af9aa59e515c5e39e78f6027325da86264dd8e772bff1c802b7',created_at:'1793330001400'},
+   {hash:'2afbad3a54800118a3d09bb7e628453a80badf2980725bca8979716f9fd99c4c',created_at:'1793330001401'},
+   {hash:'768b07fe216c483b27211c413033621f83f4e2f4ccf5d81de4cc8f5bb07326d0',created_at:'1793330001402'},
+   {hash:'3eaf1d2bf2be87d0c7a0495968b11fe7002c8882a82451bd17ce8a73247032e4',created_at:'1793330001403'},
+  ]);
+  expect(await phaseOneTables()).toEqual([{chats:'teras_chat',cases:'private_case',loops:'teras_loop_run',letters:'letter_request'}]);
+  // The applied ledger rows after the 648-entry baseline, for the release record: ids, SQL hashes and when values only.
+  console.info('[populated-upgrade-ledger]',JSON.stringify(afterLedger.slice(648).map(row=>({id:row.id,hash:row.hash,created_at:row.created_at}))));
   expect(await native()).toEqual(upgradeNative);
   const afterSource=await source();
   expect(afterSource).toEqual({...beforeSource,body:beforeSource.body.replace(oldNumericPredicate,newNumericPredicate).replace('No numeric leaf is serialized; timestamps are UTC.','Only the exact root creation cohort 1 may be numeric; timestamps are UTC.')});

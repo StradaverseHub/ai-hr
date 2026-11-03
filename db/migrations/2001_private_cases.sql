@@ -1,7 +1,7 @@
 -- AI v2 Phase 1, slice 2, W11 (owner, 3 November 2026: "Minimal route in Phase 1"): a protected case route for
--- sensitive matters. Provisional DEVELOPMENT source allocation 0959 / when1793330000359 (docs/MIGRATION-ALLOCATION.md):
--- a scan of every origin ref and registered worktree on 3 November 2026 found claims through 0958 / when1793330000358.
--- It grants no installation, and the journal position is re-frozen at integration. Production is held.
+-- sensitive matters. Source allocation 2001 / when1793330001401 in the AI Centre block 2000-2019
+-- (docs/MIGRATION-ALLOCATION.md), renumbered from the never-applied 0959 / when1793330000359 at the Phase 1 release
+-- integration (3 November 2026). It grants no installation. Production is held.
 --
 -- A private case is a person's own written report to named HR case handlers: grievance, harassment, safety or other.
 -- The person writes it in a form, never through the AI. Its text and every handler note are AES-256-GCM encrypted by the

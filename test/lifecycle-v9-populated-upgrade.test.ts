@@ -14,7 +14,7 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(660); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors and the four AI v2 Phase 1 source claims below.
+ expect(journal.entries).toHaveLength(660); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors and the four AI v2 Phase 1 migrations 2000-2003 below.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
  expect(journal.entries.slice(boundary)).toHaveLength(89);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
@@ -50,14 +50,15 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:797,version:'7',when:1793330000350,tag:'0950_contract_management',breakpoints:true,hash:'84bc3e3a907118e2c6806e863c63544df061b49dbb9b51fcd4fe8f85ffcef8ac'},
   {idx:798,version:'7',when:1793330000351,tag:'0951_payroll_reprocess_correction_lineage',breakpoints:true,hash:'b65a8adc2f45165fb2bdb41b30d4ca6eeb7f7b44ef2539bcdecc7efde0322057'},
   {idx:799,version:'7',when:1793330000353,tag:'0953_lifecycle_service_info_intents',breakpoints:true,hash:'6f71e2fe862f86c836026f3e07647ca29b913dd34b2171c98a033b43da0afa89'},
+  // AI v2 Phase 1, renumbered into the AI Centre block 2000-2019 at the release integration (were 0952, 0959, 0960, 0961).
   // AI Centre stored chats (claude/noveri-chats), frozen here.
-  {idx:800,version:'7',when:1793330000352,tag:'0952_teras_chats',breakpoints:true,hash:'e320362770eedfafd2e9260d82713b1c669f056a296db979a1f5295e785b401b'},
+  {idx:800,version:'7',when:1793330001400,tag:'2000_teras_chats',breakpoints:true,hash:'8cd50320de942af9aa59e515c5e39e78f6027325da86264dd8e772bff1c802b7'},
   // AI v2 W11 protected case route (claude/aiv2-s2-case-route), frozen here.
-  {idx:801,version:'7',when:1793330000359,tag:'0959_private_cases',breakpoints:true,hash:'3016959b49532efbd6da16be168ad6ef764c66f5a0af35f50b9de40112ccf55f'},
+  {idx:801,version:'7',when:1793330001401,tag:'2001_private_cases',breakpoints:true,hash:'2afbad3a54800118a3d09bb7e628453a80badf2980725bca8979716f9fd99c4c'},
   // AI v2 W8 loops at the Prepare level (claude/aiv2-s3-loops), frozen here.
-  {idx:802,version:'7',when:1793330000360,tag:'0960_teras_loops',breakpoints:true,hash:'addec336da5a82869ab05d79c45bc9d884e92c3d877af6b073f3e892fdfda11d'},
+  {idx:802,version:'7',when:1793330001402,tag:'2002_teras_loops',breakpoints:true,hash:'768b07fe216c483b27211c413033621f83f4e2f4ccf5d81de4cc8f5bb07326d0'},
   // AI v2 Phase 1 slice 3 employee letter requests (claude/aiv2-s3-letter-request), frozen here.
-  {idx:803,version:'7',when:1793330000361,tag:'0961_letter_requests',breakpoints:true,hash:'86b91182f7f686d32fb37d5ab117198440aee24bad0abe029f5266cef1cbafc7'},
+  {idx:803,version:'7',when:1793330001403,tag:'2003_letter_requests',breakpoints:true,hash:'3eaf1d2bf2be87d0c7a0495968b11fe7002c8882a82451bd17ce8a73247032e4'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

@@ -1,7 +1,7 @@
 -- AI v2 Phase 1, slice 3, W8: the first five loops at the Prepare level (owner-approved plan, 3 November 2026).
--- Provisional DEVELOPMENT source allocation 0960 / when1793330000360 (docs/MIGRATION-ALLOCATION.md): a scan of every
--- ref and registered worktree on 3 November 2026 found claims through 0959 / when1793330000359. It grants no
--- installation, and the journal position is re-frozen at integration. Production is held.
+-- Source allocation 2002 / when1793330001402 in the AI Centre block 2000-2019 (docs/MIGRATION-ALLOCATION.md), renumbered
+-- from the never-applied 0960 / when1793330000360 at the Phase 1 release integration (3 November 2026). It grants no
+-- installation. Production is held.
 --
 -- A loop watches one part of HR work, prepares a card for the right person and checks on its next run whether the
 -- work is done. At the Prepare level nothing changes without a person's Confirm on the owning service's own page:

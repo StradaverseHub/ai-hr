@@ -1045,6 +1045,9 @@ integration.
 | ---: | ---: | --- | --- |
 |763|1793330000352|0952_teras_chats|e320362770eedfafd2e9260d82713b1c669f056a296db979a1f5295e785b401b|
 
+Superseded on 3 November 2026, before any application: renumbered to `2000_teras_chats` / when1793330001400 in the AI Centre block
+2000–2019 (see that entry below). This identity is not an alternative installation path.
+
 ## AI v2 W11 protected case route — 3 November 2026 (provisional source claim)
 
 Branch `claude/aiv2-s2-case-route` (cut from `2702348f3`, journal ending `0952_teras_chats` idx763 / when1793330000352)
@@ -1064,6 +1067,9 @@ ending at 0958 / when1793330000358, so the number and `when` stand. The hash bel
 | ---: | ---: | --- | --- |
 |764|1793330000359|0959_private_cases|3016959b49532efbd6da16be168ad6ef764c66f5a0af35f50b9de40112ccf55f|
 
+Superseded on 3 November 2026, before any application: renumbered to `2001_private_cases` / when1793330001401 in the AI Centre block
+2000–2019 (see that entry below). This identity is not an alternative installation path.
+
 ## AI v2 W8 loops at the Prepare level — 3 November 2026 (provisional source claim)
 
 Branch `claude/aiv2-s3-loops` (cut from `32816437f`, journal ending `0959_private_cases` idx764 / when1793330000359)
@@ -1077,6 +1083,9 @@ slice branches cut from the same base may claim the same next number; reconcile 
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
 |765|1793330000360|0960_teras_loops|addec336da5a82869ab05d79c45bc9d884e92c3d877af6b073f3e892fdfda11d|
+
+Superseded on 3 November 2026, before any application: renumbered to `2002_teras_loops` / when1793330001402 in the AI Centre block
+2000–2019 (see that entry below). This identity is not an alternative installation path.
 
 ## AI v2 Phase 1 slice 3 employee letter requests — 3 November 2026 (provisional source claim)
 
@@ -1099,3 +1108,49 @@ below is the revised body's.
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
 |766|1793330000361|0961_letter_requests|86b91182f7f686d32fb37d5ab117198440aee24bad0abe029f5266cef1cbafc7|
+
+Superseded on 3 November 2026, before any application: renumbered to `2003_letter_requests` / when1793330001403 in the AI Centre block
+2000–2019 (see that entry below). This identity is not an alternative installation path.
+
+## AI Centre block 2000–2019: AI v2 Phase 1 release — 3 November 2026 (unapplied source reservation)
+
+Branch `claude/aiv2-phase1-release` merges `origin/main` `848c7be36414a1a5216bb33d0ecd49429fcdd60f` (aligned with alpha; the
+AI v2 coordinator reports it as staging's `STAGING_DEPLOYED_SHA`; this session did not query the staging ledger). Main's
+journal has 656 entries ending idx799 / `0953_lifecycle_service_info_intents` / when1793330000353, after main's 0950, 0951
+and 0953.
+
+The four AI v2 Phase 1 migrations move because `0952_teras_chats` (when…352) sits below main's 0953 (when…353), so the
+ordinary migrator would silently skip it on staging, and because 0959–0961 collide with other claims: the
+`codex/permissions-*` branches claim 0950 upwards and PR #218 claims 1000–1002.
+
+This reserves the block 2000–2019 for the AI Centre: AI v2 Phase 1 takes 2000–2003; AI v2 Phase 2 waves 1 and 2 take 2004
+onward, in number order, each recorded here when written. The coordinator chose this conservative block on 3 November
+2026 after the first choice, 1010–1029, was taken during this integration: the Codex claims moved from 1007 to 1015 within
+about 30 minutes (roughly 30 numbers an hour), and the owner holds this release until the Codex releases finish, so these
+values must stay above their final watermark. A block rather than the next number, because parallel sessions keep taking
+the next number (see the Formula entries above).
+
+`when` scheme: the convention every claim since 0800/…200 follows, including all claims in the 1000-range:
+when = 1793330000000 + (file number − 600). The block's values are 1793330001400–1793330001419, strictly above main's
+1793330000353 and above every claim found.
+
+A fresh fetch and scan at 14:27 UTC on 3 November 2026 covered every local and origin ref (3681 refs, 554 distinct
+migration trees) and all 423 registered worktrees, including their uncommitted files. Claims run to
+`1015_rewards_command_port_status` / when1793330000415 (Codex, uncommitted worktree); nothing claims a file at or above
+1990 or a `when` at or above 1793330001390.
+
+| Was | idx (branch) | when | Tag | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+|0952|800|1793330001400|2000_teras_chats|8cd50320de942af9aa59e515c5e39e78f6027325da86264dd8e772bff1c802b7|
+|0959|801|1793330001401|2001_private_cases|2afbad3a54800118a3d09bb7e628453a80badf2980725bca8979716f9fd99c4c|
+|0960|802|1793330001402|2002_teras_loops|768b07fe216c483b27211c413033621f83f4e2f4ccf5d81de4cc8f5bb07326d0|
+|0961|803|1793330001403|2003_letter_requests|3eaf1d2bf2be87d0c7a0495968b11fe7002c8882a82451bd17ce8a73247032e4|
+
+The SQL statements are unchanged; only the header comment lines that named the provisional number changed (the files
+were never applied), hence the new hashes. Code comments that still cite 0952, 0959, 0960 or 0961 (for example
+`core/teras-chats.ts`, `core/private-cases.ts`, `core/loops/*`, `db/teras-schema.ts`) mean these migrations; they are left
+unchanged so that no provider-closure file changes for a number.
+
+Development source only: no installation priority, no deployment. At installation the numbers and `when` values are
+re-checked against staging's applied watermark (the ordered live ledger) and re-frozen above it if it has reached them;
+the owner holds this release until the Codex releases finish.

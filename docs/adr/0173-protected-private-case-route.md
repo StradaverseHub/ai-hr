@@ -6,7 +6,7 @@
 - **Number:** provisional. A scan on 3 November 2026 found ADR-0172 claimed on other branches (`0172-subject-owned-content-bound-signing.md`); reconcile at integration.
 - **Date:** 2026-11-03
 - **Relates to:** [ADR-0169](0169-assistant-context-harness-and-disclosure-repivot.md) (the harness, §9 stored chats), [ADR-0170](0170-teras-ai-operating-architecture.md) §3.2 (sensitive-topic routing), [ADR-0030](0030-audit-log-pdpa.md) (PDPA erasure), [ADR-0084](0084-propose-adjudicate-learn.md) (models propose, services decide).
-- **Migration:** `0959_private_cases` (provisional development allocation, `when` 1793330000359; see [migration allocation](../MIGRATION-ALLOCATION.md)).
+- **Migration:** `2001_private_cases` (AI Centre block 2000-2019, `when` 1793330001401; first allocated as `0959_private_cases` / 1793330000359; see [migration allocation](../MIGRATION-ALLOCATION.md)).
 
 ## 1. Context
 

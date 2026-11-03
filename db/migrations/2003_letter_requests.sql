@@ -1,7 +1,6 @@
--- AI v2 Phase 1, slice 3: employee letter requests. Provisional DEVELOPMENT source allocation 0961 / when1793330000361
--- (docs/MIGRATION-ALLOCATION.md): 0960 is reserved for the parallel loops branch, and a scan of every origin ref and
--- registered worktree on 3 November 2026 found no claim on 0961. It grants no installation, and the journal position is
--- re-frozen at integration. Production is held.
+-- AI v2 Phase 1, slice 3: employee letter requests. Source allocation 2003 / when1793330001403 in the AI Centre block
+-- 2000-2019 (docs/MIGRATION-ALLOCATION.md), renumbered from the never-applied 0961 / when1793330000361 at the Phase 1
+-- release integration (3 November 2026). It grants no installation. Production is held.
 --
 -- An employee asks HR for a letter (an employment confirmation letter, for example) from the templates their company has
 -- opened for self-request. HR prepares it through the existing generate flow and issues it as today; the request then
