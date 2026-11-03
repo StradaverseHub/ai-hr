@@ -100,7 +100,7 @@ export async function promoteGap(supplied:SessionContext,input:unknown){
   await adminForTx(tx,companyId);
   const o=terasGapOccurrence;
   const rows=await tx.select({role:o.role,locale:o.locale}).from(o).where(and(eq(o.tenantId,ctx.tenantId),eq(o.companyId,companyId),eq(o.intentKey,intentKey)))
-   .orderBy(desc(o.at)).limit(200);
+   .orderBy(desc(o.seenOn),desc(o.id)).limit(200);
   if(!rows.length)throw new LearningRefused('not_found');
   const most=<T extends string>(values:T[])=>[...values.reduce((map,value)=>map.set(value,(map.get(value)??0)+1),new Map<T,number>())].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0][0];
   const text=await redactedTx(tx,parsed.data);

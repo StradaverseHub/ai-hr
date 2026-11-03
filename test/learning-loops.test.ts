@@ -342,10 +342,10 @@ describe('the figures',()=>{
    values (${b.tenantId}::uuid,'loop_missed_clock_outs',${b.companyId}::uuid,${employee.employmentId}::uuid,${'clockout:'+randomUUID()},'employee','closed','done',${resolution},'{}'::jsonb,
     now()-interval '3 days',now()-interval '3 days',now()-interval '2 days',now()-interval '2 days',${randomUUID()}::uuid,${randomUUID()}::uuid)`);
   // Gaps: 3 on one open intent, 1 on an intent marked planned.
+  // Written as the owner: an occurrence names no turn, and the 2010 trigger stamps today's Malaysian day.
   for(const intentKey of ['not_supported:payroll','not_supported:payroll','not_supported:payroll','cannot_answer:leave']){
-   const record=await turnRecord(employee);
    const [kind,area]=intentKey.split(':') as ['not_supported'|'cannot_answer',string];
-   await owner.db.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,recordId:record.id,kind,area,intentKey,role:'employee',locale:'en',at:new Date(Date.now()-DAY)});
+   await owner.db.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,kind,area,intentKey,role:'employee',locale:'en'});
   }
   await setGapStatus(group,{companyIds:[b.companyId],intentKey:'cannot_answer:leave',status:'planned'});
   const view=await aiQuality(group);
@@ -426,8 +426,7 @@ describe('reviewing corrections and eval candidates',()=>{
  });
 
  it('refuses text that redaction cannot clean, and makes a gap intent a candidate with its most common role and locale',async()=>{
-  const record=await turnRecord(employee);
-  await owner.db.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,recordId:record.id,kind:'no_route',area:'claims',intentKey:'no_route:claims',role:'employee',locale:'ms'});
+  await owner.db.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,kind:'no_route',area:'claims',intentKey:'no_route:claims',role:'employee',locale:'ms'});
   const created=await promoteGap(group,{companyId:b.companyId,intentKey:'no_route:claims',question:'Boleh anda hantar tuntutan perjalanan saya?',expectation:'Prepares the travel claim for one Confirm.',
    kind:'do',factor:'doing'});
   const [row]=await owner.db.select().from(terasEvalCandidate).where(eq(terasEvalCandidate.id,created.id));
@@ -439,8 +438,7 @@ describe('reviewing corrections and eval candidates',()=>{
  });
 
  it('sets a gap\'s status per company as versions, and sets it back',async()=>{
-  const record=await turnRecord(employee);
-  await owner.db.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,recordId:record.id,kind:'cannot_answer',area:'leave',intentKey:'cannot_answer:leave',role:'employee',locale:'en'});
+  await owner.db.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,kind:'cannot_answer',area:'leave',intentKey:'cannot_answer:leave',role:'employee',locale:'en'});
   expect(await setGapStatus(group,{companyIds:[b.companyId],intentKey:'cannot_answer:leave',status:'planned'})).toEqual({changed:1});
   expect(await setGapStatus(group,{companyIds:[b.companyId],intentKey:'cannot_answer:leave',status:'planned'})).toEqual({changed:0});
   await expect(setGapStatus(group,{companyIds:[b.companyId],intentKey:'cannot_answer:leave',status:'duplicate'})).rejects.toMatchObject({reason:'invalid'});
