@@ -54,7 +54,7 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
       <OperationsTabs session={s} active="loops" />
       <PageHeader back={{ href: '/control-tower/loops', label: t('back') }} title={name} description={t('doneMeansLine', { done: t(`doneMeans.${id}`) })}
         actions={<div className="flex flex-wrap items-center gap-3">
-          <LoopLevelBadges autonomy={autonomy} />
+          {await LoopLevelBadges({ autonomy })}
           <span data-loop-switch={row.on ? 'on' : 'off'} className="text-sm">{row.stopped ? t('stopped') : row.on ? t('on') : t('off')}</span>
           {detail.canSwitch && <form action={setLoopSwitchAction}>
             <input type="hidden" name="loop" value={id} /><input type="hidden" name="from" value="detail" /><input type="hidden" name="enabled" value={String(!row.on)} />
@@ -80,10 +80,10 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
         {tile(t('figures.open'), t('openWaiting', { open: row.openNow, waiting: row.waitingNow }))}
       </div>
       <p className="text-xs text-muted-foreground">{t('figures.noSpend')}</p>
-      <LoopAutonomyFigures autonomy={autonomy} />
+      {await LoopAutonomyFigures({ autonomy })}
 
-      <LoopLevelsCard autonomy={autonomy} loop={id} notice={notice} />
-      <LoopActionsCard autonomy={autonomy} loop={id} />
+      {await LoopLevelsCard({ autonomy, loop: id, notice })}
+      {await LoopActionsCard({ autonomy, loop: id })}
 
       <Card className="overflow-hidden">
         <SectionHeader title={t('pause.title')} />
@@ -129,8 +129,8 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
         )}
       </Card>
 
-      <LoopGuardsAndOwner autonomy={autonomy} loop={id} name={name} on={row.on} sponsorName={row.sponsor ? row.sponsor.name ?? t('sponsorUnnamed') : null}
-        sponsorLost={row.lastRun?.status === 'sponsor_lost'} />
+      {await LoopGuardsAndOwner({ autonomy, loop: id, name, on: row.on, sponsorName: row.sponsor ? row.sponsor.name ?? t('sponsorUnnamed') : null,
+        sponsorLost: row.lastRun?.status === 'sponsor_lost' })}
 
       <Card className="overflow-hidden">
         <SectionHeader title={t('runs.title')} />

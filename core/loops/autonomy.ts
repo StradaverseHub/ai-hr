@@ -40,7 +40,7 @@ export const DEMOTION_RULE=Object.freeze({maxCorrectedShare:0.01,windowDays:7});
 
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 
-export const LOOP_AUTONOMY:Readonly<Record<LoopId,AutonomyDeclaration>>=freeze({
+const DECLARATIONS:Record<LoopId,AutonomyDeclaration>={
  loop_probation_ending:{categories:['employment_status'],ceiling:1,actor:false,criteria:['prepared','rule_broken','days_at_level']},
  loop_payroll_inputs:{categories:['pay'],ceiling:1,actor:false,criteria:['prepared','rule_broken','days_at_level']},
  // The request to the employee would be sent automatically, never the change itself (owner, 3 November 2026).
@@ -48,7 +48,8 @@ export const LOOP_AUTONOMY:Readonly<Record<LoopId,AutonomyDeclaration>>=freeze({
  loop_missed_clock_outs:{categories:['attendance'],ceiling:3,actor:true,criteria:['prepared','changed','rule_broken','days_at_level']},
  // Passports stay at Prepare (owner, 3 November 2026).
  loop_document_expiry:{categories:['identity_document'],ceiling:1,actor:false,criteria:['prepared','rule_broken','days_at_level']},
-});
+};
+export const LOOP_AUTONOMY:Readonly<Record<LoopId,AutonomyDeclaration>>=freeze(DECLARATIONS);
 
 /** True when any category is one a loop may never act on by itself. */
 export const touchesCapped=(categories:readonly string[])=>categories.some(category=>(CAPPED_CATEGORIES as readonly string[]).includes(category));

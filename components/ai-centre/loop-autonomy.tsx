@@ -11,7 +11,8 @@ import { undoLoopActionFromDetailAction } from '@/app/control-tower/loops/autono
 /** AI v2 Phase 2 P2-1 — a loop's level, its automatic actions and its limits, on the loop's own page (approved mock-up
  * Main.dc.html: the level badges, Recent actions with Undo, "Limits it can never cross" and "Who answers for it").
  * Every value comes from core/loops/autonomy-views.ts, read under the viewer's row-level security. Undo posts to the
- * owner through core/loops/undo.ts, which checks everything again; the page itself decides nothing. */
+ * owner through core/loops/undo.ts, which checks everything again; the page itself decides nothing. Each section is an
+ * async function the page awaits (`{await LoopLevelsCard({...})}`), as the other loop sections render inline. */
 const TARGET = 'pointer-coarse:min-h-11';
 const BADGE = 'rounded-full border border-border px-2.5 py-1 text-xs font-medium';
 const percent = (value: number) => `${(Math.round(value * 1000) / 10).toString()}%`;

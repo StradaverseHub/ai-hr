@@ -85,7 +85,7 @@ async function autonomyStep(p:AutonomyRunInput):Promise<AutonomyRunSummary>{
    .from(terasLoopAction).leftJoin(terasLoopActionUndo,eq(terasLoopActionUndo.actionId,terasLoopAction.id))
    .where(and(eq(terasLoopAction.tenantId,tenantId),eq(terasLoopAction.workerId,workerId),eq(terasLoopAction.companyId,companyId),
     eq(terasLoopAction.state,'applied'),gte(terasLoopAction.appliedAt,since))));
-  const corrections:LoopCorrection[]=rows.flatMap(row=>row.undoneBy?[{actionId:row.id,kind:'undone' as const,by:row.undoneBy}]
+  const corrections:LoopCorrection[]=rows.flatMap((row):LoopCorrection[]=>row.undoneBy?[{actionId:row.id,kind:'undone' as const,by:row.undoneBy}]
    :row.changedAt?[{actionId:row.id,kind:'changed' as const,by:null}]:[]);
   if(!shouldDemote(rows.length,corrections.length))continue;
   const done=await withTenant(agent,tx=>demoteLoopLevelTx(tx,{tenantId,workerId,companyId,runId:p.runId,now,applied:rows.length,corrected:corrections.length,corrections}));
