@@ -14,7 +14,7 @@
  *
  * Deterministic and pure. English, Malay, Chinese and Vietnamese patterns; Tamil and Thai patterns are PENDING
  * NATIVE-SPEAKER REVIEW (as the gate's are): a floor, not a reviewed list. A pattern change raises
- * CAPABILITY_INTENT_REVISION and the harness spec version (core/harness/spec.ts offer.capabilityIntentRevision). */
+ * CAPABILITY_INTENT_REVISION and the harness spec version (the spec's offer.capabilityIntentRevision). */
 
 /** Raised with every pattern change; the harness spec records it. */
 export const CAPABILITY_INTENT_REVISION=1;
