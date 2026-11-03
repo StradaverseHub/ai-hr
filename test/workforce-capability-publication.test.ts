@@ -138,7 +138,7 @@ it('derives new native holders live, preserves overrides and refuses narrowed-aw
  const [user]=await owner.db.insert(appUser).values({tenantId:b.tenantId,workosUserId:'native_defaults_'+randomUUID()}).returning();
  await owner.db.insert(roleAssignment).values([{tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:null},{tenantId:b.tenantId,appUserId:user.id,role:'employee',companyId:null}]);
  const context={...adminCtx(b),userId:user.id,roles:['hr_admin','employee'],grants:[{role:'hr_admin',companyId:null},{role:'employee',companyId:null}]};
- const allowed=(ctx:SessionContext)=>withTenant(ctx,async tx=>(await tx.execute<{allowed:boolean}>(sql`select app.access_allowed_for(${user.id}::uuid,'organisation.view',${other.id}::uuid) as allowed`))[0].allowed);
+ const allowed=(ctx:SessionContext)=>withTenant(ctx,async tx=>(await tx.execute<{allowed:boolean}>(sql`select app.organisation_action_allowed('view',${other.id}::uuid) as allowed`))[0].allowed);
  expect(await allowed(context)).toBe(true);
  expect(await owner.client`select * from access_user_override where tenant_id=${b.tenantId}::uuid and user_id=${user.id}::uuid`).toEqual([]);
  const narrowed={...context,grants:[{role:'hr_admin',companyId:b.companyId},{role:'employee',companyId:null}]};

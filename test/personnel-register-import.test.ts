@@ -13,7 +13,7 @@ import {registerRecordsForEmployee,previewQualificationSection,commitQualificati
 import {addQualification,archiveQualification,listQualifications,updateQualification} from '../core/qualifications';
 import {addEmergencyContact,archiveEmergencyContact,listEmergencyContacts,updateEmergencyContact} from '../core/emergency-contacts';
 import {assertProfileValueAllowed} from '../core/profile-options';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
 let b:Base,ctx:SessionContext;
 const hire=(code:string)=>hireEmployee(ctx,{person:{fullName:code,primaryEmail:`${code.toLowerCase()}@register.test`},employeeCode:code,companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
@@ -123,13 +123,18 @@ describe('Qualification and Emergency Contact register imports',()=>{
   });
   it('requires exact administered company scope, refuses employee/manager writers and inactive employment',async()=>{
     const e=await hire('REG001');
-    for(const roles of [['employee'],['manager']]) {
-      const actor={tenantId:b.tenantId,personId:e.personId,roles};
+    for(const role of ['employee','manager'] as const) {
+      const userId=await createAppUser(b.tenantId,e.personId,role);
+      const actor={tenantId:b.tenantId,userId,personId:e.personId,roles:[role],grants:[{role,companyId:null}]};
       const preview=await validateSectionImport(actor,{section:'emergency',records:[{employee_code:'REG001',full_name:'No rights'}]});expect(preview.updateCount).toBe(0);
       await expect(registerRecordsForEmployee(actor,'emergency','REG001')).rejects.toThrow('administered');
     }
     const [otherCompany]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Other company',country:'MY'}).returning();
-    const scoped={tenantId:b.tenantId,personId:e.personId,grants:[{role:'hr_admin',companyId:otherCompany.id},{role:'employee',companyId:b.companyId}]};
+    const userId=await createAppUser(b.tenantId,e.personId,'hr_admin');
+    await owner.db.update(schema.roleAssignment).set({companyId:otherCompany.id}).where(eq(schema.roleAssignment.appUserId,userId));
+    await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:userId,role:'employee',companyId:b.companyId});
+    const scoped={tenantId:b.tenantId,userId,personId:e.personId,roles:['hr_admin','employee'],
+      grants:[{role:'hr_admin',companyId:otherCompany.id},{role:'employee',companyId:b.companyId}]};
     expect((await commitSectionImport(scoped,{section:'qualification',records:[{employee_code:'REG001',qualification:'Bachelor'}]})).updated).toBe(0);
     await owner.db.update(schema.employment).set({terminatedOn:'2026-01-01'}).where(eq(schema.employment.id,e.employmentId));
     expect((await validateSectionImport(ctx,{section:'emergency',records:[{employee_code:'REG001',full_name:'No inactive writes'}]})).rows[0].ok).toBe(false);
