@@ -1,8 +1,9 @@
-/** Actual stored native ACL/default/current-carrier courses. No activation sentinel or test-only grants. */
+/** Actual stored native ACL/default/current-carrier courses and storage-owner publication. */
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import * as s from '../db/schema';
 import type {LetterCapability} from '../lib/letter-workflow';
 import {saveLetterPermission,readLetterPermissions} from '../core/letters';
@@ -55,4 +56,23 @@ it('a native Settings-only writer can manage the same configuration course but c
  await saveLetterPermission(ctx,{companyId:b.companyId,role:'manager',capability:'settings',allowed:true});
  const grants=await readLetterPermissions(ctx,b.companyId);expect(grants).toContainEqual({role:'manager',capability:'settings',allowed:true});
  expect(grants.some(grant=>grant.role==='manager'&&grant.capability==='issue')).toBe(false);
+});
+
+it('publishes Letters operations and preserves the exact native read-only ACL',async()=>{
+ await acl('read');
+ const cap='function.letterFields.view';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'letter_operations')).toMatchObject({changed:true,capabilities:33});
+  expect(await publishActionCapabilityPackage(owner.client,'letter_operations')).toMatchObject({changed:false});
+  expect(await allowed('letterFields','view')).toBe(true);
+  expect(await allowed('letterFields','add')).toBe(false);
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${userId}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  expect(await allowed('letterFields','view')).toBe(false);
+  expect(await allowed('letterTemplates','view')).toBe(true);
+ }finally{
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+   where id like any(array['letters.%','function.letter%.%','function.myLetters.%'])`;
+ }
 });

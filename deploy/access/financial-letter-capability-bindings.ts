@@ -40,3 +40,17 @@ export const FINANCIAL_LETTER_CAPABILITY_PUBLICATION={
   capability.id.startsWith('performance_compensation.')?['system_administrator','hr_admin','performance_comp_partner']:letterLegacy,
  ])) as Record<string,readonly string[]>,
 } as const;
+
+export const LETTER_OPERATIONS_CAPABILITY_PUBLICATION={
+ ...FINANCIAL_LETTER_CAPABILITY_PUBLICATION,
+ capabilities:letters,
+ functions:FINANCIAL_LETTER_FUNCTIONS.filter(descriptor=>descriptor.moduleKey==='letters'),
+ legacyGroups:Object.fromEntries(letters.map(capability=>[capability.id,letterLegacy])),
+ requiredFunctions:[
+  'app.letter_operations_bindings_complete()',
+  'app.access_letter_action_for_user(uuid,uuid,uuid,text,text)',
+  'app.access_letter_write_guard()',
+  'app.letter_function_action(text,text,uuid)',
+  'app.letter_recipient_function_action(text)',
+ ],
+} as const;

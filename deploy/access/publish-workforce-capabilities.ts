@@ -8,7 +8,7 @@ import {ATTENDANCE_ROTATION_CAPABILITY_PUBLICATION,ATTENDANCE_SCHEDULE_CAPABILIT
 import {LIFECYCLE_ASSIGNED_EXCEPTION_CAPABILITY_PUBLICATION,LIFECYCLE_DELIVERY_CAPABILITY_PUBLICATIONS,LIFECYCLE_RECOVERY_CAPABILITY_PUBLICATION,LIFECYCLE_TASK_CAPABILITY_PUBLICATION,NOTICE_AUTHOR_CAPABILITY_PUBLICATION} from './lifecycle-reward-notice-capability-bindings';
 import {REWARDS_READ_CAPABILITY_PUBLICATION} from './rewards-function-bindings';
 import {FINANCIAL_SETUP_CAPABILITY_PUBLICATION} from './financial-setup-capability-bindings';
-import {FINANCIAL_LETTER_CAPABILITY_PUBLICATION} from './financial-letter-capability-bindings';
+import {FINANCIAL_LETTER_CAPABILITY_PUBLICATION,LETTER_OPERATIONS_CAPABILITY_PUBLICATION} from './financial-letter-capability-bindings';
 import {ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION} from './organisation-settings-capability-bindings';
 
 export const WORKFORCE_CAPABILITY_PUBLICATION_VERSION=3;
@@ -120,6 +120,7 @@ const ACTION_PACKAGES={
  workforce_import_revert:[WORKFORCE_IMPORT_REVERT_CAPABILITY_PUBLICATION],
  workforce_drafts:[WORKFORCE_DRAFT_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_AUTHOR_CAPABILITY_PUBLICATION],
  financial_letters:[FINANCIAL_LETTER_CAPABILITY_PUBLICATION],
+ letter_operations:[LETTER_OPERATIONS_CAPABILITY_PUBLICATION],
  organisation_settings:[ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION],
  financial_setup:[FINANCIAL_SETUP_CAPABILITY_PUBLICATION],
 } as const satisfies Record<string,readonly DomainPublication[]>;
@@ -211,9 +212,12 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
   const uninstalled=rows.every(row=>!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0);
   const knownV1=rows.every(row=>{const old=WORKFORCE_CAPABILITY_BINDINGS_V1.find(item=>item.id===row.id);return old?row.supported&&exactBindings(row.bindings,old.bindings):!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0;});
   const knownV2=rows.every(row=>{const old=WORKFORCE_CAPABILITY_BINDINGS_V2.find(item=>item.id===row.id);return old?row.supported&&exactBindings(row.bindings,old.bindings):!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0;});
+  const letterComponentIds=new Set([...LETTER_OPERATIONS_CAPABILITY_PUBLICATION.capabilities,
+   ...functionActionCapabilities(LETTER_OPERATIONS_CAPABILITY_PUBLICATION.functions)].map(capability=>capability.id));
   const knownComponents=rows.every((row,index)=>row.supported?exactBindings(row.bindings,expected[index].bindings):Array.isArray(row.bindings)&&row.bindings.length===0)
    &&(!includeWorkforce||rows.filter(row=>WORKFORCE_CAPABILITY_BINDINGS_V2.some(capability=>capability.id===row.id)).every(row=>row.supported)||rows.filter(row=>WORKFORCE_CAPABILITY_BINDINGS_V2.some(capability=>capability.id===row.id)).every(row=>!row.supported))
    &&domains.every(domain=>{const family=rows.filter(row=>domain.capabilities.some(capability=>capability.id===row.id));const children=rows.filter(row=>functionActionCapabilities(domain.functions??[]).some(capability=>capability.id===row.id));return family.every(row=>row.supported)&&children.every(row=>row.supported)||family.every(row=>!row.supported)&&children.every(row=>!row.supported)||family.every(row=>row.supported)&&children.every(row=>!row.supported)
+    ||domain===FINANCIAL_LETTER_CAPABILITY_PUBLICATION&&[...family,...children].every(row=>row.supported===letterComponentIds.has(row.id))
     ||domain===LEAVE_EMPLOYEE_RECORDS_CAPABILITY_PUBLICATION&&[...family,...children].every(row=>row.supported===(row.id==='leave.view'||row.id==='function.leaveEmployeeRecords.view'))
     ||domain===EMPLOYEE_MASTER_DEFINITION_CAPABILITY_PUBLICATION&&children.every(row=>row.supported===(row.id==='function.employeeMasterReports.view'));});
   requireInstallation(already||uninstalled||knownV1||knownV2||knownComponents); // Refuse partial/unknown versions without overwriting them.
@@ -238,6 +242,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    `${row.missing?'missing function':'unexpected function owner'} ${row.signature}`).join(', '));
   const coverageChecks=[
    ...(key==='all'||key==='financial_letters'?['app.financial_letter_bindings_complete']:[]),
+   ...(key==='all'||key==='letter_operations'?['app.letter_operations_bindings_complete']:[]),
    ...(key==='all'||key==='organisation_settings'?['app.organisation_settings_bindings_complete']:[]),
    ...(key==='all'||key==='financial_setup'?['app.financial_setup_bindings_complete']:[]),
    ...(key==='all'||key==='workforce_imports'?['app.workforce_imports_bindings_complete']:[]),

@@ -4873,6 +4873,13 @@
       "when": 1793330000392,
       "tag": "0992_rewards_read_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 840,
+      "version": "7",
+      "when": 1793330000393,
+      "tag": "0993_letter_operations_binding_readiness",
+      "breakpoints": true
     }
   ]
 }
