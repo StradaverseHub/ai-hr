@@ -466,6 +466,10 @@
       "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, other {# วัน}})",
       "leaveApplyMorningTitle": "{leaveType}, {start} (ครึ่งวัน ช่วงเช้า)",
       "leaveApplyAfternoonTitle": "{leaveType}, {start} (ครึ่งวัน ช่วงบ่าย)",
+      "attendanceClockOutTitle": "แก้ไขเวลาออกงาน, {date}, {time}",
+      "attendanceClockInTitle": "แก้ไขเวลาเข้างาน, {date}, {time}",
+      "attendanceClockBothTitle": "แก้ไขเวลาลงเวลา, {date}, {start} – {end}",
+      "overtimeRequestTitle": "คำขอทำงานล่วงเวลา, {date}, {start} – {end}",
       "review": "ตรวจสอบ",
       "open": "เปิด",
       "expires": "หมดอายุ {time}",
@@ -488,7 +492,9 @@
         "fallback": "การเปลี่ยนแปลงที่พร้อมให้คุณตรวจสอบ",
         "leave_apply": "ใบลาพร้อมให้ตรวจสอบ",
         "leave_cancel": "การยกเลิกการลาพร้อมให้ตรวจสอบ",
-        "approvals_leave_decide": "การตัดสินใบลาพร้อมให้ตรวจสอบ"
+        "approvals_leave_decide": "การตัดสินใบลาพร้อมให้ตรวจสอบ",
+        "attendance_correction_request": "การแก้ไขเวลาทำงานพร้อมให้ตรวจสอบ",
+        "attendance_overtime_request": "คำขอทำงานล่วงเวลาพร้อมให้ตรวจสอบ"
       },
       "checks": {
         "actor_current": "สิทธิ์เข้าถึงของคุณยังใช้ได้",
@@ -498,7 +504,10 @@
         "leave_type_eligible": "ประเภทการลาได้รับอนุญาต",
         "own_approved_cancellable": "ยังยกเลิกได้",
         "own_pending_request": "คำขอยังรออยู่",
-        "review_contract": "หน้าตรวจสอบพร้อมแล้ว"
+        "review_contract": "หน้าตรวจสอบพร้อมแล้ว",
+        "attendance_day_read": "อ่านจากบันทึกเวลาทำงานของคุณ",
+        "attendance_request_rules": "กฎการลงเวลาอนุญาต",
+        "approval_route": "พบเส้นทางการอนุมัติ"
       },
       "outcomes": {
         "withdrawn_now": "ถอนทันที",

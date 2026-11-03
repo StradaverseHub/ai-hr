@@ -466,6 +466,10 @@
       "leaveApplyRangeTitle": "{leaveType}，{start} – {end}（{days, plural, other {# 天}}）",
       "leaveApplyMorningTitle": "{leaveType}，{start}（半天，上午）",
       "leaveApplyAfternoonTitle": "{leaveType}，{start}（半天，下午）",
+      "attendanceClockOutTitle": "下班打卡更正，{date}，{time}",
+      "attendanceClockInTitle": "上班打卡更正，{date}，{time}",
+      "attendanceClockBothTitle": "打卡更正，{date}，{start} – {end}",
+      "overtimeRequestTitle": "加班申请，{date}，{start} – {end}",
       "review": "审核",
       "open": "打开",
       "expires": "{time} 过期",
@@ -488,7 +492,9 @@
         "fallback": "一项待您审核的更改",
         "leave_apply": "请假申请待审核",
         "leave_cancel": "取消请假待审核",
-        "approvals_leave_decide": "请假决定待审核"
+        "approvals_leave_decide": "请假决定待审核",
+        "attendance_correction_request": "考勤更正待审核",
+        "attendance_overtime_request": "加班申请待审核"
       },
       "checks": {
         "actor_current": "您的权限有效",
@@ -498,7 +504,10 @@
         "leave_type_eligible": "假期类型允许",
         "own_approved_cancellable": "仍可取消",
         "own_pending_request": "申请仍待处理",
-        "review_contract": "审核页面已就绪"
+        "review_contract": "审核页面已就绪",
+        "attendance_day_read": "已读取您的考勤记录",
+        "attendance_request_rules": "考勤规则允许",
+        "approval_route": "已找到审批流程"
       },
       "outcomes": {
         "withdrawn_now": "立即撤回",

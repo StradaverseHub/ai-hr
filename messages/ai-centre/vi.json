@@ -466,6 +466,10 @@
       "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, other {# ngày}})",
       "leaveApplyMorningTitle": "{leaveType}, {start} (nửa ngày, buổi sáng)",
       "leaveApplyAfternoonTitle": "{leaveType}, {start} (nửa ngày, buổi chiều)",
+      "attendanceClockOutTitle": "Điều chỉnh giờ ra, {date}, {time}",
+      "attendanceClockInTitle": "Điều chỉnh giờ vào, {date}, {time}",
+      "attendanceClockBothTitle": "Điều chỉnh chấm công, {date}, {start} – {end}",
+      "overtimeRequestTitle": "Yêu cầu làm thêm giờ, {date}, {start} – {end}",
       "review": "Xem xét",
       "open": "Mở",
       "expires": "Hết hạn {time}",
@@ -488,7 +492,9 @@
         "fallback": "Một thay đổi sẵn sàng để bạn xem xét",
         "leave_apply": "Đơn nghỉ phép sẵn sàng để xem xét",
         "leave_cancel": "Hủy nghỉ phép sẵn sàng để xem xét",
-        "approvals_leave_decide": "Quyết định nghỉ phép sẵn sàng để xem xét"
+        "approvals_leave_decide": "Quyết định nghỉ phép sẵn sàng để xem xét",
+        "attendance_correction_request": "Điều chỉnh chấm công sẵn sàng để xem xét",
+        "attendance_overtime_request": "Yêu cầu làm thêm giờ sẵn sàng để xem xét"
       },
       "checks": {
         "actor_current": "Quyền truy cập của bạn còn hiệu lực",
@@ -498,7 +504,10 @@
         "leave_type_eligible": "Loại phép được phép",
         "own_approved_cancellable": "Vẫn có thể hủy",
         "own_pending_request": "Đơn vẫn đang chờ",
-        "review_contract": "Trang xem xét đã sẵn sàng"
+        "review_contract": "Trang xem xét đã sẵn sàng",
+        "attendance_day_read": "Đã đọc từ hồ sơ chấm công của bạn",
+        "attendance_request_rules": "Quy định chấm công cho phép",
+        "approval_route": "Đã tìm thấy quy trình phê duyệt"
       },
       "outcomes": {
         "withdrawn_now": "Rút lại ngay",

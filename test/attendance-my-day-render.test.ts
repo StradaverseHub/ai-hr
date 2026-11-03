@@ -41,6 +41,14 @@ const render = async (extra = {}) => {
   return renderToStaticMarkup(createElement(NextIntlClientProvider, { locale: state.locale, messages: JSON.parse(readFileSync(new URL(`../messages/${state.locale}.json`, import.meta.url), 'utf8')), children: resolved }));
 };
 describe('employee day render', () => {
+  it('AI v2 W2: an attendance card\'s Edit seeds the clock boxes with the times it asked for, and only well-formed ones', async () => {
+    const asked = await render({ checkOut: '18:10' });
+    expect(asked).toContain('name="checkOut" value="18:10"');expect(asked).toContain('name="checkIn" value="09:00"');
+    const both = await render({ checkIn: '08:30', checkOut: '18:10' });
+    expect(both).toContain('name="checkIn" value="08:30"');expect(both).toContain('name="checkOut" value="18:10"');
+    // A malformed or repeated value is ignored: the boxes open on what is on record.
+    for (const checkOut of ['6:10pm', '25:00', ['18:10', '19:00']]) expect(await render({ checkOut })).toContain('name="checkOut" value="18:00"');
+  });
   it.each(['en','ms','zh','ta','th','vi'])('retains translated workflow refusal in %s after the global toast query consumer',async locale=>{
     state.locale=locale;const html=await render({correctionError:'myDayWorkflowUnavailable'});
     const catalogue=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8')).attendance;

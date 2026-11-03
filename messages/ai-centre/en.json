@@ -466,6 +466,10 @@
       "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, one {# day} other {# days}})",
       "leaveApplyMorningTitle": "{leaveType}, {start} (half day, morning)",
       "leaveApplyAfternoonTitle": "{leaveType}, {start} (half day, afternoon)",
+      "attendanceClockOutTitle": "Clock-out correction, {date}, {time}",
+      "attendanceClockInTitle": "Clock-in correction, {date}, {time}",
+      "attendanceClockBothTitle": "Clock correction, {date}, {start} – {end}",
+      "overtimeRequestTitle": "Overtime request, {date}, {start} – {end}",
       "review": "Review",
       "open": "Open",
       "expires": "Expires {time}",
@@ -488,7 +492,9 @@
         "fallback": "A change ready for your review",
         "leave_apply": "Leave application ready to review",
         "leave_cancel": "Leave cancellation ready to review",
-        "approvals_leave_decide": "Leave decision ready to review"
+        "approvals_leave_decide": "Leave decision ready to review",
+        "attendance_correction_request": "Attendance correction ready to review",
+        "attendance_overtime_request": "Overtime request ready to review"
       },
       "checks": {
         "actor_current": "Your access is current",
@@ -498,7 +504,10 @@
         "leave_type_eligible": "Leave type allowed",
         "own_approved_cancellable": "Can still be cancelled",
         "own_pending_request": "Request still pending",
-        "review_contract": "Review page ready"
+        "review_contract": "Review page ready",
+        "attendance_day_read": "Read from your attendance record",
+        "attendance_request_rules": "Attendance rules allow it",
+        "approval_route": "Approval route found"
       },
       "outcomes": {
         "withdrawn_now": "Withdrawn at once",

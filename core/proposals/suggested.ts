@@ -18,6 +18,8 @@
  *    a reason; the type resolves only against the caller's own apply menu, and the reason counts only when it is the
  *    person's own words this turn. Missing or unclear details are asked for in one question (the menu numbered when
  *    the type is unclear); otherwise ./leave-apply.ts issues the review proposal (one full day) or the form proposal.
+ *  - attendance.correction.request and attendance.overtime.request (AI v2 W2): the caller's own attendance only, through
+ *    ./attendance-request.ts; missing details are asked for in one question, and the attendance service decides.
  * Returns null when neither a proposal, a choice nor a question is issued; never throws. */
 import {and,eq,inArray} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
@@ -33,6 +35,7 @@ import {matchLeaveTypeWords} from './leave-type-match';
 import {prepareLeaveDecideProposal} from './leave-decide';
 import type {Proposal} from './proposal';
 import {PENDING_STARTS} from '../semantic-model/entities-recommend';
+import {prepareChatAttendanceCorrectionProposal,prepareChatOvertimeRequestProposal,type AttendanceChatOutcome} from './attendance-request';
 
 const isDate=(value:unknown):value is string=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value);
 /** "Do not approve", "don't approve", "never approve", "not yet approve", "jangan lulus", "tak approve": a negation
@@ -160,7 +163,7 @@ export async function prepareChatLeaveApplyProposal(ctx:SessionContext,details:R
 }
 
 export type SuggestedOutcome=Readonly<{kind:'proposal';proposal:Proposal}>|Readonly<{kind:'choose';pending:readonly PendingChoice[];more:number}>
- |Extract<ChatLeaveApplyOutcome,{kind:'ask'}>;
+ |Extract<ChatLeaveApplyOutcome,{kind:'ask'}>|Extract<AttendanceChatOutcome<string>,{kind:'ask'}>;
 /** At most this many pending requests are listed; the rest are counted and left to the Approvals page. */
 export const MAX_PENDING_CHOICES=10;
 
@@ -168,6 +171,9 @@ export async function prepareSuggestedProposal(ctx:SessionContext,action:string,
  try{
   const given=details&&typeof details==='object'&&!Array.isArray(details)?details as Record<string,unknown>:{};
   if(action==='leave.apply')return await prepareChatLeaveApplyProposal(ctx,given,personWords,locale,now);
+  // AI v2 W2: own attendance requests (./attendance-request.ts), the caller's own records only.
+  if(action==='attendance.correction.request')return await prepareChatAttendanceCorrectionProposal(ctx,given,personWords,now);
+  if(action==='attendance.overtime.request')return await prepareChatOvertimeRequestProposal(ctx,given,personWords);
   if(action==='leave.cancel'){
    if(!ctx.personId)return null;
    const today=todayInKualaLumpur(now),date=isDate(given.startDate)?given.startDate:null;

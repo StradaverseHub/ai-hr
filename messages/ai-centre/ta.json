@@ -466,6 +466,10 @@
       "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, one {# நாள்} other {# நாட்கள்}})",
       "leaveApplyMorningTitle": "{leaveType}, {start} (அரை நாள், காலை)",
       "leaveApplyAfternoonTitle": "{leaveType}, {start} (அரை நாள், மதியம்)",
+      "attendanceClockOutTitle": "வெளியேறும் நேரத் திருத்தம், {date}, {time}",
+      "attendanceClockInTitle": "வருகை நேரத் திருத்தம், {date}, {time}",
+      "attendanceClockBothTitle": "வருகைப் பதிவுத் திருத்தம், {date}, {start} – {end}",
+      "overtimeRequestTitle": "கூடுதல் நேரக் கோரிக்கை, {date}, {start} – {end}",
       "review": "மதிப்பாய்வு",
       "open": "திற",
       "expires": "{time} அன்று காலாவதியாகும்",
@@ -488,7 +492,9 @@
         "fallback": "உங்கள் மதிப்பாய்வுக்குத் தயாரான மாற்றம்",
         "leave_apply": "விடுப்பு விண்ணப்பம் மதிப்பாய்வுக்குத் தயார்",
         "leave_cancel": "விடுப்பு ரத்து மதிப்பாய்வுக்குத் தயார்",
-        "approvals_leave_decide": "விடுப்பு முடிவு மதிப்பாய்வுக்குத் தயார்"
+        "approvals_leave_decide": "விடுப்பு முடிவு மதிப்பாய்வுக்குத் தயார்",
+        "attendance_correction_request": "வருகைத் திருத்தம் மதிப்பாய்வுக்குத் தயார்",
+        "attendance_overtime_request": "கூடுதல் நேரக் கோரிக்கை மதிப்பாய்வுக்குத் தயார்"
       },
       "checks": {
         "actor_current": "உங்கள் அணுகல் நடப்பில் உள்ளது",
@@ -498,7 +504,10 @@
         "leave_type_eligible": "விடுப்பு வகை அனுமதிக்கப்பட்டது",
         "own_approved_cancellable": "இன்னும் ரத்து செய்யலாம்",
         "own_pending_request": "விண்ணப்பம் இன்னும் நிலுவையில்",
-        "review_contract": "மதிப்பாய்வுப் பக்கம் தயார்"
+        "review_contract": "மதிப்பாய்வுப் பக்கம் தயார்",
+        "attendance_day_read": "உங்கள் வருகைப் பதிவிலிருந்து படிக்கப்பட்டது",
+        "attendance_request_rules": "வருகை விதிகள் அனுமதிக்கின்றன",
+        "approval_route": "ஒப்புதல் வழி கண்டறியப்பட்டது"
       },
       "outcomes": {
         "withdrawn_now": "உடனே திரும்பப் பெறப்படும்",

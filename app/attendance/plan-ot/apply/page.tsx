@@ -64,7 +64,7 @@ import { PlanOtFields } from './plan-ot-fields';
 export default async function ApplyOtPlanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; error?: string }>;
+  searchParams: Promise<{ date?: string; error?: string; start?: string; end?: string }>;
 }) {
   const t = await getTranslations('me'),tr=await getTranslations('attendance.overtimeRecords');
   const locale = await getLocale();
@@ -208,6 +208,8 @@ export default async function ApplyOtPlanPage({
   // On a rest day, a public holiday or an off day there is no scheduled finishing time to start from, and
   // guessing one would put a number in front of the approver that nobody chose.
   const plannedStartPrefill = day?.kind === 'workday' ? (day.scheduleEnd ?? '') : '';
+  // AI v2 W2 — a chat card's Edit opens this form on its window (`start`, `end`, HH:MM). Only well-formed times seed it.
+  const askedTime = (value: string | undefined) => typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : undefined;
 
   return (
     /* c7c69a18 — FULL WIDTH. `mx-auto max-w-6xl` left about a third of a wide monitor as empty margin
@@ -379,6 +381,8 @@ export default async function ApplyOtPlanPage({
                 committed={cap.total}
                 capMinutes={cap.capMinutes}
                 plannedStartPrefill={plannedStartPrefill}
+                plannedStartAsked={askedTime(sp.start)}
+                plannedEndAsked={askedTime(sp.end)}
               />
 
               <Field label={t('reasonRequired')} required requiredAriaLabel={t('reasonRequired')}>

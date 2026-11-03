@@ -165,6 +165,17 @@ export const SEMANTIC_ENTITIES:readonly SemanticEntity[]=freeze([
   ruleVersion:null,relations:[{to:'leave_request',kind:'many_to_one',via:'leaveRequestId'}],page:'/approvals',
   fields:[f('leaveRequestId','id','never','Handle of the request.'),f('currentStepId','id','never','Handle of the step.'),
    f('decision','enum','minimum','The approver\'s decision.',{values:['approve','reject']}),f('rejectReason','text','never','Free text the approver typed.')]},
+ // AI v2 W2: one own attendance request (a clock correction or an overtime request), filed for the existing approval.
+ {id:'attendance_request',label:'Attendance request',meaning:'One request by the caller to correct their own attendance day or to work overtime, sent for the existing approval.',
+  module:'attendance',sensitivity:'ordinary',audience:'self',rls:'own_employment',owners:['core/read.ts#myEmployment','packs/attendance/service.ts#attendanceForEmploymentRange','packs/attendance/service.ts#myAttendanceCorrections'],
+  ruleVersion:null,relations:[],page:'/attendance/requests',
+  fields:[f('employmentId','id','never','Handle of the caller\'s employment.'),f('date','date','minimum','Attendance day.'),
+   f('checkIn','time','minimum','Clock-in asked for.'),f('checkOut','time','minimum','Clock-out asked for.'),
+   f('recordedCheckIn','time','minimum','Clock-in on record.'),f('recordedCheckOut','time','minimum','Clock-out on record.'),
+   f('plannedStartTime','time','minimum','Overtime start.'),f('plannedEndTime','time','minimum','Overtime end.'),
+   f('requestedOtMinutes','integer','minimum','Overtime minutes, as the attendance service counted the window.'),
+   f('status','enum','full','Where the request stands.',{values:['pending','approved','rejected','cancelled']}),
+   f('reason','text','never','Free text the person typed.'),f('remark','text','never','Free text the person typed.')]},
 ] satisfies SemanticEntity[]);
 
 /** One declaration per Assistant read, in ASSISTANT_TOOLS order. Input schemas are the catalogue's own. */
@@ -225,6 +236,24 @@ export const SEMANTIC_ACTIONS:readonly SemanticAction[]=freeze([
    actorCheck,{check:'own_approved_cancellable',owner:'core/read.ts#employeeCancelOffers',ruleVersion:null}],
   reviewRoute:'/assistant/leave',humanInputs:['employmentId','leaveRequestId','cancel'],
   nominable:[{name:'startDate',optional:true,type:'date'}],proposal:'core/proposals/leave-cancel.ts#prepareLeaveCancelProposal'},
+ // AI v2 W2: own attendance requests prepared from chat. The attendance service decides; the approval route is ADR-0121's.
+ {id:'attendance.correction.request',entity:'attendance_request',effect:'create',module:'attendance',purpose:'Ask to correct your own clock-in or clock-out on a past day.',
+  audience:'self',actor:'self',service:'packs/attendance/service.ts#requestAttendanceCorrection',guard:'core/assistant-actions/own-attendance-correction-source.ts#assertOwnAttendanceCorrectionActorTx',
+  preparer:'core/assistant-actions/own-attendance-correction-source.ts#prepareOwnAttendanceCorrectionTx',
+  checks:[{check:'actor_current',owner:'core/assistant-actions/own-attendance-correction-source.ts#assertOwnAttendanceCorrectionActorTx',ruleVersion:null},aiControls,
+   {check:'attendance_day_read',owner:'packs/attendance/service.ts#attendanceForEmploymentRange',ruleVersion:null},
+   {check:'attendance_request_rules',owner:'packs/attendance/service.ts#prepareAttendanceCorrectionRequestTx',ruleVersion:null},
+   {check:'approval_route',owner:'packs/attendance/service.ts#prepareAttendanceWorkflowSnapshotTx',ruleVersion:null}],
+  reviewRoute:'/assistant/attendance',humanInputs:['employmentId','date','checkIn','checkOut','requestedOtMinutes','plannedStartTime','plannedEndTime','otReasonCategory','reason','remark','requestKind','clockChanges','unclockedWork'],
+  nominable:[{name:'date',optional:false,type:'date'}],proposal:'core/proposals/attendance-request.ts#prepareChatAttendanceCorrectionProposal'},
+ {id:'attendance.overtime.request',entity:'attendance_request',effect:'create',module:'attendance',purpose:'Request overtime for yourself on one date, for a start and end time.',
+  audience:'self',actor:'self',service:'packs/attendance/service.ts#requestAttendanceCorrectionTx',guard:'core/assistant-actions/own-overtime-request-source.ts#withOwnOvertimeSubjectTx',
+  preparer:'core/assistant-actions/own-overtime-request-source.ts#prepareOwnOvertimeSourceTx',
+  checks:[actorCheck,aiControls,
+   {check:'attendance_request_rules',owner:'packs/attendance/service.ts#prepareAttendanceCorrectionRequestTx',ruleVersion:null},
+   {check:'approval_route',owner:'packs/attendance/service.ts#prepareAttendanceWorkflowSnapshotTx',ruleVersion:null}],
+  reviewRoute:'/assistant/attendance',humanInputs:['employmentId','date','plannedStartTime','plannedEndTime','reason','remark'],
+  nominable:[{name:'date',optional:false,type:'date'}],proposal:'core/proposals/attendance-request.ts#prepareChatOvertimeRequestProposal'},
 ] satisfies SemanticAction[]);
 
 export const semanticEntity=(id:string):SemanticEntity=>{const entity=SEMANTIC_ENTITIES.find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};
