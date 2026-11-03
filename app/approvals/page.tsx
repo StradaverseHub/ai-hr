@@ -666,6 +666,7 @@ export default async function ApprovalsPage({
                           remark={r.employeeRemark || r.reason}
                           labels={dateBreakdownLabels}
                           nav={nav}
+                          recommendationRecordId={recommendationRecordId(r.id)}
                         />
                       </div>
                     ) : (

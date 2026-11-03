@@ -16,6 +16,7 @@ import {isModuleEnabledOrFalse} from '@/core/entitlements';
 import {myResignation} from '@/core/offboarding';
 import {serviceYearsMonthsDaysAt} from '@/packs/leave/service';
 import {readOwnProfileWorkspace} from '@/core/profile-edit';
+import {ownProfileEditSeed} from '@/core/own-profile-edit-seed';
 import {readOwnProfileFacts} from '@/core/profile-view';
 import {essFactVisible} from '@/lib/personnel-ess-visibility';
 import {personnelField} from '@/lib/personnel-field-registry';
@@ -43,14 +44,14 @@ const MONO_TXT_LINK='monolith:rounded-none monolith:border-x-0 monolith:border-t
 export default async function MePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; month?: string; cycle?: string; asOf?: string; tab?: string; employmentId?:string }>;
+  searchParams: Promise<{ error?: string; month?: string; cycle?: string; asOf?: string; tab?: string; employmentId?:string; profileSeed?:string }>;
 }) {
   const t = await getTranslations('me');
 
   const tp = await getTranslations('people.detail');
   const tRun = await getTranslations('payroll.list.runType'); // Wave 2C — shared run-type labels
   const s = await getSession();
-  const { error, month: spMonth, cycle: spCycle, asOf: spAsOf, tab: spTab, employmentId:requestedEmploymentId } = await searchParams;
+  const { error, month: spMonth, cycle: spCycle, asOf: spAsOf, tab: spTab, employmentId:requestedEmploymentId, profileSeed:spProfileSeed } = await searchParams;
 
   if (spTab === 'performance') redirect('/me/performance');
 
@@ -81,6 +82,9 @@ export default async function MePage({
   const { employmentId } = record;
   const employments = own;
   const [workspace,facts]=await Promise.all([readOwnProfileWorkspace(s,{employmentId},presentation),readOwnProfileFacts(s,employmentId,presentation)]);
+  // AI v2 slice 3 follow-up: a profile change prepared in chat opens the form filled from its own sealed review, which
+  // is reopened here as the caller (core/own-profile-edit-seed.ts); the link carries only the review handle.
+  const profileSeed=spProfileSeed===undefined?null:await ownProfileEditSeed(s,spProfileSeed,workspace);
 
   const payrollOn = isModuleEnabledOrFalse(s, 'payroll')&&tabVisible('Payroll');
 
@@ -496,7 +500,7 @@ export default async function MePage({
     {ownPhotoSubmissionAllowed(presentation)&&<Card className="p-4"><form action={saveOwnPhotoAction} className="flex flex-wrap items-end gap-3"><input type="hidden" name="employmentId" value={employmentId}/><Field label={te('ownPhoto')}><input type="file" name="photo" accept="image/png,image/jpeg" required className={inputCls}/></Field><Button type="submit" variant="outline">{te('submitPhoto')}</Button><p className="text-xs text-muted-foreground">{te('photoFormats')}</p></form></Card>}
     {visible.has('profile.personal_details.photo')&&profileRequests.filter(request=>request.status==='pending'&&request.proposed&&typeof request.proposed==='object'&&'kind' in request.proposed&&request.proposed.kind==='photo').map(request=><Card key={request.id} className="space-y-3 p-4"><h3 className="font-medium">{te('pendingPhoto')}</h3><p className="text-sm text-muted-foreground">{te('photoApprovalHelp')}</p><img src={`/me/photo-proposal/${request.id}`} alt={te('proposedPhoto')} className="size-24 rounded-md object-cover"/></Card>)}
     {!workspace.statutoryAvailable&&<Card className="p-4 text-sm text-muted-foreground">{te('countryUnavailable')}</Card>}
-    <ProfileEditor key={employmentId+':'+profileVisibilityFingerprint(visibilityPolicy)} workspace={workspace} facts={facts} defaultTab={activeTab} history={tabVisible('Others')?history:[]} hiddenTabs={[...hiddenTabs]} extraPanels={{payroll:tabVisible('Payroll')?payrollPanel:null,documents:sectionVisible('Documents','Employee documents')?documentsPanel:null,attendance:tabVisible('Attendance')&&facts.modules.attendance?attendancePanel:null,leave:tabVisible('Leave')&&facts.modules.leave?leavePanel:null,others:tabVisible('Others')?<Card className="p-4"><Link href="/me/performance" className="text-primary underline">{t('myPerformanceLink')}</Link></Card>:null}}/>
+    <ProfileEditor key={employmentId+':'+profileVisibilityFingerprint(visibilityPolicy)+(profileSeed?':'+spProfileSeed:'')} workspace={workspace} seed={profileSeed??undefined} facts={facts} defaultTab={activeTab} history={tabVisible('Others')?history:[]} hiddenTabs={[...hiddenTabs]} extraPanels={{payroll:tabVisible('Payroll')?payrollPanel:null,documents:sectionVisible('Documents','Employee documents')?documentsPanel:null,attendance:tabVisible('Attendance')&&facts.modules.attendance?attendancePanel:null,leave:tabVisible('Leave')&&facts.modules.leave?leavePanel:null,others:tabVisible('Others')?<Card className="p-4"><Link href="/me/performance" className="text-primary underline">{t('myPerformanceLink')}</Link></Card>:null}}/>
     <Card className="flex flex-wrap items-center justify-between gap-3 p-4"><div className="min-w-0"><p className="text-sm font-medium">{assistantData('dataTitle')}</p><p className="mt-1 text-xs text-muted-foreground">{assistantData('dataHelp')}</p></div><Link href="/assistant?view=privacy#assistant-privacy" className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{assistantData('dataLink')}</Link></Card>
     {/* AI v2 W11: a person's private cases with HR, written on their own form, never through the AI (ADR-0173). */}
     <PrivateCaseEntryCard/>

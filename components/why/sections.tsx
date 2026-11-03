@@ -40,6 +40,16 @@ export async function PayDifferenceWhy(p:Common&Readonly<{companyId:string;perio
  return draw(p,t,result?payDifferenceView(result,{locale,currency:p.currency},t,tp):null);
 }
 
+/** Today's At a glance payslip row (AI v2 slice 3 follow-up): the same pay-difference panel as the payslip screen, for
+ * the payslip the row names. The company, month and currency are read from that payslip's own detail as the viewer
+ * (the payslip screen's own-only read), only once the panel is asked for; a payslip the person cannot open shows the
+ * quiet unavailable line. */
+export async function PayslipPayDifferenceWhy(p:Common&Readonly<{payslipId:string}>){
+ const detail=await settle(async()=>(await import('@/packs/payroll/service')).myPayslipDetail(p.session,p.payslipId));
+ if(!detail){const {t}=await translators();return draw(p,t,null);}
+ return PayDifferenceWhy({...p,companyId:detail.companyId,period:detail.payPeriod,currency:detail.currency??null});
+}
+
 /** One deduction line of the open payslip, from that payslip's own recorded working. */
 export async function DeductionWhy(p:Common&Readonly<{row:PayslipFigureRow&Readonly<{runType:string}>;item:PayslipDeductionWhy;period:string;currency:string|null}>){
  const {t,tp,locale}=await translators();

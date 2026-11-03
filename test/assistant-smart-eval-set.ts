@@ -64,7 +64,14 @@
  *   annual leave days, withholding any group under five people, any group that would reveal one, and any group whose
  *   members all have the same figure (zero hours included). Fictional Sister Sdn Bhd has one employee, so for the group
  *   administrator each company's headcount and turnover is withheld while the group total is shown. Nobody has left, so
- *   turnover is 0%. No company or department is called Penang. */
+ *   turnover is 0%. No company or department is called Penang.
+ * - Pay and deduction explanations (AI v2 slice 2, explain_pay_difference and the payslip deduction working): they read
+ *   only the person's own RELEASED payslips. Aina has none (the only payslips belong to one other fictional employee), so
+ *   "why is my pay lower" and "why is my EPF this amount" have nothing to explain yet: saying so in one line, without a
+ *   figure or a guessed cause, and pointing to the payslip page is right.
+ * - Claim limit (AI v2 slice 2, explain_claim_limit): Acme has one claim type, "Fictional Travel", with an annual limit of
+ *   RM2,000 and a per-claim cap of RM500 for everyone this year. Aina has claimed nothing on it, so RM2,000 is left; the
+ *   claims service works that out, never the assistant. */
 import type {SmartEvalConversation} from '../core/improvement/smart-eval-score';
 
 const journey={kind:'journey'} as const;
@@ -131,6 +138,20 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
  // AI v2 W2 slice 2: an own Leave Credit request (time off in lieu); the credit is the leave service's count, never pay.
  {id:'emp-toil',role:'employee',turns:[{id:'emp-toil-1',question:'I worked last Saturday from 9am to 5pm for the stock take, can I get replacement leave for it?',locale:'en',kind:'do',factor:'doing',source:journey,
   ideal:'Prepares the Leave Credit request for last Saturday (the date from today), 9:00 am to 5:00 pm, reason stock take, for the person to check and confirm; gives at most the one day the system counted and no pay or rate. Says it goes for approval and nothing is credited until then; does not say it is submitted or approved.',
+  actions:['toil.replacement.request']}]},
+ // AI v2 slice 3 follow-up: the slice 2 explanations (pay difference, a deduction's working, the claim limit) and a
+ // Leave Credit request asked without the hours.
+ {id:'emp-pay-why',role:'employee',turns:[{id:'emp-pay-why-1',question:'why is my pay lower this month',locale:'en',kind:'answer',factor:'facts',source:journey,
+  ideal:'Uses the pay difference explanation over the person\'s own released payslips. Aina has no released payslip yet, so it says in one line that there is no payslip to compare yet and points to her payslips page. Gives no figure, no guessed cause (no "maybe unpaid leave" or "maybe tax"), and does not say "contact payroll".',
+  mustNotMention:PAY_REFUSAL_WORDING}]},
+ {id:'emp-epf-why',role:'employee',turns:[{id:'emp-epf-why-1',question:'why is my EPF this amount',locale:'en',kind:'answer',factor:'facts',source:journey,
+  ideal:'Would explain the EPF line from the payslip\'s own recorded working (the wage it was charged on and the rate), never its own sum. Aina has no released payslip, so it says in one line that there is no payslip yet to explain and points to her payslips page. No figure, no rate quoted as hers, no EPF number, not "contact payroll".',
+  mustNotMention:PAY_REFUSAL_WORDING}]},
+ {id:'emp-claim-limit',role:'employee',turns:[{id:'emp-claim-limit-1',question:"what's my claim limit left",locale:'en',kind:'answer',factor:'facts',source:journey,
+  ideal:'Uses the claim limit read from the claims service: for Fictional Travel, RM2,000 is left of the RM2,000 annual limit this year, at most RM500 per claim. Gives the claims service\'s own figures, never a sum of its own, and may offer to start a claim. Short.',
+  mustMention:['Fictional Travel']}]},
+ {id:'emp-toil-ask',role:'employee',turns:[{id:'emp-toil-ask-1',question:'I worked last Saturday, can I get time off for it',locale:'en',kind:'clarify',factor:'doing',source:journey,
+  ideal:'Says yes, replacement leave can be requested for last Saturday (the date from today), and asks in one short question for the hours worked (the start and end time), and the reason if needed, before preparing the Leave Credit request. Gives no days or pay of its own, and does not say anything is submitted or credited.',
   actions:['toil.replacement.request']}]},
  // ───────────── MANAGER (Ravi Fictional) ─────────────
  {id:'mgr-queue',role:'manager',turns:[

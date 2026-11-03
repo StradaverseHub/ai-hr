@@ -19,3 +19,20 @@ describe('selected own claim form context',()=>{
   render(<NextIntlClientProvider locale="en" messages={en}><ClaimForm types={[type]} submitAction={async()=>({error:null})} todayUtc={today}/></NextIntlClientProvider>);expect(document.querySelector('input[name="employmentId"]')).toBeNull();
  });
 });
+
+describe('the claim form\'s currency (AI v2 slice 3 follow-up)',()=>{
+ const limited:ClaimFormType={...type,balance:{...type.balance,annualLimit:2000,usedThisYear:620,reservedThisYear:120,remainingThisYear:1260,perClaimCap:500}};
+ const amounts=()=>[...document.querySelectorAll('.tabular-nums')].map(el=>el.textContent);
+ it('labels every balance amount with the employing company\'s currency, never a hard-coded RM',()=>{
+  render(<NextIntlClientProvider locale="en" messages={en}><ClaimForm types={[limited]} submitAction={async()=>({error:null})} todayUtc={today} currency="SGD"/></NextIntlClientProvider>);
+  expect(amounts()).toEqual(expect.arrayContaining(['SGD 2,000.00','SGD 620.00','SGD 120.00','SGD 1,260.00','SGD 500.00']));
+  expect(screen.getByText('Amount (SGD)')).toBeTruthy();
+  expect(document.body.textContent).not.toContain('RM');
+ });
+ it('shows the amounts unlabelled when the currency could not be read, rather than guessing one',()=>{
+  render(<NextIntlClientProvider locale="en" messages={en}><ClaimForm types={[limited]} submitAction={async()=>({error:null})} todayUtc={today} currency={null}/></NextIntlClientProvider>);
+  expect(amounts()).toEqual(expect.arrayContaining(['2,000.00','1,260.00']));
+  expect(screen.getByText('Amount')).toBeTruthy();
+  expect(document.body.textContent).not.toContain('RM');
+ });
+});

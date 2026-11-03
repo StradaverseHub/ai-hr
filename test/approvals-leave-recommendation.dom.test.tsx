@@ -16,7 +16,7 @@ import {resolveServerTree} from './helpers/server-tree';
 import aiCentreEn from '../messages/ai-centre/en.json';
 import {RECOMMENDATION_VERDICTS} from '../core/semantic-model/entities-recommend';
 
-const fx=vi.hoisted(()=>({gate:true,assigned:{} as Record<string,string[]>,recommend:vi.fn(),follow:vi.fn(),decideLeave:vi.fn(),redirects:[] as string[]}));
+const fx=vi.hoisted(()=>({gate:true,assigned:{} as Record<string,string[]>,recommend:vi.fn(),follow:vi.fn(),decideLeave:vi.fn(),decideLeaveDate:vi.fn(),decideLeaveDates:vi.fn(),redirects:[] as string[]}));
 vi.mock('next-intl/server',async()=>{
  const {createTranslator}=await import('next-intl');
  const {enWithAiCentre:messages}=await import('./helpers/ai-centre-messages');
@@ -37,7 +37,7 @@ vi.mock('@/core/entitlements',()=>({isModuleEnabledOrFalse:()=>false}));
 vi.mock('@/packs/rewards/service',()=>({pendingRewardReviews:async()=>[]}));
 vi.mock('@/packs/attendance/service',()=>({hasPendingAttendanceParticipantAssignment:async()=>false}));
 vi.mock('@/core/approvals-inbox',()=>({listPendingTasks:async()=>[]}));
-vi.mock('@/core/leave',()=>({decideLeave:(...args:unknown[])=>fx.decideLeave(...args),decideLeaveDate:vi.fn(),decideLeaveDates:vi.fn(),decideLeaveCancellation:vi.fn()}));
+vi.mock('@/core/leave',()=>({decideLeave:(...args:unknown[])=>fx.decideLeave(...args),decideLeaveDate:(...args:unknown[])=>fx.decideLeaveDate(...args),decideLeaveDates:(...args:unknown[])=>fx.decideLeaveDates(...args),decideLeaveCancellation:vi.fn()}));
 vi.mock('@/app/me/actions',()=>({localizeLeaveError:async(e:unknown)=>(e as Error).message}));
 vi.mock('@/core/attendance',()=>({decideAttendanceCorrection:vi.fn(),MissingAttendanceRejectReasonError:class extends Error{}}));
 vi.mock('@/core/profile',()=>({decideProfileChange:vi.fn()}));
@@ -52,7 +52,8 @@ vi.mock('@/lib/public-error',()=>({publicErrorMessage:(e:unknown)=>(e as Error).
 import {LeaveRecommendationRow,PassingFilter,RECOMMEND_ON_OPEN,passingIds,readApprovalRecommendations} from '../app/approvals/leave-recommendations';
 import {LeaveDecideControls} from '../app/approvals/leave-decide-controls';
 import {BulkRowCheckbox,BulkSelectionProvider} from '../app/approvals/bulk-selection';
-import {approveLeaveAction,bulkDecideAction} from '../app/approvals/actions';
+import {approveLeaveAction,bulkDecideAction,decideLeaveDateAction,decideLeaveDatesAction} from '../app/approvals/actions';
+import {LeaveDateBreakdown} from '../app/approvals/leave-date-breakdown';
 
 const ctx=(userId:string,roles:string[])=>({tenantId:'fictional-tenant',userId,personId:'person-'+userId,roles,grants:[]}) as never;
 const MANAGER=ctx('login-manager',['manager']);
@@ -79,7 +80,7 @@ async function showRows(session:never,ids:string[]){
  return {recommendations,view:wrap(tree)};
 }
 
-beforeEach(()=>{fx.gate=true;fx.assigned={'login-manager':[LR_PASS,LR_REVIEW]};fx.recommend.mockReset();fx.follow.mockReset();fx.decideLeave.mockReset();fx.redirects=[];recommenderFixture();});
+beforeEach(()=>{fx.gate=true;fx.assigned={'login-manager':[LR_PASS,LR_REVIEW]};fx.recommend.mockReset();fx.follow.mockReset();fx.decideLeave.mockReset();fx.decideLeaveDate.mockReset();fx.decideLeaveDates.mockReset();fx.redirects=[];recommenderFixture();});
 afterEach(()=>cleanup());
 
 describe('the recommendation on the approval pages',()=>{
@@ -256,5 +257,60 @@ describe('the decision the approver makes beside it',()=>{
   expect(fx.decideLeave.mock.calls.map(call=>(call[1] as {leaveRequestId:string}).leaveRequestId)).toEqual([LR_PASS,LR_REVIEW]);
   // Only the committed leave decision appends; the skipped one and the claim never do.
   expect(fx.follow.mock.calls).toEqual([[MANAGER,{recordId:RECORD_PASS,decision:'approved'}]]);
+ });
+});
+
+describe('the per-date decision (slice 3 follow-up)',()=>{
+ const form=(fields:Record<string,string>)=>{const data=new FormData();for(const [k,v] of Object.entries(fields))data.set(k,v);return data;};
+ const LABELS={viewDateBreakdown:'Review dates',dateBreakdown:'Dates',dateColumn:'Date',dayColumn:'Day',daysColumn:'Days',decisionColumn:'Decision',reasonColumn:'Reason',
+  approve:'Approve',reject:'Reject',rejectReason:'Reason',submitDecisions:'Submit decisions',statusPending:'Pending',statusApproved:'Approved',statusRejected:'Rejected',employeeRemark:'Remark',closeDialog:'Close'};
+ const DATES=[{id:'d1',leaveDate:'2026-11-10',days:'1',status:'pending',rejectReason:null},{id:'d2',leaveDate:'2026-11-11',days:'1',status:'pending',rejectReason:null}];
+ it('the date breakdown posts the recommendation\'s record with its one batch submit, and nothing without one',()=>{
+  wrap(<LeaveDateBreakdown requestId={LR_PASS} dates={DATES} locale="en" labels={LABELS} nav={{category:'leave',sort:''}} recommendationRecordId={RECORD_PASS}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Review dates'}));
+  const submit=screen.getByRole('button',{name:'Submit decisions'}).closest('form')!;
+  expect([...submit.querySelectorAll('input[name="recommendationRecordId"]')].map(input=>(input as HTMLInputElement).value)).toEqual([RECORD_PASS]);
+  expect((submit.querySelector('input[name="id"]') as HTMLInputElement).value).toBe(LR_PASS);
+  cleanup();
+  wrap(<LeaveDateBreakdown requestId={LR_PASS} dates={DATES} locale="en" labels={LABELS}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Review dates'}));
+  expect(screen.getByRole('button',{name:'Submit decisions'}).closest('form')!.querySelector('input[name="recommendationRecordId"]')).toBeNull();
+ });
+ it('appends the follow-up with the leave engine\'s final outcome once every date is decided, after the decision commits',async()=>{
+  const order:string[]=[];
+  fx.decideLeaveDates.mockImplementation(async()=>{order.push('decide');return {status:'approved'};});
+  fx.follow.mockImplementation(async()=>{order.push('follow');return {id:'followup-1'};});
+  // A mixed outcome: one date approved, one rejected; the engine finalizes the request as approved.
+  const decisions=JSON.stringify([{leaveDate:'2026-11-10',decision:'approved'},{leaveDate:'2026-11-11',decision:'rejected',rejectReason:'Fictional clash'}]);
+  await expect(decideLeaveDatesAction(form({id:LR_PASS,decisions,recommendationRecordId:RECORD_PASS,category:'leave',sort:''}))).rejects.toThrow('NEXT_REDIRECT');
+  expect(fx.decideLeaveDates).toHaveBeenCalledWith(MANAGER,{leaveRequestId:LR_PASS,decisions:[{leaveDate:'2026-11-10',decision:'approved',rejectReason:undefined},{leaveDate:'2026-11-11',decision:'rejected',rejectReason:'Fictional clash'}],deciderEmploymentId:'emp-manager'});
+  expect(fx.follow.mock.calls).toEqual([[MANAGER,{recordId:RECORD_PASS,decision:'approved'}]]);
+  expect(order).toEqual(['decide','follow']);
+  // Every date rejected: the request is rejected, and that is the decision recorded.
+  fx.follow.mockClear();fx.decideLeaveDates.mockResolvedValueOnce({status:'rejected'});
+  await expect(decideLeaveDatesAction(form({id:LR_PASS,decisions,recommendationRecordId:RECORD_PASS}))).rejects.toThrow('NEXT_REDIRECT');
+  expect(fx.follow.mock.calls).toEqual([[MANAGER,{recordId:RECORD_PASS,decision:'rejected'}]]);
+ });
+ it('records nothing while dates are still pending, when the decision fails, or without a record; the single-date action the same',async()=>{
+  fx.follow.mockResolvedValue({id:'followup-1'});
+  const decisions=JSON.stringify([{leaveDate:'2026-11-10',decision:'approved'}]);
+  fx.decideLeaveDates.mockResolvedValueOnce({status:'pending'});
+  await expect(decideLeaveDatesAction(form({id:LR_PASS,decisions,recommendationRecordId:RECORD_PASS}))).rejects.toThrow('NEXT_REDIRECT');
+  fx.decideLeaveDates.mockRejectedValueOnce(Error('Fixture: already decided'));
+  await expect(decideLeaveDatesAction(form({id:LR_PASS,decisions,recommendationRecordId:RECORD_PASS}))).rejects.toThrow('NEXT_REDIRECT');
+  expect(fx.redirects[fx.redirects.length-1]).toContain('error=Fixture');
+  fx.decideLeaveDates.mockResolvedValueOnce({status:'approved'});
+  await expect(decideLeaveDatesAction(form({id:LR_PASS,decisions}))).rejects.toThrow('NEXT_REDIRECT');
+  expect(fx.follow).not.toHaveBeenCalled();
+  // The single-date action: the last pending date decided finalizes the request and records the follow-up.
+  fx.decideLeaveDate.mockResolvedValueOnce({status:'pending'}).mockResolvedValueOnce({status:'approved'});
+  await expect(decideLeaveDateAction(form({id:LR_PASS,leaveDate:'2026-11-10',decision:'approved',recommendationRecordId:RECORD_PASS}))).rejects.toThrow('NEXT_REDIRECT');
+  expect(fx.follow).not.toHaveBeenCalled();
+  await expect(decideLeaveDateAction(form({id:LR_PASS,leaveDate:'2026-11-11',decision:'approved',recommendationRecordId:RECORD_PASS}))).rejects.toThrow('NEXT_REDIRECT');
+  expect(fx.follow.mock.calls).toEqual([[MANAGER,{recordId:RECORD_PASS,decision:'approved'}]]);
+  // A follow-up that cannot be written never fails the committed decision.
+  fx.follow.mockReset();fx.follow.mockRejectedValue(Error('Fixture record outage'));fx.decideLeaveDates.mockResolvedValueOnce({status:'approved'});
+  await expect(decideLeaveDatesAction(form({id:LR_PASS,decisions,recommendationRecordId:RECORD_PASS}))).rejects.toThrow('NEXT_REDIRECT');
+  expect(fx.redirects[fx.redirects.length-1]).toBe('/approvals?toast=Leave+decided');
  });
 });

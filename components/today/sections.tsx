@@ -15,7 +15,7 @@ import type {TodayAudience} from '@/lib/today/audience';
 import {TodayNote,TodaySection} from './today-ui';
 import {readAtAGlance,readDoneForYou,readNeedsYou,readWatching,type Finding,type PreparedItem} from './reads';
 import {WhyLink} from '@/components/why/why-panel';
-import {LeaveBalanceWhy} from '@/components/why/sections';
+import {LeaveBalanceWhy,PayslipPayDifferenceWhy} from '@/components/why/sections';
 import {LoopCards} from './loop-cards';
 
 /** Today (AI v2 Phase 1, W3): the four sections. Each is its own async server component, rendered by
@@ -127,12 +127,14 @@ const linkCls='inline-flex min-h-9 items-center font-medium text-primary hover:u
 
 /** The personal "Watching": the At a glance panel of the employee mock-up. */
 export async function AtAGlanceSection(p:Common&Readonly<{employmentId?:string;why?:string}>){
- const [t,data]=await Promise.all([getTranslations('today'),readAtAGlance(p.session,{employmentId:p.employmentId,locale:p.locale,today:p.today})]);
+ const [t,tw,data]=await Promise.all([getTranslations('today'),getTranslations('why'),readAtAGlance(p.session,{employmentId:p.employmentId,locale:p.locale,today:p.today})]);
  const balances=(data.balances??[]).slice(0,4);
  // AI v2 W5: each balance's "Why?" opens its explanation in place under the row (`?why=leave:<leave type id>`), read
  // from the same leave dashboard card the figure came from, only when asked for.
  const home=(why?:string)=>{const query=new URLSearchParams({...(p.employmentId?{employmentId:p.employmentId}:{}),...(why?{why}:{})});return query.size?`/?${query}`:'/';};
  const openLeave=p.why?.startsWith('leave:')?p.why.slice('leave:'.length):null;
+ // The payslip row's "Why?" (`?why=pay`): the payslip screen's pay-difference panel for the payslip the row names.
+ const openPay=p.why==='pay';
  const empty=balances.length===0&&data.payslip===undefined&&data.away===null;
  return <section aria-labelledby="today-at-a-glance" data-today-section="today-at-a-glance" className="min-w-0 space-y-3">
   <h2 id="today-at-a-glance" className="text-[0.9375rem] font-semibold">{t('atAGlance')}</h2>
@@ -151,9 +153,15 @@ export async function AtAGlanceSection(p:Common&Readonly<{employmentId?:string;w
       <LeaveBalanceWhy session={p.session} id={`today-why-${row.id}`} closeHref={home()} leaveTypeId={row.id} employmentId={p.employmentId}/>
      </dd>}
     </div>)}
-    {data.payslip&&<div data-today-payslip className={rowCls}>
-     <dt>{t('glance.payslipTitle',{date:formatPayPeriodMonth(data.payslip.period,p.locale)})}</dt>
-     <dd><Link href={`/me/payslip?${new URLSearchParams({year:data.payslip.period.slice(0,4),month:data.payslip.period.slice(5,7),payslipId:data.payslip.id})}`} className={linkCls}>{t('glance.openPayslip')}</Link></dd>
+    {data.payslip&&<div data-today-payslip className={`${rowCls} flex-wrap`}>
+     <dt className="min-w-0 break-words">{t('glance.payslipTitle',{date:formatPayPeriodMonth(data.payslip.period,p.locale)})}</dt>
+     <dd className="flex shrink-0 items-center gap-3">
+      <WhyLink href={openPay?home():home('pay')} text={t('glance.why')} label={tw('pay.linkLabel')} expanded={openPay} controls="today-why-pay"/>
+      <Link href={`/me/payslip?${new URLSearchParams({year:data.payslip.period.slice(0,4),month:data.payslip.period.slice(5,7),payslipId:data.payslip.id})}`} className={linkCls}>{t('glance.openPayslip')}</Link>
+     </dd>
+     {openPay&&<dd data-today-why="pay" className="basis-full">
+      <PayslipPayDifferenceWhy session={p.session} id="today-why-pay" closeHref={home()} payslipId={data.payslip.id}/>
+     </dd>}
     </div>}
     {data.payslip===null&&<div data-today-payslip="none" className={rowCls}><dt className="text-muted-foreground">{t('glance.noPayslip')}</dt><dd/></div>}
    </dl>}

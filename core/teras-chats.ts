@@ -15,6 +15,14 @@
  * role is neither listed nor reopened: the person starts a new chat, as for saved closed-grammar chats
  * (core/assistant-threads.ts). Deleting one's own chats needs no grant, like own transcript erasure.
  *
+ * Deleted chats leave a tombstone (AI v2 slice 3 follow-up): a teras_chat row under the same id with no turns and the
+ * DELETED_CHAT_DIGEST in place of a scope digest. No real scope digest (SHA-256 hex) is that value, so a tombstone is
+ * never listed, reopened or continued, and a stale client (the side panel) cannot re-create the deleted chat under its
+ * id: recordChatTurn's insert meets the existing row and its scope-checked count matches nothing. The wiring starts a
+ * new conversation instead (isDeletedOwnChat). The tombstone is stamped by the 0952 trigger like any chat, so it expires
+ * with the tenant's "Keep chats for" window and the retention runner removes it. No migration: the 0952 grants already
+ * allow the login to insert its own chat row.
+ *
  * Nothing here calls a model, reads an HR record or decides anything: storage only. The wiring (app/assistant/
  * launcher-actions.ts) turns a reopened chat's model rows into a signed continuation. */
 import {sql,type SQL} from 'drizzle-orm';
@@ -49,6 +57,8 @@ export const CHAT_LIMITS=Object.freeze({
 export class ChatUnavailable extends Error{constructor(){super('Stored chat unavailable.');this.name='ChatUnavailable';}}
 export class ChatRetentionRefused extends Error{constructor(readonly reason:'not_administrator'|'invalid'){super('Chat retention refused: '+reason);this.name='ChatRetentionRefused';}}
 const refuse=():never=>{throw new ChatUnavailable();};
+/** The scope digest of a deleted chat's tombstone. It passes the 0952 CHECK and equals no SHA-256 scope digest. */
+export const DELETED_CHAT_DIGEST='0'.repeat(64);
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value);
 const captured=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
 const own=(ctx:SessionContext):ctx is SessionContext&{userId:string}=>Boolean(ctx.userId)&&!ctx.agent;
@@ -72,7 +82,8 @@ export type ChatTurnRecord=Readonly<{
  withheld:boolean}>;
 
 /** Appends one answered turn to the caller's stored chat, starting the chat on its first turn. Returns the chat id, or
- * null when the turn is not stored: no encryption secret, a chat of another scope, an expired or full chat. */
+ * null when the turn is not stored: no encryption secret, a chat of another scope, an expired or full chat, or a chat
+ * its owner deleted (the tombstone holds the id, and its digest matches no scope). */
 export async function recordChatTurn(supplied:SessionContext,input:ChatTurnRecord):Promise<string|null>{
  const ctx=captured(supplied);
  if(!own(ctx)||!uuid(input.conversationId)||!uuid(input.companyId)||typeof input.conversationScope!=='string'||input.conversationScope.length>4096)return null;
@@ -196,26 +207,54 @@ export async function reopenOwnChat(supplied:SessionContext,chatId:unknown,conve
  });}catch{return refuse();}
 }
 
-/** Deletes one of the caller's chats now, with its turns and task memory. Needs no Assistant grant. Returns 0 or 1. */
+/** Leaves a tombstone for each erased chat in the same transaction: the id and company only, no turns and no words. */
+async function tombstoneTx(tx:Tx,ctx:SessionContext&{userId:string},erased:readonly {id:string;company_id:string}[]):Promise<void>{
+ for(const row of erased)await tx.execute(sql`insert into public.teras_chat(id,tenant_id,app_user_id,person_id,company_id,scope_digest)
+  values(${row.id}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,
+   (select u.person_id from public.app_user u where u.id=${ctx.userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid),${row.company_id}::uuid,${DELETED_CHAT_DIGEST})
+  on conflict (id) do nothing`);
+}
+
+/** Deletes one of the caller's chats now, with its turns and task memory, leaving its tombstone. Needs no Assistant
+ * grant. Returns 0 or 1; a tombstone is not a chat and deleting it again changes nothing. */
 export async function deleteOwnChat(supplied:SessionContext,chatId:unknown):Promise<number>{
  const ctx=captured(supplied);
  if(!own(ctx)||!uuid(chatId))return refuse();
  const userId=ctx.userId;
  try{return await withTenant(ctx,async tx=>{
-  const erased=await tx.execute<{id:string}>(sql`delete from public.teras_chat where id=${chatId}::uuid and tenant_id=${ctx.tenantId}::uuid and app_user_id=${userId}::uuid returning id`);
+  const erased=await tx.execute<{id:string;company_id:string}>(sql`delete from public.teras_chat where id=${chatId}::uuid and tenant_id=${ctx.tenantId}::uuid and app_user_id=${userId}::uuid
+   and scope_digest<>${DELETED_CHAT_DIGEST} returning id,company_id`);
+  await tombstoneTx(tx,{...ctx,userId},erased);
   return erased.length;
  });}catch{return refuse();}
 }
 
-/** Erases every chat of the caller, expired or not, with turns and task memory. Needs no Assistant grant. */
+/** Erases every chat of the caller, expired or not, with turns and task memory, leaving a tombstone for each. Needs no
+ * Assistant grant. Returns the number of chats erased; tombstones are not counted. */
 export async function eraseOwnChats(supplied:SessionContext):Promise<number>{
  const ctx=captured(supplied);
  if(!own(ctx))return refuse();
  const userId=ctx.userId;
  try{return await withTenant(ctx,async tx=>{
-  const erased=await tx.execute<{id:string}>(sql`delete from public.teras_chat where tenant_id=${ctx.tenantId}::uuid and app_user_id=${userId}::uuid returning id`);
+  const erased=await tx.execute<{id:string;company_id:string}>(sql`delete from public.teras_chat where tenant_id=${ctx.tenantId}::uuid and app_user_id=${userId}::uuid
+   and scope_digest<>${DELETED_CHAT_DIGEST} returning id,company_id`);
+  await tombstoneTx(tx,{...ctx,userId},erased);
   return erased.length;
  });}catch{return refuse();}
+}
+
+/** Whether `chatId` is one of the caller's deleted chats (a tombstone, until retention removes it). The wiring asks before continuing a
+ * conversation, so a stale client's next turn starts a new chat instead. Storage only; false when unknown. */
+export async function isDeletedOwnChat(supplied:SessionContext,chatId:unknown):Promise<boolean>{
+ const ctx=captured(supplied);
+ if(!own(ctx)||!uuid(chatId))return false;
+ const userId=ctx.userId;
+ return withTenant(ctx,async tx=>{
+  await tx.execute(sql`SET TRANSACTION READ ONLY`);
+  const rows=await tx.execute<{id:string}>(sql`select id from public.teras_chat where id=${chatId}::uuid and tenant_id=${ctx.tenantId}::uuid
+   and app_user_id=${userId}::uuid and scope_digest=${DELETED_CHAT_DIGEST}`);
+  return rows.length===1;
+ });
 }
 
 export type ChatRetention=Readonly<{keepDays:ChatKeepDays;
