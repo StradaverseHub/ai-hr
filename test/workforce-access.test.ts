@@ -148,7 +148,7 @@ describe('fresh Workforce-purpose record consumers',()=>{
   expect(await owner.db.select({code:employment.employeeCode}).from(employment).where(eq(employment.id,subject.employmentId))).toEqual(codes);
   expect(await owner.db.select({id:domainEvent.id}).from(domainEvent).orderBy(domainEvent.id)).toEqual(events);
  });
- it('blocks Workforce hire, employment-info and direct Movement entry without disabling a separate grade owner',async()=>{
+ it('blocks Workforce hire, employment-info, direct Movement and direct grade edits until authority is restored',async()=>{
   const subject=await hire('Fictional guarded master');await activate();await override(b.adminUserId,'workforce.maintain',b.companyId,'deny');
   const before=await owner.db.select().from(employment).where(eq(employment.tenantId,b.tenantId)).orderBy(employment.id);
   await expect(hireWorkforceEmployee(admin(),{person:{fullName:'Never hired',primaryEmail:'not-hired@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()})).rejects.toBeInstanceOf(WorkforceAccessError);
@@ -156,9 +156,14 @@ describe('fresh Workforce-purpose record consumers',()=>{
   await expect(maintainInfo(admin(),{employmentId:subject.employmentId,orgDivision:'Not applied'})).rejects.toBeInstanceOf(WorkforceAccessError);
   await expect(createMovementEvent(admin(),{employmentId:subject.employmentId,kind:'increment',effectiveDate:todayInKualaLumpur(),basicSalary:3025.13,remarks:'Fictional guarded movement'})).rejects.toBeInstanceOf(WorkforceAccessError);
   expect(await owner.db.select().from(employment).where(eq(employment.tenantId,b.tenantId)).orderBy(employment.id)).toEqual(before);
-  // A verified Rewards posting consumes the unchanged canonical grade owner, not a fabricated
-  // Workforce permission. Its own role/stage/revision checks remain required at that consumer.
-  const [grade]=await owner.db.insert(jobGrade).values({tenantId:b.tenantId,code:'WF-INDEPENDENT',name:'Fictional independently approved grade'}).returning({id:jobGrade.id});
+  // A direct grade setter has no reviewed Rewards source. It still needs Workforce Edit.
+  const [grade]=await owner.db.insert(jobGrade).values({tenantId:b.tenantId,code:'WF-DIRECT-GRADE',name:'Fictional Workforce grade'}).returning({id:jobGrade.id});
+  const eventsBefore=await owner.db.select({id:domainEvent.id}).from(domainEvent).orderBy(domainEvent.id);
+  const denied=await setEmploymentGrade(admin(),{employmentId:subject.employmentId,gradeId:grade.id}).then(()=>null,error=>error);
+  expect(pgSqlState(denied)).toBe('42501');
+  expect(await owner.db.select().from(employment).where(eq(employment.tenantId,b.tenantId)).orderBy(employment.id)).toEqual(before);
+  expect(await owner.db.select({id:domainEvent.id}).from(domainEvent).orderBy(domainEvent.id)).toEqual(eventsBefore);
+  await recoverAdminOverride('workforce.maintain');
   await expect(setEmploymentGrade(admin(),{employmentId:subject.employmentId,gradeId:grade.id})).resolves.toMatchObject({changed:true});
   expect((await owner.db.select({gradeId:employment.gradeId}).from(employment).where(eq(employment.id,subject.employmentId)))[0]?.gradeId).toBe(grade.id);
  });
