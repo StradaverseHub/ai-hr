@@ -121,6 +121,17 @@ it('registers exact mixed-case native submenu IDs while preserving closed gramma
  await expect(owner.client`insert into access_capability(id,scope) values('function.payComponents.catalogueRegistrationRegression.destroy','tenant')`).rejects.toMatchObject({code:'23514'});
 });
 
+it('refuses Organisation Settings publication when a physical write guard is disabled',async()=>{
+ const before=await snapshot();
+ await owner.client`alter table public.profile_option disable trigger organisation_settings_action`;
+ try{
+  await expect(publishActionCapabilityPackage(owner.client,'organisation_settings'))
+   .rejects.toThrow('Organisation Settings physical enforcement is incomplete');
+  expect(await snapshot()).toEqual(before);
+ }finally{
+  await owner.client`alter table public.profile_option enable trigger organisation_settings_action`;
+ }
+});
 it('derives new native holders live, preserves overrides and refuses narrowed-away native defaults',async()=>{
  await publishActionCapabilityPackage(owner.client,'organisation_settings');
  const [other]=await owner.db.insert(company).values({tenantId:b.tenantId,legalName:'Fictional native default other company'}).returning();

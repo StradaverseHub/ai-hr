@@ -4621,6 +4621,13 @@
       "when": 1793330000356,
       "tag": "0956_financial_setup_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 804,
+      "version": "7",
+      "when": 1793330000357,
+      "tag": "0957_organisation_settings_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

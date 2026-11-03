@@ -137,6 +137,14 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    and p.proowner is distinct from c.relowner order by f.signature`;
   requireInstallation(invalidFunctions.length===0,invalidFunctions.map(row=>
    `${row.missing?'missing function':'unexpected function owner'} ${row.signature}`).join(', '));
+  if(key==='all'||key==='organisation_settings'){
+   const [prerequisite]=await tx<{trusted:boolean}[]>`select p.prosecdef and p.prorettype='boolean'::regtype
+    and not has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as trusted
+    from pg_proc p where p.oid='app.organisation_settings_bindings_complete()'::regprocedure`;
+   requireInstallation(prerequisite?.trusted,'untrusted Organisation Settings binding predicate');
+   const [coverage]=await tx<{complete:boolean}[]>`select app.organisation_settings_bindings_complete() as complete`;
+   requireInstallation(coverage?.complete===true,'Organisation Settings physical enforcement is incomplete');
+  }
   if(key==='all'){
    // The full installation must cover the closed SQL registry in the same
    // transaction. A package or completion function alone cannot omit an action.
