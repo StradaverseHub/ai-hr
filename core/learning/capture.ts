@@ -12,8 +12,8 @@ import {terasLearningSignal} from '../../db/teras-learning-schema';
 import {hasTeamAccess,isAdmin,isGroupAdmin,isPayrollPartner} from '../../lib/authz-model';
 import {isLearningLocale,type LearningLocale,type LearningRole} from './types';
 
-/** The agent identities whose runs are learned from, as their writers record them (core/harness/trace-persistence.ts
- * ASSISTANT_AGENT_IDENTITY and core/recommenders/leave-decision.ts RECOMMENDER_AGENT_IDENTITY; a test pins both). */
+/** The agent identities whose runs are learned from, as their writers record them (the conversation harness's trace
+ * persistence, ASSISTANT_AGENT_IDENTITY and core/recommenders/leave-decision.ts RECOMMENDER_AGENT_IDENTITY; a test pins both). */
 export const ASSISTANT_TURN_IDENTITY='teras.assistant';
 export const RECOMMENDER_IDENTITY='worker.approver_recommendation';
 
