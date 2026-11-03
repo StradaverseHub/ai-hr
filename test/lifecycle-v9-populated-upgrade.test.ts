@@ -14,9 +14,9 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(649); // Accepted prefix plus the explicit idle/Entra source reservations and the Teras source claims below.
+ expect(journal.entries).toHaveLength(650); // Accepted prefix plus the explicit idle/Entra source reservations and the Teras source claims below.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
- expect(journal.entries.slice(boundary)).toHaveLength(78);
+ expect(journal.entries.slice(boundary)).toHaveLength(79);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
  // The accepted V9 prefix and coordinated Feedback/Bank identities are immutable; the two coordinated Formula appends follow.
  expect(createHash('sha256').update(JSON.stringify(journal.entries.slice(0,579).map(migrationIdentity))).digest('hex')).toBe('11e5295ce4e60acb1f13c009a78098b043c862b6412ed2bbc2e102f142a87f85');
@@ -43,6 +43,8 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:762,version:'7',when:1793330000329,tag:'0929_teras_review_services',breakpoints:true,hash:'765ca87aebc30ae1aaf46ec4eb8cfb3d36466f1401dcbe2bbe092fec60358bc0'},
   // AI Centre stored chats (claude/noveri-chats), frozen here.
   {idx:763,version:'7',when:1793330000352,tag:'0952_teras_chats',breakpoints:true,hash:'e320362770eedfafd2e9260d82713b1c669f056a296db979a1f5295e785b401b'},
+  // AI v2 W11 protected case route (claude/aiv2-s2-case-route), frozen here.
+  {idx:764,version:'7',when:1793330000359,tag:'0959_private_cases',breakpoints:true,hash:'565e8893df8a30b7f4b337d1f94948545719e377d33bd23e1e2c684fcf860dd5'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

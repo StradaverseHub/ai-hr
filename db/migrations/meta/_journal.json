@@ -4544,6 +4544,13 @@
       "when": 1793330000352,
       "tag": "0952_teras_chats",
       "breakpoints": true
+    },
+    {
+      "idx": 764,
+      "version": "7",
+      "when": 1793330000359,
+      "tag": "0959_private_cases",
+      "breakpoints": true
     }
   ]
 }

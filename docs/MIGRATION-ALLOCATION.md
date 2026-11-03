@@ -984,3 +984,20 @@ integration.
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
 |763|1793330000352|0952_teras_chats|e320362770eedfafd2e9260d82713b1c669f056a296db979a1f5295e785b401b|
+
+## AI v2 W11 protected case route — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-s2-case-route` (cut from `2702348f3`, journal ending `0952_teras_chats` idx763 / when1793330000352)
+appends `0959_private_cases` as idx764 / when1793330000359. A fresh fetch on 3 November 2026 and a scan of every origin
+ref (1586 refs, 337 distinct migration trees), every local branch (1897) and every registered worktree (401, including
+their uncommitted files) found file claims through `0958_qualification_import_preview` (Codex branches hold 0948–0958;
+the Teras chats migration 0952 collides with `0952_financial_letter_actions` and is renumbered at integration) and
+journal `when` values through 1793330000358; no allocation document on any ref or worktree reserves a higher number.
+This claim therefore takes the next file number and the next `when` above every claimed one. Development source only:
+no installation priority, no deployment; the idx is this branch's own journal position and must be re-frozen above the
+then-installed ledger at integration. Sibling AI v2 slice branches cut from the same base may claim the same next
+number; reconcile at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|764|1793330000359|0959_private_cases|565e8893df8a30b7f4b337d1f94948545719e377d33bd23e1e2c684fcf860dd5|
