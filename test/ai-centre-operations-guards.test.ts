@@ -72,7 +72,9 @@ describe('guards are unchanged by the merge',()=>{
   const walk=(dir:string)=>{for(const entry of fs.readdirSync(path.join(ROOT,dir),{withFileTypes:true})){
    const rel=path.join(dir,entry.name);if(entry.isDirectory())walk(rel);else if(entry.name==='page.tsx')pages.push(rel);}};
   walk('app/control-tower');
-  expect(pages.length).toBe(15);
+  // Fifteen, plus the AI v2 W8 loops list and loop detail (app/control-tower/loops/page.tsx and [loop]/page.tsx).
+  expect(pages.length).toBe(17);
+  expect(pages).toEqual(expect.arrayContaining([path.join('app/control-tower/loops','page.tsx'),path.join('app/control-tower/loops','[loop]','page.tsx')]));
   for(const page of pages)expect(read(page),page).toMatch(/await requireAdmin\(\)/);
  });
 });

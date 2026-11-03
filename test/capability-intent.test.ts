@@ -1,5 +1,5 @@
 /** AI v2 Phase 1, slice 1 (harness spec v17): when the harness offers product_capabilities, decided in code from the
- * person's words (lib/product-context/capability-intent.ts). Expected values are written out by hand: for the 53 scored
+ * person's words (lib/product-context/capability-intent.ts). Expected values are written out by hand: for the 64 scored
  * questions (test/assistant-smart-eval-set.ts), which ones ask what the person can do, how, or to import, set up, add or
  * create something; and twenty hand-written questions per language, ten offered and ten not (facts and status). Tamil and
  * Thai cases are pending native-speaker review, as the patterns are. Pure. */
@@ -10,12 +10,16 @@ import {SMART_EVAL_SET} from './assistant-smart-eval-set';
 
 /** The scored turns that are offered the catalogue: what can you do, can you or can I, how do I, import, set up, add new. */
 const OFFERED=new Set(['emp-howto-1','emp-self-approve-1','emp-what-1','grp-ai-1','grp-import-1','grp-ms-1','hr-import-1','hr-leave-types-1',
- 'hr-new-hire-1','hr-payroll-import-1','hr-what-1','hr-zh-1','mgr-ms-1','pay-code-1','pay-import-1','pay-run-1']);
+ 'hr-new-hire-1','hr-payroll-import-1','hr-what-1','hr-zh-1','mgr-ms-1','pay-code-1','pay-import-1','pay-run-1',
+ // Merged with slices 2 and 3 (eleven more turns): the two Leave Credit questions ask "can I get …?", and the chat
+ // import's first turn is "help me import data", as hr-import-1. The explanations, the approver decisions, the import's
+ // second turn and the workforce metrics are facts or a request to act, not offered.
+ 'emp-toil-1','emp-toil-ask-1','hr-import-file-1']);
 
 describe('the capability offer on the scored questions',()=>{
  const turns=SMART_EVAL_SET.flatMap(conversation=>conversation.turns);
- it('covers all 53 questions, and the spec records the classifier revision',()=>{
-  expect(turns).toHaveLength(53);expect(turns.filter(turn=>OFFERED.has(turn.id))).toHaveLength(OFFERED.size);
+ it('covers all 64 questions, and the spec records the classifier revision',()=>{
+  expect(turns).toHaveLength(64);expect(turns.filter(turn=>OFFERED.has(turn.id))).toHaveLength(OFFERED.size);
   expect(HARNESS_SPEC.offer.capabilityIntentRevision).toBe(CAPABILITY_INTENT_REVISION);
  });
  it.each(turns.map(turn=>[turn.id,turn.question,OFFERED.has(turn.id)] as const))('%s',(_id,question,offered)=>{

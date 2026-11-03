@@ -51,8 +51,9 @@ describe('the claim limit Why? on Claims',()=>{
   const link=within(view.container).getByRole('link',{name:'Why? Why is my Travel limit this figure?'});
   expect(link).toHaveAttribute('href',`/claims?employmentId=${OWN}&why=claim%3A${TYPE}`);expect(link).toHaveAttribute('aria-expanded','false');
   expect(view.container.querySelector('[data-why-panel]')).toBeNull();
-  // Nothing is read for the panel until it is asked for.
-  expect(state.currency).not.toHaveBeenCalled();
+  // Nothing is read for the panel until it is asked for: the one currency read is the claim form's own label
+  // (app/claims/page.tsx, slice 3 follow-up), for the chosen employment.
+  expect(state.currency).toHaveBeenCalledTimes(1);expect(state.currency).toHaveBeenCalledWith(expect.anything(),OWN);
  });
  it('opens the explanation in place with the claims owner\'s figures, the policy version and Ask AI Centre',async()=>{
   const view=await show(`claim:${TYPE}`);
@@ -65,7 +66,8 @@ describe('the claim limit Why? on Claims',()=>{
   expect(within(panel as HTMLElement).getByRole('button',{name:'Ask AI Centre about this'})).toBeTruthy();
   expect(within(panel as HTMLElement).getByRole('link',{name:'Close'})).toHaveAttribute('href',`/claims?employmentId=${OWN}`);
   expect(within(view.container).getByRole('link',{name:'Why? Why is my Travel limit this figure?'})).toHaveAttribute('aria-expanded','true');
-  expect(state.currency).toHaveBeenCalledWith(expect.anything(),OWN);
+  // The form's label read and the panel's own read.
+  expect(state.currency).toHaveBeenCalledTimes(2);expect(state.currency.mock.calls.map(call=>call[1])).toEqual([OWN,OWN]);
   expect(state.types).toHaveBeenCalledTimes(1);
  });
  it('shows the figures without Ask to someone the Assistant cannot answer, and nothing for a type that is not theirs',async()=>{
