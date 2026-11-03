@@ -243,7 +243,8 @@ describe('ordered transactional offline claim consumption',()=>{
   expect(await custody()).toEqual([second.id,first.id]);expect(await visible(f.ctx)).toEqual([second.id,first.id]);expect(await visible(adminCtx(base))).toEqual([second.id]);
   expect(await purgeExpiredOfflinePhotos(adminCtx(base))).toEqual({purged:1});expect(await custody()).toEqual([first.id]);expect(await visible(adminCtx(base))).toEqual([]);
   expect(await c.service().consume(f.ctx,f.signed(secondClaim))).toEqual(second);expect(await c.service().consume(f.ctx,f.signed(firstClaim))).toEqual(first);
-  const purged=await owner.db.select({aggregateId:S.domainEvent.aggregateId}).from(S.domainEvent).where(eq(S.domainEvent.eventType,'mobile.offline.photo.purged'));expect(purged).toEqual([{aggregateId:second.id}]);
+  const purged=await owner.db.select({aggregateId:S.domainEvent.aggregateId,subjectEmploymentId:S.domainEvent.subjectEmploymentId,payload:S.domainEvent.payload}).from(S.domainEvent).where(eq(S.domainEvent.eventType,'mobile.offline.photo.purged'));
+  expect(purged).toEqual([{aggregateId:second.id,subjectEmploymentId:f.e.employmentId,payload:{digest:digest(short),retainedUntil:new Date(second.photo!.retainedUntil).toISOString()}}]);
  });
  it('requires all current verification/adjudication guards and explicit photo retention configuration',()=>{
   const c=consumer();expect(()=>createOfflineClaimService(c.config,{prepare:c.prepare,adjudicate:c.adjudicate} as never)).toThrow();expect(()=>createOfflineClaimService({...c.config,photoRetentionMs:0},c.ports)).toThrow();
