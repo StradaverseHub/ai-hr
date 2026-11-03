@@ -1035,3 +1035,20 @@ may claim the same idx; reconcile at integration.
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
 |766|1793330000361|0961_letter_requests|fac033d489f171da966f620f058f8f688c21e691786b2700bd9fe0876495eb5e|
+
+## AI v2 Phase 2 P2-4 HR capacity ledger baseline — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-capacity-ledger` (cut from `360e7f065` on `claude/aiv2-phase1-final`, journal ending
+`0961_letter_requests` idx766 / when1793330000361) appends `0966_teras_capacity_baseline` as idx767 / when1793330000366, the
+number and `when` the AI v2 coordinator reserved for P2-4 ("only if needed"). It is needed: the baseline (each company's own
+manual minutes per item and the period they describe) must be recorded, attributed and kept as history, and no existing
+store is per company and writable by that company's HR administrators. A fresh fetch on 3 November 2026 and a scan of every
+origin ref, every local branch and the registered Phase 2 worktrees (including uncommitted files) found no claim on 0962 to
+0966 or on when1793330000362 to when1793330000366; 0962 to 0965 stay reserved for the coordinator, P2-1, P2-2a and P2-2b.
+Development source only: no installation priority, no deployment; the idx is this branch's own journal position and must be
+re-frozen above the then-installed ledger at integration. Sibling Phase 2 branches cut from the same base claim idx767 for
+their own numbers; reconcile at integration, ordered by number.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000366|0966_teras_capacity_baseline|0b2f62d07b398bc837909c31b27f2dcd5ee30276f5c84937d8d57440a4b5a67c|

@@ -20,6 +20,7 @@
       "spend": "Spend and providers",
       "operations": "Operations",
       "administration": "Administration",
+      "insights": "Insights",
       "how": "How it works"
     },
     "inboxCount": "{count, plural, one {# item waiting} other {# items waiting}}",
@@ -199,6 +200,115 @@
         "none": "No runs yet.",
         "summary": "{opened} prepared, {closed} closed, {open} open, {waiting} waiting",
         "capped": "Card limit reached; more on the next run."
+      }
+    },
+    "capacity": {
+      "title": "HR capacity",
+      "descriptionCompany": "What AI Centre did for the HR team of {company}, measured against its own baseline.",
+      "descriptionAll": "What AI Centre did for the HR teams of the companies you administer, each measured against its own baseline.",
+      "periodLabel": "Period",
+      "periods": {
+        "last30": "Last 30 days",
+        "quarter": "This quarter",
+        "year": "This year"
+      },
+      "companyLabel": "Company",
+      "allCompanies": "All your companies ({count})",
+      "show": "Show",
+      "noCompanies": "You do not administer any company yet.",
+      "hours": "{hours} h",
+      "minutes": "{minutes} min",
+      "items": {
+        "questions_answered": "Employee questions answered",
+        "actions_confirmed": "Prepared actions confirmed"
+      },
+      "tiles": {
+        "freed": "HR time freed",
+        "freedDays": "about {days} working days",
+        "freedNone": "Set a baseline to measure it",
+        "errors": "Payroll errors caught before the run",
+        "errorsNote": "each would have needed a correction",
+        "errorsNoPayroll": "Payroll is not in use",
+        "loops": "Loop actions completed",
+        "loopsChanged": "{rate} changed by a person",
+        "loopsNone": "none completed yet",
+        "questions": "Employee questions answered",
+        "questionsNote": "answered at once, any time of day",
+        "questionsGroupOnly": "Shown to group administrators",
+        "notShown": "Not shown"
+      },
+      "chart": {
+        "title": "HR time freed, by month",
+        "unit": "Hours freed",
+        "label": "HR time freed by month: {values}.",
+        "value": "{month} {hours} hours",
+        "marker": "Autopilot started",
+        "markerSentence": "Autopilot started in {month}.",
+        "note": "Time the team got back for work only people can do: employee conversations, planning, cases."
+      },
+      "table": {
+        "title": "Where the time came from",
+        "item": "Loop or assistant work",
+        "done": "Done",
+        "manual": "Your manual time each",
+        "review": "Review time",
+        "freed": "Hours freed",
+        "noWork": "No work done in this period yet.",
+        "notInBaseline": "Not in the baseline",
+        "withoutBaseline": "{count, plural, one {# done where the baseline has no minutes for it} other {# done where the baseline has no minutes for them}}",
+        "averaged": "Where your companies' baselines differ, the manual time each is their average, weighted by the work done."
+      },
+      "method": {
+        "summary": "How it's measured: hours freed = work done × your own manual time per item (measured from the event log before Autopilot) − the time people spent reviewing. Nothing is estimated from industry averages.",
+        "link": "Full method",
+        "work": "Work done: every loop card a person completed in the period, every employee question AI Centre answered, and every action AI Centre prepared that a person confirmed. Payroll errors caught are anomaly findings fixed before the payroll run closed; they are counted, not turned into hours.",
+        "baseline": "Your manual time each comes from your baseline: a period before Autopilot started in the company. For missed clock-outs and missing employee data, the event log measures the staff actions per case in that period (attendance corrections and profile changes), and your minutes per staff action turn them into time. For other work, it is the minutes you entered. A company without a baseline counts its work as done, freeing no time.",
+        "review": "Review time: for each item, the time between AI Centre preparing it and a person confirming it, up to {cap} minutes and never more than the item's own manual time. A longer gap means the item waited, not that someone worked on it. A loop records the confirmation when it next checks, so most items count the full allowance: the ledger under-states the time freed rather than over-states it. Answered questions have no review step.",
+        "arithmetic": "Hours freed = work done × your manual time each − review time, per company with its own baseline, then added up. A working day is {hours} hours.",
+        "access": "HR and group administrators see this for the companies they administer. Question and confirmed-action counts come from AI Centre's outcome records, which only group administrators may read across people, so other administrators do not see them.",
+        "records": "Every figure comes from the records: loop cards, outcome records and payroll anomaly findings, read with your own access. Nothing is estimated from industry averages."
+      },
+      "baseline": {
+        "notSet": "Baseline not set",
+        "notSetBody": "Hours freed are measured against your own manual time before Autopilot started. Set the baseline to see them; the event log measures what it can, and you add the minutes it cannot know.",
+        "missingSome": "{count, plural, one {# company has no baseline yet, so its work counts as done without freeing time.} other {# companies have no baseline yet, so their work counts as done without freeing time.}}",
+        "setFor": "Set the baseline for {company}",
+        "saved": "Baseline saved (version {version}).",
+        "errors": {
+          "invalid": "Enter minutes as a number up to {max}, with at most one decimal, or leave the field blank.",
+          "empty": "Enter at least one figure, or your minutes per staff action where the event log can measure the work.",
+          "not_administrator": "You can only set the baseline of a company you administer.",
+          "conflict": "Someone saved a baseline at the same time. Try again.",
+          "failed": "The baseline could not be saved. Try again."
+        }
+      },
+      "setup": {
+        "title": "Baseline for {company}",
+        "intro": "Your team's own manual time per item before Autopilot. The event log measures what it can; you add the minutes it cannot know. Saving keeps the earlier baselines.",
+        "current": "Current baseline: version {version}, {from} to {to}.",
+        "step1": "1. The baseline period",
+        "periodEnds": "It ends on {date}, the day Autopilot started here.",
+        "periodEndsToday": "Autopilot has not started here yet, so it ends today.",
+        "daysLabel": "Length",
+        "daysOption": "{days} days",
+        "usePeriod": "Use this period",
+        "period": "Period: {from} to {to}.",
+        "step2": "2. What the event log measured",
+        "processes": {
+          "attendance_correction": "Attendance corrections (missed clock-outs)",
+          "profile_change": "Profile changes (missing employee data)"
+        },
+        "evidence": "{cases} cases started, {completed} completed, {actions} staff actions ({perCase} per case).",
+        "evidenceShort": "Not enough history to measure: {completed} completed cases, at least {min} needed. Enter your minutes for it below.",
+        "evidenceOff": "Not measured: the module is not in use.",
+        "step3": "3. Your minutes",
+        "perAction": "Minutes per staff action",
+        "perActionHelp": "Used with the event log's measure, up to {max}.",
+        "itemMinutes": "Minutes each: {item}",
+        "itemMeasuredHelp": "Used only if the event log cannot measure it.",
+        "blankHelp": "Leave a field blank if you do not know it. Up to {max} minutes, with at most one decimal.",
+        "save": "Save the baseline",
+        "cancel": "Cancel"
       }
     },
     "subnav": {

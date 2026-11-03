@@ -20,6 +20,7 @@
       "spend": "Chi tiêu và nhà cung cấp",
       "operations": "Vận hành",
       "administration": "Quản trị",
+      "insights": "Phân tích",
       "how": "Cách hoạt động"
     },
     "inboxCount": "{count, plural, one {# mục đang chờ} other {# mục đang chờ}}",
@@ -199,6 +200,115 @@
         "none": "Chưa có lần chạy nào.",
         "summary": "{opened} đã chuẩn bị, {closed} đã đóng, {open} đang mở, {waiting} đang chờ",
         "capped": "Đã đạt giới hạn thẻ; phần còn lại ở lần chạy sau."
+      }
+    },
+    "capacity": {
+      "title": "Năng lực HR",
+      "descriptionCompany": "Những gì AI Centre đã làm cho đội HR của {company}, đo theo mốc cơ sở của chính công ty.",
+      "descriptionAll": "Những gì AI Centre đã làm cho đội HR của các công ty bạn quản trị, mỗi công ty đo theo mốc cơ sở của chính mình.",
+      "periodLabel": "Khoảng thời gian",
+      "periods": {
+        "last30": "30 ngày qua",
+        "quarter": "Quý này",
+        "year": "Năm nay"
+      },
+      "companyLabel": "Công ty",
+      "allCompanies": "Tất cả công ty của bạn ({count})",
+      "show": "Hiển thị",
+      "noCompanies": "Bạn chưa quản trị công ty nào.",
+      "hours": "{hours} giờ",
+      "minutes": "{minutes} phút",
+      "items": {
+        "questions_answered": "Câu hỏi của nhân viên đã được trả lời",
+        "actions_confirmed": "Thao tác đã chuẩn bị được xác nhận"
+      },
+      "tiles": {
+        "freed": "Thời gian HR được giải phóng",
+        "freedDays": "khoảng {days} ngày làm việc",
+        "freedNone": "Đặt mốc cơ sở để đo",
+        "errors": "Lỗi lương phát hiện trước kỳ chạy",
+        "errorsNote": "mỗi lỗi lẽ ra cần một lần sửa",
+        "errorsNoPayroll": "Không sử dụng tính lương",
+        "loops": "Thao tác vòng lặp đã hoàn tất",
+        "loopsChanged": "{rate} do một người thay đổi",
+        "loopsNone": "chưa có thao tác nào hoàn tất",
+        "questions": "Câu hỏi của nhân viên đã được trả lời",
+        "questionsNote": "trả lời ngay, bất kỳ lúc nào",
+        "questionsGroupOnly": "Hiển thị cho quản trị viên tập đoàn",
+        "notShown": "Không hiển thị"
+      },
+      "chart": {
+        "title": "Thời gian HR được giải phóng theo tháng",
+        "unit": "Số giờ được giải phóng",
+        "label": "Thời gian HR được giải phóng theo tháng: {values}.",
+        "value": "{month} {hours} giờ",
+        "marker": "Autopilot bắt đầu",
+        "markerSentence": "Autopilot bắt đầu vào {month}.",
+        "note": "Thời gian đội nhận lại cho công việc chỉ con người làm được: trò chuyện với nhân viên, lập kế hoạch, xử lý hồ sơ."
+      },
+      "table": {
+        "title": "Thời gian đến từ đâu",
+        "item": "Công việc vòng lặp hoặc trợ lý",
+        "done": "Đã xong",
+        "manual": "Thời gian thủ công mỗi mục của bạn",
+        "review": "Thời gian xem xét",
+        "freed": "Số giờ được giải phóng",
+        "noWork": "Chưa có công việc nào hoàn tất trong khoảng thời gian này.",
+        "notInBaseline": "Không có trong mốc cơ sở",
+        "withoutBaseline": "{count, plural, other {# đã xong nhưng mốc cơ sở không có số phút cho mục này}}",
+        "averaged": "Khi mốc cơ sở của các công ty khác nhau, thời gian thủ công mỗi mục là giá trị trung bình, có trọng số theo khối lượng công việc đã xong."
+      },
+      "method": {
+        "summary": "Cách đo: số giờ được giải phóng = công việc đã xong × thời gian thủ công của chính bạn cho mỗi mục (đo từ nhật ký sự kiện trước Autopilot) − thời gian mọi người dành để xem xét. Không ước tính từ mức trung bình của ngành.",
+        "link": "Phương pháp đầy đủ",
+        "work": "Công việc đã xong: mỗi thẻ vòng lặp mà một người đã hoàn tất trong khoảng thời gian, mỗi câu hỏi của nhân viên mà AI Centre đã trả lời, và mỗi thao tác do AI Centre chuẩn bị được một người xác nhận. Lỗi lương được phát hiện là các phát hiện bất thường đã được sửa trước khi kỳ chạy lương đóng; chúng được đếm, không quy đổi thành giờ.",
+        "baseline": "Thời gian thủ công mỗi mục của bạn lấy từ mốc cơ sở: một khoảng thời gian trước khi Autopilot bắt đầu tại công ty. Với chấm công ra bị thiếu và dữ liệu nhân viên còn thiếu, nhật ký sự kiện đo số thao tác của nhân sự trên mỗi hồ sơ trong khoảng đó (điều chỉnh chấm công và thay đổi hồ sơ), và số phút cho mỗi thao tác của bạn quy đổi chúng thành thời gian. Với công việc khác, đó là số phút bạn đã nhập. Công ty chưa có mốc cơ sở được tính là đã xong việc nhưng không giải phóng thời gian.",
+        "review": "Thời gian xem xét: với mỗi mục, khoảng thời gian từ khi AI Centre chuẩn bị đến khi một người xác nhận, tối đa {cap} phút và không bao giờ vượt quá thời gian thủ công của chính mục đó. Khoảng cách dài hơn nghĩa là mục đó đang chờ, không phải ai đó đã làm việc với nó lâu như vậy. Vòng lặp ghi nhận xác nhận ở lần kiểm tra kế tiếp, nên phần lớn các mục được tính đủ mức tối đa: sổ này tính thấp thời gian được giải phóng chứ không tính cao. Câu hỏi đã trả lời không có bước xem xét.",
+        "arithmetic": "Số giờ được giải phóng = công việc đã xong × thời gian thủ công mỗi mục − thời gian xem xét, tính cho từng công ty theo mốc cơ sở của chính mình rồi cộng lại. Một ngày làm việc là {hours} giờ.",
+        "access": "Quản trị viên HR và quản trị viên tập đoàn xem trang này cho các công ty họ quản trị. Số câu hỏi và số thao tác được xác nhận lấy từ hồ sơ kết quả của AI Centre, mà chỉ quản trị viên tập đoàn mới được đọc trên nhiều người, nên các quản trị viên khác không thấy chúng.",
+        "records": "Mọi con số đều lấy từ hồ sơ: thẻ vòng lặp, hồ sơ kết quả và phát hiện bất thường về lương, được đọc bằng quyền truy cập của chính bạn. Không ước tính từ mức trung bình của ngành."
+      },
+      "baseline": {
+        "notSet": "Chưa đặt mốc cơ sở",
+        "notSetBody": "Số giờ được giải phóng được đo theo thời gian thủ công của chính bạn trước khi Autopilot bắt đầu. Hãy đặt mốc cơ sở để xem; nhật ký sự kiện đo những gì có thể, còn bạn bổ sung số phút mà nó không thể biết.",
+        "missingSome": "{count, plural, other {# công ty chưa có mốc cơ sở, nên công việc của họ được tính là đã xong nhưng không giải phóng thời gian.}}",
+        "setFor": "Đặt mốc cơ sở cho {company}",
+        "saved": "Đã lưu mốc cơ sở (phiên bản {version}).",
+        "errors": {
+          "invalid": "Nhập số phút là một số tối đa {max}, nhiều nhất một chữ số thập phân, hoặc để trống ô.",
+          "empty": "Nhập ít nhất một con số, hoặc số phút cho mỗi thao tác của nhân sự khi nhật ký sự kiện có thể đo công việc đó.",
+          "not_administrator": "Bạn chỉ có thể đặt mốc cơ sở cho công ty mà bạn quản trị.",
+          "conflict": "Có người đã lưu mốc cơ sở cùng lúc. Hãy thử lại.",
+          "failed": "Không thể lưu mốc cơ sở. Hãy thử lại."
+        }
+      },
+      "setup": {
+        "title": "Mốc cơ sở cho {company}",
+        "intro": "Thời gian thủ công của chính đội bạn cho mỗi mục trước Autopilot. Nhật ký sự kiện đo những gì có thể; bạn bổ sung số phút mà nó không thể biết. Khi lưu, các mốc cơ sở trước vẫn được giữ.",
+        "current": "Mốc cơ sở hiện tại: phiên bản {version}, từ {from} đến {to}.",
+        "step1": "1. Khoảng thời gian cơ sở",
+        "periodEnds": "Kết thúc vào {date}, ngày Autopilot bắt đầu tại đây.",
+        "periodEndsToday": "Autopilot chưa bắt đầu tại đây, nên kết thúc vào hôm nay.",
+        "daysLabel": "Độ dài",
+        "daysOption": "{days} ngày",
+        "usePeriod": "Dùng khoảng thời gian này",
+        "period": "Khoảng thời gian: từ {from} đến {to}.",
+        "step2": "2. Những gì nhật ký sự kiện đã đo",
+        "processes": {
+          "attendance_correction": "Điều chỉnh chấm công (chấm công ra bị thiếu)",
+          "profile_change": "Thay đổi hồ sơ (dữ liệu nhân viên còn thiếu)"
+        },
+        "evidence": "{cases} hồ sơ bắt đầu, {completed} hoàn tất, {actions} thao tác của nhân sự ({perCase} mỗi hồ sơ).",
+        "evidenceShort": "Chưa đủ lịch sử để đo: {completed} hồ sơ hoàn tất, cần ít nhất {min}. Hãy nhập số phút của bạn ở bên dưới.",
+        "evidenceOff": "Không đo: mô-đun không được sử dụng.",
+        "step3": "3. Số phút của bạn",
+        "perAction": "Số phút cho mỗi thao tác của nhân sự",
+        "perActionHelp": "Dùng cùng kết quả đo của nhật ký sự kiện, tối đa {max}.",
+        "itemMinutes": "Số phút mỗi mục: {item}",
+        "itemMeasuredHelp": "Chỉ dùng khi nhật ký sự kiện không thể đo.",
+        "blankHelp": "Để trống ô nếu bạn không biết. Tối đa {max} phút, nhiều nhất một chữ số thập phân.",
+        "save": "Lưu mốc cơ sở",
+        "cancel": "Hủy"
       }
     },
     "subnav": {

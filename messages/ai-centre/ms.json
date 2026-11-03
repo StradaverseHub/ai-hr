@@ -20,6 +20,7 @@
       "spend": "Perbelanjaan dan penyedia",
       "operations": "Operasi",
       "administration": "Pentadbiran",
+      "insights": "Wawasan",
       "how": "Cara ia berfungsi"
     },
     "inboxCount": "{count, plural, one {# item menunggu} other {# item menunggu}}",
@@ -199,6 +200,115 @@
         "none": "Belum ada larian.",
         "summary": "{opened} disediakan, {closed} ditutup, {open} terbuka, {waiting} menunggu",
         "capped": "Had kad dicapai; selebihnya pada larian seterusnya."
+      }
+    },
+    "capacity": {
+      "title": "Kapasiti HR",
+      "descriptionCompany": "Apa yang dilakukan AI Centre untuk pasukan HR {company}, diukur berbanding garis dasarnya sendiri.",
+      "descriptionAll": "Apa yang dilakukan AI Centre untuk pasukan HR syarikat yang anda tadbir, setiap satu diukur berbanding garis dasarnya sendiri.",
+      "periodLabel": "Tempoh",
+      "periods": {
+        "last30": "30 hari lepas",
+        "quarter": "Suku tahun ini",
+        "year": "Tahun ini"
+      },
+      "companyLabel": "Syarikat",
+      "allCompanies": "Semua syarikat anda ({count})",
+      "show": "Tunjukkan",
+      "noCompanies": "Anda belum mentadbir mana-mana syarikat.",
+      "hours": "{hours} j",
+      "minutes": "{minutes} minit",
+      "items": {
+        "questions_answered": "Soalan pekerja yang dijawab",
+        "actions_confirmed": "Tindakan disediakan yang disahkan"
+      },
+      "tiles": {
+        "freed": "Masa HR yang dijimatkan",
+        "freedDays": "kira-kira {days} hari bekerja",
+        "freedNone": "Tetapkan garis dasar untuk mengukurnya",
+        "errors": "Ralat gaji dikesan sebelum larian",
+        "errorsNote": "setiap satu akan memerlukan pembetulan",
+        "errorsNoPayroll": "Gaji tidak digunakan",
+        "loops": "Tindakan gelung diselesaikan",
+        "loopsChanged": "{rate} diubah oleh seseorang",
+        "loopsNone": "belum ada yang diselesaikan",
+        "questions": "Soalan pekerja yang dijawab",
+        "questionsNote": "dijawab serta-merta, pada bila-bila masa",
+        "questionsGroupOnly": "Ditunjukkan kepada pentadbir kumpulan",
+        "notShown": "Tidak ditunjukkan"
+      },
+      "chart": {
+        "title": "Masa HR yang dijimatkan, mengikut bulan",
+        "unit": "Jam dijimatkan",
+        "label": "Masa HR yang dijimatkan mengikut bulan: {values}.",
+        "value": "{month} {hours} jam",
+        "marker": "Autopilot bermula",
+        "markerSentence": "Autopilot bermula pada {month}.",
+        "note": "Masa yang diperoleh semula oleh pasukan untuk kerja yang hanya boleh dilakukan oleh manusia: perbualan dengan pekerja, perancangan, kes."
+      },
+      "table": {
+        "title": "Dari mana masa itu datang",
+        "item": "Kerja gelung atau pembantu",
+        "done": "Selesai",
+        "manual": "Masa manual anda setiap satu",
+        "review": "Masa semakan",
+        "freed": "Jam dijimatkan",
+        "noWork": "Belum ada kerja diselesaikan dalam tempoh ini.",
+        "notInBaseline": "Tiada dalam garis dasar",
+        "withoutBaseline": "{count, plural, other {# selesai tetapi garis dasar tiada minit untuknya}}",
+        "averaged": "Jika garis dasar syarikat anda berbeza, masa manual setiap satu ialah puratanya, ditimbang mengikut kerja yang selesai."
+      },
+      "method": {
+        "summary": "Cara ia diukur: jam dijimatkan = kerja selesai × masa manual anda sendiri bagi setiap item (diukur daripada log peristiwa sebelum Autopilot) − masa yang digunakan untuk menyemak. Tiada apa-apa dianggarkan daripada purata industri.",
+        "link": "Kaedah penuh",
+        "work": "Kerja selesai: setiap kad gelung yang diselesaikan oleh seseorang dalam tempoh ini, setiap soalan pekerja yang dijawab oleh AI Centre, dan setiap tindakan yang disediakan oleh AI Centre dan disahkan oleh seseorang. Ralat gaji yang dikesan ialah penemuan anomali yang dibetulkan sebelum larian gaji ditutup; ia dikira, bukan ditukar kepada jam.",
+        "baseline": "Masa manual anda setiap satu datang daripada garis dasar anda: satu tempoh sebelum Autopilot bermula di syarikat itu. Bagi rekod keluar tertinggal dan data pekerja tiada, log peristiwa mengukur tindakan kakitangan bagi setiap kes dalam tempoh itu (pembetulan kehadiran dan perubahan profil), dan minit anda bagi setiap tindakan kakitangan menukarnya kepada masa. Bagi kerja lain, ia ialah minit yang anda masukkan. Syarikat tanpa garis dasar mengira kerjanya sebagai selesai tanpa menjimatkan masa.",
+        "review": "Masa semakan: bagi setiap item, masa antara AI Centre menyediakannya dan seseorang mengesahkannya, sehingga {cap} minit dan tidak melebihi masa manual item itu sendiri. Jurang yang lebih panjang bermakna item itu menunggu, bukan seseorang bekerja padanya. Gelung merekodkan pengesahan apabila ia menyemak semula, jadi kebanyakan item mengira had penuh: lejar ini mengurangkan anggaran masa dijimatkan, bukan melebihkannya. Soalan yang dijawab tiada langkah semakan.",
+        "arithmetic": "Jam dijimatkan = kerja selesai × masa manual anda setiap satu − masa semakan, bagi setiap syarikat dengan garis dasarnya sendiri, kemudian dijumlahkan. Satu hari bekerja ialah {hours} jam.",
+        "access": "Pentadbir HR dan pentadbir kumpulan melihat ini bagi syarikat yang mereka tadbir. Bilangan soalan dan tindakan yang disahkan datang daripada rekod hasil AI Centre, yang hanya boleh dibaca merentas orang oleh pentadbir kumpulan, jadi pentadbir lain tidak melihatnya.",
+        "records": "Setiap angka datang daripada rekod: kad gelung, rekod hasil dan penemuan anomali gaji, dibaca dengan akses anda sendiri. Tiada apa-apa dianggarkan daripada purata industri."
+      },
+      "baseline": {
+        "notSet": "Garis dasar belum ditetapkan",
+        "notSetBody": "Jam dijimatkan diukur berbanding masa manual anda sendiri sebelum Autopilot bermula. Tetapkan garis dasar untuk melihatnya; log peristiwa mengukur apa yang boleh, dan anda menambah minit yang tidak dapat diketahuinya.",
+        "missingSome": "{count, plural, other {# syarikat belum mempunyai garis dasar, jadi kerjanya dikira sebagai selesai tanpa menjimatkan masa.}}",
+        "setFor": "Tetapkan garis dasar untuk {company}",
+        "saved": "Garis dasar disimpan (versi {version}).",
+        "errors": {
+          "invalid": "Masukkan minit sebagai nombor sehingga {max}, dengan paling banyak satu perpuluhan, atau biarkan medan kosong.",
+          "empty": "Masukkan sekurang-kurangnya satu angka, atau minit anda bagi setiap tindakan kakitangan jika log peristiwa boleh mengukur kerja itu.",
+          "not_administrator": "Anda hanya boleh menetapkan garis dasar syarikat yang anda tadbir.",
+          "conflict": "Seseorang menyimpan garis dasar pada masa yang sama. Cuba lagi.",
+          "failed": "Garis dasar tidak dapat disimpan. Cuba lagi."
+        }
+      },
+      "setup": {
+        "title": "Garis dasar untuk {company}",
+        "intro": "Masa manual pasukan anda sendiri bagi setiap item sebelum Autopilot. Log peristiwa mengukur apa yang boleh; anda menambah minit yang tidak dapat diketahuinya. Menyimpan mengekalkan garis dasar terdahulu.",
+        "current": "Garis dasar semasa: versi {version}, {from} hingga {to}.",
+        "step1": "1. Tempoh garis dasar",
+        "periodEnds": "Ia berakhir pada {date}, hari Autopilot bermula di sini.",
+        "periodEndsToday": "Autopilot belum bermula di sini, jadi ia berakhir hari ini.",
+        "daysLabel": "Panjang",
+        "daysOption": "{days} hari",
+        "usePeriod": "Guna tempoh ini",
+        "period": "Tempoh: {from} hingga {to}.",
+        "step2": "2. Apa yang diukur oleh log peristiwa",
+        "processes": {
+          "attendance_correction": "Pembetulan kehadiran (rekod keluar tertinggal)",
+          "profile_change": "Perubahan profil (data pekerja tiada)"
+        },
+        "evidence": "{cases} kes bermula, {completed} selesai, {actions} tindakan kakitangan ({perCase} bagi setiap kes).",
+        "evidenceShort": "Sejarah tidak cukup untuk diukur: {completed} kes selesai, sekurang-kurangnya {min} diperlukan. Masukkan minit anda untuknya di bawah.",
+        "evidenceOff": "Tidak diukur: modul tidak digunakan.",
+        "step3": "3. Minit anda",
+        "perAction": "Minit bagi setiap tindakan kakitangan",
+        "perActionHelp": "Digunakan bersama ukuran log peristiwa, sehingga {max}.",
+        "itemMinutes": "Minit setiap satu: {item}",
+        "itemMeasuredHelp": "Digunakan hanya jika log peristiwa tidak dapat mengukurnya.",
+        "blankHelp": "Biarkan medan kosong jika anda tidak tahu. Sehingga {max} minit, dengan paling banyak satu perpuluhan.",
+        "save": "Simpan garis dasar",
+        "cancel": "Batal"
       }
     },
     "subnav": {

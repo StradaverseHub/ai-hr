@@ -13,12 +13,12 @@
  * lib/permissions.ts therefore lists every route unchanged, and `adminOnly` below only hides a tab the
  * page would refuse anyway; it is never the gate. */
 
-export const CENTRE_VIEWS = ['jobs', 'how'] as const;
+export const CENTRE_VIEWS = ['jobs', 'how', 'insights'] as const;
 export type CentreView = (typeof CENTRE_VIEWS)[number];
 export const isCentreView = (value: unknown): value is CentreView =>
   typeof value === 'string' && (CENTRE_VIEWS as readonly string[]).includes(value);
 
-export type CentreTabKey = 'ask' | 'jobs' | 'operations' | 'administration' | 'how';
+export type CentreTabKey = 'ask' | 'jobs' | 'operations' | 'administration' | 'how' | 'insights';
 
 /** `sections`: the tab is a group whose pages show a second tab row (CENTRE_SECTIONS). */
 export type CentreTab = Readonly<{ key: CentreTabKey; href: string; adminOnly: boolean; sections: boolean }>;
@@ -27,6 +27,10 @@ export const CENTRE_TABS: readonly CentreTab[] = [
   { key: 'ask', href: '/assistant', adminOnly: false, sections: false },
   { key: 'jobs', href: '/assistant?view=jobs', adminOnly: false, sections: false },
   { key: 'operations', href: '/control-tower', adminOnly: true, sections: true },
+  // AI v2 Phase 2 (P2-4): Insights, a view of /assistant (approved mock-up Ledger.dc.html, between Operations and
+  // Administration). Its HR capacity section is for administrators, so until the employee "My payroll readiness"
+  // section lands (a parallel Phase 2 task) the tab is offered to administrators only.
+  { key: 'insights', href: '/assistant?view=insights', adminOnly: true, sections: false },
   { key: 'administration', href: '/control-tower/agents/features', adminOnly: true, sections: true },
   { key: 'how', href: '/assistant?view=how', adminOnly: false, sections: false },
 ];
