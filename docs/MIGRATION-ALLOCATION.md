@@ -1724,3 +1724,4 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | New candidate migration | 0978_leave_give_back_request_identity | 825 | 1793330000378 | 0145d6a9714931ed7c6fc5dc4076a50062e40c2dab8dce2092847d55ff249fae |
 | New candidate migration | 0979_leave_own_application_binding_readiness | 826 | 1793330000379 | ac2a7caf7517d5cb922570527cf3794dfab61383bb86156d081bd208306ade34 |
 | New candidate migration | 0980_leave_employee_records_delete_readiness | 827 | 1793330000380 | 8cec8b3ae00c27853d4a9e3358435ec1f6dc9048415b96625836713fec27ccd1 |
+| New candidate migration | 0981_leave_on_behalf_application_binding_readiness | 828 | 1793330000381 | ce52e137b8ba62bac5fa292a3a070772086ce78a9df52f5b3e600631783e3621 |

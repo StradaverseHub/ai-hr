@@ -228,3 +228,16 @@ export const LEAVE_EMPLOYEE_RECORDS_CAPABILITY_PUBLICATION={
   'app.leave_employee_record_cancel_allowed(uuid)',
  ],
 } as const;
+
+export const LEAVE_ON_BEHALF_APPLICATION_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='leave.onBehalf.application'),
+ functionLegacyParityFunction:'app.leave_on_behalf_application_native_allowed',
+ functionCurrentLegacyParityFunction:'app.leave_on_behalf_application_current_native_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.leave_on_behalf_application_bindings_complete()',
+  'app.leave_on_behalf_application_allowed(uuid)',
+  'app.leave_on_behalf_native(uuid)',
+ ],
+} as const;

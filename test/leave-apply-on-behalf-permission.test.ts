@@ -706,3 +706,27 @@ it('publishes Leave Employee Records Delete after View and fences administrative
    where id in ('leave.view','leave.delete','function.leaveEmployeeRecords.view',${cap})`;
  }
 });
+
+it('publishes on-behalf application without replacing the customer-granted manager course',async()=>{
+ const manager=await hire('manager'),subject=await hire('employee'),typeId=await leaveType();
+ await reportsTo(subject.employmentId,manager.employmentId);
+ await grant({role:'manager',allowed:true});
+ const cap='function.leave.onBehalf.application.add';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'leave_on_behalf_application')).toMatchObject({changed:true,capabilities:2});
+  expect(await publishActionCapabilityPackage(owner.client,'leave_on_behalf_application')).toMatchObject({changed:false});
+  const eligible=()=>leaveApplicationAddAccess(manager.ctx,[manager.employmentId,subject.employmentId]);
+  expect(await eligible()).toEqual(expect.arrayContaining([manager.employmentId,subject.employmentId]));
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${manager.ctx.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  expect(await eligible()).toEqual([manager.employmentId]);
+  const submit=()=>requestLeave(manager.ctx,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+  await expect(submit()).rejects.toBeInstanceOf(LeaveOnBehalfNotAllowedError);
+  expect(await requestCount(subject.employmentId)).toBe(0);
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await expect(submit()).resolves.toMatchObject({leaveRequestId:expect.any(String)});
+ }finally{
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.leave.onBehalf.application.%'`;
+ }
+});
