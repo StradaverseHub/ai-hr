@@ -112,7 +112,7 @@ describe('workforce metrics: suppression (pure)',()=>{
   const four=headcount([...many(6,C1,'d-a'),...many(5,C1,'d-b'),...many(4,C1,'d-c')]);
   expect(departmentsOf(four)).toEqual([['Fictional Assembly','published',null],['Fictional Bindery','suppressed','protects_another_group'],['Fictional Coating','suppressed','fewer_than_minimum']]);
   expect(four.overall).toEqual({status:'published',headcount:15});expect(four.companies[0]).toMatchObject({status:'published',headcount:15});
-  for(const hidden of (four.companies[0].departments as Record<string,unknown>[]).filter(row=>row.status==='suppressed'))expect(Object.keys(hidden).sort()).toEqual(['department','status','withheldBecause']);
+  for(const hidden of (four.companies[0].departments as unknown as Record<string,unknown>[]).filter(row=>row.status==='suppressed'))expect(Object.keys(hidden).sort()).toEqual(['department','status','withheldBecause']);
  });
  it('withholds a group whose complement is one to four people, companies within all companies, and the departments of a withheld company',()=>{
   expect(departmentsOf(headcount([...many(10,C1,'d-a'),...many(2,C1,'d-b')]))).toEqual([['Fictional Assembly','suppressed','complement_too_small'],['Fictional Bindery','suppressed','fewer_than_minimum']]);
@@ -170,7 +170,7 @@ describe('workforce metrics: suppression (pure)',()=>{
   expect(small).toEqual({overall:{status:'suppressed',withheldBecause:'fewer_than_minimum'},companies:[],departments:[{department:'Fictional Assembly',status:'suppressed',withheldBecause:'team_suppressed'}]});
   const split=team([...many(5,C1,'d-a'),unit(C2,'d-b')]);
   expect(split.overall).toEqual({status:'published',headcount:6});
-  expect(rows(split.departments as Record<string,unknown>[])).toEqual([['Fictional Assembly','suppressed','complement_too_small'],['Fictional Bindery','suppressed','fewer_than_minimum']]);
+  expect(rows(split.departments as unknown as Record<string,unknown>[])).toEqual([['Fictional Assembly','suppressed','complement_too_small'],['Fictional Bindery','suppressed','fewer_than_minimum']]);
  });
  it('returns no person and no individual figure',()=>{
   const units=[...[60,90,30,0,45,120].map(value=>unit(C1,'d-a',minutes(value)))];
