@@ -91,7 +91,8 @@ afterEach(()=>{expect(model.calls,'a payroll loop called a model').toBe(0);});
 
 describe('the Pre-salary loop',()=>{
  it('reads each input check through its own owner, on a fictional company where every item is known',async()=>{
-  await setup(['payroll','attendance','leave','claims']);
+  // Leave is a core module: always in use, with no tenant row to set.
+  await setup(['payroll','attendance','claims']);
   const shift=(await createShift(a,{name:'Fictional Day',code:`PS${randomUUID().slice(0,4)}`,startTime:'09:00',endTime:'18:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]})).id;
   const worker=async(name:string,statutory:'full'|'no_bank'='full')=>{const e=await hire(name,{basic:3000,statutory});await assignDefaultShift(a,{employmentId:e.employmentId,shiftId:shift});return e;};
   const fullDay=async(employmentId:string)=>{await checkIn(a,{employmentId,date:YESTERDAY,time:'09:00',manual:true});await checkOut(a,{employmentId,date:YESTERDAY,time:'18:00',manual:true});};
@@ -410,6 +411,7 @@ describe('the group pipeline and isolation',()=>{
   expect(own.companies.map(c=>[c.companyName,c.salary.runs.length])).toEqual([['Fictional Branch Sdn Bhd',0]]);
   expect((await payrollCycleOverview(branch,{period:JUNE,companyId:b.companyId,today:TODAY})).companies.map(c=>c.companyName)).toEqual(['Fictional Branch Sdn Bhd']);
   expect((await salaryLoopPage(branch,{period:JUNE,today:TODAY})).flags).toEqual([]);
+  // The branch employs nobody, so it has no salary run to start; and the group company's runs and flags are not its to read.
   expect((await withTenant(branch,tx=>tx.select().from(terasLoopCase).where(eq(terasLoopCase.workerId,'loop_salary_payroll'))))).toEqual([]);
   // The group administrator sees the group company's flags, by name, and filters to one company.
   const groupPage=await salaryLoopPage(group,{period:JUNE,companyId:b.companyId,today:TODAY});

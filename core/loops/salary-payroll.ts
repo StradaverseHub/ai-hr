@@ -24,7 +24,7 @@
  * run unlocked after close reopens its case. A start case is done when the regular run exists. A flag is done when payroll
  * HR records its disposition; it no longer applies when a reprocess or an approved exclusion takes it under the
  * threshold; it expires when its period is two months past. No model is called. */
-import {and,eq,inArray,isNull,sql} from 'drizzle-orm';
+import {and,eq,gte,inArray,isNull,lte,or,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {company,employment,payrollBatch,payslip} from '../../db/schema';
 import {terasPayrollSwingDisposition} from '../../db/teras-payroll-cycle-schema';
@@ -187,14 +187,19 @@ export async function detectSalaryPayroll(sponsor:SessionContext,input:LoopDetec
  const present=new Set(batches.map(batch=>batch.id));
  for(const [batchId,item] of tracked.runs)if(!present.has(batchId))
   observations.push({subjectKey:item.subjectKey,companyId:item.companyId,employmentId:null,recipient:'payroll',state:'closed',closeReason:'superseded',facts:item.facts});
- // Start: after the cut-off, the active period's regular run, prepared for HR to start.
+ // Start: after the cut-off, the active period's regular run, prepared for HR to start, for a company with someone
+ // employed in that period (a company with nobody to pay has no run to start).
  for(const companyId of companies){
   const {active}=periodsOf.get(companyId)!;
   const started=batches.some(batch=>batch.companyId===companyId&&batch.payPeriod===active&&batch.runType==='regular');
   const facts={payPeriod:active,cutOff:cutOffOf(companyId,active)};
-  observations.push(started
-   ?{subjectKey:startKey(companyId,active),companyId,employmentId:null,recipient:'payroll',state:'closed',closeReason:'done',resolution:'completed',facts}
-   :{subjectKey:startKey(companyId,active),companyId,employmentId:null,recipient:'payroll',state:'open',facts});
+  const subjectKey=startKey(companyId,active);
+  if(started){observations.push({subjectKey,companyId,employmentId:null,recipient:'payroll',state:'closed',closeReason:'done',resolution:'completed',facts});continue;}
+  const [staffed]=await withTenant(sponsor,tx=>tx.select({n:sql<number>`count(*)::int`}).from(employment).where(and(eq(employment.companyId,companyId),
+   lte(employment.hiredOn,periodEnd(active)),or(isNull(employment.terminatedOn),gte(employment.terminatedOn,`${active}-01`)))));
+  observations.push(Number(staffed?.n??0)>0
+   ?{subjectKey,companyId,employmentId:null,recipient:'payroll',state:'open',facts}
+   :{subjectKey,companyId,employmentId:null,recipient:'payroll',state:'closed',closeReason:'superseded',facts});
  }
  for(const item of tracked.starts){
   const period=typeof item.facts.payPeriod==='string'&&PERIOD.test(item.facts.payPeriod)?item.facts.payPeriod:null;
