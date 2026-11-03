@@ -5,6 +5,7 @@
  * Admin/scope fenced via scopedAdmin(); the export appends a `payroll.individual-txn.exported` DomainEvent
  * (in core/payroll-view.ts), mirroring the payment-summary export precedent.
  */
+import { recordPayrollExportAcross } from '@/core/payroll-audit/access-log';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
 import { exportIndividualTxnsCsv, INDIVIDUAL_TXN_STATUS_FILTERS } from '@/core/payroll-view';
@@ -69,6 +70,8 @@ export async function GET(req: Request) {
     createdFrom,
     createdTo,
   });
+  // AI v2 P2-2b: recorded per company in the export, with the file's sha256, before it is handed over (fail closed).
+  await recordPayrollExportAcross(s, { surface: 'transaction_export', companyIds, ...(year && month ? { payPeriod: `${year}-${String(month).padStart(2, '0')}` } : {}), format: 'csv' }, file.content);
   return new Response(file.content, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',

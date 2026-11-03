@@ -9,7 +9,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext} from '../../db/client';
 import {actorOf,appendEvent} from '../../db/events';
-import {terasLoopPause} from '../../db/teras-schema';
+import {terasLoopPause,type TerasLoopWorker} from '../../db/teras-schema';
 import {isAdmin} from '../../lib/authz-model';
 import {isLoopId} from './types';
 
@@ -19,8 +19,10 @@ export async function setLoopPause(supplied:SessionContext,input:Readonly<{worke
  const ctx:SessionContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  if(!ctx.userId||ctx.agent||!isAdmin(ctx))throw new LoopControlRefused('not_administrator');
  const companyId=z.guid().safeParse(input.companyId);
- if(!isLoopId(input.workerId)||!companyId.success||typeof input.paused!=='boolean')throw new LoopControlRefused('invalid');
- const workerId=input.workerId,paused=input.paused;
+ // AI v2 P2-2b: the payroll Audit loop (migration 0965) is paused the same way.
+ const known=isLoopId(input.workerId)||input.workerId==='loop_payroll_audit';
+ if(!known||!companyId.success||typeof input.paused!=='boolean')throw new LoopControlRefused('invalid');
+ const workerId=input.workerId as TerasLoopWorker,paused=input.paused;
  return withTenant(ctx,async tx=>{
   const [admin]=await tx.execute(sql`select app.is_admin_for(${companyId.data}::uuid) as ok`) as unknown as {ok:boolean|null}[];
   if(admin?.ok!==true)throw new LoopControlRefused('not_administrator');

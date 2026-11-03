@@ -42,7 +42,11 @@ export const terasMandateControl=pgTable('teras_mandate_control',{
  * conversation switch, the direct-provider attestation and the staging operator attribution (conversation only). */
 export type TerasSwitchedWorker='approver_recommendation'|'explainers'|'conversation'
  // AI v2 W8 (migration 0960): the five loops at the Prepare level.
- |LoopId;
+ |LoopId
+ // AI v2 P2-2b (migration 0965): the payroll Audit loop (core/payroll-audit). Its own runner; it shares the pause and run record.
+ |'loop_payroll_audit';
+/** 0965: the loops whose pauses and runs teras_loop_pause and teras_loop_run hold. */
+export type TerasLoopWorker=LoopId|'loop_payroll_audit';
 export type TerasAttestedProvider='anthropic'|'openai'|'google';
 export const terasWorkerControl=pgTable('teras_worker_control',{
  tenantId:tenantId(),workerId:text('worker_id').$type<TerasSwitchedWorker>().notNull(),enabled:boolean('enabled').notNull().default(false),
@@ -101,7 +105,7 @@ export const terasTaskMemory=pgTable('teras_task_memory',{
 
 /** 0960 (AI v2 W8) — a loop paused for one company by an administrator of that company. */
 export const terasLoopPause=pgTable('teras_loop_pause',{
- tenantId:tenantId(),workerId:text('worker_id').$type<LoopId>().notNull(),companyId:uuid('company_id').notNull().references(()=>company.id),
+ tenantId:tenantId(),workerId:text('worker_id').$type<TerasLoopWorker>().notNull(),companyId:uuid('company_id').notNull().references(()=>company.id),
  paused:boolean('paused').notNull().default(true),version:integer('version').notNull().default(1),
  changedByUserId:uuid('changed_by_user_id').notNull().references(()=>appUser.id),changedAt:at('changed_at').notNull().defaultNow(),
 },t=>[primaryKey({columns:[t.tenantId,t.workerId,t.companyId]})]);
@@ -121,7 +125,7 @@ export const terasLoopCase=pgTable('teras_loop_case',{
 
 /** 0960 — the loop's outcome record: one append-only row per run and company. */
 export const terasLoopRun=pgTable('teras_loop_run',{
- id:id(),tenantId:tenantId(),runId:uuid('run_id').notNull(),workerId:text('worker_id').$type<LoopId>().notNull(),
+ id:id(),tenantId:tenantId(),runId:uuid('run_id').notNull(),workerId:text('worker_id').$type<TerasLoopWorker>().notNull(),
  companyId:uuid('company_id').references(()=>company.id),status:text('status').$type<LoopRunStatus>().notNull(),
  sponsorUserId:uuid('sponsor_user_id').references(()=>appUser.id),loopVersion:text('loop_version').notNull(),
  startedAt:at('started_at').notNull(),finishedAt:at('finished_at').notNull(),recordedAt:at('recorded_at').notNull().defaultNow(),

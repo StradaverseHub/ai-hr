@@ -598,6 +598,7 @@
         "loop_missing_employee_data": "Data pekerja tiada",
         "loop_missed_clock_outs": "Rekod keluar tertinggal",
         "loop_document_expiry": "Pasport hampir tamat tempoh",
+        "loop_payroll_audit": "Gelung audit",
         "conversation": "Perbualan sembang langsung"
       },
       "switchInvalid": "Suis itu tidak boleh ditukar di sini.",
@@ -1250,6 +1251,253 @@
       "inProgress": "Import ini sedang disahkan.",
       "invalid": "Kad ini tidak dapat disemak. Lampirkan fail semula.",
       "unavailable": "Import tidak dapat diselesaikan, dan tiada apa-apa diimport. Cuba lagi, atau gunakan halaman import."
+    }
+  },
+  "payrollAudit": {
+    "name": "Gelung audit",
+    "doneMeansLine": "Selesai bermaksud: {done}",
+    "column": {
+      "title": "Gelung audit",
+      "titleNumbered": "{n} · Gelung audit",
+      "badge": "Selepas hari gaji",
+      "done": "Selesai",
+      "doneMeans": "Selesai apabila semuanya dibayar, difailkan, disesuaikan dan berbukti.",
+      "items": {
+        "payslips": "Slip gaji dikeluarkan dan dibuka",
+        "statutory": "Fail KWSP, PERKESO, SIP, PCB, HRD",
+        "bank": "Fail bank",
+        "corrections": "Pembetulan selepas larian",
+        "findings": "Semakan kawalan",
+        "approvals": "Siapa meluluskan apa, bila",
+        "repeat": "Isu berulang"
+      },
+      "values": {
+        "payslips": "{released} daripada {total} dikeluarkan · {opened} dibuka",
+        "statutory": "{prepared} daripada {forms} disediakan · {filed} difailkan · tarikh akhir {due}",
+        "bank": "{count, plural, =0 {Tiada fail bank direkodkan} other {# fail bank direkodkan}}",
+        "corrections": "{count, plural, =0 {Tiada · sasaran sifar} other {# · sasaran sifar}}",
+        "findings": "{count, plural, =0 {Tiada yang terbuka} other {# dapatan terbuka}}",
+        "pack": "Pek audit setiap syarikat",
+        "packLink": "Muat turun pek audit",
+        "repeat": "{count, plural, =0 {Tiada} other {# dihantar ke gelung Pra-gaji seterusnya}}"
+      },
+      "note": "Fail dan pemfailan kekal di peringkat Sediakan: seorang pegawai menghantar kepada KWSP, PERKESO dan LHDN. Pek audit ialah bukti baca sahaja untuk juruaudit anda.",
+      "open": "Buka gelung audit"
+    },
+    "errors": {
+      "invalid": "Itu tidak dapat direkodkan. Semak borang dan cuba lagi.",
+      "refused": "Hanya pentadbir gaji syarikat ini boleh melakukannya.",
+      "module": "Modul gaji tidak digunakan, jadi gelung audit tidak boleh dihidupkan.",
+      "failed": "Itu tidak selesai. Tiada apa yang diubah. Cuba lagi."
+    },
+    "saved": {
+      "disposed": "Keputusan direkodkan.",
+      "cause": "Punca utama direkodkan.",
+      "captured": "Dirakam dan disemak sekarang.",
+      "switch": "Disimpan.",
+      "pause": "Disimpan."
+    },
+    "filter": {
+      "period": "Bulan gaji",
+      "company": "Syarikat",
+      "allCompanies": "{count, plural, other {Semua # syarikat}}",
+      "show": "Papar"
+    },
+    "monthLine": "{month}: fail berkanun perlu dihantar pada {due}.",
+    "stepLabel": "{n} · {step}",
+    "steps": {
+      "capture": "Rakam",
+      "check": "Semak",
+      "prepare": "Sediakan",
+      "verify": "Sahkan"
+    },
+    "stepText": {
+      "capture": "Bagi setiap larian, biasa, bonus dan luar kitaran: inputnya, setiap perubahan dari draf ke muktamad dengan siapa dan sebab, pelarasan, versi peraturan, pengecualian, kelulusan, fail bank dan berkanun, pemfailan, slip gaji yang dibuka, pembetulan, siapa melihat atau mengeksport data gaji dan perubahan konfigurasi. Setiap salinan dicincang dan dirantai.",
+      "check": "Tujuh semakan kawalan setiap malam, masing-masing dengan buktinya. Tiada apa yang disekat atau diubah.",
+      "prepare": "Dapatan untuk diputuskan oleh pentadbir gaji, punca utama bagi setiap pembetulan, dan pek audit setiap syarikat.",
+      "verify": "Slip gaji dikeluarkan, fail berkanun disediakan sebelum {due} dan difailkan dengan resit, pembetulan pada sifar, dan setiap rakaman tidak berubah."
+    },
+    "figures": {
+      "captures": "Rakaman bulan ini",
+      "findings": "Dapatan terbuka",
+      "corrections": "Pembetulan selepas larian",
+      "filed": "Fail berkanun difailkan"
+    },
+    "ofForms": "{filed} daripada {forms}",
+    "companies": {
+      "title": "Syarikat",
+      "none": "Anda tidak mentadbir mana-mana syarikat dengan gaji di sini.",
+      "columns": {
+        "company": "Syarikat",
+        "runs": "Larian",
+        "payslips": "Slip gaji",
+        "statutory": "Difailkan",
+        "findings": "Dapatan",
+        "corrections": "Pembetulan",
+        "captures": "Bukti",
+        "pack": "Pek audit"
+      },
+      "noRun": "Tiada larian bulan ini",
+      "run": "Larian {type} {seq}: {status}",
+      "payslips": "{released} daripada {total} dikeluarkan · {opened} dibuka",
+      "findings": "{open} terbuka · {disposed} diputuskan",
+      "corrections": "{count, plural, =0 {Tiada} other {#}}",
+      "correctionsMissing": "{count, plural, other {# memerlukan punca utama}}",
+      "captures": "{count, plural, =0 {Belum dirakam} other {# rakaman}}",
+      "pack": "Muat turun",
+      "capture": "Rakam dan semak sekarang",
+      "packHelp": "Pek audit ialah ringkasan PDF dengan bukti CSV dan JSON, setiap satu disenaraikan dengan sha256nya. Memuat turunnya merakam bulan itu dahulu dan muat turun itu sendiri direkodkan."
+    },
+    "state": {
+      "done": "Selesai",
+      "open": "Sedang berjalan"
+    },
+    "runType": {
+      "regular": "gaji",
+      "off_cycle": "luar kitaran",
+      "bonus": "bonus",
+      "adjustment": "pelarasan",
+      "other": "lain"
+    },
+    "runStatus": {
+      "draft": "draf",
+      "processed": "diproses",
+      "closed": "ditutup",
+      "other": "lain"
+    },
+    "statutory": {
+      "title": "Fail berkanun, tarikh akhir {due}",
+      "columns": {
+        "company": "Syarikat",
+        "form": "Fail",
+        "prepared": "Disediakan",
+        "filed": "Difailkan"
+      },
+      "beforeDue": "Sebelum tarikh akhir",
+      "late": "Selepas tarikh akhir",
+      "notYet": "Belum disediakan",
+      "receipt": "Resit direkodkan",
+      "notFiled": "Belum difailkan",
+      "help": "Seorang pegawai memfailkan kepada KWSP, PERKESO, LHDN dan HRD Corp serta merekodkan resit. Gelung audit tidak pernah menghantar apa-apa."
+    },
+    "forms": {
+      "epf": "KWSP",
+      "socso_eis": "PERKESO dan SIP",
+      "pcb_cp39": "PCB (CP39)",
+      "hrd": "Levi HRD Corp"
+    },
+    "findings": {
+      "title": "Dapatan kawalan",
+      "none": "Tiada semakan kawalan menemui apa-apa bulan ini.",
+      "disposition": "Keputusan",
+      "choose": "Pilih",
+      "note": "Nota",
+      "record": "Rekod"
+    },
+    "controls": {
+      "bank_change_before_pay_day": "Butiran bank diubah sejurus sebelum hari gaji",
+      "shared_bank_account": "Satu akaun bank pada dua orang atau lebih",
+      "pay_after_last_day": "Gaji selepas hari bekerja terakhir",
+      "pay_without_attendance": "Gaji tanpa kehadiran",
+      "preparer_closed_run": "Orang yang sama memproses dan menutup larian",
+      "adjustment_without_reason": "Pelarasan manual besar tanpa sebab",
+      "formula_changed_open_period": "Formula diubah semasa larian masih terbuka"
+    },
+    "what": {
+      "bank_change_before_pay_day": "Akaun bank diubah pada {changed}, {days} hari sebelum hari gaji pada {payDay} (kini berakhir {last4}).",
+      "shared_bank_account": "Satu akaun berakhir {last4} digunakan oleh {people} orang; {paid} dibayar oleh syarikat ini.",
+      "pay_after_last_day": "Gaji bersih pada slip gaji yang bermula selepas hari bekerja terakhir, {lastDay}.",
+      "pay_without_attendance": "Gaji bersih tanpa kehadiran dan tanpa cuti yang diluluskan dalam tempoh itu.",
+      "preparer_closed_run": "Orang yang sama memproses dan menutup larian {seq}. Ditanda sahaja: tiada pelulus kedua.",
+      "adjustment_without_reason": "Pelarasan manual melebihi {threshold} dimasukkan tanpa sebab.",
+      "formula_changed_open_period": "Formula gaji atau komponen gaji diubah semasa larian {seq} masih terbuka."
+    },
+    "dispositions": {
+      "expected": "Dijangka",
+      "corrected": "Dibetulkan",
+      "false_positive": "Bukan isu",
+      "escalated": "Dirujuk ke atas"
+    },
+    "corrections": {
+      "title": "Pembetulan selepas larian",
+      "none": "Tiada larian dibuka semula atau ditetapkan semula bulan ini. Sasarannya sifar.",
+      "actions": {
+        "unlock": "Larian {seq} yang ditutup dibuka semula",
+        "rollback": "Larian {seq} yang diproses ditetapkan semula"
+      },
+      "reason": "Sebab diberikan: {reason}",
+      "noReason": "Tiada sebab diberikan.",
+      "cause": "Punca utama",
+      "choose": "Pilih",
+      "note": "Nota",
+      "record": "Rekod",
+      "update": "Nyatakan semula"
+    },
+    "rootCauses": {
+      "late_input": "Input tiba lewat",
+      "input_error": "Input dimasukkan salah",
+      "employee_data": "Data pekerja salah",
+      "configuration": "Tetapan gaji salah",
+      "rule_or_formula": "Peraturan atau formula",
+      "missed_exception": "Pengecualian tidak diambil tindakan",
+      "statutory_change": "Perubahan berkanun",
+      "other": "Lain-lain"
+    },
+    "limits": {
+      "pay": "Tidak pernah mengubah gaji, larian, fail bank atau pemfailan.",
+      "block": "Tidak pernah menyekat larian: seorang yang memproses dan menutup hanya ditanda.",
+      "file": "Tidak pernah memfailkan atau menghantar: seorang pegawai memfailkan kepada setiap agensi dan merekodkan resit.",
+      "model": "Tidak memanggil model AI: setiap semakan ialah peraturan tetap."
+    },
+    "pack": {
+      "title": "Pek audit gaji",
+      "company": "Syarikat",
+      "payPeriod": "Bulan gaji",
+      "generated": "Dijana",
+      "by": "Oleh",
+      "runs": "Larian",
+      "runLine": "Larian {runType} {runSeq}: {status}, ditutup {closedAt}, dikeluarkan {releasedAt}",
+      "statutory": "Fail berkanun dan fail bank",
+      "filingEvidence": "Bukti pemfailan dan resit",
+      "findings": "Dapatan kawalan",
+      "findingLine": "{control}: {count} ({open} terbuka, {disposed} diputuskan)",
+      "corrections": "Pembetulan selepas larian",
+      "correctionLine": "{action} pada {at}: punca utama {cause}, {note}",
+      "captures": "Rakaman",
+      "captureLine": "{kind}: {count}",
+      "verification": "Semakan gangguan",
+      "verified": "{count} rakaman disahkan. Kepala rantai {head}.",
+      "notVerified": "{count} masalah ditemui. Lihat verification.json.",
+      "anchors": "{matched} disauh dalam log audit, {chained} di dalam rantai cincangnya.",
+      "files": "Fail",
+      "none": "Tiada",
+      "kinds": {
+        "run": "Larian",
+        "inputs_snapshot": "Petikan input",
+        "payslip": "Slip gaji",
+        "change": "Perubahan dari draf ke muktamad",
+        "adjustment": "Pelarasan atau penggantian manual",
+        "rule_version": "Versi peraturan dan formula",
+        "exception": "Pengecualian dan keputusan",
+        "approval": "Jejak kelulusan dan penutupan",
+        "bank_file": "Fail bank",
+        "statutory_file": "Fail berkanun",
+        "filing": "Bukti pemfailan",
+        "payslip_release": "Pengeluaran dan pembukaan slip gaji",
+        "correction": "Pembetulan selepas larian",
+        "access": "Dilihat atau dieksport",
+        "config_change": "Perubahan konfigurasi",
+        "control_finding": "Dapatan kawalan"
+      },
+      "controls": {
+        "bank_change_before_pay_day": "Butiran bank diubah sejurus sebelum hari gaji",
+        "shared_bank_account": "Satu akaun bank pada dua orang atau lebih",
+        "pay_after_last_day": "Gaji selepas hari bekerja terakhir",
+        "pay_without_attendance": "Gaji tanpa kehadiran",
+        "preparer_closed_run": "Orang yang sama memproses dan menutup larian",
+        "adjustment_without_reason": "Pelarasan manual besar tanpa sebab",
+        "formula_changed_open_period": "Formula diubah semasa larian masih terbuka"
+      }
     }
   }
 }

@@ -11,11 +11,13 @@
  * company outside the caller's scope 404s rather than exporting a payroll. Per-employee pay is the most
  * sensitive payload in the product; this route fails closed twice on purpose.
  *
- * Read-only: no writes, no DomainEvent. (The payment-summary export appends one because it marks money
- * as sent for payment — the state the unlock warning reads. This is a reconciliation read of figures the
- * screen already displays, so an event would be noise in the audit trail rather than a record of
- * anything.)
+ * Read-only on payroll: no payroll write. (The payment-summary export appends one because it marks money
+ * as sent for payment — the state the unlock warning reads.) AI v2 P2-2b, owner decision 9: the export IS
+ * recorded in the payroll access log (core/payroll-audit/access-log.ts) — who exported which run, when, in
+ * which format, and the file's sha256 — because who viewed or exported payroll data is part of the audit
+ * trail. That entry is the only write.
  */
+import { recordPayrollExport } from '@/core/payroll-audit/access-log';
 import { scopedAdmin } from '@/lib/scope';
 import { batchDetail } from '@/core/payroll';
 import { listPayrollRegisterAcross } from '@/core/payroll-view';
@@ -73,6 +75,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ batchId:
       rows,
     );
     const { bytes, contentType, ext } = await serializeReport(report, format);
+    // AI v2 P2-2b: the export is recorded with the file's sha256 before it is handed over (fail closed).
+    await recordPayrollExport(s, { surface: 'run_export', companyId: batch.companyId, payPeriod: batch.payPeriod, batchId: batch.id, format }, new Uint8Array(bytes), rows.length);
     return new Response(new Uint8Array(bytes), {
       headers: {
         'Content-Type': contentType,

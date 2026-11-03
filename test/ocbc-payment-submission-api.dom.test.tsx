@@ -9,6 +9,9 @@ vi.mock('@/db/client', () => ({ withTenant: async (_s: unknown, fn: (tx: unknown
   select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ country: m.country }] }) }) }),
 }) }));
 vi.mock('@/core/bank-profile', () => ({ listCompanyBankProfiles: m.accounts }));
+// AI v2 P2-2b: a generated bank file is recorded in the payroll access log before it is handed over.
+const access = vi.hoisted(() => ({ recordPayrollExport: vi.fn(async () => ({ recorded: true, eventId: 'fictional-event' })) }));
+vi.mock('@/core/payroll-audit/access-log', () => access);
 vi.mock('@/packs/payroll/service', () => ({ listFilableRunsForPeriod: m.runs, listBatches: m.batches }));
 vi.mock('@/localization/registry', () => ({ packFor: (country: string) => country === 'MY' ? { bankPaymentFiles: { preview: m.preview, download: m.download } } : undefined }));
 vi.mock('../app/payroll/payment-submission/registry', () => ({ submissionFormat: (id: string) => ({
@@ -95,6 +98,9 @@ describe('OCBC bank file route', () => {
     for (let i = 0; i < 2; i++) { const response = await post(generated); expect(response.status).toBe(200); expect(await response.text()).toBe('BANK\r\n'); }
     expect(m.download).toHaveBeenNthCalledWith(1, expect.anything(), generated);
     expect(m.download).toHaveBeenNthCalledWith(2, expect.anything(), generated);
+    // AI v2 P2-2b: each hand-over is recorded with the company, month, format and the bytes themselves.
+    expect(access.recordPayrollExport).toHaveBeenCalledTimes(2);
+    expect(access.recordPayrollExport).toHaveBeenCalledWith(expect.anything(), { surface: 'bank_file', companyId, payPeriod: '2026-10', format: 'txt', detail: 'my.ocbc.salary' }, 'BANK\r\n');
   });
   it('reports stale preview conflicts and hides unknown internal errors', async () => {
     m.download.mockRejectedValueOnce(new BankPaymentFileError('Payroll changed. Preview again.', 409));

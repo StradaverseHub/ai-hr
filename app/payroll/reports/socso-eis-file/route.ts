@@ -8,6 +8,7 @@
  *
  * Each download records an append-only statutory_report artefact + domain event.
  */
+import { recordPayrollExport } from '@/core/payroll-audit/access-log';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import { socsoEisFileForBatch, SocsoEisNotReadyError } from '@/localization/my/socso-eis-file';
@@ -49,6 +50,8 @@ export async function GET(req: Request) {
       // leaving the customer unable to file at all.
       agency: 'PERKESO',
     });
+    // AI v2 P2-2b: the file handed over is recorded with its sha256 (fail closed: the catch below answers 500).
+    await recordPayrollExport(s, { surface: 'statutory_file', companyId, payPeriod: periodKey, format: 'txt', detail: 'my.socso-eis-file' }, file.content, file.totals.records);
     return new Response(file.content, {
       headers: {
         'Content-Type': 'text/plain; charset=us-ascii',

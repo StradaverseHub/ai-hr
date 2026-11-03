@@ -1194,6 +1194,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       // (core/agent-registry/controls.ts); pausing one for a company is that company's administrator's.
       '/control-tower/loops',
       '/control-tower/loops/[loop]',
+      // AI v2 P2-2b — the payroll Audit loop's own page, same requireAdmin guard; a static segment beside [loop].
+      '/control-tower/loops/loop_payroll_audit',
       '/payroll/configuration',
       // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
       // each a real sub-route under the same scopedAdmin guard as the index.

@@ -598,6 +598,7 @@
         "loop_missing_employee_data": "员工资料缺失",
         "loop_missed_clock_outs": "漏打下班卡",
         "loop_document_expiry": "护照即将到期",
+        "loop_payroll_audit": "审计循环",
         "conversation": "实时聊天对话"
       },
       "switchInvalid": "此开关无法在这里更改。",
@@ -1250,6 +1251,253 @@
       "inProgress": "此导入正在确认中。",
       "invalid": "无法核对此卡片。请重新附加文件。",
       "unavailable": "导入未能完成，没有导入任何内容。请重试，或使用导入页面。"
+    }
+  },
+  "payrollAudit": {
+    "name": "审计循环",
+    "doneMeansLine": "完成标准：{done}",
+    "column": {
+      "title": "审计循环",
+      "titleNumbered": "{n} · 审计循环",
+      "badge": "发薪日之后",
+      "done": "已完成",
+      "doneMeans": "所有款项已支付、已申报、已对账并有证据时即完成。",
+      "items": {
+        "payslips": "工资单已发布并已打开",
+        "statutory": "EPF、SOCSO、EIS、PCB、HRD 文件",
+        "bank": "银行文件",
+        "corrections": "运行后的更正",
+        "findings": "控制检查",
+        "approvals": "谁在何时批准了什么",
+        "repeat": "重复问题"
+      },
+      "values": {
+        "payslips": "已发布 {released}/{total} · 已打开 {opened}",
+        "statutory": "已准备 {prepared}/{forms} · 已申报 {filed} · 截止 {due}",
+        "bank": "{count, plural, =0 {未记录银行文件} other {已记录 # 个银行文件}}",
+        "corrections": "{count, plural, =0 {无 · 目标为零} other {# · 目标为零}}",
+        "findings": "{count, plural, =0 {没有未处理项} other {# 项未处理发现}}",
+        "pack": "每家公司一份审计包",
+        "packLink": "下载审计包",
+        "repeat": "{count, plural, =0 {无} other {# 项转入下一个薪前循环}}"
+      },
+      "note": "文件和申报停留在准备级别：由人员提交给 EPF、PERKESO 和 LHDN。审计包是供审计师使用的只读证据。",
+      "open": "打开审计循环"
+    },
+    "errors": {
+      "invalid": "无法记录。请检查表单后重试。",
+      "refused": "只有本公司的薪资管理员可以执行此操作。",
+      "module": "未使用薪资模块，因此无法开启审计循环。",
+      "failed": "操作未完成，未做任何更改。请重试。"
+    },
+    "saved": {
+      "disposed": "处理结果已记录。",
+      "cause": "根本原因已记录。",
+      "captured": "已立即采集并检查。",
+      "switch": "已保存。",
+      "pause": "已保存。"
+    },
+    "filter": {
+      "period": "薪资月份",
+      "company": "公司",
+      "allCompanies": "{count, plural, other {全部 # 家公司}}",
+      "show": "显示"
+    },
+    "monthLine": "{month}：法定文件截止日期为 {due}。",
+    "stepLabel": "{n} · {step}",
+    "steps": {
+      "capture": "采集",
+      "check": "检查",
+      "prepare": "准备",
+      "verify": "核实"
+    },
+    "stepText": {
+      "capture": "每次运行（常规、奖金和非周期）：其输入、从草稿到定稿的每项更改及操作人和原因、调整、规则版本、例外、批准、银行和法定文件、申报、工资单打开情况、更正、谁查看或导出了薪资数据以及配置更改。每份副本都经过哈希并链接。",
+      "check": "每晚进行七项控制检查，每项都附有证据。不会阻止或更改任何内容。",
+      "prepare": "供薪资管理员处理的发现、每项更正的根本原因，以及每家公司的审计包。",
+      "verify": "工资单已发布，法定文件在 {due} 之前准备好并附收据申报，更正为零，且每份采集记录未被更改。"
+    },
+    "figures": {
+      "captures": "本月采集记录",
+      "findings": "未处理的发现",
+      "corrections": "运行后的更正",
+      "filed": "已申报的法定文件"
+    },
+    "ofForms": "{filed}/{forms}",
+    "companies": {
+      "title": "公司",
+      "none": "您在此处未管理任何使用薪资的公司。",
+      "columns": {
+        "company": "公司",
+        "runs": "运行",
+        "payslips": "工资单",
+        "statutory": "已申报",
+        "findings": "发现",
+        "corrections": "更正",
+        "captures": "证据",
+        "pack": "审计包"
+      },
+      "noRun": "本月无运行",
+      "run": "{type}运行 {seq}：{status}",
+      "payslips": "已发布 {released}/{total} · 已打开 {opened}",
+      "findings": "未处理 {open} · 已处理 {disposed}",
+      "corrections": "{count, plural, =0 {无} other {#}}",
+      "correctionsMissing": "{count, plural, other {# 项需要根本原因}}",
+      "captures": "{count, plural, =0 {尚未采集} other {# 条采集记录}}",
+      "pack": "下载",
+      "capture": "立即采集并检查",
+      "packHelp": "审计包包含一份 PDF 摘要以及 CSV 和 JSON 证据，每个文件都列出其 sha256。下载时会先采集当月数据，下载本身也会被记录。"
+    },
+    "state": {
+      "done": "已完成",
+      "open": "进行中"
+    },
+    "runType": {
+      "regular": "工资",
+      "off_cycle": "非周期",
+      "bonus": "奖金",
+      "adjustment": "调整",
+      "other": "其他"
+    },
+    "runStatus": {
+      "draft": "草稿",
+      "processed": "已处理",
+      "closed": "已关闭",
+      "other": "其他"
+    },
+    "statutory": {
+      "title": "法定文件，截止 {due}",
+      "columns": {
+        "company": "公司",
+        "form": "文件",
+        "prepared": "已准备",
+        "filed": "已申报"
+      },
+      "beforeDue": "在截止日期之前",
+      "late": "在截止日期之后",
+      "notYet": "尚未准备",
+      "receipt": "已记录收据",
+      "notFiled": "尚未申报",
+      "help": "由人员向 EPF、PERKESO、LHDN 和 HRD Corp 申报并记录收据。审计循环从不提交任何内容。"
+    },
+    "forms": {
+      "epf": "EPF",
+      "socso_eis": "SOCSO 和 EIS",
+      "pcb_cp39": "PCB (CP39)",
+      "hrd": "HRD Corp 税费"
+    },
+    "findings": {
+      "title": "控制发现",
+      "none": "本月没有任何控制检查发现问题。",
+      "disposition": "处理结果",
+      "choose": "请选择",
+      "note": "备注",
+      "record": "记录"
+    },
+    "controls": {
+      "bank_change_before_pay_day": "发薪日前不久更改了银行资料",
+      "shared_bank_account": "两人或以上使用同一银行账户",
+      "pay_after_last_day": "最后工作日之后仍有薪资",
+      "pay_without_attendance": "无出勤却有薪资",
+      "preparer_closed_run": "同一人处理并关闭了运行",
+      "adjustment_without_reason": "无原因的大额手动调整",
+      "formula_changed_open_period": "运行未关闭期间更改了公式"
+    },
+    "what": {
+      "bank_change_before_pay_day": "银行账户于 {changed} 更改，即 {payDay} 发薪日前 {days} 天（现尾号 {last4}）。",
+      "shared_bank_account": "尾号 {last4} 的同一账户被 {people} 人使用；其中 {paid} 人由本公司支付。",
+      "pay_after_last_day": "工资单的起始日期晚于最后工作日 {lastDay}，但仍有净薪。",
+      "pay_without_attendance": "期间内无出勤也无已批准假期，但有净薪。",
+      "preparer_closed_run": "同一人处理并关闭了运行 {seq}。仅作标记：没有第二审批人。",
+      "adjustment_without_reason": "录入了一项超过 {threshold} 的手动调整，但没有原因。",
+      "formula_changed_open_period": "在运行 {seq} 未关闭期间，薪资公式或薪资项目被更改。"
+    },
+    "dispositions": {
+      "expected": "符合预期",
+      "corrected": "已更正",
+      "false_positive": "不是问题",
+      "escalated": "已上报"
+    },
+    "corrections": {
+      "title": "运行后的更正",
+      "none": "本月没有运行被重新打开或重置。目标为零。",
+      "actions": {
+        "unlock": "已关闭的运行 {seq} 被重新打开",
+        "rollback": "已处理的运行 {seq} 被重置"
+      },
+      "reason": "给出的原因：{reason}",
+      "noReason": "未给出原因。",
+      "cause": "根本原因",
+      "choose": "请选择",
+      "note": "备注",
+      "record": "记录",
+      "update": "重新说明"
+    },
+    "rootCauses": {
+      "late_input": "输入延迟到达",
+      "input_error": "输入录入错误",
+      "employee_data": "员工资料有误",
+      "configuration": "薪资设置有误",
+      "rule_or_formula": "规则或公式",
+      "missed_exception": "例外未被处理",
+      "statutory_change": "法定变更",
+      "other": "其他"
+    },
+    "limits": {
+      "pay": "从不更改薪资、运行、银行文件或申报。",
+      "block": "从不阻止运行：同一人处理并关闭仅作标记。",
+      "file": "从不申报或提交：由人员向各机构申报并记录收据。",
+      "model": "不调用任何 AI 模型：每项检查都是固定规则。"
+    },
+    "pack": {
+      "title": "薪资审计包",
+      "company": "公司",
+      "payPeriod": "薪资月份",
+      "generated": "生成时间",
+      "by": "生成人",
+      "runs": "运行",
+      "runLine": "{runType}运行 {runSeq}：{status}，关闭于 {closedAt}，发布于 {releasedAt}",
+      "statutory": "法定文件和银行文件",
+      "filingEvidence": "申报证据和收据",
+      "findings": "控制发现",
+      "findingLine": "{control}：{count}（未处理 {open}，已处理 {disposed}）",
+      "corrections": "运行后的更正",
+      "correctionLine": "{action}，于 {at}：根本原因 {cause}，{note}",
+      "captures": "采集记录",
+      "captureLine": "{kind}：{count}",
+      "verification": "防篡改检查",
+      "verified": "已核实 {count} 条采集记录。链头 {head}。",
+      "notVerified": "发现 {count} 个问题。请查看 verification.json。",
+      "anchors": "{matched} 条已锚定在审计日志中，其中 {chained} 条位于其哈希链内。",
+      "files": "文件",
+      "none": "无",
+      "kinds": {
+        "run": "运行",
+        "inputs_snapshot": "输入快照",
+        "payslip": "工资单",
+        "change": "从草稿到定稿的更改",
+        "adjustment": "手动调整或覆盖",
+        "rule_version": "规则和公式版本",
+        "exception": "例外及处理",
+        "approval": "批准和关闭记录",
+        "bank_file": "银行文件",
+        "statutory_file": "法定文件",
+        "filing": "申报证据",
+        "payslip_release": "工资单发布和打开",
+        "correction": "运行后的更正",
+        "access": "查看或导出",
+        "config_change": "配置更改",
+        "control_finding": "控制发现"
+      },
+      "controls": {
+        "bank_change_before_pay_day": "发薪日前不久更改了银行资料",
+        "shared_bank_account": "两人或以上使用同一银行账户",
+        "pay_after_last_day": "最后工作日之后仍有薪资",
+        "pay_without_attendance": "无出勤却有薪资",
+        "preparer_closed_run": "同一人处理并关闭了运行",
+        "adjustment_without_reason": "无原因的大额手动调整",
+        "formula_changed_open_period": "运行未关闭期间更改了公式"
+      }
     }
   }
 }

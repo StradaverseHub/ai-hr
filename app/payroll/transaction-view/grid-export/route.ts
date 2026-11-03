@@ -14,6 +14,7 @@
  * an out-of-scope companyId/employmentId is treated as "no selection", so a hand-edited export link can
  * never cross the company fence.
  */
+import { recordPayrollExportAcross } from '@/core/payroll-audit/access-log';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { historyGridDisplayRows, historyGridLabelKey } from '../history-grid-presentation';
 import { payrollRunLabel } from '@/core/payslip-cycle-label';
@@ -181,6 +182,8 @@ export async function GET(req: Request) {
   };
 
   const file = toXlsxReport(data);
+  // AI v2 P2-2b: recorded per company in the export, with the file's sha256, before it is handed over (fail closed).
+  await recordPayrollExportAcross(s, { surface: 'transaction_export', companyIds, format: 'xlsx', detail: 'history-grid' }, new Uint8Array(file.bytes));
   return new Response(Buffer.from(file.bytes), {
     headers: {
       'Content-Type': file.contentType,

@@ -42,6 +42,9 @@ vi.mock('@/localization/my/cp39-file', () => ({
 }));
 const recordFileReport = vi.fn(async () => undefined);
 vi.mock('@/core/reporting', () => ({ recordFileReport }));
+// AI v2 P2-2b: the file handed over is recorded in the payroll access log (test/payroll-audit-loop.test.ts covers the writer).
+const recordPayrollExport = vi.fn(async () => ({ recorded: true as const, eventId: 'fictional-event' }));
+vi.mock('@/core/payroll-audit/access-log', () => ({ recordPayrollExport }));
 
 const { GET } = await import('../app/payroll/reports/cp39-file/route');
 
@@ -51,6 +54,7 @@ const req = (companyId: string, extra = '') =>
 beforeEach(() => {
   fileForBatch.mockClear();
   recordFileReport.mockClear();
+  recordPayrollExport.mockClear();
 });
 
 describe('r409 verifier — /payroll/reports/cp39-file refuses a company outside the admin\'s scope', () => {
@@ -60,6 +64,7 @@ describe('r409 verifier — /payroll/reports/cp39-file refuses a company outside
     expect(await res.text()).not.toContain('SECRET');
     expect(fileForBatch).not.toHaveBeenCalled();
     expect(recordFileReport).not.toHaveBeenCalled();
+    expect(recordPayrollExport).not.toHaveBeenCalled();
   });
 
   it('the same refusal with a payroll-cycle selection on the link', async () => {
@@ -74,5 +79,8 @@ describe('r409 verifier — /payroll/reports/cp39-file refuses a company outside
     expect(fileForBatch).toHaveBeenCalledTimes(1);
     expect(fileForBatch).toHaveBeenCalledWith(ctx, { companyId: COMPANY_A, periodKey: '2026-01', runSeqs: [2] });
     expect(recordFileReport).toHaveBeenCalledTimes(1);
+    // The download is access-logged: the company, the month, the file type and the exact bytes handed over.
+    expect(recordPayrollExport).toHaveBeenCalledWith(ctx, { surface: 'statutory_file', companyId: COMPANY_A, payPeriod: '2026-01', format: 'txt', detail: 'my.cp39-file' },
+      'H|SECRET-PCB-ROWS\n', expect.anything());
   });
 });

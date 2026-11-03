@@ -1,3 +1,4 @@
+import { recordPayrollAccess } from '@/core/payroll-audit/access-log';
 import Link from 'next/link';
 import { payrollCloseCycleLabel, payrollRunLabel } from '@/core/payslip-cycle-label';
 import { notFound } from 'next/navigation';
@@ -90,6 +91,8 @@ export default async function BatchPage({
   const data = await batchDetail(s, batchId);
   if (!data) notFound();
   const { batch, slips } = data;
+  // AI v2 P2-2b: who viewed this run's payroll register is recorded (core/payroll-audit/access-log.ts), before it renders.
+  await recordPayrollAccess(s, { surface: 'register', action: 'view', companyId: batch.companyId, payPeriod: batch.payPeriod, batchId: batch.id });
   const scope = (batch.scope ?? null) as BatchScope | null;
   const processingOutcomes = batch.status === 'draft' ? [] : await listReprocessEmployeeOutcomes(s, {batchId});
   const processingByEmployment = new Map(processingOutcomes.map(outcome => [outcome.employmentId, outcome]));
