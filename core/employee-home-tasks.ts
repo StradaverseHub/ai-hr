@@ -2,13 +2,26 @@
 import type {SessionContext} from '../db/client';
 import {requireOwnHomeSubject} from './employee-home';
 import {readOwnEmployeeHomeConfiguration} from './employee-home-configuration';
-import {listPendingTasks} from './approvals-inbox';
+import {listPendingTasks,pendingTaskSummary} from './approvals-inbox';
 import {pendingStandardFeedbackTaskMetadata,pendingOnehrFeedbackTaskMetadata} from '../packs/performance/service';
 import {onboardingAssignedTaskMetadata} from '../packs/lifecycle/service';
 import {isModuleEnabled} from './entitlements';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {projectHomeAssignedWork,type EmployeeHomeTasks} from '../lib/employee-home-tasks';
 import {ASSIGNED_APPROVAL_KINDS,assignedApprovalHref,type AssignedApprovalKind} from '../lib/assigned-approval-focus';
+
+/** Summary needs the exact account total, without materializing the full Claims queue. */
+export async function countEmployeeHomeTasks(ctx:SessionContext):Promise<number>{
+ const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),
+  performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
+ const [inbox,standardFeedback,onehrFeedback,onboarding]=await Promise.all([
+  pendingTaskSummary(ctx,undefined,modules),
+  modules.performance?pendingStandardFeedbackTaskMetadata(ctx):Promise.resolve([]),
+  modules.performance?pendingOnehrFeedbackTaskMetadata(ctx):Promise.resolve([]),
+  isModuleEnabled(ctx,'lifecycle')?onboardingAssignedTaskMetadata(ctx):Promise.resolve([]),
+ ]);
+ return inbox.total+standardFeedback.length+onehrFeedback.length+onboarding.length;
+}
 
 export async function readEmployeeHomeTasks(ctx:SessionContext,employmentId?:string,page?:number):Promise<EmployeeHomeTasks>{
  const subject=await requireOwnHomeSubject(ctx,employmentId);
