@@ -2,13 +2,14 @@
  * forced row-level security.
  *
  * Proves: "employees may request" is off by default, set only by HR holding `settings`, audited, and enforced by the
- * database (a direct insert for a closed template is refused); the employee reads only their own requests, HR holding
+ * database (a direct insert for a closed template is refused); the employee reads only their own requests, and only through
+ * the column-safe own lookup (no SELECT on the table, so HR's reason never reaches them in the database), HR holding
  * `generate` reads and handles them, and another employee, an HR user without `generate` and another tenant read nothing;
  * the lifecycle requested -> in progress -> issued (only with its own issued letter) and -> declined (with a reason), with
  * one open request per letter type and final states; every change has its domain event, none carrying the purpose, the
  * decline reason or the message to the employee; HR's optional message to the employee is written only with a decline
  * and the employee reads it with the declined status, never the reason; and the employee's decline notice carries
- * nothing beyond the status. */
+ * nothing beyond the status; person erasure clears the purpose, the reason and the message and keeps the request's facts. */
 import {randomUUID} from 'node:crypto';
 import {asc,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
@@ -20,6 +21,7 @@ import {createLetterDraftBatch,decideLetter,decideLetterTemplate,getLetterGenera
 import {countWaitingLetterRequests,declineLetterRequest,getLetterRequestForStaff,LetterRequestError,listLetterRequestOptions,listLetterRequestsForStaff,
  listMyLetterRequests,listRequestableLetterTypes,saveLetterRequestOptions,submitLetterRequest} from '../core/letter-requests';
 import {dispatchNotifications,listNotifications} from '../core/notifications';
+import {erasePersonPii} from '../core/pdpa';
 import {LetterWorkflowError,type LetterPolicy} from '../lib/letter-workflow';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -98,7 +100,9 @@ describe('who reads a letter request',()=>{
   expect(row).toMatchObject({status:'requested',employmentId:aina.employmentId,companyId:b.companyId,requestedBy:aina.ctx.userId,letterTypeName:'Fictional Employment Confirmation Letter',
    purpose:PURPOSE,letterId:null,declineReason:null,handledBy:null,version:1});
   expect((await listMyLetterRequests(aina.ctx)).map(own=>[own.id,own.letterTypeName,own.status,own.letterId])).toEqual([[requestId,'Fictional Employment Confirmation Letter','requested',null]]);
-  expect(await visible(aina.ctx)).toEqual([requestId]);
+  // The employee holds no SELECT on the table: a direct query returns nothing, and their own requests come only through
+  // the column-safe own lookup (listMyLetterRequests above).
+  expect(await visible(aina.ctx)).toEqual([]);
   // HR holding generate (the company's HR administrator, by default).
   const staff=await listLetterRequestsForStaff(hr,{companyId:b.companyId});
   expect(staff.map(item=>[item.id,item.employeeName,item.employeeCode,item.purpose,item.publishedVersionId])).toEqual([[requestId,'Aina Fictional','LR-0001',PURPOSE,versionId]]);
@@ -148,6 +152,13 @@ describe('the lifecycle',()=>{
   await expect(withTenant(hr,tx=>tx.update(s.letterRequest).set({status:'requested'}).where(eq(s.letterRequest.id,requestId)))).rejects.toThrow();
   // The employee sees the status and HR's message, never HR's reason.
   const own=(await listMyLetterRequests(aina.ctx))[0];expect(own).toMatchObject({id:requestId,status:'declined',letterId:null,employeeMessage:MESSAGE});expect(JSON.stringify(own)).not.toContain(REASON);
+  // In the database too: the employee's direct query reaches no row, so neither the reason nor who handled it, and the
+  // own lookup has no such column at all.
+  expect(await withTenant(aina.ctx,tx=>tx.execute(sql`select decline_reason,handled_by from public.letter_request where id=${requestId}::uuid`))).toEqual([]);
+  const [lookup]=await withTenant(aina.ctx,tx=>tx.execute<Record<string,unknown>>(sql`select * from app.letter_requests_own(null) where id=${requestId}::uuid`));
+  expect(Object.keys(lookup).sort()).toEqual(['created_at','employee_message','employment_id','id','letter_id','letter_type_name','purpose','status','status_changed_at','template_id']);
+  expect(JSON.stringify(lookup)).not.toContain(REASON);
+  expect(await withTenant(badrul.ctx,tx=>tx.execute(sql`select id from app.letter_requests_own(null)`))).toEqual([]);
   // The notice says only that it was declined.
   await dispatchNotifications(adminCtx(b),{});
   const notices=(await listNotifications(aina.ctx)).filter(notice=>notice.kind==='letter-request.declined');
@@ -193,5 +204,31 @@ describe('the lifecycle',()=>{
   expect(audit[2].payload).toEqual({letterId:submitted.record.id,from:'in_progress',to:'issued'});
   // An unrelated letter's issue touches no request.
   const [count]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.letter_request where status='issued'`);expect(count.n).toBe(1);
+ });
+});
+
+describe('person erasure',()=>{
+ it('clears the person\'s purpose, HR\'s decline reason and the message to them, keeps the request\'s facts, and leaves another person\'s request alone',async()=>{
+  await open([templateId]);
+  const declined=(await submitLetterRequest(aina.ctx,{templateId,purpose:PURPOSE})).requestId;
+  await declineLetterRequest(hr,{requestId:declined,reason:REASON,employeeMessage:MESSAGE,expectedVersion:1});
+  const waiting=(await submitLetterRequest(aina.ctx,{templateId,purpose:PURPOSE})).requestId;
+  const theirs=(await submitLetterRequest(badrul.ctx,{templateId,purpose:PURPOSE})).requestId;
+  const before=await stored(declined);
+  const report=await erasePersonPii(hr,{subjectEmploymentId:aina.employmentId,scope:'contact',reason:'Fictional canonical privacy request',requestRef:'fixture-'+randomUUID()});
+  expect(report.erased).toContain('letterRequestText');
+  // The HR record stays: its letter type, status, times, version and who handled it; its free text is gone.
+  expect(await stored(declined)).toMatchObject({status:'declined',purpose:null,declineReason:null,employeeMessage:null,letterTypeName:before.letterTypeName,
+   handledBy:hr.userId,createdAt:before.createdAt,statusChangedAt:before.statusChangedAt,version:2,textErasedAt:expect.any(Date)});
+  expect(await stored(waiting)).toMatchObject({status:'requested',purpose:null,version:1,textErasedAt:expect.any(Date)});
+  expect(await stored(theirs)).toMatchObject({status:'requested',purpose:PURPOSE,textErasedAt:null});
+  expect(JSON.stringify(await owner.db.select().from(s.letterRequest).where(eq(s.letterRequest.employmentId,aina.employmentId)))).not.toMatch(/Fictional (purpose|reason|message)/);
+  // HR still reads the request, without its text, and it goes on through the usual lifecycle.
+  expect(await getLetterRequestForStaff(hr,waiting)).toMatchObject({status:'requested',purpose:null});
+  expect(await declineLetterRequest(hr,{requestId:waiting,reason:REASON,expectedVersion:1})).toEqual({requestId:waiting});
+  // Outside an admitted erasure the function refuses; nobody clears the text another way.
+  await expect(withTenant(hr,tx=>tx.execute(sql`select app.letter_requests_redact(${badrul.employmentId}::uuid)`))).rejects.toThrow();
+  await expect(withTenant(hr,tx=>tx.update(s.letterRequest).set({purpose:null}).where(eq(s.letterRequest.id,theirs)))).rejects.toThrow();
+  expect((await stored(theirs)).purpose).toBe(PURPOSE);
  });
 });
