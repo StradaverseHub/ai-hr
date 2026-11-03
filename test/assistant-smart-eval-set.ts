@@ -129,6 +129,12 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
  {id:'emp-toil',role:'employee',turns:[{id:'emp-toil-1',question:'I worked last Saturday from 9am to 5pm for the stock take, can I get replacement leave for it?',locale:'en',kind:'do',factor:'doing',source:journey,
   ideal:'Prepares the Leave Credit request for last Saturday (the date from today), 9:00 am to 5:00 pm, reason stock take, for the person to check and confirm; gives at most the one day the system counted and no pay or rate. Says it goes for approval and nothing is credited until then; does not say it is submitted or approved.',
   actions:['toil.replacement.request']}]},
+ // AI v2 Phase 1 slice 3: an employment letter (the Today mock-up's "Get an employment letter"). The chat card is built
+ // (core/proposals/letter-request.ts) but not yet offered: the action is not in the agent action registry. Until it is, the
+ // right answer points to Request a letter on My Letters; it never claims a request was sent or writes letter content.
+ {id:'emp-letter',role:'employee',turns:[{id:'emp-letter-1',question:'I need an employment confirmation letter',locale:'en',kind:'guide',factor:'capability',source:journey,
+  ideal:'Says the person can ask HR for it on My Letters (/me/letters) with Request a letter, choosing the letter type, and that HR prepares and issues it. Does not say a request was sent or a letter issued, and writes no letter content.',
+  mustNotMention:['request has been sent','letter has been issued']}]},
  // ───────────── MANAGER (Ravi Fictional) ─────────────
  {id:'mgr-queue',role:'manager',turns:[
   {id:'mgr-queue-1',question:'anything waiting for my approval?',locale:'en',kind:'answer',factor:'facts',source:journey,

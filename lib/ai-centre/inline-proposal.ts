@@ -9,8 +9,9 @@
 
 /** The owners whose cards confirm in place: the leave application (app/assistant/leave-apply-proposal-actions.ts),
  * the own attendance requests (attendance-request-proposal-actions.ts), the own claims and profile changes
- * (own-change-proposal-actions.ts) and, AI v2 W2 slice 2, the own Leave Credit request (toil-request-proposal-actions.ts). */
-export type InlineProposalKind = 'leave' | 'attendance' | 'own_change' | 'toil';
+ * (own-change-proposal-actions.ts), AI v2 W2 slice 2, the own Leave Credit request (toil-request-proposal-actions.ts) and,
+ * AI v2 Phase 1 slice 3, the own letter request (letter-request-proposal-actions.ts). */
+export type InlineProposalKind = 'leave' | 'attendance' | 'own_change' | 'toil' | 'letter_request';
 
 const INLINE: Readonly<Record<string, InlineProposalKind>> = Object.freeze({
   'leave.apply': 'leave',
@@ -20,6 +21,7 @@ const INLINE: Readonly<Record<string, InlineProposalKind>> = Object.freeze({
   'claims.cancel': 'own_change',
   'ess.profile.request': 'own_change',
   'toil.replacement.request': 'toil',
+  'letters.request.submit': 'letter_request',
 });
 
 export function inlineProposalKind(action: string): InlineProposalKind | null {
@@ -37,9 +39,10 @@ export type InlineConfirmResult =
 export type InlineEditResult = Readonly<{ ok: true; href: string }> | Readonly<{ ok: false; reason: string }>;
 
 export type InlineDoneKey = 'leaveSubmitted' | 'attendanceSubmitted' | 'claimSubmitted' | 'claimDraftSaved' | 'claimCancelled' | 'profileRequested'
-  | 'toilSubmitted';
+  | 'toilSubmitted' | 'letterRequested';
 /** `consent`: a First Schedule Leave Credit card confirmed without the person's own tick (the server refused it). */
-export type InlineRefusalKey = 'expired' | 'invalid' | 'access' | 'retired' | 'unavailable' | 'consent';
+/** `duplicate`: a letter request card for a letter type the person already has an open request for. */
+export type InlineRefusalKey = 'expired' | 'invalid' | 'access' | 'retired' | 'unavailable' | 'consent' | 'duplicate';
 
 /** The words the buttons show, resolved on the server in the person's language. */
 export type InlineProposalCopy = Readonly<{
@@ -53,7 +56,8 @@ export type InlineProposalCopy = Readonly<{
  * refusal is shown in place. */
 export function inlineDoneKey(kind: InlineProposalKind, result: InlineConfirmResult): InlineDoneKey | null {
   switch (result.kind) {
-    case 'submitted': return kind === 'leave' ? 'leaveSubmitted' : kind === 'attendance' ? 'attendanceSubmitted' : kind === 'toil' ? 'toilSubmitted' : 'claimSubmitted';
+    case 'submitted': return kind === 'leave' ? 'leaveSubmitted' : kind === 'attendance' ? 'attendanceSubmitted' : kind === 'toil' ? 'toilSubmitted'
+      : kind === 'letter_request' ? 'letterRequested' : 'claimSubmitted';
     case 'draft_saved': return 'claimDraftSaved';
     case 'cancelled': return 'claimCancelled';
     case 'requested': return 'profileRequested';
@@ -69,6 +73,7 @@ export function inlineRefusalKey(reason: string): InlineRefusalKey {
     case 'retired': return 'retired';
     case 'malformed': case 'signature': case 'not_yet_valid': case 'wrong_action': case 'not_confirmed': case 'changed': return 'invalid';
     case 'consent_required': return 'consent';
+    case 'duplicate': return 'duplicate';
     default: return 'unavailable';
   }
 }

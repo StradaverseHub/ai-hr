@@ -44,7 +44,9 @@ export const ProposalFacts=z.object({
  /** The person's own decision (approvals.leave.decide). */decision:z.enum(['approved','rejected']),
  /** What confirming does, in the owner's own terms. */outcome:z.enum(['withdrawn_now','give_back_requested','rejection_if_confirmed','step_decision_if_confirmed','approval_if_native_checks_pass','submitted_not_approved',
   // AI v2 W2: an own claim and an own profile change prepared in chat (core/proposals/claim-*.ts, profile-change.ts).
-  'claim_submitted_if_checks_pass','claim_draft_receipt_needed','claim_cancelled_now','hr_approval_required','hr_verification_required']),
+  'claim_submitted_if_checks_pass','claim_draft_receipt_needed','claim_cancelled_now','hr_approval_required','hr_verification_required',
+  // AI v2 Phase 1 slice 3: an own letter request (core/proposals/letter-request.ts); HR prepares and issues the letter.
+  'letter_requested_hr_prepares']),
  /** Attendance (W2): the clock times the person asks for, and what the attendance record holds now (HH:MM, KL wall time). */
  checkIn:clockTime,checkOut:clockTime,recordedCheckIn:clockTime,recordedCheckOut:clockTime,
  /** Overtime and time off in lieu (W2): the window the person gave (HH:MM; an earlier end is the next day). */
@@ -58,6 +60,9 @@ export const ProposalFacts=z.object({
   * stay in the sealed review. A bank change names the bank and the last four digits only. */
  profileChange:z.enum(['address','emergency_contact','dependant','bank']),fieldCount:z.number().int().min(1).max(64),
  bankName:z.string().min(1).max(64),accountEnding:z.string().regex(/^\d{4}$/),
+ /** An own letter request (letters.request.submit): the letter type, the published template name its company opened for
+  * employee requests. Never letter content. */
+ letterType:z.string().min(1).max(64),
 }).partial().strict();
 export type ProposalFacts=z.infer<typeof ProposalFacts>;
 /** Step 5 (§3.5): the approver recommendation from native checks, when the recommender worker ran. Two verdicts

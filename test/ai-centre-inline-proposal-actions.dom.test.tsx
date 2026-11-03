@@ -2,7 +2,7 @@
  * TodayEmployee.dc.html), rendered by the real ConversationReply for the employee they serve.
  *
  * For every prepared kind (leave application, attendance correction, overtime request, claim, claim cancellation,
- * profile change, Leave Credit request): nothing posts until a press; Confirm posts the very card it shows with `confirm: true` to its own
+ * profile change, Leave Credit request, letter request): nothing posts until a press; Confirm posts the very card it shows with `confirm: true` to its own
  * owner's server action and shows the owner's outcome with the person's Maker's Mark; a refusal is shown in place
  * (the owner's own sentence when it gave one); Edit and a "use the form" answer open the owner's prefilled form;
  * Discard only hides the card. The buttons are native, keyboard-reachable and disabled while one is pending. An
@@ -19,7 +19,7 @@ import { withAiCentre } from './helpers/ai-centre-messages';
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
 const posts = vi.hoisted(() => ({
   leave: { confirm: vi.fn(), edit: vi.fn() }, attendance: { confirm: vi.fn(), edit: vi.fn() }, own_change: { confirm: vi.fn(), edit: vi.fn() },
-  toil: { confirm: vi.fn(), edit: vi.fn() },
+  toil: { confirm: vi.fn(), edit: vi.fn() }, letter_request: { confirm: vi.fn(), edit: vi.fn() },
 }));
 vi.mock('next/link', () => ({ default: ({ children, prefetch: _prefetch, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/assistant', useSearchParams: () => new URLSearchParams(), useRouter: () => ({ refresh: vi.fn(), push: nav.push }) }));
@@ -27,6 +27,7 @@ vi.mock('../app/assistant/leave-apply-proposal-actions', () => ({ confirmLeaveAp
 vi.mock('../app/assistant/attendance-request-proposal-actions', () => ({ confirmAttendanceRequestProposalAction: posts.attendance.confirm, editAttendanceRequestProposalAction: posts.attendance.edit }));
 vi.mock('../app/assistant/own-change-proposal-actions', () => ({ confirmOwnChangeProposalAction: posts.own_change.confirm, editOwnChangeProposalAction: posts.own_change.edit }));
 vi.mock('../app/assistant/toil-request-proposal-actions', () => ({ confirmToilRequestProposalAction: posts.toil.confirm, editToilRequestProposalAction: posts.toil.edit }));
+vi.mock('../app/assistant/letter-request-proposal-actions', () => ({ confirmLetterRequestProposalAction: posts.letter_request.confirm, editLetterRequestProposalAction: posts.letter_request.edit }));
 const messages = withAiCentre('en', en as Record<string, unknown>);
 vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: 'en', messages: messages as never, namespace }),
@@ -90,6 +91,10 @@ const CASES: readonly { name: string; kind: Kind; make: () => ReturnType<typeof 
   { name: 'Leave Credit request', kind: 'toil', make: () => proposal('toil.replacement.request', 'leave_credit_request', 'create', '/assistant/toil', { startDate: '2026-11-01', endDate: '2026-11-01', plannedStart: '09:00', plannedEnd: '17:00', creditDays: 1, outcome: 'submitted_not_approved' }),
     success: { kind: 'submitted', action: 'toil.replacement.request', requestId: randomUUID() }, done: copy.done.toilSubmitted,
     refusal: { kind: 'refused', reason: 'changed' }, refusalText: copy.refused.invalid, editHref: '/leave?credit=1&creditDate=2026-11-01&creditStart=09%3A00&creditEnd=17%3A00' },
+  // AI v2 Phase 1 slice 3: an own letter request; an open request for the same letter type is refused in place.
+  { name: 'letter request', kind: 'letter_request', make: () => proposal('letters.request.submit', 'letter_request', 'create', '/me/letters', { letterType: 'Fictional Employment Confirmation Letter', outcome: 'letter_requested_hr_prepares' }, '?template='),
+    success: { kind: 'submitted', action: 'letters.request.submit', requestId: randomUUID() }, done: copy.done.letterRequested,
+    refusal: { kind: 'refused', reason: 'duplicate' }, refusalText: copy.refused.duplicate, editHref: '/me/letters?request=1&template=fictional#request-letter' },
 ];
 
 beforeEach(() => { vi.stubEnv('TERAS_PROPOSAL_SECRET', 'fictional-inline-proposal-secret-0123456789abcdef'); });
@@ -210,6 +215,12 @@ describe('the inline buttons, beyond one kind', () => {
     posts.own_change.edit.mockResolvedValueOnce({ ok: false, reason: 'authority_mismatch' });
     await act(async () => { fireEvent.click(button(card, copy.edit)); });
     expect(within(card).getByRole('alert')).toHaveTextContent(copy.refused.access);
+  });
+
+  it('names a letter request card by its letter type and what confirming does, with no letter content', async () => {
+    const card = await show(CASES.find(row => row.name === 'letter request')!.make());
+    expect(within(card).getAllByRole('heading')[0]).toHaveTextContent('Fictional Employment Confirmation Letter request');
+    expect(card).toHaveTextContent((messages as any).aiCentre.conversation.outcomes.letter_requested_hr_prepares);
   });
 
   it('leave an approver\'s decision card with its one review link', async () => {
