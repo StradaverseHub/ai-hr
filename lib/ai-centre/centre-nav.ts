@@ -37,7 +37,7 @@ export function centreTabsFor(viewer: { isAdmin: boolean }): readonly CentreTab[
 
 /** The second tab row of a group tab. `payroll`: the page is a payroll queue, offered only while the tenant
  * holds payroll (the former sidebar rows were module-gated the same way, components/sidebar.tsx MODULE_OF_HREF). */
-export type OperationsSection = 'overview' | 'exceptions' | 'readiness' | 'actions' | 'opportunities';
+export type OperationsSection = 'overview' | 'loops' | 'exceptions' | 'readiness' | 'actions' | 'opportunities';
 export type AdministrationSection = 'workers' | 'setup' | 'spend';
 export type CentreSection = OperationsSection | AdministrationSection;
 export type CentreSectionTab = Readonly<{ key: CentreSection; href: string; payroll: boolean }>;
@@ -46,6 +46,8 @@ export type CentreGroup = 'operations' | 'administration';
 export const CENTRE_SECTIONS: Readonly<Record<CentreGroup, readonly CentreSectionTab[]>> = {
   operations: [
     { key: 'overview', href: '/control-tower', payroll: false },
+    // AI v2 W8: the loops at the Prepare level (approved mock-up, Operations.dc.html "Loops"), behind the same guard.
+    { key: 'loops', href: '/control-tower/loops', payroll: false },
     { key: 'exceptions', href: '/control-tower/exceptions', payroll: true },
     { key: 'readiness', href: '/control-tower/readiness', payroll: false },
     { key: 'actions', href: '/control-tower/actions', payroll: true },

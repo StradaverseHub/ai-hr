@@ -27,6 +27,7 @@
     "sectionsLabel": "Các mục của {tab}",
     "sections": {
       "overview": "Tổng quan",
+      "loops": "Vòng lặp",
       "exceptions": "Ngoại lệ",
       "readiness": "Mức sẵn sàng hồ sơ",
       "actions": "Hành động đề xuất",
@@ -34,6 +35,171 @@
       "workers": "Tác tử",
       "setup": "Thiết lập",
       "spend": "Chi tiêu và nhà cung cấp"
+    },
+    "loops": {
+      "title": "Vòng lặp",
+      "description": "Mỗi vòng lặp theo dõi một phần công việc nhân sự, chuẩn bị việc một người cần làm và kiểm tra kết quả ở lần chạy tiếp theo. Ở cấp Chuẩn bị, không có gì thay đổi cho đến khi một người xác nhận.",
+      "columns": {
+        "loop": "Vòng lặp",
+        "doneMeans": "Hoàn thành nghĩa là",
+        "level": "Cấp",
+        "switch": "Công tắc",
+        "lastRun": "Lần chạy gần nhất",
+        "prepared": "Thẻ, {days} ngày qua",
+        "confirmed": "Hoàn tất như đã chuẩn bị",
+        "changed": "Được người thay đổi",
+        "sponsor": "Người bảo trợ"
+      },
+      "names": {
+        "loop_probation_ending": "Kết thúc thử việc",
+        "loop_payroll_inputs": "Dữ liệu lương sẵn sàng",
+        "loop_missing_employee_data": "Thiếu dữ liệu nhân viên",
+        "loop_missed_clock_outs": "Quên chấm công ra",
+        "loop_document_expiry": "Hộ chiếu sắp hết hạn"
+      },
+      "doneMeans": {
+        "loop_probation_ending": "Quyết định được ghi nhận trước khi thử việc kết thúc",
+        "loop_payroll_inputs": "Không có gì chặn việc chạy lương trước hạn chốt",
+        "loop_missing_employee_data": "Mọi thông tin nhân viên có thể điền đã được điền và phê duyệt",
+        "loop_missed_clock_outs": "Mọi lần chấm công ra đều có trong hồ sơ",
+        "loop_document_expiry": "Mỗi hộ chiếu được gia hạn trước khi hết hạn"
+      },
+      "doneMeansLine": "Hoàn thành nghĩa là: {done}.",
+      "level": {
+        "prepare": "Chuẩn bị"
+      },
+      "on": "Bật",
+      "off": "Tắt",
+      "stopped": "Bị dừng bởi công tắc dừng của công ty",
+      "turnOn": "Bật",
+      "turnOff": "Tắt",
+      "never": "Chưa chạy",
+      "runStatus": {
+        "ran": "Đã chạy",
+        "sponsor_lost": "Đã dừng: người bảo trợ không còn quyền quản trị",
+        "failed": "Chưa hoàn tất: không thẻ nào bị thay đổi"
+      },
+      "notApplicable": "Không áp dụng",
+      "noneYet": "Chưa có",
+      "changedRate": "{rate} ({count, plural, other {# thẻ}})",
+      "sponsorUnnamed": "Một quản trị viên",
+      "noSponsor": "Không có khi tắt",
+      "pausedIn": "{count, plural, other {Tạm dừng ở # công ty}}",
+      "saved": "Đã lưu.",
+      "switchNote": "Bật hoặc tắt một vòng lặp áp dụng cho mọi công ty trong tập đoàn, và người bật nó trở thành người bảo trợ. Tạm dừng cho một công ty trên trang riêng của vòng lặp.",
+      "switchNoteCompany": "Chỉ quản trị viên tập đoàn mới bật hoặc tắt vòng lặp. Bạn có thể tạm dừng một vòng lặp cho các công ty của mình trên trang riêng của nó.",
+      "cap": "Lương, tình trạng việc làm, quyền truy cập hệ thống và kỷ luật luôn ở cấp Chuẩn bị: luôn có một người quyết định.",
+      "errors": {
+        "invalid": "Không hiểu được thay đổi đó.",
+        "refused": "Bạn không thể thực hiện thay đổi đó.",
+        "module": "Mô-đun mà vòng lặp này xử lý không được sử dụng.",
+        "failed": "Không thể lưu thay đổi. Hãy thử lại."
+      },
+      "back": "Vòng lặp",
+      "stepLabel": "{n} · {step}",
+      "steps": {
+        "detect": "Phát hiện",
+        "diagnose": "Chẩn đoán",
+        "prepare": "Chuẩn bị",
+        "verify": "Xác minh"
+      },
+      "stepText": {
+        "loop_probation_ending": {
+          "detect": "Thời gian thử việc kết thúc trong 14 ngày mà chưa ghi nhận quyết định. Kiểm tra mỗi đêm.",
+          "diagnose": "Đã mở đánh giá chưa và đang ở đâu: chưa bắt đầu, ở quản lý hay ở nhân sự.",
+          "prepare": "Một thẻ đánh giá chính thức hóa cho nhân sự. Nhân sự ghi nhận quyết định; vòng lặp không bao giờ quyết định.",
+          "verify": "Đóng khi quyết định được ghi nhận. Ngày kết thúc mới chưa có quyết định sẽ mở lại."
+        },
+        "loop_payroll_inputs": {
+          "detect": "Hạn chốt lương trong vòng 7 ngày và kiểm tra mức sẵn sàng lương thấy có mục chặn việc chạy lương.",
+          "diagnose": "Những kiểm tra nào chưa sẵn sàng và bao nhiêu trong số đó chặn việc chạy lương.",
+          "prepare": "Một thẻ Hôm nay cho quản trị viên lương liệt kê những gì còn thiếu ở mỗi công ty.",
+          "verify": "Đóng khi không còn gì chặn việc chạy lương trước hạn chốt. Mục chặn mới trước hạn chốt sẽ mở lại."
+        },
+        "loop_missing_employee_data": {
+          "detect": "Hồ sơ nhân viên thiếu thông tin cần cho tính lương hoặc khai báo theo luật định.",
+          "diagnose": "Những thông tin nào nhân viên có thể điền qua yêu cầu thay đổi hồ sơ.",
+          "prepare": "Một thẻ yêu cầu cho nhân viên. Nhân sự phê duyệt yêu cầu như thường lệ.",
+          "verify": "Đóng khi không còn thiếu thông tin nào nhân viên có thể điền. Thiếu sót quay lại sẽ mở lại."
+        },
+        "loop_missed_clock_outs": {
+          "detect": "Một ngày trong 7 ngày qua có chấm công vào nhưng không có chấm công ra.",
+          "diagnose": "Giờ kết thúc ca theo lịch của ngày đó, giờ mà thẻ đề xuất.",
+          "prepare": "Một thẻ điều chỉnh cho nhân viên, người xác nhận hoặc thay đổi giờ đó. Người duyệt quyết định như thường lệ.",
+          "verify": "Đóng khi có chấm công ra trong hồ sơ. Điều chỉnh bị từ chối sẽ mở lại."
+        },
+        "loop_document_expiry": {
+          "detect": "Hộ chiếu đã ghi nhận sẽ hết hạn trong 60 ngày.",
+          "diagnose": "Ngày hết hạn trong hồ sơ.",
+          "prepare": "Một thẻ Hôm nay cho nhân sự và một thẻ nhắc nhân viên gia hạn.",
+          "verify": "Đóng khi ngày hết hạn đã gia hạn được ghi nhận. Ngày hết hạn bị đưa lại vào khoảng thời gian sẽ mở lại."
+        }
+      },
+      "figures": {
+        "prepared": "Thẻ đã chuẩn bị trong {days} ngày",
+        "confirmed": "Hoàn tất như đã chuẩn bị",
+        "changed": "Được người thay đổi",
+        "open": "Đang mở",
+        "noSpend": "Không tốn chi phí AI: các vòng lặp này chỉ dùng quy tắc, không bao giờ dùng mô hình."
+      },
+      "openWaiting": "{open} đang mở · {waiting} đang chờ",
+      "pause": {
+        "title": "Tạm dừng cho một công ty",
+        "help": "Vòng lặp bị tạm dừng sẽ không chạy và không hiện thẻ ở công ty đó. Tắt công tắc sẽ dừng nó ở mọi nơi.",
+        "none": "Bạn không quản trị công ty nào ở đây.",
+        "paused": "Đã tạm dừng",
+        "running": "Đang chạy",
+        "pause": "Tạm dừng",
+        "resume": "Tiếp tục"
+      },
+      "cases": {
+        "title": "Thẻ gần đây",
+        "none": "Chưa có thẻ.",
+        "columns": {
+          "when": "Khi nào",
+          "person": "Người",
+          "what": "Nội dung đã chuẩn bị",
+          "status": "Trạng thái"
+        },
+        "reopened": "{count, plural, other {Đã mở lại # lần}}"
+      },
+      "what": {
+        "probation": "Thử việc kết thúc ngày {date}",
+        "payroll": "Thiếu {count, plural, other {# dữ liệu}} trước hạn chốt {date}",
+        "record": "Cần điền {count, plural, other {# thông tin}}",
+        "clockOut": "Đề xuất chấm công ra lúc {time} cho ngày {date}",
+        "passport": "Hộ chiếu hết hạn ngày {date}"
+      },
+      "caseState": {
+        "open": "Đang chờ người đó",
+        "waiting": "Đã gửi: đang chờ phê duyệt thông thường",
+        "as_prepared": "Đã xác nhận như đã chuẩn bị",
+        "changed": "Được người đó thay đổi",
+        "completed": "Hoàn tất",
+        "inactive": "Đã nghỉ việc",
+        "superseded": "Không còn áp dụng",
+        "expired": "Đã quá thời điểm"
+      },
+      "limits": {
+        "title": "Những giới hạn không bao giờ vượt qua",
+        "confirm": "Nó không thay đổi hồ sơ nào: nó chuẩn bị thẻ và một người xác nhận trên trang thông thường.",
+        "scope": "Nó chỉ đọc những gì người bảo trợ được xem, và dừng nếu người bảo trợ mất quyền quản trị.",
+        "model": "Nó không gọi mô hình AI nào.",
+        "cap": "Tối đa 200 thẻ mới mỗi đêm cho mỗi công ty."
+      },
+      "owner": {
+        "title": "Ai chịu trách nhiệm",
+        "agent": "Tác tử: vòng lặp {name}, chạy với tư cách tác tử chính của công ty",
+        "sponsor": "Người bảo trợ: {name}",
+        "noSponsor": "Không có người bảo trợ khi tắt",
+        "note": "Người bảo trợ là quản trị viên tập đoàn đã bật nó. Mỗi lần chạy đều được ghi lại cùng phiên bản quy tắc."
+      },
+      "runs": {
+        "title": "Các lần chạy gần đây",
+        "none": "Chưa có lần chạy nào.",
+        "summary": "{opened} đã chuẩn bị, {closed} đã đóng, {open} đang mở, {waiting} đang chờ",
+        "capped": "Đã đạt giới hạn thẻ; phần còn lại ở lần chạy sau."
+      }
     },
     "subnav": {
       "workers": "Tất cả tác tử",
@@ -427,6 +593,11 @@
         "explainers": "Bộ diễn giải",
         "team_absence_weekly_summary": "Tóm tắt vắng mặt hằng tuần của nhóm",
         "daily_digest": "Bản tóm tắt hằng ngày",
+        "loop_probation_ending": "Kết thúc thử việc",
+        "loop_payroll_inputs": "Dữ liệu lương sẵn sàng",
+        "loop_missing_employee_data": "Thiếu dữ liệu nhân viên",
+        "loop_missed_clock_outs": "Quên chấm công ra",
+        "loop_document_expiry": "Hộ chiếu sắp hết hạn",
         "conversation": "Hội thoại trò chuyện trực tiếp"
       },
       "switchInvalid": "Không thể thay đổi công tắc đó tại đây.",
@@ -734,6 +905,46 @@
       "proposalsTitle": "{count, plural, other {# bản sửa đã chuẩn bị đang chờ bạn phê duyệt}}",
       "proposalsSource": "Hành động đề xuất",
       "proposalsCta": "Xem các bản sửa"
+    },
+    "loops": {
+      "awaiting": "Đang chờ bạn",
+      "source": "Do AI Centre chuẩn bị: {loop}",
+      "clockOutTitle": "Bạn đã về lúc {time} ngày {date} phải không?",
+      "clockOutCheckIn": "Chấm công vào lúc {time}",
+      "clockOutMissing": "Không có chấm công ra",
+      "clockOutRoster": "Ca của bạn kết thúc lúc {time}",
+      "clockOutNote": "Không có gì thay đổi cho đến khi bạn gửi điều chỉnh; người duyệt quyết định như thường lệ.",
+      "clockOutCta": "Xem và xác nhận",
+      "recordTitle": "{count, plural, other {Hồ sơ của bạn thiếu # thông tin}}",
+      "recordNote": "Nhân sự phê duyệt cập nhật của bạn như thường lệ.",
+      "recordCta": "Điền",
+      "passportTitle": "Hộ chiếu của bạn hết hạn ngày {date}",
+      "passportNote": "Hãy gia hạn và gửi thông tin mới cho nhân sự.",
+      "passportCta": "Cập nhật thông tin",
+      "probationTitle": "Thử việc kết thúc ngày {date}: {name}",
+      "probationTitleUnnamed": "Một kỳ thử việc kết thúc ngày {date}",
+      "probationStage": {
+        "none": "Chưa bắt đầu đánh giá",
+        "with_manager": "Đánh giá ở quản lý",
+        "with_hr": "Đánh giá đang chờ nhân sự"
+      },
+      "probationOverdue": "Đã qua ngày kết thúc mà chưa có quyết định",
+      "probationNote": "Vòng lặp không bao giờ quyết định: nhân sự ghi nhận quyết định.",
+      "probationCta": "Xem",
+      "payrollTitle": "{company}: thiếu dữ liệu lương trước hạn chốt {date}",
+      "payrollTitleUnnamed": "Thiếu dữ liệu lương trước hạn chốt {date}",
+      "payrollBlockers": "{count, plural, other {# mục chặn việc chạy lương}}",
+      "payrollCta": "Mở báo cáo sẵn sàng",
+      "passportsTitle": "{count, plural, other {# hộ chiếu hết hạn trong 60 ngày}}",
+      "passportsFirst": "Sớm nhất ngày {date}",
+      "passportsCta": "Mở danh sách nhân sự",
+      "names": {
+        "loop_probation_ending": "Kết thúc thử việc",
+        "loop_payroll_inputs": "Dữ liệu lương sẵn sàng",
+        "loop_missing_employee_data": "Thiếu dữ liệu nhân viên",
+        "loop_missed_clock_outs": "Quên chấm công ra",
+        "loop_document_expiry": "Hộ chiếu sắp hết hạn"
+      }
     },
     "done": {
       "answeredLabel": "Đã trả lời",
