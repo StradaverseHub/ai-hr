@@ -1,8 +1,8 @@
 -- AI v2 Phase 2, P2-5: the Living Handbook (owner-approved Phase 2 plan and Handbook mock-up, AI Centre › Policies,
 -- 3 November 2026).
--- Provisional DEVELOPMENT source allocation 0971 / when1793330000371 (docs/MIGRATION-ALLOCATION.md), reserved for P2-5 by
--- the AI v2 coordinator. It grants no installation, and the journal position is re-frozen at integration. Production is
--- held.
+-- Source allocation 2009 / when1793330001409 in the AI Centre block 2000-2019 (docs/MIGRATION-ALLOCATION.md), renumbered
+-- from the never-applied 0971 / when1793330000371 at the AI v2 Phase 2 integration (4 November 2026). It grants no
+-- installation. Production is held.
 --
 -- WHAT IT HOLDS. A company's own policies, written in their own words, versioned and effective-dated, and the values
 -- the system enforces from them:

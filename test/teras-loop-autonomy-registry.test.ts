@@ -60,7 +60,7 @@ describe('what each loop can do at each level',()=>{
   // The Audit loop has no level of its own: the level service accepts only a LoopId, so it is refused there.
   expect(isLoopId('loop_payroll_audit')).toBe(false);
   // The database repeats the cap: both CHECKs of 0963 allow a level above Prepare for exactly the two acting loops.
-  const sql=readFileSync(new URL('../db/migrations/0963_teras_loop_autonomy.sql',import.meta.url),'utf8');
+  const sql=readFileSync(new URL('../db/migrations/2004_teras_loop_autonomy.sql',import.meta.url),'utf8');
   const allowed=(name:string)=>{const m=new RegExp(`CONSTRAINT ${name} CHECK \\((?:to_)?level<=1 OR worker_id IN \\(([^)]*)\\)\\)`).exec(sql);
    return (m?.[1]??'').split(',').map(value=>value.trim().replace(/'/g,'')).filter(Boolean).sort();};
   expect(allowed('teras_loop_level_cap')).toEqual([...acting].sort());

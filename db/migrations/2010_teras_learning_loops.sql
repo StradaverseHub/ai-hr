@@ -1,8 +1,8 @@
 -- AI v2 Phase 2, P2-6: the learning loops and the AI quality page (owner decision, 3 November 2026: "the agents and AI
 -- should have improvement loops and learning mechanism to keep improving").
--- Provisional DEVELOPMENT source allocation 0972 / when1793330000372 (docs/MIGRATION-ALLOCATION.md), reserved for the
--- learning loops by the AI v2 coordinator (wave 2). It grants no installation, and the journal position is re-frozen at
--- integration. Production is held.
+-- Source allocation 2010 / when1793330001410 in the AI Centre block 2000-2019 (docs/MIGRATION-ALLOCATION.md), renumbered
+-- from the never-applied 0972 / when1793330000372 at the AI v2 Phase 2 integration (4 November 2026). It grants no
+-- installation. Production is held.
 --
 -- THE OWNER'S LIMITS, AND HOW THIS SCHEMA KEEPS THEM.
 --  - Learning never changes calculation code, permissions or disclosure rules: nothing here is read by a calculation, a

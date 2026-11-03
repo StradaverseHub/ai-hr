@@ -1,5 +1,5 @@
 /** Exact post-Noveri populated upgrade, on a disposable hosted localhost database only: the 648-entry baseline, then
- * staging's 656-entry main ledger, then the AI v2 Phase 1 migrations 2000-2003.
+ * staging's 656-entry main ledger, then the AI v2 Phase 1 migrations 2000-2003, then the AI v2 Phase 2 migrations 2004-2010.
  * Source bytes are pinned independently; this supplies no staging acceptance or AI approval. */
 import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -41,6 +41,14 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   {tag:'2001_private_cases',when:1793330001401},
   {tag:'2002_teras_loops',when:1793330001402},
   {tag:'2003_letter_requests',when:1793330001403},
+  // AI v2 Phase 2 (claude/aiv2-phase2-integration): the same block, after Phase 1.
+  {tag:'2004_teras_loop_autonomy',when:1793330001404},
+  {tag:'2005_teras_payroll_cycle_loops',when:1793330001405},
+  {tag:'2006_payroll_audit_loop',when:1793330001406},
+  {tag:'2007_teras_capacity_baseline',when:1793330001407},
+  {tag:'2008_own_payroll_cut_off',when:1793330001408},
+  {tag:'2009_teras_living_handbook',when:1793330001409},
+  {tag:'2010_teras_learning_loops',when:1793330001410},
  ]);
  expect(hash(readFileSync('db/migrations/0935_password_account_unlock.sql'))).toBe('3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa');
  expect(hash(readFileSync('db/migrations/0946_draft_creation_cohort_custody.sql'))).toBe('cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390');
@@ -120,17 +128,42 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   expect(await native()).toEqual(upgradeNative);
   const phaseOneTables=()=>storage.client`select to_regclass('public.teras_chat')::text as chats,to_regclass('public.private_case')::text as cases,to_regclass('public.teras_loop_run')::text as loops,to_regclass('public.letter_request')::text as letters`;
   expect(await phaseOneTables()).toEqual([{chats:null,cases:null,loops:null,letters:null}]);
-  // Then this release's four AI v2 Phase 1 migrations. Their when values sit above staging's watermark 1793330000353,
-  // so the ordinary migrator applies them on this populated ledger instead of silently skipping them.
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  const afterLedger=await ledger();expect(afterLedger).toHaveLength(660);expect(afterLedger.slice(0,656)).toEqual(stagingLedger);
-  expect(afterLedger.slice(656).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
+  // Then the four AI v2 Phase 1 migrations, as the Phase 1 release would leave staging. Their when values sit above
+  // staging's watermark 1793330000353, so the ordinary migrator applies them on this populated ledger instead of silently
+  // skipping them.
+  const phaseOne=journal.entries.slice(0,660);expect(phaseOne.at(-1)!.tag).toBe('2003_letter_requests');
+  for(const row of phaseOne.slice(656))copyFileSync('db/migrations/'+row.tag+'.sql',join(folder,row.tag+'.sql'));
+  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:phaseOne}));
+  await migrate(storage.db,{migrationsFolder:folder});
+  const phaseOneLedger=await ledger();expect(phaseOneLedger).toHaveLength(660);expect(phaseOneLedger.slice(0,656)).toEqual(stagingLedger);
+  expect(phaseOneLedger.slice(656).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
    {hash:'8cd50320de942af9aa59e515c5e39e78f6027325da86264dd8e772bff1c802b7',created_at:'1793330001400'},
    {hash:'2afbad3a54800118a3d09bb7e628453a80badf2980725bca8979716f9fd99c4c',created_at:'1793330001401'},
    {hash:'768b07fe216c483b27211c413033621f83f4e2f4ccf5d81de4cc8f5bb07326d0',created_at:'1793330001402'},
    {hash:'3eaf1d2bf2be87d0c7a0495968b11fe7002c8882a82451bd17ce8a73247032e4',created_at:'1793330001403'},
   ]);
   expect(await phaseOneTables()).toEqual([{chats:'teras_chat',cases:'private_case',loops:'teras_loop_run',letters:'letter_request'}]);
+  const phaseTwoObjects=()=>storage.client`select to_regclass('public.teras_loop_level')::text as levels,to_regclass('public.teras_payroll_loop_setting')::text as settings,
+   to_regclass('public.payroll_audit_capture')::text as audit,to_regclass('public.teras_capacity_baseline')::text as baseline,
+   (to_regprocedure('app.own_payroll_cut_off_day(uuid)') is not null) as cutoff,to_regclass('public.teras_policy_version')::text as handbook,
+   to_regclass('public.teras_learning_signal')::text as learning`;
+  expect(await phaseTwoObjects()).toEqual([{levels:null,settings:null,audit:null,baseline:null,cutoff:false,handbook:null,learning:null}]);
+  expect(await native()).toEqual(upgradeNative);
+  // Then this integration's seven AI v2 Phase 2 migrations, by the ordinary migrator over the whole journal. Their when
+  // values sit above Phase 1's 1793330001403, so none is skipped.
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  const afterLedger=await ledger();expect(afterLedger).toHaveLength(667);expect(afterLedger.slice(0,660)).toEqual(phaseOneLedger);
+  expect(afterLedger.slice(660).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
+   {hash:'b6bdeac1995dad6df759ce9a537c98e9a3666bf01aef716a7f6cac9a9134b132',created_at:'1793330001404'},
+   {hash:'31234dca83bad7cc1bb4dc82f04f9743cb6cb690a1352149acd7d4f3b613f887',created_at:'1793330001405'},
+   {hash:'e0ed1ea1b561cedf2f4d2bba37853e781a23c370ba12cf7b4f220a5d002cffce',created_at:'1793330001406'},
+   {hash:'8b2bb6e38d76c7bf6643e45c62c11ed89e71d954615438d527adf1b4593f22ad',created_at:'1793330001407'},
+   {hash:'9c5f91f7380568067fbea128768a412f200ef58676d9541bb891f3539cb18c02',created_at:'1793330001408'},
+   {hash:'fe54c4a68689e761ca670a81bdfd1e8c1b502cb58201150fa9593c546acae3b7',created_at:'1793330001409'},
+   {hash:'316ce555983b42a896fbba7d7f75c73d4037b75ab60f41da6df611d8e0e2c3c0',created_at:'1793330001410'},
+  ]);
+  expect(await phaseTwoObjects()).toEqual([{levels:'teras_loop_level',settings:'teras_payroll_loop_setting',audit:'payroll_audit_capture',baseline:'teras_capacity_baseline',
+   cutoff:true,handbook:'teras_policy_version',learning:'teras_learning_signal'}]);
   // The applied ledger rows after the 648-entry baseline, for the release record: ids, SQL hashes and when values only.
   console.info('[populated-upgrade-ledger]',JSON.stringify(afterLedger.slice(648).map(row=>({id:row.id,hash:row.hash,created_at:row.created_at}))));
   expect(await native()).toEqual(upgradeNative);

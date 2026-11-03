@@ -1,7 +1,7 @@
 -- AI v2 Phase 2, P2-2b: the payroll Audit loop (owner decision 9, 3 November 2026: "the audit loop should capture and audit as
--- much and as detailed as possible"). Provisional DEVELOPMENT source allocation 0965 / when1793330000365, reserved for this
--- task by the Phase 2 coordinator (docs/MIGRATION-ALLOCATION.md). The journal position is re-frozen at integration; no
--- installation is granted by this file.
+-- much and as detailed as possible"). Source allocation 2006 / when1793330001406 in the AI Centre block 2000-2019
+-- (docs/MIGRATION-ALLOCATION.md), renumbered from the never-applied 0965 / when1793330000365 at the AI v2 Phase 2
+-- integration (4 November 2026); no installation is granted by this file.
 --
 -- What it holds. Nothing here is an HR value of record: every figure stays in its native owner (payroll, attendance, leave,
 -- claims, statutory reporting). The Audit loop copies, per company and pay month, the evidence of how each payroll run
@@ -39,7 +39,7 @@
 -- payroll_audit_correction_cause, core/payroll-audit/settings.ts of payroll_audit_control_setting and payroll_audit_reader.
 -- All six tables are new. The three widened CHECKs of 0960 only add a value. Grants: every privilege a table must not have is
 -- revoked, not merely left ungranted.
--- Wave 1 integration (3 November 2026, while unapplied): 0964 (idx768) runs first and adds 'loop_salary_payroll' to the same
+-- Wave 1 integration (3 November 2026, while unapplied): 0964 (now 2005) runs first and adds 'loop_salary_payroll' to the same
 -- lists, so each list rebuilt here carries it too; otherwise this migration would drop it again. 0964's teras_loop_case list
 -- is not rebuilt here (the Audit loop opens no loop case), so it stands as 0964 left it.
 

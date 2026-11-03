@@ -68,12 +68,12 @@ it('applies the Teras tail from 0890/0891 on over populated leave policy and app
   expect(grants).toEqual([
    // 2000 (AI Centre stored chats, first allocated as 0952): own chats are deleted, never updated except the turn counter (a column grant, so
    // no table-wide UPDATE); turns are append-only; the setting is never deleted.
-   // 0966 (AI v2 Phase 2 P2-4): REVOKE ALL, then GRANT SELECT, INSERT; versions are append-only (its trigger refuses UPDATE).
+   // 2007 (AI v2 Phase 2 P2-4, first allocated as 0966): REVOKE ALL, then GRANT SELECT, INSERT; versions are append-only (its trigger refuses UPDATE).
    {table:'teras_capacity_baseline',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_chat',rls:true,s:true,i:true,u:false,d:true,t:false},
    {table:'teras_chat_retention',rls:true,s:true,i:true,u:true,d:false,t:false},
    {table:'teras_chat_turn',rls:true,s:true,i:true,u:false,d:false,t:false},
-   // 0972 (AI v2 Phase 2 P2-6, learning loops): REVOKE ALL, then GRANT SELECT, INSERT on the append-only signals, reviews,
+   // 2010 (AI v2 Phase 2 P2-6, learning loops, first allocated as 0972): REVOKE ALL, then GRANT SELECT, INSERT on the append-only signals, reviews,
    // gap occurrences and statuses; SELECT, INSERT, UPDATE on eval candidates (versioned in place, a trigger guards every
    // change and refuses DELETE); SELECT, INSERT, DELETE on gap examples (only an expired one is ever deleted).
    {table:'teras_eval_candidate',rls:true,s:true,i:true,u:true,d:false,t:false},
@@ -82,7 +82,7 @@ it('applies the Teras tail from 0890/0891 on over populated leave policy and app
    {table:'teras_gap_status',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_learning_signal',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_learning_signal_review',rls:true,s:true,i:true,u:false,d:false,t:false},
-   // 0963 (AI v2 Phase 2 P2-1): REVOKE ALL, then GRANT SELECT, INSERT, UPDATE on the level and the action ledger (an
+   // 2004 (AI v2 Phase 2 P2-1, first allocated as 0963): REVOKE ALL, then GRANT SELECT, INSERT, UPDATE on the level and the action ledger (an
    // action moves applying -> applied or not applied; a level is changed in place, versioned) and GRANT SELECT, INSERT on
    // the level history, the undo record and the sample review, all append-only.
    // 2002 (AI v2 loops at the Prepare level, first allocated as 0960): REVOKE ALL, then exactly GRANT SELECT, INSERT, UPDATE on the case and the
@@ -101,12 +101,12 @@ it('applies the Teras tail from 0890/0891 on over populated leave policy and app
    {table:'teras_mandate_job_type_enablement',rls:true,s:true,i:true,u:true,d:false,t:false},
    {table:'teras_outcome_followup',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_outcome_record',rls:true,s:true,i:true,u:false,d:false,t:false},
-   // 0964 (AI v2 Phase 2 P2-2a): REVOKE ALL, then GRANT SELECT, INSERT on the settings, the threshold decisions and the
+   // 2005 (AI v2 Phase 2 P2-2a, first allocated as 0964): REVOKE ALL, then GRANT SELECT, INSERT on the settings, the threshold decisions and the
    // swing dispositions, each append-only.
    {table:'teras_payroll_loop_setting',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_payroll_swing_disposition',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_payroll_threshold_decision',rls:true,s:true,i:true,u:false,d:false,t:false},
-   // 0971 (AI v2 Phase 2 P2-5, the Living Handbook): REVOKE ALL, then GRANT SELECT, INSERT; UPDATE on the version only (a draft
+   // 2009 (AI v2 Phase 2 P2-5, the Living Handbook, first allocated as 0971): REVOKE ALL, then GRANT SELECT, INSERT; UPDATE on the version only (a draft
    // is edited, then sent, approved or returned), DELETE on the scope only (a draft's companies). Everything else append-only.
    {table:'teras_policy_application',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_policy_approval',rls:true,s:true,i:true,u:false,d:false,t:false},

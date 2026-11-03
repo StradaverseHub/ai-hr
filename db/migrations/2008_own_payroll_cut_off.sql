@@ -1,6 +1,6 @@
--- AI v2 Phase 2, P2-3: the person's own payroll cut-off day. Provisional DEVELOPMENT source allocation 0967 /
--- when1793330000367 (docs/MIGRATION-ALLOCATION.md, "P2-3, own payroll cut-off"), assigned by the AI v2 coordinator.
--- It grants no installation, and the journal position is re-frozen at integration. Production is held.
+-- AI v2 Phase 2, P2-3: the person's own payroll cut-off day. Source allocation 2008 / when1793330001408 in the AI Centre
+-- block 2000-2019 (docs/MIGRATION-ALLOCATION.md), renumbered from the never-applied 0967 / when1793330000367 at the AI v2
+-- Phase 2 integration (4 November 2026). It grants no installation. Production is held.
 --
 -- WHY. The "Before payroll" checklist (core/pre-salary/person-items.ts) tells each person what is pending from them and
 -- by when. "By when" is the payroll cut-off, which the payroll owner resolves from the company's cut_off_day

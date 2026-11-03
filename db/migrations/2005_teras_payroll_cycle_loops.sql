@@ -1,7 +1,7 @@
 -- AI v2 Phase 2, P2-2a: the Pre-salary loop and the Salary payroll loop (owner decisions, payroll-cycle loops, items 1-7,
--- 3 November 2026). Provisional DEVELOPMENT source allocation 0964 / when1793330000364 (docs/MIGRATION-ALLOCATION.md),
--- the number the AI v2 coordinator reserved for this task. It grants no installation; the journal position is re-frozen
--- at integration. Production is held.
+-- 3 November 2026). Source allocation 2005 / when1793330001405 in the AI Centre block 2000-2019
+-- (docs/MIGRATION-ALLOCATION.md), renumbered from the never-applied 0964 / when1793330000364 at the AI v2 Phase 2
+-- integration (4 November 2026). It grants no installation. Production is held.
 --
 -- The Pre-salary loop is the Phase 1 payroll inputs loop (loop_payroll_inputs, 0960), absorbed: it keeps its id, its
 -- switch, its sponsor and its cases, and widens what it checks (core/loops/payroll-inputs.ts). No new id is needed.

@@ -20,7 +20,7 @@ import {SMART_EVAL_FACTORS} from '../core/improvement/smart-eval-score';
 import {CAPABILITY_AREAS} from '../core/semantic-model/entities-catalogue';
 
 const root=join(__dirname,'..');
-const SQL=readFileSync(join(root,'db/migrations/0972_teras_learning_loops.sql'),'utf8');
+const SQL=readFileSync(join(root,'db/migrations/2010_teras_learning_loops.sql'),'utf8');
 
 describe('redaction',()=>{
  it('replaces names, identity card numbers, staff ids, e-mails, phones, money, dates, times and figures',()=>{
@@ -219,7 +219,7 @@ describe('the boundaries the owner set',()=>{
   expect(SQL).toContain('AND r.asked_by_user_id=app.current_user_id() AND r.private_to_asker IS FALSE AND r.company_id=p_company)');
   // The journal places it by number.
   const journal=JSON.parse(readFileSync(join(root,'db/migrations/meta/_journal.json'),'utf8')) as {entries:{idx:number;when:number;tag:string}[]};
-  expect(journal.entries.find(entry=>entry.tag==='0972_teras_learning_loops')).toMatchObject({idx:776,when:1793330000372});
+  expect(journal.entries.find(entry=>entry.tag==='2010_teras_learning_loops')).toMatchObject({idx:810,when:1793330001410});
  });
  it('learning reads and records only: it never writes the eval set, the harness, a guard, a permission or a disclosure rule',()=>{
   const files=readdirSync(join(root,'core/learning')).filter(name=>name.endsWith('.ts'));

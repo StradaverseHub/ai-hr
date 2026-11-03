@@ -1,6 +1,6 @@
 -- AI v2 Phase 2, P2-4: the HR capacity ledger's baseline (owner-approved plan and Ledger mock-up, 3 November 2026).
--- Provisional DEVELOPMENT source allocation 0966 / when1793330000366 (docs/MIGRATION-ALLOCATION.md, reserved for P2-4 by
--- the AI v2 coordinator). It grants no installation, and the journal position is re-frozen at integration.
+-- Source allocation 2007 / when1793330001407 in the AI Centre block 2000-2019 (docs/MIGRATION-ALLOCATION.md), renumbered
+-- from the never-applied 0966 / when1793330000366 at the AI v2 Phase 2 integration (4 November 2026). It grants no installation.
 --
 -- WHY A TABLE. The ledger reports HR time freed as work done x the company's OWN manual time per item, measured before
 -- Autopilot started, minus the time people spent reviewing. Staff minutes are recorded nowhere in the event log

@@ -1,9 +1,8 @@
 -- AI v2 Phase 2, P2-1: the autonomy ladder, limits, undo windows and automatic demotion for the loops (owner-approved
 -- Phase 2 plan and mock-ups Main and Promote, 3 November 2026).
--- Provisional DEVELOPMENT source allocation 0963 / when1793330000363 (docs/MIGRATION-ALLOCATION.md), reserved for P2-1
--- by the AI v2 coordinator. A scan of every origin ref and registered worktree on 3 November 2026 found file claims
--- through 0961 / when1793330000361 (0962 is held for the renumbered 0952 at release; 0966 by the parallel P2-4 task).
--- It grants no installation, and the journal position is re-frozen at integration. Production is held.
+-- Source allocation 2004 / when1793330001404 in the AI Centre block 2000-2019 (docs/MIGRATION-ALLOCATION.md), renumbered
+-- from the never-applied 0963 / when1793330000363 at the AI v2 Phase 2 integration (4 November 2026), after Phase 1's
+-- 2000-2003. It grants no installation. Production is held.
 --
 -- A loop's level for one company: 0 Watch, 1 Prepare (the Phase 1 behaviour, and the level with no row), 2 Act within
 -- limits, 3 Act and audit. Above Prepare a loop changes an HR record itself, through the record's own owner service,

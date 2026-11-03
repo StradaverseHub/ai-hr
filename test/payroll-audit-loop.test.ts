@@ -121,7 +121,7 @@ afterEach(()=>{expect(model.calls,'the Audit loop called a model').toBe(0);});
 
 describe('the vocabularies match migration 0965',()=>{
  it('lists the same capture kinds, controls, dispositions and root causes as the CHECKs',async()=>{
-  const sqlText=(await import('node:fs')).readFileSync(new URL('../db/migrations/0965_payroll_audit_loop.sql',import.meta.url),'utf8');
+  const sqlText=(await import('node:fs')).readFileSync(new URL('../db/migrations/2006_payroll_audit_loop.sql',import.meta.url),'utf8');
   const list=(column:string)=>{const m=sqlText.match(new RegExp(`${column} text NOT NULL CHECK \\(${column} IN \\(([^)]*)\\)\\)`));return (m?.[1]??'').replace(/\s+/g,'').split(',').map(v=>v.replace(/'/g,''));};
   expect(list('kind')).toEqual([...AUDIT_CAPTURE_KINDS]);
   expect(list('control_id')).toEqual([...AUDIT_CONTROL_IDS]);

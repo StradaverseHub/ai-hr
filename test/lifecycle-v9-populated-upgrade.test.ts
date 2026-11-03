@@ -14,7 +14,7 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(667); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors, the four AI v2 Phase 1 migrations 2000-2003 and the AI v2 Phase 2 migrations below.
+ expect(journal.entries).toHaveLength(667); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors, the four AI v2 Phase 1 migrations 2000-2003 and the seven AI v2 Phase 2 migrations 2004-2010 below.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
  expect(journal.entries.slice(boundary)).toHaveLength(96);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
@@ -59,20 +59,21 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:802,version:'7',when:1793330001402,tag:'2002_teras_loops',breakpoints:true,hash:'768b07fe216c483b27211c413033621f83f4e2f4ccf5d81de4cc8f5bb07326d0'},
   // AI v2 Phase 1 slice 3 employee letter requests (claude/aiv2-s3-letter-request), frozen here.
   {idx:803,version:'7',when:1793330001403,tag:'2003_letter_requests',breakpoints:true,hash:'3eaf1d2bf2be87d0c7a0495968b11fe7002c8882a82451bd17ce8a73247032e4'},
+  // AI v2 Phase 2, renumbered into the AI Centre block 2000-2019 at the Phase 2 integration (were 0963-0967, 0971, 0972).
   // AI v2 Phase 2 P2-1 autonomy ladder (claude/aiv2-p2-autonomy-ladder), frozen here.
-  {idx:804,version:'7',when:1793330000363,tag:'0963_teras_loop_autonomy',breakpoints:true,hash:'d093765e06101882dbb2b17df70fc070363b0939a1aa97e55b9059d35666f655'},
+  {idx:804,version:'7',when:1793330001404,tag:'2004_teras_loop_autonomy',breakpoints:true,hash:'b6bdeac1995dad6df759ce9a537c98e9a3666bf01aef716a7f6cac9a9134b132'},
   // AI v2 Phase 2 P2-2a payroll-cycle loops (claude/aiv2-p2-payroll-loops), frozen here.
-  {idx:805,version:'7',when:1793330000364,tag:'0964_teras_payroll_cycle_loops',breakpoints:true,hash:'0a38a5628362ac03b6eb4afe67c3b3d3e632be6e7e9bff6eec9f8a0f828407f3'},
+  {idx:805,version:'7',when:1793330001405,tag:'2005_teras_payroll_cycle_loops',breakpoints:true,hash:'31234dca83bad7cc1bb4dc82f04f9743cb6cb690a1352149acd7d4f3b613f887'},
   // AI v2 Phase 2 P2-2b Audit loop (claude/aiv2-p2-audit-loop), frozen here.
-  {idx:806,version:'7',when:1793330000365,tag:'0965_payroll_audit_loop',breakpoints:true,hash:'d370a0dba6fb8b04ae6c1686572dd116f300ff440b37cc43c6944c7b4fac8c41'},
+  {idx:806,version:'7',when:1793330001406,tag:'2006_payroll_audit_loop',breakpoints:true,hash:'e0ed1ea1b561cedf2f4d2bba37853e781a23c370ba12cf7b4f220a5d002cffce'},
   // AI v2 Phase 2 P2-4 HR capacity baseline (claude/aiv2-p2-capacity-ledger), frozen here.
-  {idx:807,version:'7',when:1793330000366,tag:'0966_teras_capacity_baseline',breakpoints:true,hash:'0b2f62d07b398bc837909c31b27f2dcd5ee30276f5c84937d8d57440a4b5a67c'},
+  {idx:807,version:'7',when:1793330001407,tag:'2007_teras_capacity_baseline',breakpoints:true,hash:'8b2bb6e38d76c7bf6643e45c62c11ed89e71d954615438d527adf1b4593f22ad'},
   // AI v2 Phase 2 P2-3 own payroll cut-off (claude/aiv2-p2-payroll-checklist), frozen here.
-  {idx:808,version:'7',when:1793330000367,tag:'0967_own_payroll_cut_off',breakpoints:true,hash:'b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca'},
+  {idx:808,version:'7',when:1793330001408,tag:'2008_own_payroll_cut_off',breakpoints:true,hash:'9c5f91f7380568067fbea128768a412f200ef58676d9541bb891f3539cb18c02'},
   // AI v2 Phase 2 P2-5 Living Handbook (claude/aiv2-p2-living-handbook), frozen here.
-  {idx:809,version:'7',when:1793330000371,tag:'0971_teras_living_handbook',breakpoints:true,hash:'7abaf32815d657b559e6550acf50ecde543bd99f857538889ec48a82920048f0'},
+  {idx:809,version:'7',when:1793330001409,tag:'2009_teras_living_handbook',breakpoints:true,hash:'fe54c4a68689e761ca670a81bdfd1e8c1b502cb58201150fa9593c546acae3b7'},
   // AI v2 Phase 2 P2-6 learning loops (claude/aiv2-p2-learning-loops), frozen here.
-  {idx:810,version:'7',when:1793330000372,tag:'0972_teras_learning_loops',breakpoints:true,hash:'f4b3574ce920a1e4336e105d0122e779c99a054b1e3db9b452d5d52dfc98294a'},
+  {idx:810,version:'7',when:1793330001410,tag:'2010_teras_learning_loops',breakpoints:true,hash:'316ce555983b42a896fbba7d7f75c73d4037b75ab60f41da6df611d8e0e2c3c0'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {
