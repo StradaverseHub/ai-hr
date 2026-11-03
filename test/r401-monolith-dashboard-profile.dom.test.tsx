@@ -207,6 +207,13 @@ const RECORD = {
   dependents: [],
 };
 
+// W3: Today composes above the dashboard and has its own role tests (test/today-*.dom.test.tsx); here it hands the
+// dashboard through, which resolves inside its Suspense as the streamed page finally shows it.
+vi.mock('@/components/today/today-page', async () => {
+  const React = await import('react');
+  return { TodayPage: ({ more }: { more: ReactNode }) => React.createElement(React.Fragment, null, more) };
+});
+import { resolveServerTree } from './helpers/server-tree';
 import DashboardPage from '../app/page';
 import MePage from '../app/me/page';
 
@@ -233,7 +240,7 @@ const ADMIN_LAYOUT = [
   'recentActivity',
   'noticeBoard',
 ];
-const renderDashboard = async () => wrap(await DashboardPage({ searchParams: Promise.resolve({}) }));
+const renderDashboard = async () => wrap(await resolveServerTree(await DashboardPage({ searchParams: Promise.resolve({}) })));
 const renderMe = async () => wrap(await MePage({ searchParams: Promise.resolve({}) }));
 
 /** Every number printed in `el`, normalised (commas dropped, leading zeros dropped). */

@@ -43,7 +43,7 @@ export function ProposalCard({ icon, tone, title, meta, checks = [], href, cta, 
         </ul>
       )}
       <div className="col-span-2 mt-2 flex flex-wrap items-center justify-between gap-2 sm:col-span-1 sm:col-start-3 sm:row-span-3 sm:row-start-1 sm:mt-0 sm:flex-col sm:items-end sm:justify-center">
-        {!actions && href && cta && <Link href={href} className={cn('inline-flex min-h-9 items-center justify-center rounded-md px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        {!actions && href && cta && <Link href={href} className={cn('inline-flex min-h-9 items-center justify-center rounded-md px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11',
           tone === 'finding' ? 'border border-input bg-card hover:bg-accent' : 'bg-primary text-primary-foreground hover:bg-primary/90')}>
           {/* The title rides along for screen readers, so a list of links is not N identical "Review" entries. */}
           {cta}{' '}<span className="sr-only">· {title}</span></Link>}

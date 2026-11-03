@@ -174,7 +174,7 @@ export default async function AssistantPage({
           <OwnClearStatus status={sp.ownClear}/>
           <ErrorBanner message={errorMessage??((sp.e&&!selectedChat)||(sp.chat&&!sp.e&&!storedChat)?t('workspace.conversation.unavailable'):undefined)} />
           <WorkspaceConversation key={scopeReset+':'+(sp.e??'')+':'+(sp.chat&&!sp.e?'chat-'+sp.chat:'')+':'+(sp.chatReset??'')} fullHeight resetKey={(sp.chatReset??'')+':'+scopeReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
-            initialTurns={initialTurns} historyReadOnly={Boolean((sp.e&&!selectedChat?.resume)||(storedChat&&!storedResume))} initialResume={selectedChat?.resume??storedResume} historyTailId={sp.e} olderCursor={selectedChat?.olderCursor??undefined}/>
+            initialTurns={initialTurns} acceptHandoff={!sp.e&&!sp.chat} historyReadOnly={Boolean((sp.e&&!selectedChat?.resume)||(storedChat&&!storedResume))} initialResume={selectedChat?.resume??storedResume} historyTailId={sp.e} olderCursor={selectedChat?.olderCursor??undefined}/>
 
         </section>
         <aside aria-label={t('workspace.chat.tools')} className="min-w-0 space-y-1 border-t border-border lg:order-1 lg:border-r lg:border-t-0 lg:pr-5">

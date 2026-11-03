@@ -31,6 +31,7 @@ export async function AtelierHome({
   notice,
   performance,
   dashboard,
+  inToday = false,
 }: {
   name: string | null;
   /** The viewer's wall-clock hour in Malaysia, 0–23. */
@@ -47,6 +48,8 @@ export async function AtelierHome({
   /** WP-A2: the Performance block (reads its own facts; null without an open cycle). */
   performance?: ReactNode;
   dashboard: ReactNode;
+  /** W3: drawn under Today's "More", where Today already shows the greeting, the Ask bar and "Needs you". */
+  inToday?: boolean;
 }) {
   const t = await getTranslations('dashboard.atelier');
   const tTask = await getTranslations('notifications.task');
@@ -68,6 +71,7 @@ export async function AtelierHome({
   return (
     <div className="atelier-home">
       {notice}
+      {!inToday && <>
       <header className="atelier-hello">
         <h1>{firstName ? t('greetingWithName', { greeting, name: firstName }) : greeting}</h1>
         <p>
@@ -84,9 +88,10 @@ export async function AtelierHome({
         />
       )}
 
+      </>}
       {performance}
 
-      <section className="atelier-sect" aria-labelledby="atelier-needs-you">
+      {!inToday && <section className="atelier-sect" aria-labelledby="atelier-needs-you">
         <div className="atelier-sect-h">
           <h2 id="atelier-needs-you">{t('needsYou')}</h2>
           {tasks.length > 0 && <span className="atelier-n">{tasks.length}</span>}
@@ -116,7 +121,7 @@ export async function AtelierHome({
             ))}
           </ul>
         )}
-      </section>
+      </section>}
 
       {showHistory && (
         <section className="atelier-sect" aria-labelledby="atelier-decided">
