@@ -2,6 +2,8 @@
  * claude/teras-integration head a2a39018: 358 of 71 registry actions and 293 linkable pages. Baseline re-taken against
  * released main 50ea2471 at integration (claude/teras-review-fixes): items derived on main that were absent at a2a39018
  * were computed mechanically and added in the group of their computed gaps, nothing else (one page, 359 entries).
+ * Re-taken the same way at the AI v2 Phase 1 release merge of main 848c7be36 (claude/aiv2-phase1-release): main's twelve
+ * Probation Confirmation and Contract Management pages, now linkable, each missing semantic, guide and corpus.
  *
  * SHRINK ONLY. Grouped by the requirements each item is missing. test/definition-of-done-registry.test.ts fails
  * when an item has a gap not listed here (a new action or page must ship with its semantic entry, guide link,
@@ -132,6 +134,10 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/performance/my/kpis','page:/performance/plan','page:/performance/plan/profile','page:/performance/plan/team','page:/performance/team',
  'page:/performance/team/kpis','page:/performance/workspace','page:/reports/employee-master','page:/rewards/approvals','page:/roster/exceptions',
  'page:/roster/import','page:/system-testing','page:/tasks',
+ // Main 848c7be36's Probation Confirmation and Contract Management pages, computed at the AI v2 Phase 1 release merge.
+ 'page:/lifecycle/contracts','page:/lifecycle/contracts/intake','page:/lifecycle/contracts/settings','page:/lifecycle/contracts/templates',
+ 'page:/lifecycle/contracts/workflows','page:/lifecycle/probation','page:/lifecycle/probation/forms','page:/lifecycle/probation/intake',
+ 'page:/lifecycle/probation/routes','page:/lifecycle/probation/settings','page:/lifecycle/probation/templates','page:/lifecycle/probation/workflows',
  ],
  'semantic,readiness,corpus':[
  'action:claims.draft.save',

@@ -1,2 +1,4 @@
+import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {Preparation} from '../preparation';
-export default async function Page({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){return <Preparation kind="settings" query={await searchParams}/>;}
+// The page's own guard, as on its sibling pages (lib/product-context/destinations.ts classifyPage reads it); Preparation repeats it.
+export default async function Page({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){await requireScopedLifecycleModule();return <Preparation kind="settings" query={await searchParams}/>;}

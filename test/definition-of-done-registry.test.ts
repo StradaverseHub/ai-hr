@@ -18,7 +18,9 @@ import {definitionOfDoneInputs} from './definition-of-done-inputs';
 
 /** Ceilings at the allowlist's creation (claude/teras-integration a2a39018). Lower them as gaps close; never raise. */
 // Re-baselined at integration against released main 50ea2471: +1 entry (page:/admin/settings/entra, semantic+guide+corpus).
-const CEILING={entries:359,semantic:355,guide:236,readiness:4,corpus:339} as const;
+// Re-baselined at the AI v2 Phase 1 release merge of main 848c7be36: +12 entries (main's Probation Confirmation and Contract
+// Management pages, semantic+guide+corpus); entries and semantic take the current count, guide and corpus +12.
+const CEILING={entries:368,semantic:357,guide:248,readiness:4,corpus:351} as const;
 
 const allowed=():Map<string,string[]>=>{const map=new Map<string,string[]>();
  for(const [signature,keys] of Object.entries(DEFINITION_OF_DONE_GAPS))for(const key of keys){
