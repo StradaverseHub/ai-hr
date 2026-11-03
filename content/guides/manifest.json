@@ -198,6 +198,13 @@
       "order": 28
     },
     {
+      "slug": "admin-ai-loops",
+      "title": "Admin Guide: AI Centre Loops",
+      "audience": "hr_admin",
+      "category": "intelligence",
+      "order": 29
+    },
+    {
       "slug": "performance-faq-kpi-justification",
       "title": "How to write a KPI result justification",
       "audience": "employee",

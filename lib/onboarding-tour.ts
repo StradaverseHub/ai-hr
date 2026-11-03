@@ -133,6 +133,8 @@ const GUIDE_TOUR: Record<string, string> = {
   'admin-communications': 'communications',
   // ADR-0173: the private cases guide offers the My Profile walkthrough, where its entry card is.
   'private-cases': 'me',
+  // AI v2 W8: the loops guide offers the AI Centre walkthrough, as the AI Centre operations guide does.
+  'admin-ai-loops': 'intelligence',
   'operator-provisioning': 'operatorProvisioning',
   'operator-identity-email': 'operatorIdentity',
   'operator-tenant-operations': 'operatorTenantOperations',
