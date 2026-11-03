@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getBrowserCommandSession } from '@/lib/session';
 import {
-  PolicyRefused, applyScheduledValue, approvePolicyVersion, createPolicy, decidePolicyValue, draftFromVersion, prepareFromDrift,
+  PolicyRefused, applyScheduledValue, approvePolicyVersion, createPolicy, decidePolicyValue, draftFromVersion, markTextOnly, prepareFromDrift,
   readPolicyValues, returnPolicyVersion, saveDraft, submitPolicyVersion,
 } from '@/core/handbook/policies';
 import { gatewayPolicyValueModel } from '@/core/handbook/provider-model';
@@ -12,8 +12,8 @@ import { gatewayPolicyValueModel } from '@/core/handbook/provider-model';
 /** AI v2 Phase 2, P2-5 — AI Centre › Policies (the Living Handbook): the writes behind the page.
  *
  * Each is a person's own action under their own login; the service checks the administrator or group administrator
- * again, and migration 0971's row-level security and triggers refuse anything else (a settings change approved by the
- * person who wrote or sent it, a value applied before approval, a draft edited by someone who does not administer
+ * again, and migration 2009's row-level security and triggers refuse anything else (a settings change approved by
+ * anyone who contributed to it, a value applied before approval, a draft edited by someone who does not administer
  * every company it applies to). "Read the values" asks the model through the governed gateway; the model only
  * proposes, and nothing is applied until a person confirms each value and a group administrator approves. Every action
  * returns to the Policies page (/policies) with a closed result code the page translates; no other text crosses. */
@@ -112,5 +112,14 @@ export async function draftFromVersionAction(formData: FormData) {
   await run(formData, async s => {
     await draftFromVersion(s, { versionId: text(formData.get('versionId')) });
     return { saved: 'draft_made', extra: { edit: '1' } };
+  });
+}
+
+/** "Keep as text only" (or withdraw it) for one enforceable setting a draft's text mentions. */
+export async function markTextOnlyAction(formData: FormData) {
+  await run(formData, async s => {
+    const marked = text(formData.get('marked')) === 'true';
+    await markTextOnly(s, { versionId: text(formData.get('versionId')), setting: text(formData.get('setting')), marked });
+    return { saved: marked ? 'text_only' : 'text_only_withdrawn' };
   });
 }

@@ -272,31 +272,36 @@ async function activeItemsFor(tx: Tx, claimTypeId: string): Promise<ClaimItemRow
 
 /** All non-archived claim types with their active policy — the admin catalog. */
 export async function listClaimTypes(ctx: SessionContext, p?: { asOf?: string }): Promise<ClaimTypeRow[]> {
+  return withTenant(ctx, (tx) => listClaimTypesTx(tx, ctx, p));
+}
+
+/** listClaimTypes inside a caller's transaction (AI v2 Phase 2 hardening: the Living Handbook reads a setting before
+ *  and after its own write in the one transaction that also records the write). Same module gate, same rows. */
+export async function listClaimTypesTx(tx: Tx, ctx: SessionContext, p?: { asOf?: string }): Promise<ClaimTypeRow[]> {
+  assertModuleGate(ctx, 'claims');
   const asOf = p?.asOf ?? today();
-  return withTenant(ctx, async (tx) => {
-    const types = await tx
-      .select()
-      .from(claimType)
-      .where(isNull(claimType.archivedAt))
-      .orderBy(claimType.code);
-    return Promise.all(
-      types.map(async (t) => ({
-        id: t.id,
-        code: t.code,
-        name: t.name,
-        description: t.description ?? null,
-        defaultTaxable: t.defaultTaxable,
-        requiresReceipt: t.requiresReceipt,
-        maxReceiptAgeDays: t.maxReceiptAgeDays ?? null,
-        isMileage: t.isMileage,
-        archivedAt: t.archivedAt ? t.archivedAt.toISOString() : null,
-        // The admin Claim Types tab resolves the null-grade default only; per-grade limits live on the
-        // Claim Limits tab (listClaimLimits) and the employee form resolves for the claimant's own grade.
-        policy: await getActiveClaimPolicy(tx, t.id, asOf),
-        items: await activeItemsFor(tx, t.id),
-      })),
-    );
-  });
+  const types = await tx
+    .select()
+    .from(claimType)
+    .where(isNull(claimType.archivedAt))
+    .orderBy(claimType.code);
+  return Promise.all(
+    types.map(async (t) => ({
+      id: t.id,
+      code: t.code,
+      name: t.name,
+      description: t.description ?? null,
+      defaultTaxable: t.defaultTaxable,
+      requiresReceipt: t.requiresReceipt,
+      maxReceiptAgeDays: t.maxReceiptAgeDays ?? null,
+      isMileage: t.isMileage,
+      archivedAt: t.archivedAt ? t.archivedAt.toISOString() : null,
+      // The admin Claim Types tab resolves the null-grade default only; per-grade limits live on the
+      // Claim Limits tab (listClaimLimits) and the employee form resolves for the claimant's own grade.
+      policy: await getActiveClaimPolicy(tx, t.id, asOf),
+      items: await activeItemsFor(tx, t.id),
+    })),
+  );
 }
 
 /** Non-archived items for a claim type — the admin sub-list. */
@@ -760,31 +765,48 @@ export async function updateClaimType(
     isMileage?: boolean;
   },
 ): Promise<void> {
+  return withTenant(ctx, (tx) => updateClaimTypeTx(tx, ctx, p));
+}
+
+/** updateClaimType inside a caller's transaction (AI v2 Phase 2 hardening: the Living Handbook records its own write in the same transaction, so its guard can roll the write back). Same gate, validation and event. */
+export async function updateClaimTypeTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    id: string;
+    name: string;
+    defaultTaxable: boolean;
+    requiresReceipt: boolean;
+    description?: string | null;
+    maxReceiptAgeDays?: number | null;
+    /** e7eb5d83 rev 4 — absent leaves the flag alone; a boolean sets it (and refuses a second one). */
+    isMileage?: boolean;
+  },
+): Promise<void> {
+  assertModuleGate(ctx, 'claims');
   const description = p.description?.trim() || null;
   const maxReceiptAgeDays = receiptAgeOrNull(p.maxReceiptAgeDays);
-  await withTenant(ctx, async (tx) => {
-    if (p.isMileage === true) await assertSingleMileageType(tx, p.id);
-    const [row] = await tx
-      .update(claimType)
-      .set({
-        name: p.name.trim(),
-        description,
-        defaultTaxable: p.defaultTaxable,
-        requiresReceipt: p.requiresReceipt,
-        maxReceiptAgeDays,
-        ...(p.isMileage === undefined ? {} : { isMileage: p.isMileage }),
-      })
-      .where(eq(claimType.id, p.id))
-      .returning({ id: claimType.id });
-    if (!row) return;
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'claim-type',
-      aggregateId: p.id,
-      eventType: 'claim-type.updated',
-      actor: actorOf(ctx),
-      payload: { name: p.name.trim(), description, defaultTaxable: p.defaultTaxable, requiresReceipt: p.requiresReceipt, maxReceiptAgeDays, isMileage: p.isMileage ?? null },
-    });
+  if (p.isMileage === true) await assertSingleMileageType(tx, p.id);
+  const [row] = await tx
+    .update(claimType)
+    .set({
+      name: p.name.trim(),
+      description,
+      defaultTaxable: p.defaultTaxable,
+      requiresReceipt: p.requiresReceipt,
+      maxReceiptAgeDays,
+      ...(p.isMileage === undefined ? {} : { isMileage: p.isMileage }),
+    })
+    .where(eq(claimType.id, p.id))
+    .returning({ id: claimType.id });
+  if (!row) return;
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'claim-type',
+    aggregateId: p.id,
+    eventType: 'claim-type.updated',
+    actor: actorOf(ctx),
+    payload: { name: p.name.trim(), description, defaultTaxable: p.defaultTaxable, requiresReceipt: p.requiresReceipt, maxReceiptAgeDays, isMileage: p.isMileage ?? null },
   });
 }
 
@@ -1361,50 +1383,58 @@ export async function listMileageRateTables(
   ctx: SessionContext,
   p: { claimTypeId: string; gradeId: string | null; asOf?: string },
 ): Promise<{ tables: (MileageRateTableRow & { inherited: boolean })[] }> {
+  return withTenant(ctx, (tx) => listMileageRateTablesTx(tx, ctx, p));
+}
+
+/** listMileageRateTables inside a caller's transaction (the Living Handbook reads the table back after its own write, before that transaction commits). Same gate and rows. */
+export async function listMileageRateTablesTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { claimTypeId: string; gradeId: string | null; asOf?: string },
+): Promise<{ tables: (MileageRateTableRow & { inherited: boolean })[] }> {
+  assertModuleGate(ctx, 'claims');
   const asOf = p.asOf ?? today();
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select()
-      .from(claimMileageRate)
-      .where(
-        and(
-          eq(claimMileageRate.claimTypeId, p.claimTypeId),
-          lte(claimMileageRate.validFrom, asOf),
-          or(isNull(claimMileageRate.validTo), sql`${claimMileageRate.validTo} > ${asOf}`),
-        ),
-      )
-      .orderBy(desc(claimMileageRate.validFrom));
-    // Group into tables: (gradeId, vehicleClass, validFrom). Keep only the latest validFrom per tier.
-    const byTier = new Map<string, typeof rows>();
-    for (const r of rows) {
-      const key = `${r.gradeId ?? ''}|${r.vehicleClass}`;
-      const arr = byTier.get(key);
-      if (arr) arr.push(r);
-      else byTier.set(key, [r]);
-    }
-    const out: (MileageRateTableRow & { inherited: boolean })[] = [];
-    for (const [, tierRows] of byTier) {
-      const validFrom = tierRows[0].validFrom;
-      const g = tierRows[0].gradeId ?? null;
-      // Only the selected grade's own tables and the company-wide ones are relevant to this view.
-      if (g !== p.gradeId && g !== null) continue;
-      out.push({
-        claimTypeId: p.claimTypeId,
-        gradeId: g,
-        vehicleClass: tierRows[0].vehicleClass,
-        validFrom,
-        validTo: tierRows[0].validTo ?? null,
-        bands: tierRows.filter((r) => r.validFrom === validFrom).map(bandOf).sort((a, b) => a.fromKm - b.fromKm),
-        inherited: p.gradeId != null && g == null,
-      });
-    }
-    // A grade's own table for a class HIDES the company-wide one for that class — showing both would leave
-    // the admin reading a row that does not apply to anybody.
-    const ownClasses = new Set(out.filter((t) => !t.inherited && t.gradeId != null).map((t) => t.vehicleClass));
-    const visible = p.gradeId == null ? out : out.filter((t) => !(t.inherited && ownClasses.has(t.vehicleClass)));
-    visible.sort((a, b) => a.vehicleClass.localeCompare(b.vehicleClass));
-    return { tables: visible };
-  });
+  const rows = await tx
+    .select()
+    .from(claimMileageRate)
+    .where(
+      and(
+        eq(claimMileageRate.claimTypeId, p.claimTypeId),
+        lte(claimMileageRate.validFrom, asOf),
+        or(isNull(claimMileageRate.validTo), sql`${claimMileageRate.validTo} > ${asOf}`),
+      ),
+    )
+    .orderBy(desc(claimMileageRate.validFrom));
+  // Group into tables: (gradeId, vehicleClass, validFrom). Keep only the latest validFrom per tier.
+  const byTier = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const key = `${r.gradeId ?? ''}|${r.vehicleClass}`;
+    const arr = byTier.get(key);
+    if (arr) arr.push(r);
+    else byTier.set(key, [r]);
+  }
+  const out: (MileageRateTableRow & { inherited: boolean })[] = [];
+  for (const [, tierRows] of byTier) {
+    const validFrom = tierRows[0].validFrom;
+    const g = tierRows[0].gradeId ?? null;
+    // Only the selected grade's own tables and the company-wide ones are relevant to this view.
+    if (g !== p.gradeId && g !== null) continue;
+    out.push({
+      claimTypeId: p.claimTypeId,
+      gradeId: g,
+      vehicleClass: tierRows[0].vehicleClass,
+      validFrom,
+      validTo: tierRows[0].validTo ?? null,
+      bands: tierRows.filter((r) => r.validFrom === validFrom).map(bandOf).sort((a, b) => a.fromKm - b.fromKm),
+      inherited: p.gradeId != null && g == null,
+    });
+  }
+  // A grade's own table for a class HIDES the company-wide one for that class — showing both would leave
+  // the admin reading a row that does not apply to anybody.
+  const ownClasses = new Set(out.filter((t) => !t.inherited && t.gradeId != null).map((t) => t.vehicleClass));
+  const visible = p.gradeId == null ? out : out.filter((t) => !(t.inherited && ownClasses.has(t.vehicleClass)));
+  visible.sort((a, b) => a.vehicleClass.localeCompare(b.vehicleClass));
+  return { tables: visible };
 }
 
 /**
@@ -1425,6 +1455,22 @@ export async function setMileageRateTable(
     bands: MileageBand[];
   },
 ): Promise<{ bands: number }> {
+  return withTenant(ctx, (tx) => setMileageRateTableTx(tx, ctx, p));
+}
+
+/** setMileageRateTable inside a caller's transaction (AI v2 Phase 2 hardening: the Living Handbook records its own write in the same transaction, so its guard can roll the write back). Same gate, validation, versioning and event. */
+export async function setMileageRateTableTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    claimTypeId: string;
+    gradeId?: string | null;
+    vehicleClass?: string;
+    effectiveFrom: string;
+    bands: MileageBand[];
+  },
+): Promise<{ bands: number }> {
+  assertModuleGate(ctx, 'claims');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveFrom)) throw new ClaimError('effectiveFrom must be YYYY-MM-DD');
   const vehicleClass = p.vehicleClass ?? 'any';
   if (!(MILEAGE_VEHICLE_CLASSES as readonly string[]).includes(vehicleClass)) {
@@ -1432,46 +1478,44 @@ export async function setMileageRateTable(
   }
   if (p.bands.length > 0) assertValidMileageBands(p.bands);
   const gradeId = p.gradeId ?? null;
-  return withTenant(ctx, async (tx) => {
-    // Close the open version of THIS tier only — a null-safe grade compare so setting the Executive table
-    // never closes the Manager one (setClaimPolicy's exact idiom).
-    await tx
-      .update(claimMileageRate)
-      .set({ validTo: p.effectiveFrom })
-      .where(
-        and(
-          eq(claimMileageRate.claimTypeId, p.claimTypeId),
-          eq(claimMileageRate.vehicleClass, vehicleClass),
-          isNull(claimMileageRate.validTo),
-          gradeId == null ? isNull(claimMileageRate.gradeId) : eq(claimMileageRate.gradeId, gradeId),
-        ),
-      );
-    const sorted = [...p.bands].sort((a, b) => a.fromKm - b.fromKm);
-    if (sorted.length > 0) {
-      await tx.insert(claimMileageRate).values(
-        sorted.map((b) => ({
-          tenantId: ctx.tenantId,
-          claimTypeId: p.claimTypeId,
-          gradeId,
-          vehicleClass,
-          fromKm: b.fromKm.toFixed(2),
-          toKm: b.toKm == null ? null : b.toKm.toFixed(2),
-          ratePerKm: b.ratePerKm.toFixed(4),
-          validFrom: p.effectiveFrom,
-        })),
-      );
-    }
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'claim-mileage-rate',
-      aggregateId: p.claimTypeId,
-      eventType: 'claim-mileage-rate.set',
-      actor: actorOf(ctx),
-      // Rates are CONFIG, not a claim amount — safe to log in full (ADR-0030, same call setClaimPolicy makes).
-      payload: { claimTypeId: p.claimTypeId, gradeId, vehicleClass, effectiveFrom: p.effectiveFrom, bands: sorted },
-    });
-    return { bands: sorted.length };
+  // Close the open version of THIS tier only — a null-safe grade compare so setting the Executive table
+  // never closes the Manager one (setClaimPolicy's exact idiom).
+  await tx
+    .update(claimMileageRate)
+    .set({ validTo: p.effectiveFrom })
+    .where(
+      and(
+        eq(claimMileageRate.claimTypeId, p.claimTypeId),
+        eq(claimMileageRate.vehicleClass, vehicleClass),
+        isNull(claimMileageRate.validTo),
+        gradeId == null ? isNull(claimMileageRate.gradeId) : eq(claimMileageRate.gradeId, gradeId),
+      ),
+    );
+  const sorted = [...p.bands].sort((a, b) => a.fromKm - b.fromKm);
+  if (sorted.length > 0) {
+    await tx.insert(claimMileageRate).values(
+      sorted.map((b) => ({
+        tenantId: ctx.tenantId,
+        claimTypeId: p.claimTypeId,
+        gradeId,
+        vehicleClass,
+        fromKm: b.fromKm.toFixed(2),
+        toKm: b.toKm == null ? null : b.toKm.toFixed(2),
+        ratePerKm: b.ratePerKm.toFixed(4),
+        validFrom: p.effectiveFrom,
+      })),
+    );
+  }
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'claim-mileage-rate',
+    aggregateId: p.claimTypeId,
+    eventType: 'claim-mileage-rate.set',
+    actor: actorOf(ctx),
+    // Rates are CONFIG, not a claim amount — safe to log in full (ADR-0030, same call setClaimPolicy makes).
+    payload: { claimTypeId: p.claimTypeId, gradeId, vehicleClass, effectiveFrom: p.effectiveFrom, bands: sorted },
   });
+  return { bands: sorted.length };
 }
 
 // ═══════════════════ Claim FORM DESIGNER (e7eb5d83) — per-claim-type custom fields ═══════════════════

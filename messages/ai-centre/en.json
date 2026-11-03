@@ -1636,6 +1636,8 @@
         "owner": "Calculated by the claims service on the last 12 months of real claims. AI Centre did not work out any amount."
       },
       "drift": {
+        "textBody": "the handbook says “{quote}”; the {owner} service says {system}. Applies to {companies}.",
+        "textNote": "Employees who ask AI Centre are given the system's setting, not this figure. Edit the text to match, or confirm a value in a new draft.",
         "title": "Where the handbook and the system disagree",
         "setting": {
           "claims_mileage_rates": "Mileage rates",
@@ -1652,6 +1654,7 @@
         "leave": "leave"
       },
       "approval": {
+        "blocked": "It cannot be approved while its text disagrees with what the system will enforce. Return it to draft to change the text.",
         "title": "Approval",
         "ruleDraft": "When you send it, a group administrator approves it. A change to what the system enforces needs a second administrator: someone who did not write or send it.",
         "ruleSettings": "This version changes what the system enforces, so a second administrator, who did not write or send it, must approve it before it applies.",
@@ -1698,6 +1701,8 @@
         "leaveFrom": "{type}, {from} years of service or more"
       },
       "saved": {
+        "text_only": "Marked as text only. The system's own setting stays as it is.",
+        "text_only_withdrawn": "No longer text only. Confirm a value for it, or mark it again.",
         "created": "Draft saved.",
         "draft": "Draft saved.",
         "read": "AI Centre read {accepted, plural, one {# value} other {# values}} for you to confirm{rejected, plural, =0 {.} one {; it set aside # proposal it could not match to your words.} other {; it set aside # proposals it could not match to your words.}}",
@@ -1716,6 +1721,8 @@
         "draft_made": "A new draft is ready to edit."
       },
       "errors": {
+        "unmarked": "Your text mentions a setting the system enforces. Confirm a value for it, or keep it as text only, before sending.",
+        "mismatch": "The text states a figure the system will not enforce. Return it to draft and change the text, or confirm the value.",
         "not_administrator": "Only an administrator of every company this policy applies to can do that.",
         "not_group_admin": "Only a group administrator can approve or return a policy.",
         "invalid": "Check the title, the date, the text and at least one company.",
@@ -1734,9 +1741,29 @@
         "no_settings": "There is nothing the system can enforce for this area yet. The policy is kept as text.",
         "failed": "That did not work. Try again."
       },
+      "mentions": {
+        "title": "Settings your text mentions",
+        "enforced": "enforced from this policy once approved",
+        "textOnly": "text only, not enforced (marked by {name} on {date})",
+        "needed": "confirm a value for it, or keep it as text only, before sending",
+        "markTextOnly": "Keep as text only",
+        "unmark": "Undo text only",
+        "setting": {
+          "claims_mileage_rates": "Mileage rates",
+          "claims_submit_within_days": "Claim submission windows",
+          "leave_entitlement_days": "Leave entitlements"
+        }
+      },
+      "mismatch": {
+        "title": "Where your text disagrees with what the system will enforce",
+        "row": "“{quote}” ({setting}): the {owner} service will enforce {enforced}.",
+        "note": "Approval waits until they agree. Change the text, or confirm a value so that it is applied."
+      },
       "footer": "Employees' questions are answered from the approved version only. Every version is kept.",
       "readerLine": "Version {version} · in force since {date}",
-      "readerNote": "This is the approved version. Ask AI Centre about it on Ask, or contact your HR team."
+      "readerNote": "This is the approved version. Ask AI Centre about it on Ask, or contact your HR team.",
+      "readerSettingNote": "“{quote}” ({setting}): the current setting is {current}; HR has been told the handbook differs.",
+      "readerSettingUnavailable": "“{quote}”: the current setting could not be read just now. Ask your HR team before relying on this figure."
     },
     "feedback": {
       "label": "Was this answer helpful?",

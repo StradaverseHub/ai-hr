@@ -107,12 +107,15 @@ it('applies the Teras tail from 0890/0891 on over populated leave policy and app
    {table:'teras_payroll_swing_disposition',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_payroll_threshold_decision',rls:true,s:true,i:true,u:false,d:false,t:false},
    // 2009 (AI v2 Phase 2 P2-5, the Living Handbook, first allocated as 0971): REVOKE ALL, then GRANT SELECT, INSERT; UPDATE on the version only (a draft
-   // is edited, then sent, approved or returned), DELETE on the scope only (a draft's companies). Everything else append-only.
+   // is edited, then sent, approved or returned), DELETE on the scope only (a draft's companies). Everything else append-only,
+   // including the Phase 2 hardening's contribution record and text-only marks.
    {table:'teras_policy_application',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_policy_approval',rls:true,s:true,i:true,u:false,d:false,t:false},
+   {table:'teras_policy_contribution',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_policy_document',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_policy_drift_finding',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_policy_scope',rls:true,s:true,i:true,u:false,d:true,t:false},
+   {table:'teras_policy_text_only',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_policy_value',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_policy_value_confirmation',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_policy_version',rls:true,s:true,i:true,u:true,d:false,t:false},

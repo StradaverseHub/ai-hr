@@ -1,4 +1,4 @@
-/** AI v2 Phase 2, P2-5 — the Living Handbook's closed catalogue of settings a policy can enforce (migration 0971).
+/** AI v2 Phase 2, P2-5 — the Living Handbook's closed catalogue of settings a policy can enforce (migration 2009).
  *
  * ONLY SETTINGS THAT ALREADY EXIST in an owner service, each read and written through that owner's own functions and
  * validation (packs/<pack>/service):
@@ -17,13 +17,13 @@
  * This module never decides: it reads the owner's current value, compares two values exactly, and asks the owner to
  * apply one. A refusal is the owner's own message. */
 import {listLeaveTypes} from '../read';
-import {listClaimTypes,listMileageRateTables,setMileageRateTable,updateClaimType,RECEIPT_BACKDATE_DAYS,type MileageBand} from '../../packs/claims/service';
-import {listEntitlementTemplates,updateEntitlementTemplate,type ServiceBand} from '../../packs/leave/service';
+import {listClaimTypes,listClaimTypesTx,listMileageRateTables,listMileageRateTablesTx,setMileageRateTableTx,updateClaimTypeTx,RECEIPT_BACKDATE_DAYS,type MileageBand} from '../../packs/claims/service';
+import {listEntitlementTemplates,listEntitlementTemplatesTx,updateEntitlementTemplateTx,type ServiceBand} from '../../packs/leave/service';
 import {isModuleEnabled} from '../entitlements';
-import type {SessionContext} from '../../db/client';
+import type {SessionContext,Tx} from '../../db/client';
 
 export * from './types';
-import {AREA_SETTINGS,type EntitlementBandValue,type MileageBandValue,type PolicyArea,type PolicySetting,type SettingBody,type SettingTarget} from './types';
+import {AREA_SETTINGS,POLICY_SETTINGS,type EntitlementBandValue,type MileageBandValue,type PolicyArea,type PolicySetting,type SettingBody,type SettingTarget} from './types';
 export type OwnerTargets=Readonly<{
  mileageType:Readonly<{id:string;code:string;name:string}>|null;
  claimTypes:readonly Readonly<{id:string;code:string;name:string;maxReceiptAgeDays:number|null;description:string|null;defaultTaxable:boolean;requiresReceipt:boolean}>[];
@@ -51,6 +51,10 @@ export const noOwnerTargets=():OwnerTargets=>EMPTY;
 export function availableSettings(area:PolicyArea,targets:OwnerTargets):readonly PolicySetting[]{
  return AREA_SETTINGS[area].filter(setting=>setting==='claims.mileage_rates'?targets.mileageType!==null:setting==='claims.submit_within_days'?targets.claimTypes.length>0:targets.leaveTypes.length>0);
 }
+/** Every setting the owners hold for the caller's tenant now, whatever a policy's area: what any text can contradict. */
+export function heldSettings(targets:OwnerTargets):readonly PolicySetting[]{
+ return POLICY_SETTINGS.filter(setting=>setting==='claims.mileage_rates'?targets.mileageType!==null:setting==='claims.submit_within_days'?targets.claimTypes.length>0:targets.leaveTypes.length>0);
+}
 const sameCode=(a:string|undefined,b:string)=>typeof a==='string'&&a.trim().toUpperCase()===b.toUpperCase();
 export const claimTypeOf=(targets:OwnerTargets,target:SettingTarget)=>targets.claimTypes.find(t=>sameCode(target.claimType,t.code))??null;
 export const leaveTypeOf=(targets:OwnerTargets,target:SettingTarget)=>targets.leaveTypes.find(t=>sameCode(target.leaveType,t.code))??null;
@@ -74,21 +78,46 @@ export function sameValue(setting:PolicySetting,a:unknown,b:unknown):boolean{
 }
 
 export type OwnerValue=Readonly<{value:SettingBody|null;defaulted:boolean;available:boolean}>;
-/** The owner's current value of a setting for a target (null when the owner holds none, e.g. no table yet). */
-export async function currentOwnerValue(ctx:SessionContext,setting:PolicySetting,target:SettingTarget,targets:OwnerTargets,asOf:string):Promise<OwnerValue>{
+/** The owner reads a setting comes from: each opens its own transaction, or all run in the caller's (`tx`). */
+type OwnerReads=Readonly<{
+ mileage(claimTypeId:string,asOf:string):Promise<Awaited<ReturnType<typeof listMileageRateTables>>>;
+ receiptDays(claimTypeId:string,fallback:number|null):Promise<number|null>;
+ entitlement(leaveTypeId:string,asOf:string):Promise<Awaited<ReturnType<typeof listEntitlementTemplates>>>;
+}>;
+const ownReads=(ctx:SessionContext):OwnerReads=>({
+ mileage:(claimTypeId,asOf)=>listMileageRateTables(ctx,{claimTypeId,gradeId:null,asOf}),
+ // The targets were read from the owner moments ago; outside a write there is nothing newer to read.
+ receiptDays:async(_id,fallback)=>fallback,
+ entitlement:(leaveTypeId,asOf)=>listEntitlementTemplates(ctx,{asOf,leaveTypeId}),
+});
+const txReads=(tx:Tx,ctx:SessionContext):OwnerReads=>({
+ mileage:(claimTypeId,asOf)=>listMileageRateTablesTx(tx,ctx,{claimTypeId,gradeId:null,asOf}),
+ receiptDays:async(id)=>(await listClaimTypesTx(tx,ctx)).find(t=>t.id===id)?.maxReceiptAgeDays??null,
+ entitlement:(leaveTypeId,asOf)=>listEntitlementTemplatesTx(tx,ctx,{asOf,leaveTypeId}),
+});
+async function ownerValueBy(reads:OwnerReads,setting:PolicySetting,target:SettingTarget,targets:OwnerTargets,asOf:string):Promise<OwnerValue>{
  if(setting==='claims.mileage_rates'){
   if(!targets.mileageType)return Object.freeze({value:null,defaulted:false,available:false});
-  const {tables}=await listMileageRateTables(ctx,{claimTypeId:targets.mileageType.id,gradeId:null,asOf});
+  const {tables}=await reads.mileage(targets.mileageType.id,asOf);
   const table=tables.find(t=>t.gradeId===null&&t.vehicleClass==='any');
   return Object.freeze({value:table?normalizeBody(setting,{bands:table.bands}):null,defaulted:false,available:true});
  }
  if(setting==='claims.submit_within_days'){
   const type=claimTypeOf(targets,target);if(!type)return Object.freeze({value:null,defaulted:false,available:false});
-  return Object.freeze({value:Object.freeze({days:type.maxReceiptAgeDays??RECEIPT_BACKDATE_DAYS}),defaulted:type.maxReceiptAgeDays==null,available:true});
+  const days=await reads.receiptDays(type.id,type.maxReceiptAgeDays);
+  return Object.freeze({value:Object.freeze({days:days??RECEIPT_BACKDATE_DAYS}),defaulted:days==null,available:true});
  }
  const type=leaveTypeOf(targets,target);if(!type)return Object.freeze({value:null,defaulted:false,available:false});
- const table=(await listEntitlementTemplates(ctx,{asOf,leaveTypeId:type.id})).find(t=>t.lineageId===type.defaultLineageId);
+ const table=(await reads.entitlement(type.id,asOf)).find(t=>t.lineageId===type.defaultLineageId);
  return Object.freeze({value:table?normalizeBody(setting,{bands:table.serviceBands}):null,defaulted:false,available:true});
+}
+/** The owner's current value of a setting for a target (null when the owner holds none, e.g. no table yet). */
+export async function currentOwnerValue(ctx:SessionContext,setting:PolicySetting,target:SettingTarget,targets:OwnerTargets,asOf:string):Promise<OwnerValue>{
+ return ownerValueBy(ownReads(ctx),setting,target,targets,asOf);
+}
+/** The same read inside the caller's transaction: it sees that transaction's own uncommitted write. */
+export async function currentOwnerValueTx(tx:Tx,ctx:SessionContext,setting:PolicySetting,target:SettingTarget,targets:OwnerTargets,asOf:string):Promise<OwnerValue>{
+ return ownerValueBy(txReads(tx,ctx),setting,target,targets,asOf);
 }
 
 export class OwnerRefused extends Error{constructor(message:string){super(message.slice(0,300));this.name='OwnerRefused';}}
@@ -98,26 +127,29 @@ export const ownerMessage=(error:unknown):string=>{
  return (/^(insert|update|select|delete) |violates|duplicate key|sqlstate|relation "/i.test(text)?'The owner service refused this value.':text).slice(0,300)||'The owner service refused this value.';
 };
 
-/** Ask the owner to apply one value, from `applyOn`, under the caller's own login. Returns the owner's value before and
- * after (read back from the owner). Throws OwnerRefused with the owner's message when it refuses. */
-export async function applyOwnerValue(ctx:SessionContext,setting:PolicySetting,target:SettingTarget,body:SettingBody,targets:OwnerTargets,applyOn:string):Promise<Readonly<{before:SettingBody|null;after:SettingBody|null}>>{
- const before=(await currentOwnerValue(ctx,setting,target,targets,applyOn)).value;
+/** Ask the owner to apply one value, from `applyOn`, under the caller's own login, INSIDE the caller's transaction:
+ * the owner's own settings write and validation run there, so whatever the caller records next in that transaction
+ * (the application row and its database guard, migration 2009) commits or rolls back together with the write. Returns
+ * the owner's value before and after, read back in that transaction. Throws OwnerRefused with the owner's message when
+ * it refuses; the caller runs this in a savepoint so a refusal leaves its transaction usable. */
+export async function applyOwnerValueTx(tx:Tx,ctx:SessionContext,setting:PolicySetting,target:SettingTarget,body:SettingBody,targets:OwnerTargets,applyOn:string):Promise<Readonly<{before:SettingBody|null;after:SettingBody|null}>>{
+ const before=(await currentOwnerValueTx(tx,ctx,setting,target,targets,applyOn)).value;
  try{
   if(setting==='claims.mileage_rates'){
    if(!targets.mileageType)throw new OwnerRefused('No claim type is marked as the mileage claim.');
    const bands:MileageBand[]=(body as {bands:readonly MileageBandValue[]}).bands.map(b=>({fromKm:b.fromKm,toKm:b.toKm,ratePerKm:b.ratePerKm}));
-   await setMileageRateTable(ctx,{claimTypeId:targets.mileageType.id,gradeId:null,vehicleClass:'any',effectiveFrom:applyOn,bands});
+   await setMileageRateTableTx(tx,ctx,{claimTypeId:targets.mileageType.id,gradeId:null,vehicleClass:'any',effectiveFrom:applyOn,bands});
   }else if(setting==='claims.submit_within_days'){
    const type=claimTypeOf(targets,target);if(!type)throw new OwnerRefused('That claim type no longer exists.');
-   await updateClaimType(ctx,{id:type.id,name:type.name,description:type.description,defaultTaxable:type.defaultTaxable,requiresReceipt:type.requiresReceipt,maxReceiptAgeDays:(body as {days:number}).days});
+   await updateClaimTypeTx(tx,ctx,{id:type.id,name:type.name,description:type.description,defaultTaxable:type.defaultTaxable,requiresReceipt:type.requiresReceipt,maxReceiptAgeDays:(body as {days:number}).days});
   }else{
    const type=leaveTypeOf(targets,target);if(!type)throw new OwnerRefused('That leave type has no default entitlement table.');
-   const current=(await listEntitlementTemplates(ctx,{asOf:applyOn,leaveTypeId:type.id})).find(t=>t.lineageId===type.defaultLineageId);
+   const current=(await listEntitlementTemplatesTx(tx,ctx,{asOf:applyOn,leaveTypeId:type.id})).find(t=>t.lineageId===type.defaultLineageId);
    if(!current)throw new OwnerRefused('That leave type has no default entitlement table in force.');
-   await updateEntitlementTemplate(ctx,{lineageId:type.defaultLineageId,serviceBands:mergeServiceBands(current.serviceBands,(body as {bands:readonly EntitlementBandValue[]}).bands),validFrom:applyOn});
+   await updateEntitlementTemplateTx(tx,ctx,{lineageId:type.defaultLineageId,serviceBands:mergeServiceBands(current.serviceBands,(body as {bands:readonly EntitlementBandValue[]}).bands),validFrom:applyOn});
   }
  }catch(error){throw error instanceof OwnerRefused?error:new OwnerRefused(ownerMessage(error));}
- const after=(await currentOwnerValue(ctx,setting,target,targets,applyOn)).value;
+ const after=(await currentOwnerValueTx(tx,ctx,setting,target,targets,applyOn)).value;
  return Object.freeze({before,after});
 }
 

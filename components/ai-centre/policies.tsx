@@ -4,12 +4,12 @@ import { getFormatter, getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import { Card, ErrorBanner, PageHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { StatCells } from '@/components/ui/stat-cells';
-import { policiesView, type PolicyDetail, type PolicyListItem, type PolicyValueView, type ReaderPolicy } from '@/core/handbook/policies';
+import { policiesView, type PolicyDetail, type PolicyListItem, type PolicyMention, type PolicyMismatch, type PolicyValueView, type ReaderPolicy } from '@/core/handbook/policies';
 import { POLICY_AREAS, type PolicySetting, type SettingBody } from '@/core/handbook/types';
 import type { PolicySpan } from '@/core/handbook/extract';
 import {
   applyScheduledPolicyValueAction, approvePolicyAction, createPolicyAction, decidePolicyValueAction, draftFromVersionAction,
-  prepareFromDriftAction, readPolicyValuesAction, returnPolicyAction, saveDraftAction, submitPolicyAction,
+  markTextOnlyAction, prepareFromDriftAction, readPolicyValuesAction, returnPolicyAction, saveDraftAction, submitPolicyAction,
 } from '@/app/assistant/policy-actions';
 import { cn } from '@/lib/utils';
 
@@ -19,17 +19,19 @@ import { cn } from '@/lib/utils';
  * text, with the words values were read from highlighted), "What the system will enforce" (setting, now, from your
  * text, and each value's confirmation), "If this had applied" (the claims service's own figures over its last twelve
  * months of real claims), "Where the handbook and the system disagree" (both values, with "Use the handbook" and "Update
- * the handbook"), the approval step and what each owner did. Administrators see all of it for the companies they
+ * the handbook"), the settings the text mentions and how each is covered (a confirmed value, or "text only, not
+ * enforced" with who marked it), where the text disagrees with what the system would enforce (approval waits until it
+ * does not), the approval step and what each owner did. Administrators see all of it for the companies they
  * administer; a group administrator approves. Everyone else reads the approved text of their own company's policies
- * only. Every read is core/handbook/policies.ts policiesView, under the viewer's own row-level security (0971); this view
+ * only. Every read is core/handbook/policies.ts policiesView, under the viewer's own row-level security (2009); this view
  * grants nothing. Names are AI Centre's; nothing here says Noveri. */
 export type PoliciesQuery = Readonly<Record<string, string | undefined>>;
 type T = Awaited<ReturnType<typeof getTranslations<'aiCentre.policies'>>>;
 type F = Awaited<ReturnType<typeof getFormatter>>;
 const SAVED = ['created', 'draft', 'read', 'unread', 'confirmed', 'rejected', 'sent_settings', 'sent_text', 'approved', 'approved_refused', 'returned', 'applied',
-  'drift_settings', 'drift_text', 'drift_text_manual', 'draft_made'] as const;
+  'drift_settings', 'drift_text', 'drift_text_manual', 'draft_made', 'text_only', 'text_only_withdrawn'] as const;
 const ERRORS = ['not_administrator', 'not_group_admin', 'invalid', 'not_found', 'not_draft', 'not_submitted', 'not_approved', 'undecided', 'same_administrator',
-  'stale_submission', 'shared_setting', 'draft_open', 'no_drift', 'not_due', 'model_unavailable', 'no_settings', 'failed'] as const;
+  'stale_submission', 'shared_setting', 'draft_open', 'no_drift', 'not_due', 'model_unavailable', 'no_settings', 'failed', 'unmarked', 'mismatch'] as const;
 const target = 'pointer-coarse:min-h-11';
 const href = (query: Readonly<Record<string, string | null | undefined>>) => {
   const params = new URLSearchParams();
@@ -190,6 +192,8 @@ function AdminPolicy({ t, f, detail, companies, isGroupAdmin, today, editing }: 
   const live = detail.values.filter(value => value.decision !== 'rejected');
   const spans = live.flatMap(value => value.spans);
   const undecided = detail.values.some(value => value.decision === null);
+  const mentions = detail.mentions ?? [], mismatches = detail.mismatches ?? [];
+  const uncovered = mentions.some(m => !m.confirmed && !m.textOnly);
   const openDraft = detail.versions.some(x => x.status !== 'approved');
   const latestApplication = new Map(detail.applications.map(a => [a.valueId, a]));
   return (
@@ -208,7 +212,7 @@ function AdminPolicy({ t, f, detail, companies, isGroupAdmin, today, editing }: 
               <button type="submit" className={cn(btnGhost, target)}>{t('actions.read')}</button></form>)}
           {draft && detail.canEdit && (
             <form action={submitPolicyAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={v.id} />
-              <button type="submit" disabled={undecided} className={cn(btnPrimary, target)}>{t('actions.send')}</button></form>)}
+              <button type="submit" disabled={undecided || uncovered} className={cn(btnPrimary, target)}>{t('actions.send')}</button></form>)}
           {approved && detail.canEdit && !openDraft && (
             <form action={draftFromVersionAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={v.id} />
               <button type="submit" className={cn(btnGhost, target)}>{t('actions.edit')}</button></form>)}
@@ -248,8 +252,11 @@ function AdminPolicy({ t, f, detail, companies, isGroupAdmin, today, editing }: 
                 ? <p className="text-sm text-muted-foreground" data-policy-no-values>{draft ? t('noValuesDraft') : t('noValues')}</p>
                 : <EnforceTable t={t} f={f} values={detail.values} policy={policy} decide={draft && detail.canEdit} />}
           {detail.values.length > 0 && <p className="text-xs text-muted-foreground">{t('enforceNote', { count: detail.values.length })}</p>}
+          {mentions.length > 0 && <Mentions t={t} f={f} mentions={mentions} policy={policy} versionId={v.id} mark={draft && detail.canEdit} />}
         </section>
       </div>
+
+      {mismatches.length > 0 && <Mismatches t={t} f={f} mismatches={mismatches} />}
 
       {detail.impact && (detail.impact.mileage || detail.impact.deadline) && (
         <section aria-labelledby="policy-impact" className="space-y-3 rounded-xl border border-border bg-muted/40 p-4" data-policy-impact>
@@ -270,14 +277,19 @@ function AdminPolicy({ t, f, detail, companies, isGroupAdmin, today, editing }: 
       {detail.drift.length > 0 && (
         <section aria-labelledby="policy-drift" className="space-y-2" data-policy-drift>
           <h4 id="policy-drift" className="text-sm font-semibold">{t('drift.title')}</h4>
-          {detail.drift.map(item => (
-            <div key={item.valueId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border px-4 py-3" data-policy-drift-item={item.setting}>
+          {detail.drift.map((item, i) => (
+            <div key={`${item.kind ?? 'value'}-${item.valueId ?? ''}-${item.quote ?? ''}-${i}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border px-4 py-3"
+              data-policy-drift-item={item.setting} data-policy-drift-kind={item.kind ?? 'value'}>
               <p className="min-w-0 text-sm">
                 <b className="font-semibold">{t(`drift.setting.${item.setting.replace('.', '_')}`, { type: item.targetName ?? '' })}:</b>{' '}
-                {t('drift.body', { handbook: ownerSummary(t, f, item.setting, item.handbook), system: ownerSummary(t, f, item.setting, item.system), owner: t(`owners.${ownerOf(item.setting)}`),
-                  companies: item.companies.length === companies.length && companies.length > 1 ? t('allCompanies', { count: companies.length }) : item.companies.map(nameOf).join(', ') })}
+                {item.kind === 'text'
+                  ? t('drift.textBody', { quote: item.quote ?? '', system: ownerSummary(t, f, item.setting, item.system), owner: t(`owners.${ownerOf(item.setting)}`),
+                    companies: item.companies.length === companies.length && companies.length > 1 ? t('allCompanies', { count: companies.length }) : item.companies.map(nameOf).join(', ') })
+                  : t('drift.body', { handbook: item.handbook ? ownerSummary(t, f, item.setting, item.handbook) : '', system: ownerSummary(t, f, item.setting, item.system), owner: t(`owners.${ownerOf(item.setting)}`),
+                    companies: item.companies.length === companies.length && companies.length > 1 ? t('allCompanies', { count: companies.length }) : item.companies.map(nameOf).join(', ') })}
               </p>
-              {detail.canEdit && !openDraft && detail.inForceId && (
+              {item.kind === 'text' && <p className="w-full text-xs text-muted-foreground" data-policy-drift-text-note>{t('drift.textNote')}</p>}
+              {item.kind !== 'text' && item.valueId && detail.canEdit && !openDraft && detail.inForceId && (
                 <span className="flex flex-wrap gap-2">
                   <form action={prepareFromDriftAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={detail.inForceId} /><Hidden name="valueId" value={item.valueId} />
                     <Hidden name="resolution" value="use_handbook" /><button type="submit" className={cn(btnPrimary, target)}>{t('drift.useHandbook')}</button></form>
@@ -296,13 +308,14 @@ function AdminPolicy({ t, f, detail, companies, isGroupAdmin, today, editing }: 
         <p className="text-sm" data-policy-rule>
           {draft ? t('approval.ruleDraft') : v.changesSettings ? t('approval.ruleSettings') : t('approval.ruleText')}
         </p>
+        {submitted && mismatches.length > 0 && <p className="text-sm text-muted-foreground" data-policy-blocked>{t('approval.blocked')}</p>}
         {detail.approvals.length > 0 && (
           <ul className="space-y-1 text-sm text-muted-foreground">
             {detail.approvals.map((a, i) => <li key={i}>{t(`approval.${a.decision}`, { name: a.approverName ?? t('anAdministrator'), date: f.dateTime(a.at, { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' }) })}</li>)}
           </ul>
         )}
-        {submitted && (isGroupAdmin
-          ? (v.changesSettings && (v.authorIsViewer || v.submittedByViewer)
+        {submitted && mismatches.length === 0 && (isGroupAdmin
+          ? (v.changesSettings && (v.authorIsViewer || v.submittedByViewer || v.contributedByViewer)
             ? <p className="text-sm text-muted-foreground" data-policy-second>{t('approval.needSecond')}</p>
             : <div className="flex flex-wrap gap-2">
                 <form action={approvePolicyAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={v.id} />
@@ -389,12 +402,70 @@ function EnforceTable({ t, f, values, policy, decide }: { t: T; f: F; values: re
   );
 }
 
+/** The enforceable settings the text mentions, each covered by a confirmed value or a person's "text only" mark. */
+function Mentions({ t, f, mentions, policy, versionId, mark }: { t: T; f: F; mentions: readonly PolicyMention[]; policy: string; versionId: string; mark: boolean }) {
+  return (
+    <div className="space-y-1.5 border-t border-border pt-3" data-policy-mentions>
+      <h5 className="text-xs font-semibold text-muted-foreground">{t('mentions.title')}</h5>
+      <ul className="space-y-1.5 text-[0.8125rem]">
+        {mentions.map(m => {
+          const state = m.confirmed ? 'confirmed' : m.textOnly ? 'text_only' : 'needed';
+          return (
+            <li key={m.setting} className="flex flex-wrap items-center justify-between gap-2" data-policy-mention={m.setting} data-policy-mention-state={state}>
+              <span className="min-w-0">
+                <b className="font-medium">{t(`mentions.setting.${m.setting.replace('.', '_')}`)}</b>{' · '}
+                {state === 'confirmed' ? t('mentions.enforced')
+                  : state === 'text_only' ? t('mentions.textOnly', { name: m.textOnly!.byName ?? t('anAdministrator'), date: f.dateTime(m.textOnly!.at, { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' }) })
+                    : t('mentions.needed')}
+              </span>
+              {mark && !m.confirmed && (
+                <form action={markTextOnlyAction}><Hidden name="policy" value={policy} /><Hidden name="versionId" value={versionId} /><Hidden name="setting" value={m.setting} />
+                  <Hidden name="marked" value={m.textOnly ? 'false' : 'true'} />
+                  <button type="submit" className={cn(btnGhost, target, 'h-8 px-2.5 text-xs')}>{m.textOnly ? t('mentions.unmark') : t('mentions.markTextOnly')}</button></form>)}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/** Words of the text that state a figure the system would not enforce once approved: approval waits until they agree. */
+function Mismatches({ t, f, mismatches }: { t: T; f: F; mismatches: readonly PolicyMismatch[] }) {
+  return (
+    <section aria-labelledby="policy-mismatch" className="space-y-2 rounded-xl border border-border p-4" data-policy-mismatch>
+      <h4 id="policy-mismatch" className="text-sm font-semibold">{t('mismatch.title')}</h4>
+      <ul className="space-y-1 text-sm">
+        {mismatches.map((m, i) => (
+          <li key={i} data-policy-mismatch-item={m.setting}>
+            {t('mismatch.row', { quote: m.quote, setting: t(`drift.setting.${m.setting.replace('.', '_')}`, { type: m.targetName ?? '' }), owner: t(`owners.${ownerOf(m.setting)}`),
+              enforced: ownerSummary(t, f, m.setting, m.enforced) })}
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted-foreground">{t('mismatch.note')}</p>
+    </section>
+  );
+}
+
 function ReaderPolicyView({ t, f, policy }: { t: T; f: F; policy: ReaderPolicy }) {
   return (
     <article className="space-y-3" data-policy-reader aria-labelledby="policy-title">
       <h3 id="policy-title" className="text-[1.375rem] font-semibold tracking-tight">{policy.title}</h3>
       <p className="text-sm text-muted-foreground" data-policy-status>{t('readerLine', { version: policy.version, date: day(f, policy.effectiveFrom) })}</p>
       <section className="rounded-xl border border-border p-4"><p className="whitespace-pre-wrap text-[0.9375rem] leading-7" data-policy-text>{policy.body}</p></section>
+      {(policy.settingNotes ?? []).length > 0 && (
+        <ul className="space-y-1 text-sm text-muted-foreground" data-policy-setting-notes>
+          {(policy.settingNotes ?? []).map((note, i) => (
+            <li key={i} data-policy-setting-note={note.setting}>
+              {note.unavailable
+                ? t('readerSettingUnavailable', { quote: note.quote })
+                : t('readerSettingNote', { quote: note.quote, setting: t(`drift.setting.${note.setting.replace('.', '_')}`, { type: note.targetName ?? '' }),
+                    current: ownerSummary(t, f, note.setting, note.current) })}
+            </li>
+          ))}
+        </ul>
+      )}
       <p className="text-xs text-muted-foreground">{t('readerNote')}</p>
     </article>
   );

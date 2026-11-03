@@ -1,5 +1,5 @@
 /** AI v2 Phase 2, P2-5 — the Living Handbook: policies in the company's own words, the values the system enforces from
- * them, and where the two disagree (migration 0971; AI Centre › Policies, approved mock-up Handbook.dc.html).
+ * them, and where the two disagree (migration 2009; AI Centre › Policies, approved mock-up Handbook.dc.html).
  *
  * MODELS PROPOSE, SERVICES ADJUDICATE, PEOPLE CONFIRM.
  *  1. An administrator writes a policy (a draft version: its text, the companies it applies to and the date it applies
@@ -7,19 +7,26 @@
  *  2. "Read the values": the model proposes values for settings that already exist in an owner service, each with the
  *     words it came from (./extract.ts adjudicates every proposal). Nothing is applied.
  *  3. A person confirms or rejects each value. A value read from older text no longer counts.
- *  4. "Send for approval" locks the version and records whether it changes what the system enforces: whether any
- *     confirmed value differs from the owner's current setting (read from the owner, never guessed).
- *  5. A group administrator approves it. A settings change needs a second, different administrator: one who neither
- *     wrote nor sent it (owner, 3 November 2026; the database refuses anything else, migration 0971). A text-only
- *     version needs one approval. Or they return it to draft.
+ *  4. "Send for approval" locks the version. Every enforceable setting its text mentions (a value read for it, or a
+ *     figure the deterministic read of ./consistency.ts finds) must first be confirmed, or marked "text only, not
+ *     enforced" by a person (markTextOnly; recorded and shown). Whether the version changes what the system enforces
+ *     is DERIVED by the database from its confirmed values (Phase 2 hardening, 4 November 2026): any confirmed value
+ *     makes it a settings change. The sender never states it.
+ *  5. A group administrator approves it. A settings change needs a second, different administrator: one who
+ *     contributed nothing to it (not its author, an editor, a reader or decider of its values, a text-only marker or a
+ *     sender; owner decision 13; the database records every contribution and refuses anything else, migration 2009). A
+ *     text-only version needs one approval. Neither is approved while any enforceable figure its text states disagrees
+ *     with what the system would then enforce (./consistency.ts; deterministic, no amount worked out). Or they return it.
  *  6. On approval each confirmed value is applied by its owner (./settings.ts), through the owner's own settings write
- *     and validation, under the approving administrator's login, from the version's date (today at the earliest). An
+ *     and validation, under the approving administrator's login, from the version's date (today at the earliest), in ONE
+ *     transaction with the application row, so the database guard on that row can roll the owner's write back. An
  *     undated owner setting with a future date waits for that date. Each result is recorded: applied with the owner's
  *     value before and after, refused with the owner's message, or scheduled.
  * Drift (./drift in policiesView) is deterministic: each confirmed value of the version in force against the owner's
- * current setting. "Use the handbook" prepares a draft that applies the handbook's values again; "Update the handbook"
- * prepares a draft whose text says what the system does. Both go through the same confirmation and approval. Any
- * earlier approved version can be made the draft again. Nothing is ever deleted.
+ * current setting, and every other enforceable figure its text states (./consistency.ts). "Use the handbook" prepares a
+ * draft that applies the handbook's values again; "Update the handbook" prepares a draft whose text says what the
+ * system does. Both go through the same confirmation and approval. Any earlier approved version can be made the draft
+ * again. Nothing is ever deleted.
  *
  * Isolation: every read and write runs under the caller's own login and row-level security, in their tenant only.
  * Policies apply to companies of one tenant. The three enforceable settings are shared by every company of the tenant,
@@ -34,11 +41,12 @@ import {isAdmin,isGroupAdmin} from '../../lib/authz-model';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {simulateClaimPolicyImpact,type ClaimPolicyImpact} from '../../packs/claims/service';
 import {adjudicateProposals,bodyDigest,MAX_POLICY_TEXT,settingPrompts,type PolicySpan,type PolicyValueModel,type RejectReason} from './extract';
-import {applyOwnerValue,availableSettings,claimTypeOf,currentOwnerValue,isPolicyArea,normalizeBody,ownerMessage,ownerTargets,sameValue,
+import {applyOwnerValueTx,availableSettings,claimTypeOf,currentOwnerValue,currentOwnerValueTx,heldSettings,isPolicyArea,isPolicySetting,normalizeBody,ownerMessage,ownerTargets,sameValue,
  UNDATED_SETTINGS,type OwnerTargets,type PolicyArea,type PolicySetting,type SettingBody,type SettingTarget} from './settings';
+import {disagreements,figuresOf,mentionedSettings,policyStatements,settingKey,type PolicyDisagreement,type PolicyStatement} from './consistency';
 
 export type PolicyRefusal='not_administrator'|'not_group_admin'|'invalid'|'not_found'|'not_draft'|'not_submitted'|'not_approved'|'undecided'
- |'same_administrator'|'stale_submission'|'shared_setting'|'draft_open'|'no_drift'|'not_due'|'model_unavailable'|'no_settings'|'failed';
+ |'same_administrator'|'stale_submission'|'shared_setting'|'draft_open'|'no_drift'|'not_due'|'model_unavailable'|'no_settings'|'failed'|'unmarked'|'mismatch';
 export class PolicyRefused extends Error{constructor(readonly reason:PolicyRefusal){super('Policy refused: '+reason);this.name='PolicyRefused';}}
 
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
@@ -91,6 +99,43 @@ async function valuesTx(tx:Tx,ctx:SessionContext,version:Pick<VersionRow,'id'|'b
   (select c.decision from public.teras_policy_value_confirmation c where c.value_id=x.id order by c.decided_at desc,c.id desc limit 1) as decision
   from public.teras_policy_value x where x.version_id=${version.id}::uuid and x.tenant_id=${ctx.tenantId}::uuid and x.body_digest=${bodyDigest(version.body)}
   order by x.proposed_at,x.setting,x.id`));
+}
+type MarkRow=Readonly<{setting:PolicySetting;marked:boolean;by:string;at:Date}>;
+/** The latest text-only mark of each setting of a version's current text. */
+async function marksTx(tx:Tx,ctx:SessionContext,version:Pick<VersionRow,'id'|'body'>):Promise<Map<PolicySetting,MarkRow>>{
+ const rows=rowsOf<{setting:PolicySetting;marked:boolean;marked_by_user_id:string;marked_at:Date}>(await tx.execute(sql`select distinct on (m.setting) m.setting,m.marked,m.marked_by_user_id,m.marked_at
+  from public.teras_policy_text_only m where m.version_id=${version.id}::uuid and m.tenant_id=${ctx.tenantId}::uuid and m.body_digest=${bodyDigest(version.body)}
+  order by m.setting,m.marked_at desc,m.id desc`));
+ return new Map(rows.map(r=>[r.setting,Object.freeze({setting:r.setting,marked:r.marked,by:r.marked_by_user_id,at:r.marked_at})]));
+}
+type Consistency=Readonly<{statements:readonly PolicyStatement[];disagreements:readonly PolicyDisagreement[];mentioned:readonly PolicySetting[];uncovered:readonly PolicySetting[]}>;
+/** What a version's current text states about enforceable settings, against what the system would enforce: for an
+ * unapproved version ('pending') its confirmed values where it has them, the owner's setting otherwise; for the version in
+ * force ('in_force') the owner's setting, leaving the confirmed values' own words to value drift. Deterministic. */
+async function consistencyOf(ctx:SessionContext,version:Pick<VersionRow,'body'>,values:readonly ValueRow[],marks:ReadonlyMap<PolicySetting,MarkRow>,
+ targets:OwnerTargets,asOf:string,mode:'pending'|'in_force'):Promise<Consistency>{
+ const stated=values.map(v=>({id:v.id,setting:v.setting,target:v.target,value:normalizeBody(v.setting,v.value)!,spans:v.spans,decision:v.decision}));
+ const all=policyStatements(version.body,heldSettings(targets),targets.claimTypes,stated);
+ const confirmed=new Map<string,SettingBody>(),extra:PolicyStatement[]=[];
+ if(mode==='pending')for(const v of stated.filter(x=>x.decision==='confirmed')){
+  const key=settingKey(v.setting,v.target),held=confirmed.get(key);
+  if(!held)confirmed.set(key,v.value);
+  // Two confirmed values for one setting that differ: the second states what the first will not enforce.
+  else if(!sameValue(v.setting,held,v.value))extra.push(Object.freeze({setting:v.setting,target:v.target,figures:Object.freeze(figuresOf(v.setting,v.value)),quote:v.spans.map(s=>s.quote).join(' … '),start:v.spans[0]?.start??0,end:v.spans[0]?.end??0,
+   source:'value',valueId:v.id,confirmedWords:true} satisfies PolicyStatement));
+ }
+ const statements=[...(mode==='in_force'?all.filter(s=>!s.confirmedWords):all),...extra];
+ const owner=new Map<string,SettingBody|null>();
+ const codes=targets.claimTypes.map(t=>t.code);
+ for(const statement of statements){
+  const wanted=statement.target?[statement.target]:statement.setting==='claims.submit_within_days'?codes.map(code=>({claimType:code})):[{}];
+  for(const target of wanted){const key=settingKey(statement.setting,target);
+   if(!confirmed.has(key)&&!owner.has(key))owner.set(key,(await currentOwnerValue(ctx,statement.setting,target,targets,asOf)).value);}
+ }
+ const found=disagreements(statements,(setting,target)=>{const key=settingKey(setting,target);return confirmed.get(key)??owner.get(key)??null;},codes);
+ const mentioned=mentionedSettings(all,stated);
+ const uncovered=mentioned.filter(setting=>!stated.some(v=>v.setting===setting&&v.decision==='confirmed')&&marks.get(setting)?.marked!==true);
+ return Object.freeze({statements:Object.freeze(statements),disagreements:Object.freeze(found),mentioned:Object.freeze(mentioned),uncovered:Object.freeze(uncovered)});
 }
 const parseCompanies=(value:unknown):string[]=>{
  const list=Array.isArray(value)?value:[];const out=[...new Set(list.filter((v):v is string=>typeof v==='string'&&uuid.safeParse(v).success))];
@@ -202,38 +247,54 @@ export async function decidePolicyValue(supplied:SessionContext,input:Readonly<{
  });
 }
 
-/** Whether approving the version would change what the owners enforce: any confirmed value unlike the owner's now. */
-async function changesSettings(ctx:SessionContext,values:readonly ValueRow[],targets:OwnerTargets,asOf:string){
- for(const value of values.filter(v=>v.decision==='confirmed')){
-  const owner=await currentOwnerValue(ctx,value.setting,value.target,targets,asOf);
-  if(!sameValue(value.setting,owner.value,value.value))return true;
- }
- return false;
+/** "Text only, not enforced": a person's mark (or its withdrawal) that what a draft's current text says about one
+ * enforceable setting is not enforced from this policy; the owner's setting stays. Recorded with who and when, shown on
+ * the page, and void once the text changes. It never makes a contradiction acceptable: a figure that disagrees with the
+ * system still blocks approval (./consistency.ts). */
+export async function markTextOnly(supplied:SessionContext,input:Readonly<{versionId:unknown;setting:unknown;marked:unknown}>){
+ const ctx=capture(supplied);requireAdministrator(ctx);
+ const versionId=uuid.safeParse(input.versionId);
+ if(!versionId.success||!isPolicySetting(input.setting)||typeof input.marked!=='boolean')throw new PolicyRefused('invalid');
+ const setting=input.setting,marked=input.marked;
+ return withTenant(ctx,async tx=>{
+  const version=await versionTx(tx,ctx,versionId.data,true);
+  if(version.status!=='draft')throw new PolicyRefused('not_draft');
+  if(!(await adminAllTx(tx,version.id)))throw new PolicyRefused('not_administrator');
+  await tx.execute(sql`insert into public.teras_policy_text_only (tenant_id,version_id,setting,body_digest,marked,marked_by_user_id)
+   values (${ctx.tenantId}::uuid,${version.id}::uuid,${setting},${bodyDigest(version.body)},${marked},${ctx.userId}::uuid)`);
+  await event(tx,ctx,version.document_id,'teras-policy.text-only-marked',{versionId:version.id,setting,marked});
+  return Object.freeze({setting,marked});
+ });
 }
 
-/** "Send for approval": every value has a decision; whether it changes enforced settings is recorded from the owners. */
+/** "Send for approval": every value has a decision, and every enforceable setting the text mentions is confirmed or
+ * marked text only. Whether it changes enforced settings is the database's to derive (any confirmed value), not ours. */
 export async function submitPolicyVersion(supplied:SessionContext,input:Readonly<{versionId:unknown}>){
  const ctx=capture(supplied);requireAdministrator(ctx);
  const versionId=uuid.safeParse(input.versionId);if(!versionId.success)throw new PolicyRefused('invalid');
  const today=todayInKualaLumpur(),targets=await ownerTargets(ctx,today);
- const {version,values}=await withTenant(ctx,async tx=>{
+ const {version,values,marks}=await withTenant(ctx,async tx=>{
   const version=await versionTx(tx,ctx,versionId.data);
   if(version.status!=='draft')throw new PolicyRefused('not_draft');
   if(!(await adminAllTx(tx,version.id)))throw new PolicyRefused('not_administrator');
-  return {version,values:await valuesTx(tx,ctx,version)};
+  return {version,values:await valuesTx(tx,ctx,version),marks:await marksTx(tx,ctx,version)};
  });
  if(values.some(v=>v.decision===null))throw new PolicyRefused('undecided');
- const changes=await changesSettings(ctx,values,targets,laterOf(version.effective_from,today));
+ const {mentioned}=await consistencyOf(ctx,version,values,marks,targets,laterOf(version.effective_from,today),'pending');
+ const uncoveredBy=(now:ReadonlyMap<PolicySetting,MarkRow>)=>mentioned.filter(setting=>!values.some(v=>v.setting===setting&&v.decision==='confirmed')&&now.get(setting)?.marked!==true);
+ if(uncoveredBy(marks).length)throw new PolicyRefused('unmarked');
  return withTenant(ctx,async tx=>{
   const current=await versionTx(tx,ctx,version.id,true);
   if(current.status!=='draft'||current.body!==version.body)throw new PolicyRefused('not_draft');
   if(values.some(v=>v.decision==='confirmed')&&!(await coversTenantTx(tx,ctx,await scopeTx(tx,ctx,version.id))))throw new PolicyRefused('shared_setting');
   const recheck=await valuesTx(tx,ctx,current);
   if(recheck.length!==values.length||recheck.some((v,i)=>v.id!==values[i]!.id||v.decision!==values[i]!.decision))throw new PolicyRefused('undecided');
-  await tx.execute(sql`update public.teras_policy_version set status='submitted',submission=submission+1,changes_settings=${changes},
-   submitted_by_user_id=${ctx.userId}::uuid,submitted_at=now() where id=${version.id}::uuid`);
+  if(uncoveredBy(await marksTx(tx,ctx,current)).length)throw new PolicyRefused('unmarked');
+  const [sent]=rowsOf<{changes_settings:boolean}>(await tx.execute(sql`update public.teras_policy_version set status='submitted',submission=submission+1,
+   submitted_by_user_id=${ctx.userId}::uuid,submitted_at=now() where id=${version.id}::uuid returning changes_settings`));
+  const changes=sent!.changes_settings===true;
   await event(tx,ctx,version.document_id,'teras-policy.submitted',{versionId:version.id,version:version.version,submission:version.submission+1,changesSettings:changes,
-   confirmed:values.filter(v=>v.decision==='confirmed').length});
+   confirmed:values.filter(v=>v.decision==='confirmed').length,textOnly:[...marks.values()].filter(m=>m.marked).map(m=>m.setting)});
   return Object.freeze({changesSettings:changes});
  });
 }
@@ -260,40 +321,50 @@ async function applyApproved(ctx:SessionContext,version:VersionRow,values:readon
  for(const value of values.filter(v=>v.decision==='confirmed'&&(!only||v.id===only))){
   const applyOn=laterOf(version.effective_from,today);
   const body=normalizeBody(value.setting,value.value)!;
-  let status:ApplicationResult['status'],before:SettingBody|null=null,after:SettingBody|null=null,message:string|null=null;
-  const owner=await currentOwnerValue(ctx,value.setting,value.target,targets,applyOn);
-  before=owner.value;
-  if(!shared){status='refused';message='This setting is shared by every company in the group, so the policy must apply to all of them.';}
-  else if(sameValue(value.setting,owner.value,body)){status='applied';after=owner.value;}
-  // Sent as text only, but the owner has changed since: nothing is written without a second administrator.
-  else if(version.changes_settings!==true){status='refused';message='The system has changed since this version was sent. Prepare it again and send it for approval.';}
-  else if(UNDATED_SETTINGS.has(value.setting)&&version.effective_from>today){status='scheduled';after=body;}
-  else try{({before,after}=await applyOwnerValue(ctx,value.setting,value.target,body,targets,applyOn));status='applied';}
-  catch(error){status='refused';message=ownerMessage(error);}
-  await withTenant(ctx,async tx=>{
+  // ONE transaction: the owner's read, its own settings write, the read-back and the application row with its database
+  // guard. Should the guard refuse the row, the owner's write rolls back with it. A refusal by the owner itself runs in
+  // a savepoint, so it is recorded as refused and nothing of it stays.
+  const status=await withTenant(ctx,async tx=>{
+   let status:ApplicationResult['status'],before:SettingBody|null=null,after:SettingBody|null=null,message:string|null=null;
+   const owner=await currentOwnerValueTx(tx,ctx,value.setting,value.target,targets,applyOn);
+   before=owner.value;
+   if(!shared){status='refused';message='This setting is shared by every company in the group, so the policy must apply to all of them.';}
+   else if(sameValue(value.setting,owner.value,body)){status='applied';after=owner.value;}
+   // Only a version derived as a settings change (a second administrator approved it) writes to an owner.
+   else if(version.changes_settings!==true){status='refused';message='The system has changed since this version was sent. Prepare it again and send it for approval.';}
+   else if(UNDATED_SETTINGS.has(value.setting)&&version.effective_from>today){status='scheduled';after=body;}
+   else try{({before,after}=await tx.transaction(sp=>applyOwnerValueTx(sp as unknown as Tx,ctx,value.setting,value.target,body,targets,applyOn)));status='applied';}
+   catch(error){status='refused';message=ownerMessage(error);}
    await tx.execute(sql`insert into public.teras_policy_application (tenant_id,version_id,value_id,status,before_value,after_value,apply_on,owner_message,applied_by_user_id)
     values (${ctx.tenantId}::uuid,${version.id}::uuid,${value.id}::uuid,${status},${before===null?null:JSON.stringify(before)}::jsonb,${after===null?null:JSON.stringify(after)}::jsonb,
      ${status==='scheduled'?version.effective_from:applyOn}::date,${message},${ctx.userId}::uuid)`);
    await event(tx,ctx,version.document_id,'teras-policy.value-'+status,{versionId:version.id,valueId:value.id,setting:value.setting,target:value.target,applyOn,
     before,after,...(message?{ownerMessage:message}:{})});
+   return status;
   });
   results.push(Object.freeze({valueId:value.id,setting:value.setting,status,applyOn}));
  }
  return Object.freeze(results);
 }
 
+/** Whether a login contributed to a version (authored, edited, read or decided values, marked text only, or sent it). */
+async function contributedTx(tx:Tx,versionId:string,userId:string){
+ const [row]=rowsOf<{ok:boolean|null}>(await tx.execute(sql`select app.teras_policy_contributed(${versionId}::uuid,${userId}::uuid) as ok`));return row?.ok===true;
+}
+
 /** A group administrator approves a version sent for approval; on approval its confirmed values are applied by their
- * owners. Refused for a settings change the approver wrote or sent (the second, different administrator rule). */
+ * owners. Refused for a settings change the approver contributed to (the second, different administrator rule), and for
+ * any version whose text states an enforceable figure that disagrees with what the system would then enforce. */
 export async function approvePolicyVersion(supplied:SessionContext,input:Readonly<{versionId:unknown}>){
  const ctx=capture(supplied);requireAdministrator(ctx);if(!isGroupAdmin(ctx))throw new PolicyRefused('not_group_admin');
  const versionId=uuid.safeParse(input.versionId);if(!versionId.success)throw new PolicyRefused('invalid');
  const today=todayInKualaLumpur(),targets=await ownerTargets(ctx,today);
- const first=await withTenant(ctx,async tx=>{const version=await versionTx(tx,ctx,versionId.data);return {version,values:await valuesTx(tx,ctx,version)};});
+ const first=await withTenant(ctx,async tx=>{const version=await versionTx(tx,ctx,versionId.data);
+  return {version,values:await valuesTx(tx,ctx,version),marks:await marksTx(tx,ctx,version),contributed:await contributedTx(tx,version.id,ctx.userId!)};});
  if(first.version.status!=='submitted')throw new PolicyRefused('not_submitted');
- if(first.version.changes_settings&&(first.version.author_user_id===ctx.userId||first.version.submitted_by_user_id===ctx.userId))throw new PolicyRefused('same_administrator');
- // The owners may have changed since it was sent: a version sent as text only that would now change a setting is sent again.
- const changesNow=await changesSettings(ctx,first.values,targets,laterOf(first.version.effective_from,today));
- if(changesNow&&!first.version.changes_settings)throw new PolicyRefused('stale_submission');
+ if(first.version.changes_settings&&(first.contributed||first.version.author_user_id===ctx.userId||first.version.submitted_by_user_id===ctx.userId))throw new PolicyRefused('same_administrator');
+ const checked=await consistencyOf(ctx,first.version,first.values,first.marks,targets,laterOf(first.version.effective_from,today),'pending');
+ if(checked.disagreements.length)throw new PolicyRefused('mismatch');
  const version=await withTenant(ctx,async tx=>{
   const version=await versionTx(tx,ctx,versionId.data,true);
   if(version.status!=='submitted'||version.submission!==first.version.submission)throw new PolicyRefused('not_submitted');
@@ -449,15 +520,28 @@ export type PolicyCompany=Readonly<{id:string;name:string}>;
 export type PolicyListItem=Readonly<{id:string;area:PolicyArea;title:string;inForce:number|null;open:Readonly<{version:number;status:'draft'|'submitted'}>|null;drift:number}>;
 export type PolicyValueView=Readonly<{id:string;setting:PolicySetting;target:SettingTarget;targetName:string|null;value:SettingBody;spans:readonly PolicySpan[];
  source:string;decision:'confirmed'|'rejected'|null;now:SettingBody|null;nowDefaulted:boolean;differs:boolean}>;
-export type PolicyDrift=Readonly<{valueId:string;setting:PolicySetting;target:SettingTarget;targetName:string|null;handbook:SettingBody;system:SettingBody|null;companies:readonly string[]}>;
+/** A disagreement of the version in force with the owners now: a confirmed value (kind 'value', resolvable with "Use the
+ * handbook" / "Update the handbook"), or other words of its text that state an enforceable figure (kind 'text', with
+ * those words; an administrator edits the text). */
+export type PolicyDrift=Readonly<{kind:'value'|'text';valueId:string|null;setting:PolicySetting;target:SettingTarget;targetName:string|null;handbook:SettingBody|null;quote:string|null;
+ system:SettingBody|null;companies:readonly string[]}>;
+/** Words of an unapproved version's text that state an enforceable figure the system would not enforce once approved. */
+export type PolicyMismatch=Readonly<{setting:PolicySetting;target:SettingTarget;targetName:string|null;quote:string;source:'text'|'value';valueId:string|null;enforced:SettingBody|null}>;
+/** An enforceable setting the version's text mentions, and how it is covered: a confirmed value, a person's text-only
+ * mark (who, when), or neither (it must be one or the other before the version is sent). */
+export type PolicyMention=Readonly<{setting:PolicySetting;confirmed:boolean;textOnly:Readonly<{byName:string|null;at:Date}>|null}>;
 export type PolicyApplicationView=Readonly<{valueId:string;setting:PolicySetting;status:'applied'|'refused'|'scheduled';applyOn:string;before:SettingBody|null;after:SettingBody|null;ownerMessage:string|null;at:Date}>;
 export type PolicyVersionView=Readonly<{id:string;version:number;status:'draft'|'submitted'|'approved';effectiveFrom:string;origin:string;authorName:string|null;authorIsViewer:boolean;
- submittedByViewer:boolean;submittedAt:Date|null;approvedAt:Date|null;changesSettings:boolean|null;body:string;companies:readonly string[]}>;
+ submittedByViewer:boolean;contributedByViewer:boolean;submittedAt:Date|null;approvedAt:Date|null;changesSettings:boolean|null;body:string;companies:readonly string[]}>;
 export type PolicyDetail=Readonly<{id:string;area:PolicyArea;title:string;current:PolicyVersionView;inForceId:string|null;versions:readonly PolicyVersionView[];
  values:readonly PolicyValueView[];settings:readonly PolicySetting[];sharedOk:boolean;canEdit:boolean;
+ mentions:readonly PolicyMention[];mismatches:readonly PolicyMismatch[];
  approvals:readonly Readonly<{decision:'approved'|'returned';approverName:string|null;submission:number;at:Date}>[];
  applications:readonly PolicyApplicationView[];drift:readonly PolicyDrift[];impact:ClaimPolicyImpact|null}>;
-export type ReaderPolicy=Readonly<{id:string;area:PolicyArea;title:string;version:number;effectiveFrom:string;body:string}>;
+/** Words of the approved text that state an enforceable figure the system no longer applies (drift after approval), with
+ * the owner's current setting, for the employee page; `unavailable` when the setting could not be read now. */
+export type ReaderSettingNote=Readonly<{setting:PolicySetting;target:SettingTarget;targetName:string|null;quote:string;current:SettingBody|null;unavailable:boolean}>;
+export type ReaderPolicy=Readonly<{id:string;area:PolicyArea;title:string;version:number;effectiveFrom:string;body:string;settingNotes:readonly ReaderSettingNote[]}>;
 export type PoliciesView=Readonly<{role:'admin';today:string;companies:readonly PolicyCompany[];isGroupAdmin:boolean;list:readonly PolicyListItem[];selected:PolicyDetail|null}>
  |Readonly<{role:'reader';today:string;list:readonly PolicyListItem[];selected:ReaderPolicy|null}>;
 
@@ -469,16 +553,39 @@ async function namesTx(tx:Tx,userIds:readonly (string|null)[]):Promise<Map<strin
 const targetName=(targets:OwnerTargets,setting:PolicySetting,target:SettingTarget)=>setting==='claims.mileage_rates'?targets.mileageType?.name??null
  :setting==='claims.submit_within_days'?claimTypeOf(targets,target)?.name??null:targets.leaveTypes.find(t=>t.code.toUpperCase()===(target.leaveType??'').toUpperCase())?.name??null;
 
-/** Drift of one approved version's confirmed values against the owners now (deterministic, read-only). */
-async function driftOf(ctx:SessionContext,values:readonly ValueRow[],targets:OwnerTargets,today:string,companies:readonly string[]):Promise<PolicyDrift[]>{
+/** Drift of one approved version against the owners now (deterministic, read-only): each confirmed value, then every
+ * other enforceable figure its text states (rejected values and the deterministic read, ./consistency.ts). */
+async function driftOf(ctx:SessionContext,version:Pick<VersionRow,'body'>,values:readonly ValueRow[],targets:OwnerTargets,today:string,companies:readonly string[]):Promise<PolicyDrift[]>{
  const out:PolicyDrift[]=[];
  for(const value of values.filter(v=>v.decision==='confirmed')){
   const owner=await currentOwnerValue(ctx,value.setting,value.target,targets,today);
   if(!owner.available||sameValue(value.setting,owner.value,value.value))continue;
-  out.push(Object.freeze({valueId:value.id,setting:value.setting,target:value.target,targetName:targetName(targets,value.setting,value.target),
-   handbook:normalizeBody(value.setting,value.value)!,system:owner.value,companies}));
+  out.push(Object.freeze({kind:'value' as const,valueId:value.id,setting:value.setting,target:value.target,targetName:targetName(targets,value.setting,value.target),
+   handbook:normalizeBody(value.setting,value.value)!,quote:null,system:owner.value,companies}));
  }
+ const text=await consistencyOf(ctx,version,values,new Map(),targets,today,'in_force');
+ for(const found of text.disagreements)out.push(Object.freeze({kind:'text' as const,valueId:found.statement.valueId,setting:found.statement.setting,target:found.target,
+  targetName:targetName(targets,found.statement.setting,found.target),handbook:null,quote:found.statement.quote,system:found.enforced,companies}));
  return out;
+}
+
+/** The employee page's notes: each enforceable figure the approved text states (the deterministic read, as Ask uses it,
+ * core/handbook/ask.ts) that disagrees with the owner's current setting as this person reads it. The text itself is
+ * shown unchanged. A setting that cannot be read now gets a note too, so no figure stands unchecked. */
+async function readerSettingNotes(ctx:SessionContext,body:string,today:string):Promise<readonly ReaderSettingNote[]>{
+ const targets=await ownerTargets(ctx,today);
+ const statements=policyStatements(body,heldSettings(targets),targets.claimTypes,[]);if(!statements.length)return Object.freeze([]);
+ const codes=targets.claimTypes.map(t=>t.code),owner=new Map<string,SettingBody|null>();
+ try{
+  for(const statement of statements){
+   const wanted=statement.target?[statement.target]:statement.setting==='claims.submit_within_days'?codes.map(code=>({claimType:code})):[{}];
+   for(const target of wanted){const key=settingKey(statement.setting,target);if(!owner.has(key))owner.set(key,(await currentOwnerValue(ctx,statement.setting,target,targets,today)).value);}
+  }
+ }catch{
+  return Object.freeze(statements.map(s=>Object.freeze({setting:s.setting,target:s.target??{},targetName:null,quote:s.quote,current:null,unavailable:true})));
+ }
+ return Object.freeze(disagreements(statements,(setting,target)=>owner.get(settingKey(setting,target))??null,codes).map(d=>Object.freeze({setting:d.statement.setting,target:d.target,
+  targetName:targetName(targets,d.statement.setting,d.target),quote:d.statement.quote,current:d.enforced,unavailable:false})));
 }
 
 /** AI Centre › Policies, as the viewer may see it: administrators get every policy of the companies they administer
@@ -488,14 +595,13 @@ export async function policiesView(supplied:SessionContext,input:Readonly<{polic
  const policyId=uuid.safeParse(input.policy).success?input.policy as string:null;
  const admin=!!ctx.userId&&!ctx.agent&&isAdmin(ctx);
  if(!admin){
-  return withTenant(ctx,async tx=>{
-   const rows=rowsOf<{id:string;area:PolicyArea;title:string;version:number;effective_from:string;body:string}>(await tx.execute(sql`select d.id,d.area,d.title,v.version,
+  const rows=await withTenant(ctx,async tx=>rowsOf<{id:string;area:PolicyArea;title:string;version:number;effective_from:string;body:string}>(await tx.execute(sql`select d.id,d.area,d.title,v.version,
     to_char(v.effective_from,'YYYY-MM-DD') as effective_from,v.body from public.teras_policy_document d join public.teras_policy_version v on v.document_id=d.id
-    where d.tenant_id=${ctx.tenantId}::uuid and v.id in ${IN_FORCE} order by d.area,d.title,d.id`));
-   const list=rows.map(r=>Object.freeze({id:r.id,area:r.area,title:r.title,inForce:r.version,open:null,drift:0}));
-   const chosen=rows.find(r=>r.id===policyId)??null;
-   return Object.freeze({role:'reader' as const,today,list:Object.freeze(list),selected:chosen?Object.freeze({id:chosen.id,area:chosen.area,title:chosen.title,version:chosen.version,effectiveFrom:chosen.effective_from,body:chosen.body}):null});
-  });
+    where d.tenant_id=${ctx.tenantId}::uuid and v.id in ${IN_FORCE} order by d.area,d.title,d.id`)));
+  const list=rows.map(r=>Object.freeze({id:r.id,area:r.area,title:r.title,inForce:r.version,open:null,drift:0}));
+  const chosen=rows.find(r=>r.id===policyId)??null;
+  return Object.freeze({role:'reader' as const,today,list:Object.freeze(list),selected:chosen?Object.freeze({id:chosen.id,area:chosen.area,title:chosen.title,version:chosen.version,
+   effectiveFrom:chosen.effective_from,body:chosen.body,settingNotes:await readerSettingNotes(ctx,chosen.body,today)}):null});
  }
  const targets=await ownerTargets(ctx,today);
  const base=await withTenant(ctx,async tx=>{
@@ -507,14 +613,14 @@ export async function policiesView(supplied:SessionContext,input:Readonly<{polic
    left join public.teras_policy_version o on o.document_id=d.id and o.status<>'approved'
    where d.tenant_id=${ctx.tenantId}::uuid and exists(select 1 from public.teras_policy_version v where v.document_id=d.id and app.teras_policy_admin_any(v.id))
    order by d.area,d.title,d.id`));
-  const inForceValues=new Map<string,ValueRow[]>(),scopes=new Map<string,string[]>();
+  const inForceValues=new Map<string,ValueRow[]>(),inForceBodies=new Map<string,string>(),scopes=new Map<string,string[]>();
   for(const doc of docs)if(doc.in_force_id){
-   const v=await versionTx(tx,ctx,doc.in_force_id);inForceValues.set(doc.id,await valuesTx(tx,ctx,v));scopes.set(doc.id,await scopeTx(tx,ctx,v.id));
+   const v=await versionTx(tx,ctx,doc.in_force_id);inForceValues.set(doc.id,await valuesTx(tx,ctx,v));inForceBodies.set(doc.id,v.body);scopes.set(doc.id,await scopeTx(tx,ctx,v.id));
   }
-  return {companies:companies.map(c=>Object.freeze({id:c.id,name:c.legal_name})),docs,inForceValues,scopes};
+  return {companies:companies.map(c=>Object.freeze({id:c.id,name:c.legal_name})),docs,inForceValues,inForceBodies,scopes};
  });
  const driftByDoc=new Map<string,PolicyDrift[]>();
- for(const doc of base.docs)if(doc.in_force_id)driftByDoc.set(doc.id,await driftOf(ctx,base.inForceValues.get(doc.id)??[],targets,today,base.scopes.get(doc.id)??[]));
+ for(const doc of base.docs)if(doc.in_force_id)driftByDoc.set(doc.id,await driftOf(ctx,{body:base.inForceBodies.get(doc.id)??''},base.inForceValues.get(doc.id)??[],targets,today,base.scopes.get(doc.id)??[]));
  const list=base.docs.map(d=>Object.freeze({id:d.id,area:d.area,title:d.title,inForce:d.in_force,open:d.open&&d.open_status?Object.freeze({version:d.open,status:d.open_status}):null,drift:driftByDoc.get(d.id)?.length??0}));
  const chosen=base.docs.find(d=>d.id===policyId)??null;
  let selected:PolicyDetail|null=null;
@@ -530,13 +636,15 @@ export async function policiesView(supplied:SessionContext,input:Readonly<{polic
    const applications=rowsOf<{value_id:string;setting:PolicySetting;status:'applied'|'refused'|'scheduled';apply_on:string;before_value:SettingBody|null;after_value:SettingBody|null;owner_message:string|null;applied_at:Date}>(
     await tx.execute(sql`select a.value_id,x.setting,a.status,to_char(a.apply_on,'YYYY-MM-DD') as apply_on,a.before_value,a.after_value,a.owner_message,a.applied_at
      from public.teras_policy_application a join public.teras_policy_value x on x.id=a.value_id where a.version_id=${current.id}::uuid order by a.applied_at,a.id`));
-   const names=await namesTx(tx,[...rows.map(r=>r.author_user_id),...approvals.map(a=>a.approver_user_id)]);
+   const marks=await marksTx(tx,ctx,current);
+   const names=await namesTx(tx,[...rows.map(r=>r.author_user_id),...approvals.map(a=>a.approver_user_id),...[...marks.values()].map(m=>m.by)]);
    const canEdit=await adminAllTx(tx,current.id),{settings,sharedOk}=await enforceableTx(tx,ctx,current,targets);
-   return {rows,current,scopes,values,approvals,applications,names,canEdit,settings,sharedOk};
+   const contributed=ctx.userId?await contributedTx(tx,current.id,ctx.userId):false;
+   return {rows,current,scopes,values,approvals,applications,names,canEdit,settings,sharedOk,marks,contributed};
   });
   const viewOf=(r:VersionRow):PolicyVersionView=>Object.freeze({id:r.id,version:r.version,status:r.status,effectiveFrom:r.effective_from,origin:r.origin,authorName:detail.names.get(r.author_user_id)??null,
-   authorIsViewer:r.author_user_id===ctx.userId,submittedByViewer:r.submitted_by_user_id===ctx.userId,submittedAt:r.submitted_at,approvedAt:r.approved_at,changesSettings:r.changes_settings,
-   body:r.body,companies:Object.freeze(detail.scopes.get(r.id)??[])});
+   authorIsViewer:r.author_user_id===ctx.userId,submittedByViewer:r.submitted_by_user_id===ctx.userId,contributedByViewer:r.id===detail.current.id?detail.contributed:false,
+   submittedAt:r.submitted_at,approvedAt:r.approved_at,changesSettings:r.changes_settings,body:r.body,companies:Object.freeze(detail.scopes.get(r.id)??[])});
   const asOf=laterOf(detail.current.effective_from,today),values:PolicyValueView[]=[];
   for(const v of detail.values){
    const owner=await currentOwnerValue(ctx,v.setting,v.target,targets,asOf);
@@ -550,8 +658,19 @@ export async function policiesView(supplied:SessionContext,input:Readonly<{polic
   if(detail.current.status!=='approved'&&(mileage||withinType))impact=await simulateClaimPolicyImpact(ctx,{
    mileageBands:mileage?(mileage.value as {bands:readonly {fromKm:number;toKm:number|null;ratePerKm:number}[]}).bands.map(b=>({...b})):null,
    submitWithin:within&&withinType?{claimTypeId:withinType.id,days:(within.value as {days:number}).days}:null}).catch(()=>null);
+  // What the text states against what the system would enforce, and how each mentioned setting is covered. For the
+  // version in force the drift above already says it; for a draft or a version waiting, it is what blocks approval.
+  let mentions:PolicyMention[]=[],mismatches:PolicyMismatch[]=[];
+  if(detail.current.status!=='approved'){
+   const checked=await consistencyOf(ctx,detail.current,detail.values,detail.marks,targets,asOf,'pending');
+   mentions=checked.mentioned.map(setting=>{const mark=detail.marks.get(setting);
+    return Object.freeze({setting,confirmed:detail.values.some(v=>v.setting===setting&&v.decision==='confirmed'),
+     textOnly:mark?.marked?Object.freeze({byName:detail.names.get(mark.by)??null,at:mark.at}):null});});
+   mismatches=checked.disagreements.map(found=>Object.freeze({setting:found.statement.setting,target:found.target,targetName:targetName(targets,found.statement.setting,found.target),
+    quote:found.statement.quote,source:found.statement.source,valueId:found.statement.valueId,enforced:found.enforced}));
+  }
   selected=Object.freeze({id:chosen.id,area:chosen.area,title:chosen.title,current:viewOf(detail.current),inForceId:chosen.in_force_id,versions:Object.freeze(detail.rows.map(viewOf)),
-   values:Object.freeze(values),settings:detail.settings,sharedOk:detail.sharedOk,canEdit:detail.canEdit,
+   values:Object.freeze(values),settings:detail.settings,sharedOk:detail.sharedOk,canEdit:detail.canEdit,mentions:Object.freeze(mentions),mismatches:Object.freeze(mismatches),
    approvals:Object.freeze(detail.approvals.map(a=>Object.freeze({decision:a.decision,approverName:detail.names.get(a.approver_user_id)??null,submission:a.submission,at:a.decided_at}))),
    applications:Object.freeze(detail.applications.map(a=>Object.freeze({valueId:a.value_id,setting:a.setting,status:a.status,applyOn:a.apply_on,before:a.before_value,after:a.after_value,ownerMessage:a.owner_message,at:a.applied_at}))),
    drift:Object.freeze(driftByDoc.get(chosen.id)??[]),impact});

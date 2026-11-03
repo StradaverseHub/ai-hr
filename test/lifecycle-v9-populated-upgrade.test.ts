@@ -71,7 +71,7 @@ it('preserves populated Native issuance, private data, identity and every applie
   // AI v2 Phase 2 P2-3 own payroll cut-off (claude/aiv2-p2-payroll-checklist), frozen here.
   {idx:808,version:'7',when:1793330001408,tag:'2008_own_payroll_cut_off',breakpoints:true,hash:'c068fa72631c648453117fdf73cc81e6ffbbb4cc94d55d82397e40ac4e4291f8'},
   // AI v2 Phase 2 P2-5 Living Handbook (claude/aiv2-p2-living-handbook), frozen here.
-  {idx:809,version:'7',when:1793330001409,tag:'2009_teras_living_handbook',breakpoints:true,hash:'fe54c4a68689e761ca670a81bdfd1e8c1b502cb58201150fa9593c546acae3b7'},
+  {idx:809,version:'7',when:1793330001409,tag:'2009_teras_living_handbook',breakpoints:true,hash:'2ffa6731bc3e8cfbc0586875ba9c33d0db2c67104376dc99e35ba181214ccae0'},
   // AI v2 Phase 2 P2-6 learning loops (claude/aiv2-p2-learning-loops), frozen here.
   {idx:810,version:'7',when:1793330001410,tag:'2010_teras_learning_loops',breakpoints:true,hash:'da7d358eb43c1a3437a6d0d722593640d68d4f0f532097fb1df3e9c059dc8303'},
   // AI v2 Phase 2 hardening, payroll loops, audit and checklist (claude/aiv2-p2h-loops-hardening), frozen here.
