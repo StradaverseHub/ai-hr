@@ -10,7 +10,24 @@ export const WORKFORCE_FUNCTIONS:readonly FunctionActionDescriptor[]=[{
    {owner:'core/workforce-access.ts',operation:'fresh-principal-data-and-company-scope'},
   ]})),
 },{key:'workforceImports',scope:'company',moduleKey:'workforce',labelKey:'people.import.title',kind:'submenu',course:'administrative',screenKey:'personnelAdmin',href:'/admin/personnel/import',employeeBearing:true,
- actions:(['view','add','execute'] as const).map(operation=>({operation,parentCapability:'workforce.'+(operation==='execute'?'edit':operation),delegationFloorFunction:'app.workforce_function_delegation_allowed',bindings:[{owner:operation==='execute'?'app.workforce_section_import_allowed':'app.workforce_full_import_allowed',operation:'native-workbook-'+operation},{owner:'core/import-sections.ts',operation:'fresh-existing-subject-native-writer-and-execute'},{owner:'core/personnel-register-import.ts',operation:'actual-hire-receipt-or-existing-subject-execute'},{owner:'app.bank_import_subjects',operation:'bounded-import-view-native-data-projection'},{owner:'core/import.ts',operation:'current-every-file-company-and-prospective-subject-admission'},{owner:'app/admin/personnel/import/page.tsx',operation:'permission-filtered-full-import-companies'}]})),
+ actions:(['view','add','execute'] as const).map(operation=>({
+  operation,parentCapability:'workforce.'+(operation==='execute'?'edit':operation),
+  delegationFloorFunction:'app.workforce_function_delegation_allowed',
+  bindings:operation==='execute'?[
+   {owner:'app.workforce_section_import_allowed',operation:'exact-existing-company-execute'},
+   {owner:'core/import-sections.ts',operation:'current-employment-and-person-scope-on-direct-and-queued-bank-writes'},
+   {owner:'core/personnel-register-import.ts',operation:'existing-register-execute-and-reviewed-qualification-rows'},
+   {owner:'app.qualification_import_preview_subject_guard',operation:'database-admission-of-signed-section-subjects'},
+   {owner:'core/movement-import.ts',operation:'current-and-proposed-company-execute'},
+   {owner:'core/information-correction-import.ts',operation:'current-employment-and-both-company-scopes'},
+   {owner:'core/cost-allocation-import.ts',operation:'current-company-and-employment-execute'},
+  ]:[
+   {owner:'app.workforce_full_import_allowed',operation:'native-workbook-'+operation},
+   {owner:'core/import.ts',operation:'current-every-file-company-and-prospective-subject-admission'},
+   {owner:'app/admin/personnel/import/page.tsx',operation:'permission-filtered-workbench-companies'},
+   ...(operation==='view'?[{owner:'app.bank_import_subjects',operation:'bounded-import-view-native-data-projection'}]:[]),
+  ],
+ })),
 },{key:'profileChanges.maintenance',scope:'company',moduleKey:'workforce',labelKey:'nav.profileChanges',kind:'native_acl',course:'administrative',screenKey:'profileChanges',href:'/admin/personnel/profile-changes',employeeBearing:true,
  actions:(['view','edit'] as const).map(operation=>({operation,parentCapability:'workforce.'+operation,delegationFloorFunction:'app.profile_changes_maintenance_delegation',bindings:[{owner:'app.workforce_profile_maintenance_allowed',operation:'exact-native-maintenance-source-'+operation},{owner:operation==='view'?'app.profile_request_reader':'app.profile_changes_maintenance_write_guard',operation:'actual-maintenance-'+operation},{owner:'core/profile-routing.ts',operation:operation==='view'?'bounded-reroute-candidates':'native-reasoned-reroute'}]})),
 }];
@@ -36,3 +53,19 @@ export const WORKFORCE_IMPORT_REVERT_FUNCTIONS:readonly FunctionActionDescriptor
   bindings:[{owner:'app.import_attempt_revert_current',operation:'whole-actual-applied-item-set-and-'+operation},
    {owner:operation==='delete'?'app.employment_void':'core/import-history.ts',operation:operation==='delete'?'complete-imported-hire-void':'native-compensation-for-entire-attempt'}]})),
 }];
+
+/** Existing-employee Execute and new-employee Add share navigation and retain separate owners. */
+export const WORKFORCE_IMPORTS_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:WORKFORCE_FUNCTIONS.filter(descriptor=>descriptor.key==='workforceImports'),
+ functionLegacyParityFunction:'app.workforce_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.workforce_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.workforce_imports_bindings_complete()',
+  'app.workforce_full_import_allowed(uuid,text)',
+  'app.workforce_section_import_allowed(uuid,text)',
+  'app.bank_import_subjects(jsonb)',
+  'app.qualification_import_preview_subject_guard()',
+ ],
+} as const;

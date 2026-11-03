@@ -124,8 +124,20 @@ it('registers exact mixed-case native submenu IDs while preserving closed gramma
 it('reports registered actions without a package and leaves the full publisher closed',async()=>{
  const before=await snapshot();
  await expect(publishAllActionCapabilities(owner.client))
-  .rejects.toThrow(/registry coverage differs .*function\.workforceImports\.execute/);
+  .rejects.toThrow(/registry coverage differs .*function\.workforceDrafts\.execute/);
  expect(await snapshot()).toEqual(before);
+});
+it('keeps Workforce Imports closed if the Qualification subject guard is disabled',async()=>{
+ await publishWorkforceCapabilities(owner.client);
+ const before=await snapshot();
+ await owner.client`alter table app.qualification_import_preview disable trigger qualification_import_preview_subject_guard`;
+ try{
+  await expect(publishActionCapabilityPackage(owner.client,'workforce_imports'))
+   .rejects.toThrow('app.workforce_imports_bindings_complete() reported incomplete enforcement');
+  expect(await snapshot()).toEqual(before);
+ }finally{
+  await owner.client`alter table app.qualification_import_preview enable trigger qualification_import_preview_subject_guard`;
+ }
 });
 it('refuses Financial Setup publication while its enforcement completion check is missing',async()=>{
  const before=await snapshot();

@@ -4649,6 +4649,13 @@
       "when": 1793330000360,
       "tag": "0960_qualification_import_subject_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 808,
+      "version": "7",
+      "when": 1793330000361,
+      "tag": "0961_workforce_import_binding_readiness",
+      "breakpoints": true
     }
   ]
 }
