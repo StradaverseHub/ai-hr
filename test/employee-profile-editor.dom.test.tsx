@@ -4,6 +4,7 @@ import {cleanup,fireEvent,render,screen,within,waitFor} from '@testing-library/r
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
 import type {EssWorkspace} from '../core/profile-edit';
+import type {ProfileEditSeed} from '../core/own-profile-edit-seed';
 import type {readOwnProfileFacts} from '../core/profile-view';
 import {personnelField} from '../lib/personnel-field-registry';
 import {__resetUnsavedGuards} from '../lib/unsaved-changes';
@@ -102,9 +103,9 @@ it('omits explicitly hidden tabs and their supplied panels rather than keeping p
 describe('Edit from an AI Centre profile card (AI v2 slice 3 follow-up)',()=>{
  const contactName='profile.emergency_contact.fullname';
  const seeded=()=>{const view=workspace();view.editable.push(contactName);return view;};
- const seed={fields:{[phone]:'0129998888'},registers:[{kind:'dependent' as const,id:recordId,clientId:recordId,values:{[familyName]:'Seeded child'}},
+ const seed:ProfileEditSeed={fields:{[phone]:'0129998888'},registers:[{kind:'dependent' as const,id:recordId,clientId:recordId,values:{[familyName]:'Seeded child'}},
   {kind:'emergency' as const,id:null,clientId:'chat-emergency',values:{[contactName]:'Fictional Aisha'}}],withheld:[bankAccount]};
- const mountSeeded=(value:typeof seed=seed)=>render(<NextIntlClientProvider locale="en" messages={en}><ProfileEditor workspace={seeded()} facts={facts} extraPanels={{}} history={[]} defaultTab="profile" seed={value}/></NextIntlClientProvider>);
+ const mountSeeded=(value:ProfileEditSeed=seed)=>render(<NextIntlClientProvider locale="en" messages={en}><ProfileEditor workspace={seeded()} facts={facts} extraPanels={{}} history={[]} defaultTab="profile" seed={value}/></NextIntlClientProvider>);
  it('opens editing with the reviewed values filled in, leaves the bank account empty and says why, and saves through the owner as usual',async()=>{
   mountSeeded();
   expect(screen.getByRole('button',{name:en.essProfile.save})).toBeTruthy();expect(screen.queryByRole('button',{name:en.essProfile.requestEdit})).toBeNull();
