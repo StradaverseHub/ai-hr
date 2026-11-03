@@ -363,110 +363,117 @@ export async function updateEntitlementTemplate(
   ctx: SessionContext,
   p: { lineageId: string; name?: string; serviceBands?: ServiceBand[]; validFrom: string; today?: string },
 ): Promise<EntitlementTemplateRow> {
+  return withTenant(ctx, (tx) => updateEntitlementTemplateTx(tx, ctx, p));
+}
+
+/** updateEntitlementTemplate inside a caller's transaction (AI v2 Phase 2 hardening: the Living Handbook records its own write in the same transaction, so its guard can roll the write back). Same lock, validation, versioning and events. */
+export async function updateEntitlementTemplateTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { lineageId: string; name?: string; serviceBands?: ServiceBand[]; validFrom: string; today?: string },
+): Promise<EntitlementTemplateRow> {
   if (p.serviceBands !== undefined) validateServiceBands(p.serviceBands);
   const name = p.name !== undefined ? cleanName(p.name) : undefined;
   const today = p.today ?? todayInKualaLumpur();
-  return withTenant(ctx, async (tx) => {
-    // Mutate the dependency graph only outside participating leave-command intervals.
-    // Ownership precedes lineage/usage/authority reads, version writes and canonical events.
-    await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
-    // EVERY version of the lineage, not just the running one: an in-place start-date change has to be
-    // checked against the superseded siblings' windows before anything is written.
-    const versions = await tx
-      .select()
-      .from(entitlementTemplate)
-      .where(eq(entitlementTemplate.lineageId, p.lineageId));
-    const open = versions.find((v) => v.validTo === null);
-    if (!open) throw new Error('That entitlement table has no running version to edit.');
+  // Mutate the dependency graph only outside participating leave-command intervals.
+  // Ownership precedes lineage/usage/authority reads, version writes and canonical events.
+  await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+  // EVERY version of the lineage, not just the running one: an in-place start-date change has to be
+  // checked against the superseded siblings' windows before anything is written.
+  const versions = await tx
+    .select()
+    .from(entitlementTemplate)
+    .where(eq(entitlementTemplate.lineageId, p.lineageId));
+  const open = versions.find((v) => v.validTo === null);
+  if (!open) throw new Error('That entitlement table has no running version to edit.');
 
-    const mode = entitlementEditMode({ openValidFrom: open.validFrom, newValidFrom: p.validFrom, today });
-    if (mode === 'refuse') {
+  const mode = entitlementEditMode({ openValidFrom: open.validFrom, newValidFrom: p.validFrom, today });
+  if (mode === 'refuse') {
+    throw new Error(
+      `This entitlement table has been in force since ${open.validFrom}, so a new version has to start after ${open.validFrom}.`,
+    );
+  }
+  if (mode === 'in-place') {
+    const prevContiguous = versions.find((v) => v.id !== open.id && v.validTo === open.validFrom);
+    const clash = overlappingSibling(versions, open.id, p.validFrom);
+    // The one overlap that is not a conflict: our own contiguous predecessor, with both its boundary and
+    // the new date still ahead of us. See `overlappingSibling`.
+    const reclaimable =
+      clash !== null &&
+      prevContiguous !== undefined &&
+      clash.id === prevContiguous.id &&
+      p.validFrom > today &&
+      (prevContiguous.validTo ?? '') > today;
+    if (clash && !reclaimable) {
       throw new Error(
-        `This entitlement table has been in force since ${open.validFrom}, so a new version has to start after ${open.validFrom}.`,
+        `An earlier version of this table runs from ${clash.validFrom} until ${clash.validTo}, so this version cannot start on ${p.validFrom}. Give it a date on or after ${clash.validTo}.`,
       );
     }
-    if (mode === 'in-place') {
-      const prevContiguous = versions.find((v) => v.id !== open.id && v.validTo === open.validFrom);
-      const clash = overlappingSibling(versions, open.id, p.validFrom);
-      // The one overlap that is not a conflict: our own contiguous predecessor, with both its boundary and
-      // the new date still ahead of us. See `overlappingSibling`.
-      const reclaimable =
-        clash !== null &&
-        prevContiguous !== undefined &&
-        clash.id === prevContiguous.id &&
-        p.validFrom > today &&
-        (prevContiguous.validTo ?? '') > today;
-      if (clash && !reclaimable) {
-        throw new Error(
-          `An earlier version of this table runs from ${clash.validFrom} until ${clash.validTo}, so this version cannot start on ${p.validFrom}. Give it a date on or after ${clash.validTo}.`,
-        );
-      }
-      // ⚠️ KEEP THE LINEAGE CONTIGUOUS. A supersede closes the predecessor at exactly this version's
-      // `validFrom`, so moving the start date without moving that end date would leave a stretch with no
-      // version of this table in force at all — a hole close-then-insert has never produced. The boundary
-      // moves in BOTH directions and the guards above are what keep that safe: a date change here requires
-      // `open.validFrom > today`, and a BACKWARDS move past the predecessor's end is only allowed when that
-      // end and the new date are both still in the future. So the boundary being rewritten has never been
-      // resolved against.
-      const prev = prevContiguous;
-      if (prev && p.validFrom !== open.validFrom) {
-        await tx
-          .update(entitlementTemplate)
-          .set({ validTo: p.validFrom })
-          .where(eq(entitlementTemplate.id, prev.id));
-      }
-      const [row] = await tx
+    // ⚠️ KEEP THE LINEAGE CONTIGUOUS. A supersede closes the predecessor at exactly this version's
+    // `validFrom`, so moving the start date without moving that end date would leave a stretch with no
+    // version of this table in force at all — a hole close-then-insert has never produced. The boundary
+    // moves in BOTH directions and the guards above are what keep that safe: a date change here requires
+    // `open.validFrom > today`, and a BACKWARDS move past the predecessor's end is only allowed when that
+    // end and the new date are both still in the future. So the boundary being rewritten has never been
+    // resolved against.
+    const prev = prevContiguous;
+    if (prev && p.validFrom !== open.validFrom) {
+      await tx
         .update(entitlementTemplate)
-        .set({
-          name: name ?? open.name,
-          serviceBands: (p.serviceBands ?? open.serviceBands) as ServiceBand[],
-          validFrom: p.validFrom,
-        })
-        .where(eq(entitlementTemplate.id, open.id))
-        .returning();
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'entitlement_template',
-        aggregateId: open.id,
-        eventType: 'entitlement-template.updated',
-        payload: { lineageId: p.lineageId, validFrom: p.validFrom, previousValidFrom: open.validFrom },
-        actor: actorOf(ctx),
-      });
-      return toTemplateRow(row);
+        .set({ validTo: p.validFrom })
+        .where(eq(entitlementTemplate.id, prev.id));
     }
-    // ⚠️ CLOSE FIRST, THEN INSERT — not the other way round. Two partial-unique indexes police this table
-    // (one running version per lineage; one running NAME per leave type), and inserting the successor while
-    // its predecessor is still open trips both. Doing it in this order is not a workaround for the
-    // constraints, it is what they are FOR: at no instant inside the transaction do two versions claim to
-    // be in force. Both statements are in one transaction, so nothing observes the closed-and-not-yet-
-    // replaced state.
-    await tx
+    const [row] = await tx
       .update(entitlementTemplate)
-      .set({ validTo: p.validFrom })
-      .where(eq(entitlementTemplate.id, open.id));
-    const [next] = await tx
-      .insert(entitlementTemplate)
-      .values({
-        tenantId: ctx.tenantId,
-        lineageId: p.lineageId,
-        // Constant across the lineage, by construction.
-        leaveTypeId: open.leaveTypeId,
+      .set({
         name: name ?? open.name,
         serviceBands: (p.serviceBands ?? open.serviceBands) as ServiceBand[],
         validFrom: p.validFrom,
-        validTo: null,
       })
+      .where(eq(entitlementTemplate.id, open.id))
       .returning();
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'entitlement_template',
-      aggregateId: next.id,
-      eventType: 'entitlement-template.superseded',
-      payload: { lineageId: p.lineageId, supersededId: open.id, validFrom: p.validFrom },
+      aggregateId: open.id,
+      eventType: 'entitlement-template.updated',
+      payload: { lineageId: p.lineageId, validFrom: p.validFrom, previousValidFrom: open.validFrom },
       actor: actorOf(ctx),
     });
-    return toTemplateRow(next);
+    return toTemplateRow(row);
+  }
+  // ⚠️ CLOSE FIRST, THEN INSERT — not the other way round. Two partial-unique indexes police this table
+  // (one running version per lineage; one running NAME per leave type), and inserting the successor while
+  // its predecessor is still open trips both. Doing it in this order is not a workaround for the
+  // constraints, it is what they are FOR: at no instant inside the transaction do two versions claim to
+  // be in force. Both statements are in one transaction, so nothing observes the closed-and-not-yet-
+  // replaced state.
+  await tx
+    .update(entitlementTemplate)
+    .set({ validTo: p.validFrom })
+    .where(eq(entitlementTemplate.id, open.id));
+  const [next] = await tx
+    .insert(entitlementTemplate)
+    .values({
+      tenantId: ctx.tenantId,
+      lineageId: p.lineageId,
+      // Constant across the lineage, by construction.
+      leaveTypeId: open.leaveTypeId,
+      name: name ?? open.name,
+      serviceBands: (p.serviceBands ?? open.serviceBands) as ServiceBand[],
+      validFrom: p.validFrom,
+      validTo: null,
+    })
+    .returning();
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'entitlement_template',
+    aggregateId: next.id,
+    eventType: 'entitlement-template.superseded',
+    payload: { lineageId: p.lineageId, supersededId: open.id, validFrom: p.validFrom },
+    actor: actorOf(ctx),
   });
+  return toTemplateRow(next);
 }
 
 /** Every template version in force on `asOf` (default: every version), in the order HR reads them —
@@ -476,26 +483,33 @@ export async function listEntitlementTemplates(
   ctx: SessionContext,
   p?: { asOf?: string; leaveTypeId?: string },
 ): Promise<EntitlementTemplateRow[]> {
-  return withTenant(ctx, async (tx) => {
-    const conds = [];
-    if (p?.asOf) {
-      conds.push(lte(entitlementTemplate.validFrom, p.asOf));
-      conds.push(or(isNull(entitlementTemplate.validTo), gt(entitlementTemplate.validTo, p.asOf))!);
-    }
-    if (p?.leaveTypeId) conds.push(eq(entitlementTemplate.leaveTypeId, p.leaveTypeId));
-    const rows = await tx
-      .select()
-      .from(entitlementTemplate)
-      .where(conds.length ? and(...conds) : undefined)
-      // A deterministic BASE order, not the order anyone sees: the sort below is stable, so identical
-      // keys keep whatever this produced instead of varying between runs of the same query.
-      .orderBy(asc(entitlementTemplate.name), asc(entitlementTemplate.validFrom));
-    // 3214cb11 / 813fd22a — A-to-Z is not the order HR reads these in. Ordering HERE rather than in the
-    // block means every reader inherits it (the standalone screen, each leave type's Entitlement step,
-    // and the eligibility rule's template select all come off this one read) and there is no second
-    // sort to drift. See lib/entitlement-table-order.ts for why the rule is derived from the name.
-    return rows.map(toTemplateRow).sort(compareEntitlementTables);
-  });
+  return withTenant(ctx, (tx) => listEntitlementTemplatesTx(tx, ctx, p));
+}
+
+/** listEntitlementTemplates inside a caller's transaction (the Living Handbook reads the table back after its own write, before that transaction commits). Same rows and order. */
+export async function listEntitlementTemplatesTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p?: { asOf?: string; leaveTypeId?: string },
+): Promise<EntitlementTemplateRow[]> {
+  const conds = [];
+  if (p?.asOf) {
+    conds.push(lte(entitlementTemplate.validFrom, p.asOf));
+    conds.push(or(isNull(entitlementTemplate.validTo), gt(entitlementTemplate.validTo, p.asOf))!);
+  }
+  if (p?.leaveTypeId) conds.push(eq(entitlementTemplate.leaveTypeId, p.leaveTypeId));
+  const rows = await tx
+    .select()
+    .from(entitlementTemplate)
+    .where(conds.length ? and(...conds) : undefined)
+    // A deterministic BASE order, not the order anyone sees: the sort below is stable, so identical
+    // keys keep whatever this produced instead of varying between runs of the same query.
+    .orderBy(asc(entitlementTemplate.name), asc(entitlementTemplate.validFrom));
+  // 3214cb11 / 813fd22a — A-to-Z is not the order HR reads these in. Ordering HERE rather than in the
+  // block means every reader inherits it (the standalone screen, each leave type's Entitlement step,
+  // and the eligibility rule's template select all come off this one read) and there is no second
+  // sort to drift. See lib/entitlement-table-order.ts for why the rule is derived from the name.
+  return rows.map(toTemplateRow).sort(compareEntitlementTables);
 }
 
 // ── Eligibility rules ────────────────────────────────────────────────────────────────────────────────
