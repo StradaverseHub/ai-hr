@@ -56,7 +56,8 @@ describe('spec v17, kept in v18',()=>{
    /never show a hidden part as 0/])expect(count(rule),String(rule)).toBe(1);
  });
  it('offers product_capabilities only when the words ask for it, never on a gated turn, and the triage copy follows the spec',()=>{
-  expect(HARNESS_SPEC.offer.publicContextTools).toEqual(['product_destinations','product_guidance','available_actions']);
+  // v21 adds main's two admin guides after these three (test/harness-spec-v21.test.ts); product_capabilities stays out.
+  expect(HARNESS_SPEC.offer.publicContextTools).toEqual(['product_destinations','product_guidance','available_actions','password_policy_guidance','correction_controls_guidance']);
   // v18: revision 2 adds the follow-up answer (test/harness-spec-v18.test.ts).
   expect(HARNESS_SPEC.offer.capabilityTool).toBe('product_capabilities');expect(HARNESS_SPEC.offer.capabilityIntentRevision).toBe(2);
   expect(HARNESS_SPEC.offer.actionTools).toEqual(['available_actions','suggest_action']);
