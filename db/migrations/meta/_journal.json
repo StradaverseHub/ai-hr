@@ -4712,6 +4712,13 @@
       "when": 1793330000369,
       "tag": "0969_report_category_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 817,
+      "version": "7",
+      "when": 1793330000370,
+      "tag": "0970_claim_configuration_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

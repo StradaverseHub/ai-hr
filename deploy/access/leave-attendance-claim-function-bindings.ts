@@ -52,3 +52,26 @@ export const LEAVE_ATTENDANCE_CLAIM_FUNCTIONS:readonly FunctionActionDescriptor[
  {key:'claimsConfig.reimbursements',scope:'company',moduleKey:'claims',labelKey:'admin.claimsTabs.reimbursements',kind:'submenu',course:'administrative',screenKey:'claimsConfig',href:'/admin/claims/reimbursements',employeeBearing:true,
   actions:(['view','execute'] as const).map(operation=>({operation,parentCapability:operation==='view'?'claims.view':'claims.edit',delegationFloorFunction:'app.module_action_delegation_allowed',bindings:[{owner:operation==='view'?'core/claims.ts':'app.claim_reimburse_native',operation:operation==='view'?'native-scoped-payment-list-csv':'finite-native-confirmed-reimbursement'},{owner:'app.claim_native_effect_approved',operation:'same-purpose-final-denial'}]}))},
 ];
+
+export const CLAIM_CONFIGURATION_CAPABILITY_PUBLICATION={
+ capabilities:(['view','add','edit','delete'] as const).map(operation=>({
+  id:'claims_configuration.'+operation,scope:'tenant' as const,bindings:[
+   {owner:'app.module_action_allowed',operation:'native-claim-configuration-'+operation},
+   {owner:operation==='view'?'app.module_function_allowed':'app.module_configuration_action_guard',operation:'exact-maintained-source'},
+  ],
+ })),
+ functions:CLAIM_CONFIGURATION_FUNCTIONS,
+ legacyParityFunction:'app.module_action_legacy_allowed',
+ currentLegacyParityFunction:'app.module_action_current_native_default',
+ functionLegacyParityFunction:'app.module_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.module_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.claim_configuration_bindings_complete()',
+  'app.module_action_allowed(text,text,uuid)',
+  'app.module_function_allowed(text,text,uuid)',
+  'app.module_configuration_action_guard()',
+  'app.claim_configuration_admit(text,uuid,uuid,uuid,text)',
+  'app.claim_configuration_range_close()',
+ ],
+} as const;

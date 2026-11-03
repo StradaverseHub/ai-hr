@@ -4,7 +4,8 @@ import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {createClaimType,createClaimItem,setClaimPolicy,setMileageRateTable,claimConfigurationWriteAccess,listClaimTypes} from '../core/claims';
+import {createClaimType,createClaimItem,setClaimPolicy,setMileageRateTable,claimConfigurationWriteAccess,listClaimTypes,updateClaimType} from '../core/claims';
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,admin:SessionContext,typeId:string;
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -37,5 +38,25 @@ it('fails closed for unknown/foreign logical sources and accepts every actual na
  for(const vehicleClass of ['any','car','motorcycle','van','lorry'] as const){
   expect(await claimConfigurationWriteAccess(admin,[{kind:'claim_mileage_rate',claimTypeId:typeId,gradeId:null,vehicleClass}])).toEqual([true]);
   await setMileageRateTable(admin,{claimTypeId:typeId,vehicleClass,effectiveFrom:'2026-01-01',bands:[{fromKm:0,toKm:null,ratePerKm:0.5}]});
+ }
+});
+
+it('publishes the Claims Configuration actions and keeps a Types Edit denial separate from Limits',async()=>{
+ const cap='function.claimsConfig.types.edit';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'claim_configuration')).toMatchObject({changed:true,capabilities:16});
+  expect(await publishActionCapabilityPackage(owner.client,'claim_configuration')).toMatchObject({changed:false});
+  await updateClaimType(admin,{id:typeId,name:'Permitted type name',defaultTaxable:false,requiresReceipt:false});
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,effect)
+   values(${b.tenantId}::uuid,${admin.userId!}::uuid,${cap},'deny')`;
+  await expect(updateClaimType(admin,{id:typeId,name:'Forbidden type name',defaultTaxable:false,requiresReceipt:false})).rejects.toThrow();
+  expect((await listClaimTypes(admin)).find(row=>row.id===typeId)?.name).toBe('Permitted type name');
+  await setClaimPolicy(admin,{claimTypeId:typeId,annualBudget:1200,perClaimCap:100,effectiveFrom:'2026-01-01'});
+  expect(await claimConfigurationWriteAccess(admin,[{kind:'claim_policy',claimTypeId:typeId,gradeId:null}])).toEqual([true]);
+ }finally{
+  await owner.client`delete from app.access_native_capability_default
+   where capability_id like 'claims_configuration.%' or capability_id like 'function.claimsConfig.%' and capability_id not like 'function.claimsConfig.reimbursements.%'`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+   where id like 'claims_configuration.%' or id like 'function.claimsConfig.%' and id not like 'function.claimsConfig.reimbursements.%'`;
  }
 });
