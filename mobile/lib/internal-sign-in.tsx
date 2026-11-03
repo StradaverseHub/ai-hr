@@ -1,8 +1,10 @@
+import { rememberedMfaCopy } from '../../lib/remembered-mfa-copy';
+import { readRememberedMfa, saveRememberedMfa } from './remembered-mfa';
 import { authenticatorSetupUri } from '../../lib/authenticator-setup';
 import { signInWithMicrosoft } from './entra-auth';
 import { useRef, useState } from 'react';
 import { fetch as nativeFetch } from 'expo/fetch';
-import { Linking, Image, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { beginSignIn, assertAuthGeneration, completeInternalSignIn } from './auth';
@@ -19,6 +21,9 @@ export function InternalSignIn() {
   const company = useCompanyConnection(), session = useSession();
   const workplaceOrganization = company?.organization ?? '';
   const copy = authCopy[appLocale()];
+  const rememberedCopy = rememberedMfaCopy(appLocale());
+  const [rememberDevice, setRememberDevice] = useState(false);
+  const loginAccount = useRef<{organization: string; username: string} | null>(null);
   const [step, setStep] = useState<InternalReply | null>(null), [organization, setOrganization] = useState('');
   const [username, setUsername] = useState(''), [password, setPassword] = useState(''), [confirmation, setConfirmation] = useState(''), [code, setCode] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -34,7 +39,7 @@ export function InternalSignIn() {
     if (pending.current) return;
     if (step?.step === 'password' && password !== confirmation) { setError('passwordMismatch'); return; }
     pending.current = true; setBusy(true); setError('');
-    const body: Record<string, string> = step ? { challenge: step.challenge!, ...(step.step === 'password' ? { password } : { code }) } : { organization: workplaceOrganization || organization, username, password };
+    const body: Record<string, string> = step ? { challenge: step.challenge!, ...(step.step === 'password' ? { password } : { code, ...(rememberDevice ? { rememberDevice: 'true' } : {}) }) } : { organization: workplaceOrganization || organization, username, password };
     setPassword(''); setConfirmation(''); setCode('');
     try {
       if (!step) {
@@ -42,9 +47,20 @@ export function InternalSignIn() {
         if (runtimeConnections && !company) throw new InternalSignInError('unavailable');
         if (company) await verifyCompanyServer(company,nativeFetch);
         assertAuthGeneration(owner.current);
+        loginAccount.current = { organization: body.organization, username: body.username };
+        const generation = owner.current;
+        const token = await readRememberedMfa(body.organization, body.username, () => assertAuthGeneration(generation));
+        assertAuthGeneration(generation);
+        if (token) body.remembered_device = token;
       }
       const result = await internalAuthRequest(!step ? 'login' : step.step === 'password' ? 'password' : 'mfa', body, owner.current!);
-      assertAuthGeneration(owner.current!); setStep(result);
+      assertAuthGeneration(owner.current!);
+      if (result.step === 'complete' && result.remembered_device_token && result.remembered_device_expires_in && loginAccount.current) {
+        const account = loginAccount.current, generation = owner.current!;
+        await saveRememberedMfa(account.organization, account.username, result.remembered_device_token, result.remembered_device_expires_in, () => assertAuthGeneration(generation));
+        assertAuthGeneration(generation);
+      }
+      setStep(result);
       if (result.step === 'complete' && !result.recoveryCodes?.length) await finish(result);
     } catch (e) { setError(e instanceof InternalSignInError ? e.code : 'unavailable'); }
     finally { pending.current = false; setBusy(false); }
@@ -93,6 +109,11 @@ export function InternalSignIn() {
         <Text>{copy.manualKey}</Text><Text selectable style={styles.key}>{step?.secret}</Text>
       </>}
       {(state === 'enroll' || state === 'mfa') && <><Text>{state === 'enroll' ? copy.code : copy.codeOrRecovery}</Text><TextInput accessibilityLabel={state === 'enroll' ? copy.code : copy.codeOrRecovery} autoCapitalize="characters" autoCorrect={false} autoComplete="one-time-code" maxLength={64} value={code} onChangeText={setCode} style={styles.input} editable={!busy}/></>}
+      {(state === 'enroll' || state === 'mfa') && !!step?.rememberDays && <View style={styles.fields}>
+        <Pressable accessibilityRole="checkbox" accessibilityLabel={rememberedCopy.rememberNative.replace('{days}', String(step.rememberDays))} accessibilityState={{checked:rememberDevice,disabled:busy}} disabled={busy} onPress={() => setRememberDevice(value => !value)} style={{minHeight:48,flexDirection:'row',alignItems:'center',gap:12}}>
+          <Text>{rememberDevice ? '☑' : '☐'}</Text><Text style={{flex:1}}>{rememberedCopy.rememberNative.replace('{days}', String(step.rememberDays))}</Text>
+        </Pressable><Text style={styles.body}>{rememberedCopy.personalOnly}</Text>
+      </View>}
       <Button title={busy ? copy.working : state === 'login' ? copy.signIn : copy.continue} onPress={() => void submit()} disabled={busy || (state === 'login' && (!(workplaceOrganization || organization) || !username || !password)) || (state === 'password' && (!password || !confirmation)) || ((state === 'enroll' || state === 'mfa') && !code)}/>
       {state==='login'&&<Button title={copy.microsoft} disabled={busy||!(workplaceOrganization||organization)} onPress={()=>{
         if(pending.current)return;pending.current=true;setBusy(true);setMicrosoftFailed(false);setError('');
@@ -102,7 +123,7 @@ export function InternalSignIn() {
         })().catch(()=>setMicrosoftFailed(true)).finally(()=>{pending.current=false;setBusy(false);});
       }}/>}
       {state === 'login' && <Button title={copy.forgot} kind="quiet" disabled={busy} onPress={() => void WebBrowser.openBrowserAsync(config.apiUrl + '/reset-password')}/>}
-      {step && <Button title={copy.back} kind="quiet" disabled={busy} onPress={() => { beginSignIn(); owner.current = null; setStep(null); setPassword(''); setCode(''); setError(''); }}/>}
+      {step && <Button title={copy.back} kind="quiet" disabled={busy} onPress={() => { beginSignIn(); owner.current = null; setStep(null); setRememberDevice(false); loginAccount.current = null; setPassword(''); setCode(''); setError(''); }}/>}
     </View>}
     <Button title={companyCopy().change} kind="quiet" disabled={busy} onPress={() => router.push('/company')}/>
   </ScrollView>;

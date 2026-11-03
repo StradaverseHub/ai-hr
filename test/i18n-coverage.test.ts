@@ -47,8 +47,10 @@ function overlay(base: Dict, over: Dict): Dict {
   }
   return out;
 }
-const load = (loc: string): Dict =>
-  CATALOGUES.reduce<Dict>((acc, template) => overlay(acc, readJson(path.join(ROOT, template.replace('{locale}', loc)))), {});
+const load = (loc: string): Dict => ({
+  ...CATALOGUES.reduce<Dict>((acc, template) => overlay(acc, readJson(path.join(ROOT, template.replace('{locale}', loc)))), {}),
+  loginEditorial: readJson(path.join(MESSAGES, 'login-editorial', `${loc}.json`)),
+});
 
 function flatten(obj: Dict, prefix = '', out: Record<string, unknown> = {}): Record<string, unknown> {
   for (const [k, v] of Object.entries(obj)) {
@@ -131,6 +133,12 @@ describe('i18n coverage', () => {
     // The AI centre's keys come only from its own catalogue, so they resolve here only through the merge.
     expect(getPath(readJson(path.join(MESSAGES, 'en.json')), 'aiCentre')).toBeUndefined();
     expect(typeof getPath(en, 'aiCentre.tabsLabel')).toBe('string');
+  });
+
+  it('keeps loginEditorial references inside the scoped login provider', () => {
+    for (const {file, src} of sources()) for (const match of src.matchAll(NAMESPACE)) {
+      if ((match[1] ?? match[2]) === 'loginEditorial') expect(file.startsWith('app/login/'), file).toBe(true);
+    }
   });
 
   it('B. every translation namespace referenced in code exists in en.json', () => {

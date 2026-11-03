@@ -28,8 +28,10 @@ export const HARNESS_SPEC=freeze({
   * me" from an approver is the approval queue. M7: tool calls are capped per model step and per turn. M8: history
   * sent per call is capped.
   * 8: a rule-override request is refused by the harness with sensitive.instructionOverrideReply, without a model
-  * call (the provider returned blank replies for it on every pass of the production-path ceiling); gate revision 4. */
- version:8,
+  * call (the provider returned blank replies for it on every pass of the production-path ceiling); gate revision 4.
+  * 9: two administrator-only, literal public page guides remain context on a gated turn. Private reads,
+  * sensitive routing and the gate itself remain unchanged. */
+ version:9,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
@@ -71,7 +73,7 @@ export const HARNESS_SPEC=freeze({
  },
  offer:{
   /** Context tools that hold nothing about the person; the only ones a gated turn keeps. */
-  publicContextTools:['product_destinations','product_guidance','available_actions'],
+  publicContextTools:['product_destinations','product_guidance','available_actions','password_policy_guidance','correction_controls_guidance'],
   /** available_actions and suggest_action are offered only when the gate allows actions. */
   actionTools:['available_actions','suggest_action'],
   finalTool:'final_answer',
@@ -193,4 +195,5 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  6:'4bacd5c6e130a812e5a83b8f63dab8732817b2930eaf0c0d2f9ef113cd4c78be',
  7:'b68ea8eecdca81d9cbb2a27cd5f3957dc3fd243d58f65feb9ac149fde4f9b701',
  8:'48db87fd9276f9e828926d82ff07888f4400e4dcd40fbdf08e8a735610c0f9d2',
+ 9:'50ffa246fb253b9ab00b3009428ecf89ad68612c125ea2fe14ad1f678444d45c',
 });

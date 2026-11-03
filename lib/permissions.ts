@@ -123,7 +123,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'letterFields',href:'/letters/fields',labelKey:'letters.fields.title',guard:'scopedSession',routes:['/letters/fields','/letters/fields/[fieldId]'],hasScopeNote:true},
   // This is a capability gate, not a role grant. The reference grid renders it conditionally for all
   // roles; the page reads current SQL authority and a matching individual denial always wins.
-  {screenKey:'securityCenter',href:'/admin/security-center',labelKey:'securityCenter.title',guard:'requireSecurityCenter',routes:['/admin/security-center'],hasScopeNote:true},
+  {screenKey:'securityCenter',href:'/admin/security-center',labelKey:'securityCenter.title',guard:'requireSecurityCenter',routes:['/admin/security-center','/admin/security-center/password-policy'],hasScopeNote:true},
   {screenKey:'functionAccess',href:'/admin/users/function-access',labelKey:'securityCenter.functions.title',guard:'requireAdmin',routes:['/admin/users/function-access']},
   {screenKey:'createLogin',href:'/admin/users/create',labelKey:'securityCenter.create.title',guard:'requireGroupAdministration',routes:['/admin/users/create'],hasScopeNote:true},
   {screenKey:'inviteUser',href:'/admin/users/invite',labelKey:'securityCenter.invite.title',guard:'requireGroupAdministration',routes:['/admin/users/invite'],hasScopeNote:true},
@@ -1394,6 +1394,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       // /payroll/transaction-view uses for `?tab=`.
       '/payroll/statutory-adjustment',
       '/payroll/setup',
+      '/payroll/setup/correction-controls',
       // 929ea296 (PR126): Recalculate Income Tax Value — the setup card's preview/confirm screen and one batch's
       // detail. Same scopedAdmin payroll key as the hub (requirePayrollAccess); it shows per-employee taxable
       // income and records tax-basis corrections. Registered for test/function-access.test.ts reverse completeness.

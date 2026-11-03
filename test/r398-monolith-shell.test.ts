@@ -88,8 +88,10 @@ describe('Monolith shell wiring', () => {
     expect(LAYOUT.slice(opening, at)).not.toMatch(/\{monolith|uiTheme ===/);
   });
 
-  it('the Monolith rail opens no flyout panel and offers no collapse (README §3: always open on desktop)', () => {
-    expect(SIDEBAR).toContain('const openNode = openKey && !monolith');
+  it('the Monolith rail keeps ordinary modules inline and allows only the approved Security Center flyout, without collapse', () => {
+    expect(SIDEBAR).toContain("const openNode = openKey && (!monolith || openKey === 'securityCenter')");
+    expect(SIDEBAR).toContain("if (item.labelKey === 'securityCenter') return <NavFlyout");
+    expect(SIDEBAR).toContain('const kidsId = `rail-kids-${item.labelKey}`;');
     // Monolith never collapses; Classic follows the preference, except in the D-P1-28 phone drawer (labels shown).
     expect(SIDEBAR).toContain('const collapsed = monolith ? false : collapsedPref && !(mobileNavigationOpen && !atelier);');
   });

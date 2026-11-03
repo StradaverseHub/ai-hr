@@ -52,11 +52,13 @@ describe('Draft action exact-payload activation',()=>{
  },60000);
  it('commits attempted Draft input but rolls back all business owners after a late SQL/audit failure',async()=>{
   const draft=await held(),attempt=input('Attempted input survives reopen'),before=await business();
+  const stored=await getEmployeeDraft(actor.ctx!,draft.id);expect(stored!.data.creationDefaultsVersion).toBe(1);expect(stored!.data.statutory?.subjectToSkbbk).toBe('yes');
+  expect(attempt).not.toHaveProperty('creationDefaultsVersion');expect(attempt.statutory).not.toHaveProperty('subjectToSkbbk');
   await owner.client.unsafe("create function public.board16_draft_action_fail() returns trigger language plpgsql as $$begin if new.event_type='employee-draft.completed' then raise exception 'private bank 000123 failure' using errcode='23514';end if;return new;end$$");
   await owner.client.unsafe('create trigger board16_draft_action_fail before insert on domain_event for each row execute function public.board16_draft_action_fail()');
   const logger=vi.spyOn(console,'error').mockImplementation(()=>{});try{
    const result=await createEmployeeAction(draft.id,attempt,4);expect(result).toMatchObject({ok:false,kind:'system',reference:expect.stringMatching(/^DRAFT-[0-9A-F]{8}$/)});expect(JSON.stringify(result)).not.toContain('000123');
-   const reopened=await getEmployeeDraft(actor.ctx!,draft.id);expect(reopened).toMatchObject({id:draft.id,reservedEmployeeCode:draft.employeeCode,currentStep:4});expect(reopened!.data).toEqual({...attempt,profile:{...attempt.profile,employeeCode:draft.employeeCode},employment:{...attempt.employment,companyId:b.companyId}});expect(await business()).toEqual(before);
+   const reopened=await getEmployeeDraft(actor.ctx!,draft.id);expect(reopened).toMatchObject({id:draft.id,reservedEmployeeCode:draft.employeeCode,currentStep:4});expect(reopened!.data).toEqual({...attempt,creationDefaultsVersion:1,statutory:{...attempt.statutory,subjectToSkbbk:'yes'},profile:{...attempt.profile,employeeCode:draft.employeeCode},employment:{...attempt.employment,companyId:b.companyId}});expect(await business()).toEqual(before);
   }finally{logger.mockRestore();await owner.client.unsafe('drop trigger board16_draft_action_fail on domain_event');await owner.client.unsafe('drop function public.board16_draft_action_fail()');}
   const retry=await createEmployeeAction(draft.id,attempt,4);expect(retry.ok).toBe(true);expect(await getEmployeeDraft(actor.ctx!,draft.id)).toBeNull();
  });

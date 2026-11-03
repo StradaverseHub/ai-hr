@@ -1,5 +1,8 @@
+import {NextIntlClientProvider} from 'next-intl';
+import messages from '../messages/en.json';
+import type {ReactElement} from 'react';
 import { beforeAll, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render as renderUI, screen } from '@testing-library/react';
 import { CaseEmails } from '../app/lifecycle/v9/email-composer';
 import { readV9Email } from '../app/lifecycle/v9/actions';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
@@ -66,3 +69,6 @@ it('places the person-specific upload slots on their email screen, including an 
   expect(screen.getByRole('option',{name:'Resignation acceptance letter · Individual voucher'})).toBeInTheDocument();
   expect(screen.getByLabelText('File (up to 10 MB)')).toBeInTheDocument();expect(screen.getByRole('button',{name:'Send email'})).toBeDisabled();
 });
+
+function withMessages(node:ReactElement){return <NextIntlClientProvider locale="en" messages={messages}>{node}</NextIntlClientProvider>;}
+function render(node:ReactElement){const view=renderUI(withMessages(node));return {...view,rerender:(next:ReactElement)=>view.rerender(withMessages(next))};}

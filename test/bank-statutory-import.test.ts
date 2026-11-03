@@ -81,7 +81,9 @@ describe('0db97f14 · the Bank & Statutory template carries every editable tab s
 describe('0db97f14 · the merged writer',()=>{
  it('a partial file changes only its own cell and leaves every other statutory field untouched',async()=>{
   const e=await seedEmployee(1,'BS001');
-  const before=await statutoryRow(e.personId);
+  // New hires now correctly default to Yes. This transition fixture deliberately starts at No.
+  await owner.db.update(s.employeeStatutoryMy).set({subjectToSkbbk:false}).where(eq(s.employeeStatutoryMy.personId,e.personId));
+  const before=await statutoryRow(e.personId);expect(before.subjectToSkbbk).toBe(false);
   const records=recs('employee_code,subject_to_skbbk',['BS001,Yes']);
   expect((await validateSectionImport(a,{section:'bank_statutory',records})).rows[0]).toMatchObject({verdict:'update',ok:true,changes:['subject_to_skbbk']});
   expect((await commitSectionImport(a,{section:'bank_statutory',records})).updated).toBe(1);
@@ -91,6 +93,9 @@ describe('0db97f14 · the merged writer',()=>{
   expect(strip(after)).toEqual(strip(before));
   // Spot-check the fields the full-row setter rewrites, independently of the comparison above.
   expect(after).toMatchObject({zakatActive:true,zakatFixed:'25.00',tp3Year:2026,tp3PcbPaid:'120.00',bankName:'Maybank',epfNumber:'EPF-1',taxNumber:'TAX-1',taxCategory:2,numChildren:3,customHolderName:'Holder Name',employerBearsTax:true,subjectToHrdf:true});
+  expect((await validateSectionImport(a,{section:'bank_statutory',records})).rows[0]).toMatchObject({verdict:'skip',ok:false,changes:[],errors:[]});
+  expect(await commitSectionImport(a,{section:'bank_statutory',records})).toMatchObject({updated:0,skipped:1,failed:[]});
+  expect(await statutoryRow(e.personId)).toEqual(after);
  });
 
  it('each new column round-trips to what the Bank & Statutory tab shows',async()=>{

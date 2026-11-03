@@ -32,8 +32,16 @@ export const SETUP_ENTITIES:readonly SemanticEntity[]=freeze([
      f('page','label','full','Where to fix it.')]})]}),
    f('gaps','list','full','Setup areas no readiness owner checks yet.',{of:[f('area','label','full','The area.'),f('note','label','full','What is missing.')]}),
    provenanceField]},
+ {id:'password_policy_guidance',label:'Password Policy guidance',meaning:'Public page purpose and navigation for embedded HR login password controls; no tenant policy or account state.',
+  module:null,sensitivity:'ordinary',audience:'admin',rls:'administered_scope',owners:['core/explainers/capabilities.ts#passwordPolicyGuidance'],ruleVersion:null,relations:[],page:'/admin/security-center/password-policy',
+  fields:[f('page','label','full','The public Password Policy page.'),f('purpose','label','full','The code-owned purpose of the page.'),f('navigation','label','full','How to find the page.'),f('humanBoundary','label','full','The native group administrator and internal-auth requirements; human decisions stay in their native screens.'),provenanceField]},
+ {id:'correction_controls_guidance',label:'Payroll Correction Controls guidance',meaning:'Public page purpose and navigation for payroll correction controls; no setting, batch, person or pay values.',
+  module:'payroll',sensitivity:'ordinary',audience:'admin',rls:'administered_scope',owners:['core/explainers/capabilities.ts#correctionControlsGuidance'],ruleVersion:null,relations:[],page:'/payroll/setup/correction-controls',
+  fields:[f('page','label','full','The public Correction Controls page.'),f('purpose','label','full','The code-owned purpose of the page.'),f('navigation','label','full','How to find the page.'),f('humanBoundary','label','full','The native group administrator save boundary and separate human payroll decisions.'),provenanceField]},
 ] satisfies SemanticEntity[]);
 
 export const SETUP_READS:readonly SemanticRead[]=freeze([
  {name:'setup_copilot',entity:'setup_copilot',purpose:'Administrators only: the guided go-live sequence from an empty company to its first payroll. Each stage says whether it is done, what blocks it and the page to fix it. Use it for "what do I set up next" and "are we ready to run payroll" questions.',input:[]},
+ {name:'password_policy_guidance',entity:'password_policy_guidance',purpose:'Administrators only: where to find Password Policy, what the page is for, and the group administrator and internal embedded login requirements. Public guidance only; no policy values, account state or changes.',input:[]},
+ {name:'correction_controls_guidance',entity:'correction_controls_guidance',purpose:'Payroll-enabled administrators only: where to find Correction Controls, what the page is for, and which decisions remain with an authorized human on the native pages. Public guidance only; no settings, batches, pay values or changes.',input:[]},
 ] satisfies SemanticRead[]);

@@ -2,7 +2,8 @@ import React from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {cleanup, fireEvent, render, screen, within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
-import {enWithAiCentre as en} from './helpers/ai-centre-messages';
+import en from '../messages/en.json';
+import {withAiCentre} from './helpers/ai-centre-messages';
 import ms from '../messages/ms.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
@@ -19,7 +20,10 @@ vi.mock('../lib/session', () => ({getSession: vi.fn()}));
 vi.mock('../core/entitlements', () => ({isModuleEnabled: vi.fn()}));
 import {Sidebar} from '../components/sidebar';
 
-const catalogues = {en, ms, ta, th, vi: viMessages, zh};
+const catalogues = {
+  en: withAiCentre('en', en), ms: withAiCentre('ms', ms), ta: withAiCentre('ta', ta),
+  th: withAiCentre('th', th), vi: withAiCentre('vi', viMessages), zh: withAiCentre('zh', zh),
+};
 const relocated = [
   ['/admin/settings/notifications', 'workflowEmail'],
   ['/admin/scheduled-actions', 'scheduledActions'],
@@ -28,7 +32,7 @@ const relocated = [
 
 function mount({admin = true, operator = false, manager = false, collapsed = false,
   modules = ['notifications'], locale = 'en' as keyof typeof catalogues} = {}) {
-  const view = render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]}>
+  const view = render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} onError={error => { throw error; }}>
     <Sidebar isAdmin={admin} canApprove={manager} canConfigureIdentityEmail={operator}
       canPreviewIdentityEmail={admin} canAdministerAi={admin} enabledModules={modules} defaultCollapsed={collapsed}/>
   </NextIntlClientProvider>);

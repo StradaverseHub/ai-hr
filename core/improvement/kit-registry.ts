@@ -23,5 +23,7 @@ export const KIT_DECLARATIONS:readonly KitDeclaration[]=Object.freeze([
  declare('explain_leave_entitlement','core/read.ts#leaveEntitlementBreakdown',{module:'leave',admin:false}),
  declare('explain_attendance_day','core/attendance-explain.ts#explainAttendanceDay',{module:'attendance',admin:false}),
  declare('setup_copilot','core/setup-copilot/copilot.ts#setupCopilot',{module:null,admin:true}),
+ declare('password_policy_guidance','core/explainers/capabilities.ts#passwordPolicyGuidance',{module:null,admin:true}),
+ declare('correction_controls_guidance','core/explainers/capabilities.ts#correctionControlsGuidance',{module:'payroll',admin:true}),
 ]);
 export const KIT_CAPABILITIES:readonly KitCapability[]=Object.freeze(KIT_DECLARATIONS.map(kitCapability));

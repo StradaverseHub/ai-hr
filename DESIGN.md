@@ -17,22 +17,31 @@ colors:
   destructive: "#b42318"
   mark-ink: "#8a5a2e"
   mark-wash: "#f5ede5"
-  login-ink: "#28235e"
-  login-hover: "#373075"
-  login-muted: "#60616b"
-  login-line: "#8e8b9f"
+  login-ink: "#2b2944"
+  login-hover: "#47415d"
+  login-muted: "#646477"
+  login-line: "#858497"
   login-focus: "#7764c2"
+  login-story-ground: "#0c0d0f"
+  login-story-ink: "#f2f2f3"
+  login-story-muted: "#aeb3be"
   dark-surface: "#111113"
   dark-card: "#18181b"
   dark-ink: "#ededef"
   dark-primary: "#fb8a4a"
 typography:
   headline:
-    fontFamily: "var(--font-jakarta), sans-serif"
-    fontSize: "clamp(1.875rem, 2.5vw, 2.75rem)"
-    fontWeight: 700
-    lineHeight: 1.18
+    fontFamily: "Login Baskervville, Georgia, var(--font-sans), serif"
+    fontSize: "clamp(3.5rem, 5.765vw, 5.1875rem)"
+    fontWeight: 400
+    lineHeight: 0.95
     letterSpacing: "-.025em"
+  login-auth-title:
+    fontFamily: "Login Baskervville, Georgia, var(--font-sans), serif"
+    fontSize: "clamp(2rem, 3.1vw, 2.875rem)"
+    fontWeight: 400
+    lineHeight: 1.12
+    letterSpacing: "-.02em"
   title:
     fontFamily: "var(--font-sans)"
     fontSize: "1.375rem"
@@ -56,6 +65,9 @@ rounded:
   control: ".5rem"
   surface: ".75rem"
   pill: "999px"
+  login-control: ".375rem"
+  login-underline: "0"
+  login-circle: "50%"
 spacing:
   compact: ".5rem"
   row: ".75rem"
@@ -78,7 +90,7 @@ components:
   login-submit:
     backgroundColor: "{colors.login-ink}"
     textColor: "{colors.surface}"
-    rounded: "{rounded.surface}"
+    rounded: "{rounded.login-control}"
     padding: ".75rem 1rem"
   input:
     backgroundColor: "{colors.surface}"
@@ -87,8 +99,21 @@ components:
     height: "2.25rem"
   login-input:
     backgroundColor: "{colors.surface}"
-    rounded: "{rounded.surface}"
-    padding: "0 .75rem"
+    textColor: "{colors.login-ink}"
+    rounded: "{rounded.login-control}"
+    padding: "0 .875rem"
+  login-workspace-input:
+    backgroundColor: "transparent"
+    textColor: "{colors.login-ink}"
+    rounded: "{rounded.login-underline}"
+    height: "3.0625rem"
+    padding: "0"
+  login-continue:
+    backgroundColor: "{colors.login-ink}"
+    textColor: "{colors.surface}"
+    rounded: "{rounded.login-circle}"
+    width: "3.0625rem"
+    height: "3.0625rem"
   card:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.ink}"
@@ -112,25 +137,25 @@ components:
 
 Atelier is the default authenticated workspace: neutral surfaces, compact controls, a quiet navigation rail and fire-orange actions. The existing Maker's Mark supplies its signature. This records the implemented system alongside the supported Classic and Monolith choices; light/dark remains an independent setting.
 
-Public sign-in is a distinct, owner-specified indigo-and-white surface with AIHR identity. Its palette is scoped locally and remains light across app themes. Its typography resolves the existing font variable. The login composition belongs to its surface brief, not to every future screen.
+Public sign-in is the owner-selected Editorial surface: white, plum ink, self-hosted Baskervville headings and system UI body. Its palette remains local and independent of saved app themes. The restrained form sits beside a charcoal Noveri demonstration; this composition belongs to its surface brief, not to every future screen.
 
 Performance & Talent is the second scoped surface (D-P1-32 D3, APR-025, ADR-0152). Every page under `/performance`, employee and administration, renders inside `<div data-area-theme="performance">` (app/performance/layout.tsx), and app/performance/area-theme.css re-declares the app's own tokens there: a navy band with the area title, white 12px cards on a light grey page, navy headings and primary, hairline rows, red for AI actions with the app's own sparkles icon, pills, segmented tabs and a stage rail (`pt-*` classes). The area looks the same in Classic, Monolith and Atelier: the `monolith:` and `atelier:` variants do not match inside it and the themes' structural rules are reverted there. It has its own navy-tinted dark variant; light/dark stays the user's setting. Control sizes follow the source on a fine pointer and keep 44px targets on a coarse one. Portaled overlays (dialogs, menus, toasts) render outside the wrapper and keep the user's theme. No logo or client name is drawn.
 
 **Key Characteristics:**
 - Flat shell and cards with hairline boundaries.
 - Compact sentence-case operational hierarchy.
-- Orange action/focus accent in Atelier; independent indigo sign-in.
+- Orange action/focus accent in Atelier; independent plum Editorial sign-in.
 - Human-confirmation signature and semantic status labels.
 
-Evidence: app/atelier.css, app/globals.css, app/layout.tsx, components/ui.tsx, components/ui/{button,input,card}.tsx, app/login/{login.css,login-shell.tsx,internal-form.tsx}, and lib/ui-theme.ts. Direction lives in .impeccable/surfaces/app-layout-tsx.md and app-login-page-tsx.md. Desktop, phone and 681px login captures and desktop/phone appearance-settings captures were checked against this source.
+Evidence: the incumbent operational record cites app/atelier.css, app/globals.css, app/layout.tsx, components/ui.tsx, components/ui/{button,input,card}.tsx and lib/ui-theme.ts, with desktop/phone appearance-settings captures. The scoped Editorial refresh reads app/login/{page.tsx,login.css,login-shell.tsx,internal-form.tsx,workspace-step.tsx,login-language.tsx,noveri-story.tsx}, lib/login-story.ts and i18n/config.ts. Direction lives in .impeccable/surfaces/app-layout-tsx.md and app-login-page-tsx.md; approved Editorial reference and source-rendered captures live in .impeccable/review. The operational system was preserved, not re-audited.
 
 ## Colors
 
-The operational palette is neutral with a restrained fire-orange accent; sign-in has its own deep indigo ground.
+The operational palette is neutral with a restrained fire-orange accent; public sign-in pairs white and plum ink with a separate charcoal demonstration.
 
 ### Primary
 - **Fire orange:** Atelier primary actions, focus and small counts; deepen on hover.
-- **Welcome indigo:** public sign-in welcome panel, headings, links and submit action; not an additional authenticated-app accent.
+- **Editorial plum:** public headings, links and primary controls; deepen to the local hover color. The welcome demonstration uses charcoal, pale text and muted slate captions; these are public-login roles, not additional authenticated-app accents.
 
 ### Neutral
 - **White content / pale grey rail:** flat adjoining surfaces, divided by a hairline.
@@ -138,7 +163,7 @@ The operational palette is neutral with a restrained fire-orange accent; sign-in
 - **Line / strong line:** quiet divisions versus field/control boundaries. Selected rail rows use neutral grey rather than orange fill.
 - **Confirmation tan:** the Maker's Mark disc only. StatusBadge retains its existing domain-specific semantic classes and explicit labels; the brief's illustrative status mapping is not substituted for the source mapping.
 
-**The Scoped Accent Rule.** Use Atelier orange for actions, focus and small emphasis; keep public sign-in indigo inside its own surface.
+**The Scoped Accent Rule.** Use Atelier orange for actions, focus and small emphasis; keep public sign-in plum inside its own surface.
 
 Dark Atelier overrides the same semantic variables in app/atelier.css: lifted neutral surfaces and a lighter orange. The frontmatter samples its principal roles; the CSS remains the complete light/dark mapping. No contrast-audit claim is inferred from these definitions. Sidecar tonal ramps are generated preview interpolations, not additional source tokens.
 
@@ -146,12 +171,12 @@ Dark Atelier overrides the same semantic variables in app/atelier.css: lifted ne
 
 **Body Font:** Atelier maps --font-jakarta to the platform UI stack: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica Neue, Arial. --font-sans adds the existing CJK, Thai and Tamil fallback chain. There is no separate Atelier display face.
 
-**Label/Mono Font:** employee codes use the existing --font-geist-mono through the shared mono utility. Public sign-in uses --font-jakarta, whose actual face follows the selected theme; it is not a separately pinned font.
+**Label/Mono Font:** employee codes use the existing --font-geist-mono through the shared mono utility. Public sign-in pins its display face to Login Baskervville, self-hosted from public/fonts/login/baskervville.ttf with the included SIL OFL. Its body stack starts with platform UI faces and then --font-sans; Tamil and Thai display headings use the existing script-capable sans fallback.
 
 ### Hierarchy
-- **Headline:** responsive public sign-in title, defined in frontmatter; the welcome headline is larger, with clamp(2rem, 3.1vw, 3.5rem) and a balanced 16ch measure.
+- **Headline:** Editorial workspace title uses the frontmatter headline role, two block lines, regular weight and tight leading. Subsequent authentication headings use login-auth-title. The Noveri headline is system UI, clamp(2rem, 3.2vw, 2.875rem), weight 650, line-height 1.12 and a balanced 20ch measure.
 - **Title:** operational PageHeader; Home greeting is a nearby larger step (1.5rem, 600, 1.25).
-- **Body:** compact operational text; login intro copy uses 1rem with relaxed leading. Welcome description is limited to 50ch.
+- **Body:** compact operational text; login intro copy uses .875rem, line-height 1.7 and a 31ch measure. Noveri description uses 1rem, line-height 1.5.
 - **Label:** compact controls and card strips. Rail rows are .84375rem; table headings use the smaller frontmatter role, sentence case and no tracking.
 - **Figures:** tables and compact pager ranges use tabular numerals.
 
@@ -160,7 +185,9 @@ Dark Atelier overrides the same semantic variables in app/atelier.css: lifted ne
 
 The authenticated shell runs edge to edge. Its rail is 15.5rem and header is 3rem at desktop widths. Main content has 1.75rem top, 2rem horizontal and 2.5rem bottom padding. Below 640px, the gutter is 1rem and the header wraps scope and account controls onto separate rows. Existing page layouts and width contracts remain; Home's operational grid reaches 72rem while its opening sections stay within 53.75rem.
 
-Public sign-in uses a 1.04:1 two-column split, at least one dynamic viewport tall. Each panel has fluid padding; the form is centered within a maximum 28rem column. Below 768px the welcome panel is hidden and a compact AIHR wordmark precedes the form, with 1.5rem side gutters. The built maximum is 28rem (448px at a 16px root), rather than the brief's approximate 440px. This is a surface composition, not the global page grid.
+Public sign-in uses minmax(0, 5fr) / minmax(25rem, 3fr) columns and a 100dvh minimum. Desktop form gutters are clamp(1.75rem, 3.333vw, 4rem), with no form max-width; the brand/language header and help footer have hairline boundaries. At widths ≤1023px or heights ≤600px, the Noveri panel disappears, the form/header/footer center within 28rem, and side gutters become clamp(1.5rem, 6vw, 3rem). This is a public surface composition, not the global grid.
+
+All six configured UI locales use the same entry. Tamil/Thai headlines use sans, clamp(2.3rem, 4vw, 3.6rem), line-height 1.25 and zero tracking. Malay uses clamp(2.5rem, 4.7vw, 4.25rem); at ≤360px it is 2.5rem while the other workspace headings use 3rem. Above 360px the base headline clamp remains effective in the compact layout through selector specificity. These describe the CSS cascade; no native-language review is asserted.
 
 ## V9 lifecycle reference override
 
@@ -180,13 +207,13 @@ Exact shadows, focus halos, transition timings and breakpoints are recorded in t
 
 ## Shapes
 
-Controls use the compact rounded step; cards, dialogs and login fields use the surface step. Rail rows use the smaller nav corner. Pills and identity discs stay circular. One-pixel borders define the operational geometry; the unsigned marker uses a dashed ring. Corners are gentle without making every component a capsule.
+Controls use the compact rounded step; cards and dialogs use the surface step. Public authentication fields use the smaller login-control corner; workspace entry is square and underline-only, paired with a circular arrow. Rail rows use the smaller nav corner. Pills and identity discs stay circular. One-pixel borders define the operational geometry; the unsigned marker uses a dashed ring. Corners are gentle without making every component a capsule.
 
 ## Components
 
 ### Buttons
 
-Compact and purposeful. Shared primary and outline buttons retain their existing size variants; Atelier sets a 2rem minimum and automatic height rather than one fixed universal height. Explicit 2.75rem touch minimums survive. Primary actions use orange, outline actions use a strong neutral border and quiet grey hover. Public submit fills the form width, has a 3.25rem minimum and its own indigo hover. Busy login disables the submit control and reduces opacity.
+Compact and purposeful. Shared primary and outline buttons retain their existing size variants; Atelier sets a 2rem minimum and automatic height rather than one fixed universal height. Explicit 2.75rem touch minimums survive. Primary actions use orange, outline actions use a strong neutral border and quiet grey hover. Public submit fills the form width, has a 3.25rem minimum and its own plum hover. Busy login disables the submit control and reduces opacity.
 
 ### Chips
 
@@ -198,7 +225,7 @@ Flat white surfaces with a hairline, surface corners and optional lightly tinted
 
 ### Inputs / Fields
 
-App fields use a strong boundary, compact corners, and orange focus border plus a three-pixel translucent halo. Public fields have their own darker neutral stroke and a 3.25rem minimum. The password control reserves right-side space for the inline SVG visibility toggle. The public surface supplies a two-pixel violet focus outline with four-pixel offset; existing field focus utilities may add their ring.
+App fields use a strong boundary, compact corners, and orange focus border plus a three-pixel translucent halo. Public authentication fields have their own darker neutral stroke and a 3.25rem minimum. Workspace entry instead uses a transparent, borderless 3.0625rem input above a shared hairline; the adjacent circular Continue button has the same diameter and an inline stroke SVG arrow. Continue is disabled for an empty or whitespace-only code. The password control reserves right-side space for the inline SVG visibility toggle. The public surface supplies a two-pixel violet focus outline with four-pixel offset; existing field focus utilities may add their ring.
 
 ### Navigation
 
@@ -209,6 +236,12 @@ Expanded-menu section titles are semantic, noninteractive headings. Their compac
 ### Tables and pagination
 
 Sentence-case headings, hairline divisions and 2.75rem cell height, with neutral row hover/focus. Pager and filter controls appear above rows within shared paged cards. Row actions use compact borderless text controls, with accent on hover.
+
+### Public Editorial entry and Noveri story
+
+The workspace step trims the code and advances locally; it performs no authentication or organization lookup. The next step presents the existing password/Microsoft choices. Returning to change workspace unmounts the credential form. Preserve recovery, invitation, MFA, idle and error states. The language select uses the six configured endonyms and an inline SVG chevron; help is a native details disclosure.
+
+The public illustration is fictional presentation, never a live AI session. Its owner-reviewed raster is public/login/ai-centre-demo.png with embedded provenance and adjacent ai-centre-demo.png.json. It shows for 2.6 seconds, then its actual pixels deform through a 22×14 triangular canvas mesh over 1.8 seconds into the measured, moving Interfaces face of the existing How it works ClockworkFigure. The canvas clears and hides completely; the unchanged figure then highlights its layers. The sequence ends at 19.9 seconds, runs once and provides Stop/Replay. Reduced motion shows a static clockwork with no replay control; hidden documents and small/short screens stop the animation. Configured public image/GIF/video controls and error fallback remain authoritative. This scoped explanatory motion does not authorize decorative motion elsewhere.
 
 ### Maker's Mark
 
@@ -223,8 +256,8 @@ The existing signature distinguishes a named person's confirmation from pending 
 - **Do** retain visible keyboard focus and the reduced-motion path.
 
 ### Don't:
-- **Don't** apply the public login split or indigo palette to authenticated screens by default.
+- **Don't** apply the public login split or plum palette to authenticated screens by default.
 - **Don't** replace the existing Atelier identity or restyle Classic and Monolith through unscoped overrides.
 - **Don't** treat the presence of a dark palette as a completed contrast audit.
 
-Not canonized or repaired: PRODUCT.md still describes the older floating indigo shell and stronger dark-mode assurance; the shell brief still lists mobile as unresolved despite implemented responsive rules. Navigation section captions are not a heading/eyebrow style for page content. Existing glyph back-arrow markup is not promoted into an icon rule. These pre-existing items are outside this documentation pass.
+Not canonized or repaired: PRODUCT.md still describes the older floating indigo shell and stronger dark-mode assurance; the shell brief still lists mobile as unresolved despite implemented responsive rules. Navigation section captions are not a heading/eyebrow style for page content. Existing glyph back-arrow markup is not promoted into an icon rule. These pre-existing items are outside this documentation pass. Public-login source-rendered captures use framework/server/fetch stubs and do not establish a full installed Next journey, native translation quality or contrast compliance. The final source-rendered confirmation reports 19 captures with no browser errors or overflow failures; the finish reviewer passed the scoped Malay headline correction, including desktop/mobile Malay and 320px English. That fix-scoring verdict is not a whole-surface or hosted-test approval. Hosted tests, typecheck and production build remain separate, pending evidence; this record makes no final release claim.

@@ -78,6 +78,17 @@ it.each(['numeric','compressed','oversize'] as const)('hands the %s private sour
  await assertRefusal(withTenant(ctx,tx=>source(tx,d.id)),'54000');expect((await snapshot()).reviews).toEqual([]);
  await discardEmployeeDraft(ctx,d.id);expect((await snapshot()).drafts).toEqual([]);
 });
+it.each([
+ {name:'another cohort version',data:{creationDefaultsVersion:2}},
+ {name:'an expanding cohort number',data:{creationDefaultsVersion:1e100}},
+ {name:'another numeric leaf beside the valid cohort',data:{creationDefaultsVersion:1,profile:{value:1e100}}},
+])('refuses $name without widening the native deletion course',async({data})=>{
+ const d=await plain();
+ await owner.db.execute(sql`update public.employee_draft set data=${JSON.stringify(data)}::text::jsonb where id=${d.id}::uuid`);
+ await assertRefusal(withTenant(ctx,tx=>source(tx,d.id)),'54000');
+ expect((await snapshot()).reviews).toEqual([]);
+ await discardEmployeeDraft(ctx,d.id);expect((await snapshot()).drafts).toEqual([]);
+});
 it('ordinary GUI deletion skips an old review arm and retires all pending custody without a discard proof',async()=>{
  const d=await plain(),id=await prepare(d.id);await withTenant(ctx,async tx=>{await discardEmployeeDraft(ctx,d.id,tx);const r=await command(tx,ctx,'read',id) as Stored;expect(r.metadata.state).toBe('awaiting_confirmation');expect(r.sealed).not.toBeNull();});
  expect(await status(id)).toMatchObject({state:'discarded',bodies:0,source:null,stamp:null,arm:null});

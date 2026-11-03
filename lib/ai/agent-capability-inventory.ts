@@ -45,6 +45,9 @@ export type RegisteredAgentActionPolicies={[K in AgentActionId]:AgentActionOf<K>
 
 export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<string,AgentCapabilityClass>>>>=Object.freeze({
  "app/admin/settings/login/password-policy-actions.ts":{"savePasswordPolicyAction":"handoff:access_and_authentication"},
+ "app/admin/settings/login/remembered-mfa-actions.ts":{"saveRememberedMfaAction":"handoff:access_and_authentication"},
+ "app/admin/security-center/password-policy/actions.ts":{"saveFullPasswordPolicy":"handoff:access_and_authentication"},
+ "app/admin/users/password-unlock-actions.ts":{"unlockPasswordAccountAction":"handoff:access_and_authentication"},
  "app/lifecycle/v9/email-assets/route.ts#route":{"POST":"backlog:confirm"},
  "app/lifecycle/v9/files/[caseId]/route.ts#route":{"POST":"handoff:employment_exit_or_discipline"},
  "app/lifecycle/v9/actions.ts":{"setupV9":"handoff:access_and_authentication","saveV9Config":"handoff:access_and_authentication","createV9Offboarding":"handoff:employment_exit_or_discipline","commandV9":"handoff:employment_exit_or_discipline","readV9Case":"backlog:automatic","readV9Email":"backlog:automatic","readV9Workflow":"backlog:automatic","readV9UpdatedEmail":"backlog:automatic"},
@@ -274,7 +277,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  // Formula configuration remains native-only; these are inventory ceilings, not registered agent effects.
  // Tax-basis corrections change closed-payroll tax history: the effects stay human, like Payroll Corrections.
  "app/payroll/income-tax-recalculation/actions.ts":{"previewTaxBasisAction":"backlog:approve","confirmTaxBasisAction":"handoff:payroll_reversal","continueTaxBasisAction":"handoff:payroll_reversal","recoverTaxBasisAction":"handoff:payroll_reversal"},
- "app/payroll/formula-builder/actions.ts":{"saveFormulaAction":"backlog:approve","testFormulaAction":"backlog:approve","sampleFormulaAction":"backlog:approve","formulaStateAction":"backlog:approve","deleteFormulaAction":"backlog:approve","saveAccumulationAction":"backlog:approve","searchFormulaEmployeesAction":"backlog:automatic","listFormulaBatchesAction":"backlog:automatic"},
+ "app/payroll/formula-builder/actions.ts":{"draftFormulaAction":"backlog:confirm","saveFormulaAction":"backlog:approve","testFormulaAction":"backlog:approve","sampleFormulaAction":"backlog:approve","formulaStateAction":"backlog:approve","deleteFormulaAction":"backlog:approve","saveAccumulationAction":"backlog:approve","searchFormulaEmployeesAction":"backlog:automatic","listFormulaBatchesAction":"backlog:automatic"},
  "app/payroll/payslip-information/actions.ts":{"copyPayslipInformation":"backlog:approve","savePayslipInformation":"backlog:approve"},
  "app/payroll/pcb-payment-actions.ts":{"recordPcbPaymentAction":"backlog:approve"},
  "app/payroll/process/actions.ts":{"checkPayrollCycleReadiness":"backlog:automatic","checkUnattachedForSelection":"backlog:automatic","createRunAction":"registered:multi_cycle_payroll.create_run","fetchPayrollRunEmployees":"backlog:automatic","resumeRunAction":"backlog:approve","runMultiCompanyAction":"backlog:approve","savePayrollDraftsAction":"backlog:approve","validatePayrollSelection":"backlog:automatic"},

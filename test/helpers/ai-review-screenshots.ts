@@ -13,7 +13,11 @@ async function applicationCss(){
   const result=await postcss([plugin({base:process.cwd()})]).process(readFileSync('app/globals.css','utf8'),{from:join(process.cwd(),'app/globals.css')});
   const jakarta=readFileSync('test/fixtures/topbar-fonts/jakarta-latin.woff2').toString('base64');
   const mono=readFileSync('test/fixtures/topbar-fonts/geist-mono-latin.woff2').toString('base64');
-  return result.css+'\n'+readFileSync('app/atelier.css','utf8')+`\n@font-face{font-family:ReviewJakarta;src:url(data:font/woff2;base64,${jakarta}) format('woff2');font-weight:100 900;font-style:normal;font-display:block;}@font-face{font-family:ReviewMono;src:url(data:font/woff2;base64,${mono}) format('woff2');font-weight:100 900;font-style:normal;font-display:block;}:root{--font-jakarta:ReviewJakarta;--font-geist-mono:ReviewMono;}`;
+  // Match the actual layout's four font variables: Monolith re-points the first two to these faces.
+  const schibsted=readFileSync('app/fonts/schibsted-grotesk/SchibstedGrotesk-Variable.ttf').toString('base64');
+  const dm400=readFileSync('test/fixtures/topbar-fonts/dm-mono-latin-400.woff2').toString('base64');
+  const dm500=readFileSync('test/fixtures/topbar-fonts/dm-mono-latin-500.woff2').toString('base64');
+  return result.css+'\n'+readFileSync('app/atelier.css','utf8')+`\n@font-face{font-family:ReviewJakarta;src:url(data:font/woff2;base64,${jakarta}) format('woff2');font-weight:100 900;font-style:normal;font-display:block;}@font-face{font-family:ReviewMono;src:url(data:font/woff2;base64,${mono}) format('woff2');font-weight:100 900;font-style:normal;font-display:block;}@font-face{font-family:ReviewSchibsted;src:url(data:font/ttf;base64,${schibsted}) format('truetype');font-weight:400 600;font-style:normal;font-display:block;}@font-face{font-family:ReviewDMMono;src:url(data:font/woff2;base64,${dm400}) format('woff2');font-weight:400;font-style:normal;font-display:block;}@font-face{font-family:ReviewDMMono;src:url(data:font/woff2;base64,${dm500}) format('woff2');font-weight:500;font-style:normal;font-display:block;}:root{--font-jakarta:ReviewJakarta;--font-geist-mono:ReviewMono;--font-schibsted:ReviewSchibsted;--font-dm-mono:ReviewDMMono;}`;
  })();return css;
 }
 /** The repository's own shipped script fonts (assets/fonts, OFL), served under the exact family names that
@@ -31,14 +35,14 @@ const FONT_ORIGIN='https://review-fonts.invalid/';
 const scriptFontCss=SCRIPT_FONTS.map(font=>`@font-face{font-family:'${font.family}';src:url(${FONT_ORIGIN}${font.file}) format('${font.format}');font-weight:${font.weight};font-style:normal;font-display:block;}`).join('');
 const fontBytes=new Map<string,Buffer>();
 function scriptFont(file:string):Buffer{let bytes=fontBytes.get(file);if(!bytes){bytes=brotliDecompressSync(readFileSync(join('assets/fonts',file)));fontBytes.set(file,bytes);}return bytes;}
-export async function captureAiReviewScreenshots(html:string,locale:string,section:'overview'|'queue'|'probe'|'scheduled-group'|'scheduled-company'|'runner-controls'|'runner-controls-dark'|'build-list'|'pay-rule'|'security-overview'|'security-create'|'security-invite'|'security-functions'|'security-users'|'security-permissions'|'formula-write'|'formula-conditions'|'feedback-board'|'feedback-capped'|'feedback-unloaded'|'messenger'|'formula-pay-item'|'formula-trace'|'formula-help-examples'|'formula-sample-test'|'formula-checks'|'delegation-replacement'|'inventory-group'|'inventory-company'|'runs-paged'|'followup-features'|`chat-card-${string}`|`ai-centre-${string}`,fixture='real components; fictional data owners; no authenticated server journey',theme:'classic'|'atelier'|'monolith'='classic',colorMode:'light'|'dark'='light'){
+export async function captureAiReviewScreenshots(html:string,locale:string,section:'overview'|'queue'|'probe'|'scheduled-group'|'scheduled-company'|'runner-controls'|'runner-controls-dark'|'build-list'|'pay-rule'|'security-overview'|'security-create'|'security-invite'|'security-functions'|'security-users'|'security-permissions'|'security-password-policy'|'security-password-policy-enabled'|`security-flyout-${string}`|'formula-generator'|'formula-write'|'formula-conditions'|'feedback-board'|'feedback-capped'|'feedback-unloaded'|'messenger'|'formula-pay-item'|'formula-trace'|'formula-help-examples'|'formula-sample-test'|'formula-checks'|'delegation-replacement'|'inventory-group'|'inventory-company'|'runs-paged'|'followup-features'|'people-configuration-navigation'|'lifecycle-case-onboarding'|'lifecycle-case-offboarding'|`chat-card-${string}`|`ai-centre-${string}`,fixture='real components; fictional data owners; no authenticated server journey',theme:'classic'|'atelier'|'monolith'='classic',colorMode:'light'|'dark'='light'){
  const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
  if(!evidence)return;
  if(process.env.GITHUB_ACTIONS!=='true')throw Error('Visual capture requires the selected GitHub Actions runner.');
  const executable='/usr/bin/google-chrome';
  if(!existsSync(executable))throw Error('The hosted runner Chrome executable is unavailable; no visual evidence claimed.');
  const out=join(evidence,'ui-screenshots');mkdirSync(out,{recursive:true});
- const styles=await applicationCss(),browser=await chromium.launch({executablePath:executable,headless:true});
+ const styles=(await applicationCss())+(section.startsWith('lifecycle-case-')?'\n'+readFileSync('app/onboarding-workspace.css','utf8')+'\n'+readFileSync('app/lifecycle/v9/workspace.css','utf8'):''),browser=await chromium.launch({executablePath:executable,headless:true});
  const rows=[];
  try{for(const [device,width,height] of [['desktop',1440,1000],['mobile',390,844]] as const){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
@@ -46,13 +50,40 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   await page.route(FONT_ORIGIN+'*',route=>{const font=SCRIPT_FONTS.find(row=>route.request().url()===FONT_ORIGIN+row.file);return font?route.fulfill({status:200,contentType:font.type,headers:{'Access-Control-Allow-Origin':'*'},body:scriptFont(font.file)}):route.abort();});
   await page.setContent(`<!doctype html><html lang="${locale}" data-ui-theme="${theme}" class="${colorMode==='dark'?'dark':''}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body class="bg-background text-foreground p-4 font-sans"><main class="relative min-w-0">${html}</main></body></html>`);
   await page.addStyleTag({content:styles+scriptFontCss});await page.evaluate(()=>document.fonts.ready);
+  // Inspect an actual localized text node, not merely an available/loaded font face. This catches
+  // computed-value invalidation that silently drops the entire script fallback chain.
+  const script=locale==='ta'?'Tamil':locale==='th'?'Thai':locale==='zh'?'CJK':null;
+  let scriptFontProof:unknown=null;
+  if(script){
+   const textProof=await page.evaluate(({locale,theme})=>{
+    const pattern=locale==='ta'?/[\u0b80-\u0bff]/:locale==='th'?/[\u0e00-\u0e7f]/:/[\u3400-\u9fff]/;
+    const node=Array.from(document.body.querySelectorAll<HTMLElement>('*')).find(el=>el.getBoundingClientRect().width>0&&Array.from(el.childNodes).some(child=>child.nodeType===Node.TEXT_NODE&&pattern.test(child.textContent??'')));
+    if(!node)throw Error('No actual localized script label to verify.');
+    node.setAttribute('data-review-script-font-probe','');
+    const root=getComputedStyle(document.documentElement);
+    if(theme==='monolith'&&(!root.getPropertyValue('--font-schibsted').trim()||!root.getPropertyValue('--font-dm-mono').trim()))throw Error('Monolith layout font variables are missing.');
+    return {fontFamily:getComputedStyle(node).fontFamily,bodyFontFamily:getComputedStyle(document.body).fontFamily};
+   },{locale,theme});
+   const cdp=await page.context().newCDPSession(page);
+   try{
+    await cdp.send('DOM.enable');await cdp.send('CSS.enable');
+    const {root}=await cdp.send('DOM.getDocument');
+    const {nodeId}=await cdp.send('DOM.querySelector',{nodeId:root.nodeId,selector:'[data-review-script-font-probe]'});
+    const {fonts}=await cdp.send('CSS.getPlatformFontsForNode',{nodeId});
+    const family=script==='Tamil'?/Tamil/i:script==='Thai'?/Thai/i:/(?:Sans.*(?:SC|CJK)|CJK.*SC)/i;
+    if(!fonts.some(font=>font.glyphCount>0&&family.test(font.familyName)))throw Error('Actual localized text did not use its script font: '+JSON.stringify(fonts));
+    scriptFontProof={script,...textProof,fonts};
+   }finally{await cdp.detach();}
+   await page.locator('[data-review-script-font-probe]').evaluate(node=>node.removeAttribute('data-review-script-font-probe'));
+  }
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
   const scrollRegions=await page.locator('[data-function-access-scroll]').evaluateAll(nodes=>nodes.map(node=>({width:node.clientWidth,content:node.scrollWidth,scrollable:getComputedStyle(node).overflowX==='auto'})));
   if(width===390&&scrollRegions.some(region=>!region.scrollable||region.width>=region.content))throw Error('The wide function guide must remain horizontally scrollable on a phone.');
   const clippedCalendarCells=section==='chat-card-rewards-calendar'?await page.evaluate(()=>Array.from(document.querySelectorAll('table td')).some(cell=>{const box=cell.getBoundingClientRect();return box.left<0||box.right>window.innerWidth+1||cell.scrollWidth>cell.clientWidth+1;})):false;
+  if(section==='people-configuration-navigation')await page.locator('a[href="/admin/settings/system-labels"]').scrollIntoViewIfNeeded();
   const file=`${locale}-${section}-${device}.png`;await page.screenshot({path:join(out,file),fullPage:true});
   if(section==='security-functions')await page.screenshot({path:join(out,`${locale}-${section}-${device}-viewport.png`),fullPage:false});
-  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
+  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
   if(clippedCalendarCells)throw Error('Calendar before/after value is clipped; inspect the captured evidence.');
   // This existing table intentionally scrolls horizontally on small screens. Capture its action
   // column too, so the mobile evidence shows the real controls rather than only the left-hand labels.

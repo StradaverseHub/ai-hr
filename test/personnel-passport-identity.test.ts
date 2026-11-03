@@ -211,21 +211,17 @@ describe('Passport identity — service + action behaviour (e3ce0d4d)', () => {
     });
     const p2 = await latestEventPayload(base.tenantId, id, 'employee.passport.updated');
     expect((p2 as Record<string, unknown>).before).toMatchObject({ passportNumber: 'A12345678' });
-    expect((p2 as Record<string, unknown>).after).toMatchObject({ passportNumber: 'B99999999', passportRemark: null });
+    expect((p2 as Record<string, unknown>).after).toMatchObject({ passportNumber: 'B99999999', passportRemark: 'Issued in Singapore' });
   });
 
-  it('(svc-2) passport number, issue date and expiry date are mandatory; remark is optional', async () => {
+  it('(svc-2) passport number is mandatory and dates are optional', async () => {
     const a = adminCtx(base);
     const e = await hire(a, 'Passport Missing');
     await expect(
       setPassportProfileMY(a, { personId: e.personId, passportNumber: '', passportIssueDate: '2022-01-01', passportExpiryDate: '2030-01-01' }),
     ).rejects.toBeInstanceOf(PassportRequiredError);
-    await expect(
-      setPassportProfileMY(a, { personId: e.personId, passportNumber: 'A1', passportIssueDate: '', passportExpiryDate: '2030-01-01' }),
-    ).rejects.toBeInstanceOf(PassportRequiredError);
-    await expect(
-      setPassportProfileMY(a, { personId: e.personId, passportNumber: 'A1', passportIssueDate: '2022-01-01', passportExpiryDate: '' }),
-    ).rejects.toBeInstanceOf(PassportRequiredError);
+    await setPassportProfileMY(a, { personId: e.personId, passportNumber: 'A1', passportIssueDate: '', passportExpiryDate: '2030-01-01' });
+    await setPassportProfileMY(a, { personId: e.personId, passportNumber: 'A1', passportIssueDate: '2022-01-01', passportExpiryDate: '' });
     // Remark omitted → allowed, stored null.
     await setPassportProfileMY(a, { personId: e.personId, passportNumber: 'A1', passportIssueDate: '2022-01-01', passportExpiryDate: '2030-01-01' });
     const row = await getStatutoryProfileMY(a, e.personId);

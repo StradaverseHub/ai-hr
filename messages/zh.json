@@ -521,7 +521,8 @@
     "contractSettings": "合同管理设置",
     "contractWorkflows": "合同工作流",
     "contractTemplates": "合同模板",
-    "contractIntake": "合同登记及退休证据"
+    "contractIntake": "合同登记及退休证据",
+    "passwordPolicy": "密码策略"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -1582,7 +1583,7 @@
       "passportIssueDate": "护照签发日期",
       "passportExpiryDate": "护照到期日期",
       "passportRemark": "护照备注",
-      "passportHint": "非马来西亚籍员工必须填写护照号码、签发日期和到期日期。马来西亚籍员工的护照为选填，但三项须一并填写。签发国家和备注为选填。",
+      "passportHint": "非马来西亚籍员工必须填写护照号码。签发日期、到期日期、签发国家、国家代码和备注为选填。填写的日期和国家代码必须有效。马来西亚籍员工的护照资料为选填；填写时须包含号码和两个日期，或清空全部六个字段以删除资料。",
       "savePassport": "保存护照信息",
       "identityNricTitle": "身份识别号码 (NRIC)",
       "oldIcNumber": "旧身份证号码",
@@ -2127,7 +2128,7 @@
       "superiorFailedCount": "{count, plural, one {# 名员工已导入，但无法关联其直属上级} other {# 名员工已导入，但无法关联其直属上级}}",
       "familyRelationshipLabel": "家庭关系",
       "familyGenderLabel": "家庭成员性别",
-      "instructionPassport": "护照号码、签发日期和有效期必须同时填写，或三项均留空。护照签发国使用与国籍相同的列表——请查看「参考」工作表。",
+      "instructionPassport": "非马来西亚籍员工必须填写护照号码。签发日期、到期日期、签发国家、国家代码和备注为选填。填写的日期和国家代码必须有效。马来西亚籍员工的护照资料为选填；填写时须包含号码和两个日期，或清空全部六个字段以删除资料。",
       "instructionAddress": "地址各列为员工的住家地址。州属和国家必须与「参考」工作表上的值一致。",
       "instructionProbation": "试用期结束日期仅适用于全职员工。试用期与通知期以整数的月数和天数填写。",
       "instructionSuperior": "直属上级填写员工编号或工作邮箱。可以指向本文件中位置更靠后的人，也可以是已在职的员工。",
@@ -7669,7 +7670,8 @@
         "saving": "正在保存…",
         "saved": "薪资更正设置已保存。",
         "invalid": "请选择有效的开启或关闭值。",
-        "failed": "无法保存设置。请重试。"
+        "failed": "无法保存设置。请重试。",
+        "cta": "打开薪资更正控制"
       },
       "formulaBuilder": {
         "title": "薪资公式构建器",
@@ -11140,7 +11142,7 @@
         "scope": "公司范围",
         "groupWide": "整个集团",
         "usernameHelp": "3–64 个字母、数字或 . _ @ + -。用户名保存为小写，不能替换现有账号。",
-        "passwordHelp": "14–128 个字符。用户首次登录时必须设置新密码，系统还可能应用其他密码规则。",
+        "passwordHelp": "使用符合已配置密码策略的密码。首次登录是否更改密码取决于已保存的策略。",
         "attestation": "我已核实此人的身份及此邮箱的归属，并将通过私密渠道交付临时密码。",
         "create": "创建登录账号",
         "working": "处理中…",
@@ -20264,7 +20266,8 @@
         "sections": {
           "profile": "个人资料",
           "employment": "雇佣信息",
-          "payroll": "薪资"
+          "payroll": "薪资",
+          "statutory": "法定资料"
         },
         "defaults": {
           "initialBasicSalary": "初始基本工资（空白表示零）",
@@ -20289,7 +20292,8 @@
           "payMode": "计薪模式",
           "paymentTerm": "付款周期",
           "rateAmount": "日薪／时薪",
-          "remarks": "备注"
+          "remarks": "备注",
+          "subjectToSkbbk": "需缴纳 SKBBK"
         },
         "states": {
           "awaiting_confirmation": "等待确认",
@@ -21012,7 +21016,7 @@
         "blank": "未设置",
         "title": "护照信息",
         "description": "审核现有马来西亚法定资料中的护照更新。",
-        "intro": "请输入准确的护照资料。非马来西亚籍员工须提供护照号码、签发日期和到期日期。马来西亚籍员工可清空全部六个字段以删除可选护照信息。填写任何资料时都须包含号码和两个日期。",
+        "intro": "非马来西亚籍员工必须填写护照号码。签发日期、到期日期、签发国家、国家代码和备注为选填。填写的日期和国家代码必须有效。马来西亚籍员工的护照资料为选填；填写时须包含号码和两个日期，或清空全部六个字段以删除资料。",
         "invalid": "请先检查护照资料再继续。",
         "consequence": "仅保存这六个护照字段，不更改身份证、出生日期、TP3、薪资或权限。",
         "sharedNote": "护照信息属于个人，影响其所有保留的雇佣关系。",
@@ -26859,7 +26863,7 @@
     "password": "密码",
     "newPassword": "新密码",
     "confirmation": "确认密码",
-    "passwordHelp": "使用至少 14 个字符。请勿包含用户名或电子邮箱地址。",
+    "passwordHelp": "请遵循组织的密码策略。请勿包含用户名或电子邮箱地址。",
     "passwordTitle": "设置您自己的密码",
     "enrollTitle": "设置身份验证器",
     "enrollHelp": "请先打开身份验证器应用，选择添加账户，再使用应用内的扫描功能扫描此二维码。您也可以手动输入设置密钥。然后返回此处，输入当前的六位验证码。",
@@ -26894,7 +26898,7 @@
       "invalidLogin": "组织、用户名或密码不正确，或此账号不可用。",
       "invalidChallenge": "此设置或恢复链接已过期或失效，请重新开始。",
       "invalidCode": "此验证码不正确、已过期或已使用，请尝试下一个身份验证码或未使用的恢复码。",
-      "passwordPolicy": "请使用从未用过的密码，至少 14 个字符，且不包含用户名或电子邮箱。",
+      "passwordPolicy": "请选择符合组织密码策略且不包含用户名和电子邮箱的密码。",
       "passwordMismatch": "两次密码不一致。",
       "rateLimited": "尝试次数过多，请稍后重试。",
       "unavailable": "登录或密码恢复暂时不可用，请稍后重试或联系管理员。",
@@ -27319,7 +27323,8 @@
           "product_feedback_text": "产品反馈文本",
           "closed_references": "不透明引用与限定类别（来源文本和值保留在本地）",
           "coarse_aggregate_bands": "粗粒度汇总区间（不保证匿名）",
-          "pseudonymous_person_bands": "带随机别名的个人区间（并非匿名）"
+          "pseudonymous_person_bands": "带随机别名的个人区间（并非匿名）",
+          "authored_formula_request": "用户编写的公式要求"
         },
         "redaction": {
           "pii_masked": "已遮盖",
@@ -29133,7 +29138,7 @@
       "c0b5cb6ac48b3": "护照号码",
       "c81f34b111b8a": "系统权限",
       "cc1f88e9d6c41": "进行中",
-      "c100ec1bc78a4": "To do",
+      "c100ec1bc78a4": "待办",
       "ca4c3ed04a95a": "完成",
       "cb4fe3d529dee": "异常",
       "c4118fb4fed0e": "已移除",
@@ -29353,7 +29358,55 @@
       "c5d9c3ec58913": "搜索要添加到此组的人员",
       "c95332e75dac8": "通过“我的任务”处理工作",
       "v9NoTaskLimit": "不限任务数量",
-      "cd1a339556dbb": "未完成任务"
+      "cd1a339556dbb": "未完成任务",
+      "caseDocuments": "文档",
+      "caseCaseFiles": "个案文件",
+      "caseWorkflows": "工作流",
+      "casePersonEmails": "此人员的邮件",
+      "caseSentEmails": "已发送邮件",
+      "caseNoDocuments": "尚未生成文档。",
+      "caseNoFiles": "尚未上传文件。",
+      "caseNoEmails": "暂无邮件发送记录。",
+      "caseDocumentsWhenRun": "工作流运行后会显示文档。",
+      "caseNoEquipment": "未申请设备或访问权限。",
+      "caseRequestedItems": "已申请 {count} 项",
+      "caseSelectedItems": "已选择 {count} 项",
+      "caseEmailHelp": "预览当前个案、编辑邮件内容，或向自己发送测试邮件。",
+      "caseEditedPerson": "已为此人员编辑",
+      "casePreview": "预览",
+      "caseGenerate": "生成",
+      "caseRegenerate": "重新生成",
+      "caseOpen": "打开",
+      "caseStartNow": "立即开始",
+      "caseContinue": "继续",
+      "caseOpenWorkflow": "打开工作流",
+      "caseSendTest": "发送测试",
+      "caseEditPerson": "为此人员编辑",
+      "casePaused": "已暂停",
+      "caseRunning": "正在运行",
+      "caseWaiting": "等待中",
+      "caseNeedsReview": "需要审核",
+      "caseSkipped": "已跳过",
+      "casePersonWorkflows": "此人员的工作流",
+      "caseNoWorkflows": "没有匹配此个案的有效工作流。",
+      "caseSubmitDocuments": "提交入职个案以开始生成文档。",
+      "casePreviewMessage": "预览消息",
+      "casePreviewDocument": "预览文档",
+      "caseCancelOffboarding": "取消离职个案",
+      "caseExitClearance": "离职结清",
+      "caseLastWorkingDay": "最后工作日",
+      "caseLeavers": "离职员工",
+      "caseNeedsHrReview": "需要人事审核",
+      "caseNoPersonnelChanges": "没有待人员管理审核的更改。",
+      "caseNoChecklistTasks": "没有清单任务。",
+      "caseNoReturnItems": "未记录需归还或撤销的项目。",
+      "caseOffboardingChecklist": "离职清单",
+      "caseOpenDocument": "打开文档",
+      "caseReturnRevoke": "归还与撤销",
+      "caseItem": "物品",
+      "caseType": "类型",
+      "caseProvidedBy": "提供方",
+      "caseReturnDue": "归还或撤销日期"
     }
   },
   "processAssessment": {
@@ -32880,6 +32933,10 @@
     "users": {
       "title": "用户",
       "description": "查找用户并管理角色、邀请和账户访问权限。"
+    },
+    "passwordPolicy": {
+      "title": "密码策略",
+      "description": "创建、更改或重置密码时应用新的复杂度规则。外部组织登录仍采用其提供商的密码策略。"
     }
   },
   "payFormula": {
@@ -33269,7 +33326,7 @@
       "title": "公式测试与结果",
       "sample": "示例数值",
       "employee": "真实员工",
-      "sampleHelp": "保存前即可使用。只使用您在此输入的数字；不会写入任何薪资数据。",
+      "sampleHelp": "保存前即可测试。仅使用您在此输入的值；不会写入薪资记录。",
       "fields": {
         "Basic": "基本工资",
         "FixedAllowances": "固定津贴",
@@ -33305,6 +33362,46 @@
         "division_by_zero": "第 {line} 行除以 0。该员工的薪资将因计算错误而停止。",
         "out_of_range": "结果超出薪资项目可支付的金额范围（0 至 100,000,000）。"
       }
+    },
+    "generator": {
+      "title": "AI公式生成器",
+      "requirement": "描述计算要求",
+      "disclosure": "您的描述将发送给组织批准的AI服务商。请使用虚构示例，不要包含员工记录。",
+      "consent": "我了解将发送哪些信息。",
+      "generate": "生成公式",
+      "regenerate": "重新生成公式",
+      "working": "正在生成…",
+      "clear": "清空",
+      "apply": "应用到公式编辑器",
+      "variables": "使用的变量",
+      "valid": "公式语法已检查。保存前请审核并测试。",
+      "needsClarification": "需要补充说明或选择受支持的替代方案。",
+      "replaceTitle": "替换编辑器内容？",
+      "replaceHelp": "应用此草稿将替换当前文本和未保存的修改。",
+      "replace": "替换内容",
+      "cancel": "取消",
+      "draftOnly": "AI草稿不会自动保存、启用或应用到薪资。示例测试使用薪资计算器。",
+      "failed": "无法生成或验证草稿。请检查要求后重试。",
+      "unavailable": "没有可用的已批准AI连接。仍可手动编辑。",
+      "reviewRequired": "生成公式需要批准其数据共享规则。仍可手动编辑。",
+      "applied": "草稿已应用到编辑器。保存前请审核并测试。",
+      "fields": {
+        "joinDate": "入职日期",
+        "groupJoinDate": "集团入职日期",
+        "resignationDate": "辞职日期",
+        "confirmationDate": "转正日期",
+        "lastWorkingDate": "最后工作日期",
+        "employmentType": "雇佣类型",
+        "employeeNo": "员工编号",
+        "departmentCode": "部门代码",
+        "positionCode": "职位代码",
+        "gradeCode": "职级代码",
+        "dateOfBirth": "出生日期",
+        "gender": "性别",
+        "nationality": "国籍",
+        "maritalStatus": "婚姻状况"
+      },
+      "conditions": "已验证的条件"
     }
   },
   "payrollTaxBasis": {
@@ -33649,7 +33746,7 @@
     }
   },
   "passwordPolicy": {
-    "title": "密码安全",
+    "title": "密码策略",
     "description": "设置 HR 密码的定期更改。在 Entra 中管理 Microsoft 密码和条件访问。",
     "enabled": "要求定期更改密码",
     "interval": "更改间隔",
@@ -33667,6 +33764,35 @@
       "conflict": "其他管理员已更改此策略。请刷新后再保存。",
       "forbidden": "您无权更改此策略。",
       "unavailable": "密码设置暂不可用。请重试。"
+    },
+    "full": {
+      "minLength": "密码最小长度",
+      "maxLength": "密码最大长度",
+      "uppercase": "必须包含大写字母",
+      "lowercase": "必须包含小写字母",
+      "numbers": "必须包含数字",
+      "special": "必须包含特殊字符",
+      "historyEnabled": "禁止重复使用历史密码",
+      "historyCount": "记住的历史密码数量",
+      "lockoutEnabled": "登录失败后锁定账户",
+      "failedAttempts": "连续失败次数",
+      "autoUnlock": "自动解锁账户",
+      "unlockMinutes": "解锁等待时间（分钟）",
+      "forceFirstChange": "首次登录时强制修改密码",
+      "firstResetVerification": "首次登录或重置时使用验证器或恢复码",
+      "complexity": "复杂度和有效期",
+      "expiry": "密码有效期",
+      "account": "账户保护",
+      "firstLogin": "首次登录和重置",
+      "manualUnlock": "关闭自动解锁后，只有获授权的管理员才能解锁账户。",
+      "legacy": "保存前继续执行现有验证规则。保存将以所示值替换之前的复杂度和历史密码规则。",
+      "mfa": "正常登录的现有验证器要求继续适用。此设置不会关闭强制多因素验证，也不允许仅凭电子邮件恢复账户。",
+      "effect": "创建、更改或重置密码时应用新的复杂度规则。外部组织登录仍采用其提供商的密码策略。",
+      "unlockTitle": "解锁密码账户",
+      "unlockUser": "用户账户",
+      "unlockChoose": "选择用户",
+      "unlockAction": "解锁账户",
+      "unlocked": "账户已解锁。"
     }
   },
   "workflowModules": {

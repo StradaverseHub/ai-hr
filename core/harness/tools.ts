@@ -90,9 +90,11 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
     if(spec.name==='my_leave_requests'&&hasTeamAccess(ctx)&&asksPendingForMe(scope.personWords))return{ok:true,content:{...outcome,note:QUEUE_NOTE}};
     return NAMED_OTHERS.has(declared.entity)?{ok:true,content:outcome,namesInScope:await administeredEmployments(ctx,outcome)}:{ok:true,content:outcome};}};
  });
+ const publicContext:readonly string[]=HARNESS_SPEC.offer.publicContextTools;
  const teras=(await terasCapabilitiesFor(ctx)).map((capability):ToolBinding=>{
   const spec=terasToolSpecs().find(row=>row.name===capability.name)!,declared=TERAS_READS.find(read=>read.name===capability.name)!;
-  return{name:spec.name,kind:'read',entity:declared.entity,spec,identifierInputs:[],
+  // Only the spec's closed public names are context. Keep the semantic entity for declared disclosure.
+  return{name:spec.name,kind:publicContext.includes(capability.name)?'context':'read',entity:declared.entity,spec,identifierInputs:[],
    async run(input){const outcome=await capability.run(ctx,input,scope);return outcome.ok?{ok:true,content:outcome}:{ok:false,content:outcome,refusal:outcome.refusal};}};
  });
  const context=contextToolSpecsFor(ctx).map((spec):ToolBinding=>({name:spec.name,kind:'context',entity:null,spec,identifierInputs:[],

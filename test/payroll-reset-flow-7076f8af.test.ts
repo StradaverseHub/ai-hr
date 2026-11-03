@@ -249,9 +249,9 @@ describe('7076f8af — the two relocated cards', () => {
     expect(PROCESS_PAGE).not.toMatch(/ComponentImport/);
   });
 
-  it('4d. both are reachable from the Transactions hub cards', () => {
-    expect(HUB).toMatch(/href="\/payroll\/transactions\/adjustments"/);
-    expect(HUB).toMatch(/href="\/payroll\/transactions\/import-components"/);
+  it('4d. d409dc22 removes duplicate hub cards while preserving both destination routes', () => {
+    expect(HUB).not.toMatch(/href="\/payroll\/transactions\/adjustments"/);
+    expect(HUB).not.toMatch(/href="\/payroll\/transactions\/import-components"/);
   });
 });
 

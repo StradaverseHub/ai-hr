@@ -8,6 +8,8 @@ import {join} from 'node:path';
 import {eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,expect,it} from 'vitest';
 import {commitEmployeeImport} from '../core/import';
+import {updatePerson} from '../core/org';
+import {commitSectionImport,validateSectionImport} from '../core/import-sections';
 import {createBankImportJob,uploadBankImportChunk,bankImportCommand,getBankImportJob} from '../core/bank-import-job';
 import {parseCsvRecords} from '../lib/csv';
 import * as s from '../db/schema';
@@ -33,7 +35,19 @@ const WEB_TAX_BASIS_READER = ", set_config('app.payroll_tax_basis_reader', '1', 
 
 // Only the exact independently reviewed Bank changes may differ in the new web source.
 // The executed old worker still receives its own immutable original bytes below.
-const REVIEWED_BANK_SOURCE='9a1b613d8f7208e59ca389b0f72a67970a023a36';
+const PRIOR_REVIEWED_BANK_SOURCE='9a1b613d8f7208e59ca389b0f72a67970a023a36';
+// 3abe changes only buildProfile's passport check: required trio/order becomes the pack's
+// nationality-aware validator. Bank jobs select bank_statutory at validation AND commit; the
+// archived968 bytes remain unchanged and the real foreign-subject/cross-source cases below prove it.
+const REVIEWED_BANK_SOURCE='3abe7f046b9445447010e86503aa86ad7deb97a7';
+const PRIOR_PROFILE_PASSPORT_CHECK=`    if (!merged.passportNumber || !merged.passportIssueDate || !merged.passportExpiryDate) {
+      errors.push(
+        'passport_number, passport_issue_date and passport_expiry_date must all be on file together — this employee has none stored, so all three are needed',
+      );
+    } else if (merged.passportExpiryDate < merged.passportIssueDate) {
+      errors.push('passport_expiry_date must be on or after passport_issue_date');`;
+const REVIEWED_PROFILE_PASSPORT_CHECK=`    if (!subject.pack.statutory.validatePassport({personId:subject.personId,...merged},row.personPatch?.fields?.nationality??subject.personRow.nationality)) {
+      errors.push('passport_number is required for non-Malaysian employees; check supplied passport dates and country code');`;
 const reviewedChanges=['core/bank-import-worker.ts','core/import-sections.ts','core/import-history.ts'];
 // The web package migration entry changed for guarded CI provisioning, not for the worker tick.
 // Pin all three reviewed owners byte-for-byte; no arbitrary command omission or script allowlist.
@@ -56,6 +70,10 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
  for(const path of unchanged.filter(path=>path!=='db/client.ts'))expect(execFileSync('git',['show',WORKER_SOURCE+':'+path],{encoding:'utf8'}),path+' never reads payslip').not.toMatch(/payslip/i);
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim().split('\n').sort()).toEqual([...reviewedChanges].sort());
  expect(execFileSync('git',['diff','--name-only',REVIEWED_BANK_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim()).toBe('');
+ const priorSections=execFileSync('git',['show',PRIOR_REVIEWED_BANK_SOURCE+':core/import-sections.ts'],{encoding:'utf8'});
+ expect(priorSections.split(PRIOR_PROFILE_PASSPORT_CHECK)).toHaveLength(2);
+ expect(execFileSync('git',['show',REVIEWED_BANK_SOURCE+':core/import-sections.ts'],{encoding:'utf8'})).toBe(priorSections.replace(PRIOR_PROFILE_PASSPORT_CHECK,REVIEWED_PROFILE_PASSPORT_CHECK));
+ for(const path of reviewedChanges.filter(path=>path!=='core/import-sections.ts'))expect(execFileSync('git',['show',REVIEWED_BANK_SOURCE+':'+path],{encoding:'utf8'})).toBe(execFileSync('git',['show',PRIOR_REVIEWED_BANK_SOURCE+':'+path],{encoding:'utf8'}));
  // PR61 adds the explicit validator/server marker deltas. The later guarded migration entry
  // still delegates to the same drizzle-kit engine; the archived worker is started directly below.
  // Normalize only this one EXACT reviewed comparison value; every other package key remains checked.
@@ -112,9 +130,16 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
   const imported=await commitEmployeeImport(ctx,{companyId:base.companyId,records:parseCsvRecords('full_name,email,department,hired_on,ic_number,basic_salary,employee_code\nFictional compatibility employee,ai-worker-compat@example.test,Finance,2026-01-05,900101105555,5000,AICOMPAT').records});
   expect(imported.imported,JSON.stringify(imported.failed)).toBe(1);
   const [employee]=await owner.db.select().from(s.employment).where(eq(s.employment.employeeCode,'AICOMPAT'));
+  await updatePerson(ctx,{personId:employee.personId,fullName:'Fictional compatibility employee',primaryEmail:'ai-worker-compat@example.test',nationality:'Singaporean'});
+  // Exercise the new WEB Profile branch, not a Bank job pretending to be a Passport import.
+  const passportRecords=parseCsvRecords('employee_code,passport_number\nAICOMPAT,FOREIGN-COMPAT-ONLY').records;
+  expect((await validateSectionImport(ctx,{section:'profile',records:passportRecords})).rows[0]).toMatchObject({ok:true,changes:['passport_number']});
+  expect(await commitSectionImport(ctx,{section:'profile',records:passportRecords})).toMatchObject({updated:1,failed:[]});
+  const passport=async()=>{const [row]=await owner.db.select({number:s.employeeStatutoryMy.passportNumber,issue:s.employeeStatutoryMy.passportIssueDate,expiry:s.employeeStatutoryMy.passportExpiryDate,remark:s.employeeStatutoryMy.passportRemark,country:s.employeeStatutoryMy.passportIssuingCountry,countryCode:s.employeeStatutoryMy.passportIssuingCountryCode}).from(s.employeeStatutoryMy).where(eq(s.employeeStatutoryMy.personId,employee.personId));return row;};
+  const passportBefore=await passport();expect(passportBefore).toMatchObject({number:'FOREIGN-COMPAT-ONLY',issue:null,expiry:null});
   const [schema]=await owner.db.execute<{quota_table:string;ledger:number}>(sql`select to_regclass('app.assistant_question_budget')::text as quota_table,(select count(*)::int from drizzle.__drizzle_migrations) as ledger`);
   expect(schema.quota_table).toBe('app.assistant_question_budget');expect(schema.ledger).toBeGreaterThanOrEqual(563);
-  const bytes=Buffer.from('employee_code,tax_number\nAICOMPAT,T-AI-COMPAT');
+  const bytes=Buffer.from('employee_code,tax_number,bank_name,bank_account_no\nAICOMPAT,T-AI-COMPAT,Maybank,000123456789');
   const admission=await createBankImportJob(ctx,{name:'fictional-compat.csv',bytes:bytes.length,hash:createHash('sha256').update(bytes).digest('hex')});
   await uploadBankImportChunk(ctx,admission.job.id,0,bytes);await bankImportCommand(ctx,admission.job.id,'validate');
   tick();expect((await getBankImportJob(ctx,admission.job.id)).job).toMatchObject({state:'validating',total:1,saved:0});
@@ -125,11 +150,30 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
   await bankImportCommand(ctx,admission.job.id,'confirm');tick();tick();
   const done=(await getBankImportJob(ctx,admission.job.id)).job;
   expect(done).toMatchObject({state:'completed',total:1,processed:1,saved:1,failed:0});
-  expect((await owner.db.select().from(s.employeeStatutoryMy).where(eq(s.employeeStatutoryMy.personId,employee.personId)))[0].taxNumber).toBe('T-AI-COMPAT');
+  expect((await owner.db.select().from(s.employeeStatutoryMy).where(eq(s.employeeStatutoryMy.personId,employee.personId)))[0]).toMatchObject({taxNumber:'T-AI-COMPAT',bankName:'Maybank',bankAccountNo:'000123456789'});
+  expect(await passport()).toEqual(passportBefore);
   const history=await owner.db.select().from(s.importAttemptItem).where(eq(s.importAttemptItem.attemptId,done.attemptId!));expect(history).toHaveLength(1);
   // A new process against the durable completed job cannot duplicate its canonical effect or receipt.
   tick();expect((await getBankImportJob(ctx,admission.job.id)).job).toMatchObject({state:'completed',saved:1,processed:1});
   expect(await owner.db.select().from(s.importAttemptItem).where(eq(s.importAttemptItem.attemptId,done.attemptId!))).toEqual(history);
+  // Recognized Profile columns are refused as a WHOLE file, never ignored or written through Bank.
+  const personsBefore=await owner.db.select().from(s.person).where(eq(s.person.id,employee.personId));
+  const statutoryBefore=await owner.db.select().from(s.employeeStatutoryMy).where(eq(s.employeeStatutoryMy.personId,employee.personId));
+  const attemptsBefore=await owner.db.select().from(s.importAttempt).where(eq(s.importAttempt.tenantId,base.tenantId)).orderBy(s.importAttempt.id);
+  for(const [name,text] of [
+   ['passport-only.csv','employee_code,passport_number\nAICOMPAT,REJECTED-PASSPORT'],
+   ['bank-plus-passport.csv','employee_code,tax_number,bank_name,bank_account_no,passport_number\nAICOMPAT,REJECTED-TAX,Maybank,9999999999,REJECTED-PASSPORT'],
+  ]){
+   const content=Buffer.from(text),rejected=await createBankImportJob(ctx,{name,bytes:content.length,hash:createHash('sha256').update(content).digest('hex')});
+   await uploadBankImportChunk(ctx,rejected.job.id,0,content);await bankImportCommand(ctx,rejected.job.id,'validate');
+   tick();expect((await getBankImportJob(ctx,rejected.job.id)).job).toMatchObject({state:'validating',total:1,saved:0});
+   tick();expect((await getBankImportJob(ctx,rejected.job.id)).job).toMatchObject({state:'failed',saved:0,processed:0,attemptId:null});
+   await expect(bankImportCommand(ctx,rejected.job.id,'confirm')).rejects.toThrow('Wait for validation');
+   expect(await owner.db.select().from(s.person).where(eq(s.person.id,employee.personId))).toEqual(personsBefore);
+   expect(await owner.db.select().from(s.employeeStatutoryMy).where(eq(s.employeeStatutoryMy.personId,employee.personId))).toEqual(statutoryBefore);
+   expect(await owner.db.select().from(s.importAttempt).where(eq(s.importAttempt.tenantId,base.tenantId)).orderBy(s.importAttempt.id)).toEqual(attemptsBefore);
+   expect(await owner.db.select().from(s.importAttemptItem).where(eq(s.importAttemptItem.attemptId,done.attemptId!))).toEqual(history);
+  }
   const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
   if(evidence){mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,'worker-cross-version.json'),JSON.stringify({
    kind:'GIT_SOURCE_CROSS_VERSION_FIXTURE_NOT_PACKET_OR_LIVE_ACCEPTANCE',workerSource:WORKER_SOURCE,webSource:process.env.AIHR_CI_HEAD,
@@ -137,6 +181,7 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
    correctedRootPolicy:PACKET_POLICY,actualPacketExecuted:false,authenticatedCorrectedPacketProofRequired:true,
    schemaEntries:schema.ledger,unchangedSourcePaths:unchanged.filter(path=>path!=='db/client.ts'),reviewedWebTypeOnlyChange:{path:'db/client.ts',workerDeclaration:WORKER_AGENT_ENABLEMENT,webDeclaration:WEB_AGENT_ENABLEMENT,allOtherBytesIdentical:true,executedArchivedBytes:WORKER_SOURCE},reviewedChangedPathContracts:{source:REVIEWED_BANK_SOURCE,paths:reviewedChanges,executedWorkerBytes:WORKER_SOURCE},reviewedWebMigrationEntryChange:{workerCommand:WORKER_MIGRATION_COMMAND,webCommand:WEB_MIGRATION_COMMAND,inputs:REVIEWED_MIGRATION_INPUTS,executedArchivedPackageAndLock:WORKER_SOURCE,workerTickUsesPackageMigrationCommand:false},sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
    newWebAdmission:true,humanCommandFixture:true,canonicalWrite:true,tenantDenial:true,newProcessReplay:true,historyItems:history.length,
+   reviewedWebPassportChange:{priorSource:PRIOR_REVIEWED_BANK_SOURCE,source:REVIEWED_BANK_SOURCE,changedBranch:'buildProfile',webProfileNumberOnlyApplied:true,archivedWorkerBankTaxPreservedNumberOnlyPassport:true,passportOnlyAndMixedBankSourcesRefused:true,refusedSourcesCreatedNoAttemptOrPersonnelMutation:true},
    protectedServiceVerified:false,liveRestartVerified:false,deploymentAuthorized:false,
   },null,2)+'\n');}
  }finally{rmSync(directory,{recursive:true,force:true});}

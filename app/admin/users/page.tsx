@@ -1,3 +1,5 @@
+import {PasswordUnlock} from './password-unlock';
+import {internalSelected} from '@/lib/internal-auth/config';
 import {getTranslations} from 'next-intl/server';
 import {redirect} from 'next/navigation';
 import Link from 'next/link';
@@ -21,6 +23,7 @@ export default async function UsersPage({searchParams}:{searchParams:Promise<{er
   {params.error&&<div role="alert"><ErrorBanner message={params.error}/></div>}
   <div data-tour="admin-provisioning" className="rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">{t.rich('provisioningNote',{strong:chunks=><span className="font-medium">{chunks}</span>,em:chunks=><em>{chunks}</em>})}</div>
   {isGroupAdmin(s)&&<><LegacySecurityNavigation/><noscript><p>{center('legacyHelp')}</p><Link href={`/admin/users/create${target}`} className={btnGhost}>{center('create.title')}</Link><Link href={`/admin/users/invite${target}`} className={btnGhost}>{center('invite.title')}</Link></noscript></>}
+  {groupAdmin&&internalSelected()&&<PasswordUnlock users={rows.flatMap(row=>row.appUserId?[{id:row.appUserId,label:row.name??row.email??row.appUserId}]:[])}/>}
   <UsersDirectory rows={rows} groupAdmin={groupAdmin} includeArchived={params.archived==='1'} companies={companies} roleOptions={[...roleOptions]} assistantGrantedIds={rows.flatMap(row=>row.appUserId&&assistantGranted.has(row.appUserId)?[row.appUserId]:[])}/>
  </div>;
 }
