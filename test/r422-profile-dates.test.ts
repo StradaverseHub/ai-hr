@@ -365,7 +365,7 @@ describe('r422 — the employee profile draws every date as DD-MMM-YYYY', () => 
     const bare: string[] = [];
     let dateFields = 0;
     for (const sp of views) {
-      const markup = await html(e.employmentId, sp);
+      const markup = await html(e.employmentId, sp).catch(cause=>{throw new Error("Could not render the exact movement view: "+JSON.stringify(sp),{cause});});
       const strings = seenStrings(markup);
       raw.push(...strings.filter((t) => ISO.test(t)).map((t) => `${JSON.stringify(sp)} → ${t}`));
       seen.push(...strings);
