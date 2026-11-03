@@ -71,6 +71,12 @@ it('applies the Teras tail from 0890/0891 on over populated leave policy and app
    {table:'teras_chat',rls:true,s:true,i:true,u:false,d:true,t:false},
    {table:'teras_chat_retention',rls:true,s:true,i:true,u:true,d:false,t:false},
    {table:'teras_chat_turn',rls:true,s:true,i:true,u:false,d:false,t:false},
+   // 0960 (AI v2 loops at the Prepare level): REVOKE ALL, then exactly GRANT SELECT, INSERT, UPDATE on the case and the
+   // per-company pause (the agent never deletes a case; a pause is resumed by an update, never deleted) and GRANT
+   // SELECT, INSERT on the run, the loop's append-only outcome record (its trigger refuses UPDATE and DELETE too).
+   {table:'teras_loop_case',rls:true,s:true,i:true,u:true,d:false,t:false},
+   {table:'teras_loop_pause',rls:true,s:true,i:true,u:true,d:false,t:false},
+   {table:'teras_loop_run',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_mandate',rls:true,s:true,i:true,u:true,d:false,t:false},
    {table:'teras_mandate_control',rls:true,s:true,i:true,u:true,d:false,t:false},
    {table:'teras_mandate_job_type_enablement',rls:true,s:true,i:true,u:true,d:false,t:false},
