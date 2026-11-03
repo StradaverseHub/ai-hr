@@ -145,3 +145,21 @@ export const CLOCKING_SITE_CAPABILITY_PUBLICATION={
   'app.clocking_site_company_guard()',
  ],
 } as const;
+
+export const ATTENDANCE_ROTATION_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='attendancePolicy.rotations'),
+ functionLegacyParityFunction:'app.attendance_rotation_native_allowed',
+ functionCurrentLegacyParityFunction:'app.attendance_rotation_current_native_allowed',
+ legacyGroups:{},
+ requiredFunctions:['app.attendance_schedule_controls_bindings_complete()','app.attendance_rotation_allowed(text)','app.attendance_rotation_action_guard()'],
+} as const;
+
+export const ATTENDANCE_SCHEDULE_CONTROL_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='attendancePolicy.dutyRoster'||descriptor.key==='attendancePolicy.exceptions'),
+ functionLegacyParityFunction:'app.attendance_schedule_control_native_allowed',
+ functionCurrentLegacyParityFunction:'app.attendance_schedule_control_current_native_allowed',
+ legacyGroups:{},
+ requiredFunctions:['app.attendance_schedule_controls_bindings_complete()','app.attendance_schedule_control_allowed(text,text)','app.attendance_schedule_control_guard()'],
+} as const;

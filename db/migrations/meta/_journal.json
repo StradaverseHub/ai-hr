@@ -4747,6 +4747,13 @@
       "when": 1793330000374,
       "tag": "0974_clocking_site_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 822,
+      "version": "7",
+      "when": 1793330000375,
+      "tag": "0975_attendance_schedule_control_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

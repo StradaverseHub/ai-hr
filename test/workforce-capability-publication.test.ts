@@ -125,7 +125,7 @@ it('registers exact mixed-case native submenu IDs while preserving closed gramma
 it('reports registered actions without a package and leaves the full publisher closed',async()=>{
  const before=await snapshot();
  await expect(publishAllActionCapabilities(owner.client))
-  .rejects.toThrow(/registry coverage differs .*function\.attendancePolicy\.rotations\.view/);
+  .rejects.toThrow(/registry coverage differs .*function\.leaveEmployeeRecords\.view/);
  expect(await snapshot()).toEqual(before);
 });
 it('publishes Workforce Records and preserves the separate Edit denial',async()=>{
@@ -174,6 +174,16 @@ it('publishes Attendance Schedule and keeps the company-independent View action 
   expect(await publishActionCapabilityPackage(owner.client,'attendance_schedule')).toMatchObject({changed:false});
   expect(await publishActionCapabilityPackage(owner.client,'attendance_shifts')).toMatchObject({changed:true,capabilities:4});
   expect(await publishActionCapabilityPackage(owner.client,'attendance_shifts')).toMatchObject({changed:false});
+  expect(await publishActionCapabilityPackage(owner.client,'attendance_schedule_controls')).toMatchObject({changed:true,capabilities:6});
+  expect(await publishActionCapabilityPackage(owner.client,'attendance_schedule_controls')).toMatchObject({changed:false});
+  const controls=()=>withTenant(ctx,tx=>tx.execute(sql`select
+   app.attendance_rotation_allowed('edit') as rotation,
+   app.attendance_schedule_control_allowed('attendancePolicy.dutyRoster','edit') as duty,
+   app.attendance_schedule_control_allowed('attendancePolicy.exceptions','edit') as exception`));
+  expect(await controls()).toEqual([{rotation:true,duty:true,exception:true}]);
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,effect)
+   values(${b.tenantId}::uuid,${ctx.userId!}::uuid,'function.attendancePolicy.rotations.edit','deny')`;
+  expect(await controls()).toEqual([{rotation:false,duty:true,exception:true}]);
   const view=()=>withTenant(ctx,tx=>tx.execute(sql`select app.module_function_allowed('attendancePolicy.schedule','view',null) as allowed`));
   expect(await view()).toEqual([{allowed:true}]);
   await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,effect)
@@ -187,9 +197,11 @@ it('publishes Attendance Schedule and keeps the company-independent View action 
   expect(await shift()).toEqual([{view:true,add:false}]);
  }finally{
   await owner.client`delete from app.access_native_capability_default
-   where capability_id like 'attendance_configuration.%' or capability_id like 'function.attendancePolicy.schedule.%' or capability_id like 'function.attendancePolicy.shifts.%'`;
+   where capability_id like 'attendance_configuration.%' or capability_id like 'function.attendancePolicy.schedule.%' or capability_id like 'function.attendancePolicy.shifts.%'
+    or capability_id like 'function.attendancePolicy.rotations.%' or capability_id like 'function.attendancePolicy.dutyRoster.%' or capability_id like 'function.attendancePolicy.exceptions.%'`;
   await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
-   where id like 'attendance_configuration.%' or id like 'function.attendancePolicy.schedule.%' or id like 'function.attendancePolicy.shifts.%'`;
+   where id like 'attendance_configuration.%' or id like 'function.attendancePolicy.schedule.%' or id like 'function.attendancePolicy.shifts.%'
+    or id like 'function.attendancePolicy.rotations.%' or id like 'function.attendancePolicy.dutyRoster.%' or id like 'function.attendancePolicy.exceptions.%'`;
  }
 });
 it('keeps Workforce Imports closed if the Qualification subject guard is disabled',async()=>{
