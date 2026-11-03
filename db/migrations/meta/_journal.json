@@ -4936,6 +4936,13 @@
       "when": 1793330000401,
       "tag": "1001_onehr_review_storage_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 849,
+      "version": "7",
+      "when": 1793330000402,
+      "tag": "1002_financial_letter_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

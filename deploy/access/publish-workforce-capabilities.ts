@@ -8,7 +8,7 @@ import {ATTENDANCE_ROTATION_CAPABILITY_PUBLICATION,ATTENDANCE_SCHEDULE_CAPABILIT
 import {LIFECYCLE_ASSIGNED_EXCEPTION_CAPABILITY_PUBLICATION,LIFECYCLE_DELIVERY_CAPABILITY_PUBLICATIONS,LIFECYCLE_RECOVERY_CAPABILITY_PUBLICATION,LIFECYCLE_TASK_CAPABILITY_PUBLICATION,NOTICE_AUTHOR_CAPABILITY_PUBLICATION} from './lifecycle-reward-notice-capability-bindings';
 import {REWARDS_READ_CAPABILITY_PUBLICATION} from './rewards-function-bindings';
 import {FINANCIAL_SETUP_CAPABILITY_PUBLICATION,PAY_COMPONENT_CATALOGUE_CAPABILITY_PUBLICATION} from './financial-setup-capability-bindings';
-import {FINANCIAL_LETTER_CAPABILITY_PUBLICATION,LETTER_OPERATIONS_CAPABILITY_PUBLICATION,ONEHR_PANEL_FEEDBACK_CAPABILITY_PUBLICATION,ONEHR_PLAN_ACKNOWLEDGEMENT_CAPABILITY_PUBLICATION,PAYROLL_OPERATIONS_CAPABILITY_PUBLICATION,PERFORMANCE_CYCLE_CAPABILITY_PUBLICATION} from './financial-letter-capability-bindings';
+import {FINANCIAL_LETTER_CAPABILITY_PUBLICATION,LETTER_OPERATIONS_CAPABILITY_PUBLICATION,ONEHR_PANEL_FEEDBACK_CAPABILITY_PUBLICATION,ONEHR_PLAN_ACKNOWLEDGEMENT_CAPABILITY_PUBLICATION,ONEHR_REVIEW_CAPABILITY_PUBLICATION,PAYROLL_OPERATIONS_CAPABILITY_PUBLICATION,PERFORMANCE_CYCLE_CAPABILITY_PUBLICATION} from './financial-letter-capability-bindings';
 import {ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION} from './organisation-settings-capability-bindings';
 
 export const WORKFORCE_CAPABILITY_PUBLICATION_VERSION=3;
@@ -125,6 +125,7 @@ const ACTION_PACKAGES={
  performance_cycles:[PERFORMANCE_CYCLE_CAPABILITY_PUBLICATION],
  onehr_plan_acknowledgement:[ONEHR_PLAN_ACKNOWLEDGEMENT_CAPABILITY_PUBLICATION],
  onehr_panel_feedback:[ONEHR_PANEL_FEEDBACK_CAPABILITY_PUBLICATION],
+ onehr_reviews:[ONEHR_REVIEW_CAPABILITY_PUBLICATION],
  organisation_settings:[ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION],
  financial_setup:[FINANCIAL_SETUP_CAPABILITY_PUBLICATION],
  pay_component_catalogue:[PAY_COMPONENT_CATALOGUE_CAPABILITY_PUBLICATION],
@@ -222,7 +223,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
   const uninstalled=rows.every(row=>!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0);
   const knownV1=rows.every(row=>{const old=WORKFORCE_CAPABILITY_BINDINGS_V1.find(item=>item.id===row.id);return old?row.supported&&exactBindings(row.bindings,old.bindings):!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0;});
   const knownV2=rows.every(row=>{const old=WORKFORCE_CAPABILITY_BINDINGS_V2.find(item=>item.id===row.id);return old?row.supported&&exactBindings(row.bindings,old.bindings):!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0;});
-  const financialComponents=[LETTER_OPERATIONS_CAPABILITY_PUBLICATION,ONEHR_PLAN_ACKNOWLEDGEMENT_CAPABILITY_PUBLICATION,ONEHR_PANEL_FEEDBACK_CAPABILITY_PUBLICATION,PAYROLL_OPERATIONS_CAPABILITY_PUBLICATION,PERFORMANCE_CYCLE_CAPABILITY_PUBLICATION].map(component=>
+  const financialComponents=[LETTER_OPERATIONS_CAPABILITY_PUBLICATION,ONEHR_PLAN_ACKNOWLEDGEMENT_CAPABILITY_PUBLICATION,ONEHR_PANEL_FEEDBACK_CAPABILITY_PUBLICATION,PAYROLL_OPERATIONS_CAPABILITY_PUBLICATION,PERFORMANCE_CYCLE_CAPABILITY_PUBLICATION,ONEHR_REVIEW_CAPABILITY_PUBLICATION].map(component=>
    new Set([...component.capabilities,...functionActionCapabilities(component.functions)].map(capability=>capability.id)));
   const knownFinancialComponents=(financialRows:readonly CapabilityRow[])=>financialRows.every(row=>!row.supported||financialComponents.some(component=>component.has(row.id)))
    &&financialComponents.every(component=>{const slice=financialRows.filter(row=>component.has(row.id));return slice.every(row=>row.supported)||slice.every(row=>!row.supported);});
@@ -260,6 +261,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    ...(key==='all'||key==='performance_cycles'?['app.performance_cycle_bindings_complete']:[]),
    ...(key==='all'||key==='onehr_plan_acknowledgement'?['app.onehr_plan_acknowledgement_bindings_complete']:[]),
    ...(key==='all'||key==='onehr_panel_feedback'?['app.onehr_panel_feedback_bindings_complete']:[]),
+   ...(key==='all'||key==='onehr_reviews'?['app.onehr_review_bindings_complete']:[]),
    ...(key==='all'||key==='organisation_settings'?['app.organisation_settings_bindings_complete']:[]),
    ...(key==='all'||key==='financial_setup'?['app.financial_setup_bindings_complete']:[]),
    ...(key==='all'||key==='pay_component_catalogue'?['app.pay_component_catalogue_bindings_complete']:[]),

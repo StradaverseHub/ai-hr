@@ -222,17 +222,32 @@ it('refuses Financial Setup publication before its Payroll Operations parents',a
   .rejects.toThrow('publish Payroll Operations before Financial Setup');
  expect(await snapshot()).toEqual(before);
 });
-it('requires a passing Financial Letters completion check before publishing',async()=>{
+it('publishes the full Financial Letters package with its real guards enabled',async()=>{
  const before=await snapshot();
- await owner.client`create function app.financial_letter_bindings_complete() returns boolean
-  language sql stable security definer set search_path=pg_catalog as $$ select false $$`;
  try{
-  await owner.client`revoke all on function app.financial_letter_bindings_complete() from public,ai_hr_app`;
+  expect(await publishActionCapabilityPackage(owner.client,'financial_letters')).toMatchObject({changed:true});
+  const installed=await snapshot();
+  expect(installed.catalog.find(row=>row.id==='function.performance.onehr.assignedReview.edit'))
+   .toMatchObject({supported:true});
+  expect(await publishActionCapabilityPackage(owner.client,'financial_letters')).toMatchObject({changed:false});
+ }finally{
+  await owner.client.begin(async tx=>{
+   for(const row of before.catalog.filter(row=>!row.supported)){
+    await tx`update access_capability set supported=false,bindings=${JSON.stringify(row.bindings)}::text::jsonb
+     where id=${row.id} and supported`;
+   }
+  });
+ }
+});
+it('refuses Financial Letters if a concrete Letter guard is disabled',async()=>{
+ const before=await snapshot();
+ await owner.client`alter table public.letter_asset disable trigger financial_letter_action_write`;
+ try{
   await expect(publishActionCapabilityPackage(owner.client,'financial_letters'))
    .rejects.toThrow('app.financial_letter_bindings_complete() reported incomplete enforcement');
   expect(await snapshot()).toEqual(before);
  }finally{
-  await owner.client`drop function app.financial_letter_bindings_complete()`;
+  await owner.client`alter table public.letter_asset enable trigger financial_letter_action_write`;
  }
 });
 it('refuses Organisation Settings publication when a physical write guard is disabled',async()=>{

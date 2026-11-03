@@ -114,3 +114,17 @@ export const PERFORMANCE_CYCLE_CAPABILITY_PUBLICATION={
   'app.financial_onehr_setup_guard()',
  ],
 } as const;
+
+export const ONEHR_REVIEW_CAPABILITY_PUBLICATION={
+ ...ONEHR_PLAN_ACKNOWLEDGEMENT_CAPABILITY_PUBLICATION,
+ functions:FINANCIAL_LETTER_FUNCTIONS.filter(descriptor=>
+  ['performance.onehr.selfReview','performance.onehr.assignedReview','performance.onehr.reviewAdministration'].includes(descriptor.key)),
+ requiredFunctions:[
+  'app.onehr_review_bindings_complete()',
+  'app.onehr_review_task_view(uuid,text)',
+  'app.onehr_review_administration_edit(uuid)',
+  'app.financial_onehr_review_course_guard()',
+  'app.financial_onehr_own_plan_edit_guard()',
+  'app.financial_onehr_career_guard()',
+ ],
+} as const;
