@@ -297,7 +297,7 @@
   "nav": {
     "roster": "Roster",
     "dataPrivacy": "Privasi Data",
-    "dashboard": "Papan pemuka",
+    "dashboard": "Hari ini",
     "myWorkspace": "Profil Saya",
     "people": "Direktori Pasukan",
     "orgChart": "Carta organisasi",
@@ -394,9 +394,9 @@
     "payrollIndividualPayslip": "Slip Gaji Individu",
     "payrollBackPay": "Bayaran Tunggakan",
     "payrollStatutoryAdjustment": "Pelarasan Berkanun",
-    "payrollControlTower": "Menara Kawalan",
+    "payrollControlTower": "Operasi",
     "assistant": "Pembantu",
-    "aiControlTower": "Menara Kawalan",
+    "aiControlTower": "Operasi",
     "controlTowerOverview": "Gambaran keseluruhan",
     "controlTowerHow": "Cara ia berfungsi",
     "controlTowerReadiness": "Data pekerja",
@@ -9233,7 +9233,7 @@
       }
     },
     "controlTower": {
-      "title": "Menara Kawalan HR",
+      "title": "Gambaran keseluruhan operasi",
       "description": "Selaraskan kerja HR, semak pengecualian dan sahkan hasil.",
       "backToPayroll": "Gaji",
       "ratioTitle": "Berapa ramai orang diperlukan untuk menjalankan gaji ini?",
@@ -9268,14 +9268,14 @@
       "colWaiting": "Menunggu manusia",
       "openQueue": "Buka barisan",
       "notChecked": "Belum disemak",
-      "noRuns": "Tiada proses diproses. Menara ini tiada apa untuk dipantau sehingga satu proses diproses.",
+      "noRuns": "Tiada proses diproses. Tiada apa untuk dipantau sehingga satu proses diproses.",
       "domainsLine": "{live} daripada {total} bidang sedang aktif.",
       "howItWorksLink": "Cara ia berfungsi",
       "agentsLink": "Ejen yang sedang berjalan",
       "agents": {
         "title": "Ejen AI",
         "description": "Bahagian sistem ini yang bertindak sendiri, dan sama ada setiap satunya benar-benar boleh.",
-        "backToTower": "Kembali ke Menara Kawalan",
+        "backToTower": "Kembali ke Operasi",
         "heading": "Apa yang berjalan tanpa diminta",
         "headingHelp": "Setiap satu dimatikan sehingga anda menghidupkannya, dan menghidupkannya bukan bermakna ia boleh berfungsi — suis yang tiada apa di belakangnya menyatakannya di bawah.",
         "stateOn": "Berjalan",
@@ -9315,7 +9315,7 @@
       "exceptions": {
         "title": "Pengecualian",
         "description": "Setiap pekerja yang ditanda dan masih menunggu keputusan, daripada setiap larian gaji, dalam satu senarai.",
-        "backToTower": "Kembali ke Menara Kawalan",
+        "backToTower": "Kembali ke Operasi",
         "outstanding": "Menunggu keputusan",
         "blocking": "Daripada itu, menyekat larian",
         "capped": "Menunjukkan {shown} paling mendesak daripada {total}. Selesaikan sebahagian dan selebihnya akan muncul.",
@@ -9324,7 +9324,7 @@
         "emptyTitle": "Tiada apa menunggu",
         "emptyBody": "Setiap pekerja yang ditanda dalam setiap larian telah diputuskan.",
         "whyTitle": "Mengapa keputusan anda penting di sini",
-        "whyBody": "Tiga daripada angka di Menara Kawalan — berapa kerap pemeriksaan tersilap, berapa lama sesuatu pengecualian menunggu, dan berapa ramai orang yang diperlukan oleh beban kerja ini — tidak boleh dikira sehingga seseorang memutuskan perkara ini. Sehingga itu, Menara menunjukkan apa yang tiada dan bukan satu nombor, dengan sengaja."
+        "whyBody": "Tiga daripada angka di Gambaran keseluruhan operasi — berapa kerap pemeriksaan tersilap, berapa lama sesuatu pengecualian menunggu, dan berapa ramai orang yang diperlukan oleh beban kerja ini — tidak boleh dikira sehingga seseorang memutuskan perkara ini. Sehingga itu, gambaran keseluruhan menunjukkan apa yang tiada dan bukan satu nombor, dengan sengaja."
       },
       "agreementTitle": "Adakah AI bersetuju dengan kita?",
       "agreementUnavailable": "Belum ada apa-apa untuk diukur.",
@@ -21797,7 +21797,7 @@
         "people": "Pekerja",
         "rewards": "Ganjaran",
         "analytics": "Analitik",
-        "controlTower": "Menara Kawalan",
+        "controlTower": "Operasi",
         "settings": "Tetapan"
       },
       "identity": "Pembantu AI",
@@ -21878,9 +21878,9 @@
     "err_protected_input": "Permintaan ini memerlukan input terlindung yang disokong. Pilih tugas atau templat input yang dicadangkan, atau gunakan skrin asal untuk butiran lain."
   },
   "controlTower": {
-    "howTitle": "Cara Menara Kawalan berfungsi",
+    "howTitle": "Apa yang berjalan untuk syarikat anda",
     "howDescription": "Apa yang berjalan, dalam susunan apa, bahagian mana menggunakan AI, dan apa yang dihidupkan sekarang.",
-    "backToTower": "Kembali ke Menara Kawalan",
+    "backToTower": "Kembali ke Operasi",
     "loopTitle": "Gelung kerja",
     "loopIntro": "Setiap kitaran menjalankan lima langkah yang sama. Hanya satu melibatkan AI, dan tiada satu pun membuat keputusan sendiri.",
     "loopAlt": "Lima langkah: semakan berjalan, penemuan direkod, AI menerangkannya dalam bahasa mudah, seseorang membuat keputusan, dan hasilnya kembali ke permulaan.",
@@ -21991,7 +21991,7 @@
     "promise2Body": "Sama ada sesuatu lulus, ditanda atau disekat diputuskan oleh peraturan tetap sebelum sebarang AI terlibat, dan penerangan itu tidak boleh mengubah keputusan tersebut. Tiada apa diluluskan, dibayar atau diubah tanpa manusia.",
     "readinessScreen": {
       "title": "Kesediaan rekod",
-      "backToTower": "Kembali ke Menara Kawalan",
+      "backToTower": "Kembali ke Operasi",
       "description": "Setiap pekerja aktif sama ada sudah bersedia untuk dibayar dan difailkan, atau ada sesuatu yang tiada. Betulkan di sini sekali sahaja, bukannya bertemu semula setiap kali gaji.",
       "readyPct": "rekod lengkap",
       "readyOf": "pekerja bersedia",
@@ -22022,7 +22022,7 @@
     "actions": {
       "title": "Tindakan dicadangkan",
       "description": "Kerja yang AI ingin ambil daripada meja anda. Tiada apa-apa berlaku di sini sehingga anda meluluskannya, dan anda boleh lihat dengan tepat sebab setiap satu dicadangkan.",
-      "backToTower": "Kembali ke Menara Kawalan",
+      "backToTower": "Kembali ke Operasi",
       "emptyTitle": "Tiada apa-apa untuk diluluskan",
       "emptyBody": "Setiap pengecualian gaji yang masih menunggu anda mempunyai masalah sebenar di sebaliknya. Apabila seseorang membetulkan rekod asasnya, pengecualian itu akan muncul di sini untuk ditutup.",
       "done": "Menutup {closed} pengecualian.",
@@ -22056,7 +22056,7 @@
     "orchestrator": {
       "checking": "Menyemak rekod…",
       "runFailed": "Pelaksanaan automasi terkini yang direkodkan memerlukan perhatian. Buka butiran pelaksanaan di bawah.",
-      "navigation": "Navigasi Menara Kawalan",
+      "navigation": "Bahagian operasi",
       "overview": "Gambaran keseluruhan",
       "readiness": "Data pekerja",
       "exceptions": "Pengecualian gaji",
@@ -26889,7 +26889,7 @@
   "aiManagement": {
     "title": "Pengurusan AI",
     "description": "Lihat semua keupayaan AI, pantau aktiviti model dan kawal had pengguna serta syarikat.",
-    "back": "Menara Kawalan",
+    "back": "Operasi",
     "provider": "Penyedia: {provider} · {model}",
     "noProvider": "Tiada penyedia AI dikonfigurasi. Aliran kerja manual masih tersedia.",
     "configureProvider": "Tetapan penyedia",
@@ -29349,7 +29349,7 @@
       "next": "Seterusnya",
       "none": "Tiada entri tertunggak."
     },
-    "back": "Menara Kawalan",
+    "back": "Operasi",
     "title": "Peluang automasi",
     "description": "Di mana ejen AI boleh mengambil alih kerja pengendalian daripada HR, diukur daripada rekod anda. Halaman ini tidak mengubah data atau memanggil model AI.",
     "window": "Kes dimulakan dalam tempoh",
@@ -33540,7 +33540,7 @@
       "anomalies": {
         "name": "Payroll anomaly checks",
         "description": "Records findings and verdicts for review. Does not change payroll amounts.",
-        "results": "Control Tower exceptions and payroll anomalies"
+        "results": "Operations exceptions and payroll anomalies"
       },
       "child-relief": {
         "name": "Child tax-relief refresh",

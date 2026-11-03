@@ -18,9 +18,22 @@
       "workers": "Workers",
       "setup": "Setup",
       "spend": "Spend and providers",
+      "operations": "Operations",
+      "administration": "Administration",
       "how": "How it works"
     },
     "inboxCount": "{count, plural, one {# item waiting} other {# items waiting}}",
+    "sectionsLabel": "{tab} sections",
+    "sections": {
+      "overview": "Overview",
+      "exceptions": "Exceptions",
+      "readiness": "Record readiness",
+      "actions": "Proposed actions",
+      "opportunities": "Opportunities",
+      "workers": "Workers",
+      "setup": "Setup",
+      "spend": "Spend and providers"
+    },
     "subnav": {
       "workers": "All workers",
       "inventory": "Inventory and audit",

@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/authz';
 import { openExceptionsAcrossRuns } from '@/core/payroll-anomaly';
 import { HYPOTHESIS_DETECTOR_ID } from '@/core/payroll-anomaly-detectors';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
+import { OperationsTabs } from '../operations-tabs';
 import { resolveAnomalyAction } from '@/app/payroll/actions';
 
 /**
@@ -57,8 +58,8 @@ export default async function CrossRunExceptionsPage({
 
   return (
     <div className={pageWideCls}>
+      <OperationsTabs session={s} active="exceptions" />
       <PageHeader
-        back={{ href: '/control-tower', label: tx('backToTower') }}
         title={tx('title')}
         description={tx('description')}
       />

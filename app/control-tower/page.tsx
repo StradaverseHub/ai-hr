@@ -6,6 +6,7 @@ import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { agreementView, controlTowerView, EXCEPTIONS_PER_OPERATOR_PER_CYCLE, TARGET_AUTO_CLEAR_RATE } from '@/core/control-tower';
 import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
+import { OperationsTabs } from './operations-tabs';
 
 /** ADR-0109: shared operations workspace, with payroll and AI quality evidence retained below. */
 export default async function ControlTowerPage({ searchParams }: { searchParams: Promise<{ refresh?: string }> }) {
@@ -25,6 +26,7 @@ export default async function ControlTowerPage({ searchParams }: { searchParams:
 
   return (
     <div data-tour="intelligence-control-tower" className={pageWideCls}>
+      <OperationsTabs session={s} active="overview" />
       <PageHeader title={t('title')} description={t('description')} />
 
       <OrchestrationWorkQueue view={queue} refresh={sp.refresh} canViewRuns={isGroupAdmin(s)} />

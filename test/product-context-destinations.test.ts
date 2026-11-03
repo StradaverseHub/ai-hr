@@ -36,7 +36,8 @@ describe('product destination registry',()=>{
  it('covers every sidebar literal row and every pack, lifecycle and security destination',()=>{
   const hrefs=new Set(rows.map(row=>row.href));
   const literal=[...sidebarSource.matchAll(/(?:href|defaultHref): ?'([^']+)'/g)].map(match=>match[1]);
-  expect(literal.length).toBeGreaterThan(50);
+  // Issue 17: the ten Control Tower rows left the rail (their pages are AI Centre tabs); the registry keeps them.
+  expect(literal.length).toBeGreaterThanOrEqual(50);
   const packs=listPacks('module').flatMap(pack=>{const module=pack as ModulePack;return[...(module.navNodes??[]).flatMap(node=>node.children.map(child=>child.href)),...(module.navLinks??[]).map(link=>link.href)];});
   expect(packs.length).toBeGreaterThan(20);
   const expected=[...literal,...packs,...V9_NAVIGATION.map(row=>row.href),...SECURITY_PAGES.map(row=>row.href)];

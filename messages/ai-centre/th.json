@@ -18,9 +18,22 @@
       "workers": "เอเจนต์",
       "setup": "การตั้งค่า",
       "spend": "ค่าใช้จ่ายและผู้ให้บริการ",
+      "operations": "การดำเนินงาน",
+      "administration": "การดูแลระบบ",
       "how": "หลักการทำงาน"
     },
     "inboxCount": "{count, plural, one {รอดำเนินการ # รายการ} other {รอดำเนินการ # รายการ}}",
+    "sectionsLabel": "ส่วนต่าง ๆ ของ{tab}",
+    "sections": {
+      "overview": "ภาพรวม",
+      "exceptions": "ข้อยกเว้น",
+      "readiness": "ความพร้อมของระเบียน",
+      "actions": "การดำเนินการที่เสนอ",
+      "opportunities": "โอกาส",
+      "workers": "เอเจนต์",
+      "setup": "การตั้งค่า",
+      "spend": "ค่าใช้จ่ายและผู้ให้บริการ"
+    },
     "subnav": {
       "workers": "เอเจนต์ทั้งหมด",
       "inventory": "รายการและการตรวจสอบ",

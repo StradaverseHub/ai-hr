@@ -42,6 +42,7 @@ import { AI_ARCHITECTURE_LABEL, AI_PRODUCT_NAME, aiCentreName } from '@/lib/ai-c
 import { AiCentreTabs } from '@/components/ai-centre/centre-tabs';
 import { AiCentreDelegatedJobs } from '@/components/ai-centre/delegated-jobs';
 import { HowItWorks } from '@/components/ai-centre/how-it-works';
+import { AiCentreLiveStatus } from '@/components/ai-centre/live-status';
 import { AiCentreInbox, InboxCountBadge } from './centre/inbox';
 
 /**
@@ -85,7 +86,7 @@ export default async function AssistantPage({
         <AiCentreTabs active={sp.view} isAdmin={admin} inboxBadge={sp.view === 'inbox' ? null : <Suspense fallback={null}><InboxCountBadge session={s} /></Suspense>} />
         {sp.view === 'inbox' && <AiCentreInbox session={s} recommend={typeof sp.recommend === 'string' ? sp.recommend : undefined} />}
         {sp.view === 'jobs' && <AiCentreDelegatedJobs />}
-        {sp.view === 'how' && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '/control-tower/how-it-works' : undefined} /></>}
+        {sp.view === 'how' && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '#ai-centre-live-status' : undefined} />{admin && <AiCentreLiveStatus session={s} />}</>}
       </div>
     );
   }

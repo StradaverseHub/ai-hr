@@ -297,7 +297,7 @@
   "nav": {
     "roster": "Lịch ca",
     "dataPrivacy": "Quyền riêng tư dữ liệu",
-    "dashboard": "Bảng điều khiển",
+    "dashboard": "Hôm nay",
     "myWorkspace": "Hồ sơ của tôi",
     "people": "Danh bạ nhóm",
     "orgChart": "Sơ đồ tổ chức",
@@ -394,9 +394,9 @@
     "payrollIndividualPayslip": "Phiếu lương cá nhân",
     "payrollBackPay": "Truy lĩnh",
     "payrollStatutoryAdjustment": "Điều chỉnh khoản luật định",
-    "payrollControlTower": "Trung tâm điều hành",
+    "payrollControlTower": "Vận hành",
     "assistant": "Trợ lý",
-    "aiControlTower": "Trung tâm điều hành",
+    "aiControlTower": "Vận hành",
     "controlTowerOverview": "Tổng quan",
     "controlTowerHow": "Cách hoạt động",
     "controlTowerReadiness": "Dữ liệu nhân viên",
@@ -9233,7 +9233,7 @@
       }
     },
     "controlTower": {
-      "title": "Trung tâm điều hành nhân sự",
+      "title": "Tổng quan vận hành",
       "description": "Điều phối công việc nhân sự, xem xét ngoại lệ và xác minh kết quả.",
       "backToPayroll": "Bảng lương",
       "ratioTitle": "Cần bao nhiêu người để chạy bảng lương này?",
@@ -9268,14 +9268,14 @@
       "colWaiting": "Chờ người xử lý",
       "openQueue": "Mở hàng đợi",
       "notChecked": "Chưa kiểm tra",
-      "noRuns": "Không có kỳ nào đã xử lý. Trung tâm chưa có gì để theo dõi cho đến khi một kỳ được xử lý.",
+      "noRuns": "Không có kỳ nào đã xử lý. Chưa có gì để theo dõi cho đến khi một kỳ được xử lý.",
       "domainsLine": "{live} trên {total} lĩnh vực đang hoạt động.",
       "howItWorksLink": "Cách hoạt động",
       "agentsLink": "Tác nhân nào đang chạy",
       "agents": {
         "title": "Tác nhân AI",
         "description": "Những phần của hệ thống tự hoạt động, và liệu từng phần có thực sự làm được hay không.",
-        "backToTower": "Quay lại Tháp điều khiển",
+        "backToTower": "Quay lại Vận hành",
         "heading": "Những gì tự chạy mà không cần yêu cầu",
         "headingHelp": "Mỗi mục đều tắt cho đến khi bạn bật, và bật không có nghĩa là nó chạy được — công tắc nào chưa đủ điều kiện sẽ được nêu bên dưới.",
         "stateOn": "Đang chạy",
@@ -9315,7 +9315,7 @@
       "exceptions": {
         "title": "Ngoại lệ",
         "description": "Mọi nhân viên bị gắn cờ còn chờ quyết định, từ mọi kỳ trả lương, trong một danh sách.",
-        "backToTower": "Quay lại Tháp điều khiển",
+        "backToTower": "Quay lại Vận hành",
         "outstanding": "Đang chờ quyết định",
         "blocking": "Trong đó, đang chặn một kỳ",
         "capped": "Hiển thị {shown} mục cấp bách nhất trong {total}. Xử lý bớt thì phần còn lại sẽ hiện ra.",
@@ -9324,7 +9324,7 @@
         "emptyTitle": "Không có gì đang chờ",
         "emptyBody": "Mọi nhân viên bị gắn cờ ở mọi kỳ đều đã được quyết định.",
         "whyTitle": "Vì sao quyết định của bạn quan trọng",
-        "whyBody": "Ba con số trên Tháp điều khiển — các kiểm tra sai bao lâu một lần, một ngoại lệ chờ bao lâu, và khối lượng này cần bao nhiêu người — không thể tính được cho đến khi có người quyết định những mục này. Trước đó, Tháp cố ý hiển thị những gì còn thiếu thay vì một con số."
+        "whyBody": "Ba con số trên Tổng quan vận hành — các kiểm tra sai bao lâu một lần, một ngoại lệ chờ bao lâu, và khối lượng này cần bao nhiêu người — không thể tính được cho đến khi có người quyết định những mục này. Trước đó, trang tổng quan cố ý hiển thị những gì còn thiếu thay vì một con số."
       },
       "agreementTitle": "AI có đồng ý với chúng ta không?",
       "agreementUnavailable": "Chưa có gì để đo lường.",
@@ -21797,7 +21797,7 @@
         "people": "Nhân sự",
         "rewards": "Khen thưởng",
         "analytics": "Phân tích",
-        "controlTower": "Tháp điều khiển",
+        "controlTower": "Vận hành",
         "settings": "Cài đặt"
       },
       "identity": "Trợ lý AI",
@@ -21878,9 +21878,9 @@
     "err_protected_input": "Yêu cầu cần đầu vào được bảo vệ phù hợp. Chọn tác vụ hoặc mẫu đầu vào gợi ý, hoặc dùng màn hình gốc cho chi tiết khác."
   },
   "controlTower": {
-    "howTitle": "Trung tâm điều hành hoạt động thế nào",
+    "howTitle": "Những gì đang chạy cho công ty của bạn",
     "howDescription": "Những gì chạy, theo thứ tự nào, phần nào dùng AI, và hiện đang bật những gì.",
-    "backToTower": "Quay lại Trung tâm điều hành",
+    "backToTower": "Quay lại Vận hành",
     "loopTitle": "Vòng lặp",
     "loopIntro": "Mỗi chu kỳ chạy cùng năm bước. Chỉ một bước có AI, và không bước nào tự quyết định.",
     "loopAlt": "Năm bước: chạy kiểm tra, ghi nhận phát hiện, AI diễn giải bằng lời dễ hiểu, một người quyết định, và kết quả phản hồi ngược lại.",
@@ -21991,7 +21991,7 @@
     "promise2Body": "Việc một mục được duyệt, gắn cờ hay chặn là do các quy tắc cố định quyết định trước khi AI tham gia, và phần diễn giải không thể thay đổi quyết định ấy. Không gì được duyệt, chi trả hay sửa đổi mà không có người.",
     "readinessScreen": {
       "title": "Mức sẵn sàng hồ sơ",
-      "backToTower": "Quay lại Trung tâm điều hành",
+      "backToTower": "Quay lại Vận hành",
       "description": "Mỗi nhân viên đang làm việc hoặc đã sẵn sàng để trả lương và kê khai, hoặc còn thiếu thứ gì đó. Hãy xử lý ở đây một lần, thay vì gặp lại mỗi kỳ lương.",
       "readyPct": "hồ sơ đầy đủ",
       "readyOf": "nhân viên sẵn sàng",
@@ -22022,7 +22022,7 @@
     "actions": {
       "title": "Thao tác được đề xuất",
       "description": "Công việc mà AI muốn gánh bớt cho bạn. Không có gì xảy ra ở đây cho đến khi bạn phê duyệt, và bạn thấy rõ lý do từng mục được đề xuất.",
-      "backToTower": "Quay lại Tháp điều khiển",
+      "backToTower": "Quay lại Vận hành",
       "emptyTitle": "Không có gì để phê duyệt",
       "emptyBody": "Mọi ngoại lệ bảng lương còn chờ bạn đều có một vấn đề thật phía sau. Khi có người sửa hồ sơ gốc, ngoại lệ đó sẽ xuất hiện ở đây để được đóng lại.",
       "done": "Đã đóng {closed} ngoại lệ.",
@@ -22056,7 +22056,7 @@
     "orchestrator": {
       "checking": "Đang kiểm tra hồ sơ…",
       "runFailed": "Lần tự động hóa được ghi nhận gần nhất cần được xử lý. Hãy mở chi tiết lần chạy bên dưới.",
-      "navigation": "Điều hướng trung tâm điều hành",
+      "navigation": "Các mục vận hành",
       "overview": "Tổng quan",
       "readiness": "Dữ liệu nhân viên",
       "exceptions": "Ngoại lệ bảng lương",
@@ -26889,7 +26889,7 @@
   "aiManagement": {
     "title": "Quản lý AI",
     "description": "Xem mọi chức năng AI, theo dõi hoạt động mô hình và kiểm soát hạn mức người dùng, công ty.",
-    "back": "Trung tâm điều hành",
+    "back": "Vận hành",
     "provider": "Nhà cung cấp: {provider} · {model}",
     "noProvider": "Chưa cấu hình nhà cung cấp AI. Quy trình thủ công vẫn khả dụng.",
     "configureProvider": "Cài đặt nhà cung cấp",
@@ -29349,7 +29349,7 @@
       "next": "Tiếp",
       "none": "Không có mục chờ phát triển."
     },
-    "back": "Trung tâm điều hành",
+    "back": "Vận hành",
     "title": "Cơ hội tự động hóa",
     "description": "Những phần việc xử lý mà một tác tử AI có thể nhận thay cho HR, được đo từ hồ sơ của bạn. Trang này không thay đổi dữ liệu và không gọi mô hình AI.",
     "window": "Hồ sơ bắt đầu trong",
@@ -33540,7 +33540,7 @@
       "anomalies": {
         "name": "Payroll anomaly checks",
         "description": "Records findings and verdicts for review. Does not change payroll amounts.",
-        "results": "Control Tower exceptions and payroll anomalies"
+        "results": "Operations exceptions and payroll anomalies"
       },
       "child-relief": {
         "name": "Child tax-relief refresh",

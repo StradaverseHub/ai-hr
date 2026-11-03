@@ -16,7 +16,7 @@ import zh from '../../messages/ai-centre/zh.json';
 import vi from '../../messages/ai-centre/vi.json';
 import ta from '../../messages/ai-centre/ta.json';
 import th from '../../messages/ai-centre/th.json';
-import { ADMIN_GROUPS, CENTRE_TABS } from '../../lib/ai-centre/centre-nav';
+import { ADMIN_GROUPS, CENTRE_SECTIONS, CENTRE_TABS } from '../../lib/ai-centre/centre-nav';
 import { BUILT_IN_PLACEMENT, FEATURE_PLACEMENT, WORKER_FAMILIES } from '../../lib/ai-centre/worker-families';
 import { RECOMMENDATION_CHECKS, RECOMMENDATION_VERDICTS } from '../../core/semantic-model/entities-recommend';
 
@@ -80,7 +80,9 @@ describe('AI centre catalogue completeness', () => {
       // Arguments of the leave application card title (aiCentre.conversation.leaveApply*Title, issue 10).
       leaveType: 'Annual Leave', start: 'Thu, Nov 5', end: 'Fri, Nov 6', days: 2,
       // Arguments of the own claim and bank change card titles (aiCentre.conversation.claim*Title, profileBankTitle; AI v2 W2).
-      claimType: 'Travel', amount: '42.60', bankName: 'Maybank', ending: '5678' };
+      claimType: 'Travel', amount: '42.60', bankName: 'Maybank', ending: '5678',
+      // Argument of the second tab row's label (aiCentre.sectionsLabel, issue 17).
+      tab: 'Operations' };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });
@@ -88,6 +90,7 @@ describe('AI centre catalogue completeness', () => {
   it('REVIEW pass: every key the components build at runtime exists in English', () => {
     const need = [
       ...CENTRE_TABS.map(tab => `aiCentre.tabs.${tab.key}`),
+      ...Object.values(CENTRE_SECTIONS).flat().map(section => `aiCentre.sections.${section.key}`), 'aiCentre.sectionsLabel',
       ...Object.values(ADMIN_GROUPS).flat().map(item => `aiCentre.subnav.${item.label}`),
       ...(['workers', 'setup', 'spend'] as const).flatMap(group => [`aiCentre.titles.${group}`, `aiCentre.descriptions.${group}`]),
       ...WORKER_FAMILIES.flatMap(family => [`aiCentre.workers.families.${family}`, `aiCentre.workers.families.${family}Help`]),

@@ -71,9 +71,9 @@ describe('existing admin destinations relocated into System Configuration', () =
     }
     expect(within(panel).queryByRole('link', {name: nav.aiConfig})).toBeNull();
     expect(document.querySelector('a[href="/admin/ai"]')).toBeNull();
-    fireEvent.click(screen.getByRole('button', {name: nav.aiControlTower}));
-    const tower = screen.getByRole('navigation', {name: nav.aiControlTower});
-    expect(within(tower).getAllByRole('link').filter(link => link.getAttribute('href') === '/control-tower/agents')).toHaveLength(1);
+    // Issue 17: AI management is AI Centre › Administration, reached through the one AI Centre row.
+    expect(screen.queryByRole('button', {name: nav.aiControlTower})).toBeNull();
+    expect(document.querySelector('a[href^="/control-tower"]')).toBeNull();
   });
 
   it.each(relocated)('preserves active matching and reopen after a bookmarked %s load', (href, key) => {
@@ -129,8 +129,8 @@ describe('existing admin destinations relocated into System Configuration', () =
     expect(screen.getByRole('link', {name: en.nav.dataPrivacy})).toHaveAttribute('aria-current', 'page');
     expect(within(panel).queryByRole('link', {name: en.nav.aiConfig})).toBeNull();
     expect(document.querySelector('a[href="/admin/ai"]')).toBeNull();
-    fireEvent.click(screen.getByRole('button', {name: en.nav.aiControlTower}));
-    const tower = screen.getByRole('navigation', {name: en.nav.aiControlTower});
-    expect(within(tower).getAllByRole('link').filter(link => link.getAttribute('href') === '/control-tower/agents')).toHaveLength(1);
+    // Issue 17: AI management is AI Centre › Administration, reached through the one AI Centre row.
+    expect(screen.queryByRole('button', {name: en.nav.aiControlTower})).toBeNull();
+    expect(document.querySelector('a[href^="/control-tower"]')).toBeNull();
   });
 });

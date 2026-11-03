@@ -1,10 +1,10 @@
 /** @vitest-environment jsdom */
-/** The AI Control Tower menu (with its AI management sub-menu) and Administration › AI run requireAdmin
- * (hr_admin/super_admin). Payroll and performance-compensation partners share the broad administration
+/** AI Centre › Operations and Administration (the former Control Tower and AI management pages) and
+ * Administration › AI run requireAdmin (hr_admin/super_admin). Payroll and performance-compensation partners share the broad administration
  * rail, so the rail listed these screens and every click sent them home. Provider setup additionally needs
  * group-wide administration: a company administrator is sent from it back to the AI Overview. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {enWithAiCentre as messages} from './helpers/ai-centre-messages';
 vi.mock('next/navigation',()=>({usePathname:()=>'/',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()}),redirect:vi.fn()}));
@@ -26,23 +26,20 @@ describe('AI administration navigation',()=>{
   render(<NextIntlClientProvider locale="en" messages={messages} onError={error=>{throw error;}}>
    <Sidebar isAdmin={rail} canAdministerAi={ai} canConfigureAiProvider={provider} enabledModules={null} defaultCollapsed={false}/>
   </NextIntlClientProvider>);
-  const tower=screen.queryByRole('button',{name:nav.aiControlTower});
-  if(!ai){
-   expect(tower).toBeNull();
-   const system=screen.queryByRole('button',{name:nav.systemConfiguration});
-   // The partner keeps its other administration rows; only the AI screens are withheld.
-   if(rail)expect(system).not.toBeNull();
-   if(system)fireEvent.click(system);
-   expect(screen.queryByRole('link',{name:nav.aiConfig})).toBeNull();
-   expect(document.querySelector('a[href^="/control-tower"]')).toBeNull();
-   return;
-  }
-  fireEvent.click(tower!);
-  const panel=screen.getByRole('navigation',{name:nav.aiControlTower});
-  const hrefs=within(panel).getAllByRole('link').map(link=>link.getAttribute('href'));
-  for(const href of ['/control-tower','/control-tower/agents/features','/control-tower/agents','/control-tower/agents/allowances'])expect(hrefs).toContain(href);
-  // AI centre: provider setup is a section of Spend and providers, offered there only to a group
-  // administrator (the page's own section filter); it is no longer a sidebar row for anyone.
-  void provider;expect(hrefs).not.toContain('/control-tower/agents/provider');
+  // Issue 17: the former Control Tower menu is gone from the rail for everyone; its pages are AI Centre tabs, shown
+  // only to a viewer whose requireAdmin admits them (test/ai-centre-tabs-roles.dom.test.tsx).
+  expect(screen.queryByRole('button',{name:'Control Tower'})).toBeNull();
+  expect(document.querySelector('a[href^="/control-tower"]')).toBeNull();
+  const system=screen.queryByRole('button',{name:nav.systemConfiguration});
+  // The partner keeps its other administration rows; only the AI screens are withheld.
+  if(rail)expect(system).not.toBeNull();
+  if(system)fireEvent.click(system);
+  expect(screen.queryByRole('link',{name:nav.aiConfig})).toBeNull();
+  // The AI Centre row stays for an HR administrator even without the Assistant grant, because Operations lives there.
+  cleanup();
+  render(<NextIntlClientProvider locale="en" messages={messages} onError={error=>{throw error;}}>
+   <Sidebar isAdmin={rail} canAdministerAi={ai} canConfigureAiProvider={provider} assistantAccess={false} enabledModules={null} defaultCollapsed={false}/>
+  </NextIntlClientProvider>);
+  expect(document.querySelectorAll('a[href="/assistant"]')).toHaveLength(ai?1:0);
  });
 });

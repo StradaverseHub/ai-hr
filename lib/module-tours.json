@@ -904,7 +904,7 @@
         "placement": "bottom",
         "text": {
           "title": "Review operational evidence",
-          "body": "Use Control Tower to inspect readiness and exceptions. Check the underlying facts before accepting an explanation or action.",
+          "body": "Use AI Centre › Operations to inspect readiness and exceptions. Check the underlying facts before accepting an explanation or action.",
           "lang": "en"
         },
         "roles": [

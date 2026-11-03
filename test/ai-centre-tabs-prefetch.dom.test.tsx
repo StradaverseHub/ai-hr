@@ -13,9 +13,9 @@ vi.mock('next/link',()=>({
 }));
 vi.mock('next/navigation',()=>({usePathname:()=>'/assistant',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({push:vi.fn(),replace:vi.fn(),refresh:vi.fn()})}));
 import {enWithAiCentre} from './helpers/ai-centre-messages';
-import {AiCentreSubnav,AiCentreTabs} from '../components/ai-centre/centre-tabs';
+import {AiCentreSectionTabs,AiCentreSubnav,AiCentreTabs} from '../components/ai-centre/centre-tabs';
 import {INTENT_DWELL_MS} from '../components/intent-link';
-import {ADMIN_GROUPS,centreTabsFor} from '../lib/ai-centre/centre-nav';
+import {ADMIN_GROUPS,centreSectionsFor,centreTabsFor} from '../lib/ai-centre/centre-nav';
 
 const wrap=(node:ReactNode)=>render(<NextIntlClientProvider locale="en" messages={enWithAiCentre as never}>{node}</NextIntlClientProvider>);
 const links=(container:HTMLElement)=>[...container.querySelectorAll<HTMLAnchorElement>('[data-ai-centre-tabs] a')];
@@ -51,6 +51,20 @@ describe('AI Centre tabs prefetch the whole destination on intent',()=>{
   expect(items.map(link=>link.getAttribute('href'))).toEqual(sections.map(section=>`/control-tower/agents/${section}`));
   for(const link of items)expect(link.getAttribute('data-prefetch')).toBe('null');
   fireEvent.focus(items[1]);expect(items[1].getAttribute('data-prefetch')).toBe('true');
+  expect(items[0].getAttribute('aria-current')).toBe('page');
+ });
+
+ // Issue 17 merged Control Tower into AI Centre: the Operations and Administration pages carry a second tab row,
+ // which keeps the same intent prefetch (slice 1 integration of W9 with the operations merge).
+ for(const [group,active] of [['operations','overview'],['administration','workers']] as const)it(`${group} section row: the same intent prefetch on every section link`,()=>{
+  const view=wrap(<AiCentreSectionTabs group={group} active={active} payroll/>);
+  const items=[...view.container.querySelectorAll<HTMLAnchorElement>(`[data-ai-centre-sections="${group}"] a`)];
+  expect(items.map(link=>link.getAttribute('href'))).toEqual(centreSectionsFor(group,{payroll:true}).map(section=>section.href));
+  expect(items.length).toBeGreaterThan(1);
+  for(const link of items)expect(link.getAttribute('data-prefetch'),link.getAttribute('href')??'').toBe('null');
+  fireEvent.focus(items[1]);expect(items[1].getAttribute('data-prefetch')).toBe('true');
+  fireEvent.touchStart(items[2]);expect(items[2].getAttribute('data-prefetch')).toBe('true');
+  expect(items[0].getAttribute('data-prefetch')).toBe('null');
   expect(items[0].getAttribute('aria-current')).toBe('page');
  });
 });

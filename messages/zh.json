@@ -297,7 +297,7 @@
   "nav": {
     "roster": "排班",
     "dataPrivacy": "数据隐私",
-    "dashboard": "仪表盘",
+    "dashboard": "今天",
     "myWorkspace": "我的资料",
     "people": "团队通讯录",
     "orgChart": "组织架构图",
@@ -394,9 +394,9 @@
     "payrollIndividualPayslip": "个人工资单",
     "payrollBackPay": "补发工资",
     "payrollStatutoryAdjustment": "法定金额调整",
-    "payrollControlTower": "控制塔",
+    "payrollControlTower": "日常运营",
     "assistant": "智能助理",
-    "aiControlTower": "控制塔",
+    "aiControlTower": "日常运营",
     "controlTowerOverview": "总览",
     "controlTowerHow": "运作方式",
     "controlTowerReadiness": "员工资料",
@@ -9233,7 +9233,7 @@
       }
     },
     "controlTower": {
-      "title": "人力资源控制中心",
+      "title": "日常运营概览",
       "description": "协调人力资源工作、审核异常并验证结果。",
       "backToPayroll": "薪资",
       "ratioTitle": "运行这套薪资需要多少人？",
@@ -9268,14 +9268,14 @@
       "colWaiting": "等待人工",
       "openQueue": "打开队列",
       "notChecked": "未检查",
-      "noRuns": "没有已处理的运行。在有运行被处理之前，控制塔没有可监控的对象。",
+      "noRuns": "没有已处理的运行。在有运行被处理之前，没有可监控的对象。",
       "domainsLine": "{total} 个领域中有 {live} 个已启用。",
       "howItWorksLink": "运作方式",
       "agentsLink": "哪些代理在运行",
       "agents": {
         "title": "AI 代理",
         "description": "本系统中能够自行运作的部分，以及它们各自是否真的能运作。",
-        "backToTower": "返回控制塔",
+        "backToTower": "返回日常运营",
         "heading": "无需人工触发即会运行的部分",
         "headingHelp": "每一项在你开启之前都是关闭的；开启并不等于它就能运作——若某个开关背后条件不足，下方会说明。",
         "stateOn": "运行中",
@@ -9315,7 +9315,7 @@
       "exceptions": {
         "title": "异常",
         "description": "所有等待处理的被标记员工，来自每一次发薪，汇总为一张列表。",
-        "backToTower": "返回控制塔",
+        "backToTower": "返回日常运营",
         "outstanding": "等待处理",
         "blocking": "其中会阻止发薪的",
         "capped": "显示 {total} 项中最紧急的 {shown} 项。处理一部分后其余会出现。",
@@ -9324,7 +9324,7 @@
         "emptyTitle": "没有待处理项",
         "emptyBody": "所有发薪中被标记的员工都已处理完毕。",
         "whyTitle": "你的处理为何重要",
-        "whyBody": "控制塔上的三个数字——检查出错的频率、异常等待的时长、以及这些工作量意味着需要多少人手——在有人处理这些之前都无法得出。在那之前，控制塔会刻意显示缺什么，而不是给出一个数字。"
+        "whyBody": "日常运营概览上的三个数字——检查出错的频率、异常等待的时长、以及这些工作量意味着需要多少人手——在有人处理这些之前都无法得出。在那之前，日常运营概览会刻意显示缺什么，而不是给出一个数字。"
       },
       "agreementTitle": "AI 的判断和我们一致吗？",
       "agreementUnavailable": "暂时没有可衡量的数据。",
@@ -21797,7 +21797,7 @@
         "people": "人员",
         "rewards": "奖励",
         "analytics": "分析",
-        "controlTower": "控制塔",
+        "controlTower": "日常运营",
         "settings": "设置"
       },
       "identity": "AI 助手",
@@ -21878,9 +21878,9 @@
     "err_protected_input": "此请求需要受支持的受保护输入。请选择建议的任务或输入模板，其他详情请使用原生页面。"
   },
   "controlTower": {
-    "howTitle": "控制塔的运作方式",
+    "howTitle": "贵公司正在运行的内容",
     "howDescription": "有哪些环节、按什么顺序运行、哪些部分使用 AI，以及现在有哪些已启用。",
-    "backToTower": "返回控制塔",
+    "backToTower": "返回日常运营",
     "loopTitle": "运作闭环",
     "loopIntro": "每个周期都执行相同的五个步骤。其中只有一步涉及 AI，且没有任何一步会自行做决定。",
     "loopAlt": "五个步骤：执行检查、记录发现、AI 用简明文字说明、由人决定、结果回馈。",
@@ -21991,7 +21991,7 @@
     "promise2Body": "通过、标记还是阻止，都由固定规则在 AI 介入之前判定，说明文字无法改变该判定。未经人工，任何内容都不会被通过、支付或更改。",
     "readinessScreen": {
       "title": "档案完备性",
-      "backToTower": "返回控制塔",
+      "backToTower": "返回日常运营",
       "description": "每位在职员工要么已具备发薪与申报所需的一切，要么还缺少某些内容。在此一次性补齐，而不是每次发薪时重新遇到。",
       "readyPct": "档案完整",
       "readyOf": "员工已就绪",
@@ -22022,7 +22022,7 @@
     "actions": {
       "title": "建议操作",
       "description": "AI 希望替你处理的工作。在你批准之前，这里不会发生任何事情，而且每一项的提议理由都清楚可见。",
-      "backToTower": "返回控制塔",
+      "backToTower": "返回日常运营",
       "emptyTitle": "没有待批准的项目",
       "emptyBody": "目前仍在等待你处理的每一条薪资异常，背后都有真实的问题。当有人修正了底层记录后，该异常就会出现在这里等待关闭。",
       "done": "已关闭 {closed} 条异常。",
@@ -22056,7 +22056,7 @@
     "orchestrator": {
       "checking": "正在检查记录…",
       "runFailed": "最近记录的自动化执行需要处理。请展开下方的执行详情。",
-      "navigation": "控制中心导航",
+      "navigation": "日常运营分区",
       "overview": "总览",
       "readiness": "员工资料",
       "exceptions": "薪资异常",
@@ -26889,7 +26889,7 @@
   "aiManagement": {
     "title": "AI 管理",
     "description": "查看所有 AI 功能、监控模型活动，并控制用户和公司的额度。",
-    "back": "控制中心",
+    "back": "日常运营",
     "provider": "服务商：{provider} · {model}",
     "noProvider": "尚未配置 AI 服务商，仍可使用手动流程。",
     "configureProvider": "服务商设置",
@@ -29349,7 +29349,7 @@
       "next": "下一页",
       "none": "没有待开发入口。"
     },
-    "back": "控制中心",
+    "back": "日常运营",
     "title": "自动化机会",
     "description": "根据您的记录衡量 AI 代理可以从 HR 接手哪些处理工作。此页面不会更改数据，也不会调用 AI 模型。",
     "window": "统计最近开始的案例",
@@ -33540,7 +33540,7 @@
       "anomalies": {
         "name": "Payroll anomaly checks",
         "description": "Records findings and verdicts for review. Does not change payroll amounts.",
-        "results": "Control Tower exceptions and payroll anomalies"
+        "results": "Operations exceptions and payroll anomalies"
       },
       "child-relief": {
         "name": "Child tax-relief refresh",

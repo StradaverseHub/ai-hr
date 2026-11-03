@@ -18,9 +18,22 @@
       "workers": "Tác tử",
       "setup": "Thiết lập",
       "spend": "Chi tiêu và nhà cung cấp",
+      "operations": "Vận hành",
+      "administration": "Quản trị",
       "how": "Cách hoạt động"
     },
     "inboxCount": "{count, plural, one {# mục đang chờ} other {# mục đang chờ}}",
+    "sectionsLabel": "Các mục của {tab}",
+    "sections": {
+      "overview": "Tổng quan",
+      "exceptions": "Ngoại lệ",
+      "readiness": "Mức sẵn sàng hồ sơ",
+      "actions": "Hành động đề xuất",
+      "opportunities": "Cơ hội",
+      "workers": "Tác tử",
+      "setup": "Thiết lập",
+      "spend": "Chi tiêu và nhà cung cấp"
+    },
     "subnav": {
       "workers": "Tất cả tác tử",
       "inventory": "Danh mục và kiểm toán",

@@ -2,16 +2,16 @@
 // so a tab switch renders from the client cache instead of the loading shell (AI v2 W9).
 import Link from '@/components/intent-link';
 import { useTranslations } from 'next-intl';
-import { BookOpen, Inbox, MessageSquareText, Settings2, UserCheck, Wallet, Workflow } from 'lucide-react';
+import { BookOpen, ChevronDown, Gauge, Inbox, MessageSquareText, Settings2, UserCheck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { aiCentreName } from '@/lib/ai-centre/brand';
-import { ADMIN_GROUPS, centreTabsFor, type AdminSection, type CentreTabKey } from '@/lib/ai-centre/centre-nav';
+import { ADMIN_GROUPS, centreSectionsFor, centreTabsFor, type AdminSection, type AdministrationSection, type CentreGroup, type CentreSection, type CentreTabKey } from '@/lib/ai-centre/centre-nav';
 import { cn } from '@/lib/utils';
 import { ScrollCurrentTabIntoView } from './centre-tabs-scroll';
 
 const ICONS: Readonly<Record<CentreTabKey, LucideIcon>> = {
-  ask: MessageSquareText, inbox: Inbox, jobs: UserCheck, workers: Workflow, setup: Settings2, spend: Wallet, how: BookOpen,
+  ask: MessageSquareText, inbox: Inbox, jobs: UserCheck, operations: Gauge, administration: Settings2, how: BookOpen,
 };
 
 /** Synchronous with useTranslations, so it renders from server pages and from client tests alike.
@@ -39,6 +39,8 @@ export function AiCentreTabs({ active, isAdmin, inboxCount, inboxBadge }: { acti
                   current ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>
                 <Icon aria-hidden className="size-4" />
                 {t(`tabs.${tab.key}`)}
+                {/* A group tab (approved mock-up, "Operations ▾ · Administration ▾"): its pages carry a second tab row. */}
+                {tab.sections && <ChevronDown aria-hidden data-centre-group-mark className="size-3.5 opacity-70" />}
                 {tab.key === 'inbox' && (inboxBadge ?? (inboxCount !== undefined && <InboxCount count={inboxCount} label={t('inboxCount', { count: inboxCount })} />))}
               </Link>
             </li>
@@ -59,11 +61,46 @@ export function InboxCount({ count, label }: { count: number; label: string }) {
   );
 }
 
-/** The second row for an administrator tab: the AI management sections that tab groups. `available` comes
+/** The second tab row of Operations or Administration (approved mock-up, Operations.dc.html "Operations sections").
+ * Links only, like the first row: every page keeps its own requireAdmin guard, and a payroll queue is offered only
+ * while the tenant holds payroll, as its former sidebar row was. */
+export function AiCentreSectionTabs({ group, active, payroll }: { group: CentreGroup; active: CentreSection; payroll: boolean }) {
+  const t = useTranslations('aiCentre');
+  const navId = `ai-centre-sections-${group}`;
+  return (
+    <nav id={navId} aria-label={t('sectionsLabel', { tab: t(`tabs.${group}`) })} data-ai-centre-sections={group} className="-mx-1 overflow-x-auto border-b border-border sm:overflow-x-visible">
+      <ScrollCurrentTabIntoView navId={navId} />
+      <ul className="flex min-w-max items-end gap-1 px-1 sm:min-w-0 sm:flex-wrap">
+        {centreSectionsFor(group, { payroll }).map(section => (
+          <li key={section.key} className="flex">
+            <Link href={section.href} aria-current={section.key === active ? 'page' : undefined}
+              className={cn('-mb-px inline-flex min-h-11 items-center border-b-2 px-3 text-[0.8125rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                section.key === active ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+              {t(`sections.${section.key}`)}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+/** Both tab rows of an Operations or Administration page, kept together so the page's own spacing never opens a
+ * gap between them. Rendered only on pages behind requireAdmin, so the administrator tabs are shown. */
+export function AiCentreGroupTabs({ group, active, payroll }: { group: CentreGroup; active: CentreSection; payroll: boolean }) {
+  return (
+    <div data-ai-centre-group={group} className="space-y-1">
+      <AiCentreTabs active={group} isAdmin />
+      <AiCentreSectionTabs group={group} active={active} payroll={payroll} />
+    </div>
+  );
+}
+
+/** The in-section row of an Administration section: the AI management pages that section groups. `available` comes
  * from the screen's own section filter (spending only with a spend policy, provider only for a group
  * administrator), so a link never leads to a section the page would refuse. */
 export function AiCentreSubnav({ group, active, available, hrefOf }: {
-  group: keyof typeof ADMIN_GROUPS; active: AdminSection; available: readonly string[]; hrefOf: (section: AdminSection) => string;
+  group: AdministrationSection; active: AdminSection; available: readonly string[]; hrefOf: (section: AdminSection) => string;
 }) {
   const t = useTranslations('aiCentre');
   const items = ADMIN_GROUPS[group].filter(item => available.includes(item.section));

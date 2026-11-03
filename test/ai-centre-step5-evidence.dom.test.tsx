@@ -93,7 +93,7 @@ describe('AI centre step 5, rendered per role', () => {
     expect(within(digest).queryByText(enWithAiCentre.aiCentre.digest.setup)).toBeNull();
     expect(digest.querySelector('a[href="/approvals"]')).toBeNull();
     expect(view.container.querySelector('[data-recommendation-loader]')).toBeNull();
-    expect(screen.queryByRole('link', { name: enWithAiCentre.aiCentre.tabs.workers })).toBeNull();
+    expect(screen.queryByRole('link', { name: enWithAiCentre.aiCentre.tabs.operations })).toBeNull();
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-step5-employee-inbox', FICTION, 'atelier');
   }, 120000);
 

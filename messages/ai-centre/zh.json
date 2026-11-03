@@ -18,9 +18,22 @@
       "workers": "代理",
       "setup": "设置",
       "spend": "支出与服务提供方",
+      "operations": "日常运营",
+      "administration": "管理",
       "how": "运作方式"
     },
     "inboxCount": "{count, plural, one {# 项待处理} other {# 项待处理}}",
+    "sectionsLabel": "{tab}栏目",
+    "sections": {
+      "overview": "概览",
+      "exceptions": "异常",
+      "readiness": "记录完备度",
+      "actions": "建议的操作",
+      "opportunities": "改进机会",
+      "workers": "代理",
+      "setup": "设置",
+      "spend": "支出与服务提供方"
+    },
     "subnav": {
       "workers": "全部代理",
       "inventory": "清单与审计",
