@@ -6,6 +6,7 @@
  * loopPromotion: for one loop and company, the certificate for the next level (computed from the loop's own records),
  * a sample of recent cases with their outcomes, and the limits.
  * loopLevelSummaries: for the Loops overview, how many of the viewer's companies stand at each level, per loop.
+ * loopCompanyLevels: for AI Centre's loops overview read, each loop's level in each company the viewer administers.
  * Group or HR administrators only (the pages' requireAdmin, checked again here); every read runs under the viewer's
  * row-level security (migrations 0960 and 0963). Only a group administrator may change a level (canChange). */
 import {and,desc,eq,gte,inArray,sql} from 'drizzle-orm';
@@ -142,6 +143,23 @@ export async function loopLevelSummaries(ctx:SessionContext):Promise<Readonly<Re
    const levels=await loopLevelsTx(tx,ctx.tenantId,id),counts=new Map<AutonomyLevel,number>();
    for(const item of companies){const level=levelIn(levels,item.id);counts.set(level,(counts.get(level)??0)+1);}
    out[id]=Object.freeze([...counts].sort((a,b)=>b[0]-a[0]).map(([level,count])=>Object.freeze({level,count})));
+  }
+  return Object.freeze(out);
+ });
+}
+
+export type LoopCompanyLevel=Readonly<{companyName:string;level:AutonomyLevel}>;
+/** Per loop, each company the viewer administers (by name) with the loop's level there; a company with no stored level
+ * is at Prepare (core/loops/levels.ts levelIn). For the loops overview read (core/semantic-model/entities-loops.ts):
+ * company names and levels only. */
+export async function loopCompanyLevels(ctx:SessionContext):Promise<Readonly<Record<LoopId,readonly LoopCompanyLevel[]>>>{
+ requireAdmin(ctx);
+ return withTenant(ctx,async tx=>{
+  const companies=Array.from(await tx.execute(sql`select c.id,c.legal_name from public.company c where c.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(c.id) order by c.legal_name,c.id`) as unknown as {id:string;legal_name:string}[]);
+  const out={} as Record<LoopId,readonly LoopCompanyLevel[]>;
+  for(const id of LOOP_IDS){
+   const levels=await loopLevelsTx(tx,ctx.tenantId,id);
+   out[id]=Object.freeze(companies.map(item=>Object.freeze({companyName:item.legal_name,level:levelIn(levels,item.id)})));
   }
   return Object.freeze(out);
  });

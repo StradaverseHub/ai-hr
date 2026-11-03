@@ -21,6 +21,9 @@ import {explainOwnPayslipStatutory} from './statutory';
 import {explainOwnPayDifference} from './pay-difference';
 import {explainOwnClaimLimit} from './claim-limit';
 import {LoopViewRefused,loopPausedCompanies,loopsOverview} from '../loops/views';
+import {loopCompanyLevels} from '../loops/autonomy-views';
+import {maxLevel} from '../loops/autonomy';
+import {levelKey} from '../loops/autonomy-types';
 import {askMyPayrollReadiness} from '../pre-salary/ask';
 import {payrollAuditStatus,payrollCycleStatus,payrollLoopSettings,salaryPayrollChecks} from './payroll-loops';
 
@@ -64,17 +67,19 @@ async function workforceAggregates(ctx:SessionContext,input:Record<string,unknow
    `Group figures only, counted by the workforce service; never one person. Groups under ${WORKFORCE_MINIMUM_GROUP} people, groups whose complement is under ${WORKFORCE_MINIMUM_GROUP}, groups whose members share one figure, and groups withheld to protect them are not shown.`)};
 }
 /** AI v2 W8: the loops overview as an administrator may ask about it: the owner's rows without the sponsor (a person),
- * the window counts or the correction rate, plus where each loop is paused. Every figure is still disclosed as a band
+ * the window counts or the correction rate, plus where each loop is paused and (AI v2 Phase 2 P2-1) its level in each
+ * company the administrator administers and the highest level it may reach. Every figure is still disclosed as a band
  * and restored for the person; the owner refuses anyone but an administrator. */
 async function loopsStatus(ctx:SessionContext):Promise<ExplainerOutcome>{
  try{
-  const overview=await loopsOverview(ctx),paused=await loopPausedCompanies(ctx);
+  const overview=await loopsOverview(ctx),paused=await loopPausedCompanies(ctx),levels=await loopCompanyLevels(ctx);
   return{ok:true,canSwitch:overview.canSwitch,
-   loops:overview.rows.map(row=>({loop:row.id,level:row.level,on:row.on,stopped:row.stopped,running:row.running,
+   loops:overview.rows.map(row=>({loop:row.id,ceiling:levelKey(maxLevel(row.id)),levels:levels[row.id].map(item=>({company:item.companyName,level:levelKey(item.level)})),
+    on:row.on,stopped:row.stopped,running:row.running,
     lastRun:row.lastRun?{at:row.lastRun.at.toISOString(),status:row.lastRun.status,capped:row.lastRun.capped}:null,
     openNow:row.openNow,waitingNow:row.waitingNow,pausedIn:paused[row.id].map(company=>({company}))})),
    provenance:provenance('core/loops/views.ts#loopsOverview','Not applicable: switches, pauses and card counts, not a versioned rule.','/control-tower/loops',
-    'Counts and states only, read under the administrator\'s own access: never who a card is for, who switched a loop on, or a figure from pay. Loops are switched on or off and paused on the Loops page.')};
+    'Counts and states only, read under the administrator\'s own access: never who a card is for, who switched a loop on, or a figure from pay. Loops are switched on or off and paused on the Loops page; a group administrator changes a loop\'s level on its own page, and pay, employment status, access, discipline and statutory filing loops stay at Prepare.')};
  }catch(error){if(error instanceof LoopViewRefused)return refuse('not_permitted','The loops overview is available to administrators only.');throw error;}
 }
 /** Public page guidance is literal product knowledge, never a configuration or account read.
