@@ -73,9 +73,9 @@ it('uses a fresh post-fence snapshot when a raw app writer COMMITs after initial
  const gate='test-only-discard-statement:'+randomUUID();let entered!:(pid:number)=>void;const admission=new Promise<number>(resolve=>{entered=resolve;});let outcome:Promise<{ok:boolean;error?:unknown}>|undefined;
  await owner.db.transaction(async held=>{
   await held.execute(sql`select pg_advisory_xact_lock(hashtextextended(${gate},0))`);
-  outcome=withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);const [row]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() pid`);entered(row.pid);return tx.execute(sql`with gate as materialized(select pg_advisory_xact_lock(hashtextextended(${gate},0))) select app.onboarding_draft_discard_absence_context(${draftId}::uuid,${b.companyId}::uuid,null::uuid) as absent from gate`);}).then(()=>({ok:true}),error=>({ok:false,error}));
+  outcome=withTenant(ctx,async tx=>{const [row]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() pid`);entered(row.pid);return tx.execute(sql`with gate as materialized(select pg_advisory_xact_lock(hashtextextended(${gate},0))), access as materialized(select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+ctx.tenantId},0)) from gate) select app.onboarding_draft_discard_absence_context(${draftId}::uuid,${b.companyId}::uuid,null::uuid) as absent from access`);}).then(()=>({ok:true}),error=>({ok:false,error}));
   const pid=await admission,deadline=Date.now()+10000;for(;;){const [row]=await owner.db.execute<{waiting:boolean}>(sql`select exists(select 1 from pg_locks where pid=${pid} and locktype='advisory' and not granted) waiting`);if(row.waiting)break;if(Date.now()>deadline)throw Error('statement admission interleaving not reached');await new Promise(resolve=>setTimeout(resolve,20));}
-  // Outer SELECT snapshot already exists; this writer bypasses native advisory locks using real app DML.
+  // Outer SELECT snapshot already exists; the writer takes and releases its native Access lock before the waiting reader acquires it.
   await withTenant(writer,tx=>linked(tx));
  });const result=await outcome!;expect(result.ok).toBe(false);expect(pgSqlState(result.error)).toBe('42501');expect(await withTenant(ctx,tx=>tx.select({id:s.lcOnboardingCase.id}).from(s.lcOnboardingCase))).toEqual([]);await denied(run());
 });

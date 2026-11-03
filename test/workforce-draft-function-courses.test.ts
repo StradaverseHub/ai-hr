@@ -56,3 +56,10 @@ it('publishes Drafts and applies Execute independently of Edit and ordinary new 
   await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.workforceDrafts.%'`;
  }
 });
+
+it('matches native cent rounding for stored draft compensation, including binary midpoints',async()=>{
+ const inputs=['3,000.129','1_0.126','1.005','2.675','-1.125','1e-3','0'];
+ const rows=await owner.client<{value:string}[]>`select app.workforce_draft_money(raw)::text as value
+  from unnest(${inputs}::text[]) with ordinality as input(raw,ordinal) order by ordinal`;
+ expect(rows.map(row=>row.value)).toEqual(inputs.map(raw=>Number(raw.replace(/[,_]/g,'')).toFixed(2)));
+});
