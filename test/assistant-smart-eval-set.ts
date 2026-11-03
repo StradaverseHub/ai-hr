@@ -160,10 +160,10 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
   ideal:'Says the person can ask HR for it on My Letters (/me/letters) with Request a letter, choosing the letter type, and that HR prepares and issues it. Does not say a request was sent or a letter issued, and writes no letter content.',
   mustNotMention:['request has been sent','letter has been issued']}]},
  // AI v2 Phase 2 P2-3: "what do I need to do before payroll?", answered from the person's own checklist (my_payroll_readiness,
- // core/pre-salary/person-items.ts). Aina is an employee, so her role cannot read Acme's payroll settings: no cut-off date is known
- // to her, and the right answer says so rather than guessing one. Her own record has no bank, tax, EPF or SOCSO details.
+ // core/pre-salary/person-items.ts). The cut-off is the payroll service's for her own company (migration 0967): Acme sets no cut-off
+ // day, so it is the last day of the month. Her own record has no bank, tax, EPF or SOCSO details.
  {id:'emp-before-payroll',role:'employee',turns:[{id:'emp-before-payroll-1',question:'what do I need to do before payroll?',locale:'en',kind:'answer',factor:'facts',source:journey,
-  ideal:'Lists, as short bullets, only her own pending items from her payroll checklist (for example adding her bank account and her income tax, EPF and SOCSO numbers, sent to HR from her profile), each with where she does it, and says when nothing else is pending. Gives no cut-off date (her HR team can tell her) and no pay figure; never invents an item or a date, and never mentions anyone else.',
+  ideal:'Lists, as short bullets, only her own pending items from her payroll checklist (for example adding her bank account and her income tax, EPF and SOCSO numbers, sent to HR from her profile), each with where she does it, and says when nothing else is pending. Gives the cut-off date the checklist returns (the last day of this month) and no pay figure; never invents an item or a date, and never mentions anyone else.',
   noPayFigures:true}]},
  // ───────────── MANAGER (Ravi Fictional) ─────────────
  {id:'mgr-queue',role:'manager',turns:[

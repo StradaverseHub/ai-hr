@@ -1273,7 +1273,7 @@
     "groupDone": "Không có việc tồn đọng.",
     "groupUnknown": "Hiện chưa kiểm tra được.",
     "approvalsHelp": "Các yêu cầu chờ bạn quyết định trước hạn chót.",
-    "notCovered": "Chưa kiểm tra ở đây: đổi ca, xác nhận bảng chấm công, giảm trừ thuế và thông tin người phụ thuộc, và thay đổi lương cần xác nhận.",
+    "notCovered": "Chưa kiểm tra ở đây: đổi ca, khoảng trống lịch ca, xác nhận bảng chấm công, giờ làm thêm đã làm nhưng chưa đăng ký, và thay đổi lương cần xác nhận.",
     "open": "Mở",
     "review": "Xem xét",
     "confirm": "Xác nhận",
@@ -1333,7 +1333,12 @@
       "approve_leave_cancellation": "Hủy nghỉ phép cần phê duyệt · {name}",
       "approve_attendance": "Chấm công hoặc làm thêm giờ cần phê duyệt · {name}",
       "approve_claim": "Yêu cầu thanh toán cần phê duyệt · {name}",
-      "approve_toil": "Nghỉ bù cần phê duyệt · {name}"
+      "approve_toil": "Nghỉ bù cần phê duyệt · {name}",
+      "tp1_draft": "Gửi tờ khai giảm trừ thuế (TP1) của bạn",
+      "tp1_pending": "Tờ khai giảm trừ thuế (TP1) của bạn đang chờ phê duyệt",
+      "dependants_mismatch": "Kiểm tra số con được giảm trừ thuế: hồ sơ gia đình của bạn ghi ít hơn số bạn đã khai",
+      "review_acknowledge": "Xác nhận bản đánh giá hiệu suất của bạn",
+      "onboarding_acknowledge": "Xác nhận bàn giao nhận việc của bạn"
     }
   }
 }

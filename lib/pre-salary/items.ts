@@ -17,8 +17,8 @@ export const PAYROLL_ITEM_KINDS=Object.freeze({
  leave:['leave_pending','leave_unpaid','leave_certificate_missing'],
  claims:['claim_deadline','claim_receipt_missing','claim_draft','claim_pending'],
  toil:['toil_pending'],
- details:['bank_missing','tax_number_missing','epf_number_missing','socso_number_missing','identity_missing','details_request_pending','tp3_new_joiner'],
- acknowledge:['letter_acknowledge','notice_acknowledge'],
+ details:['bank_missing','tax_number_missing','epf_number_missing','socso_number_missing','identity_missing','details_request_pending','tp3_new_joiner','tp1_draft','tp1_pending','dependants_mismatch'],
+ acknowledge:['letter_acknowledge','notice_acknowledge','review_acknowledge','onboarding_acknowledge'],
  approvals:['approve_leave','approve_leave_cancellation','approve_attendance','approve_claim','approve_toil'],
 } as const satisfies Readonly<Record<PayrollItemGroup,readonly string[]>>);
 export type PayrollItemKind=(typeof PAYROLL_ITEM_KINDS)[PayrollItemGroup][number];
@@ -50,8 +50,8 @@ export type PayrollItem=Readonly<{
  action:PayrollItemAction}>;
 
 /** company: the company's own cut-off day (the payroll owner's cutOffWindowFor); month_end: the company sets none, so
- * the owner's default month-end applies; unavailable: the person may not read their company's payroll settings, so
- * no cut-off date is shown and the month is the calendar month (no date is guessed). */
+ * the owner's default month-end applies; unavailable: the person has no own current employment to read a cut-off for,
+ * so no cut-off date is shown and the month is the calendar month (no date is guessed). */
 export type CutOffSource='company'|'month_end'|'unavailable';
 export type PayrollPeriod=Readonly<{payPeriod:string;start:string;cutOff:string|null;source:CutOffSource}>;
 

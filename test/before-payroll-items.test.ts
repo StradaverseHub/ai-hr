@@ -4,19 +4,20 @@
  * that the real owners return only the person's own rows is test/before-payroll-checklist.test.ts). Pinned here, with every
  * expected value written out by hand from the fixture:
  *  - every item kind, its state, day, due date and one action (the missed clock-out loop's Confirm card where it exists);
- *  - the cut-off and the period window are the payroll owner's (cutOffWindowFor's answer, for a company the caller
- *    administers); anyone else gets the calendar month and no cut-off date, and the payroll settings are never read;
+ *  - the cut-off and the period window are the payroll owner's (cutOffWindowFor's answer for the cut-off day
+ *    app.own_payroll_cut_off_day returns for the person's own employment); with no answer, the calendar month and no date;
  *  - no pay figure: amounts, limits, balances, minutes and day counts the owners return never reach the result;
  *  - an owner that fails is "could not check", never done; a module not in use is "off";
  *  - the Ask read's disclosure: every returned field declared, no id or link with an id, health-indicative names withheld.
  * No database. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 
-const fx=vi.hoisted(()=>({admin:true as boolean,cutOffDay:20 as number|null,modules:{} as Record<string,boolean>,fail:new Set<string>(),calls:[] as unknown[][],
+const fx=vi.hoisted(()=>({cutOffRow:true as boolean,cutOffDay:20 as number|null,modules:{} as Record<string,boolean>,fail:new Set<string>(),calls:[] as unknown[][],
  own:true as boolean,gaps:null as null|unknown[]}));
 const failing=(name:string)=>{if(fx.fail.has(name))throw new Error('Fictional owner failure: '+name);};
 
-vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,fn:(tx:unknown)=>unknown)=>fn({execute:async()=>[{admin:fx.admin}]})}));
+// The only direct query is app.own_payroll_cut_off_day (migration 0967): one row for the person's own employment, or none.
+vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,fn:(tx:unknown)=>unknown)=>fn({execute:async()=>{fx.calls.push(['ownCutOff']);return fx.cutOffRow?[{cut_off_day:fx.cutOffDay}]:[];}})}));
 vi.mock('../core/entitlements',()=>{
  class EntitlementsResolutionFailedError extends Error{}
  return {EntitlementsResolutionFailedError,isModuleEnabled:(_ctx:unknown,code:string)=>fx.modules[code]??true};
@@ -27,7 +28,9 @@ vi.mock('../core/employee-home',()=>{
   return {employmentId:'emp-own',currentCompanyId:'co-1',companyProof:{companyId:'co-1'}};}};
 });
 vi.mock('../packs/payroll/service',()=>({
- getPayrollConfig:async(_ctx:unknown,companyId:string)=>{fx.calls.push(['getPayrollConfig',companyId]);failing('payroll');return {cutOffDay:fx.cutOffDay,payDay:25,basicSalary:7777.77};},
+ listMyTp1Declarations:async(_ctx:unknown,p:{assessmentYear?:number})=>{fx.calls.push(['listMyTp1Declarations',p]);return [
+  {id:'tp1-draft',assessmentYear:2026,status:'draft',tp1Amount:2500.5,approvedAt:null,submittedAt:null},{id:'tp1-sent',assessmentYear:2026,status:'submitted',tp1Amount:1111.11,approvedAt:null,submittedAt:new Date()},
+  {id:'tp1-approved',assessmentYear:2026,status:'submitted',tp1Amount:7777.77,approvedAt:new Date(),submittedAt:new Date()},{id:'tp1-last-year',assessmentYear:2025,status:'draft',tp1Amount:3,approvedAt:null,submittedAt:null}];},
  // The payroll owner's answer for the company's cut-off day; the service must use it as given.
  cutOffWindowFor:(type:string,policy:unknown,company:{cutOffDay:number|null},period:string)=>{fx.calls.push(['cutOffWindowFor',type,policy,company,period]);
   return company.cutOffDay===20?(period==='2026-11'?{start:'2026-10-20',end:'2026-11-19'}:{start:'2026-11-20',end:'2026-12-19'}):{start:`${period}-01`,end:period==='2026-11'?'2026-11-30':'2026-12-31'};},
@@ -86,6 +89,14 @@ vi.mock('../core/letters',()=>({listMyLetters:async()=>({nextCursor:null,rows:[
  {id:'letter-1',reference:'L-1',state:'issued',issuedAt:new Date('2026-11-02T03:00:00Z'),voidedAt:null,employmentId:'emp-own',companyId:'co-1',acknowledgement:'acknowledge',viewed:true,confirmed:null},
  {id:'letter-2',state:'issued',issuedAt:new Date('2026-10-02T03:00:00Z'),voidedAt:null,acknowledgement:'none',confirmed:null},
  {id:'letter-3',state:'issued',issuedAt:new Date('2026-10-05T03:00:00Z'),voidedAt:null,acknowledgement:'signature',confirmed:'signed'}]})}));
+vi.mock('../core/profile',()=>({myProfile:async()=>({person:{fullName:'Aina Fictional'},statutory:{bankName:'Maybank',bankAccountNo:'514012345678',taxCategory:'KA2',numChildren:3}})}));
+// The Family register's own eligible count decides; this stub answers as the owner would for the rows it is given.
+vi.mock('../core/dependents',()=>({listDependents:async()=>[{id:'dep-1',relationship:'child',dateOfBirth:'2015-01-01'},{id:'dep-2',relationship:'child',dateOfBirth:'2018-01-01'}],
+ eligibleChildReliefCount:(rows:unknown[])=>{fx.calls.push(['eligibleChildReliefCount',rows.length]);return rows.length;}}));
+vi.mock('../packs/performance/service',()=>({myReviews:async()=>[{reviewId:'rv-ready',cycleName:'Fictional 2026 H1',status:'submitted',released:true,overallRating:4,finalScore:'88.50',periodEnd:'2026-06-30'},
+ {reviewId:'rv-unreleased',status:'submitted',released:false,periodEnd:'2026-06-30'},{reviewId:'rv-done',status:'acknowledged',released:true,periodEnd:'2025-12-31'}]}));
+vi.mock('../packs/lifecycle/service',()=>({onboardingMyAcknowledgements:async()=>[{id:'case-ob',revision:'1',name:'Aina Fictional',employeeId:'E-1',joinDate:'2026-03-02',number:'ON-1',available:true,submittedAt:null},
+ {id:'case-done',joinDate:'2026-03-02',available:true,submittedAt:'2026-03-05T01:00:00.000Z'},{id:'case-later',joinDate:'2026-03-02',available:false,submittedAt:null}]}));
 vi.mock('../core/notice',()=>({pendingNoticeAcknowledgementTasks:async()=>[{noticeId:'notice-1',employmentId:'emp-own',title:'Fictional notice',contentVersion:3,sourceUpdatedAt:new Date('2026-11-04T01:00:00Z')}]}));
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:async(...args:unknown[])=>{fx.calls.push(['listPendingTasks',...args.slice(1)]);failing('approvals');return [
  {id:'t-leave',kind:'leave',subjectName:'Siti Fictional',createdAt:'2026-11-05T01:00:00.000Z',linkPath:'/approvals?section=leave&focus=t-leave'},
@@ -96,7 +107,7 @@ vi.mock('../core/approvals-inbox',()=>({listPendingTasks:async(...args:unknown[]
  {id:'t-profile',kind:'profile',subjectName:'Wei Fictional',createdAt:'2026-11-07T01:00:00.000Z',linkPath:'/admin/personnel/profile-changes'}];}}));
 
 import {readMyPayrollReadiness} from '../core/pre-salary/person-items';
-import {askMyPayrollReadiness} from '../core/pre-salary/ask';
+import {NOT_COVERED,askMyPayrollReadiness} from '../core/pre-salary/ask';
 import {ALL_PAYROLL_ITEM_KINDS,type PayrollItem} from '../lib/pre-salary/items';
 import {DisclosureLedger,discloseToolOutput} from '../core/harness/disclosure';
 import type {SessionContext} from '../db/client';
@@ -105,7 +116,7 @@ const CTX={tenantId:'00000000-0000-4000-8000-000000000001',userId:'00000000-0000
 const TODAY='2026-11-10';
 const read=()=>readMyPayrollReadiness(CTX,{today:TODAY,locale:'en'});
 const brief=(rows:readonly PayrollItem[])=>rows.map(row=>[row.kind,row.state,row.date,row.due,row.action.kind==='confirm'?'confirm:'+row.action.caseId:row.action.href]);
-beforeEach(()=>{fx.admin=true;fx.cutOffDay=20;fx.modules={};fx.fail=new Set();fx.calls=[];fx.own=true;fx.gaps=null;});
+beforeEach(()=>{fx.cutOffRow=true;fx.cutOffDay=20;fx.modules={};fx.fail=new Set();fx.calls=[];fx.own=true;fx.gaps=null;});
 
 describe('the person\'s own items, every kind',()=>{
  it('lists each pending thing with its state, day, due date and one action, the most urgent first',async()=>{
@@ -115,6 +126,8 @@ describe('the person\'s own items, every kind',()=>{
   expect(brief(result.items)).toEqual([
    // To do: the soonest due first (a draft claim whose receipt window closes on 15 November), then by day.
    ['claim_deadline','todo','2026-10-01','2026-11-15','/claims?draft=cl-near'],
+   ['onboarding_acknowledge','todo','2026-03-02',C,'/lifecycle/acknowledgement?case=case-ob'],
+   ['review_acknowledge','todo','2026-06-30',C,'/me/performance'],
    ['leave_certificate_missing','todo','2026-10-27',C,'/leave'],
    ['letter_acknowledge','todo','2026-11-02',C,'/me/letters/letter-1'],
    ['missed_clock_out','todo','2026-11-03',C,'confirm:case-1'],
@@ -129,11 +142,14 @@ describe('the person\'s own items, every kind',()=>{
    ['bank_missing','todo',null,C,'/me?tab=bankStatutory#section-request-bankStatutory'],
    ['tax_number_missing','todo',null,C,'/me?tab=bankStatutory#section-request-bankStatutory'],
    ['epf_number_missing','todo',null,C,'/me?tab=bankStatutory#section-request-bankStatutory'],
+   ['tp1_draft','todo',null,C,'/me/tax-relief'],
    // Check: worth a look, may need nothing.
    ['tp3_new_joiner','check','2026-03-02',C,'/me/tp3'],
    ['leave_unpaid','check','2026-11-04',C,'/leave'],
    ['late_or_early','check','2026-11-06',C,'/attendance/requests?section=short&fix=2026-11-06'],
    ['overtime_over_cap','check',null,C,'/attendance/plan-ot'],
+   // Three children declared for tax relief; the Family register counts two eligible.
+   ['dependants_mismatch','check',null,C,'/me?tab=family'],
    // Waiting: the person acted; someone else decides.
    ['toil_pending','waiting','2026-11-01',C,'/leave/credit'],
    ['attendance_request_pending','waiting','2026-11-02',C,'/attendance/request-status'],
@@ -141,7 +157,10 @@ describe('the person\'s own items, every kind',()=>{
    ['overtime_pending','waiting','2026-11-08',C,'/attendance/plan-ot'],
    ['leave_pending','waiting','2026-11-12',C,'/leave'],
    ['details_request_pending','waiting',null,C,'/me?tab=bankStatutory#section-request-bankStatutory'],
+   ['tp1_pending','waiting',null,C,'/me/tax-relief'],
   ]);
+  // TP1 is read for this year only.
+  expect(fx.calls).toContainEqual(['listMyTp1Declarations',{assessmentYear:2026}]);
   // The leave and claim type names are the person's own; leave keeps its last day.
   expect(result.items.find(row=>row.kind==='leave_pending')).toMatchObject({label:'Annual Leave',date:'2026-11-12',endDate:'2026-11-13'});
   expect(result.items.find(row=>row.kind==='claim_receipt_missing')).toMatchObject({label:'Parking'});
@@ -168,7 +187,8 @@ describe('the person\'s own items, every kind',()=>{
   const first=(await read())!;
   fx.gaps=['no_bank_account','no_tax_number','no_epf_number','no_socso_number','no_identity'].map(gap=>({gap,type:'submit_correction',audience:'employee',tab:'bankStatutory',requestId:null,approver:'admin'}));
   const second=(await read())!;
-  expect(second.items.filter(row=>row.group==='details').map(row=>row.kind)).toEqual(['bank_missing','tax_number_missing','epf_number_missing','socso_number_missing','identity_missing','tp3_new_joiner']);
+  expect(second.items.filter(row=>row.group==='details').map(row=>row.kind)).toEqual(['bank_missing','tax_number_missing','epf_number_missing','socso_number_missing','identity_missing','tp1_draft',
+   'tp3_new_joiner','dependants_mismatch','tp1_pending']);
   const seen=new Set([...first.items,...first.approvals,...second.items].map(row=>row.kind));
   expect(ALL_PAYROLL_ITEM_KINDS.filter(kind=>!seen.has(kind))).toEqual([]);
  });
@@ -180,8 +200,9 @@ describe('the person\'s own items, every kind',()=>{
 });
 
 describe('the cut-off is the payroll owner\'s',()=>{
- it('for a company the person administers: the owner\'s window for the company\'s own cut-off day',async()=>{
+ it('for the person\'s own employment: the owner\'s window for the cut-off day the database returns for it',async()=>{
   await read();
+  expect(fx.calls.filter(call=>call[0]==='ownCutOff')).toHaveLength(1);
   expect(fx.calls.filter(call=>call[0]==='cutOffWindowFor')).toEqual([['cutOffWindowFor','salary',null,{cutOffDay:20},'2026-11']]);
  });
  it('moves to the next period once this one\'s cut-off has passed',async()=>{
@@ -192,11 +213,11 @@ describe('the cut-off is the payroll owner\'s',()=>{
   fx.cutOffDay=null;
   expect((await read())!.period).toEqual({payPeriod:'2026-11',start:'2026-11-01',cutOff:'2026-11-30',source:'month_end'});
  });
- it('for anyone else: the calendar month and no date, without reading the payroll settings',async()=>{
-  fx.admin=false;
+ it('with no answer (no own current employment): the calendar month and no date, and no window is computed',async()=>{
+  fx.cutOffRow=false;
   const result=(await read())!;
   expect(result.period).toEqual({payPeriod:'2026-11',start:'2026-11-01',cutOff:null,source:'unavailable'});
-  expect(fx.calls.some(call=>call[0]==='getPayrollConfig'||call[0]==='cutOffWindowFor')).toBe(false);
+  expect(fx.calls.some(call=>call[0]==='cutOffWindowFor')).toBe(false);
   // With no cut-off date, only a draft claim's own receipt deadline is a due date (the incurred day plus 45 days).
   expect(result.items.filter(row=>row.due!==null).map(row=>[row.kind,row.due])).toEqual([['claim_deadline','2026-11-15'],['claim_receipt_missing','2026-12-23'],
    ['claim_draft','2026-12-24'],['claim_draft','2026-12-24']]);
@@ -207,7 +228,7 @@ describe('the cut-off is the payroll owner\'s',()=>{
 describe('no pay figure',()=>{
  it('copies no amount, limit, balance, salary, minutes or day count from any owner',async()=>{
   const text=JSON.stringify(await read());
-  for(const figure of ['1234.56','9876.54','7777.77','6300','6240','6000','180','150','480','totalDays','totalHours','amount','balance','Fictional typed words','Fictional reason'])
+  for(const figure of ['1234.56','9876.54','7777.77','2500.5','1111.11','514012345678','Maybank','88.50','6300','6240','6000','180','150','480','totalDays','totalHours','amount','balance','Rating','Fictional typed words','Fictional reason'])
    expect(text,figure).not.toContain(figure);
   const ask=JSON.stringify(await askMyPayrollReadiness(CTX,{companyId:'co-1',locale:'en'}));
   for(const figure of ['1234.56','9876.54','7777.77','6300','6240'])expect(ask,figure).not.toContain(figure);
@@ -254,7 +275,7 @@ describe('the Ask read my_payroll_readiness under harness disclosure',()=>{
   const {value,applied}=discloseToolOutput('my_payroll_readiness','payroll_readiness',outcome,ledger);
   expect(applied.undeclared).toEqual([]);expect(applied.removed).toEqual([]);
   const text=JSON.stringify(value);
-  for(const id of ['cl-near','case-1','letter-1','notice-1','emp-own','t-leave','corr-1','toil-1','req-1','co-1'])expect(text,id).not.toContain(id);
+  for(const id of ['cl-near','case-1','case-ob','letter-1','notice-1','rv-ready','tp1-draft','emp-own','t-leave','corr-1','toil-1','req-1','co-1'])expect(text,id).not.toContain(id);
   // Other people are never named: approvals leave as counts of each kind.
   expect(text).not.toMatch(/Siti|Wei/);
   expect((outcome as unknown as {approvals:unknown}).approvals).toEqual([{kind:'approve_leave',count:1,due:'2026-11-19',page:'/approvals'},{kind:'approve_leave_cancellation',count:1,due:'2026-11-19',page:'/approvals'},
@@ -264,6 +285,9 @@ describe('the Ask read my_payroll_readiness under harness disclosure',()=>{
   // The page and the confirm card are said; the cut-off date is the payroll service's.
   expect(text).toContain('"page":"/attendance/requests"');expect(text).toContain('"page":"/me/letters"');expect(text).toContain('"page":"/notices"');expect(text).toContain('"confirmCard":true');expect(text).toContain('"cutOff":"2026-11-19"');
   expect(text).toContain('core/pre-salary/person-items.ts#readMyPayrollReadiness');
+ });
+ it('names exactly what it cannot check, the same list the screen shows',()=>{
+  expect(NOT_COVERED).toEqual(['shift swaps','roster gaps','timesheet sign-off','overtime worked but not yet applied for','pay changes to acknowledge']);
  });
  it('says plainly when payroll is not in use',async()=>{
   fx.modules={payroll:false};

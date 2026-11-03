@@ -1273,7 +1273,7 @@
     "groupDone": "Tiada yang tertunggak.",
     "groupUnknown": "Tidak dapat disemak sekarang.",
     "approvalsHelp": "Permohonan yang menunggu keputusan anda sebelum tarikh tutup.",
-    "notCovered": "Belum disemak di sini: pertukaran syif, pengesahan helaian masa, pelepasan cukai dan butiran tanggungan, serta perubahan gaji untuk diakui.",
+    "notCovered": "Belum disemak di sini: pertukaran syif, jurang jadual, pengesahan helaian masa, kerja lebih masa yang dibuat tetapi belum dipohon, serta perubahan gaji untuk diakui.",
     "open": "Buka",
     "review": "Semak",
     "confirm": "Sahkan",
@@ -1333,7 +1333,12 @@
       "approve_leave_cancellation": "Pembatalan cuti untuk diluluskan · {name}",
       "approve_attendance": "Kehadiran atau kerja lebih masa untuk diluluskan · {name}",
       "approve_claim": "Tuntutan untuk diluluskan · {name}",
-      "approve_toil": "Cuti ganti untuk diluluskan · {name}"
+      "approve_toil": "Cuti ganti untuk diluluskan · {name}",
+      "tp1_draft": "Hantar akuan pelepasan cukai anda (TP1)",
+      "tp1_pending": "Akuan pelepasan cukai anda (TP1) menunggu kelulusan",
+      "dependants_mismatch": "Semak anak untuk pelepasan cukai: rekod keluarga anda menyenaraikan kurang daripada yang anda isytiharkan",
+      "review_acknowledge": "Akui penilaian prestasi anda",
+      "onboarding_acknowledge": "Akui serahan onboarding anda"
     }
   }
 }

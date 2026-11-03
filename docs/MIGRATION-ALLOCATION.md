@@ -1035,3 +1035,19 @@ may claim the same idx; reconcile at integration.
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
 |766|1793330000361|0961_letter_requests|fac033d489f171da966f620f058f8f688c21e691786b2700bd9fe0876495eb5e|
+
+## AI v2 Phase 2 P2-3, own payroll cut-off — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-payroll-checklist` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 /
+when1793330000361) appends `0967_own_payroll_cut_off` as idx767 / when1793330000367, the number and `when` the AI v2
+coordinator assigned for "P2-3, own payroll cut-off". A fresh fetch on 3 November 2026 and a scan of every origin ref and
+every registered AI v2 worktree found Phase 2 claims 0963 (autonomy ladder), 0964 (payroll cycle loops), 0965 (audit loop)
+and 0966 (capacity baseline), each on its own branch and each the next journal idx after the same base, and nothing
+claiming 0967 or when1793330000367. The migration adds one STABLE SECURITY DEFINER function,
+`app.own_payroll_cut_off_day(uuid)`, returning only the calling login's own current employment's company cut-off day; no
+table, column, constraint or policy changes. Development source only: no installation priority, no deployment; idx767 is
+this branch's own journal position and is re-frozen with the sibling Phase 2 claims at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000367|0967_own_payroll_cut_off|b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca|

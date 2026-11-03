@@ -5,16 +5,19 @@
  *  - each person sees only their own items (never the colleague's day, leave or correction), read as themselves;
  *  - the missed clock-out's one action is the loop's own Confirm card once the loop has prepared it;
  *  - each manager sees only the decisions the approvals owner assigns them: their own team's;
- *  - the cut-off is the payroll owner's for an administrator of the company (month end with no cut-off day, then the
- *    window the company's day 28 opens), and an employee, who may not read the company's payroll settings, gets the
- *    calendar month and no date;
+ *  - the cut-off is the payroll owner's for the company of the person's own employment, employee and administrator alike
+ *    (month end with no cut-off day, then the window the company's day 28 opens), read through
+ *    app.own_payroll_cut_off_day (migration 0967) while company_payroll_config itself stays administrators-only;
+ *  - that function answers only for the caller's own current employment: an employee of A gets A's day, never B's (even
+ *    given B's ids), a login with no employment gets nothing, a person with two employments gets exactly those two
+ *    companies' days, and it exposes no other configuration column;
  *  - no pay figure: the employee's salary appears nowhere in the result.
  * Every item kind is pinned against its owner's row shape in test/before-payroll-items.test.ts. */
 import {randomUUID} from 'node:crypto';
-import {eq} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import * as schema from '../db/schema';
-import type {SessionContext} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {ensureAgentPrincipal} from '../core/agent-principal';
@@ -67,9 +70,10 @@ beforeEach(async()=>{
 
 describe('each person\'s own checklist',()=>{
  it('shows the person their own missed clock-out and leave, never a colleague\'s, with the calendar month and no cut-off date',async()=>{
+  await owner.db.delete(schema.companyPayrollConfig).where(eq(schema.companyPayrollConfig.companyId,b.companyId));
   const mine=await read(aina),theirs=await read(siti);
-  // An employee may not read the company's payroll settings (migration 0081): no date is guessed.
-  expect(mine.period).toEqual({payPeriod:'2026-07',start:'2026-07-01',cutOff:null,source:'unavailable'});
+  // The company sets no cut-off day: the payroll owner's month end, for the employee too (migration 0967).
+  expect(mine.period).toEqual({payPeriod:'2026-07',start:'2026-07-01',cutOff:'2026-07-31',source:'month_end'});
   expect(kinds(mine).filter(([kind])=>kind==='missed_clock_out'||kind==='leave_pending')).toEqual([['missed_clock_out','todo',YESTERDAY],['leave_pending','waiting','2026-07-10']]);
   expect(kinds(theirs).filter(([kind])=>kind==='missed_clock_out'||kind==='leave_pending')).toEqual([['missed_clock_out','todo',YESTERDAY],['leave_pending','waiting','2026-07-13']]);
   expect(mine.items.find(row=>row.kind==='leave_pending')!.key).toBe(`leave_pending:${leave.aina}`);
@@ -112,15 +116,74 @@ describe('a manager\'s checklist',()=>{
 });
 
 describe('the cut-off is the payroll owner\'s',()=>{
- it('for an administrator of the company: month end with no cut-off day, then the window day 28 opens',async()=>{
+ it('for employee and administrator alike: month end with no cut-off day, then the window day 28 opens',async()=>{
   await owner.db.delete(schema.companyPayrollConfig).where(eq(schema.companyPayrollConfig.companyId,b.companyId));
   expect((await read(group)).period).toEqual({payPeriod:'2026-07',start:'2026-07-01',cutOff:'2026-07-31',source:'month_end'});
   await owner.db.insert(schema.companyPayrollConfig).values({tenantId:b.tenantId,companyId:b.companyId,cutOffDay:28});
   // Day 28: inputs from 28 June to 27 July count towards July.
   expect((await read(group)).period).toEqual({payPeriod:'2026-07',start:'2026-06-28',cutOff:'2026-07-27',source:'company'});
-  // The employee still may not read the settings: no date for them.
-  expect((await read(aina)).period).toEqual({payPeriod:'2026-07',start:'2026-07-01',cutOff:null,source:'unavailable'});
+  // The employee gets the same date through the definer function, while the settings themselves stay closed to them.
+  expect((await read(aina)).period).toEqual({payPeriod:'2026-07',start:'2026-06-28',cutOff:'2026-07-27',source:'company'});
+  expect(await withTenant(aina,tx=>tx.select().from(schema.companyPayrollConfig))).toEqual([]);
+  expect((await read(aina)).items.find(row=>row.kind==='leave_pending')!.due).toBe('2026-07-27');
   // Every own item of the administrator is due on the cut-off.
   expect((await read(group)).items.every(row=>row.due==='2026-07-27')).toBe(true);
+ });
+});
+
+describe('app.own_payroll_cut_off_day (migration 0967)',()=>{
+ type Row={cut_off_day:number|null};
+ const own=(ctx:SessionContext,employmentId:string)=>withTenant(ctx,tx=>tx.execute(sql`SELECT * FROM app.own_payroll_cut_off_day(${employmentId}::uuid)`)).then(rows=>[...(rows as unknown as Row[])]);
+ async function companyB(){
+  const [company]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Beta Sdn Bhd'}).returning({id:schema.company.id});
+  const [dept]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:company.id,name:'Fictional Beta Operations'}).returning({id:schema.department.id});
+  await owner.db.insert(schema.companyPayrollConfig).values({tenantId:b.tenantId,companyId:company.id,cutOffDay:15,payDay:17,overtimeCutOffDay:9,claimCutOffDay:11});
+  return {companyId:company.id,departmentId:dept.id};
+ }
+ beforeEach(async()=>{
+  await owner.db.delete(schema.companyPayrollConfig).where(eq(schema.companyPayrollConfig.companyId,b.companyId));
+  await owner.db.insert(schema.companyPayrollConfig).values({tenantId:b.tenantId,companyId:b.companyId,cutOffDay:28,payDay:25,attendanceCutOffDay:21});
+ });
+
+ it('gives an employee of A only A\'s cut-off day, and nothing for B, a colleague or an unknown id',async()=>{
+  const beta=await companyB();
+  const bob=await hireEmployee(adminCtx(b),{person:{fullName:'Bob Fictional',primaryEmail:`${randomUUID()}@fixture.test`},companyId:beta.companyId,departmentId:beta.departmentId,employmentType:'full_time',hiredOn:'2024-01-01'});
+  expect(await own(aina,aina.employmentId)).toEqual([{cut_off_day:28}]);
+  // B's employment, the colleague's in A and an id that is no employment: no row, however the id is passed.
+  expect(await own(aina,bob.employmentId)).toEqual([]);
+  expect(await own(aina,siti.employmentId)).toEqual([]);
+  expect(await own(aina,randomUUID())).toEqual([]);
+  // Even the group administrator, who may read B's settings directly, gets nothing for another person's employment.
+  expect(await own(group,bob.employmentId)).toEqual([]);
+ });
+
+ it('gives a login with no employment nothing, and its checklist no date',async()=>{
+  const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional Visitor',primaryEmail:`${randomUUID()}@fixture.test`}).returning({id:schema.person.id});
+  const userId=await createAppUser(b.tenantId,person.id,'employee');
+  const visitor={...await entitledCtx(b,['employee']),userId,personId:person.id,roles:['employee'],grants:[{role:'employee',companyId:null}]} as SessionContext;
+  expect(await own(visitor,aina.employmentId)).toEqual([]);
+  expect((await read(visitor)).period).toEqual({payPeriod:'2026-07',start:'2026-07-01',cutOff:null,source:'unavailable'});
+ });
+
+ it('gives a person with two employments exactly those two companies\' days',async()=>{
+  const beta=await companyB();
+  const second=await hireEmployee(adminCtx(b),{person:{id:aina.personId},companyId:beta.companyId,departmentId:beta.departmentId,employmentType:'full_time',hiredOn:'2025-01-01'});
+  const bob=await hireEmployee(adminCtx(b),{person:{fullName:'Bob Fictional',primaryEmail:`${randomUUID()}@fixture.test`},companyId:beta.companyId,departmentId:beta.departmentId,employmentType:'full_time',hiredOn:'2024-01-01'});
+  expect(await own(aina,aina.employmentId)).toEqual([{cut_off_day:28}]);
+  expect(await own(aina,second.employmentId)).toEqual([{cut_off_day:15}]);
+  expect(await own(aina,bob.employmentId)).toEqual([]);
+ });
+
+ it('exposes the cut-off day and nothing else, as a STABLE definer with a fixed search path, executable by the application role only',async()=>{
+  const rows=await own(aina,aina.employmentId);
+  expect(rows.map(row=>Object.keys(row))).toEqual([['cut_off_day']]);
+  // Pay day 25 and the attendance cut-off 21 are in the same configuration row and never leave it.
+  expect(JSON.stringify(rows)).not.toMatch(/25|21/);
+  const [fn]=await owner.db.execute(sql`SELECT p.prosecdef AS definer,p.provolatile AS volatility,p.proconfig AS config,pg_get_function_result(p.oid) AS result,
+   has_function_privilege('ai_hr_app',p.oid,'EXECUTE') AS app,
+   EXISTS(SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a WHERE a.grantee=0 AND a.privilege_type='EXECUTE') AS public_execute
+   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname='own_payroll_cut_off_day'`) as unknown as {definer:boolean;volatility:string;config:string[];result:string;app:boolean;public_execute:boolean}[];
+  expect(fn).toMatchObject({definer:true,volatility:'s',result:'TABLE(cut_off_day integer)',app:true,public_execute:false});
+  expect(fn.config).toHaveLength(1);expect(fn.config[0]).toMatch(/^search_path=pg_catalog,\s*public,\s*pg_temp$/);
  });
 });

@@ -1273,7 +1273,7 @@
     "groupDone": "没有待处理事项。",
     "groupUnknown": "暂时无法检查。",
     "approvalsHelp": "截止日期前等待您决定的申请。",
-    "notCovered": "此处暂未检查：换班、工时表确认、税务减免和受抚养人资料，以及需确认的薪资变动。",
+    "notCovered": "此处暂未检查：换班、排班空缺、工时表确认、已加班但尚未申请的加班，以及需确认的薪资变动。",
     "open": "打开",
     "review": "审阅",
     "confirm": "确认",
@@ -1333,7 +1333,12 @@
       "approve_leave_cancellation": "待审批的取消请假 · {name}",
       "approve_attendance": "待审批的考勤或加班 · {name}",
       "approve_claim": "待审批的报销 · {name}",
-      "approve_toil": "待审批的补休 · {name}"
+      "approve_toil": "待审批的补休 · {name}",
+      "tp1_draft": "请提交您的税务减免申报（TP1）",
+      "tp1_pending": "您的税务减免申报（TP1）正在等待审批",
+      "dependants_mismatch": "请核对税务减免的子女人数：您的家庭记录少于您申报的人数",
+      "review_acknowledge": "请确认您的绩效评估",
+      "onboarding_acknowledge": "请确认您的入职交接"
     }
   }
 }

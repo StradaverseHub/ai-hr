@@ -14,9 +14,9 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(652); // Accepted prefix plus the explicit idle/Entra source reservations and the Teras source claims below.
+ expect(journal.entries).toHaveLength(653); // Accepted prefix plus the explicit idle/Entra source reservations and the Teras source claims below.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
- expect(journal.entries.slice(boundary)).toHaveLength(81);
+ expect(journal.entries.slice(boundary)).toHaveLength(82);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
  // The accepted V9 prefix and coordinated Feedback/Bank identities are immutable; the two coordinated Formula appends follow.
  expect(createHash('sha256').update(JSON.stringify(journal.entries.slice(0,579).map(migrationIdentity))).digest('hex')).toBe('11e5295ce4e60acb1f13c009a78098b043c862b6412ed2bbc2e102f142a87f85');
@@ -49,6 +49,8 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:765,version:'7',when:1793330000360,tag:'0960_teras_loops',breakpoints:true,hash:'addec336da5a82869ab05d79c45bc9d884e92c3d877af6b073f3e892fdfda11d'},
   // AI v2 Phase 1 slice 3 employee letter requests (claude/aiv2-s3-letter-request), frozen here at idx766 (Phase 1 final integration).
   {idx:766,version:'7',when:1793330000361,tag:'0961_letter_requests',breakpoints:true,hash:'fac033d489f171da966f620f058f8f688c21e691786b2700bd9fe0876495eb5e'},
+  // AI v2 Phase 2 P2-3 own payroll cut-off (claude/aiv2-p2-payroll-checklist), coordinator-assigned 0967.
+  {idx:767,version:'7',when:1793330000367,tag:'0967_own_payroll_cut_off',breakpoints:true,hash:'b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

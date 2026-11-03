@@ -1273,7 +1273,7 @@
     "groupDone": "Nothing pending.",
     "groupUnknown": "Could not be checked just now.",
     "approvalsHelp": "Requests waiting for your decision before the cut-off.",
-    "notCovered": "Not checked here yet: shift swaps, timesheet sign-off, tax relief and dependant details, and pay changes to acknowledge.",
+    "notCovered": "Not checked here yet: shift swaps, roster gaps, timesheet sign-off, overtime worked but not yet applied for, and pay changes to acknowledge.",
     "open": "Open",
     "review": "Review",
     "confirm": "Confirm",
@@ -1333,7 +1333,12 @@
       "approve_leave_cancellation": "Leave cancellation to approve · {name}",
       "approve_attendance": "Attendance or overtime to approve · {name}",
       "approve_claim": "Claim to approve · {name}",
-      "approve_toil": "Replacement leave to approve · {name}"
+      "approve_toil": "Replacement leave to approve · {name}",
+      "tp1_draft": "Send your tax relief declaration (TP1)",
+      "tp1_pending": "Your tax relief declaration (TP1) is waiting for approval",
+      "dependants_mismatch": "Check your children for tax relief: your family record lists fewer than you declared",
+      "review_acknowledge": "Acknowledge your performance review",
+      "onboarding_acknowledge": "Acknowledge your onboarding hand-over"
     }
   }
 }
