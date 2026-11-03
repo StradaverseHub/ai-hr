@@ -372,3 +372,28 @@ it('publishes the exact Claims decision courses and isolates Assigned Approve de
     'function.claims.assigned.view','function.claims.assigned.approve','function.claims.selfDecision.view','function.claims.selfDecision.approve'])`;
  }
 });
+
+it('publishes maintenance receipts without merging related and administrative Add authority',async()=>{
+ const cap='function.claims.related.receipts.add';
+ const file={fileName:'Fictional scoped receipt.pdf',mimeType:'application/pdf',content:Buffer.from('Fictional scoped receipt bytes')};
+ const submitted=await submitClaimWithAttachment(top.ctx,submission(),file);
+ const [attachment]=await owner.db.select().from(s.claimAttachment).where(eq(s.claimAttachment.claimRequestId,submitted.id));
+ try{
+  await expect(publishActionCapabilityPackage(owner.client,'claim_maintenance_receipts')).rejects.toThrow('publish Claims Administration and Related View');
+  await publishActionCapabilityPackage(owner.client,'claim_decisions');
+  await publishActionCapabilityPackage(owner.client,'claim_administration');
+  expect(await publishActionCapabilityPackage(owner.client,'claim_maintenance_receipts')).toMatchObject({changed:true,capabilities:4});
+  expect(await publishActionCapabilityPackage(owner.client,'claim_maintenance_receipts')).toMatchObject({changed:false});
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${top.userId}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  expect(await getClaimAttachment(top.ctx,attachment.id)).toEqual(file);
+  await expect(addClaimAttachment(top.ctx,{claimRequestId:submitted.id,...file})).rejects.toThrow();
+  const add=await addClaimAttachment(admin,{claimRequestId:submitted.id,...file,fileName:'Fictional admin receipt.pdf'});
+  expect(await getClaimAttachment(admin,add.id)).toMatchObject({fileName:'Fictional admin receipt.pdf'});
+ }finally{
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+   where id like any(array['function.claims.related.%','function.claims.assigned.%','function.claims.selfDecision.%',
+    'function.claims.administration.%','function.claimsConfig.reimbursements.%','claims.%'])`;
+ }
+});
