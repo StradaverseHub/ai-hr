@@ -882,5 +882,66 @@
       "note": "Dịch vụ hoàn ứng đã tính mọi số liệu ở đây. AI Centre chỉ giải thích.",
       "question": "Vì sao hạn mức hoàn ứng {claimType} của tôi là như vậy, và tôi đã dùng bao nhiêu?"
     }
+  },
+  "aiAsk": {
+    "chats": "Trò chuyện",
+    "newChat": "Cuộc trò chuyện mới",
+    "newConversation": "Cuộc hội thoại mới",
+    "search": "Tìm cuộc trò chuyện của bạn",
+    "groups": {
+      "today": "Hôm nay",
+      "yesterday": "Hôm qua",
+      "earlier": "Trước đó"
+    },
+    "withheldTitle": "Một vấn đề riêng tư",
+    "withheldNote": "Đã chuyển cho HR · không lưu lời nào",
+    "untitled": "Cuộc trò chuyện chưa đặt tên",
+    "noChats": "Chưa có cuộc trò chuyện nào.",
+    "noMatches": "Không có cuộc trò chuyện nào khớp với tìm kiếm.",
+    "listUnavailable": "Không thể tải các cuộc trò chuyện của bạn. Hãy thử lại sau.",
+    "moreChats": "Thêm cuộc trò chuyện",
+    "earlierSaved": "Các cuộc trò chuyện đã lưu trước đây",
+    "moreTools": "Thêm công cụ",
+    "keptFor": "{days, plural, other {Cuộc trò chuyện được giữ trong # ngày, sau đó bị xóa.}}",
+    "keptUnknown": "Cuộc trò chuyện bị xóa sau khoảng thời gian tổ chức của bạn đặt ra.",
+    "privacyLink": "Dữ liệu và quyền riêng tư của bạn",
+    "backToAsk": "Quay lại Hỏi",
+    "deleteChat": "Xóa cuộc trò chuyện",
+    "deleteTitle": "Xóa cuộc trò chuyện này?",
+    "deleteBody": "Cuộc trò chuyện và những gì Trung tâm AI ghi nhớ cho nó sẽ bị xóa ngay, vĩnh viễn. Hồ sơ HR của bạn không thay đổi.",
+    "deleteConfirm": "Xóa",
+    "deleteFailed": "Không thể xóa cuộc trò chuyện. Hãy thử lại.",
+    "deleted": "Đã xóa cuộc trò chuyện.",
+    "privacy": {
+      "title": "Dữ liệu và quyền riêng tư của bạn",
+      "description": "Những gì Trung tâm AI lưu về bạn và cách xóa chúng."
+    },
+    "tools": {
+      "title": "Thêm công cụ",
+      "description": "Lối tắt và các cách khác để làm việc với Trung tâm AI.",
+      "shortcuts": "Lối tắt"
+    },
+    "retention": {
+      "title": "Giữ cuộc trò chuyện trong",
+      "help": "Trung tâm AI giữ cuộc trò chuyện của mỗi người bao lâu trước khi xóa. Cuộc trò chuyện bị giữ lại vì chủ đề nhạy cảm không lưu lời nào ở bất kỳ thiết lập nào.",
+      "legend": "Thời gian giữ cuộc trò chuyện",
+      "option": "{days, plural, other {# ngày}}",
+      "save": "Lưu",
+      "confirm": "Thay đổi",
+      "confirmTitle": "Thay đổi thời gian giữ cuộc trò chuyện?",
+      "confirmShorter": "{days, plural, other {Các cuộc trò chuyện không có tin nhắn mới trong hơn # ngày sẽ sớm bị xóa, cho tất cả mọi người. Không thể khôi phục.}}",
+      "confirmLonger": "{days, plural, other {Cuộc trò chuyện sẽ được giữ # ngày kể từ tin nhắn tiếp theo. Các cuộc trò chuyện đã xóa không được khôi phục.}}",
+      "saved": "{days, plural, other {Đã lưu. Cuộc trò chuyện được giữ trong # ngày.}}",
+      "failed": "Không thể lưu thiết lập. Hãy thử lại.",
+      "notAdministrator": "Chỉ quản trị viên tập đoàn mới có thể thay đổi mục này.",
+      "readOnly": "{days, plural, other {Cuộc trò chuyện được giữ trong # ngày. Chỉ quản trị viên tập đoàn mới có thể thay đổi mục này.}}",
+      "unavailable": "Không thể đọc thiết lập hiện tại."
+    },
+    "commandBar": {
+      "title": "Hỏi Trung tâm AI",
+      "onThisPage": "Trên trang này: {area}",
+      "hint": "Nhấn Enter để chuẩn bị · không có gì thay đổi cho đến khi bạn xác nhận",
+      "busy": "Trung tâm AI vẫn đang trả lời. Hãy thử lại sau giây lát."
+    }
   }
 }

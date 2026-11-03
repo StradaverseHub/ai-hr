@@ -69,6 +69,7 @@ import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlem
 import { currentUiTheme } from '@/lib/ui-theme-server';
 import { UiThemeProvider } from '@/components/ui-theme-context';
 import { NavIndexProvider } from '@/components/nav-index-context';
+import { AiAskAvailability } from '@/components/ai-centre/ask-availability';
 import { BackToInbox } from '@/components/ai-centre/back-to-inbox';
 import { IntentBar } from '@/components/intent-bar';
 import { ShellRoutePath, ShellLiveClock, ShellStatusLine } from '@/components/shell-top-line';
@@ -272,6 +273,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           {/* Atelier round 1 — the rail publishes its visible destinations here for the command bar's "Go to"
               list and the Atelier breadcrumb (components/nav-index-context.tsx). */}
           <NavIndexProvider>
+          {/* AI v2 W4 — the command bar offers "Ask AI Centre" only to a login with Assistant access (presentation only). */}
+          <AiAskAvailability available={assistantAccess}>
           <div data-app-shell className="flex h-full gap-3 lg:gap-4 monolith:gap-0! max-sm:flex-col">
             <Sidebar
               letterDestinations={letterDestinations}
@@ -479,6 +482,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <ShellStatusLine companies={allowed} selected={scopeIds} />
             </div>
           </div>
+          </AiAskAvailability>
           </NavIndexProvider>
           <OnboardingTour tours={tours} autoStartTourId={onboarded || (pathname==='/'&&!isAdmin(session)) ? null : WELCOME_TOUR_ID} />
           <AssistantReplyClientEntry>{launcher && <AssistantLauncher key={personnelImportBrowserKey(session,scopeIds)} position={launcher.position} hiddenAreas={launcher.hiddenAreas} inboxCount={approvalTasks.length} />}</AssistantReplyClientEntry>

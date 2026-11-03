@@ -882,5 +882,66 @@
       "note": "The claims service calculated every figure here. AI Centre only explains it.",
       "question": "Why is my {claimType} claim limit what it is, and how much have I used?"
     }
+  },
+  "aiAsk": {
+    "chats": "Chats",
+    "newChat": "New chat",
+    "newConversation": "New conversation",
+    "search": "Search your chats",
+    "groups": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "earlier": "Earlier"
+    },
+    "withheldTitle": "A private matter",
+    "withheldNote": "Passed to HR · no words kept",
+    "untitled": "Untitled chat",
+    "noChats": "No chats yet.",
+    "noMatches": "No chats match your search.",
+    "listUnavailable": "Your chats could not be loaded. Try again later.",
+    "moreChats": "More chats",
+    "earlierSaved": "Earlier saved conversations",
+    "moreTools": "More tools",
+    "keptFor": "{days, plural, one {Chats are kept for # day, then deleted.} other {Chats are kept for # days, then deleted.}}",
+    "keptUnknown": "Chats are deleted after the period your organisation sets.",
+    "privacyLink": "Your data and privacy",
+    "backToAsk": "Back to Ask",
+    "deleteChat": "Delete chat",
+    "deleteTitle": "Delete this chat?",
+    "deleteBody": "The chat and what AI Centre remembered for it are deleted now, for good. Your HR records are not changed.",
+    "deleteConfirm": "Delete",
+    "deleteFailed": "The chat could not be deleted. Try again.",
+    "deleted": "Chat deleted.",
+    "privacy": {
+      "title": "Your data and privacy",
+      "description": "What AI Centre keeps about you, and how to clear it."
+    },
+    "tools": {
+      "title": "More tools",
+      "description": "Shortcuts and other ways to work with AI Centre.",
+      "shortcuts": "Shortcuts"
+    },
+    "retention": {
+      "title": "Keep chats for",
+      "help": "How long AI Centre keeps each person's chats before deleting them. A chat withheld for a sensitive topic keeps no words at any setting.",
+      "legend": "How long to keep chats",
+      "option": "{days, plural, one {# day} other {# days}}",
+      "save": "Save",
+      "confirm": "Change",
+      "confirmTitle": "Change how long chats are kept?",
+      "confirmShorter": "{days, plural, one {Chats with no new message for more than # day will be deleted soon, for everyone. They cannot be recovered.} other {Chats with no new message for more than # days will be deleted soon, for everyone. They cannot be recovered.}}",
+      "confirmLonger": "{days, plural, one {Chats will be kept for # day from their next message. Chats already deleted are not restored.} other {Chats will be kept for # days from their next message. Chats already deleted are not restored.}}",
+      "saved": "{days, plural, one {Saved. Chats are kept for # day.} other {Saved. Chats are kept for # days.}}",
+      "failed": "The setting could not be saved. Try again.",
+      "notAdministrator": "Only a group administrator can change this.",
+      "readOnly": "{days, plural, one {Chats are kept for # day. Only a group administrator can change this.} other {Chats are kept for # days. Only a group administrator can change this.}}",
+      "unavailable": "The current setting could not be read."
+    },
+    "commandBar": {
+      "title": "Ask AI Centre",
+      "onThisPage": "On this page: {area}",
+      "hint": "Enter to prepare · nothing changes until you confirm",
+      "busy": "AI Centre is still answering. Try again in a moment."
+    }
   }
 }

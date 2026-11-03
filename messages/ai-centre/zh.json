@@ -882,5 +882,66 @@
       "note": "此处每个数字均由报销服务计算，AI Centre 仅作说明。",
       "question": "为什么我的{claimType}报销限额是这样，我已经用了多少？"
     }
+  },
+  "aiAsk": {
+    "chats": "对话",
+    "newChat": "新对话",
+    "newConversation": "新的对话",
+    "search": "搜索您的对话",
+    "groups": {
+      "today": "今天",
+      "yesterday": "昨天",
+      "earlier": "更早"
+    },
+    "withheldTitle": "私人事项",
+    "withheldNote": "已转交 HR · 未保留任何文字",
+    "untitled": "未命名对话",
+    "noChats": "还没有对话。",
+    "noMatches": "没有与搜索匹配的对话。",
+    "listUnavailable": "无法加载您的对话，请稍后再试。",
+    "moreChats": "更多对话",
+    "earlierSaved": "较早保存的对话",
+    "moreTools": "更多工具",
+    "keptFor": "{days, plural, other {对话保留 # 天，之后删除。}}",
+    "keptUnknown": "对话会在贵组织设定的期限后删除。",
+    "privacyLink": "您的数据与隐私",
+    "backToAsk": "返回提问",
+    "deleteChat": "删除对话",
+    "deleteTitle": "删除此对话？",
+    "deleteBody": "此对话以及 AI 中心为其记住的内容将立即永久删除。您的 HR 记录不会改变。",
+    "deleteConfirm": "删除",
+    "deleteFailed": "无法删除对话，请重试。",
+    "deleted": "对话已删除。",
+    "privacy": {
+      "title": "您的数据与隐私",
+      "description": "AI 中心保存了您的哪些内容，以及如何清除。"
+    },
+    "tools": {
+      "title": "更多工具",
+      "description": "快捷方式以及使用 AI 中心的其他方式。",
+      "shortcuts": "快捷方式"
+    },
+    "retention": {
+      "title": "对话保留期限",
+      "help": "AI 中心在删除每个人的对话前保留多久。因敏感话题而被拦截的对话在任何设置下都不保留文字。",
+      "legend": "对话保留多久",
+      "option": "{days, plural, other {# 天}}",
+      "save": "保存",
+      "confirm": "更改",
+      "confirmTitle": "更改对话保留期限？",
+      "confirmShorter": "{days, plural, other {超过 # 天没有新消息的对话将很快被删除，对所有人生效，且无法恢复。}}",
+      "confirmLonger": "{days, plural, other {对话将从下一条消息起保留 # 天。已删除的对话不会恢复。}}",
+      "saved": "{days, plural, other {已保存。对话保留 # 天。}}",
+      "failed": "无法保存设置，请重试。",
+      "notAdministrator": "只有集团管理员可以更改此设置。",
+      "readOnly": "{days, plural, other {对话保留 # 天。只有集团管理员可以更改此设置。}}",
+      "unavailable": "无法读取当前设置。"
+    },
+    "commandBar": {
+      "title": "向 AI 中心提问",
+      "onThisPage": "当前页面：{area}",
+      "hint": "按 Enter 准备 · 在您确认前不会有任何更改",
+      "busy": "AI 中心仍在回答，请稍后再试。"
+    }
   }
 }

@@ -7,15 +7,23 @@ import {WorkspaceComposer} from './workspace-composer';
 import {ThinkingIndicator} from './thinking-indicator';
 import type {AiWorkspaceTaskId} from '../../lib/ai/workspace-tasks';
 import {takeAskHandoff} from '../../lib/today/ask-handoff';
+import {ASK_AI_CENTRE_EVENT,unclaimedAskQuestion} from '../../lib/command-bar-events';
+import {useAskChatsLink} from '../ai-centre/ask-chats-context';
 export type WorkspaceChatTurn={id:string;question:string;answer:ReactNode;clarificationRequired?:boolean};
 type Turn={id:string;question:string;reply?:LauncherReply};
 const restored=(turns:readonly WorkspaceChatTurn[]):Turn[]=>turns.map(turn=>({id:turn.id,question:turn.question,reply:{ok:true,exchangeId:turn.id,answer:turn.answer,...(turn.clarificationRequired?{clarificationRequired:true as const}:{})}}));
 /** Local transcript holds only this open conversation. Every answer still comes from the authorized
  * server command; previousExchangeId is only a hint that its owner must validate, never a principal. */
-export function WorkspaceConversation({initialTurn,initialTurns,initialResume,historyTailId,olderCursor,historyReadOnly=false,tasks,fileImport,composer,resetKey,fullHeight=false,acceptHandoff=false}:{initialTurn?:WorkspaceChatTurn;initialTurns?:readonly WorkspaceChatTurn[];initialResume?:{exchangeId:string;conversationToken:string};historyTailId?:string;olderCursor?:string|null;historyReadOnly?:boolean;tasks:readonly {id:AiWorkspaceTaskId;label:string;prompt:string}[];fileImport:boolean;resetKey?:string;fullHeight?:boolean;
+export function WorkspaceConversation({initialTurn,initialTurns,initialResume,historyTailId,olderCursor,historyReadOnly=false,tasks,fileImport,composer,resetKey,fullHeight=false,acceptHandoff=false,fill=false,acceptCommandBar=false}:{initialTurn?:WorkspaceChatTurn;initialTurns?:readonly WorkspaceChatTurn[];initialResume?:{exchangeId:string;conversationToken:string};historyTailId?:string;olderCursor?:string|null;historyReadOnly?:boolean;tasks:readonly {id:AiWorkspaceTaskId;label:string;prompt:string}[];fileImport:boolean;resetKey?:string;fullHeight?:boolean;
  /** Today's Ask bar (lib/today/ask-handoff.ts): on a fresh Ask page, send the question typed there, once. */
- acceptHandoff?:boolean;composer?:(props:{action:(data:FormData)=>Promise<void>;pending:boolean;question:string;setQuestion:(value:string)=>void;active:boolean})=>ReactNode}){
- const t=useTranslations('assistant'),c=useTranslations('assistant.workspace.chat');
+ acceptHandoff?:boolean;
+ /** AI v2 W4 (issue 14): Ask's chat-only layout. The conversation fills its column (it scrolls on its own, the composer
+  * is pinned); the title, New chat and Delete live in the Chats column and its header (components/ai-centre/ask-chats.tsx),
+  * and the privacy notes moved to Your data and privacy. */
+ fill?:boolean;
+ /** AI v2 W4: on Ask, a question typed in the command bar (lib/command-bar-events.ts) is sent here, in this chat. */
+ acceptCommandBar?:boolean;composer?:(props:{action:(data:FormData)=>Promise<void>;pending:boolean;question:string;setQuestion:(value:string)=>void;active:boolean})=>ReactNode}){
+ const t=useTranslations('assistant'),c=useTranslations('assistant.workspace.chat'),askChats=useAskChatsLink();
  const seed=initialTurns??(initialTurn?[initialTurn]:[]),selectionKey=historyTailId??seed.at(-1)?.id;
  const [turns,setTurns]=useState<Turn[]>(()=>restored(seed));
  const [pending,setPending]=useState(false),[unseen,setUnseen]=useState(false),[generation,setGeneration]=useState(0),[draft,setDraft]=useState(''),[focusRequest,setFocusRequest]=useState(0),[readOnly,setReadOnly]=useState(historyReadOnly),[older,setOlder]=useState(olderCursor??null),[loadingOlder,setLoadingOlder]=useState(false),[historyError,setHistoryError]=useState<string|null>(null);
@@ -55,6 +63,7 @@ export function WorkspaceConversation({initialTurn,initialTurns,initialResume,hi
    // Never silently continue past an uncertain request. The person can start a new conversation.
    else previous.current=undefined;
    setTurns(rows=>rows.map(row=>row.id===id?{...row,reply}:row));
+   if(reply.ok&&reply.chatId)askChats?.storedChat(reply.chatId);
   }catch{if(atEpoch!==epoch.current)return;setReadOnly(true);previous.current=undefined;awaitingClarification.current=undefined;setTurns(rows=>rows.map(row=>row.id===id?{...row,reply:{ok:false,message:t('err_provider_error')}}:row));}
   finally{if(atEpoch===epoch.current){busy.current=false;setPending(false);}}
  }
@@ -62,11 +71,22 @@ export function WorkspaceConversation({initialTurn,initialTurns,initialResume,hi
  // same command as a typed question. Only a fresh Ask page accepts it (takeAskHandoff checks the address).
  useEffect(()=>{if(!acceptHandoff)return;let store:Storage|null=null;try{store=window.sessionStorage;}catch{/* No storage: nothing was handed over. */}
   const question=takeAskHandoff(store,window.location);if(!question)return;const data=new FormData();data.set('question',question);void send(data);},[]); // eslint-disable-line react-hooks/exhaustive-deps
+ // The command bar on Ask (lib/command-bar-events.ts): the question joins this chat exactly as if typed here. While a
+ // reply is pending the bar is told 'busy'; a conversation that cannot continue leaves it unclaimed, so the bar opens
+ // a new Ask chat instead.
+ const sendRef=useRef(send);sendRef.current=send;
+ const claimState=useRef({readOnly,attachmentBusy});claimState.current={readOnly,attachmentBusy:Boolean(attachmentBusy)};
+ useEffect(()=>{if(!acceptCommandBar)return;
+  const onAsk=(event:Event)=>{const claim=unclaimedAskQuestion(event);if(!claim||claimState.current.readOnly)return;
+   if(busy.current||claimState.current.attachmentBusy){claim.detail.result='busy';return;}
+   claim.detail.result='sent';const data=new FormData();data.set('question',claim.question);void sendRef.current(data);};
+  window.addEventListener(ASK_AI_CENTRE_EVENT,onAsk);return()=>window.removeEventListener(ASK_AI_CENTRE_EVENT,onAsk);},[acceptCommandBar]);
+ const tall=fullHeight||fill||turns.length>0||Boolean(attachmentTurn);
  const attachmentContent=attachmentTurn?<div className="space-y-4"><p className="ml-auto w-fit max-w-[90%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3">{attachmentTurn.question}</p><fieldset disabled={readOnly} className="min-w-0 px-1">{attachmentTurn.answer}</fieldset></div>:null;
- return <AssistantChatBoundary value={{pending:pending||readOnly||Boolean(attachmentBusy),setQuestionDraft:answer=>{if(busy.current||readOnly||attachmentBusy)return;awaitingClarification.current=undefined;setDraft(answer);setFocusRequest(n=>n+1);},clarify:async(exchangeId,answer)=>{const data=new FormData();data.set('question',answer);await send(data,exchangeId);},setClarificationDraft:(exchangeId,answer)=>{if(busy.current||readOnly||attachmentBusy)return;awaitingClarification.current=exchangeId;setDraft(answer);setFocusRequest(n=>n+1);}}}><section aria-label={c('title')} className={fullHeight||turns.length||attachmentTurn?'flex h-[min(46rem,calc(100dvh-13rem))] min-h-80 flex-col':'space-y-4'}>
-  {(fullHeight||turns.length>0||Boolean(attachmentTurn))&&<>
-   <div className="flex shrink-0 items-center justify-between pb-3"><h2 className="text-sm font-medium">{c('title')}</h2><button type="button" disabled={pending||Boolean(attachmentBusy)||loadingOlder||(!turns.length&&!attachmentTurn&&!readOnly)} onClick={()=>{epoch.current++;setTurns([]);setReadOnly(false);setOlder(null);setHistoryError(null);setAttachment(null);setAttachmentPending(null);previous.current=undefined;awaitingClarification.current=undefined;setDraft('');setUnseen(false);follow.current=true;setGeneration(n=>n+1);setFocusRequest(n=>n+1);}} className="min-h-11 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{c('new')}</button></div>
-   <div ref={log} role="log" aria-label={c('title')} aria-live="polite" aria-relevant="additions text" onScroll={()=>{const el=log.current;if(el){follow.current=el.scrollHeight-el.clientHeight-el.scrollTop<64;if(follow.current)setUnseen(false);}}} className="min-h-0 flex-1 space-y-8 overflow-y-auto overscroll-contain px-1 pb-4 text-sm leading-relaxed [overflow-anchor:none]">
+ return <AssistantChatBoundary value={{pending:pending||readOnly||Boolean(attachmentBusy),setQuestionDraft:answer=>{if(busy.current||readOnly||attachmentBusy)return;awaitingClarification.current=undefined;setDraft(answer);setFocusRequest(n=>n+1);},clarify:async(exchangeId,answer)=>{const data=new FormData();data.set('question',answer);await send(data,exchangeId);},setClarificationDraft:(exchangeId,answer)=>{if(busy.current||readOnly||attachmentBusy)return;awaitingClarification.current=exchangeId;setDraft(answer);setFocusRequest(n=>n+1);}}}><section aria-label={c('title')} className={fill?'flex h-full min-h-0 flex-1 flex-col':fullHeight||turns.length||attachmentTurn?'flex h-[min(46rem,calc(100dvh-13rem))] min-h-80 flex-col':'space-y-4'}>
+  {tall&&<>
+   {!fill&&<div className="flex shrink-0 items-center justify-between pb-3"><h2 className="text-sm font-medium">{c('title')}</h2><button type="button" disabled={pending||Boolean(attachmentBusy)||loadingOlder||(!turns.length&&!attachmentTurn&&!readOnly)} onClick={()=>{epoch.current++;setTurns([]);setReadOnly(false);setOlder(null);setHistoryError(null);setAttachment(null);setAttachmentPending(null);previous.current=undefined;awaitingClarification.current=undefined;setDraft('');setUnseen(false);follow.current=true;setGeneration(n=>n+1);setFocusRequest(n=>n+1);}} className="min-h-11 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{c('new')}</button></div>}
+   <div ref={log} role="log" aria-label={c('title')} aria-live="polite" aria-relevant="additions text" onScroll={()=>{const el=log.current;if(el){follow.current=el.scrollHeight-el.clientHeight-el.scrollTop<64;if(follow.current)setUnseen(false);}}} className={`min-h-0 flex-1 space-y-8 overflow-y-auto overscroll-contain px-1 pb-4 text-sm leading-relaxed [overflow-anchor:none]${fill?' pt-4':''}`}>
     {older&&<button type="button" disabled={loadingOlder||pending||Boolean(attachmentBusy)} onClick={()=>void earlier()} className="mx-auto block min-h-11 rounded-md px-3 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{t('workspace.chat.older')}</button>}
     {historyError&&<p role="alert">{historyError}</p>}
     {readOnly&&<p role="status" className="text-xs text-muted-foreground">{t('workspace.chat.readOnlyHistory')}</p>}
@@ -79,7 +99,7 @@ export function WorkspaceConversation({initialTurn,initialTurns,initialResume,hi
    </div>
    {unseen&&<button type="button" onClick={()=>{follow.current=true;if(log.current)log.current.scrollTop=log.current.scrollHeight;setUnseen(false);}} className="mx-auto block min-h-11 rounded-full border border-border px-4 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{c('latest')}</button>}
   </>}
-  <fieldset disabled={readOnly} ref={composeBox} className={fullHeight||turns.length||attachmentTurn?'shrink-0 pt-3':undefined}>{composer?<div key={attachmentKey}>{composer({action:send,pending,question:draft,setQuestion:setDraft,active:turns.length>0})}</div>:<WorkspaceComposer key={attachmentKey} fileImport={fileImport} clearAfterSubmit clientSubmit pending={pending} question={draft} onQuestionChange={setDraft} onAttachmentTurn={publishAttachment} onAttachmentBusy={publishAttachmentBusy} layout="hero" action={send} tasks={fullHeight||turns.length||attachmentTurn?[]:tasks} labels={{tasks:t('workspace.tasks'),taskHint:t('workspace.taskHint'),question:t('workspace.question'),placeholder:t('placeholder'),ask:t('ask'),working:t('workspace.working'),scope:t('scopeNote')}}/>}</fieldset>
- <details className="shrink-0 pt-2 text-xs leading-relaxed text-muted-foreground"><summary className="min-h-8 w-fit cursor-pointer py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('home.privacy')}</summary><p className="pb-2">{c('privacy')}</p></details>
+  <fieldset disabled={readOnly} ref={composeBox} className={tall?'shrink-0 pt-3':undefined}>{composer?<div key={attachmentKey}>{composer({action:send,pending,question:draft,setQuestion:setDraft,active:turns.length>0})}</div>:<WorkspaceComposer key={attachmentKey} fileImport={fileImport} clearAfterSubmit clientSubmit pending={pending} question={draft} onQuestionChange={setDraft} onAttachmentTurn={publishAttachment} onAttachmentBusy={publishAttachmentBusy} layout="hero" action={send} tasks={tall?[]:tasks} labels={{tasks:t('workspace.tasks'),taskHint:t('workspace.taskHint'),question:t('workspace.question'),placeholder:t('placeholder'),ask:t('ask'),working:t('workspace.working'),scope:t('scopeNote')}}/>}</fieldset>
+ {!fill&&<details className="shrink-0 pt-2 text-xs leading-relaxed text-muted-foreground"><summary className="min-h-8 w-fit cursor-pointer py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('home.privacy')}</summary><p className="pb-2">{c('privacy')}</p></details>}
  </section></AssistantChatBoundary>;
 }
