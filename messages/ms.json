@@ -774,7 +774,8 @@
       "placeholder": "Cari ID pekerja atau nama…",
       "resultsLabel": "Hasil carian pekerja",
       "noMatches": "Tiada pekerja yang sepadan.",
-      "currentTag": "Semasa"
+      "currentTag": "Semasa",
+      "loadFailed": "Carian pekerja tidak dapat dimuatkan. Cuba lagi."
     },
     "detail": {
       "incentiveDeclarations": {

@@ -5,7 +5,7 @@ import {withTenant} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata} from '../packs/leave/service';
-import {createClaimType,pendingClaimTaskMetadata} from '../packs/claims/service';
+import {createClaimType,pendingClaimTaskMetadata,pendingClaimTaskSummary} from '../packs/claims/service';
 import {pendingProfileTaskMetadata,decideProfileChange} from '../core/profile';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -52,6 +52,8 @@ describe('Home assigned-decision metadata is an uncapped projection at its sourc
    await expectDenied(withTenant(ctx,tx=>tx.select({amount:s.claimRequest.amount}).from(s.claimRequest)));
    const rows=await pendingClaimTaskMetadata(ctx);expect(rows).toHaveLength(211);
    expect(new Set(rows.map(r=>r.id))).toEqual(new Set(heads.map(r=>r.id)));expectHeaders(rows);
+   expect(await pendingClaimTaskSummary(ctx,undefined)).toEqual({items:rows.slice(0,25),total:211});
+   expect(await pendingClaimTaskSummary(ctx,[])).toEqual({items:[],total:0});
    expect(JSON.stringify(rows)).not.toContain('8923.45');expect(await pendingClaimTaskMetadata(ctx,[])).toEqual([]);
   });
  });

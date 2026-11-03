@@ -774,7 +774,8 @@
       "placeholder": "搜索员工编号或姓名…",
       "resultsLabel": "员工搜索结果",
       "noMatches": "没有匹配的员工。",
-      "currentTag": "当前"
+      "currentTag": "当前",
+      "loadFailed": "无法加载员工搜索，请重试。"
     },
     "detail": {
       "incentiveDeclarations": {
