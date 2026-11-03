@@ -138,7 +138,8 @@ afterEach(()=>{expect(model.calls,'a loop called a model').toBe(0);});
 describe('the cap',()=>{
  it('keeps probation, payroll inputs and passports at Prepare in code and in the database, for any company and any writer',async()=>{
   const {companyId:second}=await secondCompany();
-  for(const workerId of ['loop_probation_ending','loop_payroll_inputs','loop_document_expiry'] as const)for(const companyId of [b.companyId,second]){
+  // Wave 1 integration: the Phase 2 Salary payroll loop (pay) is held at Prepare the same way.
+  for(const workerId of ['loop_probation_ending','loop_payroll_inputs','loop_document_expiry','loop_salary_payroll'] as const)for(const companyId of [b.companyId,second]){
    for(const toLevel of [2,3])await expect(setLoopLevel(group,{workerId,companyId,toLevel,expectedLevel:1,limits:LIMITS})).rejects.toMatchObject({reason:'capped'});
    const row={tenantId:b.tenantId,workerId,companyId,level:2 as const,changedBy:'administrator' as const,changedByUserId:group.userId};
    expect(await failure(owner.db.insert(terasLoopLevel).values(row))).toMatch(/teras_loop_level_cap/);
@@ -146,6 +147,10 @@ describe('the cap',()=>{
    expect(await failure(owner.db.insert(terasLoopLevelChange).values({tenantId:b.tenantId,workerId,companyId,fromLevel:1,toLevel:2,kind:'promoted',changedBy:'administrator',
     changedByUserId:group.userId,limits:{},evidence:{}}))).toMatch(/teras_loop_level_change_cap/);
   }
+  // The payroll Audit loop (P2-2b) has no level of its own: the level service refuses it, and the database caps it at Prepare.
+  await expect(setLoopLevel(group,{workerId:'loop_payroll_audit' as never,companyId:b.companyId,toLevel:2,expectedLevel:1,limits:LIMITS})).rejects.toMatchObject({reason:'invalid'});
+  expect(await failure(owner.db.insert(terasLoopLevel).values({tenantId:b.tenantId,workerId:'loop_payroll_audit' as never,companyId:b.companyId,level:2,changedBy:'administrator',
+   changedByUserId:group.userId}))).toMatch(/teras_loop_level_cap/);
   // A capped loop cannot even have an automatic action recorded.
   const e=await login(b,'Fictional Payroll Subject','employee');
   const [kase]=await owner.db.insert(terasLoopCase).values({tenantId:b.tenantId,workerId:'loop_payroll_inputs',companyId:b.companyId,employmentId:null,

@@ -26,8 +26,17 @@ const LOCALES = { ms, zh, vi, ta, th } as const;
 // AI v2 W8 loops: the step label is only its two arguments and a separator ("{n} · {step}"), and Malay's word for a
 // case's status column is "Status" as in English.
 const LOOP_STEP = 'aiCentre.loops.stepLabel';
-const SAME_AS_ENGLISH_ALLOWED: Readonly<Record<string, readonly string[]>> = { ms: ['aiCentre.how.layers.model', LOOP_STEP, 'aiCentre.loops.cases.columns.status'],
-  zh: [LOOP_STEP], vi: [LOOP_STEP], ta: [LOOP_STEP], th: [LOOP_STEP] };
+// Wave 1 integration (AI v2 Phase 2): templates that are only their arguments and punctuation; the statutory bodies'
+// own names (EPF, SOCSO, EIS, PCB, PCB (CP39)), which every locale uses as they are; and "HR". Malay also writes Status,
+// Bonus and Audit as English does.
+const ARGUMENTS_ONLY = ['aiCentre.autonomy.summaryNamed', 'aiCentre.autonomy.promote.actual.changed', 'aiCentre.payrollCycle.salary.runLine',
+  'aiCentre.payrollCycle.salaryPage.cause', 'payrollAudit.stepLabel', 'payrollAudit.pack.captureLine', 'payrollAudit.pack.findingItem'];
+const BODIES = ['aiCentre.payrollCycle.bodies.epf', 'aiCentre.payrollCycle.bodies.socso', 'aiCentre.payrollCycle.bodies.eis', 'aiCentre.payrollCycle.bodies.pcb',
+  'payrollAudit.forms.epf', 'payrollAudit.forms.pcb_cp39', 'today.autonomy.byHr'];
+const PHASE2 = [...ARGUMENTS_ONLY, ...BODIES];
+const SAME_AS_ENGLISH_ALLOWED: Readonly<Record<string, readonly string[]>> = { ms: ['aiCentre.how.layers.model', LOOP_STEP, 'aiCentre.loops.cases.columns.status', ...PHASE2,
+  'aiCentre.autonomy.actions.columns.status', 'aiCentre.payrollCycle.salaryPage.columns.status', 'aiCentre.payrollCycle.runType.bonus', 'aiCentre.payrollCycle.byCompany.columns.audit'],
+  zh: [LOOP_STEP, ...PHASE2], vi: [LOOP_STEP, ...PHASE2], ta: [LOOP_STEP, ...PHASE2], th: [LOOP_STEP, ...PHASE2] };
 
 function flat(d: Dict, prefix = ''): Record<string, string> {
   const out: Record<string, string> = {};
@@ -97,7 +106,17 @@ describe('AI centre catalogue completeness', () => {
       // Arguments of the HR capacity ledger (aiCentre.capacity.*, AI v2 Phase 2 P2-4) and the "Before payroll" checklist
       // (payrollReadiness.*, AI v2 Phase 2 P2-3); month, from and to are shared by both.
       hours: '38.5', minutes: '3', values: 'June 0 hours', month: 'September', cap: 15, max: 1440, from: 'Jun 16, 2026', to: 'Sep 13, 2026',
-      cases: 40, completed: 36, actions: 52, perCase: '1.3', min: 10, label: 'Annual Leave' };
+      cases: 40, completed: 36, actions: 52, perCase: '1.3', min: 10, label: 'Annual Leave',
+      // Wave 1 integration: arguments of the autonomy ladder (aiCentre.autonomy.*, today.autonomy.*, P2-1), the Payroll cycle
+      // pages (aiCentre.payrollCycle.*, P2-2a) and the Audit loop (payrollAudit.*, P2-2b), none of which this list carried.
+      status: 'processed', level: 'Prepare', reason: 'limit', condition: 'roster end', percent: '1%', size: 5, week: 'Nov 2',
+      sponsor: 'Aisyah Fictional', asker: 'Ravi Fictional', actor: 'AI Centre loop', cutOff: 'Nov 20', payDay: 'Nov 28', due: 'Dec 15',
+      started: 1, type: 'Salary', interval: 'Checked daily', threshold: '15%', exclusions: 1, source: 'set by an administrator', seq: 1,
+      cause: 'Salary change', bodies: 'PCB', swing: '31.1%', pattern: 'Meal Allowance', expected: 5, flags: 6, share: '83.33%', problems: 1,
+      corrected: 1, applied: 120, by: 'Aisyah Fictional', released: 40, prepared: 4, forms: 5, filed: 3, matched: 1, disposed: 1,
+      changed: 'Nov 25', last4: '5678', people: 2, paid: 2, lastDay: 'Oct 31', runType: 'Salary', runSeq: 1, closedAt: 'Nov 26, 2026',
+      releasedAt: 'Nov 27, 2026', control: 'Shared bank account', action: 'unlock', at: 'Nov 28, 2026', note: 'Late overtime',
+      head: 'a1b2c3d4', chained: 12, who: 'Aisyah Fictional', state: 'Open', id: 'u-1' };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });

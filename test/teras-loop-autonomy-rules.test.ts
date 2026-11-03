@@ -13,13 +13,15 @@ import {DEFAULT_LIMITS} from '../core/loops/autonomy-types';
 import {LOOP_IDS} from '../core/loops/types';
 
 describe('the cap on automatic action',()=>{
- it('keeps probation, payroll inputs and passports at Prepare, and lets only missed clock-outs and missing employee data above it',()=>{
-  expect([...CAPPED_LOOPS].sort()).toEqual(['loop_document_expiry','loop_payroll_inputs','loop_probation_ending']);
+ // Wave 1 integration: the Phase 2 Salary payroll loop (pay) is capped with them.
+ it('keeps probation, payroll inputs, passports and salary payroll at Prepare, and lets only missed clock-outs and missing employee data above it',()=>{
+  expect([...CAPPED_LOOPS].sort()).toEqual(['loop_document_expiry','loop_payroll_inputs','loop_probation_ending','loop_salary_payroll']);
   expect(Object.fromEntries(LOOP_IDS.map(id=>[id,[maxLevel(id),promotableTo(id)]]))).toEqual({
-   loop_probation_ending:[1,1],loop_payroll_inputs:[1,1],loop_missing_employee_data:[3,3],loop_missed_clock_outs:[3,3],loop_document_expiry:[1,1]});
+   loop_probation_ending:[1,1],loop_payroll_inputs:[1,1],loop_missing_employee_data:[3,3],loop_missed_clock_outs:[3,3],loop_document_expiry:[1,1],
+   loop_salary_payroll:[1,1]});
  });
 
- it.each(['loop_probation_ending','loop_payroll_inputs','loop_document_expiry'] as const)('%s can never be set above Prepare',id=>{
+ it.each(['loop_probation_ending','loop_payroll_inputs','loop_document_expiry','loop_salary_payroll'] as const)('%s can never be set above Prepare',id=>{
   expect(levelAllowed(id,0)).toBe(true);expect(levelAllowed(id,1)).toBe(true);
   for(const level of [2,3,4,1.5,-1,Number.NaN])expect(levelAllowed(id,level)).toBe(false);
  });

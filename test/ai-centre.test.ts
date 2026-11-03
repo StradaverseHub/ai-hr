@@ -166,10 +166,16 @@ describe('AI centre messages', () => {
   const flat = (value: Dict, prefix = ''): [string, string][] =>
     Object.entries(value).flatMap(([key, child]) => typeof child === 'string' ? [[prefix + key, child] as [string, string]] : flat(child, `${prefix}${key}.`));
   // Plural arms ({Today}, {# days}) are translated text, not placeholders: drop them before collecting names.
+  // An argument opens at even brace depth; at odd depth a brace opens a plural or select branch, whose text is not a
+  // placeholder (so AI v2 P2-2a's `{status, select, draft {…} …}` reads as `status`, as a plural always did).
   const placeholders = (text: string) => {
-    let rest = text, previous = '';
-    while (rest !== previous) { previous = rest; rest = rest.replace(/(=\d+|zero|one|two|few|many|other)\s*\{[^{}]*\}/g, ''); }
-    return [...rest.matchAll(/\{(\w+)/g)].map(match => match[1]).sort().join(',');
+    const names: string[] = [];
+    let depth = 0;
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '{') { if (depth % 2 === 0) { const match = /^\s*(\w+)/.exec(text.slice(i + 1)); if (match) names.push(match[1]); } depth++; }
+      else if (text[i] === '}') depth--;
+    }
+    return names.sort().join(',');
   };
   const catalogue = (locale: string) => new Map(flat(JSON.parse(read(`messages/ai-centre/${locale}.json`))));
   const en = catalogue('en');

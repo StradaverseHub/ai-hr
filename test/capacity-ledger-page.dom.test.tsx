@@ -170,7 +170,8 @@ describe('HR capacity, as an administrator',()=>{
   const table=rendered.container.querySelector('[data-capacity-table] table')!;
   expect([...table.querySelectorAll('thead th')].map(text)).toEqual(['Loop or assistant work','Done','Your manual time each','Review time','Hours freed']);
   expect([...table.querySelectorAll('tbody tr')].map(row=>[...row.querySelectorAll('th,td')].map(parts))).toEqual([
-   ['Payroll inputs ready','3','4 h','1 h','11'],
+   // The loop's name since P2-2a absorbed the payroll inputs loop (same id, aiCentre.loops.names.loop_payroll_inputs).
+   ['Pre-salary loop','3','4 h','1 h','11'],
    ['Employee questions answered','212','3 min','0 h','10.6'],
    ['Missed clock-outs','612','1 min','0.7 h','9.5'],
    // 50 done, 2 of them without a baseline: 480 / 48 = 10 minutes each.
