@@ -23,7 +23,11 @@ import { RECOMMENDATION_CHECKS, RECOMMENDATION_VERDICTS } from '../../core/seman
 type Dict = Record<string, unknown>;
 const LOCALES = { ms, zh, vi, ta, th } as const;
 /** Values that may legitimately equal English (a loanword, the untranslated product name). */
-const SAME_AS_ENGLISH_ALLOWED: Readonly<Record<string, readonly string[]>> = { ms: ['aiCentre.how.layers.model'] };
+// AI v2 W8 loops: the step label is only its two arguments and a separator ("{n} · {step}"), and Malay's word for a
+// case's status column is "Status" as in English.
+const LOOP_STEP = 'aiCentre.loops.stepLabel';
+const SAME_AS_ENGLISH_ALLOWED: Readonly<Record<string, readonly string[]>> = { ms: ['aiCentre.how.layers.model', LOOP_STEP, 'aiCentre.loops.cases.columns.status'],
+  zh: [LOOP_STEP], vi: [LOOP_STEP], ta: [LOOP_STEP], th: [LOOP_STEP] };
 
 function flat(d: Dict, prefix = ''): Record<string, string> {
   const out: Record<string, string> = {};
@@ -84,7 +88,10 @@ describe('AI centre catalogue completeness', () => {
       // Argument of the second tab row's label (aiCentre.sectionsLabel, issue 17).
       tab: 'Operations',
       // Arguments of the "Why?" panels (why.*, AI v2 W5); current and previous are counts in the payslip-runs plural.
-      period: 'October 2026', previousPeriod: 'September 2026', current: 2, previous: 1, companies: 'Fictional Ceria Sdn Bhd', items: 'EPF', annual: '14.00 days', display: '12.00 days' };
+      period: 'October 2026', previousPeriod: 'September 2026', current: 2, previous: 1, companies: 'Fictional Ceria Sdn Bhd', items: 'EPF', annual: '14.00 days', display: '12.00 days',
+      // Arguments of the loops pages and cards (aiCentre.loops.*, AI v2 W8) and the approver's decision buttons (slice 3).
+      done: 'the clock-out is recorded', step: 'Prepare', open: 3, waiting: 1, opened: 5, closed: 2, item: 'Travel claim',
+      loop: 'Missed clock-outs', company: 'Fictional Ceria Sdn Bhd', kind: 'Overtime' };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });
