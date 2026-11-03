@@ -30,7 +30,8 @@ async function principal(tx:Tx,ctx:SessionContext){
 }
 async function permission(tx:Tx,ctx:SessionContext,companyId:string,kind:'import'|'revert'){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
- const [row]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${companyId}::uuid) and app.financial_history_function_action(${companyId}::uuid,'view') as ok`);
+ const action=kind==='revert'?'delete':'view';
+ const [row]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${companyId}::uuid) and app.financial_history_function_action(${companyId}::uuid,${action}) as ok`);
  // The canonical resolver rechecks current scope. Preserve the original grant objects: an explicit
  // empty/narrow carrier must not borrow roles or become an accidentally empty authorized carrier.
  if(!row?.ok||!await resolvePayrollPermission(tx,ctx,kind==='import'?'payroll.history.import':'payroll.history.revert',companyId))fail('Payroll history access is unavailable for a company in this file.');
