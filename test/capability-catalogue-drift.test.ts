@@ -169,14 +169,28 @@ const NOT_A_PAGE:Readonly<Record<string,string>>={
  '/assistant':'AI Centre itself: the person is already in it, and it is never a link target.',
  '/mobile-preview':'An administrator\'s device preview, never a link target.',
 };
+/** Areas whose destinations are not linkable pages yet, each with why. Release merge of main 848c7be36 (coordinator,
+ * 3 November 2026): these lifecycle pages stay unlinkable, as before the merge, until they have their semantic, guide
+ * and corpus entries (the definition of done; core/improvement/definition-of-done-gaps.ts is not grown for them). Remove
+ * an area here when its pages become linkable: the test below fails while any of its pages is already a linkable page. */
+const NOT_YET_LINKABLE:Readonly<Record<string,string>>={
+ '/lifecycle/probation':'Main\'s Probation Confirmation pages: unlinkable until their semantic, guide and corpus entries exist.',
+ '/lifecycle/contracts':'Main\'s Contract Management pages: unlinkable until their semantic, guide and corpus entries exist.',
+};
+const pendingArea=(path:string)=>Object.keys(NOT_YET_LINKABLE).find(area=>path===area||path.startsWith(area+'/'));
 describe('destinations',()=>{
  it('classifies every destination as a page, a report, an import, a database-decided workspace or a named exception',()=>{
   const linkable=new Set(LINKABLE_PAGES.map(([path])=>path));
   const classified=productDestinations().map(row=>{const path=row.href.split(/[?#]/)[0]||'/';
-   const kind=row.source==='lifecycle_v9'?'v9':path==='/reports'||path.startsWith('/reports/')?'report':IMPORT_PAGES.has(path)?'import':linkable.has(path)?'page':NOT_A_PAGE[path]?'exception':'unclassified';
+   const kind=row.source==='lifecycle_v9'?'v9':path==='/reports'||path.startsWith('/reports/')?'report':IMPORT_PAGES.has(path)?'import':linkable.has(path)?'page':NOT_A_PAGE[path]?'exception':pendingArea(path)?'pending':'unclassified';
    return{href:row.href,kind,area:areaOf(row.module,path)};});
   expect(classified.filter(row=>row.kind==='unclassified')).toEqual([]);
   for(const path of Object.keys(NOT_A_PAGE))expect(classified.some(row=>row.href===path),path+' is still a destination').toBe(true);
+  // Each pending area still has destinations, and none of its pages has become linkable while it is listed.
+  for(const area of Object.keys(NOT_YET_LINKABLE)){
+   expect(classified.some(row=>row.kind==='pending'&&pendingArea(row.href.split(/[?#]/)[0])===area),area+' still has a pending destination').toBe(true);
+   expect([...linkable].filter(path=>pendingArea(path)===area),area+' has linkable pages: remove it from NOT_YET_LINKABLE').toEqual([]);
+  }
   // Every listed page has a plain area; only the home page and Feedback are general.
   expect(classified.filter(row=>row.kind==='page'&&row.area==='general').map(row=>row.href).sort()).toEqual(['/','/feedback']);
  });

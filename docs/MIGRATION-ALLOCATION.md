@@ -1154,3 +1154,8 @@ unchanged so that no provider-closure file changes for a number.
 Development source only: no installation priority, no deployment. At installation the numbers and `when` values are
 re-checked against staging's applied watermark (the ordered live ledger) and re-frozen above it if it has reached them;
 the owner holds this release until the Codex releases finish.
+
+Release-merge follow-up (no migration; coordinator, 3 November 2026): main's lifecycle pages need semantic, guide and
+corpus entries before they become linkable. Main's Probation Confirmation (`/lifecycle/probation…`) and Contract
+Management (`/lifecycle/contracts…`) pages stay unlinkable, as before the merge, and
+`test/capability-catalogue-drift.test.ts` holds them as NOT_YET_LINKABLE; the definition-of-done baseline is not grown.
