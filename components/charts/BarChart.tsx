@@ -25,11 +25,14 @@ export type BarChartProps = {
   marker?: { index: number; label: string };
   /** Optional: a printed value above each bar of a single-series chart, one per category ('' prints none). */
   valueLabels?: string[];
+  /** Optional (AI v2 P2-6): the value the top of the plot stands for, when it is fixed (a share chart passes 100, so a
+   * month at 40% is drawn at 40% of the height). Omitted by every earlier caller: the largest value, as before. */
+  max?: number;
 };
 
 const FONT = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
 
-export function BarChart({ id, categories, series, grouped = false, height = 220, ariaLabel, marker, valueLabels }: BarChartProps) {
+export function BarChart({ id, categories, series, grouped = false, height = 220, ariaLabel, marker, valueLabels, max: fixedMax }: BarChartProps) {
   const W = 640;
   const H = height;
   const padL = 40;
@@ -40,7 +43,7 @@ export function BarChart({ id, categories, series, grouped = false, height = 220
   const plotH = H - padT - padB;
 
   const seriesList = grouped ? series : series.slice(0, 1);
-  const max = Math.max(1, ...seriesList.flatMap((s) => s.values));
+  const max = fixedMax !== undefined && fixedMax > 0 ? Math.max(fixedMax, ...seriesList.flatMap((s) => s.values)) : Math.max(1, ...seriesList.flatMap((s) => s.values));
   const n = Math.max(1, categories.length);
   const slot = plotW / n;
   const groupCount = seriesList.length;

@@ -96,7 +96,7 @@ export default async function AssistantPage({
         {/* AI v2 Phase 2: Insights, for every role. P2-3's "My payroll readiness" for everyone; P2-4's HR capacity ledger
             section only for HR and group administrators, guarded inside the view. Approvals follow the viewer's company
             scope, as Today's do. */}
-        {sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} capacityQuery={sp as Readonly<Record<string, string | undefined>>} />}
+        {sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} capacityQuery={sp as Readonly<Record<string, string | undefined>>} qualityQuery={sp as Readonly<Record<string, string | undefined>>} />}
         {sp.view === 'how' && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '#ai-centre-live-status' : undefined} />{admin && <AiCentreLiveStatus session={s} />}</>}
       </div>
     );

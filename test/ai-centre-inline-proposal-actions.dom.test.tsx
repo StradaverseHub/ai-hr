@@ -5,7 +5,9 @@
  * profile change, Leave Credit request, letter request): nothing posts until a press; Confirm posts the very card it shows with `confirm: true` to its own
  * owner's server action and shows the owner's outcome with the person's Maker's Mark; a refusal is shown in place
  * (the owner's own sentence when it gave one); Edit and a "use the form" answer open the owner's prefilled form;
- * Discard only hides the card. The buttons are native, keyboard-reachable and disabled while one is pending. An
+ * Discard only hides the card. AI v2 Phase 2 P2-6: after a Confirm the owner accepted, an Edit that opens the form, or a
+ * Discard, the card also posts one learning signal for its turn (the signed card, the turn id and which button), and
+ * nothing else; a refusal posts none. The buttons are native, keyboard-reachable and disabled while one is pending. An
  * approver's decision card keeps its one review link. The server actions are replaced by spies (each owner's own
  * tests cover what they check); proposals are signed with a fictional secret. Fictional values only; no database. */
 import { randomUUID } from 'node:crypto';
@@ -30,6 +32,9 @@ vi.mock('../app/assistant/toil-request-proposal-actions', () => ({ confirmToilRe
 // AI v2 W2 slice 3: the assigned claim and attendance decision cards (test/ai-centre-assigned-decision-card.dom.test.tsx).
 vi.mock('../app/assistant/assigned-decision-proposal-actions', () => ({ confirmAssignedDecisionProposalAction: posts.decision.confirm, editAssignedDecisionProposalAction: posts.decision.edit }));
 vi.mock('../app/assistant/letter-request-proposal-actions', () => ({ confirmLetterRequestProposalAction: posts.letter_request.confirm, editLetterRequestProposalAction: posts.letter_request.edit }));
+// AI v2 Phase 2 P2-6: the learning signal each press posts (core/learning/signals.ts; its own test: test/learning-loops.test.ts).
+const learning = vi.hoisted(() => ({ signal: vi.fn(async () => ({ recorded: true })) }));
+vi.mock('../app/assistant/learning-actions', () => ({ recordCardSignalAction: learning.signal, markAnswerAction: vi.fn() }));
 const messages = withAiCentre('en', en as Record<string, unknown>);
 vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: 'en', messages: messages as never, namespace }),
@@ -54,8 +59,10 @@ function proposal(action: string, entity: string, effect: 'create' | 'withdraw' 
 }
 const turn = (proposals: ReturnType<typeof proposal>[]) => ({ turnId: randomUUID(), reply: '', mode: 'answer', slot: null, suggestion: null, proposals, reads: [],
   sensitive: false, refused: false, crisis: false, fallback: false, continuation: '', trace: null as never, modelTurn: [] });
+let shownTurnId = '';
 async function show(card: ReturnType<typeof proposal>) {
-  const element = await ConversationReply({ turn: turn([card]) as never });
+  const shown = turn([card]);shownTurnId = shown.turnId;
+  const element = await ConversationReply({ turn: shown as never });
   render(<NextIntlClientProvider locale="en" messages={messages as never} timeZone="Asia/Kuala_Lumpur">{element}</NextIntlClientProvider>);
   return screen.getByRole('article');
 }
@@ -167,13 +174,35 @@ describe.each(CASES)('the $name card in chat, for the employee', row => {
     for (const post of allPosts()) if (post !== posts[row.kind].edit) expect(post).not.toHaveBeenCalled();
   });
 
-  it('Discard hides the card and sends nothing', async () => {
-    const card = await show(row.make());
+  it('Discard hides the card and sends nothing but its learning signal', async () => {
+    const signed = row.make();
+    const card = await show(signed);
     fireEvent.click(button(card, copy.discard));
     expect(card).not.toBeInTheDocument();
     expect(screen.queryByRole('article')).toBeNull();
     for (const post of allPosts()) expect(post).not.toHaveBeenCalled();
     expect(nav.push).not.toHaveBeenCalled();
+    expect(learning.signal.mock.calls).toEqual([[{ proposal: signed, turnId: shownTurnId, signal: 'card_discarded' }]]);
+  });
+
+  it('posts one learning signal after a Confirm the owner accepted, and one after an Edit that opens the form; none for a refusal', async () => {
+    const signed = row.make();
+    let card = await show(signed);
+    posts[row.kind].confirm.mockResolvedValueOnce(row.refusal);
+    await act(async () => { fireEvent.click(button(card, copy.confirm)); });
+    expect(learning.signal).not.toHaveBeenCalled();
+    posts[row.kind].confirm.mockResolvedValueOnce(row.success);
+    await act(async () => { fireEvent.click(button(card, copy.confirm)); });
+    expect(learning.signal.mock.calls).toEqual([[{ proposal: signed, turnId: shownTurnId, signal: 'card_confirmed' }]]);
+    cleanup(); learning.signal.mockClear();
+    const other = row.make();
+    card = await show(other);
+    posts[row.kind].edit.mockResolvedValueOnce({ ok: false, reason: 'expired' });
+    await act(async () => { fireEvent.click(button(card, copy.edit)); });
+    expect(learning.signal).not.toHaveBeenCalled();
+    posts[row.kind].edit.mockResolvedValueOnce({ ok: true, href: row.editHref });
+    await act(async () => { fireEvent.click(button(card, copy.edit)); });
+    expect(learning.signal.mock.calls).toEqual([[{ proposal: other, turnId: shownTurnId, signal: 'card_edited' }]]);
   });
 });
 

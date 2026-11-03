@@ -82,7 +82,9 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  /** AI v2 Phase 2 (wave 1 integration): the payroll-cycle loop pages, for administrators (./entities-payroll-loops.ts). */
  |'payroll_cycle'|'salary_payroll_run'|'payroll_loop_setting'|'payroll_audit_status'
  /** AI v2 Phase 2 P2-5: the approved company policies in force for the caller (./entities-handbook.ts). */
- |'policy_handbook';
+ |'policy_handbook'
+ /** AI v2 Phase 2 P2-6: the AI quality page's figures, for administrators (./entities-quality.ts). */
+ |'ai_quality';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;

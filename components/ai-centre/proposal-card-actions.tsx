@@ -10,6 +10,7 @@ import { confirmOwnChangeProposalAction, editOwnChangeProposalAction } from '@/a
 import { confirmToilRequestProposalAction, editToilRequestProposalAction } from '@/app/assistant/toil-request-proposal-actions';
 import { confirmAssignedDecisionProposalAction, editAssignedDecisionProposalAction } from '@/app/assistant/assigned-decision-proposal-actions';
 import { confirmLetterRequestProposalAction, editLetterRequestProposalAction } from '@/app/assistant/letter-request-proposal-actions';
+import { recordCardSignalAction } from '@/app/assistant/learning-actions';
 import {
   inlineDoneKey, inlineRefusalKey, internalHref,
   type InlineConfirmResult, type InlineEditResult, type InlineProposalCopy, type InlineProposalKind,
@@ -43,15 +44,21 @@ type Notice = Readonly<{ text: string; href?: string; linkLabel?: string }>;
  * Nothing posts until a press. Confirm posts the signed proposal with `confirm: true` to its owner's server action,
  * which verifies it for this caller and re-runs every check; the card then shows the owner's outcome with the
  * person's Maker's Mark, or the refusal in place (the owner's own sentence when it gave one). A "use the form"
- * answer and Edit open the owner's prefilled form. Discard only hides the card: nothing is sent.
+ * answer and Edit open the owner's prefilled form. Discard only hides the card: nothing is sent but the learning signal
+ * below.
  *
  * `agreement` (AI v2 W2 slice 2, owner decision 3 November 2026 "Employee ticks consent on card"): a First Schedule
  * employee's Leave Credit card shows the Leave Credit form's own agreement sentence with an unticked box. Confirm stays
  * disabled until the person ticks it themselves; the tick is posted as `firstScheduleConsent` and checked again by the
- * owner, which refuses without it. Nothing ticks it for them, and the proposal never carries it. */
-export function InlineProposalCard({ kind, proposal, copy, card, awaitingLabel, agreement }: {
+ * owner, which refuses without it. Nothing ticks it for them, and the proposal never carries it.
+ *
+ * `turnId` (AI v2 Phase 2 P2-6): the turn that prepared the card. After a Confirm the owner accepted, an Edit that opens
+ * the form, or a Discard, the card also posts a learning signal for that turn (app/assistant/learning-actions.ts): the
+ * signed proposal, the turn and which button. It is sent after the press has done its work, never waited on, and its
+ * result changes nothing on the card. */
+export function InlineProposalCard({ kind, proposal, copy, card, awaitingLabel, agreement, turnId }: {
   kind: InlineProposalKind; proposal: unknown; copy: InlineProposalCopy; awaitingLabel?: string;
-  agreement?: Readonly<{ label: string }>;
+  agreement?: Readonly<{ label: string }>; turnId?: string;
   card: Readonly<{ icon: ReactNode; tone: ProposalTone; title: string; meta: readonly string[]; checks?: readonly ProposalCheck[]; expires?: string;
     prepared?: Readonly<{ summary: string; rows: readonly (readonly [string, string])[] }> }>;
 }) {
@@ -68,6 +75,10 @@ export function InlineProposalCard({ kind, proposal, copy, card, awaitingLabel, 
   useEffect(() => { if (done) status.current?.focus(); }, [done]);
 
   if (discarded) return null;
+  const learn = (signal: 'card_confirmed' | 'card_edited' | 'card_discarded') => {
+    if (!turnId) return;
+    try { void recordCardSignalAction({ proposal, turnId, signal }).catch(() => undefined); } catch { /* learning never changes the card */ }
+  };
   const refuse = (reason: string, message?: string, href?: string) => {
     const fix = internalHref(href);
     setRefusal({ text: message?.trim() ? message : copy.refused[inlineRefusalKey(reason)], ...(fix ? { href: fix, linkLabel: copy.fixIt } : {}) });
@@ -87,6 +98,7 @@ export function InlineProposalCard({ kind, proposal, copy, card, awaitingLabel, 
       if (!key) return refuse('unavailable');
       const href = result.kind === 'draft_saved' ? internalHref(result.href) : null;
       setDone({ text: copy.done[key], ...(href ? { href, linkLabel: copy.openClaims } : {}) });
+      learn('card_confirmed');
     } catch {
       setRefusal({ text: copy.error });
     } finally {
@@ -100,7 +112,7 @@ export function InlineProposalCard({ kind, proposal, copy, card, awaitingLabel, 
     try {
       const result = await POST[kind].edit({ proposal });
       const href = result.ok ? internalHref(result.href) : null;
-      if (href) router.push(href); else refuse(result.ok ? 'unavailable' : result.reason);
+      if (href) { learn('card_edited'); router.push(href); } else refuse(result.ok ? 'unavailable' : result.reason);
     } catch {
       setRefusal({ text: copy.error });
     } finally {
@@ -133,7 +145,7 @@ export function InlineProposalCard({ kind, proposal, copy, card, awaitingLabel, 
         <Button type="button" variant="outline" onClick={edit} disabled={busy !== null} className={TARGET}>
           {busy === 'edit' ? copy.opening : copy.edit}<span className="sr-only"> · {card.title}</span>
         </Button>
-        <Button type="button" variant="ghost" onClick={() => setDiscarded(true)} disabled={busy !== null} className={`text-muted-foreground ${TARGET}`}>
+        <Button type="button" variant="ghost" onClick={() => { learn('card_discarded'); setDiscarded(true); }} disabled={busy !== null} className={`text-muted-foreground ${TARGET}`}>
           {copy.discard}<span className="sr-only"> · {card.title}</span>
         </Button>
       </div>

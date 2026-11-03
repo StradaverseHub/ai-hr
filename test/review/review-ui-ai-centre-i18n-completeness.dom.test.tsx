@@ -35,9 +35,13 @@ const BODIES = ['aiCentre.payrollCycle.bodies.epf', 'aiCentre.payrollCycle.bodie
   'payrollAudit.forms.epf', 'payrollAudit.forms.pcb_cp39', 'today.autonomy.byHr'];
 // AI v2 Phase 2 P2-5 (the Living Handbook): "v{version}" and "RM {amount}", an argument with the version mark and the ringgit sign.
 const HANDBOOK = ['aiCentre.policies.versionShort', 'aiCentre.policies.values.money'];
-const PHASE2 = [...ARGUMENTS_ONLY, ...BODIES, ...HANDBOOK];
+// Wave 2 (P2-6, AI quality): a proposal's place is only its arguments and a separator ("{loop} · {company}"), and the product
+// area named "AI Centre" is the product's name in every locale; Malay writes Status as English does.
+const QUALITY = ['aiCentre.quality.proposals.where', 'aiCentre.quality.areas.ai'];
+const PHASE2 = [...ARGUMENTS_ONLY, ...BODIES, ...HANDBOOK, ...QUALITY];
 const SAME_AS_ENGLISH_ALLOWED: Readonly<Record<string, readonly string[]>> = { ms: ['aiCentre.how.layers.model', LOOP_STEP, 'aiCentre.loops.cases.columns.status', ...PHASE2,
-  'aiCentre.autonomy.actions.columns.status', 'aiCentre.payrollCycle.salaryPage.columns.status', 'aiCentre.payrollCycle.runType.bonus', 'aiCentre.payrollCycle.byCompany.columns.audit'],
+  'aiCentre.autonomy.actions.columns.status', 'aiCentre.payrollCycle.salaryPage.columns.status', 'aiCentre.payrollCycle.runType.bonus', 'aiCentre.payrollCycle.byCompany.columns.audit',
+  'aiCentre.quality.gaps.status'],
   zh: [LOOP_STEP, ...PHASE2], vi: [LOOP_STEP, ...PHASE2], ta: [LOOP_STEP, ...PHASE2], th: [LOOP_STEP, ...PHASE2] };
 
 function flat(d: Dict, prefix = ''): Record<string, string> {
@@ -121,7 +125,11 @@ describe('AI centre catalogue completeness', () => {
       head: 'a1b2c3d4', chained: 12, who: 'Aisyah Fictional', state: 'Open', id: 'u-1',
       // AI v2 Phase 2 P2-5: arguments of the Living Handbook (aiCentre.policies.*).
       author: 'Aisyah Fictional', handbook: 'RM 0.60 per km', system: 'RM 0.55 per km', owner: 'claims', setting: 'Mileage rates',
-      message: 'The first mileage band must start at 0 km', accepted: 2, rejected: 1 };
+      message: 'The first mileage band must start at 0 km', accepted: 2, rejected: 1,
+      // Wave 2: arguments of AI quality (aiCentre.quality.*, P2-6) this list did not carry.
+      helpful: 4, marked: 5, unchanged: 7, decided: 9, edited: '11.1%', editedCount: 1, discarded: 1, questions: 6, roles: 'Employee, Manager',
+      intent: 'Could not answer about leave', signal: 'A prepared action was discarded', role: 'Employee', locale: 'Malay',
+      example: 'Can NAME_A take leave on DATE_A?', expectation: 'Gives the balance in one line.' };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });

@@ -1248,6 +1248,32 @@ only writer.
 | ---: | ---: | --- | --- |
 |775|1793330000371|0971_teras_living_handbook|7abaf32815d657b559e6550acf50ecde543bd99f857538889ec48a82920048f0|
 
+## AI v2 Phase 2 wave 2 P2-6 learning loops — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-learning-loops` (cut from `9492a6b43` on `claude/aiv2-phase2-wave1`, journal ending
+`0967_own_payroll_cut_off` idx771 / when1793330000367) appends `0972_teras_learning_loops` at the place the wave 1 re-freeze
+rule gives its number: idx = 767 + (72 − 63) = 776, when = 1793330000300 + 72 = 1793330000372. 0972 is the number the AI v2
+coordinator reserved for the learning loops (wave 2: 0971 Living Handbook, 0972 learning loops, 0973 letters chat custody;
+0968–0970 are taken by `claude/wonderful-mccarthy-2fb38f`). The idx773–775 gap is left for 0968–0971; the journal tests
+require only a strictly ascending idx and `when`.
+
+A fresh fetch on 3 November 2026 found competing claims on other workstreams' origin branches: the `codex/permissions-*-20261103`
+series claims `0972_attendance_schedule_binding_readiness` at when1793330000372 (its idx819), as part of its 0962–0978 run already
+reported at wave 1 integration. Identical `when` values cannot both stand in one journal: reconcile before either set integrates
+with the other. Development source only: no installation priority, no deployment; re-freeze above the then-installed ledger at
+integration.
+
+0972 creates six FORCE row-level-security tables: `teras_learning_signal`, `teras_learning_signal_review`,
+`teras_gap_occurrence`, `teras_gap_example`, `teras_gap_status` and `teras_eval_candidate`, with the functions
+`app.teras_learning_append_only`, `app.teras_learning_signal_guard`, `app.teras_learning_own_record`, `app.teras_learning_admin`,
+`app.teras_gap_example_stamp`, `app.teras_gap_example_kept` and `app.teras_eval_candidate_guard`. Every table is new; it alters
+no existing object. A gap example references `teras_chat(id)` ON DELETE CASCADE (it goes with the asker's chat), and the signal
+table grants UPDATE on its `reason` column only. Writers reviewed: `core/learning/*` only.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|776|1793330000372|0972_teras_learning_loops|f4b3574ce920a1e4336e105d0122e779c99a054b1e3db9b452d5d52dfc98294a|
+
 ## AI Centre block 2000–2019: AI v2 Phase 1 release — 3 November 2026 (unapplied source reservation)
 
 Branch `claude/aiv2-phase1-release` merges `origin/main` `848c7be36414a1a5216bb33d0ecd49429fcdd60f` (aligned with alpha; the

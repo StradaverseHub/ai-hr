@@ -27,6 +27,7 @@ import {levelKey} from '../loops/autonomy-types';
 import {askMyPayrollReadiness} from '../pre-salary/ask';
 import {payrollAuditStatus,payrollCycleStatus,payrollLoopSettings,salaryPayrollChecks} from './payroll-loops';
 import {askPolicyHandbook} from '../handbook/ask';
+import {askAiQuality} from '../learning/ask';
 
 export type TerasCapabilityScope=Readonly<{companyId:string;locale?:string}>;
 export type TerasCapability=Readonly<{name:string;module:string|null;admin:boolean;
@@ -124,6 +125,8 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'payroll_audit_status',module:'payroll',admin:true,worker:null,run:(ctx,input)=>payrollAuditStatus(ctx,input)},
  // AI v2 Phase 2 P2-5: "what does our policy say?", from the approved version in force only (core/handbook/ask.ts).
  {name:'my_policy_handbook',module:null,admin:false,worker:null,run:(ctx,input)=>askPolicyHandbook(ctx,{topic:text(input.topic)})},
+ // AI v2 Phase 2 P2-6: AI quality for HR and group administrators (core/learning/ask.ts); the service checks again.
+ {name:'ai_quality_summary',module:null,admin:true,worker:null,run:(ctx,input)=>askAiQuality(ctx,input)},
 ]);
 /** Capabilities this caller may be offered. A capability that belongs to a worker is offered only while that worker's
  * run gate is open (registered, switched on, tenant not stopped), read once per call in the caller's tenant. */

@@ -1680,6 +1680,250 @@
       "footer": "Employees' questions are answered from the approved version only. Every version is kept.",
       "readerLine": "Version {version} · in force since {date}",
       "readerNote": "This is the approved version. Ask AI Centre about it on Ask, or contact your HR team."
+    },
+    "feedback": {
+      "label": "Was this answer helpful?",
+      "helpful": "Helpful",
+      "notHelpful": "Not helpful",
+      "reasonsLabel": "What was wrong with it?",
+      "cancel": "Cancel",
+      "thanks": "Thanks",
+      "change": "Change",
+      "reasons": {
+        "wrong": "Wrong",
+        "not_what_asked": "Not what I asked",
+        "missing_something": "Missing something"
+      }
+    },
+    "quality": {
+      "title": "AI quality",
+      "descriptionCompany": "How people used AI Centre’s answers and prepared actions in {company}, what it could not do, and what the loops propose.",
+      "descriptionAll": "How people used AI Centre’s answers and prepared actions in your companies, what it could not do, and what the loops propose.",
+      "periodLabel": "Period",
+      "periods": {
+        "last30": "Last 30 days",
+        "quarter": "This quarter",
+        "year": "This year"
+      },
+      "companyLabel": "Company",
+      "allCompanies": "All {count} companies",
+      "show": "Show",
+      "noCompanies": "You do not administer any company, so there is nothing to show.",
+      "noData": "No data yet",
+      "undoDismiss": "Undo",
+      "saved": {
+        "dismissed": "Dismissed. It no longer waits for review.",
+        "reopened": "Back in the list to review.",
+        "candidate": "Saved as a draft eval candidate. Check the redacted text, then approve it.",
+        "edited": "Draft saved, redacted again.",
+        "approved": "Approved. You can now export it for a developer.",
+        "reopened_candidate": "Back to draft, so you can edit it.",
+        "withdrawn": "Withdrawn. It will not be exported.",
+        "gap_status": "Status saved.",
+        "proposal_approved": "Approved. The loop uses the new setting from its next run.",
+        "proposal_rejected": "Rejected. It is not proposed again while its evidence is the same.",
+        "proposal_reverted": "Reverted. The previous setting is back from the next run."
+      },
+      "errors": {
+        "invalid": "Something in the form was not valid. Check it and try again.",
+        "not_administrator": "Only an administrator of this company can do that.",
+        "not_found": "That item is no longer here.",
+        "changed": "Someone changed this since you opened the page. Reload and try again.",
+        "not_redacted": "The text still holds a name, number, id or address after redaction. Rewrite it with fictional details.",
+        "state": "That cannot be done at this stage.",
+        "failed": "That could not be saved. Try again."
+      },
+      "tiles": {
+        "helpful": "Answers marked helpful",
+        "helpfulNote": "{helpful} of {marked} marked answers",
+        "helpfulNone": "No answer was marked in this period",
+        "unchanged": "Prepared actions confirmed unchanged",
+        "unchangedNote": "{unchanged} of {decided}; edited {edited} ({editedCount})",
+        "preparedNone": "No prepared action was decided in this period",
+        "discarded": "Prepared actions discarded",
+        "discardedNote": "{discarded} of {decided}",
+        "gaps": "Open gaps",
+        "gapsNote": "{share} of questions it could not meet: {open} of {questions}",
+        "gapsNone": "No question it could not answer in this period"
+      },
+      "chart": {
+        "title": "Prepared actions confirmed unchanged, by month",
+        "label": "Share of prepared actions confirmed unchanged, by month: {values}.",
+        "value": "{month} {share} ({unchanged} of {decided})",
+        "valueNone": "{month} no data",
+        "unit": "Confirmed unchanged (%)",
+        "note": "Drawn from 0 to 100%. A month with no decided prepared action has no bar."
+      },
+      "gaps": {
+        "title": "Biggest gaps",
+        "help": "Questions AI Centre could not answer or do, grouped by what was asked and counted. Examples are redacted and kept only as long as your chats are kept.",
+        "intent": "Intent",
+        "count": "Count",
+        "example": "Example",
+        "status": "Status",
+        "none": "Nothing AI Centre could not answer or do in this period.",
+        "roles": "Asked by: {roles}",
+        "noExample": "No example kept",
+        "statusFor": "Status of {intent}",
+        "mixed": "Differs by company",
+        "statuses": {
+          "open": "Open",
+          "planned": "Planned",
+          "wont_do": "Won’t do",
+          "duplicate": "Duplicate"
+        },
+        "duplicateOf": "Duplicate of",
+        "duplicateNone": "Not a duplicate",
+        "save": "Save"
+      },
+      "intents": {
+        "not_supported": "Asked if it can do something in {area}: not yet",
+        "no_route": "Asked it to do something in {area}: no way to prepare it",
+        "cannot_answer": "Could not answer about {area}"
+      },
+      "areas": {
+        "people": "people",
+        "organisation": "the organisation",
+        "leave": "leave",
+        "attendance": "attendance",
+        "claims": "claims",
+        "payroll": "payroll",
+        "performance": "performance",
+        "rewards": "rewards",
+        "lifecycle": "onboarding and offboarding",
+        "approvals": "approvals",
+        "self_service": "self-service",
+        "knowledge": "policies and guides",
+        "notifications": "notifications",
+        "testing": "system testing",
+        "reports": "reports",
+        "settings": "settings",
+        "security": "access and security",
+        "ai": "AI Centre",
+        "general": "something else"
+      },
+      "roles": {
+        "employee": "Employee",
+        "manager": "Manager",
+        "hr_admin": "HR administrator",
+        "payroll": "Payroll",
+        "group_admin": "Group administrator"
+      },
+      "locales": {
+        "en": "English",
+        "ms": "Malay",
+        "zh": "Chinese",
+        "vi": "Vietnamese",
+        "ta": "Tamil",
+        "th": "Thai"
+      },
+      "signals": {
+        "card_edited": "A prepared action was opened to edit",
+        "card_discarded": "A prepared action was discarded",
+        "recommendation_rejected": "A recommendation was not followed",
+        "answer_unhelpful": "An answer was marked not helpful"
+      },
+      "corrections": {
+        "title": "Corrections to review",
+        "help": "What people changed or turned down. Make one an eval candidate so the next evaluation checks it, or dismiss it. Nothing here changes AI Centre by itself.",
+        "signal": "Signal",
+        "role": "Role",
+        "when": "When",
+        "actions": "Actions",
+        "none": "Nothing to review in this period.",
+        "detail": "About {area} · {locale}",
+        "promote": "Make an eval candidate",
+        "dismiss": "Dismiss",
+        "reason": "Reason: {reason}"
+      },
+      "candidate": {
+        "question": "Question, with fictional details",
+        "expectation": "What a good reply does",
+        "kind": "Kind of reply",
+        "factor": "What it tests",
+        "kinds": {
+          "answer": "Answer",
+          "do": "Do it",
+          "clarify": "Ask one question",
+          "guide": "Guide",
+          "honest_gap": "Say it cannot yet",
+          "refuse": "Decline kindly"
+        },
+        "factors": {
+          "facts": "Facts",
+          "capability": "What it can do",
+          "doing": "Doing, not pointing",
+          "privacy_wording": "Privacy wording",
+          "brevity": "Brevity",
+          "language": "Language",
+          "safety": "Safety"
+        },
+        "redactionHelp": "Use fictional names and details. When you save, names, ids, figures, dates, e-mail addresses and phone numbers are replaced by placeholders such as NAME_A. Read the saved text before you approve it.",
+        "newTitle": "New eval candidate: {signal}",
+        "newIntro": "Recorded as a {role} question in {locale}. Write the question as it might have been asked and what a good reply does.",
+        "example": "Redacted question from that turn: “{example}”",
+        "saveDraft": "Save draft",
+        "cancel": "Cancel",
+        "editTitle": "Edit the draft"
+      },
+      "candidates": {
+        "title": "Eval candidates",
+        "help": "A candidate leaves your company only after you approve its redacted text and export it. The file goes to a developer, who adds it to the evaluation; nothing changes AI Centre automatically.",
+        "question": "Question",
+        "role": "Role",
+        "state": "State",
+        "actions": "Actions",
+        "none": "No eval candidates yet.",
+        "expected": "Expected: {expectation}",
+        "states": {
+          "draft": "Draft",
+          "approved": "Approved",
+          "exported": "Exported",
+          "withdrawn": "Withdrawn"
+        },
+        "version": "Version {version} · {date}",
+        "edit": "Edit",
+        "approve": "Approve redacted text",
+        "export": "Export for a developer",
+        "reopen": "Back to draft",
+        "download": "Download again",
+        "withdraw": "Withdraw"
+      },
+      "proposals": {
+        "title": "Proposals",
+        "help": "Changes the loops propose from your own decisions. Each applies only when an administrator approves it, from the next run, and can be reverted. Promotions are decided on each loop’s page, never here.",
+        "change": "Change",
+        "evidence": "Evidence",
+        "state": "State",
+        "actions": "Actions",
+        "none": "No proposal from the loops.",
+        "where": "{loop} · {company}",
+        "open": "Waiting for a decision",
+        "applied": "Applied {date}",
+        "approved": "Approve",
+        "rejected": "Reject",
+        "revert": "Revert"
+      },
+      "loopCorrections": {
+        "title": "Loop corrections by month",
+        "help": "How often people changed what a loop prepared or did. Above 1% over 7 days, a loop that acts by itself drops back to Prepare on its own; nothing here promotes a loop.",
+        "loop": "Loop",
+        "none": "No loop card or action was decided yet.",
+        "counts": "{corrected} of {decided}"
+      },
+      "method": {
+        "link": "How these figures are worked out",
+        "helpful": "Answers marked helpful: answers marked helpful, out of all answers people marked helpful or not helpful in the period. Unmarked answers are not counted.",
+        "prepared": "Prepared actions confirmed unchanged: actions AI Centre prepared that were confirmed as prepared, out of all prepared actions people decided in the period. That is a card in chat confirmed, opened to edit or discarded, or a loop card completed with the value it proposed or a changed one. Edited is the share opened to edit or changed. A loop card that proposed no value of its own is left out.",
+        "discarded": "Prepared actions discarded: cards in chat that were discarded, out of the same decided prepared actions. Loop cards cannot be discarded, so unchanged, edited and discarded add up to the whole.",
+        "gaps": "Open gaps: the kinds of question AI Centre could not answer or do in the period whose status is still open, and the share of those questions that wait on them. A question counts when the reply said it cannot do that yet, when nothing could be prepared for a request, or when it could not answer. Questions are grouped by what kind of gap it was and the product area the words name.",
+        "trend": "The chart shows, for each month, the share of that month’s decided prepared actions that were confirmed unchanged, drawn from 0 to 100%.",
+        "corrections": "Corrections to review: prepared actions opened to edit or discarded, recommendations not followed and answers marked not helpful, newest first, that no administrator has dismissed or made an eval candidate. A correction shows the person’s role, never their name.",
+        "candidates": "An eval candidate is your own fictional rewrite of a question and what a good reply does. It is redacted on every save and leaves your company only as a file you export after approving it; fictional values replace the placeholders. A developer reviews it before it joins the evaluation.",
+        "proposals": "Proposals come from the loops’ own records, today the Salary payroll loop’s net-swing threshold. Approving writes a new settings version; reverting writes another with the earlier value. Every version is kept.",
+        "access": "Only HR and group administrators see this page, for the companies they administer. Every figure is a count, or a share of counts, from AI Centre’s own records about its work.",
+        "privacy": "A conversation about a sensitive topic stores no words and is never counted here. Nothing learned here leaves your company unless you export it, and learning never changes calculations, permissions or what AI Centre may show."
+      }
     }
   },
   "today": {
@@ -2100,6 +2344,8 @@
     "confirming": "Importing…",
     "fix": "{count, plural, one {Fix the # row} other {Fix the # rows}}",
     "openPage": "Open the import page",
+    "discard": "Discard",
+    "discarded": "Discarded. Nothing was imported.",
     "actionsLabel": "Import actions",
     "done": "{count, plural, one {# row imported.} other {# rows imported.}}",
     "doneLeftOut": "{count, plural, one {# row was not imported.} other {# rows were not imported.}}",

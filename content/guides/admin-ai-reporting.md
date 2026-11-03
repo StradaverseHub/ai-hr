@@ -45,6 +45,10 @@ You can attach a supported spreadsheet or CSV to ask for import mapping help whe
 
 Where the handbook and the system disagree lists every confirmed value the system no longer matches, with both values. Use the handbook prepares a draft that applies the handbook again; Update the handbook prepares a draft whose text says what the system does. Both go through the same confirmation and approval. Claims and leave settings are shared by every company in your group, so they are enforced only from a policy that applies to all of them. Employees see approved versions only, and AI Centre answers their questions from the version in force, citing the policy and paragraph.
 
+## AI quality
+
+[AI quality](/assistant?view=insights#ai-quality), under AI Centre › Insights, shows HR and group administrators how people use AI Centre's work, what it could not answer or do, and what the loops propose. Its own guide, "Admin Guide: AI Quality and Learning", explains each figure and decision.
+
 ## Reports and operations
 
 Use [Reports](/reports) and [Analytics](/analytics) for authorized summaries. Confirm filters and totals before sharing an export. [Scheduled actions](/admin/scheduled-actions) shows the operational actions available to the relevant administrator; a configured item is not proof that its last execution succeeded.

@@ -130,6 +130,8 @@ const GUIDE_TOUR: Record<string, string> = {
   'admin-ai-reporting': 'intelligence',
   // AI v2 Phase 2 (wave 1 integration): the payroll-cycle loops guide offers the AI Centre walkthrough, as the AI Centre guides do.
   'admin-ai-payroll-loops': 'intelligence',
+  // AI v2 Phase 2 P2-6: the AI quality guide offers the same AI Centre walkthrough.
+  'admin-ai-quality': 'intelligence',
   'admin-mobile-app': 'mobileDesign',
   'employee-notifications': 'notifications',
   'admin-communications': 'communications',

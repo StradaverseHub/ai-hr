@@ -21,6 +21,9 @@ const posts = vi.hoisted(() => ({ confirm: vi.fn(), ask: vi.fn(), earlier: vi.fn
 vi.mock('next/link', () => ({ default: ({ children, prefetch: _prefetch, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/assistant', useSearchParams: () => new URLSearchParams(), useRouter: () => ({ refresh: vi.fn(), push: nav.push }) }));
 vi.mock('../app/assistant/chat-import-actions', () => ({ confirmChatImportAction: posts.confirm }));
+// AI v2 Phase 2 P2-6: the learning signal the card posts after Confirm, Fix or Discard (core/learning/signals.ts).
+const learning = vi.hoisted(() => ({ signal: vi.fn(async () => ({ recorded: true })) }));
+vi.mock('../app/assistant/learning-actions', () => ({ recordCardSignalAction: learning.signal, markAnswerAction: vi.fn() }));
 vi.mock('../app/assistant/launcher-actions', () => ({ askFromWorkspaceAction: posts.ask, loadEarlierChatAction: posts.earlier }));
 const messages = withAiCentre('en', en as Record<string, unknown>);
 vi.mock('next-intl/server', () => ({
@@ -54,14 +57,16 @@ const turn = (proposals: ReturnType<typeof card>[]) => ({ turnId: randomUUID(), 
   sensitive: false, refused: false, crisis: false, fallback: false, caseRoute: null, continuation: '', trace: null as never, modelTurn: [] });
 let carrier: ReturnType<typeof useAssistantImportHandoff> = null;
 function Carrier() { carrier = useAssistantImportHandoff(); return null; }
+let shownTurnId = '';
 async function show(proposal: ReturnType<typeof card>, attached: AttachedImport | undefined = file) {
-  const element = await ConversationReply({ turn: turn([proposal]) as never });
+  const shown = turn([proposal]); shownTurnId = shown.turnId;
+  const element = await ConversationReply({ turn: shown as never });
   // The file the person sent with this turn's question, as the conversation provides it.
   render(<NextIntlClientProvider locale="en" messages={messages as never} timeZone="Asia/Kuala_Lumpur"><AssistantImportHandoffProvider>
     <Carrier /><TurnImportFile.Provider value={attached ?? null}>{element}</TurnImportFile.Provider></AssistantImportHandoffProvider></NextIntlClientProvider>);
   return screen.getByRole('article');
 }
-beforeEach(() => { vi.stubEnv('TERAS_PROPOSAL_SECRET', 'fictional-proposal-signing-secret-0123456789abcdef'); nav.push.mockReset(); posts.confirm.mockReset(); posts.ask.mockReset(); carrier = null; });
+beforeEach(() => { vi.stubEnv('TERAS_PROPOSAL_SECRET', 'fictional-proposal-signing-secret-0123456789abcdef'); nav.push.mockReset(); posts.confirm.mockReset(); posts.ask.mockReset(); learning.signal.mockClear(); carrier = null; });
 afterEach(() => { cleanup(); vi.unstubAllEnvs(); });
 
 describe('the prepared import card', () => {
@@ -110,6 +115,28 @@ describe('the prepared import card', () => {
     expect(href).not.toContain('E0142');
     const nonce = decodeURIComponent(href.split('=')[1]);
     expect(carrier?.take('leave_balances', nonce)).toBe(TEXT);
+    expect(posts.confirm).not.toHaveBeenCalled();
+  });
+
+  it('posts one learning signal after an import the owner accepted, after Fix, and after Discard; none for a refusal', async () => {
+    let proposal = card(), article = await show(proposal);
+    posts.confirm.mockResolvedValueOnce({ kind: 'refused', reason: 'changed' });
+    await act(async () => { fireEvent.click(within(article).getByRole('button', { name: 'Confirm 211 rows' })); });
+    expect(learning.signal).not.toHaveBeenCalled();
+    posts.confirm.mockResolvedValueOnce({ kind: 'imported', importKind: 'leave_balances', imported: 211, notImported: 3, historyHref: null, revertible: false, replayed: false });
+    await act(async () => { fireEvent.click(within(article).getByRole('button', { name: 'Confirm 211 rows' })); });
+    expect(learning.signal.mock.calls).toEqual([[{ proposal, turnId: shownTurnId, signal: 'card_confirmed' }]]);
+    cleanup(); learning.signal.mockClear();
+    proposal = card(); article = await show(proposal);
+    fireEvent.click(within(article).getByRole('button', { name: 'Fix the 3 rows' }));
+    expect(learning.signal.mock.calls).toEqual([[{ proposal, turnId: shownTurnId, signal: 'card_edited' }]]);
+    cleanup(); learning.signal.mockClear(); posts.confirm.mockClear();
+    proposal = card(); article = await show(proposal);
+    fireEvent.click(within(article).getByRole('button', { name: copy.discard }));
+    expect(learning.signal.mock.calls).toEqual([[{ proposal, turnId: shownTurnId, signal: 'card_discarded' }]]);
+    // Discard closes the card's actions and imports nothing.
+    expect(within(article).getByRole('status')).toHaveTextContent(copy.discarded);
+    expect(within(article).queryByRole('button', { name: 'Confirm 211 rows' })).toBeNull();
     expect(posts.confirm).not.toHaveBeenCalled();
   });
 

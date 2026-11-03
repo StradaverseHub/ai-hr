@@ -4663,6 +4663,13 @@
       "when": 1793330000371,
       "tag": "0971_teras_living_handbook",
       "breakpoints": true
+    },
+    {
+      "idx": 810,
+      "version": "7",
+      "when": 1793330000372,
+      "tag": "0972_teras_learning_loops",
+      "breakpoints": true
     }
   ]
 }

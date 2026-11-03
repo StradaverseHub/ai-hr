@@ -1680,6 +1680,250 @@
       "footer": "Câu hỏi của nhân viên chỉ được trả lời từ phiên bản đã phê duyệt. Mọi phiên bản đều được lưu.",
       "readerLine": "Phiên bản {version} · hiệu lực từ {date}",
       "readerNote": "Đây là phiên bản đã phê duyệt. Hỏi AI Centre về nó ở mục Hỏi, hoặc liên hệ bộ phận nhân sự."
+    },
+    "feedback": {
+      "label": "Câu trả lời này có hữu ích không?",
+      "helpful": "Hữu ích",
+      "notHelpful": "Không hữu ích",
+      "reasonsLabel": "Câu trả lời có vấn đề gì?",
+      "cancel": "Hủy",
+      "thanks": "Cảm ơn",
+      "change": "Thay đổi",
+      "reasons": {
+        "wrong": "Sai",
+        "not_what_asked": "Không đúng điều tôi hỏi",
+        "missing_something": "Còn thiếu"
+      }
+    },
+    "quality": {
+      "title": "Chất lượng AI",
+      "descriptionCompany": "Cách mọi người dùng câu trả lời và các thao tác đã chuẩn bị của AI Centre tại {company}, những gì nó chưa làm được và những gì các vòng lặp đề xuất.",
+      "descriptionAll": "Cách mọi người dùng câu trả lời và các thao tác đã chuẩn bị của AI Centre tại các công ty của bạn, những gì nó chưa làm được và những gì các vòng lặp đề xuất.",
+      "periodLabel": "Khoảng thời gian",
+      "periods": {
+        "last30": "30 ngày qua",
+        "quarter": "Quý này",
+        "year": "Năm nay"
+      },
+      "companyLabel": "Công ty",
+      "allCompanies": "Tất cả {count} công ty",
+      "show": "Hiển thị",
+      "noCompanies": "Bạn không quản trị công ty nào nên không có gì để hiển thị.",
+      "noData": "Chưa có dữ liệu",
+      "undoDismiss": "Hoàn tác",
+      "saved": {
+        "dismissed": "Đã bỏ qua. Mục này không còn chờ xem xét.",
+        "reopened": "Đã đưa lại vào danh sách cần xem xét.",
+        "candidate": "Đã lưu thành bản nháp ứng viên đánh giá. Hãy kiểm tra văn bản đã ẩn thông tin rồi phê duyệt.",
+        "edited": "Đã lưu bản nháp và ẩn thông tin lại.",
+        "approved": "Đã phê duyệt. Bây giờ bạn có thể xuất cho nhà phát triển.",
+        "reopened_candidate": "Đã trả về bản nháp để bạn chỉnh sửa.",
+        "withdrawn": "Đã rút lại. Mục này sẽ không được xuất.",
+        "gap_status": "Đã lưu trạng thái.",
+        "proposal_approved": "Đã phê duyệt. Vòng lặp dùng thiết lập mới từ lần chạy tiếp theo.",
+        "proposal_rejected": "Đã từ chối. Đề xuất sẽ không được đưa ra lại khi bằng chứng vẫn như cũ.",
+        "proposal_reverted": "Đã hoàn nguyên. Thiết lập trước đó được dùng lại từ lần chạy tiếp theo."
+      },
+      "errors": {
+        "invalid": "Có nội dung không hợp lệ trong biểu mẫu. Hãy kiểm tra và thử lại.",
+        "not_administrator": "Chỉ quản trị viên của công ty này mới làm được việc đó.",
+        "not_found": "Mục đó không còn ở đây.",
+        "changed": "Có người đã thay đổi mục này sau khi bạn mở trang. Hãy tải lại và thử lại.",
+        "not_redacted": "Văn bản vẫn còn tên, số, mã hoặc địa chỉ sau khi ẩn thông tin. Hãy viết lại bằng chi tiết hư cấu.",
+        "state": "Không thể làm việc đó ở giai đoạn này.",
+        "failed": "Không lưu được. Hãy thử lại."
+      },
+      "tiles": {
+        "helpful": "Câu trả lời được đánh dấu hữu ích",
+        "helpfulNote": "{helpful} trên {marked} câu trả lời được đánh dấu",
+        "helpfulNone": "Không có câu trả lời nào được đánh dấu trong khoảng thời gian này",
+        "unchanged": "Thao tác đã chuẩn bị được xác nhận không thay đổi",
+        "unchangedNote": "{unchanged} trên {decided}; đã sửa {edited} ({editedCount})",
+        "preparedNone": "Không có thao tác đã chuẩn bị nào được quyết định trong khoảng thời gian này",
+        "discarded": "Thao tác đã chuẩn bị bị bỏ",
+        "discardedNote": "{discarded} trên {decided}",
+        "gaps": "Khoảng trống còn mở",
+        "gapsNote": "{share} số câu hỏi nó chưa đáp ứng được: {open} trên {questions}",
+        "gapsNone": "Không có câu hỏi nào nó không trả lời được trong khoảng thời gian này"
+      },
+      "chart": {
+        "title": "Thao tác đã chuẩn bị được xác nhận không thay đổi, theo tháng",
+        "label": "Phần thao tác đã chuẩn bị được xác nhận không thay đổi, theo tháng: {values}.",
+        "value": "{month} {share} ({unchanged} trên {decided})",
+        "valueNone": "{month} không có dữ liệu",
+        "unit": "Xác nhận không thay đổi (%)",
+        "note": "Vẽ từ 0 đến 100%. Tháng không có thao tác đã chuẩn bị nào được quyết định thì không có cột."
+      },
+      "gaps": {
+        "title": "Khoảng trống lớn nhất",
+        "help": "Những câu hỏi AI Centre không trả lời hoặc không làm được, được nhóm theo nội dung được hỏi và đếm. Ví dụ đã được ẩn thông tin và chỉ được giữ lâu bằng thời gian lưu cuộc trò chuyện của bạn.",
+        "intent": "Ý định",
+        "count": "Số lần",
+        "example": "Ví dụ",
+        "status": "Trạng thái",
+        "none": "Không có việc gì AI Centre không trả lời hoặc không làm được trong khoảng thời gian này.",
+        "roles": "Người hỏi: {roles}",
+        "noExample": "Không giữ ví dụ",
+        "statusFor": "Trạng thái của {intent}",
+        "mixed": "Khác nhau theo công ty",
+        "statuses": {
+          "open": "Mở",
+          "planned": "Đã lên kế hoạch",
+          "wont_do": "Sẽ không làm",
+          "duplicate": "Trùng lặp"
+        },
+        "duplicateOf": "Trùng với",
+        "duplicateNone": "Không trùng lặp",
+        "save": "Lưu"
+      },
+      "intents": {
+        "not_supported": "Hỏi liệu nó có làm được việc về {area}: chưa",
+        "no_route": "Yêu cầu làm việc về {area}: không có cách chuẩn bị",
+        "cannot_answer": "Không trả lời được về {area}"
+      },
+      "areas": {
+        "people": "nhân sự",
+        "organisation": "tổ chức",
+        "leave": "nghỉ phép",
+        "attendance": "chấm công",
+        "claims": "hoàn ứng",
+        "payroll": "bảng lương",
+        "performance": "hiệu suất",
+        "rewards": "khen thưởng",
+        "lifecycle": "tiếp nhận và nghỉ việc",
+        "approvals": "phê duyệt",
+        "self_service": "tự phục vụ",
+        "knowledge": "chính sách và hướng dẫn",
+        "notifications": "thông báo",
+        "testing": "kiểm thử hệ thống",
+        "reports": "báo cáo",
+        "settings": "cài đặt",
+        "security": "quyền truy cập và bảo mật",
+        "ai": "AI Centre",
+        "general": "việc khác"
+      },
+      "roles": {
+        "employee": "Nhân viên",
+        "manager": "Quản lý",
+        "hr_admin": "Quản trị viên HR",
+        "payroll": "Bảng lương",
+        "group_admin": "Quản trị viên tập đoàn"
+      },
+      "locales": {
+        "en": "Tiếng Anh",
+        "ms": "Tiếng Mã Lai",
+        "zh": "Tiếng Trung",
+        "vi": "Tiếng Việt",
+        "ta": "Tiếng Tamil",
+        "th": "Tiếng Thái"
+      },
+      "signals": {
+        "card_edited": "Một thao tác đã chuẩn bị được mở để sửa",
+        "card_discarded": "Một thao tác đã chuẩn bị bị bỏ",
+        "recommendation_rejected": "Một khuyến nghị không được làm theo",
+        "answer_unhelpful": "Một câu trả lời bị đánh dấu không hữu ích"
+      },
+      "corrections": {
+        "title": "Chỉnh sửa cần xem xét",
+        "help": "Những gì mọi người đã thay đổi hoặc từ chối. Chọn một mục làm ứng viên đánh giá để lần đánh giá sau kiểm tra nó, hoặc bỏ qua. Không có gì ở đây tự thay đổi AI Centre.",
+        "signal": "Tín hiệu",
+        "role": "Vai trò",
+        "when": "Thời gian",
+        "actions": "Thao tác",
+        "none": "Không có gì cần xem xét trong khoảng thời gian này.",
+        "detail": "Về {area} · {locale}",
+        "promote": "Làm ứng viên đánh giá",
+        "dismiss": "Bỏ qua",
+        "reason": "Lý do: {reason}"
+      },
+      "candidate": {
+        "question": "Câu hỏi, với chi tiết hư cấu",
+        "expectation": "Một câu trả lời tốt cần làm gì",
+        "kind": "Loại câu trả lời",
+        "factor": "Nội dung kiểm tra",
+        "kinds": {
+          "answer": "Trả lời",
+          "do": "Thực hiện",
+          "clarify": "Hỏi lại một câu",
+          "guide": "Hướng dẫn",
+          "honest_gap": "Nói rằng chưa làm được",
+          "refuse": "Từ chối nhẹ nhàng"
+        },
+        "factors": {
+          "facts": "Dữ kiện",
+          "capability": "Những gì nó làm được",
+          "doing": "Làm thay vì chỉ đường",
+          "privacy_wording": "Cách nói về quyền riêng tư",
+          "brevity": "Ngắn gọn",
+          "language": "Ngôn ngữ",
+          "safety": "An toàn"
+        },
+        "redactionHelp": "Hãy dùng tên và chi tiết hư cấu. Khi bạn lưu, tên, mã, con số, ngày, địa chỉ e-mail và số điện thoại được thay bằng phần giữ chỗ như NAME_A. Hãy đọc văn bản đã lưu trước khi phê duyệt.",
+        "newTitle": "Ứng viên đánh giá mới: {signal}",
+        "newIntro": "Được ghi là câu hỏi của {role} bằng {locale}. Hãy viết câu hỏi như người ta có thể đã hỏi và một câu trả lời tốt cần làm gì.",
+        "example": "Câu hỏi đã ẩn thông tin từ lượt đó: “{example}”",
+        "saveDraft": "Lưu bản nháp",
+        "cancel": "Hủy",
+        "editTitle": "Sửa bản nháp"
+      },
+      "candidates": {
+        "title": "Ứng viên đánh giá",
+        "help": "Một ứng viên chỉ rời khỏi công ty của bạn sau khi bạn phê duyệt văn bản đã ẩn thông tin và xuất nó. Tệp được giao cho nhà phát triển để thêm vào bộ đánh giá; không có gì tự động thay đổi AI Centre.",
+        "question": "Câu hỏi",
+        "role": "Vai trò",
+        "state": "Trạng thái",
+        "actions": "Thao tác",
+        "none": "Chưa có ứng viên đánh giá nào.",
+        "expected": "Mong đợi: {expectation}",
+        "states": {
+          "draft": "Bản nháp",
+          "approved": "Đã phê duyệt",
+          "exported": "Đã xuất",
+          "withdrawn": "Đã rút lại"
+        },
+        "version": "Phiên bản {version} · {date}",
+        "edit": "Sửa",
+        "approve": "Phê duyệt văn bản đã ẩn thông tin",
+        "export": "Xuất cho nhà phát triển",
+        "reopen": "Trả về bản nháp",
+        "download": "Tải xuống lại",
+        "withdraw": "Rút lại"
+      },
+      "proposals": {
+        "title": "Đề xuất",
+        "help": "Những thay đổi các vòng lặp đề xuất từ chính quyết định của bạn. Mỗi thay đổi chỉ áp dụng khi quản trị viên phê duyệt, từ lần chạy tiếp theo, và có thể hoàn nguyên. Việc nâng cấp được quyết định trên trang của từng vòng lặp, không phải ở đây.",
+        "change": "Thay đổi",
+        "evidence": "Bằng chứng",
+        "state": "Trạng thái",
+        "actions": "Thao tác",
+        "none": "Các vòng lặp không có đề xuất nào.",
+        "where": "{loop} · {company}",
+        "open": "Đang chờ quyết định",
+        "applied": "Đã áp dụng {date}",
+        "approved": "Phê duyệt",
+        "rejected": "Từ chối",
+        "revert": "Hoàn nguyên"
+      },
+      "loopCorrections": {
+        "title": "Chỉnh sửa vòng lặp theo tháng",
+        "help": "Mức độ thường xuyên mọi người thay đổi những gì vòng lặp đã chuẩn bị hoặc đã làm. Vượt quá 1% trong 7 ngày, vòng lặp tự hành động sẽ tự quay về mức Chuẩn bị; không có gì ở đây nâng cấp vòng lặp.",
+        "loop": "Vòng lặp",
+        "none": "Chưa có thẻ hoặc thao tác vòng lặp nào được quyết định.",
+        "counts": "{corrected} trên {decided}"
+      },
+      "method": {
+        "link": "Cách tính các số liệu này",
+        "helpful": "Câu trả lời được đánh dấu hữu ích: số câu trả lời được đánh dấu hữu ích trên tất cả câu trả lời được đánh dấu hữu ích hoặc không hữu ích trong khoảng thời gian. Câu trả lời không được đánh dấu thì không được tính.",
+        "prepared": "Thao tác đã chuẩn bị được xác nhận không thay đổi: các thao tác AI Centre đã chuẩn bị và được xác nhận đúng như chuẩn bị, trên tất cả thao tác đã chuẩn bị được quyết định trong khoảng thời gian. Đó là thẻ trong cuộc trò chuyện được xác nhận, mở để sửa hoặc bị bỏ, hoặc thẻ vòng lặp được hoàn tất với giá trị nó đề xuất hoặc giá trị đã thay đổi. Đã sửa là phần được mở để sửa hoặc đã thay đổi. Thẻ vòng lặp không đề xuất giá trị riêng thì không được tính.",
+        "discarded": "Thao tác đã chuẩn bị bị bỏ: các thẻ trong cuộc trò chuyện bị bỏ, trên cùng các thao tác đã chuẩn bị được quyết định. Thẻ vòng lặp không thể bị bỏ, nên không thay đổi, đã sửa và bị bỏ cộng lại bằng tổng.",
+        "gaps": "Khoảng trống còn mở: các loại câu hỏi AI Centre không trả lời hoặc không làm được trong khoảng thời gian mà trạng thái vẫn là mở, và phần các câu hỏi đó đang chờ chúng. Một câu hỏi được tính khi câu trả lời nói rằng chưa làm được, khi không chuẩn bị được gì cho một yêu cầu, hoặc khi nó không trả lời được. Câu hỏi được nhóm theo loại khoảng trống và lĩnh vực sản phẩm được nhắc đến.",
+        "trend": "Biểu đồ cho thấy, với mỗi tháng, phần thao tác đã chuẩn bị được quyết định trong tháng đó được xác nhận không thay đổi, vẽ từ 0 đến 100%.",
+        "corrections": "Chỉnh sửa cần xem xét: các thao tác đã chuẩn bị được mở để sửa hoặc bị bỏ, các khuyến nghị không được làm theo và các câu trả lời bị đánh dấu không hữu ích, mới nhất trước, chưa được quản trị viên nào bỏ qua hoặc chọn làm ứng viên đánh giá. Chỉnh sửa chỉ hiện vai trò của người đó, không bao giờ hiện tên.",
+        "candidates": "Ứng viên đánh giá là bản viết lại hư cấu của chính bạn cho một câu hỏi và những gì một câu trả lời tốt cần làm. Nó được ẩn thông tin mỗi lần lưu và chỉ rời khỏi công ty của bạn dưới dạng tệp bạn xuất sau khi phê duyệt; giá trị hư cấu thay cho phần giữ chỗ. Nhà phát triển xem xét trước khi đưa vào bộ đánh giá.",
+        "proposals": "Đề xuất đến từ chính hồ sơ của các vòng lặp, hiện là ngưỡng biến động ròng của vòng lặp bảng lương. Phê duyệt sẽ ghi một phiên bản thiết lập mới; hoàn nguyên sẽ ghi thêm một phiên bản với giá trị trước đó. Mọi phiên bản đều được giữ lại.",
+        "access": "Chỉ quản trị viên HR và quản trị viên tập đoàn mới thấy trang này, cho các công ty họ quản trị. Mỗi số liệu là số đếm, hoặc phần trăm của số đếm, từ chính hồ sơ công việc của AI Centre.",
+        "privacy": "Cuộc trò chuyện về chủ đề nhạy cảm không lưu bất kỳ từ nào và không bao giờ được tính ở đây. Không điều gì học được ở đây rời khỏi công ty của bạn trừ khi bạn xuất nó, và việc học không bao giờ thay đổi cách tính, quyền hạn hay những gì AI Centre được phép hiển thị."
+      }
     }
   },
   "today": {
@@ -2100,6 +2344,8 @@
     "confirming": "Đang nhập…",
     "fix": "{count, plural, other {Sửa # dòng}}",
     "openPage": "Mở trang nhập",
+    "discard": "Bỏ",
+    "discarded": "Đã bỏ. Không có gì được nhập.",
     "actionsLabel": "Thao tác nhập",
     "done": "{count, plural, other {Đã nhập # dòng.}}",
     "doneLeftOut": "{count, plural, other {# dòng không được nhập.}}",

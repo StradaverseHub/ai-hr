@@ -84,6 +84,7 @@ async function askThroughHarness(session:SessionContext,route:Extract<Conversati
   const answer=await ConversationReply({turn,links:await replyLinksFor(session,turn.suggestion?.reviewRoute,turn.caseRoute),...(applicants.size?{applicants}:{})});
   // Stored only once the reply could be shown, so a reopened chat holds no turn the person never saw.
   const chatId=await storeTurn(session,{question:input.question,conversationScope:input.conversationScope,companyId,turn});
+  await learnFromTurn(session,{question:input.question,companyId,turn,chatId});
   return {ok:true,exchangeId:'teras-'+turn.turnId,answer,conversationToken:turn.continuation,...(chatId?{chatId}:{})};
  }catch(error){
   const code=error instanceof ConversationTurnError?error.code:'provider_error';
@@ -133,6 +134,21 @@ async function storeTurn(session:SessionContext,input:{question:string;conversat
   return await recordChatTurn(session,{conversationId:turn.trace.conversationId,conversationScope:input.conversationScope,companyId:input.companyId,
    question:input.question,reply:turn.reply,modelRows:turn.modelTurn.map(row=>({role:row.role,content:row.content})),withheld:turn.sensitive||turn.refused});
  }catch(error){console.error('[noveri conversation turn] chat not stored',unclassifiedFailure(error));return null;}
+}
+
+/** AI v2 Phase 2 P2-6: a turn AI Centre could not answer or do joins the company's gap backlog, its question redacted
+ * (core/learning/signals.ts recordGapFromTurn) and kept only while the stored chat it came from is. A routed or refused
+ * turn is never a gap and stores nothing; neither does a turn that answered. Learning never changes the reply: a failure is
+ * logged by kind only. */
+async function learnFromTurn(session:SessionContext,input:{question:string;companyId:string;turn:ConversationTurn;chatId:string|null}):Promise<void>{
+ try{
+  // Classified first, with no database and no model: only a gap goes further.
+  const {gapKindOf,gapTurnOf}=await import('@/core/learning/gaps');
+  const turn=gapTurnOf(input.turn);
+  if(!gapKindOf(turn))return;
+  const [{recordGapFromTurn},locale]=await Promise.all([import('@/core/learning/signals'),getLocale()]);
+  await recordGapFromTurn(session,{turnId:input.turn.turnId,turn,question:input.question,companyId:input.companyId,locale,chatId:input.chatId});
+ }catch(error){console.error('[noveri conversation turn] gap not recorded',unclassifiedFailure(error));}
 }
 
 export type StoredChatReply=
