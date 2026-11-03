@@ -578,6 +578,17 @@ it('keeps administrative Employee Leave Records and Delete separate from a visib
  expect(audit).toMatchObject({actorId:b.adminUserId,subjectEmploymentId:subject.employmentId,payload:{previousStatus:'pending',newStatus:'cancelled'}});
 });
 
+it('rejects a raw approved cancellation that also alters the record',async()=>{
+ const subject=await hire('employee'),typeId=await leaveType(),admin=adminCtx(b);
+ const {leaveRequestId}=await requestLeave(subject.ctx,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ await owner.db.update(schema.leaveRequest).set({status:'approved'}).where(eq(schema.leaveRequest.id,leaveRequestId));
+ expect(await leaveEmployeeRecordCancellationAccess(admin,[leaveRequestId])).toEqual([leaveRequestId]);
+ const raw=withTenant(admin,tx=>tx.update(schema.leaveRequest).set({status:'cancelled',reason:'Forged reason'})
+  .where(eq(schema.leaveRequest.id,leaveRequestId)));
+ expect(await raw.then(()=>null,pgSqlState)).toBe('42501');
+ await expect(adminCancelLeave(admin,{leaveRequestId})).resolves.toMatchObject({previousStatus:'approved'});
+});
+
 it('withdraws only the actual own pending request through its native audit and exact defensive reversal',async()=>{
  const subject=await hire('employee'),typeId=await leaveType();
  const {leaveRequestId}=await requestLeave(subject.ctx,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});

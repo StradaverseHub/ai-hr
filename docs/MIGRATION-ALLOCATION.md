@@ -1719,3 +1719,4 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | New candidate migration | 0973_attendance_shift_binding_readiness | 820 | 1793330000373 | c73fcc4b38290d8c82822e6270731d7d398e15884b19e60d303961daf3d1648a |
 | New candidate migration | 0974_clocking_site_binding_readiness | 821 | 1793330000374 | aa78220cdeca3e250fc039d9da4de7f73c075cbb12de5fe5f75c291d397effcd |
 | New candidate migration | 0975_attendance_schedule_control_binding_readiness | 822 | 1793330000375 | 2fb3f829ef616da0d43dc0396367991f6954e4934a31b159aac11e4abb766ced |
+| New candidate migration | 0976_leave_approved_cancellation_guard | 823 | 1793330000376 | 9ab7d93c54b04a58ab64436bb11c4878a56b849c7793a15d678f77095bddda63 |

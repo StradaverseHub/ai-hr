@@ -4754,6 +4754,13 @@
       "when": 1793330000375,
       "tag": "0975_attendance_schedule_control_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 823,
+      "version": "7",
+      "when": 1793330000376,
+      "tag": "0976_leave_approved_cancellation_guard",
+      "breakpoints": true
     }
   ]
 }
