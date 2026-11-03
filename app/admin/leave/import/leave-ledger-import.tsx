@@ -17,6 +17,7 @@ import {
   type LeaveImportSource,
 } from '@/lib/leave-import-schema';
 import { validateLeaveImportAction, commitLeaveImportAction } from './actions';
+import { useAssistantImportIntake } from '@/components/assistant/import-handoff';
 
 // Reporter's human-readable headers (Function 1). They normalise to the snake_case contract
 // (employee_id, …) via parseCsvRecords on re-upload, so the Excel template can be human-friendly.
@@ -89,6 +90,10 @@ export function LeaveLedgerImport() {
     });
 
   const validate = () => runValidate(csv);
+
+  // AI v2 slice 3 (issue 16b): "Fix the rows" on a leave balance import prepared in chat opens here with that same file's
+  // text, validated at once so every row's own message is listed.
+  useAssistantImportIntake('leave_balances', (handed) => { reset(); setCsv(handed); setSource({ kind: 'paste' }); setFileInfo(null); runValidate(handed); }, setError);
 
   const commit = () =>
     startTransition(async () => {

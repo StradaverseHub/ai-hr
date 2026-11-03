@@ -18,6 +18,7 @@ import { getLocale } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import type { ConversationRoute } from '@/core/teras-wiring/switch';
 import type { ConversationTurn } from '@/core/teras-wiring/turn';
+import { chatImportFileInput, type ChatImportFile } from '@/lib/chat-import';
 
 export type LauncherReply =
   /** chatId (AI Centre issue 18): the stored chat a harness turn was written to, which Ask reopens (/assistant?chat=). */
@@ -29,7 +30,10 @@ export type LauncherReply =
  * posted path through a closed list (an area, and at most one record id); posted labels are never used.
  * The context is appended to the question in plain view, so the person's history and the audit row show
  * exactly what was sent. The answer is the same server-rendered canonical card the Assistant shows. */
-export async function askFromLauncherAction(input: { question: unknown; path: unknown; previousExchangeId?: unknown; previousConversationToken?:unknown; clarificationExchangeId?:unknown }): Promise<LauncherReply> {
+export async function askFromLauncherAction(input: { question: unknown; path: unknown; previousExchangeId?: unknown; previousConversationToken?:unknown; clarificationExchangeId?:unknown;
+  /** AI v2 slice 3: a file attached in Ask for an import (lib/chat-import.ts), checked here and read only by the harness's
+   * import preparer. The closed grammar never receives it. */
+  importFile?: unknown }): Promise<LauncherReply> {
   const t = await getTranslations('assistant');
   const question = typeof input.question === 'string' ? input.question.trim() : '';
   // Page labels and record identifiers are presentation context, never part of human intent.
@@ -43,7 +47,8 @@ export async function askFromLauncherAction(input: { question: unknown; path: un
     // Teras harness. Off, or unreadable, and everything below is the closed grammar exactly as before.
     // Loaded on demand: the closed grammar path loads only the switch reader, never the turn runner.
     const route:ConversationRoute=await import('@/core/teras-wiring/switch').then(owner=>owner.conversationRoute(session)).catch(():ConversationRoute=>({route:'closed'}));
-    if(route.route==='harness')return await askThroughHarness(session,route,{question,conversationScope,clarification:input.clarificationExchangeId!==undefined,continuation:input.previousConversationToken});
+    const importFile=input.importFile===undefined?undefined:chatImportFileInput(input.importFile)??undefined;
+    if(route.route==='harness')return await askThroughHarness(session,route,{question,conversationScope,clarification:input.clarificationExchangeId!==undefined,continuation:input.previousConversationToken,importFile});
     const { exchangeId, conversationToken } = await askAssistant(session, { question, conversationScope,...(input.clarificationExchangeId===undefined?{}:{clarificationExchangeId:input.clarificationExchangeId as string}), ...(input.previousExchangeId === undefined ? {} : {previousExchangeId: input.previousExchangeId as string,previousConversationToken: input.previousConversationToken as string}) });
     revalidatePath('/assistant');
     const workspace = await loadAiWorkspace(session, { selectedExchangeId: exchangeId, includeGovernance: false });
@@ -64,13 +69,13 @@ export async function askFromLauncherAction(input: { question: unknown; path: un
  * the signed model-side transcript, sent back as `previousConversationToken`; the exchange id is a display key only.
  * A harness reply never asks for the closed grammar's clarification form, so the next question always carries the
  * continuation. */
-async function askThroughHarness(session:SessionContext,route:Extract<ConversationRoute,{route:'harness'}>,input:{question:string;conversationScope:string;clarification:boolean;continuation:unknown}):Promise<LauncherReply>{
+async function askThroughHarness(session:SessionContext,route:Extract<ConversationRoute,{route:'harness'}>,input:{question:string;conversationScope:string;clarification:boolean;continuation:unknown;importFile?:ChatImportFile}):Promise<LauncherReply>{
  const t=await getTranslations('aiCentre.conversation');
  const [{ConversationTurnError,runConversationTurn},{ConversationReply}]=await Promise.all([import('@/core/teras-wiring/turn'),import('@/components/ai-centre/conversation-reply')]);
  try{
   if(input.clarification)throw new ConversationTurnError('continuation_invalid');
   const companyId=(JSON.parse(input.conversationScope) as unknown[]).find((id):id is string=>typeof id==='string')??'';
-  const turn=await runConversationTurn(session,route,{question:input.question,companyId,locale:await getLocale(),...(input.continuation===undefined?{}:{continuation:input.continuation})});
+  const turn=await runConversationTurn(session,route,{question:input.question,companyId,locale:await getLocale(),...(input.continuation===undefined?{}:{continuation:input.continuation}),...(input.importFile?{importFile:input.importFile}:{})});
   // AI v2 W11: the case route's form is linkable on its own turn, so a spec case clause naming it renders as a link.
   const answer=await ConversationReply({turn,links:await replyLinksFor(session,turn.suggestion?.reviewRoute,turn.caseRoute)});
   // Stored only once the reply could be shown, so a reopened chat holds no turn the person never saw.
@@ -127,8 +132,8 @@ export async function openStoredChatAction(input:{chatId:unknown}):Promise<Store
 }
 
 /** Home chat has no posted page context. It uses exactly the same command and authoritative replay. */
-export async function askFromWorkspaceAction(input: {question:unknown;previousExchangeId?:unknown;previousConversationToken?:unknown;clarificationExchangeId?:unknown}):Promise<LauncherReply>{
- return askFromLauncherAction({question:input.question,path:'/assistant',...(input.clarificationExchangeId===undefined?{}:{clarificationExchangeId:input.clarificationExchangeId}),...(input.previousExchangeId===undefined?{}:{previousExchangeId:input.previousExchangeId,previousConversationToken:input.previousConversationToken})});
+export async function askFromWorkspaceAction(input: {question:unknown;previousExchangeId?:unknown;previousConversationToken?:unknown;clarificationExchangeId?:unknown;importFile?:unknown}):Promise<LauncherReply>{
+ return askFromLauncherAction({question:input.question,path:'/assistant',...(input.importFile===undefined?{}:{importFile:input.importFile}),...(input.clarificationExchangeId===undefined?{}:{clarificationExchangeId:input.clarificationExchangeId}),...(input.previousExchangeId===undefined?{}:{previousExchangeId:input.previousExchangeId,previousConversationToken:input.previousConversationToken})});
 }
 
 /** Read one earlier page of this exact selected own branch. Scope and canonical answers are rederived. */

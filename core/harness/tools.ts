@@ -17,6 +17,10 @@
  *    person is asked one question; nothing is suggested until it is clear.
  *  - product_capabilities (AI v2 W1): the caller's capability catalogue (core/product-context/capability-catalogue.ts),
  *    a context tool disclosed under its semantic entity (core/semantic-model/entities-catalogue.ts).
+ *  - prepare_import (AI v2 slice 3, issue 16b): an import prepared from a file attached in chat (core/chat-import/tool.ts),
+ *    offered only to a caller who may import here and only when the gate allows actions. The file is the turn's own
+ *    (ToolScope.importFile), never the model's, and never reaches it: the result is disclosed under
+ *    core/semantic-model/entities-imports.ts. The preparer saves no review; payroll history records its own upload attempt.
  * No binding changes HR data; the only write is the review custody row a native preparer saves for a proposal.
  * Tests may pass their own provider; production wiring will not. */
 import {and,eq,inArray,sql} from 'drizzle-orm';
@@ -38,6 +42,9 @@ import {LEAVE_APPLY_FORM_ROUTE} from '../proposals/leave-apply';
 import type {Proposal} from '../proposals/proposal';
 import {HARNESS_SPEC} from './spec';
 import {PRODUCT_CAPABILITIES_SPEC,productCapabilities} from '../product-context/capability-catalogue';
+import {chatImportKindsFor} from '../chat-import/kinds';
+import {PREPARE_IMPORT_TOOL,prepareImportSpec,runPrepareImport} from '../chat-import/tool';
+import type {ChatImportFile} from '../../lib/chat-import';
 
 export type ToolKind='read'|'context'|'suggest';
 export type ToolRun=Readonly<{ok:boolean;content:unknown;refusal?:string;suggestion?:Readonly<{action:string;reviewRoute:string;inlineCard:boolean}>;
@@ -51,7 +58,10 @@ export type ToolBinding=Readonly<{name:string;kind:ToolKind;entity:EntityId|null
  identifierInputs:readonly string[];
  run(input:Record<string,unknown>):Promise<ToolRun>}>;
 /** `personWords` is the person's own question this turn, never model text (core/proposals/suggested.ts). */
-export type ToolScope=Readonly<{companyId:string;locale?:string;personWords?:string}>;
+export type ToolScope=Readonly<{companyId:string;locale?:string;personWords?:string;
+ /** AI v2 slice 3: the file the person attached to this turn (lib/chat-import.ts), read only by prepare_import's native
+  * preparer. Never sent to the model. */
+ importFile?:ChatImportFile}>;
 export type ToolCandidates=Readonly<{bindings:readonly ToolBinding[];
  /** Review routes the caller's catalogue names; replies may link to the one suggested this turn. */
  reviewRoutes:readonly string[];
@@ -147,7 +157,11 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  // AI v2 W1: what this person can do, import, report on or open; nothing is `prepare` when this surface offers no actions.
  const capabilities:ToolBinding[]=[{name:PRODUCT_CAPABILITIES_SPEC.name,kind:'context',entity:'product_capability',spec:PRODUCT_CAPABILITIES_SPEC,identifierInputs:[],
   async run(input){const result=await productCapabilities(ctx,input,{locale:scope.locale,prepare:actions});return result.ok?{ok:true,content:result}:{ok:false,content:result,refusal:result.refusal};}}];
- return Object.freeze({bindings:Object.freeze([...context,...reads,...teras,...suggest,...capabilities]),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),
+ // AI v2 slice 3 (issue 16b): an import prepared from a file attached in chat, for a caller who may import here.
+ const importKinds=actions?await chatImportKindsFor(ctx):[];
+ const imports:ToolBinding[]=importKinds.length?[{name:PREPARE_IMPORT_TOOL,kind:'suggest',entity:'chat_import',spec:prepareImportSpec(importKinds),identifierInputs:[],
+  async run(input){const result=await runPrepareImport(ctx,importKinds,input,scope);return{ok:result.ok,content:result.content,...(result.refusal?{refusal:result.refusal}:{}),...(result.proposal?{proposal:result.proposal}:{})};}}]:[];
+ return Object.freeze({bindings:Object.freeze([...context,...reads,...teras,...suggest,...capabilities,...imports]),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),
   destinations:linkablePathsFor(ctx,visibleModuleCodes(ctx)??undefined)});
 };
 

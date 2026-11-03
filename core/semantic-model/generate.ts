@@ -17,6 +17,7 @@ import {SETUP_ENTITIES,SETUP_READS} from './entities-setup';
 import {RECOMMEND_ENTITIES} from './entities-recommend';
 import {METRIC_ENTITIES,METRIC_READS} from './entities-metrics';
 import {CATALOGUE_ENTITIES} from './entities-catalogue';
+import {IMPORT_ENTITIES} from './entities-imports';
 import {WHY_ENTITIES,WHY_READS} from './entities-why';
 
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
@@ -113,7 +114,8 @@ let terasModel:readonly SemanticEntity[]|undefined;
 export function terasEntities():readonly SemanticEntity[]{
  // AI v2 W1 appends the capability catalogue (./entities-catalogue.ts), disclosed for the harness's product_capabilities.
  // AI v2 W5 appends the pay difference and claim limit explainers (./entities-why.ts).
- terasModel??=freeze([...SEMANTIC_ENTITIES,...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...RECOMMEND_ENTITIES,...METRIC_ENTITIES,...CATALOGUE_ENTITIES,...WHY_ENTITIES]);
+ // AI v2 slice 3 appends the chat import (./entities-imports.ts), disclosed for the harness's prepare_import.
+ terasModel??=freeze([...SEMANTIC_ENTITIES,...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...RECOMMEND_ENTITIES,...METRIC_ENTITIES,...CATALOGUE_ENTITIES,...WHY_ENTITIES,...IMPORT_ENTITIES]);
  return terasModel;
 }
 export const terasEntity=(id:EntityId):SemanticEntity=>{const entity=terasEntities().find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};

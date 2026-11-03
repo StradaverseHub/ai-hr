@@ -944,5 +944,75 @@
       "hint": "Enter untuk menyediakan · tiada apa berubah sehingga anda sahkan",
       "busy": "Pusat AI masih menjawab. Cuba lagi sebentar lagi."
     }
+  },
+  "chatImport": {
+    "attach": "Lampirkan fail untuk diimport",
+    "remove": "Buang {name}",
+    "reading": "Membaca fail…",
+    "fileChip": "{name} · {count, plural, other {# baris}}",
+    "errors": {
+      "one": "Lampirkan satu fail pada satu masa.",
+      "type": "Lampirkan buku kerja Excel (.xlsx atau .xls), fail CSV, atau fail teks perakam waktu (.txt).",
+      "size": "Lampirkan fail yang tidak melebihi 5 MB.",
+      "empty": "Fail itu tiada baris untuk diimport.",
+      "read": "Fail itu tidak dapat dibaca. Pastikan ia boleh dibuka, kemudian lampirkan semula."
+    },
+    "kinds": {
+      "employee_records": "Import rekod pekerja",
+      "leave_balances": "Import baki cuti",
+      "payroll_history": "Import sejarah gaji",
+      "attendance_clockings": "Import rekod kehadiran (perakam waktu)"
+    },
+    "title": "{kind}, {company}, {count, plural, other {# baris}}",
+    "prepared": "Disediakan untuk anda sahkan",
+    "ready": "{count, plural, other {# baris sedia}}",
+    "attention": "{count, plural, other {# perlu perhatian}}",
+    "warned": "{count, plural, other {# baris akan diimport dengan amaran. Halaman import menunjukkannya.}}",
+    "replacing": "{count, plural, other {# baris akan menggantikan sejarah gaji yang sudah diimport. Hanya rekod baharu diimport di sini; gantikan baris itu di halaman import.}}",
+    "allRowsFirst": "Sejarah gaji hanya diimport apabila setiap baris betul. Betulkan baris di halaman import dahulu.",
+    "noteRevert": "Perkhidmatan import menyemak setiap baris sekali lagi apabila anda sahkan. Anda boleh membatalkan keseluruhan import selepas itu.",
+    "note": "Perkhidmatan import menyemak setiap baris sekali lagi apabila anda sahkan.",
+    "issuesLabel": "Baris yang perlu perhatian",
+    "row": "Baris",
+    "column": "Lajur",
+    "issue": "Isu",
+    "header": "Tajuk",
+    "more": "{count, plural, other {Dan # lagi di halaman import.}}",
+    "reasons": {
+      "missing_column": "Lajur wajib tiada",
+      "missing_value": "Nilai wajib kosong",
+      "unknown_employee": "Tiada pekerja sebegini dalam syarikat anda",
+      "unknown_type": "Bukan jenis yang dikenali sistem",
+      "invalid_date": "Tarikh tidak sah",
+      "invalid_time": "Masa tidak sah",
+      "invalid_number": "Nombor tidak sah",
+      "duplicate_in_file": "Baris yang sama muncul dua kali dalam fail",
+      "already_imported": "Sudah diimport, jadi dilangkau",
+      "not_permitted": "Di luar syarikat yang anda uruskan",
+      "not_employed": "Pekerja tidak bekerja pada tarikh itu",
+      "period_closed": "Tempoh itu tidak boleh diubah lagi",
+      "needs_page": "Perkara ini perlu diputuskan di halaman import",
+      "other": "Halaman import menerangkan baris ini"
+    },
+    "confirm": "{count, plural, other {Sahkan # baris}}",
+    "confirming": "Mengimport…",
+    "fix": "{count, plural, other {Betulkan # baris}}",
+    "openPage": "Buka halaman import",
+    "actionsLabel": "Tindakan import",
+    "done": "{count, plural, other {# baris diimport.}}",
+    "doneLeftOut": "{count, plural, other {# baris tidak diimport.}}",
+    "replayed": "Import ini sudah disahkan.",
+    "history": "Buka rekod import",
+    "historyRevert": "Buka sejarah import, tempat anda boleh membatalkannya",
+    "refused": {
+      "expired": "Kad ini telah tamat tempoh. Lampirkan fail semula.",
+      "access": "Anda tidak boleh mengimport ini di sini.",
+      "file": "Fail yang dilampirkan dalam sembang ini tiada lagi, atau telah berubah. Lampirkan semula.",
+      "changed": "Fail atau rekod telah berubah sejak ini disediakan. Lampirkan fail semula untuk melihat baris terkini.",
+      "notConfirmable": "Betulkan baris di halaman import dahulu.",
+      "inProgress": "Import ini sedang disahkan.",
+      "invalid": "Kad ini tidak dapat disemak. Lampirkan fail semula.",
+      "unavailable": "Import tidak dapat diselesaikan, dan tiada apa-apa diimport. Cuba lagi, atau gunakan halaman import."
+    }
   }
 }

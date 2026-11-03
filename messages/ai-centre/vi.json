@@ -944,5 +944,75 @@
       "hint": "Nhấn Enter để chuẩn bị · không có gì thay đổi cho đến khi bạn xác nhận",
       "busy": "Trung tâm AI vẫn đang trả lời. Hãy thử lại sau giây lát."
     }
+  },
+  "chatImport": {
+    "attach": "Đính kèm tệp để nhập",
+    "remove": "Xóa {name}",
+    "reading": "Đang đọc tệp…",
+    "fileChip": "{name} · {count, plural, other {# dòng}}",
+    "errors": {
+      "one": "Mỗi lần chỉ đính kèm một tệp.",
+      "type": "Hãy đính kèm sổ làm việc Excel (.xlsx hoặc .xls), tệp CSV hoặc tệp văn bản máy chấm công (.txt).",
+      "size": "Hãy đính kèm tệp không lớn hơn 5 MB.",
+      "empty": "Tệp đó không có dòng nào để nhập.",
+      "read": "Không đọc được tệp đó. Hãy kiểm tra tệp mở được, rồi đính kèm lại."
+    },
+    "kinds": {
+      "employee_records": "Nhập hồ sơ nhân viên",
+      "leave_balances": "Nhập số dư ngày phép",
+      "payroll_history": "Nhập lịch sử lương",
+      "attendance_clockings": "Nhập dữ liệu chấm công"
+    },
+    "title": "{kind}, {company}, {count, plural, other {# dòng}}",
+    "prepared": "Đã chuẩn bị để bạn xác nhận",
+    "ready": "{count, plural, other {# dòng sẵn sàng}}",
+    "attention": "{count, plural, other {# dòng cần xem lại}}",
+    "warned": "{count, plural, other {# dòng sẽ được nhập kèm cảnh báo. Trang nhập sẽ hiển thị các cảnh báo này.}}",
+    "replacing": "{count, plural, other {# dòng sẽ thay thế lịch sử lương đã nhập. Ở đây chỉ nhập các bản ghi mới; hãy thay thế các dòng đó trên trang nhập.}}",
+    "allRowsFirst": "Lịch sử lương chỉ được nhập khi mọi dòng đều đúng. Hãy sửa các dòng trên trang nhập trước.",
+    "noteRevert": "Dịch vụ nhập sẽ kiểm tra lại từng dòng khi bạn xác nhận. Sau đó bạn có thể hoàn tác toàn bộ lần nhập.",
+    "note": "Dịch vụ nhập sẽ kiểm tra lại từng dòng khi bạn xác nhận.",
+    "issuesLabel": "Các dòng cần xem lại",
+    "row": "Dòng",
+    "column": "Cột",
+    "issue": "Vấn đề",
+    "header": "Dòng tiêu đề",
+    "more": "{count, plural, other {Và # vấn đề khác trên trang nhập.}}",
+    "reasons": {
+      "missing_column": "Thiếu một cột bắt buộc",
+      "missing_value": "Một giá trị bắt buộc bị trống",
+      "unknown_employee": "Không có nhân viên này trong các công ty của bạn",
+      "unknown_type": "Hệ thống không nhận ra loại này",
+      "invalid_date": "Ngày không hợp lệ",
+      "invalid_time": "Giờ không hợp lệ",
+      "invalid_number": "Số không hợp lệ",
+      "duplicate_in_file": "Cùng một dòng xuất hiện hai lần trong tệp",
+      "already_imported": "Đã được nhập trước đó nên bị bỏ qua",
+      "not_permitted": "Nằm ngoài các công ty bạn quản lý",
+      "not_employed": "Nhân viên không làm việc vào ngày đó",
+      "period_closed": "Kỳ đó không còn thay đổi được",
+      "needs_page": "Việc này cần quyết định trên trang nhập",
+      "other": "Trang nhập sẽ giải thích dòng này"
+    },
+    "confirm": "{count, plural, other {Xác nhận # dòng}}",
+    "confirming": "Đang nhập…",
+    "fix": "{count, plural, other {Sửa # dòng}}",
+    "openPage": "Mở trang nhập",
+    "actionsLabel": "Thao tác nhập",
+    "done": "{count, plural, other {Đã nhập # dòng.}}",
+    "doneLeftOut": "{count, plural, other {# dòng không được nhập.}}",
+    "replayed": "Lần nhập này đã được xác nhận.",
+    "history": "Mở bản ghi lần nhập",
+    "historyRevert": "Mở lịch sử nhập, nơi bạn có thể hoàn tác",
+    "refused": {
+      "expired": "Thẻ này đã hết hạn. Hãy đính kèm tệp lại.",
+      "access": "Bạn không thể nhập nội dung này ở đây.",
+      "file": "Tệp đính kèm trong cuộc trò chuyện này không còn nữa hoặc đã thay đổi. Hãy đính kèm lại.",
+      "changed": "Tệp hoặc dữ liệu đã thay đổi kể từ khi chuẩn bị. Hãy đính kèm tệp lại để xem các dòng hiện tại.",
+      "notConfirmable": "Hãy sửa các dòng trên trang nhập trước.",
+      "inProgress": "Lần nhập này đang được xác nhận.",
+      "invalid": "Không kiểm tra được thẻ này. Hãy đính kèm tệp lại.",
+      "unavailable": "Không thể hoàn tất lần nhập và chưa có gì được nhập. Hãy thử lại, hoặc dùng trang nhập."
+    }
   }
 }

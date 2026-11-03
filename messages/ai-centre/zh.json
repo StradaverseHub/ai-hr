@@ -944,5 +944,75 @@
       "hint": "按 Enter 准备 · 在您确认前不会有任何更改",
       "busy": "AI 中心仍在回答，请稍后再试。"
     }
+  },
+  "chatImport": {
+    "attach": "附加要导入的文件",
+    "remove": "移除 {name}",
+    "reading": "正在读取文件…",
+    "fileChip": "{name} · {count, plural, other {# 行}}",
+    "errors": {
+      "one": "每次只能附加一个文件。",
+      "type": "请附加 Excel 工作簿（.xlsx 或 .xls）、CSV 文件或打卡机文本文件（.txt）。",
+      "size": "请附加不超过 5 MB 的文件。",
+      "empty": "该文件没有可导入的行。",
+      "read": "无法读取该文件。请确认文件可以打开，然后重新附加。"
+    },
+    "kinds": {
+      "employee_records": "员工资料导入",
+      "leave_balances": "假期余额导入",
+      "payroll_history": "薪资历史导入",
+      "attendance_clockings": "考勤打卡导入"
+    },
+    "title": "{kind}，{company}，{count, plural, other {# 行}}",
+    "prepared": "已准备好，等你确认",
+    "ready": "{count, plural, other {# 行已就绪}}",
+    "attention": "{count, plural, other {# 行需要处理}}",
+    "warned": "{count, plural, other {# 行将带警告导入，导入页面会显示这些警告。}}",
+    "replacing": "{count, plural, other {# 行会替换已导入的薪资历史。此处只导入新记录；请在导入页面替换这些行。}}",
+    "allRowsFirst": "只有每一行都正确时才会导入薪资历史。请先在导入页面修正这些行。",
+    "noteRevert": "确认时，导入服务会再次检查每一行。之后你可以撤销整个导入。",
+    "note": "确认时，导入服务会再次检查每一行。",
+    "issuesLabel": "需要处理的行",
+    "row": "行",
+    "column": "列",
+    "issue": "问题",
+    "header": "标题行",
+    "more": "{count, plural, other {另有 # 个问题，请在导入页面查看。}}",
+    "reasons": {
+      "missing_column": "缺少必填列",
+      "missing_value": "必填值为空",
+      "unknown_employee": "你的公司中没有这名员工",
+      "unknown_type": "系统无法识别该类型",
+      "invalid_date": "日期无效",
+      "invalid_time": "时间无效",
+      "invalid_number": "数字无效",
+      "duplicate_in_file": "文件中同一行出现了两次",
+      "already_imported": "已导入过，因此跳过",
+      "not_permitted": "不在你管理的公司范围内",
+      "not_employed": "该员工在那天未在职",
+      "period_closed": "该期间已无法更改",
+      "needs_page": "需要在导入页面作出决定",
+      "other": "导入页面会说明这一行"
+    },
+    "confirm": "{count, plural, other {确认 # 行}}",
+    "confirming": "正在导入…",
+    "fix": "{count, plural, other {修正这 # 行}}",
+    "openPage": "打开导入页面",
+    "actionsLabel": "导入操作",
+    "done": "{count, plural, other {已导入 # 行。}}",
+    "doneLeftOut": "{count, plural, other {# 行未导入。}}",
+    "replayed": "此导入已经确认过。",
+    "history": "打开导入记录",
+    "historyRevert": "打开导入历史，可在那里撤销",
+    "refused": {
+      "expired": "此卡片已过期。请重新附加文件。",
+      "access": "你不能在这里导入此内容。",
+      "file": "此对话中附加的文件已不在，或已被更改。请重新附加。",
+      "changed": "自准备以来，文件或记录已发生变化。请重新附加文件以查看最新的行。",
+      "notConfirmable": "请先在导入页面修正这些行。",
+      "inProgress": "此导入正在确认中。",
+      "invalid": "无法核对此卡片。请重新附加文件。",
+      "unavailable": "导入未能完成，没有导入任何内容。请重试，或使用导入页面。"
+    }
   }
 }

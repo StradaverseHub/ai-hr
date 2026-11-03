@@ -13,6 +13,8 @@ import { inlineProposalKind, type InlineProposalCopy } from '@/lib/ai-centre/inl
 import { RecommendationPanel } from './leave-recommendation';
 import { ConversationSuggestions } from '@/components/assistant/chat-reply-boundary';
 import { ReplyMarkdown, type ReplyLinks } from './reply-markdown';
+import { ImportProposalCard } from './import-proposal-card';
+import { CHAT_IMPORT_ACTION } from '@/lib/chat-import';
 
 /** Reads that have a "Why?" explainer the person can ask for next (ADR-0170 step 4). */
 const WHY: Readonly<Record<string, string>> = { my_leave_balances: 'leave', my_payslip_summary: 'payslip' };
@@ -53,6 +55,9 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
     refused: { expired: t('inline.refused.expired'), invalid: t('inline.refused.invalid'), access: t('inline.refused.access'),
       retired: t('inline.refused.retired'), unavailable: t('inline.refused.unavailable'), consent: t('inline.refused.consent') },
   };
+  // AI v2 slice 3 (issue 16b): an import prepared in chat has its own card (./import-proposal-card.tsx), rendered first.
+  const importCards = new Map(await Promise.all(turn.proposals.filter(proposal => proposal.body.what.action === CHAT_IMPORT_ACTION && proposal.body.import)
+    .map(async proposal => [proposal.body.id, await ImportProposalCard({ proposal })] as const)));
   return (
     <div data-teras-reply={turn.turnId} className="space-y-3">
       {routed && (
@@ -74,6 +79,7 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
       )}
       {turn.reply && <ReplyMarkdown text={turn.reply} links={links} />}
       {turn.proposals.map(proposal => {
+        if (importCards.has(proposal.body.id)) return <div key={proposal.body.id}>{importCards.get(proposal.body.id)}</div>;
         const body = proposal.body, facts = body.facts ?? {};
         const checks: ProposalCheck[] = body.checks.map(check => ({ label: label('checks', check.check, words(check.check)),
           tone: check.result === 'pass' ? 'ok' : 'warn', ruleVersion: version(check.ruleVersion) }));
