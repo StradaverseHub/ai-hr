@@ -4,7 +4,7 @@ import {and,asc,eq,inArray,isNull,lte,gt,or,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {company,costCenter,employment,employmentCostAllocationHead,employmentCostAllocationSet as allocationSet,employmentCostAllocationRow as allocationRow} from '../db/schema';
-import {assertWorkforceCompanyTx,workforceEmploymentPredicate,assertWorkforceSectionImportCompanyTx,assertWorkforceSectionImportEmploymentTx,assertWorkforceRegisterImportTx,assertWorkforceFullImportTx} from './workforce-access';
+import {assertWorkforceCompanyTx,workforceEmploymentPredicate,assertWorkforceSectionImportCompanyTx,assertWorkforceSectionImportEmploymentTx,assertWorkforceNewEmployeeImportTx,assertWorkforceFullImportTx} from './workforce-access';
 import {lockLabelCriteriaTx,visibleLabelIdsCondition} from './system-labels';
 import {provenCompanyDatesTx} from './employment-company';
 import {prepareCostAllocationsTx,saveEmploymentCostAllocations} from './employment-cost-allocations';
@@ -263,7 +263,7 @@ export const costAllocationRevertHandler:ImportRevertHandler={
 };
 /** Called only inside the actual employee creation transaction, after its assignment spine exists. */
 export async function writeNewEmployeeCostAllocationsTx(tx:Tx,ctx:SessionContext,groups:AllocationImportGroup[],employeeIndex:number,employmentId:string){
- await assertWorkforceRegisterImportTx(tx,ctx,employmentId);
+ await assertWorkforceNewEmployeeImportTx(tx,ctx,employmentId);
  let revision=0;for(const g of groups.filter(g=>g.newEmployeeIndex===employeeIndex).sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate))){
   if(g.errors.length)throw new CostAllocationError('invalid');await saveEmploymentCostAllocations(ctx,{employmentId,effectiveDate:g.effectiveDate,expectedRevision:revision,operation:g.operation,rows:g.rows},{existingTx:tx,source:'employee-import'});revision++;
  }

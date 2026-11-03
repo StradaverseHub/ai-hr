@@ -1,5 +1,5 @@
 import {lockAccessConfigurationTx} from './access-configuration-lock';
-import {workforceEmploymentPredicate,assertWorkforceRegisterImportTx} from './workforce-access';
+import {workforceEmploymentPredicate,assertWorkforceNewEmployeeImportTx,assertWorkforceSectionImportEmploymentTx} from './workforce-access';
 import {addQualification,updateQualification,addEmergencyContact,updateEmergencyContact} from './workforce-registers';
 import {and,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
@@ -107,9 +107,10 @@ export async function writeRegisterRowsTx(tx:Tx,ctx:SessionContext,kind:Personne
   let count=0;
   for(const row of rows) {
     if(!row.preview.ok || !row.subject)throw new Error('Register row was not validated.');
-    const target=created?.get(row.preview.employeeCode)??row.subject;
-    if(!target.employmentId || !target.personId)throw new Error('Register row has no created employee.');
-    await assertWorkforceRegisterImportTx(tx,ctx,target.employmentId);
+    const target=created?created.get(row.preview.employeeCode):row.subject;
+    if(!target?.employmentId || !target.personId)throw new Error('Register row has no created employee.');
+    if(created)await assertWorkforceNewEmployeeImportTx(tx,ctx,target.employmentId);
+    else await assertWorkforceSectionImportEmploymentTx(tx,ctx,target.employmentId);
     // The ID is checked again under the write transaction; archive/ownership races never retarget.
     if(row.recordId) {
       if(kind==='qualification') {

@@ -105,9 +105,9 @@ export async function assertWorkforceSectionImportCompanyTx(tx:Tx,ctx:SessionCon
 }
 /** The original canonical hire receipt, never a caller newEmployees flag, identifies
  * register materialization inside a genuinely admitted new-employee import. */
-export async function assertWorkforceRegisterImportTx(tx:Tx,ctx:SessionContext,employmentId:string){
+export async function assertWorkforceNewEmployeeImportTx(tx:Tx,ctx:SessionContext,employmentId:string){
  await lockAccessConfigurationTx(tx,ctx.tenantId);
- const [row]=await tx.execute<{allowed:boolean}>(sql`select app.workforce_section_import_allowed(subject.company_id,'execute') or app.access_workforce_initial_employment(subject.id) and app.workforce_full_import_allowed(subject.company_id,'add') as allowed from public.employment subject where subject.id=${employmentId}::uuid and subject.tenant_id=${ctx.tenantId}::uuid`);
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_initial_employment(subject.id) and app.workforce_full_import_allowed(subject.company_id,'add') as allowed from public.employment subject where subject.id=${employmentId}::uuid and subject.tenant_id=${ctx.tenantId}::uuid`);
  if(row?.allowed!==true)throw new WorkforceAccessError();
 }
 
