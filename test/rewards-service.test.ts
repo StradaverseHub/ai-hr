@@ -627,6 +627,33 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     if(course==='save')expect((await view()).flags.some(flag=>flag.severity==='block')).toBe(true);
     await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_entry_save_command(${unitId}::uuid,${afterUnit.revision},${entry.id}::uuid,${JSON.stringify(rec)}::jsonb)`))).rejects.toThrow();await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_facts_import_command(${unitId}::uuid,${afterUnit.revision},${JSON.stringify([{employmentId,facts}])}::jsonb)`))).rejects.toThrow();
   });
+  it('routes published entry and facts commands through the fixed SQL ports',async()=>{
+    const before=await view(),entry=before.rows[0],entryEdit='function.rewards.entries.edit',factsEdit='function.rewards.facts.edit';
+    const recommendation={...entry.recommendation,reason:'Reviewed entry command'};
+    const facts={...entry.facts,talent:'STAR' as const};
+    try{
+      await expectPgRefusal(withTenant(admin,tx=>tx.execute(sql`select app.reward_save_entry(
+        ${unitId}::uuid,${before.unit.revision},${entry.id}::uuid,${JSON.stringify(recommendation)}::jsonb)`)),
+        '42501','Reward entry command unavailable');
+      await owner.client`insert into app.access_native_capability_default(capability_id,parity_function,current_parity_function)
+        select id,'app.rewards_function_legacy_allowed','app.rewards_function_current_legacy_allowed'
+        from access_capability where id in (${entryEdit},${factsEdit})`;
+      await owner.client`update access_capability set supported=true where id in (${entryEdit},${factsEdit})`;
+      await saveRewardEntry(admin,unitId,before.unit.revision,entry.id,recommendation);
+      const effect=(course:string)=>owner.client`select course from app.reward_entry_native_effect where unit_id=${unitId}::uuid and completed and course=${course}`;
+      expect(await effect('save')).toEqual([{course:'save'}]);
+      const saved=await view();
+      expect(saved.rows[0].recommendation).toEqual(recommendation);
+      await importRewardFacts(admin,unitId,saved.unit.revision,[{employmentId,facts}]);
+      const imported=await view();
+      expect(imported.rows[0].facts).toEqual(facts);
+      expect(imported.unit.revision).toBe(before.unit.revision+2);
+      expect(await effect('facts')).toEqual([{course:'facts'}]);
+    }finally{
+      await owner.client`update access_capability set supported=false where id in (${entryEdit},${factsEdit})`;
+      await owner.client`delete from app.access_native_capability_default where capability_id in (${entryEdit},${factsEdit})`;
+    }
+  });
   it('enforces exact entry and decision denials on direct writes while leaving review readable',async()=>{
     const before=await view(),entry=before.rows[0];
     const entryEdit='function.rewards.entries.edit',submit='function.rewards.decisions.submit.execute';

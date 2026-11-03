@@ -4964,6 +4964,20 @@
       "when": 1793330000405,
       "tag": "1005_lifecycle_offboarding_write_boundary",
       "breakpoints": true
+    },
+    {
+      "idx": 853,
+      "version": "7",
+      "when": 1793330000406,
+      "tag": "1006_rewards_entry_command_ports",
+      "breakpoints": true
+    },
+    {
+      "idx": 854,
+      "version": "7",
+      "when": 1793330000407,
+      "tag": "1007_lifecycle_onboarding_administration_boundary",
+      "breakpoints": true
     }
   ]
 }

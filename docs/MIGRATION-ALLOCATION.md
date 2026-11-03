@@ -1749,3 +1749,5 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | New candidate migration | 1003_lifecycle_offboarding_view_boundary | 850 | 1793330000403 | 5ebfb8dd96d973d7df1f9fffeb41f3df51167051fe0bd49f3421441ee929dad7 |
 | New candidate migration | 1004_rewards_write_action_boundaries | 851 | 1793330000404 | 2dde3bb98269c265bac18a488be720bb0e390ecc634c2771517bcbb4d566c3de |
 | New candidate migration | 1005_lifecycle_offboarding_write_boundary | 852 | 1793330000405 | e5c5e76e660772c02d8126efe73feb4046bb5eacf7c888e55dc7ab3c3281af4d |
+| New candidate migration | 1006_rewards_entry_command_ports | 853 | 1793330000406 | 6e51a6026f010fc1bb3f0630f1754592cb59358b8cc949735c06c317874b1325 |
+| New candidate migration | 1007_lifecycle_onboarding_administration_boundary | 854 | 1793330000407 | cade47d842921c30fc8bf2794162cef188c06330061ff49a500b0be4d667519d |

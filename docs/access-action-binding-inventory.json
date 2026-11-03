@@ -65929,6 +65929,7 @@
         "app.reward_annual_calculation",
         "app.reward_offcycle_calculation",
         "app.reward_roles",
+        "app.reward_save_entry",
         "packs/rewards/service.ts:requireRewardAction"
       ],
       "tables": [
@@ -66038,6 +66039,7 @@
         "app.reward_access_observe",
         "app.reward_admin",
         "app.reward_annual_calculation",
+        "app.reward_import_facts",
         "app.reward_offcycle_calculation",
         "app.reward_roles",
         "packs/rewards/service.ts:requireRewardAction"

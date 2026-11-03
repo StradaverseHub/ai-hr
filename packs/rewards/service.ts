@@ -289,6 +289,23 @@ async function nativeReviewCalculationTx(tx:Tx,unit:typeof rewardUnit.$inferSele
  const [row]=await tx.execute<{value:NativeReviewCalculation}>(unit.kind==='annual'?sql`select app.reward_annual_calculation(${unit.id}::uuid,${unit.revision})as value`:sql`select app.reward_offcycle_calculation(${unit.id}::uuid,${unit.revision})as value`);
  if(!row?.value)throw new RewardError('Reward calculation unavailable.');return row.value;
 }
+async function rewardEntryPortInstalled(tx: Tx, capability: 'function.rewards.entries.edit' | 'function.rewards.facts.edit') {
+  const [result] = await tx.execute<{ supported: boolean }>(sql`select supported from access_capability where id=${capability}`);
+  return result?.supported === true;
+}
+
+async function runRewardEntryPort(command: () => Promise<unknown>) {
+  try {
+    await command();
+  } catch (error) {
+    const cause = error instanceof Error ? error.cause : undefined;
+    if (cause instanceof Error && 'code' in cause && ['22023', '40001', '42501'].includes(String(cause.code))) {
+      throw new RewardError(cause.message);
+    }
+    throw error;
+  }
+}
+
 function assertRevision(unit: typeof rewardUnit.$inferSelect, revision: number) {
   if (!Number.isInteger(revision) || unit.revision !== revision) throw new RewardError('This review changed in another session. Reload before saving.');
 }
@@ -756,9 +773,15 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
   return withRewardsTenant(ctx,tx=>saveRewardEntryTx(tx,ctx,unitId,revision,entryId,rec,validatedFacts));
 }
 
-/** Original native entry algorithm on a supplied transaction; no private SQL command cutover. */
+/** Uses the installed command port when available and preserves the legacy transaction course. */
 export async function saveRewardEntryTx(tx:Tx,ctx:SessionContext,unitId:string,revision:number,entryId:string,recommendation:unknown,facts?:unknown){
   assertModuleGate(ctx,'rewards');idSchema.parse(entryId);const rec=recommendationSchema.parse(recommendation),validatedFacts=facts===undefined?undefined:factsSchema.parse(facts);
+  if (await rewardEntryPortInstalled(tx, 'function.rewards.entries.edit')) {
+    await runRewardEntryPort(() => tx.execute(sql`select app.reward_save_entry(
+      ${unitId}::uuid,${revision}::integer,${entryId}::uuid,
+      ${JSON.stringify(rec)}::jsonb,${validatedFacts ? JSON.stringify(validatedFacts) : null}::jsonb)`));
+    return;
+  }
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision); assertUnlocked(unit);
     await requireRewardAction(tx,unit.companyId,'rewards.entries','edit');
     const entry = entries.find(e => e.id === entryId);
@@ -782,9 +805,14 @@ export async function importRewardFacts(ctx: SessionContext, unitId: string, rev
   return withRewardsTenant(ctx,tx=>importRewardFactsTx(tx,ctx,unitId,revision,input));
 }
 
-/** Original atomic import algorithm; every native row check remains before commit. */
+/** The installed port and legacy import each validate the whole input before commit. */
 export async function importRewardFactsTx(tx:Tx,ctx:SessionContext,unitId:string,revision:number,rows:{employmentId:string;facts:RewardFacts}[]){
   assertModuleGate(ctx,'rewards');const input=z.array(z.object({employmentId:idSchema,facts:factsSchema})).min(1).max(10000).parse(rows);
+  if (await rewardEntryPortInstalled(tx, 'function.rewards.facts.edit')) {
+    await runRewardEntryPort(() => tx.execute(sql`select app.reward_import_facts(
+      ${unitId}::uuid,${revision}::integer,${JSON.stringify(input)}::jsonb)`));
+    return;
+  }
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision); assertUnlocked(unit);
     await requireRewardAction(tx,unit.companyId,'rewards.facts','edit');
     if (!roles.includes('gr')) throw new RewardError('Only Group Rewards may import ratings and classifications.');
