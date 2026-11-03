@@ -8,6 +8,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {CompanyDeleteForbiddenError,createCompany,deleteCompany,setCompanyParent} from '../core/admin';
 import {setPayrollPermissionGrant} from '../core/payroll-permissions-admin';
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import {hireEmployee} from '../core/org';
 import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand} from '../core/data-permissions';
 import {createClockingLocation,updateClockingLocation,archiveClockingLocation,restoreClockingLocation,deleteClockingLocation,listClockingLocations,listClockingLocationsForMaintenance,clockingSiteActionAccess,type CreateClockingLocationInput} from '../packs/attendance/service';
@@ -156,4 +157,24 @@ it('refuses mismatched Company Delete transaction tenant or actor before any loc
  expect(await owner.db.select().from(s.clockingLocationCompany).where(and(eq(s.clockingLocationCompany.clockingLocationId,site.id),eq(s.clockingLocationCompany.companyId,child.id)))).toHaveLength(1);
  expect(await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,leave.id))).toHaveLength(1);
  expect(await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,child.id),eq(s.domainEvent.eventType,'company.deleted')))).toEqual([]);
+});
+
+it('publishes Clocking Sites with scoped View and group-only mutations',async()=>{
+ try{
+  await publishActionCapabilityPackage(owner.client,'attendance_schedule');
+  expect(await publishActionCapabilityPackage(owner.client,'clocking_sites')).toMatchObject({changed:true,capabilities:4});
+  expect(await publishActionCapabilityPackage(owner.client,'clocking_sites')).toMatchObject({changed:false});
+  const site=await createClockingLocation(admin,input('Fictional published site'));
+  expect((await listClockingLocationsForMaintenance(companyHr)).map(row=>row.id)).toContain(site.id);
+  expect(await clockingSiteActionAccess(companyHr,'add')).toBe(false);
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,effect)
+   values(${b.tenantId}::uuid,${companyHr.userId!}::uuid,'function.attendancePolicy.clockingSites.view','deny')`;
+  expect(await clockingSiteActionAccess(companyHr,'view')).toBe(false);
+  expect(await clockingSiteActionAccess(admin,'edit')).toBe(true);
+ }finally{
+  await owner.client`delete from app.access_native_capability_default where capability_id like 'attendance_configuration.%'
+   or capability_id like 'function.attendancePolicy.schedule.%' or capability_id like 'function.attendancePolicy.clockingSites.%'`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'attendance_configuration.%'
+   or id like 'function.attendancePolicy.schedule.%' or id like 'function.attendancePolicy.clockingSites.%'`;
+ }
 });

@@ -131,3 +131,17 @@ export const ATTENDANCE_SHIFT_CAPABILITY_PUBLICATION={
   'app.shift_initial_membership_complete()',
  ],
 } as const;
+
+export const CLOCKING_SITE_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='attendancePolicy.clockingSites'),
+ functionLegacyParityFunction:'app.clocking_site_native_allowed',
+ functionCurrentLegacyParityFunction:'app.clocking_site_current_native_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.clocking_site_bindings_complete()',
+  'app.clocking_site_allowed(text)',
+  'app.clocking_site_guard()',
+  'app.clocking_site_company_guard()',
+ ],
+} as const;
