@@ -45,3 +45,19 @@ test('Refuses an interrupted write or stale lock instead of restoring funds', t 
   writeFileSync(join(directory, 'interrupted'), '');
   assert.throws(() => reserveSharedEvalAllocation(directory, 'next', '1'), /Invalid shared eval reservation amount/);
 });
+
+test('Trusted admission refuses missing review and reserves before returning scope', async t => {
+  const {createSharedEvalAdmission} = await import('../focused-checks.mjs');
+  const directory = ledger(t);
+  const request = {budgetUsd: 8};
+  const identity = {runId: '123', attempt: '1'};
+  const scope = {tenantId: '10000000-0000-0000-0000-000000000001', allocationNanos: '8000000000', maxAttempts: 1500};
+  const admit = createSharedEvalAdmission({
+    directory,
+    verifyProvisioning: ({plan}) => plan.reviewed ? scope : null,
+  });
+  assert.throws(() => admit({request, identity, plan: {reviewed: false}}), /scope is unavailable/);
+  assert.deepEqual(admit({request, identity, plan: {reviewed: true}}), {admitted: true, nativeScope: scope});
+  assert.throws(() => admit({request, identity, plan: {reviewed: true}}), /already reserved/);
+  assert.throws(() => admit({request, identity: {...identity, attempt: '2'}, plan: {reviewed: true}}), /exhausted/);
+});

@@ -7,6 +7,7 @@ import {isAbsolute, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {hostHealth} from './host-health.mjs';
 import {CI_POLICY} from './policy-version.mjs';
+import {reserveSharedEvalAllocation} from './eval/shared-allocation.mjs';
 import {createNativeBudgetVerifier} from './eval/native-budget-verifier.mjs';
 import {captureRequestedEval, loadEvalPlan, assertFocusedEvalContext, EVAL_CARRIERS} from './eval/contract.mjs';
 import {restrictedPortRequest,executeDatabaseSetup,runRestrictedPortQualification,SOURCE_PINS} from './restricted-port-qualification.mjs';
@@ -95,6 +96,20 @@ export function captureNativeBudgetScope(value, request) {
     || value.maxAttempts !== 1500) throw Error('Requested model evaluation: independent native scope is unavailable');
   return Object.freeze({...value});
 }
+/** Operator entry point. The review owner must verify provisioning and the full
+ * profile bound before returning a native scope. Keep the ledger outside candidate access.
+ * A single campaign directory must serve every profile and GitHub attempt.
+ */
+export function createSharedEvalAdmission({directory, verifyProvisioning}) {
+  if (typeof verifyProvisioning !== 'function') throw Error('Independent eval provisioning review is required');
+  return ({request, plan, identity}) => {
+    const nativeScope = captureNativeBudgetScope(verifyProvisioning({request, plan, identity}), request);
+    const attemptId = `run-${identity.runId}-attempt-${identity.attempt}`;
+    reserveSharedEvalAllocation(directory, attemptId, nativeScope.allocationNanos);
+    return {admitted: true, nativeScope};
+  };
+}
+
 function readIndependentNativeLedger(scope) {
   const script = fileURLToPath(new URL('./eval/native-ledger-reader.mjs', import.meta.url));
   const env = Object.fromEntries(['PATH', 'HOME', 'RUNNER_TEMP', 'GITHUB_ACTIONS', 'CI', 'RUNNER_ENVIRONMENT', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT']
