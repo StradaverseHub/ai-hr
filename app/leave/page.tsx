@@ -66,6 +66,7 @@ import { EditLeaveDialog } from '@/components/leave/edit-leave-dialog';
 import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
 import { RequestLeaveDialog } from '@/components/leave/request-leave-dialog';
 import { leaveApplyPrefill } from '@/lib/leave-apply-prefill';
+import { leaveCreditPrefill } from '@/lib/leave-credit-prefill';
 // 296fc027 — the employee replacement-leave request: the button beside "+ Request Leave" and the action it posts
 // to. The availability read that decides whether to offer it is asked in ./my-leave-data.ts (r397).
 import { ReplacementLeaveRequestDialog } from '@/components/leave/replacement-leave-request-dialog';
@@ -180,6 +181,12 @@ export default async function LeavePage({
     // lib/leave-apply-prefill.ts. Seeds only, prefixed like applyType for the same reason.
     applyEnd?: string;
     applyDuration?: string;
+    // AI v2 W2 slice 2 — the date and window a Leave Credit card prepared in chat opens the Leave Credit request dialog on
+    // (Edit), parsed by lib/leave-credit-prefill.ts. Seeds only; never a reason or the First Schedule agreement.
+    credit?: string;
+    creditDate?: string;
+    creditStart?: string;
+    creditEnd?: string;
     employmentId?:string|string[];
   }>;
 }) {
@@ -716,6 +723,9 @@ export default async function LeavePage({
                   submitAction={submitLeaveCreditRequestAction}
                   today={today}
                   requiresFirstScheduleConsent={replacementRequest.requiresFirstScheduleConsent}
+                  // AI v2 W2 slice 2 — a chat card's Edit opens the dialog on its date and window. Seeds only; the
+                  // agreement box is never ticked for the person.
+                  prefill={leaveCreditPrefill(sp, today)}
                   // r343 — one read per date for EVERY row: what the roster holds (the thing the chosen Day
                   // Type is adjudicated against) plus the scheduled shift end and the actual clock-out. It
                   // replaces r336's pair of actions, one of which answered only for ordinary-day rows.

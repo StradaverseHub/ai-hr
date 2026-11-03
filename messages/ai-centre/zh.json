@@ -491,6 +491,8 @@
       "profileEmergencyTitle": "更改您的紧急联系人",
       "profileDependantTitle": "添加受抚养人",
       "profileBankTitle": "将您的银行账户更改为{bankName}，尾号{ending}",
+      "toilRequestTitle": "假期额度申请，{date}，{start} – {end}",
+      "creditDays": "获批后计入 {count, plural, other {# 天}}",
       "review": "审核",
       "open": "打开",
       "expires": "{time} 过期",
@@ -517,14 +519,16 @@
           "claimSubmitted": "报销已提交审批，尚未批准。",
           "claimDraftSaved": "已存为草稿。请在报销页面添加收据后提交。",
           "claimCancelled": "报销已取消。",
-          "profileRequested": "已发送给人事部。人事部批准前不会有任何更改。"
+          "profileRequested": "已发送给人事部。人事部批准前不会有任何更改。",
+          "toilSubmitted": "已提交审批，尚未批准。获批前不会计入任何额度。"
         },
         "refused": {
           "expired": "此卡片已过期。请重新提问以获取新卡片。",
           "invalid": "此卡片已无法使用。请重新提问以获取新卡片。",
           "access": "此卡片与您当前的权限不再相符。请重新提问以获取新卡片。",
           "retired": "此卡片已被使用或替换。请在其页面上查看该申请。",
-          "unavailable": "暂时无法检查。请稍后再试。"
+          "unavailable": "暂时无法检查。请稍后再试。",
+          "consent": "请先勾选上方的同意声明再确认。"
         }
       },
       "suggestionMeta": "在其页面上完成并确认",
@@ -546,7 +550,8 @@
         "attendance_overtime_request": "加班申请待审核",
         "claims_submit": "报销申请待审核",
         "claims_cancel": "报销取消待审核",
-        "ess_profile_request": "资料更改待审核"
+        "ess_profile_request": "资料更改待审核",
+        "toil_replacement_request": "假期额度申请待审核"
       },
       "checks": {
         "actor_current": "您的权限有效",
@@ -565,7 +570,10 @@
         "receipt_attached": "收据要求",
         "own_pending_claim": "报销仍待处理",
         "profile_fields_editable": "您可以申请这些更改",
-        "profile_request_reviewed": "已与您的记录核对"
+        "profile_request_reviewed": "已与您的记录核对",
+        "leave_credit_offered": "您可以申请假期额度",
+        "worked_day_read": "已从您的排班读取日期类型",
+        "leave_credit_rules": "假期额度规则允许"
       },
       "outcomes": {
         "withdrawn_now": "立即撤回",

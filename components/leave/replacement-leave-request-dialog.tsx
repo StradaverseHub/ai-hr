@@ -9,6 +9,7 @@ import { Plus } from 'lucide-react';
 import { btnPrimary } from '../ui';
 import type { ExtendedHoursTiers } from '@/lib/extended-hours';
 import { LeaveCreditRequestTable, type LeaveCreditDayFacts } from './leave-credit-request-table';
+import type { LeaveCreditPrefill } from '@/lib/leave-credit-prefill';
 
 type Action = (fd: FormData) => void | Promise<void>;
 
@@ -78,6 +79,7 @@ export function ReplacementLeaveRequestDialog({
   claimReviewAction,
   tiers,
   ordinaryDayAllowed,
+  prefill,
 }: {
   /**
    * 2a237f5f — the tenant's Replacement Leave type, already resolved by the page. Required and singular:
@@ -109,9 +111,15 @@ export function ReplacementLeaveRequestDialog({
    * gets checked.
    */
   requiresFirstScheduleConsent?: boolean;
+  /**
+   * AI v2 W2 slice 2 — the date and window a Leave Credit card prepared in chat asked for (its Edit button), already
+   * shape-checked by the page (lib/leave-credit-prefill.ts). The dialog opens on arrival with them in its first row;
+   * the agreement box, the reason and the submit stay the person's own.
+   */
+  prefill?: LeaveCreditPrefill | null;
 }) {
   const t = useTranslations('replacementRequest');
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(prefill != null);
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -139,6 +147,7 @@ export function ReplacementLeaveRequestDialog({
               claimReviewAction={claimReviewAction}
               tiers={tiers}
               ordinaryDayAllowed={ordinaryDayAllowed}
+              initialRow={prefill ?? undefined}
               // The dialog closes as the submission leaves; the action redirects back to My Leave with the
               // confirmation (r389). A modal still standing over that navigation is the defect.
               onSubmitted={() => setOpen(false)}

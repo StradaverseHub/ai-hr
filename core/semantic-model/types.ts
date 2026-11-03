@@ -53,6 +53,8 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  |'attendance_request'
  /** AI v2 W2: an own claim and an own profile change request prepared in chat (./entities-own-changes.ts). */
  |'claim_request'|'profile_change_request'
+ /** AI v2 W2 (slice 2): the own Leave Credit request (time off in lieu) prepared in chat (./entities-toil.ts). */
+ |'leave_credit_request'
  /** AI v2 W1: what the caller can do, import, report on or open (./entities-catalogue.ts). */
  |'product_capability';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;

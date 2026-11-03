@@ -65,7 +65,9 @@ const SUGGEST_DESCRIPTION='Point the person to the page where they complete and 
  // AI v2 W2: own claims and own profile changes (core/proposals/claim-submit.ts, claim-cancel.ts, profile-change.ts).
  +' For claims.submit, details may carry claimType, claimItem, amount (exactly as the person stated it), incurredOn (YYYY-MM-DD) and description. For claims.cancel, details may carry incurredOn.'
  +' For ess.profile.request, details carry change (address, emergency_contact, dependant or bank) and only what the person said: addressLine1, addressLine2, addressLine3, postcode, city, state; contactName, relationship; dependantName, relationship, dateOfBirth (YYYY-MM-DD), gender; bankName.'
- +' Never put a bank account, phone or identity number in details: the system reads those from the person\'s own message.';
+ +' Never put a bank account, phone or identity number in details: the system reads those from the person\'s own message.'
+ // AI v2 W2 (slice 2): the own Leave Credit request, time off in lieu (core/proposals/toil-request.ts).
+ +' For toil.replacement.request, details may carry workedDate (YYYY-MM-DD), claimStart and claimEnd (HH:MM, 24-hour) and reason, only what the person said. The system counts any days credited; never state or work out a credit, rate or pay, and never put anything about agreement or consent in details: only the person can agree, on the card.';
 /** Issue 10: a leave application from chat with details missing or unclear. One question, never a guess. */
 const ASK_NOTE='Some details for this leave application are missing or unclear (listed in missing). Nothing is prepared. Ask the person one short question for them; when options are listed, show them numbered as given and ask for the number. Never guess a leave type or a date.';
 /** AI v2 W2: an attendance correction or overtime request with details missing (the date, a time, a clock-in to pair with

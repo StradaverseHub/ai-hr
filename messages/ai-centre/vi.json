@@ -491,6 +491,8 @@
       "profileEmergencyTitle": "Thay đổi người liên hệ khẩn cấp của bạn",
       "profileDependantTitle": "Thêm người phụ thuộc",
       "profileBankTitle": "Đổi tài khoản ngân hàng của bạn sang {bankName}, đuôi {ending}",
+      "toilRequestTitle": "Yêu cầu tín dụng nghỉ phép, {date}, {start} – {end}",
+      "creditDays": "{count, plural, other {# ngày}} được cộng nếu được duyệt",
       "review": "Xem xét",
       "open": "Mở",
       "expires": "Hết hạn {time}",
@@ -517,14 +519,16 @@
           "claimSubmitted": "Yêu cầu hoàn tiền đã được gửi để phê duyệt, chưa được duyệt.",
           "claimDraftSaved": "Đã lưu bản nháp. Thêm hóa đơn ở trang Hoàn tiền để gửi.",
           "claimCancelled": "Đã hủy yêu cầu hoàn tiền.",
-          "profileRequested": "Đã gửi cho bộ phận nhân sự. Không có gì thay đổi cho đến khi nhân sự phê duyệt."
+          "profileRequested": "Đã gửi cho bộ phận nhân sự. Không có gì thay đổi cho đến khi nhân sự phê duyệt.",
+          "toilSubmitted": "Đã gửi để phê duyệt, chưa được duyệt. Chưa cộng tín dụng nào cho đến khi được duyệt."
         },
         "refused": {
           "expired": "Thẻ này đã hết hạn. Hãy hỏi lại để nhận thẻ mới.",
           "invalid": "Thẻ này không còn dùng được. Hãy hỏi lại để nhận thẻ mới.",
           "access": "Thẻ này không còn khớp với quyền truy cập của bạn. Hãy hỏi lại để nhận thẻ mới.",
           "retired": "Thẻ này đã được dùng hoặc đã được thay thế. Hãy kiểm tra yêu cầu trên trang của nó.",
-          "unavailable": "Hiện chưa thể kiểm tra. Vui lòng thử lại sau giây lát."
+          "unavailable": "Hiện chưa thể kiểm tra. Vui lòng thử lại sau giây lát.",
+          "consent": "Hãy đánh dấu đồng ý ở trên để xác nhận."
         }
       },
       "suggestionMeta": "Hoàn tất và xác nhận trên trang của nó",
@@ -546,7 +550,8 @@
         "attendance_overtime_request": "Yêu cầu làm thêm giờ sẵn sàng để xem xét",
         "claims_submit": "Yêu cầu hoàn tiền sẵn sàng để xem xét",
         "claims_cancel": "Hủy yêu cầu hoàn tiền sẵn sàng để xem xét",
-        "ess_profile_request": "Thay đổi hồ sơ sẵn sàng để xem xét"
+        "ess_profile_request": "Thay đổi hồ sơ sẵn sàng để xem xét",
+        "toil_replacement_request": "Yêu cầu tín dụng nghỉ phép sẵn sàng để xem xét"
       },
       "checks": {
         "actor_current": "Quyền truy cập của bạn còn hiệu lực",
@@ -565,7 +570,10 @@
         "receipt_attached": "Yêu cầu hóa đơn",
         "own_pending_claim": "Yêu cầu vẫn đang chờ",
         "profile_fields_editable": "Bạn có thể yêu cầu các thay đổi này",
-        "profile_request_reviewed": "Đã đối chiếu với hồ sơ của bạn"
+        "profile_request_reviewed": "Đã đối chiếu với hồ sơ của bạn",
+        "leave_credit_offered": "Bạn có thể yêu cầu tín dụng nghỉ phép",
+        "worked_day_read": "Loại ngày được đọc từ lịch ca của bạn",
+        "leave_credit_rules": "Quy định tín dụng nghỉ phép cho phép"
       },
       "outcomes": {
         "withdrawn_now": "Rút lại ngay",

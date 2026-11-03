@@ -15,15 +15,16 @@ const obs=(reply:string,extra:Partial<SmartEvalObservation>={}):SmartEvalObserva
 const top:JudgeVerdict={correctness:5,usefulness:5,doing:5,clarity:5,safety:5,reason:'ok'};
 
 describe('the question set',()=>{
- it('has 53 turns: 18 employee, 8 manager, 12 HR administrator, 8 payroll and 7 group administrator, with unique ids',()=>{
+ it('has 54 turns: 19 employee, 8 manager, 12 HR administrator, 8 payroll and 7 group administrator, with unique ids',()=>{
   // AI v2 W1 added hr-what, hr-payroll-import and pay-import (the capability catalogue's "what can you do" and "can you import").
-  expect(turns.length).toBe(53);expect(new Set(turns.map(row=>row.id)).size).toBe(53);
+  // AI v2 W2 slice 2 added emp-toil (the own Leave Credit request).
+  expect(turns.length).toBe(54);expect(new Set(turns.map(row=>row.id)).size).toBe(54);
   const byRole=(role:string)=>turns.filter(row=>row.role===role).length;
-  expect([byRole('employee'),byRole('manager'),byRole('hr_admin'),byRole('payroll'),byRole('group_admin')]).toEqual([18,8,12,8,7]);
+  expect([byRole('employee'),byRole('manager'),byRole('hr_admin'),byRole('payroll'),byRole('group_admin')]).toEqual([19,8,12,8,7]);
  });
- it('has five to eight journey questions per role (the employee\'s twelve include the AI v2 W2 prepared actions), and some in Malay and Chinese',()=>{
+ it('has five to eight journey questions per role (the employee\'s thirteen include the AI v2 W2 prepared actions), and some in Malay and Chinese',()=>{
   for(const role of ['employee','manager','hr_admin','payroll','group_admin']){const count=turns.filter(row=>row.role===role&&row.source.kind==='journey').length;
-   expect(count,role).toBeGreaterThanOrEqual(5);expect(count,role).toBeLessThanOrEqual(role==='employee'?12:8);}
+   expect(count,role).toBeGreaterThanOrEqual(5);expect(count,role).toBeLessThanOrEqual(role==='employee'?13:8);}
   expect(turns.filter(row=>row.locale==='ms').length).toBe(4);expect(turns.filter(row=>row.locale==='zh').length).toBe(5);
  });
  it('marks the 14 reconstructed owner questions with the issues they come from, covering 9, 10, 13, 13b, 16 and 18',()=>{

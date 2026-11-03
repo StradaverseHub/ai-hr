@@ -491,6 +491,8 @@
       "profileEmergencyTitle": "Tukar kenalan kecemasan anda",
       "profileDependantTitle": "Tambah tanggungan",
       "profileBankTitle": "Tukar akaun bank anda kepada {bankName}, berakhir {ending}",
+      "toilRequestTitle": "Permohonan Kredit Cuti, {date}, {start} – {end}",
+      "creditDays": "{count, plural, other {# hari}} dikreditkan jika diluluskan",
       "review": "Semak",
       "open": "Buka",
       "expires": "Tamat {time}",
@@ -517,14 +519,16 @@
           "claimSubmitted": "Tuntutan dihantar untuk kelulusan, belum diluluskan.",
           "claimDraftSaved": "Disimpan sebagai draf. Tambah resit di Tuntutan untuk menghantarnya.",
           "claimCancelled": "Tuntutan dibatalkan.",
-          "profileRequested": "Dihantar kepada HR. Tiada yang berubah sehingga HR meluluskannya."
+          "profileRequested": "Dihantar kepada HR. Tiada yang berubah sehingga HR meluluskannya.",
+          "toilSubmitted": "Dihantar untuk kelulusan, belum diluluskan. Tiada kredit diberi sehingga ia diluluskan."
         },
         "refused": {
           "expired": "Kad ini telah tamat tempoh. Minta sekali lagi untuk kad baharu.",
           "invalid": "Kad ini tidak boleh digunakan lagi. Minta sekali lagi untuk kad baharu.",
           "access": "Kad ini tidak lagi sepadan dengan akses anda. Minta sekali lagi untuk kad baharu.",
           "retired": "Kad ini telah digunakan atau diganti. Semak permohonan di halamannya.",
-          "unavailable": "Ini tidak dapat disemak sekarang. Cuba lagi sebentar lagi."
+          "unavailable": "Ini tidak dapat disemak sekarang. Cuba lagi sebentar lagi.",
+          "consent": "Tandakan persetujuan di atas untuk mengesahkan."
         }
       },
       "suggestionMeta": "Lengkapkan dan sahkan di halamannya",
@@ -546,7 +550,8 @@
         "attendance_overtime_request": "Permohonan kerja lebih masa sedia untuk disemak",
         "claims_submit": "Tuntutan perbelanjaan sedia untuk disemak",
         "claims_cancel": "Pembatalan tuntutan sedia untuk disemak",
-        "ess_profile_request": "Perubahan profil sedia untuk disemak"
+        "ess_profile_request": "Perubahan profil sedia untuk disemak",
+        "toil_replacement_request": "Permohonan Kredit Cuti sedia untuk disemak"
       },
       "checks": {
         "actor_current": "Akses anda masih sah",
@@ -565,7 +570,10 @@
         "receipt_attached": "Keperluan resit",
         "own_pending_claim": "Tuntutan masih belum diputuskan",
         "profile_fields_editable": "Anda boleh memohon perubahan ini",
-        "profile_request_reviewed": "Disemak dengan rekod anda"
+        "profile_request_reviewed": "Disemak dengan rekod anda",
+        "leave_credit_offered": "Anda boleh memohon Kredit Cuti",
+        "worked_day_read": "Jenis hari dibaca daripada jadual giliran anda",
+        "leave_credit_rules": "Peraturan Kredit Cuti membenarkannya"
       },
       "outcomes": {
         "withdrawn_now": "Ditarik balik serta-merta",

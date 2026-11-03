@@ -39,7 +39,8 @@ import {InMemoryTaskMemoryStore} from '../core/harness/memory';
 import {identifiersIn,overclaim} from '../core/harness/reply-checks';
 import type {HarnessMessage,ModelClient,ModelResponse} from '../core/harness/model-client';
 import {ACTION_PURPOSE} from '../core/product-context/actions';
-import {requestLeave} from '../packs/leave/service';
+import {requestLeave,setToilPolicy} from '../packs/leave/service';
+import {setRestDay} from '../core/roster';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {explainerFixture} from './explainer-corpus';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from './harness';
@@ -142,6 +143,13 @@ async function fixtures(){
   return{...await entitledCtx(base,[role]),userId:user.id,personId,roles:[role],grants:[{role,companyId}]} as SessionContext;
  };
  const aina=await hire('Aina Fictional'),ravi=await hire('Ravi Fictional'),siti=await hire('Siti Fictional'),wei=await hire('Wei Fictional');
+ // AI v2 W2 slice 2 (emp-toil): Acme lets employees request replacement leave, and Aina's Saturday of last week is a rest
+ // day on her roster. She has no compensation on record, so she is outside the First Schedule and needs no agreement.
+ const lastSaturday=(()=>{let date=todayInKualaLumpur(new Date(Date.now()-86400000));while(new Date(date+'T12:00:00Z').getUTCDay()!==6)date=todayInKualaLumpur(new Date(Date.parse(date+'T12:00:00Z')-86400000));return date;})();
+ await setModule(base.tenantId,'toil','active');
+ await setToilPolicy(admin,{companyId:base.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',allowFirstScheduleEligible:false,
+  autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,extendedHoursEnabled:true});
+ await setRestDay(admin,{employmentId:aina.employmentId,shiftDate:lastSaturday});
  await credit(aina.employmentId,base.annualLeaveTypeId,'17.25');await credit(aina.employmentId,medical.id,'11.5');await credit(siti.employmentId,base.annualLeaveTypeId,'10');
  const holiday9=todayInKualaLumpur(new Date(Date.now()+9*86400000)),holiday40=todayInKualaLumpur(new Date(Date.now()+40*86400000));
  for(const [date,name] of [[holiday9,'Fictional Holiday 9'],[holiday40,'Fictional Holiday 40']])await owner.db.insert(schema.holiday).values({tenantId:base.tenantId,country:'MY',holidayDate:date,name});
@@ -175,6 +183,7 @@ async function fixtures(){
   'Setup readiness reads the real fixture: most employees have no compensation, bank or statutory details, and no payroll cycle, schedule or policy is set. The gaps and counts it reports come from the system and are true.',
   'The AI conversation is switched on for the whole group by a group administrator on AI administration\'s Features and agents page (/control-tower/agents/features), after the AI provider is set up (/control-tower/agents/provider); each person also needs Assistant access. Those pages may still be titled "AI Control Tower".',
   `Public holidays: "Fictional Holiday 9" on ${holiday9}; "Fictional Holiday 40" on ${holiday40}.`,
+  `Leave Credit (replacement leave, time off in lieu): Acme lets employees request it for a date they worked. ${lastSaturday} (last Saturday) is a rest day on Aina's roster; eight hours worked on a rest day credits one day, counted by the leave service. A request goes to her approver; nothing is credited until it is approved. Aina is outside the First Schedule, so her card asks for no agreement.`,
   'Pay averages: for people with payroll access (HR administrators, payroll partners) a pay averages read gives group figures from each company\'s latest closed payroll run and withholds any group under five people. Acme\'s latest closed run (August 2026) pays one person, so every Acme company and department average is withheld: saying it is too small to report is correct; a published average would be correct only for a group of five or more.',
   'In chat the assistant cannot read or import a file, show any individual\'s pay, or count headcount (it has no headcount read); identity, bank, tax, EPF and SOCSO numbers are removed before it sees them. '+
    'A leave application is prepared from chat as a filled Request Leave form for the person to check and submit; when the leave type or dates are missing or unclear it asks one short question with the leave types numbered, which is also correct. '+

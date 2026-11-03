@@ -10,6 +10,8 @@
 export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=Object.freeze({
  'corpus':[
  'action:approvals.leave.decide',
+ // AI v2 W2 (slice 2) declared the own Leave Credit request; its corpus turn is still to be written.
+ 'action:toil.replacement.request',
  // AI Centre issue 13b gave /payroll/reports its semantic entry (pay_aggregate); its corpus turn is still to be written.
  'page:/payroll/reports',
  ],
@@ -37,7 +39,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'action:attendance.missing_clock.remind','action:employees.import','action:employees.passport_expiry.remind',
  'action:employees.review_overdue.remind','action:leave.edit','action:lifecycle.acknowledgement.submit','action:lifecycle.step.chase',
  'action:org.employee_id_template.status','action:performance.checkin.cancel','action:performance.checkin.complete',
- 'action:performance.checkin.schedule','action:rewards.cancel_review','action:toil.credit.grant','action:toil.replacement.request','page:/admin/ai',
+ 'action:performance.checkin.schedule','action:rewards.cancel_review','action:toil.credit.grant','page:/admin/ai',
  'page:/admin/attendance/file-mappings','page:/admin/attendance/schedule-assignment','page:/admin/attendance/settings',
  'page:/admin/attendance/settings/overtime-patterns','page:/admin/audit','page:/admin/claims','page:/admin/claims/forms','page:/admin/claims/limits',
  'page:/admin/claims/mileage','page:/admin/claims/reimbursements','page:/admin/holidays','page:/admin/leave-config/adjustments',
