@@ -102,3 +102,23 @@ export const REWARDS_FUNCTION_REQUIRED_OWNERS=[
  'app.reward_cancel_native(uuid,integer,text)',
  'app.reward_cancel_native_validate()',
 ]as const;
+
+export const REWARDS_READ_CAPABILITY_PUBLICATION={
+ capabilities:[{id:'rewards.view',scope:'company',bindings:[
+  {owner:'app.lifecycle_reward_notice_action',operation:'native-administrative-configuration-view'},
+  {owner:'app.reward_configuration_review',operation:'bounded-company-configuration-projection'},
+ ]}],
+ functions:REWARDS_FUNCTIONS.filter(descriptor=>descriptor.key==='rewards.review'||descriptor.key.startsWith('rewards.configuration.')),
+ legacyParityFunction:'app.lifecycle_reward_notice_legacy_allowed',
+ currentLegacyParityFunction:'app.rewards_configuration_current_legacy_allowed',
+ functionLegacyParityFunction:REWARDS_FUNCTION_DEFAULTS.pure,
+ functionCurrentLegacyParityFunction:REWARDS_FUNCTION_DEFAULTS.current,
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.rewards_read_bindings_complete()',
+  'app.reward_annual_calculation(uuid,integer)',
+  'app.reward_offcycle_calculation(uuid,integer)',
+  'app.reward_configuration_review(uuid)',
+  'app.reward_governance_review(uuid)',
+ ],
+} as const;

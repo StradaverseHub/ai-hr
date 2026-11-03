@@ -1,3 +1,4 @@
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
@@ -123,6 +124,24 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const next = await previewRewardSeniorMembership(admin, unitId, after.unit.revision, deselect);
     await saveRewardSeniorMembership(admin, unitId, after.unit.revision, deselect, next.digest);
     expect((await getRewardSeniorMembership(admin, unitId)).rows[0].member).toBe(false);
+  });
+  it('publishes the bounded Rewards reads and prevents a denied GR course from falling through to HR',async()=>{
+    const cap='function.rewards.configuration.assigned.view';
+    try{
+      expect(await publishActionCapabilityPackage(owner.client,'rewards_read')).toMatchObject({changed:true,capabilities:4});
+      expect(await publishActionCapabilityPackage(owner.client,'rewards_read')).toMatchObject({changed:false});
+      expect(await getRewardConfiguration(admin,unitId)).toMatchObject({canReadPat:true});
+      expect((await getRewardUnit(admin,unitId)).rows.length).toBeGreaterThan(0);
+      await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+       values(${b.tenantId}::uuid,${admin.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+      await expect(getRewardConfiguration(admin,unitId)).rejects.toThrow();
+      expect((await getRewardUnit(admin,unitId)).rows.length).toBeGreaterThan(0);
+    }finally{
+      await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+      await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+       where id in ('rewards.view','function.rewards.review.view','function.rewards.configuration.assigned.view',
+        'function.rewards.configuration.administration.view')`;
+    }
   });
   it('reads bounded configuration metadata without an employee/pay roster or PAT disclosure to HR-only',async()=>{
     const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Actual configuration administrator',primaryEmail:'configuration@rewards.test'}).returning();

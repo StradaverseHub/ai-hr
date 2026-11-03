@@ -4866,6 +4866,13 @@
       "when": 1793330000391,
       "tag": "0991_lifecycle_delivery_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 839,
+      "version": "7",
+      "when": 1793330000392,
+      "tag": "0992_rewards_read_binding_readiness",
+      "breakpoints": true
     }
   ]
 }
