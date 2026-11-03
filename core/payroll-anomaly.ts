@@ -465,19 +465,6 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string): Promise
     : [];
   const payModeByEmployment = new Map(payModes.map((row) => [row.employmentId, row.payMode as string | null]));
   const exemptByEmployment = new Map<string, boolean>();
-  if (employmentIds.length) {
-    try {
-      // Loaded on use (the schedule-group owner imports the payroll facade, which imports this file).
-      const { exceptionDecisionsTx } = await import('./schedule-group-controls');
-      // In a savepoint, so a read that fails leaves the evaluation's transaction usable.
-      const exemptOn = await tx.transaction((savepoint) => exceptionDecisionsTx(savepoint as unknown as Tx, employmentIds, periodStart, periodEnd));
-      const days: string[] = [];
-      for (let d = 1; d <= dim; d++) days.push(`${batch.payPeriod}-${String(d).padStart(2, '0')}`);
-      for (const id of employmentIds) exemptByEmployment.set(id, days.every((day) => exemptOn(id, day).enabled === true));
-    } catch {
-      // An exemption that cannot be read is no exemption: the detector runs as before.
-    }
-  }
 
   const contexts: DetectorContext[] = slips.map((slip) => {
     const emp = empById.get(slip.employmentId);
