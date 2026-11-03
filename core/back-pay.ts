@@ -225,7 +225,10 @@ export type ArrearsCandidate = {
  * effective-date form of this query is wrong.
  */
 export function detectArrears(ctx: SessionContext, p: { companyId: string }): Promise<ArrearsCandidate[]> {
-  return withTenant(ctx, (tx) => detectArrearsTx(tx, p));
+  return withTenant(ctx, async tx => {
+    const [access] = await tx.execute<{allowed: boolean}>(sql`select app.access_backpay_action(${p.companyId}::uuid, 'view') as allowed`);
+    return access?.allowed ? detectArrearsTx(tx, p) : [];
+  });
 }
 
 /**
@@ -805,7 +808,7 @@ export function backPayRunDetail(ctx: SessionContext, runId: string): Promise<Ba
       })
       .from(backPayRun)
       .innerJoin(company, eq(company.id, backPayRun.companyId))
-      .where(eq(backPayRun.id, runId))
+      .where(and(eq(backPayRun.id, runId), sql`app.access_backpay_action(${backPayRun.companyId}, 'view')`))
       .limit(1);
     if (!run) return null;
 
@@ -948,7 +951,7 @@ export function listBackPayRuns(ctx: SessionContext, p: { companyIds: string[] }
       })
       .from(backPayRun)
       .innerJoin(company, eq(company.id, backPayRun.companyId))
-      .where(inArray(backPayRun.companyId, p.companyIds));
+      .where(and(inArray(backPayRun.companyId, p.companyIds), sql`app.access_backpay_action(${backPayRun.companyId}, 'view')`));
     if (runs.length === 0) return [];
     const lines = await tx
       .select({

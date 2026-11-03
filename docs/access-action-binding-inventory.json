@@ -12782,6 +12782,7 @@
           "line": 102,
           "surface": "route",
           "owners": [
+            "app.access_backpay_action",
             "app.current_tenant_id",
             "app.current_user_id",
             "app.is_admin",
@@ -14650,6 +14651,7 @@
         }
       ],
       "nativeOwners": [
+        "app.access_backpay_action",
         "app.access_financial_action_company",
         "app.access_financial_action_employment",
         "app.access_workforce_employment",
@@ -53227,6 +53229,7 @@
       "line": 45,
       "surface": "route",
       "owners": [
+        "app.access_backpay_action",
         "app.current_tenant_id",
         "app.current_user_id",
         "app.login_blocked",
@@ -53282,6 +53285,7 @@
       "line": 102,
       "surface": "route",
       "owners": [
+        "app.access_backpay_action",
         "app.current_tenant_id",
         "app.current_user_id",
         "app.is_admin",
