@@ -3,7 +3,9 @@
  * rule: the version and its digest; each new line once, word for word, with nothing left of the text it replaces; the
  * instruction size; the fixed sensitive reply naming the private case route only where it is set up; and the catalogue
  * offered in code for an answer to the previous turn's numbered question (task memory's pending question), and only
- * then. Scripted model and fictional tools; no provider, no database. Whether a model follows the text is measured by the
+ * then. v19 (the one further adjustment after run 41612993488) narrows the import line to an import whose mode is
+ * prepare, with its page, and offers "add a new employee" as one employee's page or draft action; this file pins both.
+ * Scripted model and fictional tools; no provider, no database. Whether a model follows the text is measured by the
  * scored evaluation (test/assistant-smart-eval.eval.test.ts). */
 import {describe,expect,it} from 'vitest';
 import type {SessionContext} from '../db/client';
@@ -25,17 +27,18 @@ const count=(pattern:RegExp)=>instructions.filter(line=>pattern.test(line)).leng
 const line=(start:string)=>{const found=instructions.filter(row=>row.startsWith(start));expect(found,start).toHaveLength(1);return found[0];};
 
 describe('spec v18',()=>{
- it('is version 18 with its digest recorded, and every earlier digest is kept',()=>{
-  expect(HARNESS_SPEC.version).toBe(18);expect(HARNESS_SPEC_DIGESTS[18]).toBe(harnessSpecDigest());
+ it('is version 19 (v18 fixed forward) with its digest recorded, and every earlier digest is kept',()=>{
+  expect(HARNESS_SPEC.version).toBe(19);expect(HARNESS_SPEC_DIGESTS[19]).toBe(harnessSpecDigest());
+  expect(HARNESS_SPEC_DIGESTS[19]).toBe('44e9708772ac71c0fcdc29b117769b34424fb21f4d5e1f45d1a3fe4795046b7c');
   expect(HARNESS_SPEC_DIGESTS[18]).toBe('7802392d1738b72c2035ff25c2009c07e559c865ca4fb6cb3bb30493dfd99759');
   expect(HARNESS_SPEC_DIGESTS[17]).toBe('818c217a300e529088f03f66042c57dc00de21be787a802a60ed2cf84692e3a8');
-  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]);
+  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]);
  });
- it('adds at most 1,400 characters of instructions to v17\'s 5,216 for the eight queued rules',()=>{
+ it('adds under 1,500 characters of instructions to v17\'s 5,216 for the eight queued rules (v19: 6,673)',()=>{
   // v13 sent 6,148 characters and each model call slowed (run 41577698046); v18 folds slices 2 and 3 into 24 lines, the new
   // ones short because each tool's own description carries its detail.
   expect(instructions).toHaveLength(24);
-  expect(instructions.join(' ').length).toBeLessThanOrEqual(6620);
+  expect(instructions.join(' ').length).toBeLessThanOrEqual(6700);
  });
 });
 
@@ -53,14 +56,15 @@ describe('the rules v18 folds in, one each',()=>{
  it('time off in lieu: its card; no credit or pay stated; no First Schedule agreement asked for, given or recorded',()=>{
   expect(line('Time off in lieu')).toBe('Time off in lieu is its card (toil.replacement.request): never state a credit or pay, or ask for, give or record a First Schedule agreement; only the person agrees, on the card.');
  });
- it('imports: prepare_import, "Yes, I can import that here.", the file never read, no row or value listed, nothing said imported',()=>{
-  expect(line('Imports are prepared')).toBe('Imports are prepared with prepare_import when offered: "Yes, I can import that here." You never read the file: never list its rows or values or say anything was imported.');
+ it('imports: prepare_import for an import whose mode is prepare, "Yes, I can import that here." with its page, the file never read, no row or value listed, nothing said imported',()=>{
+  expect(line('An import whose mode is prepare')).toBe('An import whose mode is prepare is prepared with prepare_import: start "Yes, I can import that here.", ask for the file and link its import page. You never read the file: never list its rows or values or say anything was imported.');
+  expect(count(/Yes, I can import that here/)).toBe(1);
  });
  it('approver decisions: the two decision actions; the request and the decision never the model\'s; several are listed and asked',()=>{
   expect(line('Approver decisions')).toBe('Approver decisions on claims or attendance are prepared with approvals.claim.decide or approvals.attendance.decide. Never choose the request or the decision: when several wait, list them numbered and ask.');
  });
- it('hr-new-hire: one new employee is its page or action, not an import; a listed employee-records option includes adding one; a numbered answer picks',()=>{
-  expect(line('For "can you …?"')).toBe('For "can you …?", "can I …?" or a request that could mean several things this person can do (such as "help me import data"), call product_capabilities (with a kind or area if clear), never for facts or status. If their words point to one entry ("import my employees" or "import new hires" is the employee import; "add a new employee" or "a new hire" is adding one employee on its page or action, not an import), start with "Yes" and act on it without asking: its card, or its page. If several fit, start with "Yes, I can …" and ask one short question (mode clarify) numbering at most five, as listed (most common first; employee records include adding one employee), then "Something else"; never guess. An answer such as "2" or "the second one" picks that entry. If none fits, a setup task, even "can you help me set up …", gets short steps from product_guidance and its page; anything else is not available to them here.');
+ it('hr-new-hire: one new employee is its page or the draft action, never only an import; a listed employee-records option includes adding one; a numbered answer picks',()=>{
+  expect(line('For "can you …?"')).toBe('For "can you …?", "can I …?" or a request that could mean several things this person can do (such as "help me import data"), call product_capabilities (with a kind or area if clear), never for facts or status. If their words point to one entry ("import my employees" or "import new hires" is the employee import), start with "Yes" and act on it without asking: its card, or its page. "Add a new employee" or "a new hire" is one employee: offer adding them on the employee page or activating a new-hire draft, never only an import. If several fit, start with "Yes, I can …" and ask one short question (mode clarify) numbering at most five, as listed (most common first; employee records include adding one employee), then "Something else"; never guess. An answer such as "2" or "the second one" picks that entry. If none fits, a setup task, even "can you help me set up …", gets short steps from product_guidance and its page; anything else is not available to them here.');
   // clarify is a mode the model may finish with, so the pending question is recorded.
   expect(HARNESS_SPEC.offer.finalModes).toContain('clarify');
  });

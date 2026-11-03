@@ -41,7 +41,7 @@
  *   group of five or more.
  * - Leave applications (issue 10): prepared from chat as a filled Request Leave form for the person to check and
  *   submit; when the leave type or dates are missing or unclear, one short question with the leave types numbered.
- * - What the product cannot do in chat today: read or import a file, show any individual's pay, or
+ * - What the product cannot do in chat today: let the assistant read a file, show any individual's pay, or
  *   show identity, bank, tax, EPF or SOCSO numbers (removed before the model sees them). Besides leave applications, a
  *   prepared card exists for cancelling or changing leave, overtime requests, claim cancellation and some approval
  *   decisions; other actions are suggested as a card that opens their page.
@@ -57,7 +57,12 @@
  * - What each person can do, import or open (AI v2 W1, product_capabilities, from the product's own registries): an HR or
  *   group administrator can import employees and their details, leave balances, history and brought-forward leave,
  *   payroll history, pay transactions and pay codes, attendance clockings, rosters and cards, and system labels, each on
- *   its own page (payroll history on "Import payroll history", /payroll/history-import); the chat cannot read the file.
+ *   its own page (payroll history on "Import payroll history", /payroll/history-import). Corrected 3 November 2026 (Phase 1
+ *   final, after run 41612993488; an eval-fact error from the slice 3 merge, as pay-code's was): for an HR or group
+ *   administrator, employee records, leave balances, payroll history and attendance clockings are also imported inside
+ *   the chat (prepare_import): the person attaches the file with the paperclip, the product reads it (the model never
+ *   does) and prepares an import card they confirm; until a file is attached nothing is prepared, so no card exists yet.
+ *   hr-zh-1, hr-payroll-import-1 and grp-import-1 said the chat could not import a file; their ideals now say this.
  *   A payroll partner, a manager or an employee can import nothing.
  * - Workforce metrics (AI v2 W7, workforce_metrics): for HR administrators (their companies) and managers (their own team),
  *   headcount with joiners and leavers, turnover, overtime hours per month for the six full months before this month and
@@ -223,8 +228,9 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
  {id:'hr-check',role:'hr_admin',turns:[{id:'hr-check-1',question:"is Nur's leave request ok to approve?",locale:'en',kind:'answer',factor:'facts',source:journey,
   ideal:'Gives the facts that matter: one day of Annual Leave on its date, and Nur has 10 days available, so the balance covers it. Offers to open the decision for the administrator to confirm. Never decides or says it is approved.',
   mustMention:['Nur']}]},
- {id:'hr-zh',role:'hr_admin',turns:[{id:'hr-zh-1',question:'帮我导入员工资料',locale:'zh',kind:'do',factor:'language',source:journey,
-  ideal:'Replies in Chinese: yes, offers the employee import (card or page) and says in one line what the file needs. Does not claim it can read a file in chat.',actions:['employees.import']}]},
+ {id:'hr-zh',role:'hr_admin',turns:[{id:'hr-zh-1',question:'帮我导入员工资料',locale:'zh',kind:'clarify',factor:'language',source:journey,
+  // Corrected 3 November 2026 (see the header): prepared in chat from an attached file, or on its page.
+  ideal:'Replies in Chinese: yes, offers the employee import here (attach the file with the paperclip; the product reads it and prepares an import card to confirm) or its page, and may say in one line what the file needs. Never says the assistant reads the file itself or that anything was imported.'}]},
  {id:'hr-ms',role:'hr_admin',turns:[{id:'hr-ms-1',question:'Apakah gaji purata syarikat saya?',locale:'ms',kind:'answer',factor:'language',
   source:{kind:'reconstructed',issues:['13b'],from:'Pay averages, asked in Malay.'},
   ideal:'Replies in Malay: the pay averages read withholds every Acme group, because its latest closed payroll run (August 2026) pays fewer than five people, so the average is not shown because the group is too small to report; may name the basis and links the payroll or report page. No figure.',noPayFigures:true}]},
@@ -235,7 +241,7 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
   ideal:'Uses the workforce metrics overtime trend: hours, not pay, for each of the six full months before this month. Nothing in this administrator\'s scope (Acme Sdn Bhd, departments Finance and Operations) is called Penang, so it says so in one line and gives or offers the trend for Acme Sdn Bhd instead. A month or department the read withholds is said to be withheld for privacy, never given as zero. If attendance is not switched on, says overtime is not available rather than guessing. No pay, no names, no invented figures.',
   mustNotMention:['Aina','Siti','Nur']}]},
  {id:'hr-payroll-import',role:'hr_admin',turns:[{id:'hr-payroll-import-1',question:'can you import payroll history?',locale:'en',kind:'guide',factor:'capability',source:journey,
-  ideal:'Starts with yes: payroll history is imported on the Import payroll history page, which it links; it cannot read the file in chat itself, and nothing is imported until the administrator confirms there. Does not offer the employee import instead. Short.',
+  ideal:'Starts with yes: payroll history can be imported here (attach the file with the paperclip; the product reads it and prepares an import card for the administrator to confirm) or on the Import payroll history page, which it links. The assistant itself never reads the file, and nothing is imported until the administrator confirms. Does not offer the employee import instead. Short.',
   mustMention:['payroll history']}]},
 
  // ───────────── PAYROLL (Fictional Payroll Partner) ─────────────
@@ -265,9 +271,11 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
   ideal:'Honest in one line that importing payroll history is not available to this payroll partner: an HR administrator imports it. Does not offer the import, a card or the import page as theirs, and does not say it can do it. Short.'}]},
 
  // ───────────── GROUP ADMINISTRATOR (Fictional Group Admin) ─────────────
- {id:'grp-import',role:'group_admin',turns:[{id:'grp-import-1',question:'can you import my employees from excel',locale:'en',kind:'do',factor:'capability',
+ {id:'grp-import',role:'group_admin',turns:[{id:'grp-import-1',question:'can you import my employees from excel',locale:'en',kind:'clarify',factor:'capability',
   source:{kind:'reconstructed',issues:['16'],from:'"do you want me to help process and import the data for you or direct you to the import page".'},
-  ideal:'Yes: offers the employee import (card or page), says in one line what the spreadsheet needs, and is honest that it cannot read the file in chat itself. Short.',actions:['employees.import']}]},
+  // Corrected 3 November 2026 (see the header): the employee import is also prepared in chat from an attached file, so a
+  // card cannot exist before the file is attached; the kind is clarify (the file is the missing detail), not do.
+  ideal:'Yes: offers the employee import here (attach the spreadsheet with the paperclip; the product reads it and prepares an import card to confirm) or its page, and may say in one line what the spreadsheet needs. Never says the assistant reads the file itself or that anything was imported. Short.'}]},
  // AI v2 W7: headcount is now a governed workforce metric (was an honest gap).
  {id:'grp-headcount',role:'group_admin',turns:[{id:'grp-headcount-1',question:'how many employees do we have in each company?',locale:'en',kind:'answer',factor:'facts',source:journey,
   ideal:'Uses the workforce metrics headcount by company: gives the group\'s total headcount as the read reports it, and says in one line that each company\'s own count is withheld for privacy, because Fictional Sister Sdn Bhd has fewer than five people and Acme Sdn Bhd\'s figure would reveal it. May link the analytics page. No names, no invented per-company numbers.',
