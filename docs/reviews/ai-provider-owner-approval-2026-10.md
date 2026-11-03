@@ -730,3 +730,50 @@ commands are then rerun. Counsel's advice (ADR-0169 §5.1) is still required bef
 provider. Staging uses fictional data only.
 
 This record is not a runtime PASS, staging acceptance or deployment authorisation.
+
+## Phase 1 release binding
+
+The AI v2 Phase 1 release candidate on `claude/aiv2-phase1-release` is code
+de097b2efc88aa9a0a441d4cbaf767662b11c648. It fast-forwards from main 848c7be36, 189 commits ahead and 0 behind, and carries:
+- the AI Centre revamp: Today, Ask everywhere, the capability catalogue;
+- prepared actions with Confirm, Edit and Discard;
+- the Why? panels, workforce metrics and pay aggregates;
+- stored chats and private cases;
+- the five Prepare-only loops and letter requests (migrations 2000–2003);
+- spec v22.
+
+The provider-data closure moves from 1292 files / `66cf4753ea58c94f21d00b65e489f06d49d864360b99d775eb1ac02e8b4dcf43` (main
+848c7be36) to 1351 files / `b96772fea09e857c01e8de90fdc39e6bbe7ad2b03eebc7c530a57bc12f357a32`: 59 files added, 0 removed and 48
+changed. The packet, with every changed source and what the model receives, is
+docs/reviews/teras-whole-stack-20261102/binding-packet-phase1-release.md, committed with this binding.
+
+The "AI Centre round binding" section above was never bound on main. Its approval (fingerprint e5db5f47) does not
+transfer. This section supersedes it, and the packet re-reviews that round's data scope in full.
+
+No new contract is added. The reviewed data scope of `teras_harness_turn_v1` extends to what the packet lists in its
+section 2. In summary:
+- group figures as bands, with groups under 5 withheld;
+- other people's names and dates as placeholders only;
+- company and department names for those who already see them;
+- product vocabulary;
+- import row counts as bands, never file contents.
+
+Identity, bank and phone numbers, record ids, other people's free text, letter and private-case content, and any one
+person's pay never leave the product. The proposal, the owner services and every reply check still decide. Nothing
+applies without a person's Confirm.
+
+The repository owner approved that exact packet directly in the coordinator session teras-noveri-handoff-54e696 ("I
+approve it"), answering the session's question to approve the Phase 1 binding packet for staging. The session recorded
+the message on receipt at 2026-11-03T17:21:45Z. The approval covers this closure only and does not transfer to a changed
+one.
+
+The 25 historical approved records receive only the new sourceDigest. Their status, reviewer, evidence and reviewedAt are
+preserved byte-for-byte, and both pending records stay byte-identical. `teras_harness_turn_v1` receives the new
+sourceDigest, keeps reviewer human:zenlam repository-owner provisional, and takes evidence #phase-1-release-binding and
+reviewedAt 2026-11-03T17:21:45Z from this approval. The module-agent manifest is regenerated last, and both `--check`
+commands are then rerun.
+
+Counsel's advice (ADR-0169 §5.1) is still required before any real tenant data reaches a provider. Staging uses
+fictional data only. Production remains held pending the owner's separate request.
+
+This record is not a runtime PASS, staging acceptance or deployment authorisation.
