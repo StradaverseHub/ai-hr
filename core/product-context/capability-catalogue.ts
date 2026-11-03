@@ -205,7 +205,7 @@ export const PRODUCT_CAPABILITIES_SPEC:AiToolSpec=Object.freeze({name:READ.name,
 /** At most this many entries per result, so it always fits the harness's tool-output fence. */
 export const MAX_CAPABILITY_ENTRIES=40;
 const SUMMARY_NOTE='Counts per area of everything this person can do, import, report on or open, with example titles; entries lists what you can prepare here. For one part in full, call product_capabilities again with a kind or an area.';
-const LIST_NOTE='Only these are available to this person. When their request could mean several of them, ask one short question with them numbered by title; never pick one yourself. For mode prepare, offer to prepare it (suggest_action takes an action's id; prepare_import takes an import's). For mode open, say they can do it on its page and link the page when one is given.';
+const LIST_NOTE='Only these are available to this person. When their request could mean several of them, ask one short question with them numbered by title; never pick one yourself. For mode prepare, offer to prepare it (suggest_action takes the id of an action, prepare_import the id of an import). For mode open, say they can do it on its page and link the page when one is given.';
 const MISS_NOTE='No title matched those words, so everything of this kind is listed instead. Never say something is unavailable only because the words did not match.';
 const MISS_ALL_NOTE='No title matched those words. Never say something is unavailable only because the words did not match: ask with a kind, or use the areas below.';
 const MORE_NOTE=' More match than are listed: ask again with a narrower area or a kind.';

@@ -108,8 +108,9 @@ export async function confirmChatImport(supplied:SessionContext,input:Readonly<{
   const verified=verifyProposal(input.proposal,ctx,now);
   if(!verified.ok)return refused(verified.reason);
   const proposal=verified.proposal,body=proposal.body,kind=body.what.selectors.importKind;
+  if(!isChatImportKind(kind))return refused('wrong_action');
   if(body.what.action!==CHAT_IMPORT_ACTION||body.what.entity!==CHAT_IMPORT_ENTITY||body.what.contractVersion!==1||body.forWhom.subject!=='company'
-   ||!isChatImportKind(kind)||!body.import||body.import.kind!==kind||body.what.selectors.companyId!==body.forWhom.subjectId)return refused('wrong_action');
+   ||!body.import||body.import.kind!==kind||body.what.selectors.companyId!==body.forWhom.subjectId)return refused('wrong_action');
   const info=(await chatImportKindsFor(ctx)).find(row=>row.kind===kind);
   if(!info||body.review.route!==info.page)return refused('not_permitted');
   // Payroll history's upload is its own attempt; every other kind's file comes back with Confirm and must be the same.
