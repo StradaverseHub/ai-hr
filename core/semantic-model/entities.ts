@@ -101,7 +101,9 @@ export const SEMANTIC_ENTITIES:readonly SemanticEntity[]=freeze([
    f('adjustments','number','bands','Adjustments this cycle.'),f('totalEntitlement','number','bands','Total entitlement.'),
    f('takenThisCycle','number','bands','Days taken this cycle.'),f('pendingApproval','number','bands','Days awaiting approval.'),
    f('forfeitedThisCycle','number','bands','Days forfeited.'),f('carryForwardExpiryDate','date','minimum','When carried days expire.'),
-   f('totalAvailable','number','bands','Days available.'),f('withheld','boolean','full','Whether ESS visibility hid part of the breakdown.'),
+   f('totalAvailable','number','bands','Days available.'),
+   // Spec v23: the breakdown names the fields it does not show (core/assistant-leave-projection.ts), as a balance row does.
+   f('notShown','list','full','Fields of this breakdown not shown to the person, by name (ESS visibility); every figure present is real.'),
    f('transactions','list','minimum','Recent ledger rows behind the figure.',{of:[f('effectiveOn','date','minimum','Ledger date.'),f('entryType','enum','full','Ledger entry kind.'),
     f('days','number','bands','Day quantity.'),f('sourceRequestId','id','never','Handle of the leave request.'),f('reason','text','never','Free text recorded on the entry.')]}),
    // Step 4: the breakdown fields the Mine projection already returns (run 41302596155). The caller's own day

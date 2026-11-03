@@ -94,9 +94,10 @@ describe('the payroll-cycle loop reads',()=>{
     expect(offered,name).not.toContain(name);
     expect(await read(name,ctx),name).toMatchObject({ok:false,refusal:'not_permitted'});
    }
-   const {result,model}=await turn(ctx,'Is this month\'s payroll on track?',[{calls:[{name:'payroll_cycle_status'}]},{final:{reply:'That is for your HR administrator.',mode:'answer'}}]);
-   expect(model.requests[0].tools.map(tool=>tool.name)).not.toContain('payroll_cycle_status');
-   expect(result.trace.calls).toEqual([expect.objectContaining({tool:'payroll_cycle_status',status:'not_offered'})]);expect(result.reads).toEqual([]);
+   // Spec v23: the four are operations_status topics; with no administrator topic the tool is not bound.
+   const {result,model}=await turn(ctx,'Is this month\'s payroll on track?',[{calls:[{name:'operations_status',args:{topic:'payroll_cycle'}}]},{final:{reply:'That is for your HR administrator.',mode:'answer'}}]);
+   for(const name of ['operations_status',...READS])expect(model.requests[0].tools.map(tool=>tool.name)).not.toContain(name);
+   expect(result.trace.calls).toEqual([expect.objectContaining({tool:'operations_status',status:'not_offered'})]);expect(result.reads).toEqual([]);
   }
  },60000);
 
@@ -140,16 +141,17 @@ describe('the payroll-cycle loop reads',()=>{
  },60000);
 
  it.each([
-  ['payroll_cycle_status','payroll_cycle','Is this month\'s payroll on track?'],
-  ['salary_payroll_checks','salary_payroll_run','Did the bank files match net pay this month?'],
-  ['payroll_loop_settings','payroll_loop_setting','What is our net-swing threshold?'],
-  ['payroll_audit_status','payroll_audit_status','Are last month\'s statutory files filed?'],
-] as const)('%s reaches the model declared in full, with no administrator and no id',async(name,entity,question)=>{
+  ['payroll_cycle_status','payroll_cycle','payroll_cycle','Is this month\'s payroll on track?'],
+  ['salary_payroll_checks','salary_payroll','salary_payroll_run','Did the bank files match net pay this month?'],
+  ['payroll_loop_settings','payroll_loop_settings','payroll_loop_setting','What is our net-swing threshold?'],
+  ['payroll_audit_status','payroll_audit','payroll_audit_status','Are last month\'s statutory files filed?'],
+] as const)('%s reaches the model as its operations_status topic, declared in full, with no administrator and no id',async(name,topic,entity,question)=>{
   const {group,second}=await fixture();
-  const {result,model}=await turn(group,question,[{calls:[{name}]},{final:{reply:'Here is what the page shows.',mode:'answer'}}]);
-  expect(model.requests[0].tools.map(tool=>tool.name)).toContain(name);
-  expect(result.trace.calls).toEqual([expect.objectContaining({tool:name,status:'ok'})]);
-  expect(result.trace.disclosure[0]).toMatchObject({tool:name,entity,undeclared:[],removed:[]});
+  const {result,model}=await turn(group,question,[{calls:[{name:'operations_status',args:{topic}}]},{final:{reply:'Here is what the page shows.',mode:'answer'}}]);
+  expect(model.requests[0].tools.map(tool=>tool.name)).toContain('operations_status');expect(model.requests[0].tools.map(tool=>tool.name)).not.toContain(name);
+  expect(result.trace.calls).toEqual([expect.objectContaining({tool:'operations_status',status:'ok'})]);
+  // Disclosed under the read's own entity, exactly as when it was a tool of its own.
+  expect(result.trace.disclosure[0]).toMatchObject({tool:'operations_status',entity,undeclared:[],removed:[]});
   const sent=lastToolResult(model.requests[1]);
   expect(sent).toContain(second);
   expect(sent).not.toMatch(UUID);expect(sent).not.toMatch(ADMIN_NAMES);

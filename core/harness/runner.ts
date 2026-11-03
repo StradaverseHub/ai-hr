@@ -272,8 +272,10 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
    if(unknownHandle){record('unknown_handle',{ok:false,message:'Use a handle exactly as an earlier result in this conversation turn gave it; never guess one.'});continue;}
    let run:Awaited<ReturnType<ToolBinding['run']>>;
    try{run=await binding.run(resolved);}catch{record('error',{ok:false,message:'This source is unavailable for this request.'});continue;}
-   // Reads and suggest_action are disclosed under their declared entity; context tools (no entity) are swept.
-   const disclosed=discloseToolOutput(binding.name,binding.entity,run.content,ledger,{namesInScope:run.namesInScope});disclosure.push(disclosed.applied);
+   // Reads and suggest_action are disclosed under their declared entity; context tools (no entity) are swept. Spec v23: a
+   // topic tool's result is disclosed under the entity of the topic its validated input names.
+   const entity=binding.entityOf?binding.entityOf(resolved):binding.entity;
+   const disclosed=discloseToolOutput(binding.name,entity,run.content,ledger,{namesInScope:run.namesInScope});disclosure.push(disclosed.applied);
    screening.tools+=disclosed.applied.identifiers;for(const kind of disclosed.applied.identifierKinds)if(!screening.kinds.includes(kind))screening.kinds.push(kind);
    if(run.ok&&binding.kind!=='suggest')reads.push(binding.name);
    if(run.suggestion)suggestion=run.suggestion;

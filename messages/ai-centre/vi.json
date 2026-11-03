@@ -968,7 +968,9 @@
         "explain_attendance_day": "cách tính chấm công",
         "setup_copilot": "các bước thiết lập",
         "explain_pay_difference": "chênh lệch lương của bạn",
-        "explain_claim_limit": "hạn mức hoàn ứng của bạn"
+        "explain_claim_limit": "hạn mức hoàn ứng của bạn",
+        "explain_why": "phần giải thích",
+        "operations_status": "hoạt động của AI Centre"
       },
       "errors": {
         "invalid_question": "Vui lòng đặt câu hỏi tối đa 2.000 ký tự.",

@@ -99,9 +99,10 @@ describe('loops_overview',()=>{
   for(const ctx of [employee,manager]){
    expect((await terasCapabilitiesFor(ctx)).map(row=>row.name)).not.toContain('loops_overview');
    expect(await capability.run(ctx,{},{companyId:b.companyId})).toEqual({ok:false,refusal:'not_permitted',message:'The loops overview is available to administrators only.'});
-   const {result,model}=await turn(ctx,'Which loops are switched on?',[{calls:[{name:'loops_overview'}]},{final:{reply:'That is for your HR administrator.',mode:'answer'}}]);
-   expect(model.requests[0].tools.map(tool=>tool.name)).not.toContain('loops_overview');
-   expect(result.trace.calls).toEqual([expect.objectContaining({tool:'loops_overview',status:'not_offered'})]);expect(result.reads).toEqual([]);
+   // Spec v23: the loops overview is operations_status's loops topic; with no administrator topic the tool is not bound.
+   const {result,model}=await turn(ctx,'Which loops are switched on?',[{calls:[{name:'operations_status',args:{topic:'loops'}}]},{final:{reply:'That is for your HR administrator.',mode:'answer'}}]);
+   for(const name of ['operations_status','loops_overview'])expect(model.requests[0].tools.map(tool=>tool.name)).not.toContain(name);
+   expect(result.trace.calls).toEqual([expect.objectContaining({tool:'operations_status',status:'not_offered'})]);expect(result.reads).toEqual([]);
   }
  },60000);
 
@@ -145,10 +146,11 @@ describe('loops_overview',()=>{
 
  it('reaches the model declared in full, with no employee, sponsor or id',async()=>{
   const {group,firstName}=await fixture();
-  const {result,model}=await turn(group,'Which loops are switched on, and where is any paused?',[{calls:[{name:'loops_overview'}]},{final:{reply:'The probation loop is on.',mode:'answer'}}]);
-  expect(model.requests[0].tools.map(tool=>tool.name)).toContain('loops_overview');
-  expect(result.trace.calls).toEqual([expect.objectContaining({tool:'loops_overview',status:'ok'})]);
-  expect(result.trace.disclosure[0]).toMatchObject({tool:'loops_overview',entity:'loop_overview',undeclared:[],removed:[]});
+  // Spec v23: reached as operations_status's loops topic, disclosed under the loops overview's own entity.
+  const {result,model}=await turn(group,'Which loops are switched on, and where is any paused?',[{calls:[{name:'operations_status',args:{topic:'loops'}}]},{final:{reply:'The probation loop is on.',mode:'answer'}}]);
+  expect(model.requests[0].tools.map(tool=>tool.name)).toContain('operations_status');expect(model.requests[0].tools.map(tool=>tool.name)).not.toContain('loops_overview');
+  expect(result.trace.calls).toEqual([expect.objectContaining({tool:'operations_status',status:'ok'})]);
+  expect(result.trace.disclosure[0]).toMatchObject({tool:'operations_status',entity:'loop_overview',undeclared:[],removed:[]});
   const sent=lastToolResult(model.requests[1]);
   expect(sent).toContain('loop_probation_ending');expect(sent).toContain(firstName);expect(sent).toContain('watch');expect(sent).toContain('loop_salary_payroll');
   expect(sent).not.toMatch(UUID);expect(sent).not.toMatch(/Probationer|Group Administrator|Company Administrator/);

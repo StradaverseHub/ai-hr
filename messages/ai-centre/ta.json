@@ -968,7 +968,9 @@
         "explain_attendance_day": "வருகைக் கணக்கீடு",
         "setup_copilot": "அமைப்புப் படிகள்",
         "explain_pay_difference": "உங்கள் ஊதிய வேறுபாடு",
-        "explain_claim_limit": "உங்கள் கோரிக்கை வரம்புகள்"
+        "explain_claim_limit": "உங்கள் கோரிக்கை வரம்புகள்",
+        "explain_why": "விளக்கம்",
+        "operations_status": "AI Centre செயல்பாடுகள்"
       },
       "errors": {
         "invalid_question": "2,000 எழுத்துகள் வரையிலான கேள்வியைக் கேளுங்கள்.",

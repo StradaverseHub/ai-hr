@@ -968,7 +968,9 @@
         "explain_attendance_day": "the attendance calculation",
         "setup_copilot": "setup steps",
         "explain_pay_difference": "your pay difference",
-        "explain_claim_limit": "your claim limits"
+        "explain_claim_limit": "your claim limits",
+        "explain_why": "the explanation",
+        "operations_status": "AI Centre operations"
       },
       "errors": {
         "invalid_question": "Please ask a question of up to 2,000 characters.",

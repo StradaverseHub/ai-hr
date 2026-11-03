@@ -147,10 +147,11 @@ describe('defect 3: a pay refusal points where this caller already sees pay',()=
   expect((await turn(CALLERS.groupAdmin,asked,refusal,{destinations:PAYROLL_PAGES,locale:'ms'})).system).toContain('[Slip Gaji Individu](/payroll/individual-payslip)');
   expect((await turn(CALLERS.hrAdmin,asked,refusal,{destinations:['/leave','/me/payslip','/payroll']})).system).toContain('[Payroll Process](/payroll)');
  });
- it('tells a payroll partner with no such page who can help, and leaves an employee or manager turn as before v11',async()=>{
-  const partner=await turn(CALLERS.payroll,"what was Siti's net pay in September?",[{final:{reply:'Pay is not shown in chat; your HR administrator can help.',mode:'refuse'}}]);
+ it('tells a payroll partner with no such page that none shows it, never "ask HR" (v23, pay-net-1), and leaves an employee or manager turn as before v11',async()=>{
+  const partner=await turn(CALLERS.payroll,"what was Siti's net pay in September?",[{final:{reply:'Pay is not shown in chat, and no page you can open shows it.',mode:'refuse'}}]);
   expect(partner.result.trace.gate.reason).toBe('other_person');
   expect(partner.system).toContain(HARNESS_SPEC.payView.none);expect(partner.system).not.toContain('](/payroll');
+  expect(HARNESS_SPEC.payView.none).toMatch(/never send them to HR or the payroll team/);expect(HARNESS_SPEC.payView.none).not.toMatch(/HR administrator can help/);
   for(const ctx of [CALLERS.employee,CALLERS.manager]){
    // Even a destination list holding payroll pages adds nothing for a caller without payroll access.
    const {system,result}=await turn(ctx,asked,refusal,{destinations:PAYROLL_PAGES});
@@ -177,7 +178,8 @@ describe('spec v11 instructions',()=>{
  it('no longer contradicts itself about preparing',()=>{
   expect(instructions).toMatch(/start with "Yes, I can …" and call suggest_action/);
   expect(instructions).toMatch(/never open with "I can't" when an action is listed/);
-  expect(instructions).toMatch(/Only when its result says a review item is ready or a form is filled in, write "I've prepared … for you to review and confirm"/);
+  // v23 (eval 41679463324, mgr-queue-2): the earned wording is "ready for you to review and confirm", never "I've prepared …".
+  expect(instructions).toMatch(/Only when its result says a review item is ready or a form is filled in, say it is ready for them to review and confirm \(for a decision: "a decision card is ready for you to review and confirm"\); never write "I've prepared …"/);
   expect(instructions).toMatch(/Never say anything is submitted, approved, closed or done/);
   expect(instructions).not.toMatch(/never say anything is prepared/i);
   expect(instructions).not.toMatch(/you prepare it here with them/);

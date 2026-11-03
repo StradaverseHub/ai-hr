@@ -968,7 +968,9 @@
         "explain_attendance_day": "การคำนวณการเข้างาน",
         "setup_copilot": "ขั้นตอนการตั้งค่า",
         "explain_pay_difference": "ส่วนต่างเงินเดือนของคุณ",
-        "explain_claim_limit": "วงเงินเบิกของคุณ"
+        "explain_claim_limit": "วงเงินเบิกของคุณ",
+        "explain_why": "คำอธิบาย",
+        "operations_status": "การดำเนินงานของ AI Centre"
       },
       "errors": {
         "invalid_question": "โปรดถามคำถามไม่เกิน 2,000 ตัวอักษร",

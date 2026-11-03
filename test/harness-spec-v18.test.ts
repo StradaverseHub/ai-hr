@@ -28,19 +28,19 @@ const count=(pattern:RegExp)=>instructions.filter(line=>pattern.test(line)).leng
 const line=(start:string)=>{const found=instructions.filter(row=>row.startsWith(start));expect(found,start).toHaveLength(1);return found[0];};
 
 describe('spec v18',()=>{
- it('is version 22 (v20 plus the folded guidance topics, test/harness-spec-v22.test.ts) with its digest recorded, and every earlier digest is kept',()=>{
-  expect(HARNESS_SPEC.version).toBe(22);expect(HARNESS_SPEC_DIGESTS[22]).toBe(harnessSpecDigest());
+ it('is version 23 (the topic tools and the Phase 2 lines, test/harness-spec-v23.test.ts) with its digest recorded, and every earlier digest is kept',()=>{
+  expect(HARNESS_SPEC.version).toBe(23);expect(HARNESS_SPEC_DIGESTS[23]).toBe(harnessSpecDigest());
   expect(HARNESS_SPEC_DIGESTS[20]).toBe('87f846496918cf773ce778eefb288b1a41bf4c518d8e1463b9aa4d91755bda04');
   expect(HARNESS_SPEC_DIGESTS[19]).toBe('44e9708772ac71c0fcdc29b117769b34424fb21f4d5e1f45d1a3fe4795046b7c');
   expect(HARNESS_SPEC_DIGESTS[18]).toBe('7802392d1738b72c2035ff25c2009c07e559c865ca4fb6cb3bb30493dfd99759');
   expect(HARNESS_SPEC_DIGESTS[17]).toBe('818c217a300e529088f03f66042c57dc00de21be787a802a60ed2cf84692e3a8');
-  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]);
+  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]);
  });
- it('adds under 1,500 characters of instructions to v17\'s 5,216 for the eight queued rules (v19: 6,673)',()=>{
+ it('adds under 1,500 characters of instructions to v17\'s 5,216 for the eight queued rules (v19: 6,673; v23: 8,329)',()=>{
   // v13 sent 6,148 characters and each model call slowed (run 41577698046); v18 folds slices 2 and 3 into 24 lines, the new
-  // ones short because each tool's own description carries its detail.
-  expect(instructions).toHaveLength(24);
-  expect(instructions.join(' ').length).toBeLessThanOrEqual(6700);
+  // ones short because each tool's own description carries its detail. v23 adds Phase 2's five lines (29 in all).
+  expect(instructions).toHaveLength(29);
+  expect(instructions.join(' ').length).toBeLessThanOrEqual(8400);
  });
 });
 
@@ -49,8 +49,9 @@ describe('the rules v18 folds in, one each',()=>{
   expect(line('Headcount, joiners')).toBe('Headcount, joiners, leavers, turnover, overtime and leave liability come from workforce_metrics: a withheld group is too small to report, never 0; overtime is hours and leave is days, never pay or money.');
   expect(count(/workforce_metrics/)).toBe(1);
  });
- it('"Why?": the three explainers, their figures quoted exactly and only the causes they list; the pay rule names them as its one exception',()=>{
-  expect(line('Why the person')).toBe('Why the person\'s own pay changed, a payslip deduction or a claim limit: call explain_pay_difference, explain_payslip_statutory or explain_claim_limit, quote its figures exactly and name only the causes it lists.');
+ it('"Why?": the explainers, their figures quoted exactly and only the causes they list; the pay rule names them as its one exception',()=>{
+  // v23: the explainers are explain_why's topics (test/harness-spec-v23.test.ts).
+  expect(line('Why the person')).toBe('Why the person\'s own pay changed, a payslip deduction, a claim limit, a leave entitlement or an attendance day: call explain_why with that topic (pay_difference, payslip_statutory, claim_limit, leave_entitlement or attendance_day), quote its figures exactly and name only the causes it lists.');
   // The pay rule above it no longer contradicts the explainers.
   expect(line('Individual pay never reaches you')).toMatch(/^Individual pay never reaches you, so never give or estimate anyone's pay beyond what the explainers below show of the person's own payslips\. /);
   expect(instructions.findIndex(row=>row.startsWith('Individual pay'))).toBeLessThan(instructions.findIndex(row=>row.startsWith('Why the person')));

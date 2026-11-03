@@ -968,7 +968,9 @@
         "explain_attendance_day": "pengiraan kehadiran",
         "setup_copilot": "langkah persediaan",
         "explain_pay_difference": "perbezaan gaji anda",
-        "explain_claim_limit": "had tuntutan anda"
+        "explain_claim_limit": "had tuntutan anda",
+        "explain_why": "penjelasan",
+        "operations_status": "operasi AI Centre"
       },
       "errors": {
         "invalid_question": "Sila tanya soalan sehingga 2,000 aksara.",

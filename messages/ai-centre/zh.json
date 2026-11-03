@@ -968,7 +968,9 @@
         "explain_attendance_day": "考勤计算",
         "setup_copilot": "设置步骤",
         "explain_pay_difference": "您的工资差异",
-        "explain_claim_limit": "您的报销限额"
+        "explain_claim_limit": "您的报销限额",
+        "explain_why": "相关说明",
+        "operations_status": "AI Centre 运营状态"
       },
       "errors": {
         "invalid_question": "请提出不超过 2,000 个字符的问题。",

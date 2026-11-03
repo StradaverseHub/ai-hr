@@ -1,9 +1,13 @@
 /** The provider tool ceiling, per role, over the real tool provider on fictional data (release merge, coordinator decision
  * of 3 November 2026). lib/ai/teras-harness-policy.ts refuses a model call that declares more than 32 tools, counting
  * final_answer and the inert declaration of a tool an earlier step called but this step does not offer. v21 put an HR
- * administrator's biggest turn at 33; v22 folds main's two page guides into product_guidance. This computes each role's
- * worst case, with every module this suite can switch on, the explainers worker on, the capability catalogue offered and
- * one re-offered history tool, so the next tool that would cross the ceiling fails here instead of in production. */
+ * administrator's biggest turn at 33; v22 folds main's two page guides into product_guidance. Phase 2 put HR and group
+ * administrators at 39 (employee 27, manager 28, payroll partner 28); v23 (AI v2 Phase 2 hardening, coordinator decision of
+ * 4 November 2026) folds the loops overview and the five Phase 2 administrator reads into operations_status and the five
+ * "Why?" explainers into explain_why (core/semantic-model/topic-tools.ts), so every role's worst case is at most 30: two tools
+ * of headroom under the ceiling. This computes each role's worst case, with every module this suite can switch on, the
+ * explainers worker on, the capability catalogue offered and one re-offered history tool, so the next tool that would cross
+ * the headroom fails here instead of in production. */
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
@@ -16,11 +20,14 @@ import {offerFor} from '../core/harness/runner';
 import {HARNESS_SPEC} from '../core/harness/spec';
 import {setWorkerSwitch} from '../core/agent-registry/controls';
 import {gateTurn} from '../lib/product-context/request-gate';
+import {FOLDED_READS,TOPIC_TOOLS} from '../core/semantic-model/topic-tools';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 /** The policy's ceiling, read from its own refusal so a change there is a change here. */
 const POLICY=readFileSync('lib/ai/teras-harness-policy.ts','utf8');
 const CEILING=Number(/if\(tools\.length>(\d+)\)return privatePolicyRefusal\(\);/.exec(POLICY)?.[1]);
+/** v23: the coordinator's target, two tools of headroom under the ceiling. */
+const HEADROOM=2;
 /** Every module the capability catalogue suite switches, on: the most tools any caller can be bound. */
 const MODULES=['assistant','payroll','attendance','claims','performance','rewards','lifecycle','toil','multi_cycle_payroll','typed_pay_components','country-my','notifications','system_explorer','system_testing'];
 
@@ -65,11 +72,22 @@ describe('the provider tool ceiling',()=>{
    worst[role]=offered.length+1/* final_answer */+1/* one inert history declaration */;
   }
   console.info('[tool-ceiling]',JSON.stringify(worst));
-  for(const [role,count] of Object.entries(worst))expect(count,role+' worst-case tools per call').toBeLessThanOrEqual(CEILING);
+  for(const [role,count] of Object.entries(worst))expect(count,role+' worst-case tools per call').toBeLessThanOrEqual(CEILING-HEADROOM);
+  // Written out from the bindings each role has (v23): an administrator's 39 less the 5 the operations topics save and the
+  // 4 the explainer topics save; everyone else less the 4.
+  expect(worst).toEqual({employee:23,manager:24,hrAdmin:30,payroll:24,groupAdmin:30});
   // The administrators carry the most tools; the folded guides are reached through product_guidance, never bound.
   expect(worst.groupAdmin).toBeGreaterThan(worst.employee);
   const {bindings}=await nativeToolProvider(callers.groupAdmin,{companyId:base.companyId,locale:'en'},true);
   expect(bindings.map(binding=>binding.name)).not.toContain('password_policy_guidance');
   expect(bindings.map(binding=>binding.name)).not.toContain('correction_controls_guidance');
+  // v23: every folded read is reached through its topic tool, never bound itself; both topic tools are bound for a group
+  // administrator, explain_why for everyone (the explainers worker is on), operations_status for administrators only.
+  for(const read of FOLDED_READS.keys())expect(bindings.map(binding=>binding.name),read).not.toContain(read);
+  for(const tool of TOPIC_TOOLS)expect(bindings.map(binding=>binding.name)).toContain(tool.name);
+  for(const role of ['employee','manager','payroll'] as const){
+   const names=(await nativeToolProvider(callers[role],{companyId:base.companyId,locale:'en'},true)).bindings.map(binding=>binding.name);
+   expect(names,role).toContain('explain_why');expect(names,role).not.toContain('operations_status');
+  }
  });
 });

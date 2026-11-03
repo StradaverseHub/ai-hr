@@ -37,13 +37,27 @@ describe('explainer disclosure',()=>{
   const ledger=new DisclosureLedger('me');
   const {value,applied}=discloseToolOutput('explain_leave_entitlement','entitlement_explanation',{ok:true,leaveType:'Annual Leave',asOf:'2026-11-01',employments:[{company:'Fictional Ceria',leaveType:'Annual Leave',
    cycleStart:'2026-01-01',entitlementStatus:'generated',entitlementTemplateName:'Fictional Standard',eligibility:null,displayEntitlementDays:14,currentYearEntitlement:11.67,currentYearEntitlementRounded:11.5,
-   broughtForward:2,adjustments:0,totalEntitlement:13.5,takenThisCycle:3,pendingApproval:1,forfeitedThisCycle:0,carryForwardExpiryDate:'2026-06-30',totalAvailable:9.5,withheld:false,
+   broughtForward:2,adjustments:0,totalEntitlement:13.5,takenThisCycle:3,pendingApproval:1,forfeitedThisCycle:0,carryForwardExpiryDate:'2026-06-30',totalAvailable:9.5,notShown:[],
    eligibleDays:14,monthlyAccruedToDate:11.67,carriedForward:2,carryForwardRemaining:0,configAdjustments:0,systemAdjustments:0,balance:10.5,
    transactions:{rows:[{effectiveOn:'2026-01-31',entryType:'accrual',days:1.17,sourceRequestId:ID,reason:'typed by HR'}],truncated:false,totalRows:1},
    proration:{annualEntitlementDays:14,prorated:false,eligibleCalendarDays:null,daysInLeaveYear:null,unroundedEntitlementDays:14,displayEntitlementDays:14,roundingApplied:false}}],
    provenance:{owner:'core/read.ts#leaveEntitlementBreakdown',ruleVersionSource:'x',page:'/leave',note:'y'}},ledger);
   expect(applied.undeclared).toEqual([]);expect(applied.removed).toEqual(['employments[0].transactions.rows[0].reason']);
   expect(JSON.stringify(value)).not.toMatch(/11\.67|:14[,}]|typed by HR/);expect(JSON.stringify(value)).not.toContain(ID);expect(JSON.stringify(value)).toContain('Fictional Standard');
+ });
+ it('names what a partly hidden breakdown does not show (spec v23 notShown), and drops a stray withheld flag as undeclared',()=>{
+  const ledger=new DisclosureLedger('me');
+  const {value,applied}=discloseToolOutput('explain_leave_entitlement','entitlement_explanation',{ok:true,leaveType:'Medical Leave',asOf:'2026-11-01',employments:[{company:'Fictional Ceria',leaveType:'Medical Leave',
+   cycleStart:'2026-01-01',entitlementStatus:'generated',entitlementTemplateName:'Fictional Standard',eligibility:null,displayEntitlementDays:14,currentYearEntitlement:11.67,currentYearEntitlementRounded:11.5,
+   broughtForward:null,adjustments:0,totalEntitlement:13.5,takenThisCycle:3,pendingApproval:1,forfeitedThisCycle:null,carryForwardExpiryDate:null,totalAvailable:9.5,
+   notShown:['broughtForward','forfeitedThisCycle','carryForwardExpiryDate','eligibleDays','monthlyAccruedToDate','carriedForward','carryForwardRemaining','configAdjustments','systemAdjustments','balance','transactions'],
+   withheld:true,proration:{annualEntitlementDays:14,prorated:false,eligibleCalendarDays:null,daysInLeaveYear:null,unroundedEntitlementDays:14,displayEntitlementDays:14,roundingApplied:false}}],
+   provenance:{owner:'core/read.ts#leaveEntitlementBreakdown',ruleVersionSource:'x',page:'/leave',note:'y'}},ledger);
+  // notShown is declared in full: the names reach the model; a figure that is present is still a band.
+  const row=(value as {employments:Record<string,unknown>[]}).employments[0];
+  expect(row.notShown).toEqual(['broughtForward','forfeitedThisCycle','carryForwardExpiryDate','eligibleDays','monthlyAccruedToDate','carriedForward','carryForwardRemaining','configAdjustments','systemAdjustments','balance','transactions']);
+  expect(String(row.totalAvailable)).toMatch(/^\{\{F\d+\}\} \(between 5 and 10\)$/);
+  expect(applied.undeclared).toEqual(['employments[0].withheld']);expect(row).not.toHaveProperty('withheld');
  });
  it('keeps the attendance working sentences and declares every attendance field',()=>{
   const {value,applied}=discloseToolOutput('explain_attendance_day','attendance_day_explanation',{ok:true,date:'2026-07-01',company:'Fictional Ceria',status:'present',flag:'late',

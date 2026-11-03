@@ -37,12 +37,13 @@ export async function explainOwnLeaveEntitlement(ctx:SessionContext,input:Readon
   for(const employment of employments){
    const breakdown=await read.leaveEntitlementBreakdown(employment.employmentId,typeId,asOf);if(!breakdown)continue;
    const mine=projectMineLeaveEntitlement(breakdown);
-   // The proration working is the entitlement figure's own working: hidden whenever that figure is.
-   explained.push({company:employment.company,...mine,proration:mine.displayEntitlementDays===null?null:{...breakdown.entitlement}});
+   // The proration working is the entitlement figure's own working: hidden whenever that figure is, and then named in notShown.
+   const hidden=mine.notShown.includes('displayEntitlementDays');
+   explained.push({company:employment.company,...mine,notShown:hidden?[...mine.notShown,'proration']:mine.notShown,proration:hidden?null:{...breakdown.entitlement}});
   }
   if(!explained.length)return refuse('no_data','That leave type carries no entitlement on the asking person\'s own record.');
   return{ok:true,leaveType:types.get(typeId),asOf,employments:explained,
    provenance:provenance('core/read.ts#leaveEntitlementBreakdown','Not published: the entitlement table version is not returned by the breakdown yet.','/leave',
-    'Figures are the leave summary\'s own; withheld means the company hides part of it from employees. The full-year allowance comes from the entitlement table that applied; a part year is prorated by days of service.')};
+    'Figures are the leave summary\'s own; notShown names the parts the company hides from employees, and every figure present is real. The full-year allowance comes from the entitlement table that applied; a part year is prorated by days of service.')};
  });
 }
