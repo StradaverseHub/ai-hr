@@ -134,7 +134,7 @@ describe('AI centre catalogue completeness', () => {
       example: 'Can NAME_A take leave on DATE_A?', expectation: 'Gives the balance in one line.',
       // AI v2 Phase 2 hardening: arguments of the grouped swings and the standing-rule proposals (aiCentre.payrollCycle.groups.*,
       // aiCentre.payrollCycle.acknowledgements.*).
-      change: '+12.5%', check: 'Pay without attendance', runs: 6 };
+      change: '+12.5%', causes: 'Salary change', check: 'Pay without attendance', runs: 6 };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });

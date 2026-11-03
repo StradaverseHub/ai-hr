@@ -36,7 +36,7 @@ import {listPayComponents,seedPayComponentCatalog,setEmploymentPayComponent,setP
 import {upsertCompanyBankProfile} from '../core/bank-profile';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {closeBatch,createAdditionalRun,createBatch,generatePayslips,payrollReadiness} from '../packs/payroll/service';
-import {resolveAnomalyVerdict,thresholdsInForce} from '../core/payroll-anomaly';
+import {evaluateBatchAnomalies,resolveAnomalyVerdict,thresholdsInForce} from '../core/payroll-anomaly';
 import {checkIn,checkOut,requestAttendanceCorrection} from '../core/attendance';
 import {assignDefaultShift,createShift} from '../core/roster';
 import {ensureAgentPrincipal} from '../core/agent-principal';
@@ -306,6 +306,8 @@ describe('the Salary payroll loop',()=>{
     employmentType:'full_time',hiredOn:'2026-07-15'})).personId}).returning({id:schema.appUser.id});
   await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:officer.id,companyId:null,role:'hr_admin'});
   await closeBatch({...a,userId:officer.id},{batchId:fx.june});
+  // The anomaly checks run over the closed run (the anomaly sweep, or payroll HR's Evaluate): a run nobody checked is not done.
+  await evaluateBatchAnomalies(group,{batchId:fx.june});
   expect(await run('loop_salary_payroll')).toMatchObject({status:'ran'});
   // Phase 2 hardening: closed is not done while anything is unresolved: the run's open exceptions and the month's
   // net-swing flags still waiting for payroll HR. Resolved and disposed of by a person, the next run finds it done.
@@ -433,7 +435,8 @@ describe('the Salary payroll loop',()=>{
   expect((await proposals()).setting).toMatchObject({version:2,exclusions:[]});
   // Phase 2 hardening: only a GROUP administrator approves, and never the one whose dispositions the proposal rests on.
   const exclusion=view.proposals.find(p=>p.kind==='exclusion')!;
-  await expect(decideThresholdProposal(await companyAdministrator(b,other.id),{companyId:b.companyId,proposalKey:exclusion.key,decision:'approved'})).rejects.toMatchObject({reason:'group_administrator'});
+  // An administrator of another company only is not this company's administrator at all; this company's own is not a group one.
+  await expect(decideThresholdProposal(await companyAdministrator(b,other.id),{companyId:b.companyId,proposalKey:exclusion.key,decision:'approved'})).rejects.toMatchObject({reason:'not_administrator'});
   await expect(decideThresholdProposal(await companyAdministrator(b,b.companyId),{companyId:b.companyId,proposalKey:exclusion.key,decision:'approved'})).rejects.toMatchObject({reason:'group_administrator'});
   await expect(decideThresholdProposal(group,{companyId:b.companyId,proposalKey:exclusion.key,decision:'approved'})).rejects.toMatchObject({reason:'own_evidence'});
   // The database refuses it too, even past the service.

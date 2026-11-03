@@ -163,8 +163,11 @@ describe('A4 and A1: control settings are bounded, loosening is a group administ
   await capturePayrollPeriod(group,{companyId:b.companyId,payPeriod:todayMonth()});
   const config=(await withTenant(group,tx=>tx.select().from(payrollAuditCapture).where(and(eq(payrollAuditCapture.kind,'config_change'),eq(payrollAuditCapture.companyId,b.companyId)))))
    .map(row=>row.content as {eventType:string;actorId:string;payload:{after?:unknown;to?:unknown}});
-  expect(config.filter(item=>item.eventType==='payroll-audit.settings-changed').map(item=>[item.actorId,item.payload.after])).toEqual([
-   [local.userId,{bankChangeDays:10,adjustmentThreshold:'800.00',preparerClosedMode:'finding'}],[group.userId,{bankChangeDays:5,adjustmentThreshold:'1200.00',preparerClosedMode:'info'}]]);
+  // Both changes, in whichever order the captures are read back.
+  const settingsChanges=config.filter(item=>item.eventType==='payroll-audit.settings-changed').map(item=>[item.actorId,item.payload.after]);
+  expect(settingsChanges).toHaveLength(2);
+  expect(settingsChanges).toEqual(expect.arrayContaining([
+   [local.userId,{bankChangeDays:10,adjustmentThreshold:'800.00',preparerClosedMode:'finding'}],[group.userId,{bankChangeDays:5,adjustmentThreshold:'1200.00',preparerClosedMode:'info'}]]));
   expect(config.filter(item=>item.eventType==='teras-payroll-loop.setting-changed').map(item=>(item.payload.to as {thresholdBp:number}).thresholdBp)).toEqual([2500]);
  });
 });
