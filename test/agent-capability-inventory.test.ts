@@ -117,6 +117,24 @@ describe('ADR-0151 agent capability inventory',()=>{
   }
  });
 
+ it('keeps the private case route (ADR-0173) and the loop controls as human handoffs, never AI-preparable',()=>{
+  // Written by hand: the five private-case entry points and the two loop controls.
+  const expected:Record<string,Record<string,string>>={
+   'app/me/cases/actions.ts':{openPrivateCaseAction:'handoff:private_case'},
+   'app/cases/actions.ts':{addPrivateCaseNoteAction:'handoff:private_case',setPrivateCaseStatusAction:'handoff:private_case'},
+   'app/admin/privacy/case-handlers/actions.ts':{designateCaseHandlerAction:'handoff:access_and_authentication',revokeCaseHandlerAction:'handoff:access_and_authentication'},
+   'app/control-tower/loops/actions.ts':{setLoopPauseAction:'handoff:ai_governance',setLoopSwitchAction:'handoff:ai_governance'},
+  };
+  for(const [file,entries] of Object.entries(expected)){
+   expect(actual[file]?.slice().sort(),file).toEqual(Object.keys(entries).sort());
+   expect(inventory[file],file).toEqual(entries);
+  }
+  // No other entry point in a private-case file is registered or on the backlog.
+  for(const [file,entries] of Object.entries(inventory))if(/(^|\/)cases\/|case-handlers/.test(file))
+   for(const [name,value] of Object.entries(entries))expect(value,`${file} › ${name}`).toMatch(/^handoff:/);
+  expect(AGENT_HANDOFF_REASONS).toContain('private_case');
+ });
+
  it('lets the agent principal run only Automatic specialists that exist and match its switches (ADR-0151 §4.5)',()=>{
   // The same switches migration 0672 names in its attribution read and its event stamp check.
   // WP13 (0697) replaced both policies with the same rule plus the two reminder specialists.

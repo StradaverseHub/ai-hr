@@ -26,7 +26,9 @@ import {AGENT_ACTIONS,type AgentActionId,type AgentActionOf} from './agent-actio
 
 export {type AgentTier} from './agent-action-tiers';
 import type {AgentTier} from './agent-action-tiers';
-export const AGENT_HANDOFF_REASONS=['access_and_authentication','ai_governance','platform_operator','privacy_erasure','payroll_reversal','employment_exit_or_discipline'] as const;
+/** private_case (ADR-0173): a person's own private case and its handlers' acts. The AI never reads, prepares or acts on
+ * a case; a routed sensitive turn only links the form. */
+export const AGENT_HANDOFF_REASONS=['access_and_authentication','ai_governance','platform_operator','privacy_erasure','payroll_reversal','employment_exit_or_discipline','private_case'] as const;
 export const AGENT_INTERNAL_REASONS=['assistant_surface','session_and_presentation','other_client_same_service'] as const;
 export type AgentHandoffReason=(typeof AGENT_HANDOFF_REASONS)[number];
 export type AgentInternalReason=(typeof AGENT_INTERNAL_REASONS)[number];
@@ -127,6 +129,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/personnel/new/actions.ts":{"checkEmployeeCodeAction":"backlog:automatic","createDraftAction":"backlog:approve","createEmployeeAction":"backlog:approve","discardDraftAction":"backlog:approve","saveDraftAction":"backlog:approve"},
  "app/admin/personnel/profile-changes/actions.ts":{"decideProfileChangeAction":"backlog:approve","rerouteProfileChangeAction":"backlog:approve"},
  "app/admin/privacy/actions.ts":{"erasePersonPiiAction":"handoff:privacy_erasure"},
+ "app/admin/privacy/case-handlers/actions.ts":{"designateCaseHandlerAction":"handoff:access_and_authentication","revokeCaseHandlerAction":"handoff:access_and_authentication"},
  "app/admin/rewards/access/actions.ts":{"decideRewardAccessRequestAction":"handoff:access_and_authentication","previewRewardAccessBatchAction":"backlog:automatic","previewRewardAccessCopyAction":"backlog:automatic","saveRewardAccessBatchAction":"handoff:access_and_authentication"},
  "app/admin/rewards/actions.ts":{"cancelRewardAction":"registered:rewards.cancel_review"},
  "app/admin/rewards/shared/actions.ts":{"changeSharedRewardExclusionAction":"backlog:confirm","loadSharedRewardTakenAction":"backlog:automatic","saveSharedRewardPolicyAction":"backlog:confirm"},
@@ -231,10 +234,12 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/attendance/my-records/[date]/actions.ts":{"requestOwnAttendanceDayAction":"registered:attendance.correction.request"},
  "app/attendance/recompute/actions.ts":{"applyRecomputeAction":"backlog:confirm","previewRecomputeAction":"backlog:confirm"},
  "app/auth-actions.ts":{"logoutAction":"handoff:access_and_authentication","requestPasswordResetAction":"handoff:access_and_authentication","signOutUnlinkedAction":"handoff:access_and_authentication"},
+ "app/cases/actions.ts":{"addPrivateCaseNoteAction":"handoff:private_case","setPrivateCaseStatusAction":"handoff:private_case"},
  "app/claims/actions.ts":{"cancelClaimAction":"registered:claims.cancel","deleteDraftAction":"backlog:confirm","submitClaimAction":"backlog:confirm","submitDraftsAction":"registered:claims.submit"},
  "app/control-tower/actions/actions.ts":{"approveAgentActionAction":"handoff:ai_governance"},
  "app/control-tower/agents/actions.ts":{"applyBulkAssistantAction":"handoff:ai_governance","clearGroupAllowanceAction":"handoff:ai_governance","clearUserAllowanceAction":"handoff:ai_governance","setAiAllowanceAction":"handoff:ai_governance","setAiFeatureAction":"handoff:ai_governance","setAiFeatureCapAction":"handoff:ai_governance","setAgentActionPauseAction":"handoff:ai_governance","setAiSpendBudgetAction":"handoff:ai_governance","setAssistantPermissionAction":"handoff:ai_governance","setGroupAllowanceAction":"handoff:ai_governance"},
  "app/control-tower/agents/launcher-actions.ts":{"setAssistantLauncherAction":"handoff:ai_governance"},
+ "app/control-tower/loops/actions.ts":{"setLoopPauseAction":"handoff:ai_governance","setLoopSwitchAction":"handoff:ai_governance"},
  "app/control-tower/orchestrator-actions.ts":{"refreshOrchestrationAction":"handoff:ai_governance"},
  "app/dashboard-layout-actions.ts":{"resetDashboardLayoutAction":"internal:session_and_presentation","saveDashboardLayoutAction":"internal:session_and_presentation"},
  "app/delegations/actions.ts":{"createSelfDelegationAction":"backlog:confirm","hrCreateDelegationAction":"backlog:confirm","hrEditDelegationAction":"backlog:confirm","hrRevokeDelegationAction":"backlog:confirm","loadDelegationContextAction":"backlog:automatic","loadEligibleDelegatesAction":"backlog:automatic","revokeSelfDelegationAction":"backlog:confirm"},
@@ -258,6 +263,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/login/api/[operation]/route.ts#route":{"POST":"handoff:access_and_authentication"},
  "app/login/as/route.ts#route":{"POST":"handoff:access_and_authentication"},
  "app/me/actions.ts":{"localizeLeaveError":"backlog:confirm","myCancelAttendanceRequest":"backlog:confirm","myCancelLeave":"registered:leave.cancel","myCheckIn":"backlog:confirm","myCheckOut":"backlog:confirm","myCreateGoal":"backlog:confirm","myDeclinePeerFeedback":"backlog:confirm","myEditGoal":"backlog:confirm","myEditLeave":"registered:leave.edit","myPreviewLeaveDeduction":"backlog:automatic","myRequestCorrection":"registered:attendance.correction.request","myRequestLeave":"registered:leave.apply","myRequestLeaveCancellation":"backlog:confirm","myRequestOvertime":"registered:attendance.overtime.request","myRequestProfileChange":"backlog:confirm","mySubmitPeerFeedback":"backlog:confirm","mySubmitResignation":"handoff:employment_exit_or_discipline","myTp1FormAction":"backlog:confirm","myUpdateContact":"backlog:confirm","myUpdateGoalProgress":"backlog:confirm","myWithdrawOvertimePlan":"backlog:confirm","myWithdrawResignation":"handoff:employment_exit_or_discipline"},
+ "app/me/cases/actions.ts":{"openPrivateCaseAction":"handoff:private_case"},
  "app/me/home/actions.ts":{"saveHomePreferencesAction":"backlog:confirm"},
  "app/me/home/privacy-actions.ts":{"saveHomePersonPrivacyAction":"backlog:confirm"},
  "app/me/letters/actions.ts":{"confirmMyLetter":"backlog:confirm","openMyLetter":"backlog:confirm"},
