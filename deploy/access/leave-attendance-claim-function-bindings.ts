@@ -284,3 +284,27 @@ export const CLAIM_OWN_CAPABILITY_PUBLICATION={
   'app.claim_own_receipt_native(uuid,text,text,bytea,text)',
  ],
 } as const;
+
+export const CLAIM_RELATED_ASSIGNED_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='claims.related'||descriptor.key==='claims.assigned'),
+ functionLegacyParityFunction:'app.claim_nonself_native_allowed',
+ functionCurrentLegacyParityFunction:'app.claim_nonself_current_native_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.claim_decision_bindings_complete()',
+  'app.claim_source_read_allowed(uuid,text)',
+  'app.claim_nonself_submit_allowed(uuid)',
+  'app.claim_command_guard()',
+  'app.claim_delegated_decision_write_guard()',
+ ],
+} as const;
+
+export const CLAIM_SELF_DECISION_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='claims.selfDecision'),
+ functionLegacyParityFunction:'app.claim_self_decision_native_allowed',
+ functionCurrentLegacyParityFunction:'app.claim_self_decision_current_native_allowed',
+ legacyGroups:{},
+ requiredFunctions:['app.claim_decision_bindings_complete()','app.claim_self_decision_allowed(uuid,text)','app.claim_command_guard()'],
+} as const;

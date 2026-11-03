@@ -1,8 +1,9 @@
-/** Real native hierarchy/assignment courses. No fabricated publication, completion or default rows. */
+/** Real native hierarchy and assignment courses, including storage-owner publication. */
 import {randomUUID} from 'node:crypto';
 import {afterAll,afterEach,beforeAll,beforeEach,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import * as s from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
 import {hireEmployee,setReportingLine,editDelegation} from '../core/org';
@@ -346,4 +347,28 @@ it('keeps pure target/default helpers private while the fixed current-principal 
  const [outside]=await withTenant(stranger.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.claim_assigned_current(${leaf.employmentId}::uuid) as allowed`));expect(outside.allowed).toBe(false);
  await expect(withTenant(stranger.ctx,tx=>tx.execute(sql`select app.claim_assigned_subject_for(${b.tenantId}::uuid,${middle.userId}::uuid,${leaf.employmentId}::uuid)`))).rejects.toThrow();
  await decideClaim(middle.ctx,{claimRequestId:pending.id,decision:'approve',deciderEmploymentId:middle.employmentId});expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id)))[0].status).toBe('approved');
+});
+
+it('publishes the exact Claims decision courses and isolates Assigned Approve denial',async()=>{
+ const pending=await submitClaim(admin,submission()),cap='function.claims.assigned.approve';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'claim_decisions')).toMatchObject({changed:true,capabilities:7});
+  expect(await publishActionCapabilityPackage(owner.client,'claim_decisions')).toMatchObject({changed:false});
+  await assignOtherDepartment(middle.userId);
+  expect(await actionablePendingClaimIds(middle.ctx,[pending.id])).toEqual([pending.id]);
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${middle.userId}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  expect((await listPendingClaims(middle.ctx)).find(row=>row.id===pending.id)?.canDecide).toBe(false);
+  const approve=()=>decideClaim(middle.ctx,{claimRequestId:pending.id,decision:'approve',deciderEmploymentId:middle.employmentId});
+  await expect(approve()).rejects.toThrow();
+  expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id)))[0]?.status).toBe('pending');
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await approve();
+  expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id)))[0]?.status).toBe('approved');
+ }finally{
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(
+   array['function.claims.related.view','function.claims.related.execute','function.claims.related.approve',
+    'function.claims.assigned.view','function.claims.assigned.approve','function.claims.selfDecision.view','function.claims.selfDecision.approve'])`;
+ }
 });
