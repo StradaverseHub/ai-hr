@@ -12,6 +12,8 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'action:approvals.leave.decide',
  // AI Centre issue 13b gave /payroll/reports its semantic entry (pay_aggregate); its corpus turn is still to be written.
  'page:/payroll/reports',
+ // AI v2 W7 gave /analytics its semantic entry (workforce_metric); its corpus turn is still to be written.
+ 'page:/analytics',
  ],
  'guide,corpus':[
  'page:/personnel',
@@ -48,7 +50,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/admin/rewards/access','page:/admin/rewards/shared','page:/admin/scheduled-actions','page:/admin/settings/email',
  'page:/admin/settings/email-templates','page:/admin/settings/employee-id','page:/admin/settings/hiring-defaults',
  'page:/admin/settings/notifications','page:/admin/settings/profile-requests','page:/admin/settings/profile-requests/rules',
- 'page:/admin/system-explorer','page:/admin/system-testing','page:/admin/users','page:/admin/work-locations/clocking','page:/analytics',
+ 'page:/admin/system-explorer','page:/admin/system-testing','page:/admin/users','page:/admin/work-locations/clocking',
  'page:/approvals','page:/approvals/history','page:/attendance','page:/attendance/breakdown','page:/attendance/clock','page:/attendance/import',
  'page:/attendance/import/logs','page:/attendance/my-roster','page:/attendance/plan-ot','page:/attendance/recompute',
  'page:/attendance/request-status','page:/attendance/requests','page:/control-tower','page:/control-tower/actions','page:/control-tower/agents',

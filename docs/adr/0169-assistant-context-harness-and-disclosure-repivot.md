@@ -250,3 +250,40 @@ A dedicated DELETE-only role was considered and not chosen: a role is cluster-wi
 **Erasure.** A person deletes one chat or erases all of theirs, expired or not and without needing the Assistant grant; "Clear my chat text" now erases stored chats too. Person erasure (`core/pdpa.ts`) calls `app.teras_chats_redact` inside the same admitted, audited review-erasure intent as transcript redaction; it deletes the subject's chats (by the original person) and their logins' task memory, and reads no turn. Every path that removes a chat (own, retention, person erasure, a deleted login) also removes that conversation's task memory. Two narrow definer paths reach other logins' chats, each with its own owner-only policy: person erasure (admitted intent, delete only) and a shortened setting (that tenant only, `expires_at` only).
 
 **Not yet decided (for the AI Centre revamp).** The Chats list, per-chat delete and the "Keep chats for" control have server functions and actions (`app/assistant/chat-actions.ts`) but no screen. A reopened chat shows no line for a withheld turn. "Clear my chat text" still describes a 30-day period, which now covers transcripts only.
+
+## 10. Addendum (3 November 2026): workforce metrics (AI v2 W7)
+
+**Scope.** AI v2 Phase 1 workstream W7: governed metrics for analysis in chat, built on the §8 pattern. Four named metrics behind one read, `workforce_metrics`. It adds no disclosure class and authorises no real data reaching a provider: §5.1 still gates that.
+
+**What is computed, and by whom.** `core/workforce-metrics.ts` `workforceMetrics` computes every figure, reading as the caller under RLS. The model only words the figures and chooses a named period; it never works out dates or figures.
+- **Headcount**: people with an employment active on a date (hired on or before it, not yet terminated). Departments come from the assignment in force on that date. With a period, the headcount is on its last day; joiners and leavers are counted in it, and a move from one employment to another in the same company is neither.
+- **Turnover**: leavers ÷ the average of the first-day and last-day headcount, as a percentage to one decimal place.
+- **Overtime trend**: overtime **hours, not pay**, for each of the six full months before the current one. Each attendance day contributes its stored `ot_minutes`, or the recorded duration where an overtime pattern calculated the day: the Overtime report's own sum (`summarizeOvertimeRecords`). A month with days not yet calculated is marked not complete.
+- **Leave liability**: the outstanding annual leave balance in **days, not money**, on a date. This is the sum of annual-leave ledger entries dated on or before it; pending requests are not deducted.
+
+For all four, each person counts once per company. Named periods (this or last month, quarter or year) and the six months are resolved from the HR date owner (`lib/hr-date.ts`). Each metric carries an exact label of what it counts.
+
+**Who may ask.**
+- **An HR administrator**, for the companies the database says they administer: `app.is_admin_for`, for a current principal (`app.principal_snapshot_current`), the company not archived, with the employees module and the metric's module (attendance or leave) enabled.
+- **A manager**, for their own team only: the My Team scope (`resolveMyTeamScopeTx`, every report the page shows), and only what that page already shows. That is headcount as of today, overtime where attendance is on (the page links each person's attendance records), and annual leave days where the leave type's Available and Pending lines are visible. A manager gets no turnover, no joiners or leavers, and no past dates.
+- **Employees and payroll partners** are not offered the read, and the service refuses them in one sentence. So is a session that claims a role the database does not hold.
+
+**Suppression.** These are the §8 rules, decided over the caller's whole scope, with people as the unit. A group's size is its population: the people active on the date, or everyone employed in it during the period or month.
+1. A group of fewer than 5 people is withheld. For overtime and leave days, so is a group whose members all have the same figure, zero included: a total of zero hours or days would state each member's figure.
+2. A group whose complement within its parent is 1–4 people is withheld. The parent is the company or team for a department, and all companies for a company.
+3. Complementary suppression, as in §8.
+4. A withheld company or team withholds all its departments.
+
+A company with nobody in it reads `no_people` and protects nothing.
+
+**What reaches the provider.** The result is declared as entity `workforce_metric` (`core/semantic-model/entities-metrics.ts`, audience `admin`, page `/analytics`):
+- every count, rate, average headcount, hour figure and day figure is `bands`: a placeholder plus its band, restored locally for the person;
+- company and department names are `minimum`: configuration the administrator administers, or that the manager sees on My Team;
+- company ids and the threshold are dropped before the model sees anything. No person, id, name or single person's figure is in the result;
+- the trace records counts, paths and digests only.
+
+**Residual risks** (not addressed here):
+- One person can carry most of a group's overtime, and the total then nearly states their hours. There is no dominance rule.
+- Results compared across dates, months or callers with different scopes can be differenced.
+- A manager's team is today's team, so its overtime months cover today's members, not those of each month.
+- Overtime on a day an overtime pattern calculated is read only where the caller can read the recorded duration. Otherwise the day counts as not calculated.
