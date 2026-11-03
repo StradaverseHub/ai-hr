@@ -28661,6 +28661,7 @@
     "clear": "Kosongkan nilai",
     "undo": "Buat asal perubahan",
     "leaveUnsaved": "Tinggalkan halaman ini dan buang perubahan yang belum disimpan?",
+    "seedWithheld": "Tidak diisi untuk anda: {fields}. Nombor akaun bank dan nombor pengenalan tidak pernah dibawa dari AI Centre, jadi taip sendiri di sini.",
     "viewHelp": "Semak rekod Personel anda sendiri. Permohonan tertunda tidak menggantikan rekod induk.",
     "editHelp": "Sunting medan yang dibenarkan merentas tab, kemudian simpan sekali. Perubahan boleh disimpan terus apabila kelulusan dimatikan; perubahan yang memerlukan kelulusan dan medan berkait menunggu HR.",
     "pendingValue": "Permohonan tertunda: {value}",

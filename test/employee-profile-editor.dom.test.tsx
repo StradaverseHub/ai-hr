@@ -98,3 +98,40 @@ it('omits explicitly hidden tabs and their supplied panels rather than keeping p
  expect(screen.queryByRole('tab',{name:en.people.detail.tabs.profile})).toBeNull();expect(screen.queryByRole('tab',{name:en.people.detail.tabs.payroll})).toBeNull();
  expect(document.body.textContent).not.toContain('PRIVATE PROFILE PANEL');expect(document.body.textContent).not.toContain('PRIVATE PAY PANEL');expect(screen.getByRole('tab',{name:en.people.detail.tabs.family})).toHaveAttribute('aria-selected','true');
 });
+
+describe('Edit from an AI Centre profile card (AI v2 slice 3 follow-up)',()=>{
+ const contactName='profile.emergency_contact.fullname';
+ const seeded=()=>{const view=workspace();view.editable.push(contactName);return view;};
+ const seed={fields:{[phone]:'0129998888'},registers:[{kind:'dependent' as const,id:recordId,clientId:recordId,values:{[familyName]:'Seeded child'}},
+  {kind:'emergency' as const,id:null,clientId:'chat-emergency',values:{[contactName]:'Fictional Aisha'}}],withheld:[bankAccount]};
+ const mountSeeded=(value:typeof seed=seed)=>render(<NextIntlClientProvider locale="en" messages={en}><ProfileEditor workspace={seeded()} facts={facts} extraPanels={{}} history={[]} defaultTab="profile" seed={value}/></NextIntlClientProvider>);
+ it('opens editing with the reviewed values filled in, leaves the bank account empty and says why, and saves through the owner as usual',async()=>{
+  mountSeeded();
+  expect(screen.getByRole('button',{name:en.essProfile.save})).toBeTruthy();expect(screen.queryByRole('button',{name:en.essProfile.requestEdit})).toBeNull();
+  const note=document.querySelector('[data-profile-seed-withheld]')!;
+  expect(note.textContent).toBe('Not filled in for you: Bank account. Bank account and identity numbers are never carried over from AI Centre, so type them here yourself.');
+  expect(within(panel('profile')).getByLabelText(en.people.detail.phone)).toHaveValue('0129998888');
+  expect(within(panel('profile')).getByLabelText(en.people.detail.emergency.name)).toHaveValue('Fictional Aisha');
+  expect(within(panel('family')).getByLabelText(en.people.detail.family.name)).toHaveValue('Seeded child');
+  const account=within(panel('bankStatutory')).getByLabelText(en.people.detail.bankAccount);
+  expect(account).toHaveValue('');expect(account).toHaveAttribute('placeholder','•••• 1234');
+  fireEvent.click(screen.getByRole('button',{name:en.essProfile.save}));
+  await waitFor(()=>expect(mocks.save).toHaveBeenCalledTimes(1));
+  expect(mocks.save.mock.calls[0][0]).toEqual({employmentId:workspace().employmentId,proposal:{v:2,fields:[{fieldId:phone,before:'phone-proof',value:'0129998888'}],registers:[
+   {kind:'dependent',id:recordId,clientId:recordId,fields:[{fieldId:familyName,before:'child-proof',value:'Seeded child'}]},
+   {kind:'emergency',id:null,clientId:'chat-emergency',fields:[{fieldId:contactName,before:null,value:'Fictional Aisha'}]}]}});
+  await waitFor(()=>expect(mocks.refresh).toHaveBeenCalledTimes(1));
+  expect(document.querySelector('[data-profile-seed-withheld]')).toBeNull();
+ });
+ it('every seeded value stays editable, Cancel discards the seed and its note, and no seed is the form as before',()=>{
+  mountSeeded();
+  const input=within(panel('profile')).getByLabelText(en.people.detail.phone);fireEvent.change(input,{target:{value:'0127776666'}});expect(input).toHaveValue('0127776666');
+  fireEvent.click(screen.getByRole('button',{name:en.essProfile.cancel}));
+  expect(document.querySelector('[data-profile-seed-withheld]')).toBeNull();expect(mocks.save).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:en.essProfile.requestEdit}));
+  expect(within(panel('profile')).getByLabelText(en.people.detail.phone)).toHaveValue('0110000000');
+  expect(within(panel('profile')).queryByLabelText(en.people.detail.emergency.name)).toBeNull();
+  cleanup();mountSeeded({...seed,withheld:[]});
+  expect(document.querySelector('[data-profile-seed-withheld]')).toBeNull();
+ });
+});

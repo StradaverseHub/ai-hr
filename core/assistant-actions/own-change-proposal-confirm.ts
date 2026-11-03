@@ -30,6 +30,7 @@ import {verifyProposal,type Proposal,type ProposalRefusal} from '../proposals/pr
 import {confirmClaimModuleActionReview,confirmClaimSubmissionModuleActionReview,confirmProfileModuleActionReview,prepareClaimSubmissionModuleActionReview,
  reopenClaimModuleActionReview,reopenProfileModuleActionReview} from './module-action-review-store';
 import {confirmClaimCancellationReview,reopenClaimCancellationReview} from './claim-cancellation-review-store';
+import {PROFILE_SEED_PARAM} from '../own-profile-edit-seed';
 
 /** The actions this owner confirms, each with the only review route its proposals may name. */
 export const OWN_CHANGE_ROUTES=Object.freeze({[OWN_CLAIM_SUBMISSION_ACTION]:'/assistant/claims',[OWN_CLAIM_CANCELLATION_ACTION]:'/assistant/claims',[OWN_PROFILE_CHANGE_ACTION]:'/assistant/profile'} as const);
@@ -117,7 +118,9 @@ const PROFILE_TAB:Readonly<Record<string,string>>=Object.freeze({address:'profil
 /** Edit: the same sealed review, reopened as the caller (it re-runs the owner's checks), then the page to change it on:
  *  - a claim: the claim review page with every entry filled in, or the saved draft on Claims once confirmed;
  *  - a cancellation: its review page;
- *  - a profile change: the profile page's own tab, where the person edits and requests it themselves.
+ *  - a profile change: the profile page's own tab, where the person edits and requests it themselves. While the review
+ *    still awaits Confirm, the link names it (`profileSeed`) and the page opens the form filled from it, validated on
+ *    the server again (core/own-profile-edit-seed.ts); bank account and identity numbers are left for the person to type.
  * No value is ever put in the link: only the review handle or the draft the person already owns. */
 export async function editOwnChangeProposal(supplied:SessionContext,value:unknown,now:Date=new Date()):Promise<OwnChangeEditResult>{
  const ctx=capture(supplied);
@@ -138,6 +141,7 @@ export async function editOwnChangeProposal(supplied:SessionContext,value:unknow
   const current=await reopenProfileModuleActionReview(ctx,review.reference);
   if(current.kind!=='prepared'&&current.kind!=='completed')return{ok:false,reason:'unavailable'};
   const tab=PROFILE_TAB[what.selectors.change??''];
-  return tab?{ok:true,href:`/me?tab=${tab}`}:{ok:false,reason:'unavailable'};
+  if(!tab)return{ok:false,reason:'unavailable'};
+  return{ok:true,href:current.kind==='prepared'?`/me?${new URLSearchParams({tab,[PROFILE_SEED_PARAM]:review.reference})}`:`/me?tab=${tab}`};
  }catch{return{ok:false,reason:'unavailable'};}
 }

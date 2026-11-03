@@ -23,6 +23,8 @@ import type {Proposal} from '../core/proposals/proposal';
 import {PROFILE_CHANGE_FIELDS,prepareChatProfileChangeProposal} from '../core/proposals/profile-change';
 import {confirmOwnChangeProposal,editOwnChangeProposal} from '../core/assistant-actions/own-change-proposal-confirm';
 import {confirmOwnChangeProposalAction} from '../app/assistant/own-change-proposal-actions';
+import {ownProfileEditSeed} from '../core/own-profile-edit-seed';
+import {readOwnProfileWorkspace} from '../core/profile-edit';
 import {HARNESS_TEST_ONLY,runTurn} from '../core/harness/runner';
 import {InMemoryTaskMemoryStore} from '../core/harness/memory';
 import {scriptedModel} from './harness-ratchet/scripted-model';
@@ -116,6 +118,47 @@ describe('an address change: sent to HR on Confirm, applied only when HR approve
   expect(await confirmOwnChangeProposalAction({proposal,confirm:true})).toEqual({kind:'refused',reason:'authority_mismatch'});
   browser.selected=employee.uid;
   expect((await state()).requests).toEqual([]);
+ });
+});
+
+describe('Edit before Confirm: the profile form opens filled from the sealed review (slice 3 follow-up)',()=>{
+ const seedFor=async(href:string)=>{const handle=new URL(href,'https://fixture.test').searchParams.get('profileSeed');const ctx=await caller();
+  return ownProfileEditSeed(ctx,handle,await readOwnProfileWorkspace(ctx,{employmentId:employee.employmentId}));};
+ it('an address: the link names only the review, and the page seeds the reviewed values for the caller alone',async()=>{
+  const proposal=await chat(ADDRESS,ADDRESS_WORDS);
+  const edit=await editOwnChangeProposal(await caller(),proposal);
+  expect(edit).toEqual({ok:true,href:`/me?tab=profile&profileSeed=${proposal.body.review.reference}`});
+  const href=(edit as {href:string}).href;
+  expect(href).not.toMatch(/Fiksyen|50450|Kuala/);
+  const F=PROFILE_CHANGE_FIELDS.address;
+  expect(await seedFor(href)).toEqual({fields:{[F.addressLine1]:'12 Jalan Fiksyen',[F.postcode]:'50450',[F.city]:'Kuala Lumpur'},registers:[],withheld:[]});
+  // Someone else's login with the same handle seeds nothing; nor does a review once it has gone to HR.
+  browser.selected=colleague.uid;
+  const other=await caller();
+  expect(await ownProfileEditSeed(other,proposal.body.review.reference,await readOwnProfileWorkspace(other,{employmentId:colleague.employmentId}))).toBeNull();
+  browser.selected=employee.uid;
+  expect((await confirmOwnChangeProposal(await caller(),{proposal,confirm:true})).kind).toBe('requested');
+  expect(await seedFor(href)).toBeNull();
+  expect(await editOwnChangeProposal(await caller(),proposal)).toEqual({ok:true,href:'/me?tab=profile'});
+ });
+ it('bank details: the bank is filled in, the account number never is, in the link or the seed',async()=>{
+  const outcome=await prepareChatProfileChangeProposal(await caller(),{change:'bank',bankName:'Maybank'},`Please change my bank account to Maybank ${ACCOUNT}`);
+  if(outcome?.kind!=='proposal')throw Error('Fictional bank change was not prepared: '+JSON.stringify(outcome));
+  const edit=await editOwnChangeProposal(await caller(),outcome.proposal);
+  if(!edit.ok)throw Error('Fictional bank Edit refused');
+  expect(edit.href).toBe(`/me?tab=bankStatutory&profileSeed=${outcome.proposal.body.review.reference}`);
+  const seed=await seedFor(edit.href);
+  expect(seed).toEqual({fields:{[PROFILE_CHANGE_FIELDS.bank.bankName]:'Maybank'},registers:[],withheld:[PROFILE_CHANGE_FIELDS.bank.accountNumber]});
+  expect(JSON.stringify(seed)+edit.href).not.toContain(ACCOUNT);expect(JSON.stringify(seed)+edit.href).not.toContain(ACCOUNT.slice(-4));
+  expect((await state()).requests).toEqual([]);
+ });
+ it('a dependant: a new record seeded under the review\'s own row',async()=>{
+  const proposal=await chat({change:'dependant',dependantName:'Fictional Child',relationship:'son'},'Add my son Fictional Child as a dependant');
+  const edit=await editOwnChangeProposal(await caller(),proposal);
+  if(!edit.ok)throw Error('Fictional dependant Edit refused');
+  expect(edit.href).toBe(`/me?tab=family&profileSeed=${proposal.body.review.reference}`);
+  const F=PROFILE_CHANGE_FIELDS.dependant;
+  expect(await seedFor(edit.href)).toEqual({fields:{},withheld:[],registers:[{kind:'dependent',id:null,clientId:'chat-dependant',values:{[F.relationship]:'child',[F.dependantName]:'Fictional Child'}}]});
  });
 });
 
