@@ -5027,6 +5027,13 @@
       "when": 1793330000414,
       "tag": "1014_rewards_cancellation_savepoint_boundary",
       "breakpoints": true
+    },
+    {
+      "idx": 862,
+      "version": "7",
+      "when": 1793330000415,
+      "tag": "1015_rewards_command_port_status",
+      "breakpoints": true
     }
   ]
 }

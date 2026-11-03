@@ -105,7 +105,8 @@ it('keeps unknown function keys closed and rejects runtime registry mutation',as
 it('registers exact mixed-case native submenu IDs while preserving closed grammar and operations',async()=>{
  const metadata={moduleKey:'financial',labelKey:'nav.payComponents',kind:'submenu',course:'administrative'};
  // Preserve the production key's exact mixed-case grammar without colliding with its migration.
- await owner.client.begin(async tx=>{
+ const rollback=new Error('Rollback the synthetic registry fixture');
+ await expect(owner.client.begin(async tx=>{
   await tx`select app.register_function_action('payComponents.catalogueRegistrationRegression','view','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`;
   await tx`select app.register_function_action('payComponents.catalogueRegistrationRegression','add','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`;
   const rows=await tx`select id,prerequisites,supported from access_capability where id like 'function.payComponents.catalogueRegistrationRegression.%' order by id`;
@@ -113,7 +114,8 @@ it('registers exact mixed-case native submenu IDs while preserving closed gramma
    {id:'function.payComponents.catalogueRegistrationRegression.add',prerequisites:['function.payComponents.catalogueRegistrationRegression.view'],supported:false},
    {id:'function.payComponents.catalogueRegistrationRegression.view',prerequisites:[],supported:false},
   ]);
- });
+  throw rollback;
+ })).rejects.toBe(rollback);
  for(const key of ['payComponents..catalogue','payComponents.catalogueRegistrationRegression.','payComponents/catalogue']){
   await expect(owner.client`select app.register_function_action(${key},'view','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`).rejects.toMatchObject({code:'42501'});
  }

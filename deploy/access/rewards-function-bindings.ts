@@ -133,6 +133,7 @@ export const REWARDS_ENTRY_CAPABILITY_PUBLICATION={
  legacyGroups:{},
  requiredFunctions:[
   'app.rewards_entry_bindings_complete()',
+  'app.reward_command_port_installed(text)',
   'app.reward_save_entry(uuid,integer,uuid,jsonb,jsonb)',
   'app.reward_import_facts(uuid,integer,jsonb)',
   'app.reward_entry_published_write_guard()',
@@ -147,6 +148,7 @@ export const REWARDS_DECISION_CAPABILITY_PUBLICATION={
  legacyGroups:{},
  requiredFunctions:[
   'app.rewards_decision_bindings_complete()',
+  'app.reward_command_port_installed(text)',
   'app.reward_decide(uuid,integer,text,text,boolean)',
   'app.reward_decision_published_source_guard()',
  ],
@@ -165,6 +167,7 @@ export const REWARDS_CANCELLATION_CAPABILITY_PUBLICATION={
  legacyGroups:{},
  requiredFunctions:[
   'app.rewards_cancellation_bindings_complete()',
+  'app.reward_command_port_installed(text)',
   'app.reward_cancel_review(uuid,integer,text)',
   'app.rewards_delete_current_legacy_allowed(uuid,uuid,text,uuid)',
  ],
@@ -178,6 +181,7 @@ export const REWARDS_POSTING_CAPABILITY_PUBLICATION={
  legacyGroups:{},
  requiredFunctions:[
   'app.rewards_posting_bindings_complete()',
+  'app.reward_command_port_installed(text)',
   'app.reward_post_review(uuid,integer,uuid)',
   'app.reward_posting_published_source_guard()',
  ],

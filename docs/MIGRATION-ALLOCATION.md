@@ -1758,3 +1758,4 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | New candidate migration | 1012_rewards_posting_command_port | 859 | 1793330000412 | c8d4b8092bf5af61d690f362bdbb6ecaf0adc2654e17fa07bab80db67b2017da |
 | New candidate migration | 1013_full_permission_binding_readiness | 860 | 1793330000413 | c7e7306169e0fedeec712bad739554e933149cf303ed41eba969e7cbd2345742 |
 | New candidate migration | 1014_rewards_cancellation_savepoint_boundary | 861 | 1793330000414 | 1621efd979eab5f2430601d5770bb7a87571e78b2aed252407961bb082580f33 |
+| New candidate migration | 1015_rewards_command_port_status | 862 | 1793330000415 | a42f2c98375233505f29bff42a0f97ae22424986f4e1e6a1b3f304fca6f5d571 |

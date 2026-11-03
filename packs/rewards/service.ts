@@ -290,7 +290,7 @@ async function nativeReviewCalculationTx(tx:Tx,unit:typeof rewardUnit.$inferSele
  if(!row?.value)throw new RewardError('Reward calculation unavailable.');return row.value;
 }
 async function rewardActionPortInstalled(tx: Tx, capability: string) {
-  const [result] = await tx.execute<{ supported: boolean }>(sql`select supported from access_capability where id=${capability}`);
+  const [result] = await tx.execute<{ supported: boolean }>(sql`select app.reward_command_port_installed(${capability}) as supported`);
   return result?.supported === true;
 }
 
