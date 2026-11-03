@@ -6,12 +6,15 @@ import {AssistantChatBoundary} from './chat-reply-boundary';
 import {WorkspaceComposer} from './workspace-composer';
 import {ThinkingIndicator} from './thinking-indicator';
 import type {AiWorkspaceTaskId} from '../../lib/ai/workspace-tasks';
+import {takeAskHandoff} from '../../lib/today/ask-handoff';
 export type WorkspaceChatTurn={id:string;question:string;answer:ReactNode;clarificationRequired?:boolean};
 type Turn={id:string;question:string;reply?:LauncherReply};
 const restored=(turns:readonly WorkspaceChatTurn[]):Turn[]=>turns.map(turn=>({id:turn.id,question:turn.question,reply:{ok:true,exchangeId:turn.id,answer:turn.answer,...(turn.clarificationRequired?{clarificationRequired:true as const}:{})}}));
 /** Local transcript holds only this open conversation. Every answer still comes from the authorized
  * server command; previousExchangeId is only a hint that its owner must validate, never a principal. */
-export function WorkspaceConversation({initialTurn,initialTurns,initialResume,historyTailId,olderCursor,historyReadOnly=false,tasks,fileImport,composer,resetKey,fullHeight=false}:{initialTurn?:WorkspaceChatTurn;initialTurns?:readonly WorkspaceChatTurn[];initialResume?:{exchangeId:string;conversationToken:string};historyTailId?:string;olderCursor?:string|null;historyReadOnly?:boolean;tasks:readonly {id:AiWorkspaceTaskId;label:string;prompt:string}[];fileImport:boolean;resetKey?:string;fullHeight?:boolean;composer?:(props:{action:(data:FormData)=>Promise<void>;pending:boolean;question:string;setQuestion:(value:string)=>void;active:boolean})=>ReactNode}){
+export function WorkspaceConversation({initialTurn,initialTurns,initialResume,historyTailId,olderCursor,historyReadOnly=false,tasks,fileImport,composer,resetKey,fullHeight=false,acceptHandoff=false}:{initialTurn?:WorkspaceChatTurn;initialTurns?:readonly WorkspaceChatTurn[];initialResume?:{exchangeId:string;conversationToken:string};historyTailId?:string;olderCursor?:string|null;historyReadOnly?:boolean;tasks:readonly {id:AiWorkspaceTaskId;label:string;prompt:string}[];fileImport:boolean;resetKey?:string;fullHeight?:boolean;
+ /** Today's Ask bar (lib/today/ask-handoff.ts): on a fresh Ask page, send the question typed there, once. */
+ acceptHandoff?:boolean;composer?:(props:{action:(data:FormData)=>Promise<void>;pending:boolean;question:string;setQuestion:(value:string)=>void;active:boolean})=>ReactNode}){
  const t=useTranslations('assistant'),c=useTranslations('assistant.workspace.chat');
  const seed=initialTurns??(initialTurn?[initialTurn]:[]),selectionKey=historyTailId??seed.at(-1)?.id;
  const [turns,setTurns]=useState<Turn[]>(()=>restored(seed));
@@ -55,6 +58,10 @@ export function WorkspaceConversation({initialTurn,initialTurns,initialResume,hi
   }catch{if(atEpoch!==epoch.current)return;setReadOnly(true);previous.current=undefined;awaitingClarification.current=undefined;setTurns(rows=>rows.map(row=>row.id===id?{...row,reply:{ok:false,message:t('err_provider_error')}}:row));}
   finally{if(atEpoch===epoch.current){busy.current=false;setPending(false);}}
  }
+ // Today's Ask bar hands its question over in this tab's storage; it is read once, removed, and sent through the
+ // same command as a typed question. Only a fresh Ask page accepts it (takeAskHandoff checks the address).
+ useEffect(()=>{if(!acceptHandoff)return;let store:Storage|null=null;try{store=window.sessionStorage;}catch{/* No storage: nothing was handed over. */}
+  const question=takeAskHandoff(store,window.location);if(!question)return;const data=new FormData();data.set('question',question);void send(data);},[]); // eslint-disable-line react-hooks/exhaustive-deps
  const attachmentContent=attachmentTurn?<div className="space-y-4"><p className="ml-auto w-fit max-w-[90%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3">{attachmentTurn.question}</p><fieldset disabled={readOnly} className="min-w-0 px-1">{attachmentTurn.answer}</fieldset></div>:null;
  return <AssistantChatBoundary value={{pending:pending||readOnly||Boolean(attachmentBusy),setQuestionDraft:answer=>{if(busy.current||readOnly||attachmentBusy)return;awaitingClarification.current=undefined;setDraft(answer);setFocusRequest(n=>n+1);},clarify:async(exchangeId,answer)=>{const data=new FormData();data.set('question',answer);await send(data,exchangeId);},setClarificationDraft:(exchangeId,answer)=>{if(busy.current||readOnly||attachmentBusy)return;awaitingClarification.current=exchangeId;setDraft(answer);setFocusRequest(n=>n+1);}}}><section aria-label={c('title')} className={fullHeight||turns.length||attachmentTurn?'flex h-[min(46rem,calc(100dvh-13rem))] min-h-80 flex-col':'space-y-4'}>
   {(fullHeight||turns.length>0||Boolean(attachmentTurn))&&<>

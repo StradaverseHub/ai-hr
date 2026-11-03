@@ -17,7 +17,13 @@ vi.mock('@/core/read',()=>({
  recentHires:state.aggregate,upcomingHolidays:state.aggregate,awayTodayCount:state.aggregate,leaveBalances:state.aggregate,listApprovalHistory:state.aggregate,
 }));
 vi.mock('@/core/assistant-grant',()=>({mayUseAssistant:state.assistant}));
-import DashboardPage from '../app/page';
+// W3: Today composes above the dashboard and has its own role tests (test/today-*.dom.test.tsx). Here it only hands
+// through the dashboard below it, so these cases keep proving what the legacy composition reads and refuses.
+vi.mock('@/components/today/today-page',()=>({TodayPage:({more}:{more:React.ReactNode})=>React.createElement(React.Fragment,null,more)}));
+import {resolveServerTree} from './helpers/server-tree';
+import RealDashboardPage from '../app/page';
+/** The page as the streamed response finally shows it: the dashboard under Today resolves inside its Suspense. */
+const DashboardPage=async(props:Parameters<typeof RealDashboardPage>[0])=>resolveServerTree(await RealDashboardPage(props));
 import {HomeAccessError} from '../core/employee-home';
 beforeEach(()=>{
  vi.clearAllMocks();state.session.roles=['employee'];state.session.entitlements.enabledModules=[];state.reports=[];
