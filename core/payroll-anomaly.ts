@@ -470,7 +470,7 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string): Promise
       // Loaded on use (the schedule-group owner imports the payroll facade, which imports this file).
       const { exceptionDecisionsTx } = await import('./schedule-group-controls');
       // In a savepoint, so a read that fails leaves the evaluation's transaction usable.
-      const exemptOn = await tx.transaction((savepoint) => exceptionDecisionsTx(savepoint as unknown as Tx, employmentIds, periodStart, periodEnd));
+      const exemptOn = await exceptionDecisionsTx(tx, employmentIds, periodStart, periodEnd);
       const days: string[] = [];
       for (let d = 1; d <= dim; d++) days.push(`${batch.payPeriod}-${String(d).padStart(2, '0')}`);
       for (const id of employmentIds) exemptByEmployment.set(id, days.every((day) => exemptOn(id, day).enabled === true));
