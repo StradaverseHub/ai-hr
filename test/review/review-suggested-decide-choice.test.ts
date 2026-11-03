@@ -19,16 +19,17 @@ import * as schema from '../../db/schema';
 import {getSession} from '../../lib/session';
 import {grantAssistant} from '../../core/assistant-grant';
 import {hireEmployee,setReportingLine} from '../../core/org';
-import {requestLeave} from '../../packs/leave/service';
+import {cancelOwnLeave,requestLeave} from '../../packs/leave/service';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {asksToApprove,prepareSuggestedProposal} from '../../core/proposals/suggested';
+import {decisionNoMatch} from '../../core/proposals/assigned-decide';
 import {HARNESS_TEST_ONLY,runTurn} from '../../core/harness/runner';
 import {InMemoryTaskMemoryStore} from '../../core/harness/memory';
 import {scriptedModel} from '../harness-ratchet/scripted-model';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from '../harness';
 
 type Hired={uid:string;employmentId:string;personId:string};
-let base:Base,manager:Hired,firstId:string,secondId:string,laterDate:string;
+let base:Base,manager:Hired,first:Hired,second:Hired,firstId:string,secondId:string,laterDate:string;
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>vi.unstubAllEnvs());
 async function hire(name:string):Promise<Hired>{
  const hired=await hireEmployee(adminCtx(base),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
@@ -43,7 +44,7 @@ beforeEach(async()=>{
  vi.stubEnv('AI_CONFIG_SECRET','fictional-review-choice-key-123456789');
  vi.stubEnv('TERAS_PROPOSAL_SECRET','fictional-review-proposal-secret-0123456789abcdef');
  await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');
- const first=await hire('Fictional Choice Applicant One'),second=await hire('Fictional Choice Applicant Two');manager=await hire('Fictional Choice Manager');
+ first=await hire('Fictional Choice Applicant One');second=await hire('Fictional Choice Applicant Two');manager=await hire('Fictional Choice Manager');
  for(const who of [first,second])await setReportingLine(adminCtx(base),{subordinateEmploymentId:who.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
  const date=nextWorkday(todayInKualaLumpur());laterDate=nextWorkday(date);
  firstId=(await requestLeave(await login(first),{employmentId:first.employmentId,leaveTypeId:base.annualLeaveTypeId,startDate:date,endDate:date,durationType:'full_day',reason:'Fictional reason one'})).leaveRequestId;
@@ -90,8 +91,24 @@ describe('REVIEW pass: the native gate still bounds the choice',()=>{
   const chosen=await prepareSuggestedProposal(me,'approvals.leave.decide',{request:'2'},'Approve number 2.');
   if(chosen?.kind!=='proposal')throw Error('The chosen request was not prepared.');
   expect(chosen.proposal.body).toMatchObject({forWhom:{subjectId:secondId}});
-  const outsider=await hire('Fictional Unassigned Approver');
-  expect(await prepareSuggestedProposal(await login(outsider),'approvals.leave.decide',{request:'1'},'Approve number 1.')).toBeNull();
+  // Spec v20: an approver with nothing pending for them gets no_match (no card, the plain one-line reply), so an
+  // outsider no longer gets null. Privacy: the outsider's answer must be exactly what "nothing exists" gives. It
+  // carries no count, no person and no id of the two requests that ARE pending (for another approver), whether the
+  // outsider says a number or names a real applicant and that applicant's day.
+  const asOutsider=await login(await hire('Fictional Unassigned Approver'));
+  const byNumber=await prepareSuggestedProposal(asOutsider,'approvals.leave.decide',{request:'1'},'Approve number 1.');
+  const [,month,day]=laterDate.split('-').map(Number);
+  const byName=await prepareSuggestedProposal(asOutsider,'approvals.leave.decide',{startDate:laterDate},
+   `Approve Fictional Choice Applicant Two's leave on ${day} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][month-1]}.`);
+  expect(byNumber).toEqual(decisionNoMatch('approvals.leave.decide'));expect(byName).toEqual(byNumber);
+  const said=JSON.stringify(byNumber);
+  for(const secret of [firstId,secondId,first.personId,second.personId,first.employmentId,second.employmentId,manager.uid,manager.personId,'Fictional'])
+   expect(said).not.toContain(secret);
+  expect(said,'no count and no position').not.toMatch(/\d/);
+  // Nothing exists: both applicants withdraw their requests, and the assigned approver asks in the same words.
+  await cancelOwnLeave(await login(first),{leaveRequestId:firstId});await cancelOwnLeave(await login(second),{leaveRequestId:secondId});
+  const nothing=await prepareSuggestedProposal(await login(manager),'approvals.leave.decide',{request:'1'},'Approve number 1.');
+  expect(JSON.stringify(nothing)).toBe(said);
   expect(firstId).not.toBe(secondId);
  },60000);
 });
