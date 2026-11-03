@@ -8,6 +8,7 @@
  * by the production Assistant. Not-yet-modelled registry actions are listed in ./pending.ts (shrink only). */
 import {AGENT_MODULE_CODES} from '../../lib/ai/module-agents';
 import type {SemanticAction,SemanticEntity,SemanticField,SemanticRead,FieldType,DisclosureClass} from './types';
+import {OWN_CHANGE_ACTIONS,OWN_CHANGE_ENTITIES} from './entities-own-changes';
 
 const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'|'screen'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
@@ -165,6 +166,8 @@ export const SEMANTIC_ENTITIES:readonly SemanticEntity[]=freeze([
   ruleVersion:null,relations:[{to:'leave_request',kind:'many_to_one',via:'leaveRequestId'}],page:'/approvals',
   fields:[f('leaveRequestId','id','never','Handle of the request.'),f('currentStepId','id','never','Handle of the step.'),
    f('decision','enum','minimum','The approver\'s decision.',{values:['approve','reject']}),f('rejectReason','text','never','Free text the approver typed.')]},
+ // AI v2 W2: own claims and own profile changes prepared in chat.
+ ...OWN_CHANGE_ENTITIES,
 ] satisfies SemanticEntity[]);
 
 /** One declaration per Assistant read, in ASSISTANT_TOOLS order. Input schemas are the catalogue's own. */
@@ -225,6 +228,8 @@ export const SEMANTIC_ACTIONS:readonly SemanticAction[]=freeze([
    actorCheck,{check:'own_approved_cancellable',owner:'core/read.ts#employeeCancelOffers',ruleVersion:null}],
   reviewRoute:'/assistant/leave',humanInputs:['employmentId','leaveRequestId','cancel'],
   nominable:[{name:'startDate',optional:true,type:'date'}],proposal:'core/proposals/leave-cancel.ts#prepareLeaveCancelProposal'},
+ // AI v2 W2: claims.submit, claims.cancel and ess.profile.request (./entities-own-changes.ts).
+ ...OWN_CHANGE_ACTIONS,
 ] satisfies SemanticAction[]);
 
 export const semanticEntity=(id:string):SemanticEntity=>{const entity=SEMANTIC_ENTITIES.find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};

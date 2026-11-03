@@ -466,6 +466,12 @@
       "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, other {# วัน}})",
       "leaveApplyMorningTitle": "{leaveType}, {start} (ครึ่งวัน ช่วงเช้า)",
       "leaveApplyAfternoonTitle": "{leaveType}, {start} (ครึ่งวัน ช่วงบ่าย)",
+      "claimSubmitTitle": "เบิก{claimType} RM {amount} วันที่ {date}",
+      "claimCancelTitle": "ยกเลิกการเบิก{claimType} RM {amount} วันที่ {date}",
+      "profileAddressTitle": "เปลี่ยนที่อยู่บ้านของคุณ",
+      "profileEmergencyTitle": "เปลี่ยนผู้ติดต่อกรณีฉุกเฉินของคุณ",
+      "profileDependantTitle": "เพิ่มผู้อยู่ในอุปการะ",
+      "profileBankTitle": "เปลี่ยนบัญชีธนาคารเป็น {bankName} ลงท้าย {ending}",
       "review": "ตรวจสอบ",
       "open": "เปิด",
       "expires": "หมดอายุ {time}",
@@ -488,7 +494,10 @@
         "fallback": "การเปลี่ยนแปลงที่พร้อมให้คุณตรวจสอบ",
         "leave_apply": "ใบลาพร้อมให้ตรวจสอบ",
         "leave_cancel": "การยกเลิกการลาพร้อมให้ตรวจสอบ",
-        "approvals_leave_decide": "การตัดสินใบลาพร้อมให้ตรวจสอบ"
+        "approvals_leave_decide": "การตัดสินใบลาพร้อมให้ตรวจสอบ",
+        "claims_submit": "คำขอเบิกค่าใช้จ่ายพร้อมให้ตรวจสอบ",
+        "claims_cancel": "การยกเลิกการเบิกพร้อมให้ตรวจสอบ",
+        "ess_profile_request": "การเปลี่ยนข้อมูลส่วนตัวพร้อมให้ตรวจสอบ"
       },
       "checks": {
         "actor_current": "สิทธิ์เข้าถึงของคุณยังใช้ได้",
@@ -498,7 +507,13 @@
         "leave_type_eligible": "ประเภทการลาได้รับอนุญาต",
         "own_approved_cancellable": "ยังยกเลิกได้",
         "own_pending_request": "คำขอยังรออยู่",
-        "review_contract": "หน้าตรวจสอบพร้อมแล้ว"
+        "review_contract": "หน้าตรวจสอบพร้อมแล้ว",
+        "claim_type_available": "ประเภทการเบิกใช้ได้",
+        "claim_draft_reviewed": "ตรวจสอบโดยระบบเบิกจ่ายแล้ว",
+        "receipt_attached": "ข้อกำหนดใบเสร็จ",
+        "own_pending_claim": "การเบิกยังรออนุมัติ",
+        "profile_fields_editable": "คุณขอเปลี่ยนแปลงเหล่านี้ได้",
+        "profile_request_reviewed": "ตรวจสอบกับข้อมูลของคุณแล้ว"
       },
       "outcomes": {
         "withdrawn_now": "ถอนทันที",
@@ -506,7 +521,12 @@
         "rejection_if_confirmed": "ถูกปฏิเสธหากคุณยืนยัน",
         "step_decision_if_confirmed": "บันทึกขั้นตอนของคุณ",
         "approval_if_native_checks_pass": "อนุมัติหากการตรวจสอบยังผ่าน",
-        "submitted_not_approved": "ส่งขออนุมัติแล้ว ยังไม่อนุมัติ"
+        "submitted_not_approved": "ส่งขออนุมัติแล้ว ยังไม่อนุมัติ",
+        "claim_submitted_if_checks_pass": "ส่งขออนุมัติหากผ่านการตรวจสอบการเบิก",
+        "claim_draft_receipt_needed": "บันทึกเป็นฉบับร่าง เพิ่มใบเสร็จในหน้าการเบิก",
+        "claim_cancelled_now": "ยกเลิกทันที",
+        "hr_approval_required": "ส่งให้ฝ่ายบุคคล จะเปลี่ยนเมื่อฝ่ายบุคคลอนุมัติ",
+        "hr_verification_required": "ฝ่ายบุคคลตรวจสอบข้อมูลธนาคารใหม่ก่อนนำไปใช้"
       },
       "reads": {
         "my_leave_balances": "ยอดวันลาของคุณ",

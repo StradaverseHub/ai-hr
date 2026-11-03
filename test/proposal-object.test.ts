@@ -124,12 +124,14 @@ describe('a proposal never applies a change',()=>{
  it('imports no write, confirmation or provider path',()=>{
   for(const file of files('core/proposals')){
    const text=readFileSync(join(root,file),'utf8');
-   for(const forbidden of [/\brequestLeave\b/,/\bconfirmOwnLeaveReview\b/,/\bdecideLeave\b/,/\bcancelOwnLeaveTx\b/,/from '[^']*packs\/leave\/service'/,/lib\/ai\/providers\//,/from '[^']*\/assistant'/])
+   for(const forbidden of [/\brequestLeave\b/,/\bconfirmOwnLeaveReview\b/,/\bdecideLeave\b/,/\bcancelOwnLeaveTx\b/,/from '[^']*packs\/leave\/service'/,/lib\/ai\/providers\//,/from '[^']*\/assistant'/,
+    // AI v2 W2: the own claim and profile preparers save a sealed review only; confirming is core/assistant-actions/own-change-proposal-confirm.ts.
+    /\bconfirm(?:Claim|ClaimSubmission|Profile)ModuleActionReview\b/,/\bconfirmClaimCancellationReview\b/,/\bsubmitDraftClaims\b/,/\bcancelClaimTx\b/,/\brequestProfileChange\b/,/from '[^']*packs\/claims\/service'/])
     expect(text,file+' '+forbidden).not.toMatch(forbidden);
   }
  });
  it('is issued only by the declared native preparers',()=>{
   const callers=['core','app','lib','packs'].flatMap(files).filter(file=>/\bissueProposal\(/.test(readFileSync(join(root,file),'utf8')));
-  expect(callers.sort()).toEqual(['core/proposals/leave-apply.ts','core/proposals/leave-cancel.ts','core/proposals/leave-decide.ts','core/proposals/proposal.ts']);
+  expect(callers.sort()).toEqual(['core/proposals/claim-cancel.ts','core/proposals/claim-submit.ts','core/proposals/leave-apply.ts','core/proposals/leave-cancel.ts','core/proposals/leave-decide.ts','core/proposals/profile-change.ts','core/proposals/proposal.ts']);
  });
 });

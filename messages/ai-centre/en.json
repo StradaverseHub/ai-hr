@@ -466,6 +466,12 @@
       "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, one {# day} other {# days}})",
       "leaveApplyMorningTitle": "{leaveType}, {start} (half day, morning)",
       "leaveApplyAfternoonTitle": "{leaveType}, {start} (half day, afternoon)",
+      "claimSubmitTitle": "{claimType} claim, RM {amount}, {date}",
+      "claimCancelTitle": "Cancel {claimType} claim, RM {amount}, {date}",
+      "profileAddressTitle": "Change your home address",
+      "profileEmergencyTitle": "Change your emergency contact",
+      "profileDependantTitle": "Add a dependant",
+      "profileBankTitle": "Change your bank account to {bankName}, ending {ending}",
       "review": "Review",
       "open": "Open",
       "expires": "Expires {time}",
@@ -488,7 +494,10 @@
         "fallback": "A change ready for your review",
         "leave_apply": "Leave application ready to review",
         "leave_cancel": "Leave cancellation ready to review",
-        "approvals_leave_decide": "Leave decision ready to review"
+        "approvals_leave_decide": "Leave decision ready to review",
+        "claims_submit": "Expense claim ready to review",
+        "claims_cancel": "Claim cancellation ready to review",
+        "ess_profile_request": "Profile change ready to review"
       },
       "checks": {
         "actor_current": "Your access is current",
@@ -498,7 +507,13 @@
         "leave_type_eligible": "Leave type allowed",
         "own_approved_cancellable": "Can still be cancelled",
         "own_pending_request": "Request still pending",
-        "review_contract": "Review page ready"
+        "review_contract": "Review page ready",
+        "claim_type_available": "Claim type available",
+        "claim_draft_reviewed": "Checked by the claims service",
+        "receipt_attached": "Receipt requirement",
+        "own_pending_claim": "Claim still pending",
+        "profile_fields_editable": "You may request these changes",
+        "profile_request_reviewed": "Checked against your record"
       },
       "outcomes": {
         "withdrawn_now": "Withdrawn at once",
@@ -506,7 +521,12 @@
         "rejection_if_confirmed": "Rejected if you confirm",
         "step_decision_if_confirmed": "Your step is recorded",
         "approval_if_native_checks_pass": "Approved if the checks still pass",
-        "submitted_not_approved": "Submitted for approval, not approved yet"
+        "submitted_not_approved": "Submitted for approval, not approved yet",
+        "claim_submitted_if_checks_pass": "Submitted for approval if the claims checks pass",
+        "claim_draft_receipt_needed": "Saved as a draft; add the receipt on Claims",
+        "claim_cancelled_now": "Cancelled at once",
+        "hr_approval_required": "Sent to HR; changes only when HR approves",
+        "hr_verification_required": "HR verifies the new bank details before they are used"
       },
       "reads": {
         "my_leave_balances": "your leave balances",

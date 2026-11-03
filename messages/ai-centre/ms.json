@@ -466,6 +466,12 @@
       "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, other {# hari}})",
       "leaveApplyMorningTitle": "{leaveType}, {start} (separuh hari, pagi)",
       "leaveApplyAfternoonTitle": "{leaveType}, {start} (separuh hari, petang)",
+      "claimSubmitTitle": "Tuntutan {claimType}, RM {amount}, {date}",
+      "claimCancelTitle": "Batalkan tuntutan {claimType}, RM {amount}, {date}",
+      "profileAddressTitle": "Tukar alamat rumah anda",
+      "profileEmergencyTitle": "Tukar kenalan kecemasan anda",
+      "profileDependantTitle": "Tambah tanggungan",
+      "profileBankTitle": "Tukar akaun bank anda kepada {bankName}, berakhir {ending}",
       "review": "Semak",
       "open": "Buka",
       "expires": "Tamat {time}",
@@ -488,7 +494,10 @@
         "fallback": "Perubahan sedia untuk semakan anda",
         "leave_apply": "Permohonan cuti sedia untuk disemak",
         "leave_cancel": "Pembatalan cuti sedia untuk disemak",
-        "approvals_leave_decide": "Keputusan cuti sedia untuk disemak"
+        "approvals_leave_decide": "Keputusan cuti sedia untuk disemak",
+        "claims_submit": "Tuntutan perbelanjaan sedia untuk disemak",
+        "claims_cancel": "Pembatalan tuntutan sedia untuk disemak",
+        "ess_profile_request": "Perubahan profil sedia untuk disemak"
       },
       "checks": {
         "actor_current": "Akses anda masih sah",
@@ -498,7 +507,13 @@
         "leave_type_eligible": "Jenis cuti dibenarkan",
         "own_approved_cancellable": "Masih boleh dibatalkan",
         "own_pending_request": "Permohonan masih menunggu",
-        "review_contract": "Halaman semakan sedia"
+        "review_contract": "Halaman semakan sedia",
+        "claim_type_available": "Jenis tuntutan tersedia",
+        "claim_draft_reviewed": "Disemak oleh perkhidmatan tuntutan",
+        "receipt_attached": "Keperluan resit",
+        "own_pending_claim": "Tuntutan masih belum diputuskan",
+        "profile_fields_editable": "Anda boleh memohon perubahan ini",
+        "profile_request_reviewed": "Disemak dengan rekod anda"
       },
       "outcomes": {
         "withdrawn_now": "Ditarik balik serta-merta",
@@ -506,7 +521,12 @@
         "rejection_if_confirmed": "Ditolak jika anda sahkan",
         "step_decision_if_confirmed": "Langkah anda direkodkan",
         "approval_if_native_checks_pass": "Diluluskan jika semakan masih lulus",
-        "submitted_not_approved": "Dihantar untuk kelulusan, belum diluluskan"
+        "submitted_not_approved": "Dihantar untuk kelulusan, belum diluluskan",
+        "claim_submitted_if_checks_pass": "Dihantar untuk kelulusan jika semakan tuntutan lulus",
+        "claim_draft_receipt_needed": "Disimpan sebagai draf; tambah resit di Tuntutan",
+        "claim_cancelled_now": "Dibatalkan serta-merta",
+        "hr_approval_required": "Dihantar kepada HR; berubah hanya selepas HR meluluskan",
+        "hr_verification_required": "HR mengesahkan butiran bank baharu sebelum digunakan"
       },
       "reads": {
         "my_leave_balances": "baki cuti anda",

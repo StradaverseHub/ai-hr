@@ -466,6 +466,12 @@
       "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, other {# ngày}})",
       "leaveApplyMorningTitle": "{leaveType}, {start} (nửa ngày, buổi sáng)",
       "leaveApplyAfternoonTitle": "{leaveType}, {start} (nửa ngày, buổi chiều)",
+      "claimSubmitTitle": "Yêu cầu hoàn tiền {claimType}, RM {amount}, {date}",
+      "claimCancelTitle": "Hủy yêu cầu hoàn tiền {claimType}, RM {amount}, {date}",
+      "profileAddressTitle": "Thay đổi địa chỉ nhà của bạn",
+      "profileEmergencyTitle": "Thay đổi người liên hệ khẩn cấp của bạn",
+      "profileDependantTitle": "Thêm người phụ thuộc",
+      "profileBankTitle": "Đổi tài khoản ngân hàng của bạn sang {bankName}, đuôi {ending}",
       "review": "Xem xét",
       "open": "Mở",
       "expires": "Hết hạn {time}",
@@ -488,7 +494,10 @@
         "fallback": "Một thay đổi sẵn sàng để bạn xem xét",
         "leave_apply": "Đơn nghỉ phép sẵn sàng để xem xét",
         "leave_cancel": "Hủy nghỉ phép sẵn sàng để xem xét",
-        "approvals_leave_decide": "Quyết định nghỉ phép sẵn sàng để xem xét"
+        "approvals_leave_decide": "Quyết định nghỉ phép sẵn sàng để xem xét",
+        "claims_submit": "Yêu cầu hoàn tiền sẵn sàng để xem xét",
+        "claims_cancel": "Hủy yêu cầu hoàn tiền sẵn sàng để xem xét",
+        "ess_profile_request": "Thay đổi hồ sơ sẵn sàng để xem xét"
       },
       "checks": {
         "actor_current": "Quyền truy cập của bạn còn hiệu lực",
@@ -498,7 +507,13 @@
         "leave_type_eligible": "Loại phép được phép",
         "own_approved_cancellable": "Vẫn có thể hủy",
         "own_pending_request": "Đơn vẫn đang chờ",
-        "review_contract": "Trang xem xét đã sẵn sàng"
+        "review_contract": "Trang xem xét đã sẵn sàng",
+        "claim_type_available": "Loại yêu cầu khả dụng",
+        "claim_draft_reviewed": "Đã được dịch vụ hoàn tiền kiểm tra",
+        "receipt_attached": "Yêu cầu hóa đơn",
+        "own_pending_claim": "Yêu cầu vẫn đang chờ",
+        "profile_fields_editable": "Bạn có thể yêu cầu các thay đổi này",
+        "profile_request_reviewed": "Đã đối chiếu với hồ sơ của bạn"
       },
       "outcomes": {
         "withdrawn_now": "Rút lại ngay",
@@ -506,7 +521,12 @@
         "rejection_if_confirmed": "Bị từ chối nếu bạn xác nhận",
         "step_decision_if_confirmed": "Bước của bạn được ghi nhận",
         "approval_if_native_checks_pass": "Được duyệt nếu các kiểm tra vẫn đạt",
-        "submitted_not_approved": "Đã gửi để phê duyệt, chưa được duyệt"
+        "submitted_not_approved": "Đã gửi để phê duyệt, chưa được duyệt",
+        "claim_submitted_if_checks_pass": "Gửi phê duyệt nếu vượt qua kiểm tra hoàn tiền",
+        "claim_draft_receipt_needed": "Đã lưu bản nháp; thêm hóa đơn ở trang Hoàn tiền",
+        "claim_cancelled_now": "Hủy ngay",
+        "hr_approval_required": "Gửi cho bộ phận nhân sự; chỉ thay đổi khi được duyệt",
+        "hr_verification_required": "Bộ phận nhân sự xác minh thông tin ngân hàng mới trước khi sử dụng"
       },
       "reads": {
         "my_leave_balances": "số dư phép của bạn",

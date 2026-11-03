@@ -4,6 +4,7 @@ import { CalendarDays, ShieldCheck } from 'lucide-react';
 import type { ConversationTurn } from '@/core/teras-wiring/turn';
 import { ruleVersionLabel } from '@/lib/ai-centre/rule-version';
 import { leaveApplyCardTitle, LEAVE_APPLY_TITLE_DATE } from '@/lib/ai-centre/leave-apply-title';
+import { ownChangeCardTitle, OWN_CHANGE_TITLE_DATE } from '@/lib/ai-centre/own-change-title';
 import { ProposalCard, type ProposalCheck } from './proposal-card';
 import { RecommendationPanel } from './leave-recommendation';
 import { ConversationSuggestions } from '@/components/assistant/chat-reply-boundary';
@@ -52,6 +53,8 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
         const recommendation = body.recommendation;
         // Issue 10: a leave application names its own type, dates and days; every other card keeps its action title.
         const title = leaveApplyCardTitle(body, (key, values) => t(key, values), date => format.dateTime(date, LEAVE_APPLY_TITLE_DATE))
+          // AI v2 W2: an own claim or profile change names its type, amount and date, or what changes.
+          ?? ownChangeCardTitle(body, (key, values) => t(key, values), date => format.dateTime(date, OWN_CHANGE_TITLE_DATE))
           ?? label('actions', body.what.action.replace(/\./g, '_'), t('actions.fallback'));
         return (
           <div key={body.id} className="space-y-1">

@@ -92,7 +92,11 @@ export const RECOMMEND_ENTITIES:readonly SemanticEntity[]=freeze([
    // Issue 10: the caller's own apply menu, numbered, when a leave application's type is missing or unclear.
    f('options','list','full','Leave types the person may apply for, numbered in a fixed order, when the type is missing or unclear.',{of:[
     f('option','integer','full','The leave type\'s number in this list; the person chooses by it.'),
-    f('leaveType','label','full','Leave type name.',{screen:'sensitive_label'})]}),
+    f('leaveType','label','full','Leave type name.',{screen:'sensitive_label'}),
+    // AI v2 W2: claim types or items to choose from, or the caller's own pending claims to cancel (core/proposals/claim-*.ts).
+    f('claimType','label','full','Claim type name.',{screen:'sensitive_label'}),f('claimItem','label','full','Claim item name.',{screen:'sensitive_label'}),
+    // The caller's own pending claim, so its date may be named back as incurredOn to choose it.
+    f('incurredOn','date','full','Date one of the caller\'s own pending claims was incurred.'),f('amount','number','bands','Amount of a pending claim, as stored.')]}),
    f('notListed','integer','full','Further pending requests left to the review page.'),
    f('pending','list','full','Pending leave requests the approver chooses between, in a fixed order.',{of:[
     f('request','integer','full','The request\'s number in this list; the approver chooses by it.'),

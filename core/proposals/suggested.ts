@@ -33,6 +33,9 @@ import {matchLeaveTypeWords} from './leave-type-match';
 import {prepareLeaveDecideProposal} from './leave-decide';
 import type {Proposal} from './proposal';
 import {PENDING_STARTS} from '../semantic-model/entities-recommend';
+import {prepareChatClaimSubmitProposal,type OwnChangeAsk} from './claim-submit';
+import {prepareChatClaimCancelProposal} from './claim-cancel';
+import {prepareChatProfileChangeProposal} from './profile-change';
 
 const isDate=(value:unknown):value is string=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value);
 /** "Do not approve", "don't approve", "never approve", "not yet approve", "jangan lulus", "tak approve": a negation
@@ -160,7 +163,9 @@ export async function prepareChatLeaveApplyProposal(ctx:SessionContext,details:R
 }
 
 export type SuggestedOutcome=Readonly<{kind:'proposal';proposal:Proposal}>|Readonly<{kind:'choose';pending:readonly PendingChoice[];more:number}>
- |Extract<ChatLeaveApplyOutcome,{kind:'ask'}>;
+ |Extract<ChatLeaveApplyOutcome,{kind:'ask'}>
+ /** AI v2 W2: an own claim or profile change with details missing; it carries its own note for the one question. */
+ |OwnChangeAsk;
 /** At most this many pending requests are listed; the rest are counted and left to the Approvals page. */
 export const MAX_PENDING_CHOICES=10;
 
@@ -168,6 +173,10 @@ export async function prepareSuggestedProposal(ctx:SessionContext,action:string,
  try{
   const given=details&&typeof details==='object'&&!Array.isArray(details)?details as Record<string,unknown>:{};
   if(action==='leave.apply')return await prepareChatLeaveApplyProposal(ctx,given,personWords,locale,now);
+  // AI v2 W2: own claims and own profile changes (core/proposals/claim-submit.ts, claim-cancel.ts, profile-change.ts).
+  if(action==='claims.submit')return await prepareChatClaimSubmitProposal(ctx,given,personWords,now);
+  if(action==='claims.cancel')return await prepareChatClaimCancelProposal(ctx,given);
+  if(action==='ess.profile.request')return await prepareChatProfileChangeProposal(ctx,given,personWords,now);
   if(action==='leave.cancel'){
    if(!ctx.personId)return null;
    const today=todayInKualaLumpur(now),date=isDate(given.startDate)?given.startDate:null;

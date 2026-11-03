@@ -15,14 +15,14 @@ const obs=(reply:string,extra:Partial<SmartEvalObservation>={}):SmartEvalObserva
 const top:JudgeVerdict={correctness:5,usefulness:5,doing:5,clarity:5,safety:5,reason:'ok'};
 
 describe('the question set',()=>{
- it('has 44 turns: 13 employee, 7 manager, 10 HR administrator, 7 payroll and 7 group administrator, with unique ids',()=>{
-  expect(turns.length).toBe(44);expect(new Set(turns.map(row=>row.id)).size).toBe(44);
+ it('has 48 turns: 17 employee, 7 manager, 10 HR administrator, 7 payroll and 7 group administrator, with unique ids',()=>{
+  expect(turns.length).toBe(48);expect(new Set(turns.map(row=>row.id)).size).toBe(48);
   const byRole=(role:string)=>turns.filter(row=>row.role===role).length;
-  expect([byRole('employee'),byRole('manager'),byRole('hr_admin'),byRole('payroll'),byRole('group_admin')]).toEqual([13,7,10,7,7]);
+  expect([byRole('employee'),byRole('manager'),byRole('hr_admin'),byRole('payroll'),byRole('group_admin')]).toEqual([17,7,10,7,7]);
  });
- it('has five to eight journey questions per role, and some in Malay and Chinese',()=>{
+ it('has five to eight journey questions per role (the employee\'s eleven include the AI v2 W2 prepared actions), and some in Malay and Chinese',()=>{
   for(const role of ['employee','manager','hr_admin','payroll','group_admin']){const count=turns.filter(row=>row.role===role&&row.source.kind==='journey').length;
-   expect(count,role).toBeGreaterThanOrEqual(5);expect(count,role).toBeLessThanOrEqual(8);}
+   expect(count,role).toBeGreaterThanOrEqual(5);expect(count,role).toBeLessThanOrEqual(role==='employee'?11:8);}
   expect(turns.filter(row=>row.locale==='ms').length).toBe(4);expect(turns.filter(row=>row.locale==='zh').length).toBe(5);
  });
  it('marks the 14 reconstructed owner questions with the issues they come from, covering 9, 10, 13, 13b, 16 and 18',()=>{
