@@ -204,8 +204,15 @@ describe('customer-facing outcome summary and export',()=>{
 
   await expect(exportAgentRegistry(manager)).rejects.toMatchObject({reason:'not_administrator'});
   await expect(outcomeSummary(report)).rejects.toMatchObject({reason:'not_administrator'});
+  // AI v2 W8: a loop is sponsored by the person who switched it on; one that is off has no sponsor.
+  await setWorkerSwitch(hr,{workerId:'loop_probation_ending',enabled:true});
   const exported=await exportAgentRegistry(hr);
   expect(exported).toMatchObject({kind:'teras.agent_registry_export',version:1,tenantId:b.tenantId,adapters:{entraAgentId:null,googleAgentIdentity:null}});
+  const sponsorOf=(workerId:string)=>exported.agents.find(agent=>agent.kind==='worker'&&agent.workerId===workerId)?.sponsor;
+  expect(sponsorOf('loop_probation_ending')).toEqual({kind:'person',userId:hr.userId});
+  expect(sponsorOf('loop_payroll_inputs')).toEqual({kind:'none'});
+  expect(sponsorOf('payroll_anomaly_narrator')).toEqual({kind:'tenant_administrators'});
+  expect(exported.agents.filter(agent=>agent.kind==='worker'&&agent.workerId.startsWith('loop_')&&agent.sponsor.kind==='tenant_administrators')).toEqual([]);
   // One identity per non-mandate worker, plus one per mandate, acting for its grantor; nothing autonomous.
   expect(exported.agents.filter(agent=>agent.kind==='worker').map(agent=>agent.workerId)).toEqual(IDS.filter(id=>!['team_absence_weekly_summary','daily_digest'].includes(id)));
   expect(exported.agents.filter(agent=>agent.kind==='mandate_agent')).toEqual([expect.objectContaining({agentId:`mandate-agent:${mandate.agentIdentityId}`,

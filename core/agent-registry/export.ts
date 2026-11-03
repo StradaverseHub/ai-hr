@@ -8,7 +8,7 @@
  *
  * exportAgentRegistry: every registered worker and every mandate agent, each as an agent identity a customer's
  * own control tower can register: a stable id, a display name, the family, its sponsor (the tenant's
- * administrators, or the grantor for a mandate), how it acts (for the requester, as the tenant's agent
+ * administrators; for a loop, the person who switched it on, or none while it is off; the grantor for a mandate), how it acts (for the requester, as the tenant's agent
  * principal, or delegated by a grantor — never autonomous), its permissions (read scope from the semantic
  * model) and its effect. The shape leaves room for a Microsoft Entra Agent ID or Google Agent Identity adapter;
  * none is built here and nothing is sent anywhere (§11.3 change 6: no auto-linking of identities, ADR-0117).
@@ -16,7 +16,7 @@
  * Both read only the caller's tenant (tenant filter plus RLS) and are for group administrators. */
 import {and,count,eq,gte,ne} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
-import {terasMandate,terasOutcomeFollowup,terasOutcomeRecord} from '../../db/teras-schema';
+import {terasMandate,terasOutcomeFollowup,terasOutcomeRecord,terasWorkerControl} from '../../db/teras-schema';
 import {mandateAgentIdentity,mandateState} from '../mandates/mandates';
 import {WORKER_SWITCH_IDENTITY} from './controls';
 import {terasEntity} from '../semantic-model/generate';
@@ -74,7 +74,9 @@ export async function outcomeSummary(ctx:SessionContext,options:Readonly<{since?
 }
 
 export type ExportedAgent=Readonly<{agentId:string;displayName:string;kind:'worker'|'mandate_agent';family:WorkerFamily;
- sponsor:Readonly<{kind:'tenant_administrators'}>|Readonly<{kind:'person';userId:string}>;
+ /** AI v2 W8: a loop (sponsor `switched_on_by`) is sponsored by the person who switched it on, read from its switch;
+  * while it is off nobody sponsors it (`none`). Other workers answer to the tenant's administrators. */
+ sponsor:Readonly<{kind:'tenant_administrators'}>|Readonly<{kind:'person';userId:string}>|Readonly<{kind:'none'}>;
  /** How it acts. Every mandate agent acts for its grantor; nothing is autonomous. */
  actsAs:'for_requester'|'tenant_agent_principal'|'for_grantor';autonomous:false;
  permissions:readonly Readonly<{entity:string;label:string}>[];effect:WorkerDeclaration['effect'];trigger:string;
@@ -92,11 +94,19 @@ export async function exportAgentRegistry(ctx:SessionContext,options:Readonly<{s
  const outcomes=await outcomeSummary(ctx,{since:options.since});
  const mandates=await withTenant(ctx,tx=>tx.select().from(terasMandate).where(eq(terasMandate.tenantId,ctx.tenantId)));
  const declarations=new Map(registeredWorkers().map(worker=>[worker.id,worker]));
+ // Who switched each worker on, as its switch records it (the loops' sponsor: core/loops/run.ts reads the same column).
+ const switches=new Map((await withTenant(ctx,tx=>tx.select({workerId:terasWorkerControl.workerId,enabled:terasWorkerControl.enabled,changedByUserId:terasWorkerControl.changedByUserId})
+  .from(terasWorkerControl).where(eq(terasWorkerControl.tenantId,ctx.tenantId)))).map(row=>[row.workerId as string,row]));
+ const sponsorOf=(worker:WorkerDeclaration):ExportedAgent['sponsor']=>{
+  if(worker.sponsor?.kind!=='switched_on_by')return Object.freeze({kind:'tenant_administrators' as const});
+  const control=switches.get(worker.id);
+  return control?.enabled&&control.changedByUserId?Object.freeze({kind:'person' as const,userId:control.changedByUserId}):Object.freeze({kind:'none' as const});
+ };
  const agents:ExportedAgent[]=[];
  for(const row of rows){
   const worker=declarations.get(row.id)!;
   if(worker.authority.kind==='mandate')continue;// listed per mandate below: one agent identity per mandate (§3.10 rule 9)
-  agents.push(Object.freeze({agentId:`teras-worker:${worker.id}`,displayName:worker.label,kind:'worker' as const,family:worker.family,sponsor:Object.freeze({kind:'tenant_administrators' as const}),
+  agents.push(Object.freeze({agentId:`teras-worker:${worker.id}`,displayName:worker.label,kind:'worker' as const,family:worker.family,sponsor:sponsorOf(worker),
    actsAs:worker.authority.actsAs==='requester'?'for_requester' as const:'tenant_agent_principal' as const,autonomous:false as const,permissions:permissions(worker),
    effect:worker.effect,trigger:worker.trigger.kind,status:row.stopped?'stopped' as const:row.switch.on?'enabled' as const:'disabled' as const,
    lastRunAt:row.lastRunAt?.toISOString()??null,workerId:worker.id}));
