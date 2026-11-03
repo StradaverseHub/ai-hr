@@ -72,6 +72,9 @@ capability, is incomplete; any other omission fails the pass and rolls the whole
   migration owner owns it). The pass deletes only chats whose `expires_at` has passed; their turns go by the
   foreign-key cascade and their task memory by trigger. The owner has no policy on `teras_chat_turn`, so this pass
   cannot read a turn.
+  HR records a chat can originate survive it and need no ownership here: a letter request confirmed from a chat card
+  (`public.letter_request`) and HR's decision are never read or changed by this pass. Its `client_key`, the card's
+  opaque idempotency key, stays (`TERAS_CHAT_SURVIVING_RECORDS` in `core/teras-chat-expiry.ts`).
 
 Expiry follows the existing native cleanup contract in one parent UPDATE: pending Payroll reopening
 roots clear before the immediate CHECK, and pending reporting-change manager/previous-manager links
