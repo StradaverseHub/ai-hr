@@ -106,3 +106,17 @@ export const WORKFORCE_IMPORT_REVERT_CAPABILITY_PUBLICATION={
   'app.import_employment_void_matches(public.employment,public.employment)',
  ],
 } as const;
+
+export const WORKFORCE_RECORD_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:WORKFORCE_FUNCTIONS.filter(descriptor=>descriptor.key==='workforceRecords'),
+ functionLegacyParityFunction:'app.workforce_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.workforce_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.workforce_records_bindings_complete()',
+  'app.access_workforce_projection_company(uuid)',
+  'app.access_workforce_action_company(uuid,text)',
+  'app.access_workforce_maintain_record(uuid,text,uuid,text,jsonb,text)',
+ ],
+} as const;

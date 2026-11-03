@@ -1708,3 +1708,4 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | New candidate migration | 0962_workforce_draft_binding_readiness | 809 | 1793330000362 | b0e4bfa2021ec91d8b27f6ff7270a776dcec7fd2d9bc33019791901efb06e3a1 |
 | New candidate migration | 0963_workforce_draft_compensation_cents | 810 | 1793330000363 | cce8b5b6f80eaa9a28077aa610e1bfaefc1de9d9d895e0853da8cd2140c89a77 |
 | New candidate migration | 0964_workforce_import_revert_binding_readiness | 811 | 1793330000364 | a59aef7a28304c68bf8638a6d9befd0a5bcfa04ea1eb38ee7f73fe073b7b9a41 |
+| New candidate migration | 0965_workforce_record_binding_readiness | 812 | 1793330000365 | 70fe079f7396cf35dd2cef05cf8e00f0caf22026422805eba30cbd7518531bb3 |

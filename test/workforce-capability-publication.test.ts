@@ -124,8 +124,27 @@ it('registers exact mixed-case native submenu IDs while preserving closed gramma
 it('reports registered actions without a package and leaves the full publisher closed',async()=>{
  const before=await snapshot();
  await expect(publishAllActionCapabilities(owner.client))
-  .rejects.toThrow(/registry coverage differs .*function\.workforceRecords\.edit/);
+  .rejects.toThrow(/registry coverage differs .*function\.profileChanges\.maintenance\.edit/);
  expect(await snapshot()).toEqual(before);
+});
+it('publishes Workforce Records and preserves the separate Edit denial',async()=>{
+ await publishWorkforceCapabilities(owner.client);
+ const ctx=adminCtx(b),cap='function.workforceRecords.edit';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'workforce_records')).toMatchObject({changed:true,capabilities:4});
+  expect(await publishActionCapabilityPackage(owner.client,'workforce_records')).toMatchObject({changed:false});
+  const read=()=>withTenant(ctx,tx=>tx.execute(sql`select
+   app.access_workforce_projection_company(${b.companyId}::uuid) as view,
+   app.access_workforce_action_company(${b.companyId}::uuid,'edit') as edit,
+   app.access_workforce_action_company(${b.companyId}::uuid,'add') as add`));
+  expect(await read()).toEqual([{view:true,edit:true,add:true}]);
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${ctx.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  expect(await read()).toEqual([{view:true,edit:false,add:true}]);
+ }finally{
+  await owner.client`delete from app.access_native_capability_default where capability_id like 'function.workforceRecords.%'`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.workforceRecords.%'`;
+ }
 });
 it('keeps Workforce Imports closed if the Qualification subject guard is disabled',async()=>{
  await publishWorkforceCapabilities(owner.client);
