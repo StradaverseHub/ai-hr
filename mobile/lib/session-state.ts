@@ -51,7 +51,7 @@ export function createSessionState(ports: Ports, initialVisibility: Visibility =
       if (!possible) { await signOut(); return; }
       prompting = true;
       const success = await ports.authenticate();
-      if (current(owner) && success && visibility !== 'background') {
+      if (current(owner) && success) {
         authenticatedOwner = owner;
         applyUnlock();
       }
