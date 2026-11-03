@@ -24,7 +24,7 @@ const exportsName=(file:string,name:string)=>new RegExp(`export\\s+(?:async\\s+)
 
 describe('registry actions',()=>{
  it('classifies every registry action exactly once: an action entry, an import, or an automatic reminder',()=>{
-  const imports=new Set(IMPORT_OWNERS.flatMap(row=>row.action?[row.action]:[])),suggestable=new Set(SUGGESTABLE_ACTIONS.map(row=>row.id));
+  const imports=new Set(IMPORT_OWNERS.flatMap(row=>row.action?[row.action]:[])),suggestable=new Set<string>(SUGGESTABLE_ACTIONS.map(row=>row.id));
   const classified=AGENT_ACTIONS.map(action=>{
    if(imports.has(action.id))return[action.id,'import'];
    if(action.policy.tier==='automatic'||action.permission.actor==='agent_principal')return[action.id,'reminder'];
