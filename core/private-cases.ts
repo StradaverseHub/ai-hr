@@ -11,8 +11,10 @@
  *
  * Who reads, decided by forced row-level security (0959) and repeated here only to choose the right query:
  *  - the author: their own cases, text and status history, never handler notes or who read it;
- *  - the case's handlers: the company's designated handlers except the author and anyone the author excluded; with no
- *    eligible handler, or on the author's request, the group administrators, again except the excluded. The author
+ *  - the case's handlers: the company's eligible handlers when it was filed (a current grant held by a current login,
+ *    not archived or blocked), except the author and anyone the author excluded, frozen on the case as the set the
+ *    intake showed the author; a handler designated later never reads it. With none of them still eligible, or on the
+ *    author's request, the group administrators, again except the excluded. The author
  *    may exclude any possible reader, so the person a case is about never reads it; a case nobody may read is kept,
  *    and the author is told no eligible reader is configured. No general HR administrator, manager or agent.
  * Readers are notified of a new case and the author of a status change by the database (0959 §4b), with no content.
@@ -32,7 +34,7 @@ export const PRIVATE_CASE_STATUSES=Object.freeze(['received','in_review','closed
 export type PrivateCaseStatus=typeof PRIVATE_CASE_STATUSES[number];
 /** The status changes a handler may make (the 0959 guard enforces the same). */
 export const PRIVATE_CASE_NEXT:Readonly<Record<PrivateCaseStatus,readonly PrivateCaseStatus[]>>=Object.freeze({received:['in_review','closed'],in_review:['closed'],closed:[]});
-export const PRIVATE_CASE_LIMITS=Object.freeze({textChars:8000,noteChars:4000,cases:100,excluded:50});
+export const PRIVATE_CASE_LIMITS=Object.freeze({textChars:8000,noteChars:4000,cases:100,excluded:50,handlers:500});
 
 export type PrivateCaseErrorCode='invalid'|'not_set_up'|'not_found'|'not_allowed'|'unavailable'|'conflict';
 export class PrivateCaseError extends Error{constructor(readonly code:PrivateCaseErrorCode){super('Private case: '+code);this.name='PrivateCaseError';}}
@@ -44,7 +46,7 @@ const own=(ctx:SessionContext):ctx is SessionContext&{userId:string}=>Boolean(ct
 const at=(value:unknown):Date=>{const parsed=new Date(String(value));return Number.isFinite(parsed.getTime())?parsed:fail('unavailable');};
 const AT=(column:SQL)=>sql`to_char(${column} AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 /** Whether anyone may read the case now (0959 app.private_case_has_reader), from the row's own routing facts. */
-const HAS_READER=sql`app.private_case_has_reader(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids)`;
+const HAS_READER=sql`app.private_case_has_reader(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids,c.handler_user_ids)`;
 const category=(value:unknown):PrivateCaseCategory|null=>PRIVATE_CASE_CATEGORIES.find(item=>item===value)??null;
 const status=(value:unknown):PrivateCaseStatus=>PRIVATE_CASE_STATUSES.find(item=>item===value)??fail('unavailable');
 
@@ -79,16 +81,15 @@ export type IntakeCompany=Readonly<{id:string;name:string}>;
 export type IntakeReader=Readonly<{userId:string;name:string|null;kind:'handler'|'group_admin'}>;
 export type PrivateCaseIntake=Readonly<{companies:readonly IntakeCompany[];companyId:string|null;readers:readonly IntakeReader[];storable:boolean}>;
 
-/** The companies the caller may open a case in (a current employment there, and a handler designated), and everyone
- * who could read a case of the chosen company, by name, so the person a case is about, or anyone who must not see
- * it, can be left out. */
+/** The companies the caller may open a case in (a current employment there, and an eligible handler: a current grant
+ * held by a current login), and everyone who could read a case of the chosen company, by name, so the person a case is
+ * about, or anyone who must not see it, can be left out. The handlers listed are the set a case filed now freezes. */
 export async function privateCaseIntake(supplied:SessionContext,companyId?:unknown):Promise<PrivateCaseIntake>{
  const ctx=captured(supplied);
  if(!own(ctx))return fail('not_allowed');
  return guarded(ctx,async tx=>{
   const companies=await tx.execute<{id:string;name:string}>(sql`select c.id,c.legal_name as name from public.company c
-   where c.tenant_id=${ctx.tenantId}::uuid and app.private_case_author_company(c.id)
-    and exists(select 1 from public.private_case_handler h where h.tenant_id=c.tenant_id and h.company_id=c.id and h.revoked_at is null)
+   where c.tenant_id=${ctx.tenantId}::uuid and app.private_case_author_company(c.id) and app.private_case_route_configured(c.tenant_id,c.id) is true
    order by c.legal_name,c.id`);
   const chosen=companies.find(row=>row.id===companyId)?.id??companies[0]?.id??null;
   const readers=chosen?await tx.execute<{app_user_id:string;display_name:string|null;reader_kind:string}>(sql`select app_user_id,display_name,reader_kind
@@ -99,26 +100,33 @@ export async function privateCaseIntake(supplied:SessionContext,companyId?:unkno
  });
 }
 
-export type OpenPrivateCaseInput=Readonly<{companyId:unknown;category:unknown;text:unknown;excludedUserIds?:unknown;sendTo?:unknown}>;
+export type OpenPrivateCaseInput=Readonly<{companyId:unknown;category:unknown;text:unknown;excludedUserIds?:unknown;sendTo?:unknown;
+ /** The handlers the intake showed the author. When given, the case's frozen handlers are narrowed to them, so a
+  * handler designated after the form was opened (whom the author could neither see nor exclude) never reads it. */
+ shownHandlerIds?:unknown}>;
 /** Opens a case as the caller. The database sets its status, times and route (falling back to the group administrators
- * when every handler is excluded) and refuses a company without handlers. A case nobody may read is still kept:
- * `reachable` is false and the author is told so. */
+ * when every handler is excluded), freezes its handlers (the company's eligible handlers now, other than the author and
+ * the excluded, narrowed to those shown) and refuses a company without an eligible handler. A case nobody may read is
+ * still kept: `reachable` is false and the author is told so. */
 export async function openPrivateCase(supplied:SessionContext,input:OpenPrivateCaseInput):Promise<Readonly<{caseId:string;reachable:boolean}>>{
  const ctx=captured(supplied);
  if(!own(ctx))return fail('not_allowed');
  const kind=category(input.category),text=words(input.text,PRIVATE_CASE_LIMITS.textChars);
  const excluded=input.excludedUserIds===undefined?[]:Array.isArray(input.excludedUserIds)?input.excludedUserIds:[input.excludedUserIds];
  const sendTo=input.sendTo===undefined||input.sendTo==='handlers'?'handlers':input.sendTo==='group_admin'?'group_admin':null;
- if(!uuid(input.companyId)||!kind||!text||!sendTo||excluded.length>PRIVATE_CASE_LIMITS.excluded||!excluded.every(uuid))return fail('invalid');
+ const shown=input.shownHandlerIds===undefined?null:Array.isArray(input.shownHandlerIds)?input.shownHandlerIds:[input.shownHandlerIds];
+ if(!uuid(input.companyId)||!kind||!text||!sendTo||excluded.length>PRIVATE_CASE_LIMITS.excluded||!excluded.every(uuid)
+  ||(shown!==null&&(shown.length>PRIVATE_CASE_LIMITS.handlers||!shown.every(uuid))))return fail('invalid');
  // Fail closed: no secret, no case. Never a plaintext fallback.
  if(!isSecretStorable())return fail('unavailable');
  const caseId=randomUUID(),userId=ctx.userId,companyId=input.companyId,exclusions=[...new Set(excluded as string[])].filter(id=>id!==userId);
  const ciphertext=encryptSecret(text,privateCaseAad(ctx.tenantId,caseId,userId));
  const reachable=await guarded(ctx,async tx=>{
-  await tx.execute(sql`insert into public.private_case(id,tenant_id,company_id,author_user_id,author_person_id,category,route,excluded_user_ids,body_ciphertext)
+  const handlers=shown===null?sql`null::uuid[]`:sql`array[${sql.join([...new Set(shown as string[])].map(id=>sql`${id}::uuid`),sql`,`)}]::uuid[]`;
+  await tx.execute(sql`insert into public.private_case(id,tenant_id,company_id,author_user_id,author_person_id,category,route,excluded_user_ids,handler_user_ids,body_ciphertext)
    values(${caseId}::uuid,${ctx.tenantId}::uuid,${companyId}::uuid,${userId}::uuid,
     (select u.person_id from public.app_user u where u.id=${userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid),
-    ${kind},${sendTo},${sql`array[${sql.join(exclusions.map(id=>sql`${id}::uuid`),sql`,`)}]::uuid[]`},${ciphertext})`);
+    ${kind},${sendTo},${sql`array[${sql.join(exclusions.map(id=>sql`${id}::uuid`),sql`,`)}]::uuid[]`},${handlers},${ciphertext})`);
   const [row]=await tx.execute<{reachable:boolean}>(sql`select ${HAS_READER} as reachable from public.private_case c where c.id=${caseId}::uuid`);
   return row?.reachable===true;
  });
@@ -183,7 +191,7 @@ export async function handlesPrivateCases(supplied:SessionContext):Promise<boole
   const [row]=await tx.execute<{handles:boolean}>(sql`select (exists(select 1 from public.private_case_handler h where h.tenant_id=${ctx.tenantId}::uuid
    and h.app_user_id=${ctx.userId}::uuid and h.revoked_at is null)
    or exists(select 1 from public.private_case c where c.tenant_id=${ctx.tenantId}::uuid
-    and app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids)))
+    and app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids,c.handler_user_ids)))
    and app.principal_snapshot_current() is true as handles`);
   return row?.handles===true;
  });}catch{return false;}
@@ -200,7 +208,7 @@ export async function listHandledPrivateCases(supplied:SessionContext):Promise<r
    select c.id,c.category,c.status,co.legal_name as company,c.route,${AT(sql`c.created_at`)} as opened,${AT(sql`c.status_changed_at`)} as changed,
     c.erasure_requested_at is not null as erasure
    from public.private_case c left join public.company co on co.id=c.company_id and co.tenant_id=c.tenant_id
-   where c.tenant_id=${ctx.tenantId}::uuid and app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids)
+   where c.tenant_id=${ctx.tenantId}::uuid and app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids,c.handler_user_ids)
    order by (c.status='closed'),c.created_at desc,c.id limit ${PRIVATE_CASE_LIMITS.cases}`);
   return Object.freeze(rows.map(row=>Object.freeze({id:row.id,category:category(row.category)??fail('unavailable'),status:status(row.status),companyName:row.company,
    route:row.route==='group_admin'?'group_admin' as const:'handlers' as const,openedAt:at(row.opened),statusChangedAt:at(row.changed),erasureRequested:row.erasure===true})));
@@ -223,7 +231,7 @@ export async function readHandledPrivateCase(supplied:SessionContext,caseId:unkn
     c.erasure_requested_at is not null as erasure,c.author_user_id as author,c.version,c.body_ciphertext as body
    from public.private_case c left join public.company co on co.id=c.company_id and co.tenant_id=c.tenant_id
    where c.tenant_id=${ctx.tenantId}::uuid and c.id=${caseId}::uuid
-    and app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids)`);
+    and app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids,c.handler_user_ids)`);
   if(!row)return fail('not_found');
   await audit(tx,ctx.tenantId,caseId,userId);
   const text=decryptSecret(row.body,privateCaseAad(ctx.tenantId,caseId,row.author));
@@ -254,7 +262,7 @@ export async function addPrivateCaseNote(supplied:SessionContext,input:Readonly<
  const caseId=input.caseId,userId=ctx.userId,noteId=randomUUID();
  await guarded(ctx,async tx=>{
   const [row]=await tx.execute<{author:string;status:string}>(sql`select author_user_id as author,status from public.private_case c
-   where c.tenant_id=${ctx.tenantId}::uuid and c.id=${caseId}::uuid and app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids)`);
+   where c.tenant_id=${ctx.tenantId}::uuid and c.id=${caseId}::uuid and app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids,c.handler_user_ids)`);
   if(!row)return fail('not_found');
   if(row.status==='closed')return fail('conflict');
   const ciphertext=encryptSecret(text,privateCaseNoteAad(ctx.tenantId,caseId,row.author,noteId,userId));
@@ -275,11 +283,11 @@ export async function setPrivateCaseStatus(supplied:SessionContext,input:Readonl
  return guarded(ctx,async tx=>{
   const [row]=await tx.execute<{status:string;erasure:boolean}>(sql`update public.private_case c set status=${wanted}
    where c.tenant_id=${ctx.tenantId}::uuid and c.id=${caseId}::uuid and c.status=${expected}
-    and app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids)
+    and app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids,c.handler_user_ids)
    returning c.status,c.erasure_requested_at is not null as erasure`);
   if(!row){
    const [seen]=await tx.execute<{id:string}>(sql`select c.id from public.private_case c where c.tenant_id=${ctx.tenantId}::uuid and c.id=${caseId}::uuid
-    and app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids)`);
+    and app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids,c.handler_user_ids)`);
    return fail(seen?'conflict':'not_found');
   }
   let erased=false;

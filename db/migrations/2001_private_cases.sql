@@ -10,9 +10,11 @@
 --
 -- Who reads (FORCE row-level security on all four tables, so the physical owner is bound by the policies too):
 --  - the author, their own cases (text and status history; never handler notes or who read it);
---  - the handlers designated for the case's company, except the author and anyone the author excluded. When no
---    eligible handler remains, or the author asked for them, the group administrators receive it, again except the
---    excluded and the author. The author may exclude any possible reader (a handler or a group administrator), so the
+--  - the case's handlers: the company's eligible handlers when it was filed (a current grant held by a current login,
+--    neither archived nor blocked), except the author and anyone the author excluded, frozen on the case as the set the
+--    author could see and exclude; a handler designated after filing never reads it. When none of them is still
+--    eligible, or the author asked for them, the group administrators receive it, again except the excluded and the
+--    author. The author may exclude any possible reader (a handler or a group administrator), so the
 --    person a case is about never reads it. With every possible reader excluded the case still exists and nobody
 --    reads it; the author is told no eligible reader is configured. Nobody else: no general HR administrator,
 --    manager, agent or other login policy exists.
@@ -79,6 +81,46 @@ REVOKE ALL ON FUNCTION app._private_case_login_current(uuid) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app._private_case_login_current(uuid) TO ai_hr_app;
 --> statement-breakpoint
+-- An eligible handler of the company: a current (unrevoked) grant there, held by a current login (not archived, not
+-- blocked). Every routing decision below asks this one question: who may read, whether anyone may, the insert guard
+-- and the notices. Definer: whether another login is archived or blocked is not the caller's own row.
+CREATE FUNCTION app._private_case_handler_eligible(p_tenant uuid,p_company uuid,p_user uuid) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_tenant=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.private_case_handler h
+  JOIN public.app_user u ON u.id=h.app_user_id AND u.tenant_id=h.tenant_id
+  WHERE h.tenant_id=p_tenant AND h.company_id=p_company AND h.app_user_id=p_user AND h.revoked_at IS NULL
+   AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app._private_case_handler_eligible(uuid,uuid,uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app._private_case_handler_eligible(uuid,uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- The route is set up for a company once it has at least one eligible handler: the intake, My Profile's link and the
+-- AI Centre's routed reply ask this, and the insert guard refuses a case for a company where it is false.
+CREATE FUNCTION app.private_case_route_configured(p_tenant uuid,p_company uuid) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_tenant=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.private_case_handler h
+  WHERE h.tenant_id=p_tenant AND h.company_id=p_company AND h.revoked_at IS NULL
+   AND app._private_case_handler_eligible(p_tenant,p_company,h.app_user_id))
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.private_case_route_configured(uuid,uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.private_case_route_configured(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Whether any of a case's frozen handlers is still eligible (not the author, not excluded): while one is, the case
+-- stays with its handlers; otherwise it falls to the group administrators. Never a handler designated after filing.
+CREATE FUNCTION app._private_case_handler_remains(p_tenant uuid,p_company uuid,p_author uuid,p_excluded uuid[],p_handlers uuid[]) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_tenant=app.current_tenant_id() AND EXISTS(SELECT 1 FROM unnest(coalesce(p_handlers,'{}'::uuid[])) x
+  WHERE x<>p_author AND NOT (x=ANY(coalesce(p_excluded,'{}'::uuid[]))) AND app._private_case_handler_eligible(p_tenant,p_company,x))
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app._private_case_handler_remains(uuid,uuid,uuid,uuid[],uuid[]) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app._private_case_handler_remains(uuid,uuid,uuid,uuid[],uuid[]) TO ai_hr_app;
+--> statement-breakpoint
 -- The caller holds a current employment in the company: who may open a case for it. Definer, reads non-forced tables.
 CREATE FUNCTION app.private_case_author_company(p_company uuid) RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -123,7 +165,10 @@ GRANT EXECUTE ON FUNCTION app._private_case_possible_reader(uuid,uuid,uuid) TO a
 -- 2. One private case. id is chosen by the writer so the text's additional data can bind it before the insert.
 --    author_person_id is the login's person when the case was opened (the original person wins for erasure, as for
 --    chats). route: 'handlers' (the company's handlers) or 'group_admin'; excluded_user_ids are possible readers (handlers
---    or group administrators) the author named because the case is about them or they must not see it; none ever reads it. status: received -> in_review -> closed (received -> closed too); closed
+--    or group administrators) the author named because the case is about them or they must not see it; none ever reads it.
+--    handler_user_ids: the handlers who may read it, frozen by the insert guard at filing: the company's eligible
+--    handlers then, other than the author and the excluded, and only those the intake showed the author when the writer
+--    passes that list; never changed afterwards. status: received -> in_review -> closed (received -> closed too); closed
 --    is final. erasure_requested_at: person erasure met the case open; it is deleted when a handler closes it.
 CREATE TABLE public.private_case (
  id uuid PRIMARY KEY,
@@ -135,6 +180,7 @@ CREATE TABLE public.private_case (
  status text NOT NULL DEFAULT 'received' CHECK (status IN ('received','in_review','closed')),
  route text NOT NULL DEFAULT 'handlers' CHECK (route IN ('handlers','group_admin')),
  excluded_user_ids uuid[] NOT NULL DEFAULT '{}'::uuid[] CHECK (cardinality(excluded_user_ids)<=50 AND array_position(excluded_user_ids,NULL) IS NULL),
+ handler_user_ids uuid[] NOT NULL CHECK (cardinality(handler_user_ids)<=500 AND array_position(handler_user_ids,NULL) IS NULL),
  body_ciphertext text NOT NULL CHECK (body_ciphertext ~ '^[A-Za-z0-9_-]{40,}$' AND octet_length(body_ciphertext)<=65536),
  created_at timestamptz NOT NULL DEFAULT now(),
  status_changed_at timestamptz NOT NULL DEFAULT now(),
@@ -144,7 +190,9 @@ CREATE TABLE public.private_case (
  UNIQUE (tenant_id,id),
  FOREIGN KEY (company_id,tenant_id) REFERENCES public.company(id,tenant_id),
  CHECK ((status='closed')=(closed_at IS NOT NULL)),
- CHECK (NOT (author_user_id=ANY(excluded_user_ids)))
+ CHECK (NOT (author_user_id=ANY(excluded_user_ids))),
+ CHECK (NOT (author_user_id=ANY(handler_user_ids)) AND NOT (handler_user_ids && excluded_user_ids)),
+ CHECK (route='handlers' OR cardinality(handler_user_ids)=0)
 );
 --> statement-breakpoint
 CREATE INDEX private_case_company_idx ON public.private_case(tenant_id,company_id,status,created_at DESC);
@@ -152,41 +200,42 @@ CREATE INDEX private_case_company_idx ON public.private_case(tenant_id,company_i
 CREATE INDEX private_case_author_idx ON public.private_case(tenant_id,author_user_id,created_at DESC);
 --> statement-breakpoint
 -- Who may handle one case, for the calling login (the session's own identity, never an argument): a current login,
--- not an agent, not the author, not excluded; a current handler of the company while any eligible handler remains,
--- otherwise a current group administrator. Invoker rights: the handler rows it reads are visible to the caller's role
--- (section 6), so in a definer it answers for the same login and widens nothing.
-CREATE FUNCTION app.private_case_may_handle(p_tenant uuid,p_company uuid,p_author uuid,p_route text,p_excluded uuid[]) RETURNS boolean
+-- not an agent, not the author, not excluded; on the handlers route one of the case's frozen handlers who is still
+-- eligible, while any of them is; otherwise a current group administrator. A handler designated after filing is not
+-- among the frozen handlers, so it never reads the case, on any route: the fallback goes to the group administrators.
+-- Invoker rights: the eligibility it asks is a definer question about grants and logins, never about a case, so in a
+-- definer lookup it answers for the same login and widens nothing.
+CREATE FUNCTION app.private_case_may_handle(p_tenant uuid,p_company uuid,p_author uuid,p_route text,p_excluded uuid[],p_handlers uuid[]) RETURNS boolean
  LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT p_tenant=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND app.current_user_id() IS NOT NULL
   AND app.current_user_id()<>p_author AND NOT (app.current_user_id()=ANY(p_excluded))
   AND app.principal_snapshot_current() IS TRUE
-  AND CASE WHEN p_route='handlers' AND EXISTS(SELECT 1 FROM public.private_case_handler h
-    WHERE h.tenant_id=p_tenant AND h.company_id=p_company AND h.revoked_at IS NULL AND h.app_user_id<>p_author AND NOT (h.app_user_id=ANY(p_excluded)))
-   THEN EXISTS(SELECT 1 FROM public.private_case_handler h
-    WHERE h.tenant_id=p_tenant AND h.company_id=p_company AND h.revoked_at IS NULL AND h.app_user_id=app.current_user_id())
+  AND CASE WHEN p_route='handlers' AND app._private_case_handler_remains(p_tenant,p_company,p_author,p_excluded,p_handlers) IS TRUE
+   THEN app.current_user_id()=ANY(p_handlers) AND app._private_case_handler_eligible(p_tenant,p_company,app.current_user_id()) IS TRUE
    ELSE app.is_group_admin() END
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.private_case_may_handle(uuid,uuid,uuid,text,uuid[]) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.private_case_may_handle(uuid,uuid,uuid,text,uuid[],uuid[]) FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.private_case_may_handle(uuid,uuid,uuid,text,uuid[]) TO ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.private_case_may_handle(uuid,uuid,uuid,text,uuid[],uuid[]) TO ai_hr_app;
 --> statement-breakpoint
--- Whether anyone may read a case with these routing facts now: an eligible handler on the handlers route, otherwise an
--- eligible group administrator. It names nobody and reads no case; the author's screens say when it is false.
-CREATE FUNCTION app.private_case_has_reader(p_tenant uuid,p_company uuid,p_author uuid,p_route text,p_excluded uuid[]) RETURNS boolean
+-- Whether anyone may read a case with these routing facts now: one of its frozen handlers still eligible on the
+-- handlers route, otherwise an eligible group administrator. It names nobody and reads no case; the author's screens
+-- say when it is false.
+CREATE FUNCTION app.private_case_has_reader(p_tenant uuid,p_company uuid,p_author uuid,p_route text,p_excluded uuid[],p_handlers uuid[]) RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT p_tenant=app.current_tenant_id() AND ((p_route='handlers' AND EXISTS(SELECT 1 FROM public.private_case_handler h
-   WHERE h.tenant_id=p_tenant AND h.company_id=p_company AND h.revoked_at IS NULL AND h.app_user_id<>p_author AND NOT (h.app_user_id=ANY(p_excluded))))
+ SELECT p_tenant=app.current_tenant_id() AND ((p_route='handlers' AND app._private_case_handler_remains(p_tenant,p_company,p_author,p_excluded,p_handlers) IS TRUE)
   OR app._private_case_group_admin_available(p_tenant,p_author,p_excluded) IS TRUE)
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.private_case_has_reader(uuid,uuid,uuid,text,uuid[]) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.private_case_has_reader(uuid,uuid,uuid,text,uuid[],uuid[]) FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.private_case_has_reader(uuid,uuid,uuid,text,uuid[]) TO ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.private_case_has_reader(uuid,uuid,uuid,text,uuid[],uuid[]) TO ai_hr_app;
 --> statement-breakpoint
--- Database-owned lifecycle. On insert: a case starts received, at the clock's time; the company must have a current
--- handler (the route is set up); the exclusions are possible readers of that company; the route falls back to the group
--- administrators when no handler other than the author and the excluded remains. A case nobody may read is still kept:
+-- Database-owned lifecycle. On insert: a case starts received, at the clock's time; the company must have an eligible
+-- handler (the route is set up); the exclusions are possible readers of that company; its handlers are frozen: the
+-- company's eligible handlers now other than the author and the excluded, narrowed to those the intake showed when the
+-- writer passes them; the route falls back to the group administrators when none is left. A case nobody may read is still kept:
 -- refusing it would lose what the person wrote, so the author is told instead (app.private_case_has_reader).
 -- On update: only the status, along received -> in_review -> closed (or received -> closed). Person erasure's own
 -- transaction (the marker below, owner side only) may set erasure_requested_at on an open case, nothing else.
@@ -196,12 +245,18 @@ BEGIN
  IF TG_OP='INSERT' THEN
   NEW.status:='received';NEW.created_at:=now();NEW.status_changed_at:=now();NEW.closed_at:=NULL;NEW.erasure_requested_at:=NULL;NEW.version:=1;
   NEW.excluded_user_ids:=coalesce((SELECT array_agg(DISTINCT x ORDER BY x) FROM unnest(NEW.excluded_user_ids) x),'{}'::uuid[]);
-  IF NOT EXISTS(SELECT 1 FROM public.private_case_handler h WHERE h.tenant_id=NEW.tenant_id AND h.company_id=NEW.company_id AND h.revoked_at IS NULL) THEN
+  IF app.private_case_route_configured(NEW.tenant_id,NEW.company_id) IS NOT TRUE THEN
    RAISE EXCEPTION 'Private cases are not set up for this company' USING ERRCODE='23514';END IF;
   IF EXISTS(SELECT 1 FROM unnest(NEW.excluded_user_ids) x WHERE app._private_case_possible_reader(NEW.tenant_id,NEW.company_id,x) IS NOT TRUE) THEN
    RAISE EXCEPTION 'Only a possible reader of this company can be excluded' USING ERRCODE='23514';END IF;
-  IF NEW.route='handlers' AND NOT EXISTS(SELECT 1 FROM public.private_case_handler h WHERE h.tenant_id=NEW.tenant_id AND h.company_id=NEW.company_id
-    AND h.revoked_at IS NULL AND h.app_user_id<>NEW.author_user_id AND NOT (h.app_user_id=ANY(NEW.excluded_user_ids))) THEN NEW.route:='group_admin';END IF;
+  IF array_position(NEW.handler_user_ids,NULL) IS NOT NULL OR cardinality(NEW.handler_user_ids)>500 THEN
+   RAISE EXCEPTION 'Not a list of handlers' USING ERRCODE='23514';END IF;
+  NEW.handler_user_ids:=CASE WHEN NEW.route='handlers' THEN coalesce((SELECT array_agg(DISTINCT h.app_user_id ORDER BY h.app_user_id)
+    FROM public.private_case_handler h WHERE h.tenant_id=NEW.tenant_id AND h.company_id=NEW.company_id AND h.revoked_at IS NULL
+     AND h.app_user_id<>NEW.author_user_id AND NOT (h.app_user_id=ANY(NEW.excluded_user_ids))
+     AND app._private_case_handler_eligible(NEW.tenant_id,NEW.company_id,h.app_user_id) IS TRUE
+     AND (NEW.handler_user_ids IS NULL OR h.app_user_id=ANY(NEW.handler_user_ids))),'{}'::uuid[]) ELSE '{}'::uuid[] END;
+  IF NEW.route='handlers' AND cardinality(NEW.handler_user_ids)=0 THEN NEW.route:='group_admin';END IF;
   RETURN NEW;
  END IF;
  IF current_user<>'ai_hr_app' AND current_setting('app.private_case_erasure',true)=OLD.tenant_id::text THEN
@@ -293,8 +348,8 @@ CREATE TRIGGER private_case_note_audit AFTER INSERT ON public.private_case_note
  FOR EACH ROW EXECUTE FUNCTION app.private_case_audit();
 --> statement-breakpoint
 -- 4b. In-app notices, where the tenant has the notifications module. A new case: one per current reader (the same
---     routing as app.private_case_may_handle: eligible handlers, else eligible group administrators; never the author
---     or anyone excluded), at that reader's current employment, the case's company first. A status change: one for the
+--     routing as app.private_case_may_handle: its frozen handlers still eligible, else eligible group administrators;
+--     never the author or anyone excluded), at that reader's current employment, the case's company first. A status change: one for the
 --     author, unless erasure is waiting on the case (it is deleted as it closes). Fixed English text, the notification
 --     registry's convention; the only case fact is its address in the link. A reader without a current employment has
 --     no bell to receive it (public.notification is addressed by employment; login-addressed rows are letters only).
@@ -310,8 +365,8 @@ BEGIN
   INSERT INTO public.notification(tenant_id,recipient_employment_id,kind,title,body,link_path,severity)
   SELECT NEW.tenant_id,target.employment_id,'private-case.waiting','A private case is waiting','Open Private cases to read it.','/cases/'||NEW.id::text,'action'
   FROM (
-   WITH handlers AS (SELECT h.app_user_id FROM public.private_case_handler h WHERE h.tenant_id=NEW.tenant_id AND h.company_id=NEW.company_id
-     AND h.revoked_at IS NULL AND h.app_user_id<>NEW.author_user_id AND NOT (h.app_user_id=ANY(NEW.excluded_user_ids))),
+   WITH handlers AS (SELECT x AS app_user_id FROM unnest(NEW.handler_user_ids) x WHERE x<>NEW.author_user_id AND NOT (x=ANY(NEW.excluded_user_ids))
+     AND app._private_case_handler_eligible(NEW.tenant_id,NEW.company_id,x) IS TRUE),
    readers AS (
     SELECT app_user_id FROM handlers WHERE NEW.route='handlers'
     UNION
@@ -341,12 +396,14 @@ CREATE TRIGGER private_case_notify AFTER INSERT OR UPDATE OF status ON public.pr
 -- 5. Definer lookups that return no case content, each answering only for a case the calling login may handle or for
 --    a company the calling login may open a case in.
 -- The intake form: everyone who could read a case of the company, by name, with whether they are a handler or a group
--- administrator, so the author can leave out the person the case is about and anyone who must not see it.
+-- administrator, so the author can leave out the person the case is about and anyone who must not see it. Handlers are
+-- the eligible ones only (a current login): the set the guard freezes on the case.
 CREATE FUNCTION app.private_case_intake_readers(p_company uuid) RETURNS TABLE(app_user_id uuid,display_name text,reader_kind text)
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  WITH readers AS (
   SELECT h.app_user_id,'handler'::text AS reader_kind,1 AS priority FROM public.private_case_handler h
    WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=p_company AND h.revoked_at IS NULL
+    AND app._private_case_handler_eligible(h.tenant_id,h.company_id,h.app_user_id) IS TRUE
   UNION ALL
   SELECT r.app_user_id,'group_admin',2 FROM public.role_assignment r JOIN public.app_user u ON u.id=r.app_user_id AND u.tenant_id=r.tenant_id
    WHERE r.tenant_id=app.current_tenant_id() AND (r.role='super_admin' OR (r.role='hr_admin' AND r.company_id IS NULL))
@@ -375,7 +432,7 @@ CREATE FUNCTION app.private_case_names(p_case uuid) RETURNS TABLE(app_user_id uu
   OR EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=c.tenant_id AND r.app_user_id=u.id AND (r.role='super_admin' OR (r.role='hr_admin' AND r.company_id IS NULL))))
  LEFT JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
  WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id()
-  AND app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids)
+  AND app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids,c.handler_user_ids)
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.private_case_names(uuid) FROM PUBLIC;
@@ -467,7 +524,7 @@ CREATE POLICY private_case_author_read ON public.private_case FOR SELECT TO ai_h
  USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND author_user_id=app.current_user_id());
 --> statement-breakpoint
 CREATE POLICY private_case_handler_read ON public.private_case FOR SELECT TO ai_hr_app
- USING (app.private_case_may_handle(tenant_id,company_id,author_user_id,route,excluded_user_ids));
+ USING (app.private_case_may_handle(tenant_id,company_id,author_user_id,route,excluded_user_ids,handler_user_ids));
 --> statement-breakpoint
 CREATE POLICY private_case_author_open ON public.private_case FOR INSERT TO ai_hr_app
  WITH CHECK (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND app.principal_snapshot_current() IS TRUE
@@ -475,18 +532,18 @@ CREATE POLICY private_case_author_open ON public.private_case FOR INSERT TO ai_h
   AND author_person_id IS NOT DISTINCT FROM (SELECT u.person_id FROM public.app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id()));
 --> statement-breakpoint
 CREATE POLICY private_case_handler_status ON public.private_case FOR UPDATE TO ai_hr_app
- USING (app.private_case_may_handle(tenant_id,company_id,author_user_id,route,excluded_user_ids))
- WITH CHECK (app.private_case_may_handle(tenant_id,company_id,author_user_id,route,excluded_user_ids));
+ USING (app.private_case_may_handle(tenant_id,company_id,author_user_id,route,excluded_user_ids,handler_user_ids))
+ WITH CHECK (app.private_case_may_handle(tenant_id,company_id,author_user_id,route,excluded_user_ids,handler_user_ids));
 --> statement-breakpoint
 -- A case person erasure met open is deleted by the handler who closes it.
 CREATE POLICY private_case_erased_on_close ON public.private_case FOR DELETE TO ai_hr_app
- USING (status='closed' AND erasure_requested_at IS NOT NULL AND app.private_case_may_handle(tenant_id,company_id,author_user_id,route,excluded_user_ids));
+ USING (status='closed' AND erasure_requested_at IS NOT NULL AND app.private_case_may_handle(tenant_id,company_id,author_user_id,route,excluded_user_ids,handler_user_ids));
 --> statement-breakpoint
 -- Definer lookups (section 5): the owner sees exactly the cases the calling login may handle.
 CREATE POLICY private_case_definer_handler_read ON public.private_case FOR SELECT TO PUBLIC
  USING (current_user<>'ai_hr_app'
   AND current_user=pg_catalog.pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.private_case'::regclass))
-  AND app.private_case_may_handle(tenant_id,company_id,author_user_id,route,excluded_user_ids));
+  AND app.private_case_may_handle(tenant_id,company_id,author_user_id,route,excluded_user_ids,handler_user_ids));
 --> statement-breakpoint
 -- Person erasure: only the table owner as current user (app.private_cases_redact), only the admitted subject's cases.
 CREATE POLICY private_case_person_erasure_read ON public.private_case FOR SELECT TO PUBLIC
@@ -509,19 +566,19 @@ CREATE POLICY private_case_person_erasure_mark ON public.private_case FOR UPDATE
 -- 8. Notes: the case's handlers only, never its author; added while the case is open.
 CREATE POLICY private_case_note_handler_read ON public.private_case_note FOR SELECT TO ai_hr_app
  USING (tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.private_case c WHERE c.tenant_id=private_case_note.tenant_id AND c.id=private_case_note.case_id
-  AND app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids)));
+  AND app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids,c.handler_user_ids)));
 --> statement-breakpoint
 CREATE POLICY private_case_note_handler_add ON public.private_case_note FOR INSERT TO ai_hr_app
  WITH CHECK (tenant_id=app.current_tenant_id() AND author_user_id=app.current_user_id()
   AND EXISTS(SELECT 1 FROM public.private_case c WHERE c.tenant_id=private_case_note.tenant_id AND c.id=private_case_note.case_id AND c.status<>'closed'
-   AND app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids)));
+   AND app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids,c.handler_user_ids)));
 --> statement-breakpoint
 -- 9. Audit: handlers read every row of their cases; the author reads its creation and status changes, never who read
 --    it or that a note was added. A row names the acting login and needs that login's access to the case: the author
 --    for 'created', a handler for status changes and notes, either for a read.
 CREATE POLICY private_case_event_handler_read ON public.private_case_event FOR SELECT TO ai_hr_app
  USING (tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.private_case c WHERE c.tenant_id=private_case_event.tenant_id AND c.id=private_case_event.case_id
-  AND app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids)));
+  AND app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids,c.handler_user_ids)));
 --> statement-breakpoint
 CREATE POLICY private_case_event_author_read ON public.private_case_event FOR SELECT TO ai_hr_app
  USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND kind IN ('created','status_changed')
@@ -533,8 +590,8 @@ CREATE POLICY private_case_event_append ON public.private_case_event FOR INSERT 
   AND EXISTS(SELECT 1 FROM public.private_case c WHERE c.tenant_id=private_case_event.tenant_id AND c.id=private_case_event.case_id
    AND CASE private_case_event.kind
     WHEN 'created' THEN c.author_user_id=app.current_user_id()
-    WHEN 'read' THEN c.author_user_id=app.current_user_id() OR app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids)
-    ELSE app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids) END));
+    WHEN 'read' THEN c.author_user_id=app.current_user_id() OR app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids,c.handler_user_ids)
+    ELSE app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids,c.handler_user_ids) END));
 --> statement-breakpoint
 -- ── Grants: exactly what each table needs, everything else revoked ──
 REVOKE ALL ON public.private_case_handler,public.private_case,public.private_case_note,public.private_case_event FROM PUBLIC,ai_hr_app;

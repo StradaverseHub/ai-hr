@@ -56,8 +56,9 @@ it('definer lookups, the insert guard, the audit trigger and person erasure work
   for(const table of ['public.app_user','public.person','public.role_assignment','public.employment','public.company','public.tenant_module','public.notification',
    'public.private_case_handler','public.private_case','public.private_case_note','public.private_case_event','app.assistant_review_erasure_intent'])
    await tx.execute(sql.raw(`ALTER TABLE ${table} OWNER TO ${role}`));
-  for(const fn of ['app._private_case_login_current(uuid)','app.private_case_author_company(uuid)','app._private_case_group_admin_available(uuid,uuid,uuid[])',
-   'app._private_case_possible_reader(uuid,uuid,uuid)','app.private_case_has_reader(uuid,uuid,uuid,text,uuid[])','app.private_case_notify()',
+  for(const fn of ['app._private_case_login_current(uuid)','app._private_case_handler_eligible(uuid,uuid,uuid)','app.private_case_route_configured(uuid,uuid)',
+   'app._private_case_handler_remains(uuid,uuid,uuid,uuid[],uuid[])','app.private_case_author_company(uuid)','app._private_case_group_admin_available(uuid,uuid,uuid[])',
+   'app._private_case_possible_reader(uuid,uuid,uuid)','app.private_case_has_reader(uuid,uuid,uuid,text,uuid[],uuid[])','app.private_case_notify()',
    'app.private_case_intake_readers(uuid)','app.private_case_names(uuid)','app._private_case_erasure_subject(uuid,uuid,uuid)','app.private_cases_redact(uuid)'])
    await tx.execute(sql.raw(`ALTER FUNCTION ${fn} OWNER TO ${role}`));
   const [shape]=await tx.execute<Record<string,boolean>>(sql`select r.rolsuper as super,r.rolbypassrls as bypass,pg_has_role('ai_hr_app',r.oid,'MEMBER') as app_member,
@@ -86,12 +87,15 @@ it('definer lookups, the insert guard, the audit trigger and person erasure work
    values(${routed}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${author.ctx.userId}::uuid,${author.personId}::uuid,'other','group_admin',
     array[${second.ctx.userId}::uuid],${encryptSecret('Fictional routed text.',privateCaseAad(b.tenantId,routed,author.ctx.userId))})`);
   expect(await tx.execute<{kind:string}>(sql`select kind from public.private_case_event where case_id=${routed}::uuid`).then(rows=>rows.map(row=>row.kind))).toEqual(['created']);
-  expect(await tx.execute(sql`select app.private_case_has_reader(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids) as reachable
+  expect(await tx.execute(sql`select app.private_case_has_reader(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids,c.handler_user_ids) as reachable
    from public.private_case c where c.id=${routed}::uuid`)).toEqual([{reachable:true}]);
   // The handlers route: the definer notice trigger writes the handler's content-free notice.
   await tx.execute(sql`insert into public.private_case(id,tenant_id,company_id,author_user_id,author_person_id,category,body_ciphertext)
    values(${notified}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${author.ctx.userId}::uuid,${author.personId}::uuid,'grievance',
     ${encryptSecret('Fictional notified text.',privateCaseAad(b.tenantId,notified,author.ctx.userId))})`);
+  // The guard froze the handler through the definer eligibility check, under the restricted owner.
+  expect(await tx.execute(sql`select route,handler_user_ids as handlers from public.private_case where id=${notified}::uuid`)).toEqual([{route:'handlers',handlers:[handler.ctx.userId]}]);
+  expect(await tx.execute(sql`select app.private_case_route_configured(${b.tenantId}::uuid,${b.companyId}::uuid) as configured`)).toEqual([{configured:true}]);
   await as(tx,handler.ctx);
   expect(await ids(tx,sql`select id from public.private_case`)).not.toContain(routed);
   expect(await tx.execute(sql`select kind,title,body,link_path from public.notification where kind like 'private-case.%' and link_path=${'/cases/'+notified}`))

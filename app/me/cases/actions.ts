@@ -11,7 +11,9 @@ export async function openPrivateCaseAction(form:FormData){
  let caseId:string|null=null,code='unavailable';
  try{
   ({caseId}=await openPrivateCase(ctx,{companyId,category:form.get('category'),text:form.get('text'),
-   excludedUserIds:form.getAll('excludedUserIds'),sendTo:form.get('sendTo')==='group_admin'?'group_admin':'handlers'}));
+   excludedUserIds:form.getAll('excludedUserIds'),sendTo:form.get('sendTo')==='group_admin'?'group_admin':'handlers',
+   // The handlers this form showed: a handler designated after it was opened never reads the case (ADR-0173 §2.2).
+   shownHandlerIds:form.getAll('shownHandlerIds')}));
  }catch(error){code=error instanceof PrivateCaseError?error.code:'unavailable';}
  if(!caseId){
   const company=typeof companyId==='string'&&/^[0-9a-f-]{36}$/.test(companyId)?`&companyId=${companyId}`:'';

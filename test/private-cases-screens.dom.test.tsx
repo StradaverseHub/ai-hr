@@ -135,6 +135,9 @@ describe('the person\'s own cases (author)',()=>{
   expect(excludeAdmin.name).toBe('excludedUserIds');expect(excludeAdmin.value).toBe(GROUP_ADMIN);
   expect((screen.getByRole('checkbox',{name:'Send it to the group administrator instead of the case handlers'}) as HTMLInputElement).value).toBe('group_admin');
   expect(document.querySelector<HTMLInputElement>('input[name="companyId"]')!.value).toBe(COMPANY);
+  // The handlers the form showed travel with it, so the case's frozen handlers are those the person could leave out
+  // (ADR-0173 §2.2); a group administrator is not a handler and is not among them.
+  expect([...document.querySelectorAll<HTMLInputElement>('input[type="hidden"][name="shownHandlerIds"]')].map(input=>input.value)).toEqual([HANDLER]);
   expect(screen.getAllByRole('button').map(button=>button.textContent)).toEqual(['Send to HR']);
   expect(screen.getByText(/the AI Centre do not\.$/)).toBeTruthy();
  });

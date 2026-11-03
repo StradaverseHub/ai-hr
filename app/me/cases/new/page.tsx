@@ -26,6 +26,7 @@ export default async function NewPrivateCasePage({searchParams}:{searchParams:Pr
    <Button type="submit" variant="outline" className="pointer-coarse:min-h-11">{t('new.chooseCompany')}</Button></form></Card>}
   <Card className="p-4 sm:p-6"><form action={openPrivateCaseAction} className="space-y-5">
    <input type="hidden" name="companyId" value={intake.companyId}/>
+   {intake.readers.filter(reader=>reader.kind==='handler').map(reader=><input key={reader.userId} type="hidden" name="shownHandlerIds" value={reader.userId}/>)}
    <fieldset className="space-y-2"><legend className="text-xs font-medium text-muted-foreground">{t('new.category')}</legend>
     <div className="flex flex-wrap gap-x-5 gap-y-1">{PRIVATE_CASE_CATEGORIES.map(category=><label key={category} className="flex min-h-11 items-center gap-2 text-sm">
      <input type="radio" name="category" value={category} required className="size-4"/>{t(`categories.${category}`)}</label>)}</div></fieldset>
