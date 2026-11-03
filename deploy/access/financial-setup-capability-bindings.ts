@@ -30,3 +30,15 @@ export const FINANCIAL_SETUP_CAPABILITY_PUBLICATION={
  currentLegacyParityFunction:'app.financial_setup_current_legacy_allowed',
  delegationFloorFunction:'app.financial_setup_delegation_allowed',
 } as const;
+
+export const PAY_COMPONENT_CATALOGUE_CAPABILITY_PUBLICATION={
+ ...FINANCIAL_SETUP_CAPABILITY_PUBLICATION,
+ functions:FINANCIAL_SETUP_FUNCTIONS.filter(descriptor=>descriptor.key.startsWith('payComponents.')),
+ requiredFunctions:[
+  'app.pay_component_catalogue_bindings_complete()',
+  'app.financial_setup_catalog_action(text)',
+  'app.financial_setup_catalog_function(text,text)',
+  'app.financial_setup_write_guard()',
+  'app.pay_formula_catalog_access()',
+ ],
+} as const;

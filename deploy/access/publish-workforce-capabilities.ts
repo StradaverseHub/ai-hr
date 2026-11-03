@@ -7,7 +7,7 @@ import {EMPLOYEE_MASTER_DEFINITION_CAPABILITY_PUBLICATION,EMPLOYEE_MASTER_VIEW_C
 import {ATTENDANCE_ROTATION_CAPABILITY_PUBLICATION,ATTENDANCE_SCHEDULE_CAPABILITY_PUBLICATION,ATTENDANCE_SCHEDULE_CONTROL_CAPABILITY_PUBLICATION,ATTENDANCE_SHIFT_CAPABILITY_PUBLICATION,CLAIM_ADMINISTRATION_CAPABILITY_PUBLICATION,CLAIM_CONFIGURATION_CAPABILITY_PUBLICATION,CLAIM_MAINTENANCE_RECEIPT_CAPABILITY_PUBLICATION,CLAIM_OWN_CAPABILITY_PUBLICATION,CLAIM_RELATED_ASSIGNED_CAPABILITY_PUBLICATION,CLAIM_SELF_DECISION_CAPABILITY_PUBLICATION,CLOCKING_SITE_CAPABILITY_PUBLICATION,LEAVE_APPROVAL_COMPANY_CAPABILITY_PUBLICATION,LEAVE_APPROVAL_TEMPLATE_CAPABILITY_PUBLICATION,LEAVE_CONFIGURATION_CAPABILITY_PUBLICATION,LEAVE_EMPLOYEE_RECORDS_CAPABILITY_PUBLICATION,LEAVE_EMPLOYEE_RECORDS_VIEW_CAPABILITY_PUBLICATION,LEAVE_ON_BEHALF_APPLICATION_CAPABILITY_PUBLICATION,LEAVE_OWN_APPLICATION_CAPABILITY_PUBLICATION} from './leave-attendance-claim-function-bindings';
 import {LIFECYCLE_ASSIGNED_EXCEPTION_CAPABILITY_PUBLICATION,LIFECYCLE_DELIVERY_CAPABILITY_PUBLICATIONS,LIFECYCLE_RECOVERY_CAPABILITY_PUBLICATION,LIFECYCLE_TASK_CAPABILITY_PUBLICATION,NOTICE_AUTHOR_CAPABILITY_PUBLICATION} from './lifecycle-reward-notice-capability-bindings';
 import {REWARDS_READ_CAPABILITY_PUBLICATION} from './rewards-function-bindings';
-import {FINANCIAL_SETUP_CAPABILITY_PUBLICATION} from './financial-setup-capability-bindings';
+import {FINANCIAL_SETUP_CAPABILITY_PUBLICATION,PAY_COMPONENT_CATALOGUE_CAPABILITY_PUBLICATION} from './financial-setup-capability-bindings';
 import {FINANCIAL_LETTER_CAPABILITY_PUBLICATION,LETTER_OPERATIONS_CAPABILITY_PUBLICATION} from './financial-letter-capability-bindings';
 import {ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION} from './organisation-settings-capability-bindings';
 
@@ -123,6 +123,7 @@ const ACTION_PACKAGES={
  letter_operations:[LETTER_OPERATIONS_CAPABILITY_PUBLICATION],
  organisation_settings:[ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION],
  financial_setup:[FINANCIAL_SETUP_CAPABILITY_PUBLICATION],
+ pay_component_catalogue:[PAY_COMPONENT_CATALOGUE_CAPABILITY_PUBLICATION],
 } as const satisfies Record<string,readonly DomainPublication[]>;
 export type ActionCapabilityPackage=keyof typeof ACTION_PACKAGES;
 /** Restricted component publication uses the same real transaction, owner checks and fences as
@@ -217,6 +218,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
   const knownComponents=rows.every((row,index)=>row.supported?exactBindings(row.bindings,expected[index].bindings):Array.isArray(row.bindings)&&row.bindings.length===0)
    &&(!includeWorkforce||rows.filter(row=>WORKFORCE_CAPABILITY_BINDINGS_V2.some(capability=>capability.id===row.id)).every(row=>row.supported)||rows.filter(row=>WORKFORCE_CAPABILITY_BINDINGS_V2.some(capability=>capability.id===row.id)).every(row=>!row.supported))
    &&domains.every(domain=>{const family=rows.filter(row=>domain.capabilities.some(capability=>capability.id===row.id));const children=rows.filter(row=>functionActionCapabilities(domain.functions??[]).some(capability=>capability.id===row.id));return family.every(row=>row.supported)&&children.every(row=>row.supported)||family.every(row=>!row.supported)&&children.every(row=>!row.supported)||family.every(row=>row.supported)&&children.every(row=>!row.supported)
+    ||domain===FINANCIAL_SETUP_CAPABILITY_PUBLICATION&&family.every(row=>row.supported)&&children.every(row=>row.supported===row.id.startsWith('function.payComponents.'))
     ||domain===FINANCIAL_LETTER_CAPABILITY_PUBLICATION&&[...family,...children].every(row=>row.supported===letterComponentIds.has(row.id))
     ||domain===LEAVE_EMPLOYEE_RECORDS_CAPABILITY_PUBLICATION&&[...family,...children].every(row=>row.supported===(row.id==='leave.view'||row.id==='function.leaveEmployeeRecords.view'))
     ||domain===EMPLOYEE_MASTER_DEFINITION_CAPABILITY_PUBLICATION&&children.every(row=>row.supported===(row.id==='function.employeeMasterReports.view'));});
@@ -245,6 +247,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    ...(key==='all'||key==='letter_operations'?['app.letter_operations_bindings_complete']:[]),
    ...(key==='all'||key==='organisation_settings'?['app.organisation_settings_bindings_complete']:[]),
    ...(key==='all'||key==='financial_setup'?['app.financial_setup_bindings_complete']:[]),
+   ...(key==='all'||key==='pay_component_catalogue'?['app.pay_component_catalogue_bindings_complete']:[]),
    ...(key==='all'||key==='workforce_imports'?['app.workforce_imports_bindings_complete']:[]),
    ...(key==='all'||key==='workforce_drafts'?['app.workforce_drafts_bindings_complete']:[]),
    ...(key==='all'||key==='workforce_import_revert'?['app.workforce_import_revert_bindings_complete']:[]),

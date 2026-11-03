@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import * as schema from '../db/schema';
 import {createCompany,createDepartment} from '../core/admin';
 import {hireEmployee} from '../core/org';
@@ -10,12 +11,12 @@ import {createMovementEvent} from '../core/movement';
 import {setCompensation,compensationEffectiveOn} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayrollCycleCatalog,listPayrollCycles} from '../core/payroll-cycle';
-import {seedPayComponentCatalog,upsertPayComponent,setEmploymentPayComponent} from '../core/pay-components';
+import {listPayComponents,seedPayComponentCatalog,upsertPayComponent,setEmploymentPayComponent} from '../core/pay-components';
 import {createBatch,generatePayslips} from '../core/payroll';
 import {setPayrollPermissionGrant} from '../core/payroll-permissions-admin';
 import {employedByCompanyDuring} from '../core/employment-company';
 import {resolvePayrollPermission,readPayrollComponentInputsTx} from '../packs/payroll/service';
-import {getFormulaEvaluation,savePayFormula,testPayFormula,setPayFormulaActive} from '../core/pay-formula';
+import {getFormulaEvaluation,listPayFormulas,savePayFormula,testPayFormula,setPayFormulaActive} from '../core/pay-formula';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import type {PayFormulaContext} from '../lib/pay-formula-model';
 
@@ -195,5 +196,25 @@ it('requires the exact Formula Builder view action for unreferenced authoring ro
   expect(await raw()).toEqual([]);
  }finally{
   await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=${id}`;
+ }
+});
+
+it('publishes catalogue and Formula Builder while enforcing exact Formula Builder View',async()=>{
+ const cap='function.payComponents.formulaBuilder.view';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'pay_component_catalogue')).toMatchObject({changed:true,capabilities:12});
+  expect(await publishActionCapabilityPackage(owner.client,'pay_component_catalogue')).toMatchObject({changed:false});
+  const saved=await savePayFormula(full,{formulaId:'SCOPED_DRAFT',description:'Fictional selected draft',method:'write',source:'Return {#Basic} / 10'});
+  expect((await listPayFormulas(full)).length).toBeGreaterThan(0);
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${base.tenantId}::uuid,${full.userId!}::uuid,${cap},null,'deny')`;
+  await expect(listPayFormulas(full)).rejects.toThrow();
+  const raw=await withTenant(full,tx=>tx.select({id:schema.payFormula.id}).from(schema.payFormula).where(eq(schema.payFormula.id,saved.id)));
+  expect(raw).toEqual([]);
+  expect((await listPayComponents(full,{maintenance:true})).map(component=>component.code)).toContain(item.code);
+ }finally{
+  await owner.client`delete from access_user_override where tenant_id=${base.tenantId}::uuid and capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+   where id like 'payroll_configuration.%' or id like 'function.payComponents.%'`;
  }
 });

@@ -4880,6 +4880,13 @@
       "when": 1793330000393,
       "tag": "0993_letter_operations_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 841,
+      "version": "7",
+      "when": 1793330000394,
+      "tag": "0994_pay_component_catalogue_binding_readiness",
+      "breakpoints": true
     }
   ]
 }
