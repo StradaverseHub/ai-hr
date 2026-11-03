@@ -5,11 +5,12 @@ import {Button,Card,Field,PageHeader,inputCls,pageWideCls} from '@/components/ui
 import {openPrivateCaseAction} from '../actions';
 export const dynamic='force-dynamic';
 
-const ERRORS=['invalid','not_set_up','no_recipient','not_allowed','unavailable'] as const;
+const ERRORS=['invalid','not_set_up','not_allowed','unavailable'] as const;
 
 /** AI v2 W11 — the private case form (ADR-0173). The person writes the case here, never through the AI: the AI Centre's
- * sensitive reply only links to this page and passes nothing to it. The company's handlers are named so a case about
- * one of them can leave them out; with every handler left out, or on request, it goes to the group administrator. */
+ * sensitive reply only links to this page and passes nothing to it. Everyone who could read it (the company's handlers
+ * and the group administrators) is named, so the person it is about, or anyone who must not see it, can be left out;
+ * with every handler left out, or on request, it goes to the group administrator. */
 export default async function NewPrivateCasePage({searchParams}:{searchParams:Promise<{companyId?:string;error?:string}>}){
  const {s}=await scopedSession(),sp=await searchParams,t=await getTranslations('privateCases');
  const intake=await privateCaseIntake(s,sp.companyId);
@@ -32,9 +33,9 @@ export default async function NewPrivateCasePage({searchParams}:{searchParams:Pr
    <p className="-mt-3 text-xs text-muted-foreground">{t('new.textHelp')}</p>
    <fieldset className="space-y-2"><legend className="text-xs font-medium text-muted-foreground">{t('new.handlers')}</legend>
     <p className="text-sm text-muted-foreground">{t('new.handlersHelp')}</p>
-    <ul className="space-y-1">{intake.handlers.map(handler=><li key={handler.userId}><label className="flex min-h-11 items-center gap-3 text-sm">
-     <input type="checkbox" name="excludedUserIds" value={handler.userId} className="size-4 shrink-0"/>
-     <span>{t('new.exclude',{name:handler.name??t('new.unnamed')})}</span></label></li>)}</ul>
+    <ul className="space-y-1">{intake.readers.map(reader=><li key={reader.userId}><label className="flex min-h-11 items-center gap-3 text-sm">
+     <input type="checkbox" name="excludedUserIds" value={reader.userId} className="size-4 shrink-0"/>
+     <span>{t('new.exclude',{name:reader.name??t('new.unnamed'),role:t(reader.kind==='group_admin'?'new.readerGroupAdmin':'new.readerHandler')})}</span></label></li>)}</ul>
     <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="sendTo" value="group_admin" className="size-4 shrink-0"/><span>{t('new.groupAdmin')}</span></label>
     <p className="text-xs text-muted-foreground">{t('new.groupAdminHelp')}</p>
    </fieldset>

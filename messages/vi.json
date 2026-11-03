@@ -509,7 +509,9 @@
     "functionAccess": "Truy cập chức năng",
     "securityCenter": "Trung tâm bảo mật",
     "aiManagementInventory": "Danh mục AI",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "myPrivateCases": "Hồ sơ riêng tư của tôi",
+    "privateCases": "Hồ sơ riêng tư"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -33647,7 +33649,6 @@
     "errors": {
       "invalid": "Vui lòng kiểm tra biểu mẫu: chọn nội dung liên quan và mô tả những gì đã xảy ra.",
       "not_set_up": "Hồ sơ riêng tư chưa được thiết lập cho công ty này. Vui lòng liên hệ trực tiếp với bộ phận nhân sự.",
-      "no_recipient": "Với lựa chọn hiện tại, không ai có thể nhận hồ sơ này. Hãy loại trừ ít người hơn, hoặc liên hệ trực tiếp với bộ phận nhân sự.",
       "not_found": "Bạn không thể xem hồ sơ này.",
       "not_allowed": "Bạn không thể thực hiện thao tác này.",
       "unavailable": "Hiện không khả dụng. Vui lòng thử lại sau.",
@@ -33668,7 +33669,8 @@
       "opened": "Mở ngày {date}",
       "updated": "Cập nhật ngày {date}",
       "handle": "Hồ sơ bạn xử lý",
-      "view": "Xem"
+      "view": "Xem",
+      "unreachable": "Hiện chưa ai có thể đọc"
     },
     "new": {
       "title": "Mở một hồ sơ riêng tư",
@@ -33679,15 +33681,17 @@
       "category": "Nội dung liên quan đến điều gì?",
       "text": "Điều gì đã xảy ra",
       "textHelp": "Tối đa 8.000 ký tự. Hãy chia sẻ những gì bạn cảm thấy thoải mái; người xử lý có thể liên hệ với bạn.",
-      "handlers": "Ai sẽ nhận",
-      "handlersHelp": "Những người xử lý hồ sơ nhân sự này có thể đọc hồ sơ của bạn. Nếu hồ sơ liên quan đến một trong số họ, hãy đánh dấu tên người đó và họ sẽ không thấy hồ sơ.",
-      "exclude": "Liên quan đến {name}: không gửi cho người này",
-      "unnamed": "Người xử lý hồ sơ không có hồ sơ nhân viên",
+      "handlers": "Ai có thể đọc",
+      "handlersHelp": "Những người này có thể đọc hồ sơ của bạn. Nếu hồ sơ liên quan đến một người trong số họ, hoặc một người trong số họ không được xem, hãy đánh dấu tên người đó.",
+      "exclude": "Không gửi cho {name} ({role})",
+      "unnamed": "Người không có hồ sơ nhân viên",
       "groupAdmin": "Gửi cho quản trị viên tập đoàn thay vì người xử lý hồ sơ",
-      "groupAdminHelp": "Nếu bạn loại trừ tất cả người xử lý, hồ sơ sẽ được gửi cho quản trị viên tập đoàn.",
+      "groupAdminHelp": "Nếu bạn loại trừ tất cả người xử lý hồ sơ, hồ sơ sẽ được gửi cho quản trị viên tập đoàn. Nếu bạn loại trừ tất cả mọi người, hồ sơ vẫn được lưu nhưng hiện chưa ai có thể đọc.",
       "privacy": "Hồ sơ của bạn được lưu trữ ở dạng mã hóa. Người xử lý hồ sơ nhân sự thấy hồ sơ kèm tên bạn; các quản trị viên nhân sự khác, quản lý và AI Centre thì không.",
       "submit": "Gửi cho bộ phận nhân sự",
-      "notStorable": "Hiện không thể lưu hồ sơ riêng tư. Vui lòng liên hệ trực tiếp với bộ phận nhân sự."
+      "notStorable": "Hiện không thể lưu hồ sơ riêng tư. Vui lòng liên hệ trực tiếp với bộ phận nhân sự.",
+      "readerHandler": "người xử lý hồ sơ",
+      "readerGroupAdmin": "quản trị viên tập đoàn"
     },
     "detail": {
       "back": "Hồ sơ riêng tư",
@@ -33748,7 +33752,7 @@
       "person": "Người",
       "noRecord": "Tài khoản đăng nhập không có hồ sơ nhân viên",
       "add": "Thêm người xử lý",
-      "selfNote": "Chỉ quản trị viên tập đoàn mới có thể tự chỉ định mình làm người xử lý.",
+      "selfNote": "Bạn không thể tự chỉ định mình làm người xử lý. Quản trị viên tập đoàn hoặc một quản trị viên khác của công ty sẽ chỉ định bạn.",
       "added": "Đã thêm người xử lý.",
       "removed": "Đã gỡ bỏ người xử lý.",
       "noCompanies": "Bạn không quản trị công ty nào."
@@ -33757,6 +33761,8 @@
       "title": "Người xử lý hồ sơ riêng tư",
       "help": "Chọn người nhận các hồ sơ riêng tư mà nhân viên gửi tới bộ phận nhân sự.",
       "link": "Quản lý người xử lý hồ sơ"
-    }
+    },
+    "noReader": "Công ty này chưa thiết lập người đọc phù hợp nên hiện chưa ai có thể đọc hồ sơ này. Vui lòng liên hệ {channel}.",
+    "externalChannel": "[kênh bên ngoài do công ty chỉ định, ví dụ đường dây đạo đức]"
   }
 }

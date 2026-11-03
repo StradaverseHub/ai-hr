@@ -9,8 +9,9 @@ const NOTICES=['added','removed'] as const;
 const ERRORS=['invalid','not_allowed','unavailable','conflict','not_found'] as const;
 
 /** AI v2 W11 — who receives private cases, per company (ADR-0173). HR administrators of a company and group
- * administrators reach it; the database admits each designation only for a company the caller administers, and an HR
- * administrator never for themself. Designating someone does not let the designator read any case. */
+ * administrators reach it; the database admits each designation only for a company the caller administers, and never
+ * the caller themself, even in a company with one administrator: a group administrator designates them. Designating
+ * someone does not let the designator read any case. */
 export default async function CaseHandlersPage({searchParams}:{searchParams:Promise<{companyId?:string;notice?:string;error?:string}>}){
  const s=await requireAdmin(),sp=await searchParams,t=await getTranslations('privateCases'),locale=await getLocale();
  const admin=await caseHandlerAdmin(s,sp.companyId);
@@ -36,7 +37,7 @@ export default async function CaseHandlersPage({searchParams}:{searchParams:Prom
     <form action={designateCaseHandlerAction} className="flex flex-wrap items-end gap-3"><input type="hidden" name="companyId" value={admin.companyId}/>
      <Field label={t('admin.person')}><select name="appUserId" required className={inputCls}><option value="">—</option>{admin.candidates.map(candidate=><option key={candidate.userId} value={candidate.userId}>{name(candidate.name)}</option>)}</select></Field>
      <Button type="submit" className="pointer-coarse:min-h-11">{t('admin.add')}</Button></form>
-    {!admin.selfAllowed&&<p className="text-xs text-muted-foreground">{t('admin.selfNote')}</p>}
+    <p className="text-xs text-muted-foreground">{t('admin.selfNote')}</p>
    </Card>
    {earlier.length>0&&<Card className="space-y-3 p-4"><h2 className="text-sm font-semibold">{t('admin.history')}</h2>
     <ul className="space-y-1 text-sm">{earlier.map(grant=><li key={grant.id} className="flex flex-wrap justify-between gap-2"><span>{name(grant.name)}</span>

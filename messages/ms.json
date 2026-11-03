@@ -509,7 +509,9 @@
     "functionAccess": "Akses Fungsi",
     "securityCenter": "Pusat Keselamatan",
     "aiManagementInventory": "Inventori AI",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "myPrivateCases": "Kes peribadi saya",
+    "privateCases": "Kes peribadi"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -33647,7 +33649,6 @@
     "errors": {
       "invalid": "Semak borang: pilih perkara yang berkaitan dan tulis apa yang berlaku.",
       "not_set_up": "Kes peribadi belum disediakan untuk syarikat ini. Sila hubungi pasukan HR anda secara terus.",
-      "no_recipient": "Tiada sesiapa boleh menerima kes ini seperti sekarang. Kecualikan lebih sedikit orang, atau hubungi pasukan HR anda secara terus.",
       "not_found": "Kes ini tidak tersedia untuk anda.",
       "not_allowed": "Anda tidak boleh melakukan ini.",
       "unavailable": "Ini tidak tersedia buat masa ini. Sila cuba lagi kemudian.",
@@ -33668,7 +33669,8 @@
       "opened": "Dibuka {date}",
       "updated": "Dikemas kini {date}",
       "handle": "Kes yang anda kendalikan",
-      "view": "Lihat"
+      "view": "Lihat",
+      "unreachable": "Belum ada sesiapa boleh membacanya"
     },
     "new": {
       "title": "Mulakan kes peribadi",
@@ -33679,15 +33681,17 @@
       "category": "Mengenai apa?",
       "text": "Apa yang berlaku",
       "textHelp": "Sehingga 8,000 aksara. Kongsi apa yang anda selesa kongsikan; pengendali mungkin menghubungi anda.",
-      "handlers": "Siapa yang menerimanya",
-      "handlersHelp": "Pengendali kes HR ini boleh membaca kes anda. Jika ia mengenai salah seorang daripada mereka, tandakan nama mereka dan mereka tidak akan melihatnya.",
-      "exclude": "Ia mengenai {name}: jangan hantar kepada mereka",
-      "unnamed": "Pengendali kes tanpa rekod pekerja",
+      "handlers": "Siapa yang boleh membacanya",
+      "handlersHelp": "Orang ini boleh membaca kes anda. Jika ia mengenai salah seorang daripada mereka, atau salah seorang daripada mereka tidak patut melihatnya, tandakan nama mereka.",
+      "exclude": "Jangan hantar kepada {name} ({role})",
+      "unnamed": "Seseorang tanpa rekod pekerja",
       "groupAdmin": "Hantar kepada pentadbir kumpulan, bukan kepada pengendali kes",
-      "groupAdminHelp": "Jika anda mengecualikan semua pengendali, ia dihantar kepada pentadbir kumpulan.",
+      "groupAdminHelp": "Jika anda mengecualikan semua pengendali kes, ia dihantar kepada pentadbir kumpulan. Jika anda mengecualikan semua orang, kes ini disimpan tetapi belum ada sesiapa boleh membacanya.",
       "privacy": "Kes anda disimpan secara tersulit. Pengendali kes HR anda melihatnya bersama nama anda; pentadbir HR lain, pengurus dan AI Centre tidak.",
       "submit": "Hantar kepada HR",
-      "notStorable": "Kes peribadi tidak dapat disimpan buat masa ini. Sila hubungi pasukan HR anda secara terus."
+      "notStorable": "Kes peribadi tidak dapat disimpan buat masa ini. Sila hubungi pasukan HR anda secara terus.",
+      "readerHandler": "pengendali kes",
+      "readerGroupAdmin": "pentadbir kumpulan"
     },
     "detail": {
       "back": "Kes peribadi",
@@ -33748,7 +33752,7 @@
       "person": "Individu",
       "noRecord": "Log masuk tanpa rekod pekerja",
       "add": "Tambah pengendali",
-      "selfNote": "Hanya pentadbir kumpulan boleh menamakan dirinya sebagai pengendali.",
+      "selfNote": "Anda tidak boleh menamakan diri anda sebagai pengendali. Pentadbir kumpulan, atau pentadbir lain syarikat ini, akan melantik anda.",
       "added": "Pengendali ditambah.",
       "removed": "Pengendali dialih keluar.",
       "noCompanies": "Anda tidak mentadbir sebarang syarikat."
@@ -33757,6 +33761,8 @@
       "title": "Pengendali kes peribadi",
       "help": "Pilih siapa yang menerima kes peribadi yang ditulis kepada HR.",
       "link": "Urus pengendali kes"
-    }
+    },
+    "noReader": "Tiada pembaca yang layak disediakan untuk syarikat ini, jadi belum ada sesiapa boleh membaca kes ini. Sila hubungi {channel}.",
+    "externalChannel": "[saluran luar yang ditetapkan oleh syarikat, contohnya talian etika]"
   }
 }

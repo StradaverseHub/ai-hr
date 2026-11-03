@@ -996,8 +996,10 @@ journal `when` values through 1793330000358; no allocation document on any ref o
 This claim therefore takes the next file number and the next `when` above every claimed one. Development source only:
 no installation priority, no deployment; the idx is this branch's own journal position and must be re-frozen above the
 then-installed ledger at integration. Sibling AI v2 slice branches cut from the same base may claim the same next
-number; reconcile at integration.
+number; reconcile at integration. The unapplied SQL was revised on this branch after review (fallback exclusions, notices,
+no self-designation); a re-scan the same day (1594 origin refs, every local branch and 401 worktrees) still found claims
+ending at 0958 / when1793330000358, so the number and `when` stand. The hash below is the revised body's.
 
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
-|764|1793330000359|0959_private_cases|565e8893df8a30b7f4b337d1f94948545719e377d33bd23e1e2c684fcf860dd5|
+|764|1793330000359|0959_private_cases|3016959b49532efbd6da16be168ad6ef764c66f5a0af35f50b9de40112ccf55f|

@@ -44,7 +44,7 @@ it('preserves populated Native issuance, private data, identity and every applie
   // AI Centre stored chats (claude/noveri-chats), frozen here.
   {idx:763,version:'7',when:1793330000352,tag:'0952_teras_chats',breakpoints:true,hash:'e320362770eedfafd2e9260d82713b1c669f056a296db979a1f5295e785b401b'},
   // AI v2 W11 protected case route (claude/aiv2-s2-case-route), frozen here.
-  {idx:764,version:'7',when:1793330000359,tag:'0959_private_cases',breakpoints:true,hash:'565e8893df8a30b7f4b337d1f94948545719e377d33bd23e1e2c684fcf860dd5'},
+  {idx:764,version:'7',when:1793330000359,tag:'0959_private_cases',breakpoints:true,hash:'3016959b49532efbd6da16be168ad6ef764c66f5a0af35f50b9de40112ccf55f'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

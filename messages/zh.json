@@ -509,7 +509,9 @@
     "functionAccess": "功能访问",
     "securityCenter": "安全中心",
     "aiManagementInventory": "AI 清单",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "myPrivateCases": "我的私密个案",
+    "privateCases": "私密个案"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -33647,7 +33649,6 @@
     "errors": {
       "invalid": "请检查表单：选择事项类别并写下发生了什么。",
       "not_set_up": "该公司尚未设置私密个案。请直接联系您的人力资源团队。",
-      "no_recipient": "按目前的设置，没有人可以接收此个案。请少排除一些人，或直接联系您的人力资源团队。",
       "not_found": "您无法查看此个案。",
       "not_allowed": "您无法执行此操作。",
       "unavailable": "暂时无法使用。请稍后再试。",
@@ -33668,7 +33669,8 @@
       "opened": "提交于 {date}",
       "updated": "更新于 {date}",
       "handle": "您处理的个案",
-      "view": "查看"
+      "view": "查看",
+      "unreachable": "目前没有人可以阅读"
     },
     "new": {
       "title": "提交私密个案",
@@ -33679,15 +33681,17 @@
       "category": "是关于什么的？",
       "text": "发生了什么",
       "textHelp": "最多 8,000 个字符。请分享您愿意分享的内容；处理人可能会联系您。",
-      "handlers": "谁会收到",
-      "handlersHelp": "以下人力资源个案处理人可以阅读您的个案。如果事情与其中某人有关，请勾选其姓名，对方将看不到此个案。",
-      "exclude": "与 {name} 有关：不要发送给对方",
-      "unnamed": "没有员工记录的个案处理人",
+      "handlers": "谁可以阅读",
+      "handlersHelp": "以下人员可以阅读您的个案。如果事情与其中某人有关，或其中某人不应看到，请勾选其姓名。",
+      "exclude": "不要发送给 {name}（{role}）",
+      "unnamed": "没有员工记录的人员",
       "groupAdmin": "发送给集团管理员，而不是个案处理人",
-      "groupAdminHelp": "如果您排除了所有处理人，个案将发送给集团管理员。",
+      "groupAdminHelp": "如果您排除了所有个案处理人，个案将发送给集团管理员。如果您排除了所有人，个案仍会保存，但目前没有人可以阅读。",
       "privacy": "您的个案以加密方式存储。您的人力资源个案处理人可以看到个案及您的姓名；其他人力资源管理员、经理和 AI Centre 则看不到。",
       "submit": "发送给人力资源部门",
-      "notStorable": "暂时无法保存私密个案。请直接联系您的人力资源团队。"
+      "notStorable": "暂时无法保存私密个案。请直接联系您的人力资源团队。",
+      "readerHandler": "个案处理人",
+      "readerGroupAdmin": "集团管理员"
     },
     "detail": {
       "back": "私密个案",
@@ -33748,7 +33752,7 @@
       "person": "人员",
       "noRecord": "没有员工记录的登录账户",
       "add": "添加处理人",
-      "selfNote": "只有集团管理员可以将自己指定为处理人。",
+      "selfNote": "您不能将自己指定为处理人。集团管理员或该公司的其他管理员会指定您。",
       "added": "已添加处理人。",
       "removed": "已移除处理人。",
       "noCompanies": "您没有管理任何公司。"
@@ -33757,6 +33761,8 @@
       "title": "私密个案处理人",
       "help": "选择由谁接收员工提交给人力资源部门的私密个案。",
       "link": "管理个案处理人"
-    }
+    },
+    "noReader": "该公司尚未设置符合条件的阅读人，因此目前没有人可以阅读此个案。请联系{channel}。",
+    "externalChannel": "[公司指定的外部渠道，例如道德热线]"
   }
 }

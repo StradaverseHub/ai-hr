@@ -46,7 +46,9 @@ const employee={tenantId:'00000000-0000-4000-8000-0000000000aa',userId:'00000000
 const companyAdmin={...employee,userId:'00000000-0000-4000-8000-0000000000ad',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:COMPANY}]};
 const groupAdmin={...employee,userId:'00000000-0000-4000-8000-0000000000ga',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
 const OPENED=new Date('2026-11-02T02:00:00Z'),CHANGED=new Date('2026-11-03T03:30:00Z');
-const intake=(over:Record<string,unknown>={})=>({companies:[{id:COMPANY,name:'Fictional Sdn Bhd'}],companyId:COMPANY,handlers:[{userId:HANDLER,name:'Fictional Handler Aminah'}],storable:true,...over});
+const GROUP_ADMIN='00000000-0000-4000-8000-0000000000e2';
+const intake=(over:Record<string,unknown>={})=>({companies:[{id:COMPANY,name:'Fictional Sdn Bhd'}],companyId:COMPANY,
+ readers:[{userId:HANDLER,name:'Fictional Handler Aminah',kind:'handler'},{userId:GROUP_ADMIN,name:'Fictional Group Administrator Lim',kind:'group_admin'}],storable:true,...over});
 const turn=(over:Record<string,unknown>={})=>({turnId:'turn-case',reply:'For this, please contact your HR team directly.',mode:null,slot:null,suggestion:null,proposals:[],reads:[],
  sensitive:true,refused:false,crisis:false,fallback:false,caseRoute:'/me/cases/new',continuation:'tc1.fixture',trace:{} as never,modelTurn:[],...over}) as never;
 const handled=(over:Record<string,unknown>={})=>({id:CASE,category:'harassment',status:'received',companyName:'Fictional Sdn Bhd',route:'handlers',openedAt:OPENED,statusChangedAt:OPENED,
@@ -83,7 +85,7 @@ describe('the AI Centre reply (employee)',()=>{
 
 describe('the person\'s own cases (author)',()=>{
  it('lists their cases without text and offers Start where the route is set up',async()=>{
-  svc.listOwn.mockResolvedValue([{id:CASE,category:'grievance',status:'in_review',companyName:'Fictional Sdn Bhd',openedAt:OPENED,statusChangedAt:CHANGED}]);
+  svc.listOwn.mockResolvedValue([{id:CASE,category:'grievance',status:'in_review',companyName:'Fictional Sdn Bhd',openedAt:OPENED,statusChangedAt:CHANGED,reachable:true}]);
   render(await MyPrivateCasesPage());
   expect(screen.getByRole('heading',{name:'Private cases with HR'})).toBeTruthy();
   expect(screen.getByRole('link',{name:'Start a private case'}).getAttribute('href')).toBe('/me/cases/new');
@@ -91,6 +93,12 @@ describe('the person\'s own cases (author)',()=>{
   expect(screen.getByRole('link',{name:'View'}).getAttribute('href')).toBe('/me/cases/'+CASE);
   expect(screen.queryByRole('link',{name:'Cases you handle'})).toBeNull();
   expect(svc.listOwn).toHaveBeenCalledExactlyOnceWith(employee);
+  expect(screen.queryByText('Nobody can read it yet')).toBeNull();
+ });
+ it('marks a case nobody may read in the list',async()=>{
+  svc.listOwn.mockResolvedValue([{id:CASE,category:'grievance',status:'received',companyName:'Fictional Sdn Bhd',openedAt:OPENED,statusChangedAt:OPENED,reachable:false}]);
+  render(await MyPrivateCasesPage());
+  expect(screen.getByText('Nobody can read it yet')).toBeTruthy();
  });
  it('says the route is not set up, with no Start, when no company of theirs has a handler; a handler also sees their queue link',async()=>{
   svc.intake.mockResolvedValue(intake({companies:[],companyId:null,handlers:[]}));svc.handles.mockResolvedValue(true);
@@ -104,30 +112,41 @@ describe('the person\'s own cases (author)',()=>{
   render(await NewPrivateCasePage({searchParams:Promise.resolve({})}));
   expect(screen.getAllByRole('radio').map(radio=>(radio as HTMLInputElement).value)).toEqual(['grievance','harassment','safety','other']);
   const text=screen.getByRole('textbox',{name:'What happened'}) as HTMLTextAreaElement;expect(text.required).toBe(true);expect(text.maxLength).toBe(8000);
-  const exclude=screen.getByRole('checkbox',{name:'It is about Fictional Handler Aminah: do not send it to them'}) as HTMLInputElement;
+  // Everyone who could read it can be left out: the handler and the group administrator alike.
+  const exclude=screen.getByRole('checkbox',{name:'Do not send it to Fictional Handler Aminah (case handler)'}) as HTMLInputElement;
   expect(exclude.name).toBe('excludedUserIds');expect(exclude.value).toBe(HANDLER);expect(exclude.checked).toBe(false);
+  const excludeAdmin=screen.getByRole('checkbox',{name:'Do not send it to Fictional Group Administrator Lim (group administrator)'}) as HTMLInputElement;
+  expect(excludeAdmin.name).toBe('excludedUserIds');expect(excludeAdmin.value).toBe(GROUP_ADMIN);
   expect((screen.getByRole('checkbox',{name:'Send it to the group administrator instead of the case handlers'}) as HTMLInputElement).value).toBe('group_admin');
   expect(document.querySelector<HTMLInputElement>('input[name="companyId"]')!.value).toBe(COMPANY);
   expect(screen.getAllByRole('button').map(button=>button.textContent)).toEqual(['Send to HR']);
   expect(screen.getByText(/the AI Centre do not\.$/)).toBeTruthy();
  });
  it('the form explains a refusal, and is not offered where the route is not set up',async()=>{
-  render(await NewPrivateCasePage({searchParams:Promise.resolve({error:'no_recipient'})}));
-  expect(screen.getByRole('alert').textContent).toBe('Nobody could receive this case as it stands. Leave fewer people out, or contact your HR team directly.');
+  render(await NewPrivateCasePage({searchParams:Promise.resolve({error:'invalid'})}));
+  expect(screen.getByRole('alert').textContent).toBe('Check the form: choose what it is about and write what happened.');
   cleanup();svc.intake.mockResolvedValue(intake({companies:[],companyId:null,handlers:[]}));
   render(await NewPrivateCasePage({searchParams:Promise.resolve({})}));
   expect(screen.queryByRole('button',{name:'Send to HR'})).toBeNull();expect(screen.getByRole('note')).toBeTruthy();
  });
  it('one own case: what they wrote and its status steps, never notes or readers; another case is not found',async()=>{
-  svc.readOwn.mockResolvedValue({id:CASE,category:'safety',status:'in_review',companyName:'Fictional Sdn Bhd',openedAt:OPENED,text:'Fictional text: the fire exit is blocked.',
+  svc.readOwn.mockResolvedValue({id:CASE,category:'safety',status:'in_review',companyName:'Fictional Sdn Bhd',openedAt:OPENED,text:'Fictional text: the fire exit is blocked.',reachable:true,
    history:[{status:'received',at:OPENED},{status:'in_review',at:CHANGED}]});
   render(await MyPrivateCasePage({params:Promise.resolve({caseId:CASE}),searchParams:Promise.resolve({notice:'sent'})}));
   expect(screen.getByRole('status').textContent).toBe('Your case was sent to HR.');
   expect(document.querySelector('[data-private-case-text]')!.textContent).toBe('Fictional text: the fire exit is blocked.');
   expect(screen.getAllByRole('listitem').map(item=>item.textContent?.split(',')[0])).toEqual(['Received','In review']);
   expect(screen.queryByText(/note/i)).toBeNull();expect(screen.queryByText(/Read by/)).toBeNull();
+  expect(document.querySelector('[data-private-case-no-reader]')).toBeNull();
   svc.readOwn.mockRejectedValue(new PrivateCaseError('not_found'));
   await expect(MyPrivateCasePage({params:Promise.resolve({caseId:CASE}),searchParams:Promise.resolve({})})).rejects.toThrow('NOT_FOUND');
+ });
+ it('tells the author plainly when nobody may read their case, naming the external channel placeholder, instead of "sent"',async()=>{
+  svc.readOwn.mockResolvedValue({id:CASE,category:'harassment',status:'received',companyName:'Fictional Sdn Bhd',openedAt:OPENED,text:'Fictional text.',reachable:false,
+   history:[{status:'received',at:OPENED}]});
+  render(await MyPrivateCasePage({params:Promise.resolve({caseId:CASE}),searchParams:Promise.resolve({notice:'sent'})}));
+  expect(screen.getByRole('alert').textContent).toBe('No eligible reader is configured for this company, so nobody can read this case yet. Please contact [the company’s designated external channel, for example an ethics line].');
+  expect(screen.queryByText('Your case was sent to HR.')).toBeNull();
  });
 });
 
@@ -170,7 +189,7 @@ describe('handling (case handler, and a login that handles none)',()=>{
 });
 
 describe('designation (company and group HR administrators)',()=>{
- const admin=(over:Record<string,unknown>={})=>({companies:[{id:COMPANY,name:'Fictional Sdn Bhd'}],companyId:COMPANY,selfAllowed:false,
+ const admin=(over:Record<string,unknown>={})=>({companies:[{id:COMPANY,name:'Fictional Sdn Bhd'}],companyId:COMPANY,
   grants:[{id:'g1',userId:HANDLER,name:'Fictional Handler Aminah',grantedAt:OPENED,revokedAt:null},{id:'g0',userId:'u0',name:null,grantedAt:OPENED,revokedAt:CHANGED}],
   candidates:[{userId:'u2',name:'Fictional Candidate Wei'},{userId:'u3',name:null}],...over});
  it('a company HR administrator: current handlers to remove, people to add, earlier handlers, and why they cannot add themself',async()=>{
@@ -182,13 +201,13 @@ describe('designation (company and group HR administrators)',()=>{
   const options=[...document.querySelector<HTMLSelectElement>('select[name="appUserId"]')!.options].map(option=>option.textContent);
   expect(options).toEqual(['—','Fictional Candidate Wei','Login without an employee record']);
   expect(screen.getByText('Earlier handlers')).toBeTruthy();
-  expect(screen.getByText('Only a group administrator can name themself a handler.')).toBeTruthy();
+  expect(screen.getByText('You cannot name yourself a handler. A group administrator, or another administrator of the company, designates you.')).toBeTruthy();
   expect(svc.admin).toHaveBeenCalledExactlyOnceWith(companyAdmin,undefined);
  });
- it('a group administrator: no self-designation note, and a company to choose',async()=>{
-  svc.session.current=groupAdmin;svc.admin.mockResolvedValue(admin({selfAllowed:true,companies:[{id:COMPANY,name:'Fictional Sdn Bhd'},{id:'c2',name:'Fictional Two Bhd'}]}));
+ it('a group administrator: the same no-self rule, and a company to choose',async()=>{
+  svc.session.current=groupAdmin;svc.admin.mockResolvedValue(admin({companies:[{id:COMPANY,name:'Fictional Sdn Bhd'},{id:'c2',name:'Fictional Two Bhd'}]}));
   render(await CaseHandlersPage({searchParams:Promise.resolve({companyId:COMPANY})}));
-  expect(screen.queryByText('Only a group administrator can name themself a handler.')).toBeNull();
+  expect(screen.getByText('You cannot name yourself a handler. A group administrator, or another administrator of the company, designates you.')).toBeTruthy();
   const company=document.querySelector<HTMLSelectElement>('select[name="companyId"]')!;
   expect([...company.options].map(option=>option.textContent)).toEqual(['Fictional Sdn Bhd','Fictional Two Bhd']);expect(company.value).toBe(COMPANY);
  });

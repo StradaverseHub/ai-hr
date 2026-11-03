@@ -12,7 +12,10 @@
  * Who reads, decided by forced row-level security (0959) and repeated here only to choose the right query:
  *  - the author: their own cases, text and status history, never handler notes or who read it;
  *  - the case's handlers: the company's designated handlers except the author and anyone the author excluded; with no
- *    eligible handler, the group administrators. No general HR administrator, manager or agent.
+ *    eligible handler, or on the author's request, the group administrators, again except the excluded. The author
+ *    may exclude any possible reader, so the person a case is about never reads it; a case nobody may read is kept,
+ *    and the author is told no eligible reader is configured. No general HR administrator, manager or agent.
+ * Readers are notified of a new case and the author of a status change by the database (0959 §4b), with no content.
  * Every creation, read, status change and note is audited (private_case_event); a read is recorded in the same
  * transaction before any text is decrypted, and a refused read records nothing. Designating or revoking a handler is a
  * group or company HR administrator's act, audited as a domain event. */
@@ -31,7 +34,7 @@ export type PrivateCaseStatus=typeof PRIVATE_CASE_STATUSES[number];
 export const PRIVATE_CASE_NEXT:Readonly<Record<PrivateCaseStatus,readonly PrivateCaseStatus[]>>=Object.freeze({received:['in_review','closed'],in_review:['closed'],closed:[]});
 export const PRIVATE_CASE_LIMITS=Object.freeze({textChars:8000,noteChars:4000,cases:100,excluded:50});
 
-export type PrivateCaseErrorCode='invalid'|'not_set_up'|'no_recipient'|'not_found'|'not_allowed'|'unavailable'|'conflict';
+export type PrivateCaseErrorCode='invalid'|'not_set_up'|'not_found'|'not_allowed'|'unavailable'|'conflict';
 export class PrivateCaseError extends Error{constructor(readonly code:PrivateCaseErrorCode){super('Private case: '+code);this.name='PrivateCaseError';}}
 const fail=(code:PrivateCaseErrorCode):never=>{throw new PrivateCaseError(code);};
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -40,6 +43,8 @@ const captured=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.sl
 const own=(ctx:SessionContext):ctx is SessionContext&{userId:string}=>Boolean(ctx.userId)&&!ctx.agent;
 const at=(value:unknown):Date=>{const parsed=new Date(String(value));return Number.isFinite(parsed.getTime())?parsed:fail('unavailable');};
 const AT=(column:SQL)=>sql`to_char(${column} AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+/** Whether anyone may read the case now (0959 app.private_case_has_reader), from the row's own routing facts. */
+const HAS_READER=sql`app.private_case_has_reader(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids)`;
 const category=(value:unknown):PrivateCaseCategory|null=>PRIVATE_CASE_CATEGORIES.find(item=>item===value)??null;
 const status=(value:unknown):PrivateCaseStatus=>PRIVATE_CASE_STATUSES.find(item=>item===value)??fail('unavailable');
 
@@ -59,7 +64,6 @@ function refusal(error:unknown):PrivateCaseErrorCode{
  const cause=(error as {cause?:{code?:unknown;message?:unknown}}|null)?.cause??(error as {code?:unknown;message?:unknown}|null);
  const code=cause?.code,message=typeof cause?.message==='string'?cause.message:'';
  if(code==='23514'&&/not set up/.test(message))return 'not_set_up';
- if(code==='23514'&&/Nobody can receive/.test(message))return 'no_recipient';
  if(code==='23514')return 'invalid';
  if(code==='42501')return 'not_allowed';
  return 'unavailable';
@@ -71,11 +75,13 @@ async function guarded<T>(ctx:SessionContext,run:(tx:Tx)=>Promise<T>):Promise<T>
 // ── Intake: the author ──
 
 export type IntakeCompany=Readonly<{id:string;name:string}>;
-export type IntakeHandler=Readonly<{userId:string;name:string|null}>;
-export type PrivateCaseIntake=Readonly<{companies:readonly IntakeCompany[];companyId:string|null;handlers:readonly IntakeHandler[];storable:boolean}>;
+/** Someone who could read a case of the company: a designated handler, or a group administrator. */
+export type IntakeReader=Readonly<{userId:string;name:string|null;kind:'handler'|'group_admin'}>;
+export type PrivateCaseIntake=Readonly<{companies:readonly IntakeCompany[];companyId:string|null;readers:readonly IntakeReader[];storable:boolean}>;
 
-/** The companies the caller may open a case in (a current employment there, and a handler designated), and the chosen
- * company's handlers by name, so a case about one of them can leave them out. */
+/** The companies the caller may open a case in (a current employment there, and a handler designated), and everyone
+ * who could read a case of the chosen company, by name, so the person a case is about, or anyone who must not see
+ * it, can be left out. */
 export async function privateCaseIntake(supplied:SessionContext,companyId?:unknown):Promise<PrivateCaseIntake>{
  const ctx=captured(supplied);
  if(!own(ctx))return fail('not_allowed');
@@ -85,16 +91,19 @@ export async function privateCaseIntake(supplied:SessionContext,companyId?:unkno
     and exists(select 1 from public.private_case_handler h where h.tenant_id=c.tenant_id and h.company_id=c.id and h.revoked_at is null)
    order by c.legal_name,c.id`);
   const chosen=companies.find(row=>row.id===companyId)?.id??companies[0]?.id??null;
-  const handlers=chosen?await tx.execute<{app_user_id:string;display_name:string|null}>(sql`select app_user_id,display_name from app.private_case_intake_handlers(${chosen}::uuid)`):[];
+  const readers=chosen?await tx.execute<{app_user_id:string;display_name:string|null;reader_kind:string}>(sql`select app_user_id,display_name,reader_kind
+   from app.private_case_intake_readers(${chosen}::uuid)`):[];
   return Object.freeze({companies:Object.freeze(companies.map(row=>Object.freeze({id:row.id,name:row.name}))),companyId:chosen,
-   handlers:Object.freeze(handlers.map(row=>Object.freeze({userId:row.app_user_id,name:row.display_name}))),storable:isSecretStorable()});
+   readers:Object.freeze(readers.map(row=>Object.freeze({userId:row.app_user_id,name:row.display_name,kind:row.reader_kind==='group_admin'?'group_admin' as const:'handler' as const}))),
+   storable:isSecretStorable()});
  });
 }
 
 export type OpenPrivateCaseInput=Readonly<{companyId:unknown;category:unknown;text:unknown;excludedUserIds?:unknown;sendTo?:unknown}>;
 /** Opens a case as the caller. The database sets its status, times and route (falling back to the group administrators
- * when every handler is excluded) and refuses a company without handlers or a case nobody could receive. */
-export async function openPrivateCase(supplied:SessionContext,input:OpenPrivateCaseInput):Promise<Readonly<{caseId:string}>>{
+ * when every handler is excluded) and refuses a company without handlers. A case nobody may read is still kept:
+ * `reachable` is false and the author is told so. */
+export async function openPrivateCase(supplied:SessionContext,input:OpenPrivateCaseInput):Promise<Readonly<{caseId:string;reachable:boolean}>>{
  const ctx=captured(supplied);
  if(!own(ctx))return fail('not_allowed');
  const kind=category(input.category),text=words(input.text,PRIVATE_CASE_LIMITS.textChars);
@@ -105,31 +114,35 @@ export async function openPrivateCase(supplied:SessionContext,input:OpenPrivateC
  if(!isSecretStorable())return fail('unavailable');
  const caseId=randomUUID(),userId=ctx.userId,companyId=input.companyId,exclusions=[...new Set(excluded as string[])].filter(id=>id!==userId);
  const ciphertext=encryptSecret(text,privateCaseAad(ctx.tenantId,caseId,userId));
- await guarded(ctx,async tx=>{
+ const reachable=await guarded(ctx,async tx=>{
   await tx.execute(sql`insert into public.private_case(id,tenant_id,company_id,author_user_id,author_person_id,category,route,excluded_user_ids,body_ciphertext)
    values(${caseId}::uuid,${ctx.tenantId}::uuid,${companyId}::uuid,${userId}::uuid,
     (select u.person_id from public.app_user u where u.id=${userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid),
     ${kind},${sendTo},${sql`array[${sql.join(exclusions.map(id=>sql`${id}::uuid`),sql`,`)}]::uuid[]`},${ciphertext})`);
+  const [row]=await tx.execute<{reachable:boolean}>(sql`select ${HAS_READER} as reachable from public.private_case c where c.id=${caseId}::uuid`);
+  return row?.reachable===true;
  });
- return Object.freeze({caseId});
+ return Object.freeze({caseId,reachable});
 }
 
-export type OwnPrivateCase=Readonly<{id:string;category:PrivateCaseCategory;status:PrivateCaseStatus;companyName:string|null;openedAt:Date;statusChangedAt:Date}>;
+export type OwnPrivateCase=Readonly<{id:string;category:PrivateCaseCategory;status:PrivateCaseStatus;companyName:string|null;openedAt:Date;statusChangedAt:Date;
+ /** False while nobody may read it (every possible reader excluded, or none configured). */
+ reachable:boolean}>;
 /** The caller's own cases, newest first: no text (opening one is a read and is audited). */
 export async function listOwnPrivateCases(supplied:SessionContext):Promise<readonly OwnPrivateCase[]>{
  const ctx=captured(supplied);
  if(!own(ctx))return fail('not_allowed');
  return guarded(ctx,async tx=>{
-  const rows=await tx.execute<{id:string;category:string;status:string;company:string|null;opened:string;changed:string}>(sql`
-   select c.id,c.category,c.status,co.legal_name as company,${AT(sql`c.created_at`)} as opened,${AT(sql`c.status_changed_at`)} as changed
+  const rows=await tx.execute<{id:string;category:string;status:string;company:string|null;opened:string;changed:string;reachable:boolean}>(sql`
+   select c.id,c.category,c.status,co.legal_name as company,${AT(sql`c.created_at`)} as opened,${AT(sql`c.status_changed_at`)} as changed,${HAS_READER} as reachable
    from public.private_case c left join public.company co on co.id=c.company_id and co.tenant_id=c.tenant_id
    where c.tenant_id=${ctx.tenantId}::uuid and c.author_user_id=${ctx.userId}::uuid order by c.created_at desc,c.id limit ${PRIVATE_CASE_LIMITS.cases}`);
-  return Object.freeze(rows.map(row=>Object.freeze({id:row.id,category:category(row.category)??fail('unavailable'),status:status(row.status),companyName:row.company,openedAt:at(row.opened),statusChangedAt:at(row.changed)})));
+  return Object.freeze(rows.map(row=>Object.freeze({id:row.id,category:category(row.category)??fail('unavailable'),status:status(row.status),companyName:row.company,openedAt:at(row.opened),statusChangedAt:at(row.changed),reachable:row.reachable===true})));
  });
 }
 
 export type CaseStatusStep=Readonly<{status:PrivateCaseStatus;at:Date}>;
-export type OwnPrivateCaseDetail=Readonly<{id:string;category:PrivateCaseCategory;status:PrivateCaseStatus;companyName:string|null;openedAt:Date;text:string;
+export type OwnPrivateCaseDetail=Readonly<{id:string;category:PrivateCaseCategory;status:PrivateCaseStatus;companyName:string|null;openedAt:Date;text:string;reachable:boolean;
  /** Received when opened, then each status change, oldest first. Who changed it and who read it are not shown. */
  history:readonly CaseStatusStep[]}>;
 /** Opens one of the caller's own cases: audited as a read, then decrypted. */
@@ -139,8 +152,8 @@ export async function readOwnPrivateCase(supplied:SessionContext,caseId:unknown)
  if(!isSecretStorable())return fail('unavailable');
  const userId=ctx.userId;
  return guarded(ctx,async tx=>{
-  const [row]=await tx.execute<{category:string;status:string;company:string|null;opened:string;body:string}>(sql`
-   select c.category,c.status,co.legal_name as company,${AT(sql`c.created_at`)} as opened,c.body_ciphertext as body
+  const [row]=await tx.execute<{category:string;status:string;company:string|null;opened:string;body:string;reachable:boolean}>(sql`
+   select c.category,c.status,co.legal_name as company,${AT(sql`c.created_at`)} as opened,c.body_ciphertext as body,${HAS_READER} as reachable
    from public.private_case c left join public.company co on co.id=c.company_id and co.tenant_id=c.tenant_id
    where c.tenant_id=${ctx.tenantId}::uuid and c.id=${caseId}::uuid and c.author_user_id=${userId}::uuid`);
   if(!row)return fail('not_found');
@@ -148,7 +161,7 @@ export async function readOwnPrivateCase(supplied:SessionContext,caseId:unknown)
   const text=decryptSecret(row.body,privateCaseAad(ctx.tenantId,caseId,userId));
   const steps=await tx.execute<{kind:string;to_status:string|null;at:string}>(sql`select kind,to_status,${AT(sql`at`)} as at from public.private_case_event
    where tenant_id=${ctx.tenantId}::uuid and case_id=${caseId}::uuid and kind in ('created','status_changed') order by at,id`);
-  return Object.freeze({id:caseId,category:category(row.category)??fail('unavailable'),status:status(row.status),companyName:row.company,openedAt:at(row.opened),text,
+  return Object.freeze({id:caseId,category:category(row.category)??fail('unavailable'),status:status(row.status),companyName:row.company,openedAt:at(row.opened),text,reachable:row.reachable===true,
    history:Object.freeze(steps.map(step=>Object.freeze({status:step.kind==='created'?'received' as const:status(step.to_status),at:at(step.at)})))});
  });
 }
@@ -160,14 +173,18 @@ async function audit(tx:Tx,tenantId:string,caseId:string,userId:string){
 
 // ── Handling: the case's handlers ──
 
-/** True while the caller holds a current handler grant in any company, or is a group administrator (who receives the
- * cases no eligible handler can). Decides whether the queue is offered; the queue itself shows only what RLS returns. */
+/** True while the caller holds a current handler grant in any company, or may handle at least one case (a group
+ * administrator receiving the cases no eligible handler can). Decides whether the queue and its navigation row are
+ * offered; the queue itself shows only what RLS returns. */
 export async function handlesPrivateCases(supplied:SessionContext):Promise<boolean>{
  const ctx=captured(supplied);
  if(!own(ctx))return false;
  try{return await withTenant(ctx,async tx=>{
   const [row]=await tx.execute<{handles:boolean}>(sql`select (exists(select 1 from public.private_case_handler h where h.tenant_id=${ctx.tenantId}::uuid
-   and h.app_user_id=${ctx.userId}::uuid and h.revoked_at is null) or app.is_group_admin()) and app.principal_snapshot_current() is true as handles`);
+   and h.app_user_id=${ctx.userId}::uuid and h.revoked_at is null)
+   or exists(select 1 from public.private_case c where c.tenant_id=${ctx.tenantId}::uuid
+    and app.private_case_may_handle(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids)))
+   and app.principal_snapshot_current() is true as handles`);
   return row?.handles===true;
  });}catch{return false;}
 }
@@ -278,9 +295,9 @@ export async function setPrivateCaseStatus(supplied:SessionContext,input:Readonl
 
 export type CaseHandlerGrant=Readonly<{id:string;userId:string;name:string|null;grantedAt:Date;revokedAt:Date|null}>;
 export type CaseHandlerCandidate=Readonly<{userId:string;name:string|null}>;
-export type CaseHandlerAdmin=Readonly<{companies:readonly IntakeCompany[];companyId:string|null;grants:readonly CaseHandlerGrant[];candidates:readonly CaseHandlerCandidate[];
- /** Whether this administrator may designate themself (a group administrator only). */
- selfAllowed:boolean}>;
+export type CaseHandlerAdmin=Readonly<{companies:readonly IntakeCompany[];companyId:string|null;grants:readonly CaseHandlerGrant[];
+ /** Logins that could be designated: never the administrator themself (coordinator decision, 3 November 2026). */
+ candidates:readonly CaseHandlerCandidate[]}>;
 /** The handlers of one company the caller administers, current and revoked, and the logins that could be designated. */
 export async function caseHandlerAdmin(supplied:SessionContext,companyId?:unknown):Promise<CaseHandlerAdmin>{
  const ctx=captured(supplied);
@@ -289,8 +306,7 @@ export async function caseHandlerAdmin(supplied:SessionContext,companyId?:unknow
   const companies=await tx.execute<{id:string;name:string}>(sql`select c.id,c.legal_name as name from public.company c
    where c.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(c.id) order by c.legal_name,c.id`);
   const chosen=companies.find(row=>row.id===companyId)?.id??companies[0]?.id??null;
-  const [self]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);
-  if(!chosen)return Object.freeze({companies:Object.freeze([]),companyId:null,grants:Object.freeze([]),candidates:Object.freeze([]),selfAllowed:self?.allowed===true});
+  if(!chosen)return Object.freeze({companies:Object.freeze([]),companyId:null,grants:Object.freeze([]),candidates:Object.freeze([])});
   const grants=await tx.execute<{id:string;user_id:string;name:string|null;granted:string;revoked:string|null}>(sql`
    select h.id,h.app_user_id as user_id,coalesce(nullif(btrim(p.preferred_name),''),p.full_name) as name,${AT(sql`h.granted_at`)} as granted,
     case when h.revoked_at is null then null else ${AT(sql`h.revoked_at`)} end as revoked
@@ -301,14 +317,15 @@ export async function caseHandlerAdmin(supplied:SessionContext,companyId?:unknow
   const candidates=await tx.execute<{id:string;name:string|null}>(sql`select u.id,coalesce(nullif(btrim(p.preferred_name),''),p.full_name) as name
    from public.app_user u left join public.person p on p.id=u.person_id and p.tenant_id=u.tenant_id
    where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) order by 2 nulls last,1`);
-  return Object.freeze({companies:Object.freeze(companies.map(row=>Object.freeze({id:row.id,name:row.name}))),companyId:chosen,selfAllowed:self?.allowed===true,
+  return Object.freeze({companies:Object.freeze(companies.map(row=>Object.freeze({id:row.id,name:row.name}))),companyId:chosen,
    grants:Object.freeze(grants.map(grant=>Object.freeze({id:grant.id,userId:grant.user_id,name:grant.name,grantedAt:at(grant.granted),revokedAt:grant.revoked?at(grant.revoked):null}))),
-   candidates:Object.freeze(candidates.filter(row=>!active.has(row.id)&&(self?.allowed===true||row.id!==ctx.userId)).map(row=>Object.freeze({userId:row.id,name:row.name})))});
+   candidates:Object.freeze(candidates.filter(row=>!active.has(row.id)&&row.id!==ctx.userId).map(row=>Object.freeze({userId:row.id,name:row.name})))});
  });
 }
 
 /** Designates a login as a case handler for a company. The database admits only a current administrator of that
- * company, and an HR administrator never for themself; audited as a domain event. */
+ * company, and never for themself, even in a company with one administrator (a group administrator designates them);
+ * audited as a domain event. */
 export async function designateCaseHandler(supplied:SessionContext,input:Readonly<{companyId:unknown;appUserId:unknown}>):Promise<Readonly<{handlerId:string}>>{
  const ctx=captured(supplied);
  if(!own(ctx)||!isAdmin(ctx))return fail('not_allowed');

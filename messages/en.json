@@ -509,7 +509,9 @@
     "functionAccess": "Function Access",
     "securityCenter": "Security Center",
     "aiManagementInventory": "AI inventory",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "myPrivateCases": "My private cases",
+    "privateCases": "Private cases"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -33647,7 +33649,6 @@
     "errors": {
       "invalid": "Check the form: choose what it is about and write what happened.",
       "not_set_up": "Private cases are not set up for this company. Please contact your HR team directly.",
-      "no_recipient": "Nobody could receive this case as it stands. Leave fewer people out, or contact your HR team directly.",
       "not_found": "This case is not available to you.",
       "not_allowed": "You cannot do this.",
       "unavailable": "This is not available just now. Please try again later.",
@@ -33668,7 +33669,8 @@
       "opened": "Opened {date}",
       "updated": "Updated {date}",
       "handle": "Cases you handle",
-      "view": "View"
+      "view": "View",
+      "unreachable": "Nobody can read it yet"
     },
     "new": {
       "title": "Start a private case",
@@ -33679,15 +33681,17 @@
       "category": "What is it about?",
       "text": "What happened",
       "textHelp": "Up to 8,000 characters. Share what you are comfortable sharing; a handler may contact you.",
-      "handlers": "Who receives it",
-      "handlersHelp": "These HR case handlers can read your case. If it is about one of them, tick their name and they will not see it.",
-      "exclude": "It is about {name}: do not send it to them",
-      "unnamed": "A case handler without an employee record",
+      "handlers": "Who can read it",
+      "handlersHelp": "These people can read your case. If it is about one of them, or one of them must not see it, tick their name.",
+      "exclude": "Do not send it to {name} ({role})",
+      "unnamed": "Someone without an employee record",
       "groupAdmin": "Send it to the group administrator instead of the case handlers",
-      "groupAdminHelp": "If you leave out every handler, it goes to the group administrator.",
+      "groupAdminHelp": "If you leave out every case handler, it goes to the group administrator. If you leave out everyone, it is kept but nobody can read it yet.",
       "privacy": "Your case is stored encrypted. Your HR case handlers see it with your name; other HR administrators, managers and the AI Centre do not.",
       "submit": "Send to HR",
-      "notStorable": "Private cases cannot be saved just now. Please contact your HR team directly."
+      "notStorable": "Private cases cannot be saved just now. Please contact your HR team directly.",
+      "readerHandler": "case handler",
+      "readerGroupAdmin": "group administrator"
     },
     "detail": {
       "back": "Private cases",
@@ -33748,7 +33752,7 @@
       "person": "Person",
       "noRecord": "Login without an employee record",
       "add": "Add handler",
-      "selfNote": "Only a group administrator can name themself a handler.",
+      "selfNote": "You cannot name yourself a handler. A group administrator, or another administrator of the company, designates you.",
       "added": "Handler added.",
       "removed": "Handler removed.",
       "noCompanies": "You do not administer a company."
@@ -33757,6 +33761,8 @@
       "title": "Private case handlers",
       "help": "Choose who receives the private cases people write to HR.",
       "link": "Manage case handlers"
-    }
+    },
+    "noReader": "No eligible reader is configured for this company, so nobody can read this case yet. Please contact {channel}.",
+    "externalChannel": "[the company’s designated external channel, for example an ethics line]"
   }
 }

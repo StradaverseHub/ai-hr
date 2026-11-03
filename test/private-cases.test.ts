@@ -5,10 +5,13 @@
  *
  * Proves: the author and the case's handler read a case; an unassigned company HR administrator, a group administrator
  * while a handler exists, a manager, another employee, another tenant and an agent read nothing; a case about a handler
- * reaches another handler or the group administrator and never that handler; designation is an administrator's
- * audited grant (never an HR administrator's own); every creation, read, status change and note is audited and a
- * refused read records nothing; the text round-trips encrypted and a wrong binding fails; the lifecycle and its guard;
- * person erasure; the sensitive reply offers the route only where it is set up, calls no model and stores no words.
+ * reaches another handler or the group administrator and never that handler; an excluded group administrator never
+ * reads, and a case with every possible reader excluded is kept, read by nobody, with the author told; readers are
+ * notified of a new case and the author of a status change, with no content in the notice; designation is an
+ * administrator's audited grant, never anyone's own, even in a company with one HR administrator; every creation, read,
+ * status change and note is audited and a refused read records nothing; the text round-trips encrypted and a wrong
+ * binding fails; the lifecycle and its guard; person erasure; the sensitive reply offers the route only where it is set
+ * up, calls no model and stores no words.
  * The restricted-owner proofs (definer lookups and erasure under forced RLS) are in test/private-cases-owner.test.ts. */
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -77,7 +80,9 @@ describe('access',()=>{
   await designate(handler.ctx.userId);
   expect(await privateCaseRouteAvailable(author.ctx,b.companyId)).toBe(true);
   const intake=await privateCaseIntake(author.ctx);
-  expect(intake.companies.map(row=>row.id)).toEqual([b.companyId]);expect(intake.handlers).toEqual([{userId:handler.ctx.userId,name:'Fictional Case Handler'}]);
+  // Everyone who could read it is named, handlers first: here the handler and the tenant's group administrator.
+  expect(intake.companies.map(row=>row.id)).toEqual([b.companyId]);
+  expect(intake.readers).toEqual([{userId:handler.ctx.userId,name:'Fictional Case Handler',kind:'handler'},{userId:b.adminUserId,name:null,kind:'group_admin'}]);
   const caseId=await open(author);
   await addPrivateCaseNote(handler.ctx,{caseId,text:'Fictional handler note: call the author on Monday.'});
 
@@ -155,12 +160,40 @@ describe('access',()=>{
   expect((await readOwnPrivateCase(first.ctx,byHandler)).text).toBe(TEXT);
   // Row security agrees: the excluded handler and the company HR administrator see none of these cases at all.
   expect((await seen(first.ctx)).cases).toEqual([byHandler]);expect((await seen(companyAdmin.ctx)).cases).toEqual([]);
-  // Only a current handler of the company can be left out, and an invalid choice stores nothing.
+  // Only a possible reader (a handler or a group administrator) can be left out, and an invalid choice stores nothing.
   await refusedWith(open(author,{excludedUserIds:[companyAdmin.ctx.userId]}),'invalid');
   await refusedWith(open(author,{sendTo:'everyone'}),'invalid');
-  // The intake form names the handlers, never the author themself.
-  expect((await privateCaseIntake(first.ctx)).handlers.map(row=>row.userId)).toEqual([second.ctx.userId]);
+  // The intake form names the possible readers, never the author themself.
+  expect((await privateCaseIntake(first.ctx)).readers.filter(row=>row.kind==='handler').map(row=>row.userId)).toEqual([second.ctx.userId]);
   expect((await owner.db.execute(sql`select id from public.private_case where tenant_id=${b.tenantId}::uuid`)).length).toBe(4);
+ });
+
+ it('an excluded group administrator never reads; with every possible reader excluded the case is kept, read by nobody, and the author is told',async()=>{
+  const author=await hire('Fictional Exclusion Author','employee'),handler=await hire('Fictional Exclusion Handler','employee'),otherGroup=await hire('Fictional Second Group Administrator','hr_admin');
+  await designate(handler.ctx.userId);
+  const reach=async(caseId:string)=>{const out:string[]=[];
+   for(const [who,ctx] of [['handler',handler.ctx],['group',group],['other group',otherGroup.ctx]] as const)if((await listHandledPrivateCases(ctx)).some(row=>row.id===caseId))out.push(who);
+   return out;};
+  // About the handler and one group administrator: the other group administrator reads it.
+  const one=await openPrivateCase(author.ctx,{companyId:b.companyId,category:'harassment',text:TEXT,excludedUserIds:[handler.ctx.userId,b.adminUserId]});
+  expect(one.reachable).toBe(true);expect(await reach(one.caseId)).toEqual(['other group']);
+  await expect(readHandledPrivateCase(group,one.caseId)).rejects.toMatchObject({code:'not_found'});
+  expect((await seen(group)).cases).toEqual([]);
+  // Sent to the group administrators directly, about one of them: never that one.
+  const direct=await openPrivateCase(author.ctx,{companyId:b.companyId,category:'other',text:TEXT,sendTo:'group_admin',excludedUserIds:[otherGroup.ctx.userId]});
+  expect(await reach(direct.caseId)).toEqual(['group']);
+  // Everyone excluded: the case exists, nobody reads it, and the author's screens say so.
+  const nobody=await openPrivateCase(author.ctx,{companyId:b.companyId,category:'grievance',text:TEXT,excludedUserIds:[handler.ctx.userId,b.adminUserId,otherGroup.ctx.userId]});
+  expect(nobody.reachable).toBe(false);
+  expect(await reach(nobody.caseId)).toEqual([]);
+  for(const ctx of [handler.ctx,group,otherGroup.ctx])expect((await seen(ctx)).cases).not.toContain(nobody.caseId);
+  expect((await stored(nobody.caseId)).status).toBe('received');
+  const mine=await readOwnPrivateCase(author.ctx,nobody.caseId);
+  expect(mine).toMatchObject({text:TEXT,reachable:false});
+  expect((await listOwnPrivateCases(author.ctx)).map(row=>[row.id,row.reachable]).sort()).toEqual([[one.caseId,true],[direct.caseId,true],[nobody.caseId,false]].sort());
+  // A group administrator who wrote a case never reads it either: with the handler excluded, the other one does.
+  const byGroup=await openPrivateCase(otherGroup.ctx,{companyId:b.companyId,category:'safety',text:TEXT,excludedUserIds:[handler.ctx.userId]});
+  expect(await reach(byGroup.caseId)).toEqual(['group']);
  });
 
  it('only an administrator of the company designates a handler, an HR administrator never themself; every change is audited and revoking ends access',async()=>{
@@ -176,8 +209,8 @@ describe('access',()=>{
   expect(await eventTypesFor(b.tenantId,handlerId)).toEqual(['private-case-handler.designated']);
   const admin=await caseHandlerAdmin(companyAdmin.ctx);
   expect(admin.grants.map(grant=>[grant.userId,grant.revokedAt])).toEqual([[handler.ctx.userId,null]]);
-  expect(admin.selfAllowed).toBe(false);expect(admin.candidates.map(row=>row.userId)).not.toContain(companyAdmin.ctx.userId);
-  expect((await caseHandlerAdmin(group)).selfAllowed).toBe(true);
+  expect(admin.candidates.map(row=>row.userId)).not.toContain(companyAdmin.ctx.userId);
+  expect((await caseHandlerAdmin(group)).candidates.map(row=>row.userId)).not.toContain(group.userId);
   await refusedWith(caseHandlerAdmin(author.ctx),'not_allowed');
   const caseId=await open(author);
   expect((await readHandledPrivateCase(handler.ctx,caseId)).text).toBe(TEXT);
@@ -194,6 +227,69 @@ describe('access',()=>{
   await expect(readHandledPrivateCase(handler.ctx,caseId)).rejects.toMatchObject({code:'not_found'});
   expect(await privateCaseRouteAvailable(author.ctx,b.companyId)).toBe(false);
   expect((await seen(group)).cases).toEqual([caseId]);
+ });
+});
+
+describe('designation in a company with one HR administrator',()=>{
+ it('the only HR administrator cannot designate themself; a group administrator designates them, and nobody designates themself',async()=>{
+  const author=await hire('Fictional Single Author','employee'),soleAdmin=await hire('Fictional Sole Company Administrator','hr_admin',true),groupAdmin=await hire('Fictional Group Designator','hr_admin');
+  const [admins]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.role_assignment where tenant_id=${b.tenantId}::uuid and role='hr_admin' and company_id=${b.companyId}::uuid`);
+  expect(admins.n).toBe(1);
+  await refusedWith(designateCaseHandler(soleAdmin.ctx,{companyId:b.companyId,appUserId:soleAdmin.ctx.userId}),'not_allowed');
+  // A group administrator is an HR administrator too: no self-designation either.
+  await refusedWith(designateCaseHandler(groupAdmin.ctx,{companyId:b.companyId,appUserId:groupAdmin.ctx.userId}),'not_allowed');
+  expect(await owner.db.execute(sql`select id from public.private_case_handler where tenant_id=${b.tenantId}::uuid`)).toEqual([]);
+  await designateCaseHandler(groupAdmin.ctx,{companyId:b.companyId,appUserId:soleAdmin.ctx.userId});
+  const caseId=await open(author);
+  expect((await readHandledPrivateCase(soleAdmin.ctx,caseId)).text).toBe(TEXT);
+  expect((await caseHandlerAdmin(soleAdmin.ctx)).candidates.map(row=>row.userId)).not.toContain(soleAdmin.ctx.userId);
+ });
+});
+
+describe('notices',()=>{
+ const notices=(tenantId:string)=>owner.db.execute<{recipient:string;kind:string;title:string;body:string;link:string|null;severity:string;user:string|null;company:string|null;event:string|null}>(sql`
+  select recipient_employment_id as recipient,kind,title,body,link_path as link,severity::text,recipient_user_id as user,company_id as company,source_event_id as event
+  from public.notification where tenant_id=${tenantId}::uuid and kind like 'private-case.%' order by created_at,id`).then(rows=>rows.map(row=>({...row})));
+ it('tells the case\'s readers that a case is waiting and the author that it changed, with a link and no content, and never an excluded reader',async()=>{
+  await setModule(b.tenantId,'notifications','active');
+  const author=await hire('Fictional Notice Author','employee'),first=await hire('Fictional Notice First','employee'),second=await hire('Fictional Notice Second','employee');
+  await designate(first.ctx.userId);await designate(second.ctx.userId);
+  const words='Fictional notice text: the supervisor shouted at Farid about the night roster.';
+  const caseId=(await openPrivateCase(author.ctx,{companyId:b.companyId,category:'harassment',text:words,excludedUserIds:[second.ctx.userId]})).caseId;
+  const waiting={kind:'private-case.waiting',title:'A private case is waiting',body:'Open Private cases to read it.',link:'/cases/'+caseId,severity:'action',user:null,company:null,event:null};
+  // The first handler only: the second is excluded, the author never notified of their own case arriving.
+  expect(await notices(b.tenantId)).toEqual([{recipient:first.employmentId,...waiting}]);
+  await setPrivateCaseStatus(first.ctx,{caseId,expected:'received',status:'in_review'});
+  await addPrivateCaseNote(first.ctx,{caseId,text:'Fictional note that must not notify anyone.'});
+  await setPrivateCaseStatus(first.ctx,{caseId,expected:'in_review',status:'closed'});
+  const updated={kind:'private-case.updated',title:'Your private case has an update',body:'Open My private cases to see it.',link:'/me/cases/'+caseId,severity:'info',user:null,company:null,event:null};
+  const rows=await notices(b.tenantId);
+  expect(rows).toEqual([{recipient:first.employmentId,...waiting},{recipient:author.employmentId,...updated},{recipient:author.employmentId,...updated}]);
+  // No content: no category, status, name, word of the case or of a note, and no domain event that an administrator reads.
+  const everything=JSON.stringify(await owner.db.execute(sql`select * from public.notification where tenant_id=${b.tenantId}::uuid`));
+  expect(everything).not.toMatch(/harassment|Harassment|in_review|In review|closed|Closed|supervisor|Farid|night roster|Fictional Notice|Fictional note/);
+  expect(await owner.db.execute(sql`select event_type from public.domain_event where tenant_id=${b.tenantId}::uuid and (event_type like 'private-case.%' or aggregate_id=${caseId}::uuid)`)).toEqual([]);
+  // Each notice is the recipient's own: the second handler and the author see nothing of the first handler's.
+  expect(await withTenant(second.ctx,tx=>tx.execute(sql`select id from public.notification where kind like 'private-case.%'`))).toEqual([]);
+  expect((await withTenant(author.ctx,tx=>tx.execute<{kind:string}>(sql`select kind from public.notification where kind like 'private-case.%'`))).map(row=>row.kind)).toEqual(['private-case.updated','private-case.updated']);
+  // A case nobody may read notifies nobody; without the notifications module nothing is written.
+  const before=(await notices(b.tenantId)).length;
+  await openPrivateCase(author.ctx,{companyId:b.companyId,category:'other',text:words,excludedUserIds:[first.ctx.userId,second.ctx.userId,b.adminUserId]});
+  expect(await notices(b.tenantId)).toHaveLength(before);
+  await setModule(b.tenantId,'notifications','disabled');
+  await openPrivateCase(author.ctx,{companyId:b.companyId,category:'other',text:words});
+  expect(await notices(b.tenantId)).toHaveLength(before);
+ });
+ it('sends the group administrators the notice when every handler is excluded, and no author notice on a close that erasure is waiting on',async()=>{
+  await setModule(b.tenantId,'notifications','active');
+  const author=await hire('Fictional Fallback Author','employee'),handler=await hire('Fictional Fallback Handler','employee'),groupAdmin=await hire('Fictional Fallback Group','hr_admin');
+  await designate(handler.ctx.userId);
+  const caseId=(await openPrivateCase(author.ctx,{companyId:b.companyId,category:'grievance',text:TEXT,excludedUserIds:[handler.ctx.userId]})).caseId;
+  // The group administrator with an employment gets it; the tenant's seeded administrator has none, so no bell.
+  expect((await notices(b.tenantId)).map(row=>[row.recipient,row.kind])).toEqual([[groupAdmin.employmentId,'private-case.waiting']]);
+  await erasePersonPii(group,{subjectEmploymentId:author.employmentId,scope:'contact',reason:'Fictional canonical privacy request',requestRef:'fixture-'+randomUUID()});
+  expect(await setPrivateCaseStatus(groupAdmin.ctx,{caseId,expected:'received',status:'closed'})).toEqual({status:'closed',erased:true});
+  expect((await notices(b.tenantId)).map(row=>row.kind)).toEqual(['private-case.waiting']);
  });
 });
 

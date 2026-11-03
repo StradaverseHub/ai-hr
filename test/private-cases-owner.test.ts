@@ -3,9 +3,11 @@
  * security, so test/private-cases.test.ts cannot prove the owner-side policies. Here the tables and functions move to
  * such a role inside ONE transaction that is always rolled back, and, on fictional cases:
  *  1. the definer name lookup answers a handler with the case's names and anyone else with nothing; the intake lookup
- *     names the company's handlers to a person who works there;
- *  2. a case opened on the group-administrator route passes the insert guard, whose definer check reads the
- *     administrators, and the audit trigger writes its creation row as the author;
+ *     names the company's possible readers to a person who works there;
+ *  2. a case opened on the group-administrator route, leaving out a group administrator, passes the insert guard, whose
+ *     definer checks read the administrators, and the audit trigger writes its creation row as the author; a case on
+ *     the handlers route gets its handler's content-free notice through the definer notice trigger; the author's
+ *     has-reader check answers for each;
  *  3. person erasure, through the definer function and the admitted intent, deletes the subject's closed case and marks
  *     the open one, touching nobody else's, while the administrator's own session reads no case of the subject. */
 import {randomUUID} from 'node:crypto';
@@ -15,7 +17,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {designateCaseHandler,openPrivateCase,privateCaseAad,setPrivateCaseStatus} from '../core/private-cases';
 import {encryptSecret} from '../lib/ai/crypto';
-import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 let b:Base;
 type Actor={ctx:SessionContext&{userId:string};personId:string;employmentId:string};
@@ -35,10 +37,11 @@ async function as(tx:Tx,ctx:SessionContext){
 const ids=async(tx:Tx,query:ReturnType<typeof sql>)=>(await tx.execute<{id:string}>(query)).map(row=>String(row.id)).sort();
 
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>vi.unstubAllEnvs());
-beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-restricted-case-owner-key');await resetDb();b=await seedBase();});
+beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-restricted-case-owner-key');await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');});
 
 it('definer lookups, the insert guard, the audit trigger and person erasure work under forced RLS for a restricted owner, and none of them widens a read',async()=>{
  const group=adminCtx(b),author=await hire('Fictional Owner Author','employee'),handler=await hire('Fictional Owner Handler','employee'),peer=await hire('Fictional Owner Peer','employee');
+ const second=await hire('Fictional Owner Second Group Administrator','hr_admin');
  await designateCaseHandler(group,{companyId:b.companyId,appUserId:handler.ctx.userId});
  const open=(who:Actor)=>openPrivateCase(who.ctx,{companyId:b.companyId,category:'safety',text:'Fictional restricted-owner text.'}).then(row=>row.caseId);
  const closed=await open(author),live=await open(author),theirs=await open(peer);
@@ -50,11 +53,12 @@ it('definer lookups, the insert guard, the audit trigger and person erasure work
   await tx.execute(sql.raw(`GRANT USAGE,CREATE ON SCHEMA public,app TO ${role}`));
   await tx.execute(sql.raw(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO ${role}`));
   // Staging's physical owner owns every table, so the definers read the (unforced) people tables as their owner too.
-  for(const table of ['public.app_user','public.person','public.role_assignment','public.employment','public.company',
+  for(const table of ['public.app_user','public.person','public.role_assignment','public.employment','public.company','public.tenant_module','public.notification',
    'public.private_case_handler','public.private_case','public.private_case_note','public.private_case_event','app.assistant_review_erasure_intent'])
    await tx.execute(sql.raw(`ALTER TABLE ${table} OWNER TO ${role}`));
   for(const fn of ['app._private_case_login_current(uuid)','app.private_case_author_company(uuid)','app._private_case_group_admin_available(uuid,uuid,uuid[])',
-   'app.private_case_intake_handlers(uuid)','app.private_case_names(uuid)','app._private_case_erasure_subject(uuid,uuid,uuid)','app.private_cases_redact(uuid)'])
+   'app._private_case_possible_reader(uuid,uuid,uuid)','app.private_case_has_reader(uuid,uuid,uuid,text,uuid[])','app.private_case_notify()',
+   'app.private_case_intake_readers(uuid)','app.private_case_names(uuid)','app._private_case_erasure_subject(uuid,uuid,uuid)','app.private_cases_redact(uuid)'])
    await tx.execute(sql.raw(`ALTER FUNCTION ${fn} OWNER TO ${role}`));
   const [shape]=await tx.execute<Record<string,boolean>>(sql`select r.rolsuper as super,r.rolbypassrls as bypass,pg_has_role('ai_hr_app',r.oid,'MEMBER') as app_member,
    (select bool_and(c.relforcerowsecurity and c.relrowsecurity and c.relowner=r.oid) from pg_class c where c.oid in ('public.private_case'::regclass,'public.private_case_note'::regclass,
@@ -71,17 +75,29 @@ it('definer lookups, the insert guard, the audit trigger and person erasure work
   await as(tx,peer.ctx);
   expect(await tx.execute(sql`select * from app.private_case_names(${live}::uuid)`)).toEqual([]);
   await as(tx,author.ctx);
-  expect((await tx.execute<{app_user_id:string}>(sql`select app_user_id from app.private_case_intake_handlers(${b.companyId}::uuid)`)).map(row=>row.app_user_id)).toEqual([handler.ctx.userId]);
+  expect((await tx.execute<{app_user_id:string;reader_kind:string}>(sql`select app_user_id,reader_kind from app.private_case_intake_readers(${b.companyId}::uuid)`)).map(row=>[row.app_user_id,row.reader_kind]))
+   .toEqual([[handler.ctx.userId,'handler'],[second.ctx.userId,'group_admin'],[group.userId,'group_admin']]);
   verified++;
 
-  // 2. The group-administrator route: the guard's definer check reads the administrators; the audit row is the author's.
-  const routed=randomUUID();
-  await tx.execute(sql`insert into public.private_case(id,tenant_id,company_id,author_user_id,author_person_id,category,route,body_ciphertext)
+  // 2. The group-administrator route, leaving out the second group administrator: the guard's definer checks read the
+  //    administrators; the audit row is the author's; the has-reader check answers.
+  const routed=randomUUID(),notified=randomUUID();
+  await tx.execute(sql`insert into public.private_case(id,tenant_id,company_id,author_user_id,author_person_id,category,route,excluded_user_ids,body_ciphertext)
    values(${routed}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${author.ctx.userId}::uuid,${author.personId}::uuid,'other','group_admin',
-    ${encryptSecret('Fictional routed text.',privateCaseAad(b.tenantId,routed,author.ctx.userId))})`);
+    array[${second.ctx.userId}::uuid],${encryptSecret('Fictional routed text.',privateCaseAad(b.tenantId,routed,author.ctx.userId))})`);
   expect(await tx.execute<{kind:string}>(sql`select kind from public.private_case_event where case_id=${routed}::uuid`).then(rows=>rows.map(row=>row.kind))).toEqual(['created']);
+  expect(await tx.execute(sql`select app.private_case_has_reader(c.tenant_id,c.company_id,c.author_user_id,c.route,c.excluded_user_ids) as reachable
+   from public.private_case c where c.id=${routed}::uuid`)).toEqual([{reachable:true}]);
+  // The handlers route: the definer notice trigger writes the handler's content-free notice.
+  await tx.execute(sql`insert into public.private_case(id,tenant_id,company_id,author_user_id,author_person_id,category,body_ciphertext)
+   values(${notified}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${author.ctx.userId}::uuid,${author.personId}::uuid,'grievance',
+    ${encryptSecret('Fictional notified text.',privateCaseAad(b.tenantId,notified,author.ctx.userId))})`);
   await as(tx,handler.ctx);
   expect(await ids(tx,sql`select id from public.private_case`)).not.toContain(routed);
+  expect(await tx.execute(sql`select kind,title,body,link_path from public.notification where kind like 'private-case.%' and link_path=${'/cases/'+notified}`))
+   .toEqual([{kind:'private-case.waiting',title:'A private case is waiting',body:'Open Private cases to read it.',link_path:'/cases/'+notified}]);
+  await as(tx,second.ctx);
+  expect(await ids(tx,sql`select id from public.private_case where id=${routed}::uuid`)).toEqual([]);
   await as(tx,group);
   expect(await ids(tx,sql`select id from public.private_case`)).toEqual([routed]);
   verified++;
@@ -93,11 +109,11 @@ it('definer lookups, the insert guard, the audit trigger and person erasure work
    values(pg_current_xact_id(),${b.tenantId}::uuid,${group.userId}::uuid,${author.personId}::uuid,${author.employmentId}::uuid,0,null,'{}'::uuid[])`);
   await as(tx,group);
   expect(await ids(tx,sql`select id from public.private_case where author_user_id=${author.ctx.userId}::uuid and route='handlers'`)).toEqual([]);
-  expect(await tx.execute(sql`select app.private_cases_redact(${author.employmentId}::uuid) as touched`)).toEqual([{touched:3}]);
+  expect(await tx.execute(sql`select app.private_cases_redact(${author.employmentId}::uuid) as touched`)).toEqual([{touched:4}]);
   await tx.execute(sql`RESET ROLE`);
   const left=await tx.execute<{id:string;erasure:boolean;status:string}>(sql`select id,erasure_requested_at is not null as erasure,status from public.private_case order by id`);
-  expect(left.map(row=>({...row}))).toEqual([{id:live,erasure:true,status:'received'},{id:routed,erasure:true,status:'received'},{id:theirs,erasure:false,status:'received'}]
-   .sort((x,y)=>x.id<y.id?-1:1));
+  expect(left.map(row=>({...row}))).toEqual([{id:live,erasure:true,status:'received'},{id:routed,erasure:true,status:'received'},{id:notified,erasure:true,status:'received'},
+   {id:theirs,erasure:false,status:'received'}].sort((x,y)=>x.id<y.id?-1:1));
   expect(await tx.execute(sql`select 1 from public.private_case_event where case_id=${closed}::uuid`)).toEqual([]);
   expect(await tx.execute(sql`select current_setting('app.private_case_erasure',true) as marker`)).toEqual([{marker:''}]);
   verified++;

@@ -38,9 +38,27 @@ Forced row-level security on all four tables binds the physical owner too. The a
 
 There is **no** policy for company HR administrators, managers, agents or any other login. Designating a handler grants the designator nothing. Revoking a grant ends that handler's access immediately. A case whose every handler was revoked falls to the group administrators, so it is never orphaned.
 
-**A case about a handler.** The intake names the company's current handlers. The author ticks the one the case is about, and that handler never sees it. With every handler excluded, the database routes it to the group administrators (again except the excluded and the author). The author may also send it to the group administrator directly. A handler who writes a case never handles it. With nobody able to receive it, the case is refused, and the person is told to contact HR directly.
+**Exclusions and conflicts** (coordinator review, 3 November 2026). The intake names everyone who could read a case of the company: its current handlers and the current group administrators. The author ticks anyone the case is about, or who must not see it. Nobody ticked ever reads it, on any route, including the group-administrator fallback. This is the top-level exclusion in `app.private_case_may_handle`, and the database refuses to exclude anyone who is not a possible reader.
+- With every handler excluded, the case goes to the group administrators, again except the excluded and the author. The author may also send it to them directly.
+- A handler or group administrator who writes a case never handles it.
+- When nobody is left (the subject is the only group administrator, or every possible reader is excluded), the case is **still kept**: refusing it would lose what the person wrote. Nobody reads it. Its author sees "No eligible reader is configured for this company, so nobody can read this case yet. Please contact [the company's designated external channel, for example an ethics line]". The bracketed channel is a placeholder string until a tenant setting names a real one. `app.private_case_has_reader` answers this from the routing facts and names nobody.
+- A reader designated later, who was not excluded, can read such a case. They are not notified of it.
 
-**Designation** (`private_case_handler` policies): a current group administrator, or an HR administrator of that company (`app.is_admin_for`). An HR administrator cannot designate themself; a group administrator can. Each designation and revocation is a `domain_event` (`private-case-handler.designated` / `.revoked`) and stays on the grant row (who, when).
+**Designation** (`private_case_handler` policies): a current group administrator, or an HR administrator of that company (`app.is_admin_for`). **Nobody designates themself**, in any company and whatever their role. This follows the coordinator decision recorded on 3 November 2026: an HR administrator may not designate themself even in a single-administrator company; a group administrator designates them. A group administrator is an HR administrator too, so the same rule applies to them. Two HR administrators of one company may designate each other. Each designation and revocation is a `domain_event` (`private-case-handler.designated` / `.revoked`) and stays on the grant row (who, when).
+
+**Notices.** In-app notifications, written into the existing `public.notification` table that the bell reads, where the tenant has the notifications module:
+- **A new case:** each current reader gets "A private case is waiting", "Open Private cases to read it." and a link to the case. These are the eligible handlers, or failing them the eligible group administrators; never the author or anyone excluded.
+- **A status change:** the author gets "Your private case has an update", "Open My private cases to see it." and a link to their case. There is none when erasure is waiting on the case.
+- **No content:** a notice carries no category, status, name or word of the case.
+- **Written by the database:** a definer trigger (0959 §4b) writes them, not the domain-event sweep, because HR administrators read domain events. An event would tell them a case exists and, with the default actor, who wrote it.
+- **Who has no bell:** a reader without a current employment, because notifications are addressed by employment and login-addressed rows are reserved for letters.
+- **Author updates:** there is no author edit path in this minimal route, so there is nothing to notify for it yet.
+
+**Navigation.** The rail (`components/sidebar.tsx`, placed by `lib/navigation-workspaces.ts` with My workspace in the shared area) shows two rows:
+- **"My private cases"** (`/me/cases`) to every person.
+- **"Private cases"** (`/cases`) only to a login that handles private cases. `app/layout.tsx` decides this with `handlesPrivateCases`: a current handler grant, or a case it may handle (a group administrator holding a fallback case).
+
+Both are product destinations. The handlers' queue is labelled for administrators only.
 
 **Audit.** Triggers write `created` (as the author), `status_changed` and `note_added` (as the handler). `core/private-cases.ts` writes a `read` row in the same transaction before it decrypts any text, and the insert policy admits it only for a login with access. A refused read therefore records nothing. Lists show category, company, dates and status only; opening a case is the audited read. The application role cannot update or delete an audit row or a note.
 
@@ -78,8 +96,17 @@ The `routeReply` change also replaces "the Assistant" (a user-visible name) with
 ## 4. Consequences and risks
 
 - **Residual risks:**
-  - A case about a group administrator who is not a handler can reach them through the fallback, since only handlers are excludable.
   - The author's name is shown to handlers. The route is private, not anonymous.
   - A handler can be designated in a way the author does not expect. Designation is audited, but the author is not notified.
-- **Not built (later):** notifications to handlers and authors; reassignment and self-recusal by a handler; attachments; anonymous reports; the author withdrawing a case; retention for closed cases (they stay until erasure); a sidebar entry. Today the entry points are the AI Centre's routed reply, My Profile and Data privacy (designation), and the handler queue link on the person's own cases page.
-- **Open owner questions:** whether open cases should be kept under the exception (proposed here) or erased at once on request; whether an HR administrator may designate themself in a single-administrator company; whether excluding group administrators by name is needed.
+  - A case nobody could read becomes readable to a reader designated later.
+  - The author names the subject only by excluding them, so a subject who is not a possible reader needs no exclusion. Their name may still appear in the encrypted text.
+- **Not built (later):**
+  - reassignment and self-recusal by a handler;
+  - attachments and anonymous reports;
+  - the author withdrawing or adding to a case;
+  - retention for closed cases (they stay until erasure);
+  - a tenant setting for the external channel;
+  - email for these notices (in-app only).
+- **Recorded owner decisions (coordinator, 3 November 2026):**
+  - open cases are kept under the retention exception until closed;
+  - no HR administrator designates themself, even in a single-administrator company; a group administrator designates them.

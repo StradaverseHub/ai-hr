@@ -24,6 +24,7 @@ export default async function MyPrivateCasesPage(){
      <div className="min-w-0 space-y-1">
       <p className="font-medium">{t(`categories.${row.category}`)}</p>
       <p className="text-sm text-muted-foreground">{[row.companyName,t('me.opened',{date:date(row.openedAt)}),t('me.updated',{date:date(row.statusChangedAt)})].filter(Boolean).join(' · ')}</p>
+      {!row.reachable&&<p className="text-xs font-medium text-destructive">{t('me.unreachable')}</p>}
      </div>
      <div className="flex items-center gap-3"><StatusBadge status={row.status} label={t(`statuses.${row.status}`)}/>
       <Link href={'/me/cases/'+row.id} className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline">{t('me.view')}</Link></div>
