@@ -101,12 +101,14 @@ describe('Operations › Loops, per role',()=>{
   const rows=[...table.querySelectorAll('tbody tr')].map(row=>[...row.querySelectorAll('th,td')].map(parts));
   expect(rows).toEqual([
    ['Probation ending','A decision is recorded before the probation ends','Prepare','On','Nov 3, 2026, 11:04 PM','9','8','Not applicable','Aisyah Fictional'],
-   ['Payroll inputs ready','Nothing blocks the payroll run before the cut-off','Prepare','Off','Not run yet','0','0','Not applicable','None while off'],
+   ['Pre-salary loop','Every input is complete and approved before the cut-off','Prepare','Off','Not run yet','0','0','Not applicable','None while off'],
    ['Missing employee data Paused in 1 company','Every detail the employee can fill in is filled in and approved','Prepare','On','Nov 3, 2026, 11:04 PM Stopped: its sponsor no longer has administrator access','0','0','Not applicable','An administrator'],
    ['Missed clock-outs','Every clock-out is on record','Prepare','On','Nov 3, 2026, 11:05 PM','4','1','50% (1 card)','Daniel Fictional'],
    ['Passports expiring','Each passport is renewed before it expires','Prepare','Off','Not run yet','0','0','Not applicable','None while off'],
   ]);
   expect(table.querySelector('a[href="/control-tower/loops/loop_missed_clock_outs"]')).not.toBeNull();
+  // AI v2 P2-2a: Operations › Loops gains the Payroll cycle view.
+  expect(view.container.querySelector('[data-page-header] a[data-payroll-cycle-link]')).toHaveAttribute('href','/control-tower/loops/payroll-cycle');
   expect(table.querySelectorAll('button,form')).toHaveLength(0);
   expect(text(view.container)).toContain('Only a group administrator switches loops on or off.');
   expect(text(view.container)).toContain('Pay, employment status, system access and discipline stay at Prepare: a person always decides.');
@@ -116,7 +118,7 @@ describe('Operations › Loops, per role',()=>{
   state.session=SESSIONS.groupAdmin;state.canSwitch=true;
   const view=wrap('en',await list());
   const buttons=[...view.container.querySelectorAll('[data-loops-table] button')];
-  expect(buttons.map(button=>button.getAttribute('aria-label'))).toEqual(['Turn off · Probation ending','Turn on · Payroll inputs ready','Turn off · Missing employee data',
+  expect(buttons.map(button=>button.getAttribute('aria-label'))).toEqual(['Turn off · Probation ending','Turn on · Pre-salary loop','Turn off · Missing employee data',
    'Turn off · Missed clock-outs','Turn on · Passports expiring']);
   for(const button of buttons)expect(button.className).toContain('pointer-coarse:min-h-11');
   for(const link of view.container.querySelectorAll('[data-loops-table] a'))expect(link.className).toContain('pointer-coarse:min-h-11');

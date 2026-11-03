@@ -1035,3 +1035,19 @@ may claim the same idx; reconcile at integration.
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
 |766|1793330000361|0961_letter_requests|fac033d489f171da966f620f058f8f688c21e691786b2700bd9fe0876495eb5e|
+
+## AI v2 Phase 2 P2-2a payroll-cycle loops — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-payroll-loops` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 / when1793330000361)
+appends `0964_teras_payroll_cycle_loops` as idx767 / when1793330000364, the number and `when` the AI v2 coordinator reserved
+for this task (0962 is reserved for renumbering `0952_teras_chats`, 0963 for P2-1, 0965 for P2-2b and 0966 for P2-4). A
+fresh fetch on 3 November 2026 found no origin ref claiming 0962 or above; the parallel Phase 2 worktrees hold 0963, 0965
+and 0966 only. Development source only: no installation priority, no deployment; the idx is this branch's own journal
+position (0962 and 0963 sort before it and are not on this branch) and must be re-frozen above the then-installed ledger at
+integration. 0964 and 0965 both widen the 0960 loop-list CHECK constraints (teras_worker_control, teras_loop_pause,
+teras_loop_run and, here, teras_loop_case): whichever is applied second must list both `loop_salary_payroll` and
+`loop_payroll_audit`, or it would drop the other's value.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000364|0964_teras_payroll_cycle_loops|0a38a5628362ac03b6eb4afe67c3b3d3e632be6e7e9bff6eec9f8a0f828407f3|

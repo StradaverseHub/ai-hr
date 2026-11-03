@@ -52,17 +52,19 @@
       },
       "names": {
         "loop_probation_ending": "试用期结束",
-        "loop_payroll_inputs": "薪资输入就绪",
+        "loop_payroll_inputs": "发薪前循环",
         "loop_missing_employee_data": "员工资料缺失",
         "loop_missed_clock_outs": "漏打下班卡",
-        "loop_document_expiry": "护照即将到期"
+        "loop_document_expiry": "护照即将到期",
+        "loop_salary_payroll": "薪资发放循环"
       },
       "doneMeans": {
         "loop_probation_ending": "试用期结束前已记录决定",
-        "loop_payroll_inputs": "截止日前没有任何事项阻止薪资运行",
+        "loop_payroll_inputs": "截止日前每项输入都已完整并获批准",
         "loop_missing_employee_data": "员工可填写的每一项资料均已填写并获批准",
         "loop_missed_clock_outs": "每个下班打卡均有记录",
-        "loop_document_expiry": "每本护照在到期前已续签"
+        "loop_document_expiry": "每本护照在到期前已续签",
+        "loop_salary_payroll": "每次运行都已检查、由人员批准并关闭，且银行文件一致"
       },
       "doneMeansLine": "完成标准：{done}。",
       "level": {
@@ -111,10 +113,10 @@
           "verify": "记录决定后关闭。新的结束日期若无决定会重新打开。"
         },
         "loop_payroll_inputs": {
-          "detect": "薪资截止日在 7 天内，且薪资就绪检查发现有阻止运行的事项。",
-          "diagnose": "哪些检查未就绪，以及其中多少会阻止运行。",
-          "prepare": "为薪资管理员准备一张“今日”卡片，列出每家公司缺少的内容。",
-          "verify": "截止日前没有任何事项阻止运行时关闭。截止日前出现新的阻止事项会重新打开。"
+          "detect": "从薪资期开始到截止日，按各公司的间隔检查：考勤、加班、休假、报销、入职和离职、银行与法定资料、薪资变更以及薪资设置。",
+          "diagnose": "每项检查中待处理、等待中和需复核的项目，均从各自的负责方读取。",
+          "prepare": "在薪资周期页面为薪资管理员准备一个案例，并在截止日前最后 7 天在今日页面显示卡片。每项检查都链接到修正它的页面。",
+          "verify": "截止日前没有待处理或等待中的项目即为完成。截止日前出现新的阻碍会重新打开。"
         },
         "loop_missing_employee_data": {
           "detect": "员工记录缺少薪资或法定申报所需的资料。",
@@ -133,6 +135,12 @@
           "diagnose": "记录中的到期日期。",
           "prepare": "为人事准备一张“今日”卡片，并提醒员工续签护照。",
           "verify": "记录了续签后的到期日期后关闭。到期日期被改回窗口期内会重新打开。"
+        },
+        "loop_salary_payroll": {
+          "detect": "截止日后，各公司当月的运行：工资、奖金和周期外运行。尚未开始的运行会为人力资源部准备好以便开始。",
+          "diagnose": "11 项异常检查、按原因列出的与上月相比的变化、净薪波动标记、法定规则版本，以及银行文件与净薪的核对。",
+          "prepare": "为薪资管理员准备每次运行的案例，并为每个人准备一个标记，供薪资人员标为预期内或确有问题。它从不运行、批准或关闭薪资。",
+          "verify": "由人员关闭运行且银行文件一致即为完成。关闭后重新打开的运行会重新打开此案例。"
         }
       },
       "figures": {
@@ -168,7 +176,10 @@
         "payroll": "{date} 截止日前缺少 {count, plural, other {# 项输入}}",
         "record": "需要填写 {count, plural, other {# 项资料}}",
         "clockOut": "建议 {date} 的下班打卡时间为 {time}",
-        "passport": "护照于 {date} 到期"
+        "passport": "护照于 {date} 到期",
+        "salaryRun": "{status, select, draft {薪资运行，尚未处理} processed {薪资运行，已处理} closed {薪资运行，已关闭} other {薪资运行}}",
+        "swing": "净薪变动超过阈值",
+        "salaryStart": "{date} 截止日后需开始的工资运行"
       },
       "caseState": {
         "open": "等待当事人处理",
@@ -199,7 +210,8 @@
         "none": "暂无运行记录。",
         "summary": "准备 {opened} 项，关闭 {closed} 项，{open} 项未处理，{waiting} 项等待中",
         "capped": "已达卡片上限，其余将在下次运行。"
-      }
+      },
+      "payrollCycle": "薪资周期"
     },
     "subnav": {
       "workers": "全部代理",
@@ -594,11 +606,12 @@
         "team_absence_weekly_summary": "团队缺勤周报",
         "daily_digest": "每日摘要",
         "loop_probation_ending": "试用期结束",
-        "loop_payroll_inputs": "薪资输入就绪",
+        "loop_payroll_inputs": "发薪前循环",
         "loop_missing_employee_data": "员工资料缺失",
         "loop_missed_clock_outs": "漏打下班卡",
         "loop_document_expiry": "护照即将到期",
-        "conversation": "实时聊天对话"
+        "conversation": "实时聊天对话",
+        "loop_salary_payroll": "薪资发放循环"
       },
       "switchInvalid": "此开关无法在这里更改。",
       "switchRefused": "只有集团管理员可以更改此开关。",
@@ -853,6 +866,276 @@
         "provider_error": "助手暂时无法回答。请重试。"
       },
       "letterRequestTitle": "{letterType}申请"
+    },
+    "payrollCycle": {
+      "title": "薪资周期：{month}",
+      "description": "三个循环把每家公司的薪资从输入一路带到审计。",
+      "headerOne": "截止日 {cutOff} · 发薪日 {payDay} · EPF、SOCSO、EIS 和 PCB 于 {due} 到期。",
+      "headerGroup": "EPF、SOCSO、EIS 和 PCB 于 {due} 到期。各公司有各自的截止日和发薪日。",
+      "company": "公司",
+      "allCompanies": "{count, plural, other {全部 # 家公司}}",
+      "show": "显示",
+      "noCompanies": "您在此处不管理任何公司。",
+      "loopsLabel": "按顺序排列的薪资循环",
+      "backToCycle": "薪资周期",
+      "checks": {
+        "timesheets": "考勤记录无误",
+        "overtime": "加班已批准",
+        "leave": "休假和无薪日已确定",
+        "claims": "报销已决定",
+        "joinersLeavers": "入职和离职资料完整",
+        "statutoryBank": "银行、EPF、SOCSO 和税号",
+        "payChanges": "津贴和薪资变更已批准",
+        "setup": "薪资设置就绪"
+      },
+      "pre": {
+        "title": "1 · 发薪前循环",
+        "done": "截止日前每项输入都已完整并获批准即为完成。",
+        "note": "它检查每个负责方，并准备需要人员确认的事项。级别：准备，因此在人员确认之前不会有任何更改。",
+        "open": "打开发薪前循环",
+        "state": {
+          "open": "{count, plural, =0 {进行中 · 今天截止} other {进行中 · 距截止日 # 天}}",
+          "openPast": "进行中",
+          "done": "已完成",
+          "missed": "截止日前未就绪",
+          "not_checked": "尚未检查",
+          "paused": "已暂停",
+          "off": "已关闭"
+        },
+        "value": {
+          "notChecked": "尚未检查",
+          "off": "未使用",
+          "open": "{count} 项待处理",
+          "waiting": "{count} 项等待中",
+          "review": "{count} 项需复核",
+          "done": "已完成"
+        }
+      },
+      "salary": {
+        "title": "2 · 薪资发放循环",
+        "done": "每次运行都已检查、由人员批准并关闭，且银行文件一致即为完成。",
+        "note": "薪资只由薪资服务计算。此循环在每家公司都保持在准备级别：它负责检查和准备，由人员批准并关闭。",
+        "open": "打开薪资发放循环",
+        "state": {
+          "before_cut_off": "截止日开始",
+          "not_checked": "尚未检查",
+          "ready_to_start": "可以开始",
+          "in_progress": "进行中",
+          "attention": "需要关注",
+          "done": "已完成",
+          "paused": "已暂停",
+          "off": "已关闭"
+        },
+        "rows": {
+          "run": "运行各公司的薪资",
+          "change": "与上月相比的变化（每人）",
+          "anomalies": "{count} 项异常检查",
+          "rules": "EPF、SOCSO、EIS、PCB 采用现行规则",
+          "close": "批准并关闭",
+          "bank": "银行文件总额等于净薪"
+        },
+        "value": {
+          "started": "已开始 {started}/{total}",
+          "preparedForHr": "已为人力资源部准备",
+          "flagged": "{count, plural, other {# 人超过阈值}}",
+          "explained": "按原因说明",
+          "afterRun": "按原因说明",
+          "exceptions": "{count, plural, other {# 项例外待处理}}",
+          "noExceptions": "没有待处理的例外",
+          "toToday": "例外发送到今日",
+          "newer": "{count, plural, other {# 次运行有更新的规则}}",
+          "ruleVersion": "规则版本 {version}",
+          "versionShown": "显示规则版本",
+          "closed": "已关闭 {closed}/{total}",
+          "person": "始终由人员负责",
+          "mismatch": "{count, plural, other {# 次运行不一致}}",
+          "matches": "一致",
+          "beforeRelease": "发放前检查"
+        },
+        "runLine": "{type}：{status}"
+      },
+      "audit": {
+        "title": "3 · 审计循环",
+        "done": "所有款项均已支付、申报、对账并留有证据即为完成。",
+        "note": "文件和申报保持在准备级别：由人员向 EPF、PERKESO 和 LHDN 提交。"
+      },
+      "interval": {
+        "hourly": "每小时检查",
+        "twice_daily": "每天检查两次",
+        "daily": "每天检查"
+      },
+      "runType": {
+        "regular": "工资",
+        "bonus": "奖金",
+        "off_cycle": "周期外"
+      },
+      "runStatus": {
+        "draft": "草稿",
+        "processed": "已处理",
+        "closed": "已关闭"
+      },
+      "byCompany": {
+        "title": "各公司",
+        "columns": {
+          "company": "公司",
+          "preSalary": "发薪前",
+          "salary": "薪资发放",
+          "audit": "审计"
+        }
+      },
+      "history": {
+        "title": "最近三个周期",
+        "columns": {
+          "month": "月份",
+          "inputsReady": "输入就绪",
+          "issuesCaught": "运行前发现的问题",
+          "closed": "关闭",
+          "corrections": "运行后的更正",
+          "filed": "按时申报"
+        },
+        "notMeasured": "未测量",
+        "missed": "截止日前未就绪",
+        "onCutOff": "截止当天",
+        "before": "{count, plural, other {截止日前 # 天}}",
+        "after": "{count, plural, other {截止日后 # 天}}",
+        "notClosed": "未关闭",
+        "noRun": "无运行",
+        "settingsTitle": "变更",
+        "noChanges": "尚无变更：采用默认值。",
+        "settingRow": "第 {version} 版：{interval}，阈值 ±{threshold}，{exclusions, plural, =0 {无排除项} other {# 个排除项}}（{source}），由 {name} 于 {when}",
+        "rejectedRow": "一项建议被 {name} 于 {when} 拒绝",
+        "source": {
+          "admin": "由管理员设置",
+          "proposal": "已批准的建议"
+        }
+      },
+      "people": {
+        "title": "人员循环",
+        "item": "{name} · {count} 项待处理"
+      },
+      "patternItem": "薪资项目 {item}",
+      "causes": {
+        "unpaid_leave": "无薪假",
+        "absence": "缺勤",
+        "overtime_hours": "加班时数",
+        "salary_change": "工资变更",
+        "days_paid": "计薪天数",
+        "additional_run": "额外运行",
+        "statutory_rules": "法定规则",
+        "set_by_hand": "手动设置的法定项",
+        "other": "其他变化"
+      },
+      "bodies": {
+        "epf": "EPF",
+        "socso": "SOCSO",
+        "eis": "EIS",
+        "pcb": "PCB",
+        "hrdf": "HRD Corp 税费"
+      },
+      "bank": {
+        "match": "与净薪和人数一致",
+        "total_mismatch": "总额与净薪不一致",
+        "count_mismatch": "记录数不一致",
+        "not_available": "没有可检查的银行文件",
+        "blocked": "暂时无法生成银行文件",
+        "not_ready": "处理后检查"
+      },
+      "salaryPage": {
+        "title": "薪资发放循环：{month}",
+        "description": "按循环最近一次记录显示每次运行的检查。薪资由人员在薪资工作台上运行、批准和关闭。",
+        "level": "每家公司均为准备级别",
+        "off": "薪资发放循环已关闭。请在循环页面开启以检查运行。",
+        "noCompanies": "您在此处不负责任何公司的薪资。",
+        "companyLine": "截止日 {cutOff} · 净薪波动阈值 ±{threshold}",
+        "readyToStart": "可以开始：{month} 还没有工资运行。",
+        "openPayroll": "打开薪资",
+        "noRuns": "本月尚无运行。",
+        "runsCaption": "{company} 的薪资运行",
+        "columns": {
+          "run": "运行",
+          "status": "状态",
+          "anomalies": "异常检查",
+          "change": "与上月相比的变化",
+          "rules": "法定规则",
+          "close": "批准并关闭",
+          "bank": "银行文件"
+        },
+        "runName": "{type}运行 {seq}",
+        "stale": "需要重新计算",
+        "employees": "{count, plural, other {# 名员工}}",
+        "afterProcessing": "处理后",
+        "notEvaluated": "{count} 项检查尚未运行",
+        "changed": "{count, plural, other {# 人有变化}}",
+        "cause": "{cause}（{count}）",
+        "newerRules": "更新的规则：{bodies}",
+        "closedBy": "由 {name} 关闭",
+        "closed": "已关闭",
+        "notClosed": "尚未关闭",
+        "reopened": "{count, plural, other {关闭后重新打开 # 次}}",
+        "note": "净薪波动阈值从 ±15% 开始。只有管理员设置或批准建议时才会改变，且从不改变异常检查。",
+        "settingsLink": "阈值和间隔"
+      },
+      "flags": {
+        "title": "净薪波动标记",
+        "help": "与上月相比净薪变动超过公司阈值的人员。逐一标记：预期内，或确有问题。",
+        "none": "本月没有标记。",
+        "columns": {
+          "person": "人员",
+          "change": "净薪变化",
+          "pattern": "变动原因",
+          "disposition": "处理结论"
+        },
+        "up": "上升 {swing}",
+        "down": "下降 {swing}",
+        "threshold": "阈值 ±{threshold}",
+        "unnamed": "某人",
+        "disposition": {
+          "expected": "预期内",
+          "problem": "确有问题"
+        },
+        "by": "由 {name}",
+        "mark": {
+          "expected": "预期内",
+          "problem": "确有问题"
+        }
+      },
+      "settings": {
+        "title": "薪资周期设置",
+        "description": "发薪前循环检查每家公司的频率，以及薪资发放循环标记净薪波动的阈值。每项变更都会记录变更人。",
+        "defaults": "默认：每天检查，阈值 ±15%",
+        "version": "第 {version} 版",
+        "interval": "发薪前检查间隔",
+        "intervalHelp": "从薪资期开始到截止日。",
+        "threshold": "净薪波动阈值",
+        "thresholdHelp": "当某人的净薪与上月相比变动超过此值时进行标记。",
+        "save": "保存",
+        "exclusions": "已排除的薪资模式",
+        "noExclusions": "无。只有批准建议才会添加排除项。",
+        "remove": "移除"
+      },
+      "proposals": {
+        "title": "建议",
+        "help": "根据薪资人员在过去 30 天的处理结论提出。在管理员批准之前不会生效；批准后从下一次运行开始生效。",
+        "none": "没有建议：被判定为预期内的标记不够多。",
+        "threshold": "将阈值从 ±{from} 提高到 ±{to}",
+        "exclusion": "不再标记由{pattern}引起的变化",
+        "evidence": "{flags} 个标记中有 {expected} 个判定为预期内（{share}），{problems} 个确有问题，最近 {days} 天",
+        "approved": "批准",
+        "rejected": "拒绝"
+      },
+      "saved": {
+        "disposition": "处理结论已记录。",
+        "setting": "已保存。从下一次运行开始生效。",
+        "approved": "建议已批准。从下一次运行开始生效。",
+        "rejected": "建议已拒绝。"
+      },
+      "errors": {
+        "invalid": "无法理解该更改。",
+        "refused": "您无法进行该更改。",
+        "changed": "页面打开后内容已变化，请重新查看。",
+        "already": "已记录，或没有任何变化。",
+        "failed": "无法保存更改，请重试。"
+      }
     }
   },
   "today": {
@@ -949,16 +1232,17 @@
       "payrollTitle": "{company}：{date} 截止日前缺少薪资输入",
       "payrollTitleUnnamed": "{date} 截止日前缺少薪资输入",
       "payrollBlockers": "{count, plural, other {# 项会阻止运行}}",
-      "payrollCta": "打开就绪报告",
+      "payrollCta": "打开薪资周期",
       "passportsTitle": "{count, plural, other {# 本护照将在 60 天内到期}}",
       "passportsFirst": "最早于 {date}",
       "passportsCta": "打开人员",
       "names": {
         "loop_probation_ending": "试用期结束",
-        "loop_payroll_inputs": "薪资输入就绪",
+        "loop_payroll_inputs": "发薪前循环",
         "loop_missing_employee_data": "员工资料缺失",
         "loop_missed_clock_outs": "漏打下班卡",
-        "loop_document_expiry": "护照即将到期"
+        "loop_document_expiry": "护照即将到期",
+        "loop_salary_payroll": "薪资发放循环"
       }
     },
     "done": {

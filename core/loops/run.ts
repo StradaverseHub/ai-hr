@@ -34,7 +34,9 @@ import {LOOP_IDS,type LoopCheck,type LoopId,type LoopRead} from './types';
 
 export type LoopRunOptions=Readonly<{tenantId:string;principalId:string;entitlements:EntitlementSnapshot;
  /** The HR day the run is for (Asia/Kuala_Lumpur); defaults to today. */
- today?:string}>;
+ today?:string;
+ /** AI v2 P2-2a: the instant the run starts (a loop with a per-company interval compares it with its last run). */
+ now?:Date}>;
 export type LoopCounts={observed:number;opened:number;reopened:number;closed:number;openNow:number;waitingNow:number;capped:boolean};
 export type LoopRunResult=
  |Readonly<{workerId:LoopId;status:'not_run';reasons:readonly string[]}>
@@ -69,7 +71,7 @@ async function pausedTx(tx:Tx,tenantId:string,workerId:LoopId):Promise<Set<strin
 
 /** One run of one loop for one tenant. Never throws for a refusal; a database failure while preparing propagates. */
 export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<LoopRunResult>{
- const def=LOOP_DEFINITIONS[workerId],today=options.today??todayInKualaLumpur(),runId=randomUUID(),startedAt=new Date();
+ const def=LOOP_DEFINITIONS[workerId],today=options.today??todayInKualaLumpur(),runId=randomUUID(),startedAt=options.now??new Date();
  const agent=agentContext(options.tenantId,options.principalId,options.entitlements),module=workerModule(workerId);
  // 1 and 2: gate and sponsor, as the agent principal.
  const first=await withTenant(agent,async tx=>{
@@ -103,7 +105,10 @@ export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<Lo
  }).catch(()=>null):null;
  if(!sponsor||!scope)return recordStatus('sponsor_lost',[...gateChecks,check('sponsor_authority',sponsor?`authority:${authorityFingerprint(sponsor)}`:null,false)],[]);
  const checks=[...gateChecks,check('sponsor_authority',`authority:${authorityFingerprint(sponsor)}`,true)];
- const companies=scope.filter(companyId=>!first.paused.has(companyId)&&isModuleEnabled(agent,module,companyId));
+ const inScope=scope.filter(companyId=>!first.paused.has(companyId)&&isModuleEnabled(agent,module,companyId));
+ // AI v2 P2-2a: a loop with a per-company interval (the Pre-salary loop) runs only for the companies due now; the others
+ // are left untouched and record nothing, so their last run stays the one their interval counts from.
+ const companies=def.due&&inScope.length?await withTenant(agent,tx=>def.due!(tx,{tenantId:options.tenantId,workerId,companies:inScope,now:startedAt})):inScope;
  if(!companies.length)return Object.freeze({workerId,status:'ran' as const,runId,companies:0,totals:Object.freeze(zero())});
  // The cases this loop is tracking in scope, as the agent principal.
  const tracked:TrackedCase[]=await withTenant(agent,tx=>tx.select({id:terasLoopCase.id,subjectKey:terasLoopCase.subjectKey,companyId:terasLoopCase.companyId,

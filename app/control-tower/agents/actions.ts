@@ -38,7 +38,9 @@ async function commandError(error: unknown): Promise<string> {
  *  value is refused before a session is read. */
 const REGISTRY_SWITCHES: readonly string[] = Object.freeze(['approver_recommendation', 'explainers', 'conversation',
   // AI v2 W8: the five loops at the Prepare level, also switched on AI Centre › Operations › Loops.
-  'loop_probation_ending', 'loop_payroll_inputs', 'loop_missing_employee_data', 'loop_missed_clock_outs', 'loop_document_expiry']);
+  'loop_probation_ending', 'loop_payroll_inputs', 'loop_missing_employee_data', 'loop_missed_clock_outs', 'loop_document_expiry',
+  // AI v2 P2-2a: the Salary payroll loop.
+  'loop_salary_payroll']);
 
 /** A group administrator turns approver recommendations, explainers or the Noveri conversation on or off from AI
  *  centre › Workers. The action checks the closed list and the group-administrator role; the service checks the

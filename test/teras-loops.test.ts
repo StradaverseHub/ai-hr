@@ -62,6 +62,9 @@ async function companyAdmin(base:Base,companyId:string,departmentId:string):Prom
 const entitlements=async(base=b)=>(await entitledCtx(base)).entitlements!;
 const run=async(id:LoopId,base=b,principal=principalId)=>runLoop(id,{tenantId:base.tenantId,principalId:principal,entitlements:await entitlements(base),today:TODAY});
 const on=(id:LoopId,ctx:SessionContext=group)=>setWorkerSwitch(ctx,{workerId:id,enabled:true});
+/** AI v2 P2-2a: a run at a later instant (the Pre-salary loop checks each company at its own interval). */
+const runAt=async(id:LoopId,now:Date,base=b,principal=principalId)=>runLoop(id,{tenantId:base.tenantId,principalId:principal,entitlements:await entitlements(base),today:TODAY,now});
+const hoursLater=(hours:number)=>new Date(Date.now()+hours*3_600_000);
 /** The cases as a group administrator reads them (FORCE row-level security binds the owner too). */
 const casesOf=(id:LoopId,ctx:SessionContext=group)=>withTenant(ctx,tx=>tx.select().from(terasLoopCase).where(eq(terasLoopCase.workerId,id)));
 const caseOf=async(id:LoopId,key:string)=>(await casesOf(id)).find(row=>row.subjectKey===key);
@@ -85,10 +88,11 @@ describe('the loop runner',()=>{
  it('is off by default: no run, no case, no record, and the database refuses an agent case while it is off',async()=>{
   const p=await login(b,'Fictional Probationer','employee');
   await owner.db.update(schema.employment).set({probationEndDate:day(10)}).where(eq(schema.employment.id,p.employmentId));
-  for(const id of ['loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data','loop_missed_clock_outs','loop_document_expiry'] as const)
+  for(const id of ['loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data','loop_missed_clock_outs','loop_document_expiry','loop_salary_payroll'] as const)
    expect(await workerRunGate(group,id)).toEqual({run:false,reasons:['switched_off']});
   expect((await runLoopsForTenant({tenantId:b.tenantId,principalId,entitlements:await entitlements(),today:TODAY})).map(result=>[result.workerId,result.status]))
-   .toEqual([['loop_probation_ending','not_run'],['loop_payroll_inputs','not_run'],['loop_missing_employee_data','not_run'],['loop_missed_clock_outs','not_run'],['loop_document_expiry','not_run']]);
+   .toEqual([['loop_probation_ending','not_run'],['loop_payroll_inputs','not_run'],['loop_missing_employee_data','not_run'],['loop_missed_clock_outs','not_run'],['loop_document_expiry','not_run'],
+    ['loop_salary_payroll','not_run']]);
   expect(await casesOf('loop_probation_ending')).toEqual([]);
   expect(await runsOf('loop_probation_ending')).toEqual([]);
   // Even the agent principal itself cannot write a case for a loop that is off.
@@ -231,21 +235,27 @@ describe('loop 2: payroll inputs',()=>{
   expect(open).toMatchObject({state:'open',recipient:'payroll',employmentId:null,facts:{payPeriod:'2026-07',cutOff:'2026-07-04'}});
   expect(open!.facts.missing).toEqual(expect.arrayContaining(['payrollCycle']));
   expect((open!.facts.missing as string[])[0]).toBe('payrollCycle');
-  // The group's own company closes at month end, more than 7 days away: no card for it.
-  expect((await casesOf('loop_payroll_inputs')).map(row=>row.companyId)).toEqual([co.id]);
+  // AI v2 P2-2a: the Pre-salary loop checks every company from the start of its period, so the group's own company
+  // (cut-off at month end) has its case too, but no Today card: its cut-off is more than 7 days away.
+  expect((await casesOf('loop_payroll_inputs')).map(row=>row.companyId).sort()).toEqual([b.companyId,co.id].sort());
+  expect((await caseOf('loop_payroll_inputs',`payroll:${b.companyId}:2026-07`))!.facts).toMatchObject({payPeriod:'2026-07',cutOff:'2026-07-31'});
+  expect((await cards(group,true,[b.companyId,co.id])).filter(item=>item.kind==='payroll').map(item=>item.kind==='payroll'?item.companyName:null)).toEqual(['Fictional Payroll Sdn Bhd']);
   const card=(await cards(group,true,[b.companyId,co.id])).find(item=>item.kind==='payroll');
-  expect(card).toMatchObject({kind:'payroll',companyName:'Fictional Payroll Sdn Bhd',payPeriod:'2026-07',cutOff:'2026-07-04',href:'/payroll/setup?readiness=full'});
+  expect(card).toMatchObject({kind:'payroll',companyName:'Fictional Payroll Sdn Bhd',payPeriod:'2026-07',cutOff:'2026-07-04',
+   href:`/control-tower/loops/payroll-cycle?company=${co.id}&period=2026-07`});
   expect(await cards(p,false,[b.companyId,co.id])).toEqual([]);
   // The loop created no payroll configuration of its own.
   expect(await owner.db.select().from(schema.payrollCycle).where(eq(schema.payrollCycle.companyId,co.id))).toEqual([]);
   // Payroll HR adds the active regular cycle; nothing blocks the run any more.
   const [cycle]=await owner.db.insert(schema.payrollCycle).values({tenantId:b.tenantId,companyId:co.id,name:'Monthly',runType:'regular'}).returning();
-  expect(await run('loop_payroll_inputs')).toMatchObject({status:'ran',totals:{closed:1}});
+  // The Pre-salary loop's own interval (daily by default) is counted from its last run: the next day's run checks again.
+  expect(await run('loop_payroll_inputs')).toMatchObject({status:'ran',companies:0});
+  expect(await runAt('loop_payroll_inputs',hoursLater(25))).toMatchObject({status:'ran',totals:{closed:1}});
   expect(await caseOf('loop_payroll_inputs',key)).toMatchObject({state:'closed',closeReason:'done',resolution:'completed'});
-  expect((await cards(group,true,[b.companyId,co.id])).filter(item=>item.kind==='payroll')).toEqual([]);
+  expect((await cards(group,true,[b.companyId,co.id])).filter(item=>item.kind==='payroll'&&item.companyName==='Fictional Payroll Sdn Bhd')).toEqual([]);
   // The cycle is archived before the cut-off: the same case reopens.
   await owner.db.update(schema.payrollCycle).set({archivedAt:new Date()}).where(eq(schema.payrollCycle.id,cycle.id));
-  expect(await run('loop_payroll_inputs')).toMatchObject({status:'ran',totals:{reopened:1}});
+  expect(await runAt('loop_payroll_inputs',hoursLater(50))).toMatchObject({status:'ran',totals:{reopened:1}});
   expect(await caseOf('loop_payroll_inputs',key)).toMatchObject({state:'open',reopenCount:1});
  });
 });

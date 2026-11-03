@@ -104,6 +104,8 @@ export function assertWorkerDeclaration(value:unknown):asserts value is WorkerDe
 const CLOSURE_PENDING='Its run path is in the approved provider closure; it consults the stop switch once that closure is next approved. Until then use its own switch.';
 const NIGHTLY:WorkerTrigger={kind:'schedule',detail:'Nightly sweep'};
 const LOOP_NIGHTLY:WorkerTrigger={kind:'schedule',detail:'Nightly sweep, for each company in scope'};
+/** AI v2 P2-2a: the Pre-salary loop checks each company at its own interval (hourly, twice daily or daily). */
+const LOOP_PAYROLL_INTERVAL:WorkerTrigger={kind:'schedule',detail:'Each company at its own interval: hourly, twice daily or daily'};
 
 const DECLARATIONS:readonly WorkerDeclaration[]=[
  {id:'payroll_anomaly_narrator',label:'Payroll anomaly narrator',family:'explainer',owners:['core/payroll-anomaly-narrate.ts#narrateVerdict'],
@@ -178,9 +180,11 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
   trigger:LOOP_NIGHTLY,readScope:['employment_profile','pending_approval'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_probation_ending'},stop:{honoured:true},
   record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'}},
- {id:'loop_payroll_inputs',label:'Payroll inputs ready',family:'preparer',
-  owners:['core/loops/payroll-inputs.ts#detectPayrollInputs','core/payroll-readiness.ts#payrollReadiness'],
-  trigger:LOOP_NIGHTLY,readScope:['setup_copilot','readiness_gap'],effect:'prepare',
+ // AI v2 P2-2a: the Pre-salary loop absorbs the payroll inputs loop (same id): every input check from the start of the
+ // period to the cut-off, at each company's own interval.
+ {id:'loop_payroll_inputs',label:'Pre-salary loop',family:'preparer',
+  owners:['core/loops/payroll-inputs.ts#detectPayrollInputs','core/loops/pre-salary-checks.ts#preSalaryChecks','core/payroll-readiness.ts#payrollReadiness'],
+  trigger:LOOP_PAYROLL_INTERVAL,readScope:['setup_copilot','readiness_gap','attendance_request','absence','leave_request','claim_request','pending_approval'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_payroll_inputs'},stop:{honoured:true},
   record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'}},
  {id:'loop_missing_employee_data',label:'Missing employee data',family:'preparer',
@@ -197,6 +201,13 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
   owners:['core/loops/document-expiry.ts#detectDocumentExpiry','core/automatic-followups.ts#followupItemsTx'],
   trigger:LOOP_NIGHTLY,readScope:['followup_item'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_document_expiry'},stop:{honoured:true},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'}},
+ // AI v2 P2-2a (migration 0964): the Salary payroll loop, from cut-off to close. Prepare only in every company: it checks
+ // each run and prepares it for payroll HR; a person runs, approves and closes payroll.
+ {id:'loop_salary_payroll',label:'Salary payroll loop',family:'preparer',
+  owners:['core/loops/salary-payroll.ts#detectSalaryPayroll','core/payroll-anomaly.ts#anomalyMetrics','core/pay-difference.ts#comparePayPeriods','core/loops/net-swing.ts#netSwings'],
+  trigger:LOOP_NIGHTLY,readScope:['payroll_anomaly','payslip','pay_difference_explanation','statutory_explanation'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_salary_payroll'},stop:{honoured:true},
   record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'}},
 ];
 
