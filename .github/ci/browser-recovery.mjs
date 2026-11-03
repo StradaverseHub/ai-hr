@@ -34,14 +34,30 @@ function verifyCompleteFirefoxPacket(packet){
  assert(report.batches?.length===1&&isDeepStrictEqual(report.batches[0].result,packet.get('browser-firefox-batch-0.json'))
   &&isDeepStrictEqual(report.healthBefore,packet.get('health-before-browser-firefox.json')),'Firefox packet members disagree');
 }
-export function validateBrowserHistory({source,rows,candidateBranch,browserRunId,auxiliaryRunIds}){
+const assertionTraceControllers = new Map([
+ [41531091118, '8a3cc708cee75b5c946b6c865880bb8cf184a536'],
+ [41532106701, 'e26725799278a59d1b8bb16366999095d89a2e6d'],
+]);
+
+export function validateBrowserHistory({source,rows,candidateBranch,browserRunId,auxiliaryRunIds,recoveryPolicy}){
  const titles=new Set([`Alpha CI · ${candidateBranch}`,`Focused only · ${candidateBranch}`,`Tooling transport only · ${candidateBranch}`,`Canonical build only · ${candidateBranch}`]);
  assert(source.run.display_title===`Alpha CI · ${candidateBranch}`&&Array.isArray(rows)&&rows.length<=8000,'Frozen source branch/history required');
- const known=new Set([browserRunId,...auxiliaryRunIds]),found=new Map();
+ const traces = recoveryPolicy === BROWSER_ASSERTION_RECOVERY_POLICY ? assertionTraceControllers : new Map();
+ if (traces.size) {
+  assert(source.run.id === ASSERTION_INCIDENT.runId && source.run.head_sha === ASSERTION_INCIDENT.source
+   && candidateBranch === ASSERTION_INCIDENT.candidateBranch && browserRunId === ASSERTION_INCIDENT.replayRunId,
+   'Trace history is scoped to the reviewed incident');
+ }
+ const known=new Set([browserRunId,...auxiliaryRunIds,...traces.keys()]),found=new Map();
  for(const r of rows){if(r.id===source.run.id||!titles.has(r.display_title))continue;
   assert(positiveId(r.id)&&Number.isFinite(Date.parse(r.created_at))&&Number.isFinite(Date.parse(r.updated_at))&&Date.parse(r.updated_at)>=Date.parse(r.created_at),'Malformed relevant history');
   if(r.status==='completed'&&Date.parse(r.updated_at)<Date.parse(source.run.created_at))continue;
   assert(known.has(r.id)&&r.status==='completed'&&r.conclusion==='success'&&r.run_attempt===1,'Unaccounted, pending, failed or superseding source execution');
+  if (traces.has(r.id)) {
+   assert(r.workflow_id === BROWSER_WORKFLOW_ID && r.event === 'workflow_dispatch'
+    && r.display_title === `Tooling transport only · ${candidateBranch}` && r.head_sha === traces.get(r.id),
+    'Diagnostic run identity differs');
+  }
   const record={id:r.id,workflowId:r.workflow_id,title:r.display_title,controller:r.head_sha,conclusion:r.conclusion,attempt:r.run_attempt,createdAt:r.created_at,updatedAt:r.updated_at};
   assert(!found.has(r.id)||isDeepStrictEqual(found.get(r.id),record),'Conflicting relevant history');found.set(r.id,record);
  }
@@ -112,7 +128,7 @@ export async function verifyBrowserRecoveredCi({candidatePath,runId,baseline,bro
  const recovery=verifyBrowserRecovery({recoveryPolicy,plan,freshPlan,assessment,run:source.run,jobs:source.jobs,reports:plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`)),fresh:{...fresh,producer,binding:binding.get('image-binding.json'),report:packet.get('unit-browser-firefox.json')},verificationController,verificationDiagnostic,producerDiagnostic,reviewedController,lockSha256:createHash('sha256').update(readFileSync(join(candidatePath,'pnpm-lock.yaml'))).digest('hex')});
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),rows=pages('actions/runs?created='+encodeURIComponent('>='+since),'workflow_runs').filter(r=>[WORKFLOW_ID,BROWSER_WORKFLOW_ID].includes(r.workflow_id)||r.path==='.github/workflows/alpha-focused-checks.yml');
  for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages('actions/runs?status='+status,'workflow_runs'));
- recovery.history=validateBrowserHistory({source,rows,candidateBranch,browserRunId,auxiliaryRunIds});
+ recovery.history=validateBrowserHistory({source,rows,candidateBranch,browserRunId,auxiliaryRunIds,recoveryPolicy});
  const build=await sourceBoundBuild({candidatePath,dir,p:{candidate,controller,baseline,runId,controllerBranch:source.run.head_branch},jobs:source.jobs});
  assert(isDeepStrictEqual(originalMetadata,metadata(runId))&&isDeepStrictEqual(browserMetadata,metadata(browserRunId)),'Recovery API evidence changed before admission');
  assert(cleanHead(candidatePath)===candidate&&cleanHead(controllerRoot)===verificationController,'Recovery source/controller changed');checkRefs();

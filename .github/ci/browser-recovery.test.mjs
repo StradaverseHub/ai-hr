@@ -176,3 +176,27 @@ test('Assertion admission refuses an unreviewed verifier, changed plan identity,
  const relabelled={...legacy,recoveryPolicy:BROWSER_ASSERTION_RECOVERY_POLICY};
  assert.throws(()=>validateBrowserRecoveryGrantEvidence({recovery:relabelled,fingerprint:hash(relabelled)},f.run),/Authenticated assertion recovery certificate required/);
 });
+
+test('Assertion incident accounts for exactly the two passive diagnostic runs', () => {
+ const input = history();
+ const incident = ASSERTION_INCIDENT;
+ const title = `Tooling transport only · ${incident.candidateBranch}`;
+ Object.assign(input.source.run, {
+  id: incident.runId, head_sha: incident.source, display_title: `Alpha CI · ${incident.candidateBranch}`,
+ });
+ Object.assign(input, {
+  candidateBranch: incident.candidateBranch, browserRunId: incident.replayRunId,
+  recoveryPolicy: BROWSER_ASSERTION_RECOVERY_POLICY,
+ });
+ const replay = {...input.rows[0], id: incident.replayRunId, display_title: title};
+ const first = {...replay, id: 41531091118, workflow_id: BROWSER_WORKFLOW_ID, event: 'workflow_dispatch',
+  head_sha: '8a3cc708cee75b5c946b6c865880bb8cf184a536'};
+ const second = {...first, id: 41532106701, head_sha: 'e26725799278a59d1b8bb16366999095d89a2e6d'};
+ input.rows = [replay, first, second];
+ assert.deepEqual(validateBrowserHistory(input).executions.map(run => run.id), [replay.id, first.id, second.id]);
+ for (const rows of [[replay, first], [replay, {...first, head_sha: replay.head_sha}, second],
+  [replay, first, {...second, run_attempt: 2}], [...input.rows, {...second, id: 999}]]) {
+  assert.throws(() => validateBrowserHistory({...input, rows}));
+ }
+ assert.throws(() => validateBrowserHistory({...input, recoveryPolicy: undefined}));
+});
