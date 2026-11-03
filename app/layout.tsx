@@ -72,6 +72,7 @@ import { NavIndexProvider } from '@/components/nav-index-context';
 import { BackToInbox } from '@/components/ai-centre/back-to-inbox';
 import { IntentBar } from '@/components/intent-bar';
 import { ShellRoutePath, ShellLiveClock, ShellStatusLine } from '@/components/shell-top-line';
+import { handlesPrivateCases } from '@/core/private-cases';
 
 // r396: Classic's faces are no longer the default, so they are not preloaded on every page (they still load,
 // on demand, for a Classic user). Monolith's two faces preload.
@@ -254,6 +255,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const assistantAccess = await mayUseAssistant(session).then(access => access.allowed).catch(() => false);
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
+  // AI v2 W11: the "Private cases" queue row only for a login that handles private cases; any failure hides it.
+  const privateCaseHandler = await handlesPrivateCases(session).catch(() => false);
   return (
     <html
       lang={locale}
@@ -321,6 +324,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               enabledModules={visibleModuleCodes(session)}
               assistantAccess={assistantAccess}
               feedbackAccess={feedbackAccess}
+              privateCaseHandler={privateCaseHandler}
               defaultCollapsed={railCollapsed}
               // r398 — the Monolith rail's user line. Display only, the same identity the header shows.
               viewerName={viewer.name}

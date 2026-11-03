@@ -27,7 +27,8 @@ export const NAVIGATION_SECTIONS: readonly NavigationSection[] = ['mine','team',
 const modulePlacement = (module:NavigationModule,section:NavigationSection):NavigationPlacement => ({
   area:NAVIGATION_MODULES.find(item=>item.id===module)!.workspace,module,section,
 });
-const shared = new Set(['/','/me','/org','/tasks','/approvals','/system-testing','/assistant','/knowledge-base','/feedback']);
+// AI v2 W11: a person's own private cases sit with My workspace; a handler's queue is personal to them too.
+const shared = new Set(['/','/me','/org','/tasks','/approvals','/system-testing','/assistant','/knowledge-base','/feedback','/me/cases','/cases']);
 const system = new Set(['/admin/holidays','/admin/settings/system-labels','/admin/system-settings/approval-delegation',
   '/admin/settings/entra','/admin/settings/email','/admin/settings/email-templates','/admin/settings/login','/admin/settings/notifications','/admin/scheduled-actions','/admin/privacy','/admin/audit',
   '/admin/ai','/admin/security-center','/admin/users/access','/admin/users/function-access','/admin/users/create','/admin/users/invite','/admin/users','/admin/system-explorer','/admin/system-testing','/mobile-preview','/admin/settings/dashboard']);
