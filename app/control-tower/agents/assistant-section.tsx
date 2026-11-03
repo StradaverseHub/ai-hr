@@ -14,6 +14,8 @@ import { ModuleSpecialistReview } from '@/components/assistant/module-specialist
 import { HumanPlannerEvaluation } from '@/components/assistant/module-plan';
 import { aiManagementHref } from './sections';
 import type { AiManagementSearch } from './screen';
+import { readChatRetention } from '@/core/teras-chats';
+import { ChatRetentionControl } from '@/components/ai-centre/chat-retention-control';
 
 /** AI management › Assistant. One HR assistant with a specialist per HR module: which specialists are
  * available here, who may use the assistant, and the candidate reviews that used to sit on the employee
@@ -31,6 +33,9 @@ export async function AiAssistantSection({session:s,searchParams}:{session:Sessi
   let launcher: ReturnType<typeof readLauncherSettings> = { enabled: false, position: 'bottom-right', hiddenAreas: [] };
   try { launcher = readLauncherSettings(s); } catch { /* shown as off */ }
   const mayWrite = isGroupAdmin(s);
+  // AI v2 W4: "Keep chats for". Unreadable shows as unavailable; saving re-proves the group administrator in its owner.
+  const chats = await getTranslations('aiAsk.retention');
+  const keepDays = await readChatRetention(s).then(value => value.keepDays).catch(() => null);
   return <div className="space-y-5">
     {status && <p role="status" className="rounded-md border border-border p-3 text-sm">{status}</p>}
     {alert && <p role="alert" className="rounded-md border border-border p-3 text-sm">{alert}</p>}
@@ -59,6 +64,11 @@ export async function AiAssistantSection({session:s,searchParams}:{session:Sessi
         <p className="text-xs text-muted-foreground">{t('launcherVisibility')}</p>
         <button type="submit" className={btnPrimary}>{t('save')}</button>
       </form>}
+    </Card>
+    <Card id="ai-chat-retention" className="scroll-mt-4 p-5">
+      <SectionHeader title={chats('title')}/>
+      <p className="mt-1 max-w-4xl text-sm text-muted-foreground">{chats('help')}</p>
+      <div className="mt-4"><ChatRetentionControl keepDays={keepDays} mayChange={mayWrite}/></div>
     </Card>
     <section aria-labelledby="ai-reviews-heading" className="space-y-4">
       <div><h2 id="ai-reviews-heading" className="text-base font-semibold">{t('reviewsTitle')}</h2><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('reviewsHelp')}</p></div>

@@ -9,6 +9,7 @@ import {AssistantChatBoundary} from './chat-reply-boundary';
 import {ThinkingIndicator} from './thinking-indicator';
 import { askFromLauncherAction } from '@/app/assistant/launcher-actions';
 import { aiCentreName } from '@/lib/ai-centre/brand';
+import { ASK_AI_CENTRE_EVENT, unclaimedAskQuestion } from '@/lib/command-bar-events';
 
 type Turn = { id: number; question: string; area: PageArea | null; stale?: true; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string; clarificationRequired?:true; chatId?: string } | { ok: false; message: string } };
 
@@ -54,11 +55,32 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
     if (followLatest.current && log.current) log.current.scrollTop = log.current.scrollHeight;
   }, [turns, open, docked]);
   // Never on the Assistant itself, outside the closed area list, or in an area the administrator hid.
-  if (pathname === '/assistant' || pathname.startsWith('/assistant/') || !context || hiddenAreas.includes(context.area)) return null;
+  const hidden = pathname === '/assistant' || pathname.startsWith('/assistant/') || !context || hiddenAreas.includes(context.area);
+  // AI v2 W4: a question typed in the command bar (lib/command-bar-events.ts) opens this panel docked and is sent as
+  // if typed here, with this page's context and this panel's chat. A panel that cannot continue starts a new chat
+  // (as its New chat would); one still answering tells the bar it is busy. Where the panel is hidden it takes nothing.
+  const sendRef = React.useRef<(typed: string, fresh: boolean) => void>(() => {});
+  const uncertainRef = React.useRef(uncertain); uncertainRef.current = uncertain;
+  React.useEffect(() => {
+    if (hidden) return;
+    const onAsk = (event: Event) => {
+      const claim = unclaimedAskQuestion(event);
+      if (!claim) return;
+      if (inFlight.current) { claim.detail.result = 'busy'; return; }
+      claim.detail.result = 'sent';
+      const fresh = uncertainRef.current;
+      if (fresh) { pageGeneration.current++; previousExchange.current = null; awaitingClarification.current = null; setUncertain(false); setTurns([]); }
+      followLatest.current = true; setOpen(true); setDocked(true);
+      sendRef.current(claim.question, fresh);
+    };
+    window.addEventListener(ASK_AI_CENTRE_EVENT, onAsk);
+    return () => window.removeEventListener(ASK_AI_CENTRE_EVENT, onAsk);
+  }, [hidden]);
+  if (hidden) return null;
   const close = () => setOpen(false);
-  async function send(clarification?:{id:string;answer:string}) {
-    const text = (clarification?.answer??question).trim();
-    if (!text || inFlight.current||uncertain) return;
+  async function send(clarification?:{id:string;answer:string}, typed?:string, fresh=false) {
+    const text = (clarification?.answer??typed??question).trim();
+    if (!text || inFlight.current||(uncertain&&!fresh)) return;
     inFlight.current = true;
     const id = ++nextTurnId.current;
     const generation = pageGeneration.current;
@@ -66,7 +88,7 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
     const clarificationId=clarification?.id??awaitingClarification.current;
     followLatest.current = true;
     setTurns(list => [...list, { id, question: text, area: context?.area ?? null }]);
-    if(!clarification)setQuestion(''); setPending(true);
+    if(!clarification&&typed===undefined)setQuestion(''); setPending(true);
     try {
       const reply = await askFromLauncherAction({ question: text, path: pathname,
         ...(clarificationId?{clarificationExchangeId:clarificationId}:previous ? { previousExchangeId: previous.id, previousConversationToken: previous.token } : {}) });
@@ -81,6 +103,7 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
       setTurns(list => list.map(turn => turn.id === id ? { ...turn, reply: { ok: false, message: t('failed') } } : turn));
     } finally { inFlight.current = false; setPending(false); }
   }
+  sendRef.current = (typed, fresh) => { void send(undefined, typed, fresh); };
   const side = position === 'bottom-left' ? 'left-4' : 'right-4';
   return <AssistantChatBoundary value={{pending:pending||uncertain,setQuestionDraft:answer=>{if(inFlight.current||uncertain)return;awaitingClarification.current=null;setQuestion(answer);box.current?.focus();},clarify:async(id,answer)=>{await send({id,answer});},setClarificationDraft:(id,answer)=>{if(inFlight.current||uncertain)return;awaitingClarification.current=id;setQuestion(answer);box.current?.focus();}}}>
     {!open && <button ref={button} type="button" onClick={() => { followLatest.current = true; setOpen(true); }} aria-label={tCentre('open', { name: centreName })} aria-haspopup="dialog"

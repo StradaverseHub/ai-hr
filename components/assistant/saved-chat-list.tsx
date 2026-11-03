@@ -6,7 +6,8 @@ import {loadMoreChatsAction} from '../../app/assistant/launcher-actions';
 type Chat={threadId:string;exchangeId:string;title:string};
 /** Earlier scan pages may repeat a long chat. Preserve the newest/first selected tail per thread. */
 function distinct(rows:readonly Chat[]):Chat[]{const seen=new Set<string>();return rows.filter(row=>{if(seen.has(row.threadId))return false;seen.add(row.threadId);return true;});}
-export function SavedChatList({initialChats,nextCursor,scopeDigest,activeThreadId,newChatHref}:{initialChats:readonly Chat[];nextCursor:string|null;scopeDigest:string;activeThreadId?:string;newChatHref:string}){
+/** `embedded` (AI v2 W4): inside Ask's Chats column, which has its own heading and New chat, only the list is shown. */
+export function SavedChatList({initialChats,nextCursor,scopeDigest,activeThreadId,newChatHref,embedded=false}:{initialChats:readonly Chat[];nextCursor:string|null;scopeDigest:string;activeThreadId?:string;newChatHref:string;embedded?:boolean}){
  const t=useTranslations('assistant.workspace.chat');
  const [chats,setChats]=useState(()=>distinct(initialChats)),[cursor,setCursor]=useState(nextCursor),[pending,setPending]=useState(false),[error,setError]=useState<string|null>(null);
  const epoch=useRef(0),busy=useRef(false),alive=useRef(true);
@@ -20,8 +21,8 @@ export function SavedChatList({initialChats,nextCursor,scopeDigest,activeThreadI
    setChats(rows=>distinct([...rows,...page.chats]));setCursor(page.nextCursor);
   }catch{if(alive.current&&at===epoch.current)setError(t('readOnlyHistory'));}finally{if(alive.current&&at===epoch.current){busy.current=false;setPending(false);}}
  }
- return <nav aria-label={t('chats')} className="pb-3"><h2 className="py-3 text-sm font-medium">{t('chats')}</h2>
-  <Link href={newChatHref} scroll={false} className="mb-2 inline-flex min-h-11 items-center rounded-md px-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('new')}</Link>
+ return <nav aria-label={t(embedded?'recent':'chats')} className="pb-3">{!embedded&&<><h2 className="py-3 text-sm font-medium">{t('chats')}</h2>
+  <Link href={newChatHref} scroll={false} className="mb-2 inline-flex min-h-11 items-center rounded-md px-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('new')}</Link></>}
   <ul className="max-h-80 space-y-1 overflow-y-auto overscroll-contain">{chats.map(chat=><li key={chat.threadId}><Link href={'/assistant?e='+encodeURIComponent(chat.exchangeId)} scroll={false} aria-current={activeThreadId===chat.threadId?'page':undefined} className="block break-words rounded-md px-2 py-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-[current=page]:bg-muted">{chat.title}</Link></li>)}</ul>
   {cursor&&<button type="button" disabled={pending} onClick={()=>void more()} className="inline-flex min-h-11 items-center px-2 text-xs underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{t('moreChats')}</button>}
   {error&&<p role="status" className="py-2 text-xs text-muted-foreground">{error}</p>}

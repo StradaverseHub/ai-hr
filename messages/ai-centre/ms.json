@@ -717,5 +717,66 @@
       "managerAwayRangeUnnamed": "Pengurus anda tiada di pejabat {start} – {end}.",
       "managerAwayDayUnnamed": "Pengurus anda tiada di pejabat pada {date}."
     }
+  },
+  "aiAsk": {
+    "chats": "Sembang",
+    "newChat": "Sembang baharu",
+    "newConversation": "Perbualan baharu",
+    "search": "Cari sembang anda",
+    "groups": {
+      "today": "Hari ini",
+      "yesterday": "Semalam",
+      "earlier": "Sebelum ini"
+    },
+    "withheldTitle": "Perkara peribadi",
+    "withheldNote": "Diserahkan kepada HR · tiada perkataan disimpan",
+    "untitled": "Sembang tanpa tajuk",
+    "noChats": "Belum ada sembang.",
+    "noMatches": "Tiada sembang yang sepadan dengan carian anda.",
+    "listUnavailable": "Sembang anda tidak dapat dimuatkan. Cuba lagi nanti.",
+    "moreChats": "Lagi sembang",
+    "earlierSaved": "Perbualan tersimpan terdahulu",
+    "moreTools": "Lagi alat",
+    "keptFor": "{days, plural, other {Sembang disimpan selama # hari, kemudian dipadam.}}",
+    "keptUnknown": "Sembang dipadam selepas tempoh yang ditetapkan oleh organisasi anda.",
+    "privacyLink": "Data dan privasi anda",
+    "backToAsk": "Kembali ke Tanya",
+    "deleteChat": "Padam sembang",
+    "deleteTitle": "Padam sembang ini?",
+    "deleteBody": "Sembang ini dan apa yang diingati oleh Pusat AI untuknya dipadam sekarang, secara kekal. Rekod HR anda tidak diubah.",
+    "deleteConfirm": "Padam",
+    "deleteFailed": "Sembang tidak dapat dipadam. Cuba lagi.",
+    "deleted": "Sembang dipadam.",
+    "privacy": {
+      "title": "Data dan privasi anda",
+      "description": "Apa yang disimpan oleh Pusat AI tentang anda, dan cara mengosongkannya."
+    },
+    "tools": {
+      "title": "Lagi alat",
+      "description": "Pintasan dan cara lain untuk bekerja dengan Pusat AI.",
+      "shortcuts": "Pintasan"
+    },
+    "retention": {
+      "title": "Simpan sembang selama",
+      "help": "Berapa lama Pusat AI menyimpan sembang setiap orang sebelum memadamnya. Sembang yang ditahan kerana topik sensitif tidak menyimpan sebarang perkataan pada mana-mana tetapan.",
+      "legend": "Tempoh menyimpan sembang",
+      "option": "{days, plural, other {# hari}}",
+      "save": "Simpan",
+      "confirm": "Tukar",
+      "confirmTitle": "Tukar tempoh sembang disimpan?",
+      "confirmShorter": "{days, plural, other {Sembang tanpa mesej baharu lebih daripada # hari akan dipadam tidak lama lagi, untuk semua orang. Ia tidak boleh dipulihkan.}}",
+      "confirmLonger": "{days, plural, other {Sembang akan disimpan selama # hari dari mesej seterusnya. Sembang yang telah dipadam tidak dipulihkan.}}",
+      "saved": "{days, plural, other {Disimpan. Sembang disimpan selama # hari.}}",
+      "failed": "Tetapan tidak dapat disimpan. Cuba lagi.",
+      "notAdministrator": "Hanya pentadbir kumpulan boleh menukar ini.",
+      "readOnly": "{days, plural, other {Sembang disimpan selama # hari. Hanya pentadbir kumpulan boleh menukar ini.}}",
+      "unavailable": "Tetapan semasa tidak dapat dibaca."
+    },
+    "commandBar": {
+      "title": "Tanya Pusat AI",
+      "onThisPage": "Di halaman ini: {area}",
+      "hint": "Enter untuk menyediakan · tiada apa berubah sehingga anda sahkan",
+      "busy": "Pusat AI masih menjawab. Cuba lagi sebentar lagi."
+    }
   }
 }
