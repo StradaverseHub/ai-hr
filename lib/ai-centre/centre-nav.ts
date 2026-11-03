@@ -27,10 +27,10 @@ export const CENTRE_TABS: readonly CentreTab[] = [
   { key: 'ask', href: '/assistant', adminOnly: false, sections: false },
   { key: 'jobs', href: '/assistant?view=jobs', adminOnly: false, sections: false },
   { key: 'operations', href: '/control-tower', adminOnly: true, sections: true },
-  // AI v2 Phase 2 (P2-4): Insights, a view of /assistant (approved mock-up Ledger.dc.html, between Operations and
-  // Administration). Its HR capacity section is for administrators, so until the employee "My payroll readiness"
-  // section lands (a parallel Phase 2 task) the tab is offered to administrators only.
-  { key: 'insights', href: '/assistant?view=insights', adminOnly: true, sections: false },
+  // AI v2 Phase 2: Insights, a view of /assistant for every signed-in person (approved mock-ups, between Operations and
+  // Administration). Everyone sees their own payroll readiness (P2-3); the HR capacity ledger section (P2-4) is for HR and
+  // group administrators only, guarded inside the view (components/ai-centre/insights.tsx) and again by its service.
+  { key: 'insights', href: '/assistant?view=insights', adminOnly: false, sections: false },
   { key: 'administration', href: '/control-tower/agents/features', adminOnly: true, sections: true },
   { key: 'how', href: '/assistant?view=how', adminOnly: false, sections: false },
 ];

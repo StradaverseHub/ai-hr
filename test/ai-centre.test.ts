@@ -47,13 +47,17 @@ describe('AI centre tabs keep every permission identical', () => {
   it('administrator tabs are the former Control Tower pages behind requireAdmin, and only administrators see them', () => {
     const admin = CENTRE_TABS.filter(tab => tab.adminOnly);
     // Issue 17 (owner: "Merge both entirely"): Operations and Administration, each a group with a second tab row.
-    // AI v2 Phase 2 (P2-4): Insights, a view of /assistant whose HR capacity section only an administrator is shown.
-    expect(admin.map(tab => [tab.key, tab.href, tab.sections])).toEqual([['operations', '/control-tower', true], ['insights', '/assistant?view=insights', false], ['administration', '/control-tower/agents/features', true]]);
-    for (const tab of admin.filter(tab => tab.sections)) expect(read(pageOf(tab.href))).toContain('requireAdmin');
-    expect(read('app/assistant/page.tsx')).toContain("{sp.view === 'insights' && admin && <CapacityLedgerSection");
+    expect(admin.map(tab => [tab.key, tab.href, tab.sections])).toEqual([['operations', '/control-tower', true], ['administration', '/control-tower/agents/features', true]]);
+    for (const tab of admin) expect(read(pageOf(tab.href))).toContain('requireAdmin');
+    // AI v2 Phase 2: Insights is a tab for everyone (P2-3); its HR capacity ledger section (P2-4) is guarded inside the
+    // view, which only an administrator's page asks for, and the ledger service checks the administrator again.
+    expect(read('app/assistant/page.tsx')).toContain("{sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} ");
+    expect(read('components/ai-centre/insights.tsx')).toContain('{isAdmin&&<CapacityLedgerSection ');
+    expect(read('core/capacity/ledger.ts')).toContain('requireCapacityAdmin(ctx);');
     expect(read('app/control-tower/layout.tsx')).toContain('await requireAdmin();');
     // AI v2 Phase 1: the Inbox tab is retired; Today at / replaces it.
-    expect(centreTabsFor({ isAdmin: false }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'how']);
+    // AI v2 Phase 2 (P2-3): Insights, for everyone, between Operations and Administration as in the approved mock-ups.
+    expect(centreTabsFor({ isAdmin: false }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'insights', 'how']);
     expect(centreTabsFor({ isAdmin: true }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'operations', 'insights', 'administration', 'how']);
   });
 

@@ -4572,6 +4572,13 @@
       "when": 1793330000366,
       "tag": "0966_teras_capacity_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 771,
+      "version": "7",
+      "when": 1793330000367,
+      "tag": "0967_own_payroll_cut_off",
+      "breakpoints": true
     }
   ]
 }

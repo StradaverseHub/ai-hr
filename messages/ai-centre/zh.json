@@ -391,6 +391,10 @@
       "findingRead": "您管理范围内的记录",
       "findingModel": "此发现不使用模型。如已开启通俗说明，会显示在其页面上。"
     },
+    "insights": {
+      "title": "洞察",
+      "description": "发薪前尚待处理的事项，包括您自己的事项和需要您审批的申请。"
+    },
     "jobs": {
       "title": "委托任务",
       "description": "在您自身权限范围内交给 AI 代理执行的任务，直到您停止为止。",
@@ -1360,6 +1364,90 @@
       "inProgress": "此导入正在确认中。",
       "invalid": "无法核对此卡片。请重新附加文件。",
       "unavailable": "导入未能完成，没有导入任何内容。请重试，或使用导入页面。"
+    }
+  },
+  "payrollReadiness": {
+    "todayTitle": "{date} 发薪前",
+    "todayTitleNoDate": "发薪前",
+    "seeAll": "查看全部",
+    "waitingCount": "{count, plural, other {# 项}}正在等待他人审批。",
+    "insightsTitle": "我的发薪准备",
+    "period": "{month} 薪资 · 截止日期 {date}",
+    "periodNoCutOff": "{month} 薪资 · 截止日期请向您的人事团队询问",
+    "due": "{date} 前",
+    "range": "{from} 至 {to}",
+    "allDone": "本次发薪没有需要您处理的事项。",
+    "unavailable": "部分内容暂时无法检查，请稍后再试。",
+    "notInUse": "此处未使用薪资功能，因此无需准备。",
+    "groupDone": "没有待处理事项。",
+    "groupUnknown": "暂时无法检查。",
+    "approvalsHelp": "截止日期前等待您决定的申请。",
+    "notCovered": "此处暂未检查：换班、排班空缺、工时表确认、已加班但尚未申请的加班，以及需确认的薪资变动。",
+    "open": "打开",
+    "review": "审阅",
+    "confirm": "确认",
+    "state": {
+      "todo": "待处理",
+      "waiting": "等待审批",
+      "check": "请检查"
+    },
+    "status": {
+      "done": "已完成",
+      "todo": "待处理",
+      "waiting": "等待中",
+      "unknown": "无法检查",
+      "off": "未使用"
+    },
+    "groups": {
+      "attendance": "考勤",
+      "overtime": "加班",
+      "leave": "请假",
+      "claims": "报销",
+      "toil": "补休",
+      "details": "个人与法定资料",
+      "acknowledge": "待确认",
+      "approvals": "等待您处理"
+    },
+    "fallback": {
+      "leave": "假期",
+      "claim": "费用",
+      "someone": "团队成员"
+    },
+    "kinds": {
+      "missed_clock_in": "缺少上班打卡",
+      "missed_clock_out": "缺少下班打卡",
+      "absent_no_leave": "缺勤且无请假记录",
+      "late_or_early": "迟到或早退",
+      "attendance_request_pending": "考勤更正等待审批",
+      "overtime_pending": "加班申请等待审批",
+      "overtime_over_cap": "本月加班已超过每月上限",
+      "leave_pending": "{label}等待审批",
+      "leave_unpaid": "无薪假：{label}",
+      "leave_certificate_missing": "请为{label}补交证明文件",
+      "claim_deadline": "请在收据过期前提交您的{label}报销",
+      "claim_receipt_missing": "请为您的{label}报销添加收据",
+      "claim_draft": "请提交您的{label}报销草稿",
+      "claim_pending": "{label}报销等待审批",
+      "toil_pending": "补休申请等待审批",
+      "bank_missing": "请添加您的银行账户",
+      "tax_number_missing": "请添加您的所得税号码",
+      "epf_number_missing": "请添加您的公积金（EPF）号码",
+      "socso_number_missing": "请添加您的社险（SOCSO）号码",
+      "identity_missing": "请添加您的身份证或护照号码",
+      "details_request_pending": "您的资料变更正在等待人事审核",
+      "tp3_new_joiner": "请告知薪资部门您今年之前的雇主（TP3）",
+      "letter_acknowledge": "请确认您的信函",
+      "notice_acknowledge": "请确认一则通知",
+      "approve_leave": "待审批的请假 · {name}",
+      "approve_leave_cancellation": "待审批的取消请假 · {name}",
+      "approve_attendance": "待审批的考勤或加班 · {name}",
+      "approve_claim": "待审批的报销 · {name}",
+      "approve_toil": "待审批的补休 · {name}",
+      "tp1_draft": "请提交您的税务减免申报（TP1）",
+      "tp1_pending": "您的税务减免申报（TP1）正在等待审批",
+      "dependants_mismatch": "请核对税务减免的子女人数：您的家庭记录少于您申报的人数",
+      "review_acknowledge": "请确认您的绩效评估",
+      "onboarding_acknowledge": "请确认您的入职交接"
     }
   }
 }

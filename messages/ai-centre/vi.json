@@ -20,7 +20,7 @@
       "spend": "Chi tiêu và nhà cung cấp",
       "operations": "Vận hành",
       "administration": "Quản trị",
-      "insights": "Phân tích",
+      "insights": "Thông tin chi tiết",
       "how": "Cách hoạt động"
     },
     "inboxCount": "{count, plural, one {# mục đang chờ} other {# mục đang chờ}}",
@@ -390,6 +390,10 @@
       "findingAuthority": "Công tắc của công ty bạn cho kiểm tra này",
       "findingRead": "Các bản ghi trong phạm vi quản trị của bạn",
       "findingModel": "Không có cho phát hiện này. Phần diễn đạt dễ hiểu, nếu được bật, sẽ hiển thị trên trang của nó."
+    },
+    "insights": {
+      "title": "Thông tin chi tiết",
+      "description": "Những việc còn chờ trước kỳ lương, của bạn và các yêu cầu bạn phê duyệt."
     },
     "jobs": {
       "title": "Công việc ủy quyền",
@@ -1360,6 +1364,90 @@
       "inProgress": "Lần nhập này đang được xác nhận.",
       "invalid": "Không kiểm tra được thẻ này. Hãy đính kèm tệp lại.",
       "unavailable": "Không thể hoàn tất lần nhập và chưa có gì được nhập. Hãy thử lại, hoặc dùng trang nhập."
+    }
+  },
+  "payrollReadiness": {
+    "todayTitle": "Trước kỳ lương ngày {date}",
+    "todayTitleNoDate": "Trước kỳ lương",
+    "seeAll": "Xem tất cả",
+    "waitingCount": "{count, plural, other {# mục}} đang chờ người khác phê duyệt.",
+    "insightsTitle": "Mức sẵn sàng cho kỳ lương của tôi",
+    "period": "Lương {month} · hạn chót {date}",
+    "periodNoCutOff": "Lương {month} · bộ phận nhân sự có thể cho bạn biết hạn chót",
+    "due": "Trước {date}",
+    "range": "{from} đến {to}",
+    "allDone": "Không có việc gì chờ bạn cho kỳ lương này.",
+    "unavailable": "Một số mục hiện chưa kiểm tra được. Vui lòng thử lại sau.",
+    "notInUse": "Ở đây không dùng tính lương, nên không có gì cần chuẩn bị.",
+    "groupDone": "Không có việc tồn đọng.",
+    "groupUnknown": "Hiện chưa kiểm tra được.",
+    "approvalsHelp": "Các yêu cầu chờ bạn quyết định trước hạn chót.",
+    "notCovered": "Chưa kiểm tra ở đây: đổi ca, khoảng trống lịch ca, xác nhận bảng chấm công, giờ làm thêm đã làm nhưng chưa đăng ký, và thay đổi lương cần xác nhận.",
+    "open": "Mở",
+    "review": "Xem xét",
+    "confirm": "Xác nhận",
+    "state": {
+      "todo": "Cần làm",
+      "waiting": "Đang chờ phê duyệt",
+      "check": "Kiểm tra"
+    },
+    "status": {
+      "done": "Xong",
+      "todo": "Cần làm",
+      "waiting": "Đang chờ",
+      "unknown": "Không kiểm tra được",
+      "off": "Không dùng"
+    },
+    "groups": {
+      "attendance": "Chấm công",
+      "overtime": "Làm thêm giờ",
+      "leave": "Nghỉ phép",
+      "claims": "Thanh toán chi phí",
+      "toil": "Nghỉ bù",
+      "details": "Thông tin cá nhân và theo luật định",
+      "acknowledge": "Cần xác nhận",
+      "approvals": "Đang chờ bạn"
+    },
+    "fallback": {
+      "leave": "Nghỉ phép",
+      "claim": "chi phí",
+      "someone": "một thành viên trong nhóm"
+    },
+    "kinds": {
+      "missed_clock_in": "Thiếu giờ vào",
+      "missed_clock_out": "Thiếu giờ ra",
+      "absent_no_leave": "Vắng mặt mà không có nghỉ phép",
+      "late_or_early": "Đi muộn hoặc về sớm",
+      "attendance_request_pending": "Yêu cầu sửa chấm công đang chờ phê duyệt",
+      "overtime_pending": "Yêu cầu làm thêm giờ đang chờ phê duyệt",
+      "overtime_over_cap": "Giờ làm thêm tháng này vượt mức giới hạn hằng tháng",
+      "leave_pending": "{label} đang chờ phê duyệt",
+      "leave_unpaid": "Nghỉ không lương: {label}",
+      "leave_certificate_missing": "Bổ sung giấy tờ chứng minh cho {label}",
+      "claim_deadline": "Gửi yêu cầu thanh toán {label} trước khi hóa đơn quá hạn",
+      "claim_receipt_missing": "Thêm hóa đơn vào yêu cầu thanh toán {label}",
+      "claim_draft": "Gửi bản nháp yêu cầu thanh toán {label}",
+      "claim_pending": "Yêu cầu thanh toán {label} đang chờ phê duyệt",
+      "toil_pending": "Yêu cầu nghỉ bù đang chờ phê duyệt",
+      "bank_missing": "Thêm tài khoản ngân hàng của bạn",
+      "tax_number_missing": "Thêm mã số thuế thu nhập của bạn",
+      "epf_number_missing": "Thêm số EPF của bạn",
+      "socso_number_missing": "Thêm số SOCSO của bạn",
+      "identity_missing": "Thêm số CMND (IC) hoặc hộ chiếu của bạn",
+      "details_request_pending": "Thay đổi thông tin của bạn đang chờ nhân sự",
+      "tp3_new_joiner": "Báo cho bộ phận lương về chủ cũ trong năm nay (TP3)",
+      "letter_acknowledge": "Xác nhận thư của bạn",
+      "notice_acknowledge": "Xác nhận một thông báo",
+      "approve_leave": "Nghỉ phép cần phê duyệt · {name}",
+      "approve_leave_cancellation": "Hủy nghỉ phép cần phê duyệt · {name}",
+      "approve_attendance": "Chấm công hoặc làm thêm giờ cần phê duyệt · {name}",
+      "approve_claim": "Yêu cầu thanh toán cần phê duyệt · {name}",
+      "approve_toil": "Nghỉ bù cần phê duyệt · {name}",
+      "tp1_draft": "Gửi tờ khai giảm trừ thuế (TP1) của bạn",
+      "tp1_pending": "Tờ khai giảm trừ thuế (TP1) của bạn đang chờ phê duyệt",
+      "dependants_mismatch": "Kiểm tra số con được giảm trừ thuế: hồ sơ gia đình của bạn ghi ít hơn số bạn đã khai",
+      "review_acknowledge": "Xác nhận bản đánh giá hiệu suất của bạn",
+      "onboarding_acknowledge": "Xác nhận bàn giao nhận việc của bạn"
     }
   }
 }

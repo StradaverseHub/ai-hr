@@ -37,10 +37,11 @@ import { HomeCalendarCard } from '@/components/employee-home/calendar-card';
 import {eraseGovernedJobFeedbackAction} from './job-feedback-actions';
 import { eraseAgentFeedbackAction } from './feedback-actions';
 import { isCentreView } from '@/lib/ai-centre/centre-nav';
-import { CapacityLedgerSection } from '@/components/ai-centre/capacity-ledger';
 import { AI_ARCHITECTURE_LABEL, AI_PRODUCT_NAME, aiCentreName } from '@/lib/ai-centre/brand';
 import { AiCentreTabs } from '@/components/ai-centre/centre-tabs';
 import { AiCentreDelegatedJobs } from '@/components/ai-centre/delegated-jobs';
+import { AiCentreInsights } from '@/components/ai-centre/insights';
+import { scopedSession } from '@/lib/scope';
 import { HowItWorks } from '@/components/ai-centre/how-it-works';
 import { AiCentreLiveStatus } from '@/components/ai-centre/live-status';
 import { permanentRedirect } from 'next/navigation';
@@ -87,14 +88,15 @@ export default async function AssistantPage({
   if (sp.view === 'inbox') permanentRedirect(todayInboxRedirect(sp.recommend));
   if (isCentreView(sp.view)) {
     const tc = await getTranslations('aiCentre.how');
-    const tn = await getTranslations('aiCentre');
+    const insightsScope = sp.view === 'insights' ? await scopedSession().then(scoped => scoped.scopeIds).catch(() => undefined) : undefined;
     return (
       <div data-ai-centre={sp.view} className="mx-auto max-w-6xl space-y-6">
         <AiCentreTabs active={sp.view} isAdmin={admin} />
         {sp.view === 'jobs' && <AiCentreDelegatedJobs />}
-        {/* AI v2 Phase 2 (P2-4): Insights. Its HR capacity section is for administrators only; employees never see it. */}
-        {sp.view === 'insights' && <h1 className="sr-only">{tn('tabs.insights')}</h1>}
-        {sp.view === 'insights' && admin && <CapacityLedgerSection session={s} query={sp as Readonly<Record<string, string | undefined>>} />}
+        {/* AI v2 Phase 2: Insights, for every role. P2-3's "My payroll readiness" for everyone; P2-4's HR capacity ledger
+            section only for HR and group administrators, guarded inside the view. Approvals follow the viewer's company
+            scope, as Today's do. */}
+        {sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} capacityQuery={sp as Readonly<Record<string, string | undefined>>} />}
         {sp.view === 'how' && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '#ai-centre-live-status' : undefined} />{admin && <AiCentreLiveStatus session={s} />}</>}
       </div>
     );

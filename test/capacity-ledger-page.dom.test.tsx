@@ -3,8 +3,9 @@
  * baseline.ts are replaced by fixtures; the real services are covered by test/capacity-ledger.test.ts and the
  * arithmetic by test/capacity-ledger-math.test.ts).
  *
- * The Insights tab is offered to HR and group administrators only, between Operations and Administration, and the view
- * renders the section only for an administrator. In the section: the four figures, HR time freed by month drawn to
+ * The Insights tab is offered to every role (P2-3's "My payroll readiness" is for everyone), between Operations and
+ * Administration; the view renders this section only for HR and group administrators, and an employee's or manager's
+ * Insights page shows the tab without it and reads nothing of the ledger. In the section: the four figures, HR time freed by month drawn to
  * scale with the shared chart and its "Autopilot started" mark, where the time came from, the method, the baseline-
  * missing state with its guided set-up, and figures a viewer may not read marked as not shown. Owner rule: no ratio of
  * HR staff to employees appears on the rendered page or in any catalogue. Every locale renders with no missing message
@@ -37,12 +38,17 @@ vi.mock('next-intl/server',async()=>{
  const all={en:(await import('../messages/en.json')).default,ms:(await import('../messages/ms.json')).default,zh:(await import('../messages/zh.json')).default,
   vi:(await import('../messages/vi.json')).default,ta:(await import('../messages/ta.json')).default,th:(await import('../messages/th.json')).default};
  return {getTranslations:async(namespace:any)=>translator({locale:state.locale,messages:merge(state.locale,all[state.locale] as any) as any,namespace,onError:error=>{throw error;}}),
-  getFormatter:async()=>formatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'})};
+  getFormatter:async()=>formatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'}),getLocale:async()=>state.locale};
 });
 vi.mock('../app/assistant/capacity-actions',()=>({setCapacityBaselineAction:vi.fn()}));
 vi.mock('../core/capacity/ledger',()=>({capacityLedger:async(_session:unknown,input:unknown)=>{state.reads.push(['ledger',input]);return state.view;}}));
 vi.mock('../core/capacity/baseline',()=>({baselineSetup:async(_session:unknown,input:unknown)=>{state.reads.push(['setup',input]);return state.setup;}}));
+// Wave 1 integration: the Insights view also carries P2-3's "My payroll readiness" (its own test: before-payroll.dom.test.tsx).
+vi.mock('../core/pre-salary/person-items',()=>({readMyPayrollReadiness:async()=>{state.reads.push(['readiness']);return null;}}));
+vi.mock('../app/assistant/loop-clock-out-actions',()=>({confirmMissedClockOutAction:vi.fn()}));
 import {CapacityLedgerSection} from '../components/ai-centre/capacity-ledger';
+import {AiCentreInsights} from '../components/ai-centre/insights';
+import {resolveServerTree} from './helpers/server-tree';
 import {AiCentreTabs} from '../components/ai-centre/centre-tabs';
 import {isAdmin} from '../lib/authz-model';
 
@@ -83,22 +89,45 @@ const RATIO=[/per\s*100\b/i,/per\s+hundred/i,/staff\s+per\b/i,/staff[-\s]+to[-\s
  /setiap\s+100/i,/nisbah/i,/每\s*(百|100)/,/比率/,/tỷ\s*lệ/i,/trên\s+100/i,/விகிதம்/,/อัตราส่วน/,/ต่อ\s*100/];
 
 describe('the Insights tab',()=>{
- it.each([['employee',false],['manager',false],['hrAdmin',true],['groupAdmin',true]] as const)('%s: offered only to administrators, between Operations and Administration',(role,admitted)=>{
+ it.each([['employee',false],['manager',false],['hrAdmin',true],['groupAdmin',true]] as const)('%s: offered to every role, between Operations and Administration where those are shown',(role,admitted)=>{
   expect(isAdmin(SESSIONS[role] as never)).toBe(admitted);
   wrap('en',<AiCentreTabs active="insights" isAdmin={admitted} />);
   const nav=screen.getByRole('navigation',{name:'AI Centre sections'});
   const links=within(nav).getAllByRole('link').map(link=>[text(link),link.getAttribute('href')]);
-  if(!admitted){expect(links.map(([label])=>label)).toEqual(['Ask','Delegated jobs','How it works']);return;}
-  expect(links).toEqual([['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Operations','/control-tower'],['Insights','/assistant?view=insights'],
-   ['Administration','/control-tower/agents/features'],['How it works','/assistant?view=how']]);
+  expect(links).toEqual(admitted
+   ?[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Operations','/control-tower'],['Insights','/assistant?view=insights'],
+    ['Administration','/control-tower/agents/features'],['How it works','/assistant?view=how']]
+   :[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Insights','/assistant?view=insights'],['How it works','/assistant?view=how']]);
   expect(within(nav).getByRole('link',{current:'page'})).toHaveAttribute('href','/assistant?view=insights');
   for(const link of within(nav).getAllByRole('link'))expect(link.className).toContain('min-h-11');
  });
 
- it('renders the HR capacity section on the Insights view for administrators only',()=>{
+ it.each([['employee',false],['manager',false],['hrAdmin',true],['groupAdmin',true]] as const)('%s: the ledger section is admin-only; employees see the tab without it',async(role,admitted)=>{
+  state.view=view();
+  const session=SESSIONS[role] as never;
+  const rendered=wrap('en',await resolveServerTree(<AiCentreInsights session={session} scopeIds={[C1]} isAdmin={isAdmin(session)} capacityQuery={{period:'last30'}} />));
+  expect(screen.getByRole('heading',{level:1,name:'Insights'})).toBeTruthy();
+  // Everyone's own payroll readiness is on the page (P2-3).
+  expect(rendered.container.querySelector('#my-payroll-readiness')).toBeTruthy();
+  if(admitted){
+   expect(rendered.container.querySelectorAll('[data-capacity-ledger]')).toHaveLength(1);
+   expect(screen.getByRole('heading',{level:2,name:'HR capacity'})).toBeTruthy();
+   expect(state.reads).toEqual([['readiness'],['ledger',{period:'last30',companyId:undefined}]]);
+  }else{
+   expect(rendered.container.querySelector('[data-capacity-ledger]')).toBeNull();
+   expect(screen.queryByRole('heading',{name:'HR capacity'})).toBeNull();
+   // Nothing of the ledger is even read for them.
+   expect(state.reads).toEqual([['readiness']]);
+  }
+  for(const pattern of RATIO)expect(rendered.container.textContent??'').not.toMatch(pattern);
+ });
+
+ it('the Insights view takes the page\'s administrator check, after the inbox redirect',()=>{
   const page=fs.readFileSync(path.join(__dirname,'..','app/assistant/page.tsx'),'utf8');
-  expect(page).toContain("{sp.view === 'insights' && admin && <CapacityLedgerSection session={s} query={sp as Readonly<Record<string, string | undefined>>} />}");
-  expect(page.indexOf("if (sp.view === 'inbox')")).toBeLessThan(page.indexOf("sp.view === 'insights' && admin"));
+  expect(page).toContain("{sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} capacityQuery={sp as Readonly<Record<string, string | undefined>>} />}");
+  expect(page).toContain('const admin = isAdmin(s);');
+  expect(page.indexOf("if (sp.view === 'inbox')")).toBeLessThan(page.indexOf("sp.view === 'insights' && <AiCentreInsights"));
+  expect(fs.readFileSync(path.join(__dirname,'..','components/ai-centre/insights.tsx'),'utf8')).toContain('{isAdmin&&<CapacityLedgerSection session={session} query={capacityQuery??{}}/>}');
  });
 });
 

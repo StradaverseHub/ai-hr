@@ -391,6 +391,10 @@
       "findingRead": "Rekod dalam skop pentadbiran anda",
       "findingModel": "Tiada untuk penemuan ini. Huraian dalam bahasa mudah, jika dihidupkan, ditunjukkan pada halamannya."
     },
+    "insights": {
+      "title": "Wawasan",
+      "description": "Perkara yang belum selesai sebelum gaji, untuk anda dan untuk permohonan yang anda luluskan."
+    },
     "jobs": {
       "title": "Tugas diwakilkan",
       "description": "Tugas yang anda serahkan kepada ejen AI, dalam lingkungan kuasa anda sendiri, sehingga anda menghentikannya.",
@@ -1360,6 +1364,90 @@
       "inProgress": "Import ini sedang disahkan.",
       "invalid": "Kad ini tidak dapat disemak. Lampirkan fail semula.",
       "unavailable": "Import tidak dapat diselesaikan, dan tiada apa-apa diimport. Cuba lagi, atau gunakan halaman import."
+    }
+  },
+  "payrollReadiness": {
+    "todayTitle": "Sebelum gaji pada {date}",
+    "todayTitleNoDate": "Sebelum gaji",
+    "seeAll": "Lihat semua",
+    "waitingCount": "{count, plural, other {# perkara}} sedang menunggu kelulusan orang lain.",
+    "insightsTitle": "Kesediaan gaji saya",
+    "period": "Gaji {month} · tarikh tutup {date}",
+    "periodNoCutOff": "Gaji {month} · pasukan HR anda boleh memberitahu tarikh tutup",
+    "due": "Sebelum {date}",
+    "range": "{from} hingga {to}",
+    "allDone": "Tiada apa-apa yang menunggu anda untuk gaji ini.",
+    "unavailable": "Sebahagian daripada ini tidak dapat disemak sekarang. Cuba lagi nanti.",
+    "notInUse": "Gaji tidak digunakan di sini, jadi tiada apa-apa untuk disediakan.",
+    "groupDone": "Tiada yang tertunggak.",
+    "groupUnknown": "Tidak dapat disemak sekarang.",
+    "approvalsHelp": "Permohonan yang menunggu keputusan anda sebelum tarikh tutup.",
+    "notCovered": "Belum disemak di sini: pertukaran syif, jurang jadual, pengesahan helaian masa, kerja lebih masa yang dibuat tetapi belum dipohon, serta perubahan gaji untuk diakui.",
+    "open": "Buka",
+    "review": "Semak",
+    "confirm": "Sahkan",
+    "state": {
+      "todo": "Perlu dibuat",
+      "waiting": "Menunggu kelulusan",
+      "check": "Semak"
+    },
+    "status": {
+      "done": "Selesai",
+      "todo": "Perlu dibuat",
+      "waiting": "Menunggu",
+      "unknown": "Tidak dapat disemak",
+      "off": "Tidak digunakan"
+    },
+    "groups": {
+      "attendance": "Kehadiran",
+      "overtime": "Kerja lebih masa",
+      "leave": "Cuti",
+      "claims": "Tuntutan",
+      "toil": "Cuti ganti",
+      "details": "Butiran peribadi dan berkanun",
+      "acknowledge": "Untuk diakui",
+      "approvals": "Menunggu anda"
+    },
+    "fallback": {
+      "leave": "Cuti",
+      "claim": "perbelanjaan",
+      "someone": "ahli pasukan"
+    },
+    "kinds": {
+      "missed_clock_in": "Tiada rekod masuk",
+      "missed_clock_out": "Tiada rekod keluar",
+      "absent_no_leave": "Tidak hadir tanpa cuti direkodkan",
+      "late_or_early": "Lewat masuk atau awal keluar",
+      "attendance_request_pending": "Pembetulan kehadiran menunggu kelulusan",
+      "overtime_pending": "Permohonan kerja lebih masa menunggu kelulusan",
+      "overtime_over_cap": "Kerja lebih masa bulan ini melebihi had bulanan",
+      "leave_pending": "{label} menunggu kelulusan",
+      "leave_unpaid": "Cuti tanpa gaji: {label}",
+      "leave_certificate_missing": "Tambah dokumen sokongan untuk {label}",
+      "claim_deadline": "Hantar tuntutan {label} anda sebelum resitnya terlalu lama",
+      "claim_receipt_missing": "Tambah resit pada tuntutan {label} anda",
+      "claim_draft": "Hantar draf tuntutan {label} anda",
+      "claim_pending": "Tuntutan {label} menunggu kelulusan",
+      "toil_pending": "Permohonan cuti ganti menunggu kelulusan",
+      "bank_missing": "Tambah akaun bank anda",
+      "tax_number_missing": "Tambah nombor cukai pendapatan anda",
+      "epf_number_missing": "Tambah nombor KWSP anda",
+      "socso_number_missing": "Tambah nombor PERKESO anda",
+      "identity_missing": "Tambah nombor MyKad atau pasport anda",
+      "details_request_pending": "Perubahan butiran anda menunggu HR",
+      "tp3_new_joiner": "Maklumkan majikan terdahulu tahun ini kepada pasukan gaji (TP3)",
+      "letter_acknowledge": "Akui surat anda",
+      "notice_acknowledge": "Akui satu notis",
+      "approve_leave": "Cuti untuk diluluskan · {name}",
+      "approve_leave_cancellation": "Pembatalan cuti untuk diluluskan · {name}",
+      "approve_attendance": "Kehadiran atau kerja lebih masa untuk diluluskan · {name}",
+      "approve_claim": "Tuntutan untuk diluluskan · {name}",
+      "approve_toil": "Cuti ganti untuk diluluskan · {name}",
+      "tp1_draft": "Hantar akuan pelepasan cukai anda (TP1)",
+      "tp1_pending": "Akuan pelepasan cukai anda (TP1) menunggu kelulusan",
+      "dependants_mismatch": "Semak anak untuk pelepasan cukai: rekod keluarga anda menyenaraikan kurang daripada yang anda isytiharkan",
+      "review_acknowledge": "Akui penilaian prestasi anda",
+      "onboarding_acknowledge": "Akui serahan onboarding anda"
     }
   }
 }

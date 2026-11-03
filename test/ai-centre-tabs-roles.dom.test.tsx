@@ -61,6 +61,7 @@ const linksOf=(nav:HTMLElement)=>within(nav).getAllByRole('link').map(link=>[lin
 afterEach(()=>{cleanup();state.locale='en';state.payroll=true;state.session=null;state.reads=0;});
 
 describe('AI Centre tabs per role',()=>{
+ // AI v2 Phase 2 (P2-3): Insights, for every role. Its HR capacity ledger section (P2-4) is admin-only inside the view.
  const ALL=[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Operations','/control-tower'],['Insights','/assistant?view=insights'],['Administration','/control-tower/agents/features'],['How it works','/assistant?view=how']];
  it.each([['employee',false],['manager',false],['hrAdmin',true],['groupAdmin',true]] as const)('%s sees exactly the tabs whose guard admits them',(role,admitted)=>{
   expect(isAdmin(SESSIONS[role] as never)).toBe(admitted);
@@ -69,7 +70,7 @@ describe('AI Centre tabs per role',()=>{
   // No Inbox tab for anyone: what waits on the person is on Today.
   expect(within(nav).queryByRole('link',{name:/Inbox/})).toBeNull();
   expect(nav.querySelector('a[href*="view=inbox"]')).toBeNull();
-  expect(linksOf(nav)).toEqual(admitted?ALL:ALL.filter(([label])=>label!=='Operations'&&label!=='Insights'&&label!=='Administration'));
+  expect(linksOf(nav)).toEqual(admitted?ALL:ALL.filter(([label])=>label!=='Operations'&&label!=='Administration'));
   // The two group tabs carry the ▾ mark of the approved mock-up; no other tab does.
   expect(nav.querySelectorAll('[data-centre-group-mark]')).toHaveLength(admitted?2:0);
   expect(within(nav).getByRole('link',{current:'page'})).toHaveAttribute('href','/assistant');
