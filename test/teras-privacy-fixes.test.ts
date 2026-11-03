@@ -50,7 +50,7 @@ describe('defect 2: suggest_action\'s pending choice is declared',()=>{
    {request:2,applicant:'Fictional Applicant Farid',leaveType:'Medical Leave',days:1,starts:'this_week',startDate:'2026-11-04',endDate:'2026-11-04'}],note:'List them by number.'}};
  it('sends an ordinal and minimal labels, never a name, exact date or health-indicative type; the person sees them restored',async()=>{
   const {result,model}=await turn('Please approve the leave waiting for me.',[{calls:[{name:'suggest_action',args:{action:'leave.apply'}}]},
-   {final:{reply:'Request 1: {{T1}}, Annual Leave, 3 days from {{T2}}. Request 2: {{T4}}, {{T5}}. Which number?',mode:'clarify'}}],{outputs:{suggest_action:()=>pending}});
+   {final:{reply:'Request 1: {{T1}}, Annual Leave, 3 days from {{T2}}. Request 2: {{T4}}, {{T5}}. Which number?',mode:'clarify'}}],{clock:()=>new Date('2026-11-03T04:00:00Z'),outputs:{suggest_action:()=>pending}});
   const text=sent(model);
   for(const leak of ['Fictional Applicant','2026-11-09','2026-11-11','2026-11-04','Medical Leave'])expect(text,leak).not.toContain(leak);
   for(const kept of ['\\"request\\":1','\\"request\\":2','Annual Leave','next_week','\\"days\\":3'])expect(text,kept).toContain(kept);
