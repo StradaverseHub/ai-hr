@@ -96,7 +96,10 @@ export function saveLetterPermission(ctx:SessionContext,input:{companyId:string;
  await event(tx,ctx,saved.id,'permission.changed',{companyId:input.companyId,capability:input.capability,role:input.role,before:before?.allowed??null,allowed:input.allowed});return saved;
 });}
 export function addLetterAsset(ctx:SessionContext,input:{companyId:string;kind:'letterhead'|'signature';name:string;content:Buffer}){return letters(ctx,true,async tx=>{
- await permission(tx,input.companyId,input.kind==='signature'?'approve':'settings');await lockCompany(tx,input.companyId);
+ const signature=input.kind==='signature';
+ await permission(tx,input.companyId,signature?'approve':'settings');
+ await exactLetterFunction(tx,input.companyId,signature?'letterSettings.signature':'letterSettings','add');
+ await lockCompany(tx,input.companyId);
  if(!['letterhead','signature'].includes(input.kind)||input.content.length<24||input.content.length>2097152||input.content.subarray(0,8).toString('hex')!=='89504e470d0a1a0a')throw new LetterWorkflowError('invalid','png');
  const width=input.content.readUInt32BE(16),height=input.content.readUInt32BE(20);if(width<1||height<1||width>2048||height>2048)throw new LetterWorkflowError('invalid','imageSize');
  try{const pdf=await PDFDocument.create();const image=await pdf.embedPng(input.content);if(image.width!==width||image.height!==height)throw new Error('dimensions');}catch{throw new LetterWorkflowError('invalid','png');}

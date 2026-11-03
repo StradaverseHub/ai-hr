@@ -46685,6 +46685,7 @@
       "line": 20,
       "surface": "server-action",
       "owners": [
+        "app.letter_function_action",
         "app.letter_permission",
         "app.principal_snapshot_current",
         "core/letters.ts:permission"
