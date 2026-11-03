@@ -27,6 +27,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {mkdirSync,readdirSync,writeFileSync} from 'node:fs';
 import {join,relative} from 'node:path';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import {eq} from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type {SessionContext} from '../db/client';
 import {grantAssistant} from '../core/assistant-grant';
@@ -34,6 +35,7 @@ import {setWorkerSwitch} from '../core/agent-registry/controls';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {seedGuides} from '../db/seed-guides';
 import {HARNESS_TEST_ONLY,routeReply,runTurn,type ModelHistoryMessage} from '../core/harness/runner';
+import {CHAT_IMPORT_ACTION} from '../lib/chat-import';
 import {HARNESS_SPEC,harnessSpecDigest} from '../core/harness/spec';
 import {InMemoryTaskMemoryStore} from '../core/harness/memory';
 import {identifiersIn,overclaim} from '../core/harness/reply-checks';
@@ -143,6 +145,8 @@ async function fixtures(){
   return{...await entitledCtx(base,[role]),userId:user.id,personId,roles:[role],grants:[{role,companyId}]} as SessionContext;
  };
  const aina=await hire('Aina Fictional'),ravi=await hire('Ravi Fictional'),siti=await hire('Siti Fictional'),wei=await hire('Wei Fictional');
+ // AI v2 slice 3 (hr-import-file): the employee codes the fictional leave balance file names (lib/chat-import.ts).
+ for(const [row,code] of [[aina,'FIC-0142'],[siti,'FIC-0203']] as const)await owner.db.update(schema.employment).set({employeeCode:code}).where(eq(schema.employment.id,row.employmentId));
  // AI v2 W2 slice 2 (emp-toil): Acme lets employees request replacement leave, and Aina's Saturday of last week is a rest
  // day on her roster. She has no compensation on record, so she is outside the First Schedule and needs no agreement.
  const lastSaturday=(()=>{let date=todayInKualaLumpur(new Date(Date.now()-86400000));while(new Date(date+'T12:00:00Z').getUTCDay()!==6)date=todayInKualaLumpur(new Date(Date.parse(date+'T12:00:00Z')-86400000));return date;})();
@@ -195,7 +199,10 @@ async function fixtures(){
 
 const fixedReplyOf=(reply:string):SmartEvalObservation['fixedReply']=>reply.startsWith(HARNESS_SPEC.sensitive.crisisReply)?'crisis':reply===HARNESS_SPEC.sensitive.workplaceHarmReply?'harm_refusal'
  :reply===HARNESS_SPEC.sensitive.instructionOverrideReply?'override_refusal':reply.endsWith(routeReply())?'route':null;
-const cardText=(suggestion:{action:string;inlineCard:boolean}|null,proposals:readonly string[])=>proposals.length?proposals.map(action=>`A prepared card for "${ACTION_PURPOSE[action]??action}", which the person checks and confirms.`).join(' ')
+const cardText=(suggestion:{action:string;inlineCard:boolean}|null,proposals:readonly string[])=>proposals.length?proposals.map(action=>action===CHAT_IMPORT_ACTION
+  // AI v2 slice 3: the prepared import card (components/ai-centre/import-proposal-card.tsx).
+  ?'A prepared import card with the rows ready and the rows needing attention (by row number, column and reason), with "Confirm N rows" and "Fix the N rows", which the person checks and confirms.'
+  :`A prepared card for "${ACTION_PURPOSE[action]??action}", which the person checks and confirms.`).join(' ')
  :suggestion?`A card for "${ACTION_PURPOSE[suggestion.action]??suggestion.action}" that opens the page where the person completes and confirms it.`:null;
 async function pool<T>(items:readonly T[],size:number,work:(item:T)=>Promise<void>){
  let next=0;await Promise.all(Array.from({length:Math.min(size,items.length)},async()=>{while(next<items.length)await work(items[next++]);}));
@@ -230,7 +237,8 @@ describe('AI Centre scored evaluation on fictional data',()=>{
       ...(item.source.kind==='reconstructed'?{issues:item.source.issues}:{}),question:item.question},began=Date.now();
      try{
       const calls:NonNullable<SmartEvalRow['calls']>[number][]=[];
-      const result=await callLog.run(calls,()=>runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId,question:item.question,scope:{companyId:base.companyId,locale:item.locale},model:openRouter,memory,history}));
+      // AI v2 slice 3: a turn may carry a fictional file attached for an import; only the product's import preparer reads it.
+      const result=await callLog.run(calls,()=>runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId,question:item.question,scope:{companyId:base.companyId,locale:item.locale,...(item.importFile?{importFile:item.importFile}:{})},model:openRouter,memory,history}));
       const trace=result.trace,wallMs=Date.now()-began,reply=result.reply;
       // Only the cards this turn created: open cards from an earlier turn stay in task memory until confirmed.
       const proposals=result.proposals.filter(row=>Date.parse(row.body.createdAt)>=Date.parse(trace.startedAt)).map(row=>row.body.what.action);

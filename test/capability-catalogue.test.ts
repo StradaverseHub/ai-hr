@@ -68,6 +68,8 @@ const sorted=(...lists:string[][])=>lists.flat().sort();
  * overtime request, and the own claim submit and cancel and profile change request. Every other action opens its page. */
 const PREPARED_HERE=['approvals.leave.decide','attendance.correction.request','attendance.overtime.request','claims.cancel','claims.submit',
  'ess.profile.request','leave.apply','leave.cancel'];
+/** AI v2 slice 3 (issue 16b): the imports an HR administrator prepares in chat from an attached file (prepare_import). */
+const IMPORTS_PREPARED_HERE=['import:attendance_clockings','import:employee_records','import:leave_balances','import:payroll_history'];
 
 describe('the capability catalogue per role',()=>{
  it('lists for each role exactly the actions, imports and reports its permissions allow',async()=>{
@@ -92,9 +94,9 @@ describe('the capability catalogue per role',()=>{
  });
  it('marks prepare only for the actions the semantic model prepares, and nothing else',async()=>{
   const {employee,hrAdmin}=await callers();
-  for(const ctx of [employee,hrAdmin]){
+  for(const [ctx,expected] of [[employee,PREPARED_HERE],[hrAdmin,sorted(PREPARED_HERE,IMPORTS_PREPARED_HERE)]] as const){
    const rows=await capabilityCatalogueFor(ctx);
-   expect(rows.filter(row=>row.mode==='prepare').map(row=>row.id).sort()).toEqual(PREPARED_HERE);
+   expect(rows.filter(row=>row.mode==='prepare').map(row=>row.id).sort()).toEqual(expected);
    // A surface that offers no action suggestions prepares nothing.
    expect((await capabilityCatalogueFor(ctx,{prepare:false})).filter(row=>row.mode==='prepare')).toEqual([]);
   }
@@ -119,7 +121,7 @@ describe('the capability catalogue per role',()=>{
  it('links an import or report page only where the caller may open it, and names its template',async()=>{
   const {hrAdmin}=await callers(),rows=await capabilityCatalogueFor(hrAdmin);
   const entry=(id:string)=>rows.find(row=>row.id===id);
-  expect(entry('import:payroll_history')).toEqual({id:'import:payroll_history',kind:'import',mode:'open',area:'payroll',
+  expect(entry('import:payroll_history')).toEqual({id:'import:payroll_history',kind:'import',mode:'prepare',area:'payroll',
    title:'Import payroll history (past payslips from a previous system)',page:'/payroll/history-import'});
   expect(entry('import:pay_codes')).toMatchObject({page:'/admin/pay-components',template:true});
   expect(entry('report:payroll_register')).toMatchObject({kind:'report',mode:'open',area:'payroll',title:'Payroll register',page:'/reports?cat=payroll'});
