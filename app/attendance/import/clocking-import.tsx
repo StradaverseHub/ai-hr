@@ -22,6 +22,7 @@ import { MAX_IMPORT_CSV_BYTES, MAX_IMPORT_FILE_BYTES } from '@/lib/import-file';
 import { formatDmy, formatDmyTime } from '@/lib/date-display';
 import type { ClockingImportPreview } from '@/packs/attendance/service';
 import { commitClockingImportAction, validateClockingImportAction } from './actions';
+import { useAssistantImportIntake } from '@/components/assistant/import-handoff';
 import { lineMessage, ResultPill } from './line-view';
 
 export type ImportMappingOption = { id: string; label: string; encoding: ClockingEncoding };
@@ -55,6 +56,9 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
     setTab('all');
     setQ('');
   };
+  // AI v2 slice 3 (issue 16b): "Fix the rows" on a clocking import prepared in chat opens here with that same file, as
+  // UTF-8 text; the person chooses the mapping and validates it here as usual.
+  useAssistantImportIntake('attendance_clockings', (handed) => { reset(); setBytes(new TextEncoder().encode(handed)); setFileName('ai-centre-clockings.txt'); }, setError);
 
   const loadFile = async (f: File) => {
     reset();

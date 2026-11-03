@@ -222,6 +222,10 @@ export default async function AssistantPage({
     clarificationRequired:exchange.grounded?.conversation?.plan.mode==='clarify'&&exchange.grounded?.conversation?.clarificationAllowed!==false,
     answer:<ExchangeReply exchange={exchange} ctx={s}/>})):storedChat?.turns;
   const storedResume=storedChat?.conversationToken?{exchangeId:'teras-chat-'+storedChat.chatId,conversationToken:storedChat.conversationToken}:undefined;
+  // AI v2 slice 3 (issue 16b): the paperclip attaches a file to import, for a caller whose chat runs through the harness
+  // and who may import here (core/chat-import/kinds.ts). It replaces the older file preparation, which stays for the
+  // closed grammar. Any failure shows no paperclip.
+  const chatImport=await import('./launcher-actions').then(owner=>owner.chatImportOfferedAction()).catch(()=>false);
   const today = todayInKualaLumpur();
   const tasks = workspace.taskIds.map(id => ({
     id, label: t(`workspace.${id}_label`), prompt: t(`workspace.${id}_prompt`, { date: today }),
@@ -248,7 +252,7 @@ export default async function AssistantPage({
           </aside>
           <div data-ask-conversation className="flex min-h-0 min-w-0 flex-col">
             <AskChatHeader/>
-            <WorkspaceConversation key={scopeReset+':'+(sp.e??'')+':'+(sp.chat&&!sp.e?'chat-'+sp.chat:'')+':'+(sp.chatReset??'')} fullHeight fill acceptCommandBar resetKey={(sp.chatReset??'')+':'+scopeReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
+            <WorkspaceConversation key={scopeReset+':'+(sp.e??'')+':'+(sp.chat&&!sp.e?'chat-'+sp.chat:'')+':'+(sp.chatReset??'')} fullHeight fill acceptCommandBar resetKey={(sp.chatReset??'')+':'+scopeReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} chatImport={chatImport} tasks={tasks}
               initialTurns={initialTurns} acceptHandoff={!sp.e&&!sp.chat} historyReadOnly={Boolean((sp.e&&!selectedChat?.resume)||(storedChat&&!storedResume))} initialResume={selectedChat?.resume??storedResume} historyTailId={sp.e} olderCursor={selectedChat?.olderCursor??undefined}/>
             {/* Phones: the column is a drawer, so its footer also sits under the composer and Your data and privacy
                 stays within two clicks of every AI Centre page. */}

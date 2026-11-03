@@ -29,6 +29,8 @@ const state = vi.hoisted(() => ({
   listChats: vi.fn(), deleteChat: vi.fn(), setRetention: vi.fn(),
   openStoredChat: vi.fn(), askWorkspace: vi.fn(), askLauncher: vi.fn(),
   groupAdmin: false,
+  // AI v2 slice 3: the conversation route and the imports this caller may prepare in chat (the paperclip).
+  route: { route: 'closed' } as Record<string, unknown>, importKinds: [] as unknown[],
 }));
 
 vi.mock('next/link', () => ({ default: ({ children, prefetch: _prefetch, scroll: _scroll, ...props }: any) => <a {...props}>{children}</a> }));
@@ -50,6 +52,8 @@ vi.mock('../core/teras-chats', () => ({ listOwnChats: state.listOwnChats, readCh
 vi.mock('../app/assistant/chat-actions', () => ({ listChatsAction: state.listChats, deleteChatAction: state.deleteChat, setChatRetentionAction: state.setRetention }));
 vi.mock('../app/assistant/launcher-actions', () => ({
   openStoredChatAction: state.openStoredChat, askFromWorkspaceAction: state.askWorkspace, askFromLauncherAction: state.askLauncher,
+  // AI v2 slice 3: the chat command's own answer to "is the paperclip offered" (harness route and an import this caller may prepare).
+  chatImportOfferedAction: async () => state.route.route === 'harness' && ((state.session.roles as string[] | undefined) ?? []).includes('hr_admin') && state.importKinds.length > 0,
   loadEarlierChatAction: vi.fn(), loadMoreChatsAction: vi.fn(),
 }));
 vi.mock('../app/assistant/conversation-scope', () => ({ assistantBrowserConversationScope: async () => '["c0000000-0000-4000-8000-000000000001"]' }));
@@ -130,7 +134,7 @@ async function showAsk(searchParams: Record<string, string> = {}) {
 }
 
 beforeEach(() => {
-  state.session = ROLES[0][1]; state.path = '/assistant'; state.groupAdmin = false;
+  state.session = ROLES[0][1]; state.path = '/assistant'; state.groupAdmin = false; state.route = { route: 'closed' }; state.importKinds = [];
   for (const fn of [state.push, state.refresh, state.listOwnChats, state.readChatRetention, state.listChats, state.deleteChat, state.setRetention, state.openStoredChat, state.askWorkspace, state.askLauncher]) fn.mockReset();
   state.listOwnChats.mockImplementation(async (ctx: { userId: string }) => ({ chats: chatsOf(ctx.userId), nextCursor: null }));
   state.readChatRetention.mockResolvedValue({ keepDays: 7, version: 3, changedAt: at(48) });
@@ -476,5 +480,23 @@ describe('Ask AI Centre from the command bar', () => {
     expect(state.askWorkspace).toHaveBeenCalledExactlyOnceWith({ question: 'When does payroll close?' });
     expect(state.askLauncher).not.toHaveBeenCalled();
     expect(state.push).not.toHaveBeenCalled();
+  });
+});
+
+describe('AI v2 slice 3: the paperclip in Ask (imports inside the chat)', () => {
+  const attach = (enWithAiCentre as unknown as { chatImport: { attach: string } }).chatImport.attach;
+  it('is there for an HR administrator whose chat runs through the harness and who may import here, and for no one else', async () => {
+    state.route = { route: 'harness', permit: {}, attestedProvider: null, explainers: false };
+    state.importKinds = [{ kind: 'leave_balances' }];
+    for (const [role, session] of ROLES) {
+      cleanup(); state.session = session;
+      await showAsk();
+      if (role === 'hr_admin') expect(screen.getByLabelText(attach, { selector: 'input' }), role).toHaveAttribute('type', 'file');
+      else expect(screen.queryByLabelText(attach), role).toBeNull();
+    }
+    // The closed grammar keeps its own file preparation; the chat import's paperclip is not offered there.
+    cleanup(); state.session = ROLES[2][1]; state.route = { route: 'closed' };
+    await showAsk();
+    expect(screen.queryByLabelText(attach, { selector: 'input[accept*=".txt"]' })).toBeNull();
   });
 });

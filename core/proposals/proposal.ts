@@ -19,6 +19,7 @@ import {createHmac,randomUUID,timingSafeEqual} from 'node:crypto';
 import {z} from 'zod';
 import type {SessionContext} from '../../db/client';
 import {RECOMMENDATION_CHECKS,RECOMMENDATION_RESULTS,RECOMMENDATION_VERDICTS} from '../semantic-model/entities-recommend';
+import {CHAT_IMPORT_ISSUES,CHAT_IMPORT_KINDS} from '../../lib/chat-import';
 
 export const PROPOSAL_VERSION=1 as const;
 const DOMAIN='teras:proposal:v1';
@@ -73,6 +74,15 @@ export const ProposalRecommendation=z.object({verdict:z.enum(RECOMMENDATION_VERD
  // approve only when nothing failed; a failed rule always reads needs_review.
  .refine(value=>value.verdict==='needs_review'||(value.failedRules.length===0&&value.checks.every(check=>check.result==='pass')));
 export type ProposalRecommendation=z.infer<typeof ProposalRecommendation>;
+/** AI v2 slice 3 (issue 16b): an import prepared in chat (core/proposals/chat-import.ts). The import owner's own counts and
+ * the first rows needing attention, in lib/chat-import.ts's closed vocabulary (row number, column, reason): never a cell
+ * value or an owner sentence. `company` is the administrator's own company label. */
+const count=z.number().int().nonnegative();
+export const ProposalImport=z.object({kind:z.enum(CHAT_IMPORT_KINDS),company:z.string().min(1).max(200),total:count,ready:count,attention:count,warned:count,
+ issues:z.array(z.object({row:count,field:z.string().regex(/^[a-z0-9_]{1,40}$/),reason:z.enum(CHAT_IMPORT_ISSUES)}).strict()).max(5),issueCount:count,
+ confirmable:z.boolean(),revertible:z.boolean(),replacing:count,template:z.string().regex(/^\/[a-z0-9/_-]*$/).nullable()}).strict()
+ .refine(value=>value.ready+value.attention>=value.total&&value.issues.length<=value.issueCount);
+export type ProposalImport=z.infer<typeof ProposalImport>;
 export const ProposalBody=z.object({
  kind:z.literal('teras.proposal'),version:z.literal(PROPOSAL_VERSION),id:z.guid(),
  what:z.object({action:z.string().regex(/^[a-z_-]+(?:\.[a-z_-]+)+$/),contractVersion:z.number().int().positive(),
@@ -81,7 +91,9 @@ export const ProposalBody=z.object({
   selectors:z.record(z.string(),z.string().max(64)),
   /** The owner's digest of the exact reviewed effect; the review route refuses any other. */
   reviewedDigest:digest}).strict(),
- forWhom:z.object({tenantId:z.guid(),subject:z.enum(['own_employment','assigned_request']),subjectId:z.guid()}).strict(),
+ forWhom:z.object({tenantId:z.guid(),subject:z.enum(['own_employment','assigned_request',
+  // AI v2 slice 3: an import prepared in chat is for the company it imports into (subjectId is that company).
+  'company']),subjectId:z.guid()}).strict(),
  authority:ProposalAuthority,
  checks:z.array(ProposalCheck).min(1).max(32),
  /** Where the person reviews and confirms. `href` carries at most the review custody handle, never a business
@@ -92,6 +104,7 @@ export const ProposalBody=z.object({
   * dates and the owner's own figures only, never a name, identifier or free text. */
  facts:ProposalFacts.optional(),
  recommendation:ProposalRecommendation.optional(),
+ import:ProposalImport.optional(),
  createdAt:instant,expiresAt:instant,
 }).strict().refine(value=>Date.parse(value.expiresAt)>Date.parse(value.createdAt))
  .refine(value=>value.authority.tenantId===value.forWhom.tenantId)

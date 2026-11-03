@@ -955,5 +955,75 @@
       "hint": "Enter to prepare · nothing changes until you confirm",
       "busy": "AI Centre is still answering. Try again in a moment."
     }
+  },
+  "chatImport": {
+    "attach": "Attach a file to import",
+    "remove": "Remove {name}",
+    "reading": "Reading the file…",
+    "fileChip": "{name} · {count, plural, one {# row} other {# rows}}",
+    "errors": {
+      "one": "Attach one file at a time.",
+      "type": "Attach an Excel workbook (.xlsx or .xls), a CSV file, or a time-clock text file (.txt).",
+      "size": "Attach a file no larger than 5 MB.",
+      "empty": "That file has no rows to import.",
+      "read": "That file could not be read. Check that it opens, then attach it again."
+    },
+    "kinds": {
+      "employee_records": "Employee records import",
+      "leave_balances": "Leave balance import",
+      "payroll_history": "Payroll history import",
+      "attendance_clockings": "Attendance clocking import"
+    },
+    "title": "{kind}, {company}, {count, plural, one {# row} other {# rows}}",
+    "prepared": "Prepared for you to confirm",
+    "ready": "{count, plural, one {# row ready} other {# rows ready}}",
+    "attention": "{count, plural, one {# needs attention} other {# need attention}}",
+    "warned": "{count, plural, one {# row will be imported with a warning. The import page shows it.} other {# rows will be imported with a warning. The import page shows them.}}",
+    "replacing": "{count, plural, one {# row would replace payroll history already imported. Only new records are imported here; replace it on the import page.} other {# rows would replace payroll history already imported. Only new records are imported here; replace them on the import page.}}",
+    "allRowsFirst": "Payroll history is imported only when every row is correct. Fix the rows on the import page first.",
+    "noteRevert": "The import service checks every row again when you confirm. You can revert the whole import afterwards.",
+    "note": "The import service checks every row again when you confirm.",
+    "issuesLabel": "Rows that need attention",
+    "row": "Row",
+    "column": "Column",
+    "issue": "Issue",
+    "header": "Header",
+    "more": "{count, plural, one {And # more on the import page.} other {And # more on the import page.}}",
+    "reasons": {
+      "missing_column": "A required column is missing",
+      "missing_value": "A required value is empty",
+      "unknown_employee": "No such employee in your companies",
+      "unknown_type": "Not a type the system knows",
+      "invalid_date": "The date is not valid",
+      "invalid_time": "The time is not valid",
+      "invalid_number": "The number is not valid",
+      "duplicate_in_file": "The same row appears twice in the file",
+      "already_imported": "Already imported, so it is skipped",
+      "not_permitted": "Outside the companies you manage",
+      "not_employed": "The employee was not employed on that date",
+      "period_closed": "That period can no longer be changed",
+      "needs_page": "This needs a decision on the import page",
+      "other": "The import page explains this row"
+    },
+    "confirm": "{count, plural, one {Confirm # row} other {Confirm # rows}}",
+    "confirming": "Importing…",
+    "fix": "{count, plural, one {Fix the # row} other {Fix the # rows}}",
+    "openPage": "Open the import page",
+    "actionsLabel": "Import actions",
+    "done": "{count, plural, one {# row imported.} other {# rows imported.}}",
+    "doneLeftOut": "{count, plural, one {# row was not imported.} other {# rows were not imported.}}",
+    "replayed": "This import was already confirmed.",
+    "history": "Open the import record",
+    "historyRevert": "Open the import history, where you can revert it",
+    "refused": {
+      "expired": "This card has expired. Attach the file again.",
+      "access": "You can't import this here.",
+      "file": "The file attached in this chat is no longer here, or it has changed. Attach it again.",
+      "changed": "The file or the records changed since this was prepared. Attach the file again to see the rows now.",
+      "notConfirmable": "Fix the rows on the import page first.",
+      "inProgress": "This import is already being confirmed.",
+      "invalid": "This card could not be checked. Attach the file again.",
+      "unavailable": "The import could not be completed, and nothing was imported. Try again, or use the import page."
+    }
   }
 }

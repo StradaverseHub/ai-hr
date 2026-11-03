@@ -33,6 +33,7 @@ import {persistTurnTrace} from '../harness/trace-persistence';
 import {PRIVATE_CASE_START_PATH,privateCaseRouteAvailable} from '../private-case-route';
 import {ContinuationRefused,issueConversationContinuation,newConversation,verifyConversationContinuation} from './history';
 import {gatewayModelClient,type ModelClientTotals} from './model-client';
+import type {ChatImportFile} from '../../lib/chat-import';
 
 export type ConversationErrorCode='invalid_question'|'continuation_invalid'|'not_configured'|'provider_not_compliant'|'budget_daily'|'budget_monthly'|'ai_control'|'protected_input'|'provider_error';
 export class ConversationTurnError extends Error{constructor(readonly code:ConversationErrorCode){super('conversation:'+code);this.name='ConversationTurnError';}}
@@ -70,7 +71,10 @@ export function conversationTools(explainers:boolean):ToolProvider{
 }
 
 export async function runConversationTurn(supplied:SessionContext,route:Readonly<{permit:HarnessPermit;attestedProvider:TerasAttestedProvider|null;explainers:boolean}>,
- input:Readonly<{question:unknown;continuation?:unknown;companyId:string;locale:string}>):Promise<ConversationTurn>{
+ input:Readonly<{question:unknown;continuation?:unknown;companyId:string;locale:string;
+  /** AI v2 slice 3: a file attached to this turn for an import (lib/chat-import.ts). Only prepare_import's native
+   * preparer reads it; it is never sent to the model, stored with the chat or traced. */
+  importFile?:ChatImportFile}>):Promise<ConversationTurn>{
  const ctx:SessionContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  const question=typeof input.question==='string'?input.question.trim():'';
  if(!ctx.userId||!question||question.length>MAX_QUESTION_CHARS||!input.companyId)throw new ConversationTurnError('invalid_question');
@@ -96,7 +100,7 @@ export async function runConversationTurn(supplied:SessionContext,route:Readonly
  let result:TurnResult|undefined,failure:ConversationErrorCode|null=null;
  try{
   result=await runTurn({enabled:route.permit,ctx,conversationId:conversation.conversationId,question,history:conversation.history,
-   scope:{companyId:input.companyId,locale:input.locale},model:gatewayModelClient(admitted.configuration,totals),memory:new PostgresTaskMemoryStore(ctx),
+   scope:{companyId:input.companyId,locale:input.locale,...(input.importFile?{importFile:input.importFile}:{})},model:gatewayModelClient(admitted.configuration,totals),memory:new PostgresTaskMemoryStore(ctx),
    tools:conversationTools(route.explainers),caseRouteAvailable:()=>privateCaseRouteAvailable(ctx,input.companyId)});
   await persistTurnTrace(ctx,result.trace,{companyId:input.companyId});
  }catch(error){

@@ -2,6 +2,7 @@
  * the run comparison, without a model or a database. Expected values are worked out by hand from the inputs. */
 import {describe,expect,it} from 'vitest';
 import {ACTION_PURPOSE} from '../core/product-context/actions';
+import {CHAT_IMPORT_ACTION} from '../lib/chat-import';
 import {JUDGE,checkTurn,judgeMessages,languageOf,mentions,parseVerdict,payFigures,rawMarkdown,scoreTurn,unrestored,visibleUnits,
  type JudgeVerdict,type SmartEvalObservation,type SmartEvalTurn} from '../core/improvement/smart-eval-score';
 import {compareSmartRuns,parseSmartEvalOutput,percentile,pickExamples,renderSmartComparison,summariseSmartRun,type SmartEvalOutput,type SmartEvalRow} from '../scripts/teras/compare-smart-eval';
@@ -15,22 +16,23 @@ const obs=(reply:string,extra:Partial<SmartEvalObservation>={}):SmartEvalObserva
 const top:JudgeVerdict={correctness:5,usefulness:5,doing:5,clarity:5,safety:5,reason:'ok'};
 
 describe('the question set',()=>{
- it('has 58 turns: 19 employee, 10 manager, 13 HR administrator, 8 payroll and 8 group administrator, with unique ids',()=>{
+ it('has 60 turns: 19 employee, 10 manager, 15 HR administrator, 8 payroll and 8 group administrator, with unique ids',()=>{
   // AI v2 W1 added hr-what, hr-payroll-import and pay-import (the capability catalogue's "what can you do" and "can you import");
   // AI v2 W7 added hr-overtime-trend and grp-turnover (governed workforce metrics).
   // AI v2 W2 slice 2 added emp-toil (the own Leave Credit request); slice 3 added mgr-claim-decide and mgr-ot-reject.
-  expect(turns.length).toBe(58);expect(new Set(turns.map(row=>row.id)).size).toBe(58);
+  // AI v2 slice 3 added hr-import-file (two turns: the numbered imports, then the prepared import card from an attached file).
+  expect(turns.length).toBe(60);expect(new Set(turns.map(row=>row.id)).size).toBe(60);
   const byRole=(role:string)=>turns.filter(row=>row.role===role).length;
-  expect([byRole('employee'),byRole('manager'),byRole('hr_admin'),byRole('payroll'),byRole('group_admin')]).toEqual([19,10,13,8,8]);
+  expect([byRole('employee'),byRole('manager'),byRole('hr_admin'),byRole('payroll'),byRole('group_admin')]).toEqual([19,10,15,8,8]);
  });
  it('has five to eight journey questions per role (the employee\'s thirteen and the manager\'s ten include the AI v2 W2 prepared actions), and some in Malay and Chinese',()=>{
   for(const role of ['employee','manager','hr_admin','payroll','group_admin']){const count=turns.filter(row=>row.role===role&&row.source.kind==='journey').length;
    expect(count,role).toBeGreaterThanOrEqual(5);expect(count,role).toBeLessThanOrEqual(role==='employee'?13:role==='manager'?10:8);}
   expect(turns.filter(row=>row.locale==='ms').length).toBe(4);expect(turns.filter(row=>row.locale==='zh').length).toBe(5);
  });
- it('marks the 14 reconstructed owner questions with the issues they come from, covering 9, 10, 13, 13b, 16 and 18',()=>{
+ it('marks the 16 reconstructed owner questions with the issues they come from, covering 9, 10, 13, 13b, 16 and 18',()=>{
   const reconstructed=turns.filter(row=>row.source.kind==='reconstructed');
-  expect(reconstructed.length).toBe(14);
+  expect(reconstructed.length).toBe(16);
   const issues=new Set(reconstructed.flatMap(row=>row.source.kind==='reconstructed'?row.source.issues:[]));
   expect([...issues].sort()).toEqual(['10','13','13b','16','18','9']);
   for(const row of reconstructed)if(row.source.kind==='reconstructed')expect(row.source.from.length,row.id).toBeGreaterThan(20);
@@ -38,7 +40,8 @@ describe('the question set',()=>{
  it('gives every turn a question and an ideal, starts every conversation fresh, and names only real actions',()=>{
   for(const conversation of SMART_EVAL_SET){expect(conversation.turns[0].continues,conversation.id).not.toBe(true);
    for(const row of conversation.turns){expect(row.question.trim().length,row.id).toBeGreaterThan(5);expect(row.ideal.length,row.id).toBeGreaterThan(30);
-    for(const action of row.actions??[])expect(ACTION_PURPOSE[action],row.id+' '+action).toBeTypeOf('string');}}
+    // AI v2 slice 3: the prepared import card is a chat import proposal (lib/chat-import.ts), not a registry action.
+    for(const action of row.actions??[])expect(action===CHAT_IMPORT_ACTION?'An import prepared in chat':ACTION_PURPOSE[action],row.id+' '+action).toBeTypeOf('string');}}
   for(const row of turns.filter(item=>item.kind==='do'))expect(row.actions?.length,row.id).toBeGreaterThan(0);
   expect(turns.filter(row=>row.noPayFigures).map(row=>row.id).sort()).toEqual(['emp-salary-1','hr-average-1','hr-ms-1','hr-salary-1','pay-average-1','pay-net-1']);
  });

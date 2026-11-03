@@ -32,6 +32,7 @@ import {describeRead,readInputSchema} from '../semantic-model/generate';
 import type {OwnerAnchor} from '../semantic-model/types';
 import {ACTION_PURPOSE,actionCatalogueFor,type SuggestableAction} from './actions';
 import {destinationLabel} from './tools';
+import {CHAT_IMPORT_KINDS} from '../../lib/chat-import';
 
 export type CatalogueEntry=Readonly<{id:string;kind:CapabilityKind;mode:CapabilityMode;area:CapabilityArea;title:string;
  /** Where it is done or seen, only when this caller may link it. Never set for an action (its card carries the page). */
@@ -122,10 +123,16 @@ export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze(
  'core/personnel-import-evaluation.ts':'Evaluation custody of the employee import.',
  'core/personnel-import-operations.ts':'Operational field writes inside the employee import.',
  'core/personnel-register-import.ts':'Register sections inside the employee and section imports.',
+ // AI v2 slice 3 (issue 16b): imports prepared in chat run the owners above; they own no import of their own.
+ 'core/proposals/chat-import.ts':'AI Centre chat import preparer: runs the listed owners\' own previews and signs the card; imports nothing.',
+ 'core/semantic-model/entities-imports.ts':'Semantic declaration of the chat import result the model is shown (counts and reasons only).',
  'packs/attendance/policy-import-input.ts':'Attendance policy routing inside the clocking import.',
  'packs/performance/onehr/import-model.ts':'Record-scoped: KPI and panel imports inside one OneHR cycle, admitted per cycle by its owner; not listed.',
 });
 
+/** AI v2 slice 3 (issue 16b): imports the AI prepares here from a file attached in chat (core/chat-import/tool.ts
+ * prepare_import), for an HR administrator. */
+export const CHAT_PREPARED_IMPORTS:ReadonlySet<string>=new Set(CHAT_IMPORT_KINDS);
 /** Registry actions the semantic model declares a proposal preparer for: the AI prepares these here. */
 export const PREPARED_ACTIONS:ReadonlySet<string>=new Set(SEMANTIC_ACTIONS.filter(action=>action.proposal!==null).map(action=>action.id));
 const IMPORT_ACTIONS:ReadonlySet<string>=new Set(IMPORT_OWNERS.flatMap(row=>row.action?[row.action]:[]));
@@ -167,7 +174,7 @@ async function importEntries(ctx:SessionContext,catalogue:readonly SuggestableAc
   if(row.access==='lifecycle_agent'){if(lifecycleLevel===undefined)lifecycleLevel=await myLifecycleLevel(ctx);if(lifecycleLevel<LEVEL.agent)continue;}
   // An import that is also a registry action is listed only while that action is offered (actor, module, not paused).
   if(row.action!==undefined&&!offered.has(row.action))continue;
-  out.push({id:'import:'+row.id,kind:'import',mode:prepare&&row.action!==undefined&&PREPARED_ACTIONS.has(row.action)?'prepare':'open',area:row.area,title:row.title,
+ out.push({id:'import:'+row.id,kind:'import',mode:prepare&&((row.action!==undefined&&PREPARED_ACTIONS.has(row.action))||(admin&&CHAT_PREPARED_IMPORTS.has(row.id)))?'prepare':'open',area:row.area,title:row.title,
    ...(linkable.has(pathOf(row.page))?{page:row.page}:{}),...(row.template!==null?{template:true}:{}),...(prepare&&row.action!==undefined?{action:row.action}:{})});
  }
  return out;
@@ -208,7 +215,7 @@ export const PRODUCT_CAPABILITIES_SPEC:AiToolSpec=Object.freeze({name:READ.name,
 /** At most this many entries per result, so it always fits the harness's tool-output fence. */
 export const MAX_CAPABILITY_ENTRIES=40;
 const SUMMARY_NOTE='Counts per area of everything this person can do, import, report on or open, with example titles; entries lists what you can prepare here. For one part in full, call product_capabilities again with a kind or an area.';
-const LIST_NOTE='Only these are available to this person, most common first. When their words point to one, act on it. When several fit, ask one short question numbering at most five as listed, then "Something else"; never pick one yourself. suggest_action takes an action\'s id, or an import\'s action, for its card; otherwise link the page when one is given.';
+const LIST_NOTE='Only these are available to this person, most common first. When their words point to one, act on it. When several fit, ask one short question numbering at most five as listed, then "Something else"; never pick one yourself. suggest_action takes an action\'s id, or an import\'s action, for its card; prepare_import takes the id of an import whose mode is prepare; otherwise link the page when one is given.';
 const MISS_NOTE='No title matched those words, so everything of this kind is listed instead. Never say something is unavailable only because the words did not match.';
 const MISS_ALL_NOTE='No title matched those words. Never say something is unavailable only because the words did not match: ask with a kind, or use the areas below.';
 const MORE_NOTE=' More match than are listed: ask again with a narrower area or a kind.';

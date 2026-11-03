@@ -35,7 +35,7 @@ const PROFILE_CHANGE_TEXT:Readonly<Record<NonNullable<ProposalFacts['profileChan
  address:'Your address',emergency_contact:'Your emergency contact',dependant:'A new dependant',bank:'Your bank details',
 });
 const DECISION_TEXT={approved:'Approve',rejected:'Reject'} as const;
-const FOR_WHOM={own_employment:'You',assigned_request:'A leave request assigned to you to decide'} as const;
+const FOR_WHOM={own_employment:'You',assigned_request:'A leave request assigned to you to decide',company:'Your company'} as const;
 
 export type ProposalCardFact=Readonly<{key:FactKey;label:string;value:string}>;
 export type ProposalCard=Readonly<{kind:'teras.card';version:1;action:string;

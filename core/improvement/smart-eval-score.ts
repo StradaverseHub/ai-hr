@@ -42,7 +42,10 @@ export type SmartEvalTurn=Readonly<{id:string;question:string;locale:SmartEvalLo
  /** The reply must contain no money figure (an individual's pay must never be given or estimated). */
  noPayFigures?:boolean;
  /** Length limit in units (a Latin word, or two Chinese characters). Default by kind: SOFT_UNITS. */
- maxUnits?:number}>;
+ maxUnits?:number;
+ /** AI v2 slice 3 (issue 16b): a fictional file the person attaches to this turn for an import (lib/chat-import.ts).
+  * The product reads it; the model is never sent it. */
+ importFile?:Readonly<{name:string;format:'xlsx'|'xls'|'csv'|'txt';text:string}>}>;
 export type SmartEvalConversation=Readonly<{id:string;role:SmartEvalRole;turns:readonly SmartEvalTurn[]}>;
 
 /** What one turn produced, as the person saw it. */
