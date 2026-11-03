@@ -24,6 +24,7 @@ import {dispatchNotifications,listNotifications} from '../core/notifications';
 import {erasePersonPii} from '../core/pdpa';
 import {LetterWorkflowError,type LetterPolicy} from '../lib/letter-workflow';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import type {Tx} from '../db/client';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 let b:Base,hr:SessionContext,reviewer:SessionContext,templateId:string,versionId:string,closedTemplateId:string;
@@ -230,5 +231,58 @@ describe('person erasure',()=>{
   await expect(withTenant(hr,tx=>tx.execute(sql`select app.letter_requests_redact(${badrul.employmentId}::uuid)`))).rejects.toThrow();
   await expect(withTenant(hr,tx=>tx.update(s.letterRequest).set({purpose:null}).where(eq(s.letterRequest.id,theirs)))).rejects.toThrow();
   expect((await stored(theirs)).purpose).toBe(PURPOSE);
+ });
+});
+
+describe('the owner-side paths under a restricted physical owner',()=>{
+ /** Acts as the application role for one login inside the shared transaction, as withTenant would. */
+ async function as(tx:Tx,ctx:SessionContext){
+  const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));
+  await tx.execute(sql`RESET ROLE`);
+  await tx.execute(sql`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId??''},true),set_config('app.roles',${(ctx.roles??[]).join(',')},true),
+   set_config('app.grants',${JSON.stringify(grants)},true),set_config('app.agent_principal_id','',true)`);
+  await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);
+ }
+ it('the employee\'s own lookup and person erasure work under forced RLS for a NOSUPERUSER, NOBYPASSRLS owner, and neither widens a read',async()=>{
+  await open([templateId]);
+  const mine=(await submitLetterRequest(aina.ctx,{templateId,purpose:PURPOSE})).requestId,theirs=(await submitLetterRequest(badrul.ctx,{templateId,purpose:PURPOSE})).requestId;
+  await declineLetterRequest(hr,{requestId:mine,reason:REASON,employeeMessage:MESSAGE,expectedVersion:1});
+  const role='letter_request_owner_'+randomUUID().replaceAll('-',''),rollback=new Error('rollback-restricted-letter-owner');
+  let verified=0;
+  await expect(owner.withTenant(hr,async tx=>{
+   await tx.execute(sql.raw(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS`));
+   await tx.execute(sql.raw(`GRANT USAGE,CREATE ON SCHEMA public,app TO ${role}`));
+   await tx.execute(sql.raw(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO ${role}`));
+   for(const table of ['public.app_user','public.person','public.employment','public.company','public.letter_request','app.assistant_review_erasure_intent'])
+    await tx.execute(sql.raw(`ALTER TABLE ${table} OWNER TO ${role}`));
+   for(const fn of ['app.letter_requests_own(uuid)','app._letter_request_erasure_subject(uuid,uuid)','app.letter_requests_redact(uuid)'])
+    await tx.execute(sql.raw(`ALTER FUNCTION ${fn} OWNER TO ${role}`));
+   const [shape]=await tx.execute<Record<string,boolean>>(sql`select r.rolsuper as super,r.rolbypassrls as bypass,
+    (select c.relforcerowsecurity and c.relowner=r.oid from pg_class c where c.oid='public.letter_request'::regclass) as forced_owned from pg_roles r where r.rolname=${role}`);
+   expect(shape).toEqual({super:false,bypass:false,forced_owned:true});
+   // The employee: their own request through the lookup, with HR's message and never the reason; nothing directly.
+   await as(tx,aina.ctx);
+   expect(await tx.execute(sql`select id,purpose,status,employee_message from app.letter_requests_own(null)`)).toEqual([{id:mine,purpose:PURPOSE,status:'declined',employee_message:MESSAGE}]);
+   expect(await tx.execute(sql`select id from public.letter_request`)).toEqual([]);
+   await as(tx,badrul.ctx);
+   expect(await tx.execute(sql`select id from app.letter_requests_own(null)`)).toEqual([{id:theirs}]);
+   verified++;
+   // Person erasure: the admitted intent for the subject in THIS transaction, then the definer function as HR.
+   await tx.execute(sql`RESET ROLE`);
+   await tx.execute(sql`insert into app.assistant_review_erasure_intent(xact_id,tenant_id,user_id,person_id,employment_id,cleared,event_id,review_ids)
+    values(pg_current_xact_id(),${b.tenantId}::uuid,${hr.userId}::uuid,${aina.personId}::uuid,${aina.employmentId}::uuid,0,null,'{}'::uuid[])`);
+   await as(tx,hr);
+   expect(await tx.execute(sql`select app.letter_requests_redact(${aina.employmentId}::uuid) as cleared`)).toEqual([{cleared:1}]);
+   await tx.execute(sql`RESET ROLE`);
+   const rows=await tx.execute<{id:string;purpose:string|null;reason:string|null;message:string|null;erased:boolean;status:string}>(sql`select id,purpose,decline_reason as reason,
+    employee_message as message,text_erased_at is not null as erased,status from public.letter_request order by id`);
+   expect(rows.map(row=>({...row}))).toEqual([{id:mine,purpose:null,reason:null,message:null,erased:true,status:'declined'},
+    {id:theirs,purpose:PURPOSE,reason:null,message:null,erased:false,status:'requested'}].sort((x,y)=>x.id<y.id?-1:1));
+   expect(await tx.execute(sql`select current_setting('app.letter_request_erasure',true) as marker`)).toEqual([{marker:''}]);
+   verified++;
+   throw rollback;
+  })).rejects.toBe(rollback);
+  expect(verified).toBe(2);
+  expect((await stored(mine)).declineReason).toBe(REASON);
  });
 });
