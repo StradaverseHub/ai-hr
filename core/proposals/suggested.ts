@@ -20,6 +20,8 @@
  *    the type is unclear); otherwise ./leave-apply.ts issues the review proposal (one full day) or the form proposal.
  *  - attendance.correction.request and attendance.overtime.request (AI v2 W2): the caller's own attendance only, through
  *    ./attendance-request.ts; missing details are asked for in one question, and the attendance service decides.
+ *  - toil.replacement.request (AI v2 W2, slice 2): the caller's own Leave Credit request for one date worked, through
+ *    ./toil-request.ts; the leave service counts the credit, and a First Schedule agreement is only the person's own tick.
  * Returns null when neither a proposal, a choice nor a question is issued; never throws. */
 import {and,eq,inArray} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
@@ -39,6 +41,7 @@ import {prepareChatAttendanceCorrectionProposal,prepareChatOvertimeRequestPropos
 import {prepareChatClaimSubmitProposal,type OwnChangeAsk} from './claim-submit';
 import {prepareChatClaimCancelProposal} from './claim-cancel';
 import {prepareChatProfileChangeProposal} from './profile-change';
+import {prepareChatToilRequestProposal,type ToilChatOutcome} from './toil-request';
 
 const isDate=(value:unknown):value is string=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value);
 /** "Do not approve", "don't approve", "never approve", "not yet approve", "jangan lulus", "tak approve": a negation
@@ -168,7 +171,9 @@ export async function prepareChatLeaveApplyProposal(ctx:SessionContext,details:R
 export type SuggestedOutcome=Readonly<{kind:'proposal';proposal:Proposal}>|Readonly<{kind:'choose';pending:readonly PendingChoice[];more:number}>
  |Extract<ChatLeaveApplyOutcome,{kind:'ask'}>|Extract<AttendanceChatOutcome<string>,{kind:'ask'}>
  /** AI v2 W2: an own claim or profile change with details missing; it carries its own note for the one question. */
- |OwnChangeAsk;
+ |OwnChangeAsk
+ /** AI v2 W2 (slice 2): a Leave Credit request with details missing; it carries its own note. */
+ |Extract<ToilChatOutcome,{kind:'ask'}>;
 /** At most this many pending requests are listed; the rest are counted and left to the Approvals page. */
 export const MAX_PENDING_CHOICES=10;
 
@@ -183,6 +188,8 @@ export async function prepareSuggestedProposal(ctx:SessionContext,action:string,
   if(action==='claims.submit')return await prepareChatClaimSubmitProposal(ctx,given,personWords,now);
   if(action==='claims.cancel')return await prepareChatClaimCancelProposal(ctx,given);
   if(action==='ess.profile.request')return await prepareChatProfileChangeProposal(ctx,given,personWords,now);
+  // AI v2 W2 (slice 2): the own Leave Credit request (./toil-request.ts).
+  if(action==='toil.replacement.request')return await prepareChatToilRequestProposal(ctx,given,personWords,now);
   if(action==='leave.cancel'){
    if(!ctx.personId)return null;
    const today=todayInKualaLumpur(now),date=isDate(given.startDate)?given.startDate:null;

@@ -278,6 +278,7 @@ export function LeaveCreditRequestTable({
   cancel,
   dialog = false,
   hr,
+  initialRow,
 }: {
   replacementType: LeaveCreditLeaveTypeView;
   submitAction: Action;
@@ -318,6 +319,9 @@ export function LeaveCreditRequestTable({
   dialog?: boolean;
   /** r406 · HR's direct-grant mount. Absent on My Leave. See `LeaveCreditHrMode`. */
   hr?: LeaveCreditHrMode;
+  /** AI v2 W2 slice 2 — the first row's date and window from a chat card's Edit (lib/leave-credit-prefill.ts). Seeds
+   *  only: the day type still fills from the roster, and everything else is the person's own. */
+  initialRow?: Readonly<{ workedDate: string; claimStart: string; claimEnd: string }>;
 }) {
   const t = useTranslations('replacementRequest');
   // r406 — HR mode: the rows stay closed until an employee is picked (the shell remounts this table per pick).
@@ -325,7 +329,7 @@ export function LeaveCreditRequestTable({
   // The four statuses of the requests table below share the vocabulary every other leave surface prints.
   const [reason, setReason] = useState('');
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-  const [rows, setRows] = useState<Row[]>([emptyRow(1)]);
+  const [rows, setRows] = useState<Row[]>(() => [initialRow && !hr ? { ...emptyRow(1), workedDate: initialRow.workedDate, claimStart: initialRow.claimStart, claimEnd: initialRow.claimEnd } : emptyRow(1)]);
 
   /**
    * ⚠️ r360 — `const dayTypeOptions = LEAVE_CREDIT_DAY_TYPES;` STOOD HERE, and r343 pinned that exact line

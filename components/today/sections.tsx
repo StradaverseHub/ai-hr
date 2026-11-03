@@ -14,6 +14,8 @@ import {formatDays} from '@/lib/day-format';
 import type {TodayAudience} from '@/lib/today/audience';
 import {TodayNote,TodaySection} from './today-ui';
 import {readAtAGlance,readDoneForYou,readNeedsYou,readWatching,type Finding,type PreparedItem} from './reads';
+import {WhyLink} from '@/components/why/why-panel';
+import {LeaveBalanceWhy} from '@/components/why/sections';
 
 /** Today (AI v2 Phase 1, W3): the four sections. Each is its own async server component, rendered by
  * components/today/today-page.tsx inside its own Suspense boundary, so the slowest owner holds back only its
@@ -121,9 +123,13 @@ const rowCls='flex min-h-11 items-center justify-between gap-3 py-2 text-sm';
 const linkCls='inline-flex min-h-9 items-center font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11';
 
 /** The personal "Watching": the At a glance panel of the employee mock-up. */
-export async function AtAGlanceSection(p:Common&Readonly<{employmentId?:string}>){
+export async function AtAGlanceSection(p:Common&Readonly<{employmentId?:string;why?:string}>){
  const [t,data]=await Promise.all([getTranslations('today'),readAtAGlance(p.session,{employmentId:p.employmentId,locale:p.locale,today:p.today})]);
  const balances=(data.balances??[]).slice(0,4);
+ // AI v2 W5: each balance's "Why?" opens its explanation in place under the row (`?why=leave:<leave type id>`), read
+ // from the same leave dashboard card the figure came from, only when asked for.
+ const home=(why?:string)=>{const query=new URLSearchParams({...(p.employmentId?{employmentId:p.employmentId}:{}),...(why?{why}:{})});return query.size?`/?${query}`:'/';};
+ const openLeave=p.why?.startsWith('leave:')?p.why.slice('leave:'.length):null;
  const empty=balances.length===0&&data.payslip===undefined&&data.away===null;
  return <section aria-labelledby="today-at-a-glance" data-today-section="today-at-a-glance" className="min-w-0 space-y-3">
   <h2 id="today-at-a-glance" className="text-[0.9375rem] font-semibold">{t('atAGlance')}</h2>
@@ -131,12 +137,16 @@ export async function AtAGlanceSection(p:Common&Readonly<{employmentId?:string}>
   {empty?<p data-today-empty className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">{t('atAGlanceEmpty')}</p>:
   <div className="space-y-4 rounded-xl border border-border bg-card p-4">
    {(balances.length>0||data.payslip!==undefined)&&<dl data-today-glance="figures" className="divide-y divide-border">
-    {balances.map(row=><div key={row.id} data-today-balance className={rowCls}>
+    {balances.map(row=><div key={row.id} data-today-balance className={`${rowCls} flex-wrap`}>
      <dt className="min-w-0 break-words">{row.name}</dt>
      <dd className="flex shrink-0 items-center gap-3">
       <b className="font-semibold tabular-nums">{row.available===null?t('glance.notShown'):t('glance.daysValue',{days:formatDays(row.available)})}</b>
-      <Link href="/leave/details" className={linkCls}>{t('glance.why')}<span className="sr-only"> {t('glance.whyLabel',{leaveType:row.name})}</span></Link>
+      <WhyLink href={openLeave===row.id?home():home(`leave:${row.id}`)} text={t('glance.why')} label={t('glance.whyLabel',{leaveType:row.name})}
+       expanded={openLeave===row.id} controls={`today-why-${row.id}`}/>
      </dd>
+     {openLeave===row.id&&<dd data-today-why className="basis-full">
+      <LeaveBalanceWhy session={p.session} id={`today-why-${row.id}`} closeHref={home()} leaveTypeId={row.id} employmentId={p.employmentId}/>
+     </dd>}
     </div>)}
     {data.payslip&&<div data-today-payslip className={rowCls}>
      <dt>{t('glance.payslipTitle',{date:formatPayPeriodMonth(data.payslip.period,p.locale)})}</dt>

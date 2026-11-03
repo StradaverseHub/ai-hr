@@ -3,7 +3,10 @@ import {z} from 'zod';
 import {LEAVE_CREDIT_DAY_TYPES} from '../leave-credit-day-type';
 export const OWN_TOIL_REPLACEMENT_ACTION='toil.replacement.request' as const;
 const uuid=z.guid(),date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/),time=z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/),digest=z.string().regex(/^[a-f0-9]{64}$/);
-const base={action:z.literal(OWN_TOIL_REPLACEMENT_ACTION),contractVersion:z.literal(1),employmentId:uuid,leaveTypeId:uuid.nullable().optional(),firstScheduleConsent:z.boolean()};
+const base={action:z.literal(OWN_TOIL_REPLACEMENT_ACTION),contractVersion:z.literal(1),employmentId:uuid,leaveTypeId:uuid.nullable().optional(),firstScheduleConsent:z.boolean(),
+ /** AI v2 W2: a review prepared from chat for a First Schedule employee before their own agreement. It can never be confirmed
+  * (the native owner writes no request from it); the person's tick on the card prepares again with the agreement. */
+ firstScheduleConsentPending:z.literal(true).optional()};
 export const OwnToilReplacementNomination=z.object({action:z.literal(OWN_TOIL_REPLACEMENT_ACTION),contractVersion:z.literal(1),employmentId:uuid}).strict();
 export const OwnToilReplacementHumanContent=z.discriminatedUnion('engine',[
  z.object({...base,engine:z.literal('leave_credit_rows'),reason:z.string().trim().min(1).max(4000),rows:z.array(z.object({workedDate:date,dayType:z.enum(LEAVE_CREDIT_DAY_TYPES),claimStart:time,claimEnd:time}).strict()).min(1).max(32)}).strict(),

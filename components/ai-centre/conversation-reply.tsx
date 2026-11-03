@@ -6,6 +6,7 @@ import { ruleVersionLabel } from '@/lib/ai-centre/rule-version';
 import { leaveApplyCardTitle, LEAVE_APPLY_TITLE_DATE } from '@/lib/ai-centre/leave-apply-title';
 import { attendanceRequestCardTitle, ATTENDANCE_TITLE_DATE, ATTENDANCE_TITLE_TIME } from '@/lib/ai-centre/attendance-request-title';
 import { ownChangeCardTitle, OWN_CHANGE_TITLE_DATE } from '@/lib/ai-centre/own-change-title';
+import { toilRequestCardTitle } from '@/lib/ai-centre/toil-request-title';
 import { ProposalCard, type ProposalCheck } from './proposal-card';
 import { InlineProposalCard } from './proposal-card-actions';
 import { inlineProposalKind, type InlineProposalCopy } from '@/lib/ai-centre/inline-proposal';
@@ -31,6 +32,8 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
   const t = await getTranslations('aiCentre.conversation');
   const tc = await getTranslations('aiCentre.card');
   const tr = await getTranslations('aiCentre.recommendation');
+  // AI v2 W2 slice 2: the Leave Credit form's own First Schedule agreement sentence, reused word for word on the card.
+  const tLeaveCredit = await getTranslations('replacementRequest');
   const format = await getFormatter();
   // The internal rule reference never reaches the screen: only the kind of rule and its version number.
   const version = (reference: string | null) => { const known = ruleVersionLabel(reference); return known ? tr(`version.${known.kind}`, { version: known.version }) : undefined; };
@@ -45,9 +48,10 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
     openClaims: t('inline.openClaims'), fixIt: t('inline.fixIt'), error: t('inline.error'),
     done: { leaveSubmitted: t('inline.done.leaveSubmitted'), attendanceSubmitted: t('inline.done.attendanceSubmitted'),
       claimSubmitted: t('inline.done.claimSubmitted'), claimDraftSaved: t('inline.done.claimDraftSaved'),
-      claimCancelled: t('inline.done.claimCancelled'), profileRequested: t('inline.done.profileRequested') },
+      claimCancelled: t('inline.done.claimCancelled'), profileRequested: t('inline.done.profileRequested'),
+      toilSubmitted: t('inline.done.toilSubmitted') },
     refused: { expired: t('inline.refused.expired'), invalid: t('inline.refused.invalid'), access: t('inline.refused.access'),
-      retired: t('inline.refused.retired'), unavailable: t('inline.refused.unavailable') },
+      retired: t('inline.refused.retired'), unavailable: t('inline.refused.unavailable'), consent: t('inline.refused.consent') },
   };
   return (
     <div data-teras-reply={turn.turnId} className="space-y-3">
@@ -55,7 +59,17 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
         <aside role="note" data-teras-route={turn.crisis ? 'crisis' : 'hr_contact'}
           className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-900 dark:text-amber-200">
           <ShieldCheck aria-hidden className="mt-0.5 size-4 flex-none" />
-          <span>{t(turn.crisis ? 'routedCrisis' : 'routed')}</span>
+          {/* AI v2 W11: emergency help first on a crisis turn, then the protected case route where it is set up. The
+              person writes the case on its own form; nothing of this turn is passed to it. */}
+          <span className="min-w-0 space-y-1">
+            <span className="block">{t(turn.crisis ? 'routedCrisis' : 'routed')}</span>
+            {turn.caseRoute && (
+              <Link href={turn.caseRoute} data-teras-case-route
+                className="inline-flex items-center font-medium text-primary underline underline-offset-2 hover:no-underline pointer-coarse:min-h-11">
+                {t('startPrivateCase')}
+              </Link>
+            )}
+          </span>
         </aside>
       )}
       {turn.reply && <ReplyMarkdown text={turn.reply} links={links} />}
@@ -65,6 +79,8 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
           tone: check.result === 'pass' ? 'ok' : 'warn', ruleVersion: version(check.ruleVersion) }));
         const meta = [facts.leaveType, facts.startDate && (facts.endDate && facts.endDate !== facts.startDate ? `${facts.startDate} – ${facts.endDate}` : facts.startDate),
           typeof facts.days === 'number' ? t('days', { count: facts.days }) : undefined,
+          // AI v2 W2 slice 2: the leave service's own count of a Leave Credit, never a figure the model gave.
+          typeof facts.creditDays === 'number' ? t('creditDays', { count: facts.creditDays }) : undefined,
           facts.outcome ? label('outcomes', facts.outcome, words(facts.outcome)) : undefined].filter((line): line is string => Boolean(line));
         const recommendation = body.recommendation;
         // Issue 10: a leave application names its own type, dates and days; every other card keeps its action title.
@@ -73,14 +89,18 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
           ?? attendanceRequestCardTitle(body, (key, values) => t(key, values), date => format.dateTime(date, ATTENDANCE_TITLE_DATE), time => format.dateTime(time, ATTENDANCE_TITLE_TIME))
           // AI v2 W2: an own claim or profile change names its type, amount and date, or what changes.
           ?? ownChangeCardTitle(body, (key, values) => t(key, values), date => format.dateTime(date, OWN_CHANGE_TITLE_DATE))
+          // AI v2 W2 slice 2: a Leave Credit request names its date worked and window.
+          ?? toilRequestCardTitle(body, (key, values) => t(key, values), date => format.dateTime(date, ATTENDANCE_TITLE_DATE), time => format.dateTime(time, ATTENDANCE_TITLE_TIME))
           ?? label('actions', body.what.action.replace(/\./g, '_'), t('actions.fallback'));
         const tone = body.what.effect === 'decide' ? 'decide' as const : 'prepared' as const;
         const expires = t('expires', { time: format.dateTime(new Date(body.expiresAt), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }) });
         const kind = inlineProposalKind(body.what.action);
+        // The leave service decided, when the card was prepared, that the person's own First Schedule agreement is asked for.
+        const agreement = kind === 'toil' && body.what.selectors.firstScheduleAgreement === 'required' ? { label: tLeaveCredit('firstScheduleConsent') } : undefined;
         return (
           <div key={body.id} className="space-y-1">
             {kind ? (
-              <InlineProposalCard kind={kind} proposal={proposal} copy={inline} awaitingLabel={tc('awaiting')}
+              <InlineProposalCard kind={kind} proposal={proposal} copy={inline} awaitingLabel={tc('awaiting')} agreement={agreement}
                 card={{ icon: <CalendarDays />, tone, title, meta, checks, expires,
                   prepared: { summary: t('howPrepared'), rows: [[t('preparedBy'), t('preparedByValue')], [t('confirmOn'), t('inline.confirmOnValue')]] } }} />
             ) : (

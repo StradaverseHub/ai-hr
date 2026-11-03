@@ -131,6 +131,8 @@ const GUIDE_TOUR: Record<string, string> = {
   'admin-mobile-app': 'mobileDesign',
   'employee-notifications': 'notifications',
   'admin-communications': 'communications',
+  // ADR-0173: the private cases guide offers the My Profile walkthrough, where its entry card is.
+  'private-cases': 'me',
   'operator-provisioning': 'operatorProvisioning',
   'operator-identity-email': 'operatorIdentity',
   'operator-tenant-operations': 'operatorTenantOperations',

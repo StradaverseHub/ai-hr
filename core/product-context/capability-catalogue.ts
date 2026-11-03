@@ -53,6 +53,8 @@ const PATH_AREA:readonly (readonly [string,CapabilityArea])[]=[
  ['/admin/security-center','security'],['/admin/users','security'],['/control-tower','ai'],['/assistant','ai'],['/admin/organization','organisation'],
  ['/org','organisation'],['/admin/job-descriptions','organisation'],['/admin/holidays','leave'],['/reports','reports'],['/analytics','reports'],
  ['/approvals','approvals'],['/delegations','approvals'],['/admin/system-settings/approval-delegation','approvals'],['/knowledge-base','knowledge'],
+ // ADR-0173 private cases: the person's own cases are self-service; the handlers' queue and handler designation are privacy access.
+ ['/me/cases','self_service'],['/me/cases/new','self_service'],['/cases','security'],['/admin/privacy/case-handlers','security'],
  ['/me','self_service'],['/tasks','self_service'],['/admin/personnel','people'],['/personnel','people'],['/admin','settings'],
 ];
 const under=(path:string,prefix:string)=>path===prefix||path.startsWith(prefix+'/');

@@ -9,11 +9,12 @@
 import {EXPLAIN_ENTITIES,EXPLAIN_READS} from '../semantic-model/entities-explain';
 import {SETUP_ENTITIES,SETUP_READS} from '../semantic-model/entities-setup';
 import {METRIC_ENTITIES,METRIC_READS} from '../semantic-model/entities-metrics';
+import {WHY_ENTITIES,WHY_READS} from '../semantic-model/entities-why';
 import type {EntityId,OwnerAnchor,SemanticEntity,SemanticRead} from '../semantic-model/types';
 import {kitCapability,type KitCapability,type KitDeclaration} from './kit';
 
-const entity=(id:EntityId):SemanticEntity=>{const found=[...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...METRIC_ENTITIES].find(row=>row.id===id);if(!found)throw Error('Unknown kit entity.');return found;};
-const read=(name:string):SemanticRead=>{const found=[...EXPLAIN_READS,...SETUP_READS,...METRIC_READS].find(row=>row.name===name);if(!found)throw Error('Unknown kit read.');return found;};
+const entity=(id:EntityId):SemanticEntity=>{const found=[...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...METRIC_ENTITIES,...WHY_ENTITIES].find(row=>row.id===id);if(!found)throw Error('Unknown kit entity.');return found;};
+const read=(name:string):SemanticRead=>{const found=[...EXPLAIN_READS,...SETUP_READS,...METRIC_READS,...WHY_READS].find(row=>row.name===name);if(!found)throw Error('Unknown kit read.');return found;};
 /** Purpose and inputs are the declaration's own words; the kit generates the rest. */
 const declare=(name:string,owner:OwnerAnchor,permission:KitDeclaration['permission']):KitDeclaration=>{
  const row=read(name);return{name,purpose:row.purpose,input:row.input,owner,permission,entity:entity(row.entity)};
@@ -26,5 +27,10 @@ export const KIT_DECLARATIONS:readonly KitDeclaration[]=Object.freeze([
  declare('setup_copilot','core/setup-copilot/copilot.ts#setupCopilot',{module:null,admin:true}),
  // AI Centre issue 13b: governed pay averages (core/semantic-model/entities-metrics.ts), offered under payroll access.
  declare('pay_aggregates','packs/payroll/pay-averages.ts#payAverages',{module:'payroll',admin:false,access:'payroll'}),
+ // AI v2 W7: governed workforce metrics (core/semantic-model/entities-metrics.ts), offered to managers and administrators.
+ declare('workforce_metrics','core/workforce-metrics.ts#workforceMetrics',{module:null,admin:false,access:'team'}),
+ // AI v2 W5: "Why?" on the pay difference and the claim limits (core/semantic-model/entities-why.ts).
+ declare('explain_pay_difference','core/pay-difference.ts#comparePayPeriods',{module:'payroll',admin:false}),
+ declare('explain_claim_limit','core/claims.ts#employeeClaimTypesTx',{module:'claims',admin:false}),
 ]);
 export const KIT_CAPABILITIES:readonly KitCapability[]=Object.freeze(KIT_DECLARATIONS.map(kitCapability));

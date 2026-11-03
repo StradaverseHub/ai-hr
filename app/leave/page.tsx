@@ -37,7 +37,9 @@ import {
   ownLeaveCancellations,
   ownLeaveRejections,
 } from '@/core/my-leave';
-import { MyLeaveDashboard, type MyLeaveDashboardCard } from '@/components/leave/my-leave-dashboard';
+import { MyLeaveDashboard, type LeaveDashboardWhy, type MyLeaveDashboardCard } from '@/components/leave/my-leave-dashboard';
+import { LeaveBalanceWhy } from '@/components/why/sections';
+import { leaveBalanceExplanation } from '@/core/leave-balance-explain';
 import { UpcomingLeave, type UpcomingLeaveRow } from '@/components/leave/upcoming-leave';
 import {
   LEAVE_HISTORY_TABS,
@@ -66,6 +68,7 @@ import { EditLeaveDialog } from '@/components/leave/edit-leave-dialog';
 import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
 import { RequestLeaveDialog } from '@/components/leave/request-leave-dialog';
 import { leaveApplyPrefill } from '@/lib/leave-apply-prefill';
+import { leaveCreditPrefill } from '@/lib/leave-credit-prefill';
 // 296fc027 — the employee replacement-leave request: the button beside "+ Request Leave" and the action it posts
 // to. The availability read that decides whether to offer it is asked in ./my-leave-data.ts (r397).
 import { ReplacementLeaveRequestDialog } from '@/components/leave/replacement-leave-request-dialog';
@@ -180,7 +183,15 @@ export default async function LeavePage({
     // lib/leave-apply-prefill.ts. Seeds only, prefixed like applyType for the same reason.
     applyEnd?: string;
     applyDuration?: string;
+    // AI v2 W2 slice 2 — the date and window a Leave Credit card prepared in chat opens the Leave Credit request dialog on
+    // (Edit), parsed by lib/leave-credit-prefill.ts. Seeds only; never a reason or the First Schedule agreement.
+    credit?: string;
+    creditDate?: string;
+    creditStart?: string;
+    creditEnd?: string;
     employmentId?:string|string[];
+    // AI v2 W5 — the dashboard card whose "Why?" panel is open (`leave:<leave type id>`).
+    why?: string;
   }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
@@ -560,6 +571,23 @@ export default async function LeavePage({
       ceilingLines: also.map((g) => tMe('sharedLeaveGroups.alsoCountsToward', { group: g.name })),
     };
   });
+
+  // AI v2 W5 — each card's "Why?" opens its explanation in place, from the card's own figures (no further read). The
+  // links keep only the dashboard's own state (the leave year and the chosen employment), never a dialog or a toast.
+  const leaveDashboardWhy = async () => {
+    const tWhy = await getTranslations('today.glance');
+    const keep = { ...(sp.leaveYear ? { leaveYear: sp.leaveYear } : {}), ...(typeof sp.employmentId === 'string' ? { employmentId: sp.employmentId } : {}) };
+    const href = (why?: string) => { const query = new URLSearchParams({ ...keep, ...(why ? { why } : {}) }); return query.size ? `/leave?${query}` : '/leave'; };
+    const openId = sp.why?.startsWith('leave:') ? sp.why.slice('leave:'.length) : null;
+    const open = dashboardCardsWithCeilings.find((c) => c.leaveTypeId === openId) ?? null;
+    const why: LeaveDashboardWhy = {
+      text: tWhy('why'),
+      links: Object.fromEntries(dashboardCardsWithCeilings.map((c) => [c.leaveTypeId, {
+        href: c.leaveTypeId === open?.leaveTypeId ? href() : href(`leave:${c.leaveTypeId}`), label: tWhy('whyLabel', { leaveType: c.leaveType }), expanded: c.leaveTypeId === open?.leaveTypeId }])),
+      openId: open?.leaveTypeId ?? null,
+    };
+    return { why, whyPanel: open ? <LeaveBalanceWhy session={session} id={`leave-why-${open.leaveTypeId}`} closeHref={href()} leaveTypeId={open.leaveTypeId} explanation={leaveBalanceExplanation(open)} /> : undefined };
+  };
   // Placement is ORDER (r302), so the tiles that survive keep it: Primary groups before Secondary ones.
   const standaloneGroupIds = new Set(ceilingPlan.standalone.map((g) => g.id));
   const standaloneSharedGroups = [...sharedGroupsPrimary, ...sharedGroupsSecondary].filter((g) =>
@@ -716,6 +744,9 @@ export default async function LeavePage({
                   submitAction={submitLeaveCreditRequestAction}
                   today={today}
                   requiresFirstScheduleConsent={replacementRequest.requiresFirstScheduleConsent}
+                  // AI v2 W2 slice 2 — a chat card's Edit opens the dialog on its date and window. Seeds only; the
+                  // agreement box is never ticked for the person.
+                  prefill={leaveCreditPrefill(sp, today)}
                   // r343 — one read per date for EVERY row: what the roster holds (the thing the chosen Day
                   // Type is adjudicated against) plus the scheduled shift end and the actual clock-out. It
                   // replaces r336's pair of actions, one of which answered only for ordinary-day rows.
@@ -802,6 +833,7 @@ export default async function LeavePage({
               cards={dashboardCardsWithCeilings}
               sharedGroups={standaloneSharedGroups}
               locale={locale}
+              {...await leaveDashboardWhy()}
             />
           </div>
         </Card>

@@ -2,7 +2,7 @@
  * TodayEmployee.dc.html), rendered by the real ConversationReply for the employee they serve.
  *
  * For every prepared kind (leave application, attendance correction, overtime request, claim, claim cancellation,
- * profile change): nothing posts until a press; Confirm posts the very card it shows with `confirm: true` to its own
+ * profile change, Leave Credit request): nothing posts until a press; Confirm posts the very card it shows with `confirm: true` to its own
  * owner's server action and shows the owner's outcome with the person's Maker's Mark; a refusal is shown in place
  * (the owner's own sentence when it gave one); Edit and a "use the form" answer open the owner's prefilled form;
  * Discard only hides the card. The buttons are native, keyboard-reachable and disabled while one is pending. An
@@ -19,12 +19,14 @@ import { withAiCentre } from './helpers/ai-centre-messages';
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
 const posts = vi.hoisted(() => ({
   leave: { confirm: vi.fn(), edit: vi.fn() }, attendance: { confirm: vi.fn(), edit: vi.fn() }, own_change: { confirm: vi.fn(), edit: vi.fn() },
+  toil: { confirm: vi.fn(), edit: vi.fn() },
 }));
 vi.mock('next/link', () => ({ default: ({ children, prefetch: _prefetch, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/assistant', useSearchParams: () => new URLSearchParams(), useRouter: () => ({ refresh: vi.fn(), push: nav.push }) }));
 vi.mock('../app/assistant/leave-apply-proposal-actions', () => ({ confirmLeaveApplyProposalAction: posts.leave.confirm, editLeaveApplyProposalAction: posts.leave.edit }));
 vi.mock('../app/assistant/attendance-request-proposal-actions', () => ({ confirmAttendanceRequestProposalAction: posts.attendance.confirm, editAttendanceRequestProposalAction: posts.attendance.edit }));
 vi.mock('../app/assistant/own-change-proposal-actions', () => ({ confirmOwnChangeProposalAction: posts.own_change.confirm, editOwnChangeProposalAction: posts.own_change.edit }));
+vi.mock('../app/assistant/toil-request-proposal-actions', () => ({ confirmToilRequestProposalAction: posts.toil.confirm, editToilRequestProposalAction: posts.toil.edit }));
 const messages = withAiCentre('en', en as Record<string, unknown>);
 vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: 'en', messages: messages as never, namespace }),
@@ -84,6 +86,10 @@ const CASES: readonly { name: string; kind: Kind; make: () => ReturnType<typeof 
   { name: 'profile change', kind: 'own_change', make: () => proposal('ess.profile.request', 'profile_change_request', 'create', '/assistant/profile', { profileChange: 'address', fieldCount: 3, outcome: 'hr_approval_required' }),
     success: { kind: 'requested', action: 'ess.profile.request', requestId: randomUUID() }, done: copy.done.profileRequested,
     refusal: { kind: 'refused', reason: 'expired' }, refusalText: copy.refused.expired, editHref: '/me?tab=address' },
+  // AI v2 W2 slice 2: a Leave Credit request for a person outside the First Schedule asks for no agreement on the card.
+  { name: 'Leave Credit request', kind: 'toil', make: () => proposal('toil.replacement.request', 'leave_credit_request', 'create', '/assistant/toil', { startDate: '2026-11-01', endDate: '2026-11-01', plannedStart: '09:00', plannedEnd: '17:00', creditDays: 1, outcome: 'submitted_not_approved' }),
+    success: { kind: 'submitted', action: 'toil.replacement.request', requestId: randomUUID() }, done: copy.done.toilSubmitted,
+    refusal: { kind: 'refused', reason: 'changed' }, refusalText: copy.refused.invalid, editHref: '/leave?credit=1&creditDate=2026-11-01&creditStart=09%3A00&creditEnd=17%3A00' },
 ];
 
 beforeEach(() => { vi.stubEnv('TERAS_PROPOSAL_SECRET', 'fictional-inline-proposal-secret-0123456789abcdef'); });

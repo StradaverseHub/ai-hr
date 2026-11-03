@@ -127,14 +127,16 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
   authority:{kind:'tenant_switch',actsAs:'requester'},switch:{kind:'worker_control',workerId:'approver_recommendation'},stop:{honoured:true},
   record:{kind:'outcome_record',agentIdentity:'worker.approver_recommendation'},metrics:{kind:'outcome_followups'}},
  {id:'explainers',label:'Explainers',family:'explainer',
-  owners:['core/explainers/statutory.ts#explainOwnPayslipStatutory','core/explainers/entitlement.ts#explainOwnLeaveEntitlement','core/explainers/attendance.ts#explainOwnAttendanceDay'],
+  owners:['core/explainers/statutory.ts#explainOwnPayslipStatutory','core/explainers/entitlement.ts#explainOwnLeaveEntitlement','core/explainers/attendance.ts#explainOwnAttendanceDay',
+   // AI v2 W5: the pay difference and claim limit explainers.
+   'core/explainers/pay-difference.ts#explainOwnPayDifference','core/explainers/claim-limit.ts#explainOwnClaimLimit'],
   trigger:{kind:'request',detail:'A person asks the Assistant why a figure is what it is'},
-  readScope:['statutory_explanation','entitlement_explanation','attendance_day_explanation'],effect:'none',
+  readScope:['statutory_explanation','entitlement_explanation','attendance_day_explanation','pay_difference_explanation','claim_limit_explanation'],effect:'none',
   authority:{kind:'tenant_switch',actsAs:'requester'},switch:{kind:'worker_control',workerId:'explainers'},
   // Explainers run only inside Noveri conversation turns. The conversation's gate (below) includes the tenant stop
   // switch, so a stopped tenant's chat goes back to the closed grammar and no explainer runs.
   stop:{honoured:true},
-  record:{kind:'outcome_record',agentIdentity:'teras.assistant',tools:['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day']},
+  record:{kind:'outcome_record',agentIdentity:'teras.assistant',tools:['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day','explain_pay_difference','explain_claim_limit']},
   metrics:{kind:'not_measurable',reason:'An explanation has no accept or decline.'}},
  {id:'conversation',label:'Noveri conversation',family:'preparer',
   owners:['core/teras-wiring/turn.ts#runConversationTurn'],trigger:{kind:'request',detail:'A person asks a question in the Assistant chat'},

@@ -4,6 +4,7 @@ import {leaveCreditClaimReviewBlocks} from '@/lib/leave-credit-claim-review';
 import { hasPendingAttendanceParticipantAssignment } from '@/packs/attendance/service';
 import { pendingRewardReviews } from '@/packs/rewards/service';
 import { formatMinutesToHM } from '@/lib/overtime-duration';
+import { Fragment } from 'react';
 import Link from 'next/link';
 import { redirect,notFound } from 'next/navigation';
 import {parseAssignedApprovalFocus,assignedApprovalCategory,type AssignedApprovalFocus,type AssignedApprovalKind} from '@/lib/assigned-approval-focus';
@@ -67,6 +68,7 @@ import { AttentionOnArrival } from './attention-on-arrival';
 import { CategoryPanel } from './category-panel';
 import { parseApprovalSort, sortApprovalRows, type ApprovalSort } from '@/lib/approvals-sort';
 import {
+  approvalsReturnUrl,
   correctionsRowFilter,
   parseApprovalCategory,
   sectionVisible,
@@ -85,6 +87,8 @@ import { isOvertimeCorrection, type BulkRow, type BulkCategory } from '@/lib/app
 // not each do their own subtraction; that is how two screens come to disagree about one request.
 import { leaveDisplaySplit } from '@/lib/leave-split';
 import { listLeaveTypes } from '@/core/read';
+// AI v2 W6: the approver recommendation beside each assigned leave request, and the "Passes every check" filter.
+import { LeaveRecommendationRow, PassingFilter, passingIds, readApprovalRecommendations } from './leave-recommendations';
 
 /** Category-panel return params (2dec6406): every decide form carries the current category + sort so the
  *  action's redirect lands back on the SAME filtered view (success and error paths alike). */
@@ -167,12 +171,12 @@ function DecideButtons({
 export default async function ApprovalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; sort?: string; category?: string;task?:string|string[];requestId?:string|string[] }>;
+  searchParams: Promise<{ error?: string; sort?: string; category?: string;task?:string|string[];requestId?:string|string[];leaveFilter?:string|string[] }>;
 }) {
   const { s, scopeIds } = await scopedSession();
   const admin=isAdmin(s),manager=(s.roles??[]).includes('manager');
   const attendanceOn=isModuleEnabledOrFalse(s,'attendance'),claimsOn=isModuleEnabledOrFalse(s,'claims');
-  const {error,sort:sortParam,category:categoryParam,task,requestId}=await searchParams;
+  const {error,sort:sortParam,category:categoryParam,task,requestId,leaveFilter}=await searchParams;
   let focus:AssignedApprovalFocus|null;
   try{focus=parseAssignedApprovalFocus(task,requestId);}catch{notFound();}
   if(focus&&!await isCurrentAssignedApproval(s,focus,{attendance:attendanceOn,claims:claimsOn}))notFound();
@@ -370,7 +374,18 @@ export default async function ApprovalsPage({
   // (no loader ORDER BY rewrite). Sort is stable + keyed on request id, so counts/permissions/visible
   // rows are unchanged and a re-sort preserves the (bulk-approval) selection keyed by id. Each section
   // names its own createdAt / display-name fields.
-  const sortedLeave = sortApprovalRows(pendingLeave, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.appliedOn });
+  const allSortedLeave = sortApprovalRows(pendingLeave, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.appliedOn });
+  // AI v2 W6: the approver recommendation for each visible leave request assigned to this viewer, while its
+  // worker may run (./leave-recommendations.tsx). "Passes every check" narrows the leave table to the requests
+  // whose recommendation passed every check; it never selects or decides anything by itself.
+  const recommendations = await readApprovalRecommendations(s, visible('leave') ? allSortedLeave.map((r) => r.id) : []);
+  const passing = passingIds(recommendations);
+  const leaveFilterPassing = !focus && leaveFilter === 'passing' && passing.size > 0;
+  const sortedLeave = leaveFilterPassing ? allSortedLeave.filter((r) => passing.has(r.id)) : allSortedLeave;
+  const recommendationRecordId = (id: string) => {
+    const view = recommendations.views.get(id);
+    return view?.kind === 'recommendation' ? view.recordId ?? undefined : undefined;
+  };
   const sortedCancellations = sortApprovalRows(pendingCancellations, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
   const sortedReplacement = sortApprovalRows(replacementRequests, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt.toISOString() });
   const sortedClaims = sortApprovalRows(claims, sort, { id: (r) => r.id, name: (r) => r.claimantName, createdAt: (r) => r.createdAt });
@@ -414,7 +429,7 @@ export default async function ApprovalsPage({
     (breakdowns.get(r.id)?.length ?? 0) === 0;
   const bulkRows: BulkRow[] = [
     ...(visible('leave')
-      ? sortedLeave.filter(leaveBulkActionable).map((r) => ({ id: r.id, type: 'leave' as const, category: 'leave' as const }))
+      ? sortedLeave.filter(leaveBulkActionable).map((r) => ({ id: r.id, type: 'leave' as const, category: 'leave' as const, ...(recommendationRecordId(r.id) ? { recommendationRecordId: recommendationRecordId(r.id) } : {}) }))
       : []),
     ...(visible('leaveCancellation')
       ? sortedCancellations.map((c) => ({ id: c.id, type: 'leaveCancellation' as const, category: 'leaveCancellation' as const }))
@@ -504,6 +519,11 @@ export default async function ApprovalsPage({
             </Link>
           </div>
         )}
+        {recommendations.active && (() => {
+          const all = approvalsReturnUrl({ category: nav.category, sort: nav.sort });
+          return <PassingFilter active={leaveFilterPassing} count={passing.size} total={allSortedLeave.length}
+            href={{ all: `${all}#${APPROVAL_SECTION_ID.leave}`, passing: `${all}${all.includes('?') ? '&' : '?'}leaveFilter=passing#${APPROVAL_SECTION_ID.leave}` }} />;
+        })()}
         {pendingLeave.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingLeave')}</p>
         ) : (
@@ -529,9 +549,10 @@ export default async function ApprovalsPage({
             </thead>
             <tbody className="divide-y divide-border">
               {sortedLeave.map((r) => (
-                // a34eedde: stable per-row DOM id so the arrival island can flash the exact request
-                // a calendar pill deep-linked to (hash `approvals-leave--<id>`).
-                <tr key={r.id} id={approvalRowDomId(r.id)} tabIndex={-1} className="scroll-mt-24">
+                <Fragment key={r.id}>
+                {/* a34eedde: stable per-row DOM id so the arrival island can flash the exact request
+                    a calendar pill deep-linked to (hash `approvals-leave--<id>`). */}
+                <tr id={approvalRowDomId(r.id)} tabIndex={-1} className="scroll-mt-24">
                   <td className="px-4 py-2.5">{leaveBulkActionable(r) && <BulkRowCheckbox id={r.id} type="leave" />}</td>
                   <td className="px-4 py-2.5">
                     <EmployeeCode code={r.employeeCode} />
@@ -649,10 +670,13 @@ export default async function ApprovalsPage({
                       </div>
                     ) : (
                       // Ordinary request (no per-date rows): one approve/reject control (reject requires a reason).
-                      <LeaveDecideControls id={r.id} labels={leaveDecideLabels} nav={nav} />
+                      <LeaveDecideControls id={r.id} labels={leaveDecideLabels} nav={nav} recommendationRecordId={recommendationRecordId(r.id)} />
                     )}
                   </td>
                 </tr>
+                {/* AI v2 W6: the recommendation under its request, full width (8 columns), or nothing. */}
+                <LeaveRecommendationRow leaveRequestId={r.id} recommendations={recommendations} columns={8} />
+                </Fragment>
               ))}
             </tbody>
           </table>

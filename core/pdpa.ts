@@ -93,6 +93,12 @@ export async function erasePersonPiiTx(tx:Tx,ctx:SessionContext,p:ErasePersonPii
     // and task memory, is deleted under the intent recorded above; the function reads no turn.
     const [chats]=await tx.execute<{cleared:number}>(sql`select app.teras_chats_redact(${p.subjectEmploymentId}::uuid) as cleared`);
     if(!chats||!Number.isSafeInteger(chats.cleared)||chats.cleared<0)throw new Error('Chat erasure unavailable.');
+    // W11 private cases (migration 0959, ADR-0173) join the same admitted erasure: the person's closed cases are deleted
+    // with their notes and audit; open ones stay under the retention exception, marked, and go when a handler closes
+    // them. The function reads no text, and the report names no private case either way, so an erasure never tells the
+    // administrator whether the person wrote one.
+    const [cases]=await tx.execute<{touched:number}>(sql`select app.private_cases_redact(${p.subjectEmploymentId}::uuid) as touched`);
+    if(!cases||!Number.isSafeInteger(cases.touched)||cases.touched<0)throw new Error('Private case erasure unavailable.');
     const [conversation]=await tx.execute<{cleared:number}>(sql`select app.assistant_conversation_metadata_redact(${p.subjectEmploymentId}::uuid) as cleared`);
     if(!conversation||!Number.isSafeInteger(conversation.cleared)||conversation.cleared<0)throw new Error('Conversation metadata erasure unavailable.');
     if(!outcomes||!Number.isSafeInteger(outcomes.cleared)||outcomes.cleared<0)throw new Error('Assistant outcome erasure unavailable.');

@@ -451,7 +451,8 @@
       "blocking": "Peraturan cuti akan menolak permohonan ini dalam keadaan sekarang.",
       "version": {
         "leave_type": "Peraturan jenis cuti, versi {version}",
-        "approval_chain": "Rantaian kelulusan, versi {version}"
+        "approval_chain": "Rantaian kelulusan, versi {version}",
+        "recommender": "Semakan cadangan, versi {version}"
       },
       "youDecide": "Ini nasihat sahaja. Anda membuat keputusan pada halaman permohonan itu sendiri.",
       "unavailable": {
@@ -462,7 +463,47 @@
         "not_assigned": "Permohonan ini tidak ditugaskan kepada anda.",
         "not_pending": "Permohonan ini tidak lagi menunggu keputusan.",
         "failed": "Cadangan tidak dapat dimuatkan buat masa ini."
-      }
+      },
+      "youDecideHere": "Ini nasihat sahaja. Anda membuat keputusan dengan Lulus atau Tolak.",
+      "result": {
+        "balance_covers": {
+          "pass": "Baki cuti mencukupi untuk hari yang dimohon.",
+          "fail": "Baki cuti tidak mencukupi, dan jenis cuti ini tidak membenarkan baki negatif sebanyak itu.",
+          "unusual": "Baki cuti hanya mencukupi dengan menjadi negatif, yang dibenarkan oleh jenis cuti ini.",
+          "missing": "Baki cuti tidak dapat dibaca."
+        },
+        "own_overlap": {
+          "pass": "Tiada cuti lain pemohon yang bertindih dengan tarikh ini.",
+          "fail": "Pemohon sudah mempunyai cuti yang diluluskan pada sebahagian tarikh ini.",
+          "unusual": "Pemohon mempunyai permohonan lain yang belum diputuskan pada sebahagian tarikh ini.",
+          "missing": "Cuti lain pemohon tidak dapat dibaca sepenuhnya."
+        },
+        "team_coverage": {
+          "pass": "Tiada orang lain yang boleh anda lihat bercuti pada tarikh ini.",
+          "fail": "Liputan pasukan di bawah tahap minimum.",
+          "unusual": "Ada orang lain yang boleh anda lihat bercuti pada sebahagian tarikh ini.",
+          "missing": "Siapa lagi yang bercuti tidak dapat dibaca."
+        },
+        "policy_limits": {
+          "pass": "Peraturan dokumen dan tarikh bagi jenis cuti ini dipenuhi.",
+          "fail": "Jenis cuti ini memerlukan dokumen dan tiada dokumen dilampirkan.",
+          "unusual": "Cuti ini bermula sebelum hari ini.",
+          "missing": "Peraturan jenis cuti ini tidak dapat dibaca."
+        }
+      },
+      "prepared": {
+        "read": "Permohonan itu, cuti lain pemohon pada tarikh ini, siapa lagi yang boleh anda lihat bercuti, dan peraturan jenis cuti, semuanya dibaca sebagai anda.",
+        "model": "Tiada. Keputusan datang daripada empat semakan, dan ia tidak pernah mencadangkan penolakan.",
+        "recordLabel": "Rekod",
+        "record": "Disimpan sebagai rekod hasil. Apabila anda membuat keputusan, sama ada anda mengikut cadangan itu akan ditambah padanya."
+      },
+      "filter": {
+        "label": "Tapis permohonan cuti mengikut cadangan",
+        "all": "Semua permohonan cuti",
+        "passing": "Lulus setiap semakan ({count})",
+        "help": "Hanya menunjukkan permohonan yang lulus setiap semakan. Pilih permohonan itu, kemudian luluskan atau tolak dengan pengesahan. Tiada apa yang diluluskan secara automatik."
+      },
+      "openOne": "Tunjukkan cadangan"
     },
     "digest": {
       "title": "Hari anda",
@@ -476,6 +517,7 @@
     "conversation": {
       "routed": "Dihantar kepada pasukan HR anda: topik ini tidak dikendalikan oleh pembantu.",
       "routedCrisis": "Jika anda dalam bahaya, hubungi perkhidmatan kecemasan sekarang.",
+      "startPrivateCase": "Mulakan kes peribadi dengan HR",
       "days": "{count, plural, other {# hari}}",
       "leaveApplyTitle": "{leaveType}, {start} ({days, plural, other {# hari}})",
       "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, other {# hari}})",
@@ -491,6 +533,8 @@
       "profileEmergencyTitle": "Tukar kenalan kecemasan anda",
       "profileDependantTitle": "Tambah tanggungan",
       "profileBankTitle": "Tukar akaun bank anda kepada {bankName}, berakhir {ending}",
+      "toilRequestTitle": "Permohonan Kredit Cuti, {date}, {start} – {end}",
+      "creditDays": "{count, plural, other {# hari}} dikreditkan jika diluluskan",
       "review": "Semak",
       "open": "Buka",
       "expires": "Tamat {time}",
@@ -517,14 +561,16 @@
           "claimSubmitted": "Tuntutan dihantar untuk kelulusan, belum diluluskan.",
           "claimDraftSaved": "Disimpan sebagai draf. Tambah resit di Tuntutan untuk menghantarnya.",
           "claimCancelled": "Tuntutan dibatalkan.",
-          "profileRequested": "Dihantar kepada HR. Tiada yang berubah sehingga HR meluluskannya."
+          "profileRequested": "Dihantar kepada HR. Tiada yang berubah sehingga HR meluluskannya.",
+          "toilSubmitted": "Dihantar untuk kelulusan, belum diluluskan. Tiada kredit diberi sehingga ia diluluskan."
         },
         "refused": {
           "expired": "Kad ini telah tamat tempoh. Minta sekali lagi untuk kad baharu.",
           "invalid": "Kad ini tidak boleh digunakan lagi. Minta sekali lagi untuk kad baharu.",
           "access": "Kad ini tidak lagi sepadan dengan akses anda. Minta sekali lagi untuk kad baharu.",
           "retired": "Kad ini telah digunakan atau diganti. Semak permohonan di halamannya.",
-          "unavailable": "Ini tidak dapat disemak sekarang. Cuba lagi sebentar lagi."
+          "unavailable": "Ini tidak dapat disemak sekarang. Cuba lagi sebentar lagi.",
+          "consent": "Tandakan persetujuan di atas untuk mengesahkan."
         }
       },
       "suggestionMeta": "Lengkapkan dan sahkan di halamannya",
@@ -546,7 +592,8 @@
         "attendance_overtime_request": "Permohonan kerja lebih masa sedia untuk disemak",
         "claims_submit": "Tuntutan perbelanjaan sedia untuk disemak",
         "claims_cancel": "Pembatalan tuntutan sedia untuk disemak",
-        "ess_profile_request": "Perubahan profil sedia untuk disemak"
+        "ess_profile_request": "Perubahan profil sedia untuk disemak",
+        "toil_replacement_request": "Permohonan Kredit Cuti sedia untuk disemak"
       },
       "checks": {
         "actor_current": "Akses anda masih sah",
@@ -565,7 +612,10 @@
         "receipt_attached": "Keperluan resit",
         "own_pending_claim": "Tuntutan masih belum diputuskan",
         "profile_fields_editable": "Anda boleh memohon perubahan ini",
-        "profile_request_reviewed": "Disemak dengan rekod anda"
+        "profile_request_reviewed": "Disemak dengan rekod anda",
+        "leave_credit_offered": "Anda boleh memohon Kredit Cuti",
+        "worked_day_read": "Jenis hari dibaca daripada jadual giliran anda",
+        "leave_credit_rules": "Peraturan Kredit Cuti membenarkannya"
       },
       "outcomes": {
         "withdrawn_now": "Ditarik balik serta-merta",
@@ -600,7 +650,9 @@
         "explain_leave_entitlement": "pengiraan kelayakan",
         "explain_payslip_statutory": "pengiraan berkanun",
         "explain_attendance_day": "pengiraan kehadiran",
-        "setup_copilot": "langkah persediaan"
+        "setup_copilot": "langkah persediaan",
+        "explain_pay_difference": "perbezaan gaji anda",
+        "explain_claim_limit": "had tuntutan anda"
       },
       "errors": {
         "invalid_question": "Sila tanya soalan sehingga 2,000 aksara.",
@@ -716,6 +768,181 @@
       "nothingComingUp": "Tiada apa-apa dalam dua minggu akan datang.",
       "managerAwayRangeUnnamed": "Pengurus anda tiada di pejabat {start} – {end}.",
       "managerAwayDayUnnamed": "Pengurus anda tiada di pejabat pada {date}."
+    }
+  },
+  "why": {
+    "link": "Kenapa?",
+    "close": "Tutup",
+    "ask": "Tanya AI Centre tentang ini",
+    "opening": "Membuka AI Centre…",
+    "unavailable": "Penjelasan ini tidak dapat dimuatkan sekarang. Cuba lagi.",
+    "pay": {
+      "linkLabel": "Kenapa gaji saya berbeza daripada bulan lepas?",
+      "title": "Kenapa {period} berbeza daripada {previous}",
+      "netUp": "Gaji bersih anda {amount} lebih tinggi berbanding {previous}.",
+      "netDown": "Gaji bersih anda {amount} lebih rendah berbanding {previous}.",
+      "netSame": "Gaji bersih anda sama seperti {previous}.",
+      "colItem": "Perkara",
+      "colChange": "Perubahan",
+      "noLines": "Tiada baris slip gaji yang berubah.",
+      "payItems": "Item gaji yang berubah",
+      "statutory": "Potongan berkanun",
+      "statutoryBase": "{name} dikenakan atas {current}, berbanding {previous} pada {previousPeriod}.",
+      "statutoryBaseUnknown": "Gaji yang dikenakan {name} tidak direkodkan untuk kedua-dua bulan.",
+      "causes": "Apa yang direkodkan oleh perkhidmatan gaji",
+      "noCause": "Perkhidmatan gaji tidak merekodkan sebab selain angka di atas. Pasukan HR atau gaji anda boleh menerangkan lebih lanjut.",
+      "earliest": "Ini slip gaji terawal anda yang telah dikeluarkan, jadi tiada bulan sebelumnya untuk dibandingkan.",
+      "noData": "Belum ada slip gaji yang dikeluarkan untuk dibandingkan.",
+      "onlyIn": "{companies} membayar anda dalam satu daripada dua bulan itu sahaja, jadi ia tidak dibandingkan di sini.",
+      "runs": "{period}: {current, plural, other {# slip gaji}}; {previousPeriod}: {previous, plural, other {# slip gaji}}.",
+      "note": "Perkhidmatan gaji mengira setiap angka di sini. AI Centre hanya menerangkannya.",
+      "question": "Kenapa gaji saya untuk {period} berbeza daripada {previous}?",
+      "cause": {
+        "unpaid_leave": "Cuti tanpa gaji: {current} pada {period}, {previous} pada {previousPeriod}.",
+        "absence": "Tidak hadir: {current} pada {period}, {previous} pada {previousPeriod}.",
+        "overtime_hours": "Kerja lebih masa: {current} pada {period}, {previous} pada {previousPeriod}.",
+        "salary_change": "Gaji asas anda berubah daripada {previous} kepada {current}, berkuat kuasa {date}.",
+        "salary_change_undated": "Gaji asas anda berubah daripada {previous} kepada {current}.",
+        "days_paid": "Hari dibayar: {current} pada {period}, {previous} pada {previousPeriod}.",
+        "additional_run": "Slip gaji tambahan (bonus atau luar kitaran): {current} pada {period}, {previous} pada {previousPeriod}.",
+        "statutory_rules": "Peraturan berkanun berubah daripada versi {previous} kepada {current}.",
+        "set_by_hand": "Ditetapkan secara manual oleh pasukan gaji pada {period}: {items}."
+      },
+      "days": "{count, plural, other {# hari}}",
+      "hours": "{count, plural, other {# jam}}"
+    },
+    "rule": {
+      "schedule": "{name} dirujuk daripada jadual caruman mengikut jalur gaji, jadi amaunnya berubah secara berperingkat.",
+      "rate": "{name} ialah peratusan daripada gaji.",
+      "mtd": "PCB mengikut pengiraan potongan cukai bulanan LHDN.",
+      "manual": "{name} ditetapkan secara manual, bukan oleh peraturan."
+    },
+    "deduction": {
+      "linkLabel": "Kenapa {name} sebanyak ini?",
+      "title": "Kenapa {name} sebanyak {amount}",
+      "takeHome": "Dipotong daripada gaji anda",
+      "reported": "Bahagian penuh anda, seperti yang difailkan",
+      "employerBorne": "Dibayar oleh majikan bagi pihak anda",
+      "employer": "Bahagian majikan sendiri",
+      "base": "Gaji yang dikenakan",
+      "rate": "Kadar berkesan (angka semakan, bukan peraturan)",
+      "notRecorded": "Slip gaji ini tidak merekodkan gaji yang dikenakan, jadi pengiraannya tidak dapat ditunjukkan.",
+      "additional": "Ini slip gaji tambahan: amaunnya ialah tambahan ke atas sebulan penuh, jadi tiada kadar boleh ditunjukkan.",
+      "version": "Versi peraturan berkanun {version}.",
+      "days": "Hari dipotong",
+      "absenceNote": "Perkhidmatan gaji memotong amaun ini bagi hari yang direkodkan pada slip gaji ini.",
+      "question": "Kenapa potongan {name} pada slip gaji {period} saya sebanyak ini?",
+      "note": "Perkhidmatan gaji mengira setiap angka di sini. AI Centre hanya menerangkannya."
+    },
+    "leave": {
+      "title": "Baki {leaveType} anda",
+      "cycle": "Tahun cuti {start} hingga {end}.",
+      "entitlement": "Kelayakan untuk tahun ini",
+      "earnedSoFar": "Diperoleh setakat ini",
+      "broughtForward": "Dibawa ke hadapan",
+      "adjustments": "Pelarasan",
+      "totalEntitlement": "Jumlah kelayakan",
+      "taken": "Diambil",
+      "pending": "Menunggu kelulusan",
+      "forfeited": "Luput",
+      "available": "Tersedia",
+      "canApplyFor": "Anda boleh memohon",
+      "table": "Jadual kelayakan: {name}.",
+      "prorated": "Anda tidak bekerja sepanjang tahun cuti, jadi {annual} setahun penuh diprorata kepada {display}.",
+      "rounded": "Kaedah pembundaran jenis cuti ini telah digunakan.",
+      "withheld": "Syarikat anda tidak menunjukkan sebahagian angka ini kepada pekerja.",
+      "expiry": "Hari yang dibawa ke hadapan luput pada {date}.",
+      "takenOnly": "Jenis cuti ini tiada kelayakan; hanya yang telah anda ambil dikira.",
+      "daysValue": "{days} hari",
+      "note": "Perkhidmatan cuti mengira setiap angka di sini. AI Centre hanya menerangkannya.",
+      "question": "Kenapa baki {leaveType} saya sebanyak ini?"
+    },
+    "claim": {
+      "linkLabel": "Kenapa had {claimType} saya angka ini?",
+      "title": "Had {claimType} anda",
+      "annual": "Had tahunan",
+      "usedYear": "Digunakan tahun ini",
+      "pendingYear": "Daripadanya menunggu kelulusan",
+      "remainingYear": "Baki tahun ini",
+      "monthly": "Had bulanan",
+      "usedMonth": "Digunakan bulan ini",
+      "remainingMonth": "Baki bulan ini",
+      "perClaim": "Maksimum bagi satu tuntutan",
+      "lifetime": "Had sepanjang perkhidmatan",
+      "usedLifetime": "Digunakan setakat ini",
+      "block": "Had bagi tempoh ini",
+      "usedBlock": "Digunakan dalam tempoh ini",
+      "remainingBlock": "Baki sehingga {date}",
+      "claimsPerYear": "Tuntutan dibenarkan setahun",
+      "claimsUsed": "Tuntutan dibuat tahun ini",
+      "items": "Had sub-tuntutan",
+      "unlimited": "Tiada had ditetapkan untuk jenis tuntutan ini bagi anda.",
+      "policyGrade": "Had ini datang daripada polisi untuk gred jawatan anda, berkuat kuasa mulai {date}.",
+      "policyDefault": "Had ini datang daripada polisi untuk semua gred, berkuat kuasa mulai {date}.",
+      "usedNote": "Digunakan mengira tuntutan yang menunggu kelulusan, diluluskan atau dibayar, mengikut tarikh perbelanjaan. Draf tidak dikira.",
+      "note": "Perkhidmatan tuntutan mengira setiap angka di sini. AI Centre hanya menerangkannya.",
+      "question": "Kenapa had tuntutan {claimType} saya begini, dan berapa banyak yang telah saya gunakan?"
+    }
+  },
+  "aiAsk": {
+    "chats": "Sembang",
+    "newChat": "Sembang baharu",
+    "newConversation": "Perbualan baharu",
+    "search": "Cari sembang anda",
+    "groups": {
+      "today": "Hari ini",
+      "yesterday": "Semalam",
+      "earlier": "Sebelum ini"
+    },
+    "withheldTitle": "Perkara peribadi",
+    "withheldNote": "Diserahkan kepada HR · tiada perkataan disimpan",
+    "untitled": "Sembang tanpa tajuk",
+    "noChats": "Belum ada sembang.",
+    "noMatches": "Tiada sembang yang sepadan dengan carian anda.",
+    "listUnavailable": "Sembang anda tidak dapat dimuatkan. Cuba lagi nanti.",
+    "moreChats": "Lagi sembang",
+    "earlierSaved": "Perbualan tersimpan terdahulu",
+    "moreTools": "Lagi alat",
+    "keptFor": "{days, plural, other {Sembang disimpan selama # hari, kemudian dipadam.}}",
+    "keptUnknown": "Sembang dipadam selepas tempoh yang ditetapkan oleh organisasi anda.",
+    "privacyLink": "Data dan privasi anda",
+    "backToAsk": "Kembali ke Tanya",
+    "deleteChat": "Padam sembang",
+    "deleteTitle": "Padam sembang ini?",
+    "deleteBody": "Sembang ini dan apa yang diingati oleh Pusat AI untuknya dipadam sekarang, secara kekal. Rekod HR anda tidak diubah.",
+    "deleteConfirm": "Padam",
+    "deleteFailed": "Sembang tidak dapat dipadam. Cuba lagi.",
+    "deleted": "Sembang dipadam.",
+    "privacy": {
+      "title": "Data dan privasi anda",
+      "description": "Apa yang disimpan oleh Pusat AI tentang anda, dan cara mengosongkannya."
+    },
+    "tools": {
+      "title": "Lagi alat",
+      "description": "Pintasan dan cara lain untuk bekerja dengan Pusat AI.",
+      "shortcuts": "Pintasan"
+    },
+    "retention": {
+      "title": "Simpan sembang selama",
+      "help": "Berapa lama Pusat AI menyimpan sembang setiap orang sebelum memadamnya. Sembang yang ditahan kerana topik sensitif tidak menyimpan sebarang perkataan pada mana-mana tetapan.",
+      "legend": "Tempoh menyimpan sembang",
+      "option": "{days, plural, other {# hari}}",
+      "save": "Simpan",
+      "confirm": "Tukar",
+      "confirmTitle": "Tukar tempoh sembang disimpan?",
+      "confirmShorter": "{days, plural, other {Sembang tanpa mesej baharu lebih daripada # hari akan dipadam tidak lama lagi, untuk semua orang. Ia tidak boleh dipulihkan.}}",
+      "confirmLonger": "{days, plural, other {Sembang akan disimpan selama # hari dari mesej seterusnya. Sembang yang telah dipadam tidak dipulihkan.}}",
+      "saved": "{days, plural, other {Disimpan. Sembang disimpan selama # hari.}}",
+      "failed": "Tetapan tidak dapat disimpan. Cuba lagi.",
+      "notAdministrator": "Hanya pentadbir kumpulan boleh menukar ini.",
+      "readOnly": "{days, plural, other {Sembang disimpan selama # hari. Hanya pentadbir kumpulan boleh menukar ini.}}",
+      "unavailable": "Tetapan semasa tidak dapat dibaca."
+    },
+    "commandBar": {
+      "title": "Tanya Pusat AI",
+      "onThisPage": "Di halaman ini: {area}",
+      "hint": "Enter untuk menyediakan · tiada apa berubah sehingga anda sahkan",
+      "busy": "Pusat AI masih menjawab. Cuba lagi sebentar lagi."
     }
   }
 }

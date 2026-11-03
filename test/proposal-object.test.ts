@@ -132,6 +132,6 @@ describe('a proposal never applies a change',()=>{
  });
  it('is issued only by the declared native preparers',()=>{
   const callers=['core','app','lib','packs'].flatMap(files).filter(file=>/\bissueProposal\(/.test(readFileSync(join(root,file),'utf8')));
-  expect(callers.sort()).toEqual(['core/proposals/attendance-request.ts','core/proposals/claim-cancel.ts','core/proposals/claim-submit.ts','core/proposals/leave-apply.ts','core/proposals/leave-cancel.ts','core/proposals/leave-decide.ts','core/proposals/profile-change.ts','core/proposals/proposal.ts']);
+  expect(callers.sort()).toEqual(['core/proposals/attendance-request.ts','core/proposals/claim-cancel.ts','core/proposals/claim-submit.ts','core/proposals/leave-apply.ts','core/proposals/leave-cancel.ts','core/proposals/leave-decide.ts','core/proposals/profile-change.ts','core/proposals/proposal.ts','core/proposals/toil-request.ts']);
  });
 });

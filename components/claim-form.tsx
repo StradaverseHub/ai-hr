@@ -1,8 +1,9 @@
 'use client';
 
-import { useActionState, useMemo, useState } from 'react';
+import { useActionState, useMemo, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, ErrorBanner, Field, inputCls } from './ui';
+import { WhyLink } from './why/why-panel';
 
 type SubmitState = { error: string | null };
 type Action = (prevState: SubmitState, fd: FormData) => SubmitState | Promise<SubmitState>;
@@ -89,6 +90,8 @@ export function ClaimForm({
   todayUtc,
   draft,
   employmentId,
+  why,
+  whyPanel,
 }: {
   types: ClaimFormType[];
   submitAction: Action;
@@ -96,6 +99,10 @@ export function ClaimForm({
   /** Present ⇒ the form is EDITING this draft: Save updates it in place, Submit files that same row. */
   draft?: ClaimDraftPrefill;
   employmentId?:string;
+  /** AI v2 W5 — each claim type's "Why?" link (pre-translated by the RSC) and the panel the page drew for the one the
+   *  person opened, shown under the balance panel. Absent ⇒ the form is exactly what it was. */
+  why?: { text: string; links: Record<string, { href: string; label: string; expanded: boolean }>; openId: string | null };
+  whyPanel?: ReactNode;
 }) {
   const t = useTranslations('claims');
   const [typeId, setTypeId] = useState(draft?.claimTypeId ?? types[0]?.id ?? '');
@@ -189,7 +196,13 @@ export function ClaimForm({
       {/* Balance panel (ccbd0508) — grade-resolved entitlement transparency before submit. */}
       {bal && (
         <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs sm:col-span-2">
-          <div className="mb-1.5 font-semibold text-foreground">{t('balanceTitle')}</div>
+          <div className="mb-1.5 flex items-center justify-between gap-3 font-semibold text-foreground">
+            <span>{t('balanceTitle')}</span>
+            {selected && why?.links[selected.id] && (
+              <WhyLink href={why.links[selected.id].href} text={why.text} label={why.links[selected.id].label}
+                expanded={why.links[selected.id].expanded} controls={`claim-why-${selected.id}`} className="text-xs" />
+            )}
+          </div>
           {hasLimit || itemHasLimit ? (
             <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
               {bal.annualLimit != null && (
@@ -255,6 +268,7 @@ export function ClaimForm({
           )}
         </div>
       )}
+      {selected && why?.openId === selected.id && whyPanel && <div className="sm:col-span-2">{whyPanel}</div>}
 
       {/* Claim Item (dependent, mandatory only when the selected type has items) — side-by-side, 2-column. */}
       {items.length > 0 ? (

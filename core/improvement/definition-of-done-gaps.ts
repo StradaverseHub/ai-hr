@@ -10,8 +10,12 @@
 export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=Object.freeze({
  'corpus':[
  'action:approvals.leave.decide',
+ // AI v2 W2 (slice 2) declared the own Leave Credit request; its corpus turn is still to be written.
+ 'action:toil.replacement.request',
  // AI Centre issue 13b gave /payroll/reports its semantic entry (pay_aggregate); its corpus turn is still to be written.
  'page:/payroll/reports',
+ // AI v2 W7 gave /analytics its semantic entry (workforce_metric); its corpus turn is still to be written.
+ 'page:/analytics',
  ],
  'guide,corpus':[
  'page:/personnel',
@@ -37,7 +41,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'action:attendance.missing_clock.remind','action:employees.import','action:employees.passport_expiry.remind',
  'action:employees.review_overdue.remind','action:leave.edit','action:lifecycle.acknowledgement.submit','action:lifecycle.step.chase',
  'action:org.employee_id_template.status','action:performance.checkin.cancel','action:performance.checkin.complete',
- 'action:performance.checkin.schedule','action:rewards.cancel_review','action:toil.credit.grant','action:toil.replacement.request','page:/admin/ai',
+ 'action:performance.checkin.schedule','action:rewards.cancel_review','action:toil.credit.grant','page:/admin/ai',
  'page:/admin/attendance/file-mappings','page:/admin/attendance/schedule-assignment','page:/admin/attendance/settings',
  'page:/admin/attendance/settings/overtime-patterns','page:/admin/audit','page:/admin/claims','page:/admin/claims/forms','page:/admin/claims/limits',
  'page:/admin/claims/mileage','page:/admin/claims/reimbursements','page:/admin/holidays','page:/admin/leave-config/adjustments',
@@ -48,7 +52,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/admin/rewards/access','page:/admin/rewards/shared','page:/admin/scheduled-actions','page:/admin/settings/email',
  'page:/admin/settings/email-templates','page:/admin/settings/employee-id','page:/admin/settings/hiring-defaults',
  'page:/admin/settings/notifications','page:/admin/settings/profile-requests','page:/admin/settings/profile-requests/rules',
- 'page:/admin/system-explorer','page:/admin/system-testing','page:/admin/users','page:/admin/work-locations/clocking','page:/analytics',
+ 'page:/admin/system-explorer','page:/admin/system-testing','page:/admin/users','page:/admin/work-locations/clocking',
  'page:/approvals','page:/approvals/history','page:/attendance','page:/attendance/breakdown','page:/attendance/clock','page:/attendance/import',
  'page:/attendance/import/logs','page:/attendance/my-roster','page:/attendance/plan-ot','page:/attendance/recompute',
  'page:/attendance/request-status','page:/attendance/requests','page:/control-tower','page:/control-tower/actions','page:/control-tower/agents',

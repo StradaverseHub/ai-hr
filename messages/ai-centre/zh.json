@@ -451,7 +451,8 @@
       "blocking": "按目前情况，某项休假规则会拒绝此申请。",
       "version": {
         "leave_type": "假期类型规则，版本 {version}",
-        "approval_chain": "审批链，版本 {version}"
+        "approval_chain": "审批链，版本 {version}",
+        "recommender": "建议检查，版本 {version}"
       },
       "youDecide": "这只是建议。请在该申请自己的页面上作出决定。",
       "unavailable": {
@@ -462,7 +463,47 @@
         "not_assigned": "此申请未分配给您。",
         "not_pending": "此申请已不再等待决定。",
         "failed": "暂时无法加载建议。"
-      }
+      },
+      "youDecideHere": "这只是建议。请用“批准”或“驳回”作出决定。",
+      "result": {
+        "balance_covers": {
+          "pass": "假期余额足以覆盖所申请的天数。",
+          "fail": "假期余额不足，且该假期类型不允许透支到这个程度。",
+          "unusual": "假期余额只有在透支后才足够，该假期类型允许透支。",
+          "missing": "无法读取假期余额。"
+        },
+        "own_overlap": {
+          "pass": "申请人没有其他休假与这些日期重叠。",
+          "fail": "申请人在其中部分日期已有获批的休假。",
+          "unusual": "申请人在其中部分日期还有另一项待审批的申请。",
+          "missing": "无法完整读取申请人的其他休假。"
+        },
+        "team_coverage": {
+          "pass": "您可见的其他人在这些日期都没有休假。",
+          "fail": "团队人手覆盖低于最低要求。",
+          "unusual": "您可见的其他人在其中部分日期休假。",
+          "missing": "无法读取其他休假人员。"
+        },
+        "policy_limits": {
+          "pass": "符合该假期类型的文件和日期规则。",
+          "fail": "该假期类型需要文件，但未附上任何文件。",
+          "unusual": "该休假在今天之前开始。",
+          "missing": "无法读取该假期类型的规则。"
+        }
+      },
+      "prepared": {
+        "read": "该申请、申请人在这些日期的其他休假、您可见的其他休假人员，以及该假期类型的规则，均以您的身份读取。",
+        "model": "无。结论来自四项检查，且从不建议拒绝。",
+        "recordLabel": "记录",
+        "record": "作为结果记录保存。您作出决定后，是否采纳了建议会添加到该记录中。"
+      },
+      "filter": {
+        "label": "按建议筛选休假申请",
+        "all": "全部休假申请",
+        "passing": "通过所有检查（{count}）",
+        "help": "仅显示通过所有检查的申请。选择这些申请，然后在确认后批准或拒绝。不会自动批准任何申请。"
+      },
+      "openOne": "显示建议"
     },
     "digest": {
       "title": "您的今天",
@@ -476,6 +517,7 @@
     "conversation": {
       "routed": "已转给您的人事团队：助手不处理此类话题。",
       "routedCrisis": "如果您身处危险，请立即联系紧急服务。",
+      "startPrivateCase": "向人力资源部门提交私密个案",
       "days": "{count, plural, other {# 天}}",
       "leaveApplyTitle": "{leaveType}，{start}（{days, plural, other {# 天}}）",
       "leaveApplyRangeTitle": "{leaveType}，{start} – {end}（{days, plural, other {# 天}}）",
@@ -491,6 +533,8 @@
       "profileEmergencyTitle": "更改您的紧急联系人",
       "profileDependantTitle": "添加受抚养人",
       "profileBankTitle": "将您的银行账户更改为{bankName}，尾号{ending}",
+      "toilRequestTitle": "假期额度申请，{date}，{start} – {end}",
+      "creditDays": "获批后计入 {count, plural, other {# 天}}",
       "review": "审核",
       "open": "打开",
       "expires": "{time} 过期",
@@ -517,14 +561,16 @@
           "claimSubmitted": "报销已提交审批，尚未批准。",
           "claimDraftSaved": "已存为草稿。请在报销页面添加收据后提交。",
           "claimCancelled": "报销已取消。",
-          "profileRequested": "已发送给人事部。人事部批准前不会有任何更改。"
+          "profileRequested": "已发送给人事部。人事部批准前不会有任何更改。",
+          "toilSubmitted": "已提交审批，尚未批准。获批前不会计入任何额度。"
         },
         "refused": {
           "expired": "此卡片已过期。请重新提问以获取新卡片。",
           "invalid": "此卡片已无法使用。请重新提问以获取新卡片。",
           "access": "此卡片与您当前的权限不再相符。请重新提问以获取新卡片。",
           "retired": "此卡片已被使用或替换。请在其页面上查看该申请。",
-          "unavailable": "暂时无法检查。请稍后再试。"
+          "unavailable": "暂时无法检查。请稍后再试。",
+          "consent": "请先勾选上方的同意声明再确认。"
         }
       },
       "suggestionMeta": "在其页面上完成并确认",
@@ -546,7 +592,8 @@
         "attendance_overtime_request": "加班申请待审核",
         "claims_submit": "报销申请待审核",
         "claims_cancel": "报销取消待审核",
-        "ess_profile_request": "资料更改待审核"
+        "ess_profile_request": "资料更改待审核",
+        "toil_replacement_request": "假期额度申请待审核"
       },
       "checks": {
         "actor_current": "您的权限有效",
@@ -565,7 +612,10 @@
         "receipt_attached": "收据要求",
         "own_pending_claim": "报销仍待处理",
         "profile_fields_editable": "您可以申请这些更改",
-        "profile_request_reviewed": "已与您的记录核对"
+        "profile_request_reviewed": "已与您的记录核对",
+        "leave_credit_offered": "您可以申请假期额度",
+        "worked_day_read": "已从您的排班读取日期类型",
+        "leave_credit_rules": "假期额度规则允许"
       },
       "outcomes": {
         "withdrawn_now": "立即撤回",
@@ -600,7 +650,9 @@
         "explain_leave_entitlement": "额度计算",
         "explain_payslip_statutory": "法定扣款计算",
         "explain_attendance_day": "考勤计算",
-        "setup_copilot": "设置步骤"
+        "setup_copilot": "设置步骤",
+        "explain_pay_difference": "您的工资差异",
+        "explain_claim_limit": "您的报销限额"
       },
       "errors": {
         "invalid_question": "请提出不超过 2,000 个字符的问题。",
@@ -716,6 +768,181 @@
       "nothingComingUp": "未来两周没有安排。",
       "managerAwayRangeUnnamed": "您的经理将于 {start} – {end} 不在。",
       "managerAwayDayUnnamed": "您的经理将于 {date} 不在。"
+    }
+  },
+  "why": {
+    "link": "为什么？",
+    "close": "关闭",
+    "ask": "就此询问 AI Centre",
+    "opening": "正在打开 AI Centre…",
+    "unavailable": "暂时无法加载此说明，请重试。",
+    "pay": {
+      "linkLabel": "为什么我的工资与上个月不同？",
+      "title": "为什么{period}与{previous}不同",
+      "netUp": "您的实发工资比{previous}高 {amount}。",
+      "netDown": "您的实发工资比{previous}低 {amount}。",
+      "netSame": "您的实发工资与{previous}相同。",
+      "colItem": "项目",
+      "colChange": "变化",
+      "noLines": "工资单上没有项目发生变化。",
+      "payItems": "发生变化的工资项目",
+      "statutory": "法定扣除",
+      "statutoryBase": "{name}按 {current} 计算，{previousPeriod}为 {previous}。",
+      "statutoryBaseUnknown": "两个月并未都记录{name}的计算工资。",
+      "causes": "薪资服务记录的原因",
+      "noCause": "除上述数字外，薪资服务未记录其他原因。您的人事或薪资团队可以提供更多信息。",
+      "earliest": "这是您最早发放的工资单，没有更早的月份可供比较。",
+      "noData": "目前还没有可比较的已发放工资单。",
+      "onlyIn": "{companies}只在其中一个月向您支付工资，因此此处不作比较。",
+      "runs": "{period}：{current, plural, other {# 张工资单}}；{previousPeriod}：{previous, plural, other {# 张工资单}}。",
+      "note": "此处每个数字均由薪资服务计算，AI Centre 仅作说明。",
+      "question": "为什么我{period}的工资与{previous}不同？",
+      "cause": {
+        "unpaid_leave": "无薪假：{period} {current}，{previousPeriod} {previous}。",
+        "absence": "缺勤：{period} {current}，{previousPeriod} {previous}。",
+        "overtime_hours": "加班：{period} {current}，{previousPeriod} {previous}。",
+        "salary_change": "您的基本工资从 {previous} 调整为 {current}，自 {date} 起生效。",
+        "salary_change_undated": "您的基本工资从 {previous} 调整为 {current}。",
+        "days_paid": "计薪天数：{period} {current}，{previousPeriod} {previous}。",
+        "additional_run": "额外工资单（奖金或周期外）：{period} {current}，{previousPeriod} {previous}。",
+        "statutory_rules": "法定规则版本从 {previous} 变更为 {current}。",
+        "set_by_hand": "{period}由薪资人员手动设定：{items}。"
+      },
+      "days": "{count, plural, other {# 天}}",
+      "hours": "{count, plural, other {# 小时}}"
+    },
+    "rule": {
+      "schedule": "{name}按工资档次查对缴款表，因此金额按级距变化。",
+      "rate": "{name}按工资的百分比计算。",
+      "mtd": "PCB 按照 LHDN 的每月扣税计算。",
+      "manual": "{name}为手动设定，而非按规则计算。"
+    },
+    "deduction": {
+      "linkLabel": "为什么{name}是这个金额？",
+      "title": "为什么{name}为 {amount}",
+      "takeHome": "从您的工资中扣除",
+      "reported": "您的全部份额（申报数）",
+      "employerBorne": "雇主代您支付",
+      "employer": "雇主自身份额",
+      "base": "计算所依据的工资",
+      "rate": "实际费率（核对数字，并非规则）",
+      "notRecorded": "此工资单未记录计算所依据的工资，因此无法显示计算过程。",
+      "additional": "这是一张额外工资单：其金额是相对整月的增量，因此无法显示费率。",
+      "version": "法定规则版本 {version}。",
+      "days": "扣除天数",
+      "absenceNote": "薪资服务按本工资单记录的天数扣除此金额。",
+      "question": "为什么我{period}工资单上的{name}扣除是这个金额？",
+      "note": "此处每个数字均由薪资服务计算，AI Centre 仅作说明。"
+    },
+    "leave": {
+      "title": "您的{leaveType}余额",
+      "cycle": "假期年度 {start} 至 {end}。",
+      "entitlement": "全年应享",
+      "earnedSoFar": "至今已累积",
+      "broughtForward": "结转",
+      "adjustments": "调整",
+      "totalEntitlement": "应享总额",
+      "taken": "已休",
+      "pending": "待批准",
+      "forfeited": "已失效",
+      "available": "可用",
+      "canApplyFor": "您可申请",
+      "table": "应享表：{name}。",
+      "prorated": "您并未在整个假期年度在职，因此全年 {annual} 按比例折算为 {display}。",
+      "rounded": "已按该假期类型的取整方式处理。",
+      "withheld": "贵公司未向员工显示其中部分数字。",
+      "expiry": "结转天数将于 {date} 失效。",
+      "takenOnly": "此假期类型没有应享额度，仅统计您已休的天数。",
+      "daysValue": "{days} 天",
+      "note": "此处每个数字均由假期服务计算，AI Centre 仅作说明。",
+      "question": "为什么我的{leaveType}余额是这样？"
+    },
+    "claim": {
+      "linkLabel": "为什么我的{claimType}限额是这个数字？",
+      "title": "您的{claimType}限额",
+      "annual": "年度限额",
+      "usedYear": "今年已用",
+      "pendingYear": "其中待批准",
+      "remainingYear": "今年剩余",
+      "monthly": "每月限额",
+      "usedMonth": "本月已用",
+      "remainingMonth": "本月剩余",
+      "perClaim": "单次报销上限",
+      "lifetime": "任职期间限额",
+      "usedLifetime": "至今已用",
+      "block": "本期间限额",
+      "usedBlock": "本期间已用",
+      "remainingBlock": "剩余（至 {date}）",
+      "claimsPerYear": "每年可报销次数",
+      "claimsUsed": "今年已报销次数",
+      "items": "子项限额",
+      "unlimited": "您的此报销类型未设定限额。",
+      "policyGrade": "这些限额来自适用于您职级的政策，自 {date} 起生效。",
+      "policyDefault": "这些限额来自适用于所有职级的政策，自 {date} 起生效。",
+      "usedNote": "已用金额按费用日期计算待批准、已批准或已支付的报销，草稿不计入。",
+      "note": "此处每个数字均由报销服务计算，AI Centre 仅作说明。",
+      "question": "为什么我的{claimType}报销限额是这样，我已经用了多少？"
+    }
+  },
+  "aiAsk": {
+    "chats": "对话",
+    "newChat": "新对话",
+    "newConversation": "新的对话",
+    "search": "搜索您的对话",
+    "groups": {
+      "today": "今天",
+      "yesterday": "昨天",
+      "earlier": "更早"
+    },
+    "withheldTitle": "私人事项",
+    "withheldNote": "已转交 HR · 未保留任何文字",
+    "untitled": "未命名对话",
+    "noChats": "还没有对话。",
+    "noMatches": "没有与搜索匹配的对话。",
+    "listUnavailable": "无法加载您的对话，请稍后再试。",
+    "moreChats": "更多对话",
+    "earlierSaved": "较早保存的对话",
+    "moreTools": "更多工具",
+    "keptFor": "{days, plural, other {对话保留 # 天，之后删除。}}",
+    "keptUnknown": "对话会在贵组织设定的期限后删除。",
+    "privacyLink": "您的数据与隐私",
+    "backToAsk": "返回提问",
+    "deleteChat": "删除对话",
+    "deleteTitle": "删除此对话？",
+    "deleteBody": "此对话以及 AI 中心为其记住的内容将立即永久删除。您的 HR 记录不会改变。",
+    "deleteConfirm": "删除",
+    "deleteFailed": "无法删除对话，请重试。",
+    "deleted": "对话已删除。",
+    "privacy": {
+      "title": "您的数据与隐私",
+      "description": "AI 中心保存了您的哪些内容，以及如何清除。"
+    },
+    "tools": {
+      "title": "更多工具",
+      "description": "快捷方式以及使用 AI 中心的其他方式。",
+      "shortcuts": "快捷方式"
+    },
+    "retention": {
+      "title": "对话保留期限",
+      "help": "AI 中心在删除每个人的对话前保留多久。因敏感话题而被拦截的对话在任何设置下都不保留文字。",
+      "legend": "对话保留多久",
+      "option": "{days, plural, other {# 天}}",
+      "save": "保存",
+      "confirm": "更改",
+      "confirmTitle": "更改对话保留期限？",
+      "confirmShorter": "{days, plural, other {超过 # 天没有新消息的对话将很快被删除，对所有人生效，且无法恢复。}}",
+      "confirmLonger": "{days, plural, other {对话将从下一条消息起保留 # 天。已删除的对话不会恢复。}}",
+      "saved": "{days, plural, other {已保存。对话保留 # 天。}}",
+      "failed": "无法保存设置，请重试。",
+      "notAdministrator": "只有集团管理员可以更改此设置。",
+      "readOnly": "{days, plural, other {对话保留 # 天。只有集团管理员可以更改此设置。}}",
+      "unavailable": "无法读取当前设置。"
+    },
+    "commandBar": {
+      "title": "向 AI 中心提问",
+      "onThisPage": "当前页面：{area}",
+      "hint": "按 Enter 准备 · 在您确认前不会有任何更改",
+      "busy": "AI 中心仍在回答，请稍后再试。"
     }
   }
 }

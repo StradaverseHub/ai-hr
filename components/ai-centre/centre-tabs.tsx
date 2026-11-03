@@ -17,7 +17,8 @@ const ICONS: Readonly<Record<CentreTabKey, LucideIcon>> = {
  * The AI centre's one tab bar, on every centre page. Links only: each target page keeps its own guard, and
  * an administrator tab is hidden from a viewer whose page would refuse it. */
 /** AI v2 Phase 1: the Inbox tab and its count are retired; what waits on the person is on Today (`/`). */
-export function AiCentreTabs({ active, isAdmin }: { active: CentreTabKey; isAdmin: boolean }) {
+/** `active` null (AI v2 W4): a centre page that is not one of the tabs (Your data and privacy, More tools). */
+export function AiCentreTabs({ active, isAdmin }: { active: CentreTabKey | null; isAdmin: boolean }) {
   const t = useTranslations('aiCentre');
   const name = aiCentreName(t('genericName'));
   return (

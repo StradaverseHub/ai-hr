@@ -114,6 +114,11 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'myTp1',href:'/me/tax-relief',labelKey:'nav.taxRelief',guard:'scopedSession',routes:['/me/tax-relief'],hasScopeNote:true},
   {screenKey:'myPayslip',href:'/me/payslip',labelKey:'nav.myPayslips',guard:'scopedSession',routes:['/me/payslip'],hasScopeNote:true},
   {screenKey:'myLetters',href:'/me/letters',labelKey:'nav.myLetters',guard:'scopedSession',routes:['/me/letters','/me/letters/[letterId]'],hasScopeNote:true},
+  // AI v2 W11 (ADR-0173): every person reaches their own private cases; the data is their own cases only (0959 RLS).
+  {screenKey:'myPrivateCases',href:'/me/cases',labelKey:'privateCases.me.title',guard:'scopedSession',routes:['/me/cases','/me/cases/new','/me/cases/[caseId]'],hasScopeNote:true},
+  // Every person reaches the address; only a designated case handler (or, for cases no handler can take, a group
+  // administrator) sees any case, and never one they wrote or were left out of. Not a role grant.
+  {screenKey:'privateCaseHandling',href:'/cases',labelKey:'privateCases.handle.title',guard:'scopedSession',routes:['/cases','/cases/[caseId]'],hasScopeNote:true},
   {screenKey:'letterReports',href:'/letters/reports',labelKey:'letters.reports.title',guard:'scopedSession',routes:['/letters/reports'],hasScopeNote:true},
   {screenKey:'letterSettings',href:'/letters/settings',labelKey:'letters.settings.title',guard:'scopedSession',routes:['/letters/settings','/letters/settings/policy','/letters/settings/automation'],hasScopeNote:true},
   {screenKey:'letterRegister',href:'/letters/register',labelKey:'letters.register.title',guard:'scopedSession',routes:['/letters/register','/letters/register/[letterId]'],hasScopeNote:true},
@@ -1525,6 +1530,8 @@ export const SCREENS: readonly ScreenEntry[] = [
   { screenKey: 'analytics', href: '/analytics', labelKey: 'nav.analytics', guard: 'scopedAdmin', routes: ['/analytics'] },
   { screenKey: 'auditTrail', href: '/admin/audit', labelKey: 'nav.auditTrail', guard: 'requireAdmin', routes: ['/admin/audit'] },
   { screenKey: 'dataPrivacy', href: '/admin/privacy', labelKey: 'nav.dataPrivacy', guard: 'requireAdmin', routes: ['/admin/privacy'] },
+  // AI v2 W11 (ADR-0173): designating private case handlers; designating someone reads no case.
+  { screenKey: 'privateCaseHandlers', href: '/admin/privacy/case-handlers', labelKey: 'privateCases.admin.title', guard: 'requireAdmin', routes: ['/admin/privacy/case-handlers'] },
   // Provider setup moved to AI management › Provider; /admin/ai is now a redirect-only segment.
   { screenKey: 'aiConfig', href: '/control-tower/agents/provider', labelKey: 'nav.aiConfig', guard: 'requireAdmin', routes: ['/admin/ai', '/control-tower/agents/provider'] },
   { screenKey: 'usersRoles', href: '/admin/users', labelKey: 'nav.usersRoles', guard: 'requireAdmin', routes: ['/admin/users'] },

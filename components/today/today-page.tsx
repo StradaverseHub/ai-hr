@@ -22,10 +22,12 @@ import {AtAGlanceSection,DoneForYouSection,NeedsYouSection,WatchingSection,needs
  * side by side; everyone else (employee, manager, payroll partner) gets Needs you and Done for you beside the
  * At a glance panel. Which sections run never widens what a read may return: every read is the viewer's own,
  * under row-level security. There is no HR capacity strip yet (Phase 2, W15). */
-export async function TodayPage({session,scopeIds,employmentId,notice,more,needs={},now=new Date()}:{
+export async function TodayPage({session,scopeIds,employmentId,notice,more,needs={},why,now=new Date()}:{
  session:SessionContext;scopeIds:readonly string[];employmentId?:string;
  /** Needs you: every waiting decision ("See all"), and the leave recommendation the approver asked to open. */
  needs?:Readonly<{all?:boolean;recommend?:string}>;
+ /** AI v2 W5: At a glance's "Why?" panel the person opened (`leave:<leave type id>`). */
+ why?:string;
  /** A page-level message for the person (the module-unavailable explanation), shown above the greeting. */
  notice?:ReactNode;more:ReactNode;now?:Date;
 }){
@@ -54,7 +56,7 @@ export async function TodayPage({session,scopeIds,employmentId,notice,more,needs
     <Suspense fallback={<TodaySectionSkeleton title={t(needsYouHeading(audience))} rows={3}/>}><NeedsYouSection {...common} {...needs}/></Suspense>
     <Suspense fallback={<TodaySectionSkeleton title={t('doneForYou')} rows={1}/>}><DoneForYouSection {...common}/></Suspense>
    </div>
-   <Suspense fallback={<TodaySectionSkeleton title={t('atAGlance')} rows={2}/>}><AtAGlanceSection {...common} employmentId={employmentId}/></Suspense>
+   <Suspense fallback={<TodaySectionSkeleton title={t('atAGlance')} rows={2}/>}><AtAGlanceSection {...common} employmentId={employmentId} why={why}/></Suspense>
   </div>}
   <section aria-labelledby="today-more" data-today-more className="min-w-0 space-y-4 border-t border-border pt-6">
    <h2 id="today-more" className="text-sm font-medium text-muted-foreground">{t('more')}</h2>

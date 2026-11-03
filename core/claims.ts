@@ -664,6 +664,11 @@ export type ClaimBalanceRow = {
   usedThisBlock: number;
   remainingThisBlock: number | null;
   blockEndsOn: string | null;
+  /** AI v2 W5 — WHICH POLICY VERSION these limits come from: the resolved claim_policy row's own valid_from (rows
+   *  are versioned by it, latest valid_from wins), and whether it is this employee's grade row or the all-grades
+   *  default. Null when no policy applies (unlimited). Read off the same row the figures above came from. */
+  policyValidFrom: string | null;
+  policyGradeScoped: boolean;
 };
 
 
@@ -1754,11 +1759,17 @@ export function ownClaimFormAvailable(ctx:SessionContext,employmentId:string):Pr
  * (annual/monthly limits, used, remaining). One read so a graded employee never sees another grade's rate.
  */
 export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: string): Promise<EmployeeClaimType[]> {
+  return withTenant(ctx, (tx) => employeeClaimTypesTx(tx, employmentId));
+}
+
+/** AI v2 W5 — getEmployeeClaimTypes in the caller's own transaction, so the Assistant read facade
+ *  (core/assistant-read-session.ts) reads the very same limits inside its read-only, guarded transaction. The
+ *  caller passes an employment it has already resolved as the person's own; RLS still scopes every row. */
+export async function employeeClaimTypesTx(tx: Tx, employmentId: string): Promise<EmployeeClaimType[]> {
   const asOf = today();
   // The SAME set the submit check enforces against — the balance panel must show the employee the number
   // the server will actually use, pending reservations included, or the screen and the refusal disagree.
   const usedStatuses: ClaimStatus[] = [...RESERVING_STATUSES];
-  return withTenant(ctx, async (tx) => {
     const [emp] = await tx.select({ gradeId: employment.gradeId }).from(employment).where(eq(employment.id, employmentId)).limit(1);
     const gradeId = emp?.gradeId ?? null;
     const types = await tx.select().from(claimType).where(isNull(claimType.archivedAt)).orderBy(claimType.code);
@@ -1823,6 +1834,8 @@ export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: s
           remainingThisBlock:
             blockWindow && policy?.block != null ? Math.max(0, policy.block.limit - usedThisBlock) : null,
           blockEndsOn: blockWindow ? blockWindow.endOn : null,
+          policyValidFrom: policy?.validFrom ?? null,
+          policyGradeScoped: policy != null && policy.gradeId != null,
         };
         return {
           id: t.id,
@@ -1838,7 +1851,6 @@ export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: s
         };
       }),
     );
-  });
 }
 
 // ─────────────────────────────── Lifecycle (ADR-0021 §2) ───────────────────────────────

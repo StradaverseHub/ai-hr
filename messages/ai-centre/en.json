@@ -451,7 +451,8 @@
       "blocking": "A leave rule would refuse this request as it stands.",
       "version": {
         "leave_type": "Leave type rules, version {version}",
-        "approval_chain": "Approval chain, version {version}"
+        "approval_chain": "Approval chain, version {version}",
+        "recommender": "Recommendation checks, version {version}"
       },
       "youDecide": "This is advice. You decide on the request's own page.",
       "unavailable": {
@@ -462,7 +463,47 @@
         "not_assigned": "This request is not assigned to you.",
         "not_pending": "This request is no longer waiting for a decision.",
         "failed": "The recommendation could not be loaded just now."
-      }
+      },
+      "youDecideHere": "This is advice. You decide with Approve or Reject.",
+      "result": {
+        "balance_covers": {
+          "pass": "The balance covers the days requested.",
+          "fail": "The balance does not cover the days, and the leave type does not allow going that far negative.",
+          "unusual": "The balance covers the days only by going negative, which the leave type allows.",
+          "missing": "The balance could not be read."
+        },
+        "own_overlap": {
+          "pass": "No other leave of the applicant overlaps these dates.",
+          "fail": "The applicant already has approved leave on some of these dates.",
+          "unusual": "The applicant has another pending request on some of these dates.",
+          "missing": "Other leave of the applicant could not be fully read."
+        },
+        "team_coverage": {
+          "pass": "Nobody else you can see is away on these dates.",
+          "fail": "Team coverage is below the minimum.",
+          "unusual": "Others you can see are away on some of these dates.",
+          "missing": "Who else is away could not be read."
+        },
+        "policy_limits": {
+          "pass": "The leave type's document and date rules are met.",
+          "fail": "The leave type requires a document and none is attached.",
+          "unusual": "The leave starts before today.",
+          "missing": "The leave type's rules could not be read."
+        }
+      },
+      "prepared": {
+        "read": "The request, the applicant's other leave on these dates, who else you can see is away, and the leave type's rules, each read as you.",
+        "model": "None. The verdict comes from the four checks, and it never recommends rejecting.",
+        "recordLabel": "Record",
+        "record": "Kept as an outcome record. When you decide, whether you followed the recommendation is added to it."
+      },
+      "filter": {
+        "label": "Filter leave requests by recommendation",
+        "all": "All leave requests",
+        "passing": "Passes every check ({count})",
+        "help": "Showing only requests that pass every check. Select them, then approve or reject them with a confirmation. Nothing is approved automatically."
+      },
+      "openOne": "Show the recommendation"
     },
     "digest": {
       "title": "Your day",
@@ -476,6 +517,7 @@
     "conversation": {
       "routed": "Sent to your HR team: this topic is not handled by the assistant.",
       "routedCrisis": "If you are in danger, contact emergency services now.",
+      "startPrivateCase": "Start a private case with HR",
       "days": "{count, plural, one {# day} other {# days}}",
       "leaveApplyTitle": "{leaveType}, {start} ({days, plural, one {# day} other {# days}})",
       "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, one {# day} other {# days}})",
@@ -491,6 +533,8 @@
       "profileEmergencyTitle": "Change your emergency contact",
       "profileDependantTitle": "Add a dependant",
       "profileBankTitle": "Change your bank account to {bankName}, ending {ending}",
+      "toilRequestTitle": "Leave Credit request, {date}, {start} – {end}",
+      "creditDays": "{count, plural, one {# day} other {# days}} credited if approved",
       "review": "Review",
       "open": "Open",
       "expires": "Expires {time}",
@@ -517,14 +561,16 @@
           "claimSubmitted": "Claim submitted for approval, not approved yet.",
           "claimDraftSaved": "Saved as a draft. Add the receipt on Claims to submit it.",
           "claimCancelled": "Claim cancelled.",
-          "profileRequested": "Sent to HR. Nothing changes until HR approves it."
+          "profileRequested": "Sent to HR. Nothing changes until HR approves it.",
+          "toilSubmitted": "Sent for approval, not approved yet. Nothing is credited until it is approved."
         },
         "refused": {
           "expired": "This card has expired. Ask again for a new one.",
           "invalid": "This card can no longer be used. Ask again for a new one.",
           "access": "This card no longer matches your access. Ask again for a new one.",
           "retired": "This card was already used or replaced. Check the request on its page.",
-          "unavailable": "This could not be checked just now. Try again in a moment."
+          "unavailable": "This could not be checked just now. Try again in a moment.",
+          "consent": "Tick the agreement above to confirm."
         }
       },
       "suggestionMeta": "Complete and confirm it on its page",
@@ -546,7 +592,8 @@
         "attendance_overtime_request": "Overtime request ready to review",
         "claims_submit": "Expense claim ready to review",
         "claims_cancel": "Claim cancellation ready to review",
-        "ess_profile_request": "Profile change ready to review"
+        "ess_profile_request": "Profile change ready to review",
+        "toil_replacement_request": "Leave Credit request ready to review"
       },
       "checks": {
         "actor_current": "Your access is current",
@@ -565,7 +612,10 @@
         "receipt_attached": "Receipt requirement",
         "own_pending_claim": "Claim still pending",
         "profile_fields_editable": "You may request these changes",
-        "profile_request_reviewed": "Checked against your record"
+        "profile_request_reviewed": "Checked against your record",
+        "leave_credit_offered": "You may ask for a Leave Credit",
+        "worked_day_read": "Day type read from your roster",
+        "leave_credit_rules": "Leave Credit rules allow it"
       },
       "outcomes": {
         "withdrawn_now": "Withdrawn at once",
@@ -600,7 +650,9 @@
         "explain_leave_entitlement": "the entitlement calculation",
         "explain_payslip_statutory": "the statutory calculation",
         "explain_attendance_day": "the attendance calculation",
-        "setup_copilot": "setup steps"
+        "setup_copilot": "setup steps",
+        "explain_pay_difference": "your pay difference",
+        "explain_claim_limit": "your claim limits"
       },
       "errors": {
         "invalid_question": "Please ask a question of up to 2,000 characters.",
@@ -716,6 +768,181 @@
       "nothingComingUp": "Nothing coming up in the next two weeks.",
       "managerAwayRangeUnnamed": "Your manager is away {start} – {end}.",
       "managerAwayDayUnnamed": "Your manager is away on {date}."
+    }
+  },
+  "why": {
+    "link": "Why?",
+    "close": "Close",
+    "ask": "Ask AI Centre about this",
+    "opening": "Opening AI Centre…",
+    "unavailable": "This explanation could not be loaded right now. Try again.",
+    "pay": {
+      "linkLabel": "Why is my pay different from last month?",
+      "title": "Why {period} is different from {previous}",
+      "netUp": "Your net pay was {amount} higher than in {previous}.",
+      "netDown": "Your net pay was {amount} lower than in {previous}.",
+      "netSame": "Your net pay was the same as in {previous}.",
+      "colItem": "Item",
+      "colChange": "Change",
+      "noLines": "No payslip line changed.",
+      "payItems": "Pay items that changed",
+      "statutory": "Statutory deductions",
+      "statutoryBase": "{name} was charged on {current}, against {previous} in {previousPeriod}.",
+      "statutoryBaseUnknown": "The wage {name} was charged on was not recorded for both months.",
+      "causes": "What the payroll service recorded",
+      "noCause": "The payroll service recorded no cause beyond the figures above. Your HR or payroll team can tell you more.",
+      "earliest": "This is your earliest released payslip, so there is no earlier month to compare it with.",
+      "noData": "There is no released payslip to compare yet.",
+      "onlyIn": "{companies} paid you in only one of the two months, so it is not compared here.",
+      "runs": "{period}: {current, plural, one {# payslip} other {# payslips}}; {previousPeriod}: {previous, plural, one {# payslip} other {# payslips}}.",
+      "note": "The payroll service calculated every figure here. AI Centre only explains it.",
+      "question": "Why is my pay for {period} different from {previous}?",
+      "cause": {
+        "unpaid_leave": "Unpaid leave: {current} in {period}, {previous} in {previousPeriod}.",
+        "absence": "Absence: {current} in {period}, {previous} in {previousPeriod}.",
+        "overtime_hours": "Overtime: {current} in {period}, {previous} in {previousPeriod}.",
+        "salary_change": "Your basic salary changed from {previous} to {current}, effective {date}.",
+        "salary_change_undated": "Your basic salary changed from {previous} to {current}.",
+        "days_paid": "Days paid: {current} in {period}, {previous} in {previousPeriod}.",
+        "additional_run": "Additional (bonus or off-cycle) payslips: {current} in {period}, {previous} in {previousPeriod}.",
+        "statutory_rules": "The statutory rules changed from version {previous} to {current}.",
+        "set_by_hand": "Set by hand by payroll in {period}: {items}."
+      },
+      "days": "{count, plural, one {# day} other {# days}}",
+      "hours": "{count, plural, one {# hour} other {# hours}}"
+    },
+    "rule": {
+      "schedule": "{name} is looked up from its contribution schedule by wage band, so the amount moves in steps.",
+      "rate": "{name} is a percentage of the wage.",
+      "mtd": "PCB follows LHDN's monthly tax deduction calculation.",
+      "manual": "{name} was set by hand, not by a rule."
+    },
+    "deduction": {
+      "linkLabel": "Why is {name} this amount?",
+      "title": "Why {name} is {amount}",
+      "takeHome": "Taken from your pay",
+      "reported": "Your full share, as filed",
+      "employerBorne": "Paid by your employer on your behalf",
+      "employer": "Your employer's own share",
+      "base": "Wage it was charged on",
+      "rate": "Effective rate (a check figure, not the rule)",
+      "notRecorded": "This payslip did not record the wage this was charged on, so its working cannot be shown.",
+      "additional": "This is an additional payslip: its amount is the increase over the whole month, so no rate can be shown.",
+      "version": "Statutory rules version {version}.",
+      "days": "Days deducted",
+      "absenceNote": "The payroll service deducted this for the days recorded on this payslip.",
+      "question": "Why is the {name} deduction on my {period} payslip this amount?",
+      "note": "The payroll service calculated every figure here. AI Centre only explains it."
+    },
+    "leave": {
+      "title": "Your {leaveType} balance",
+      "cycle": "Leave year {start} to {end}.",
+      "entitlement": "Entitlement for the year",
+      "earnedSoFar": "Earned so far",
+      "broughtForward": "Carried forward",
+      "adjustments": "Adjustments",
+      "totalEntitlement": "Total entitlement",
+      "taken": "Taken",
+      "pending": "Waiting for approval",
+      "forfeited": "Expired",
+      "available": "Available",
+      "canApplyFor": "You can apply for",
+      "table": "Entitlement table: {name}.",
+      "prorated": "You were not employed for the whole leave year, so the full-year {annual} was prorated to {display}.",
+      "rounded": "The leave type's rounding was applied.",
+      "withheld": "Your company does not show some of these figures to employees.",
+      "expiry": "Carried-forward days expire on {date}.",
+      "takenOnly": "This leave type has no entitlement; only what you have taken is counted.",
+      "daysValue": "{days} days",
+      "note": "The leave service calculated every figure here. AI Centre only explains it.",
+      "question": "Why is my {leaveType} balance what it is?"
+    },
+    "claim": {
+      "linkLabel": "Why is my {claimType} limit this figure?",
+      "title": "Your {claimType} limit",
+      "annual": "Yearly limit",
+      "usedYear": "Used this year",
+      "pendingYear": "Of which waiting for approval",
+      "remainingYear": "Left this year",
+      "monthly": "Monthly limit",
+      "usedMonth": "Used this month",
+      "remainingMonth": "Left this month",
+      "perClaim": "Most for one claim",
+      "lifetime": "Limit over your employment",
+      "usedLifetime": "Used so far",
+      "block": "Limit for this period",
+      "usedBlock": "Used this period",
+      "remainingBlock": "Left until {date}",
+      "claimsPerYear": "Claims allowed each year",
+      "claimsUsed": "Claims made this year",
+      "items": "Sub-claim limits",
+      "unlimited": "No limit is set on this claim type for you.",
+      "policyGrade": "These limits come from the policy for your job grade, in force from {date}.",
+      "policyDefault": "These limits come from the policy for all grades, in force from {date}.",
+      "usedNote": "Used counts claims waiting for approval, approved or paid, by the date of the expense. Drafts hold nothing.",
+      "note": "The claims service calculated every figure here. AI Centre only explains it.",
+      "question": "Why is my {claimType} claim limit what it is, and how much have I used?"
+    }
+  },
+  "aiAsk": {
+    "chats": "Chats",
+    "newChat": "New chat",
+    "newConversation": "New conversation",
+    "search": "Search your chats",
+    "groups": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "earlier": "Earlier"
+    },
+    "withheldTitle": "A private matter",
+    "withheldNote": "Passed to HR · no words kept",
+    "untitled": "Untitled chat",
+    "noChats": "No chats yet.",
+    "noMatches": "No chats match your search.",
+    "listUnavailable": "Your chats could not be loaded. Try again later.",
+    "moreChats": "More chats",
+    "earlierSaved": "Earlier saved conversations",
+    "moreTools": "More tools",
+    "keptFor": "{days, plural, one {Chats are kept for # day, then deleted.} other {Chats are kept for # days, then deleted.}}",
+    "keptUnknown": "Chats are deleted after the period your organisation sets.",
+    "privacyLink": "Your data and privacy",
+    "backToAsk": "Back to Ask",
+    "deleteChat": "Delete chat",
+    "deleteTitle": "Delete this chat?",
+    "deleteBody": "The chat and what AI Centre remembered for it are deleted now, for good. Your HR records are not changed.",
+    "deleteConfirm": "Delete",
+    "deleteFailed": "The chat could not be deleted. Try again.",
+    "deleted": "Chat deleted.",
+    "privacy": {
+      "title": "Your data and privacy",
+      "description": "What AI Centre keeps about you, and how to clear it."
+    },
+    "tools": {
+      "title": "More tools",
+      "description": "Shortcuts and other ways to work with AI Centre.",
+      "shortcuts": "Shortcuts"
+    },
+    "retention": {
+      "title": "Keep chats for",
+      "help": "How long AI Centre keeps each person's chats before deleting them. A chat withheld for a sensitive topic keeps no words at any setting.",
+      "legend": "How long to keep chats",
+      "option": "{days, plural, one {# day} other {# days}}",
+      "save": "Save",
+      "confirm": "Change",
+      "confirmTitle": "Change how long chats are kept?",
+      "confirmShorter": "{days, plural, one {Chats with no new message for more than # day will be deleted soon, for everyone. They cannot be recovered.} other {Chats with no new message for more than # days will be deleted soon, for everyone. They cannot be recovered.}}",
+      "confirmLonger": "{days, plural, one {Chats will be kept for # day from their next message. Chats already deleted are not restored.} other {Chats will be kept for # days from their next message. Chats already deleted are not restored.}}",
+      "saved": "{days, plural, one {Saved. Chats are kept for # day.} other {Saved. Chats are kept for # days.}}",
+      "failed": "The setting could not be saved. Try again.",
+      "notAdministrator": "Only a group administrator can change this.",
+      "readOnly": "{days, plural, one {Chats are kept for # day. Only a group administrator can change this.} other {Chats are kept for # days. Only a group administrator can change this.}}",
+      "unavailable": "The current setting could not be read."
+    },
+    "commandBar": {
+      "title": "Ask AI Centre",
+      "onThisPage": "On this page: {area}",
+      "hint": "Enter to prepare · nothing changes until you confirm",
+      "busy": "AI Centre is still answering. Try again in a moment."
     }
   }
 }
