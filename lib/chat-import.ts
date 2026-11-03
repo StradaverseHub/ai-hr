@@ -21,7 +21,10 @@ export const isChatImportKind=(value:unknown):value is ChatImportKind=>typeof va
 /** Why a row needs attention, as a closed vocabulary: the card says it in the person's language and the model sees only
  * these words, never the owner's own sentence (which can echo a cell). */
 export const CHAT_IMPORT_ISSUES=['missing_column','missing_value','unknown_employee','unknown_type','invalid_date','invalid_time','invalid_number',
- 'duplicate_in_file','already_imported','not_permitted','not_employed','period_closed','needs_page','other'] as const;
+ 'duplicate_in_file','already_imported','not_permitted','not_employed','period_closed','needs_page','other',
+ // The card names one company, and the preview and Confirm import its rows only: a row of another company (even one
+ // the person also administers) is reported as such and never imported here.
+ 'other_company'] as const;
 export type ChatImportIssue=typeof CHAT_IMPORT_ISSUES[number];
 
 /** The file types the four owners accept: workbooks and CSV for the spreadsheet imports, plain text for a time-clock file. */

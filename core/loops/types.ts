@@ -13,9 +13,11 @@ export type LoopRecipient='hr'|'payroll'|'employee';
 /** open: waiting for the person; waiting: the person acted and the owner's usual approval is pending; closed. */
 export type LoopCaseState='open'|'waiting'|'closed';
 /** done: the post-condition was positively observed; inactive: the employment ended; superseded: the condition no
- * longer applies (an end date moved out of the window); expired: the moment passed (a cut-off, an old day). Only
- * done is credited to the loop. */
-export type LoopCloseReason='done'|'inactive'|'superseded'|'expired';
+ * longer applies (an end date moved out of the window); expired: the moment passed (a cut-off, an old day);
+ * out_of_scope: the runner retired it because the loop no longer covers its company (the sponsor no longer
+ * administers it, or the loop's module is off there), so a card is never left on Today unchecked. Only done is
+ * credited to the loop. A detector never reports out_of_scope; only the runner writes it. */
+export type LoopCloseReason='done'|'inactive'|'superseded'|'expired'|'out_of_scope';
 /** How a done case was completed: as the card proposed, changed by the person, or completed where the card proposed
  * no value of its own (most cards ask a person to do something, they do not propose a figure or a time). */
 export type LoopResolution='as_prepared'|'changed'|'completed';

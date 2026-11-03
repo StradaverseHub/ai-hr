@@ -11604,6 +11604,8 @@ export const letterRequest=pgTable('letter_request',{
  status:text('status').notNull().$type<'requested'|'in_progress'|'issued'|'declined'>().default('requested'),
  letterId:uuid('letter_id').references(()=>letterRecord.id),declineReason:text('decline_reason'),employeeMessage:text('employee_message'),handledBy:uuid('handled_by').references(()=>appUser.id),
  createdAt:createdAt(),statusChangedAt:timestamp('status_changed_at',{withTimezone:true}).defaultNow().notNull(),version:integer('version').notNull().default(1),
+ /** Person erasure cleared the purpose, the decline reason and the message to the employee (migration 2003). */
+ textErasedAt:timestamp('text_erased_at',{withTimezone:true}),
 },t=>[index('letter_request_company_idx').on(t.tenantId,t.companyId,t.status,t.createdAt.desc()),index('letter_request_employment_idx').on(t.tenantId,t.employmentId,t.createdAt.desc())]);
 
 // Tenant-owned email designs. Versions and assets are appended through checked native owners.

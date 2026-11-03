@@ -21,7 +21,10 @@ beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-leave-change-custo
  const userId=await createAppUser(base.tenantId,subject.personId,'employee');await grantAssistant(adminCtx(base),{appUserId:userId});
  ctx={...await entitledCtx(base,['employee']),userId,personId:subject.personId,grants:[{role:'employee',companyId:null}]};
  await owner.db.insert(schema.leaveLedger).values({tenantId:base.tenantId,employmentId:subject.employmentId,leaveTypeId:base.annualLeaveTypeId,entryType:'accrual',days:'10',effectiveOn:todayInKualaLumpur()});
- weekdays=[];const next=new Date(todayInKualaLumpur()+'T00:00:00Z');while(weekdays.length<4){next.setUTCDate(next.getUTCDate()+1);if(![0,6].includes(next.getUTCDay()))weekdays.push(next.toISOString().slice(0,10));}
+ // Monday to Thursday of next week: four adjacent weekdays whatever today's weekday is. The fixture's annual type counts
+ // calendar days, so an edit across a weekend (Friday to Monday, on a Wednesday's run) would rightly count four.
+ weekdays=[];const next=new Date(todayInKualaLumpur()+'T00:00:00Z');do next.setUTCDate(next.getUTCDate()+1);while(next.getUTCDay()!==1);
+ for(let day=0;day<4;day++){weekdays.push(next.toISOString().slice(0,10));next.setUTCDate(next.getUTCDate()+1);}
  requestId=(await requestLeave(ctx,{employmentId:subject.employmentId,leaveTypeId:base.annualLeaveTypeId,startDate:weekdays[0],endDate:weekdays[0],durationType:'full_day',reason:'Fictional family visit'})).leaveRequestId;
 });
 const cancelHuman=()=>({action:cancelAction,contractVersion:1 as const,employmentId:subject.employmentId,leaveRequestId:requestId,cancel:true as const});

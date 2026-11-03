@@ -38,6 +38,8 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
     if (id === 'loop_probation_ending') return t('what.probation', { date: day(str(facts, 'endDate')) });
     if (id === 'loop_payroll_inputs') return t('what.payroll', { count: count(facts, 'missing'), date: day(str(facts, 'cutOff')) });
     if (id === 'loop_missing_employee_data') return t('what.record', { count: count(facts, 'gaps') });
+    // An HR case (core/loops/missed-clock-outs.ts): a day the employee's card could not correct, so no time is proposed.
+    if (id === 'loop_missed_clock_outs' && facts.needs === 'manual_correction') return t('what.clockOutManual', { date: day(str(facts, 'date')) });
     if (id === 'loop_missed_clock_outs') return t('what.clockOut', { time: str(facts, 'proposedCheckOut') ?? '—', date: day(str(facts, 'date')) });
     // AI v2 P2-2a: the Salary payroll loop's three kinds of card. A swing flag shows no figure here: its ratio is on the
     // Salary payroll page, for payroll administrators.

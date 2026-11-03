@@ -72,7 +72,7 @@ export async function prepareChatImportProposal(ctx:SessionContext,input:Readonl
   review:{route:info.page,href:info.page,reference:preview.attemptId??operationKey},
   import:{kind:info.kind,company:companyLabel,total:preview.total,ready:preview.ready,attention:preview.attention,warned:preview.warned,
    issues:preview.issues.slice(0,CHAT_IMPORT_CARD_ISSUES).map(row=>({...row})),issueCount:preview.issues.length,confirmable:preview.confirmable,
-   revertible:info.revertible,replacing:preview.replacing??0,template:info.template},
+   revertible:info.revertible,replacing:preview.replacing??0,template:info.template,otherCompany:preview.otherCompany},
   createdAt:created.toISOString(),expiresAt:new Date(created.getTime()+CHAT_IMPORT_TTL_MS).toISOString(),
  });
  return Object.freeze({kind:'proposal' as const,proposal,preview,info});

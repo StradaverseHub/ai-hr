@@ -11,7 +11,8 @@
  * administrator's audited grant, never anyone's own, even in a company with one HR administrator; every creation, read,
  * status change and note is audited and a refused read records nothing; the text round-trips encrypted and a wrong
  * binding fails; the lifecycle and its guard; person erasure; the sensitive reply offers the route only where it is set
- * up, calls no model and stores no words.
+ * up, calls no model and stores no words; an archived or blocked handler is no reader, and a case's handlers are frozen at
+ * filing, so a handler designated later never reads it and the fallback goes to the group administrators.
  * The restricted-owner proofs (definer lookups and erasure under forced RLS) are in test/private-cases-owner.test.ts. */
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -56,7 +57,7 @@ const seen=(ctx:SessionContext)=>withTenant(ctx,async tx=>({cases:ids(await tx.e
  notes:(await tx.execute(sql`select id from public.private_case_note`)).length,events:(await tx.execute(sql`select id from public.private_case_event`)).length}));
 const events=(caseId:string)=>owner.db.execute<{kind:string;actor:string;from_status:string|null;to_status:string|null}>(sql`select kind,actor_user_id as actor,from_status,to_status
  from public.private_case_event where case_id=${caseId}::uuid order by at,id`).then(rows=>rows.map(row=>({...row})));
-const stored=(caseId:string)=>owner.db.execute<{status:string;route:string;excluded:string[];erasure:boolean;body:string}>(sql`select status,route,excluded_user_ids as excluded,
+const stored=(caseId:string)=>owner.db.execute<{status:string;route:string;excluded:string[];handlers:string[];erasure:boolean;body:string}>(sql`select status,route,excluded_user_ids as excluded,handler_user_ids as handlers,
  erasure_requested_at is not null as erasure,body_ciphertext as body from public.private_case where id=${caseId}::uuid`).then(rows=>rows[0]);
 
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -120,13 +121,13 @@ describe('access',()=>{
   const [grants]=await owner.db.execute<Record<string,boolean>>(sql`select
    has_table_privilege('ai_hr_app','public.private_case','SELECT') as case_select,has_table_privilege('ai_hr_app','public.private_case','DELETE') as case_delete,
    has_column_privilege('ai_hr_app','public.private_case','status','UPDATE') as case_status,has_column_privilege('ai_hr_app','public.private_case','body_ciphertext','UPDATE') as case_body,
-   has_column_privilege('ai_hr_app','public.private_case','excluded_user_ids','UPDATE') as case_excluded,has_column_privilege('ai_hr_app','public.private_case','erasure_requested_at','UPDATE') as case_erasure,
+   has_column_privilege('ai_hr_app','public.private_case','excluded_user_ids','UPDATE') as case_excluded,has_column_privilege('ai_hr_app','public.private_case','handler_user_ids','UPDATE') as case_handlers,has_column_privilege('ai_hr_app','public.private_case','erasure_requested_at','UPDATE') as case_erasure,
    has_table_privilege('ai_hr_app','public.private_case_note','UPDATE') as note_update,has_table_privilege('ai_hr_app','public.private_case_note','DELETE') as note_delete,
    has_table_privilege('ai_hr_app','public.private_case_event','UPDATE') as event_update,has_table_privilege('ai_hr_app','public.private_case_event','DELETE') as event_delete,
    has_table_privilege('ai_hr_app','public.private_case_event','TRUNCATE') as event_truncate,has_table_privilege('ai_hr_app','public.private_case_handler','DELETE') as handler_delete,
    has_column_privilege('ai_hr_app','public.private_case_handler','app_user_id','UPDATE') as handler_user,has_column_privilege('ai_hr_app','public.private_case_handler','revoked_at','UPDATE') as handler_revoke,
    (select bool_and(relforcerowsecurity and relrowsecurity) from pg_class where oid in ('public.private_case'::regclass,'public.private_case_note'::regclass,'public.private_case_event'::regclass,'public.private_case_handler'::regclass)) as forced`);
-  expect(grants).toEqual({case_select:true,case_delete:true,case_status:true,case_body:false,case_excluded:false,case_erasure:false,note_update:false,note_delete:false,
+  expect(grants).toEqual({case_select:true,case_delete:true,case_status:true,case_body:false,case_excluded:false,case_handlers:false,case_erasure:false,note_update:false,note_delete:false,
    event_update:false,event_delete:false,event_truncate:false,handler_delete:false,handler_user:false,handler_revoke:true,forced:true});
  });
 
@@ -227,6 +228,92 @@ describe('access',()=>{
   await expect(readHandledPrivateCase(handler.ctx,caseId)).rejects.toMatchObject({code:'not_found'});
   expect(await privateCaseRouteAvailable(author.ctx,b.companyId)).toBe(false);
   expect((await seen(group)).cases).toEqual([caseId]);
+ });
+});
+
+describe('eligible handlers and the frozen handler set',()=>{
+ const notices=(tenantId:string)=>owner.db.execute<{recipient:string;kind:string}>(sql`select recipient_employment_id as recipient,kind from public.notification
+  where tenant_id=${tenantId}::uuid and kind='private-case.waiting' order by created_at,id`).then(rows=>rows.map(row=>({...row})));
+ it('an archived or a blocked handler is no reader anywhere: the intake, the route, the guard, the notices, the author\'s view and the group administrators\' fallback agree',async()=>{
+  await setModule(b.tenantId,'notifications','active');
+  const author=await hire('Fictional Eligibility Author','employee'),archived=await hire('Fictional Archived Handler','employee'),blocked=await hire('Fictional Blocked Handler','employee');
+  const groupAdmin=await hire('Fictional Eligibility Group Administrator','hr_admin');
+  await designate(archived.ctx.userId);await designate(blocked.ctx.userId);
+  // Both eligible: a case filed now freezes both; the group administrators read nothing of it.
+  const before=await open(author);
+  expect((await stored(before)).handlers).toEqual([archived.ctx.userId,blocked.ctx.userId].sort());
+  // The archived handler's login: still holding an unrevoked grant, but no longer eligible anywhere.
+  await owner.db.execute(sql`update public.app_user set archived_at=now() where id=${archived.ctx.userId}::uuid`);
+  expect((await privateCaseIntake(author.ctx)).readers.filter(row=>row.kind==='handler').map(row=>row.userId)).toEqual([blocked.ctx.userId]);
+  const during=await open(author);
+  expect(await stored(during)).toMatchObject({route:'handlers',handlers:[blocked.ctx.userId]});
+  // The notice of the case filed now goes to the eligible handler only, never to the archived one (who still has a bell).
+  expect((await notices(b.tenantId)).filter(row=>row.recipient===archived.employmentId).length).toBe(1);// the first case only
+  expect((await notices(b.tenantId)).map(row=>row.recipient).filter(recipient=>recipient===blocked.employmentId)).toHaveLength(2);
+  expect((await seen(groupAdmin.ctx)).cases).toEqual([]);
+  // A case leaving out both group administrators is reachable while the blocked-to-be handler is eligible.
+  const narrow=(await openPrivateCase(author.ctx,{companyId:b.companyId,category:'safety',text:TEXT,excludedUserIds:[b.adminUserId,groupAdmin.ctx.userId]})).caseId;
+  expect((await listOwnPrivateCases(author.ctx)).find(row=>row.id===narrow)?.reachable).toBe(true);
+  // The other handler's login is blocked (their only employment blacklisted): no eligible handler is left.
+  await owner.db.execute(sql`update public.employment set blacklisted_at=now() where id=${blocked.employmentId}::uuid`);
+  expect(await owner.db.execute<{blocked:boolean}>(sql`select app.login_blocked(${blocked.ctx.userId}::uuid) as blocked`)).toEqual([{blocked:true}]);
+  // The route is no longer set up: not offered, not in the intake, refused by the guard.
+  expect(await privateCaseRouteAvailable(author.ctx,b.companyId)).toBe(false);
+  expect((await privateCaseIntake(author.ctx)).companies).toEqual([]);
+  await refusedWith(open(author),'not_set_up');
+  // Every handlers-route case falls to the group administrators, exactly as when its handlers were revoked.
+  expect((await seen(groupAdmin.ctx)).cases).toEqual([before,during].sort());
+  expect((await readHandledPrivateCase(groupAdmin.ctx,during)).text).toBe(TEXT);
+  expect((await seen(group)).cases).toEqual([before,during].sort());
+  // The author's view: reachable through the group administrators, except the case that left them both out.
+  expect(Object.fromEntries((await listOwnPrivateCases(author.ctx)).map(row=>[row.id,row.reachable]))).toEqual({[before]:true,[during]:true,[narrow]:false});
+  expect((await readOwnPrivateCase(author.ctx,narrow)).reachable).toBe(false);
+ });
+ it('a handler whose only fellow handler is archived: the case filed now goes to the group administrators, and their notice with it',async()=>{
+  await setModule(b.tenantId,'notifications','active');
+  const author=await hire('Fictional Handler Author','employee'),archived=await hire('Fictional Sole Other Handler','employee'),groupAdmin=await hire('Fictional Notified Group Administrator','hr_admin');
+  // The author is a handler too, so the route stays set up; the only other handler is archived.
+  await designate(author.ctx.userId);await designate(archived.ctx.userId);
+  await owner.db.execute(sql`update public.app_user set archived_at=now() where id=${archived.ctx.userId}::uuid`);
+  const caseId=await open(author);
+  expect(await stored(caseId)).toMatchObject({route:'group_admin',handlers:[]});
+  expect(await notices(b.tenantId)).toEqual([{recipient:groupAdmin.employmentId,kind:'private-case.waiting'}]);
+  expect((await readHandledPrivateCase(groupAdmin.ctx,caseId)).route).toBe('group_admin');
+  expect((await listOwnPrivateCases(author.ctx))[0]).toMatchObject({id:caseId,reachable:true});
+ });
+ it('a handler designated after filing never reads the case; when every frozen handler has gone it falls to the group administrators, never to that handler',async()=>{
+  const author=await hire('Fictional Frozen Author','employee'),first=await hire('Fictional Frozen First Handler','employee'),later=await hire('Fictional Later Handler','employee');
+  const firstGrant=await designate(first.ctx.userId);
+  const caseId=await open(author);
+  expect(await stored(caseId)).toMatchObject({route:'handlers',handlers:[first.ctx.userId]});
+  await designate(later.ctx.userId);
+  // The later handler holds a current grant, but the case was filed before it: no read, no note, no status change.
+  expect((await seen(later.ctx)).cases).toEqual([]);
+  await expect(readHandledPrivateCase(later.ctx,caseId)).rejects.toMatchObject({code:'not_found'});
+  await expect(addPrivateCaseNote(later.ctx,{caseId,text:'Fictional later note'})).rejects.toBeInstanceOf(PrivateCaseError);
+  await refusedWith(setPrivateCaseStatus(later.ctx,{caseId,expected:'received',status:'closed'}),'not_found');
+  expect(await withTenant(later.ctx,tx=>tx.execute(sql`select * from app.private_case_names(${caseId}::uuid)`))).toEqual([]);
+  expect((await readHandledPrivateCase(first.ctx,caseId)).text).toBe(TEXT);
+  // A case filed now freezes both, and the frozen set is never rewritten.
+  const after=await open(author);
+  expect((await stored(after)).handlers).toEqual([first.ctx.userId,later.ctx.userId].sort());
+  await expect(owner.db.execute(sql`update public.private_case set handler_user_ids=array[${later.ctx.userId}::uuid] where id=${caseId}::uuid`)).rejects.toThrow();
+  // A form opened before the later designation showed only the first handler: the case it files never reaches the later one.
+  const shownEarlier=(await openPrivateCase(author.ctx,{companyId:b.companyId,category:'other',text:TEXT,shownHandlerIds:[first.ctx.userId]})).caseId;
+  expect(await stored(shownEarlier)).toMatchObject({route:'handlers',handlers:[first.ctx.userId]});
+  // The first handler's grant is revoked: no frozen handler of the first case is left, so it falls to the group
+  // administrators and never to the later handler; the case filed with both stays with the later handler.
+  await revokeCaseHandler(group,{handlerId:firstGrant});
+  expect((await seen(later.ctx)).cases).toEqual([after]);
+  expect((await seen(group)).cases).toEqual([caseId,shownEarlier].sort());
+  expect((await readHandledPrivateCase(group,caseId)).text).toBe(TEXT);
+  await expect(readHandledPrivateCase(later.ctx,shownEarlier)).rejects.toMatchObject({code:'not_found'});
+  // Shown nobody the database still names as eligible: the case goes straight to the group administrators.
+  const shownStale=(await openPrivateCase(author.ctx,{companyId:b.companyId,category:'other',text:TEXT,shownHandlerIds:[first.ctx.userId]})).caseId;
+  expect(await stored(shownStale)).toMatchObject({route:'group_admin',handlers:[]});
+  expect((await seen(later.ctx)).cases).toEqual([after]);
+  await refusedWith(openPrivateCase(author.ctx,{companyId:b.companyId,category:'other',text:TEXT,shownHandlerIds:['not-a-login']}),'invalid');
+  expect(Object.fromEntries((await listOwnPrivateCases(author.ctx)).map(row=>[row.id,row.reachable]))).toEqual({[caseId]:true,[after]:true,[shownEarlier]:true,[shownStale]:true});
  });
 });
 

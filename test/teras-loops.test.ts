@@ -7,7 +7,8 @@
  *  3. Per loop: it detects on a fictional fixture, the card reaches the right person only, nothing changes without a
  *     person's Confirm on the owner's page, its next run closes the case once the work is done, and a recurrence
  *     reopens the same case.
- *  4. Tenant and company isolation; the Loops page reads per role.
+ *  4. Tenant and company isolation; the Loops page reads per role; a company the loop no longer covers has its open
+ *     cases retired as out of scope at the next run, so no stale card stays on Today.
  *  5. No model is called by any loop (the gateway is replaced by one that counts and refuses).
  * Expected values are written out from the fixtures, never re-derived from the loops' own helpers. */
 import {randomUUID} from 'node:crypto';
@@ -151,6 +152,30 @@ describe('the loop runner',()=>{
   expect(pgText(changed)).toMatch(/permission denied/i);
   const removed=await withTenant(agent,tx=>tx.delete(terasLoopCase)).then(()=>null,(e:unknown)=>e);
   expect(pgText(removed)).toMatch(/permission denied/i);
+ });
+
+ it('retires the open cases of a company the loop no longer covers, so no stale card stays on Today, and reopens them when it does again',async()=>{
+  const [second]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Out Of Scope Sdn Bhd'}).returning();
+  const [dept]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:second.id,name:'Fictional Out Of Scope Ops'}).returning();
+  const kept=await login(b,'Fictional Kept Probationer','employee');
+  const outside=await login(b,'Fictional Retired Probationer','employee',second.id,dept.id);
+  for(const who of [kept,outside])await owner.db.update(schema.employment).set({probationEndDate:day(10)}).where(eq(schema.employment.id,who.employmentId));
+  const reader=await login(b,'Fictional Reading Group Administrator','hr_admin');
+  await on('loop_probation_ending');
+  expect(await run('loop_probation_ending')).toMatchObject({status:'ran',companies:2,totals:{opened:2},retired:0});
+  const names=async()=>(await cards(reader,true,[b.companyId,second.id])).map(card=>card.kind==='probation'?card.name:null).sort();
+  expect(await names()).toEqual(['Fictional Kept Probationer','Fictional Retired Probationer']);
+  // The sponsor now administers the first company only: the second company's case is outside their current scope.
+  await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(and(eq(schema.roleAssignment.appUserId,group.userId!),eq(schema.roleAssignment.role,'hr_admin')));
+  expect(await run('loop_probation_ending')).toMatchObject({status:'ran',companies:1,retired:1});
+  expect(await names()).toEqual(['Fictional Kept Probationer']);
+  expect((await casesOf('loop_probation_ending',reader)).map(row=>[row.employmentId===kept.employmentId?'kept':'outside',row.state,row.closeReason]).sort())
+   .toEqual([['kept','open',null],['outside','closed','out_of_scope']]);
+  // A later run does not touch it again; back in the sponsor's scope, the same case reopens.
+  expect(await run('loop_probation_ending')).toMatchObject({status:'ran',retired:0});
+  await owner.db.update(schema.roleAssignment).set({companyId:null}).where(and(eq(schema.roleAssignment.appUserId,group.userId!),eq(schema.roleAssignment.role,'hr_admin')));
+  expect(await run('loop_probation_ending')).toMatchObject({status:'ran',companies:2,totals:{reopened:1},retired:0});
+  expect(await names()).toEqual(['Fictional Kept Probationer','Fictional Retired Probationer']);
  });
 
  it('keeps tenants and companies apart',async()=>{
@@ -331,6 +356,32 @@ describe('loop 4: missed clock-outs',()=>{
   await owner.db.update(schema.attendance).set({checkOutAt:null}).where(and(eq(schema.attendance.employmentId,e.employmentId),eq(schema.attendance.attendanceDate,YESTERDAY)));
   expect(await run('loop_missed_clock_outs')).toMatchObject({status:'ran',totals:{reopened:1}});
   expect(await caseOf('loop_missed_clock_outs',wed)).toMatchObject({state:'open',reopenCount:1});
+ });
+ it('an overnight shift on an older day gets no card the attendance service would refuse: HR gets it as a manual correction',async()=>{
+  const a=adminCtx(b);
+  const night=(await createShift(a,{name:'Fictional Night',code:`NGT${randomUUID().slice(0,4)}`,startTime:'22:00',endTime:'06:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]})).id;
+  const e=await login(b,'Fictional Night Worker','employee');
+  await assignDefaultShift(a,{employmentId:e.employmentId,shiftId:night});
+  // Tuesday's night shift (older than yesterday) has a clock-in and no clock-out; yesterday's may still be running.
+  await checkIn(a,{employmentId:e.employmentId,date:TUESDAY,time:'22:01',manual:true});
+  await checkIn(a,{employmentId:e.employmentId,date:YESTERDAY,time:'22:03',manual:true});
+  await on('loop_missed_clock_outs');
+  expect(await run('loop_missed_clock_outs')).toMatchObject({status:'ran',totals:{opened:1}});
+  const tue=`clockout:${e.employmentId}:${TUESDAY}`;
+  // The roster end, 06:00, is not after the 22:01 clock-in on the same day, and the service has no correction across
+  // midnight: no proposed time, addressed to HR.
+  const opened=await caseOf('loop_missed_clock_outs',tue);
+  expect(opened).toMatchObject({state:'open',recipient:'hr',facts:{date:TUESDAY,checkIn:'22:01',needs:'manual_correction',shiftEnd:'06:00',shiftStart:'22:00'}});
+  expect(opened!.facts).not.toHaveProperty('proposedCheckOut');
+  expect(await caseOf('loop_missed_clock_outs',`clockout:${e.employmentId}:${YESTERDAY}`)).toBeUndefined();
+  // The employee gets no card and cannot read HR's case; the loop's page names it for HR.
+  expect((await cards(e,false)).filter(card=>card.kind==='clockOut')).toEqual([]);
+  expect(await withTenant(e,tx=>tx.select({id:terasLoopCase.id}).from(terasLoopCase))).toEqual([]);
+  expect((await loopDetail(group,'loop_missed_clock_outs')).cases.map(item=>[item.state,item.facts.needs])).toEqual([['open','manual_correction']]);
+  // HR records the clock-out (the next morning): the case is done, with no proposed time to have kept or changed.
+  await checkOut(a,{employmentId:e.employmentId,date:TUESDAY,time:'06:05',manual:true});
+  await run('loop_missed_clock_outs');
+  expect(await caseOf('loop_missed_clock_outs',tue)).toMatchObject({state:'closed',closeReason:'done',resolution:'completed',recipient:'hr'});
  });
 });
 

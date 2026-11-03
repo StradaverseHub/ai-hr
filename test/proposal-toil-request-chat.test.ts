@@ -117,6 +117,18 @@ describe('a Leave Credit request from chat, outside the First Schedule',()=>{
   expect(await requests()).toHaveLength(1);
  });
 
+ it('two Confirms of one card at the same moment write one request, and a later press answers with that same request',async()=>{
+  const proposal=await card(),session=await caller();
+  const both=await Promise.all([1,2].map(()=>confirmToilRequestProposal(session,{proposal,confirm:true})));
+  expect(await requests()).toHaveLength(1);
+  const [row]=await requests();
+  // Either both answer with the one request, or one is refused: never a second request.
+  for(const result of both)if(result.kind==='submitted')expect(result.requestId).toBe(row.id);
+  expect(both.some(result=>result.kind==='submitted'),JSON.stringify(both)).toBe(true);
+  expect(await confirmToilRequestProposal(session,{proposal,confirm:true})).toEqual({kind:'submitted',action:'toil.replacement.request',requestId:row.id});
+  expect(await requests()).toHaveLength(1);
+ });
+
  it('refuses a tampered, expired or someone else\'s card, and submits nothing',async()=>{
   const proposal=await card();
   const forged=clone(proposal);forged.body.facts!.creditDays=3;
@@ -179,6 +191,18 @@ describe('a Leave Credit request from chat, within the First Schedule',()=>{
   // The card's own review, which recorded no agreement, is retired rather than left waiting.
   expect(await reviewState(proposal.body.review.reference)).toBe('discarded');
   expect(await confirmToilRequestProposalAction({proposal,confirm:true,firstScheduleConsent:true})).toEqual({kind:'refused',reason:'retired'});
+  expect(await requests()).toHaveLength(1);
+ });
+
+ it('two Confirms of one card at the same moment write one request: the leave owner\'s per-employment lock and its reviewed sources refuse the other',async()=>{
+  const proposal=await card(),session=await caller();
+  const both=await Promise.all([1,2].map(()=>confirmToilRequestProposal(session,{proposal,confirm:true,firstScheduleConsent:true})));
+  const submitted=both.filter(result=>result.kind==='submitted');
+  expect(submitted,JSON.stringify(both)).toHaveLength(1);
+  const [row]=await requests();
+  expect(await requests()).toHaveLength(1);expect(row.id).toBe(submitted[0].kind==='submitted'?submitted[0].requestId:'');
+  // A third press, later, writes nothing either.
+  expect(await confirmToilRequestProposal(session,{proposal,confirm:true,firstScheduleConsent:true})).toMatchObject({kind:'refused'});
   expect(await requests()).toHaveLength(1);
  });
 

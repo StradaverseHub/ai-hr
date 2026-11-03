@@ -11,12 +11,17 @@
 --  - letter_request_option ("employees may request", per template, default off): HR users holding the letters
 --    `settings` capability for the company set it; holders of read, template, generate or settings read it. Employees
 --    never read it directly: app.letter_requestable_templates() answers for their own current employments only.
---  - letter_request: the employee reads their own (the employment is theirs) and creates one, for themselves only;
---    HR users holding the letters `generate` capability for the request's company read and update it. Nobody else: no
---    manager, other employee, agent or other-tenant policy exists.
+--  - letter_request: the employee creates one, for themselves only, and reads their own only through the column-safe
+--    lookup app.letter_requests_own() (their purpose, the status, the issued letter once issued and HR's message to them
+--    once declined): there is no employee SELECT policy on the table, so HR's decline reason and who handled a request
+--    never reach the employee, not even by a direct query (pre-release review finding 7, 4 November 2026). HR users
+--    holding the letters `generate` capability for the request's company read and update it. Nobody else: no manager,
+--    other employee, agent or other-tenant policy exists.
 --  - Owner-side paths, each narrower than an application read: the definer lookups below read options of the caller's
---    tenant (configuration, no personal data) and, for a caller holding `generate`, a request's subject name; the
---    issue trigger moves an in-progress request whose linked letter is issued to issued, nothing else.
+--    tenant (configuration, no personal data), for a caller holding `generate`, a request's subject name, and for the
+--    employee their own requests' safe columns; the issue trigger moves an in-progress request whose linked letter is
+--    issued to issued, nothing else; person erasure (core/pdpa.ts -> app.letter_requests_redact, under the admitted,
+--    audited review-erasure intent) clears the person's free text and nothing else.
 -- Lifecycle (database-owned, app.letter_request_guard): requested -> in_progress (HR prepared a draft from the request's
 -- own template for the request's own employee) -> issued (only when that letter is issued, by the trigger on
 -- letter_record); requested or in_progress -> declined (HR, with a reason and an optional message to the employee).
@@ -26,10 +31,15 @@
 -- decline reason, the message to the employee or any letter content. The employee is notified of a decline with no
 -- content beyond the status (core/notifications.ts, letter-request.declined); they read HR's optional message with the
 -- declined status on My Letters, never the reason.
+-- Erasure (pre-release review finding 6, 4 November 2026): the purpose, the decline reason and the message to the
+-- employee are free text about the person. Person erasure clears all three on every request of the person and records
+-- when (text_erased_at); the request's facts (letter type, status, dates, the issued letter, who handled it) are the HR
+-- record and stay, as a chat-confirmed request survives its chat.
 -- Grants: every privilege a table must not have is revoked, not merely left ungranted.
 --
 -- Writers reviewed before each constraint: both tables are new; core/letter-requests.ts is their only application writer
--- (core/letters.ts createLetterDraftBatch links a request through it) and app.letter_request_issued the only owner-side one.
+-- (core/letters.ts createLetterDraftBatch links a request through it); app.letter_request_issued and
+-- app.letter_requests_redact are the only owner-side ones.
 
 -- 1. Which templates employees may request. One row per template; a missing row is "off".
 CREATE TABLE public.letter_request_option (
@@ -147,7 +157,8 @@ GRANT EXECUTE ON FUNCTION app.letter_request_option_choices(uuid) TO ai_hr_app;
 --    employee cannot read templates); purpose is the person's own short text; client_key makes a repeated Confirm of
 --    one chat card the same request; decline_reason is HR's and never leaves HR's screens or reaches an event;
 --    employee_message is HR's optional message to the employee, written only with a decline and shown to the employee
---    with the declined status (never in an event or a notification).
+--    with the declined status (never in an event or a notification). text_erased_at: person erasure cleared the purpose,
+--    the reason and the message; a declined request then keeps no reason.
 CREATE TABLE public.letter_request (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  tenant_id uuid NOT NULL REFERENCES public.tenant(id),
@@ -166,7 +177,9 @@ CREATE TABLE public.letter_request (
  created_at timestamptz NOT NULL DEFAULT now(),
  status_changed_at timestamptz NOT NULL DEFAULT now(),
  version integer NOT NULL DEFAULT 1 CHECK (version>=1),
- CHECK ((status='declined')=(decline_reason IS NOT NULL)),
+ text_erased_at timestamptz,
+ CHECK (decline_reason IS NULL OR status='declined'),
+ CHECK (status<>'declined' OR decline_reason IS NOT NULL OR text_erased_at IS NOT NULL),
  CHECK (employee_message IS NULL OR status='declined'),
  CHECK (status NOT IN ('in_progress','issued') OR letter_id IS NOT NULL),
  CHECK (status<>'requested' OR (letter_id IS NULL AND handled_by IS NULL))
@@ -208,7 +221,8 @@ GRANT EXECUTE ON FUNCTION app._letter_request_letter_state(uuid) TO ai_hr_app;
 -- Database-owned lifecycle. On insert: a request starts requested, at the clock's time, for a template its company has
 -- opened for employee requests and published; its name is that published name, whatever the writer sent. On update:
 -- only the status, the linked letter, the decline reason, the message to the employee and who handled it change, along
--- the lifecycle above. The message is written only with a decline.
+-- the lifecycle above. The message is written only with a decline. Person erasure's own transaction (the marker below,
+-- owner side only) may clear the purpose, the reason and the message, and nothing else; the database stamps when.
 CREATE FUNCTION app.letter_request_guard() RETURNS trigger
  LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE type_name text;linked_state text;
@@ -218,7 +232,13 @@ BEGIN
   NEW.created_at:=now();NEW.status_changed_at:=now();NEW.version:=1;NEW.purpose:=nullif(btrim(NEW.purpose),'');
   type_name:=app._letter_request_type_name(NEW.tenant_id,NEW.company_id,NEW.template_id);
   IF type_name IS NULL THEN RAISE EXCEPTION 'This letter type is not open for employee requests' USING ERRCODE='23514';END IF;
-  NEW.letter_type_name:=type_name;RETURN NEW;
+  NEW.letter_type_name:=type_name;NEW.text_erased_at:=NULL;RETURN NEW;
+ END IF;
+ IF current_user<>'ai_hr_app' AND current_setting('app.letter_request_erasure',true)=OLD.tenant_id::text THEN
+  IF (to_jsonb(NEW)-ARRAY['purpose','decline_reason','employee_message','text_erased_at']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['purpose','decline_reason','employee_message','text_erased_at'])
+    OR NEW.purpose IS NOT NULL OR NEW.decline_reason IS NOT NULL OR NEW.employee_message IS NOT NULL THEN
+   RAISE EXCEPTION 'Erasure only clears a letter request''s free text' USING ERRCODE='42501';END IF;
+  NEW.text_erased_at:=now();RETURN NEW;
  END IF;
  IF (to_jsonb(NEW)-ARRAY['status','letter_id','decline_reason','employee_message','handled_by','status_changed_at','version'])
    IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['status','letter_id','decline_reason','employee_message','handled_by','status_changed_at','version']) THEN
@@ -292,6 +312,62 @@ REVOKE ALL ON FUNCTION app.letter_request_issued() FROM PUBLIC;
 CREATE TRIGGER letter_request_issued AFTER UPDATE OF state ON public.letter_record
  FOR EACH ROW WHEN (NEW.state='issued' AND OLD.state IS DISTINCT FROM 'issued') EXECUTE FUNCTION app.letter_request_issued();
 --> statement-breakpoint
+-- 3b. The employee's own requests: the only way an employee reads them (no employee SELECT policy exists on the table),
+--     so HR's decline reason and who handled a request never reach them, even by a direct query. Their own purpose, the
+--     status and its times, the issued letter once issued, and HR's message to them once declined. p_client_key narrows
+--     to the request a chat card of theirs created (a repeated Confirm is the same request).
+CREATE FUNCTION app.letter_requests_own(p_client_key uuid) RETURNS TABLE(id uuid,employment_id uuid,template_id uuid,letter_type_name text,purpose text,status text,
+  created_at timestamptz,status_changed_at timestamptz,letter_id uuid,employee_message text)
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT r.id,r.employment_id,r.template_id,r.letter_type_name,r.purpose,r.status,r.created_at,r.status_changed_at,
+  CASE WHEN r.status='issued' THEN r.letter_id END,CASE WHEN r.status='declined' THEN r.employee_message END
+ FROM public.letter_request r
+ WHERE r.tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND app.principal_snapshot_current() IS TRUE
+  AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=r.employment_id AND e.tenant_id=r.tenant_id AND app.is_self_person(e.person_id))
+  AND (p_client_key IS NULL OR (r.client_key=p_client_key AND r.requested_by=app.current_user_id()))
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.letter_requests_own(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.letter_requests_own(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- 3c. Person erasure. Joins the existing admitted erasure in THIS transaction (app.assistant_own_leave_reviews_redact
+--     records the intent; the canonical pii.erased audit is required at commit), exactly as app.teras_chats_redact does.
+--     It clears the purpose, the decline reason and the message to the employee on every request of the person's
+--     employments, keeps every other fact, and returns the number of requests cleared. It reads no text.
+CREATE FUNCTION app._letter_request_erasure_subject(p_tenant uuid,p_employment uuid) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.assistant_review_erasure_intent i JOIN public.employment e ON e.person_id=i.person_id AND e.tenant_id=i.tenant_id
+  WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=p_tenant AND i.user_id=app.current_user_id() AND e.id=p_employment)
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app._letter_request_erasure_subject(uuid,uuid) FROM PUBLIC;
+--> statement-breakpoint
+-- EXECUTE only so an application query's policy check can be planned; it answers only for the caller's own transaction
+-- and the erasure policies below also require the table owner as the current user.
+GRANT EXECUTE ON FUNCTION app._letter_request_erasure_subject(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.letter_requests_redact(subject_employment uuid) RETURNS integer
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE i app.assistant_review_erasure_intent%ROWTYPE;n integer;
+BEGIN
+ SELECT * INTO i FROM app.assistant_review_erasure_intent WHERE xact_id=pg_current_xact_id() AND tenant_id=app.current_tenant_id()
+  AND user_id=app.current_user_id() AND employment_id=subject_employment;
+ IF NOT FOUND OR app.principal_snapshot_current() IS NOT TRUE OR app.can_admin_employment(subject_employment) IS NOT TRUE THEN
+  RAISE EXCEPTION 'Letter request erasure admission unavailable' USING ERRCODE='42501';END IF;
+ PERFORM set_config('app.letter_request_erasure',i.tenant_id::text,true);
+ UPDATE public.letter_request r SET purpose=NULL,decline_reason=NULL,employee_message=NULL
+  WHERE r.tenant_id=i.tenant_id AND (r.purpose IS NOT NULL OR r.decline_reason IS NOT NULL OR r.employee_message IS NOT NULL)
+   AND app._letter_request_erasure_subject(r.tenant_id,r.employment_id);
+ GET DIAGNOSTICS n=ROW_COUNT;
+ PERFORM set_config('app.letter_request_erasure','',true);
+ RETURN n;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.letter_requests_redact(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.letter_requests_redact(uuid) TO ai_hr_app;
+--> statement-breakpoint
 -- ── RLS: forced on both tables ──
 ALTER TABLE public.letter_request_option ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
@@ -322,11 +398,8 @@ CREATE POLICY letter_request_option_definer_read ON public.letter_request_option
   AND current_user=pg_catalog.pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.letter_request_option'::regclass))
   AND tenant_id=app.current_tenant_id());
 --> statement-breakpoint
--- 5. Requests: the employee's own, and HR's with `generate`. No other application policy exists.
-CREATE POLICY letter_request_own_read ON public.letter_request FOR SELECT TO ai_hr_app
- USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND app.principal_snapshot_current() IS TRUE
-  AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=letter_request.employment_id AND e.tenant_id=letter_request.tenant_id AND app.is_self_person(e.person_id)));
---> statement-breakpoint
+-- 5. Requests: HR's with `generate` read them; the employee creates their own and reads them only through
+--    app.letter_requests_own (section 3b): no employee SELECT policy exists. No other application policy exists.
 CREATE POLICY letter_request_staff_read ON public.letter_request FOR SELECT TO ai_hr_app
  USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND app.principal_snapshot_current() IS TRUE
   AND app.letter_permission(company_id,'generate'));
@@ -348,6 +421,25 @@ CREATE POLICY letter_request_definer_staff_read ON public.letter_request FOR SEL
  USING (current_user<>'ai_hr_app'
   AND current_user=pg_catalog.pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.letter_request'::regclass))
   AND tenant_id=app.current_tenant_id() AND app.letter_permission(company_id,'generate'));
+--> statement-breakpoint
+-- The employee's own lookup (app.letter_requests_own): the owner sees exactly the calling login's own requests.
+CREATE POLICY letter_request_definer_own_read ON public.letter_request FOR SELECT TO PUBLIC
+ USING (current_user<>'ai_hr_app'
+  AND current_user=pg_catalog.pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.letter_request'::regclass))
+  AND tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL
+  AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=letter_request.employment_id AND e.tenant_id=letter_request.tenant_id AND app.is_self_person(e.person_id)));
+--> statement-breakpoint
+-- Person erasure: only the table owner as current user (app.letter_requests_redact), only the admitted subject's requests.
+CREATE POLICY letter_request_person_erasure_read ON public.letter_request FOR SELECT TO PUBLIC
+ USING (current_user<>'ai_hr_app'
+  AND current_user=pg_catalog.pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.letter_request'::regclass))
+  AND tenant_id=app.current_tenant_id() AND app._letter_request_erasure_subject(tenant_id,employment_id));
+--> statement-breakpoint
+CREATE POLICY letter_request_person_erasure ON public.letter_request FOR UPDATE TO PUBLIC
+ USING (current_user<>'ai_hr_app'
+  AND current_user=pg_catalog.pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.letter_request'::regclass))
+  AND tenant_id::text=current_setting('app.letter_request_erasure',true) AND app._letter_request_erasure_subject(tenant_id,employment_id))
+ WITH CHECK (tenant_id::text=current_setting('app.letter_request_erasure',true));
 --> statement-breakpoint
 -- The issue trigger (app.letter_request_issued): only requests linked to a letter that is issued, and only to issued.
 CREATE POLICY letter_request_definer_issue_read ON public.letter_request FOR SELECT TO PUBLIC

@@ -9,8 +9,11 @@
  *    expiry (the retention runner), the person deleting one chat or erasing all of theirs, and person erasure;
  *  - the HR record: the request (type, purpose, status, linked letter, HR's decision, reason and message, version, times),
  *    its letter-request.* events and the card's id on it (client_key, an opaque idempotency key with no chat content).
- *    They stay, byte for byte, whichever path removed the chat, so a repeated Confirm of the same card is still the same
- *    request and never a second one.
+ *    Removing a chat (expiry, the person's own delete or erase) leaves it byte for byte. Person erasure keeps its facts
+ *    byte for byte (type, status, linked letter, who handled it, version, times, the card id) and clears its free text
+ *    about the person: the purpose, HR's decline reason and HR's message to them (Phase 1 release, migration 2003
+ *    app.letter_requests_redact). Either way a repeated Confirm of the same card is still the same request, never a
+ *    second one.
  * Never another login's or another tenant's chat; no application caller can change the card id.
  * The task memory row is a fictional storage fixture (only its openProposals matter here), not a harness turn. */
 import {randomUUID} from 'node:crypto';
@@ -41,6 +44,10 @@ let main:Letters,aina:Person,badrul:Person;
 const zero={reviews:0,feedback:0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,transcripts:0};
 const tick=()=>runAiRetentionTick(owner as unknown as Parameters<typeof runAiRetentionTick>[0]);
 const CONFIRMATION_WORDS='I need an employment confirmation letter',SALARY_WORDS='I need a salary confirmation letter';
+const REASON='Fictional reason: probation still open',MESSAGE='Fictional message: ask again later';
+/** The free text person erasure clears on a letter request, and the stamp of when; every other column is a fact. */
+const TEXT_COLUMNS=['purpose','declineReason','employeeMessage','textErasedAt'];
+const factsOf=(row:Record<string,unknown>)=>Object.fromEntries(Object.entries(row).filter(([column])=>!TEXT_COLUMNS.includes(column)));
 
 /** A tenant with two published templates its company opened for employee requests. */
 async function letters():Promise<Letters>{
@@ -123,14 +130,14 @@ describe('letter requests in the chat custody model',()=>{
   const declined=await card(aina,CONFIRMATION_WORDS),unconfirmed=await card(aina,SALARY_WORDS);
   const expiring=await chat(main,aina,[declined,unconfirmed]);
   const declinedId=await confirm(aina,declined);
-  await declineLetterRequest(main.hr,{requestId:declinedId,reason:'Fictional reason: probation still open',employeeMessage:'Fictional message: ask again later',expectedVersion:1});
+  await declineLetterRequest(main.hr,{requestId:declinedId,reason:REASON,employeeMessage:MESSAGE,expectedVersion:1});
   // The person's live chat and its own submitted request; another person's chat and request.
   const open=await card(aina,SALARY_WORDS),live=await chat(main,aina,[open]);const openId=await confirm(aina,open);
   const theirs=await card(badrul,CONFIRMATION_WORDS),peerChat=await chat(main,badrul,[theirs]);const peerId=await confirm(badrul,theirs);
   const before=await requests(),eventsBefore=await events();
   // Non-vacuity: each card id is on its request, the decision is HR's, and the never-confirmed card is in task memory.
   expect(keys(before)).toEqual({[declinedId]:declined.body.id,[openId]:open.body.id,[peerId]:theirs.body.id});
-  expect(await request(declinedId)).toMatchObject({status:'declined',declineReason:'Fictional reason: probation still open',employeeMessage:'Fictional message: ask again later',version:2});
+  expect(await request(declinedId)).toMatchObject({status:'declined',declineReason:REASON,employeeMessage:MESSAGE,version:2,textErasedAt:null});
   expect(JSON.stringify(await owner.db.select().from(terasTaskMemory).where(eq(terasTaskMemory.conversationId,expiring)))).toContain(unconfirmed.body.id);
   // No event of a request ever carried a card id.
   for(const id of [declined.body.id,unconfirmed.body.id,open.body.id,theirs.body.id])expect(JSON.stringify(eventsBefore)).not.toContain(id);
@@ -149,12 +156,15 @@ describe('letter requests in the chat custody model',()=>{
   expect(await requests()).toEqual(before);
  });
 
- it('own delete and own erase remove the chats and their task memory; the requests stay and stay idempotent',async()=>{
+ it('own delete and own erase remove the chats and their task memory; the requests, their text included, stay and stay idempotent',async()=>{
   const fromChat=await card(aina,CONFIRMATION_WORDS),one=await chat(main,aina,[fromChat]);const fromChatId=await confirm(aina,fromChat);
+  // HR's decision and its text are on the HR record, not the chat: deleting the chat leaves them.
+  await declineLetterRequest(main.hr,{requestId:fromChatId,reason:REASON,employeeMessage:MESSAGE,expectedVersion:1});
   const second=await card(aina,SALARY_WORDS),two=await chat(main,aina,[second]);const secondId=await confirm(aina,second);
   const peerCard=await card(badrul,CONFIRMATION_WORDS),peerChat=await chat(main,badrul,[peerCard]);const peerId=await confirm(badrul,peerCard);
   const before=await requests(),eventsBefore=await events();
   expect(keys(before)).toEqual({[fromChatId]:fromChat.body.id,[secondId]:second.body.id,[peerId]:peerCard.body.id});
+  expect(await request(fromChatId)).toMatchObject({declineReason:REASON,employeeMessage:MESSAGE,textErasedAt:null});
   expect(await deleteOwnChat(aina.ctx,one)).toBe(1);
   expect(await chatsOf(aina.ctx.userId)).toEqual([two]);expect(await memoryOf(aina.ctx.userId)).toEqual([two]);
   expect(await requests()).toEqual(before);expect(await events()).toEqual(eventsBefore);
@@ -167,15 +177,28 @@ describe('letter requests in the chat custody model',()=>{
   await sameRequest(aina,second,secondId);
  });
 
- it('person erasure deletes the subject\'s chats and task memory only; every request stays and stays idempotent',async()=>{
+ it('person erasure deletes the subject\'s chats and task memory and clears their requests\' text; the facts stay and stay idempotent',async()=>{
   const mine=await card(aina,CONFIRMATION_WORDS);await chat(main,aina,[mine]);const mineId=await confirm(aina,mine);
+  await declineLetterRequest(main.hr,{requestId:mineId,reason:REASON,employeeMessage:MESSAGE,expectedVersion:1});
   const theirs=await card(badrul,CONFIRMATION_WORDS),peerChat=await chat(main,badrul,[theirs]);const peerId=await confirm(badrul,theirs);
+  await declineLetterRequest(main.hr,{requestId:peerId,reason:REASON,employeeMessage:MESSAGE,expectedVersion:1});
   const before=await requests(),eventsBefore=await events();
-  await erasePersonPii(main.hr,{subjectEmploymentId:aina.employmentId,scope:'contact',reason:'Fictional canonical privacy request',requestRef:'fixture-'+randomUUID()});
+  // Non-vacuity: both requests hold HR's text before the erasure.
+  for(const id of [mineId,peerId])expect(await request(id)).toMatchObject({status:'declined',declineReason:REASON,employeeMessage:MESSAGE,textErasedAt:null});
+  const report=await erasePersonPii(main.hr,{subjectEmploymentId:aina.employmentId,scope:'contact',reason:'Fictional canonical privacy request',requestRef:'fixture-'+randomUUID()});
+  expect(report.erased).toContain('letterRequestText');
   expect(await chatsOf(aina.ctx.userId)).toEqual([]);expect(await memoryOf(aina.ctx.userId)).toEqual([]);
   expect(await chatsOf(badrul.ctx.userId)).toEqual([peerChat]);expect(await memoryOf(badrul.ctx.userId)).toEqual([peerChat]);
-  expect(await requests()).toEqual(before);expect(keys(before)).toEqual({[mineId]:mine.body.id,[peerId]:theirs.body.id});
+  // The HR record's facts stay byte for byte, the card id among them; the subject's free text is cleared and stamped.
+  const after=await requests();
+  expect(after.map(factsOf)).toEqual(before.map(factsOf));
+  expect(keys(after)).toEqual({[mineId]:mine.body.id,[peerId]:theirs.body.id});
+  expect(await request(mineId)).toMatchObject({status:'declined',purpose:null,declineReason:null,employeeMessage:null,handledBy:main.hr.userId,version:2,textErasedAt:expect.any(Date)});
+  expect(JSON.stringify(await request(mineId))).not.toMatch(/Fictional (reason|message)/);
+  // Another person's request is untouched, its text included.
+  expect(await request(peerId)).toEqual(before.find(row=>row.id===peerId));
   expect(await events()).toEqual(eventsBefore);
+  // The card id survives, so a repeated Confirm of the same card is still the same request.
   await sameRequest(aina,mine,mineId);
  });
 
@@ -187,9 +210,14 @@ describe('letter requests in the chat custody model',()=>{
   // Another tenant's chat is invisible to the person and cannot be deleted by them.
   await expect(deleteOwnChat(aina.ctx,foreignChat).catch(()=>0)).resolves.toBe(0);
   expect(await chatsOf(outsider.ctx.userId)).toEqual([foreignChat]);expect(await memoryOf(outsider.ctx.userId)).toEqual([foreignChat]);
-  // Neither tenant's request is readable from the other, nor is a card from one tenant confirmable in the other.
-  expect(await withTenant(aina.ctx,tx=>tx.select({id:s.letterRequest.id}).from(s.letterRequest))).toEqual([{id:mineId}]);
-  expect(await withTenant(outsider.ctx,tx=>tx.select({id:s.letterRequest.id}).from(s.letterRequest))).toEqual([{id:foreignId}]);
+  // Neither tenant's request is readable from the other, nor is a card from one tenant confirmable in the other. An
+  // employee reads their own requests only through the column-safe own lookup (no SELECT policy on the table).
+  const own=(ctx:SessionContext)=>withTenant(ctx,tx=>tx.execute<{id:string}>(sql`select id from app.letter_requests_own(null)`)).then(rows=>Array.from(rows).map(row=>({id:row.id})));
+  expect(await own(aina.ctx)).toEqual([{id:mineId}]);
+  expect(await own(outsider.ctx)).toEqual([{id:foreignId}]);
+  for(const ctx of [aina.ctx,outsider.ctx])expect(await withTenant(ctx,tx=>tx.select({id:s.letterRequest.id}).from(s.letterRequest))).toEqual([]);
+  expect(await withTenant(main.hr,tx=>tx.select({id:s.letterRequest.id}).from(s.letterRequest))).toEqual([{id:mineId}]);
+  expect(await withTenant(foreign.hr,tx=>tx.select({id:s.letterRequest.id}).from(s.letterRequest))).toEqual([{id:foreignId}]);
   expect(await confirmLetterRequestProposal(aina.ctx,{proposal:foreignCard,confirm:true})).toMatchObject({kind:'refused'});
   // The person's own chat goes; the other tenant's chat, memory and request are untouched.
   expect(await deleteOwnChat(aina.ctx,myChat)).toBe(1);

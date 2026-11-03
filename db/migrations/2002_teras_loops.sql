@@ -14,7 +14,9 @@
 --  3. teras_loop_case: one row per subject a loop prepared a card for (an employment, a day, a company's pay period).
 --     It holds references, dates, counts and closed-vocabulary keys only (facts), never a name, number or free text.
 --     States: open (waiting for the person), waiting (the person acted; the owner's usual approval is pending),
---     closed (done, inactive, superseded or expired). A recurrence reopens the same row and counts it.
+--     closed (done, inactive, superseded, expired, or out_of_scope: retired by the runner when the loop no longer covers
+--     its company, the sponsor no longer administering it or the loop's module off there). A recurrence reopens the
+--     same row and counts it.
 --  4. teras_loop_run: the loop's outcome record, one append-only row per run and company: under whose authority
 --     (the sponsor), which checks ran with their versions, which owners were read and what changed. No model is
 --     called by any loop, so there is no model, provider or spend column.
@@ -65,7 +67,7 @@ CREATE TABLE public.teras_loop_case (
  subject_key text NOT NULL CHECK (subject_key ~ '^[a-z]+:[0-9a-f-]{36}(:[0-9]{4}-[0-9]{2}(-[0-9]{2})?)?$'),
  recipient text NOT NULL CHECK (recipient IN ('hr','payroll','employee')),
  state text NOT NULL CHECK (state IN ('open','waiting','closed')),
- close_reason text CHECK (close_reason IN ('done','inactive','superseded','expired')),
+ close_reason text CHECK (close_reason IN ('done','inactive','superseded','expired','out_of_scope')),
  resolution text CHECK (resolution IN ('as_prepared','changed','completed')),
  facts jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(facts)='object' AND octet_length(facts::text)<=4096),
  first_opened_at timestamptz NOT NULL DEFAULT now(),

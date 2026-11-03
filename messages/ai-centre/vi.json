@@ -178,6 +178,7 @@
         "payroll": "Thiếu {count, plural, other {# dữ liệu}} trước hạn chốt {date}",
         "record": "Cần điền {count, plural, other {# thông tin}}",
         "clockOut": "Đề xuất chấm công ra lúc {time} cho ngày {date}",
+        "clockOutManual": "Không có giờ chấm công ra ngày {date}: cần HR sửa thủ công",
         "passport": "Hộ chiếu hết hạn ngày {date}",
         "salaryRun": "{status, select, draft {Lần chạy lương, chưa xử lý} processed {Lần chạy lương, đã xử lý} closed {Lần chạy lương, đã đóng} other {Lần chạy lương}}",
         "swing": "Lương thực nhận biến động vượt ngưỡng",
@@ -191,7 +192,8 @@
         "completed": "Hoàn tất",
         "inactive": "Đã nghỉ việc",
         "superseded": "Không còn áp dụng",
-        "expired": "Đã quá thời điểm"
+        "expired": "Đã quá thời điểm",
+        "out_of_scope": "Đã gỡ: ngoài phạm vi"
       },
       "limits": {
         "title": "Những giới hạn không bao giờ vượt qua",
@@ -2338,7 +2340,8 @@
       "not_employed": "Nhân viên không làm việc vào ngày đó",
       "period_closed": "Kỳ đó không còn thay đổi được",
       "needs_page": "Việc này cần quyết định trên trang nhập",
-      "other": "Trang nhập sẽ giải thích dòng này"
+      "other": "Trang nhập sẽ giải thích dòng này",
+      "other_company": "Thuộc công ty khác, không được nhập"
     },
     "confirm": "{count, plural, other {Xác nhận # dòng}}",
     "confirming": "Đang nhập…",
@@ -2349,6 +2352,7 @@
     "actionsLabel": "Thao tác nhập",
     "done": "{count, plural, other {Đã nhập # dòng.}}",
     "doneLeftOut": "{count, plural, other {# dòng không được nhập.}}",
+    "otherCompany": "{count, plural, other {# dòng thuộc công ty khác, không được nhập.}}",
     "replayed": "Lần nhập này đã được xác nhận.",
     "history": "Mở bản ghi lần nhập",
     "historyRevert": "Mở lịch sử nhập, nơi bạn có thể hoàn tác",

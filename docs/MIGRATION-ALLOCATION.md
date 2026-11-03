@@ -1328,12 +1328,22 @@ migration trees) and all 423 registered worktrees, including their uncommitted f
 | Was | idx (branch) | when | Tag | SQL SHA256 |
 | --- | ---: | ---: | --- | --- |
 |0952|800|1793330001400|2000_teras_chats|8cd50320de942af9aa59e515c5e39e78f6027325da86264dd8e772bff1c802b7|
-|0959|801|1793330001401|2001_private_cases|2afbad3a54800118a3d09bb7e628453a80badf2980725bca8979716f9fd99c4c|
-|0960|802|1793330001402|2002_teras_loops|768b07fe216c483b27211c413033621f83f4e2f4ccf5d81de4cc8f5bb07326d0|
-|0961|803|1793330001403|2003_letter_requests|3eaf1d2bf2be87d0c7a0495968b11fe7002c8882a82451bd17ce8a73247032e4|
+|0959|801|1793330001401|2001_private_cases|bcfb193a8f6e59c7fec485291bf94cf460f89f44d5abc5bb9ef80cdb6f802acc|
+|0960|802|1793330001402|2002_teras_loops|9614f0d8aa6855d24fe0b7ee1e75c46f80f89e19ec43161825e4bf357eefb908|
+|0961|803|1793330001403|2003_letter_requests|86648ce2dc7af62b92091a5ec195877c68a511f6272dd9681781cedf85900041|
 
 The SQL statements are unchanged; only the header comment lines that named the provisional number changed (the files
-were never applied), hence the new hashes. Code comments that still cite 0952, 0959, 0960 or 0961 (for example
+were never applied), hence the new hashes.
+
+Amended in place on 4 November 2026, still before any application, for the independent pre-release review of the
+Phase 1 candidate (the SHAs in the table above are the amended files'): `2001_private_cases` (a handler is eligible only
+while their login is current, and each case's handlers are frozen at filing: `handler_user_ids`, the eligibility and
+route functions, the guard, the notices and every policy call; findings 1 and 5); `2002_teras_loops` (the
+`out_of_scope` close reason, written when the runner retires a case of a company the loop no longer covers; finding 8);
+`2003_letter_requests` (no employee SELECT policy, the column-safe `app.letter_requests_own` lookup with its owner-side
+policy, and person erasure of the free text through `app.letter_requests_redact`, with `text_erased_at` and the
+decline-reason checks it needs; findings 6 and 7). `2000_teras_chats` is unchanged. The numbers, idx and `when` values
+are unchanged. Code comments that still cite 0952, 0959, 0960 or 0961 (for example
 `core/teras-chats.ts`, `core/private-cases.ts`, `core/loops/*`, `db/teras-schema.ts`) mean these migrations; they are left
 unchanged so that no provider-closure file changes for a number.
 

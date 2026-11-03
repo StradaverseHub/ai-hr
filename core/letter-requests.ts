@@ -11,9 +11,12 @@
  * database owns the lifecycle and refuses a template that is not open for requests. Every change appends a domain event
  * in the same transaction; none carries the purpose, the decline reason or the message to the employee. The employee is
  * notified of a decline with no content beyond the status (core/notifications.ts letter-request.declined); HR's optional
- * message to the employee is shown with the declined status on My Letters, and the reason never leaves HR. */
-import {createHash} from 'node:crypto';
-import {and,asc,desc,eq,inArray,sql} from 'drizzle-orm';
+ * message to the employee is shown with the declined status on My Letters, and the reason never leaves HR: the employee
+ * holds no SELECT policy on the table and reads their own requests only through the column-safe lookup
+ * app.letter_requests_own (migration 2003 §3b), which never returns the reason or who handled it. Person erasure clears
+ * the purpose, the reason and the message (core/pdpa.ts -> app.letter_requests_redact) and keeps the request's facts. */
+import {createHash,randomUUID} from 'node:crypto';
+import {and,asc,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
 import {letterRequest,letterRequestOption} from '../db/schema';
@@ -94,8 +97,9 @@ export async function submitLetterRequestTx(tx:Tx,ctx:SessionContext,input:Submi
   const purpose=optionalText(input.purpose,LETTER_REQUEST_LIMITS.purposeChars),clientKey=input.clientKey===undefined?null:uuid(input.clientKey);
   const offered=(await requestableLetterTypesTx(tx)).filter(row=>row.templateId===templateId&&(employmentId===null||row.employmentId===employmentId));
   if(clientKey){
-   const [earlier]=await tx.select({id:letterRequest.id,templateId:letterRequest.templateId,employmentId:letterRequest.employmentId}).from(letterRequest)
-    .where(and(eq(letterRequest.requestedBy,ctx.userId!),eq(letterRequest.clientKey,clientKey)));
+   // The employee's own request this chat card created, through the column-safe own lookup (no employee table read).
+   const [earlier]=(await tx.execute<{id:string;template_id:string;employment_id:string}>(sql`select id,template_id,employment_id from app.letter_requests_own(${clientKey}::uuid)`))
+    .map(row=>({id:row.id,templateId:row.template_id,employmentId:row.employment_id}));
    if(earlier){
     if(earlier.templateId!==templateId||(employmentId!==null&&earlier.employmentId!==employmentId))throw new LetterRequestError('invalid');
     return Object.freeze({requestId:earlier.id,alreadyRequested:true});
@@ -104,12 +108,12 @@ export async function submitLetterRequestTx(tx:Tx,ctx:SessionContext,input:Submi
   if(offered.length===0)throw new LetterRequestError('not_requestable');
   if(offered.length>1)throw new LetterRequestError('invalid');
   const chosen=offered[0];
-  let id:string;
+  // The id is the writer's: the employee holds no SELECT policy on the table, so the insert returns nothing to them.
+  const id=randomUUID();
   try{
-   id=await tx.transaction(async savepoint=>{
-    const [row]=await savepoint.insert(letterRequest).values({tenantId:ctx.tenantId,companyId:chosen.companyId,employmentId:chosen.employmentId,requestedBy:ctx.userId!,
-     templateId,letterTypeName:chosen.name,purpose,clientKey}).returning({id:letterRequest.id});
-    return row.id;
+   await tx.transaction(async savepoint=>{
+    await savepoint.insert(letterRequest).values({id,tenantId:ctx.tenantId,companyId:chosen.companyId,employmentId:chosen.employmentId,requestedBy:ctx.userId!,
+     templateId,letterTypeName:chosen.name,purpose,clientKey});
    });
   }catch(error){
    const pg=pgError(error);
@@ -124,17 +128,18 @@ export async function submitLetterRequestTx(tx:Tx,ctx:SessionContext,input:Submi
 export type OwnLetterRequest=Readonly<{id:string;letterTypeName:string;purpose:string|null;status:LetterRequestStatus;createdAt:Date;statusChangedAt:Date;
  /** The issued letter, once issued: the person opens it under My Letters. */letterId:string|null;
  /** HR's optional message to the employee, written with a decline; null otherwise. */employeeMessage:string|null}>;
-/** The caller's own requests, newest first. HR's message to the employee with a decline, never HR's decline reason or
- * who handled it. */
+/** The caller's own requests, newest first, through the column-safe own lookup (app.letter_requests_own): HR's message
+ * to the employee with a decline, never HR's decline reason or who handled it (the database never returns them here).
+ * Only the caller's own, even for an HR caller who also reads other people's requests under the staff policy. */
 export function listMyLetterRequests(ctx:SessionContext,input:{limit?:number}={}):Promise<readonly OwnLetterRequest[]>{
  return requests(ctx,async tx=>{
   const limit=Math.min(Math.max(Math.trunc(input.limit??LETTER_REQUEST_LIMITS.list),1),LETTER_REQUEST_LIMITS.list);
-  const rows=await tx.select({id:letterRequest.id,letterTypeName:letterRequest.letterTypeName,purpose:letterRequest.purpose,status:letterRequest.status,createdAt:letterRequest.createdAt,
-   statusChangedAt:letterRequest.statusChangedAt,letterId:letterRequest.letterId,employeeMessage:letterRequest.employeeMessage}).from(letterRequest)
-   // Only the caller's own: an HR caller also reads other people's requests under the staff policy.
-   .where(sql`exists(select 1 from employment e where e.id=${letterRequest.employmentId} and e.tenant_id=${letterRequest.tenantId} and app.is_self_person(e.person_id))`)
-   .orderBy(desc(letterRequest.createdAt),desc(letterRequest.id)).limit(limit);
-  return Object.freeze(rows.map(row=>Object.freeze({...row,letterId:row.status==='issued'?row.letterId:null,employeeMessage:row.status==='declined'?row.employeeMessage:null})));
+  const rows=await tx.execute<{id:string;letter_type_name:string;purpose:string|null;status:string;created_at:string|Date;status_changed_at:string|Date;letter_id:string|null;employee_message:string|null}>(sql`
+   select id,letter_type_name,purpose,status,created_at,status_changed_at,letter_id,employee_message from app.letter_requests_own(null)
+   order by created_at desc,id desc limit ${limit}`);
+  const status=(value:string):LetterRequestStatus=>LETTER_REQUEST_STATUSES.find(item=>item===value)??(():never=>{throw new LetterRequestError('unavailable');})();
+  return Object.freeze(rows.map(row=>{const state=status(row.status);return Object.freeze({id:row.id,letterTypeName:row.letter_type_name,purpose:row.purpose,status:state,
+   createdAt:new Date(row.created_at),statusChangedAt:new Date(row.status_changed_at),letterId:state==='issued'?row.letter_id:null,employeeMessage:state==='declined'?row.employee_message:null});}));
  });
 }
 

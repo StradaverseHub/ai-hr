@@ -85,8 +85,10 @@ export type ProposalRecommendation=z.infer<typeof ProposalRecommendation>;
 const count=z.number().int().nonnegative();
 export const ProposalImport=z.object({kind:z.enum(CHAT_IMPORT_KINDS),company:z.string().min(1).max(200),total:count,ready:count,attention:count,warned:count,
  issues:z.array(z.object({row:count,field:z.string().regex(/^[a-z0-9_]{1,40}$/),reason:z.enum(CHAT_IMPORT_ISSUES)}).strict()).max(5),issueCount:count,
- confirmable:z.boolean(),revertible:z.boolean(),replacing:count,template:z.string().regex(/^\/[a-z0-9/_-]*$/).nullable()}).strict()
- .refine(value=>value.ready+value.attention>=value.total&&value.issues.length<=value.issueCount);
+ confirmable:z.boolean(),revertible:z.boolean(),replacing:count,template:z.string().regex(/^\/[a-z0-9/_-]*$/).nullable(),
+ /** Rows that belong to another company than the card's: counted among those needing attention, never imported here. */
+ otherCompany:count}).strict()
+ .refine(value=>value.ready+value.attention>=value.total&&value.issues.length<=value.issueCount&&value.otherCompany<=value.attention);
 export type ProposalImport=z.infer<typeof ProposalImport>;
 export const ProposalBody=z.object({
  kind:z.literal('teras.proposal'),version:z.literal(PROPOSAL_VERSION),id:z.guid(),

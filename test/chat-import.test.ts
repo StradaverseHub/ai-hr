@@ -4,6 +4,8 @@
  * Confirm commits through the owner's own path (its checks, its history), a second Confirm replays the first outcome,
  * and the owner's own revert still works on what the chat imported. Refusals: someone who may not import, a company the
  * caller does not administer, a tampered, someone else's or an expired card, a different file, records that changed.
+ * The card's one company: rows of another company the caller also administers are reported, never imported, and the
+ * outcome is the owner's own count (an attempt already confirmed on its own page imports nothing here).
  * Through the real turn runner with a scripted model: the model is never sent a cell, the file name or an instruction
  * written in a cell, and neither the trace nor task memory keeps one. */
 import {randomUUID} from 'node:crypto';
@@ -23,7 +25,7 @@ import {confirmChatImport} from '../core/chat-import/confirm';
 import {prepareChatImportProposal} from '../core/proposals/chat-import';
 import {verifyProposal,type Proposal} from '../core/proposals/proposal';
 import {previewImportRevertForAttempt,revertImportForAttempt} from '../core/import-history-handlers';
-import {previewPayrollHistoryRevert,revertPayrollHistoryUpload} from '../core/payroll-history-revisions';
+import {confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload} from '../core/payroll-history-revisions';
 import {HARNESS_TEST_ONLY,runTurn} from '../core/harness/runner';
 import {InMemoryTaskMemoryStore} from '../core/harness/memory';
 import {nativeToolProvider} from '../core/harness/tools';
@@ -86,7 +88,7 @@ describe('leave balances: prepared from the file, confirmed once through the lea
   const file=leaveFile(rows),proposal=await prepare('leave_balances',file);
   expect(await confirmChatImport(ctx,{proposal,confirm:'true',file})).toEqual({kind:'refused',reason:'not_confirmed'});
   const first=await confirmChatImport(ctx,{proposal,confirm:true,file});
-  expect(first).toEqual({kind:'imported',importKind:'leave_balances',imported:2,notImported:2,historyHref:null,revertible:false,replayed:false});
+  expect(first).toEqual({kind:'imported',importKind:'leave_balances',imported:2,notImported:2,otherCompany:0,historyHref:null,revertible:false,replayed:false});
   const rowsNow=await imported();
   expect(rowsNow.map(row=>Number(row.days)).sort()).toEqual([3,5]);
   const again=await confirmChatImport(ctx,{proposal,confirm:true,file});
@@ -234,7 +236,7 @@ describe('payroll history: the owner\'s own attempt, confirmed once, reverted by
   expect(attempt).toMatchObject({createdBy:ctx.userId,sourceName:'payroll-history.csv'});
   expect(await slips()).toHaveLength(0);
   const done=await confirmChatImport(ctx,{proposal,confirm:true});
-  expect(done).toEqual({kind:'imported',importKind:'payroll_history',imported:5,notImported:0,historyHref:'/payroll/history-import/logs/'+attempt.id,revertible:true,replayed:false});
+  expect(done).toEqual({kind:'imported',importKind:'payroll_history',imported:5,notImported:0,otherCompany:0,historyHref:'/payroll/history-import/logs/'+attempt.id,revertible:true,replayed:false});
   expect(await slips()).toHaveLength(1);
   expect(await confirmChatImport(ctx,{proposal,confirm:true})).toEqual({...done,replayed:true});
   expect(await slips()).toHaveLength(1);
@@ -265,5 +267,84 @@ describe('attendance clockings: the built-in template, logged by the clocking im
   expect(await runs()).toHaveLength(1);
   const [{count}]=await owner.db.execute<{count:number}>(sql`select count(*)::int as count from domain_event where tenant_id=${base.tenantId}::uuid and aggregate_type='chat-import'`);
   expect(count).toBe(2);
+ });
+});
+
+describe('the card\'s one company: an administrator of two companies, preparing under the first, with rows of the second',()=>{
+ /** A second company the same group HR administrator administers, with its own department, label and employees. */
+ async function secondCompany(){
+  const [company]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional Second Sdn Bhd',companyLabel:'000BC'}).returning({id:schema.company.id});
+  const [department]=await owner.db.insert(schema.department).values({tenantId:base.tenantId,companyId:company.id,name:'Fictional Second Finance'}).returning({id:schema.department.id});
+  const hireThere=(code:string,hiredOn='2020-01-01')=>hireEmployee(ctx,{person:{fullName:'Fictional '+code,primaryEmail:randomUUID()+'@fixture.test'},companyId:company.id,departmentId:department.id,
+   employmentType:'full_time',employeeCode:code,hiredOn});
+  return {companyId:company.id,hireThere};
+ }
+ it('leave balances: the second company\'s rows are reported as another company\'s, in the card and the outcome, and never written',async()=>{
+  await hire('L0001');const second=await secondCompany();const there=await second.hireThere('B0001');
+  const file=leaveFile(['L0001,ANNUAL,adjustment,5,2026-01-15','B0001,ANNUAL,adjustment,4,2026-01-15']);
+  const proposal=await prepare('leave_balances',file);
+  expect(proposal.body.import).toMatchObject({company:'Acme Sdn Bhd',total:2,ready:1,attention:1,otherCompany:1,confirmable:true,
+   issues:[{row:2,field:'employee_id',reason:'other_company'}]});
+  const done=await confirmChatImport(ctx,{proposal,confirm:true,file});
+  expect(done).toEqual({kind:'imported',importKind:'leave_balances',imported:1,notImported:1,otherCompany:1,historyHref:null,revertible:false,replayed:false});
+  // Only the card's company's row is in the ledger; the second company's employee has nothing imported.
+  const rows=await imported();
+  expect(rows.map(row=>[row.employmentId===there.employmentId?'second':'first',Number(row.days)])).toEqual([['first',5]]);
+  expect(await confirmChatImport(ctx,{proposal,confirm:true,file})).toEqual({...done,replayed:true});
+ });
+ it('attendance clockings: the second company\'s lines are reported and never clocked',async()=>{
+  await hire('E101');const second=await secondCompany();const there=await second.hireThere('B201');
+  const file:ChatImportFile={name:'clock.txt',format:'txt',text:'staff,time\nE101,2026-07-01 08:00\nE101,2026-07-01 17:00\nB201,2026-07-01 08:00\nB201,2026-07-01 17:00\n'};
+  const proposal=await prepare('attendance_clockings',file);
+  expect(proposal.body.import).toMatchObject({total:4,ready:2,attention:2,otherCompany:2,confirmable:true,
+   issues:[{row:4,field:'card',reason:'other_company'},{row:5,field:'card',reason:'other_company'}]});
+  const done=await confirmChatImport(ctx,{proposal,confirm:true,file});
+  expect(done).toMatchObject({kind:'imported',importKind:'attendance_clockings',imported:2,notImported:2,otherCompany:2,replayed:false});
+  const punches=await owner.db.select({employmentId:schema.attendancePunch.employmentId}).from(schema.attendancePunch).where(eq(schema.attendancePunch.tenantId,base.tenantId));
+  expect(punches).toHaveLength(2);expect(punches.some(row=>row.employmentId===there.employmentId)).toBe(false);
+  // The clocking log names the lines as another company's, under the owner's closed results.
+  const lines=await owner.db.select({result:schema.clockingImportLine.result,message:schema.clockingImportLine.message}).from(schema.clockingImportLine)
+   .where(eq(schema.clockingImportLine.tenantId,base.tenantId));
+  expect(lines.filter(row=>row.result==='other').map(row=>row.message)).toEqual(['other_company','other_company']);
+ });
+ it('payroll history: a file with the second company\'s records is not confirmable here, and Confirm names the company to the owner',async()=>{
+  const year=Number(todayInKualaLumpur().slice(0,4))-2,period=`${year}-01`;
+  const lines=(employee:string,label:string)=>['BASIC','EEEPF','EESOCSO','EEEIS','PCB'].map((code,index)=>[employee,period,'ME',code,label,index?'0.00':'5000.00']);
+  await owner.db.update(schema.company).set({companyLabel:'000AC'}).where(eq(schema.company.id,base.companyId));
+  const second=await secondCompany();
+  for(const companyId of [base.companyId,second.companyId])await seedPayrollCycleCatalog(ctx,companyId);
+  await owner.db.insert(schema.payComponent).values({tenantId:base.tenantId,code:'BASIC',name:'Basic salary',kind:'allowance',displayCategory:'basic'});
+  await hireEmployee(ctx,{person:{fullName:'Fictional first history employee',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',employeeCode:'0007',hiredOn:`${year-1}-01-01`});
+  await second.hireThere('0008',`${year-1}-01-01`);
+  const file:ChatImportFile={name:'payroll-history.csv',format:'csv',text:toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...lines('0007','000AC'),...lines('0008','000BC')])};
+  const proposal=await prepare('payroll_history',file);
+  expect(proposal.body.import).toMatchObject({total:10,ready:5,attention:5,otherCompany:5,confirmable:false});
+  expect(proposal.body.import!.issues.every(row=>row.reason==='other_company')).toBe(true);
+  expect(await confirmChatImport(ctx,{proposal,confirm:true})).toEqual({kind:'refused',reason:'not_confirmable'});
+  expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.tenantId,base.tenantId))).toHaveLength(0);
+ });
+});
+
+describe('payroll history: Confirm reports what the owner committed',()=>{
+ it('an attempt already confirmed on the payroll history page imports nothing here and says it was already confirmed',async()=>{
+  const year=Number(todayInKualaLumpur().slice(0,4))-2,period=`${year}-01`;
+  await owner.db.update(schema.company).set({companyLabel:'000AC'}).where(eq(schema.company.id,base.companyId));
+  await seedPayrollCycleCatalog(ctx,base.companyId);
+  await owner.db.insert(schema.payComponent).values({tenantId:base.tenantId,code:'BASIC',name:'Basic salary',kind:'allowance',displayCategory:'basic'});
+  await hireEmployee(ctx,{person:{fullName:'Fictional page-confirmed employee',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',employeeCode:'0007',hiredOn:`${year-1}-01-01`});
+  const rows=['BASIC','EEEPF','EESOCSO','EEEIS','PCB'].map((code,index)=>['0007',period,'ME',code,'000AC',index?'0.00':'5000.00']);
+  const proposal=await prepare('payroll_history',{name:'payroll-history.csv',format:'csv',text:toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows])});
+  expect(proposal.body.import).toMatchObject({ready:5,confirmable:true});
+  // The person confirms the same attempt on the payroll history page first.
+  const page=await confirmPayrollHistoryUpload(ctx,{attemptId:proposal.body.review.reference,previewHash:proposal.body.what.selectors.previewHash!,confirmReplacement:false});
+  expect(page).toMatchObject({alreadyCommitted:false,importedRows:5});
+  const slips=()=>owner.db.select().from(schema.payslip).where(eq(schema.payslip.tenantId,base.tenantId));
+  expect(await slips()).toHaveLength(1);
+  // The card's Confirm: the owner reports it already committed, so nothing is claimed as imported by this press.
+  const done=await confirmChatImport(ctx,{proposal,confirm:true});
+  expect(done).toEqual({kind:'imported',importKind:'payroll_history',imported:0,notImported:0,otherCompany:0,historyHref:'/payroll/history-import/logs/'+proposal.body.review.reference,
+   revertible:true,replayed:true});
+  expect(await slips()).toHaveLength(1);
+  expect(await confirmChatImport(ctx,{proposal,confirm:true})).toEqual(done);
  });
 });

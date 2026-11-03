@@ -7,6 +7,7 @@
 - **Date:** 2026-11-03
 - **Relates to:** [ADR-0169](0169-assistant-context-harness-and-disclosure-repivot.md) (the harness, §9 stored chats), [ADR-0170](0170-teras-ai-operating-architecture.md) §3.2 (sensitive-topic routing), [ADR-0030](0030-audit-log-pdpa.md) (PDPA erasure), [ADR-0084](0084-propose-adjudicate-learn.md) (models propose, services decide).
 - **Migration:** `2001_private_cases` (AI Centre block 2000-2019, `when` 1793330001401; first allocated as `0959_private_cases` / 1793330000359; see [migration allocation](../MIGRATION-ALLOCATION.md)).
+- **Amended:** 4 November 2026, before any application, after the independent pre-release review of the Phase 1 candidate: a handler is eligible only while their login is current (finding 1), and each case's handlers are frozen at filing (finding 5). §2.1, §2.2 and §4 say what changed.
 
 ## 1. Context
 
@@ -18,14 +19,14 @@ The pre-read gate (`lib/product-context/request-gate.ts`) answers sensitive turn
 
 | Fact | Owner | Notes |
 | --- | --- | --- |
-| A **private case**: one person's written report (grievance, harassment, safety, other) to HR | `private_case` | Text encrypted. Status `received → in_review → closed` (or `received → closed`); closed is final. |
+| A **private case**: one person's written report (grievance, harassment, safety, other) to HR | `private_case` | Text encrypted. Status `received → in_review → closed` (or `received → closed`); closed is final. Its handlers are frozen at filing (`handler_user_ids`). |
 | A **handler grant**: login *L* receives cases for company *C* | `private_case_handler` | Designated by an administrator; revoked, never deleted. |
 | A **handler note** | `private_case_note` | Encrypted, append-only, handlers only. |
 | The **case record** (audit) | `private_case_event` | `created`, `read`, `status_changed`, `note_added`; append-only. |
 
 The author is a **USER** (login) with a current **EMPLOYMENT** in the case's company; the person at opening is kept for erasure. A user without an employee record cannot open a case. The case names its company, never a subject person: whom it is about lives only in the encrypted text, and in the author's optional exclusion of a named handler.
 
-**The route is configured** for a company once it has at least one current handler. Only then does the intake accept a case, does My Profile offer it, and does the AI Centre's routed reply carry the link.
+**The route is configured** for a company once it has at least one eligible handler (`app.private_case_route_configured`). Only then does the intake accept a case, does My Profile offer it, and does the AI Centre's routed reply carry the link.
 
 ### 2.2 Who reads
 
@@ -33,21 +34,25 @@ Forced row-level security on all four tables binds the physical owner too. The a
 
 - **The author**: their own cases (text, category, status history). Never the handler notes, and never who read the case.
 - **The case's handlers** (`app.private_case_may_handle`): a current, non-agent login with a current principal snapshot that is not the author and not excluded, and
-  - while any eligible handler of the company remains (a current handler other than the author and the excluded): a current handler of that company;
+  - while any of the case's frozen handlers is still eligible: one of those frozen handlers who is still eligible;
   - otherwise, or when the author sent it to the group administrator: a current **group administrator**.
 
-There is **no** policy for company HR administrators, managers, agents or any other login. Designating a handler grants the designator nothing. Revoking a grant ends that handler's access immediately. A case whose every handler was revoked falls to the group administrators, so it is never orphaned.
+**Eligible handler** (`app._private_case_handler_eligible`): a current (unrevoked) grant for the company, held by a current login, neither archived nor blocked (`app.login_blocked`). Every routing decision asks this one question: who reads (`app.private_case_may_handle`), whether anyone can (`app.private_case_has_reader`), whether the route is configured, the insert guard and the notices. An archived or blocked handler therefore never keeps a case from its fallback.
+
+**Frozen handlers** (`private_case.handler_user_ids`): the insert guard records the company's eligible handlers at filing, other than the author and the excluded: the set the intake showed the author to read and exclude. The form posts the handlers it showed, and the guard narrows the set to them, so a handler designated between opening the form and sending it is not included. The set never changes afterwards. A handler designated after filing never reads the case, on any route; when no frozen handler is still eligible, the case falls to the group administrators under the rule above, never to a handler designated later.
+
+There is **no** policy for company HR administrators, managers, agents or any other login. Designating a handler grants the designator nothing. Revoking a grant, or archiving or blocking the handler's login, ends that handler's access immediately. A case whose every frozen handler is no longer eligible falls to the group administrators, so it is never orphaned.
 
 **Exclusions and conflicts** (coordinator review, 3 November 2026). The intake names everyone who could read a case of the company: its current handlers and the current group administrators. The author ticks anyone the case is about, or who must not see it. Nobody ticked ever reads it, on any route, including the group-administrator fallback. This is the top-level exclusion in `app.private_case_may_handle`, and the database refuses to exclude anyone who is not a possible reader.
 - With every handler excluded, the case goes to the group administrators, again except the excluded and the author. The author may also send it to them directly.
 - A handler or group administrator who writes a case never handles it.
 - When nobody is left (the subject is the only group administrator, or every possible reader is excluded), the case is **still kept**: refusing it would lose what the person wrote. Nobody reads it. Its author sees "No eligible reader is configured for this company, so nobody can read this case yet. Please contact [the company's designated external channel, for example an ethics line]". The bracketed channel is a placeholder string until a tenant setting names a real one. `app.private_case_has_reader` answers this from the routing facts and names nobody.
-- A reader designated later, who was not excluded, can read such a case. They are not notified of it.
+- A handler designated later never reads such a case: its handlers were frozen at filing. The group-administrator route follows the group administrators current when the case is read, so a group administrator appointed later who was not excluded can read it. They are not notified of it.
 
 **Designation** (`private_case_handler` policies): a current group administrator, or an HR administrator of that company (`app.is_admin_for`). **Nobody designates themself**, in any company and whatever their role. This follows the coordinator decision recorded on 3 November 2026: an HR administrator may not designate themself even in a single-administrator company; a group administrator designates them. A group administrator is an HR administrator too, so the same rule applies to them. Two HR administrators of one company may designate each other. Each designation and revocation is a `domain_event` (`private-case-handler.designated` / `.revoked`) and stays on the grant row (who, when).
 
 **Notices.** In-app notifications, written into the existing `public.notification` table that the bell reads, where the tenant has the notifications module:
-- **A new case:** each current reader gets "A private case is waiting", "Open Private cases to read it." and a link to the case. These are the eligible handlers, or failing them the eligible group administrators; never the author or anyone excluded.
+- **A new case:** each current reader gets "A private case is waiting", "Open Private cases to read it." and a link to the case. These are the case's frozen handlers (all eligible at filing), or failing them the eligible group administrators; never the author, anyone excluded, or an archived or blocked handler.
 - **A status change:** the author gets "Your private case has an update", "Open My private cases to see it." and a link to their case. There is none when erasure is waiting on the case.
 - **No content:** a notice carries no category, status, name or word of the case.
 - **Written by the database:** a definer trigger (0959 §4b) writes them, not the domain-event sweep, because HR administrators read domain events. An event would tell them a case exists and, with the default actor, who wrote it.
@@ -98,7 +103,7 @@ The `routeReply` change also replaces "the Assistant" (a user-visible name) with
 - **Residual risks:**
   - The author's name is shown to handlers. The route is private, not anonymous.
   - A handler can be designated in a way the author does not expect. Designation is audited, but the author is not notified.
-  - A case nobody could read becomes readable to a reader designated later.
+  - The group-administrator route follows the group administrators current when a case is read, so a group administrator appointed after filing can read a case on that route that its author did not exclude. A handler designated after filing never reads an existing case (handlers are frozen at filing, §2.2).
   - The author names the subject only by excluding them, so a subject who is not a possible reader needs no exclusion. Their name may still appear in the encrypted text.
 - **Not built (later):**
   - reassignment and self-recusal by a handler;

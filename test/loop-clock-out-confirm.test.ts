@@ -1,7 +1,8 @@
 /** AI v2 W8 — Confirm on Today's missed clock-out card (core/loops/clock-out-confirm.ts), on fictional data over the real
  * owners: the loop opens the case, the person picks their own reason and presses Confirm, and the slice 1 attendance
  * correction is sent for the existing approval with that reason. Refused, writing nothing: no explicit Confirm, no
- * reason, someone else's case, a day changed since the card, a loop switched off, a second Confirm. Next request
+ * reason, someone else's case, a day changed since the card, a loop switched off, a second Confirm. The correction is for
+ * the case's own employment: someone serving notice, or with two employments, corrects the day the case is about. Next request
  * cookies/locale/cache are framework seams; identity SQL, row-level security, custody and attendance effects are real.
  * Expected values are written out from the fixture. */
 import {randomUUID} from 'node:crypto';
@@ -18,6 +19,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import {getBrowserCommandSession} from '../lib/session';
 import {grantAssistant} from '../core/assistant-grant';
 import {hireEmployee} from '../core/org';
+import {createCompany,createDepartment} from '../core/admin';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {checkIn,checkOut} from '../packs/attendance/service';
 import {assignDefaultShift,createShift} from '../core/roster';
@@ -29,7 +31,7 @@ import {clockOutReasonText} from '../lib/today/clock-out-reasons';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 type Person={uid:string;employmentId:string;personId:string};
-let base:Base,worker:Person,colleague:Person,group:SessionContext,worked:string;
+let base:Base,worker:Person,colleague:Person,group:SessionContext,worked:string,shiftId:string,principalId:string;
 /** HR calendar days from the repository's HR date owner (Asia/Kuala_Lumpur), then plain date arithmetic. */
 function calendarDate(offset:number){const value=new Date(todayInKualaLumpur()+'T12:00:00Z');value.setUTCDate(value.getUTCDate()+offset);return value.toISOString().slice(0,10);}
 async function hire(name:string,role:'employee'|'hr_admin'='employee'):Promise<Person>{
@@ -48,17 +50,17 @@ beforeEach(async()=>{
  group={...await entitledCtx(base,['hr_admin']),userId:admin.uid,personId:admin.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
  worker=await hire('Fictional Card Clocker');colleague=await hire('Fictional Card Colleague');
  // Every day is a working day, so the fixture does not depend on today's weekday.
- const shift=(await createShift(adminCtx(base),{name:'Fictional Day',code:`DAY${randomUUID().slice(0,4)}`,startTime:'09:00',endTime:'18:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5,6,7]})).id;
- await assignDefaultShift(adminCtx(base),{employmentId:worker.employmentId,shiftId:shift});
+ shiftId=(await createShift(adminCtx(base),{name:'Fictional Day',code:`DAY${randomUUID().slice(0,4)}`,startTime:'09:00',endTime:'18:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5,6,7]})).id;
+ await assignDefaultShift(adminCtx(base),{employmentId:worker.employmentId,shiftId});
  worked=calendarDate(-2);
  await checkIn(adminCtx(base),{employmentId:worker.employmentId,date:worked,time:'09:02',manual:true});
  await setWorkerSwitch(group,{workerId:'loop_missed_clock_outs',enabled:true});
- const principalId=await ensureAgentPrincipal(owner.db,base.tenantId);
- expect(await runLoop('loop_missed_clock_outs',{tenantId:base.tenantId,principalId,entitlements:(await entitledCtx(base)).entitlements!,today:todayInKualaLumpur()}))
-  .toMatchObject({status:'ran'});
+ principalId=await ensureAgentPrincipal(owner.db,base.tenantId);
+ expect(await rerun()).toMatchObject({status:'ran'});
  browser.selected=worker.uid;vi.stubEnv('DEV_USER_ID',base.adminUserId);
 });
 const caller=()=>getBrowserCommandSession();
+const rerun=async()=>runLoop('loop_missed_clock_outs',{tenantId:base.tenantId,principalId,entitlements:(await entitledCtx(base)).entitlements!,today:todayInKualaLumpur()});
 const caseId=async()=>{
  const rows=await withTenant(group,tx=>tx.select({id:terasLoopCase.id,facts:terasLoopCase.facts,state:terasLoopCase.state}).from(terasLoopCase)
   .where(and(eq(terasLoopCase.workerId,'loop_missed_clock_outs'),eq(terasLoopCase.subjectKey,`clockout:${worker.employmentId}:${worked}`))));
@@ -109,5 +111,32 @@ describe('Confirm on the missed clock-out card',()=>{
   await checkOut(adminCtx(base),{employmentId:worker.employmentId,date:worked,time:'19:10',manual:true});
   expect(await confirmMissedClockOut(await caller(),{caseId:id,reason:'Forgot to clock out',confirm:true})).toEqual({kind:'refused',reason:'changed'});
   expect(await requests()).toHaveLength(0);
+ });
+});
+
+describe('the case\'s own employment',()=>{
+ const sent=async()=>(await requests()).map(row=>({employment:row.employmentId,date:row.attendanceDate,in:row.proposedCheckIn,out:row.proposedCheckOut,status:row.status}));
+ it('someone serving notice (a termination date ahead) corrects the day the case is about',async()=>{
+  const id=await caseId();
+  await owner.db.update(schema.employment).set({terminatedOn:calendarDate(30)}).where(eq(schema.employment.id,worker.employmentId));
+  expect(await confirmMissedClockOut(await caller(),{caseId:id,reason:'Forgot to clock out',confirm:true})).toEqual({kind:'submitted'});
+  expect(await sent()).toEqual([{employment:worker.employmentId,date:worked,in:'09:02:00',out:'18:00:00',status:'pending'}]);
+ });
+ it('someone with two employments corrects the one the case is about, never their earliest',async()=>{
+  const company=await createCompany(adminCtx(base),{legalName:'Fictional Second Clocking Company',country:'MY',currency:'MYR'});
+  const department=await createDepartment(adminCtx(base),{companyId:company.id,name:'Fictional Second Clocking Department'});
+  // A later second employment of the same person, with its own clock-in on the same day.
+  const second=await hireEmployee(adminCtx(base),{person:{id:worker.personId},companyId:company.id,departmentId:department.id,employmentType:'full_time',hiredOn:'2024-06-01'});
+  await assignDefaultShift(adminCtx(base),{employmentId:second.employmentId,shiftId});
+  await checkIn(adminCtx(base),{employmentId:second.employmentId,date:worked,time:'08:30',manual:true});
+  expect(await rerun()).toMatchObject({status:'ran'});
+  const [row]=await withTenant(group,tx=>tx.select({id:terasLoopCase.id,facts:terasLoopCase.facts}).from(terasLoopCase)
+   .where(and(eq(terasLoopCase.workerId,'loop_missed_clock_outs'),eq(terasLoopCase.subjectKey,`clockout:${second.employmentId}:${worked}`))));
+  expect(row.facts).toMatchObject({date:worked,checkIn:'08:30',proposedCheckOut:'18:00'});
+  expect(await confirmMissedClockOut(await caller(),{caseId:row.id,reason:'Device problem',confirm:true})).toEqual({kind:'submitted'});
+  expect(await sent()).toEqual([{employment:second.employmentId,date:worked,in:'08:30:00',out:'18:00:00',status:'pending'}]);
+  // The first employment's own case is still its own: confirmed, it corrects that employment's day.
+  expect(await confirmMissedClockOut(await caller(),{caseId:await caseId(),reason:'Forgot to clock out',confirm:true})).toEqual({kind:'submitted'});
+  expect((await sent()).map(item=>[item.employment,item.in]).sort()).toEqual([[second.employmentId,'08:30:00'],[worker.employmentId,'09:02:00']].sort());
  });
 });
