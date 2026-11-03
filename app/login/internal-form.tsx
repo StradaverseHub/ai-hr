@@ -29,7 +29,7 @@ function InternalAuthFields({ organization = '', returnTo = '/', mode = 'login',
   const passwordId = useId();
   const [showPassword, setShowPassword] = useState(false);
   const [state, setState] = useState<Reply>({ step: mode });
-  const microsoftEnabled=useMicrosoftLogin(state.step==='login'?microsoftOrganization:'');
+  const microsoftEnabled = useMicrosoftLogin(state.step === 'login' && workspaceReady ? microsoftOrganization : '');
   const [resetToken, setResetToken] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   useEffect(() => { if (workspaceReady) heading.current?.focus({ preventScroll: true }); }, [workspaceReady, state.step]);
