@@ -33,8 +33,9 @@ const STEP4=[...EXPLAIN_ENTITIES,...SETUP_ENTITIES];
 
 describe('step 4 capabilities in the semantic model',()=>{
  it('declares one read per capability, each over a step 4 entity, and binds each to a runner',()=>{
-  // Issue 13b appends the governed pay averages (core/semantic-model/entities-metrics.ts; test/pay-averages.test.ts).
-  expect(TERAS_READS.map(row=>row.name)).toEqual(['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day','setup_copilot','pay_aggregates']);
+  // Issue 13b appends the governed pay averages (core/semantic-model/entities-metrics.ts; test/pay-averages.test.ts);
+  // AI v2 W7 the workforce metrics (test/workforce-metrics.test.ts).
+  expect(TERAS_READS.map(row=>row.name)).toEqual(['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day','setup_copilot','pay_aggregates','workforce_metrics']);
   expect(TERAS_CAPABILITIES.map(row=>row.name)).toEqual(TERAS_READS.map(row=>row.name));
   expect([...EXPLAIN_READS,...SETUP_READS].map(row=>row.entity)).toEqual(STEP4.map(entity=>entity.id));
   expect(TERAS_READS.some(row=>row.input.some(input=>input.identifier)),'no step 4 capability takes a record handle').toBe(false);
@@ -80,7 +81,7 @@ describe('step 4 capabilities in the semantic model',()=>{
  it('generates specs whose required inputs exclude the optional ones and whose descriptions name no never field',()=>{
   const specs=terasToolSpecs();expect(specs.map(spec=>spec.name)).toEqual(TERAS_READS.map(row=>row.name));
   const required=Object.fromEntries(specs.map(spec=>[spec.name,(spec.inputSchema as {required:string[]}).required]));
-  expect(required).toEqual({explain_payslip_statutory:[],explain_leave_entitlement:['leave_type'],explain_attendance_day:['date'],setup_copilot:[],pay_aggregates:[]});
+  expect(required).toEqual({explain_payslip_statutory:[],explain_leave_entitlement:['leave_type'],explain_attendance_day:['date'],setup_copilot:[],pay_aggregates:[],workforce_metrics:['metric']});
   const never=[...new Set(STEP4.flatMap(entity=>walk(entity.fields)).filter(field=>field.disclosure==='never').map(field=>field.name))];
   for(const spec of specs)for(const name of never)expect(spec.description).not.toMatch(new RegExp(`(^|[^A-Za-z0-9_])${name}([^A-Za-z0-9_]|$)`));
  });

@@ -8,11 +8,12 @@
  * authority, each owner re-checks its own. Not imported by the production Assistant; the Teras harness tool provider
  * binds these. */
 import type {SessionContext} from '../../db/client';
-import {canManagePayroll,isAdmin} from '../../lib/authz-model';
+import {canManagePayroll,hasTeamAccess,isAdmin} from '../../lib/authz-model';
 import {isModuleEnabled} from '../entitlements';
 import {workerRunGate} from '../agent-registry/controls';
 import {setupCopilot,SetupCopilotRefused} from '../setup-copilot/copilot';
 import {payAverages,PAY_AVERAGE_MINIMUM_GROUP,type PayAverageCompany} from '../../packs/payroll/service';
+import {workforceMetrics,WORKFORCE_MINIMUM_GROUP,type WorkforceCompany} from '../workforce-metrics';
 import {explainOwnAttendanceDay} from './attendance';
 import {explainOwnLeaveEntitlement} from './entitlement';
 import {provenance,refuse,type ExplainerOutcome} from './outcome';
@@ -21,8 +22,9 @@ import {explainOwnPayslipStatutory} from './statutory';
 export type TerasCapabilityScope=Readonly<{companyId:string;locale?:string}>;
 export type TerasCapability=Readonly<{name:string;module:string|null;admin:boolean;
  /** 'payroll': offered only to a caller with payroll access (lib/authz-model.ts canManagePayroll: an administrator or a
-  * payroll partner). The owner re-checks the company scope in the database. */
- access?:'payroll';
+  * payroll partner). The owner re-checks the company scope in the database. 'team' (AI v2 W7): offered only to a manager
+  * or an administrator (hasTeamAccess); the owner re-checks the administered companies or the My Team scope. */
+ access?:'payroll'|'team';
  /** The registered worker whose run gate governs the offer (core/agent-registry/workers.ts), or null. */
  worker:'explainers'|null;run(ctx:SessionContext,input:Record<string,unknown>,scope:TerasCapabilityScope):Promise<ExplainerOutcome>}>;
 const text=(value:unknown)=>typeof value==='string'?value:undefined;
@@ -42,17 +44,28 @@ async function payAggregates(ctx:SessionContext,input:Record<string,unknown>):Pr
   provenance:provenance('packs/payroll/pay-averages.ts#payAverages','Not applicable: averages of closed payslip figures, not a versioned rule.','/payroll/reports',
    `Group figures only, computed by the payroll service; never one person's pay. Groups under ${PAY_AVERAGE_MINIMUM_GROUP} people, groups whose complement in their company is under ${PAY_AVERAGE_MINIMUM_GROUP}, and groups withheld to protect them are not shown.`)};
 }
+/** AI v2 W7: workforce metrics as the model may read them: the owner's result without company ids or the threshold.
+ * Every figure is still disclosed as a band and restored for the person. */
+async function workforceAggregates(ctx:SessionContext,input:Record<string,unknown>):Promise<ExplainerOutcome>{
+ const result=await workforceMetrics(ctx,{metric:text(input.metric),breakdown:text(input.breakdown),period:text(input.period),from:text(input.from),to:text(input.to),asOf:text(input.as_of)});
+ if(!result.ok)return refuse(result.refusal,result.message);
+ const {ok:_ok,minimumGroup:_minimum,companies,...rest}=result;
+ return{ok:true,...rest,companies:companies.map(({companyId:_companyId,...row}:WorkforceCompany)=>row),
+  provenance:provenance('core/workforce-metrics.ts#workforceMetrics','Not applicable: counts and sums of recorded employment, attendance and leave figures, not a versioned rule.','/analytics',
+   `Group figures only, counted by the workforce service; never one person. Groups under ${WORKFORCE_MINIMUM_GROUP} people, groups whose complement is under ${WORKFORCE_MINIMUM_GROUP}, groups whose members share one figure, and groups withheld to protect them are not shown.`)};
+}
 export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'explain_payslip_statutory',module:'payroll',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnPayslipStatutory(ctx,{period:text(input.period),item:text(input.item)})},
  {name:'explain_leave_entitlement',module:'leave',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnLeaveEntitlement(ctx,{leave_type:text(input.leave_type),as_of:text(input.as_of)})},
  {name:'explain_attendance_day',module:'attendance',admin:false,worker:'explainers',run:(ctx,input,scope)=>explainOwnAttendanceDay(ctx,{date:text(input.date)},scope.locale)},
  {name:'setup_copilot',module:null,admin:true,worker:null,run:(ctx,_input,scope)=>copilot(ctx,scope)},
  {name:'pay_aggregates',module:'payroll',admin:false,access:'payroll',worker:null,run:(ctx,input)=>payAggregates(ctx,input)},
+ {name:'workforce_metrics',module:null,admin:false,access:'team',worker:null,run:(ctx,input)=>workforceAggregates(ctx,input)},
 ]);
 /** Capabilities this caller may be offered. A capability that belongs to a worker is offered only while that worker's
  * run gate is open (registered, switched on, tenant not stopped), read once per call in the caller's tenant. */
 export async function terasCapabilitiesFor(ctx:SessionContext):Promise<readonly TerasCapability[]>{
- const candidates=TERAS_CAPABILITIES.filter(row=>(!row.admin||isAdmin(ctx))&&(row.access!=='payroll'||canManagePayroll(ctx))&&(row.module===null||isModuleEnabled(ctx,row.module)));
+ const candidates=TERAS_CAPABILITIES.filter(row=>(!row.admin||isAdmin(ctx))&&(row.access!=='payroll'||canManagePayroll(ctx))&&(row.access!=='team'||hasTeamAccess(ctx))&&(row.module===null||isModuleEnabled(ctx,row.module)));
  const workers=[...new Set(candidates.flatMap(row=>row.worker?[row.worker]:[]))];
  const open=new Set<string>();
  for(const worker of workers)if((await workerRunGate(ctx,worker)).run)open.add(worker);

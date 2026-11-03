@@ -26,5 +26,7 @@ export const KIT_DECLARATIONS:readonly KitDeclaration[]=Object.freeze([
  declare('setup_copilot','core/setup-copilot/copilot.ts#setupCopilot',{module:null,admin:true}),
  // AI Centre issue 13b: governed pay averages (core/semantic-model/entities-metrics.ts), offered under payroll access.
  declare('pay_aggregates','packs/payroll/pay-averages.ts#payAverages',{module:'payroll',admin:false,access:'payroll'}),
+ // AI v2 W7: governed workforce metrics (core/semantic-model/entities-metrics.ts), offered to managers and administrators.
+ declare('workforce_metrics','core/workforce-metrics.ts#workforceMetrics',{module:null,admin:false,access:'team'}),
 ]);
 export const KIT_CAPABILITIES:readonly KitCapability[]=Object.freeze(KIT_DECLARATIONS.map(kitCapability));
