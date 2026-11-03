@@ -28,7 +28,8 @@ export default async function LoopsPage({ searchParams }: { searchParams: Promis
   return (
     <div className={pageWideCls}>
       <OperationsTabs session={s} active="loops" />
-      <PageHeader title={t('title')} description={t('description')} />
+      <PageHeader title={t('title')} description={t('description')}
+        actions={<Link href="/control-tower/loops/payroll-cycle" data-payroll-cycle-link className={cn(btnGhost, 'pointer-coarse:min-h-11')}>{t('payrollCycle')}</Link>} />
       {error && <ErrorBanner message={t(`errors.${error}`)} />}
       {query.saved === 'switch' && <p role="status" className="rounded-lg border border-border bg-muted/50 p-3 text-sm">{t('saved')}</p>}
       <Card className="overflow-hidden">

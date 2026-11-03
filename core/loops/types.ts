@@ -2,7 +2,9 @@
  *
  * A loop's facts are references, calendar dates, clock times, counts and closed-vocabulary keys only: never a name,
  * an identifier number, an amount or free text. The data stays in its native owners. */
-export const LOOP_IDS=Object.freeze(['loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data','loop_missed_clock_outs','loop_document_expiry'] as const);
+export const LOOP_IDS=Object.freeze(['loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data','loop_missed_clock_outs','loop_document_expiry',
+ // AI v2 P2-2a (migration 0964): the Salary payroll loop. The Pre-salary loop is loop_payroll_inputs, absorbed.
+ 'loop_salary_payroll'] as const);
 export type LoopId=(typeof LOOP_IDS)[number];
 export const isLoopId=(value:unknown):value is LoopId=>typeof value==='string'&&(LOOP_IDS as readonly string[]).includes(value);
 

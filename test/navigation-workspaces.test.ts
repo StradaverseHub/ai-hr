@@ -48,6 +48,8 @@ describe('Ops and Strata placement never grants authority',()=>{
   '/control-tower/agents/allowances','/control-tower/agents/spending','/control-tower/agents/provider','/control-tower/agents/runs','/control-tower/agents/orchestrator',
   // AI v2 W8: Operations › Loops and each loop's page.
   '/control-tower/loops','/control-tower/loops/[loop]',
+  // AI v2 P2-2a: the Payroll cycle view, its Salary payroll page and its settings.
+  '/control-tower/loops/payroll-cycle','/control-tower/loops/payroll-cycle/salary','/control-tower/loops/payroll-cycle/settings',
   // AI v2 P2-2b: the payroll Audit loop's page.
   '/control-tower/loops/loop_payroll_audit'];
  it.each(CONTROL_TOWER_PAGES)('places %s under AI Centre (shared), owned by the AI Centre row',path=>{

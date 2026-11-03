@@ -19,8 +19,8 @@ const checkTitle=(key:string)=>`check${key.charAt(0).toUpperCase()}${key.slice(1
 
 export async function LoopCards({cards,locale}:{cards:readonly LoopCard[];locale:string}){
  if(!cards.length)return null;
- const [t,tGap,tCheck,ti]=await Promise.all([getTranslations('today.loops'),getTranslations('controlTower.readinessScreen.gap'),getTranslations('payroll.guide'),
-  getTranslations('aiCentre.conversation.inline')]);
+ const [t,tGap,tCheck,ti,tPre]=await Promise.all([getTranslations('today.loops'),getTranslations('controlTower.readinessScreen.gap'),getTranslations('payroll.guide'),
+  getTranslations('aiCentre.conversation.inline'),getTranslations('aiCentre.payrollCycle.checks')]);
  // The missed clock-out card's reason chooser and Confirm: its own reasons, and the chat cards' own buttons and outcomes.
  const clockOut:ClockOutCardCopy={legend:t('clockOutReasonLegend'),
   reasons:{forgot:t('clockOutReasonForgot'),device:t('clockOutReasonDevice'),other:t('clockOutReasonOther')},otherLabel:t('clockOutReasonOtherLabel'),
@@ -52,7 +52,8 @@ export async function LoopCards({cards,locale}:{cards:readonly LoopCard[];locale
   if(card.kind==='payroll')return <li key={card.caseId} data-today-loop="payroll">
    <ProposalCard tone="finding" icon={<ClipboardList/>}
     title={card.companyName?t('payrollTitle',{company:card.companyName,date:day(locale,card.cutOff)}):t('payrollTitleUnnamed',{date:day(locale,card.cutOff)})}
-    meta={[card.missing.filter(key=>tCheck.has(checkTitle(key) as never)).map(key=>tCheck(checkTitle(key) as never)).join(', '),
+    meta={[(card.checks??[]).filter(key=>tPre.has(key as never)).map(key=>tPre(key as never)).join(', '),
+     card.missing.filter(key=>tCheck.has(checkTitle(key) as never)).map(key=>tCheck(checkTitle(key) as never)).join(', '),
      ...(card.blockers>0?[t('payrollBlockers',{count:card.blockers})]:[]),source('loop_payroll_inputs')].filter(Boolean)}
     href={card.href} cta={t('payrollCta')}/>
   </li>;

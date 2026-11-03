@@ -27220,7 +27220,8 @@
       "jobs": {
         "review-sweep": "Lượt chạy hàng đợi công việc HR ban đêm",
         "ai-retention": "Lưu giữ lịch sử chạy AI",
-        "ai-alerts": "Kiểm tra cảnh báo AI"
+        "ai-alerts": "Kiểm tra cảnh báo AI",
+        "payroll-loops": "Lượt kiểm tra định kỳ vòng lặp trước kỳ lương"
       },
       "steps": {
         "observe": "Kiểm tra hồ sơ nhân viên",
@@ -33691,6 +33692,11 @@
         "name": "Database backups",
         "description": "Creates database backups to an approved destination when configured.",
         "results": "Backup storage and protected backup logs"
+      },
+      "payroll-loops": {
+        "name": "Pre-salary loop tick",
+        "description": "Checks payroll inputs for the companies whose own check interval has come round. Prepares cards for payroll administrators; changes no record.",
+        "results": "Payroll cycle"
       }
     }
   },

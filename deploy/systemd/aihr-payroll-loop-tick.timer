@@ -1,0 +1,14 @@
+# Disabled source template for the payroll-loop-tick sweep. NOT enabled by deploy.sh: see deploy/systemd/README.md.
+[Unit]
+Description=AI HR sweep timer: payroll-loop-tick (every 15 minutes after the previous tick finishes)
+
+[Timer]
+OnBootSec=5min
+# Counted from the end of the previous tick, so one slow tick never queues another behind it.
+OnUnitInactiveSec=15min
+AccuracySec=30s
+RandomizedDelaySec=30s
+Unit=aihr-payroll-loop-tick.service
+
+[Install]
+WantedBy=timers.target

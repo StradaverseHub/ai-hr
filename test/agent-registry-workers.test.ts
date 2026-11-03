@@ -31,6 +31,8 @@ const IDS=['payroll_anomaly_narrator','claims_triage','readiness_nudges','approv
  'approver_recommendation','explainers','conversation','team_absence_weekly_summary','daily_digest',
  // AI v2 W8: the five loops at the Prepare level (test/teras-loops.test.ts).
  'loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data','loop_missed_clock_outs','loop_document_expiry',
+ // AI v2 P2-2a: the Salary payroll loop (test/payroll-cycle-loops.test.ts). The Pre-salary loop is loop_payroll_inputs.
+ 'loop_salary_payroll',
  // AI v2 P2-2b: the payroll Audit loop (test/payroll-audit-loop.test.ts).
  'loop_payroll_audit'];
 

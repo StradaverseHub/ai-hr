@@ -27220,7 +27220,8 @@
       "jobs": {
         "review-sweep": "Nightly HR work queue pass",
         "ai-retention": "AI run history retention",
-        "ai-alerts": "AI alert check"
+        "ai-alerts": "AI alert check",
+        "payroll-loops": "Pre-salary loop tick"
       },
       "steps": {
         "observe": "Check employee records",
@@ -33691,6 +33692,11 @@
         "name": "Database backups",
         "description": "Creates database backups to an approved destination when configured.",
         "results": "Backup storage and protected backup logs"
+      },
+      "payroll-loops": {
+        "name": "Pre-salary loop tick",
+        "description": "Checks payroll inputs for the companies whose own check interval has come round. Prepares cards for payroll administrators; changes no record.",
+        "results": "Payroll cycle"
       }
     }
   },

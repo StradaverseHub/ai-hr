@@ -1088,3 +1088,55 @@ widens the same CHECKs must be merged as the union of both lists.
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
 |767|1793330000365|0965_payroll_audit_loop|f7c68fa2a062470880715d70781a6c2c998de8afb821e580dca17b057f4f925e|
+
+## AI v2 Phase 2 P2-2a payroll-cycle loops — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-payroll-loops` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 / when1793330000361)
+appends `0964_teras_payroll_cycle_loops` as idx767 / when1793330000364, the number and `when` the AI v2 coordinator reserved
+for this task (0962 is reserved for renumbering `0952_teras_chats`, 0963 for P2-1, 0965 for P2-2b and 0966 for P2-4). A
+fresh fetch on 3 November 2026 found no origin ref claiming 0962 or above; the parallel Phase 2 worktrees hold 0963, 0965
+and 0966 only. Development source only: no installation priority, no deployment; the idx is this branch's own journal
+position (0962 and 0963 sort before it and are not on this branch) and must be re-frozen above the then-installed ledger at
+integration. 0964 and 0965 both widen the 0960 loop-list CHECK constraints (teras_worker_control, teras_loop_pause,
+teras_loop_run and, here, teras_loop_case): whichever is applied second must list both `loop_salary_payroll` and
+`loop_payroll_audit`, or it would drop the other's value.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000364|0964_teras_payroll_cycle_loops|0a38a5628362ac03b6eb4afe67c3b3d3e632be6e7e9bff6eec9f8a0f828407f3|
+
+## AI v2 Phase 2 wave 1 integration re-freeze — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-phase2-wave1` (cut from `ec2beecc0` on `claude/aiv2-phase1-final`, journal ending `0961_letter_requests`
+idx766 / when1793330000361) merges P2-4, P2-3, P2-2b and P2-2a, each of which claimed idx767 on its own branch. The journal is
+re-frozen by number: a Phase 2 migration `09NN` takes **idx = 767 + (NN − 63)** and **when = 1793330000300 + NN**. idx767 /
+when1793330000363 is left free for `0963_teras_loop_autonomy` (P2-1, not merged here), so when it arrives it takes idx767 and
+nothing shifts; the journal tests require only a strictly ascending idx and `when`, so the temporary gap at idx767 is allowed
+(the journal already holds 42 such gaps). The four upgrade tests that pin the journal tail (`ai-dev-populated-upgrade`,
+`bank-import-point-read-upgrade`, `lifecycle-v9-populated-upgrade`, `payroll-tax-basis-upgrade`) pin these positions.
+
+One unapplied body changed at integration. 0964 runs before 0965 and adds `loop_salary_payroll` to the worker lists of
+`teras_worker_control`, `teras_loop_pause`, `teras_loop_case` and `teras_loop_run`; 0965 then drops and rebuilds three of those
+lists (not `teras_loop_case`) to add `loop_payroll_audit`. Left as written, 0965 would have dropped `loop_salary_payroll` again,
+so every Salary payroll loop switch, pause and run record would have been refused. 0965's three rebuilt lists now carry
+`loop_salary_payroll` before `loop_payroll_audit` (the only change, with a comment saying so); 0964's `teras_loop_case` list,
+which 0965 does not touch, stands. The change is made in 0965 rather than in a new migration because 0965 is the last
+migration to rebuild those lists and it is applied nowhere. 0965's branch body
+(`f7c68fa2a062470880715d70781a6c2c998de8afb821e580dca17b057f4f925e`) was never installed. 0964, 0966 and 0967 are byte-identical to
+their branches.
+
+A fresh fetch on 3 November 2026 found competing **file numbers and `when` values** on other workstreams' origin branches:
+`codex/permissions-*-20261103` claim `0962_workforce_draft_binding_readiness` to `0966_profile_maintenance_binding_readiness` at
+when1793330000362–366 (their idx809–813), and `claude/wonderful-mccarthy-2fb38f` claims 0968–0970 at when1793330000368–370. The
+AI v2 coordinator's Phase 2 reservations (0962–0967) were assigned before this scan; the overlap is reported to the
+coordinator and must be reconciled before either set integrates with the other (identical `when` values cannot both stand in
+one journal). Development source only: no installation priority, no deployment; re-freeze above the then-installed ledger at
+integration.
+
+| idx (wave 1) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000363|*(free for `0963_teras_loop_autonomy`, P2-1)*||
+|768|1793330000364|0964_teras_payroll_cycle_loops|0a38a5628362ac03b6eb4afe67c3b3d3e632be6e7e9bff6eec9f8a0f828407f3|
+|769|1793330000365|0965_payroll_audit_loop|d370a0dba6fb8b04ae6c1686572dd116f300ff440b37cc43c6944c7b4fac8c41|
+|770|1793330000366|0966_teras_capacity_baseline|0b2f62d07b398bc837909c31b27f2dcd5ee30276f5c84937d8d57440a4b5a67c|
+|771|1793330000367|0967_own_payroll_cut_off|b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca|

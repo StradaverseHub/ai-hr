@@ -678,7 +678,8 @@ describe('Today with the cards the loops prepared (AI v2 W8)',()=>{
  it('an HR administrator sees the review, payroll and passport cards for the companies in scope',async()=>{
   S.loops=[
    {kind:'probation',caseId:'p1',name:'Siti Fictional',endDate:'2026-11-14',stage:'none',overdue:false,reviewId:null,href:'/admin/personnel/emp-siti'},
-   {kind:'payroll',caseId:'p2',companyName:'Fictional Sdn Bhd',payPeriod:'2026-11',cutOff:'2026-11-10',missing:['payrollCycle','payrollSchedule'],blockers:1,href:'/payroll/setup?readiness=full'},
+   {kind:'payroll',caseId:'p2',companyName:'Fictional Sdn Bhd',payPeriod:'2026-11',cutOff:'2026-11-10',missing:['payrollCycle','payrollSchedule'],blockers:1,checks:['claims','statutoryBank'],
+    href:'/control-tower/loops/payroll-cycle?company=co-a&period=2026-11'},
    {kind:'passports',count:2,first:'2026-11-20',href:'/personnel'},
   ];
   const view=await show(HR_ADMIN,['co-a']);
@@ -686,8 +687,9 @@ describe('Today with the cards the loops prepared (AI v2 W8)',()=>{
   expect(cardsOf(view)).toEqual([
    {kind:'probation',title:'Probation ends Nov 14, 2026: Siti Fictional',meta:['No review started yet','Prepared by AI Centre: Probation ending','The loop never decides: HR records the decision.'],
     links:[['/admin/personnel/emp-siti','Review · Probation ends Nov 14, 2026: Siti Fictional']]},
-   {kind:'payroll',title:'Fictional Sdn Bhd: payroll inputs missing before the Nov 10, 2026 cut-off',meta:['Payroll cycle, Payroll schedule','1 blocks the run','Prepared by AI Centre: Payroll inputs ready'],
-    links:[['/payroll/setup?readiness=full','Open readiness · Fictional Sdn Bhd: payroll inputs missing before the Nov 10, 2026 cut-off']]},
+   {kind:'payroll',title:'Fictional Sdn Bhd: payroll inputs missing before the Nov 10, 2026 cut-off',
+    meta:['Claims decided, Bank, EPF, SOCSO and tax numbers','Payroll cycle, Payroll schedule','1 blocks the run','Prepared by AI Centre: Pre-salary loop'],
+    links:[['/control-tower/loops/payroll-cycle?company=co-a&period=2026-11','Open payroll cycle · Fictional Sdn Bhd: payroll inputs missing before the Nov 10, 2026 cut-off']]},
    {kind:'passports',title:'2 passports expire within 60 days',meta:['First on Nov 20, 2026','Prepared by AI Centre: Passports expiring'],
     links:[['/personnel','Open people · 2 passports expire within 60 days']]},
   ]);

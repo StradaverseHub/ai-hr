@@ -39,6 +39,8 @@ async function commandError(error: unknown): Promise<string> {
 const REGISTRY_SWITCHES: readonly string[] = Object.freeze(['approver_recommendation', 'explainers', 'conversation',
   // AI v2 W8: the five loops at the Prepare level, also switched on AI Centre › Operations › Loops.
   'loop_probation_ending', 'loop_payroll_inputs', 'loop_missing_employee_data', 'loop_missed_clock_outs', 'loop_document_expiry',
+  // AI v2 P2-2a: the Salary payroll loop.
+  'loop_salary_payroll',
   // AI v2 P2-2b: the payroll Audit loop, also switched on its own page under Operations › Loops.
   'loop_payroll_audit']);
 

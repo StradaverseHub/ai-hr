@@ -39,6 +39,9 @@
 -- payroll_audit_correction_cause, core/payroll-audit/settings.ts of payroll_audit_control_setting and payroll_audit_reader.
 -- All six tables are new. The three widened CHECKs of 0960 only add a value. Grants: every privilege a table must not have is
 -- revoked, not merely left ungranted.
+-- Wave 1 integration (3 November 2026, while unapplied): 0964 (idx768) runs first and adds 'loop_salary_payroll' to the same
+-- lists, so each list rebuilt here carries it too; otherwise this migration would drop it again. 0964's teras_loop_case list
+-- is not rebuilt here (the Audit loop opens no loop case), so it stands as 0964 left it.
 
 -- 1. The Audit loop's switch, pause and run record.
 ALTER TABLE public.teras_worker_control DROP CONSTRAINT teras_worker_control_worker_id_check;
@@ -46,19 +49,19 @@ ALTER TABLE public.teras_worker_control DROP CONSTRAINT teras_worker_control_wor
 ALTER TABLE public.teras_worker_control ADD CONSTRAINT teras_worker_control_worker_id_check
  CHECK (worker_id IN ('approver_recommendation','explainers','conversation',
   'loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data','loop_missed_clock_outs','loop_document_expiry',
-  'loop_payroll_audit'));
+  'loop_salary_payroll','loop_payroll_audit'));
 --> statement-breakpoint
 ALTER TABLE public.teras_loop_pause DROP CONSTRAINT teras_loop_pause_worker_id_check;
 --> statement-breakpoint
 ALTER TABLE public.teras_loop_pause ADD CONSTRAINT teras_loop_pause_worker_id_check
  CHECK (worker_id IN ('loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data','loop_missed_clock_outs','loop_document_expiry',
-  'loop_payroll_audit'));
+  'loop_salary_payroll','loop_payroll_audit'));
 --> statement-breakpoint
 ALTER TABLE public.teras_loop_run DROP CONSTRAINT teras_loop_run_worker_id_check;
 --> statement-breakpoint
 ALTER TABLE public.teras_loop_run ADD CONSTRAINT teras_loop_run_worker_id_check
  CHECK (worker_id IN ('loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data','loop_missed_clock_outs','loop_document_expiry',
-  'loop_payroll_audit'));
+  'loop_salary_payroll','loop_payroll_audit'));
 --> statement-breakpoint
 -- 2. Hashing. One definition, used by the triggers that store hashes and by the verifier that recomputes them, so the two
 --    can never diverge (the 0074 pattern). jsonb::text is Postgres-canonical, and the instant is rendered in UTC so the

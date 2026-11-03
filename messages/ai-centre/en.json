@@ -53,17 +53,19 @@
       },
       "names": {
         "loop_probation_ending": "Probation ending",
-        "loop_payroll_inputs": "Payroll inputs ready",
+        "loop_payroll_inputs": "Pre-salary loop",
         "loop_missing_employee_data": "Missing employee data",
         "loop_missed_clock_outs": "Missed clock-outs",
-        "loop_document_expiry": "Passports expiring"
+        "loop_document_expiry": "Passports expiring",
+        "loop_salary_payroll": "Salary payroll loop"
       },
       "doneMeans": {
         "loop_probation_ending": "A decision is recorded before the probation ends",
-        "loop_payroll_inputs": "Nothing blocks the payroll run before the cut-off",
+        "loop_payroll_inputs": "Every input is complete and approved before the cut-off",
         "loop_missing_employee_data": "Every detail the employee can fill in is filled in and approved",
         "loop_missed_clock_outs": "Every clock-out is on record",
-        "loop_document_expiry": "Each passport is renewed before it expires"
+        "loop_document_expiry": "Each passport is renewed before it expires",
+        "loop_salary_payroll": "Each run is checked, approved by a person, closed and the bank file matches"
       },
       "doneMeansLine": "Done means: {done}.",
       "level": {
@@ -112,10 +114,10 @@
           "verify": "Closed when a decision is recorded. A new end date with no decision reopens it."
         },
         "loop_payroll_inputs": {
-          "detect": "The payroll cut-off is within 7 days and the payroll readiness checks find something that blocks the run.",
-          "diagnose": "Which checks are not ready, and how many of them block the run.",
-          "prepare": "A Today card for payroll administrators listing what is missing in each company.",
-          "verify": "Closed when nothing blocks the run before the cut-off. A new blocker before the cut-off reopens it."
+          "detect": "From the start of the payroll period to the cut-off, at each company's interval: timesheets, overtime, leave, claims, joiners and leavers, bank and statutory details, pay changes and payroll set-up.",
+          "diagnose": "Each check's open, waiting and to-review items, read from the owner of each.",
+          "prepare": "A case for payroll administrators on the Payroll cycle page, and a Today card in the last 7 days before the cut-off. Each check links to the page where it is fixed.",
+          "verify": "Done when nothing is open or waiting before the cut-off. A new blocker before the cut-off reopens it."
         },
         "loop_missing_employee_data": {
           "detect": "An employee record is missing details that payroll or statutory filing needs.",
@@ -134,6 +136,12 @@
           "diagnose": "The expiry date on record.",
           "prepare": "A Today card for HR and a reminder card for the employee to renew it.",
           "verify": "Closed when a renewed expiry date is recorded. An expiry moved back into the window reopens it."
+        },
+        "loop_salary_payroll": {
+          "detect": "After the cut-off, each company's runs for the month: salary, bonus and off-cycle. A run not yet started is prepared for HR to start.",
+          "diagnose": "The 11 anomaly checks, the change against last month by cause, net-swing flags, statutory rule versions and the bank file against net pay.",
+          "prepare": "A case per run for payroll administrators, and a flag per person for payroll HR to mark expected or a real problem. It never runs, approves or closes payroll.",
+          "verify": "Done when a person has closed the run and the bank file matches. A run reopened after close reopens it."
         }
       },
       "figures": {
@@ -169,7 +177,10 @@
         "payroll": "{count, plural, one {# input} other {# inputs}} missing before the {date} cut-off",
         "record": "{count, plural, one {# detail} other {# details}} to fill in",
         "clockOut": "Clock-out at {time} proposed for {date}",
-        "passport": "Passport expires {date}"
+        "passport": "Passport expires {date}",
+        "salaryRun": "{status, select, draft {Payroll run, not processed yet} processed {Payroll run, processed} closed {Payroll run, closed} other {Payroll run}}",
+        "swing": "Net pay moved more than the threshold",
+        "salaryStart": "Salary run to start after the {date} cut-off"
       },
       "caseState": {
         "open": "Waiting for the person",
@@ -200,7 +211,8 @@
         "none": "No runs yet.",
         "summary": "{opened} prepared, {closed} closed, {open} open, {waiting} waiting",
         "capped": "Card limit reached; more on the next run."
-      }
+      },
+      "payrollCycle": "Payroll cycle"
     },
     "capacity": {
       "title": "HR capacity",
@@ -708,12 +720,13 @@
         "team_absence_weekly_summary": "Weekly team absence summary",
         "daily_digest": "Daily digest",
         "loop_probation_ending": "Probation ending",
-        "loop_payroll_inputs": "Payroll inputs ready",
+        "loop_payroll_inputs": "Pre-salary loop",
         "loop_missing_employee_data": "Missing employee data",
         "loop_missed_clock_outs": "Missed clock-outs",
         "loop_document_expiry": "Passports expiring",
         "loop_payroll_audit": "Audit loop",
-        "conversation": "Live chat conversation"
+        "conversation": "Live chat conversation",
+        "loop_salary_payroll": "Salary payroll loop"
       },
       "switchInvalid": "That switch cannot be changed here.",
       "switchRefused": "Only a group administrator can change this switch.",
@@ -968,6 +981,277 @@
         "provider_error": "The AI Centre could not answer just now. Please try again."
       },
       "letterRequestTitle": "{letterType} request"
+    },
+    "payrollCycle": {
+      "title": "Payroll cycle: {month}",
+      "description": "Three loops carry each company's payroll from inputs to audit.",
+      "headerOne": "Cut-off {cutOff} · pay day {payDay} · EPF, SOCSO, EIS and PCB due {due}.",
+      "headerGroup": "EPF, SOCSO, EIS and PCB due {due}. Each company keeps its own cut-off and pay day.",
+      "company": "Company",
+      "allCompanies": "{count, plural, one {All # company} other {All # companies}}",
+      "show": "Show",
+      "noCompanies": "You administer no company here.",
+      "loopsLabel": "Payroll loops in order",
+      "backToCycle": "Payroll cycle",
+      "checks": {
+        "timesheets": "Timesheets clean",
+        "overtime": "Overtime approved",
+        "leave": "Leave and unpaid days final",
+        "claims": "Claims decided",
+        "joinersLeavers": "Joiners and leavers complete",
+        "statutoryBank": "Bank, EPF, SOCSO and tax numbers",
+        "payChanges": "Allowance and pay changes approved",
+        "setup": "Payroll set-up ready"
+      },
+      "pre": {
+        "title": "1 · Pre-salary loop",
+        "done": "Done when every input is complete and approved before cut-off.",
+        "note": "It checks each owner and prepares what people need to confirm. Level: Prepare, so nothing changes until a person confirms it.",
+        "open": "Open Pre-salary loop",
+        "state": {
+          "open": "{count, plural, =0 {Running · cut-off today} one {Running · # day to cut-off} other {Running · # days to cut-off}}",
+          "openPast": "Running",
+          "done": "Done",
+          "missed": "Not ready by the cut-off",
+          "not_checked": "Not checked yet",
+          "paused": "Paused",
+          "off": "Off"
+        },
+        "value": {
+          "notChecked": "Not checked yet",
+          "off": "Not in use",
+          "open": "{count} open",
+          "waiting": "{count} waiting",
+          "review": "{count} to review",
+          "done": "Done"
+        }
+      },
+      "salary": {
+        "title": "2 · Salary payroll loop",
+        "done": "Done when each run is checked, approved by a person, closed and the bank file matches.",
+        "note": "Pay is calculated only by the payroll service. This loop stays at Prepare in every company: it checks and prepares, and a person approves and closes.",
+        "open": "Open Salary payroll loop",
+        "state": {
+          "before_cut_off": "Starts at cut-off",
+          "not_checked": "Not checked yet",
+          "ready_to_start": "Ready to start",
+          "in_progress": "In progress",
+          "attention": "Needs attention",
+          "done": "Done",
+          "paused": "Paused",
+          "off": "Off"
+        },
+        "rows": {
+          "run": "Run each company's payroll",
+          "change": "Change vs last month, per person",
+          "anomalies": "{count} anomaly checks",
+          "rules": "EPF, SOCSO, EIS, PCB on current rules",
+          "close": "Approve and close",
+          "bank": "Bank file total equals net pay"
+        },
+        "value": {
+          "started": "{started} of {total} started",
+          "preparedForHr": "Prepared for HR",
+          "flagged": "{count, plural, one {# person over the threshold} other {# people over the threshold}}",
+          "explained": "Explained by cause",
+          "afterRun": "Explained by cause",
+          "exceptions": "{count, plural, one {# exception open} other {# exceptions open}}",
+          "noExceptions": "No exceptions open",
+          "toToday": "Exceptions to Today",
+          "newer": "{count, plural, one {Newer rule for # run} other {Newer rules for # runs}}",
+          "ruleVersion": "Rule version {version}",
+          "versionShown": "Rule version shown",
+          "closed": "{closed} of {total} closed",
+          "person": "A person, always",
+          "mismatch": "{count, plural, one {# run does not match} other {# runs do not match}}",
+          "matches": "Matches",
+          "beforeRelease": "Checked before release"
+        },
+        "runLine": "{type}: {status}"
+      },
+      "audit": {
+        "title": "3 · Audit loop",
+        "done": "Done when everything is paid, filed, reconciled and evidenced.",
+        "note": "Files and filings stay at Prepare: a person submits to EPF, PERKESO and LHDN."
+      },
+      "interval": {
+        "hourly": "Checked hourly",
+        "twice_daily": "Checked twice a day",
+        "daily": "Checked daily"
+      },
+      "runType": {
+        "regular": "Salary",
+        "bonus": "Bonus",
+        "off_cycle": "Off-cycle"
+      },
+      "runStatus": {
+        "draft": "Draft",
+        "processed": "Processed",
+        "closed": "Closed"
+      },
+      "byCompany": {
+        "title": "Each company",
+        "columns": {
+          "company": "Company",
+          "preSalary": "Pre-salary",
+          "salary": "Salary payroll",
+          "audit": "Audit"
+        }
+      },
+      "history": {
+        "title": "Last three cycles",
+        "columns": {
+          "month": "Month",
+          "inputsReady": "Inputs ready",
+          "issuesCaught": "Issues caught before the run",
+          "closed": "Closed",
+          "corrections": "Corrections after the run",
+          "filed": "Filed on time"
+        },
+        "notMeasured": "Not measured",
+        "missed": "Not ready by the cut-off",
+        "onCutOff": "On cut-off day",
+        "before": "{count, plural, one {# day before cut-off} other {# days before cut-off}}",
+        "after": "{count, plural, one {# day after cut-off} other {# days after cut-off}}",
+        "notClosed": "Not closed",
+        "noRun": "No run",
+        "settingsTitle": "Changes",
+        "noChanges": "No change yet: the defaults apply.",
+        "settingRow": "Version {version}: {interval}, threshold ±{threshold}, {exclusions, plural, =0 {no exclusion} one {# exclusion} other {# exclusions}} ({source}) by {name}, {when}",
+        "rejectedRow": "A proposal rejected by {name}, {when}",
+        "source": {
+          "admin": "set by an administrator",
+          "proposal": "an approved proposal"
+        }
+      },
+      "people": {
+        "title": "People loops",
+        "item": "{name} · {count} open"
+      },
+      "patternItem": "Pay item {item}",
+      "causes": {
+        "unpaid_leave": "Unpaid leave",
+        "absence": "Absence",
+        "overtime_hours": "Overtime hours",
+        "salary_change": "Salary change",
+        "days_paid": "Days paid",
+        "additional_run": "Additional run",
+        "statutory_rules": "Statutory rules",
+        "set_by_hand": "Statutory set by hand",
+        "other": "Other change"
+      },
+      "bodies": {
+        "epf": "EPF",
+        "socso": "SOCSO",
+        "eis": "EIS",
+        "pcb": "PCB",
+        "hrdf": "HRD Corp levy"
+      },
+      "bank": {
+        "match": "Matches net pay and headcount",
+        "total_mismatch": "Total does not match net pay",
+        "count_mismatch": "Record count does not match",
+        "not_available": "No bank file to check",
+        "blocked": "Bank file cannot be produced yet",
+        "not_ready": "Checked once processed"
+      },
+      "salaryPage": {
+        "title": "Salary payroll loop: {month}",
+        "description": "Each run's checks as the loop last recorded them. A person runs, approves and closes payroll on the payroll workbench.",
+        "level": "Prepare in every company",
+        "off": "The Salary payroll loop is off. Switch it on in Loops to check runs.",
+        "noCompanies": "You run payroll for no company here.",
+        "companyLine": "Cut-off {cutOff} · net-swing threshold ±{threshold}",
+        "readyToStart": "Ready to start: no salary run yet for {month}.",
+        "openPayroll": "Open payroll",
+        "noRuns": "No run for this month yet.",
+        "runsCaption": "Payroll runs of {company}",
+        "columns": {
+          "run": "Run",
+          "status": "Status",
+          "anomalies": "Anomaly checks",
+          "change": "Change vs last month",
+          "rules": "Statutory rules",
+          "close": "Approve and close",
+          "bank": "Bank file"
+        },
+        "runName": "{type} run {seq}",
+        "stale": "Needs recalculating",
+        "employees": "{count, plural, one {# employee} other {# employees}}",
+        "afterProcessing": "After processing",
+        "notEvaluated": "{count} checks not run yet",
+        "changed": "{count, plural, one {# person changed} other {# people changed}}",
+        "cause": "{cause} ({count})",
+        "newerRules": "Newer rule: {bodies}",
+        "closedBy": "Closed by {name}",
+        "closed": "Closed",
+        "notClosed": "Not closed yet",
+        "reopened": "{count, plural, one {Reopened once after close} other {Reopened # times after close}}",
+        "note": "The net-swing threshold starts at ±15%. It changes only when an administrator sets it or approves a proposal, and it never changes the anomaly checks.",
+        "settingsLink": "Thresholds and intervals"
+      },
+      "flags": {
+        "title": "Net-swing flags",
+        "help": "People whose net pay moved more than the company's threshold against last month. Mark each one: expected, or a real problem.",
+        "none": "No flag this month.",
+        "columns": {
+          "person": "Person",
+          "change": "Net pay change",
+          "pattern": "What moved it",
+          "disposition": "Disposition"
+        },
+        "up": "Up {swing}",
+        "down": "Down {swing}",
+        "threshold": "Threshold ±{threshold}",
+        "unnamed": "A person",
+        "disposition": {
+          "expected": "Expected",
+          "problem": "A real problem"
+        },
+        "by": "By {name}",
+        "mark": {
+          "expected": "Expected",
+          "problem": "Real problem"
+        }
+      },
+      "settings": {
+        "title": "Payroll cycle settings",
+        "description": "How often the Pre-salary loop checks each company, and the net-swing threshold the Salary payroll loop flags at. Every change is recorded with who made it.",
+        "defaults": "Defaults: checked daily, threshold ±15%",
+        "version": "Version {version}",
+        "interval": "Pre-salary check interval",
+        "intervalHelp": "From the start of the payroll period to the cut-off.",
+        "threshold": "Net-swing threshold",
+        "thresholdHelp": "Flag a person whose net pay moves by more than this against last month.",
+        "save": "Save",
+        "exclusions": "Excluded pay patterns",
+        "noExclusions": "None. An exclusion is added only by approving a proposal.",
+        "remove": "Remove"
+      },
+      "proposals": {
+        "title": "Proposals",
+        "help": "Proposed from payroll HR's dispositions over the last 30 days. Nothing applies until an administrator approves it; it then applies from the next run.",
+        "none": "No proposal: not enough flags were cleared as expected.",
+        "threshold": "Raise the threshold from ±{from} to ±{to}",
+        "exclusion": "Stop flagging changes explained by {pattern}",
+        "evidence": "{expected} of {flags} flags cleared as expected ({share}), real problems: {problems}, last {days} days",
+        "approved": "Approve",
+        "rejected": "Reject"
+      },
+      "saved": {
+        "disposition": "Disposition recorded.",
+        "setting": "Saved. It applies from the next run.",
+        "approved": "Proposal approved. It applies from the next run.",
+        "rejected": "Proposal rejected."
+      },
+      "errors": {
+        "invalid": "That change was not understood.",
+        "refused": "You cannot make that change.",
+        "changed": "This changed since the page opened. Look again.",
+        "already": "Already recorded, or nothing changed.",
+        "failed": "The change could not be saved. Try again."
+      },
+      "patternUnknown": "A pay item no longer in the catalogue"
     }
   },
   "today": {
@@ -1064,16 +1348,17 @@
       "payrollTitle": "{company}: payroll inputs missing before the {date} cut-off",
       "payrollTitleUnnamed": "Payroll inputs missing before the {date} cut-off",
       "payrollBlockers": "{count, plural, one {# blocks the run} other {# block the run}}",
-      "payrollCta": "Open readiness",
+      "payrollCta": "Open payroll cycle",
       "passportsTitle": "{count, plural, one {# passport expires within 60 days} other {# passports expire within 60 days}}",
       "passportsFirst": "First on {date}",
       "passportsCta": "Open people",
       "names": {
         "loop_probation_ending": "Probation ending",
-        "loop_payroll_inputs": "Payroll inputs ready",
+        "loop_payroll_inputs": "Pre-salary loop",
         "loop_missing_employee_data": "Missing employee data",
         "loop_missed_clock_outs": "Missed clock-outs",
-        "loop_document_expiry": "Passports expiring"
+        "loop_document_expiry": "Passports expiring",
+        "loop_salary_payroll": "Salary payroll loop"
       }
     },
     "done": {

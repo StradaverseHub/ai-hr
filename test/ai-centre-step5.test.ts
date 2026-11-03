@@ -44,7 +44,9 @@ describe('worker registry gate', () => {
     expect(actions).toContain("const REGISTRY_SWITCHES: readonly string[] = Object.freeze(['approver_recommendation', 'explainers', 'conversation',\n"+
      "  // AI v2 W8: the five loops at the Prepare level, also switched on AI Centre › Operations › Loops.\n"+
      "  'loop_probation_ending', 'loop_payroll_inputs', 'loop_missing_employee_data', 'loop_missed_clock_outs', 'loop_document_expiry',\n"+
-     // AI v2 P2-2b appends the payroll Audit loop.
+     // AI v2 P2-2a appends the Salary payroll loop, then P2-2b the payroll Audit loop.
+     "  // AI v2 P2-2a: the Salary payroll loop.\n"+
+     "  'loop_salary_payroll',\n"+
      "  // AI v2 P2-2b: the payroll Audit loop, also switched on its own page under Operations › Loops.\n"+
      "  'loop_payroll_audit']);");
     expect(actions).toContain("if (formData.has('worker')) return setRegistryWorkerSwitch(formData);");
@@ -69,7 +71,8 @@ describe('worker registry gate', () => {
     expect(controls).toContain("SWITCHED_MODULE:Readonly<Record<TerasSwitchedWorker,string>>=Object.freeze({approver_recommendation:'leave',explainers:'assistant',conversation:'assistant',\n"+
      // AI v2 W8: each loop's switch checks the module its work belongs to.
      " loop_probation_ending:'employees',loop_payroll_inputs:'payroll',loop_missing_employee_data:'employees',loop_missed_clock_outs:'attendance',loop_document_expiry:'employees',\n"+
-     // AI v2 P2-2b: the Audit loop's switch checks payroll.
+     // AI v2 P2-2a: the Salary payroll loop belongs to payroll; P2-2b: the Audit loop's switch checks payroll.
+     " loop_salary_payroll:'payroll',\n"+
      " // AI v2 P2-2b: the Audit loop's work is payroll.\n"+
      " loop_payroll_audit:'payroll'})");
     expect(controls).toContain("if(!isModuleEnabled(ctx,SWITCHED_MODULE[workerId]))throw new WorkerControlRefused('module_not_enabled')");

@@ -12,13 +12,17 @@ import {company,employment,person} from '../../db/schema';
 import {terasLoopCase,terasLoopPause} from '../../db/teras-schema';
 import {assignedApprovalHref} from '../../lib/assigned-approval-focus';
 import {workerRunGateTx} from '../agent-registry/controls';
+import {todayInKualaLumpur} from '../../lib/hr-date';
+import {PAYROLL_INPUTS_LEAD_DAYS,daysBetween} from './period';
 import {LOOP_IDS,type LoopFacts,type LoopId} from './types';
 
 export type LoopCard=Readonly<
  /** `reviewId`: the probation review the case found, when one is open (Today shows a review already waiting as an
   * approvals task once, as that task: components/today/reads.ts). */
  |{kind:'probation';caseId:string;name:string|null;endDate:string;stage:'none'|'with_manager'|'with_hr';overdue:boolean;reviewId:string|null;href:string}
- |{kind:'payroll';caseId:string;companyName:string|null;payPeriod:string;cutOff:string;missing:readonly string[];blockers:number;href:string}
+ |{kind:'payroll';caseId:string;companyName:string|null;payPeriod:string;cutOff:string;missing:readonly string[];blockers:number;href:string;
+  /** AI v2 P2-2a: the Pre-salary checks still open or waiting (core/loops/pre-salary-checks.ts keys), set-up excluded. */
+  checks:readonly string[]}
  |{kind:'passports';count:number;first:string;href:string}
  |{kind:'clockOut';caseId:string;date:string;checkIn:string;proposedCheckOut:string;href:string}
  |{kind:'record';caseId:string;gaps:readonly string[];href:string}
@@ -37,7 +41,8 @@ const TABS=new Set(['profile','bankStatutory','payroll']);
 export const LOOP_CARD_HREF=Object.freeze({
  probation:(employmentId:string,stage:string,reviewId:string|null)=>stage==='with_hr'&&isUuid(reviewId)?assignedApprovalHref({kind:'hrReview',id:reviewId})
   :`/admin/personnel/${encodeURIComponent(employmentId)}`,
- payroll:()=>'/payroll/setup?readiness=full',
+ // AI v2 P2-2a: the Pre-salary loop's company view on the Payroll cycle page, where each check links to its owner page.
+ payroll:(companyId:string,payPeriod:string)=>`/control-tower/loops/payroll-cycle?${new URLSearchParams({company:companyId,period:payPeriod})}`,
  passports:()=>'/personnel',
  // The slice 1 correction's own form: the person's attendance day, the proposed clock-out in its box.
  clockOut:(date:string,proposedCheckOut:string)=>`/attendance/my-records/${date}?${new URLSearchParams({checkOut:proposedCheckOut})}`,
@@ -46,9 +51,11 @@ export const LOOP_CARD_HREF=Object.freeze({
  passport:()=>'/me?tab=profile',
 });
 
-/** `admin`: the viewer's Today shows HR cards for the companies in `scopeIds`; everyone sees their own cards. */
-export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:readonly string[];admin:boolean}>):Promise<readonly LoopCard[]>{
+/** `admin`: the viewer's Today shows HR cards for the companies in `scopeIds`; everyone sees their own cards. `today`
+ * (default the HR day): the Pre-salary card shows only in the last PAYROLL_INPUTS_LEAD_DAYS before its cut-off. */
+export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:readonly string[];admin:boolean;today?:string}>):Promise<readonly LoopCard[]>{
  if(!ctx.userId||ctx.agent)return [];
+ const today=p.today??todayInKualaLumpur();
  return withTenant(ctx,async tx=>{
   const live:LoopId[]=[];
   for(const id of LOOP_IDS)if((await workerRunGateTx(tx,ctx,id)).run)live.push(id);
@@ -87,8 +94,10 @@ export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:read
   }),card=>card.endDate);
   take(rows.filter(row=>hr(row)&&row.workerId==='loop_payroll_inputs').flatMap(row=>{
    const payPeriod=str(row.facts,'payPeriod'),cutOff=str(row.facts,'cutOff'),missing=list(row.facts,'missing');
-   return payPeriod&&isDate(cutOff)&&missing.length?[{kind:'payroll' as const,caseId:row.id,companyName:row.companyName??null,payPeriod,cutOff,missing,
-    blockers:typeof row.facts.blockers==='number'?row.facts.blockers:0,href:LOOP_CARD_HREF.payroll()}]:[];
+   const checks=list(row.facts,'blocking').filter(key=>key!=='setup');
+   return payPeriod&&isDate(cutOff)&&(missing.length||checks.length)&&daysBetween(today,cutOff)<=PAYROLL_INPUTS_LEAD_DAYS
+    ?[{kind:'payroll' as const,caseId:row.id,companyName:row.companyName??null,payPeriod,cutOff,missing,checks,
+    blockers:typeof row.facts.blockers==='number'?row.facts.blockers:0,href:LOOP_CARD_HREF.payroll(row.companyId,payPeriod)}]:[];
   }),card=>card.cutOff);
   const expiring=rows.filter(row=>hr(row)&&row.workerId==='loop_document_expiry').map(row=>str(row.facts,'expiresOn')).filter(isDate).sort();
   if(expiring.length)cards.push({kind:'passports',count:expiring.length,first:expiring[0],href:LOOP_CARD_HREF.passports()});

@@ -53,17 +53,19 @@
       },
       "names": {
         "loop_probation_ending": "Kết thúc thử việc",
-        "loop_payroll_inputs": "Dữ liệu lương sẵn sàng",
+        "loop_payroll_inputs": "Vòng lặp trước kỳ lương",
         "loop_missing_employee_data": "Thiếu dữ liệu nhân viên",
         "loop_missed_clock_outs": "Quên chấm công ra",
-        "loop_document_expiry": "Hộ chiếu sắp hết hạn"
+        "loop_document_expiry": "Hộ chiếu sắp hết hạn",
+        "loop_salary_payroll": "Vòng lặp chạy lương"
       },
       "doneMeans": {
         "loop_probation_ending": "Quyết định được ghi nhận trước khi thử việc kết thúc",
-        "loop_payroll_inputs": "Không có gì chặn việc chạy lương trước hạn chốt",
+        "loop_payroll_inputs": "Mọi dữ liệu đầu vào đầy đủ và được duyệt trước hạn chốt",
         "loop_missing_employee_data": "Mọi thông tin nhân viên có thể điền đã được điền và phê duyệt",
         "loop_missed_clock_outs": "Mọi lần chấm công ra đều có trong hồ sơ",
-        "loop_document_expiry": "Mỗi hộ chiếu được gia hạn trước khi hết hạn"
+        "loop_document_expiry": "Mỗi hộ chiếu được gia hạn trước khi hết hạn",
+        "loop_salary_payroll": "Mỗi lần chạy được kiểm tra, do một người duyệt, được đóng và tệp ngân hàng khớp"
       },
       "doneMeansLine": "Hoàn thành nghĩa là: {done}.",
       "level": {
@@ -112,10 +114,10 @@
           "verify": "Đóng khi quyết định được ghi nhận. Ngày kết thúc mới chưa có quyết định sẽ mở lại."
         },
         "loop_payroll_inputs": {
-          "detect": "Hạn chốt lương trong vòng 7 ngày và kiểm tra mức sẵn sàng lương thấy có mục chặn việc chạy lương.",
-          "diagnose": "Những kiểm tra nào chưa sẵn sàng và bao nhiêu trong số đó chặn việc chạy lương.",
-          "prepare": "Một thẻ Hôm nay cho quản trị viên lương liệt kê những gì còn thiếu ở mỗi công ty.",
-          "verify": "Đóng khi không còn gì chặn việc chạy lương trước hạn chốt. Mục chặn mới trước hạn chốt sẽ mở lại."
+          "detect": "Từ đầu kỳ lương đến hạn chốt, theo chu kỳ của từng công ty: bảng chấm công, làm thêm giờ, nghỉ phép, yêu cầu hoàn tiền, nhân viên mới và nghỉ việc, thông tin ngân hàng và pháp định, thay đổi lương và thiết lập lương.",
+          "diagnose": "Các mục đang mở, đang chờ và cần xem lại của mỗi lần kiểm tra, đọc từ chủ sở hữu của từng mục.",
+          "prepare": "Một hồ sơ cho quản trị viên lương trên trang Chu kỳ lương, và một thẻ Hôm nay trong 7 ngày cuối trước hạn chốt. Mỗi lần kiểm tra liên kết đến trang nơi nó được sửa.",
+          "verify": "Hoàn tất khi không còn mục nào mở hoặc chờ trước hạn chốt. Một trở ngại mới trước hạn chốt sẽ mở lại."
         },
         "loop_missing_employee_data": {
           "detect": "Hồ sơ nhân viên thiếu thông tin cần cho tính lương hoặc khai báo theo luật định.",
@@ -134,6 +136,12 @@
           "diagnose": "Ngày hết hạn trong hồ sơ.",
           "prepare": "Một thẻ Hôm nay cho nhân sự và một thẻ nhắc nhân viên gia hạn.",
           "verify": "Đóng khi ngày hết hạn đã gia hạn được ghi nhận. Ngày hết hạn bị đưa lại vào khoảng thời gian sẽ mở lại."
+        },
+        "loop_salary_payroll": {
+          "detect": "Sau hạn chốt, các lần chạy trong tháng của từng công ty: lương, thưởng và ngoài chu kỳ. Lần chạy chưa bắt đầu được chuẩn bị để bộ phận nhân sự bắt đầu.",
+          "diagnose": "11 kiểm tra bất thường, thay đổi so với tháng trước theo nguyên nhân, cờ biến động lương thực nhận, phiên bản quy định pháp định và tệp ngân hàng so với lương thực nhận.",
+          "prepare": "Một hồ sơ cho mỗi lần chạy dành cho quản trị viên lương, và một cờ cho mỗi người để bộ phận lương đánh dấu là dự kiến hoặc là vấn đề thật. Nó không bao giờ chạy, duyệt hay đóng bảng lương.",
+          "verify": "Hoàn tất khi một người đã đóng lần chạy và tệp ngân hàng khớp. Lần chạy được mở lại sau khi đóng sẽ mở lại hồ sơ."
         }
       },
       "figures": {
@@ -169,7 +177,10 @@
         "payroll": "Thiếu {count, plural, other {# dữ liệu}} trước hạn chốt {date}",
         "record": "Cần điền {count, plural, other {# thông tin}}",
         "clockOut": "Đề xuất chấm công ra lúc {time} cho ngày {date}",
-        "passport": "Hộ chiếu hết hạn ngày {date}"
+        "passport": "Hộ chiếu hết hạn ngày {date}",
+        "salaryRun": "{status, select, draft {Lần chạy lương, chưa xử lý} processed {Lần chạy lương, đã xử lý} closed {Lần chạy lương, đã đóng} other {Lần chạy lương}}",
+        "swing": "Lương thực nhận biến động vượt ngưỡng",
+        "salaryStart": "Lần chạy lương cần bắt đầu sau hạn chốt {date}"
       },
       "caseState": {
         "open": "Đang chờ người đó",
@@ -200,7 +211,8 @@
         "none": "Chưa có lần chạy nào.",
         "summary": "{opened} đã chuẩn bị, {closed} đã đóng, {open} đang mở, {waiting} đang chờ",
         "capped": "Đã đạt giới hạn thẻ; phần còn lại ở lần chạy sau."
-      }
+      },
+      "payrollCycle": "Chu kỳ lương"
     },
     "capacity": {
       "title": "Năng lực HR",
@@ -708,12 +720,13 @@
         "team_absence_weekly_summary": "Tóm tắt vắng mặt hằng tuần của nhóm",
         "daily_digest": "Bản tóm tắt hằng ngày",
         "loop_probation_ending": "Kết thúc thử việc",
-        "loop_payroll_inputs": "Dữ liệu lương sẵn sàng",
+        "loop_payroll_inputs": "Vòng lặp trước kỳ lương",
         "loop_missing_employee_data": "Thiếu dữ liệu nhân viên",
         "loop_missed_clock_outs": "Quên chấm công ra",
         "loop_document_expiry": "Hộ chiếu sắp hết hạn",
         "loop_payroll_audit": "Vòng lặp kiểm toán",
-        "conversation": "Hội thoại trò chuyện trực tiếp"
+        "conversation": "Hội thoại trò chuyện trực tiếp",
+        "loop_salary_payroll": "Vòng lặp chạy lương"
       },
       "switchInvalid": "Không thể thay đổi công tắc đó tại đây.",
       "switchRefused": "Chỉ quản trị viên tập đoàn mới có thể thay đổi công tắc này.",
@@ -968,6 +981,277 @@
         "provider_error": "Trung tâm AI chưa thể trả lời lúc này. Vui lòng thử lại."
       },
       "letterRequestTitle": "Yêu cầu {letterType}"
+    },
+    "payrollCycle": {
+      "title": "Chu kỳ lương: {month}",
+      "description": "Ba vòng lặp đưa bảng lương của mỗi công ty từ dữ liệu đầu vào đến kiểm toán.",
+      "headerOne": "Hạn chốt {cutOff} · ngày trả lương {payDay} · EPF, SOCSO, EIS và PCB đến hạn {due}.",
+      "headerGroup": "EPF, SOCSO, EIS và PCB đến hạn {due}. Mỗi công ty có hạn chốt và ngày trả lương riêng.",
+      "company": "Công ty",
+      "allCompanies": "{count, plural, other {Tất cả # công ty}}",
+      "show": "Hiển thị",
+      "noCompanies": "Bạn không quản trị công ty nào ở đây.",
+      "loopsLabel": "Các vòng lặp lương theo thứ tự",
+      "backToCycle": "Chu kỳ lương",
+      "checks": {
+        "timesheets": "Bảng chấm công hợp lệ",
+        "overtime": "Làm thêm giờ đã duyệt",
+        "leave": "Nghỉ phép và ngày không lương đã chốt",
+        "claims": "Yêu cầu hoàn tiền đã quyết định",
+        "joinersLeavers": "Nhân viên mới và nghỉ việc đầy đủ",
+        "statutoryBank": "Số ngân hàng, EPF, SOCSO và thuế",
+        "payChanges": "Phụ cấp và thay đổi lương đã duyệt",
+        "setup": "Thiết lập lương sẵn sàng"
+      },
+      "pre": {
+        "title": "1 · Vòng lặp trước kỳ lương",
+        "done": "Hoàn tất khi mọi dữ liệu đầu vào đầy đủ và được duyệt trước hạn chốt.",
+        "note": "Nó kiểm tra từng chủ sở hữu và chuẩn bị những gì cần xác nhận. Cấp độ: Chuẩn bị, nên không có gì thay đổi cho đến khi một người xác nhận.",
+        "open": "Mở vòng lặp trước kỳ lương",
+        "state": {
+          "open": "{count, plural, =0 {Đang chạy · hạn chốt hôm nay} other {Đang chạy · còn # ngày đến hạn chốt}}",
+          "openPast": "Đang chạy",
+          "done": "Hoàn tất",
+          "missed": "Chưa sẵn sàng trước hạn chốt",
+          "not_checked": "Chưa kiểm tra",
+          "paused": "Tạm dừng",
+          "off": "Tắt"
+        },
+        "value": {
+          "notChecked": "Chưa kiểm tra",
+          "off": "Không sử dụng",
+          "open": "{count} đang mở",
+          "waiting": "{count} đang chờ",
+          "review": "{count} cần xem lại",
+          "done": "Hoàn tất"
+        }
+      },
+      "salary": {
+        "title": "2 · Vòng lặp chạy lương",
+        "done": "Hoàn tất khi mỗi lần chạy được kiểm tra, do một người duyệt, được đóng và tệp ngân hàng khớp.",
+        "note": "Lương chỉ do dịch vụ lương tính. Vòng lặp này luôn ở mức Chuẩn bị tại mọi công ty: nó kiểm tra và chuẩn bị, còn một người duyệt và đóng.",
+        "open": "Mở vòng lặp chạy lương",
+        "state": {
+          "before_cut_off": "Bắt đầu khi đến hạn chốt",
+          "not_checked": "Chưa kiểm tra",
+          "ready_to_start": "Sẵn sàng bắt đầu",
+          "in_progress": "Đang thực hiện",
+          "attention": "Cần chú ý",
+          "done": "Hoàn tất",
+          "paused": "Tạm dừng",
+          "off": "Tắt"
+        },
+        "rows": {
+          "run": "Chạy lương cho từng công ty",
+          "change": "Thay đổi so với tháng trước, theo từng người",
+          "anomalies": "{count} kiểm tra bất thường",
+          "rules": "EPF, SOCSO, EIS, PCB theo quy định hiện hành",
+          "close": "Duyệt và đóng",
+          "bank": "Tổng tệp ngân hàng bằng lương thực nhận"
+        },
+        "value": {
+          "started": "Đã bắt đầu {started}/{total}",
+          "preparedForHr": "Đã chuẩn bị cho nhân sự",
+          "flagged": "{count, plural, other {# người vượt ngưỡng}}",
+          "explained": "Giải thích theo nguyên nhân",
+          "afterRun": "Giải thích theo nguyên nhân",
+          "exceptions": "{count, plural, other {# ngoại lệ đang mở}}",
+          "noExceptions": "Không có ngoại lệ đang mở",
+          "toToday": "Ngoại lệ chuyển đến Hôm nay",
+          "newer": "{count, plural, other {Quy định mới hơn cho # lần chạy}}",
+          "ruleVersion": "Phiên bản quy định {version}",
+          "versionShown": "Hiển thị phiên bản quy định",
+          "closed": "Đã đóng {closed}/{total}",
+          "person": "Luôn là một người",
+          "mismatch": "{count, plural, other {# lần chạy không khớp}}",
+          "matches": "Khớp",
+          "beforeRelease": "Kiểm tra trước khi phát hành"
+        },
+        "runLine": "{type}: {status}"
+      },
+      "audit": {
+        "title": "3 · Vòng lặp kiểm toán",
+        "done": "Hoàn tất khi mọi khoản đã được trả, nộp, đối chiếu và có bằng chứng.",
+        "note": "Tệp và hồ sơ nộp luôn ở mức Chuẩn bị: một người nộp cho EPF, PERKESO và LHDN."
+      },
+      "interval": {
+        "hourly": "Kiểm tra mỗi giờ",
+        "twice_daily": "Kiểm tra hai lần mỗi ngày",
+        "daily": "Kiểm tra hằng ngày"
+      },
+      "runType": {
+        "regular": "Lương",
+        "bonus": "Thưởng",
+        "off_cycle": "Ngoài chu kỳ"
+      },
+      "runStatus": {
+        "draft": "Nháp",
+        "processed": "Đã xử lý",
+        "closed": "Đã đóng"
+      },
+      "byCompany": {
+        "title": "Từng công ty",
+        "columns": {
+          "company": "Công ty",
+          "preSalary": "Trước kỳ lương",
+          "salary": "Chạy lương",
+          "audit": "Kiểm toán"
+        }
+      },
+      "history": {
+        "title": "Ba chu kỳ gần nhất",
+        "columns": {
+          "month": "Tháng",
+          "inputsReady": "Dữ liệu sẵn sàng",
+          "issuesCaught": "Vấn đề phát hiện trước khi chạy",
+          "closed": "Đóng",
+          "corrections": "Sửa sau khi chạy",
+          "filed": "Nộp đúng hạn"
+        },
+        "notMeasured": "Chưa đo",
+        "missed": "Chưa sẵn sàng trước hạn chốt",
+        "onCutOff": "Đúng ngày chốt",
+        "before": "{count, plural, other {# ngày trước hạn chốt}}",
+        "after": "{count, plural, other {# ngày sau hạn chốt}}",
+        "notClosed": "Chưa đóng",
+        "noRun": "Không có lần chạy",
+        "settingsTitle": "Thay đổi",
+        "noChanges": "Chưa có thay đổi: áp dụng giá trị mặc định.",
+        "settingRow": "Phiên bản {version}: {interval}, ngưỡng ±{threshold}, {exclusions, plural, =0 {không loại trừ} other {# loại trừ}} ({source}) bởi {name}, {when}",
+        "rejectedRow": "Một đề xuất bị {name} từ chối, {when}",
+        "source": {
+          "admin": "do quản trị viên đặt",
+          "proposal": "một đề xuất được duyệt"
+        }
+      },
+      "people": {
+        "title": "Vòng lặp nhân sự",
+        "item": "{name} · {count} đang mở"
+      },
+      "patternItem": "Khoản lương {item}",
+      "causes": {
+        "unpaid_leave": "Nghỉ không lương",
+        "absence": "Vắng mặt",
+        "overtime_hours": "Giờ làm thêm",
+        "salary_change": "Thay đổi lương",
+        "days_paid": "Số ngày được trả",
+        "additional_run": "Lần chạy bổ sung",
+        "statutory_rules": "Quy định pháp định",
+        "set_by_hand": "Khoản pháp định đặt thủ công",
+        "other": "Thay đổi khác"
+      },
+      "bodies": {
+        "epf": "EPF",
+        "socso": "SOCSO",
+        "eis": "EIS",
+        "pcb": "PCB",
+        "hrdf": "Phí HRD Corp"
+      },
+      "bank": {
+        "match": "Khớp lương thực nhận và số người",
+        "total_mismatch": "Tổng không khớp lương thực nhận",
+        "count_mismatch": "Số bản ghi không khớp",
+        "not_available": "Không có tệp ngân hàng để kiểm tra",
+        "blocked": "Chưa thể tạo tệp ngân hàng",
+        "not_ready": "Kiểm tra sau khi xử lý"
+      },
+      "salaryPage": {
+        "title": "Vòng lặp chạy lương: {month}",
+        "description": "Các kiểm tra của mỗi lần chạy như vòng lặp ghi nhận lần gần nhất. Một người chạy, duyệt và đóng bảng lương trên bàn làm việc lương.",
+        "level": "Chuẩn bị tại mọi công ty",
+        "off": "Vòng lặp chạy lương đang tắt. Bật nó trong Vòng lặp để kiểm tra các lần chạy.",
+        "noCompanies": "Bạn không phụ trách lương của công ty nào ở đây.",
+        "companyLine": "Hạn chốt {cutOff} · ngưỡng biến động lương thực nhận ±{threshold}",
+        "readyToStart": "Sẵn sàng bắt đầu: chưa có lần chạy lương cho {month}.",
+        "openPayroll": "Mở bảng lương",
+        "noRuns": "Chưa có lần chạy nào trong tháng này.",
+        "runsCaption": "Các lần chạy lương của {company}",
+        "columns": {
+          "run": "Lần chạy",
+          "status": "Trạng thái",
+          "anomalies": "Kiểm tra bất thường",
+          "change": "Thay đổi so với tháng trước",
+          "rules": "Quy định pháp định",
+          "close": "Duyệt và đóng",
+          "bank": "Tệp ngân hàng"
+        },
+        "runName": "Lần chạy {type} {seq}",
+        "stale": "Cần tính lại",
+        "employees": "{count, plural, other {# nhân viên}}",
+        "afterProcessing": "Sau khi xử lý",
+        "notEvaluated": "{count} kiểm tra chưa chạy",
+        "changed": "{count, plural, other {# người có thay đổi}}",
+        "cause": "{cause} ({count})",
+        "newerRules": "Quy định mới hơn: {bodies}",
+        "closedBy": "Đóng bởi {name}",
+        "closed": "Đã đóng",
+        "notClosed": "Chưa đóng",
+        "reopened": "{count, plural, other {Mở lại # lần sau khi đóng}}",
+        "note": "Ngưỡng biến động lương thực nhận bắt đầu ở ±15%. Nó chỉ thay đổi khi quản trị viên đặt hoặc duyệt một đề xuất, và không bao giờ thay đổi các kiểm tra bất thường.",
+        "settingsLink": "Ngưỡng và chu kỳ"
+      },
+      "flags": {
+        "title": "Cờ biến động lương thực nhận",
+        "help": "Những người có lương thực nhận biến động vượt ngưỡng của công ty so với tháng trước. Đánh dấu từng người: dự kiến, hoặc là vấn đề thật.",
+        "none": "Không có cờ nào trong tháng này.",
+        "columns": {
+          "person": "Người",
+          "change": "Thay đổi lương thực nhận",
+          "pattern": "Nguyên nhân thay đổi",
+          "disposition": "Kết luận"
+        },
+        "up": "Tăng {swing}",
+        "down": "Giảm {swing}",
+        "threshold": "Ngưỡng ±{threshold}",
+        "unnamed": "Một người",
+        "disposition": {
+          "expected": "Dự kiến",
+          "problem": "Vấn đề thật"
+        },
+        "by": "Bởi {name}",
+        "mark": {
+          "expected": "Dự kiến",
+          "problem": "Vấn đề thật"
+        }
+      },
+      "settings": {
+        "title": "Cài đặt chu kỳ lương",
+        "description": "Tần suất vòng lặp trước kỳ lương kiểm tra từng công ty, và ngưỡng biến động lương thực nhận mà vòng lặp chạy lương gắn cờ. Mọi thay đổi đều được ghi lại cùng người thực hiện.",
+        "defaults": "Mặc định: kiểm tra hằng ngày, ngưỡng ±15%",
+        "version": "Phiên bản {version}",
+        "interval": "Chu kỳ kiểm tra trước kỳ lương",
+        "intervalHelp": "Từ đầu kỳ lương đến hạn chốt.",
+        "threshold": "Ngưỡng biến động lương thực nhận",
+        "thresholdHelp": "Gắn cờ người có lương thực nhận thay đổi nhiều hơn mức này so với tháng trước.",
+        "save": "Lưu",
+        "exclusions": "Mẫu lương được loại trừ",
+        "noExclusions": "Không có. Chỉ thêm loại trừ khi duyệt một đề xuất.",
+        "remove": "Xóa"
+      },
+      "proposals": {
+        "title": "Đề xuất",
+        "help": "Được đề xuất từ kết luận của bộ phận lương trong 30 ngày qua. Không có gì được áp dụng cho đến khi quản trị viên duyệt; sau đó áp dụng từ lần chạy tiếp theo.",
+        "none": "Không có đề xuất: chưa đủ cờ được kết luận là dự kiến.",
+        "threshold": "Nâng ngưỡng từ ±{from} lên ±{to}",
+        "exclusion": "Ngừng gắn cờ các thay đổi do {pattern}",
+        "evidence": "{expected}/{flags} cờ được kết luận là dự kiến ({share}), {problems} vấn đề thật, {days} ngày qua",
+        "approved": "Duyệt",
+        "rejected": "Từ chối"
+      },
+      "saved": {
+        "disposition": "Đã ghi nhận kết luận.",
+        "setting": "Đã lưu. Áp dụng từ lần chạy tiếp theo.",
+        "approved": "Đã duyệt đề xuất. Áp dụng từ lần chạy tiếp theo.",
+        "rejected": "Đã từ chối đề xuất."
+      },
+      "errors": {
+        "invalid": "Không hiểu được thay đổi đó.",
+        "refused": "Bạn không thể thực hiện thay đổi đó.",
+        "changed": "Nội dung đã thay đổi kể từ khi mở trang. Hãy xem lại.",
+        "already": "Đã ghi nhận, hoặc không có gì thay đổi.",
+        "failed": "Không thể lưu thay đổi. Hãy thử lại."
+      },
+      "patternUnknown": "Một khoản lương không còn trong danh mục"
     }
   },
   "today": {
@@ -1064,16 +1348,17 @@
       "payrollTitle": "{company}: thiếu dữ liệu lương trước hạn chốt {date}",
       "payrollTitleUnnamed": "Thiếu dữ liệu lương trước hạn chốt {date}",
       "payrollBlockers": "{count, plural, other {# mục chặn việc chạy lương}}",
-      "payrollCta": "Mở báo cáo sẵn sàng",
+      "payrollCta": "Mở chu kỳ lương",
       "passportsTitle": "{count, plural, other {# hộ chiếu hết hạn trong 60 ngày}}",
       "passportsFirst": "Sớm nhất ngày {date}",
       "passportsCta": "Mở danh sách nhân sự",
       "names": {
         "loop_probation_ending": "Kết thúc thử việc",
-        "loop_payroll_inputs": "Dữ liệu lương sẵn sàng",
+        "loop_payroll_inputs": "Vòng lặp trước kỳ lương",
         "loop_missing_employee_data": "Thiếu dữ liệu nhân viên",
         "loop_missed_clock_outs": "Quên chấm công ra",
-        "loop_document_expiry": "Hộ chiếu sắp hết hạn"
+        "loop_document_expiry": "Hộ chiếu sắp hết hạn",
+        "loop_salary_payroll": "Vòng lặp chạy lương"
       }
     },
     "done": {

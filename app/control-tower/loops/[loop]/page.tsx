@@ -35,6 +35,10 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
     if (id === 'loop_payroll_inputs') return t('what.payroll', { count: count(facts, 'missing'), date: day(str(facts, 'cutOff')) });
     if (id === 'loop_missing_employee_data') return t('what.record', { count: count(facts, 'gaps') });
     if (id === 'loop_missed_clock_outs') return t('what.clockOut', { time: str(facts, 'proposedCheckOut') ?? '—', date: day(str(facts, 'date')) });
+    // AI v2 P2-2a: the Salary payroll loop's three kinds of card. A swing flag shows no figure here: its ratio is on the
+    // Salary payroll page, for payroll administrators.
+    if (id === 'loop_salary_payroll') return str(facts, 'runType') ? t('what.salaryRun', { status: str(facts, 'status') ?? 'draft' })
+      : typeof facts.swingBp === 'number' ? t('what.swing') : t('what.salaryStart', { date: day(str(facts, 'cutOff')) });
     return t('what.passport', { date: day(str(facts, 'expiresOn')) });
   };
   const status = (item: LoopCaseView) => item.state === 'open' ? t('caseState.open') : item.state === 'waiting' ? t('caseState.waiting')

@@ -245,6 +245,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/control-tower/agents/launcher-actions.ts":{"setAssistantLauncherAction":"handoff:ai_governance"},
  "app/control-tower/loops/actions.ts":{"setLoopPauseAction":"handoff:ai_governance","setLoopSwitchAction":"handoff:ai_governance"},
  "app/control-tower/loops/loop_payroll_audit/actions.ts":{"captureAuditNowAction":"handoff:ai_governance","disposeAuditFindingAction":"handoff:ai_governance","grantAuditReaderAction":"handoff:access_and_authentication","recordCorrectionCauseAction":"handoff:ai_governance","revokeAuditReaderAction":"handoff:access_and_authentication","setAuditSettingsAction":"handoff:ai_governance"},
+ "app/control-tower/loops/payroll-cycle/actions.ts":{"decideThresholdProposalAction":"handoff:ai_governance","recordSwingDispositionAction":"handoff:ai_governance","setPayrollLoopSettingAction":"handoff:ai_governance"},
  "app/control-tower/orchestrator-actions.ts":{"refreshOrchestrationAction":"handoff:ai_governance"},
  "app/dashboard-layout-actions.ts":{"resetDashboardLayoutAction":"internal:session_and_presentation","saveDashboardLayoutAction":"internal:session_and_presentation"},
  "app/delegations/actions.ts":{"createSelfDelegationAction":"backlog:confirm","hrCreateDelegationAction":"backlog:confirm","hrEditDelegationAction":"backlog:confirm","hrRevokeDelegationAction":"backlog:confirm","loadDelegationContextAction":"backlog:automatic","loadEligibleDelegatesAction":"backlog:automatic","revokeSelfDelegationAction":"backlog:confirm"},
