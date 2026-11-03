@@ -30,9 +30,9 @@ function summarise(tasks:Awaited<ReturnType<typeof pendingFor>>):ApprovalQueueSu
 export async function approvalQueueFor(ctx:SessionContext,companyId:string):Promise<ApprovalQueueSummary>{
  return summarise(await pendingFor(ctx,companyId));
 }
-/** The same counts from the same read, and the ids of the leave requests among them. The ids are for the harness alone,
- * which names only those of them the leave decision card can open (core/harness/tools.ts approvalQueueWithLeaveRequests,
- * disclosed under its declared entity); they never leave it. */
+/** The same counts from the same read, and the ids of the leave requests among them. The ids are for the conversation
+ * harness's approval_queue binding alone (approvalQueueWithLeaveRequests), which names only those of them the leave decision
+ * card can open, disclosed under its declared entity; they never leave it. */
 export async function approvalQueueWithLeaveIdsFor(ctx:SessionContext,companyId:string):Promise<Readonly<{summary:ApprovalQueueSummary;leaveRequestIds:ReadonlySet<string>}>>{
  const tasks=await pendingFor(ctx,companyId);
  return Object.freeze({summary:summarise(tasks),leaveRequestIds:new Set(tasks.filter(task=>task.kind==='leave').map(task=>task.id))});
