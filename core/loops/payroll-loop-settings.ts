@@ -172,10 +172,11 @@ export async function decideThresholdProposal(supplied:SessionContext,input:unkn
  const parsed=DecisionInput.safeParse(input);
  if(!parsed.success)throw new PayrollLoopRefused('invalid');
  const {companyId,proposalKey,decision}=parsed.data;
- if(decision==='approved'&&!isGroupAdmin(ctx))throw new PayrollLoopRefused('group_administrator');
  const now=options.now??new Date();
  return withTenant(ctx,async tx=>{
   await requireCompanyAdminTx(tx,companyId);
+  // Only once the caller administers the company: approving is a group administrator's (review finding A2).
+  if(decision==='approved'&&!isGroupAdmin(ctx))throw new PayrollLoopRefused('group_administrator');
   await lockCompany(tx,ctx.tenantId,companyId);
   const {setting,proposals}=await thresholdProposalsTx(tx,ctx.tenantId,companyId,now);
   const proposal=proposals.find(item=>item.key===proposalKey);

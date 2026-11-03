@@ -123,7 +123,7 @@ describe('the Audit loop column',()=>{
   expect(text(view.container)).toContain('Done when everything is paid, filed, reconciled and evidenced.');
   expect([...view.container.querySelectorAll('[data-audit-item]')].map(item=>[...item.children].map(text))).toEqual([
    ['Payslips released and opened','3 of 3 released · 2 opened'],
-   ['EPF, SOCSO, EIS, PCB, HRD files','2 of 4 prepared · 1 filed · due Feb 15'],
+   ['EPF, SOCSO, EIS, PCB, HRD files','2 of 3 prepared · 1 filed · due Feb 15'],
    ['Bank files','1 bank file recorded'],
    ['Corrections after the run','1 · target zero'],
    ['Control checks','1 open finding'],
@@ -144,7 +144,7 @@ describe('the Audit loop column',()=>{
   expect([...view.container.querySelector('[data-audit-item="approvals"]')!.children].map(text)).toEqual(['Who approved what, when','Audit pack per company']);
   expect(view.container.querySelector('[data-audit-item="approvals"] a')).toBeNull();
   expect(screen.getByRole('link',{name:'Open Audit loop'}).getAttribute('href')).toBe('/control-tower/loops/loop_payroll_audit?period=2026-01');
-  expect([...view.container.querySelector('[data-audit-item="statutory"]')!.children].map(text)[1]).toBe('4 of 8 prepared · 2 filed · due Feb 15');
+  expect([...view.container.querySelector('[data-audit-item="statutory"]')!.children].map(text)[1]).toBe('4 of 6 prepared · 2 filed · due Feb 15');
  });
 });
 

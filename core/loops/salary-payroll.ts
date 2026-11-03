@@ -206,7 +206,9 @@ export async function detectSalaryPayroll(sponsor:SessionContext,input:LoopDetec
  const swingDepartments=await withTenant(sponsor,tx=>currentDepartmentsTx(tx,[...swingMonths.values()].flatMap(summary=>summary.people.filter(p=>p.flagged).map(p=>p.employmentId))));
  const swingAcknowledged=(companyId:string,employmentId:string)=>!!acknowledgementFor(acks,{companyId,checkId:'swing:net_swing',employmentId,departmentId:swingDepartments.get(employmentId)??null});
  const openFlags=new Map<string,number>();
- for(const [key,summary] of swingMonths)openFlags.set(key,summary.people.filter(person=>person.flagged&&!disposedEarly.has(swingKey(person.employmentId,key.slice(37)))
+ // Counted exactly as the flags below are raised (a flagged person with no swing ratio or pattern gets no flag case).
+ for(const [key,summary] of swingMonths)openFlags.set(key,summary.people.filter(person=>person.flagged&&person.swingBp!==null&&!!person.pattern
+  &&!disposedEarly.has(swingKey(person.employmentId,key.slice(37)))
   &&!swingAcknowledged(key.slice(0,36),person.employmentId)).length);
  // Each run's case.
  for(const batch of batches){

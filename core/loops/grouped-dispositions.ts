@@ -55,11 +55,13 @@ export async function disposeSwingGroup(supplied:SessionContext,input:Readonly<{
  const {companyId,payPeriod,pattern,disposition}=input;
  if(typeof companyId!=='string'||!/^[0-9a-f-]{36}$/i.test(companyId)||typeof payPeriod!=='string'||!/^\d{4}-(0[1-9]|1[0-2])$/.test(payPeriod)
   ||!isSwingPattern(pattern)||(disposition!=='expected'&&disposition!=='problem'))throw new PayrollLoopRefused('invalid');
- // The open flags of the group, as the caller may read them.
+ // The open flags of the group not yet disposed of, as the caller may read them (a disposed flag stays open until the
+ // loop's next run closes it).
  const cases=await withTenant(ctx,tx=>tx.select({id:terasLoopCase.id,employmentId:terasLoopCase.employmentId}).from(terasLoopCase)
   .where(and(eq(terasLoopCase.tenantId,ctx.tenantId),eq(terasLoopCase.workerId,'loop_salary_payroll'),eq(terasLoopCase.companyId,companyId),
    eq(terasLoopCase.state,'open'),sql`${terasLoopCase.subjectKey} like 'swing:%'`,sql`${terasLoopCase.facts}->>'payPeriod'=${payPeriod}`,
-   sql`${terasLoopCase.facts}->>'pattern'=${pattern}`)));
+   sql`${terasLoopCase.facts}->>'pattern'=${pattern}`,
+   sql`not exists (select 1 from public.teras_payroll_swing_disposition d where d.tenant_id=${terasLoopCase.tenantId} and d.case_id=${terasLoopCase.id})`)));
  if(!cases.length)throw new PayrollLoopRefused('changed');
  let disposed=0,skipped=0,verdictsResolved=0;
  const done:string[]=[];

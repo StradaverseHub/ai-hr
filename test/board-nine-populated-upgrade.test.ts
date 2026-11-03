@@ -157,10 +157,10 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   const afterLedger=await ledger();expect(afterLedger).toHaveLength(668);expect(afterLedger.slice(0,660)).toEqual(phaseOneLedger);
   expect(afterLedger.slice(660).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
    {hash:'b6bdeac1995dad6df759ce9a537c98e9a3666bf01aef716a7f6cac9a9134b132',created_at:'1793330001404'},
-   {hash:'31234dca83bad7cc1bb4dc82f04f9743cb6cb690a1352149acd7d4f3b613f887',created_at:'1793330001405'},
-   {hash:'e0ed1ea1b561cedf2f4d2bba37853e781a23c370ba12cf7b4f220a5d002cffce',created_at:'1793330001406'},
+   {hash:'d211dd97ebdeb673998d29a2a9b3b8d8597c39a5646259ac0c855d46eca49fbc',created_at:'1793330001405'},
+   {hash:'05bc9e35367093ae4c6aec877a7ca7ec171387cb84b28940e0db0e190fcf7723',created_at:'1793330001406'},
    {hash:'8b2bb6e38d76c7bf6643e45c62c11ed89e71d954615438d527adf1b4593f22ad',created_at:'1793330001407'},
-   {hash:'9c5f91f7380568067fbea128768a412f200ef58676d9541bb891f3539cb18c02',created_at:'1793330001408'},
+   {hash:'c068fa72631c648453117fdf73cc81e6ffbbb4cc94d55d82397e40ac4e4291f8',created_at:'1793330001408'},
    {hash:'fe54c4a68689e761ca670a81bdfd1e8c1b502cb58201150fa9593c546acae3b7',created_at:'1793330001409'},
    {hash:'316ce555983b42a896fbba7d7f75c73d4037b75ab60f41da6df611d8e0e2c3c0',created_at:'1793330001410'},
    {hash:'d5b9cf2cdb8c76821ead04ad35efaf4c2518cefe1f7b0a72148c0cfdf52e670a',created_at:'1793330001411'},

@@ -316,6 +316,13 @@ describe('the Salary payroll loop',()=>{
   for(const flag of (await casesOf('loop_salary_payroll')).filter(row=>row.subjectKey.startsWith('swing:')&&row.state==='open'))
    await recordSwingDisposition(group,{caseId:flag.id,disposition:'expected'});
   expect(await run('loop_salary_payroll')).toMatchObject({status:'ran'});
+  // Every June flag is closed as done, and the run's own conditions all hold (each named, so a failure says which).
+  expect((await casesOf('loop_salary_payroll')).filter(row=>row.subjectKey.startsWith('swing:')&&(row.facts as {payPeriod?:string}).payPeriod===JUNE)
+   .map(row=>[row.state,row.closeReason])).toEqual(expect.arrayContaining([['closed','done']]));
+  expect((await casesOf('loop_salary_payroll')).filter(row=>row.subjectKey.startsWith('swing:')&&(row.facts as {payPeriod?:string}).payPeriod===JUNE&&row.state!=='closed')).toEqual([]);
+  const juneFacts=(await caseOf('loop_salary_payroll',`salaryrun:${fx.june}`))!.facts as Record<string,unknown>;
+  expect({status:juneFacts.status,stale:juneFacts.stale,evaluated:juneFacts.evaluated,exceptions:juneFacts.exceptions,bank:juneFacts.bank})
+   .toEqual({status:'closed',stale:false,evaluated:true,exceptions:0,bank:'match'});
   expect(await caseOf('loop_salary_payroll',`salaryrun:${fx.june}`)).toMatchObject({state:'closed',closeReason:'done',resolution:'completed',facts:{status:'closed',exceptions:0}});
   expect(await caseOf('loop_salary_payroll',`salaryrun:${fx.bonus}`)).toMatchObject({state:'open'});
   const page=await salaryLoopPage(group,{period:JUNE,today:TODAY});

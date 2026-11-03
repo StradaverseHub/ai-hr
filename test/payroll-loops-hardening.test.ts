@@ -74,6 +74,11 @@ import JSZip from 'jszip';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 const PERIOD='2026-06';
+/** A database refusal's text: the driver wraps the server's message ("Failed query: ...") in its own error's cause. */
+const pgText=(error:unknown)=>{const parts:string[]=[];for(let cur=error as Record<string,unknown>|undefined,n=0;cur&&typeof cur==='object'&&n<5;cur=cur.cause as never,n++)
+ for(const key of ['message','detail'])if(typeof cur[key]==='string')parts.push(cur[key] as string);return parts.join(' | ');};
+const refusedWith=async(work:Promise<unknown>,pattern:RegExp)=>{const error=await work.then(()=>null,(caught:unknown)=>caught);
+ expect(error,'the database refuses it').not.toBeNull();expect(pgText(error)).toMatch(pattern);};
 let b:Base,principalId:string;
 type Login=SessionContext&{userId:string};
 async function groupAdministrator():Promise<Login>{
@@ -143,8 +148,8 @@ describe('A4 and A1: control settings are bounded, loosening is a group administ
   for(const looser of [{bankChangeDays:9,adjustmentThreshold:800},{bankChangeDays:10,adjustmentThreshold:900},{bankChangeDays:10,adjustmentThreshold:800,preparerClosedMode:'info'}])
    await expect(setControlSettings(local,{companyId:b.companyId,...looser})).rejects.toMatchObject({reason:'group_administrator'});
   // Past the service, the database refuses it too.
-  await expect(withTenant(local,tx=>tx.execute(sql`update public.payroll_audit_control_setting
-   set bank_change_days=4,changed_by_user_id=${local.userId}::uuid where company_id=${b.companyId}::uuid`))).rejects.toThrow(/group administrator/);
+  await refusedWith(withTenant(local,tx=>tx.execute(sql`update public.payroll_audit_control_setting
+   set bank_change_days=4,changed_by_user_id=${local.userId}::uuid where company_id=${b.companyId}::uuid`)),/group administrator/);
   // Out of bounds is refused by both.
   await expect(setControlSettings(group,{companyId:b.companyId,bankChangeDays:31,adjustmentThreshold:800})).rejects.toMatchObject({reason:'invalid'});
   await expect(owner.db.execute(sql`update public.payroll_audit_control_setting set adjustment_threshold=99.99 where company_id=${b.companyId}::uuid`)).rejects.toThrow();
@@ -173,8 +178,8 @@ describe('A3: nobody disposes of a finding about themselves',()=>{
   expect(changed.subjectUserIds).toEqual([group.userId]);
   await expect(disposeFinding(group,{findingId:changed.id,disposition:'expected',note:'Mine, and fine.'})).rejects.toMatchObject({reason:'subject'});
   // Past the service, the disposition policy refuses it.
-  await expect(withTenant(group,tx=>tx.insert(payrollAuditDisposition).values({tenantId:b.tenantId,findingId:changed.id,companyId:b.companyId,disposition:'expected',
-   note:'Forged.',disposedByUserId:group.userId}))).rejects.toThrow(/row-level security/i);
+  await refusedWith(withTenant(group,tx=>tx.insert(payrollAuditDisposition).values({tenantId:b.tenantId,findingId:changed.id,companyId:b.companyId,disposition:'expected',
+   note:'Forged.',disposedByUserId:group.userId})),/row-level security/i);
   await disposeFinding(other,{findingId:changed.id,disposition:'expected',note:'Reviewed by another administrator.'});
   // A finding about the administrator's own employment (their own bank change) is not theirs to dispose of either.
   const own=await hire('Fictional Payroll Lead');
@@ -258,7 +263,7 @@ describe('B2: the prior cycle is the same run type',()=>{
   expect([await prior(augustBonus),await closePrior(augustBonus)]).toEqual([juneBonus,juneBonus]);
   // The close source check accepts the same-type prior and refuses the other type's.
   await expect(withTenant(group,tx=>tx.execute(sql`select app.payroll_close_source_people(${july}::uuid,${may}::uuid,array[]::uuid[])`))).resolves.toBeDefined();
-  await expect(withTenant(group,tx=>tx.execute(sql`select app.payroll_close_source_people(${july}::uuid,${juneBonus}::uuid,array[]::uuid[])`))).rejects.toThrow(/Payroll source unavailable/);
+  await refusedWith(withTenant(group,tx=>tx.execute(sql`select app.payroll_close_source_people(${july}::uuid,${juneBonus}::uuid,array[]::uuid[])`)),/Payroll source unavailable/);
  });
 });
 
@@ -336,8 +341,8 @@ describe('B4: standing acknowledgements',()=>{
   // Approved and acknowledged: no longer proposed.
   expect(await withTenant(approver,tx=>ruleProposalsTx(tx,b.tenantId,[b.companyId]))).toEqual([]);
   // A proposal-sourced acknowledgement without the approver's own approved decision is refused by the database.
-  await expect(withTenant(local,tx=>tx.insert(payrollCheckAcknowledgement).values({tenantId:b.tenantId,companyId:b.companyId,checkId:'audit:pay_after_last_day',scope:'company',
-   reason:'Forged',source:'proposal',decisionId:decided.decision.id,createdByUserId:local.userId}))).rejects.toThrow(/row-level security/i);
+  await refusedWith(withTenant(local,tx=>tx.insert(payrollCheckAcknowledgement).values({tenantId:b.tenantId,companyId:b.companyId,checkId:'audit:pay_after_last_day',scope:'company',
+   reason:'Forged',source:'proposal',decisionId:decided.decision.id,createdByUserId:local.userId})),/row-level security/i);
  });
 });
 
@@ -385,7 +390,8 @@ describe('B6: automatic cut-off reminders',()=>{
   expect(await runLoop('loop_payroll_inputs',{tenantId:b.tenantId,principalId,entitlements,today:'2026-07-20',now:new Date('2026-07-19T19:00:00Z')})).toMatchObject({status:'ran'});
   const ledger=async()=>(await withTenant(group,tx=>tx.select().from(terasCutOffReminder))).map(row=>[row.recipientEmploymentId,row.cutOff,row.leadDays,row.audience,row.ownItems,row.approvals]).sort();
   expect(await ledger()).toEqual([[drafting.employmentId,'2026-07-25',5,'employee',1,0],[manager.employmentId,'2026-07-25',5,'approver',0,1]].sort());
-  // Each is the recipient's own notice, with counts and the date and nothing else.
+  // Each is the recipient's own notice, with counts and the date and nothing else (in-app notices are the notifications module's).
+  await setModule(b.tenantId,'notifications','active');
   await dispatchNotifications(await entitledCtx(b),{});
   const notices=await owner.db.select().from(schema.notification).where(eq(schema.notification.kind,'teras-loop.cut-off-reminder'));
   expect(notices.map(row=>row.recipientEmploymentId).sort()).toEqual([drafting.employmentId,manager.employmentId].sort());

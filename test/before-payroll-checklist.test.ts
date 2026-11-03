@@ -129,7 +129,8 @@ describe('the cut-off is the payroll owner\'s',()=>{
   // cut-off day, so the payroll owner reads those as the calendar month (core/payroll-policy-config.ts cutOffWindowFor):
   // leave and attendance items are due at month end, everything else by the salary cut-off.
   expect((await read(aina)).items.find(row=>row.kind==='leave_pending')!.due).toBe('2026-07-31');
-  const items=(await read(group)).items;
+  // Her whole own list (the group administrator has no own items in this fixture).
+  const items=(await read(aina)).items;
   expect(items.length).toBeGreaterThan(0);
   for(const row of items)expect(row.due,row.kind).toBe(['attendance','overtime','leave','claims'].includes(row.group)?'2026-07-31':'2026-07-27');
  });
