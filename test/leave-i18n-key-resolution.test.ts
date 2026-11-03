@@ -27,7 +27,18 @@ const ROOT = path.resolve(__dirname, '..');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
 type Dict = Record<string, unknown>;
-const load = (loc: string): Dict => JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', `${loc}.json`), 'utf8'));
+const read = (file: string): Dict => JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', file), 'utf8'));
+/** The locale's own catalog with its AI Centre catalog (messages/ai-centre/<locale>.json) merged over it, as
+ *  i18n/request.ts serves them. No English fallback: every locale must carry the key in one of its own files. */
+const overlay = (base: Dict, over: Dict): Dict => {
+  const out: Dict = { ...base };
+  for (const [k, v] of Object.entries(over)) {
+    const b = out[k];
+    out[k] = v && typeof v === 'object' && b && typeof b === 'object' ? overlay(b as Dict, v as Dict) : v;
+  }
+  return out;
+};
+const load = (loc: string): Dict => overlay(read(`${loc}.json`), read(`ai-centre/${loc}.json`));
 const getPath = (obj: Dict, dotted: string): unknown =>
   dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Dict)[k] : undefined), obj);
 
