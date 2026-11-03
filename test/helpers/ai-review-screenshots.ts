@@ -48,8 +48,15 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
   await page.route('**/*',route=>route.abort());
   await page.route(FONT_ORIGIN+'*',route=>{const font=SCRIPT_FONTS.find(row=>route.request().url()===FONT_ORIGIN+row.file);return font?route.fulfill({status:200,contentType:font.type,headers:{'Access-Control-Allow-Origin':'*'},body:scriptFont(font.file)}):route.abort();});
-  await page.setContent(`<!doctype html><html lang="${locale}" data-ui-theme="${theme}" class="${colorMode==='dark'?'dark':''}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body class="bg-background text-foreground p-4 font-sans"><main class="relative min-w-0">${html}</main></body></html>`);
-  await page.addStyleTag({content:styles+scriptFontCss});await page.evaluate(()=>document.fonts.ready);
+  await page.setContent(`<!doctype html><html lang="${locale}" data-ui-theme="${theme}" class="${colorMode==='dark'?'dark':''}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body hidden class="bg-background text-foreground p-4 font-sans"><main class="relative min-w-0">${html}</main></body></html>`);
+  await page.addStyleTag({content:styles+scriptFontCss});
+  // Load every script face before any localized text is laid out (the body stays hidden until then). Shaped
+  // while its face is still loading, a short label becomes .notdef glyphs of the primary font; when that primary
+  // is a system font (Atelier: Arial -> Liberation Sans) Chromium caches the run per primary font and reuses it
+  // after the face arrives, so document.fonts.ready alone cannot repair it.
+  const unloaded=await page.evaluate(async faces=>{void getComputedStyle(document.documentElement).fontFamily;const lists=await Promise.all(faces.map(face=>document.fonts.load(face)));return faces.filter((_,i)=>!lists[i].length||lists[i].some(face=>face.status!=='loaded'));},SCRIPT_FONTS.map(font=>`${font.weight} 16px "${font.family}"`));
+  if(unloaded.length)throw Error('Script fonts did not load before layout: '+unloaded.join(', '));
+  await page.evaluate(()=>{document.body.hidden=false;return document.fonts.ready;});
   // Inspect an actual localized text node, not merely an available/loaded font face. This catches
   // computed-value invalidation that silently drops the entire script fallback chain.
   const script=locale==='ta'?'Tamil':locale==='th'?'Thai':locale==='zh'?'CJK':null;
