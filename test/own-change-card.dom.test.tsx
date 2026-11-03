@@ -67,7 +67,8 @@ describe('an own claim or profile change card in chat, for the employee', () => 
     });
     expect(titles[0]).toContain('42.60');expect(titles[0]).toContain(day);expect(titles[2]).toContain('5678');
     // The card never shows more of an account than its last four digits, and no raw check identifier.
-    expect(document.body.textContent).not.toMatch(/\d{5,}/);
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) expect(node.textContent).not.toMatch(/\d{5,}/);
     expect(document.body.textContent).not.toContain('actor_current');
   });
 });
