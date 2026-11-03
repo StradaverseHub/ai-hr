@@ -21,6 +21,29 @@ function withFallback(base: Dict, over: Dict): Dict {
   return out;
 }
 
+// Catalogs are static for the lifetime of a build. Cache only the merged messages,
+// while each request independently resolves its explicit locale or cookie.
+const englishMessages = withFallback(en as Dict, aiCentreEn as Dict) as typeof en;
+const catalogs = new Map<Locale, Promise<typeof en>>();
+
+function messagesForLocale(locale: Locale): Promise<typeof en> {
+  if (locale === 'en') return Promise.resolve(englishMessages);
+  const cached = catalogs.get(locale);
+  if (cached) return cached;
+
+  const loading = Promise.all([
+    import(`../messages/${locale}.json`).then(module => module.default as Dict),
+    import(`../messages/ai-centre/${locale}.json`).then(module => module.default as Dict),
+  ]).then(([messages, aiCentre]) =>
+    withFallback(englishMessages, withFallback(messages, aiCentre)) as typeof en,
+  ).catch(error => {
+    catalogs.delete(locale);
+    throw error;
+  });
+  catalogs.set(locale, loading);
+  return loading;
+}
+
 /**
  * 587ee719 — `requested` IS THE EXPLICIT OVERRIDE, AND IGNORING IT SILENTLY BROKE A FEATURE.
  *
@@ -43,13 +66,5 @@ export default getRequestConfig(async ({ locale: requested }) => {
       ? cookieLocale
       : defaultLocale;
 
-  // The AI centre's own catalogue (messages/ai-centre/<locale>.json) is merged over the main one. It is a
-  // separate file because messages/<locale>.json sits inside the approved provider-data source digest.
-  const base = withFallback(en as Dict, aiCentreEn as Dict);
-  if (locale === 'en') return { locale, messages: base as typeof en };
-  const [localeMessages, aiCentreLocale] = await Promise.all([
-    import(`../messages/${locale}.json`).then(m => m.default as Dict),
-    import(`../messages/ai-centre/${locale}.json`).then(m => m.default as Dict),
-  ]);
-  return { locale, messages: withFallback(base, withFallback(localeMessages, aiCentreLocale)) as typeof en };
+  return { locale, messages: await messagesForLocale(locale) };
 });
