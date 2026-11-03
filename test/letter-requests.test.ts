@@ -267,7 +267,9 @@ describe('the owner-side paths under a restricted physical owner',()=>{
    await as(tx,badrul.ctx);
    expect(await tx.execute(sql`select id from app.letter_requests_own(null)`)).toEqual([{id:theirs}]);
    verified++;
-   // Person erasure: the admitted intent for the subject in THIS transaction, then the definer function as HR.
+   // Person erasure: the admitted intent for the subject in THIS transaction, recorded with HR's session settings (the
+   // intent's own hooks require its writer to be the current login), then the definer function as HR.
+   await as(tx,hr);
    await tx.execute(sql`RESET ROLE`);
    await tx.execute(sql`insert into app.assistant_review_erasure_intent(xact_id,tenant_id,user_id,person_id,employment_id,cleared,event_id,review_ids)
     values(pg_current_xact_id(),${b.tenantId}::uuid,${hr.userId}::uuid,${aina.personId}::uuid,${aina.employmentId}::uuid,0,null,'{}'::uuid[])`);
