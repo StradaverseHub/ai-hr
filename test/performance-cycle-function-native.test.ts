@@ -1,7 +1,8 @@
-/** Real generic cycle writers and actual current/stored native sources; no publication sentinel. */
+/** Real generic cycle writers, current and stored authority, and storage-owner publication. */
 import {sql,eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import * as s from '../db/schema';
 import {createCycle,listCycles,openCycle} from '../core/performance';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -34,4 +35,22 @@ it('a current narrowed native carrier cannot widen an existing cycle through its
  const partner={...ctx,userId,roles:['performance_comp_partner'],grants:[{role:'performance_comp_partner',companyId:b.companyId}]};
  await expect(withTenant(partner,tx=>tx.update(s.reviewCycle).set({eligibilityRules:{companyIds:[other.id]}}).where(eq(s.reviewCycle.id,cycleId)))).rejects.toThrow();
  const [row]=await owner.db.select({rules:s.reviewCycle.eligibilityRules}).from(s.reviewCycle).where(eq(s.reviewCycle.id,cycleId));expect(row.rules).toBeNull();
+});
+
+it('publishes cycle administration and keeps View and Add available under Edit denial',async()=>{
+ const cap='function.performance.cycles.edit';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'performance_cycles')).toMatchObject({changed:true,capabilities:10});
+  expect(await publishActionCapabilityPackage(owner.client,'performance_cycles')).toMatchObject({changed:false});
+  const {cycleId}=await createCycle(ctx,{...cycleInput,companyId:b.companyId});
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${ctx.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  expect((await listCycles(ctx)).map(row=>row.id)).toContain(cycleId);
+  await expect(openCycle(ctx,{cycleId})).rejects.toThrow();
+  await expect(createCycle(ctx,{...cycleInput,name:'Fictional independent Add',companyId:b.companyId})).resolves.toMatchObject({cycleId:expect.any(String)});
+ }finally{
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+   where id like any(array['performance_compensation.%','function.performance.cycles.%','function.performance.onehr.setup.%'])`;
+ }
 });

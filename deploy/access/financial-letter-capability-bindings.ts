@@ -98,3 +98,19 @@ export const PAYROLL_OPERATIONS_CAPABILITY_PUBLICATION={
   'app.access_backpay_guard()',
  ],
 } as const;
+
+export const PERFORMANCE_CYCLE_CAPABILITY_PUBLICATION={
+ ...FINANCIAL_LETTER_CAPABILITY_PUBLICATION,
+ capabilities:finance.filter(capability=>capability.id.startsWith('performance_compensation.')),
+ functions:FINANCIAL_LETTER_FUNCTIONS.filter(descriptor=>descriptor.key==='performance.cycles'||descriptor.key==='performance.onehr.setup'),
+ legacyGroups:Object.fromEntries(finance.filter(capability=>capability.id.startsWith('performance_compensation.')).map(capability=>
+  [capability.id,['system_administrator','hr_admin','performance_comp_partner']])),
+ requiredFunctions:[
+  'app.performance_cycle_bindings_complete()',
+  'app.performance_cycle_function_action(uuid,text)',
+  'app.financial_performance_cycle_guard()',
+  'app.onehr_setup_function_action(uuid,text)',
+  'app.onehr_setup_read(uuid)',
+  'app.financial_onehr_setup_guard()',
+ ],
+} as const;
