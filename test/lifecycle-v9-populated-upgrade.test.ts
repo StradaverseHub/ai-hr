@@ -14,7 +14,7 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(659); // Accepted 650-entry LOGIN baseline, the six Re-plan successors, then the 1000–1002 tenant-isolation hardening.
+ expect(journal.entries).toHaveLength(659); // Accepted 650-entry LOGIN baseline, the six Re-plan successors, then the 1500–1502 tenant-isolation hardening.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
  expect(journal.entries.slice(boundary)).toHaveLength(88);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
@@ -51,9 +51,9 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:798,version:'7',when:1793330000351,tag:'0951_payroll_reprocess_correction_lineage',breakpoints:true,hash:'b65a8adc2f45165fb2bdb41b30d4ca6eeb7f7b44ef2539bcdecc7efde0322057'},
   {idx:799,version:'7',when:1793330000353,tag:'0953_lifecycle_service_info_intents',breakpoints:true,hash:'6f71e2fe862f86c836026f3e07647ca29b913dd34b2171c98a033b43da0afa89'},
   // ADR-0174 tenant-isolation hardening; frozen here.
-  {idx:847,version:'7',when:1793330000400,tag:'1000_employment_helper_tenant_pin',breakpoints:true,hash:'f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a'},
-  {idx:848,version:'7',when:1793330000401,tag:'1001_company_tenant_fk_not_valid',breakpoints:true,hash:'31314e35728831a8b9f5654aea8cc86d20bb42af17208e760c669f7507e6af44'},
-  {idx:849,version:'7',when:1793330000402,tag:'1002_company_tenant_fk_validate',breakpoints:true,hash:'0c0fad31f62d07064a4348951f9664e2ef5ffa8c2a55e3e4c9da3a0f0f5d2764'},
+  {idx:1347,version:'7',when:1793330000900,tag:'1500_employment_helper_tenant_pin',breakpoints:true,hash:'f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a'},
+  {idx:1348,version:'7',when:1793330000901,tag:'1501_company_tenant_fk_not_valid',breakpoints:true,hash:'42ea5f55990bca4ff885b9aa1b0d5688653081d43aacd5b5639c765d4b916743'},
+  {idx:1349,version:'7',when:1793330000902,tag:'1502_company_tenant_fk_validate',breakpoints:true,hash:'d6746ac5574d6b336f318af20fd4244863869eca0aa9a93737802308cf49e474'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

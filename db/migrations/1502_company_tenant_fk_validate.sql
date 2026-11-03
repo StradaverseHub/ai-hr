@@ -1,4 +1,4 @@
--- Tenant-isolation defence in depth, part 3 of 3 (ADR-0174): check the data, then validate the 1001
+-- Tenant-isolation defence in depth, part 3 of 3 (ADR-0174): check the data, then validate the 1501
 -- company/tenant keys.
 --
 -- Each key is validated in its own subtransaction, so one offending table does not hide the others. A
@@ -9,7 +9,7 @@
 -- are checked completely whichever role runs the migration.
 --
 -- VALIDATE takes SHARE UPDATE EXCLUSIVE on each table and ROW SHARE on company. Pending migrations install
--- in one transaction, so when 1001 lands in the same run its locks (writes wait, reads continue) are held
+-- in one transaction, so when 1501 lands in the same run its locks (writes wait, reads continue) are held
 -- until the commit; the scans use company's (id, tenant_id) unique index.
 DO $tenant_company_validate$
 DECLARE

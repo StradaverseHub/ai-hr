@@ -1,7 +1,7 @@
 /**
- * ADR-0174 — a company-stamped row must name a company of its OWN tenant (migrations 1001/1002).
+ * ADR-0174 — a company-stamped row must name a company of its OWN tenant (migrations 1501/1502).
  *
- * Before 1001 a tenant-A group admin could INSERT a department in tenant A naming tenant B's company:
+ * Before 1501 a tenant-A group admin could INSERT a department in tenant A naming tenant B's company:
  * the department policy asks `app.is_admin_for(company_id)`, which answers from grants alone, and the
  * plain `company(id)` FK accepts any company. Nothing of B was readable, but the row was a dangling
  * cross-tenant reference. These tests assert the database refusal directly as `ai_hr_app`, plus a

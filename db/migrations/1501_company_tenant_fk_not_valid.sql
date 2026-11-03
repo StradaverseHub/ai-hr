@@ -5,7 +5,7 @@
 -- row never exposed B's data, but it is a dangling cross-tenant reference. The composite key
 -- `company(id, tenant_id)` exists since 0313 for exactly this; four tables already use it.
 --
--- NOT VALID: existing rows are not scanned here; 1002 checks the data and validates. Every INSERT and
+-- NOT VALID: existing rows are not scanned here; 1502 checks the data and validates. Every INSERT and
 -- every UPDATE of company_id or tenant_id is checked from this migration on. Writers were reviewed:
 -- application writes stamp the session tenant under RLS, company moves and reparenting stay inside one
 -- tenant, and nothing updates company.tenant_id. MATCH SIMPLE keeps a NULL company_id (group-wide rows)
@@ -13,7 +13,7 @@
 -- exactly as before; the existing single-column FKs stay. No grant, policy or column changes.
 --
 -- The set is every table with tenant_id, company_id and a company_id -> company(id) FK in the journal
--- before 1000 (146). test/tenant-company-fk.test.ts fails if a table with that shape lacks the key.
+-- before 1500 (146). test/tenant-company-fk.test.ts fails if a table with that shape lacks the key.
 ALTER TABLE public.access_group_grant ADD CONSTRAINT access_group_grant_company_tenant_fk
   FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
 --> statement-breakpoint

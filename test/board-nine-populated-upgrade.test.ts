@@ -35,9 +35,9 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   {tag:'0950_contract_management',when:1793330000350},
   {tag:'0951_payroll_reprocess_correction_lineage',when:1793330000351},
   {tag:'0953_lifecycle_service_info_intents',when:1793330000353},
-  {tag:'1000_employment_helper_tenant_pin',when:1793330000400},
-  {tag:'1001_company_tenant_fk_not_valid',when:1793330000401},
-  {tag:'1002_company_tenant_fk_validate',when:1793330000402},
+  {tag:'1500_employment_helper_tenant_pin',when:1793330000900},
+  {tag:'1501_company_tenant_fk_not_valid',when:1793330000901},
+  {tag:'1502_company_tenant_fk_validate',when:1793330000902},
  ]);
  expect(hash(readFileSync('db/migrations/0935_password_account_unlock.sql'))).toBe('3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa');
  expect(hash(readFileSync('db/migrations/0946_draft_creation_cohort_custody.sql'))).toBe('cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390');
@@ -109,9 +109,9 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
    {hash:'84bc3e3a907118e2c6806e863c63544df061b49dbb9b51fcd4fe8f85ffcef8ac',created_at:'1793330000350'},
    {hash:'b65a8adc2f45165fb2bdb41b30d4ca6eeb7f7b44ef2539bcdecc7efde0322057',created_at:'1793330000351'},
    {hash:'6f71e2fe862f86c836026f3e07647ca29b913dd34b2171c98a033b43da0afa89',created_at:'1793330000353'},
-   {hash:'f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a',created_at:'1793330000400'},
-   {hash:'31314e35728831a8b9f5654aea8cc86d20bb42af17208e760c669f7507e6af44',created_at:'1793330000401'},
-   {hash:'0c0fad31f62d07064a4348951f9664e2ef5ffa8c2a55e3e4c9da3a0f0f5d2764',created_at:'1793330000402'},
+   {hash:'f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a',created_at:'1793330000900'},
+   {hash:'42ea5f55990bca4ff885b9aa1b0d5688653081d43aacd5b5639c765d4b916743',created_at:'1793330000901'},
+   {hash:'d6746ac5574d6b336f318af20fd4244863869eca0aa9a93737802308cf49e474',created_at:'1793330000902'},
   ]);
   expect(await native()).toEqual(upgradeNative);
   const afterSource=await source();

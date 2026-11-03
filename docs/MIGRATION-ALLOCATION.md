@@ -8,20 +8,23 @@ owning release gate.
 ## Tenant-isolation hardening (ADR-0174) — 3 November 2026 (provisional source claim)
 
 `claude/wonderful-mccarthy-2fb38f` appends three migrations above the 656-entry main journal (`848c7be36`,
-ending at 0953 / idx 799 / when 1793330000353). Its first claim (0968–0970, idx 813–815) was overtaken the
-same day by the permissions series. A fresh read-only scan of 3647 local and remote heads, 393 journal blobs
-and every registered worktree then found claims up to file 0999, idx 846 and when 1793330000399, so the
-migrations were renumbered above all of them. The SQL changed only in its references to the new numbers.
+ending at 0953 / idx 799 / when 1793330000353). Its claims 0968–0970 and then 1000–1002 were each overtaken
+the same day by the permissions series, which numbers `when` as 1793330000000 + (file − 600). It therefore
+moved to a block well clear of that series and of the AI Centre's reserved 2000–2019. A read-only scan of every
+local and remote head and registered worktree on 3 November 2026 found no file 1400–1999, no `when` in
+1793330000880–1793330001000, and a maximum idx of 862. The SQL changed only in its cross-references.
 
 | Tag | idx | when | SQL SHA256 |
 | --- | ---: | ---: | --- |
-|1000_employment_helper_tenant_pin|847|1793330000400|f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a|
-|1001_company_tenant_fk_not_valid|848|1793330000401|31314e35728831a8b9f5654aea8cc86d20bb42af17208e760c669f7507e6af44|
-|1002_company_tenant_fk_validate|849|1793330000402|0c0fad31f62d07064a4348951f9664e2ef5ffa8c2a55e3e4c9da3a0f0f5d2764|
+|1500_employment_helper_tenant_pin|1347|1793330000900|f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a|
+|1501_company_tenant_fk_not_valid|1348|1793330000901|42ea5f55990bca4ff885b9aa1b0d5688653081d43aacd5b5639c765d4b916743|
+|1502_company_tenant_fk_validate|1349|1793330000902|d6746ac5574d6b336f318af20fd4244863869eca0aa9a93737802308cf49e474|
 
-1000 pins the employment helpers and `app.company_subtree` to the session tenant; 1001 adds 146 composite
-company/tenant keys NOT VALID; 1002 checks the data and validates them. Unapplied source only: relocate the
-idx with competing claims and keep each timestamp above every earlier-applied migration before integration.
+1500 pins the employment helpers and `app.company_subtree` to the session tenant; 1501 adds 146 composite
+company/tenant keys NOT VALID; 1502 checks the data and validates them. The AI Centre's 2000-series already
+uses `when` values above 1793330000900, so whichever block reaches main second must move above the first.
+Unapplied source only: re-check main's highest file, idx and `when` immediately before merge, keep each
+timestamp above every earlier-applied migration, and relocate the idx with competing claims.
 
 ## Nine-item BOARD split: post-Noveri refresh — 3 November 2026 (unapplied)
 

@@ -1,4 +1,4 @@
-/** ADR-0174 populated upgrade through 1000–1002, on an owned disposable localhost database only.
+/** ADR-0174 populated upgrade through 1500–1502, on an owned disposable localhost database only.
  * A cross-tenant row present at the boundary must stop the whole upgrade with a readable report and leave
  * the ledger untouched; once that row is resolved the upgrade validates every key, rewrites no row and
  * changes no table, column or policy grant. This supplies no staging acceptance. */
@@ -14,9 +14,9 @@ import {createDb} from '../db/client';
 type Entry={idx:number;version:string;when:number;tag:string;breakpoints:boolean};
 const hash=(bytes:string|Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const TAIL=[
- {idx:847,version:'7',when:1793330000400,tag:'1000_employment_helper_tenant_pin',breakpoints:true},
- {idx:848,version:'7',when:1793330000401,tag:'1001_company_tenant_fk_not_valid',breakpoints:true},
- {idx:849,version:'7',when:1793330000402,tag:'1002_company_tenant_fk_validate',breakpoints:true},
+ {idx:1347,version:'7',when:1793330000900,tag:'1500_employment_helper_tenant_pin',breakpoints:true},
+ {idx:1348,version:'7',when:1793330000901,tag:'1501_company_tenant_fk_not_valid',breakpoints:true},
+ {idx:1349,version:'7',when:1793330000902,tag:'1502_company_tenant_fk_validate',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -45,7 +45,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   }
   return rows;
  };
- // Everything a grant or policy could change, except the one function ACL 1000 deliberately narrows.
+ // Everything a grant or policy could change, except the one function ACL 1500 deliberately narrows.
  const privileges=async()=>({
   relations:await storage.client`select c.oid::regclass::text as rel,c.relacl::text as acl,c.relrowsecurity as rls,c.relforcerowsecurity as force
    from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','app') and c.relkind in ('r','p','v','m','S') order by 1`,
