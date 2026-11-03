@@ -11,6 +11,8 @@
  *    own leave cancellation, assigned leave decision); for administrators, prepared fixes awaiting approval
  *    (core/agent-actions.ts), records missing data (core/record-readiness.ts) and setup stages from today's
  *    prepared digest (core/digest/daily-digest.ts; a view never recomputes them, review H4).
+ *    For anyone holding the letters `generate` capability, employees' letter requests waiting for HR
+ *    (core/letter-requests.ts countWaitingLetterRequests; AI v2 Phase 1 slice 3).
  *  - Done for you: outcome records (core/outcome-record/summary.ts), counts only.
  *  - Watching, administrators: CP22/CP22A deadlines (core/reporting.ts complianceWorklist), open payroll
  *    exceptions (core/payroll-anomaly.ts) and recorded passport expiries (core/automatic-followups.ts).
@@ -41,6 +43,7 @@ import {readHomeTeamCalendar} from '@/core/employee-home-sharing';
 import {reportingLinesFor} from '@/core/read';
 import {addHrDays,windowStart,type TodayAudience} from '@/lib/today/audience';
 import {managerAbsences,type AwayRange} from '@/lib/today/coming-up';
+import {countWaitingLetterRequests} from '@/core/letter-requests';
 
 type Settled<T>={ok:true;value:T}|{ok:false;error:unknown};
 async function settle<T>(read:()=>Promise<T>):Promise<Settled<T>>{try{return{ok:true,value:await read()};}catch(error){return{ok:false,error};}}
@@ -56,7 +59,7 @@ export type PreparedKind='leaveApply'|'leaveCancel'|'leaveDecision';
  * makes, with every current check): the leave type, dates and days the leave service counted, and the duration. */
 export type PreparedLeave=Readonly<{leaveType:string;startDate:string;endDate:string;days:number;durationType:string|null}>;
 export type PreparedItem=Readonly<{kind:PreparedKind;actionId:string;createdAt:string;expiresAt:string;href:string;leave?:PreparedLeave|null}>;
-export type Finding=Readonly<{key:'setup'|'readiness'|'proposals';count:number;href:string}>;
+export type Finding=Readonly<{key:'setup'|'readiness'|'proposals'|'letterRequests';count:number;href:string}>;
 export type NeedsYouData=Readonly<{tasks:readonly PendingTaskItem[];recommender:boolean;prepared:readonly PreparedItem[];findings:readonly Finding[];failed:boolean}>;
 
 /** The review page of each governed proposal, as its preparer names it (core/proposals/*.ts and the semantic
@@ -100,7 +103,7 @@ async function preparedLeave(s:SessionContext,item:PreparedItem,locale:string):P
 
 export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonly string[];audience:TodayAudience;today:string;locale?:string;now?:number}>):Promise<NeedsYouData>{
  const now=p.now??Date.now(),admin=p.audience.layout==='administrator',payroll=isModuleEnabledOrFalse(s,'payroll'),leave=isModuleEnabledOrFalse(s,'leave');
- const [tasks,ownLeave,cancellations,decisions,proposals,readiness,digest]=await Promise.all([
+ const [tasks,ownLeave,cancellations,decisions,proposals,readiness,digest,letterRequests]=await Promise.all([
   settle(()=>listPendingTasks(s,[...p.scopeIds],inboxModules(s))),
   leave?settle(()=>withTenant(s,tx=>listOwnLeaveReviewsTx(tx,s))):null,
   leave?settle(()=>leaveCancellationReviews.list(s)):null,
@@ -108,6 +111,8 @@ export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonl
   admin&&payroll?settle(()=>proposeActions(s)):null,
   admin?settle(()=>recordReadiness(s,{peopleLimit:0})):null,
   admin?settle(()=>latestDailyDigest(s)):null,
+  // Letter requests count only in companies where the viewer holds `generate` (the owner's own filter), any layout.
+  settle(()=>countWaitingLetterRequests(s,p.scopeIds)),
  ]);
  const list=tasks.ok?tasks.value:[];
  // The recommendation is offered only while its worker may run, read through the gate the recommender checks.
@@ -127,7 +132,9 @@ export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonl
  if(missing>0)findings.push(Object.freeze({key:'readiness',count:missing,href:'/control-tower/readiness'}));
  const fixes=proposals?.ok?proposals.value.reduce((sum,proposal)=>sum+proposal.count,0):0;
  if(fixes>0)findings.push(Object.freeze({key:'proposals',count:fixes,href:'/control-tower/actions'}));
- const failed=!tasks.ok||[proposals,readiness].some(result=>result!==null&&!result.ok);
+ const waitingLetters=letterRequests.ok?letterRequests.value:0;
+ if(waitingLetters>0)findings.push(Object.freeze({key:'letterRequests',count:waitingLetters,href:'/letters/generate#letter-requests'}));
+ const failed=!tasks.ok||[proposals,readiness,letterRequests].some(result=>result!==null&&!result.ok);
  return Object.freeze({tasks:list,recommender,prepared:detailed,findings,failed});
 }
 

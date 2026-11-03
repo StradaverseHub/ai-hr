@@ -562,7 +562,8 @@
           "claimDraftSaved": "Saved as a draft. Add the receipt on Claims to submit it.",
           "claimCancelled": "Claim cancelled.",
           "profileRequested": "Sent to HR. Nothing changes until HR approves it.",
-          "toilSubmitted": "Sent for approval, not approved yet. Nothing is credited until it is approved."
+          "toilSubmitted": "Sent for approval, not approved yet. Nothing is credited until it is approved.",
+          "letterRequested": "Sent to HR. HR prepares the letter; you will find it under My Letters once it is issued."
         },
         "refused": {
           "expired": "This card has expired. Ask again for a new one.",
@@ -570,7 +571,8 @@
           "access": "This card no longer matches your access. Ask again for a new one.",
           "retired": "This card was already used or replaced. Check the request on its page.",
           "unavailable": "This could not be checked just now. Try again in a moment.",
-          "consent": "Tick the agreement above to confirm."
+          "consent": "Tick the agreement above to confirm.",
+          "duplicate": "You already have an open request for this letter. Check My Letters."
         }
       },
       "suggestionMeta": "Complete and confirm it on its page",
@@ -593,7 +595,8 @@
         "claims_submit": "Expense claim ready to review",
         "claims_cancel": "Claim cancellation ready to review",
         "ess_profile_request": "Profile change ready to review",
-        "toil_replacement_request": "Leave Credit request ready to review"
+        "toil_replacement_request": "Leave Credit request ready to review",
+        "letters_request_submit": "Letter request ready to review"
       },
       "checks": {
         "actor_current": "Your access is current",
@@ -615,7 +618,8 @@
         "profile_request_reviewed": "Checked against your record",
         "leave_credit_offered": "You may ask for a Leave Credit",
         "worked_day_read": "Day type read from your roster",
-        "leave_credit_rules": "Leave Credit rules allow it"
+        "leave_credit_rules": "Leave Credit rules allow it",
+        "letter_type_open_for_requests": "Letter type open for requests"
       },
       "outcomes": {
         "withdrawn_now": "Withdrawn at once",
@@ -628,7 +632,8 @@
         "claim_draft_receipt_needed": "Saved as a draft; add the receipt on Claims",
         "claim_cancelled_now": "Cancelled at once",
         "hr_approval_required": "Sent to HR; changes only when HR approves",
-        "hr_verification_required": "HR verifies the new bank details before they are used"
+        "hr_verification_required": "HR verifies the new bank details before they are used",
+        "letter_requested_hr_prepares": "Sent to HR, who prepare and issue the letter"
       },
       "reads": {
         "my_leave_balances": "your leave balances",
@@ -664,7 +669,8 @@
         "ai_control": "The AI is paused or limited for you or your company right now.",
         "protected_input": "This question could not be sent safely. Try asking it another way.",
         "provider_error": "The assistant could not answer just now. Please try again."
-      }
+      },
+      "letterRequestTitle": "{letterType} request"
     }
   },
   "today": {
@@ -722,7 +728,10 @@
       "readinessCta": "Fix records",
       "proposalsTitle": "{count, plural, one {# prepared fix waits for your approval} other {# prepared fixes wait for your approval}}",
       "proposalsSource": "Proposed actions",
-      "proposalsCta": "Review fixes"
+      "proposalsCta": "Review fixes",
+      "letterRequestsTitle": "{count, plural, one {# letter request waits for you} other {# letter requests wait for you}}",
+      "letterRequestsSource": "Employee letter requests",
+      "letterRequestsCta": "Open letter requests"
     },
     "done": {
       "answeredLabel": "Answered",

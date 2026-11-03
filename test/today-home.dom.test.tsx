@@ -24,7 +24,9 @@ const fx=vi.hoisted(()=>{
   passports:{itemId:string;employmentId:string;companyId:string;stage:string;waitingOn:string}[];
   timeOff:unknown;timeOffError:unknown;pay:unknown;payError:unknown;managers:{employmentId:string}[];calendarDays:unknown[];
   assistant:boolean;name:string|null;modules:Set<string>;push:ReturnType<typeof vi.fn>;
-  calls:{tasks:unknown[];worklist:string[];summary:unknown[];proposals:number;readiness:number;exceptions:number;passports:number;timeOff:unknown[]};
+  /** AI v2 Phase 1 slice 3: letter requests waiting for HR, as the owner counts them for the viewer (generate holders only). */
+  letterRequests:number;
+  calls:{tasks:unknown[];worklist:string[];summary:unknown[];proposals:number;readiness:number;exceptions:number;passports:number;timeOff:unknown[];letters:unknown[]};
  }};
 });
 const S=fx.state;
@@ -57,6 +59,8 @@ vi.mock('@/app/assistant/centre/recommendation',()=>({readLeaveRecommendation:re
 vi.mock('@/core/outcome-record/summary',()=>({summariseOutcomeRecords:async(_s:unknown,p:unknown)=>{S.calls.summary.push(p);if(S.summaryFail)throw Error('Fixture record outage');return S.summary;}}));
 vi.mock('@/core/reporting',()=>({complianceWorklist:async(_s:unknown,p:{companyId:string})=>{S.calls.worklist.push(p.companyId);return S.worklist[p.companyId]??[];}}));
 vi.mock('@/core/payroll-anomaly',()=>({openExceptionsAcrossRuns:async()=>{S.calls.exceptions++;return {...S.exceptions,cappedOut:false};}}));
+// The letter request owner counts only requests in companies where the viewer holds the letters `generate` capability.
+vi.mock('@/core/letter-requests',()=>({countWaitingLetterRequests:async(_s:unknown,scope:readonly string[])=>{S.calls.letters.push([...scope]);return S.letterRequests;}}));
 vi.mock('@/core/automatic-followups',()=>({followupItemsTx:async()=>{S.calls.passports++;return S.passports;}}));
 vi.mock('@/core/employee-home-time-off',()=>({readEmployeeHomeTimeOff:async(_s:unknown,employmentId?:string)=>{S.calls.timeOff.push(employmentId);if(S.timeOffError)throw S.timeOffError;return S.timeOff;}}));
 vi.mock('@/core/employee-home',()=>({HomeAccessError:fx.FixtureHomeAccessError,
@@ -92,8 +96,8 @@ beforeEach(()=>{
  Object.assign(S,{tasks:[],tasksFail:false,ownLeave:[],reopened:{},reopenCalls:[],cancellations:[],decisions:[],proposals:[],readiness:{employees:0,ready:0},digest:null,recommender:false,
   summary:{...fx.empty},summaryFail:false,worklist:{},exceptions:{rows:[],total:0},passports:[],timeOff:{version:1,employmentId:'emp-own',asOf:'2026-11-04',canApply:true,balances:[],nextApproved:null},
   timeOffError:null,pay:{version:1,employmentId:'emp-own',payslips:[],nextPayment:null},payError:null,managers:[],calendarDays:[],assistant:true,name:'Ravi Fictional',
-  modules:new Set(['leave','payroll','attendance','claims','performance','rewards']),push:vi.fn(),
-  calls:{tasks:[],worklist:[],summary:[],proposals:0,readiness:0,exceptions:0,passports:0,timeOff:[]}});
+  modules:new Set(['leave','payroll','attendance','claims','performance','rewards']),push:vi.fn(),letterRequests:0,
+  calls:{tasks:[],worklist:[],summary:[],proposals:0,readiness:0,exceptions:0,passports:0,timeOff:[],letters:[]}});
  window.sessionStorage.clear();
 });
 afterEach(cleanup);
@@ -390,6 +394,17 @@ describe('Today for an HR administrator',()=>{
   expect(S.calls).toMatchObject({proposals:0,exceptions:0,worklist:[]});
   expect(view.container.querySelector('[data-today-note="deadlines"],[data-today-note="exceptions"],[data-today-finding="proposals"]')).toBeNull();
   expect(view.container.querySelector('[data-today-note="passports"]')).not.toBeNull();
+ });
+
+ // AI v2 Phase 1 slice 3: employees' letter requests waiting for HR, for a viewer holding the letters `generate` capability.
+ it('puts waiting letter requests in Needs you, linking to the requests on the generate page, for the scope in view',async()=>{
+  S.letterRequests=2;
+  const view=await show(HR_ADMIN,['co-a']);
+  const card=view.section('today-needs-you')!.querySelector('[data-today-finding="letterRequests"]');
+  expect(text(card?.querySelector('h3'))).toBe('2 letter requests wait for you');
+  expect(card?.querySelector('a')?.getAttribute('href')).toBe('/letters/generate#letter-requests');
+  expect(text(card)).toContain('Employee letter requests');
+  expect(S.calls.letters).toEqual([['co-a']]);
  });
 });
 

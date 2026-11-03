@@ -3,11 +3,13 @@ import {cleanup,render,screen} from '@testing-library/react';
 import {LetterWorkflowError} from '../lib/letter-workflow';
 const mocks=vi.hoisted(()=>({detail:vi.fn(),list:vi.fn()}));
 vi.mock('../core/letters',()=>({getMyLetter:mocks.detail,listMyLetters:mocks.list}));
+// AI v2 Phase 1 slice 3: the person's own letter requests (test/letter-requests-screens.dom.test.tsx covers them); none here.
+vi.mock('../core/letter-requests',()=>({listMyLetterRequests:async()=>[],listRequestableLetterTypes:async()=>[]}));
 vi.mock('../lib/authz',()=>({requireModule:async()=>({})}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'fixture',userId:'signed-in-person'}})}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>((key:string)=>key)}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw new Error('NOT_FOUND');},redirect:(url:string)=>{throw new Error('REDIRECT:'+url);}}));
-vi.mock('../app/me/letters/actions',()=>({openMyLetter:vi.fn(),confirmMyLetter:vi.fn()}));
+vi.mock('../app/me/letters/actions',()=>({openMyLetter:vi.fn(),confirmMyLetter:vi.fn(),requestLetterAction:vi.fn()}));
 import MyLetterPage from '../app/me/letters/[letterId]/page';
 import MyLettersPage from '../app/me/letters/page';
 const id='00000000-0000-4000-8000-000000000001',hash='c'.repeat(64);

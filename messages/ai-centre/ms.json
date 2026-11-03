@@ -562,7 +562,8 @@
           "claimDraftSaved": "Disimpan sebagai draf. Tambah resit di Tuntutan untuk menghantarnya.",
           "claimCancelled": "Tuntutan dibatalkan.",
           "profileRequested": "Dihantar kepada HR. Tiada yang berubah sehingga HR meluluskannya.",
-          "toilSubmitted": "Dihantar untuk kelulusan, belum diluluskan. Tiada kredit diberi sehingga ia diluluskan."
+          "toilSubmitted": "Dihantar untuk kelulusan, belum diluluskan. Tiada kredit diberi sehingga ia diluluskan.",
+          "letterRequested": "Dihantar kepada HR. HR akan menyediakan surat; anda akan menemuinya di Surat Saya setelah dikeluarkan."
         },
         "refused": {
           "expired": "Kad ini telah tamat tempoh. Minta sekali lagi untuk kad baharu.",
@@ -570,7 +571,8 @@
           "access": "Kad ini tidak lagi sepadan dengan akses anda. Minta sekali lagi untuk kad baharu.",
           "retired": "Kad ini telah digunakan atau diganti. Semak permohonan di halamannya.",
           "unavailable": "Ini tidak dapat disemak sekarang. Cuba lagi sebentar lagi.",
-          "consent": "Tandakan persetujuan di atas untuk mengesahkan."
+          "consent": "Tandakan persetujuan di atas untuk mengesahkan.",
+          "duplicate": "Anda sudah mempunyai permohonan terbuka untuk surat ini. Semak Surat Saya."
         }
       },
       "suggestionMeta": "Lengkapkan dan sahkan di halamannya",
@@ -593,7 +595,8 @@
         "claims_submit": "Tuntutan perbelanjaan sedia untuk disemak",
         "claims_cancel": "Pembatalan tuntutan sedia untuk disemak",
         "ess_profile_request": "Perubahan profil sedia untuk disemak",
-        "toil_replacement_request": "Permohonan Kredit Cuti sedia untuk disemak"
+        "toil_replacement_request": "Permohonan Kredit Cuti sedia untuk disemak",
+        "letters_request_submit": "Permohonan surat sedia untuk disemak"
       },
       "checks": {
         "actor_current": "Akses anda masih sah",
@@ -615,7 +618,8 @@
         "profile_request_reviewed": "Disemak dengan rekod anda",
         "leave_credit_offered": "Anda boleh memohon Kredit Cuti",
         "worked_day_read": "Jenis hari dibaca daripada jadual giliran anda",
-        "leave_credit_rules": "Peraturan Kredit Cuti membenarkannya"
+        "leave_credit_rules": "Peraturan Kredit Cuti membenarkannya",
+        "letter_type_open_for_requests": "Jenis surat dibuka untuk permohonan"
       },
       "outcomes": {
         "withdrawn_now": "Ditarik balik serta-merta",
@@ -628,7 +632,8 @@
         "claim_draft_receipt_needed": "Disimpan sebagai draf; tambah resit di Tuntutan",
         "claim_cancelled_now": "Dibatalkan serta-merta",
         "hr_approval_required": "Dihantar kepada HR; berubah hanya selepas HR meluluskan",
-        "hr_verification_required": "HR mengesahkan butiran bank baharu sebelum digunakan"
+        "hr_verification_required": "HR mengesahkan butiran bank baharu sebelum digunakan",
+        "letter_requested_hr_prepares": "Dihantar kepada HR, yang menyediakan dan mengeluarkan surat"
       },
       "reads": {
         "my_leave_balances": "baki cuti anda",
@@ -664,7 +669,8 @@
         "ai_control": "AI dijeda atau dihadkan untuk anda atau syarikat anda sekarang.",
         "protected_input": "Soalan ini tidak dapat dihantar dengan selamat. Cuba tanya dengan cara lain.",
         "provider_error": "Pembantu tidak dapat menjawab sekarang. Sila cuba lagi."
-      }
+      },
+      "letterRequestTitle": "Permohonan {letterType}"
     }
   },
   "today": {
@@ -722,7 +728,10 @@
       "readinessCta": "Betulkan rekod",
       "proposalsTitle": "{count, plural, other {# pembetulan yang disediakan menunggu kelulusan anda}}",
       "proposalsSource": "Tindakan dicadangkan",
-      "proposalsCta": "Semak pembetulan"
+      "proposalsCta": "Semak pembetulan",
+      "letterRequestsTitle": "{count, plural, other {# permohonan surat menunggu anda}}",
+      "letterRequestsSource": "Permohonan surat pekerja",
+      "letterRequestsCta": "Buka permohonan surat"
     },
     "done": {
       "answeredLabel": "Dijawab",

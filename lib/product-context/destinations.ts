@@ -30,6 +30,8 @@ export const DESTINATION_PURPOSE:Readonly<Record<string,string>>=Object.freeze({
  // Review M16 (run 41343676782, pp-scope-2): a payroll partner asking for the October payroll summary was sent here.
  // Payroll runs and their reports are on the payroll pages, which only HR administrators open (scopedAdmin).
  '/me/payslip':'The signed-in person\'s own released payslips only. Never a payroll run, a payroll summary, a company report or anyone else\'s pay.',
+ // AI v2 Phase 1 slice 3: where a person asks HR for a letter ("Request a letter" on My Letters).
+ '/me/letters':'The signed-in person\'s own issued letters and letter requests, and where they ask HR for a new letter, such as an employment confirmation letter, with Request a letter when their company offers it. HR prepares and issues the letter.',
 });
 export type ProductDestination=Readonly<{href:string;labelKey:string;audience:DestinationAudience;module:string|null;source:'pack'|'lifecycle_v9'|'security'|'sidebar'}>;
 
