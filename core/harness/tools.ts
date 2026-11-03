@@ -17,6 +17,9 @@
  *    person is asked one question; nothing is suggested until it is clear.
  *  - product_capabilities (AI v2 W1): the caller's capability catalogue (core/product-context/capability-catalogue.ts),
  *    a context tool disclosed under its semantic entity (core/semantic-model/entities-catalogue.ts).
+ *  - approval_queue: the approvals inbox's counts (core/product-context/approval-queue.ts) with the leave requests among
+ *    them that the leave decision card can open (approvalQueueWithLeaveRequests below), a context tool disclosed under its
+ *    semantic entity (core/semantic-model/entities-recommend.ts approval_queue), so applicants and dates are placeholders.
  *  - prepare_import (AI v2 slice 3, issue 16b): an import prepared from a file attached in chat (core/chat-import/tool.ts),
  *    offered only to a caller who may import here and only when the gate allows actions. The file is the turn's own
  *    (ToolScope.importFile), never the model's, and never reaches it: the result is disclosed under
@@ -37,7 +40,9 @@ import {contextToolSpecs,TERAS_READS,terasToolSpecs} from '../semantic-model/gen
 import {terasCapabilitiesFor} from '../explainers/capabilities';
 import {SEMANTIC_ACTIONS,SEMANTIC_READS} from '../semantic-model/entities';
 import type {EntityId} from '../semantic-model/types';
-import {asksToBypassReview,prepareSuggestedProposal} from '../proposals/suggested';
+import {asksToBypassReview,assignedLeaveDecisionChoices,pendingStarts,prepareSuggestedProposal} from '../proposals/suggested';
+import {approvalQueueWithLeaveIdsFor} from '../product-context/approval-queue';
+import {todayInKualaLumpur} from '../../lib/hr-date';
 import {LEAVE_APPLY_FORM_ROUTE} from '../proposals/leave-apply';
 import type {Proposal} from '../proposals/proposal';
 import {HARNESS_SPEC} from './spec';
@@ -122,6 +127,29 @@ export async function administeredEmployments(ctx:SessionContext,content:unknown
   .where(and(eq(employment.tenantId,ctx.tenantId),inArray(employment.id,ids),sql`app.is_admin_for(${employment.companyId}) IS TRUE`)));
  return new Set(rows.map(row=>row.id));
 }
+/** At most this many waiting leave requests are named; the rest are counted and left to the approvals page. */
+export const MAX_QUEUE_LEAVE_REQUESTS=5;
+const QUEUE_DECIDE_NOTE='The leave requests among these that wait for this person\'s decision are in leaveRequests, numbered; the applicant and the dates are placeholders the person sees as the real name and date. Name each one in your reply: who, the leave type, the days and the date. Offer to open its decision here for them to review and confirm (suggest_action with the action in decide brings its card); when several wait, ask which number. Never decide one yourself or say it is approved. Other kinds are counted in groups, with their page.';
+const QUEUE_PAGE_NOTE='The leave requests among these that wait for this person\'s decision are in leaveRequests, numbered; the applicant and the dates are placeholders the person sees as the real name and date. Name each one in your reply: who, the leave type, the days and the date, and link the page where they decide it. Never decide one yourself or say it is approved.';
+/** After spec v20's scored run 41641279562 (mgr-queue-1, "anything waiting for my approval?": "1 leave request is
+ * waiting", without who, when or an offer to open it). The approvals inbox's counts for the current company (unchanged), with
+ * the leave requests among them that the leave decision card can open for this approver: the card's own assigned-choice
+ * owner (core/proposals/suggested.ts assignedLeaveDecisionChoices, the inbox's assignment rule), kept only where the
+ * queue counts the request, numbered as suggest_action numbers them. Nobody outside this approver's queue is ever listed.
+ * Disclosed under the approval_queue entity: the applicant and dates leave as placeholders the person sees restored, as on
+ * their approvals page. `decide` only when this turn offers that card (the leave decision is in the caller's catalogue). */
+export async function approvalQueueWithLeaveRequests(ctx:SessionContext,companyId:string,options:Readonly<{decide:boolean;now?:Date}>):Promise<Readonly<Record<string,unknown>>>{
+ const {summary,leaveRequestIds}=await approvalQueueWithLeaveIdsFor(ctx,companyId);
+ if(!leaveRequestIds.size)return summary;
+ const {choices:all}=await assignedLeaveDecisionChoices(ctx),counted=all.filter(row=>leaveRequestIds.has(row.id));
+ if(!counted.length)return summary;
+ const today=todayInKualaLumpur(options.now??new Date()),days=(value:unknown)=>{const parsed=Number(value);return Number.isFinite(parsed)?parsed:null;};
+ const listed=counted.slice(0,MAX_QUEUE_LEAVE_REQUESTS);
+ return Object.freeze({...summary,leaveRequests:Object.freeze(listed.map(row=>Object.freeze({request:all.indexOf(row)+1,applicant:row.applicant,leaveType:row.leaveType,
+  days:days(row.days),starts:pendingStarts(row.startDate,today),startDate:row.startDate,endDate:row.endDate}))),
+  ...(leaveRequestIds.size>listed.length?{leaveRequestsNotListed:leaveRequestIds.size-listed.length}:{}),
+  ...(options.decide?{decide:'approvals.leave.decide'}:{}),note:options.decide?QUEUE_DECIDE_NOTE:QUEUE_PAGE_NOTE});
+}
 export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  const owners=new Map(toolsFor(ctx).map(tool=>[tool.spec.name,tool]));
  const reads=contextToolSpecs().filter(spec=>owners.has(spec.name)).map((spec):ToolBinding=>{
@@ -136,9 +164,13 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
   return{name:spec.name,kind:'read',entity:declared.entity,spec,identifierInputs:[],
    async run(input){const outcome=await capability.run(ctx,input,scope);return outcome.ok?{ok:true,content:outcome}:{ok:false,content:outcome,refusal:outcome.refusal};}};
  });
- const context=contextToolSpecsFor(ctx).map((spec):ToolBinding=>({name:spec.name,kind:'context',entity:null,spec,identifierInputs:[],
-  async run(input){const result=await runContextTool(ctx,spec.name,input,scope);return result.ok?{ok:true,content:result.content}:{ok:false,content:result,refusal:result.refusal};}}));
  const catalogue=actions?await actionCatalogueFor(ctx):[];
+ const context=contextToolSpecsFor(ctx).map((spec):ToolBinding=>spec.name==='approval_queue'
+  // The queue names the leave requests waiting for this approver, so it is disclosed under its declared entity.
+  ?{name:spec.name,kind:'context',entity:'approval_queue',spec,identifierInputs:[],
+   async run(){return{ok:true,content:await approvalQueueWithLeaveRequests(ctx,scope.companyId,{decide:catalogue.some(row=>row.id==='approvals.leave.decide')})};}}
+  :{name:spec.name,kind:'context',entity:null,spec,identifierInputs:[],
+   async run(input){const result=await runContextTool(ctx,spec.name,input,scope);return result.ok?{ok:true,content:result.content}:{ok:false,content:result,refusal:result.refusal};}});
  // Spec v20: where a decision with no match points, when this caller may open the approvals list.
  const approvalsPage=catalogue.some(row=>/^approvals\..+\.decide$/.test(row.id))&&linkablePathsFor(ctx,visibleModuleCodes(ctx)??undefined).includes('/approvals')?'/approvals':null;
  // Disclosed under its declared entity (core/semantic-model/entities-recommend.ts): pending applicants and dates are

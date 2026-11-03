@@ -5,7 +5,8 @@
  * readiness gaps, pending approvals and follow-up items), so every registered worker can declare its read
  * scope from this model (core/agent-registry/workers.ts checks each scope id against terasEntities()).
  * These are entities only: no read is added to the Teras tool catalogue, so the harness offers nothing new.
- * suggested_action declares the harness's existing suggest_action result (privacy fixes, November 2026).
+ * suggested_action declares the harness's existing suggest_action result (privacy fixes, November 2026), and approval_queue
+ * its approval_queue result (after run 41641279562).
  * Counts are `minimum` (the person may read every row behind them) except where they describe a group of
  * other people, which are `bands`. Rule-version labels carry internal ids, so they are `never`. */
 import type {DisclosureClass,FieldType,SemanticEntity,SemanticField} from './types';
@@ -112,4 +113,26 @@ export const RECOMMEND_ENTITIES:readonly SemanticEntity[]=freeze([
     f('amount','number','bands','Amount of the claim, as stored.'),f('kind','enum','full','An overtime request or a clock correction.',{values:['overtime','correction']}),
     f('plannedStart','time','minimum','Overtime start.'),f('plannedEnd','time','minimum','Overtime end.'),
     f('checkIn','time','minimum','Clock-in asked for.'),f('checkOut','time','minimum','Clock-out asked for.')]})]},
+ // The Teras harness's approval_queue result, disclosed under this declaration rather than as product context (after spec
+ // v20's scored run 41641279562, mgr-queue-1: "1 leave request is waiting" without who or when). Beside the counts per kind,
+ // the leave requests the queue counts that the leave decision card can open for this approver, numbered as suggest_action
+ // numbers them. The applicant and the dates are about another person, so they leave as placeholders the person sees
+ // restored, as on their approvals page; the leave type is screened and the day count identifies no one. The counts stay
+ // `full`, exactly as the counts-only context tool sent them before.
+ {id:'approval_queue',label:'Waiting for your decision',
+  meaning:'What waits for the caller\'s own decision as an approver: counts per kind with the queue page and review action, from the approvals inbox, and the leave requests among them that the leave decision card can open for this approver.',
+  module:'approvals',sensitivity:'ordinary',audience:'assigned_approver',rls:'assigned_request',
+  owners:['core/product-context/approval-queue.ts#approvalQueueWithLeaveIdsFor','core/approvals-inbox.ts#listPendingTasks','core/proposals/suggested.ts#assignedLeaveDecisionChoices'],
+  ruleVersion:null,relations:[{to:'leave_approval_step',kind:'one_to_many',via:'leaveRequestId'}],page:'/approvals',
+  fields:[f('total','integer','full','How many items wait for this person\'s decision.'),
+   f('groups','list','full','Counts per kind, largest first.',{of:[f('kind','label','full','Item kind.'),f('count','integer','full','How many.'),
+    f('href','label','full','The queue page for the kind.'),f('reviewAction','label','full','The review action for the kind, where one exists.')]}),
+   f('leaveRequests','list','full','Leave requests waiting for this person\'s decision that the decision card can open, in a fixed order.',{of:[
+    f('request','integer','full','Its number: the number suggest_action takes as request.'),
+    f('applicant','name','minimum','Who applied.'),f('leaveType','label','full','Leave type name.',{screen:'sensitive_label'}),
+    f('days','number','full','Day quantity; with the applicant withheld it identifies no one.'),
+    f('starts','enum','full','When it starts, relative to today.',{values:PENDING_STARTS}),
+    f('startDate','date','minimum','First day.'),f('endDate','date','minimum','Last day.')]}),
+   f('leaveRequestsNotListed','integer','full','Further waiting leave requests, left to the approvals page.'),
+   f('decide','label','full','The action suggest_action takes to open the decision card for a listed leave request.')]},
 ] satisfies SemanticEntity[]);

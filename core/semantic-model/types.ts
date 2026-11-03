@@ -66,7 +66,9 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  /** AI v2 slice 3 (issue 16b): an import prepared in chat from an attached file (./entities-imports.ts). */
  |'chat_import'
  /** AI v2 W8: the loops overview, for administrators (./entities-loops.ts). */
- |'loop_overview';
+ |'loop_overview'
+ /** The harness's approval_queue result, with the leave requests waiting for the approver (./entities-recommend.ts). */
+ |'approval_queue';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;
