@@ -454,6 +454,18 @@ function ReaderPolicyView({ t, f, policy }: { t: T; f: F; policy: ReaderPolicy }
       <h3 id="policy-title" className="text-[1.375rem] font-semibold tracking-tight">{policy.title}</h3>
       <p className="text-sm text-muted-foreground" data-policy-status>{t('readerLine', { version: policy.version, date: day(f, policy.effectiveFrom) })}</p>
       <section className="rounded-xl border border-border p-4"><p className="whitespace-pre-wrap text-[0.9375rem] leading-7" data-policy-text>{policy.body}</p></section>
+      {(policy.settingNotes ?? []).length > 0 && (
+        <ul className="space-y-1 text-sm text-muted-foreground" data-policy-setting-notes>
+          {(policy.settingNotes ?? []).map((note, i) => (
+            <li key={i} data-policy-setting-note={note.setting}>
+              {note.unavailable
+                ? t('readerSettingUnavailable', { quote: note.quote })
+                : t('readerSettingNote', { quote: note.quote, setting: t(`drift.setting.${note.setting.replace('.', '_')}`, { type: note.targetName ?? '' }),
+                    current: ownerSummary(t, f, note.setting, note.current) })}
+            </li>
+          ))}
+        </ul>
+      )}
       <p className="text-xs text-muted-foreground">{t('readerNote')}</p>
     </article>
   );

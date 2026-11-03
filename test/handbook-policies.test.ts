@@ -292,7 +292,7 @@ describe('employees read approved versions only',()=>{
   expect(view.role).toBe('reader');
   if(view.role!=='reader')throw Error('expected the reader view');
   expect(view.list.map(row=>[row.title,row.inForce,row.open,row.drift])).toEqual([['Claims: mileage',1,null,0]]);
-  expect(view.selected).toEqual({id:first.documentId,area:'claims',title:'Claims: mileage',version:1,effectiveFrom:todayInKualaLumpur(),body:TEXT});
+  expect(view.selected).toEqual({id:first.documentId,area:'claims',title:'Claims: mileage',version:1,effectiveFrom:todayInKualaLumpur(),body:TEXT,settingNotes:[]});
   const answer=await askPolicyHandbook(employee,{topic:'mileage rate per km'});
   expect(answer.ok).toBe(true);
   const policies=(answer as unknown as {policies:{title:string;version:number;citation:string;paragraphs:{paragraph:number;text:string}[]}[]}).policies;
@@ -476,6 +476,11 @@ describe('Phase 2 hardening: the text never contradicts what the system enforces
   if(view.role!=='admin'||!view.selected)throw Error('expected the administrator view');
   expect(view.list.map(row=>row.drift)).toEqual([1]);
   expect(view.selected.drift.map(d=>[d.kind,d.setting,d.quote,d.handbook,d.system])).toEqual([['text','claims.mileage_rates','RM1.00/km',null,{bands:[{fromKm:0,toKm:null,ratePerKm:0.6}]}]]);
+  // The employee's own Policies page keeps the approved words and notes the current setting beside them.
+  const page=await policiesView(employee,{policy:created.documentId});
+  if(page.role!=='reader'||!page.selected)throw Error('expected the reader view');
+  expect(page.selected.body).toBe(RM100);
+  expect(page.selected.settingNotes).toEqual([{setting:'claims.mileage_rates',target:{},targetName:'Mileage',quote:'RM1.00/km',current:{bands:[{fromKm:0,toKm:null,ratePerKm:0.6}]},unavailable:false}]);
  });
 });
 

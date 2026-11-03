@@ -1704,7 +1704,9 @@
       },
       "footer": "Soalan pekerja dijawab daripada versi yang diluluskan sahaja. Setiap versi disimpan.",
       "readerLine": "Versi {version} · berkuat kuasa sejak {date}",
-      "readerNote": "Ini ialah versi yang diluluskan. Tanya AI Centre mengenainya di Tanya, atau hubungi pasukan HR anda."
+      "readerNote": "Ini ialah versi yang diluluskan. Tanya AI Centre mengenainya di Tanya, atau hubungi pasukan HR anda.",
+      "readerSettingNote": "“{quote}” ({setting}): tetapan semasa ialah {current}; HR telah dimaklumkan bahawa buku panduan berbeza.",
+      "readerSettingUnavailable": "“{quote}”: tetapan semasa tidak dapat dibaca buat masa ini. Tanya pasukan HR anda sebelum bergantung pada angka ini."
     },
     "feedback": {
       "label": "Adakah jawapan ini membantu?",

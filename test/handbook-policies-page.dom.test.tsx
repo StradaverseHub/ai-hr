@@ -95,7 +95,7 @@ describe('the Policies tab',()=>{
 describe('an employee',()=>{
  it('reads the approved text of their company\'s policies, and nothing a draft or an approval holds',async()=>{
   state.view={role:'reader',today:'2026-11-03',list:[{id:P2,area:'leave',title:'Leave',inForce:7,open:null,drift:0}],
-   selected:{id:P2,area:'leave',title:'Leave',version:7,effectiveFrom:'2026-01-01',body:'Annual leave is 14 days a year.'}};
+   selected:{id:P2,area:'leave',title:'Leave',version:7,effectiveFrom:'2026-01-01',body:'Annual leave is 14 days a year.',settingNotes:[]}};
   const rendered=wrap('en',await page(SESSIONS.employee,{policy:P2}));
   expect(state.reads).toEqual([{policy:P2}]);
   expect(screen.getByRole('heading',{level:1,name:'Policies'})).toBeTruthy();
@@ -105,6 +105,22 @@ describe('an employee',()=>{
   for(const selector of ['[data-policy-enforce]','[data-policy-drift]','[data-policy-approval]','[data-policy-impact]','[data-policy-new]','form'])
    expect(rendered.container.querySelector(selector),selector).toBeNull();
   expect(rendered.container.querySelector('[data-policy-badge="drift"]')).toBeNull();
+  expect(rendered.container.querySelector('[data-policy-setting-notes]')).toBeNull();
+ });
+ it('sees the current setting beside an approved figure the system no longer applies, with the approved text unchanged',async()=>{
+  const body='Mileage is reimbursed at RM1.00/km. Claims must be submitted within 30 days.';
+  state.view={role:'reader',today:'2026-11-03',list:[{id:P1,area:'claims',title:'Mileage',inForce:2,open:null,drift:0}],
+   selected:{id:P1,area:'claims',title:'Mileage',version:2,effectiveFrom:'2026-01-01',body,settingNotes:[
+    {setting:'claims.mileage_rates',target:{},targetName:'Mileage',quote:'RM1.00/km',current:{bands:[{fromKm:0,toKm:null,ratePerKm:0.6}]},unavailable:false},
+    {setting:'claims.submit_within_days',target:{claimType:'MILEAGE'},targetName:'Mileage',quote:'within 30 days',current:null,unavailable:true}]}};
+  const rendered=wrap('en',await page(SESSIONS.employee,{policy:P1}));
+  expect(text(rendered.container.querySelector('[data-policy-text]'))).toBe(body);
+  expect([...rendered.container.querySelectorAll('[data-policy-setting-note]')].map(li=>[li.getAttribute('data-policy-setting-note'),text(li)])).toEqual([
+   ['claims.mileage_rates','“RM1.00/km” (Mileage rates): the current setting is RM 0.60 per km from 0 km; HR has been told the handbook differs.'],
+   ['claims.submit_within_days','“within 30 days”: the current setting could not be read just now. Ask your HR team before relying on this figure.']]);
+  // A plain note in the page's own muted text: no new colour, nothing to press.
+  expect(rendered.container.querySelector('[data-policy-setting-notes]')!.className).toBe('space-y-1 text-sm text-muted-foreground');
+  expect(rendered.container.querySelector('[data-policy-setting-notes] button, [data-policy-setting-notes] form')).toBeNull();
  });
 });
 
@@ -264,11 +280,14 @@ describe('every locale',()=>{
     values:VALUES.map(v=>({...v,decision:'confirmed'}))},{status:'approved',changesSettings:true,approvedAt:new Date()}),true),
    admin(null),{role:'reader',today:'2026-11-03',list:[],selected:null},
    admin(detail({mentions:MENTIONS,mismatches:MISMATCHES},{status:'submitted',changesSettings:false}),true),admin(detail({mentions:MENTIONS,mismatches:MISMATCHES})),
-   admin(detail({values:VALUES.map(v=>({...v,decision:'confirmed'}))},{status:'submitted',changesSettings:true,contributedByViewer:true}),true)];
+   admin(detail({values:VALUES.map(v=>({...v,decision:'confirmed'}))},{status:'submitted',changesSettings:true,contributedByViewer:true}),true),
+   {role:'reader',today:'2026-11-03',list:[{id:P1,area:'claims',title:'Mileage',inForce:2,open:null,drift:0}],selected:{id:P1,area:'claims',title:'Mileage',version:2,effectiveFrom:'2026-01-01',
+    body:'Mileage is reimbursed at RM1.00/km.',settingNotes:[{setting:'claims.mileage_rates',target:{},targetName:'Mileage',quote:'RM1.00/km',current:{bands:[{fromKm:0,toKm:null,ratePerKm:0.6}]},unavailable:false},
+     {setting:'claims.submit_within_days',target:{},targetName:null,quote:'within 30 days',current:null,unavailable:true}]}}];
   const extra=[{saved:'text_only',error:'unmarked'},{saved:'text_only_withdrawn',error:'mismatch'}];
   for(const [i,view] of views.entries()){
    state.view=view;
-   const rendered=wrap(locale,await page(i===4?SESSIONS.employee:SESSIONS.groupAdmin,{policy:P1,saved:'read',n:'2',r:'1',error:'same_administrator',...(i===3?{new:'1'}:{}),...(i>=5?extra[i%2]:{})}));
+   const rendered=wrap(locale,await page(i===4||i===8?SESSIONS.employee:SESSIONS.groupAdmin,{policy:P1,saved:'read',n:'2',r:'1',error:'same_administrator',...(i===3?{new:'1'}:{}),...(i>=5?extra[i%2]:{})}));
    expect(rendered.container.textContent).not.toMatch(/Noveri/);
    expect(rendered.container.textContent).not.toMatch(/aiCentre\.policies/);
    cleanup();

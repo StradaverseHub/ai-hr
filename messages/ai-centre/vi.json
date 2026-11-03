@@ -1704,7 +1704,9 @@
       },
       "footer": "Câu hỏi của nhân viên chỉ được trả lời từ phiên bản đã phê duyệt. Mọi phiên bản đều được lưu.",
       "readerLine": "Phiên bản {version} · hiệu lực từ {date}",
-      "readerNote": "Đây là phiên bản đã phê duyệt. Hỏi AI Centre về nó ở mục Hỏi, hoặc liên hệ bộ phận nhân sự."
+      "readerNote": "Đây là phiên bản đã phê duyệt. Hỏi AI Centre về nó ở mục Hỏi, hoặc liên hệ bộ phận nhân sự.",
+      "readerSettingNote": "“{quote}” ({setting}): thiết lập hiện tại là {current}; HR đã được báo rằng sổ tay khác với thiết lập này.",
+      "readerSettingUnavailable": "“{quote}”: hiện không đọc được thiết lập hiện tại. Hãy hỏi bộ phận HR trước khi dựa vào con số này."
     },
     "feedback": {
       "label": "Câu trả lời này có hữu ích không?",

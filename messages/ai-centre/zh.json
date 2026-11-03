@@ -1704,7 +1704,9 @@
       },
       "footer": "员工的问题只根据已批准的版本回答。每个版本都会保留。",
       "readerLine": "版本 {version} · 自 {date} 起生效",
-      "readerNote": "这是已批准的版本。可在“提问”中向 AI Centre 询问，或联系您的人力资源团队。"
+      "readerNote": "这是已批准的版本。可在“提问”中向 AI Centre 询问，或联系您的人力资源团队。",
+      "readerSettingNote": "“{quote}”（{setting}）：当前设置为 {current}；已告知 HR 手册与此不同。",
+      "readerSettingUnavailable": "“{quote}”：暂时无法读取当前设置。依赖此数字前，请先询问您的 HR 团队。"
     },
     "feedback": {
       "label": "这个回答有帮助吗？",

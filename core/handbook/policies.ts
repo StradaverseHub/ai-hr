@@ -538,7 +538,10 @@ export type PolicyDetail=Readonly<{id:string;area:PolicyArea;title:string;curren
  mentions:readonly PolicyMention[];mismatches:readonly PolicyMismatch[];
  approvals:readonly Readonly<{decision:'approved'|'returned';approverName:string|null;submission:number;at:Date}>[];
  applications:readonly PolicyApplicationView[];drift:readonly PolicyDrift[];impact:ClaimPolicyImpact|null}>;
-export type ReaderPolicy=Readonly<{id:string;area:PolicyArea;title:string;version:number;effectiveFrom:string;body:string}>;
+/** Words of the approved text that state an enforceable figure the system no longer applies (drift after approval), with
+ * the owner's current setting, for the employee page; `unavailable` when the setting could not be read now. */
+export type ReaderSettingNote=Readonly<{setting:PolicySetting;target:SettingTarget;targetName:string|null;quote:string;current:SettingBody|null;unavailable:boolean}>;
+export type ReaderPolicy=Readonly<{id:string;area:PolicyArea;title:string;version:number;effectiveFrom:string;body:string;settingNotes:readonly ReaderSettingNote[]}>;
 export type PoliciesView=Readonly<{role:'admin';today:string;companies:readonly PolicyCompany[];isGroupAdmin:boolean;list:readonly PolicyListItem[];selected:PolicyDetail|null}>
  |Readonly<{role:'reader';today:string;list:readonly PolicyListItem[];selected:ReaderPolicy|null}>;
 
@@ -566,6 +569,25 @@ async function driftOf(ctx:SessionContext,version:Pick<VersionRow,'body'>,values
  return out;
 }
 
+/** The employee page's notes: each enforceable figure the approved text states (the deterministic read, as Ask uses it,
+ * core/handbook/ask.ts) that disagrees with the owner's current setting as this person reads it. The text itself is
+ * shown unchanged. A setting that cannot be read now gets a note too, so no figure stands unchecked. */
+async function readerSettingNotes(ctx:SessionContext,body:string,today:string):Promise<readonly ReaderSettingNote[]>{
+ const targets=await ownerTargets(ctx,today);
+ const statements=policyStatements(body,heldSettings(targets),targets.claimTypes,[]);if(!statements.length)return Object.freeze([]);
+ const codes=targets.claimTypes.map(t=>t.code),owner=new Map<string,SettingBody|null>();
+ try{
+  for(const statement of statements){
+   const wanted=statement.target?[statement.target]:statement.setting==='claims.submit_within_days'?codes.map(code=>({claimType:code})):[{}];
+   for(const target of wanted){const key=settingKey(statement.setting,target);if(!owner.has(key))owner.set(key,(await currentOwnerValue(ctx,statement.setting,target,targets,today)).value);}
+  }
+ }catch{
+  return Object.freeze(statements.map(s=>Object.freeze({setting:s.setting,target:s.target??{},targetName:null,quote:s.quote,current:null,unavailable:true})));
+ }
+ return Object.freeze(disagreements(statements,(setting,target)=>owner.get(settingKey(setting,target))??null,codes).map(d=>Object.freeze({setting:d.statement.setting,target:d.target,
+  targetName:targetName(targets,d.statement.setting,d.target),quote:d.statement.quote,current:d.enforced,unavailable:false})));
+}
+
 /** AI Centre › Policies, as the viewer may see it: administrators get every policy of the companies they administer
  * (drafts, values, approvals, applications and drift); everyone else the approved versions of their own companies. */
 export async function policiesView(supplied:SessionContext,input:Readonly<{policy?:unknown}>):Promise<PoliciesView>{
@@ -573,14 +595,13 @@ export async function policiesView(supplied:SessionContext,input:Readonly<{polic
  const policyId=uuid.safeParse(input.policy).success?input.policy as string:null;
  const admin=!!ctx.userId&&!ctx.agent&&isAdmin(ctx);
  if(!admin){
-  return withTenant(ctx,async tx=>{
-   const rows=rowsOf<{id:string;area:PolicyArea;title:string;version:number;effective_from:string;body:string}>(await tx.execute(sql`select d.id,d.area,d.title,v.version,
+  const rows=await withTenant(ctx,async tx=>rowsOf<{id:string;area:PolicyArea;title:string;version:number;effective_from:string;body:string}>(await tx.execute(sql`select d.id,d.area,d.title,v.version,
     to_char(v.effective_from,'YYYY-MM-DD') as effective_from,v.body from public.teras_policy_document d join public.teras_policy_version v on v.document_id=d.id
-    where d.tenant_id=${ctx.tenantId}::uuid and v.id in ${IN_FORCE} order by d.area,d.title,d.id`));
-   const list=rows.map(r=>Object.freeze({id:r.id,area:r.area,title:r.title,inForce:r.version,open:null,drift:0}));
-   const chosen=rows.find(r=>r.id===policyId)??null;
-   return Object.freeze({role:'reader' as const,today,list:Object.freeze(list),selected:chosen?Object.freeze({id:chosen.id,area:chosen.area,title:chosen.title,version:chosen.version,effectiveFrom:chosen.effective_from,body:chosen.body}):null});
-  });
+    where d.tenant_id=${ctx.tenantId}::uuid and v.id in ${IN_FORCE} order by d.area,d.title,d.id`)));
+  const list=rows.map(r=>Object.freeze({id:r.id,area:r.area,title:r.title,inForce:r.version,open:null,drift:0}));
+  const chosen=rows.find(r=>r.id===policyId)??null;
+  return Object.freeze({role:'reader' as const,today,list:Object.freeze(list),selected:chosen?Object.freeze({id:chosen.id,area:chosen.area,title:chosen.title,version:chosen.version,
+   effectiveFrom:chosen.effective_from,body:chosen.body,settingNotes:await readerSettingNotes(ctx,chosen.body,today)}):null});
  }
  const targets=await ownerTargets(ctx,today);
  const base=await withTenant(ctx,async tx=>{

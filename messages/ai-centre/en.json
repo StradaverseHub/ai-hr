@@ -1704,7 +1704,9 @@
       },
       "footer": "Employees' questions are answered from the approved version only. Every version is kept.",
       "readerLine": "Version {version} · in force since {date}",
-      "readerNote": "This is the approved version. Ask AI Centre about it on Ask, or contact your HR team."
+      "readerNote": "This is the approved version. Ask AI Centre about it on Ask, or contact your HR team.",
+      "readerSettingNote": "“{quote}” ({setting}): the current setting is {current}; HR has been told the handbook differs.",
+      "readerSettingUnavailable": "“{quote}”: the current setting could not be read just now. Ask your HR team before relying on this figure."
     },
     "feedback": {
       "label": "Was this answer helpful?",
