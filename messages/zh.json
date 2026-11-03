@@ -31371,7 +31371,37 @@
         "state": "此信函已无法执行该操作。",
         "unavailable": "信函功能暂时不可用，请稍后重试。"
       },
-      "download": "下载 PDF"
+      "download": "下载 PDF",
+      "requests": {
+        "request": "申请信函",
+        "title": "您的信函申请",
+        "requestedOn": "申请于 {date}",
+        "openLetter": "打开信函",
+        "sent": "您的申请已发送给人力资源部。您可以在此查看其状态。",
+        "unavailable": "暂时无法显示您的信函申请。",
+        "formTitle": "申请信函",
+        "formDescription": "选择您需要的信函。人力资源部会准备信函，签发后您可以在“我的信函”中找到。",
+        "none": "贵公司尚未开放任何可供员工申请的信函。请联系您的人力资源团队。",
+        "type": "信函类型",
+        "choose": "选择信函",
+        "typeInCompany": "{type}（{company}）",
+        "purpose": "用途（选填）",
+        "purposeHelp": "例如银行贷款或签证申请。只有您和人力资源部可以看到。",
+        "submit": "发送申请",
+        "status": {
+          "requested": "已申请",
+          "in_progress": "人力资源部正在准备",
+          "issued": "已签发",
+          "declined": "已拒绝"
+        },
+        "errors": {
+          "invalid": "请检查信函类型后重试。",
+          "not_requestable": "此信函已无法申请。请选择其他信函。",
+          "duplicate": "您已有此信函的未完成申请。",
+          "unavailable": "暂时无法发送您的申请。请稍后再试。"
+        },
+        "cancel": "取消"
+      }
     },
     "reports": {
       "title": "信函报表",
@@ -31762,6 +31792,37 @@
         "unavailable": "无法完成操作，请重试。",
         "state": "此信函或批次的状态已更改，请刷新后重试。",
         "reasonRequired": "请输入移除原因。"
+      },
+      "requests": {
+        "title": "信函申请",
+        "intro": "员工申请的信函。“准备信函”会为该员工打开草稿；您照常审批并签发。",
+        "empty": "没有等待处理的信函申请。",
+        "unavailable": "暂时无法显示信函申请。",
+        "employee": "员工",
+        "purpose": "用途",
+        "requestedOn": "申请于 {date}",
+        "prepare": "准备信函",
+        "prepareUnavailable": "此模板已不再发布。请重新发布或拒绝该申请。",
+        "decline": "拒绝",
+        "declineReason": "拒绝原因",
+        "declineHelp": "只有人力资源部可以看到原因。员工只会被告知申请已被拒绝。",
+        "declineSubmit": "拒绝申请",
+        "inProgress": "草稿已准备。信函签发后，申请将标记为已签发。",
+        "preparing": "根据员工的{type}申请准备。",
+        "declined": "申请已被拒绝。",
+        "status": {
+          "requested": "已申请",
+          "in_progress": "准备中",
+          "issued": "已签发",
+          "declined": "已拒绝"
+        },
+        "errors": {
+          "invalid": "请检查申请后重试。",
+          "permission": "您已无法处理此申请。",
+          "state": "此申请已被处理。",
+          "stale": "此申请已更改。请重新查看。",
+          "unavailable": "暂时无法更新申请。请稍后再试。"
+        }
       }
     },
     "approval": {
@@ -31921,7 +31982,21 @@
       "empty": "暂无设置或资源。",
       "assetSearch": "搜索资源名称",
       "companyCodeUnavailable": "请配置简短的公司参考代码，或使用不含公司占位符的格式。",
-      "version": "配置版本 {number}"
+      "version": "配置版本 {number}",
+      "requests": {
+        "title": "员工申请",
+        "intro": "选择员工可以在“我的信函”中申请的信函。默认关闭。",
+        "empty": "尚无已发布的模板。",
+        "unavailable": "暂时无法显示员工申请设置。",
+        "allow": "员工可以申请{name}",
+        "save": "保存员工申请设置",
+        "saved": "员工申请设置已保存。",
+        "errors": {
+          "invalid": "请检查所选内容后重试。",
+          "permission": "您无法更改此公司的信函设置。",
+          "unavailable": "暂时无法保存设置。请稍后再试。"
+        }
+      }
     }
   },
   "performanceHome": {

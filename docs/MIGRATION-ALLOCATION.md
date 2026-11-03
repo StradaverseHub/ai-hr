@@ -1017,3 +1017,21 @@ slice branches cut from the same base may claim the same next number; reconcile 
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
 |765|1793330000360|0960_teras_loops|addec336da5a82869ab05d79c45bc9d884e92c3d877af6b073f3e892fdfda11d|
+
+## AI v2 Phase 1 slice 3 employee letter requests — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-s3-letter-request` (cut from `32816437f`, journal ending `0959_private_cases` idx764 / when1793330000359)
+appends `0961_letter_requests` as idx765 / when1793330000361 on its branch; at the Phase 1 final integration
+(`claude/aiv2-phase1-final`, coordinator, 3 November 2026) it is re-frozen as **idx766** after `0960_teras_loops` idx765, the
+SQL unchanged. 0960 / when1793330000360 is reserved by the coordinator for
+the parallel loops branch (`0960_teras_loops`, present only in the `aiv2-s3-loops-20261103` worktree). A fresh fetch on
+3 November 2026 and a scan of every origin ref, every local branch and every registered worktree (407, including their
+uncommitted files and allocation documents) found file claims through 0960 and journal `when` values through
+1793330000360; nothing claims 0961 or when1793330000361. This claim therefore takes 0961 with the `when` the coordinator
+assigned. Development source only: no installation priority, no deployment; the idx is this branch's own journal position
+and must be re-frozen above the then-installed ledger at integration. Sibling AI v2 slice branches cut from the same base
+may claim the same idx; reconcile at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|766|1793330000361|0961_letter_requests|fac033d489f171da966f620f058f8f688c21e691786b2700bd9fe0876495eb5e|

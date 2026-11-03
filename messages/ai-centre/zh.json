@@ -738,7 +738,8 @@
           "toilSubmitted": "已提交审批，尚未批准。获批前不会计入任何额度。",
           "decisionApproved": "已批准。您的决定已记录。",
           "decisionRejected": "已拒绝，并附上您的理由。您的决定已记录。",
-          "decisionLevelRecorded": "您的批准已记录。现由下一位审批人决定。"
+          "decisionLevelRecorded": "您的批准已记录。现由下一位审批人决定。",
+          "letterRequested": "已发送给人力资源部。人力资源部会准备信函；签发后您可以在“我的信函”中找到。"
         },
         "refused": {
           "expired": "此卡片已过期。请重新提问以获取新卡片。",
@@ -746,7 +747,8 @@
           "access": "此卡片与您当前的权限不再相符。请重新提问以获取新卡片。",
           "retired": "此卡片已被使用或替换。请在其页面上查看该申请。",
           "unavailable": "暂时无法检查。请稍后再试。",
-          "consent": "请先勾选上方的同意声明再确认。"
+          "consent": "请先勾选上方的同意声明再确认。",
+          "duplicate": "您已有此信函的未完成申请。请查看“我的信函”。"
         }
       },
       "suggestionMeta": "在其页面上完成并确认",
@@ -771,7 +773,8 @@
         "ess_profile_request": "资料更改待审核",
         "toil_replacement_request": "假期额度申请待审核",
         "approvals_claim_decide": "报销决定待审核",
-        "approvals_attendance_decide": "考勤决定待审核"
+        "approvals_attendance_decide": "考勤决定待审核",
+        "letters_request_submit": "信函申请待审核"
       },
       "checks": {
         "actor_current": "您的权限有效",
@@ -796,7 +799,8 @@
         "leave_credit_rules": "假期额度规则允许",
         "assigned_approver_current": "您是指定的审批人",
         "not_own_request": "不是您本人的申请",
-        "request_still_pending": "申请仍待处理"
+        "request_still_pending": "申请仍待处理",
+        "letter_type_open_for_requests": "信函类型开放申请"
       },
       "outcomes": {
         "withdrawn_now": "立即撤回",
@@ -810,7 +814,8 @@
         "claim_cancelled_now": "立即取消",
         "hr_approval_required": "发送给人事部；人事部批准后才会更改",
         "hr_verification_required": "人事部核实新的银行资料后才会使用",
-        "attendance_decision_if_checks_pass": "若检查仍通过，则记录在您的审批层级"
+        "attendance_decision_if_checks_pass": "若检查仍通过，则记录在您的审批层级",
+        "letter_requested_hr_prepares": "已发送给人力资源部，由其准备并签发信函"
       },
       "reads": {
         "my_leave_balances": "您的假期余额",
@@ -846,7 +851,8 @@
         "ai_control": "目前您或贵公司的 AI 已暂停或受限。",
         "protected_input": "此问题无法安全发送。请换一种方式提问。",
         "provider_error": "助手暂时无法回答。请重试。"
-      }
+      },
+      "letterRequestTitle": "{letterType}申请"
     }
   },
   "today": {
@@ -904,7 +910,10 @@
       "readinessCta": "修正记录",
       "proposalsTitle": "{count, plural, other {# 项准备好的修正等待您批准}}",
       "proposalsSource": "建议的操作",
-      "proposalsCta": "审阅修正"
+      "proposalsCta": "审阅修正",
+      "letterRequestsTitle": "{count, plural, other {# 份信函申请等待您处理}}",
+      "letterRequestsSource": "员工信函申请",
+      "letterRequestsCta": "打开信函申请"
     },
     "loops": {
       "awaiting": "等待您处理",

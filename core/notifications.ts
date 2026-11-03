@@ -1029,6 +1029,13 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       return [...new Set(rows.map((r) => r.e))];
     },
   },
+  // AI v2 Phase 1 slice 3 (core/letter-requests.ts): HR declined an employee's letter request. The employee (the event's
+  // subject) is told only that it was declined: no letter type, no reason, no HR name. In-app only (no email category).
+  'letter-request.declined': {
+    kind: 'letter-request.declined',
+    category: null,
+    render: () => ({ severity: 'info', title: 'Letter request declined', body: 'Your letter request was declined. Open My Letters to see its status.', linkPath: '/me/letters' }),
+  },
 };
 
 export type DispatchResult = { processed: number; created: number };

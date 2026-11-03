@@ -738,7 +738,8 @@
           "toilSubmitted": "Dihantar untuk kelulusan, belum diluluskan. Tiada kredit diberi sehingga ia diluluskan.",
           "decisionApproved": "Diluluskan. Keputusan anda direkodkan.",
           "decisionRejected": "Ditolak, dengan sebab anda. Keputusan anda direkodkan.",
-          "decisionLevelRecorded": "Kelulusan anda direkodkan. Pelulus seterusnya akan membuat keputusan."
+          "decisionLevelRecorded": "Kelulusan anda direkodkan. Pelulus seterusnya akan membuat keputusan.",
+          "letterRequested": "Dihantar kepada HR. HR akan menyediakan surat; anda akan menemuinya di Surat Saya setelah dikeluarkan."
         },
         "refused": {
           "expired": "Kad ini telah tamat tempoh. Minta sekali lagi untuk kad baharu.",
@@ -746,7 +747,8 @@
           "access": "Kad ini tidak lagi sepadan dengan akses anda. Minta sekali lagi untuk kad baharu.",
           "retired": "Kad ini telah digunakan atau diganti. Semak permohonan di halamannya.",
           "unavailable": "Ini tidak dapat disemak sekarang. Cuba lagi sebentar lagi.",
-          "consent": "Tandakan persetujuan di atas untuk mengesahkan."
+          "consent": "Tandakan persetujuan di atas untuk mengesahkan.",
+          "duplicate": "Anda sudah mempunyai permohonan terbuka untuk surat ini. Semak Surat Saya."
         }
       },
       "suggestionMeta": "Lengkapkan dan sahkan di halamannya",
@@ -771,7 +773,8 @@
         "ess_profile_request": "Perubahan profil sedia untuk disemak",
         "toil_replacement_request": "Permohonan Kredit Cuti sedia untuk disemak",
         "approvals_claim_decide": "Keputusan tuntutan sedia untuk disemak",
-        "approvals_attendance_decide": "Keputusan kehadiran sedia untuk disemak"
+        "approvals_attendance_decide": "Keputusan kehadiran sedia untuk disemak",
+        "letters_request_submit": "Permohonan surat sedia untuk disemak"
       },
       "checks": {
         "actor_current": "Akses anda masih sah",
@@ -796,7 +799,8 @@
         "leave_credit_rules": "Peraturan Kredit Cuti membenarkannya",
         "assigned_approver_current": "Anda pelulus yang ditetapkan",
         "not_own_request": "Bukan permohonan anda sendiri",
-        "request_still_pending": "Permohonan masih menunggu"
+        "request_still_pending": "Permohonan masih menunggu",
+        "letter_type_open_for_requests": "Jenis surat dibuka untuk permohonan"
       },
       "outcomes": {
         "withdrawn_now": "Ditarik balik serta-merta",
@@ -810,7 +814,8 @@
         "claim_cancelled_now": "Dibatalkan serta-merta",
         "hr_approval_required": "Dihantar kepada HR; berubah hanya selepas HR meluluskan",
         "hr_verification_required": "HR mengesahkan butiran bank baharu sebelum digunakan",
-        "attendance_decision_if_checks_pass": "Direkodkan di peringkat kelulusan anda jika semakan masih lulus"
+        "attendance_decision_if_checks_pass": "Direkodkan di peringkat kelulusan anda jika semakan masih lulus",
+        "letter_requested_hr_prepares": "Dihantar kepada HR, yang menyediakan dan mengeluarkan surat"
       },
       "reads": {
         "my_leave_balances": "baki cuti anda",
@@ -846,7 +851,8 @@
         "ai_control": "AI dijeda atau dihadkan untuk anda atau syarikat anda sekarang.",
         "protected_input": "Soalan ini tidak dapat dihantar dengan selamat. Cuba tanya dengan cara lain.",
         "provider_error": "Pembantu tidak dapat menjawab sekarang. Sila cuba lagi."
-      }
+      },
+      "letterRequestTitle": "Permohonan {letterType}"
     }
   },
   "today": {
@@ -904,7 +910,10 @@
       "readinessCta": "Betulkan rekod",
       "proposalsTitle": "{count, plural, other {# pembetulan yang disediakan menunggu kelulusan anda}}",
       "proposalsSource": "Tindakan dicadangkan",
-      "proposalsCta": "Semak pembetulan"
+      "proposalsCta": "Semak pembetulan",
+      "letterRequestsTitle": "{count, plural, other {# permohonan surat menunggu anda}}",
+      "letterRequestsSource": "Permohonan surat pekerja",
+      "letterRequestsCta": "Buka permohonan surat"
     },
     "loops": {
       "awaiting": "Menunggu anda",

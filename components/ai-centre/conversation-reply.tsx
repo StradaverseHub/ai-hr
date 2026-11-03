@@ -8,6 +8,7 @@ import { attendanceRequestCardTitle, ATTENDANCE_TITLE_DATE, ATTENDANCE_TITLE_TIM
 import { ownChangeCardTitle, OWN_CHANGE_TITLE_DATE } from '@/lib/ai-centre/own-change-title';
 import { toilRequestCardTitle } from '@/lib/ai-centre/toil-request-title';
 import { assignedDecisionCardTitle } from '@/lib/ai-centre/assigned-decision-title';
+import { letterRequestCardTitle } from '@/lib/ai-centre/letter-request-title';
 import { ProposalCard, type ProposalCheck } from './proposal-card';
 import { InlineProposalCard } from './proposal-card-actions';
 import { inlineProposalKind, type InlineProposalCopy } from '@/lib/ai-centre/inline-proposal';
@@ -56,9 +57,10 @@ export async function ConversationReply({ turn, links = new Map(), applicants = 
       claimCancelled: t('inline.done.claimCancelled'), profileRequested: t('inline.done.profileRequested'),
       toilSubmitted: t('inline.done.toilSubmitted'),
       decisionApproved: t('inline.done.decisionApproved'), decisionRejected: t('inline.done.decisionRejected'),
-      decisionLevelRecorded: t('inline.done.decisionLevelRecorded') },
+      decisionLevelRecorded: t('inline.done.decisionLevelRecorded'), letterRequested: t('inline.done.letterRequested') },
     refused: { expired: t('inline.refused.expired'), invalid: t('inline.refused.invalid'), access: t('inline.refused.access'),
-      retired: t('inline.refused.retired'), unavailable: t('inline.refused.unavailable'), consent: t('inline.refused.consent') },
+      retired: t('inline.refused.retired'), unavailable: t('inline.refused.unavailable'), consent: t('inline.refused.consent'),
+      duplicate: t('inline.refused.duplicate') },
   };
   // AI v2 slice 3 (issue 16b): an import prepared in chat has its own card (./import-proposal-card.tsx), rendered first.
   const importCards = new Map(await Promise.all(turn.proposals.filter(proposal => proposal.body.what.action === CHAT_IMPORT_ACTION && proposal.body.import)
@@ -105,6 +107,8 @@ export async function ConversationReply({ turn, links = new Map(), applicants = 
           // AI v2 W2 slice 3: an assigned approver's decision names the decision and the request it decides.
           ?? assignedDecisionCardTitle(body, (key, values) => t(key, values), { claimDate: date => format.dateTime(date, OWN_CHANGE_TITLE_DATE),
             day: date => format.dateTime(date, ATTENDANCE_TITLE_DATE), time: time => format.dateTime(time, ATTENDANCE_TITLE_TIME) })
+          // AI v2 Phase 1 slice 3: an own letter request names its letter type.
+          ?? letterRequestCardTitle(body, (key, values) => t(key, values))
           ?? label('actions', body.what.action.replace(/\./g, '_'), t('actions.fallback'));
         const tone = body.what.effect === 'decide' ? 'decide' as const : 'prepared' as const;
         const expires = t('expires', { time: format.dateTime(new Date(body.expiresAt), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }) });

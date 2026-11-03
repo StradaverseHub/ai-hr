@@ -91,7 +91,9 @@ describe('AI centre catalogue completeness', () => {
       period: 'October 2026', previousPeriod: 'September 2026', current: 2, previous: 1, companies: 'Fictional Ceria Sdn Bhd', items: 'EPF', annual: '14.00 days', display: '12.00 days',
       // Arguments of the loops pages and cards (aiCentre.loops.*, AI v2 W8) and the approver's decision buttons (slice 3).
       done: 'the clock-out is recorded', step: 'Prepare', open: 3, waiting: 1, opened: 5, closed: 2, item: 'Travel claim',
-      loop: 'Missed clock-outs', company: 'Fictional Ceria Sdn Bhd', kind: 'Overtime' };
+      loop: 'Missed clock-outs', company: 'Fictional Ceria Sdn Bhd', kind: 'Overtime',
+      // Argument of the letter request card title (aiCentre.conversation.letterRequest*, slice 3).
+      letterType: 'Employment confirmation' };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });

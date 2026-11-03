@@ -20,6 +20,8 @@ const FACT_LABELS:Readonly<Record<FactKey,string>>=Object.freeze({
  plannedStart:'Start',plannedEnd:'End',overtimeMinutes:'Overtime minutes',creditDays:'Days credited if approved',
  claimType:'Claim type',claimItem:'Claim item',incurredOn:'Date incurred',amount:'Amount',
  profileChange:'What changes',fieldCount:'Details changed',bankName:'Bank',accountEnding:'Account ending',
+ // AI v2 Phase 1 slice 3: an own letter request.
+ letterType:'Letter type',
 });
 const OUTCOME_TEXT:Readonly<Record<NonNullable<ProposalFacts['outcome']>,string>>=Object.freeze({
  withdrawn_now:'The request is withdrawn at once.',give_back_requested:'Asks to give these dates back; the request goes through the usual approval before the days return.',
@@ -30,6 +32,7 @@ const OUTCOME_TEXT:Readonly<Record<NonNullable<ProposalFacts['outcome']>,string>
  hr_approval_required:'The change is sent to HR; nothing changes until HR approves it.',
  hr_verification_required:'The new bank details are sent to HR to verify; pay keeps going to the current account until HR approves them.',
  attendance_decision_if_checks_pass:'Your decision is recorded if the attendance checks still pass; a later approver may still need to decide.',
+ letter_requested_hr_prepares:'The request is sent to HR, who prepare and issue the letter.',
 });
 const PROFILE_CHANGE_TEXT:Readonly<Record<NonNullable<ProposalFacts['profileChange']>,string>>=Object.freeze({
  address:'Your address',emergency_contact:'Your emergency contact',dependant:'A new dependant',bank:'Your bank details',

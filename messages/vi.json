@@ -31371,7 +31371,37 @@
         "state": "Không thể thực hiện thao tác này với thư nữa.",
         "unavailable": "Tính năng thư tạm thời không khả dụng. Vui lòng thử lại sau."
       },
-      "download": "Tải PDF"
+      "download": "Tải PDF",
+      "requests": {
+        "request": "Yêu cầu thư",
+        "title": "Yêu cầu thư của bạn",
+        "requestedOn": "Đã yêu cầu ngày {date}",
+        "openLetter": "Mở thư",
+        "sent": "Yêu cầu của bạn đã được gửi đến bộ phận Nhân sự. Bạn có thể theo dõi trạng thái tại đây.",
+        "unavailable": "Hiện không thể hiển thị các yêu cầu thư của bạn.",
+        "formTitle": "Yêu cầu thư",
+        "formDescription": "Chọn loại thư bạn cần. Bộ phận Nhân sự sẽ chuẩn bị, và bạn sẽ thấy thư trong Thư của tôi sau khi được phát hành.",
+        "none": "Công ty của bạn chưa mở loại thư nào để nhân viên yêu cầu. Hãy liên hệ bộ phận Nhân sự.",
+        "type": "Loại thư",
+        "choose": "Chọn thư",
+        "typeInCompany": "{type} ({company})",
+        "purpose": "Mục đích (không bắt buộc)",
+        "purposeHelp": "Ví dụ: vay ngân hàng hoặc xin thị thực. Chỉ bạn và bộ phận Nhân sự thấy nội dung này.",
+        "submit": "Gửi yêu cầu",
+        "status": {
+          "requested": "Đã yêu cầu",
+          "in_progress": "Nhân sự đang chuẩn bị",
+          "issued": "Đã phát hành",
+          "declined": "Bị từ chối"
+        },
+        "errors": {
+          "invalid": "Hãy kiểm tra loại thư và thử lại.",
+          "not_requestable": "Không thể yêu cầu thư này nữa. Hãy chọn thư khác.",
+          "duplicate": "Bạn đã có một yêu cầu đang mở cho thư này.",
+          "unavailable": "Hiện không thể gửi yêu cầu của bạn. Hãy thử lại sau ít phút."
+        },
+        "cancel": "Hủy"
+      }
     },
     "reports": {
       "title": "Báo cáo thư",
@@ -31762,6 +31792,37 @@
         "unavailable": "Không thể hoàn thành thao tác. Hãy thử lại.",
         "state": "Trạng thái thư hoặc lô đã thay đổi. Tải lại trước khi thử tiếp.",
         "reasonRequired": "Nhập lý do loại bỏ."
+      },
+      "requests": {
+        "title": "Yêu cầu thư",
+        "intro": "Các thư nhân viên đã yêu cầu. Chuẩn bị thư sẽ mở bản nháp cho nhân viên đó; bạn phê duyệt và phát hành như thường lệ.",
+        "empty": "Không có yêu cầu thư nào đang chờ.",
+        "unavailable": "Hiện không thể hiển thị các yêu cầu thư.",
+        "employee": "Nhân viên",
+        "purpose": "Mục đích",
+        "requestedOn": "Đã yêu cầu ngày {date}",
+        "prepare": "Chuẩn bị thư",
+        "prepareUnavailable": "Mẫu này không còn được phát hành. Hãy phát hành lại hoặc từ chối yêu cầu.",
+        "decline": "Từ chối",
+        "declineReason": "Lý do từ chối",
+        "declineHelp": "Chỉ bộ phận Nhân sự thấy lý do. Nhân viên chỉ được báo rằng yêu cầu đã bị từ chối.",
+        "declineSubmit": "Từ chối yêu cầu",
+        "inProgress": "Bản nháp đã được chuẩn bị. Yêu cầu được đánh dấu đã phát hành khi thư được phát hành.",
+        "preparing": "Được chuẩn bị từ yêu cầu {type} của nhân viên.",
+        "declined": "Yêu cầu đã bị từ chối.",
+        "status": {
+          "requested": "Đã yêu cầu",
+          "in_progress": "Đang chuẩn bị",
+          "issued": "Đã phát hành",
+          "declined": "Bị từ chối"
+        },
+        "errors": {
+          "invalid": "Hãy kiểm tra yêu cầu và thử lại.",
+          "permission": "Bạn không còn có thể xử lý yêu cầu này.",
+          "state": "Yêu cầu này đã được xử lý.",
+          "stale": "Yêu cầu này đã thay đổi. Hãy xem lại.",
+          "unavailable": "Hiện không thể cập nhật yêu cầu. Hãy thử lại sau ít phút."
+        }
       }
     },
     "approval": {
@@ -31921,7 +31982,21 @@
       "empty": "Chưa có cài đặt hoặc tài nguyên.",
       "assetSearch": "Tìm theo tên tài nguyên",
       "companyCodeUnavailable": "Cấu hình mã tham chiếu công ty ngắn hoặc dùng định dạng không có biến công ty.",
-      "version": "Phiên bản cấu hình {number}"
+      "version": "Phiên bản cấu hình {number}",
+      "requests": {
+        "title": "Yêu cầu của nhân viên",
+        "intro": "Chọn những thư nhân viên có thể yêu cầu từ Thư của tôi. Mặc định tắt.",
+        "empty": "Chưa có mẫu nào được phát hành.",
+        "unavailable": "Hiện không thể hiển thị cài đặt yêu cầu của nhân viên.",
+        "allow": "Nhân viên có thể yêu cầu {name}",
+        "save": "Lưu yêu cầu của nhân viên",
+        "saved": "Đã lưu cài đặt yêu cầu của nhân viên.",
+        "errors": {
+          "invalid": "Hãy kiểm tra lựa chọn và thử lại.",
+          "permission": "Bạn không thể thay đổi cài đặt thư của công ty này.",
+          "unavailable": "Hiện không thể lưu cài đặt. Hãy thử lại sau ít phút."
+        }
+      }
     }
   },
   "performanceHome": {

@@ -31371,7 +31371,37 @@
         "state": "Tindakan ini tidak lagi tersedia untuk surat ini.",
         "unavailable": "Surat tidak tersedia buat sementara waktu. Cuba sebentar lagi."
       },
-      "download": "Muat turun PDF"
+      "download": "Muat turun PDF",
+      "requests": {
+        "request": "Mohon surat",
+        "title": "Permohonan surat anda",
+        "requestedOn": "Dimohon pada {date}",
+        "openLetter": "Buka surat",
+        "sent": "Permohonan anda telah dihantar kepada HR. Anda boleh mengikuti statusnya di sini.",
+        "unavailable": "Permohonan surat anda tidak dapat dipaparkan buat masa ini.",
+        "formTitle": "Mohon surat",
+        "formDescription": "Pilih surat yang anda perlukan. HR akan menyediakannya, dan anda akan menemuinya di Surat Saya setelah dikeluarkan.",
+        "none": "Syarikat anda belum membuka sebarang surat untuk dimohon oleh pekerja. Hubungi pasukan HR anda.",
+        "type": "Jenis surat",
+        "choose": "Pilih surat",
+        "typeInCompany": "{type} ({company})",
+        "purpose": "Tujuan (pilihan)",
+        "purposeHelp": "Contohnya, pinjaman bank atau permohonan visa. Hanya anda dan HR yang melihatnya.",
+        "submit": "Hantar permohonan",
+        "status": {
+          "requested": "Dimohon",
+          "in_progress": "HR sedang menyediakannya",
+          "issued": "Dikeluarkan",
+          "declined": "Ditolak"
+        },
+        "errors": {
+          "invalid": "Semak jenis surat dan cuba lagi.",
+          "not_requestable": "Surat ini tidak lagi boleh dimohon. Pilih surat lain.",
+          "duplicate": "Anda sudah mempunyai permohonan terbuka untuk surat ini.",
+          "unavailable": "Permohonan anda tidak dapat dihantar buat masa ini. Cuba lagi sebentar lagi."
+        },
+        "cancel": "Batal"
+      }
     },
     "reports": {
       "title": "Laporan Surat",
@@ -31762,6 +31792,37 @@
         "unavailable": "Tindakan tidak dapat diselesaikan. Cuba lagi.",
         "state": "Surat atau kelompok ini telah berubah status. Muat semula sebelum mencuba lagi.",
         "reasonRequired": "Masukkan sebab pembuangan."
+      },
+      "requests": {
+        "title": "Permohonan surat",
+        "intro": "Surat yang dimohon oleh pekerja. Sediakan surat membuka draf untuk pekerja tersebut; anda meluluskan dan mengeluarkannya seperti biasa.",
+        "empty": "Tiada permohonan surat yang menunggu.",
+        "unavailable": "Permohonan surat tidak dapat dipaparkan buat masa ini.",
+        "employee": "Pekerja",
+        "purpose": "Tujuan",
+        "requestedOn": "Dimohon pada {date}",
+        "prepare": "Sediakan surat",
+        "prepareUnavailable": "Templat ini tidak lagi diterbitkan. Terbitkannya semula atau tolak permohonan.",
+        "decline": "Tolak",
+        "declineReason": "Sebab penolakan",
+        "declineHelp": "Hanya HR yang melihat sebabnya. Pekerja dimaklumkan bahawa permohonan ditolak.",
+        "declineSubmit": "Tolak permohonan",
+        "inProgress": "Draf telah disediakan. Permohonan ditanda dikeluarkan apabila surat dikeluarkan.",
+        "preparing": "Disediakan daripada permohonan pekerja untuk {type}.",
+        "declined": "Permohonan telah ditolak.",
+        "status": {
+          "requested": "Dimohon",
+          "in_progress": "Sedang disediakan",
+          "issued": "Dikeluarkan",
+          "declined": "Ditolak"
+        },
+        "errors": {
+          "invalid": "Semak permohonan dan cuba lagi.",
+          "permission": "Anda tidak lagi boleh mengendalikan permohonan ini.",
+          "state": "Permohonan ini telah dikendalikan.",
+          "stale": "Permohonan ini telah berubah. Semak semula.",
+          "unavailable": "Permohonan tidak dapat dikemas kini buat masa ini. Cuba lagi sebentar lagi."
+        }
       }
     },
     "approval": {
@@ -31921,7 +31982,21 @@
       "empty": "Belum ada tetapan atau aset.",
       "assetSearch": "Cari nama aset",
       "companyCodeUnavailable": "Konfigurasikan kod rujukan syarikat yang pendek atau gunakan format tanpa pemegang tempat syarikat.",
-      "version": "Versi konfigurasi {number}"
+      "version": "Versi konfigurasi {number}",
+      "requests": {
+        "title": "Permohonan pekerja",
+        "intro": "Pilih surat yang boleh dimohon oleh pekerja dari Surat Saya. Dimatikan secara lalai.",
+        "empty": "Belum ada templat yang diterbitkan.",
+        "unavailable": "Tetapan permohonan pekerja tidak dapat dipaparkan buat masa ini.",
+        "allow": "Pekerja boleh memohon {name}",
+        "save": "Simpan permohonan pekerja",
+        "saved": "Tetapan permohonan pekerja disimpan.",
+        "errors": {
+          "invalid": "Semak pilihan dan cuba lagi.",
+          "permission": "Anda tidak boleh mengubah tetapan surat untuk syarikat ini.",
+          "unavailable": "Tetapan tidak dapat disimpan buat masa ini. Cuba lagi sebentar lagi."
+        }
+      }
     }
   },
   "performanceHome": {

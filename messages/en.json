@@ -31371,7 +31371,37 @@
         "state": "This action is no longer available for this letter.",
         "unavailable": "Letters are temporarily unavailable. Try again shortly."
       },
-      "download": "Download PDF"
+      "download": "Download PDF",
+      "requests": {
+        "request": "Request a letter",
+        "title": "Your letter requests",
+        "requestedOn": "Requested on {date}",
+        "openLetter": "Open letter",
+        "sent": "Your request was sent to HR. You can follow its status here.",
+        "unavailable": "Your letter requests could not be shown just now.",
+        "formTitle": "Request a letter",
+        "formDescription": "Choose the letter you need. HR prepares it, and you will find it under My Letters once it is issued.",
+        "none": "Your company has not opened any letters for employee requests yet. Contact your HR team.",
+        "type": "Letter type",
+        "choose": "Choose a letter",
+        "typeInCompany": "{type} ({company})",
+        "purpose": "Purpose (optional)",
+        "purposeHelp": "For example, a bank loan or a visa application. Only you and HR see it.",
+        "submit": "Send request",
+        "status": {
+          "requested": "Requested",
+          "in_progress": "HR is preparing it",
+          "issued": "Issued",
+          "declined": "Declined"
+        },
+        "errors": {
+          "invalid": "Check the letter type and try again.",
+          "not_requestable": "This letter can no longer be requested. Choose another one.",
+          "duplicate": "You already have an open request for this letter.",
+          "unavailable": "Your request could not be sent just now. Try again shortly."
+        },
+        "cancel": "Cancel"
+      }
     },
     "reports": {
       "title": "Letter Reports",
@@ -31762,6 +31792,37 @@
         "unavailable": "The action could not be completed. Try again.",
         "state": "This letter or batch has changed state. Refresh before trying again.",
         "reasonRequired": "Enter a reason for removal."
+      },
+      "requests": {
+        "title": "Letter requests",
+        "intro": "Letters employees asked for. Prepare letter opens a draft for that employee; you approve and issue it as usual.",
+        "empty": "No letter requests are waiting.",
+        "unavailable": "Letter requests could not be shown just now.",
+        "employee": "Employee",
+        "purpose": "Purpose",
+        "requestedOn": "Requested on {date}",
+        "prepare": "Prepare letter",
+        "prepareUnavailable": "This template is no longer published. Publish it again or decline the request.",
+        "decline": "Decline",
+        "declineReason": "Reason for declining",
+        "declineHelp": "Only HR sees the reason. The employee is told the request was declined.",
+        "declineSubmit": "Decline request",
+        "inProgress": "A draft is prepared. The request is marked issued when the letter is issued.",
+        "preparing": "Prepared from an employee's request for {type}.",
+        "declined": "The request was declined.",
+        "status": {
+          "requested": "Requested",
+          "in_progress": "Being prepared",
+          "issued": "Issued",
+          "declined": "Declined"
+        },
+        "errors": {
+          "invalid": "Check the request and try again.",
+          "permission": "You can no longer handle this request.",
+          "state": "This request has already been handled.",
+          "stale": "This request changed. Review it again.",
+          "unavailable": "The request could not be updated just now. Try again shortly."
+        }
       }
     },
     "approval": {
@@ -31921,7 +31982,21 @@
       "empty": "No settings or assets yet.",
       "assetSearch": "Search asset names",
       "companyCodeUnavailable": "Configure a short company reference code or use a format without the company placeholder.",
-      "version": "Configuration version {number}"
+      "version": "Configuration version {number}",
+      "requests": {
+        "title": "Employee requests",
+        "intro": "Choose which letters employees may request from My Letters. Off by default.",
+        "empty": "No published templates yet.",
+        "unavailable": "Employee request settings could not be shown just now.",
+        "allow": "Employees may request {name}",
+        "save": "Save employee requests",
+        "saved": "Employee request settings saved.",
+        "errors": {
+          "invalid": "Check the selection and try again.",
+          "permission": "You cannot change letter settings for this company.",
+          "unavailable": "The settings could not be saved just now. Try again shortly."
+        }
+      }
     }
   },
   "performanceHome": {

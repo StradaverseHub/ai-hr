@@ -738,7 +738,8 @@
           "toilSubmitted": "Đã gửi để phê duyệt, chưa được duyệt. Chưa cộng tín dụng nào cho đến khi được duyệt.",
           "decisionApproved": "Đã duyệt. Quyết định của bạn đã được ghi nhận.",
           "decisionRejected": "Đã từ chối, kèm lý do của bạn. Quyết định của bạn đã được ghi nhận.",
-          "decisionLevelRecorded": "Phê duyệt của bạn đã được ghi nhận. Người phê duyệt tiếp theo sẽ quyết định."
+          "decisionLevelRecorded": "Phê duyệt của bạn đã được ghi nhận. Người phê duyệt tiếp theo sẽ quyết định.",
+          "letterRequested": "Đã gửi đến bộ phận Nhân sự. Nhân sự sẽ chuẩn bị thư; bạn sẽ thấy thư trong Thư của tôi sau khi được phát hành."
         },
         "refused": {
           "expired": "Thẻ này đã hết hạn. Hãy hỏi lại để nhận thẻ mới.",
@@ -746,7 +747,8 @@
           "access": "Thẻ này không còn khớp với quyền truy cập của bạn. Hãy hỏi lại để nhận thẻ mới.",
           "retired": "Thẻ này đã được dùng hoặc đã được thay thế. Hãy kiểm tra yêu cầu trên trang của nó.",
           "unavailable": "Hiện chưa thể kiểm tra. Vui lòng thử lại sau giây lát.",
-          "consent": "Hãy đánh dấu đồng ý ở trên để xác nhận."
+          "consent": "Hãy đánh dấu đồng ý ở trên để xác nhận.",
+          "duplicate": "Bạn đã có một yêu cầu đang mở cho thư này. Hãy xem Thư của tôi."
         }
       },
       "suggestionMeta": "Hoàn tất và xác nhận trên trang của nó",
@@ -771,7 +773,8 @@
         "ess_profile_request": "Thay đổi hồ sơ sẵn sàng để xem xét",
         "toil_replacement_request": "Yêu cầu tín dụng nghỉ phép sẵn sàng để xem xét",
         "approvals_claim_decide": "Quyết định hoàn tiền sẵn sàng để xem xét",
-        "approvals_attendance_decide": "Quyết định chấm công sẵn sàng để xem xét"
+        "approvals_attendance_decide": "Quyết định chấm công sẵn sàng để xem xét",
+        "letters_request_submit": "Yêu cầu thư sẵn sàng để xem xét"
       },
       "checks": {
         "actor_current": "Quyền truy cập của bạn còn hiệu lực",
@@ -796,7 +799,8 @@
         "leave_credit_rules": "Quy định tín dụng nghỉ phép cho phép",
         "assigned_approver_current": "Bạn là người phê duyệt được giao",
         "not_own_request": "Không phải đơn của chính bạn",
-        "request_still_pending": "Đơn vẫn đang chờ"
+        "request_still_pending": "Đơn vẫn đang chờ",
+        "letter_type_open_for_requests": "Loại thư mở cho yêu cầu"
       },
       "outcomes": {
         "withdrawn_now": "Rút lại ngay",
@@ -810,7 +814,8 @@
         "claim_cancelled_now": "Hủy ngay",
         "hr_approval_required": "Gửi cho bộ phận nhân sự; chỉ thay đổi khi được duyệt",
         "hr_verification_required": "Bộ phận nhân sự xác minh thông tin ngân hàng mới trước khi sử dụng",
-        "attendance_decision_if_checks_pass": "Được ghi nhận ở cấp phê duyệt của bạn nếu các kiểm tra vẫn đạt"
+        "attendance_decision_if_checks_pass": "Được ghi nhận ở cấp phê duyệt của bạn nếu các kiểm tra vẫn đạt",
+        "letter_requested_hr_prepares": "Đã gửi đến Nhân sự, bộ phận chuẩn bị và phát hành thư"
       },
       "reads": {
         "my_leave_balances": "số dư phép của bạn",
@@ -846,7 +851,8 @@
         "ai_control": "AI hiện đang tạm dừng hoặc bị giới hạn cho bạn hoặc công ty bạn.",
         "protected_input": "Không thể gửi câu hỏi này một cách an toàn. Hãy thử hỏi theo cách khác.",
         "provider_error": "Trợ lý chưa thể trả lời lúc này. Vui lòng thử lại."
-      }
+      },
+      "letterRequestTitle": "Yêu cầu {letterType}"
     }
   },
   "today": {
@@ -904,7 +910,10 @@
       "readinessCta": "Sửa hồ sơ",
       "proposalsTitle": "{count, plural, other {# bản sửa đã chuẩn bị đang chờ bạn phê duyệt}}",
       "proposalsSource": "Hành động đề xuất",
-      "proposalsCta": "Xem các bản sửa"
+      "proposalsCta": "Xem các bản sửa",
+      "letterRequestsTitle": "{count, plural, other {# yêu cầu thư đang chờ bạn}}",
+      "letterRequestsSource": "Yêu cầu thư của nhân viên",
+      "letterRequestsCta": "Mở yêu cầu thư"
     },
     "loops": {
       "awaiting": "Đang chờ bạn",

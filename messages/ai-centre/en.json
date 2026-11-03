@@ -738,7 +738,8 @@
           "toilSubmitted": "Sent for approval, not approved yet. Nothing is credited until it is approved.",
           "decisionApproved": "Approved. Your decision is recorded.",
           "decisionRejected": "Rejected, with your reason. Your decision is recorded.",
-          "decisionLevelRecorded": "Your approval is recorded. The next approver decides now."
+          "decisionLevelRecorded": "Your approval is recorded. The next approver decides now.",
+          "letterRequested": "Sent to HR. HR prepares the letter; you will find it under My Letters once it is issued."
         },
         "refused": {
           "expired": "This card has expired. Ask again for a new one.",
@@ -746,7 +747,8 @@
           "access": "This card no longer matches your access. Ask again for a new one.",
           "retired": "This card was already used or replaced. Check the request on its page.",
           "unavailable": "This could not be checked just now. Try again in a moment.",
-          "consent": "Tick the agreement above to confirm."
+          "consent": "Tick the agreement above to confirm.",
+          "duplicate": "You already have an open request for this letter. Check My Letters."
         }
       },
       "suggestionMeta": "Complete and confirm it on its page",
@@ -771,7 +773,8 @@
         "ess_profile_request": "Profile change ready to review",
         "toil_replacement_request": "Leave Credit request ready to review",
         "approvals_claim_decide": "Claim decision ready to review",
-        "approvals_attendance_decide": "Attendance decision ready to review"
+        "approvals_attendance_decide": "Attendance decision ready to review",
+        "letters_request_submit": "Letter request ready to review"
       },
       "checks": {
         "actor_current": "Your access is current",
@@ -796,7 +799,8 @@
         "leave_credit_rules": "Leave Credit rules allow it",
         "assigned_approver_current": "You are its assigned approver",
         "not_own_request": "Not your own request",
-        "request_still_pending": "Request still pending"
+        "request_still_pending": "Request still pending",
+        "letter_type_open_for_requests": "Letter type open for requests"
       },
       "outcomes": {
         "withdrawn_now": "Withdrawn at once",
@@ -810,7 +814,8 @@
         "claim_cancelled_now": "Cancelled at once",
         "hr_approval_required": "Sent to HR; changes only when HR approves",
         "hr_verification_required": "HR verifies the new bank details before they are used",
-        "attendance_decision_if_checks_pass": "Recorded at your approval level if the checks still pass"
+        "attendance_decision_if_checks_pass": "Recorded at your approval level if the checks still pass",
+        "letter_requested_hr_prepares": "Sent to HR, who prepare and issue the letter"
       },
       "reads": {
         "my_leave_balances": "your leave balances",
@@ -846,7 +851,8 @@
         "ai_control": "The AI is paused or limited for you or your company right now.",
         "protected_input": "This question could not be sent safely. Try asking it another way.",
         "provider_error": "The assistant could not answer just now. Please try again."
-      }
+      },
+      "letterRequestTitle": "{letterType} request"
     }
   },
   "today": {
@@ -904,7 +910,10 @@
       "readinessCta": "Fix records",
       "proposalsTitle": "{count, plural, one {# prepared fix waits for your approval} other {# prepared fixes wait for your approval}}",
       "proposalsSource": "Proposed actions",
-      "proposalsCta": "Review fixes"
+      "proposalsCta": "Review fixes",
+      "letterRequestsTitle": "{count, plural, one {# letter request waits for you} other {# letter requests wait for you}}",
+      "letterRequestsSource": "Employee letter requests",
+      "letterRequestsCta": "Open letter requests"
     },
     "loops": {
       "awaiting": "Waiting for you",
