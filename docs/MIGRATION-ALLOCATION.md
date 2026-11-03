@@ -1158,3 +1158,24 @@ integration.
 |769|1793330000365|0965_payroll_audit_loop|d370a0dba6fb8b04ae6c1686572dd116f300ff440b37cc43c6944c7b4fac8c41|
 |770|1793330000366|0966_teras_capacity_baseline|0b2f62d07b398bc837909c31b27f2dcd5ee30276f5c84937d8d57440a4b5a67c|
 |771|1793330000367|0967_own_payroll_cut_off|b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca|
+
+## AI v2 Phase 2 wave 2, letters chat custody — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-letters-chat` (cut from `9492a6b43` on `claude/aiv2-phase2-wave1`, journal ending
+`0967_own_payroll_cut_off` idx771 / when1793330000367) appends `0973_letter_request_chat_custody` as **idx777 /
+when1793330000373**, the number the AI v2 coordinator reserved for this task (wave 2: 0971 Living Handbook, 0972 learning
+loops, 0973 letters chat custody; 0968–0970 are PR #218's) and the position the wave 1 rule gives it (idx = 767 + (73 − 63),
+when = 1793330000300 + 73). 0971 and 0972 sit before it on their own branches; the gap is allowed (strictly ascending idx and
+`when` only). A fresh fetch on 3 November 2026 and a scan of every origin ref's `db/migrations/097*` found a competing claim
+of the same number and `when`: `codex/permissions-attendance-schedule-controls-20261103` holds
+`0973_attendance_shift_binding_readiness` at idx820 / when1793330000373 (its siblings claim 0970–0985). As for the earlier
+0962–0966 overlap, this is reported to the coordinator and must be reconciled before the two sets integrate (identical
+`when` values cannot both stand in one journal). Development source only: no installation priority, no deployment.
+
+It adds no table and no grant. It replaces `app.letter_request_guard()` (0961's body unchanged but for one branch), adds
+two owner-only policies on `letter_request` and one SECURITY DEFINER delete trigger on `teras_chat`, so that a deleted
+chat clears the card id (`client_key`) on its login's letter requests and nothing else. Depends on 0952 and 0961.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|777|1793330000373|0973_letter_request_chat_custody|ac8c3c59804672cf3b116e1c91f07111549743f4d3ae377ae8bc4a1cd1774dac|

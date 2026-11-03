@@ -6,14 +6,19 @@
  * The owner's session sees teras_chat rows only once they have expired (expires_at: the last message plus the tenant's
  * "Keep chats for" days, brought forward when the setting is shortened) and those rows carry no words. Each chat's
  * turns go with it by the foreign-key cascade; the owner has no policy on teras_chat_turn, so this path can neither read
- * nor select a turn. The chat's task memory goes by the 0952 delete trigger. Expiry is database-owned. */
+ * nor select a turn. The chat's task memory goes by the 0952 delete trigger. Expiry is database-owned.
+ *
+ * Letter requests confirmed from a chat card (migration 0973): the request is HR's record and stays; the card's id on it
+ * (letter_request.client_key, chat-linked) is cleared by the 0973 delete trigger on teras_chat, on this path as on every
+ * other path that removes a chat. */
 import {sql,type SQL} from 'drizzle-orm';
 import type {Tx} from '../db/client';
 
 /** At most this many chats per pass, oldest first; the runner reports any backlog. */
 export const TERAS_CHAT_RETENTION_BATCH=500;
-/** Every relation one pass mutates: directly, by the turn cascade or inside the memory trigger. */
-export const TERAS_CHAT_MAINTAINED_RELATIONS=Object.freeze(['public.teras_chat','public.teras_chat_turn','public.teras_task_memory'] as const);
+/** Every relation one pass mutates: directly, by the turn cascade, inside the memory trigger or inside the 0973 letter
+ * card-key trigger (client_key only). */
+export const TERAS_CHAT_MAINTAINED_RELATIONS=Object.freeze(['public.teras_chat','public.teras_chat_turn','public.teras_task_memory','public.letter_request'] as const);
 
 const unavailable=():never=>{throw new Error('Chat retention could not be confirmed.');};
 const count=(value:unknown):number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0&&value<=TERAS_CHAT_RETENTION_BATCH?value:unavailable();

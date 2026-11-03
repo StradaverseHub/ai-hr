@@ -72,6 +72,11 @@ capability, is incomplete; any other omission fails the pass and rolls the whole
   migration owner owns it). The pass deletes only chats whose `expires_at` has passed; their turns go by the
   foreign-key cascade and their task memory by trigger. The owner has no policy on `teras_chat_turn`, so this pass
   cannot read a turn.
+- Letter requests confirmed from a chat card (migration 0973): ownership of `public.letter_request` as well. A deleted
+  chat's delete trigger (`app.teras_chat_letter_card_keys_forgotten`, definer, owned by the migration owner) clears
+  `client_key`, the card's id, on that login's requests confirmed since the chat started, and nothing else; the request
+  and HR's decision remain. Two owner-only policies admit that write only under the trigger's transaction-local marker
+  for the chat's own tenant and login.
 
 Expiry follows the existing native cleanup contract in one parent UPDATE: pending Payroll reopening
 roots clear before the immediate CHECK, and pending reporting-change manager/previous-manager links
