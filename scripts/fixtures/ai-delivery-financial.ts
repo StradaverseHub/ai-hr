@@ -15,7 +15,7 @@ import {createClaimType,saveClaimDraft,submitClaim} from '../../packs/claims/ser
 import * as performance from '../../packs/performance/service';
 import {defaultPolicy} from '../../packs/performance/onehr/model';
 import framework from '../../packs/performance/onehr/framework.json';
-import {createRewardUnit,getRewardUnit,saveRewardPolicy,saveRewardEntry,previewRewardAccessChange,saveRewardAccessChange,decideRewardAccessRequest,decideRewardUnit,getRewardUnitGovernance,previewRewardSeniorMembership,saveRewardSeniorMembership,confirmRewardGovernance,saveRewardUnitInputs} from '../../packs/rewards/service';
+import {createRewardUnit,getRewardUnit,saveRewardPolicy,saveRewardEntry,previewRewardAccessChange,saveRewardAccessChange,decideRewardUnit,getRewardUnitGovernance,previewRewardSeniorMembership,saveRewardSeniorMembership,confirmRewardGovernance,saveRewardUnitInputs} from '../../packs/rewards/service';
 import {REWARD_POLICY_GRADES} from '../../packs/rewards/policy-grid-validation';
 import {emptyFacts,type RewardRole} from '../../packs/rewards/model';
 const refuse=():never=>{throw Error('Fictional financial fixture prerequisites could not be confirmed. Preserve partial setup; do not retry automatically.');};
@@ -71,22 +71,23 @@ export async function populateAiDeliveryFinancial(c:AiDeliveryFixtureContext):Pr
  }
  const rewardId=await createRewardUnit(admin,{name:'Fictional approved browser reward',year,companyId:c.companyId,businessUnitId:unit.id,snapshotDate:c.today});
  const memberships:readonly[RewardRole,typeof c.actors.operator][]=[['bu',c.actors.operator],['bg',c.actors.reviewers[0]],['ctro',c.actors.reviewers[1]],['ec',c.actors.peer],['payroll',c.actors.operator]];
- // This fixture is human-authored prerequisite setup, not the later selected browser target effect.
- // Legacy membership setters now only propose: exercise the real independent approval owner.
- const checker=c.actors.manager.ctx;
- if(!checker.userId||checker.userId===admin.userId||memberships.some(([,actor])=>actor.userId===checker.userId))return refuse();
- // Establish a real independent GR checker before the first BU read. The checker is the
- // request target, so a different existing global HR reviewer approves that access request.
- const checkerPreview=await previewRewardAccessChange(admin,{unitId:rewardId,revision:(await getRewardUnit(admin,rewardId)).unit.revision,before:null,after:{userId:checker.userId,role:'gr'}});
- const {digest:checkerDigest,...checkerInput}=checkerPreview,checkerRequest=await saveRewardAccessChange(admin,checkerInput,checkerDigest);
- if(!checkerRequest.pending||(await decideRewardAccessRequest(c.actors.reviewers[0].ctx,checkerRequest.requestId,true)).status!=='approved')return refuse();
+ // Use the actual HR Administrator exemption for fixture-only prerequisite setup.
+ // The independent Group Rewards actor still confirms the subsequent governance step.
+ const checker=c.actors.manager.ctx,accessAdmin=c.actors.operator.ctx;
+ if(!checker.userId||checker.userId===accessAdmin.userId||memberships.some(([,actor])=>actor.userId===checker.userId))return refuse();
+ async function addFixtureSeat(userId:string,role:RewardRole){
+  const input={unitId:rewardId,revision:(await getRewardUnit(admin,rewardId)).unit.revision,before:null,after:{userId,role},reason:'Fictional browser fixture seat reviewed by HR Administration'};
+  const preview=await previewRewardAccessChange(accessAdmin,input);
+  if(preview.pending)return refuse();
+  const result=await saveRewardAccessChange(accessAdmin,input,preview.digest);
+  if(result.pending||result.status!=='applied_no_second_approval')return refuse();
+ }
+ await addFixtureSeat(checker.userId,'gr');
  const selection={employmentIds:[],adoptLegacy:false},governance=await getRewardUnitGovernance(admin,rewardId),selectionPreview=await previewRewardSeniorMembership(admin,rewardId,governance.revision,selection);
  await saveRewardSeniorMembership(admin,rewardId,governance.revision,selection,selectionPreview.digest);
  await confirmRewardGovernance(checker,rewardId,(await getRewardUnitGovernance(checker,rewardId)).revision,'selection');
  for(const[role,actor]of memberships){
-  const preview=await previewRewardAccessChange(admin,{unitId:rewardId,revision:(await getRewardUnit(admin,rewardId)).unit.revision,before:null,after:{userId:actor.userId,role}});
-  const {digest,...input}=preview,request=await saveRewardAccessChange(admin,input,digest);
-  if(!request.pending||(await decideRewardAccessRequest(checker,request.requestId,true)).status!=='approved')return refuse();
+  await addFixtureSeat(actor.userId,role);
   if(!(await getRewardUnit(actor.ctx,rewardId)).roles.includes(role))return refuse();
  }
  const operatorReview=await getRewardUnit(c.actors.operator.ctx,rewardId);

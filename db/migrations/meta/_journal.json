@@ -4553,24 +4553,66 @@
       "breakpoints": true
     },
     {
-      "idx": 813,
+      "idx": 794,
       "version": "7",
-      "when": 1793330000368,
-      "tag": "0968_employment_helper_tenant_pin",
+      "when": 1793330000347,
+      "tag": "0947_rewards_access_approval_exemptions",
       "breakpoints": true
     },
     {
-      "idx": 814,
+      "idx": 795,
       "version": "7",
-      "when": 1793330000369,
-      "tag": "0969_company_tenant_fk_not_valid",
+      "when": 1793330000348,
+      "tag": "0948_document_signing",
       "breakpoints": true
     },
     {
-      "idx": 815,
+      "idx": 796,
       "version": "7",
-      "when": 1793330000370,
-      "tag": "0970_company_tenant_fk_validate",
+      "when": 1793330000349,
+      "tag": "0949_probation_confirmation",
+      "breakpoints": true
+    },
+    {
+      "idx": 797,
+      "version": "7",
+      "when": 1793330000350,
+      "tag": "0950_contract_management",
+      "breakpoints": true
+    },
+    {
+      "idx": 798,
+      "version": "7",
+      "when": 1793330000351,
+      "tag": "0951_payroll_reprocess_correction_lineage",
+      "breakpoints": true
+    },
+    {
+      "idx": 799,
+      "version": "7",
+      "when": 1793330000353,
+      "tag": "0953_lifecycle_service_info_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 847,
+      "version": "7",
+      "when": 1793330000400,
+      "tag": "1000_employment_helper_tenant_pin",
+      "breakpoints": true
+    },
+    {
+      "idx": 848,
+      "version": "7",
+      "when": 1793330000401,
+      "tag": "1001_company_tenant_fk_not_valid",
+      "breakpoints": true
+    },
+    {
+      "idx": 849,
+      "version": "7",
+      "when": 1793330000402,
+      "tag": "1002_company_tenant_fk_validate",
       "breakpoints": true
     }
   ]

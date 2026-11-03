@@ -1,6 +1,10 @@
+import {latestPersonnelHistory} from '@/lib/personnel-history';
+import {movementHistoryHref,movementPageHref} from '@/lib/personnel-movement-navigation';
+import {MovementActionShell} from './movement-action-shell';
 import {MovementHistoryActions} from './movement-history-actions';
 import {movementScreenAccess} from '../../../../lib/movement-screen-access';
-import {HireCorrectionModes} from '../information-correction-form';
+import {informationCorrectionHistory} from '@/core/information-correction';
+import {HireCorrectionModes,InformationCorrectionAudit} from '../information-correction-form';
 import { getEmploymentCostAllocations } from '@/core/employment-cost-allocations';
 import { CostCenterAllocations } from '@/components/personnel/cost-center-allocations';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
@@ -200,6 +204,7 @@ export default async function EmployeePage({
 }: {
   params: Promise<{ employmentId: string }>;
   searchParams: Promise<{
+    movementPage?: string;
     error?: string;
     from?: string;
     cp38Error?: string;
@@ -239,6 +244,7 @@ export default async function EmployeePage({
   // Both the finite non-HR projection and the HR detail lane cast this pointer to uuid.
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!UUID_RE.test(employmentId)) notFound();
+  if(!isAdmin(s)&&(await searchParams).movementPage)notFound();
   if(!isAdmin(s))return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={(await searchParams).workforceCode} editFeedback={(await searchParams).workforceEdit}/>;
   const t = await getTranslations('people.detail');
   const tPersonnel=await getTranslations();
@@ -275,6 +281,13 @@ export default async function EmployeePage({
   // rebuild the CURRENT query string and preserve every param it does not own, rather than dropping the
   // reader back onto a bare tab.
   const rawSearchParams = await searchParams;
+  const movementPage=rawSearchParams.movementPage;
+  const movementContext={showCorrected:rawSearchParams.showCorrected,from:rawSearchParams.from};
+  const historyHref=movementHistoryHref(employmentId,movementContext);
+  if(!movementPage){
+    const legacy=rawSearchParams.newEvent?'new':rawSearchParams.correctHire?'correct-hire':rawSearchParams.editMovement?'edit':rawSearchParams.movement?'view':null;
+    if(legacy)redirect(movementPageHref(employmentId,legacy,rawSearchParams.editMovement??rawSearchParams.movement,movementContext));
+  }
   const retiredDestination = rawSearchParams.tab === 'others' ? RETIRED_PERSONNEL_TABS.others : undefined;
   if (retiredDestination) {
     const query = new URLSearchParams();
@@ -565,7 +578,7 @@ export default async function EmployeePage({
   // the pending-movement banner and the detail view keep reading. Only the TABLE draws `visibleMovements`.
   const showCorrectedMovements = spShowCorrected === '1';
   const { visible: visibleMovements, hiddenCount: correctedMovementCount } = partitionMovementRows(
-    movements,
+    latestPersonnelHistory(movements),
     showCorrectedMovements,
   );
   // The Show / Hide link keeps the reader exactly where they are: same tab, same open detail view, same
@@ -3137,7 +3150,7 @@ export default async function EmployeePage({
         </a>
         {canCreateMovement && (
           <Link
-            href={`/admin/personnel/${employmentId}?tab=careerMovement&newEvent=1`}
+            href={movementPageHref(employmentId,'new',undefined,movementContext)}
             className={btnPrimary}
           >
             {t('movement.newEvent')}
@@ -3187,6 +3200,7 @@ export default async function EmployeePage({
                 <span className={m.reversed || m.status === 'superseded' ? 'line-through' : undefined}>
                   {movementKindLabel(m.kind)}
                 </span>
+                {!!m.informationCorrections?.length&&<Link href={movementPageHref(employmentId,'view',m.id,movementContext)+'#information-correction-history'} className="ml-2 text-xs text-primary underline underline-offset-2">{m.informationCorrections.some(c=>c.needsReview)?t('movement.informationNeedsReview'):t('movement.informationCorrected')}</Link>}
                 {m.reversed && (
                   <span className="ml-2 rounded border border-border px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide text-muted-foreground">
                     {m.reversed.corrected
@@ -3264,7 +3278,7 @@ export default async function EmployeePage({
               <td className="px-4 py-2.5 text-muted-foreground">{m.jobTitle ?? '—'}</td>
               <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{m.basic ?? '—'}</td>
               <td className="px-4 py-2.5">
-                <MovementHistoryActions employmentId={employmentId} row={m}
+                <MovementHistoryActions context={movementContext} employmentId={employmentId} row={m}
                   eventLabel={`${movementKindLabel(m.kind)} · ${formatDmy(m.effectiveDate)}`}
                   canCorrect={canCorrectMovement} reverseAction={reverseMovementEventAction}
                   labels={{
@@ -3314,6 +3328,8 @@ export default async function EmployeePage({
   const movementComparisonRows = movementDetailData
     ? [
         { key: 'company', label: t('movement.field.company'), before: movementDetailData.before?.company, after: movementDetailData.after.company },
+        ...(movementDetailData.after.groupJoinDate!==undefined?[{key:'groupJoinDate',label:t('employmentInfo.groupJoinDate'),before:movementDetailData.before?.groupJoinDate,after:formatDmy(movementDetailData.after.groupJoinDate)}]:[]),
+        ...(movementDetailData.after.joinDate!==undefined?[{key:'joinDate',label:t('employmentInfo.joinDate'),before:movementDetailData.before?.joinDate,after:formatDmy(movementDetailData.after.joinDate)}]:[]),
         { key: 'businessUnit', label: t('movement.field.businessUnit'), before: movementDetailData.before?.businessUnit, after: movementDetailData.after.businessUnit },
         { key: 'department', label: t('movement.field.department'), before: movementDetailData.before?.department, after: movementDetailData.after.department },
         { key: 'position', label: t('movement.field.position'), before: movementDetailData.before?.position, after: movementDetailData.after.position },
@@ -3330,6 +3346,8 @@ export default async function EmployeePage({
         }),
       ]
     : [];
+  const movementInformationAudit=movementDetailData?.informationCorrections?.length
+    ? (await informationCorrectionHistory(s,employmentId)).filter(event=>movementDetailData.informationCorrections!.some(c=>c.eventId===event.id)) : [];
   const movementDetailCard = movementDetailData ? (
     <Card id="section-movement-detail" className="overflow-hidden">
       <SectionHeader title={t('movement.detail.eventInformation')} />
@@ -3365,6 +3383,7 @@ export default async function EmployeePage({
           <dd className="font-medium text-foreground">{movementDetailData.row.remarks ?? '—'}</dd>
         </div>
       </dl>
+      {!!movementDetailData.informationCorrections?.length&&<div className="border-t border-border px-4 py-3 text-sm"><Link href={'#information-correction-history'} className="text-primary underline underline-offset-2">{movementDetailData.informationCorrections.some(c=>c.needsReview)?t('movement.informationNeedsReview'):t('movement.informationCorrected')}</Link></div>}
       {movementDetailData.recordedResignation && <dl className="grid gap-4 border-t border-border p-4 text-sm sm:grid-cols-3">
         {(['tenderResignationDate','resignationDate','lastWorkingDate'] as const).map(field=>{const recorded=movementDetailData.recordedResignation![field];return <div key={field}><dt className="text-xs text-muted-foreground">{t(`employmentInfo.${field}`)}</dt><dd className="mt-1 font-medium">{recorded.known ? recorded.value ? formatDmy(recorded.value) : t('optionNotSet') : t('resignationInformation.unknownSource')}</dd></div>;})}
       </dl>}
@@ -3409,6 +3428,7 @@ export default async function EmployeePage({
           </ul>
         </div>
       )}
+      {movementInformationAudit.length>0&&<div className="border-t border-border p-4"><InformationCorrectionAudit history={movementInformationAudit}/></div>}
       {movementDocuments.length > 0 && (
         // 1d58019a Step 2 — the supporting documents recorded with this movement.
         <section className="border-t border-border px-4 py-3 text-sm" aria-label={t('movement.detail.documents')}>
@@ -3476,7 +3496,7 @@ export default async function EmployeePage({
       </table>
       )}
       <div className="p-4">
-        <Link href={`/admin/personnel/${employmentId}?tab=careerMovement`} className={btnGhost}>
+        <Link href={historyHref} className={btnGhost}>
           {t('movement.detail.backToHistory')}
         </Link>
       </div>
@@ -3540,7 +3560,8 @@ export default async function EmployeePage({
         types: movementTypes
           .filter((r) => r.active)
           .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, description: r.description, ...typeControls(r.code) })),
-        cancelHref: `/admin/personnel/${employmentId}?tab=careerMovement`,
+        cancelHref:historyHref,
+        pageContext:movementPage?movementContext:undefined,
       }
     : null;
 
@@ -3658,17 +3679,25 @@ export default async function EmployeePage({
           return (
             <Card id="section-hire-correction" className="overflow-hidden">
               <SectionHeader title={t('movement.hireCorrection.title')} />
-              <HireCorrectionModes employmentId={employmentId}><HireCorrectionForm
+              <HireCorrectionModes employmentId={employmentId} returnHref={movementPage?historyHref:undefined}><HireCorrectionForm
                 employmentId={employmentId}
                 heading={`${movementKindLabel('hired')} · ${formatDmy(hireCorrection.hiredOn)}`}
                 fields={fields}
                 readOnly={readOnly}
-                cancelHref={`/admin/personnel/${employmentId}?tab=careerMovement`}
+                cancelHref={historyHref}
+                pageContext={movementPage?movementContext:undefined}
               /></HireCorrectionModes>
             </Card>
           );
         })()
       : null;
+
+  if(movementPage){
+    const actionCard=movementPage==='new'?newEventCard:movementPage==='edit'?editEventCard:movementPage==='correct-hire'?hireCorrectionCard:movementPage==='view'?movementDetailCard:null;
+    if(!actionCard)notFound();
+    const title=movementPage==='new'?t('movement.newEvent'):movementPage==='edit'?t('movement.editTitle'):movementPage==='correct-hire'?t('movement.hireCorrection.title'):t('movement.detail.eventInformation');
+    return <div className="mx-auto max-w-[100rem] space-y-6"><PageHeader back={{href:historyHref,label:t('movement.detail.backToHistory')}} title={title} description={`${emp.name} · ${emp.employeeCode??'—'} · ${emp.company}`}/><ErrorBanner message={error}/><MovementActionShell readOnly={movementPage==='view'}>{actionCard}</MovementActionShell></div>;
+  }
 
   const dataPrivacyCard = admin ? (
     <Card id="section-data-privacy" className="border-rose-200 dark:border-rose-500/30">

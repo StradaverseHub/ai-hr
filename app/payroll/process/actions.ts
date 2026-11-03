@@ -47,11 +47,12 @@ function resultFromSuffix(raw: FormDataEntryValue | null): string {
 export async function fetchPayrollRunEmployees(
   companyIds: string | string[],
   payPeriod: string,
+  payrollCycleId?:string,
 ): Promise<PayrollRunEmployeeRow[]> {
   const s = await getSession();
   const ids = (Array.isArray(companyIds) ? companyIds : [companyIds]).filter(Boolean);
   if (ids.length === 0 || !/^\d{4}-\d{2}$/.test(payPeriod)) return [];
-  return listEmployeesForPayrollRun(s, ids, payPeriod);
+  return listEmployeesForPayrollRun(s, ids, payPeriod,payrollCycleId);
 }
 
 const EMPTY_ADVISORY: PreProcessAdvisory = {
@@ -69,6 +70,7 @@ const EMPTY_ADVISORY: PreProcessAdvisory = {
  * Read-only — no state mutation, no event (the durable event is appended when the run is actually created).
  */
 export async function validatePayrollSelection(input: {
+  payrollCycleId?:string;
   companyIds: string[];
   payPeriod: string;
   employmentIds?: string[];
@@ -79,6 +81,7 @@ export async function validatePayrollSelection(input: {
   const employmentIds = (input.employmentIds ?? []).filter(Boolean);
   return preProcessAdvisoryForSelection(s, {
     companyIds,
+    payrollCycleId:input.payrollCycleId,
     payPeriod: input.payPeriod,
     employmentIds: employmentIds.length ? employmentIds : undefined,
   });

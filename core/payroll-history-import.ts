@@ -513,9 +513,9 @@ async function analyze(
       } else if (hits.length > 1) {
         issues.push(issue(ref, 'Invalid Employee No', `Employee No “${employeeNo}” matches ${hits.length} employments`));
       } else if (period) {
-        const { first, last } = periodBounds(period);
+        const { last } = periodBounds(period);
         const emp = hits[0];
-        if (emp.hiredOn > last || (emp.terminatedOn != null && emp.terminatedOn < first)) {
+        if (emp.hiredOn > last) {
           issues.push(
             issue(ref, 'Invalid Employee No', `Employee was not employed during ${period} (joined ${emp.hiredOn}${emp.terminatedOn ? `, left ${emp.terminatedOn}` : ''})`),
           );

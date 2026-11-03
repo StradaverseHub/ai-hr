@@ -321,28 +321,44 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
 }
 
 export async function v9CreateOffboarding(ctx: SessionContext, input: { employmentId: string; type: M.ExitType; noticeDate: string; lastDay: string }): Promise<string> {
+  return withLifecycleTenant(ctx, tx => v9CreateOffboardingTx(tx, ctx, input));
+}
+/** Canonical case construction for purpose-bound callers already holding an authorised tenant transaction.
+ * Existing date, administrator, duplicate-exit and identity rules remain authoritative. */
+export async function v9CreateOffboardingTx(tx:Tx,ctx:SessionContext,input:{ employmentId: string; type: M.ExitType; noticeDate: string; lastDay: string },contractSource?:{kind:'contract'|'probation';caseId:string}):Promise<string>{
   input = z.object({ employmentId: z.string().uuid(), type: z.enum(['Resignation', 'Termination', 'Contract end', 'Retirement', 'Non-confirmation']), noticeDate: z.string(), lastDay: z.string() }).strict().parse(input);
   identifier(input.employmentId);
   if (!M.validDate(input.lastDay) || !M.validDate(input.noticeDate)) throw new M.V9Error('Enter valid notice and last working dates.');
   if (input.lastDay < input.noticeDate) throw new M.V9Error('Last working day cannot be before notice date.');
-  return withLifecycleTenant(ctx, async tx => {
+
     await lockTx(tx, ctx);
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('Set up V9 first.');
     const [employee] = await tx.execute<{ id: string; company_id: string; person_id: string; name: string; employee_no: string; hired_on: string; grade_id: string | null; confirmation_date: string | null; final_confirmation_date: string | null; probation_end_date: string | null; provisional_end_on: string | null }>(sql`select e.id,e.company_id,e.person_id,p.full_name as name,e.employee_code as employee_no,coalesce(e.join_date,e.hired_on)::text as hired_on,e.grade_id,e.confirmation_date::text,e.final_confirmation_date::text,e.probation_end_date::text,e.provisional_end_on::text from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.id=${input.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid for update of e`);
-    if (!employee) throw new M.V9Error('Employee not found or unavailable.', 'not_found'); await admin(tx, employee.company_id);
+    if (!employee) throw new M.V9Error('Employee not found or unavailable.', 'not_found');
+    let contractLetter: {documentId:string;employeeDocumentId:string;hash:string}|undefined;
+    if(contractSource){
+      identifier(contractSource.caseId);
+      const [proof]=await tx.execute<{intent:{employmentId:string;type:string;noticeDate:string;lastDay:string;manualHandoff:boolean;offboardingCaseId?:string;letterDocumentId?:string;employeeDocumentId?:string;letterHash?:string}}>(contractSource.kind==='contract'?sql`select app.contract_offboarding_intent(${contractSource.caseId}::uuid) as intent`:sql`select app.probation_offboarding_intent(${contractSource.caseId}::uuid) as intent`);
+      if(!proof?.intent||proof.intent.offboardingCaseId||proof.intent.manualHandoff||proof.intent.employmentId!==input.employmentId||proof.intent.type!==input.type||proof.intent.noticeDate!==input.noticeDate||proof.intent.lastDay!==input.lastDay)throw new M.V9Error('Frozen contract handoff intent does not match.','forbidden');
+      if(contractSource.kind==='contract'){
+        const {letterDocumentId,employeeDocumentId,letterHash}=proof.intent;
+        if(!letterDocumentId||!employeeDocumentId||!letterHash)throw new M.V9Error('Filed contract letter receipt is unavailable.','forbidden');
+        contractLetter={documentId:letterDocumentId,employeeDocumentId,hash:letterHash};
+      }
+    }else await admin(tx, employee.company_id);
     const [openExit] = await tx.execute<{ id: string }>(sql`select id from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and employment_id=${employee.id}::uuid and module='off' and data->>'state' in ('pending','submitted') limit 1`);
     if (openExit) throw new M.V9Error('This employee already has an open offboarding case. Open it from Leavers.', 'conflict');
     const [assignment] = await tx.execute<{ department_id: string | null; business_unit_id: string | null; position_id: string | null; employment_type: string | null }>(sql`select department_id,business_unit_id,position_id,employment_type from assignment where employment_id=${employee.id}::uuid and tenant_id=${ctx.tenantId}::uuid and superseded_at is null and valid_from<=${todayInKualaLumpur()}::date and (valid_to is null or valid_to>${todayInKualaLumpur()}::date) order by valid_from desc,id limit 1`);
     const logins = await tx.execute<{ id: string }>(sql`select id from app_user where tenant_id=${ctx.tenantId}::uuid and person_id=${employee.person_id}::uuid and archived_at is null order by id`);
     const managers = await tx.execute<{ id: string }>(sql`select u.id from reporting_line r join employment e on e.id=r.manager_employment_id and e.tenant_id=r.tenant_id join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id and u.archived_at is null where r.tenant_id=${ctx.tenantId}::uuid and r.subordinate_employment_id=${employee.id}::uuid and r.line_type='administrative' and r.superseded_at is null and r.valid_from<=${todayInKualaLumpur()}::date and (r.valid_to is null or r.valid_to>${todayInKualaLumpur()}::date) order by r.valid_from desc,r.id,u.id`);
     const { nextNumber } = await import('../../../core/lifecycle-base');
-    const id = randomUUID(), number = await nextNumber(tx, 'OFB9');
+    const id = randomUUID(), number = contractSource ? `OFB9-${String((await tx.execute<{n:number}>(contractSource.kind==='contract'?sql`select app.contract_offboarding_sequence(${contractSource.caseId}::uuid) as n`:sql`select app.probation_offboarding_sequence(${contractSource.caseId}::uuid) as n`))[0].n).padStart(4,'0')}` : await nextNumber(tx, 'OFB9');
     const c: M.Case = { version: 9, id, number, module: 'off', revision: 1, state: 'pending', facts: { confirmationDate: employee.confirmation_date, finalConfirmationDate: employee.final_confirmation_date, probationEndDate: employee.probation_end_date, provisionalEndOn: employee.provisional_end_on, name: employee.name, employeeNo: employee.employee_no, employmentId: employee.id, personId: employee.person_id, joinDate: employee.hired_on, lastDay: input.lastDay, noticeDate: input.noticeDate, employeeUserId: logins.length === 1 ? logins[0].id : null, supervisorUserId: managers.length === 1 ? managers[0].id : null, pbpUserId: null, taUserId: null, company: employee.company_id, businessGroup: assignment?.business_unit_id ?? '', department: assignment?.department_id ?? '', grade: employee.grade_id ?? '', title: assignment?.position_id ?? '', employmentType: assignment?.employment_type ?? '', caseType: input.type }, checklistId: null, checklistName: '', override: 'automatic', tasks: [], items: [], documents: [], runs: [], mails: [], files: [], pmChanges: [], log: [], sourceRevision: '', submittedAt: null, closedAt: null, closedBy: null, closeReason: '', cancelReason: '', revokeDate: input.lastDay, finalFigures: null, review: null };
     const who = await actor(tx, ctx); c.log.push({ id: randomUUID(), at: new Date().toISOString(), actor: who, action: 'case.created', detail: 'Created from Personnel Management.' });
+    if(contractSource)Object.assign(c,contractSource.kind==='contract'?{contractSourceCaseId:contractSource.caseId,contractSourceLetter:contractLetter}:{probationSourceCaseId:contractSource.caseId});
     c.sourceRevision = createHash('sha256').update(JSON.stringify({ employee, assignment })).digest('hex');
     await tx.execute(sql`insert into lc_v9_case(id,tenant_id,company_id,employment_id,module,number,data) values(${id}::uuid,${ctx.tenantId}::uuid,${employee.company_id}::uuid,${employee.id}::uuid,'off',${number},${JSON.stringify(c)}::jsonb)`);
     await record(tx, ctx, id, employee.id, 'created'); return id;
-  });
 }
 export type Command = CaseNoteCommand
   | { type: 'pmPush'; id: string }

@@ -52,7 +52,7 @@ import { employment, jobGrade, leaveType } from '../db/schema';
 // have pushed the violation onto app/admin/personnel and GROWN the audited debt allowlist, which
 // test/leave-pack-drift.test.ts documents as only ever shrinking.
 import { bandFor, type ServiceBand, buildTemplateEntitlementResolver, leaveTypeIdsWithTemplatesAt } from '../packs/leave/service';
-import { movementHistory, movementHistoryTx } from './movement';
+import { movementHistory, movementHistoryTx, ownMovementHistoryTx } from './movement';
 import { serviceYearsAt } from '../lib/completed-years';
 
 /**
@@ -142,6 +142,7 @@ export async function benefitSchemeView(
   employmentId: string,
   asOf: string,
   outerTx?: Tx,
+  own=false,
 ): Promise<BenefitSchemeView> {
   // Read-only — no events (CLAUDE.md skip rule).
   const readPerType = async (tx: Tx) => {
@@ -231,7 +232,7 @@ export async function benefitSchemeView(
   // nothing rule-decided anywhere, and at least one type actually answered by a default.
   const coveredByDefaultOnly = ruleNames.size === 0 && rows.some((r) => r.viaDefaultTemplate);
 
-  const effective = await schemeEffectiveFrom(ctx, employmentId, asOf, outerTx);
+  const effective = await schemeEffectiveFrom(ctx, employmentId, asOf, outerTx, own);
 
   return {
     schemeName,
@@ -320,8 +321,9 @@ async function schemeEffectiveFrom(
   employmentId: string,
   asOf: string,
   outerTx?: Tx,
+  own=false,
 ): Promise<{ effectiveDate: string; kind: string } | null> {
-  const history = outerTx ? await movementHistoryTx(outerTx, ctx, employmentId) : await movementHistory(ctx, employmentId);
+  const history = outerTx ? await (own?ownMovementHistoryTx:movementHistoryTx)(outerTx,ctx,employmentId) : await movementHistory(ctx,employmentId);
   const candidates = history
     .filter((r) => r.status === 'applied' && !r.reversed)
     .filter((r) => SCHEME_AFFECTING_KINDS.has(r.kind))
@@ -332,6 +334,10 @@ async function schemeEffectiveFrom(
 }
 
 /** Explicit owner read seam for a caller-held scoped report snapshot. */
+export function ownBenefitSchemeViewTx(tx:Tx,ctx:SessionContext,employmentId:string,asOf:string){
+  return benefitSchemeView(ctx,employmentId,asOf,tx,true);
+}
+
 export function benefitSchemeViewTx(tx: Tx, ctx: SessionContext, employmentId: string, asOf: string) {
   return benefitSchemeView(ctx, employmentId, asOf, tx);
 }

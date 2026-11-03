@@ -1,0 +1,182 @@
+import type {ReactNode} from 'react';
+import {beforeEach,describe,expect,it,vi} from 'vitest';
+import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import {NextIntlClientProvider} from 'next-intl';
+import messages from '../messages/en.json';
+import ms from '../messages/ms.json';
+import zh from '../messages/zh.json';
+import viMessages from '../messages/vi.json';
+import th from '../messages/th.json';
+import ta from '../messages/ta.json';
+import {newContractCase,DEFAULT_CONTRACT_SETTINGS} from '../lib/contract-management-model';
+import type {ContractCaseView,ContractSource} from '../packs/contracts/service';
+import {ContractIntake} from '../app/lifecycle/contracts/intake/intake';
+import {ContractSignature} from '../app/lifecycle/contracts/signature';
+import {ContractCases} from '../app/lifecycle/contracts/cases';
+import {ContractCaseDetail} from '../app/lifecycle/contracts/[caseId]/detail';
+import {ContractSettingsEditor} from '../app/lifecycle/contracts/settings/settings';
+const mocks=vi.hoisted(()=>({command:vi.fn(),retirement:vi.fn(),refresh:vi.fn(),push:vi.fn()}));
+vi.mock('next/navigation',()=>({useRouter:()=>({refresh:mocks.refresh,push:mocks.push}),usePathname:()=>'/lifecycle/contracts'}));
+vi.mock('../app/lifecycle/contracts/actions',()=>({runContractCommand:mocks.command,readContractLetterEditor:vi.fn(),readContractRetirementContext:mocks.retirement}));
+vi.mock('../components/letters/rich-editor',()=>({LetterRichEditor:()=>null}));
+const companyId='11111111-1111-4111-8111-111111111111',employeeId='22222222-2222-4222-8222-222222222222',caseId='33333333-3333-4333-8333-333333333333',documentId='44444444-4444-4444-8444-444444444444';
+const source:ContractSource={employmentId:employeeId,companyId,personId:employeeId,name:'Fictional Employee',employeeId:'FIX-001',designation:'Coordinator',grade:'G',department:'Operations',businessGroup:'Fictional Group',company:'Fictional Company',manager:'Fictional Manager',signatoryName:'Verified Signatory',signatoryTitle:'Director',startOn:'2026-01-01',endOn:'2026-12-31',salaryCents:'500000',allowanceCents:'10000',allowanceComponentId:employeeId,sourceRevision:'a'.repeat(64),sourceIssue:null,ended:false};
+function record(){return newContractCase({id:caseId,number:'CT-2026-0001',term:{id:caseId,employmentId:employeeId,companyId,kind:'project',version:1,startOn:source.startOn,endOn:source.endOn,salaryCents:'500000',allowanceCents:'10000',sourceRevision:source.sourceRevision},settings:DEFAULT_CONTRACT_SETTINGS,today:'2026-11-03'});}
+function view():ContractCaseView{return{record:record(),source,sourceConflict:null,manager:false,pbp:false,gbs:false,employee:true,configure:false,writable:true,dateAmendmentPending:false,dateAmendment:null,choices:{routes:[],approvalStepIds:[],holders:[],currentWorkflow:null},documents:[],activity:[],effects:[]};}
+function bindCurrentDocument(v:ContractCaseView){const d=v.documents[0];v.record.decision={revision:d.decisionRevision,kind:d.type==='renewal'?'renew':'end',months:d.type==='renewal'?6:null,startOn:d.type==='renewal'?'2027-01-01':null,endOn:d.type==='renewal'?'2027-06-30':'2026-12-31',salaryCents:'500000',allowanceCents:'10000',reason:'Verified decision.',submittedBy:caseId,submittedAt:'2026-11-03T06:00:00Z',confirmedBy:documentId,confirmedAt:'2026-11-03T07:00:00Z'};v.record.document={id:d.id,hash:d.hash,templateId:d.templateId,templateVersion:d.templateVersion,decisionRevision:d.decisionRevision,issuedAt:d.issuedAt,acceptedAt:null,declinedAt:null,declineReason:null};}
+function amendmentView(status:'pending'|'failed'='pending'){const v=view();v.employee=false;v.pbp=true;v.record.term.kind='maternity_cover';v.dateAmendmentPending=true;v.dateAmendment={id:caseId,newEnd:'2027-01-31',reason:'Review the actual maternity cover return date.',requestedBy:caseId,requestedAt:'2026-11-03T06:00:00Z',status};return v;}
+const localeMessages={en:messages,ms,zh,vi:viMessages,th,ta};
+const companies=[{id:companyId,name:source.company,configure:false,gbs:false,pbp:false,canIntake:false,canCapturePbp:false}];
+const wrap=(node:ReactNode)=>render(<NextIntlClientProvider locale="en" messages={messages}>{node}</NextIntlClientProvider>);
+beforeEach(()=>{mocks.command.mockReset();mocks.retirement.mockReset();mocks.refresh.mockReset();mocks.command.mockResolvedValue({ok:true,result:{}});});
+describe('Contract Management scoped interactions',()=>{
+ it('filters the real assigned list and keeps expiry unsigned distinct from an end decision',async()=>{
+  const r=record();r.term.endOn='2026-10-31';wrap(<ContractCases today="2026-11-03" companies={companies} rows={[{record:r,source,sourceConflict:null,lastSyncedAt:'2026-11-03 06:00:00.123456+08'}]}/>);
+  expect(screen.getByText(/Latest source sync/)).toHaveTextContent('03/11/2026');expect(screen.getByRole('link',{name:source.name})).toBeInTheDocument();expect(screen.getByRole('cell',{name:'Expired – unsigned'})).toBeInTheDocument();expect(screen.queryByRole('link',{name:'Settings'})).not.toBeInTheDocument();
+  await userEvent.type(screen.getByRole('searchbox'),'unmatched');expect(screen.getByText(/No cases match/)).toBeInTheDocument();await userEvent.click(screen.getByRole('button',{name:'Clear filters'}));expect(screen.getByRole('link',{name:source.name})).toBeInTheDocument();
+ });
+ it('shows no decision or approval controls to an employee and binds acceptance to the exact reviewed document',async()=>{
+  const v=view();v.record.state='e_acceptance';v.documents=[{id:documentId,type:'renewal',templateId:caseId,templateVersion:4,decisionRevision:2,hash:'b'.repeat(64),issuedAt:'2026-11-03T06:00:00Z',releasedAt:null,supersededAt:null,accepted:false,employeeDocumentId:null}];bindCurrentDocument(v);
+  wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);
+  expect(screen.queryByRole('button',{name:'Submit for approval'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Approve'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Accept and sign contract'})).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('checkbox',{name:'I have reviewed this exact current document.'}));const accept=screen.getByRole('button',{name:'Accept and sign contract'});expect(accept).toBeDisabled();await userEvent.type(screen.getByLabelText('Type your full name'),'Fictional Employee');expect(accept).toBeDisabled();await userEvent.click(screen.getByRole('checkbox',{name:/I confirm this is my signature/}));await userEvent.click(accept);
+  await waitFor(()=>expect(mocks.command).toHaveBeenCalledWith('accept',expect.objectContaining({caseId,revision:1,documentId,hash:'b'.repeat(64),signature:{method:'typed',value:'Fictional Employee',consent:true}})));
+ });
+ it('keeps the refusal reason when a server authority check fails',async()=>{
+  mocks.command.mockResolvedValue({ok:false,error:'The contract changed. Review it again.'});const v=view();v.record.state='e_acceptance';v.documents=[{id:documentId,type:'renewal',templateId:caseId,templateVersion:1,decisionRevision:1,hash:'c'.repeat(64),issuedAt:'2026-11-03T06:00:00Z',releasedAt:null,supersededAt:null,accepted:false,employeeDocumentId:null}];bindCurrentDocument(v);wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);
+  await userEvent.click(screen.getByRole('checkbox',{name:/I have reviewed/}));const reason=screen.getByLabelText('Reason for declining the renewal');await userEvent.type(reason,'I need to discuss the proposed terms.');await userEvent.click(screen.getByRole('button',{name:'Decline renewal'}));await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('The contract changed'));expect(reason).toHaveValue('I need to discuss the proposed terms.');expect(mocks.refresh).not.toHaveBeenCalled();
+ });
+ it('labels a Grade H manual receipt without claiming an Offboarding case exists',()=>{
+  const r=record();r.state='handed_off';r.effects.manualHandoff='actual-manual-receipt';r.effects.offboarding=null;wrap(<ContractCases today="2026-11-03" companies={companies} rows={[{record:r,source:{...source,grade:'H'},sourceConflict:null,lastSyncedAt:'2026-11-03T06:00:00+08:00'}]}/>);expect(screen.getAllByRole('cell',{name:'Manual hand-off completed'})).toHaveLength(2);expect(screen.queryByRole('cell',{name:'Handed to Offboarding'})).not.toBeInTheDocument();
+ });
+ it('keeps template review discoverable without granting case setup to a template-only reviewer',()=>{
+  wrap(<ContractCases today="2026-11-03" companies={[]} rows={[]} templatesAvailable/>);expect(screen.getByRole('link',{name:'Templates'})).toHaveAttribute('href','/lifecycle/contracts/templates');expect(screen.queryByRole('link',{name:'Settings'})).not.toBeInTheDocument();
+ });
+ it('shows a bounded retry message and never renders raw stored record-update diagnostics',()=>{
+  const v=view();v.employee=false;v.gbs=true;v.record.state='records_pending';v.effects=[{kind:'records',status:'failed',error:'private SQL params sensitive failure',receipt:null}];wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.queryByText(/private SQL params/)).not.toBeInTheDocument();expect(screen.getByRole('alert')).toHaveTextContent(messages.contractManagement.failed);expect(screen.getByRole('button',{name:'Retry pending record updates'})).toBeInTheDocument();
+ });
+ it.each(Object.entries(localeMessages))('renders translated case status and safeguards in %s',(locale,catalog)=>{
+  const r=record();r.term.endOn='2026-10-31';render(<NextIntlClientProvider locale={locale} messages={catalog}><ContractCases today="2026-11-03" companies={companies} rows={[{record:r,source,sourceConflict:null,lastSyncedAt:'2026-11-03T06:00:00+08:00'}]}/></NextIntlClientProvider>);expect(screen.getByRole('cell',{name:catalog.contractManagement.state.expired_unsigned})).toBeInTheDocument();expect(screen.getByText(catalog.contractManagement.neverAutoEnd)).toBeInTheDocument();
+ });
+ it('saves an incomplete manager draft without submitting a decision or stopping the approval flow',async()=>{
+  const v=view();v.employee=false;v.manager=true;wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);await userEvent.clear(screen.getByLabelText('Proposed basic salary (RM)'));expect(screen.getByRole('button',{name:'Submit for approval'})).toBeDisabled();await userEvent.click(screen.getByRole('button',{name:'Save decision draft'}));await waitFor(()=>expect(mocks.command).toHaveBeenCalledWith('saveDecisionDraft',expect.objectContaining({caseId,revision:1,kind:'renew',basicSalary:'',reason:''})));expect(mocks.command.mock.calls.some(c=>c[0]==='decision')).toBe(false);
+ });
+ it('keeps a conditionally skipped Rewards step visible without blocking submission for missing unused holders',async()=>{
+  const v=view();v.employee=false;v.manager=true;mocks.command.mockImplementation(async(command:string)=>({ok:true,result:command==='previewDecision'?{routes:[{workflowId:documentId,name:'Published renewal route',version:3,approvals:[{id:'rewards',name:'Conditional Rewards',stage:0,holderIds:[],quorum:'all',when:'pay_changed',state:'skipped',actions:[]},{id:'ceo',name:'Actual CEO',stage:1,holderIds:[caseId],quorum:'any',when:'always',state:'pending',actions:[]}]}]}:{}}));wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);await userEvent.type(screen.getByLabelText('Reason'),'Continue the approved project.');await waitFor(()=>expect(screen.getByRole('button',{name:'Submit for approval'})).toBeEnabled(),{timeout:2000});expect(screen.getByText(/Conditional Rewards/)).toBeInTheDocument();expect(screen.queryByText(/Required approver is missing/)).not.toBeInTheDocument();
+ });
+ it('lets an authorized approver review proposed terms without granting manager controls',()=>{
+  const v=view();v.employee=false;v.record.state='in_approval';v.record.decision={revision:1,kind:'renew',months:6,startOn:'2027-01-01',endOn:'2027-06-30',salaryCents:'550000',allowanceCents:'12000',reason:'Continue the approved project.',submittedBy:caseId,submittedAt:'2026-11-03T06:00:00Z',confirmedBy:documentId,confirmedAt:'2026-11-03T07:00:00Z'};wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.getByText('Continue the approved project.')).toBeInTheDocument();expect(screen.queryByRole('button',{name:'Submit for approval'})).not.toBeInTheDocument();
+ });
+ it('keeps a released ending letter pending until its real P-file receipt exists',async()=>{
+  const v=view();v.employee=false;v.gbs=true;v.record.state='ending';v.effects=[{kind:'filing',status:'failed',error:'PRIVATE filing diagnostics',receipt:null}];v.documents=[{id:documentId,type:'end',templateId:caseId,templateVersion:1,decisionRevision:1,hash:'d'.repeat(64),issuedAt:'2026-11-03T06:00:00Z',releasedAt:'2026-11-03T06:00:00Z',supersededAt:null,accepted:false,employeeDocumentId:null}];bindCurrentDocument(v);wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.getByText(messages.contractManagement.pfilePending)).toBeInTheDocument();expect(screen.getByRole('button',{name:messages.contractManagement.completeHandoff})).toBeDisabled();expect(mocks.command).not.toHaveBeenCalled();await userEvent.click(screen.getByRole('button',{name:messages.contractManagement.retryFiling}));await waitFor(()=>expect(mocks.command).toHaveBeenCalledWith('retry',caseId));
+ });
+ it('preserves manager inputs when a route preview request fails',async()=>{
+  const v=view();v.employee=false;v.manager=true;mocks.command.mockRejectedValue(new Error('Network unavailable'));wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);await userEvent.type(screen.getByLabelText('Reason'),'Retain this decision for review.');await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(messages.contractManagement.failed),{timeout:2000});expect(screen.getByLabelText('Reason')).toHaveValue('Retain this decision for review.');expect(screen.getByRole('button',{name:'Submit for approval'})).toBeDisabled();
+ });
+ it('hides a stale PDF whose hash differs from the current accepted decision',()=>{
+  const v=view();v.record.state='e_acceptance';v.documents=[{id:documentId,type:'renewal',templateId:caseId,templateVersion:1,decisionRevision:1,hash:'e'.repeat(64),issuedAt:'2026-11-03T06:00:00Z',releasedAt:null,supersededAt:null,accepted:false,employeeDocumentId:null}];bindCurrentDocument(v);v.record.document!.hash='f'.repeat(64);wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.queryByTitle(messages.contractManagement.document)).not.toBeInTheDocument();expect(screen.queryByRole('checkbox',{name:messages.contractManagement.reviewedDocument})).not.toBeInTheDocument();
+ });
+ it('does not grant intake navigation through configuration permission alone',()=>{
+  wrap(<ContractCases today="2026-11-03" companies={[{...companies[0],configure:true}]} rows={[]}/>);expect(screen.getByRole('link',{name:'Settings'})).toBeInTheDocument();expect(screen.queryByRole('link',{name:messages.contractManagement.intake})).not.toBeInTheDocument();
+ });
+ it('clears drawn-signature readiness when switching away and remounting an empty canvas',async()=>{
+  const context={beginPath:vi.fn(),moveTo:vi.fn(),lineTo:vi.fn(),stroke:vi.fn()};const spy=vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D);
+  try{const {container}=wrap(<ContractSignature busy={false} submit={vi.fn()}/>);await userEvent.click(screen.getByRole('button',{name:messages.contractManagement.drawn}));const canvas=container.querySelector('canvas')!;Object.defineProperty(canvas,'setPointerCapture',{value:vi.fn()});fireEvent.pointerDown(canvas,{pointerId:1,clientX:10,clientY:10});fireEvent.pointerMove(canvas,{pointerId:1,clientX:20,clientY:20});fireEvent.pointerUp(canvas);await userEvent.click(screen.getByRole('checkbox',{name:/I confirm this is my signature/}));expect(screen.getByRole('button',{name:'Accept and sign contract'})).toBeEnabled();await userEvent.click(screen.getByRole('button',{name:messages.contractManagement.typed}));await userEvent.click(screen.getByRole('button',{name:messages.contractManagement.drawn}));expect(screen.getByRole('button',{name:'Accept and sign contract'})).toBeDisabled();}finally{spy.mockRestore();}
+ });
+ it('keeps an assignment active through its inclusive final day and allows a one-day assignment',async()=>{
+  wrap(<ContractSettingsEditor today="2026-11-03" companies={[{...companies[0],configure:true}]} choices={[{companyId,canManageRoles:true,units:[],payItems:[],effectNominees:[],users:[{id:caseId,name:'Actual assigned person',employeeId:'FIX-002'}]}]} settings={{configurations:[],roles:[{id:documentId,companyId,businessUnitId:null,userId:caseId,role:'pbp',validFrom:'2026-11-01',validTo:'2026-11-03',revokedAt:null}]}}/>);expect(screen.getByText(messages.contractManagement.assignmentActive)).toBeInTheDocument();await userEvent.selectOptions(screen.getByLabelText(messages.contractManagement.name),caseId);fireEvent.change(screen.getByLabelText(messages.contractManagement.validTo),{target:{value:'2026-11-03'}});await userEvent.type(screen.getByLabelText('Reason'),'Approved one-day responsibility.');expect(screen.getByRole('button',{name:messages.contractManagement.assignRole})).toBeEnabled();
+ });
+ it('hides the previous draft while canonical PDF preparation is pending and prevents duplicate requests',()=>{
+  const v=view();v.employee=false;v.gbs=true;v.record.state='in_approval';v.documents=[{id:documentId,type:'renewal',templateId:caseId,templateVersion:1,decisionRevision:1,hash:'a'.repeat(64),issuedAt:null,releasedAt:null,supersededAt:null,accepted:false,employeeDocumentId:null}];bindCurrentDocument(v);v.effects=[{kind:'generation',status:'pending',error:null,receipt:null}];wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.getByText(messages.contractManagement.generationPending)).toBeInTheDocument();expect(screen.queryByTitle(messages.contractManagement.document)).not.toBeInTheDocument();expect(screen.getByRole('button',{name:messages.contractManagement.generateDocument})).toBeDisabled();
+ });
+ it('retries failed PDF preparation without exposing diagnostics or replacing retained content',async()=>{
+  const v=view();v.employee=false;v.gbs=true;v.record.state='in_approval';v.record.decision={revision:2,kind:'renew',months:6,startOn:'2027-01-01',endOn:'2027-06-30',salaryCents:'500000',allowanceCents:'10000',reason:'Verified terms.',submittedBy:caseId,submittedAt:'2026-11-03T06:00:00Z',confirmedBy:documentId,confirmedAt:'2026-11-03T07:00:00Z'};v.effects=[{kind:'generation',status:'failed',error:'PRIVATE SQL diagnostics',receipt:null}];wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.queryByText('PRIVATE SQL diagnostics')).not.toBeInTheDocument();await userEvent.click(screen.getByRole('button',{name:messages.contractManagement.retryGeneration}));await waitFor(()=>expect(mocks.command).toHaveBeenCalledWith('generate',{caseId,revision:1,type:'renewal'}));
+ });
+ it('keeps a BG-scoped People Ops case capability separate from whole-company template and settings authority',()=>{
+  const v=view();v.employee=false;v.gbs=true;wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.queryByRole('link',{name:'Templates'})).not.toBeInTheDocument();expect(screen.queryByRole('link',{name:'Settings'})).not.toBeInTheDocument();expect(screen.getByRole('link',{name:messages.contractManagement.intake})).toBeInTheDocument();
+ });
+ it('keeps authorised history visible while native writable authority is false',()=>{
+  const v=view();v.employee=false;v.gbs=true;v.pbp=true;v.manager=true;v.writable=false;v.record.term.kind='maternity_cover';v.record.state='decision_pending';wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.getByText(messages.contractManagement.readOnlyNote)).toBeInTheDocument();expect(screen.getByRole('heading',{name:messages.contractManagement.contractDetails})).toBeInTheDocument();expect(screen.queryByRole('button',{name:messages.contractManagement.submitApproval})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:messages.contractManagement.amendEnd})).not.toBeInTheDocument();expect(mocks.command).not.toHaveBeenCalled();
+ });
+ it('blocks employee signing from the safe date-pending flag without exposing staff request metadata',()=>{
+  const v=view();v.record.state='e_acceptance';v.record.term.kind='maternity_cover';v.dateAmendmentPending=true;v.documents=[{id:documentId,type:'renewal',templateId:caseId,templateVersion:1,decisionRevision:1,hash:'a'.repeat(64),issuedAt:'2026-11-03T06:00:00Z',releasedAt:null,supersededAt:null,accepted:false,employeeDocumentId:null}];bindCurrentDocument(v);wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.getByText(messages.contractManagement.dateAmendmentPending)).toBeInTheDocument();expect(screen.queryByTitle(messages.contractManagement.document)).not.toBeInTheDocument();expect(screen.queryByRole('checkbox',{name:messages.contractManagement.reviewedDocument})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:messages.contractManagement.cancelDateAmendment})).not.toBeInTheDocument();
+ });
+ it('retries the retained failed date request only after the current PBP reviews it again',async()=>{
+  const v=amendmentView('failed');wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);const retry=screen.getByRole('button',{name:messages.contractManagement.retryDateAmendment});expect(retry).toBeDisabled();await userEvent.click(screen.getByRole('checkbox',{name:messages.contractManagement.confirmDateChange}));await userEvent.click(retry);await waitFor(()=>expect(mocks.command).toHaveBeenCalledWith('amendEnd',{caseId,revision:1,endOn:'2027-01-31',reason:v.dateAmendment!.reason}));
+ });
+ it('cancels an uncommitted date request through reasoned source reconciliation',async()=>{
+  wrap(<ContractCaseDetail view={amendmentView()} today="2026-11-03" editorLabels={null}/>);const cancel=screen.getByRole('button',{name:messages.contractManagement.cancelDateAmendment});expect(cancel).toBeDisabled();await userEvent.type(screen.getByLabelText('Reason'),'The pending cover correction was withdrawn.');await userEvent.click(cancel);await waitFor(()=>expect(mocks.command).toHaveBeenCalledWith('reconcile',{caseId,revision:1,reason:'The pending cover correction was withdrawn.'}));
+ });
+ it('labels a cancelled date request separately from an applied record update',()=>{
+  const v=view();v.employee=false;v.gbs=true;v.effects=[{kind:'date_amendment',status:'done',error:null,receipt:{cancelled:true}}];wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);const updates=within(screen.getByRole('heading',{name:messages.contractManagement.recordUpdates}).closest('section')!);expect(updates.getByText(/End-date correction cancelled/)).toBeInTheDocument();expect(updates.queryByText(/^Completed$/)).not.toBeInTheDocument();
+ });
+ it('keeps a previously reviewed renewal PDF frozen until a revised decision exists',()=>{
+  const v=view();v.employee=false;v.gbs=true;v.record.state='in_approval';v.documents=[{id:documentId,type:'renewal',templateId:caseId,templateVersion:1,decisionRevision:1,hash:'a'.repeat(64),issuedAt:null,releasedAt:null,supersededAt:null,accepted:false,employeeDocumentId:null}];bindCurrentDocument(v);v.record.approvals=[{id:caseId,name:'Reviewed Rewards step',stage:0,holderIds:[documentId],quorum:'any',when:'always',state:'approved',actions:[{actorId:documentId,action:'approve',comment:'Reviewed.',at:'2026-11-03T06:00:00Z'}]}];wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.getByText(messages.contractManagement.reviewedDocumentLocked)).toBeInTheDocument();expect(screen.getByRole('button',{name:messages.contractManagement.generateDocument})).toBeDisabled();
+ });
+ it.each([{patch:{allowanceCents:null},message:'sourceIncomplete'},{patch:{salaryCents:null,sourceIssue:'unsupported_pay_basis'},message:'sourcePayBasisUnsupported'},{patch:{sourceIssue:'unsupported_currency'},message:'sourceCurrencyUnsupported'}] as const)('blocks incomplete or unsupported intake: $message',async({patch,message})=>{
+  mocks.command.mockResolvedValue({ok:true,result:{...source,...patch}});wrap(<ContractIntake companies={[{...companies[0],canIntake:true}]} employees={[{companyId,rows:[{id:employeeId,name:source.name,employeeId:source.employeeId,startOn:source.startOn,endOn:source.endOn}]}]}/>);await userEvent.selectOptions(screen.getByLabelText(messages.contractManagement.employee),employeeId);await userEvent.click(screen.getByRole('button',{name:messages.contractManagement.previewSource}));await waitFor(()=>expect(screen.getByText(messages.contractManagement[message])).toBeInTheDocument());expect(screen.getByRole('button',{name:messages.contractManagement.openCase})).toBeDisabled();expect(mocks.command).toHaveBeenCalledTimes(1);if(message==='sourceCurrencyUnsupported')expect(screen.queryByText(/RM\s*5,000\.00/)).not.toBeInTheDocument();
+ });
+ it('routes a missing employee login to People Ops without offering Personnel reconciliation',()=>{
+  const v=view(),m=messages.contractManagement;
+  v.employee=false;v.gbs=true;v.record.state='e_acceptance';v.employeeIdentityUnavailable=true;
+  wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);
+  expect(screen.getByText(m.employeeIdentityUnavailable)).toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:m.reconcile})).not.toBeInTheDocument();
+ });
+ it('keeps decline available when the pinned workflow pauses signature collection',async()=>{
+  const v=view(),m=messages.contractManagement;
+  v.record.state='e_acceptance';v.acceptancePaused=true;
+  v.documents=[{id:documentId,type:'renewal',templateId:caseId,templateVersion:1,decisionRevision:1,hash:'e'.repeat(64),issuedAt:'2026-11-03T06:00:00Z',releasedAt:null,supersededAt:null,accepted:false,employeeDocumentId:null}];
+  bindCurrentDocument(v);
+  wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);
+  expect(screen.getByText(m.acceptancePaused)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('checkbox',{name:m.reviewedDocument}));
+  expect(screen.queryByRole('button',{name:m.acceptSign})).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText(m.declineReason),{target:{value:'I decline the revised offer.'}});
+  await userEvent.click(screen.getByRole('button',{name:m.decline}));
+  expect(mocks.command).toHaveBeenCalledWith('accept',expect.objectContaining({documentId,action:'decline',hash:'e'.repeat(64),signature:null}));
+ });
+ it('holds all intake kinds when the source has unverified retirement evidence',async()=>{
+  const m=messages.contractManagement,pending={...source,retirementHealthPending:true};
+  mocks.command.mockResolvedValue({ok:true,result:pending});
+  wrap(<ContractIntake companies={[{...companies[0],canIntake:true}]} employees={[{companyId,rows:[{id:employeeId,name:source.name,employeeId:source.employeeId,startOn:source.startOn,endOn:source.endOn}]}]}/>);
+  await userEvent.selectOptions(screen.getByLabelText(m.employee),employeeId);
+  await userEvent.click(screen.getByRole('button',{name:m.previewSource}));
+  await waitFor(()=>expect(screen.getByText(m.retirementEvidencePending)).toBeInTheDocument());
+  expect(screen.getByLabelText(m.contractType)).toBeDisabled();
+  expect(screen.getByLabelText(m.contractType)).toHaveValue('post_retirement');
+  expect(screen.getByRole('button',{name:m.openCase})).toBeDisabled();
+  expect(mocks.retirement).not.toHaveBeenCalled();
+ });
+ it('opens required retirement intake only with both references from the selected verified evidence',async()=>{
+  const m=messages.contractManagement,verified={...source,retirementHealthPending:false,retirementProofRequired:true};
+  mocks.command.mockResolvedValueOnce({ok:true,result:verified}).mockResolvedValueOnce({ok:true,result:{id:caseId}});
+  mocks.retirement.mockResolvedValue({ok:true,choices:{source:verified,retirements:[],documents:[{id:documentId,title:'Approved retirement terms',fileName:'approval.pdf'}],canCapture:false,canVerify:true},evidence:[{id:caseId,approvalDocumentId:documentId,healthDocumentId:companyId,verifiedBy:employeeId,sourceRevision:source.sourceRevision,approvalEventId:companyId,healthEventId:documentId}]});
+  wrap(<ContractIntake companies={[{...companies[0],canIntake:true}]} employees={[{companyId,rows:[{id:employeeId,name:source.name,employeeId:source.employeeId,startOn:source.startOn,endOn:source.endOn}]}]}/>);
+  await userEvent.selectOptions(screen.getByLabelText(m.employee),employeeId);
+  await userEvent.click(screen.getByRole('button',{name:m.previewSource}));
+  await userEvent.click(await screen.findByRole('button',{name:m.readEvidence}));
+  const select=await screen.findByLabelText(m.verifiedRetirement),open=screen.getByRole('button',{name:m.openCase});
+  expect(open).toBeDisabled();
+  await userEvent.selectOptions(select,caseId);
+  await userEvent.click(open);
+  expect(mocks.command).toHaveBeenCalledWith('intake',{employmentId:employeeId,kind:'post_retirement',sourceRevision:source.sourceRevision,retirementApprovalId:companyId,healthCheckId:documentId});
+ });
+ it('uses the safe retirement approval flag for employee progress without a source approval UUID',()=>{
+  const v=view();v.record.state='e_acceptance';v.record.term.kind='post_retirement';v.record.retirementApproved=true;v.documents=[{id:documentId,type:'renewal',templateId:caseId,templateVersion:1,decisionRevision:1,hash:'f'.repeat(64),issuedAt:'2026-11-03T06:00:00Z',releasedAt:null,supersededAt:null,accepted:false,employeeDocumentId:null}];bindCurrentDocument(v);v.record.decision={...v.record.decision!,months:null,startOn:source.startOn,endOn:source.endOn};wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.getAllByRole('listitem')[2]).toHaveTextContent(messages.contractManagement.document);
+ });
+ it('retains the prior approval route and rejection comment after the current decision was reset',()=>{
+  const v=view();v.employee=false;v.gbs=true;v.record.decisionHistory=[{revision:1,kind:'renew',months:6,startOn:'2027-01-01',endOn:'2027-06-30',salaryCents:'550000',allowanceCents:'12000',reason:'Prior proposed terms.',submittedBy:caseId,submittedAt:'2026-11-03T06:00:00Z',confirmedBy:documentId,confirmedAt:'2026-11-03T07:00:00Z',approvalSnapshot:[{id:documentId,name:'Prior published CEO route',stage:0,holderIds:[documentId],quorum:'any',when:'always',state:'rejected',actions:[{actorId:documentId,action:'reject',comment:'The previous term needs revision.',at:'2026-11-03T08:00:00Z'}]}]}];wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.getByText(/Prior published CEO route/)).toBeInTheDocument();expect(screen.getByText(/The previous term needs revision/)).toBeInTheDocument();
+ });
+ it('requires a revised decision instead of offering reconfirmation of a rejected submission',()=>{
+  const v=view();v.employee=false;v.pbp=true;v.record.state='decision_pending';v.record.requiresResubmission=true;v.record.decision={revision:1,kind:'renew',months:6,startOn:'2027-01-01',endOn:'2027-06-30',salaryCents:'500000',allowanceCents:'10000',reason:'Original submitted terms.',submittedBy:caseId,submittedAt:'2026-11-03T06:00:00Z',confirmedBy:null,confirmedAt:null};mocks.command.mockResolvedValue({ok:true,result:{routes:[]}});wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.getByText(messages.contractManagement.resubmitRequired)).toBeInTheDocument();expect(screen.queryByRole('button',{name:messages.contractManagement.confirmDecision})).not.toBeInTheDocument();
+ });
+ it('uses the retained actor name rather than renaming audit history through a mutable login',()=>{
+  const v=view();v.employee=false;v.gbs=true;v.choices.holders=[{id:documentId,name:'Changed login identity'}];v.activity=[{id:caseId,action:'case.approve',actor:documentId,actorName:'Original verified reviewer',at:'2026-11-03T06:00:00Z',detail:{}}];wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.getByText(/Original verified reviewer/)).toBeInTheDocument();expect(screen.queryByText(/Changed login identity/)).not.toBeInTheDocument();
+ });
+ it('blocks runtime activation until policy owners, date and real record-update nominee are selected',async()=>{
+  wrap(<ContractSettingsEditor today="2026-11-03" companies={[{...companies[0],configure:true,gbs:true,canIntake:true}]} choices={[{companyId,canManageRoles:false,units:[],payItems:[{id:employeeId,code:'FIX',name:'Fixed allowance'}],effectNominees:[{id:caseId,name:'Actual approved nominee'}],users:[]}]} settings={{roles:[],configurations:[{companyId,revision:2,data:{...DEFAULT_CONTRACT_SETTINGS,allowanceComponentId:employeeId,ownersConfirmed:false,dailyHour:6},runtimeEnabled:false,activationOn:null,effectPrincipalId:null}]}}/>);
+  await userEvent.click(screen.getByRole('checkbox',{name:'Enable daily contract processing'}));expect(screen.getByRole('button',{name:'Save settings'})).toBeDisabled();await userEvent.click(screen.getByRole('checkbox',{name:/responsible policy owners/}));fireEvent.change(screen.getByLabelText('Activation date'),{target:{value:'2026-11-04'}});expect(screen.getByRole('button',{name:'Save settings'})).toBeDisabled();await userEvent.selectOptions(screen.getByLabelText('Authorised record-update nominee'),caseId);await userEvent.click(screen.getByRole('button',{name:'Save settings'}));await waitFor(()=>expect(mocks.command).toHaveBeenCalledWith('configure',expect.objectContaining({companyId,expectedRevision:2,runtimeEnabled:true,effectPrincipalId:caseId,activationOn:'2026-11-04'})));
+ });
+});

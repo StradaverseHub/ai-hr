@@ -1,8 +1,8 @@
 /**
  * ADR-0174 — the employment helpers and app.company_subtree answer only inside the session tenant
- * (migration 0968).
+ * (migration 1000).
  *
- * `app.is_admin_for` answers from grants, so before 0968 a group-wide admin of tenant A got `true` from
+ * `app.is_admin_for` answers from grants, so before 1000 a group-wide admin of tenant A got `true` from
  * app.can_admin_employment for an employment of tenant B. Every policy also carried a tenant conjunct,
  * so nothing leaked, but the helpers were not safe on their own. They also used
  * `SET search_path = public`, which an ai_hr_app session could defeat with a TEMP `employment` table

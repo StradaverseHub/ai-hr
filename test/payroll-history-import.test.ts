@@ -388,7 +388,7 @@ describe('import payroll history — the long (seven-column) contract', () => {
     expect(dry.months.find((m) => m.employeeNo === 'A1001')!.ok).toBe(true);
     expect(dry.months.find((m) => m.employeeNo === 'A1002')!.ok).toBe(false);
 
-    // A termination before the month is refused on the same rule.
+    // A historical payment after leaving keeps its employee identity and normal data validation.
     const [emp] = await owner.db
       .select({ id: schema.employment.id })
       .from(schema.employment)
@@ -401,8 +401,8 @@ describe('import payroll history — the long (seven-column) contract', () => {
       companyId: b.companyId,
       records: file(...completeMonth('A1001', '202401')),
     });
-    expect(after.months[0].ok).toBe(false);
-    expect(after.issues.some((i) => i.type === 'Invalid Employee No' && /left 2023-12-31/.test(i.description))).toBe(true);
+    expect(after.months[0].ok).toBe(true);
+    expect(after.issues.some(i=>i.type==='Invalid Employee No')).toBe(false);
   });
 
   it('a GROSS or NETPAY line that disagrees with the file’s own lines is an error', async () => {

@@ -48,6 +48,8 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(system.has(path))return {area:'system'};
   if(peopleConfig.has(path)||path.startsWith('/admin/settings/system-labels/'))return modulePlacement('people','config');
   if(path==='/personnel')return modulePlacement('people','mine');
+  if(path.startsWith('/lifecycle/probation'))return modulePlacement('people',/^\/lifecycle\/probation\/(settings|forms|routes|workflows|templates|intake)(\/|$)/.test(path)?'config':'hr');
+  if(path.startsWith('/lifecycle/contracts'))return modulePlacement('people',/^\/lifecycle\/contracts\/(settings|workflows|templates|intake)(\/|$)/.test(path)?'config':'hr');
   if(path.startsWith('/me/letters'))return modulePlacement('eLetter','mine');
   if(path.startsWith('/letters/settings'))return modulePlacement('eLetter','config');
   if(path.startsWith('/letters'))return modulePlacement('eLetter','hr');

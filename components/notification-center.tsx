@@ -10,7 +10,7 @@ import { markAllNotificationsReadAction, markNotificationReadAction } from '@/ap
 import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
 type NotificationRow=Pick<StoredNotificationRow,'id'|'title'|'body'|'severity'|'linkPath'|'createdAt'|'readAt'>&Partial<Pick<StoredNotificationRow,'kind'>>;
 import type { PendingTaskItem as ApprovalTaskItem } from '@/core/approvals-inbox';
-export type NotificationTaskItem=ApprovalTaskItem | (Omit<ApprovalTaskItem,'kind'|'createdAt'>&{kind:'onboarding';createdAt?:undefined});
+export type NotificationTaskItem=ApprovalTaskItem | (Omit<ApprovalTaskItem,'kind'|'createdAt'>&{kind:'onboarding'|'probation'|'contract_staff';createdAt?:undefined;actionLabel?:string});
 import type { ApprovalHistoryItem } from '@/lib/approval-history';
 
 /**
@@ -167,7 +167,7 @@ export function NotificationCenter({
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-2">
               <span className="truncate text-sm font-medium text-foreground">
-                {t(`task.${task.kind}` as 'task.leave')}
+                {'actionLabel' in task&&task.actionLabel?task.actionLabel:t(`task.${task.kind}` as 'task.leave')}
               </span>
               {task.createdAt && <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{relTime(new Date(task.createdAt))}</span>}
             </div>

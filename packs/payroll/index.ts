@@ -257,6 +257,7 @@ export const payrollPack: ModulePack = {
   // `payroll_input` rows written by the leave/attendance/claims/comp seams are THIS pack's table
   // (the contract write target), not the producing packs' satellites.
   satelliteTables: [
+    {table:'payroll_tax_basis_replacement',note:'immutable exact-source custody when a corrected native payslip is reprocessed'},
     { table: 'payroll_policy', note: 'per-company payroll policy (frequency, pay modes, proration, release timing)' },
     { table: 'company_payroll_config', note: 'per-company payroll configuration (rounding, run defaults)' },
     { table: 'payroll_cycle', note: 'the pay-cycle calendar: periods, cut-offs, pay dates' },

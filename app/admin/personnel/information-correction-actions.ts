@@ -12,7 +12,7 @@ export async function informationContextAction(employmentId:string){
 export async function previewInformationAction(input:{employmentId:string;changes:InformationChanges;reason:string}){return previewInformationCorrection(await requireAdmin(),{employmentId:input.employmentId,changes:input.changes,reason:input.reason});}
 export async function saveInformationAction(input:{employmentId:string;changes:InformationChanges;reason:string;fingerprint:string}){
  const result=await correctInformation(await requireAdmin(),{employmentId:input.employmentId,changes:input.changes,reason:input.reason,fingerprint:input.fingerprint,method:'manual'});
- revalidatePath('/admin/personnel');revalidatePath('/admin/personnel/'+input.employmentId);return result;
+ revalidatePath('/admin/personnel');revalidatePath('/admin/personnel/'+input.employmentId);revalidatePath('/admin/personnel/[employmentId]/movement/[mode]','page');revalidatePath('/admin/personnel/[employmentId]/movement/[mode]/[movementId]','page');return result;
 }
 export async function previewInformationUploadAction(data:FormData){
  const ctx=await requireAdmin(),file=data.get('file');
@@ -22,5 +22,5 @@ export async function previewInformationUploadAction(data:FormData){
 }
 export async function confirmInformationUploadAction(input:{attemptId:string;previewHash:string}){
  const result=await confirmInformationUpload(await requireAdmin(),{attemptId:input.attemptId,previewHash:input.previewHash});
- revalidatePath('/admin/personnel');revalidatePath('/admin/personnel/import');revalidatePath('/admin/personnel/import/history');return result;
+ revalidatePath('/admin/personnel');revalidatePath('/admin/personnel/[employmentId]','page');revalidatePath('/admin/personnel/[employmentId]/movement/[mode]','page');revalidatePath('/admin/personnel/[employmentId]/movement/[mode]/[movementId]','page');revalidatePath('/admin/personnel/import');revalidatePath('/admin/personnel/import/history');return result;
 }

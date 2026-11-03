@@ -7,19 +7,20 @@ owning release gate.
 
 ## Tenant-isolation hardening (ADR-0174) — 3 November 2026 (provisional source claim)
 
-`claude/wonderful-mccarthy-2fb38f` appends three migrations above the 650-entry main/alpha journal
-(`d3bab0214`). A read-only scan of 3558 local and remote heads, 358 journal blobs and every registered
-worktree on 3 November 2026 found claims up to file 0967, idx 812 and when 1793330000367 (unmerged AI Centre
-branches hold 0952–0967), so these sit above all of them.
+`claude/wonderful-mccarthy-2fb38f` appends three migrations above the 656-entry main journal (`848c7be36`,
+ending at 0953 / idx 799 / when 1793330000353). Its first claim (0968–0970, idx 813–815) was overtaken the
+same day by the permissions series. A fresh read-only scan of 3647 local and remote heads, 393 journal blobs
+and every registered worktree then found claims up to file 0999, idx 846 and when 1793330000399, so the
+migrations were renumbered above all of them. The SQL changed only in its references to the new numbers.
 
 | Tag | idx | when | SQL SHA256 |
 | --- | ---: | ---: | --- |
-|0968_employment_helper_tenant_pin|813|1793330000368|f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a|
-|0969_company_tenant_fk_not_valid|814|1793330000369|54aefce4652bea206c14c1d12e01d7f0578cc63e617c7a41bd04fd5406a4e71a|
-|0970_company_tenant_fk_validate|815|1793330000370|c1e957cdc49e18998cb78aaee69e4f3f8ec28e6def3828cbf69dec779f8483be|
+|1000_employment_helper_tenant_pin|847|1793330000400|f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a|
+|1001_company_tenant_fk_not_valid|848|1793330000401|31314e35728831a8b9f5654aea8cc86d20bb42af17208e760c669f7507e6af44|
+|1002_company_tenant_fk_validate|849|1793330000402|0c0fad31f62d07064a4348951f9664e2ef5ffa8c2a55e3e4c9da3a0f0f5d2764|
 
-0968 pins the employment helpers and `app.company_subtree` to the session tenant; 0969 adds 128 composite
-company/tenant keys NOT VALID; 0970 checks the data and validates them. Unapplied source only: relocate the
+1000 pins the employment helpers and `app.company_subtree` to the session tenant; 1001 adds 146 composite
+company/tenant keys NOT VALID; 1002 checks the data and validates them. Unapplied source only: relocate the
 idx with competing claims and keep each timestamp above every earlier-applied migration before integration.
 
 ## Nine-item BOARD split: post-Noveri refresh — 3 November 2026 (unapplied)
@@ -1024,3 +1025,22 @@ the then-installed ledger at integration.
 |762|1793330000329|0929_teras_review_services|0906|765ca87aebc30ae1aaf46ec4eb8cfb3d36466f1401dcbe2bbe092fec60358bc0|
 
 The SQL comments inside these files still name their original provisional numbers; the bodies are kept byte for byte.
+
+## Approved feedback implementation — 3 November 2026 (provisional source only)
+
+Fresh main/alpha baseline dfbcf85b1, journal through0929 idx762/when1793330000329. A full local/origin ref and registered worktree journal scan found competing claims through0946/when1793330000346. Rewards owns0947/when347 on its independent branch. This lifecycle branch reserves0948_document_signing atidx763/when1793330000348. Probation0949/when349 and Contract Management0950/when350 are coordinated subsequent independent builds; Payroll reserves0951/when351 only if needed. Aggregate integration must reindex the union and recheck current refs/live ordered ledger; none is applied by this reservation. Existing applied bytes and prefix remain unchanged.
+
+- 2026-11-03: Contract Management source reserves `0950_contract_management`, `when=1793330000350`, provisional branch journal idx764 after0948. Parent scanned registered and origin journals before reservation;0947 Rewards and0949 probation are separately owned. Reindex only journal positions at aggregate integration; recheck live ledger before any installation. No SQL applied by this branch.
+
+## Approved Lifecycle effect boundary — 3 November 2026 (provisional source)
+
+A fresh scan of336 unique committed journals plus registered worktree journals found foreign
+0952_teras_chats/when1793330000352 after the coordinated0947–0951 claims. This owned aggregate
+reserves0953_lifecycle_service_info_intents/when1793330000353 for the fixed optional Probation/Contract
+service-info intent dispatcher. Module owners define private exact-transaction predicates; the ordinary
+0579 workforce path remains intact. This is uninstalled source, not ledger or release evidence.
+Reindex the final union and check freshly accepted refs plus the ordered live ledger before installation.
+
+## Rewards access approval exemptions — 3 November 2026 (provisional)
+
+codex/approved-rewards-20261103 reserves 0947_rewards_access_approval_exemptions at idx763 / when1793330000347, after the parent scan found all local/origin and registered-worktree claims through0946 / when346. Parent coordinates0948 signing,0949 probation and0950 contracts. Source reservation only; no installation priority or permission. Re-freeze the canonical journal and live applied ledger before integration/application; preserve applied bytes, reindex only this unapplied successor in the aggregate.

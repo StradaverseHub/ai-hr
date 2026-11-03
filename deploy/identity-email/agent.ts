@@ -72,6 +72,7 @@ const notifications=createNotificationEmailService({
   const rows=await database<WorkflowMailTarget[]>`select * from identity_email.delivery_target(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''})`;
   return rows.length===1?rows[0]:null;
  },
+ privateMessage:async(id,token)=>(await database`select identity_email.private_workflow_mail(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''}) as content`)[0]?.content??{required:true,message:null},
  assessmentTasks:async(id,token)=>{
   const rows=await database<{required:boolean;summary:unknown}[]>`select * from identity_email.delivery_summary(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''})`;
   return rows.length===1&&!rows[0].required?undefined:rows[0]?.summary??null;

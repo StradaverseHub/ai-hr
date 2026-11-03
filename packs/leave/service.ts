@@ -104,6 +104,6 @@ export * from '../../core/leave-generation';
 export { leaveBalancesTx, leaveEntitlementBreakdownTx } from '../../core/read';
 export type { LeaveBalanceReadOptions, LeaveEntitlementBreakdown } from '../../core/read';
 export {myLeaveDashboard} from '../../core/my-leave';
-export { benefitSchemeViewTx } from '../../core/entitlement-scheme-view';
+export { benefitSchemeViewTx, ownBenefitSchemeViewTx } from '../../core/entitlement-scheme-view';
 // 23e87eef: authorized All/single inquiry read contract, registered with the pack drift guard.
 export * from '../../core/leave-inquiry';

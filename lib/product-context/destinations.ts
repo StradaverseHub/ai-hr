@@ -65,6 +65,18 @@ const SIDEBAR:readonly (readonly [string,string,DestinationAudience,string|null]
  ['/admin/settings/notifications','workflowEmail','admin',null],['/admin/scheduled-actions','scheduledActions','admin',null],
  ['/admin/privacy','dataPrivacy','admin',null],['/admin/system-explorer','systemExplorer','admin','system_explorer'],
  ['/admin/system-testing','systemTesting','admin','system_testing'],
+ ['/lifecycle/probation','probationConfirmation','admin','lifecycle'],
+ ['/lifecycle/probation/intake','probationIntake','admin','lifecycle'],
+ ['/lifecycle/probation/settings','probationSettings','admin','lifecycle'],
+ ['/lifecycle/probation/forms','probationForms','admin','lifecycle'],
+ ['/lifecycle/probation/routes','probationRoutes','admin','lifecycle'],
+ ['/lifecycle/probation/workflows','probationWorkflows','admin','lifecycle'],
+ ['/lifecycle/probation/templates','probationTemplates','admin','lifecycle'],
+ ['/lifecycle/contracts','contractManagement','admin','lifecycle'],
+ ['/lifecycle/contracts/intake','contractIntake','admin','lifecycle'],
+ ['/lifecycle/contracts/settings','contractSettings','admin','lifecycle'],
+ ['/lifecycle/contracts/workflows','contractWorkflows','admin','lifecycle'],
+ ['/lifecycle/contracts/templates','contractTemplates','admin','lifecycle'],
 ];
 const groupAudience=(group:'main'|'manage'|'admin'):DestinationAudience=>group==='admin'?'admin':group==='manage'?'manager':'everyone';
 const rowAudience=(row:NavChildDescriptor,fallback:DestinationAudience):DestinationAudience=>row.adminOnly?'admin':row.managerUp&&fallback==='everyone'?'manager':fallback;

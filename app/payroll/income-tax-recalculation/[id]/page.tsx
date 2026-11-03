@@ -29,6 +29,7 @@ export default async function TaxBasisBatchPage({params}:{params:Promise<{id:str
       {batch.failedCount>0&&!unfinished&&<div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-amber-300 bg-amber-50/40 p-4 dark:border-amber-700 dark:bg-amber-950/10"><p className="max-w-3xl text-sm">{t('partialHint')}</p>{canRecalculate&&<Link className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium" href={'/payroll/income-tax-recalculation?retry='+batch.id}>{t('retryFailed')}</Link>}</div>}
       {unfinished&&<TaxBasisProgress batchId={batch.id} recoverable={batch.recoverable===true} canRecalculate={canRecalculate}/>}
     </section>
+    {batch.completedCount>0&&<Link className="inline-block rounded-lg border border-border px-4 py-2 text-sm font-medium text-primary" href={'/payroll?year='+batch.year+'&m='+batch.upToMonth}>{t('reviewPayrollProcess')}</Link>}
     <section className="space-y-4"><h2 className="font-semibold">{t('employeeOutcomes')}</h2><TaxBasisResults employees={batch.employees}/></section>
   </div>;
 }

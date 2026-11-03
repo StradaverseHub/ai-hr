@@ -176,3 +176,5 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [ADR-0169 — Assistant repivot: context layer, agent harness and minimum-necessary disclosure (direction accepted, pending privacy/legal review)](0169-assistant-context-harness-and-disclosure-repivot.md)
 - [ADR-0170 — Teras: the AI operating architecture (proposed draft, not accepted)](0170-teras-ai-operating-architecture.md)
 - [Proposal — Entra sign-in and cloud/hybrid workforce provisioning](entra-workforce-integration-proposal.md) (design only; unnumbered pending integration)
+
+- [ADR-0172: Subject-owned, content-bound document signing](0172-subject-owned-content-bound-signing.md)

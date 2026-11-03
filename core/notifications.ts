@@ -1,3 +1,5 @@
+import {probationNotificationRecipientsTx} from '../packs/probation/service';
+import {contractNotificationRecipientsTx} from '../packs/contracts/service';
 import {currentFollowupTargetsTx} from './automatic-followups';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
@@ -22,7 +24,7 @@ import { rewardAccessSuspensionEventRecipients,rewardNotificationRecipients,rewa
  */
 import { randomUUID } from 'node:crypto';
 import { notificationEmailCategory, type NotificationEmailCategory } from '../lib/notification-email-model';
-import {assertNotificationSweepConnection,noticeNotificationRecipientsTx,noticeSnapshotIdsTx,type NoticeRecipientReader,type NoticeEventReader,type NotificationSweepConnection} from './notice-projection';
+import {assertNotificationSweepConnection,noticeNotificationRecipientsTx,noticeSnapshotIdsTx,type NoticeRecipientReader,type NoticeEventReader,probationSweepRecipientsForTx,type NoticeSweepAccess,type NotificationSweepConnection} from './notice-projection';
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
@@ -324,12 +326,18 @@ export function renderRewardRouted(p: Record<string, unknown> | null, ev: EventR
 // Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
 // app where the full, gated detail lives.
 const REGISTRY: Record<string, Spec | Spec[]> = {
+  'probation.notification-due':{kind:'probation.notification',category:'review',recipients:(tx,ev)=>probationNotificationRecipientsTx(tx,ev),render:(payload)=>({severity:'action',title:'probation.notification.title',body:'probation.notification.body',linkPath:typeof payload?.caseId==='string'?(payload.documentKind==='letter'&&typeof payload.partId==='string'?`/lifecycle/probation/${payload.caseId}/letters/${payload.partId}`:`/lifecycle/probation/${payload.caseId}`):'/lifecycle/probation'})},
   // This explicit command atomically point-projects its in-app notification. SQL refuses a forged
   // event or a commit without that exact projection; the global cursor must not project it twice.
   'employee-home.greeting.sent': {
     kind:'employee-home.greeting',category:null,recipients:async()=>[],
     render:(_payload,ev)=>({severity:'info',title:'employeeHome.greetingNotification.title',
       body:'employeeHome.greetingNotification.body',linkPath:`/me/greetings/${ev.aggregateId}`}),
+  },
+  'contract.notification-due': {
+    kind:'contract.notification-due',category:'review',
+    recipients:(tx,ev)=>contractNotificationRecipientsTx(tx,ev.aggregateId),
+    render:()=>({severity:'action',title:'Contract staff task',body:'Open Contract Management to review your assigned task.',linkPath:'/lifecycle/contracts'}),
   },
   'onboarding.digest': {
     kind:'onboarding.digest',category:'onboarding',
@@ -1100,6 +1108,7 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
     for (const ev of rows) {
       const entry = REGISTRY[ev.eventType];
       if (!entry) continue;
+      if(await legacyProbationNotificationIsObsolete(tx,ev.eventType,ev.aggregateId))continue;
       if(ev.eventType==='reward-access.suspended'){
         const [account]=await tx.execute<{created:number}>(sql`select app.reward_access_project_account_suspension(${ev.id}::uuid) as created`);
         created+=account.created;
@@ -1152,8 +1161,13 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
 }
 
 /** Reauthorize queued mail with the same live recipient graph that created the in-app projection. */
-export async function notificationStillTargets(tx: Tx, eventId: string, kind: string, category: string, recipient: string,noticeReader?:NoticeRecipientReader,noticeEventReader?:NoticeEventReader): Promise<boolean> {
+async function legacyProbationNotificationIsObsolete(tx:Tx,eventType:string,reviewId:string):Promise<boolean>{if(!eventType.startsWith('employment-review.'))return false;const[row]=await tx.execute<{owned:boolean}>(sql`select app.probation_legacy_review_owned(${reviewId}::uuid) as owned`);return row?.owned===true;}
+
+export async function notificationStillTargets(tx: Tx, eventId: string, kind: string, category: string, recipient: string,noticeReader?:NoticeRecipientReader,noticeEventReader?:NoticeEventReader,probationSweep?:NoticeSweepAccess): Promise<boolean> {
   if (!notificationEmailCategory.safeParse(category).success) return false;
+  if(kind==='probation.notification'&&category==='review'&&probationSweep){
+    return (await probationSweepRecipientsForTx(tx,probationSweep,eventId)).includes(recipient);
+  }
   const [visible] = await tx.select({id:domainEvent.id,aggregateId:domainEvent.aggregateId,eventType:domainEvent.eventType,subjectEmploymentId:domainEvent.subjectEmploymentId,payload:domainEvent.payload})
     .from(domainEvent).where(and(eq(domainEvent.id,eventId),sql`${domainEvent.tenantId}=app.current_tenant_id()`)).limit(1);
   let ev:Awaited<ReturnType<NoticeEventReader>>=visible;
@@ -1163,6 +1177,7 @@ export async function notificationStillTargets(tx: Tx, eventId: string, kind: st
     if(!ev)throw Error('Notice source event is unavailable; retain the queued delivery for investigation.');
   }
   if (!ev) return false;
+  if(await legacyProbationNotificationIsObsolete(tx,ev.eventType,ev.aggregateId))return false;
   const entry = REGISTRY[ev.eventType];
   if (!entry) return false;
   const ref: EventRef = {id:eventId,aggregateId:ev.aggregateId,subjectEmploymentId:ev.subjectEmploymentId};

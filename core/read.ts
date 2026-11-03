@@ -1,3 +1,5 @@
+import {payrollEmploymentPredicate,payrollCompensationEffectiveOn,payrollRunContextsTx,outstandingPaymentPredicate,payrollEmploymentEnd} from '../packs/payroll/service';
+import {settingEnabled} from './entitlements';
 import {assertReviewedPayrollScopeCompanyTx} from './payroll-run-selection';
 import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
 import {isCalendarDate} from '../lib/calendar-date';
@@ -866,6 +868,7 @@ export type PayrollRunEmployeeRow = {
    *  belongs beside each person instead, which is where it is actually decided. NULL is the normal case
    *  and the picker renders it as an em dash, not as an empty cell. */
   payrollPolicyName: string | null;
+  outstandingOnly?:boolean;
 };
 
 /**
@@ -894,6 +897,7 @@ export function listEmployeesForPayrollRun(
   ctx: SessionContext,
   companyIds: string | string[],
   payPeriod: string,
+  payrollCycleId?:string,
 ): Promise<PayrollRunEmployeeRow[]> {
   // Multi-company (feedback 3653d14b): the wizard now scopes a run across one, several, or all of the
   // admin's companies. Accept a single id (legacy callers) or an array; an empty array short-circuits to
@@ -901,6 +905,9 @@ export function listEmployeesForPayrollRun(
   const ids = Array.isArray(companyIds) ? companyIds : [companyIds];
   return withTenant(ctx, async (tx) => {
     if (ids.length === 0) return [];
+    const contexts=await payrollRunContextsTx(tx,ids,payPeriod,payrollCycleId);
+    if(!contexts.length)return [];
+    const eligibility=contexts.map(run=>payrollEmploymentPredicate(run,settingEnabled(ctx,'payroll.individual_txn_pay_enabled')));
     const currentAssignment = and(
       eq(assignment.employmentId, employment.id),
       isNull(assignment.validTo),
@@ -908,15 +915,14 @@ export function listEmployeesForPayrollRun(
     );
     const currentComp = and(
       eq(compensation.employmentId, employment.id),
-      isNull(compensation.validTo),
-      isNull(compensation.supersededAt),
+      payrollCompensationEffectiveOn(payPeriod),
     );
     const rows = await tx
       .select({
         employmentId: employment.id,
         name: person.fullName,
         employeeCode: employment.employeeCode,
-        companyId: employment.companyId,
+        companyId: company.id,
         company: company.legalName,
         departmentId: assignment.departmentId,
         businessUnitId: department.businessUnitId,
@@ -930,7 +936,7 @@ export function listEmployeesForPayrollRun(
         // pay eligibility moves; only the option labels in that dropdown do.
         status: employmentStatusSql(),
         hiredOn: employment.hiredOn,
-        terminatedOn: employment.terminatedOn,
+        terminatedOn: payrollEmploymentEnd,
         hasCurrentCompensation: sql<boolean>`${compensation.id} is not null`,
         // 7076f8af — the assigned Payroll Policy, shown per person in the wizard's Step-2 picker. A LEFT
         // join on a nullable FK: it adds a column and can never add or drop a row, so the set this query
@@ -939,16 +945,16 @@ export function listEmployeesForPayrollRun(
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
-      .innerJoin(company, eq(company.id, employment.companyId))
+      .innerJoin(company,or(...contexts.map(run=>and(eq(company.id,run.companyId),or(and(eq(employment.companyId,run.companyId),payrollEmploymentPredicate(run,false)),outstandingPaymentPredicate(run,settingEnabled(ctx,'payroll.individual_txn_pay_enabled')))))))
       .leftJoin(assignment, currentAssignment)
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(compensation, currentComp)
       .leftJoin(payrollPolicy, eq(payrollPolicy.id, employment.payrollPolicyId))
       .where(
-        payrollRunCurrentCompanyPeriodPredicate(ids,payPeriod),
+        or(...eligibility),
       )
       .orderBy(company.legalName, person.fullName);
-    return rows as PayrollRunEmployeeRow[];
+    return rows.map(row=>({...row,outstandingOnly:row.terminatedOn!==null&&row.terminatedOn<payPeriod+'-01'})) as PayrollRunEmployeeRow[];
   });
 }
 

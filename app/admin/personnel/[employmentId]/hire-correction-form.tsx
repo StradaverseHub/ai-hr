@@ -7,11 +7,11 @@
 // confirmation. It posts ONLY the fields HR changed — an untouched select has no `name`, so it cannot
 // overwrite a value somebody else corrected after this form was rendered — and the service reads only the
 // six allow-listed field names in any case.
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useActionState, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { personnelControl, personnelCarry, personnelWorkflowCarry, personnelFormLabel, personnelFormRequired } from '@/lib/personnel-form-contract';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { correctHireDetailsAction } from './actions';
+import { correctHireDetailsAction,saveMovementPageAction } from './actions';
 
 const HIRE_FORM_IDS = {
   "businessUnitId": "employment.organisation_assignment.businessunitname",
@@ -63,6 +63,7 @@ export function HireCorrectionForm({
   fields,
   readOnly,
   cancelHref,
+  pageContext,
 }: {
   employmentId: string;
   /** "Hired · 2024-03-01" */
@@ -70,12 +71,14 @@ export function HireCorrectionForm({
   fields: HireCorrectionFormField[];
   readOnly: HireCorrectionReadOnlyRow[];
   cancelHref: string;
+  pageContext?:import('@/lib/personnel-movement-navigation').MovementPageContext;
 }) {
   const t = useTranslations('people.detail.movement.hireCorrection');
   const tRoot=useTranslations();
   const fieldLabel=(field:keyof typeof HIRE_FORM_IDS)=>personnelFormLabel(hireField(field),(key,fallback)=>tRoot.has(key)?tRoot(key):fallback);
   const reasonLabel=personnelFormLabel('employment_history.original_hire_details_and_corrections.reason',(key,fallback)=>tRoot.has(key)?tRoot(key):fallback);
   const formRef = useRef<HTMLFormElement>(null);
+  const [pageError,pageAction,pagePending]=useActionState(saveMovementPageAction,null);
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(fields.map((f) => [f.field, f.currentId ?? ''])),
   );
@@ -104,7 +107,9 @@ export function HireCorrectionForm({
   const canReview = changed.length > 0 && reason.trim().length > 0;
 
   return (
-    <form ref={formRef} action={correctHireDetailsAction}>
+    <form ref={formRef} aria-busy={pagePending} action={pageContext?pageAction:correctHireDetailsAction}>
+      {pageContext&&<><input type="hidden" name="movementPage" value="correct-hire"/><input type="hidden" name="showCorrected" value={pageContext.showCorrected??''}/><input type="hidden" name="from" value={pageContext.from??''}/></>}
+      {pageError&&<p role="alert" className="px-4 py-3 text-sm text-destructive">{pageError}</p>}
       <input type="hidden" name="employmentId" value={employmentId} />
       <input {...personnelCarry('employment_history.original_hire_details_and_corrections.reason')} value={reason} />
       {/* ONLY the changed fields are posted. An untouched select carries no name. */}

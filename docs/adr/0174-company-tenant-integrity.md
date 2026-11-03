@@ -26,12 +26,12 @@ The database, not the policy author, keeps a company reference inside its tenant
 
 1. Every tenant-scoped table with `tenant_id`, `company_id` and a `company_id → company(id)` key also carries
    `FOREIGN KEY (company_id, tenant_id) REFERENCES company (id, tenant_id)` named `<table>_company_tenant_fk`,
-   with the same ON DELETE action as its existing key (0969, 128 tables). It was added NOT VALID and validated
-   separately (0970), whose data check reports every offending table instead of the first. A defect stops the
+   with the same ON DELETE action as its existing key (1001, 146 tables). It was added NOT VALID and validated
+   separately (1002), whose data check reports every offending table instead of the first. A defect stops the
    upgrade; the migration never rewrites or deletes rows. New tables of that shape must carry the key;
    `test/tenant-company-fk.test.ts` fails otherwise.
 2. The three employment helpers pin `e.tenant_id = app.current_tenant_id()`, as `app.can_see_employment` has
-   since 0016, and use `SET search_path = pg_catalog, public, pg_temp` with schema-qualified relations (0968).
+   since 0016, and use `SET search_path = pg_catalog, public, pg_temp` with schema-qualified relations (1000).
 3. `app.company_subtree` walks only the session tenant and is no longer executable by PUBLIC or `ai_hr_app`.
    A future caller must be granted EXECUTE deliberately.
 
@@ -42,13 +42,13 @@ The database, not the policy author, keeps a company reference inside its tenant
 Every INSERT, and every UPDATE of `company_id` or `tenant_id`, on those tables does one more unique-index
 lookup on `company`. Writers were reviewed before the change: application writes stamp the session tenant
 under RLS, company moves and reparenting stay inside one tenant, and nothing updates `company.tenant_id`.
-Deleting a company behaves as before. When 0969 and 0970 install in the same run, the 0969 locks are held
+Deleting a company behaves as before. When 1001 and 1002 install in the same run, the 1001 locks are held
 until the commit: writes to those tables wait for the validation scans, reads continue.
 
 An installation with a cross-tenant row cannot complete the upgrade until its owner reviews and resolves
 that row. The error names each table and its first offending key, and the journal stays on its previous row.
 
-`test/tenant-company-fk-upgrade.test.ts` rehearses both outcomes on a populated database at the 650-entry
+`test/tenant-company-fk-upgrade.test.ts` rehearses both outcomes on a populated database at the 656-entry
 boundary.
 
 ## Not covered

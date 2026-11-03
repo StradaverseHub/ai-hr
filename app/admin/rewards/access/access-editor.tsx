@@ -16,7 +16,7 @@ import { BatchAddAccess, CopyAccess } from './batch-access';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 type Member = RewardAccessAdministration['members'][number];
 type Preview = RewardAccessChange & {
-    digest: string;
+    digest: string;pending?:boolean;
 };
 export function RewardAccessEditor({ value,requests=[],singleAdminCompanies=[] }: {
     value: RewardAccessAdministration;requests?:RewardAccessRequest[];singleAdminCompanies?:string[];
@@ -28,14 +28,15 @@ export function RewardAccessEditor({ value,requests=[],singleAdminCompanies=[] }
         before: Member | null;
         remove: boolean;
     } | null>(null);
+    const [reason,setReason]=useState(''),[savedPending,setSavedPending]=useState(true);
     const [validFrom,setValidFrom]=useState(todayInKualaLumpur()),[validTo,setValidTo]=useState(''),[coversUserId,setCoversUserId]=useState(''),[restoreReason,setRestoreReason]=useState(''),[restoring,setRestoring]=useState(false);
     const [unitId, setUnitId] = useState(''), [userId, setUserId] = useState(''), [role, setRole] = useState<RewardRole>('bu');
     const [preview, setPreview] = useState<Preview | null>(null), [error, setError] = useState(''), [saved, setSaved] = useState(false), [busy, start] = useTransition();
     const editorRef = useRef<HTMLDivElement>(null), userRef = useRef<HTMLDivElement>(null), [pickerKey, setPickerKey] = useState(0), [mode, setMode] = useState<'add' | 'copy' | null>(null);
     const clear = () => { setPreview(null); setError(''); setSaved(false); };
-    const open = (before: Member | null, remove = false) => { clear(); setMode(null); setEditor({ before, remove }); setUnitId(before?.unitId ?? value.reviews.find(x => x.status === 'draft')?.id ?? ''); setUserId(before?.userId ?? ''); setRole(before?.role ?? 'bu');setValidFrom(before?.validFrom??todayInKualaLumpur());setValidTo(before?.validTo??'');setCoversUserId(before?.coversUserId??'');setRestoreReason('');setRestoring(false); setPickerKey(k => k + 1); requestAnimationFrame(() => { editorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' }); userRef.current?.querySelector<HTMLElement>('button, input')?.focus(); }); };
+    const open = (before: Member | null, remove = false) => { clear(); setMode(null); setEditor({ before, remove }); setUnitId(before?.unitId ?? value.reviews.find(x => x.status === 'draft')?.id ?? ''); setUserId(before?.userId ?? ''); setRole(before?.role ?? 'bu');setValidFrom(before?.validFrom??todayInKualaLumpur());setValidTo(before?.validTo??'');setCoversUserId(before?.coversUserId??'');setRestoreReason('');setRestoring(false);setReason(''); setPickerKey(k => k + 1); requestAnimationFrame(() => { editorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' }); userRef.current?.querySelector<HTMLElement>('button, input')?.focus(); }); };
     const review = value.reviews.find(x => x.id === unitId);
-    const change: RewardAccessChange = { unitId, revision: review?.revision ?? 0, before: editor?.before ? { userId: editor.before.userId, role: editor.before.role } : null, after: editor?.remove ? null : { userId, role,validFrom,validTo:validTo||null,coversUserId:coversUserId||null,...(restoring?{restoreReason}: {}) } };
+    const change: RewardAccessChange = { reason,unitId, revision: review?.revision ?? 0, before: editor?.before ? { userId: editor.before.userId, role: editor.before.role } : null, after: editor?.remove ? null : { userId, role,validFrom,validTo:validTo||null,coversUserId:coversUserId||null,...(restoring?{restoreReason}: {}) } };
     const name = (id: string) => { const account = value.users.find(x => x.id === id) ?? value.members.find(x => x.userId === id); return account?.name ?? account?.email ?? t('unavailable', { id }); };
     const scope = (id: string) => { const row = value.reviews.find(x => x.id === id); return row ? `${row.company} / ${row.unit} · ${row.cycle} · ${row.year} · ${r(`kinds.${row.kind}`)}` : ''; };
     const inScope = (v: RewardAccessAdministration['reviews'][number]) => (!company || v.companyId === company) && (!cycle || v.cycleId === cycle) && (!unitFilter || v.businessUnitId === unitFilter) && (!gaps || !!v.coverage?.missing.length);
@@ -46,7 +47,7 @@ export function RewardAccessEditor({ value,requests=[],singleAdminCompanies=[] }
     const accounts: ComboboxOption[] = [...value.users.map(x => ({ value: x.id, label: x.name ?? x.email ?? t('unnamed'), description: [facts(x), x.email].filter(Boolean).join(' · '), keywords: x.employeeCode ?? '' })), ...value.candidates.map((x, i) => ({ value: `no-login:${i}`, label: x.name ?? x.email ?? t('unnamed'), description: [t('noLogin'), facts(x)].filter(Boolean).join(' · '), keywords: `${x.email ?? ''} ${x.employeeCode ?? ''}`, disabled: true }))];
     // f38e5d8e: additions and cycle copies go through one all-or-nothing batch; Edit/Remove stay single exact changes.
     const begin = (next: 'add' | 'copy') => { clear(); setEditor(null); setMode(next); requestAnimationFrame(() => editorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' })); };
-    const batchSaved = () => { setMode(null); setSaved(true); router.refresh(); };
+    const batchSaved = (_reviews:number,pending=true) => { setMode(null); setSaved(true);setSavedPending(pending); router.refresh(); };
     const labels = { name, scope: (id: string) => { const row = value.reviews.find(x => x.id === id); return row ? `${row.company} / ${row.unit} · ${row.cycle}` : ''; } };
     const unique = (field: 'companyId' | 'cycleId' | 'businessUnitId') => [...new Map(value.reviews.map(x => [x[field], x])).values()];
     const unchanged = !!editor?.before && !editor.remove && editor.before.userId === userId && editor.before.role === role && (editor.before.validFrom??todayInKualaLumpur())===validFrom && (editor.before.validTo??'')===validTo && (editor.before.coversUserId??'')===coversUserId&&!restoring;
@@ -54,6 +55,8 @@ export function RewardAccessEditor({ value,requests=[],singleAdminCompanies=[] }
   {singleAdminCompanies.length>0&&<p role="status" className="rounded-md border border-warning/40 p-3 text-sm">{c('singleAdmin',{companies:singleAdminCompanies.join(', ')})}</p>}
   <RewardAccessRequests requests={requests} value={value}/>
   <Link href="/admin/rewards/access/export" className="inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">{c('export')}</Link>
+  <Link href="/admin/rewards/access/audit" className="inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">{c('exportAudit')}</Link>
+  <p className="text-sm text-muted-foreground">{c('proposalScope')}</p>
   <div className="flex flex-wrap items-end justify-between gap-3"><div className="flex flex-wrap items-end gap-3">
    <Field label={t('search')}><input type="search" value={query} onChange={e => setQuery(e.target.value)} className={inputCls}/></Field>
    <Field label={r('company')}><select className={inputCls} value={company} onChange={e => setCompany(e.target.value)}><option value="">{t('allCompanies')}</option>{unique('companyId').map(x => <option key={x.companyId} value={x.companyId}>{x.company}</option>)}</select></Field>
@@ -72,7 +75,7 @@ export function RewardAccessEditor({ value,requests=[],singleAdminCompanies=[] }
             return <tr key={m.id}><td className="px-3 py-3"><span className="font-medium">{m.name ?? m.email ?? t('unavailable', { id: m.userId })}</span>{m.email && m.name && <span className="block text-xs text-muted-foreground">{m.email}</span>}<span className="block text-xs text-muted-foreground">{m.suspension?c(`suspensions.${m.suspension.reason}`,{on:m.suspension.on}):t(m.disabled?'disabled':'active')}</span><span className="block text-xs text-muted-foreground">{m.validFrom} – {m.validTo??c('openEnded')}{m.coversUserId&&` · ${c('proxyFor',{name:name(m.coversUserId)})}`}</span></td><td className="px-3 py-3">{r(`roles.${m.role}`)}{m.role === 'pbp' && <span className="block text-xs text-muted-foreground">{t('readOnly')}</span>}</td><td className="px-3 py-3"><span>{v.company} / {v.unit}</span><span className="block text-xs text-muted-foreground">{v.cycle}</span></td><td className="px-3 py-3">{r(`stages.${v.status}`)}<span className="block text-xs text-muted-foreground">{t(locked ? 'locked' : 'editable')}</span></td><td className="px-3 py-3"><div className="flex flex-wrap gap-1"><Button type="button" variant="ghost" size="sm" disabled={busy || locked} onClick={() => open(m)} aria-label={`${t('edit')} · ${name(m.userId)} · ${r(`roles.${m.role}`)}`}><Pencil aria-hidden className="size-4"/>{t('edit')}</Button><Button type="button" variant="ghost" size="sm" disabled={busy || locked || lastRequired} onClick={() => open(m, true)} aria-label={`${t('remove')} · ${name(m.userId)} · ${r(`roles.${m.role}`)}`}><Trash2 aria-hidden className="size-4"/>{t('remove')}</Button></div>{locked && <p className="max-w-xs text-xs text-muted-foreground">{t('lockedHelp')}</p>}{lastRequired && !locked && <p className="max-w-xs text-xs text-muted-foreground">{t(lastGr ? 'lastGrHelp' : 'lastRequiredHelp')}</p>}</td></tr>;
         })}</tbody></table>{!rows.length && <p className="px-5 py-10 text-sm text-muted-foreground">{t(value.reviews.length ? 'empty' : 'noScopes')}</p>}</div>
   <RewardCoveragePanel reviews={value.reviews.filter(inScope)}/>
-  {saved && <p role="status" className="rounded-md border p-3 text-sm">{t('saved')}</p>}
+  {saved && <p role="status" className="rounded-md border p-3 text-sm">{c(savedPending?'pendingSaved':'immediateSaved')}</p>}
   <div ref={editorRef}>{mode === 'add' && <BatchAddAccess value={value} accounts={accounts} labels={labels} onSaved={batchSaved} onCancel={() => setMode(null)}/>}{mode === 'copy' && <CopyAccess value={value} labels={labels} onSaved={batchSaved} onCancel={() => setMode(null)}/>}{editor && <Card className="p-5"><SectionHeader title={t(editor.remove ? 'removeTitle' : editor.before ? 'editTitle' : 'add')}/><p className="mb-4 max-w-3xl text-sm text-muted-foreground">{t('bounded')}</p>
    <fieldset disabled={busy} className="grid gap-4 md:grid-cols-2">
     <div ref={userRef}><Field label={t('person')}>{editor.remove ? <input className={inputCls} readOnly value={name(userId)}/> : <Combobox key={pickerKey} value={userId} options={accounts} placeholder={t('chooseAccount')} searchPlaceholder={t('personSearch')} noResultsLabel={t('noPeople')} legacySuffix="" onValueChange={v => { if (!v.startsWith('no-login:')) { setUserId(v); clear(); } }}/>}</Field>{!editor.remove && value.candidates.length > 0 && <p className="mt-1 text-xs text-muted-foreground">{t('noLoginHelp')}</p>}</div>
@@ -81,8 +84,9 @@ export function RewardAccessEditor({ value,requests=[],singleAdminCompanies=[] }
     <div className="rounded-md border p-3 text-sm"><p className="font-medium">{r(`roles.${role}`)}</p><p className="mt-1 text-muted-foreground">{t(`permissions.${role}`)}</p></div>
     {!editor.remove&&<><Field label={c('validFrom')}><input type="date" className={inputCls} value={validFrom} onChange={e=>{setValidFrom(e.target.value);clear();}}/></Field><Field label={c('validTo')}><input type="date" className={inputCls} min={validFrom} value={validTo} onChange={e=>{setValidTo(e.target.value);clear();}}/></Field><Field label={c('covers')}><select className={inputCls} value={coversUserId} onChange={e=>{setCoversUserId(e.target.value);clear();}}><option value="">{c('notProxy')}</option>{value.members.filter(m=>m.unitId===unitId&&m.role===role&&m.userId!==userId).map(m=><option key={m.id} value={m.userId}>{name(m.userId)}</option>)}</select></Field>
     {editor.before?.suspension&&['notice','assignment'].includes(editor.before.suspension.reason)&&<div className="space-y-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={restoring} onChange={e=>{setRestoring(e.target.checked);clear();}}/>{c('restore')}</label>{restoring&&<Field label={c('restoreReason')}><textarea className={inputCls} value={restoreReason} minLength={10} maxLength={2000} onChange={e=>{setRestoreReason(e.target.value);clear();}}/></Field>}</div>}</>}
+   <Field label={c('requestReason')}><textarea className={inputCls} value={reason} minLength={10} maxLength={2000} onChange={e=>{setReason(e.target.value);clear();}}/></Field>
    </fieldset>
-   <div className="mt-5 flex flex-wrap justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={() => { setEditor(null); clear(); }}>{t('cancel')}</Button><Button type="button" disabled={busy || !review || review.status !== 'draft' || !userId || unchanged || !validFrom || (!!validTo&&validTo<validFrom) || (restoring&&restoreReason.trim().length<10)} onClick={() => start(async () => {
+   <div className="mt-5 flex flex-wrap justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={() => { setEditor(null); clear(); }}>{t('cancel')}</Button><Button type="button" disabled={busy || reason.trim().length<10 || !review || review.status !== 'draft' || !userId || unchanged || !validFrom || (!!validTo&&validTo<validFrom) || (restoring&&restoreReason.trim().length<10)} onClick={() => start(async () => {
                 clear();
                 try {
                     const result = await previewRewardAccessAction(change);
@@ -96,14 +100,14 @@ export function RewardAccessEditor({ value,requests=[],singleAdminCompanies=[] }
                 }
             })}>{t('preview')}</Button></div>
    {error && <p role="alert" className="mt-4 text-sm text-destructive">{t(`errors.${error}`)}</p>}
-   {preview && <section className="mt-5 space-y-3 rounded-md border p-4" aria-label={t('previewTitle')}><h3 className="font-semibold">{t('previewTitle')}</h3><p className="text-sm">{scope(preview.unitId)}</p><dl className="grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-muted-foreground">{t('before')}</dt><dd className="mt-1 font-medium">{preview.before ? `${name(preview.before.userId)} · ${r(`roles.${preview.before.role}`)}` : t('none')}</dd></div><div><dt className="text-muted-foreground">{t('after')}</dt><dd className="mt-1 font-medium">{preview.after ? `${name(preview.after.userId)} · ${r(`roles.${preview.after.role}`)}` : t('revoked')}</dd></div></dl><p className="text-xs text-muted-foreground">{t('history')}</p><Button type="button" disabled={busy} variant={editor.remove ? 'destructive' : 'default'} onClick={() => start(async () => {
+   {preview && <section className="mt-5 space-y-3 rounded-md border p-4" aria-label={t('previewTitle')}><h3 className="font-semibold">{t('previewTitle')}</h3><p className="text-sm font-medium">{c(preview.pending?'pendingPreview':'immediatePreview')}</p><p className="text-sm">{scope(preview.unitId)}</p><dl className="grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-muted-foreground">{t('before')}</dt><dd className="mt-1 font-medium">{preview.before ? `${name(preview.before.userId)} · ${r(`roles.${preview.before.role}`)}` : t('none')}</dd></div><div><dt className="text-muted-foreground">{t('after')}</dt><dd className="mt-1 font-medium">{preview.after ? `${name(preview.after.userId)} · ${r(`roles.${preview.after.role}`)}` : t('revoked')}</dd></div></dl><p className="text-xs text-muted-foreground">{t('history')}</p><Button type="button" disabled={busy} variant={editor.remove ? 'destructive' : 'default'} onClick={() => start(async () => {
                     setError('');
                     try {
-                        const result = await saveRewardAccessAction({ unitId: preview.unitId, revision: preview.revision, before: preview.before, after: preview.after }, preview.digest);
+                        const result = await saveRewardAccessAction({ unitId: preview.unitId, revision: preview.revision, before: preview.before, after: preview.after,reason:preview.reason }, preview.digest);
                         if (result.ok) {
                             setEditor(null);
                             setPreview(null);
-                            setSaved(true);
+                            setSaved(true);setSavedPending(result.result?.pending??true);
                             router.refresh();
                         }
                         else {

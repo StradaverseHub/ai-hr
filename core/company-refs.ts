@@ -78,6 +78,24 @@ export type CompanyRef = {
 };
 
 export const COMPANY_REFERRERS: readonly CompanyRef[] = [
+  {table:'contract_case',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'contract_configuration',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'contract_retirement_custody',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'contract_role_assignment',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'contract_template',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'contract_term',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'contract_workflow',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'document_signing_document',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'payroll_tax_basis_replacement',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_access',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_activation',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_builder_definition',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_case',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_configuration',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_cutover',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_intake_entry',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_intake_evidence',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_offline_final_proposal',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
   {table:'letter_asset',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
   {table:'letter_automation_rule_version',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
   {table:'letter_capability_grant',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
@@ -272,6 +290,9 @@ export type CompanyConfigDependent = {
 };
 
 export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  {table:'contract_role_assignment',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.replan_retained_company_in_use',note:'Retain scoped lifecycle role mappings.'},
+  {table:'probation_access',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.replan_retained_company_in_use',note:'Retain scoped lifecycle role mappings.'},
+  {table:'probation_access',column:'department_id',references:'department',effect:'blocks',existsFunction:'app.replan_retained_company_in_use',note:'Retain scoped lifecycle role mappings.'},
   {table:'payroll_history_import_record',column:'cycle_id',references:'payroll_cycle',effect:'blocks',note:'Imported payroll identities retain the exact configured cycle even after every effective value is retired.'},
   { table: 'employment_cost_allocation_row', column: 'cost_center_id', references: 'cost_center', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
   { table: 'job_document_revision', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },

@@ -1,4 +1,4 @@
--- Tenant-isolation defence in depth, part 3 of 3 (ADR-0174): check the data, then validate the 0969
+-- Tenant-isolation defence in depth, part 3 of 3 (ADR-0174): check the data, then validate the 1001
 -- company/tenant keys.
 --
 -- Each key is validated in its own subtransaction, so one offending table does not hide the others. A
@@ -9,7 +9,7 @@
 -- are checked completely whichever role runs the migration.
 --
 -- VALIDATE takes SHARE UPDATE EXCLUSIVE on each table and ROW SHARE on company. Pending migrations install
--- in one transaction, so when 0969 lands in the same run its locks (writes wait, reads continue) are held
+-- in one transaction, so when 1001 lands in the same run its locks (writes wait, reads continue) are held
 -- until the commit; the scans use company's (id, tenant_id) unique index.
 DO $tenant_company_validate$
 DECLARE
@@ -55,8 +55,16 @@ BEGIN
     'public.company_payroll_config',
     'public.company_statutory_authority',
     'public.company_statutory_my',
+    'public.contract_case',
+    'public.contract_configuration',
+    'public.contract_retirement_custody',
+    'public.contract_role_assignment',
+    'public.contract_template',
+    'public.contract_term',
+    'public.contract_workflow',
     'public.cost_center',
     'public.department',
+    'public.document_signing_document',
     'public.employee_draft',
     'public.employee_home_configuration_revision',
     'public.employee_id_config',
@@ -121,6 +129,7 @@ BEGIN
     'public.payroll_tax_basis_batch',
     'public.payroll_tax_basis_event',
     'public.payroll_tax_basis_preview',
+    'public.payroll_tax_basis_replacement',
     'public.payroll_tax_basis_revision',
     'public.payslip_information_setting',
     'public.pcb_payment',
@@ -133,6 +142,15 @@ BEGIN
     'public.performance_onehr_review',
     'public.personnel_import_assistance_attempt',
     'public.position',
+    'public.probation_access',
+    'public.probation_activation',
+    'public.probation_builder_definition',
+    'public.probation_case',
+    'public.probation_configuration',
+    'public.probation_cutover',
+    'public.probation_intake_entry',
+    'public.probation_intake_evidence',
+    'public.probation_offline_final_proposal',
     'public.replacement_holiday',
     'public.replacement_holiday_policy',
     'public.replacement_holiday_revision',

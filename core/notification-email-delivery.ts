@@ -38,7 +38,7 @@ export async function deliverNotificationEmails(ctx:SessionContext,transport:Not
     if(status?.ready&&job.kind==='performance.reminder'&&(!status.assessmentReminders||!status.assessmentReminderWords)){unavailable=true;continue;}
     const leaseToken=randomUUID();
     const claimed=await withTenant(ctx,async tx=>{
-      if (!await notificationStillTargets(tx,job.source_event_id,job.kind,job.category,job.recipient_employment_id,noticeReader,noticeEventReader)) {
+      if (!await notificationStillTargets(tx,job.source_event_id,job.kind,job.category,job.recipient_employment_id,noticeReader,noticeEventReader,options.noticeSweep)) {
         await tx.update(notificationDelivery).set({status:'skipped',lastError:'notEligible',updatedAt:sql`now()`}).where(and(eq(notificationDelivery.id,job.id),eq(notificationDelivery.status,'pending'),isNull(notificationDelivery.startedAt),or(isNull(notificationDelivery.leaseUntil),sql`${notificationDelivery.leaseUntil}<now()`)));
         return 'skipped';
       }

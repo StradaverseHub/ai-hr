@@ -14,9 +14,9 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(653); // Accepted 648-entry Noveri prefix, the two explicit nine-item successors, then the 0968–0970 tenant-isolation hardening.
+ expect(journal.entries).toHaveLength(659); // Accepted 650-entry LOGIN baseline, the six Re-plan successors, then the 1000–1002 tenant-isolation hardening.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
- expect(journal.entries.slice(boundary)).toHaveLength(82);
+ expect(journal.entries.slice(boundary)).toHaveLength(88);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
  // The accepted V9 prefix and coordinated Feedback/Bank identities are immutable; the two coordinated Formula appends follow.
  expect(createHash('sha256').update(JSON.stringify(journal.entries.slice(0,579).map(migrationIdentity))).digest('hex')).toBe('11e5295ce4e60acb1f13c009a78098b043c862b6412ed2bbc2e102f142a87f85');
@@ -44,10 +44,16 @@ it('preserves populated Native issuance, private data, identity and every applie
   // Nine-item BOARD successors; the accepted Noveri SQL and prior journal identities above stay unchanged.
   {idx:763,version:'7',when:1793330000335,tag:'0935_password_account_unlock',breakpoints:true,hash:'3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa'},
   {idx:793,version:'7',when:1793330000346,tag:'0946_draft_creation_cohort_custody',breakpoints:true,hash:'cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390'},
+  {idx:794,version:'7',when:1793330000347,tag:'0947_rewards_access_approval_exemptions',breakpoints:true,hash:'f7a1e3725019d8ce09052efb3b3fe1763190622052b4f826a678f8231cf8914e'},
+  {idx:795,version:'7',when:1793330000348,tag:'0948_document_signing',breakpoints:true,hash:'07ab24b5dcd85f16ba3474fe7fdd7b620d9603ee882dc8b8abc22e18b21533ea'},
+  {idx:796,version:'7',when:1793330000349,tag:'0949_probation_confirmation',breakpoints:true,hash:'53978af9d391beb2683c47902413bbf4a61e11c4f013cdb3211f80c49aff42ab'},
+  {idx:797,version:'7',when:1793330000350,tag:'0950_contract_management',breakpoints:true,hash:'84bc3e3a907118e2c6806e863c63544df061b49dbb9b51fcd4fe8f85ffcef8ac'},
+  {idx:798,version:'7',when:1793330000351,tag:'0951_payroll_reprocess_correction_lineage',breakpoints:true,hash:'b65a8adc2f45165fb2bdb41b30d4ca6eeb7f7b44ef2539bcdecc7efde0322057'},
+  {idx:799,version:'7',when:1793330000353,tag:'0953_lifecycle_service_info_intents',breakpoints:true,hash:'6f71e2fe862f86c836026f3e07647ca29b913dd34b2171c98a033b43da0afa89'},
   // ADR-0174 tenant-isolation hardening; frozen here.
-  {idx:813,version:'7',when:1793330000368,tag:'0968_employment_helper_tenant_pin',breakpoints:true,hash:'f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a'},
-  {idx:814,version:'7',when:1793330000369,tag:'0969_company_tenant_fk_not_valid',breakpoints:true,hash:'54aefce4652bea206c14c1d12e01d7f0578cc63e617c7a41bd04fd5406a4e71a'},
-  {idx:815,version:'7',when:1793330000370,tag:'0970_company_tenant_fk_validate',breakpoints:true,hash:'c1e957cdc49e18998cb78aaee69e4f3f8ec28e6def3828cbf69dec779f8483be'},
+  {idx:847,version:'7',when:1793330000400,tag:'1000_employment_helper_tenant_pin',breakpoints:true,hash:'f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a'},
+  {idx:848,version:'7',when:1793330000401,tag:'1001_company_tenant_fk_not_valid',breakpoints:true,hash:'31314e35728831a8b9f5654aea8cc86d20bb42af17208e760c669f7507e6af44'},
+  {idx:849,version:'7',when:1793330000402,tag:'1002_company_tenant_fk_validate',breakpoints:true,hash:'0c0fad31f62d07064a4348951f9664e2ef5ffa8c2a55e3e4c9da3a0f0f5d2764'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

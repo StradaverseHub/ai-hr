@@ -1,7 +1,10 @@
+import {personnelInformationCorrections,type InformationHistoryCorrection} from '../lib/personnel-history';
+import {withProbationPersonnelIntentTx,withProbationDateShiftIntentTx,probationMovementAuthorityTx} from './probation-effect-authority';
 import { withExitDateAuthorityTx } from './exit-date-authority';
 import { isDatabaseError } from '../lib/db-error';
 import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
-import {assertWorkforceEmploymentTx} from './workforce-access';
+import {assertWorkforceEmploymentTx,WorkforceAccessError} from './workforce-access';
+import {ownPersonPredicate} from './own-person';
 /**
  * Employment History — Movement tab redesign (78853b97).
  *
@@ -179,6 +182,9 @@ export function movementRecordedExitOf(event: {
  *  computed each render from the CURRENT hiredOn, so a hire-date correction can never leave a stale row). */
 export type MovementHistoryRow = {
   id: string;
+  recordedAt?: string | null;
+  sortSequence?: number;
+  informationCorrections?: InformationHistoryCorrection[];
   /** A shipped kind, plus the display-only kinds 'hired' / 'blacklistCleared' / 'gradeChange', plus any
    *  unknown future kind recorded via employment.movement.recorded (the UI humanizes those). */
   kind: string;
@@ -313,6 +319,8 @@ export type MovementSnapshot = {
   manager: string | null;
   salary: string | null;
   /** Typed canonical salary for report comparisons; display salary remains unchanged. */
+  groupJoinDate?: string | null;
+  joinDate?: string | null;
   salaryAmount?: string | null;
   currency?: string | null;
 };
@@ -340,6 +348,7 @@ export type MovementIntentField = 'tenderResignationDate' | 'resignationEffectiv
 export type MovementPendingIntent = { values: { field: MovementIntentField; value: string | null }[] };
 
 export type MovementDetail = {
+  informationCorrections?: InformationHistoryCorrection[];
   row: MovementRowSummary;
   recordedResignation?:MovementRecordedResignation|null;
   /** Full name of the user who recorded the change; null for SYSTEM/import writes and the synthesized row. */
@@ -1472,13 +1481,56 @@ export async function movementAutomationFactsTx(tx:Tx,input:{tenantId:string;com
  });
 }
 
+/** Read-side correction overlay only. Existing effective-dated payroll/report reconstruction is untouched. */
+async function personnelCorrectionViewTx(tx:Tx,events:RawEvent[],rows:ProjectedRow[]){
+ const beforeRows=rows.filter(row=>row.kind!=='hired').map(row=>({...row,id:row.id+':before',groupId:null,scheduled:false,appliedAt:null,sequence:Math.min(row.sequence,...events.filter(event=>row.groupId&&tagOf(event)?.groupId===row.groupId).map(event=>event.sequence))-.5}));
+ const corrections=personnelInformationCorrections(events,[...rows,...beforeRows]);
+ const companyIds=new Set<string>(),gradeIds=new Set<string>();
+ for(const list of corrections.values())for(const item of list){if(item.values.companyId)companyIds.add(item.values.companyId);if(item.values.gradeId)gradeIds.add(item.values.gradeId);}
+ const companies=companyIds.size?await tx.select({id:company.id,name:company.legalName}).from(company).where(inArray(company.id,[...companyIds])):[];
+ const grades=gradeIds.size?await tx.select({id:jobGrade.id,name:jobGrade.name}).from(jobGrade).where(inArray(jobGrade.id,[...gradeIds])):[];
+ const companyLabels=new Map(companies.map(row=>[row.id,row.name])),gradeLabels=new Map(grades.map(row=>[row.id,row.name]));
+ return {corrections,apply:(id:string,snapshot:MovementSnapshot)=>{
+  const after={...snapshot};
+  for(const item of corrections.get(id)??[]){if(item.needsReview)continue;
+   if('companyId'in item.values)after.company=item.values.companyId?companyLabels.get(item.values.companyId)??null:null;
+   if('gradeId'in item.values)after.grade=item.values.gradeId?gradeLabels.get(item.values.gradeId)??null:null;
+   if('employmentType'in item.values)after.employmentType=item.values.employmentType??null;
+   if('hiredOn'in item.values)after.groupJoinDate=item.values.hiredOn??null;
+   if('joinDate'in item.values)after.joinDate=item.values.joinDate??null;
+  }return after;
+ }};
+}
+
 /** The Employment History list — a Hired-first, date-ascending projection over the event ledger. */
 export function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
   return withTenant(ctx, tx => movementHistoryTx(tx, ctx, employmentId));
 }
 
+async function assertOwnMovementEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
+  const [row]=await tx.select({id:employment.id}).from(employment).where(and(
+    eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId),isNull(employment.voidedAt),
+    eq(employment.personId,ctx.personId??'00000000-0000-0000-0000-000000000000'),ownPersonPredicate(ctx),
+  ));
+  if(!row)throw new WorkforceAccessError();
+}
+
+export function ownMovementHistory(ctx:SessionContext,employmentId:string):Promise<MovementHistoryRow[]>{
+  return withTenant(ctx,tx=>ownMovementHistoryTx(tx,ctx,employmentId));
+}
+
+export async function ownMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string):Promise<MovementHistoryRow[]>{
+  await assertOwnMovementEmploymentTx(tx,ctx,employmentId);
+  return projectMovementHistoryTx(tx,ctx,employmentId);
+}
+
 /** Explicit owner read seam for a caller-held scoped report snapshot. */
 export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
+  await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
+  return projectMovementHistoryTx(tx,ctx,employmentId);
+}
+
+async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string):Promise<MovementHistoryRow[]>{
     const { emp, events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, employmentId);
     // 66a63bd6 — the two payroll period sets come from core/comp.ts, so the per-row affordance runs the
     // SAME rule the service refuses on (the Basic Salary card's precedent).
@@ -1490,6 +1542,7 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
       tx,
       events.filter((e) => e.eventType === HIRE_CORRECTED_EVENT),
     );
+    const correctionView=await personnelCorrectionViewTx(tx,events,rows);
     const eventsById = new Map(events.map(event => [event.id, event]));
     return rows.map((r) => {
       const primaryEvent = eventsById.get(r.id);
@@ -1510,10 +1563,15 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
       const payrollFrom=[r.effectiveDate,...exitDates].sort()[0];
       const closedPeriods = financial ? closed.filter((period) => overlapsClosedPeriod([period], payrollFrom, null)).sort() : [];
       const locked = closedPeriods.length > 0;
+      const placement=placementAt(r.effectiveDate,spanEnd===-1?r.sequence:spanEnd);
+      const corrected=correctionView.apply(r.id,{company:placement.company,businessUnit:null,department:null,position:null,grade:null,employmentType:null,manager:null,salary:null});
       return {
         id: r.id,
+        recordedAt:r.occurredAt?.toISOString()??null,
+        sortSequence:r.sequence,
+        informationCorrections:correctionView.corrections.get(r.id)??[],
         kind: r.kind,
-        effectiveDate: r.effectiveDate,
+        effectiveDate:r.kind==='hired'?corrected.groupJoinDate??r.effectiveDate:r.effectiveDate,
         entryDate: r.occurredAt ? dateOf(r.occurredAt) : null,
         status,
         endDate: r.endDate,
@@ -1528,7 +1586,8 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
         // The flat-column replay bounds on the WHOLE group's last sequence, exactly as the detail view's
         // After column does — the leg that wrote Division can carry a higher sequence than the leg that
         // owns the row, and bounding on the row's own event alone would show the pre-movement value.
-        ...placementAt(r.effectiveDate, spanEnd === -1 ? r.sequence : spanEnd),
+        ...placement,
+        company:corrected.company,
         hireCorrection: r.kind === 'hired' ? hireTrace : null,
         recordedExit: primaryEvent ? movementRecordedExitOf(primaryEvent, (code) => resolvedTypes.get(code)?.behaviourKind) : null,
         recordedResignation:primaryEvent?movementRecordedResignationOf(primaryEvent):null,
@@ -1804,6 +1863,18 @@ export async function movementDetailTx(tx: Tx,
   employmentId: string,
   movementId: string,
 ): Promise<MovementDetail | null> {
+    await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
+    return projectMovementDetailTx(tx,ctx,employmentId,movementId);
+}
+
+export function ownMovementDetail(ctx:SessionContext,employmentId:string,movementId:string):Promise<MovementDetail|null>{
+  return withTenant(ctx,async tx=>{
+    await assertOwnMovementEmploymentTx(tx,ctx,employmentId);
+    return projectMovementDetailTx(tx,ctx,employmentId,movementId);
+  });
+}
+
+async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:string,movementId:string):Promise<MovementDetail|null>{
     const { emp, events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId);
     const row = rows.find((r) => r.id === movementId);
     if (!row) return null;
@@ -1833,23 +1904,25 @@ export async function movementDetailTx(tx: Tx,
     const afterBound = Math.max(...seqs);
     const beforeBound = Math.min(...seqs);
 
-    const after = await snapshotAt(tx, emp, row.effectiveDate, gradeEvents, afterBound, true, companyEvents);
+    const correctionView=await personnelCorrectionViewTx(tx,events,rows);
+    const after = correctionView.apply(row.id,await snapshotAt(tx, emp, row.effectiveDate, gradeEvents, afterBound, true, companyEvents));
     const before =
       row.kind === 'hired'
         ? null
-        : await snapshotAt(tx, emp, dayBefore(row.effectiveDate), gradeEvents, beforeBound, false, companyEvents);
+        : correctionView.apply(row.id+':before',await snapshotAt(tx, emp, dayBefore(row.effectiveDate), gradeEvents, beforeBound, false, companyEvents));
 
     return {
       row: {
         id: row.id,
         kind: row.kind,
-        effectiveDate: row.effectiveDate,
+        effectiveDate:row.kind==='hired'?after.groupJoinDate??row.effectiveDate:row.effectiveDate,
         entryDate: row.occurredAt ? dateOf(row.occurredAt) : null,
         status: statusOf(row),
         endDate: row.endDate,
         remarks: row.remarks,
         reversed: row.reversed,
       },
+      informationCorrections:correctionView.corrections.get(row.id)??[],
       actorName,
       recordedResignation:ev?movementRecordedResignationOf(ev):null,
       occurredAt: row.occurredAt,
@@ -3006,7 +3079,7 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
 /** Private admission data never comes from a form or caller-supplied baseline. */
 async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,futureAdmission?:{baseline?:MovementCurrentState;capture?:(baseline:MovementCurrentState)=>void;expectedBehaviour?:string},correction?:{fromGroupId:string|null;allowInactive?:boolean}){
   const roles = ctx.roles ?? [];
-  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
+  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))&&!probationMovementAuthorityTx(tx,rawInput)) {
     throw new Error('Only an admin can record a movement.');
   }
   // 476f23ed — resolve the submitted event type through the tenant's CATALOGUE before anything else. A
@@ -4599,3 +4672,13 @@ export function resignationInformation(ctx:SessionContext,employmentId:string):P
     })) as ResignationInformation;
   });
 }
+
+/** Fixed source port: no arbitrary movement payload, authority role or field set is accepted. */
+export function applyReleasedProbationMovementTx(tx:Tx,ctx:SessionContext,outcomeId:string){return withProbationPersonnelIntentTx(tx,outcomeId,async intent=>{
+ if(intent.completed)return{alreadyApplied:true};
+ await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ const result=await dispatchMovementEventTx(tx,ctx,{employmentId:intent.employmentId,kind:intent.kind,effectiveDate:intent.effectiveDate,...(intent.endDate?{endDate:intent.endDate}:{}),remarks:intent.sourceKey});
+ return{alreadyApplied:false,result};
+});}
+
+export function applyApprovedProbationDateShiftTx(tx:Tx,ctx:SessionContext,requestId:string){return withProbationDateShiftIntentTx(tx,requestId,async intent=>{if(intent.completed)return;await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);return dispatchMovementEventTx(tx,ctx,{employmentId:intent.employmentId,kind:intent.kind,effectiveDate:intent.effectiveDate,endDate:intent.endDate,remarks:intent.sourceKey});});}

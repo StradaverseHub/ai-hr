@@ -5,7 +5,7 @@
 -- row never exposed B's data, but it is a dangling cross-tenant reference. The composite key
 -- `company(id, tenant_id)` exists since 0313 for exactly this; four tables already use it.
 --
--- NOT VALID: existing rows are not scanned here; 0970 checks the data and validates. Every INSERT and
+-- NOT VALID: existing rows are not scanned here; 1002 checks the data and validates. Every INSERT and
 -- every UPDATE of company_id or tenant_id is checked from this migration on. Writers were reviewed:
 -- application writes stamp the session tenant under RLS, company moves and reparenting stay inside one
 -- tenant, and nothing updates company.tenant_id. MATCH SIMPLE keeps a NULL company_id (group-wide rows)
@@ -13,7 +13,7 @@
 -- exactly as before; the existing single-column FKs stay. No grant, policy or column changes.
 --
 -- The set is every table with tenant_id, company_id and a company_id -> company(id) FK in the journal
--- through 0967 (128). test/tenant-company-fk.test.ts fails if a table with that shape lacks the key.
+-- before 1000 (146). test/tenant-company-fk.test.ts fails if a table with that shape lacks the key.
 ALTER TABLE public.access_group_grant ADD CONSTRAINT access_group_grant_company_tenant_fk
   FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
 --> statement-breakpoint
@@ -122,10 +122,34 @@ ALTER TABLE public.company_statutory_authority ADD CONSTRAINT company_statutory_
 ALTER TABLE public.company_statutory_my ADD CONSTRAINT company_statutory_my_company_tenant_fk
   FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
 --> statement-breakpoint
+ALTER TABLE public.contract_case ADD CONSTRAINT contract_case_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.contract_configuration ADD CONSTRAINT contract_configuration_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.contract_retirement_custody ADD CONSTRAINT contract_retirement_custody_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.contract_role_assignment ADD CONSTRAINT contract_role_assignment_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.contract_template ADD CONSTRAINT contract_template_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.contract_term ADD CONSTRAINT contract_term_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.contract_workflow ADD CONSTRAINT contract_workflow_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
 ALTER TABLE public.cost_center ADD CONSTRAINT cost_center_company_tenant_fk
   FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
 --> statement-breakpoint
 ALTER TABLE public.department ADD CONSTRAINT department_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.document_signing_document ADD CONSTRAINT document_signing_document_company_tenant_fk
   FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
 --> statement-breakpoint
 ALTER TABLE public.employee_draft ADD CONSTRAINT employee_draft_company_tenant_fk
@@ -320,6 +344,9 @@ ALTER TABLE public.payroll_tax_basis_event ADD CONSTRAINT payroll_tax_basis_even
 ALTER TABLE public.payroll_tax_basis_preview ADD CONSTRAINT payroll_tax_basis_preview_company_tenant_fk
   FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
 --> statement-breakpoint
+ALTER TABLE public.payroll_tax_basis_replacement ADD CONSTRAINT payroll_tax_basis_replacement_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
 ALTER TABLE public.payroll_tax_basis_revision ADD CONSTRAINT payroll_tax_basis_revision_company_tenant_fk
   FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
 --> statement-breakpoint
@@ -354,6 +381,33 @@ ALTER TABLE public.personnel_import_assistance_attempt ADD CONSTRAINT personnel_
   FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
 --> statement-breakpoint
 ALTER TABLE public.position ADD CONSTRAINT position_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.probation_access ADD CONSTRAINT probation_access_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.probation_activation ADD CONSTRAINT probation_activation_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.probation_builder_definition ADD CONSTRAINT probation_builder_definition_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.probation_case ADD CONSTRAINT probation_case_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.probation_configuration ADD CONSTRAINT probation_configuration_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.probation_cutover ADD CONSTRAINT probation_cutover_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.probation_intake_entry ADD CONSTRAINT probation_intake_entry_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.probation_intake_evidence ADD CONSTRAINT probation_intake_evidence_company_tenant_fk
+  FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+--> statement-breakpoint
+ALTER TABLE public.probation_offline_final_proposal ADD CONSTRAINT probation_offline_final_proposal_company_tenant_fk
   FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
 --> statement-breakpoint
 ALTER TABLE public.replacement_holiday ADD CONSTRAINT replacement_holiday_company_tenant_fk

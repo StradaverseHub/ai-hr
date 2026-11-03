@@ -171,7 +171,7 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
   });
 
   it('wires the real correction controls with independent correction authority and server action', () => {
-    expect(PAGE).toContain('<MovementHistoryActions employmentId={employmentId} row={m}');
+    expect(PAGE).toContain('<MovementHistoryActions context={movementContext} employmentId={employmentId} row={m}');
     expect(PAGE).toContain('canCorrect={canCorrectMovement} reverseAction={reverseMovementEventAction}');
     expect(PAGE).toContain("delete:t('movement.delete')");
     expect(PAGE).toContain("deleteTitle:t('movement.deleteTitle')");

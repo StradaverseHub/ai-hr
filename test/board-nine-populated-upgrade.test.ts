@@ -29,9 +29,15 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
  expect(journal.entries.slice(boundary).map(({tag,when})=>({tag,when}))).toEqual([
   {tag:'0935_password_account_unlock',when:1793330000335},
   {tag:'0946_draft_creation_cohort_custody',when:1793330000346},
-  {tag:'0968_employment_helper_tenant_pin',when:1793330000368},
-  {tag:'0969_company_tenant_fk_not_valid',when:1793330000369},
-  {tag:'0970_company_tenant_fk_validate',when:1793330000370},
+  {tag:'0947_rewards_access_approval_exemptions',when:1793330000347},
+  {tag:'0948_document_signing',when:1793330000348},
+  {tag:'0949_probation_confirmation',when:1793330000349},
+  {tag:'0950_contract_management',when:1793330000350},
+  {tag:'0951_payroll_reprocess_correction_lineage',when:1793330000351},
+  {tag:'0953_lifecycle_service_info_intents',when:1793330000353},
+  {tag:'1000_employment_helper_tenant_pin',when:1793330000400},
+  {tag:'1001_company_tenant_fk_not_valid',when:1793330000401},
+  {tag:'1002_company_tenant_fk_validate',when:1793330000402},
  ]);
  expect(hash(readFileSync('db/migrations/0935_password_account_unlock.sql'))).toBe('3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa');
  expect(hash(readFileSync('db/migrations/0946_draft_creation_cohort_custody.sql'))).toBe('cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390');
@@ -93,11 +99,19 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   // The original historical row is present at the upgrade boundary; the mutation above is preflight only.
   const upgradeNative=await native();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  const afterLedger=await ledger();expect(afterLedger).toHaveLength(653);expect(afterLedger.slice(0,648)).toEqual(beforeLedger);
+  const afterLedger=await ledger();expect(afterLedger).toHaveLength(659);expect(afterLedger.slice(0,648)).toEqual(beforeLedger);
   expect(afterLedger.slice(648).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
    {hash:'3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa',created_at:'1793330000335'},
    {hash:'cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390',created_at:'1793330000346'},
-   ...['0968_employment_helper_tenant_pin','0969_company_tenant_fk_not_valid','0970_company_tenant_fk_validate'].map((tag,i)=>({hash:hash(readFileSync('db/migrations/'+tag+'.sql')),created_at:String(1793330000368+i)})),
+   {hash:'f7a1e3725019d8ce09052efb3b3fe1763190622052b4f826a678f8231cf8914e',created_at:'1793330000347'},
+   {hash:'07ab24b5dcd85f16ba3474fe7fdd7b620d9603ee882dc8b8abc22e18b21533ea',created_at:'1793330000348'},
+   {hash:'53978af9d391beb2683c47902413bbf4a61e11c4f013cdb3211f80c49aff42ab',created_at:'1793330000349'},
+   {hash:'84bc3e3a907118e2c6806e863c63544df061b49dbb9b51fcd4fe8f85ffcef8ac',created_at:'1793330000350'},
+   {hash:'b65a8adc2f45165fb2bdb41b30d4ca6eeb7f7b44ef2539bcdecc7efde0322057',created_at:'1793330000351'},
+   {hash:'6f71e2fe862f86c836026f3e07647ca29b913dd34b2171c98a033b43da0afa89',created_at:'1793330000353'},
+   {hash:'f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a',created_at:'1793330000400'},
+   {hash:'31314e35728831a8b9f5654aea8cc86d20bb42af17208e760c669f7507e6af44',created_at:'1793330000401'},
+   {hash:'0c0fad31f62d07064a4348951f9664e2ef5ffa8c2a55e3e4c9da3a0f0f5d2764',created_at:'1793330000402'},
   ]);
   expect(await native()).toEqual(upgradeNative);
   const afterSource=await source();
