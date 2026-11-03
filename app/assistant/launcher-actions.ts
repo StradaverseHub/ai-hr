@@ -70,7 +70,8 @@ async function askThroughHarness(session:SessionContext,route:Extract<Conversati
  try{
   if(input.clarification)throw new ConversationTurnError('continuation_invalid');
   const companyId=(JSON.parse(input.conversationScope) as unknown[]).find((id):id is string=>typeof id==='string')??'';
-  const turn=await runConversationTurn(session,route,{question:input.question,companyId,locale:await getLocale(),...(input.continuation===undefined?{}:{continuation:input.continuation})});
+  const continuation=await withoutDeletedChat(session,input.continuation);
+  const turn=await runConversationTurn(session,route,{question:input.question,companyId,locale:await getLocale(),...(continuation===undefined?{}:{continuation})});
   // AI v2 W11: the case route's form is linkable on its own turn, so a spec case clause naming it renders as a link.
   const answer=await ConversationReply({turn,links:await replyLinksFor(session,turn.suggestion?.reviewRoute,turn.caseRoute)});
   // Stored only once the reply could be shown, so a reopened chat holds no turn the person never saw.
@@ -86,6 +87,19 @@ async function askThroughHarness(session:SessionContext,route:Extract<Conversati
 }
 const unclassifiedFailure=(error:unknown)=>{const code=(error as {code?:unknown}|null)?.code;
  return {name:error instanceof Error?error.name:typeof error,code:typeof code==='string'&&/^[A-Z0-9_]{1,40}$/.test(code)?code:null,supportId:randomUUID()};};
+
+/** A continuation of a stored chat its owner has deleted (a stale client, such as the side panel, still holding it) is
+ * dropped, so the turn starts a new conversation and so a new chat id; the deleted chat's words are not sent on. The
+ * store refuses the deleted id in any case (core/teras-chats.ts tombstones). Anything the check cannot read is left to
+ * the turn's own verification, which refuses a bad continuation. */
+async function withoutDeletedChat(session:SessionContext,continuation:unknown):Promise<unknown>{
+ if(continuation===undefined)return undefined;
+ try{
+  const [{verifyConversationContinuation},{isDeletedOwnChat}]=await Promise.all([import('@/core/teras-wiring/history'),import('@/core/teras-chats')]);
+  const {conversationId}=verifyConversationContinuation(session,continuation);
+  return await isDeletedOwnChat(session,conversationId)?undefined:continuation;
+ }catch{return continuation;}
+}
 
 /** AI Centre issue 8: the answered turn joins the caller's stored chat, keyed by the conversation it ran under, so the
  * panel and Ask continue one chat. A routed or refused turn (a sensitive topic, a crisis, a workplace-harms request)

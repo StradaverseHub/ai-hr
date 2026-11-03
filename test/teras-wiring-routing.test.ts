@@ -8,7 +8,7 @@
  * AI Centre issues 8 and 18: an answered harness turn is stored under its conversation (words withheld for a routed or
  * refused turn) and the reply names the stored chat, which Ask reopens and continues. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const owner=vi.hoisted(()=>({session:vi.fn(),ask:vi.fn(),workspace:vi.fn(),reply:vi.fn(),route:vi.fn(),turn:vi.fn(),render:vi.fn(),record:vi.fn(),reopen:vi.fn(),issue:vi.fn()}));
+const owner=vi.hoisted(()=>({session:vi.fn(),ask:vi.fn(),workspace:vi.fn(),reply:vi.fn(),route:vi.fn(),turn:vi.fn(),render:vi.fn(),record:vi.fn(),reopen:vi.fn(),issue:vi.fn(),verify:vi.fn(),deleted:vi.fn()}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(namespace:string)=>Object.assign((key:string)=>`${namespace}.${key}`,{has:(key:string)=>key.startsWith('err_')||key.startsWith('errors.')})}));
 vi.mock('../lib/session',()=>({getBrowserCommandSession:owner.session}));
@@ -21,8 +21,8 @@ vi.mock('../lib/scope',()=>({getScopeIds:async(ids:string[])=>ids}));
 vi.mock('../core/teras-wiring/switch',()=>({conversationRoute:owner.route}));
 vi.mock('../core/teras-wiring/turn',()=>({runConversationTurn:owner.turn,ConversationTurnError:class extends Error{constructor(readonly code:string){super(code);}}}));
 vi.mock('../components/ai-centre/conversation-reply',()=>({ConversationReply:owner.render}));
-vi.mock('../core/teras-chats',()=>({recordChatTurn:owner.record,reopenOwnChat:owner.reopen}));
-vi.mock('../core/teras-wiring/history',()=>({issueConversationContinuation:owner.issue}));
+vi.mock('../core/teras-chats',()=>({recordChatTurn:owner.record,reopenOwnChat:owner.reopen,isDeletedOwnChat:owner.deleted}));
+vi.mock('../core/teras-wiring/history',()=>({issueConversationContinuation:owner.issue,verifyConversationContinuation:owner.verify}));
 import {askFromLauncherAction,askFromWorkspaceAction,openStoredChatAction} from '../app/assistant/launcher-actions';
 
 const session={tenantId:'00000000-0000-4000-8000-0000000000aa',userId:'00000000-0000-4000-8000-0000000000bb'};
@@ -41,6 +41,8 @@ beforeEach(()=>{
  owner.turn.mockResolvedValue(harnessTurn());
  owner.render.mockResolvedValue('harness reply');
  owner.record.mockResolvedValue(CHAT);
+ owner.verify.mockReturnValue({conversationId:CHAT,history:[]});
+ owner.deleted.mockResolvedValue(false);
 });
 
 describe('switch off: the closed grammar, unchanged',()=>{
@@ -112,6 +114,24 @@ describe('stored chats (AI Centre issues 8 and 18)',()=>{
   expect(await askFromLauncherAction({question:' How much leave do I have? ',path:'/leave'})).toMatchObject({ok:true,chatId:CHAT,conversationToken:'tc1.model-side.signature'});
   expect(owner.record).toHaveBeenCalledExactlyOnceWith(session,{conversationId:CHAT,conversationScope:SCOPE,companyId:'00000000-0000-4000-8000-00000000c0aa',
    question:'How much leave do I have?',reply:'You have 12 days.',modelRows:[{role:'user',content:'How much leave do I have?'},{role:'assistant',content:'You have [an earlier figure] days.'}],withheld:false});
+ });
+ it('a stale client continuing a chat its owner deleted starts a new conversation: the continuation is dropped',async()=>{
+  owner.route.mockResolvedValue(harness);
+  const NEW_CHAT='00000000-0000-4000-8000-0000000c4a72';
+  owner.deleted.mockResolvedValueOnce(true);
+  owner.turn.mockResolvedValueOnce(harnessTurn({trace:{conversationId:NEW_CHAT}}));owner.record.mockResolvedValueOnce(NEW_CHAT);
+  expect(await askFromLauncherAction({question:'And next month?',path:'/leave',previousExchangeId:'teras-turn-1',previousConversationToken:'tc1.deleted-chat.signature'})).toMatchObject({ok:true,chatId:NEW_CHAT});
+  expect(owner.verify).toHaveBeenCalledExactlyOnceWith(session,'tc1.deleted-chat.signature');
+  expect(owner.deleted).toHaveBeenCalledExactlyOnceWith(session,CHAT);
+  expect(owner.turn.mock.calls[0][2]).not.toHaveProperty('continuation');
+  expect(owner.record.mock.calls[0][1]).toMatchObject({conversationId:NEW_CHAT});
+  // A live chat keeps its continuation.
+  expect(await askFromLauncherAction({question:'And the month after?',path:'/leave',previousExchangeId:'teras-turn-1',previousConversationToken:'tc1.live-chat.signature'})).toMatchObject({ok:true,chatId:CHAT});
+  expect(owner.turn.mock.calls[1][2]).toMatchObject({continuation:'tc1.live-chat.signature'});
+  // A continuation the check cannot read goes to the turn unchanged, whose own verification refuses it.
+  owner.verify.mockImplementationOnce(()=>{throw new Error('bad signature');});
+  await askFromLauncherAction({question:'Again?',path:'/leave',previousExchangeId:'teras-turn-1',previousConversationToken:'tc1.forged'});
+  expect(owner.turn.mock.calls[2][2]).toMatchObject({continuation:'tc1.forged'});
  });
  it('withholds the words of a routed or refused turn: only the marker is recorded',async()=>{
   owner.route.mockResolvedValue(harness);

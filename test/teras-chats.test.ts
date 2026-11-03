@@ -28,7 +28,7 @@ import {setWorkerSwitch} from '../core/agent-registry/controls';
 import {conversationRoute} from '../core/teras-wiring/switch';
 import {runConversationTurn} from '../core/teras-wiring/turn';
 import {issueConversationContinuation,MAX_HISTORY_MESSAGES} from '../core/teras-wiring/history';
-import {CHAT_LIMITS,ChatUnavailable,chatTurnAad,deleteOwnChat,eraseOwnChats,listOwnChats,readChatRetention,recordChatTurn,reopenOwnChat,setChatRetention,type ChatModelRow} from '../core/teras-chats';
+import {CHAT_LIMITS,ChatUnavailable,DELETED_CHAT_DIGEST,chatTurnAad,deleteOwnChat,eraseOwnChats,isDeletedOwnChat,listOwnChats,readChatRetention,recordChatTurn,reopenOwnChat,setChatRetention,type ChatModelRow} from '../core/teras-chats';
 import {isGroupAdmin} from '../lib/authz-model';
 import {decryptSecret,encryptSecret} from '../lib/ai/crypto';
 import {openrouterAdapter} from '../lib/ai/providers/openrouter';
@@ -52,7 +52,10 @@ async function chat(ctx:SessionContext,question='How much annual leave do I have
  return{conversationId,chatId};
 }
 const turnsOf=(chatId:string)=>owner.db.select().from(terasChatTurn).where(eq(terasChatTurn.chatId,chatId)).orderBy(terasChatTurn.seq);
-const chatsOf=(userId:string)=>owner.db.select({id:terasChat.id}).from(terasChat).where(eq(terasChat.appUserId,userId)).then(rows=>rows.map(row=>row.id).sort());
+/** The login's chats, tombstones of deleted chats excluded (tombstonesOf lists those). */
+const chatsOf=(userId:string)=>owner.db.select({id:terasChat.id,digest:terasChat.scopeDigest}).from(terasChat).where(eq(terasChat.appUserId,userId)).then(rows=>rows.filter(row=>row.digest!==DELETED_CHAT_DIGEST).map(row=>row.id).sort());
+const tombstonesOf=(userId:string)=>owner.db.select({id:terasChat.id,turns:terasChat.turnCount,digest:terasChat.scopeDigest,expires:terasChat.expiresAt,last:terasChat.lastMessageAt}).from(terasChat)
+ .where(and(eq(terasChat.appUserId,userId),eq(terasChat.scopeDigest,DELETED_CHAT_DIGEST))).then(rows=>rows.sort((a,b)=>a.id.localeCompare(b.id)));
 const memoryOf=(userId:string)=>owner.db.select({id:terasTaskMemory.conversationId}).from(terasTaskMemory).where(eq(terasTaskMemory.appUserId,userId)).then(rows=>rows.map(row=>row.id).sort());
 const remember=(ctx:Person['ctx'],conversationId:string)=>owner.db.insert(terasTaskMemory).values({tenantId:ctx.tenantId,appUserId:ctx.userId,conversationId,memory:{fictional:true}});
 /** Moves a chat's last message `days` into the past, as if written then under `keep` days (database triggers bypassed). */
@@ -256,6 +259,46 @@ describe('erasure',()=>{
   expect(await chatsOf(me.ctx.userId)).toEqual([]);expect(await memoryOf(me.ctx.userId)).toEqual(['unrelated-conversation']);
   expect(await chatsOf(peer.ctx.userId)).toEqual([theirs.chatId]);expect(await memoryOf(peer.ctx.userId)).toEqual([theirs.chatId]);
   expect(await turnsOf(theirs.chatId!)).toHaveLength(1);
+ });
+
+ it('a deleted chat leaves a tombstone: a stale client cannot re-create it under its id, and the tombstone expires with retention',async()=>{
+  const me=await hire(b,'Fictional Tombstone Owner','employee'),peer=await hire(b,'Fictional Tombstone Peer','employee');
+  const deleted=await chat(me.ctx,'A question I later delete');
+  expect((await chat(me.ctx,'A second turn',{conversationId:deleted.conversationId})).chatId).toBe(deleted.conversationId);
+  const theirs=await chat(peer.ctx,'A neighbour question');
+  expect(await isDeletedOwnChat(me.ctx,deleted.chatId)).toBe(false);
+  expect(await deleteOwnChat(me.ctx,deleted.chatId)).toBe(1);
+  // The words and turns are gone; only the id remains, with no turns, under the deleted digest, expiring like a chat.
+  expect(await turnsOf(deleted.chatId!)).toEqual([]);expect(await chatsOf(me.ctx.userId)).toEqual([]);
+  const [stone]=await tombstonesOf(me.ctx.userId);
+  expect(stone).toMatchObject({id:deleted.chatId,turns:0,digest:'0'.repeat(64)});
+  expect(Math.round((stone!.expires.getTime()-stone!.last.getTime())/86_400_000)).toBe(30);
+  expect(await isDeletedOwnChat(me.ctx,deleted.chatId)).toBe(true);
+  // Another login does not see it as theirs, and malformed ids are not queried.
+  expect(await isDeletedOwnChat(peer.ctx,deleted.chatId)).toBe(false);
+  for(const bad of ['not-a-chat',42,null])expect(await isDeletedOwnChat(me.ctx,bad)).toBe(false);
+  // The side panel continues the deleted conversation: nothing is stored, the chat is neither listed nor reopened.
+  expect((await chat(me.ctx,'Stale panel follow-up',{conversationId:deleted.conversationId})).chatId).toBeNull();
+  expect(await turnsOf(deleted.chatId!)).toEqual([]);expect(await listed(me.ctx)).toEqual([]);
+  await expect(reopenOwnChat(me.ctx,deleted.chatId,scope())).rejects.toBeInstanceOf(ChatUnavailable);
+  // Deleting it again changes nothing; the tombstone stays.
+  expect(await deleteOwnChat(me.ctx,deleted.chatId)).toBe(0);expect((await tombstonesOf(me.ctx.userId)).map(row=>row.id)).toEqual([deleted.chatId]);
+  // A new conversation is a new chat id and stores normally.
+  const fresh=await chat(me.ctx,'A fresh question');
+  expect(fresh.chatId).toBe(fresh.conversationId);expect(fresh.chatId).not.toBe(deleted.chatId);expect(await listed(me.ctx)).toEqual([fresh.chatId]);
+  // Erasing all leaves a tombstone for each erased chat, counts real chats only, and the erased id is refused too.
+  expect(await eraseOwnChats(me.ctx)).toBe(1);
+  expect((await tombstonesOf(me.ctx.userId)).map(row=>row.id)).toEqual([deleted.chatId,fresh.chatId].sort());
+  expect((await chat(me.ctx,'Stale follow-up after erasing',{conversationId:fresh.conversationId})).chatId).toBeNull();
+  expect(await turnsOf(fresh.chatId!)).toEqual([]);
+  // The neighbour's chat is untouched throughout.
+  expect(await chatsOf(peer.ctx.userId)).toEqual([theirs.chatId]);expect(await turnsOf(theirs.chatId!)).toHaveLength(1);
+  expect(await tombstonesOf(peer.ctx.userId)).toEqual([]);
+  // Retention removes an expired tombstone like any expired chat; the live one stays.
+  await backdate(deleted.chatId!,40);
+  expect((await tick()).chats).toBe(1);
+  expect((await tombstonesOf(me.ctx.userId)).map(row=>row.id)).toEqual([fresh.chatId]);
+  expect(await isDeletedOwnChat(me.ctx,deleted.chatId)).toBe(false);expect(await isDeletedOwnChat(me.ctx,fresh.chatId)).toBe(true);
  });
 
  it('person erasure deletes every chat and the task memory of the subject only, inside the audited erasure',async()=>{
