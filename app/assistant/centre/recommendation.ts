@@ -56,4 +56,12 @@ export async function followLeaveRecommendation(session: SessionContext, recordI
   const id = z.guid().safeParse(recordId);
   if (!id.success) return;
   try { await recordRecommendationDecision(session, { recordId: id.data, decision }); } catch { /* the decision stands */ }
+  // AI v2 Phase 2 P2-6: a decision against the recommendation is a learning signal (core/learning/signals.ts), recorded only
+  // when the recommender's own follow-up says the approver disagreed. Best effort, like the follow-up.
+  if (decision === 'rejected') {
+    try {
+      const [{ recordRecommendationSignal }, { getLocale }] = await Promise.all([import('@/core/learning/signals'), import('next-intl/server')]);
+      await recordRecommendationSignal(session, { recordId: id.data, locale: await getLocale().catch(() => 'en') });
+    } catch { /* the decision stands */ }
+  }
 }

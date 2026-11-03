@@ -73,6 +73,15 @@ it('applies the Teras tail from 0890/0891 on over populated leave policy and app
    {table:'teras_chat',rls:true,s:true,i:true,u:false,d:true,t:false},
    {table:'teras_chat_retention',rls:true,s:true,i:true,u:true,d:false,t:false},
    {table:'teras_chat_turn',rls:true,s:true,i:true,u:false,d:false,t:false},
+   // 0972 (AI v2 Phase 2 P2-6, learning loops): REVOKE ALL, then GRANT SELECT, INSERT on the append-only signals, reviews,
+   // gap occurrences and statuses; SELECT, INSERT, UPDATE on eval candidates (versioned in place, a trigger guards every
+   // change and refuses DELETE); SELECT, INSERT, DELETE on gap examples (only an expired one is ever deleted).
+   {table:'teras_eval_candidate',rls:true,s:true,i:true,u:true,d:false,t:false},
+   {table:'teras_gap_example',rls:true,s:true,i:true,u:false,d:true,t:false},
+   {table:'teras_gap_occurrence',rls:true,s:true,i:true,u:false,d:false,t:false},
+   {table:'teras_gap_status',rls:true,s:true,i:true,u:false,d:false,t:false},
+   {table:'teras_learning_signal',rls:true,s:true,i:true,u:false,d:false,t:false},
+   {table:'teras_learning_signal_review',rls:true,s:true,i:true,u:false,d:false,t:false},
    // 0963 (AI v2 Phase 2 P2-1): REVOKE ALL, then GRANT SELECT, INSERT, UPDATE on the level and the action ledger (an
    // action moves applying -> applied or not applied; a level is changed in place, versioned) and GRANT SELECT, INSERT on
    // the level history, the undo record and the sample review, all append-only.

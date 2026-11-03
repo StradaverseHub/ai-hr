@@ -1158,3 +1158,27 @@ integration.
 |769|1793330000365|0965_payroll_audit_loop|d370a0dba6fb8b04ae6c1686572dd116f300ff440b37cc43c6944c7b4fac8c41|
 |770|1793330000366|0966_teras_capacity_baseline|0b2f62d07b398bc837909c31b27f2dcd5ee30276f5c84937d8d57440a4b5a67c|
 |771|1793330000367|0967_own_payroll_cut_off|b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca|
+
+## AI v2 Phase 2 wave 2 P2-6 learning loops — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-learning-loops` (cut from `9492a6b43` on `claude/aiv2-phase2-wave1`, journal ending
+`0967_own_payroll_cut_off` idx771 / when1793330000367) appends `0972_teras_learning_loops` at the place the wave 1 re-freeze
+rule gives its number: idx = 767 + (72 − 63) = 776, when = 1793330000300 + 72 = 1793330000372. 0972 is the number the AI v2
+coordinator reserved for the learning loops (wave 2: 0971 Living Handbook, 0972 learning loops, 0973 letters chat custody;
+0968–0970 are taken by `claude/wonderful-mccarthy-2fb38f`). The idx773–775 gap is left for 0968–0971; the journal tests
+require only a strictly ascending idx and `when`.
+
+A fresh fetch on 3 November 2026 found competing claims on other workstreams' origin branches: the `codex/permissions-*-20261103`
+series claims `0972_attendance_schedule_binding_readiness` at when1793330000372 (its idx819), as part of its 0962–0978 run already
+reported at wave 1 integration. Identical `when` values cannot both stand in one journal: reconcile before either set integrates
+with the other. Development source only: no installation priority, no deployment; re-freeze above the then-installed ledger at
+integration.
+
+0972 creates six FORCE row-level-security tables: `teras_learning_signal`, `teras_learning_signal_review`,
+`teras_gap_occurrence`, `teras_gap_example`, `teras_gap_status` and `teras_eval_candidate`, with the functions
+`app.teras_learning_append_only`, `app.teras_learning_own_record`, `app.teras_learning_admin`, `app.teras_gap_example_stamp`
+and `app.teras_eval_candidate_guard`. Every table is new; it alters no existing object. Writers reviewed: `core/learning/*` only.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|776|1793330000372|0972_teras_learning_loops|c843497cf18fdf60388b5f49ebab9c91ba4d00c77188b70a5cf2e3ef7a0ca198|

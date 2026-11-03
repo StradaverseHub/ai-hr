@@ -126,6 +126,15 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   {table:'teras_payroll_threshold_decision',column:'company_id',disposition:'other',note:'Append-only administrator decisions on the company\'s threshold proposals (0964); a trigger refuses UPDATE and DELETE.'},
   {table:'teras_payroll_swing_disposition',column:'company_id',disposition:'other',note:'Payroll HR\'s disposition of a net-swing flag in the company (0964); no DELETE privilege and a trigger refuses UPDATE. It also goes with its case or employment (ON DELETE CASCADE).'},
   {table:'teras_capacity_baseline',column:'company_id',disposition:'other',note:'Append-only versions of the company\'s HR capacity baseline (0966), attributed to the administrator; a trigger refuses UPDATE and DELETE.'},
+  // AI v2 Phase 2 P2-6 (migration 0972): the learning loops. Each is FORCE row-level security; the application role holds no
+  // DELETE on any of them except an expired gap example (an administrator's purge), so none is cascaded and each refuses,
+  // as `other`, like the wave 1 tables above; none adds a definer lookup.
+  {table:'teras_learning_signal',column:'company_id',disposition:'other',note:'Append-only learning signals of the company\'s AI Centre turns (0972): what a person did with a prepared card, a recommendation or an answer. No DELETE privilege; a trigger refuses UPDATE and DELETE.'},
+  {table:'teras_learning_signal_review',column:'company_id',disposition:'other',note:'Append-only administrator reviews of the company\'s learning signals (0972); a trigger refuses UPDATE and DELETE.'},
+  {table:'teras_gap_occurrence',column:'company_id',disposition:'other',note:'Append-only gap occurrences of the company (0972): intent, role band and locale only; a trigger refuses UPDATE and DELETE.'},
+  {table:'teras_gap_example',column:'company_id',disposition:'other',note:'Redacted gap examples of the company (0972), deleted only once expired under the tenant\'s chat retention, by an administrator of the company.'},
+  {table:'teras_gap_status',column:'company_id',disposition:'other',note:'Append-only versions of the company\'s gap statuses (0972); a trigger refuses UPDATE and DELETE.'},
+  {table:'teras_eval_candidate',column:'company_id',disposition:'other',note:'Eval candidates of the company (0972): versioned in place, never deleted (a trigger refuses DELETE and no DELETE privilege).'},
   {table:'personnel_import_assistance_attempt',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'An AI-assisted personnel import attempt for this company is retained until its own expiry owner removes it.'},
   {table:'employee_import_evaluation_attempt',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'An employee import AI evaluation for this company is retained until its own expiry owner removes it.'},
   {table:'employee_import_evaluation_run_membership',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'The model-run membership of an employee import AI evaluation retains its company with the evaluation.'},

@@ -29,6 +29,8 @@ vi.mock('@/core/pre-salary/person-items',()=>({readMyPayrollReadiness:async(...a
 // Wave 1 integration: Insights also carries P2-4's HR capacity ledger, for administrators only (its own test:
 // capacity-ledger-page.dom.test.tsx). Here it is a marker, so each role shows whether the view asked for it.
 vi.mock('@/components/ai-centre/capacity-ledger',()=>({CapacityLedgerSection:()=><section data-capacity-ledger-marker/>}));
+// Wave 2: and P2-6's AI quality, for administrators only (its own test: ai-quality-page.dom.test.tsx); a marker here too.
+vi.mock('@/components/ai-centre/ai-quality',()=>({AiQualitySection:()=><section data-ai-quality-marker/>}));
 
 import {BeforePayrollSection} from '../components/today/before-payroll';
 import {AiCentreInsights} from '../components/ai-centre/insights';
@@ -150,6 +152,10 @@ describe('AI Centre › Insights: "My payroll readiness"',()=>{
   expect(ledger).toHaveLength(1);
   const section=view.container.querySelector('#my-payroll-readiness') as HTMLElement;
   expect(section.compareDocumentPosition(ledger[0]!)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // Then AI quality, after the ledger.
+  const quality=view.container.querySelectorAll('[data-ai-quality-marker]');
+  expect(quality).toHaveLength(1);
+  expect(ledger[0]!.compareDocumentPosition(quality[0]!)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(section.querySelector('[data-payroll-cutoff]')?.textContent).toBe('November 2026 payroll · cut-off Nov 19');
   expect(section.querySelector('[data-payroll-item="tax_number_missing"]')?.textContent).toContain('Due Nov 19');
   expect(rows(section.querySelector('[data-payroll-group="approvals"]') as HTMLElement).map(row=>row[1])).toEqual(['Attendance or overtime to approve · Nur Fictional']);

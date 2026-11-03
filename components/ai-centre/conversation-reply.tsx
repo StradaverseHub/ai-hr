@@ -121,7 +121,7 @@ export async function ConversationReply({ turn, links = new Map(), applicants = 
         return (
           <div key={body.id} className="space-y-1">
             {kind ? (
-              <InlineProposalCard kind={kind} proposal={proposal} copy={inline} awaitingLabel={tc('awaiting')} agreement={agreement}
+              <InlineProposalCard kind={kind} proposal={proposal} copy={inline} awaitingLabel={tc('awaiting')} agreement={agreement} turnId={turn.turnId}
                 card={{ icon: <CalendarDays />, tone, title: shownTitle, meta, checks, expires,
                   prepared: { summary: t('howPrepared'), rows: [[t('preparedBy'), t('preparedByValue')], [t('confirmOn'), t('inline.confirmOnValue')]] } }} />
             ) : (

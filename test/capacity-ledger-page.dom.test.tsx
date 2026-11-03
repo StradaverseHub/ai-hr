@@ -46,6 +46,8 @@ vi.mock('../core/capacity/baseline',()=>({baselineSetup:async(_session:unknown,i
 // Wave 1 integration: the Insights view also carries P2-3's "My payroll readiness" (its own test: before-payroll.dom.test.tsx).
 vi.mock('../core/pre-salary/person-items',()=>({readMyPayrollReadiness:async()=>{state.reads.push(['readiness']);return null;}}));
 vi.mock('../app/assistant/loop-clock-out-actions',()=>({confirmMissedClockOutAction:vi.fn()}));
+// Wave 2: Insights also carries P2-6's AI quality for administrators (its own test: ai-quality-page.dom.test.tsx); a marker here.
+vi.mock('../components/ai-centre/ai-quality',()=>({AiQualitySection:()=><section data-ai-quality-marker/>}));
 import {CapacityLedgerSection} from '../components/ai-centre/capacity-ledger';
 import {AiCentreInsights} from '../components/ai-centre/insights';
 import {resolveServerTree} from './helpers/server-tree';
@@ -124,7 +126,7 @@ describe('the Insights tab',()=>{
 
  it('the Insights view takes the page\'s administrator check, after the inbox redirect',()=>{
   const page=fs.readFileSync(path.join(__dirname,'..','app/assistant/page.tsx'),'utf8');
-  expect(page).toContain("{sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} capacityQuery={sp as Readonly<Record<string, string | undefined>>} />}");
+  expect(page).toContain("{sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} capacityQuery={sp as Readonly<Record<string, string | undefined>>} qualityQuery={sp as Readonly<Record<string, string | undefined>>} />}");
   expect(page).toContain('const admin = isAdmin(s);');
   expect(page.indexOf("if (sp.view === 'inbox')")).toBeLessThan(page.indexOf("sp.view === 'insights' && <AiCentreInsights"));
   expect(fs.readFileSync(path.join(__dirname,'..','components/ai-centre/insights.tsx'),'utf8')).toContain('{isAdmin&&<CapacityLedgerSection session={session} query={capacityQuery??{}}/>}');

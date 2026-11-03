@@ -1490,6 +1490,235 @@
         "failed": "无法保存更改，请重试。"
       },
       "patternUnknown": "已不在目录中的薪资项目"
+    },
+    "quality": {
+      "title": "AI 质量",
+      "descriptionCompany": "{company} 的员工如何使用 AI Centre 的回答和预备操作、它无法完成的事项，以及各循环提出的建议。",
+      "descriptionAll": "贵公司员工如何使用 AI Centre 的回答和预备操作、它无法完成的事项，以及各循环提出的建议。",
+      "periodLabel": "期间",
+      "periods": {
+        "last30": "最近 30 天",
+        "quarter": "本季度",
+        "year": "今年"
+      },
+      "companyLabel": "公司",
+      "allCompanies": "全部 {count} 家公司",
+      "show": "显示",
+      "noCompanies": "您未管理任何公司，因此没有可显示的内容。",
+      "noData": "暂无数据",
+      "undoDismiss": "撤销",
+      "saved": {
+        "dismissed": "已忽略，不再等待审核。",
+        "reopened": "已重新列入待审核。",
+        "candidate": "已保存为评测候选草稿。请检查脱敏后的文本，然后批准。",
+        "edited": "草稿已保存，并已重新脱敏。",
+        "approved": "已批准，现在可以导出给开发人员。",
+        "reopened_candidate": "已退回草稿，可以继续编辑。",
+        "withdrawn": "已撤回，不会被导出。",
+        "gap_status": "状态已保存。",
+        "proposal_approved": "已批准。循环将从下一次运行起使用新设置。",
+        "proposal_rejected": "已拒绝。在依据不变的情况下不会再次提出。",
+        "proposal_reverted": "已还原。从下一次运行起恢复之前的设置。"
+      },
+      "errors": {
+        "invalid": "表单中有无效内容，请检查后重试。",
+        "not_administrator": "只有本公司的管理员才能执行此操作。",
+        "not_found": "该项目已不存在。",
+        "changed": "在您打开页面后有人修改了此内容。请刷新后重试。",
+        "not_redacted": "脱敏后的文本仍含有姓名、数字、编号或地址。请改用虚构的细节重写。",
+        "state": "当前阶段无法执行此操作。",
+        "failed": "无法保存，请重试。"
+      },
+      "tiles": {
+        "helpful": "被标记为有帮助的回答",
+        "helpfulNote": "{marked} 个被标记的回答中有 {helpful} 个",
+        "helpfulNone": "本期间没有被标记的回答",
+        "unchanged": "未经修改即确认的预备操作",
+        "unchangedNote": "{decided} 个中有 {unchanged} 个；被编辑 {edited}（{editedCount} 个）",
+        "preparedNone": "本期间没有已处理的预备操作",
+        "discarded": "被放弃的预备操作",
+        "discardedNote": "{decided} 个中有 {discarded} 个",
+        "gaps": "未解决的缺口",
+        "gapsNote": "无法满足的问题中占 {share}：{questions} 个中有 {open} 个",
+        "gapsNone": "本期间没有它无法回答的问题"
+      },
+      "chart": {
+        "title": "未经修改即确认的预备操作（按月）",
+        "label": "每月未经修改即确认的预备操作占比：{values}。",
+        "value": "{month} {share}（{decided} 个中有 {unchanged} 个）",
+        "valueNone": "{month} 无数据",
+        "unit": "未经修改即确认（%）",
+        "note": "纵轴从 0 到 100%。没有已处理预备操作的月份不显示柱形。"
+      },
+      "gaps": {
+        "title": "最大的缺口",
+        "help": "AI Centre 无法回答或完成的问题，按所问内容分组计数。示例已脱敏，保留时间与您的聊天记录相同。",
+        "intent": "意图",
+        "count": "次数",
+        "example": "示例",
+        "status": "状态",
+        "none": "本期间没有 AI Centre 无法回答或完成的事项。",
+        "roles": "提问者：{roles}",
+        "noExample": "未保留示例",
+        "statusFor": "{intent} 的状态",
+        "mixed": "各公司不同",
+        "statuses": {
+          "open": "未解决",
+          "planned": "已计划",
+          "wont_do": "不处理",
+          "duplicate": "重复"
+        },
+        "duplicateOf": "重复于",
+        "duplicateNone": "非重复",
+        "save": "保存"
+      },
+      "intents": {
+        "not_supported": "询问能否处理{area}相关事项：暂不支持",
+        "no_route": "请求处理{area}相关事项：无法预备",
+        "cannot_answer": "无法回答{area}相关问题"
+      },
+      "areas": {
+        "people": "员工",
+        "organisation": "组织",
+        "leave": "请假",
+        "attendance": "考勤",
+        "claims": "报销",
+        "payroll": "薪资",
+        "performance": "绩效",
+        "rewards": "奖励",
+        "lifecycle": "入职与离职",
+        "approvals": "审批",
+        "self_service": "自助服务",
+        "knowledge": "制度与指南",
+        "notifications": "通知",
+        "testing": "系统测试",
+        "reports": "报表",
+        "settings": "设置",
+        "security": "权限与安全",
+        "ai": "AI Centre",
+        "general": "其他"
+      },
+      "roles": {
+        "employee": "员工",
+        "manager": "经理",
+        "hr_admin": "HR 管理员",
+        "payroll": "薪资",
+        "group_admin": "集团管理员"
+      },
+      "locales": {
+        "en": "英语",
+        "ms": "马来语",
+        "zh": "中文",
+        "vi": "越南语",
+        "ta": "泰米尔语",
+        "th": "泰语"
+      },
+      "signals": {
+        "card_edited": "预备操作被打开编辑",
+        "card_discarded": "预备操作被放弃",
+        "recommendation_rejected": "建议未被采纳",
+        "answer_unhelpful": "回答被标记为没有帮助"
+      },
+      "corrections": {
+        "title": "待审核的更正",
+        "help": "员工修改或拒绝的内容。可将其设为评测候选，让下一次评测检查它，或将其忽略。这里的任何内容都不会自行改变 AI Centre。",
+        "signal": "信号",
+        "role": "角色",
+        "when": "时间",
+        "actions": "操作",
+        "none": "本期间没有待审核的内容。",
+        "detail": "关于{area} · {locale}",
+        "promote": "设为评测候选",
+        "dismiss": "忽略"
+      },
+      "candidate": {
+        "question": "问题（使用虚构细节）",
+        "expectation": "好的回复应做到什么",
+        "kind": "回复类型",
+        "factor": "测试内容",
+        "kinds": {
+          "answer": "回答",
+          "do": "执行",
+          "clarify": "追问一个问题",
+          "guide": "指引",
+          "honest_gap": "说明暂不支持",
+          "refuse": "礼貌拒绝"
+        },
+        "factors": {
+          "facts": "事实",
+          "capability": "能做什么",
+          "doing": "直接执行而非指路",
+          "privacy_wording": "隐私措辞",
+          "brevity": "简洁",
+          "language": "语言",
+          "safety": "安全"
+        },
+        "redactionHelp": "请使用虚构的姓名和细节。保存时，姓名、编号、数字、日期、电子邮件地址和电话号码会被替换为 NAME_A 等占位符。批准前请阅读已保存的文本。",
+        "newTitle": "新的评测候选：{signal}",
+        "newIntro": "记录为{locale}的{role}问题。请写出可能的提问方式，以及好的回复应做到什么。",
+        "example": "该轮对话中已脱敏的问题：“{example}”",
+        "saveDraft": "保存草稿",
+        "cancel": "取消",
+        "editTitle": "编辑草稿"
+      },
+      "candidates": {
+        "title": "评测候选",
+        "help": "只有在您批准脱敏文本并导出后，候选才会离开贵公司。文件交给开发人员，由其加入评测；不会自动改变 AI Centre。",
+        "question": "问题",
+        "role": "角色",
+        "state": "状态",
+        "actions": "操作",
+        "none": "暂无评测候选。",
+        "expected": "期望：{expectation}",
+        "states": {
+          "draft": "草稿",
+          "approved": "已批准",
+          "exported": "已导出",
+          "withdrawn": "已撤回"
+        },
+        "version": "第 {version} 版 · {date}",
+        "edit": "编辑",
+        "approve": "批准脱敏文本",
+        "export": "导出给开发人员",
+        "reopen": "退回草稿",
+        "download": "再次下载",
+        "withdraw": "撤回"
+      },
+      "proposals": {
+        "title": "建议",
+        "help": "各循环根据您自己的决定提出的更改。每项更改仅在管理员批准后从下一次运行起生效，并可还原。升级在各循环页面上决定，不在这里。",
+        "change": "更改",
+        "evidence": "依据",
+        "state": "状态",
+        "actions": "操作",
+        "none": "循环没有提出建议。",
+        "where": "{loop} · {company}",
+        "open": "等待决定",
+        "applied": "已于 {date} 应用",
+        "approved": "批准",
+        "rejected": "拒绝",
+        "revert": "还原"
+      },
+      "loopCorrections": {
+        "title": "各循环每月的更正",
+        "help": "员工修改循环所预备或执行内容的频率。7 天内超过 1% 时，自动执行的循环会自行退回到“预备”；这里的任何内容都不会提升循环级别。",
+        "loop": "循环",
+        "none": "尚无已处理的循环卡片或操作。",
+        "counts": "{decided} 个中有 {corrected} 个"
+      },
+      "method": {
+        "link": "这些数字是如何计算的",
+        "helpful": "被标记为有帮助的回答：在本期间被标记为有帮助或没有帮助的所有回答中，被标记为有帮助的回答。未被标记的回答不计入。",
+        "prepared": "未经修改即确认的预备操作：在本期间所有已处理的预备操作中，按原样确认的 AI Centre 预备操作。包括聊天中被确认、打开编辑或放弃的卡片，以及按其建议值或修改后的值完成的循环卡片。被编辑是指打开编辑或被修改的占比。没有提出自身数值的循环卡片不计入。",
+        "discarded": "被放弃的预备操作：在同样已处理的预备操作中，聊天中被放弃的卡片。循环卡片无法放弃，因此未修改、被编辑和被放弃三者相加为全部。",
+        "gaps": "未解决的缺口：本期间 AI Centre 无法回答或完成、且状态仍为未解决的问题类型，以及这些问题所占的比例。当回复表示暂时无法做到、请求无法预备或无法回答时，即计为一个问题。问题按缺口类型和所提及的产品领域分组。",
+        "trend": "图表显示每月已处理的预备操作中未经修改即确认的占比，纵轴从 0 到 100%。",
+        "corrections": "待审核的更正：被打开编辑或放弃的预备操作、未被采纳的建议以及被标记为没有帮助的回答，按时间由新到旧排列，且尚未被任何管理员忽略或设为评测候选。更正只显示提问者的角色，从不显示姓名。",
+        "candidates": "评测候选是您自己用虚构内容改写的问题及好的回复应做到的事。每次保存时都会脱敏，并且只有在您批准后导出文件时才会离开贵公司；虚构值会替换占位符。开发人员会在加入评测前进行审核。",
+        "proposals": "建议来自各循环自身的记录，目前为薪资循环的净变动阈值。批准会写入新的设置版本；还原会再写入一个恢复先前值的版本。每个版本都会保留。",
+        "access": "只有 HR 管理员和集团管理员可以查看此页面，且仅限其管理的公司。每个数字都是来自 AI Centre 自身工作记录的计数或计数占比。",
+        "privacy": "涉及敏感话题的对话不保存任何文字，也从不计入此处。除非您导出，否则这里学到的任何内容都不会离开贵公司；学习也从不改变计算、权限或 AI Centre 可显示的内容。"
+      }
     }
   },
   "today": {

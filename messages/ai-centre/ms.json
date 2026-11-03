@@ -1490,6 +1490,235 @@
         "failed": "Perubahan tidak dapat disimpan. Cuba lagi."
       },
       "patternUnknown": "Item gaji yang tiada lagi dalam katalog"
+    },
+    "quality": {
+      "title": "Kualiti AI",
+      "descriptionCompany": "Cara orang menggunakan jawapan dan tindakan yang disediakan oleh AI Centre di {company}, perkara yang tidak dapat dilakukannya, dan cadangan gelung.",
+      "descriptionAll": "Cara orang menggunakan jawapan dan tindakan yang disediakan oleh AI Centre di syarikat anda, perkara yang tidak dapat dilakukannya, dan cadangan gelung.",
+      "periodLabel": "Tempoh",
+      "periods": {
+        "last30": "30 hari lepas",
+        "quarter": "Suku tahun ini",
+        "year": "Tahun ini"
+      },
+      "companyLabel": "Syarikat",
+      "allCompanies": "Semua {count} syarikat",
+      "show": "Tunjuk",
+      "noCompanies": "Anda tidak mentadbir mana-mana syarikat, jadi tiada apa untuk ditunjukkan.",
+      "noData": "Belum ada data",
+      "undoDismiss": "Buat asal",
+      "saved": {
+        "dismissed": "Diketepikan. Ia tidak lagi menunggu semakan.",
+        "reopened": "Kembali dalam senarai untuk disemak.",
+        "candidate": "Disimpan sebagai draf calon penilaian. Semak teks yang disunting, kemudian luluskannya.",
+        "edited": "Draf disimpan dan disunting semula.",
+        "approved": "Diluluskan. Anda kini boleh mengeksportnya untuk pembangun.",
+        "reopened_candidate": "Kembali ke draf supaya anda boleh menyuntingnya.",
+        "withdrawn": "Ditarik balik. Ia tidak akan dieksport.",
+        "gap_status": "Status disimpan.",
+        "proposal_approved": "Diluluskan. Gelung menggunakan tetapan baharu mulai larian seterusnya.",
+        "proposal_rejected": "Ditolak. Ia tidak dicadangkan semula selagi buktinya sama.",
+        "proposal_reverted": "Dikembalikan. Tetapan sebelumnya digunakan semula mulai larian seterusnya."
+      },
+      "errors": {
+        "invalid": "Ada sesuatu dalam borang yang tidak sah. Semak dan cuba lagi.",
+        "not_administrator": "Hanya pentadbir syarikat ini boleh berbuat demikian.",
+        "not_found": "Item itu sudah tiada di sini.",
+        "changed": "Seseorang telah mengubah perkara ini sejak anda membuka halaman. Muat semula dan cuba lagi.",
+        "not_redacted": "Teks masih mengandungi nama, nombor, ID atau alamat selepas penyuntingan. Tulis semula dengan butiran rekaan.",
+        "state": "Itu tidak boleh dilakukan pada peringkat ini.",
+        "failed": "Itu tidak dapat disimpan. Cuba lagi."
+      },
+      "tiles": {
+        "helpful": "Jawapan ditanda membantu",
+        "helpfulNote": "{helpful} daripada {marked} jawapan yang ditanda",
+        "helpfulNone": "Tiada jawapan ditanda dalam tempoh ini",
+        "unchanged": "Tindakan disediakan disahkan tanpa perubahan",
+        "unchangedNote": "{unchanged} daripada {decided}; disunting {edited} ({editedCount})",
+        "preparedNone": "Tiada tindakan disediakan diputuskan dalam tempoh ini",
+        "discarded": "Tindakan disediakan dibuang",
+        "discardedNote": "{discarded} daripada {decided}",
+        "gaps": "Jurang terbuka",
+        "gapsNote": "{share} soalan yang tidak dapat dipenuhinya: {open} daripada {questions}",
+        "gapsNone": "Tiada soalan yang tidak dapat dijawabnya dalam tempoh ini"
+      },
+      "chart": {
+        "title": "Tindakan disediakan disahkan tanpa perubahan, mengikut bulan",
+        "label": "Bahagian tindakan disediakan yang disahkan tanpa perubahan, mengikut bulan: {values}.",
+        "value": "{month} {share} ({unchanged} daripada {decided})",
+        "valueNone": "{month} tiada data",
+        "unit": "Disahkan tanpa perubahan (%)",
+        "note": "Dilukis dari 0 hingga 100%. Bulan tanpa tindakan disediakan yang diputuskan tiada bar."
+      },
+      "gaps": {
+        "title": "Jurang terbesar",
+        "help": "Soalan yang tidak dapat dijawab atau dilakukan oleh AI Centre, dikumpulkan mengikut perkara yang ditanya dan dikira. Contoh disunting dan disimpan selama sembang anda disimpan sahaja.",
+        "intent": "Niat",
+        "count": "Bilangan",
+        "example": "Contoh",
+        "status": "Status",
+        "none": "Tiada perkara yang tidak dapat dijawab atau dilakukan oleh AI Centre dalam tempoh ini.",
+        "roles": "Ditanya oleh: {roles}",
+        "noExample": "Tiada contoh disimpan",
+        "statusFor": "Status bagi {intent}",
+        "mixed": "Berbeza mengikut syarikat",
+        "statuses": {
+          "open": "Terbuka",
+          "planned": "Dirancang",
+          "wont_do": "Tidak akan dibuat",
+          "duplicate": "Pendua"
+        },
+        "duplicateOf": "Pendua bagi",
+        "duplicateNone": "Bukan pendua",
+        "save": "Simpan"
+      },
+      "intents": {
+        "not_supported": "Ditanya sama ada ia boleh melakukan sesuatu tentang {area}: belum lagi",
+        "no_route": "Diminta melakukan sesuatu tentang {area}: tiada cara untuk menyediakannya",
+        "cannot_answer": "Tidak dapat menjawab tentang {area}"
+      },
+      "areas": {
+        "people": "pekerja",
+        "organisation": "organisasi",
+        "leave": "cuti",
+        "attendance": "kehadiran",
+        "claims": "tuntutan",
+        "payroll": "gaji",
+        "performance": "prestasi",
+        "rewards": "ganjaran",
+        "lifecycle": "kemasukan dan keluar kerja",
+        "approvals": "kelulusan",
+        "self_service": "layan diri",
+        "knowledge": "polisi dan panduan",
+        "notifications": "pemberitahuan",
+        "testing": "ujian sistem",
+        "reports": "laporan",
+        "settings": "tetapan",
+        "security": "akses dan keselamatan",
+        "ai": "AI Centre",
+        "general": "perkara lain"
+      },
+      "roles": {
+        "employee": "Pekerja",
+        "manager": "Pengurus",
+        "hr_admin": "Pentadbir HR",
+        "payroll": "Gaji",
+        "group_admin": "Pentadbir kumpulan"
+      },
+      "locales": {
+        "en": "Bahasa Inggeris",
+        "ms": "Bahasa Melayu",
+        "zh": "Bahasa Cina",
+        "vi": "Bahasa Vietnam",
+        "ta": "Bahasa Tamil",
+        "th": "Bahasa Thai"
+      },
+      "signals": {
+        "card_edited": "Tindakan yang disediakan dibuka untuk disunting",
+        "card_discarded": "Tindakan yang disediakan dibuang",
+        "recommendation_rejected": "Cadangan tidak diikuti",
+        "answer_unhelpful": "Jawapan ditanda tidak membantu"
+      },
+      "corrections": {
+        "title": "Pembetulan untuk disemak",
+        "help": "Perkara yang diubah atau ditolak oleh orang. Jadikan satu sebagai calon penilaian supaya penilaian seterusnya menyemaknya, atau ketepikannya. Tiada apa di sini mengubah AI Centre dengan sendirinya.",
+        "signal": "Isyarat",
+        "role": "Peranan",
+        "when": "Bila",
+        "actions": "Tindakan",
+        "none": "Tiada apa untuk disemak dalam tempoh ini.",
+        "detail": "Tentang {area} · {locale}",
+        "promote": "Jadikan calon penilaian",
+        "dismiss": "Ketepikan"
+      },
+      "candidate": {
+        "question": "Soalan, dengan butiran rekaan",
+        "expectation": "Apa yang dilakukan oleh jawapan yang baik",
+        "kind": "Jenis jawapan",
+        "factor": "Apa yang diuji",
+        "kinds": {
+          "answer": "Jawab",
+          "do": "Lakukan",
+          "clarify": "Tanya satu soalan",
+          "guide": "Panduan",
+          "honest_gap": "Katakan belum boleh",
+          "refuse": "Tolak dengan baik"
+        },
+        "factors": {
+          "facts": "Fakta",
+          "capability": "Apa yang boleh dilakukannya",
+          "doing": "Melakukan, bukan menunjuk",
+          "privacy_wording": "Kata-kata privasi",
+          "brevity": "Ringkas",
+          "language": "Bahasa",
+          "safety": "Keselamatan"
+        },
+        "redactionHelp": "Gunakan nama dan butiran rekaan. Apabila anda menyimpan, nama, ID, angka, tarikh, alamat e-mel dan nombor telefon digantikan dengan pemegang tempat seperti NAME_A. Baca teks yang disimpan sebelum anda meluluskannya.",
+        "newTitle": "Calon penilaian baharu: {signal}",
+        "newIntro": "Direkodkan sebagai soalan {role} dalam {locale}. Tulis soalan seperti mungkin ditanya dan apa yang dilakukan oleh jawapan yang baik.",
+        "example": "Soalan yang disunting daripada giliran itu: “{example}”",
+        "saveDraft": "Simpan draf",
+        "cancel": "Batal",
+        "editTitle": "Sunting draf"
+      },
+      "candidates": {
+        "title": "Calon penilaian",
+        "help": "Calon hanya keluar dari syarikat anda selepas anda meluluskan teks yang disunting dan mengeksportnya. Fail itu diberikan kepada pembangun yang menambahkannya pada penilaian; tiada apa yang mengubah AI Centre secara automatik.",
+        "question": "Soalan",
+        "role": "Peranan",
+        "state": "Keadaan",
+        "actions": "Tindakan",
+        "none": "Belum ada calon penilaian.",
+        "expected": "Dijangka: {expectation}",
+        "states": {
+          "draft": "Draf",
+          "approved": "Diluluskan",
+          "exported": "Dieksport",
+          "withdrawn": "Ditarik balik"
+        },
+        "version": "Versi {version} · {date}",
+        "edit": "Sunting",
+        "approve": "Luluskan teks yang disunting",
+        "export": "Eksport untuk pembangun",
+        "reopen": "Kembali ke draf",
+        "download": "Muat turun semula",
+        "withdraw": "Tarik balik"
+      },
+      "proposals": {
+        "title": "Cadangan",
+        "help": "Perubahan yang dicadangkan oleh gelung daripada keputusan anda sendiri. Setiap satu hanya digunakan apabila pentadbir meluluskannya, mulai larian seterusnya, dan boleh dikembalikan. Kenaikan tahap diputuskan di halaman setiap gelung, bukan di sini.",
+        "change": "Perubahan",
+        "evidence": "Bukti",
+        "state": "Keadaan",
+        "actions": "Tindakan",
+        "none": "Tiada cadangan daripada gelung.",
+        "where": "{loop} · {company}",
+        "open": "Menunggu keputusan",
+        "applied": "Digunakan {date}",
+        "approved": "Luluskan",
+        "rejected": "Tolak",
+        "revert": "Kembalikan"
+      },
+      "loopCorrections": {
+        "title": "Pembetulan gelung mengikut bulan",
+        "help": "Kekerapan orang mengubah apa yang disediakan atau dilakukan oleh gelung. Melebihi 1% dalam 7 hari, gelung yang bertindak sendiri kembali ke Sediakan dengan sendirinya; tiada apa di sini menaikkan tahap gelung.",
+        "loop": "Gelung",
+        "none": "Belum ada kad atau tindakan gelung yang diputuskan.",
+        "counts": "{corrected} daripada {decided}"
+      },
+      "method": {
+        "link": "Cara angka ini dikira",
+        "helpful": "Jawapan ditanda membantu: jawapan yang ditanda membantu, daripada semua jawapan yang ditanda membantu atau tidak membantu dalam tempoh itu. Jawapan yang tidak ditanda tidak dikira.",
+        "prepared": "Tindakan disediakan disahkan tanpa perubahan: tindakan yang disediakan oleh AI Centre dan disahkan seperti yang disediakan, daripada semua tindakan disediakan yang diputuskan dalam tempoh itu. Iaitu kad dalam sembang yang disahkan, dibuka untuk disunting atau dibuang, atau kad gelung yang diselesaikan dengan nilai yang dicadangkannya atau nilai yang diubah. Disunting ialah bahagian yang dibuka untuk disunting atau diubah. Kad gelung yang tidak mencadangkan nilainya sendiri tidak dikira.",
+        "discarded": "Tindakan disediakan dibuang: kad dalam sembang yang dibuang, daripada tindakan disediakan yang sama yang diputuskan. Kad gelung tidak boleh dibuang, jadi tanpa perubahan, disunting dan dibuang menjadi jumlah keseluruhan.",
+        "gaps": "Jurang terbuka: jenis soalan yang tidak dapat dijawab atau dilakukan oleh AI Centre dalam tempoh itu yang statusnya masih terbuka, dan bahagian soalan tersebut yang menunggunya. Soalan dikira apabila jawapan menyatakan ia belum boleh melakukannya, apabila tiada apa dapat disediakan untuk sesuatu permintaan, atau apabila ia tidak dapat menjawab. Soalan dikumpulkan mengikut jenis jurang dan bidang produk yang disebut.",
+        "trend": "Carta menunjukkan, bagi setiap bulan, bahagian tindakan disediakan yang diputuskan pada bulan itu yang disahkan tanpa perubahan, dilukis dari 0 hingga 100%.",
+        "corrections": "Pembetulan untuk disemak: tindakan disediakan yang dibuka untuk disunting atau dibuang, cadangan yang tidak diikuti dan jawapan yang ditanda tidak membantu, yang terbaharu dahulu, yang belum diketepikan atau dijadikan calon penilaian oleh mana-mana pentadbir. Pembetulan menunjukkan peranan orang itu, bukan namanya.",
+        "candidates": "Calon penilaian ialah tulisan semula rekaan anda sendiri bagi sesuatu soalan dan apa yang dilakukan oleh jawapan yang baik. Ia disunting setiap kali disimpan dan hanya keluar dari syarikat anda sebagai fail yang anda eksport selepas meluluskannya; nilai rekaan menggantikan pemegang tempat. Pembangun menyemaknya sebelum ia dimasukkan ke dalam penilaian.",
+        "proposals": "Cadangan datang daripada rekod gelung sendiri, kini ambang perubahan bersih gelung gaji. Meluluskan menulis versi tetapan baharu; mengembalikan menulis satu lagi dengan nilai terdahulu. Setiap versi disimpan.",
+        "access": "Hanya pentadbir HR dan kumpulan melihat halaman ini, bagi syarikat yang mereka tadbir. Setiap angka ialah kiraan, atau bahagian kiraan, daripada rekod AI Centre sendiri tentang kerjanya.",
+        "privacy": "Perbualan tentang topik sensitif tidak menyimpan sebarang perkataan dan tidak pernah dikira di sini. Tiada apa yang dipelajari di sini keluar dari syarikat anda melainkan anda mengeksportnya, dan pembelajaran tidak pernah mengubah pengiraan, kebenaran atau apa yang boleh ditunjukkan oleh AI Centre."
+      }
     }
   },
   "today": {

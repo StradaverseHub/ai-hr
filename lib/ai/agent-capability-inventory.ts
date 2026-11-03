@@ -224,6 +224,9 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/assistant/chat-import-actions.ts":{"confirmChatImportAction":"internal:assistant_surface"},
  "app/assistant/loop-clock-out-actions.ts":{"confirmMissedClockOutAction":"internal:assistant_surface"},
  "app/assistant/capacity-actions.ts":{"setCapacityBaselineAction":"handoff:ai_governance"},
+ // AI v2 Phase 2 P2-6: the learning loops. A card's Confirm/Edit/Discard and an answer's mark record a learning signal for the
+ // person's own turn (assistant surface); every other command is an administrator's AI quality decision (AI governance).
+ "app/assistant/learning-actions.ts":{"approveCandidateAction":"handoff:ai_governance","decideProposalAction":"handoff:ai_governance","dismissSignalAction":"handoff:ai_governance","editCandidateAction":"handoff:ai_governance","exportCandidateAction":"handoff:ai_governance","markAnswerAction":"internal:assistant_surface","promoteSignalAction":"handoff:ai_governance","recordCardSignalAction":"internal:assistant_surface","reopenCandidateAction":"handoff:ai_governance","reopenSignalAction":"handoff:ai_governance","revertProposalAction":"handoff:ai_governance","setGapStatusAction":"handoff:ai_governance","withdrawCandidateAction":"handoff:ai_governance"},
  // AI v2 Phase 2 P2-1: the employee's own Undo of a clock-out the missed clock-outs loop set (core/loops/undo.ts).
  "app/assistant/loop-undo-actions.ts":{"undoOwnLoopAction":"internal:assistant_surface"},
  "app/assistant/launcher-actions.ts":{"askFromLauncherAction":"internal:assistant_surface","askFromWorkspaceAction":"internal:assistant_surface","loadEarlierChatAction":"internal:assistant_surface","loadMoreChatsAction":"internal:assistant_surface","openStoredChatAction":"internal:assistant_surface","chatImportOfferedAction":"internal:assistant_surface"},

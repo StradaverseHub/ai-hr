@@ -33,9 +33,13 @@ const ARGUMENTS_ONLY = ['aiCentre.autonomy.summaryNamed', 'aiCentre.autonomy.pro
   'aiCentre.payrollCycle.salaryPage.cause', 'payrollAudit.stepLabel', 'payrollAudit.pack.captureLine', 'payrollAudit.pack.findingItem'];
 const BODIES = ['aiCentre.payrollCycle.bodies.epf', 'aiCentre.payrollCycle.bodies.socso', 'aiCentre.payrollCycle.bodies.eis', 'aiCentre.payrollCycle.bodies.pcb',
   'payrollAudit.forms.epf', 'payrollAudit.forms.pcb_cp39', 'today.autonomy.byHr'];
-const PHASE2 = [...ARGUMENTS_ONLY, ...BODIES];
+// Wave 2 (P2-6, AI quality): a proposal's place is only its arguments and a separator ("{loop} · {company}"), and the product
+// area named "AI Centre" is the product's name in every locale; Malay writes Status as English does.
+const QUALITY = ['aiCentre.quality.proposals.where', 'aiCentre.quality.areas.ai'];
+const PHASE2 = [...ARGUMENTS_ONLY, ...BODIES, ...QUALITY];
 const SAME_AS_ENGLISH_ALLOWED: Readonly<Record<string, readonly string[]>> = { ms: ['aiCentre.how.layers.model', LOOP_STEP, 'aiCentre.loops.cases.columns.status', ...PHASE2,
-  'aiCentre.autonomy.actions.columns.status', 'aiCentre.payrollCycle.salaryPage.columns.status', 'aiCentre.payrollCycle.runType.bonus', 'aiCentre.payrollCycle.byCompany.columns.audit'],
+  'aiCentre.autonomy.actions.columns.status', 'aiCentre.payrollCycle.salaryPage.columns.status', 'aiCentre.payrollCycle.runType.bonus', 'aiCentre.payrollCycle.byCompany.columns.audit',
+  'aiCentre.quality.gaps.status'],
   zh: [LOOP_STEP, ...PHASE2], vi: [LOOP_STEP, ...PHASE2], ta: [LOOP_STEP, ...PHASE2], th: [LOOP_STEP, ...PHASE2] };
 
 function flat(d: Dict, prefix = ''): Record<string, string> {
@@ -116,7 +120,11 @@ describe('AI centre catalogue completeness', () => {
       corrected: 1, applied: 120, by: 'Aisyah Fictional', released: 40, prepared: 4, forms: 5, filed: 3, matched: 1, disposed: 1,
       changed: 'Nov 25', last4: '5678', people: 2, paid: 2, lastDay: 'Oct 31', runType: 'Salary', runSeq: 1, closedAt: 'Nov 26, 2026',
       releasedAt: 'Nov 27, 2026', control: 'Shared bank account', action: 'unlock', at: 'Nov 28, 2026', note: 'Late overtime',
-      head: 'a1b2c3d4', chained: 12, who: 'Aisyah Fictional', state: 'Open', id: 'u-1' };
+      head: 'a1b2c3d4', chained: 12, who: 'Aisyah Fictional', state: 'Open', id: 'u-1',
+      // Wave 2: arguments of AI quality (aiCentre.quality.*, P2-6) this list did not carry.
+      helpful: 4, marked: 5, unchanged: 7, decided: 9, edited: '11.1%', editedCount: 1, discarded: 1, questions: 6, roles: 'Employee, Manager',
+      intent: 'Could not answer about leave', signal: 'A prepared action was discarded', role: 'Employee', locale: 'Malay',
+      example: 'Can NAME_A take leave on DATE_A?', expectation: 'Gives the balance in one line.' };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });
