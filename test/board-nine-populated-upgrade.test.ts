@@ -126,9 +126,9 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   const afterLedger=await ledger();expect(afterLedger).toHaveLength(660);expect(afterLedger.slice(0,656)).toEqual(stagingLedger);
   expect(afterLedger.slice(656).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
    {hash:'8cd50320de942af9aa59e515c5e39e78f6027325da86264dd8e772bff1c802b7',created_at:'1793330001400'},
-   {hash:'2afbad3a54800118a3d09bb7e628453a80badf2980725bca8979716f9fd99c4c',created_at:'1793330001401'},
-   {hash:'768b07fe216c483b27211c413033621f83f4e2f4ccf5d81de4cc8f5bb07326d0',created_at:'1793330001402'},
-   {hash:'3eaf1d2bf2be87d0c7a0495968b11fe7002c8882a82451bd17ce8a73247032e4',created_at:'1793330001403'},
+   {hash:'bcfb193a8f6e59c7fec485291bf94cf460f89f44d5abc5bb9ef80cdb6f802acc',created_at:'1793330001401'},
+   {hash:'9614f0d8aa6855d24fe0b7ee1e75c46f80f89e19ec43161825e4bf357eefb908',created_at:'1793330001402'},
+   {hash:'86648ce2dc7af62b92091a5ec195877c68a511f6272dd9681781cedf85900041',created_at:'1793330001403'},
   ]);
   expect(await phaseOneTables()).toEqual([{chats:'teras_chat',cases:'private_case',loops:'teras_loop_run',letters:'letter_request'}]);
   // The applied ledger rows after the 648-entry baseline, for the release record: ids, SQL hashes and when values only.

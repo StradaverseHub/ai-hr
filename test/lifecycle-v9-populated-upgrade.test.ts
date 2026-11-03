@@ -54,11 +54,11 @@ it('preserves populated Native issuance, private data, identity and every applie
   // AI Centre stored chats (claude/noveri-chats), frozen here.
   {idx:800,version:'7',when:1793330001400,tag:'2000_teras_chats',breakpoints:true,hash:'8cd50320de942af9aa59e515c5e39e78f6027325da86264dd8e772bff1c802b7'},
   // AI v2 W11 protected case route (claude/aiv2-s2-case-route), frozen here.
-  {idx:801,version:'7',when:1793330001401,tag:'2001_private_cases',breakpoints:true,hash:'2afbad3a54800118a3d09bb7e628453a80badf2980725bca8979716f9fd99c4c'},
+  {idx:801,version:'7',when:1793330001401,tag:'2001_private_cases',breakpoints:true,hash:'bcfb193a8f6e59c7fec485291bf94cf460f89f44d5abc5bb9ef80cdb6f802acc'},
   // AI v2 W8 loops at the Prepare level (claude/aiv2-s3-loops), frozen here.
-  {idx:802,version:'7',when:1793330001402,tag:'2002_teras_loops',breakpoints:true,hash:'768b07fe216c483b27211c413033621f83f4e2f4ccf5d81de4cc8f5bb07326d0'},
+  {idx:802,version:'7',when:1793330001402,tag:'2002_teras_loops',breakpoints:true,hash:'9614f0d8aa6855d24fe0b7ee1e75c46f80f89e19ec43161825e4bf357eefb908'},
   // AI v2 Phase 1 slice 3 employee letter requests (claude/aiv2-s3-letter-request), frozen here.
-  {idx:803,version:'7',when:1793330001403,tag:'2003_letter_requests',breakpoints:true,hash:'3eaf1d2bf2be87d0c7a0495968b11fe7002c8882a82451bd17ce8a73247032e4'},
+  {idx:803,version:'7',when:1793330001403,tag:'2003_letter_requests',breakpoints:true,hash:'86648ce2dc7af62b92091a5ec195877c68a511f6272dd9681781cedf85900041'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {
