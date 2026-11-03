@@ -31,6 +31,8 @@ import {todayInKualaLumpur} from '../../lib/hr-date';
 import {payViewDestinationFor} from '../../lib/product-context/destinations';
 import {gateTurn,isSensitiveReason,TURN_GATE_NOTE} from '../../lib/product-context/request-gate';
 import {asksCapability} from '../../lib/product-context/capability-intent';
+import {chatImportFileInput} from '../../lib/chat-import';
+import {chatImportKindsFor} from '../chat-import/kinds';
 import {destinationLabel} from '../product-context/tools';
 import {canonicalJson,type Proposal} from '../proposals/proposal';
 import {DisclosureLedger,discloseToolOutput,type DisclosureApplied} from './disclosure';
@@ -147,7 +149,14 @@ export function routeReply(caseRoute=false):string{
 export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  if(options.enabled===HARNESS_TEST_ONLY?!testProcess():!consumeHarnessPermit(options.enabled,options.ctx.tenantId,options.ctx.userId))throw new HarnessDisabled();
  const clock=options.clock??(()=>new Date()),started=clock(),startedMs=Date.now(),{ctx,model}=options;
- const callerKey=authorityKey(ctx),gate=gateTurn(options.question,{sensitive:S.sensitive.topics});
+ // AI v2 slice 3 (issue 16b): the attachment gate is lifted only for a turn carrying a chat import file that passes the
+ // server's own file check again here, from a caller who may prepare an import in chat. Any other file is dropped from
+ // the scope, and its words stay gated like any message about an attachment.
+ const {importFile:postedFile,...scopeWithoutFile}=options.scope;
+ const checkedFile=postedFile===undefined?null:chatImportFileInput(postedFile);
+ const importUpload=checkedFile!==null&&(await chatImportKindsFor(ctx)).length>0;
+ const scope:ToolScope=importUpload&&checkedFile?{...scopeWithoutFile,importFile:checkedFile}:scopeWithoutFile;
+ const callerKey=authorityKey(ctx),gate=gateTurn(options.question,{sensitive:S.sensitive.topics,importUpload});
  const reason=gate.privateReads?null:gate.reason,refused=reason==='workplace_harm'||reason==='instruction_override',crisis=reason==='sensitive_crisis',routed=isSensitiveReason(reason);
  // Crisis turns never reach the model (run 41307457954: the provider answered every one with a bare refusal), and
  // since spec v6 no sensitive-topic turn does: the person's words about health, harassment, a grievance or a
@@ -155,7 +164,7 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  const fixed=refused||routed;
  const history=options.history??[];
  if(history.some(row=>row?.side!=='model'))throw new PersonSideHistory();
- const candidates=await (options.tools??nativeToolProvider)(ctx,{...options.scope,personWords:options.question},gate.actions);
+ const candidates=await (options.tools??nativeToolProvider)(ctx,{...scope,personWords:options.question},gate.actions);
  // A fixed turn offers nothing: the model is never called.
  const offered=fixed?[]:offerFor(candidates.bindings,gate,options.allowTools,asksCapability(options.question)),offeredNames=new Set(offered.map(binding=>binding.name));
 
