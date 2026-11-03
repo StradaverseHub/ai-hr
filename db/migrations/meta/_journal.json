@@ -4922,6 +4922,13 @@
       "when": 1793330000399,
       "tag": "0999_performance_cycle_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 847,
+      "version": "7",
+      "when": 1793330000400,
+      "tag": "1000_onehr_own_plan_edit_guard",
+      "breakpoints": true
     }
   ]
 }
