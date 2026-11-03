@@ -74,7 +74,7 @@ describe('Career Plan reviewer scope (TASK-030, migration 0640)', () => {
   const idsAs = async (ctx: SessionContext) => (await plansAs(ctx)).map((p) => p.id).sort();
   const career = (aspiration: string) => ({ aspiration, mobility: 'stay', mobilityNote: '', targetProfileId: null });
   const goal = (area: string) => ({ id: randomUUID(), area, dueOn: '', onJob: `Practise ${area}`, fromOthers: '', formalLearning: '', status: 'not_started' as const });
-  /** A raw UPDATE of a non-guarded column: RLS alone decides (USING filters the row, WITH CHECK refuses). */
+  /** A raw UPDATE probes visibility and the separate native review-effect guard. */
   const touch = (ctx: SessionContext, planId: string, conversation: string) =>
     withTenant(ctx, (tx) => tx.update(schema.onehrPlan).set({ conversation }).where(eq(schema.onehrPlan.id, planId)).returning({ id: schema.onehrPlan.id }));
   /** A raw INSERT of a plan for the subject in a plan year that has none, so only RLS can refuse it. A
@@ -209,13 +209,21 @@ describe('Career Plan reviewer scope (TASK-030, migration 0640)', () => {
     expect(m.map((p) => p.id)).toEqual([sharedPlanId]);
     expect((m[0].career as { aspiration: string }).aspiration).toBe('Lead the regional team');
     expect(await idsAs(approverCtx)).toEqual([sharedPlanId]);
-    expect(await touch(mgr, sharedPlanId, 'Reviewer note')).toEqual([{ id: sharedPlanId }]);
+    expect(await refusal(touch(mgr, sharedPlanId, 'Raw reviewer note'))).toMatch(/Plan review source unavailable/);
+    const [plan] = await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id, sharedPlanId));
+    await perf.reviewOnehrPlan(mgr, sharedPlanId, plan.revision, plan.managerComment, 'Reviewer note', false, reviewId);
+    const [saved] = await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id, sharedPlanId));
+    expect(saved).toMatchObject({conversation:'Reviewer note',revision:plan.revision+1});
   });
 
   it('the subject reads and writes their own plan; drafts stay with the subject and the administrator', async () => {
     expect(await idsAs(self)).toEqual([sharedPlanId]);
     expect(await idsAs(self2)).toEqual([draftPlanId]);
-    expect(await touch(self2, draftPlanId, 'Own draft note')).toEqual([{ id: draftPlanId }]);
+    expect(await refusal(touch(self2, draftPlanId, 'Raw own draft note'))).toMatch(/Plan review source unavailable/);
+    const [draft] = await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id, draftPlanId));
+    const updatedCareer = career('Revised private draft aspiration');
+    await perf.saveOnehrPlan(self2, review2Id, draft.revision, {career:updatedCareer,goals:[goal('Negotiation')]});
+    expect(await plansAs(self2)).toEqual([expect.objectContaining({id:draftPlanId,career:updatedCareer})]);
     // The reviewer of subject2 never reads subject2's draft.
     const [rv] = await withTenant(mgr, (tx) => tx.execute<{ reviewer: boolean }>(sql`select app.assessment_plan_reviewer(${draftPlanId}::uuid) as reviewer`));
     expect(rv.reviewer, 'non-vacuous: the manager IS the reviewer of the draft plan').toBe(true);
@@ -229,7 +237,7 @@ describe('Career Plan reviewer scope (TASK-030, migration 0640)', () => {
 
   it('a performance partner in scope reads (and administers) plans; one for another company reads nothing', async () => {
     expect(await idsAs(partner)).toEqual([sharedPlanId, draftPlanId].sort());
-    expect(await touch(partner, sharedPlanId, 'Partner note')).toEqual([{ id: sharedPlanId }]);
+    expect(await refusal(touch(partner, sharedPlanId, 'Raw partner note'))).toMatch(/Plan review source unavailable/);
     expect(await idsAs(partnerOther)).toEqual([]);
     expect(await touch(partnerOther, sharedPlanId, 'Other partner')).toEqual([]);
     expect(await refusal(insertFor(partnerOther, subject, reviewId, 7))).toMatch(/row-level security/);    // The partner's administration screens now count shared plans exactly as HR's do.
