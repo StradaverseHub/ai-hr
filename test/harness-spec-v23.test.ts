@@ -8,6 +8,7 @@
  * linkable page; the topic tool specs are generated from those reads; and each new line is there once, word for word, with
  * nothing left of the text it replaced. The worst case per role is test/harness-tool-ceiling.test.ts, the gate and disclosure
  * per topic test/harness-topic-tools.test.ts. Pure; no provider, no database. */
+import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 import {HARNESS_SPEC,HARNESS_SPEC_DIGESTS,harnessSpecDigest} from '../core/harness/spec';
 import {FOLDED_READS,TOPIC_TOOLS,topicRead,topicToolSpecs} from '../core/semantic-model/topic-tools';
@@ -119,8 +120,25 @@ describe('the loops hardening branch\'s declarations (coordinator, text only unt
   const statutory=companies.of!.find(field=>field.name==='statutory')!;
   expect(statutory.of!.find(field=>field.name==='required')).toMatchObject({type:'boolean',disclosure:'full'});
   expect(statutory.of!.find(field=>field.name==='required')!.meaning).toMatch(/not required this month, never missing/);
+  // Phase 2 integration: the Audit loop's findings a standing acknowledgement covers are their own count, never open.
+  const findings=companies.of!.find(field=>field.name==='findings')!;
+  expect(findings.of!.map(field=>[field.name,field.type,field.disclosure])).toEqual([['open','integer','bands'],['disposed','integer','bands'],['acknowledged','integer','bands']]);
+  expect(findings.of!.find(field=>field.name==='open')!.meaning).toMatch(/acknowledgement covers is not counted here/);
   const salary=terasEntity('salary_payroll_run').fields.find(field=>field.name==='companies')!.of!.find(field=>field.name==='runs')!.of!.find(field=>field.name==='bank')!;
   expect(salary.meaning).toMatch(/match \(it matches, including a run where nobody is paid by bank\)/);expect(salary.meaning).toMatch(/not_available \(no bank file format to compare: never done\)/);
+ });
+});
+
+describe('the handbook hardening branch\'s markers (Phase 2 integration)',()=>{
+ it('declares both markers core/handbook/ask.ts writes into a paragraph in place of a figure, and the spec line names the contradiction one',()=>{
+  const policies=terasEntity('policy_handbook').fields.find(field=>field.name==='policies')!;
+  const text=policies.of!.find(field=>field.name==='paragraphs')!.of!.find(field=>field.name==='text')!;
+  const source=readFileSync(new URL('../core/handbook/ask.ts',import.meta.url),'utf8');
+  // Non-vacuity: the owner writes each marker.
+  expect(source).toContain('`[current setting: ${now}.');expect(source).toContain("'[the current setting could not be read; ask HR]'");
+  expect(text.meaning).toContain('replaced by [current setting: …]');
+  expect(text.meaning).toContain('by [the current setting could not be read; ask HR], so no figure is given for it');
+  expect((HARNESS_SPEC.instructions as readonly string[]).filter(row=>row.includes('[current setting: …]'))).toHaveLength(1);
  });
 });
 

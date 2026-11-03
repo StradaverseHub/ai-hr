@@ -119,9 +119,12 @@ describe('the payroll-cycle loop reads',()=>{
   const audit=await read('payroll_audit_status',group,{period:'2026-06'});
   expect(audit).toMatchObject({ok:true,period:'2026-06',dueDate:'2026-07-15'});
   expect(names(audit)).toEqual([first,second].sort());
-  for(const row of audit.companies)expect(row).toMatchObject({paused:false,done:false,runs:0,payslips:{total:0,released:0,opened:0},bankFiles:0,
-   corrections:{count:0,withoutRootCause:0},findings:{open:0,disposed:0},repeatIssues:[],captures:0,
-   statutory:['epf','socso_eis','pcb_cp39','hrd'].map(form=>({form,prepared:false,preparedOn:null,beforeDue:null,filed:false,filedOn:null}))});
+  // Phase 2 integration: the read carries each form's data-aware required flag and the findings a standing acknowledgement
+  // covers. No payslip deducted PCB and neither company is registered for the HRD Corp levy (no company statutory row),
+  // so only EPF and SOCSO/EIS are required this month.
+  for(const row of audit.companies)expect(row).toEqual({company:row.company,paused:false,done:false,runs:0,payslips:{total:0,released:0,opened:0},bankFiles:0,
+   corrections:{count:0,withoutRootCause:0},findings:{open:0,disposed:0,acknowledged:0},repeatIssues:[],captures:0,
+   statutory:['epf','socso_eis','pcb_cp39','hrd'].map(form=>({form,prepared:false,preparedOn:null,beforeDue:null,filed:false,filedOn:null,required:form==='epf'||form==='socso_eis'}))});
   // The second company's own administrator: that company only, in every read.
   for(const name of READS)expect(names(await read(name,scoped,{period:'2026-07'})),name).toEqual([second]);
   // Counts, states and configuration only: no person, no id.

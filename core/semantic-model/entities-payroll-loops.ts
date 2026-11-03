@@ -63,15 +63,15 @@ export const PAYROLL_LOOP_ENTITIES:readonly SemanticEntity[]=freeze([
       f('check','enum','full','Which check: timesheets, overtime, leave (and unpaid days), claims, joinersLeavers, statutoryBank (bank, EPF, SOCSO and tax numbers), payChanges, setup (payroll set-up), repeatAudit (control checks the Audit loop found in each of the last two audited months).',{values:PRE_SALARY_CHECK_KEYS}),
       f('status','enum','full','done, open (a person must act before the cut-off), waiting (waiting for its usual approver), warning (worth a look, not blocking) or off (the company does not use that module).',{values:PRE_SALARY_CHECK_STATUSES}),
       f('open','integer','bands','Items a person must act on before the cut-off.'),f('waiting','integer','bands','Items waiting for their usual approver.'),
-      f('warnings','integer','bands','Items worth a look that do not block.')]})]}),
+      f('warnings','integer','bands','Items worth a look that do not block; a warning a standing \'expected\' acknowledgement covers for that person is not counted.')]})]}),
     f('salary','object','full','The Salary payroll loop for the company.',{of:[
      f('state','enum','full','before_cut_off, ready_to_start (the cut-off has passed and no salary run has started), in_progress, attention (a run\'s bank check does not match), done (every run closed with a matching bank file), not_checked, paused or off.',{values:SALARY_STATES}),
      f('runs','list','full','Each run of the month the loop checked.',{of:[runType,runSeq,runStatus,
-      f('exceptions','integer','bands','Payroll exceptions still open on the run.'),f('flagged','integer','bands','People whose net pay changed beyond the company\'s net-swing threshold.'),
+      f('exceptions','integer','bands','Payroll exceptions still open on the run; a review exception a standing \'expected\' acknowledgement covers is not counted, a block always is.'),f('flagged','integer','bands','People whose net pay changed beyond the company\'s net-swing threshold; a person whose net-swing check is acknowledged as expected is not flagged.'),
       bank,f('done','boolean','full','Closed with its bank file checked.')]})]}),
     f('audit','object','full','The Audit loop for the company that month.',{of:[
      f('state','enum','full','done (paid, filed, reconciled and evidenced), open, paused, or not_shown (the administrator does not administer this company\'s payroll).',{values:AUDIT_COMPANY_STATES}),
-     f('openFindings','integer','bands','Control findings still waiting for a disposition.')]})]}),
+     f('openFindings','integer','bands','Control findings still waiting for a disposition; a finding a standing \'expected\' acknowledgement covers is not counted.')]})]}),
    f('history','list','full','The three months before, newest first.',{of:[period('The pay month.'),
     f('inputsReadyDays','integer','full','Days before the cut-off the inputs were ready (0: on the day); null when not measured or missed.'),
     f('inputsMissed','boolean','full','The inputs were not ready by the cut-off.'),
@@ -88,8 +88,8 @@ export const PAYROLL_LOOP_ENTITIES:readonly SemanticEntity[]=freeze([
     f('cutOff','date','full','The company\'s payroll cut-off for the month.'),
     f('thresholdPercent','number','full','The company\'s net-swing threshold, in percent (a change of net pay beyond it is flagged).'),
     f('runs','list','full','Each run of the month, in order.',{of:[runType,runSeq,runStatus,
-     f('employees','integer','bands','People in the run.'),f('exceptions','integer','bands','Payroll exceptions still open.'),
-     f('changed','integer','bands','People whose net pay changed from last month.'),f('flagged','integer','bands','People over the net-swing threshold.'),
+     f('employees','integer','bands','People in the run.'),f('exceptions','integer','bands','Payroll exceptions still open; a review exception a standing \'expected\' acknowledgement covers is not counted, a block always is.'),
+     f('changed','integer','bands','People whose net pay changed from last month.'),f('flagged','integer','bands','People over the net-swing threshold; a person whose net-swing check is acknowledged as expected is not flagged.'),
      f('causes','list','full','What explains the changes, by cause.',{of:[f('cause','enum','full','The cause.',{values:PAY_CAUSES}),f('count','integer','bands','People it explains.')]}),
      f('ruleVersion','label','full','The statutory rule version the run was calculated on; null when unknown.'),
      f('rulesNewer','list','full','Statutory bodies with a newer rule version than the run used.',{of:[f('body','label','full','EPF, SOCSO, EIS or PCB.')]}),
@@ -124,7 +124,7 @@ export const PAYROLL_LOOP_ENTITIES:readonly SemanticEntity[]=freeze([
   fields:[period('The pay month audited.'),f('dueDate','date','full','When its statutory files are due.'),f('on','boolean','full','The Audit loop is switched on for the group.'),
    f('companies','list','full','One row per company whose payroll the administrator administers.',{of:[company,
     f('paused','boolean','full','The Audit loop is paused for this company.'),
-    f('done','boolean','full','Every run closed and released, every statutory file filed with a receipt, no finding open and every correction with a root cause.'),
+    f('done','boolean','full','Every run closed and released, every statutory file the month requires filed with a receipt, no finding open and every correction with a root cause.'),
     f('runs','integer','full','Payroll runs that month.'),
     f('payslips','object','full','Payslips that month.',{of:[f('total','integer','bands','Payslips.'),f('released','integer','bands','Released to employees.'),f('opened','integer','bands','People who opened theirs.')]}),
     f('statutory','list','full','Each statutory file.',{of:[f('form','enum','full','epf, socso_eis, pcb_cp39 or hrd.',{values:AUDIT_STATUTORY_FORMS}),
@@ -135,7 +135,9 @@ export const PAYROLL_LOOP_ENTITIES:readonly SemanticEntity[]=freeze([
      f('required','boolean','full','Whether the company must file this form this month (PCB CP39 only with tax to remit, the HRD Corp levy only for a liable company). False: not required this month, never missing.')]}),
     f('bankFiles','integer','full','Bank files recorded for the month.'),
     f('corrections','object','full','Corrections after the run (target zero).',{of:[f('count','integer','bands','Corrections.'),f('withoutRootCause','integer','bands','Still without a root cause.')]}),
-    f('findings','object','full','Control findings.',{of:[f('open','integer','bands','Waiting for a disposition.'),f('disposed','integer','bands','Disposed.')]}),
+    f('findings','object','full','Control findings.',{of:[f('open','integer','bands','Waiting for a disposition; a finding a standing \'expected\' acknowledgement covers is not counted here.'),f('disposed','integer','bands','Disposed.'),
+     // Phase 2 integration (the loops hardening branch's core/payroll-audit/status.ts, owner ruling 19).
+     f('acknowledged','integer','bands','Not yet disposed of, but covered by a standing \'expected\' acknowledgement: still listed on the Audit loop page, not open.')]}),
     f('repeatIssues','list','full','Checks that found something this month and last month too (the next Pre-salary loop reads them).',{of:[f('control','enum','full','The control check.',{values:AUDIT_CONTROL_IDS})]}),
     f('captures','integer','full','Evidence captures that month.')]}),
    provenanceField]},
@@ -148,7 +150,12 @@ export const PAYROLL_LOOP_ENTITIES:readonly SemanticEntity[]=freeze([
  * it becomes its own operations_status topic, gated to payroll audit readers (canManagePayroll: administrators and payroll
  * partners of the company), and the tool worst case stays at 30 or fewer per role (no new tool). It never carries a pay
  * figure, a person or the reason an administrator typed (free text, `never`). The cut-off reminders of the same migration
- * (teras_cut_off_reminder) are not declared: if they are ever offered, counts only. */
+ * (teras_cut_off_reminder) are not declared: if they are ever offered, counts only.
+ * Phase 2 integration (4 November 2026), both branches merged: still not offered. What an acknowledgement changes in what
+ * the AI reads is declared where it shows: the Audit loop's findings it covers are their own count (payroll_audit_status
+ * companies.findings.acknowledged), and the Pre-salary warnings, Salary payroll exceptions and net-swing flags say they
+ * leave out what one covers. The acknowledgements themselves (check, scope, review date) stay on the Audit loop and
+ * payroll loop settings pages. */
 export const PAYROLL_CHECK_ACKNOWLEDGEMENT_ENTITY:SemanticEntity=freeze({id:'payroll_check_acknowledgement',label:'Payroll check acknowledgement',
  meaning:'For payroll audit readers: a standing acknowledgement that one payroll check is expected for one person, one group or the whole company, with its review date. A warning it covers leaves the to-do counts but is still listed as expected; a block is never suppressed. It never changes a calculation, a figure or a check\'s result.',
  module:'payroll',sensitivity:'ordinary',audience:'admin',rls:'administered_scope',

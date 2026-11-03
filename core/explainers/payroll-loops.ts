@@ -75,9 +75,9 @@ export async function payrollAuditStatus(ctx:SessionContext,input:Readonly<Recor
   return{ok:true,period:summary.payPeriod,dueDate:summary.dueDate,on:summary.loop.on,
    companies:summary.companies.map(c=>({company:c.companyName,paused:c.paused,done:c.done,runs:c.runs.length,
     payslips:{total:c.payslips.total,released:c.payslips.released,opened:c.payslips.opened},
-    statutory:c.statutory.map(form=>({form:form.form,prepared:form.prepared,preparedOn:form.preparedOn,beforeDue:form.beforeDue,filed:form.filed,filedOn:form.filedOn})),
+    statutory:c.statutory.map(form=>({form:form.form,prepared:form.prepared,preparedOn:form.preparedOn,beforeDue:form.beforeDue,filed:form.filed,filedOn:form.filedOn,required:form.required})),
     bankFiles:c.bank.files,corrections:{count:c.corrections.count,withoutRootCause:c.corrections.withoutRootCause},
-    findings:{open:c.findings.open,disposed:c.findings.disposed},repeatIssues:c.repeatIssues.map(control=>({control})),captures:c.captures.count})),
+    findings:{open:c.findings.open,disposed:c.findings.disposed,acknowledged:c.findings.acknowledged??0},repeatIssues:c.repeatIssues.map(control=>({control})),captures:c.captures.count})),
    provenance:provenance('core/payroll-audit/status.ts#auditLoopSummary',NOT_RULE,'/control-tower/loops/loop_payroll_audit',
     'Counts, states and dates only, read under the administrator\'s own access: never a person or a figure from pay. A person files with EPF, PERKESO and LHDN and records each disposition on the Audit loop page.')};
  }catch(error){return refused(error,'The Audit loop is available to administrators only.');}
