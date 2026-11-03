@@ -1,7 +1,7 @@
 /** Development evidence only. This never issues a release receipt or invokes deployment. */
 import {execFileSync, spawnSync} from 'node:child_process';
 import assert from 'node:assert/strict';
-import {createHash} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {appendFileSync, mkdirSync, readFileSync, realpathSync, writeFileSync, constants, openSync, closeSync, fstatSync} from 'node:fs';
 import {isAbsolute, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -133,6 +133,7 @@ function checkedTrackedFiles(cwd, files) {
 
 function testEnvironment(kind, profileDirectory) {
   const env = {...process.env, VITEST_MAX_WORKERS: '2', VITEST_MAX_WORKERS_NODB: '2', TEST_DB_NAMESPACE: 'aifocus'};
+  delete env.AIHR_EVAL_REHEARSAL_TENANT;
   delete env.AIHR_EVAL_RETAIN_NATIVE_LEDGER; // Only trusted admission below can request retention.
   const urls = [
     'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev', 'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
@@ -220,6 +221,14 @@ export function runFocused(destination, {evalBudgetAdmission, evalBudgetVerifier
         if (evalRequest) Object.assign(env, {AIHR_EVAL_REQUESTED: 'true', AIHR_EVAL_PATH: 'production',
           AIHR_EVAL_PLAN_HASH: evalPlan.planHash, AIHR_EVAL_CORPUS_REVIEW_DIGEST: evalPlan.corpusReviewDigest,
           ...(nativeScope ? {AIHR_EVAL_RETAIN_NATIVE_LEDGER: 'true'} : {})});
+        if (!evalRequest && kind === 'DB' && files.length === 1 && files[0] === 'test/ai-eval-native-witness.test.ts') {
+          const tenantId = randomUUID();
+          for (const key of Object.keys(env)) {
+            if (key.startsWith('AIHR_EVAL_') || key.startsWith('AI_SPEND_RECEIPT_')) delete env[key];
+          }
+          env.AIHR_EVAL_REHEARSAL_TENANT = tenantId;
+          report.provisioningRehearsal = {tenantId, transport: 'fictional', paidAdmission: false};
+        }
         if (kind === 'DB') {
           if (!hostHealth().ok) throw Error('Runner disk headroom below guard before DB batch');
           touchedDatabase = true;

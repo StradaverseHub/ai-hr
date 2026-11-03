@@ -1,3 +1,4 @@
+import {randomBytes,randomUUID} from 'node:crypto';
 /** Actual native governed configuration/lifecycle/proof/admission and SQL readback. Only pricing is
  * the existing explicit TEST-ONLY source-certified fictional transport fixture; HTTP is fake.
  * No authority/privacy mock, real key or network. This is not a live paid-carrier attestation.
@@ -52,7 +53,7 @@ beforeAll(migrateTestDb);afterAll(closeAll);
 afterEach(()=>{price?.restore();active.witness=null;active.requests.length=0;vi.restoreAllMocks();vi.unstubAllEnvs();vi.unstubAllGlobals();});
 beforeEach(async()=>{
   vi.stubGlobal('fetch',vi.fn(async()=>{throw Error('Unexpected global network boundary');}));
-  await resetDb();const base=await seedBase();await setModule(base.tenantId,'assistant','active');
+  await resetDb();const base=await seedBase(process.env.AIHR_EVAL_REHEARSAL_TENANT);await setModule(base.tenantId,'assistant','active');
   ctx={...await entitledCtx(base),grants:[{role:'hr_admin',companyId:null}]};await grantAssistant(ctx,{appUserId:base.adminUserId});
   vi.stubEnv('AI_CONFIG_SECRET','fictional-native-witness-custody-key');
   vi.stubEnv('AI_SPEND_RECEIPT_KEY_ID','');vi.stubEnv('AI_SPEND_RECEIPT_SIGNING_KEY','');
@@ -83,6 +84,31 @@ async function question(caseId:string,cfg=configuration,addWitness=true){
 }
 
 describe('native evaluation run witness without authority mocks or real provider calls',()=>{
+  it('provisions a fresh native signer for the admitted rehearsal tenant and authenticates settlement',async()=>{
+    if (process.env.AIHR_EVAL_REHEARSAL_TENANT) {
+      expect(ctx.tenantId).toBe(process.env.AIHR_EVAL_REHEARSAL_TENANT);
+    }
+    expect(process.env.AIHR_EVAL_OPENROUTER_KEY).toBeUndefined();
+    const keyId='rehearsal-'+randomUUID(), secret=randomBytes(32).toString('hex');
+    await owner.db.execute(sql`insert into app.ai_spend_receipt_verifier(key_id,secret)
+      values(${keyId},decode(${secret},'hex'))`).catch(() => {
+      throw Error('Disposable receipt verifier provisioning failed');
+    });
+    try {
+      vi.stubEnv('AI_SPEND_RECEIPT_KEY_ID',keyId);
+      vi.stubEnv('AI_SPEND_RECEIPT_SIGNING_KEY',secret);
+      const response=(text:string)=>new Response(text,{headers:{'content-type':'application/json'}});
+      http.mockResolvedValueOnce(response('{"id":"gen-rehearsal","model":"openai/gpt-6-luna","usage":{"cost":0.0000000012},"choices":[{"index":0,"message":{"role":"assistant","content":"Fictional"},"finish_reason":"stop"}]}'));
+      http.mockResolvedValueOnce(response('{"data":{"id":"gen-rehearsal","model":"openai/gpt-6-luna","total_cost":0.0000000012,"is_byok":false,"streamed":false}}'));
+      await question('isolated_provisioning');
+      expect(http).toHaveBeenCalledTimes(2);
+      expect(readOwnedNativeLedger({tenantId:ctx.tenantId,maxAttempts:1500},process.env)).toMatchObject([
+        {runId:active.witness!.committedAttempts()[0].runId,spendState:'confirmed',confirmedNanos:'2'},
+      ]);
+    } finally {
+      await owner.db.execute(sql`delete from app.ai_spend_receipt_verifier where key_id=${keyId}`);
+    }
+  });
   it('identical requests in different cases correlate to DISTINCT committed native runs and roots',async()=>{
     await question('case_one');await question('case_two');expect(http).toHaveBeenCalledTimes(2);
     const attempts=active.witness!.committedAttempts(),rows=await readback();

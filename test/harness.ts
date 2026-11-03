@@ -312,12 +312,14 @@ export type Base = {
   adminUserId: string;
 };
 
-export async function seedBase(): Promise<Base> { return profileTestPhase('seed', seedBaseImpl); }
+export async function seedBase(tenantId?: string): Promise<Base> {
+  return profileTestPhase('seed', () => seedBaseImpl(tenantId));
+}
 
-async function seedBaseImpl(): Promise<Base> {
+async function seedBaseImpl(requestedTenantId?: string): Promise<Base> {
   const [t] = await owner.db
     .insert(schema.tenant)
-    .values({ workosOrgId: `org_${randomUUID()}`, name: 'Acme Group' })
+    .values({ id: requestedTenantId, workosOrgId: `org_${randomUUID()}`, name: 'Acme Group' })
     .returning({ id: schema.tenant.id });
   const tenantId = t.id;
   const [c] = await owner.db
