@@ -113,7 +113,7 @@ describe.each(CASES)('the $name card in chat, for the employee', row => {
     expect(posts[row.kind].confirm).toHaveBeenCalledWith({ proposal: signed, confirm: true });
     expect(buttons(card).every(item => item.disabled)).toBe(true);
     expect(button(card, copy.confirming)).toBeDisabled();
-    expect(within(card).getByRole('group')).toHaveAttribute('aria-busy', 'true');
+    expect(within(card).getByRole('group', { name: copy.actionsLabel })).toHaveAttribute('aria-busy', 'true');
     fireEvent.click(button(card, copy.confirming));
     expect(posts[row.kind].confirm).toHaveBeenCalledTimes(1);
     await act(async () => { pending.resolve(row.success); });
