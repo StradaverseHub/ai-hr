@@ -4852,6 +4852,13 @@
       "when": 1793330000389,
       "tag": "0989_claim_own_source_policy_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 837,
+      "version": "7",
+      "when": 1793330000390,
+      "tag": "0990_lifecycle_assigned_task_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

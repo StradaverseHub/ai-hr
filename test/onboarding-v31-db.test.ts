@@ -1,3 +1,4 @@
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import {randomUUID} from 'node:crypto';
 import { afterAll, beforeEach, describe, it, expect } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
@@ -104,6 +105,27 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(JSON.stringify(assigned)).not.toContain('PRIVATE-IC');
         await onboardingCommand(tech,row.case.id,row.revision,{type:'task',taskId:'welcome',status:'done'});
         expect((await onboardingAssignedTaskMetadata(tech)).some(item=>item.id===welcome.id)).toBe(false);
+    });
+    it('publishes assigned checklist work and preserves View under Execute denial',async()=>{
+        const row=await prepared(),cap='function.lifecycle.shared.tasks.execute';
+        try{
+            expect(await publishActionCapabilityPackage(owner.client,'lifecycle_assigned_tasks')).toMatchObject({changed:true,capabilities:2});
+            expect(await publishActionCapabilityPackage(owner.client,'lifecycle_assigned_tasks')).toMatchObject({changed:false});
+            const read=()=>onboardingTasks(tech).then(rows=>rows.find(task=>task.caseId===row.case.id&&task.taskId==='welcome'));
+            expect(await read()).toBeDefined();
+            await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+             values(${b.tenantId}::uuid,${tech.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+            expect(await read()).toBeDefined();
+            const complete=()=>onboardingCommand(tech,row.case.id,row.revision,{type:'task',taskId:'welcome',status:'done'});
+            await expect(complete()).rejects.toThrow();
+            expect((await onboardingList(admin)).find(item=>item.case.id===row.case.id)?.revision).toBe(row.revision);
+            await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+            await complete();
+            expect(await read()).toBeUndefined();
+        }finally{
+            await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+            await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.lifecycle.shared.tasks.%'`;
+        }
     });
     it('counts the same visible joiners and checklists as the authorized module without leaking counts to task-only users', async()=>{
         await draft();

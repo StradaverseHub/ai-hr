@@ -22,7 +22,7 @@ it('preserves existing APP scope, role facts and restricted owner when upgrading
  const digest=(row:Entry)=>hash(readFileSync('db/migrations/'+row.tag+'.sql'));
  expect(hash(JSON.stringify(accepted))).toBe('14a8d7e992e6c1487ca21d1e5bc75f0776bdf6e167120b8ce636f785705d2034');
  expect(hash(JSON.stringify(accepted.map(row=>[row.tag,String(row.when),digest(row)])))).toBe('9c7e672718a886b9aae230a614bea8046baef87dec300464dd8386c39a43e1ab');
- expect(journal.entries.slice(boundary).map(row=>row.tag.slice(0,4))).toEqual(['0947','0948','0949','0950','0951','0952','0953','0954','0955','0956','0957','0958','0959','0960','0961','0962','0963','0964','0965','0966','0967','0968','0969','0970','0971','0972','0973','0974','0975','0976','0977','0978','0979','0980','0981','0982','0983','0984','0985','0986','0987','0988','0989']);
+ expect(journal.entries.slice(boundary).map(row=>row.tag.slice(0,4))).toEqual(['0947','0948','0949','0950','0951','0952','0953','0954','0955','0956','0957','0958','0959','0960','0961','0962','0963','0964','0965','0966','0967','0968','0969','0970','0971','0972','0973','0974','0975','0976','0977','0978','0979','0980','0981','0982','0983','0984','0985','0986','0987','0988','0989','0990']);
  const folder=mkdtempSync(join(tmpdir(),'permissions-upgrade-')),database='ai_hr_permissions_upgrade_'+randomUUID().replaceAll('-','');
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appUrl=new URL(process.env.TEST_DATABASE_URL!);
  expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);

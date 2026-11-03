@@ -1733,3 +1733,4 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | New candidate migration | 0987_claim_administration_binding_readiness | 834 | 1793330000387 | fa02839e041346ae2fbf2c450f42bbf7d7ee7e7646673cfa0e71018317d7d2ea |
 | New candidate migration | 0988_notice_author_binding_readiness | 835 | 1793330000388 | ed4d2d5f0f83292a0e3e269e89c442f6d1cc48ca4e928034a3e00222e57ce401 |
 | New candidate migration | 0989_claim_own_source_policy_readiness | 836 | 1793330000389 | 5af745a3cf639054ca99b190f2c5ba6fcab2f2e9960cc62e9594dbdc86dc68e8 |
+| New candidate migration | 0990_lifecycle_assigned_task_binding_readiness | 837 | 1793330000390 | 64a58b86809d30afa165e071b7b5867fea6af42a996dacdf5fe57678767728df |

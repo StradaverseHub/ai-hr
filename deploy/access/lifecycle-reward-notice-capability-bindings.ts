@@ -70,3 +70,20 @@ export const NOTICE_AUTHOR_CAPABILITY_PUBLICATION={
   'app.guard_notice_owner()',
  ],
 } as const;
+
+export const LIFECYCLE_TASK_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LIFECYCLE_TASK_FUNCTIONS,
+ functionLegacyParityFunction:'app.lifecycle_task_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.lifecycle_task_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.lifecycle_assigned_task_bindings_complete()',
+  'app.onboarding_assigned_task_update(uuid,integer,text,text)',
+  'app.onboarding_assigned_task_rows()',
+  'app.onboarding_checklist_task_rows()',
+  'app.onboarding_delivery_task_detail(text)',
+  'app.lc_v9_work(uuid)',
+  'app.lifecycle_native_effect_begin(text,uuid,text)',
+ ],
+} as const;
