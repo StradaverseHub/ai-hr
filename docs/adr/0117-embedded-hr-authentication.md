@@ -111,3 +111,30 @@ Disabling expiry preserves reuse protection. Existing recovery still requires MF
 
 This amendment describes the source candidate; hosted checks, installation and rendered acceptance
 remain separate evidence. It grants no production deployment authority.
+
+## Operator sign-in reset after a lost authenticator — 3 November 2026
+
+The owner approved an operator-only reset after a production user lost both their authenticator and
+their one-time backup codes. Password recovery deliberately keeps MFA. Before this amendment, no
+supported path restored that account: an HR administrator could not do it, and editing the encrypted
+records directly would corrupt them.
+
+The installation operator runs `deploy/internal-auth/reset-sign-in.sh` on the server, using the same
+migration/schema-owner connection boundary as owner bootstrap. There is no HTTP route, HR role or
+mobile operation that performs this reset. The operator enters the organization code and exact username.
+The command shows the resolved HR user, email and grants with a confirmation code bound to the
+credential's current version. The operator confirms that they verified the person's identity outside
+the system. The command then reads a temporary password privately from stdin.
+
+One subject-locked transaction validates the tenant password policy and history. It replaces the password,
+requires a change at next sign-in, and removes the authenticator secret, used-step marker and every
+backup code. It rotates the credential version, revokes all sessions, refresh families and challenges,
+cancels an outstanding recovery link, and clears a login lockout. It appends the
+`app-user.operator-sign-in-reset` audit event with no secret. The HR user, person, employments, grants,
+identity binding, password history and internal IDs are unchanged. An archived or offboarded login, a
+disabled pending enrollment, or a stale confirmation is refused. The next sign-in follows the normal
+password-change and new authenticator enrollment, and issues new backup codes.
+
+This is not a support impersonation path or an email-only MFA bypass. The operator never sees an OTP
+or session and never receives a link. Hosted checks, staging acceptance and a separately authorized
+production release remain required before use.
