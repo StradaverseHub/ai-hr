@@ -16,6 +16,8 @@ type FactKey=keyof ProposalFacts;
 const FACT_LABELS:Readonly<Record<FactKey,string>>=Object.freeze({
  leaveType:'Leave type',startDate:'From',endDate:'To',days:'Days',cancelDates:'Dates to give back',balanceNow:'Balance now',balanceAfter:'Balance after',
  othersAway:'Others away on these dates',decision:'Your decision',outcome:'What confirming does',
+ recordedCheckIn:'Clock-in on record',recordedCheckOut:'Clock-out on record',checkIn:'Clock-in asked for',checkOut:'Clock-out asked for',
+ plannedStart:'Start',plannedEnd:'End',overtimeMinutes:'Overtime minutes',creditDays:'Days credited if approved',
 });
 const OUTCOME_TEXT:Readonly<Record<NonNullable<ProposalFacts['outcome']>,string>>=Object.freeze({
  withdrawn_now:'The request is withdrawn at once.',give_back_requested:'Asks to give these dates back; the request goes through the usual approval before the days return.',

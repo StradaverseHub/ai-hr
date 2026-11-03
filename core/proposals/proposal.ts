@@ -33,7 +33,7 @@ export const ProposalAuthority=z.discriminatedUnion('kind',[
 /** One native check as it ran. `ruleVersion` null means the owner publishes no rule version yet. */
 export const ProposalCheck=z.object({check:z.string().regex(/^[a-z_]+$/),owner:anchor,ruleVersion:z.string().min(1).nullable(),
  result:z.enum(['pass','needs_review','fail'])}).strict();
-const calendarDate=z.string().regex(/^\d{4}-\d{2}-\d{2}$/),figure=z.number().finite();
+const calendarDate=z.string().regex(/^\d{4}-\d{2}-\d{2}$/),figure=z.number().finite(),clockTime=z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
 export const ProposalFacts=z.object({
  leaveType:z.string().min(1).max(64),startDate:calendarDate,endDate:calendarDate,
  /** Days the request covers, as the leave engine counted them. */days:figure.nonnegative(),
@@ -43,6 +43,12 @@ export const ProposalFacts=z.object({
  /** Approved dates the person asks to give back (approved-leave cancellation). */cancelDates:z.array(calendarDate).min(1).max(31),
  /** The person's own decision (approvals.leave.decide). */decision:z.enum(['approved','rejected']),
  /** What confirming does, in the owner's own terms. */outcome:z.enum(['withdrawn_now','give_back_requested','rejection_if_confirmed','step_decision_if_confirmed','approval_if_native_checks_pass','submitted_not_approved']),
+ /** Attendance (W2): the clock times the person asks for, and what the attendance record holds now (HH:MM, KL wall time). */
+ checkIn:clockTime,checkOut:clockTime,recordedCheckIn:clockTime,recordedCheckOut:clockTime,
+ /** Overtime and time off in lieu (W2): the window the person gave (HH:MM; an earlier end is the next day). */
+ plannedStart:clockTime,plannedEnd:clockTime,
+ /** The attendance service's own minute count for that overtime window. Never a pay figure. */overtimeMinutes:z.number().int().positive(),
+ /** Days the leave service would credit for a time-off-in-lieu request, as its own review counted them. */creditDays:figure.positive(),
 }).partial().strict();
 export type ProposalFacts=z.infer<typeof ProposalFacts>;
 /** Step 5 (§3.5): the approver recommendation from native checks, when the recommender worker ran. Two verdicts
@@ -68,8 +74,9 @@ export const ProposalBody=z.object({
  authority:ProposalAuthority,
  checks:z.array(ProposalCheck).min(1).max(32),
  /** Where the person reviews and confirms. `href` carries at most the review custody handle, never a business
-  * identifier; `reference` is what that route's own confirmation takes. */
- review:z.object({route:z.string().regex(/^\/[a-z0-9/_-]*$/),href:z.string().regex(/^\/[a-z0-9/_-]*(?:\?[a-z]+=[0-9a-fA-F-]{36})?$/),reference:z.guid()}).strict(),
+  * identifier (a review page with several flows may name its flow first, as /assistant/attendance?flow=overtime does);
+  * `reference` is what that route's own confirmation takes. */
+ review:z.object({route:z.string().regex(/^\/[a-z0-9/_-]*$/),href:z.string().regex(/^\/[a-z0-9/_-]*(?:\?(?:flow=[a-z]+&)?[a-z]+=[0-9a-fA-F-]{36})?$/),reference:z.guid()}).strict(),
  /** Key facts from the native checks, for the card (step 2). Closed vocabulary; product labels, calendar
   * dates and the owner's own figures only, never a name, identifier or free text. */
  facts:ProposalFacts.optional(),

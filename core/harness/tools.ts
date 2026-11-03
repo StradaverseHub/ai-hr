@@ -56,9 +56,14 @@ export type ToolCandidates=Readonly<{bindings:readonly ToolBinding[];
  destinations:readonly string[]}>;
 export type ToolProvider=(ctx:SessionContext,scope:ToolScope,actions:boolean)=>Promise<ToolCandidates>;
 
-const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change from available_actions. For leave.apply, details may carry leaveType, startDate and endDate (YYYY-MM-DD), durationType (full_day, half_day_am or half_day_pm) and reason, each only from the person\'s own words; leave out what they did not say. Nothing is submitted.';
+const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change from available_actions. For leave.apply, details may carry leaveType, startDate and endDate (YYYY-MM-DD), durationType (full_day, half_day_am or half_day_pm) and reason, each only from the person\'s own words; leave out what they did not say. Nothing is submitted.'
+ // AI v2 W2: the attendance requests prepared from chat (core/proposals/attendance-request.ts).
+ +' For attendance.correction.request, details may carry date (YYYY-MM-DD), checkIn and checkOut (HH:MM, 24-hour) and reason; for attendance.overtime.request, date, plannedStartTime and plannedEndTime (HH:MM, 24-hour) and reason. The same rule applies: only what the person said.';
 /** Issue 10: a leave application from chat with details missing or unclear. One question, never a guess. */
 const ASK_NOTE='Some details for this leave application are missing or unclear (listed in missing). Nothing is prepared. Ask the person one short question for them; when options are listed, show them numbered as given and ask for the number. Never guess a leave type or a date.';
+/** AI v2 W2: an attendance correction or overtime request with details missing (the date, a time, a clock-in to pair with
+ * a clock-out, or the person's own reason). One question, never a guess. */
+const ATTENDANCE_ASK_NOTE='Some details for this attendance request are missing or unclear (listed in missing). Nothing is prepared. Ask the person one short question for them; checkIn means the clock-in time to pair with the clock-out they gave. Never guess a date, a time or a reason.';
 const FORM_NOTE='The leave application is filled in on the Request Leave form for the person to check and submit there. Nothing is submitted until they do.';
 const CHOOSE_NOTE='Several leave requests are waiting for this person\'s decision, numbered in pending. Nothing is prepared. List them by number (applicant, leave type, days and when it starts) and ask which number they want to approve; never choose one yourself. When they say which, suggest again with that number as request in details. Requests not listed are on the review page.';
 /** Entities whose rows name other people the caller may see (core/semantic-model/entities.ts). */
@@ -112,11 +117,15 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
    // A request to skip the review or decide in bulk gets no decision suggestion at all (model run 41360905376).
    if(typeof input.action==='string'&&/^approvals\..+\.decide$/.test(input.action)&&asksToBypassReview(scope.personWords))
     return{ok:false,refusal:'review_required',content:{ok:false,note:'The person asked to skip the review or to decide in bulk. Nothing is suggested: every decision is checked and confirmed one at a time on its review page. Say so briefly.'}};
-   const result=suggestAction(catalogue,input.action,input.details);
+   // AI v2 W2: the overtime card's native hint shape is its selectors only (date and window); the person's own reason is
+   // for the native preparer (core/proposals/attendance-request.ts), never a hint, so it is left out of the hint check.
+   const hinted=input.action==='attendance.overtime.request'&&input.details&&typeof input.details==='object'&&!Array.isArray(input.details)
+    ?Object.fromEntries(Object.entries(input.details as Record<string,unknown>).filter(([key])=>key!=='reason')):input.details;
+   const result=suggestAction(catalogue,input.action,hinted);
    if(result.suggested){const outcome=await prepareSuggestedProposal(ctx,result.action,input.details,scope.personWords,undefined,scope.locale);
     // A leave application with details missing or unclear: the person is asked, and nothing is suggested yet.
     if(outcome?.kind==='ask')return{ok:false,refusal:'missing_details',content:{suggested:false,action:result.action,reason:'missing_details',missing:outcome.missing,
-     ...(outcome.options.length?{options:outcome.options}:{}),note:ASK_NOTE}};
+     ...(outcome.options.length?{options:outcome.options}:{}),note:result.action.startsWith('attendance.')?ATTENDANCE_ASK_NOTE:ASK_NOTE}};
     const suggestion={action:result.action,reviewRoute:result.reviewRoute,inlineCard:result.inlineCard};
     // Several pending: the person chooses; the model lists them and asks, and nothing is prepared (ADR-0170 §3.15).
     if(outcome?.kind==='choose')return{ok:true,content:{...result,pending:outcome.pending,...(outcome.more?{notListed:outcome.more}:{}),note:CHOOSE_NOTE},suggestion};

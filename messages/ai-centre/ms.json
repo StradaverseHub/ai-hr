@@ -466,6 +466,10 @@
       "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, other {# hari}})",
       "leaveApplyMorningTitle": "{leaveType}, {start} (separuh hari, pagi)",
       "leaveApplyAfternoonTitle": "{leaveType}, {start} (separuh hari, petang)",
+      "attendanceClockOutTitle": "Pembetulan waktu keluar, {date}, {time}",
+      "attendanceClockInTitle": "Pembetulan waktu masuk, {date}, {time}",
+      "attendanceClockBothTitle": "Pembetulan waktu kehadiran, {date}, {start} – {end}",
+      "overtimeRequestTitle": "Permohonan kerja lebih masa, {date}, {start} – {end}",
       "review": "Semak",
       "open": "Buka",
       "expires": "Tamat {time}",
@@ -488,7 +492,9 @@
         "fallback": "Perubahan sedia untuk semakan anda",
         "leave_apply": "Permohonan cuti sedia untuk disemak",
         "leave_cancel": "Pembatalan cuti sedia untuk disemak",
-        "approvals_leave_decide": "Keputusan cuti sedia untuk disemak"
+        "approvals_leave_decide": "Keputusan cuti sedia untuk disemak",
+        "attendance_correction_request": "Pembetulan kehadiran sedia untuk disemak",
+        "attendance_overtime_request": "Permohonan kerja lebih masa sedia untuk disemak"
       },
       "checks": {
         "actor_current": "Akses anda masih sah",
@@ -498,7 +504,10 @@
         "leave_type_eligible": "Jenis cuti dibenarkan",
         "own_approved_cancellable": "Masih boleh dibatalkan",
         "own_pending_request": "Permohonan masih menunggu",
-        "review_contract": "Halaman semakan sedia"
+        "review_contract": "Halaman semakan sedia",
+        "attendance_day_read": "Dibaca daripada rekod kehadiran anda",
+        "attendance_request_rules": "Peraturan kehadiran membenarkannya",
+        "approval_route": "Laluan kelulusan ditemui"
       },
       "outcomes": {
         "withdrawn_now": "Ditarik balik serta-merta",
