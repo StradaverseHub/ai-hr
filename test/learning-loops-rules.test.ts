@@ -141,12 +141,15 @@ describe('the quality figures',()=>{
   expect(figures.helpful.share).toBeNull();expect(figures.prepared.unchanged.share).toBeNull();expect(figures.gaps.openQuestions.share).toBeNull();
   expect(figures.gaps.openIntents).toBe(0);
  });
- it('groups the backlog by intent, ranks it, and keeps each company\'s status',()=>{
+ it('groups the backlog by intent, ranks it, and keeps each company\'s status and the first and last day it was asked',()=>{
+  // last30 to 2026-11-03 starts 2026-10-05, so the 2026-09-01 claims row is outside the period.
   expect(gapBacklog({period:'last30',today:'2026-11-03',gaps,statuses})).toEqual([
-   {intentKey:'not_supported:payroll',kind:'not_supported',area:'payroll',count:5,roles:['employee','manager'],
+   {intentKey:'not_supported:payroll',kind:'not_supported',area:'payroll',count:5,roles:['employee','manager'],firstSeen:'2026-10-12',lastSeen:'2026-10-13',
     statuses:[{companyId:A,status:'open',duplicateOf:null},{companyId:B,status:'wont_do',duplicateOf:null}],status:null,rank:1},
-   {intentKey:'cannot_answer:leave',kind:'cannot_answer',area:'leave',count:3,roles:['employee'],statuses:[{companyId:A,status:'planned',duplicateOf:null}],status:'planned',rank:2},
-   {intentKey:'no_route:claims',kind:'no_route',area:'claims',count:2,roles:['hr_admin'],statuses:[{companyId:A,status:'open',duplicateOf:null}],status:'open',rank:3},
+   {intentKey:'cannot_answer:leave',kind:'cannot_answer',area:'leave',count:3,roles:['employee'],firstSeen:'2026-10-14',lastSeen:'2026-10-14',
+    statuses:[{companyId:A,status:'planned',duplicateOf:null}],status:'planned',rank:2},
+   {intentKey:'no_route:claims',kind:'no_route',area:'claims',count:2,roles:['hr_admin'],firstSeen:'2026-11-01',lastSeen:'2026-11-01',
+    statuses:[{companyId:A,status:'open',duplicateOf:null}],status:'open',rank:3},
   ]);
  });
  it('trends each loop\'s corrections by month',()=>{
@@ -192,28 +195,35 @@ describe('the boundaries the owner set',()=>{
   expect(SQL).toContain(`state IN (${CANDIDATE_STATES.map(v=>`'${v}'`).join(',')})`);
   expect([...EVAL_FACTORS]).toEqual([...SMART_EVAL_FACTORS]);
  });
- it('every table is FORCE row-level security with grants, and only an expired example is ever deleted',()=>{
+ it('every table is FORCE row-level security with grants; no words from a chat are stored, and nothing an administrator reads links a gap to the asker',()=>{
   const tables=[...SQL.matchAll(/CREATE TABLE public\.(\w+)/g)].map(m=>m[1]);
-  expect(tables).toEqual(['teras_learning_signal','teras_learning_signal_review','teras_gap_occurrence','teras_gap_example','teras_gap_status','teras_eval_candidate']);
+  expect(tables).toEqual(['teras_learning_signal','teras_learning_signal_review','teras_gap_turn','teras_gap_occurrence','teras_gap_status','teras_eval_candidate']);
   for(const table of tables){
    expect(SQL).toContain(`ALTER TABLE public.${table} FORCE ROW LEVEL SECURITY;`);
    expect(SQL).toContain(`REVOKE ALL ON public.${table} FROM PUBLIC,ai_hr_app;`);
-   expect(SQL).toMatch(new RegExp(`GRANT SELECT,INSERT(,DELETE|,UPDATE)? ON public\\.${table} TO ai_hr_app;`));
+   expect(SQL).toMatch(new RegExp(`GRANT SELECT,INSERT(,UPDATE)? ON public\\.${table} TO ai_hr_app;`));
   }
-  expect(SQL).toContain('GRANT SELECT,INSERT,DELETE ON public.teras_gap_example TO ai_hr_app;');
-  expect(SQL).toContain('USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id) AND (expires_at<=now() OR NOT app.teras_gap_example_kept(tenant_id,at)));');
-  // The read policy cannot repeat the expiry (a DELETE naming its rows must pass it too), so the one reader deletes the
-  // expired examples first and filters on both conditions in every read.
-  expect(SQL).toContain('CREATE POLICY teras_gap_example_read ON public.teras_gap_example FOR SELECT TO ai_hr_app\n USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id));');
-  const quality=readFileSync(join(root,'core/learning/quality.ts'),'utf8');
-  expect(quality).toContain('const exampleKept=(e:typeof terasGapExample)=>sql`(${e.expiresAt}>now() and app.teras_gap_example_kept(${e.tenantId},${e.at}))`;');
-  expect(quality.match(/exampleKept\(e\)/g)).toHaveLength(3);
-  expect(quality.match(/\.from\(e\)/g)).toHaveLength(2);
-  // Every insert of a signal or a gap, and a mark's reason, names its own, open (not private to the asker) turn.
-  expect(SQL.match(/app\.teras_learning_own_record\(record_id,company_id\)/g)).toHaveLength(4);
-  // A gap example follows the asker's chat: written only for their own chat, removed with it.
-  expect(SQL).toContain('chat_id uuid NOT NULL REFERENCES public.teras_chat(id) ON DELETE CASCADE,');
-  expect(SQL).toContain('AND EXISTS(SELECT 1 FROM public.teras_chat c WHERE c.id=teras_gap_example.chat_id AND c.tenant_id=teras_gap_example.tenant_id\n   AND c.app_user_id=app.current_user_id()));');
+  // AI v2 Phase 2 hardening (review finding 8, ADR-0169 §9): no gap example, no chat reference, nothing deleted.
+  expect(SQL).not.toMatch(/teras_gap_example|chat_id|public\.teras_chat\b|GRANT [A-Z,]*DELETE/);
+  const table=(name:string)=>{const start=SQL.indexOf(`CREATE TABLE public.${name} (`);expect(start,name).toBeGreaterThan(-1);return SQL.slice(start,SQL.indexOf('\n);',start));};
+  const columns=(name:string)=>table(name).split('\n').slice(1).map(line=>/^ (\w+) /.exec(line)?.[1]).filter((column):column is string=>Boolean(column)&&!['PRIMARY','UNIQUE','FOREIGN','CHECK'].includes(column!));
+  // The occurrence an administrator reads: closed vocabularies and a day, no record, login, words or finer time.
+  expect(columns('teras_gap_occurrence')).toEqual(['id','tenant_id','company_id','kind','area','intent_key','role','locale','seen_on']);
+  expect(table('teras_gap_occurrence')).not.toMatch(/record_id|user_id|timestamptz|REFERENCES public\.teras_outcome_record/);
+  expect(SQL).toContain('CREATE FUNCTION app.teras_gap_occurrence_stamp() RETURNS trigger');
+  expect(SQL).toContain("BEGIN NEW.seen_on:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date; RETURN NEW; END $$;");
+  // The record goes only into the asker's own note, which only that login reads: no administrator, group administrator or
+  // other-login policy, and no other policy of any kind on it but its own insert.
+  expect(columns('teras_gap_turn')).toEqual(['tenant_id','record_id','company_id','by_user_id','at']);
+  expect([...SQL.matchAll(/CREATE POLICY (\w+) ON public\.teras_gap_turn FOR (\w+)/g)].map(m=>[m[1],m[2]])).toEqual([['teras_gap_turn_own_read','SELECT'],['teras_gap_turn_own_insert','INSERT']]);
+  expect(SQL).toContain('CREATE POLICY teras_gap_turn_own_read ON public.teras_gap_turn FOR SELECT TO ai_hr_app\n USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND by_user_id=app.current_user_id());');
+  // An occurrence is admitted only beside its writer's own note from the same transaction, for the same company.
+  expect(SQL).toContain('AND EXISTS(SELECT 1 FROM public.teras_gap_turn t WHERE t.tenant_id=teras_gap_occurrence.tenant_id AND t.company_id=teras_gap_occurrence.company_id\n   AND t.by_user_id=app.current_user_id() AND t.at=now()));');
+  const quality=readFileSync(join(root,'core/learning/quality.ts'),'utf8'),signals=readFileSync(join(root,'core/learning/signals.ts'),'utf8');
+  expect(quality).not.toMatch(/terasGapExample|examplesTx|exampleKept|example:/);
+  expect(signals).not.toMatch(/terasGapExample|redact\(|chatId/);
+  // Every insert of a signal or a gap note, and a mark's reason, names its own, open (not private to the asker) turn.
+  expect(SQL.match(/app\.teras_learning_own_record\(record_id,company_id\)/g)).toHaveLength(3);
   // An answer's mark: only its reason may be updated, by a column grant.
   expect(SQL).toContain('GRANT UPDATE (reason) ON public.teras_learning_signal TO ai_hr_app;');
   expect(SQL).toContain('AND r.asked_by_user_id=app.current_user_id() AND r.private_to_asker IS FALSE AND r.company_id=p_company)');
@@ -231,7 +241,7 @@ describe('the boundaries the owner set',()=>{
    // It names the eval set's file in the export's own instructions, and never imports or writes it.
    expect(text,name).not.toMatch(/from ['"][^'"]*assistant-smart-eval-set|writeFile|appendFile/);
    // Its only database writes are the learning tables and, through their owners, the payroll loop settings.
-   for(const m of text.matchAll(/tx\.(?:insert|update|delete)\((\w+)\)/g))expect(['terasLearningSignal','terasGapOccurrence','terasGapExample','terasLearningSignalReview',
+   for(const m of text.matchAll(/tx\.(?:insert|update|delete)\((\w+)\)/g))expect(['terasLearningSignal','terasGapOccurrence','terasGapTurn','terasLearningSignalReview',
     'terasEvalCandidate','g','c','e','s','terasGapStatus'],`${name}: ${m[0]}`).toContain(m[1]);
   }
  });

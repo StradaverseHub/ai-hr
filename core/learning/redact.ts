@@ -11,7 +11,7 @@
  *  - names: every known name passed in (the people the reader's own row-level security lets the caller see, and the
  *    caller's own name), matched as words in Latin scripts and as text in others; and, in Latin scripts, every
  *    capitalised word that does not start a sentence and is not a product or calendar word {{NAME_n}}.
- * So no digit and no "@" survives: migration 0972 refuses either in a stored example or candidate.
+ * So no digit and no "@" survives: migration 2010 (first numbered 0972) refuses either in a stored candidate.
  *
  * LIMITS (stated, not hidden). A name written in Chinese, Thai or Tamil script is caught only when it is a known name; a
  * name at the start of a sentence only when it is known. A place or a product name written with a capital is replaced

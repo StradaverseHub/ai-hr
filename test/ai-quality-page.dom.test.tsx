@@ -5,7 +5,8 @@
  *
  * Who sees it: HR and group administrators. An employee's or a manager's Insights page has no AI quality section and reads
  * nothing of it. In the section: the four figures, each a percentage with its counts; the confirmed-unchanged share by
- * month drawn to scale from 0 to 100%; the biggest gaps with their redacted examples and status; the corrections to
+ * month drawn to scale from 0 to 100%; the biggest gaps with their status, never their words (AI v2 Phase 2 hardening:
+ * gaps keep no examples, and a candidate's form starts empty); the corrections to
  * review, with "Make an eval candidate" and "Dismiss"; the candidates with their state's actions; the loops' proposals with
  * approve, reject and revert; each loop's corrections by month; the method note. Owner rule: no ratio of HR staff to
  * employees appears on the rendered page, in any language. Every locale renders with no missing message and never says
@@ -60,13 +61,14 @@ const view=(over:Record<string,unknown>={})=>({period:'last30',periodFrom:'2026-
   gaps:{openIntents:2,questions:12,openQuestions:share(9,12)},
   trend:[['2026-06',0,0],['2026-07',0,0],['2026-08',0,0],['2026-09',6,8],['2026-10',27,36],['2026-11',3,4]].map(([month,unchanged,decided])=>({month,unchanged,decided,share:decided?(unchanged as number)/(decided as number):null}))},
  gaps:[
-  {intentKey:'not_supported:payroll',kind:'not_supported',area:'payroll',count:7,roles:['employee','manager'],statuses:[{companyId:C1,status:'open',duplicateOf:null}],status:'open',rank:1,
-   examples:['Can you show me the payslip of {{NAME_A}} {{NAME_B}}?','Boleh anda jalankan gaji bulan ini?']},
-  {intentKey:'cannot_answer:leave',kind:'cannot_answer',area:'leave',count:3,roles:['employee'],statuses:[{companyId:C1,status:'planned',duplicateOf:null},{companyId:C2,status:'open',duplicateOf:null}],status:null,rank:2,examples:[]},
+  {intentKey:'not_supported:payroll',kind:'not_supported',area:'payroll',count:7,roles:['employee','manager'],firstSeen:'2026-10-07',lastSeen:'2026-11-02',
+   statuses:[{companyId:C1,status:'open',duplicateOf:null}],status:'open',rank:1},
+  {intentKey:'cannot_answer:leave',kind:'cannot_answer',area:'leave',count:3,roles:['employee'],firstSeen:'2026-10-20',lastSeen:'2026-10-20',
+   statuses:[{companyId:C1,status:'planned',duplicateOf:null},{companyId:C2,status:'open',duplicateOf:null}],status:null,rank:2},
  ],
  corrections:[
-  {id:S1,companyId:C1,kind:'card_edited',action:'leave.apply',area:'leave',role:'employee',locale:'ms',at:new Date('2026-11-01T02:00:00Z'),reason:null,example:null},
-  {id:S2,companyId:C2,kind:'answer_unhelpful',action:'answer',area:'payroll',role:'manager',locale:'en',at:new Date('2026-10-30T02:00:00Z'),reason:'not_what_asked',example:'How much is {{NAME_A}} paid?'},
+  {id:S1,companyId:C1,kind:'card_edited',action:'leave.apply',area:'leave',role:'employee',locale:'ms',at:new Date('2026-11-01T02:00:00Z'),reason:null},
+  {id:S2,companyId:C2,kind:'answer_unhelpful',action:'answer',area:'payroll',role:'manager',locale:'en',at:new Date('2026-10-30T02:00:00Z'),reason:'not_what_asked'},
  ],
  candidates:[
   {id:K1,companyId:C1,signalId:S1,intentKey:null,role:'employee',locale:'en',kind:'do',factor:'doing',question:'Can {{NAME_A}} take leave next Friday?',expectation:'Prepares the leave card.',
@@ -159,15 +161,17 @@ describe('AI quality, as an administrator',()=>{
   expect(Number(bars[0].getAttribute('height'))).toBe(0);
  });
 
- it('lists the biggest gaps with their redacted examples, status and duplicate choice',async()=>{
+ it('lists the biggest gaps with their count, status and duplicate choice, and never any words',async()=>{
   state.view=view();
   const rendered=wrap('en',await section());
   const rows=[...rendered.container.querySelectorAll('[data-gap-row]')];
   expect(rows.map(cells)).toEqual([
-   ['Asked if it can do something in payroll: not yetAsked by: Employee, Manager','7','“Can you show me the payslip of {{NAME_A}} {{NAME_B}}?”“Boleh anda jalankan gaji bulan ini?”',
-    expect.stringContaining('Open')],
-   ['Could not answer about leaveAsked by: Employee','3','No example kept',expect.stringContaining('Differs by company')],
+   ['Asked if it can do something in payroll: not yetAsked by: Employee, Manager','7',expect.stringContaining('Open')],
+   ['Could not answer about leaveAsked by: Employee','3',expect.stringContaining('Differs by company')],
   ]);
+  const table=rendered.container.querySelector('#ai-quality-gaps') as HTMLElement;
+  expect([...table.querySelectorAll('th[scope="col"]')].map(text)).toEqual(['Intent','Count','Status']);
+  expect(table.querySelector('[data-gap-example]')).toBeNull();expect(text(table)).not.toMatch(/Example|“/);
   // The status form posts each company where the intent was asked.
   const forms=rows.map(row=>row.querySelector('[data-gap-status-form]') as HTMLFormElement);
   expect([...forms[1].querySelectorAll<HTMLInputElement>('input[name="companyId"]')].map(input=>input.value)).toEqual([C1,C2]);
@@ -183,20 +187,23 @@ describe('AI quality, as an administrator',()=>{
   const rows=[...rendered.container.querySelectorAll('[data-correction]')];
   expect(rows.map(row=>cells(row).slice(0,3))).toEqual([
    ['A prepared action was opened to editAbout leave · Malay','Employee','Nov 1, 2026'],
-   ['An answer was marked not helpfulAbout payroll · EnglishReason: Not what I asked“How much is {{NAME_A}} paid?”','Manager','Oct 30, 2026']]);
+   ['An answer was marked not helpfulAbout payroll · EnglishReason: Not what I asked','Manager','Oct 30, 2026']]);
+  expect(rendered.container.querySelector('[data-correction-example]')).toBeNull();
   const promote=within(rows[0] as HTMLElement).getByRole('link',{name:/Make an eval candidate/});
   expect(promote.getAttribute('href')).toBe(`/assistant?view=insights&qperiod=quarter&qcompany=${C1}&qpromote=${S1}#ai-quality-promote`);
   expect(within(rows[0] as HTMLElement).getByRole('button',{name:/Dismiss/})).toBeTruthy();
   expect(text(rendered.container)).not.toMatch(/Fictional Employee|Fictional Manager/);
  });
 
- it('opens the eval candidate form with the redacted example, and shows each candidate\'s actions by state',async()=>{
+ it('opens the eval candidate form empty, for the administrator\'s own words, and shows each candidate\'s actions by state',async()=>{
   state.view=view();
   const rendered=wrap('en',await section({qpromote:S2}));
   const form=rendered.container.querySelector(`[data-promote-form="${S2}"]`) as HTMLElement;
   expect(within(form).getByRole('heading',{level:4,name:'New eval candidate: An answer was marked not helpful'})).toBeTruthy();
   expect(text(form)).toContain('Recorded as a Manager question in English.');
-  expect((within(form).getByLabelText('Question, with fictional details') as HTMLTextAreaElement).value).toBe('How much is {{NAME_A}} paid?');
+  // No words from the person's chat reach the form: the administrator writes the question themselves.
+  expect((within(form).getByLabelText('Question, with fictional details') as HTMLTextAreaElement).value).toBe('');
+  expect(form.querySelector('[data-promote-example]')).toBeNull();
   expect((within(form).getByLabelText('Kind of reply') as HTMLSelectElement).value).toBe('answer');
   expect((within(form).getByLabelText('What it tests') as HTMLSelectElement).value).toBe('facts');
   expect(text(form)).toContain('When you save, names, ids, figures, dates, e-mail addresses and phone numbers are replaced by placeholders such as NAME_A.');

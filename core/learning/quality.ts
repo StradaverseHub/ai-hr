@@ -6,13 +6,14 @@
  * they could open. Employees, managers and agent principals are refused before any read.
  *
  * WHAT. The figures of ./quality-math.ts over the viewer's companies (or the one the filter names): signals, loop cards,
- * gap occurrences and their statuses; the gap backlog with up to three redacted examples per intent (an expired example is
- * deleted first: the tenant's "Keep chats for" decides how long one is kept); the corrections waiting for review; the eval
+ * gap occurrences and their statuses; the gap backlog (intent, area, count, first and last seen, status); the corrections
+ * waiting for review; the eval
  * candidates; the loops' threshold proposals and correction trends (./proposals.ts). Counts, closed-vocabulary names, dates,
- * the redacted words and opaque ids only: no name, no person, no amount. No HR-staff ratio is computed or returned. */
+ * the candidates' administrator-written text and opaque ids only: no name, no person, no amount, and no words from anyone's
+ * chat (AI v2 Phase 2 hardening: gaps keep no examples). No HR-staff ratio is computed or returned. */
 import {and,desc,eq,gte,inArray,sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
-import {terasEvalCandidate,terasGapExample,terasGapStatus,terasLearningSignal,terasLearningSignalReview} from '../../db/teras-learning-schema';
+import {terasEvalCandidate,terasGapStatus,terasLearningSignal,terasLearningSignalReview} from '../../db/teras-learning-schema';
 import {captureCtx,requireLearningAdmin} from './access';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {adminCompaniesTx,type CapacityCompany} from '../capacity/baseline';
@@ -26,18 +27,15 @@ import {CORRECTION_KINDS,isQualityPeriod,type AnswerReason,type CandidateState,t
 
 export {LearningRefused,captureCtx,requireLearningAdmin} from './access';
 
-export const EXAMPLES_PER_INTENT=3;
 export const CORRECTIONS_SHOWN=50;
 export const CANDIDATES_SHOWN=50;
 
 export type CorrectionView=Readonly<{id:string;companyId:string;kind:SignalKind;action:string;area:string;role:LearningRole;locale:LearningLocale;at:Date;
  /** A "Not helpful" mark's reason, when the person gave one. */
- reason:AnswerReason|null;
- /** A redacted example of the same turn, when that turn was also a gap. */
- example:string|null}>;
+ reason:AnswerReason|null}>;
 export type CandidateView=Readonly<{id:string;companyId:string;signalId:string|null;intentKey:string|null;role:LearningRole;locale:LearningLocale;kind:EvalKind;
  factor:EvalFactor;question:string;expectation:string;state:CandidateState;version:number;changedAt:Date;approvedAt:Date|null;exportedAt:Date|null}>;
-export type GapBacklogRow=GapRow&Readonly<{examples:readonly string[]}>;
+export type GapBacklogRow=GapRow;
 
 export type QualityView=Readonly<{
  period:QualityPeriod;periodFrom:string;today:string;
@@ -71,9 +69,10 @@ async function loopCardFactsTx(tx:Tx,ctx:SessionContext,scope:readonly string[],
    and c.resolution in ('as_prepared','changed') and c.closed_at>=${from.toISOString()}::timestamptz group by 1,2,3`) as unknown as {company_id:string;resolution:'as_prepared'|'changed';day:string;n:number}[];
  return Array.from(rows).map(row=>Object.freeze({companyId:row.company_id,resolution:row.resolution,date:row.day,count:Number(row.n)}));
 }
-async function gapFactsTx(tx:Tx,ctx:SessionContext,scope:readonly string[],from:Date):Promise<GapFact[]>{
- const rows=await tx.execute(sql`select o.company_id,o.intent_key,o.role,${day(sql`o.at`)} as day,count(*)::int as n from public.teras_gap_occurrence o
-  where o.tenant_id=${ctx.tenantId}::uuid and o.company_id=any(${ids(scope)}) and o.at>=${from.toISOString()}::timestamptz group by 1,2,3,4`) as unknown as {company_id:string;intent_key:string;role:LearningRole;day:string;n:number}[];
+/** Gaps by the Malaysian day they were counted (2010 keeps no finer time). `fromDay` is the first such day, YYYY-MM-DD. */
+async function gapFactsTx(tx:Tx,ctx:SessionContext,scope:readonly string[],fromDay:string):Promise<GapFact[]>{
+ const rows=await tx.execute(sql`select o.company_id,o.intent_key,o.role,to_char(o.seen_on,'YYYY-MM-DD') as day,count(*)::int as n from public.teras_gap_occurrence o
+  where o.tenant_id=${ctx.tenantId}::uuid and o.company_id=any(${ids(scope)}) and o.seen_on>=${fromDay}::date group by 1,2,3,4`) as unknown as {company_id:string;intent_key:string;role:LearningRole;day:string;n:number}[];
  return Array.from(rows).map(row=>Object.freeze({companyId:row.company_id,intentKey:row.intent_key,role:row.role,date:row.day,count:Number(row.n)}));
 }
 /** Each intent's current status per company: its highest version. */
@@ -83,24 +82,6 @@ export async function gapStatusesTx(tx:Tx,ctx:SessionContext,scope:readonly stri
  const rows=await tx.selectDistinctOn([g.companyId,g.intentKey],{companyId:g.companyId,intentKey:g.intentKey,status:g.status,duplicateOf:g.duplicateOf})
   .from(g).where(and(eq(g.tenantId,ctx.tenantId),inArray(g.companyId,[...scope]))).orderBy(g.companyId,g.intentKey,desc(g.version));
  return rows.map(row=>Object.freeze({...row}));
-}
-/** Deletes the expired examples of these companies (their own stamp, or the tenant's "Keep chats for" as it is now), then
- * reads up to EXAMPLES_PER_INTENT per intent, newest first. An example whose chat was deleted, erased or removed by
- * retention is already gone with it (0972's ON DELETE CASCADE). */
-/** An example within its own stamp and the tenant's "Keep chats for" as it is now. 0972's read policy cannot say this
- * (a DELETE that names its rows must pass the read policy too, so an expired example has to stay visible to be deleted):
- * every read of an example says it here, after deleting the expired ones in the same transaction. */
-const exampleKept=(e:typeof terasGapExample)=>sql`(${e.expiresAt}>now() and app.teras_gap_example_kept(${e.tenantId},${e.at}))`;
-async function examplesTx(tx:Tx,ctx:SessionContext,scope:readonly string[],intents:readonly string[]):Promise<Map<string,string[]>>{
- const out=new Map<string,string[]>();
- if(!scope.length||!intents.length)return out;
- const e=terasGapExample;
- await tx.delete(e).where(and(eq(e.tenantId,ctx.tenantId),inArray(e.companyId,[...scope]),sql`not ${exampleKept(e)}`));
- const rows=await tx.select({intentKey:e.intentKey,text:e.text}).from(e)
-  .where(and(eq(e.tenantId,ctx.tenantId),inArray(e.companyId,[...scope]),inArray(e.intentKey,[...intents]),exampleKept(e)))
-  .orderBy(e.intentKey,desc(e.at),desc(e.id));
- for(const row of rows){const list=out.get(row.intentKey)??[];if(list.length<EXAMPLES_PER_INTENT&&!list.includes(row.text))list.push(row.text);out.set(row.intentKey,list);}
- return out;
 }
 /** Each signal's current review decision: its highest version; none is open. */
 export async function reviewStatesTx(tx:Tx,ctx:SessionContext,signalIds:readonly string[]):Promise<Map<string,{decision:ReviewDecision;version:number}>>{
@@ -113,18 +94,14 @@ export async function reviewStatesTx(tx:Tx,ctx:SessionContext,signalIds:readonly
 async function correctionsTx(tx:Tx,ctx:SessionContext,scope:readonly string[],from:Date):Promise<CorrectionView[]>{
  const s=terasLearningSignal;
  // Read a bounded page beyond what is shown, so reviewed rows can be skipped.
- const rows=await tx.select({id:s.id,companyId:s.companyId,kind:s.kind,action:s.action,area:s.area,role:s.role,locale:s.locale,at:s.at,recordId:s.recordId,reason:s.reason}).from(s)
+ const rows=await tx.select({id:s.id,companyId:s.companyId,kind:s.kind,action:s.action,area:s.area,role:s.role,locale:s.locale,at:s.at,reason:s.reason}).from(s)
   .where(and(eq(s.tenantId,ctx.tenantId),inArray(s.companyId,[...scope]),inArray(s.kind,[...CORRECTION_KINDS]),gte(s.at,from),
    sql`not (${s.signalKey}='answer' and exists (select 1 from public.teras_learning_signal c where c.tenant_id=${s.tenantId} and c.record_id=${s.recordId} and c.signal_key='answer_changed'))`))
   .orderBy(desc(s.at),desc(s.id)).limit(CORRECTIONS_SHOWN*4);
  const reviewed=await reviewStatesTx(tx,ctx,rows.map(row=>row.id));
  const open=rows.filter(row=>{const state=reviewed.get(row.id)?.decision;return state===undefined||state==='reopened';}).slice(0,CORRECTIONS_SHOWN);
- const e=terasGapExample;
- const examples=open.length?await tx.select({recordId:e.recordId,text:e.text}).from(e)
-  .where(and(eq(e.tenantId,ctx.tenantId),inArray(e.recordId,open.map(row=>row.recordId)),exampleKept(e))):[];
- const byRecord=new Map(examples.map(row=>[row.recordId,row.text]));
  return open.map(row=>Object.freeze({id:row.id,companyId:row.companyId,kind:row.kind,action:row.action,area:row.area,role:row.role,locale:row.locale,at:row.at,
-  reason:row.reason??null,example:byRecord.get(row.recordId)??null}));
+  reason:row.reason??null}));
 }
 async function candidatesTx(tx:Tx,ctx:SessionContext,scope:readonly string[]):Promise<CandidateView[]>{
  const c=terasEvalCandidate;
@@ -163,18 +140,17 @@ export async function aiQuality(supplied:SessionContext,input:Readonly<{period?:
   const empty=!scope.length;
   const signals:SignalFact[]=empty?[]:await signalFactsTx(tx,ctx,scope,from);
   const loopCards:LoopCardFact[]=empty?[]:await loopCardFactsTx(tx,ctx,scope,from);
-  const gapFacts:GapFact[]=empty?[]:await gapFactsTx(tx,ctx,scope,from);
+  const gapFacts:GapFact[]=empty?[]:await gapFactsTx(tx,ctx,scope,[periodFrom,months[0]+'-01'].sort()[0]);
   const statuses:GapStatusFact[]=empty?[]:await gapStatusesTx(tx,ctx,scope);
   const figures=computeQuality({period,today,signals,loopCards,gaps:gapFacts,statuses});
   const backlog=gapBacklog({period,today,gaps:gapFacts,statuses});
-  const examples=empty?new Map<string,string[]>():await examplesTx(tx,ctx,scope,backlog.map(row=>row.intentKey));
   const periodStart=malaysiaDayStart(periodFrom);
   const corrections=empty?[]:await correctionsTx(tx,ctx,scope,periodStart);
   const candidates=empty?[]:await candidatesTx(tx,ctx,scope);
   const proposals=empty?[]:await loopProposalsTx(tx,ctx,companies.filter(row=>scope.includes(row.id)),now);
   const loopCorrections=loopCorrectionTrend(empty?[]:await loopCorrectionFactsTx(tx,ctx,scope,from),months);
   return Object.freeze({period,periodFrom,today,companies,companyId:selected?.id??null,figures,
-   gaps:Object.freeze(backlog.map(row=>Object.freeze({...row,examples:Object.freeze(examples.get(row.intentKey)??[])}))),
+   gaps:Object.freeze(backlog.map(row=>Object.freeze({...row}))),
    corrections:Object.freeze(corrections),candidates:Object.freeze(candidates),proposals,loopCorrections});
  });
  return Object.freeze({...view,patternNames:await patternNamesOf(ctx,view.proposals.map(row=>row.pattern).filter((item):item is string=>Boolean(item)))});

@@ -6,8 +6,10 @@
  * comes back as a new version); a candidate's every change bumps its version, checked against the version the screen
  * showed so a stale screen cannot overwrite a newer one. Each is audited as a domain event with counts and names only.
  *
- * WORDS. A candidate's question and expectation are the administrator's own, written from the signal's facts or the gap's
- * redacted example and fictionalised by them; they are redacted again here on every save (./redact.ts, with every name
+ * WORDS. A candidate's question and expectation are the administrator's own, written from the signal's or the gap's facts
+ * (closed vocabularies: kind, action, area, role, locale, reason) and fictionalised by them. No words from anyone's chat
+ * reach them: gaps keep no examples and corrections show none (AI v2 Phase 2 hardening, ADR-0169 §9). They are redacted
+ * again here on every save (./redact.ts, with every name
  * the administrator's row-level security lets them see), and the stored text is what they approve. Only an approved
  * candidate is exported (./export.ts), and exporting replaces each placeholder with a fictional value. Nothing here
  * changes the eval set, a prompt, a calculation, a permission or a disclosure rule. */

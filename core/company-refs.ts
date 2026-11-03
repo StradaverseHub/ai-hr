@@ -153,8 +153,8 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   // as `other`, like the wave 1 tables above; none adds a definer lookup.
   {table:'teras_learning_signal',column:'company_id',disposition:'other',note:'Append-only learning signals of the company\'s AI Centre turns (0972): what a person did with a prepared card, a recommendation or an answer. No DELETE privilege; a trigger refuses UPDATE and DELETE.'},
   {table:'teras_learning_signal_review',column:'company_id',disposition:'other',note:'Append-only administrator reviews of the company\'s learning signals (0972); a trigger refuses UPDATE and DELETE.'},
-  {table:'teras_gap_occurrence',column:'company_id',disposition:'other',note:'Append-only gap occurrences of the company (0972): intent, role band and locale only; a trigger refuses UPDATE and DELETE.'},
-  {table:'teras_gap_example',column:'company_id',disposition:'other',note:'Redacted gap examples of the company (0972), deleted only once expired under the tenant\'s chat retention, by an administrator of the company.'},
+  {table:'teras_gap_occurrence',column:'company_id',disposition:'other',note:'Append-only gap occurrences of the company (2010, first numbered 0972): intent, role band, locale and day only, no words and no link to the asker; a trigger refuses UPDATE and DELETE.'},
+  {table:'teras_gap_turn',column:'company_id',disposition:'other',note:'Append-only private notes that a turn was counted as a gap (2010), readable only by the login that wrote them; a trigger refuses UPDATE and DELETE.'},
   {table:'teras_gap_status',column:'company_id',disposition:'other',note:'Append-only versions of the company\'s gap statuses (0972); a trigger refuses UPDATE and DELETE.'},
   {table:'teras_eval_candidate',column:'company_id',disposition:'other',note:'Eval candidates of the company (0972): versioned in place, never deleted (a trigger refuses DELETE and no DELETE privilege).'},
   {table:'personnel_import_assistance_attempt',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'An AI-assisted personnel import attempt for this company is retained until its own expiry owner removes it.'},

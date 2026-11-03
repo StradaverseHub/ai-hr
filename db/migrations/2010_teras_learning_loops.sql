@@ -11,9 +11,12 @@
 --    candidate leaves the tenant only as a file an administrator downloads after approving its redacted text.
 --  - Every applied change is versioned and reversible: statuses and reviews are append-only versions (the latest wins,
 --    and an earlier state is restored by a new version); a candidate's every change bumps its version.
---  - Gated sensitive turns store no words, so they are never learned from: every signal and gap row must name the outcome
+--  - Gated sensitive turns store no words, so they are never learned from: every signal and gap must come from the outcome
 --    record of the turn it came from, and the insert policies refuse a record that is private to the asker (a routed or
 --    refused turn, migration 0905/0928), a record of another login, or a company other than the record's.
+--  - No words from anyone's chat are stored here (AI v2 Phase 2 hardening, coordinator decision of 4 November 2026, review
+--    finding 8): ADR-0169 §9 makes chat words readable only by the asker. The redacted free-text gap examples this file
+--    first created are gone, and nothing an administrator can read links a gap to the person who asked (3 below).
 --
 -- 1. teras_learning_signal: one row per thing a person did with AI Centre's work: confirmed a prepared card unchanged,
 --    opened it to edit, discarded it, decided against a recommendation, or marked an answer helpful or not. Counts,
@@ -27,22 +30,21 @@
 -- 3. teras_gap_occurrence: one row per turn AI Centre could not answer or do: an honest gap, a capability question it could
 --    not meet, or a request with no route (suggest_action's no_match / not_available). The intent key is derived in code
 --    from closed vocabularies (kind and product area), never from words. Written by the asker for their own record; read
---    by the company's administrators. No login, person or name is stored. Append-only.
--- 4. teras_gap_example: the question of a gap turn, REDACTED in code before it is written (names, ids, figures, dates,
---    emails and phone numbers replaced by placeholders, core/learning/redact.ts). It follows the asker's stored chat: it is
---    written only for a turn stored in the asker's own chat (teras_chat, 0952), keeps an internal link to that chat (never
---    shown, never exported), and goes with it: ON DELETE CASCADE removes it when the chat is deleted, erased by the person,
---    removed by retention or by person erasure. Its own expiry is the tenant's "Keep chats for" from when it was written (a
---    trigger stamps it), and a shortened setting expires it at once, so it never outlives its chat; an administrator's read
---    deletes every expired one before it reads. The gap's count (teras_gap_occurrence) stays. Never written
---    for a gated turn (the same record check).
+--    by the company's administrators. It stores no words, no login, person or name, no outcome record and no time finer
+--    than the Malaysian day, so it cannot be joined to a signal, an outcome record (which a group administrator may read,
+--    0928) or anything else that names the asker. Append-only.
+--    teras_gap_turn: the asker's own private note that a turn was counted, so a turn counts once. It holds the record, and
+--    only the login that wrote it can read it: no administrator, group administrator or other-login policy. An occurrence
+--    is admitted only beside a note its writer made in the same transaction, for the same company.
+-- 4. (Removed before any application: the redacted gap examples.)
 -- 5. teras_gap_status: an administrator's status for one intent in one company: open, planned, won't do or duplicate (of
 --    another intent). Append-only versions; the latest wins; setting it back to open is a new version.
 -- 6. teras_eval_candidate: a question an administrator promoted to an eval candidate, with the corrected expectation,
 --    the role and the locale, redacted and fictionalised. draft -> approved -> exported; withdrawn at any time before
 --    export. Its text changes only while it is a draft, and every change bumps its version (a trigger). Only an approved
 --    candidate is exported, as a file for a developer to add to test/assistant-smart-eval-set.ts. Nothing changes the
---    eval set or the prompt automatically.
+--    eval set or the prompt automatically. Its words are the administrator's own, written from the closed-vocabulary facts
+--    of a signal or a gap: no word from anyone's chat reaches an administrator to start from.
 --
 -- Writers reviewed: every table is new; core/learning/* is their only writer.
 
@@ -187,23 +189,71 @@ GRANT SELECT,INSERT ON public.teras_learning_signal_review TO ai_hr_app;
 --> statement-breakpoint
 
 -- ── 3. Gap occurrences ──
+-- The asker's private note that a turn was counted (one per outcome record).
+CREATE TABLE public.teras_gap_turn (
+ tenant_id uuid NOT NULL REFERENCES public.tenant(id),
+ record_id uuid NOT NULL,
+ company_id uuid NOT NULL,
+ by_user_id uuid NOT NULL REFERENCES public.app_user(id),
+ at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY (tenant_id,record_id),
+ FOREIGN KEY (company_id,tenant_id) REFERENCES public.company(id,tenant_id),
+ FOREIGN KEY (tenant_id,record_id) REFERENCES public.teras_outcome_record(tenant_id,id)
+);
+--> statement-breakpoint
+-- The note's time is the transaction's own (the occurrence policy below matches on it); the writer cannot choose it.
+CREATE FUNCTION app.teras_gap_turn_stamp() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN NEW.at:=now(); RETURN NEW; END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.teras_gap_turn_stamp() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER teras_gap_turn_stamp BEFORE INSERT ON public.teras_gap_turn
+ FOR EACH ROW EXECUTE FUNCTION app.teras_gap_turn_stamp();
+--> statement-breakpoint
+CREATE TRIGGER teras_gap_turn_append_only BEFORE UPDATE OR DELETE ON public.teras_gap_turn
+ FOR EACH ROW EXECUTE FUNCTION app.teras_learning_append_only();
+--> statement-breakpoint
+ALTER TABLE public.teras_gap_turn ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+ALTER TABLE public.teras_gap_turn FORCE ROW LEVEL SECURITY;
+--> statement-breakpoint
+-- Only the login that wrote a note reads it: never an administrator, a group administrator or an agent.
+CREATE POLICY teras_gap_turn_own_read ON public.teras_gap_turn FOR SELECT TO ai_hr_app
+ USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND by_user_id=app.current_user_id());
+--> statement-breakpoint
+CREATE POLICY teras_gap_turn_own_insert ON public.teras_gap_turn FOR INSERT TO ai_hr_app
+ WITH CHECK (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() IS TRUE AND by_user_id=app.current_user_id()
+  AND app.teras_learning_own_record(record_id,company_id));
+--> statement-breakpoint
+REVOKE ALL ON public.teras_gap_turn FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+GRANT SELECT,INSERT ON public.teras_gap_turn TO ai_hr_app;
+--> statement-breakpoint
 CREATE TABLE public.teras_gap_occurrence (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  tenant_id uuid NOT NULL REFERENCES public.tenant(id),
  company_id uuid NOT NULL,
- record_id uuid NOT NULL,
  kind text NOT NULL CHECK (kind IN ('cannot_answer','no_route','not_supported')),
  area text NOT NULL CHECK (area ~ '^[a-z_]{1,40}$'),
  intent_key text NOT NULL CHECK (intent_key ~ '^(cannot_answer|no_route|not_supported):[a-z_]{1,40}$' AND intent_key=kind||':'||area),
  role text NOT NULL CHECK (role IN ('employee','manager','hr_admin','payroll','group_admin')),
  locale text NOT NULL CHECK (locale IN ('en','ms','zh','vi','ta','th')),
- at timestamptz NOT NULL DEFAULT now(),
- UNIQUE (tenant_id,record_id),
- FOREIGN KEY (company_id,tenant_id) REFERENCES public.company(id,tenant_id),
- FOREIGN KEY (tenant_id,record_id) REFERENCES public.teras_outcome_record(tenant_id,id)
+ -- The Malaysian day it was counted: stamped by the trigger below, never a finer time that could be matched to a turn.
+ seen_on date NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date,
+ FOREIGN KEY (company_id,tenant_id) REFERENCES public.company(id,tenant_id)
 );
 --> statement-breakpoint
-CREATE INDEX teras_gap_occurrence_company_idx ON public.teras_gap_occurrence(tenant_id,company_id,intent_key,at);
+CREATE INDEX teras_gap_occurrence_company_idx ON public.teras_gap_occurrence(tenant_id,company_id,intent_key,seen_on);
+--> statement-breakpoint
+CREATE FUNCTION app.teras_gap_occurrence_stamp() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN NEW.seen_on:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date; RETURN NEW; END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.teras_gap_occurrence_stamp() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER teras_gap_occurrence_stamp BEFORE INSERT ON public.teras_gap_occurrence
+ FOR EACH ROW EXECUTE FUNCTION app.teras_gap_occurrence_stamp();
 --> statement-breakpoint
 CREATE TRIGGER teras_gap_occurrence_append_only BEFORE UPDATE OR DELETE ON public.teras_gap_occurrence
  FOR EACH ROW EXECUTE FUNCTION app.teras_learning_append_only();
@@ -215,88 +265,16 @@ ALTER TABLE public.teras_gap_occurrence FORCE ROW LEVEL SECURITY;
 CREATE POLICY teras_gap_occurrence_read ON public.teras_gap_occurrence FOR SELECT TO ai_hr_app
  USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id));
 --> statement-breakpoint
+-- Only beside the writer's own note, made in this transaction (now() is the transaction's time) for this company: the
+-- note's insert policy is the outcome-record check, and the note's key makes a turn count once.
 CREATE POLICY teras_gap_occurrence_own_insert ON public.teras_gap_occurrence FOR INSERT TO ai_hr_app
- WITH CHECK (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() IS TRUE AND app.teras_learning_own_record(record_id,company_id));
+ WITH CHECK (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() IS TRUE AND app.current_agent_principal() IS NULL
+  AND EXISTS(SELECT 1 FROM public.teras_gap_turn t WHERE t.tenant_id=teras_gap_occurrence.tenant_id AND t.company_id=teras_gap_occurrence.company_id
+   AND t.by_user_id=app.current_user_id() AND t.at=now()));
 --> statement-breakpoint
 REVOKE ALL ON public.teras_gap_occurrence FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 GRANT SELECT,INSERT ON public.teras_gap_occurrence TO ai_hr_app;
---> statement-breakpoint
-
--- ── 4. Redacted gap examples ──
-CREATE TABLE public.teras_gap_example (
- id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
- tenant_id uuid NOT NULL REFERENCES public.tenant(id),
- company_id uuid NOT NULL,
- record_id uuid NOT NULL,
- -- The asker's stored chat the question came from: internal only (never read out, never exported), so the example goes
- -- with the chat whichever way the chat is removed.
- chat_id uuid NOT NULL REFERENCES public.teras_chat(id) ON DELETE CASCADE,
- intent_key text NOT NULL CHECK (intent_key ~ '^(cannot_answer|no_route|not_supported):[a-z_]{1,40}$'),
- -- Redacted in code; no digit survives redaction, so none may be stored.
- text text NOT NULL CHECK (char_length(text) BETWEEN 1 AND 400 AND text !~ '[0-9]' AND text !~ '[@]'),
- redaction_version integer NOT NULL CHECK (redaction_version>=1),
- at timestamptz NOT NULL DEFAULT now(),
- -- Stamped by the trigger below; the default only satisfies NOT NULL before it runs.
- expires_at timestamptz NOT NULL DEFAULT now(),
- UNIQUE (tenant_id,record_id),
- FOREIGN KEY (company_id,tenant_id) REFERENCES public.company(id,tenant_id),
- FOREIGN KEY (tenant_id,record_id) REFERENCES public.teras_gap_occurrence(tenant_id,record_id)
-);
---> statement-breakpoint
-CREATE INDEX teras_gap_example_company_idx ON public.teras_gap_example(tenant_id,company_id,intent_key,at);
---> statement-breakpoint
--- The tenant's "Keep chats for" (0952, default 30 days) decides how long an example is kept; the writer cannot choose.
-CREATE FUNCTION app.teras_gap_example_stamp() RETURNS trigger
- LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
-BEGIN
- IF TG_OP='UPDATE' THEN RAISE EXCEPTION 'A gap example is never changed' USING ERRCODE='42501'; END IF;
- NEW.at:=now();
- NEW.expires_at:=now()+make_interval(days=>app.teras_chat_keep_days(NEW.tenant_id));
- RETURN NEW;
-END $$;
---> statement-breakpoint
-REVOKE ALL ON FUNCTION app.teras_gap_example_stamp() FROM PUBLIC;
---> statement-breakpoint
--- Whether an example is within the tenant's "Keep chats for" as it is NOW: a shortened setting expires older examples at
--- once, as it expires older chats at once (0952), without reading any chat (chats are their login's only).
-CREATE FUNCTION app.teras_gap_example_kept(p_tenant uuid,p_at timestamptz) RETURNS boolean
- LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT p_at+make_interval(days=>app.teras_chat_keep_days(p_tenant))>now()
-$$;
---> statement-breakpoint
-REVOKE ALL ON FUNCTION app.teras_gap_example_kept(uuid,timestamptz) FROM PUBLIC;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.teras_gap_example_kept(uuid,timestamptz) TO ai_hr_app;
---> statement-breakpoint
-CREATE TRIGGER teras_gap_example_stamp BEFORE INSERT OR UPDATE ON public.teras_gap_example
- FOR EACH ROW EXECUTE FUNCTION app.teras_gap_example_stamp();
---> statement-breakpoint
-ALTER TABLE public.teras_gap_example ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-ALTER TABLE public.teras_gap_example FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
--- An administrator of the company reads its examples. The expiry is not repeated here: a DELETE that names its rows must
--- also pass this policy, so an expired example has to stay visible to the delete below. The one reader
--- (core/learning/quality.ts) deletes the expired examples first and filters on the same two conditions in the same
--- transaction.
-CREATE POLICY teras_gap_example_read ON public.teras_gap_example FOR SELECT TO ai_hr_app
- USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id));
---> statement-breakpoint
--- The chat must be the asker's own (0952 lets a login read only its own chats).
-CREATE POLICY teras_gap_example_own_insert ON public.teras_gap_example FOR INSERT TO ai_hr_app
- WITH CHECK (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() IS TRUE AND app.teras_learning_own_record(record_id,company_id)
-  AND EXISTS(SELECT 1 FROM public.teras_chat c WHERE c.id=teras_gap_example.chat_id AND c.tenant_id=teras_gap_example.tenant_id
-   AND c.app_user_id=app.current_user_id()));
---> statement-breakpoint
--- Only an expired example (its own stamp, or the tenant's "Keep chats for" as it is now) is ever deleted directly, by an
--- administrator of its company.
-CREATE POLICY teras_gap_example_expired_delete ON public.teras_gap_example FOR DELETE TO ai_hr_app
- USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id) AND (expires_at<=now() OR NOT app.teras_gap_example_kept(tenant_id,at)));
---> statement-breakpoint
-REVOKE ALL ON public.teras_gap_example FROM PUBLIC,ai_hr_app;
---> statement-breakpoint
-GRANT SELECT,INSERT,DELETE ON public.teras_gap_example TO ai_hr_app;
 --> statement-breakpoint
 
 -- ── 5. Gap statuses ──

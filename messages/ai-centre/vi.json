@@ -1758,14 +1758,12 @@
       },
       "gaps": {
         "title": "Khoảng trống lớn nhất",
-        "help": "Những câu hỏi AI Centre không trả lời hoặc không làm được, được nhóm theo nội dung được hỏi và đếm. Ví dụ đã được ẩn thông tin và chỉ được giữ lâu bằng thời gian lưu cuộc trò chuyện của bạn.",
+        "help": "Những câu hỏi AI Centre không trả lời hoặc không làm được, được nhóm theo nội dung được hỏi và đếm.",
         "intent": "Ý định",
         "count": "Số lần",
-        "example": "Ví dụ",
         "status": "Trạng thái",
         "none": "Không có việc gì AI Centre không trả lời hoặc không làm được trong khoảng thời gian này.",
         "roles": "Người hỏi: {roles}",
-        "noExample": "Không giữ ví dụ",
         "statusFor": "Trạng thái của {intent}",
         "mixed": "Khác nhau theo công ty",
         "statuses": {
@@ -1863,7 +1861,6 @@
         "redactionHelp": "Hãy dùng tên và chi tiết hư cấu. Khi bạn lưu, tên, mã, con số, ngày, địa chỉ e-mail và số điện thoại được thay bằng phần giữ chỗ như NAME_A. Hãy đọc văn bản đã lưu trước khi phê duyệt.",
         "newTitle": "Ứng viên đánh giá mới: {signal}",
         "newIntro": "Được ghi là câu hỏi của {role} bằng {locale}. Hãy viết câu hỏi như người ta có thể đã hỏi và một câu trả lời tốt cần làm gì.",
-        "example": "Câu hỏi đã ẩn thông tin từ lượt đó: “{example}”",
         "saveDraft": "Lưu bản nháp",
         "cancel": "Hủy",
         "editTitle": "Sửa bản nháp"

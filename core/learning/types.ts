@@ -1,9 +1,9 @@
 /** AI v2 Phase 2, P2-6 — the learning loops' closed vocabularies. A leaf: no imports, so db/teras-learning-schema.ts can
  * type its columns from here without a cycle.
  *
- * Every value a learning row holds is one of these names, a count, a calendar date or a reference. The only words are a
- * gap example and an eval candidate's question and expectation, and both are redacted before they are written
- * (./redact.ts). Mirrored by the CHECK constraints of migration 0972; test/learning-loops-rules.test.ts pins the copy. */
+ * Every value a learning row holds is one of these names, a count, a calendar date or a reference. The only words are an
+ * eval candidate's question and expectation, an administrator's own, redacted before they are written (./redact.ts). No
+ * words from anyone's chat are stored (AI v2 Phase 2 hardening: gaps keep no examples). Mirrored by the CHECK constraints of migration 0972; test/learning-loops-rules.test.ts pins the copy. */
 
 /** What a person did with AI Centre's work. */
 export const SIGNAL_KINDS=Object.freeze(['card_confirmed','card_edited','card_discarded','recommendation_rejected','answer_helpful','answer_unhelpful'] as const);

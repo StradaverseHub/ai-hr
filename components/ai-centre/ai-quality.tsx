@@ -20,7 +20,8 @@ import { cn } from '@/lib/utils';
  *
  * Four figures (answers marked helpful; prepared actions confirmed unchanged, with the edited share; discarded; open gaps),
  * each a percentage with its counts for the last 30 days, this quarter or this year, per company; the confirmed-unchanged
- * share by month drawn to scale from 0 to 100%; the biggest gaps with a redacted example and their status; the corrections
+ * share by month drawn to scale from 0 to 100%; the biggest gaps and their status (counted, never their words: AI v2 Phase 2
+ * hardening, ADR-0169 §9); the corrections
  * to review, made eval candidates or dismissed; the candidates, approved and exported by an administrator; the loops'
  * proposals, approved, rejected or reverted by an administrator, with each loop's corrections by month; the method.
  * Rendered only for an administrator (the Insights view checks isAdmin, and core/learning/quality.ts checks it again);
@@ -180,19 +181,15 @@ function GapsTable({ view, t, f, hidden }: { view: QualityView; t: T; f: F; hidd
   const scope = view.companyId ? [view.companyId] : view.companies.map(row => row.id);
   return (
     <TableShell id="ai-quality-gaps" title={t('gaps.title')} help={t('gaps.help')}>
-      <Head cols={[t('gaps.intent'), t('gaps.count'), t('gaps.example'), t('gaps.status')]} />
+      <Head cols={[t('gaps.intent'), t('gaps.count'), t('gaps.status')]} />
       <tbody className="divide-y divide-border">
-        {view.gaps.length === 0 ? <tr><td colSpan={4} className={cn(cell, 'text-muted-foreground')}>{t('gaps.none')}</td></tr>
+        {view.gaps.length === 0 ? <tr><td colSpan={3} className={cn(cell, 'text-muted-foreground')}>{t('gaps.none')}</td></tr>
           : view.gaps.slice(0, 20).map((row: GapBacklogRow) => (
             <tr key={row.intentKey} data-gap-row={row.intentKey}>
               <th scope="row" className={cn(cell, 'font-medium')}>{intentLabel(t, row.intentKey)}
                 <p className="mt-1 text-xs font-normal text-muted-foreground">{t('gaps.roles', { roles: row.roles.map(role => t(`roles.${role}`)).join(', ') })}</p>
               </th>
               <td className={cn(cell, 'tabular-nums')}>{f.number(row.count)}</td>
-              <td className={cn(cell, 'max-w-sm')}>
-                {row.examples.length ? <ul className="space-y-1">{row.examples.map(example => <li key={example} data-gap-example className="text-muted-foreground">“{example}”</li>)}</ul>
-                  : <span className="text-muted-foreground">{t('gaps.noExample')}</span>}
-              </td>
               <td className={cell}>
                 <form action={setGapStatusAction} className="flex flex-wrap items-end gap-2" data-gap-status-form>
                   {hidden}
@@ -265,7 +262,6 @@ function CorrectionsTable({ view, t, tf, day, hidden, keep, promote }: { view: Q
                 <th scope="row" className={cn(cell, 'font-medium')}>{signalLabel(t, row)}
                   <p className="mt-1 text-xs font-normal text-muted-foreground">{t('corrections.detail', { area: t.has(`areas.${row.area}`) ? t(`areas.${row.area}`) : t('areas.general'), locale: t(`locales.${row.locale}`) })}</p>
                   {row.reason && <p className="mt-1 text-xs font-normal text-muted-foreground" data-correction-reason>{t('corrections.reason', { reason: tf(`reasons.${row.reason}`) })}</p>}
-                  {row.example && <p className="mt-1 text-xs font-normal text-muted-foreground" data-correction-example>“{row.example}”</p>}
                 </th>
                 <td className={cell}>{t(`roles.${row.role}`)}</td>
                 <td className={cn(cell, 'tabular-nums')}>{day(row.at)}</td>
@@ -285,10 +281,9 @@ function CorrectionsTable({ view, t, tf, day, hidden, keep, promote }: { view: Q
         <Card id="ai-quality-promote" className="space-y-3 p-4" data-promote-form={promote.id}>
           <h4 className="font-semibold">{t('candidate.newTitle', { signal: signalLabel(t, promote) })}</h4>
           <p className="text-sm text-muted-foreground">{t('candidate.newIntro', { role: t(`roles.${promote.role}`), locale: t(`locales.${promote.locale}`) })}</p>
-          {promote.example && <p className="text-sm" data-promote-example>{t('candidate.example', { example: promote.example })}</p>}
           <form action={promoteSignalAction} className="space-y-3">
             {hidden}<input type="hidden" name="signalId" value={promote.id} />
-            <CandidateFields t={t} defaults={{ question: promote.example ?? '', ...candidateDefaults(promote.kind) }} />
+            <CandidateFields t={t} defaults={{ question: '', ...candidateDefaults(promote.kind) }} />
             <div className="flex flex-wrap gap-2">
               <button type="submit" className={cn(btnPrimary, target)}>{t('candidate.saveDraft')}</button>
               <Link href={href(keep, 'ai-quality-corrections')} className={cn(btnGhost, target)}>{t('candidate.cancel')}</Link>

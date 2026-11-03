@@ -1758,14 +1758,12 @@
       },
       "gaps": {
         "title": "Jurang terbesar",
-        "help": "Soalan yang tidak dapat dijawab atau dilakukan oleh AI Centre, dikumpulkan mengikut perkara yang ditanya dan dikira. Contoh disunting dan disimpan selama sembang anda disimpan sahaja.",
+        "help": "Soalan yang tidak dapat dijawab atau dilakukan oleh AI Centre, dikumpulkan mengikut perkara yang ditanya dan dikira.",
         "intent": "Niat",
         "count": "Bilangan",
-        "example": "Contoh",
         "status": "Status",
         "none": "Tiada perkara yang tidak dapat dijawab atau dilakukan oleh AI Centre dalam tempoh ini.",
         "roles": "Ditanya oleh: {roles}",
-        "noExample": "Tiada contoh disimpan",
         "statusFor": "Status bagi {intent}",
         "mixed": "Berbeza mengikut syarikat",
         "statuses": {
@@ -1863,7 +1861,6 @@
         "redactionHelp": "Gunakan nama dan butiran rekaan. Apabila anda menyimpan, nama, ID, angka, tarikh, alamat e-mel dan nombor telefon digantikan dengan pemegang tempat seperti NAME_A. Baca teks yang disimpan sebelum anda meluluskannya.",
         "newTitle": "Calon penilaian baharu: {signal}",
         "newIntro": "Direkodkan sebagai soalan {role} dalam {locale}. Tulis soalan seperti mungkin ditanya dan apa yang dilakukan oleh jawapan yang baik.",
-        "example": "Soalan yang disunting daripada giliran itu: “{example}”",
         "saveDraft": "Simpan draf",
         "cancel": "Batal",
         "editTitle": "Sunting draf"
