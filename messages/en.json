@@ -5339,7 +5339,7 @@
     "submitDecisions": "Submit",
     "employeeRemark": "Employee remark",
     "closeDialog": "Close",
-    "bulkSelectAll": "Select all",
+    "bulkSelectAll": "Select all on this page",
     "bulkSelectRow": "Select request",
     "bulkSelected": "Selected: {count, plural, one {# request} other {# requests}}",
     "bulkClear": "Clear",

@@ -5339,7 +5339,7 @@
     "submitDecisions": "சமர்ப்பி",
     "employeeRemark": "பணியாளர் குறிப்பு",
     "closeDialog": "மூடு",
-    "bulkSelectAll": "அனைத்தையும் தேர்ந்தெடு",
+    "bulkSelectAll": "இந்தப் பக்கத்தில் உள்ள அனைத்தையும் தேர்ந்தெடு",
     "bulkSelectRow": "கோரிக்கையைத் தேர்ந்தெடு",
     "bulkSelected": "தேர்ந்தெடுக்கப்பட்டது: {count, plural, other {# கோரிக்கைகள்}}",
     "bulkClear": "அழி",

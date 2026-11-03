@@ -5339,7 +5339,7 @@
     "submitDecisions": "Hantar",
     "employeeRemark": "Catatan pekerja",
     "closeDialog": "Tutup",
-    "bulkSelectAll": "Pilih semua",
+    "bulkSelectAll": "Pilih semua pada halaman ini",
     "bulkSelectRow": "Pilih permohonan",
     "bulkSelected": "Dipilih: {count, plural, other {# permohonan}}",
     "bulkClear": "Kosongkan",

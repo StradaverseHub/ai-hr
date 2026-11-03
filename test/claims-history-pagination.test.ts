@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {claimRequest} from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {createClaimType, listClaimHistoryPage, listClaimDraftsForEmployment, listClaimsForEmployment} from '../packs/claims/service';
+import {createClaimType, listClaimHistoryPage, listPendingClaimsPage, listClaimDraftsForEmployment, listClaimsForEmployment} from '../packs/claims/service';
 import {adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
 import {ALL_ROW_CEILING} from '../lib/pagination';
 let base: Base;
@@ -40,6 +40,16 @@ describe('claims history database pagination', () => {
     expect((await listClaimHistoryPage(ctx, subject.employmentId, {size: '1000000'})).rows).toHaveLength(25);
     const beyond = await listClaimHistoryPage(ctx, subject.employmentId, {page: '20'});
     expect(beyond.rows).toEqual([]); expect(beyond.state).toMatchObject({total: 60, from: 0, to: 0, hasPrev: true});
+  });
+  it('returns the exact pending queue total and a bounded selection page', async () => {
+    const {ctx, ids} = await fixture();
+    const first = await listPendingClaimsPage(ctx, {companyIds:[base.companyId]});
+    const second = await listPendingClaimsPage(ctx, {companyIds:[base.companyId],page:'1'});
+    const expected = ids.slice(0,60).sort();
+    expect(first.page.total).toBe(60);
+    expect(first.rows.map(row=>row.id)).toEqual(expected.slice(0,25));
+    expect(second.rows.map(row=>row.id)).toEqual(expected.slice(25,50));
+    expect((await listPendingClaimsPage(ctx,{companyIds:[]})).page.total).toBe(0);
   });
   it('preserves tenant and employment isolation for paged and detail reads', async () => {
     const {subject, ids} = await fixture();

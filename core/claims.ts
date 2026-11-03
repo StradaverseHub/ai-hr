@@ -7,7 +7,7 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
  * admin-write); every state change appends a DomainEvent. The lifecycle (submit/decide) + payout live in
  * later slices of this file.
  */
-import { and, desc, eq, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withClaimsTenant` — every one of this file's
 // 35 exported entry points refuses a tenant without the Claims module, however the call was reached.
@@ -3490,6 +3490,60 @@ export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:str
     const atts = await attachmentsByClaim(tx, scoped.map((r) => r.id));
     return scoped.map((r) => toRow(r, atts));
   });
+}
+
+/** Page the authorized queue before reading private details or attachments. */
+export function listPendingClaimsPage(ctx:SessionContext,opts:{
+ page?:string;size?:string;sort?:'latest'|'oldest'|'name_asc'|'name_desc';companyIds?:string[];
+}={}){
+ const page=parsePageQuery(opts);
+ return withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  if(opts.companyIds?.length===0)return {rows:[] as ClaimRow[],page:pageState(page,0,0)};
+  const subjects=await tx.execute<{employmentId:string;name:string}>(sql`
+   with candidates as materialized (
+    select unnest(app.visible_employment_ids()) as employment_id
+    union select unnest(app.delegated_subject_ids('claims','claims.claim')) as employment_id
+   )
+   select candidate.employment_id as "employmentId",header.employee as name
+   from candidates candidate
+   join lateral app.delegated_approval_subject(candidate.employment_id,'claims','claims.claim') header on true
+   where ${opts.companyIds===undefined?sql`true`:sql`header.company_id=any(${'{'+opts.companyIds.join(',')+'}'}::uuid[])`}
+  `);
+  const scoped=await filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
+  if(!scoped.length)return {rows:[] as ClaimRow[],page:pageState(page,0,0)};
+  const ids='{'+scoped.map(row=>row.employmentId).join(',')+'}';
+  const where=and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),
+   sql`${claimRequest.employmentId}=any(${ids}::uuid[])`);
+  const names=[...new Set(scoped.map(row=>row.name))].sort((a,b)=>a.localeCompare(b));
+  let rank=0;
+  const ranks=new Map(names.map((name,index)=>{
+   if(index>0&&name.localeCompare(names[index-1])!==0)rank++;
+   return [name,rank] as const;
+  }));
+  const encodedRanks=JSON.stringify(Object.fromEntries(scoped.map(row=>[row.employmentId,ranks.get(row.name)])));
+  const nameRank=sql`(${encodedRanks}::jsonb ->> ${claimRequest.employmentId}::text)::int`;
+  const order=opts.sort==='oldest'?[asc(claimRequest.createdAt),asc(claimRequest.id)]:
+   opts.sort==='name_asc'?[asc(nameRank),asc(claimRequest.id)]:
+   opts.sort==='name_desc'?[desc(nameRank),asc(claimRequest.id)]:
+   [desc(claimRequest.createdAt),asc(claimRequest.id)];
+  const [count]=await tx.select({total:sql<number>`count(*)::int`}).from(claimRequest)
+   .innerJoin(claimType,eq(claimType.id,claimRequest.claimTypeId)).where(where);
+  const selected=await tx.select({id:claimRequest.id}).from(claimRequest)
+   .innerJoin(claimType,eq(claimType.id,claimRequest.claimTypeId)).where(where)
+   .orderBy(...order).limit(page.limit).offset(page.offset);
+  if(!selected.length)return {rows:[] as ClaimRow[],page:pageState(page,count.total,0)};
+  const requestIds=selected.map(row=>row.id);
+  const rows=await tx.select(rowSelect(true)).from(claimRequest)
+   .innerJoin(claimType,eq(claimType.id,claimRequest.claimTypeId))
+   .leftJoin(claimItem,eq(claimItem.id,claimRequest.claimItemId))
+   .innerJoin(sql`LATERAL app.delegated_approval_subject(${claimRequest.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
+   .where(and(where,inArray(claimRequest.id,requestIds)));
+  const attachments=await attachmentsByClaim(tx,requestIds);
+  const byId=new Map(rows.map(row=>[row.id,toRow(row,attachments)]));
+  const ordered=requestIds.flatMap(id=>{const row=byId.get(id);return row?[row]:[];});
+  return {rows:ordered,page:pageState(page,count.total,ordered.length)};
+ },{readOnlySnapshot:true});
 }
 
 /** M11 — the facts of a claim that the list row (ClaimRow) does not carry, for its detail screens. */
