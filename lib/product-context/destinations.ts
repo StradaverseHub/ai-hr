@@ -32,6 +32,18 @@ export const DESTINATION_PURPOSE:Readonly<Record<string,string>>=Object.freeze({
  '/me/payslip':'The signed-in person\'s own released payslips only. Never a payroll run, a payroll summary, a company report or anyone else\'s pay.',
  // AI v2 Phase 1 slice 3: where a person asks HR for a letter ("Request a letter" on My Letters).
  '/me/letters':'The signed-in person\'s own issued letters and letter requests, and where they ask HR for a new letter, such as an employment confirmation letter, with Request a letter when their company offers it. HR prepares and issues the letter.',
+ // Spec v20 (hr-salary, run 41615455375: "[Individual Payslip](/payroll/individual-payslip) is for your own payslips"): the
+ // payroll staff views of other people's pay say whose pay they show.
+ '/payroll/individual-payslip':'Payroll staff: the payslip of any employee they administer, run by run. Not the signed-in person\'s own payslips (those are on /me/payslip).',
+ '/payroll/transaction-view':'Payroll staff: the pay transactions of any employee they administer. Not the signed-in person\'s own payslips.',
+ '/payroll':'Payroll staff: the payroll runs of the companies they administer.',
+});
+/** Spec v20: what each pay-view page shows, for the turn note about another person's pay (core/harness/runner.ts
+ * payViewNoteFor). Every PAY_VIEW_PAGES entry has one. */
+export const PAY_VIEW_PURPOSE:Readonly<Record<string,string>>=Object.freeze({
+ '/payroll/individual-payslip':'where they open the payslip of any employee they administer (not their own payslips)',
+ '/payroll/transaction-view':'where they see the pay transactions of any employee they administer',
+ '/payroll':'the payroll runs of the companies they administer',
 });
 export type ProductDestination=Readonly<{href:string;labelKey:string;audience:DestinationAudience;module:string|null;source:'pack'|'lifecycle_v9'|'security'|'sidebar'}>;
 

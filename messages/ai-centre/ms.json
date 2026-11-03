@@ -686,7 +686,7 @@
       "lastPrepared": "Tugas ringkasan harian anda kali terakhir menyediakan ini pada {when}."
     },
     "conversation": {
-      "routed": "Dihantar kepada pasukan HR anda: topik ini tidak dikendalikan oleh pembantu.",
+      "routed": "Dihantar kepada pasukan HR anda: topik ini tidak dikendalikan oleh Pusat AI.",
       "routedCrisis": "Jika anda dalam bahaya, hubungi perkhidmatan kecemasan sekarang.",
       "startPrivateCase": "Mulakan kes peribadi dengan HR",
       "days": "{count, plural, other {# hari}}",
@@ -713,7 +713,7 @@
       "expires": "Tamat {time}",
       "howPrepared": "Cara ini disediakan",
       "preparedBy": "Disediakan oleh",
-      "preparedByValue": "Pembantu, daripada semakan sistem sendiri, sebagai anda",
+      "preparedByValue": "Pusat AI, daripada semakan sistem sendiri, sebagai anda",
       "confirmOn": "Disahkan di",
       "confirmOnValue": "Halaman semakan. Tiada yang berubah sehingga anda mengesahkannya di sana.",
       "inline": {
@@ -845,12 +845,12 @@
         "invalid_question": "Sila tanya soalan sehingga 2,000 aksara.",
         "continuation_invalid": "Perbualan ini tidak boleh diteruskan. Mulakan sembang baharu.",
         "not_configured": "Tiada pembekal AI disediakan untuk syarikat anda. Tanya pentadbir anda.",
-        "provider_not_compliant": "Pembekal AI syarikat anda tidak disediakan untuk tanpa simpanan data dan tanpa latihan, jadi pembantu tidak dapat menjawab. Tanya pentadbir anda.",
+        "provider_not_compliant": "Pembekal AI syarikat anda tidak disediakan untuk tanpa simpanan data dan tanpa latihan, jadi Pusat AI tidak dapat menjawab. Tanya pentadbir anda.",
         "budget_daily": "Anda telah mencapai had soalan hari ini. Cuba lagi esok.",
         "budget_monthly": "Syarikat anda telah mencapai had AI bulan ini.",
         "ai_control": "AI dijeda atau dihadkan untuk anda atau syarikat anda sekarang.",
         "protected_input": "Soalan ini tidak dapat dihantar dengan selamat. Cuba tanya dengan cara lain.",
-        "provider_error": "Pembantu tidak dapat menjawab sekarang. Sila cuba lagi."
+        "provider_error": "Pusat AI tidak dapat menjawab sekarang. Sila cuba lagi."
       },
       "letterRequestTitle": "Permohonan {letterType}"
     }

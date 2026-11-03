@@ -132,7 +132,10 @@ describe('defect 3: a pay refusal points where this caller already sees pay',()=
  it('names the per-person payslip page to an administrator, from their own destinations, with no read and no figure',async()=>{
   const {result,model,system,dispatched}=await turn(CALLERS.hrAdmin,asked,refusal,{destinations:PAYROLL_PAGES});
   expect(result.trace.gate.reason).toBe('other_person');
-  expect(system).toContain(HARNESS_SPEC.payView.page.replace('{label}','Individual Payslip').replace('{href}','/payroll/individual-payslip'));
+  // Spec v20: the note says whose pay the page shows, never "your own payslips".
+  expect(system).toContain(HARNESS_SPEC.payView.page.replace('{label}','Individual Payslip').replace('{href}','/payroll/individual-payslip')
+   .replace('{purpose}','where they open the payslip of any employee they administer (not their own payslips)'));
+  expect(system).not.toMatch(/\[Individual Payslip\]\(\/payroll\/individual-payslip\)[^.]*\byour own payslips/);
   expect(system).not.toContain(HARNESS_SPEC.payView.none);
   // The gate still closes every private read: only product context and suggestions are offered, and nothing ran.
   expect(model.requests[0].tools.map(tool=>tool.name).filter(name=>!['product_destinations','product_guidance','available_actions','suggest_action','final_answer'].includes(name))).toEqual([]);

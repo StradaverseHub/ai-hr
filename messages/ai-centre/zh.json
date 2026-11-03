@@ -686,7 +686,7 @@
       "lastPrepared": "您的每日摘要任务上次于 {when} 准备了此内容。"
     },
     "conversation": {
-      "routed": "已转给您的人事团队：助手不处理此类话题。",
+      "routed": "已转给您的人事团队：AI 中心不处理此类话题。",
       "routedCrisis": "如果您身处危险，请立即联系紧急服务。",
       "startPrivateCase": "向人力资源部门提交私密个案",
       "days": "{count, plural, other {# 天}}",
@@ -713,7 +713,7 @@
       "expires": "{time} 过期",
       "howPrepared": "准备方式",
       "preparedBy": "准备者",
-      "preparedByValue": "助手，依据系统自身的检查，以您的身份",
+      "preparedByValue": "AI 中心，依据系统自身的检查，以您的身份",
       "confirmOn": "确认位置",
       "confirmOnValue": "审核页面。在您确认之前不会有任何更改。",
       "inline": {
@@ -845,12 +845,12 @@
         "invalid_question": "请提出不超过 2,000 个字符的问题。",
         "continuation_invalid": "此对话无法继续。请开始新的对话。",
         "not_configured": "贵公司尚未设置 AI 服务商。请联系管理员。",
-        "provider_not_compliant": "贵公司的 AI 服务商未设置为不保留数据且不用于训练，因此助手无法回答。请联系管理员。",
+        "provider_not_compliant": "贵公司的 AI 服务商未设置为不保留数据且不用于训练，因此 AI 中心无法回答。请联系管理员。",
         "budget_daily": "您已达到今天的提问上限。请明天再试。",
         "budget_monthly": "贵公司已达到本月的 AI 上限。",
         "ai_control": "目前您或贵公司的 AI 已暂停或受限。",
         "protected_input": "此问题无法安全发送。请换一种方式提问。",
-        "provider_error": "助手暂时无法回答。请重试。"
+        "provider_error": "AI 中心暂时无法回答。请重试。"
       },
       "letterRequestTitle": "{letterType}申请"
     }

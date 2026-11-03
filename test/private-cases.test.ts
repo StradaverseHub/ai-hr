@@ -429,10 +429,10 @@ describe('the sensitive reply',()=>{
   await designate(handler.ctx.userId);
   const routed=await ask(grievance);
   expect(routed).toMatchObject({sensitive:true,crisis:false,caseRoute:PRIVATE_CASE_START_PATH,reads:[],suggestion:null});
-  // Spec v18 names the case route (ADR-0173 §3): the fixed text carries the link where the route is set up, and the screen
-  // carries it too (conversation-reply).
+  // Spec v18 names the case route (ADR-0173 §3) and v20 names it in the text without a link: the screen's route note
+  // carries the one link (conversation-reply).
   expect(HARNESS_SPEC.sensitive.contact.caseRoute).toBe(PRIVATE_CASE_START_PATH);expect(routed.reply).toBe(routeReply(true));
-  expect(routed.reply).toContain('](/me/cases/new)');expect(before.reply).not.toContain('/me/cases/new');
+  expect(routed.reply).toContain('start a private case with HR');expect(routed.reply).not.toContain('/me/cases/new');expect(before.reply).not.toContain('private case');
   const urgent=await ask(crisis);
   expect(urgent).toMatchObject({sensitive:true,crisis:true,caseRoute:PRIVATE_CASE_START_PATH});
   expect(urgent.reply.startsWith(HARNESS_SPEC.sensitive.crisisReply)).toBe(true);

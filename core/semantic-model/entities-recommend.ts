@@ -88,7 +88,9 @@ export const RECOMMEND_ENTITIES:readonly SemanticEntity[]=freeze([
   ruleVersion:null,relations:[{to:'leave_approval_step',kind:'one_to_many',via:'leaveRequestId'}],page:'/approvals',
   fields:[f('suggested','boolean','full','Whether a review page was suggested.'),f('action','label','full','The action from available_actions.'),
    f('reviewRoute','label','full','The review page.'),f('inlineCard','boolean','full','Whether the change has an inline card.'),
-   f('reason','enum','full','Why nothing was suggested.',{values:['not_available','missing_details']}),f('missing','list','full','Details still needed.'),
+   // Spec v20: no_match (nothing pending for this approver matches the person's words) and unavailable (that could not be read).
+   f('reason','enum','full','Why nothing was suggested.',{values:['not_available','missing_details','no_match','unavailable']}),f('missing','list','full','Details still needed.'),
+   f('page','label','full','The approvals page, when a decision matches nothing pending.'),
    // Issue 10: the caller's own apply menu, numbered, when a leave application's type is missing or unclear.
    f('options','list','full','Leave types the person may apply for, numbered in a fixed order, when the type is missing or unclear.',{of:[
     f('option','integer','full','The leave type\'s number in this list; the person chooses by it.'),

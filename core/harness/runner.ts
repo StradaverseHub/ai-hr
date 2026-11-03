@@ -28,7 +28,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import type {SessionContext} from '../../db/client';
 import {canManagePayroll,isAdmin,isGroupAdmin,withEffectiveGrants} from '../../lib/authz-model';
 import {todayInKualaLumpur} from '../../lib/hr-date';
-import {payViewDestinationFor} from '../../lib/product-context/destinations';
+import {PAY_VIEW_PURPOSE,payViewDestinationFor} from '../../lib/product-context/destinations';
 import {gateTurn,isSensitiveReason,TURN_GATE_NOTE} from '../../lib/product-context/request-gate';
 import {capabilityOffered} from '../../lib/product-context/capability-intent';
 import {chatImportFileInput} from '../../lib/chat-import';
@@ -137,7 +137,7 @@ export function roleNoteFor(ctx:SessionContext):string{
 export function payViewNoteFor(ctx:SessionContext,destinations:readonly string[],locale?:string):string|null{
  if(!canManagePayroll(withEffectiveGrants(ctx)))return null;
  const page=payViewDestinationFor(ctx,destinations);
- return page?S.payView.page.replace('{label}',destinationLabel(page.labelKey,locale)).replace('{href}',page.href):S.payView.none;
+ return page?S.payView.page.replace('{label}',destinationLabel(page.labelKey,locale)).replace('{href}',page.href).replace('{purpose}',PAY_VIEW_PURPOSE[page.href]??'where they see the pay of the people they administer'):S.payView.none;
 }
 
 /** The spec's contact route for a sensitive-topic turn. AI v2 W11: the spec's case clause joins it only where the

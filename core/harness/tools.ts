@@ -139,6 +139,8 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  const context=contextToolSpecsFor(ctx).map((spec):ToolBinding=>({name:spec.name,kind:'context',entity:null,spec,identifierInputs:[],
   async run(input){const result=await runContextTool(ctx,spec.name,input,scope);return result.ok?{ok:true,content:result.content}:{ok:false,content:result,refusal:result.refusal};}}));
  const catalogue=actions?await actionCatalogueFor(ctx):[];
+ // Spec v20: where a decision with no match points, when this caller may open the approvals list.
+ const approvalsPage=catalogue.some(row=>/^approvals\..+\.decide$/.test(row.id))&&linkablePathsFor(ctx,visibleModuleCodes(ctx)??undefined).includes('/approvals')?'/approvals':null;
  // Disclosed under its declared entity (core/semantic-model/entities-recommend.ts): pending applicants and dates are
  // another person's, so they leave as placeholders.
  const suggest:ToolBinding[]=catalogue.length?[{name:HARNESS_SPEC.offer.suggestTool,kind:'suggest',entity:'suggested_action',identifierInputs:[],
@@ -159,6 +161,10 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
     // A leave application with details missing or unclear: the person is asked, and nothing is suggested yet.
     if(outcome?.kind==='ask')return{ok:false,refusal:'missing_details',content:{suggested:false,action:result.action,reason:'missing_details',missing:outcome.missing,
      ...(outcome.options.length?{options:outcome.options}:{}),note:'note' in outcome?outcome.note:result.action.startsWith('attendance.')?ATTENDANCE_ASK_NOTE:ASK_NOTE}};
+    // Spec v20: a decision with nothing pending that matches the person's words (or whose queue could not be read) gets no
+    // card and no suggestion: the reply says so plainly, with the approvals page.
+    if(outcome?.kind==='no_match'||outcome?.kind==='unavailable')return{ok:false,refusal:outcome.kind,content:{suggested:false,action:result.action,reason:outcome.kind,
+     ...(approvalsPage?{page:approvalsPage}:{}),note:outcome.note}};
     const suggestion={action:result.action,reviewRoute:result.reviewRoute,inlineCard:result.inlineCard};
     // Several pending: the person chooses; the model lists them and asks, and nothing is prepared (ADR-0170 §3.15).
     if(outcome?.kind==='choose')return{ok:true,content:{...result,pending:outcome.pending,...(outcome.more?{notListed:outcome.more}:{}),note:'note' in outcome?outcome.note:CHOOSE_NOTE},suggestion};

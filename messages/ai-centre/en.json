@@ -686,7 +686,7 @@
       "lastPrepared": "Your daily digest job last prepared this at {when}."
     },
     "conversation": {
-      "routed": "Sent to your HR team: this topic is not handled by the assistant.",
+      "routed": "Sent to your HR team: this topic is not handled by the AI Centre.",
       "routedCrisis": "If you are in danger, contact emergency services now.",
       "startPrivateCase": "Start a private case with HR",
       "days": "{count, plural, one {# day} other {# days}}",
@@ -713,7 +713,7 @@
       "expires": "Expires {time}",
       "howPrepared": "How this was prepared",
       "preparedBy": "Prepared by",
-      "preparedByValue": "The assistant, from the system's own checks, as you",
+      "preparedByValue": "The AI Centre, from the system's own checks, as you",
       "confirmOn": "Confirmed on",
       "confirmOnValue": "The review page. Nothing changes until you confirm there.",
       "inline": {
@@ -845,12 +845,12 @@
         "invalid_question": "Please ask a question of up to 2,000 characters.",
         "continuation_invalid": "This conversation can no longer continue. Start a new chat.",
         "not_configured": "No AI provider is set up for your company. Ask your administrator.",
-        "provider_not_compliant": "Your company's AI provider is not set up for zero data retention and no training, so the assistant cannot answer. Ask your administrator.",
+        "provider_not_compliant": "Your company's AI provider is not set up for zero data retention and no training, so the AI Centre cannot answer. Ask your administrator.",
         "budget_daily": "You have reached today's question limit. Try again tomorrow.",
         "budget_monthly": "Your company has reached this month's AI limit.",
         "ai_control": "The AI is paused or limited for you or your company right now.",
         "protected_input": "This question could not be sent safely. Try asking it another way.",
-        "provider_error": "The assistant could not answer just now. Please try again."
+        "provider_error": "The AI Centre could not answer just now. Please try again."
       },
       "letterRequestTitle": "{letterType} request"
     }

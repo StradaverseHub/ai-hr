@@ -22,7 +22,12 @@
  * proposal issued, carrying that review's digest, expiry and handle, and the owner's stored facts (the claim type and item,
  * the date and the amount exactly as stored; the attendance day, times and the attendance service's own overtime minutes).
  * Confirm (core/assistant-actions/assigned-decision-proposal-confirm.ts) runs the existing decision path with all its
- * checks; nothing is decided without it. Returns null when nothing can be prepared or asked; never throws. */
+ * checks; nothing is decided without it.
+ * Spec v20 (coordinator, after run 41615455375: "Yes, I can …" with a card for a named person's request that does not
+ * exist): a decision is prepared ONLY for a pending item the approvals read resolved for this approver. When nothing is
+ * pending for them, when the person's words name someone none of their pending requests belongs to, or name a day or a
+ * kind that the named person's requests do not have, the outcome is `no_match` (nothing prepared, no card, and the reply
+ * says so plainly); when the read itself fails, `unavailable`. Never throws. */
 import type {SessionContext} from '../../db/client';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {ASSIGNED_ATTENDANCE_DECISION_ACTION,ASSIGNED_CLAIM_DECISION_ACTION,AssignedAttendanceDecision,AssignedClaimDecision} from '../../lib/assistant-actions/assigned-decision-contract';
@@ -31,6 +36,7 @@ import {SEMANTIC_ACTIONS} from '../semantic-model/entities';
 import {isCalendarDate} from './leave-apply';
 import {ownWords,squashWords} from './own-words';
 import {asksToBypassReview,wordsNameDate,wordsNameNumber} from './suggested';
+import {gateTurn} from '../../lib/product-context/request-gate';
 import {assertProposalsConfigured,issueProposal,type Proposal,type ProposalFacts} from './proposal';
 import type {z} from 'zod';
 
@@ -58,7 +64,21 @@ export type AssignedDecisionChoice=Readonly<{request:number;applicant:string;dat
  kind?:'overtime'|'correction';plannedStart?:string;plannedEnd?:string;checkIn?:string;checkOut?:string}>;
 export type AssignedDecideOutcome=Readonly<{kind:'proposal';proposal:Proposal}>
  |Readonly<{kind:'choose';pending:readonly AssignedDecisionChoice[];more:number;note:string}>
- |Readonly<{kind:'ask';missing:readonly AssignedDecisionDetail[];options:readonly never[];note:string}>;
+ |Readonly<{kind:'ask';missing:readonly AssignedDecisionDetail[];options:readonly never[];note:string}>
+ |DecisionNoMatch|DecisionUnavailable;
+/** Spec v20: nothing pending for this approver matches the person's words. Nothing is prepared. */
+export type DecisionNoMatch=Readonly<{kind:'no_match';note:string}>;
+/** Spec v20: whether anything is pending for this approver could not be read. Nothing is prepared. */
+export type DecisionUnavailable=Readonly<{kind:'unavailable';note:string}>;
+const NO_MATCH_WHAT:Readonly<Record<AssignedDecideAction|'approvals.leave.decide',string>>=Object.freeze({
+ [ASSIGNED_CLAIM_DECISION_ACTION]:'expense claim',[ASSIGNED_ATTENDANCE_DECISION_ACTION]:'attendance correction or overtime request','approvals.leave.decide':'leave request'});
+/** The no-match note for one decision action: said plainly, with the approvals page, never offered as a card. */
+export const noMatchNote=(action:AssignedDecideAction|'approvals.leave.decide')=>`No pending ${NO_MATCH_WHAT[action]} matching what the person said is waiting for their decision (none from the person they named, on the day or of the kind they said, or none at all). Nothing is prepared and there is no card. Say so plainly in one line, without "Yes, I can", and link the approvals page; never say they can decide it here.`;
+export const DECISION_UNAVAILABLE_NOTE='What is waiting for this person\'s decision could not be checked just now. Nothing is prepared and there is no card. Say so in one line and link the approvals page.';
+export const decisionNoMatch=(action:AssignedDecideAction|'approvals.leave.decide'):DecisionNoMatch=>Object.freeze({kind:'no_match' as const,note:noMatchNote(action)});
+const unavailable=():DecisionUnavailable=>Object.freeze({kind:'unavailable' as const,note:DECISION_UNAVAILABLE_NOTE});
+/** The person's own words this turn name someone other than themselves (the pre-read gate's own rule). */
+export const wordsNameSomeone=(words:string|undefined)=>typeof words==='string'&&(()=>{const gate=gateTurn(words);return !gate.privateReads&&gate.reason==='other_person';})();
 
 const ask=(missing:AssignedDecisionDetail,note:string):AssignedDecideOutcome=>Object.freeze({kind:'ask' as const,missing:Object.freeze([missing]),options:Object.freeze([]) as readonly never[],note});
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
@@ -106,20 +126,26 @@ type Item=Readonly<{subjectId:string;employmentId:string;employeeName:string;dat
 const text=(details:Readonly<Record<string,unknown>>,...keys:string[])=>{for(const key of keys){const value=details[key];if(typeof value==='string'&&value.trim())return value.trim();}return '';};
 const ordered=<T extends Item>(items:readonly T[])=>[...items].sort((a,b)=>a.date.localeCompare(b.date)||a.employeeName.localeCompare(b.employeeName)||a.subjectId.localeCompare(b.subjectId));
 
-/** Which requests the person's own words identify, out of the assigned ones in their fixed order. */
-function identified<T extends Item>(all:readonly T[],details:Readonly<Record<string,unknown>>,words:string|undefined,today:string,attendance:boolean):Readonly<{one:T|null;candidates:readonly T[]}>{
+/** Which requests the person's own words identify, out of the assigned ones in their fixed order. `none`: the words name
+ * someone, or a day or kind of the named person's requests, that nothing pending matches (spec v20: no match). */
+function identified<T extends Item>(all:readonly T[],details:Readonly<Record<string,unknown>>,words:string|undefined,today:string,attendance:boolean):Readonly<{one:T|null;candidates:readonly T[];none:boolean}>{
  const given=text(details,'request'),number=/^\d{1,2}$/.test(given)&&wordsNameNumber(words,Number(given))?Number(given):null;
- if(number!==null)return number>=1&&number<=all.length?{one:all[number-1],candidates:[all[number-1]]}:{one:null,candidates:all};
+ if(number!==null)return number>=1&&number<=all.length?{one:all[number-1],candidates:[all[number-1]],none:false}:{one:null,candidates:all,none:false};
  let candidates=all.filter(item=>wordsNameEmployee(words,item.employeeName));
- const named=candidates.length>0;if(!named)candidates=[...all];
+ const named=candidates.length>0;
+ // A person named whose requests are not among this approver's pending ones: none, never someone else's request.
+ if(!named&&wordsNameSomeone(words))return{one:null,candidates:[],none:true};
+ if(!named)candidates=[...all];
  const date=text(details,'date','incurredOn','startDate');
- if(isCalendarDate(date)&&wordsNameDay(words,date,today)){const dated=candidates.filter(item=>item.date===date);if(dated.length)candidates=dated;}
+ if(isCalendarDate(date)&&wordsNameDay(words,date,today)){const dated=candidates.filter(item=>item.date===date);
+  if(dated.length)candidates=dated;else if(named)return{one:null,candidates:[],none:true};}
  if(attendance&&typeof words==='string'){
   const overtime=OVERTIME.test(words),correction=CORRECTION.test(words);
-  if(overtime!==correction){const kind=candidates.filter(item=>item.overtime===overtime);if(kind.length)candidates=kind;}
+  if(overtime!==correction){const kind=candidates.filter(item=>item.overtime===overtime);
+   if(kind.length)candidates=kind;else if(named)return{one:null,candidates:[],none:true};}
  }
  // Only a name or a number the person said identifies a request; a date or a kind alone never does.
- return{one:named&&candidates.length===1?candidates[0]:null,candidates};
+ return{one:named&&candidates.length===1?candidates[0]:null,candidates,none:false};
 }
 
 function claimChoice(item:ClaimItem,index:number):AssignedDecisionChoice{
@@ -152,23 +178,27 @@ export async function prepareChatAssignedDecisionProposal(supplied:SessionContex
   // contract's own schema: anything else is unavailable.
   if(claims){
    const read=AssignedClaimDecision.Choices.safeParse(await readClaimDecisionChoices(ctx));
-   if(!read.success||read.data.kind!=='choices'||!read.data.items.length)return null;
+   if(!read.success||read.data.kind!=='choices')return unavailable();
+   if(!read.data.items.length)return decisionNoMatch(action);
    const truncated=read.data.truncated,all=ordered(read.data.items.map(item=>({...item,date:item.incurredOn})));
    const pick=identified(all,details,personWords,today,false);
+   if(pick.none)return decisionNoMatch(action);
    if(!pick.one)return choose(action,pick.candidates.map(item=>claimChoice(item,all.indexOf(item))),pick.candidates.length,truncated);
    const reason=decision==='rejected'?ownWords(details.reason,personWords,1000):null;
    if(decision==='rejected'&&!reason)return ask('reason',REASON_ASK_NOTE);
    return await claimProposal(ctx,userId,personId,pick.one,decision,reason);
   }
   const read=AssignedAttendanceDecision.Choices.safeParse(await readAttendanceDecisionChoices(ctx));
-  if(!read.success||read.data.kind!=='choices'||!read.data.items.length)return null;
+  if(!read.success||read.data.kind!=='choices')return unavailable();
+  if(!read.data.items.length)return decisionNoMatch(action);
   const truncated=read.data.truncated,all=ordered(read.data.items);
   const pick=identified(all,details,personWords,today,true);
+  if(pick.none)return decisionNoMatch(action);
   if(!pick.one)return choose(action,pick.candidates.map(item=>attendanceChoice(item,all.indexOf(item))),pick.candidates.length,truncated);
   const reason=decision==='rejected'?ownWords(details.reason,personWords,1000):null;
   if(decision==='rejected'&&!reason)return ask('reason',REASON_ASK_NOTE);
   return await attendanceProposal(ctx,userId,personId,pick.one,decision,reason);
- }catch{return null;}
+ }catch{return unavailable();}
 }
 
 function choose(action:AssignedDecideAction,pending:readonly AssignedDecisionChoice[],count:number,truncated:boolean):AssignedDecideOutcome{

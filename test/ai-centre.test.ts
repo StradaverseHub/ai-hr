@@ -58,7 +58,8 @@ describe('AI centre tabs keep every permission identical', () => {
   it('every second-row tab is an existing /control-tower page behind requireAdmin, listed in the permission registry', () => {
     const permissions = read('lib/permissions.ts');
     const all = Object.values(CENTRE_SECTIONS).flat();
-    expect(CENTRE_SECTIONS.operations.map(section => section.key)).toEqual(['overview', 'exceptions', 'readiness', 'actions', 'opportunities']);
+    // AI v2 W8: Loops (app/control-tower/loops, requireAdmin, lib/permissions.ts) sits after the overview; checked below.
+    expect(CENTRE_SECTIONS.operations.map(section => section.key)).toEqual(['overview', 'loops', 'exceptions', 'readiness', 'actions', 'opportunities']);
     expect(CENTRE_SECTIONS.administration.map(section => section.key)).toEqual(['workers', 'setup', 'spend']);
     for (const section of all) {
       expect(section.href.startsWith('/control-tower'), section.href).toBe(true);
@@ -72,8 +73,9 @@ describe('AI centre tabs keep every permission identical', () => {
   });
 
   it('the payroll queues are offered only with payroll, as their former sidebar rows were', () => {
-    expect(centreSectionsFor('operations', { payroll: false }).map(section => section.key)).toEqual(['overview', 'readiness', 'opportunities']);
-    expect(centreSectionsFor('operations', { payroll: true }).map(section => section.key)).toEqual(['overview', 'exceptions', 'readiness', 'actions', 'opportunities']);
+    // Loops is not a payroll queue: offered with or without payroll.
+    expect(centreSectionsFor('operations', { payroll: false }).map(section => section.key)).toEqual(['overview', 'loops', 'readiness', 'opportunities']);
+    expect(centreSectionsFor('operations', { payroll: true }).map(section => section.key)).toEqual(['overview', 'loops', 'exceptions', 'readiness', 'actions', 'opportunities']);
     expect(centreSectionsFor('administration', { payroll: false })).toHaveLength(3);
   });
 

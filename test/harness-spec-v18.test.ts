@@ -10,7 +10,8 @@
 import {describe,expect,it} from 'vitest';
 import type {SessionContext} from '../db/client';
 import {HARNESS_SPEC,HARNESS_SPEC_DIGESTS,harnessSpecDigest} from '../core/harness/spec';
-import {HARNESS_TEST_ONLY,routeReply,runTurn} from '../core/harness/runner';
+import {HARNESS_TEST_ONLY,payViewNoteFor,routeReply,runTurn} from '../core/harness/runner';
+import {DESTINATION_PURPOSE,PAY_VIEW_PAGES,PAY_VIEW_PURPOSE} from '../lib/product-context/destinations';
 import {advanceMemory,CHOICE_QUESTION,emptyMemory,InMemoryTaskMemoryStore,memoryNote} from '../core/harness/memory';
 import type {ToolBinding,ToolProvider} from '../core/harness/tools';
 import {PRODUCT_CAPABILITIES_SPEC} from '../core/product-context/capability-catalogue';
@@ -27,12 +28,13 @@ const count=(pattern:RegExp)=>instructions.filter(line=>pattern.test(line)).leng
 const line=(start:string)=>{const found=instructions.filter(row=>row.startsWith(start));expect(found,start).toHaveLength(1);return found[0];};
 
 describe('spec v18',()=>{
- it('is version 19 (v18 fixed forward) with its digest recorded, and every earlier digest is kept',()=>{
-  expect(HARNESS_SPEC.version).toBe(19);expect(HARNESS_SPEC_DIGESTS[19]).toBe(harnessSpecDigest());
+ it('is version 20 (v19\'s defects fixed) with its digest recorded, and every earlier digest is kept',()=>{
+  expect(HARNESS_SPEC.version).toBe(20);expect(HARNESS_SPEC_DIGESTS[20]).toBe(harnessSpecDigest());
+  expect(HARNESS_SPEC_DIGESTS[20]).toBe('87f846496918cf773ce778eefb288b1a41bf4c518d8e1463b9aa4d91755bda04');
   expect(HARNESS_SPEC_DIGESTS[19]).toBe('44e9708772ac71c0fcdc29b117769b34424fb21f4d5e1f45d1a3fe4795046b7c');
   expect(HARNESS_SPEC_DIGESTS[18]).toBe('7802392d1738b72c2035ff25c2009c07e559c865ca4fb6cb3bb30493dfd99759');
   expect(HARNESS_SPEC_DIGESTS[17]).toBe('818c217a300e529088f03f66042c57dc00de21be787a802a60ed2cf84692e3a8');
-  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]);
+  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]);
  });
  it('adds under 1,500 characters of instructions to v17\'s 5,216 for the eight queued rules (v19: 6,673)',()=>{
   // v13 sent 6,148 characters and each model call slowed (run 41577698046); v18 folds slices 2 and 3 into 24 lines, the new
@@ -74,12 +76,14 @@ describe('the rules v18 folds in, one each',()=>{
 });
 
 describe('the fixed sensitive reply (ADR-0173 §3)',()=>{
- it('names the private case form and adds the link only where the route is set up for the caller',()=>{
+ it('names the private case form only where the route is set up for the caller, and never links it in the text (v20)',()=>{
   expect(HARNESS_SPEC.sensitive.contact).toEqual({label:'your HR team',caseRoute:'/me/cases/new'});
   expect(HARNESS_SPEC.sensitive.contact.caseRoute).toBe(PRIVATE_CASE_START_PATH);
   expect(routeReply(false)).toBe('For this, please contact your HR team directly. A person there can take it forward under your company\'s procedures; the AI Centre does not read it or act on it.');
   expect(routeReply()).toBe(routeReply(false));
-  expect(routeReply(true)).toBe('For this, please contact your HR team directly, or [start a private case with HR](/me/cases/new). A person there can take it forward under your company\'s procedures; the AI Centre does not read it or act on it.');
+  // v20: the route note under the reply carries the one link (components/ai-centre/conversation-reply.tsx).
+  expect(routeReply(true)).toBe('For this, please contact your HR team directly, or start a private case with HR. A person there can take it forward under your company\'s procedures; the AI Centre does not read it or act on it.');
+  expect(routeReply(true)).not.toContain('/me/cases/new');
  });
  it('names the AI Centre, not "the Assistant", in the route reply',()=>{
   expect(HARNESS_SPEC.sensitive.routeReply).not.toMatch(/Assistant/);expect(HARNESS_SPEC.sensitive.routeReply).toMatch(/the AI Centre/);
@@ -88,7 +92,7 @@ describe('the fixed sensitive reply (ADR-0173 §3)',()=>{
   const {provider,dispatched}=fakeTools(),model=scriptedModel([]);
   const result=await runTurn({enabled:HARNESS_TEST_ONLY,ctx:employee,conversationId:'conversation-v18-case',question:'I want to file a grievance against my manager.',scope:SCOPE,model,
    memory:new InMemoryTaskMemoryStore(),tools:provider,caseRouteAvailable:async()=>true});
-  expect(result.reply).toBe(routeReply(true));expect(result.reply).toContain('](/me/cases/new)');
+  expect(result.reply).toBe(routeReply(true));expect(result.reply).not.toContain('](/me/cases/new)');expect(result.caseRoute).toBe(true);
   expect(model.requests).toEqual([]);expect(dispatched).toEqual([]);expect(result.memory.goal).toBeNull();
  });
 });
@@ -146,5 +150,21 @@ describe('follow-up turns: the capability offer for an answer to the previous tu
  it('still never offers it on a gated turn, even as an answer to a pending question',async()=>{
   const {offered}=await followUp(asked,'2, Siti\'s leave balance import');
   expect(offered).not.toContain('product_capabilities');
+ });
+});
+
+describe('the pay-view note says whose pay the page shows (v20, hr-salary)',()=>{
+ const hrAdmin:SessionContext={tenantId:employee.tenantId,userId:'00000000-0000-4000-8000-0000000000ad',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:SCOPE.companyId}]};
+ it('describes every pay-view page as other people\'s pay for payroll staff, never the person\'s own payslips',()=>{
+  for(const href of PAY_VIEW_PAGES){
+   expect(PAY_VIEW_PURPOSE[href],href).toMatch(/they administer/);expect(DESTINATION_PURPOSE[href],href).toMatch(/^Payroll staff: /);
+   expect(PAY_VIEW_PURPOSE[href],href).not.toMatch(/^(?!.*not their own).*\btheir own payslips/);
+  }
+  expect(DESTINATION_PURPOSE['/payroll/individual-payslip']).toBe('Payroll staff: the payslip of any employee they administer, run by run. Not the signed-in person\'s own payslips (those are on /me/payslip).');
+ });
+ it('names the page with its purpose in the note for an HR administrator',()=>{
+  const note=payViewNoteFor(hrAdmin,['/me/payslip','/payroll/individual-payslip'])!;
+  expect(note).toBe('If they ask about this person\'s pay: they can already see it on [Individual Payslip](/payroll/individual-payslip), where they open the payslip of any employee they administer (not their own payslips). Say in one line that pay is not shown in chat and link that page.');
+  expect(HARNESS_SPEC.payView.page).toContain('{purpose}');
  });
 });

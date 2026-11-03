@@ -45,7 +45,7 @@ import {prepareChatClaimSubmitProposal,type OwnChangeAsk} from './claim-submit';
 import {prepareChatClaimCancelProposal} from './claim-cancel';
 import {prepareChatProfileChangeProposal} from './profile-change';
 import {prepareChatToilRequestProposal,type ToilChatOutcome} from './toil-request';
-import {isAssignedDecideAction,prepareChatAssignedDecisionProposal,type AssignedDecideOutcome} from './assigned-decide';
+import {decisionNoMatch,isAssignedDecideAction,prepareChatAssignedDecisionProposal,wordsNameEmployee,wordsNameSomeone,type AssignedDecideOutcome} from './assigned-decide';
 
 const isDate=(value:unknown):value is string=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value);
 /** "Do not approve", "don't approve", "never approve", "not yet approve", "jangan lulus", "tak approve": a negation
@@ -214,8 +214,17 @@ export async function prepareSuggestedProposal(ctx:SessionContext,action:string,
    const date=givenDate!==null&&wordsNameDate(personWords,givenDate)?givenDate:null;
    const request=givenRequest!==null&&wordsNameNumber(personWords,givenRequest)?givenRequest:null;
    const {choices:all,truncated}=await assignedLeaveDecisionChoices(ctx);
+   // Spec v20: nothing pending for this approver is never a card.
+   if(!all.length)return decisionNoMatch('approvals.leave.decide');
    // A number the person chose picks the request at that place in the same order; the review page shows who it is.
-   const assigned=request!==null?(request>=1&&request<=all.length?[all[request-1]]:[]):all.filter(row=>date===null||row.startDate===date);
+   // Otherwise the applicant the person named (matched here against the queue's own labels, never sent anywhere), and
+   // a person named whose request is not pending for this approver matches nothing: never someone else's request.
+   const named=request===null?all.filter(row=>wordsNameEmployee(personWords,row.applicant)):[];
+   if(request===null&&!named.length&&wordsNameSomeone(personWords))return decisionNoMatch('approvals.leave.decide');
+   const pool=named.length?named:all;
+   const dated=pool.filter(row=>date===null||row.startDate===date);
+   if(request===null&&named.length&&date!==null&&!dated.length)return decisionNoMatch('approvals.leave.decide');
+   const assigned=request!==null?(request>=1&&request<=all.length?[all[request-1]]:[]):dated;
    if(assigned.length>1){
     const today=todayInKualaLumpur(now),days=(value:unknown)=>{const parsed=Number(value);return Number.isFinite(parsed)?parsed:null;};
     // `more` counts the assigned requests not listed; when the owner itself truncated, at least one more exists.

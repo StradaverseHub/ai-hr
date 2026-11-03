@@ -33,6 +33,11 @@ vi.mock('../app/cases/actions',()=>({setPrivateCaseStatusAction:vi.fn(),addPriva
 vi.mock('../app/admin/privacy/case-handlers/actions',()=>({designateCaseHandlerAction:vi.fn(),revokeCaseHandlerAction:vi.fn()}));
 import {PrivateCaseError} from '../core/private-cases';
 import {ConversationReply} from '../components/ai-centre/conversation-reply';
+import {linkKey} from '../components/ai-centre/reply-markdown';
+import {HARNESS_SPEC} from '../core/harness/spec';
+/** The harness's routed reply where the route is set up (core/harness/runner.ts routeReply(true)), from the pure spec. */
+const S=HARNESS_SPEC.sensitive;
+const routeReply=(_withRoute:true)=>S.routeReply.replace('{contact}',S.contact.label).replace('{case}',S.caseClause.replace('{route}',S.contact.caseRoute));
 import {PrivateCaseEntryCard,PrivateCaseHandlersCard} from '../components/private-cases/entry-cards';
 import MyPrivateCasesPage from '../app/me/cases/page';
 import NewPrivateCasePage from '../app/me/cases/new/page';
@@ -73,6 +78,17 @@ describe('the AI Centre reply (employee)',()=>{
   const note=screen.getByRole('note');expect(note.getAttribute('data-teras-route')).toBe('crisis');
   const help=within(note).getByText('If you are in danger, contact emergency services now.'),link=within(note).getByRole('link',{name:'Start a private case with HR'});
   expect(help.compareDocumentPosition(link)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ });
+ it('shows the case link once on a routed reply: the spec text names it, the route note links it (spec v20)',async()=>{
+  const links=new Map([[linkKey('/me/cases/new'),null]]);
+  render(await ConversationReply({turn:turn({reply:routeReply(true)}),links}));
+  expect([...document.querySelectorAll('a[href="/me/cases/new"]')]).toHaveLength(1);
+  expect(within(screen.getByRole('note')).getByRole('link',{name:'Start a private case with HR'})).toBeTruthy();
+  expect(document.body.textContent).toContain('or start a private case with HR.');
+  cleanup();
+  // v18 and v19 linked it in the text too: the same screen showed it twice, which this test would catch.
+  render(await ConversationReply({turn:turn({reply:routeReply(true).replace('start a private case with HR','[start a private case with HR](/me/cases/new)')}),links}));
+  expect([...document.querySelectorAll('a[href="/me/cases/new"]')]).toHaveLength(2);
  });
  it('shows no case link where the route is not set up, nor on an ordinary reply',async()=>{
   render(await ConversationReply({turn:turn({caseRoute:null})}));

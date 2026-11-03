@@ -33,8 +33,9 @@ describe('the protected case route in the runner',()=>{
   }
   // Spec v18 names the case route: the clause joins the reply only where the route is set up.
   expect(HARNESS_SPEC.sensitive.contact.caseRoute).toBe('/me/cases/new');
-  expect(routeReply(true)).toBe(routeReply(false).replace('directly.','directly, or [start a private case with HR](/me/cases/new).'));
-  expect(routeReply()).toBe(routeReply(false));expect(routeReply(false)).not.toContain('/me/cases/new');
+  // v20: named in the text, linked once by the route note (components/ai-centre/conversation-reply.tsx).
+  expect(routeReply(true)).toBe(routeReply(false).replace('directly.','directly, or start a private case with HR.'));
+  expect(routeReply()).toBe(routeReply(false));expect(routeReply(true)).not.toContain('/me/cases/new');
  });
  it('leads a crisis turn with the emergency message, then the route',async()=>{
   const {result,model}=await turn('I want to end my life.',async()=>true);

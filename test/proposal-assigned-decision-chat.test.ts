@@ -5,7 +5,9 @@
  * own words name (or the number they chose), the decision and any rejection reason are their own words, and several
  * candidates are listed rather than chosen. A prepared card saves a sealed review and changes nothing; Confirm runs the
  * existing decision path with all its checks, exactly once. A non-assigned approver gets nothing, self-approval stays
- * refused, and tampered, re-signed, expired and someone else's cards are refused. Identity SQL, custody, RLS and the
+ * refused, and tampered, re-signed, expired and someone else's cards are refused. Spec v20: a decision is prepared only for
+ * a pending item the approvals read resolved for this approver; anything else (nothing pending, another person's or another
+ * approver's request, one already decided, the wrong day or kind) is `no_match`: no card, and the reply says so. Identity SQL, custody, RLS and the
  * claims and attendance services' effects are real. Authored for GitHub Actions (tests run there under the owner's
  * policy). */
 import {randomUUID} from 'node:crypto';
@@ -19,11 +21,14 @@ import {requestAttendanceCorrection} from '../packs/attendance/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {issueProposal,type Proposal} from '../core/proposals/proposal';
 import {prepareSuggestedProposal} from '../core/proposals/suggested';
-import {decisionInWords,wordsNameEmployee,wordsNameDay} from '../core/proposals/assigned-decide';
+import {decisionInWords,noMatchNote,wordsNameEmployee,wordsNameDay,wordsNameSomeone} from '../core/proposals/assigned-decide';
 import {assignedDecisionApplicantName,confirmAssignedDecisionProposal,editAssignedDecisionProposal} from '../core/assistant-actions/assigned-decision-proposal-confirm';
 import {claimDecisionReviews} from '../core/assistant-actions/assigned-decision-review-store';
 import {ASSIGNED_CLAIM_DECISION_ACTION} from '../lib/assistant-actions/assigned-decision-contract';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {HARNESS_TEST_ONLY,runTurn} from '../core/harness/runner';
+import {InMemoryTaskMemoryStore} from '../core/harness/memory';
+import {scriptedModel} from './harness-ratchet/scripted-model';
 
 type Person={employmentId:string;personId:string};
 type Role='employee'|'manager'|'hr_admin';
@@ -163,14 +168,16 @@ describe('an assigned claim decision from chat',()=>{
 
  it('gives a non-assigned approver nothing, and the custody refuses them',async()=>{
   const id=await claimOf(sitiCtx,siti,42.5);
-  for(const who of [otherMgr,stranger])expect(await prepareSuggestedProposal(who,ASSIGNED_CLAIM_DECISION_ACTION,{},'approve Siti\'s claim'),String(who.userId)).toBeNull();
+  // Spec v20: not theirs to decide is no match (no card); a caller whose queue cannot be read at all is unavailable.
+  expect(await prepareSuggestedProposal(otherMgr,ASSIGNED_CLAIM_DECISION_ACTION,{},'approve Siti\'s claim')).toMatchObject({kind:'no_match'});
+  expect(['no_match','unavailable']).toContain((await prepareSuggestedProposal(stranger,ASSIGNED_CLAIM_DECISION_ACTION,{},'approve Siti\'s claim'))?.kind);
   await expect(claimDecisionReviews.prepare(otherMgr,{action:ASSIGNED_CLAIM_DECISION_ACTION,contractVersion:1,employmentId:siti.employmentId,subjectId:id,decision:'approved'})).rejects.toThrow();
   expect(await reviews()).toEqual([]);expect(await claimRow(id)).toBe('pending');
  });
 
  it('keeps self-approval refused: the approver\'s own claim is never offered, prepared or decided',async()=>{
   const own=await claimOf(mgr,ravi,25);
-  expect(await prepareSuggestedProposal(mgr,ASSIGNED_CLAIM_DECISION_ACTION,{},'approve Ravi\'s claim')).toBeNull();
+  expect(await prepareSuggestedProposal(mgr,ASSIGNED_CLAIM_DECISION_ACTION,{},'approve Ravi\'s claim')).toMatchObject({kind:'no_match'});
   await expect(claimDecisionReviews.prepare(mgr,{action:ASSIGNED_CLAIM_DECISION_ACTION,contractVersion:1,employmentId:ravi.employmentId,subjectId:own,decision:'approved'})).rejects.toThrow();
   // A card signed for the approver over their own claim, with a made-up review handle, decides nothing.
   const reference=randomUUID();
@@ -223,12 +230,60 @@ describe('an assigned overtime decision from chat',()=>{
 
  it('approves through the attendance service, and refuses a non-assigned approver and the requester themself',async()=>{
   const date=calendarDate(9),id=await overtimeOf(sitiCtx,siti,date);
-  for(const who of [otherMgr,stranger,sitiCtx])expect(await prepareSuggestedProposal(who,'approvals.attendance.decide',{},'approve Siti\'s overtime')).toBeNull();
+  for(const who of [otherMgr,stranger,sitiCtx])expect(['no_match','unavailable'],String(who.userId)).toContain((await prepareSuggestedProposal(who,'approvals.attendance.decide',{},'approve Siti\'s overtime'))?.kind);
+  expect(await prepareSuggestedProposal(otherMgr,'approvals.attendance.decide',{},'approve Siti\'s overtime')).toMatchObject({kind:'no_match'});
   const proposal=await card(mgr,'approvals.attendance.decide',{},'approve Siti\'s overtime');
   expect(proposal.body.facts).toMatchObject({decision:'approved',outcome:'attendance_decision_if_checks_pass'});
   expect(await attendanceRow(id)).toMatchObject({status:'pending'});
   const done=await confirmAssignedDecisionProposal(mgr,{proposal,confirm:true});
   expect(done).toMatchObject({kind:'decided',decision:'approved'});
   expect(await attendanceRow(id)).toMatchObject({status:done.kind==='decided'&&done.recorded==='final'?'approved':'pending'});
+ });
+});
+
+/** Spec v20 (coordinator, after run 41615455375: mgr-claim-decide and mgr-ot-reject offered a decision card for a named
+ * person's request that did not exist). */
+describe('a decision with no matching pending item (spec v20)',()=>{
+ const noMatch=(action:string)=>({kind:'no_match',note:noMatchNote(action as never)});
+ it('says the words name someone only for another person',()=>{
+  for(const words of ['approve Wei\'s travel claim','reject the overtime for Siti on Tuesday'])expect(wordsNameSomeone(words),words).toBe(true);
+  for(const words of ['approve the claim waiting for me','approve number 2','reject it'])expect(wordsNameSomeone(words),words).toBe(false);
+ });
+ it('prepares nothing and lists nothing when nothing is pending for the approver, whoever is named',async()=>{
+  expect(await prepareSuggestedProposal(mgr,ASSIGNED_CLAIM_DECISION_ACTION,{},'approve Wei\'s travel claim')).toEqual(noMatch(ASSIGNED_CLAIM_DECISION_ACTION));
+  expect(await prepareSuggestedProposal(mgr,'approvals.attendance.decide',{reason:'not needed'},'reject the overtime for Siti on Tuesday, not needed')).toEqual(noMatch('approvals.attendance.decide'));
+  expect(noMatchNote(ASSIGNED_CLAIM_DECISION_ACTION)).toMatch(/^No pending expense claim matching what the person said is waiting for their decision/);
+  expect(noMatchNote(ASSIGNED_CLAIM_DECISION_ACTION)).toMatch(/without "Yes, I can", and link the approvals page/);
+  expect(await reviews()).toEqual([]);
+ });
+ it('never prepares or lists another person\'s request for the one named',async()=>{
+  const id=await claimOf(sitiCtx,siti,30);
+  // Wei is named; only Siti's claim waits for Ravi. Before v20 Siti's claim was listed (or, alone, chosen).
+  expect(await prepareSuggestedProposal(mgr,ASSIGNED_CLAIM_DECISION_ACTION,{},'approve Wei\'s claim')).toEqual(noMatch(ASSIGNED_CLAIM_DECISION_ACTION));
+  expect(await reviews()).toEqual([]);expect(await claimRow(id)).toBe('pending');
+ });
+ it('gives no match for a request already decided',async()=>{
+  const id=await claimOf(sitiCtx,siti,30);
+  const proposal=await card(mgr,ASSIGNED_CLAIM_DECISION_ACTION,{},'approve Siti\'s claim');
+  expect(await confirmAssignedDecisionProposal(mgr,{proposal,confirm:true})).toMatchObject({kind:'decided',decision:'approved'});
+  expect(await claimRow(id)).not.toBe('pending');
+  expect(await prepareSuggestedProposal(mgr,ASSIGNED_CLAIM_DECISION_ACTION,{},'approve Siti\'s claim')).toEqual(noMatch(ASSIGNED_CLAIM_DECISION_ACTION));
+ });
+ it('gives no match for the named person\'s request on another day or of another kind, and prepares the right one',async()=>{
+  const date=calendarDate(8),other=calendarDate(10),id=await overtimeOf(sitiCtx,siti,date);
+  expect(await prepareSuggestedProposal(mgr,'approvals.attendance.decide',{date:other},`approve Siti's overtime on ${other}`)).toEqual(noMatch('approvals.attendance.decide'));
+  expect(await prepareSuggestedProposal(mgr,'approvals.attendance.decide',{},'approve Siti\'s clock-in correction')).toEqual(noMatch('approvals.attendance.decide'));
+  expect(await reviews()).toEqual([]);
+  // The happy path: her overtime on its own day.
+  const proposal=await card(mgr,'approvals.attendance.decide',{date},`approve Siti's overtime on ${date}`);
+  expect(proposal.body.forWhom.subjectId).toBe(id);expect(await attendanceRow(id)).toMatchObject({status:'pending'});
+ });
+ it('through the harness: no suggestion, no card, and the model is told there is no match',async()=>{
+  const model=scriptedModel([{calls:[{name:'suggest_action',args:{action:ASSIGNED_CLAIM_DECISION_ACTION}}]},{final:{reply:'No travel claim from Wei is waiting for your decision.',mode:'answer'}}]);
+  const turn=await runTurn({enabled:HARNESS_TEST_ONLY,ctx:mgr,conversationId:randomUUID(),question:'approve Wei\'s travel claim',scope:{companyId:b.companyId,locale:'en'},model,memory:new InMemoryTaskMemoryStore()});
+  expect(turn.suggestion).toBeNull();expect(turn.proposals).toEqual([]);
+  const sent=JSON.stringify(model.requests[1]?.messages??[]);
+  expect(sent).toContain('no_match');expect(sent).toContain('No pending expense claim matching what the person said');
+  expect(await reviews()).toEqual([]);
  });
 });

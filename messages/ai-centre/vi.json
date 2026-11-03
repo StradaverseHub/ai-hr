@@ -686,7 +686,7 @@
       "lastPrepared": "Công việc tóm tắt hằng ngày của bạn chuẩn bị mục này lần gần nhất lúc {when}."
     },
     "conversation": {
-      "routed": "Đã chuyển đến nhóm nhân sự của bạn: trợ lý không xử lý chủ đề này.",
+      "routed": "Đã chuyển đến nhóm nhân sự của bạn: Trung tâm AI không xử lý chủ đề này.",
       "routedCrisis": "Nếu bạn đang gặp nguy hiểm, hãy liên hệ dịch vụ khẩn cấp ngay.",
       "startPrivateCase": "Mở một hồ sơ riêng tư với bộ phận nhân sự",
       "days": "{count, plural, other {# ngày}}",
@@ -713,7 +713,7 @@
       "expires": "Hết hạn {time}",
       "howPrepared": "Cách chuẩn bị",
       "preparedBy": "Chuẩn bị bởi",
-      "preparedByValue": "Trợ lý, từ các kiểm tra của chính hệ thống, với tư cách của bạn",
+      "preparedByValue": "Trung tâm AI, từ các kiểm tra của chính hệ thống, với tư cách của bạn",
       "confirmOn": "Xác nhận tại",
       "confirmOnValue": "Trang xem xét. Không có gì thay đổi cho đến khi bạn xác nhận ở đó.",
       "inline": {
@@ -845,12 +845,12 @@
         "invalid_question": "Vui lòng đặt câu hỏi tối đa 2.000 ký tự.",
         "continuation_invalid": "Cuộc trò chuyện này không thể tiếp tục. Hãy bắt đầu cuộc trò chuyện mới.",
         "not_configured": "Công ty bạn chưa thiết lập nhà cung cấp AI. Hãy hỏi quản trị viên.",
-        "provider_not_compliant": "Nhà cung cấp AI của công ty bạn chưa được thiết lập để không lưu dữ liệu và không huấn luyện, nên trợ lý không thể trả lời. Hãy hỏi quản trị viên.",
+        "provider_not_compliant": "Nhà cung cấp AI của công ty bạn chưa được thiết lập để không lưu dữ liệu và không huấn luyện, nên Trung tâm AI không thể trả lời. Hãy hỏi quản trị viên.",
         "budget_daily": "Bạn đã đạt giới hạn câu hỏi hôm nay. Hãy thử lại vào ngày mai.",
         "budget_monthly": "Công ty bạn đã đạt giới hạn AI tháng này.",
         "ai_control": "AI hiện đang tạm dừng hoặc bị giới hạn cho bạn hoặc công ty bạn.",
         "protected_input": "Không thể gửi câu hỏi này một cách an toàn. Hãy thử hỏi theo cách khác.",
-        "provider_error": "Trợ lý chưa thể trả lời lúc này. Vui lòng thử lại."
+        "provider_error": "Trung tâm AI chưa thể trả lời lúc này. Vui lòng thử lại."
       },
       "letterRequestTitle": "Yêu cầu {letterType}"
     }
