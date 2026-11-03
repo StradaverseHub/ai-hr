@@ -82,8 +82,8 @@ const SUGGEST_DESCRIPTION='Point the person to the page where they complete and 
  +' For approvals.claim.decide and approvals.attendance.decide, details may carry request (the number the person chose from a list), date (YYYY-MM-DD) and, for a rejection, reason in the person\'s own words. Never put a name, an amount or a decision in details: the system reads whose request it is and whether to approve or reject from the person\'s own message, and the approver confirms it on the card.';
 /** Spec v13 (aiv2-speed-findings-20261103, cause 1b): suggest_action is called without available_actions when the action is
  * clear, so its description names the purpose of each declared action (core/semantic-model/entities.ts SEMANTIC_ACTIONS)
- * this caller holds, from the same catalogue rows available_actions returns. Only those eight: the other ids keep their
- * purposes in available_actions. Pure. */
+ * this caller holds, from the same catalogue rows available_actions returns. Only those (eight at v13; eleven with the
+ * slice 2 Leave Credit and the slice 3 approver decisions): the other ids keep their purposes in available_actions. Pure. */
 const DECLARED_ACTIONS:ReadonlySet<string>=new Set(SEMANTIC_ACTIONS.map(action=>action.id));
 export function suggestDescription(catalogue:readonly Readonly<{id:string;purpose:string}>[]):string{
  const purposes=catalogue.filter(row=>DECLARED_ACTIONS.has(row.id)).map(row=>row.id+': '+row.purpose);
