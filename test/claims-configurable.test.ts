@@ -247,7 +247,7 @@ describe('e7eb5d83 — configurable claim management', () => {
     expect(src).not.toMatch(/rawTypeId/);
     expect(src).toMatch(/getMileageClaimType/);
     expect(src).toMatch(/activeGrades\.some\(\(g\) => g\.id === rawGradeId\)/);
-    expect(src).toMatch(/MILEAGE_VEHICLE_CLASSES as readonly string\[\]\)\.includes\(rawClass/);
+    expect(src).toMatch(/MILEAGE_VEHICLE_CLASSES\.find\(value\s*=>\s*value\s*===\s*rawClass\)\s*\?\?\s*'any'/);
   });
 
   it('the mileage page renders an EMPTY STATE rather than falling back to the first claim type', () => {
