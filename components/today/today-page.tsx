@@ -75,6 +75,8 @@ async function GreetingWithName({session,employmentId,period}:{session:SessionCo
  return first?t(`${period}Name`,{name:first}):t(period);
 }
 
+/** My Letters with its request form open (app/me/letters/page.tsx `request=1`). */
+const LETTER_REQUEST_FORM='/me/letters?request=1';
 /** The Ask bar, offered only to someone the Assistant can answer (the same gate AI Centre Ask uses). */
 async function AskSlot({session,audience}:{session:SessionContext;audience:TodayAudience}){
  const access=await mayUseAssistant(session).catch(()=>({allowed:false as const}));
@@ -83,5 +85,6 @@ async function AskSlot({session,audience}:{session:SessionContext;audience:Today
  const personal=audience.layout==='personal';
  return <TodayAsk label={t('askLabel')} placeholder={t(personal?'askPlaceholderPersonal':'askPlaceholderAdmin')} submitLabel={t('askSubmit')}
   openingLabel={t('askOpening')} suggestionsLabel={t('suggestions')}
-  suggestions={personal?[t('suggestLeave'),t('suggestClaim'),t('suggestPay'),t('suggestLetter')]:[]}/>;
+  // AI v2 Phase 1 slice 3: the letter chip opens Request a letter on My Letters; the chat action waits for Phase 2.
+  suggestions={personal?[t('suggestLeave'),t('suggestClaim'),t('suggestPay'),{text:t('suggestLetter'),href:LETTER_REQUEST_FORM}]:[]}/>;
 }

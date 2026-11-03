@@ -156,7 +156,7 @@ describe('Today for an employee',()=>{
   ];
  });
 
- it('greets the person by name on the HR date and offers the Ask bar with the four suggestions',async()=>{
+ it('greets the person by name on the HR date and offers the Ask bar with the four suggestions, the letter one a link to its form',async()=>{
   const view=await show(EMPLOYEE,['co-a']);
   expect(text(view.section('today-needs-you')!.querySelector('h2'))).toBe('Ready for you to confirm');
   expect(text(view.container.querySelector('h1'))).toBe('Good morning, Ravi');
@@ -164,7 +164,11 @@ describe('Today for an employee',()=>{
   expect(view.container.querySelector('[data-today-date]')?.getAttribute('data-today-date')).toBe('2026-11-04');
   const ask=view.container.querySelector('[data-today-ask]')!;
   expect(within(ask as HTMLElement).getByPlaceholderText('Ask AI Centre: leave, pay, claims, anything about work…')).toBeTruthy();
-  expect([...ask.querySelectorAll('[role="group"] button')].map(text)).toEqual(['Apply for leave','Submit a claim','Why is my pay different?','Get an employment letter']);
+  expect([...ask.querySelectorAll('[role="group"] button')].map(text)).toEqual(['Apply for leave','Submit a claim','Why is my pay different?']);
+  // The letter chip opens Request a letter on My Letters, and fills nothing in the box.
+  const letter=within(ask.querySelector('[role="group"]') as HTMLElement).getByRole('link',{name:'Get an employment letter'});
+  expect(letter.getAttribute('href')).toBe('/me/letters?request=1');expect(letter.hasAttribute('data-today-suggestion-link')).toBe(true);
+  expect([...ask.querySelectorAll('[role="group"] > *')].map(text)).toEqual(['Apply for leave','Submit a claim','Why is my pay different?','Get an employment letter']);
   expect(view.container.querySelector('[data-today="personal"]')).not.toBeNull();
   expect(view.section('today-watching')).toBeNull();
  });
