@@ -47,12 +47,14 @@ describe('AI centre tabs keep every permission identical', () => {
   it('administrator tabs are the former Control Tower pages behind requireAdmin, and only administrators see them', () => {
     const admin = CENTRE_TABS.filter(tab => tab.adminOnly);
     // Issue 17 (owner: "Merge both entirely"): Operations and Administration, each a group with a second tab row.
-    expect(admin.map(tab => [tab.key, tab.href, tab.sections])).toEqual([['operations', '/control-tower', true], ['administration', '/control-tower/agents/features', true]]);
-    for (const tab of admin) expect(read(pageOf(tab.href))).toContain('requireAdmin');
+    // AI v2 Phase 2 (P2-4): Insights, a view of /assistant whose HR capacity section only an administrator is shown.
+    expect(admin.map(tab => [tab.key, tab.href, tab.sections])).toEqual([['operations', '/control-tower', true], ['insights', '/assistant?view=insights', false], ['administration', '/control-tower/agents/features', true]]);
+    for (const tab of admin.filter(tab => tab.sections)) expect(read(pageOf(tab.href))).toContain('requireAdmin');
+    expect(read('app/assistant/page.tsx')).toContain("{sp.view === 'insights' && admin && <CapacityLedgerSection");
     expect(read('app/control-tower/layout.tsx')).toContain('await requireAdmin();');
     // AI v2 Phase 1: the Inbox tab is retired; Today at / replaces it.
     expect(centreTabsFor({ isAdmin: false }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'how']);
-    expect(centreTabsFor({ isAdmin: true }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'operations', 'administration', 'how']);
+    expect(centreTabsFor({ isAdmin: true }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'operations', 'insights', 'administration', 'how']);
   });
 
   it('every second-row tab is an existing /control-tower page behind requireAdmin, listed in the permission registry', () => {
@@ -80,7 +82,7 @@ describe('AI centre tabs keep every permission identical', () => {
   });
 
   it('the employee views live on /assistant, behind its unchanged session layout', () => {
-    for (const view of ['jobs', 'how']) {
+    for (const view of ['jobs', 'how', 'insights']) {
       expect(isCentreView(view)).toBe(true);
       expect(CENTRE_TABS.some(tab => tab.href === `/assistant?view=${view}`)).toBe(true);
     }

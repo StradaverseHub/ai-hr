@@ -20,6 +20,7 @@
       "spend": "支出与服务提供方",
       "operations": "日常运营",
       "administration": "管理",
+      "insights": "洞察",
       "how": "运作方式"
     },
     "inboxCount": "{count, plural, one {# 项待处理} other {# 项待处理}}",
@@ -199,6 +200,115 @@
         "none": "暂无运行记录。",
         "summary": "准备 {opened} 项，关闭 {closed} 项，{open} 项未处理，{waiting} 项等待中",
         "capped": "已达卡片上限，其余将在下次运行。"
+      }
+    },
+    "capacity": {
+      "title": "HR 产能",
+      "descriptionCompany": "AI Centre 为 {company} 的 HR 团队所做的工作，以其自身基线衡量。",
+      "descriptionAll": "AI Centre 为您管理的各公司 HR 团队所做的工作，每家公司以其自身基线衡量。",
+      "periodLabel": "期间",
+      "periods": {
+        "last30": "最近 30 天",
+        "quarter": "本季度",
+        "year": "今年"
+      },
+      "companyLabel": "公司",
+      "allCompanies": "您的所有公司（{count}）",
+      "show": "显示",
+      "noCompanies": "您尚未管理任何公司。",
+      "hours": "{hours} 小时",
+      "minutes": "{minutes} 分钟",
+      "items": {
+        "questions_answered": "已回答的员工问题",
+        "actions_confirmed": "已确认的预备操作"
+      },
+      "tiles": {
+        "freed": "节省的 HR 时间",
+        "freedDays": "约 {days} 个工作日",
+        "freedNone": "设定基线后即可衡量",
+        "errors": "薪资运行前发现的错误",
+        "errorsNote": "每一项原本都需要更正",
+        "errorsNoPayroll": "未使用薪资模块",
+        "loops": "已完成的循环操作",
+        "loopsChanged": "{rate} 由人员修改",
+        "loopsNone": "尚无完成项",
+        "questions": "已回答的员工问题",
+        "questionsNote": "随时即刻回答",
+        "questionsGroupOnly": "仅向集团管理员显示",
+        "notShown": "不显示"
+      },
+      "chart": {
+        "title": "按月节省的 HR 时间",
+        "unit": "节省小时数",
+        "label": "按月节省的 HR 时间：{values}。",
+        "value": "{month} {hours} 小时",
+        "marker": "Autopilot 已启动",
+        "markerSentence": "Autopilot 于 {month} 启动。",
+        "note": "团队腾出的时间可用于只有人才能做的工作：与员工沟通、规划、处理个案。"
+      },
+      "table": {
+        "title": "时间从何而来",
+        "item": "循环或助手工作",
+        "done": "已完成",
+        "manual": "您每项的人工时间",
+        "review": "审核时间",
+        "freed": "节省小时数",
+        "noWork": "此期间尚无完成的工作。",
+        "notInBaseline": "不在基线内",
+        "withoutBaseline": "{count, plural, other {# 项已完成，但基线中没有其分钟数}}",
+        "averaged": "当各公司基线不同时，每项人工时间为按完成工作量加权的平均值。"
+      },
+      "method": {
+        "summary": "衡量方法：节省小时数 = 完成的工作 × 您自己每项的人工时间（在 Autopilot 之前从事件日志测得）− 人员审核所用时间。不使用任何行业平均值估算。",
+        "link": "完整方法",
+        "work": "完成的工作：期间内人员完成的每张循环卡片、AI Centre 回答的每个员工问题，以及 AI Centre 预备并经人员确认的每项操作。发现的薪资错误是在薪资运行关闭前已修正的异常发现；只计数，不折算为小时。",
+        "baseline": "您每项的人工时间来自您的基线：公司启动 Autopilot 之前的一段期间。对于漏打下班卡和员工资料缺失，事件日志会测量该期间每个个案的员工操作次数（考勤更正和资料变更），再以您每次员工操作的分钟数换算为时间。其他工作则使用您输入的分钟数。没有基线的公司，其工作计为已完成，但不计入节省时间。",
+        "review": "审核时间：每一项从 AI Centre 预备到人员确认之间的时间，上限为 {cap} 分钟，且不超过该项本身的人工时间。间隔更长表示该项在等待，而不是有人一直在处理。循环在下一次检查时才记录确认，因此大多数项目会计满上限：本台账会低估而非高估节省的时间。已回答的问题没有审核步骤。",
+        "arithmetic": "节省小时数 = 完成的工作 × 您每项的人工时间 − 审核时间，按每家公司及其自身基线计算后加总。一个工作日为 {hours} 小时。",
+        "access": "HR 管理员和集团管理员可查看其所管理公司的此页面。问题数和已确认操作数来自 AI Centre 的结果记录，只有集团管理员可以跨人员读取，因此其他管理员看不到这些数字。",
+        "records": "每个数字都来自记录：循环卡片、结果记录和薪资异常发现，并按您自己的权限读取。不使用任何行业平均值估算。"
+      },
+      "baseline": {
+        "notSet": "尚未设定基线",
+        "notSetBody": "节省小时数以您在 Autopilot 启动前自己的人工时间为基准衡量。设定基线后即可查看；事件日志会测量它能测量的部分，您再补充它无法得知的分钟数。",
+        "missingSome": "{count, plural, other {# 家公司尚未设定基线，因此其工作计为已完成，但不计入节省时间。}}",
+        "setFor": "为 {company} 设定基线",
+        "saved": "基线已保存（版本 {version}）。",
+        "errors": {
+          "invalid": "请输入不超过 {max} 的分钟数，最多一位小数，或将栏位留空。",
+          "empty": "请至少输入一个数字，或在事件日志可测量该工作时输入您每次员工操作的分钟数。",
+          "not_administrator": "您只能为您管理的公司设定基线。",
+          "conflict": "有人同时保存了基线。请重试。",
+          "failed": "无法保存基线。请重试。"
+        }
+      },
+      "setup": {
+        "title": "{company} 的基线",
+        "intro": "您团队在 Autopilot 之前每项工作的人工时间。事件日志会测量它能测量的部分；您补充它无法得知的分钟数。保存时会保留之前的基线。",
+        "current": "当前基线：版本 {version}，{from} 至 {to}。",
+        "step1": "1. 基线期间",
+        "periodEnds": "期间结束于 {date}，即此处启动 Autopilot 的日子。",
+        "periodEndsToday": "此处尚未启动 Autopilot，因此期间结束于今天。",
+        "daysLabel": "长度",
+        "daysOption": "{days} 天",
+        "usePeriod": "使用此期间",
+        "period": "期间：{from} 至 {to}。",
+        "step2": "2. 事件日志测得的数据",
+        "processes": {
+          "attendance_correction": "考勤更正（漏打下班卡）",
+          "profile_change": "资料变更（员工资料缺失）"
+        },
+        "evidence": "开始 {cases} 个个案，完成 {completed} 个，员工操作 {actions} 次（每个个案 {perCase} 次）。",
+        "evidenceShort": "历史记录不足，无法测量：已完成 {completed} 个个案，至少需要 {min} 个。请在下方输入您的分钟数。",
+        "evidenceOff": "未测量：该模块未启用。",
+        "step3": "3. 您的分钟数",
+        "perAction": "每次员工操作的分钟数",
+        "perActionHelp": "与事件日志的测量结果一起使用，上限 {max}。",
+        "itemMinutes": "每项分钟数：{item}",
+        "itemMeasuredHelp": "仅在事件日志无法测量时使用。",
+        "blankHelp": "如不清楚，请将栏位留空。上限 {max} 分钟，最多一位小数。",
+        "save": "保存基线",
+        "cancel": "取消"
       }
     },
     "subnav": {
