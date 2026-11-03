@@ -4957,6 +4957,13 @@
       "when": 1793330000404,
       "tag": "1004_rewards_write_action_boundaries",
       "breakpoints": true
+    },
+    {
+      "idx": 852,
+      "version": "7",
+      "when": 1793330000405,
+      "tag": "1005_lifecycle_offboarding_write_boundary",
+      "breakpoints": true
     }
   ]
 }

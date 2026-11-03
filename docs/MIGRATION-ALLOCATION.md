@@ -1748,3 +1748,4 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | New candidate migration | 1002_financial_letter_binding_readiness | 849 | 1793330000402 | 2e9c4ae12a93f34853856504fe7be3f5bf4db8c428c0530c34b079d80732b82d |
 | New candidate migration | 1003_lifecycle_offboarding_view_boundary | 850 | 1793330000403 | 5ebfb8dd96d973d7df1f9fffeb41f3df51167051fe0bd49f3421441ee929dad7 |
 | New candidate migration | 1004_rewards_write_action_boundaries | 851 | 1793330000404 | 2dde3bb98269c265bac18a488be720bb0e390ecc634c2771517bcbb4d566c3de |
+| New candidate migration | 1005_lifecycle_offboarding_write_boundary | 852 | 1793330000405 | e5c5e76e660772c02d8126efe73feb4046bb5eacf7c888e55dc7ab3c3281af4d |

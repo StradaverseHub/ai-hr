@@ -68,6 +68,22 @@ it('applies Lifecycle View to offboarding administration while keeping employee 
     await owner.client`update access_capability set supported=${installed.supported},bindings=${JSON.stringify(installed.bindings)}::text::jsonb where id='lifecycle.view'`;
   }
 });
+it('applies Lifecycle Edit to direct offboarding writes and preserves the assigned command',async()=>{
+  const c=await prepared();
+  const [installed]=await owner.client`select supported,bindings from access_capability where id='lifecycle.edit'`;
+  try{
+    await owner.client`update access_capability set supported=true where id='lifecycle.edit'`;
+    await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,effect)
+      values(${base.tenantId}::uuid,${base.adminUserId}::uuid,'lifecycle.edit','deny')`;
+    await expect(withTenant(admin,tx=>tx.execute(sql`update lc_v9_case set updated_at=now()
+      where id=${c.id}::uuid`))).rejects.toMatchObject({cause:{code:'42501'}});
+    const own=(await v9OwnWork(employee)).find(row=>row.id===c.id)!;
+    await v9OwnTask(employee,{caseId:c.id,revision:own.revision,taskId:own.tasks[0].id,status:'done',reason:''});
+    expect((await v9OwnWork(employee)).find(row=>row.id===c.id)?.tasks[0].status).toBe('done');
+  }finally{
+    await owner.client`update access_capability set supported=${installed.supported},bindings=${JSON.stringify(installed.bindings)}::text::jsonb where id='lifecycle.edit'`;
+  }
+});
 it('shares group ownership and detects a stale native group revision', async () => {
   const before = await v9Workspace(admin), config = structuredClone(before.config!);
   config.groups.find(g => g.name === 'Group Tech')!.members = [employee.userId!];
