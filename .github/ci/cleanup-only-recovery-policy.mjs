@@ -7,7 +7,7 @@ export function canonicalJson(value){if(Array.isArray(value))return '['+value.ma
 export const CLEANUP_ONLY_POLICY='onehr-same-source-postarrival-cleanup/v2';
 export const SELECTION=Object.freeze({source:'a02845ba82a530ddd264f6eff1466bc106704052',installId:'9e4a0e74-943b-4d1c-aafe-8ba8b44e55fe',buildRecordId:'c987456c-c54d-4266-82c4-ab6ac834c2ad',nextBuildId:'_mO7q1sjrE7AbCuIlJjRY',authorizationSha256:'bb93a2d63e529b28804f92a484f99acecbbc6e6626a037b217e6b197a547d67e',batch:'58e10be2-f4f1-493d-bcd9-aac93700f8ec',epoch:30});
 export const BASELINE='dfbcf85b1f03e6e3266df6244694079a98e17dc9';
-export const ORIGIN=Object.freeze({runId:41526503926,controller:SELECTION.source,artifactId:13180656015,artifactDigest:'sha256:14e1a8425ac0aa183be17008eb90ddaa15b924be753eef034dd592b66326d1e4',witnessFingerprint:'22b76ab2d1637ded36b26fc190c3aef460b5b977db455107e1e747b55ec85891'});
+export const ORIGIN=Object.freeze({runId:41526423926,controller:SELECTION.source,artifactId:13180656015,artifactDigest:'sha256:14e1a8425ac0aa183be17008eb90ddaa15b924be753eef034dd592b66326d1e4',witnessFingerprint:'22b76ab2d1637ded36b26fc190c3aef460b5b977db455107e1e747b55ec85891'});
 export const digest=value=>createHash('sha256').update(typeof value==='string'||Buffer.isBuffer(value)?value:canonicalJson(value)).digest('hex');
 const hex=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value),sha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
 const exact=(v,keys)=>assert(v&&typeof v==='object'&&!Array.isArray(v)&&isDeepStrictEqual(Object.keys(v).sort(),keys.split(' ').sort()),'Exact cleanup-only fields required');
