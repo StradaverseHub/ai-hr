@@ -100,11 +100,12 @@ export const HARNESS_SPEC=freeze({
   * leave decision now resolves the applicant the person named). payView.page says whose pay the page shows ({purpose}),
   * not "your own payslips". The private case link is the route note's alone (caseClause names it without a link), and
   * the fixed refusals say "the AI Centre", not "the Assistant". No instruction line changes.
-  * Main merge (claude/aiv2-phase1-release, 3 November 2026): main's own v9 (digest 50ffa246…, the spec staging runs at
-  * 848c7be36) kept two administrator-only, literal public page guides (password_policy_guidance and
-  * correction_controls_guidance) as context on a gated turn. They are folded into publicContextTools below, so the
-  * spec now differs from v20's recorded digest; the coordinator's next version records it. */
- version:20,
+  * 21: v20 plus main's two admin guide tools, release merge (claude/aiv2-phase1-release, 3 November 2026). Main's own v9
+  * (digest 50ffa246fb253b9ab00b3009428ecf89ad68612c125ea2fe14ad1f678444d45c, the spec staging runs at 848c7be36) kept two
+  * administrator-only, literal public page guides, password_policy_guidance and correction_controls_guidance, as context
+  * on a gated turn; they join publicContextTools. Nothing else changes. Main's version number 9 was taken here, so its
+  * digest is not a row below. */
+ version:21,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
@@ -321,4 +322,6 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  18:'7802392d1738b72c2035ff25c2009c07e559c865ca4fb6cb3bb30493dfd99759',
  19:'44e9708772ac71c0fcdc29b117769b34424fb21f4d5e1f45d1a3fe4795046b7c',
  20:'87f846496918cf773ce778eefb288b1a41bf4c518d8e1463b9aa4d91755bda04',
+ // v20 + main's two admin guide tools, release merge.
+ 21:'66e0ce979b02bce1309df6be3f2ea5eba7a61404d3c1c63b902084717bc3cd83',
 });
