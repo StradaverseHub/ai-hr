@@ -27,3 +27,5 @@ rsync --version | sed -n '1p'
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/staging/test_coordinator.py
 PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/cleanup-install.test.py
 node --test .github/ci/normal-cleanup-io.test.mjs .github/ci/normal-cleanup-session.test.mjs
+mkdir -m 700 "$fixture/queue"
+PYTHONDONTWRITEBYTECODE=1 python3 "$tools/with-lease.py" "$fixture/queue" run node "$tools/session.mjs" "$fixture" "$source" "$verifier" "$unit"
