@@ -127,6 +127,19 @@ it('reports registered actions without a package and leaves the full publisher c
   .rejects.toThrow(/registry coverage differs .*function\.payroll\.historyImport\.view/);
  expect(await snapshot()).toEqual(before);
 });
+it('requires a passing Financial Letters completion check before publishing',async()=>{
+ const before=await snapshot();
+ await owner.client`create function app.financial_letter_bindings_complete() returns boolean
+  language sql stable security definer set search_path=pg_catalog as $$ select false $$`;
+ try{
+  await owner.client`revoke all on function app.financial_letter_bindings_complete() from public,ai_hr_app`;
+  await expect(publishActionCapabilityPackage(owner.client,'financial_letters'))
+   .rejects.toThrow('app.financial_letter_bindings_complete() reported incomplete enforcement');
+  expect(await snapshot()).toEqual(before);
+ }finally{
+  await owner.client`drop function app.financial_letter_bindings_complete()`;
+ }
+});
 it('refuses Organisation Settings publication when a physical write guard is disabled',async()=>{
  const before=await snapshot();
  await owner.client`alter table public.profile_option disable trigger organisation_settings_action`;

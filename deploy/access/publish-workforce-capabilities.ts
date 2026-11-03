@@ -149,21 +149,21 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    and p.proowner is distinct from c.relowner order by f.signature`;
   requireInstallation(invalidFunctions.length===0,invalidFunctions.map(row=>
    `${row.missing?'missing function':'unexpected function owner'} ${row.signature}`).join(', '));
-  if(key==='all'||key==='organisation_settings'){
+  const coverageChecks=[
+   ...(key==='all'||key==='financial_letters'?['app.financial_letter_bindings_complete']:[]),
+   ...(key==='all'||key==='organisation_settings'?['app.organisation_settings_bindings_complete']:[]),
+   ...(key==='all'?['app.access_all_function_bindings_complete']:[]),
+  ];
+  for(const check of coverageChecks){
+   const signature=check+'()';
    const [prerequisite]=await tx<{trusted:boolean}[]>`select p.prosecdef and p.prorettype='boolean'::regtype
     and not has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as trusted
-    from pg_proc p where p.oid='app.organisation_settings_bindings_complete()'::regprocedure`;
-   requireInstallation(prerequisite?.trusted,'untrusted Organisation Settings binding predicate');
-   const [coverage]=await tx<{complete:boolean}[]>`select app.organisation_settings_bindings_complete() as complete`;
-   requireInstallation(coverage?.complete===true,'Organisation Settings physical enforcement is incomplete');
-  }
-  if(key==='all'){
-   const [prerequisite]=await tx<{trusted:boolean}[]>`select p.prosecdef and p.prorettype='boolean'::regtype
-    and not has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as trusted
-    from pg_proc p where p.oid='app.access_all_function_bindings_complete()'::regprocedure`;
-   requireInstallation(prerequisite?.trusted,'untrusted completeness predicate app.access_all_function_bindings_complete()');
-   const [coverage]=await tx<{complete:boolean}[]>`select app.access_all_function_bindings_complete() as complete`;
-   requireInstallation(coverage?.complete===true,'app.access_all_function_bindings_complete() reported incomplete enforcement');
+    from pg_proc p where p.oid=to_regprocedure(${signature})`;
+   requireInstallation(prerequisite?.trusted,`untrusted completeness predicate ${signature}`);
+   const [coverage]=await tx<{complete:boolean}[]>`select ${tx('app')}.${tx(check.slice(4))}() as complete`;
+   requireInstallation(coverage?.complete===true,check==='app.organisation_settings_bindings_complete'
+    ?'Organisation Settings physical enforcement is incomplete'
+    :`${signature} reported incomplete enforcement`);
   }
   const nativeHooks=[...new Set(domains.flatMap(domain=>[domain.legacyParityFunction,domain.currentLegacyParityFunction,domain.functionLegacyParityFunction,domain.functionCurrentLegacyParityFunction,...(domain.functions??[]).flatMap(descriptor=>descriptor.actions.map(action=>action.delegationFloorFunction))].filter((hook):hook is string=>!!hook)))];
   for(const hook of nativeHooks){
