@@ -489,13 +489,28 @@ describe('V3.1 onboarding database and authorization', () => {
         let row=await prepared();await onboardingCommand(tech,row.case.id,row.revision,{type:'save',patch:{extras:[{catalogueId:'from-case-exception',reason:'Actual case source',approval:false},{catalogueId:'hr-positive-extra',reason:'Actual HR source',approval:false}]}});row=(await onboardingList(admin))[0]!;const target=row.case.requisitions[0]!.items.find(item=>item.catalogueId==='from-case-exception')!;expect(target).toMatchObject({fromCase:true,addedBy:tech.userId});
         expect(await owner.withTenant(admin,tx=>tx.execute(sql`select app.access_function_delegation_floor('function.lifecycle.hr.exceptionRemovals.execute',${b.companyId}::uuid)as allowed`))).toEqual([{allowed:true}]);
         const positive=row.case.requisitions[0]!.items.find(item=>item.catalogueId==='hr-positive-extra')!,review=(await onboardingTasks(admin)).find(task=>task.kind==='exceptionRemove'&&task.itemIds?.includes(positive.id))!;expect((await onboardingBoundedTask(admin,review.id)).items).toEqual([{id:positive.id,name:positive.name}]);
-        await expect(withTenant(admin,async tx=>{
-            const [effect]=await tx.execute<{function_key:string;native_branch:string}>(sql`select * from app.onboarding_exception_update(${row.case.id}::uuid,${row.revision},'removeItem',${JSON.stringify({itemId:positive.id})}::jsonb)`);expect(effect).toMatchObject({function_key:'lifecycle.hr.exceptionRemovals',native_branch:'administrative-onboarding-exception-remove'});
-            await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'onboarding-case',aggregateId:row.case.id,eventType:'onboarding.removeItem',actor:actorOf(admin),payload:{caseId:row.case.id,companyId:b.companyId,functionKey:'lifecycle.shared.exceptionRemovals',nativeBranch:'assigned-onboarding-exception-remove'}});
-        })).rejects.toThrow();
-        expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
-        await onboardingCommand(admin,row.case.id,row.revision,{type:'removeItem',itemId:positive.id});row=(await onboardingList(admin))[0]!;expect(row.case.extras.map(item=>item.catalogueId)).toEqual(['from-case-exception']);
-        const audit=await owner.client`select payload from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${row.case.id}::uuid and event_type='onboarding.removeItem'and payload->>'functionKey'='lifecycle.hr.exceptionRemovals'`;expect(audit).toHaveLength(1);expect(audit[0].payload).toMatchObject({functionKey:'lifecycle.hr.exceptionRemovals',nativeBranch:'administrative-onboarding-exception-remove'});
+        const edit='function.lifecycle.hr.exceptionRemovals.execute';
+        const published=['lifecycle.view','lifecycle.edit','function.lifecycle.hr.exceptionRemovals.view',edit];
+        try{
+            expect(await publishActionCapabilityPackage(owner.client,'lifecycle_hr_removal')).toMatchObject({changed:true,capabilities:4});
+            expect(await publishActionCapabilityPackage(owner.client,'lifecycle_hr_removal')).toMatchObject({changed:false});
+            await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+                values(${b.tenantId}::uuid,${admin.userId!}::uuid,${edit},${b.companyId}::uuid,'deny')`;
+            expect((await onboardingTasks(admin)).some(task=>task.kind==='exceptionRemove'&&task.itemIds?.includes(positive.id))).toBe(true);
+            await expect(onboardingCommand(admin,row.case.id,row.revision,{type:'removeItem',itemId:positive.id})).rejects.toThrow();
+            await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid
+                and user_id=${admin.userId!}::uuid and capability_id=${edit}`;
+            await expect(withTenant(admin,async tx=>{
+                const [effect]=await tx.execute<{function_key:string;native_branch:string}>(sql`select * from app.onboarding_exception_update(${row.case.id}::uuid,${row.revision},'removeItem',${JSON.stringify({itemId:positive.id})}::jsonb)`);expect(effect).toMatchObject({function_key:'lifecycle.hr.exceptionRemovals',native_branch:'administrative-onboarding-exception-remove'});
+                await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'onboarding-case',aggregateId:row.case.id,eventType:'onboarding.removeItem',actor:actorOf(admin),payload:{caseId:row.case.id,companyId:b.companyId,functionKey:'lifecycle.shared.exceptionRemovals',nativeBranch:'assigned-onboarding-exception-remove'}});
+            })).rejects.toThrow();
+            expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
+            await onboardingCommand(admin,row.case.id,row.revision,{type:'removeItem',itemId:positive.id});row=(await onboardingList(admin))[0]!;expect(row.case.extras.map(item=>item.catalogueId)).toEqual(['from-case-exception']);
+            const audit=await owner.client`select payload from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${row.case.id}::uuid and event_type='onboarding.removeItem'and payload->>'functionKey'='lifecycle.hr.exceptionRemovals'`;expect(audit).toHaveLength(1);expect(audit[0].payload).toMatchObject({functionKey:'lifecycle.hr.exceptionRemovals',nativeBranch:'administrative-onboarding-exception-remove'});
+        }finally{
+            await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${published}::text[])`;
+            await owner.client`delete from app.access_native_capability_default where capability_id=any(${published}::text[])`;
+        }
         const profile=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${profile},${b.tenantId},${'HR exception scope '+profile})`;
         await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${profile},${JSON.stringify({legacyCompany:false,predicates:[{field:'department',values:[randomUUID()]}]})}::text::jsonb,${admin.userId!})`;
         await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${profile}`;await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${admin.userId!},${profile},${admin.userId!})`;

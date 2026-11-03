@@ -135,6 +135,33 @@ export const LIFECYCLE_ASSIGNED_EXCEPTION_CAPABILITY_PUBLICATION={
  ],
 } as const;
 
+export const LIFECYCLE_HR_REMOVAL_CAPABILITY_PUBLICATION={
+ capabilities:[
+  {id:'lifecycle.view',scope:'company',bindings:[
+   {owner:'app.lifecycle_legacy_record_read',operation:'legacy-company-administration-view'},
+   {owner:'app.lifecycle_reward_notice_action',operation:'native-onboarding-and-offboarding-administration-view'},
+  ]},
+  {id:'lifecycle.edit',scope:'company',bindings:[
+   {owner:'app.lifecycle_legacy_action_guard',operation:'legacy-company-administration-edit'},
+   {owner:'app.lifecycle_onboarding_administration_guard',operation:'native-onboarding-administration-edit'},
+   {owner:'app.lifecycle_offboarding_write_guard',operation:'native-offboarding-administration-edit'},
+  ]},
+ ],
+ functions:LIFECYCLE_EXCEPTION_FUNCTIONS.filter(descriptor=>descriptor.course==='administrative'),
+ legacyParityFunction:'app.lifecycle_reward_notice_legacy_allowed',
+ currentLegacyParityFunction:'app.lifecycle_current_legacy_allowed',
+ functionLegacyParityFunction:'app.lifecycle_exception_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.lifecycle_exception_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.lifecycle_hr_removal_bindings_complete()',
+  'app.lifecycle_current_legacy_allowed(uuid,uuid,text,uuid)',
+  'app.onboarding_exception_native_allowed(uuid,uuid,uuid,text,text,boolean)',
+  'app.onboarding_exception_task_rows()',
+  'app.onboarding_exception_update(uuid,integer,text,jsonb)',
+ ],
+} as const;
+
 export const LIFECYCLE_RECOVERY_CAPABILITY_PUBLICATION={
  capabilities:[],
  functions:LIFECYCLE_RECOVERY_FUNCTIONS,

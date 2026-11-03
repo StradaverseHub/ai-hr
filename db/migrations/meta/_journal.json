@@ -4985,6 +4985,13 @@
       "when": 1793330000408,
       "tag": "1008_rewards_entry_native_write_boundary",
       "breakpoints": true
+    },
+    {
+      "idx": 856,
+      "version": "7",
+      "when": 1793330000409,
+      "tag": "1009_lifecycle_hr_removal_binding_readiness",
+      "breakpoints": true
     }
   ]
 }
