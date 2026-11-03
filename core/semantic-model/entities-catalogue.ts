@@ -40,6 +40,7 @@ export const CATALOGUE_ENTITIES:readonly SemanticEntity[]=freeze([
     f('title','label','full','Its plain title.'),
     f('page','label','full','Where it is done or seen, when the person can open that page; absent for actions, whose card carries the page.'),
     f('template','boolean','full','The import page offers a template to download.'),
+    f('action','label','full','For an import that is also a change this person may make: the id suggest_action takes for its card.'),
    ]}),
    f('areas','list','full','With no filter: every area this person has something in, with how many of each kind and a few example titles.',{of:[
     area,
@@ -54,7 +55,7 @@ export const CATALOGUE_ENTITIES:readonly SemanticEntity[]=freeze([
  * may use in the product. Not in TERAS_READS (those are the explainer and metric capabilities the kit regenerates). */
 export const CATALOGUE_READS:readonly SemanticRead[]=freeze([
  {name:'product_capabilities',entity:'product_capability',
-  purpose:'Everything the signed-in person can do, import, report on or open in this product, from the product\'s own registries and their permissions, never guessed. Each entry has its kind (action, import, report or page), a plain title, its area and its mode: prepare (you can prepare it here for them to confirm) or open (only its page can; point to it). With no filter it returns counts per area and the entries you can prepare. Use it for "can you ...?", "can I ...?" and "what can you do for me?", and to number the options when a request such as "help me import data" could mean several. Never offer anything it does not list.',
+  purpose:'Everything the signed-in person can do, import, report on or open in this product, from its own registries and their permissions, never guessed: each entry\'s kind, title, area and mode (prepare: you prepare it here; open: done on its page). With no filter: counts per area and what you can prepare. Never offer anything it does not list.',
   input:[
    {name:'kind',identifier:false,optional:true,schema:{type:'string',enum:[...CAPABILITY_KINDS],description:'Only this kind.'}},
    {name:'area',identifier:false,optional:true,schema:{type:'string',maxLength:60,description:'Words for the area or subject, such as payroll history or leave; matched against titles and areas.'}},

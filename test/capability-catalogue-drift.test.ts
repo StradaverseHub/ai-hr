@@ -184,7 +184,7 @@ describe('the semantic declaration',()=>{
   expect(terasEntities().filter(row=>row.id==='product_capability')).toHaveLength(1);
   expect(entity).toBe(CATALOGUE_ENTITIES[0]);
   expect(walk(entity.fields).map(field=>field.disclosure)).toEqual(walk(entity.fields).map(()=>'full'));
-  expect(walk(entity.fields).map(field=>field.name)).toEqual(['entries','id','kind','mode','area','title','page','template','areas','area','actions','imports','reports','pages','examples']);
+  expect(walk(entity.fields).map(field=>field.name)).toEqual(['entries','id','kind','mode','area','title','page','template','action','areas','area','actions','imports','reports','pages','examples']);
   expect(registeredWorkers().find(worker=>worker.id==='conversation')?.readScope).toContain('product_capability');
   for(const anchor of entity.owners){const [file,name]=anchor.split('#');expect(existsSync(join(root,file)),anchor).toBe(true);expect(exportsName(file,name),anchor).toBe(true);}
   expect(existsSync(join(root,'app',entity.page,'page.tsx')),entity.page).toBe(true);

@@ -37,7 +37,10 @@ export type CatalogueEntry=Readonly<{id:string;kind:CapabilityKind;mode:Capabili
  /** Where it is done or seen, only when this caller may link it. Never set for an action (its card carries the page). */
  page?:string;
  /** An import whose page offers a template download. */
- template?:boolean}>;
+ template?:boolean;
+ /** Spec v14: an import that is also a registry action offered to this caller (the employee import is employees.import):
+  * the id suggest_action takes for its card, so the model can offer the card and not only the page. */
+ action?:string}>;
 
 /** Module code to plain area. Every registry and catalogue module maps (pinned by test). */
 export const MODULE_AREA:Readonly<Record<string,CapabilityArea>>=Object.freeze({
@@ -159,7 +162,7 @@ async function importEntries(ctx:SessionContext,catalogue:readonly SuggestableAc
   // An import that is also a registry action is listed only while that action is offered (actor, module, not paused).
   if(row.action!==undefined&&!offered.has(row.action))continue;
   out.push({id:'import:'+row.id,kind:'import',mode:prepare&&row.action!==undefined&&PREPARED_ACTIONS.has(row.action)?'prepare':'open',area:row.area,title:row.title,
-   ...(linkable.has(pathOf(row.page))?{page:row.page}:{}),...(row.template!==null?{template:true}:{})});
+   ...(linkable.has(pathOf(row.page))?{page:row.page}:{}),...(row.template!==null?{template:true}:{}),...(prepare&&row.action!==undefined?{action:row.action}:{})});
  }
  return out;
 }
@@ -199,7 +202,7 @@ export const PRODUCT_CAPABILITIES_SPEC:AiToolSpec=Object.freeze({name:READ.name,
 /** At most this many entries per result, so it always fits the harness's tool-output fence. */
 export const MAX_CAPABILITY_ENTRIES=40;
 const SUMMARY_NOTE='Counts per area of everything this person can do, import, report on or open, with example titles; entries lists what you can prepare here. For one part in full, call product_capabilities again with a kind or an area.';
-const LIST_NOTE='Only these are available to this person. When their request could mean several of them, ask one short question with them numbered by title; never pick one yourself. For mode prepare, offer to prepare it (suggest_action takes the id). For mode open, say they can do it on its page and link the page when one is given.';
+const LIST_NOTE='Only these are available to this person. When their words point to one, act on it. When several fit, ask one short question numbering at most five, the most common first, then "Something else"; never pick one yourself. suggest_action takes an action\'s id, or an import\'s action, for its card; otherwise link the page when one is given.';
 const MISS_NOTE='No title matched those words, so everything of this kind is listed instead. Never say something is unavailable only because the words did not match.';
 const MISS_ALL_NOTE='No title matched those words. Never say something is unavailable only because the words did not match: ask with a kind, or use the areas below.';
 const MORE_NOTE=' More match than are listed: ask again with a narrower area or a kind.';

@@ -17,15 +17,18 @@ describe('reply style (spec v9)',()=>{
   expect(instructions).toMatch(/"1\." numbered steps/);
   expect(instructions).toMatch(/Bold only the key figure or term/);
   expect(instructions).toMatch(/\[Page name\]\(path\), using only paths product_destinations returns/);
-  // Spec v13 (AI v2 W1): drawn from product_capabilities' areas for this person, naming nothing it does not list.
-  expect(instructions).toMatch(/When asked what you can help with, call product_capabilities with no filter\. Answer with four to six short bullets of what you can do for this person in their role, drawn from its areas, then one example question they could ask\. Never name anything it does not list\./);
+  // Spec v13/v14 (AI v2 W1): drawn from product_capabilities' areas for this person, naming nothing it does not list.
+  expect(instructions).toMatch(/When asked what you can help with, call product_capabilities with no filter and answer with four to six short bullets from its areas, then one example question\. Never name anything it does not list\./);
   expect(instructions).not.toMatch(/short plain reply/);
   // Owner, 3 November 2026: ask rather than guess, and offer to do it rather than point at a page. Spec v13: the options
   // are the catalogue's entries for this person, numbered by title.
-  expect(instructions).toMatch(/could mean more than one thing this person can do \(such as "help me import data"\), call product_capabilities with the matching kind or area\. Ask one short question with its entries numbered by title, grouped by area when there are more than six; never guess which they meant\./);
+  expect(instructions).toMatch(/a request that could mean several things this person can do \(such as "help me import data"\), call product_capabilities/);
+  // Spec v14: at most five numbered, the most common first, then "Something else"; one entry named is acted on without asking.
+  expect(instructions).toMatch(/If several fit, start with "Yes, I can …" and ask one short question numbering at most five, the most common first, then "Something else"; never guess\./);
   // Spec v11: "Yes, I can …" when an action is listed; the card carries the page (test/teras-harness-v11.test.ts).
-  expect(instructions).toMatch(/start with "Yes, I can …" and call suggest_action, so its card comes with your reply; never open with "I can't" when an action is listed\. Do not link that page in your text/);
-  expect(instructions).toMatch(/When no listed action fits, say so in one line/);
+  expect(instructions).toMatch(/start with "Yes, I can …" and call suggest_action with the action from its list \(an action's id, or an import's action\), so its card comes with your reply; never open with "I can't" when an action is listed, and do not link that page in your text/);
+  expect(instructions).toMatch(/If none fits, it is not available to them here\./);
+  expect(instructions).toMatch(/If a capability is not available, say so in one line/);
   // Issue 13: a pay refusal links where this person can already see pay, and sends only those without access elsewhere.
   expect(instructions).toMatch(/Individual pay never reaches you, so never give or estimate anyone's pay/);
   // Spec v11: someone else's pay links only the page the harness names for this caller, never their own payslips.

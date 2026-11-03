@@ -173,6 +173,10 @@ describe('product_capabilities in a harness turn',()=>{
   const own=(await capabilityCatalogueFor(hrAdmin)).filter(row=>row.kind==='import').map(row=>row.id);
   expect(sent.entries.map(row=>row.id)).toEqual(own);expect(sent.totalRows).toBe(IMPORTS.length);
   expect(sent.entries.map(row=>row.title)).toContain('Import payroll history (past payslips from a previous system)');
+  // Spec v14: the employee import is also employees.import, so it carries the id suggest_action takes for its card; no other
+  // import does, and a surface that offers no actions gets none (nothing to suggest there).
+  expect((sent.entries as {id:string;action?:string}[]).filter(row=>row.action).map(row=>[row.id,row.action])).toEqual([['import:employee_records','employees.import']]);
+  expect((await capabilityCatalogueFor(hrAdmin,{prepare:false})).filter(row=>row.action)).toEqual([]);
   expect(result.reads).toContain('product_capabilities');
   // Spec v13: suggest_action names the purposes of the declared actions this caller holds, so it can be called directly.
   const suggest=model.requests[0].tools.find(tool=>tool.name==='suggest_action')!.description;
