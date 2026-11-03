@@ -5,7 +5,8 @@
  * derived from code and never from guides:
  *  - actions: the caller's current action catalogue (./actions.ts actionCatalogueFor: registry actor class held, module
  *    readable, not paused), each `prepare` when the semantic model declares a proposal preparer for it
- *    (core/semantic-model/entities.ts SEMANTIC_ACTIONS), otherwise `open` (a card that opens its review page);
+ *    (core/semantic-model/entities.ts SEMANTIC_ACTIONS), otherwise `open` (a card that opens its review page). An action
+ *    that decides on someone else's item is listed only while this caller holds that work (DECIDER_ACTORS below);
  *  - imports: every real import owner (IMPORT_OWNERS below), each admitted by the guard its own page and server actions
  *    use (test/capability-catalogue-drift.test.ts reads that source), with its template download when it has one;
  *  - reports: the report datasets (core/report-registry.ts), behind the reports hub's administrator guard and each
@@ -30,9 +31,10 @@ import {SEMANTIC_ACTIONS} from '../semantic-model/entities';
 import {CAPABILITY_AREAS,CAPABILITY_KINDS,CATALOGUE_ENTITIES,CATALOGUE_READS,type CapabilityArea,type CapabilityKind,type CapabilityMode} from '../semantic-model/entities-catalogue';
 import {describeRead,readInputSchema} from '../semantic-model/generate';
 import type {OwnerAnchor} from '../semantic-model/types';
-import {ACTION_PURPOSE,actionCatalogueFor,type SuggestableAction} from './actions';
+import {ACTION_PURPOSE,SUGGESTABLE_ACTIONS,actionCatalogueFor,type SuggestableAction} from './actions';
 import {destinationLabel} from './tools';
 import {CHAT_IMPORT_KINDS} from '../../lib/chat-import';
+import {listPendingTasks,type PendingTaskKind} from '../approvals-inbox';
 
 export type CatalogueEntry=Readonly<{id:string;kind:CapabilityKind;mode:CapabilityMode;area:CapabilityArea;title:string;
  /** Where it is done or seen, only when this caller may link it. Never set for an action (its card carries the page). */
@@ -157,6 +159,31 @@ function pageGuardAdmits(ctx:SessionContext,path:string,visible:readonly string[
  return module===null||visible===undefined||!NAV_GATED.has(module)||visible.includes(module);
 }
 
+/** After spec v20's scored run 41641279562 (emp-what-1: an employee with nothing to approve was told she can review leave,
+ * claims and attendance awaiting her approval): registry actor classes that decide on someone else's item. assistantActionActors
+ * (core/assistant-action-catalogue.ts) holds them for every person or login, because each item decides, so the action
+ * catalogue alone listed approvals to everyone. The capability catalogue lists them only to a caller the approvals inbox
+ * admits (app/approvals/page.tsx): team access (a manager or an HR administrator, lib/authz-model.ts hasTeamAccess), or
+ * work of that action's kind assigned to them now (core/approvals-inbox.ts listPendingTasks, the inbox's own read).
+ * Offering only: listing grants nothing, and every review page and preparer still decides per item. */
+export const DECIDER_ACTORS:ReadonlySet<string>=new Set(['assigned_approver','performance_decider']);
+/** The inbox kinds that make a deciding action this caller's work. Any other deciding action, by its module's kinds. */
+export const DECIDER_WORK:Readonly<Record<string,readonly PendingTaskKind[]>>=Object.freeze({
+ 'approvals.leave.decide':['leave'],'approvals.claim.decide':['claim'],'approvals.attendance.decide':['attendance'],'approvals.toil.decide':['replacementLeave']});
+export const MODULE_WORK:Readonly<Record<string,readonly PendingTaskKind[]>>=Object.freeze({performance:['performanceReview','assessmentWork','careerPlan','calibration'],rewards:['rewardReview']});
+const ACTOR:ReadonlyMap<string,string>=new Map(SUGGESTABLE_ACTIONS.map(action=>[action.id,action.permission.actor]));
+const decides=(row:Readonly<{id:string}>)=>DECIDER_ACTORS.has(ACTOR.get(row.id)??'');
+/** Which of the caller's actions to list: every one with team access; otherwise a deciding action only while the inbox
+ * assigns them work of its kind. An inbox that cannot be read admits no deciding action (fail closed). */
+async function heldNow(ctx:SessionContext,catalogue:readonly SuggestableAction[]):Promise<(row:SuggestableAction)=>boolean>{
+ if(hasTeamAccess(ctx)||!catalogue.some(decides))return()=>true;
+ let kinds:ReadonlySet<string>;
+ try{kinds=new Set((await listPendingTasks(ctx,undefined,{attendance:moduleOn(ctx,'attendance'),claims:moduleOn(ctx,'claims'),performance:moduleOn(ctx,'performance'),
+  rewards:moduleOn(ctx,'rewards')},{noticeAcknowledgements:false})).map(task=>task.kind));}
+ catch{kinds=new Set();}
+ return row=>!decides(row)||(DECIDER_WORK[row.id]??MODULE_WORK[row.module]??[]).some(kind=>kinds.has(kind));
+}
+
 function actionEntries(catalogue:readonly SuggestableAction[],prepare:boolean):CatalogueEntry[]{
  return catalogue.filter(row=>!IMPORT_ACTIONS.has(row.id)).map(row=>({id:row.id,kind:'action' as const,mode:prepare&&PREPARED_ACTIONS.has(row.id)?'prepare' as const:'open' as const,
   area:areaOf(row.module),title:ACTION_PURPOSE[row.id]??row.id}));
@@ -204,7 +231,7 @@ function pageEntries(ctx:SessionContext,locale:string|undefined,visible:readonly
  * cannot be checked (./actions.ts ActionCatalogueUnavailable, a database read): the caller fails closed. */
 export async function capabilityCatalogueFor(ctx:SessionContext,options:Readonly<{locale?:string;prepare?:boolean}>={}):Promise<readonly CatalogueEntry[]>{
  const prepare=options.prepare!==false,visible=visibleModuleCodes(ctx)??undefined,linkable=new Set(linkablePathsFor(ctx,visible));
- const actions=await actionCatalogueFor(ctx);
+ const offered=await actionCatalogueFor(ctx),held=await heldNow(ctx,offered),actions=offered.filter(held);
  return Object.freeze([...actionEntries(actions,prepare),...await importEntries(ctx,actions,linkable,prepare),...reportEntries(ctx,linkable),
   ...pageEntries(ctx,options.locale,visible)].map(row=>Object.freeze(row)));
 }

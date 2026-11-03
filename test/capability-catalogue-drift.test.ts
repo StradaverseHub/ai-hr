@@ -9,8 +9,9 @@ import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
 import {LINKABLE_PAGES,productDestinations} from '../lib/product-context/destinations';
 import {MODULE_CATALOG} from '../packs/catalog';
 import {ACTION_PURPOSE,SUGGESTABLE_ACTIONS} from '../core/product-context/actions';
-import {IMPORT_OWNERS,IMPORT_PAGES,IMPORT_SUPPORT_FILES,MAX_CAPABILITY_ENTRIES,MODULE_AREA,PREPARED_ACTIONS,PRODUCT_CAPABILITIES_SPEC,areaOf,
+import {DECIDER_ACTORS,DECIDER_WORK,IMPORT_OWNERS,IMPORT_PAGES,IMPORT_SUPPORT_FILES,MAX_CAPABILITY_ENTRIES,MODULE_AREA,MODULE_WORK,PREPARED_ACTIONS,PRODUCT_CAPABILITIES_SPEC,areaOf,
  capabilitiesInput,capabilitiesResult,searchWords,type CatalogueEntry} from '../core/product-context/capability-catalogue';
+import {PACK_TASK_KINDS} from '../lib/assigned-work';
 import {CAPABILITY_KINDS,CATALOGUE_ENTITIES,CATALOGUE_READS} from '../core/semantic-model/entities-catalogue';
 import {SEMANTIC_ACTIONS} from '../core/semantic-model/entities';
 import {describeRead,terasEntities,terasEntity} from '../core/semantic-model/generate';
@@ -255,5 +256,23 @@ describe('the product_capabilities result',()=>{
   expect(searchWords('Help me import the payroll data, please')).toEqual(['import','payroll']);
   expect(searchWords('导入 工资')).toEqual(['导入','工资']);
   expect(CAPABILITY_KINDS).toEqual(['action','import','report','page']);
+ });
+});
+
+// After spec v20's run 41641279562 (emp-what-1): a deciding action is listed to a caller without team access only while the
+// approvals inbox assigns them work of its kind. A new deciding action with no inbox kind would silently never be listed
+// to an assigned approver, so every one must be mapped.
+describe('deciding actions are mapped to the inbox work that makes them the caller\'s',()=>{
+ it('names the per-item actor classes, and maps every suggestable action of those classes to inbox kinds',()=>{
+  expect([...DECIDER_ACTORS].sort()).toEqual(['assigned_approver','performance_decider']);
+  const deciding=SUGGESTABLE_ACTIONS.filter(action=>DECIDER_ACTORS.has(action.permission.actor));
+  expect(deciding.map(action=>action.id)).toEqual(expect.arrayContaining(['approvals.leave.decide','approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide']));
+  for(const action of deciding)expect((DECIDER_WORK[action.id]??MODULE_WORK[action.module]??[]).length,action.id).toBeGreaterThan(0);
+  expect(DECIDER_WORK).toEqual({'approvals.leave.decide':['leave'],'approvals.claim.decide':['claim'],'approvals.attendance.decide':['attendance'],'approvals.toil.decide':['replacementLeave']});
+  // Every pack task kind belongs to the module that owns it, and no kind is invented.
+  expect([...MODULE_WORK.performance,...MODULE_WORK.rewards].sort()).toEqual([...PACK_TASK_KINDS].sort());
+  // Own, administrator, lifecycle staff and automatic classes are not per-item deciders.
+  for(const actor of ['self','hr_admin','tenant_admin','payroll_admin','rewards_admin','workforce_maintainer','lifecycle_staff','agent_principal'])
+   expect(DECIDER_ACTORS.has(actor),actor).toBe(false);
  });
 });

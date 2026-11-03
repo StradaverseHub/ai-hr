@@ -10,6 +10,7 @@ import {HARNESS_TEST_ONLY,runTurn} from '../core/harness/runner';
 import {InMemoryTaskMemoryStore} from '../core/harness/memory';
 import type {ModelRequest} from '../core/harness/model-client';
 import {capabilityCatalogueFor,productCapabilities,type CatalogueEntry} from '../core/product-context/capability-catalogue';
+import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
 import {scriptedModel} from './harness-ratchet/scripted-model';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
@@ -42,7 +43,8 @@ const ids=(rows:readonly CatalogueEntry[],kind:CatalogueEntry['kind'])=>rows.fil
 // ── Independent expected sets, written from the action registry's actor classes and modules by hand ──
 /** Own work, for anyone with an employment: leave, profile, attendance and claims (the modules switched on above). */
 const SELF=['leave.apply','leave.cancel','leave.edit','ess.profile.request','attendance.correction.request','attendance.overtime.request','claims.draft.save','claims.submit','claims.cancel'];
-/** Decisions offered to anyone who could hold an assigned approval (core/product-context/actions.ts; the review page checks). */
+/** Decisions on someone else's request. After run 41641279562 (emp-what-1) they are listed only to a caller the approvals
+ * inbox admits: a manager or an HR administrator, or anyone while work of that kind is assigned to them (nobody here). */
 const APPROVER=['approvals.leave.decide','approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide'];
 /** HR administrator actions in the switched-on modules: not employees.import (listed as the employee import), not the
  * Malaysian statutory update (country-my off) and not replacement-leave credit (toil off). */
@@ -67,8 +69,9 @@ const sorted=(...lists:string[][])=>lists.flat().sort();
 /** The actions prepared in chat (written by hand): the three leave actions, the AI v2 W2 attendance correction and
  * overtime request, the own claim submit and cancel and profile change request, and (AI v2 W2 slice 3) the assigned claim
  * and attendance decisions. Every other action opens its page. */
-const PREPARED_HERE=['approvals.attendance.decide','approvals.claim.decide','approvals.leave.decide','attendance.correction.request','attendance.overtime.request','claims.cancel','claims.submit',
- 'ess.profile.request','leave.apply','leave.cancel'];
+const PREPARED_OWN=['attendance.correction.request','attendance.overtime.request','claims.cancel','claims.submit','ess.profile.request','leave.apply','leave.cancel'];
+const PREPARED_DECISIONS=['approvals.attendance.decide','approvals.claim.decide','approvals.leave.decide'];
+const PREPARED_HERE=sorted(PREPARED_OWN,PREPARED_DECISIONS);
 /** AI v2 slice 3 (issue 16b): the imports an HR administrator prepares in chat from an attached file (prepare_import). */
 const IMPORTS_PREPARED_HERE=['import:attendance_clockings','import:employee_records','import:leave_balances','import:payroll_history'];
 
@@ -76,10 +79,10 @@ describe('the capability catalogue per role',()=>{
  it('lists for each role exactly the actions, imports and reports its permissions allow',async()=>{
   const who=await callers(),sizes:Record<string,Record<string,number>>={};
   const expected:Record<keyof typeof who,{action:string[];import:string[];report:string[]}>={
-   employee:{action:sorted(SELF,APPROVER),import:[],report:[]},
+   employee:{action:sorted(SELF),import:[],report:[]},
    manager:{action:sorted(SELF,APPROVER),import:[],report:[]},
    hrAdmin:{action:sorted(SELF,APPROVER,HR,PAYROLL),import:[...IMPORTS].sort(),report:[...REPORTS].sort()},
-   payroll:{action:sorted(SELF,APPROVER,PAYROLL),import:[],report:[]},
+   payroll:{action:sorted(SELF,PAYROLL),import:[],report:[]},
    groupAdmin:{action:sorted(SELF,APPROVER,HR,PAYROLL,GROUP),import:[...IMPORTS].sort(),report:[...REPORTS].sort()},
   };
   for(const [name,ctx] of Object.entries(who) as [keyof typeof who,SessionContext][]){
@@ -95,7 +98,7 @@ describe('the capability catalogue per role',()=>{
  });
  it('marks prepare only for the actions the semantic model prepares, and nothing else',async()=>{
   const {employee,hrAdmin}=await callers();
-  for(const [ctx,expected] of [[employee,PREPARED_HERE],[hrAdmin,sorted(PREPARED_HERE,IMPORTS_PREPARED_HERE)]] as const){
+  for(const [ctx,expected] of [[employee,sorted(PREPARED_OWN)],[hrAdmin,sorted(PREPARED_HERE,IMPORTS_PREPARED_HERE)]] as const){
    const rows=await capabilityCatalogueFor(ctx);
    expect(rows.filter(row=>row.mode==='prepare').map(row=>row.id).sort()).toEqual(expected);
    // A surface that offers no action suggestions prepares nothing.
@@ -152,6 +155,49 @@ describe('the capability catalogue per role',()=>{
   const none=await productCapabilities(payroll,{kind:'import',area:'payroll history'},{});
   expect(none).toMatchObject({ok:true,entries:[],totalRows:0});
   expect(await productCapabilities(hrAdmin,{kind:'everything'},{})).toMatchObject({ok:false,refusal:'invalid_input'});
+ });
+});
+
+// After spec v20's scored run 41641279562 (emp-what-1: "I can help with ... approvals", for an employee with nothing to
+// approve). Each role's list, read from the real owners, against what that role may do by hand.
+const ACTOR=new Map(AGENT_ACTIONS.map(action=>[action.id,action.permission.actor as string]));
+const ADMIN_PAGE=/^\/(admin|control-tower|payroll|reports|analytics|approvals)(\/|\?|$)/;
+describe('no approver or administrator capability for an employee, and each role only its own',()=>{
+ it('an employee with nothing to decide: only their own requests, no approval, no administration, no approvals area',async()=>{
+  const {employee}=await callers(),rows=await capabilityCatalogueFor(employee,{locale:'en'});
+  const actions=ids(rows,'action');expect(actions.length).toBeGreaterThan(5);
+  expect(actions.filter(id=>ACTOR.get(id)!=='self'),'every action is the employee\'s own').toEqual([]);
+  for(const id of APPROVER)expect(actions,id).not.toContain(id);
+  expect(ids(rows,'import')).toEqual([]);expect(ids(rows,'report')).toEqual([]);
+  expect(rows.filter(row=>row.kind==='page'&&ADMIN_PAGE.test(row.page!)).map(row=>row.page)).toEqual([]);
+  expect(rows.filter(row=>row.area==='approvals').map(row=>row.id)).toEqual([]);
+  // The summary "what can you do?" is answered from: no approvals area, nothing about approving.
+  const summary=await productCapabilities(employee,{},{locale:'en'});
+  expect(summary.ok).toBe(true);if(!summary.ok)return;
+  expect(summary.areas?.map(row=>row.area)).not.toContain('approvals');
+  expect(summary.entries.map(row=>row.id).sort()).toEqual(sorted(PREPARED_OWN));
+  expect(JSON.stringify(summary)).not.toMatch(/waiting for your approval/i);
+ });
+ it('a manager: their own requests and every decision, nothing an administrator does',async()=>{
+  const {manager}=await callers(),actions=ids(await capabilityCatalogueFor(manager),'action');
+  for(const id of APPROVER)expect(actions,id).toContain(id);
+  for(const id of [...HR,...PAYROLL,...GROUP])expect(actions,id).not.toContain(id);
+  expect(actions.filter(id=>!['self','assigned_approver'].includes(ACTOR.get(id)!))).toEqual([]);
+ });
+ it('a payroll partner with nothing assigned: payroll actions, no decision, no HR administration',async()=>{
+  const {payroll}=await callers(),rows=await capabilityCatalogueFor(payroll),actions=ids(rows,'action');
+  for(const id of PAYROLL)expect(actions,id).toContain(id);
+  for(const id of [...APPROVER,...HR,...GROUP])expect(actions,id).not.toContain(id);
+  expect(ids(rows,'import')).toEqual([]);expect(ids(rows,'report')).toEqual([]);
+ });
+ it('an HR administrator: decisions, HR and payroll administration, never the group administrator\'s own',async()=>{
+  const {hrAdmin}=await callers(),actions=ids(await capabilityCatalogueFor(hrAdmin),'action');
+  for(const id of [...APPROVER,...HR,...PAYROLL])expect(actions,id).toContain(id);
+  for(const id of GROUP)expect(actions,id).not.toContain(id);
+ });
+ it('a group administrator: everything an HR administrator has, and the group\'s own',async()=>{
+  const {groupAdmin}=await callers(),actions=ids(await capabilityCatalogueFor(groupAdmin),'action');
+  for(const id of [...APPROVER,...HR,...PAYROLL,...GROUP])expect(actions,id).toContain(id);
  });
 });
 
