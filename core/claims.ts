@@ -38,7 +38,7 @@ import {
 
 export type { ClaimMileageStamp, ClaimRateConfig };
 import { toCsv } from '../lib/csv';
-import { assertCanDecide, filterDelegationOrgScopeTx,isApprovalDecisionRefusal,assertAssignedWorkPrincipalTx } from './approvals';
+import { assertCanDecide, filterDelegationOrgScopeTx,decisionEmploymentAuthorityTx,assertAssignedWorkPrincipalTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } from './payroll';
 import { calendarWindowFor } from './payroll-policy-config';
@@ -3855,10 +3855,8 @@ export function actionablePendingClaimIds(ctx:SessionContext,requestIds:readonly
   for(let offset=0;offset<ids.length;offset+=1000){
    const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId}).from(claimRequest)
     .where(and(inArray(claimRequest.id,ids.slice(offset,offset+1000)),eq(claimRequest.status,'pending'))).orderBy(claimRequest.id);
-   for(const row of rows){
-    try{await assertCanDecide(tx,ctx,row.employmentId,'claim',scopeOf('claims.claim'));result.push(row.id);}
-    catch(error){if(!isApprovalDecisionRefusal(error,'claim'))throw error;}
-   }
+   const {allowed}=await decisionEmploymentAuthorityTx(tx,ctx,rows.map(row=>row.employmentId),scopeOf('claims.claim'));
+   for(const row of rows)if(allowed.has(row.employmentId))result.push(row.id);
   }
   return result.sort();
  });
