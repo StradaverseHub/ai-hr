@@ -9,7 +9,7 @@ import {hireEmployee} from '../core/org';
 import {employeeDetail} from '../core/read';
 import {commitSectionImport,validateSectionImport} from '../core/import-sections';
 import {commitEmployeeImport,validateEmployeeImport} from '../core/import';
-import {registerRecordsForEmployee} from '../core/personnel-register-import';
+import {registerRecordsForEmployee,previewQualificationSection,commitQualificationSection} from '../core/personnel-register-import';
 import {addQualification,archiveQualification,listQualifications,updateQualification} from '../core/qualifications';
 import {addEmergencyContact,archiveEmergencyContact,listEmergencyContacts,updateEmergencyContact} from '../core/emergency-contacts';
 import {assertProfileValueAllowed} from '../core/profile-options';
@@ -50,6 +50,37 @@ describe('Qualification and Emergency Contact register imports',()=>{
     expect(fresh.filter(row=>row.isHighest)).toHaveLength(1);
     const [event]=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,diploma.id)).orderBy(sql`${schema.domainEvent.occurredAt} desc`).limit(1);
     expect(event.eventType).toBe('qualification.updated');expect(event.payload).toHaveProperty('clearedHighestId');
+  });
+  it('applies only the signed Qualification preview once and refuses stale register state',async()=>{
+    const e=await hire('SIGNED01');
+    const first=await addQualification(ctx,{employmentId:e.employmentId,qualification:'Bachelor',isHighest:true});
+    const second=await addQualification(ctx,{employmentId:e.employmentId,qualification:'Diploma'});
+    const records=[{employee_code:'SIGNED01',record_id:second.id,is_highest:'true',result:'Reviewed'}];
+    const csv=buildPersonnelRegisterCsv('qualification',records);
+    const parsed=parsePersonnelImportCsv(csv,{columns:personnelRegisterColumns('qualification'),sheet:'qualification'}).records;
+    const key='5a'.repeat(32);
+    const old=process.env.QUALIFICATION_IMPORT_REVIEW_KEY;
+    await owner.client`insert into app.qualification_import_review_key(singleton,secret) values(true,decode(${key},'hex'))`;
+    process.env.QUALIFICATION_IMPORT_REVIEW_KEY=key;
+    try{
+      await expect(withTenant(ctx,tx=>tx.execute(sql`select app.stage_qualification_import_preview('{}',${'00'.repeat(32)})`))).rejects.toThrow();
+      const stale=await previewQualificationSection(ctx,parsed,csv);
+      expect(stale.qualificationReviewId).toBeTruthy();
+      await updateQualification(ctx,{id:first.id,result:'Changed after review'});
+      expect((await commitQualificationSection(ctx,stale.qualificationReviewId!)).updated).toBe(0);
+      expect((await listQualifications(ctx,{employmentId:e.employmentId})).find(row=>row.isHighest)?.id).toBe(first.id);
+      const fresh=await previewQualificationSection(ctx,parsed,csv);
+      expect(fresh.qualificationReviewId).not.toBe(stale.qualificationReviewId);
+      expect((await commitQualificationSection(ctx,csv)).updated).toBe(0);
+      const results=await Promise.all([commitQualificationSection(ctx,fresh.qualificationReviewId!),commitQualificationSection(ctx,fresh.qualificationReviewId!)]);
+      expect(results.map(result=>result.updated).sort()).toEqual([0,1]);
+      const rows=await listQualifications(ctx,{employmentId:e.employmentId});
+      expect(rows.filter(row=>row.isHighest)).toMatchObject([{id:second.id,result:'Reviewed'}]);
+    }finally{
+      if(old===undefined)delete process.env.QUALIFICATION_IMPORT_REVIEW_KEY;
+      else process.env.QUALIFICATION_IMPORT_REVIEW_KEY=old;
+      await owner.client`delete from app.qualification_import_review_key`;
+    }
   });
   it('creates same-name contacts explicitly and preserves Primary transfer plus Profile compatibility',async()=>{
     const e=await hire('REG001');

@@ -12,8 +12,8 @@ function parseSection(section:string,text:string) {
   const sheet=isPersonnelRegisterKind(checked)?checked:checked==='family'?'family':'employee';
   return parsePersonnelImportCsv(text,{columns:isPersonnelRegisterKind(checked)?personnelRegisterColumns(checked):sheet==='family'?[...DEPENDENT_IMPORT_COLUMNS.required,...DEPENDENT_IMPORT_COLUMNS.optional]:sectionParseColumns(checked),sheet,resolvers:personnelImportLabelResolvers});
 }
-import {registerRecordsForEmployee} from '@/core/personnel-register-import';
-import { commitSectionImport, validateSectionImport } from '@/core/import-sections';
+import {registerRecordsForEmployee,previewQualificationSection,commitQualificationSection} from '@/core/personnel-register-import';
+import { commitSectionImport, validateSectionImport, recordSectionRun } from '@/core/import-sections';
 import {
   isImportSection,
   sectionParseColumns,
@@ -24,9 +24,9 @@ import {
 /**
  * Item 2983802f — the per-section importer's two server actions.
  *
- * They mirror the wide importer's exactly (`./actions.ts`): the browser sends CSV TEXT, never a file
- * and never a parsed preview, and the server re-validates everything. The one addition is `section`,
- * which arrives as a plain string from a client control and is therefore CHECKED here rather than
+ * Validation accepts CSV text. Qualification confirmation accepts an opaque preview ID, and other
+ * sections revalidate their CSV text. The section name
+ * arrives as a plain string from a client control and is therefore checked here rather than
  * trusted — a section is the fence, and a fence that can be renamed by whoever is climbing it is not
  * one. An unrecognised value is refused outright instead of falling back to a default, because every
  * default would be somebody's data being written by the wrong rules.
@@ -41,29 +41,30 @@ export async function validateSectionAction(section: string, csv: string): Promi
   const s = await requireAdmin();
   if(section==='bank_statutory')throw new Error('Reload the importer to validate this file in the background.');
   const { records,warnings } = parseSection(section,csv);
-  const preview=await validateSectionImport(s, { section: assertSection(section), records });
+  const preview=section==='qualification'
+    ?await previewQualificationSection(s,records,csv)
+    :await validateSectionImport(s, { section: assertSection(section), records });
   for(const row of preview.rows)row.warnings.push(...warnings);
   return preview;
 }
 
 /**
- * Apply one section file. Re-validates server-side, so a tampered client preview cannot widen what is
- * written. `fileName` is a LABEL for the history row (cf43c909) — the file itself never leaves the
- * browser; only the CSV text a paste would have produced is sent.
+ * Apply one section file. Qualification uses the stored preview; other sections revalidate CSV.
+ * The file name is only a label for the history row.
  */
 export async function commitSectionAction(
   section: string,
-  csv: string,
+  source: string,
   fileName?: string,
 ): Promise<SectionImportResult> {
   const s = await requireAdmin();
   if(section==='bank_statutory')throw new Error('Reload the importer to review and confirm the background import.');
-  const { records } = parseSection(section,csv);
-  const result = await commitSectionImport(s, {
-    section: assertSection(section),
-    records,
-    fileName: fileName ?? '',
-  });
+  const result = section==='qualification'
+    ?await commitQualificationSection(s,source)
+    :await commitSectionImport(s,{section:assertSection(section),records:parseSection(section,source).records,fileName:fileName??''});
+  if(section==='qualification'&&result.updated>0){
+    result.runId=await recordSectionRun(s,{companyId:null,fileName:fileName??'',totalRows:result.updated,updated:result.updated,rejected:[],failed:[]});
+  }
   revalidatePath('/admin/personnel');
   revalidatePath('/admin/personnel/import');
   return result;

@@ -30484,25 +30484,36 @@
       "line": 40,
       "surface": "server-action",
       "owners": [
+        "app.access_profile_policy_write_lock",
         "app.access_workforce_employment",
         "app.bank_import_subjects",
         "app.card_identifier_free",
+        "app.data_permission_read_stamp",
         "app.is_admin_for",
         "app.people_general_read",
         "app.people_nric_conflicts",
         "app.profile_option_value_allowed",
         "app.profile_task_relationship_tolerated",
+        "app.stage_qualification_import_preview",
         "app.workforce_full_import_allowed",
         "app.workforce_section_import_allowed",
         "app/admin/personnel/import/section-actions.ts:requireAdmin",
-        "core/import-sections.ts:requirePackFor"
+        "core/import-sections.ts:requirePackFor",
+        "core/personnel-register-import.ts:assertWorkforceSectionImportEmploymentTx",
+        "core/workforce-access.ts:assertWorkforceSectionImportCompanyTx"
       ],
       "tables": [
+        "'aihr.qualification-import.v1\\n'",
+        "canonical(value)",
         "company",
+        "content",
+        "csv",
         "employeeDependent",
         "employeeQualification",
         "employeeStatutoryMy",
         "employment",
+        "key",
+        "payload",
         "person",
         "personEmergencyContact",
         "profileOption"
@@ -30515,7 +30526,7 @@
     {
       "path": "app/admin/personnel/import/section-actions.ts",
       "entry": "commitSectionAction",
-      "line": 54,
+      "line": 55,
       "surface": "server-action",
       "owners": [
         "app.access_family_relief_sync",
@@ -30539,6 +30550,7 @@
         "app.profile_task_effect_source",
         "app.profile_task_relationship_tolerated",
         "app.profile_task_store_person",
+        "app.take_qualification_import_preview",
         "app.workforce_full_import_allowed",
         "app.workforce_section_import_allowed",
         "app/admin/personnel/import/section-actions.ts:requireAdmin",
@@ -30558,6 +30570,7 @@
       "tables": [
         "appUser",
         "attempt",
+        "canonical(value)",
         "company",
         "domainEvent",
         "employeeDependent",
@@ -30579,7 +30592,7 @@
     {
       "path": "app/admin/personnel/import/section-actions.ts",
       "entry": "registerRecordsAction",
-      "line": 72,
+      "line": 73,
       "surface": "server-action",
       "owners": [
         "app.access_workforce_employment",

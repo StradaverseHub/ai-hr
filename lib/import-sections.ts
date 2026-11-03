@@ -318,6 +318,7 @@ export type SectionRowResult = {
 };
 
 export type SectionImportPreview = {
+  qualificationReviewId?: string;
   section: ImportSection;
   total: number;
   /** Rows that will be written. */

@@ -271,7 +271,7 @@ export function SectionImport({ section, reference, onCommitPendingChange,canImp
           router.refresh();
           return;
         }
-        const r = await commitSectionAction(section, csv, `${label} · ${fileName ?? t('historyPasted')}`);
+        const r = await commitSectionAction(section, section==='qualification'?(preview.qualificationReviewId??''):csv, `${label} · ${fileName ?? t('historyPasted')}`);
         setResult(r);
         router.refresh();
       } catch (e) {

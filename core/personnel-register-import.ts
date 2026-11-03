@@ -1,7 +1,8 @@
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {createHmac,randomUUID} from 'node:crypto';
+import {lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
 import {workforceEmploymentPredicate,assertWorkforceNewEmployeeImportTx,assertWorkforceSectionImportEmploymentTx} from './workforce-access';
 import {addQualification,updateQualification,addEmergencyContact,updateEmergencyContact} from './workforce-registers';
-import {and,eq,inArray,sql} from 'drizzle-orm';
+import {and,eq,inArray,isNull,or,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {company,employment,person,employeeQualification,personEmergencyContact,profileOption} from '../db/schema';
 import {PersonnelImportCatalog,normalizePersonnelCatalogRecord} from '../lib/personnel-import-catalog';
@@ -9,9 +10,10 @@ import {personnelImportProposedValues,personnelImportFields} from '../lib/person
 import {normalizeEmployeeCode} from '../lib/employee-code';
 import {deriveEmploymentStatus} from './employment-status';
 import {publicErrorMessage} from '../lib/public-error';
-import {validateQualificationInputTx,type QualificationInput} from './qualifications';
+import {QUALIFICATION_LEVEL_CATEGORY,validateQualificationInputTx,type QualificationInput} from './qualifications';
 import {validateEmergencyContactInputTx,type EmergencyContactInput} from './emergency-contacts';
 import {MAX_PERSONNEL_REGISTER_ROWS,personnelRegisterInput,type PersonnelRegisterKind,type RegisterPreview} from '../lib/personnel-register-import';
+import {importCanonicalHash,importSourceHash} from './import-history';
 import type {ImportRecord} from '../lib/import-schema';
 import type {SectionImportPreview,SectionImportResult} from '../lib/import-sections';
 
@@ -132,9 +134,80 @@ export async function writeRegisterRowsTx(tx:Tx,ctx:SessionContext,kind:Personne
 }
 export async function validateRegisterSection(ctx:SessionContext,kind:PersonnelRegisterKind,records:ImportRecord[]):Promise<SectionImportPreview> {
   const {preview}=await validateRegisterImport(ctx,kind,records);
+  return registerSectionPreview(preview);
+}
+function registerSectionPreview(preview:RegisterPreview):SectionImportPreview {
+  const kind=preview.kind;
   return {section:kind,total:preview.total,updateCount:preview.validCount,skipCount:0,createCount:0,missingColumns:[],fileErrors:preview.fileErrors,
     rows:preview.rows.map(row=>({...row,registerAction:row.action,verdict:'update' as const,warnings:[row.action==='create'?'Blank Record ID: creates a new register record.':'Updates only the supplied fields on this Record ID.'],changes:row.proposed.filter(cell=>!['employee_code','record_id'].includes(cell.column)).map(cell=>cell.column)}))};
 }
+type QualificationReview={records:ImportRecord[];snapshot:string};
+const reviewUnavailable='Qualification import review is unavailable. Preview the file again.';
+
+async function qualificationReviewSnapshot(tx:Tx,rows:Resolved[],lock:boolean) {
+  const employments=[...new Set(rows.flatMap(row=>row.subject?.employmentId?[row.subject.employmentId]:[]))];
+  const targetIds=rows.flatMap(row=>row.recordId?[row.recordId]:[]);
+  const query=tx.select().from(employeeQualification).where(and(
+    inArray(employeeQualification.employmentId,employments),isNull(employeeQualification.archivedAt),
+    or(inArray(employeeQualification.id,targetIds),eq(employeeQualification.isHighest,true)),
+  )).orderBy(employeeQualification.id);
+  const before=lock?await query.for('update'):await query;
+  const catalogue=await tx.select().from(profileOption)
+    .where(eq(profileOption.category,QUALIFICATION_LEVEL_CATEGORY)).orderBy(profileOption.id);
+  return importCanonicalHash({
+    rows:rows.map(({subject,recordId,input})=>({subject,recordId,input})),before,catalogue,
+  });
+}
+
+export async function previewQualificationSection(ctx:SessionContext,records:ImportRecord[],csv:string):Promise<SectionImportPreview> {
+  assertBounds(records);
+  return withTenant(ctx,async tx=>{
+    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    const {preview,resolved}=await analyzeRegisterImportTx(tx,'qualification',records);
+    const sectionPreview=registerSectionPreview(preview);
+    if(!records.length||preview.fileErrors.length)return sectionPreview;
+    const key=process.env.QUALIFICATION_IMPORT_REVIEW_KEY;
+    if(!key||!(/^[0-9a-f]{64}$/i.test(key)))throw new Error(reviewUnavailable);
+    const [stamp]=await tx.execute<{value:string|null}>(sql`select app.data_permission_read_stamp() as value`);
+    if(!stamp?.value||!ctx.userId)throw new Error(reviewUnavailable);
+    for(const employmentId of new Set(resolved.map(row=>row.subject!.employmentId!))){
+      await assertWorkforceSectionImportEmploymentTx(tx,ctx,employmentId);
+    }
+    const payload=JSON.stringify({tenantId:ctx.tenantId,userId:ctx.userId,accessStamp:stamp.value,
+      nonce:randomUUID(),expiresAt:Date.now()+14*60_000,sourceHash:importSourceHash(Buffer.from(csv,'utf8')),records,snapshot:await qualificationReviewSnapshot(tx,resolved,false)});
+    const mac=createHmac('sha256',Buffer.from(key,'hex')).update('aihr.qualification-import.v1\n').update(payload).digest('hex');
+    try{
+      const [packet]=await tx.execute<{id:string}>(sql`select app.stage_qualification_import_preview(${payload},${mac}) as id`);
+      return {...sectionPreview,qualificationReviewId:packet.id};
+    }catch{
+      throw new Error(reviewUnavailable);
+    }
+  });
+}
+
+export async function commitQualificationSection(ctx:SessionContext,reviewId:string):Promise<SectionImportResult> {
+  let total=0;
+  try{
+    if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(reviewId))throw new Error(reviewUnavailable);
+    const updated=await withTenant(ctx,async tx=>{
+      await lockProfileValueWritesTx(tx,ctx.tenantId);
+      const [row]=await tx.execute<{packet:QualificationReview|null}>(sql`select app.take_qualification_import_preview(${reviewId}::uuid) as packet`);
+      if(!row?.packet)throw new Error(reviewUnavailable);
+      const {records,snapshot}=row.packet;
+      assertBounds(records);
+      total=records.length;
+      const subjects=await loadSubjectsTx(tx,records,true);
+      const analyzed=await analyzeRegisterImportTx(tx,'qualification',records,{subjects});
+      if(analyzed.preview.fileErrors.length||await qualificationReviewSnapshot(tx,analyzed.resolved,true)!==snapshot)
+        throw new Error(reviewUnavailable);
+      return writeRegisterRowsTx(tx,ctx,'qualification',analyzed.resolved);
+    });
+    return {section:'qualification',updated,skipped:total-updated,failed:[],fileErrors:[],runId:null};
+  }catch(error){
+    return {section:'qualification',updated:0,skipped:total,failed:[],fileErrors:[publicErrorMessage(error)],runId:null};
+  }
+}
+
 export async function commitRegisterSection(ctx:SessionContext,kind:PersonnelRegisterKind,records:ImportRecord[]):Promise<SectionImportResult> {
   assertBounds(records);
   let updated=0;let fileErrors:string[]=[];

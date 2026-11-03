@@ -1144,7 +1144,7 @@ export async function applyBankImportRowTx(tx:Tx,ctx:SessionContext,input:{recor
  * A section run is stored in the SAME table as a wide one — an admin asking "what has been loaded into
  * this system, and what did not go in?" is asking one question, and two histories would be two answers.
  */
-async function recordSectionRun(
+export async function recordSectionRun(
   ctx: SessionContext,
   p: {
     companyId: string | null;
