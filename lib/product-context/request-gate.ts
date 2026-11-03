@@ -219,7 +219,7 @@ export const isSensitiveReason=(reason:TurnGateReason|null|undefined):reason is 
 /** Decide, from the person's words alone, whether this turn may use private reads and action suggestions.
  * `sensitive` lists the routed topics (the harness passes its spec's list); every topic by default.
  * `importUpload` (AI v2 slice 3, issue 16b): this turn carries a chat import file the server checked again, from a
- * caller who may import in chat (core/harness/runner.ts). Only then are words about the attachment not gated: the
+ * caller who may import in chat (the harness runner decides it). Only then are words about the attachment not gated: the
  * file goes to the import owner's preview, never to the model. Every other check still applies, in the same order. */
 export function gateTurn(question:string,options:Readonly<{sensitive?:readonly SensitiveTopic[];importUpload?:boolean}>={}):TurnGate{
  const text=question.normalize('NFKC');

@@ -1,7 +1,7 @@
 /** AI v2 Phase 1, slice 3 (issue 16b) — the harness's `prepare_import`: "help me import data" answered with "Yes, I can",
  * and an attached file turned into a prepared import card.
  *
- * Offered (core/harness/tools.ts) only to a caller with at least one import they may prepare here
+ * Offered (by the harness tool provider) only to a caller with at least one import they may prepare here
  * (core/chat-import/kinds.ts), and only on a turn whose gate allows actions. The model passes at most the kind, from the
  * capability catalogue entry the person picked, or the number they chose; the file comes from the turn itself
  * (ToolScope.importFile), never from the model, and the model is never shown it:

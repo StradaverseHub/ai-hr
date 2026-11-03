@@ -78,11 +78,11 @@ export function ClockOutLoopCard({ caseId, icon, title, meta, awaitingLabel, edi
       </fieldset>
       <div role="group" aria-label={copy.actionsLabel} aria-busy={busy} className="flex flex-wrap items-center gap-2">
         <Button type="button" onClick={confirm} disabled={busy || !ready} className={TARGET}>
-          {busy ? copy.confirming : copy.confirm}<span className="sr-only"> · {title}</span>
+          {busy ? copy.confirming : copy.confirm}{' '}<span className="sr-only">· {title}</span>
         </Button>
         <Link href={editHref} aria-disabled={busy || undefined}
           className={`inline-flex min-h-9 items-center justify-center rounded-md border border-input bg-card px-4 text-sm font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${TARGET}`}>
-          {copy.edit}<span className="sr-only"> · {title}</span>
+          {copy.edit}{' '}<span className="sr-only">· {title}</span>
         </Link>
       </div>
       {refusal && <p role="alert" data-clock-out-refusal className="text-sm text-destructive">{refusal}</p>}
