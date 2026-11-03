@@ -6,9 +6,13 @@
  * company filter or posted id never widens it). Nothing is computed that an owner already decides:
  *  - the pay period and cut-off: the payroll owner's cutOffWindowFor over the cut-off day of the person's own
  *    employment's company, chosen exactly as the payroll inputs loop chooses it (core/loops/payroll-inputs.ts). Company
- *    payroll settings stay readable only by administrators (migration 0081); the day itself is read through
- *    app.own_payroll_cut_off_day (migration 0967), which answers for the caller's own current employment only and
- *    returns nothing else. With no answer (no own employment) no date is shown and the calendar month is used;
+ *    payroll settings stay readable only by administrators (migration 0081); the days themselves are read through
+ *    app.own_payroll_cut_off_day (migration 2008), which answers for the caller's own current employment only and
+ *    returns nothing else. With no answer (no own employment) no date is shown and the calendar month is used. Phase 2
+ *    hardening: EACH INPUT TYPE USES ITS OWN CUT-OFF (core/loops/payroll-inputs.ts preSalaryWindows, the payroll owner's
+ *    per-type resolution for the same pay period): attendance items run to the attendance cut-off and are due then,
+ *    overtime to the overtime cut-off, claims to the claim cut-off, leave to the unpaid-leave cut-off; everything else
+ *    (details, acknowledgements, approvals) is due by the salary cut-off;
  *  - attendance: the attendance owner's days (attendanceForEmploymentRange) classified by the Attendance Request
  *    screen's own pure classifier (classifyDay), with that screen's rules: yesterday at the latest, and nobody is
  *    flagged when no day is on clocking; the person's own pending requests (myAttendanceCorrections, myOvertimePlans);
@@ -52,7 +56,7 @@ import {leaveRequestsFor,listEligibleLeaveTypesFor} from '../read';
 import {attendanceForEmploymentRange,classifyDay,myAttendanceCorrections,myOvertimePlans,otMonthToDateMinutes} from '../../packs/attendance/service';
 import {listReplacementLeaveRequests} from '../../packs/leave/service';
 import {getEmployeeClaimTypes,listClaimsForEmployment} from '../../packs/claims/service';
-import {cutOffWindowFor,listMyTp1Declarations,myTp3Employments,myTp3History} from '../../packs/payroll/service';
+import {listMyTp1Declarations,myTp3Employments,myTp3History} from '../../packs/payroll/service';
 import {myReadinessActions} from '../readiness-actions';
 import {myProfile} from '../profile';
 import {eligibleChildReliefCount,listDependents} from '../dependents';
@@ -63,10 +67,12 @@ import {pendingNoticeAcknowledgementTasks} from '../notice';
 import {listPendingTasks,type PendingTaskItem} from '../approvals-inbox';
 import {readLoopCards} from '../loops/cards';
 import {myTp3Eligibility} from '../../lib/my-tp3-eligibility';
+import {myTp3PreviousEmployerAnswer} from './tp3-answer';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {addHrDays} from '../../lib/today/audience';
-import {PAYROLL_ITEM_GROUPS,groupStatus,monthEnd,nextPeriod,orderItems,periodOf,type GroupState,type PayrollItem,type PayrollItemGroup,
- type PayrollItemKind,type PayrollItemState,type PayrollPeriod,type PayrollReadiness} from '../../lib/pre-salary/items';
+import {PAYROLL_ITEM_GROUPS,groupStatus,monthEnd,orderItems,periodOf,type GroupState,type PayrollItem,type PayrollItemGroup,
+ type PayrollItemKind,type PayrollItemState,type PayrollPeriod,type PayrollReadiness,type PayrollTypeWindows,type TypeWindow} from '../../lib/pre-salary/items';
+import {upcomingPeriod,type CompanyCutOffs} from '../loops/payroll-inputs';
 
 /** A draft claim whose receipt-age window closes within this many days is "near its deadline". */
 export const CLAIM_DEADLINE_LEAD_DAYS=7;
@@ -87,20 +93,40 @@ const item=(p:{key:string;group:PayrollItemGroup;kind:PayrollItemKind;state:Payr
  Object.freeze({key:p.key,group:p.group,kind:p.kind,state:p.state,date:p.date??null,...(p.endDate!==undefined?{endDate:p.endDate}:{}),due:p.due,
   ...(p.label!==undefined?{label:p.label}:{}),...(p.count!==undefined?{count:p.count}:{}),action:Object.freeze({kind:'open' as const,href:p.href})});
 
-/** The pay period whose inputs are still open today, and its cut-off, as the payroll owner resolves it for the company
- * of the caller's own current employment. The cut-off day comes from app.own_payroll_cut_off_day (migration 0967), which
- * returns a row only for the caller's own current employment and only that company's cut_off_day; no row (another
- * person's employment, none at all): the calendar month, no cut-off date (source `unavailable`). */
+/** The pay period whose inputs are still open today, its salary cut-off and each input type's own window, as the payroll
+ * owner resolves them for the company of the caller's own current employment. The cut-off days come from
+ * app.own_payroll_cut_off_day (migration 2008), which returns a row only for the caller's own current employment and only
+ * that company's cut-off days; no row (another person's employment, none at all): the calendar month, no cut-off date
+ * (source `unavailable`). The period is chosen exactly as the Pre-salary loop chooses it (upcomingPeriod). */
 export async function resolvePayrollPeriod(ctx:SessionContext,employmentId:string|null,today:string):Promise<PayrollPeriod>{
- const calendar=():PayrollPeriod=>Object.freeze({payPeriod:periodOf(today),start:`${periodOf(today)}-01`,cutOff:null,source:'unavailable' as const});
- if(!employmentId)return calendar();
- const rows=await withTenant(ctx,tx=>tx.execute(sql`SELECT cut_off_day FROM app.own_payroll_cut_off_day(${employmentId}::uuid)`)) as unknown as {cut_off_day:number|null}[];
- if(!rows.length)return calendar();
- const company={cutOffDay:rows[0].cut_off_day??null};
- let payPeriod=periodOf(today),window=cutOffWindowFor('salary',null,company,payPeriod);
- if(window.end<today){payPeriod=nextPeriod(payPeriod);window=cutOffWindowFor('salary',null,company,payPeriod);}
- return Object.freeze({payPeriod,start:window.start,cutOff:window.end,source:company.cutOffDay!=null?'company' as const:'month_end' as const});
+ return (await resolvePeriodAndWindows(ctx,employmentId,today)).period;
 }
+
+type PeriodAndWindows=Readonly<{period:PayrollPeriod;windows:PayrollTypeWindows|null}>;
+/** The period, and each input type's own window for it (null when no cut-off is known: the calendar month is used). */
+async function resolvePeriodAndWindows(ctx:SessionContext,employmentId:string|null,today:string):Promise<PeriodAndWindows>{
+ const calendar=():PeriodAndWindows=>Object.freeze({period:Object.freeze({payPeriod:periodOf(today),start:`${periodOf(today)}-01`,cutOff:null,source:'unavailable' as const}),windows:null});
+ if(!employmentId)return calendar();
+ const rows=await withTenant(ctx,tx=>tx.execute(sql`SELECT cut_off_day,attendance_cut_off_day,overtime_cut_off_day,claim_cut_off_day,unpaid_leave_cut_off_day
+  FROM app.own_payroll_cut_off_day(${employmentId}::uuid)`)) as unknown as {cut_off_day:number|null;attendance_cut_off_day:number|null;
+  overtime_cut_off_day:number|null;claim_cut_off_day:number|null;unpaid_leave_cut_off_day:number|null}[];
+ if(!rows.length)return calendar();
+ const row=rows[0];
+ const company:CompanyCutOffs={cutOffDay:row.cut_off_day??null,attendanceCutOffDay:row.attendance_cut_off_day??null,overtimeCutOffDay:row.overtime_cut_off_day??null,
+  claimCutOffDay:row.claim_cut_off_day??null,unpaidLeaveCutOffDay:row.unpaid_leave_cut_off_day??null,payDay:null};
+ const {period:payPeriod,windows}=upcomingPeriod(company,today);
+ return Object.freeze({period:Object.freeze({payPeriod,start:windows.salary.start,cutOff:windows.salary.end,source:company.cutOffDay!=null?'company' as const:'month_end' as const}),
+  windows:Object.freeze({attendance:windows.attendance,overtime:windows.overtime,claim:windows.claim,leave:windows.leave})});
+}
+
+/** The per-type windows of a resolved period, keyed by the period object (kept out of its public shape). */
+const windowsOf=new WeakMap<PayrollPeriod,PayrollTypeWindows>();
+/** One input type's window and due date for the period: its own window where the cut-off is known, otherwise the salary
+ * period with no due date (unchanged from before). */
+const typeWindow=(period:PayrollPeriod,type:'attendance'|'overtime'|'claim'|'leave'):Readonly<{window:TypeWindow;due:string|null}>=>{
+ const own=windowsOf.get(period)?.[type];
+ return own?{window:own,due:own.end}:{window:{start:period.start,end:period.cutOff??monthEnd(period.payPeriod)},due:period.cutOff};
+};
 
 type Subject=Readonly<{employmentId:string;companyId:string|null}>;
 type GroupRead=Readonly<{items:readonly PayrollItem[];read:'ok'|'failed'|'off'}>;
@@ -110,18 +136,20 @@ const failed:GroupRead=Object.freeze({items:[],read:'failed'});
 async function attendanceGroups(ctx:SessionContext,subject:Subject,period:PayrollPeriod,today:string):Promise<Readonly<{attendance:GroupRead;overtime:GroupRead}>>{
  const state=moduleState(ctx,'attendance',subject.companyId);
  if(state!=='on')return {attendance:state==='off'?off:failed,overtime:state==='off'?off:failed};
- const end=period.cutOff??monthEnd(period.payPeriod),to=min(end,addHrDays(today,-1))!,due=period.cutOff;
+ // Attendance runs to the attendance cut-off, overtime to the overtime cut-off: each item is due by its own.
+ const att=typeWindow(period,'attendance'),ot=typeWindow(period,'overtime');
+ const start=att.window.start,end=att.window.end,to=min(end,addHrDays(today,-1))!,due=att.due;
  const [days,requests,overtime,cap,loops]=await Promise.all([
-  to>=period.start?settle(()=>attendanceForEmploymentRange(ctx,subject.employmentId,period.start,to)):Promise.resolve<Read<Awaited<ReturnType<typeof attendanceForEmploymentRange>>>>({ok:true,value:[]}),
+  to>=start?settle(()=>attendanceForEmploymentRange(ctx,subject.employmentId,start,to)):Promise.resolve<Read<Awaited<ReturnType<typeof attendanceForEmploymentRange>>>>({ok:true,value:[]}),
   settle(()=>myAttendanceCorrections(ctx,subject.employmentId,{status:'pending',limit:200})),
-  settle(()=>myOvertimePlans(ctx,subject.employmentId,{status:'pending',from:period.start,limit:200})),
-  settle(()=>otMonthToDateMinutes(ctx,subject.employmentId,min(end,today)!)),
+  settle(()=>myOvertimePlans(ctx,subject.employmentId,{status:'pending',from:ot.window.start,limit:200})),
+  settle(()=>otMonthToDateMinutes(ctx,subject.employmentId,min(ot.window.end,today)!)),
   settle(()=>readLoopCards(ctx,{scopeIds:[],admin:false})),
  ]);
  const attendance:PayrollItem[]=[],overtimeItems:PayrollItem[]=[];
  const waitingDays=new Set<string>();
  if(requests.ok)for(const row of requests.value){
-  if(row.requestKind==='self_overtime'||row.attendanceDate<period.start||row.attendanceDate>end)continue;
+  if(row.requestKind==='self_overtime'||row.attendanceDate<start||row.attendanceDate>end)continue;
   waitingDays.add(row.attendanceDate);
   attendance.push(item({key:`attendance_request_pending:${row.id}`,group:'attendance',kind:'attendance_request_pending',state:'waiting',date:row.attendanceDate,due,href:'/attendance/request-status'}));
  }
@@ -140,14 +168,16 @@ async function attendanceGroups(ctx:SessionContext,subject:Subject,period:Payrol
      action:Object.freeze({kind:'confirm' as const,card:'clockOut' as const,caseId:card.caseId,date:card.date,checkIn:card.checkIn,proposedCheckOut:card.proposedCheckOut,href:card.href})})
      :item({key:`${kind}:${flagged.date}`,group:'attendance',kind,state:'todo',date:flagged.date,due,href:fix('incomplete')}));
    }else if(flagged.section==='absent')attendance.push(item({key:`absent_no_leave:${flagged.date}`,group:'attendance',kind:'absent_no_leave',state:'todo',date:flagged.date,due,href:fix('absent')}));
-   else attendance.push(item({key:`late_or_early:${flagged.date}`,group:'attendance',kind:'late_or_early',state:'check',date:flagged.date,due,href:fix('short')}));
+   // A day the person's schedule group is exempt from absence, late-in and early-out judgments is not a short-day mark
+   // (the attendance owner's own exemption, Phase 2 hardening).
+   else if(!(row as {exceptionExempt?:boolean}).exceptionExempt)attendance.push(item({key:`late_or_early:${flagged.date}`,group:'attendance',kind:'late_or_early',state:'check',date:flagged.date,due,href:fix('short')}));
   }
  }
- if(overtime.ok)for(const row of overtime.value)if(row.attendanceDate<=end)
-  overtimeItems.push(item({key:`overtime_pending:${row.id}`,group:'overtime',kind:'overtime_pending',state:'waiting',date:row.attendanceDate,due,href:'/attendance/plan-ot'}));
+ if(overtime.ok)for(const row of overtime.value)if(row.attendanceDate<=ot.window.end)
+  overtimeItems.push(item({key:`overtime_pending:${row.id}`,group:'overtime',kind:'overtime_pending',state:'waiting',date:row.attendanceDate,due:ot.due,href:'/attendance/plan-ot'}));
  // The attendance owner's own monthly cap (minutes compared, never shown or copied).
  if(cap.ok&&cap.value.totalMinutes>cap.value.capMinutes)
-  overtimeItems.push(item({key:`overtime_over_cap:${periodOf(min(end,today)!)}`,group:'overtime',kind:'overtime_over_cap',state:'check',date:null,due,href:'/attendance/plan-ot'}));
+  overtimeItems.push(item({key:`overtime_over_cap:${periodOf(min(ot.window.end,today)!)}`,group:'overtime',kind:'overtime_over_cap',state:'check',date:null,due:ot.due,href:'/attendance/plan-ot'}));
  return {attendance:{items:attendance,read:days.ok&&requests.ok&&loops.ok?'ok':'failed'},overtime:{items:overtimeItems,read:overtime.ok&&cap.ok?'ok':'failed'}};
 }
 
@@ -156,11 +186,12 @@ async function leaveGroup(ctx:SessionContext,subject:Subject,period:PayrollPerio
  if(state!=='on')return state==='off'?off:failed;
  const [requests,types]=await Promise.all([settle(()=>leaveRequestsFor(ctx,subject.employmentId,locale)),settle(()=>listEligibleLeaveTypesFor(ctx,subject.employmentId,locale))]);
  if(!requests.ok)return failed;
- const end=period.cutOff??monthEnd(period.payPeriod),due=period.cutOff,items:PayrollItem[]=[];
+ // Leave runs to the unpaid-leave cut-off and is due by it.
+ const own=typeWindow(period,'leave'),end=own.window.end,due=own.due,items:PayrollItem[]=[];
  const typeOf=new Map((types.ok?types.value:[]).map(type=>[type.id,type]));
  for(const row of requests.value){
   const start=day(row.startDate),last=day(row.endDate)??start;
-  if(!start||!last||last<period.start||start>end||(row.status!=='pending'&&row.status!=='approved'))continue;
+  if(!start||!last||last<own.window.start||start>end||(row.status!=='pending'&&row.status!=='approved'))continue;
   const type=typeOf.get(row.leaveTypeId),label=row.leaveType??null,days=Number(row.days);
   if(row.status==='pending')items.push(item({key:`leave_pending:${row.id}`,group:'leave',kind:'leave_pending',state:'waiting',date:start,endDate:last,due,label,href:'/leave'}));
   if(type&&type.paid===false)items.push(item({key:`leave_unpaid:${row.id}`,group:'leave',kind:'leave_unpaid',state:'check',date:start,endDate:last,due,label,href:'/leave'}));
@@ -178,10 +209,12 @@ async function claimsGroup(ctx:SessionContext,subject:Subject,period:PayrollPeri
  if(!claims.ok)return failed;
  // Only the receipt rule and the receipt-age window are taken from each type; limits and balances are left behind.
  const rules=new Map((types.ok?types.value:[]).map(type=>[type.id,{requiresReceipt:type.requiresReceipt,window:type.maxReceiptAgeDays}]));
+ // Claims are due by the claim cut-off.
+ const claimDue=typeWindow(period,'claim').due;
  const items:PayrollItem[]=[];
  for(const row of claims.value){
   const label=row.typeName??null,incurred=day(row.incurredOn);
-  if(row.status==='pending'){items.push(item({key:`claim_pending:${row.id}`,group:'claims',kind:'claim_pending',state:'waiting',date:incurred,due:period.cutOff,label,href:'/claims'}));continue;}
+  if(row.status==='pending'){items.push(item({key:`claim_pending:${row.id}`,group:'claims',kind:'claim_pending',state:'waiting',date:incurred,due:claimDue,label,href:'/claims'}));continue;}
   if(row.status!=='draft')continue;
   const rule=rules.get(row.claimTypeId);
   // The claims owner refuses a receipt older than the type's window at submit: that day is the draft's own deadline.
@@ -189,7 +222,7 @@ async function claimsGroup(ctx:SessionContext,subject:Subject,period:PayrollPeri
   if(deadline&&deadline<today)continue;
   const near=deadline!==null&&deadline<=addHrDays(today,CLAIM_DEADLINE_LEAD_DAYS);
   const kind=near?'claim_deadline' as const:rule?.requiresReceipt&&row.attachments.length===0?'claim_receipt_missing' as const:'claim_draft' as const;
-  items.push(item({key:`${kind}:${row.id}`,group:'claims',kind,state:'todo',date:incurred,due:min(deadline,period.cutOff),label,href:`/claims?${new URLSearchParams({draft:row.id})}`}));
+  items.push(item({key:`${kind}:${row.id}`,group:'claims',kind,state:'todo',date:incurred,due:min(deadline,claimDue),label,href:`/claims?${new URLSearchParams({draft:row.id})}`}));
  }
  return {items,read:types.ok?'ok':'failed'};
 }
@@ -210,7 +243,8 @@ async function detailsGroup(ctx:SessionContext,subject:Subject,period:PayrollPer
  const payroll=moduleState(ctx,'payroll',subject.companyId);
  const [gaps,tp3,extra]=await Promise.all([
   settle(()=>myReadinessActions(ctx,subject.employmentId)),
-  payroll==='on'?settle(async()=>{const [employments,history]=await Promise.all([myTp3Employments(ctx),myTp3History(ctx)]);return{employments,history};}):Promise.resolve(null),
+  payroll==='on'?settle(async()=>{const [employments,history,answer]=await Promise.all([myTp3Employments(ctx),myTp3History(ctx),
+   myTp3PreviousEmployerAnswer(ctx,Number(today.slice(0,4)))]);return{employments,history,answer};}):Promise.resolve(null),
   payroll==='on'&&ctx.personId?settle(async()=>{const personId=ctx.personId!;
    const [tp1,profile,family]=await Promise.all([listMyTp1Declarations(ctx,{assessmentYear:Number(today.slice(0,4))}),myProfile(ctx),listDependents(ctx,{personId})]);
    return{tp1,profile,family};}):Promise.resolve(null),
@@ -243,8 +277,16 @@ async function detailsGroup(ctx:SessionContext,subject:Subject,period:PayrollPer
  if(tp3?.ok){
   const own=tp3.value.employments.find(row=>row.employmentId===subject.employmentId),eligibility=myTp3Eligibility(own,today);
   const year=eligibility.year,done=year!==null&&(tp3.value.history.records.some(record=>record.assessmentYear===year)||tp3.value.history.drafts.some(draft=>draft.assessmentYear===year&&draft.submittedAt!=null));
-  // A new joiner this year who has not told payroll about any earlier employer this year (LHDN TP3).
-  if(eligibility.eligible&&year===Number(today.slice(0,4))&&!done)items.push(item({key:`tp3_new_joiner:${year}`,group:'details',kind:'tp3_new_joiner',state:'check',date:eligibility.joinDate,due:period.cutOff,href:'/me/tp3'}));
+  // A new joiner this year who has not told payroll about any earlier employer this year (LHDN TP3). Someone who joined on
+  // 1 January had no earlier employer that year, so is never asked. Anyone later is asked once, on this checklist, whether
+  // they worked for another employer earlier this year (core/pre-salary/tp3-answer.ts): "No" removes the item (a fresh
+  // graduate is not a TP3 case); "Yes" keeps it, with its link to the TP3 form; until they answer, the item is the question.
+  const answer=tp3.value.answer;
+  if(eligibility.eligible&&year===Number(today.slice(0,4))&&!done&&eligibility.joinDate!==`${year}-01-01`&&answer!=='no'){
+   const base={key:`tp3_new_joiner:${year}`,group:'details',kind:'tp3_new_joiner',state:'check',date:eligibility.joinDate,due:period.cutOff,href:'/me/tp3'} as const;
+   const row=item(base);
+   items.push(answer==='yes'||!own?row:Object.freeze({...row,action:Object.freeze({kind:'answer' as const,card:'tp3PreviousEmployer' as const,employmentId:own.employmentId,year,href:'/me/tp3'})}));
+  }
  }
  return {items,read:gaps.ok&&(tp3===null||tp3.ok)&&(extra===null||extra.ok)?'ok':'failed'};
 }
@@ -290,8 +332,10 @@ export async function readMyPayrollReadiness(ctx:SessionContext,p:Readonly<{empl
  let subject:Subject|null=null;
  try{const own=await requireOwnHomeSubject(ctx,p.employmentId);subject={employmentId:own.employmentId,companyId:own.companyProof.companyId??own.currentCompanyId??null};}
  catch(error){if(!(error instanceof HomeAccessError))throw error;}
- const periodRead=payroll==='on'?await settle(()=>resolvePayrollPeriod(ctx,subject?.employmentId??null,today)):{ok:false as const};
- const period:PayrollPeriod=periodRead.ok?periodRead.value:Object.freeze({payPeriod:periodOf(today),start:`${periodOf(today)}-01`,cutOff:null,source:'unavailable' as const});
+ const periodRead=payroll==='on'?await settle(()=>resolvePeriodAndWindows(ctx,subject?.employmentId??null,today)):{ok:false as const};
+ const period:PayrollPeriod=periodRead.ok?periodRead.value.period:Object.freeze({payPeriod:periodOf(today),start:`${periodOf(today)}-01`,cutOff:null,source:'unavailable' as const});
+ // Each input type's own window travels with the period object to the group readers, not into the period's shape.
+ if(periodRead.ok&&periodRead.value.windows)windowsOf.set(period,periodRead.value.windows);
  const none=Promise.resolve(off);
  const [att,leave,claims,toil,details,acknowledge,approvals]=await Promise.all([
   subject?attendanceGroups(ctx,subject,period,today):Promise.resolve({attendance:off,overtime:off}),

@@ -52,7 +52,9 @@ describe('r233 — the move out of the Payroll menu', () => {
     expect(nav).toContain("{ key: 'actions', href: '/control-tower/actions', payroll: true }");
     expect(nav).toContain("{ key: 'exceptions', href: '/control-tower/exceptions', payroll: true }");
     expect(nav).toContain("{ key: 'readiness', href: '/control-tower/readiness', payroll: false }");
-    expect(read('app/control-tower/layout.tsx')).toContain('await requireAdmin();');
+    // Phase 2 hardening: the layout also admits a read-only auditor, for the Audit loop page only (every other page
+    // calls requireAdmin itself; test/ai-centre-operations-guards.test.ts pins both).
+    expect(read('app/control-tower/layout.tsx')).toContain('await requireAdminOrAuditReader();');
   });
 
   it('both guarded routes carry a function-access column, and the FORWARD does not', () => {

@@ -15,7 +15,7 @@
  * Expected values are written out from the fixtures or read from the payroll service's own stored figures, never
  * re-derived through the loops' helpers. */
 import {randomUUID} from 'node:crypto';
-import {and,count,eq,inArray} from 'drizzle-orm';
+import {and,count,eq,inArray,isNull,ne} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 
 const model=vi.hoisted(()=>({calls:0}));
@@ -36,7 +36,7 @@ import {listPayComponents,seedPayComponentCatalog,setEmploymentPayComponent,setP
 import {upsertCompanyBankProfile} from '../core/bank-profile';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {closeBatch,createAdditionalRun,createBatch,generatePayslips,payrollReadiness} from '../packs/payroll/service';
-import {thresholdsInForce} from '../core/payroll-anomaly';
+import {evaluateBatchAnomalies,resolveAnomalyVerdict,thresholdsInForce} from '../core/payroll-anomaly';
 import {checkIn,checkOut,requestAttendanceCorrection} from '../core/attendance';
 import {assignDefaultShift,createShift} from '../core/roster';
 import {ensureAgentPrincipal} from '../core/agent-principal';
@@ -306,8 +306,26 @@ describe('the Salary payroll loop',()=>{
     employmentType:'full_time',hiredOn:'2026-07-15'})).personId}).returning({id:schema.appUser.id});
   await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:officer.id,companyId:null,role:'hr_admin'});
   await closeBatch({...a,userId:officer.id},{batchId:fx.june});
-  expect(await run('loop_salary_payroll')).toMatchObject({status:'ran',totals:{closed:1}});
-  expect(await caseOf('loop_salary_payroll',`salaryrun:${fx.june}`)).toMatchObject({state:'closed',closeReason:'done',resolution:'completed',facts:{status:'closed'}});
+  // The anomaly checks run over the closed run (the anomaly sweep, or payroll HR's Evaluate): a run nobody checked is not done.
+  await evaluateBatchAnomalies(group,{batchId:fx.june});
+  expect(await run('loop_salary_payroll')).toMatchObject({status:'ran'});
+  // Phase 2 hardening: closed is not done while anything is unresolved: the run's open exceptions and the month's
+  // net-swing flags still waiting for payroll HR. Resolved and disposed of by a person, the next run finds it done.
+  expect(await caseOf('loop_salary_payroll',`salaryrun:${fx.june}`)).toMatchObject({state:'open',facts:{status:'closed'}});
+  const unresolved=await owner.db.select({id:schema.payrollAnomalyVerdict.id}).from(schema.payrollAnomalyVerdict).where(and(eq(schema.payrollAnomalyVerdict.batchId,fx.june),
+   isNull(schema.payrollAnomalyVerdict.supersededAt),isNull(schema.payrollAnomalyVerdict.resolvedAt),ne(schema.payrollAnomalyVerdict.disposition,'auto_clear')));
+  for(const verdict of unresolved)await resolveAnomalyVerdict(group,{verdictId:verdict.id,resolution:'accepted',note:'Fictional: reviewed by payroll HR.'});
+  for(const flag of (await casesOf('loop_salary_payroll')).filter(row=>row.subjectKey.startsWith('swing:')&&row.state==='open'))
+   await recordSwingDisposition(group,{caseId:flag.id,disposition:'expected'});
+  expect(await run('loop_salary_payroll')).toMatchObject({status:'ran'});
+  // Every June flag is closed as done, and the run's own conditions all hold (each named, so a failure says which).
+  expect((await casesOf('loop_salary_payroll')).filter(row=>row.subjectKey.startsWith('swing:')&&(row.facts as {payPeriod?:string}).payPeriod===JUNE)
+   .map(row=>[row.state,row.closeReason])).toEqual(expect.arrayContaining([['closed','done']]));
+  expect((await casesOf('loop_salary_payroll')).filter(row=>row.subjectKey.startsWith('swing:')&&(row.facts as {payPeriod?:string}).payPeriod===JUNE&&row.state!=='closed')).toEqual([]);
+  const juneFacts=(await caseOf('loop_salary_payroll',`salaryrun:${fx.june}`))!.facts as Record<string,unknown>;
+  expect({status:juneFacts.status,stale:juneFacts.stale,evaluated:juneFacts.evaluated,exceptions:juneFacts.exceptions,bank:juneFacts.bank})
+   .toEqual({status:'closed',stale:false,evaluated:true,exceptions:0,bank:'match'});
+  expect(await caseOf('loop_salary_payroll',`salaryrun:${fx.june}`)).toMatchObject({state:'closed',closeReason:'done',resolution:'completed',facts:{status:'closed',exceptions:0}});
   expect(await caseOf('loop_salary_payroll',`salaryrun:${fx.bonus}`)).toMatchObject({state:'open'});
   const page=await salaryLoopPage(group,{period:JUNE,today:TODAY});
   expect(page.companies.find(c=>c.companyId===b.companyId)!.runs.map(r=>[r.runType,r.status,r.done,r.closedBy])).toEqual([
@@ -375,13 +393,17 @@ describe('the Salary payroll loop',()=>{
   expect(pattern(bonusPerson.employmentId)).not.toBe(raisePattern);
   // The change against last month is explained by cause on the run's case.
   expect((await caseOf('loop_salary_payroll',`salaryrun:${fx.june}`))!.facts).toMatchObject({changed:6,flagged:6,thresholdBp:1500});
-  // At the company's own threshold above every swing, the flags no longer apply; back at 15%, the same flags reopen.
-  const above=Math.min(10_000,Math.ceil((Math.max(...Object.values(fx.swing))+1)/100)*100);
-  await setPayrollLoopSetting(group,{companyId:b.companyId,thresholdBp:above});
+  // Phase 2 hardening: a threshold is never set above the proposal cap, 50%.
+  await expect(setPayrollLoopSetting(group,{companyId:b.companyId,thresholdBp:5001})).rejects.toMatchObject({reason:'invalid'});
+  // At the highest threshold, 50%, the flags under it no longer apply (the bonus, a swing over 50%, still does); back at
+  // 15%, the same flags reopen.
+  await setPayrollLoopSetting(group,{companyId:b.companyId,thresholdBp:5000});
   await run('loop_salary_payroll');
-  expect((await swings()).map(row=>[row.state,row.closeReason])).toEqual(flagged.map(()=>['closed','superseded']));
+  expect((await swings()).map(row=>[row.employmentId,row.state,row.closeReason]).sort())
+   .toEqual(flagged.map(id=>fx.swing[id]>5000?[id,'open',null]:[id,'closed','superseded']).sort());
+  const underCap=flagged.filter(id=>fx.swing[id]<=5000).length;
   await setPayrollLoopSetting(group,{companyId:b.companyId,thresholdBp:1500});
-  expect(await run('loop_salary_payroll')).toMatchObject({totals:{reopened:6}});
+  expect(await run('loop_salary_payroll')).toMatchObject({totals:{reopened:underCap}});
   swingsNow=await swings();
   // Payroll HR records each flag: the housing allowances were expected, the bonus a real problem. Nobody else may.
   const caseFor=(employmentId:string)=>swingsNow.find(row=>row.employmentId===employmentId)!.id;
@@ -411,13 +433,20 @@ describe('the Salary payroll loop',()=>{
   // Never applied by itself: another run changes nothing in the settings, and the flags stay as they were.
   await run('loop_salary_payroll');
   expect((await proposals()).setting).toMatchObject({version:2,exclusions:[]});
-  // Only an administrator of the company decides.
+  // Phase 2 hardening: only a GROUP administrator approves, and never the one whose dispositions the proposal rests on.
   const exclusion=view.proposals.find(p=>p.kind==='exclusion')!;
+  // An administrator of another company only is not this company's administrator at all; this company's own is not a group one.
   await expect(decideThresholdProposal(await companyAdministrator(b,other.id),{companyId:b.companyId,proposalKey:exclusion.key,decision:'approved'})).rejects.toMatchObject({reason:'not_administrator'});
-  const approved=await decideThresholdProposal(group,{companyId:b.companyId,proposalKey:exclusion.key,decision:'approved'});
-  expect(approved.setting).toMatchObject({version:3,source:'proposal',swingThresholdBp:1500,swingExclusions:[raisePattern],decisionId:approved.decision.id,changedByUserId:group.userId});
-  expect(approved.decision).toMatchObject({kind:'exclusion',pattern:raisePattern,decision:'approved',decidedByUserId:group.userId,evidence:{flags:5,expected:5,problems:0}});
-  await expect(decideThresholdProposal(group,{companyId:b.companyId,proposalKey:exclusion.key,decision:'approved'})).rejects.toMatchObject({reason:'changed'});
+  await expect(decideThresholdProposal(await companyAdministrator(b,b.companyId),{companyId:b.companyId,proposalKey:exclusion.key,decision:'approved'})).rejects.toMatchObject({reason:'group_administrator'});
+  await expect(decideThresholdProposal(group,{companyId:b.companyId,proposalKey:exclusion.key,decision:'approved'})).rejects.toMatchObject({reason:'own_evidence'});
+  // The database refuses it too, even past the service.
+  await expect(withTenant(group,tx=>tx.insert(terasPayrollThresholdDecision).values({tenantId:b.tenantId,companyId:b.companyId,proposalKey:exclusion.key,kind:'exclusion',
+   fromThresholdBp:1500,toThresholdBp:null,pattern:raisePattern,evidence:{...exclusion.evidence},decision:'approved',decidedByUserId:group.userId!}))).rejects.toThrow();
+  const approver=await groupAdministrator(b);
+  const approved=await decideThresholdProposal(approver,{companyId:b.companyId,proposalKey:exclusion.key,decision:'approved'});
+  expect(approved.setting).toMatchObject({version:3,source:'proposal',swingThresholdBp:1500,swingExclusions:[raisePattern],decisionId:approved.decision.id,changedByUserId:approver.userId});
+  expect(approved.decision).toMatchObject({kind:'exclusion',pattern:raisePattern,decision:'approved',decidedByUserId:approver.userId,evidence:{flags:5,expected:5,problems:0}});
+  await expect(decideThresholdProposal(approver,{companyId:b.companyId,proposalKey:exclusion.key,decision:'approved'})).rejects.toMatchObject({reason:'changed'});
   view=await proposals();
   if(to>1500){
    const threshold=view.proposals.find(p=>p.kind==='threshold')!;
@@ -431,7 +460,9 @@ describe('the Salary payroll loop',()=>{
   expect(events.filter(e=>e.type==='teras-payroll-loop.swing-disposed')).toHaveLength(6);
   expect(events.filter(e=>e.type==='teras-payroll-loop.setting-changed')).toHaveLength(3);
   expect(events.filter(e=>e.type==='teras-payroll-loop.proposal-decided')).toHaveLength(to>1500?2:1);
-  for(const e of events)expect(e.actorId).toBe(group.userId);
+  // The dispositions and the threshold changes are payroll HR's; the approval is the other group administrator's.
+  for(const e of events.filter(e=>e.type==='teras-payroll-loop.swing-disposed'))expect(e.actorId).toBe(group.userId);
+  expect(events.filter(e=>e.actorId===approver.userId).map(e=>e.type).sort()).toEqual(['teras-payroll-loop.proposal-decided','teras-payroll-loop.setting-changed']);
   // Applied from the next run: the housing pattern no longer flags; the bonus still does. The anomaly detectors are untouched.
   await run('loop_salary_payroll');
   expect((await caseOf('loop_salary_payroll',`salaryrun:${fx.june}`))!.facts).toMatchObject({changed:6,flagged:1});
@@ -510,6 +541,38 @@ describe('the group pipeline and isolation',()=>{
   await expect(setLoopPause(outsider,{workerId:'loop_salary_payroll',companyId:b.companyId,paused:true})).rejects.toMatchObject({reason:'not_administrator'});
   await setLoopPause(group,{workerId:'loop_salary_payroll',companyId:b.companyId,paused:true});
   expect((await withTenant(group,tx=>tx.select().from(terasLoopPause))).map(row=>[row.tenantId,row.companyId,row.changedByUserId])).toEqual([[b.tenantId,b.companyId,group.userId]]);
+ });
+
+ it('a company the loops no longer cover: its cases are retired out of scope, and the pipeline shows them neither as a miss nor as runs in progress',async()=>{
+  // Phase 2 integration: Phase 1's runner retires the open cases of a company outside the sponsor's scope (core/loops/run.ts).
+  await setup(['payroll','multi_cycle_payroll','typed_pay_components']);
+  await payrollFixture();
+  const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Branch Sdn Bhd'}).returning();
+  await on('loop_payroll_inputs');await on('loop_salary_payroll');
+  await run('loop_payroll_inputs');await run('loop_salary_payroll');
+  const acmeAdmin=await companyAdministrator(b,b.companyId);
+  const acme=async(period:string)=>(await payrollCycleOverview(acmeAdmin,{period,today:TODAY})).companies.map(c=>[c.companyName,c.preSalary.state,c.salary.state,c.salary.runs.length]);
+  // Non-vacuity: Acme's July Pre-salary check is open and its three June runs are in progress.
+  expect(await acme(JULY)).toEqual([['Acme Sdn Bhd','open','before_cut_off',0]]);
+  expect(await acme(JUNE)).toEqual([['Acme Sdn Bhd',expect.any(String),'in_progress',3]]);
+  // Acme's open cases, read from the store before the change: the July Pre-salary case, and the Salary payroll loop's
+  // run cases (and any swing flags) for June.
+  const openOf=async(workerId:LoopId)=>(await owner.db.select({id:terasLoopCase.id}).from(terasLoopCase).where(and(eq(terasLoopCase.tenantId,b.tenantId),
+   eq(terasLoopCase.companyId,b.companyId),eq(terasLoopCase.workerId,workerId),inArray(terasLoopCase.state,['open','waiting'])))).map(row=>row.id).sort();
+  const openPre=await openOf('loop_payroll_inputs'),openSalary=await openOf('loop_salary_payroll');
+  expect(openPre).toHaveLength(1);expect(openSalary.length).toBeGreaterThanOrEqual(3);
+  // The sponsor now administers the branch only: Acme is outside both loops' scope at their next run.
+  await owner.db.update(schema.roleAssignment).set({companyId:other.id}).where(and(eq(schema.roleAssignment.appUserId,group.userId!),eq(schema.roleAssignment.role,'hr_admin')));
+  // The Pre-salary loop is not due again within its daily interval, so it checks no company, and still retires Acme's case.
+  expect(await run('loop_payroll_inputs')).toMatchObject({status:'ran',companies:0,retired:openPre.length});
+  expect(await run('loop_salary_payroll')).toMatchObject({status:'ran',retired:openSalary.length});
+  expect(await openOf('loop_payroll_inputs')).toEqual([]);expect(await openOf('loop_salary_payroll')).toEqual([]);
+  const retired=await owner.db.select({id:terasLoopCase.id,state:terasLoopCase.state,closeReason:terasLoopCase.closeReason}).from(terasLoopCase)
+   .where(inArray(terasLoopCase.id,[...openPre,...openSalary]));
+  expect(retired.map(row=>[row.state,row.closeReason])).toEqual([...openPre,...openSalary].map(()=>['closed','out_of_scope']));
+  // Acme's administrator: no check was missed and no run is in progress; the loop simply no longer checks Acme.
+  expect(await acme(JULY)).toEqual([['Acme Sdn Bhd','not_checked','before_cut_off',0]]);
+  expect(await acme(JUNE)).toEqual([['Acme Sdn Bhd',expect.any(String),'not_checked',0]]);
  });
 });
 

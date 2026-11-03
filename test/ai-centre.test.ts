@@ -54,7 +54,9 @@ describe('AI centre tabs keep every permission identical', () => {
     expect(read('app/assistant/page.tsx')).toContain("{sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} ");
     expect(read('components/ai-centre/insights.tsx')).toContain('{isAdmin&&<CapacityLedgerSection ');
     expect(read('core/capacity/ledger.ts')).toContain('requireCapacityAdmin(ctx);');
-    expect(read('app/control-tower/layout.tsx')).toContain('await requireAdmin();');
+    // Phase 2 hardening: the layout also admits a read-only auditor, for the Audit loop page only (every other page
+    // calls requireAdmin itself; test/ai-centre-operations-guards.test.ts pins both).
+    expect(read('app/control-tower/layout.tsx')).toContain('await requireAdminOrAuditReader();');
     // AI v2 Phase 1: the Inbox tab is retired; Today at / replaces it.
     // AI v2 Phase 2 (P2-3): Insights, for everyone, between Operations and Administration as in the approved mock-ups.
     // AI v2 Phase 2 (P2-5): Policies, for everyone, between Operations and Insights ("Operations ▾ · Policies · Insights").

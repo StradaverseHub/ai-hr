@@ -157,6 +157,13 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   {table:'teras_gap_turn',column:'company_id',disposition:'other',note:'Append-only private notes that a turn was counted as a gap (2010), readable only by the login that wrote them; a trigger refuses UPDATE and DELETE.'},
   {table:'teras_gap_status',column:'company_id',disposition:'other',note:'Append-only versions of the company\'s gap statuses (0972); a trigger refuses UPDATE and DELETE.'},
   {table:'teras_eval_candidate',column:'company_id',disposition:'other',note:'Eval candidates of the company (0972): versioned in place, never deleted (a trigger refuses DELETE and no DELETE privilege).'},
+  // AI v2 Phase 2 hardening (migration 2011): standing acknowledgements, standing-rule decisions and the cut-off reminders
+  // the payroll inputs loop sent. Each is FORCE row-level security and the application role holds no DELETE on any of them
+  // (an acknowledgement is only ever revoked; the other two refuse UPDATE by trigger), so none is cascaded and each refuses,
+  // as `other`, like the wave 1 tables above; none adds a definer lookup.
+  {table:'payroll_check_acknowledgement',column:'company_id',disposition:'other',note:'A standing acknowledgement that a payroll check is expected for a person, group or the whole company (2011); only ever revoked, never deleted, so it is retained with its company.'},
+  {table:'payroll_check_rule_decision',column:'company_id',disposition:'other',note:'Append-only group administrator decisions on the company\'s proposed standing rules (2011); retained as the evidence an acknowledgement rests on.'},
+  {table:'teras_cut_off_reminder',column:'company_id',disposition:'other',note:'Append-only record of each automatic cut-off reminder the payroll inputs loop sent in the company (2011): counts only, no pay figure; a trigger refuses UPDATE.'},
   {table:'personnel_import_assistance_attempt',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'An AI-assisted personnel import attempt for this company is retained until its own expiry owner removes it.'},
   {table:'employee_import_evaluation_attempt',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'An employee import AI evaluation for this company is retained until its own expiry owner removes it.'},
   {table:'employee_import_evaluation_run_membership',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'The model-run membership of an employee import AI evaluation retains its company with the evaluation.'},
@@ -388,6 +395,8 @@ export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
   { table: 'clocking_location', column: 'location_id', references: 'location', effect: 'blocks', note: 'A clocking geofence on our location.' },
   { table: 'reporting_line', column: 'scope_department_id', references: 'department', effect: 'blocks', note: 'A reporting line scoped to our department.' },
   { table: 'reporting_line', column: 'scope_business_unit_id', references: 'business_unit', effect: 'blocks', note: 'A reporting line scoped to our business unit.' },
+  // AI v2 Phase 2 hardening (2011): a group-scoped standing acknowledgement names a department (ON DELETE CASCADE).
+  { table: 'payroll_check_acknowledgement', column: 'department_id', references: 'department', effect: 'blocks', note: 'A standing acknowledgement scoped to our department is retained payroll evidence; it is revoked, never silently removed with company setup.' },
 ];
 
 /** The tables whose company rows are deleted with the company, in deletion order. */

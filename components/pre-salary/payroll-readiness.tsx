@@ -3,6 +3,7 @@ import {getTranslations} from 'next-intl/server';
 import {formatPayPeriodMonth} from '@/lib/hr-date';
 import {cn} from '@/lib/utils';
 import {LoopCards} from '@/components/today/loop-cards';
+import {answerTp3PreviousEmployerAction} from '@/app/assistant/payroll-readiness-actions';
 import {PAYROLL_READINESS_HREF,type GroupStatus,type PayrollItem,type PayrollItemGroup,type PayrollReadiness} from '@/lib/pre-salary/items';
 
 /** AI v2 Phase 2, P2-3 — the "Before payroll" checklist, as Today's card and as AI Centre › Insights' "My payroll
@@ -33,8 +34,28 @@ function metaOf(t:T,locale:string,row:PayrollItem):string[]{
  return [t(`state.${row.state}`),...(row.due?[t('due',{date:hrDay(locale,row.due)})]:[])];
 }
 
+/** Phase 2 hardening: a one-tap question on the row itself (today only the TP3 one: "Did you work for another employer
+ * earlier this year?"). No removes the TP3 item; Yes keeps it, with its link to the TP3 form. Both answer through the
+ * TP3 answer owner as the person (app/assistant/payroll-readiness-actions.ts). */
+function QuestionRow({t,locale,row,action}:{t:T;locale:string;row:PayrollItem;action:Extract<PayrollItem['action'],{kind:'answer'}>}){
+ const prompt=t('tp3Question.prompt');
+ return <li data-payroll-item={row.kind} data-payroll-state={row.state} data-payroll-action="answer" className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2.5">
+  <div className="min-w-0 flex-1">
+   <p className="break-words text-sm font-medium leading-snug">{prompt}</p>
+   <p className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-muted-foreground">{metaOf(t,locale,row).map((line,index)=><span key={index}>{line}</span>)}</p>
+  </div>
+  <form action={answerTp3PreviousEmployerAction} aria-label={prompt} data-tp3-question className="flex flex-none flex-wrap gap-2">
+   <input type="hidden" name="employment" value={action.employmentId}/>
+   <input type="hidden" name="year" value={String(action.year)}/>
+   {(['no','yes'] as const).map(answer=><button key={answer} type="submit" name="answer" value={answer} data-tp3-answer={answer}
+    className={cn(LINK,'border border-input bg-card hover:bg-accent')}>{t(`tp3Question.${answer}`)}<span className="sr-only"> · {prompt}</span></button>)}
+  </form>
+ </li>;
+}
+
 /** One checklist row. `todayConfirm`: on Today the clock-out Confirm card is already in Needs you, so the row points there. */
 function ItemRow({t,locale,row,todayConfirm}:{t:T;locale:string;row:PayrollItem;todayConfirm:boolean}){
+ if(row.action.kind==='answer')return <QuestionRow t={t} locale={locale} row={row} action={row.action}/>;
  const title=titleOf(t,locale,row);
  const href=row.action.kind==='confirm'&&todayConfirm?'#today-needs-you':row.action.href;
  const cta=row.action.kind==='confirm'?t('confirm'):t(row.group==='approvals'?'review':'open');

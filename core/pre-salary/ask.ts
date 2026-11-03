@@ -13,8 +13,8 @@ import type {PayrollItem} from '../../lib/pre-salary/items';
 export const NOT_COVERED=Object.freeze(['shift swaps','roster gaps','timesheet sign-off','overtime worked but not yet applied for','pay changes to acknowledge']);
 const path=(href:string)=>href.split(/[?#]/)[0]||'/';
 /** The page an item is acted on, without any record in its address: a letter or notice opens from its list, and a
- * missed clock-out's Confirm card waits on Today. */
-const pageOf=(row:PayrollItem)=>row.action.kind==='confirm'?'/':row.kind==='letter_acknowledge'?'/me/letters':row.kind==='notice_acknowledge'?'/notices':path(row.action.href);
+ * missed clock-out's Confirm card and the TP3 question wait on Today. */
+const pageOf=(row:PayrollItem)=>row.action.kind==='confirm'||row.action.kind==='answer'?'/':row.kind==='letter_acknowledge'?'/me/letters':row.kind==='notice_acknowledge'?'/notices':path(row.action.href);
 
 export async function askMyPayrollReadiness(ctx:SessionContext,scope:Readonly<{companyId:string;locale?:string}>):Promise<ExplainerOutcome>{
  const result=await readMyPayrollReadiness(ctx,{locale:scope.locale});

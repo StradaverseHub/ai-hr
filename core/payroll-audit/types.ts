@@ -49,8 +49,13 @@ export type PayrollAccessSurface=(typeof PAYROLL_ACCESS_SURFACES)[number];
 export const PAYROLL_ACCESS_EVENT='payroll-data.accessed';
 export const PAYSLIP_OPENED_EVENT='payslip.opened';
 
+/** Whether "one login both processed and closed a run" opens a finding or is information only (Phase 2 hardening). */
+export const PREPARER_CLOSED_MODES=Object.freeze(['info','finding'] as const);
+export type PreparerClosedMode=(typeof PREPARER_CLOSED_MODES)[number];
 /** The defaults a company keeps until a payroll administrator changes them (payroll_audit_control_setting). */
-export const AUDIT_CONTROL_DEFAULTS=Object.freeze({bankChangeDays:7,adjustmentThreshold:1000});
+export const AUDIT_CONTROL_DEFAULTS=Object.freeze({bankChangeDays:7,adjustmentThreshold:1000,preparerClosedMode:'info' as PreparerClosedMode});
+/** The bounds a setting must stay within (migration 2006 repeats them as CHECKs). */
+export const AUDIT_CONTROL_BOUNDS=Object.freeze({bankChangeDays:Object.freeze({min:3,max:30}),adjustmentThreshold:Object.freeze({min:100,max:50_000})});
 
 /** The pay month as YYYY-MM. */
 export const isPayPeriod=(value:unknown):value is string=>typeof value==='string'&&/^\d{4}-(0[1-9]|1[0-2])$/.test(value);

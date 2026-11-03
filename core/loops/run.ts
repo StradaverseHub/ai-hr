@@ -20,7 +20,11 @@
  *     it changes no HR record.
  *  5. Record: one append-only outcome row per company (teras_loop_run): the sponsor, the checks with their versions,
  *     the owners read and what changed. A detector failure records a failed run and changes no case.
- * Called by the nightly sweep (scripts/review-sweep.ts). */
+ * Phase 2 hardening (4 November 2026): detection runs ONE COMPANY AT A TIME, so one company's failure records a failed
+ * run for that company only and every other company is still checked and prepared. And a run may be asked to cover only
+ * the companies whose payroll changed since the loop last ran there (`onlyChanged`, the payroll tick's refresh of the
+ * Salary payroll loop: core/loops/payroll-freshness.ts); a loop that declares no such check is then not run.
+ * Called by the nightly sweep (scripts/review-sweep.ts) and the payroll tick (core/loops/tick.ts). */
 import {createHash,randomUUID} from 'node:crypto';
 import {and,count,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type Grant,type SessionContext,type Tx} from '../../db/client';
@@ -35,12 +39,16 @@ import {LOOP_DEFINITIONS} from './definitions';
 import {runLoopAutonomy} from './act';
 import {LoopObservationSchema,unique,type LoopObservation,type TrackedCase} from './detect';
 import {LOOP_IDS,type LoopCheck,type LoopId,type LoopRead} from './types';
+import {lastLoopRunsTx} from './payroll-freshness';
 
 export type LoopRunOptions=Readonly<{tenantId:string;principalId:string;entitlements:EntitlementSnapshot;
  /** The HR day the run is for (Asia/Kuala_Lumpur); defaults to today. */
  today?:string;
  /** AI v2 P2-2a: the instant the run starts (a loop with a per-company interval compares it with its last run). */
- now?:Date}>;
+ now?:Date;
+ /** Phase 2 hardening: only the companies whose payroll changed since this loop last ran there (the loop's own
+  * `changedSince` check; a loop without one is not run). The payroll tick passes it; the nightly sweep does not. */
+ onlyChanged?:true}>;
 export type LoopCounts={observed:number;opened:number;reopened:number;closed:number;openNow:number;waitingNow:number;capped:boolean};
 export type LoopRunResult=
  |Readonly<{workerId:LoopId;status:'not_run';reasons:readonly string[]}>
@@ -121,21 +129,35 @@ export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<Lo
   .filter(row=>!covered.has(row.companyId)&&!first.paused.has(row.companyId));
  // AI v2 P2-2a: a loop with a per-company interval (the Pre-salary loop) runs only for the companies due now; the others
  // are left untouched and record nothing, so their last run stays the one their interval counts from.
- const companies=def.due&&inScope.length?await withTenant(agent,tx=>def.due!(tx,{tenantId:options.tenantId,workerId,companies:inScope,now:startedAt})):inScope;
+ let companies=def.due&&inScope.length?await withTenant(agent,tx=>def.due!(tx,{tenantId:options.tenantId,workerId,companies:inScope,now:startedAt})):inScope;
+ // Phase 2 hardening: a refresh between sweeps covers only the companies whose payroll changed since the last run there.
+ if(options.onlyChanged){
+  if(!def.changedSince||!companies.length)companies=[];
+  else{
+   const since=await withTenant(agent,tx=>lastLoopRunsTx(tx,options.tenantId,workerId,companies));
+   companies=await def.changedSince(sponsor,{companies,since}).catch(()=>[]);
+  }
+ }
  if(!companies.length&&!outside.length)return Object.freeze({workerId,status:'ran' as const,runId,companies:0,totals:Object.freeze(zero()),retired:0});
  // The cases this loop is tracking in scope, as the agent principal.
  const tracked:TrackedCase[]=!companies.length?[]:await withTenant(agent,tx=>tx.select({id:terasLoopCase.id,subjectKey:terasLoopCase.subjectKey,companyId:terasLoopCase.companyId,
   employmentId:terasLoopCase.employmentId,state:terasLoopCase.state,facts:terasLoopCase.facts}).from(terasLoopCase)
   .where(and(eq(terasLoopCase.tenantId,options.tenantId),eq(terasLoopCase.workerId,workerId),inArray(terasLoopCase.state,['open','waiting']),inArray(terasLoopCase.companyId,companies))));
- // 3: detect, diagnose and verify through the owners, as the sponsor.
- let observations:LoopObservation[]=[],reads:readonly LoopRead[]=[];
- if(companies.length)try{
-  const detection=await def.detect(sponsor,{companyIds:companies,today,tracked});
-  observations=detection.observations.map(item=>LoopObservationSchema.parse(item) as LoopObservation);
-  reads=detection.reads;
- }catch{
-  return recordStatus('failed',[...checks,check('owner_read',def.version,false)],[]);
+ // 3: detect, diagnose and verify through the owners, as the sponsor, one company at a time: a company whose read fails
+ // records a failed run of its own and changes no case, and every other company is still checked. With no company to
+ // check (only out-of-scope cases to retire), nothing is read.
+ const observations:LoopObservation[]=[],failed=new Set<string>(),readsByTool=new Map<string,LoopRead>();
+ for(const companyId of companies){
+  try{
+   const detection=await def.detect(sponsor,{companyIds:[companyId],today,tracked:tracked.filter(item=>item.companyId===companyId)});
+   const parsed=detection.observations.map(item=>LoopObservationSchema.parse(item) as LoopObservation);
+   if(parsed.some(item=>item.companyId!==companyId))throw new Error('A detector observed another company.');
+   observations.push(...parsed);
+   for(const item of detection.reads)if(!readsByTool.has(item.tool))readsByTool.set(item.tool,item);
+  }catch{failed.add(companyId);}
  }
+ const reads:readonly LoopRead[]=[...readsByTool.values()];
+ if(companies.length&&failed.size===companies.length)return recordStatus('failed',[...checks,check('owner_read',def.version,false)],[]);
  // 4 and 5: prepare and record, as the agent principal, one run of this loop at a time.
  const prepared=await withTenant(agent,async tx=>{
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`teras-loop:${options.tenantId}:${workerId}`},0))`);
@@ -147,7 +169,7 @@ export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<Lo
   // same loop that recorded meanwhile (an overlapping tick, or the nightly sweep) already checked it: this run writes
   // nothing there, so one company is never run twice in its interval, however the runs overlap.
   const stillDue=def.due?new Set(await def.due(tx,{tenantId:options.tenantId,workerId,companies:companies.filter(companyId=>!paused.has(companyId)),now:startedAt})):null;
-  const counts=new Map(companies.filter(companyId=>!paused.has(companyId)&&(!stillDue||stillDue.has(companyId))).map(companyId=>[companyId,zero()]));
+  const counts=new Map(companies.filter(companyId=>!failed.has(companyId)&&!paused.has(companyId)&&(!stillDue||stillDue.has(companyId))).map(companyId=>[companyId,zero()]));
   const keys=unique(observations.map(item=>item.subjectKey));
   const existing:(typeof terasLoopCase.$inferSelect)[]=[];
   for(let offset=0;offset<keys.length;offset+=500)existing.push(...await tx.select().from(terasLoopCase)
@@ -198,6 +220,13 @@ export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<Lo
     sponsorUserId,loopVersion:def.version,startedAt,finishedAt,observed:c.observed,opened:c.opened,reopened:c.reopened,closed:c.closed,openNow:c.openNow,
     waitingNow:c.waitingNow,capped:c.capped,checks:[...checks,check('company_not_paused','teras_loop_pause',true)],reads:[...reads]};}));
   }
+  // A company whose own read failed: its failed run, nothing else.
+  const failedHere=[...failed].filter(companyId=>!paused.has(companyId));
+  if(failedHere.length){
+   const finishedAt=new Date(Math.max(Date.now(),startedAt.getTime()));
+   await tx.insert(terasLoopRun).values(failedHere.map(companyId=>({tenantId:options.tenantId,runId,workerId,companyId,status:'failed' as const,sponsorUserId,
+    loopVersion:def.version,startedAt,finishedAt,checks:[...checks,check('owner_read',def.version,false)],reads:[]})));
+  }
   const totals=zero();
   for(const c of counts.values()){totals.observed+=c.observed;totals.opened+=c.opened;totals.reopened+=c.reopened;totals.closed+=c.closed;
    totals.openNow+=c.openNow;totals.waitingNow+=c.waitingNow;totals.capped||=c.capped;}
@@ -207,6 +236,10 @@ export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<Lo
  // capped at Prepare returns at once; this step never throws and never changes the Prepare result.
  if(prepared.status==='ran'&&prepared.companies>0)await runLoopAutonomy({workerId,tenantId:options.tenantId,principalId:options.principalId,agent,sponsor,
   sponsorUserId:sponsor.userId!,runId,today,companies});
+ // Phase 2 hardening: a notice step (the Pre-salary loop's cut-off reminders), only for the companies this run prepared.
+ // It never throws and never changes the Prepare result.
+ if(prepared.status==='ran'&&prepared.companies>0&&def.afterPrepare)await def.afterPrepare({tenantId:options.tenantId,principalId:options.principalId,runId,agent,sponsor,
+  companies:companies.filter(companyId=>!failed.has(companyId)),today}).catch(()=>undefined);
  return prepared;
 }
 

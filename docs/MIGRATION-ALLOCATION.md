@@ -1419,3 +1419,41 @@ are readable only by the asker). Its number, idx 810 and `when` 1793330001410 ar
 The two tail-pinning tests that carry 2010's hash (`test/lifecycle-v9-populated-upgrade.test.ts`,
 `test/board-nine-populated-upgrade.test.ts`) pin the new one. The handbook hardening branch edits 2009 in parallel; the
 coordinator merges both pins.
+
+## AI Centre block 2000–2019: AI v2 Phase 2 hardening, payroll loops — 4 November 2026 (unapplied source reservation)
+
+Branch `claude/aiv2-p2h-loops-hardening` (cut from `claude/aiv2-phase2-integration` `3a5273a02`, whose journal ends idx810 /
+`2010_teras_learning_loops` / when1793330001410). Two kinds of change, both on files no installation has applied:
+
+- **Edited in place** (allowed while unapplied, coordinator note of 4 November 2026): `2005_teras_payroll_cycle_loops` (a
+  threshold never above 5000 bp; a `reminders_enabled` setting column; a proposal approved only by a group administrator who
+  disposed of none of its flags), `2006_payroll_audit_loop` (a capture deduplicated only against the latest capture of its
+  source key, the unique `(source_key, content_hash)` index replaced by an ordinary latest-of-key index; findings record
+  their subject logins and nobody disposes of a finding about themselves; control-setting bounds, a `preparer_closed_mode`
+  setting and a group administrator for any loosening) and `2008_own_payroll_cut_off` (the caller's own company's per-type
+  cut-off days, nothing more). Every writer of the changed tables was reviewed: `core/loops/payroll-loop-settings.ts`,
+  `core/payroll-audit/append.ts`, `core/payroll-audit/controls.ts` and `core/payroll-audit/settings.ts` are the only ones.
+- **New: `2011_payroll_loops_hardening`**, the next number of the block (idx 811, when 1793330001411 = 1793330000000 +
+  (2011 − 600)), taken as the brief allowed: the payroll close circuit's prior cycle by run type (`CREATE OR REPLACE` of
+  `app.payroll_close_circuit_inputs` and `app.payroll_close_source_people`, owner and grants unchanged), the standing
+  acknowledgements (`payroll_check_acknowledgement`) and their learned-rule decisions (`payroll_check_rule_decision`), and the
+  Pre-salary loop's cut-off reminder ledger (`teras_cut_off_reminder`, whose insert appends the reminder event through a
+  SECURITY DEFINER trigger), and (coordinator review, 4 November 2026) a new joiner's own answer to "Did you work for another
+  employer earlier this year?" (`payroll_tp3_previous_employer_answer`, append-only, the person and HR only, never pay
+  data). FORCE row-level security and exact grants on all four tables.
+
+A fresh fetch at the start of this work showed no other claim on 2011 or on a `when` at or above 1793330001411; the
+coordinator re-checks before merging (the parallel `claude/aiv2-p2h-handbook-hardening` branch edits 2009 in place only).
+
+| Number | idx | when | Tag | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+|2005|805|1793330001405|2005_teras_payroll_cycle_loops|d211dd97ebdeb673998d29a2a9b3b8d8597c39a5646259ac0c855d46eca49fbc|
+|2006|806|1793330001406|2006_payroll_audit_loop|05bc9e35367093ae4c6aec877a7ca7ec171387cb84b28940e0db0e190fcf7723|
+|2008|808|1793330001408|2008_own_payroll_cut_off|c068fa72631c648453117fdf73cc81e6ffbbb4cc94d55d82397e40ac4e4291f8|
+|2011|811|1793330001411|2011_payroll_loops_hardening|71c1b7ee489aef6fa8e9dda0fe0c014289fd278c7c7df01455f79185b68a0a40|
+
+The four tail-pinning upgrade tests and `test/lifecycle-v9-populated-upgrade.test.ts` pin these hashes and the 2011
+position; `test/board-nine-populated-upgrade.test.ts` applies 2004–2011 on a populated database.
+
+Development source only: no installation priority, no deployment. At installation the numbers and `when` values are
+re-checked against staging's applied watermark and re-frozen above it if it has reached them.

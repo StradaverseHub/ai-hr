@@ -38,7 +38,9 @@ const HANDBOOK = ['aiCentre.policies.versionShort', 'aiCentre.policies.values.mo
 // Wave 2 (P2-6, AI quality): a proposal's place is only its arguments and a separator ("{loop} · {company}"), and the product
 // area named "AI Centre" is the product's name in every locale; Malay writes Status as English does.
 const QUALITY = ['aiCentre.quality.proposals.where', 'aiCentre.quality.areas.ai'];
-const PHASE2 = [...ARGUMENTS_ONLY, ...BODIES, ...HANDBOOK, ...QUALITY];
+// AI v2 Phase 2 hardening: a grouped swing's member line is only its arguments and punctuation ("{name}: {change} ({causes})").
+const HARDENING = ['aiCentre.payrollCycle.groups.member'];
+const PHASE2 = [...ARGUMENTS_ONLY, ...BODIES, ...HANDBOOK, ...QUALITY, ...HARDENING];
 const SAME_AS_ENGLISH_ALLOWED: Readonly<Record<string, readonly string[]>> = { ms: ['aiCentre.how.layers.model', LOOP_STEP, 'aiCentre.loops.cases.columns.status', ...PHASE2,
   'aiCentre.autonomy.actions.columns.status', 'aiCentre.payrollCycle.salaryPage.columns.status', 'aiCentre.payrollCycle.runType.bonus', 'aiCentre.payrollCycle.byCompany.columns.audit',
   'aiCentre.quality.gaps.status'],
@@ -129,7 +131,10 @@ describe('AI centre catalogue completeness', () => {
       // Wave 2: arguments of AI quality (aiCentre.quality.*, P2-6) this list did not carry.
       helpful: 4, marked: 5, unchanged: 7, decided: 9, edited: '11.1%', editedCount: 1, discarded: 1, questions: 6, roles: 'Employee, Manager',
       intent: 'Could not answer about leave', signal: 'A prepared action was discarded', role: 'Employee', locale: 'Malay',
-      example: 'Can NAME_A take leave on DATE_A?', expectation: 'Gives the balance in one line.' };
+      example: 'Can NAME_A take leave on DATE_A?', expectation: 'Gives the balance in one line.',
+      // AI v2 Phase 2 hardening: arguments of the grouped swings and the standing-rule proposals (aiCentre.payrollCycle.groups.*,
+      // aiCentre.payrollCycle.acknowledgements.*).
+      change: '+12.5%', causes: 'Salary change', check: 'Pay without attendance', runs: 6 };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });

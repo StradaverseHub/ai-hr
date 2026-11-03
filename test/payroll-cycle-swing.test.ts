@@ -54,8 +54,10 @@ describe('the net-swing flag: the pay-difference service\'s change, as a share o
   expect(netSwingFor('e2',[SEPTEMBER,OCT_ALLOWANCE],input())).toEqual({employmentId:'e2',changed:true,swingBp:2328,direction:'up',
    pattern:`item:${MEAL_ID}`,causes:[],flagged:true,excluded:false});
   expect(netSwingFor('e2',[SEPTEMBER,OCT_ALLOWANCE],input({exclusions:[`item:${MEAL_ID}`]}))).toMatchObject({swingBp:2328,flagged:false,excluded:true});
-  // A cause can be excluded too; a different exclusion changes nothing.
-  expect(netSwingFor('e1',[SEPTEMBER,OCT_REGULAR,OCT_BONUS],input({exclusions:['cause:salary_change']}))).toMatchObject({flagged:false,excluded:true});
+  // A cause can be excluded too, but (Phase 2 hardening) it explains a change only when it is the only cause and the swing
+  // is under twice the threshold: here a second cause (the additional run) and a swing of 31.08%, over twice 15%, so the
+  // person is still flagged. test/payroll-loops-hardening.test.ts covers each side. A different exclusion changes nothing.
+  expect(netSwingFor('e1',[SEPTEMBER,OCT_REGULAR,OCT_BONUS],input({exclusions:['cause:salary_change']}))).toMatchObject({flagged:true,excluded:false});
   expect(netSwingFor('e1',[SEPTEMBER,OCT_REGULAR,OCT_BONUS],input({exclusions:[`item:${MEAL_ID}`]}))).toMatchObject({flagged:true,excluded:false});
  });
  it('keeps a learned pattern when the component is renamed, and never guesses between two components of one name',()=>{

@@ -10,17 +10,20 @@
 --
 -- WHAT IT RETURNS. For an employment that is the calling login's OWN current employment (the login's person, not
 -- archived or blocked, no agent principal, a current principal snapshot, not terminated before today), one row with
--- that employment's company's cut_off_day (NULL when the company sets none, which the payroll owner reads as month
--- end). For any other employment (another person's, another company's, a terminated one, an unknown id) or a caller with
--- no employment: no row. Nothing else from the payroll configuration (no pay day, no per-type cut-off, no policy), and
--- nothing about any other company or person.
+-- that employment's company's cut-off days: the salary cut_off_day and, since the Phase 2 hardening (4 November 2026,
+-- while unapplied), the per-type ones the payroll owner resolves each input's window from (attendance, overtime, claim and
+-- unpaid leave). Each is NULL when the company sets none, which the payroll owner reads as the salary cut-off or the month
+-- end (core/payroll-policy-config.ts cutOffWindowFor). For any other employment (another person's, another company's, a
+-- terminated one, an unknown id) or a caller with no employment: no row. Nothing else from the payroll configuration (no
+-- pay day, no policy, no amount), and nothing about any other company or person.
 --
 -- Function rules: SECURITY DEFINER with a fixed search_path; STABLE; plain SQL, no dynamic SQL; REVOKE ALL FROM PUBLIC,
 -- EXECUTE granted to the application role only. No table, column, constraint or policy changes, so no writer review.
 
-CREATE FUNCTION app.own_payroll_cut_off_day(p_employment uuid) RETURNS TABLE(cut_off_day integer)
+CREATE FUNCTION app.own_payroll_cut_off_day(p_employment uuid) RETURNS TABLE(cut_off_day integer,attendance_cut_off_day integer,
+ overtime_cut_off_day integer,claim_cut_off_day integer,unpaid_leave_cut_off_day integer)
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT cfg.cut_off_day
+ SELECT cfg.cut_off_day,cfg.attendance_cut_off_day,cfg.overtime_cut_off_day,cfg.claim_cut_off_day,cfg.unpaid_leave_cut_off_day
  FROM public.app_user u
  JOIN public.employment e ON e.person_id=u.person_id AND e.tenant_id=u.tenant_id
  LEFT JOIN public.company_payroll_config cfg ON cfg.company_id=e.company_id AND cfg.tenant_id=e.tenant_id

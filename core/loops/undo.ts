@@ -8,12 +8,16 @@
  *     employee's own undo, the loop compensates its own action under its sponsor's CURRENT authority, re-read from the
  *     database (the same resolution the runner uses), and records the employee who asked; a sponsor who lost
  *     administrator access cannot, and the employee is told to ask HR.
- *  3. The owner compensates, in a transaction carrying the loop's attribution with who asked (core/loops/attribution.ts),
- *     so the compensating record says the loop carried it out at the employee's or HR's request, for its sponsor: a
- *     missed clock-out's compensating correction (core/loops/act-clock-outs.ts compensateClockOutTx), or the withdrawal of
- *     a sent request (core/loops/act-requests.ts withdrawRequestTx). In the same transaction the undo row and an audit
- *     event are written. The database refuses the undo row after the deadline, for an action not applied, or by anyone
- *     who does not administer the employment.
+ *  3. The owner compensates, and THE PERSON'S UNDO IS RECORDED AS THAT PERSON (Phase 2 hardening, 4 November 2026):
+ *     - HR's undo is HR's own act under HR's own authority, with no loop attribution: the compensating correction or the
+ *       withdrawal is HR's, and so is its event;
+ *     - the employee's own undo of a missed clock-out needs an administrator's authority for the compensating correction,
+ *       so only that correction carries the loop's attribution naming the employee who asked (core/loops/attribution.ts);
+ *       the attribution is then cleared, so nothing else in the transaction is the agent's;
+ *     - a withdrawn request has no owner record but its notice event, written as the person who asked.
+ *     In the same transaction the undo row (undone by that person) and the `teras-loop.action.undone` event, whose actor
+ *     is that person, are written. The database refuses the undo row after the deadline, for an action not applied, or
+ *     by anyone who does not administer the employment.
  * The case then reopens on the loop's next run as a card for the person to confirm their own time. Only the person's
  * explicit press undoes (`confirm: true`). Errors are bounded to a refusal code. No model. Never throws. */
 import {and,eq,sql} from 'drizzle-orm';
@@ -24,7 +28,7 @@ import {terasLoopAction,terasLoopActionUndo} from '../../db/teras-autonomy-schem
 import {isAdmin} from '../../lib/authz-model';
 import {LoopUndoRefused,compensateClockOutTx} from './act-clock-outs';
 import {withdrawRequestTx} from './act-requests';
-import {attributionForTx,setLoopAttributionTx} from './attribution';
+import {attributionForTx,clearLoopAttributionTx,setLoopAttributionTx} from './attribution';
 import type {UndoneBy} from './autonomy-types';
 import type {LoopId} from './types';
 
@@ -85,12 +89,18 @@ export async function undoLoopAction(supplied:SessionContext,input:Readonly<{act
     .from(terasLoopAction).leftJoin(terasLoopActionUndo,eq(terasLoopActionUndo.actionId,terasLoopAction.id))
     .where(and(eq(terasLoopAction.tenantId,ctx.tenantId),eq(terasLoopAction.id,actionId))).limit(1);
    if(!current||current.state!=='applied'||current.undone!==null)throw new LoopUndoRefused('changed');
-   // The loop carries the compensation out, at the employee's or HR's request, for its sponsor.
-   await setLoopAttributionTx(tx,await attributionForTx(tx,{workerId:seen.workerId,principalId:seen.agentPrincipalId,actionId,employmentId:seen.employmentId,
-    sponsorUserId:seen.sponsorUserId,askedBy:by,askedByUserId:ctx.userId!}));
-   const compensationRef=seen.workerId==='loop_missed_clock_outs'
-    ?await compensateClockOutTx(tx,authority,{actionId,employmentId:seen.employmentId,facts:current.facts,by})
-    :await withdrawRequestTx(tx,authority,{actionId,employmentId:seen.employmentId,facts:current.facts,by,principalId:seen.agentPrincipalId});
+   let compensationRef:string;
+   if(seen.workerId==='loop_missed_clock_outs'){
+    // Only the employee's own undo borrows the sponsor's authority, so only its correction names the loop (and the
+    // employee who asked); HR's undo is HR's own correction.
+    if(!own)compensationRef=await compensateClockOutTx(tx,authority,{actionId,employmentId:seen.employmentId,facts:current.facts,by});
+    else{
+     await setLoopAttributionTx(tx,await attributionForTx(tx,{workerId:seen.workerId,principalId:seen.agentPrincipalId,actionId,employmentId:seen.employmentId,
+      sponsorUserId:seen.sponsorUserId,askedBy:by,askedByUserId:ctx.userId!}));
+     compensationRef=await compensateClockOutTx(tx,authority,{actionId,employmentId:seen.employmentId,facts:current.facts,by});
+     await clearLoopAttributionTx(tx);
+    }
+   }else compensationRef=await withdrawRequestTx(tx,authority,{actionId,employmentId:seen.employmentId,facts:current.facts,by,askedByUserId:ctx.userId!});
    await tx.insert(terasLoopActionUndo).values({actionId,tenantId:ctx.tenantId,undoneBy:by,undoneByUserId:ctx.userId!,compensationRef});
    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'teras-loop-action',aggregateId:actionId,eventType:'teras-loop.action.undone',
     actor:{type:'user',id:ctx.userId!},subjectEmploymentId:seen.employmentId,payload:{workerId:seen.workerId,by,compensationRef,date:current.facts.date??null}});

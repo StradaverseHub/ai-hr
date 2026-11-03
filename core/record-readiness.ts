@@ -97,6 +97,11 @@ export type ReadinessInput = {
   socsoNumber: string | null;
   bankAccountNo: string | null;
   hasComp: boolean;
+  /** AI v2 Phase 2 hardening — the statutory owner's own exemptions (employee_statutory_my). Absent means "not exempt",
+   *  so a caller that does not read them keeps asking exactly as before. */
+  epfMode?: string | null;
+  subjectToSocso?: boolean | null;
+  eisEligible?: boolean | null;
 };
 
 const blank = (v: string | null | undefined) => v == null || v.trim() === '';
@@ -124,8 +129,11 @@ export function gapsForRecord(r: ReadinessInput): ReadinessGapId[] {
   // foreign worker for a record that is complete.
   if (blank(r.ic) && blank(r.passport)) out.push('no_identity');
   if (blank(r.taxNumber)) out.push('no_tax_number');
-  if (blank(r.epfNumber)) out.push('no_epf_number');
-  if (blank(r.socsoNumber)) out.push('no_socso_number');
+  // DATA-AWARE (AI v2 Phase 2 hardening, owner input 17): someone legitimately exempt from EPF needs no EPF number, and
+  // someone neither subject to SOCSO nor eligible for EIS needs no SOCSO/EIS number. The exemption is the statutory
+  // owner's own fact; nothing else changes.
+  if (blank(r.epfNumber) && r.epfMode !== 'exempt') out.push('no_epf_number');
+  if (blank(r.socsoNumber) && !(r.subjectToSocso === false && r.eisEligible === false)) out.push('no_socso_number');
   return out;
 }
 
@@ -169,6 +177,9 @@ export async function readinessSnapshot(tx: Tx, peopleLimit = PEOPLE_PER_GAP, ad
         epfNumber: schema.employeeStatutoryMy.epfNumber,
         socsoNumber: schema.employeeStatutoryMy.socsoNumber,
         bankAccountNo: schema.employeeStatutoryMy.bankAccountNo,
+        epfMode: schema.employeeStatutoryMy.epfMode,
+        subjectToSocso: schema.employeeStatutoryMy.subjectToSocso,
+        eisEligible: schema.employeeStatutoryMy.eisEligible,
         // EXISTS rather than a join: an employment may carry many compensation rows over time and a join
         // would multiply every employee by their salary history before the gaps were even counted.
         hasComp: sql<boolean>`exists (

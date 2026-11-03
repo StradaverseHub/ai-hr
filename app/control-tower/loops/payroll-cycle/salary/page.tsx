@@ -2,18 +2,24 @@ import Link from 'next/link';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { salaryLoopPage, type SalaryRunView, type SwingFlagView } from '@/core/loops/payroll-cycle-views';
-import { Card, ErrorBanner, PageHeader, SectionHeader, btnGhost, pageWideCls } from '@/components/ui';
+import { acknowledgedBlocks, swingFlagGroups } from '@/core/loops/grouped-dispositions';
+import { Card, ErrorBanner, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../../operations-tabs';
-import { recordSwingDispositionAction } from '../actions';
+import { acknowledgeCheckAction, disposeSwingGroupAction, recordSwingDispositionAction, resolveAcknowledgedBlockAction } from '../actions';
 
 /** AI v2 P2-2a — the Salary payroll loop's page: each company's runs for the month (regular, bonus and off-cycle) with
  * their checks as the loop's last run recorded them, and the net-swing flags for payroll HR's disposition. Payroll
  * administrators only (core/loops/payroll-cycle-views.ts salaryLoopPage reads only companies the viewer may run payroll
  * for). The loop stays at Prepare: this page starts, approves or closes nothing; each run opens on the payroll workbench,
  * where a person does that. A disposition changes no pay. No mock-up covers this page: it follows the loop pages' own
- * tables and buttons (core vocabulary, no new colour). */
-const ERRORS = ['invalid', 'refused', 'changed', 'already', 'failed'] as const;
+ * tables and buttons (core vocabulary, no new colour).
+ * Phase 2 hardening: the open flags are also shown grouped by what moved the pay (company, month and pattern), each group
+ * with its evidence and one tap for all of it (core/loops/grouped-dispositions.ts); a flag can be acknowledged as
+ * standing "expected" for its person (core/loops/acknowledgements.ts); and a blocking exception a standing acknowledgement
+ * covers is listed with its one-tap resolve pre-filled (a person still presses it). */
+const ERRORS = ['invalid', 'refused', 'changed', 'already', 'failed', 'own'] as const;
+const SAVED = ['disposition', 'grouped', 'acknowledged', 'resolved'] as const;
 const DONE = 'text-emerald-700 dark:text-emerald-300';
 const ATTENTION = 'text-amber-700 dark:text-amber-300';
 const link = 'inline-flex min-h-9 items-center text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11';
@@ -22,7 +28,14 @@ export default async function SalaryLoopPage({ searchParams }: { searchParams: P
   const s = await requireAdmin();
   const query = await searchParams;
   const [t, f, view] = await Promise.all([getTranslations('aiCentre.payrollCycle'), getFormatter(), salaryLoopPage(s, { period: query.period, companyId: query.company })]);
-  const error = ERRORS.find(code => code === query.error);
+  const error = ERRORS.find(code => code === query.error), saved = SAVED.find(code => code === query.saved);
+  const groups = swingFlagGroups(view.flags);
+  // The anomaly layer's own detector names (messages anomaly.detector.*), keyed in camel case.
+  const ta = await getTranslations('anomaly');
+  const detectorName = (id: string) => ta(`detector.${id.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())}`);
+  const blocks = await acknowledgedBlocks(s, { companyIds: view.companies.map(c => c.companyId), payPeriod: view.period });
+  const stay = (<><input type="hidden" name="back" value="salary" /><input type="hidden" name="period" value={view.period} />
+    {view.filter && <input type="hidden" name="company" value={view.filter} />}</>);
   const month = (period: string) => f.dateTime(new Date(`${period}-01T00:00:00Z`), { month: 'long', year: 'numeric', timeZone: 'UTC' });
   const day = (iso: string) => f.dateTime(new Date(`${iso}T00:00:00Z`), { dateStyle: 'medium', timeZone: 'UTC' });
   const percent = (bp: number) => f.number(bp / 10_000, { style: 'percent', maximumFractionDigits: 1 });
@@ -37,7 +50,7 @@ export default async function SalaryLoopPage({ searchParams }: { searchParams: P
       <PageHeader back={{ href: back, label: t('backToCycle') }} title={t('salaryPage.title', { month: month(view.period) })} description={t('salaryPage.description')}
         actions={<span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium">{t('salaryPage.level')}</span>} />
       {error && <ErrorBanner message={t(`errors.${error}`)} />}
-      {query.saved === 'disposition' && <p role="status" className="rounded-lg border border-border bg-muted/50 p-3 text-sm">{t('saved.disposition')}</p>}
+      {saved && <p role="status" className="rounded-lg border border-border bg-muted/50 p-3 text-sm">{t(`saved.${saved}`)}</p>}
       {!view.loop.on && <p className="rounded-lg border border-border bg-muted/50 p-3 text-sm">{t('salaryPage.off')}</p>}
       {view.companies.length === 0 && <Card className="p-4 text-sm text-muted-foreground">{t('salaryPage.noCompanies')}</Card>}
 
@@ -86,6 +99,54 @@ export default async function SalaryLoopPage({ searchParams }: { searchParams: P
         </Card>
       ))}
 
+      {groups.length > 0 && <Card className="overflow-hidden" data-swing-groups>
+        <SectionHeader title={t('groups.title')} subtitle={t('groups.help')} />
+        <ul className="m-0 flex list-none flex-col divide-y divide-border border-t border-border p-0">
+          {groups.map(group => (
+            <li key={`${group.companyId}:${group.payPeriod}:${group.pattern}`} data-swing-group={group.pattern} className="flex flex-col gap-2 px-4 py-3 text-sm">
+              <p className="m-0 font-medium">{t('groups.heading', { pattern: pattern(group.pattern), count: group.members.length })}
+                {group.companyName && <span className="ml-2 text-xs font-normal text-muted-foreground">{group.companyName}</span>}</p>
+              <ul className="m-0 flex list-none flex-col gap-1 p-0 text-xs text-muted-foreground" data-group-evidence>
+                {group.members.map(member => (
+                  <li key={member.caseId}>{t('groups.member', { name: member.personName ?? t('flags.unnamed'),
+                    change: t(member.direction === 'down' ? 'flags.down' : 'flags.up', { swing: percent(member.swingBp) }),
+                    causes: member.causes.length ? member.causes.map(kind => t(`causes.${kind}`)).join(', ') : '—' })}</li>
+                ))}
+              </ul>
+              <div className="flex flex-wrap gap-2">
+                {(['expected', 'problem'] as const).map(value => (
+                  <form key={value} action={disposeSwingGroupAction}>
+                    {stay}<input type="hidden" name="target" value={group.companyId} /><input type="hidden" name="pattern" value={group.pattern} />
+                    <input type="hidden" name="disposition" value={value} />
+                    <button type="submit" className={cn(value === 'expected' ? btnPrimary : btnGhost, 'pointer-coarse:min-h-11')}
+                      aria-label={`${t(`groups.mark.${value}`, { count: group.members.length })} · ${pattern(group.pattern)}`}>{t(`groups.mark.${value}`, { count: group.members.length })}</button>
+                  </form>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ul>
+        <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('groups.note')}</p>
+      </Card>}
+
+      {blocks.length > 0 && <Card className="overflow-hidden" data-acknowledged-blocks>
+        <SectionHeader title={t('acknowledgedBlocks.title')} subtitle={t('acknowledgedBlocks.help')} />
+        <ul className="m-0 flex list-none flex-col divide-y divide-border border-t border-border p-0">
+          {blocks.map(block => (
+            <li key={block.verdictId} data-acknowledged-block={block.verdictId} className="flex flex-col gap-2 px-4 py-3 text-sm">
+              <p className="m-0 font-medium">{block.personName ?? t('flags.unnamed')}
+                <span className="ml-2 text-xs font-normal text-muted-foreground">{block.detectors.map(detectorName).join(', ')}</span></p>
+              <form action={resolveAcknowledgedBlockAction} className="flex flex-wrap items-end gap-2">
+                {stay}<input type="hidden" name="target" value={block.companyId} /><input type="hidden" name="verdict" value={block.verdictId} />
+                <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('acknowledgedBlocks.prefilled')}</span>
+                  <input readOnly value={block.reason} className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
+                <button type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${t('acknowledgedBlocks.resolve')} · ${block.personName ?? t('flags.unnamed')}`}>{t('acknowledgedBlocks.resolve')}</button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      </Card>}
+
       <Card className="overflow-hidden">
         <SectionHeader title={t('flags.title')} subtitle={t('flags.help')} />
         {view.flags.length === 0 ? <p className="px-4 pb-4 text-sm text-muted-foreground">{t('flags.none')}</p> : (
@@ -129,6 +190,16 @@ function FlagRow({ flag, period, filter, t, percent, pattern }: { flag: SwingFla
               <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t(`flags.mark.${value}`)} · ${who}`}>{t(`flags.mark.${value}`)}</button>
             </form>
           ))}
+          {flag.employmentId && <form action={acknowledgeCheckAction} className="flex w-full flex-wrap items-end gap-2" data-acknowledge-flag>
+            <input type="hidden" name="back" value="salary" /><input type="hidden" name="period" value={period} />{filter && <input type="hidden" name="company" value={filter} />}
+            <input type="hidden" name="target" value={flag.companyId} /><input type="hidden" name="check" value="swing:net_swing" />
+            <input type="hidden" name="scope" value="person" /><input type="hidden" name="employment" value={flag.employmentId} />
+            <label className="flex min-w-40 flex-1 flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('acknowledge.reason')}</span>
+              <input name="reason" required maxLength={500} className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
+            <label className="flex flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('acknowledge.reviewOn')}</span>
+              <input type="date" name="reviewOn" className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
+            <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('acknowledge.person')} · ${who}`}>{t('acknowledge.person')}</button>
+          </form>}
         </div>}</td>
     </tr>
   );

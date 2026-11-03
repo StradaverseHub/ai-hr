@@ -11,8 +11,15 @@
  *  - the control findings, open and disposed, and the repeat issues: checks that found something this month and last month
  *    too, which the next Pre-salary loop reads (`repeatAuditIssues`);
  *  - the captures: how many, the latest, and the chain head.
- * Done when every run is closed and released, every statutory file is filed with a receipt, no finding is open and every
- * correction has a root cause. The loop stays at Prepare: it never files, submits, closes or changes anything.
+ * Done when every run is closed and released, every statutory file the month REQUIRES is filed with a receipt, no finding is
+ * open and every correction has a root cause. The loop stays at Prepare: it never files, submits, closes or changes anything.
+ * Phase 2 hardening (4 November 2026), data-aware: the HRD Corp levy is required only from a company liable for it (its
+ * HRD registration is not `not_registered`, or a payslip of the month carries a levy), and PCB (CP39) only when a payslip
+ * of the month deducted PCB; a form the month does not require is shown as such and never holds "done". A shared bank
+ * account is one finding until it is disposed of, so an open one first seen in an earlier month is carried into the
+ * month's findings (and holds "done") until a person disposes of it. A finding a standing "expected" acknowledgement covers
+ * (core/loops/acknowledgements.ts, owner ruling 19: every Audit loop check is a warning) leaves the open and repeat-issue
+ * counts but stays listed, marked with the acknowledgement, and its disposition form is pre-filled from it.
  * Group or HR administrators only, under their own row-level security; counts come straight from their owners. */
 import {and,count,desc,eq,inArray,max,sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
@@ -22,19 +29,25 @@ import {isAdmin,isGroupAdmin} from '../../lib/authz-model';
 import {postRunCorrectionsTx,type PostRunCorrection} from './corrections';
 import {latestDispositionsTx} from './controls';
 import {controlSettingsTx,type AuditControlSettings} from './settings';
+import {acknowledgementFor,acknowledgementsTx,currentDepartmentsTx,type Acknowledgement} from '../loops/acknowledgements';
 import {AUDIT_LOOP_ID,AUDIT_STATUTORY_FORMS,PAYROLL_ACCESS_EVENT,PAYSLIP_OPENED_EVENT,STATUTORY_DUE_DAY,STATUTORY_FORM_TYPES,isPayPeriod,
  type AuditControlId,type AuditDisposition,type AuditStatutoryForm} from './types';
 
 export class AuditViewRefused extends Error{constructor(readonly reason:'not_administrator'|'invalid'){super('Audit view refused: '+reason);this.name='AuditViewRefused';}}
 
-export type AuditFormStatus=Readonly<{form:AuditStatutoryForm;prepared:boolean;preparedOn:string|null;beforeDue:boolean|null;filed:boolean;filedOn:string|null;receipt:boolean}>;
+export type AuditFormStatus=Readonly<{form:AuditStatutoryForm;
+ /** Whether the month requires this file of the company (HRD: liable for the levy; PCB: any PCB deducted). */
+ required:boolean;prepared:boolean;preparedOn:string|null;beforeDue:boolean|null;filed:boolean;filedOn:string|null;receipt:boolean}>;
 export type AuditRunStatus=Readonly<{batchId:string;runType:string;runSeq:number;status:string;closedAt:Date|null;releasedAt:Date|null}>;
-export type AuditFindingView=Readonly<{id:string;controlId:AuditControlId;batchId:string|null;employmentId:string|null;personName:string|null;employeeCode:string|null;
- detectedAt:Date;evidence:Record<string,unknown>;evidenceHash:string;disposition:AuditDisposition|null;note:string|null;disposedBy:string|null;disposedAt:Date|null}>;
+export type FindingAcknowledgement=Readonly<{id:string;scope:'person'|'group'|'company';reason:string;reviewOn:string|null}>;
+export type AuditFindingView=Readonly<{id:string;companyId?:string;controlId:AuditControlId;batchId:string|null;employmentId:string|null;personName:string|null;employeeCode:string|null;
+ detectedAt:Date;evidence:Record<string,unknown>;evidenceHash:string;disposition:AuditDisposition|null;note:string|null;disposedBy:string|null;disposedAt:Date|null;
+ /** A standing "expected" acknowledgement covering this finding, if any (Phase 2 hardening). */
+ acknowledgement?:FindingAcknowledgement|null}>;
 export type AuditCompanyStatus=Readonly<{companyId:string;companyName:string;paused:boolean;runs:readonly AuditRunStatus[];
  payslips:Readonly<{total:number;released:number;opened:number}>;statutory:readonly AuditFormStatus[];
  bank:Readonly<{files:number;byBank:readonly Readonly<{bank:string|null;format:string;files:number;records:number;totalCents:number}>[]}>;
- corrections:Readonly<{count:number;withoutRootCause:number}>;findings:Readonly<{open:number;disposed:number}>;repeatIssues:readonly AuditControlId[];
+ corrections:Readonly<{count:number;withoutRootCause:number}>;findings:Readonly<{open:number;disposed:number;acknowledged?:number}>;repeatIssues:readonly AuditControlId[];
  captures:Readonly<{count:number;lastAt:Date|null;head:string|null}>;settings:AuditControlSettings;done:boolean}>;
 export type AuditLoopSummary=Readonly<{payPeriod:string;dueDate:string;level:'prepare';loop:Readonly<{on:boolean;sponsorUserId:string|null;sponsorName:string|null}>;
  companies:readonly AuditCompanyStatus[];
@@ -62,6 +75,14 @@ async function formsTx(tx:Tx,tenantId:string,companyId:string,payPeriod:string):
   and d.event_type=${PAYROLL_ACCESS_EVENT} and d.payload->>'surface'='statutory_file' and d.payload->>'companyId'=${companyId} and d.payload->>'payPeriod'=${payPeriod}`);
  const receipts=await rows(tx,sql`select p.paid_on,p.receipt_ref from public.pcb_payment p where p.tenant_id=${tenantId}::uuid and p.company_id=${companyId}::uuid
   and p.period_key=${payPeriod} and coalesce(btrim(p.receipt_ref),'')<>''`);
+ // What the month requires, from the owners' own facts: any PCB deducted; HRD liability or any levy charged.
+ const [need]=await rows(tx,sql`select
+  exists(select 1 from public.payslip s join public.payroll_batch b on b.id=s.batch_id where b.tenant_id=${tenantId}::uuid and b.company_id=${companyId}::uuid
+   and b.pay_period=${payPeriod} and b.history_import_attempt_id is null and coalesce((s.statutory->>'pcb')::numeric,0)>0) as pcb,
+  exists(select 1 from public.payslip s join public.payroll_batch b on b.id=s.batch_id where b.tenant_id=${tenantId}::uuid and b.company_id=${companyId}::uuid
+   and b.pay_period=${payPeriod} and b.history_import_attempt_id is null and coalesce((s.statutory->>'hrdf')::numeric,0)>0)
+  or exists(select 1 from public.company_statutory_my c where c.tenant_id=${tenantId}::uuid and c.company_id=${companyId}::uuid and c.hrdf_status<>'not_registered') as hrd`);
+ const required=(form:AuditStatutoryForm)=>form==='pcb_cp39'?need?.pcb===true:form==='hrd'?need?.hrd===true:true;
  return AUDIT_STATUTORY_FORMS.map(form=>{
   const types=STATUTORY_FORM_TYPES[form];
   const prepared=[...reports.filter(row=>types.includes(String(row.report_type))).map(row=>klDay(row.generated_at)),
@@ -69,7 +90,7 @@ async function formsTx(tx:Tx,tenantId:string,companyId:string,payPeriod:string):
   const filed=reports.filter(row=>types.includes(String(row.report_type))&&filedStatuses.includes(String(row.status))&&String(row.ack_ref??'').trim()!=='');
   const filedOn=[...filed.map(row=>dayOf(row.filed_on)),...(form==='pcb_cp39'?receipts.map(row=>dayOf(row.paid_on)):[])].filter((day):day is string=>!!day).sort();
   const preparedOn=prepared[0]??null,isFiled=filed.length>0||(form==='pcb_cp39'&&receipts.length>0);
-  return Object.freeze({form,prepared:prepared.length>0,preparedOn,beforeDue:preparedOn?preparedOn<=due:null,filed:isFiled,filedOn:filedOn[0]??null,receipt:isFiled});
+  return Object.freeze({form,required:required(form),prepared:prepared.length>0,preparedOn,beforeDue:preparedOn?preparedOn<=due:null,filed:isFiled,filedOn:filedOn[0]??null,receipt:isFiled});
  });
 }
 
@@ -89,28 +110,52 @@ async function companyStatusTx(tx:Tx,ctx:SessionContext,item:{id:string;name:str
   and d.payload->>'periodKey'=${payPeriod} group by bp.bank,x.format order by x.format,bp.bank`))
   .map(row=>Object.freeze({bank:row.bank==null?null:String(row.bank),format:String(row.format),files:Number(row.files),records:Number(row.records),totalCents:Number(row.total_cents)}));
  const corrections=await postRunCorrectionsTx(tx,ctx.tenantId,{companyId:item.id,payPeriod});
- const findings=await tx.select({id:payrollAuditFinding.id,controlId:payrollAuditFinding.controlId}).from(payrollAuditFinding)
+ const own=await tx.select({id:payrollAuditFinding.id,controlId:payrollAuditFinding.controlId,employmentId:payrollAuditFinding.employmentId}).from(payrollAuditFinding)
   .where(and(eq(payrollAuditFinding.tenantId,ctx.tenantId),eq(payrollAuditFinding.companyId,item.id),eq(payrollAuditFinding.payPeriod,payPeriod)));
+ // A shared bank account first seen in an earlier month and not yet disposed of is still this month's finding.
+ const earlier=await tx.select({id:payrollAuditFinding.id,controlId:payrollAuditFinding.controlId,employmentId:payrollAuditFinding.employmentId}).from(payrollAuditFinding)
+  .where(and(eq(payrollAuditFinding.tenantId,ctx.tenantId),eq(payrollAuditFinding.companyId,item.id),eq(payrollAuditFinding.controlId,'shared_bank_account'),
+   sql`${payrollAuditFinding.payPeriod}<${payPeriod}`));
+ const earlierLatest=await latestDispositionsTx(tx,ctx.tenantId,earlier.map(row=>row.id));
+ const findings=[...own,...earlier.filter(row=>!earlierLatest.has(row.id))];
  const latest=await latestDispositionsTx(tx,ctx.tenantId,findings.map(row=>row.id));
+ // Standing acknowledgements: an acknowledged finding is expected, not an open exception (it stays listed).
+ const covered=await acknowledgedFindingsTx(tx,ctx.tenantId,item.id,findings);
  const previous=await tx.selectDistinct({controlId:payrollAuditFinding.controlId}).from(payrollAuditFinding)
   .where(and(eq(payrollAuditFinding.tenantId,ctx.tenantId),eq(payrollAuditFinding.companyId,item.id),eq(payrollAuditFinding.payPeriod,prevMonth(payPeriod))));
  const before=new Set(previous.map(row=>row.controlId));
- const repeatIssues=[...new Set(findings.map(row=>row.controlId))].filter(id=>before.has(id)).sort();
+ const repeatIssues=[...new Set(own.filter(row=>!covered.has(row.id)).map(row=>row.controlId))].filter(id=>before.has(id)).sort();
  const [captures]=await tx.select({n:count(),lastAt:max(payrollAuditCapture.capturedAt)}).from(payrollAuditCapture)
   .where(and(eq(payrollAuditCapture.tenantId,ctx.tenantId),eq(payrollAuditCapture.companyId,item.id),eq(payrollAuditCapture.payPeriod,payPeriod)));
  const [head]=await tx.select({hash:payrollAuditCapture.chainHash}).from(payrollAuditCapture)
   .where(and(eq(payrollAuditCapture.tenantId,ctx.tenantId),eq(payrollAuditCapture.companyId,item.id),eq(payrollAuditCapture.payPeriod,payPeriod)))
   .orderBy(desc(payrollAuditCapture.seq)).limit(1);
- const open=findings.filter(row=>!latest.has(row.id)).length;
+ const open=findings.filter(row=>!latest.has(row.id)&&!covered.has(row.id)).length;
+ const acknowledged=findings.filter(row=>!latest.has(row.id)&&covered.has(row.id)).length;
  const withoutRootCause=corrections.filter(row=>!row.rootCause).length;
- const done=runs.length>0&&runs.every(run=>run.status==='closed'&&run.releasedAt!==null)&&statutory.every(form=>form.filed)&&open===0&&withoutRootCause===0;
+ const done=runs.length>0&&runs.every(run=>run.status==='closed'&&run.releasedAt!==null)&&statutory.every(form=>!form.required||form.filed)&&open===0&&withoutRootCause===0;
  const status:AuditCompanyStatus=Object.freeze({companyId:item.id,companyName:item.name,paused:item.paused,runs:Object.freeze(runs),
   payslips:Object.freeze({total:Number(slips?.total??0),released:Number(slips?.released??0),opened:Number(opened?.n??0)}),statutory:Object.freeze(statutory),
   bank:Object.freeze({files:banks.reduce((n,row)=>n+row.files,0),byBank:Object.freeze(banks)}),
-  corrections:Object.freeze({count:corrections.length,withoutRootCause}),findings:Object.freeze({open,disposed:findings.length-open}),
+  corrections:Object.freeze({count:corrections.length,withoutRootCause}),findings:Object.freeze({open,disposed:findings.length-open-acknowledged,acknowledged}),
   repeatIssues:Object.freeze(repeatIssues),captures:Object.freeze({count:Number(captures?.n??0),lastAt:captures?.lastAt??null,head:head?.hash??null}),
   settings:await controlSettingsTx(tx,ctx.tenantId,item.id),done});
  return {status,corrections,findingIds:findings.map(row=>row.id)};
+}
+
+/** Which of a company's findings a standing acknowledgement covers, and by which (findings with no person are covered only
+ * by a company-wide acknowledgement of their check). */
+export async function acknowledgedFindingsTx(tx:Tx,tenantId:string,companyId:string,findings:readonly Readonly<{id:string;controlId:string;employmentId:string|null}>[]):Promise<Map<string,Acknowledgement>>{
+ const out=new Map<string,Acknowledgement>();
+ if(!findings.length)return out;
+ const list=await acknowledgementsTx(tx,tenantId,[companyId]).catch(()=>[] as Acknowledgement[]);
+ if(!list.length)return out;
+ const departments=await currentDepartmentsTx(tx,findings.flatMap(row=>row.employmentId?[row.employmentId]:[]));
+ for(const row of findings){
+  const ack=acknowledgementFor(list,{companyId,checkId:`audit:${row.controlId}`,employmentId:row.employmentId,departmentId:row.employmentId?departments.get(row.employmentId)??null:null});
+  if(ack)out.set(row.id,ack);
+ }
+ return out;
 }
 
 async function scopeTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[]|undefined){
@@ -123,8 +168,8 @@ async function scopeTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[]|und
 
 const totalsOf=(companies:readonly AuditCompanyStatus[])=>Object.freeze({
  payslips:companies.reduce((n,c)=>n+c.payslips.total,0),released:companies.reduce((n,c)=>n+c.payslips.released,0),opened:companies.reduce((n,c)=>n+c.payslips.opened,0),
- formsPrepared:companies.reduce((n,c)=>n+c.statutory.filter(f=>f.prepared).length,0),formsFiled:companies.reduce((n,c)=>n+c.statutory.filter(f=>f.filed).length,0),
- forms:companies.length*AUDIT_STATUTORY_FORMS.length,bankFiles:companies.reduce((n,c)=>n+c.bank.files,0),
+ formsPrepared:companies.reduce((n,c)=>n+c.statutory.filter(f=>f.required&&f.prepared).length,0),formsFiled:companies.reduce((n,c)=>n+c.statutory.filter(f=>f.required&&f.filed).length,0),
+ forms:companies.reduce((n,c)=>n+c.statutory.filter(f=>f.required).length,0),bankFiles:companies.reduce((n,c)=>n+c.bank.files,0),
  corrections:companies.reduce((n,c)=>n+c.corrections.count,0),correctionsWithoutRootCause:companies.reduce((n,c)=>n+c.corrections.withoutRootCause,0),
  openFindings:companies.reduce((n,c)=>n+c.findings.open,0),repeatIssues:companies.reduce((n,c)=>n+c.repeatIssues.length,0),
  captures:companies.reduce((n,c)=>n+c.captures.count,0),companiesDone:companies.filter(c=>c.done).length});
@@ -166,13 +211,20 @@ export async function auditLoopDetail(ctx:SessionContext,input:Readonly<{payPeri
    corrections.push(...result.corrections.map(row=>Object.freeze({...row,companyId:item.id,companyName:item.name})));
   }
   const latest=await latestDispositionsTx(tx,ctx.tenantId,findingIds);
-  const found=findingIds.length?await rows(tx,sql`select f.id,f.control_id,f.batch_id,f.employment_id,f.detected_at,f.evidence,f.evidence_hash,p.full_name,e.employee_code
+  const acks=new Map<string,Acknowledgement>();
+  const found=findingIds.length?await rows(tx,sql`select f.id,f.company_id,f.control_id,f.batch_id,f.employment_id,f.detected_at,f.evidence,f.evidence_hash,p.full_name,e.employee_code
    from public.payroll_audit_finding f left join public.employment e on e.id=f.employment_id left join public.person p on p.id=e.person_id
    where f.tenant_id=${ctx.tenantId}::uuid and f.id in (${sql.join(findingIds.map(id=>sql`${id}::uuid`),sql`,`)}) order by f.detected_at desc,f.id`):[];
-  const findings=found.map(row=>{const d=latest.get(String(row.id));return Object.freeze({id:String(row.id),controlId:row.control_id as AuditControlId,
+  for(const companyId of new Set(found.map(row=>String(row.company_id)))){
+   const covered=await acknowledgedFindingsTx(tx,ctx.tenantId,companyId,found.filter(row=>String(row.company_id)===companyId)
+    .map(row=>({id:String(row.id),controlId:String(row.control_id),employmentId:row.employment_id==null?null:String(row.employment_id)})));
+   for(const [id,ack] of covered)acks.set(id,ack);
+  }
+  const findings=found.map(row=>{const d=latest.get(String(row.id)),ack=acks.get(String(row.id));return Object.freeze({id:String(row.id),companyId:String(row.company_id),controlId:row.control_id as AuditControlId,
    batchId:row.batch_id==null?null:String(row.batch_id),employmentId:row.employment_id==null?null:String(row.employment_id),personName:row.full_name==null?null:String(row.full_name),
    employeeCode:row.employee_code==null?null:String(row.employee_code),detectedAt:at(row.detected_at)!,evidence:(row.evidence??{}) as Record<string,unknown>,
-   evidenceHash:String(row.evidence_hash),disposition:d?.disposition??null,note:d?.note??null,disposedBy:d?.disposedByUserId??null,disposedAt:d?.disposedAt??null});})
+   evidenceHash:String(row.evidence_hash),disposition:d?.disposition??null,note:d?.note??null,disposedBy:d?.disposedByUserId??null,disposedAt:d?.disposedAt??null,
+   acknowledgement:ack?Object.freeze({id:ack.id,scope:ack.scope,reason:ack.reason,reviewOn:ack.reviewOn}):null});})
    .sort((a,b)=>Number(a.disposition!==null)-Number(b.disposition!==null)||b.detectedAt.getTime()-a.detectedAt.getTime());
   return Object.freeze({payPeriod,dueDate:statutoryDueDate(payPeriod),level:'prepare' as const,loop:await loopStateTx(tx,ctx.tenantId),
    companies:Object.freeze(companies),totals:totalsOf(companies),canCapture:isAdmin(ctx),findings:Object.freeze(findings),
@@ -187,9 +239,14 @@ export async function repeatAuditIssues(ctx:SessionContext,input:Readonly<{payPe
  const payPeriod=input.payPeriod;
  if(!input.companyIds.length)return new Map();
  return withTenant(ctx,async tx=>{
-  const found=await tx.selectDistinct({companyId:payrollAuditFinding.companyId,controlId:payrollAuditFinding.controlId,payPeriod:payrollAuditFinding.payPeriod})
+  const all=await tx.select({id:payrollAuditFinding.id,companyId:payrollAuditFinding.companyId,controlId:payrollAuditFinding.controlId,
+   payPeriod:payrollAuditFinding.payPeriod,employmentId:payrollAuditFinding.employmentId})
    .from(payrollAuditFinding).where(and(eq(payrollAuditFinding.tenantId,ctx.tenantId),inArray(payrollAuditFinding.companyId,[...input.companyIds]),
     inArray(payrollAuditFinding.payPeriod,[payPeriod,prevMonth(payPeriod)])));
+  // A finding a standing acknowledgement covers is expected: it is no repeat issue (Phase 2 hardening).
+  const covered=new Set<string>();
+  for(const companyId of input.companyIds)for(const id of (await acknowledgedFindingsTx(tx,ctx.tenantId,companyId,all.filter(row=>row.companyId===companyId))).keys())covered.add(id);
+  const found=all.filter(row=>!covered.has(row.id));
   const out=new Map<string,AuditControlId[]>();
   for(const companyId of input.companyIds){
    const now=new Set(found.filter(row=>row.companyId===companyId&&row.payPeriod===payPeriod).map(row=>row.controlId));

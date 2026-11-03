@@ -12,8 +12,10 @@
  * component never re-keys a pattern it has learned; the name is only ever shown), else the first cause the runs
  * recorded (cause:<kind>), else cause:other. An item whose line cannot be tied to exactly one catalogued component (two
  * components sharing its name, or a code no longer in the catalogue) is described by its cause instead. An EXCLUDED pattern (approved by an administrator)
- * does not raise a flag while the change left after that item's own change is within the threshold; an excluded cause
- * does not raise one at all. A person paid in only one of the two months, or whose previous net pay was not positive, has
+ * does not raise a flag while the change left after that item's own change is within the threshold. An excluded CAUSE
+ * explains a change only when it is the only cause the runs recorded and the swing is under twice the threshold
+ * (Phase 2 hardening, 4 November 2026): with any other cause beside it, or a swing at least twice the threshold, the
+ * person is flagged as if nothing were excluded, so an exclusion can never hide a change of any size. A person paid in only one of the two months, or whose previous net pay was not positive, has
  * no ratio and is never flagged (they are listed as changed). */
 import {comparePayPeriods,PAY_CAUSE_KINDS,type PayCauseKind,type StoredPayslipRow} from '../pay-difference';
 import {storedComponentLines} from '../payslip-earning-lines';
@@ -67,8 +69,11 @@ export function netSwingFor(employmentId:string,rows:readonly StoredPayslipRow[]
  const over=swingBp>input.thresholdBp;
  let excluded=false;
  if(over&&input.exclusions.includes(pattern)){
-  // An excluded item: the change left once that item's own change is set aside must be within the threshold.
-  excluded=pattern.startsWith('cause:')||ratio(net.change-(top?.change??0))<=input.thresholdBp;
+  // An excluded cause: the only cause recorded, and the swing under twice the threshold. An excluded item: the change
+  // left once that item's own change is set aside must be within the threshold.
+  excluded=pattern.startsWith('cause:')
+   ?causes.every(kind=>`cause:${kind}`===pattern)&&swingBp<2*input.thresholdBp
+   :ratio(net.change-(top?.change??0))<=input.thresholdBp;
  }
  return Object.freeze({employmentId,changed,swingBp,direction,pattern,causes,flagged:over&&!excluded,excluded});
 }

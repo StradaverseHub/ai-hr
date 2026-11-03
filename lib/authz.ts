@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import type { SessionContext } from '../db/client';
 import { getSession } from './session';
 import { isModuleEnabled } from '@/core/entitlements';
+import { hasAuditReaderGrant } from '@/core/payroll-audit/reader-grant';
 import {isAdmin,hasTeamAccess,canManagePayroll,canManagePerfComp,canAdminOnehr} from './authz-model';
 export {isAdmin,hasTeamAccess,isGroupAdmin,isOperator,hasGrantFor,canManagePayroll,canManagePerfComp,isPayrollPartner,withEffectiveGrants,isPerfCompPartner,canAdminOnehr,isOnehrOnlyPerformanceAdmin} from './authz-model';
 
@@ -39,6 +40,17 @@ export async function requireModule(code: string): Promise<SessionContext> {
     return s; // malformed context — same reasoning; the service call reports the real error
   }
   if (!enabled) redirect(`/?moduleUnavailable=${encodeURIComponent(code)}`);
+  return s;
+}
+
+/** AI v2 Phase 2 hardening — the Audit loop page's guard (and the Control Tower layout's, which every other page under it
+ * narrows again with its own requireAdmin): an administrator, or a login holding a current read-only auditor grant for at
+ * least one company (migration 2006, payroll_audit_reader). Anyone else goes home. The page itself shows an auditor only
+ * the companies of their grants, read-only (core/payroll-audit/auditor-view.ts). */
+export async function requireAdminOrAuditReader(): Promise<SessionContext> {
+  const s = await getSession();
+  if (isAdmin(s)) return s;
+  if (!(await hasAuditReaderGrant(s))) redirect('/');
   return s;
 }
 

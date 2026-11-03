@@ -39,6 +39,19 @@
 -- payroll_audit_correction_cause, core/payroll-audit/settings.ts of payroll_audit_control_setting and payroll_audit_reader.
 -- All six tables are new. The three widened CHECKs of 0960 only add a value. Grants: every privilege a table must not have is
 -- revoked, not merely left ungranted.
+-- Phase 2 hardening (4 November 2026, while unapplied):
+--  - A capture is deduplicated only against the LATEST capture of its source key, in the chain trigger under the company
+--    and month lock: an artefact that changes and then changes back is captured again, so a revert is never hidden. The
+--    unique (source key, content hash) index is gone; an ordinary index serves the latest-of-key lookup.
+--  - A finding records the logins it is about (subject_user_ids: who processed and closed the run, who changed the bank
+--    details or the formula, who keyed the adjustment), derived by the database from the evidence. Nobody disposes of a
+--    finding about themselves (a subject login, or the person the finding's employment belongs to): another payroll
+--    administrator of the company, or a group administrator, does.
+--  - The control settings have bounds (a bank-change window of 3 to 30 days; an adjustment amount of 100.00 to 50000.00)
+--    and a third setting, whether "one login both processed and closed a run" opens a finding (`finding`) or is recorded
+--    as information only (`info`, the default: owner decision 2 has no second approver). A change that loosens a control
+--    (a shorter window, a higher amount, `finding` to `info`) needs a group administrator; the database refuses anyone
+--    else. Every change stays a `payroll-audit.settings-changed` event, which the capture lists in the month's pack.
 -- Wave 1 integration (3 November 2026, while unapplied): 0964 (now 2005) runs first and adds 'loop_salary_payroll' to the same
 -- lists, so each list rebuilt here carries it too; otherwise this migration would drop it again. 0964's teras_loop_case list
 -- is not rebuilt here (the Audit loop opens no loop case), so it stands as 0964 left it.
@@ -162,23 +175,30 @@ CREATE TABLE public.payroll_audit_capture (
 --> statement-breakpoint
 CREATE UNIQUE INDEX payroll_audit_capture_seq_uq ON public.payroll_audit_capture(tenant_id,company_id,pay_period,seq);
 --> statement-breakpoint
--- The same version of the same artefact is captured once; a changed version is a new row.
-CREATE UNIQUE INDEX payroll_audit_capture_version_uq ON public.payroll_audit_capture(tenant_id,company_id,pay_period,source_key,content_hash);
+-- The latest capture of each source key, for the trigger's deduplication: an unchanged artefact is not captured again,
+-- and a changed one (including one changed back to an earlier version) is a new row.
+CREATE INDEX payroll_audit_capture_key_idx ON public.payroll_audit_capture(tenant_id,company_id,pay_period,source_key,seq DESC);
 --> statement-breakpoint
 CREATE INDEX payroll_audit_capture_batch_idx ON public.payroll_audit_capture(tenant_id,batch_id) WHERE batch_id IS NOT NULL;
 --> statement-breakpoint
 -- The database computes the hashes and the link; whatever the writer sent for them is replaced. Serialised per company and
--- month, so two writers cannot fork a chain. Invoker rights: every writer may read the whole chain it writes to.
+-- month, so two writers cannot fork a chain. An artefact whose content equals the LATEST capture of its own source key is
+-- skipped (the row is not inserted); any other content, an earlier version included, is a new link. Invoker rights: every
+-- writer may read the whole chain it writes to.
 CREATE FUNCTION app.payroll_audit_capture_chain_tg() RETURNS trigger
  LANGUAGE plpgsql SET search_path=pg_catalog,public,app,pg_temp AS $$
-DECLARE v_seq integer; v_prev text;
+DECLARE v_seq integer; v_prev text; v_latest text;
 BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended('payroll-audit:'||NEW.tenant_id::text||':'||NEW.company_id::text||':'||NEW.pay_period,0));
+ NEW.content_hash:=app.payroll_audit_hash(NEW.content::text);
+ SELECT c.content_hash INTO v_latest FROM public.payroll_audit_capture c
+  WHERE c.tenant_id=NEW.tenant_id AND c.company_id=NEW.company_id AND c.pay_period=NEW.pay_period AND c.source_key=NEW.source_key
+  ORDER BY c.seq DESC LIMIT 1;
+ IF v_latest IS NOT DISTINCT FROM NEW.content_hash THEN RETURN NULL; END IF;
  SELECT c.seq,c.chain_hash INTO v_seq,v_prev FROM public.payroll_audit_capture c
   WHERE c.tenant_id=NEW.tenant_id AND c.company_id=NEW.company_id AND c.pay_period=NEW.pay_period ORDER BY c.seq DESC LIMIT 1;
  NEW.seq:=coalesce(v_seq,0)+1;
  NEW.prev_hash:=coalesce(v_prev,'GENESIS');
- NEW.content_hash:=app.payroll_audit_hash(NEW.content::text);
  NEW.chain_hash:=app.payroll_audit_chain_hash(NEW.prev_hash,NEW.tenant_id,NEW.company_id,NEW.pay_period,NEW.seq,NEW.kind,NEW.source_key,
   NEW.content_hash,NEW.captured_at,NEW.writer,NEW.writer_id);
  RETURN NEW;
@@ -239,6 +259,8 @@ CREATE TABLE public.payroll_audit_finding (
  subject_key text NOT NULL CHECK (subject_key ~ '^[a-z_]+:[0-9A-Za-z:._-]{1,160}$'),
  evidence jsonb NOT NULL CHECK (jsonb_typeof(evidence)='object' AND octet_length(evidence::text)<=16384),
  evidence_hash text NOT NULL DEFAULT '',
+ -- The logins the finding is about, derived by the hash trigger from the evidence; none of them may dispose of it.
+ subject_user_ids uuid[] NOT NULL DEFAULT '{}',
  detected_at timestamptz NOT NULL DEFAULT now(),
  writer text NOT NULL CHECK (writer IN ('agent','user')),
  writer_id uuid NOT NULL,
@@ -253,7 +275,12 @@ CREATE INDEX payroll_audit_finding_company_idx ON public.payroll_audit_finding(t
 --> statement-breakpoint
 CREATE FUNCTION app.payroll_audit_finding_hash_tg() RETURNS trigger
  LANGUAGE plpgsql SET search_path=pg_catalog,public,app,pg_temp AS $$
-BEGIN NEW.evidence_hash:=app.payroll_audit_hash(NEW.evidence::text); RETURN NEW; END $$;
+BEGIN
+ NEW.evidence_hash:=app.payroll_audit_hash(NEW.evidence::text);
+ NEW.subject_user_ids:=ARRAY(SELECT DISTINCT v.id::uuid FROM (VALUES (NEW.evidence->>'userId'),(NEW.evidence->>'changedBy'),(NEW.evidence->>'createdBy'))
+  v(id) WHERE v.id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' ORDER BY 1);
+ RETURN NEW;
+END $$;
 --> statement-breakpoint
 CREATE TRIGGER payroll_audit_finding_hash BEFORE INSERT ON public.payroll_audit_finding
  FOR EACH ROW EXECUTE FUNCTION app.payroll_audit_finding_hash_tg();
@@ -313,8 +340,9 @@ CREATE TRIGGER payroll_audit_correction_cause_anchor AFTER INSERT ON public.payr
 CREATE TABLE public.payroll_audit_control_setting (
  tenant_id uuid NOT NULL REFERENCES public.tenant(id),
  company_id uuid NOT NULL,
- bank_change_days integer NOT NULL DEFAULT 7 CHECK (bank_change_days BETWEEN 1 AND 60),
- adjustment_threshold numeric(12,2) NOT NULL DEFAULT 1000.00 CHECK (adjustment_threshold>0),
+ bank_change_days integer NOT NULL DEFAULT 7 CHECK (bank_change_days BETWEEN 3 AND 30),
+ adjustment_threshold numeric(12,2) NOT NULL DEFAULT 1000.00 CHECK (adjustment_threshold BETWEEN 100.00 AND 50000.00),
+ preparer_closed_mode text NOT NULL DEFAULT 'info' CHECK (preparer_closed_mode IN ('info','finding')),
  version integer NOT NULL DEFAULT 1 CHECK (version>=1),
  changed_by_user_id uuid NOT NULL REFERENCES public.app_user(id),
  changed_at timestamptz NOT NULL DEFAULT now(),
@@ -324,6 +352,25 @@ CREATE TABLE public.payroll_audit_control_setting (
 --> statement-breakpoint
 CREATE TRIGGER payroll_audit_control_setting_version BEFORE UPDATE ON public.payroll_audit_control_setting
  FOR EACH ROW EXECUTE FUNCTION app.teras_bump_version('version');
+--> statement-breakpoint
+-- Loosening a control needs a group administrator: a shorter bank-change window, a higher adjustment amount, or the
+-- preparer-closed check turned from a finding into information. Compared with the row before, or with the defaults.
+CREATE FUNCTION app.payroll_audit_control_setting_guard() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,app,pg_temp AS $$
+DECLARE v_days integer:=7; v_amount numeric:=1000.00; v_mode text:='info';
+BEGIN
+ IF TG_OP='UPDATE' THEN v_days:=OLD.bank_change_days; v_amount:=OLD.adjustment_threshold; v_mode:=OLD.preparer_closed_mode; END IF;
+ IF (NEW.bank_change_days<v_days OR NEW.adjustment_threshold>v_amount OR (v_mode='finding' AND NEW.preparer_closed_mode='info'))
+  AND app.is_group_admin() IS NOT TRUE THEN
+  RAISE EXCEPTION 'Only a group administrator may loosen a payroll audit control' USING ERRCODE='42501';
+ END IF;
+ RETURN NEW;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.payroll_audit_control_setting_guard() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER payroll_audit_control_setting_guard BEFORE INSERT OR UPDATE ON public.payroll_audit_control_setting
+ FOR EACH ROW EXECUTE FUNCTION app.payroll_audit_control_setting_guard();
 --> statement-breakpoint
 -- ── RLS: forced on every new table ──
 ALTER TABLE public.payroll_audit_reader ENABLE ROW LEVEL SECURITY;
@@ -400,12 +447,14 @@ CREATE POLICY payroll_audit_finding_agent_read ON public.payroll_audit_finding F
 CREATE POLICY payroll_audit_finding_read ON public.payroll_audit_finding FOR SELECT TO ai_hr_app
  USING (tenant_id=app.current_tenant_id() AND app.payroll_audit_can_read(company_id) IS TRUE);
 --> statement-breakpoint
--- Dispositions: only a payroll administrator of the finding's company, under their own current login. An auditor reads them.
+-- Dispositions: only a payroll administrator of the finding's company, under their own current login, who is not what the
+-- finding is about (none of its subject logins, and not the person its employment belongs to). An auditor reads them.
 CREATE POLICY payroll_audit_disposition_insert ON public.payroll_audit_disposition FOR INSERT TO ai_hr_app
  WITH CHECK (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND app.principal_snapshot_current() IS TRUE
   AND disposed_by_user_id=app.current_user_id() AND app.can_admin_payroll_for(company_id) IS TRUE
   AND EXISTS (SELECT 1 FROM public.payroll_audit_finding f WHERE f.id=payroll_audit_disposition.finding_id AND f.tenant_id=app.current_tenant_id()
-   AND f.company_id=payroll_audit_disposition.company_id));
+   AND f.company_id=payroll_audit_disposition.company_id AND NOT (app.current_user_id()=ANY(f.subject_user_ids))
+   AND NOT EXISTS (SELECT 1 FROM public.employment e WHERE e.id=f.employment_id AND app.is_self_person(e.person_id) IS TRUE)));
 --> statement-breakpoint
 CREATE POLICY payroll_audit_disposition_agent_read ON public.payroll_audit_disposition FOR SELECT TO ai_hr_app
  USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NOT NULL);

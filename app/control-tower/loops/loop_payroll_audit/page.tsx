@@ -1,17 +1,18 @@
 import { getFormatter, getTranslations } from 'next-intl/server';
-import { requireAdmin } from '@/lib/authz';
-import { isGroupAdmin } from '@/lib/authz-model';
+import { requireAdminOrAuditReader } from '@/lib/authz';
+import { isAdmin, isGroupAdmin } from '@/lib/authz-model';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { auditCompanies, auditLoopDetail, defaultAuditPeriod, type AuditFindingView } from '@/core/payroll-audit/status';
 import { recordPayrollAccess } from '@/core/payroll-audit/access-log';
 import { auditAdministration } from '@/core/payroll-audit/settings';
-import { AUDIT_DISPOSITIONS, AUDIT_ROOT_CAUSES, isPayPeriod } from '@/core/payroll-audit/types';
+import { auditorCompanies, auditorLoopDetail } from '@/core/payroll-audit/auditor-view';
+import { AUDIT_CONTROL_BOUNDS, AUDIT_DISPOSITIONS, AUDIT_ROOT_CAUSES, PREPARER_CLOSED_MODES, isPayPeriod } from '@/core/payroll-audit/types';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { AuditLoopColumn, auditPackHref } from '@/components/payroll-audit/audit-loop-column';
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../operations-tabs';
 import { setLoopPauseAction, setLoopSwitchAction } from '../actions';
-import { captureAuditNowAction, disposeAuditFindingAction, grantAuditReaderAction, recordCorrectionCauseAction, revokeAuditReaderAction,
+import { acknowledgeFindingAction, captureAuditNowAction, disposeAuditFindingAction, grantAuditReaderAction, recordCorrectionCauseAction, revokeAuditReaderAction,
   setAuditSettingsAction } from './actions';
 
 /** AI v2 P2-2b — the Audit loop's own page (approved Phase 2 mock-ups: PayrollLoops.dc.html's Audit column, laid out as
@@ -20,10 +21,14 @@ import { captureAuditNowAction, disposeAuditFindingAction, grantAuditReaderActio
  * statutory files against their due date; the control findings, each disposed of here by a person with a note; the
  * post-run corrections, each given a root cause from the fixed list; the per-company pause; the limits it never crosses;
  * and who answers for it. Read under the viewer's row-level security (core/payroll-audit/status.ts); guarded by
- * requireAdmin like every Operations page. Viewing it is recorded in the payroll access log. */
+ * requireAdmin like every Operations page. Viewing it is recorded in the payroll access log.
+ * Phase 2 hardening: a login with a current read-only auditor grant (and no administrator role) opens it too, for the
+ * companies of their grants only, built from what the loop captured (core/payroll-audit/auditor-view.ts, consistent
+ * with the grant, which reads the Audit loop and its pack and nothing else). Their view offers no command: no switch,
+ * capture, disposition, root cause, setting, grant or pause, and says so. */
 const LOOP = 'loop_payroll_audit';
-const ERRORS = ['invalid', 'refused', 'module', 'failed'] as const;
-const SAVED = ['disposed', 'cause', 'captured', 'switch', 'pause', 'settings', 'granted', 'revoked'] as const;
+const ERRORS = ['invalid', 'refused', 'module', 'failed', 'subject', 'groupAdministrator', 'already'] as const;
+const SAVED = ['disposed', 'cause', 'captured', 'switch', 'pause', 'settings', 'granted', 'revoked', 'acknowledged'] as const;
 const STEPS = ['capture', 'check', 'prepare', 'verify'] as const;
 const LIMITS = ['pay', 'block', 'file', 'model'] as const;
 const RUN_TYPES: readonly string[] = ['regular', 'off_cycle', 'bonus', 'adjustment'];
@@ -33,13 +38,16 @@ const num = (value: unknown) => (typeof value === 'number' ? value : Number(valu
 
 type Query = { period?: string; company?: string; error?: string; saved?: string };
 export default async function AuditLoopPage({ searchParams }: { searchParams: Promise<Query> }) {
-  const s = await requireAdmin();
+  const s = await requireAdminOrAuditReader();
+  // An auditor (no administrator role) reads their granted companies only, read-only.
+  const auditor = !isAdmin(s);
   const [query, t, tl, f] = await Promise.all([searchParams, getTranslations('payrollAudit'), getTranslations('aiCentre.loops'), getFormatter()]);
   const payPeriod = isPayPeriod(query.period) ? query.period : defaultAuditPeriod(todayInKualaLumpur());
-  const companies = await auditCompanies(s);
+  const companies = auditor ? await auditorCompanies(s) : await auditCompanies(s);
   const companyId = typeof query.company === 'string' && UUID.test(query.company) && companies.some(c => c.id === query.company) ? query.company : null;
-  const detail = await auditLoopDetail(s, { payPeriod, ...(companyId ? { companyIds: [companyId] } : {}) });
-  const admin = await auditAdministration(s, companyId ? { companyIds: [companyId] } : {});
+  const scope = companyId ? { companyIds: [companyId] } : {};
+  const detail = auditor ? await auditorLoopDetail(s, { payPeriod, ...scope }) : await auditLoopDetail(s, { payPeriod, ...scope });
+  const admin = auditor ? { companies: [], candidates: [] } : await auditAdministration(s, scope);
   for (const item of detail.companies) await recordPayrollAccess(s, { surface: 'audit_view', action: 'view', companyId: item.companyId, payPeriod });
   const error = ERRORS.find(code => code === query.error), saved = SAVED.find(code => code === query.saved);
   const when = (date: Date | null) => (date ? f.dateTime(date, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }) : '—');
@@ -71,18 +79,20 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
     {Object.entries(extra).map(([key, value]) => <input key={key} type="hidden" name={key} value={value} />)}
   </>);
   const groupAdmin = isGroupAdmin(s);
+  const findingCompany = (item: AuditFindingView) => item.companyId ?? companyId;
   return (
     <div className={pageWideCls}>
-      <OperationsTabs session={s} active="loops" />
-      <PageHeader back={{ href: '/control-tower/loops', label: tl('back') }} title={name} description={t('column.doneMeans')}
+      {!auditor && <OperationsTabs session={s} active="loops" />}
+      <PageHeader back={auditor ? undefined : { href: '/control-tower/loops', label: tl('back') }} title={name} description={t('column.doneMeans')}
         actions={<div className="flex flex-wrap items-center gap-3">
           <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium">{tl('level.prepare')}</span>
           <span data-loop-switch={detail.loop.on ? 'on' : 'off'} className="text-sm">{detail.loop.on ? tl('on') : tl('off')}</span>
-          {groupAdmin && <form action={setLoopSwitchAction}>
+          {groupAdmin && !auditor && <form action={setLoopSwitchAction}>
             <input type="hidden" name="loop" value={LOOP} /><input type="hidden" name="from" value="detail" /><input type="hidden" name="enabled" value={String(!detail.loop.on)} />
             <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${tl(detail.loop.on ? 'turnOff' : 'turnOn')} · ${name}`}>{tl(detail.loop.on ? 'turnOff' : 'turnOn')}</button>
           </form>}
         </div>} />
+      {auditor && <p data-audit-read-only role="note" className="rounded-lg border border-border bg-muted/50 p-3 text-sm">{t('auditor.readOnly')}</p>}
       {error && <ErrorBanner message={t(`errors.${error}`)} />}
       {saved && <p role="status" className="rounded-lg border border-border bg-muted/50 p-3 text-sm">{t(`saved.${saved}`)}</p>}
 
@@ -135,16 +145,16 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
                     <th scope="row" className="px-4 py-3 font-medium">{item.companyName}<span className={cn('block text-xs font-normal', item.done ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground')}>{item.done ? t('state.done') : t('state.open')}</span></th>
                     <td className="px-4 py-3">{item.runs.length === 0 ? t('companies.noRun') : item.runs.map(run => <span key={run.batchId} className="block">{t('companies.run', { type: t(`runType.${RUN_TYPES.includes(run.runType) ? run.runType : 'other'}`), seq: run.runSeq, status: t(`runStatus.${run.status === 'draft' || run.status === 'processed' || run.status === 'closed' ? run.status : 'other'}`) })}</span>)}</td>
                     <td className="px-4 py-3 tabular-nums">{t('companies.payslips', { released: item.payslips.released, total: item.payslips.total, opened: item.payslips.opened })}</td>
-                    <td className="px-4 py-3">{t('ofForms', { filed: item.statutory.filter(form => form.filed).length, forms: item.statutory.length })}</td>
+                    <td className="px-4 py-3">{t('ofForms', { filed: item.statutory.filter(form => form.required && form.filed).length, forms: item.statutory.filter(form => form.required).length })}</td>
                     <td className="px-4 py-3 tabular-nums">{t('companies.findings', { open: item.findings.open, disposed: item.findings.disposed })}</td>
                     <td className="px-4 py-3 tabular-nums">{t('companies.corrections', { count: item.corrections.count })}{item.corrections.withoutRootCause > 0 && <span className="block text-xs text-amber-700 dark:text-amber-300">{t('companies.correctionsMissing', { count: item.corrections.withoutRootCause })}</span>}</td>
                     <td className="px-4 py-3">{t('companies.captures', { count: item.captures.count })}{item.captures.head && <span className="block break-all font-mono text-xs text-muted-foreground" title={item.captures.head}>{item.captures.head.slice(0, 16)}</span>}</td>
                     <td className="px-4 py-3">
                       <a href={auditPackHref(item.companyId, payPeriod)} className="inline-flex min-h-9 items-center font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11" aria-label={`${t('companies.pack')} · ${item.companyName}`}>{t('companies.pack')}</a>
-                      <form action={captureAuditNowAction} className="mt-1">
+                      {!auditor && <form action={captureAuditNowAction} className="mt-1">
                         <input type="hidden" name="period" value={payPeriod} /><input type="hidden" name="company" value={item.companyId} />
                         <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('companies.capture')} · ${item.companyName}`}>{t('companies.capture')}</button>
-                      </form>
+                      </form>}
                     </td>
                   </tr>
                 ))}
@@ -167,7 +177,7 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
                 <tr key={`${item.companyId}:${form.form}`} data-audit-form={form.form}>
                   <td className="px-4 py-3">{item.companyName}</td>
                   <td className="px-4 py-3">{t(`forms.${form.form}`)}</td>
-                  <td className="px-4 py-3">{form.prepared ? <>{day(form.preparedOn)}<span className={cn('block text-xs', form.beforeDue ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-300')}>{form.beforeDue ? t('statutory.beforeDue') : t('statutory.late')}</span></> : <span className="text-amber-700 dark:text-amber-300">{t('statutory.notYet')}</span>}</td>
+                  <td className="px-4 py-3">{!form.required ? <span className="text-muted-foreground">{t('statutory.notRequired')}</span> : form.prepared ? <>{day(form.preparedOn)}<span className={cn('block text-xs', form.beforeDue ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-300')}>{form.beforeDue ? t('statutory.beforeDue') : t('statutory.late')}</span></> : <span className="text-amber-700 dark:text-amber-300">{t('statutory.notYet')}</span>}</td>
                   <td className="px-4 py-3">{form.filed ? <>{day(form.filedOn)}<span className="block text-xs text-muted-foreground">{t('statutory.receipt')}</span></> : <span className="text-muted-foreground">{t('statutory.notFiled')}</span>}</td>
                 </tr>
               )))}
@@ -189,21 +199,39 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
                 </div>
                 <p className="m-0">{what(item)}</p>
                 {(item.personName || item.employeeCode) && <p className="m-0 text-xs text-muted-foreground">{[item.personName, item.employeeCode].filter(Boolean).join(' · ')}</p>}
+                {item.acknowledgement && <p data-finding-acknowledged className="m-0 text-xs"><span className="font-medium">{t('acknowledged.label')}</span> · {item.acknowledgement.reason}
+                  <span className="text-muted-foreground"> · {t(`acknowledged.scope.${item.acknowledgement.scope}`)}</span></p>}
                 {item.disposition ? (
                   <p className="m-0 text-xs"><span className="font-medium">{t(`dispositions.${item.disposition}`)}</span> · {item.note}{item.disposedAt && <span className="text-muted-foreground"> · {when(item.disposedAt)}</span>}</p>
+                ) : auditor ? (
+                  <p className="m-0 text-xs text-muted-foreground">{t('findings.openReadOnly')}</p>
                 ) : (
                   <form action={disposeAuditFindingAction} className="flex flex-wrap items-end gap-2">
                     {hidden({ finding: item.id })}
                     <label className="flex flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('findings.disposition')}</span>
-                      <select name="disposition" required className={cn(inputCls, 'pointer-coarse:min-h-11')} defaultValue="">
+                      <select name="disposition" required className={cn(inputCls, 'pointer-coarse:min-h-11')} defaultValue={item.acknowledgement ? 'expected' : ''}>
                         <option value="" disabled>{t('findings.choose')}</option>
                         {AUDIT_DISPOSITIONS.map(d => <option key={d} value={d}>{t(`dispositions.${d}`)}</option>)}
                       </select></label>
                     <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('findings.note')}</span>
-                      <input name="note" required maxLength={1000} className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
+                      <input name="note" required maxLength={1000} defaultValue={item.acknowledgement ? t('acknowledged.note', { reason: item.acknowledgement.reason }) : undefined}
+                        className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
                     <button type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${t('findings.record')} · ${t(`controls.${item.controlId}`)}`}>{t('findings.record')}</button>
                   </form>
                 )}
+                {!auditor && !item.acknowledgement && !item.disposition && <form action={acknowledgeFindingAction} data-acknowledge-finding className="flex flex-wrap items-end gap-2">
+                  {hidden({ control: item.controlId, target: findingCompany(item) ?? '', ...(item.employmentId ? { employment: item.employmentId } : {}) })}
+                  <label className="flex flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('acknowledged.for')}</span>
+                    <select name="scope" defaultValue={item.employmentId ? 'person' : 'company'} className={cn(inputCls, 'pointer-coarse:min-h-11')}>
+                      {item.employmentId && <option value="person">{t('acknowledged.scope.person')}</option>}
+                      <option value="company">{t('acknowledged.scope.company')}</option>
+                    </select></label>
+                  <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('acknowledged.reason')}</span>
+                    <input name="reason" required maxLength={500} className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
+                  <label className="flex flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('acknowledged.reviewOn')}</span>
+                    <input type="date" name="reviewOn" className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
+                  <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('acknowledged.record')} · ${t(`controls.${item.controlId}`)}`}>{t('acknowledged.record')}</button>
+                </form>}
               </li>
             ))}
           </ul>
@@ -222,7 +250,7 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
                 </div>
                 <p className="m-0 text-xs text-muted-foreground">{item.reason ? t('corrections.reason', { reason: item.reason }) : t('corrections.noReason')}</p>
                 {item.rootCause && <p className="m-0 text-xs"><span className="font-medium">{t(`rootCauses.${item.rootCause}`)}</span> · {item.note}</p>}
-                <form action={recordCorrectionCauseAction} className="flex flex-wrap items-end gap-2">
+                {!auditor && <form action={recordCorrectionCauseAction} className="flex flex-wrap items-end gap-2">
                   {hidden({ correction: item.correctionKey })}
                   <label className="flex flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('corrections.cause')}</span>
                     <select name="rootCause" required className={cn(inputCls, 'pointer-coarse:min-h-11')} defaultValue={item.rootCause ?? ''}>
@@ -232,14 +260,14 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
                   <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('corrections.note')}</span>
                     <input name="note" required maxLength={1000} className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
                   <button type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${t(item.rootCause ? 'corrections.update' : 'corrections.record')} · ${t(`corrections.actions.${item.action}`, { seq: item.runSeq })}`}>{t(item.rootCause ? 'corrections.update' : 'corrections.record')}</button>
-                </form>
+                </form>}
               </li>
             ))}
           </ul>
         )}
       </Card>
 
-      <Card className="overflow-hidden" data-audit-administration>
+      {!auditor && <Card className="overflow-hidden" data-audit-administration>
         <SectionHeader title={t('administration.title')} />
         <p className="px-4 pb-3 text-sm text-muted-foreground">{t('administration.help')}</p>
         <ul className="divide-y divide-border border-t border-border">
@@ -249,11 +277,16 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
               <form action={setAuditSettingsAction} data-audit-settings className="flex flex-wrap items-end gap-3">
                 {hidden({ target: item.companyId })}
                 <label className="flex flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('administration.bankChangeDays')}</span>
-                  <input type="number" name="bankChangeDays" min={1} max={60} step={1} required defaultValue={item.settings.bankChangeDays} className={cn(inputCls, 'w-28 pointer-coarse:min-h-11')} /></label>
+                  <input type="number" name="bankChangeDays" min={AUDIT_CONTROL_BOUNDS.bankChangeDays.min} max={AUDIT_CONTROL_BOUNDS.bankChangeDays.max} step={1} required defaultValue={item.settings.bankChangeDays} className={cn(inputCls, 'w-28 pointer-coarse:min-h-11')} /></label>
                 <label className="flex flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('administration.adjustmentThreshold')}</span>
-                  <input type="number" name="adjustmentThreshold" min={0.01} step={0.01} required defaultValue={item.settings.adjustmentThreshold.toFixed(2)} className={cn(inputCls, 'w-36 pointer-coarse:min-h-11')} /></label>
+                  <input type="number" name="adjustmentThreshold" min={AUDIT_CONTROL_BOUNDS.adjustmentThreshold.min} max={AUDIT_CONTROL_BOUNDS.adjustmentThreshold.max} step={0.01} required defaultValue={item.settings.adjustmentThreshold.toFixed(2)} className={cn(inputCls, 'w-36 pointer-coarse:min-h-11')} /></label>
+                <label className="flex flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('administration.preparerClosedMode')}</span>
+                  <select name="preparerClosedMode" defaultValue={item.settings.preparerClosedMode} className={cn(inputCls, 'pointer-coarse:min-h-11')}>
+                    {PREPARER_CLOSED_MODES.map(mode => <option key={mode} value={mode}>{t(`administration.preparerClosed.${mode}`)}</option>)}
+                  </select></label>
                 <button type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${t('administration.save')} · ${item.companyName}`}>{t('administration.save')}</button>
                 <span className="text-xs text-muted-foreground">{item.settings.version === null ? t('administration.defaults') : t('administration.version', { version: item.settings.version })}</span>
+                <p className="m-0 w-full text-xs text-muted-foreground">{t('administration.loosenHelp')}</p>
               </form>
               <div className="flex flex-col gap-2">
                 <p className="m-0 text-xs font-medium">{t('administration.auditorsTitle')}</p>
@@ -286,9 +319,9 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
             </li>
           ))}
         </ul>
-      </Card>
+      </Card>}
 
-      <Card className="overflow-hidden">
+      {!auditor && <Card className="overflow-hidden">
         <SectionHeader title={tl('pause.title')} />
         <p className="px-4 pb-3 text-sm text-muted-foreground">{tl('pause.help')}</p>
         <ul className="divide-y divide-border border-t border-border">
@@ -306,7 +339,7 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
             </li>
           ))}
         </ul>
-      </Card>
+      </Card>}
 
       <div className="grid gap-3 lg:grid-cols-2">
         <Card className="p-4">

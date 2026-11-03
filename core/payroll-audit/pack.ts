@@ -10,7 +10,10 @@
  *  - captures.csv: the same, one line per capture, without the content;
  *  - findings.json and findings.csv: every control finding with its evidence and every disposition;
  *  - access-log.csv: who viewed or exported this company's payroll data for the month (from the captures);
- *  - verification.json: the tamper check (core/payroll-audit/verify.ts).
+ *  - verification.json: the tamper check (core/payroll-audit/verify.ts);
+ *  - acknowledgements.json: the standing "expected" acknowledgements in force for the company when the pack was built
+ *    (Phase 2 hardening: they hide warnings from the to-do counts, so the pack lists every one, with its reason, scope,
+ *    review date, who and when; each was also captured as a configuration change when recorded or revoked).
  * The archive's own sha256 is returned and recorded in the access log entry the download writes. No figure is calculated:
  * every amount in the pack is copied from its owner. */
 import JSZip from 'jszip';
@@ -26,6 +29,7 @@ import {sha256Hex} from './access-log';
 import {capturePayrollPeriod,listCapturesTx} from './capture';
 import {canReadAuditTx} from './settings';
 import {verifyCapturesTx,type CaptureVerification} from './verify';
+import {acknowledgementsTx} from '../loops/acknowledgements';
 import {AUDIT_CAPTURE_KINDS,AUDIT_CONTROL_IDS,isPayPeriod,type AuditCaptureKind,type AuditControlId,type AuditDisposition} from './types';
 
 export class AuditPackRefused extends Error{constructor(readonly reason:'not_allowed'|'invalid'){super('Audit pack refused: '+reason);this.name='AuditPackRefused';}}
@@ -123,7 +127,8 @@ export async function buildAuditPack(supplied:SessionContext,input:Readonly<{com
   const employmentIds=[...new Set(findings.map(row=>row.employmentId).filter((id):id is string=>!!id))];
   const people=employmentIds.length?await tx.select({id:employment.id,code:employment.employeeCode,name:person.fullName}).from(employment)
    .leftJoin(person,eq(person.id,employment.personId)).where(inArray(employment.id,employmentIds)):[];
-  return {companyName:co?.name??p.companyId,captures,verification,findings,dispositions,people};
+  const acknowledgements=await acknowledgementsTx(tx,ctx.tenantId,[p.companyId]).catch(()=>[]);
+  return {companyName:co?.name??p.companyId,captures,verification,findings,dispositions,people,acknowledgements};
  });
  const {captures,verification,findings,dispositions,people}=data;
  const who=(employmentId:string|null)=>{if(!employmentId)return null;const found=people.find(row=>row.id===employmentId);
@@ -149,6 +154,8 @@ export async function buildAuditPack(supplied:SessionContext,input:Readonly<{com
    return [iso(c.at),c.actorType??'',c.actorId??'',String(e.surface??''),String(e.action??''),String(e.batchId??''),String(e.payslipId??''),String(e.format??''),
     String(e.fileSha256??''),e.bytes==null?'':String(e.bytes),e.rows==null?'':String(e.rows),String(e.detail??'')];})]));
  add('verification.json',json(verification));
+ add('acknowledgements.json',json(data.acknowledgements.map(row=>({id:row.id,check:row.checkId,scope:row.scope,employmentId:row.employmentId,departmentId:row.departmentId,
+  reason:row.reason,reviewOn:row.reviewOn,source:row.source,createdBy:row.createdByUserId,createdAt:iso(row.createdAt)}))));
  // The summary.
  const L=labels,lines:{text:string;bold?:boolean;gap?:boolean}[]=[];
  lines.push({text:L.title,bold:true},{text:`${L.company}: ${data.companyName}`},{text:`${L.payPeriod}: ${p.payPeriod}`},

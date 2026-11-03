@@ -20,13 +20,20 @@
  *    count of people paid by bank; and the run's employee count against its payslips.
  * Prepare: a case per run for its payroll administrators (its status and checks), a case for a period whose regular run
  * has not been started, and one net-swing flag per person for payroll HR's disposition (expected, or a real problem).
- * Verify: a run is done when a person has closed it and the bank check matches (or there is no bank file to check); a
- * run unlocked after close reopens its case. A start case is done when the regular run exists. A flag is done when payroll
- * HR records its disposition; it no longer applies when a reprocess or an approved exclusion takes it under the
- * threshold; it expires when its period is two months past. No model is called. */
+ * Verify (Phase 2 hardening, 4 November 2026): a run is DONE only when a person has closed it, its checks were actually
+ * evaluated (the anomaly layer recorded verdicts for it), nothing is unresolved (no open exception, no net-swing flag of
+ * its company and month still waiting for a disposition) and the bank check matches. A bank check that could not be made
+ * (`not_available`: no bank file preview for the country, or none for the run) never counts as done; a run with nobody
+ * paid by bank matches an empty bank file (nothing to pay, nothing in the file). A run unlocked after close reopens its
+ * case. A start case is done when the regular run exists. A flag is done when payroll HR records its disposition; it no
+ * longer applies when a reprocess or an approved exclusion takes it under the threshold; it expires when its period is
+ * two months past. Standing "expected" acknowledgements (core/loops/acknowledgements.ts, owner ruling 19): a person whose
+ * net-swing check is acknowledged gets no flag (a tracked one closes as no longer applying), and a review-severity
+ * exception whose every finding is acknowledged for that person leaves the run's open exceptions; a blocking exception is
+ * never suppressed. No model is called. */
 import {and,eq,gte,inArray,isNull,lte,or,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
-import {company,employment,payrollBatch,payslip} from '../../db/schema';
+import {company,employment,payrollAnomalyFinding,payrollAnomalyVerdict,payrollBatch,payslip} from '../../db/schema';
 import {terasPayrollSwingDisposition} from '../../db/teras-payroll-cycle-schema';
 import {isModuleEnabled} from '../entitlements';
 import {anomalyMetrics} from '../payroll-anomaly';
@@ -40,6 +47,7 @@ import {payrollLoopSettingsTx} from './payroll-loop-settings';
 import {netSwings,type ComponentIds,type SwingSummary} from './net-swing';
 import {listPayComponents} from '../../packs/payroll/service';
 import type {LoopFacts} from './types';
+import {acknowledgementFor,acknowledgementsTx,currentDepartmentsTx,type Acknowledgement} from './acknowledgements';
 
 export const SALARY_PAYROLL_LOOP_VERSION='loop_salary_payroll@v1';
 /** The statutory bodies whose rule version the loop shows (the country pack's own body keys). */
@@ -57,6 +65,26 @@ type Batch=Readonly<{id:string;companyId:string;payPeriod:string;runType:string;
  stale:boolean;batchDate:string;
  /** The run's own recorded net pay total (payroll_batch.totals.net), as the payroll service stored it. */
  netTotal:unknown}>;
+
+/** How many of a run's open review-severity exceptions standing acknowledgements cover (every finding of the person's
+ * verdict acknowledged for them). A verdict that blocks is never counted here: blocks are never suppressed. */
+export async function acknowledgedExceptions(sponsor:SessionContext,batch:Readonly<{id:string;companyId:string}>,list:readonly Acknowledgement[]):Promise<number>{
+ if(!list.length)return 0;
+ const rows=await withTenant(sponsor,tx=>tx.select({verdictId:payrollAnomalyVerdict.id,employmentId:payrollAnomalyVerdict.employmentId,detectorId:payrollAnomalyFinding.detectorId,
+  severity:payrollAnomalyFinding.severity}).from(payrollAnomalyVerdict).innerJoin(payrollAnomalyFinding,eq(payrollAnomalyFinding.verdictId,payrollAnomalyVerdict.id))
+  .where(and(eq(payrollAnomalyVerdict.batchId,batch.id),isNull(payrollAnomalyVerdict.supersededAt),isNull(payrollAnomalyVerdict.resolvedAt),
+   eq(payrollAnomalyVerdict.disposition,'review'))));
+ if(!rows.length)return 0;
+ const departments=await withTenant(sponsor,tx=>currentDepartmentsTx(tx,rows.map(row=>row.employmentId)));
+ const byVerdict=new Map<string,typeof rows>();
+ for(const row of rows)byVerdict.set(row.verdictId,[...(byVerdict.get(row.verdictId)??[]),row]);
+ let covered=0;
+ for(const findings of byVerdict.values()){
+  const employmentId=findings[0].employmentId,departmentId=departments.get(employmentId)??null;
+  if(findings.every(f=>f.severity!=='block'&&!!acknowledgementFor(list,{companyId:batch.companyId,checkId:`anomaly:${f.detectorId}`,employmentId,departmentId})))covered++;
+ }
+ return covered;
+}
 
 /** The period whose salary cut-off has passed for a company on `today`, and the current month. */
 export function salaryPeriods(cutOffEnd:(period:string)=>string,today:string){
@@ -77,7 +105,8 @@ async function bankCheckFor(sponsor:SessionContext,batch:Batch,country:string):P
   otherCents:sql<string>`coalesce(sum(round(${payslip.netPay}*100)) filter (where ${employment.paymentMethod} is distinct from 'bank_transfer'),0)::text`})
   .from(payslip).innerJoin(employment,eq(employment.id,payslip.employmentId)).where(eq(payslip.batchId,batch.id)));
  const bankRecords=Number(own?.bankRecords??0);
- if(!bankRecords)return 'not_available';
+ // Nobody is paid by bank (cash and cheque only): the run's net pay to bank is nothing, and so is the bank file.
+ if(!bankRecords)return 'match';
  let preview;
  try{
   preview=await salaryRunPreview(sponsor,{companyId:batch.companyId,periodKey:batch.payPeriod,runSeq:batch.runSeq,paymentDate:batch.batchDate});
@@ -131,9 +160,10 @@ export async function detectSalaryPayroll(sponsor:SessionContext,input:LoopDetec
  const companies=input.companyIds.filter(companyId=>isModuleEnabled(sponsor,'payroll',companyId));
  const reads=[read('payroll_config.cut_off_day','core/payroll-policy-config.ts#cutOffWindowFor')];
  if(!companies.length)return {observations:[],reads};
- const [config,countries,settings]=await Promise.all([companyCutOffs(sponsor,companies),
+ const [config,countries,settings,acks]=await Promise.all([companyCutOffs(sponsor,companies),
   withTenant(sponsor,tx=>tx.select({id:company.id,country:company.country}).from(company).where(inArray(company.id,companies))),
-  withTenant(sponsor,tx=>payrollLoopSettingsTx(tx,sponsor.tenantId,companies))]);
+  withTenant(sponsor,tx=>payrollLoopSettingsTx(tx,sponsor.tenantId,companies)),
+  withTenant(sponsor,tx=>acknowledgementsTx(tx,sponsor.tenantId,companies))]);
  const countryOf=new Map(countries.map(row=>[row.id,row.country]));
  const cutOffOf=(companyId:string,period:string)=>preSalaryWindows(config.get(companyId)??null,period).salary.end;
  const periodsOf=new Map(companies.map(companyId=>[companyId,salaryPeriods(period=>cutOffOf(companyId,period),input.today)]));
@@ -164,6 +194,22 @@ export async function detectSalaryPayroll(sponsor:SessionContext,input:LoopDetec
   if(batch.status==='draft'||swingMonths.has(key))continue;
   swingMonths.set(key,await swingsFor(sponsor,batch.companyId,batch.payPeriod,settings.get(batch.companyId)!,componentIds));
  }
+ // Net-swing flags still waiting for a disposition, per company and month: a run of that month is not done while any is.
+ const disposedEarly=new Set<string>();
+ if(swingMonths.size){
+  const months=unique([...swingMonths.keys()].map(key=>key.slice(37)));
+  for(const row of await withTenant(sponsor,tx=>tx.select({employmentId:terasPayrollSwingDisposition.employmentId,payPeriod:terasPayrollSwingDisposition.payPeriod})
+   .from(terasPayrollSwingDisposition).where(and(eq(terasPayrollSwingDisposition.tenantId,sponsor.tenantId),inArray(terasPayrollSwingDisposition.companyId,companies),
+    inArray(terasPayrollSwingDisposition.payPeriod,months)))))disposedEarly.add(swingKey(row.employmentId,row.payPeriod));
+ }
+ // A person whose net-swing check is acknowledged as expected gets no flag (a warning: owner ruling 19).
+ const swingDepartments=await withTenant(sponsor,tx=>currentDepartmentsTx(tx,[...swingMonths.values()].flatMap(summary=>summary.people.filter(p=>p.flagged).map(p=>p.employmentId))));
+ const swingAcknowledged=(companyId:string,employmentId:string)=>!!acknowledgementFor(acks,{companyId,checkId:'swing:net_swing',employmentId,departmentId:swingDepartments.get(employmentId)??null});
+ const openFlags=new Map<string,number>();
+ // Counted exactly as the flags below are raised (a flagged person with no swing ratio or pattern gets no flag case).
+ for(const [key,summary] of swingMonths)openFlags.set(key,summary.people.filter(person=>person.flagged&&person.swingBp!==null&&!!person.pattern
+  &&!disposedEarly.has(swingKey(person.employmentId,key.slice(37)))
+  &&!swingAcknowledged(key.slice(0,36),person.employmentId)).length);
  // Each run's case.
  for(const batch of batches){
   const country=countryOf.get(batch.companyId)??'MY';
@@ -172,12 +218,17 @@ export async function detectSalaryPayroll(sponsor:SessionContext,input:LoopDetec
   const rules=processed?await ruleVersionsFor(sponsor,batch,country):{version:null,newer:[]};
   const bank=await bankCheckFor(sponsor,batch,country);
   const swings=swingMonths.get(`${batch.companyId}:${batch.payPeriod}`)??null;
+  // Open exceptions less the review-severity ones a standing acknowledgement covers (blocks always count).
+  const covered=metrics&&metrics.unresolvedFlagged>0?await acknowledgedExceptions(sponsor,batch,acks):0;
   const facts:LoopFacts={payPeriod:batch.payPeriod,runType:batch.runType,runSeq:batch.runSeq,status:batch.status,stale:batch.stale,employees:batch.employeeCount,
-   detectors:DETECTORS.length,evaluated:!!metrics&&metrics.total>0,exceptions:metrics?metrics.unresolvedFlagged:0,
+   detectors:DETECTORS.length,evaluated:!!metrics&&metrics.total>0,exceptions:metrics?Math.max(0,metrics.unresolvedFlagged-covered):0,
    changed:swings?.changed??0,flagged:swings?.flagged??0,thresholdBp:settings.get(batch.companyId)!.thresholdBp,
    causes:swings?Object.entries(swings.causes).filter(([,count])=>count>0).map(([kind,count])=>`${kind}:${count}`):[],
    ruleVersion:rules.version?rules.version.slice(0,64):null,rulesNewer:rules.newer,bank};
-  const done=batch.status==='closed'&&(bank==='match'||bank==='not_available');
+  // Done: closed, evaluated, nothing unresolved (no open exception, no flag of the month awaiting its disposition), and
+  // the bank file matches. (A case holds at most 16 facts, so the open flags are counted here, not stored.)
+  const done=batch.status==='closed'&&!batch.stale&&facts.evaluated===true&&facts.exceptions===0
+   &&(openFlags.get(`${batch.companyId}:${batch.payPeriod}`)??0)===0&&bank==='match';
   observations.push(done
    ?{subjectKey:runKey(batch.id),companyId:batch.companyId,employmentId:null,recipient:'payroll',state:'closed',closeReason:'done',resolution:'completed',facts}
    :{subjectKey:runKey(batch.id),companyId:batch.companyId,employmentId:null,recipient:'payroll',state:'open',facts});
@@ -219,6 +270,8 @@ export async function detectSalaryPayroll(sponsor:SessionContext,input:LoopDetec
   const companyId=key.slice(0,36),period=key.slice(37),setting=settings.get(companyId)!;
   for(const person of summary.people){
    if(!person.flagged||person.swingBp===null||!person.pattern)continue;
+   // Acknowledged as expected: no flag; a tracked one no longer applies (below).
+   if(swingAcknowledged(companyId,person.employmentId)&&!disposed.has(swingKey(person.employmentId,period)))continue;
    const subjectKey=swingKey(person.employmentId,period);
    flaggedNow.add(subjectKey);
    const facts={payPeriod:period,swingBp:person.swingBp,direction:person.direction,pattern:person.pattern,thresholdBp:setting.thresholdBp,causes:[...person.causes]};

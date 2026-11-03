@@ -14,7 +14,9 @@
  *     limit, then the owner applies it under the sponsor, attributed to the loop (core/loops/attribution.ts), and the result is
  *     recorded. A condition that fails leaves the
  *     card with the person, recorded with its reason; one attempt per case, ever. The database refuses an action while
- *     the loop is off, stopped, paused or below Level 2 for the company (migration 0963).
+ *     the loop is off, stopped, paused or below Level 2 for the company (migration 0963). Phase 2 hardening: the apply
+ *     transaction itself re-checks the switch, the stop, the pause and the level at its start and just before it commits
+ *     (core/loops/act-gate.ts), so a change made between the record and the apply is honoured (`loop_stopped`).
  * Never throws: a failure in this step leaves the prepared cards as they are and is retried on the next run. No model. */
 import {and,asc,count,eq,gte,inArray,isNull,lt,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';

@@ -125,14 +125,38 @@ describe('the cut-off is the payroll owner\'s',()=>{
   // The employee gets the same date through the definer function, while the settings themselves stay closed to them.
   expect((await read(aina)).period).toEqual({payPeriod:'2026-07',start:'2026-06-28',cutOff:'2026-07-27',source:'company'});
   expect(await withTenant(aina,tx=>tx.select().from(schema.companyPayrollConfig))).toEqual([]);
-  expect((await read(aina)).items.find(row=>row.kind==='leave_pending')!.due).toBe('2026-07-27');
-  // Every own item of the administrator is due on the cut-off.
-  expect((await read(group)).items.every(row=>row.due==='2026-07-27')).toBe(true);
+  // Phase 2 hardening: each item is due by its OWN input type's cut-off. The company sets no attendance or unpaid-leave
+  // cut-off day, so the payroll owner reads those as the calendar month (core/payroll-policy-config.ts cutOffWindowFor):
+  // leave and attendance items are due at month end, everything else by the salary cut-off.
+  expect((await read(aina)).items.find(row=>row.kind==='leave_pending')!.due).toBe('2026-07-31');
+  // Her whole own list (the group administrator has no own items in this fixture).
+  const items=(await read(aina)).items;
+  expect(items.length).toBeGreaterThan(0);
+  for(const row of items)expect(row.due,row.kind).toBe(['attendance','overtime','leave','claims'].includes(row.group)?'2026-07-31':'2026-07-27');
+ });
+
+ it('Phase 2 hardening: an attendance cut-off on the 15th and the salary cut-off on the 25th each set their own window and due date',async()=>{
+  await owner.db.delete(schema.companyPayrollConfig).where(eq(schema.companyPayrollConfig.companyId,b.companyId));
+  await owner.db.insert(schema.companyPayrollConfig).values({tenantId:b.tenantId,companyId:b.companyId,cutOffDay:25,attendanceCutOffDay:15});
+  const mine=await read(aina);
+  // The salary window opens on 25 June and closes on 24 July: July's pay.
+  expect(mine.period).toEqual({payPeriod:'2026-07',start:'2026-06-25',cutOff:'2026-07-24',source:'company'});
+  // Attendance for July's pay runs from 15 June to 14 July, so Tuesday 30 June's waiting correction belongs to it now, and
+  // yesterday's missed clock-out is due by the 14th, not the 24th.
+  expect(mine.items.find(row=>row.kind==='missed_clock_out')).toMatchObject({date:YESTERDAY,due:'2026-07-14'});
+  expect(mine.items.filter(row=>row.kind==='attendance_request_pending').map(row=>[row.date,row.due])).toEqual([[TUESDAY,'2026-07-14']]);
+  // Leave has no cut-off day of its own here: the calendar month, due at its end.
+  expect(mine.items.find(row=>row.kind==='leave_pending')).toMatchObject({date:'2026-07-10',due:'2026-07-31'});
+  // The person reads both days through the definer function; the settings themselves stay closed to them.
+  expect(await withTenant(aina,tx=>tx.select().from(schema.companyPayrollConfig))).toEqual([]);
  });
 });
 
 describe('app.own_payroll_cut_off_day (migration 0967)',()=>{
- type Row={cut_off_day:number|null};
+ type Row={cut_off_day:number|null;attendance_cut_off_day:number|null;overtime_cut_off_day:number|null;claim_cut_off_day:number|null;unpaid_leave_cut_off_day:number|null};
+ // Phase 2 hardening: the company's per-type cut-off days come back too (each input type's own window), nothing else.
+ const days=(cut:number|null,p:Partial<{attendance:number;overtime:number;claim:number;leave:number}>={})=>({cut_off_day:cut,attendance_cut_off_day:p.attendance??null,
+  overtime_cut_off_day:p.overtime??null,claim_cut_off_day:p.claim??null,unpaid_leave_cut_off_day:p.leave??null});
  const own=(ctx:SessionContext,employmentId:string)=>withTenant(ctx,tx=>tx.execute(sql`SELECT * FROM app.own_payroll_cut_off_day(${employmentId}::uuid)`)).then(rows=>[...(rows as unknown as Row[])]);
  async function companyB(){
   const [company]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Beta Sdn Bhd'}).returning({id:schema.company.id});
@@ -148,7 +172,7 @@ describe('app.own_payroll_cut_off_day (migration 0967)',()=>{
  it('gives an employee of A only A\'s cut-off day, and nothing for B, a colleague or an unknown id',async()=>{
   const beta=await companyB();
   const bob=await hireEmployee(adminCtx(b),{person:{fullName:'Bob Fictional',primaryEmail:`${randomUUID()}@fixture.test`},companyId:beta.companyId,departmentId:beta.departmentId,employmentType:'full_time',hiredOn:'2024-01-01'});
-  expect(await own(aina,aina.employmentId)).toEqual([{cut_off_day:28}]);
+  expect(await own(aina,aina.employmentId)).toEqual([days(28,{attendance:21})]);
   // B's employment, the colleague's in A and an id that is no employment: no row, however the id is passed.
   expect(await own(aina,bob.employmentId)).toEqual([]);
   expect(await own(aina,siti.employmentId)).toEqual([]);
@@ -169,21 +193,22 @@ describe('app.own_payroll_cut_off_day (migration 0967)',()=>{
   const beta=await companyB();
   const second=await hireEmployee(adminCtx(b),{person:{id:aina.personId},companyId:beta.companyId,departmentId:beta.departmentId,employmentType:'full_time',hiredOn:'2025-01-01'});
   const bob=await hireEmployee(adminCtx(b),{person:{fullName:'Bob Fictional',primaryEmail:`${randomUUID()}@fixture.test`},companyId:beta.companyId,departmentId:beta.departmentId,employmentType:'full_time',hiredOn:'2024-01-01'});
-  expect(await own(aina,aina.employmentId)).toEqual([{cut_off_day:28}]);
-  expect(await own(aina,second.employmentId)).toEqual([{cut_off_day:15}]);
+  expect(await own(aina,aina.employmentId)).toEqual([days(28,{attendance:21})]);
+  expect(await own(aina,second.employmentId)).toEqual([days(15,{overtime:9,claim:11})]);
   expect(await own(aina,bob.employmentId)).toEqual([]);
  });
 
- it('exposes the cut-off day and nothing else, as a STABLE definer with a fixed search path, executable by the application role only',async()=>{
+ it('exposes the cut-off days and nothing else, as a STABLE definer with a fixed search path, executable by the application role only',async()=>{
   const rows=await own(aina,aina.employmentId);
-  expect(rows.map(row=>Object.keys(row))).toEqual([['cut_off_day']]);
-  // Pay day 25 and the attendance cut-off 21 are in the same configuration row and never leave it.
-  expect(JSON.stringify(rows)).not.toMatch(/25|21/);
+  expect(rows.map(row=>Object.keys(row))).toEqual([['cut_off_day','attendance_cut_off_day','overtime_cut_off_day','claim_cut_off_day','unpaid_leave_cut_off_day']]);
+  // Pay day 25 is in the same configuration row and never leaves it.
+  expect(JSON.stringify(rows)).not.toMatch(/25/);
   const [fn]=await owner.db.execute(sql`SELECT p.prosecdef AS definer,p.provolatile AS volatility,p.proconfig AS config,pg_get_function_result(p.oid) AS result,
    has_function_privilege('ai_hr_app',p.oid,'EXECUTE') AS app,
    EXISTS(SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a WHERE a.grantee=0 AND a.privilege_type='EXECUTE') AS public_execute
    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname='own_payroll_cut_off_day'`) as unknown as {definer:boolean;volatility:string;config:string[];result:string;app:boolean;public_execute:boolean}[];
-  expect(fn).toMatchObject({definer:true,volatility:'s',result:'TABLE(cut_off_day integer)',app:true,public_execute:false});
+  expect(fn).toMatchObject({definer:true,volatility:'s',app:true,public_execute:false,
+   result:'TABLE(cut_off_day integer, attendance_cut_off_day integer, overtime_cut_off_day integer, claim_cut_off_day integer, unpaid_leave_cut_off_day integer)'});
   expect(fn.config).toHaveLength(1);expect(fn.config[0]).toMatch(/^search_path=pg_catalog,\s*public,\s*pg_temp$/);
  });
 });

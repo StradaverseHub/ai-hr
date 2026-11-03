@@ -12,6 +12,10 @@ import {loopAttribution,type LoopAskedBy,type LoopAttribution} from '../../lib/a
 export async function setLoopAttributionTx(tx:Tx,attribution:LoopAttribution):Promise<void>{
  await tx.execute(sql`select set_config('app.teras_loop_attribution',${JSON.stringify(attribution)},true)`);
 }
+/** Ends the loop's attribution for the rest of the transaction (Phase 2 hardening): what follows is the person's own. */
+export async function clearLoopAttributionTx(tx:Tx):Promise<void>{
+ await tx.execute(sql`select set_config('app.teras_loop_attribution','',true)`);
+}
 
 /** A login's own name through their person record, where the session may read it. */
 export async function userNameTx(tx:Tx,userId:string|null):Promise<string|null>{

@@ -7,14 +7,15 @@
  *    details the employee may fill in themselves.
  *  - Apply: the notice event (core/notifications.ts 'teras-loop.request.sent') in a transaction carrying the loop's
  *    attribution (core/loops/attribution.ts), so it records the loop, its agent principal and its sponsor.
- *  - Compensate (undo): HR withdraws the request; the employee is told they can ignore it
- *    ('teras-loop.request.withdrawn'). Nothing is deleted.
+ *  - Compensate (undo): the person who asked (HR, or the employee) withdraws the request, recorded as that person; the
+ *    employee is told they can ignore it ('teras-loop.request.withdrawn'). Nothing is deleted.
  * No model is called. */
 import {and,eq} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {appendEvent} from '../../db/events';
 import {domainEvent,employment} from '../../db/schema';
 import {setLoopAttributionTx} from './attribution';
+import {requireLoopMayStillActTx} from './act-gate';
 import type {LoopAttribution} from '../../lib/ai-centre/loop-attribution';
 import {LoopActRefused,LoopUndoRefused} from './act-clock-outs';
 import type {LoopActionCheck,LoopActionFacts,LoopActionReason,UndoneBy} from './autonomy-types';
@@ -49,12 +50,16 @@ export async function applyRequest(sponsor:SessionContext,p:Readonly<{item:Reque
  try{
   return await withTenant(sponsor,async tx=>{
    await setLoopAttributionTx(tx,p.attribution);
+   // Phase 2 hardening: a switch-off, stop, pause or demotion since the attempt was recorded is honoured here.
+   const gate={tenantId:sponsor.tenantId,workerId:p.workerId,companyId:p.item.companyId};
+   await requireLoopMayStillActTx(tx,gate);
    const id=await appendEvent(tx,{tenantId:sponsor.tenantId,aggregateType:'teras-loop-action',aggregateId:p.actionId,eventType:'teras-loop.request.sent',
     actor:{type:'agent',id:p.attribution.principalId},subjectEmploymentId:p.item.employmentId,
     payload:{workerId:p.workerId,gaps:p.item.gaps.length,tab:p.item.tab,undoUntil:p.undoUntil.toISOString()}},{returnId:true});
+   await requireLoopMayStillActTx(tx,gate);
    return Object.freeze({ownerRef:id});
   });
- }catch{throw new LoopActRefused('owner_refused');}
+ }catch(error){throw error instanceof LoopActRefused?error:new LoopActRefused('owner_refused');}
 }
 
 /** For an attempt left half-way: the notice event itself says whether the request was sent. */
@@ -66,9 +71,10 @@ export async function sentRecordOf(sponsor:SessionContext,actionId:string):Promi
  });
 }
 
-/** Withdraw a sent request, in the caller's transaction (which carries the loop's attribution): the employee is told. */
-export async function withdrawRequestTx(tx:Tx,authority:SessionContext,p:Readonly<{actionId:string;employmentId:string;facts:LoopActionFacts;by:UndoneBy;principalId:string}>):Promise<string>{
+/** Withdraw a sent request, in the caller's transaction: the employee is told. The withdrawal is the act of the person who
+ * asked for the undo (HR, or the employee), recorded as that person (Phase 2 hardening), never as the loop's agent. */
+export async function withdrawRequestTx(tx:Tx,authority:SessionContext,p:Readonly<{actionId:string;employmentId:string;facts:LoopActionFacts;by:UndoneBy;askedByUserId:string}>):Promise<string>{
  if(typeof p.facts.tab!=='string')throw new LoopUndoRefused('unavailable');
  return appendEvent(tx,{tenantId:authority.tenantId,aggregateType:'teras-loop-action',aggregateId:p.actionId,eventType:'teras-loop.request.withdrawn',
-  actor:{type:'agent',id:p.principalId},subjectEmploymentId:p.employmentId,payload:{by:p.by}},{returnId:true});
+  actor:{type:'user',id:p.askedByUserId},subjectEmploymentId:p.employmentId,payload:{by:p.by}},{returnId:true});
 }

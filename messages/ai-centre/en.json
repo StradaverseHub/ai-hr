@@ -1394,7 +1394,7 @@
         "match": "Matches net pay and headcount",
         "total_mismatch": "Total does not match net pay",
         "count_mismatch": "Record count does not match",
-        "not_available": "No bank file to check",
+        "not_available": "Bank file could not be checked, so the run is not done",
         "blocked": "Bank file cannot be produced yet",
         "not_ready": "Checked once processed"
       },
@@ -1469,7 +1469,13 @@
         "save": "Save",
         "exclusions": "Excluded pay patterns",
         "noExclusions": "None. An exclusion is added only by approving a proposal.",
-        "remove": "Remove"
+        "remove": "Remove",
+        "reminders": "Automatic cut-off reminders",
+        "remindersOn": "On",
+        "remindersOff": "Off",
+        "remindersTurnOn": "Turn on",
+        "remindersTurnOff": "Turn off",
+        "remindersHelp": "5, 2 and 1 days before each cut-off, each employee and approver with something pending gets one reminder of their own items. Counts only, never a pay figure."
       },
       "proposals": {
         "title": "Proposals",
@@ -1479,22 +1485,69 @@
         "exclusion": "Stop flagging changes explained by {pattern}",
         "evidence": "{expected} of {flags} flags cleared as expected ({share}), real problems: {problems}, last {days} days",
         "approved": "Approve",
-        "rejected": "Reject"
+        "rejected": "Reject",
+        "approveGroupOnly": "A group administrator approves this; you can reject it."
       },
       "saved": {
         "disposition": "Disposition recorded.",
         "setting": "Saved. It applies from the next run.",
         "approved": "Proposal approved. It applies from the next run.",
-        "rejected": "Proposal rejected."
+        "rejected": "Proposal rejected.",
+        "grouped": "Recorded for the whole group.",
+        "acknowledged": "Recorded as expected. It stays listed and no longer counts as open.",
+        "resolved": "Resolved as expected.",
+        "revoked": "Acknowledgement revoked. The check counts again from the next run.",
+        "ruleApproved": "Standing rule approved and recorded as an acknowledgement.",
+        "ruleRejected": "Proposal rejected."
       },
       "errors": {
         "invalid": "That change was not understood.",
         "refused": "You cannot make that change.",
         "changed": "This changed since the page opened. Look again.",
         "already": "Already recorded, or nothing changed.",
-        "failed": "The change could not be saved. Try again."
+        "failed": "The change could not be saved. Try again.",
+        "groupAdministrator": "Only a group administrator can approve this.",
+        "ownEvidence": "You disposed of flags behind this proposal, so another group administrator must approve it.",
+        "own": "You cannot record this about yourself."
       },
-      "patternUnknown": "A pay item no longer in the catalogue"
+      "patternUnknown": "A pay item no longer in the catalogue",
+      "groups": {
+        "title": "Flags by what moved the pay",
+        "help": "Check the people in a group, then decide them together. Each is still recorded as your decision.",
+        "heading": "{pattern}: {count, plural, one {# person} other {# people}}",
+        "member": "{name}: {change} ({causes})",
+        "mark": {
+          "expected": "All {count} expected",
+          "problem": "All {count} are a real problem"
+        },
+        "note": "Marking a group expected also resolves the same people's net-swing anomaly for the month, so you decide the change once."
+      },
+      "acknowledgedBlocks": {
+        "title": "Blocking exceptions with a standing acknowledgement",
+        "help": "A block is never hidden. The resolve is filled in from the acknowledgement; press it if it still holds this run.",
+        "prefilled": "Resolution (from the acknowledgement)",
+        "resolve": "Resolve as expected"
+      },
+      "acknowledge": {
+        "reason": "Why it is expected",
+        "reviewOn": "Review on (optional)",
+        "person": "Always expected for this person"
+      },
+      "acknowledgements": {
+        "title": "Standing acknowledgements",
+        "help": "Checks payroll HR marked as expected, not exceptions. A warning leaves the to-do counts but stays listed in the Audit loop and its pack; a block always stays, with its resolve filled in. Nothing changes any calculation.",
+        "none": "None recorded.",
+        "netSwing": "Net pay change against last month",
+        "group": "Department",
+        "company": "Whole company",
+        "warningLine": "Warning, hidden from to-do: {reason}. {name}, {when}",
+        "blockLine": "Block, resolve pre-filled: {reason}. {name}, {when}",
+        "reviewOn": "review on {date}",
+        "revoke": "Revoke",
+        "proposalsTitle": "Proposed standing rules",
+        "proposal": "Always expect {check} for {name}",
+        "proposalEvidence": "{expected} of the last {runs} decided as expected ({share})"
+      }
     },
     "policies": {
       "title": "Policies",
@@ -2406,7 +2459,10 @@
       "invalid": "That could not be recorded. Check the form and try again.",
       "refused": "Only a payroll administrator of this company can do that.",
       "module": "Payroll is not in use, so the Audit loop cannot be switched on.",
-      "failed": "That did not complete. Nothing was changed. Try again."
+      "failed": "That did not complete. Nothing was changed. Try again.",
+      "subject": "You cannot dispose of a finding about yourself. Another payroll administrator or a group administrator can.",
+      "groupAdministrator": "Loosening a control needs a group administrator.",
+      "already": "That is already recorded."
     },
     "saved": {
       "disposed": "Disposition recorded.",
@@ -2416,7 +2472,8 @@
       "pause": "Saved.",
       "settings": "Control settings saved.",
       "granted": "Auditor access given.",
-      "revoked": "Auditor access revoked."
+      "revoked": "Auditor access revoked.",
+      "acknowledged": "Recorded as expected. It no longer counts as open, and stays listed."
     },
     "filter": {
       "period": "Pay month",
@@ -2500,7 +2557,8 @@
       "notYet": "Not prepared yet",
       "receipt": "Receipt recorded",
       "notFiled": "Not filed yet",
-      "help": "A person files with EPF, PERKESO, LHDN and HRD Corp and records the receipt. The Audit loop never submits anything."
+      "help": "A person files with EPF, PERKESO, LHDN and HRD Corp and records the receipt. The Audit loop never submits anything.",
+      "notRequired": "Not required this month"
     },
     "forms": {
       "epf": "EPF",
@@ -2514,7 +2572,8 @@
       "disposition": "Disposition",
       "choose": "Choose",
       "note": "Note",
-      "record": "Record"
+      "record": "Record",
+      "openReadOnly": "Open: waiting for a payroll administrator."
     },
     "controls": {
       "bank_change_before_pay_day": "Bank details changed shortly before pay day",
@@ -2640,7 +2699,29 @@
       "login": "Login",
       "choose": "Choose a login",
       "grant": "Give access",
-      "auditorsHelp": "An auditor reads this company’s Audit loop evidence and audit pack, read-only, until revoked. Every grant and revocation is recorded."
+      "auditorsHelp": "An auditor reads this company’s Audit loop evidence and audit pack, read-only, until revoked. Every grant and revocation is recorded.",
+      "preparerClosedMode": "Same login processed and closed a run",
+      "preparerClosed": {
+        "info": "Information only (no finding)",
+        "finding": "Open a finding"
+      },
+      "loosenHelp": "A bank change window of 3 to 30 days and an amount of 100.00 to 50,000.00. A shorter window, a higher amount or a finding made information loosens a control and needs a group administrator. Every change is in the month's audit pack."
+    },
+    "auditor": {
+      "readOnly": "You have read-only auditor access to the companies listed here. You can read the evidence and download the audit pack; you cannot change anything."
+    },
+    "acknowledged": {
+      "label": "Expected (standing acknowledgement)",
+      "scope": {
+        "person": "for this person",
+        "group": "for their department",
+        "company": "for the whole company"
+      },
+      "note": "Expected (standing acknowledgement): {reason}",
+      "for": "Expected",
+      "reason": "Why it is expected",
+      "reviewOn": "Review on (optional)",
+      "record": "Always expected"
     }
   },
   "payrollReadiness": {
@@ -2725,6 +2806,24 @@
       "dependants_mismatch": "Check your children for tax relief: your family record lists fewer than you declared",
       "review_acknowledge": "Acknowledge your performance review",
       "onboarding_acknowledge": "Acknowledge your onboarding hand-over"
+    },
+    "tp3Question": {
+      "prompt": "Did you work for another employer earlier this year?",
+      "yes": "Yes",
+      "no": "No"
+    },
+    "reminder": {
+      "title": {
+        "lead5": "Payroll cut-off in 5 days",
+        "lead2": "Payroll cut-off in 2 days",
+        "lead1": "Payroll cut-off tomorrow",
+        "soon": "Payroll cut-off soon"
+      },
+      "body": {
+        "own": "You have items of your own to finish before the payroll cut-off. Open Before payroll on Today to see them.",
+        "approvals": "Requests are waiting for your decision before the payroll cut-off. Open Before payroll on Today to see them.",
+        "both": "You have items of your own to finish and requests waiting for your decision before the payroll cut-off. Open Before payroll on Today to see them."
+      }
     }
   }
 }

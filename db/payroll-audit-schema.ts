@@ -26,14 +26,16 @@ export const payrollAuditCapture=pgTable('payroll_audit_capture',{
  capturedAt:at('captured_at').notNull().defaultNow(),writer:text('writer').$type<'agent'|'user'>().notNull(),writerId:uuid('writer_id').notNull(),
  runId:uuid('run_id'),
 },t=>[uniqueIndex('payroll_audit_capture_seq_uq').on(t.tenantId,t.companyId,t.payPeriod,t.seq),
- uniqueIndex('payroll_audit_capture_version_uq').on(t.tenantId,t.companyId,t.payPeriod,t.sourceKey,t.contentHash),
+ index('payroll_audit_capture_key_idx').on(t.tenantId,t.companyId,t.payPeriod,t.sourceKey,t.seq.desc()),
  index('payroll_audit_capture_batch_idx').on(t.tenantId,t.batchId)]);
 
 export const payrollAuditFinding=pgTable('payroll_audit_finding',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),payPeriod:text('pay_period').notNull(),
  batchId:uuid('batch_id'),employmentId:uuid('employment_id'),controlId:text('control_id').$type<AuditControlId>().notNull(),
  subjectKey:text('subject_key').notNull(),evidence:jsonb('evidence').$type<Record<string,unknown>>().notNull(),
- evidenceHash:text('evidence_hash').notNull().default(''),detectedAt:at('detected_at').notNull().defaultNow(),
+ evidenceHash:text('evidence_hash').notNull().default(''),
+ /** The logins the finding is about, derived by the database from the evidence (Phase 2 hardening); none may dispose of it. */
+ subjectUserIds:uuid('subject_user_ids').array().notNull().default(sql`'{}'::uuid[]`),detectedAt:at('detected_at').notNull().defaultNow(),
  writer:text('writer').$type<'agent'|'user'>().notNull(),writerId:uuid('writer_id').notNull(),runId:uuid('run_id'),
 },t=>[uniqueIndex('payroll_audit_finding_tenant_id_control_id_subject_key_key').on(t.tenantId,t.controlId,t.subjectKey),
  index('payroll_audit_finding_company_idx').on(t.tenantId,t.companyId,t.payPeriod)]);
@@ -53,6 +55,8 @@ export const payrollAuditCorrectionCause=pgTable('payroll_audit_correction_cause
 export const payrollAuditControlSetting=pgTable('payroll_audit_control_setting',{
  tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
  bankChangeDays:integer('bank_change_days').notNull().default(7),adjustmentThreshold:numeric('adjustment_threshold',{precision:12,scale:2}).notNull().default('1000.00'),
+ /** Phase 2 hardening: whether "one login both processed and closed a run" opens a finding or is information only. */
+ preparerClosedMode:text('preparer_closed_mode').$type<'info'|'finding'>().notNull().default('info'),
  version:integer('version').notNull().default(1),changedByUserId:uuid('changed_by_user_id').notNull().references(()=>appUser.id),
  changedAt:at('changed_at').notNull().defaultNow(),
 },t=>[primaryKey({columns:[t.tenantId,t.companyId]})]);

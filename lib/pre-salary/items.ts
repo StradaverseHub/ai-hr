@@ -31,10 +31,14 @@ export type PayrollItemState='todo'|'waiting'|'check';
 export const PAYROLL_ITEM_STATES:readonly PayrollItemState[]=Object.freeze(['todo','waiting','check']);
 
 /** One action. `confirm`: the existing one-tap Confirm card of a Phase 1 loop (the missed clock-out card,
- * core/loops/clock-out-confirm.ts); its own Confirm re-runs every owner check. `open`: the owner's own page. */
+ * core/loops/clock-out-confirm.ts); its own Confirm re-runs every owner check. `open`: the owner's own page. `answer`
+ * (Phase 2 hardening): a one-tap question on the checklist itself, today only the TP3 one ("Did you work for another
+ * employer earlier this year?", core/pre-salary/tp3-answer.ts); `href` is still the owner's page for anyone who would
+ * rather go straight there. */
 export type PayrollItemAction=Readonly<
  |{kind:'open';href:string}
- |{kind:'confirm';card:'clockOut';caseId:string;date:string;checkIn:string;proposedCheckOut:string;href:string}>;
+ |{kind:'confirm';card:'clockOut';caseId:string;date:string;checkIn:string;proposedCheckOut:string;href:string}
+ |{kind:'answer';card:'tp3PreviousEmployer';employmentId:string;year:number;href:string}>;
 
 export type PayrollItem=Readonly<{
  /** Stable within one read: `${kind}:${owner row}`. Never shown and never sent to the model. */
@@ -53,6 +57,12 @@ export type PayrollItem=Readonly<{
  * the owner's default month-end applies; unavailable: the person has no own current employment to read a cut-off for,
  * so no cut-off date is shown and the month is the calendar month (no date is guessed). */
 export type CutOffSource='company'|'month_end'|'unavailable';
+/** One input type's window for the pay period: from its first day to its own cut-off (the item's due date). */
+export type TypeWindow=Readonly<{start:string;end:string}>;
+/** Phase 2 hardening: each input type's own window, from the company's per-type cut-off days (attendance, overtime,
+ * claim and unpaid leave), as the payroll owner resolves them for the same pay period (core/pre-salary/person-items.ts);
+ * each item's due date is its own type's cut-off. */
+export type PayrollTypeWindows=Readonly<{attendance:TypeWindow;overtime:TypeWindow;claim:TypeWindow;leave:TypeWindow}>;
 export type PayrollPeriod=Readonly<{payPeriod:string;start:string;cutOff:string|null;source:CutOffSource}>;
 
 /** done: nothing to do in the group; todo: something for the person; waiting: only things others decide; unknown: the

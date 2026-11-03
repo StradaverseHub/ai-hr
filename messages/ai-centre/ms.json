@@ -1394,7 +1394,7 @@
         "match": "Sepadan dengan gaji bersih dan bilangan pekerja",
         "total_mismatch": "Jumlah tidak sepadan dengan gaji bersih",
         "count_mismatch": "Bilangan rekod tidak sepadan",
-        "not_available": "Tiada fail bank untuk disemak",
+        "not_available": "Fail bank tidak dapat disemak, jadi larian belum selesai",
         "blocked": "Fail bank belum boleh dihasilkan",
         "not_ready": "Disemak setelah diproses"
       },
@@ -1469,7 +1469,13 @@
         "save": "Simpan",
         "exclusions": "Corak gaji yang dikecualikan",
         "noExclusions": "Tiada. Pengecualian ditambah hanya dengan meluluskan cadangan.",
-        "remove": "Buang"
+        "remove": "Buang",
+        "reminders": "Peringatan tarikh tutup automatik",
+        "remindersOn": "Hidup",
+        "remindersOff": "Mati",
+        "remindersTurnOn": "Hidupkan",
+        "remindersTurnOff": "Matikan",
+        "remindersHelp": "5, 2 dan 1 hari sebelum setiap tarikh tutup, setiap pekerja dan pelulus yang mempunyai perkara tertunggak menerima satu peringatan tentang perkara mereka sendiri. Bilangan sahaja, tiada angka gaji."
       },
       "proposals": {
         "title": "Cadangan",
@@ -1479,22 +1485,69 @@
         "exclusion": "Berhenti menandakan perubahan yang dijelaskan oleh {pattern}",
         "evidence": "{expected} daripada {flags} bendera dijelaskan sebagai dijangka ({share}), {problems} masalah sebenar, {days} hari lepas",
         "approved": "Luluskan",
-        "rejected": "Tolak"
+        "rejected": "Tolak",
+        "approveGroupOnly": "Pentadbir kumpulan meluluskan ini; anda boleh menolaknya."
       },
       "saved": {
         "disposition": "Keputusan direkodkan.",
         "setting": "Disimpan. Ia berkuat kuasa mulai larian seterusnya.",
         "approved": "Cadangan diluluskan. Ia berkuat kuasa mulai larian seterusnya.",
-        "rejected": "Cadangan ditolak."
+        "rejected": "Cadangan ditolak.",
+        "grouped": "Direkodkan untuk seluruh kumpulan.",
+        "acknowledged": "Direkodkan sebagai dijangka. Ia kekal disenaraikan dan tidak lagi dikira sebagai terbuka.",
+        "resolved": "Diselesaikan sebagai dijangka.",
+        "revoked": "Pengakuan dibatalkan. Semakan dikira semula mulai larian seterusnya.",
+        "ruleApproved": "Peraturan tetap diluluskan dan direkodkan sebagai pengakuan.",
+        "ruleRejected": "Cadangan ditolak."
       },
       "errors": {
         "invalid": "Perubahan itu tidak difahami.",
         "refused": "Anda tidak boleh membuat perubahan itu.",
         "changed": "Ini telah berubah sejak halaman dibuka. Lihat sekali lagi.",
         "already": "Sudah direkodkan, atau tiada apa yang berubah.",
-        "failed": "Perubahan tidak dapat disimpan. Cuba lagi."
+        "failed": "Perubahan tidak dapat disimpan. Cuba lagi.",
+        "groupAdministrator": "Hanya pentadbir kumpulan boleh meluluskan ini.",
+        "ownEvidence": "Anda telah memutuskan bendera di sebalik cadangan ini, jadi pentadbir kumpulan lain mesti meluluskannya.",
+        "own": "Anda tidak boleh merekodkan ini tentang diri anda sendiri."
       },
-      "patternUnknown": "Item gaji yang tiada lagi dalam katalog"
+      "patternUnknown": "Item gaji yang tiada lagi dalam katalog",
+      "groups": {
+        "title": "Bendera mengikut punca perubahan gaji",
+        "help": "Semak orang dalam kumpulan, kemudian putuskan bersama. Setiap satu tetap direkodkan sebagai keputusan anda.",
+        "heading": "{pattern}: {count, plural, other {# orang}}",
+        "member": "{name}: {change} ({causes})",
+        "mark": {
+          "expected": "Kesemua {count} dijangka",
+          "problem": "Kesemua {count} masalah sebenar"
+        },
+        "note": "Menandakan kumpulan sebagai dijangka juga menyelesaikan anomali ayunan bersih orang yang sama untuk bulan itu, jadi anda memutuskan perubahan sekali sahaja."
+      },
+      "acknowledgedBlocks": {
+        "title": "Pengecualian menyekat dengan pengakuan tetap",
+        "help": "Sekatan tidak pernah disembunyikan. Penyelesaian diisi daripada pengakuan; tekan jika ia masih berlaku untuk larian ini.",
+        "prefilled": "Penyelesaian (daripada pengakuan)",
+        "resolve": "Selesaikan sebagai dijangka"
+      },
+      "acknowledge": {
+        "reason": "Mengapa ia dijangka",
+        "reviewOn": "Semak pada (pilihan)",
+        "person": "Sentiasa dijangka untuk orang ini"
+      },
+      "acknowledgements": {
+        "title": "Pengakuan tetap",
+        "help": "Semakan yang ditandakan HR gaji sebagai dijangka, bukan pengecualian. Amaran keluar daripada kiraan tugasan tetapi kekal disenaraikan dalam gelung Audit dan peknya; sekatan sentiasa kekal, dengan penyelesaian diisi. Tiada pengiraan yang berubah.",
+        "none": "Tiada yang direkodkan.",
+        "netSwing": "Perubahan gaji bersih berbanding bulan lalu",
+        "group": "Jabatan",
+        "company": "Seluruh syarikat",
+        "warningLine": "Amaran, disembunyikan daripada tugasan: {reason}. {name}, {when}",
+        "blockLine": "Sekatan, penyelesaian diisi awal: {reason}. {name}, {when}",
+        "reviewOn": "semak pada {date}",
+        "revoke": "Batalkan",
+        "proposalsTitle": "Cadangan peraturan tetap",
+        "proposal": "Sentiasa jangka {check} untuk {name}",
+        "proposalEvidence": "{expected} daripada {runs} terakhir diputuskan sebagai dijangka ({share})"
+      }
     },
     "policies": {
       "title": "Polisi",
@@ -2406,7 +2459,10 @@
       "invalid": "Itu tidak dapat direkodkan. Semak borang dan cuba lagi.",
       "refused": "Hanya pentadbir gaji syarikat ini boleh melakukannya.",
       "module": "Modul gaji tidak digunakan, jadi gelung audit tidak boleh dihidupkan.",
-      "failed": "Itu tidak selesai. Tiada apa yang diubah. Cuba lagi."
+      "failed": "Itu tidak selesai. Tiada apa yang diubah. Cuba lagi.",
+      "subject": "Anda tidak boleh memutuskan dapatan tentang diri anda sendiri. Pentadbir gaji lain atau pentadbir kumpulan boleh.",
+      "groupAdministrator": "Melonggarkan kawalan memerlukan pentadbir kumpulan.",
+      "already": "Itu sudah direkodkan."
     },
     "saved": {
       "disposed": "Keputusan direkodkan.",
@@ -2416,7 +2472,8 @@
       "pause": "Disimpan.",
       "settings": "Tetapan kawalan disimpan.",
       "granted": "Akses juruaudit diberikan.",
-      "revoked": "Akses juruaudit ditarik balik."
+      "revoked": "Akses juruaudit ditarik balik.",
+      "acknowledged": "Direkodkan sebagai dijangka. Ia tidak lagi dikira sebagai terbuka, dan kekal disenaraikan."
     },
     "filter": {
       "period": "Bulan gaji",
@@ -2500,7 +2557,8 @@
       "notYet": "Belum disediakan",
       "receipt": "Resit direkodkan",
       "notFiled": "Belum difailkan",
-      "help": "Seorang pegawai memfailkan kepada KWSP, PERKESO, LHDN dan HRD Corp serta merekodkan resit. Gelung audit tidak pernah menghantar apa-apa."
+      "help": "Seorang pegawai memfailkan kepada KWSP, PERKESO, LHDN dan HRD Corp serta merekodkan resit. Gelung audit tidak pernah menghantar apa-apa.",
+      "notRequired": "Tidak diperlukan bulan ini"
     },
     "forms": {
       "epf": "KWSP",
@@ -2514,7 +2572,8 @@
       "disposition": "Keputusan",
       "choose": "Pilih",
       "note": "Nota",
-      "record": "Rekod"
+      "record": "Rekod",
+      "openReadOnly": "Terbuka: menunggu pentadbir gaji."
     },
     "controls": {
       "bank_change_before_pay_day": "Butiran bank diubah sejurus sebelum hari gaji",
@@ -2640,7 +2699,29 @@
       "login": "Log masuk",
       "choose": "Pilih log masuk",
       "grant": "Beri akses",
-      "auditorsHelp": "Juruaudit membaca bukti gelung audit dan pek audit syarikat ini, baca sahaja, sehingga ditarik balik. Setiap pemberian dan penarikan balik direkodkan."
+      "auditorsHelp": "Juruaudit membaca bukti gelung audit dan pek audit syarikat ini, baca sahaja, sehingga ditarik balik. Setiap pemberian dan penarikan balik direkodkan.",
+      "preparerClosedMode": "Log masuk yang sama memproses dan menutup larian",
+      "preparerClosed": {
+        "info": "Maklumat sahaja (tiada dapatan)",
+        "finding": "Buka dapatan"
+      },
+      "loosenHelp": "Tetingkap perubahan bank 3 hingga 30 hari dan amaun 100.00 hingga 50,000.00. Tetingkap lebih pendek, amaun lebih tinggi atau dapatan dijadikan maklumat melonggarkan kawalan dan memerlukan pentadbir kumpulan. Setiap perubahan ada dalam pek audit bulan itu."
+    },
+    "auditor": {
+      "readOnly": "Anda mempunyai akses juruaudit baca sahaja kepada syarikat yang disenaraikan di sini. Anda boleh membaca bukti dan memuat turun pek audit; anda tidak boleh mengubah apa-apa."
+    },
+    "acknowledged": {
+      "label": "Dijangka (pengakuan tetap)",
+      "scope": {
+        "person": "untuk orang ini",
+        "group": "untuk jabatan mereka",
+        "company": "untuk seluruh syarikat"
+      },
+      "note": "Dijangka (pengakuan tetap): {reason}",
+      "for": "Dijangka",
+      "reason": "Mengapa ia dijangka",
+      "reviewOn": "Semak pada (pilihan)",
+      "record": "Sentiasa dijangka"
     }
   },
   "payrollReadiness": {
@@ -2725,6 +2806,24 @@
       "dependants_mismatch": "Semak anak untuk pelepasan cukai: rekod keluarga anda menyenaraikan kurang daripada yang anda isytiharkan",
       "review_acknowledge": "Akui penilaian prestasi anda",
       "onboarding_acknowledge": "Akui serahan onboarding anda"
+    },
+    "tp3Question": {
+      "prompt": "Adakah anda bekerja dengan majikan lain lebih awal tahun ini?",
+      "yes": "Ya",
+      "no": "Tidak"
+    },
+    "reminder": {
+      "title": {
+        "lead5": "Tarikh tutup gaji dalam 5 hari",
+        "lead2": "Tarikh tutup gaji dalam 2 hari",
+        "lead1": "Tarikh tutup gaji esok",
+        "soon": "Tarikh tutup gaji tidak lama lagi"
+      },
+      "body": {
+        "own": "Anda ada perkara sendiri untuk diselesaikan sebelum tarikh tutup gaji. Buka Sebelum gaji di Hari ini untuk melihatnya.",
+        "approvals": "Ada permohonan yang menunggu keputusan anda sebelum tarikh tutup gaji. Buka Sebelum gaji di Hari ini untuk melihatnya.",
+        "both": "Anda ada perkara sendiri untuk diselesaikan dan permohonan yang menunggu keputusan anda sebelum tarikh tutup gaji. Buka Sebelum gaji di Hari ini untuk melihatnya."
+      }
     }
   }
 }

@@ -1,8 +1,12 @@
 /** AI v2 P2-2b — the Audit loop's per-company control settings, and the optional auditor grant.
  *
- * Settings: the bank-change window in days (default 7) and the manual-adjustment amount above which a reason is expected
- * (default 1000.00). No row means the defaults. A payroll administrator of the company changes them under their own login;
- * the change is attributed in the row and audited as a domain event with before and after.
+ * Settings: the bank-change window in days (default 7, between 3 and 30), the manual-adjustment amount above which a reason
+ * is expected (default 1000.00, between 100.00 and 50000.00), and whether "one login both processed and closed a run"
+ * opens a finding or is information only (default information: owner decision 2 has no second approver). No row means the
+ * defaults. A payroll administrator of the company tightens them under their own login; LOOSENING one (a shorter window,
+ * a higher amount, a finding made information) needs a group administrator, and the database refuses anyone else
+ * (migration 2006). Every change is attributed in the row and audited as a `payroll-audit.settings-changed` event with
+ * before and after, which the Audit loop captures into the month's pack as a configuration change (Phase 2 hardening).
  * Auditor: an administrator of a company lets a named login of the same tenant read that company's Audit loop and audit
  * pack, read-only, until revoked. An administrator never grants themselves; a grant is revoked once and never rewritten
  * (migration 0965). Both changes are audited. */
@@ -11,11 +15,17 @@ import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {actorOf,appendEvent} from '../../db/events';
 import {payrollAuditControlSetting,payrollAuditReader} from '../../db/payroll-audit-schema';
-import {canManagePayroll,isAdmin} from '../../lib/authz-model';
-import {AUDIT_CONTROL_DEFAULTS} from './types';
+import {canManagePayroll,isAdmin,isGroupAdmin} from '../../lib/authz-model';
+import {AUDIT_CONTROL_BOUNDS,AUDIT_CONTROL_DEFAULTS,PREPARER_CLOSED_MODES,type PreparerClosedMode} from './types';
 
-export type AuditControlSettings=Readonly<{bankChangeDays:number;adjustmentThreshold:number;version:number|null}>;
-export class AuditSettingsRefused extends Error{constructor(readonly reason:'not_administrator'|'invalid'|'not_found'){super('Audit settings refused: '+reason);this.name='AuditSettingsRefused';}}
+export type AuditControlSettings=Readonly<{bankChangeDays:number;adjustmentThreshold:number;preparerClosedMode:PreparerClosedMode;version:number|null}>;
+export class AuditSettingsRefused extends Error{constructor(readonly reason:'not_administrator'|'invalid'|'not_found'|'group_administrator'){super('Audit settings refused: '+reason);this.name='AuditSettingsRefused';}}
+/** Whether moving from one setting to another loosens a control: fewer days watched, a higher amount, or a finding made
+ * information. Pure; the database repeats it (app.payroll_audit_control_setting_guard). */
+export const loosensAuditControl=(before:Pick<AuditControlSettings,'bankChangeDays'|'adjustmentThreshold'|'preparerClosedMode'>,
+ after:Pick<AuditControlSettings,'bankChangeDays'|'adjustmentThreshold'|'preparerClosedMode'>)=>
+ after.bankChangeDays<before.bankChangeDays||after.adjustmentThreshold>before.adjustmentThreshold
+ ||(before.preparerClosedMode==='finding'&&after.preparerClosedMode==='info');
 const clone=(supplied:SessionContext):SessionContext=>({...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))});
 const ok=async(tx:Tx,query:SQL)=>((await tx.execute(query)) as unknown as {ok:boolean|null}[])[0]?.ok===true;
 
@@ -23,29 +33,35 @@ const ok=async(tx:Tx,query:SQL)=>((await tx.execute(query)) as unknown as {ok:bo
 export async function controlSettingsTx(tx:Tx,tenantId:string,companyId:string):Promise<AuditControlSettings>{
  const [row]=await tx.select().from(payrollAuditControlSetting)
   .where(and(eq(payrollAuditControlSetting.tenantId,tenantId),eq(payrollAuditControlSetting.companyId,companyId))).limit(1);
- return Object.freeze(row?{bankChangeDays:row.bankChangeDays,adjustmentThreshold:Number(row.adjustmentThreshold),version:row.version}
+ return Object.freeze(row?{bankChangeDays:row.bankChangeDays,adjustmentThreshold:Number(row.adjustmentThreshold),preparerClosedMode:row.preparerClosedMode,version:row.version}
   :{...AUDIT_CONTROL_DEFAULTS,version:null});
 }
 
-export async function setControlSettings(supplied:SessionContext,input:Readonly<{companyId:unknown;bankChangeDays:unknown;adjustmentThreshold:unknown}>){
+export async function setControlSettings(supplied:SessionContext,input:Readonly<{companyId:unknown;bankChangeDays:unknown;adjustmentThreshold:unknown;preparerClosedMode?:unknown}>){
  const ctx=clone(supplied);
  if(!ctx.userId||ctx.agent||!canManagePayroll(ctx))throw new AuditSettingsRefused('not_administrator');
- const parsed=z.object({companyId:z.guid(),bankChangeDays:z.number().int().min(1).max(60),adjustmentThreshold:z.number().positive().max(9_999_999_999.99)
-  .refine(value=>Number(value.toFixed(2))===value)}).strict().safeParse(input);
+ const B=AUDIT_CONTROL_BOUNDS;
+ const parsed=z.object({companyId:z.guid(),bankChangeDays:z.number().int().min(B.bankChangeDays.min).max(B.bankChangeDays.max),
+  adjustmentThreshold:z.number().min(B.adjustmentThreshold.min).max(B.adjustmentThreshold.max).refine(value=>Number(value.toFixed(2))===value),
+  preparerClosedMode:z.enum(PREPARER_CLOSED_MODES).optional()}).strict().safeParse(input);
  if(!parsed.success)throw new AuditSettingsRefused('invalid');
  const {companyId,bankChangeDays}=parsed.data,threshold=parsed.data.adjustmentThreshold.toFixed(2);
  return withTenant(ctx,async tx=>{
   if(!await ok(tx,sql`select app.can_admin_payroll_for(${companyId}::uuid) as ok`))throw new AuditSettingsRefused('not_administrator');
   const before=await controlSettingsTx(tx,ctx.tenantId,companyId);
+  const preparerClosedMode=parsed.data.preparerClosedMode??before.preparerClosedMode;
+  // Loosening a control is a group administrator's (the database refuses anyone else as well).
+  if(loosensAuditControl(before,{bankChangeDays,adjustmentThreshold:Number(threshold),preparerClosedMode})&&!isGroupAdmin(ctx))
+   throw new AuditSettingsRefused('group_administrator');
   const where=and(eq(payrollAuditControlSetting.tenantId,ctx.tenantId),eq(payrollAuditControlSetting.companyId,companyId));
   const [row]=before.version!==null
-   ?await tx.update(payrollAuditControlSetting).set({bankChangeDays,adjustmentThreshold:threshold,changedByUserId:ctx.userId!,changedAt:sql`now()`}).where(where).returning()
-   :await tx.insert(payrollAuditControlSetting).values({tenantId:ctx.tenantId,companyId,bankChangeDays,adjustmentThreshold:threshold,changedByUserId:ctx.userId!}).returning();
+   ?await tx.update(payrollAuditControlSetting).set({bankChangeDays,adjustmentThreshold:threshold,preparerClosedMode,changedByUserId:ctx.userId!,changedAt:sql`now()`}).where(where).returning()
+   :await tx.insert(payrollAuditControlSetting).values({tenantId:ctx.tenantId,companyId,bankChangeDays,adjustmentThreshold:threshold,preparerClosedMode,changedByUserId:ctx.userId!}).returning();
   if(!row)throw new AuditSettingsRefused('not_administrator');
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-audit-setting',aggregateId:companyId,eventType:'payroll-audit.settings-changed',actor:actorOf(ctx),
-   payload:{companyId,before:{bankChangeDays:before.bankChangeDays,adjustmentThreshold:before.adjustmentThreshold.toFixed(2)},after:{bankChangeDays,adjustmentThreshold:threshold},
-    version:row.version}});
-  return Object.freeze({bankChangeDays:row.bankChangeDays,adjustmentThreshold:Number(row.adjustmentThreshold),version:row.version});
+   payload:{companyId,before:{bankChangeDays:before.bankChangeDays,adjustmentThreshold:before.adjustmentThreshold.toFixed(2),preparerClosedMode:before.preparerClosedMode},
+    after:{bankChangeDays,adjustmentThreshold:threshold,preparerClosedMode},version:row.version}});
+  return Object.freeze({bankChangeDays:row.bankChangeDays,adjustmentThreshold:Number(row.adjustmentThreshold),preparerClosedMode:row.preparerClosedMode,version:row.version});
  });
 }
 

@@ -15,6 +15,27 @@
  * no blocker left). A check whose module the company does not use is off. Each check names the owner page where its
  * items are fixed (PRE_SALARY_CHECK_HREF); the loop itself changes nothing. Counts only: no name, no amount.
  *
+ * Phase 2 hardening (4 November 2026), data-aware: each check reads the owning fact first, so a legitimate set-up is not
+ * flagged (owner input 17):
+ *  - a day the person's schedule group is exempt from absence, late-in and early-out judgments (the attendance owner's
+ *    own "Enable Exception", for staff who do not clock in) is neither an absence nor a short-day mark;
+ *  - only pay-relevant profile updates wait for payroll (bank, statutory and tax details, identity numbers, marital
+ *    status and children: lib/profile-requestable-fields.ts); a photo or a contact change does not;
+ *  - a pending claim counts when it was incurred within the year before the claim cut-off, and a recommended pay change
+ *    when its review cycle ended within the year before the salary cut-off, so a stale request left years ago does not
+ *    hold this month's payroll;
+ *  - statutory numbers are asked only of people they apply to (record readiness: EPF-exempt, SOCSO- and EIS-exempt staff),
+ *    and a bank account only of people paid by bank (cash and cheque need none).
+ * Owner ruling 19 (coordinator review, 4 November 2026): a WARNING a standing acknowledgement covers leaves the counts.
+ * The acknowledgements are the ones payroll HR record on the Audit loop and Salary payroll pages
+ * (core/loops/acknowledgements.ts), each for one check and one person, group or the whole company; a Pre-salary warning
+ * leaves the count when an acknowledgement of the SAME fact covers that person (PRE_SALARY_ACKNOWLEDGED_BY):
+ *  - a late or early mark, when the person's pay is acknowledged as not following attendance ("pay without attendance"
+ *    expected: the Audit loop's control or the anomaly detector);
+ *  - a missing tax number, when the person's missing tax profile is acknowledged (the anomaly detector);
+ *  - a repeat audit issue, when the control is acknowledged (core/payroll-audit/status.ts repeatAuditIssues).
+ * Open and waiting items never leave a count (a block stays a block), and no other warning has an acknowledgeable check
+ * of its own yet (overtime over the cap, draft claims, missing identity, EPF or SOCSO numbers, set-up warnings).
  * Wave 1 integration: the last check is the payroll Audit loop's repeat issues (P2-2b, core/payroll-audit/status.ts
  * repeatAuditIssues): the control checks that found something in the last audited month (the month before this one) and
  * in the month before that too, which the next Pre-salary loop should look at first. A warning per repeated check, never
@@ -22,7 +43,8 @@
 import {and,count,eq,gte,inArray,isNotNull,isNull,lte,or,sql,type Column} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {attendance,attendanceCorrection,claimAttachment,claimRequest,claimType,compensation,employeeStatutoryMy,employment,employmentPayComponent,
- leaveRequest,performanceReview,profileChangeRequest,resignationRequest} from '../../db/schema';
+ leaveRequest,performanceReview,profileChangeRequest,resignationRequest,reviewCycle} from '../../db/schema';
+import {isPayRelevantProfileChange} from './pay-relevant';
 import {terasLoopCase} from '../../db/teras-schema';
 import {isModuleEnabled} from '../entitlements';
 import {compensationEffectiveOn} from '../comp';
@@ -34,6 +56,7 @@ import {addHrDays} from '../../lib/today/audience';
 import {unique} from './detect';
 import {previousPeriod} from './period';
 import {AuditViewRefused,repeatAuditIssues} from '../payroll-audit/status';
+import {acknowledgementFor,acknowledgementsTx,currentDepartmentsTx,type Acknowledgement} from './acknowledgements';
 
 export const PRE_SALARY_CHECKS=Object.freeze(['timesheets','overtime','leave','claims','joinersLeavers','statutoryBank','payChanges','setup','repeatAudit'] as const);
 export type PreSalaryCheckKey=(typeof PRE_SALARY_CHECKS)[number];
@@ -47,6 +70,13 @@ export const PRE_SALARY_CHECK_HREF:Readonly<Record<PreSalaryCheckKey,string>>=Ob
  timesheets:'/attendance/individual',overtime:'/approvals?category=overtime',leave:'/approvals?category=leave',claims:'/approvals?category=claim',
  joinersLeavers:'/personnel',statutoryBank:'/control-tower/readiness',payChanges:'/performance',setup:'/payroll/setup?readiness=full',
  repeatAudit:'/control-tower/loops/loop_payroll_audit'});
+
+/** Owner ruling 19: which standing acknowledgements take a Pre-salary warning out of its count, by the warning. Each is an
+ * acknowledgeable check (core/loops/acknowledgements.ts ACKNOWLEDGEABLE_CHECKS) about the same fact for the same person. */
+export const PRE_SALARY_ACKNOWLEDGED_BY=Object.freeze({
+ lateOrEarly:Object.freeze(['audit:pay_without_attendance','anomaly:pay-without-attendance']),
+ taxNumber:Object.freeze(['anomaly:missing-tax-profile']),
+} as const);
 
 const statusOf=(c:{open:number;waiting:number;warnings:number}):PreSalaryCheckStatus=>c.open>0?'open':c.waiting>0?'waiting':c.warnings>0?'warning':'done';
 const check=(key:PreSalaryCheckKey,c:{open?:number;waiting?:number;warnings?:number;info?:number}):PreSalaryCheck=>{
@@ -82,6 +112,13 @@ export async function preSalaryChecks(sponsor:SessionContext,input:PreSalaryInpu
    or(isNull(employment.terminatedOn),gte(employment.terminatedOn,windows.salary.start)))));
  const ids=people.map(row=>row.id);
  const among=(column:Column)=>ids.length?inArray(column,ids):sql`false`;
+ // Owner ruling 19: the standing acknowledgements in force for the company, as the sponsor may read them (none read, none
+ // applied), and each person's current department for a group-scope one.
+ const acknowledgements:readonly Acknowledgement[]=await withTenant(sponsor,tx=>acknowledgementsTx(tx,sponsor.tenantId,[companyId])).catch(()=>[]);
+ const departments=acknowledgements.some(item=>item.scope==='group')?await withTenant(sponsor,tx=>currentDepartmentsTx(tx,ids)):new Map<string,string>();
+ const acknowledged=(employmentId:string,checkIds:readonly string[])=>checkIds.some(checkId=>!!acknowledgementFor(acknowledgements,
+  {companyId,checkId,employmentId,departmentId:departments.get(employmentId)??null}));
+ const anyAcknowledged=(checkIds:readonly string[])=>acknowledgements.some(item=>checkIds.includes(item.checkId));
 
  // ── Timesheets: missed punches, absences with no leave, late or early marks with no reason, corrections waiting ──
  let timesheets=off('timesheets');
@@ -105,9 +142,12 @@ export async function preSalaryChecks(sponsor:SessionContext,input:PreSalaryInpu
       if(!day)continue;
       const key=`${employmentId}:${row.date}`;
       if(pending.has(key)){waiting++;continue;}
+      // The schedule group's own exemption: no absence and no short-day mark on an exempt day.
+      const exempt=(row as {exceptionExempt?:boolean}).exceptionExempt===true;
       if(day.section==='incomplete')missing++;
-      else if(day.section==='absent')absent++;
-      else if(!explained.has(key))short++;
+      else if(day.section==='absent'){if(!exempt)absent++;}
+      // A late or early mark of someone whose pay is acknowledged as not following attendance: expected, not a warning.
+      else if(!exempt&&!explained.has(key)&&!acknowledged(employmentId,PRE_SALARY_ACKNOWLEDGED_BY.lateOrEarly))short++;
      }
     }
    }
@@ -146,7 +186,8 @@ export async function preSalaryChecks(sponsor:SessionContext,input:PreSalaryInpu
  // ── Claims: waiting for a decision, missing a required receipt, and drafts not yet submitted ──
  let claims=off('claims');
  if(uses('claims')){
-  const inWindow=lte(claimRequest.incurredOn,windows.claim.end);
+  // Incurred within the year before the claim cut-off: a request left pending for longer is not this month's input.
+  const inWindow=and(lte(claimRequest.incurredOn,windows.claim.end),gte(claimRequest.incurredOn,addHrDays(windows.claim.end,-365)));
   const noReceipt=sql`${claimType.requiresReceipt} and not exists (select 1 from ${claimAttachment} a where a.claim_request_id=${claimRequest.id})`;
   const [waiting,receipts,drafts]=await withTenant(sponsor,async tx=>[
    n(await tx.select({n:count()}).from(claimRequest).where(and(among(claimRequest.employmentId),eq(claimRequest.status,'pending'),inWindow))),
@@ -177,19 +218,26 @@ export async function preSalaryChecks(sponsor:SessionContext,input:PreSalaryInpu
  // ── Statutory and bank details (record readiness, the same rules the payroll detectors use) ──
  const active=people.filter(row=>row.terminatedOn==null).map(row=>row.id);
  const [gaps,profileUpdates,dataRequests]=await withTenant(sponsor,async tx=>[
-  active.length?(await readinessSnapshot(tx,0,true,{employmentIds:active})).view.gaps:[],
-  n(await tx.select({n:count()}).from(profileChangeRequest).where(and(among(profileChangeRequest.employmentId),eq(profileChangeRequest.status,'pending'),
-   sql`coalesce(${profileChangeRequest.proposed}->>'kind','')<>'photo'`))),
+  // With every person named only when an acknowledgement could take one out of a count (the names never leave here).
+  active.length?(await readinessSnapshot(tx,anyAcknowledged(PRE_SALARY_ACKNOWLEDGED_BY.taxNumber)?active.length:0,true,{employmentIds:active})).view.gaps:[],
+  // Only a pay-relevant update waits for payroll (not a photo, a contact detail or a preferred name).
+  (await tx.select({proposed:profileChangeRequest.proposed}).from(profileChangeRequest).where(and(among(profileChangeRequest.employmentId),
+   eq(profileChangeRequest.status,'pending'),sql`coalesce(${profileChangeRequest.proposed}->>'kind','')<>'photo'`))).filter(row=>isPayRelevantProfileChange(row.proposed)).length,
   n(await tx.select({n:count()}).from(terasLoopCase).where(and(eq(terasLoopCase.workerId,'loop_missing_employee_data'),eq(terasLoopCase.companyId,companyId),
    inArray(terasLoopCase.state,['open','waiting'])))),
  ] as const);
  const gap=(id:string)=>gaps.find(item=>item.id===id)?.count??0;
+ // A missing tax number of someone whose missing tax profile is acknowledged: expected, not a warning.
+ const taxCovered=(gaps.find(item=>item.id==='no_tax_number')?.people??[]).filter(row=>acknowledged(row.employmentId,PRE_SALARY_ACKNOWLEDGED_BY.taxNumber)).length;
  const statutoryBank=check('statutoryBank',{open:gap('no_bank_account'),waiting:profileUpdates,
-  warnings:gap('no_identity')+gap('no_tax_number')+gap('no_epf_number')+gap('no_socso_number'),info:dataRequests});
+  warnings:gap('no_identity')+Math.max(0,gap('no_tax_number')-taxCovered)+gap('no_epf_number')+gap('no_socso_number'),info:dataRequests});
 
  // ── Pay changes: recommended changes not yet decided, and recorded changes taking effect in the window ──
  const [recommended,changes]=await withTenant(sponsor,async tx=>[
-  uses('performance')?n(await tx.select({n:count()}).from(performanceReview).where(and(among(performanceReview.employmentId),eq(performanceReview.compActionStatus,'recommended')))):0,
+  // A recommendation from a review cycle that ended within the year before the salary cut-off (and not after it).
+  uses('performance')?n(await tx.select({n:count()}).from(performanceReview).innerJoin(reviewCycle,eq(reviewCycle.id,performanceReview.cycleId))
+   .where(and(among(performanceReview.employmentId),eq(performanceReview.compActionStatus,'recommended'),
+    lte(reviewCycle.periodEnd,windows.salary.end),gte(reviewCycle.periodEnd,addHrDays(windows.salary.end,-365))))):0,
   n(await tx.select({n:count()}).from(compensation).where(and(among(compensation.employmentId),isNull(compensation.supersededAt),
    gte(compensation.validFrom,windows.salary.start),lte(compensation.validFrom,windows.salary.end))))
   +n(await tx.select({n:count()}).from(employmentPayComponent).where(and(among(employmentPayComponent.employmentId),isNull(employmentPayComponent.supersededAt),

@@ -47,6 +47,7 @@ vi.mock('../core/learning/quality',async()=>({aiQuality:async(_session:unknown,i
 vi.mock('../components/ai-centre/capacity-ledger',()=>({CapacityLedgerSection:()=><section data-capacity-ledger-marker/>}));
 vi.mock('../core/pre-salary/person-items',()=>({readMyPayrollReadiness:async()=>{state.reads.push(['readiness']);return null;}}));
 vi.mock('../app/assistant/loop-clock-out-actions',()=>({confirmMissedClockOutAction:vi.fn()}));
+vi.mock('../app/assistant/payroll-readiness-actions',()=>({answerTp3PreviousEmployerAction:vi.fn()}));
 import {AiQualitySection} from '../components/ai-centre/ai-quality';
 import {AiCentreInsights} from '../components/ai-centre/insights';
 import {isAdmin} from '../lib/authz-model';

@@ -401,9 +401,11 @@ describe('undo',()=>{
   // The applied correction is still on record: nothing was deleted, and the action itself is unchanged.
   expect((await owner.db.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id,a1.ownerRef!)))[0].status).toBe('approved');
   expect(await actionFor(e1.employmentId)).toMatchObject({state:'applied',ownerRef:a1.ownerRef});
+  // Phase 2 hardening: the undo itself is the employee's act, recorded as the employee (only the compensating correction,
+  // which needs an administrator's authority, names the loop and who asked).
   const [event]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType,'teras-loop.action.undone'),eq(schema.domainEvent.aggregateId,a1.id)));
-  expect(event).toMatchObject({actorType:'agent',actorId:principalId,subjectEmploymentId:e1.employmentId});
-  expect((event.payload as Attributed).agentAttribution).toMatchObject({askedBy:'employee',askedByUserId:e1.userId,sponsorUserId:group.userId,label:undoLabel});
+  expect(event).toMatchObject({actorType:'user',actorId:e1.userId,subjectEmploymentId:e1.employmentId});
+  expect((event.payload as Attributed).agentAttribution).toBeUndefined();
   // Twice is refused, and Today no longer offers it.
   expect(await undoLoopAction(e1,{actionId:a1.id,confirm:true})).toEqual({kind:'refused',reason:'changed'});
   expect(await readLoopCards(e1,{scopeIds:[],admin:false})).toEqual([]);
@@ -413,9 +415,13 @@ describe('undo',()=>{
   expect(await undoLoopAction(scoped,{actionId:a2.id,confirm:true})).toEqual({kind:'undone',by:'hr'});
   const hrUndo=(await undosOf()).find(row=>row.actionId===a2.id)!;
   expect(hrUndo).toMatchObject({undoneBy:'hr',undoneByUserId:scoped.userId});
-  expect(await correctionAttribution(hrUndo.compensationRef)).toEqual({principal:principalId,worker:LOOP,action:a2.id,sponsor:group.userId,asked:'hr',asker:scoped.userId});
-  expect((await attendanceClockData(adminCtx(b),e2.employmentId,EARLIER)).rows.filter(row=>row.voidedAt).map(row=>row.voidedBy))
-   .toEqual(['AI Centre loop (missed clock-outs), at the request of Fictional Company Administrator (HR), sponsored by Fictional Group Administrator']);
+  // Phase 2 hardening: HR's undo is HR's own act under HR's own authority: the compensating correction carries no loop
+  // attribution, the clocking is removed by HR, and every event of the undo is HR's.
+  expect(await correctionAttribution(hrUndo.compensationRef)).toEqual({principal:null,worker:null,action:null,sponsor:null,asked:null,asker:null});
+  expect((await attendanceClockData(adminCtx(b),e2.employmentId,EARLIER)).rows.filter(row=>row.voidedAt).map(row=>row.voidedBy)).toEqual(['Fictional Company Administrator']);
+  for(const item of await correctionEvents(hrUndo.compensationRef))expect([item.eventType,item.actorType,item.actorId]).toEqual([item.eventType,'user',scoped.userId]);
+  const [hrEvent]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType,'teras-loop.action.undone'),eq(schema.domainEvent.aggregateId,a2.id)));
+  expect(hrEvent).toMatchObject({actorType:'user',actorId:scoped.userId});
   expect(await clockOutOn(e2.employmentId,EARLIER)).toBeNull();
   // The undo row is append-only.
   expect(await failure(owner.db.update(terasLoopActionUndo).set({undoneBy:'hr'}).where(eq(terasLoopActionUndo.actionId,a1.id)))).toMatch(/append-only/);
@@ -606,14 +612,13 @@ describe('missing employee data at Level 2',()=>{
   // Sent once per case, however many nights pass.
   await runMd();
   expect(await actionsMd()).toHaveLength(1);
-  // HR withdraws it: refused after the window, then done in the loop's name at HR's request, and the employee is told.
+  // HR withdraws it: refused after the window, then done as HR's own act (Phase 2 hardening), and the employee is told.
   const hr=await companyAdmin(b,b.companyId,b.deptA);
   expect(await undoLoopAction(hr,{actionId:action.id,confirm:true},new Date(action.undoUntil.getTime()+1000))).toEqual({kind:'refused',reason:'expired'});
   expect(await undoLoopAction(hr,{actionId:action.id,confirm:true})).toEqual({kind:'undone',by:'hr'});
   const [withdrawn]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType,'teras-loop.request.withdrawn'),eq(schema.domainEvent.aggregateId,action.id)));
-  expect(withdrawn).toMatchObject({actorType:'agent',actorId:principalId,subjectEmploymentId:e.employmentId});
-  expect((withdrawn.payload as Attributed).agentAttribution).toMatchObject({askedBy:'hr',askedByUserId:hr.userId,
-   label:'AI Centre loop (missing employee data), at the request of Fictional Company Administrator (HR), sponsored by Fictional Group Administrator'});
+  expect(withdrawn).toMatchObject({actorType:'user',actorId:hr.userId,subjectEmploymentId:e.employmentId});
+  expect((withdrawn.payload as Attributed).agentAttribution).toBeUndefined();
   expect((await undosOf()).find(row=>row.actionId===action.id)).toMatchObject({undoneBy:'hr',undoneByUserId:hr.userId,compensationRef:withdrawn.id});
   await dispatchNotifications(await entitledCtx(b),{});
   expect((await owner.db.select().from(schema.notification).where(eq(schema.notification.sourceEventId,withdrawn.id)))[0])

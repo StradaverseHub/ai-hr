@@ -62,6 +62,17 @@ export const LOOP_AUTONOMY:Readonly<Record<LoopId,AutonomyDeclaration>>=freeze(D
 /** True when any category is one a loop may never act on by itself. */
 export const touchesCapped=(categories:readonly string[])=>categories.some(category=>(CAPPED_CATEGORIES as readonly string[]).includes(category));
 
+/** AI v2 Phase 2 hardening (owner ruling 18) — the automatic NOTICES a loop sends whatever its level, each classed by what
+ * it touches like a loop's own work. A notice is a request to a person about their own pending items, never the change
+ * itself (the missing employee data loop's pattern), so a loop capped at Prepare (the Pre-salary loop: pay) may send one
+ * only while its class is not a capped category; noticeAllowed computes that from the class, never from a stored value.
+ * The loop's own level is untouched: it still only prepares. */
+const NOTICES:Partial<Record<LoopId,Readonly<{category:string;what:string}>>>={
+ loop_payroll_inputs:{category:'payroll_input_reminder',what:'One consolidated cut-off reminder of the person\'s own pending items, 5, 2 and 1 days before each cut-off (core/loops/cut-off-reminders.ts)'},
+};
+export const LOOP_NOTICES:Readonly<Partial<Record<LoopId,Readonly<{category:string;what:string}>>>>=freeze(NOTICES);
+export const noticeAllowed=(id:LoopId)=>{const notice=LOOP_NOTICES[id];return !!notice&&!touchesCapped([notice.category]);};
+
 /** The highest level a loop may ever reach, from its declaration. A capped category always gives Prepare. */
 export function maxLevel(id:LoopId,declaration:AutonomyDeclaration=LOOP_AUTONOMY[id]):AutonomyLevel{
  if(!declaration||touchesCapped(declaration.categories))return 1;

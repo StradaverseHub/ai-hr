@@ -83,10 +83,18 @@ export function NotificationCenter({
   const tH = useTranslations('approvalHistory');
   const tGreeting=useTranslations('employeeHome.greetingNotification');
   const tLetter=useTranslations('letters.notifications');
-  const notificationText=useCallback((item:NotificationRow)=>item.kind==='employee-home.greeting'
+  // AI v2 Phase 2 hardening: the automatic payroll cut-off reminder is stored as message keys (core/notifications.ts) and
+  // read here in the reader's own language.
+  const tReminder=useTranslations('payrollReadiness.reminder');
+  const reminderText=useCallback((item:NotificationRow)=>{
+    if(item.kind!=='teras-loop.cut-off-reminder')return null;
+    const title=/^payrollReadiness\.reminder\.(title\.(?:lead5|lead2|lead1|soon))$/.exec(item.title),body=/^payrollReadiness\.reminder\.(body\.(?:own|approvals|both))$/.exec(item.body);
+    return title&&body?{title:tReminder(title[1]),body:tReminder(body[1])}:null;
+  },[tReminder]);
+  const notificationText=useCallback((item:NotificationRow)=>reminderText(item)??(item.kind==='employee-home.greeting'
     &&item.title==='employeeHome.greetingNotification.title'&&item.body==='employeeHome.greetingNotification.body'
     ?{title:tGreeting('title'),body:tGreeting('body')}:typeof item.kind==='string'&&item.body==='letters.notifications.body'&&item.title==='letters.notifications.'+item.kind.slice(7)&&['letter.approval','letter.approvalReminder','letter.escalation','letter.issued','letter.acknowledgementReminder','letter.returned','letter.rejected','letter.approved','letter.acknowledged','letter.signed','letter.created'].includes(item.kind)
-    ?{title:tLetter(item.kind.slice(7)),body:tLetter('body')}:{title:item.title,body:item.body},[tGreeting,tLetter]);
+    ?{title:tLetter(item.kind.slice(7)),body:tLetter('body')}:{title:item.title,body:item.body}),[tGreeting,tLetter,reminderText]);
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TabKey>('notifications');

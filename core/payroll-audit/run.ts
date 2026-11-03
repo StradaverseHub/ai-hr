@@ -12,7 +12,10 @@
  *     tenant stopped or the company paused (migration 0965). A month with no run and no statutory or bank file is skipped.
  *  4. Record: one append-only teras_loop_run row per company (observed: artefacts collected; opened: findings opened; open now:
  *     findings without a disposition). A failed owner read records a failed run and writes nothing for that company.
- * No model is called; nothing is filed, submitted, closed or changed. Called by the nightly sweep (scripts/review-sweep.ts). */
+ * No model is called; nothing is filed, submitted, closed or changed. Called by the nightly sweep (scripts/review-sweep.ts),
+ * and (Phase 2 hardening, 4 November 2026) by the 15-minute payroll tick with `onlyChanged`, for the companies whose payroll
+ * runs, statutory files or bank files changed since the loop last ran there (core/loops/payroll-freshness.ts), so a run
+ * processed, reprocessed or closed is captured and checked within the quarter hour, not the next morning. */
 import {randomUUID} from 'node:crypto';
 import {and,count,eq,notExists,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
@@ -25,12 +28,15 @@ import {workerRunGateTx} from '../agent-registry/controls';
 import type {EntitlementSnapshot} from '../entitlement-types';
 import {isModuleEnabled} from '../entitlements';
 import {currentSponsorTx} from '../loops/run';
+import {lastLoopRunsTx,payrollChangedCompanies} from '../loops/payroll-freshness';
 import type {LoopCheck,LoopRead} from '../loops/types';
 import {appendCapturesTx,auditPeriodsFor,collectPayrollPeriodArtefactsTx,type AuditArtefact} from './capture';
 import {detectControlFindingsTx,recordFindingsTx,type ControlObservation} from './controls';
 import {AUDIT_LOOP_ID,AUDIT_LOOP_VERSION} from './types';
 
-export type AuditRunOptions=Readonly<{tenantId:string;principalId:string;entitlements:EntitlementSnapshot;today?:string}>;
+export type AuditRunOptions=Readonly<{tenantId:string;principalId:string;entitlements:EntitlementSnapshot;today?:string;
+ /** Only the companies whose payroll or its files changed since the loop last ran there (the payroll tick's refresh). */
+ onlyChanged?:true}>;
 export type AuditRunResult=
  |Readonly<{workerId:typeof AUDIT_LOOP_ID;status:'not_run';reasons:readonly string[]}>
  |Readonly<{workerId:typeof AUDIT_LOOP_ID;status:'sponsor_lost';runId:string}>
@@ -82,7 +88,11 @@ export async function runPayrollAuditLoop(options:AuditRunOptions):Promise<Audit
   return Object.freeze({workerId,status:'sponsor_lost' as const,runId});
  }
  const checks=[...gateChecks,check('sponsor_authority','sponsor:current',true),check('company_not_paused','teras_loop_pause',true)];
- const companies=scope.filter(companyId=>!first.paused.has(companyId)&&isModuleEnabled(agent,'payroll',companyId));
+ let companies=scope.filter(companyId=>!first.paused.has(companyId)&&isModuleEnabled(agent,'payroll',companyId));
+ if(options.onlyChanged&&companies.length){
+  const since=await withTenant(agent,tx=>lastLoopRunsTx(tx,options.tenantId,workerId,companies));
+  companies=await payrollChangedCompanies(sponsor,{companies,since,files:true}).catch(()=>[]);
+ }
  let captured=0,findingsOpened=0,failed=0;
  for(const companyId of companies){
   const companyStarted=new Date();let observed=0,opened=0,status:'ran'|'failed'='ran';

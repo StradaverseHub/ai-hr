@@ -29,6 +29,7 @@ import {payrollLoopSettingHistoryTx,payrollLoopSettingsTx,thresholdProposalsTx,t
 import {startKey,type BankCheck} from './salary-payroll';
 import {AuditViewRefused,auditLoopSummary,type AuditLoopSummary} from '../payroll-audit/status';
 import type {SwingProposal} from './swing-proposals';
+import {acknowledgementViewsTx,ruleProposalsTx,type AcknowledgementView,type RuleProposal} from './acknowledgements';
 import type {LoopFacts,LoopId} from './types';
 
 export class PayrollCycleRefused extends Error{constructor(readonly reason:'not_administrator'|'invalid'){super('Payroll cycle view refused: '+reason);this.name='PayrollCycleRefused';}}
@@ -127,11 +128,14 @@ export async function payrollCycleOverview(ctx:SessionContext,options:Readonly<{
   const cutOffs=await companyCutOffsTx(tx,ctx.tenantId,ids);
   const periods=[period,previousPeriod(period),previousPeriod(previousPeriod(period)),previousPeriod(previousPeriod(previousPeriod(period)))];
   const preKeys=ids.flatMap(companyId=>periods.map(p=>payrollKey(companyId,p)));
-  const cases=ids.length?await tx.select({id:terasLoopCase.id,workerId:terasLoopCase.workerId,companyId:terasLoopCase.companyId,subjectKey:terasLoopCase.subjectKey,
+  const stored=ids.length?await tx.select({id:terasLoopCase.id,workerId:terasLoopCase.workerId,companyId:terasLoopCase.companyId,subjectKey:terasLoopCase.subjectKey,
    state:terasLoopCase.state,closeReason:terasLoopCase.closeReason,reopenCount:terasLoopCase.reopenCount,facts:terasLoopCase.facts,checkedAt:terasLoopCase.checkedAt,
    closedAt:terasLoopCase.closedAt}).from(terasLoopCase)
    .where(and(eq(terasLoopCase.tenantId,ctx.tenantId),inArray(terasLoopCase.companyId,ids),inArray(terasLoopCase.workerId,['loop_payroll_inputs','loop_salary_payroll']),
     sql`(${inArray(terasLoopCase.subjectKey,preKeys)} or ${terasLoopCase.subjectKey} like 'salaryrun:%' or ${terasLoopCase.subjectKey} like 'salarystart:%')`)):[];
+  // A case the runner retired out of scope (core/loops/run.ts: the loop no longer covered its company) is not a check
+  // the loop made: it is neither a missed Pre-salary check nor a run in progress, so the view leaves it out.
+  const cases=stored.filter(row=>row.closeReason!=='out_of_scope');
   const runCases=cases.filter(row=>row.workerId==='loop_salary_payroll'&&row.subjectKey.startsWith('salaryrun:')&&periods.includes(str(row.facts,'payPeriod')??''));
   const closedBy=await closedByTx(tx,ctx,runCases.map(row=>row.subjectKey.slice('salaryrun:'.length)));
   const runs=runCases.map(row=>runView(row,closedBy.get(row.subjectKey.slice('salaryrun:'.length))??null)).filter((row):row is SalaryRunView=>!!row);
@@ -208,7 +212,7 @@ async function companyCutOffsTx(tx:Tx,tenantId:string,companyIds:readonly string
 
 // ── The Salary payroll loop's page: its runs and the net-swing flags, for payroll administrators ──
 
-export type SwingFlagView=Readonly<{caseId:string;companyId:string;companyName:string|null;personName:string|null;payPeriod:string;swingBp:number;direction:'up'|'down'|null;
+export type SwingFlagView=Readonly<{caseId:string;companyId:string;companyName:string|null;employmentId:string|null;personName:string|null;payPeriod:string;swingBp:number;direction:'up'|'down'|null;
  pattern:string;thresholdBp:number;causes:readonly PayCauseKind[];state:'open'|'closed';closeReason:string|null;
  disposition:Readonly<{value:'expected'|'problem';by:string|null;at:Date}>|null}>;
 export type SalaryLoopPage=Readonly<{period:string;today:string;allowed:readonly CompanyRef[];filter:string|null;loop:LoopSwitch;
@@ -256,7 +260,7 @@ export async function salaryLoopPage(ctx:SessionContext,options:Readonly<{period
    const d=dispositions.find(item=>item.caseId===row.id);
    // A flag that no longer applies (reprocessed under the threshold) is not listed.
    if(row.state==='closed'&&!d)return [];
-   return [Object.freeze({caseId:row.id,companyId:row.companyId,companyName:row.companyName??null,personName:row.personName??null,payPeriod:period,swingBp:num(facts,'swingBp'),
+   return [Object.freeze({caseId:row.id,companyId:row.companyId,companyName:row.companyName??null,employmentId:row.employmentId??null,personName:row.personName??null,payPeriod:period,swingBp:num(facts,'swingBp'),
     direction:direction==='up'||direction==='down'?direction:null,pattern,thresholdBp:num(facts,'thresholdBp'),
     causes:Object.freeze(list(facts,'causes').filter((kind):kind is PayCauseKind=>(PAY_CAUSE_KINDS as readonly string[]).includes(kind))),
     state:row.state==='closed'?'closed' as const:'open' as const,closeReason:row.closeReason,
@@ -277,7 +281,9 @@ export type ThresholdDecisionView=Readonly<{id:string;kind:'threshold'|'exclusio
 export type SettingHistoryView=Readonly<{version:number;interval:PayrollLoopSetting['interval'];thresholdBp:number;exclusions:readonly string[];source:'admin'|'proposal';
  by:string|null;at:Date}>;
 export type PayrollLoopSettingsPage=Readonly<{companies:readonly Readonly<CompanyRef&{setting:PayrollLoopSetting;proposals:readonly SwingProposal[];
- history:readonly SettingHistoryView[];decisions:readonly ThresholdDecisionView[]}>[];
+ history:readonly SettingHistoryView[];decisions:readonly ThresholdDecisionView[];
+ /** Phase 2 hardening: the standing "expected" acknowledgements in force, and the standing rules the dispositions propose. */
+ acknowledgements:readonly AcknowledgementView[];ruleProposals:readonly (RuleProposal&Readonly<{personName:string|null}>)[]}>[];
  /** The current name of each pay item an exclusion or proposal names, for display only. */
  patternNames:Readonly<Record<string,string>>}>;
 
@@ -293,9 +299,17 @@ export async function payrollLoopSettingsPage(ctx:SessionContext,options:Readonl
    .orderBy(desc(terasPayrollThresholdDecision.decidedAt)).limit(100):[];
   const names=await namesTx(tx,[...history.map(row=>row.changedByUserId),...decisions.map(row=>row.decidedByUserId)]);
   const companies=[];
+  // Acknowledgements and their proposals are payroll data: read only for companies whose payroll the viewer administers.
+  const payroll=new Set((await allowedTx(tx,ctx,true)).map(item=>item.companyId));
+  const acknowledgements=await acknowledgementViewsTx(tx,ctx.tenantId,[...payroll]).catch(()=>[] as AcknowledgementView[]);
+  const rules=await ruleProposalsTx(tx,ctx.tenantId,[...payroll]).catch(()=>[] as readonly RuleProposal[]);
+  const ruleNames=rules.length?new Map((await tx.select({id:employment.id,name:person.fullName}).from(employment).leftJoin(person,eq(person.id,employment.personId))
+   .where(inArray(employment.id,[...new Set(rules.map(rule=>rule.employmentId))]))).map(row=>[row.id,row.name??null])):new Map<string,string|null>();
   for(const ref of allowed){
    const {setting,proposals}=await thresholdProposalsTx(tx,ctx.tenantId,ref.companyId,now);
    companies.push(Object.freeze({...ref,setting,proposals,
+    acknowledgements:Object.freeze(acknowledgements.filter(item=>item.companyId===ref.companyId)),
+    ruleProposals:Object.freeze(rules.filter(rule=>rule.companyId===ref.companyId).map(rule=>Object.freeze({...rule,personName:ruleNames.get(rule.employmentId)??null}))),
     history:Object.freeze(history.filter(row=>row.companyId===ref.companyId).slice(0,10).map(row=>Object.freeze({version:row.version,interval:row.checkInterval,
      thresholdBp:row.swingThresholdBp,exclusions:Object.freeze([...row.swingExclusions]),source:row.source,by:names.get(row.changedByUserId)??null,at:row.changedAt}))),
     decisions:Object.freeze(decisions.filter(row=>row.companyId===ref.companyId).slice(0,10).map(row=>Object.freeze({id:row.id,kind:row.kind,fromThresholdBp:row.fromThresholdBp,

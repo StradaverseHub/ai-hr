@@ -27,6 +27,7 @@ import {AttendancePayrollClosedError,attendanceCorrectionClockSourceTx,attendanc
 import {approvedLeavePresenceByEmploymentTx} from '../../packs/leave/service';
 import {clockOf,unique} from './detect';
 import {setLoopAttributionTx} from './attribution';
+import {requireLoopMayStillActTx} from './act-gate';
 import type {LoopAttribution} from '../../lib/ai-centre/loop-attribution';
 import type {LoopActionCheck,LoopActionFacts,LoopActionReason,LoopLimits,UndoneBy} from './autonomy-types';
 
@@ -108,6 +109,9 @@ export async function applyClockOut(sponsor:SessionContext,p:Readonly<{item:Cloc
  try{
   return await withTenant(sponsor,async tx=>{
    await setLoopAttributionTx(tx,p.attribution);
+   // Phase 2 hardening: a switch-off, stop, pause or demotion since the attempt was recorded is honoured here.
+   const gate={tenantId:sponsor.tenantId,workerId:p.workerId,companyId:item.companyId};
+   await requireLoopMayStillActTx(tx,gate);
    const before=await clockRowsTx(tx,item.employmentId,item.date);
    if(!dayUnchanged(before.rows,item.checkIn))throw new LoopActRefused('condition_day_changed');
    if(p.condition==='roster_end'&&!onlyTheClockIn(before.rows))throw new LoopActRefused('condition_other_clocking');
@@ -131,6 +135,8 @@ export async function applyClockOut(sponsor:SessionContext,p:Readonly<{item:Cloc
    await appendEvent(tx,{tenantId:sponsor.tenantId,aggregateType:'teras-loop-action',aggregateId:p.actionId,eventType:'teras-loop.action.applied',
     actor:{type:'agent',id:p.principalId},subjectEmploymentId:item.employmentId,
     payload:{workerId:p.workerId,date:item.date,checkOut:item.proposedCheckOut,undoUntil:p.undoUntil.toISOString(),correctionId,addedPunchId:added.id,sponsorUserId:sponsor.userId??null,owner:OWNER}});
+   // And again just before the change commits: anything that stopped the loop meanwhile rolls it back.
+   await requireLoopMayStillActTx(tx,gate);
    return Object.freeze({ownerRef:correctionId,addedPunchId:added.id});
   });
  }catch(error){

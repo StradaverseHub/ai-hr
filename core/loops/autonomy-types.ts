@@ -33,11 +33,13 @@ export const DEFAULT_LIMITS:LoopLimits=Object.freeze({maxActionsPerNight:50,undo
 export type LevelChangeKind='promoted'|'moved_down'|'demoted_auto'|'limits_changed';
 export type LevelChangedBy='administrator'|'automatic';
 export type LoopActionState='applying'|'applied'|'not_applied';
-/** Why an action was not applied: a condition did not hold, the owner refused it, or the run was interrupted. */
+/** Why an action was not applied: a condition did not hold, the owner refused it, the run was interrupted, or (Phase 2
+ * hardening) the loop was switched off, the tenant stopped, the company paused or the loop moved below Level 2 between the
+ * attempt's record and its apply (loop_stopped). */
 export type LoopActionReason='condition_site_exit'|'condition_leave'|'condition_day_changed'|'condition_sponsor_self'|'condition_other_clocking'
- |'condition_inactive'|'would_create_overtime'|'approval_routed'|'owner_refused'|'payroll_closed'|'approval_pending'|'interrupted';
+ |'condition_inactive'|'would_create_overtime'|'approval_routed'|'owner_refused'|'payroll_closed'|'approval_pending'|'interrupted'|'loop_stopped';
 export const LOOP_ACTION_REASONS:readonly LoopActionReason[]=Object.freeze(['condition_site_exit','condition_leave','condition_day_changed','condition_sponsor_self',
- 'condition_other_clocking','condition_inactive','would_create_overtime','approval_routed','owner_refused','payroll_closed','approval_pending','interrupted']);
+ 'condition_other_clocking','condition_inactive','would_create_overtime','approval_routed','owner_refused','payroll_closed','approval_pending','interrupted','loop_stopped']);
 export type UndoneBy='employee'|'hr';
 /** One check the action evaluated, as a run's checks are recorded. */
 export type LoopActionCheck=Readonly<{check:string;ruleVersion:string|null;result:'pass'|'fail'}>;

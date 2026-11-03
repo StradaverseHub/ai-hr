@@ -46,6 +46,7 @@ vi.mock('../core/capacity/baseline',()=>({baselineSetup:async(_session:unknown,i
 // Wave 1 integration: the Insights view also carries P2-3's "My payroll readiness" (its own test: before-payroll.dom.test.tsx).
 vi.mock('../core/pre-salary/person-items',()=>({readMyPayrollReadiness:async()=>{state.reads.push(['readiness']);return null;}}));
 vi.mock('../app/assistant/loop-clock-out-actions',()=>({confirmMissedClockOutAction:vi.fn()}));
+vi.mock('../app/assistant/payroll-readiness-actions',()=>({answerTp3PreviousEmployerAction:vi.fn()}));
 // Wave 2: Insights also carries P2-6's AI quality for administrators (its own test: ai-quality-page.dom.test.tsx); a marker here.
 vi.mock('../components/ai-centre/ai-quality',()=>({AiQualitySection:()=><section data-ai-quality-marker/>}));
 import {CapacityLedgerSection} from '../components/ai-centre/capacity-ledger';

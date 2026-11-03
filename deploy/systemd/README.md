@@ -32,15 +32,30 @@ it stood before they mutate it.
 `aihr-apply-dunning.service` intentionally omits `--apply`, so enabling the timer gives you a nightly
 REPORT and suspends nobody. Adding `--apply` is a second, separate decision.
 
-## The Pre-salary loop's tick (AI v2 P2-2a)
+## The payroll loops' tick (AI v2 P2-2a; Phase 2 hardening, 4 November 2026)
 
-**`aihr-payroll-loop-tick`** runs every 15 minutes after the previous tick finishes. It runs only the Pre-salary loop
-(`scripts/payroll-loop-tick.ts`), and only for the companies whose own check interval has come round: AI Centre ›
-Operations › Loops › Payroll cycle › settings sets hourly, twice daily or daily per company (daily by default). Without
-it the 03:00 review sweep is the only run, so every company is checked daily whatever it chose. It changes no HR record
-and calls no model: it prepares cases for payroll administrators, as the loop does in the nightly sweep. It does nothing
-for a tenant whose Pre-salary loop is switched off. Enable it at release, after the migration that adds the loop's
-settings (0964) is applied:
+**`aihr-payroll-loop-tick`** runs every 15 minutes after the previous tick finishes (`OnUnitInactiveSec=15min`, first
+run five minutes after boot). Each tick (`scripts/payroll-loop-tick.ts`, `core/loops/tick.ts runPayrollTick`), for every
+tenant in scope:
+
+1. runs the **Pre-salary loop** for the companies whose own check interval has come round (AI Centre › Operations ›
+   Loops › Payroll cycle › settings: hourly, twice daily or daily per company, daily by default), and once more for a
+   company whose salary cut-off is **today**, from 23:00 Kuala Lumpur time, so "done" is re-checked at the end of the day
+   the inputs close; this step also sends the automatic cut-off reminders (5, 2 and 1 days before each cut-off) where the
+   company has not switched them off;
+2. refreshes the **Salary payroll loop** for the companies whose payroll changed since it last ran there (a run created,
+   processed, reprocessed, closed, reopened or reset), so a processed or closed run shows its checks within the quarter
+   hour instead of after the next nightly sweep;
+3. refreshes the **Audit loop** the same way, also after a statutory report or file, a filing or a bank file.
+
+A company with no change is left to the 03:00 review sweep, which still runs every loop once a day. Without the tick
+that sweep is the only run: every company is checked daily whatever it chose, the cut-off-day re-check does not happen,
+reminders go out only at 03:00, and the payroll and audit views can be up to a day old. The tick changes no HR record
+and no pay and calls no model: it prepares cases for payroll administrators and records each run (`teras_loop_run`), as
+the loops do in the nightly sweep. A loop switched off, stopped or paused for a company does nothing there. Watch it with
+`systemctl list-timers aihr-payroll-loop-tick.timer` and `journalctl -u aihr-payroll-loop-tick.service`: each tick prints
+one summary line, and exits non-zero when a tenant's loop failed (the next tick retries; it never retries itself).
+Enable it at release, after the migrations that add the loops' settings (2005, 2006 and 2011) are applied:
 
     sudo cp deploy/systemd/aihr-payroll-loop-tick.service deploy/systemd/aihr-payroll-loop-tick.timer /etc/systemd/system/
     sudo systemctl daemon-reload

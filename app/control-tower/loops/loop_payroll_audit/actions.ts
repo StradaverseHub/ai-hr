@@ -7,7 +7,8 @@ import { AuditFindingRefused, disposeFinding, runControlChecks } from '@/core/pa
 import { AuditCorrectionRefused, recordCorrectionCause } from '@/core/payroll-audit/corrections';
 import { AuditCaptureRefused, capturePayrollPeriod } from '@/core/payroll-audit/capture';
 import { AuditSettingsRefused, grantAuditReader, revokeAuditReader, setControlSettings } from '@/core/payroll-audit/settings';
-import { isPayPeriod } from '@/core/payroll-audit/types';
+import { isAuditControlId, isPayPeriod } from '@/core/payroll-audit/types';
+import { AcknowledgementRefused, acknowledgeCheck } from '@/core/loops/acknowledgements';
 
 /** AI v2 P2-2b — the Audit loop page's commands, each re-checked by its service and by the database (migration 0965):
  *  - a payroll administrator of the finding's company disposes of a control finding, with a note (disposeFinding);
@@ -19,7 +20,7 @@ import { isPayPeriod } from '@/core/payroll-audit/types';
  * no other text crosses. The loop's switch and per-company pause use the Operations › Loops actions. */
 const PAGE = '/control-tower/loops/loop_payroll_audit';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-type Code = 'invalid' | 'refused' | 'failed';
+type Code = 'invalid' | 'refused' | 'failed' | 'subject' | 'groupAdministrator' | 'already';
 function back(formData: FormData, result: { saved: string } | { error: Code }): never {
   const period = formData.get('period'), company = formData.get('company');
   const query = new URLSearchParams();
@@ -30,6 +31,11 @@ function back(formData: FormData, result: { saved: string } | { error: Code }): 
   redirect(`${PAGE}?${query}`);
 }
 const code = (e: unknown): Code => {
+  // Phase 2 hardening: nobody disposes of a finding about themselves; loosening a control is a group administrator's.
+  if (e instanceof AuditFindingRefused && e.reason === 'subject') return 'subject';
+  if (e instanceof AuditSettingsRefused && e.reason === 'group_administrator') return 'groupAdministrator';
+  if (e instanceof AcknowledgementRefused) return e.reason === 'own' ? 'subject' : e.reason === 'already' ? 'already'
+    : e.reason === 'invalid' || e.reason === 'not_found' ? 'invalid' : 'refused';
   if (e instanceof AuditFindingRefused || e instanceof AuditCorrectionRefused || e instanceof AuditCaptureRefused || e instanceof AuditSettingsRefused)
     return e.reason === 'invalid' || e.reason === 'not_found' ? 'invalid' : 'refused';
   return 'failed';
@@ -70,8 +76,9 @@ export async function setAuditSettingsAction(formData: FormData) {
   let error: Code | null = null;
   try {
     const s = await getBrowserCommandSession();
+    const mode = formData.get('preparerClosedMode');
     await setControlSettings(s, { companyId: formData.get('target'), bankChangeDays: numberOf(formData.get('bankChangeDays')),
-      adjustmentThreshold: numberOf(formData.get('adjustmentThreshold')) });
+      adjustmentThreshold: numberOf(formData.get('adjustmentThreshold')), ...(typeof mode === 'string' && mode ? { preparerClosedMode: mode } : {}) });
   } catch (e) { error = code(e); }
   back(formData, error ? { error } : { saved: 'settings' });
 }
@@ -92,4 +99,19 @@ export async function revokeAuditReaderAction(formData: FormData) {
     await revokeAuditReader(s, { grantId: formData.get('grant') });
   } catch (e) { error = code(e); }
   back(formData, error ? { error } : { saved: 'revoked' });
+}
+
+/** Phase 2 hardening: a payroll administrator records a standing "expected" acknowledgement of one check, for the person a
+ * finding is about or for the whole company (core/loops/acknowledgements.ts; never about themselves). */
+export async function acknowledgeFindingAction(formData: FormData) {
+  let error: Code | null = null;
+  try {
+    const s = await getBrowserCommandSession();
+    const control = formData.get('control'), scope = formData.get('scope'), employment = formData.get('employment'), reviewOn = formData.get('reviewOn');
+    if (!isAuditControlId(control)) throw new AcknowledgementRefused('invalid');
+    await acknowledgeCheck(s, { companyId: formData.get('target'), checkId: `audit:${control}`, scope, reason: formData.get('reason'),
+      ...(scope === 'person' && typeof employment === 'string' && employment ? { employmentId: employment } : {}),
+      ...(typeof reviewOn === 'string' && reviewOn ? { reviewOn } : {}) });
+  } catch (e) { error = code(e); }
+  back(formData, error ? { error } : { saved: 'acknowledged' });
 }

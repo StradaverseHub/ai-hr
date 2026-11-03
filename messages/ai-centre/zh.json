@@ -1394,7 +1394,7 @@
         "match": "与净薪和人数一致",
         "total_mismatch": "总额与净薪不一致",
         "count_mismatch": "记录数不一致",
-        "not_available": "没有可检查的银行文件",
+        "not_available": "无法核对银行文件，因此本次运行未完成",
         "blocked": "暂时无法生成银行文件",
         "not_ready": "处理后检查"
       },
@@ -1469,7 +1469,13 @@
         "save": "保存",
         "exclusions": "已排除的薪资模式",
         "noExclusions": "无。只有批准建议才会添加排除项。",
-        "remove": "移除"
+        "remove": "移除",
+        "reminders": "自动截止提醒",
+        "remindersOn": "开启",
+        "remindersOff": "关闭",
+        "remindersTurnOn": "开启",
+        "remindersTurnOff": "关闭",
+        "remindersHelp": "在每个截止日前 5 天、2 天和 1 天，每位有待办事项的员工和审批人会收到一条关于其自身事项的提醒。只含数量，绝不含薪资数字。"
       },
       "proposals": {
         "title": "建议",
@@ -1479,22 +1485,69 @@
         "exclusion": "不再标记由{pattern}引起的变化",
         "evidence": "{flags} 个标记中有 {expected} 个判定为预期内（{share}），{problems} 个确有问题，最近 {days} 天",
         "approved": "批准",
-        "rejected": "拒绝"
+        "rejected": "拒绝",
+        "approveGroupOnly": "此项由集团管理员批准；您可以拒绝。"
       },
       "saved": {
         "disposition": "处理结论已记录。",
         "setting": "已保存。从下一次运行开始生效。",
         "approved": "建议已批准。从下一次运行开始生效。",
-        "rejected": "建议已拒绝。"
+        "rejected": "建议已拒绝。",
+        "grouped": "已为整组记录。",
+        "acknowledged": "已记录为预期内。它仍保留在列表中，不再计为未处理。",
+        "resolved": "已按预期解决。",
+        "revoked": "确认已撤销。该检查从下次运行起重新计入。",
+        "ruleApproved": "常设规则已批准并记录为确认。",
+        "ruleRejected": "提议已拒绝。"
       },
       "errors": {
         "invalid": "无法理解该更改。",
         "refused": "您无法进行该更改。",
         "changed": "页面打开后内容已变化，请重新查看。",
         "already": "已记录，或没有任何变化。",
-        "failed": "无法保存更改，请重试。"
+        "failed": "无法保存更改，请重试。",
+        "groupAdministrator": "只有集团管理员可以批准此项。",
+        "ownEvidence": "此提议基于您处理过的标记，因此须由另一位集团管理员批准。",
+        "own": "您不能为自己记录此项。"
       },
-      "patternUnknown": "已不在目录中的薪资项目"
+      "patternUnknown": "已不在目录中的薪资项目",
+      "groups": {
+        "title": "按薪资变动原因分组的标记",
+        "help": "先查看组内人员，再一并决定。每项仍记录为您的决定。",
+        "heading": "{pattern}：{count, plural, other {# 人}}",
+        "member": "{name}：{change}（{causes}）",
+        "mark": {
+          "expected": "全部 {count} 项属于预期",
+          "problem": "全部 {count} 项确有问题"
+        },
+        "note": "将一组标记为预期内，也会解决同一批人当月的净额波动异常，因此您只需决定一次。"
+      },
+      "acknowledgedBlocks": {
+        "title": "有常设确认的阻断性异常",
+        "help": "阻断项从不隐藏。解决内容已按确认预先填写；如本次运行仍适用，请点击。",
+        "prefilled": "解决说明（来自确认）",
+        "resolve": "按预期解决"
+      },
+      "acknowledge": {
+        "reason": "为何属于预期",
+        "reviewOn": "复核日期（可选）",
+        "person": "此人始终属于预期"
+      },
+      "acknowledgements": {
+        "title": "常设确认",
+        "help": "薪资人事标记为预期内、而非异常的检查。警告项不计入待办数量，但仍列在审计循环及其审计包中；阻断项始终保留，并预先填写解决内容。任何计算都不会改变。",
+        "none": "暂无记录。",
+        "netSwing": "实发工资较上月变动",
+        "group": "部门",
+        "company": "整个公司",
+        "warningLine": "警告，不计入待办：{reason}。{name}，{when}",
+        "blockLine": "阻断项，已预填解决内容：{reason}。{name}，{when}",
+        "reviewOn": "复核日期 {date}",
+        "revoke": "撤销",
+        "proposalsTitle": "建议的常设规则",
+        "proposal": "始终将 {name} 的 {check} 视为预期内",
+        "proposalEvidence": "最近 {runs} 次中有 {expected} 次判定为预期内（{share}）"
+      }
     },
     "policies": {
       "title": "政策",
@@ -2406,7 +2459,10 @@
       "invalid": "无法记录。请检查表单后重试。",
       "refused": "只有本公司的薪资管理员可以执行此操作。",
       "module": "未使用薪资模块，因此无法开启审计循环。",
-      "failed": "操作未完成，未做任何更改。请重试。"
+      "failed": "操作未完成，未做任何更改。请重试。",
+      "subject": "您不能处理关于您本人的发现。其他薪资管理员或集团管理员可以处理。",
+      "groupAdministrator": "放宽控制需要集团管理员。",
+      "already": "已记录。"
     },
     "saved": {
       "disposed": "处理结果已记录。",
@@ -2416,7 +2472,8 @@
       "pause": "已保存。",
       "settings": "控制设置已保存。",
       "granted": "已授予审计师访问权限。",
-      "revoked": "已撤销审计师访问权限。"
+      "revoked": "已撤销审计师访问权限。",
+      "acknowledged": "已记录为预期内。它不再计为未处理，并仍保留在列表中。"
     },
     "filter": {
       "period": "薪资月份",
@@ -2500,7 +2557,8 @@
       "notYet": "尚未准备",
       "receipt": "已记录收据",
       "notFiled": "尚未申报",
-      "help": "由人员向 EPF、PERKESO、LHDN 和 HRD Corp 申报并记录收据。审计循环从不提交任何内容。"
+      "help": "由人员向 EPF、PERKESO、LHDN 和 HRD Corp 申报并记录收据。审计循环从不提交任何内容。",
+      "notRequired": "本月无需"
     },
     "forms": {
       "epf": "EPF",
@@ -2514,7 +2572,8 @@
       "disposition": "处理结果",
       "choose": "请选择",
       "note": "备注",
-      "record": "记录"
+      "record": "记录",
+      "openReadOnly": "未处理：等待薪资管理员处理。"
     },
     "controls": {
       "bank_change_before_pay_day": "发薪日前不久更改了银行资料",
@@ -2640,7 +2699,29 @@
       "login": "登录账号",
       "choose": "请选择登录账号",
       "grant": "授予访问权限",
-      "auditorsHelp": "审计师以只读方式查看本公司的审计循环证据和审计包，直至被撤销。每次授予和撤销都会被记录。"
+      "auditorsHelp": "审计师以只读方式查看本公司的审计循环证据和审计包，直至被撤销。每次授予和撤销都会被记录。",
+      "preparerClosedMode": "同一登录账户处理并关闭了运行",
+      "preparerClosed": {
+        "info": "仅作信息（不生成发现）",
+        "finding": "生成发现"
+      },
+      "loosenHelp": "银行变更窗口为 3 至 30 天，金额为 100.00 至 50,000.00。缩短窗口、提高金额或将发现改为仅作信息会放宽控制，需要集团管理员。每项更改都会列入当月审计包。"
+    },
+    "auditor": {
+      "readOnly": "您对此处列出的公司拥有只读审计员访问权限。您可以阅读证据并下载审计包，但不能更改任何内容。"
+    },
+    "acknowledged": {
+      "label": "预期内（常设确认）",
+      "scope": {
+        "person": "适用于此人",
+        "group": "适用于其部门",
+        "company": "适用于整个公司"
+      },
+      "note": "预期内（常设确认）：{reason}",
+      "for": "预期内",
+      "reason": "为何属于预期",
+      "reviewOn": "复核日期（可选）",
+      "record": "始终属于预期"
     }
   },
   "payrollReadiness": {
@@ -2725,6 +2806,24 @@
       "dependants_mismatch": "请核对税务减免的子女人数：您的家庭记录少于您申报的人数",
       "review_acknowledge": "请确认您的绩效评估",
       "onboarding_acknowledge": "请确认您的入职交接"
+    },
+    "tp3Question": {
+      "prompt": "您今年早些时候是否曾受雇于其他雇主？",
+      "yes": "是",
+      "no": "否"
+    },
+    "reminder": {
+      "title": {
+        "lead5": "距薪资截止日还有 5 天",
+        "lead2": "距薪资截止日还有 2 天",
+        "lead1": "薪资截止日是明天",
+        "soon": "薪资截止日即将到来"
+      },
+      "body": {
+        "own": "薪资截止日前，您有自己的事项需要完成。请在“今天”中打开“发薪前”查看。",
+        "approvals": "薪资截止日前，有申请等待您的决定。请在“今天”中打开“发薪前”查看。",
+        "both": "薪资截止日前，您有自己的事项需要完成，也有申请等待您的决定。请在“今天”中打开“发薪前”查看。"
+      }
     }
   }
 }

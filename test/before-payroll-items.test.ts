@@ -13,11 +13,13 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 
 const fx=vi.hoisted(()=>({cutOffRow:true as boolean,cutOffDay:20 as number|null,modules:{} as Record<string,boolean>,fail:new Set<string>(),calls:[] as unknown[][],
- own:true as boolean,gaps:null as null|unknown[]}));
+ own:true as boolean,gaps:null as null|unknown[],tp3Answer:null as null|'yes'|'no'}));
 const failing=(name:string)=>{if(fx.fail.has(name))throw new Error('Fictional owner failure: '+name);};
 
 // The only direct query is app.own_payroll_cut_off_day (migration 0967): one row for the person's own employment, or none.
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,fn:(tx:unknown)=>unknown)=>fn({execute:async()=>{fx.calls.push(['ownCutOff']);return fx.cutOffRow?[{cut_off_day:fx.cutOffDay}]:[];}})}));
+// Phase 2 hardening: the person's own answer to "Did you work for another employer earlier this year?" (core/pre-salary/tp3-answer.ts).
+vi.mock('../core/pre-salary/tp3-answer',()=>({myTp3PreviousEmployerAnswer:async(_ctx:unknown,year:number)=>{fx.calls.push(['tp3Answer',year]);return fx.tp3Answer;}}));
 vi.mock('../core/entitlements',()=>{
  class EntitlementsResolutionFailedError extends Error{}
  return {EntitlementsResolutionFailedError,isModuleEnabled:(_ctx:unknown,code:string)=>fx.modules[code]??true};
@@ -115,8 +117,8 @@ import type {SessionContext} from '../db/client';
 const CTX={tenantId:'00000000-0000-4000-8000-000000000001',userId:'00000000-0000-4000-8000-000000000002',personId:'00000000-0000-4000-8000-000000000003',roles:['employee']} as SessionContext;
 const TODAY='2026-11-10';
 const read=()=>readMyPayrollReadiness(CTX,{today:TODAY,locale:'en'});
-const brief=(rows:readonly PayrollItem[])=>rows.map(row=>[row.kind,row.state,row.date,row.due,row.action.kind==='confirm'?'confirm:'+row.action.caseId:row.action.href]);
-beforeEach(()=>{fx.cutOffRow=true;fx.cutOffDay=20;fx.modules={};fx.fail=new Set();fx.calls=[];fx.own=true;fx.gaps=null;});
+const brief=(rows:readonly PayrollItem[])=>rows.map(row=>[row.kind,row.state,row.date,row.due,row.action.kind==='confirm'?'confirm:'+row.action.caseId:row.action.kind==='answer'?'answer:'+row.action.href:row.action.href]);
+beforeEach(()=>{fx.cutOffRow=true;fx.cutOffDay=20;fx.modules={};fx.fail=new Set();fx.calls=[];fx.own=true;fx.gaps=null;fx.tp3Answer=null;});
 
 describe('the person\'s own items, every kind',()=>{
  it('lists each pending thing with its state, day, due date and one action, the most urgent first',async()=>{
@@ -143,8 +145,8 @@ describe('the person\'s own items, every kind',()=>{
    ['tax_number_missing','todo',null,C,'/me?tab=bankStatutory#section-request-bankStatutory'],
    ['epf_number_missing','todo',null,C,'/me?tab=bankStatutory#section-request-bankStatutory'],
    ['tp1_draft','todo',null,C,'/me/tax-relief'],
-   // Check: worth a look, may need nothing.
-   ['tp3_new_joiner','check','2026-03-02',C,'/me/tp3'],
+   // Check: worth a look, may need nothing. The TP3 item asks its one-tap question until the person answers it.
+   ['tp3_new_joiner','check','2026-03-02',C,'answer:/me/tp3'],
    ['leave_unpaid','check','2026-11-04',C,'/leave'],
    ['late_or_early','check','2026-11-06',C,'/attendance/requests?section=short&fix=2026-11-06'],
    ['overtime_over_cap','check',null,C,'/attendance/plan-ot'],
@@ -183,6 +185,24 @@ describe('the person\'s own items, every kind',()=>{
   expect(fx.calls.find(call=>call[0]==='listPendingTasks')).toEqual(['listPendingTasks',undefined,{attendance:true,claims:true,performance:false,rewards:false},{noticeAcknowledgements:false}]);
  });
 
+ it('asks a joiner once whether they worked for another employer earlier this year: No removes the TP3 item, Yes keeps it with its link',async()=>{
+  const tp3=async()=>(await read())!.items.filter(row=>row.kind==='tp3_new_joiner');
+  // Not answered yet: the item is the question, about the person's own employment and this assessment year.
+  expect((await tp3()).map(row=>row.action)).toEqual([{kind:'answer',card:'tp3PreviousEmployer',employmentId:'emp-own',year:2026,href:'/me/tp3'}]);
+  expect(fx.calls).toContainEqual(['tp3Answer',2026]);
+  // No: a fresh graduate is not a TP3 case, so nothing is left to do about it.
+  fx.tp3Answer='no';
+  expect(await tp3()).toEqual([]);
+  // Yes: the TP3 item stays, opening the TP3 form.
+  fx.tp3Answer='yes';
+  expect((await tp3()).map(row=>[row.state,row.action])).toEqual([['check',{kind:'open',href:'/me/tp3'}]]);
+  // The Ask read gives the question's page as Today, where it is answered, and no Confirm card.
+  fx.tp3Answer=null;
+  const ask=await askMyPayrollReadiness(CTX,{companyId:'00000000-0000-4000-8000-0000000000c1',locale:'en'});
+  expect(ask.ok&&(ask as unknown as {items:{kind:string;page:string;confirmCard:boolean}[]}).items.filter(row=>row.kind==='tp3_new_joiner')).toEqual([{kind:'tp3_new_joiner',page:'/',confirmCard:false,
+   group:'details',state:'check',date:'2026-03-02',due:'2026-11-19'}]);
+ });
+
  it('covers every declared kind, with all five details gaps when none was sent yet',async()=>{
   const first=(await read())!;
   fx.gaps=['no_bank_account','no_tax_number','no_epf_number','no_socso_number','no_identity'].map(gap=>({gap,type:'submit_correction',audience:'employee',tab:'bankStatutory',requestId:null,approver:'admin'}));
@@ -203,7 +223,10 @@ describe('the cut-off is the payroll owner\'s',()=>{
  it('for the person\'s own employment: the owner\'s window for the cut-off day the database returns for it',async()=>{
   await read();
   expect(fx.calls.filter(call=>call[0]==='ownCutOff')).toHaveLength(1);
-  expect(fx.calls.filter(call=>call[0]==='cutOffWindowFor')).toEqual([['cutOffWindowFor','salary',null,{cutOffDay:20},'2026-11']]);
+  // Phase 2 hardening: the salary window, and each input type's own window from the company's per-type cut-off days (none
+  // set here), all for the same pay period: the Pre-salary loop's own resolution (core/loops/payroll-inputs.ts).
+  const company={cutOffDay:20,attendanceCutOffDay:null,overtimeCutOffDay:null,claimCutOffDay:null,unpaidLeaveCutOffDay:null,payDay:null};
+  expect(fx.calls.filter(call=>call[0]==='cutOffWindowFor')).toEqual(['salary','attendance','overtime','claim','leave'].map(type=>['cutOffWindowFor',type,null,company,'2026-11']));
  });
  it('moves to the next period once this one\'s cut-off has passed',async()=>{
   const result=(await readMyPayrollReadiness(CTX,{today:'2026-11-25'}))!;
