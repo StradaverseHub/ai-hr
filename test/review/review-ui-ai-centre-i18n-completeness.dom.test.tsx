@@ -93,7 +93,9 @@ describe('AI centre catalogue completeness', () => {
       done: 'the clock-out is recorded', step: 'Prepare', open: 3, waiting: 1, opened: 5, closed: 2, item: 'Travel claim',
       loop: 'Missed clock-outs', company: 'Fictional Ceria Sdn Bhd', kind: 'Overtime',
       // Argument of the letter request card title (aiCentre.conversation.letterRequest*, slice 3).
-      letterType: 'Employment confirmation' };
+      letterType: 'Employment confirmation',
+      // Arguments of the "Before payroll" checklist (payrollReadiness.*, AI v2 Phase 2 P2-3).
+      month: 'November 2026', from: 'Nov 12', to: 'Nov 13', label: 'Annual Leave' };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });

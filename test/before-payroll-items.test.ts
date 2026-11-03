@@ -197,8 +197,9 @@ describe('the cut-off is the payroll owner\'s',()=>{
   const result=(await read())!;
   expect(result.period).toEqual({payPeriod:'2026-11',start:'2026-11-01',cutOff:null,source:'unavailable'});
   expect(fx.calls.some(call=>call[0]==='getPayrollConfig'||call[0]==='cutOffWindowFor')).toBe(false);
-  expect(result.items.every(row=>row.due===null||row.kind==='claim_deadline')).toBe(true);
-  expect(result.items.find(row=>row.kind==='claim_deadline')!.due).toBe('2026-11-15');
+  // With no cut-off date, only a draft claim's own receipt deadline is a due date (the incurred day plus 45 days).
+  expect(result.items.filter(row=>row.due!==null).map(row=>[row.kind,row.due])).toEqual([['claim_deadline','2026-11-15'],['claim_receipt_missing','2026-12-23'],
+   ['claim_draft','2026-12-24'],['claim_draft','2026-12-24']]);
   expect(fx.calls).toContainEqual(['attendanceForEmploymentRange','emp-own','2026-11-01','2026-11-09']);
  });
 });
@@ -256,12 +257,12 @@ describe('the Ask read my_payroll_readiness under harness disclosure',()=>{
   for(const id of ['cl-near','case-1','letter-1','notice-1','emp-own','t-leave','corr-1','toil-1','req-1','co-1'])expect(text,id).not.toContain(id);
   // Other people are never named: approvals leave as counts of each kind.
   expect(text).not.toMatch(/Siti|Wei/);
-  expect((outcome as {approvals:unknown}).approvals).toEqual([{kind:'approve_leave',count:1,due:'2026-11-19',page:'/approvals'},{kind:'approve_leave_cancellation',count:1,due:'2026-11-19',page:'/approvals'},
+  expect((outcome as unknown as {approvals:unknown}).approvals).toEqual([{kind:'approve_leave',count:1,due:'2026-11-19',page:'/approvals'},{kind:'approve_leave_cancellation',count:1,due:'2026-11-19',page:'/approvals'},
    {kind:'approve_attendance',count:1,due:'2026-11-19',page:'/approvals'},{kind:'approve_claim',count:1,due:'2026-11-19',page:'/approvals'},{kind:'approve_toil',count:1,due:'2026-11-19',page:'/approvals'}]);
   // "Medical Leave" names a health matter: it leaves as a placeholder, restored for the person.
   expect(text).not.toContain('Medical Leave');expect(applied.withheld.some(path=>/^items\[\d+\]\.label$/.test(path))).toBe(true);
   // The page and the confirm card are said; the cut-off date is the payroll service's.
-  expect(text).toContain('"page":"/attendance/requests"');expect(text).toContain('"confirmCard":true');expect(text).toContain('"cutOff":"2026-11-19"');
+  expect(text).toContain('"page":"/attendance/requests"');expect(text).toContain('"page":"/me/letters"');expect(text).toContain('"page":"/notices"');expect(text).toContain('"confirmCard":true');expect(text).toContain('"cutOff":"2026-11-19"');
   expect(text).toContain('core/pre-salary/person-items.ts#readMyPayrollReadiness');
  });
  it('says plainly when payroll is not in use',async()=>{

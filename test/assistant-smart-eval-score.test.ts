@@ -46,7 +46,7 @@ describe('the question set',()=>{
     // AI v2 slice 3: the prepared import card is a chat import proposal (lib/chat-import.ts), not a registry action.
     for(const action of row.actions??[])expect(action===CHAT_IMPORT_ACTION?'An import prepared in chat':ACTION_PURPOSE[action],row.id+' '+action).toBeTypeOf('string');}}
   for(const row of turns.filter(item=>item.kind==='do'))expect(row.actions?.length,row.id).toBeGreaterThan(0);
-  expect(turns.filter(row=>row.noPayFigures).map(row=>row.id).sort()).toEqual(['emp-salary-1','hr-average-1','hr-ms-1','hr-salary-1','pay-average-1','pay-net-1']);
+  expect(turns.filter(row=>row.noPayFigures).map(row=>row.id).sort()).toEqual(['emp-before-payroll-1','emp-salary-1','hr-average-1','hr-ms-1','hr-salary-1','pay-average-1','pay-net-1']);
  });
 });
 
