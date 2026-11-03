@@ -25,6 +25,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {compensationEffectiveOn} from './comp';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx} from './workforce-access';
 import {listWorkforcePickPageTx,readWorkforcePickRowsTx} from './read';
+import {linkLetterRequestDraftTx,LetterRequestError} from './letter-requests';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function uuid(value:string){if(!UUID.test(value))throw new LetterWorkflowError('invalid','identity');return value;}
 function text(value:string,max:number){const result=value.trim();if(!result||result.length>max)throw new LetterWorkflowError('invalid','text');return result;}
@@ -334,11 +335,14 @@ export async function createAutomaticLetterDraftTx(tx:Tx,ctx:SessionContext,jobI
  await event(tx,ctx,batch.id,'automation.drafted',{companyId:rule.companyId,ruleVersionId:rule.id,jobId,letterId:record.id,sourceEventId:job.sourceEventId,sourceFingerprint:intent.sourceFingerprint,responsibleUserId:rule.createdBy});
  await tx.update(letterJob).set({status:'completed',attempts:job.attempts+1,lastError:null,leaseToken:null,leaseUntil:null}).where(eq(letterJob.id,jobId));await queueLetterCreated(tx,ctx,record,policy,creationEventId);return {batchId:batch.id,alreadyCreated:false,cancelled:false};
 }
-export function createLetterDraftBatch(ctx:SessionContext,input:{companyId:string;templateVersionId:string;employmentIds:string[];customValues?:Record<string,Record<string,LetterValue|null>>;operationKey:string;reissueOf?:string}){return letters(ctx,true,async tx=>{
+/** `requestId` (AI v2 Phase 1 slice 3): the draft is prepared from an employee's letter request (core/letter-requests.ts), for
+ * exactly that one employee; the request then links to it, in this transaction, and the database checks the match. */
+export function createLetterDraftBatch(ctx:SessionContext,input:{companyId:string;templateVersionId:string;employmentIds:string[];customValues?:Record<string,Record<string,LetterValue|null>>;operationKey:string;reissueOf?:string;requestId?:string}){return letters(ctx,true,async tx=>{
  await permission(tx,input.companyId,'generate');await permission(tx,input.companyId,'read');await lockCompany(tx,input.companyId);uuid(input.operationKey);
  const ids=[...new Set(input.employmentIds.map(uuid))].sort();if(!ids.length||ids.length>500)throw new LetterWorkflowError('invalid','employeeSelection');
+ if(input.requestId!==undefined){uuid(input.requestId);if(ids.length!==1||input.reissueOf)throw new LetterWorkflowError('invalid','letterRequest');}
  if(input.reissueOf){await permission(tx,input.companyId,'issue');const [original]=await tx.select().from(letterRecord).where(eq(letterRecord.id,uuid(input.reissueOf))).for('share');if(!original||original.companyId!==input.companyId||ids.length!==1||original.employmentId!==ids[0])throw new LetterWorkflowError('permission');if(!['issued','void'].includes(original.state))throw new LetterWorkflowError('state');}
- const selection={employmentIds:ids,customValues:input.customValues??{},sourceAsOfDate:todayInKualaLumpur()},inputHash=hash(canonical({employmentIds:ids,customValues:selection.customValues,companyId:input.companyId,templateVersionId:input.templateVersionId,reissueOf:input.reissueOf??null}));
+ const selection={employmentIds:ids,customValues:input.customValues??{},sourceAsOfDate:todayInKualaLumpur()},inputHash=hash(canonical({employmentIds:ids,customValues:selection.customValues,companyId:input.companyId,templateVersionId:input.templateVersionId,reissueOf:input.reissueOf??null,...(input.requestId?{requestId:input.requestId}:{})}));
  if(Object.keys(selection.customValues).some(id=>!ids.includes(id))||Buffer.byteLength(canonical(selection.customValues),'utf8')>2097152)throw new LetterWorkflowError('invalid','employeeSelection');
  const [existing]=await tx.select().from(letterGenerationBatch).where(and(eq(letterGenerationBatch.createdBy,ctx.userId!),eq(letterGenerationBatch.operationKey,input.operationKey)));if(existing){if(existing.inputHash!==inputHash)throw new LetterWorkflowError('conflict','operationKey');return {batchId:existing.id,alreadyCreated:true};}
  const template=await generationTemplate(tx,input.companyId,input.templateVersionId,true,true);
@@ -354,6 +358,8 @@ export function createLetterDraftBatch(ctx:SessionContext,input:{companyId:strin
   const custom=selection.customValues[employmentId]??{},reference=await nextReference(tx,ctx,policy.referenceFormat,input.companyId);
   const [record]=await tx.insert(letterRecord).values({tenantId:ctx.tenantId,companyId:input.companyId,employmentId,batchId:batch.id,reference,createdBy:ctx.userId!,confidential,retainUntil:calendarDays(selection.sourceAsOfDate,policy.retentionDays),originalLetterId:input.reissueOf??null}).returning();
   if(input.reissueOf)await event(tx,ctx,record.id,'reissue.drafted',{originalLetterId:input.reissueOf,batchId:batch.id});
+  if(input.requestId){try{await linkLetterRequestDraftTx(tx,ctx,{requestId:input.requestId,letterId:record.id,companyId:input.companyId,employmentId});}
+   catch(error){if(error instanceof LetterRequestError)throw new LetterWorkflowError(error.code==='permission'?'permission':'state','letterRequest');throw error;}}
   try{const snapshot=await snapshotLetter(tx,ctx,input.companyId,employmentId,template,configured.id,custom,selection.sourceAsOfDate);await newLetterRevision(tx,ctx,record,snapshot,custom);}
   catch(error){if(!(error instanceof LetterModelError)||!['missingField','invalid'].includes(error.code))throw error;await event(tx,ctx,record.id,'draft.validation-failed',{field:error.path,code:error.code});}
  }
