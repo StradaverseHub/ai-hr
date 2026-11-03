@@ -534,6 +534,8 @@
       "profileDependantTitle": "添加受抚养人",
       "profileBankTitle": "将您的银行账户更改为{bankName}，尾号{ending}",
       "toilRequestTitle": "假期额度申请，{date}，{start} – {end}",
+      "decisionApproveTitle": "批准：{item}",
+      "decisionRejectTitle": "拒绝：{item}",
       "creditDays": "获批后计入 {count, plural, other {# 天}}",
       "review": "审核",
       "open": "打开",
@@ -562,7 +564,10 @@
           "claimDraftSaved": "已存为草稿。请在报销页面添加收据后提交。",
           "claimCancelled": "报销已取消。",
           "profileRequested": "已发送给人事部。人事部批准前不会有任何更改。",
-          "toilSubmitted": "已提交审批，尚未批准。获批前不会计入任何额度。"
+          "toilSubmitted": "已提交审批，尚未批准。获批前不会计入任何额度。",
+          "decisionApproved": "已批准。您的决定已记录。",
+          "decisionRejected": "已拒绝，并附上您的理由。您的决定已记录。",
+          "decisionLevelRecorded": "您的批准已记录。现由下一位审批人决定。"
         },
         "refused": {
           "expired": "此卡片已过期。请重新提问以获取新卡片。",
@@ -593,7 +598,9 @@
         "claims_submit": "报销申请待审核",
         "claims_cancel": "报销取消待审核",
         "ess_profile_request": "资料更改待审核",
-        "toil_replacement_request": "假期额度申请待审核"
+        "toil_replacement_request": "假期额度申请待审核",
+        "approvals_claim_decide": "报销决定待审核",
+        "approvals_attendance_decide": "考勤决定待审核"
       },
       "checks": {
         "actor_current": "您的权限有效",
@@ -615,7 +622,10 @@
         "profile_request_reviewed": "已与您的记录核对",
         "leave_credit_offered": "您可以申请假期额度",
         "worked_day_read": "已从您的排班读取日期类型",
-        "leave_credit_rules": "假期额度规则允许"
+        "leave_credit_rules": "假期额度规则允许",
+        "assigned_approver_current": "您是指定的审批人",
+        "not_own_request": "不是您本人的申请",
+        "request_still_pending": "申请仍待处理"
       },
       "outcomes": {
         "withdrawn_now": "立即撤回",
@@ -628,7 +638,8 @@
         "claim_draft_receipt_needed": "已存为草稿；请在报销页面添加收据",
         "claim_cancelled_now": "立即取消",
         "hr_approval_required": "发送给人事部；人事部批准后才会更改",
-        "hr_verification_required": "人事部核实新的银行资料后才会使用"
+        "hr_verification_required": "人事部核实新的银行资料后才会使用",
+        "attendance_decision_if_checks_pass": "若检查仍通过，则记录在您的审批层级"
       },
       "reads": {
         "my_leave_balances": "您的假期余额",

@@ -25,6 +25,7 @@ vi.mock('../app/assistant/leave-apply-proposal-actions', () => ({ confirmLeaveAp
 vi.mock('../app/assistant/attendance-request-proposal-actions', () => ({ confirmAttendanceRequestProposalAction: posts.other.confirm, editAttendanceRequestProposalAction: posts.other.edit }));
 vi.mock('../app/assistant/own-change-proposal-actions', () => ({ confirmOwnChangeProposalAction: posts.other.confirm, editOwnChangeProposalAction: posts.other.edit }));
 vi.mock('../app/assistant/toil-request-proposal-actions', () => ({ confirmToilRequestProposalAction: posts.toil.confirm, editToilRequestProposalAction: posts.toil.edit }));
+vi.mock('../app/assistant/assigned-decision-proposal-actions', () => ({ confirmAssignedDecisionProposalAction: posts.other.confirm, editAssignedDecisionProposalAction: posts.other.edit }));
 vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: state.locale, messages: state.messages as never, namespace }),
   getFormatter: async () => createFormatter({ locale: state.locale, timeZone: 'Asia/Kuala_Lumpur' }),

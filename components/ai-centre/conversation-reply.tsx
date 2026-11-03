@@ -7,6 +7,7 @@ import { leaveApplyCardTitle, LEAVE_APPLY_TITLE_DATE } from '@/lib/ai-centre/lea
 import { attendanceRequestCardTitle, ATTENDANCE_TITLE_DATE, ATTENDANCE_TITLE_TIME } from '@/lib/ai-centre/attendance-request-title';
 import { ownChangeCardTitle, OWN_CHANGE_TITLE_DATE } from '@/lib/ai-centre/own-change-title';
 import { toilRequestCardTitle } from '@/lib/ai-centre/toil-request-title';
+import { assignedDecisionCardTitle } from '@/lib/ai-centre/assigned-decision-title';
 import { ProposalCard, type ProposalCheck } from './proposal-card';
 import { InlineProposalCard } from './proposal-card-actions';
 import { inlineProposalKind, type InlineProposalCopy } from '@/lib/ai-centre/inline-proposal';
@@ -49,7 +50,9 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
     done: { leaveSubmitted: t('inline.done.leaveSubmitted'), attendanceSubmitted: t('inline.done.attendanceSubmitted'),
       claimSubmitted: t('inline.done.claimSubmitted'), claimDraftSaved: t('inline.done.claimDraftSaved'),
       claimCancelled: t('inline.done.claimCancelled'), profileRequested: t('inline.done.profileRequested'),
-      toilSubmitted: t('inline.done.toilSubmitted') },
+      toilSubmitted: t('inline.done.toilSubmitted'),
+      decisionApproved: t('inline.done.decisionApproved'), decisionRejected: t('inline.done.decisionRejected'),
+      decisionLevelRecorded: t('inline.done.decisionLevelRecorded') },
     refused: { expired: t('inline.refused.expired'), invalid: t('inline.refused.invalid'), access: t('inline.refused.access'),
       retired: t('inline.refused.retired'), unavailable: t('inline.refused.unavailable'), consent: t('inline.refused.consent') },
   };
@@ -91,6 +94,9 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
           ?? ownChangeCardTitle(body, (key, values) => t(key, values), date => format.dateTime(date, OWN_CHANGE_TITLE_DATE))
           // AI v2 W2 slice 2: a Leave Credit request names its date worked and window.
           ?? toilRequestCardTitle(body, (key, values) => t(key, values), date => format.dateTime(date, ATTENDANCE_TITLE_DATE), time => format.dateTime(time, ATTENDANCE_TITLE_TIME))
+          // AI v2 W2 slice 3: an assigned approver's decision names the decision and the request it decides.
+          ?? assignedDecisionCardTitle(body, (key, values) => t(key, values), { claimDate: date => format.dateTime(date, OWN_CHANGE_TITLE_DATE),
+            day: date => format.dateTime(date, ATTENDANCE_TITLE_DATE), time: time => format.dateTime(time, ATTENDANCE_TITLE_TIME) })
           ?? label('actions', body.what.action.replace(/\./g, '_'), t('actions.fallback'));
         const tone = body.what.effect === 'decide' ? 'decide' as const : 'prepared' as const;
         const expires = t('expires', { time: format.dateTime(new Date(body.expiresAt), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }) });

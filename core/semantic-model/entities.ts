@@ -10,6 +10,7 @@ import {AGENT_MODULE_CODES} from '../../lib/ai/module-agents';
 import type {SemanticAction,SemanticEntity,SemanticField,SemanticRead,FieldType,DisclosureClass} from './types';
 import {OWN_CHANGE_ACTIONS,OWN_CHANGE_ENTITIES} from './entities-own-changes';
 import {TOIL_ACTIONS,TOIL_ENTITIES} from './entities-toil';
+import {DECISION_ACTIONS,DECISION_ENTITIES} from './entities-decisions';
 
 const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'|'screen'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
@@ -182,6 +183,8 @@ export const SEMANTIC_ENTITIES:readonly SemanticEntity[]=freeze([
  ...OWN_CHANGE_ENTITIES,
  // AI v2 W2 (slice 2): the own Leave Credit request (time off in lieu) prepared in chat.
  ...TOIL_ENTITIES,
+ // AI v2 W2 (slice 3): the assigned claim and attendance decisions prepared in chat.
+ ...DECISION_ENTITIES,
 ] satisfies SemanticEntity[]);
 
 /** One declaration per Assistant read, in ASSISTANT_TOOLS order. Input schemas are the catalogue's own. */
@@ -264,6 +267,8 @@ export const SEMANTIC_ACTIONS:readonly SemanticAction[]=freeze([
  ...OWN_CHANGE_ACTIONS,
  // AI v2 W2 (slice 2): toil.replacement.request (./entities-toil.ts).
  ...TOIL_ACTIONS,
+ // AI v2 W2 (slice 3): approvals.claim.decide and approvals.attendance.decide (./entities-decisions.ts).
+ ...DECISION_ACTIONS,
 ] satisfies SemanticAction[]);
 
 export const semanticEntity=(id:string):SemanticEntity=>{const entity=SEMANTIC_ENTITIES.find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};

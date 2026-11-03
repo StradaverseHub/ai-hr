@@ -534,6 +534,8 @@
       "profileDependantTitle": "Tambah tanggungan",
       "profileBankTitle": "Tukar akaun bank anda kepada {bankName}, berakhir {ending}",
       "toilRequestTitle": "Permohonan Kredit Cuti, {date}, {start} – {end}",
+      "decisionApproveTitle": "Luluskan: {item}",
+      "decisionRejectTitle": "Tolak: {item}",
       "creditDays": "{count, plural, other {# hari}} dikreditkan jika diluluskan",
       "review": "Semak",
       "open": "Buka",
@@ -562,7 +564,10 @@
           "claimDraftSaved": "Disimpan sebagai draf. Tambah resit di Tuntutan untuk menghantarnya.",
           "claimCancelled": "Tuntutan dibatalkan.",
           "profileRequested": "Dihantar kepada HR. Tiada yang berubah sehingga HR meluluskannya.",
-          "toilSubmitted": "Dihantar untuk kelulusan, belum diluluskan. Tiada kredit diberi sehingga ia diluluskan."
+          "toilSubmitted": "Dihantar untuk kelulusan, belum diluluskan. Tiada kredit diberi sehingga ia diluluskan.",
+          "decisionApproved": "Diluluskan. Keputusan anda direkodkan.",
+          "decisionRejected": "Ditolak, dengan sebab anda. Keputusan anda direkodkan.",
+          "decisionLevelRecorded": "Kelulusan anda direkodkan. Pelulus seterusnya akan membuat keputusan."
         },
         "refused": {
           "expired": "Kad ini telah tamat tempoh. Minta sekali lagi untuk kad baharu.",
@@ -593,7 +598,9 @@
         "claims_submit": "Tuntutan perbelanjaan sedia untuk disemak",
         "claims_cancel": "Pembatalan tuntutan sedia untuk disemak",
         "ess_profile_request": "Perubahan profil sedia untuk disemak",
-        "toil_replacement_request": "Permohonan Kredit Cuti sedia untuk disemak"
+        "toil_replacement_request": "Permohonan Kredit Cuti sedia untuk disemak",
+        "approvals_claim_decide": "Keputusan tuntutan sedia untuk disemak",
+        "approvals_attendance_decide": "Keputusan kehadiran sedia untuk disemak"
       },
       "checks": {
         "actor_current": "Akses anda masih sah",
@@ -615,7 +622,10 @@
         "profile_request_reviewed": "Disemak dengan rekod anda",
         "leave_credit_offered": "Anda boleh memohon Kredit Cuti",
         "worked_day_read": "Jenis hari dibaca daripada jadual giliran anda",
-        "leave_credit_rules": "Peraturan Kredit Cuti membenarkannya"
+        "leave_credit_rules": "Peraturan Kredit Cuti membenarkannya",
+        "assigned_approver_current": "Anda pelulus yang ditetapkan",
+        "not_own_request": "Bukan permohonan anda sendiri",
+        "request_still_pending": "Permohonan masih menunggu"
       },
       "outcomes": {
         "withdrawn_now": "Ditarik balik serta-merta",
@@ -628,7 +638,8 @@
         "claim_draft_receipt_needed": "Disimpan sebagai draf; tambah resit di Tuntutan",
         "claim_cancelled_now": "Dibatalkan serta-merta",
         "hr_approval_required": "Dihantar kepada HR; berubah hanya selepas HR meluluskan",
-        "hr_verification_required": "HR mengesahkan butiran bank baharu sebelum digunakan"
+        "hr_verification_required": "HR mengesahkan butiran bank baharu sebelum digunakan",
+        "attendance_decision_if_checks_pass": "Direkodkan di peringkat kelulusan anda jika semakan masih lulus"
       },
       "reads": {
         "my_leave_balances": "baki cuti anda",

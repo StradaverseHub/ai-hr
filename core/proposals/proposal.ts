@@ -44,7 +44,9 @@ export const ProposalFacts=z.object({
  /** The person's own decision (approvals.leave.decide). */decision:z.enum(['approved','rejected']),
  /** What confirming does, in the owner's own terms. */outcome:z.enum(['withdrawn_now','give_back_requested','rejection_if_confirmed','step_decision_if_confirmed','approval_if_native_checks_pass','submitted_not_approved',
   // AI v2 W2: an own claim and an own profile change prepared in chat (core/proposals/claim-*.ts, profile-change.ts).
-  'claim_submitted_if_checks_pass','claim_draft_receipt_needed','claim_cancelled_now','hr_approval_required','hr_verification_required']),
+  'claim_submitted_if_checks_pass','claim_draft_receipt_needed','claim_cancelled_now','hr_approval_required','hr_verification_required',
+  // AI v2 W2 slice 3: an assigned attendance decision is recorded at the approver's level; a later level may still decide.
+  'attendance_decision_if_checks_pass']),
  /** Attendance (W2): the clock times the person asks for, and what the attendance record holds now (HH:MM, KL wall time). */
  checkIn:clockTime,checkOut:clockTime,recordedCheckIn:clockTime,recordedCheckOut:clockTime,
  /** Overtime and time off in lieu (W2): the window the person gave (HH:MM; an earlier end is the next day). */

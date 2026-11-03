@@ -19,7 +19,7 @@ import { withAiCentre } from './helpers/ai-centre-messages';
 const nav = vi.hoisted(() => ({ push: vi.fn() }));
 const posts = vi.hoisted(() => ({
   leave: { confirm: vi.fn(), edit: vi.fn() }, attendance: { confirm: vi.fn(), edit: vi.fn() }, own_change: { confirm: vi.fn(), edit: vi.fn() },
-  toil: { confirm: vi.fn(), edit: vi.fn() },
+  toil: { confirm: vi.fn(), edit: vi.fn() }, decision: { confirm: vi.fn(), edit: vi.fn() },
 }));
 vi.mock('next/link', () => ({ default: ({ children, prefetch: _prefetch, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/assistant', useSearchParams: () => new URLSearchParams(), useRouter: () => ({ refresh: vi.fn(), push: nav.push }) }));
@@ -27,6 +27,8 @@ vi.mock('../app/assistant/leave-apply-proposal-actions', () => ({ confirmLeaveAp
 vi.mock('../app/assistant/attendance-request-proposal-actions', () => ({ confirmAttendanceRequestProposalAction: posts.attendance.confirm, editAttendanceRequestProposalAction: posts.attendance.edit }));
 vi.mock('../app/assistant/own-change-proposal-actions', () => ({ confirmOwnChangeProposalAction: posts.own_change.confirm, editOwnChangeProposalAction: posts.own_change.edit }));
 vi.mock('../app/assistant/toil-request-proposal-actions', () => ({ confirmToilRequestProposalAction: posts.toil.confirm, editToilRequestProposalAction: posts.toil.edit }));
+// AI v2 W2 slice 3: the assigned claim and attendance decision cards (test/ai-centre-assigned-decision-card.dom.test.tsx).
+vi.mock('../app/assistant/assigned-decision-proposal-actions', () => ({ confirmAssignedDecisionProposalAction: posts.decision.confirm, editAssignedDecisionProposalAction: posts.decision.edit }));
 const messages = withAiCentre('en', en as Record<string, unknown>);
 vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: 'en', messages: messages as never, namespace }),

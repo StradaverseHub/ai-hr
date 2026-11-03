@@ -534,6 +534,8 @@
       "profileDependantTitle": "เพิ่มผู้อยู่ในอุปการะ",
       "profileBankTitle": "เปลี่ยนบัญชีธนาคารเป็น {bankName} ลงท้าย {ending}",
       "toilRequestTitle": "คำขอเครดิตวันลา, {date}, {start} – {end}",
+      "decisionApproveTitle": "อนุมัติ: {item}",
+      "decisionRejectTitle": "ปฏิเสธ: {item}",
       "creditDays": "เครดิต {count, plural, other {# วัน}} หากได้รับอนุมัติ",
       "review": "ตรวจสอบ",
       "open": "เปิด",
@@ -562,7 +564,10 @@
           "claimDraftSaved": "บันทึกเป็นฉบับร่างแล้ว เพิ่มใบเสร็จในหน้าการเบิกเพื่อส่ง",
           "claimCancelled": "ยกเลิกการเบิกแล้ว",
           "profileRequested": "ส่งให้ฝ่ายบุคคลแล้ว จะไม่มีการเปลี่ยนแปลงจนกว่าฝ่ายบุคคลจะอนุมัติ",
-          "toilSubmitted": "ส่งเพื่อขออนุมัติแล้ว ยังไม่ได้รับอนุมัติ จะไม่มีการให้เครดิตจนกว่าจะได้รับอนุมัติ"
+          "toilSubmitted": "ส่งเพื่อขออนุมัติแล้ว ยังไม่ได้รับอนุมัติ จะไม่มีการให้เครดิตจนกว่าจะได้รับอนุมัติ",
+          "decisionApproved": "อนุมัติแล้ว บันทึกการตัดสินของคุณแล้ว",
+          "decisionRejected": "ปฏิเสธแล้ว พร้อมเหตุผลของคุณ บันทึกการตัดสินของคุณแล้ว",
+          "decisionLevelRecorded": "บันทึกการอนุมัติของคุณแล้ว ผู้อนุมัติคนถัดไปจะเป็นผู้ตัดสิน"
         },
         "refused": {
           "expired": "การ์ดนี้หมดอายุแล้ว โปรดถามอีกครั้งเพื่อรับการ์ดใหม่",
@@ -593,7 +598,9 @@
         "claims_submit": "คำขอเบิกค่าใช้จ่ายพร้อมให้ตรวจสอบ",
         "claims_cancel": "การยกเลิกการเบิกพร้อมให้ตรวจสอบ",
         "ess_profile_request": "การเปลี่ยนข้อมูลส่วนตัวพร้อมให้ตรวจสอบ",
-        "toil_replacement_request": "คำขอเครดิตวันลาพร้อมให้ตรวจสอบ"
+        "toil_replacement_request": "คำขอเครดิตวันลาพร้อมให้ตรวจสอบ",
+        "approvals_claim_decide": "การตัดสินคำขอเบิกพร้อมให้ตรวจสอบ",
+        "approvals_attendance_decide": "การตัดสินคำขอด้านเวลาทำงานพร้อมให้ตรวจสอบ"
       },
       "checks": {
         "actor_current": "สิทธิ์เข้าถึงของคุณยังใช้ได้",
@@ -615,7 +622,10 @@
         "profile_request_reviewed": "ตรวจสอบกับข้อมูลของคุณแล้ว",
         "leave_credit_offered": "คุณขอเครดิตวันลาได้",
         "worked_day_read": "อ่านประเภทวันจากตารางกะของคุณ",
-        "leave_credit_rules": "กฎเครดิตวันลาอนุญาต"
+        "leave_credit_rules": "กฎเครดิตวันลาอนุญาต",
+        "assigned_approver_current": "คุณเป็นผู้อนุมัติที่ได้รับมอบหมาย",
+        "not_own_request": "ไม่ใช่คำขอของคุณเอง",
+        "request_still_pending": "คำขอยังรออยู่"
       },
       "outcomes": {
         "withdrawn_now": "ถอนทันที",
@@ -628,7 +638,8 @@
         "claim_draft_receipt_needed": "บันทึกเป็นฉบับร่าง เพิ่มใบเสร็จในหน้าการเบิก",
         "claim_cancelled_now": "ยกเลิกทันที",
         "hr_approval_required": "ส่งให้ฝ่ายบุคคล จะเปลี่ยนเมื่อฝ่ายบุคคลอนุมัติ",
-        "hr_verification_required": "ฝ่ายบุคคลตรวจสอบข้อมูลธนาคารใหม่ก่อนนำไปใช้"
+        "hr_verification_required": "ฝ่ายบุคคลตรวจสอบข้อมูลธนาคารใหม่ก่อนนำไปใช้",
+        "attendance_decision_if_checks_pass": "บันทึกในระดับการอนุมัติของคุณหากการตรวจสอบยังผ่าน"
       },
       "reads": {
         "my_leave_balances": "ยอดวันลาของคุณ",

@@ -9,8 +9,9 @@
 
 /** The owners whose cards confirm in place: the leave application (app/assistant/leave-apply-proposal-actions.ts),
  * the own attendance requests (attendance-request-proposal-actions.ts), the own claims and profile changes
- * (own-change-proposal-actions.ts) and, AI v2 W2 slice 2, the own Leave Credit request (toil-request-proposal-actions.ts). */
-export type InlineProposalKind = 'leave' | 'attendance' | 'own_change' | 'toil';
+ * (own-change-proposal-actions.ts) and, AI v2 W2 slice 2, the own Leave Credit request (toil-request-proposal-actions.ts).
+ * AI v2 W2 slice 3: an assigned approver's claim or attendance decision (assigned-decision-proposal-actions.ts). */
+export type InlineProposalKind = 'leave' | 'attendance' | 'own_change' | 'toil' | 'decision';
 
 const INLINE: Readonly<Record<string, InlineProposalKind>> = Object.freeze({
   'leave.apply': 'leave',
@@ -20,6 +21,8 @@ const INLINE: Readonly<Record<string, InlineProposalKind>> = Object.freeze({
   'claims.cancel': 'own_change',
   'ess.profile.request': 'own_change',
   'toil.replacement.request': 'toil',
+  'approvals.claim.decide': 'decision',
+  'approvals.attendance.decide': 'decision',
 });
 
 export function inlineProposalKind(action: string): InlineProposalKind | null {
@@ -33,11 +36,13 @@ export type InlineConfirmResult =
   | Readonly<{ kind: 'draft_saved'; href: string }>
   | Readonly<{ kind: 'cancelled' }>
   | Readonly<{ kind: 'requested' }>
+  /** An assigned decision recorded: `level` when a later approver still decides. */
+  | Readonly<{ kind: 'decided'; decision: 'approved' | 'rejected'; recorded: 'final' | 'level' }>
   | Readonly<{ kind: 'refused'; reason: string; message?: string; href?: string }>;
 export type InlineEditResult = Readonly<{ ok: true; href: string }> | Readonly<{ ok: false; reason: string }>;
 
 export type InlineDoneKey = 'leaveSubmitted' | 'attendanceSubmitted' | 'claimSubmitted' | 'claimDraftSaved' | 'claimCancelled' | 'profileRequested'
-  | 'toilSubmitted';
+  | 'toilSubmitted' | 'decisionApproved' | 'decisionRejected' | 'decisionLevelRecorded';
 /** `consent`: a First Schedule Leave Credit card confirmed without the person's own tick (the server refused it). */
 export type InlineRefusalKey = 'expired' | 'invalid' | 'access' | 'retired' | 'unavailable' | 'consent';
 
@@ -57,6 +62,7 @@ export function inlineDoneKey(kind: InlineProposalKind, result: InlineConfirmRes
     case 'draft_saved': return 'claimDraftSaved';
     case 'cancelled': return 'claimCancelled';
     case 'requested': return 'profileRequested';
+    case 'decided': return result.decision === 'rejected' ? 'decisionRejected' : result.recorded === 'level' ? 'decisionLevelRecorded' : 'decisionApproved';
     default: return null;
   }
 }

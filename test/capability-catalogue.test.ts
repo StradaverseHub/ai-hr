@@ -65,8 +65,9 @@ const REPORTS=['report:master','report:attendance_ot','report:attendance_daily',
  'report:claim_types','report:payroll_period_comparison'];
 const sorted=(...lists:string[][])=>lists.flat().sort();
 /** The actions prepared in chat (written by hand): the three leave actions, the AI v2 W2 attendance correction and
- * overtime request, and the own claim submit and cancel and profile change request. Every other action opens its page. */
-const PREPARED_HERE=['approvals.leave.decide','attendance.correction.request','attendance.overtime.request','claims.cancel','claims.submit',
+ * overtime request, the own claim submit and cancel and profile change request, and (AI v2 W2 slice 3) the assigned claim
+ * and attendance decisions. Every other action opens its page. */
+const PREPARED_HERE=['approvals.attendance.decide','approvals.claim.decide','approvals.leave.decide','attendance.correction.request','attendance.overtime.request','claims.cancel','claims.submit',
  'ess.profile.request','leave.apply','leave.cancel'];
 
 describe('the capability catalogue per role',()=>{

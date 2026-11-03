@@ -60,7 +60,9 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  /** AI v2 W7: governed workforce metrics for administrators and, for their own team, managers (./entities-metrics.ts). */
  |'workforce_metric'
  /** AI v2 W5: "Why?" on the caller's own pay difference and claim limits (./entities-why.ts). */
- |'pay_difference_explanation'|'claim_limit_explanation';
+ |'pay_difference_explanation'|'claim_limit_explanation'
+ /** AI v2 W2 (slice 3): an assigned claim or attendance request the caller decides in chat (./entities-decisions.ts). */
+ |'claim_approval_item'|'attendance_approval_item';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;
