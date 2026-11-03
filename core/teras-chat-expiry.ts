@@ -6,19 +6,26 @@
  * The owner's session sees teras_chat rows only once they have expired (expires_at: the last message plus the tenant's
  * "Keep chats for" days, brought forward when the setting is shortened) and those rows carry no words. Each chat's
  * turns go with it by the foreign-key cascade; the owner has no policy on teras_chat_turn, so this path can neither read
- * nor select a turn. The chat's task memory goes by the 0952 delete trigger. Expiry is database-owned.
- *
- * Letter requests confirmed from a chat card (migration 0973): the request is HR's record and stays; the card's id on it
- * (letter_request.client_key, chat-linked) is cleared by the 0973 delete trigger on teras_chat, on this path as on every
- * other path that removes a chat. */
+ * nor select a turn. The chat's task memory goes by the 0952 delete trigger. Expiry is database-owned. */
 import {sql,type SQL} from 'drizzle-orm';
 import type {Tx} from '../db/client';
 
 /** At most this many chats per pass, oldest first; the runner reports any backlog. */
 export const TERAS_CHAT_RETENTION_BATCH=500;
-/** Every relation one pass mutates: directly, by the turn cascade, inside the memory trigger or inside the 0973 letter
- * card-key trigger (client_key only). */
-export const TERAS_CHAT_MAINTAINED_RELATIONS=Object.freeze(['public.teras_chat','public.teras_chat_turn','public.teras_task_memory','public.letter_request'] as const);
+/** Every relation one pass mutates: directly, by the turn cascade or inside the memory trigger. */
+export const TERAS_CHAT_MAINTAINED_RELATIONS=Object.freeze(['public.teras_chat','public.teras_chat_turn','public.teras_task_memory'] as const);
+/** HR records a chat can originate that SURVIVE the chat on every removal path (this pass, the person's own delete or
+ * erase, person erasure). They are not maintained here: no path that removes a chat reads or changes them, so the runner
+ * needs no ownership of them. What a chat leaves on each, and why it may stay:
+ *  - public.letter_request (migration 0961): an employee letter request confirmed from a chat card. The request, HR's
+ *    decision and its letter-request.* events are HR's record, kept under the letters domain's own retention.
+ *    client_key is the card's id, an OPAQUE IDEMPOTENCY KEY (a repeated Confirm of the same card is the same request):
+ *    a random id holding no chat content. The card itself lived only in the browser and the chat's task memory, which go
+ *    with the chat (0952), so once the chat is gone nothing links the key back to a conversation. It is kept, never
+ *    cleared: clearing it could let a repeated Confirm create a second request. */
+export const TERAS_CHAT_SURVIVING_RECORDS=Object.freeze([
+ Object.freeze({relation:'public.letter_request',custody:'hr_record',chatOrigin:Object.freeze({column:'client_key',classification:'opaque_idempotency_key'})}),
+] as const);
 
 const unavailable=():never=>{throw new Error('Chat retention could not be confirmed.');};
 const count=(value:unknown):number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0&&value<=TERAS_CHAT_RETENTION_BATCH?value:unavailable();

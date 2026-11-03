@@ -8,12 +8,7 @@
  *  2. a group administrator's shortened setting brings other logins' expiries forward through the definer trigger,
  *     changing nothing else;
  *  3. person erasure, through the definer function and the admitted intent, deletes the subject's chats only, while the
- *     administrator's own session reads no chat of the subject even inside the erasure transaction;
- *  4. (migration 0973) on both deleting paths, the definer trigger on teras_chat, owned by the same role and bound by
- *     forced row security on letter_request, clears the card id (client_key) on the subject login's letter requests and
- *     nothing else, and never another login's. The letter requests here are synthetic storage rows written with the
- *     database's triggers off inside the rolled-back transaction; test/letter-request-chat-custody.test.ts covers the
- *     real chat card, owner and lifecycle. */
+ *     administrator's own session reads no chat of the subject even inside the erasure transaction. */
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,expect,it,vi} from 'vitest';
@@ -56,29 +51,14 @@ it('retention, a shortened setting and person erasure work under forced RLS for 
   await tx.execute(sql.raw(`GRANT USAGE,CREATE ON SCHEMA public,app TO ${role}`));
   await tx.execute(sql.raw(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO ${role}`));
   await tx.execute(sql.raw(`GRANT SELECT ON public.app_user TO ${role}`));
-  for(const table of ['public.teras_chat','public.teras_chat_turn','public.teras_chat_retention','public.teras_task_memory','app.assistant_review_erasure_intent','public.letter_request'])
+  for(const table of ['public.teras_chat','public.teras_chat_turn','public.teras_chat_retention','public.teras_task_memory','app.assistant_review_erasure_intent'])
    await tx.execute(sql.raw(`ALTER TABLE ${table} OWNER TO ${role}`));
-  for(const fn of ['app.teras_chat_memory_erased()','app.teras_chat_retention_applied()','app.teras_chats_redact(uuid)','app._teras_chat_erasure_subject(uuid,uuid,uuid)','app.teras_chat_letter_card_keys_forgotten()'])
+  for(const fn of ['app.teras_chat_memory_erased()','app.teras_chat_retention_applied()','app.teras_chats_redact(uuid)','app._teras_chat_erasure_subject(uuid,uuid,uuid)'])
    await tx.execute(sql.raw(`ALTER FUNCTION ${fn} OWNER TO ${role}`));
   const [shape]=await tx.execute<Record<string,boolean>>(sql`select r.rolsuper as super,r.rolbypassrls as bypass,pg_has_role('ai_hr_app',r.oid,'MEMBER') as app_member,
-   (select bool_and(c.relforcerowsecurity and c.relrowsecurity and c.relowner=r.oid) from pg_class c where c.oid in ('public.teras_chat'::regclass,'public.teras_chat_turn'::regclass,'public.teras_chat_retention'::regclass,'public.letter_request'::regclass)) as forced_owned
+   (select bool_and(c.relforcerowsecurity and c.relrowsecurity and c.relowner=r.oid) from pg_class c where c.oid in ('public.teras_chat'::regclass,'public.teras_chat_turn'::regclass,'public.teras_chat_retention'::regclass)) as forced_owned
    from pg_roles r where r.rolname=${role}`);
   expect(shape).toEqual({super:false,bypass:false,app_member:false,forced_owned:true});
-  // Synthetic letter requests of synthetic templates, written with the triggers off (no option, version or guard is
-  // needed), each carrying a chat card's id. Their foreign keys are real: PostgreSQL re-checks every foreign key of a row
-  // updated in the transaction that inserted it. One open request per person and template (letter_request_open_uq).
-  const cards={mine:randomUUID(),theirs:randomUUID(),later:randomUUID()},templates=[randomUUID(),randomUUID()];
-  await tx.execute(sql`set local session_replication_role=replica`);
-  for(const [index,id] of templates.entries())
-   await tx.execute(sql`insert into public.letter_template(id,tenant_id,company_id,code,created_by) values(${id}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${'FICTIONAL-'+index},${admin.ctx.userId}::uuid)`);
-  await tx.execute(sql`set local session_replication_role=origin`);
-  const request=async(who:Person,key:string,templateId=templates[0])=>{await tx.execute(sql`set local session_replication_role=replica`);
-   const [row]=await tx.execute<{id:string}>(sql`insert into public.letter_request(tenant_id,company_id,employment_id,requested_by,template_id,letter_type_name,client_key)
-    values(${b.tenantId}::uuid,${b.companyId}::uuid,${who.employmentId}::uuid,${who.ctx.userId}::uuid,${templateId}::uuid,'Fictional letter',${key}::uuid) returning id`);
-   await tx.execute(sql`set local session_replication_role=origin`);return row.id;};
-  const mineRequest=await request(me,cards.mine),theirRequest=await request(peer,cards.theirs);
-  const letterKeys=async()=>Object.fromEntries((await tx.execute<{id:string;client_key:string|null;version:number;status:string}>(sql`select id,client_key,version,status from public.letter_request order by id`))
-   .map(row=>[row.id,[row.client_key,row.status,row.version]]));
   // Non-vacuity: the superuser sees every chat and turn.
   expect(await ids(tx,sql`select id from public.teras_chat`)).toEqual([expired,live,theirs].sort());
   expect((await tx.execute(sql`select 1 from public.teras_chat_turn`)).length).toBe(3);
@@ -98,9 +78,6 @@ it('retention, a shortened setting and person erasure work under forced RLS for 
   expect(await ids(tx,sql`select id from public.teras_chat`)).toEqual([live,theirs].sort());
   expect(await ids(tx,sql`select chat_id as id from public.teras_chat_turn`)).toEqual([live,theirs].sort());
   expect(await ids(tx,sql`select conversation_id as id from public.teras_task_memory`)).toEqual([live,theirs].sort());
-  // 4a. The expired chat's login loses its card ids; the other login keeps its own; nothing else changes.
-  expect(await letterKeys()).toEqual({[mineRequest]:[null,'requested',1],[theirRequest]:[cards.theirs,'requested',1]});
-  expect(await tx.execute(sql`select coalesce(current_setting('app.letter_request_card_keys',true),'') as marker`)).toEqual([{marker:''}]);
   verified++;
 
   // 2. A shortened setting, written by the group administrator's own application session.
@@ -114,7 +91,6 @@ it('retention, a shortened setting and person erasure work under forced RLS for 
   expect(await tx.execute(sql`select current_setting('app.teras_chat_restamp',true) as marker`)).toEqual([{marker:''}]);
   verified++;
 
-  const laterRequest=await request(me,cards.later,templates[1]);
   // 3. Person erasure: the admitted intent for the subject in THIS transaction (as app.assistant_own_leave_reviews_redact
   //    records it), then the definer function from the administrator's application session.
   await tx.execute(sql`insert into app.assistant_review_erasure_intent(xact_id,tenant_id,user_id,person_id,employment_id,cleared,event_id,review_ids)
@@ -127,8 +103,6 @@ it('retention, a shortened setting and person erasure work under forced RLS for 
   expect(await ids(tx,sql`select id from public.teras_chat`)).toEqual([theirs]);
   expect(await ids(tx,sql`select chat_id as id from public.teras_chat_turn`)).toEqual([theirs]);
   expect(await ids(tx,sql`select conversation_id as id from public.teras_task_memory`)).toEqual([theirs]);
-  // 4b. The erased subject's card id confirmed during their live chat goes; the other login's stays.
-  expect(await letterKeys()).toEqual({[mineRequest]:[null,'requested',1],[laterRequest]:[null,'requested',1],[theirRequest]:[cards.theirs,'requested',1]});
   verified++;
   throw rollback;
  })).rejects.toBe(rollback);

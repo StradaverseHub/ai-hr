@@ -1,16 +1,17 @@
-/** AI v2 Phase 2 wave 2 — letter requests in the AI Centre chat custody and retention model (migration 0973), on fictional
- * data, through the real chat card (core/proposals/letter-request.ts, core/assistant-actions/letter-request-proposal-confirm.ts),
- * the real stored chats (core/teras-chats.ts), the retention runner (scripts/ai-retention-runner.ts) and person erasure
- * (core/pdpa.ts), under forced row-level security.
+/** AI v2 Phase 2 wave 2 — letter requests in the AI Centre chat custody and retention model, on fictional data, through
+ * the real chat card (core/proposals/letter-request.ts, core/assistant-actions/letter-request-proposal-confirm.ts), the
+ * real stored chats (core/teras-chats.ts), the retention runner (scripts/ai-retention-runner.ts) and person erasure
+ * (core/pdpa.ts), under forced row-level security. No migration: the classification is core/teras-chat-expiry.ts
+ * TERAS_CHAT_SURVIVING_RECORDS.
  *
  * Two custody classes:
- *  - chat-linked: the open card in the conversation's task memory, and the card's id on the request (client_key). Both go
- *    when the chat goes, on every path: chat expiry (the retention runner), the person deleting one chat or erasing all of
- *    theirs, and person erasure;
- *  - the HR record: the request (type, purpose, status, linked letter, HR's decision, reason and message, version, times)
- *    and its letter-request.* events. They stay, byte for byte, whichever path removed the chat.
- * Never another login's or another tenant's request; the application role cannot clear a card id even with a forged
- * marker; and the database guard still refuses any other change to a request, from the owner too.
+ *  - chat-linked: the chat and its task memory, holding the open card (confirmed or not). They go on every path: chat
+ *    expiry (the retention runner), the person deleting one chat or erasing all of theirs, and person erasure;
+ *  - the HR record: the request (type, purpose, status, linked letter, HR's decision, reason and message, version, times),
+ *    its letter-request.* events and the card's id on it (client_key, an opaque idempotency key with no chat content).
+ *    They stay, byte for byte, whichever path removed the chat, so a repeated Confirm of the same card is still the same
+ *    request and never a second one.
+ * Never another login's or another tenant's chat; no application caller can change the card id.
  * The task memory row is a fictional storage fixture (only its openProposals matter here), not a harness turn. */
 import {randomUUID} from 'node:crypto';
 import {and,asc,eq,sql} from 'drizzle-orm';
@@ -26,8 +27,9 @@ import {decideLetterTemplate,saveLetterField,saveLetterTemplate} from '../core/l
 import {declineLetterRequest,saveLetterRequestOptions} from '../core/letter-requests';
 import {prepareChatLetterRequestProposal} from '../core/proposals/letter-request';
 import {confirmLetterRequestProposal} from '../core/assistant-actions/letter-request-proposal-confirm';
+import {LETTER_REQUEST_ACTION} from '../core/proposals/letter-request';
 import {DELETED_CHAT_DIGEST,deleteOwnChat,eraseOwnChats,recordChatTurn} from '../core/teras-chats';
-import {TERAS_CHAT_MAINTAINED_RELATIONS} from '../core/teras-chat-expiry';
+import {TERAS_CHAT_MAINTAINED_RELATIONS,TERAS_CHAT_SURVIVING_RECORDS} from '../core/teras-chat-expiry';
 import type {Proposal} from '../core/proposals/proposal';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {runAiRetentionTick} from '../scripts/ai-retention-runner';
@@ -85,18 +87,12 @@ const events=(tenantId=main.b.tenantId)=>owner.db.select().from(s.domainEvent).w
 const chatsOf=(userId:string)=>owner.db.select({id:terasChat.id,digest:terasChat.scopeDigest}).from(terasChat).where(eq(terasChat.appUserId,userId))
  .then(rows=>rows.filter(row=>row.digest!==DELETED_CHAT_DIGEST).map(row=>row.id).sort());
 const memoryOf=(userId:string)=>owner.db.select({id:terasTaskMemory.conversationId}).from(terasTaskMemory).where(eq(terasTaskMemory.appUserId,userId)).then(rows=>rows.map(row=>row.id).sort());
-/** The HR record, before and after: every column but the card id. */
-const withoutKey=(rows:readonly Record<string,unknown>[])=>rows.map(row=>{const copy={...row};delete copy.clientKey;return copy;});
 const keys=(rows:readonly {id:string;clientKey:string|null}[])=>Object.fromEntries(rows.map(row=>[row.id,row.clientKey]));
 /** Moves a chat `days` into the past and expires it (database triggers bypassed), as the 0952 tests do. */
 async function expire(chatId:string,days=40){
  await owner.db.transaction(async tx=>{await tx.execute(sql`set local session_replication_role=replica`);
   await tx.execute(sql`update public.teras_chat set created_at=now()-make_interval(days=>${days+1}),last_message_at=now()-make_interval(days=>${days}),
    expires_at=now()-make_interval(days=>${days-30}) where id=${chatId}::uuid`);});
-}
-async function backdateRequest(requestId:string,interval:string){
- await owner.db.transaction(async tx=>{await tx.execute(sql`set local session_replication_role=replica`);
-  await tx.execute(sql`update public.letter_request set created_at=now()-${interval}::interval,status_changed_at=now()-${interval}::interval where id=${requestId}::uuid`);});
 }
 type PgCause={code?:string;cause?:unknown};
 /** The Postgres error code behind a Drizzle wrapper (the cause chain), if any. */
@@ -109,12 +105,21 @@ beforeEach(async()=>{
  await resetDb();main=await letters();aina=await hire(main,'Aina Fictional');badrul=await hire(main,'Badrul Fictional');
 });
 
+/** A repeated Confirm of the same card: the same request, and no second row. */
+async function sameRequest(who:Person,proposal:Proposal,requestId:string){
+ const count=(await requests(who.ctx.tenantId)).length;
+ expect(await confirmLetterRequestProposal(who.ctx,{proposal,confirm:true})).toEqual({kind:'submitted',action:LETTER_REQUEST_ACTION,requestId});
+ expect(await requests(who.ctx.tenantId)).toHaveLength(count);
+}
+
 describe('letter requests in the chat custody model',()=>{
- it('registers letter_request with the chat pass, which owns every relation it changes',()=>{
-  expect(TERAS_CHAT_MAINTAINED_RELATIONS).toEqual(['public.teras_chat','public.teras_chat_turn','public.teras_task_memory','public.letter_request']);
+ it('classifies letter_request as an HR record that survives the chat, outside the relations the chat pass maintains',()=>{
+  expect(TERAS_CHAT_SURVIVING_RECORDS).toEqual([{relation:'public.letter_request',custody:'hr_record',chatOrigin:{column:'client_key',classification:'opaque_idempotency_key'}}]);
+  expect(TERAS_CHAT_MAINTAINED_RELATIONS).toEqual(['public.teras_chat','public.teras_chat_turn','public.teras_task_memory']);
+  for(const record of TERAS_CHAT_SURVIVING_RECORDS)expect(TERAS_CHAT_MAINTAINED_RELATIONS as readonly string[]).not.toContain(record.relation);
  });
 
- it('chat expiry: the runner deletes the chat with its open card and clears the card id; the request and HR decision stay',async()=>{
+ it('chat expiry: the runner deletes the chat and its task memory with the open cards; the requests, HR decision and events stay',async()=>{
   const declined=await card(aina,CONFIRMATION_WORDS),unconfirmed=await card(aina,SALARY_WORDS);
   const expiring=await chat(main,aina,[declined,unconfirmed]);
   const declinedId=await confirm(aina,declined);
@@ -123,110 +128,84 @@ describe('letter requests in the chat custody model',()=>{
   const open=await card(aina,SALARY_WORDS),live=await chat(main,aina,[open]);const openId=await confirm(aina,open);
   const theirs=await card(badrul,CONFIRMATION_WORDS),peerChat=await chat(main,badrul,[theirs]);const peerId=await confirm(badrul,theirs);
   const before=await requests(),eventsBefore=await events();
-  // Non-vacuity: each card id is on its request, and the decision is HR's.
+  // Non-vacuity: each card id is on its request, the decision is HR's, and the never-confirmed card is in task memory.
   expect(keys(before)).toEqual({[declinedId]:declined.body.id,[openId]:open.body.id,[peerId]:theirs.body.id});
   expect(await request(declinedId)).toMatchObject({status:'declined',declineReason:'Fictional reason: probation still open',employeeMessage:'Fictional message: ask again later',version:2});
-  // No event of the request ever carried a card id.
+  expect(JSON.stringify(await owner.db.select().from(terasTaskMemory).where(eq(terasTaskMemory.conversationId,expiring)))).toContain(unconfirmed.body.id);
+  // No event of a request ever carried a card id.
   for(const id of [declined.body.id,unconfirmed.body.id,open.body.id,theirs.body.id])expect(JSON.stringify(eventsBefore)).not.toContain(id);
   await expire(expiring);
 
   expect(await tick()).toEqual({...zero,chats:1,tenants:0,busy:0,backlog:false,oldestExpiredAgeSeconds:null});
-  // Chat-linked: the chat and its task memory (the declined card and the never-confirmed one) are gone.
+  // Chat-linked: the chat and its task memory (the declined card and the never-confirmed one) are gone; nothing else.
   expect(await chatsOf(aina.ctx.userId)).toEqual([live]);expect(await memoryOf(aina.ctx.userId)).toEqual([live]);
   expect(await chatsOf(badrul.ctx.userId)).toEqual([peerChat]);expect(await memoryOf(badrul.ctx.userId)).toEqual([peerChat]);
-  const after=await requests();
-  // The HR record: every request and HR's decision, unchanged but for the card id; same version, same status time.
-  expect(withoutKey(after)).toEqual(withoutKey(before));
-  expect(keys(after)).toEqual({[declinedId]:null,[openId]:null,[peerId]:theirs.body.id});
-  expect(await request(declinedId)).toMatchObject({status:'declined',declineReason:'Fictional reason: probation still open',employeeMessage:'Fictional message: ask again later',version:2,clientKey:null});
-  expect(await events()).toEqual(eventsBefore);
-  // The person's still-open request stays the only one for its type: a repeated Confirm of its card is refused in place.
-  expect(await confirmLetterRequestProposal(aina.ctx,{proposal:open,confirm:true})).toEqual({kind:'refused',reason:'duplicate'});
-  expect((await requests()).length).toBe(3);
-  // Idempotent: the next pass removes and clears nothing.
+  // The HR record: every request, HR's decision and the card ids, byte for byte; every event.
+  expect(await requests()).toEqual(before);expect(await events()).toEqual(eventsBefore);
+  // A repeated Confirm of the expired chat's card, and of the live one, is still the same request.
+  await sameRequest(aina,declined,declinedId);await sameRequest(aina,open,openId);
+  expect(await requests()).toEqual(before);
   expect(await tick()).toEqual({...zero,chats:0,tenants:0,busy:0,backlog:false,oldestExpiredAgeSeconds:null});
-  expect(await requests()).toEqual(after);
+  expect(await requests()).toEqual(before);
  });
 
- it('own delete and own erase clear the card ids of requests confirmed since the chat started, never earlier ones',async()=>{
-  const earlier=await card(aina,SALARY_WORDS);const earlierId=await confirm(aina,earlier);
-  // Confirmed two hours before any chat of this test started: not from it.
-  await backdateRequest(earlierId,'2 hours');
+ it('own delete and own erase remove the chats and their task memory; the requests stay and stay idempotent',async()=>{
   const fromChat=await card(aina,CONFIRMATION_WORDS),one=await chat(main,aina,[fromChat]);const fromChatId=await confirm(aina,fromChat);
-  const peerCard=await card(badrul,CONFIRMATION_WORDS);await chat(main,badrul,[peerCard]);const peerId=await confirm(badrul,peerCard);
-  const before=await requests();
+  const second=await card(aina,SALARY_WORDS),two=await chat(main,aina,[second]);const secondId=await confirm(aina,second);
+  const peerCard=await card(badrul,CONFIRMATION_WORDS),peerChat=await chat(main,badrul,[peerCard]);const peerId=await confirm(badrul,peerCard);
+  const before=await requests(),eventsBefore=await events();
+  expect(keys(before)).toEqual({[fromChatId]:fromChat.body.id,[secondId]:second.body.id,[peerId]:peerCard.body.id});
   expect(await deleteOwnChat(aina.ctx,one)).toBe(1);
+  expect(await chatsOf(aina.ctx.userId)).toEqual([two]);expect(await memoryOf(aina.ctx.userId)).toEqual([two]);
+  expect(await requests()).toEqual(before);expect(await events()).toEqual(eventsBefore);
+  await sameRequest(aina,fromChat,fromChatId);
+  // Erasing all of one's chats: the same, and still only one's own.
+  expect(await eraseOwnChats(aina.ctx)).toBe(1);
   expect(await chatsOf(aina.ctx.userId)).toEqual([]);expect(await memoryOf(aina.ctx.userId)).toEqual([]);
-  const afterDelete=await requests();
-  expect(withoutKey(afterDelete)).toEqual(withoutKey(before));
-  expect(keys(afterDelete)).toEqual({[earlierId]:earlier.body.id,[fromChatId]:null,[peerId]:peerCard.body.id});
-  // Erasing all of one's chats: the same, for every chat, and still only one's own.
-  await chat(main,aina);const erasedCount=await eraseOwnChats(aina.ctx);expect(erasedCount).toBe(1);
-  const afterErase=await requests();
-  expect(withoutKey(afterErase)).toEqual(withoutKey(before));
-  expect(keys(afterErase)).toEqual({[earlierId]:earlier.body.id,[fromChatId]:null,[peerId]:peerCard.body.id});
-  // The trigger leaves its marker empty again within the deleting transaction itself.
-  const last=await chat(main,aina);
-  expect(await withTenant(aina.ctx,async tx=>{
-   const gone=await tx.execute<{id:string}>(sql`delete from public.teras_chat where id=${last}::uuid returning id`);
-   const [marker]=await tx.execute<{marker:string}>(sql`select coalesce(current_setting('app.letter_request_card_keys',true),'') as marker`);
-   return{gone:gone.map(row=>row.id),marker:marker?.marker};
-  })).toEqual({gone:[last],marker:''});
-  expect(keys(await requests())).toEqual({[earlierId]:earlier.body.id,[fromChatId]:null,[peerId]:peerCard.body.id});
+  expect(await chatsOf(badrul.ctx.userId)).toEqual([peerChat]);expect(await memoryOf(badrul.ctx.userId)).toEqual([peerChat]);
+  expect(await requests()).toEqual(before);expect(await events()).toEqual(eventsBefore);
+  await sameRequest(aina,second,secondId);
  });
 
- it('person erasure deletes the subject\'s chats and clears the subject\'s card ids only; the requests stay',async()=>{
+ it('person erasure deletes the subject\'s chats and task memory only; every request stays and stays idempotent',async()=>{
   const mine=await card(aina,CONFIRMATION_WORDS);await chat(main,aina,[mine]);const mineId=await confirm(aina,mine);
   const theirs=await card(badrul,CONFIRMATION_WORDS),peerChat=await chat(main,badrul,[theirs]);const peerId=await confirm(badrul,theirs);
-  const before=await requests();
+  const before=await requests(),eventsBefore=await events();
   await erasePersonPii(main.hr,{subjectEmploymentId:aina.employmentId,scope:'contact',reason:'Fictional canonical privacy request',requestRef:'fixture-'+randomUUID()});
   expect(await chatsOf(aina.ctx.userId)).toEqual([]);expect(await memoryOf(aina.ctx.userId)).toEqual([]);
   expect(await chatsOf(badrul.ctx.userId)).toEqual([peerChat]);expect(await memoryOf(badrul.ctx.userId)).toEqual([peerChat]);
-  const after=await requests();
-  expect(withoutKey(after)).toEqual(withoutKey(before));
-  expect(keys(after)).toEqual({[mineId]:null,[peerId]:theirs.body.id});
+  expect(await requests()).toEqual(before);expect(keys(before)).toEqual({[mineId]:mine.body.id,[peerId]:theirs.body.id});
+  expect(await events()).toEqual(eventsBefore);
+  await sameRequest(aina,mine,mineId);
  });
 
- it('stays inside the tenant and login, and no other path can clear or change a request',async()=>{
+ it('stays inside the tenant and login, and no application caller can change the card id',async()=>{
   const foreign=await letters(),outsider=await hire(foreign,'Fictional Foreign Requester');
   const foreignCard=await card(outsider,CONFIRMATION_WORDS),foreignChat=await chat(foreign,outsider,[foreignCard]);const foreignId=await confirm(outsider,foreignCard);
   const mine=await card(aina,CONFIRMATION_WORDS),myChat=await chat(main,aina,[mine]);const mineId=await confirm(aina,mine);
-  const foreignBefore=await requests(foreign.b.tenantId);
+  const foreignBefore=await requests(foreign.b.tenantId),mineBefore=await requests();
   // Another tenant's chat is invisible to the person and cannot be deleted by them.
   await expect(deleteOwnChat(aina.ctx,foreignChat).catch(()=>0)).resolves.toBe(0);
-  expect(await chatsOf(outsider.ctx.userId)).toEqual([foreignChat]);
-  // Deleting the person's own chat leaves the other tenant's request whole, card id included.
+  expect(await chatsOf(outsider.ctx.userId)).toEqual([foreignChat]);expect(await memoryOf(outsider.ctx.userId)).toEqual([foreignChat]);
+  // Neither tenant's request is readable from the other, nor is a card from one tenant confirmable in the other.
+  expect(await withTenant(aina.ctx,tx=>tx.select({id:s.letterRequest.id}).from(s.letterRequest))).toEqual([{id:mineId}]);
+  expect(await withTenant(outsider.ctx,tx=>tx.select({id:s.letterRequest.id}).from(s.letterRequest))).toEqual([{id:foreignId}]);
+  expect(await confirmLetterRequestProposal(aina.ctx,{proposal:foreignCard,confirm:true})).toMatchObject({kind:'refused'});
+  // The person's own chat goes; the other tenant's chat, memory and request are untouched.
   expect(await deleteOwnChat(aina.ctx,myChat)).toBe(1);
-  expect((await request(mineId)).clientKey).toBeNull();
-  expect(await requests(foreign.b.tenantId)).toEqual(foreignBefore);
-  // And the other tenant's expiry clears only its own request's card id.
+  expect(await requests(foreign.b.tenantId)).toEqual(foreignBefore);expect(await requests()).toEqual(mineBefore);
+  // The other tenant's expiry removes only its own chat.
   await expire(foreignChat);
   expect((await tick()).chats).toBe(1);
-  expect((await request(foreignId)).clientKey).toBeNull();expect(withoutKey(await requests(foreign.b.tenantId))).toEqual(withoutKey(foreignBefore));
+  expect(await chatsOf(outsider.ctx.userId)).toEqual([]);expect(await requests(foreign.b.tenantId)).toEqual(foreignBefore);
+  expect(await requests()).toEqual(mineBefore);
+  await sameRequest(outsider,foreignCard,foreignId);
 
-  // The application role cannot clear a card id itself, even with a forged marker for its own tenant and login.
-  const kept=await card(badrul,CONFIRMATION_WORDS);const keptId=await confirm(badrul,kept);
-  const forged=await withTenant(badrul.ctx,async tx=>{
-   await tx.execute(sql`select set_config('app.letter_request_card_keys',${main.b.tenantId+':'+badrul.ctx.userId},true)`);
-   return tx.execute(sql`update public.letter_request set client_key=null where id=${keptId}::uuid`);
-  }).then(()=>'written',(error:unknown)=>pgCode(error));
-  expect(forged).toBe('42501');
-  // HR holding `generate` cannot either: its column grants exclude the card id.
-  const hrForged=await withTenant(main.hr,async tx=>{
-   await tx.execute(sql`select set_config('app.letter_request_card_keys',${main.b.tenantId+':'+badrul.ctx.userId},true)`);
-   return tx.execute(sql`update public.letter_request set client_key=null where id=${keptId}::uuid`);
-  }).then(()=>'written',(error:unknown)=>pgCode(error));
-  expect(hrForged).toBe('42501');
-  // The guard refuses the table owner too: without the marker, and with it for anything beyond clearing the card id.
-  const ownerWrite=(marker:string|null,assignment:ReturnType<typeof sql>)=>owner.db.transaction(async tx=>{
-   if(marker!==null)await tx.execute(sql`select set_config('app.letter_request_card_keys',${marker},true)`);
-   await tx.execute(sql`update public.letter_request set ${assignment} where id=${keptId}::uuid`);
-  }).then(()=>'written',(error:unknown)=>pgCode(error));
-  const right=main.b.tenantId+':'+badrul.ctx.userId;
-  expect(await ownerWrite(null,sql`client_key=null`)).toBe('42501');
-  expect(await ownerWrite(main.b.tenantId+':'+aina.ctx.userId,sql`client_key=null`)).toBe('42501');
-  expect(await ownerWrite(right,sql`client_key=null,purpose='Fictional rewritten purpose'`)).toBe('42501');
-  expect(await ownerWrite(right,sql`client_key=${randomUUID()}::uuid`)).toBe('42501');
-  expect((await request(keptId)).clientKey).toBe(kept.body.id);
+  // The card id is the request's own: neither the person nor HR holding `generate` may change it (no column grant).
+  for(const ctx of [aina.ctx,main.hr]){
+   const written=await withTenant(ctx,tx=>tx.execute(sql`update public.letter_request set client_key=null where id=${mineId}::uuid`)).then(()=>'written',(error:unknown)=>pgCode(error));
+   expect(written).toBe('42501');
+  }
+  expect(await requests()).toEqual(mineBefore);
  });
 });
