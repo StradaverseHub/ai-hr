@@ -1,6 +1,6 @@
 import { SignedInShell } from '../lib/app-shell';
 import {WidgetLaunchObserver} from '../lib/widget-launch';
-import { JourneyDraftProvider } from '../lib/journey-drafts';
+import { JourneyDraftProvider, useJourneyDrafts } from '../lib/journey-drafts';
 import { CompanyConnectionProvider, WorkplaceReviewBoundary, useCompanyConnection } from '../lib/company-connection';
 import { Atmosphere, PublicDesignProvider, TenantDesignProvider, useTenantDesign } from '../lib/design';
 import { colorContrast } from '../../lib/mobile-composition';
@@ -25,6 +25,18 @@ function ThemedStatusBar() {
 
 function ThemedStack() {
   const { palette, reduceMotion } = useTenantDesign();
+  const { leave, putLeave } = useJourneyDrafts();
+  useEffect(() => {
+    if (!leave?.reopenAfterAttachment) return;
+    // This stack only mounts after authentication. Consume the navigation
+    // request through the draft owner before opening its screen.
+    const timer = setTimeout(() => {
+      if (putLeave({ ...leave, reopenAfterAttachment: false }, leave.command.requestId)) {
+        router.navigate('/leave');
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [leave, putLeave]);
   useEffect(() => { const path = takeReopenAfterLanguage(); if (path) setTimeout(() => router.push(path), 0); }, []);
   return <><StatusBar style={colorContrast(palette.bg, '#000000') > colorContrast(palette.bg, '#ffffff') ? 'dark' : 'light'} /><PushLifecycle /><SignedInShell><Stack screenOptions={{ headerShown: false, animation: reduceMotion ? 'fade' : 'default' }} /></SignedInShell></>;
 }

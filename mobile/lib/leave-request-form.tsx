@@ -1,5 +1,5 @@
 import { useEffect,useRef,useState,type ReactNode } from 'react';
-import { AppState,Pressable,TextInput,View,useWindowDimensions } from 'react-native';
+import { AppState,Platform,Pressable,TextInput,View,useWindowDimensions } from 'react-native';
 import DateTimePicker from '@expo/ui/community/datetime-picker';
 import { DesignText as Text } from './design';
 import * as DocumentPicker from 'expo-document-picker';
@@ -112,7 +112,7 @@ export function LeaveRequestForm({options,today,onSubmitted,notices={},cards=[]}
       const directory=new Directory(Paths.cache,'aihr-journeys');if(!directory.exists)directory.create({intermediates:true});
       const cached=new File(directory,randomUUID());source.copy(cached);if(source.exists)source.delete();
       const document:LocalAttachment={uri:cached.uri,name:picked.name,mimeType:mime,size};
-      if(putLeave({...draft,document},draft.command.requestId))removeLocalFile(draft.document);else removeLocalFile(document);
+      if(putLeave({...draft,document,reopenAfterAttachment:Platform.OS==='android'},draft.command.requestId))removeLocalFile(draft.document);else removeLocalFile(document);
     }catch(e){putLeave({...draft,message:e instanceof Error?e.message:t('genericError')},draft.command.requestId);if(e instanceof SignInRequiredError)void signOut();}
     finally{try{if(source?.exists)source.delete();}catch{}flight.current=false;}
   }
