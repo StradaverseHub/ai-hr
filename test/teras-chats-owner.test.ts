@@ -84,6 +84,10 @@ it('retention, a shortened setting and person erasure work under forced RLS for 
   expect(await tx.execute(sql`select question_ciphertext,reply_ciphertext,model_ciphertext from public.teras_chat_turn`)).toEqual([]);
   expect(await tx.execute(sql`select count(*)::int as n from public.teras_chat_turn`)).toEqual([{n:0}]);
   expect(await ids(tx,sql`select id from public.teras_chat`)).toEqual([expired]);
+  await tx.execute(sql`savepoint debug_letter`);
+  const debug=await tx.execute(sql`delete from public.teras_chat where id=${expired}::uuid and expires_at<=now() returning id`).then(rows=>'ok '+rows.length,(error:unknown)=>{let at=error as {code?:string;message?:string;where?:string;detail?:string;cause?:unknown}|undefined;for(let i=0;i<6&&at;i++){if(at.code)return [at.code,at.message,at.where,at.detail].join(' | ');at=at.cause as typeof at;}return String(error);});
+  await tx.execute(sql`rollback to savepoint debug_letter`);
+  expect(debug).toBe('DEBUG');
   expect(await retireExpiredTerasChatsTx(tx)).toBe(1);
   expect(await ids(tx,sql`select id from public.teras_chat`)).toEqual([]);
   expect(await tx.execute(sql`delete from public.teras_chat where id=${live}::uuid returning id`)).toEqual([]);
