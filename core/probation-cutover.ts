@@ -4,7 +4,7 @@ import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {withScopedLifecycleTenant} from './module-gate';
 import {assertModuleEnabled} from './entitlements';
-import {workingDatesForSpan} from './leave';
+import {workingDatesForSpan} from '../packs/leave/service';
 import {internalConfig} from '../lib/internal-auth/config';
 import {todayInKualaLumpur,addCalendarMonths} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';

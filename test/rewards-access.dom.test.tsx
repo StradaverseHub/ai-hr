@@ -136,11 +136,11 @@ describe('Central Rewards access journey', () => {
         fireEvent.change(screen.getByLabelText(en.rewardsAccessControl.requestReason),{target:{value:'Fictional reviewed access change'}});
         fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
         await screen.findByRole('region', { name: en.rewardsAccess.previewTitle });
-        expect(ports.batchPreview).toHaveBeenLastCalledWith({ changes: [{ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'bu', validFrom:todayInKualaLumpur(),validTo:null,coversUserId:null } }] });
+        expect(ports.batchPreview).toHaveBeenLastCalledWith({ changes: [{ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'bu', validFrom:todayInKualaLumpur(),validTo:null,coversUserId:null } }], reason: 'Fictional reviewed access change' });
         fireEvent.click(suggestion);
         fireEvent.change(screen.getByLabelText(en.rewardsAccessControl.requestReason),{target:{value:'Fictional reviewed access change'}});
         fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
-        await waitFor(() => expect(ports.batchPreview).toHaveBeenLastCalledWith({ changes: [{ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'bu', validFrom:todayInKualaLumpur(),validTo:null,coversUserId:null } }, { unitId: 'review', revision: 4, before: null, after: { userId: 'admin', role: 'bu' } }] }));
+        await waitFor(() => expect(ports.batchPreview).toHaveBeenLastCalledWith({ changes: [{ unitId: 'review', revision: 4, before: null, after: { userId: 'user', role: 'bu', validFrom:todayInKualaLumpur(),validTo:null,coversUserId:null } }, { unitId: 'review', revision: 4, before: null, after: { userId: 'admin', role: 'bu' } }], reason: 'Fictional reviewed access change' }));
     });
     it('f38e5d8e: copies an earlier cycle with copied seats ticked, suggestions unticked and inactive logins listed', async () => {
         const copied = { unitId: 'second', revision: 2, before: null, after: { userId: 'user', role: 'bu' as const } }, suggested = { ...copied, after: { userId: 'admin', role: 'bu' as const } };
@@ -158,7 +158,7 @@ describe('Central Rewards access journey', () => {
         expect(screen.getByText('Gone Person · CTRO · Example Company / Sales · Next cycle')).toBeTruthy();
         fireEvent.change(screen.getByLabelText(en.rewardsAccessControl.requestReason),{target:{value:'Fictional reviewed access change'}});
         fireEvent.click(screen.getByRole('button', { name: 'Preview changes' }));
-        await waitFor(() => expect(ports.batchPreview).toHaveBeenCalledWith({ changes: [copied] }));
+        await waitFor(() => expect(ports.batchPreview).toHaveBeenCalledWith({ changes: [copied], reason: 'Fictional reviewed access change' }));
     });
     it('086915a8: counts with plurals, shows the cycle name alone and filters to reviews missing a required role', () => {
         show();
@@ -188,7 +188,10 @@ it('shows an exact pending request and gives only an independent checker the dec
  fireEvent.click(screen.getByRole('button',{name:c.approve}));
  await waitFor(()=>expect(ports.decide).toHaveBeenCalledWith('pending',true,''));
  view.rerender(<NextIntlClientProvider locale="en" messages={en}><RewardAccessEditor value={value} requests={[{...request,canDecide:false}]}/></NextIntlClientProvider>);
- expect(screen.queryByRole('button',{name:c.approve})).toBeNull();expect(screen.getByText(c.needsChecker)).toBeTruthy();
+ const pending = within(screen.getByText(/Fictional requester requested/).closest('details')!);
+ expect(pending.queryByRole('button',{name:c.approve})).toBeNull();
+ expect(pending.queryByRole('button',{name:c.reject})).toBeNull();
+ expect(pending.getByText(c.needsChecker)).toBeTruthy();
     it('requires a reason before preview and explains pending versus immediate application',async()=>{
         show();fireEvent.click(within(screen.getAllByRole('table')[0]).getByRole('button',{name:/Edit · Rewards Lead/}));pick('New Reviewer');
         expect(screen.getByRole('button',{name:'Preview changes'}).hasAttribute('disabled')).toBe(true);

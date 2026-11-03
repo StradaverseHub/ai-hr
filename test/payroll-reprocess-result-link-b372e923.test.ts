@@ -134,7 +134,17 @@ describe('b372e923 — the contract between the page and the join it renders', (
     const end = OUTCOMES.indexOf('</thead>',start);
     expect(start).toBeGreaterThan(-1);expect(end).toBeGreaterThan(start);
     const header=OUTCOMES.slice(start,end);
-    expect((header.match(/<th[\s>]/g) ?? [])).toHaveLength(6);
+    expect([...header.matchAll(/<th[\s>][^>]*>\{t\('([^']+)'\)\}<\/th>/g)].map((match) => match[1])).toEqual([
+      'colEmployee',
+      'reprocessOutcomeStatusHeading',
+      'reprocessOutcomeCategoryHeading',
+      'reprocessColNetBefore',
+      'reprocessColNetAfter',
+      'reprocessPcbBefore',
+      'reprocessPcbAfter',
+      'reprocessPcbDifference',
+      'reprocessOutcomeRemarksHeading',
+    ]);
     expect(header).toContain("t('reprocessOutcomeStatusHeading')");
     expect(header).toContain("t('reprocessOutcomeRemarksHeading')");
     expect(header).not.toContain("t('reprocessColResult')");

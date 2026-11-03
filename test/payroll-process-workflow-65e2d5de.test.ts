@@ -187,9 +187,10 @@ describe('65e2d5de · C — Recalculation History arrives closed, the fresh resu
     expect(historyBlock).toContain("title={t('disclosureTitle')}");
     const beforeHistory = REPROCESS_PAGE.slice(0, REPROCESS_PAGE.indexOf('{earlier.length > 0 && ('));
     expect(beforeHistory, 'the fresh job result was folded away too').not.toMatch(/<CollapsibleCardSection/);
-    expect(beforeHistory, 'sanity: the result panel is still above the history').toContain(
-      "thisJob.status === 'completed'",
-    );
+    expect(beforeHistory, 'the fresh detailed result stays above history for completed and stopped jobs')
+      .toMatch(/\{thisJob && outcomes !== null && \(\s*<ReprocessOutcomePanel\b/);
+    expect(beforeHistory, 'a completed legacy job still gets its summary above history')
+      .toMatch(/\{thisJob\?\.status === 'completed' && outcomes === null && \(\s*<Card\b/);
   });
 
   it('nothing was deleted — the disclosure read and every line of the card survive', () => {

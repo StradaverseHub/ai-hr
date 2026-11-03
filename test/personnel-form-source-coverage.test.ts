@@ -122,10 +122,13 @@ describe('actual mounted Personnel form inventory',()=>{
     expect(audit(raw).issues.some(issue=>issue.message.includes('Unbound Personnel control'))).toBe(true);
     expect(exemptions).not.toHaveProperty('components/leave/LeaveDetailsPanel.tsx');
   });
-  it('resolves actual imported Movement descriptors and refuses altered keys/maps/imports with only existing plumbing exemptions',()=>{
+  it('resolves actual imported Movement descriptors and refuses altered keys/maps/imports with only exact plumbing exemptions',()=>{
     const file='app/admin/personnel/[employmentId]/movement-new-event.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
     const resolveImportSource=personnelImportSourceReader(root),audit=(text:string,reader=resolveImportSource)=>auditPersonnelFormSource(file,text,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource:reader});
     const actual=audit(source);expect(actual.controls).toBeGreaterThan(15);expect(actual.issues).toEqual([]);
+    const visibleRoutingField=source.replace('<input type="hidden" name="movementPage"', '<input type="text" name="movementPage"');
+    expect(visibleRoutingField).not.toBe(source);
+    expect(audit(visibleRoutingField).issues.some(issue=>issue.message.includes('Unbound Personnel control: input movementPage.'))).toBe(true);
     expect(source).toContain("movementField('companyId')");expect(source).toContain('movementField(name)');
     expect(audit(source.replace("personnelWorkflowControl(movementField('companyId')","personnelWorkflowControl(movementField('unregisteredFact')")).issues.some(issue=>issue.message.includes('Unresolved Personnel binding'))).toBe(true);
     expect(audit(source.replace("from '@/lib/movement-form-contract'","from '@/lib/unregistered-movement-contract'")).issues.some(issue=>issue.message.includes('Unresolved Personnel binding'))).toBe(true);

@@ -65,8 +65,8 @@ it('preserves populated Rewards history, seats, shared policies and both notific
    const [shared]=await tx`select app.reward_policy_group_commit(NULL,0,'Fictional legacy shared policy',${JSON.stringify(policy)}::jsonb,${JSON.stringify([{companyId:ids.company,businessUnitId:ids.bu}])}::jsonb) as version`;
    await tx`insert into reward_cycle(id,tenant_id,name,year,created_by) values(${ids.cycle},${ids.tenant},'Fictional legacy cycle',${year},${ids.requester})`;
    await tx`insert into reward_unit(id,tenant_id,cycle_id,company_id,business_unit_id,created_by,policy,snapshot_date,status,revision,policy_group_version_id) values(${ids.unit},${ids.tenant},${ids.cycle},${ids.company},${ids.bu},${ids.requester},${JSON.stringify(policy)}::jsonb,${day},'draft',2,${shared.version.versionId})`;
-   await tx`insert into reward_member(id,tenant_id,unit_id,user_id,role) values(${ids.grMember},${ids.tenant},${ids.unit},${ids.requester},'gr'),(${ids.buMember},${ids.tenant},${ids.unit},${ids.employeeUser},'bu')`;
-   await tx`insert into reward_decision(id,tenant_id,unit_id,actor_id,revision,action,from_stage,to_stage,reason,digest) values(${ids.decision},${ids.tenant},${ids.unit},${ids.requester},1,'return','bg','draft','Fictional earlier revision returned','fictional-legacy-digest')`;
+   await tx`insert into reward_member(id,tenant_id,unit_id,user_id,role) values(${ids.grMember},${ids.tenant},${ids.unit},${ids.checker},'gr'),(${ids.buMember},${ids.tenant},${ids.unit},${ids.employeeUser},'bu')`;
+   await tx`insert into reward_decision(id,tenant_id,unit_id,actor_id,revision,action,from_stage,to_stage,reason,digest) values(${ids.decision},${ids.tenant},${ids.unit},${ids.checker},1,'return','bg','draft','Fictional earlier revision returned','fictional-legacy-digest')`;
    await tx`insert into domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) values(${ids.audit},${ids.tenant},'reward-unit',${ids.unit},'reward-unit.returned','user',${ids.requester},'{"fixture":"legacy audit retained"}'::jsonb)`;
    await tx`insert into notification(id,tenant_id,recipient_employment_id,kind,title,body,link_path,severity,source_event_id) values(${ids.employmentNotice},${ids.tenant},${ids.employment},'rewards.review','Fictional legacy review notice','A review is waiting.',${'/rewards/'+ids.unit+'?view=approvals'},'info',${ids.audit})`;
    // Minimal valid letter chain, including an independent template approval and exact guarded notice.
@@ -90,7 +90,7 @@ it('preserves populated Rewards history, seats, shared policies and both notific
   const seats=await storage.client`select id,valid_from::text,valid_to,covers_user_id,restored_reason,restored_fingerprint from reward_member where unit_id=${ids.unit} order by id`;
   expect(seats.map(row=>row.id).sort()).toEqual([ids.grMember,ids.buMember].sort());
   for(const seat of seats)expect(seat).toMatchObject({valid_from:migrationClock.day,valid_to:null,covers_user_id:null,restored_reason:null,restored_fingerprint:null});
-  for(const [user,role,member,expected] of [[ids.requester,'hr_admin',ids.grMember,'gr'],[ids.employeeUser,'employee',ids.buMember,'bu']])await storage.client.begin(async tx=>{
+  for(const [user,role,member,expected] of [[ids.checker,'hr_admin',ids.grMember,'gr'],[ids.employeeUser,'employee',ids.buMember,'bu']])await storage.client.begin(async tx=>{
    await actor(tx,user,role,true);const [proof]=await tx`select current_user as db_role,app.reward_member_eligible(${member}::uuid) as eligible,array(select app.reward_roles(${ids.unit}::uuid)) as roles`;
    expect(proof).toMatchObject({db_role:'ai_hr_app',eligible:true,roles:[expected]});
   });
@@ -101,10 +101,10 @@ it('preserves populated Rewards history, seats, shared policies and both notific
   await expect(storage.client.begin(async tx=>{await actor(tx,ids.requester,'hr_admin',true);await tx`insert into reward_member(tenant_id,unit_id,user_id,role) values(${ids.tenant},${ids.unit},${ids.checker},'gr')`;})).rejects.toMatchObject({code:'42501'});
   expect(await unchangedRows()).toEqual(before);
   const changes=[{unitId:ids.unit,revision:2,before:null,after:{userId:ids.employeeUser,role:'pbp'}}];
-  const requestId=await storage.client.begin(async tx=>{await actor(tx,ids.requester,'hr_admin',true);const [row]=await tx`select app.reward_access_request_create(${JSON.stringify(changes)}::jsonb) as id`;return row.id as string;});
+  const requestId=await storage.client.begin(async tx=>{await actor(tx,ids.requester,'hr_admin',true);const [row]=await tx`select app.reward_access_request_create(${JSON.stringify(changes)}::jsonb,'Fictional upgrade follow-up reviewed') as id`;return row.id as string;});
   expect(await storage.client`select id from reward_member where unit_id=${ids.unit} and role='pbp'`).toHaveLength(0);
   await expect(storage.client.begin(async tx=>{await actor(tx,ids.requester,'hr_admin',true);await tx`select app.reward_access_request_decide(${requestId}::uuid,true,'')`;})).rejects.toMatchObject({code:'42501'});
-  const [pending]=await storage.client`select status from reward_access_request where id=${requestId}`;expect(pending.status).toBe('pending');
+  const [pending]=await storage.client`select status,request_reason from reward_access_request where id=${requestId}`;expect(pending).toMatchObject({status:'pending',request_reason:'Fictional upgrade follow-up reviewed'});
   await storage.client.begin(async tx=>{await actor(tx,ids.checker,'hr_admin',true);const [row]=await tx`select app.reward_access_request_decide(${requestId}::uuid,true,'') as status`;expect(row.status).toBe('approved');});
   const [added]=await storage.client`select user_id,role from reward_member where unit_id=${ids.unit} and role='pbp'`;expect(added).toMatchObject({user_id:ids.employeeUser,role:'pbp'});
   const [receipt]=await storage.client`select actor_id from domain_event where aggregate_id=${requestId} and event_type='reward-access.approved'`;expect(receipt.actor_id).toBe(ids.checker);

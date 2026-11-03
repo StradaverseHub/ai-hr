@@ -4,11 +4,11 @@ import {effectiveProbationSettings} from '../lib/probation-configuration';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {isModuleEnabled,isModuleEnabledOrFalse,assertModuleEnabled} from './entitlements';
+import {isModuleEnabled,assertModuleEnabled} from './entitlements';
 export {withScopedLifecycleTenant as withProbationTenant} from './module-gate';
 import {withScopedLifecycleTenant as withProbationTenant} from './module-gate';
 const companyGate=(ctx:SessionContext,companyId:string)=>{if(ctx.entitlementsExempt===undefined)assertModuleEnabled(ctx,'lifecycle',companyId);};
-import {workingDatesForSpan} from './leave';
+import {workingDatesForSpan} from '../packs/leave/service';
 import {todayInKualaLumpur,addCalendarMonths} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
 import {isCalendarDate} from '../lib/calendar-date';
@@ -394,11 +394,11 @@ async function applyProbationDateShiftOwnerTx(tx:Tx,ctx:SessionContext,input:{ca
 }
 export function applyProbationDateShift(ctx:SessionContext,input:{caseId:string;requestId:string;revision:number}){return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{data:{alreadyApplied:boolean;queued:boolean;requestId?:string}}>(sql`select app.probation_queue_date_shift(${uuid(input.requestId)}::uuid,${uuid(input.caseId)}::uuid,${input.revision}) as data`);return row.data;});}
 
-export function probationNavigationAccess(ctx:SessionContext):Promise<{page:boolean;configure:boolean;intake:boolean}>{if(ctx.entitlementsExempt===undefined&&!isModuleEnabledOrFalse(ctx,'lifecycle')&&!ctx.entitlements?.scopedModules.lifecycle?.some(company=>isModuleEnabledOrFalse(ctx,'lifecycle',company)))return Promise.resolve({page:false,configure:false,intake:false});return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{access:{page:boolean;configure:boolean;intake:boolean}}>(sql`select app.probation_navigation_access() as access`);return row.access;});}
+export function probationNavigationAccess(ctx:SessionContext):Promise<{page:boolean;configure:boolean;intake:boolean}>{if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')&&!ctx.entitlements?.scopedModules.lifecycle?.some(company=>isModuleEnabled(ctx,'lifecycle',company)))return Promise.resolve({page:false,configure:false,intake:false});return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{access:{page:boolean;configure:boolean;intake:boolean}}>(sql`select app.probation_navigation_access() as access`);return row.access;});}
 
 export function probationSignerCandidates(ctx:SessionContext,caseId:string,search=''){return withProbationTenant(ctx,tx=>tx.execute<{id:string;name:string}>(sql`select * from app.probation_signer_candidates(${uuid(caseId)}::uuid,${search.slice(0,100)})`));}
 export type ProbationInbox={count:number;items:{caseId:string;partId:string;employeeName:string;kind:string;href:string}[]};
-export function probationInbox(ctx:SessionContext):Promise<ProbationInbox>{if(ctx.entitlementsExempt===undefined&&!isModuleEnabledOrFalse(ctx,'lifecycle')&&!ctx.entitlements?.scopedModules.lifecycle?.some(company=>isModuleEnabledOrFalse(ctx,'lifecycle',company)))return Promise.resolve({count:0,items:[]});return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{data:ProbationInbox}>(sql`select app.probation_inbox() as data`);return row.data;});}
+export function probationInbox(ctx:SessionContext):Promise<ProbationInbox>{if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')&&!ctx.entitlements?.scopedModules.lifecycle?.some(company=>isModuleEnabled(ctx,'lifecycle',company)))return Promise.resolve({count:0,items:[]});return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{data:ProbationInbox}>(sql`select app.probation_inbox() as data`);return row.data;});}
 
 async function sealProbationRenderTx(tx:Tx,ctx:SessionContext,requestId:string):Promise<'sealed'|'held'|'paused'>{
  const[row]=await tx.execute<{data:{sealed?:boolean;held?:boolean;paused?:boolean;kind:'review'|'letter';partId:string;caseId:string;contentHash:string;data:Record<string,unknown>}}>(sql`select app.probation_owner_render_context(${requestId}::uuid) as data`);const context=row.data;if(context.paused)return'paused';if(context.held)return'held';if(context.sealed)return'sealed';

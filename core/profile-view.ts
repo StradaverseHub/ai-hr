@@ -7,7 +7,7 @@ import type {SessionContext} from '../db/client';
 import {withTenant} from '../db/client';
 import {myOwnEmploymentSubjects,employeeDetail,assignmentHistory,ownReportingManagersTx,leaveRequestsFor} from './read';
 import {compensationHistoryDetailed} from './comp';
-import {movementHistory,movementDetail} from './movement';
+import {ownMovementHistory,ownMovementDetail} from './movement';
 import {listAllProfileOptions} from './profile-options';
 import {listEmploymentPayComponents,listCp38} from '../packs/payroll/service';
 import {shiftArrangementHistory,scheduleGroupLookupTx,scheduleGroupDisplayName} from '../packs/attendance/service';
@@ -34,7 +34,7 @@ export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string
  const payrollOn=isModuleEnabled(ctx,'payroll'),leaveOn=isModuleEnabled(ctx,'leave'),attendanceOn=isModuleEnabled(ctx,'attendance');
  const today=todayInKualaLumpur();
  const [emp,assignments,salaries,lines,movements,catalog,photo,payItems,cp38,shifts,leave,requests]=await Promise.all([
-  employeeDetail(ctx,employmentId),assignmentHistory(ctx,employmentId),compensationHistoryDetailed(ctx,employmentId),withTenant(ctx,tx=>ownReportingManagersTx(tx,employmentId)),movementHistory(ctx,employmentId),
+  employeeDetail(ctx,employmentId),assignmentHistory(ctx,employmentId),compensationHistoryDetailed(ctx,employmentId),withTenant(ctx,tx=>ownReportingManagersTx(tx,employmentId)),ownMovementHistory(ctx,employmentId),
   listAllProfileOptions(ctx,{activeOnly:true}),hasPersonPhoto(ctx,subject.personId),
   payrollOn?listEmploymentPayComponents(ctx,employmentId):[],payrollOn?listCp38(ctx,{employmentId}):[],attendanceOn?shiftArrangementHistory(ctx,employmentId):[],
   leaveOn?withTenant(ctx,async tx=>{
@@ -112,7 +112,7 @@ export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string
 export async function readOwnProfileMovementComparison(ctx:SessionContext,p:{employmentId:string;movementId:string}):Promise<EssReadRecord[]>{
  if(!(await myOwnEmploymentSubjects(ctx)).some(row=>row.employmentId===p.employmentId))throw new EssProfileError('permission');
  const policy=await withTenant(ctx,tx=>freshProfileEditPolicyTx(tx,ctx));ctx=policy.ctx;
- const detail=await movementDetail(ctx,p.employmentId,p.movementId);if(!detail)throw new EssProfileError('unavailable');
+ const detail=await ownMovementDetail(ctx,p.employmentId,p.movementId);if(!detail)throw new EssProfileError('unavailable');
  return (['before','after'] as const).flatMap(side=>{
   const snapshot=detail[side];if(!snapshot)return [];
   const comparison={companyName:snapshot.company,businessUnitName:snapshot.businessUnit,departmentName:snapshot.department,positionName:snapshot.position,gradeName:snapshot.grade,employmentType:snapshot.employmentType,...Object.fromEntries(detail.flatChanges.map(change=>[change.field,change[side]]))};

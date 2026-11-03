@@ -103,3 +103,36 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION app.lifecycle_canonical_people_ops_member(uuid,uuid),app.lifecycle_canonical_pbp_scope(uuid,uuid,uuid),app.lifecycle_canonical_pbp_user(uuid,uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Keep private records out of the company deletion projection. Expose only a scoped retention flag.
+CREATE FUNCTION app.replan_retained_company_in_use(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT COALESCE(app.principal_snapshot_current() AND app.is_admin_for(wanted_company)
+  AND EXISTS(SELECT 1 FROM public.company c WHERE c.id=wanted_company AND c.tenant_id=app.current_tenant_id()),false)
+  AND (
+   EXISTS(SELECT 1 FROM public.contract_case h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.contract_configuration h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.contract_retirement_custody h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.contract_role_assignment h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.contract_template h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.contract_term h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.contract_workflow h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.document_signing_document h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.payroll_tax_basis_replacement h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.probation_access h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.probation_activation h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.probation_builder_definition h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.probation_case h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.probation_configuration h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.probation_cutover h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.probation_intake_entry h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.probation_intake_evidence h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.probation_offline_final_proposal h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.contract_role_assignment h JOIN public.business_unit source ON source.id=h.business_unit_id AND source.tenant_id=h.tenant_id WHERE source.tenant_id=app.current_tenant_id() AND source.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.probation_access h JOIN public.business_unit source ON source.id=h.business_unit_id AND source.tenant_id=h.tenant_id WHERE source.tenant_id=app.current_tenant_id() AND source.company_id=wanted_company)
+   OR EXISTS(SELECT 1 FROM public.probation_access h JOIN public.department source ON source.id=h.department_id AND source.tenant_id=h.tenant_id WHERE source.tenant_id=app.current_tenant_id() AND source.company_id=wanted_company)
+  );
+$$;
+REVOKE ALL ON FUNCTION app.replan_retained_company_in_use(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.replan_retained_company_in_use(uuid) TO ai_hr_app;

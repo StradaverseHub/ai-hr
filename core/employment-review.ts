@@ -966,7 +966,7 @@ export function pendingReviewTaskMetadata(ctx:SessionContext,stage:'manager'|'hr
       .innerJoin(employment,and(eq(employment.id,employmentReview.employmentId),eq(employment.tenantId,employmentReview.tenantId)))
       .leftJoin(person,and(eq(person.id,employmentReview.personId),eq(person.tenantId,employmentReview.tenantId)))
       .where(and(eq(employmentReview.tenantId,ctx.tenantId),eq(employmentReview.status,stage==='manager'?'pending_manager':'pending_hr'),
-        sql`NOT app.is_self_person(${employmentReview.personId})`,sql`(${employmentReview.reviewType}<>'probation' OR NOT app.probation_owns_legacy(${employmentReview.employmentId}))`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds),
+        sql`NOT app.is_self_person(${employmentReview.personId})`,sql`NOT app.probation_legacy_review_owned(${employmentReview.id})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds),
         stage==='manager'?sql`EXISTS (SELECT 1 FROM public.employment AS manager WHERE manager.id=${employmentReview.managerEmploymentId}
           AND manager.tenant_id=${employmentReview.tenantId} AND app.is_self_person(manager.person_id))`:undefined))
       .orderBy(desc(employmentReview.createdAt),employmentReview.id);

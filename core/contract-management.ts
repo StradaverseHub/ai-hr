@@ -1,4 +1,3 @@
-import 'server-only';
 import {randomUUID,createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
@@ -199,14 +198,14 @@ export async function amendContractEnd(ctx:SessionContext,raw:unknown){const p=z
 
 export type ContractInboxItem={caseId:string;number:string;name:string;endOn:string;kind:'decision'|'confirmation'|'approval'|'acceptance'|'letter'|'handoff'|'records'|'verification'|'expiry'|'reconciliation'|'date_amendment';href:string};
 export async function contractInbox(ctx:SessionContext):Promise<{count:number;items:ContractInboxItem[]}>{
- const {isModuleEnabledOrFalse}=await import('./entitlements');if(!isModuleEnabledOrFalse(ctx,'lifecycle')&&!(ctx.entitlements?.scopedModules.lifecycle??[]).some(id=>isModuleEnabledOrFalse(ctx,'lifecycle',id)))return {count:0,items:[]};
+ const {isModuleEnabled}=await import('./entitlements');if(!isModuleEnabled(ctx,'lifecycle')&&!(ctx.entitlements?.scopedModules.lifecycle??[]).some(id=>isModuleEnabled(ctx,'lifecycle',id)))return {count:0,items:[]};
  return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{inbox:{count:number;items:ContractInboxItem[]}}>(sql`select app.contract_inbox_projection() as inbox`);return r?.inbox??{count:0,items:[]};});
 }
 
 /** Root navigation admission only: no Personnel, company or case arrays are materialised. */
 export async function contractNavigationAccess(ctx:SessionContext):Promise<{page:boolean;configure:boolean;intake:boolean}>{
- const {isModuleEnabledOrFalse}=await import('./entitlements');
- if(!isModuleEnabledOrFalse(ctx,'lifecycle')&&!(ctx.entitlements?.scopedModules.lifecycle??[]).some(id=>isModuleEnabledOrFalse(ctx,'lifecycle',id)))return {page:false,configure:false,intake:false};
+ const {isModuleEnabled}=await import('./entitlements');
+ if(!isModuleEnabled(ctx,'lifecycle')&&!(ctx.entitlements?.scopedModules.lifecycle??[]).some(id=>isModuleEnabled(ctx,'lifecycle',id)))return {page:false,configure:false,intake:false};
  return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{access:{page:boolean;configure:boolean;intake:boolean}}>(sql`select app.contract_navigation_access() as access`);return r?.access??{page:false,configure:false,intake:false};});
 }
 

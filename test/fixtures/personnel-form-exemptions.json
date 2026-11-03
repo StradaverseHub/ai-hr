@@ -487,6 +487,30 @@
       "context": "MovementNewEvent",
       "hidden": true,
       "occurrences": 1,
+      "name": "movementPage",
+      "reason": "Hidden standalone Movement page mode used to choose the return route and error presentation after the server action. It carries no Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "MovementNewEvent",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "showCorrected",
+      "reason": "Hidden history display preference carried through the server action so the user returns to the same corrected-events view. It carries no Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "MovementNewEvent",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "from",
+      "reason": "Hidden return-context hint carried through the server action and normalized by the Movement navigation owner. It carries no Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "MovementNewEvent",
+      "hidden": true,
+      "occurrences": 1,
       "name": "employmentId",
       "reason": "Guarded action record/subject pointer (employmentId) used by MovementNewEvent; the server owner checks subject/record scope. This does not edit a Personnel fact."
     },
@@ -516,6 +540,30 @@
     }
   ],
   "app/admin/personnel/[employmentId]/hire-correction-form.tsx": [
+    {
+      "tag": "input",
+      "context": "HireCorrectionForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "movementPage",
+      "reason": "Hidden standalone Movement page mode used to choose the return route and error presentation after the server action. It carries no Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "HireCorrectionForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "showCorrected",
+      "reason": "Hidden history display preference carried through the server action so the user returns to the same corrected-events view. It carries no Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "HireCorrectionForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "from",
+      "reason": "Hidden return-context hint carried through the server action and normalized by the Movement navigation owner. It carries no Personnel fact."
+    },
     {
       "tag": "input",
       "context": "HireCorrectionForm",

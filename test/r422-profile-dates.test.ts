@@ -289,8 +289,13 @@ async function seedEmployee() {
   return { ...e, secondmentId: secondment!.id };
 }
 
+import {PersonnelMovementPage} from '../app/admin/personnel/[employmentId]/movement/movement-page';
+
 async function html(employmentId: string, sp: Record<string, string>): Promise<string> {
-  const tree = await EmployeePage({ params: Promise.resolve({ employmentId }), searchParams: Promise.resolve(sp) } as never);
+  const mode=sp.movement?'view':sp.editMovement?'edit':sp.newEvent?'new':sp.correctHire?'correct-hire':null;
+  const tree=mode
+    ? await PersonnelMovementPage({employmentId,mode,movementId:sp.movement??sp.editMovement,search:sp})
+    : await EmployeePage({params:Promise.resolve({employmentId}),searchParams:Promise.resolve(sp)} as never);
   const stream = await renderToReadableStream(tree, { onError: (err) => void console.error(err) });
   await stream.allReady;
   return await new Response(stream).text();

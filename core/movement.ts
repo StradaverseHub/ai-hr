@@ -3,7 +3,8 @@ import {withProbationPersonnelIntentTx,withProbationDateShiftIntentTx,probationM
 import { withExitDateAuthorityTx } from './exit-date-authority';
 import { isDatabaseError } from '../lib/db-error';
 import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
-import {assertWorkforceEmploymentTx} from './workforce-access';
+import {assertWorkforceEmploymentTx,WorkforceAccessError} from './workforce-access';
+import {ownPersonPredicate} from './own-person';
 /**
  * Employment History — Movement tab redesign (78853b97).
  *
@@ -1506,9 +1507,28 @@ export function movementHistory(ctx: SessionContext, employmentId: string): Prom
   return withTenant(ctx, tx => movementHistoryTx(tx, ctx, employmentId));
 }
 
+async function assertOwnMovementEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
+  const [row]=await tx.select({id:employment.id}).from(employment).where(and(
+    eq(employment.id,employmentId),eq(employment.tenantId,ctx.tenantId),isNull(employment.voidedAt),
+    eq(employment.personId,ctx.personId??'00000000-0000-0000-0000-000000000000'),ownPersonPredicate(ctx),
+  ));
+  if(!row)throw new WorkforceAccessError();
+}
+
+export function ownMovementHistory(ctx:SessionContext,employmentId:string):Promise<MovementHistoryRow[]>{
+  return withTenant(ctx,async tx=>{
+    await assertOwnMovementEmploymentTx(tx,ctx,employmentId);
+    return projectMovementHistoryTx(tx,ctx,employmentId);
+  });
+}
+
 /** Explicit owner read seam for a caller-held scoped report snapshot. */
 export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
-    await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
+  await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
+  return projectMovementHistoryTx(tx,ctx,employmentId);
+}
+
+async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string):Promise<MovementHistoryRow[]>{
     const { emp, events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, employmentId);
     // 66a63bd6 — the two payroll period sets come from core/comp.ts, so the per-row affordance runs the
     // SAME rule the service refuses on (the Basic Salary card's precedent).
@@ -1842,6 +1862,17 @@ export async function movementDetailTx(tx: Tx,
   movementId: string,
 ): Promise<MovementDetail | null> {
     await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
+    return projectMovementDetailTx(tx,ctx,employmentId,movementId);
+}
+
+export function ownMovementDetail(ctx:SessionContext,employmentId:string,movementId:string):Promise<MovementDetail|null>{
+  return withTenant(ctx,async tx=>{
+    await assertOwnMovementEmploymentTx(tx,ctx,employmentId);
+    return projectMovementDetailTx(tx,ctx,employmentId,movementId);
+  });
+}
+
+async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:string,movementId:string):Promise<MovementDetail|null>{
     const { emp, events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId);
     const row = rows.find((r) => r.id === movementId);
     if (!row) return null;

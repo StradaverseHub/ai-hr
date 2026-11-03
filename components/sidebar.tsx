@@ -827,10 +827,10 @@ export function Sidebar({
   const scopedLifecycleRows:ChildItem[]=[
     ...(probationAccess.page?[{href:'/lifecycle/probation',labelKey:'probationConfirmation',icon:ONBOARDING_NODE.icon,exactHref:true,ownedSubpaths:['/lifecycle/probation'] }]:[]),
     ...(contractStaffAccess.page?[{href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ONBOARDING_NODE.icon,exactHref:true,ownedSubpaths:['/lifecycle/contracts'] }]:[]),
-    ...(probationAccess.configure?[['settings','probationSettings'],['forms','probationForms'],['routes','probationRoutes'],['workflows','probationWorkflows'],['templates','probationTemplates']].map(([path,labelKey])=>({href:'/lifecycle/probation/'+path,labelKey,icon:ONBOARDING_NODE.icon,submenuKey:'probationConfirmation'})):[]),
+    ...(probationAccess.configure?[['settings','probationSettings'],['forms','probationForms'],['routes','probationRoutes'],['workflows','probationWorkflows'],['templates','probationTemplates']].map(([path,labelKey])=>({href:`/lifecycle/probation/${path}`,labelKey,icon:ONBOARDING_NODE.icon,submenuKey:'probationConfirmation'})):[]),
     ...(probationAccess.configure||probationAccess.intake===true?[{href:'/lifecycle/probation/intake',labelKey:'probationIntake',icon:ONBOARDING_NODE.icon,submenuKey:'probationConfirmation'}]:[]),
     ...(contractStaffAccess.intake===true?[{href:'/lifecycle/contracts/intake',labelKey:'contractIntake',icon:ONBOARDING_NODE.icon,submenuKey:'contractManagement'}]:[]),
-    ...(contractStaffAccess.configure?[['settings','contractSettings'],['workflows','contractWorkflows'],['templates','contractTemplates']].map(([path,labelKey])=>({href:'/lifecycle/contracts/'+path,labelKey,icon:ONBOARDING_NODE.icon,submenuKey:'contractManagement'})):[]),
+    ...(contractStaffAccess.configure?[['settings','contractSettings'],['workflows','contractWorkflows'],['templates','contractTemplates']].map(([path,labelKey])=>({href:`/lifecycle/contracts/${path}`,labelKey,icon:ONBOARDING_NODE.icon,submenuKey:'contractManagement'})):[]),
   ];
   const destinations: ChildItem[] = [...authorizedRows.filter(row => {
     const placement = navigationPlacement(row.href);

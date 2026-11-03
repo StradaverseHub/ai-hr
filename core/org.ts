@@ -1,8 +1,7 @@
 import {probationDateAuthorityTx} from './probation-effect-authority';
-import {tryLockPayrollHistoryReadTx} from './payroll-history-lock';
 import {contractDateAuthorityTx,withAcceptedContractRecordIntentTx,withContractMaternityRecordIntentTx} from './contract-record-authority';
 import {setCompensation} from './comp';
-import {setEmploymentPayComponent,endEmploymentPayComponent} from './pay-components';
+import {setEmploymentPayComponent,endEmploymentPayComponent,tryLockPayrollHistoryReadTx} from '../packs/payroll/service';
 import { hasExitDateAuthorityTx } from './exit-date-authority';
 import { hasClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
 import {assertCostAllocationTransferTx} from './employment-cost-allocations';
