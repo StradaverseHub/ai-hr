@@ -21,7 +21,14 @@ beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-leave-change-custo
  const userId=await createAppUser(base.tenantId,subject.personId,'employee');await grantAssistant(adminCtx(base),{appUserId:userId});
  ctx={...await entitledCtx(base,['employee']),userId,personId:subject.personId,grants:[{role:'employee',companyId:null}]};
  await owner.db.insert(schema.leaveLedger).values({tenantId:base.tenantId,employmentId:subject.employmentId,leaveTypeId:base.annualLeaveTypeId,entryType:'accrual',days:'10',effectiveOn:todayInKualaLumpur()});
- weekdays=[];const next=new Date(todayInKualaLumpur()+'T00:00:00Z');while(weekdays.length<4){next.setUTCDate(next.getUTCDate()+1);if(![0,6].includes(next.getUTCDay()))weekdays.push(next.toISOString().slice(0,10));}
+ // Keep the fixture within one workweek so the two-day edit never spans a weekend.
+ const next = new Date(todayInKualaLumpur() + 'T00:00:00Z');
+ next.setUTCDate(next.getUTCDate() + ((8 - next.getUTCDay()) % 7 || 7));
+ weekdays = Array.from({ length: 3 }, (_, offset) => {
+   const day = new Date(next);
+   day.setUTCDate(day.getUTCDate() + offset);
+   return day.toISOString().slice(0, 10);
+ });
  requestId=(await requestLeave(ctx,{employmentId:subject.employmentId,leaveTypeId:base.annualLeaveTypeId,startDate:weekdays[0],endDate:weekdays[0],durationType:'full_day',reason:'Fictional family visit'})).leaveRequestId;
 });
 const cancelHuman=()=>({action:cancelAction,contractVersion:1 as const,employmentId:subject.employmentId,leaveRequestId:requestId,cancel:true as const});
