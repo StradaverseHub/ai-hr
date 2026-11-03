@@ -6,12 +6,15 @@ import { getBrowserCommandSession } from '@/lib/session';
 import { AuditFindingRefused, disposeFinding, runControlChecks } from '@/core/payroll-audit/controls';
 import { AuditCorrectionRefused, recordCorrectionCause } from '@/core/payroll-audit/corrections';
 import { AuditCaptureRefused, capturePayrollPeriod } from '@/core/payroll-audit/capture';
+import { AuditSettingsRefused, grantAuditReader, revokeAuditReader, setControlSettings } from '@/core/payroll-audit/settings';
 import { isPayPeriod } from '@/core/payroll-audit/types';
 
-/** AI v2 P2-2b — the Audit loop page's three commands, each re-checked by its service and by the database (migration 0965):
+/** AI v2 P2-2b — the Audit loop page's commands, each re-checked by its service and by the database (migration 0965):
  *  - a payroll administrator of the finding's company disposes of a control finding, with a note (disposeFinding);
  *  - a payroll administrator of the run's company states the root cause of a post-run correction (recordCorrectionCause);
- *  - a group or HR administrator captures one company and month now and runs its checks, under their own login.
+ *  - a group or HR administrator captures one company and month now and runs its checks, under their own login;
+ *  - a payroll administrator of a company sets its control settings (setControlSettings, audited with before and after);
+ *  - an administrator of a company gives a login read-only auditor access, or revokes it (audited; never themselves).
  * None of them changes pay, a run, a file or a filing. Each returns to the page with a closed result code the page translates;
  * no other text crosses. The loop's switch and per-company pause use the Operations › Loops actions. */
 const PAGE = '/control-tower/loops/loop_payroll_audit';
@@ -27,7 +30,7 @@ function back(formData: FormData, result: { saved: string } | { error: Code }): 
   redirect(`${PAGE}?${query}`);
 }
 const code = (e: unknown): Code => {
-  if (e instanceof AuditFindingRefused || e instanceof AuditCorrectionRefused || e instanceof AuditCaptureRefused)
+  if (e instanceof AuditFindingRefused || e instanceof AuditCorrectionRefused || e instanceof AuditCaptureRefused || e instanceof AuditSettingsRefused)
     return e.reason === 'invalid' || e.reason === 'not_found' ? 'invalid' : 'refused';
   return 'failed';
 };
@@ -59,4 +62,34 @@ export async function captureAuditNowAction(formData: FormData) {
     await capturePayrollPeriod(s, input);
   } catch (e) { error = code(e); }
   back(formData, error ? { error } : { saved: 'captured' });
+}
+
+const numberOf = (value: FormDataEntryValue | null) => (typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN);
+
+export async function setAuditSettingsAction(formData: FormData) {
+  let error: Code | null = null;
+  try {
+    const s = await getBrowserCommandSession();
+    await setControlSettings(s, { companyId: formData.get('target'), bankChangeDays: numberOf(formData.get('bankChangeDays')),
+      adjustmentThreshold: numberOf(formData.get('adjustmentThreshold')) });
+  } catch (e) { error = code(e); }
+  back(formData, error ? { error } : { saved: 'settings' });
+}
+
+export async function grantAuditReaderAction(formData: FormData) {
+  let error: Code | null = null;
+  try {
+    const s = await getBrowserCommandSession();
+    await grantAuditReader(s, { companyId: formData.get('target'), appUserId: formData.get('appUser') });
+  } catch (e) { error = code(e); }
+  back(formData, error ? { error } : { saved: 'granted' });
+}
+
+export async function revokeAuditReaderAction(formData: FormData) {
+  let error: Code | null = null;
+  try {
+    const s = await getBrowserCommandSession();
+    await revokeAuditReader(s, { grantId: formData.get('grant') });
+  } catch (e) { error = code(e); }
+  back(formData, error ? { error } : { saved: 'revoked' });
 }

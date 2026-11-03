@@ -14,18 +14,19 @@
  * The archive's own sha256 is returned and recorded in the access log entry the download writes. No figure is calculated:
  * every amount in the pack is copied from its owner. */
 import JSZip from 'jszip';
-import {PDFDocument,StandardFonts,rgb} from 'pdf-lib';
+import {PDFDocument,StandardFonts,rgb,type PDFFont} from 'pdf-lib';
 import {and,asc,eq,inArray} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {payrollAuditDisposition,payrollAuditFinding} from '../../db/payroll-audit-schema';
-import {company} from '../../db/schema';
+import {company,employment,person} from '../../db/schema';
 import {isAdmin} from '../../lib/authz-model';
 import {toCsv} from '../../lib/csv';
+import {embedPayslipFaces,isWinAnsiCodePoint,payslipFaceScripts} from '../../lib/payslip-pdf-fonts';
 import {sha256Hex} from './access-log';
 import {capturePayrollPeriod,listCapturesTx} from './capture';
 import {canReadAuditTx} from './settings';
 import {verifyCapturesTx,type CaptureVerification} from './verify';
-import {AUDIT_CAPTURE_KINDS,AUDIT_CONTROL_IDS,isPayPeriod,type AuditCaptureKind,type AuditControlId} from './types';
+import {AUDIT_CAPTURE_KINDS,AUDIT_CONTROL_IDS,isPayPeriod,type AuditCaptureKind,type AuditControlId,type AuditDisposition} from './types';
 
 export class AuditPackRefused extends Error{constructor(readonly reason:'not_allowed'|'invalid'){super('Audit pack refused: '+reason);this.name='AuditPackRefused';}}
 
@@ -33,33 +34,70 @@ export class AuditPackRefused extends Error{constructor(readonly reason:'not_all
 export type AuditPackLabels=Readonly<{title:string;company:string;payPeriod:string;generated:string;by:string;runs:string;runLine:string;
  statutory:string;filingEvidence:string;findings:string;findingLine:string;corrections:string;correctionLine:string;captures:string;captureLine:string;
  verification:string;verified:string;notVerified:string;anchors:string;files:string;none:string;
+ /** One finding: `{control}`, `{who}` (the person's name and employee code, as the reader may see them) and `{state}`. */
+ findingItem:string;open:string;dispositions:Readonly<Record<AuditDisposition,string>>;
+ /** Said on the summary when any character could not be drawn in any font: `{count}`. */
+ unprintable:string;
  kinds:Readonly<Record<AuditCaptureKind,string>>;controls:Readonly<Record<AuditControlId,string>>}>;
 export type AuditPackFile=Readonly<{name:string;sha256:string;bytes:number}>;
 export type AuditPack=Readonly<{filename:string;bytes:Uint8Array;sha256:string;files:readonly AuditPackFile[];captures:number;verification:CaptureVerification;
- companyName:string}>;
+ companyName:string;unprintable:number}>;
 
 const fill=(template:string,values:Record<string,string|number>)=>template.replace(/\{(\w+)\}/g,(_,key)=>key in values?String(values[key]):`{${key}}`);
 const fold=(s:string)=>(s??'').replace(/[•∙]/g,'·').replace(/[‘’‛]/g,"'").replace(/[“”]/g,'"').replace(/[‐-―]/g,'-').replace(/…/g,'...');
-const safe=(s:string)=>fold(s).replace(/[^\x20-\x7E\xA0-\xFF]/g,'?');
 const iso=(value:unknown)=>value instanceof Date?value.toISOString():value==null?'':String(value);
 
-async function summaryPdf(lines:readonly Readonly<{text:string;bold?:boolean;gap?:boolean}>[]):Promise<Uint8Array>{
+type Line=Readonly<{text:string;bold?:boolean;gap?:boolean}>;
+type Run={text:string;font:PDFFont};
+/** The summary, drawn with the repository's own fonts (lib/payslip-pdf-fonts.ts, the faces the payslip and letter documents
+ * use): Helvetica for Latin-1, and the embedded, subsetted Noto face of each script the summary actually contains (Latin
+ * Extended and Vietnamese, Tamil, Thai, Chinese). Each character is drawn in the face that carries it, run by run, so a line
+ * mixing a Chinese company name with a Tamil person's name keeps both (the lib/letter-pdf.ts pattern). A character no face
+ * carries is drawn as '?', COUNTED, and the summary then says so on its own page and in the manifest: never silently. */
+async function summaryPdf(lines:readonly Line[],unprintableNote:(count:number)=>string):Promise<{bytes:Uint8Array;unprintable:number}>{
  const doc=await PDFDocument.create();doc.setProducer('AI HR');doc.setCreator('AI HR audit pack');
- const font=await doc.embedFont(StandardFonts.Helvetica),bold=await doc.embedFont(StandardFonts.HelveticaBold);
- const [w,h]=[595.28,841.89],margin=48,size=9.5,lead=13;
- let page=doc.addPage([w,h]),y=h-margin;
- const wrap=(text:string,f:typeof font)=>{const words=safe(text).split(' '),out:string[]=[];let line='';
-  for(const word of words){const next=line?line+' '+word:word;if(f.widthOfTextAtSize(next,size)>w-2*margin&&line){out.push(line);line=word;}else line=next;}
-  if(line)out.push(line);return out.length?out:[''];};
- for(const line of lines){
-  if(line.gap)y-=lead/2;
-  const f=line.bold?bold:font;
-  for(const part of wrap(line.text,f)){
-   if(y<margin){page=doc.addPage([w,h]);y=h-margin;}
-   page.drawText(part,{x:margin,y,size:line.bold?size+1:size,font:f,color:rgb(0.11,0.11,0.12)});y-=lead;
+ const regular=await doc.embedFont(StandardFonts.Helvetica),bold=await doc.embedFont(StandardFonts.HelveticaBold);
+ const faces=await embedPayslipFaces(doc,payslipFaceScripts(lines.map(line=>fold(line.text))));
+ let unprintable=0;
+ const runsOf=(text:string,strong:boolean):Run[]=>{
+  const out:Run[]=[];
+  for(const ch of fold(text)){
+   const cp=ch.codePointAt(0)!;
+   const face=isWinAnsiCodePoint(cp)?null:faces.find(item=>item.chars.has(cp))??null;
+   let drawn=ch;
+   if(!isWinAnsiCodePoint(cp)&&!face){drawn='?';unprintable++;}
+   const font=face?(strong?face.bold:face.regular):(strong?bold:regular),last=out.at(-1);
+   if(last&&last.font===font)last.text+=drawn;else out.push({text:drawn,font});
   }
- }
- return doc.save();
+  return out;
+ };
+ const [w,h]=[595.28,841.89],margin=48,size=9.5,lead=14,maxW=w-2*margin;
+ let page=doc.addPage([w,h]),y=h-margin;
+ const draw=(runs:readonly Run[],at:number,fontSize:number)=>{let x=margin;for(const run of runs){page.drawText(run.text,{x,y:at,size:fontSize,font:run.font,color:rgb(0.11,0.11,0.12)});
+  x+=run.font.widthOfTextAtSize(run.text,fontSize);}};
+ /** Words wrap at spaces against the real width of the font each part is drawn in; a word longer than the line breaks
+  * between characters rather than running off the page. */
+ const wrap=(runs:readonly Run[],fontSize:number):Run[][]=>{
+  const out:Run[][]=[[]];let used=0;
+  for(const run of runs)for(const token of run.text.match(/\s+|[^\s]+/gu)??[]){
+   const width=run.font.widthOfTextAtSize(token,fontSize);
+   const place=(text:string,tw:number)=>{if(used&&used+tw>maxW&&text.trim()){out.push([]);used=0;}if(!used&&!text.trim())return;
+    const line=out.at(-1)!,last=line.at(-1);if(last&&last.font===run.font)last.text+=text;else line.push({text,font:run.font});used+=tw;};
+   if(width<=maxW)place(token,width);else for(const ch of token)place(ch,run.font.widthOfTextAtSize(ch,fontSize));
+  }
+  return out;
+ };
+ const write=(line:Line)=>{
+  if(line.gap)y-=lead/2;
+  const fontSize=line.bold?size+1:size;
+  for(const part of wrap(runsOf(line.text,line.bold===true),fontSize)){
+   if(y<margin){page=doc.addPage([w,h]);y=h-margin;}
+   draw(part,y,fontSize);y-=lead;
+  }
+ };
+ for(const line of lines)write(line);
+ if(unprintable>0){const counted=unprintable;write({text:unprintableNote(counted),bold:true,gap:true});unprintable=counted;}
+ return {bytes:await doc.save(),unprintable};
 }
 
 /** Builds the pack for one company and month. Throws AuditPackRefused when the caller may not read it. */
@@ -81,9 +119,15 @@ export async function buildAuditPack(supplied:SessionContext,input:Readonly<{com
    eq(payrollAuditFinding.payPeriod,p.payPeriod))).orderBy(asc(payrollAuditFinding.detectedAt),asc(payrollAuditFinding.id));
   const dispositions=findings.length?await tx.select().from(payrollAuditDisposition).where(and(eq(payrollAuditDisposition.tenantId,ctx.tenantId),
    inArray(payrollAuditDisposition.findingId,findings.map(row=>row.id)))).orderBy(asc(payrollAuditDisposition.disposedAt),asc(payrollAuditDisposition.id)):[];
-  return {companyName:co?.name??p.companyId,captures,verification,findings,dispositions};
+  // Who each finding is about, by name where this reader may read the person (an auditor may see only the employee code).
+  const employmentIds=[...new Set(findings.map(row=>row.employmentId).filter((id):id is string=>!!id))];
+  const people=employmentIds.length?await tx.select({id:employment.id,code:employment.employeeCode,name:person.fullName}).from(employment)
+   .leftJoin(person,eq(person.id,employment.personId)).where(inArray(employment.id,employmentIds)):[];
+  return {companyName:co?.name??p.companyId,captures,verification,findings,dispositions,people};
  });
- const {captures,verification,findings,dispositions}=data;
+ const {captures,verification,findings,dispositions,people}=data;
+ const who=(employmentId:string|null)=>{if(!employmentId)return null;const found=people.find(row=>row.id===employmentId);
+  return [found?.name,found?.code].filter((v):v is string=>typeof v==='string'&&v.trim()!=='').join(' · ')||employmentId;};
  // The latest version of each captured artefact, for the summary.
  const latest=new Map<string,(typeof captures)[number]>();
  for(const row of captures)latest.set(row.sourceKey,row);
@@ -131,6 +175,8 @@ export async function buildAuditPack(supplied:SessionContext,input:Readonly<{com
   const these=findingRows.filter(row=>row.controlId===control);if(!these.length)continue;
   const disposed=these.filter(row=>row.dispositions.length).length;
   lines.push({text:fill(L.findingLine,{control:L.controls[control],count:these.length,open:these.length-disposed,disposed})});
+  for(const row of these){const last=row.dispositions.at(-1);
+   lines.push({text:fill(L.findingItem,{control:L.controls[control],who:who(row.employmentId)??'-',state:last?L.dispositions[last.disposition]:L.open})});}
  }
  lines.push({text:L.corrections,bold:true,gap:true});
  const corrections=ofKind('correction');
@@ -143,11 +189,12 @@ export async function buildAuditPack(supplied:SessionContext,input:Readonly<{com
  lines.push({text:L.verification,bold:true,gap:true},{text:verification.valid?fill(L.verified,{count:verification.checked,head:verification.head??'-'})
   :fill(L.notVerified,{count:verification.issues.length})},
   {text:fill(L.anchors,{matched:verification.anchors.matched,chained:verification.anchors.inAuditChain})});
- const pdf=await summaryPdf(lines);
- files.unshift({name:'summary.pdf',content:pdf});
+ const pdf=await summaryPdf(lines,count=>fill(L.unprintable,{count}));
+ files.unshift({name:'summary.pdf',content:pdf.bytes});
  const listed:AuditPackFile[]=files.map(file=>Object.freeze({name:file.name,sha256:sha256Hex(file.content),bytes:file.content.byteLength}));
  const manifest={companyId:p.companyId,companyName:data.companyName,payPeriod:p.payPeriod,generatedAt:generatedAt.toISOString(),generatedBy:ctx.userId,
-  captures:captures.length,chainHead:verification.head,verification:{valid:verification.valid,issues:verification.issues.length,anchors:verification.anchors},files:listed};
+  captures:captures.length,chainHead:verification.head,verification:{valid:verification.valid,issues:verification.issues.length,anchors:verification.anchors},
+  summary:{unprintableCharacters:pdf.unprintable},files:listed};
  const zip=new JSZip();
  for(const file of files)zip.file(file.name,file.content,{date:generatedAt});
  zip.file('manifest.json',json(manifest),{date:generatedAt});
@@ -155,5 +202,5 @@ export async function buildAuditPack(supplied:SessionContext,input:Readonly<{com
  const slug=data.companyName.normalize('NFKD').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60)||'company';
  return Object.freeze({filename:`audit-pack-${slug}-${p.payPeriod}.zip`,bytes,sha256:sha256Hex(bytes),files:Object.freeze([...listed,
   Object.freeze({name:'manifest.json',sha256:sha256Hex(json(manifest)),bytes:new TextEncoder().encode(json(manifest)).byteLength})]),
-  captures:captures.length,verification,companyName:data.companyName});
+  captures:captures.length,verification,companyName:data.companyName,unprintable:pdf.unprintable});
 }

@@ -8,6 +8,7 @@ import { StatutoryPdfViewer } from '@/components/statutory-pdf-viewer';
 import { publicErrorMessage } from '@/lib/public-error';
 import { resolvePersonalPayslipSelection } from './selection-state';
 import { myPayslipDocument } from './document';
+import { recordPayslipOpened } from '@/core/payroll-audit/access-log';
 import { PersonalPayslipSelection } from './selection';
 import { PersonalPayslipStatement } from './statement';
 import { WhyLink } from '@/components/why/why-panel';
@@ -21,6 +22,8 @@ export default async function MyPayslipPage({searchParams}:{searchParams:Promise
   const result=await myReleasedPayslipRuns(s).then(runs=>({runs,error:undefined})).catch(error=>({runs:[],error:publicErrorMessage(error)}));
   const selection=resolvePersonalPayslipSelection(result.runs,sp);
   const document=selection.payslipId?await myPayslipDocument(s,selection.payslipId):null;
+  // AI v2 P2-2b: the employee opened their own released payslip; the Audit loop counts opens. Best effort, never blocking.
+  if(document)await recordPayslipOpened(s,{payslipId:document.p.id,channel:'web'}).catch(()=>null);
   const choices=result.runs.map(run=>({...run,label:run.cycleName ?? ''}));
   const months=Array.from({length:12},(_,month)=>new Intl.DateTimeFormat(locale,{month:'long',timeZone:'UTC'}).format(new Date(Date.UTC(2000,month,1))));
   const context=new URLSearchParams({...(selection.companyId?{companyId:selection.companyId}:{}),...(selection.year?{year:String(selection.year)}:{}),...(selection.month?{month:String(selection.month).padStart(2,'0')}:{}),...(selection.payslipId?{payslipId:selection.payslipId}:{})});

@@ -1295,7 +1295,10 @@
       "cause": "Đã ghi nhận nguyên nhân gốc.",
       "captured": "Đã ghi lại và kiểm tra ngay.",
       "switch": "Đã lưu.",
-      "pause": "Đã lưu."
+      "pause": "Đã lưu.",
+      "settings": "Đã lưu cài đặt kiểm soát.",
+      "granted": "Đã cấp quyền cho kiểm toán viên.",
+      "revoked": "Đã thu hồi quyền của kiểm toán viên."
     },
     "filter": {
       "period": "Tháng lương",
@@ -1346,7 +1349,8 @@
       "captures": "{count, plural, =0 {Chưa ghi lại} other {# bản ghi lại}}",
       "pack": "Tải xuống",
       "capture": "Ghi lại và kiểm tra ngay",
-      "packHelp": "Gói kiểm toán gồm bản tóm tắt PDF cùng bằng chứng CSV và JSON, mỗi tệp được liệt kê kèm sha256. Khi tải xuống, tháng đó được ghi lại trước và chính lần tải cũng được ghi nhận."
+      "packHelp": "Gói kiểm toán gồm bản tóm tắt PDF cùng bằng chứng CSV và JSON, mỗi tệp được liệt kê kèm sha256. Khi tải xuống, tháng đó được ghi lại trước và chính lần tải cũng được ghi nhận.",
+      "opensNote": "Lượt mở phiếu lương được đếm trên web, kể cả tải PDF. Lượt mở trong ứng dụng di động chưa được đếm."
     },
     "state": {
       "done": "Hoàn tất",
@@ -1497,7 +1501,28 @@
         "preparer_closed_run": "Cùng một người xử lý và đóng lần chạy",
         "adjustment_without_reason": "Điều chỉnh thủ công lớn không có lý do",
         "formula_changed_open_period": "Công thức thay đổi khi lần chạy còn mở"
-      }
+      },
+      "findingItem": "{control}: {who} ({state})",
+      "open": "đang mở",
+      "unprintable": "{count} ký tự không thể vẽ bằng phông chữ nào hiện có và hiển thị là '?'. Tệp CSV và JSON chứa văn bản chính xác."
+    },
+    "administration": {
+      "title": "Cài đặt và kiểm toán viên",
+      "help": "Mỗi thay đổi được ghi nhận kèm người thực hiện, thời điểm và giá trị trước, sau.",
+      "bankChangeDays": "Khoảng thay đổi ngân hàng (số ngày trước ngày trả lương)",
+      "adjustmentThreshold": "Số tiền điều chỉnh thủ công cần có lý do",
+      "save": "Lưu",
+      "defaults": "Giá trị mặc định cho đến khi thay đổi",
+      "version": "Phiên bản {version}",
+      "auditorsTitle": "Kiểm toán viên (chỉ đọc)",
+      "none": "Chưa có kiểm toán viên nào có quyền.",
+      "loginWithoutRecord": "Tài khoản đăng nhập không có hồ sơ nhân viên ({id})",
+      "grantedOn": "cấp ngày {date}",
+      "revoke": "Thu hồi",
+      "login": "Tài khoản đăng nhập",
+      "choose": "Chọn tài khoản",
+      "grant": "Cấp quyền",
+      "auditorsHelp": "Kiểm toán viên xem bằng chứng vòng lặp kiểm toán và gói kiểm toán của công ty này, chỉ đọc, cho đến khi bị thu hồi. Mỗi lần cấp và thu hồi đều được ghi nhận."
     }
   }
 }

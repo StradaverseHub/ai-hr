@@ -1295,7 +1295,10 @@
       "cause": "Punca utama direkodkan.",
       "captured": "Dirakam dan disemak sekarang.",
       "switch": "Disimpan.",
-      "pause": "Disimpan."
+      "pause": "Disimpan.",
+      "settings": "Tetapan kawalan disimpan.",
+      "granted": "Akses juruaudit diberikan.",
+      "revoked": "Akses juruaudit ditarik balik."
     },
     "filter": {
       "period": "Bulan gaji",
@@ -1346,7 +1349,8 @@
       "captures": "{count, plural, =0 {Belum dirakam} other {# rakaman}}",
       "pack": "Muat turun",
       "capture": "Rakam dan semak sekarang",
-      "packHelp": "Pek audit ialah ringkasan PDF dengan bukti CSV dan JSON, setiap satu disenaraikan dengan sha256nya. Memuat turunnya merakam bulan itu dahulu dan muat turun itu sendiri direkodkan."
+      "packHelp": "Pek audit ialah ringkasan PDF dengan bukti CSV dan JSON, setiap satu disenaraikan dengan sha256nya. Memuat turunnya merakam bulan itu dahulu dan muat turun itu sendiri direkodkan.",
+      "opensNote": "Pembukaan slip gaji dikira di web, termasuk muat turun PDF. Pembukaan dalam aplikasi mudah alih belum dikira."
     },
     "state": {
       "done": "Selesai",
@@ -1497,7 +1501,28 @@
         "preparer_closed_run": "Orang yang sama memproses dan menutup larian",
         "adjustment_without_reason": "Pelarasan manual besar tanpa sebab",
         "formula_changed_open_period": "Formula diubah semasa larian masih terbuka"
-      }
+      },
+      "findingItem": "{control}: {who} ({state})",
+      "open": "terbuka",
+      "unprintable": "{count} aksara tidak dapat dilukis dalam mana-mana fon yang tersedia dan dipaparkan sebagai '?'. Fail CSV dan JSON memuatkan teks yang tepat."
+    },
+    "administration": {
+      "title": "Tetapan dan juruaudit",
+      "help": "Setiap perubahan direkodkan bersama siapa membuatnya, bila, dan nilai sebelum serta selepas.",
+      "bankChangeDays": "Tempoh perubahan bank (hari sebelum hari gaji)",
+      "adjustmentThreshold": "Amaun pelarasan manual yang memerlukan sebab",
+      "save": "Simpan",
+      "defaults": "Nilai lalai sehingga diubah",
+      "version": "Versi {version}",
+      "auditorsTitle": "Juruaudit (baca sahaja)",
+      "none": "Tiada juruaudit mempunyai akses.",
+      "loginWithoutRecord": "Log masuk tanpa rekod pekerja ({id})",
+      "grantedOn": "diberikan {date}",
+      "revoke": "Tarik balik",
+      "login": "Log masuk",
+      "choose": "Pilih log masuk",
+      "grant": "Beri akses",
+      "auditorsHelp": "Juruaudit membaca bukti gelung audit dan pek audit syarikat ini, baca sahaja, sehingga ditarik balik. Setiap pemberian dan penarikan balik direkodkan."
     }
   }
 }

@@ -15,7 +15,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { AuditPackRefused, buildAuditPack, type AuditPackLabels } from '@/core/payroll-audit/pack';
 import { recordPayrollAccess } from '@/core/payroll-audit/access-log';
-import { AUDIT_CAPTURE_KINDS, AUDIT_CONTROL_IDS, isPayPeriod } from '@/core/payroll-audit/types';
+import { AUDIT_CAPTURE_KINDS, AUDIT_CONTROL_IDS, AUDIT_DISPOSITIONS, isPayPeriod } from '@/core/payroll-audit/types';
 
 export const runtime = 'nodejs';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -28,12 +28,14 @@ export async function GET(req: Request) {
   const s = await getSession();
   if (!s?.userId || s.agent) return notFound();
   const t = await getTranslations('payrollAudit.pack');
+  const td = await getTranslations('payrollAudit.dispositions');
   const labels: AuditPackLabels = {
     title: t('title'), company: t('company'), payPeriod: t('payPeriod'), generated: t('generated'), by: t('by'), runs: t('runs'), runLine: t.raw('runLine') as string,
     statutory: t('statutory'), filingEvidence: t('filingEvidence'), findings: t('findings'), findingLine: t.raw('findingLine') as string,
     corrections: t('corrections'), correctionLine: t.raw('correctionLine') as string, captures: t('captures'), captureLine: t.raw('captureLine') as string,
     verification: t('verification'), verified: t.raw('verified') as string, notVerified: t.raw('notVerified') as string, anchors: t.raw('anchors') as string,
-    files: t('files'), none: t('none'),
+    files: t('files'), none: t('none'), findingItem: t.raw('findingItem') as string, open: t('open'), unprintable: t.raw('unprintable') as string,
+    dispositions: Object.fromEntries(AUDIT_DISPOSITIONS.map(d => [d, td(d)])) as AuditPackLabels['dispositions'],
     kinds: Object.fromEntries(AUDIT_CAPTURE_KINDS.map(kind => [kind, t(`kinds.${kind}`)])) as AuditPackLabels['kinds'],
     controls: Object.fromEntries(AUDIT_CONTROL_IDS.map(id => [id, t(`controls.${id}`)])) as AuditPackLabels['controls'],
   };

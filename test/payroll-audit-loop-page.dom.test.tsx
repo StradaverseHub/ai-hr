@@ -42,7 +42,14 @@ vi.mock('next/navigation',()=>({
 vi.mock('../lib/session',()=>({getSession:async()=>state.session}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>true,isModuleEnabledOrFalse:()=>true}));
 vi.mock('../app/control-tower/loops/actions',()=>({setLoopSwitchAction:vi.fn(),setLoopPauseAction:vi.fn()}));
-vi.mock('../app/control-tower/loops/loop_payroll_audit/actions',()=>({disposeAuditFindingAction:vi.fn(),recordCorrectionCauseAction:vi.fn(),captureAuditNowAction:vi.fn()}));
+vi.mock('../app/control-tower/loops/loop_payroll_audit/actions',()=>({disposeAuditFindingAction:vi.fn(),recordCorrectionCauseAction:vi.fn(),captureAuditNowAction:vi.fn(),
+ setAuditSettingsAction:vi.fn(),grantAuditReaderAction:vi.fn(),revokeAuditReaderAction:vi.fn()}));
+vi.mock('../core/payroll-audit/settings',()=>({auditAdministration:async(_s:unknown,input:{companyIds?:string[]})=>{state.reads.push('admin:'+(input.companyIds??[]).join(','));
+ return {companies:[{companyId:fx.A,companyName:'Fictional A Sdn Bhd',settings:{bankChangeDays:5,adjustmentThreshold:1800,version:2},
+   readers:[{id:'g-1',appUserId:'00000000-0000-4000-8000-0000000000e1',label:'Lim Fictional · lim@fixture.test',grantedAt:new Date('2026-02-01T02:00:00Z'),grantedBy:'u-1'}]},
+  {companyId:fx.B,companyName:'Fictional B Sdn Bhd',settings:{bankChangeDays:7,adjustmentThreshold:1000,version:null},readers:[]}].slice(0,state.companies),
+  candidates:[{appUserId:'00000000-0000-4000-8000-0000000000e1',label:'Lim Fictional · lim@fixture.test'},{appUserId:'00000000-0000-4000-8000-0000000000e2',label:'Wong Fictional · wong@fixture.test'},
+   {appUserId:'00000000-0000-4000-8000-0000000000e3',label:null}]};}}));
 vi.mock('../core/payroll-audit/access-log',()=>({recordPayrollAccess:vi.fn(async(_s:unknown,entry:unknown)=>{state.access.push(entry);return {recorded:true,eventId:'e'};})}));
 const fx=vi.hoisted(()=>{
  const A='00000000-0000-4000-8000-0000000000c1',B='00000000-0000-4000-8000-0000000000c2';
@@ -140,7 +147,7 @@ describe('the Audit loop page, per role',()=>{
  it('an HR administrator sees the steps, figures, companies, statutory files, findings and corrections, and no loop switch',async()=>{
   state.session=SESSIONS.hrAdmin;
   const view=wrap('en',await page({period:'2026-01'}));
-  expect(state.reads).toEqual(['companies','detail:2026-01:']);
+  expect(state.reads).toEqual(['companies','detail:2026-01:','admin:']);
   // Opening the page is recorded, once per company shown.
   expect(state.access).toEqual([{surface:'audit_view',action:'view',companyId:fx.A,payPeriod:'2026-01'}]);
   expect(screen.getByRole('heading',{level:1,name:'Audit loop'})).toBeTruthy();
@@ -179,6 +186,22 @@ describe('the Audit loop page, per role',()=>{
   expect(text(view.container)).toContain('Never blocks a run: one person processing and closing is flagged only.');
   expect(text(view.container)).toContain('Calls no AI model: every check is a fixed rule.');
   expect(text(view.container)).toContain('Sponsor: Aisyah Fictional');
+  expect(text(view.container.querySelector('[data-audit-opens-note]'))).toBe('Payslip opens are counted on the web, including PDF downloads. Opens in the mobile app are not counted yet.');
+  // Settings and auditors, for the administrator's company.
+  const admin=view.container.querySelector(`[data-audit-admin-company="${fx.A}"]`)!;
+  const settings=admin.querySelector('[data-audit-settings]')!;
+  expect([...settings.querySelectorAll('input')].map(input=>`${input.getAttribute('name')}=${input.getAttribute('value')??(input as HTMLInputElement).defaultValue}`))
+   .toEqual(['period=2026-01',`target=${fx.A}`,'bankChangeDays=5','adjustmentThreshold=1800.00']);
+  expect([...settings.querySelectorAll('label')].map(label=>text(label.querySelector('span')))).toEqual(['Bank change window (days before pay day)','Manual adjustment amount that needs a reason']);
+  expect(text(settings)).toContain('Version 2');
+  expect(settings.querySelector('button')?.getAttribute('aria-label')).toBe('Save · Fictional A Sdn Bhd');
+  expect([...admin.querySelectorAll('[data-audit-readers] li')].map(parts)).toEqual(['Lim Fictional · lim@fixture.test given Feb 1, 2026 Revoke']);
+  expect(admin.querySelector('[data-audit-readers] button')?.getAttribute('aria-label')).toBe('Revoke · Lim Fictional · lim@fixture.test · Fictional A Sdn Bhd');
+  expect([...admin.querySelectorAll('[data-audit-readers] form input')].map(input=>`${input.getAttribute('name')}=${input.getAttribute('value')}`)).toEqual(['period=2026-01','grant=g-1']);
+  // The login already granted is not offered again; a login without an employee record is named by its short id.
+  expect([...admin.querySelectorAll('[data-audit-grant] option')].map(option=>text(option))).toEqual(['Choose a login','Wong Fictional · wong@fixture.test',
+   'Login without an employee record (00000000)']);
+  expect(text(view.container)).toContain('Every grant and revocation is recorded.');
   // No loop switch for a company administrator; every control keeps a 44px target on a coarse pointer.
   expect(view.container.querySelector('[data-page-header] form')).toBeNull();
   for(const control of view.container.querySelectorAll('button,select,input:not([type="hidden"])'))expect(control.className,control.outerHTML.slice(0,80)).toContain('pointer-coarse:min-h-11');
@@ -187,7 +210,7 @@ describe('the Audit loop page, per role',()=>{
  it('a group administrator also switches the loop, and a pause per company is offered',async()=>{
   state.session=SESSIONS.groupAdmin;state.companies=2;
   const view=wrap('en',await page({company:fx.B}));
-  expect(state.reads).toEqual(['default:10','companies',`detail:2026-01:${fx.B}`]);
+  expect(state.reads).toEqual(['default:10','companies',`detail:2026-01:${fx.B}`,`admin:${fx.B}`]);
   const form=view.container.querySelector('[data-page-header] form')!;
   expect([...form.querySelectorAll('input')].map(input=>`${input.getAttribute('name')}=${input.getAttribute('value')}`)).toEqual(['loop=loop_payroll_audit','from=detail','enabled=false']);
   expect(form.querySelector('button')?.getAttribute('aria-label')).toBe('Turn off · Audit loop');
@@ -206,5 +229,20 @@ describe('the Audit loop page, per role',()=>{
   expect(screen.getByRole('heading',{level:1,name:copy.payrollAudit.name})).toBeTruthy();
   expect(text(view.container)).toContain(copy.payrollAudit.saved.disposed);
   expect(text(view.container)).not.toMatch(/noveri/i);
+ });
+});
+
+describe('the administration card',()=>{
+ it.each(['employee','manager'] as const)('is never read or shown for a %s',async role=>{
+  state.session=SESSIONS[role];
+  await expect(page({period:'2026-01'})).rejects.toMatchObject({url:'/'});
+  expect(state.reads.filter(read=>read.startsWith('admin'))).toEqual([]);
+ });
+ it('shows defaults for a company with no settings yet',async()=>{
+  state.session=SESSIONS.groupAdmin;state.companies=2;
+  const view=wrap('en',await page({period:'2026-01'}));
+  const second=view.container.querySelector(`[data-audit-admin-company="${fx.B}"]`)!;
+  expect(text(second.querySelector('[data-audit-settings]'))).toContain('Defaults until changed');
+  expect(text(second)).toContain('No auditor has access.');
  });
 });

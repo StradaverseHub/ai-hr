@@ -126,7 +126,8 @@ describe('ADR-0151 agent capability inventory',()=>{
    'app/control-tower/loops/actions.ts':{setLoopPauseAction:'handoff:ai_governance',setLoopSwitchAction:'handoff:ai_governance'},
    // AI v2 P2-2b: the Audit loop's dispositions, root causes and capture are a person's, never AI-preparable.
    'app/control-tower/loops/loop_payroll_audit/actions.ts':{captureAuditNowAction:'handoff:ai_governance',disposeAuditFindingAction:'handoff:ai_governance',
-    recordCorrectionCauseAction:'handoff:ai_governance'},
+    recordCorrectionCauseAction:'handoff:ai_governance',setAuditSettingsAction:'handoff:ai_governance',
+    grantAuditReaderAction:'handoff:access_and_authentication',revokeAuditReaderAction:'handoff:access_and_authentication'},
   };
   for(const [file,entries] of Object.entries(expected)){
    expect(actual[file]?.slice().sort(),file).toEqual(Object.keys(entries).sort());

@@ -19,17 +19,17 @@
  * database computes the content hash, the sequence and the link to the previous capture of the company and month, and anchors
  * each capture in the tenant audit hash chain (migration 0965). A capture is never updated or deleted.
  * No model is called. */
-import {createHash} from 'node:crypto';
 import {and,eq,sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {payrollAuditCapture} from '../../db/payroll-audit-schema';
+import {appendCapturesTx,type AuditArtefact} from './append';
+import {runInputsTx} from './inputs';
 import {isAdmin} from '../../lib/authz-model';
 import {resolveBatchCutOffWindow} from '../../packs/payroll/service';
 import {periodFiledTx} from '../statutory-filed';
 import {PAYROLL_ACCESS_EVENT,PAYSLIP_OPENED_EVENT,isPayPeriod,statutoryFormOf,type AuditCaptureKind} from './types';
 
-export type AuditArtefact=Readonly<{kind:AuditCaptureKind;sourceKey:string;batchId:string|null;content:Record<string,unknown>}>;
-export type CaptureWriter=Readonly<{kind:'agent';principalId:string;runId:string}>|Readonly<{kind:'user';userId:string}>;
+export {appendCapturesTx,type AuditArtefact,type CaptureWriter} from './append';
 export type CaptureResult=Readonly<{companyId:string;payPeriod:string;artefacts:number;captured:number;runs:number}>;
 export class AuditCaptureRefused extends Error{constructor(readonly reason:'not_administrator'|'invalid'){super('Audit capture refused: '+reason);this.name='AuditCaptureRefused';}}
 
@@ -49,12 +49,6 @@ const CORRECTION_ACTIONS=['unlock','rollback'];
 
 const monthEnd=(period:string)=>{const y=Number(period.slice(0,4)),m=Number(period.slice(5,7));return `${period}-${String(new Date(Date.UTC(y,m,0)).getUTCDate()).padStart(2,'0')}`;};
 const nextMonth=(period:string)=>{const y=Number(period.slice(0,4)),m=Number(period.slice(5,7));return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,'0')}`;};
-
-/** One component of the inputs snapshot: how many owner rows, and the sha256 of all of them as the owner holds them. */
-async function componentTx(tx:Tx,label:string,query:SQL){
- const [row]=await rows(tx,sql`select count(*)::int as n,app.payroll_audit_hash(coalesce(jsonb_agg(to_jsonb(x) order by x.id)::text,'[]')) as hash from (${query}) x`);
- return [label,{rows:Number(row?.n??0),hash:str(row?.hash)}] as const;
-}
 
 /** Every artefact of one company and pay month, read as `reader`. Read-only. */
 export async function collectPayrollPeriodArtefactsTx(tx:Tx,reader:SessionContext,p:Readonly<{companyId:string;payPeriod:string}>):Promise<AuditArtefact[]>{
@@ -77,23 +71,15 @@ export async function collectPayrollPeriodArtefactsTx(tx:Tx,reader:SessionContex
   const slips=await rows(tx,sql`select s.employment_id,to_jsonb(s) as payslip,e.employee_code from public.payslip s join public.employment e on e.id=s.employment_id
    where s.batch_id=${batchId}::uuid order by s.employment_id`);
   for(const slip of slips)push('payslip',`payslip:${batchId}:${slip.employment_id}`,batchId,{payslip:slip.payslip,employeeCode:slip.employee_code??null});
-  const emps=slips.map(slip=>String(slip.employment_id));
-  const inList=emps.length?sql`(${sql.join(emps.map(e=>sql`${e}::uuid`),sql`,`)})`:sql`(null::uuid)`;
-  const components:Record<string,{rows:number;hash:string|null}>={};
-  for(const [label,query] of [
-   ['attendance',sql`select a.* from public.attendance a where a.employment_id in ${inList} and a.attendance_date between ${windows.attendance.start}::date and ${windows.attendance.end}::date`],
-   ['overtime',sql`select a.id,a.employment_id,a.attendance_date,a.ot_minutes,a.ot_flat_minutes,a.ot00_minutes,a.ot10_minutes,a.ot15_minutes,a.ot20_minutes,a.ot30_minutes
-    from public.attendance a where a.employment_id in ${inList} and a.attendance_date between ${windows.overtime.start}::date and ${windows.overtime.end}::date and coalesce(a.ot_minutes,0)>0`],
-   ['leave',sql`select l.* from public.leave_request l where l.employment_id in ${inList} and l.start_date<=${windows.leave.end}::date and l.end_date>=${windows.leave.start}::date`],
-   ['claims',sql`select c.* from public.claim_request c where c.payroll_batch_id=${batchId}::uuid
-    or (c.employment_id in ${inList} and c.incurred_on between ${windows.claim.start}::date and ${windows.claim.end}::date)`],
-   ['payChanges',sql`select c.* from public.compensation c where c.employment_id in ${inList} and c.valid_from<=${monthEnd(payPeriod)}::date
-    and (c.valid_to is null or c.valid_to>=${payPeriod+'-01'}::date)`],
-   ['runInputs',sql`select i.* from public.payroll_input i where i.batch_id=${batchId}::uuid`],
-   ['transactions',sql`select t.* from public.payroll_individual_txn t where t.batch_id=${batchId}::uuid or t.consumed_batch_id=${batchId}::uuid`],
-   ['runComponents',sql`select c.* from public.payroll_batch_component c where c.batch_id=${batchId}::uuid`],
-  ] as const){const [key,value]=await componentTx(tx,label,query);components[key]=value;}
-  push('inputs_snapshot','inputs:'+batchId,batchId,{status:str((batch.batch as Row)?.status),employments:emps.length,windows,components});
+  // The inputs now, beside the snapshot the processing owner took when the run was processed (core/payroll-audit/inputs.ts):
+  // a component whose hash differs changed after the run used it.
+  const now=await runInputsTx(tx,{batchId,payPeriod,windows});
+  const [processed]=await rows(tx,sql`select c.content from public.payroll_audit_capture c where c.tenant_id=${reader.tenantId}::uuid and c.company_id=${companyId}::uuid
+   and c.pay_period=${payPeriod} and c.source_key=${'inputs:'+batchId} order by c.seq desc limit 1`);
+  const atRun=(processed?.content??null) as {components?:Record<string,{hash:string|null}>;results?:{hash:string|null}}|null;
+  const changed=atRun?.components?Object.keys(now.components).filter(key=>atRun.components?.[key]?.hash!==now.components[key]?.hash).sort():null;
+  push('inputs_snapshot','inputs_now:'+batchId,batchId,{basis:'at_capture',status:str((batch.batch as Row)?.status),...now,
+   processedSnapshot:atRun?{changedSinceProcessing:changed,resultsChanged:atRun.results?.hash!==now.results.hash}:null});
   // Every change from draft to final: the run's own events, its status history and each employee's before and after.
   const events=await rows(tx,sql`select d.id,d.aggregate_type,d.event_type,d.actor_type::text as actor_type,d.actor_id,d.subject_employment_id,d.payload,d.occurred_at,d.chain_seq,d.hash
    from public.domain_event d where d.tenant_id=${reader.tenantId}::uuid and (d.aggregate_id=${batchId}::uuid or d.payload->>'batchId'=${batchId})
@@ -184,27 +170,6 @@ export async function collectPayrollPeriodArtefactsTx(tx:Tx,reader:SessionContex
    where f.tenant_id=${reader.tenantId}::uuid and f.company_id=${companyId}::uuid and f.pay_period=${payPeriod} order by f.detected_at,f.id`))
   push('control_finding','finding:'+item.id,str(item.batch_id),{finding:item.finding,dispositions:item.dispositions});
  return out;
-}
-
-/** The largest artefact kept whole (migration 0965 bounds a capture at 1 MiB of canonical text). A larger one, such as the
- * processing event of a very large run, is kept as its own sha256 and size, so the capture still proves what it was. */
-const MAX_CONTENT_CHARS=700_000;
-const bounded=(content:Record<string,unknown>):Record<string,unknown>=>{
- const text=JSON.stringify(content);
- return text.length<=MAX_CONTENT_CHARS?content:{oversize:true,sha256:createHash('sha256').update(text).digest('hex'),chars:text.length};
-};
-
-/** Appends the artefacts that are new or changed. Returns how many were captured. */
-export async function appendCapturesTx(tx:Tx,tenantId:string,writer:CaptureWriter,p:Readonly<{companyId:string;payPeriod:string}>,artefacts:readonly AuditArtefact[]):Promise<number>{
- let captured=0;
- for(let offset=0;offset<artefacts.length;offset+=100){
-  const chunk=artefacts.slice(offset,offset+100);
-  const inserted=await tx.insert(payrollAuditCapture).values(chunk.map(item=>({tenantId,companyId:p.companyId,payPeriod:p.payPeriod,batchId:item.batchId,kind:item.kind,
-   sourceKey:item.sourceKey,content:bounded(item.content),writer:writer.kind,writerId:writer.kind==='agent'?writer.principalId:writer.userId,
-   runId:writer.kind==='agent'?writer.runId:null}))).onConflictDoNothing().returning({id:payrollAuditCapture.id});
-  captured+=inserted.length;
- }
- return captured;
 }
 
 /** A payroll administrator captures one company and month now, under their own login (before an audit pack is built). Group

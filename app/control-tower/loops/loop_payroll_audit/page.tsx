@@ -4,13 +4,15 @@ import { isGroupAdmin } from '@/lib/authz-model';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { auditCompanies, auditLoopDetail, defaultAuditPeriod, type AuditFindingView } from '@/core/payroll-audit/status';
 import { recordPayrollAccess } from '@/core/payroll-audit/access-log';
+import { auditAdministration } from '@/core/payroll-audit/settings';
 import { AUDIT_DISPOSITIONS, AUDIT_ROOT_CAUSES, isPayPeriod } from '@/core/payroll-audit/types';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { AuditLoopColumn, auditPackHref } from '@/components/payroll-audit/audit-loop-column';
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../operations-tabs';
 import { setLoopPauseAction, setLoopSwitchAction } from '../actions';
-import { captureAuditNowAction, disposeAuditFindingAction, recordCorrectionCauseAction } from './actions';
+import { captureAuditNowAction, disposeAuditFindingAction, grantAuditReaderAction, recordCorrectionCauseAction, revokeAuditReaderAction,
+  setAuditSettingsAction } from './actions';
 
 /** AI v2 P2-2b — the Audit loop's own page (approved Phase 2 mock-ups: PayrollLoops.dc.html's Audit column, laid out as
  * Main.dc.html's loop detail at the Prepare level). For one pay month and the companies the viewer administers:
@@ -21,7 +23,7 @@ import { captureAuditNowAction, disposeAuditFindingAction, recordCorrectionCause
  * requireAdmin like every Operations page. Viewing it is recorded in the payroll access log. */
 const LOOP = 'loop_payroll_audit';
 const ERRORS = ['invalid', 'refused', 'module', 'failed'] as const;
-const SAVED = ['disposed', 'cause', 'captured', 'switch', 'pause'] as const;
+const SAVED = ['disposed', 'cause', 'captured', 'switch', 'pause', 'settings', 'granted', 'revoked'] as const;
 const STEPS = ['capture', 'check', 'prepare', 'verify'] as const;
 const LIMITS = ['pay', 'block', 'file', 'model'] as const;
 const RUN_TYPES: readonly string[] = ['regular', 'off_cycle', 'bonus', 'adjustment'];
@@ -37,6 +39,7 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
   const companies = await auditCompanies(s);
   const companyId = typeof query.company === 'string' && UUID.test(query.company) && companies.some(c => c.id === query.company) ? query.company : null;
   const detail = await auditLoopDetail(s, { payPeriod, ...(companyId ? { companyIds: [companyId] } : {}) });
+  const admin = await auditAdministration(s, companyId ? { companyIds: [companyId] } : {});
   for (const item of detail.companies) await recordPayrollAccess(s, { surface: 'audit_view', action: 'view', companyId: item.companyId, payPeriod });
   const error = ERRORS.find(code => code === query.error), saved = SAVED.find(code => code === query.saved);
   const when = (date: Date | null) => (date ? f.dateTime(date, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }) : '—');
@@ -149,7 +152,8 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
             </table>
           </div>
         )}
-        <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('companies.packHelp')}</p>
+        <p className="px-4 pt-2 text-xs text-muted-foreground">{t('companies.packHelp')}</p>
+        <p data-audit-opens-note className="px-4 pb-4 pt-1 text-xs text-muted-foreground">{t('companies.opensNote')}</p>
       </Card>
 
       <Card className="overflow-hidden">
@@ -233,6 +237,55 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
             ))}
           </ul>
         )}
+      </Card>
+
+      <Card className="overflow-hidden" data-audit-administration>
+        <SectionHeader title={t('administration.title')} />
+        <p className="px-4 pb-3 text-sm text-muted-foreground">{t('administration.help')}</p>
+        <ul className="divide-y divide-border border-t border-border">
+          {admin.companies.map(item => (
+            <li key={item.companyId} data-audit-admin-company={item.companyId} className="flex flex-col gap-4 px-4 py-4 text-sm">
+              <h3 className="m-0 text-sm font-semibold">{item.companyName}</h3>
+              <form action={setAuditSettingsAction} data-audit-settings className="flex flex-wrap items-end gap-3">
+                {hidden({ target: item.companyId })}
+                <label className="flex flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('administration.bankChangeDays')}</span>
+                  <input type="number" name="bankChangeDays" min={1} max={60} step={1} required defaultValue={item.settings.bankChangeDays} className={cn(inputCls, 'w-28 pointer-coarse:min-h-11')} /></label>
+                <label className="flex flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('administration.adjustmentThreshold')}</span>
+                  <input type="number" name="adjustmentThreshold" min={0.01} step={0.01} required defaultValue={item.settings.adjustmentThreshold.toFixed(2)} className={cn(inputCls, 'w-36 pointer-coarse:min-h-11')} /></label>
+                <button type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${t('administration.save')} · ${item.companyName}`}>{t('administration.save')}</button>
+                <span className="text-xs text-muted-foreground">{item.settings.version === null ? t('administration.defaults') : t('administration.version', { version: item.settings.version })}</span>
+              </form>
+              <div className="flex flex-col gap-2">
+                <p className="m-0 text-xs font-medium">{t('administration.auditorsTitle')}</p>
+                {item.readers.length === 0 ? <p className="m-0 text-xs text-muted-foreground">{t('administration.none')}</p> : (
+                  <ul data-audit-readers className="m-0 flex list-none flex-col gap-1 p-0">
+                    {item.readers.map(reader => (
+                      <li key={reader.id} className="flex flex-wrap items-center justify-between gap-2">
+                        <span>{reader.label ?? t('administration.loginWithoutRecord', { id: reader.appUserId.slice(0, 8) })}{' '}
+                          <span className="ml-1 text-xs text-muted-foreground">{t('administration.grantedOn', { date: f.dateTime(reader.grantedAt, { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' }) })}</span></span>
+                        <form action={revokeAuditReaderAction}>
+                          {hidden({ grant: reader.id })}
+                          <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('administration.revoke')} · ${reader.label ?? reader.appUserId.slice(0, 8)} · ${item.companyName}`}>{t('administration.revoke')}</button>
+                        </form>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <form action={grantAuditReaderAction} data-audit-grant className="flex flex-wrap items-end gap-2">
+                  {hidden({ target: item.companyId })}
+                  <label className="flex min-w-48 flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('administration.login')}</span>
+                    <select name="appUser" required defaultValue="" className={cn(inputCls, 'pointer-coarse:min-h-11')}>
+                      <option value="" disabled>{t('administration.choose')}</option>
+                      {admin.candidates.filter(candidate => !item.readers.some(reader => reader.appUserId === candidate.appUserId)).map(candidate =>
+                        <option key={candidate.appUserId} value={candidate.appUserId}>{candidate.label ?? t('administration.loginWithoutRecord', { id: candidate.appUserId.slice(0, 8) })}</option>)}
+                    </select></label>
+                  <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('administration.grant')} · ${item.companyName}`}>{t('administration.grant')}</button>
+                </form>
+                <p className="m-0 text-xs text-muted-foreground">{t('administration.auditorsHelp')}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
       </Card>
 
       <Card className="overflow-hidden">

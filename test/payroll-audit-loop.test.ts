@@ -17,6 +17,7 @@
  * Expected values are written out from the fixtures, never re-derived from the loop's own helpers. */
 import {createHash,randomUUID} from 'node:crypto';
 import JSZip from 'jszip';
+import {PDFArray,PDFDict,PDFDocument,PDFName,PDFRawStream,decodePDFRawStream} from 'pdf-lib';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 
@@ -44,9 +45,10 @@ import {recordCorrectionCause} from '../core/payroll-audit/corrections';
 import {recordPayrollAccess,recordPayrollExport} from '../core/payroll-audit/access-log';
 import {verifyCapturesTx} from '../core/payroll-audit/verify';
 import {buildAuditPack,AuditPackRefused,type AuditPackLabels} from '../core/payroll-audit/pack';
-import {grantAuditReader,setControlSettings} from '../core/payroll-audit/settings';
+import {auditAdministration,grantAuditReader,revokeAuditReader,setControlSettings} from '../core/payroll-audit/settings';
 import {auditLoopDetail,auditLoopSummary} from '../core/payroll-audit/status';
 import {runPayrollAuditLoop} from '../core/payroll-audit/run';
+import {INPUT_COMPONENTS,captureRunInputsAtProcessingTx} from '../core/payroll-audit/inputs';
 import {AUDIT_CAPTURE_KINDS,AUDIT_CONTROL_IDS,AUDIT_DISPOSITIONS,AUDIT_ROOT_CAUSES} from '../core/payroll-audit/types';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
@@ -80,6 +82,8 @@ const LABELS:AuditPackLabels={title:'Payroll audit pack',company:'Company',payPe
  correctionLine:'{action} on {at}: root cause {cause}, {note}',captures:'Captures',captureLine:'{kind}: {count}',verification:'Tamper check',
  verified:'{count} captures verified. Chain head {head}.',notVerified:'{count} problems found. See verification.json.',
  anchors:'{matched} anchored in the audit log, {chained} inside its hash chain.',files:'Files',none:'None',
+ findingItem:'{control}: {who} ({state})',open:'open',unprintable:'{count} characters could not be drawn.',
+ dispositions:{expected:'Expected',corrected:'Corrected',false_positive:'Not an issue',escalated:'Escalated'},
  kinds:Object.fromEntries(AUDIT_CAPTURE_KINDS.map(kind=>[kind,kind])) as AuditPackLabels['kinds'],
  controls:Object.fromEntries(AUDIT_CONTROL_IDS.map(id=>[id,id])) as AuditPackLabels['controls']};
 
@@ -133,16 +137,19 @@ describe('capture, end to end',()=>{
   expect(first).toMatchObject({companyId:b.companyId,payPeriod:PERIOD,runs:1});
   expect(first.captured).toBe(first.artefacts);
   const rows=await capturesOf(f.hr,b.companyId);
-  expect(rows).toHaveLength(first.captured);
+  // Everything the capture appended, after the inputs snapshot the processing owner took when the run was processed.
+  expect(rows).toHaveLength(first.captured+1);
+  expect(rows[0]).toMatchObject({kind:'inputs_snapshot',sourceKey:'inputs:'+f.batch1,seq:1});
   expect(rows.map(row=>row.seq)).toEqual(rows.map((_,i)=>i+1));
   const kinds=new Set(rows.map(row=>row.kind));
   for(const kind of ['run','inputs_snapshot','payslip','change','rule_version','approval','payslip_release','filing'] as const)expect(kinds.has(kind),kind).toBe(true);
   // One payslip each for the three people of company 1, nobody from company 2.
   expect(rows.filter(row=>row.kind==='payslip').map(row=>row.sourceKey).sort()).toEqual([f.a,f.bb,f.c].map(p=>`payslip:${f.batch1}:${p.employmentId}`).sort());
   // The inputs snapshot names each component with a row count and a sha256.
-  const inputs=rows.find(row=>row.kind==='inputs_snapshot')!.content as {employments:number;components:Record<string,{rows:number;hash:string}>};
+  const inputs=rows.find(row=>row.sourceKey==='inputs:'+f.batch1)!.content as {employments:number;components:Record<string,{rows:number;hash:string}>};
   expect(inputs.employments).toBe(3);
   expect(Object.keys(inputs.components).sort()).toEqual(['attendance','claims','leave','overtime','payChanges','runComponents','runInputs','transactions']);
+  expect(rows.find(row=>row.sourceKey==='inputs_now:'+f.batch1)!.content).toMatchObject({basis:'at_capture',employments:3});
   expect(inputs.components.payChanges.rows).toBeGreaterThanOrEqual(3);
   for(const component of Object.values(inputs.components))expect(component.hash).toMatch(/^[0-9a-f]{64}$/);
   // The draft-to-final trail: the run's own processed and closed events, with who.
@@ -414,11 +421,12 @@ describe('the daily loop',()=>{
   const principalId=await ensureAgentPrincipal(owner.db,b.tenantId);
   const options=async()=>({tenantId:b.tenantId,principalId,entitlements:(await entitledCtx(b)).entitlements!,today:TODAY});
   expect(await runPayrollAuditLoop(await options())).toEqual({workerId:'loop_payroll_audit',status:'not_run',reasons:['switched_off']});
-  expect(await capturesOf(f.hr,b.companyId)).toEqual([]);
+  // Only the inputs snapshot the processing owner took: the loop itself captured nothing while off.
+  expect((await capturesOf(f.hr,b.companyId)).map(row=>row.sourceKey)).toEqual(['inputs:'+f.batch1]);
   await setWorkerSwitch(f.group,{workerId:'loop_payroll_audit',enabled:true});
   const ran=await runPayrollAuditLoop(await options());
   expect(ran).toMatchObject({workerId:'loop_payroll_audit',status:'ran',companies:2,failed:0});
-  const rows=await capturesOf(f.hr,b.companyId);
+  const rows=(await capturesOf(f.hr,b.companyId)).filter(row=>row.sourceKey!=='inputs:'+f.batch1);
   expect(rows.length).toBeGreaterThan(0);
   for(const row of rows)expect([row.writer,row.writerId]).toEqual(['agent',principalId]);
   const found=await findingsOf(f.hr,b.companyId);
@@ -454,5 +462,139 @@ describe('the status read',()=>{
   expect(one.repeatIssues).toEqual([]);
   expect(one.done).toBe(false);
   expect(summary.totals).toMatchObject({payslips:4,released:4,forms:8,formsFiled:0,openFindings:5});
+ });
+});
+
+describe('the inputs snapshot, taken when the run is processed',()=>{
+ it('is written in the processing transaction, and a later change to an input does not alter it',async()=>{
+  const f=await fixture();
+  const taken=(await capturesOf(f.hr,b.companyId)).filter(row=>row.sourceKey==='inputs:'+f.batch1);
+  expect(taken).toHaveLength(1);
+  expect([taken[0].writer,taken[0].writerId,taken[0].batchId]).toEqual(['user',f.hr.userId,f.batch1]);
+  const snap=taken[0].content as {basis:string;trigger:string;processedBy:string;employments:number;components:Record<string,{rows:number;hash:string}>;results:{rows:number;hash:string}};
+  expect(snap).toMatchObject({basis:'processed',trigger:'processed',processedBy:f.hr.userId,employments:3,results:{rows:3}});
+  expect(Object.keys(snap.components).sort()).toEqual([...INPUT_COMPONENTS].sort());
+  // No attendance was recorded in January when the run was processed: no rows, and the sha256 of an empty list.
+  expect(snap.components.attendance).toEqual({rows:0,hash:sha('[]')});
+  // Company 2's run has its own snapshot, by the same administrator who processed it.
+  expect((await capturesOf(f.hr,f.co2)).filter(row=>row.sourceKey==='inputs:'+f.batch2).map(row=>[row.writer,row.writerId])).toEqual([['user',f.hr.userId]]);
+  // An input changes after processing: A's attendance on 5 January is recorded late.
+  await tamper(sql`insert into public.attendance(tenant_id,employment_id,attendance_date,status,day_type,worked_minutes) values (${b.tenantId}::uuid,${f.a.employmentId}::uuid,'2026-01-05','present','workday',480)`);
+  await capturePayrollPeriod(f.hr,{companyId:b.companyId,payPeriod:PERIOD});
+  const after=await capturesOf(f.hr,b.companyId);
+  // The snapshot of the run is the same row with the same hashes: what the run used.
+  expect(after.filter(row=>row.sourceKey==='inputs:'+f.batch1)).toEqual(taken);
+  // The capture of the inputs now shows the change against it.
+  const now=after.find(row=>row.sourceKey==='inputs_now:'+f.batch1)!.content as {components:Record<string,{rows:number;hash:string}>;processedSnapshot:{changedSinceProcessing:string[]}};
+  expect(now.components.attendance.rows).toBe(1);
+  expect(now.components.attendance.hash).not.toBe(snap.components.attendance.hash);
+  expect(now.processedSnapshot.changedSinceProcessing).toContain('attendance');
+  expect((await verify(f.hr,b.companyId)).valid).toBe(true);
+ });
+
+ it('never stops the run: a snapshot that cannot be written leaves the transaction usable and records the miss',async()=>{
+  const f=await fixture();
+  const windows={attendance:{start:'2026-01-01',end:'2026-01-31'},overtime:{start:'2026-01-01',end:'2026-01-31'},leave:{start:'2026-01-01',end:'2026-01-31'},
+   claim:{start:'2026-01-01',end:'2026-01-31'}};
+  const employee=await adminLogin(b,[{role:'employee',companyId:null}]);
+  const refused=await withTenant(employee,async tx=>{
+   const ok=await captureRunInputsAtProcessingTx(tx,employee,{batchId:f.batch1,companyId:b.companyId,payPeriod:PERIOD,windows,trigger:'processed'});
+   const [still]=await tx.execute(sql`select 1 as one`) as unknown as {one:number}[];
+   return {ok,still:Number(still?.one)};
+  });
+  expect(refused).toEqual({ok:false,still:1});
+  const loginless={tenantId:b.tenantId,roles:['hr_admin'],entitlements:f.hr.entitlements} as SessionContext;
+  expect(await withTenant(loginless,tx=>captureRunInputsAtProcessingTx(tx,loginless,{batchId:f.batch1,companyId:b.companyId,payPeriod:PERIOD,windows,trigger:'processed'}))).toBe(false);
+  const misses=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,b.tenantId),eq(schema.domainEvent.eventType,'payroll-audit.inputs-not-captured')))
+   .orderBy(schema.domainEvent.sequence);
+  expect(misses.map(event=>[event.actorId,(event.payload as {reason:string}).reason,(event.payload as {batchId:string}).batchId])).toEqual([
+   [employee.userId,'not_written',f.batch1],[null,'no_login',f.batch1]]);
+  // The run's own snapshot is untouched by either attempt.
+  expect((await capturesOf(f.hr,b.companyId)).filter(row=>row.sourceKey==='inputs:'+f.batch1)).toHaveLength(1);
+ });
+});
+
+describe('the administration of the Audit loop',()=>{
+ it('shows each company\'s settings and auditors to its administrators, and never to an employee or a manager',async()=>{
+  const f=await fixture();
+  const auditor=await adminLogin(b,[{role:'employee',companyId:null}]);
+  const view=await auditAdministration(f.hr);
+  expect(view.companies.map(item=>[item.companyName,item.settings])).toEqual([['Acme Sdn Bhd',{bankChangeDays:7,adjustmentThreshold:1000,version:null}],
+   ['Fictional Two Sdn Bhd',{bankChangeDays:7,adjustmentThreshold:1000,version:null}]]);
+  expect(view.candidates.map(item=>item.appUserId)).toContain(auditor.userId);
+  expect(view.candidates.map(item=>item.appUserId)).not.toContain(f.hr.userId);
+  const grant=await grantAuditReader(f.hr,{companyId:b.companyId,appUserId:auditor.userId});
+  // Granting twice keeps the one current grant.
+  expect((await grantAuditReader(f.hr,{companyId:b.companyId,appUserId:auditor.userId})).id).toBe(grant.id);
+  expect((await auditAdministration(f.hr,{companyIds:[b.companyId]})).companies[0].readers.map(item=>item.appUserId)).toEqual([auditor.userId]);
+  await revokeAuditReader(f.hr,{grantId:grant.id});
+  expect((await auditAdministration(f.hr,{companyIds:[b.companyId]})).companies[0].readers).toEqual([]);
+  await expect(revokeAuditReader(f.hr,{grantId:grant.id})).rejects.toMatchObject({reason:'not_found'});
+  const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,b.tenantId),eq(schema.domainEvent.aggregateType,'payroll-audit-reader')))
+   .orderBy(schema.domainEvent.sequence);
+  expect(events.map(event=>[event.eventType,event.actorId,(event.payload as {appUserId:string}).appUserId])).toEqual([
+   ['payroll-audit.reader-granted',f.hr.userId,auditor.userId],['payroll-audit.reader-revoked',f.hr.userId,auditor.userId]]);
+  // A revoked grant is never rewritten or deleted, even by the owner role with the policies bypassed.
+  await expect(owner.db.execute(sql`delete from public.payroll_audit_reader where id=${grant.id}::uuid`)).rejects.toThrow();
+  // Employees and managers are refused every part of it.
+  const manager=await adminLogin(b,[{role:'manager',companyId:null}]);
+  for(const person of [auditor,manager]){
+   await expect(auditAdministration(person)).rejects.toMatchObject({reason:'not_administrator'});
+   await expect(grantAuditReader(person,{companyId:b.companyId,appUserId:f.group.userId})).rejects.toMatchObject({reason:'not_administrator'});
+   await expect(setControlSettings(person,{companyId:b.companyId,bankChangeDays:3,adjustmentThreshold:500})).rejects.toMatchObject({reason:'not_administrator'});
+  }
+  // An administrator of the other company sees only that company, and cannot grant here.
+  const other=await adminLogin(b,[{role:'hr_admin',companyId:f.co2}]);
+  expect((await auditAdministration(other)).companies.map(item=>item.companyId)).toEqual([f.co2]);
+  await expect(grantAuditReader(other,{companyId:b.companyId,appUserId:auditor.userId})).rejects.toMatchObject({reason:'not_administrator'});
+ });
+});
+
+/** The text a PDF actually draws, decoded through whichever font drew each run (test/payslip-pdf-unicode.test.ts's instrument). */
+async function pdfText(bytes:Uint8Array):Promise<string>{
+ const bfMap=(cmap:string)=>{const map=new Map<number,string>();const utf16=(hex:string)=>{const buf=Buffer.from(hex,'hex');let out='';for(let i=0;i+1<buf.length;i+=2)out+=String.fromCharCode(buf.readUInt16BE(i));return out;};
+  for(const block of cmap.matchAll(/beginbfchar([\s\S]*?)endbfchar/g))for(const m of block[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g))map.set(parseInt(m[1],16),utf16(m[2]));
+  for(const block of cmap.matchAll(/beginbfrange([\s\S]*?)endbfrange/g))for(const m of block[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)){
+   const lo=parseInt(m[1],16),hi=parseInt(m[2],16),dst=parseInt(m[3],16);for(let c=lo;c<=hi;c++)map.set(c,String.fromCodePoint(dst+(c-lo)));}
+  return map;};
+ const doc=await PDFDocument.load(bytes);const out:string[]=[];
+ for(const page of doc.getPages()){
+  const fonts=new Map<string,{composite:boolean;toUnicode:Map<number,string>|null}>();
+  const dict=page.node.Resources()?.lookup(PDFName.of('Font'),PDFDict);
+  for(const [key,ref] of dict?.entries()??[]){const fd=page.node.context.lookup(ref,PDFDict);const tu=fd.get(PDFName.of('ToUnicode'));const stream=tu?page.node.context.lookup(tu):null;
+   fonts.set(key.asString(),{composite:fd.get(PDFName.of('Subtype'))?.toString()==='/Type0',
+    toUnicode:stream instanceof PDFRawStream?bfMap(Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1')):null});}
+  const contents=page.node.Contents();const streams=contents instanceof PDFArray?contents.asArray().map(r=>page.node.context.lookup(r)):[contents];
+  let src='';for(const st of streams)if(st instanceof PDFRawStream)src+=Buffer.from(decodePDFRawStream(st).decode()).toString('latin1');
+  let cur:{composite:boolean;toUnicode:Map<number,string>|null}|null=null;
+  for(const m of src.matchAll(/(\/[A-Za-z0-9#+._-]+)\s+([\d.]+)\s+Tf|<([0-9A-Fa-f\s]*)>\s*Tj|\(((?:\\.|[^\\()])*)\)\s*Tj/g)){
+   if(m[1]!=null)cur=fonts.get(m[1])??null;
+   else if(m[3]!=null){const hex=m[3].replace(/\s+/g,'');
+    if(cur?.composite){let text='';for(let i=0;i+4<=hex.length;i+=4)text+=cur.toUnicode?.get(parseInt(hex.slice(i,i+4),16))??'\uFFFD';out.push(text);}
+    else out.push(Buffer.from(hex,'hex').toString('latin1'));}
+   else if(m[4]!=null)out.push(m[4].replace(/\\([()\\])/g,'$1'));
+  }
+ }
+ return out.join('\n');
+}
+
+describe('the audit pack summary in every script',()=>{
+ it('draws a Chinese, a Tamil and a Thai name, each whole, and counts nothing as undrawable',async()=>{
+  const f=await fixture();
+  for(const [personId,name] of [[f.a.personId,'陈伟明'],[f.bb.personId,'முருகன்'],[f.c.personId,'สมชาย']] as const)
+   await tamper(sql`update public.person set full_name=${name} where id=${personId}::uuid`);
+  // Each of the three has a finding (no attendance recorded), so each is named on the summary.
+  await runControlChecks(f.hr,{companyId:b.companyId,payPeriod:PERIOD});
+  const pack=await buildAuditPack(f.hr,{companyId:b.companyId,payPeriod:PERIOD},LABELS);
+  const zip=await JSZip.loadAsync(pack.bytes);
+  const text=await pdfText(await zip.file('summary.pdf')!.async('uint8array'));
+  const runs=text.split('\n');
+  for(const name of ['陈伟明','முருகன்','สมชาย'])expect(runs,name).toContain(name);
+  expect(text).not.toContain('\uFFFD');
+  expect(pack.unprintable).toBe(0);
+  const manifest=JSON.parse(await zip.file('manifest.json')!.async('string')) as {summary:{unprintableCharacters:number}};
+  expect(manifest.summary).toEqual({unprintableCharacters:0});
+  // The evidence files carry the same names exactly.
+  expect(await zip.file('captures.json')!.async('string')).not.toContain('\uFFFD');
  });
 });

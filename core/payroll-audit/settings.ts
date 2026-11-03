@@ -86,3 +86,36 @@ export async function revokeAuditReader(supplied:SessionContext,input:Readonly<{
 export async function canReadAuditTx(tx:Tx,companyId:string):Promise<boolean>{
  return ok(tx,sql`select app.payroll_audit_can_read(${companyId}::uuid) as ok`);
 }
+
+export type AuditReaderView=Readonly<{id:string;appUserId:string;label:string|null;grantedAt:Date;grantedBy:string|null}>;
+export type AuditCompanyAdministration=Readonly<{companyId:string;companyName:string;settings:AuditControlSettings;readers:readonly AuditReaderView[]}>;
+export type AuditAdministration=Readonly<{companies:readonly AuditCompanyAdministration[];candidates:readonly Readonly<{appUserId:string;label:string|null}>[]}>;
+const label=(name:unknown,email:unknown)=>{const parts=[name,email].filter((v):v is string=>typeof v==='string'&&v.trim()!=='');return parts.length?parts.join(' · '):null;};
+
+/** What the Audit loop page's administration card shows a group or HR administrator: per company they administer, the control
+ * settings and the current auditors; and the logins of the tenant they may give access to (never themselves). Read under the
+ * administrator's own row-level security. */
+export async function auditAdministration(supplied:SessionContext,input:Readonly<{companyIds?:readonly string[]}>={}):Promise<AuditAdministration>{
+ const ctx=clone(supplied);
+ if(!ctx.userId||ctx.agent||!isAdmin(ctx))throw new AuditSettingsRefused('not_administrator');
+ return withTenant(ctx,async tx=>{
+  const all=Array.from(await tx.execute(sql`select c.id,c.legal_name from public.company c where c.tenant_id=${ctx.tenantId}::uuid
+   and app.is_admin_for(c.id) and app.can_admin_payroll_for(c.id) order by c.legal_name,c.id`) as unknown as {id:string;legal_name:string}[]);
+  const wanted=input.companyIds?.length?new Set(input.companyIds):null;
+  const companies:AuditCompanyAdministration[]=[];
+  for(const item of all.filter(row=>!wanted||wanted.has(row.id))){
+   const readers=Array.from(await tx.execute(sql`select r.id,r.app_user_id,r.granted_at,r.granted_by_user_id,p.full_name,p.primary_email
+    from public.payroll_audit_reader r left join public.app_user u on u.id=r.app_user_id left join public.person p on p.id=u.person_id
+    where r.tenant_id=${ctx.tenantId}::uuid and r.company_id=${item.id}::uuid and r.revoked_at is null order by r.granted_at,r.id`) as unknown as
+    {id:string;app_user_id:string;granted_at:string|Date;granted_by_user_id:string|null;full_name:string|null;primary_email:string|null}[]);
+   companies.push(Object.freeze({companyId:item.id,companyName:item.legal_name,settings:await controlSettingsTx(tx,ctx.tenantId,item.id),
+    readers:Object.freeze(readers.map(row=>Object.freeze({id:row.id,appUserId:row.app_user_id,label:label(row.full_name,row.primary_email),
+     grantedAt:row.granted_at instanceof Date?row.granted_at:new Date(String(row.granted_at)),grantedBy:row.granted_by_user_id})))}));
+  }
+  const candidates=Array.from(await tx.execute(sql`select u.id,p.full_name,p.primary_email from public.app_user u left join public.person p on p.id=u.person_id
+   where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and u.id<>${ctx.userId!}::uuid order by p.full_name nulls last,u.id limit 500`) as unknown as
+   {id:string;full_name:string|null;primary_email:string|null}[]);
+  return Object.freeze({companies:Object.freeze(companies),
+   candidates:Object.freeze(candidates.map(row=>Object.freeze({appUserId:row.id,label:label(row.full_name,row.primary_email)})))});
+ });
+}

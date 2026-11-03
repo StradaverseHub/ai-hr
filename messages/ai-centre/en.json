@@ -1295,7 +1295,10 @@
       "cause": "Root cause recorded.",
       "captured": "Captured and checked now.",
       "switch": "Saved.",
-      "pause": "Saved."
+      "pause": "Saved.",
+      "settings": "Control settings saved.",
+      "granted": "Auditor access given.",
+      "revoked": "Auditor access revoked."
     },
     "filter": {
       "period": "Pay month",
@@ -1346,7 +1349,8 @@
       "pack": "Download",
       "capture": "Capture and check now",
       "packHelp": "The audit pack is a PDF summary with CSV and JSON evidence, each listed with its sha256. Downloading it captures the month first and is itself recorded.",
-      "correctionsMissing": "{count, plural, one {# needs a root cause} other {# need a root cause}}"
+      "correctionsMissing": "{count, plural, one {# needs a root cause} other {# need a root cause}}",
+      "opensNote": "Payslip opens are counted on the web, including PDF downloads. Opens in the mobile app are not counted yet."
     },
     "state": {
       "done": "Done",
@@ -1497,7 +1501,28 @@
         "preparer_closed_run": "Same person processed and closed a run",
         "adjustment_without_reason": "Large manual adjustment without a reason",
         "formula_changed_open_period": "Formula changed while a run was open"
-      }
+      },
+      "findingItem": "{control}: {who} ({state})",
+      "open": "open",
+      "unprintable": "{count} characters could not be drawn in any available font and show as '?'. The CSV and JSON files carry the exact text."
+    },
+    "administration": {
+      "title": "Settings and auditors",
+      "help": "Each change is recorded with who made it, when, and the value before and after.",
+      "bankChangeDays": "Bank change window (days before pay day)",
+      "adjustmentThreshold": "Manual adjustment amount that needs a reason",
+      "save": "Save",
+      "defaults": "Defaults until changed",
+      "version": "Version {version}",
+      "auditorsTitle": "Auditors (read-only)",
+      "none": "No auditor has access.",
+      "loginWithoutRecord": "Login without an employee record ({id})",
+      "grantedOn": "given {date}",
+      "revoke": "Revoke",
+      "login": "Login",
+      "choose": "Choose a login",
+      "grant": "Give access",
+      "auditorsHelp": "An auditor reads this company’s Audit loop evidence and audit pack, read-only, until revoked. Every grant and revocation is recorded."
     }
   }
 }

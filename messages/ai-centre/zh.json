@@ -1295,7 +1295,10 @@
       "cause": "根本原因已记录。",
       "captured": "已立即采集并检查。",
       "switch": "已保存。",
-      "pause": "已保存。"
+      "pause": "已保存。",
+      "settings": "控制设置已保存。",
+      "granted": "已授予审计师访问权限。",
+      "revoked": "已撤销审计师访问权限。"
     },
     "filter": {
       "period": "薪资月份",
@@ -1346,7 +1349,8 @@
       "captures": "{count, plural, =0 {尚未采集} other {# 条采集记录}}",
       "pack": "下载",
       "capture": "立即采集并检查",
-      "packHelp": "审计包包含一份 PDF 摘要以及 CSV 和 JSON 证据，每个文件都列出其 sha256。下载时会先采集当月数据，下载本身也会被记录。"
+      "packHelp": "审计包包含一份 PDF 摘要以及 CSV 和 JSON 证据，每个文件都列出其 sha256。下载时会先采集当月数据，下载本身也会被记录。",
+      "opensNote": "工资单打开次数在网页上统计，包括 PDF 下载。移动应用中的打开暂未统计。"
     },
     "state": {
       "done": "已完成",
@@ -1497,7 +1501,28 @@
         "preparer_closed_run": "同一人处理并关闭了运行",
         "adjustment_without_reason": "无原因的大额手动调整",
         "formula_changed_open_period": "运行未关闭期间更改了公式"
-      }
+      },
+      "findingItem": "{control}：{who}（{state}）",
+      "open": "未处理",
+      "unprintable": "有 {count} 个字符无法用任何可用字体绘制，显示为 '?'。CSV 和 JSON 文件包含准确文本。"
+    },
+    "administration": {
+      "title": "设置和审计师",
+      "help": "每项更改都会记录操作人、时间以及更改前后的值。",
+      "bankChangeDays": "银行资料更改窗口（发薪日前天数）",
+      "adjustmentThreshold": "需要说明原因的手动调整金额",
+      "save": "保存",
+      "defaults": "更改前使用默认值",
+      "version": "版本 {version}",
+      "auditorsTitle": "审计师（只读）",
+      "none": "没有审计师拥有访问权限。",
+      "loginWithoutRecord": "无员工记录的登录账号（{id}）",
+      "grantedOn": "授予于 {date}",
+      "revoke": "撤销",
+      "login": "登录账号",
+      "choose": "请选择登录账号",
+      "grant": "授予访问权限",
+      "auditorsHelp": "审计师以只读方式查看本公司的审计循环证据和审计包，直至被撤销。每次授予和撤销都会被记录。"
     }
   }
 }
