@@ -45,6 +45,7 @@ export type RegisteredAgentActionPolicies={[K in AgentActionId]:AgentActionOf<K>
 
 export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<string,AgentCapabilityClass>>>>=Object.freeze({
  "app/admin/settings/login/password-policy-actions.ts":{"savePasswordPolicyAction":"handoff:access_and_authentication"},
+ "app/admin/settings/login/remembered-mfa-actions.ts":{"saveRememberedMfaAction":"handoff:access_and_authentication"},
  "app/admin/security-center/password-policy/actions.ts":{"saveFullPasswordPolicy":"handoff:access_and_authentication"},
  "app/admin/users/password-unlock-actions.ts":{"unlockPasswordAccountAction":"handoff:access_and_authentication"},
  "app/lifecycle/v9/email-assets/route.ts#route":{"POST":"backlog:confirm"},
