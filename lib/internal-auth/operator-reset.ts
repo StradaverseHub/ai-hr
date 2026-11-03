@@ -34,7 +34,7 @@ async function resolve(tx: AuthSql, organization: string, username: string, lock
   const principals = await tx.unsafe('select app_user_id,tenant_id,person_id,grants from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
   const principal = principals[0];
   if (!principal || principal.tenant_id !== c.tenantId) throw new Error('This sign-in is archived, offboarded or no longer bound to an HR user. Nothing was changed.');
-  return { c, principal: principal as { app_user_id: string; tenant_id: string; person_id: string | null; grants: { role: string; companyId: string | null }[] } };
+  return { c, principal: principal as unknown as { app_user_id: string; tenant_id: string; person_id: string | null; grants: { role: string; companyId: string | null }[] } };
 }
 
 export async function previewSignInReset(db: Sql, input: { organization: string; username: string }): Promise<SignInResetPreview> {
