@@ -4810,6 +4810,13 @@
       "when": 1793330000383,
       "tag": "0983_leave_approval_escalation_write_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 831,
+      "version": "7",
+      "when": 1793330000384,
+      "tag": "0984_claim_own_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

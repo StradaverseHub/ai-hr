@@ -125,7 +125,7 @@ it('registers exact mixed-case native submenu IDs while preserving closed gramma
 it('reports registered actions without a package and leaves the full publisher closed',async()=>{
  const before=await snapshot();
  await expect(publishAllActionCapabilities(owner.client))
-  .rejects.toThrow(/registry coverage differs .*function\.claims\.own\.view/);
+  .rejects.toThrow(/registry coverage differs .*function\.claims\.assigned\.view/);
  expect(await snapshot()).toEqual(before);
 });
 it('publishes Workforce Records and preserves the separate Edit denial',async()=>{

@@ -1,8 +1,9 @@
-/** Actual native ports and raw app-role refusals; no fabricated publication or completion marker. */
+/** Actual native ports, raw app-role refusals, and storage-owner publication. */
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import * as s from '../db/schema';
 import {appendEvent} from '../db/events';
 import {hireEmployee} from '../core/org';
@@ -137,4 +138,29 @@ it('refuses foreign-tenant and wrong-parent native claim references before a raw
  await refusal(raw(typeId,wrongItem),'Claim source reference unavailable');
  expect(await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.employmentId,subject.employmentId))).toEqual([]);
  expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(audits);
+});
+
+it('publishes the own Claims courses and keeps a draft editable under Submit Execute denial',async()=>{
+ const cap='function.claims.own.submit.execute';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'claim_own')).toMatchObject({changed:true,capabilities:10});
+  expect(await publishActionCapabilityPackage(owner.client,'claim_own')).toMatchObject({changed:false});
+  const input={employmentId:subject.employmentId,claimTypeId:typeId,amount:25,incurredOn:todayInKualaLumpur()};
+  const draft=await saveClaimDraft(own,input);
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${own.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  const submit=()=>submitDraftClaims(own,{ids:[draft.id],employmentId:subject.employmentId});
+  await expect(submit()).rejects.toThrow();
+  const [stillDraft]=await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,draft.id));
+  expect(stillDraft).toMatchObject({status:'draft',amount:'25.00'});
+  const [admission]=await withTenant(own,tx=>tx.execute(sql`select
+   app.claim_own_source_allowed(${subject.employmentId}::uuid,'claims.own.drafts','edit') as edit,
+   app.claim_own_source_allowed(${subject.employmentId}::uuid,'claims.own.submit','execute') as submit`));
+  expect(admission).toEqual({edit:true,submit:false});
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await expect(submit()).resolves.toEqual({submitted:1});
+ }finally{
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.claims.own.%'`;
+ }
 });

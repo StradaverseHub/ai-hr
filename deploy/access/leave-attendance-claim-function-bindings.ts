@@ -269,3 +269,18 @@ export const LEAVE_APPROVAL_COMPANY_CAPABILITY_PUBLICATION={
   'app.leave_approval_escalation_write_guard()',
  ],
 } as const;
+
+export const CLAIM_OWN_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='claims.own'||descriptor.key.startsWith('claims.own.')),
+ functionLegacyParityFunction:'app.claim_own_native_allowed',
+ functionCurrentLegacyParityFunction:'app.claim_own_current_native_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.claim_own_bindings_complete()',
+  'app.claim_own_source_allowed(uuid,text,text)',
+  'app.claim_cancel_native(uuid,uuid)',
+  'app.claim_draft_delete_native(uuid,uuid)',
+  'app.claim_own_receipt_native(uuid,text,text,bytea,text)',
+ ],
+} as const;
