@@ -6,6 +6,7 @@
  * Keep this module free of DB imports: the client bell component imports it, so anything that pulls in
  * db/client here would break the RSC boundary at `next build`.
  */
+import { loopActorOf } from './ai-centre/loop-attribution';
 
 /** The area filter vocabulary — the delegation-scope modules (lib/delegation-scope) plus the request
  *  flows that have no delegation scope yet (travel / resignation / profile / probation review). */
@@ -116,7 +117,9 @@ export function shapeApprovalHistoryItems(rows: RawApprovalHistoryRow[]): Approv
     moduleKey: moduleOfAggregate[r.aggregateType] ?? 'leave',
     actionKey: actionKeyOf(r.eventType, r.payload),
     subjectName: r.subjectName,
-    deciderName: r.deciderName,
+    // AI v2 Phase 2 P2-1: a decision an AI Centre loop made names the loop and its sponsor (its stored label), never the
+    // sponsor alone; the event's actor is the tenant's agent principal, which has no person name.
+    deciderName: loopActorOf(r.payload)?.label ?? r.deciderName,
     isAuto: r.isAuto,
     onBehalfOfName: r.onBehalfOfName,
     occurredAt: r.occurredAt.toISOString(),

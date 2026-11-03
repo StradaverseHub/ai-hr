@@ -7,6 +7,8 @@ import { Card, ErrorBanner, PageHeader, SectionHeader, btnGhost, pageWideCls } f
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../operations-tabs';
 import { setLoopPauseAction, setLoopSwitchAction } from '../actions';
+import { loopAutonomyDetail } from '@/core/loops/autonomy-views';
+import { AUTONOMY_NOTICES, LoopActionsCard, LoopAutonomyFigures, LoopGuardsAndOwner, LoopLevelBadges, LoopLevelsCard, LoopSamplesCard } from '@/components/ai-centre/loop-autonomy';
 
 /** AI v2 W8 — one loop's page (approved Phase 2 mock-up Main.dc.html "Loop detail", simplified to the Prepare level):
  * what done means, its four steps, its figures for the last 30 days, a pause per company the viewer administers, its
@@ -14,17 +16,19 @@ import { setLoopPauseAction, setLoopSwitchAction } from '../actions';
  * row-level security (core/loops/views.ts loopDetail); guarded by requireAdmin like every Operations page. */
 const ERRORS = ['invalid', 'refused', 'module', 'failed'] as const;
 const STEPS = ['detect', 'diagnose', 'prepare', 'verify'] as const;
-const LIMITS = ['confirm', 'scope', 'model', 'cap'] as const;
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const str = (facts: LoopCaseView['facts'], key: string) => (typeof facts[key] === 'string' ? (facts[key] as string) : null);
 const count = (facts: LoopCaseView['facts'], key: string) => (Array.isArray(facts[key]) ? (facts[key] as readonly string[]).length : 0);
 
-export default async function LoopPage({ params, searchParams }: { params: Promise<{ loop: string }>; searchParams: Promise<{ error?: string; saved?: string }> }) {
+export default async function LoopPage({ params, searchParams }: { params: Promise<{ loop: string }>; searchParams: Promise<{ error?: string; saved?: string; autonomy?: string }> }) {
   const s = await requireAdmin();
   const [{ loop }, query, t, f] = await Promise.all([params, searchParams, getTranslations('aiCentre.loops'), getFormatter()]);
   let detail: Awaited<ReturnType<typeof loopDetail>>;
   try { detail = await loopDetail(s, loop); } catch (e) { if (e instanceof LoopViewRefused && e.reason === 'not_found') notFound(); throw e; }
   const { row } = detail, id: LoopId = row.id, name = t(`names.${id}`);
+  // AI v2 Phase 2 P2-1: the level per company, the automatic actions and their limits (core/loops/autonomy-views.ts).
+  const autonomy = await loopAutonomyDetail(s, id);
+  const notice = AUTONOMY_NOTICES.find(code => code === query.autonomy) ?? null;
   const error = ERRORS.find(code => code === query.error);
   const when = (date: Date) => f.dateTime(date, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' });
   const day = (iso: string | null) => (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? f.dateTime(new Date(`${iso}T00:00:00Z`), { dateStyle: 'medium', timeZone: 'UTC' }) : '—');
@@ -54,7 +58,7 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
       <OperationsTabs session={s} active="loops" />
       <PageHeader back={{ href: '/control-tower/loops', label: t('back') }} title={name} description={t('doneMeansLine', { done: t(`doneMeans.${id}`) })}
         actions={<div className="flex flex-wrap items-center gap-3">
-          <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium">{t('level.prepare')}</span>
+          {await LoopLevelBadges({ autonomy })}
           <span data-loop-switch={row.on ? 'on' : 'off'} className="text-sm">{row.stopped ? t('stopped') : row.on ? t('on') : t('off')}</span>
           {detail.canSwitch && <form action={setLoopSwitchAction}>
             <input type="hidden" name="loop" value={id} /><input type="hidden" name="from" value="detail" /><input type="hidden" name="enabled" value={String(!row.on)} />
@@ -80,6 +84,11 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
         {tile(t('figures.open'), t('openWaiting', { open: row.openNow, waiting: row.waitingNow }))}
       </div>
       <p className="text-xs text-muted-foreground">{t('figures.noSpend')}</p>
+      {await LoopAutonomyFigures({ autonomy })}
+
+      {await LoopLevelsCard({ autonomy, loop: id, notice })}
+      {await LoopActionsCard({ autonomy, loop: id })}
+      {await LoopSamplesCard({ autonomy, loop: id })}
 
       <Card className="overflow-hidden">
         <SectionHeader title={t('pause.title')} />
@@ -125,18 +134,8 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
         )}
       </Card>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <Card className="p-4">
-          <h2 className="text-sm font-semibold">{t('limits.title')}</h2>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">{LIMITS.map(limit => <li key={limit}>{t(`limits.${limit}`)}</li>)}</ul>
-        </Card>
-        <Card className="p-4">
-          <h2 className="text-sm font-semibold">{t('owner.title')}</h2>
-          <p className="mt-2 text-sm">{t('owner.agent', { name })}</p>
-          <p className="mt-1 text-sm">{row.sponsor ? t('owner.sponsor', { name: row.sponsor.name ?? t('sponsorUnnamed') }) : t('owner.noSponsor')}</p>
-          <p className="mt-2 text-xs text-muted-foreground">{t('owner.note')}</p>
-        </Card>
-      </div>
+      {await LoopGuardsAndOwner({ autonomy, loop: id, name, on: row.on, sponsorName: row.sponsor ? row.sponsor.name ?? t('sponsorUnnamed') : null,
+        sponsorLost: row.lastRun?.status === 'sponsor_lost' })}
 
       <Card className="overflow-hidden">
         <SectionHeader title={t('runs.title')} />

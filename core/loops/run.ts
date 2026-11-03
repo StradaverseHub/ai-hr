@@ -29,6 +29,7 @@ import {workerModule,workerRunGateTx} from '../agent-registry/controls';
 import type {EntitlementSnapshot} from '../entitlement-types';
 import {isModuleEnabled} from '../entitlements';
 import {LOOP_DEFINITIONS} from './definitions';
+import {runLoopAutonomy} from './act';
 import {LoopObservationSchema,unique,type LoopObservation,type TrackedCase} from './detect';
 import {LOOP_IDS,type LoopCheck,type LoopId,type LoopRead} from './types';
 
@@ -124,7 +125,7 @@ export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<Lo
   return recordStatus('failed',[...checks,check('owner_read',def.version,false)],[]);
  }
  // 4 and 5: prepare and record, as the agent principal, one run of this loop at a time.
- return withTenant(agent,async tx=>{
+ const prepared=await withTenant(agent,async tx=>{
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`teras-loop:${options.tenantId}:${workerId}`},0))`);
   const gate=await workerRunGateTx(tx,agent,workerId),now=await controlTx(tx,options.tenantId,workerId);
   if(!gate.run||!now||now.version!==control.version||now.sponsorUserId!==sponsorUserId)
@@ -181,6 +182,11 @@ export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<Lo
    totals.openNow+=c.openNow;totals.waitingNow+=c.waitingNow;totals.capped||=c.capped;}
   return Object.freeze({workerId,status:'ran' as const,runId,companies:live.length,totals:Object.freeze(totals)});
  });
+ // AI v2 Phase 2 P2-1: above Prepare, act within each company's limits, observe, and demote (core/loops/act.ts). A loop
+ // capped at Prepare returns at once; this step never throws and never changes the Prepare result.
+ if(prepared.status==='ran'&&prepared.companies>0)await runLoopAutonomy({workerId,tenantId:options.tenantId,principalId:options.principalId,agent,sponsor,
+  sponsorUserId:sponsor.userId!,runId,today,companies});
+ return prepared;
 }
 
 /** Every loop for one tenant, in registry order. One loop's failure never stops the others. */

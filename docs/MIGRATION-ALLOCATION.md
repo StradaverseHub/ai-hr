@@ -1105,14 +1105,32 @@ teras_loop_run and, here, teras_loop_case): whichever is applied second must lis
 | ---: | ---: | --- | --- |
 |767|1793330000364|0964_teras_payroll_cycle_loops|0a38a5628362ac03b6eb4afe67c3b3d3e632be6e7e9bff6eec9f8a0f828407f3|
 
+
+## AI v2 Phase 2 P2-1 autonomy ladder — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-autonomy-ladder` (cut from `360e7f065` on `claude/aiv2-phase1-final`, journal ending
+`0961_letter_requests` idx766 / when1793330000361) appends `0963_teras_loop_autonomy` as idx767 / when1793330000363, the
+number and `when` the AI v2 coordinator reserved for P2-1 (Phase 2 common rules: 0962 is held for renumbering
+`0952_teras_chats` at release, 0964–0966 for P2-2a, P2-2b and P2-4). A fresh fetch on 3 November 2026 and a scan of every
+origin ref's migration files and journals (1618 refs) and every registered worktree found file claims through 0961 and
+journal `when` values through 1793330000361 on origin, and only the reserved `0966_teras_capacity_baseline` in the P2-4
+worktree; nothing claims 0963 or when1793330000363. Development source only: no installation priority, no deployment; the
+idx is this branch's own journal position and must be re-frozen above the then-installed ledger at integration (after
+0962 if the renumbered chats migration is placed first). Sibling Phase 2 branches cut from the same base may claim the
+same idx; reconcile at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000363|0963_teras_loop_autonomy|d093765e06101882dbb2b17df70fc070363b0939a1aa97e55b9059d35666f655|
+
 ## AI v2 Phase 2 wave 1 integration re-freeze — 3 November 2026 (provisional source claim)
 
 Branch `claude/aiv2-phase2-wave1` (cut from `ec2beecc0` on `claude/aiv2-phase1-final`, journal ending `0961_letter_requests`
-idx766 / when1793330000361) merges P2-4, P2-3, P2-2b and P2-2a, each of which claimed idx767 on its own branch. The journal is
-re-frozen by number: a Phase 2 migration `09NN` takes **idx = 767 + (NN − 63)** and **when = 1793330000300 + NN**. idx767 /
-when1793330000363 is left free for `0963_teras_loop_autonomy` (P2-1, not merged here), so when it arrives it takes idx767 and
-nothing shifts; the journal tests require only a strictly ascending idx and `when`, so the temporary gap at idx767 is allowed
-(the journal already holds 42 such gaps). The four upgrade tests that pin the journal tail (`ai-dev-populated-upgrade`,
+idx766 / when1793330000361) merges P2-4, P2-3, P2-2b and P2-2a, then P2-1, each of which claimed idx767 on its own branch. The journal is re-frozen by
+number: a Phase 2 migration `09NN` takes **idx = 767 + (NN − 63)** and **when = 1793330000300 + NN**. idx767 / when1793330000363
+was first left free for `0963_teras_loop_autonomy` (P2-1 arrived last), so when it was merged it took idx767 and nothing
+shifted; the journal tests require only a strictly ascending idx and `when`, so the interim gap was allowed (the journal holds
+42 older gaps). 0963 is byte-identical to its branch (`e44303b90`). The four upgrade tests that pin the journal tail (`ai-dev-populated-upgrade`,
 `bank-import-point-read-upgrade`, `lifecycle-v9-populated-upgrade`, `payroll-tax-basis-upgrade`) pin these positions.
 
 One unapplied body changed at integration. 0964 runs before 0965 and adds `loop_salary_payroll` to the worker lists of
@@ -1135,7 +1153,7 @@ integration.
 
 | idx (wave 1) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
-|767|1793330000363|*(free for `0963_teras_loop_autonomy`, P2-1)*||
+|767|1793330000363|0963_teras_loop_autonomy|d093765e06101882dbb2b17df70fc070363b0939a1aa97e55b9059d35666f655|
 |768|1793330000364|0964_teras_payroll_cycle_loops|0a38a5628362ac03b6eb4afe67c3b3d3e632be6e7e9bff6eec9f8a0f828407f3|
 |769|1793330000365|0965_payroll_audit_loop|d370a0dba6fb8b04ae6c1686572dd116f300ff440b37cc43c6944c7b4fac8c41|
 |770|1793330000366|0966_teras_capacity_baseline|0b2f62d07b398bc837909c31b27f2dcd5ee30276f5c84937d8d57440a4b5a67c|

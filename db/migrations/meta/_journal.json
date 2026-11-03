@@ -4567,6 +4567,13 @@
       "breakpoints": true
     },
     {
+      "idx": 767,
+      "version": "7",
+      "when": 1793330000363,
+      "tag": "0963_teras_loop_autonomy",
+      "breakpoints": true
+    },
+    {
       "idx": 768,
       "version": "7",
       "when": 1793330000364,

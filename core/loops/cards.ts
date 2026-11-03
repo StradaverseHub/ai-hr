@@ -10,11 +10,13 @@ import {and,eq,inArray} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {company,employment,person} from '../../db/schema';
 import {terasLoopCase,terasLoopPause} from '../../db/teras-schema';
+import {terasLoopLevel} from '../../db/teras-autonomy-schema';
 import {assignedApprovalHref} from '../../lib/assigned-approval-focus';
 import {workerRunGateTx} from '../agent-registry/controls';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {PAYROLL_INPUTS_LEAD_DAYS,daysBetween} from './period';
 import {LOOP_IDS,type LoopFacts,type LoopId} from './types';
+import {readAutonomyCardsTx,type AutonomyCard} from './autonomy-cards';
 
 export type LoopCard=Readonly<
  /** `reviewId`: the probation review the case found, when one is open (Today shows a review already waiting as an
@@ -26,7 +28,9 @@ export type LoopCard=Readonly<
  |{kind:'passports';count:number;first:string;href:string}
  |{kind:'clockOut';caseId:string;date:string;checkIn:string;proposedCheckOut:string;href:string}
  |{kind:'record';caseId:string;gaps:readonly string[];href:string}
- |{kind:'passport';caseId:string;expiresOn:string;href:string}>;
+ |{kind:'passport';caseId:string;expiresOn:string;href:string}>
+ /** AI v2 Phase 2 P2-1: a clock-out the loop set on the viewer's own day (with Undo), and a loop that moved itself down. */
+ |AutonomyCard;
 /** At most this many cards of one kind on one view; the loop's page lists every case. */
 export const LOOP_CARD_LIMIT=5;
 
@@ -57,17 +61,23 @@ export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:read
  if(!ctx.userId||ctx.agent)return [];
  const today=p.today??todayInKualaLumpur();
  return withTenant(ctx,async tx=>{
+  // P2-1: open undo windows and automatic moves down are shown whether or not the loop still runs.
+  const autonomy=await readAutonomyCardsTx(tx,ctx,{scopeIds:p.scopeIds,admin:p.admin});
   const live:LoopId[]=[];
   for(const id of LOOP_IDS)if((await workerRunGateTx(tx,ctx,id)).run)live.push(id);
-  if(!live.length)return [];
+  if(!live.length)return autonomy;
   const paused=new Set((await tx.select({workerId:terasLoopPause.workerId,companyId:terasLoopPause.companyId}).from(terasLoopPause)
    .where(and(eq(terasLoopPause.tenantId,ctx.tenantId),eq(terasLoopPause.paused,true)))).map(row=>`${row.workerId}:${row.companyId}`));
-  const rows=(await tx.select({id:terasLoopCase.id,workerId:terasLoopCase.workerId,companyId:terasLoopCase.companyId,employmentId:terasLoopCase.employmentId,
+  const fetched=(await tx.select({id:terasLoopCase.id,workerId:terasLoopCase.workerId,companyId:terasLoopCase.companyId,employmentId:terasLoopCase.employmentId,
    recipient:terasLoopCase.recipient,facts:terasLoopCase.facts,personId:employment.personId,name:person.fullName,companyName:company.legalName})
    .from(terasLoopCase).leftJoin(employment,eq(employment.id,terasLoopCase.employmentId)).leftJoin(person,eq(person.id,employment.personId))
    .leftJoin(company,eq(company.id,terasLoopCase.companyId))
    .where(and(eq(terasLoopCase.tenantId,ctx.tenantId),eq(terasLoopCase.state,'open'),inArray(terasLoopCase.workerId,live))))
    .filter(row=>!paused.has(`${row.workerId}:${row.companyId}`));
+  // P2-1: a loop at Watch for a company observes and records there, and shows nobody a card.
+  const watching=new Set((await tx.select({workerId:terasLoopLevel.workerId,companyId:terasLoopLevel.companyId}).from(terasLoopLevel)
+   .where(and(eq(terasLoopLevel.tenantId,ctx.tenantId),eq(terasLoopLevel.level,0)))).map(row=>`${row.workerId}:${row.companyId}`));
+  const rows=fetched.filter(row=>!watching.has(`${row.workerId}:${row.companyId}`));
   const scope=new Set(p.scopeIds),own=(row:typeof rows[number])=>row.recipient==='employee'&&!!ctx.personId&&row.personId===ctx.personId;
   const hr=(row:typeof rows[number])=>p.admin&&scope.has(row.companyId)&&!own(row);
   const cards:LoopCard[]=[];
@@ -101,6 +111,6 @@ export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:read
   }),card=>card.cutOff);
   const expiring=rows.filter(row=>hr(row)&&row.workerId==='loop_document_expiry').map(row=>str(row.facts,'expiresOn')).filter(isDate).sort();
   if(expiring.length)cards.push({kind:'passports',count:expiring.length,first:expiring[0],href:LOOP_CARD_HREF.passports()});
-  return Object.freeze(cards);
+  return Object.freeze([...cards,...autonomy]);
  });
 }

@@ -982,6 +982,243 @@
       },
       "letterRequestTitle": "Permohonan {letterType}"
     },
+    "autonomy": {
+      "levels": {
+        "watch": "Pantau",
+        "prepare": "Sediakan",
+        "act": "Bertindak dalam had",
+        "act_audit": "Bertindak dan diaudit"
+      },
+      "levelNumber": "Tahap {n} · {level}",
+      "levelOnly": "Tahap {n}",
+      "summaryNamed": "{level} · {companies}",
+      "summaryCount": "{level} · {count, plural, one {# syarikat} other {# syarikat}}",
+      "companiesTitle": "Tahap di setiap syarikat",
+      "companiesHelp": "Setiap syarikat mempunyai tahapnya sendiri. Gelung naik satu tahap pada satu masa, dengan bukti, dan boleh diturunkan semula pada bila-bila masa.",
+      "capped": "Gaji, status pekerjaan, akses sistem, tindakan tatatertib dan pemfailan berkanun kekal pada tahap Sediakan di setiap syarikat: seseorang sentiasa membuat keputusan.",
+      "stayPrepare": "Gelung ini kekal pada tahap Sediakan di setiap syarikat: seseorang sentiasa membuat keputusan.",
+      "noActor": "Gelung ini boleh naik melebihi Sediakan, tetapi langkah automatiknya belum dibina, jadi ia kekal pada Sediakan buat masa ini.",
+      "noCompanies": "Anda tidak mentadbir mana-mana syarikat di sini.",
+      "changedBy": "Ditetapkan oleh {name} pada {date}",
+      "changedAuto": "Turun dengan sendirinya pada {date}",
+      "anAdministrator": "seorang pentadbir",
+      "limitsLink": "Had dan tahap",
+      "notices": {
+        "undone": "Telah dibuat asal. Hari itu kembali seperti sebelumnya, dan orang itu menerima kad untuk mengesahkan masanya.",
+        "expired": "Tempoh buat asal telah tamat.",
+        "changed": "Tindakan ini telah dibuat asal atau diubah.",
+        "access": "Anda tidak boleh membuat asal tindakan ini.",
+        "ask_hr": "Ini tidak boleh dibuat asal dari sini sekarang.",
+        "unavailable": "Ia tidak dapat dibuat asal. Cuba lagi.",
+        "invalid": "Permintaan itu tidak difahami.",
+        "reviewed": "Semakan sampel direkodkan.",
+        "review_failed": "Semakan tidak dapat direkodkan. Cuba lagi."
+      },
+      "figures": {
+        "applied": "Pembetulan dalam {days} hari",
+        "corrected": "Dibetulkan oleh orang",
+        "undoneByEmployee": "Dibuat asal oleh pekerja",
+        "none": "Belum ada",
+        "appliedRequests": "Permintaan dihantar dalam {days} hari",
+        "withdrawn": "Ditarik balik oleh orang"
+      },
+      "actions": {
+        "title": "Tindakan terkini",
+        "none": "Belum ada tindakan automatik.",
+        "columns": {
+          "when": "Bila",
+          "person": "Orang",
+          "what": "Apa yang berlaku",
+          "status": "Status",
+          "action": "Tindakan"
+        },
+        "set": "Rekod keluar ditetapkan kepada {time} (tamat jadual tugas) untuk {date}",
+        "notSet": "Tidak diubah untuk {date}: {reason}",
+        "reasons": {
+          "condition_site_exit": "tiada rekod keluar tapak yang sepadan dengan tamat jadual tugas",
+          "condition_leave": "cuti yang diluluskan pada hari itu",
+          "condition_day_changed": "hari itu berubah sebelum pembetulan",
+          "condition_sponsor_self": "ia hari penaja sendiri",
+          "owner_refused": "perkhidmatan kehadiran menolaknya",
+          "payroll_closed": "gaji untuk hari itu telah ditutup",
+          "approval_pending": "kelulusan kehadiran memerlukan seseorang",
+          "interrupted": "larian terganggu",
+          "condition_other_clocking": "ada rekod masa lain pada hari itu",
+          "condition_inactive": "pekerjaan telah tamat",
+          "would_create_overtime": "pembetulan itu akan mewujudkan kerja lebih masa",
+          "approval_routed": "kelulusan kehadiran dihantar ke aliran kerja"
+        },
+        "status": {
+          "fixed": "Dibetulkan · boleh dibuat asal hingga {date}",
+          "fixedClosed": "Dibetulkan",
+          "undoneEmployee": "Dibuat asal oleh pekerja",
+          "undoneHr": "Dibuat asal oleh HR",
+          "changed": "Diubah oleh seseorang selepas itu",
+          "applying": "Sedang dijalankan",
+          "toPerson": "Diserahkan kepada orang itu untuk disahkan",
+          "withdrawnEmployee": "Ditarik balik atas permintaan pekerja",
+          "withdrawnHr": "Ditarik balik oleh HR",
+          "sentOpen": "Dihantar · boleh ditarik balik hingga {date}",
+          "sentClosed": "Dihantar"
+        },
+        "undo": "Buat asal",
+        "notSent": "Tidak dihantar: {reason}",
+        "sent": "Permintaan dihantar untuk mengisi {count, plural, one {# butiran} other {# butiran}}",
+        "withdraw": "Tarik balik"
+      },
+      "limits": {
+        "title": "Had yang tidak boleh dilangkaui",
+        "clockIn": "Bertindak hanya apabila rekod masuk dan masa tamat jadual tugas kedua-duanya wujud",
+        "leave": "Tidak menyentuh hari yang mempunyai cuti yang diluluskan",
+        "pay": "Tidak mengubah gaji, kadar atau kerja lebih masa",
+        "perNight": "{company}: paling banyak {count, plural, one {# pembetulan} other {# pembetulan}} semalam, setiap satu boleh dibuat asal selama {days} hari",
+        "demotion": "Kembali ke Sediakan dengan sendirinya jika lebih daripada 1% dibetulkan dalam 7 hari",
+        "noOvertime": "Tidak sekali-kali mewujudkan kerja lebih masa: pembetulan yang menambah kerja lebih masa tidak disimpan",
+        "condition": "{company}: bertindak hanya apabila “{condition}”",
+        "chosenBy": "(dipilih oleh {name} pada {date})",
+        "requestOnly": "Hanya menghantar permintaan; tidak sekali-kali mengubah rekod",
+        "requestActive": "Tidak sekali-kali menghantar permintaan kepada orang yang pekerjaannya telah tamat",
+        "perNightRequests": "{company}: paling banyak {count, plural, one {# permintaan} other {# permintaan}} semalam, setiap satu boleh ditarik balik selama {days} hari",
+        "level3": "Pada tahap Bertindak dan diaudit, HR menyemak sampel mingguan dan bukannya setiap tindakan."
+      },
+      "owner": {
+        "suspended": "Digantung: penajanya tidak lagi mempunyai akses HR.",
+        "note": "Digantung secara automatik jika penaja meninggalkan syarikat atau kehilangan akses HR. Setiap tindakan direkodkan dengan versi peraturannya."
+      },
+      "inSentence": {
+        "loop_probation_ending": "gelung tamat percubaan",
+        "loop_payroll_inputs": "gelung pra-gaji",
+        "loop_missing_employee_data": "gelung data pekerja yang tiada",
+        "loop_missed_clock_outs": "gelung rekod keluar tertinggal",
+        "loop_document_expiry": "gelung pasport",
+        "loop_salary_payroll": "gelung penggajian"
+      },
+      "promote": {
+        "titleTo": {
+          "prepare": "Kembalikan {loop} ke Sediakan di {company}?",
+          "act": "Benarkan {loop} bertindak dalam had di {company}?",
+          "act_audit": "Benarkan {loop} bertindak dan diaudit di {company}?"
+        },
+        "titleAt": "Tahap {loop} di {company}: {level}",
+        "intro": {
+          "prepare": "Pada tahap Pantau ia merekodkan apa yang ditemuinya dan tidak menunjukkan kad kepada sesiapa. Pada tahap Sediakan ia menyediakan setiap kad untuk disahkan oleh orang itu semula.",
+          "act": "Sekarang ia menyediakan setiap pembetulan untuk disahkan oleh pekerja. Pada tahap seterusnya ia membetulkannya sendiri dalam had di bawah, memberitahu setiap orang, dan setiap pembetulan boleh dibuat asal.",
+          "act_audit": "Ia terus membetulkan dalam had di bawah, memberitahu setiap orang, dan setiap pembetulan boleh dibuat asal. Tahap 3 memerlukan 90 hari pada Tahap 2 dan bukti di bawah."
+        },
+        "top": "Ia berada pada tahap tertinggi yang boleh dicapai oleh gelung ini.",
+        "ladder": "Tahap autonomi",
+        "now": "sekarang",
+        "proposed": "dicadangkan",
+        "after90": "selepas 90 hari pada Tahap 2",
+        "notForThisLoop": "Bukan untuk gelung ini",
+        "evidenceTitle": "Bukti ({days} hari lepas, {company})",
+        "columns": {
+          "requirement": "Keperluan",
+          "needed": "Diperlukan",
+          "actual": "Sebenar",
+          "met": "Dipenuhi"
+        },
+        "criteria": {
+          "prepared": "Pembetulan yang disediakan",
+          "changed": "Diubah oleh seseorang",
+          "rule_broken": "Peraturan dilanggar",
+          "days_at_level": "Masa pada tahap ini"
+        },
+        "needed": {
+          "prepared": "{count} atau lebih",
+          "changed": "Kurang daripada {percent}",
+          "rule_broken": "Tiada",
+          "days_at_level": "{count} hari"
+        },
+        "actual": {
+          "changed": "{percent} ({count})",
+          "unknown": "Belum diketahui",
+          "none": "Tiada",
+          "days": "{count, plural, one {# hari} other {# hari}}"
+        },
+        "yes": "Ya",
+        "no": "Tidak",
+        "noCertificate": "Tiada tahap di atas tahap ini untuk dicapai.",
+        "sampleTitle": "Kad terkini dan hasilnya",
+        "sampleNone": "Belum ada kad.",
+        "seeAll": "Lihat kesemua {count} bersama hasilnya",
+        "autoApplied": "Dibetulkan secara automatik",
+        "limitsTitle": "Had pada Tahap {n}",
+        "maxPerNight": "Paling banyak pembetulan semalam",
+        "undoFor": "Pekerja boleh membuat asal selama",
+        "undoDays": "{count} hari",
+        "onlyWhen": "Betulkan hanya apabila",
+        "conditions": {
+          "roster_and_site_exit": "Tamat jadual tugas dan keluar tapak sepadan",
+          "roster_end": "Tamat jadual tugas, tiada cuti diluluskan dan tiada rekod masa lain pada hari itu"
+        },
+        "siteExitNote": "Belum ada rekod keluar tapak di sini, jadi “Tamat jadual tugas dan keluar tapak sepadan” tidak boleh dipenuhi: dengannya gelung tidak akan membetulkan apa-apa dan terus menyediakan kad.",
+        "tell": "Beritahu setiap orang",
+        "tellValue": "Sentiasa (tetap)",
+        "dropBack": "Kembali ke Sediakan apabila",
+        "dropBackValue": "Lebih 1% diubah dalam 7 hari (tetap)",
+        "currentLimits": "Paling banyak {count} semalam, boleh dibuat asal selama {days} hari, hanya apabila: {condition}.",
+        "noLimits": "Pada tahap ini ia tidak mengubah sebarang rekod, jadi tiada had untuk ditetapkan.",
+        "capNote": "Gaji, status pekerjaan, akses sistem dan tindakan tatatertib tidak boleh naik melebihi Sediakan, di mana-mana syarikat. Seseorang sentiasa membuat keputusan tersebut.",
+        "submit": "Naikkan ke Tahap {n} di {company}",
+        "notYet": "Belum lagi",
+        "moveDown": "Turunkan ke {level}",
+        "groupOnly": "Pentadbir kumpulan sahaja. Direkodkan dengan nama anda; anda boleh menurunkannya semula pada bila-bila masa.",
+        "readOnly": "Hanya pentadbir kumpulan boleh mengubah tahap gelung.",
+        "notMet": "Belum semua keperluan dipenuhi, jadi ia tidak boleh dinaikkan.",
+        "saved": {
+          "promoted": "Dinaikkan. Kini ia berada pada {level} di {company}.",
+          "moved_down": "Diturunkan. Kini ia berada pada {level} di {company}.",
+          "limits": "Had disimpan untuk {company}."
+        },
+        "errors": {
+          "invalid": "Perubahan itu tidak difahami.",
+          "refused": "Hanya pentadbir kumpulan boleh mengubah tahap gelung.",
+          "capped": "Gelung ini kekal pada Sediakan di setiap syarikat.",
+          "no_actor": "Langkah automatik gelung ini belum dibina.",
+          "not_next_level": "Gelung naik satu tahap pada satu masa.",
+          "certificate": "Belum semua keperluan dipenuhi, jadi ia tidak dinaikkan.",
+          "changed": "Tahap telah berubah sejak anda membuka halaman ini. Semak semula.",
+          "unchanged": "Ia sudah berada pada tahap itu.",
+          "not_found": "Syarikat atau gelung itu tidak ditemui.",
+          "failed": "Perubahan tidak dapat disimpan. Cuba lagi.",
+          "raise_needs_promotion": "Menaikkan had memerlukan kenaikan tahap.",
+          "not_acting": "Gelung tidak berada di atas Sediakan di syarikat ini."
+        },
+        "rosterEndNote": "Dengan syarat tamat jadual tugas, rekod keluar ditetapkan kepada tamat jadual tugas, pekerja diberitahu dan boleh membuat asal, dan pembetulan tidak sekali-kali mewujudkan kerja lebih masa.",
+        "maxPerNightRequests": "Paling banyak permintaan semalam",
+        "undoForRequests": "HR boleh menarik balik selama",
+        "currentLimitsTitle": "Had sekarang, pada Tahap {n}",
+        "changeLimitsNote": "Tanpa kenaikan tahap, had hanya boleh diperketat: kurang semalam, atau tempoh buat asal yang lebih panjang. Syarat boleh diubah pada bila-bila masa. Setiap perubahan direkodkan dengan nama anda.",
+        "saveLimits": "Simpan had"
+      },
+      "cannotActYet": "Ia belum boleh bertindak: tiada rekod keluar tapak, jadi “tamat jadual tugas dan keluar tapak sepadan” tidak boleh dipenuhi. Ia terus menyediakan kad.",
+      "sample": {
+        "title": "Sampel mingguan untuk disemak",
+        "help": "Pada tahap Bertindak dan diaudit, HR menyemak sampel tindakan setiap minggu (sekurang-kurangnya 10% dan sekurang-kurangnya 5) dan bukannya setiap satu.",
+        "summary": "{size} daripada {total} tindakan dalam minggu {week}",
+        "reviewed": "Disemak oleh {name} pada {date}",
+        "markReviewed": "Tandakan sampel telah disemak",
+        "none": "Belum ada tindakan minggu ini."
+      },
+      "attribution": {
+        "loops": {
+          "loop_probation_ending": "tamat percubaan",
+          "loop_payroll_inputs": "pra-gaji",
+          "loop_missing_employee_data": "data pekerja yang tiada",
+          "loop_missed_clock_outs": "rekod keluar tertinggal",
+          "loop_document_expiry": "pasport",
+          "loop_salary_payroll": "penggajian"
+        },
+        "byLoop": "Gelung AI Centre ({loop}), ditaja oleh {sponsor}",
+        "byLoopForEmployee": "Gelung AI Centre ({loop}), atas permintaan {asker} (pekerja), ditaja oleh {sponsor}",
+        "byLoopForHr": "Gelung AI Centre ({loop}), atas permintaan {asker} (HR), ditaja oleh {sponsor}",
+        "sponsorUnnamed": "penajanya",
+        "byLoopForEmployeeUnnamed": "Gelung AI Centre ({loop}), atas permintaan pekerja, ditaja oleh {sponsor}",
+        "byLoopForHrUnnamed": "Gelung AI Centre ({loop}), atas permintaan HR, ditaja oleh {sponsor}",
+        "madeBy": "Dibuat dan diluluskan oleh {actor}."
+      }
+    },
     "payrollCycle": {
       "title": "Kitaran gaji: {month}",
       "description": "Tiga gelung membawa gaji setiap syarikat daripada input hingga audit.",
@@ -1405,6 +1642,43 @@
       "nothingComingUp": "Tiada apa-apa dalam dua minggu akan datang.",
       "managerAwayRangeUnnamed": "Pengurus anda tiada di pejabat {start} – {end}.",
       "managerAwayDayUnnamed": "Pengurus anda tiada di pejabat pada {date}."
+    },
+    "autonomy": {
+      "undo": "Buat asal",
+      "undoing": "Sedang dibuat asal…",
+      "undone": "Telah dibuat asal. Hari anda kembali seperti sebelumnya; sahkan rekod keluar anda pada kadnya.",
+      "actionsLabel": "Buat asal pembetulan",
+      "refused": {
+        "unavailable": "Ia tidak dapat dibuat asal. Cuba lagi.",
+        "expired": "Tempoh buat asal telah tamat. Minta HR mengubahnya.",
+        "changed": "Ia telah berubah. Buka hari kehadiran anda untuk menyemaknya.",
+        "access": "Anda tidak boleh membuat asal ini.",
+        "ask_hr": "Ia tidak boleh dibuat asal dari sini sekarang. Minta HR membuat asal."
+      },
+      "autoFixedTitle": "Rekod keluar ditetapkan kepada {time} untuk {date}",
+      "autoFixedRoster": "Tamat jadual tugas anda",
+      "autoFixedSource": "Dilakukan oleh AI Centre: {loop}",
+      "autoFixedUntil": "Anda boleh membuat asal hingga {date}",
+      "autoFixedNote": "Jika anda keluar pada masa lain, buat asal dan sahkan masa yang betul.",
+      "movedDownTitle": "{loop} turun ke Sediakan di {company}",
+      "movedDownTitleUnnamed": "{loop} turun ke Sediakan",
+      "movedDownShare": "{corrected} daripada {applied} pembetulan dibetulkan oleh orang dalam 7 hari",
+      "correctionUndone": "{name} · {date} · dibuat asal oleh {by}",
+      "correctionChanged": "{name} · {date} · diubah selepas itu",
+      "byEmployee": "pekerja",
+      "byHr": "HR",
+      "someone": "Seseorang",
+      "correctionMore": "dan {count} lagi",
+      "movedDownNote": "Ia menyediakan kad semula sehingga pentadbir kumpulan menaikkannya.",
+      "movedDownCta": "Buka gelung",
+      "actedTitle": "{loop} membuat {count, plural, one {# perubahan} other {# perubahan}} di {company} dalam sehari lepas",
+      "actedNote": "Pada tahap Bertindak dalam had, setiap tindakan dipaparkan di sini. Buka gelung untuk membuat asal.",
+      "sampleTitle": "Sampel mingguan untuk disemak: {loop} di {company}",
+      "sampleMeta": "{size} daripada {total} tindakan minggu ini",
+      "sampleNote": "Pada tahap Bertindak dan diaudit, HR menyemak sampel ini dan bukannya setiap tindakan.",
+      "sampleCta": "Semak sampel",
+      "leftAloneTitle": "{loop} meninggalkan {count, plural, one {# perkara} other {# perkara}} untuk orang di {company}",
+      "leftAloneNote": "Satu syarat tidak dipenuhi, jadi orang itu mengesahkannya sendiri."
     }
   },
   "why": {

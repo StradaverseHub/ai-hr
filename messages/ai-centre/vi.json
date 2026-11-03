@@ -982,6 +982,243 @@
       },
       "letterRequestTitle": "Yêu cầu {letterType}"
     },
+    "autonomy": {
+      "levels": {
+        "watch": "Theo dõi",
+        "prepare": "Chuẩn bị",
+        "act": "Thực hiện trong giới hạn",
+        "act_audit": "Thực hiện và kiểm tra"
+      },
+      "levelNumber": "Cấp {n} · {level}",
+      "levelOnly": "Cấp {n}",
+      "summaryNamed": "{level} · {companies}",
+      "summaryCount": "{level} · {count, plural, other {# công ty}}",
+      "companiesTitle": "Cấp ở từng công ty",
+      "companiesHelp": "Mỗi công ty có cấp riêng. Vòng lặp chỉ lên một cấp mỗi lần, có bằng chứng, và có thể được hạ xuống bất cứ lúc nào.",
+      "capped": "Lương, tình trạng việc làm, quyền truy cập hệ thống, kỷ luật và nộp hồ sơ theo luật định luôn ở cấp Chuẩn bị tại mọi công ty: luôn có một người quyết định.",
+      "stayPrepare": "Vòng lặp này luôn ở cấp Chuẩn bị tại mọi công ty: luôn có một người quyết định.",
+      "noActor": "Vòng lặp này có thể lên trên cấp Chuẩn bị, nhưng bước tự động của nó chưa được xây dựng, nên hiện vẫn ở cấp Chuẩn bị.",
+      "noCompanies": "Bạn không quản trị công ty nào ở đây.",
+      "changedBy": "Do {name} đặt vào {date}",
+      "changedAuto": "Tự hạ cấp vào {date}",
+      "anAdministrator": "một quản trị viên",
+      "limitsLink": "Giới hạn và cấp",
+      "notices": {
+        "undone": "Đã hoàn tác. Ngày đó đã trở lại như trước, và người đó nhận được một thẻ để xác nhận giờ của mình.",
+        "expired": "Thời hạn hoàn tác đã hết.",
+        "changed": "Hành động này đã được hoàn tác hoặc thay đổi.",
+        "access": "Bạn không thể hoàn tác hành động này.",
+        "ask_hr": "Hiện không thể hoàn tác từ đây.",
+        "unavailable": "Không thể hoàn tác. Hãy thử lại.",
+        "invalid": "Không hiểu yêu cầu đó.",
+        "reviewed": "Đã ghi nhận việc xem xét mẫu.",
+        "review_failed": "Không thể ghi nhận việc xem xét. Hãy thử lại."
+      },
+      "figures": {
+        "applied": "Số lần sửa trong {days} ngày",
+        "corrected": "Được người sửa lại",
+        "undoneByEmployee": "Bị nhân viên hoàn tác",
+        "none": "Chưa có",
+        "appliedRequests": "Số yêu cầu đã gửi trong {days} ngày",
+        "withdrawn": "Bị người rút lại"
+      },
+      "actions": {
+        "title": "Hành động gần đây",
+        "none": "Chưa có hành động tự động nào.",
+        "columns": {
+          "when": "Khi nào",
+          "person": "Người",
+          "what": "Điều gì đã xảy ra",
+          "status": "Trạng thái",
+          "action": "Hành động"
+        },
+        "set": "Giờ ra được đặt thành {time} (kết thúc ca) cho {date}",
+        "notSet": "Không thay đổi cho {date}: {reason}",
+        "reasons": {
+          "condition_site_exit": "không có giờ rời địa điểm nào khớp với giờ kết thúc ca",
+          "condition_leave": "có nghỉ phép đã được duyệt vào ngày đó",
+          "condition_day_changed": "ngày đó đã thay đổi trước khi sửa",
+          "condition_sponsor_self": "đó là ngày của chính người bảo trợ",
+          "owner_refused": "dịch vụ chấm công đã từ chối",
+          "payroll_closed": "bảng lương cho ngày đó đã đóng",
+          "approval_pending": "việc duyệt chấm công cần một người",
+          "interrupted": "lần chạy bị gián đoạn",
+          "condition_other_clocking": "có lần chấm công khác trong ngày",
+          "condition_inactive": "việc làm đã kết thúc",
+          "would_create_overtime": "lần sửa sẽ tạo ra giờ làm thêm",
+          "approval_routed": "việc duyệt chấm công đi theo quy trình phê duyệt"
+        },
+        "status": {
+          "fixed": "Đã sửa · có thể hoàn tác đến {date}",
+          "fixedClosed": "Đã sửa",
+          "undoneEmployee": "Bị nhân viên hoàn tác",
+          "undoneHr": "Bị HR hoàn tác",
+          "changed": "Được một người thay đổi sau đó",
+          "applying": "Đang thực hiện",
+          "toPerson": "Để người đó xác nhận",
+          "withdrawnEmployee": "Rút lại theo yêu cầu của nhân viên",
+          "withdrawnHr": "Bị HR rút lại",
+          "sentOpen": "Đã gửi · có thể rút lại đến {date}",
+          "sentClosed": "Đã gửi"
+        },
+        "undo": "Hoàn tác",
+        "notSent": "Không gửi: {reason}",
+        "sent": "Đã gửi yêu cầu điền {count, plural, other {# thông tin}}",
+        "withdraw": "Rút lại"
+      },
+      "limits": {
+        "title": "Những giới hạn không bao giờ được vượt qua",
+        "clockIn": "Chỉ thực hiện khi có cả giờ vào và giờ kết thúc ca",
+        "leave": "Không bao giờ động đến ngày có nghỉ phép đã được duyệt",
+        "pay": "Không bao giờ thay đổi lương, mức lương hay làm thêm giờ",
+        "perNight": "{company}: tối đa {count, plural, other {# lần sửa}} mỗi đêm, mỗi lần có thể hoàn tác trong {days} ngày",
+        "demotion": "Tự trở về cấp Chuẩn bị nếu hơn 1% bị sửa lại trong 7 ngày",
+        "noOvertime": "Không bao giờ tạo ra giờ làm thêm: lần sửa làm tăng giờ làm thêm sẽ không được giữ lại",
+        "condition": "{company}: chỉ thực hiện khi “{condition}”",
+        "chosenBy": "(do {name} chọn vào {date})",
+        "requestOnly": "Chỉ gửi yêu cầu; không bao giờ thay đổi hồ sơ",
+        "requestActive": "Không bao giờ gửi yêu cầu cho người đã nghỉ việc",
+        "perNightRequests": "{company}: tối đa {count, plural, other {# yêu cầu}} mỗi đêm, mỗi yêu cầu có thể rút lại trong {days} ngày",
+        "level3": "Ở cấp Thực hiện và kiểm tra, HR xem xét mẫu hằng tuần thay vì từng hành động."
+      },
+      "owner": {
+        "suspended": "Đã tạm ngưng: người bảo trợ không còn quyền truy cập HR.",
+        "note": "Tự động tạm ngưng nếu người bảo trợ nghỉ việc hoặc mất quyền truy cập HR. Mọi hành động đều được ghi lại cùng phiên bản quy tắc."
+      },
+      "inSentence": {
+        "loop_probation_ending": "vòng lặp kết thúc thử việc",
+        "loop_payroll_inputs": "vòng lặp trước kỳ lương",
+        "loop_missing_employee_data": "vòng lặp dữ liệu nhân viên còn thiếu",
+        "loop_missed_clock_outs": "vòng lặp quên chấm công ra",
+        "loop_document_expiry": "vòng lặp hộ chiếu",
+        "loop_salary_payroll": "vòng lặp chạy lương"
+      },
+      "promote": {
+        "titleTo": {
+          "prepare": "Đưa {loop} trở lại cấp Chuẩn bị tại {company}?",
+          "act": "Cho phép {loop} thực hiện trong giới hạn tại {company}?",
+          "act_audit": "Cho phép {loop} thực hiện và kiểm tra tại {company}?"
+        },
+        "titleAt": "Cấp của {loop} tại {company}: {level}",
+        "intro": {
+          "prepare": "Ở cấp Theo dõi, nó ghi lại những gì tìm thấy và không hiển thị thẻ cho ai. Ở cấp Chuẩn bị, nó lại chuẩn bị từng thẻ để người đó xác nhận.",
+          "act": "Hiện nó chuẩn bị từng lần sửa để nhân viên xác nhận. Ở cấp tiếp theo, nó tự sửa trong các giới hạn bên dưới, thông báo cho từng người, và mọi lần sửa đều có thể hoàn tác.",
+          "act_audit": "Nó tiếp tục sửa trong các giới hạn bên dưới, thông báo cho từng người, và mọi lần sửa đều có thể hoàn tác. Cấp 3 cần 90 ngày ở Cấp 2 và bằng chứng bên dưới."
+        },
+        "top": "Nó đang ở cấp cao nhất mà vòng lặp này có thể đạt.",
+        "ladder": "Các cấp tự chủ",
+        "now": "hiện tại",
+        "proposed": "đề xuất",
+        "after90": "sau 90 ngày ở Cấp 2",
+        "notForThisLoop": "Không dành cho vòng lặp này",
+        "evidenceTitle": "Bằng chứng ({days} ngày qua, {company})",
+        "columns": {
+          "requirement": "Yêu cầu",
+          "needed": "Cần",
+          "actual": "Thực tế",
+          "met": "Đạt"
+        },
+        "criteria": {
+          "prepared": "Số lần sửa đã chuẩn bị",
+          "changed": "Được một người thay đổi",
+          "rule_broken": "Vi phạm quy tắc",
+          "days_at_level": "Thời gian ở cấp này"
+        },
+        "needed": {
+          "prepared": "{count} trở lên",
+          "changed": "Dưới {percent}",
+          "rule_broken": "Không có",
+          "days_at_level": "{count} ngày"
+        },
+        "actual": {
+          "changed": "{percent} ({count})",
+          "unknown": "Chưa biết",
+          "none": "Không có",
+          "days": "{count, plural, other {# ngày}}"
+        },
+        "yes": "Có",
+        "no": "Không",
+        "noCertificate": "Không có cấp nào cao hơn cấp này để đạt được.",
+        "sampleTitle": "Các thẻ gần đây và kết quả",
+        "sampleNone": "Chưa có thẻ nào.",
+        "seeAll": "Xem tất cả {count} cùng kết quả",
+        "autoApplied": "Đã tự động sửa",
+        "limitsTitle": "Giới hạn ở Cấp {n}",
+        "maxPerNight": "Số lần sửa tối đa mỗi đêm",
+        "undoFor": "Nhân viên có thể hoàn tác trong",
+        "undoDays": "{count} ngày",
+        "onlyWhen": "Chỉ sửa khi",
+        "conditions": {
+          "roster_and_site_exit": "Giờ kết thúc ca và giờ rời địa điểm khớp nhau",
+          "roster_end": "Có giờ kết thúc ca, không có nghỉ phép đã duyệt và không có lần chấm công khác trong ngày"
+        },
+        "siteExitNote": "Ở đây chưa ghi nhận giờ rời địa điểm, nên “Giờ kết thúc ca và giờ rời địa điểm khớp nhau” không thể đạt: với điều kiện này vòng lặp sẽ không sửa gì và tiếp tục chuẩn bị thẻ.",
+        "tell": "Thông báo cho từng người",
+        "tellValue": "Luôn luôn (cố định)",
+        "dropBack": "Trở về cấp Chuẩn bị khi",
+        "dropBackValue": "Hơn 1% bị thay đổi trong 7 ngày (cố định)",
+        "currentLimits": "Tối đa {count} mỗi đêm, hoàn tác trong {days} ngày, chỉ khi: {condition}.",
+        "noLimits": "Ở cấp này nó không thay đổi hồ sơ nào, nên không có giới hạn cần đặt.",
+        "capNote": "Lương, tình trạng việc làm, quyền truy cập hệ thống và kỷ luật không bao giờ được lên trên cấp Chuẩn bị, ở bất kỳ công ty nào. Những việc đó luôn do một người quyết định.",
+        "submit": "Nâng lên Cấp {n} tại {company}",
+        "notYet": "Chưa",
+        "moveDown": "Hạ xuống {level}",
+        "groupOnly": "Chỉ quản trị viên tập đoàn. Được ghi lại với tên của bạn; bạn có thể hạ xuống bất cứ lúc nào.",
+        "readOnly": "Chỉ quản trị viên tập đoàn mới có thể thay đổi cấp của vòng lặp.",
+        "notMet": "Chưa đạt mọi yêu cầu, nên chưa thể nâng cấp.",
+        "saved": {
+          "promoted": "Đã nâng cấp. Hiện nó ở cấp {level} tại {company}.",
+          "moved_down": "Đã hạ cấp. Hiện nó ở cấp {level} tại {company}.",
+          "limits": "Đã lưu giới hạn cho {company}."
+        },
+        "errors": {
+          "invalid": "Không hiểu thay đổi đó.",
+          "refused": "Chỉ quản trị viên tập đoàn mới có thể thay đổi cấp của vòng lặp.",
+          "capped": "Vòng lặp này luôn ở cấp Chuẩn bị tại mọi công ty.",
+          "no_actor": "Bước tự động của vòng lặp này chưa được xây dựng.",
+          "not_next_level": "Vòng lặp chỉ lên một cấp mỗi lần.",
+          "certificate": "Chưa đạt mọi yêu cầu, nên không được nâng cấp.",
+          "changed": "Cấp đã thay đổi kể từ khi bạn mở trang này. Hãy kiểm tra lại.",
+          "unchanged": "Nó đã ở cấp đó.",
+          "not_found": "Không tìm thấy công ty hoặc vòng lặp đó.",
+          "failed": "Không thể lưu thay đổi. Hãy thử lại.",
+          "raise_needs_promotion": "Nâng giới hạn cần nâng cấp.",
+          "not_acting": "Vòng lặp không ở trên cấp Chuẩn bị tại công ty này."
+        },
+        "rosterEndNote": "Với điều kiện giờ kết thúc ca, giờ ra được đặt thành giờ kết thúc ca, nhân viên được thông báo và có thể hoàn tác, và lần sửa không bao giờ tạo ra giờ làm thêm.",
+        "maxPerNightRequests": "Số yêu cầu tối đa mỗi đêm",
+        "undoForRequests": "HR có thể rút lại trong",
+        "currentLimitsTitle": "Giới hạn hiện tại, ở Cấp {n}",
+        "changeLimitsNote": "Không qua nâng cấp, giới hạn chỉ có thể chặt hơn: ít hơn mỗi đêm hoặc thời hạn hoàn tác dài hơn. Điều kiện có thể thay đổi bất cứ lúc nào. Mọi thay đổi đều được ghi lại với tên của bạn.",
+        "saveLimits": "Lưu giới hạn"
+      },
+      "cannotActYet": "Nó chưa thể thực hiện: chưa ghi nhận giờ rời địa điểm, nên “giờ kết thúc ca và giờ rời địa điểm khớp nhau” không thể đạt. Nó tiếp tục chuẩn bị thẻ.",
+      "sample": {
+        "title": "Mẫu hằng tuần cần xem xét",
+        "help": "Ở cấp Thực hiện và kiểm tra, HR xem xét một mẫu hành động mỗi tuần (ít nhất 10% và ít nhất 5) thay vì từng hành động.",
+        "summary": "{size} trên {total} hành động trong tuần {week}",
+        "reviewed": "Đã được {name} xem xét vào {date}",
+        "markReviewed": "Đánh dấu đã xem xét mẫu",
+        "none": "Chưa có hành động nào trong tuần này."
+      },
+      "attribution": {
+        "loops": {
+          "loop_probation_ending": "kết thúc thử việc",
+          "loop_payroll_inputs": "trước kỳ lương",
+          "loop_missing_employee_data": "dữ liệu nhân viên còn thiếu",
+          "loop_missed_clock_outs": "quên chấm công ra",
+          "loop_document_expiry": "hộ chiếu",
+          "loop_salary_payroll": "chạy lương"
+        },
+        "byLoop": "Vòng lặp AI Centre ({loop}), người bảo trợ: {sponsor}",
+        "byLoopForEmployee": "Vòng lặp AI Centre ({loop}), theo yêu cầu của {asker} (nhân viên), người bảo trợ: {sponsor}",
+        "byLoopForHr": "Vòng lặp AI Centre ({loop}), theo yêu cầu của {asker} (HR), người bảo trợ: {sponsor}",
+        "sponsorUnnamed": "người bảo trợ",
+        "byLoopForEmployeeUnnamed": "Vòng lặp AI Centre ({loop}), theo yêu cầu của nhân viên, người bảo trợ: {sponsor}",
+        "byLoopForHrUnnamed": "Vòng lặp AI Centre ({loop}), theo yêu cầu của HR, người bảo trợ: {sponsor}",
+        "madeBy": "Được tạo và duyệt bởi {actor}."
+      }
+    },
     "payrollCycle": {
       "title": "Chu kỳ lương: {month}",
       "description": "Ba vòng lặp đưa bảng lương của mỗi công ty từ dữ liệu đầu vào đến kiểm toán.",
@@ -1405,6 +1642,43 @@
       "nothingComingUp": "Không có gì trong hai tuần tới.",
       "managerAwayRangeUnnamed": "Quản lý của bạn vắng mặt {start} – {end}.",
       "managerAwayDayUnnamed": "Quản lý của bạn vắng mặt vào {date}."
+    },
+    "autonomy": {
+      "undo": "Hoàn tác",
+      "undoing": "Đang hoàn tác…",
+      "undone": "Đã hoàn tác. Ngày của bạn đã trở lại như trước; hãy xác nhận giờ ra trên thẻ của nó.",
+      "actionsLabel": "Hoàn tác lần sửa",
+      "refused": {
+        "unavailable": "Không thể hoàn tác. Hãy thử lại.",
+        "expired": "Thời hạn hoàn tác đã hết. Hãy nhờ HR thay đổi.",
+        "changed": "Nó đã thay đổi. Hãy mở ngày chấm công của bạn để kiểm tra.",
+        "access": "Bạn không thể hoàn tác mục này.",
+        "ask_hr": "Hiện không thể hoàn tác từ đây. Hãy nhờ HR hoàn tác."
+      },
+      "autoFixedTitle": "Giờ ra được đặt thành {time} cho {date}",
+      "autoFixedRoster": "Giờ kết thúc ca của bạn",
+      "autoFixedSource": "Do AI Centre thực hiện: {loop}",
+      "autoFixedUntil": "Bạn có thể hoàn tác đến {date}",
+      "autoFixedNote": "Nếu bạn rời đi vào giờ khác, hãy hoàn tác và xác nhận giờ đúng.",
+      "movedDownTitle": "{loop} đã trở về cấp Chuẩn bị tại {company}",
+      "movedDownTitleUnnamed": "{loop} đã trở về cấp Chuẩn bị",
+      "movedDownShare": "{corrected} trên {applied} lần sửa được người sửa lại trong 7 ngày",
+      "correctionUndone": "{name} · {date} · bị {by} hoàn tác",
+      "correctionChanged": "{name} · {date} · được thay đổi sau đó",
+      "byEmployee": "nhân viên",
+      "byHr": "HR",
+      "someone": "Một người",
+      "correctionMore": "và {count} mục khác",
+      "movedDownNote": "Nó lại chuẩn bị thẻ cho đến khi quản trị viên tập đoàn nâng cấp nó.",
+      "movedDownCta": "Mở vòng lặp",
+      "actedTitle": "{loop} đã thực hiện {count, plural, other {# thay đổi}} tại {company} trong ngày qua",
+      "actedNote": "Ở cấp Thực hiện trong giới hạn, mọi hành động đều hiển thị ở đây. Mở vòng lặp để hoàn tác.",
+      "sampleTitle": "Mẫu hằng tuần cần xem xét: {loop} tại {company}",
+      "sampleMeta": "{size} trên {total} hành động tuần này",
+      "sampleNote": "Ở cấp Thực hiện và kiểm tra, HR xem xét mẫu này thay vì từng hành động.",
+      "sampleCta": "Xem xét mẫu",
+      "leftAloneTitle": "{loop} để lại {count, plural, other {# mục}} cho mọi người tại {company}",
+      "leftAloneNote": "Một điều kiện không đạt, nên người đó tự xác nhận."
     }
   },
   "why": {

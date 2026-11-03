@@ -73,6 +73,8 @@ const clockOut=vi.hoisted(()=>({posts:[] as unknown[],result:{kind:'submitted'} 
 vi.mock('@/app/assistant/loop-clock-out-actions',()=>({confirmMissedClockOutAction:async(input:unknown)=>{clockOut.posts.push(input);return clockOut.result;}}));
 // AI v2 Phase 2 P2-3: the Before payroll card has its own DOM test (test/before-payroll.dom.test.tsx); here it reads nothing.
 vi.mock('@/core/pre-salary/person-items',()=>({readMyPayrollReadiness:async()=>null}));
+// AI v2 Phase 2 P2-1: the Undo on a clock-out the loop set (covered by test/teras-loop-autonomy-pages.dom.test.tsx).
+vi.mock('@/app/assistant/loop-undo-actions',()=>({undoOwnLoopAction:async()=>({kind:'refused',reason:'unavailable'})}));
 vi.mock('@/core/loops/cards',()=>({readLoopCards:async(_s:unknown,p:unknown)=>{S.calls.loops.push(p);if(S.loopsFail)throw Error('Fixture loop outage');return S.loops;}}));
 vi.mock('@/core/employee-home-time-off',()=>({readEmployeeHomeTimeOff:async(_s:unknown,employmentId?:string)=>{S.calls.timeOff.push(employmentId);if(S.timeOffError)throw S.timeOffError;return S.timeOff;}}));
 vi.mock('@/core/employee-home',()=>({HomeAccessError:fx.FixtureHomeAccessError,
