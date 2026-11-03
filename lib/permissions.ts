@@ -1196,6 +1196,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/control-tower/loops/[loop]',
       // AI v2 P2-2b — the payroll Audit loop's own page, same requireAdmin guard; a static segment beside [loop].
       '/control-tower/loops/loop_payroll_audit',
+      // AI v2 P2-2a — the Payroll cycle view, its Salary payroll page and its settings; AI v2 P2-1 — a loop's promote
+      // page. Same requireAdmin guard as their siblings (wave 1 integration: their branches did not add the columns).
+      // Changing a loop's level is a group administrator's (core/loops/levels.ts, migration 0963 policies).
+      '/control-tower/loops/payroll-cycle',
+      '/control-tower/loops/payroll-cycle/salary',
+      '/control-tower/loops/payroll-cycle/settings',
+      '/control-tower/loops/[loop]/promote',
       '/payroll/configuration',
       // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
       // each a real sub-route under the same scopedAdmin guard as the index.

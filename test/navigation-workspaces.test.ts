@@ -51,7 +51,9 @@ describe('Ops and Strata placement never grants authority',()=>{
   // AI v2 P2-2a: the Payroll cycle view, its Salary payroll page and its settings.
   '/control-tower/loops/payroll-cycle','/control-tower/loops/payroll-cycle/salary','/control-tower/loops/payroll-cycle/settings',
   // AI v2 P2-2b: the payroll Audit loop's page.
-  '/control-tower/loops/loop_payroll_audit'];
+  '/control-tower/loops/loop_payroll_audit',
+  // AI v2 P2-1: a loop's promote page (wave 1 integration).
+  '/control-tower/loops/[loop]/promote'];
  it.each(CONTROL_TOWER_PAGES)('places %s under AI Centre (shared), owned by the AI Centre row',path=>{
   expect(navigationPlacement(path)).toEqual({area:'shared'});
   const links=[{href:'/'},{href:'/me'},{href:'/assistant',ownedSubpaths:['/control-tower']},{href:'/approvals'},{href:'/admin/personnel'}];
