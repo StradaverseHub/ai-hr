@@ -168,6 +168,7 @@
         "payroll": "{count, plural, one {# input} other {# inputs}} missing before the {date} cut-off",
         "record": "{count, plural, one {# detail} other {# details}} to fill in",
         "clockOut": "Clock-out at {time} proposed for {date}",
+        "clockOutManual": "No clock-out on {date}: needs a manual correction by HR",
         "passport": "Passport expires {date}"
       },
       "caseState": {
@@ -178,7 +179,8 @@
         "completed": "Done",
         "inactive": "Employment ended",
         "superseded": "No longer applies",
-        "expired": "The moment passed"
+        "expired": "The moment passed",
+        "out_of_scope": "Retired: out of scope"
       },
       "limits": {
         "title": "Limits it never crosses",
@@ -1229,7 +1231,8 @@
       "not_employed": "The employee was not employed on that date",
       "period_closed": "That period can no longer be changed",
       "needs_page": "This needs a decision on the import page",
-      "other": "The import page explains this row"
+      "other": "The import page explains this row",
+      "other_company": "Belongs to another company, not imported"
     },
     "confirm": "{count, plural, one {Confirm # row} other {Confirm # rows}}",
     "confirming": "Importing…",
@@ -1238,6 +1241,7 @@
     "actionsLabel": "Import actions",
     "done": "{count, plural, one {# row imported.} other {# rows imported.}}",
     "doneLeftOut": "{count, plural, one {# row was not imported.} other {# rows were not imported.}}",
+    "otherCompany": "{count, plural, one {# row belongs to another company, not imported.} other {# rows belong to another company, not imported.}}",
     "replayed": "This import was already confirmed.",
     "history": "Open the import record",
     "historyRevert": "Open the import history, where you can revert it",

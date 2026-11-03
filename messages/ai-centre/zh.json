@@ -168,6 +168,7 @@
         "payroll": "{date} 截止日前缺少 {count, plural, other {# 项输入}}",
         "record": "需要填写 {count, plural, other {# 项资料}}",
         "clockOut": "建议 {date} 的下班打卡时间为 {time}",
+        "clockOutManual": "{date} 没有下班打卡：需要 HR 手动更正",
         "passport": "护照于 {date} 到期"
       },
       "caseState": {
@@ -178,7 +179,8 @@
         "completed": "已完成",
         "inactive": "雇佣已结束",
         "superseded": "不再适用",
-        "expired": "时机已过"
+        "expired": "时机已过",
+        "out_of_scope": "已撤下：超出范围"
       },
       "limits": {
         "title": "它绝不越过的界限",
@@ -1229,7 +1231,8 @@
       "not_employed": "该员工在那天未在职",
       "period_closed": "该期间已无法更改",
       "needs_page": "需要在导入页面作出决定",
-      "other": "导入页面会说明这一行"
+      "other": "导入页面会说明这一行",
+      "other_company": "属于另一家公司，不导入"
     },
     "confirm": "{count, plural, other {确认 # 行}}",
     "confirming": "正在导入…",
@@ -1238,6 +1241,7 @@
     "actionsLabel": "导入操作",
     "done": "{count, plural, other {已导入 # 行。}}",
     "doneLeftOut": "{count, plural, other {# 行未导入。}}",
+    "otherCompany": "{count, plural, other {# 行属于另一家公司，不导入。}}",
     "replayed": "此导入已经确认过。",
     "history": "打开导入记录",
     "historyRevert": "打开导入历史，可在那里撤销",

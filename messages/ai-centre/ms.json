@@ -168,6 +168,7 @@
         "payroll": "{count, plural, other {# input}} tiada sebelum tarikh tutup {date}",
         "record": "{count, plural, other {# butiran}} perlu diisi",
         "clockOut": "Rekod keluar pada {time} dicadangkan untuk {date}",
+        "clockOutManual": "Tiada rekod keluar pada {date}: perlu pembetulan manual oleh HR",
         "passport": "Pasport tamat tempoh {date}"
       },
       "caseState": {
@@ -178,7 +179,8 @@
         "completed": "Selesai",
         "inactive": "Pekerjaan telah tamat",
         "superseded": "Tidak lagi berkenaan",
-        "expired": "Masanya telah berlalu"
+        "expired": "Masanya telah berlalu",
+        "out_of_scope": "Ditamatkan: di luar skop"
       },
       "limits": {
         "title": "Had yang tidak pernah dilangkaui",
@@ -1229,7 +1231,8 @@
       "not_employed": "Pekerja tidak bekerja pada tarikh itu",
       "period_closed": "Tempoh itu tidak boleh diubah lagi",
       "needs_page": "Perkara ini perlu diputuskan di halaman import",
-      "other": "Halaman import menerangkan baris ini"
+      "other": "Halaman import menerangkan baris ini",
+      "other_company": "Milik syarikat lain, tidak diimport"
     },
     "confirm": "{count, plural, other {Sahkan # baris}}",
     "confirming": "Mengimport…",
@@ -1238,6 +1241,7 @@
     "actionsLabel": "Tindakan import",
     "done": "{count, plural, other {# baris diimport.}}",
     "doneLeftOut": "{count, plural, other {# baris tidak diimport.}}",
+    "otherCompany": "{count, plural, other {# baris milik syarikat lain, tidak diimport.}}",
     "replayed": "Import ini sudah disahkan.",
     "history": "Buka rekod import",
     "historyRevert": "Buka sejarah import, tempat anda boleh membatalkannya",
