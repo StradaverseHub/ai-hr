@@ -19,6 +19,7 @@ import {setupReadiness,SetupReadinessRefused} from './setup-readiness';
 import {ACTION_PURPOSE,SUGGESTABLE_ACTIONS,actionCatalogueFor,type SuggestableAction} from './actions';
 import {approvalQueueFor} from './approval-queue';
 import {companySetup,CompanySetupRefused} from './company-setup';
+import {terasCapabilitiesFor} from '../explainers/capabilities';
 import en from '../../messages/en.json';import ms from '../../messages/ms.json';import zh from '../../messages/zh.json';import vi from '../../messages/vi.json';import ta from '../../messages/ta.json';import th from '../../messages/th.json';
 const NAV_LABELS:Readonly<Record<string,Record<string,string>>>={en:en.nav,ms:ms.nav,zh:zh.nav,vi:vi.nav,ta:ta.nav,th:th.nav};
 /** A destination's label in the person's locale, as product_destinations gives it. */
@@ -31,7 +32,7 @@ export type Capability=Readonly<{name:string;effect:CapabilityEffect;module:stri
 const object=(properties:Record<string,unknown>,required:string[]=[])=>({type:'object' as const,properties,required,additionalProperties:false});
 export const CONTEXT_TOOL_SPECS:Readonly<Record<'product_destinations'|'product_guidance'|'setup_readiness'|'available_actions'|'approval_queue'|'company_setup',AiToolSpec>>=Object.freeze({
  product_destinations:{name:'product_destinations',description:'Real places in this product that the signed-in person can open, with their labels and addresses. Name or link only these.',inputSchema:object({}) as AiToolSpec['inputSchema']},
- product_guidance:{name:'product_guidance',description:'Search this company\'s published product guides for how a feature works or how to set it up. Returns authored guide sections with links.',inputSchema:object({query:{type:'string',maxLength:200}},['query']) as AiToolSpec['inputSchema']},
+ product_guidance:{name:'product_guidance',description:'Search this company\'s published product guides for how a feature works or how to set it up. Returns authored guide sections with links. Administrators may add topic password_policy (where Password Policy is and who decides) or correction_controls (where payroll Correction Controls are and who decides).',inputSchema:object({query:{type:'string',maxLength:200},topic:{type:'string',enum:['password_policy','correction_controls']}},['query']) as AiToolSpec['inputSchema']},
  available_actions:{name:'available_actions',description:'Changes this person may be pointed to in the product, each with its purpose, its review page and the details that page collects. Suggest only these; the person completes and confirms each change on its page.',inputSchema:object({}) as AiToolSpec['inputSchema']},
  approval_queue:{name:'approval_queue',description:'Requests from other people waiting for the signed-in person\'s own decision as an approver ("anything pending for me", "waiting for my approval"): how many, by kind, with the page where they review them and the matching review action, and the leave requests among them (who, leave type, days and dates).',inputSchema:object({}) as AiToolSpec['inputSchema']},
  company_setup:{name:'company_setup',description:'Administrators only: the companies they administer (every company in the group for a group administrator), by name, with the page that lists them; and the leave types and attendance schedule groups this company has already configured (names and whether each leave type is paid), with the pages where they are set up. Whether a leave type can grant days comes from setup_readiness.',inputSchema:object({}) as AiToolSpec['inputSchema']},
@@ -59,7 +60,18 @@ export function capabilityRegistry():readonly Capability[]{
 export function contextToolSpecsFor(ctx:SessionContext):readonly AiToolSpec[]{
  return Object.freeze([CONTEXT_TOOL_SPECS.product_destinations,CONTEXT_TOOL_SPECS.product_guidance,CONTEXT_TOOL_SPECS.available_actions,CONTEXT_TOOL_SPECS.approval_queue,...(isAdmin(ctx)?[CONTEXT_TOOL_SPECS.setup_readiness,CONTEXT_TOOL_SPECS.company_setup]:[])]);
 }
-export type ContextToolResult=Readonly<{ok:true;content:unknown}>|Readonly<{ok:false;refusal:'not_offered'|'invalid_input'|'not_permitted'}>;
+export type ContextToolResult=Readonly<{ok:true;content:unknown}>|Readonly<{ok:false;refusal:'not_offered'|'invalid_input'|'not_permitted';content?:unknown}>;
+/** Release merge (spec v22): main's two administrator page guides, folded into product_guidance as topics so they add no
+ * tool of their own. Each topic runs its capability (core/explainers/capabilities.ts), offered under that capability's
+ * own gate (an administrator; Payroll enabled for correction_controls) and returning exactly what it returns. */
+export const GUIDANCE_TOPICS=Object.freeze(['password_policy','correction_controls'] as const);
+export type GuidanceTopic=(typeof GUIDANCE_TOPICS)[number];
+async function guidanceTopic(ctx:SessionContext,topic:GuidanceTopic,scope:{companyId:string;locale?:string}):Promise<ContextToolResult>{
+ const capability=(await terasCapabilitiesFor(ctx)).find(row=>row.topic===topic);
+ if(!capability)return{ok:false,refusal:'not_permitted'};
+ const outcome=await capability.run(ctx,{},{companyId:scope.companyId,...(scope.locale?{locale:scope.locale}:{})});
+ return outcome.ok?{ok:true,content:outcome}:{ok:false,refusal:'not_permitted',content:outcome};
+}
 /** Runs one context tool as the caller. `companyId` is the caller's current company scope. */
 export async function runContextTool(ctx:SessionContext,name:string,input:unknown,scope:{companyId:string;locale?:string}):Promise<ContextToolResult>{
  if(!contextToolSpecsFor(ctx).some(spec=>spec.name===name))return{ok:false,refusal:'not_offered'};
@@ -71,6 +83,10 @@ export async function runContextTool(ctx:SessionContext,name:string,input:unknow
  }
  if(name==='product_guidance'){
   if(typeof value.query!=='string'||!value.query.trim()||value.query.length>200)return{ok:false,refusal:'invalid_input'};
+  if(value.topic!==undefined&&value.topic!==null){
+   if(!(GUIDANCE_TOPICS as readonly unknown[]).includes(value.topic))return{ok:false,refusal:'invalid_input'};
+   return guidanceTopic(ctx,value.topic as GuidanceTopic,scope);
+  }
   return{ok:true,content:await productGuidance(ctx,value.query,scope.locale)};
  }
  if(name==='company_setup'){try{return{ok:true,content:await companySetup(ctx)};}catch(error){if(error instanceof CompanySetupRefused)return{ok:false,refusal:'not_permitted'};throw error;}}

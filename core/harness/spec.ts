@@ -104,8 +104,13 @@ export const HARNESS_SPEC=freeze({
   * (digest 50ffa246fb253b9ab00b3009428ecf89ad68612c125ea2fe14ad1f678444d45c, the spec staging runs at 848c7be36) kept two
   * administrator-only, literal public page guides, password_policy_guidance and correction_controls_guidance, as context
   * on a gated turn; they join publicContextTools. Nothing else changes. Main's version number 9 was taken here, so its
-  * digest is not a row below. */
- version:21,
+  * digest is not a row below.
+  * 22: v20 plus the folded guidance topics (coordinator, release merge, 3 November 2026). v21's two extra tools put an HR
+  * administrator's biggest turn over the provider's 32-tool ceiling (lib/ai/teras-harness-policy.ts), so main's two
+  * guides are product_guidance topics instead (offer.guidanceTopics; core/product-context/tools.ts GUIDANCE_TOPICS):
+  * publicContextTools is v20's three again, and an administrator still reaches both guides on a gated turn through
+  * product_guidance. Each topic returns what its guide returned, under the same gate. No instruction line changes. */
+ version:22,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
@@ -147,7 +152,10 @@ export const HARNESS_SPEC=freeze({
  },
  offer:{
   /** Context tools that hold nothing about the person; the only ones a gated turn keeps. */
-  publicContextTools:['product_destinations','product_guidance','available_actions','password_policy_guidance','correction_controls_guidance'],
+  publicContextTools:['product_destinations','product_guidance','available_actions'],
+  /** v22: the topics product_guidance serves besides its guide search, each one of main's administrator page guides
+   * (core/explainers/capabilities.ts, gated as there). The harness refuses any other topic before the owner runs. */
+  guidanceTopics:['password_policy','correction_controls'],
   /** v17: the capability catalogue, offered only on an open turn whose words ask what the person can do, how, or to
    * import, set up, add or create something (lib/product-context/capability-intent.ts, revision below). Not a public
    * context tool, so a turn about another person, a file or a rule override never has it. */
@@ -324,4 +332,6 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  20:'87f846496918cf773ce778eefb288b1a41bf4c518d8e1463b9aa4d91755bda04',
  // v20 + main's two admin guide tools, release merge.
  21:'66e0ce979b02bce1309df6be3f2ea5eba7a61404d3c1c63b902084717bc3cd83',
+ // v20 plus the folded guidance topics (product_guidance password_policy and correction_controls), release merge.
+ 22:'23c7a0b27b5d0029510b44935af4b07dd27d25aa34f1ff2607d0075f075e85d3',
 });

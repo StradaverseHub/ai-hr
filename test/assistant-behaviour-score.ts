@@ -18,7 +18,9 @@ export const GROUNDING_READS:ReadonlySet<string>=new Set(['product_guidance','se
 /** ADR-0170 step 4: a capability composed over an ideal's read answers what that read answers (decided from the
  * composition, before any run): the co-pilot returns setup readiness's own verdicts in order, and the entitlement
  * explainer returns leave_entitlement_explain's breakdown without needing a handle. */
-export const ANSWERED_BY:Readonly<Record<string,readonly string[]>>={setup_readiness:['setup_copilot'],leave_entitlement_explain:['explain_leave_entitlement']};
+export const ANSWERED_BY:Readonly<Record<string,readonly string[]>>={setup_readiness:['setup_copilot'],leave_entitlement_explain:['explain_leave_entitlement'],
+ // Spec v22: main's two page guides are served as product_guidance topics, so that read answers them.
+ password_policy_guidance:['product_guidance'],correction_controls_guidance:['product_guidance']};
 const answered=(read:string,reads:readonly string[])=>reads.includes(read)||(ANSWERED_BY[read]??[]).some(alternative=>reads.includes(alternative));
 
 export type Behaviour=Readonly<{reads:readonly string[];proposed:string|null;reply:string;inventedLinks:readonly string[];error?:string}>;

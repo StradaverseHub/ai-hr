@@ -35,10 +35,10 @@ describe('harness spec',()=>{
  });
 });
 
-// Main's own v9 added the two public guides to v8; the release merge folds them into v21 (v20 plus the two guides, see
-// test/harness-spec-v21.test.ts), so main's version 9 and its digest 50ffa246… are not rows here.
-it('keeps the two public guides as v21 while retaining every released digest and the exact prior policy',()=>{
- expect(HARNESS_SPEC.version).toBe(21);
+// Main's own v9 added the two public guides to v8 as tools. The release merge took them into v21 as tools, then into v22
+// as product_guidance topics (test/harness-spec-v22.test.ts), so main's version 9 and its digest 50ffa246… are not rows here.
+it('keeps the two public guides as v22 product_guidance topics while retaining every released digest and the exact prior policy',()=>{
+ expect(HARNESS_SPEC.version).toBe(22);
  expect(Object.fromEntries(Object.entries(HARNESS_SPEC_DIGESTS).filter(([version])=>Number(version)<=8))).toEqual({
   1:'0589cb3e4beec5214c8b00b7869b06ae9065d387733c004820b2a66a25da0616',
   2:'57fd6ad641945084c2b8c4eb40af07cc99f3e24e2f8521631bd6230d12596ee0',
@@ -49,9 +49,11 @@ it('keeps the two public guides as v21 while retaining every released digest and
   7:'b68ea8eecdca81d9cbb2a27cd5f3957dc3fd243d58f65feb9ac149fde4f9b701',
   8:'48db87fd9276f9e828926d82ff07888f4400e4dcd40fbdf08e8a735610c0f9d2',
  });
- expect(Object.keys(HARNESS_SPEC_DIGESTS)).toEqual(['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21']);
- expect(HARNESS_SPEC.offer.publicContextTools).toEqual(['product_destinations','product_guidance','available_actions','password_policy_guidance','correction_controls_guidance']);
- expect(harnessSpecDigest({...HARNESS_SPEC,version:20,offer:{...HARNESS_SPEC.offer,publicContextTools:['product_destinations','product_guidance','available_actions']}})).toBe('87f846496918cf773ce778eefb288b1a41bf4c518d8e1463b9aa4d91755bda04');
+ expect(Object.keys(HARNESS_SPEC_DIGESTS)).toEqual(['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22']);
+ expect(HARNESS_SPEC.offer.publicContextTools).toEqual(['product_destinations','product_guidance','available_actions']);
+ expect(HARNESS_SPEC.offer.guidanceTopics).toEqual(['password_policy','correction_controls']);
+ const {guidanceTopics:_topics,...v20Offer}=HARNESS_SPEC.offer;
+ expect(harnessSpecDigest({...HARNESS_SPEC,version:20,offer:v20Offer})).toBe('87f846496918cf773ce778eefb288b1a41bf4c518d8e1463b9aa4d91755bda04');
 });
 
 describe('closed public context offer',()=>{
@@ -59,7 +61,8 @@ describe('closed public context offer',()=>{
   const gate=gateTurn('Where are Password Policy and Correction Controls, and who confirms changes?',{sensitive:HARNESS_SPEC.sensitive.topics});
   expect(gate).toEqual({privateReads:false,actions:true,reason:'other_person'});
   const binding=(name:string,kind:ToolBinding['kind']):ToolBinding=>({name,kind,entity:null,identifierInputs:[],spec:{name,description:'Fictional offer-only fixture.',inputSchema:{type:'object',properties:{},required:[],additionalProperties:false}},run:async()=>({ok:true,content:{}})});
-  for(const name of ['password_policy_guidance','correction_controls_guidance']){
+  // v22: the guides are product_guidance topics, so the public name an administrator's gated turn keeps is product_guidance.
+  for(const name of ['product_guidance']){
    const context=binding(name,'context'),forgedRead=binding(name,'read');
    expect(offerFor([context,forgedRead,binding('setup_copilot','read'),binding('unlisted_context','context')],gate)).toEqual([context]);
    expect(offerFor([context],gate,[])).toEqual([]);
@@ -70,10 +73,10 @@ describe('closed public context offer',()=>{
   let executed=0;
   const binding=(name:string):ToolBinding=>({name,kind:'read',entity:null,identifierInputs:[],spec:{name,description:'Fictional private owner.',inputSchema:{type:'object',properties:{},required:[],additionalProperties:false}},run:async()=>{executed++;return{ok:true,content:{private:'must never execute'}};}});
   const {result}=await turn('Where are Password Policy and Correction Controls, and who confirms changes?',[
-   {calls:[{name:'setup_copilot'},{name:'password_policy_guidance'}]},{final:{reply:'An authorized human checks the native page.'}},
-  ],{tools:async()=>({bindings:[binding('setup_copilot'),binding('password_policy_guidance')],reviewRoutes:[],destinations:[]})});
+   {calls:[{name:'setup_copilot'},{name:'product_guidance'}]},{final:{reply:'An authorized human checks the native page.'}},
+  ],{tools:async()=>({bindings:[binding('setup_copilot'),binding('product_guidance')],reviewRoutes:[],destinations:[]})});
   expect(result.trace.gate).toEqual({privateReads:false,actions:true,reason:'other_person'});
-  expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['setup_copilot','not_offered'],['password_policy_guidance','not_offered']]);
+  expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['setup_copilot','not_offered'],['product_guidance','not_offered']]);
   expect(executed).toBe(0);
  });
 });

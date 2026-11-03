@@ -160,7 +160,8 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
     return NAMED_OTHERS.has(declared.entity)?{ok:true,content:outcome,namesInScope:await administeredEmployments(ctx,outcome)}:{ok:true,content:outcome};}};
  });
  const publicContext:readonly string[]=HARNESS_SPEC.offer.publicContextTools;
- const teras=(await terasCapabilitiesFor(ctx)).map((capability):ToolBinding=>{
+ // Spec v22: a capability served as a product_guidance topic is reached through that context tool, never bound itself.
+ const teras=(await terasCapabilitiesFor(ctx)).filter(capability=>!capability.topic).map((capability):ToolBinding=>{
   const spec=terasToolSpecs().find(row=>row.name===capability.name)!,declared=TERAS_READS.find(read=>read.name===capability.name)!;
   // Only the spec's closed public names are context. Keep the semantic entity for declared disclosure.
   return{name:spec.name,kind:publicContext.includes(capability.name)?'context':'read',entity:declared.entity,spec,identifierInputs:[],
@@ -172,7 +173,11 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
   ?{name:spec.name,kind:'context',entity:'approval_queue',spec,identifierInputs:[],
    async run(){return{ok:true,content:await approvalQueueWithLeaveRequests(ctx,scope.companyId,{decide:catalogue.some(row=>row.id==='approvals.leave.decide')})};}}
   :{name:spec.name,kind:'context',entity:null,spec,identifierInputs:[],
-   async run(input){const result=await runContextTool(ctx,spec.name,input,scope);return result.ok?{ok:true,content:result.content}:{ok:false,content:result,refusal:result.refusal};}});
+   async run(input){
+    // Spec v22: product_guidance serves only the spec's guidance topics; anything else is refused before its owner runs.
+    const topic=spec.name==='product_guidance'&&input&&typeof input==='object'?(input as Record<string,unknown>).topic:undefined;
+    if(topic!==undefined&&topic!==null&&!(HARNESS_SPEC.offer.guidanceTopics as readonly unknown[]).includes(topic))return{ok:false,content:{ok:false,refusal:'invalid_input'},refusal:'invalid_input'};
+    const result=await runContextTool(ctx,spec.name,input,scope);return result.ok?{ok:true,content:result.content}:{ok:false,content:result.content??result,refusal:result.refusal};}});
  // Spec v20: where a decision with no match points, when this caller may open the approvals list.
  const approvalsPage=catalogue.some(row=>/^approvals\..+\.decide$/.test(row.id))&&linkablePathsFor(ctx,visibleModuleCodes(ctx)??undefined).includes('/approvals')?'/approvals':null;
  // Disclosed under its declared entity (core/semantic-model/entities-recommend.ts): pending applicants and dates are

@@ -29,7 +29,11 @@ export type TerasCapability=Readonly<{name:string;module:string|null;admin:boole
   * or an administrator (hasTeamAccess); the owner re-checks the administered companies or the My Team scope. */
  access?:'payroll'|'team';
  /** The registered worker whose run gate governs the offer (core/agent-registry/workers.ts), or null. */
- worker:'explainers'|null;run(ctx:SessionContext,input:Record<string,unknown>,scope:TerasCapabilityScope):Promise<ExplainerOutcome>}>;
+ worker:'explainers'|null;
+ /** Release merge (spec v22): served as this topic of product_guidance (core/product-context/tools.ts GUIDANCE_TOPICS),
+  * never bound as a tool of its own, so the offer stays within the provider's tool ceiling. Same runner, same gating. */
+ topic?:'password_policy'|'correction_controls';
+ run(ctx:SessionContext,input:Record<string,unknown>,scope:TerasCapabilityScope):Promise<ExplainerOutcome>}>;
 const text=(value:unknown)=>typeof value==='string'?value:undefined;
 
 async function copilot(ctx:SessionContext,scope:TerasCapabilityScope):Promise<ExplainerOutcome>{
@@ -94,8 +98,8 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'explain_leave_entitlement',module:'leave',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnLeaveEntitlement(ctx,{leave_type:text(input.leave_type),as_of:text(input.as_of)})},
  {name:'explain_attendance_day',module:'attendance',admin:false,worker:'explainers',run:(ctx,input,scope)=>explainOwnAttendanceDay(ctx,{date:text(input.date)},scope.locale)},
  {name:'setup_copilot',module:null,admin:true,worker:null,run:(ctx,_input,scope)=>copilot(ctx,scope)},
- {name:'password_policy_guidance',module:null,admin:true,worker:null,run:ctx=>passwordPolicyGuidance(ctx)},
- {name:'correction_controls_guidance',module:'payroll',admin:true,worker:null,run:(ctx,_input,scope)=>correctionControlsGuidance(ctx,scope)},
+ {name:'password_policy_guidance',module:null,admin:true,worker:null,topic:'password_policy',run:ctx=>passwordPolicyGuidance(ctx)},
+ {name:'correction_controls_guidance',module:'payroll',admin:true,worker:null,topic:'correction_controls',run:(ctx,_input,scope)=>correctionControlsGuidance(ctx,scope)},
  {name:'pay_aggregates',module:'payroll',admin:false,access:'payroll',worker:null,run:(ctx,input)=>payAggregates(ctx,input)},
  {name:'workforce_metrics',module:null,admin:false,access:'team',worker:null,run:(ctx,input)=>workforceAggregates(ctx,input)},
  // AI v2 W5: "Why?" on the pay difference and the claim limits, under the explainers worker switch like the three above.
