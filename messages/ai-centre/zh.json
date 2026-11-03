@@ -27,6 +27,7 @@
     "sectionsLabel": "{tab}栏目",
     "sections": {
       "overview": "概览",
+      "loops": "循环",
       "exceptions": "异常",
       "readiness": "记录完备度",
       "actions": "建议的操作",
@@ -34,6 +35,171 @@
       "workers": "代理",
       "setup": "设置",
       "spend": "支出与服务提供方"
+    },
+    "loops": {
+      "title": "循环",
+      "description": "每个循环关注人事工作的一个环节，为需要处理的人准备好要做的事，并在下一次运行时检查结果。在“准备”级别，除非有人确认，否则不会更改任何内容。",
+      "columns": {
+        "loop": "循环",
+        "doneMeans": "完成标准",
+        "level": "级别",
+        "switch": "开关",
+        "lastRun": "上次运行",
+        "prepared": "卡片（最近 {days} 天）",
+        "confirmed": "按准备内容完成",
+        "changed": "被人更改",
+        "sponsor": "负责人"
+      },
+      "names": {
+        "loop_probation_ending": "试用期结束",
+        "loop_payroll_inputs": "薪资输入就绪",
+        "loop_missing_employee_data": "员工资料缺失",
+        "loop_missed_clock_outs": "漏打下班卡",
+        "loop_document_expiry": "护照即将到期"
+      },
+      "doneMeans": {
+        "loop_probation_ending": "试用期结束前已记录决定",
+        "loop_payroll_inputs": "截止日前没有任何事项阻止薪资运行",
+        "loop_missing_employee_data": "员工可填写的每一项资料均已填写并获批准",
+        "loop_missed_clock_outs": "每个下班打卡均有记录",
+        "loop_document_expiry": "每本护照在到期前已续签"
+      },
+      "doneMeansLine": "完成标准：{done}。",
+      "level": {
+        "prepare": "准备"
+      },
+      "on": "开",
+      "off": "关",
+      "stopped": "已被公司总停开关停止",
+      "turnOn": "开启",
+      "turnOff": "关闭",
+      "never": "尚未运行",
+      "runStatus": {
+        "ran": "已运行",
+        "sponsor_lost": "已停止：其负责人已不再拥有管理员权限",
+        "failed": "未完成：没有更改任何卡片"
+      },
+      "notApplicable": "不适用",
+      "noneYet": "暂无",
+      "changedRate": "{rate}（{count, plural, other {# 张卡片}}）",
+      "sponsorUnnamed": "一位管理员",
+      "noSponsor": "关闭时无",
+      "pausedIn": "{count, plural, other {已在 # 家公司暂停}}",
+      "saved": "已保存。",
+      "switchNote": "开启或关闭循环会作用于集团内的每家公司，开启它的人即成为其负责人。可在循环自己的页面为单家公司暂停。",
+      "switchNoteCompany": "只有集团管理员可以开启或关闭循环。您可以在循环自己的页面为您管理的公司暂停它。",
+      "cap": "薪资、雇佣状态、系统权限和纪律处分始终停留在“准备”级别：始终由人来决定。",
+      "errors": {
+        "invalid": "无法识别该更改。",
+        "refused": "您无法进行该更改。",
+        "module": "该循环所处理的模块未启用。",
+        "failed": "无法保存该更改，请重试。"
+      },
+      "back": "循环",
+      "stepLabel": "{n} · {step}",
+      "steps": {
+        "detect": "发现",
+        "diagnose": "诊断",
+        "prepare": "准备",
+        "verify": "核实"
+      },
+      "stepText": {
+        "loop_probation_ending": {
+          "detect": "试用期将在 14 天内结束且尚未记录决定。每晚检查。",
+          "diagnose": "是否已开启评审以及由谁处理：尚未开始、在经理处或在人事处。",
+          "prepare": "为人事准备一张转正评审卡片。由人事记录决定，循环从不做决定。",
+          "verify": "记录决定后关闭。新的结束日期若无决定会重新打开。"
+        },
+        "loop_payroll_inputs": {
+          "detect": "薪资截止日在 7 天内，且薪资就绪检查发现有阻止运行的事项。",
+          "diagnose": "哪些检查未就绪，以及其中多少会阻止运行。",
+          "prepare": "为薪资管理员准备一张“今日”卡片，列出每家公司缺少的内容。",
+          "verify": "截止日前没有任何事项阻止运行时关闭。截止日前出现新的阻止事项会重新打开。"
+        },
+        "loop_missing_employee_data": {
+          "detect": "员工记录缺少薪资或法定申报所需的资料。",
+          "diagnose": "其中哪些可由员工通过个人资料变更申请填写。",
+          "prepare": "为员工准备一张申请卡片。人事照常审批该申请。",
+          "verify": "员工可填写的资料不再缺失时关闭。缺口再次出现会重新打开。"
+        },
+        "loop_missed_clock_outs": {
+          "detect": "最近 7 天内有上班打卡但没有下班打卡的某一天。",
+          "diagnose": "当天的排班结束时间，即卡片建议的时间。",
+          "prepare": "为员工准备一张更正卡片，由员工确认或修改该时间。审批人照常决定。",
+          "verify": "有下班打卡记录后关闭。更正被拒绝会重新打开。"
+        },
+        "loop_document_expiry": {
+          "detect": "已记录的护照将在 60 天内到期。",
+          "diagnose": "记录中的到期日期。",
+          "prepare": "为人事准备一张“今日”卡片，并提醒员工续签护照。",
+          "verify": "记录了续签后的到期日期后关闭。到期日期被改回窗口期内会重新打开。"
+        }
+      },
+      "figures": {
+        "prepared": "{days} 天内准备的卡片",
+        "confirmed": "按准备内容完成",
+        "changed": "被人更改",
+        "open": "当前未处理",
+        "noSpend": "无 AI 费用：这些循环只使用规则，从不调用模型。"
+      },
+      "openWaiting": "{open} 项未处理 · {waiting} 项等待中",
+      "pause": {
+        "title": "为公司暂停",
+        "help": "暂停后，循环不会在该公司运行，也不会显示其卡片。关闭开关会在所有公司停止它。",
+        "none": "您在这里不管理任何公司。",
+        "paused": "已暂停",
+        "running": "运行中",
+        "pause": "暂停",
+        "resume": "恢复"
+      },
+      "cases": {
+        "title": "最近的卡片",
+        "none": "暂无卡片。",
+        "columns": {
+          "when": "时间",
+          "person": "人员",
+          "what": "准备的内容",
+          "status": "状态"
+        },
+        "reopened": "{count, plural, other {已重新打开 # 次}}"
+      },
+      "what": {
+        "probation": "试用期于 {date} 结束",
+        "payroll": "{date} 截止日前缺少 {count, plural, other {# 项输入}}",
+        "record": "需要填写 {count, plural, other {# 项资料}}",
+        "clockOut": "建议 {date} 的下班打卡时间为 {time}",
+        "passport": "护照于 {date} 到期"
+      },
+      "caseState": {
+        "open": "等待当事人处理",
+        "waiting": "已提交：等待常规审批",
+        "as_prepared": "已按准备内容确认",
+        "changed": "已被当事人更改",
+        "completed": "已完成",
+        "inactive": "雇佣已结束",
+        "superseded": "不再适用",
+        "expired": "时机已过"
+      },
+      "limits": {
+        "title": "它绝不越过的界限",
+        "confirm": "它不更改任何记录：它准备卡片，由人在常规页面上确认。",
+        "scope": "它只读取其负责人可以看到的内容，负责人失去管理员权限时它会停止。",
+        "model": "它不调用任何 AI 模型。",
+        "cap": "每家公司每晚最多 200 张新卡片。"
+      },
+      "owner": {
+        "title": "由谁负责",
+        "agent": "代理：{name}循环，以公司的代理主体身份运行",
+        "sponsor": "负责人：{name}",
+        "noSponsor": "关闭时无负责人",
+        "note": "负责人是开启该循环的集团管理员。每次运行都会连同其规则版本一起记录。"
+      },
+      "runs": {
+        "title": "最近的运行",
+        "none": "暂无运行记录。",
+        "summary": "准备 {opened} 项，关闭 {closed} 项，{open} 项未处理，{waiting} 项等待中",
+        "capped": "已达卡片上限，其余将在下次运行。"
+      }
     },
     "subnav": {
       "workers": "全部代理",
@@ -427,6 +593,11 @@
         "explainers": "说明者",
         "team_absence_weekly_summary": "团队缺勤周报",
         "daily_digest": "每日摘要",
+        "loop_probation_ending": "试用期结束",
+        "loop_payroll_inputs": "薪资输入就绪",
+        "loop_missing_employee_data": "员工资料缺失",
+        "loop_missed_clock_outs": "漏打下班卡",
+        "loop_document_expiry": "护照即将到期",
         "conversation": "实时聊天对话"
       },
       "switchInvalid": "此开关无法在这里更改。",
@@ -723,6 +894,46 @@
       "proposalsTitle": "{count, plural, other {# 项准备好的修正等待您批准}}",
       "proposalsSource": "建议的操作",
       "proposalsCta": "审阅修正"
+    },
+    "loops": {
+      "awaiting": "等待您处理",
+      "source": "由 AI Centre 准备：{loop}",
+      "clockOutTitle": "您是否在 {date} {time} 下班？",
+      "clockOutCheckIn": "已记录上班打卡 {time}",
+      "clockOutMissing": "没有下班打卡记录",
+      "clockOutRoster": "您的排班于 {time} 结束",
+      "clockOutNote": "在您提交更正之前不会有任何更改；审批人照常决定。",
+      "clockOutCta": "查看并确认",
+      "recordTitle": "{count, plural, other {您的记录缺少 # 项资料}}",
+      "recordNote": "人事照常审批您的更新。",
+      "recordCta": "填写",
+      "passportTitle": "您的护照将于 {date} 到期",
+      "passportNote": "请续签并把新资料发给人事。",
+      "passportCta": "更新您的资料",
+      "probationTitle": "试用期于 {date} 结束：{name}",
+      "probationTitleUnnamed": "有一个试用期于 {date} 结束",
+      "probationStage": {
+        "none": "尚未开始评审",
+        "with_manager": "评审在经理处",
+        "with_hr": "评审等待人事处理"
+      },
+      "probationOverdue": "结束日期已过但尚无决定",
+      "probationNote": "循环从不做决定：由人事记录决定。",
+      "probationCta": "查看",
+      "payrollTitle": "{company}：{date} 截止日前缺少薪资输入",
+      "payrollTitleUnnamed": "{date} 截止日前缺少薪资输入",
+      "payrollBlockers": "{count, plural, other {# 项会阻止运行}}",
+      "payrollCta": "打开就绪报告",
+      "passportsTitle": "{count, plural, other {# 本护照将在 60 天内到期}}",
+      "passportsFirst": "最早于 {date}",
+      "passportsCta": "打开人员",
+      "names": {
+        "loop_probation_ending": "试用期结束",
+        "loop_payroll_inputs": "薪资输入就绪",
+        "loop_missing_employee_data": "员工资料缺失",
+        "loop_missed_clock_outs": "漏打下班卡",
+        "loop_document_expiry": "护照即将到期"
+      }
     },
     "done": {
       "answeredLabel": "已回答",

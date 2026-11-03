@@ -90,7 +90,7 @@ describe('an Operations page renders inside AI Centre',()=>{
   const top=screen.getByRole('navigation',{name:'AI Centre sections'}),second=screen.getByRole('navigation',{name:'Operations sections'});
   expect(within(top).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower');
   expect(within(top).getByRole('link',{current:'page'}).textContent).toBe('Operations');
-  expect(linksOf(second)).toEqual([['Overview','/control-tower'],['Exceptions','/control-tower/exceptions'],['Record readiness','/control-tower/readiness'],['Proposed actions','/control-tower/actions'],['Opportunities','/control-tower/opportunities']]);
+  expect(linksOf(second)).toEqual([['Overview','/control-tower'],['Loops','/control-tower/loops'],['Exceptions','/control-tower/exceptions'],['Record readiness','/control-tower/readiness'],['Proposed actions','/control-tower/actions'],['Opportunities','/control-tower/opportunities']]);
   expect(within(second).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower/readiness');
   // Order: the AI Centre row, its second row, then the page's own heading and content.
   const heading=screen.getByRole('heading',{level:1,name:en.controlTower.readinessScreen.title});
@@ -112,7 +112,7 @@ describe('an Operations page renders inside AI Centre',()=>{
  it('without payroll the payroll queues leave the second row, as their sidebar rows did',async()=>{
   state.session=SESSIONS.hrAdmin;state.payroll=false;
   wrap('en',await ReadinessPage());
-  expect(linksOf(screen.getByRole('navigation',{name:'Operations sections'})).map(([,href])=>href)).toEqual(['/control-tower','/control-tower/readiness','/control-tower/opportunities']);
+  expect(linksOf(screen.getByRole('navigation',{name:'Operations sections'})).map(([,href])=>href)).toEqual(['/control-tower','/control-tower/loops','/control-tower/readiness','/control-tower/opportunities']);
  });
 
  it.each(['ms','zh','vi','ta','th'] as const)('%s: both rows render translated, with no missing message and no Control Tower',async locale=>{

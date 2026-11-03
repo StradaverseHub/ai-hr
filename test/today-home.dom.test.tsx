@@ -24,7 +24,8 @@ const fx=vi.hoisted(()=>{
   passports:{itemId:string;employmentId:string;companyId:string;stage:string;waitingOn:string}[];
   timeOff:unknown;timeOffError:unknown;pay:unknown;payError:unknown;managers:{employmentId:string}[];calendarDays:unknown[];
   assistant:boolean;name:string|null;modules:Set<string>;push:ReturnType<typeof vi.fn>;
-  calls:{tasks:unknown[];worklist:string[];summary:unknown[];proposals:number;readiness:number;exceptions:number;passports:number;timeOff:unknown[]};
+  loops:unknown[];loopsFail:boolean;
+  calls:{tasks:unknown[];worklist:string[];summary:unknown[];proposals:number;readiness:number;exceptions:number;passports:number;timeOff:unknown[];loops:unknown[]};
  }};
 });
 const S=fx.state;
@@ -58,6 +59,8 @@ vi.mock('@/core/outcome-record/summary',()=>({summariseOutcomeRecords:async(_s:u
 vi.mock('@/core/reporting',()=>({complianceWorklist:async(_s:unknown,p:{companyId:string})=>{S.calls.worklist.push(p.companyId);return S.worklist[p.companyId]??[];}}));
 vi.mock('@/core/payroll-anomaly',()=>({openExceptionsAcrossRuns:async()=>{S.calls.exceptions++;return {...S.exceptions,cappedOut:false};}}));
 vi.mock('@/core/automatic-followups',()=>({followupItemsTx:async()=>{S.calls.passports++;return S.passports;}}));
+// AI v2 W8: the loops' open cards, as core/loops/cards.ts reads them for this viewer (row-level security decides whose).
+vi.mock('@/core/loops/cards',()=>({readLoopCards:async(_s:unknown,p:unknown)=>{S.calls.loops.push(p);if(S.loopsFail)throw Error('Fixture loop outage');return S.loops;}}));
 vi.mock('@/core/employee-home-time-off',()=>({readEmployeeHomeTimeOff:async(_s:unknown,employmentId?:string)=>{S.calls.timeOff.push(employmentId);if(S.timeOffError)throw S.timeOffError;return S.timeOff;}}));
 vi.mock('@/core/employee-home',()=>({HomeAccessError:fx.FixtureHomeAccessError,
  readEmployeeHomePayHints:async()=>{if(S.payError)throw S.payError;return S.pay;},
@@ -92,8 +95,8 @@ beforeEach(()=>{
  Object.assign(S,{tasks:[],tasksFail:false,ownLeave:[],reopened:{},reopenCalls:[],cancellations:[],decisions:[],proposals:[],readiness:{employees:0,ready:0},digest:null,recommender:false,
   summary:{...fx.empty},summaryFail:false,worklist:{},exceptions:{rows:[],total:0},passports:[],timeOff:{version:1,employmentId:'emp-own',asOf:'2026-11-04',canApply:true,balances:[],nextApproved:null},
   timeOffError:null,pay:{version:1,employmentId:'emp-own',payslips:[],nextPayment:null},payError:null,managers:[],calendarDays:[],assistant:true,name:'Ravi Fictional',
-  modules:new Set(['leave','payroll','attendance','claims','performance','rewards']),push:vi.fn(),
-  calls:{tasks:[],worklist:[],summary:[],proposals:0,readiness:0,exceptions:0,passports:0,timeOff:[]}});
+  modules:new Set(['leave','payroll','attendance','claims','performance','rewards']),push:vi.fn(),loops:[],loopsFail:false,
+  calls:{tasks:[],worklist:[],summary:[],proposals:0,readiness:0,exceptions:0,passports:0,timeOff:[],loops:[]}});
  window.sessionStorage.clear();
 });
 afterEach(cleanup);
@@ -479,6 +482,57 @@ describe('Today with nothing to show',()=>{
   expect(text(view.section('today-done-for-you')!.querySelector('[role="status"]'))).toBe('Some items could not be loaded. Their own pages still work.');
   expect(text(view.section('today-done-for-you'))).not.toContain('9');
   expect(text(view.section('today-at-a-glance')!.querySelector('[data-today-balance] b'))).toBe('2.00 days');
+ });
+});
+
+describe('Today with the cards the loops prepared (AI v2 W8)',()=>{
+ const cardsOf=(view:Awaited<ReturnType<typeof show>>)=>[...view.section('today-needs-you')!.querySelectorAll('[data-today-loop]')].map(card=>({
+  kind:card.getAttribute('data-today-loop'),title:text(card.querySelector('h3')),meta:[...card.querySelectorAll('h3 + div > span:not([role])')].map(text),
+  links:[...card.querySelectorAll('a')].map(link=>[link.getAttribute('href'),text(link)])}));
+ it('an employee sees their own cards, each opening the owner\'s own page, and nothing changes from the card',async()=>{
+  S.loops=[
+   {kind:'clockOut',caseId:'c1',date:'2026-11-03',checkIn:'09:02',proposedCheckOut:'18:00',href:'/attendance/my-records/2026-11-03?checkOut=18%3A00'},
+   {kind:'record',caseId:'c2',gaps:['no_bank_account'],href:'/me?tab=bankStatutory#section-request-bankStatutory'},
+   {kind:'passport',caseId:'c3',expiresOn:'2026-12-20',href:'/me?tab=profile'},
+  ];
+  const view=await show(EMPLOYEE,['co-a']);
+  expect(S.calls.loops).toEqual([{scopeIds:['co-a'],admin:false}]);
+  expect(text(view.section('today-needs-you')!.querySelector('[data-today-count]'))).toBe('3');
+  expect(cardsOf(view)).toEqual([
+   {kind:'clockOut',title:'Did you leave at 18:00 on Tue, Nov 3?',
+    meta:['Clock-in on record 09:02','No clock-out recorded','Your roster ends at 18:00','Prepared by AI Centre: Missed clock-outs','Nothing changes until you send the correction; your approver decides it as usual.'],
+    links:[['/attendance/my-records/2026-11-03?checkOut=18%3A00','Review and confirm · Did you leave at 18:00 on Tue, Nov 3?']]},
+   {kind:'record',title:'Your record is missing 1 detail',meta:['No bank account','Prepared by AI Centre: Missing employee data','HR approves your update as usual.'],
+    links:[['/me?tab=bankStatutory#section-request-bankStatutory','Fill in · Your record is missing 1 detail']]},
+   {kind:'passport',title:'Your passport expires on Dec 20, 2026',meta:['Renew it and send HR the new details.','Prepared by AI Centre: Passports expiring'],
+    links:[['/me?tab=profile','Update your details · Your passport expires on Dec 20, 2026']]},
+  ]);
+  // A card is a link to the owner's page: no button on it posts anything.
+  expect(view.section('today-needs-you')!.querySelectorAll('[data-today-loop] button,[data-today-loop] form')).toHaveLength(0);
+  expect(view.container.textContent).not.toMatch(/noveri/i);
+ });
+ it('an HR administrator sees the review, payroll and passport cards for the companies in scope',async()=>{
+  S.loops=[
+   {kind:'probation',caseId:'p1',name:'Siti Fictional',endDate:'2026-11-14',stage:'none',overdue:false,href:'/admin/personnel/emp-siti'},
+   {kind:'payroll',caseId:'p2',companyName:'Fictional Sdn Bhd',payPeriod:'2026-11',cutOff:'2026-11-10',missing:['payrollCycle','payrollSchedule'],blockers:1,href:'/payroll/setup?readiness=full'},
+   {kind:'passports',count:2,first:'2026-11-20',href:'/personnel'},
+  ];
+  const view=await show(HR_ADMIN,['co-a']);
+  expect(S.calls.loops).toEqual([{scopeIds:['co-a'],admin:true}]);
+  expect(cardsOf(view)).toEqual([
+   {kind:'probation',title:'Probation ends Nov 14, 2026: Siti Fictional',meta:['No review started yet','Prepared by AI Centre: Probation ending','The loop never decides: HR records the decision.'],
+    links:[['/admin/personnel/emp-siti','Review · Probation ends Nov 14, 2026: Siti Fictional']]},
+   {kind:'payroll',title:'Fictional Sdn Bhd: payroll inputs missing before the Nov 10, 2026 cut-off',meta:['Payroll cycle, Payroll schedule','1 blocks the run','Prepared by AI Centre: Payroll inputs ready'],
+    links:[['/payroll/setup?readiness=full','Open readiness · Fictional Sdn Bhd: payroll inputs missing before the Nov 10, 2026 cut-off']]},
+   {kind:'passports',title:'2 passports expire within 60 days',meta:['First on Nov 20, 2026','Prepared by AI Centre: Passports expiring'],
+    links:[['/personnel','Open people · 2 passports expire within 60 days']]},
+  ]);
+ });
+ it('a failing loop read costs Needs you one sentence, never a guessed card',async()=>{
+  S.loopsFail=true;
+  const view=await show(EMPLOYEE,['co-a']);
+  expect(text(view.section('today-needs-you')!.querySelector('[role="status"]'))).toBe('Some items could not be loaded. Their own pages still work.');
+  expect(view.section('today-needs-you')!.querySelectorAll('[data-today-loop]')).toHaveLength(0);
  });
 });
 

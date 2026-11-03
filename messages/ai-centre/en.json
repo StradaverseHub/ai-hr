@@ -27,6 +27,7 @@
     "sectionsLabel": "{tab} sections",
     "sections": {
       "overview": "Overview",
+      "loops": "Loops",
       "exceptions": "Exceptions",
       "readiness": "Record readiness",
       "actions": "Proposed actions",
@@ -34,6 +35,171 @@
       "workers": "Workers",
       "setup": "Setup",
       "spend": "Spend and providers"
+    },
+    "loops": {
+      "title": "Loops",
+      "description": "Each loop watches one part of HR work, prepares what a person needs to do, and checks the result on its next run. At the Prepare level nothing changes until a person confirms it.",
+      "columns": {
+        "loop": "Loop",
+        "doneMeans": "Done means",
+        "level": "Level",
+        "switch": "Switch",
+        "lastRun": "Last run",
+        "prepared": "Cards, last {days} days",
+        "confirmed": "Completed as prepared",
+        "changed": "Changed by a person",
+        "sponsor": "Sponsor"
+      },
+      "names": {
+        "loop_probation_ending": "Probation ending",
+        "loop_payroll_inputs": "Payroll inputs ready",
+        "loop_missing_employee_data": "Missing employee data",
+        "loop_missed_clock_outs": "Missed clock-outs",
+        "loop_document_expiry": "Passports expiring"
+      },
+      "doneMeans": {
+        "loop_probation_ending": "A decision is recorded before the probation ends",
+        "loop_payroll_inputs": "Nothing blocks the payroll run before the cut-off",
+        "loop_missing_employee_data": "Every detail the employee can fill in is filled in and approved",
+        "loop_missed_clock_outs": "Every clock-out is on record",
+        "loop_document_expiry": "Each passport is renewed before it expires"
+      },
+      "doneMeansLine": "Done means: {done}.",
+      "level": {
+        "prepare": "Prepare"
+      },
+      "on": "On",
+      "off": "Off",
+      "stopped": "Stopped by the company stop switch",
+      "turnOn": "Turn on",
+      "turnOff": "Turn off",
+      "never": "Not run yet",
+      "runStatus": {
+        "ran": "Ran",
+        "sponsor_lost": "Stopped: its sponsor no longer has administrator access",
+        "failed": "Did not finish: no card was changed"
+      },
+      "notApplicable": "Not applicable",
+      "noneYet": "None yet",
+      "changedRate": "{rate} ({count, plural, one {# card} other {# cards}})",
+      "sponsorUnnamed": "An administrator",
+      "noSponsor": "None while off",
+      "pausedIn": "{count, plural, one {Paused in # company} other {Paused in # companies}}",
+      "saved": "Saved.",
+      "switchNote": "Switching a loop on or off applies to every company in the group, and whoever switches it on becomes its sponsor. Pause it for one company on its own page.",
+      "switchNoteCompany": "Only a group administrator switches loops on or off. You can pause a loop for your companies on its own page.",
+      "cap": "Pay, employment status, system access and discipline stay at Prepare: a person always decides.",
+      "errors": {
+        "invalid": "That change was not understood.",
+        "refused": "You cannot make that change.",
+        "module": "The module this loop works on is not in use.",
+        "failed": "The change could not be saved. Try again."
+      },
+      "back": "Loops",
+      "stepLabel": "{n} · {step}",
+      "steps": {
+        "detect": "Detect",
+        "diagnose": "Diagnose",
+        "prepare": "Prepare",
+        "verify": "Verify"
+      },
+      "stepText": {
+        "loop_probation_ending": {
+          "detect": "A probation ends within 14 days with no decision recorded. Checked every night.",
+          "diagnose": "Whether a review is open, and with whom: not started, with the manager or with HR.",
+          "prepare": "A confirmation review card for HR. HR records the decision; the loop never decides.",
+          "verify": "Closed when a decision is recorded. A new end date with no decision reopens it."
+        },
+        "loop_payroll_inputs": {
+          "detect": "The payroll cut-off is within 7 days and the payroll readiness checks find something that blocks the run.",
+          "diagnose": "Which checks are not ready, and how many of them block the run.",
+          "prepare": "A Today card for payroll administrators listing what is missing in each company.",
+          "verify": "Closed when nothing blocks the run before the cut-off. A new blocker before the cut-off reopens it."
+        },
+        "loop_missing_employee_data": {
+          "detect": "An employee record is missing details that payroll or statutory filing needs.",
+          "diagnose": "Which of them the employee may fill in through a profile change request.",
+          "prepare": "A request card for the employee. HR approves the request as usual.",
+          "verify": "Closed when nothing the employee can fill in is missing. A gap that comes back reopens it."
+        },
+        "loop_missed_clock_outs": {
+          "detect": "A day in the last 7 days with a clock-in and no clock-out.",
+          "diagnose": "The roster end time for that day, which the card proposes.",
+          "prepare": "A correction card for the employee, who confirms the time or changes it. Their approver decides as usual.",
+          "verify": "Closed when a clock-out is on record. A rejected correction reopens it."
+        },
+        "loop_document_expiry": {
+          "detect": "A recorded passport expires within 60 days.",
+          "diagnose": "The expiry date on record.",
+          "prepare": "A Today card for HR and a reminder card for the employee to renew it.",
+          "verify": "Closed when a renewed expiry date is recorded. An expiry moved back into the window reopens it."
+        }
+      },
+      "figures": {
+        "prepared": "Cards prepared in {days} days",
+        "confirmed": "Completed as prepared",
+        "changed": "Changed by people",
+        "open": "Open now",
+        "noSpend": "No AI spend: these loops use rules only, never a model."
+      },
+      "openWaiting": "{open} open · {waiting} waiting",
+      "pause": {
+        "title": "Pause for a company",
+        "help": "A paused loop neither runs nor shows its cards in that company. Switching it off stops it everywhere.",
+        "none": "You administer no company here.",
+        "paused": "Paused",
+        "running": "Running",
+        "pause": "Pause",
+        "resume": "Resume"
+      },
+      "cases": {
+        "title": "Recent cards",
+        "none": "No cards yet.",
+        "columns": {
+          "when": "When",
+          "person": "Person",
+          "what": "What it prepared",
+          "status": "Status"
+        },
+        "reopened": "{count, plural, one {Reopened once} other {Reopened # times}}"
+      },
+      "what": {
+        "probation": "Probation ends {date}",
+        "payroll": "{count, plural, one {# input} other {# inputs}} missing before the {date} cut-off",
+        "record": "{count, plural, one {# detail} other {# details}} to fill in",
+        "clockOut": "Clock-out at {time} proposed for {date}",
+        "passport": "Passport expires {date}"
+      },
+      "caseState": {
+        "open": "Waiting for the person",
+        "waiting": "Sent: waiting for the usual approval",
+        "as_prepared": "Confirmed as prepared",
+        "changed": "Changed by the person",
+        "completed": "Done",
+        "inactive": "Employment ended",
+        "superseded": "No longer applies",
+        "expired": "The moment passed"
+      },
+      "limits": {
+        "title": "Limits it never crosses",
+        "confirm": "It changes no record: it prepares a card and a person confirms on the usual page.",
+        "scope": "It reads only what its sponsor may see, and stops if the sponsor loses administrator access.",
+        "model": "It calls no AI model.",
+        "cap": "At most 200 new cards a night for each company."
+      },
+      "owner": {
+        "title": "Who answers for it",
+        "agent": "Agent: the {name} loop, run as the company's agent principal",
+        "sponsor": "Sponsor: {name}",
+        "noSponsor": "No sponsor while it is off",
+        "note": "The sponsor is the group administrator who switched it on. Every run is recorded with its rule version."
+      },
+      "runs": {
+        "title": "Recent runs",
+        "none": "No runs yet.",
+        "summary": "{opened} prepared, {closed} closed, {open} open, {waiting} waiting",
+        "capped": "Card limit reached; more on the next run."
+      }
     },
     "subnav": {
       "workers": "All workers",
@@ -427,6 +593,11 @@
         "explainers": "Explainers",
         "team_absence_weekly_summary": "Weekly team absence summary",
         "daily_digest": "Daily digest",
+        "loop_probation_ending": "Probation ending",
+        "loop_payroll_inputs": "Payroll inputs ready",
+        "loop_missing_employee_data": "Missing employee data",
+        "loop_missed_clock_outs": "Missed clock-outs",
+        "loop_document_expiry": "Passports expiring",
         "conversation": "Live chat conversation"
       },
       "switchInvalid": "That switch cannot be changed here.",
@@ -723,6 +894,46 @@
       "proposalsTitle": "{count, plural, one {# prepared fix waits for your approval} other {# prepared fixes wait for your approval}}",
       "proposalsSource": "Proposed actions",
       "proposalsCta": "Review fixes"
+    },
+    "loops": {
+      "awaiting": "Waiting for you",
+      "source": "Prepared by AI Centre: {loop}",
+      "clockOutTitle": "Did you leave at {time} on {date}?",
+      "clockOutCheckIn": "Clock-in on record {time}",
+      "clockOutMissing": "No clock-out recorded",
+      "clockOutRoster": "Your roster ends at {time}",
+      "clockOutNote": "Nothing changes until you send the correction; your approver decides it as usual.",
+      "clockOutCta": "Review and confirm",
+      "recordTitle": "{count, plural, one {Your record is missing # detail} other {Your record is missing # details}}",
+      "recordNote": "HR approves your update as usual.",
+      "recordCta": "Fill in",
+      "passportTitle": "Your passport expires on {date}",
+      "passportNote": "Renew it and send HR the new details.",
+      "passportCta": "Update your details",
+      "probationTitle": "Probation ends {date}: {name}",
+      "probationTitleUnnamed": "A probation ends {date}",
+      "probationStage": {
+        "none": "No review started yet",
+        "with_manager": "Review with the manager",
+        "with_hr": "Review waiting for HR"
+      },
+      "probationOverdue": "The end date has passed with no decision",
+      "probationNote": "The loop never decides: HR records the decision.",
+      "probationCta": "Review",
+      "payrollTitle": "{company}: payroll inputs missing before the {date} cut-off",
+      "payrollTitleUnnamed": "Payroll inputs missing before the {date} cut-off",
+      "payrollBlockers": "{count, plural, one {# blocks the run} other {# block the run}}",
+      "payrollCta": "Open readiness",
+      "passportsTitle": "{count, plural, one {# passport expires within 60 days} other {# passports expire within 60 days}}",
+      "passportsFirst": "First on {date}",
+      "passportsCta": "Open people",
+      "names": {
+        "loop_probation_ending": "Probation ending",
+        "loop_payroll_inputs": "Payroll inputs ready",
+        "loop_missing_employee_data": "Missing employee data",
+        "loop_missed_clock_outs": "Missed clock-outs",
+        "loop_document_expiry": "Passports expiring"
+      }
     },
     "done": {
       "answeredLabel": "Answered",

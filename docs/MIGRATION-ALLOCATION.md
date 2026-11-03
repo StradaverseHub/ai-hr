@@ -1003,3 +1003,17 @@ ending at 0958 / when1793330000358, so the number and `when` stand. The hash bel
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
 |764|1793330000359|0959_private_cases|3016959b49532efbd6da16be168ad6ef764c66f5a0af35f50b9de40112ccf55f|
+
+## AI v2 W8 loops at the Prepare level — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-s3-loops` (cut from `32816437f`, journal ending `0959_private_cases` idx764 / when1793330000359)
+appends `0960_teras_loops` as idx765 / when1793330000360, the number and `when` the AI v2 coordinator assigned for this
+task. A fresh fetch on 3 November 2026 and a scan of every ref's migration files and journals and every registered
+worktree (including uncommitted files) found claims ending at 0959 / when1793330000359. The coordinator holds `0961` for
+a parallel employee letter-request task. Development source only: no installation priority, no deployment; the idx is
+this branch's own journal position and must be re-frozen above the then-installed ledger at integration. Sibling AI v2
+slice branches cut from the same base may claim the same next number; reconcile at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|765|1793330000360|0960_teras_loops|addec336da5a82869ab05d79c45bc9d884e92c3d877af6b073f3e892fdfda11d|

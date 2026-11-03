@@ -45,7 +45,9 @@ describe('Ops and Strata placement never grants authority',()=>{
  // shared AI Centre row, and that row (ownedSubpaths ['/control-tower'], components/sidebar.tsx) owns each of them.
  const CONTROL_TOWER_PAGES=['/control-tower','/control-tower/readiness','/control-tower/exceptions','/control-tower/actions','/control-tower/opportunities',
   '/control-tower/how-it-works','/control-tower/agents','/control-tower/agents/features','/control-tower/agents/inventory','/control-tower/agents/assistant',
-  '/control-tower/agents/allowances','/control-tower/agents/spending','/control-tower/agents/provider','/control-tower/agents/runs','/control-tower/agents/orchestrator'];
+  '/control-tower/agents/allowances','/control-tower/agents/spending','/control-tower/agents/provider','/control-tower/agents/runs','/control-tower/agents/orchestrator',
+  // AI v2 W8: Operations › Loops and each loop's page.
+  '/control-tower/loops','/control-tower/loops/[loop]'];
  it.each(CONTROL_TOWER_PAGES)('places %s under AI Centre (shared), owned by the AI Centre row',path=>{
   expect(navigationPlacement(path)).toEqual({area:'shared'});
   const links=[{href:'/'},{href:'/me'},{href:'/assistant',ownedSubpaths:['/control-tower']},{href:'/approvals'},{href:'/admin/personnel'}];

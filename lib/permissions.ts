@@ -1189,6 +1189,11 @@ export const SCREENS: readonly ScreenEntry[] = [
       // ADR-0131 Phase 1 — the process assessment. Same requireAdmin guard as its siblings, so it needs a
       // column here or test/function-access.test.ts fails.
       '/control-tower/opportunities',
+      // AI v2 W8 — AI Centre › Operations › Loops and each loop's page. Same requireAdmin guard as their siblings, so
+      // they need a column here or test/function-access.test.ts fails. Switching a loop is a group administrator's
+      // (core/agent-registry/controls.ts); pausing one for a company is that company's administrator's.
+      '/control-tower/loops',
+      '/control-tower/loops/[loop]',
       '/payroll/configuration',
       // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
       // each a real sub-route under the same scopedAdmin guard as the index.

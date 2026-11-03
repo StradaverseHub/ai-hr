@@ -43,13 +43,22 @@ export type WorkerRecord=
  |Readonly<{kind:'outcome_record';agentIdentity:string;tools?:readonly string[]}>
  |Readonly<{kind:'mandate_runs';jobType:WorkJobType}>
  |Readonly<{kind:'agent_proposal';proposalTypes:readonly ProposalTypeId[]}>
- |Readonly<{kind:'domain_event';eventType:string;source?:string}>;
+ |Readonly<{kind:'domain_event';eventType:string;source?:string}>
+ // AI v2 W8: a loop records each run in teras_loop_run (migration 0960), its outcome record.
+ |Readonly<{kind:'loop_runs'}>;
 export type WorkerMetrics=
  |Readonly<{kind:'agreement_view';proposalTypes:readonly ProposalTypeId[]}>
  |Readonly<{kind:'outcome_followups'}>
- |Readonly<{kind:'not_measurable';reason:string}>;
+ |Readonly<{kind:'not_measurable';reason:string}>
+ // AI v2 W8: a loop's cards are measured from its cases: completed as prepared, or changed by the person. Only a card
+ // that proposes a value of its own (the clock-out time) can be changed; the others are not measurable that way.
+ |Readonly<{kind:'loop_cases';proposesValue:boolean}>;
+/** AI v2 W8: who answers for a loop. `switched_on_by`: the group administrator who switched it on; the loop reads under
+ * that person's current authority and stops when they lose it. */
+export type WorkerSponsor=Readonly<{kind:'switched_on_by'}>;
 export type WorkerDeclaration=Readonly<{id:string;label:string;family:WorkerFamily;owners:readonly OwnerAnchor[];trigger:WorkerTrigger;
- readScope:readonly EntityId[];effect:WorkerEffect;authority:WorkerAuthority;switch:WorkerSwitch;stop:WorkerStop;record:WorkerRecord;metrics:WorkerMetrics}>;
+ readScope:readonly EntityId[];effect:WorkerEffect;authority:WorkerAuthority;switch:WorkerSwitch;stop:WorkerStop;record:WorkerRecord;metrics:WorkerMetrics;
+ sponsor?:WorkerSponsor}>;
 
 export class WorkerNotRegistrable extends Error{constructor(readonly id:string,readonly missing:readonly string[]){super(`Worker ${id} cannot be registered: ${missing.join(', ')}`);this.name='WorkerNotRegistrable';}}
 
@@ -78,6 +87,13 @@ export function workerDeclarationProblems(value:unknown):readonly string[]{
  if(d.authority.kind==='mandate'&&(d.switch.kind!=='job_type'||d.switch.jobType!==d.authority.jobType||d.record.kind!=='mandate_runs'))problems.push('switch');
  if(d.stop.honoured===false&&!nonEmpty(d.stop.pending))problems.push('stop');
  if(d.metrics.kind==='not_measurable'&&!nonEmpty(d.metrics.reason))problems.push('metrics');
+ // AI v2 W8: a loop prepares only, as the agent principal behind its own registry switch, honours the stop switch,
+ // names its sponsor and is measured from its cases. A sponsor is declared only by a loop.
+ const loop=d.record.kind==='loop_runs';
+ if(loop&&(d.family!=='preparer'||d.effect!=='prepare'||d.authority.kind!=='tenant_switch'||d.authority.actsAs!=='agent_principal'
+  ||d.switch.kind!=='worker_control'||d.switch.workerId!==d.id||d.stop.honoured!==true||d.metrics.kind!=='loop_cases'))problems.push('loop');
+ if(loop!==(d.sponsor?.kind==='switched_on_by'))problems.push('sponsor');
+ if(!loop&&d.metrics.kind==='loop_cases')problems.push('metrics');
  return problems;
 }
 export function assertWorkerDeclaration(value:unknown):asserts value is WorkerDeclaration{
@@ -87,6 +103,7 @@ export function assertWorkerDeclaration(value:unknown):asserts value is WorkerDe
 
 const CLOSURE_PENDING='Its run path is in the approved provider closure; it consults the stop switch once that closure is next approved. Until then use its own switch.';
 const NIGHTLY:WorkerTrigger={kind:'schedule',detail:'Nightly sweep'};
+const LOOP_NIGHTLY:WorkerTrigger={kind:'schedule',detail:'Nightly sweep, for each company in scope'};
 
 const DECLARATIONS:readonly WorkerDeclaration[]=[
  {id:'payroll_anomaly_narrator',label:'Payroll anomaly narrator',family:'explainer',owners:['core/payroll-anomaly-narrate.ts#narrateVerdict'],
@@ -153,6 +170,34 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
   trigger:{kind:'schedule',detail:'Daily, once each HR day'},readScope:['daily_digest','pending_approval'],effect:'prepare',
   authority:{kind:'mandate',jobType:'daily_digest'},switch:{kind:'job_type',jobType:'daily_digest'},stop:{honoured:true},
   record:{kind:'mandate_runs',jobType:'daily_digest'},metrics:{kind:'not_measurable',reason:'A prepared digest completes nothing, so there is nothing to accept or undo.'}},
+ // AI v2 W8: the first five loops, at the Prepare level (core/loops). Each detects through its native owners, prepares a
+ // card for the right person, and verifies on its next run whether the work is done. Nothing changes without a person's
+ // Confirm on the owner's own page. Run by the nightly sweep (scripts/review-sweep.ts) as the agent principal.
+ {id:'loop_probation_ending',label:'Probation ending',family:'preparer',
+  owners:['core/loops/probation-ending.ts#detectProbationEnding','core/employment-review.ts#probationDecisionFacts'],
+  trigger:LOOP_NIGHTLY,readScope:['employment_profile','pending_approval'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_probation_ending'},stop:{honoured:true},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'}},
+ {id:'loop_payroll_inputs',label:'Payroll inputs ready',family:'preparer',
+  owners:['core/loops/payroll-inputs.ts#detectPayrollInputs','core/payroll-readiness.ts#payrollReadiness'],
+  trigger:LOOP_NIGHTLY,readScope:['setup_copilot','readiness_gap'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_payroll_inputs'},stop:{honoured:true},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'}},
+ {id:'loop_missing_employee_data',label:'Missing employee data',family:'preparer',
+  owners:['core/loops/missing-employee-data.ts#detectMissingEmployeeData','core/record-readiness.ts#readinessSnapshot','core/readiness-actions.ts#loadReadinessActions'],
+  trigger:LOOP_NIGHTLY,readScope:['readiness_gap','profile_change_request'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_missing_employee_data'},stop:{honoured:true},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'}},
+ {id:'loop_missed_clock_outs',label:'Missed clock-outs',family:'preparer',
+  owners:['core/loops/missed-clock-outs.ts#detectMissedClockOuts','packs/attendance/service.ts#attendanceForEmploymentsRange'],
+  trigger:LOOP_NIGHTLY,readScope:['attendance_request','absence'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_missed_clock_outs'},stop:{honoured:true},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:true},sponsor:{kind:'switched_on_by'}},
+ {id:'loop_document_expiry',label:'Passports expiring',family:'preparer',
+  owners:['core/loops/document-expiry.ts#detectDocumentExpiry','core/automatic-followups.ts#followupItemsTx'],
+  trigger:LOOP_NIGHTLY,readScope:['followup_item'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_document_expiry'},stop:{honoured:true},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'}},
 ];
 
 /** Builds a registry, refusing the whole list if any declaration breaks the contract or repeats an id. */

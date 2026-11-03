@@ -27,6 +27,7 @@
     "sectionsLabel": "Bahagian {tab}",
     "sections": {
       "overview": "Gambaran keseluruhan",
+      "loops": "Gelung",
       "exceptions": "Pengecualian",
       "readiness": "Kesediaan rekod",
       "actions": "Tindakan dicadangkan",
@@ -34,6 +35,171 @@
       "workers": "Ejen",
       "setup": "Persediaan",
       "spend": "Perbelanjaan dan penyedia"
+    },
+    "loops": {
+      "title": "Gelung",
+      "description": "Setiap gelung memantau satu bahagian kerja HR, menyediakan apa yang perlu dilakukan oleh seseorang, dan menyemak hasilnya pada larian seterusnya. Pada tahap Sediakan, tiada apa yang berubah sehingga seseorang mengesahkannya.",
+      "columns": {
+        "loop": "Gelung",
+        "doneMeans": "Selesai bermaksud",
+        "level": "Tahap",
+        "switch": "Suis",
+        "lastRun": "Larian terakhir",
+        "prepared": "Kad, {days} hari lalu",
+        "confirmed": "Diselesaikan seperti disediakan",
+        "changed": "Diubah oleh seseorang",
+        "sponsor": "Penaja"
+      },
+      "names": {
+        "loop_probation_ending": "Tempoh percubaan tamat",
+        "loop_payroll_inputs": "Input gaji sedia",
+        "loop_missing_employee_data": "Data pekerja tiada",
+        "loop_missed_clock_outs": "Rekod keluar tertinggal",
+        "loop_document_expiry": "Pasport hampir tamat tempoh"
+      },
+      "doneMeans": {
+        "loop_probation_ending": "Keputusan direkodkan sebelum tempoh percubaan tamat",
+        "loop_payroll_inputs": "Tiada apa yang menyekat larian gaji sebelum tarikh tutup",
+        "loop_missing_employee_data": "Setiap butiran yang boleh diisi oleh pekerja telah diisi dan diluluskan",
+        "loop_missed_clock_outs": "Setiap rekod keluar ada dalam rekod",
+        "loop_document_expiry": "Setiap pasport diperbaharui sebelum tamat tempoh"
+      },
+      "doneMeansLine": "Selesai bermaksud: {done}.",
+      "level": {
+        "prepare": "Sediakan"
+      },
+      "on": "Hidup",
+      "off": "Mati",
+      "stopped": "Dihentikan oleh suis henti syarikat",
+      "turnOn": "Hidupkan",
+      "turnOff": "Matikan",
+      "never": "Belum dijalankan",
+      "runStatus": {
+        "ran": "Dijalankan",
+        "sponsor_lost": "Dihentikan: penajanya tiada lagi akses pentadbir",
+        "failed": "Tidak selesai: tiada kad diubah"
+      },
+      "notApplicable": "Tidak berkenaan",
+      "noneYet": "Belum ada",
+      "changedRate": "{rate} ({count, plural, other {# kad}})",
+      "sponsorUnnamed": "Seorang pentadbir",
+      "noSponsor": "Tiada semasa mati",
+      "pausedIn": "{count, plural, other {Dijeda di # syarikat}}",
+      "saved": "Disimpan.",
+      "switchNote": "Menghidupkan atau mematikan gelung terpakai untuk setiap syarikat dalam kumpulan, dan sesiapa yang menghidupkannya menjadi penajanya. Jeda untuk satu syarikat di halamannya sendiri.",
+      "switchNoteCompany": "Hanya pentadbir kumpulan boleh menghidupkan atau mematikan gelung. Anda boleh menjeda gelung untuk syarikat anda di halamannya sendiri.",
+      "cap": "Gaji, status pekerjaan, akses sistem dan tindakan tatatertib kekal pada tahap Sediakan: seseorang sentiasa membuat keputusan.",
+      "errors": {
+        "invalid": "Perubahan itu tidak difahami.",
+        "refused": "Anda tidak boleh membuat perubahan itu.",
+        "module": "Modul yang diuruskan oleh gelung ini tidak digunakan.",
+        "failed": "Perubahan tidak dapat disimpan. Cuba lagi."
+      },
+      "back": "Gelung",
+      "stepLabel": "{n} · {step}",
+      "steps": {
+        "detect": "Kesan",
+        "diagnose": "Diagnosis",
+        "prepare": "Sediakan",
+        "verify": "Sahkan"
+      },
+      "stepText": {
+        "loop_probation_ending": {
+          "detect": "Tempoh percubaan tamat dalam 14 hari tanpa keputusan direkodkan. Disemak setiap malam.",
+          "diagnose": "Sama ada semakan dibuka, dan dengan siapa: belum bermula, dengan pengurus atau dengan HR.",
+          "prepare": "Kad semakan pengesahan untuk HR. HR merekodkan keputusan; gelung tidak pernah membuat keputusan.",
+          "verify": "Ditutup apabila keputusan direkodkan. Tarikh tamat baharu tanpa keputusan membukanya semula."
+        },
+        "loop_payroll_inputs": {
+          "detect": "Tarikh tutup gaji dalam 7 hari dan semakan kesediaan gaji menemui sesuatu yang menyekat larian.",
+          "diagnose": "Semakan mana yang belum sedia, dan berapa banyak yang menyekat larian.",
+          "prepare": "Kad Hari Ini untuk pentadbir gaji yang menyenaraikan apa yang tiada di setiap syarikat.",
+          "verify": "Ditutup apabila tiada apa yang menyekat larian sebelum tarikh tutup. Sekatan baharu sebelum tarikh tutup membukanya semula."
+        },
+        "loop_missing_employee_data": {
+          "detect": "Rekod pekerja tiada butiran yang diperlukan untuk gaji atau pemfailan berkanun.",
+          "diagnose": "Butiran mana yang boleh diisi oleh pekerja melalui permintaan perubahan profil.",
+          "prepare": "Kad permintaan untuk pekerja. HR meluluskan permintaan seperti biasa.",
+          "verify": "Ditutup apabila tiada lagi butiran yang boleh diisi oleh pekerja. Jurang yang kembali membukanya semula."
+        },
+        "loop_missed_clock_outs": {
+          "detect": "Hari dalam 7 hari lalu yang ada rekod masuk tetapi tiada rekod keluar.",
+          "diagnose": "Waktu tamat jadual tugas pada hari itu, yang dicadangkan oleh kad.",
+          "prepare": "Kad pembetulan untuk pekerja, yang mengesahkan waktu itu atau mengubahnya. Pelulus mereka membuat keputusan seperti biasa.",
+          "verify": "Ditutup apabila rekod keluar ada dalam rekod. Pembetulan yang ditolak membukanya semula."
+        },
+        "loop_document_expiry": {
+          "detect": "Pasport yang direkodkan tamat tempoh dalam 60 hari.",
+          "diagnose": "Tarikh tamat tempoh dalam rekod.",
+          "prepare": "Kad Hari Ini untuk HR dan kad peringatan untuk pekerja memperbaharuinya.",
+          "verify": "Ditutup apabila tarikh tamat tempoh yang diperbaharui direkodkan. Tarikh yang dialihkan semula ke dalam tempoh membukanya semula."
+        }
+      },
+      "figures": {
+        "prepared": "Kad disediakan dalam {days} hari",
+        "confirmed": "Diselesaikan seperti disediakan",
+        "changed": "Diubah oleh orang",
+        "open": "Terbuka sekarang",
+        "noSpend": "Tiada perbelanjaan AI: gelung ini menggunakan peraturan sahaja, tidak pernah model."
+      },
+      "openWaiting": "{open} terbuka · {waiting} menunggu",
+      "pause": {
+        "title": "Jeda untuk syarikat",
+        "help": "Gelung yang dijeda tidak berjalan dan tidak menunjukkan kadnya di syarikat itu. Mematikannya menghentikannya di semua syarikat.",
+        "none": "Anda tidak mentadbir mana-mana syarikat di sini.",
+        "paused": "Dijeda",
+        "running": "Berjalan",
+        "pause": "Jeda",
+        "resume": "Sambung"
+      },
+      "cases": {
+        "title": "Kad terkini",
+        "none": "Belum ada kad.",
+        "columns": {
+          "when": "Bila",
+          "person": "Orang",
+          "what": "Apa yang disediakan",
+          "status": "Status"
+        },
+        "reopened": "{count, plural, other {Dibuka semula # kali}}"
+      },
+      "what": {
+        "probation": "Tempoh percubaan tamat {date}",
+        "payroll": "{count, plural, other {# input}} tiada sebelum tarikh tutup {date}",
+        "record": "{count, plural, other {# butiran}} perlu diisi",
+        "clockOut": "Rekod keluar pada {time} dicadangkan untuk {date}",
+        "passport": "Pasport tamat tempoh {date}"
+      },
+      "caseState": {
+        "open": "Menunggu orang itu",
+        "waiting": "Dihantar: menunggu kelulusan biasa",
+        "as_prepared": "Disahkan seperti disediakan",
+        "changed": "Diubah oleh orang itu",
+        "completed": "Selesai",
+        "inactive": "Pekerjaan telah tamat",
+        "superseded": "Tidak lagi berkenaan",
+        "expired": "Masanya telah berlalu"
+      },
+      "limits": {
+        "title": "Had yang tidak pernah dilangkaui",
+        "confirm": "Ia tidak mengubah sebarang rekod: ia menyediakan kad dan seseorang mengesahkan di halaman biasa.",
+        "scope": "Ia hanya membaca apa yang boleh dilihat oleh penajanya, dan berhenti jika penaja kehilangan akses pentadbir.",
+        "model": "Ia tidak memanggil sebarang model AI.",
+        "cap": "Paling banyak 200 kad baharu semalam bagi setiap syarikat."
+      },
+      "owner": {
+        "title": "Siapa yang bertanggungjawab",
+        "agent": "Ejen: gelung {name}, dijalankan sebagai prinsipal ejen syarikat",
+        "sponsor": "Penaja: {name}",
+        "noSponsor": "Tiada penaja semasa ia mati",
+        "note": "Penaja ialah pentadbir kumpulan yang menghidupkannya. Setiap larian direkodkan bersama versi peraturannya."
+      },
+      "runs": {
+        "title": "Larian terkini",
+        "none": "Belum ada larian.",
+        "summary": "{opened} disediakan, {closed} ditutup, {open} terbuka, {waiting} menunggu",
+        "capped": "Had kad dicapai; selebihnya pada larian seterusnya."
+      }
     },
     "subnav": {
       "workers": "Semua ejen",
@@ -427,6 +593,11 @@
         "explainers": "Penerang",
         "team_absence_weekly_summary": "Ringkasan mingguan ketidakhadiran pasukan",
         "daily_digest": "Ringkasan harian",
+        "loop_probation_ending": "Tempoh percubaan tamat",
+        "loop_payroll_inputs": "Input gaji sedia",
+        "loop_missing_employee_data": "Data pekerja tiada",
+        "loop_missed_clock_outs": "Rekod keluar tertinggal",
+        "loop_document_expiry": "Pasport hampir tamat tempoh",
         "conversation": "Perbualan sembang langsung"
       },
       "switchInvalid": "Suis itu tidak boleh ditukar di sini.",
@@ -723,6 +894,46 @@
       "proposalsTitle": "{count, plural, other {# pembetulan yang disediakan menunggu kelulusan anda}}",
       "proposalsSource": "Tindakan dicadangkan",
       "proposalsCta": "Semak pembetulan"
+    },
+    "loops": {
+      "awaiting": "Menunggu anda",
+      "source": "Disediakan oleh AI Centre: {loop}",
+      "clockOutTitle": "Adakah anda keluar pada {time} pada {date}?",
+      "clockOutCheckIn": "Rekod masuk {time}",
+      "clockOutMissing": "Tiada rekod keluar",
+      "clockOutRoster": "Jadual tugas anda tamat pada {time}",
+      "clockOutNote": "Tiada apa yang berubah sehingga anda menghantar pembetulan; pelulus anda membuat keputusan seperti biasa.",
+      "clockOutCta": "Semak dan sahkan",
+      "recordTitle": "{count, plural, other {Rekod anda tiada # butiran}}",
+      "recordNote": "HR meluluskan kemas kini anda seperti biasa.",
+      "recordCta": "Isi",
+      "passportTitle": "Pasport anda tamat tempoh pada {date}",
+      "passportNote": "Perbaharuinya dan hantar butiran baharu kepada HR.",
+      "passportCta": "Kemas kini butiran anda",
+      "probationTitle": "Tempoh percubaan tamat {date}: {name}",
+      "probationTitleUnnamed": "Satu tempoh percubaan tamat {date}",
+      "probationStage": {
+        "none": "Semakan belum bermula",
+        "with_manager": "Semakan dengan pengurus",
+        "with_hr": "Semakan menunggu HR"
+      },
+      "probationOverdue": "Tarikh tamat telah berlalu tanpa keputusan",
+      "probationNote": "Gelung tidak pernah membuat keputusan: HR merekodkan keputusan.",
+      "probationCta": "Semak",
+      "payrollTitle": "{company}: input gaji tiada sebelum tarikh tutup {date}",
+      "payrollTitleUnnamed": "Input gaji tiada sebelum tarikh tutup {date}",
+      "payrollBlockers": "{count, plural, other {# menyekat larian}}",
+      "payrollCta": "Buka kesediaan",
+      "passportsTitle": "{count, plural, other {# pasport tamat tempoh dalam 60 hari}}",
+      "passportsFirst": "Yang pertama pada {date}",
+      "passportsCta": "Buka senarai pekerja",
+      "names": {
+        "loop_probation_ending": "Tempoh percubaan tamat",
+        "loop_payroll_inputs": "Input gaji sedia",
+        "loop_missing_employee_data": "Data pekerja tiada",
+        "loop_missed_clock_outs": "Rekod keluar tertinggal",
+        "loop_document_expiry": "Pasport hampir tamat tempoh"
+      }
     },
     "done": {
       "answeredLabel": "Dijawab",

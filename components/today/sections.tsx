@@ -16,6 +16,7 @@ import {TodayNote,TodaySection} from './today-ui';
 import {readAtAGlance,readDoneForYou,readNeedsYou,readWatching,type Finding,type PreparedItem} from './reads';
 import {WhyLink} from '@/components/why/why-panel';
 import {LeaveBalanceWhy} from '@/components/why/sections';
+import {LoopCards} from './loop-cards';
 
 /** Today (AI v2 Phase 1, W3): the four sections. Each is its own async server component, rendered by
  * components/today/today-page.tsx inside its own Suspense boundary, so the slowest owner holds back only its
@@ -67,12 +68,14 @@ export async function NeedsYouSection(p:Common&Readonly<{all?:boolean;recommend?
   <ProposalCard tone="finding" icon={finding.key==='proposals'?<Wand2/>:<ClipboardCheck/>} title={t(`findings.${finding.key}Title`,{count:finding.count})}
    meta={[t(`findings.${finding.key}Source`)]} href={finding.href} cta={t(`findings.${finding.key}Cta`)}/>
  </li>;
- const count=data.tasks.length+data.prepared.length+data.findings.length;
+ const count=data.tasks.length+data.prepared.length+data.findings.length+data.loops.length;
  return <TodaySection id="today-needs-you" title={t(needsYouHeading(p.audience))} count={count} empty={count===0} emptyText={t('needsYouEmpty')}
   unavailable={data.failed?t('unavailable'):null}
   footer={data.tasks.length>shown.length?<Link href={NEEDS_ALL_HREF} className="inline-flex min-h-9 items-center text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
    {t('tasks.seeAll',{count:data.tasks.length})}</Link>:null}>
   {data.prepared.map(preparedCard)}
+  {/* AI v2 W8: what the loops prepared for this person, before the decisions waiting on them. */}
+  <LoopCards cards={data.loops} locale={p.locale}/>
   {shown.map(task=><li key={`${task.kind}:${task.id}`} data-today-task={task.kind}>
    <ProposalCard tone="decide" icon={task.kind==='noticeAcknowledgement'?<ListChecks/>:<CalendarCheck/>} title={taskTitle(task)} awaitingLabel={t('prepared.awaiting')}
     meta={[t('tasks.from'),t('tasks.received',{date:f.format(new Date(task.createdAt))})]} href={withTodayOrigin(task.linkPath)} cta={t('tasks.open')}/>

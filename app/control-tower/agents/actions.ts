@@ -36,7 +36,9 @@ async function commandError(error: unknown): Promise<string> {
 /** The three registry-controlled worker switches (ADR-0170 §3.13, and the Noveri conversation switch of ADR-0169
  *  §5.1), and nothing else, reach setWorkerSwitch through setAiFeatureAction. A closed list: any other worker
  *  value is refused before a session is read. */
-const REGISTRY_SWITCHES: readonly string[] = Object.freeze(['approver_recommendation', 'explainers', 'conversation']);
+const REGISTRY_SWITCHES: readonly string[] = Object.freeze(['approver_recommendation', 'explainers', 'conversation',
+  // AI v2 W8: the five loops at the Prepare level, also switched on AI Centre › Operations › Loops.
+  'loop_probation_ending', 'loop_payroll_inputs', 'loop_missing_employee_data', 'loop_missed_clock_outs', 'loop_document_expiry']);
 
 /** A group administrator turns approver recommendations, explainers or the Noveri conversation on or off from AI
  *  centre › Workers. The action checks the closed list and the group-administrator role; the service checks the
