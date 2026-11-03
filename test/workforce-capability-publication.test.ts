@@ -124,7 +124,13 @@ it('registers exact mixed-case native submenu IDs while preserving closed gramma
 it('reports registered actions without a package and leaves the full publisher closed',async()=>{
  const before=await snapshot();
  await expect(publishAllActionCapabilities(owner.client))
-  .rejects.toThrow(/registry coverage differs .*function\.payroll\.historyImport\.view/);
+  .rejects.toThrow(/registry coverage differs .*function\.workforceImports\.execute/);
+ expect(await snapshot()).toEqual(before);
+});
+it('refuses Financial Setup publication while its enforcement completion check is missing',async()=>{
+ const before=await snapshot();
+ await expect(publishActionCapabilityPackage(owner.client,'financial_setup'))
+  .rejects.toThrow('missing function app.financial_setup_bindings_complete()');
  expect(await snapshot()).toEqual(before);
 });
 it('requires a passing Financial Letters completion check before publishing',async()=>{

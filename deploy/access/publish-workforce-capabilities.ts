@@ -2,6 +2,7 @@
 import {createHash} from 'node:crypto';
 import type {Sql} from 'postgres';
 import {functionActionCapabilities,type FunctionActionDescriptor} from './function-action-contract';
+import {FINANCIAL_SETUP_CAPABILITY_PUBLICATION} from './financial-setup-capability-bindings';
 import {FINANCIAL_LETTER_CAPABILITY_PUBLICATION} from './financial-letter-capability-bindings';
 import {ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION} from './organisation-settings-capability-bindings';
 
@@ -51,7 +52,7 @@ export const WORKFORCE_CAPABILITY_BINDINGS_V2=[...WORKFORCE_CAPABILITY_BINDINGS_
  ]})),
 ] as const;
 export type DomainPublication={capabilities:readonly {id:string;scope:'company'|'tenant';bindings:readonly {owner:string;operation:string}[]}[];requiredFunctions:readonly string[];legacyGroups:Record<string,readonly string[]>;legacyParityFunction?:string;delegationFloorFunction?:string;functions?:readonly FunctionActionDescriptor[];functionLegacyParityFunction?:string;currentLegacyParityFunction?:string;functionCurrentLegacyParityFunction?:string};
-export const ACTION_DOMAIN_PUBLICATIONS:readonly DomainPublication[]=[FINANCIAL_LETTER_CAPABILITY_PUBLICATION,ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION];
+export const ACTION_DOMAIN_PUBLICATIONS:readonly DomainPublication[]=[FINANCIAL_LETTER_CAPABILITY_PUBLICATION,ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION,FINANCIAL_SETUP_CAPABILITY_PUBLICATION];
 export const WORKFORCE_CAPABILITY_BINDINGS=[...WORKFORCE_CAPABILITY_BINDINGS_V2,...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>domain.capabilities)];
 export const WORKFORCE_CAPABILITY_BINDINGS_SHA256=createHash('sha256').update(JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,capabilities:WORKFORCE_CAPABILITY_BINDINGS})).digest('hex');
 const WORKFORCE_REQUIRED_FUNCTIONS=[
@@ -81,21 +82,26 @@ function exactBindings(actual:unknown,expected:readonly {owner:string;operation:
  */
 export const WORKFORCE_ACTION_PACKAGE_BINDINGS_SHA256=createHash('sha256').update(JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,package:'workforce',capabilities:WORKFORCE_CAPABILITY_BINDINGS_V2})).digest('hex');
 export function publishWorkforceActionPackage(owner:Sql){return publishActionCapabilityPackage(owner,'workforce');}
-export type ActionCapabilityPackage='workforce'|'financial_letters'|'organisation_settings';
+const ACTION_PACKAGES={
+ workforce:[],
+ financial_letters:[FINANCIAL_LETTER_CAPABILITY_PUBLICATION],
+ organisation_settings:[ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION],
+ financial_setup:[FINANCIAL_SETUP_CAPABILITY_PUBLICATION],
+} as const satisfies Record<string,readonly DomainPublication[]>;
+export type ActionCapabilityPackage=keyof typeof ACTION_PACKAGES;
 /** Restricted component publication uses the same real transaction, owner checks and fences as
  * the full installer. Callers choose a fixed source package, never submit bindings or prerequisites. */
 export function publishActionCapabilityPackage(owner:Sql,key:ActionCapabilityPackage){
- if(!['workforce','financial_letters','organisation_settings'].includes(key))throw new Error('Unknown code-owned action package');
+ if(!Object.hasOwn(ACTION_PACKAGES,key))throw new Error('Unknown code-owned action package');
  return installActionCapabilities(owner,key);
 }
 export function publishWorkforceCapabilities(owner:Sql){return installActionCapabilities(owner,'all');}
 async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'all'){
- const ACTION_DOMAIN_PUBLICATIONS=key==='workforce'?[]:key==='financial_letters'?[FINANCIAL_LETTER_CAPABILITY_PUBLICATION]:key==='organisation_settings'?[ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION]:[FINANCIAL_LETTER_CAPABILITY_PUBLICATION,ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION];
- const domains=ACTION_DOMAIN_PUBLICATIONS as readonly DomainPublication[];
+ const domains:readonly DomainPublication[]=key==='all'?ACTION_DOMAIN_PUBLICATIONS:ACTION_PACKAGES[key];
  for(const domain of domains){requireInstallation(!domain.legacyParityFunction||!!domain.currentLegacyParityFunction);requireInstallation(!domain.functions?.length||!!domain.functionLegacyParityFunction&&!!domain.functionCurrentLegacyParityFunction);}
  const includeWorkforce=key==='all'||key==='workforce';
- const WORKFORCE_CAPABILITY_BINDINGS:{id:string;scope:'company'|'tenant';bindings:readonly {owner:string;operation:string}[];prerequisites?:readonly string[]}[]=[...(includeWorkforce?WORKFORCE_CAPABILITY_BINDINGS_V2:[]),...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>[...domain.capabilities,...functionActionCapabilities((domain as DomainPublication).functions??[])])];
- const REQUIRED_FUNCTIONS=[...new Set([...(includeWorkforce?WORKFORCE_REQUIRED_FUNCTIONS:[]),...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>domain.requiredFunctions),...domains.flatMap(domain=>[domain.legacyParityFunction,domain.currentLegacyParityFunction,domain.functionLegacyParityFunction,domain.functionCurrentLegacyParityFunction].filter((hook):hook is string=>!!hook).map(hook=>hook+'(uuid,uuid,text,uuid)')),...(ACTION_DOMAIN_PUBLICATIONS as readonly DomainPublication[]).flatMap(domain=>domain.functions?.length?[...(domain.functionLegacyParityFunction?[domain.functionLegacyParityFunction+'(uuid,uuid,text,uuid)']:[]),...domain.functions.flatMap(descriptor=>descriptor.actions.flatMap(action=>action.delegationFloorFunction?[action.delegationFloorFunction+'(uuid,uuid,text,uuid)']:[]))]:[]),...(key==='all'?['app.access_all_function_bindings_complete()']:[])])];
+ const WORKFORCE_CAPABILITY_BINDINGS:{id:string;scope:'company'|'tenant';bindings:readonly {owner:string;operation:string}[];prerequisites?:readonly string[]}[]=[...(includeWorkforce?WORKFORCE_CAPABILITY_BINDINGS_V2:[]),...domains.flatMap(domain=>[...domain.capabilities,...functionActionCapabilities((domain as DomainPublication).functions??[])])];
+ const REQUIRED_FUNCTIONS=[...new Set([...(includeWorkforce?WORKFORCE_REQUIRED_FUNCTIONS:[]),...domains.flatMap(domain=>domain.requiredFunctions),...domains.flatMap(domain=>[domain.legacyParityFunction,domain.currentLegacyParityFunction,domain.functionLegacyParityFunction,domain.functionCurrentLegacyParityFunction].filter((hook):hook is string=>!!hook).map(hook=>hook+'(uuid,uuid,text,uuid)')),...domains.flatMap(domain=>domain.functions?.length?[...(domain.functionLegacyParityFunction?[domain.functionLegacyParityFunction+'(uuid,uuid,text,uuid)']:[]),...domain.functions.flatMap(descriptor=>descriptor.actions.flatMap(action=>action.delegationFloorFunction?[action.delegationFloorFunction+'(uuid,uuid,text,uuid)']:[]))]:[]),...(key==='all'?['app.access_all_function_bindings_complete()']:[])])];
  const WORKFORCE_CAPABILITY_BINDINGS_SHA256=createHash('sha256').update(JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,...(key==='all'?{}:{package:key}),capabilities:WORKFORCE_CAPABILITY_BINDINGS})).digest('hex');
  return owner.begin(async tx=>{
   await tx`set local lock_timeout='10s'`;await tx`set local statement_timeout='60s'`;
@@ -113,7 +119,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
   requireInstallation(rows.length===WORKFORCE_CAPABILITY_BINDINGS.length);
   const expected=[...WORKFORCE_CAPABILITY_BINDINGS].sort((a,b)=>a.id.localeCompare(b.id));
   requireInstallation(rows.every((row,index)=>row.id===expected[index].id&&row.scope===expected[index].scope&&JSON.stringify(row.prerequisites)===JSON.stringify(expected[index].prerequisites??[])));
-  for(const domain of ACTION_DOMAIN_PUBLICATIONS as readonly DomainPublication[]){
+  for(const domain of domains){
    for(const descriptor of domain.functions??[]){
     const {key:definitionKey,scope:definitionScope,actions,...metadata}=descriptor;
     for(const action of actions){
@@ -152,6 +158,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
   const coverageChecks=[
    ...(key==='all'||key==='financial_letters'?['app.financial_letter_bindings_complete']:[]),
    ...(key==='all'||key==='organisation_settings'?['app.organisation_settings_bindings_complete']:[]),
+   ...(key==='all'||key==='financial_setup'?['app.financial_setup_bindings_complete']:[]),
    ...(key==='all'?['app.access_all_function_bindings_complete']:[]),
   ];
   for(const check of coverageChecks){
@@ -217,7 +224,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
   // Only source-defined legacy groups receive defaults. Live native sources separately preserve
   // roles with no legacy group, without changing a human override or inventing a global role.
   // Each physical operation continues to enforce its original native floor after publication.
-  for(const domain of ACTION_DOMAIN_PUBLICATIONS){
+  for(const domain of domains){
    for(const capability of domain.capabilities){
     if(rows.find(row=>row.id===capability.id)?.supported)continue;
     const groups=domain.legacyGroups[capability.id]??[];
@@ -227,7 +234,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
 
    }
   }
-  for(const domain of ACTION_DOMAIN_PUBLICATIONS as readonly DomainPublication[]){
+  for(const domain of domains){
    const defaults=[...(domain.legacyParityFunction?domain.capabilities.map(capability=>({id:capability.id,hook:domain.legacyParityFunction!,currentHook:domain.currentLegacyParityFunction!})):[]),...(domain.functionLegacyParityFunction?functionActionCapabilities(domain.functions??[]).map(capability=>({id:capability.id,hook:domain.functionLegacyParityFunction!,currentHook:domain.functionCurrentLegacyParityFunction!})):[])];
    for(const definition of defaults){
     const installed=await tx<{parity_function:string;current_parity_function:string}[]>`select parity_function,current_parity_function from app.access_native_capability_default where capability_id=${definition.id}`;
