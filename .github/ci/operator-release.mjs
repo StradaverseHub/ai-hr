@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 /** Parent-operated staging release. CI never receives the operator's SSH credentials. */
 import {execFileSync} from 'node:child_process';
 import {readFileSync,writeFileSync} from 'node:fs';
@@ -13,7 +14,7 @@ import {assertRsyncPacketCapability} from './rsync-packet-capability.mjs';
 import {verifyRecoveredCi,revalidateRecoveredCi} from './focused-recovery.mjs';
 import {verifyRepairedCi,revalidateRepairedCi} from './repair-recovery.mjs';
 import {requireReviewedRepairController} from './repair-recovery-policy.mjs';
-import {requireReviewedBrowserController} from './browser-recovery-policy.mjs';
+import {requireReviewedBrowserController,BROWSER_ASSERTION_RECOVERY_POLICY,ASSERTION_INCIDENT} from './browser-recovery-policy.mjs';
 import {verifyBrowserRecoveredCi,revalidateBrowserRecoveredCi} from './browser-recovery.mjs';
 import {probeStagingProfile} from './staging-preflight.mjs';
 import {readLease,guardCommand,guardedRsync,leasePhase,redactLeaseError} from '../../scripts/staging/lease.mjs';
@@ -24,6 +25,23 @@ export function followStagingDeployment(official,ssh,observation={}){
 export function requireSuccessfulBuild(official,status,sha){
  if(!official.isSuccessState(status.state??'unknown')||status.built_ref!==sha||status.stale_build!=='0')throw Error('Remote build/migration failed; no arrival or deployed board state claimed');
  return status;
+}
+// This recovery covers only the pending marker left by the interrupted BOARD transfer.
+const interruptedTransfer = Object.freeze({
+ batch: '58e10be2-f4f1-493d-bcd9-aac93700f8ec', epoch: 30,
+ build: '2Nx3GLbqC6Gt1waXEfdMR', previousPid: '2865422', previousFinish: '1793640944',
+ ledger: '16abb94c7a80ce976e0e802bca0aad07a42f522e951820a6a26e187deedfa491',
+});
+export function validateInterruptedTransfer({status,lease,phase,runId,recoveryPolicy}) {
+ const incident = ASSERTION_INCIDENT;
+ assert(Number(runId) === incident.runId && recoveryPolicy === BROWSER_ASSERTION_RECOVERY_POLICY,
+  'Interrupted transfer recovery is scoped to the reviewed BOARD incident');
+ assert(lease?.batch === interruptedTransfer.batch && lease.epoch === interruptedTransfer.epoch
+  && lease.candidate === incident.source && phase === 'installing', 'Original installing lease required');
+ assert(status.pid === interruptedTransfer.previousPid && status.finished_at === interruptedTransfer.previousFinish
+  && status.exit_code === '0', 'Previous terminal deployment record changed');
+ validatePrelaunchState(status, {baseline:incident.baseline,baselineBuildId:interruptedTransfer.build,candidate:incident.source,announced:true});
+ return incident.baseline;
 }
 export async function operatorRelease(options){try{return await leasedOperatorRelease(options);}catch(error){throw redactLeaseError(error);}}
 async function leasedOperatorRelease({candidatePath,runId,execute=false,recoveryRunIds=[],repair=null,browserRecovery=null}){
@@ -42,11 +60,30 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  const sshRaw=(command,options={})=>execFileSync('ssh',transport.sshArgs(command),{encoding:'utf8',timeout:30000,maxBuffer:64*1024*1024,...options});
  const ssh=(command,options={})=>sshRaw(lease?guardCommand(lease,command):command,options);
  const current=()=>official.parseDeployStatus(ssh('cd /opt/ai-hr && deploy/deploy-state.sh status'));
- const initial=current(),baseline=baselineRules.readyProductionBaseline(initial);
+ const resumePending = browserRecovery?.resumePending === true;
+ if (resumePending) assert(execute && lease, 'Pending transfer recovery requires the deployment lease');
+ const pendingBaseline = status => {
+  const {phase} = JSON.parse(sshRaw(
+   'systemctl is-active --quiet aihr && python3 /var/tmp/aihr-deploy/staging-release-queue/coordinator.py',
+   {input: JSON.stringify({...lease, action:'assert', actor:'ci-operator'})},
+  ));
+  return validateInterruptedTransfer({status,lease,phase,runId,recoveryPolicy:browserRecovery.recoveryPolicy});
+ };
+ const initial=current();
+ const baseline=resumePending?pendingBaseline(initial):baselineRules.readyProductionBaseline(initial);
+ if (resumePending) {
+  sshRaw('flock -n /var/tmp/aihr-deploy/staging-release-queue/operations.lock true');
+  const priorAttempt = ssh('find ~/.aihr-ci-builds -mindepth 1 -maxdepth 1 -type d -newer /var/tmp/aihr-deploy/pending -print -quit');
+  assert(priorAttempt.trim()==='', 'An installer attempt already exists for the pending source');
+  assert(execFileSync('git',['diff','--quiet',baseline,lease.candidate,'--','package.json'],{cwd:candidatePath}).length===0,
+   'Pending transfer requires identical baseline and candidate package bytes');
+ }
+
  cleanHead(candidatePath);cleanHead(controllerRoot);
  const profilePreflight=await probeStagingProfile({candidatePath,baseline,ssh});
  const expectedBaseline=expectedBaselineMigrationLedger(candidatePath,baseline);
  const baselineLedger=verifyBaselineMigrationPreflight({candidatePath,baseline,ssh});
+ if (resumePending) assert(baselineLedger.actualSha256 === interruptedTransfer.ledger, 'Original migration ledger changed');
  const recovering=recoveryRunIds.length>0;
  if(repair&&recovering)throw Error('Choose one explicitly versioned recovery route');
  const evidence=browserRecovery?await verifyBrowserRecoveredCi({...browserRecovery,candidatePath,runId,baseline}):repair?await verifyRepairedCi({...repair,candidatePath,runId,baseline}):recovering?await verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds:recoveryRunIds}):await verifyCi({candidatePath,runId,baseline});
@@ -54,8 +91,8 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  save('operator-preflight.json',{...evidence,target:STAGING,baselineLedger,profilePreflight,execute,packetTransport});
  if(!execute)return evidence;
  const frozen=()=>{if(cleanHead(candidatePath)!==evidence.sha||cleanHead(controllerRoot)!==(evidence.verificationController??evidence.controller))throw Error('Verified source changed');};
- const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,baseline,announced,ssh});await (browserRecovery?revalidateBrowserRecoveredCi(evidence):repair?revalidateRepairedCi(evidence):recovering?revalidateRecoveredCi(evidence):revalidateCi(evidence));validatePrelaunchState(current(),{baseline,baselineBuildId:initial.built_build_id,candidate:evidence.sha,announced});
-  if(!announced){const actual=JSON.parse(ssh(stagingLedgerProbeCommand(),{input:LEDGER_QUERY,timeout:20000,maxBuffer:4*1024**2}));const fresh=validateMigrationLedgerRows(expectedBaseline,actual);if(fresh.actualSha256!==baselineLedger.actualSha256)throw Error('Applied migration history changed before source transfer');}
+ const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,baseline,announced,ssh});await (browserRecovery?revalidateBrowserRecoveredCi(evidence):repair?revalidateRepairedCi(evidence):recovering?revalidateRecoveredCi(evidence):revalidateCi(evidence));if(resumePending)pendingBaseline(current());else validatePrelaunchState(current(),{baseline,baselineBuildId:initial.built_build_id,candidate:evidence.sha,announced});
+  if(!announced||resumePending){const actual=JSON.parse(ssh(stagingLedgerProbeCommand(),{input:LEDGER_QUERY,timeout:20000,maxBuffer:4*1024**2}));const fresh=validateMigrationLedgerRows(expectedBaseline,actual);if(fresh.actualSha256!==baselineLedger.actualSha256)throw Error('Applied migration history changed before source transfer');}
  };
  frozen();await revalidate();
  leasePhase(lease,sshRaw,'installing');
@@ -65,7 +102,7 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
   jobs:JSON.parse(readFileSync(join(evidence.evidenceDirectory,'jobs.json'))),...snapshot});
  await transferAndLaunchCiBuild({grant,evidence,official,ssh,save,frozen,revalidate,pendingCommand:strictPendingCommand(evidence.sha),
   // Canonical transfer may need to apply thousands of source mtimes; retain a finite bundle-sized transport budget.
-  transferSource:()=>execFileSync('rsync',guardedRsync(lease,transport.rsyncArgs(official,candidatePath)),{stdio:'inherit',timeout:600000}),
+  transferSource:()=>execFileSync('rsync',guardedRsync(lease,[...(resumePending?['--checksum']:[]),...transport.rsyncArgs(official,candidatePath)]),{stdio:'inherit',timeout:600000}),
   transferPacket:(packet,destination)=>execFileSync('rsync',guardedRsync(lease,transport.packetRsyncArgs(packet,destination)),{stdio:'inherit',timeout:120000})});
  const status=followStagingDeployment(official,ssh);save('remote-build-result.json',status);
  requireSuccessfulBuild(official,status,evidence.sha);

@@ -6,7 +6,7 @@ import {hash} from './manifest.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
 import {verifyBrowserRecovery,validateBrowserMetadata,BROWSER_IMAGE,BROWSER_WORKFLOW_ID,requireReviewedBrowserController,validateBrowserRecoveryGrantEvidence,BROWSER_ASSERTION_RECOVERY_POLICY,ASSERTION_INCIDENT,verifyAssertionCaseInventory,originalAssertionProducer} from './browser-recovery-policy.mjs';
 import {validateBrowserControllerDelta,validateBrowserHistory,validateAssertionVerifierDelta} from './browser-recovery.mjs';
-import {operatorRelease} from './operator-release.mjs';
+import {operatorRelease,validateInterruptedTransfer} from './operator-release.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 const branch='codex/recovery',candidateBranch='codex/source',controller='e'.repeat(40),lock='f'.repeat(64);
@@ -199,4 +199,19 @@ test('Assertion incident accounts for exactly the two passive diagnostic runs', 
   assert.throws(() => validateBrowserHistory({...input, rows}));
  }
  assert.throws(() => validateBrowserHistory({...input, recoveryPolicy: undefined}));
+});
+
+
+test('Pending source transfer can resume only under the original installing lease and terminal baseline', () => {
+ const {source,baseline,runId} = ASSERTION_INCIDENT;
+ const build = '2Nx3GLbqC6Gt1waXEfdMR';
+ const status = {pid:'2865422',finished_at:'1793640944',exit_code:'0',state:'incomplete',ref:source,
+  built_ref:baseline,build_id:build,built_build_id:build,stale_build:'1'};
+ const lease = {batch:'58e10be2-f4f1-493d-bcd9-aac93700f8ec',epoch:30,candidate:source};
+ const input = {status,lease,phase:'installing',runId,recoveryPolicy:BROWSER_ASSERTION_RECOVERY_POLICY};
+ assert.equal(validateInterruptedTransfer(input),baseline);
+ for (const changes of [{phase:'arrived'},{runId:1},{lease:{...lease,epoch:31}},
+  {status:{...status,pid:'0'}},{status:{...status,ref:baseline}},{status:{...status,build_id:'different'}}]) {
+  assert.throws(()=>validateInterruptedTransfer({...input,...changes}));
+ }
 });

@@ -39,7 +39,7 @@ test('normal, unchanged-source, browser-capacity and repaired-source operators a
  const source=readFileSync(new URL('./operator-release.mjs',import.meta.url),'utf8');
  const early='const profilePreflight=await probeStagingProfile({candidatePath,baseline,ssh});',verify='const evidence=browserRecovery?await verifyBrowserRecoveredCi({...browserRecovery,candidatePath,runId,baseline}):repair?await verifyRepairedCi({...repair,candidatePath,runId,baseline}):recovering?await verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds:recoveryRunIds}):await verifyCi({candidatePath,runId,baseline});';
  assert.equal(source.split(early).length,2);assert.equal(source.split(verify).length,2);assert(source.indexOf(early)>=0&&source.indexOf(early)<source.indexOf(verify));
- const observedBaseline='const initial=current(),baseline=baselineRules.readyProductionBaseline(initial);';
+ const observedBaseline='const baseline=resumePending?pendingBaseline(initial):baselineRules.readyProductionBaseline(initial);';
  assert.equal(source.split(observedBaseline).length,2);assert(source.indexOf(observedBaseline)<source.indexOf(early));
  assert(source.includes('const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,baseline,announced,ssh});await (browserRecovery?revalidateBrowserRecoveredCi(evidence):repair?revalidateRepairedCi(evidence):recovering?revalidateRecoveredCi(evidence):revalidateCi(evidence));'));
 });
