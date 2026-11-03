@@ -15,6 +15,7 @@ import {TRACE_KEYS} from '../core/harness/trace';
 import {issueProposal} from '../core/proposals/proposal';
 import {FICTIONAL,fakeTools} from './harness-ratchet/fake-tools';
 import {scriptedModel,type ScriptStep} from './harness-ratchet/scripted-model';
+import {v22ShapedSpec} from './harness-spec-shapes';
 
 const employee:SessionContext={tenantId:'00000000-0000-4000-8000-0000000000aa',userId:'00000000-0000-4000-8000-0000000000bb',personId:'00000000-0000-4000-8000-0000000000cc',
  roles:['employee'],grants:[{role:'employee',companyId:null}]};
@@ -38,7 +39,8 @@ describe('harness spec',()=>{
 // Main's own v9 added the two public guides to v8 as tools. The release merge took them into v21 as tools, then into v22
 // as product_guidance topics (test/harness-spec-v22.test.ts), so main's version 9 and its digest 50ffa246… are not rows here.
 it('keeps the two public guides as v22 product_guidance topics while retaining every released digest and the exact prior policy',()=>{
- expect(HARNESS_SPEC.version).toBe(22);
+ // v23 (test/harness-spec-v23.test.ts) keeps them; the v20 shape below is taken from the v22-shaped spec.
+ expect(HARNESS_SPEC.version).toBe(23);
  expect(Object.fromEntries(Object.entries(HARNESS_SPEC_DIGESTS).filter(([version])=>Number(version)<=8))).toEqual({
   1:'0589cb3e4beec5214c8b00b7869b06ae9065d387733c004820b2a66a25da0616',
   2:'57fd6ad641945084c2b8c4eb40af07cc99f3e24e2f8521631bd6230d12596ee0',
@@ -49,11 +51,11 @@ it('keeps the two public guides as v22 product_guidance topics while retaining e
   7:'b68ea8eecdca81d9cbb2a27cd5f3957dc3fd243d58f65feb9ac149fde4f9b701',
   8:'48db87fd9276f9e828926d82ff07888f4400e4dcd40fbdf08e8a735610c0f9d2',
  });
- expect(Object.keys(HARNESS_SPEC_DIGESTS)).toEqual(['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22']);
+ expect(Object.keys(HARNESS_SPEC_DIGESTS)).toEqual(['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23']);
  expect(HARNESS_SPEC.offer.publicContextTools).toEqual(['product_destinations','product_guidance','available_actions']);
  expect(HARNESS_SPEC.offer.guidanceTopics).toEqual(['password_policy','correction_controls']);
- const {guidanceTopics:_topics,...v20Offer}=HARNESS_SPEC.offer;
- expect(harnessSpecDigest({...HARNESS_SPEC,version:20,offer:v20Offer})).toBe('87f846496918cf773ce778eefb288b1a41bf4c518d8e1463b9aa4d91755bda04');
+ const v22=v22ShapedSpec(),{guidanceTopics:_topics,...v20Offer}=v22.offer;
+ expect(harnessSpecDigest({...v22,version:20,offer:v20Offer})).toBe('87f846496918cf773ce778eefb288b1a41bf4c518d8e1463b9aa4d91755bda04');
 });
 
 describe('closed public context offer',()=>{

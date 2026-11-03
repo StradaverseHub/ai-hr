@@ -27,7 +27,7 @@ export function leaveBalanceExplanation(card:Pick<MyLeaveCard,'leaveType'|'cycle
   figures:{entitlement:null,earnedSoFar:null,broughtForward:null,adjustments:null,totalEntitlement:null,taken:card.taken,pending:null,forfeited:null,available:null}});
  const mine=projectMineLeaveEntitlement(card.breakdown);
  const shownEntitlement=mine.displayEntitlementDays!==null;
- return Object.freeze({...base,entitlementTemplateName:mine.entitlementTemplateName,entitlementStatus:mine.entitlementStatus,withheld:mine.withheld,
+ return Object.freeze({...base,entitlementTemplateName:mine.entitlementTemplateName,entitlementStatus:mine.entitlementStatus,withheld:mine.notShown.length>0,
   carryForwardExpiryDate:mine.carryForwardExpiryDate,
   proration:shownEntitlement?{annualEntitlementDays:card.breakdown.entitlement.annualEntitlementDays,prorated:card.breakdown.entitlement.prorated,
    displayEntitlementDays:card.breakdown.entitlement.displayEntitlementDays,roundingApplied:card.breakdown.entitlement.roundingApplied}:null,

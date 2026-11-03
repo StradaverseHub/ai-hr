@@ -81,6 +81,8 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  |'payroll_readiness'
  /** AI v2 Phase 2 (wave 1 integration): the payroll-cycle loop pages, for administrators (./entities-payroll-loops.ts). */
  |'payroll_cycle'|'salary_payroll_run'|'payroll_loop_setting'|'payroll_audit_status'
+ /** Spec v23 addendum: declared as text only (./entities-payroll-loops.ts PAYROLL_CHECK_ACKNOWLEDGEMENT_ENTITY), not yet offered. */
+ |'payroll_check_acknowledgement'
  /** AI v2 Phase 2 P2-5: the approved company policies in force for the caller (./entities-handbook.ts). */
  |'policy_handbook'
  /** AI v2 Phase 2 P2-6: the AI quality page's figures, for administrators (./entities-quality.ts). */

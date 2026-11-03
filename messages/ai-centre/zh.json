@@ -970,7 +970,9 @@
         "explain_attendance_day": "考勤计算",
         "setup_copilot": "设置步骤",
         "explain_pay_difference": "您的工资差异",
-        "explain_claim_limit": "您的报销限额"
+        "explain_claim_limit": "您的报销限额",
+        "explain_why": "相关说明",
+        "operations_status": "AI Centre 运营状态"
       },
       "errors": {
         "invalid_question": "请提出不超过 2,000 个字符的问题。",
@@ -1758,14 +1760,12 @@
       },
       "gaps": {
         "title": "最大的缺口",
-        "help": "AI Centre 无法回答或完成的问题，按所问内容分组计数。示例已脱敏，保留时间与您的聊天记录相同。",
+        "help": "AI Centre 无法回答或完成的问题，按所问内容分组计数。",
         "intent": "意图",
         "count": "次数",
-        "example": "示例",
         "status": "状态",
         "none": "本期间没有 AI Centre 无法回答或完成的事项。",
         "roles": "提问者：{roles}",
-        "noExample": "未保留示例",
         "statusFor": "{intent} 的状态",
         "mixed": "各公司不同",
         "statuses": {
@@ -1863,7 +1863,6 @@
         "redactionHelp": "请使用虚构的姓名和细节。保存时，姓名、编号、数字、日期、电子邮件地址和电话号码会被替换为 NAME_A 等占位符。批准前请阅读已保存的文本。",
         "newTitle": "新的评测候选：{signal}",
         "newIntro": "记录为{locale}的{role}问题。请写出可能的提问方式，以及好的回复应做到什么。",
-        "example": "该轮对话中已脱敏的问题：“{example}”",
         "saveDraft": "保存草稿",
         "cancel": "取消",
         "editTitle": "编辑草稿"

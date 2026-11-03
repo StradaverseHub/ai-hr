@@ -1395,3 +1395,27 @@ staging's 656-entry ledger, then 2000–2003, then 2004–2010 on a populated da
 
 Development source only: no installation priority, no deployment. At installation the numbers and `when` values are
 re-checked against staging's applied watermark (the ordered live ledger) and re-frozen above it if it has reached them.
+
+### 2010 edited in place before application: no gap examples (AI v2 Phase 2 hardening, 4 November 2026)
+
+Branch `claude/aiv2-p2h-tools-privacy` (from `claude/aiv2-phase2-integration` `3a5273a02`) edits the never-applied
+`2010_teras_learning_loops` in place under the coordinator's decision on Phase 2 review finding 8 (ADR-0169 §9: chat words
+are readable only by the asker). Its number, idx 810 and `when` 1793330001410 are unchanged; only its bytes, so its hash:
+
+| idx | when | Tag | Was SHA256 | Now SHA256 |
+| ---: | ---: | --- | --- | --- |
+|810|1793330001410|2010_teras_learning_loops|316ce555983b42a896fbba7d7f75c73d4037b75ab60f41da6df611d8e0e2c3c0|da7d358eb43c1a3437a6d0d722593640d68d4f0f532097fb1df3e9c059dc8303|
+
+- `teras_gap_example` (the redacted free-text gap questions), with `app.teras_gap_example_stamp` and
+  `app.teras_gap_example_kept`, its policies and grants, is removed: no table stores words from anyone's chat.
+- `teras_gap_occurrence` loses `record_id` (and its unique key and foreign key to `teras_outcome_record`) and `at`; it gains
+  `seen_on date`, the Malaysian day, stamped by `app.teras_gap_occurrence_stamp`. Nothing an administrator reads names the
+  turn, so a gap cannot be joined to a signal or to an outcome record a group administrator may read (0928).
+- New `teras_gap_turn` (FORCE RLS; `REVOKE ALL`, then `GRANT SELECT, INSERT`; append-only; `app.teras_gap_turn_stamp`): the
+  asker's private note that a turn was counted, keyed by tenant and record so a turn counts once, readable only by the
+  login that wrote it. An occurrence is admitted only beside its writer's own note from the same transaction and company.
+- Writers reviewed: `core/learning/signals.ts` `recordGapFromTurn` is the only writer of both tables.
+
+The two tail-pinning tests that carry 2010's hash (`test/lifecycle-v9-populated-upgrade.test.ts`,
+`test/board-nine-populated-upgrade.test.ts`) pin the new one. The handbook hardening branch edits 2009 in parallel; the
+coordinator merges both pins.

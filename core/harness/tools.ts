@@ -20,6 +20,9 @@
  *  - approval_queue: the approvals inbox's counts (core/product-context/approval-queue.ts) with the leave requests among
  *    them that the leave decision card can open (approvalQueueWithLeaveRequests below), a context tool disclosed under its
  *    semantic entity (core/semantic-model/entities-recommend.ts approval_queue), so applicants and dates are placeholders.
+ *  - topic tools (spec v23): operations_status and explain_why, each serving a family of the capabilities above as topics
+ *    (core/semantic-model/topic-tools.ts) instead of one tool per read, so every role's biggest turn stays within the
+ *    provider's tool ceiling; each topic keeps its capability's gate, runner, entity and disclosure (topicBindings below).
  *  - prepare_import (AI v2 slice 3, issue 16b): an import prepared from a file attached in chat (core/chat-import/tool.ts),
  *    offered only to a caller who may import here and only when the gate allows actions. The file is the turn's own
  *    (ToolScope.importFile), never the model's, and never reaches it: the result is disclosed under
@@ -36,8 +39,9 @@ import {contextToolSpecsFor,runContextTool,suggestAction} from '../product-conte
 import {actionCatalogueFor} from '../product-context/actions';
 import {linkablePathsFor} from '../../lib/product-context/destinations';
 import {visibleModuleCodes} from '../../lib/nav-entitlements';
-import {contextToolSpecs,TERAS_READS,terasToolSpecs} from '../semantic-model/generate';
-import {terasCapabilitiesFor} from '../explainers/capabilities';
+import {contextToolSpecs,readInputSchema,TERAS_READS,terasToolSpecs} from '../semantic-model/generate';
+import {FOLDED_READS,TOPIC_TOOLS,topicRead,topicToolSpec} from '../semantic-model/topic-tools';
+import {terasCapabilitiesFor,type TerasCapability} from '../explainers/capabilities';
 import {SEMANTIC_ACTIONS,SEMANTIC_READS} from '../semantic-model/entities';
 import type {EntityId} from '../semantic-model/types';
 import {asksToBypassReview,assignedLeaveDecisionChoices,pendingStarts,prepareSuggestedProposal} from '../proposals/suggested';
@@ -61,6 +65,9 @@ export type ToolRun=Readonly<{ok:boolean;content:unknown;refusal?:string;suggest
 export type ToolBinding=Readonly<{name:string;kind:ToolKind;entity:EntityId|null;spec:AiToolSpec;
  /** Inputs that take a record handle from an earlier result in this turn. */
  identifierInputs:readonly string[];
+ /** Spec v23: a topic tool's result is disclosed under the entity of the topic its validated input names
+  * (core/semantic-model/topic-tools.ts), never one entity for the whole tool. Absent: `entity` above. */
+ entityOf?(input:Record<string,unknown>):EntityId|null;
  run(input:Record<string,unknown>):Promise<ToolRun>}>;
 /** `personWords` is the person's own question this turn, never model text (core/proposals/suggested.ts). */
 export type ToolScope=Readonly<{companyId:string;locale?:string;personWords?:string;
@@ -161,12 +168,15 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  });
  const publicContext:readonly string[]=HARNESS_SPEC.offer.publicContextTools;
  // Spec v22: a capability served as a product_guidance topic is reached through that context tool, never bound itself.
- const teras=(await terasCapabilitiesFor(ctx)).filter(capability=>!capability.topic).map((capability):ToolBinding=>{
+ const permitted=(await terasCapabilitiesFor(ctx)).filter(capability=>!capability.topic);
+ // Spec v23: so is a read served as a topic of a topic tool (core/semantic-model/topic-tools.ts); see topicBindings.
+ const teras=permitted.filter(capability=>!FOLDED_READS.has(capability.name)).map((capability):ToolBinding=>{
   const spec=terasToolSpecs().find(row=>row.name===capability.name)!,declared=TERAS_READS.find(read=>read.name===capability.name)!;
   // Only the spec's closed public names are context. Keep the semantic entity for declared disclosure.
   return{name:spec.name,kind:publicContext.includes(capability.name)?'context':'read',entity:declared.entity,spec,identifierInputs:[],
    async run(input){const outcome=await capability.run(ctx,input,scope);return outcome.ok?{ok:true,content:outcome}:{ok:false,content:outcome,refusal:outcome.refusal};}};
  });
+ const topics=topicBindings(ctx,permitted,scope);
  const catalogue=actions?await actionCatalogueFor(ctx):[];
  const context=contextToolSpecsFor(ctx).map((spec):ToolBinding=>spec.name==='approval_queue'
   // The queue names the leave requests waiting for this approver, so it is disclosed under its declared entity.
@@ -220,9 +230,34 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  const importKinds=actions?await chatImportKindsFor(ctx):[];
  const imports:ToolBinding[]=importKinds.length?[{name:PREPARE_IMPORT_TOOL,kind:'suggest',entity:'chat_import',spec:prepareImportSpec(importKinds),identifierInputs:[],
   async run(input){const result=await runPrepareImport(ctx,importKinds,input,scope);return{ok:result.ok,content:result.content,...(result.refusal?{refusal:result.refusal}:{}),...(result.proposal?{proposal:result.proposal}:{})};}}]:[];
- return Object.freeze({bindings:Object.freeze([...context,...reads,...teras,...suggest,...capabilities,...imports]),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),
+ return Object.freeze({bindings:Object.freeze([...context,...reads,...teras,...topics,...suggest,...capabilities,...imports]),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),
   destinations:linkablePathsFor(ctx,visibleModuleCodes(ctx)??undefined)});
 };
+
+const TOPIC_NOT_PERMITTED='This topic is not available to this person here. Do not call it again; say so in one line and give the next step in the product.';
+/** Spec v23 (coordinator decision, 4 November 2026): the topic tools, each bound when the caller is permitted at least one
+ * of its topics. `permitted` is terasCapabilitiesFor(ctx): every capability whose own gate (administrator, payroll or team
+ * access, module, worker switch) admits this caller now. A topic runs exactly its capability, with only the inputs its
+ * read declares, checked against that read's own schema; its result is disclosed under that read's entity (entityOf). A
+ * topic the caller is not permitted is refused not_permitted before any runner. */
+export function topicBindings(ctx:SessionContext,permitted:readonly TerasCapability[],scope:ToolScope):ToolBinding[]{
+ return TOPIC_TOOLS.flatMap((tool):ToolBinding[]=>{
+  const runners=new Map(permitted.flatMap(capability=>{const folded=FOLDED_READS.get(capability.name);return folded&&folded.tool===tool.name?[[folded.topic,capability] as const]:[];}));
+  if(!runners.size)return [];
+  return [{name:tool.name,kind:'read',entity:null,spec:topicToolSpec(tool.name)!,identifierInputs:[],
+   entityOf:input=>topicRead(tool.name,input.topic)?.entity??null,
+   async run(input){
+    const read=topicRead(tool.name,input.topic),capability=runners.get(String(input.topic));
+    if(!read)return{ok:false,refusal:'invalid_input',content:{ok:false,refusal:'invalid_input',message:'Name one of the listed topics.'}};
+    if(!capability)return{ok:false,refusal:'not_permitted',content:{ok:false,refusal:'not_permitted',message:TOPIC_NOT_PERMITTED}};
+    // Only the inputs this topic's read declares reach its runner, each checked against that read's own schema.
+    const own:Record<string,unknown>=Object.fromEntries(read.input.filter(row=>input[row.name]!==undefined).map(row=>[row.name,input[row.name]]));
+    const problem=invalidInput(readInputSchema(read) as unknown as Record<string,unknown>,own);
+    if(problem)return{ok:false,refusal:'invalid_input',content:{ok:false,refusal:'invalid_input',message:'Invalid arguments for '+String(input.topic)+': '+problem+'.'}};
+    const outcome=await capability.run(ctx,own,scope);
+    return outcome.ok?{ok:true,content:outcome}:{ok:false,content:outcome,refusal:outcome.refusal};}}];
+ });
+}
 
 /** Validates arguments against the subset of JSON Schema the specs use. Returns the problem, or null. */
 export function invalidInput(schema:Readonly<Record<string,unknown>>,value:unknown):string|null{

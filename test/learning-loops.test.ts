@@ -2,7 +2,8 @@
  *
  *  1. Capture: a card's Confirm, Edit and Discard, an answer's mark and a recommendation not followed are recorded once
  *     each, as the person, for their own turn; never for a gated (private) turn, another login's turn or a forged card,
- *     and the database refuses a direct write for either. A gap is counted with its intent and its question redacted.
+ *     and the database refuses a direct write for either. A gap is counted with its intent, once, and stores no words;
+ *     nothing an administrator reads links it to the person who asked (AI v2 Phase 2 hardening, review finding 8).
  *  2. Who reads and decides: HR and group administrators, for the companies they administer; nobody else, and nothing
  *     crosses a tenant.
  *  3. The figures, against values worked out by hand from the fixtures.
@@ -15,7 +16,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import * as schema from '../db/schema';
 import {terasOutcomeFollowup,terasOutcomeRecord} from '../db/teras-schema';
-import {terasEvalCandidate,terasGapExample,terasGapOccurrence,terasGapStatus,terasLearningSignal,terasLearningSignalReview} from '../db/teras-learning-schema';
+import {terasEvalCandidate,terasGapOccurrence,terasGapStatus,terasGapTurn,terasLearningSignal,terasLearningSignalReview} from '../db/teras-learning-schema';
 import {terasPayrollLoopSetting} from '../db/teras-payroll-cycle-schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
@@ -27,9 +28,8 @@ import {decideLoopProposal,revertLoopProposal} from '../core/learning/proposals'
 import type {GapTurn} from '../core/learning/gaps';
 import {askAiQuality} from '../core/learning/ask';
 import {TERAS_CAPABILITIES} from '../core/explainers/capabilities';
-import {deleteOwnChat,eraseOwnChats,recordChatTurn,setChatRetention} from '../core/teras-chats';
-import {erasePersonPii} from '../core/pdpa';
-import {runAiRetentionTick} from '../scripts/ai-retention-runner';
+import {deleteOwnChat,recordChatTurn} from '../core/teras-chats';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {ASSISTANT_TURN_IDENTITY,RECOMMENDER_IDENTITY} from '../core/learning/capture';
 import {ASSISTANT_AGENT_IDENTITY} from '../core/harness/trace-persistence';
 import {RECOMMENDER_AGENT_IDENTITY} from '../core/recommenders/leave-decision';
@@ -147,8 +147,10 @@ describe('capturing what people did',()=>{
   // Directly, the 0972 policies refuse a gated turn's record and another login's record.
   for(const record of [gated,others])await refusedWith(withTenant(employee,tx=>tx.insert(terasLearningSignal).values({tenantId:b.tenantId,companyId:b.companyId,recordId:record.id,
    signalKey:'answer',kind:'answer_unhelpful',action:'answer',area:'general',role:'employee',locale:'en',byUserId:employee.userId})),/row-level security/i);
-  await refusedWith(withTenant(employee,tx=>tx.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,recordId:gated.id,kind:'cannot_answer',
-   area:'general',intentKey:'cannot_answer:general',role:'employee',locale:'en'})),/row-level security/i);
+  // A gap is counted only through the asker's own note on their own open turn: a gated turn's record is refused there.
+  for(const record of [gated,others])await refusedWith(withTenant(employee,tx=>tx.insert(terasGapTurn).values({tenantId:b.tenantId,recordId:record.id,companyId:b.companyId,
+   byUserId:employee.userId})),/row-level security/i);
+  expect(await owner.db.select().from(terasGapTurn)).toEqual([]);
   // Nor may a signal name a company other than its turn's, or be attributed to someone else.
   await refusedWith(withTenant(employee,tx=>tx.insert(terasLearningSignal).values({tenantId:b.tenantId,companyId:second.id,recordId:own.id,
    signalKey:'answer',kind:'answer_unhelpful',action:'answer',area:'general',role:'employee',locale:'en',byUserId:employee.userId})),/row-level security/i);
@@ -206,25 +208,26 @@ describe('capturing what people did',()=>{
   expect((await owner.db.select().from(terasLearningSignal)).map(row=>[row.kind,row.role,row.locale,row.action,row.area])).toEqual([['recommendation_rejected','manager','zh','approvals.leave.decide','approvals']]);
  });
 
- it('counts a gap with its intent and keeps its question redacted for the tenant\'s chat retention; an answered or gated turn is not one',async()=>{
+ it('counts a gap with its intent, once, and stores no words; an answered or gated turn is not one',async()=>{
   const record=await turnRecord(employee);
-  const chatId=await storedChat(employee);
-  expect(await recordGapFromTurn(employee,{turnId:record.runId,turn:gapTurn(),question:'Can you show me the payslip of Siti Rahman for RM4,200?',companyId:b.companyId,locale:'en',chatId}))
-   .toEqual({captured:true,intentKey:'not_supported:payroll',example:true});
+  expect(await recordGapFromTurn(employee,{turnId:record.runId,turn:gapTurn(),question:'Can you show me the payslip of Siti Rahman for RM4,200?',companyId:b.companyId,locale:'en'}))
+   .toEqual({captured:true,intentKey:'not_supported:payroll'});
   // Only once per turn.
-  expect(await recordGapFromTurn(employee,{turnId:record.runId,turn:gapTurn(),question:'again',companyId:b.companyId,chatId})).toEqual({captured:false});
+  expect(await recordGapFromTurn(employee,{turnId:record.runId,turn:gapTurn(),question:'again',companyId:b.companyId})).toEqual({captured:false});
+  // The occurrence: closed vocabularies and the Malaysian day only (the repository's HR date owner gives today).
   const [occurrence]=await owner.db.select().from(terasGapOccurrence);
-  expect([occurrence.kind,occurrence.area,occurrence.intentKey,occurrence.role,occurrence.locale,occurrence.recordId,occurrence.companyId])
-   .toEqual(['not_supported','payroll','not_supported:payroll','employee','en',record.id,b.companyId]);
-  const [example]=await owner.db.select().from(terasGapExample);
-  expect(example.text).toBe('Can you show me the payslip of {{NAME_A}} {{NAME_B}} for {{AMOUNT_A}}?');
-  expect(example.chatId).toBe(chatId);
-  expect(example.text).not.toMatch(/Siti|Rahman|4,200|\d/);
-  // The tenant keeps chats 30 days unless it chose otherwise: so is the example.
-  expect(Math.round((example.expiresAt.getTime()-example.at.getTime())/DAY)).toBe(30);
-  // The person who asked reads neither back; nor does a colleague.
+  expect(Object.keys(occurrence).sort()).toEqual(['area','companyId','id','intentKey','kind','locale','role','seenOn','tenantId']);
+  expect([occurrence.kind,occurrence.area,occurrence.intentKey,occurrence.role,occurrence.locale,occurrence.companyId,occurrence.seenOn])
+   .toEqual(['not_supported','payroll','not_supported:payroll','employee','en',b.companyId,todayInKualaLumpur()]);
+  // No word of the question is anywhere in the learning tables, nor in the asker's note.
+  for(const table of ['teras_learning_signal','teras_learning_signal_review','teras_gap_turn','teras_gap_occurrence','teras_gap_status','teras_eval_candidate']){
+   const [row]=await owner.db.execute(sql`select coalesce(string_agg(row_to_json(t)::text,' '),'') as text from ${sql.identifier(table)} t`) as unknown as {text:string}[];
+   expect(row.text,table).not.toMatch(/Siti|Rahman|4,200|payslip|again/i);
+  }
+  // The person who asked reads their own note and not the occurrence; nobody else reads the note.
+  expect((await withTenant(employee,tx=>tx.select().from(terasGapTurn))).map(row=>[row.recordId,row.companyId,row.byUserId])).toEqual([[record.id,b.companyId,employee.userId]]);
   expect(await withTenant(employee,tx=>tx.select().from(terasGapOccurrence))).toEqual([]);
-  expect(await withTenant(employee,tx=>tx.select().from(terasGapExample))).toEqual([]);
+  for(const other of [group,manager])expect(await withTenant(other,tx=>tx.select().from(terasGapTurn))).toEqual([]);
   // Gated, answered, or a different company than the turn's: nothing.
   for(const turn of [gapTurn({sensitive:true}),gapTurn({refused:true}),gapTurn({mode:'answer'}),gapTurn({fallback:true})]){
    const other=await turnRecord(employee);
@@ -233,64 +236,50 @@ describe('capturing what people did',()=>{
   const elsewhere=await turnRecord(employee);
   expect(await recordGapFromTurn(employee,{turnId:elsewhere.runId,turn:gapTurn(),question:'Can you run payroll?',companyId:second.id})).toEqual({captured:false});
   expect(await owner.db.select().from(terasGapOccurrence)).toHaveLength(1);
-  // An example cannot be changed; an expired one is deleted when an administrator next reads the page.
-  await refusedWith(owner.db.update(terasGapExample).set({text:'changed'}).where(eq(terasGapExample.id,example.id)),/never changed/i);
-  await owner.db.execute(sql`alter table public.teras_gap_example disable trigger teras_gap_example_stamp`);
-  try{await owner.db.execute(sql`update public.teras_gap_example set expires_at=now()-interval '1 minute' where id=${example.id}::uuid`);}
-  finally{await owner.db.execute(sql`alter table public.teras_gap_example enable trigger teras_gap_example_stamp`);}
+  expect(await owner.db.select().from(terasGapTurn)).toHaveLength(1);
+  // The database refuses an occurrence without its writer's own note from the same transaction, a note for another login's
+  // turn, and any change to either.
+  await refusedWith(withTenant(employee,tx=>tx.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,kind:'cannot_answer',area:'general',
+   intentKey:'cannot_answer:general',role:'employee',locale:'en'})),/row-level security/i);
+  const peers=await turnRecord(manager);
+  await refusedWith(withTenant(employee,tx=>tx.insert(terasGapTurn).values({tenantId:b.tenantId,recordId:peers.id,companyId:b.companyId,byUserId:employee.userId})),/row-level security/i);
+  await refusedWith(owner.db.update(terasGapOccurrence).set({area:'leave'}).where(eq(terasGapOccurrence.id,occurrence.id)),/append-only/i);
+  await refusedWith(owner.db.update(terasGapTurn).set({companyId:second.id}),/append-only/i);
+  // The backlog keeps intent, area, count, first and last seen, and status: no words.
   const view=await aiQuality(group);
-  expect(view.gaps.map(row=>[row.intentKey,row.count,row.examples])).toEqual([['not_supported:payroll',1,[]]]);
-  expect(await owner.db.select().from(terasGapExample)).toEqual([]);
-  // Without a stored chat (none was stored, or no encryption secret) the gap is counted and no example is kept.
-  const unstored=await turnRecord(employee);
-  expect(await recordGapFromTurn(employee,{turnId:unstored.runId,turn:gapTurn(),question:'Can you run payroll for us?',companyId:b.companyId})).toEqual({captured:true,intentKey:'not_supported:payroll',example:false});
-  // Nor may an example name another login's chat.
-  const peers=await storedChat(manager),mine=await turnRecord(employee);
-  await refusedWith(withTenant(employee,tx=>tx.insert(terasGapExample).values({tenantId:b.tenantId,companyId:b.companyId,recordId:mine.id,chatId:peers,intentKey:'cannot_answer:general',
-   text:'Fictional example',redactionVersion:1})),/row-level security|foreign key/i);
+  expect(view.gaps).toEqual([{intentKey:'not_supported:payroll',kind:'not_supported',area:'payroll',count:1,roles:['employee'],firstSeen:todayInKualaLumpur(),
+   lastSeen:todayInKualaLumpur(),statuses:[{companyId:b.companyId,status:'open',duplicateOf:null}],status:'open',rank:1}]);
  });
 
- it('removes an example with its chat: deleted, erased, removed by retention or by person erasure; a shorter "Keep chats for" hides it at once; the count stays',async()=>{
-  const gap=async(who:Login,question:string)=>{const record=await turnRecord(who),chatId=await storedChat(who);
-   expect(await recordGapFromTurn(who,{turnId:record.runId,turn:gapTurn(),question,companyId:b.companyId,chatId})).toMatchObject({captured:true,example:true});return chatId;};
-  const examples=async()=>(await owner.db.select({text:terasGapExample.text}).from(terasGapExample)).map(row=>row.text).sort();
-  const deleted=await gap(employee,'Can you show me the payroll calendar?');
-  const erasedA=await gap(employee,'Can you export payroll to a bank file?');
-  const kept=await gap(manager,'Can you show the payroll history?');
-  expect(await examples()).toHaveLength(3);
-  // The person deletes one chat: its example goes.
-  expect(await deleteOwnChat(employee,deleted)).toBe(1);
-  expect(await examples()).toEqual(['Can you export payroll to a bank file?','Can you show the payroll history?']);
-  // The person erases all of their chats: theirs go, a colleague's stays.
-  expect(await eraseOwnChats(employee)).toBeGreaterThanOrEqual(1);
-  expect(await examples()).toEqual(['Can you show the payroll history?']);
-  void erasedA;
-  // Retention removes an expired chat, and its example with it.
-  const expiring=await gap(employee,'Can you pay a bonus through AI Centre?');
-  await owner.db.transaction(async tx=>{await tx.execute(sql`set local session_replication_role=replica`);
-   await tx.execute(sql`update public.teras_chat set created_at=now()-interval '41 days',last_message_at=now()-interval '40 days',expires_at=now()-interval '10 days' where id=${expiring}::uuid`);});
-  expect((await runAiRetentionTick(owner as unknown as Parameters<typeof runAiRetentionTick>[0])).chats).toBe(1);
-  expect(await examples()).toEqual(['Can you show the payroll history?']);
-  // Person erasure removes the subject's chats, and their examples.
-  await gap(employee,'Can you approve my own payroll changes?');
-  await erasePersonPii(adminCtx(b),{subjectEmploymentId:employee.employmentId,scope:'contact',reason:'Fictional canonical privacy request',requestRef:'fixture-'+randomUUID()});
-  expect(await examples()).toEqual(['Can you show the payroll history?']);
-  // Every gap is still counted.
-  expect((await owner.db.select().from(terasGapOccurrence)).length).toBe(5);
-  expect((await aiQuality(group)).gaps.map(row=>[row.intentKey,row.count,row.examples])).toEqual([['not_supported:payroll',5,['Can you show the payroll history?']]]);
-  // A shorter "Keep chats for" hides an older example at once, as it expires older chats.
-  await owner.db.execute(sql`alter table public.teras_gap_example disable trigger teras_gap_example_stamp`);
-  try{await owner.db.execute(sql`update public.teras_gap_example set at=now()-interval '5 days'`);}
-  finally{await owner.db.execute(sql`alter table public.teras_gap_example enable trigger teras_gap_example_stamp`);}
-  await setChatRetention(group,{keepDays:1});
-  expect((await aiQuality(group)).gaps.map(row=>row.examples)).toEqual([[]]);
-  expect(await examples()).toEqual([]);
+ it('links no gap to the person who asked, for any administrator, even one who reads the turn\'s outcome record and its signals',async()=>{
+  const record=await turnRecord(employee),chatId=await storedChat(employee);
+  expect(await recordGapFromTurn(employee,{turnId:record.runId,turn:gapTurn(),question:'Can you show me the payroll calendar?',companyId:b.companyId,locale:'ms'}))
+   .toMatchObject({captured:true});
+  // The same turn marked not helpful: a signal an administrator reads, which names the turn's record and its writer.
+  expect(await recordAnswerMark(employee,{turnId:record.runId,helpful:false,locale:'ms'})).toMatchObject({recorded:true});
+  // A group administrator may read the outcome record itself (0928) and the signal, so a gap that named either would name
+  // the asker. The gap names neither: no record, login, chat, person or time finer than the day.
+  expect((await withTenant(group,tx=>tx.select({asker:terasOutcomeRecord.askedByUserId}).from(terasOutcomeRecord).where(eq(terasOutcomeRecord.id,record.id))))).toEqual([{asker:employee.userId}]);
+  const [signal]=await withTenant(group,tx=>tx.select().from(terasLearningSignal));
+  expect([signal.recordId,signal.byUserId]).toEqual([record.id,employee.userId]);
+  const gaps=await withTenant(group,tx=>tx.select().from(terasGapOccurrence));
+  expect(gaps).toHaveLength(1);
+  const seen=JSON.stringify(gaps);
+  for(const id of [record.id,record.runId,employee.userId,employee.personId,employee.employmentId,chatId,signal.id])expect(seen).not.toContain(id);
+  expect(seen).not.toMatch(/T\d{2}:\d{2}/);
+  // Nothing an administrator reads joins them: the note that holds the record is the asker's alone.
+  expect(await withTenant(group,tx=>tx.select().from(terasGapTurn))).toEqual([]);
+  expect((await aiQuality(group)).gaps.map(row=>[row.intentKey,row.count,Object.keys(row).sort()])).toEqual([['not_supported:payroll',1,
+   ['area','count','firstSeen','intentKey','kind','lastSeen','rank','roles','status','statuses']]]);
+  // The person deleting the chat changes nothing about the count: a gap keeps nothing from a chat.
+  expect(await deleteOwnChat(employee,chatId)).toBe(1);
+  expect(await owner.db.select().from(terasGapOccurrence)).toHaveLength(1);
  });
 
  it('answers ai_quality_summary for an administrator as the page shows it, with no example, name or person; refuses anyone else',async()=>{
   for(const kind of ['card_confirmed','card_confirmed','card_confirmed','card_edited','answer_helpful','answer_unhelpful'] as const)await signalRow(employee,kind);
-  const record=await turnRecord(employee),chatId=await storedChat(employee);
-  await recordGapFromTurn(employee,{turnId:record.runId,turn:gapTurn(),question:'Can Siti Rahman see the payroll of Wei Ling?',companyId:b.companyId,chatId});
+  const record=await turnRecord(employee);
+  await recordGapFromTurn(employee,{turnId:record.runId,turn:gapTurn(),question:'Can Siti Rahman see the payroll of Wei Ling?',companyId:b.companyId});
   const answer=await askAiQuality(group,{period:'last30'}) as Record<string,unknown>;
   expect(answer).toMatchObject({ok:true,period:{name:'last30'},companies:2,helpful:{percent:50,count:1,of:2},confirmedUnchanged:{percent:75,count:3,of:4},
    edited:{percent:25,count:1,of:4},discarded:{percent:0,count:0,of:4},openGaps:{intents:1,questions:{percent:100,count:1,of:1}},
@@ -336,7 +325,7 @@ describe('who reads and decides',()=>{
   const view=await aiQuality(foreign,{companyId:second.id});
   expect(view.companies.map(row=>row.id)).toEqual([b2.companyId]);
   expect(view.corrections).toEqual([]);expect(view.figures.prepared.decided).toBe(0);
-  for(const table of [terasLearningSignal,terasLearningSignalReview,terasGapOccurrence,terasGapExample,terasGapStatus,terasEvalCandidate])
+  for(const table of [terasLearningSignal,terasLearningSignalReview,terasGapOccurrence,terasGapTurn,terasGapStatus,terasEvalCandidate])
    expect(await withTenant(foreign,tx=>tx.select().from(table))).toEqual([]);
  });
 });
@@ -353,10 +342,10 @@ describe('the figures',()=>{
    values (${b.tenantId}::uuid,'loop_missed_clock_outs',${b.companyId}::uuid,${employee.employmentId}::uuid,${'clockout:'+randomUUID()},'employee','closed','done',${resolution},'{}'::jsonb,
     now()-interval '3 days',now()-interval '3 days',now()-interval '2 days',now()-interval '2 days',${randomUUID()}::uuid,${randomUUID()}::uuid)`);
   // Gaps: 3 on one open intent, 1 on an intent marked planned.
+  // Written as the owner: an occurrence names no turn, and the 2010 trigger stamps today's Malaysian day.
   for(const intentKey of ['not_supported:payroll','not_supported:payroll','not_supported:payroll','cannot_answer:leave']){
-   const record=await turnRecord(employee);
    const [kind,area]=intentKey.split(':') as ['not_supported'|'cannot_answer',string];
-   await owner.db.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,recordId:record.id,kind,area,intentKey,role:'employee',locale:'en',at:new Date(Date.now()-DAY)});
+   await owner.db.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,kind,area,intentKey,role:'employee',locale:'en'});
   }
   await setGapStatus(group,{companyIds:[b.companyId],intentKey:'cannot_answer:leave',status:'planned'});
   const view=await aiQuality(group);
@@ -437,8 +426,7 @@ describe('reviewing corrections and eval candidates',()=>{
  });
 
  it('refuses text that redaction cannot clean, and makes a gap intent a candidate with its most common role and locale',async()=>{
-  const record=await turnRecord(employee);
-  await owner.db.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,recordId:record.id,kind:'no_route',area:'claims',intentKey:'no_route:claims',role:'employee',locale:'ms'});
+  await owner.db.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,kind:'no_route',area:'claims',intentKey:'no_route:claims',role:'employee',locale:'ms'});
   const created=await promoteGap(group,{companyId:b.companyId,intentKey:'no_route:claims',question:'Boleh anda hantar tuntutan perjalanan saya?',expectation:'Prepares the travel claim for one Confirm.',
    kind:'do',factor:'doing'});
   const [row]=await owner.db.select().from(terasEvalCandidate).where(eq(terasEvalCandidate.id,created.id));
@@ -450,8 +438,7 @@ describe('reviewing corrections and eval candidates',()=>{
  });
 
  it('sets a gap\'s status per company as versions, and sets it back',async()=>{
-  const record=await turnRecord(employee);
-  await owner.db.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,recordId:record.id,kind:'cannot_answer',area:'leave',intentKey:'cannot_answer:leave',role:'employee',locale:'en'});
+  await owner.db.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,kind:'cannot_answer',area:'leave',intentKey:'cannot_answer:leave',role:'employee',locale:'en'});
   expect(await setGapStatus(group,{companyIds:[b.companyId],intentKey:'cannot_answer:leave',status:'planned'})).toEqual({changed:1});
   expect(await setGapStatus(group,{companyIds:[b.companyId],intentKey:'cannot_answer:leave',status:'planned'})).toEqual({changed:0});
   await expect(setGapStatus(group,{companyIds:[b.companyId],intentKey:'cannot_answer:leave',status:'duplicate'})).rejects.toMatchObject({reason:'invalid'});

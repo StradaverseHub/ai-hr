@@ -69,6 +69,9 @@ export function computeQuality(input:Readonly<{period:QualityPeriod;today:string
 }
 
 export type GapRow=Readonly<{intentKey:string;kind:string;area:string;count:number;roles:readonly LearningRole[];
+ /** The first and last Malaysian day it was asked in the period (YYYY-MM-DD). A gap keeps no words and no time finer than
+  * the day (AI v2 Phase 2 hardening). */
+ firstSeen:string;lastSeen:string;
  /** Each company's current status, for the companies where the intent was asked in the period. */
  statuses:readonly Readonly<{companyId:string;status:GapStatus;duplicateOf:string|null}>[];
  /** One status when every company agrees, else null (mixed). */
@@ -79,17 +82,18 @@ export function gapBacklog(input:Readonly<{period:QualityPeriod;today:string;gap
  const from=periodStartDate(input.period,input.today);
  const rows=input.gaps.filter(row=>row.date>=from&&row.date<=input.today);
  const status=new Map(input.statuses.map(row=>[statusKey(row.companyId,row.intentKey),row]));
- const groups=new Map<string,{count:number;roles:Set<LearningRole>;companies:Set<string>}>();
+ const groups=new Map<string,{count:number;roles:Set<LearningRole>;companies:Set<string>;first:string;last:string}>();
  for(const row of rows){
-  const group=groups.get(row.intentKey)??{count:0,roles:new Set<LearningRole>(),companies:new Set<string>()};
-  group.count+=row.count;group.roles.add(row.role);group.companies.add(row.companyId);groups.set(row.intentKey,group);
+  const group=groups.get(row.intentKey)??{count:0,roles:new Set<LearningRole>(),companies:new Set<string>(),first:row.date,last:row.date};
+  group.count+=row.count;group.roles.add(row.role);group.companies.add(row.companyId);
+  if(row.date<group.first)group.first=row.date;if(row.date>group.last)group.last=row.date;groups.set(row.intentKey,group);
  }
  return Object.freeze([...groups].map(([intentKey,group])=>{
   const [kind,area]=intentKey.split(':');
   const statuses=[...group.companies].sort().map(companyId=>{const row=status.get(statusKey(companyId,intentKey));
    return Object.freeze({companyId,status:row?.status??'open' as GapStatus,duplicateOf:row?.duplicateOf??null});});
   const distinct=new Set(statuses.map(row=>row.status+'\u0000'+(row.duplicateOf??'')));
-  return {intentKey,kind,area,count:group.count,roles:Object.freeze([...group.roles].sort()),statuses:Object.freeze(statuses),
+  return {intentKey,kind,area,count:group.count,roles:Object.freeze([...group.roles].sort()),firstSeen:group.first,lastSeen:group.last,statuses:Object.freeze(statuses),
    status:distinct.size===1?statuses[0].status:null};
  }).sort((a,b)=>b.count-a.count||b.roles.length-a.roles.length||a.intentKey.localeCompare(b.intentKey))
   .map((row,index)=>Object.freeze({...row,rank:index+1})));

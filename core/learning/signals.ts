@@ -7,19 +7,21 @@
  *  - a recommendation the approver decided against (app/assistant/centre/recommendation.ts, after the recommender's own
  *    follow-up recorded the disagreement: core/recommenders/leave-decision.ts recordRecommendationDecision);
  *  - an answer marked helpful or not helpful;
- *  - a gap: a turn AI Centre could not answer or do (./gaps.ts), with its question redacted (./redact.ts), from the chat
- *    wiring after the reply was shown (app/assistant/launcher-actions.ts).
+ *  - a gap: a turn AI Centre could not answer or do (./gaps.ts), counted under its intent, from the chat wiring after the
+ *    reply was shown (app/assistant/launcher-actions.ts). Its words are never stored (AI v2 Phase 2 hardening: ADR-0169 §9
+ *    makes chat words readable only by the asker).
  * Every one names the outcome record of the turn it came from, read here as the caller: their own record, of a person's
  * run, not private to the asker. A gated turn's record IS private to the asker (migration 0905/0928), so it is refused here
  * and again by the 0972 insert policies: gated sensitive turns store no words and are never learned from.
  *
  * WHAT IS STORED: kinds, closed-vocabulary names (the action, the product area, the role band, the locale), the record and
- * proposal references, and the person's login for attribution (never shown; the page shows the role). A gap example is
- * the only text, redacted before it is written and kept for the tenant's "Keep chats for" window. Capture never changes a
- * reply, a card or a decision: every failure is swallowed by the callers and logged by kind only. */
+ * proposal references, and the person's login for attribution (never shown; the page shows the role). No words at all. A
+ * gap is stored with none of these references: its record goes only into the asker's own private note (teras_gap_turn,
+ * which no administrator can read), so nothing an administrator reads links a gap to the person who asked. Capture never
+ * changes a reply, a card or a decision: every failure is swallowed by the callers and logged by kind only. */
 import {and,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
-import {terasGapExample,terasGapOccurrence,terasLearningSignal} from '../../db/teras-learning-schema';
+import {terasGapOccurrence,terasGapTurn,terasLearningSignal} from '../../db/teras-learning-schema';
 import {AGENT_ACTIONS} from '../../lib/ai/agent-action-registry';
 import {MODULE_AREA} from '../product-context/capability-catalogue';
 import {verifyProposal} from '../proposals/proposal';
@@ -27,13 +29,10 @@ import {SEMANTIC_ACTIONS} from '../semantic-model/entities';
 import {terasCapabilityRegistry} from '../semantic-model/generate';
 import {gapKindOf,intentOf,type GapTurn} from './gaps';
 export {gapTurnOf} from './gaps';
-import {REDACTION_VERSION,looksRedacted,redact} from './redact';
 import {isAnswerReason,isCardSignal,type CardSignal} from './types';
 import {ASSISTANT_TURN_IDENTITY,NOT_RECORDED,UUID,affected,capture,insertSignalTx,localeOf,ownRecordTx,person,roleBand,type SignalOutcome} from './capture';
 export {recordRecommendationSignal} from './recommendation-signal';
 export {roleBand,type SignalOutcome} from './capture';
-
-export const EXAMPLE_MAX_CHARS=400;
 
 /** An action's product area, from the module the semantic model or the action registry declares for it. */
 export function actionArea(action:string):string{
@@ -107,13 +106,15 @@ export async function knownNamesTx(tx:Tx,limit=2000):Promise<string[]>{
  return Array.from(rows).flatMap(row=>[row.full_name,row.preferred_name]).filter((name):name is string=>typeof name==='string'&&name.trim().length>=2);
 }
 
-export type GapCapture=Readonly<{captured:false}|{captured:true;intentKey:string;example:boolean}>;
-/** A turn AI Centre could not answer or do: its intent counted, and its question kept redacted. `turn` is the wiring's
- * ConversationTurn view; `question` is the words the person typed. Nothing for a gated turn or a turn that is not a gap. */
-export async function recordGapFromTurn(supplied:SessionContext,input:Readonly<{turnId:string;turn:GapTurn;question:string;companyId:string;locale?:unknown;
- /** The asker's stored chat the turn was written to (core/teras-chats.ts recordChatTurn). Without one, the gap is counted and
-  * no example is kept: an example lives only as long as the chat it came from. */
- chatId?:string|null}>):Promise<GapCapture>{
+export type GapCapture=Readonly<{captured:false}|{captured:true;intentKey:string}>;
+/** A turn AI Centre could not answer or do: its intent counted, once. `turn` is the wiring's ConversationTurn view;
+ * `question` is the words the person typed, read here only to name the product area (./gaps.ts intentOf) and never
+ * stored. Nothing for a gated turn or a turn that is not a gap.
+ *
+ * Two rows, in one transaction: the asker's private note that this turn was counted (teras_gap_turn: the record, readable
+ * only by this login; its key makes a turn count once), then the occurrence the administrators read, which names no
+ * record, login, words or time finer than the day, so it cannot be joined back to the asker (migration 2010). */
+export async function recordGapFromTurn(supplied:SessionContext,input:Readonly<{turnId:string;turn:GapTurn;question:string;companyId:string;locale?:unknown}>):Promise<GapCapture>{
  const ctx=capture(supplied);
  const kind=gapKindOf(input.turn);
  if(!person(ctx)||!kind||!UUID.test(input.turnId)||!UUID.test(input.companyId))return {captured:false};
@@ -121,17 +122,10 @@ export async function recordGapFromTurn(supplied:SessionContext,input:Readonly<{
   const record=await ownRecordTx(tx,ctx,{runId:input.turnId});
   if(!record||record.agentIdentity!==ASSISTANT_TURN_IDENTITY||record.companyId!==input.companyId)return {captured:false} as const;
   const {area,intentKey}=intentOf(kind,input.question,areasOfReads(record.reads));
-  // No RETURNING: only the company's administrators may read an occurrence (0972), not the person who asked.
-  const occurrence=await tx.insert(terasGapOccurrence).values({tenantId:ctx.tenantId,companyId:record.companyId,recordId:record.id,kind,area,intentKey,
-   role:roleBand(ctx),locale:localeOf(input.locale)}).onConflictDoNothing();
-  if(affected(occurrence)!==1)return {captured:false} as const;
-  const chatId=typeof input.chatId==='string'&&UUID.test(input.chatId)?input.chatId:null;
-  if(!chatId)return {captured:true,intentKey,example:false} as const;
-  const redacted=redact(input.question,{knownNames:await knownNamesTx(tx),maxLength:EXAMPLE_MAX_CHARS});
-  const example=redacted.text.length>0&&looksRedacted(redacted.text);
-  // The policy checks the chat is the asker's own; the link is never read back out.
-  if(example)await tx.insert(terasGapExample).values({tenantId:ctx.tenantId,companyId:record.companyId,recordId:record.id,chatId,intentKey,text:redacted.text,
-   redactionVersion:REDACTION_VERSION}).onConflictDoNothing();
-  return {captured:true,intentKey,example} as const;
+  const counted=await tx.insert(terasGapTurn).values({tenantId:ctx.tenantId,recordId:record.id,companyId:record.companyId,byUserId:ctx.userId}).onConflictDoNothing();
+  if(affected(counted)!==1)return {captured:false} as const;
+  // No RETURNING: only the company's administrators may read an occurrence (2010), not the person who asked.
+  await tx.insert(terasGapOccurrence).values({tenantId:ctx.tenantId,companyId:record.companyId,kind,area,intentKey,role:roleBand(ctx),locale:localeOf(input.locale)});
+  return {captured:true,intentKey} as const;
  });
 }

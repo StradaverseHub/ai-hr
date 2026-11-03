@@ -24,6 +24,7 @@ import {explainOwnPayslipStatutory} from '../core/explainers/statutory';
 import {explainOwnLeaveEntitlement} from '../core/explainers/entitlement';
 import {explainOwnAttendanceDay} from '../core/explainers/attendance';
 import {TERAS_CAPABILITIES} from '../core/explainers/capabilities';
+import {FOLDED_READS} from '../core/semantic-model/topic-tools';
 import {nativeToolProvider} from '../core/harness/tools';
 import {gateTurn} from '../lib/product-context/request-gate';
 import {offerFor} from '../core/harness/runner';
@@ -95,9 +96,11 @@ describe('payslip statutory explainer',()=>{
   const {employee}=await people();
   // The model writes whichever placeholder it was given for the EPF employee share.
   const placeholder=(request:ModelRequest)=>(lastToolResult(request) as {payslips:{items:{employeeReported:string}[]}[]}).payslips[0].items[0].employeeReported.split(' ')[0];
-  const {result,model}=await turn(employee,'Why is my EPF this much?',[{calls:[{name:'explain_payslip_statutory',args:{item:'epf'}}]},request=>({final:{reply:`Your EPF was ${placeholder(request)} this month.`}})]);
-  expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['explain_payslip_statutory','ok']]);
-  const disclosure=result.trace.disclosure.find(row=>row.tool==='explain_payslip_statutory')!;
+  // Spec v23: explain_why's payslip_statutory topic, disclosed under the statutory explainer's own entity.
+  const {result,model}=await turn(employee,'Why is my EPF this much?',[{calls:[{name:'explain_why',args:{topic:'payslip_statutory',item:'epf'}}]},request=>({final:{reply:`Your EPF was ${placeholder(request)} this month.`}})]);
+  expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['explain_why','ok']]);
+  const disclosure=result.trace.disclosure.find(row=>row.tool==='explain_why')!;
+  expect(disclosure.entity).toBe('statutory_explanation');
   expect(disclosure.undeclared).toEqual([]);expect(disclosure.removed).toEqual([]);expect(disclosure.banded.length).toBeGreaterThan(5);
   const sent=lastToolResult(model.requests[1]) as {payslips:{items:{employeeReported:string}[]}[]};
   expect(sent.payslips[0].items[0].employeeReported).toMatch(/^\{\{F\d+\}\} \(/);
@@ -115,14 +118,16 @@ describe('leave entitlement explainer',()=>{
   const row=out.employments[0];
   expect(row.eligibleDays).toBe(owned!.eligibleDays);expect(row.totalEntitlement).toBe(owned!.totalEntitlement);
   expect(row.proration).toEqual(owned!.entitlement);expect(out.provenance.owner).toBe('core/read.ts#leaveEntitlementBreakdown');
+  // Spec v23: the breakdown names what it does not show (nothing here), and carries no withheld flag.
+  expect(row.notShown).toEqual([]);expect(row).not.toHaveProperty('withheld');
   expect(JSON.stringify(out)).not.toContain(mine.employmentId);
   expect(await explainOwnLeaveEntitlement(employee,{leave_type:'Fictional Sabbatical'})).toMatchObject({ok:false,refusal:'no_data',leaveTypes:['Annual Leave']});
  });
  it('discloses every returned field under a declared class through the harness',async()=>{
   const {employee}=await people();
-  const {result}=await turn(employee,'Why do I have this many days of annual leave?',[{calls:[{name:'explain_leave_entitlement',args:{leave_type:'Annual Leave'}}]},{final:{reply:'It comes from your entitlement table.'}}]);
-  expect(result.trace.calls[0].status).toBe('ok');
-  const disclosure=result.trace.disclosure[0];expect(disclosure.undeclared).toEqual([]);expect(disclosure.banded.length).toBeGreaterThan(3);
+  const {result}=await turn(employee,'Why do I have this many days of annual leave?',[{calls:[{name:'explain_why',args:{topic:'leave_entitlement',leave_type:'Annual Leave'}}]},{final:{reply:'It comes from your entitlement table.'}}]);
+  expect(result.trace.calls[0]).toMatchObject({tool:'explain_why',status:'ok'});
+  const disclosure=result.trace.disclosure[0];expect(disclosure.entity).toBe('entitlement_explanation');expect(disclosure.undeclared).toEqual([]);expect(disclosure.banded.length).toBeGreaterThan(3);
  });
 });
 
@@ -140,14 +145,15 @@ describe('attendance day explainer',()=>{
   expect(await explainOwnAttendanceDay(employee,{date:'2099-01-01'})).toMatchObject({ok:false,refusal:'out_of_range'});
   // A working day with no clocking: the owner returns the day itself (absent), with no stored working to explain.
   expect(await explainOwnAttendanceDay(employee,{date:'2026-07-02'})).toMatchObject({ok:true,status:'absent',explained:false,unavailableReason:'no-trace'});
-  const {result}=await turn(employee,'Why was I marked late on 1 July?',[{calls:[{name:'explain_attendance_day',args:{date:WORKDAY}}]},{final:{reply:'You clocked in after the grace time.'}}]);
-  expect(result.trace.calls[0].status).toBe('ok');expect(result.trace.disclosure[0].undeclared).toEqual([]);
+  const {result}=await turn(employee,'Why was I marked late on 1 July?',[{calls:[{name:'explain_why',args:{topic:'attendance_day',date:WORKDAY}}]},{final:{reply:'You clocked in after the grace time.'}}]);
+  expect(result.trace.calls[0]).toMatchObject({tool:'explain_why',status:'ok'});expect(result.trace.disclosure[0]).toMatchObject({entity:'attendance_day_explanation',undeclared:[]});
  });
  it('offers no explainer on a turn about another person',async()=>{
   const {employee}=await people();
   const {model}=await turn(employee,'Why was Fictional Explainer Colleague marked late?',[{final:{reply:'I can\'t look at another person\'s attendance.',mode:'refuse'}}]);
   const offered=model.requests[0].tools.map(tool=>tool.name);
   for(const capability of TERAS_CAPABILITIES)expect(offered).not.toContain(capability.name);
+  expect(offered).not.toContain('explain_why');
  });
 });
 
@@ -212,7 +218,9 @@ describe('public administrative page guidance',()=>{
   expect(gate).toEqual({privateReads:false,actions:true,reason:'other_person'});
   const offered=offerFor(admin.bindings,gate),offeredNames=offered.map(binding=>binding.name);
   expect(offeredNames).toContain('product_guidance');
-  for(const capability of TERAS_CAPABILITIES.filter(row=>!row.topic))expect(admin.bindings.find(binding=>binding.name===capability.name)!.kind).toBe('read');
+  // Spec v23: a folded read is reached through its topic tool, itself a private read; every other capability is bound as one.
+  for(const capability of TERAS_CAPABILITIES.filter(row=>!row.topic))
+   expect(admin.bindings.find(binding=>binding.name===(FOLDED_READS.get(capability.name)?.tool??capability.name))!.kind,capability.name).toBe('read');
   const privateReads=admin.bindings.filter(binding=>binding.kind==='read');expect(privateReads.length).toBeGreaterThan(0);
   for(const binding of privateReads)expect(offeredNames).not.toContain(binding.name);
   expect(admin.bindings.find(binding=>binding.name==='setup_copilot')!.kind).toBe('read');expect(offeredNames).not.toContain('setup_copilot');

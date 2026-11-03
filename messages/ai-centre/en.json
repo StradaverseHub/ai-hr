@@ -970,7 +970,9 @@
         "explain_attendance_day": "the attendance calculation",
         "setup_copilot": "setup steps",
         "explain_pay_difference": "your pay difference",
-        "explain_claim_limit": "your claim limits"
+        "explain_claim_limit": "your claim limits",
+        "explain_why": "the explanation",
+        "operations_status": "AI Centre operations"
       },
       "errors": {
         "invalid_question": "Please ask a question of up to 2,000 characters.",
@@ -1758,14 +1760,12 @@
       },
       "gaps": {
         "title": "Biggest gaps",
-        "help": "Questions AI Centre could not answer or do, grouped by what was asked and counted. Examples are redacted and kept only as long as your chats are kept.",
+        "help": "Questions AI Centre could not answer or do, grouped by what was asked and counted.",
         "intent": "Intent",
         "count": "Count",
-        "example": "Example",
         "status": "Status",
         "none": "Nothing AI Centre could not answer or do in this period.",
         "roles": "Asked by: {roles}",
-        "noExample": "No example kept",
         "statusFor": "Status of {intent}",
         "mixed": "Differs by company",
         "statuses": {
@@ -1863,7 +1863,6 @@
         "redactionHelp": "Use fictional names and details. When you save, names, ids, figures, dates, e-mail addresses and phone numbers are replaced by placeholders such as NAME_A. Read the saved text before you approve it.",
         "newTitle": "New eval candidate: {signal}",
         "newIntro": "Recorded as a {role} question in {locale}. Write the question as it might have been asked and what a good reply does.",
-        "example": "Redacted question from that turn: “{example}”",
         "saveDraft": "Save draft",
         "cancel": "Cancel",
         "editTitle": "Edit the draft"

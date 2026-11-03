@@ -113,9 +113,11 @@ describe('pay difference over the payroll owner',()=>{
  it('leaves the model only placeholders and gives the person the exact figure',async()=>{
   const {employee}=await people();
   const placeholder=(request:ModelRequest)=>(lastToolResult(request) as {comparisons:{lines:{key:string;change:string}[]}[]}).comparisons[0].lines.find(row=>row.key==='basic')!.change.split(' ')[0];
-  const {result,model}=await turn(employee,'Why is my pay different from last month?',[{calls:[{name:'explain_pay_difference',args:{}}]},request=>({final:{reply:`Your basic salary went up by ${placeholder(request)}.`}})]);
-  expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['explain_pay_difference','ok']]);
-  const disclosure=result.trace.disclosure.find(row=>row.tool==='explain_pay_difference')!;
+  // Spec v23: explain_why's pay_difference topic, disclosed under the pay difference explainer's own entity.
+  const {result,model}=await turn(employee,'Why is my pay different from last month?',[{calls:[{name:'explain_why',args:{topic:'pay_difference'}}]},request=>({final:{reply:`Your basic salary went up by ${placeholder(request)}.`}})]);
+  expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['explain_why','ok']]);
+  const disclosure=result.trace.disclosure.find(row=>row.tool==='explain_why')!;
+  expect(disclosure.entity).toBe('pay_difference_explanation');
   expect(disclosure.undeclared).toEqual([]);expect(disclosure.removed).toEqual([]);expect(disclosure.banded.length).toBeGreaterThan(10);
   // What the model was sent holds no number at all, so it has nothing to do arithmetic on.
   const sent=lastToolResult(model.requests[1]);
@@ -127,6 +129,7 @@ describe('pay difference over the payroll owner',()=>{
   const {model}=await turn(employee,'Why is Fictional Why Colleague\'s pay different from last month?',[{final:{reply:'I can\'t look at another person\'s pay.',mode:'refuse'}}]);
   const offered=model.requests[0].tools.map(tool=>tool.name);
   for(const capability of TERAS_CAPABILITIES)expect(offered).not.toContain(capability.name);
+  expect(offered).not.toContain('explain_why');
  });
 });
 
@@ -141,8 +144,8 @@ describe('claim limit over the claims owner',()=>{
   expect(numbers(out)).not.toContain(450);
   expect(await explainOwnClaimLimit(employee,{claim_type:'Fictional Sabbatical'})).toMatchObject({ok:false,refusal:'no_data',claimTypes:['Travel '+uniq]});
   expect(travel.id).not.toBe('');
-  const {result}=await turn(employee,'How much of my travel claim limit is left?',[{calls:[{name:'explain_claim_limit',args:{claim_type:'Travel '+uniq}}]},{final:{reply:'Here is what is left.'}}]);
-  expect(result.trace.calls[0].status).toBe('ok');expect(result.trace.disclosure[0].undeclared).toEqual([]);
+  const {result}=await turn(employee,'How much of my travel claim limit is left?',[{calls:[{name:'explain_why',args:{topic:'claim_limit',claim_type:'Travel '+uniq}}]},{final:{reply:'Here is what is left.'}}]);
+  expect(result.trace.calls[0]).toMatchObject({tool:'explain_why',status:'ok'});expect(result.trace.disclosure[0]).toMatchObject({entity:'claim_limit_explanation',undeclared:[]});
  });
 });
 

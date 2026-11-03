@@ -5,6 +5,7 @@
  * Pure; no provider, no database. */
 import {describe,expect,it} from 'vitest';
 import {HARNESS_SPEC,HARNESS_SPEC_DIGESTS,harnessSpecDigest} from '../core/harness/spec';
+import {v22ShapedSpec} from './harness-spec-shapes';
 
 const V20_PUBLIC_CONTEXT=['product_destinations','product_guidance','available_actions'];
 const MAIN_GUIDES=['password_policy_guidance','correction_controls_guidance'];
@@ -16,9 +17,10 @@ describe('spec v21',()=>{
   expect(HARNESS_SPEC.version).toBeGreaterThan(21);
  });
  it('was v20 with only the two guide tools added: the v21-shaped spec hashes to v21\'s recorded digest',()=>{
-  const {guidanceTopics:_topics,...v20Offer}=HARNESS_SPEC.offer;
+  // Spec v23 changed lines after v22; the v22-shaped spec (test/harness-spec-shapes.ts) is the base for v20 and v21.
+  const v22=v22ShapedSpec(),{guidanceTopics:_topics,...v20Offer}=v22.offer;
   expect(v20Offer.publicContextTools).toEqual(V20_PUBLIC_CONTEXT);
-  expect(harnessSpecDigest({...HARNESS_SPEC,version:20,offer:v20Offer})).toBe(HARNESS_SPEC_DIGESTS[20]);
-  expect(harnessSpecDigest({...HARNESS_SPEC,version:21,offer:{...v20Offer,publicContextTools:[...V20_PUBLIC_CONTEXT,...MAIN_GUIDES]}})).toBe(HARNESS_SPEC_DIGESTS[21]);
+  expect(harnessSpecDigest({...v22,version:20,offer:v20Offer})).toBe(HARNESS_SPEC_DIGESTS[20]);
+  expect(harnessSpecDigest({...v22,version:21,offer:{...v20Offer,publicContextTools:[...V20_PUBLIC_CONTEXT,...MAIN_GUIDES]}})).toBe(HARNESS_SPEC_DIGESTS[21]);
  });
 });

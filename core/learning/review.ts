@@ -6,8 +6,10 @@
  * comes back as a new version); a candidate's every change bumps its version, checked against the version the screen
  * showed so a stale screen cannot overwrite a newer one. Each is audited as a domain event with counts and names only.
  *
- * WORDS. A candidate's question and expectation are the administrator's own, written from the signal's facts or the gap's
- * redacted example and fictionalised by them; they are redacted again here on every save (./redact.ts, with every name
+ * WORDS. A candidate's question and expectation are the administrator's own, written from the signal's or the gap's facts
+ * (closed vocabularies: kind, action, area, role, locale, reason) and fictionalised by them. No words from anyone's chat
+ * reach them: gaps keep no examples and corrections show none (AI v2 Phase 2 hardening, ADR-0169 §9). They are redacted
+ * again here on every save (./redact.ts, with every name
  * the administrator's row-level security lets them see), and the stored text is what they approve. Only an approved
  * candidate is exported (./export.ts), and exporting replaces each placeholder with a fictional value. Nothing here
  * changes the eval set, a prompt, a calculation, a permission or a disclosure rule. */
@@ -98,7 +100,7 @@ export async function promoteGap(supplied:SessionContext,input:unknown){
   await adminForTx(tx,companyId);
   const o=terasGapOccurrence;
   const rows=await tx.select({role:o.role,locale:o.locale}).from(o).where(and(eq(o.tenantId,ctx.tenantId),eq(o.companyId,companyId),eq(o.intentKey,intentKey)))
-   .orderBy(desc(o.at)).limit(200);
+   .orderBy(desc(o.seenOn),desc(o.id)).limit(200);
   if(!rows.length)throw new LearningRefused('not_found');
   const most=<T extends string>(values:T[])=>[...values.reduce((map,value)=>map.set(value,(map.get(value)??0)+1),new Map<T,number>())].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0][0];
   const text=await redactedTx(tx,parsed.data);

@@ -32,7 +32,8 @@ export const HANDBOOK_ENTITIES:readonly SemanticEntity[]=freeze([
     f('citation','label','full','What to cite: the policy title, version and paragraph numbers.'),
     f('paragraphs','list','full','The paragraphs that answer the topic (or the first ones), with their numbers.',{of:[
      f('paragraph','integer','full','The paragraph number within this version.'),
-     f('text','published_text','full','The paragraph exactly as the company approved and published it to the people it applies to.')]}),
+     // Spec v23 (the handbook hardening branch's ask.ts, merged by the coordinator): the contradiction marker.
+     f('text','published_text','full','The paragraph exactly as the company approved and published it to the people it applies to; an enforceable figure that disagrees with the current setting is replaced by [current setting: …].')]}),
     f('paragraphCount','integer','full','How many paragraphs this version has.')]}),
    f('otherPolicies','list','full','Titles of the other approved policies in force for the caller, not shown above.'),
    provenanceField]},

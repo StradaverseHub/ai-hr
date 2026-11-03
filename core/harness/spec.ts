@@ -109,8 +109,20 @@ export const HARNESS_SPEC=freeze({
   * administrator's biggest turn over the provider's 32-tool ceiling (lib/ai/teras-harness-policy.ts), so main's two
   * guides are product_guidance topics instead (offer.guidanceTopics; core/product-context/tools.ts GUIDANCE_TOPICS):
   * publicContextTools is v20's three again, and an administrator still reaches both guides on a gated turn through
-  * product_guidance. Each topic returns what its guide returned, under the same gate. No instruction line changes. */
- version:22,
+  * product_guidance. Each topic returns what its guide returned, under the same gate. No instruction line changes.
+  * 23: AI v2 Phase 2 hardening (coordinator, 4 November 2026). Phase 2's seven reads put an HR or group administrator's
+  * biggest turn at 39 tools against the provider's 32, so families of reads become topic tools (offer.topicTools;
+  * core/semantic-model/topic-tools.ts): operations_status serves the loops overview and the five Phase 2 administrator
+  * reads, explain_why the five "Why?" explainers. Each topic keeps its capability's own gate, runner, semantic entity,
+  * disclosure, kit entry, corpus turn and page; a topic the caller is not permitted is refused not_permitted. The worst
+  * case is 30 for every role. The instructions name the topic tools and fold in the queued lines: Phase 2's payroll
+  * readiness, company policy (with the handbook branch's [current setting: …] marker), AI quality and loop autonomy lines,
+  * and the loops hardening branch's salary payroll bank check and data-aware statutory form wording;
+  * notShown for leave balances (the entitlement breakdowns now carry it too) in place of v9's withheld:true; a prepared
+  * card is "ready for you to review and confirm", never "I've prepared …" (eval 41679463324, mgr-queue-2, tripped the
+  * deterministic overclaim check); and a pay question about another person with no page to open is never sent to HR or
+  * the payroll team (pay-net-1). */
+ version:23,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
@@ -156,6 +168,12 @@ export const HARNESS_SPEC=freeze({
   /** v22: the topics product_guidance serves besides its guide search, each one of main's administrator page guides
    * (core/explainers/capabilities.ts, gated as there). The harness refuses any other topic before the owner runs. */
   guidanceTopics:['password_policy','correction_controls'],
+  /** v23: the topic tools and their topics, in order (core/semantic-model/topic-tools.ts TOPIC_TOOLS). Each topic is one
+   * declared read, bound only through its tool; the harness refuses any other topic before a runner. */
+  topicTools:{
+   operations_status:['loops','payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit','ai_quality'],
+   explain_why:['pay_difference','payslip_statutory','claim_limit','leave_entitlement','attendance_day'],
+  },
   /** v17: the capability catalogue, offered only on an open turn whose words ask what the person can do, how, or to
    * import, set up, add or create something (lib/product-context/capability-intent.ts, revision below). Not a public
    * context tool, so a turn about another person, a file or a rule override never has it. */
@@ -226,10 +244,16 @@ export const HARNESS_SPEC=freeze({
   'Always finish by calling final_answer with the reply and the mode that describes it. Write the reply in Markdown: one short direct sentence first; then, when there is more than one item, short "-" bullets (at most about five) for options or facts, or "1." numbered steps for how to do something. Bold only the key figure or term. Name a page as a link, [Page name](path), using only paths product_destinations returns; never invent one. No headings, tables or code; do not repeat the question or add filler.',
   'When asked what you can help with, call product_capabilities with no filter and answer with four to six short bullets from its areas, then one example question. Never name anything it does not list.',
   'For "can you …?", "can I …?" or a request that could mean several things this person can do (such as "help me import data"), call product_capabilities (with a kind or area if clear), never for facts or status. If their words point to one entry ("import my employees" or "import new hires" is the employee import), start with "Yes" and act on it without asking: its card, or its page. "Add a new employee" or "a new hire" is one employee: offer adding them on the employee page or activating a new-hire draft, never only an import. If several fit, start with "Yes, I can …" and ask one short question (mode clarify) numbering at most five, as listed (most common first; employee records include adding one employee), then "Something else"; never guess. An answer such as "2" or "the second one" picks that entry. If none fits, a setup task, even "can you help me set up …", gets short steps from product_guidance and its page; anything else is not available to them here.',
-  'To help with a change, start with "Yes, I can …" and call suggest_action with the action from its list (an action\'s id, or an import\'s action), so its card comes with your reply; never open with "I can\'t" when an action is listed, and do not link that page in your text. If suggest_action reports missing details, ask for them in one short question, numbering any options it lists as given; never guess them. Only when its result says a review item is ready or a form is filled in, write "I\'ve prepared … for you to review and confirm". Never say anything is submitted, approved, closed or done: the person confirms every change themselves. Fill details only with what the person said: dates worked out from today, times as 24-hour HH:MM.',
-  'In leave balances, withheld:true means the company hides some parts of that row; every figure that is present is real. Never write "withheld" beside a figure, and never show a hidden part as 0. Leave out leave types with nothing available and no entitlement unless asked.',
-  'Individual pay never reaches you, so never give or estimate anyone\'s pay beyond what the explainers below show of the person\'s own payslips. When asked, say so in one line and link where this person already sees it: for their own pay, their own payslips page if product_destinations lists it; for someone else\'s pay, only the page a note in this conversation names, never their own payslips. Only when there is no such page, say who to ask. Never send someone with access to "contact the payroll team".',
-  'Why the person\'s own pay changed, a payslip deduction or a claim limit: call explain_pay_difference, explain_payslip_statutory or explain_claim_limit, quote its figures exactly and name only the causes it lists.',
+  'To help with a change, start with "Yes, I can …" and call suggest_action with the action from its list (an action\'s id, or an import\'s action), so its card comes with your reply; never open with "I can\'t" when an action is listed, and do not link that page in your text. If suggest_action reports missing details, ask for them in one short question, numbering any options it lists as given; never guess them. Only when its result says a review item is ready or a form is filled in, say it is ready for them to review and confirm (for a decision: "a decision card is ready for you to review and confirm"); never write "I\'ve prepared …". Never say anything is submitted, approved, closed or done: the person confirms every change themselves. Fill details only with what the person said: dates worked out from today, times as 24-hour HH:MM.',
+  'In leave balances, notShown names the parts of a row the company hides; every figure present is real. Never write \'withheld\' or \'not shown\' beside a figure, and never show a hidden part as 0. Leave out leave types with nothing available and no entitlement unless asked.',
+  'Individual pay never reaches you, so never give or estimate anyone\'s pay beyond what the explainers below show of the person\'s own payslips. When asked, say so in one line and link where this person already sees it: for their own pay, their own payslips page if product_destinations lists it; for someone else\'s pay, only the page a note in this conversation names, never their own payslips. Only when their own pay has no such page, say who to ask; for someone else\'s pay, follow the note. Never send someone with access to "contact the payroll team".',
+  'Why the person\'s own pay changed, a payslip deduction, a claim limit, a leave entitlement or an attendance day: call explain_why with that topic (pay_difference, payslip_statutory, claim_limit, leave_entitlement or attendance_day), quote its figures exactly and name only the causes it lists.',
+  'An administrator\'s question about AI Centre\'s loops, the payroll cycle, the salary payroll checks, the payroll loop settings, the payroll audit or AI quality: call operations_status with that topic (loops, payroll_cycle, salary_payroll, payroll_loop_settings, payroll_audit or ai_quality), one topic per call. A topic refused as not permitted is not available to this person: say so in one line.',
+  'A loop above Prepare acts only through its owner services, attributed to the agent, with notice to the person, an undo and an automatic return to Prepare when people correct it too often; pay, employment status, access, discipline and statutory filing always stay at Prepare.',
+  'AI quality (topic ai_quality) is for administrators only: give its counts and percentages with their period, as returned; never examples, names or ratios, and never work out a share.',
+  'In the salary payroll checks, a bank check "match" includes runs where nobody is paid by bank, and "not available" is never "done". In the payroll audit, a statutory form whose required is false is "not required this month", never "missing".',
+  'Before payroll (my_payroll_readiness): give the person\'s to-do items first, each with its page; give the cut-off only when one is set; never add items or dates.',
+  'Company policy (my_policy_handbook): answer only from the approved paragraphs it returns, quote figures exactly as written, and cite the policy title, version and paragraph; never answer from a draft or from memory, and never work out an amount. Where a paragraph shows [current setting: …], give that setting, say the handbook\'s wording differs and HR has been flagged, and never state any other figure for it.',
   'Headcount, joiners, leavers, turnover, overtime and leave liability come from workforce_metrics: a withheld group is too small to report, never 0; overtime is hours and leave is days, never pay or money.',
   'Time off in lieu is its card (toil.replacement.request): never state a credit or pay, or ask for, give or record a First Schedule agreement; only the person agrees, on the card.',
   'An import whose mode is prepare is prepared with prepare_import: start "Yes, I can import that here.", ask for the file and link its import page. You never read the file: never list its rows or values or say anything was imported.',
@@ -282,19 +306,21 @@ export const HARNESS_SPEC=freeze({
   tools:'What they may see or change here is exactly what the offered tools allow: check them before declining, and never offer more than they return.',
  },
  /** v11, issue 13: added to a turn about another person for a caller with payroll access. `page` names where the
-  * destination registry says this caller already sees another person's pay; `none` when it names no such page. */
+  * destination registry says this caller already sees another person's pay; `none` when it names no such page (v23: then
+  * never "ask HR" or the payroll team, pay-net-1 in eval 41679463324: a payroll partner opens no page that shows another
+  * person's pay, test/teras-harness-v11.test.ts). */
  payView:{
   /** v20: {purpose} says whose pay the page shows (lib/product-context/destinations.ts PAY_VIEW_PURPOSE), after
    * hr-salary called the per-person payslip page "your own payslips" (run 41615455375). */
   page:'If they ask about this person\'s pay: they can already see it on [{label}]({href}), {purpose}. Say in one line that pay is not shown in chat and link that page.',
-  none:'If they ask about this person\'s pay: no page they can open shows it. Say in one line that pay is not shown in chat and that their HR administrator can help.',
+  none:'If they ask about this person\'s pay: no page they can open here shows it. Say in one line that pay is not shown in chat and that no page they can open shows it; never send them to HR or the payroll team.',
  },
  retryNotes:{
   truncated:'Your final_answer was too long and was cut off. Call final_answer again with a shorter reply: at most 10 short numbered steps, and link to the product guide for the detail.',
   blank:'Your final_answer was empty or could not be read. Call final_answer again with a short plain reply.',
   non_blank:'Your reply was empty. Call final_answer again with a short plain reply.',
   destination_links:'Your reply linked to a page that is not one of the product destinations. Call final_answer again, naming only pages product_destinations returned, or none.',
-  overclaim:'Your reply said a change was made. Nothing is changed in chat: the person completes and confirms every change on its review page. Call final_answer again without saying anything was submitted, approved, closed or done; say "prepared … for you to review and confirm" only for a card this turn prepared.',
+  overclaim:'Your reply said a change was made. Nothing is changed in chat: the person completes and confirms every change on its review page. Call final_answer again without saying anything was submitted, approved, closed or done; say a card "is ready for you to review and confirm" only for a card this turn prepared.',
   identifiers:'Your reply contained an identity, bank, tax, EPF or SOCSO number, a phone number or an email address. Call final_answer again without any of them.',
   workplace_channel:'Your reply sent the person to Feedback, which is product feedback to the software team. A concern about a person, their conduct or a personal matter never goes there. Call final_answer again pointing them to their HR team instead.',
  },
@@ -334,4 +360,6 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  21:'66e0ce979b02bce1309df6be3f2ea5eba7a61404d3c1c63b902084717bc3cd83',
  // v20 plus the folded guidance topics (product_guidance password_policy and correction_controls), release merge.
  22:'23c7a0b27b5d0029510b44935af4b07dd27d25aa34f1ff2607d0075f075e85d3',
+ // AI v2 Phase 2 hardening: the topic tools (operations_status, explain_why) and the queued Phase 2 lines.
+ 23:'0052cefe8d066154db37c62bc213dfb26eabcbe0cc861577103212d6e4e5f0c5',
 });

@@ -35,8 +35,8 @@ describe('reply style (spec v9)',()=>{
   // Spec v11: someone else's pay links only the page the harness names for this caller, never their own payslips.
   expect(instructions).toMatch(/for their own pay, their own payslips page if product_destinations lists it; for someone else's pay, only the page a note in this conversation names, never their own payslips/);
   expect(instructions).toMatch(/Never send someone with access to "contact the payroll team"/);
-  // Issue 18: "Medical Leave: 0 (withheld)" misread the ESS flag; a hidden part is never shown as 0.
-  expect(instructions).toMatch(/withheld:true means the company hides some parts of that row; every figure that is present is real/);
+  // Issue 18: "Medical Leave: 0 (withheld)" misread the ESS flag; a hidden part is never shown as 0. v23: rows name it in notShown.
+  expect(instructions).toMatch(/In leave balances, notShown names the parts of a row the company hides; every figure present is real/);
   expect(instructions).toMatch(/never show a hidden part as 0/);
   // Spec v10, issue 10: a leave application with a missing or unclear detail is one numbered question, never a guess.
   expect(instructions).toMatch(/If suggest_action reports missing details, ask for them in one short question, numbering any options it lists as given; never guess them\./);

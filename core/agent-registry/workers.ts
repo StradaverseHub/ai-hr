@@ -167,7 +167,9 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
   // Explainers run only inside Noveri conversation turns. The conversation's gate (below) includes the tenant stop
   // switch, so a stopped tenant's chat goes back to the closed grammar and no explainer runs.
   stop:{honoured:true},
-  record:{kind:'outcome_record',agentIdentity:'teras.assistant',tools:['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day','explain_pay_difference','explain_claim_limit']},
+  // Spec v23: the five are topics of explain_why (core/semantic-model/topic-tools.ts), the tool a turn now calls and records;
+  // the five names stay for records written before it.
+  record:{kind:'outcome_record',agentIdentity:'teras.assistant',tools:['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day','explain_pay_difference','explain_claim_limit','explain_why']},
   metrics:{kind:'not_measurable',reason:'An explanation has no accept or decline.'}},
  {id:'conversation',label:'Noveri conversation',family:'preparer',
   owners:['core/teras-wiring/turn.ts#runConversationTurn'],trigger:{kind:'request',detail:'A person asks a question in the Assistant chat'},
