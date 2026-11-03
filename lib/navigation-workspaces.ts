@@ -1,11 +1,12 @@
 /** Navigation placement only. Callers supply already-authorized destinations; this file grants nothing. */
 export type NavigationWorkspace = 'ops' | 'strata';
 export type NavigationSection = 'mine' | 'team' | 'hr' | 'ai' | 'config';
-export type NavigationModule = 'controlTower' | 'people' | 'eLetter' | 'onboarding' | 'leave' | 'attendance' | 'claims' | 'payroll'
+export type NavigationModule = 'people' | 'eLetter' | 'onboarding' | 'leave' | 'attendance' | 'claims' | 'payroll'
   | 'performance' | 'performanceAdmin' | 'rewards' | 'workforceInsights';
 export type NavigationPlacement = {area:'shared' | 'system'} | {area:NavigationWorkspace;module:NavigationModule;section:NavigationSection};
 export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:NavigationWorkspace;labelKey:string}[] = [
-  {id:'controlTower',workspace:'ops',labelKey:'aiControlTower'},
+  // Issue 17 (owner: "Merge both entirely", 3 November 2026): the Control Tower module left Ops. Its pages are
+  // AI Centre › Operations and Administration, placed with the shared AI Centre row below.
   {id:'people',workspace:'ops',labelKey:'modulePeople'},
   // 7baeb78e — Letters is its own module, beside People. Same pages and addresses; placement only.
   {id:'eLetter',workspace:'ops',labelKey:'moduleELetter'},
@@ -21,7 +22,7 @@ export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:Navigat
   {id:'rewards',workspace:'strata',labelKey:'rewards'},
   {id:'workforceInsights',workspace:'strata',labelKey:'workforceInsights'},
 ];
-// 'ai' (28 Oct 2026, owner): AI management's own pages, headed "AI management" in the AI Control Tower menu.
+// 'ai' (28 Oct 2026, owner): AI management's own pages. Since issue 17 they are AI Centre › Administration (shared).
 export const NAVIGATION_SECTIONS: readonly NavigationSection[] = ['mine','team','hr','ai','config'];
 const modulePlacement = (module:NavigationModule,section:NavigationSection):NavigationPlacement => ({
   area:NAVIGATION_MODULES.find(item=>item.id===module)!.workspace,module,section,
@@ -53,8 +54,9 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(path.startsWith('/letters'))return modulePlacement('eLetter','hr');
   if(path==='/manage/my-team')return modulePlacement('people','team');
   if(path.startsWith('/admin/personnel')||path.startsWith('/admin/job-descriptions')||path==='/admin/notice-board')return modulePlacement('people','hr');
-  if(path==='/control-tower/agents'||path.startsWith('/control-tower/agents/'))return modulePlacement('controlTower','ai');
-  if(path.startsWith('/control-tower'))return modulePlacement('controlTower','hr');
+  // Issue 17: every /control-tower page (Operations, and Administration under /control-tower/agents) renders inside
+  // AI Centre, so it is placed with the shared AI Centre row, which owns these addresses in the sidebar.
+  if(path==='/control-tower'||path.startsWith('/control-tower/'))return {area:'shared'};
   if(path.startsWith('/admin/lifecycle'))return modulePlacement('onboarding','config');
   if(path==='/me/lifecycle')return modulePlacement('onboarding','mine');
   if(path.startsWith('/lifecycle/v9'))return modulePlacement('onboarding','hr');

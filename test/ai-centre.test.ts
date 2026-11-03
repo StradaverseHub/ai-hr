@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ADMIN_GROUPS, CENTRE_TABS, adminGroupOf, centreTabsFor, isCentreView } from '../lib/ai-centre/centre-nav';
+import { ADMIN_GROUPS, CENTRE_SECTIONS, CENTRE_TABS, adminGroupOf, centreSectionsFor, centreTabsFor, isCentreView } from '../lib/ai-centre/centre-nav';
 import { BUILT_IN_PLACEMENT, BUILT_IN_SHOWN_AS_FEATURE, FEATURE_PLACEMENT, WORKER_FAMILIES, groupByFamily } from '../lib/ai-centre/worker-families';
 import { AI_FEATURES } from '../lib/ai/features';
 import { AI_MANAGEMENT_SECTIONS } from '../app/control-tower/agents/sections';
@@ -44,16 +44,36 @@ describe('AI centre tabs keep every permission identical', () => {
     }
   });
 
-  it('administrator tabs are AI management pages behind requireAdmin, and only administrators see them', () => {
+  it('administrator tabs are the former Control Tower pages behind requireAdmin, and only administrators see them', () => {
     const admin = CENTRE_TABS.filter(tab => tab.adminOnly);
-    expect(admin.map(tab => tab.key)).toEqual(['workers', 'setup', 'spend']);
-    for (const tab of admin) {
-      expect(tab.href.startsWith('/control-tower/agents')).toBe(true);
-      expect(read(pageOf(tab.href))).toContain('requireAdmin');
-    }
-    expect(read('app/control-tower/layout.tsx')).toContain('requireAdmin');
+    // Issue 17 (owner: "Merge both entirely"): Operations and Administration, each a group with a second tab row.
+    expect(admin.map(tab => [tab.key, tab.href, tab.sections])).toEqual([['operations', '/control-tower', true], ['administration', '/control-tower/agents/features', true]]);
+    for (const tab of admin) expect(read(pageOf(tab.href))).toContain('requireAdmin');
+    expect(read('app/control-tower/layout.tsx')).toContain('await requireAdmin();');
     expect(centreTabsFor({ isAdmin: false }).map(tab => tab.key)).toEqual(['ask', 'inbox', 'jobs', 'how']);
-    expect(centreTabsFor({ isAdmin: true }).map(tab => tab.key)).toEqual(['ask', 'inbox', 'jobs', 'workers', 'setup', 'spend', 'how']);
+    expect(centreTabsFor({ isAdmin: true }).map(tab => tab.key)).toEqual(['ask', 'inbox', 'jobs', 'operations', 'administration', 'how']);
+  });
+
+  it('every second-row tab is an existing /control-tower page behind requireAdmin, listed in the permission registry', () => {
+    const permissions = read('lib/permissions.ts');
+    const all = Object.values(CENTRE_SECTIONS).flat();
+    expect(CENTRE_SECTIONS.operations.map(section => section.key)).toEqual(['overview', 'exceptions', 'readiness', 'actions', 'opportunities']);
+    expect(CENTRE_SECTIONS.administration.map(section => section.key)).toEqual(['workers', 'setup', 'spend']);
+    for (const section of all) {
+      expect(section.href.startsWith('/control-tower'), section.href).toBe(true);
+      expect(read(pageOf(section.href)), section.href).toContain('requireAdmin()');
+      expect(permissions, section.href).toContain(`'${section.href}'`);
+    }
+    // Each group tab opens its first section, and each page lights its own section tab.
+    for (const tab of CENTRE_TABS.filter(tab => tab.sections)) expect(CENTRE_SECTIONS[tab.key as 'operations' | 'administration'][0].href).toBe(tab.href);
+    for (const section of CENTRE_SECTIONS.operations) expect(read(pageOf(section.href)), section.href).toContain(`<OperationsTabs session={s} active="${section.key}" />`);
+    expect(read('app/control-tower/agents/screen.tsx')).toContain('<AiCentreGroupTabs group="administration" active={group} payroll={false} />');
+  });
+
+  it('the payroll queues are offered only with payroll, as their former sidebar rows were', () => {
+    expect(centreSectionsFor('operations', { payroll: false }).map(section => section.key)).toEqual(['overview', 'readiness', 'opportunities']);
+    expect(centreSectionsFor('operations', { payroll: true }).map(section => section.key)).toEqual(['overview', 'exceptions', 'readiness', 'actions', 'opportunities']);
+    expect(centreSectionsFor('administration', { payroll: false })).toHaveLength(3);
   });
 
   it('the employee views live on /assistant, behind its unchanged session layout', () => {
@@ -169,6 +189,57 @@ describe('AI centre messages', () => {
       for (const [key, text] of [...catalogue(locale), ...flat(JSON.parse(read(`messages/${locale}.json`)))]) expect(text, `${locale} ${key}`).not.toMatch(/\b(Teras|Noveri)\b/);
     for (const file of ['components/ai-centre/how-it-works.tsx', 'components/ai-centre/clockwork-figure.tsx', 'components/ai-centre/centre-tabs.tsx', 'components/assistant/assistant-launcher.tsx', 'components/sidebar.tsx', 'app/assistant/page.tsx'])
       expect(read(file), file).not.toMatch(/['"`]Noveri/);
+  });
+
+  /** Issue 17 (owner: "Merge both entirely"): "Control Tower" disappears from user copy in all six locales. Each
+   * locale's own rendering of the name is refused too, as it shipped before this change (Malay "Menara Kawalan",
+   * Chinese 控制塔 and 控制中心, Vietnamese "Tháp điều khiển" and "Trung tâm điều hành", Tamil கட்டுப்பாட்டு
+   * கோபுரம் and மையம், Thai หอควบคุม and ศูนย์ควบคุม). Internal code names, message keys, routes and comments stay. */
+  const CONTROL_TOWER: Readonly<Record<string, RegExp>> = {
+    en: /\bcontrol[\s-]+tower\b|\btower\b/i,
+    ms: /\bcontrol[\s-]+tower\b|menara/i,
+    zh: /\bcontrol[\s-]+tower\b|控制塔|控制中心/i,
+    vi: /\bcontrol[\s-]+tower\b|tháp điều khiển|trung tâm điều hành/i,
+    ta: /\bcontrol[\s-]+tower\b|கட்டுப்பாட்டு\s*(?:க்\s*)?(?:கோபுர|மைய)|கட்டுப்பாட்டுக்\s*கோபுர|கோபுர/i,
+    th: /\bcontrol[\s-]+tower\b|หอควบคุม|ศูนย์ควบคุม/i,
+  };
+  it('refuses "Control Tower" in user copy, in all six locales and both catalogues', () => {
+    for (const locale of ['en', 'ms', 'zh', 'vi', 'ta', 'th']) {
+      const copy = [...catalogue(locale), ...flat(JSON.parse(read(`messages/${locale}.json`)))];
+      expect(copy.length, locale).toBeGreaterThan(1000);
+      for (const [key, text] of copy) expect(text, `${locale} ${key}`).not.toMatch(CONTROL_TOWER[locale]);
+    }
+    // The same guard catches the shipped wording: it is not vacuous.
+    expect('Back to the Control Tower').toMatch(CONTROL_TOWER.en);
+    expect('Kembali ke Menara Kawalan').toMatch(CONTROL_TOWER.ms);
+    expect('返回控制塔').toMatch(CONTROL_TOWER.zh);
+    expect('Quay lại Tháp điều khiển').toMatch(CONTROL_TOWER.vi);
+    expect('கட்டுப்பாட்டு கோபுரத்திற்குத் திரும்பு').toMatch(CONTROL_TOWER.ta);
+    expect('กลับไปที่ศูนย์ควบคุม').toMatch(CONTROL_TOWER.th);
+  });
+
+  it('refuses "Control Tower" in the bundled guides, their titles and the product tours (English source)', () => {
+    const guides = fs.readdirSync(path.join(ROOT, 'content/guides')).filter(name => name.endsWith('.md'));
+    expect(guides.length).toBeGreaterThan(40);
+    // Link targets keep the internal /control-tower path; only the words people read are checked.
+    const words = (text: string) => text.replace(/\]\([^)]*\)/g, ']').replace(/"(?:route|target)": "(?:[^"\\]|\\.)*"/g, '');
+    for (const name of guides) expect(words(read(`content/guides/${name}`)), name).not.toMatch(CONTROL_TOWER.en);
+    const manifest = JSON.parse(read('content/guides/manifest.json')).guides as { slug: string; title: string }[];
+    expect(manifest.length).toBeGreaterThan(40);
+    for (const guide of manifest) expect(guide.title, guide.slug).not.toMatch(CONTROL_TOWER.en);
+    expect(words(read('lib/module-tours.json'))).not.toMatch(CONTROL_TOWER.en);
+  });
+
+  it('refuses "Control Tower" in string literals of the product source; code names and paths stay', () => {
+    const literal = /(['"`])(?:(?!\1)[^\\\n]|\\.)*\bControl\s+Tower\b(?:(?!\1)[^\\\n]|\\.)*\1|>[^<{}\n]*\bControl\s+Tower\b[^<{}\n]*</;
+    const files = walkSource();
+    expect(files.length).toBeGreaterThan(500);
+    for (const file of files) {
+      // Comments may keep the history; strip them before looking at what renders.
+      const code = read(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+      expect(code, file).not.toMatch(literal);
+    }
+    expect(`const label = 'Back to the Control Tower';`).toMatch(literal);
   });
 });
 

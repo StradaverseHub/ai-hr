@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { recordReadiness, PEOPLE_PER_GAP } from '@/core/record-readiness';
 import { Card, EmployeeCode, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
+import { OperationsTabs } from '../operations-tabs';
 
 /**
  * ADR-0083 §3 item 2 — the readiness screen. The shift-left half of the control plane.
@@ -28,10 +29,10 @@ export default async function ReadinessPage() {
 
   return (
     <div className={pageWideCls}>
+      <OperationsTabs session={s} active="readiness" />
       <PageHeader
         title={t('title')}
         description={t('description')}
-        back={{ href: '/control-tower', label: t('backToTower') }}
       />
 
       <Card className="p-5">

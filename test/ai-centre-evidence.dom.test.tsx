@@ -91,7 +91,8 @@ describe('AI centre screens', () => {
     state.locale = 'en';
     const tabs = <AiCentreTabs active="ask" isAdmin={false} />;
     const view = wrap('en', tabs);
-    expect(screen.queryByRole('link', { name: messagesFor('en').aiCentre.tabs.workers })).toBeNull();
+    expect(screen.queryByRole('link', { name: messagesFor('en').aiCentre.tabs.operations })).toBeNull();
+    expect(screen.queryByRole('link', { name: messagesFor('en').aiCentre.tabs.administration })).toBeNull();
     expect(screen.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/assistant?view=inbox', '/assistant?view=jobs', '/assistant?view=how']);
     view.unmount();
   });

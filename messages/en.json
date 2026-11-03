@@ -297,7 +297,7 @@
   "nav": {
     "roster": "Roster",
     "dataPrivacy": "Data Privacy",
-    "dashboard": "Dashboard",
+    "dashboard": "Today",
     "myWorkspace": "My Profile",
     "people": "Team Directory",
     "orgChart": "Org chart",
@@ -394,9 +394,9 @@
     "payrollIndividualPayslip": "Individual Payslip",
     "payrollBackPay": "Back Pay",
     "payrollStatutoryAdjustment": "Statutory Adjustment",
-    "payrollControlTower": "Control Tower",
+    "payrollControlTower": "Operations",
     "assistant": "Assistant",
-    "aiControlTower": "Control Tower",
+    "aiControlTower": "Operations",
     "controlTowerOverview": "Overview",
     "controlTowerHow": "How it works",
     "controlTowerReadiness": "Employee data",
@@ -9233,7 +9233,7 @@
       }
     },
     "controlTower": {
-      "title": "HR Control Tower",
+      "title": "Operations overview",
       "description": "Coordinate HR work, review exceptions and verify outcomes.",
       "backToPayroll": "Payroll",
       "ratioTitle": "How many people does it take to run this payroll?",
@@ -9268,14 +9268,14 @@
       "colWaiting": "Waiting on a person",
       "openQueue": "Open queue",
       "notChecked": "Not checked",
-      "noRuns": "No processed runs. The tower has nothing to watch until a run is processed.",
+      "noRuns": "No processed runs. There is nothing to watch until a run is processed.",
       "domainsLine": "{live} of {total} areas are live.",
       "howItWorksLink": "How this works",
       "agentsLink": "Which agents are running",
       "agents": {
         "title": "AI agents",
         "description": "The parts of this system that act on their own, and whether each of them actually can.",
-        "backToTower": "Back to the Control Tower",
+        "backToTower": "Back to Operations",
         "heading": "What runs without being asked",
         "headingHelp": "Each of these is off until you switch it on, and switching one on is not the same as it being able to work — a switch that has nothing behind it says so below.",
         "stateOn": "Running",
@@ -9315,7 +9315,7 @@
       "exceptions": {
         "title": "Exceptions",
         "description": "Every flagged employee still waiting for a decision, from every payroll run, in one list.",
-        "backToTower": "Back to the Control Tower",
+        "backToTower": "Back to Operations",
         "outstanding": "Waiting for a decision",
         "blocking": "Of those, blocking a run",
         "capped": "Showing the {shown} most urgent of {total}. Clear some and the rest appear.",
@@ -9324,7 +9324,7 @@
         "emptyTitle": "Nothing is waiting",
         "emptyBody": "Every flagged employee across every run has been decided.",
         "whyTitle": "Why your decisions matter here",
-        "whyBody": "Three of the figures on the Control Tower — how often the checks are wrong, how long an exception waits, and how many people this workload implies — cannot be worked out until somebody decides these. Until then the Tower shows what is missing instead of a number, on purpose."
+        "whyBody": "Three of the figures on the Operations overview — how often the checks are wrong, how long an exception waits, and how many people this workload implies — cannot be worked out until somebody decides these. Until then the overview shows what is missing instead of a number, on purpose."
       },
       "agreementTitle": "Does the AI agree with us?",
       "agreementUnavailable": "Nothing to measure yet.",
@@ -21797,7 +21797,7 @@
         "people": "People",
         "rewards": "Rewards",
         "analytics": "Analytics",
-        "controlTower": "Control Tower",
+        "controlTower": "Operations",
         "settings": "Settings"
       },
       "identity": "AI assistant",
@@ -21878,9 +21878,9 @@
     "err_protected_input": "This request needs a supported protected input. Choose a suggested task or input template, or use the native screen for other details."
   },
   "controlTower": {
-    "howTitle": "How the Control Tower works",
+    "howTitle": "What runs for your company",
     "howDescription": "What runs, in what order, which parts use AI, and what is switched on right now.",
-    "backToTower": "Back to the Control Tower",
+    "backToTower": "Back to Operations",
     "loopTitle": "The loop",
     "loopIntro": "Every cycle runs the same five steps. Only one of them involves AI, and none of them decides anything on its own.",
     "loopAlt": "Five steps: checks run, findings are recorded, AI explains them in plain words, a person decides, and the result feeds back.",
@@ -21991,7 +21991,7 @@
     "promise2Body": "Whether something is cleared, flagged or blocked is decided by fixed rules before any AI is involved, and the explanation cannot change that decision. Nothing is cleared, paid or altered without a person.",
     "readinessScreen": {
       "title": "Record readiness",
-      "backToTower": "Back to the Control Tower",
+      "backToTower": "Back to Operations",
       "description": "Every active employee is either ready to be paid and filed for, or has something missing. Fix it here, once, instead of meeting it again every payroll.",
       "readyPct": "records complete",
       "readyOf": "employees ready",
@@ -22022,7 +22022,7 @@
     "actions": {
       "title": "Proposed actions",
       "description": "Work the AI would like to take off your desk. Nothing here happens until you approve it, and you can see exactly why each one is being proposed.",
-      "backToTower": "Back to the Control Tower",
+      "backToTower": "Back to Operations",
       "emptyTitle": "Nothing to approve",
       "emptyBody": "Every payroll exception still waiting on you has a real problem behind it. When somebody fixes the underlying record, the exception will appear here to be closed.",
       "done": "Closed {closed} exception(s).",
@@ -22056,7 +22056,7 @@
     "orchestrator": {
       "checking": "Checking records…",
       "runFailed": "The latest recorded automation run needs attention. Open the run details below.",
-      "navigation": "Control Tower navigation",
+      "navigation": "Operations sections",
       "overview": "Overview",
       "readiness": "Employee data",
       "exceptions": "Payroll exceptions",
@@ -26889,7 +26889,7 @@
   "aiManagement": {
     "title": "AI management",
     "description": "See every AI capability, monitor model activity and control user and company allowances.",
-    "back": "Control Tower",
+    "back": "Operations",
     "provider": "Provider: {provider} · {model}",
     "noProvider": "No AI provider configured. Manual workflows remain available.",
     "configureProvider": "Provider settings",
@@ -29349,7 +29349,7 @@
       "next": "Next",
       "none": "No backlog entries."
     },
-    "back": "Control Tower",
+    "back": "Operations",
     "title": "Automation opportunities",
     "description": "Where an AI agent could take handling work off HR, measured from your records. Nothing on this page changes data or calls an AI model.",
     "window": "Cases started in the last",
@@ -33540,7 +33540,7 @@
       "anomalies": {
         "name": "Payroll anomaly checks",
         "description": "Records findings and verdicts for review. Does not change payroll amounts.",
-        "results": "Control Tower exceptions and payroll anomalies"
+        "results": "Operations exceptions and payroll anomalies"
       },
       "child-relief": {
         "name": "Child tax-relief refresh",

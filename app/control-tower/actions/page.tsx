@@ -10,6 +10,7 @@ import {
   pageWideCls,
 } from '@/components/ui';
 import { approveAgentActionAction } from './actions';
+import { OperationsTabs } from '../operations-tabs';
 
 /**
  * ADR-0083 §2.5 — the approval screen. The first place in this product where a person authorises an
@@ -50,10 +51,10 @@ export default async function AgentActionsPage({
 
   return (
     <div className={pageWideCls}>
+      <OperationsTabs session={s} active="actions" />
       <PageHeader
         title={t('title')}
         description={t('description')}
-        back={{ href: '/control-tower', label: t('backToTower') }}
       />
       {/* The code is validated against the known set before it reaches t(). A query string is user input,
           and an unknown key throws MISSING_MESSAGE — which crashes the page rather than showing an error

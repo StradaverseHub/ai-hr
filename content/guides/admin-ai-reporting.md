@@ -1,4 +1,4 @@
-Use [Control Tower](/control-tower) to review operational readiness and exceptions. AI suggestions support a responsible reviewer; they are not authority to pay, terminate employment or change access.
+Use [AI Centre › Operations](/control-tower) to review operational readiness and exceptions. AI suggestions support a responsible reviewer; they are not authority to pay, terminate employment or change access.
 
 ## Coordinate outstanding work
 
@@ -12,19 +12,19 @@ the information itself. Ended employments are retired from the queue without bei
 If a gap returns, its case reopens and the reopen count is shown. The recorded check time identifies
 the observation behind the queue. Execution failures are shown separately from outstanding HR work.
 
-Use the shared navigation to move between employee data, payroll exceptions, approvals, automation
-and the explanation of each capability. Expand **Payroll and AI quality** on the Overview for the
+Use the Operations tabs (Overview, Exceptions, Record readiness, Proposed actions and Opportunities) to
+move between them; Administration holds the AI workers, setup and spending, and How it works explains each capability. Expand **Payroll and AI quality** on the Overview for the
 existing quality and coverage metrics. The employee links open the authoritative personnel record.
 
 ## Work through an exception
 
 1. Select the company and period where offered.
-2. Open [Readiness](/control-tower/readiness) or [Exceptions](/control-tower/exceptions).
+2. Open [Record readiness](/control-tower/readiness) or [Exceptions](/control-tower/exceptions).
 3. Read the underlying facts and the affected record. Verify the source data before accepting an explanation or suggested action.
-4. Use [Actions](/control-tower/actions) for the actions available to your role and current workflow state.
+4. Use [Proposed actions](/control-tower/actions) for the actions available to your role and current workflow state.
 5. Review the outcome in the authoritative HR/payroll record. A resolved suggestion is not proof that an external payment or submission occurred.
 
-[How it works](/control-tower/how-it-works) describes the current control-tower model. [Agents](/control-tower/agents) and [AI configuration](/admin/ai) expose the available configuration. Check provider readiness, permissions and the scope of any enabled behavior before changing it.
+[How it works](/control-tower/how-it-works) describes the current model and, for administrators, what is switched on for your company. [Administration](/control-tower/agents) and [AI configuration](/admin/ai) expose the available configuration. Check provider readiness, permissions and the scope of any enabled behavior before changing it.
 
 ## Assistant
 

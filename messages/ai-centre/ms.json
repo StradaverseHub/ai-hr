@@ -18,9 +18,22 @@
       "workers": "Ejen",
       "setup": "Persediaan",
       "spend": "Perbelanjaan dan penyedia",
+      "operations": "Operasi",
+      "administration": "Pentadbiran",
       "how": "Cara ia berfungsi"
     },
     "inboxCount": "{count, plural, one {# item menunggu} other {# item menunggu}}",
+    "sectionsLabel": "Bahagian {tab}",
+    "sections": {
+      "overview": "Gambaran keseluruhan",
+      "exceptions": "Pengecualian",
+      "readiness": "Kesediaan rekod",
+      "actions": "Tindakan dicadangkan",
+      "opportunities": "Peluang",
+      "workers": "Ejen",
+      "setup": "Persediaan",
+      "spend": "Perbelanjaan dan penyedia"
+    },
     "subnav": {
       "workers": "Semua ejen",
       "inventory": "Inventori dan audit",

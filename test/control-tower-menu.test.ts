@@ -39,16 +39,20 @@ describe('r233 — the move out of the Payroll menu', () => {
     expect(read('packs/payroll/phases.ts')).not.toContain("'/payroll/control-tower'");
   });
 
-  it('the section is admin-gated, while only payroll-specific actions need payroll', () => {
+  it('issue 17: the section became AI Centre › Operations, still admin-gated, with only payroll queues needing payroll', () => {
     const side = read('components/sidebar.tsx');
-    expect(navigationPlacement('/control-tower')).toEqual({area:'ops',module:'controlTower',section:'hr'});
-    expect(NAVIGATION_MODULES.filter(module=>module.workspace==='ops')[0].id).toBe('controlTower');
-    const row=side.split('\n').find(line=>/href:\s*'\/control-tower'/.test(line));
-    expect(row).toMatch(/adminOnly:\s*true/);
-    expect(side).toContain("href: '/control-tower'");
-    expect(side).toContain("href: '/control-tower/how-it-works'");
-    expect(side).not.toContain("['/control-tower', 'payroll'] as const");
-    expect(side).toContain("['/control-tower/actions', 'payroll'] as const");
+    // One sidebar item: no Control Tower module in Ops, and the shared AI Centre row owns every /control-tower page.
+    expect(navigationPlacement('/control-tower')).toEqual({area:'shared'});
+    expect(NAVIGATION_MODULES.map(module=>module.id as string)).not.toContain('controlTower');
+    expect(side).not.toMatch(/href:\s*'\/control-tower/);
+    expect(side).toContain("{ href: '/assistant', labelKey: 'aiCentre', icon: Sparkles, ownedSubpaths: ['/control-tower'] }");
+    // The payroll gate moved with the rows into the AI Centre's second tab row.
+    const nav = read('lib/ai-centre/centre-nav.ts');
+    expect(nav).toContain("{ key: 'overview', href: '/control-tower', payroll: false }");
+    expect(nav).toContain("{ key: 'actions', href: '/control-tower/actions', payroll: true }");
+    expect(nav).toContain("{ key: 'exceptions', href: '/control-tower/exceptions', payroll: true }");
+    expect(nav).toContain("{ key: 'readiness', href: '/control-tower/readiness', payroll: false }");
+    expect(read('app/control-tower/layout.tsx')).toContain('await requireAdmin();');
   });
 
   it('both guarded routes carry a function-access column, and the FORWARD does not', () => {
@@ -101,8 +105,26 @@ describe('ADR-0083 §2.2 — the tower reads a registry, not the word "payroll"'
   });
 });
 
+describe('issue 17 — "How the Control Tower works" answers 308 to AI Centre › How it works, after its unchanged guard', () => {
+  it('refuses a non-administrator first, then forwards permanently', () => {
+    const page = read('app/control-tower/how-it-works/page.tsx');
+    expect(page).toContain("import { permanentRedirect } from 'next/navigation';");
+    expect(page.indexOf('await requireAdmin();')).toBeGreaterThan(-1);
+    expect(page.indexOf('await requireAdmin();')).toBeLessThan(page.indexOf("permanentRedirect('/assistant?view=how');"));
+    expect(page).not.toMatch(/\bredirect\(/);
+  });
+
+  it('its live statuses render in How it works for administrators only', () => {
+    const ask = read('app/assistant/page.tsx');
+    expect(ask).toContain("{admin && <AiCentreLiveStatus session={s} />}");
+    expect(ask).toContain('const admin = isAdmin(s);');
+    expect(ask).toContain("import {isAdmin} from '@/lib/authz-model';");
+  });
+});
+
 describe('ADR-0083 — the explainer states what does NOT run', () => {
-  const page = read('app/control-tower/how-it-works/page.tsx');
+  // Issue 17: the explainer's content moved verbatim into AI Centre › How it works.
+  const page = read('components/ai-centre/live-status.tsx');
   const en = JSON.parse(read('messages/en.json')).controlTower as Record<string, Record<string, string> | string>;
 
   it('renders the autonomy row rather than omitting it', () => {

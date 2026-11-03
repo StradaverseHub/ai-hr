@@ -7,6 +7,7 @@ import { ASSESSMENT_WINDOWS, MIN_COMPLETED, AGED_OPEN_DAYS, assessProcesses, est
   type AgentRole, type ProcessAssessment } from '@/core/process-assessment';
 import { Info } from 'lucide-react';
 import { Card, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
+import { OperationsTabs } from '../operations-tabs';
 import { MIN_AFTER_DAYS, assistantOutcomes, type ProcessComparison } from '@/core/assistant-outcomes';
 import { agentBacklogByTier, agentCapabilityCoverage } from '@/lib/ai/agent-capability-inventory';
 
@@ -117,7 +118,8 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   };
 
   return <div className={pageWideCls}>
-    <PageHeader back={{ href: '/control-tower', label: t('back') }} title={t('title')} description={t('description')} />
+    <OperationsTabs session={s} active="opportunities" />
+    <PageHeader title={t('title')} description={t('description')} />
     <Card className="p-5">
       <form method="get" className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[repeat(3,minmax(0,14rem))_auto]">
         <label className="text-xs">{t('window')}
