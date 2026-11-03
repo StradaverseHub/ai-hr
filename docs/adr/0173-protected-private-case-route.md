@@ -83,7 +83,7 @@ Free text that names other people is not linked structurally to them and is not 
 
 `core/harness/runner.ts` accepts `caseRouteAvailable` and asks it only on a routed sensitive turn. `routeReply(caseRoute)` adds the spec's `caseClause` only when the route is configured **and** the spec names a route. The spec's `contact.caseRoute` is still `null`, so the fixed reply text is unchanged for every tenant. `core/teras-wiring/turn.ts` exposes `caseRoute` (the form's path), and the reply's route note (`components/ai-centre/conversation-reply.tsx`) shows **"Start a private case with HR"** in six languages after the HR-contact line. On a crisis turn, the emergency message comes first and the link follows it. Workplace-harms and rule-override refusals are not routes and get no link.
 
-Proposed spec lines (one coordinator change per slice; not made here):
+Proposed spec lines (one coordinator change per slice; not made here). **Made in harness spec v18** (AI v2 Phase 1 consolidation, 3 November 2026), word for word; `test/harness-spec-v18.test.ts` pins them:
 
 ```ts
 contact:{label:'your HR team',caseRoute:'/me/cases/new'},

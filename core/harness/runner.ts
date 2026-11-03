@@ -30,7 +30,7 @@ import {canManagePayroll,isAdmin,isGroupAdmin,withEffectiveGrants} from '../../l
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {payViewDestinationFor} from '../../lib/product-context/destinations';
 import {gateTurn,isSensitiveReason,TURN_GATE_NOTE} from '../../lib/product-context/request-gate';
-import {asksCapability} from '../../lib/product-context/capability-intent';
+import {capabilityOffered} from '../../lib/product-context/capability-intent';
 import {chatImportFileInput} from '../../lib/chat-import';
 import {chatImportKindsFor} from '../chat-import/kinds';
 import {destinationLabel} from '../product-context/tools';
@@ -96,8 +96,9 @@ const argumentsDigest=(raw:string)=>{try{return digestOf(canonicalJson(JSON.pars
 
 /** Which candidates this turn offers. Pure; the gate and the spec decide, never the model or a tool. Spec v17: the
  * capability catalogue (S.offer.capabilityTool) only when `capability`, the person's words asking what they can do, how,
- * or to import, set up, add or create something (lib/product-context/capability-intent.ts asksCapability); it is not a
- * public context tool, so a gated turn never has it. */
+ * or to import, set up, add or create something, or (v18) picking a numbered option of the previous turn's question
+ * (lib/product-context/capability-intent.ts capabilityOffered); it is not a public context tool, so a gated turn never
+ * has it. */
 export function offerFor(bindings:readonly ToolBinding[],gate:ReturnType<typeof gateTurn>,allowTools?:readonly string[],capability=false):readonly ToolBinding[]{
  const publicContext:readonly string[]=S.offer.publicContextTools,actionTools:readonly string[]=S.offer.actionTools;
  return bindings.filter(binding=>{
@@ -165,13 +166,14 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  const history=options.history??[];
  if(history.some(row=>row?.side!=='model'))throw new PersonSideHistory();
  const candidates=await (options.tools??nativeToolProvider)(ctx,{...scope,personWords:options.question},gate.actions);
- // A fixed turn offers nothing: the model is never called.
- const offered=fixed?[]:offerFor(candidates.bindings,gate,options.allowTools,asksCapability(options.question)),offeredNames=new Set(offered.map(binding=>binding.name));
 
  // Task memory: loaded for this tenant and user only, then re-authorised against what the caller is offered now.
  const stored=await options.memory.load(ctx.tenantId,ctx.userId??'',options.conversationId)??emptyMemory(ctx,options.conversationId,started);
  const callerReads=new Set(candidates.bindings.filter(binding=>binding.kind==='read').map(binding=>binding.name));
  const {memory:current,result:memoryResult}=reauthoriseMemory(stored,ctx,callerReads,started);
+ // A fixed turn offers nothing: the model is never called. Spec v18: an answer picking one option of the previous turn's
+ // question (re-authorised task memory's pendingQuestion) keeps the catalogue offered, so that entry can be acted on.
+ const offered=fixed?[]:offerFor(candidates.bindings,gate,options.allowTools,capabilityOffered(options.question,current.pendingQuestion)),offeredNames=new Set(offered.map(binding=>binding.name));
 
  // Identifiers never leave: the question, the history and the memory note are screened before any model call.
  const screening={question:0,history:0,memory:0,tools:0,kinds:[] as string[]};

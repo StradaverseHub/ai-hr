@@ -14,10 +14,15 @@
  *
  * Deterministic and pure. English, Malay, Chinese and Vietnamese patterns; Tamil and Thai patterns are PENDING
  * NATIVE-SPEAKER REVIEW (as the gate's are): a floor, not a reviewed list. A pattern change raises
- * CAPABILITY_INTENT_REVISION and the harness spec version (the spec's offer.capabilityIntentRevision). */
+ * CAPABILITY_INTENT_REVISION and the harness spec version (the spec's offer.capabilityIntentRevision).
+ *
+ * Revision 2 (spec v18): a follow-up turn. When the previous turn asked the person a question (task memory's
+ * pendingQuestion) and their whole answer picks one numbered option ("1", "2, the leave balances", "the second one",
+ * "yang kedua", "第二个"), the catalogue is offered again, so the entry they picked can be acted on. An answer that is
+ * not a pick, or a pick with no question pending, is decided by asksCapability alone. */
 
 /** Raised with every pattern change; the harness spec records it. */
-export const CAPABILITY_INTENT_REVISION=1;
+export const CAPABILITY_INTENT_REVISION=2;
 
 /** A word boundary that also holds next to letters outside ASCII (Vietnamese, Malay loan words). */
 const W='(?<![\\p{L}\\p{N}])',E='(?![\\p{L}\\p{N}])';
@@ -77,4 +82,41 @@ const ALL:readonly RegExp[]=Object.values(CAPABILITY_PATTERNS).flat().map(patter
 export function asksCapability(question:string):boolean{
  const text=question.normalize('NFKC');
  return ALL.some(pattern=>pattern.test(text));
+}
+
+/** The longest answer that still counts as picking an option (after trimming): "2, the leave balances" is a pick, a new
+ * request with a number in it is not. */
+export const CHOICE_ANSWER_MAX_CHARS=60;
+const ORDINAL_EN='first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|last';
+/** After the pick: the end, or punctuation before the option's own words ("2, the leave balances"). A number or ordinal
+ * that starts a longer sentence ("2 days of leave", "first, how much leave …") is not a pick. */
+const THEN='\\s*(?:$|[.,:;)\\-–—])';
+/** A pick of one numbered option, in each language. Tamil and Thai: PENDING NATIVE-SPEAKER REVIEW. */
+export const CHOICE_PATTERNS:Readonly<Record<'en'|'ms'|'zh'|'vi'|'ta'|'th',readonly RegExp[]>>=Object.freeze({
+ en:Object.freeze([
+  // "1", "2.", "3)", "#2", "2, the leave balances", "option 2", "number 3", "the second one", "the last option".
+  rx(`^\\s*(?:(?:option|number|no\\.?|choice|item)\\s*)?#?[1-9]${THEN}`),
+  rx(`^\\s*(?:the\\s+)?(?:${ORDINAL_EN})(?:\\s+(?:one|option))?${THEN}`),
+ ]),
+ ms:Object.freeze([rx(`^\\s*(?:(?:pilihan|nombor|no\\.?)\\s*[1-9]|(?:yang\\s+|pilihan\\s+)?(?:pertama|kedua|ketiga|keempat|kelima|terakhir))${THEN}`)]),
+ zh:Object.freeze([/^\s*(?:第\s*(?:[一二三四五]|[1-9])\s*(?:个|個|项|項|种|種)?|选\s*(?:[一二三四五]|[1-9])|(?:[一二三四五]|[1-9])\s*号)/u]),
+ vi:Object.freeze([rx(`^\\s*(?:(?:số|lựa\\s+chọn|phương\\s+án)\\s*[1-9]|(?:cái\\s+|mục\\s+)?(?:thứ\\s+(?:nhất|hai|ba|tư|năm)|đầu\\s+tiên|cuối\\s+cùng))${THEN}`)]),
+ // PENDING NATIVE-SPEAKER REVIEW.
+ ta:Object.freeze([/^\s*(?:எண்\s*[1-9]|முதல்|இரண்டாவது|மூன்றாவது|நான்காவது|ஐந்தாவது|கடைசி)/u]),
+ // PENDING NATIVE-SPEAKER REVIEW.
+ th:Object.freeze([/^\s*(?:(?:ข้อ|ตัวเลือก|อันที่|หมายเลข)\s*(?:[1-9]|หนึ่ง|สอง|สาม|สี่|ห้า)|อันแรก|อันสุดท้าย)/u]),
+});
+const CHOICES:readonly RegExp[]=Object.values(CHOICE_PATTERNS).flat().map(pattern=>new RegExp(pattern.source.normalize('NFKC'),pattern.flags));
+
+/** True when the whole answer picks one numbered option: short, and it starts with the option's number or its ordinal.
+ * Pure. */
+export function answersNumberedChoice(question:string):boolean{
+ const text=question.normalize('NFKC').trim();
+ return text.length>0&&text.length<=CHOICE_ANSWER_MAX_CHARS&&CHOICES.some(pattern=>pattern.test(text));
+}
+
+/** Whether this turn is offered the capability catalogue: the words ask for it (asksCapability), or the previous turn
+ * left a question pending (task memory's pendingQuestion) and this answer picks one of its numbered options. Pure. */
+export function capabilityOffered(question:string,pendingQuestion:string|null):boolean{
+ return asksCapability(question)||(pendingQuestion!==null&&answersNumberedChoice(question));
 }

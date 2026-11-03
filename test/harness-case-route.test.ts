@@ -1,7 +1,7 @@
 /** AI v2 Phase 1 W11 — the protected case route in the turn runner, with a scripted model and fictional tools (no
  * database, no provider). The runner asks whether the route is set up only on a routed sensitive turn, after the gate,
- * and a failure keeps the HR contact alone. The fixed text stays the spec's: the case clause joins it only once the
- * spec names a route (coordinator's spec change), which today it does not. */
+ * and a failure keeps the HR contact alone. The fixed text stays the spec's: since spec v18 the spec names the route
+ * (ADR-0173 §3), so the case clause joins it exactly where the route is set up. */
 import {describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
 import {HARNESS_SPEC} from '../core/harness/spec';
@@ -31,9 +31,10 @@ describe('the protected case route in the runner',()=>{
    expect(model.requests,question).toEqual([]);expect(dispatched,question).toEqual([]);expect(result.reads,question).toEqual([]);expect(result.suggestion,question).toBeNull();
    expect(result.reply,question).toBe(routeReply(true));
   }
-  // Until the spec names a case route, the clause adds nothing: the reply text is unchanged for every tenant.
-  expect(HARNESS_SPEC.sensitive.contact.caseRoute).toBeNull();
-  expect(routeReply(true)).toBe(routeReply(false));expect(routeReply()).toBe(routeReply(false));
+  // Spec v18 names the case route: the clause joins the reply only where the route is set up.
+  expect(HARNESS_SPEC.sensitive.contact.caseRoute).toBe('/me/cases/new');
+  expect(routeReply(true)).toBe(routeReply(false).replace('directly.','directly, or [start a private case with HR](/me/cases/new).'));
+  expect(routeReply()).toBe(routeReply(false));expect(routeReply(false)).not.toContain('/me/cases/new');
  });
  it('leads a crisis turn with the emergency message, then the route',async()=>{
   const {result,model}=await turn('I want to end my life.',async()=>true);

@@ -24,7 +24,8 @@ describe('reply style (spec v9)',()=>{
   // are the catalogue's entries for this person, numbered by title.
   expect(instructions).toMatch(/a request that could mean several things this person can do \(such as "help me import data"\), call product_capabilities/);
   // Spec v14 and v15: at most five numbered, the most common first, then "Something else"; one entry named is acted on without asking.
-  expect(instructions).toMatch(/If several fit, start with "Yes, I can …" and ask one short question numbering at most five, as listed \(most common first\), then "Something else"; never guess\./);
+  // Spec v18: asked in mode clarify (so a follow-up answer is recognised), and employee records include adding one employee.
+  expect(instructions).toMatch(/If several fit, start with "Yes, I can …" and ask one short question \(mode clarify\) numbering at most five, as listed \(most common first; employee records include adding one employee\), then "Something else"; never guess\./);
   // Spec v11: "Yes, I can …" when an action is listed; the card carries the page (test/teras-harness-v11.test.ts).
   expect(instructions).toMatch(/start with "Yes, I can …" and call suggest_action with the action from its list \(an action's id, or an import's action\), so its card comes with your reply; never open with "I can't" when an action is listed, and do not link that page in your text/);
   expect(instructions).toMatch(/anything else is not available to them here\./);

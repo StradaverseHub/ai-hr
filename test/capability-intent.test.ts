@@ -4,7 +4,7 @@
  * create something; and twenty hand-written questions per language, ten offered and ten not (facts and status). Tamil and
  * Thai cases are pending native-speaker review, as the patterns are. Pure. */
 import {describe,expect,it} from 'vitest';
-import {asksCapability,CAPABILITY_INTENT_REVISION} from '../lib/product-context/capability-intent';
+import {answersNumberedChoice,asksCapability,CAPABILITY_INTENT_REVISION,CHOICE_ANSWER_MAX_CHARS,capabilityOffered} from '../lib/product-context/capability-intent';
 import {HARNESS_SPEC} from '../core/harness/spec';
 import {SMART_EVAL_SET} from './assistant-smart-eval-set';
 
@@ -173,4 +173,30 @@ describe('Thai (pending native review)',()=>{
   ["วันลาป่วยที่เหลือ",false],
   ["สถานะคำขอทำงานล่วงเวลาของฉัน",false],
  ] as const)('%s',(question,offered)=>{expect(asksCapability(question)).toBe(offered);});
+});
+
+/** Spec v18, revision 2: an answer to the previous turn's numbered question keeps the catalogue offered. Tamil and Thai
+ * cases are pending native-speaker review, as the patterns are. */
+describe('a follow-up answer picking a numbered option (revision 2)',()=>{
+ it.each([
+  ['1','en'],['2.','en'],['3)','en'],['#2','en'],['2, the leave balances','en'],['2 - payroll history','en'],['option 2','en'],['Number 4','en'],
+  ['the second one','en'],['Second','en'],['the last option.','en'],['2nd','en'],
+  ['pilihan 2','ms'],['yang kedua','ms'],['Ketiga','ms'],
+  ['第二个','zh'],['第2个','zh'],['选2','zh'],['2号','zh'],
+  ['số 2','vi'],['cái thứ hai','vi'],['thứ nhất','vi'],
+  ['இரண்டாவது','ta'],['எண் 3','ta'],
+  ['ข้อ 2','th'],['อันแรก','th'],
+ ] as const)('%s (%s) picks an option',question=>{expect(answersNumberedChoice(question)).toBe(true);});
+ it.each([
+  'how much annual leave do I have?','2 days of annual leave next week','10','I want to apply for leave','second thoughts about my request','Siti',
+  'Berapa baki cuti saya?','这个月的工资处理好了吗？','',' '.repeat(3),'2, '+'x'.repeat(CHOICE_ANSWER_MAX_CHARS),
+ ])('%j is not a pick',question=>{expect(answersNumberedChoice(question)).toBe(false);});
+ it('offers the catalogue for a pick only while a question is pending; asksCapability alone decides otherwise',()=>{
+  expect(capabilityOffered('2','choice')).toBe(true);expect(capabilityOffered('the second one','leave_type')).toBe(true);
+  expect(capabilityOffered('2',null)).toBe(false);expect(capabilityOffered('how much leave do I have?','choice')).toBe(false);
+  expect(capabilityOffered('can you import my leave balances?',null)).toBe(true);
+  // The scored follow-up turn (hr-import-file-2) is now offered it when the first turn asked its question.
+  const followUp=SMART_EVAL_SET.flatMap(conversation=>conversation.turns).find(turn=>turn.id==='hr-import-file-2')!;
+  expect(asksCapability(followUp.question)).toBe(false);expect(capabilityOffered(followUp.question,'choice')).toBe(true);
+ });
 });
