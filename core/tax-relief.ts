@@ -907,7 +907,7 @@ export async function getTp1ForPerson(
   ctx: SessionContext,
   p: { personId: string; assessmentYear: number },
 ): Promise<Tp1Row | null> {
-  return getTp1ForPersonId(ctx, requireAdminTarget(ctx, p.personId), p.assessmentYear);
+  return getTp1ForPersonId(ctx, requireAdminTarget(ctx, p.personId), p.assessmentYear, true);
 }
 
 /** Internal person-keyed read shared by the self and admin entry points (identical query + shape). */
@@ -915,9 +915,11 @@ function getTp1ForPersonId(
   ctx: SessionContext,
   personId: string,
   assessmentYear: number,
+  administrative=false,
 ): Promise<Tp1Row | null> {
   const year = Math.trunc(Number(assessmentYear));
   return withTenant(ctx, async (tx): Promise<Tp1Row | null> => {
+    if(administrative)await assertTp1AdministrativeAction(tx,personId,'view');
     const [row] = await tx
       .select(TP1_ROW_COLUMNS)
       .from(tp1Relief)
@@ -933,6 +935,7 @@ function getTp1ForPersonId(
 /** One TP1 row by id, for a person already resolved by the caller. Read-only, RLS-scoped, no event. */
 function getTp1RowById(ctx: SessionContext, personId: string, id: string, ownOnly=false): Promise<Tp1Row | null> {
   return withTenant(ctx, async (tx): Promise<Tp1Row | null> => {
+    if(!ownOnly)await assertTp1AdministrativeAction(tx,personId,'view');
     const [row] = await tx
       .select(TP1_ROW_COLUMNS)
       .from(tp1Relief)
@@ -1055,7 +1058,7 @@ export function getTp1AccumulatedForPerson(
   ctx: SessionContext,
   p: { personId: string; assessmentYear: number; deductionMonth: number | null },
 ): Promise<Tp1Counted> {
-  return readAccumulated(ctx, requireAdminTarget(ctx, p.personId), p.assessmentYear, p.deductionMonth);
+  return readAccumulated(ctx, requireAdminTarget(ctx, p.personId), p.assessmentYear, p.deductionMonth, true);
 }
 
 /** The employee's own view of the same figures on /me (month-less: self-service declares for the year). */
@@ -1071,9 +1074,13 @@ function readAccumulated(
   personId: string,
   assessmentYear: number,
   deductionMonth: number | null,
+  administrative=false,
 ): Promise<Tp1Counted> {
   const year = Math.trunc(Number(assessmentYear));
-  return withTenant(ctx, (tx) => accumulatedInTx(tx, personId, year, deductionMonth));
+  return withTenant(ctx, async tx => {
+    if(administrative)await assertTp1AdministrativeAction(tx,personId,'view');
+    return accumulatedInTx(tx, personId, year, deductionMonth);
+  });
 }
 
 /**
@@ -1166,6 +1173,7 @@ export function reconcileTp1ForYear(
   const personId = requireAdminTarget(ctx, p.personId);
   const year = Math.trunc(Number(p.assessmentYear));
   return withTenant(ctx, async (tx) => {
+    await assertTp1AdministrativeAction(tx,personId,'view');
     const rows = await tx
       .select(TP1_COUNTABLE_COLUMNS)
       .from(tp1Relief)
@@ -1244,6 +1252,7 @@ export async function listTp1DeclarationsForPerson(
 ): Promise<Tp1DeclarationSummary[]> {
   const personId = requireAdminTarget(ctx, p.personId);
   return withTenant(ctx, async (tx) => {
+    await assertTp1AdministrativeAction(tx,personId,'view');
     const rows = await tx
       .select({
         id: tp1Relief.id,
