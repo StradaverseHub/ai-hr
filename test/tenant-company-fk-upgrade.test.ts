@@ -1,7 +1,8 @@
 /** ADR-0174 populated upgrade through 2100–2102, on an owned disposable localhost database only.
  * A cross-tenant row present at the boundary must stop the whole upgrade with a readable report and leave
  * the ledger untouched; once that row is resolved the upgrade validates every key, rewrites no row and
- * changes no table, column or policy grant. This supplies no staging acceptance. */
+ * changes no table, column or policy grant. It migrates only through 2102; the 2120–2123 follow-up has its own
+ * rehearsal (test/company-reference-tenant-fk-upgrade.test.ts). This supplies no staging acceptance. */
 import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -23,9 +24,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:Entry[]};
  const boundary=journal.entries.findIndex(row=>row.tag===TAIL[0].tag);
  expect(boundary).toBe(668);
- expect(journal.entries.slice(boundary)).toEqual(TAIL);
+ expect(journal.entries.slice(boundary,boundary+TAIL.length)).toEqual(TAIL);
  expect(journal.entries[boundary-1]).toEqual({idx:811,version:'7',when:1793330001411,tag:'2011_payroll_loops_hardening',breakpoints:true});
- const prefix=journal.entries.slice(0,boundary);
+ const prefix=journal.entries.slice(0,boundary),through=journal.entries.slice(0,boundary+TAIL.length);
  const folder=mkdtempSync(join(tmpdir(),'tenant-company-fk-upgrade-')),database='ai_hr_tenant_fk_upgrade_'+randomUUID().replaceAll('-','');
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appUrl=new URL(process.env.TEST_DATABASE_URL!);
  expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);expect(['127.0.0.1','localhost']).toContain(appUrl.hostname);
@@ -61,6 +62,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   mkdirSync(join(folder,'meta'));for(const row of prefix)copyFileSync('db/migrations/'+row.tag+'.sql',join(folder,row.tag+'.sql'));
   writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:prefix}));
   await migrate(storage.db,{migrationsFolder:folder});
+  // The upgrade folder ends at 2102, so later appended migrations do not change what this rehearsal measures.
+  const upgrade=join(folder,'through');mkdirSync(join(upgrade,'meta'),{recursive:true});
+  for(const row of through)copyFileSync('db/migrations/'+row.tag+'.sql',join(upgrade,row.tag+'.sql'));
+  writeFileSync(join(upgrade,'meta/_journal.json'),JSON.stringify({...journal,entries:through}));
   const beforeLedger=await ledger();expect(beforeLedger).toHaveLength(668);
   expect(beforeLedger.map(row=>row.hash)).toEqual(prefix.map(row=>hash(readFileSync('db/migrations/'+row.tag+'.sql'))));
   expect(await keys()).toEqual([]);
@@ -80,7 +85,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // The defect the old plain FK accepted: tenant A's row naming tenant B's company.
   await storage.client`insert into location(id,tenant_id,company_id,code,name) values(${defect},${tenantA},${foreign},'XB','Fictional misfiled site')`;
   const withDefect=await native(),beforePrivileges=await privileges();
-  const refused=await migrate(storage.db,{migrationsFolder:'db/migrations'}).then(()=>null,(e:unknown)=>e);
+  const refused=await migrate(storage.db,{migrationsFolder:upgrade}).then(()=>null,(e:unknown)=>e);
   const chain:{message?:string;detail?:string;code?:string}[]=[];
   for(let cur=refused as {message?:string;detail?:string;code?:string;cause?:unknown}|null,i=0;cur&&i<4;cur=cur.cause as typeof cur,i++)chain.push(cur);
   const report=chain.find(link=>link.code==='23503');
@@ -93,7 +98,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // The owner resolves the defect deliberately; the upgrade itself never rewrites or deletes it.
   await storage.client`delete from location where id=${defect}`;
   const upgradeNative=await native();
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  await migrate(storage.db,{migrationsFolder:upgrade});
   const afterLedger=await ledger();
   expect(afterLedger).toHaveLength(671);expect(afterLedger.slice(0,668)).toEqual(beforeLedger);
   expect(afterLedger.slice(668).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(
@@ -115,7 +120,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   await expect(storage.client`insert into location(tenant_id,company_id,code,name) values(${tenantA},${foreign},'XB','Fictional misfiled site')`)
    .rejects.toMatchObject({code:'23503',constraint_name:'location_company_tenant_fk'});
 
-  const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:upgrade});
   expect(await ledger()).toEqual(afterLedger);expect(await native()).toEqual(beforeRerun);
  }finally{
   await application.client.end();await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`);await admin.end();rmSync(folder,{recursive:true,force:true});

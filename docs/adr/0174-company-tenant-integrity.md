@@ -51,14 +51,35 @@ that row. The error names each table and its first offending key, and the journa
 `test/tenant-company-fk-upgrade.test.ts` rehearses both outcomes on a populated database at the 668-entry
 boundary.
 
-## Not covered
+## Follow-up: 2120–2123 (4 November 2026)
 
-- Other company-referencing columns keep a plain key: `company.parent_company_id`,
-  `reporting_line.scope_company_id`, `notice.owner_company_id`, `overtime_pattern.creation_company_id`,
-  `overtime_pattern_version.creation_company_id` and `performance_kpi_library.group_company_id`.
-- `app.can_see_employment`, `app.can_see_person` and the definer helpers they call
-  (`app.is_admin_report_of`, `app.heads_department_of`), plus about forty other SECURITY DEFINER functions,
-  still use `search_path = public`. Each needs the same pin, together with its callees.
-- `app.is_company_descendant` is SECURITY DEFINER, executable by PUBLIC and unfiltered by tenant.
-- `teras_chat.company_id` (2000) has no company key at all, so the composite rule does not reach it; adding one
-  changes its retention semantics and belongs with its owner.
+Proposed on branch `claude/pensive-hofstadter-d1bf14`; no deployment authorized. The gaps this ADR left open
+are closed as follows. None was a known exploitable path.
+
+1. **Every definer names pg_temp last (2120).** A path that does not name pg_temp searches the session's
+   temporary schema first for relation *and type* names. Schema-qualifying relations is therefore not enough:
+   a TEMP table named `uuid` or `jsonb` replaces that type inside a body whose path is `pg_catalog` alone.
+   `app.can_see_employment`, `app.can_see_person`, `app.is_admin_report_of` and `app.heads_department_of` are
+   re-issued with `pg_catalog, public, pg_temp` and qualified relations; the two walks also pin every row they
+   read to the session tenant, because `ai_hr_app` can call them with arbitrary ids. Every other definer (128,
+   plus the two Rewards posting reads owned by `ai_hr_rewards_post_reader`, altered as that role) and every
+   invoker with its own path (34) keeps its path with pg_temp appended; nothing else about them changes.
+   `test/definer-search-path-pin.test.ts` fails on any future definer, or function with its own path, that does
+   not end its path with pg_temp.
+2. **`app.is_company_descendant` is tenant-filtered (2121), not narrowed.** The KPI library read policy, the
+   company cycle trigger and other invoker callers need it as `ai_hr_app`. It now starts only from a company
+   of the session tenant and never leaves the child's tenant; with no session tenant (owner provisioning and
+   seeding, where the cycle trigger still runs) it stays inside the child's own tenant.
+3. **The six remaining company references carry the composite key (2122 NOT VALID, 2123 validate).**
+   `company.parent_company_id`, `reporting_line.scope_company_id`, `notice.owner_company_id`,
+   `overtime_pattern(.version).creation_company_id` and `performance_kpi_library.group_company_id` reference
+   `company(id, tenant_id)` as `<table>_<column minus _id>_tenant_fk`, ON DELETE NO ACTION like their plain
+   keys. `setCompanyParent` and the delegation scope picker pass a submitted company id straight through, so
+   the key is what refuses another tenant's. 2123 reports every offending table and stops the upgrade, as 2102
+   does. `test/tenant-company-fk.test.ts` now requires a twin for every single-column company key on a tenant
+   table, and `test/company-reference-tenant-fk-upgrade.test.ts` rehearses both outcomes at the 671-entry
+   boundary.
+
+Still open: `teras_chat.company_id` (2000) is NOT NULL with no company key. A key needs an ON DELETE choice that
+changes chat retention (NO ACTION keeps a company with unexpired chats undeletable; CASCADE deletes them and
+their turns with the company), so it waits for its owner's decision.

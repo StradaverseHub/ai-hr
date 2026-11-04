@@ -4698,6 +4698,34 @@
       "when": 1793330001502,
       "tag": "2102_company_tenant_fk_validate",
       "breakpoints": true
+    },
+    {
+      "idx": 1367,
+      "version": "7",
+      "when": 1793330001520,
+      "tag": "2120_definer_search_path_pin",
+      "breakpoints": true
+    },
+    {
+      "idx": 1368,
+      "version": "7",
+      "when": 1793330001521,
+      "tag": "2121_company_descendant_tenant_pin",
+      "breakpoints": true
+    },
+    {
+      "idx": 1369,
+      "version": "7",
+      "when": 1793330001522,
+      "tag": "2122_company_reference_tenant_fk_not_valid",
+      "breakpoints": true
+    },
+    {
+      "idx": 1370,
+      "version": "7",
+      "when": 1793330001523,
+      "tag": "2123_company_reference_tenant_fk_validate",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,32 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Tenant-isolation follow-up (ADR-0174) — 4 November 2026 (provisional source claim)
+
+`claude/pensive-hofstadter-d1bf14` appends four migrations above main's 671-entry journal (`dc1c70deb`, ending at
+2102 / idx 1349 / when 1793330001502). A read-only scan on 4 November 2026 of 4149 local and remote refs, 426
+journal blobs and 456 registered worktrees found unapplied claims up to file 2111 / idx 1358 / when
+1793330001511 (Codex branches, 2103–2111) and the AI Centre's reserved 2012–2019. These take 2120–2123 with
+`when` = 1793330000000 + (file − 600) and idx = file − 753, leaving 2112–2119 free for the active 2103–2111
+series.
+
+| Tag | idx | when | SQL SHA256 |
+| --- | ---: | ---: | --- |
+|2120_definer_search_path_pin|1367|1793330001520|d3154b1a705b519b3df8263492338253d3a445126e0e29aae8d228658b176238|
+|2121_company_descendant_tenant_pin|1368|1793330001521|226a62add7c1b827f5486e327419186da115f7f74834dea87e1c385b711a0a34|
+|2122_company_reference_tenant_fk_not_valid|1369|1793330001522|8767ebd96940ca969a9e3eaa2e54a40ed7c49bc4d8d95c73d05e3404fdbaa797|
+|2123_company_reference_tenant_fk_validate|1370|1793330001523|8e273d007ca71ad707e579bc7c0ca6df8715dabc67d0067a743ca8ab34f278c4|
+
+2120 appends pg_temp to every unpinned function path and re-issues the four visibility helpers; 2121
+tenant-filters `app.is_company_descendant`; 2122 adds six company/tenant keys NOT VALID; 2123 checks the data
+and validates them. Unapplied source only: re-check main's highest file, idx and `when` immediately before
+merge and keep each timestamp above every earlier-applied migration.
+
+Integration notes: Codex's 2103 and 2105 re-issue `app.visible_employment_ids` with `SET search_path = public`.
+If they land first, 2120's ALTER pins their body; if this lands first, `test/definer-search-path-pin.test.ts`
+fails their branch until that path ends with pg_temp. 2120 assumes `ai_hr_rewards_post_reader` for two
+statements, which the migrator could already do when 0689 installed; confirm at staging admission.
+
 ## Tenant-isolation hardening (ADR-0174) — 4 November 2026 (provisional source claim)
 
 `claude/wonderful-mccarthy-2fb38f` appends three migrations above the 668-entry main journal (`aa260e8d0`,

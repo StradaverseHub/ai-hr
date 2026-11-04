@@ -5,12 +5,16 @@
  * the department policy asks `app.is_admin_for(company_id)`, which answers from grants alone, and the
  * plain `company(id)` FK accepts any company. Nothing of B was readable, but the row was a dangling
  * cross-tenant reference. These tests assert the database refusal directly as `ai_hr_app`, plus a
- * catalog guard so a future company-stamped table cannot ship without the composite key.
+ * catalog guard so a future company-stamped table cannot ship without the composite key. 2122/2123 extend the
+ * rule to the six company references not called company_id (parent company, reporting-line scope, notice
+ * owner, overtime creation company, KPI group); the second guard covers every single-column company key.
  */
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
-import { withTenant } from '../db/client';
+import { withTenant, type Tx } from '../db/client';
+import { hireEmployee } from '../core/org';
+import { setCompanyParent } from '../core/admin';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 type Refusal = { code?: string; constraint?: string };
@@ -71,6 +75,78 @@ describe('ADR-0174 — company/tenant composite keys', () => {
     expect(tables.map((t) => t.rel)).toEqual(expect.arrayContaining(['department', 'employment', 'payroll_batch', 'role_assignment']));
     const missing = tables.filter((t) => !t.composite || !t.validated || t.composite_action !== t.single_action);
     expect(missing, 'add FOREIGN KEY (company_id, tenant_id) REFERENCES company (id, tenant_id) mirroring ON DELETE').toEqual([]);
+  });
+
+  it('every single-column company key on a tenant table has a validated (column, tenant_id) twin with the same delete action', async () => {
+    const keys = rowsOf<{ rel: string; col: string; single: string; composite: string | null; validated: boolean | null; same_action: boolean | null }>(
+      await owner.db.execute(sql`
+        WITH keyed AS (
+          SELECT f.conrelid, f.conname, f.convalidated, f.confdeltype,
+                 array(SELECT a.attname::text FROM unnest(f.conkey) WITH ORDINALITY k(n, o)
+                       JOIN pg_attribute a ON a.attrelid = f.conrelid AND a.attnum = k.n ORDER BY k.o) AS cols,
+                 array(SELECT a.attname::text FROM unnest(f.confkey) WITH ORDINALITY k(n, o)
+                       JOIN pg_attribute a ON a.attrelid = f.confrelid AND a.attnum = k.n ORDER BY k.o) AS refcols
+          FROM pg_constraint f WHERE f.contype = 'f' AND f.confrelid = 'public.company'::regclass
+        )
+        SELECT single.conrelid::regclass::text AS rel, single.cols[1] AS col, single.conname AS single,
+               composite.conname AS composite, composite.convalidated AS validated,
+               composite.confdeltype = single.confdeltype AS same_action
+        FROM keyed single
+        LEFT JOIN keyed composite ON composite.conrelid = single.conrelid
+          AND composite.cols = ARRAY[single.cols[1], 'tenant_id'] AND composite.refcols = ARRAY['id', 'tenant_id']
+        WHERE cardinality(single.cols) = 1 AND single.refcols = ARRAY['id']
+          AND EXISTS (SELECT 1 FROM pg_attribute x WHERE x.attrelid = single.conrelid AND x.attname = 'tenant_id' AND NOT x.attisdropped)
+        ORDER BY 1, 2`),
+    );
+    expect(keys.length, 'the guard must actually see every company reference').toBeGreaterThanOrEqual(154);
+    expect(keys.map((k) => `${k.rel}.${k.col}`)).toEqual(expect.arrayContaining([
+      'company.parent_company_id', 'reporting_line.scope_company_id', 'notice.owner_company_id', 'overtime_pattern.creation_company_id',
+      'overtime_pattern_version.creation_company_id', 'performance_kpi_library.group_company_id', 'department.company_id',
+    ]));
+    const missing = keys.filter((k) => !k.composite || !k.validated || !k.same_action);
+    expect(missing, 'add FOREIGN KEY (column, tenant_id) REFERENCES company (id, tenant_id) mirroring ON DELETE').toEqual([]);
+  });
+
+  it("refuses a parent company from another tenant through the application's reparent", async () => {
+    const err = await setCompanyParent(adminCtx(a), { companyId: a.companyId, parentCompanyId: b.companyId }).catch((e) => e);
+    expect(refusal(err)).toEqual({ code: '23503', constraint: 'company_parent_company_tenant_fk' });
+    const [kept] = await owner.db.select({ parent: schema.company.parentCompanyId }).from(schema.company).where(eq(schema.company.id, a.companyId));
+    expect(kept.parent).toBeNull();
+    const [own] = await owner.db.insert(schema.company).values({ tenantId: a.tenantId, legalName: 'Acme Holdings' }).returning({ id: schema.company.id });
+    await setCompanyParent(adminCtx(a), { companyId: a.companyId, parentCompanyId: own.id });
+    const [moved] = await owner.db.select({ parent: schema.company.parentCompanyId }).from(schema.company).where(eq(schema.company.id, a.companyId));
+    expect(moved.parent).toBe(own.id);
+  });
+
+  it('refuses every other non-company_id reference to another tenant on its own', async () => {
+    const hire = (name: string) => hireEmployee(adminCtx(a), {
+      person: { fullName: name, primaryEmail: `${name.toLowerCase().replaceAll(' ', '.')}.${a.tenantId.slice(0, 8)}@acme.test` },
+      companyId: a.companyId, departmentId: a.deptA, employmentType: 'full_time', hiredOn: '2024-01-01',
+    });
+    const [sub, mgr] = [await hire('Line Report'), await hire('Line Manager')];
+    const [pattern] = await withTenant(adminCtx(a), (tx) => tx.insert(schema.overtimePattern)
+      .values({ tenantId: a.tenantId, kind: 'formula', code: 'OWN', creationCompanyId: a.companyId }).returning({ id: schema.overtimePattern.id }));
+    // Notice and overtime rows have guard triggers of their own (the notice guard already refuses a foreign
+    // owner company). Each write runs as the owner with the table's USER triggers disabled, so only the key
+    // can refuse it; foreign-key triggers are internal and stay on. The rollback restores the triggers.
+    const alone = (table: string, write: (tx: Tx) => Promise<unknown>) => owner.db.transaction(async (tx) => {
+      await tx.execute(sql.raw(`ALTER TABLE public.${table} DISABLE TRIGGER USER`));
+      await write(tx);
+      throw new Error(`${table}: the foreign company was accepted`);
+    });
+    const attempts: [string, string, (tx: Tx) => Promise<unknown>][] = [
+      ['notice', 'notice_owner_company_tenant_fk', (tx) => tx.insert(schema.notice).values({ tenantId: a.tenantId, title: 'Foreign', body: 'Body', startOn: '2026-01-01', endOn: '2026-01-31', ownerCompanyId: b.companyId })],
+      ['overtime_pattern', 'overtime_pattern_creation_company_tenant_fk', (tx) => tx.insert(schema.overtimePattern).values({ tenantId: a.tenantId, kind: 'formula', code: 'FOREIGN', creationCompanyId: b.companyId })],
+      ['overtime_pattern_version', 'overtime_pattern_version_creation_company_tenant_fk', (tx) => tx.insert(schema.overtimePatternVersion).values({ tenantId: a.tenantId, patternId: pattern.id, kind: 'formula', creationCompanyId: b.companyId, ordinal: 1, name: 'Foreign', definition: {}, digest: '0'.repeat(64) })],
+      ['performance_kpi_library', 'performance_kpi_library_group_company_tenant_fk', (tx) => tx.insert(schema.performanceKpiLibrary).values({ tenantId: a.tenantId, name: 'Foreign', template: {}, groupCompanyId: b.companyId })],
+      ['reporting_line', 'reporting_line_scope_company_tenant_fk', (tx) => tx.insert(schema.reportingLine).values({ tenantId: a.tenantId, subordinateEmploymentId: sub.employmentId, managerEmploymentId: mgr.employmentId, lineType: 'administrative', validFrom: '2024-01-01', scopeCompanyId: b.companyId })],
+    ];
+    const outcomes = [];
+    for (const [table, constraint, write] of attempts) outcomes.push({ constraint, ...refusal(await alone(table, write).catch((e) => e)) });
+    expect(outcomes).toEqual(attempts.map(([, constraint]) => ({ constraint, code: '23503' })));
+    const [triggers] = rowsOf<{ disabled: number }>(await owner.db.execute(sql`SELECT count(*)::int AS disabled FROM pg_trigger
+      WHERE tgrelid IN ('public.notice'::regclass, 'public.overtime_pattern'::regclass, 'public.overtime_pattern_version'::regclass) AND tgenabled = 'D'`));
+    expect(triggers.disabled).toBe(0);
   });
 
   it("refuses a group admin's department that names another tenant's company, and keeps its own", async () => {

@@ -67,7 +67,8 @@ it.each(['clean','populated'] as const)('rehearses the %s ordinary Formula Build
     has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app_execute,
     not exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_revoked
     from pg_proc p where p.oid='app.pay_formula_company_in_use(uuid)'::regprocedure`;
-  expect(retention).toEqual({prosecdef:true,provolatile:'s',result:'boolean',proconfig:['search_path=pg_catalog, public, app'],app_owned:false,app_execute:true,public_revoked:true});
+  // 2120 (ADR-0174 follow-up) appends pg_temp to every definer path; nothing else about the function changes.
+  expect(retention).toEqual({prosecdef:true,provolatile:'s',result:'boolean',proconfig:['search_path=pg_catalog, public, app, pg_temp'],app_owned:false,app_execute:true,public_revoked:true});
   expect(await storage.client`select rolsuper,rolbypassrls from pg_roles where rolname='ai_hr_app'`).toEqual([{rolsuper:false,rolbypassrls:false}]);
   expect(await application.client`select app.pay_formula_company_in_use(${company}::uuid) as retained`).toEqual([{retained:false}]);
   // An unbound application session receives no activation metadata or private test/evaluation rows.
