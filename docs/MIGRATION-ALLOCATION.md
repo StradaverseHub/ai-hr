@@ -36,6 +36,28 @@ SQL installation. Existing applied SQL bytes remain unchanged. Complete BOARD ro
 excluded. Native concurrency/security, populated-upgrade, browser and both500-user checks are still
 required for this new aggregate. No deployment or provider-approval-binding update is authorized.
 
+## Contract navigation performance — 4 November 2026 (unapplied provisional)
+
+Fresh main/alpha refs were inspected; staging remains `3b3f94ccdc7bc6e3396caf0db2d103244413b291`.
+A new read-only ledger check matched all656 ordered identities through1793330000353 under the
+existing historical-identity authority. A fresh claim scan covered2218 heads/414 committed journals
+and187 parsed worktrees; maximum filename/index/timestamp was2103/1350/1793330001503. The same
+foreign malformed WIP journal was preserved and its literal bounds remained below these maxima.
+
+| Tag | idx | when | SQL SHA256 |
+| --- | ---: | ---: | --- |
+|2104_contract_navigation_role_guards|1351|1793330001504|6aa941d06156cd4112ed9bd5ee6974323e96dc57b000e67f4ab21776f4459fcc|
+
+This provisional append follows2103 and preserves the entire accepted staging prefix. Four existing
+Contract role owners gain necessary native assignment checks before their complete original expressions.
+Historical/revoked/out-of-company assignments deliberately remain positive candidates; they still pass
+through the original entitlement, identity, dates, canonical GBS/PBP and company/workflow checks.
+Function signatures, language, volatility, definer, owner, ACL and configuration remain unchanged.
+Native comparison41786794833 measured100 active navigation probes over500 principals, with exact
+original/candidate/restored outcomes and live authority controls. Positive populated workflow suites,
+aggregate compiler/browser/load and populated upgrade checks remain required. Re-freeze allocation
+before eventual admission. Complete BOARD roles remains excluded; no deployment is authorized.
+
 ## Nine-item BOARD split: post-Noveri refresh — 3 November 2026 (unapplied)
 
 The nine-item candidate preserves the complete648-entry journal from aligned main/alpha
