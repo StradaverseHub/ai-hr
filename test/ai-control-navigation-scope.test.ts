@@ -28,7 +28,7 @@ it('keeps the full native pause-policy audience with bounded visibility candidat
  const context=(u:typeof users[number]):SessionContext=>({...base,userId:u.id,personId:u.personId,roles:[u.role],grants:[{role:u.role,companyId:u.companyId}]});
  await setModule(b.tenantId,'assistant','active');await setModule(foreign.tenantId,'assistant','active');
  await setAiFeature(base,'hr_assistant',true);await setAiFeature(foreignAdmin,'hr_assistant',true);
- const [installed]=await owner.client<{ddl:string;attributes:Record<string,unknown>}[]>`select pg_get_functiondef(oid)as ddl,to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app._ai_control_context(text,boolean)'::regprocedure`;
+ const [installed]=await owner.client<{ddl:string;attributes:Record<string,unknown>}[]>`select pg_get_functiondef(oid)as ddl,to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app._ai_control_context_for_purpose(text,boolean,boolean)'::regprocedure`;
  const statement="SELECT coalesce(array_agg(c.id ORDER BY c.id),'{}') INTO company_ids FROM company c WHERE c.tenant_id=tid AND(app.is_admin_for(c.id) OR EXISTS(SELECT 1 FROM employment e WHERE e.tenant_id=tid AND e.company_id=c.id AND app.can_see_employment(e.id)));";
  const optimized=`WITH navigation_visible AS MATERIALIZED(SELECT unnest(app.visible_employment_ids())AS id)
  SELECT coalesce(array_agg(c.id ORDER BY c.id),'{}') INTO company_ids FROM company c WHERE c.tenant_id=tid
@@ -59,13 +59,13 @@ it('keeps the full native pause-policy audience with bounded visibility candidat
   await owner.client.unsafe(original.ddl);
   const expected=await measure('original');
   await owner.client.unsafe(candidate);expect(await measure('candidate')).toEqual(expected);expect(await measure('candidate-warm')).toEqual(expected);
-  const [metadata]=await owner.client`select to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app._ai_control_context(text,boolean)'::regprocedure`;
+  const [metadata]=await owner.client`select to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app._ai_control_context_for_purpose(text,boolean,boolean)'::regprocedure`;
   expect(metadata.attributes).toEqual(original.attributes);
   await setAiFeature(base,'hr_assistant',false);expect(await check(context(users[4]))).toBe(false);expect(await check(foreignAdmin)).toBe(true);await setAiFeature(base,'hr_assistant',true);
   await setAiAllowance(base,{kind:'user',subjectId:users[4].id,enabled:false,dailyRequests:null,monthlyTokens:null});
   expect(await check(context(users[4]))).toBe(false);expect(await check(context(users[54]))).toBe(true);
   await setAiAllowance(base,{kind:'user',subjectId:users[4].id,enabled:true,dailyRequests:null,monthlyTokens:null});
-  const [privateAccess]=await owner.client`select has_function_privilege('ai_hr_app','app._ai_control_context(text,boolean)','EXECUTE')as allowed`;
+  const [privateAccess]=await owner.client`select has_function_privilege('ai_hr_app','app._ai_control_context_for_purpose(text,boolean,boolean)','EXECUTE')as allowed`;
   expect(privateAccess.allowed).toBe(false);
   const [runs]=await owner.client`select count(*)::int as count from ai_model_run`;expect(runs.count).toBe(0);
   await owner.client.unsafe(original.ddl);expect(await measure('restored')).toEqual(expected);
@@ -112,14 +112,14 @@ it('keeps the full native pause-policy audience with bounded visibility candidat
   finally{await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,users[4].id));}
   await compareState('foreign tenant refuses forged actor context',{...context(users[4]),tenantId:foreign.tenantId},'refused');
   await compareState('unknown company grant refuses forged principal',{...context(users[4]),grants:[{role:'employee',companyId:randomUUID()}]},'refused');
-  const [finalMetadata]=await owner.client`select to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app._ai_control_context(text,boolean)'::regprocedure`;
+  const [finalMetadata]=await owner.client`select to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app._ai_control_context_for_purpose(text,boolean,boolean)'::regprocedure`;
   expect(finalMetadata.attributes).toEqual(original.attributes);
   const [finalRuns]=await owner.client`select count(*)::int as count from ai_model_run`;expect(finalRuns.count).toBe(0);
   measurements.push({phase:'scope-change-contracts',checks:stateChecks,exactAudience:true});
 
  }finally{
   await owner.client.unsafe(candidate);
-  const [restored]=await owner.client`select pg_get_functiondef('app._ai_control_context(text,boolean)'::regprocedure)as ddl`;
+  const [restored]=await owner.client`select pg_get_functiondef('app._ai_control_context_for_purpose(text,boolean,boolean)'::regprocedure)as ddl`;
   expect(restored.ddl).toBe(candidate);
   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'ai-control-navigation-scope.json'),JSON.stringify({kind:'INSTALLED_NATIVE_AI_NAVIGATION_COMPONENT_ONLY',fixturePrincipals:500,companies:10,measurements,restored:restored.ddl===candidate,modelCalls:0},null,2));
  }

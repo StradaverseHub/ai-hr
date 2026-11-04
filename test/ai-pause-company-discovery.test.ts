@@ -208,7 +208,7 @@ it('refuses unreviewed context or action predecessors and rolls every drift prob
    await tx.unsafe(legacyContext);await tx.unsafe(legacyAction);
    await tx.unsafe('drop function app._ai_control_context_for_purpose(text,boolean,boolean)');
    const ddl=target==='context'?legacyContext:legacyAction;
-   await tx.unsafe(ddl.replace('AS $$','AS $$\n-- unreviewed predecessor probe'));
+   await tx.unsafe(ddl.replace('AS $$',()=> 'AS $$\n-- unreviewed predecessor probe'));
    await tx.unsafe(precondition);
   })).rejects.toMatchObject({code:'55000'});
   const [afterContext]=await owner.client`select pg_get_functiondef('app._ai_control_context(text,boolean)'::regprocedure)as ddl`;

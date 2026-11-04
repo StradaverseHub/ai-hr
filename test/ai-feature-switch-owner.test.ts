@@ -12,11 +12,17 @@ const MIGRATION = 'db/migrations/0812_ai_feature_switch_owner.sql';
 const journal: string[] = JSON.parse(read('db/migrations/meta/_journal.json')).entries.map((e: { tag: string }) => `db/migrations/${e.tag}.sql`);
 /** The live definition of a SQL function is its LAST definition in journal (apply) order. */
 const live = (marker: string) => {
-  const files = journal.filter(f => read(f).includes(marker));
-  expect(files.length, marker).toBeGreaterThan(0);
-  const src = read(files.at(-1)!), at = src.lastIndexOf(marker), end = src.indexOf('$$;', src.indexOf('$$', at) + 2);
+  // Ownership ALTER statements also name functions; only CREATE definitions own bodies.
+  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const definitions = journal.flatMap(file => {
+    const src = read(file);
+    const pattern = new RegExp(String.raw`(?:^|\n)[\t ]*CREATE(?:\s+OR\s+REPLACE)?\s+` + escaped, 'g');
+    return [...src.matchAll(pattern)].map(match => ({file, src, at: match.index + match[0].lastIndexOf(marker)}));
+  });
+  expect(definitions.length, marker).toBeGreaterThan(0);
+  const {file, src, at} = definitions.at(-1)!, end = src.indexOf('$$;', src.indexOf('$$', at) + 2);
   expect(at).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(at);
-  return { file: files.at(-1)!, body: src.slice(at, end) };
+  return {file, body: src.slice(at, end)};
 };
 const seed = () => journal.flatMap(file=>{
   const inserts=[...read(file).matchAll(/INSERT INTO app\.ai_feature_setting\(feature_id,setting_key\) VALUES([\s\S]*?);/g)];
