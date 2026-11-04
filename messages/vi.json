@@ -27006,7 +27006,7 @@
     "sentTitle": "Kiểm tra hộp thư",
     "sentHelp": "Nếu thông tin khớp với tài khoản đủ điều kiện, liên kết khôi phục sẽ được gửi đến email đã xác minh của tài khoản.",
     "resetTitle": "Đặt mật khẩu mới",
-    "resetMfaHelp": "Bắt buộc nếu đã đăng ký ứng dụng xác thực. Khôi phục mật khẩu không tắt MFA.",
+    "resetMfaHelp": "Nhập mã xác thực hoặc mã khôi phục nếu có. Nếu HR đã phê duyệt miễn trừ khôi phục tạm thời, hãy để trống; bạn phải đăng ký ứng dụng xác thực mới trước khi truy cập HR.",
     "resetSubmit": "Đặt lại mật khẩu",
     "resetDoneTitle": "Đã đổi mật khẩu",
     "resetDoneHelp": "Các phiên trước đã kết thúc. Đăng nhập lại bằng mật khẩu mới và MFA.",

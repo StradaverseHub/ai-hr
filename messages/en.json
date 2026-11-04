@@ -27006,7 +27006,7 @@
     "sentTitle": "Check your inbox",
     "sentHelp": "If an eligible account matches these details, a recovery link will be sent to its verified email address.",
     "resetTitle": "Set a new password",
-    "resetMfaHelp": "Required if you have enrolled an authenticator. Password recovery does not switch off MFA.",
+    "resetMfaHelp": "Enter your authenticator or recovery code if available. If HR approved a temporary recovery exemption, leave this blank; you must enroll a new authenticator before accessing HR.",
     "resetSubmit": "Reset password",
     "resetDoneTitle": "Password changed",
     "resetDoneHelp": "Your previous sessions have ended. Sign in again with your new password and MFA.",

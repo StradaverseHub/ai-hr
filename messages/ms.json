@@ -27006,7 +27006,7 @@
     "sentTitle": "Semak peti masuk anda",
     "sentHelp": "Jika akaun yang layak sepadan dengan maklumat ini, pautan pemulihan akan dihantar ke alamat e-mel yang disahkan.",
     "resetTitle": "Tetapkan kata laluan baharu",
-    "resetMfaHelp": "Diperlukan jika pengesah telah didaftarkan. Pemulihan kata laluan tidak mematikan MFA.",
+    "resetMfaHelp": "Masukkan kod pengesah atau pemulihan jika ada. Jika HR meluluskan pengecualian pemulihan sementara, kosongkan ruangan ini; anda mesti mendaftarkan pengesah baharu sebelum mengakses HR.",
     "resetSubmit": "Tetapkan semula kata laluan",
     "resetDoneTitle": "Kata laluan ditukar",
     "resetDoneHelp": "Sesi terdahulu telah ditamatkan. Log masuk semula dengan kata laluan baharu dan MFA.",
