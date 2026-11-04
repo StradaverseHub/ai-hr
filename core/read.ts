@@ -593,6 +593,17 @@ function personnelFactColumns():EmployeeListColumns{
     status:employmentStatusSql(todayInKualaLumpur(),dates)};
 }
 
+/** Conservative equality over filter inputs only. Paging/order are deliberately independent.
+ * Different but equivalent spellings may miss this optimization; they never broaden a filter. */
+function samePersonnelFilters(page:EmployeeListFilters,facets:EmployeeListFilters):boolean{
+  const fields:Record<keyof EmployeeListFilters,true>={companyIds:true,q:true,companyId:true,departmentId:true,status:true,employmentType:true,filterCompanyIds:true,departmentIds:true,employmentStatuses:true};
+  return (Object.keys(fields)as(keyof EmployeeListFilters)[]).every(key=>{
+    const left=page[key],right=facets[key];
+    return Array.isArray(left)&&Array.isArray(right)
+      ?left.length===right.length&&left.every((value,index)=>value===right[index]):left===right;
+  });
+}
+
 /** One caller-scoped statement for authorized typed facts, exact total/facets and bounded detail rows.
  * No cached permissions/results or raw-table grant; both native projections recheck Workforce purpose. */
 /** Trusted server-side query composition shared by the app and native EXPLAIN experiments.
@@ -610,11 +621,12 @@ export function personnelListPageSql(
     // Evaluate canonical predicates/status before retaining compact page facts. Server-side
     // profiling can still compare the original wide projection without duplicating those rules.
     const projected=facts?.projectPageFacts===true;
+    const sameFilters=samePersonnelFilters(page,facets);
     const source=facts?.source??sql`app.access_workforce_list_facts()`;
     const sourceFacts=projected?sql`select workforce_row.employment_id,
       lower(workforce_row.company)as company_sort,${sourceNameSort} as name_sort,
-      (${pageWhere})as page_matches,(${facetWhere})as facet_matches,${columns.status} as status
-      from ${source} workforce_row where (${pageWhere})or(${facetWhere})`:sql`select * from ${source}`;
+      ${sameFilters?sql`true`:sql`(${pageWhere})`} as page_matches,${sameFilters?sql`true`:sql`(${facetWhere})`} as facet_matches,${columns.status} as status
+      from ${source} workforce_row where ${sameFilters?pageWhere:sql`(${pageWhere})or(${facetWhere})`}`:sql`select * from ${source}`;
     const retainedPageWhere=projected?sql`workforce_row.page_matches`:pageWhere;
     const retainedFacetWhere=projected?sql`workforce_row.facet_matches`:facetWhere;
     const retainedStatus=projected?sql`workforce_row.status`:columns.status;
@@ -634,15 +646,19 @@ export function personnelListPageSql(
         order by ${pageOrder} limit ${page.limit} offset ${page.offset}
       ), page_projection(value)as materialized(
         select value from app.access_workforce_list_rows_for_ids(array(select employment_id from selected_page))r(value)
+      ), status_counts as materialized(
+        select ${retainedStatus} as status,
+          count(distinct workforce_row.employment_id)filter(where ${retainedPageWhere})::int as page_count,
+          count(distinct workforce_row.employment_id)filter(where ${retainedFacetWhere})::int as facet_count
+        from workforce_facts workforce_row group by 1
       )
       select coalesce((select jsonb_agg(p.value order by ${aggregateOrder})
         from selected_page chosen join page_projection p on (p.value->>'employmentId')::uuid=chosen.employment_id),'[]'::jsonb)as rows,
-      (select count(distinct workforce_row.employment_id)::int
-        from workforce_facts workforce_row where ${retainedPageWhere})as total,
-      coalesce((select jsonb_agg(jsonb_build_object('status',f.status,'count',f.count))from(
-        select ${retainedStatus} as status,count(distinct workforce_row.employment_id)::int as count
-        from workforce_facts workforce_row where ${retainedFacetWhere} group by 1
-      )f),'[]'::jsonb)as status_counts
+      -- Status depends only on each employment's lifecycle dates (never its assignment),
+      -- so an employment has exactly one bucket. Keep DISTINCT against assignment fanout.
+      coalesce((select sum(page_count)::int from status_counts),0)as total,
+      coalesce((select jsonb_agg(jsonb_build_object('status',status,'count',facet_count))
+        from status_counts where facet_count>0),'[]'::jsonb)as status_counts
     `;
 }
 

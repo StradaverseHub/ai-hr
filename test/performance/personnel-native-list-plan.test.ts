@@ -9,6 +9,7 @@ import {foldEmployeeCode,EMPLOYEE_SEARCH_RESULT_CAP} from '../../lib/employee-se
 import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from '../../core/access-configuration-lock';
 import {withTenant,type SessionContext} from '../../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
+import {personnelNativeAggregatePrototype} from './personnel-native-aggregate-prototype';
 const file='test/performance/personnel-native-list-plan.test.ts';
 const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
 const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&selected.length===1&&selected[0]===file;
@@ -141,6 +142,31 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
      });samples.push(observed);
     }
     const originalPlan=await withTenant(ctx,tx=>tx.execute(sql`explain(analyze,buffers,format json) ${personnelListPageSql(page,facets)}`));
+    for(const materialized of [true,false]){
+     const prototype=await personnelNativeAggregatePrototype(page,facets,factsOwner,materialized);
+     try{
+      const observed=await withTenant(ctx,async tx=>{
+       await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+       const began=performance.now(),[raw]=await tx.execute<{rows:typeof expected.rows;total:number;status_counts:{status:keyof typeof expected.headcount.byStatus;count:number}[]}>(prototype.query),elapsedMs=performance.now()-began;
+       const byStatus:typeof expected.headcount.byStatus={};let total=0;
+       for(const row of raw.status_counts){byStatus[row.status]=Number(row.count);total+=Number(row.count);}
+       expect({rows:raw.rows,total:Number(raw.total),headcount:{total,byStatus}}).toEqual(expected);
+       return {source:'native-aggregate-prototype',materialized,elapsedMs,targetMet:elapsedMs<1000,exactRowsCountsFacetsOrder:true};
+      });samples.push(observed);
+      await owner.client`update app_user set archived_at=now()where id=${b.adminUserId}::uuid`;
+      try{
+       const [denied]=await withTenant(ctx,tx=>tx.execute<{rows:unknown[];total:number;status_counts:unknown[]}>(prototype.query));
+       expect(denied).toEqual({rows:[],total:0,status_counts:[]});
+      }finally{await owner.client`update app_user set archived_at=null where id=${b.adminUserId}::uuid`;}
+      const foreignCtx={...adminCtx(foreign),grants:[{role:'hr_admin' as const,companyId:null}]};
+      const foreignExpected=await personnelListPage(foreignCtx,page,facets);
+      const [foreignObserved]=await withTenant(foreignCtx,tx=>tx.execute<{rows:typeof expected.rows;total:number;status_counts:{status:keyof typeof expected.headcount.byStatus;count:number}[]}>(prototype.query));
+      const foreignByStatus:typeof expected.headcount.byStatus={};let foreignTotal=0;
+      for(const row of foreignObserved.status_counts){foreignByStatus[row.status]=Number(row.count);foreignTotal+=Number(row.count);}
+      expect({rows:foreignObserved.rows,total:Number(foreignObserved.total),headcount:{total:foreignTotal,byStatus:foreignByStatus}}).toEqual(foreignExpected);
+      expect(foreignObserved.rows.every(row=>row.companyId===foreign.companyId)).toBe(true);
+     }finally{await prototype.drop();}
+    }
     viewPlans.push({mode,samples,originalPlan:Array.from(originalPlan),exactRowsTotalStatusOrder:true});report.viewExperiment=viewPlans;save();
    }
    await owner.client`update app_user set archived_at=now()where id=${b.adminUserId}::uuid`;
