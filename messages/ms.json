@@ -4681,7 +4681,82 @@
     "resetZoom": "Set semula zum",
     "noMatch": "Tiada sesiapa sepadan dengan “{query}”.",
     "expandReports": "Kembangkan {count, plural, one {# lapor} other {# lapor}}",
-    "collapseReports": "Kuncupkan lapor"
+    "collapseReports": "Kuncupkan lapor",
+    "filters": {
+      "company": "Syarikat",
+      "businessUnit": "Unit perniagaan",
+      "department": "Jabatan",
+      "employmentType": "Jenis pekerjaan",
+      "status": "Status",
+      "asOf": "Tarikh berkuat kuasa",
+      "all": "Semua yang dibenarkan",
+      "apply": "Gunakan penapis",
+      "reset": "Tetapkan semula"
+    },
+    "filterEmpty": "Tiada pekerja ditemui untuk penapis yang dipilih",
+    "directReports": "{count} laporan langsung",
+    "crossCompany": "Pelaporan rentas syarikat",
+    "outsideFilter": "Melapor kepada: {name} (di luar penapis)",
+    "outsideShort": "Melapor di luar penapis",
+    "restrictedSuperior": "Penyelia di luar paparan dibenarkan",
+    "vacantSuperior": "Penyelia kosong / menunggu penugasan semula",
+    "expandAll": "Kembangkan semua",
+    "collapseAll": "Runtuhkan semua",
+    "levels": "Tahap",
+    "showLevels": "Papar tahap",
+    "fit": "Muat pada skrin",
+    "vertical": "Susun atur menegak",
+    "horizontal": "Susun atur mendatar",
+    "minimap": "Gambaran carta",
+    "profile": "Buka profil penuh",
+    "close": "Tutup",
+    "integrity": {
+      "title": "Laporan integriti data",
+      "note": "Semak pautan pelaporan belum selesai sebelum menggunakan carta. Peranan tertinggi memerlukan penetapan HR yang nyata.",
+      "clear": "Tiada pautan belum selesai dalam paparan ini",
+      "unassigned": "Belum ditugaskan",
+      "missing": "Penyelia tiada",
+      "inactive": "Penyelia tidak aktif",
+      "invalid": "Pautan pelaporan tidak sah"
+    },
+    "topLevel": {
+      "tag": "Peringkat tertinggi",
+      "employee": "Pekerja peringkat tertinggi",
+      "designate": "Tetapkan peringkat tertinggi",
+      "end": "Tamatkan penetapan tertinggi",
+      "save": "Simpan penetapan",
+      "hasSuperior": "Tamatkan hubungan Penyelia Terus sebelum menetapkan pekerja ini sebagai peringkat tertinggi.",
+      "inactive": "Pekerja tidak aktif pada tarikh dipilih.",
+      "saved": "Penetapan peringkat tertinggi disimpan."
+    },
+    "export": {
+      "button": "Eksport ke PDF",
+      "scope": "Skop eksport",
+      "current": "Paparan semasa",
+      "branch": "Cabang dipilih penuh",
+      "choose": "Pilih cabang",
+      "paper": "Saiz kertas",
+      "orientation": "Orientasi kertas",
+      "landscape": "Landskap",
+      "portrait": "Potret",
+      "pagination": "Susun atur halaman",
+      "fit": "Muat pada satu halaman",
+      "pages": "Halaman bernombor",
+      "confidential": "Sulit",
+      "page": "Halaman"
+    },
+    "types": {
+      "full_time": "Tetap",
+      "part_time": "Sambilan",
+      "contract": "Kontrak",
+      "intern": "Pelatih"
+    },
+    "statuses": {
+      "all": "Aktif (termasuk percubaan / notis)",
+      "active": "Aktif",
+      "probation": "Percubaan",
+      "notice": "Notis"
+    }
   },
   "me": {
     "title": "Profil Saya",

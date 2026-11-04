@@ -4681,7 +4681,82 @@
     "resetZoom": "Đặt lại thu phóng",
     "noMatch": "Không có ai khớp với “{query}”.",
     "expandReports": "Mở rộng {count, plural, one {# nhân viên} other {# nhân viên}}",
-    "collapseReports": "Thu gọn nhân viên"
+    "collapseReports": "Thu gọn nhân viên",
+    "filters": {
+      "company": "Công ty",
+      "businessUnit": "Đơn vị kinh doanh",
+      "department": "Phòng ban",
+      "employmentType": "Loại hợp đồng",
+      "status": "Trạng thái",
+      "asOf": "Ngày hiệu lực",
+      "all": "Tất cả được phép",
+      "apply": "Áp dụng bộ lọc",
+      "reset": "Đặt lại"
+    },
+    "filterEmpty": "Không tìm thấy nhân viên theo bộ lọc đã chọn",
+    "directReports": "{count} cấp dưới trực tiếp",
+    "crossCompany": "Báo cáo liên công ty",
+    "outsideFilter": "Báo cáo cho: {name} (ngoài bộ lọc)",
+    "outsideShort": "Báo cáo ngoài bộ lọc",
+    "restrictedSuperior": "Cấp trên ngoài phạm vi được phép",
+    "vacantSuperior": "Cấp trên trống / chờ phân công lại",
+    "expandAll": "Mở rộng tất cả",
+    "collapseAll": "Thu gọn tất cả",
+    "levels": "Số cấp",
+    "showLevels": "Hiển thị cấp",
+    "fit": "Vừa màn hình",
+    "vertical": "Bố cục dọc",
+    "horizontal": "Bố cục ngang",
+    "minimap": "Tổng quan sơ đồ",
+    "profile": "Mở hồ sơ đầy đủ",
+    "close": "Đóng",
+    "integrity": {
+      "title": "Báo cáo tính toàn vẹn dữ liệu",
+      "note": "Kiểm tra các liên kết báo cáo chưa xử lý trước khi dùng sơ đồ. Vị trí cao nhất cần HR chỉ định rõ ràng.",
+      "clear": "Không có liên kết chưa xử lý trong chế độ xem này",
+      "unassigned": "Chưa phân công",
+      "missing": "Thiếu cấp trên",
+      "inactive": "Cấp trên không hoạt động",
+      "invalid": "Liên kết báo cáo không hợp lệ"
+    },
+    "topLevel": {
+      "tag": "Cấp cao nhất",
+      "employee": "Nhân viên cấp cao nhất",
+      "designate": "Chỉ định cấp cao nhất",
+      "end": "Kết thúc chỉ định cấp cao nhất",
+      "save": "Lưu chỉ định",
+      "hasSuperior": "Kết thúc quan hệ cấp trên trực tiếp trước khi chỉ định nhân viên này ở cấp cao nhất.",
+      "inactive": "Nhân viên không hoạt động vào ngày đã chọn.",
+      "saved": "Đã lưu chỉ định cấp cao nhất."
+    },
+    "export": {
+      "button": "Xuất PDF",
+      "scope": "Phạm vi xuất",
+      "current": "Chế độ xem hiện tại",
+      "branch": "Toàn bộ nhánh đã chọn",
+      "choose": "Chọn nhánh",
+      "paper": "Khổ giấy",
+      "orientation": "Hướng giấy",
+      "landscape": "Ngang",
+      "portrait": "Dọc",
+      "pagination": "Bố cục trang",
+      "fit": "Vừa một trang",
+      "pages": "Các trang đánh số",
+      "confidential": "Bảo mật",
+      "page": "Trang"
+    },
+    "types": {
+      "full_time": "Chính thức",
+      "part_time": "Bán thời gian",
+      "contract": "Hợp đồng",
+      "intern": "Thực tập"
+    },
+    "statuses": {
+      "all": "Đang làm (gồm thử việc / báo trước)",
+      "active": "Đang làm",
+      "probation": "Thử việc",
+      "notice": "Báo trước"
+    }
   },
   "me": {
     "title": "Hồ sơ của tôi",

@@ -5590,65 +5590,11 @@ export function eligibleDelegates(ctx: SessionContext, delegatorEmploymentId: st
   });
 }
 
-/** Active employees + current administrative reporting edges, for the org chart. */
-export function orgChartData(ctx: SessionContext, companyIds?: string[]) {
-  return withTenant(ctx, async (tx) => {
-    const employees = await tx
-      .select({
-        employmentId: employment.id,
-        name: person.fullName,
-        employeeCode: employment.employeeCode,
-        role: position.title,
-        department: department.name,
-      })
-      .from(employment)
-      .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(
-        assignment,
-        and(
-          eq(assignment.employmentId, employment.id),
-          isNull(assignment.validTo),
-          isNull(assignment.supersededAt),
-        ),
-      )
-      .leftJoin(department, eq(department.id, assignment.departmentId))
-      .leftJoin(position, eq(position.id, assignment.positionId))
-      .where(
-        and(
-          isNull(employment.terminatedOn),
-          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
-        ),
-      )
-      .orderBy(person.fullName);
-    // Hierarchy Management (ADR-0052 Step 6): the edge query SELECTs straight from reporting_line, whose
-    // RLS is tenant-only (it does NOT call can_see_employment), so previously it returned EVERY edge in
-    // the tenant — including edges where an endpoint is terminated. Scope it so only edges with BOTH
-    // endpoints visible to the caller AND both endpoints live (non-terminated) are returned: a mid-level
-    // manager's /org then shows only their subtree, and stale edges through a fired manager are dropped.
-    // `delegate` edges are approver-routing, not org structure, so they are excluded from the chart.
-    const edgeRows = await tx
-      .select({
-        manager: reportingLine.managerEmploymentId,
-        subordinate: reportingLine.subordinateEmploymentId,
-        type: reportingLine.lineType,
-      })
-      .from(reportingLine)
-      .where(
-        and(
-          isNull(reportingLine.validTo),
-          isNull(reportingLine.supersededAt),
-          sql`${reportingLine.lineType} <> 'delegate'`,
-          sql`app.can_see_employment(${reportingLine.managerEmploymentId})`,
-          sql`app.can_see_employment(${reportingLine.subordinateEmploymentId})`,
-          sql`EXISTS (SELECT 1 FROM employment mgr_e WHERE mgr_e.id = ${reportingLine.managerEmploymentId} AND mgr_e.terminated_on IS NULL)`,
-          sql`EXISTS (SELECT 1 FROM employment sub_e WHERE sub_e.id = ${reportingLine.subordinateEmploymentId} AND sub_e.terminated_on IS NULL)`,
-        ),
-      );
-    // delegate edges are filtered out in the query above, so the chart's edge type stays the structural
-    // union (administrative | functional | project | dotted) the OrgChart component expects.
-    const edges = edgeRows as { manager: string; subordinate: string; type: 'administrative' | 'functional' | 'project' | 'dotted' }[];
-    return { employees, edges };
-  });
+/** Compatibility read; the date-aware scoped Org Chart projection owns the hierarchy. */
+export async function orgChartData(ctx: SessionContext, companyIds?: string[]) {
+  const ids=companyIds ?? (await allowedCompanies(ctx)).map(company=>company.id);
+  const {orgChartSnapshot}=await import('./org-chart');
+  return orgChartSnapshot(ctx,{companyIds:ids});
 }
 
 /** Aggregate counts + latest attendance/payroll snapshot for the dashboard. When `companyId` is

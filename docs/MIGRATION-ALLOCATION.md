@@ -1517,3 +1517,7 @@ the latest **closed** run of the same run type (`payroll_status` is exactly draf
 main's 0631 versions of these functions. No statement added or removed; owner and grants unchanged. The idx811 row's
 SHA256 above, the `lifecycle-v9` journal pin and the `board-nine` applied-ledger pin are the new file's. Same number, idx
 and `when`.
+
+### Approved Org Chart roots (4 November2026)
+
+Parent allocation reserves2109_org_chart_roots / idx1356 / when1793330001509 above discovered main/live claims. This adds explicit effective-dated roots and guards their reporting-line consistency; no roots are inferred or backfilled. Source allocation grants no deployment or live application authority. SQL SHA256: `244664d78a5d54017e7c28b063bc627cc0af7d9a524ba6fc2d710d70d845dfdd`.
