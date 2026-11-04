@@ -1517,3 +1517,12 @@ the latest **closed** run of the same run type (`payroll_status` is exactly draf
 main's 0631 versions of these functions. No statement added or removed; owner and grants unchanged. The idx811 row's
 SHA256 above, the `lifecycle-v9` journal pin and the `board-nine` applied-ledger pin are the new file's. Same number, idx
 and `when`.
+
+## Approved Rewards entity picker — 4 November 2026 (unapplied)
+
+Coordinator reserved `2108_rewards_entity_classification`, idx1355 / when1793330001508, above
+the audited staging watermark1502 and sibling provisional claims through2105/idx1352/1505.
+The Rewards branch preserves the complete main/alpha b6077019c journal prefix through2011/idx811/1411.
+This additive Rewards-only designation stores explicitly reviewed company UUIDs and canonical alias
+UUIDs; no name inference, backfill, company merge, saved-policy rewrite or production data action.
+Recheck every then-applied prefix and competing claim at integration/release admission.

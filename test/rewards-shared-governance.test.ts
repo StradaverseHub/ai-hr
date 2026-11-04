@@ -1,3 +1,4 @@
+import {classifyRewardCompany,rewardCompanyClassifications} from '../packs/rewards/company-classification';
 import {completeSharedRewardPolicy,establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {randomUUID} from 'node:crypto';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
@@ -22,6 +23,26 @@ beforeEach(async()=>{
 afterAll(closeAll);
 const group=(targets=[{companyId:b.companyId,businessUnitId:buA}])=>saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name:`Fictional ${randomUUID()}`,policy:completeSharedRewardPolicy(year),targets});
 describe('shared Rewards company participation and history',()=>{
+ it('stores explicit identity designations, rejects alias chains and forged audits, and preserves saved policy targets',async()=>{
+  const saved=await group([{companyId:b.companyId,businessUnitId:buA},{companyId:companyB,businessUnitId:buB}]);
+  const before=await owner.db.select().from(s.company).where(eq(s.company.id,companyB));
+  await classifyRewardCompany(admin,{companyId:companyB,disposition:'alias',canonicalCompanyId:b.companyId,reason:'Verified registration records identify the same legal entity'});
+  expect(await rewardCompanyClassifications(admin)).toEqual([expect.objectContaining({companyId:companyB,disposition:'alias',canonicalCompanyId:b.companyId})]);
+  await expect(classifyRewardCompany(admin,{companyId:b.companyId,disposition:'test_demo',canonicalCompanyId:null,reason:'Would incorrectly hide the canonical entity'})).rejects.toThrow();
+  await expect(classifyRewardCompany(admin,{companyId:b.companyId,disposition:'alias',canonicalCompanyId:companyB,reason:'Must not accept a duplicate identity chain'})).rejects.toThrow();
+  await expect(withTenant(admin,tx=>tx.execute(sql`update reward_company_classification set disposition='visible'`))).rejects.toBeDefined();
+  await expect(withTenant(admin,tx=>tx.insert(s.domainEvent).values({tenantId:b.tenantId,aggregateType:'reward-company-classification',aggregateId:companyB,eventType:'reward.company-classified',actorType:'user',actorId:admin.userId!,payload:{}}))).rejects.toBeDefined();
+  const [scopedUser]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:`classification_${randomUUID()}`}).returning();
+  await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:scopedUser.id,role:'hr_admin',companyId:b.companyId});
+  const scoped={...admin,userId:scopedUser.id,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]} satisfies SessionContext;
+  expect(await rewardCompanyClassifications(scoped)).toEqual([]);
+  await expect(classifyRewardCompany(scoped,{companyId:companyB,disposition:'visible',canonicalCompanyId:null,reason:'Out of scope designation must be refused'})).rejects.toBeDefined();
+  await expect(classifyRewardCompany(scoped,{companyId:b.companyId,disposition:'alias',canonicalCompanyId:companyB,reason:'Out of scope canonical identity must be refused'})).rejects.toBeDefined();
+  expect(await owner.db.select().from(s.company).where(eq(s.company.id,companyB))).toEqual(before);
+  expect((await rewardPolicyHistory(admin,saved.groupId))[0].version.targets).toEqual(saved.targets);
+  await classifyRewardCompany(admin,{companyId:companyB,disposition:'test_demo',canonicalCompanyId:null,reason:'Business owner explicitly verified this test-only entity'});
+  const events=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId,companyB));expect(events.filter(e=>e.eventType==='reward.company-classified')).toHaveLength(2);
+ });
  it('records exclusion and ending reasons, denies new shared coverage/reviews, and leaves old reviews intact',async()=>{
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_company_exclusion_change(${b.companyId}::uuid,${year},repeat(chr(12)||chr(160),12),NULL)`))).rejects.toBeDefined();
   const v=await group(),review=await createRewardUnit(admin,{name:'Fictional cycle',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today,sharedPolicyVersionId:v.versionId});
