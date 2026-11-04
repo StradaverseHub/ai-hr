@@ -2,7 +2,7 @@
  * pricing, private leave reasons or payroll amounts are fetched. Every fact retains its owner. */
 import {withTenant,type SessionContext} from '../db/client';
 import {requireOwnHomeSubject} from './employee-home';
-import {listEligibleLeaveTypesFor,myOwnEmploymentSubjects} from './read';
+import {listEligibleLeaveTypesFor,myOwnEmploymentSubjectsTx} from './read';
 import {listEmployeeHomeCards} from './dashboard-card-config';
 import {getEmployeeHomePreferences} from './dashboard-prefs';
 import {homeDisplayClock} from '../lib/employee-home';
@@ -22,21 +22,22 @@ export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:s
  const month=requestedMonth??display.date.slice(0,7),dates=homeCalendarGrid(month,preferences.weekStartsOn);
  const from=dates[0],to=dates[dates.length-1];
  const payrollEnabled=isModuleEnabled(ctx,'payroll');
- const [facts,paymentDates,eligible,active,team]=await Promise.all([
+ const [facts,paymentDates,team]=await Promise.all([
   withTenant(ctx,async tx=>{
-   const [leave,holidays,replacements,coverage]=await Promise.all([
+   const [leave,holidays,replacements,coverage,eligible,active]=await Promise.all([
     leaveCalendarPresenceByEmploymentTx(tx,[subject.employmentId],from,to),
     originalHolidayCalendarFor(tx,{employmentId:subject.employmentId,startDate:from,endDate:to}),
     replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subject.employmentId],startDate:from,endDate:to}),
     provenCompanyDatesTx(tx,dates.map(date=>({employmentId:subject.employmentId,date}))),
+    listEligibleLeaveTypesFor(ctx,subject.employmentId,undefined,tx),
+    myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true}),
    ]);
-   return {leave,holidays,replacements,coverage};
+   return {leave,holidays,replacements,coverage,eligible,active};
   }),
   payrollEnabled?readOwnPayrollCalendarPayments(ctx,subject.employmentId,from,to):Promise.resolve([]),
-  listEligibleLeaveTypesFor(ctx,subject.employmentId),myOwnEmploymentSubjects(ctx,{profileEdit:true}),
   readHomeTeamCalendar(ctx,subject.employmentId,from,to),
  ]);
- const canApply=active.some(row=>row.employmentId===subject.employmentId)&&eligible.length>0;
+ const canApply=facts.active.some(row=>row.employmentId===subject.employmentId)&&facts.eligible.length>0;
  const payments=new Set(paymentDates);
  return {version:1,employmentId:subject.employmentId,month,today:display.date,weekStartsOn:preferences.weekStartsOn,payrollEnabled,team,
   days:dates.map(date=>{
