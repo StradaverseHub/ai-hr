@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import zlib from 'node:zlib';
 import { PDFDocument,PDFName,PDFDict,StandardFonts } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
-import { buildPayslipPdfData, renderPayslipPdf, type PayslipPdfData } from '../lib/payslip-pdf';
+import { buildPayslipPdfData, renderPayslipPdf, payslipPresentationRows, type PayslipPdfData } from '../lib/payslip-pdf';
 // a96d320c — the payment date is resolved to words SERVER-side, in the same module that already resolves
 // the pay period to a month name. Imported directly so the formatter is pinned as a function rather than
 // through a label fixture the test writes itself.
@@ -527,8 +527,8 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
     // without its code. The admin surfaces still print the code through `payItemLabel`.
     expect(text).toContain('Handphone allowance');
     expect(text).toContain('Travel allowance');
-    expect(text, 'the internal pay code is off the employee’s document').not.toContain('A0027');
-    expect(text, 'the internal pay code is off the employee’s document').not.toContain('A0031');
+    expect(text, 'approved 7de6fc4e: document preserves pay item identity').toContain('A0027');
+    expect(text, 'approved 7de6fc4e: document preserves pay item identity').toContain('A0031');
     expect(text).toContain('MYR 300.00');
     expect(text).toContain('MYR 200.00');
     expect(text).not.toContain('Allowances'); // the lump is gone, replaced by its parts
@@ -1099,7 +1099,7 @@ describe('6b134681 — bonus and overtime print by pay item, not by category', (
     // a96d320c — this read `toContain('B0001')`. 6b134681's point was that the CATEGORY must give way to
     // the ITEM, and it still does; the reporter's point is that the item's internal code means nothing to
     // the person reading their own payslip. Both are now pinned, in the same test.
-    expect(text, 'the internal pay code is off the employee’s document').not.toContain('B0001');
+    expect(text, 'approved 7de6fc4e: document preserves pay item identity').toContain('B0001');
     // The grouped word is GONE from the earnings box: it was never the item's name.
     expect(text, 'a bare "Bonus" row must not stand where a named item exists').not.toContain('Bonus');
   });
@@ -1137,7 +1137,7 @@ describe('6b134681 — bonus and overtime print by pay item, not by category', (
     );
     expect(text).toContain('OVERTIME 1.5');
     // a96d320c — was `toContain('OT15')`. See the ANGPOW test above for why it inverted.
-    expect(text, 'the internal pay code is off the employee’s document').not.toContain('OT15');
+    expect(text, 'approved 7de6fc4e: document preserves pay item identity').toContain('OT15');
     expect(text, 'the category word gives way to the item').not.toContain('Overtime');
   });
 });
@@ -1439,7 +1439,7 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
     expect(text).toContain('2 days');
   });
 
-  it('prints no internal pay code anywhere on a document made entirely of coded items', async () => {
+  it('7de6fc4e: prints payable item codes consistently with Review', async () => {
     // The blanket version of the two per-site assertions above: every itemised box at once.
     const text = drawnText(
       await renderPayslipPdf(
@@ -1461,9 +1461,8 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
     for (const name of ['Handphone allowance', 'ANGPOW', 'OVERTIME 1.5', 'COMPANY CAR']) {
       expect(text, `${name} is still named`).toContain(name);
     }
-    for (const code of ['A0027', 'B0001', 'OT15', 'BIK01']) {
-      expect(text, `${code} is an internal key, not something an employee can use`).not.toContain(code);
-    }
+    for (const code of ['A0027', 'B0001', 'OT15']) expect(text).toContain(code);
+    expect(text).not.toContain('BIK01');
   });
 });
 
@@ -1617,7 +1616,7 @@ describe('a96d320c — the overtime rate and the hours behind it', () => {
     );
     const text = flat(await renderPayslipPdf(d, labels));
     expect(text).toContain('Site allowance · MYR 25.00 18 days');
-    expect(text, 'the internal pay code is still off the document').not.toContain('A0044');
+    expect(text, 'approved 7de6fc4e: document preserves pay item identity').toContain('A0044');
   });
 
   it('drops the caption when the row prints only PART of what the factors explain', async () => {
@@ -2117,4 +2116,18 @@ describe('r389 (23bd49d9) — the Employment Info block follows the SAVED order,
   expect(placed(runs, names.position)).toBeUndefined();
   expect(placed(runs, 'R389 Branch not chosen')).toBeUndefined();
  });
+});
+
+it('7de6fc4e: PDF rows keep pay codes and saved quantities separately, without a leading count in ABSENT', async()=>{
+ const d=buildPayslipPdfData({employee:'Fictional',employeeCode:null,company:'Fictional',companyReg:null,payPeriod:'2026-08',basic:3000,allowance:0,overtime:0,bonus:120,gross:3120,otherDeductions:40,totalDeductions:40,net:3080,employerCost:3120,daysWorked:26,statutory:{
+  displayEarnings:{basic:3000,allowance:0,overtime:120,bonus:0,claim:0},componentLines:[
+   {code:'OT1_5',name:'Overtime 1.5',amount:120,displayCategory:'overtime',buckets:[{bucket:'bonus',amount:120}],inputQuantity:{qty:4,unit:'hours'}},
+   {code:'ABSENT',name:'ABSENT',amount:40,buckets:[{bucket:'deduct',amount:40}],detail:{qty:2,rate:20,unit:'days'}},
+  ]
+ }},{epf:'EPF',socso:'SOCSO',skbbk:'SKBBK',eis:'EIS',tax:'PCB'});
+ const rows=payslipPresentationRows(d,labels,String);
+ expect(rows.earnings).toContainEqual(expect.objectContaining({label:'OT1_5 · Overtime 1.5',quantity:'4 hours',amount:120}));
+ expect(rows.deductions).toContainEqual(expect.objectContaining({label:'ABSENT · ABSENT',quantity:'2 days',amount:40}));
+ const text=drawnText(await renderPayslipPdf(d,labels));
+ expect(text).toContain('OT1_5');expect(text).toContain('ABSENT');expect(text).not.toContain('2 ABSENT');
 });

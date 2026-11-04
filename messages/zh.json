@@ -7481,7 +7481,7 @@
           "nonPayableNote": "不支付给员工，也不计入总薪资或实发工资。",
           "itemRemark": "录入时写作“{remark}”",
           "sourceHeading": "这些来自哪里",
-          "sourceNote": "本次薪资计算中针对该员工记录的单项交易。它们列在已记录项目旁边，而不是与之逐一对应：两笔条目可能使用相同的薪资项目和金额，因此只有录入的人才能说清哪一笔对应哪一笔。",
+          "sourceNote": "此员工及本次薪资运行的原始交易输入。这些是来源金额，并非已付薪资的分配。以上保存的薪资总额为准；来源记录可能在处理后更改。",
           "sourcePaidByThisRun": "由本次计算支付",
           "sourcePaidByOtherRun": "由另一次计算支付",
           "sourceNotMarkedPaid": "未标记为已支付",
@@ -7494,7 +7494,9 @@
           "exportAllHint": "您有权查看的每一张已处理工资单，忽略上方的筛选条件。",
           "exportTitle": "薪资交易历史",
           "exportDetailNote": "部分薪资运行未保存逐项明细，因为它们是在本系统开始记录之前计算的，事后也无法重建。在这些行上，汇总金额和津贴合计仍然准确，具名项目列只是留空。",
-          "viewPcbCalculation": "查看 PCB / MTD 计算"
+          "viewPcbCalculation": "查看 PCB / MTD 计算",
+          "sourceInputNotRecorded": "未记录",
+          "sourceEntryCount": "{count} 条日期记录"
         },
         "exportCsv": "导出 CSV",
         "outstanding": {

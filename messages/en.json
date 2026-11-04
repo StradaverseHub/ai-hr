@@ -7481,7 +7481,7 @@
           "nonPayableNote": "Not paid to the employee and not included in gross or net pay.",
           "itemRemark": "Entered as “{remark}”",
           "sourceHeading": "Where these came from",
-          "sourceNote": "The individual transactions recorded against this employee on this payroll run. They are listed beside the recorded items rather than matched to them: two entries can share a pay item and an amount, so only the person who keyed them can say which is which.",
+          "sourceNote": "Original transaction inputs for this employee and run. These are source amounts, not an allocation of paid payroll. Saved payroll totals above remain authoritative; source entries may have changed since processing.",
           "sourcePaidByThisRun": "Paid by this run",
           "sourcePaidByOtherRun": "Paid by another run",
           "sourceNotMarkedPaid": "Not marked as paid",
@@ -7494,7 +7494,9 @@
           "exportAllHint": "Every processed payslip you are allowed to see, ignoring the filters above.",
           "exportTitle": "Payroll Transaction History",
           "exportDetailNote": "Some runs have no per-item detail saved, because they were calculated before this payroll began keeping it and it cannot be reconstructed afterwards. On those rows the summary figures and the Allowances total are still exact, and the named item columns are simply blank.",
-          "viewPcbCalculation": "View PCB / MTD calculation"
+          "viewPcbCalculation": "View PCB / MTD calculation",
+          "sourceInputNotRecorded": "Not recorded",
+          "sourceEntryCount": "{count, plural, one {# dated entry} other {# dated entries}}"
         },
         "exportCsv": "Export CSV",
         "outstanding": {

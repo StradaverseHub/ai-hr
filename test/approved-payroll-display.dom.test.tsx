@@ -125,3 +125,13 @@ describe('08f3b57c: overtime placement', () => {
     expect(totals.map(r=>r.runType).sort()).toEqual(['bonus','regular']);
   });
 });
+
+it('9808e638: retains ALLOW in Summary alongside the actual named earning rows',()=>{
+ const row=payroll('0.00');row.allowance='75.00';row.gross='3075.00';row.statutory={componentLines:[{code:'MEAL',name:'Meal allowance',amount:75,buckets:[{bucket:'wage',amount:75}]}]};
+ const grid=renderGrid([row]);
+ const allow=grid.rows.find(r=>r.code==='ALLOW')!;
+ expect(allow.reconciling).toBe(true);expect(allow.months[7]).toBe(75);
+ expect(historyGridDisplayGroup(allow)).toBe('summary');
+ expect(screen.getByText('Meal allowance')).toBeVisible();
+ expect(screen.getByText('Allowances').closest('tr')!.compareDocumentPosition(screen.getByText('Summary').closest('tr')!) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+});

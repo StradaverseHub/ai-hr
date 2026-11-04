@@ -499,7 +499,7 @@ function cleanFormulaContext(value:PayComponentInput['formulaContext']){
  if(value==null)return null;if(typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!['ordinaryRate','hoursPerDay','rate'].includes(k)))throw new PayComponentInputError([{field:'inputKind',code:'OUT_OF_RANGE'}]);
  const result:{ordinaryRate?:string;hoursPerDay?:string;rate?:string}={};for(const key of ['ordinaryRate','hoursPerDay','rate'] as const){if(value[key]===undefined||value[key]==='')continue;try{const v=normalizeFormulaDecimal(value[key]!),n=Number(v);if(n<(key==='rate'?0:0.000000000001)||n>({ordinaryRate:366,hoursPerDay:24,rate:100}[key]))throw new Error();result[key]=v;}catch{throw new PayComponentInputError([{field:'inputKind',code:'OUT_OF_RANGE'}]);}}return result;
 }
-const attrsOf = (p: PayComponentInput) => ({ eaFormLine: cleanEaLine(p.eaFormLine), roundingMethod: cleanRounding(p.roundingMethod),...(p.formulaContext===undefined?{}:{formulaContext:cleanFormulaContext(p.formulaContext)}) });
+const attrsOf = (p: PayComponentInput) => ({ eaFormLine: cleanEaLine(p.eaFormLine), roundingMethod: cleanRounding(p.roundingMethod),...(p.rule?.kind==='fixed'?{formulaContext:null}:p.formulaContext===undefined?{}:{formulaContext:cleanFormulaContext(p.formulaContext)}) });
 // Feedback 3c473773 — payroll category storage. undefined ⇒ the field was not supplied ⇒ {} ⇒ the stored
 // value survives (this is what keeps the seed and the backfills from wiping migration 0393's work). A
 // supplied value is coerced to the closed vocabulary or NULL, so a tampered form never persists a box the
@@ -845,7 +845,7 @@ async function preparePayComponentWriteTx(tx:Tx,ctx:SessionContext,p:PayComponen
     const [stored]=candidate?.kind==='formula_builder'?await tx.select({rule:payComponent.rule}).from(payComponent).where(and(eq(payComponent.tenantId,ctx.tenantId),eq(payComponent.code,p.code))).limit(1):[];
     const unchanged=stored?.rule?.kind==='formula_builder'&&candidate?.kind==='formula_builder'&&stored.rule.formulaId===candidate.formulaId&&JSON.stringify([...stored.rule.dependencies].sort())===JSON.stringify([...candidate.dependencies].sort());
     const rule = unchanged ? stored.rule : candidate?.kind==='formula_builder' ? await bindPayFormulaRuleTx(tx,ctx,candidate) : candidate;
-    if (p.pendingInputKind != null && (!PENDING_PAY_INPUT_KINDS.includes(p.pendingInputKind) || rule != null))
+    if (p.pendingInputKind != null && (!PENDING_PAY_INPUT_KINDS.includes(p.pendingInputKind) || rule != null || p.rule?.kind === 'fixed'))
       throw new PayComponentInputError([{ field: 'inputKind', code: 'invalidPendingCalculation' }]);
     if ((p.pendingInputKind === 'per_day' || p.pendingInputKind === 'per_hour') && p.prorates)
       throw new PayRuleInvalidError('PRORATION_CONFLICT');
@@ -884,8 +884,8 @@ async function preparePayComponentWriteTx(tx:Tx,ctx:SessionContext,p:PayComponen
     // A stale caller sending rule:null cannot turn an imported calculation into an accidental fixed code.
     const pending = p.pendingInputKind !== undefined
       ? { pendingInputKind: p.pendingInputKind }
-      : rule != null ? { pendingInputKind: null } : {};
-    if (existing?.pendingInputKind && p.pendingInputKind === null && rule == null)
+      : rule != null || p.rule?.kind === 'fixed' ? { pendingInputKind: null } : {};
+    if (existing?.pendingInputKind && p.pendingInputKind === null && rule == null && p.rule?.kind !== 'fixed')
       throw new PayComponentInputError([{ field: 'inputKind', code: 'calculationRequired' }]);
     return {rule,label,existing,storedCode,description,pending};
 }

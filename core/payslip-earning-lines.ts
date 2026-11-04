@@ -1,3 +1,4 @@
+import { resolveDisplayCategory, type PayDisplayCategory } from './pay-display-category';
 /**
  * Feedback 6b134681 + 417d4937 — ONE ROOT CAUSE, THREE SURFACES.
  *
@@ -47,6 +48,9 @@ export type EarningBucket = 'wage' | 'ot' | 'bonus' | 'reimburse' | 'deduct';
 /** One `statutory.componentLines` entry, read STRUCTURALLY. Read by shape rather than by importing the
  *  kernel's type so that `lib/` and a client component can use it without dragging core/payroll in. */
 export type StoredComponentLine = {
+  /** Declaration as this run used it; absent on older snapshots. */
+  displayCategory?: string | null;
+  inputQuantity?: { qty?: unknown; unit?: unknown } | null;
   code?: string | null;
   name?: string | null;
   amount?: unknown;
@@ -76,7 +80,10 @@ export const OT_LEG_KINDS: readonly OtLegKind[] = [
 export type PayItemRateDetail = { qty: number; rate: number; unit: 'hours' | 'days' | null };
 
 /** A pay item as a renderer needs it: its own code, its own description, and what it contributed. */
+export type PayItemInputQuantity = { qty: number; unit: 'hours' | 'days' | 'qty' | 'units' | 'amount' | null };
+
 export type NamedPayItemLine = {
+  inputQuantity?: PayItemInputQuantity;
   code: string | null;
   name: string;
   amount: number;
@@ -221,7 +228,7 @@ export function payItemLinesForBuckets(
     // client History table and are compared by value in several tests, so "absent" and "present but
     // empty" are not the same answer.
     const det = rateDetailFor(l, amount);
-    out.push({ code: l.code ?? null, name: l.name ?? '', amount, ...(det ? { detail: det } : {}) });
+    out.push({ code: l.code ?? null, name: l.name ?? '', amount, ...(det ? { detail: det } : {}), ...(storedInputQuantity(l, amount) ? { inputQuantity: storedInputQuantity(l, amount)! } : {}) });
   }
   return out;
 }
@@ -328,4 +335,24 @@ export function earningRowShown(amount: unknown): boolean {
 export function payItemLinesReconcile(lines: NamedPayItemLine[], total: unknown): boolean {
   if (lines.length === 0) return false;
   return Math.abs(round2(lines.reduce((s, l) => s + l.amount, 0)) - round2(n(total))) < 0.005;
+}
+
+/** Display-only itemization uses the run's category declaration, never today's catalogue.
+ * Older snapshots retain their original bucket inference; reconciliation remains the caller's gate. */
+export function payItemLinesForCategory(lines: StoredComponentLine[], category: PayDisplayCategory): NamedPayItemLine[] {
+  return lines.flatMap(line => {
+    const buckets = (line.buckets ?? []).filter(b =>
+      ['wage','ot','bonus','reimburse','deduct'].includes(b.bucket ?? '') &&
+      resolveDisplayCategory(line.displayCategory, b.bucket as EarningBucket) === category);
+    return payItemLinesForBuckets([{ ...line, buckets }], ['wage','ot','bonus','reimburse','deduct']);
+  });
+}
+
+/** Descriptive transaction quantity, not a rate or a calculated paid allocation. Only a whole saved
+ * contribution may carry it; never repeat a whole input beside a partial bucket amount. */
+function storedInputQuantity(line: StoredComponentLine, amount: number): PayItemInputQuantity | null {
+  const input = line.inputQuantity;
+  if (!input || !Number.isFinite(Number(input.qty)) || Number(input.qty) < 0 || round2(n(line.amount)) !== amount) return null;
+  if (input.unit != null && !['hours','days','qty','units','amount'].includes(String(input.unit))) return null;
+  return {qty: Number(input.qty), unit: input.unit == null ? null : input.unit as PayItemInputQuantity['unit']};
 }

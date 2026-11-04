@@ -7481,7 +7481,7 @@
           "nonPayableNote": "Không chi trả cho nhân viên và không tính vào tổng lương hoặc lương thực nhận.",
           "itemRemark": "Được nhập là “{remark}”",
           "sourceHeading": "Các khoản này đến từ đâu",
-          "sourceNote": "Các giao dịch riêng lẻ được ghi nhận cho nhân viên này trong kỳ tính lương này. Chúng được liệt kê bên cạnh các khoản đã ghi nhận chứ không ghép cặp với chúng: hai bản ghi có thể trùng khoản lương và số tiền, nên chỉ người nhập mới biết bản ghi nào ứng với khoản nào.",
+          "sourceNote": "Dữ liệu giao dịch gốc của nhân viên và kỳ chạy này. Đây là số tiền nguồn, không phải phân bổ lương đã trả. Tổng lương đã lưu ở trên là số liệu chính thức; các mục nguồn có thể đã đổi sau khi xử lý.",
           "sourcePaidByThisRun": "Được trả bởi kỳ này",
           "sourcePaidByOtherRun": "Được trả bởi kỳ khác",
           "sourceNotMarkedPaid": "Chưa đánh dấu đã trả",
@@ -7494,7 +7494,9 @@
           "exportAllHint": "Mọi phiếu lương đã xử lý mà bạn được phép xem, bỏ qua các bộ lọc ở trên.",
           "exportTitle": "Lịch sử giao dịch lương",
           "exportDetailNote": "Một số lần chạy lương không lưu chi tiết theo từng khoản, vì chúng được tính trước khi hệ thống bắt đầu lưu và không thể dựng lại sau đó. Ở những dòng đó, các số liệu tổng hợp và tổng Phụ cấp vẫn chính xác, còn các cột khoản mục có tên chỉ đơn giản là để trống.",
-          "viewPcbCalculation": "Xem cách tính PCB / MTD"
+          "viewPcbCalculation": "Xem cách tính PCB / MTD",
+          "sourceInputNotRecorded": "Không được lưu",
+          "sourceEntryCount": "{count} mục có ngày"
         },
         "exportCsv": "Xuất CSV",
         "outstanding": {

@@ -769,12 +769,12 @@ describe('0253dc7c — the lump-sum rows drop out only when the items account fo
       ...over,
     });
 
-  it('both lump rows vanish when EVERY month reconciles — and the item rows carry the money', () => {
+  it('9808e638: ALLOW remains as a Summary total while the covered deduction lump gives way to named items', () => {
     const grid = pivotHistoryGrid({ rows: [accounted({ payPeriod: '2026-01' }), accounted({ payPeriod: '2026-02' })], year: 2026 });
-    expect(rowFor(grid.rows, 'ALLOW')!.itemised).toBe(true);
+    expect(rowFor(grid.rows, 'ALLOW')!.itemised).toBeUndefined();
     expect(rowFor(grid.rows, 'OTHER_DED')!.itemised).toBe(true);
     const shown = filterGridRows(grid.rows, { hideZero: true, hideSystem: false });
-    expect(shown.some((r) => r.code === 'ALLOW')).toBe(false);
+    expect(shown.some((r) => r.code === 'ALLOW')).toBe(true);
     expect(shown.some((r) => r.code === 'OTHER_DED')).toBe(false);
     // The money did not disappear with the row: the named items are still there, which is the whole
     // point of suppressing a lump sum rather than the detail.
@@ -823,7 +823,7 @@ describe('0253dc7c — the lump-sum rows drop out only when the items account fo
       ],
       year: 2026,
     });
-    expect(rowFor(grid.rows, 'ALLOW', 'regular')!.itemised).toBe(true);
+    expect(rowFor(grid.rows, 'ALLOW', 'regular')!.itemised).toBeUndefined();
     expect(rowFor(grid.rows, 'ALLOW', 'bonus')!.itemised).toBeUndefined();
   });
 
@@ -867,7 +867,7 @@ describe('0253dc7c — the lump-sum rows drop out only when the items account fo
     // suppressible — the answer it gave before the stamp existed. The new bonus-only lines contribute
     // nothing to the wage/reimburse buckets, so they cannot move this decision in either direction.
     const allow = rowFor(grid.rows, 'ALLOW', 'bonus')!;
-    expect(allow.itemised).toBe(true);
+    expect(allow.itemised).toBeUndefined();
     expect(allow.months.every((m) => m === 0)).toBe(true);
   });
 });
@@ -1176,11 +1176,12 @@ describe('3c88d593 — a transferred employee’s month is split by company, not
     });
     const allow = rowsForCode(grid.rows, 'ALLOW');
     expect(allow.find((r) => r.companyId === FIAMMA)!.itemised).toBeUndefined();
-    expect(allow.find((r) => r.companyId === ISEDECOR)!.itemised).toBe(true);
+    expect(allow.find((r) => r.companyId === ISEDECOR)!.itemised).toBeUndefined();
     // …and after the filter the unexplained 200 is still on screen while the explained 300 has given way.
     const shown = filterGridRows(grid.rows, { hideZero: true, hideSystem: false });
     expect(shown.filter((r) => r.code === 'ALLOW').map((r) => [r.companyId, r.months[7]])).toEqual([
       [FIAMMA, 200],
+      [ISEDECOR, 300],
     ]);
   });
 

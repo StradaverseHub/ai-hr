@@ -54,25 +54,24 @@ const rm = (n: unknown) =>
 export function SourceTxnBlock({ rows }: { rows: PayslipSourceTxnRow[] }) {
   const t = useTranslations('payroll.transactions');
   if (rows.length === 0) return null;
-  return (
-    <section className="sm:col-span-2">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {t('view.history.sourceHeading')}
-      </h3>
+  // Group only the original ledger population. Identity includes run and employment so even a caller
+  // rendering several slices cannot merge two employees' or cycles' identically named pay items.
+  const groups = new Map<string, PayslipSourceTxnRow[]>();
+  for (const row of rows) {
+    const key = JSON.stringify([row.batchId, row.employmentId, row.componentCode, row.kind]);
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  const renderRows = (entries: PayslipSourceTxnRow[]) => (
       <ul className="divide-y divide-border/60">
-        {rows.map((r) => {
-          // The pay item names the row when it has one; a kind-only row (overtime / unpaid / leave) has
-          // none and is named by its kind rather than left blank.
+        {entries.map((r) => {
           const kindLabel = t(`individual.kindLabel.${KIND_KEY[r.kind] ?? 'earning'}`);
           const item = payItemLabel({ code: r.componentCode, name: r.componentName }) || kindLabel;
-          // 417d4937 — the marker the item is named after. `consumed_batch_id` is what stops a later run
-          // paying the same money twice; it is stamped at CALCULATION time only, so a row that reached a
-          // payslip before migration 0437 shipped still reads "not marked" until the backfill has run.
           const paid = r.consumedByThisRun
             ? t('view.history.sourcePaidByThisRun')
             : r.consumedBatchId != null
               ? t('view.history.sourcePaidByOtherRun')
               : t('view.history.sourceNotMarkedPaid');
+          const unit = ['amount','qty','hours','days','units'].includes(r.unit ?? '') ? r.unit! : null;
           return (
             <li key={r.id} className="flex items-baseline justify-between gap-4 py-1.5 text-sm">
               <span className="text-muted-foreground">
@@ -81,6 +80,7 @@ export function SourceTxnBlock({ rows }: { rows: PayslipSourceTxnRow[] }) {
                 <span className="ms-2 text-xs">
                   {kindLabel} · {t(`individual.sourceValue.${SOURCE_KEY[r.source] ?? 'manual'}`)} · {paid}
                 </span>
+                <span className="ms-2 text-xs">{t('individual.inputType')}: {unit ? t(`individual.unitLabel.${unit}`) : t('view.history.sourceInputNotRecorded')}{r.quantity != null && <> · {r.quantity}{unit ? ' '+t(`individual.unitLabel.${unit}`) : ''}</>}</span>
                 {r.notes && <span className="ms-2 text-xs italic">{r.notes}</span>}
               </span>
               <span className="tabular-nums text-muted-foreground">{rm(r.amount)}</span>
@@ -88,6 +88,18 @@ export function SourceTxnBlock({ rows }: { rows: PayslipSourceTxnRow[] }) {
           );
         })}
       </ul>
+  );
+  return (
+    <section className="sm:col-span-2">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {t('view.history.sourceHeading')}
+      </h3>
+      {[...groups].map(([key, entries]) => entries.length > 1 ? (
+        <details key={key} className="mb-2 rounded-md border border-border px-3 py-2">
+          <summary className="cursor-pointer text-sm font-medium">{payItemLabel({code: entries[0].componentCode, name: entries[0].componentName}) || t(`individual.kindLabel.${KIND_KEY[entries[0].kind] ?? 'earning'}`)} · {t('view.history.sourceEntryCount', {count: entries.length})}</summary>
+          {renderRows(entries)}
+        </details>
+      ) : <div key={key}>{renderRows(entries)}</div>)}
       <p className="mt-2 text-xs text-muted-foreground">{t('view.history.sourceNote')}</p>
     </section>
   );

@@ -184,7 +184,7 @@ import { SourceTxnBlock } from '../transaction-view/source-txn-block';
 // 417d4937 — and the read-time repair for RECORD lines, whose stored name was a free-text remark until
 // r196 and stays wrong on every run calculated before that deploy unless the screen reads the catalogue.
 import { displayComponentLines } from '@/core/payslip-imported-lines';
-import { earningRowShown, payItemLabel, recordLineIdentity, storedComponentLines, payItemLinesForBuckets, storedOvertimeLines, payItemLinesReconcile } from '@/core/payslip-earning-lines';
+import { earningRowShown, payItemLabel, recordLineIdentity, storedComponentLines, payItemLinesForBuckets, payItemLinesForCategory, storedOvertimeLines, payItemLinesReconcile } from '@/core/payslip-earning-lines';
 
 /** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
 export const PAYSLIP_PANEL_COOKIE = 'payslip_panel';
@@ -439,13 +439,17 @@ export default async function IndividualPayslipPage({
   // grouped row may combine several components, so attach a rate only to one exact saved identity.
   // Ambiguous/partial evidence stays blank; no attendance or current catalogue is consulted.
   const components=displayComponentLines(row?.statutory);
-  const recordedDetails={allowance:payItemLinesForBuckets(components,['wage','reimburse']),overtime:payItemLinesForBuckets(components,['ot']),bonus:payItemLinesForBuckets(components,['bonus'])};
+  const recordedDetails={allowance:payItemLinesForCategory(components,'allowance'),overtime:payItemLinesForCategory(components,'overtime'),bonus:payItemLinesForCategory(components,'bonus')};
   const detailFor=(line:{code:string;name:string;amount:number},kind:keyof typeof recordedDetails)=>{
     const matches=recordedDetails[kind].filter(candidate=>(candidate.code??'')===line.code&&candidate.name===line.name&&candidate.amount===line.amount);
     return matches.length===1?matches[0].detail:null;
   };
   const savedOvertime = recordedDetails.overtime.length===0 ? storedOvertimeLines(row?.statutory) : [];
   const statutoryOvertimeRows = b && b.overtimeLines.length===0 && payItemLinesReconcile(savedOvertime,b.overtime) ? savedOvertime : [];
+  const quantityFor = (line:{ detail?: {qty:number;unit:string|null}|null; inputQuantity?: {qty:number;unit:string|null} }) => {
+    const q=line.detail ?? line.inputQuantity;
+    return q ? `${q.qty}${q.unit==='hours'?' '+tSlip(q.qty===1?'hourUnit':'hoursUnit'):q.unit==='days'?' '+tSlip(q.qty===1?'dayUnit':'daysUnit'):''}` : '';
+  };
   const otLegLabels = {workday:'otLegWorkday',rest_day:'otLegRestDay',rest_day_excess:'otLegRestDayExcess',holiday:'otLegHoliday',holiday_excess:'otLegHolidayExcess'} as const;
   const eb = row ? payslipEmployerBorne(row.statutory) : null;
   // e2632276 — split "Other deductions" into its named unpaid-leave / absence lines plus the residual.
@@ -756,7 +760,7 @@ export default async function IndividualPayslipPage({
             {b.allowanceLines.map((l, i) => {const detail=detailFor(l,'allowance');return (
               <p key={`w${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
                 <span className="min-w-0 break-words">{payItemLabel(l)}{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
-                <span className="text-right tabular-nums">{detail ? `${detail.qty} ${detail.unit==='hours'?tSlip(detail.qty===1?'hourUnit':'hoursUnit'):detail.unit==='days'?tSlip(detail.qty===1?'dayUnit':'daysUnit'):''}` : ''}</span>
+                <span className="text-right tabular-nums">{quantityFor(l)}</span>
                 <span className="text-right tabular-nums">{rm(l.amount)}</span>
               </p>
             );})}
@@ -772,7 +776,7 @@ export default async function IndividualPayslipPage({
             {b.overtimeLines.map((l, i) => {const detail=detailFor(l,'overtime');return (
               <p key={`o${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
                 <span className="min-w-0 break-words">{payItemLabel(l)}{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
-                <span className="text-right tabular-nums">{detail ? `${detail.qty} ${detail.unit==='hours'?tSlip(detail.qty===1?'hourUnit':'hoursUnit'):detail.unit==='days'?tSlip(detail.qty===1?'dayUnit':'daysUnit'):''}` : ''}</span>
+                <span className="text-right tabular-nums">{quantityFor(l)}</span>
                 <span className="text-right tabular-nums">{rm(l.amount)}</span>
               </p>
             );})}
@@ -798,7 +802,7 @@ export default async function IndividualPayslipPage({
             {b.bonusLines.map((l, i) => {const detail=detailFor(l,'bonus');return (
               <p key={`b${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
                 <span className="min-w-0 break-words">{payItemLabel(l)}{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
-                <span className="text-right tabular-nums">{detail ? `${detail.qty} ${detail.unit==='hours'?tSlip(detail.qty===1?'hourUnit':'hoursUnit'):detail.unit==='days'?tSlip(detail.qty===1?'dayUnit':'daysUnit'):''}` : ''}</span>
+                <span className="text-right tabular-nums">{quantityFor(l)}</span>
                 <span className="text-right tabular-nums">{rm(l.amount)}</span>
               </p>
             );})}
@@ -869,7 +873,7 @@ export default async function IndividualPayslipPage({
             {absence.showResidual && b.deductionLines.map((l, i) => (
               <p key={`d${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
                 <span className="min-w-0 break-words">{payItemLabel(l)}</span>
-                <span />
+                <span className="text-right tabular-nums">{quantityFor(l)}</span>
                 <span className="text-right tabular-nums">{rm(l.amount)}</span>
               </p>
             ))}
