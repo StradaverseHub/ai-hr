@@ -43,7 +43,10 @@ it('rejects changed source rows/population between frozen preview and publicatio
 it('retains inactive intervals and includes inactive, future and voided records in a full re-tag report',async()=>{
  const active=await hire('FictionalActive'),inactive=await hire('FictionalInactive');
  await terminateEmployment(adminCtx(b),{employmentId:inactive.employmentId,terminationDate:'2025-01-01',terminationType:'voluntary',terminationReason:'Fictional prior departure'});
- const voided=await hire('FictionalVoided');await owner.db.update(schema.employment).set({voidedAt:new Date()}).where(eq(schema.employment.id,voided.employmentId));
+ const voided=await hire('FictionalVoided');
+ // Owner restore fixture: retain the complete0676 void aggregate, including the released original code.
+ // A fictional attempt UUID is permitted here because the retained provenance column intentionally has no FK.
+ await owner.db.update(schema.employment).set({voidedAt:new Date(),voidedBy:b.adminUserId,voidReason:'Fictional reverted-import record for the organisation report',voidedImportAttemptId:sql`gen_random_uuid()`,voidedEmployeeCode:sql`${schema.employment.employeeCode}`,employeeCode:null}).where(eq(schema.employment.id,voided.employmentId));
  await publish(await prepare());
  const before=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,inactive.employmentId));
  const id=await prepareCompanyOrganisationRun(adminCtx(b),{kind:'retag',companyIds:[b.companyId],effectiveOn:today()});
