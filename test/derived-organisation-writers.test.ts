@@ -14,7 +14,7 @@ import {createMovementEvent} from '../core/movement';
 import {correctHireDetails} from '../core/hire-correction';
 import {correctInformation,previewInformationCorrection} from '../core/information-correction';
 import {createBatch,preProcessAdvisory,generatePayslips} from '../core/payroll';
-import {createRewardUnit} from '../packs/rewards/service';
+import {createRewardUnit,rewardPolicyMemberships} from '../packs/rewards/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 let b:Base,ctx:SessionContext,checker:SessionContext,oldBu:string,newBu:string;
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4)),hireDate=`${year-2}-01-01`;
@@ -54,14 +54,24 @@ it('preserves legacy choice and historical prefix, then ignores manual BU in nat
  await expect(setCompanyParent(ctx,{companyId:b.companyId,parentCompanyId:b.companyId})).rejects.toThrow('reviewed dated changes');
 });
 it('makes an explicit missing-BU mapping pending, saves Personnel and blocks payroll and Rewards by employee without creating financial outputs',async()=>{
- await publish(today,null);const next=await hire('pending',{hiredOn:today,businessUnitId:oldBu});
+ const pendingOn=new Date(Date.parse(today+'T00:00:00Z')-86400000).toISOString().slice(0,10);
+ await publish(pendingOn,null);const next=await hire('pending',{hiredOn:pendingOn,businessUnitId:oldBu});
  expect((await versions(next.employmentId)).at(-1)?.businessUnitId).toBeNull();
  await setCompensation(ctx,{employmentId:next.employmentId,basicSalary:5000,effectiveFrom:today});
  const [cycle]=await owner.db.insert(schema.payrollCycle).values({tenantId:b.tenantId,companyId:b.companyId,code:'ORG_READY',name:'Organisation readiness',runType:'regular'}).returning();
  const {batchId}=await createBatch(ctx,{companyId:b.companyId,payPeriod:today.slice(0,7),payrollCycleId:cycle.id});
  const advisory=await preProcessAdvisory(ctx,batchId);expect(advisory.organisationGrouping).toEqual([expect.objectContaining({employmentId:next.employmentId,name:'Fictional pending'})]);
  await expect(generatePayslips(ctx,{batchId})).rejects.toThrow();expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual([]);
- await expect(createRewardUnit(ctx,{companyId:b.companyId,businessUnitId:oldBu,name:'Pending review',year,snapshotDate:today})).rejects.toThrow('Fictional pending');expect(await owner.db.select().from(schema.rewardUnit)).toEqual([]);
+ // New Rewards reviews require a proven current company/BU membership before their dated
+ // roster is read. Establish it through a second reviewed mapping while retaining yesterday's
+ // pending classification, which the historical snapshot must still name rather than omit.
+ await publish(today,newBu);
+ expect(await rewardPolicyMemberships(ctx,[b.companyId])).toContainEqual({companyId:b.companyId,businessUnitId:newBu});
+ expect(await withTenant(ctx,tx=>employmentOrganisationTagsTx(tx,ctx,{employmentId:next.employmentId,asOf:pendingOn}))).toMatchObject({status:'pending',businessUnitId:null});
+ await expect(createRewardUnit(ctx,{companyId:b.companyId,businessUnitId:newBu,name:'Pending review',year,snapshotDate:pendingOn})).rejects.toThrow('Fictional pending');expect(await owner.db.select().from(schema.rewardUnit)).toEqual([]);
+ expect(await owner.db.select().from(schema.rewardEntry)).toEqual([]);
+ expect(await owner.db.select().from(schema.rewardCycle)).toEqual([]);
+ expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual([]);
 });
 it('bounds a backdated projection by the next reviewed mapping, keeps future tags and is idempotent',async()=>{
  const id=(await hire('boundaries')).employmentId;await publish();
