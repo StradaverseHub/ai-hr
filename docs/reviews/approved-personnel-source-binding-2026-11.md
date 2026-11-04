@@ -75,3 +75,7 @@ All28 approved literal records receive only this assessed digest; historical dec
 two unrelated pending records remain unchanged. This technical renewal uses the standing owner authority
 above and claims neither fresh human hash inspection nor a behavioral PASS. Generate the agent manifest
 last; future covered source changes invalidate these bindings.
+
+### Destination ordering and review-fixture correction
+
+The retained metadata development run41855431127 passes the new public guidance/spec/DOD/guide tests, but reports existing native failures plus two missing-authority fixtures, destination ordering and the obsolete assumption that v2 remains pending. At a8c1f09f0 plus the retained-reference fixture correction, the sole further provider-covered change swaps two static route rows into the classifier’s existing sort order. It changes no route, audience, module, payload, data category or authority. The provider admission fixture now separately exercises the real current literal binding and a stale digest; no production gate is mocked away by those cases. The same-purpose technical binding advances all28 approved literal digests to `6a38dee530a42c9ce499b874aae6f8f46afc5d19f70dd14f6d6916e2ee9d6f7e` (1,428 files); original human metadata and the two pending records remain unchanged. This remains a source assessment, not a behavioral PASS or fresh human review event.
