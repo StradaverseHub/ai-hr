@@ -447,12 +447,12 @@ describe('5b2a7f0f — lazy English fonts and deliberate document layout pins', 
   const NO_REG_R383 = {
     plain: '5d606527f00a88c777fb0f10bc2a39ab3bebe69141f15f2c8d3229194df6aeb3',
     logo: 'dbf283268d53dede63ea6caf3dcd3751c100e929356961ca671baf3fdea4e49b',
-    multipage: '1111d11d1779a797e3a84bcd5ebffad426adef279377dc85811a8c11aa91837a',
+    multipage: '589b5a6d16dfc463d3d2e26e22581ed43a458733c34d638fc943ac1dd80d9526',
   };
   const WITH_REG_R383 = {
     plain: 'fd582f9ba517d5caf89308303a802ffda6538dad7913a2257a3f01426fef948c',
     logo: '5d82b06656a54c4da71e5fa45738791990767a2a3139e77e74a7423df3b589b6',
-    multipage: '86c9e1659008468a6a4084d50788c07e169d97486b43efbcbd47f717ae4df84a',
+    multipage: 'dc8823098eca8b09a15615b8443f567dc1d3fe9790c712862238469753f16ea2',
   };
 
   it('an en payslip for a company with NO registration number is pinned to the byte — plain, with a logo, and across sheets', async () => {
@@ -477,7 +477,10 @@ describe('5b2a7f0f — lazy English fonts and deliberate document layout pins', 
     // THE SHEET COUNT, SEPARATELY. r367 took 2pt off the employee band and every block below it moved up;
     // a digest cannot tell "two points higher" from "the page broke somewhere else", and the second would
     // be a real change to an official document.
-    expect([await pageCountOf(plain), await pageCountOf(withLogo), await pageCountOf(long)]).toEqual([1, 1, 3]);
+    // Approved7de6fc4e codes wrap these deliberately long names onto four sheets.
+    // Baseline41870516243 and candidate41870523876 actual PDFs were independently rendered/reviewed.
+    expect([await pageCountOf(plain), await pageCountOf(withLogo), await pageCountOf(long)]).toEqual([1, 1, 4]);
+    expect((await extractedText(long)).match(/\bPC\d+\b/g)).toEqual(manyLines.map(line=>line.code));
     // r367 CHANGED THE DOCUMENT ON PURPOSE, stated in both directions so the round cannot be read as an
     // accident: none of the three still hashes to what it hashed to before.
     expect(await documentDigest(plain), 'r367 changed the unregistered payslip too').not.toBe(
@@ -506,7 +509,10 @@ describe('5b2a7f0f — lazy English fonts and deliberate document layout pins', 
     expect(WITH_REG_R383.plain, 'the registered and unregistered documents are not the same file').not.toBe(
       NO_REG_R383.plain,
     );
-    expect([await pageCountOf(plain), await pageCountOf(withLogo), await pageCountOf(long)]).toEqual([1, 1, 3]);
+    // Approved7de6fc4e codes wrap these deliberately long names onto four sheets.
+    // Baseline41870516243 and candidate41870523876 actual PDFs were independently rendered/reviewed.
+    expect([await pageCountOf(plain), await pageCountOf(withLogo), await pageCountOf(long)]).toEqual([1, 1, 4]);
+    expect((await extractedText(long)).match(/\bPC\d+\b/g)).toEqual(manyLines.map(line=>line.code));
     // r367, stated in both directions here too.
     expect(await documentDigest(plain), 'r367 changed the registered payslip').not.toBe(WITH_REG_R360.plain);
   });

@@ -396,11 +396,6 @@ function drawnPlacements(bytes: Uint8Array): { page: number; x: number; y: numbe
 }
 
 /** Every deduction row the DOCUMENT drew, read off the page beside its label, and its printed total. */
-const PDF_DEDUCTION_LABELS = [
-  labels.epf, labels.socso, labels.skbbk, labels.eis, labels.pcb,
-  labels.cp38, labels.zakat, labels.unpaidLeaveLine, labels.absentLine, labels.otherDeductions,
-] as const;
-
 async function pdfDeductions(payslipId: string,diagnosticName?:string) {
   const p = await payslipForReview(admin, { companyIds: [base.companyId], payslipId });
   expect(p, 'the admin review read found the payslip').toBeTruthy();
@@ -425,8 +420,20 @@ async function pdfDeductions(payslipId: string,diagnosticName?:string) {
     if (!amt) throw new Error(`the drawn row "${label}" carried no amount`);
     return moneyIn(amt.text);
   };
-  const rows = PDF_DEDUCTION_LABELS.map((l) => [l, beside(l)] as const).filter(([, v]) => v != null) as [string, number][];
-  // The renderer upper-cases a box's total label (lib/payslip-pdf.ts `totalLabel`).
+  // Read every monetary row geometrically inside the drawn Deductions box. A fixed
+  // label catalogue missed the approved DB368 item even though its money was printed.
+  const totalLabel=pl.find(row=>row.text===labels.totalDeductions.toUpperCase());
+  expect(totalLabel,'a drawn deduction total anchors the independent decoder').toBeTruthy();
+  const heading=pl.find(row=>row.page===totalLabel!.page&&row.text===labels.deductions.toUpperCase());
+  expect(heading,'the drawn deduction box has its own heading').toBeTruthy();
+  const amounts=pl.filter(row=>row.page===totalLabel!.page&&row.y>totalLabel!.y&&row.y<heading!.y&&row.x>totalLabel!.x+50&&row.text.startsWith(`${p!.currency} `));
+  expect(amounts.length,'the real deduction box is nonempty').toBeGreaterThan(0);
+  const rows=amounts.map(amount=>{
+    const names=pl.filter(row=>row.page===amount.page&&Math.abs(row.y-amount.y)<1.5&&Math.abs(row.x-totalLabel!.x)<2);
+    expect(names,'each drawn amount has exactly one first-line description').toHaveLength(1);
+    const value=moneyIn(amount.text);expect(value).not.toBeNull();
+    return [names[0].text,value!] as [string,number];
+  });
   const total = beside(labels.totalDeductions.toUpperCase());
   return { rows, total, data, text: pl.map((r) => r.text).join('\n') };
 }
@@ -522,7 +529,9 @@ describe('970e4143 B — an UNCLAMPED CP38: all three payslip renderers add up',
 
     const { rows, total } = await pdfDeductions(slip.id);
     expect(rows.map(([l]) => l), 'the CP38 row is drawn').toContain(labels.cp38);
-    expect(rows.map(([l]) => l), 'and so is the residual — they are different money now').toContain(labels.otherDeductions);
+    expect(rows.filter(([label])=>label==='DB368 · Staff purchase'),'the saved residual is named exactly once').toEqual([['DB368 · Staff purchase',125]]);
+    expect(rows.map(([label])=>label),'no duplicate generic residual').not.toContain(labels.otherDeductions);
+    expect(rows.filter(([label])=>label===labels.cp38)).toHaveLength(1);
     expect(rows.find(([l]) => l === labels.cp38)![1], 'the CP38 row prints what was deducted').toBe(450);
     expect(sum(rows.map(([, v]) => v)), 'the rows add up to the total printed under them').toBe(Number(slip.totalDeductions));
     expect(total, 'and that IS the printed total').toBe(Number(slip.totalDeductions));
@@ -620,6 +629,8 @@ describe('970e4143 C — a payslip issued before the stamp', () => {
     expect(legacy.rows, 'an unclamped legacy slip cannot tell the difference and must not look different')
       .toEqual(stamped.rows);
     expect(legacy.total).toBe(stamped.total);
+    expect(legacy.rows.filter(([label])=>label==='DB368 · Staff purchase')).toEqual([['DB368 · Staff purchase',125]]);
+    expect(legacy.rows.map(([label])=>label)).not.toContain(labels.otherDeductions);
     expect(sum(legacy.rows.map(([, v]) => v))).toBe(Number(slip.totalDeductions));
   });
 
