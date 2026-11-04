@@ -27991,6 +27991,7 @@
     "reasonHistoricalSchedule": "Historical work-schedule policy is unavailable for this company/date. HR must confirm the schedule; the current employer’s weekdays cannot be substituted."
   },
   "overtimePatterns": {
+    "noActiveAdminScope": "Select an active company you can administer in the company switcher to view and maintain Overtime Patterns.",
     "loadFailureTitle": "Overtime Patterns could not load",
     "loadFailureHelp": "Try again. If the problem continues, give support the reference below.",
     "retryLoad": "Try again",

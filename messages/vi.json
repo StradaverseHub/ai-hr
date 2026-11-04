@@ -27991,6 +27991,7 @@
     "reasonHistoricalSchedule": "Không có chính sách lịch làm việc trong quá khứ cho công ty/ngày này. Nhân sự phải xác nhận lịch; không được thay bằng ngày làm việc của công ty hiện tại."
   },
   "overtimePatterns": {
+    "noActiveAdminScope": "Chọn một công ty đang hoạt động mà bạn có quyền quản trị trong bộ chọn công ty để xem và quản lý Mẫu làm thêm giờ.",
     "loadFailureTitle": "Không tải được Mẫu làm thêm giờ",
     "loadFailureHelp": "Hãy thử lại. Nếu sự cố tiếp diễn, cung cấp mã bên dưới cho bộ phận hỗ trợ.",
     "retryLoad": "Thử lại",

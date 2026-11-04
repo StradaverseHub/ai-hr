@@ -27991,6 +27991,7 @@
     "reasonHistoricalSchedule": "该公司和日期的历史工作排班政策不可用。人力资源部门须确认当时的排班，不能套用现雇主的工作日。"
   },
   "overtimePatterns": {
+    "noActiveAdminScope": "请在公司选择器中选择您有管理权限的有效公司，以查看和维护加班模式。",
     "loadFailureTitle": "无法加载加班模式",
     "loadFailureHelp": "请重试。如果问题持续，请向支持人员提供以下编号。",
     "retryLoad": "重试",

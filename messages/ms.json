@@ -27991,6 +27991,7 @@
     "reasonHistoricalSchedule": "Polisi jadual kerja sejarah tidak tersedia untuk syarikat/tarikh ini. HR mesti mengesahkan jadual; hari kerja majikan semasa tidak boleh digunakan sebagai ganti."
   },
   "overtimePatterns": {
+    "noActiveAdminScope": "Pilih syarikat aktif yang boleh anda tadbir dalam pemilih syarikat untuk melihat dan menyelenggara Corak Kerja Lebih Masa.",
     "loadFailureTitle": "Corak Kerja Lebih Masa tidak dapat dimuatkan",
     "loadFailureHelp": "Cuba lagi. Jika masalah berterusan, berikan rujukan di bawah kepada sokongan.",
     "retryLoad": "Cuba lagi",
