@@ -268,17 +268,21 @@ try{
    (report.browserLanguageSwitches??=[]).push({role:user.role,path,phase,locale,elapsedMs:performance.now()-start,translatedHeading:true,usable:true,draftRetained:!!draft});save();
   }
  }
- for(const user of [employee,manager,hr,group,fixture.users[254],fixture.users[251]]){
+ // These six independent read-only contexts run concurrently, matching the loaded browser bound.
+ // Route/role assertions, per-request deadlines and the overall driver deadline stay unchanged.
+ await Promise.all([employee,manager,hr,group,fixture.users[254],fixture.users[251]].map(async user=>{
   const ctx=await context(user),page=await ctx.newPage();
+  try{
   for(const route of suite==='whole-system'?routePool(user):user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/','/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);
-  await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});await ctx.close();
- }
+  await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});
+  }finally{await ctx.close();}
+ }));
  // Additional concrete pages have explicit rendered checks, separate from HTTP route counts.
- for(const user of [employee,manager,hr,group]){
+ await Promise.all([employee,manager,hr,group].map(async user=>{
   const ctx=await context(user),page=await ctx.newPage();
   try{for(const path of additionalBrowserRoutes[user.role])await visit(page,user,path);}
   finally{await ctx.close();}
- }
+ }));
  async function aiCentreJourney(page,user,phase){
   await visit(page,user,'/assistant',phase);
   assert(await page.locator('main textarea:enabled').count()>0,'AI Centre fixture did not reach admitted Ask');
@@ -299,10 +303,10 @@ try{
    }
   }finally{page.off('request',onRequest);}
  }
- for(const user of [employee,hr]){
+ await Promise.all([employee,hr].map(async user=>{
   const ctx=await context(user),page=await ctx.newPage();
   try{await aiCentreJourney(page,user,'baseline');}finally{await ctx.close();}
- }
+ }));
  // Tenant-wide AI spend and provider configuration keep their group-administrator guards.
  {
   const ctx=await context(hr),page=await ctx.newPage();
