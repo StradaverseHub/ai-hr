@@ -5,6 +5,33 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Personnel typed paging and navigation — 4 November 2026 (unapplied)
+
+The candidate preserves main/alpha `74db3bb7621c33de256372162a1961ee320baf6e` and its671 applied
+identities, plus the five already pinned performance appends. A read-only staging check observed the same
+source,671 rows and watermark1793330001502; all ordered hashes match under the existing historical SQL
+identity owner. No applied SQL changes. Fresh all-ref/worktree scans covered2315 heads,429 committed
+journals,585 migration trees and216 readable worktrees. The highest SQL claim was2128, journal index1372,
+and timestamp1793330001525. Foreign malformed WIP was preserved and its literal bounds checked.
+
+| Tag | idx | when | SQL SHA256 |
+| --- | ---: | ---: | --- |
+|2129_personnel_native_paging|1373|1793330001529|877fb32d3e85cd3c3476038b7d1787877a27f7633bdc5308d6c660e669dc1255|
+
+Typed Workforce facts use the existing company-purpose owner. Bounded point projection supports the
+existing2000-row ceiling; the original full-list API and bounded API share one private JSON owner.
+Table/column grants and policies stay unchanged. The two navigation witnesses first select necessary
+company candidates and retain their complete canonical subject checks. Existing function attributes,
+owners and ACLs remain unchanged; new facts/point APIs are app-only, and the shared JSON helper is private.
+
+Qualification41847785388 compared50000 native employments/assignments and every typed fact against the
+original projection with zero mismatches, exact rows/counts/facets and fresh permission revocation.
+Qualification41850084378 retained all15 navigation contracts and compared501-record denied navigation:
+original calls around2.4s versus10–14ms for the candidate. Both are component evidence, not500-user or
+million-Personnel acceptance. The combined app, populated upgrades and both500-user/browser scenarios
+still require verification. Allocation must be checked again before release admission. Complete BOARD
+roles remains excluded; no deployment or human provider-approval binding update is authorized.
+
 ## System performance native reads — 4 November 2026 (unapplied provisional)
 
 `codex/performance-staging-native-20261104` preserves the accepted staging source

@@ -29,7 +29,7 @@ it('retains native scope, exact rows/order, pager and status facets while evalua
  const profile=process.env.AIHR_CI_PG_STATEMENTS==='1';
  if(profile)await owner.client.unsafe('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');
  // This distinctive join belongs to the native projection body, not its calling statement.
- const projectionCalls=async()=>Number((await owner.client`select coalesce(sum(calls),0)::int as calls from pg_stat_statements where dbid=(select oid from pg_database where datname=current_database()) and position('JOIN permitted allowed ON allowed.id=e.company_id' in query)>0`)[0].calls);
+ const projectionCalls=async()=>Number((await owner.client`select coalesce(sum(calls),0)::int as calls from pg_stat_statements where dbid=(select oid from pg_database where datname=current_database()) and position('JOIN permitted allowed ON allowed.id=e.company_id' in query)>0 and position('jsonb_build_object(' in query)>0`)[0].calls);
  const inputs=(sp:PersonnelSearchParams)=>{
   const query=parsePersonnelListQuery(sp);
   return {page:{companyIds:[b.companyId],...query.filters,limit:25,offset:0},facets:{companyIds:[b.companyId],...headcountFilters(query)}};
@@ -64,7 +64,7 @@ it('retains native scope, exact rows/order, pager and status facets while evalua
   if(round%2===0){await legacy();await composed();}else{await composed();await legacy();}
   pairedTimings.push({round,order:round%2===0?'legacy-composed':'composed-legacy',legacyMs,composedMs});
  }
- const report={pairedTimings,kind:'NATIVE_PERSONNEL_PROJECTION_COUNT_NOT_SYSTEM_CAPACITY',fictionalEmployments:519,visibleEmployments:512,pageRows:25,elapsedMs,projectionCalls:before===null||after===null?null:after-before,expectedProjectionCalls:1,exactRowsOrderPagerAndFacets:true,emptyAndForeignScopeRefused:true,limitations:'Fictional retained-volume fixture, not native hiring throughput or millions of Personnel records. No public function or policy changed.'};
+ const report={pairedTimings,kind:'NATIVE_PERSONNEL_PROJECTION_COUNT_NOT_SYSTEM_CAPACITY',fictionalEmployments:519,visibleEmployments:512,pageRows:25,elapsedMs,projectionCalls:before===null||after===null?null:after-before,expectedProjectionCalls:1,exactRowsOrderPagerAndFacets:true,emptyAndForeignScopeRefused:true,limitations:'Fictional retained-volume fixture, not native hiring throughput or millions of Personnel records. Installed bounded Workforce projections; policies and table/column grants unchanged.'};
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/personnel-page-projection.json',JSON.stringify(report));
  if(profile){expect(before).toBeGreaterThanOrEqual(3);expect(after!-before!).toBe(1);}
 },240000);

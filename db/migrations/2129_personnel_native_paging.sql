@@ -1,11 +1,8 @@
--- Reversible hosted prototype only. Canonical Workforce functions and grants are unchanged.
-CREATE FUNCTION app.performance_workforce_list_rows(subject_ids uuid[]) RETURNS SETOF jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-BEGIN
- IF cardinality(subject_ids)>2000 THEN RAISE EXCEPTION 'Too many Workforce subjects' USING ERRCODE='22023';END IF;
- RETURN QUERY
-
- WITH permitted AS MATERIALIZED (
+-- Personnel lists: filter/count typed authorized facts, project full details only for the page.
+-- Preserve the original full-list API, one JSON projection owner, Workforce purpose and native guards.
+CREATE FUNCTION app._access_workforce_list_rows(subject_ids uuid[]) RETURNS SETOF jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+WITH permitted AS MATERIALIZED (
   SELECT c.id FROM public.company c WHERE c.tenant_id=app.current_tenant_id() AND app.access_workforce_projection_company(c.id)
  )
  SELECT jsonb_build_object(
@@ -34,12 +31,27 @@ BEGIN
  LEFT JOIN public.business_unit bu ON bu.id=a.business_unit_id AND bu.tenant_id=e.tenant_id
  LEFT JOIN public.cost_center cc ON cc.id=a.cost_center_id AND cc.tenant_id=e.tenant_id
  LEFT JOIN public.location loc ON loc.id=a.location_id AND loc.tenant_id=e.tenant_id
- WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL AND e.id=ANY(subject_ids);
+ WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL AND (subject_ids IS NULL OR e.id=ANY(subject_ids));
+$$;
+REVOKE ALL ON FUNCTION app._access_workforce_list_rows(uuid[]) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_workforce_list_rows() RETURNS SETOF jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT value FROM app._access_workforce_list_rows(NULL::uuid[]) r(value);
+$$;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_list_rows_for_ids(subject_ids uuid[]) RETURNS SETOF jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF subject_ids IS NULL THEN RETURN;END IF;
+ IF cardinality(subject_ids)>2000 THEN RAISE EXCEPTION 'Too many Workforce subjects' USING ERRCODE='22023';END IF;
+ RETURN QUERY SELECT value FROM app._access_workforce_list_rows(subject_ids) r(value);
 END;
 $$;
-REVOKE ALL ON FUNCTION app.performance_workforce_list_rows(uuid[]) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.performance_workforce_list_rows(uuid[]) TO ai_hr_app;
-CREATE FUNCTION app.performance_workforce_list_facts()
+REVOKE ALL ON FUNCTION app.access_workforce_list_rows_for_ids(uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.access_workforce_list_rows_for_ids(uuid[]) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_list_facts()
 RETURNS TABLE(employment_id uuid,name text,email text,employee_code text,company text,company_id uuid,
  department_id uuid,employment_type text,terminated_on date,final_confirmation_date date,confirmation_date date,
  probation_end_date date,provisional_end_on date,resignation_date date,last_working_date date,blacklisted_at date)
@@ -56,5 +68,33 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  LEFT JOIN public.assignment a ON a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.valid_to IS NULL AND a.superseded_at IS NULL
  WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL;
 $$;
-REVOKE ALL ON FUNCTION app.performance_workforce_list_facts() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.performance_workforce_list_facts() TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.access_workforce_list_facts() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.access_workforce_list_facts() TO ai_hr_app;
+--> statement-breakpoint
+-- Necessary company candidates only; every positive still passes its canonical subject witness.
+CREATE OR REPLACE FUNCTION app.assistant_workforce_profile_navigation_available() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH permitted AS MATERIALIZED(
+  SELECT c.id FROM public.company c WHERE c.tenant_id=app.current_tenant_id()
+   AND app.access_workforce_command_company(c.id)
+ ), candidates AS MATERIALIZED(
+  SELECT e.id FROM public.employment e JOIN permitted c ON c.id=e.company_id
+  WHERE e.tenant_id=app.current_tenant_id()
+ )
+ SELECT app.current_user_id() IS NOT NULL AND app.principal_snapshot_current() IS TRUE
+  AND EXISTS(SELECT 1 FROM candidates e WHERE app.assistant_workforce_profile_choice_scope(e.id) IS NOT NULL);
+$$;
+--> statement-breakpoint
+-- Necessary company candidates only; every positive still passes its canonical subject witness.
+CREATE OR REPLACE FUNCTION app.assistant_employee_code_navigation_available() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH permitted AS MATERIALIZED(
+  SELECT c.id FROM public.company c WHERE c.tenant_id=app.current_tenant_id()
+   AND app.access_workforce_command_company(c.id)
+ ), candidates AS MATERIALIZED(
+  SELECT e.id FROM public.employment e JOIN permitted c ON c.id=e.company_id
+  WHERE e.tenant_id=app.current_tenant_id()
+ )
+ SELECT app.current_user_id() IS NOT NULL AND app.principal_snapshot_current() IS TRUE
+  AND EXISTS(SELECT 1 FROM candidates e WHERE app.assistant_employee_code_choice_scope(e.id));
+$$;

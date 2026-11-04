@@ -568,63 +568,64 @@ export function countEmployeesByStatus(
   });
 }
 
-/** Personnel page rows, exact total and facets reuse one authorized native projection.
- * No persistent/result cache: all consumers share this single caller-scoped statement. */
+/** Typed fields for the same listing filters/status owner; full JSON is built only after paging. */
+function personnelFactColumns():EmployeeListColumns{
+  const dates:EmploymentStatusColumns={
+    finalConfirmationDate:sql`workforce_row.final_confirmation_date`,confirmationDate:sql`workforce_row.confirmation_date`,
+    probationEndDate:sql`workforce_row.probation_end_date`,provisionalEndOn:sql`workforce_row.provisional_end_on`,
+    resignationDate:sql`workforce_row.resignation_date`,lastWorkingDate:sql`workforce_row.last_working_date`,
+    terminatedOn:sql`workforce_row.terminated_on`,blacklistedAt:sql`workforce_row.blacklisted_at`,
+  };
+  return {companyId:sql`workforce_row.company_id`,departmentId:sql`workforce_row.department_id`,
+    employmentType:sql`workforce_row.employment_type`,terminatedOn:sql`workforce_row.terminated_on`,
+    name:sql`workforce_row.name`,email:sql`workforce_row.email`,employeeCode:sql`workforce_row.employee_code`,
+    status:employmentStatusSql(todayInKualaLumpur(),dates)};
+}
+
+/** One caller-scoped statement for authorized typed facts, exact total/facets and bounded detail rows.
+ * No cached permissions/results or raw-table grant; both native projections recheck Workforce purpose. */
 export async function personnelListPage(
   ctx: SessionContext,
   page: Parameters<typeof listEmployeesPage>[1],
   facets: EmployeeListFilters,
 ) {
+  if(!Number.isSafeInteger(page.limit)||page.limit<0||page.limit>ALL_ROW_CEILING||
+     !Number.isSafeInteger(page.offset)||page.offset<0)throw new RangeError('Invalid Personnel page');
   return withTenant(ctx, async tx => {
     await lockAccessConfigurationReadTx(tx, ctx.tenantId);
-    const columns = workforceListColumns();
-    const pageWhere = workforceListWhere(page, columns) ?? sql`true`;
-    const facetWhere = workforceListWhere(facets, columns) ?? sql`true`;
-    const pageNameSort = page.sort === 'company' ? sql`lower(${columns.name})` : columns.name;
-    const pageOrder = page.sort === 'company'
-      ? sql`lower(${workforceListValue('company')}), ${pageNameSort}` : pageNameSort;
-    const aggregateOrder = page.sort === 'company'
-      ? sql`page_rows.company_sort, page_rows.name_sort` : sql`page_rows.name_sort`;
-    const [result] = await tx.execute<{
-      rows: EmployeeListRow[];
-      total: number;
-      status_counts: {status: EmploymentStatus; count: number}[];
+    const columns=personnelFactColumns();
+    const pageWhere=workforceListWhere(page,columns)??sql`true`;
+    const facetWhere=workforceListWhere(facets,columns)??sql`true`;
+    const nameSort=page.sort==='company'?sql`lower(${columns.name})`:columns.name;
+    const pageOrder=page.sort==='company'
+      ?sql`lower(workforce_row.company),${nameSort},workforce_row.employment_id`
+      :sql`${nameSort},workforce_row.employment_id`;
+    const aggregateOrder=page.sort==='company'
+      ?sql`chosen.company_sort,chosen.name_sort,chosen.employment_id`
+      :sql`chosen.name_sort,chosen.employment_id`;
+    const [result]=await tx.execute<{
+      rows:EmployeeListRow[];total:number;status_counts:{status:EmploymentStatus;count:number}[];
     }>(sql`
-      with workforce_projection(value) as materialized (
-        select workforce_row.value from ${workforceListSource}
+      with workforce_facts as materialized(select * from app.access_workforce_list_facts()),
+      selected_page as materialized(
+        select workforce_row.employment_id,lower(workforce_row.company)as company_sort,${nameSort}as name_sort
+        from workforce_facts workforce_row where ${pageWhere}
+        order by ${pageOrder} limit ${page.limit} offset ${page.offset}
+      ), page_projection(value)as materialized(
+        select value from app.access_workforce_list_rows_for_ids(array(select employment_id from selected_page))r(value)
       )
-      select coalesce((
-        select jsonb_agg(page_rows.value order by ${aggregateOrder})
-        from (
-          select workforce_row.value,
-            lower(${workforceListValue('company')}) as company_sort,
-            ${pageNameSort} as name_sort
-          from workforce_projection as workforce_row
-          where ${pageWhere}
-          order by ${pageOrder}
-          limit ${page.limit} offset ${page.offset}
-        ) page_rows
-      ), '[]'::jsonb) as rows,
-      (select count(distinct ${workforceListUuid('employmentId')})::int
-        from workforce_projection as workforce_row where ${pageWhere}) as total,
-      coalesce((
-        select jsonb_agg(jsonb_build_object('status', facet_counts.status, 'count', facet_counts.count))
-        from (
-          select ${columns.status} as status,
-            count(distinct ${workforceListUuid('employmentId')})::int as count
-          from workforce_projection as workforce_row where ${facetWhere}
-          group by 1
-        ) facet_counts
-      ), '[]'::jsonb) as status_counts
+      select coalesce((select jsonb_agg(p.value order by ${aggregateOrder})
+        from selected_page chosen join page_projection p on (p.value->>'employmentId')::uuid=chosen.employment_id),'[]'::jsonb)as rows,
+      (select count(distinct workforce_row.employment_id)::int
+        from workforce_facts workforce_row where ${pageWhere})as total,
+      coalesce((select jsonb_agg(jsonb_build_object('status',f.status,'count',f.count))from(
+        select ${columns.status}as status,count(distinct workforce_row.employment_id)::int as count
+        from workforce_facts workforce_row where ${facetWhere}group by 1
+      )f),'[]'::jsonb)as status_counts
     `);
-    const byStatus: Partial<Record<EmploymentStatus, number>> = {};
-    let total = 0;
-    for (const row of result.status_counts) {
-      const count = Number(row.count);
-      byStatus[row.status] = count;
-      total += count;
-    }
-    return {rows: result.rows, total: Number(result.total), headcount: {total, byStatus}};
+    const byStatus:Partial<Record<EmploymentStatus,number>>={};let total=0;
+    for(const row of result.status_counts){const count=Number(row.count);byStatus[row.status]=count;total+=count;}
+    return {rows:result.rows,total:Number(result.total),headcount:{total,byStatus}};
   });
 }
 
