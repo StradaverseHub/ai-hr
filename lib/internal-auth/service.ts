@@ -1,3 +1,4 @@
+import {accountAvailable,temporaryPasswordAvailable} from './account-state';
 import { readRememberedMfaPolicy, rememberedFactorValid, rememberVerifiedFactor } from './remembered-mfa';
 import { passwordChangeRequired, replacePassword, effectivePasswordPolicy } from './password-policy';
 import {admitPasswordAttempt} from './login-lockout';
@@ -78,14 +79,14 @@ export async function startLogin(input: { organization: string; username: string
     const current=await readRecord<Credential>(tx,credentialKey(c.subject),true);
     if(current?.enabled&&current.password===c.password)await admitPasswordAttempt(tx,current,false);
   });
-  if (!c?.enabled || !matched) {
+  if (!c || !accountAvailable(c) || !temporaryPasswordAvailable(c) || c.temporaryPasswordUsed || !matched) {
     await client.unsafe("select app.append_auth_event(NULL,'internal-login',$1::uuid,'app-user.login-refused','external',NULL,$2::jsonb)",
       [randomUUID(), JSON.stringify({ loginHash: digest(`${org}\0${username}`), reason: 'invalidCredentials' })]);
     throw new InternalAuthError('invalidLogin');
   }
   const outcome = await authTransaction(c.subject, async tx => {
     const current = await readRecord<Credential>(tx, credentialKey(c.subject), true);
-    if (!current?.enabled || current.version !== c.version || current.password !== c.password) throw new InternalAuthError('invalidLogin');
+    if (!current || !accountAvailable(current) || !temporaryPasswordAvailable(current) || current.temporaryPasswordUsed || current.version !== c.version || current.password !== c.password) throw new InternalAuthError('invalidLogin');
     const principal = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [current.issuer, current.subject]);
     if (!principal[0] || principal[0].tenant_id !== current.tenantId) throw new InternalAuthError('invalidLogin');
     if (!await admitPasswordAttempt(tx, current, true)) return null;
@@ -93,6 +94,10 @@ export async function startLogin(input: { organization: string; username: string
     if (current.totpSecret && !await passwordChangeRequired(tx, current) && await rememberedFactorValid(tx, current, input.native, input.rememberedDevice)) {
       await audit(tx, current, 'app-user.mfa-remembered');
       return makeSession(tx, current, input.native);
+    }
+    if(current.temporaryPasswordExpiresAt!==undefined){
+      current.temporaryPasswordUsed=true;
+      await writeRecord(tx,credentialKey(current.subject),current,current.subject);
     }
     const rememberDays = (await readRememberedMfaPolicy(tx, current.tenantId)).policy.rememberDays;
     const raw = opaque();
@@ -112,7 +117,7 @@ async function withChallenge(raw: string, native: boolean, operation: (tx: AuthS
   const result = await authTransaction(initial.subject, async tx => {
     const challenge = await readRecord<Challenge>(tx, key, true);
     const c = await readRecord<Credential>(tx, credentialKey(initial.subject), true);
-    if (!challenge || challenge.native !== native || !c || c.version !== challenge.version || challenge.attempts >= 5 || challenge.subject !== c.subject || (!c.enabled && !challenge.invitation)) throw new InternalAuthError('invalidChallenge');
+    if (!challenge || challenge.native !== native || !c || c.version !== challenge.version || challenge.attempts >= 5 || challenge.subject !== c.subject || (!accountAvailable(c) && !challenge.invitation) || !temporaryPasswordAvailable(c)) throw new InternalAuthError('invalidChallenge');
     const outcome = await operation(tx, c, challenge, key);
     if ('failure' in outcome) {
       challenge.attempts++;
@@ -127,7 +132,7 @@ async function withChallenge(raw: string, native: boolean, operation: (tx: AuthS
 export async function changeInitialPassword(raw: string, password: string, native = false): Promise<AuthReply> {
   return withChallenge(raw, native, async (tx, c, ch, key) => {
     if (ch.phase !== 'password' || (c.totpSecret && !ch.mfaPassed)) throw new InternalAuthError('invalidChallenge');
-    await replacePassword(tx, c, password); c.mustChange = false; c.version = randomUUID();
+    await replacePassword(tx, c, password); c.mustChange = false; delete c.temporaryPasswordExpiresAt; delete c.temporaryPasswordUsed; c.version = randomUUID();
     await revokeCredentialsSessions(tx, c.subject);
     await writeRecord(tx, credentialKey(c.subject), c, c.subject);
     await audit(tx, c, 'app-user.password-reset');

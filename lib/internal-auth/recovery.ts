@@ -1,3 +1,4 @@
+import {accountAvailable,type RecoveryExemption} from './account-state';
 import { replacePassword,effectivePasswordPolicy } from './password-policy';
 import { randomUUID } from 'node:crypto';
 import {emailLocale,type EmailLocale} from '../email-design/model';
@@ -21,10 +22,10 @@ export async function requestRecovery(organization: string, username: string, tr
   if (!sourceBudgeted) await takeRate('recovery-global', 120, 3600_000);
   await takeRate(`recovery:${canonicalOrg(organization)}:${username.trim().toLowerCase()}`, 3, 3600_000);
   const c = await credentialByLogin(organization, username);
-  if (!c?.enabled || !c.emailVerified) return;
+  if (!c || !accountAvailable(c) || !c.emailVerified) return;
   const delivery = await authTransaction(c.subject, async tx => {
     const current = await readRecord<Credential>(tx, `credential:${c.subject}`, true);
-    if (!current?.enabled || current.version !== c.version) return null;
+    if (!current || !accountAvailable(current) || current.version !== c.version) return null;
     const principal = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [current.issuer, current.subject]);
     if (principal[0]?.tenant_id !== current.tenantId) return null;
     const rows = await tx.unsafe('select * from app.account_email_request_recovery($1)', [current.email]);
@@ -49,7 +50,7 @@ export async function sendInternalRecovery(email: string, context?: { deliveryId
   if (!binding || binding.email !== email) throw new AccountEmailDeliveryError('notEligible');
   const token = await authTransaction(binding.subject, async tx => {
     const c = await readRecord<Credential>(tx, `credential:${binding.subject}`, true);
-    if (!c?.enabled || !c.emailVerified || c.version !== binding.version || c.issuer !== binding.issuer ||
+    if (!c || !accountAvailable(c) || !c.emailVerified || c.version !== binding.version || c.issuer !== binding.issuer ||
       c.tenantId !== binding.tenantId || c.email !== binding.email) throw new AccountEmailDeliveryError('notEligible');
     const principal = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
     if (principal[0]?.tenant_id !== c.tenantId) throw new AccountEmailDeliveryError('notEligible');
@@ -72,12 +73,20 @@ export async function completeRecovery(raw: string, password: string, code: stri
   await takeRate(`recovery-complete:${initial.subject}`, 10);
   const result = await authTransaction(initial.subject, async tx => {
     const value = await readRecord<Recovery>(tx, key, true), c = await readRecord<Credential>(tx, `credential:${initial.subject}`, true);
-    if (!value || !c?.enabled || c.version !== value.version) throw new InternalAuthError('invalidChallenge');
+    if (!value || !c || !accountAvailable(c) || c.version !== value.version) throw new InternalAuthError('invalidChallenge');
     const principal = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
     if (principal[0]?.tenant_id !== c.tenantId) throw new InternalAuthError('invalidChallenge');
     const requireVerification=(await effectivePasswordPolicy(tx,c.tenantId)).requirements?.firstResetVerification;
-    if (requireVerification&&!c.totpSecret || c.totpSecret && !await verifyCredentialFactor(c, code)) return false;
-    await replacePassword(tx, c, password); c.version = randomUUID(); c.mustChange = false;
+    const exemptionKey=`recovery-exemption:${c.subject}`;
+    const exemption=await readRecord<RecoveryExemption>(tx,exemptionKey,true);
+    const exempt=exemption?.purpose==='password-reset'&&exemption.expiresAt>Date.now();
+    if (!exempt && (requireVerification&&!c.totpSecret || c.totpSecret && !await verifyCredentialFactor(c, code))) return false;
+    await replacePassword(tx, c, password); c.version = randomUUID(); c.mustChange = false; delete c.temporaryPasswordExpiresAt; delete c.temporaryPasswordUsed;
+    if(exempt) {
+      await deleteRecord(tx,exemptionKey);
+      const [subject]=await tx.unsafe('select app_user_id from app.principal_by_identity($1,$2)',[c.issuer,c.subject]);
+      if(subject)await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'app-user.recovery-exemption-consumed','user',$2::uuid,NULL)",[c.tenantId,subject.app_user_id]);
+    }
     await revokeCredentialsSessions(tx, c.subject);
     await writeRecord(tx, `credential:${c.subject}`, c, c.subject);
     await deleteRecord(tx, key);

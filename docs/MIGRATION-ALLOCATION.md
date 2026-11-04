@@ -1517,3 +1517,7 @@ the latest **closed** run of the same run type (`payroll_status` is exactly draf
 main's 0631 versions of these functions. No statement added or removed; owner and grants unchanged. The idx811 row's
 SHA256 above, the `lifecycle-v9` journal pin and the `board-nine` applied-ledger pin are the new file's. Same number, idx
 and `when`.
+
+## 2026-11-04 approved Security Center reservation
+
+`2106_account_management_subject`, journal idx `1353`, when `1793330001506`, reserved by root delivery coordinator after read-only ref/live-ledger audit. Canonical prefix is unchanged. Recent source tail2105/idx1352/when1793330001505 and staging max1793330001502 precede this claim. No migration deployed. Live-ahead reconciliation remains a release prerequisite.
