@@ -17,16 +17,22 @@ it.skipIf(!requested)('profiles an empty profile-approval queue beside five hund
   await tx`insert into employment(id,tenant_id,person_id,company_id,employee_code,hired_on)select (${employments}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,(${people}||lpad(n::text,12,'0'))::uuid,${b.companyId}::uuid,'EMPTY'||lpad(n::text,6,'0'),'2020-01-01'::date from generate_series(1,${count}::integer)n`;
   await tx`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from)select ${b.tenantId}::uuid,(${employments}||lpad(n::text,12,'0'))::uuid,${b.companyId}::uuid,${b.deptA}::uuid,'full_time','2020-01-01'::date from generate_series(1,${count}::integer)n`;
  });
- for(const table of ['person','employment','assignment','profile_change_request','app_user','role_assignment'])await owner.client.unsafe('analyze '+table);
+ // Match the system fixture's populated-table statistics first. Then analyze the empty queue
+ // separately, to distinguish stale/default statistics from an intrinsically wasteful plan.
+ for(const table of ['person','employment','assignment','app_user','role_assignment'])await owner.client.unsafe('analyze '+table);
  const [sizes]=await owner.client`select(select count(*)::int from employment where tenant_id=${b.tenantId}::uuid)as employments,(select count(*)::int from profile_change_request where tenant_id=${b.tenantId}::uuid and status='pending')as pending`;
  expect(sizes).toEqual({employments:count,pending:0});
  const observations:unknown[]=[];
+ for(const statistics of ['system-fixture','analyzed-empty-queue']){
+ if(statistics==='analyzed-empty-queue')await owner.client.unsafe('analyze profile_change_request');
+ const [relation]=await owner.client`select reltuples::integer as estimated_rows from pg_class where oid='public.profile_change_request'::regclass`;
  for(const companyIds of [undefined,[b.companyId],[]]){
   const samples:number[]=[];
   for(let round=0;round<7;round++){
    const began=performance.now();expect(await pendingProfileTaskMetadata(ctx,companyIds)).toEqual([]);samples.push(performance.now()-began);
   }
-  const sorted=[...samples].sort((a,b)=>a-b);observations.push({scope:companyIds===undefined?'all':companyIds.length?'company':'empty',samplesMs:samples,medianMs:sorted[3],exactEmpty:true});
+  const sorted=[...samples].sort((a,b)=>a-b);observations.push({statistics,estimatedRows:relation.estimated_rows,scope:companyIds===undefined?'all':companyIds.length?'company':'empty',samplesMs:samples,medianMs:sorted[3],exactEmpty:true});
+ }
  }
  expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
  writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'profile-empty-task-plan.json'),JSON.stringify({kind:'EMPTY_PROFILE_TASK_QUERY_COMPONENT_ONLY',releaseEligible:false,employments:count,pending:0,observations,limitations:'Synthetic native retained fixture and actual public app reader; not500-user acceptance or a nonempty decision-authority test.'},null,2));
