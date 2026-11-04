@@ -78,7 +78,10 @@ it('keeps the canonical core Employees module kill and tenant commercial standin
 
 it('offers the same two routes for a real linked positive maintainer while native purpose access stays distinct from raw facts',async()=>{const actor=await hireEmployee(group(),{person:{fullName:'Fictional linked navigation maintainer',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});await owner.db.update(s.appUser).set({personId:actor.personId}).where(eq(s.appUser.id,ctx.userId!));const fresh={...ctx,personId:actor.personId};expect(await navigation(ctx)).toEqual([]);expect(await navigation(fresh)).toEqual(ALL);expect(await editor.workforceEditor(fresh,target.employmentId)).toMatchObject({sharedMaintain:true});expect(await withTenant(fresh,tx=>tx.select().from(s.person).where(eq(s.person.id,target.personId)))).toEqual([]);const [baseline]=await owner.db.select({code:s.employment.employeeCode}).from(s.employment).where(eq(s.employment.id,target.employmentId)),before=await state();await expect(withTenant(fresh,async tx=>{expect(await setWorkforceEmployeeCode(fresh,{employmentId:target.employmentId,expectedCode:baseline.code,employeeCode:'NAV-NATIVE-42'},tx)).toMatchObject({changed:true});throw Error('native navigation contrast rollback');})).rejects.toThrow('native navigation contrast rollback');expect(await state()).toEqual(before);});
 
-it('compares original and candidate denied navigation across 501 actual retained employees',async()=>{
+it.skipIf(process.env.GITHUB_ACTIONS!=='true'||process.env.AIHR_FOCUSED_TESTS!==JSON.stringify(['test/personnel-navigation-candidates.test.ts']))('compares original and candidate denied navigation across 501 actual retained employees',async()=>{
+ const measurements:{phase:string;elapsedMs:number;reads:number;observedMs:number[]}[]=[];
+ const report={kind:'REVERSIBLE_NATIVE_PERSONNEL_NAVIGATION_ONLY',retainedEmployees:501,measurements,positiveWitnesses:'unchanged canonical scope functions',modelCalls:0,releaseEligible:false,candidateNavigationTargetMs:1000};
+ const save=()=>{if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'personnel-navigation-candidates.json'),JSON.stringify(report,null,2));};save();
  const prefix=randomUUID().slice(0,24),employmentPrefix=randomUUID().slice(0,24);
  await owner.client`insert into person(id,tenant_id,full_name,primary_email)
   select (${prefix}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,'Fictional navigation retained '||n,
@@ -87,12 +90,12 @@ it('compares original and candidate denied navigation across 501 actual retained
   select (${employmentPrefix}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,
    (${prefix}||lpad(n::text,12,'0'))::uuid,${b.companyId}::uuid,'2020-01-01'::date from generate_series(1,500)n`;
  await permission('workforce.maintain','deny');
- const measurements:{phase:string;elapsedMs:number;reads:number}[]=[];
  for(const phase of ['original','original-warm','candidate','candidate-warm']){
   if(phase.startsWith('original'))await restore();else await install();
-  const started=performance.now();for(let n=0;n<5;n++)expect(await navigation(ctx)).toEqual([]);
-  measurements.push({phase,elapsedMs:performance.now()-started,reads:10});
+  const started=performance.now(),observedMs:number[]=[];
+  for(let n=0;n<5;n++){const began=performance.now();expect(await navigation(ctx)).toEqual([]);observedMs.push(performance.now()-began);}
+  measurements.push({phase,elapsedMs:performance.now()-started,reads:10,observedMs});save();
+  if(phase.startsWith('candidate'))expect(observedMs.every(ms=>ms<1000)).toBe(true);
  }
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'personnel-navigation-candidates.json'),
-  JSON.stringify({kind:'REVERSIBLE_NATIVE_PERSONNEL_NAVIGATION_ONLY',retainedEmployees:501,measurements,positiveWitnesses:'unchanged canonical scope functions',modelCalls:0,releaseEligible:false},null,2));
-});
+ save();
+},240000);
