@@ -19,6 +19,10 @@ on:
         description: Opt-in exact581 populated restricted-port prerequisite rehearsal before migrations; requires real Personnel DB files and whole typecheck
         default: false
         type: boolean
+      retained_personnel_million:
+        description: Exact synthetic million-Personnel retained-query fixture only; requires whole typecheck, no model; standard runner, unchanged query target
+        default: false
+        type: boolean
       profile_database:
         description: Opt-in reset/seed/template timing when the candidate implements test/profile.ts
         default: false
@@ -100,12 +104,15 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
       - name: Focused controller regression checks
-        run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs
+        run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs .github/ci/retained-personnel-request.test.mjs
       - name: Validate bounded manifest
         id: selection
         run: node .github/ci/focused-checks.mjs selection
         env:
           AIHR_FOCUSED_TESTS: ${{ inputs.selected_tests }}
+          AIHR_RETAINED_PERSONNEL_MILLION: ${{ inputs.retained_personnel_million }}
+          AIHR_RETAINED_PERSONNEL_TYPECHECK: ${{ inputs.run_typecheck }}
+          AIHR_EVAL_MODEL: ${{ inputs.model_eval }}
       - name: Resolve frozen same-repository candidate
         id: candidate
         run: node .github/ci/resolve.mjs
@@ -118,7 +125,7 @@ jobs:
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
     environment: ${{ inputs.model_eval != '' && 'assistant-eval' || '' }}
-    timeout-minutes: ${{ inputs.model_eval != '' && 45 || 20 }}
+    timeout-minutes: ${{ inputs.model_eval != '' && 45 || inputs.retained_personnel_million && 60 || 20 }}
     defaults:
       run:
         working-directory: source
@@ -126,6 +133,8 @@ jobs:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
       AIHR_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}
       AIHR_FOCUSED_SUITE_CAPACITY: 'true'
+      AIHR_RETAINED_PERSONNEL_MILLION: ${{ inputs.retained_personnel_million }}
+      AIHR_RETAINED_PERSONNEL_TYPECHECK: ${{ inputs.run_typecheck }}
       AIHR_QUALIFY_RESTRICTED_PORT: ${{ inputs.qualify_restricted_port_prerequisites }}
       AIHR_RESTRICTED_PORT_TYPECHECK: ${{ inputs.run_typecheck }}
       AIHR_EVAL_OPENROUTER_KEY: ${{ inputs.model_eval != '' && secrets.OPENROUTER_API_KEY || '' }}
