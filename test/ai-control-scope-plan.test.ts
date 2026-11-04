@@ -11,7 +11,8 @@ import * as s from '../db/schema';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('keeps the full native pause-policy audience with bounded visibility candidates',async()=>{
- await resetDb();const b=await seedBase(),foreign=await seedBase(),base=adminCtx(b);
+ await resetDb();const b=await seedBase(),foreign=await seedBase(),base:SessionContext={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
+ const foreignAdmin:SessionContext={...adminCtx(foreign),grants:[{role:'hr_admin',companyId:null}]};
  const companies=await owner.db.insert(s.company).values(Array.from({length:10},(_,i)=>({tenantId:b.tenantId,country:'MY',legalName:'Fictional role-profile company '+i}))).returning();
  const departments=await owner.db.insert(s.department).values(companies.map(c=>({tenantId:b.tenantId,companyId:c.id,name:'Fictional role-profile department'}))).returning();
  const users=Array.from({length:500},(_,i)=>({index:i,id:randomUUID(),personId:randomUUID(),employmentId:randomUUID(),companyId:companies[Math.floor(i/50)].id,departmentId:departments[Math.floor(i/50)].id,
@@ -25,7 +26,7 @@ it('keeps the full native pause-policy audience with bounded visibility candidat
  for(const table of ['company','department','person','employment','assignment','app_user','role_assignment','reporting_line'])await owner.client.unsafe('analyze '+table);
  const context=(u:typeof users[number]):SessionContext=>({...base,userId:u.id,personId:u.personId,roles:[u.role],grants:[{role:u.role,companyId:u.companyId}]});
  await setModule(b.tenantId,'assistant','active');await setModule(foreign.tenantId,'assistant','active');
- await setAiFeature(base,'hr_assistant',true);await setAiFeature(adminCtx(foreign),'hr_assistant',true);
+ await setAiFeature(base,'hr_assistant',true);await setAiFeature(foreignAdmin,'hr_assistant',true);
  const [original]=await owner.client`select pg_get_functiondef(oid)as ddl,to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app._ai_control_context(text,boolean)'::regprocedure`;
  const statement="SELECT coalesce(array_agg(c.id ORDER BY c.id),'{}') INTO company_ids FROM company c WHERE c.tenant_id=tid AND(app.is_admin_for(c.id) OR EXISTS(SELECT 1 FROM employment e WHERE e.tenant_id=tid AND e.company_id=c.id AND app.can_see_employment(e.id)));";
  expect(original.ddl).toContain(statement);
@@ -39,7 +40,7 @@ it('keeps the full native pause-policy audience with bounded visibility candidat
  });
  const actors=[...users.filter(u=>u.index%50===4).map(u=>({ctx:context(u),companyId:u.companyId})),
   ...[users[0],users[2],users[3]].map(u=>({ctx:context(u),companyId:u.companyId})),
-  {ctx:base,companyId:'all'},{ctx:adminCtx(foreign),companyId:'foreign'}];
+  {ctx:base,companyId:'all'},{ctx:foreignAdmin,companyId:'foreign'}];
  const measurements:unknown[]=[];
  const measure=async(phase:string)=>{
   const started=performance.now(),matrix:boolean[][]=[];
@@ -57,7 +58,7 @@ it('keeps the full native pause-policy audience with bounded visibility candidat
   await owner.client.unsafe(candidate);expect(await measure('candidate')).toEqual(expected);expect(await measure('candidate-warm')).toEqual(expected);
   const [metadata]=await owner.client`select to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app._ai_control_context(text,boolean)'::regprocedure`;
   expect(metadata.attributes).toEqual(original.attributes);
-  await setAiFeature(base,'hr_assistant',false);expect(await check(context(users[4]))).toBe(false);expect(await check(adminCtx(foreign))).toBe(true);await setAiFeature(base,'hr_assistant',true);
+  await setAiFeature(base,'hr_assistant',false);expect(await check(context(users[4]))).toBe(false);expect(await check(foreignAdmin)).toBe(true);await setAiFeature(base,'hr_assistant',true);
   await setAiAllowance(base,{kind:'user',subjectId:users[4].id,enabled:false,dailyRequests:null,monthlyTokens:null});
   expect(await check(context(users[4]))).toBe(false);expect(await check(context(users[54]))).toBe(true);
   await setAiAllowance(base,{kind:'user',subjectId:users[4].id,enabled:true,dailyRequests:null,monthlyTokens:null});
