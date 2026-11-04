@@ -14,8 +14,8 @@ const expectedSelection = Object.freeze({
   authorizationSha256: 'e17416d4fd5e5a61552df0d059d7e3a5e7be1e0b31ab455f228742f9ccf8442b',
 });
 const expectedLease = Object.freeze({
-  batch: 'bb14b7d6-f601-4bdc-81ba-d50cbe6c8e1b',
-  epoch: '35',
+  batch: '89ea71ad-5a80-42af-9da2-25f60b5c3dd2',
+  epoch: '36',
 });
 
 export function issueEntraRecoveryAuthorization({ grant, lease, evidence, now = Date.now() }) {
@@ -37,7 +37,7 @@ export function assertEntraRecoveryAuthorization(certificate, { grant, lease, ev
   assert(Date.parse(grant.expiresAt) <= now, 'Original installation grant must have expired');
   assert(isDeepStrictEqual(selection(grant), expectedSelection) && grant.runId === 41683594993,
     'Original Entra installation differs');
-  assert(isDeepStrictEqual(lease, expectedLease), 'Original active Entra staging lease required');
+  assert(isDeepStrictEqual(lease, expectedLease), 'Exact replacement Entra staging lease required');
   assert(evidence?.sha === expectedSelection.source && Number(evidence.runId) === grant.runId &&
     evidence.result === 'PASS' && evidence.fingerprint === grant.witnessFingerprint,
     'Authenticated original gate evidence required');

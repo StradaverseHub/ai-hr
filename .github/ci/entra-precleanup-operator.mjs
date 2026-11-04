@@ -83,6 +83,7 @@ async function recover(candidate, trusted, original, output, checkRunId) {
   frozen();
   const command = 'cd /opt/ai-hr && /opt/node22/bin/node --env-file=.env.production --import tsx ' +
     [ci + '/entra-precleanup-server.mjs', source, grant.installId, grant.build.buildRecordId, privateEvidence].map(quote).join(' ');
+  leasePhase(lease, sshRaw, 'installing');
   const channel = openNormalCleanupChannel(
     ['-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4', ...transport.sshArgs(guardCommand(lease, command))],
     { terminalTimeout: 2_400_000, frameTimeout: 1_200_000 },
