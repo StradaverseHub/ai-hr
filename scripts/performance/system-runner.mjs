@@ -98,6 +98,11 @@ try{
  for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])buildEnv[key]='postgres://nobody:nothing@127.0.0.1:1/no_database';
  await run('postgres','bash',['.github/ci/postgres.sh','reset']);dbStarted=true;
  await run('migrate','pnpm',['db:migrate']);
+ // Apply only to this workflow's job-owned database. This is a load experiment,
+ // separate from release migration allocation.
+ const homeRoleGuard=readFileSync('test/performance/home-role-reporting-guard.sql','utf8');
+ await run('home-role-guard','docker',['exec',container,'psql','-U','postgres','-p','5433',
+  '-d','ai_hr_dev','-v','ON_ERROR_STOP=1','-c',homeRoleGuard]);
  copyFileSync(join(focusedEvidence,'personnel-draft-discard-premigration-role-prerequisites.json'),join(out,'personnel-draft-discard-premigration-role-prerequisites.json'));
  await run('catalogs',process.execPath,['--import','tsx','scripts/seed-catalogs.ts']);
  await run('fixture',process.execPath,['--import','tsx','scripts/performance/system-fixture.mjs'],{...env,NODE_ENV:'development',TEST_DATABASE_URL:env.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:env.MIGRATION_DATABASE_URL},600000);
