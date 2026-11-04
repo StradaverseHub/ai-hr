@@ -78,7 +78,7 @@ it('retains admission credential locks through the native transaction commit',as
 });
 it('refreshes exact native doer/checker identities for reviewed public workflow and rechecks suspension',async()=>{
  const checkerId=await createAppUser(b.tenantId,null,'hr_admin'),checker={...adminCtx(b),userId:checkerId};const checked=await bind(checkerId);
- const [unit]=await owner.client`insert into business_unit(tenant_id,company_id,code,name,is_global) values(${b.tenantId},${b.companyId},'PROOF','Fictional proof unit',true) returning id`;
+ const [unit]=await owner.withTenant(adminCtx(b),tx=>tx.execute<{id:string}>(sql`insert into business_unit(tenant_id,company_id,code,name,is_global) values(${b.tenantId}::uuid,${b.companyId}::uuid,'PROOF','Fictional proof unit',true) returning id`));
  const id=await prepareCompanyOrganisationRun(adminCtx(b),{kind:'mapping',companyIds:[b.companyId],effectiveOn:todayInKualaLumpur(),changes:[{companyId:b.companyId,businessUnitId:unit.id,parentCompanyId:null}]});
  const {run}=await companyOrganisationRunReport(checker,id);
  await decideCompanyOrganisationRun(checker,{id,digest:run.digest,approve:true,reason:'Independent canonical account review'});
@@ -100,7 +100,7 @@ it('honours canonical password expiry, stale proof TTL and exact same-payload re
 });
 it('publishes a reviewed mapping with two canonical native accounts and refuses later permission revocation',async()=>{
  const checkerId=await createAppUser(b.tenantId,null,'hr_admin'),checker={...adminCtx(b),userId:checkerId};await bind(checkerId);
- const [unit]=await owner.client`insert into business_unit(tenant_id,company_id,code,name,is_global) values(${b.tenantId},${b.companyId},'NATIVE','Fictional native unit',true) returning id`;
+ const [unit]=await owner.withTenant(adminCtx(b),tx=>tx.execute<{id:string}>(sql`insert into business_unit(tenant_id,company_id,code,name,is_global) values(${b.tenantId}::uuid,${b.companyId}::uuid,'NATIVE','Fictional native unit',true) returning id`));
  const prepare=()=>prepareCompanyOrganisationRun(adminCtx(b),{kind:'mapping',companyIds:[b.companyId],effectiveOn:todayInKualaLumpur(),changes:[{companyId:b.companyId,businessUnitId:unit.id,parentCompanyId:null}]});
  const id=await prepare(),{run}=await companyOrganisationRunReport(checker,id);
  await decideCompanyOrganisationRun(checker,{id,digest:run.digest,approve:true,reason:'Independent native-account approval'});
@@ -113,7 +113,7 @@ it('publishes a reviewed mapping with two canonical native accounts and refuses 
 
 it('binds native proof to the exact current person without creating a forged checker context',async()=>{
  await refreshOrganisationAdmission(adminCtx(b));
- const [person]=await owner.client`insert into person(tenant_id,full_name) values(${b.tenantId},'Fictional rebound person') returning id`;
+ const [person]=await owner.client`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId},'Fictional rebound person',${'rebound-'+randomUUID()+'@admission.test'}) returning id`;
  await owner.client`update app_user set person_id=${person.id} where id=${b.adminUserId}`;
  const current={...adminCtx(b),personId:person.id};
  expect((await nativeOptions(current)).companies).toHaveLength(0);
