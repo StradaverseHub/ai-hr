@@ -3,6 +3,8 @@ import { isDeepStrictEqual } from 'node:util';
 import { installHash, installJson, validateInstallGrant } from './ci-install-grant.mjs';
 import { selection } from './normal-cleanup-session.mjs';
 
+export const recoveryReadyTimeout = 480_000;
+export const previousRecoveryReadySha256 = '1ba73f4748b3fdb5e2764a5cb2a948f5f07a39cef57195aa1005763a1b33408b';
 export const previousReadySha256 = '101cb3f2aa936bfd4820221cb397dc3ac9d376202dc760512af804d44155fcf1';
 const recoveryKind = 'ENTRA_PRE_CLEANUP_RECOVERY';
 const lifetime = 45 * 60_000;
@@ -24,6 +26,7 @@ export function issueEntraRecoveryAuthorization({ grant, lease, evidence, now = 
     selection: selection(grant),
     lease,
     previousReadySha256,
+    previousRecoveryReadySha256,
     evidenceSha256: installHash(installJson(evidence)),
     issuedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + lifetime).toISOString(),
@@ -52,6 +55,7 @@ export function assertEntraRecoveryAuthorization(certificate, { grant, lease, ev
     selection: expectedSelection,
     lease: expectedLease,
     previousReadySha256,
+    previousRecoveryReadySha256,
     evidenceSha256: installHash(installJson(evidence)),
     issuedAt: new Date(issuedAt).toISOString(),
     expiresAt: new Date(issuedAt + lifetime).toISOString(),

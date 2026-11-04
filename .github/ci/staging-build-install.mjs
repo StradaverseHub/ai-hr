@@ -18,7 +18,7 @@ import {validateInstallGrant,installJson,installHash} from './ci-install-grant.m
 import {inspectCiBuildPacket} from './build-artifact.mjs';
 import {assertBuildRuntime,assertBuildDotenvCompileKeys,assertBuildCapacityProfile} from './build-production.mjs';
 import {guardServerCli,COORDINATOR} from '../../scripts/staging/lease.mjs';
-import {assertEntraRecoveryAuthorization} from './entra-precleanup-authorization.mjs';
+import {assertEntraRecoveryAuthorization,recoveryReadyTimeout} from './entra-precleanup-authorization.mjs';
 import {assertEntraPrecleanupInventory} from './entra-precleanup-inventory.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 // Hashing or unpacking the ~850 MB build bundle on the 4 GB staging host exceeded 120 s under host load (wave 1b,
@@ -286,7 +286,7 @@ export async function cleanupCiBuildSession(sourceRef,installId,buildRecordId,re
  assert(!existsSync(join(p.directory,'cleanup-authorized.json'))&&!existsSync(join(p.directory,'normal-cleanup-consumed.json')),'Prior cleanup attempt requires explicit recovery');
  return withNormalCleanupLock(p.directory,{source:sourceRef,installId,pid:process.pid},async()=>{
   assert(!existsSync(join(p.directory,'cleanup-authorized.json'))&&!existsSync(join(p.directory,'normal-cleanup-consumed.json')),'Concurrent cleanup attempt requires explicit recovery');
-  if(authorizeGrant)assertEntraPrecleanupInventory(p.directory,recovery.certificate.previousReadySha256);
+  if(authorizeGrant)assertEntraPrecleanupInventory(p.directory,recovery.certificate.previousReadySha256,recovery.certificate.previousRecoveryReadySha256);
   const activated=JSON.parse(regular(join(p.directory,'activated.json'),1024**2));
   const official=await import(pathToFileURL(join(source,'scripts/improve/release.ts')).href),exclude=canonicalSourceExclusions((official.deploymentRsyncArgs??official.default?.deploymentRsyncArgs)(source));
   let expectedAuthority=null;
@@ -300,17 +300,17 @@ export async function cleanupCiBuildSession(sourceRef,installId,buildRecordId,re
    boot:async()=>installHash(readFileSync('/proc/sys/kernel/random/boot_id')),environment:async()=>fingerprintStagingEnvironment(source),ledger:async()=>collectMigrationLedger(source),
    health:async()=>{const response=await fetch('http://127.0.0.1:'+(process.env.PORT??'3000')+'/health',{redirect:'manual',signal:AbortSignal.timeout(3000)});await response.arrayBuffer();return response.status;}
   }});
-  const {cleanup,runtime}=await runNormalCleanupSession({grant:g,authorizeGrant,
+  const {cleanup,runtime}=await runNormalCleanupSession({grant:g,authorizeGrant,readyTimeout:authorizeGrant?recoveryReadyTimeout:undefined,
    retainAudit:async()=>{retainNormalCleanupAudit(p,activated);for(const folder of [join(p.directory,'audit/bytes'),join(p.directory,'audit'),p.directory]){const fd=openSync(folder,'r');try{fsyncSync(fd);}finally{closeSync(fd);}}},
    audit:()=>confirmRuntime(sourceRef,installId,buildRecordId,{persist:false,allowCleanup:true,authorizeGrant}),fences,
-   persist:async(name,value)=>durableCleanupRecord(join(p.directory,(authorizeGrant?'entra-recovery-':'normal-cleanup-')+name+'.json'),value),
+   persist:async(name,value)=>durableCleanupRecord(join(p.directory,(authorizeGrant?'entra-recovery-checksum-':'normal-cleanup-')+name+'.json'),value),
    consume:async ready=>durableCleanupRecord(join(p.directory,'normal-cleanup-consumed.json'),{kind:'NORMAL_CLEANUP_NONCE_CONSUMED',readySha256:installHash(installJson(ready))}),
    authorize:async request=>{
  const authority=normalCleanupAuthority(source,p,activated,request);
  durableCleanupRecord(join(p.directory,'cleanup-authorized.json'),authority);expectedAuthority=authority;
    },
    removeOwned:async()=>JSON.parse(execFileSync('python3',[join(source,'.github/ci/cleanup-install.py'),p.directory],{encoding:'utf8',timeout:120000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}})),
-   io:{ready:async ready=>{process.stdout.write(installJson(ready)+'\n');},commit:()=>readSingleCleanupCommit(process.stdin)}});
+   io:{ready:async ready=>{process.stdout.write(installJson(ready)+'\n');},commit:()=>readSingleCleanupCommit(process.stdin,authorizeGrant?{timeout:recoveryReadyTimeout}:undefined)}});
   assert(cleanup.kind==='OWNED_INSTALL_BYTES_ABSENT_AUDIT_RETAINED'&&cleanup.authorizationSha256===p.authorizationSha256&&cleanup.source===sourceRef&&cleanup.installId===installId&&cleanup.nextBuildId===g.build.nextBuildId&&cleanup.auditEvidenceRetained===true&&isDeepStrictEqual(cleanup.verifiedAbsent,['next','packet']),'Owned cleanup result differs');
   return {format:1,kind:RESULT_KIND,result:{format:1,kind:'CI_INSTALL_OWNED_CLEANUP_AND_FINAL_RUNTIME_VERIFIED',source:sourceRef,installId,buildRecordId,nextBuildId:g.build.nextBuildId,authorizationSha256:p.authorizationSha256,cleanup,runtime,ownedResourceCleanupVerified:true,releaseHandbackVerified:false}};
  });

@@ -15,11 +15,13 @@ import { createHash } from 'node:crypto';
 const retainedTrees = ['next', 'packet'];
 
 /** Check under the installer cleanup lock, before creating any recovery records. */
-export function assertEntraPrecleanupInventory(directory, previousReadySha256) {
+export function assertEntraPrecleanupInventory(directory, previousReadySha256, previousRecoveryReadySha256) {
   const root = lstatSync(directory);
   assert(root.isDirectory() && (root.mode & 0o077) === 0, 'Private installer directory required');
   const previousReady = 'normal-cleanup-ready.json';
+  const previousRecoveryReady = 'entra-recovery-ready.json';
   const previous = previousReadySha256 ? [previousReady, 'audit'] : [];
+  if (previousRecoveryReadySha256) previous.push(previousRecoveryReady);
   assert.deepEqual(
     readdirSync(directory).sort(),
     [...originalRecords, ...retainedTrees, 'normal-cleanup.lock', ...previous].sort(),
@@ -30,11 +32,13 @@ export function assertEntraPrecleanupInventory(directory, previousReadySha256) {
     assert(record.isFile() && record.uid === root.uid && (record.mode & 0o077) === 0,
       'Private regular installer record required');
   }
-  if (previousReadySha256) {
-    const path = directory + '/' + previousReady;
+  for (const [name, digest] of [[previousReady, previousReadySha256],
+    [previousRecoveryReady, previousRecoveryReadySha256]]) {
+    if (!digest) continue;
+    const path = directory + '/' + name;
     const record = lstatSync(path);
     assert(record.isFile() && record.uid === root.uid && record.size <= 32768 &&
-      createHash('sha256').update(readFileSync(path)).digest('hex') === previousReadySha256,
+      createHash('sha256').update(readFileSync(path)).digest('hex') === digest,
       'Previous unconsumed READY record differs');
     const audit = lstatSync(directory + '/audit');
     assert(audit.isDirectory() && audit.uid === root.uid, 'Owned prior audit directory required');

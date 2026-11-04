@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { issueEntraRecoveryAuthorization, assertEntraRecoveryAuthorization } from './entra-precleanup-authorization.mjs';
+import { issueEntraRecoveryAuthorization, assertEntraRecoveryAuthorization, recoveryReadyTimeout } from './entra-precleanup-authorization.mjs';
 import { driveNormalCleanup, openNormalCleanupChannel } from './normal-cleanup-operator.mjs';
 import { stagingTransport } from './staging-transport.mjs';
 import { validateFinalCleanup } from './staging-ci-promotion.mjs';
@@ -78,7 +78,7 @@ async function recover(candidate, trusted, original, output, checkRunId) {
   for (const name of ['verified', 'activated']) installed[name] = JSON.parse(ssh('cat ' + quote(install + '/' + name + '.json')));
   const checksum = () => execFileSync('rsync',
     ['--dry-run', '--checksum', '--itemize-changes', ...transport.rsyncArgs(official, candidate)],
-    { encoding: 'utf8', timeout: 150_000, maxBuffer: 16 * 1024 ** 2 });
+    { encoding: 'utf8', timeout: recoveryReadyTimeout - 30_000, maxBuffer: 16 * 1024 ** 2 });
   assert.equal(checksum(), '', 'Source differs before recovery');
   frozen();
   const command = 'cd /opt/ai-hr && /opt/node22/bin/node --env-file=.env.production --import tsx ' +
@@ -89,7 +89,7 @@ async function recover(candidate, trusted, original, output, checkRunId) {
     { terminalTimeout: 2_400_000, frameTimeout: 1_200_000 },
   );
   const arrival = { ...certificate.selection, healthStatus: 200 };
-  const result = await driveNormalCleanup({ channel, grant, arrival, checksum, frozen, save, authorizeGrant });
+  const result = await driveNormalCleanup({ channel, grant, arrival, checksum, frozen, save, authorizeGrant, readyTimeout: recoveryReadyTimeout });
   const verified = validateFinalCleanup(result, { grant, installed, expectedLedger: expectedMigrationLedger(candidate) });
   save('owned-cleanup.json', result);
   assert.equal(checksum(), '', 'Source differs after recovery');
