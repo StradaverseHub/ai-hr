@@ -6,4 +6,5 @@ export const PERFORMANCE_MIGRATION_IDENTITIES = [
  {idx:1371,version:'7',when:1793330001524,tag:'2124_ai_control_navigation_candidates',breakpoints:true,hash:'ed8666bfc29767ce266c362f07046dcd6b5b65b8434738bb9257daf5e328292c'},
  {idx:1372,version:'7',when:1793330001525,tag:'2125_approval_subject_batch',breakpoints:true,hash:'46573298e6faa5545dccf3c7ac5fda930ac48860636630dc4d3bd14e546a5461'},
  {idx:1373,version:'7',when:1793330001529,tag:'2129_personnel_native_paging',breakpoints:true,hash:'877fb32d3e85cd3c3476038b7d1787877a27f7633bdc5308d6c660e669dc1255'},
+ {idx:1384,version:'7',when:1793330001531,tag:'2131_ai_read_only_metadata_locks',breakpoints:true,hash:'409262dd7b958eb8c2633556f9dba13ad637042efcb07b632a5bcea5c8131077'},
 ] as const;

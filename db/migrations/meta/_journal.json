@@ -4740,6 +4740,13 @@
       "when": 1793330001529,
       "tag": "2129_personnel_native_paging",
       "breakpoints": true
+    },
+    {
+      "idx": 1384,
+      "version": "7",
+      "when": 1793330001531,
+      "tag": "2131_ai_read_only_metadata_locks",
+      "breakpoints": true
     }
   ]
 }

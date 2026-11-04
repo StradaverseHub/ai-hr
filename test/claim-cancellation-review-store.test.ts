@@ -39,6 +39,17 @@ async function state(){return{claims:await owner.db.select({id:s.claimRequest.id
  cancelled:await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).where(and(eq(s.domainEvent.tenantId,b.tenantId),eq(s.domainEvent.eventType,'claim-request.cancelled'))).orderBy(s.domainEvent.id)};}
 async function custody(id:string){const [row]=await owner.db.execute(sql`select r.action_kind,r.state,r.receipt_subject_kind,r.receipt_subject_id,r.receipt_event_id,r.intent_digest,r.reviewed_digest,(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies from app.assistant_own_leave_review r where r.id=${id}::uuid`);return row;}
 
+it('lists actual own metadata alongside an independent reader without changing custody or confirmation',async()=>{
+ const r=await prepare(),before=await state(),expected=await listClaimCancellationReviews(ctx);
+ expect(expected.reviews.map(row=>row.actionId)).toEqual([r.actionId]);
+ await owner.client.begin(async holder=>{
+  await holder`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+  expect(await listClaimCancellationReviews(ctx)).toEqual(expected);
+ });
+ expect(await state()).toEqual(before);expect(await custody(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});
+ expect((await confirm(r)).kind).toBe('completed');expect((await state()).cancelled).toHaveLength(1);
+});
+
 describe('ADR-0151 own claim cancellation custody',()=>{
  it('lists the own pending claim and prepares a sealed review without any effect',async()=>{
   const choices=await readClaimCancellationChoices(ctx);expect(choices).toMatchObject({kind:'choices',claims:[{claimId,employmentId:subject.employmentId,amount:'42.50',claimTypeName:'Fictional cancellable travel'}]});

@@ -1,5 +1,29 @@
 # Coordinated migration reservations
 
+## Read-only AI metadata locks — 5 November 2026 (unapplied)
+
+`codex/performance-ai-shared-native-reads-20261105` appends
+`2131_ai_read_only_metadata_locks`, idx1384 / when1793330001531 /
+SHA256 `409262dd7b958eb8c2633556f9dba13ad637042efcb07b632a5bcea5c8131077`.
+Freshly fetched main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e.
+The claim scan covered2337 heads,431 committed journals,593 migration trees and226 readable
+worktrees, through2130 / idx1383 / when1793330001530. Foreign malformed WIP and its literal
+bounds were preserved. Read-only staging inspection matched all671 ordered canonical applied
+identities through1793330001502 on the same main source; no applied bytes were changed.
+
+Reversible native runs41866642441 and41866654616 passed26 tests. Read-only policy reads and
+own-review metadata overlap independent readers. Policy writers and actual AI admission remain
+exclusive; read-only transactions cannot upgrade into effects. Company/feature decisions,
+current actor binding, metadata fields and native confirmation remain authoritative.
+
+This append changes only the two existing function bodies. Their owners, signatures and ACLs,
+all raw-table grants and policies remain unchanged. The application opts in only its default generic
+own-review metadata adapter; custom persistence and other review protocols retain their previous
+transaction mode. Installed native checks, populated upgrades, browser and both500-user scenarios
+remain required. Recheck claims before release admission. Complete BOARD roles stays excluded;
+no deployment or human provider-approval binding refresh is authorized.
+
+
 This record owns **unapplied reservations**, not the deployed database. Refresh canonical branch
 journals and the actual staging watermark before journal integration or application. Preserve every
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
