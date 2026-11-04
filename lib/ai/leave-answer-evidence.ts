@@ -30,6 +30,9 @@ const record=(v:unknown):Record<string,unknown>=>{if(!v||typeof v!=='object'||Ar
 const text=(v:unknown):string=>{if(typeof v!=='string'||v.length>500)throw Error('Invalid canonical leave evidence.');return v;};
 const nullableText=(v:unknown)=>v===null||v===undefined?null:text(v);
 const bool=(v:unknown):boolean=>{if(typeof v!=='boolean')throw Error('Invalid canonical leave evidence.');return v;};
+/** Spec v23: a breakdown names the fields it does not show (core/assistant-leave-projection.ts notShown); a row built
+ * before notShown carries withheld. Anything but an absent or empty notShown counts as partly hidden (fail closed). */
+const partlyHidden=(row:Record<string,unknown>):boolean=>row.notShown===undefined?bool(row.withheld):!(Array.isArray(row.notShown)&&row.notShown.length===0)||row.withheld===true;
 const date=(v:unknown):string=>{const s=text(v);if(!/^\d{4}-\d{2}-\d{2}$/.test(s)||!Number.isFinite(Date.parse(s+'T00:00:00Z'))||new Date(s+'T00:00:00Z').toISOString().slice(0,10)!==s)throw Error('Invalid canonical leave evidence.');return s;};
 const nullableDate=(v:unknown)=>v===null||v===undefined?null:date(v);
 const states:readonly RuleState[]=['matched','in_force','expired','not_yet','table_stopped'];
@@ -65,7 +68,7 @@ export function projectLeaveAnswerEvidence(outcome:unknown):LeaveAnswerEvidence|
    if(typeof v!=='number'||!Number.isFinite(v))throw Error('Invalid canonical leave evidence.');figures[key]=v;}
   const s=status as EntitlementStatus;
   return Object.freeze({employmentId:text(row.employmentId),company:text(row.company),leaveType:text(row.leaveType),cycleStart:date(row.cycleStart),
-   withheld:bool(row.withheld),entitlement:Object.freeze({status:s,labelKey:ENTITLEMENT_STATUS_LABEL_KEY[s],tipKey:ENTITLEMENT_STATUS_TIP_KEY[s]??null,
+   withheld:partlyHidden(row),entitlement:Object.freeze({status:s,labelKey:ENTITLEMENT_STATUS_LABEL_KEY[s],tipKey:ENTITLEMENT_STATUS_TIP_KEY[s]??null,
     templateName:nullableText(row.entitlementTemplateName)}),figures:Object.freeze(figures),
    carryForwardExpiryDate:nullableDate(row.carryForwardExpiryDate),eligibility:eligibility(row.eligibility)});
  });

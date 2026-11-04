@@ -10,7 +10,7 @@ const safe = {
   NODE_ENV: 'production', AUTH_PROVIDER: 'keycloak', AUDIT_HASH_CHAIN_ENABLED: 'true',
   DATABASE_URL: 'postgresql://app:fixture@db.customer.internal/ai_hr?sslmode=verify-full',
   MIGRATION_DATABASE_URL: 'postgresql://owner:fixture@db.customer.internal/ai_hr?sslmode=verify-full',
-  AI_CONFIG_SECRET: 'synthetic-encryption-key-for-test', AUTH_SESSION_KEY: 'a'.repeat(64),
+  AI_CONFIG_SECRET: 'synthetic-encryption-key-for-test', TERAS_PROPOSAL_SECRET: 'synthetic-proposal-signing-key-for-test-0123', AUTH_SESSION_KEY: 'a'.repeat(64),
   AUTH_PUBLIC_ORIGIN: 'https://hr.customer.internal',
   KEYCLOAK_ISSUER: 'https://id.customer.internal/identity/realms/ai-hr',
   KEYCLOAK_WEB_CLIENT_ID: 'aihr-web', KEYCLOAK_WEB_CLIENT_SECRET: 'synthetic-client-secret',

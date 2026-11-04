@@ -4,10 +4,11 @@ import { useTranslations } from 'next-intl';
 import { ChevronLeft, ShieldCheck } from 'lucide-react';
 import { PageHeader } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { TODAY_HREF } from '@/lib/ai-centre/inbox-origin';
 
 /** The ONE review-page frame for every /assistant/* review route (AI centre, PLAN.md §2).
  *
- * It owns only the frame: the way back (the Inbox, plus the page's own previous destination), the heading,
+ * It owns only the frame: the way back (Today, which replaced the Inbox, plus the page's own previous destination), the heading,
  * and the reminder that the change happens on this page. It never owns the decision: each page still
  * renders its own panel, which posts to its own native command, and every check runs again on that POST.
  * A page may be redesigned through this shell, never bypassed. */
@@ -15,11 +16,12 @@ export function ReviewShell({ title, description, back, width = 'narrow', childr
   title: string; description?: ReactNode; back?: Readonly<{ href: string; label: string }>; width?: 'narrow' | 'wide'; children: ReactNode;
 }) {
   const t = useTranslations('aiCentre.review');
+  const tc = useTranslations('aiCentre');
   const linkCls = 'inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
   return (
     <div data-review-shell className={cn('mx-auto space-y-5', width === 'wide' ? 'max-w-4xl' : 'max-w-3xl')}>
       <nav aria-label={t('navLabel')} className="flex flex-wrap items-center gap-x-4">
-        <Link href="/assistant?view=inbox" className={linkCls}><ChevronLeft aria-hidden className="size-4" />{t('back')}</Link>
+        <Link href={TODAY_HREF} className={linkCls}><ChevronLeft aria-hidden className="size-4" />{tc('backToToday')}</Link>
         {back && <Link href={back.href} className={linkCls}>{back.label}</Link>}
       </nav>
       <PageHeader title={title} description={description} />

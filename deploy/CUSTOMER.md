@@ -44,7 +44,7 @@ Review the pinned artifact digest/advisories and the generated edge configuratio
 
 Start from deploy/.env.customer.example and replace every placeholder. Merge the generated identity app configuration from /etc/aihr-keycloak into the private deployment configuration once; do not append duplicate keys. Use a shell-compatible .env.production because deploy.sh sources it. Quote values safely; never enable shell tracing. No .env, .env.local or .env.production.local may remain in the release.
 
-The two database URLs must use distinct roles on the same HR endpoint/database. Remote connections require sslmode=verify-full and the trusted CA. Preserve the stable AI_CONFIG_SECRET and independent 64-hex AUTH_SESSION_KEY. Set AUTH_PROVIDER=keycloak and AUDIT_HASH_CHAIN_ENABLED=true. Do not set demo identities.
+The two database URLs must use distinct roles on the same HR endpoint/database. Remote connections require sslmode=verify-full and the trusted CA. Preserve the stable AI_CONFIG_SECRET, the stable TERAS_PROPOSAL_SECRET (at least 32 characters; it signs Noveri cards and conversations) and independent 64-hex AUTH_SESSION_KEY. Set AUTH_PROVIDER=keycloak and AUDIT_HASH_CHAIN_ENABLED=true. Do not set demo identities.
 
 Create /etc/aihr/runtime.env with only reviewed runtime values: NODE_ENV, PORT, app DATABASE_URL, applicable CA settings, stable keys, audit and Keycloak configuration. Exclude MIGRATION_DATABASE_URL, all test/backup/platform credentials, NODE_OPTIONS and demo identities. The systemd unit masks deployment environment files and /etc/aihr from the running web process. Test effective privileges on Linux; configuration intent alone is insufficient.
 

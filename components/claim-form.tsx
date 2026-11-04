@@ -1,8 +1,10 @@
 'use client';
 
-import { useActionState, useMemo, useState } from 'react';
+import { useActionState, useMemo, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, ErrorBanner, Field, inputCls } from './ui';
+import { WhyLink } from './why/why-panel';
+import { formatMoney } from '@/lib/money';
 
 type SubmitState = { error: string | null };
 type Action = (prevState: SubmitState, fd: FormData) => SubmitState | Promise<SubmitState>;
@@ -74,7 +76,6 @@ export type ClaimFormType = {
   balance: ClaimBalance;
 };
 
-const rm = (n: number) => `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
 
 /**
  * Claim submission form (extracted to a client component for the Type→Item dependency + the conditional
@@ -87,17 +88,28 @@ export function ClaimForm({
   types,
   submitAction,
   todayUtc,
+  currency = null,
   draft,
   employmentId,
+  why,
+  whyPanel,
 }: {
   types: ClaimFormType[];
   submitAction: Action;
   todayUtc: string;
+  /** The employing company's currency (company.currency), which labels every amount; null ⇒ unlabelled, never "RM". */
+  currency?: string | null;
   /** Present ⇒ the form is EDITING this draft: Save updates it in place, Submit files that same row. */
   draft?: ClaimDraftPrefill;
   employmentId?:string;
+  /** AI v2 W5 — each claim type's "Why?" link (pre-translated by the RSC) and the panel the page drew for the one the
+   *  person opened, shown under the balance panel. Absent ⇒ the form is exactly what it was. */
+  why?: { text: string; links: Record<string, { href: string; label: string; expanded: boolean }>; openId: string | null };
+  whyPanel?: ReactNode;
 }) {
   const t = useTranslations('claims');
+  const rm = (n: number) => formatMoney(n, currency);
+  const amountLabel = currency ? t('amountLabelInCurrency', { currency }) : t('amountLabelNoCurrency');
   const [typeId, setTypeId] = useState(draft?.claimTypeId ?? types[0]?.id ?? '');
   const [claimItemId, setClaimItemId] = useState(
     draft?.claimItemId ?? types.find((ct) => ct.id === draft?.claimTypeId)?.items[0]?.id ?? types[0]?.items[0]?.id ?? '',
@@ -189,7 +201,13 @@ export function ClaimForm({
       {/* Balance panel (ccbd0508) — grade-resolved entitlement transparency before submit. */}
       {bal && (
         <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs sm:col-span-2">
-          <div className="mb-1.5 font-semibold text-foreground">{t('balanceTitle')}</div>
+          <div className="mb-1.5 flex items-center justify-between gap-3 font-semibold text-foreground">
+            <span>{t('balanceTitle')}</span>
+            {selected && why?.links[selected.id] && (
+              <WhyLink href={why.links[selected.id].href} text={why.text} label={why.links[selected.id].label}
+                expanded={why.links[selected.id].expanded} controls={`claim-why-${selected.id}`} className="text-xs" />
+            )}
+          </div>
           {hasLimit || itemHasLimit ? (
             <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
               {bal.annualLimit != null && (
@@ -255,6 +273,7 @@ export function ClaimForm({
           )}
         </div>
       )}
+      {selected && why?.openId === selected.id && whyPanel && <div className="sm:col-span-2">{whyPanel}</div>}
 
       {/* Claim Item (dependent, mandatory only when the selected type has items) — side-by-side, 2-column. */}
       {items.length > 0 ? (
@@ -294,12 +313,12 @@ export function ClaimForm({
           <input type="hidden" name="amount" value="0" />
         </Field>
       ) : kind === 'fixed_allowance' ? (
-        <Field label={t('amountLabel')}>
+        <Field label={amountLabel}>
           <input type="text" readOnly value={rm(fixedAmount)} className={`${inputCls} bg-muted`} />
           <input type="hidden" name="amount" value="0" />
         </Field>
       ) : (
-        <Field label={t('amountLabel')}>
+        <Field label={amountLabel}>
           <input
             name="amount"
             type="number"

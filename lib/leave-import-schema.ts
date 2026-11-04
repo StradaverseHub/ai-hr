@@ -56,7 +56,13 @@ export type LeaveImportResult = {
   failed: { rowNum: number; employeeRef: string; message: string }[];
   skipped: number;
   totalRows: number;
+  /** A company-scoped import only: rows whose employee belongs to another company, none of them imported. */
+  otherCompany?: number;
 };
+
+/** A company-scoped import (one prepared in the AI Centre names one company) never writes a row whose employee belongs
+ *  to another company, even one the caller also administers. The row's error, in the owner's own words. */
+export const LEAVE_IMPORT_OTHER_COMPANY = 'Belongs to another company, not imported';
 
 /** How the imported rows reached the commit — recorded in the leave.import.completed event payload so
  *  a file-driven migration is distinguishable in the audit trail from a hand-pasted batch. Payload-only

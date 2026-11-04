@@ -26,7 +26,9 @@ import {AGENT_ACTIONS,type AgentActionId,type AgentActionOf} from './agent-actio
 
 export {type AgentTier} from './agent-action-tiers';
 import type {AgentTier} from './agent-action-tiers';
-export const AGENT_HANDOFF_REASONS=['access_and_authentication','ai_governance','platform_operator','privacy_erasure','payroll_reversal','employment_exit_or_discipline'] as const;
+/** private_case (ADR-0173): a person's own private case and its handlers' acts. The AI never reads, prepares or acts on
+ * a case; a routed sensitive turn only links the form. */
+export const AGENT_HANDOFF_REASONS=['access_and_authentication','ai_governance','platform_operator','privacy_erasure','payroll_reversal','employment_exit_or_discipline','private_case'] as const;
 export const AGENT_INTERNAL_REASONS=['assistant_surface','session_and_presentation','other_client_same_service'] as const;
 export type AgentHandoffReason=(typeof AGENT_HANDOFF_REASONS)[number];
 export type AgentInternalReason=(typeof AGENT_INTERNAL_REASONS)[number];
@@ -136,6 +138,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/personnel/new/actions.ts":{"checkEmployeeCodeAction":"backlog:automatic","createDraftAction":"backlog:approve","createEmployeeAction":"backlog:approve","discardDraftAction":"backlog:approve","saveDraftAction":"backlog:approve"},
  "app/admin/personnel/profile-changes/actions.ts":{"decideProfileChangeAction":"backlog:approve","rerouteProfileChangeAction":"backlog:approve"},
  "app/admin/privacy/actions.ts":{"erasePersonPiiAction":"handoff:privacy_erasure"},
+ "app/admin/privacy/case-handlers/actions.ts":{"designateCaseHandlerAction":"handoff:access_and_authentication","revokeCaseHandlerAction":"handoff:access_and_authentication"},
  "app/admin/rewards/access/actions.ts":{"decideRewardAccessRequestAction":"handoff:access_and_authentication","previewRewardAccessBatchAction":"backlog:automatic","previewRewardAccessCopyAction":"backlog:automatic","saveRewardAccessBatchAction":"handoff:access_and_authentication"},
  "app/admin/rewards/actions.ts":{"cancelRewardAction":"registered:rewards.cancel_review"},
  "app/admin/rewards/shared/actions.ts":{"changeSharedRewardExclusionAction":"backlog:confirm","loadSharedRewardTakenAction":"backlog:automatic","saveSharedRewardPolicyAction":"backlog:confirm"},
@@ -220,7 +223,27 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/assistant/import-privacy-actions.ts":{"eraseImportPreparationHistoryAction":"internal:assistant_surface"},
  "app/assistant/job-feedback-actions.ts":{"eraseGovernedJobFeedbackAction":"internal:assistant_surface","saveGovernedJobFeedbackAction":"internal:assistant_surface"},
  "app/analytics/ai-actions.ts":{"readProtectedAnalysisAction":"backlog:automatic"},
- "app/assistant/launcher-actions.ts":{"askFromLauncherAction":"internal:assistant_surface","askFromWorkspaceAction":"internal:assistant_surface","loadEarlierChatAction":"internal:assistant_surface","loadMoreChatsAction":"internal:assistant_surface"},
+ "app/assistant/leave-apply-proposal-actions.ts":{"confirmLeaveApplyProposalAction":"internal:assistant_surface","editLeaveApplyProposalAction":"internal:assistant_surface"},
+ "app/assistant/attendance-request-proposal-actions.ts":{"confirmAttendanceRequestProposalAction":"internal:assistant_surface","editAttendanceRequestProposalAction":"internal:assistant_surface"},
+ "app/assistant/toil-request-proposal-actions.ts":{"confirmToilRequestProposalAction":"internal:assistant_surface","editToilRequestProposalAction":"internal:assistant_surface"},
+ "app/assistant/assigned-decision-proposal-actions.ts":{"confirmAssignedDecisionProposalAction":"internal:assistant_surface","editAssignedDecisionProposalAction":"internal:assistant_surface"},
+ // AI v2 Phase 1 slice 3: the own letter request card prepared in chat (core/assistant-actions/letter-request-proposal-confirm.ts).
+ "app/assistant/letter-request-proposal-actions.ts":{"confirmLetterRequestProposalAction":"internal:assistant_surface","editLetterRequestProposalAction":"internal:assistant_surface"},
+ "app/assistant/own-change-proposal-actions.ts":{"confirmOwnChangeProposalAction":"internal:assistant_surface","editOwnChangeProposalAction":"internal:assistant_surface"},
+ "app/assistant/chat-import-actions.ts":{"confirmChatImportAction":"internal:assistant_surface"},
+ "app/assistant/loop-clock-out-actions.ts":{"confirmMissedClockOutAction":"internal:assistant_surface"},
+ // AI v2 Phase 2 hardening (loops): the person's own one-tap TP3 answer on the Before payroll checklist card; the AI never answers it.
+ "app/assistant/payroll-readiness-actions.ts":{"answerTp3PreviousEmployerAction":"internal:assistant_surface"},
+ "app/assistant/capacity-actions.ts":{"setCapacityBaselineAction":"handoff:ai_governance"},
+ // AI v2 Phase 2 P2-5: the Living Handbook (AI Centre › Policies). People write, confirm and approve policies; the AI never does.
+ "app/assistant/policy-actions.ts":{"applyScheduledPolicyValueAction":"handoff:ai_governance","approvePolicyAction":"handoff:ai_governance","createPolicyAction":"handoff:ai_governance","decidePolicyValueAction":"handoff:ai_governance","draftFromVersionAction":"handoff:ai_governance","markTextOnlyAction":"handoff:ai_governance","prepareFromDriftAction":"handoff:ai_governance","readPolicyValuesAction":"handoff:ai_governance","returnPolicyAction":"handoff:ai_governance","saveDraftAction":"handoff:ai_governance","submitPolicyAction":"handoff:ai_governance"},
+ // AI v2 Phase 2 P2-6: the learning loops. A card's Confirm/Edit/Discard and an answer's mark record a learning signal for the
+ // person's own turn (assistant surface); every other command is an administrator's AI quality decision (AI governance).
+ "app/assistant/learning-actions.ts":{"approveCandidateAction":"handoff:ai_governance","decideProposalAction":"handoff:ai_governance","dismissSignalAction":"handoff:ai_governance","editCandidateAction":"handoff:ai_governance","exportCandidateAction":"handoff:ai_governance","markAnswerAction":"internal:assistant_surface","promoteSignalAction":"handoff:ai_governance","recordCardSignalAction":"internal:assistant_surface","reopenCandidateAction":"handoff:ai_governance","reopenSignalAction":"handoff:ai_governance","revertProposalAction":"handoff:ai_governance","setGapStatusAction":"handoff:ai_governance","withdrawCandidateAction":"handoff:ai_governance"},
+ // AI v2 Phase 2 P2-1: the employee's own Undo of a clock-out the missed clock-outs loop set (core/loops/undo.ts).
+ "app/assistant/loop-undo-actions.ts":{"undoOwnLoopAction":"internal:assistant_surface"},
+ "app/assistant/launcher-actions.ts":{"askFromLauncherAction":"internal:assistant_surface","askFromWorkspaceAction":"internal:assistant_surface","loadEarlierChatAction":"internal:assistant_surface","loadMoreChatsAction":"internal:assistant_surface","openStoredChatAction":"internal:assistant_surface","chatImportOfferedAction":"internal:assistant_surface"},
+ "app/assistant/chat-actions.ts":{"chatRetentionAction":"internal:assistant_surface","deleteChatAction":"internal:assistant_surface","eraseAllChatsAction":"internal:assistant_surface","listChatsAction":"internal:assistant_surface","setChatRetentionAction":"handoff:ai_governance"},
  "app/assistant/module-plan-actions.ts":{"eraseModuleProposalsAction":"internal:assistant_surface","evaluateHumanPlannerAction":"internal:assistant_surface","proposeModulePlanAction":"internal:assistant_surface"},
  "app/assistant/native-outcome-actions.ts":{"eraseNativeOutcomesAction":"internal:assistant_surface","recordNativeOutcomeAction":"internal:assistant_surface","reopenNativeOutcomeAction":"internal:assistant_surface"},
  "app/assistant/specialist-review-actions.ts":{"createSpecialistCandidateAction":"internal:assistant_surface","evaluateSpecialistCandidateAction":"internal:assistant_surface","promoteSpecialistCandidateAction":"internal:assistant_surface","rollbackSpecialistCandidateAction":"internal:assistant_surface","runSpecialistJobAction":"internal:assistant_surface"},
@@ -233,10 +256,16 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/attendance/my-records/[date]/actions.ts":{"requestOwnAttendanceDayAction":"registered:attendance.correction.request"},
  "app/attendance/recompute/actions.ts":{"applyRecomputeAction":"backlog:confirm","previewRecomputeAction":"backlog:confirm"},
  "app/auth-actions.ts":{"logoutAction":"handoff:access_and_authentication","requestPasswordResetAction":"handoff:access_and_authentication","signOutUnlinkedAction":"handoff:access_and_authentication"},
+ "app/cases/actions.ts":{"addPrivateCaseNoteAction":"handoff:private_case","setPrivateCaseStatusAction":"handoff:private_case"},
  "app/claims/actions.ts":{"cancelClaimAction":"registered:claims.cancel","deleteDraftAction":"backlog:confirm","submitClaimAction":"backlog:confirm","submitDraftsAction":"registered:claims.submit"},
  "app/control-tower/actions/actions.ts":{"approveAgentActionAction":"handoff:ai_governance"},
  "app/control-tower/agents/actions.ts":{"applyBulkAssistantAction":"handoff:ai_governance","clearGroupAllowanceAction":"handoff:ai_governance","clearUserAllowanceAction":"handoff:ai_governance","setAiAllowanceAction":"handoff:ai_governance","setAiFeatureAction":"handoff:ai_governance","setAiFeatureCapAction":"handoff:ai_governance","setAgentActionPauseAction":"handoff:ai_governance","setAiSpendBudgetAction":"handoff:ai_governance","setAssistantPermissionAction":"handoff:ai_governance","setGroupAllowanceAction":"handoff:ai_governance"},
  "app/control-tower/agents/launcher-actions.ts":{"setAssistantLauncherAction":"handoff:ai_governance"},
+ "app/control-tower/loops/actions.ts":{"setLoopPauseAction":"handoff:ai_governance","setLoopSwitchAction":"handoff:ai_governance"},
+ "app/control-tower/loops/loop_payroll_audit/actions.ts":{"acknowledgeFindingAction":"handoff:ai_governance","captureAuditNowAction":"handoff:ai_governance","disposeAuditFindingAction":"handoff:ai_governance","grantAuditReaderAction":"handoff:access_and_authentication","recordCorrectionCauseAction":"handoff:ai_governance","revokeAuditReaderAction":"handoff:access_and_authentication","setAuditSettingsAction":"handoff:ai_governance"},
+ "app/control-tower/loops/payroll-cycle/actions.ts":{"acknowledgeCheckAction":"handoff:ai_governance","decideRuleProposalAction":"handoff:ai_governance","decideThresholdProposalAction":"handoff:ai_governance","disposeSwingGroupAction":"handoff:ai_governance","recordSwingDispositionAction":"handoff:ai_governance","resolveAcknowledgedBlockAction":"handoff:ai_governance","revokeAcknowledgementAction":"handoff:ai_governance","setPayrollLoopSettingAction":"handoff:ai_governance"},
+ // AI v2 Phase 2 P2-1: a loop's level per company (group administrators) and HR's undo of an automatic loop action.
+ "app/control-tower/loops/autonomy-actions.ts":{"changeLoopLimitsAction":"handoff:ai_governance","reviewLoopSampleAction":"handoff:ai_governance","setLoopLevelAction":"handoff:ai_governance","undoLoopActionFromDetailAction":"handoff:ai_governance"},
  "app/control-tower/orchestrator-actions.ts":{"refreshOrchestrationAction":"handoff:ai_governance"},
  "app/dashboard-layout-actions.ts":{"resetDashboardLayoutAction":"internal:session_and_presentation","saveDashboardLayoutAction":"internal:session_and_presentation"},
  "app/delegations/actions.ts":{"createSelfDelegationAction":"backlog:confirm","hrCreateDelegationAction":"backlog:confirm","hrEditDelegationAction":"backlog:confirm","hrRevokeDelegationAction":"backlog:confirm","loadDelegationContextAction":"backlog:automatic","loadEligibleDelegatesAction":"backlog:automatic","revokeSelfDelegationAction":"backlog:confirm"},
@@ -249,9 +278,10 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/leave/credit/actions.ts":{"cancelLeaveCreditRequestAction":"backlog:confirm","leaveCreditClaimReviewAction":"backlog:confirm","leaveCreditDayFactsAction":"backlog:confirm","submitLeaveCreditRequestAction":"backlog:confirm"},
  "app/letters/approval/actions.ts":{"bulkApprove":"backlog:approve","decideApproval":"backlog:approve","delegateApproval":"backlog:confirm"},
  "app/letters/fields/actions.ts":{"saveField":"backlog:confirm"},
- "app/letters/generate/actions.ts":{"createGeneration":"backlog:confirm","updateGeneration":"backlog:confirm"},
+ "app/letters/generate/actions.ts":{"createGeneration":"backlog:confirm","declineLetterRequestAction":"backlog:approve","updateGeneration":"backlog:confirm"},
  "app/letters/register/actions.ts":{"updateRegister":"backlog:confirm"},
  "app/letters/settings/actions.ts":{"savePolicySettings":"backlog:confirm","uploadLetterAsset":"backlog:confirm"},
+ "app/letters/settings/request-actions.ts":{"saveLetterRequestOptionsAction":"backlog:confirm"},
  "app/letters/settings/automation/actions.ts":{"saveAutomationSettings":"backlog:confirm"},
  "app/letters/templates/actions.ts":{"previewTemplate":"backlog:automatic","saveTemplate":"backlog:confirm","updateTemplate":"backlog:confirm"},
  "app/lifecycle/actions.ts":{"acknowledgeAction":"registered:lifecycle.acknowledgement.submit","advanceAssetRequestAction":"backlog:confirm","bulkAssetStatusAction":"backlog:confirm","cancelAssetRequestAction":"backlog:confirm","cancelCaseAction":"backlog:confirm","cancelRequisitionAction":"backlog:confirm","commentAction":"backlog:confirm","createAssetRequestAction":"backlog:confirm","createOffboardingAction":"backlog:confirm","createOnboardingAction":"backlog:confirm","createRequisitionAction":"backlog:confirm","decideAssetRequestAction":"backlog:approve","decideRequisitionAction":"backlog:approve","handlerAction":"backlog:confirm","importCommitAction":"backlog:confirm","importPreviewAction":"backlog:confirm","loadCatalogueAction":"backlog:automatic","outcomeAction":"backlog:confirm","provisionAction":"backlog:confirm","registerAssetAction":"backlog:confirm","reopenCaseAction":"backlog:confirm","returnAssetsAction":"backlog:confirm","tickStepAction":"backlog:confirm","undoStepAction":"backlog:confirm","updateAssetAction":"backlog:confirm","updateCaseAction":"backlog:confirm","updateRequisitionAction":"backlog:confirm"},
@@ -260,9 +290,10 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/login/api/[operation]/route.ts#route":{"POST":"handoff:access_and_authentication"},
  "app/login/as/route.ts#route":{"POST":"handoff:access_and_authentication"},
  "app/me/actions.ts":{"localizeLeaveError":"backlog:confirm","myCancelAttendanceRequest":"backlog:confirm","myCancelLeave":"registered:leave.cancel","myCheckIn":"backlog:confirm","myCheckOut":"backlog:confirm","myCreateGoal":"backlog:confirm","myDeclinePeerFeedback":"backlog:confirm","myEditGoal":"backlog:confirm","myEditLeave":"registered:leave.edit","myPreviewLeaveDeduction":"backlog:automatic","myRequestCorrection":"registered:attendance.correction.request","myRequestLeave":"registered:leave.apply","myRequestLeaveCancellation":"backlog:confirm","myRequestOvertime":"registered:attendance.overtime.request","myRequestProfileChange":"backlog:confirm","mySubmitPeerFeedback":"backlog:confirm","mySubmitResignation":"handoff:employment_exit_or_discipline","myTp1FormAction":"backlog:confirm","myUpdateContact":"backlog:confirm","myUpdateGoalProgress":"backlog:confirm","myWithdrawOvertimePlan":"backlog:confirm","myWithdrawResignation":"handoff:employment_exit_or_discipline"},
+ "app/me/cases/actions.ts":{"openPrivateCaseAction":"handoff:private_case"},
  "app/me/home/actions.ts":{"saveHomePreferencesAction":"backlog:confirm"},
  "app/me/home/privacy-actions.ts":{"saveHomePersonPrivacyAction":"backlog:confirm"},
- "app/me/letters/actions.ts":{"confirmMyLetter":"backlog:confirm","openMyLetter":"backlog:confirm"},
+ "app/me/letters/actions.ts":{"confirmMyLetter":"backlog:confirm","openMyLetter":"backlog:confirm","requestLetterAction":"backlog:confirm"},
  "app/me/notifications/actions.ts":{"saveMyLetterEmailPreferences":"backlog:confirm","saveMyWorkflowEmailPreferences":"registered:notifications.email_preferences.save"},
  "app/me/own-photo-action.ts":{"saveOwnPhotoAction":"backlog:confirm"},
  "app/me/profile-edit-actions.ts":{"readMyProfileMovementAction":"backlog:automatic","saveMyProfileEditAction":"backlog:confirm"},
@@ -334,6 +365,26 @@ export const AGENT_PRINCIPAL_SPECIALISTS=Object.freeze({
  document_reminders:{tier:'automatic',setting:'notifications.passport_expiry_reminders_enabled',service:'core/automatic-followups.ts#runAutomaticFollowups',effect:'Remind the employee and authorised HR about a recorded passport expiry within 30 calendar days. No file is read or changed.'},
  lifecycle_chasers:{tier:'automatic',setting:'notifications.lifecycle_step_chasers_enabled',service:'core/automatic-followups.ts#runAutomaticFollowups',effect:'Remind current lifecycle staff about actionable incomplete steps after three working days without a workflow transition. No task is completed.'},
 } as const satisfies Record<'readiness_reminders'|'claims_triage'|'approval_chasers'|'review_chasers'|'clock_reminders'|'document_reminders'|'lifecycle_chasers',{tier:'automatic';setting:string;service:string;effect:string}>);
+
+/** AI v2 Phase 2 P2-1 — what each AI Centre loop does at each level it may reach, run as the agent principal for its
+ * sponsor. Levels above Prepare exist only for the loops whose cap allows them (core/loops/autonomy.ts, enforced in code and
+ * in migration 0963); test/teras-loop-autonomy-registry.test.ts keeps this list, the agent registry and the cap in step.
+ * Pay, employment status, access, discipline and statutory filing loops never go above Prepare. */
+const WATCH='Records what it finds for the company; shows nobody a card and changes no record';
+export const AGENT_LOOP_LEVELS=Object.freeze({
+ loop_probation_ending:{0:WATCH,1:'Prepares a confirmation review card for HR; HR records the decision'},
+ loop_payroll_inputs:{0:WATCH,1:'Prepares a Today card for payroll administrators listing what blocks the payroll run'},
+ loop_missing_employee_data:{0:WATCH,1:'Prepares a request card for the employee to fill in their own missing details',
+  2:'Sends the employee the request itself, within the company\'s nightly limit; changes no record; HR can withdraw it within the undo window',
+  3:'As Level 2; HR reviews a weekly sample of at least 10% and at least 5 requests instead of every one'},
+ loop_missed_clock_outs:{0:WATCH,1:'Prepares a correction card for the employee, who confirms or changes the time',
+  2:'Sets the clock-out to the roster end through the attendance owner when the chosen condition holds, within the nightly limit; tells the employee; never creates overtime; undone by the employee or HR within the window',
+  3:'As Level 2; HR reviews a weekly sample of at least 10% and at least 5 fixes instead of every one'},
+ loop_document_expiry:{0:WATCH,1:'Prepares a Today card for HR and a reminder card for the employee to renew the passport'},
+ // AI v2 P2-2a and P2-2b: pay and statutory filing, so Prepare at most in every company.
+ loop_salary_payroll:{0:WATCH,1:'Prepares each payroll run\'s checks for payroll HR (exceptions, net swing, rule versions, bank file against net pay); a person runs, approves and closes payroll'},
+ loop_payroll_audit:{0:WATCH,1:'Captures each run\'s evidence and prepares control findings for payroll HR; a person files with EPF, PERKESO and LHDN and records each disposition'},
+} as const satisfies Record<'loop_probation_ending'|'loop_payroll_inputs'|'loop_missing_employee_data'|'loop_missed_clock_outs'|'loop_document_expiry'|'loop_salary_payroll'|'loop_payroll_audit',Readonly<Partial<Record<0|1|2|3,string>>>>);
 
 /** Counts by class, for a Control Tower coverage view and for measuring how the backlog moves. */
 export function agentCapabilityCoverage(){

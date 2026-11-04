@@ -89,6 +89,22 @@ export async function erasePersonPiiTx(tx:Tx,ctx:SessionContext,p:ErasePersonPii
     // removes learning metadata only, and never touches canonical/statutory records.
     const [outcomes]=await tx.execute<{cleared:number}>(sql`select app.native_outcome_targets_redact(${p.subjectEmploymentId}::uuid) as cleared`);
     const transcript=await redactAssistantHistoryForEmploymentTx(tx,ctx,p.subjectEmploymentId);
+    // AI Centre stored chats (migration 0952) join the same admitted erasure: every chat of the person, with its turns
+    // and task memory, is deleted under the intent recorded above; the function reads no turn.
+    const [chats]=await tx.execute<{cleared:number}>(sql`select app.teras_chats_redact(${p.subjectEmploymentId}::uuid) as cleared`);
+    if(!chats||!Number.isSafeInteger(chats.cleared)||chats.cleared<0)throw new Error('Chat erasure unavailable.');
+    // W11 private cases (migration 0959, ADR-0173) join the same admitted erasure: the person's closed cases are deleted
+    // with their notes and audit; open ones stay under the retention exception, marked, and go when a handler closes
+    // them. The function reads no text, and the report names no private case either way, so an erasure never tells the
+    // administrator whether the person wrote one.
+    const [cases]=await tx.execute<{touched:number}>(sql`select app.private_cases_redact(${p.subjectEmploymentId}::uuid) as touched`);
+    if(!cases||!Number.isSafeInteger(cases.touched)||cases.touched<0)throw new Error('Private case erasure unavailable.');
+    // Employee letter requests (migration 2003) join the same admitted erasure: the person's own purpose, HR's decline
+    // reason and HR's message to them are free text about the person and are cleared. The request's facts (letter type,
+    // status, dates, the issued letter, who handled it) are the HR record and stay, as a request confirmed in chat
+    // survives its chat (TERAS_CHAT_SURVIVING_RECORDS on the Phase 2 letters branch). The function reads no text.
+    const [letters]=await tx.execute<{cleared:number}>(sql`select app.letter_requests_redact(${p.subjectEmploymentId}::uuid) as cleared`);
+    if(!letters||!Number.isSafeInteger(letters.cleared)||letters.cleared<0)throw new Error('Letter request erasure unavailable.');
     const [conversation]=await tx.execute<{cleared:number}>(sql`select app.assistant_conversation_metadata_redact(${p.subjectEmploymentId}::uuid) as cleared`);
     if(!conversation||!Number.isSafeInteger(conversation.cleared)||conversation.cleared<0)throw new Error('Conversation metadata erasure unavailable.');
     if(!outcomes||!Number.isSafeInteger(outcomes.cleared)||outcomes.cleared<0)throw new Error('Assistant outcome erasure unavailable.');
@@ -99,7 +115,8 @@ export async function erasePersonPiiTx(tx:Tx,ctx:SessionContext,p:ErasePersonPii
     if (reviews.cleared > 0) erased.push('assistantPreparedReviews');
     if(outcomes.cleared>0)erased.push('assistantOutcomeLearning');
     if(conversation.cleared>0)erased.push('assistantConversationLearning');
-    if(transcript>0)erased.push('assistantChatContent');
+    if(transcript>0||chats.cleared>0)erased.push('assistantChatContent');
+    if(letters.cleared>0)erased.push('letterRequestText');
     const withheld: { field: string; reason: string }[] = [];
     for (const f of PII_FIELDS) {
       if (!inScope(f, p.scope)) continue;

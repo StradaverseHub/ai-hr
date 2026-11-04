@@ -27,7 +27,7 @@ import { WorkspaceConversation } from '@/components/assistant/workspace-conversa
 import { ExchangeReply } from '@/components/assistant/exchange-reply';
 import Link from 'next/link';
 import { isGroupAdmin } from '@/lib/authz';
-import { ErrorBanner, PageHeader } from '@/components/ui';
+import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { viewerIdentity } from '@/lib/viewer';
 import { readEmployeeHomeIdentity } from '@/core/employee-home';
 import { homeDisplayClock } from '@/lib/employee-home';
@@ -40,8 +40,14 @@ import { isCentreView } from '@/lib/ai-centre/centre-nav';
 import { AI_ARCHITECTURE_LABEL, AI_PRODUCT_NAME, aiCentreName } from '@/lib/ai-centre/brand';
 import { AiCentreTabs } from '@/components/ai-centre/centre-tabs';
 import { AiCentreDelegatedJobs } from '@/components/ai-centre/delegated-jobs';
+import { AiCentreInsights } from '@/components/ai-centre/insights';
+import { scopedSession } from '@/lib/scope';
 import { HowItWorks } from '@/components/ai-centre/how-it-works';
-import { AiCentreInbox, aiCentreInboxCount } from './centre/inbox';
+import { AiCentreLiveStatus } from '@/components/ai-centre/live-status';
+import { permanentRedirect } from 'next/navigation';
+import { listOwnChats, readChatRetention } from '@/core/teras-chats';
+import { AskChatHeader, AskChatsColumn, AskChatsFooter, AskChatsProvider, type AskChatSummary } from '@/components/ai-centre/ask-chats';
+import { todayInboxRedirect } from '@/lib/ai-centre/today-redirect';
 
 /**
  * ADR-0082 slice 4 — THE ASSISTANT'S FIRST SCREEN, and the first time any of it is reachable.
@@ -68,34 +74,78 @@ import { AiCentreInbox, aiCentreInboxCount } from './centre/inbox';
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; recommend?: string; e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string }>;
+  searchParams: Promise<{ view?: string; recommend?: string; e?: string; chat?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
   const sp = await searchParams;
-  // AI centre (docs/design/ai-centre/PLAN.md): Inbox, Delegated jobs and How it works are views of this
-  // route, behind the same layout session check. They read native owners as the caller (Inbox) or nothing
-  // at all, so they do not depend on the Assistant grant; the conversation below keeps its own checks.
+  // AI centre (docs/design/ai-centre/PLAN.md): Delegated jobs and How it works are views of this route, behind
+  // the same layout session check. They read nothing that depends on the Assistant grant; the conversation
+  // below keeps its own checks. (The Inbox view read native owners as the caller; Today now does.)
   const admin = isAdmin(s);
+  // AI v2 Phase 1: the Inbox tab is retired; Today at `/` replaces it. A saved or old Inbox link moves there
+  // for good (308), carrying only an approver's recommendation request when it is a well-formed id.
+  if (sp.view === 'inbox') permanentRedirect(todayInboxRedirect(sp.recommend));
   if (isCentreView(sp.view)) {
     const tc = await getTranslations('aiCentre.how');
+    const insightsScope = sp.view === 'insights' ? await scopedSession().then(scoped => scoped.scopeIds).catch(() => undefined) : undefined;
     return (
       <div data-ai-centre={sp.view} className="mx-auto max-w-6xl space-y-6">
-        <AiCentreTabs active={sp.view} isAdmin={admin} inboxCount={sp.view === 'inbox' ? undefined : await aiCentreInboxCount(s)} />
-        {sp.view === 'inbox' && <AiCentreInbox session={s} recommend={typeof sp.recommend === 'string' ? sp.recommend : undefined} />}
+        <AiCentreTabs active={sp.view} isAdmin={admin} />
         {sp.view === 'jobs' && <AiCentreDelegatedJobs />}
-        {sp.view === 'how' && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '/control-tower/how-it-works' : undefined} /></>}
+        {/* AI v2 Phase 2: Insights, for every role. P2-3's "My payroll readiness" for everyone; P2-4's HR capacity ledger
+            section only for HR and group administrators, guarded inside the view. Approvals follow the viewer's company
+            scope, as Today's do. */}
+        {sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} capacityQuery={sp as Readonly<Record<string, string | undefined>>} qualityQuery={sp as Readonly<Record<string, string | undefined>>} />}
+        {sp.view === 'how' && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '#ai-centre-live-status' : undefined} />{admin && <AiCentreLiveStatus session={s} />}</>}
       </div>
     );
   }
-  const centreTabs = <AiCentreTabs active="ask" isAdmin={admin} inboxCount={await aiCentreInboxCount(s)} />;
+  const a = await getTranslations('aiAsk');
+  // AI v2 W4 (issue 14): Ask is chat-only. What sat beside the chat moved, nothing deleted: the own-data controls to
+  // Your data and privacy (?view=privacy, ADR-0169 rights), the tools and shortcuts to More tools (?view=tools).
+  // Their actions still return to /assistant with their closed status codes, so those addresses open the view
+  // that shows the outcome.
+  const privacyOutcome = Boolean(sp.historyPrivacy || sp.importHistory || sp.ownClear || (sp.nativeOutcome && !sp.governed));
+  const toolsRequested = sp.view === 'tools' || sp.job !== undefined || Boolean(sp.governed || sp.proposal || sp.planning);
+  // Your data and privacy works without the Assistant grant: own-data erasure survives access removal.
+  const keepDays = await readChatRetention(s).then(value => value.keepDays).catch(() => null);
+  const privacyControls = (
+    <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-3">
+      <h2 id="assistant-privacy-heading" className="text-base font-semibold">{a('privacy.title')}</h2>
+      <p className="text-sm text-muted-foreground">{t('home.privacyHelp')}</p>
+      <OwnClearStatus status={sp.ownClear}/>
+      <p className="text-sm">{keepDays === null ? a('keptUnknown') : a('keptFor', { days: keepDays })}</p>
+      <p className="text-sm text-muted-foreground">{t('workspace.chat.privacy')}</p>
+      <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
+      <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
+      <ul className="grid gap-x-6 sm:grid-cols-2">
+        <li><OwnClearForm kind="feedback" action={eraseAgentFeedbackAction} label={t('workspace.feedbackErase')}/></li>
+        <li><OwnClearForm kind="ratings" action={eraseGovernedJobFeedbackAction} label={t('workspace.governed.eraseSignals')}/></li>
+        <li><OwnClearForm kind="proposals" action={eraseModuleProposalsAction} label={t('workspace.planning.erase')}/></li>
+        <li><OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/></li>
+      </ul>
+    </section>
+  );
+  if (sp.view === 'privacy' || (sp.view === undefined && privacyOutcome)) {
+    return (
+      <div data-ai-centre="privacy" className="mx-auto max-w-6xl space-y-6">
+        <AiCentreTabs active={null} isAdmin={admin} />
+        <div className="mx-auto max-w-3xl space-y-5">
+          <PageHeader title={a('privacy.title')} description={a('privacy.description')} back={{ href: '/assistant', label: a('backToAsk') }} />
+          <Card className="p-5">{privacyControls}</Card>
+        </div>
+      </div>
+    );
+  }
+  const centreTabs = <AiCentreTabs active="ask" isAdmin={admin} />;
   const errorMessage=sp.error==='clarification_unavailable'?t('workspace.conversation.unavailable'):
     sp.error&&/^[a-z_]{1,40}$/.test(sp.error)&&t.has(`err_${sp.error}`)?t(`err_${sp.error}`):undefined;
   const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:false,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
   const access = workspace.access;
 
   // The denied-access fallback retains own work/calendar. The active chat never preloads those
-  // unrelated records; its secondary navigation links to the dashboard instead.
+  // unrelated records; More tools links to the dashboard instead.
   const clock = homeDisplayClock(new Date(), 'Asia/Kuala_Lumpur');
   const name = !access.allowed?await viewerIdentity(s).then(viewer => viewer.name?.trim() || null).catch(() => null):null;
   const greeting = clock.hour < 12 ? (name ? t('home.morning', { name }) : t('home.morningNoName'))
@@ -117,7 +167,6 @@ export default async function AssistantPage({
         {centreTabs}
         <div className="mx-auto max-w-3xl space-y-4 pt-2">
           <PageHeader title={greeting} description={t('description')} />
-          <OwnClearStatus status={sp.ownClear}/>
           <section aria-labelledby="assistant-access-heading" className="rounded-xl border border-border bg-card p-5 shadow-sm">
             <h2 id="assistant-access-heading" className="text-base font-semibold">{t('home.accessTitle')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{t(`denied_${access.reason}`)}</p>
@@ -126,70 +175,32 @@ export default async function AssistantPage({
           {homeTabs}
           <PersonnelReviewNavigation ctx={s}/>
         </div>
-        <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-2 border-t border-border pt-4">
-          <h2 id="assistant-privacy-heading" className="text-sm font-medium">{t('home.privacy')}</h2>
-          <p className="text-xs text-muted-foreground">{t('home.privacyHelp')}</p>
-          <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
-          <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
-          <ul className="grid gap-x-6 sm:grid-cols-2">
-            <li><OwnClearForm kind="feedback" action={eraseAgentFeedbackAction} label={t('workspace.feedbackErase')}/></li>
-            <li><OwnClearForm kind="ratings" action={eraseGovernedJobFeedbackAction} label={t('workspace.governed.eraseSignals')}/></li>
-            <li><OwnClearForm kind="proposals" action={eraseModuleProposalsAction} label={t('workspace.planning.erase')}/></li>
-            <li><OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/></li>
-          </ul>
-        </section>
+        <div className="border-t border-border pt-4">{privacyControls}</div>
       </div>
     );
   }
 
-  const analysisScope=isAdmin(s)?await allowedCompanies(s).then(rows=>getScopeIds(rows.map(row=>row.id))).catch(()=>[]):[];
-  const newChatHref='/assistant?chatReset='+randomUUID();
-  const conversationScope=await assistantBrowserConversationScope(s);
-  const scopeReset=assistantConversationScopeDigest(s,conversationScope);
-  const savedChats=await listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null);
-  const selectedChat=sp.e?await loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null):null;
-  const initialTurns=selectedChat?.turns.map(exchange=>({id:exchange.id,question:exchange.question,
-    clarificationRequired:exchange.grounded?.conversation?.plan.mode==='clarify'&&exchange.grounded?.conversation?.clarificationAllowed!==false,
-    answer:<ExchangeReply exchange={exchange} ctx={s}/>}));
-  const selectedJob=sp.job===undefined||sp.governed!==undefined?null:await loadCanonicalModuleJob(s,{module:sp.job});
-  // Shortcuts are offered only where the target's own authorization rules admit this session.
-  const actionEntries=await allowedModuleActionEntries(s,workspace.jobModules);
-  const today = todayInKualaLumpur();
-  const tasks = workspace.taskIds.map(id => ({
-    id, label: t(`workspace.${id}_label`), prompt: t(`workspace.${id}_prompt`, { date: today }),
-  }));
-
-  return (
-    <div data-tour="intelligence-assistant" className="mx-auto max-w-7xl space-y-5">
-      {centreTabs}
-      <div className="grid items-start gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
-        <section className="min-w-0 space-y-3 lg:order-2">
-          <PageHeader title={aiCentreName(t('title'))} />
-          <OwnClearStatus status={sp.ownClear}/>
-          <ErrorBanner message={errorMessage??(sp.e&&!selectedChat?t('workspace.conversation.unavailable'):undefined)} />
-          <WorkspaceConversation key={scopeReset+':'+(sp.e??'')+':'+(sp.chatReset??'')} fullHeight resetKey={(sp.chatReset??'')+':'+scopeReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
-            initialTurns={initialTurns} historyReadOnly={Boolean(sp.e&&!selectedChat?.resume)} initialResume={selectedChat?.resume??undefined} historyTailId={sp.e} olderCursor={selectedChat?.olderCursor??undefined}/>
-
-        </section>
-        <aside aria-label={t('workspace.chat.tools')} className="min-w-0 space-y-1 border-t border-border lg:order-1 lg:border-r lg:border-t-0 lg:pr-5">
-          <SavedChatList key={scopeReset} initialChats={(savedChats?.chats??[]).map(({threadId,exchangeId,title})=>({threadId,exchangeId,title}))} nextCursor={savedChats?.nextCursor??null} scopeDigest={scopeReset} activeThreadId={selectedChat?.threadId} newChatHref={newChatHref}/>
+  if (toolsRequested) {
+    // More tools: the shortcuts and ways to work that used to sit under Ask's conversation. Each keeps its owner's
+    // checks; a job, governed job, proposal or planning outcome address opens here.
+    const analysisScope=isAdmin(s)?await allowedCompanies(s).then(rows=>getScopeIds(rows.map(row=>row.id))).catch(()=>[]):[];
+    const selectedJob=sp.job===undefined||sp.governed!==undefined?null:await loadCanonicalModuleJob(s,{module:sp.job});
+    // Shortcuts are offered only where the target's own authorization rules admit this session.
+    const actionEntries=await allowedModuleActionEntries(s,workspace.jobModules);
+    return (
+      <div data-tour="intelligence-assistant" data-ai-centre="tools" className="mx-auto max-w-6xl space-y-6">
+        {centreTabs}
+        <PageHeader title={a('tools.title')} description={a('tools.description')} back={{ href: '/assistant', label: a('backToAsk') }} />
+        <ErrorBanner message={errorMessage} />
+        <section aria-labelledby="ai-ask-shortcuts" className="space-y-3">
+          <h2 id="ai-ask-shortcuts" className="text-base font-semibold">{a('tools.shortcuts')}</h2>
+          <ul className="flex flex-wrap gap-2">
+            <li><Link href="/" className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('home.tabs')}</Link></li>
+            <li><Link href="/assistant?view=privacy" className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{a('privacyLink')}</Link></li>
+          </ul>
           <PersonnelReviewNavigation ctx={s}/>
-          <Link href="/" className="flex min-h-11 items-center border-t border-border py-3 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('home.tabs')}</Link>
-          <details open={Boolean(sp.historyPrivacy||sp.importHistory||sp.nativeOutcome||sp.ownClear)} className="border-t border-border">
-            <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('home.privacy')}</summary>
-            <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-3 pb-3">
-              <h2 id="assistant-privacy-heading" className="sr-only">{t('home.privacy')}</h2>
-              <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
-              <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/>
-              <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
-            </section>
-          </details>
-        </aside>
-      </div>
-
-      <details open={Boolean(sp.job||sp.governed||sp.proposal||sp.planning)} className="border-t border-border pt-2">
-        <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.chat.tools')}</summary>
-        <div className="space-y-6 pt-3">
+        </section>
+        <div className="space-y-6">
           {analysisScope.length>0&&<ProtectedAnalysis scopeIds={analysisScope}/>}
           <ModuleJobChooser modules={workspace.jobModules} selected={sp.job} actions={actionEntries}/>
           {selectedJob&&<CanonicalModuleJob view={selectedJob} ctx={s}/>}
@@ -199,7 +210,63 @@ export default async function AssistantPage({
           <SpecialistJobComposer modules={workspace.jobModules}/>
           <ModuleQuestionPlanner permit={workspace.planningPermit} availability={workspace.planningAvailability} view={workspace.proposal} status={sp.planning??(sp.proposal&&!workspace.proposal?'unavailable':undefined)}/>
         </div>
-      </details>
+      </div>
+    );
+  }
+
+  const newChatHref='/assistant?chatReset='+randomUUID();
+  const conversationScope=await assistantBrowserConversationScope(s);
+  const scopeReset=assistantConversationScopeDigest(s,conversationScope);
+  const savedChats=await listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null);
+  const selectedChat=sp.e?await loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null):null;
+  // AI v2 W4: the Chats column lists the person's stored AI Centre chats (core/teras-chats.ts, re-authorised there).
+  const storedChats=await listOwnChats(s,{},conversationScope).catch(()=>null);
+  const chatSummaries:AskChatSummary[]=(storedChats?.chats??[]).map(chat=>({chatId:chat.chatId,title:chat.title,lastMessageAt:chat.lastMessageAt.toISOString(),turns:chat.turns,withheldTurns:chat.withheldTurns}));
+  // AI Centre issue 18: the floating panel's "Open in AI Centre" opens its stored chat here (?chat=<id>) and, while the
+  // Noveri conversation switch admits this caller, the next question continues that same chat.
+  const storedChat=sp.chat&&!sp.e?await import('./launcher-actions').then(owner=>owner.openStoredChatAction({chatId:sp.chat})).then(reply=>reply.ok?reply:null).catch(()=>null):null;
+  const initialTurns=selectedChat?selectedChat.turns.map(exchange=>({id:exchange.id,question:exchange.question,
+    clarificationRequired:exchange.grounded?.conversation?.plan.mode==='clarify'&&exchange.grounded?.conversation?.clarificationAllowed!==false,
+    answer:<ExchangeReply exchange={exchange} ctx={s}/>})):storedChat?.turns;
+  const storedResume=storedChat?.conversationToken?{exchangeId:'teras-chat-'+storedChat.chatId,conversationToken:storedChat.conversationToken}:undefined;
+  // AI v2 slice 3 (issue 16b): the paperclip attaches a file to import, for a caller whose chat runs through the harness
+  // and who may import here (core/chat-import/kinds.ts). It replaces the older file preparation, which stays for the
+  // closed grammar. Any failure shows no paperclip.
+  const chatImport=await import('./launcher-actions').then(owner=>owner.chatImportOfferedAction()).catch(()=>false);
+  const today = todayInKualaLumpur();
+  const tasks = workspace.taskIds.map(id => ({
+    id, label: t(`workspace.${id}_label`), prompt: t(`workspace.${id}_prompt`, { date: today }),
+  }));
+  const legacyChats=(savedChats?.chats??[]).map(({threadId,exchangeId,title})=>({threadId,exchangeId,title}));
+  // Saved closed-grammar conversations stay reachable under the stored chats (they are the history while the
+  // tenant's Noveri conversation switch is off).
+  const legacy=legacyChats.length>0||savedChats?.nextCursor?<details open={chatSummaries.length===0||Boolean(sp.e)} className="border-t border-border pt-1">
+    <summary className="flex min-h-11 cursor-pointer items-center px-2 text-xs font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{a('earlierSaved')}</summary>
+    <SavedChatList key={scopeReset} embedded initialChats={legacyChats} nextCursor={savedChats?.nextCursor??null} scopeDigest={scopeReset} activeThreadId={selectedChat?.threadId} newChatHref={newChatHref}/>
+  </details>:null;
+  const activeTitle=selectedChat?legacyChats.find(chat=>chat.threadId===selectedChat.threadId)?.title??null:null;
+
+  return (
+    <div data-tour="intelligence-assistant" data-ai-centre="ask" className="mx-auto flex h-full min-h-[32rem] max-w-7xl flex-col gap-4">
+      {centreTabs}
+      <h1 className="sr-only">{aiCentreName((await getTranslations('aiCentre'))('genericName'))}</h1>
+      <ErrorBanner message={errorMessage??((sp.e&&!selectedChat)||(sp.chat&&!sp.e&&!storedChat)?t('workspace.conversation.unavailable'):undefined)} />
+      <AskChatsProvider initialChats={chatSummaries} nextCursor={storedChats?.nextCursor??null} activeChatId={storedChat?.chatId??null} activeTitle={activeTitle}
+        today={today} keepDays={keepDays} newChatHref={newChatHref} privacyHref="/assistant?view=privacy" toolsHref="/assistant?view=tools" listUnavailable={storedChats===null} legacy={legacy}>
+        <div className="grid min-h-0 flex-1 items-stretch gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
+          <aside aria-label={a('chats')} className="flex min-h-0 min-w-0 flex-col max-lg:hidden lg:border-r lg:border-border lg:pr-5">
+            <AskChatsColumn/>
+          </aside>
+          <div data-ask-conversation className="flex min-h-0 min-w-0 flex-col">
+            <AskChatHeader/>
+            <WorkspaceConversation key={scopeReset+':'+(sp.e??'')+':'+(sp.chat&&!sp.e?'chat-'+sp.chat:'')+':'+(sp.chatReset??'')} fullHeight fill acceptCommandBar resetKey={(sp.chatReset??'')+':'+scopeReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} chatImport={chatImport} tasks={tasks}
+              initialTurns={initialTurns} acceptHandoff={!sp.e&&!sp.chat} historyReadOnly={Boolean((sp.e&&!selectedChat?.resume)||(storedChat&&!storedResume))} initialResume={selectedChat?.resume??storedResume} historyTailId={sp.e} olderCursor={selectedChat?.olderCursor??undefined}/>
+            {/* Phones: the column is a drawer, so its footer also sits under the composer and Your data and privacy
+                stays within two clicks of every AI Centre page. */}
+            <AskChatsFooter className="shrink-0 pt-1 lg:hidden"/>
+          </div>
+        </div>
+      </AskChatsProvider>
     </div>
   );
 }

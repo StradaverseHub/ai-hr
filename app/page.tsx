@@ -1,7 +1,7 @@
 import {EmployeePersonalHome} from '@/components/employee-home/personal-home';
 import {HomeAccessError,readEmployeeHomeIdentity} from '@/core/employee-home';
 import {notFound} from 'next/navigation';
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
@@ -58,6 +58,8 @@ import { PerformanceHomeSlot } from '@/components/performance-home/performance-h
 import { currentUiTheme } from '@/lib/ui-theme-server';
 import { MonoPageHeader, Note } from '@/components/monolith';
 import { MONOLITH_SECTION_KEYS, monolithDashboardBlocks } from '@/app/dashboard-monolith';
+import { TodayPage } from '@/components/today/today-page';
+import RouteLoading from '@/components/route-loading';
 
 const rm = (n: unknown) =>
   n == null
@@ -150,11 +152,50 @@ function orderTree(rows: BreakdownRow[]) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ moduleUnavailable?: string | string[];employmentId?:string|string[];workspace?:string|string[] }>;
+  searchParams?: Promise<{ moduleUnavailable?: string | string[];employmentId?:string|string[];workspace?:string|string[];needs?:string|string[];recommend?:string|string[];why?:string|string[] }>;
+}) {
+  // AI v2 Phase 1, W3 — Today is the home for every role (components/today/today-page.tsx). Its sections stream
+  // on their own; the dashboard this page drew before is unchanged and streams below them, under "More".
+  const homeQuery = await searchParams;
+  const scoped = await scopedSession();
+  // An ambiguous employment choice is refused before anything renders, exactly as before.
+  if (!isAdmin(scoped.s) && Array.isArray(homeQuery?.employmentId)) notFound();
+  // r292's "module unavailable" explanation is about the redirect that brought the person here, so it leads the
+  // page, above Today, once; the dashboard below is handed the query without it.
+  const rawUnavailable = homeQuery?.moduleUnavailable;
+  const unavailableCode = Array.isArray(rawUnavailable) ? rawUnavailable[0] : rawUnavailable;
+  const unavailableModule = MODULE_CATALOG.find((m) => m.code === unavailableCode && !m.isCore) ?? null;
+  const tModule = await getTranslations('moduleUnavailable');
+  return (
+    <TodayPage
+      session={scoped.s}
+      scopeIds={scoped.scopeIds}
+      employmentId={typeof homeQuery?.employmentId === 'string' ? homeQuery.employmentId : undefined}
+      // Needs you, as the retired AI Centre Inbox offered it: every decision, or one leave recommendation opened.
+      needs={{ all: homeQuery?.needs === 'all', recommend: typeof homeQuery?.recommend === 'string' ? homeQuery.recommend : undefined }}
+      // AI v2 W5: the At a glance "Why?" panel the person opened in place.
+      why={typeof homeQuery?.why === 'string' ? homeQuery.why : undefined}
+      notice={unavailableModule && (
+        <Card role="status" className="border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/40">
+          <h2 className="text-sm font-semibold">{tModule('title')}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{tModule('body', { module: unavailableModule.name })}</p>
+        </Card>
+      )}
+      more={<Suspense fallback={<RouteLoading />}><DashboardMore homeQuery={homeQuery && { ...homeQuery, moduleUnavailable: undefined }} scoped={scoped} /></Suspense>}
+    />
+  );
+}
+
+/** The dashboard as it was before Today, for the viewer's role and theme: the same reads and the same drawing. */
+async function DashboardMore({
+  homeQuery,
+  scoped,
+}: {
+  homeQuery: { moduleUnavailable?: string | string[]; employmentId?: string | string[]; workspace?: string | string[] } | undefined;
+  scoped: Awaited<ReturnType<typeof scopedSession>>;
 }) {
   const t = await getTranslations('dashboard');
   const tModule = await getTranslations('moduleUnavailable');
-  const homeQuery=await searchParams;
   const rawUnavailable = homeQuery?.moduleUnavailable;
   const unavailableCode = Array.isArray(rawUnavailable) ? rawUnavailable[0] : rawUnavailable;
   const unavailableModule = MODULE_CATALOG.find((m) => m.code === unavailableCode && !m.isCore) ?? null;
@@ -163,7 +204,7 @@ export default async function DashboardPage({
   // stored assignment.status.
   const tEmployeeStatus = await getTranslations('people.employeeStatus');
   const locale = await getLocale(); // R37: render leave-type names in the viewer's language
-  const { s, scopeIds, allowedCount } = await scopedSession();
+  const { s, scopeIds, allowedCount } = scoped;
   const admin = isAdmin(s);
   const performanceBlock = <PerformanceHomeSlot session={s} scopeIds={scopeIds} />;
   const personalLanding=()=><>
@@ -628,17 +669,14 @@ export default async function DashboardPage({
   // the customizer below is the viewer's own saved layout. Three reads of its own, here only: the inbox the
   // bell already shows (core/approvals-inbox.ts), the assistant gate (Home offers the box only to someone it
   // can answer), and today's decisions — approvers only, the same gate and read as the bell's History tab.
+  // W3: under Today, Home's greeting, ask box and "Needs you" are Today's own (the same queue, read once there),
+  // so here the inbox is not read again and only the widgets below them are drawn (`inToday`).
   if ((await currentUiTheme()) === 'atelier') {
     const klToday = todayInKualaLumpur(now);
     const showHistory = admin || managerRole;
     const [viewer, tasks, assistant, historyRows] = await Promise.all([
       viewerIdentity(s),
-      listPendingTasks(s, scopeIds, {
-        attendance: isModuleEnabledOrFalse(s, 'attendance'),
-        claims: isModuleEnabledOrFalse(s, 'claims'),
-        performance: isModuleEnabledOrFalse(s, 'performance'),
-        rewards: isModuleEnabledOrFalse(s, 'rewards'),
-      }),
+      Promise.resolve([] as Awaited<ReturnType<typeof listPendingTasks>>),
       mayUseAssistant(s),
       // Malaysia keeps UTC+8 all year (no DST), so the local midnight is a fixed offset.
       showHistory ? listApprovalHistory(s, { from: new Date(`${klToday}T00:00:00+08:00`).toISOString(), limit: 8 }) : Promise.resolve([]),
@@ -660,6 +698,7 @@ export default async function DashboardPage({
         locale={locale}
         nowMs={nowMs}
         tasks={tasks}
+        inToday
         history={shapeApprovalHistoryItems(historyRows)}
         showHistory={showHistory}
         canAsk={assistant.allowed}

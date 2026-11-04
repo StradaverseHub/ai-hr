@@ -2,10 +2,13 @@ import type React from 'react';
 import { Card } from '@/components/ui';
 
 /** Shared document presentation; authorization and recorded figures stay with each reader. */
-export function PayslipRow({ label, value, muted, quantity }: { label: string; value: React.ReactNode; muted?: boolean; quantity?:React.ReactNode }) {
+export function PayslipRow({ label, value, muted, quantity, after }: { label: string; value: React.ReactNode; muted?: boolean; quantity?:React.ReactNode;
+  /** AI v2 W5 — beside the label, outside it: the line's "Why?" link on the employee's own payslip screen. */
+  after?: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-border/60 py-1.5 text-sm last:border-0">
       <span className={`min-w-0 break-words ${muted ? 'text-muted-foreground' : ''}`}>{label}</span>
+      {after}
       {quantity != null && <span className="ms-auto text-right text-xs tabular-nums">{quantity}</span>}
       <span className={`shrink-0 text-right tabular-nums ${muted ? 'text-muted-foreground' : 'font-medium'}`}>{value}</span>
     </div>

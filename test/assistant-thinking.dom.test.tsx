@@ -5,7 +5,6 @@ import {act,cleanup,fireEvent,render,screen,within} from '@testing-library/react
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {enWithAiCentre} from './helpers/ai-centre-messages';
-import {AI_PRODUCT_NAME} from '../lib/ai-centre/brand';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';
 import ta from '../messages/ta.json';
@@ -27,7 +26,7 @@ function show(surface:Surface){
   ?<WorkspaceConversation tasks={[]} fileImport={false}/>
   :surface==='Dashboard'?<AtelierAskBox label="Your question" placeholder="Ask about your work" submitLabel="Ask" suggestions={[]}/>
   :<AssistantLauncher position="bottom-right" hiddenAreas={[]}/>}</NextIntlClientProvider>);
- if(surface==='Floating messenger')fireEvent.click(screen.getByRole('button',{name:enWithAiCentre.aiCentre.launcher.open.replace('{name}',AI_PRODUCT_NAME!)}));
+ if(surface==='Floating messenger')fireEvent.click(screen.getByRole('button',{name:enWithAiCentre.aiCentre.launcher.open.replace('{name}',enWithAiCentre.aiCentre.genericName)}));
  const box=screen.getByRole('textbox') as HTMLTextAreaElement;
  fireEvent.change(box,{target:{value:'What is my leave balance?'}});
  fireEvent.click(screen.getByRole('button',{name:surface==='Floating messenger'?en.assistant.launcher.send:surface==='Dashboard'?'Ask':en.assistant.ask}));
@@ -40,13 +39,19 @@ function deferred(){
 }
 beforeEach(()=>{state.workspace.mockReset();state.launcher.mockReset();});afterEach(cleanup);
 describe('honest visible thinking state',()=>{
- it.each(Object.entries({en,ms,zh,ta,th,vi:viMessages}))('%s retains a small accessible plain waiting label without decoration',(_locale,messages)=>{
+ it.each(Object.entries({en,ms,zh,ta,th,vi:viMessages}))('%s retains a small accessible waiting label with moving dots that announce nothing',(_locale,messages)=>{
   const label=messages.assistant.workspace.chat.thinking;
   render(<ThinkingIndicator label={label}/>);
   const status=screen.getByRole('status');expect(status).toHaveTextContent(label);expect(status).not.toHaveClass('sr-only');
   expect(status).toHaveAttribute('aria-live','polite');expect(status).toHaveAttribute('aria-atomic','true');
   expect(messages.assistant.launcher.working).toBe(label);
-  expect(status).toHaveClass('text-xs','font-normal');expect(status.querySelector('[aria-hidden]')).toBeNull();expect(status.className).not.toMatch(/bg-|rounded|border|shadow/);
+  expect(status).toHaveClass('text-xs','font-normal');expect(status.className).not.toMatch(/bg-|rounded|border|shadow/);
+  // Owner, 3 November 2026: the wait visibly moves. The dots are decoration only: hidden, empty, so the status text
+  // (announced once) is exactly the label; they animate only when motion is allowed and otherwise stay still.
+  const dots=status.querySelector('[data-thinking-dots]')!;expect(dots).toHaveAttribute('aria-hidden');expect(dots.textContent).toBe('');
+  expect(status.textContent).toBe(label);
+  const pulses=[...dots.children];expect(pulses).toHaveLength(3);
+  for(const pulse of pulses){expect(pulse.className).toContain('motion-safe:animate-[thinking-dot');expect(pulse.className).not.toMatch(/(^|\s)animate-/);}
 
  });
  for(const surface of surfaces){

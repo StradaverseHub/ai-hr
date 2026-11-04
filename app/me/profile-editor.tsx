@@ -16,6 +16,7 @@ import {dependentFieldApplies} from '@/lib/dependent-vocabulary';
 import {customHolderFieldApplies} from '@/lib/custom-holder';
 import {formatDmy} from '@/lib/date-display';
 import type {EssWorkspace,EssRecord} from '@/core/profile-edit';
+import type {ProfileEditSeed} from '@/core/own-profile-edit-seed';
 import type {EssReadRecord,readOwnProfileFacts} from '@/core/profile-view';
 import type {ProfileProposalLine} from '@/lib/profile-proposal-display';
 import {saveMyProfileEditAction,readMyProfileMovementAction} from './profile-edit-actions';
@@ -23,9 +24,14 @@ const rowIdentity=(row:EssRecord|NewRecord)=>row.id??('clientId' in row?row.clie
 const keys:PersonnelTabKey[]=['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others'];
 type History={id:string;status:string;createdAt:string;decisionReason:string|null;lines:ProfileProposalLine[]};
 type NewRecord={kind:EssRegisterChange['kind'];id:null;clientId:string;values:Record<string,EssScalar>;baselines:Record<string,string>;primary:false};
-export function ProfileEditor({workspace,facts,extraPanels,history,hiddenTabs=[],defaultTab='profile'}:{workspace:EssWorkspace;facts:Awaited<ReturnType<typeof readOwnProfileFacts>>;extraPanels:Partial<Record<PersonnelTabKey,ReactNode>>;history:History[];hiddenTabs?:readonly string[];defaultTab?:PersonnelTabKey}){
+/** AI v2 slice 3 follow-up: a change prepared in chat opens the form editing, filled from the server-validated seed
+ * (core/own-profile-edit-seed.ts). Seeds only: every control stays live and Save goes through the owner as usual. */
+const seededChanges=(seed:ProfileEditSeed|undefined):Record<string,EssScalar>=>!seed?{}:{...seed.fields,...Object.fromEntries(seed.registers.flatMap(row=>Object.entries(row.values).map(([fieldId,value])=>[`${row.kind}:${row.clientId}:${fieldId}`,value])))};
+const seededRows=(seed:ProfileEditSeed|undefined):NewRecord[]=>(seed?.registers??[]).filter(row=>row.id===null).map(row=>({kind:row.kind,id:null,clientId:row.clientId,values:{},baselines:{},primary:false}));
+export function ProfileEditor({workspace,facts,extraPanels,history,hiddenTabs=[],defaultTab='profile',seed}:{workspace:EssWorkspace;facts:Awaited<ReturnType<typeof readOwnProfileFacts>>;extraPanels:Partial<Record<PersonnelTabKey,ReactNode>>;history:History[];hiddenTabs?:readonly string[];defaultTab?:PersonnelTabKey;seed?:ProfileEditSeed}){
  const t=useTranslations('essProfile'),labels=useTranslations(),router=useRouter();
- const [editing,setEditing]=useState(false),[busy,setBusy]=useState(false),[changes,setChanges]=useState<Record<string,EssScalar>>({}),[newRows,setNewRows]=useState<NewRecord[]>([]),[error,setError]=useState<string|null>(null),[notice,setNotice]=useState<string|null>(null);
+ const [editing,setEditing]=useState(Boolean(seed)),[busy,setBusy]=useState(false),[changes,setChanges]=useState<Record<string,EssScalar>>(()=>seededChanges(seed)),[newRows,setNewRows]=useState<NewRecord[]>(()=>seededRows(seed)),[error,setError]=useState<string|null>(null),[notice,setNotice]=useState<string|null>(null);
+ const [withheld,setWithheld]=useState<readonly string[]>(seed?.withheld??[]);
  const [comparisons,setComparisons]=useState<Record<string,EssReadRecord[]>>({}),[historyBusy,setHistoryBusy]=useState<string|null>(null);
  const [outcome,setOutcome]=useState<{saved:string[];waiting:string[]}|null>(null);
  const [supportingFiles,setSupportingFiles]=useState<File[]>([]);
@@ -45,7 +51,7 @@ export function ProfileEditor({workspace,facts,extraPanels,history,hiddenTabs=[]
   window.addEventListener('beforeunload',before);document.addEventListener('click',leave,true);document.addEventListener('submit',submit,true);
   return()=>{window.removeEventListener('beforeunload',before);document.removeEventListener('click',leave,true);document.removeEventListener('submit',submit,true);};
  },[editing,dirty,t]);
- function cancel(){if(pending.current)return;setChanges({});setNewRows([]);setSupportingFiles([]);setEditing(false);setError(null);requestAnimationFrame(()=>requestButton.current?.focus());}
+ function cancel(){if(pending.current)return;setChanges({});setNewRows([]);setSupportingFiles([]);setEditing(false);setError(null);setWithheld([]);requestAnimationFrame(()=>requestButton.current?.focus());}
  function update(key:string,value:EssScalar,original:EssScalar|undefined){setChanges(previous=>{const next={...previous};if((value??null)===(original??null))delete next[key];else next[key]=value;return next;});}
  async function save(){
   if(pending.current)return;
@@ -65,7 +71,7 @@ export function ProfileEditor({workspace,facts,extraPanels,history,hiddenTabs=[]
    const attachments=fieldIds.length&&supportingFiles.length?await Promise.all(supportingFiles.map(async file=>({fileName:file.name,mimeType:file.type,fieldIds,contentBase64:await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]??'');reader.onerror=()=>reject(reader.error);reader.readAsDataURL(file);})}))):[];
    const result=await saveMyProfileEditAction({employmentId:workspace.employmentId,proposal,...(attachments.length?{attachments}:{})});
    if(!result.ok){setError(t(`error.${result.code}`)+(result.fieldIds.length?' '+result.fieldIds.map(fieldLabel).join(', '):'')+('reference' in result&&result.reference?' '+t('reference',{reference:result.reference}):''));return;}
-   setChanges({});setNewRows([]);setSupportingFiles([]);setEditing(false);setNotice(t('saved',{saved:result.value.saved.length,waiting:result.value.waiting.length}));setOutcome({saved:result.value.saved,waiting:result.value.waiting});router.refresh();requestAnimationFrame(()=>requestButton.current?.focus());
+   setChanges({});setNewRows([]);setSupportingFiles([]);setEditing(false);setWithheld([]);setNotice(t('saved',{saved:result.value.saved.length,waiting:result.value.waiting.length}));setOutcome({saved:result.value.saved,waiting:result.value.waiting});router.refresh();requestAnimationFrame(()=>requestButton.current?.focus());
   }catch{setError(t('error.system'));}finally{pending.current=false;setBusy(false);}
  }
  function control(field:typeof fields[number],source:Record<string,EssScalar>,row?:EssRecord|NewRecord){
@@ -124,6 +130,7 @@ export function ProfileEditor({workspace,facts,extraPanels,history,hiddenTabs=[]
  return <div className="space-y-4">
   <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">{editing?t('editHelp'):t('viewHelp')}</p><div className="flex gap-2">{editing?<><Button type="button" variant="outline" disabled={busy} onClick={cancel}>{t('cancel')}</Button><Button type="button" disabled={busy} onClick={save}>{busy?t('saving'):t('save')}</Button></>:<Button ref={requestButton} type="button" disabled={!workspace.editable.length&&!workspace.legacyPrimaryEditable.length} onClick={()=>{setEditing(true);setNotice(null);setOutcome(null);}}>{t('requestEdit')}</Button>}</div></div>
   {editing&&<div className="space-y-2 rounded-md border border-border p-4"><label className="block text-sm font-medium" htmlFor="profile-supporting-files">{t('supportingFiles')}</label><input id="profile-supporting-files" type="file" accept="application/pdf,image/png,image/jpeg" multiple disabled={busy} onChange={event=>setSupportingFiles(Array.from(event.target.files??[]))} className="text-sm"/><p className="text-xs text-muted-foreground">{t('attachmentLimit')}</p>{supportingFiles.map(file=><p key={`${file.name}:${file.lastModified}`} className="text-sm">{file.name}</p>)}</div>}
+  {editing&&withheld.length>0&&<p data-profile-seed-withheld role="note" className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">{t('seedWithheld',{fields:withheld.map(fieldLabel).join(', ')})}</p>}
   {error&&<p role="alert" className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">{error}</p>}{notice&&<div role="status" className="rounded-md border border-emerald-300 p-3 text-sm"><p>{notice}</p>{Boolean(outcome?.saved.length)&&<p className="mt-1">{t('savedFields',{fields:outcome!.saved.map(fieldLabel).join(', ')})}</p>}{Boolean(outcome?.waiting.length)&&<p className="mt-1">{t('waitingFields',{fields:outcome!.waiting.map(fieldLabel).join(', ')})}</p>}</div>}
   {activeKeys.length?<ClientTabs<PersonnelTabKey> key={activeKeys.join('|')} tabs={activeKeys.map(key=>({key,label:labels(`people.detail.tabs.${key}`)}))} panels={panels} emptyLabel={t('noRecords')} defaultTab={activeKeys.includes(defaultTab)?defaultTab:activeKeys[0]??defaultTab} ariaLabel={labels('me.title')} monolithTxt/>:<Card className="p-5 text-sm text-muted-foreground">{t('noVisibleSections')}</Card>}
  </div>;

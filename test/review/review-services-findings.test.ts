@@ -31,10 +31,11 @@ describe('explainers worker switch',()=>{
   expect(row.switch.on).toBe(false);
   // ...and core/explainers/capabilities.ts terasCapabilitiesFor reads that gate, so core/harness/tools.ts binds none of them.
   const offered=(await nativeToolProvider(m.employee.ctx,{companyId:m.b.companyId},false)).bindings.map(binding=>binding.name);
-  for(const name of ['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day'])expect(offered,name).not.toContain(name);
+  // Spec v23: the explainers are explain_why's topics, so neither the tool nor any explainer of its own is bound.
+  for(const name of ['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day','explain_why'])expect(offered,name).not.toContain(name);
  });
  it('fixed H1: switched on, the explainers are offered; the tenant stop switch withdraws them again',async()=>{
-  const names=['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day'];
+  const names=['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day','explain_why'];
   // The explainers switch belongs to the assistant module: enable it and re-resolve both callers' entitlements.
   await setModule(m.b.tenantId,'assistant','active');
   const entitlements=(await entitledCtx(m.b)).entitlements;
@@ -42,8 +43,8 @@ describe('explainers worker switch',()=>{
   const offered=async()=>(await nativeToolProvider(employee,{companyId:m.b.companyId},false)).bindings.map(binding=>binding.name);
   await setWorkerSwitch(admin,{workerId:'explainers',enabled:true});
   const on=await offered();
-  // Each explainer is offered where its module is enabled for the employee; at least the leave one is.
-  expect(on).toContain('explain_leave_entitlement');
+  // Spec v23: the explainers are offered as explain_why's topics, each where its module is enabled for the employee.
+  expect(on).toContain('explain_why');for(const name of names.slice(0,3))expect(on,name).not.toContain(name);
   await setMandateStopSwitch(admin,true);
   expect(await workerRunGate(admin,'explainers')).toMatchObject({run:false,reasons:['stopped']});
   const stopped=await offered();

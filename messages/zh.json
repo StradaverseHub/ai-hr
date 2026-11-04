@@ -297,7 +297,7 @@
   "nav": {
     "roster": "排班",
     "dataPrivacy": "数据隐私",
-    "dashboard": "仪表盘",
+    "dashboard": "今天",
     "myWorkspace": "我的资料",
     "people": "团队通讯录",
     "orgChart": "组织架构图",
@@ -348,6 +348,7 @@
     "claimsConfig": "报销配置",
     "claims": "报销",
     "aiConfig": "AI",
+    "aiQuality": "AI 质量",
     "notifications": "通知",
     "analytics": "分析",
     "shift": "班次",
@@ -383,6 +384,7 @@
     "reportPerformance": "绩效",
     "profileOptions": "档案选项",
     "delegations": "审批委托",
+    "policies": "政策",
     "dashboardCardConfig": "仪表板卡片",
     "scheduledActions": "计划任务",
     "systemSettings": "系统设置",
@@ -394,9 +396,9 @@
     "payrollIndividualPayslip": "个人工资单",
     "payrollBackPay": "补发工资",
     "payrollStatutoryAdjustment": "法定金额调整",
-    "payrollControlTower": "控制塔",
+    "payrollControlTower": "日常运营",
     "assistant": "智能助理",
-    "aiControlTower": "控制塔",
+    "aiControlTower": "日常运营",
     "controlTowerOverview": "总览",
     "controlTowerHow": "运作方式",
     "controlTowerReadiness": "员工资料",
@@ -522,7 +524,9 @@
     "contractWorkflows": "合同工作流",
     "contractTemplates": "合同模板",
     "contractIntake": "合同登记及退休证据",
-    "passwordPolicy": "密码策略"
+    "passwordPolicy": "密码策略",
+    "myPrivateCases": "我的私密个案",
+    "privateCases": "私密个案"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -9257,7 +9261,7 @@
       }
     },
     "controlTower": {
-      "title": "人力资源控制中心",
+      "title": "日常运营概览",
       "description": "协调人力资源工作、审核异常并验证结果。",
       "backToPayroll": "薪资",
       "ratioTitle": "运行这套薪资需要多少人？",
@@ -9292,14 +9296,14 @@
       "colWaiting": "等待人工",
       "openQueue": "打开队列",
       "notChecked": "未检查",
-      "noRuns": "没有已处理的运行。在有运行被处理之前，控制塔没有可监控的对象。",
+      "noRuns": "没有已处理的运行。在有运行被处理之前，没有可监控的对象。",
       "domainsLine": "{total} 个领域中有 {live} 个已启用。",
       "howItWorksLink": "运作方式",
       "agentsLink": "哪些代理在运行",
       "agents": {
         "title": "AI 代理",
         "description": "本系统中能够自行运作的部分，以及它们各自是否真的能运作。",
-        "backToTower": "返回控制塔",
+        "backToTower": "返回日常运营",
         "heading": "无需人工触发即会运行的部分",
         "headingHelp": "每一项在你开启之前都是关闭的；开启并不等于它就能运作——若某个开关背后条件不足，下方会说明。",
         "stateOn": "运行中",
@@ -9339,7 +9343,7 @@
       "exceptions": {
         "title": "异常",
         "description": "所有等待处理的被标记员工，来自每一次发薪，汇总为一张列表。",
-        "backToTower": "返回控制塔",
+        "backToTower": "返回日常运营",
         "outstanding": "等待处理",
         "blocking": "其中会阻止发薪的",
         "capped": "显示 {total} 项中最紧急的 {shown} 项。处理一部分后其余会出现。",
@@ -9348,7 +9352,7 @@
         "emptyTitle": "没有待处理项",
         "emptyBody": "所有发薪中被标记的员工都已处理完毕。",
         "whyTitle": "你的处理为何重要",
-        "whyBody": "控制塔上的三个数字——检查出错的频率、异常等待的时长、以及这些工作量意味着需要多少人手——在有人处理这些之前都无法得出。在那之前，控制塔会刻意显示缺什么，而不是给出一个数字。"
+        "whyBody": "日常运营概览上的三个数字——检查出错的频率、异常等待的时长、以及这些工作量意味着需要多少人手——在有人处理这些之前都无法得出。在那之前，日常运营概览会刻意显示缺什么，而不是给出一个数字。"
       },
       "agreementTitle": "AI 的判断和我们一致吗？",
       "agreementUnavailable": "暂时没有可衡量的数据。",
@@ -11195,6 +11199,7 @@
         "attendanceVisibleApplications": "仅显示现有员工、汇报、委托或已保存参与者范围内可见的出勤申请。此页不会授予人员浏览或更广泛的人事历史权限。",
         "childReliefReview": "仅列出您所管理公司的在职员工，因此令吉总额是您可查看范围的总额。只读——无法从此页面更改任何税务设定。",
         "delegations": "HR 和管理员可见所有委托；您只能看到自己委托或代理的委托。",
+        "aiCentrePolicies": "管理员可查看其所管理公司的政策；其他人只能阅读本公司已批准的政策。",
         "duplicatePersonRecords": "仅列出您所管理的公司中的员工，因此跨两家公司的一对记录中可能有一半对您不可见。只读——无法从此页面更改任何记录。",
         "identityEmail": "HR 管理员可以预览 SMTP 表单。查看或更改实际设置需要单独注册为安装身份管理员。",
         "leave": "所有人都可打开；你查看自己的假期，经理和管理员查看下属的假期。",
@@ -11241,7 +11246,9 @@
         "createLogin": "仅限集团级管理员。手动设置还需要受支持的登录提供商和已验证的管理员会话。",
         "inviteUser": "仅限集团级管理员。",
         "entra": "仅限集团管理员。配置本组织的 Microsoft 登录和员工帐户预配。关联现有身份需要明确确认。",
-        "rewardsAccess": "有效薪酬职责任命及限定范围的HR管理员权限决定访问权限；仅有系统角色不代表可执行所有操作。"
+        "rewardsAccess": "有效薪酬职责任命及限定范围的HR管理员权限决定访问权限；仅有系统角色不代表可执行所有操作。",
+        "myPrivateCases": "仅限登录者本人的私密个案。特权角色不会扩大范围；管理员无法在此阅读他人的个案。",
+        "privateCaseHandling": "所有人都可以访问，但只向个案所属公司的指定个案处理人显示个案（若没有符合条件的处理人，则向集团管理员显示），绝不向提交人或被提交人排除的人显示。角色在此不授予任何权限。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -13913,6 +13920,8 @@
     "typeLabel": "报销类型",
     "receiptRequired": "需要收据",
     "amountLabel": "金额（RM）",
+    "amountLabelInCurrency": "金额（{currency}）",
+    "amountLabelNoCurrency": "金额",
     "incurredOnLabel": "发生日期",
     "receiptLabel": "收据",
     "descriptionLabel": "说明（选填）",
@@ -17478,11 +17487,11 @@
     "empty": "还没有问题。请在上方提问。",
     "noAnswer": "未生成答案。",
     "lookedAt": "查阅了：{tools}",
-    "stop_refusal": "助理拒绝回答这个问题。",
+    "stop_refusal": "AI 中心拒绝回答这个问题。",
     "stop_max_tokens": "回答因过长而被截断。请一次问少一些。",
-    "stop_other": "助理在完成前停止了。您的记录没有问题 — 请再问一次。",
-    "stop_tool_use": "助理在查询过程中停止了。请再问一次。",
-    "stop_turn_cap": "助理达到 {n} 步的上限，在完成前停止。请尝试拆分问题。",
+    "stop_other": "AI 中心在完成前停止了。您的记录没有问题 — 请再问一次。",
+    "stop_tool_use": "AI 中心在查询过程中停止了。请再问一次。",
+    "stop_turn_cap": "AI 中心达到 {n} 步的上限，在完成前停止。请尝试拆分问题。",
     "denied_module_off": "我还在候场。您的机构尚未启用助理，HR 管理员可以协助确认。",
     "denied_no_grant": "我的小门还在等您的通行证。请联系 HR 管理员协助开通助理权限。",
     "denied_no_user": "我还没能把这次登录与账户对上号。请联系管理员协助处理。",
@@ -19667,7 +19676,7 @@
       },
       "historyPrivacy": {
         "title": "你的聊天记录",
-        "description": "聊天文字的保留期限为30天。即使助手访问权限已关闭，你仍可现在清除文字。请求次数和用量记录会保留，人事记录不受影响。",
+        "description": "已保存的聊天会在公司设定的聊天保留期结束后删除（除非管理员更改，否则为30天）。即使助手访问权限已关闭，你仍可现在清除文字。请求次数和用量记录会保留，人事记录不受影响。",
         "clear": "清除我的聊天文字",
         "confirmTitle": "要清除你的聊天文字吗？",
         "confirmBody": "已保存的聊天文字将立即清除，且无法恢复。用量计数和你的人事记录保持不变。",
@@ -21807,7 +21816,7 @@
       "working": "思考中…",
       "failed": "发送未成功，请重试。",
       "noCard": "此问题没有生成回答卡片。",
-      "openInAssistant": "在助手中打开",
+      "openInAssistant": "在 AI 中心中打开",
       "question": "您的问题",
       "placeholder": "输入问题",
       "send": "发送",
@@ -21829,7 +21838,7 @@
         "people": "人员",
         "rewards": "奖励",
         "analytics": "分析",
-        "controlTower": "控制塔",
+        "controlTower": "日常运营",
         "settings": "设置"
       },
       "identity": "AI 助手",
@@ -21910,9 +21919,9 @@
     "err_protected_input": "此请求需要受支持的受保护输入。请选择建议的任务或输入模板，其他详情请使用原生页面。"
   },
   "controlTower": {
-    "howTitle": "控制塔的运作方式",
+    "howTitle": "贵公司正在运行的内容",
     "howDescription": "有哪些环节、按什么顺序运行、哪些部分使用 AI，以及现在有哪些已启用。",
-    "backToTower": "返回控制塔",
+    "backToTower": "返回日常运营",
     "loopTitle": "运作闭环",
     "loopIntro": "每个周期都执行相同的五个步骤。其中只有一步涉及 AI，且没有任何一步会自行做决定。",
     "loopAlt": "五个步骤：执行检查、记录发现、AI 用简明文字说明、由人决定、结果回馈。",
@@ -22023,7 +22032,7 @@
     "promise2Body": "通过、标记还是阻止，都由固定规则在 AI 介入之前判定，说明文字无法改变该判定。未经人工，任何内容都不会被通过、支付或更改。",
     "readinessScreen": {
       "title": "档案完备性",
-      "backToTower": "返回控制塔",
+      "backToTower": "返回日常运营",
       "description": "每位在职员工要么已具备发薪与申报所需的一切，要么还缺少某些内容。在此一次性补齐，而不是每次发薪时重新遇到。",
       "readyPct": "档案完整",
       "readyOf": "员工已就绪",
@@ -22054,7 +22063,7 @@
     "actions": {
       "title": "建议操作",
       "description": "AI 希望替你处理的工作。在你批准之前，这里不会发生任何事情，而且每一项的提议理由都清楚可见。",
-      "backToTower": "返回控制塔",
+      "backToTower": "返回日常运营",
       "emptyTitle": "没有待批准的项目",
       "emptyBody": "目前仍在等待你处理的每一条薪资异常，背后都有真实的问题。当有人修正了底层记录后，该异常就会出现在这里等待关闭。",
       "done": "已关闭 {closed} 条异常。",
@@ -22088,7 +22097,7 @@
     "orchestrator": {
       "checking": "正在检查记录…",
       "runFailed": "最近记录的自动化执行需要处理。请展开下方的执行详情。",
-      "navigation": "控制中心导航",
+      "navigation": "日常运营分区",
       "overview": "总览",
       "readiness": "员工资料",
       "exceptions": "薪资异常",
@@ -26921,7 +26930,7 @@
   "aiManagement": {
     "title": "AI 管理",
     "description": "查看所有 AI 功能、监控模型活动，并控制用户和公司的额度。",
-    "back": "控制中心",
+    "back": "日常运营",
     "provider": "服务商：{provider} · {model}",
     "noProvider": "尚未配置 AI 服务商，仍可使用手动流程。",
     "configureProvider": "服务商设置",
@@ -27246,7 +27255,8 @@
       "jobs": {
         "review-sweep": "夜间 HR 工作队列运行",
         "ai-retention": "AI 运行历史保留",
-        "ai-alerts": "AI 警报检查"
+        "ai-alerts": "AI 警报检查",
+        "payroll-loops": "发薪前循环定时检查"
       },
       "steps": {
         "observe": "检查员工记录",
@@ -27324,7 +27334,8 @@
           "closed_references": "不透明引用与限定类别（来源文本和值保留在本地）",
           "coarse_aggregate_bands": "粗粒度汇总区间（不保证匿名）",
           "pseudonymous_person_bands": "带随机别名的个人区间（并非匿名）",
-          "authored_formula_request": "用户编写的公式要求"
+          "authored_formula_request": "用户编写的公式要求",
+          "authored_policy_text": "由人力资源管理员撰写的政策文本（含个人身份信息时拒绝发送）"
         },
         "redaction": {
           "pii_masked": "已遮盖",
@@ -28688,6 +28699,7 @@
     "clear": "清空此值",
     "undo": "撤销更改",
     "leaveUnsaved": "离开此页面并放弃尚未保存的更改？",
+    "seedWithheld": "未为您填写：{fields}。银行账号和身份证件号码绝不会从 AI Centre 带入，请在此自行输入。",
     "viewHelp": "查看本人的人事记录。待审批申请不会替代主记录。",
     "editHelp": "可跨页签编辑获准修改的字段，然后统一保存。关闭审批的变更可直接保存；需要审批的变更及其关联字段将等待 HR 审批。",
     "pendingValue": "待审批值：{value}",
@@ -29430,7 +29442,7 @@
       "next": "下一页",
       "none": "没有待开发入口。"
     },
-    "back": "控制中心",
+    "back": "日常运营",
     "title": "自动化机会",
     "description": "根据您的记录衡量 AI 代理可以从 HR 接手哪些处理工作。此页面不会更改数据，也不会调用 AI 模型。",
     "window": "统计最近开始的案例",
@@ -31445,7 +31457,38 @@
         "state": "此信函已无法执行该操作。",
         "unavailable": "信函功能暂时不可用，请稍后重试。"
       },
-      "download": "下载 PDF"
+      "download": "下载 PDF",
+      "requests": {
+        "request": "申请信函",
+        "title": "您的信函申请",
+        "requestedOn": "申请于 {date}",
+        "openLetter": "打开信函",
+        "messageFromHr": "人力资源部留言",
+        "sent": "您的申请已发送给人力资源部。您可以在此查看其状态。",
+        "unavailable": "暂时无法显示您的信函申请。",
+        "formTitle": "申请信函",
+        "formDescription": "选择您需要的信函。人力资源部会准备信函，签发后您可以在“我的信函”中找到。",
+        "none": "贵公司尚未开放任何可供员工申请的信函。请联系您的人力资源团队。",
+        "type": "信函类型",
+        "choose": "选择信函",
+        "typeInCompany": "{type}（{company}）",
+        "purpose": "用途（选填）",
+        "purposeHelp": "例如银行贷款或签证申请。只有您和人力资源部可以看到。",
+        "submit": "发送申请",
+        "status": {
+          "requested": "已申请",
+          "in_progress": "人力资源部正在准备",
+          "issued": "已签发",
+          "declined": "已拒绝"
+        },
+        "errors": {
+          "invalid": "请检查信函类型后重试。",
+          "not_requestable": "此信函已无法申请。请选择其他信函。",
+          "duplicate": "您已有此信函的未完成申请。",
+          "unavailable": "暂时无法发送您的申请。请稍后再试。"
+        },
+        "cancel": "取消"
+      }
     },
     "reports": {
       "title": "信函报表",
@@ -31836,6 +31879,39 @@
         "unavailable": "无法完成操作，请重试。",
         "state": "此信函或批次的状态已更改，请刷新后重试。",
         "reasonRequired": "请输入移除原因。"
+      },
+      "requests": {
+        "title": "信函申请",
+        "intro": "员工申请的信函。“准备信函”会为该员工打开草稿；您照常审批并签发。",
+        "empty": "没有等待处理的信函申请。",
+        "unavailable": "暂时无法显示信函申请。",
+        "employee": "员工",
+        "purpose": "用途",
+        "requestedOn": "申请于 {date}",
+        "prepare": "准备信函",
+        "prepareUnavailable": "此模板已不再发布。请重新发布或拒绝该申请。",
+        "decline": "拒绝",
+        "declineReason": "拒绝原因",
+        "declineHelp": "只有人力资源部可以看到原因。员工会看到申请已被拒绝，以及您添加的留言（如有）。",
+        "employeeMessage": "给员工的留言（可选）",
+        "employeeMessageHelp": "将与“已拒绝”状态一起显示给员工。",
+        "declineSubmit": "拒绝申请",
+        "inProgress": "草稿已准备。信函签发后，申请将标记为已签发。",
+        "preparing": "根据员工的{type}申请准备。",
+        "declined": "申请已被拒绝。",
+        "status": {
+          "requested": "已申请",
+          "in_progress": "准备中",
+          "issued": "已签发",
+          "declined": "已拒绝"
+        },
+        "errors": {
+          "invalid": "请检查申请后重试。",
+          "permission": "您已无法处理此申请。",
+          "state": "此申请已被处理。",
+          "stale": "此申请已更改。请重新查看。",
+          "unavailable": "暂时无法更新申请。请稍后再试。"
+        }
       }
     },
     "approval": {
@@ -31995,7 +32071,21 @@
       "empty": "暂无设置或资源。",
       "assetSearch": "搜索资源名称",
       "companyCodeUnavailable": "请配置简短的公司参考代码，或使用不含公司占位符的格式。",
-      "version": "配置版本 {number}"
+      "version": "配置版本 {number}",
+      "requests": {
+        "title": "员工申请",
+        "intro": "选择员工可以在“我的信函”中申请的信函。默认关闭。",
+        "empty": "尚无已发布的模板。",
+        "unavailable": "暂时无法显示员工申请设置。",
+        "allow": "员工可以申请{name}",
+        "save": "保存员工申请设置",
+        "saved": "员工申请设置已保存。",
+        "errors": {
+          "invalid": "请检查所选内容后重试。",
+          "permission": "您无法更改此公司的信函设置。",
+          "unavailable": "暂时无法保存设置。请稍后再试。"
+        }
+      }
     }
   },
   "performanceHome": {
@@ -33676,7 +33766,7 @@
       "anomalies": {
         "name": "Payroll anomaly checks",
         "description": "Records findings and verdicts for review. Does not change payroll amounts.",
-        "results": "Control Tower exceptions and payroll anomalies"
+        "results": "Operations exceptions and payroll anomalies"
       },
       "child-relief": {
         "name": "Child tax-relief refresh",
@@ -33742,6 +33832,11 @@
         "name": "Database backups",
         "description": "Creates database backups to an approved destination when configured.",
         "results": "Backup storage and protected backup logs"
+      },
+      "payroll-loops": {
+        "name": "Pre-salary loop tick",
+        "description": "Checks payroll inputs for the companies whose own check interval has come round. Prepares cards for payroll administrators; changes no record.",
+        "results": "Payroll cycle"
       }
     }
   },
@@ -34918,5 +35013,136 @@
     "retirementEvidencePending": "打开此个案前，请先审核已记录的退休证据。",
     "acceptancePaused": "此工作流程的签署已暂停。您仍可拒绝此邀约。",
     "employeeIdentityUnavailable": "员工关联的登录账户不可用或无法确认。负责此事项的人事运营人员须联系访问权限负责人解决。已签发的 PDF 会保留。"
+  },
+  "privateCases": {
+    "categories": {
+      "grievance": "申诉",
+      "harassment": "骚扰",
+      "safety": "安全",
+      "other": "其他事项"
+    },
+    "statuses": {
+      "received": "已收到",
+      "in_review": "审核中",
+      "closed": "已结案"
+    },
+    "errors": {
+      "invalid": "请检查表单：选择事项类别并写下发生了什么。",
+      "not_set_up": "该公司尚未设置私密个案。请直接联系您的人力资源团队。",
+      "not_found": "您无法查看此个案。",
+      "not_allowed": "您无法执行此操作。",
+      "unavailable": "暂时无法使用。请稍后再试。",
+      "conflict": "自您打开后此内容已更改。请重新查看。"
+    },
+    "entry": {
+      "title": "向人力资源部门提交的私密个案",
+      "help": "以书面形式向人力资源个案处理人提出申诉、骚扰、安全问题或其他敏感事项。AI Centre 绝不会读取这些内容。",
+      "open": "私密个案"
+    },
+    "me": {
+      "title": "向人力资源部门提交的私密个案",
+      "description": "私下写给贵公司的人力资源个案处理人。只有您和他们可以阅读；AI Centre 绝不会读取、存储或看到您所写的内容。",
+      "start": "提交私密个案",
+      "notSetUp": "贵公司尚未设置私密个案。请直接联系您的人力资源团队。",
+      "empty": "您尚未提交任何私密个案。",
+      "listTitle": "您的个案",
+      "opened": "提交于 {date}",
+      "updated": "更新于 {date}",
+      "handle": "您处理的个案",
+      "view": "查看",
+      "unreachable": "目前没有人可以阅读"
+    },
+    "new": {
+      "title": "提交私密个案",
+      "description": "请用您自己的话来写。它将发送给下列人力资源个案处理人，而不是 AI Centre。",
+      "back": "私密个案",
+      "company": "公司",
+      "chooseCompany": "显示此公司",
+      "category": "是关于什么的？",
+      "text": "发生了什么",
+      "textHelp": "最多 8,000 个字符。请分享您愿意分享的内容；处理人可能会联系您。",
+      "handlers": "谁可以阅读",
+      "handlersHelp": "以下人员可以阅读您的个案。如果事情与其中某人有关，或其中某人不应看到，请勾选其姓名。",
+      "exclude": "不要发送给 {name}（{role}）",
+      "unnamed": "没有员工记录的人员",
+      "groupAdmin": "发送给集团管理员，而不是个案处理人",
+      "groupAdminHelp": "如果您排除了所有个案处理人，个案将发送给集团管理员。如果您排除了所有人，个案仍会保存，但目前没有人可以阅读。",
+      "privacy": "您的个案以加密方式存储。您的人力资源个案处理人可以看到个案及您的姓名；其他人力资源管理员、经理和 AI Centre 则看不到。",
+      "submit": "发送给人力资源部门",
+      "notStorable": "暂时无法保存私密个案。请直接联系您的人力资源团队。",
+      "readerHandler": "个案处理人",
+      "readerGroupAdmin": "集团管理员"
+    },
+    "detail": {
+      "back": "私密个案",
+      "sent": "您的个案已发送给人力资源部门。",
+      "opened": "提交于 {date}",
+      "company": "公司",
+      "category": "类别",
+      "status": "状态",
+      "text": "您所写的内容",
+      "history": "状态记录",
+      "step": "{status}，{date}"
+    },
+    "handle": {
+      "title": "您处理的私密个案",
+      "description": "以个案处理人身份收到的个案。每次打开个案都会被记录。",
+      "none": "您不负责处理私密个案。",
+      "empty": "暂无私密个案。",
+      "opened": "提交于 {date}",
+      "toGroupAdmin": "已发送给集团管理员",
+      "erasure": "提交人已要求删除其数据：此个案将在结案时删除。",
+      "view": "打开",
+      "back": "您处理的个案",
+      "author": "提交人",
+      "noName": "无法显示姓名",
+      "text": "对方所写的内容",
+      "status": "状态",
+      "moveTo": "标记为{status}",
+      "notes": "处理人备注",
+      "notesHelp": "只有此个案的处理人可以看到备注；提交个案的人看不到。",
+      "noNotes": "暂无备注。",
+      "noteBy": "{name}，{date}",
+      "you": "您",
+      "noteLabel": "备注",
+      "saveNote": "保存备注",
+      "closedNoNotes": "此个案已结案，无法再添加备注。",
+      "audit": "个案记录",
+      "auditCreated": "由 {name} 提交",
+      "auditRead": "{name} 已阅读",
+      "auditStatus": "{name} 将状态从{from}改为{to}",
+      "auditNote": "{name} 添加了备注",
+      "noteSaved": "备注已保存。",
+      "statusSaved": "状态已更改。",
+      "erased": "根据提交人的删除请求，此个案已结案并删除。"
+    },
+    "admin": {
+      "title": "私密个案处理人",
+      "description": "为每家公司指定接收私密个案的人员。只有他们可以阅读这些个案：指定处理人并不会让您能够阅读个案。",
+      "back": "数据隐私",
+      "company": "公司",
+      "show": "显示",
+      "current": "当前处理人",
+      "none": "尚无处理人，因此该公司不提供私密个案。",
+      "since": "自 {date} 起",
+      "revoke": "移除",
+      "revoked": "于 {date} 移除",
+      "history": "以前的处理人",
+      "designate": "添加处理人",
+      "person": "人员",
+      "noRecord": "没有员工记录的登录账户",
+      "add": "添加处理人",
+      "selfNote": "您不能将自己指定为处理人。集团管理员或该公司的其他管理员会指定您。",
+      "added": "已添加处理人。",
+      "removed": "已移除处理人。",
+      "noCompanies": "您没有管理任何公司。"
+    },
+    "privacyCard": {
+      "title": "私密个案处理人",
+      "help": "选择由谁接收员工提交给人力资源部门的私密个案。",
+      "link": "管理个案处理人"
+    },
+    "noReader": "该公司尚未设置符合条件的阅读人，因此目前没有人可以阅读此个案。请联系{channel}。",
+    "externalChannel": "[公司指定的外部渠道，例如道德热线]"
   }
 }

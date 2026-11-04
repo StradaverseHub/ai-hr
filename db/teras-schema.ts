@@ -16,6 +16,7 @@ import {boolean,index,integer,jsonb,pgTable,primaryKey,text,timestamp,uniqueInde
 import {appUser,company,person,tenant} from './schema';
 import type {HumanInvolvement,NoticeState,OutcomeCheck,OutcomeKind,OutcomeRead,OutcomeReplay} from '../core/outcome-record/types';
 import type {MandateLimits,MandateSchedule,MandateScope,WorkJobType} from '../core/mandates/job-types';
+import type {LoopCaseState,LoopCheck,LoopCloseReason,LoopFacts,LoopId,LoopRead,LoopRecipient,LoopResolution,LoopRunStatus} from '../core/loops/types';
 
 const id=()=>uuid('id').primaryKey().defaultRandom();
 const tenantId=()=>uuid('tenant_id').notNull().references(()=>tenant.id);
@@ -39,7 +40,13 @@ export const terasMandateControl=pgTable('teras_mandate_control',{
 /** 0895 — the per-tenant switch of a registered worker that has no existing switch of its own (closed list,
  * core/agent-registry/workers.ts). Off unless a group administrator turned it on. 0901 adds the Noveri
  * conversation switch, the direct-provider attestation and the staging operator attribution (conversation only). */
-export type TerasSwitchedWorker='approver_recommendation'|'explainers'|'conversation';
+export type TerasSwitchedWorker='approver_recommendation'|'explainers'|'conversation'
+ // AI v2 W8 (migration 0960): the five loops at the Prepare level.
+ |LoopId
+ // AI v2 P2-2b (migration 0965): the payroll Audit loop (core/payroll-audit). Its own runner; it shares the pause and run record.
+ |'loop_payroll_audit';
+/** 0965: the loops whose pauses and runs teras_loop_pause and teras_loop_run hold. */
+export type TerasLoopWorker=LoopId|'loop_payroll_audit';
 export type TerasAttestedProvider='anthropic'|'openai'|'google';
 export const terasWorkerControl=pgTable('teras_worker_control',{
  tenantId:tenantId(),workerId:text('worker_id').$type<TerasSwitchedWorker>().notNull(),enabled:boolean('enabled').notNull().default(false),
@@ -95,6 +102,38 @@ export const terasTaskMemory=pgTable('teras_task_memory',{
  // The step 1 task-memory shape; typed loosely here so this file names no harness module (the harness import guard).
  memory:jsonb('memory').$type<Record<string,unknown>>().notNull(),updatedAt:at('updated_at').notNull().defaultNow(),
 },t=>[primaryKey({columns:[t.tenantId,t.appUserId,t.conversationId]})]);
+
+/** 0960 (AI v2 W8) — a loop paused for one company by an administrator of that company. */
+export const terasLoopPause=pgTable('teras_loop_pause',{
+ tenantId:tenantId(),workerId:text('worker_id').$type<TerasLoopWorker>().notNull(),companyId:uuid('company_id').notNull().references(()=>company.id),
+ paused:boolean('paused').notNull().default(true),version:integer('version').notNull().default(1),
+ changedByUserId:uuid('changed_by_user_id').notNull().references(()=>appUser.id),changedAt:at('changed_at').notNull().defaultNow(),
+},t=>[primaryKey({columns:[t.tenantId,t.workerId,t.companyId]})]);
+
+/** 0960 — one subject a loop prepared a card for; reopened, never duplicated, when the condition recurs. */
+export const terasLoopCase=pgTable('teras_loop_case',{
+ id:id(),tenantId:tenantId(),workerId:text('worker_id').$type<LoopId>().notNull(),
+ companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id'),
+ subjectKey:text('subject_key').notNull(),recipient:text('recipient').$type<LoopRecipient>().notNull(),
+ state:text('state').$type<LoopCaseState>().notNull(),closeReason:text('close_reason').$type<LoopCloseReason>(),
+ resolution:text('resolution').$type<LoopResolution>(),facts:jsonb('facts').$type<LoopFacts>().notNull(),
+ firstOpenedAt:at('first_opened_at').notNull().defaultNow(),openedAt:at('opened_at').notNull().defaultNow(),
+ checkedAt:at('checked_at').notNull().defaultNow(),closedAt:at('closed_at'),reopenCount:integer('reopen_count').notNull().default(0),
+ openedRunId:uuid('opened_run_id').notNull(),checkedRunId:uuid('checked_run_id').notNull(),
+},t=>[uniqueIndex('teras_loop_case_tenant_id_worker_id_subject_key_key').on(t.tenantId,t.workerId,t.subjectKey),
+ index('teras_loop_case_open_idx').on(t.tenantId,t.workerId,t.state,t.companyId)]);
+
+/** 0960 — the loop's outcome record: one append-only row per run and company. */
+export const terasLoopRun=pgTable('teras_loop_run',{
+ id:id(),tenantId:tenantId(),runId:uuid('run_id').notNull(),workerId:text('worker_id').$type<TerasLoopWorker>().notNull(),
+ companyId:uuid('company_id').references(()=>company.id),status:text('status').$type<LoopRunStatus>().notNull(),
+ sponsorUserId:uuid('sponsor_user_id').references(()=>appUser.id),loopVersion:text('loop_version').notNull(),
+ startedAt:at('started_at').notNull(),finishedAt:at('finished_at').notNull(),recordedAt:at('recorded_at').notNull().defaultNow(),
+ observed:integer('observed').notNull().default(0),opened:integer('opened').notNull().default(0),reopened:integer('reopened').notNull().default(0),
+ closed:integer('closed').notNull().default(0),openNow:integer('open_now').notNull().default(0),waitingNow:integer('waiting_now').notNull().default(0),
+ capped:boolean('capped').notNull().default(false),
+ checks:jsonb('checks').$type<LoopCheck[]>().notNull(),reads:jsonb('reads').$type<LoopRead[]>().notNull(),
+},t=>[index('teras_loop_run_latest_idx').on(t.tenantId,t.workerId,t.startedAt)]);
 
 // 0891 — the version columns only. The owners' full declarations stay in db/schema.ts.
 export const leaveTypeRuleVersion=pgTable('leave_type',{id:uuid('id').primaryKey(),ruleVersion:integer('rule_version').notNull()});

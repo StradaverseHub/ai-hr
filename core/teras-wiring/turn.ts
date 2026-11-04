@@ -30,8 +30,10 @@ import {PostgresTaskMemoryStore} from '../harness/task-memory-store';
 import {nativeToolProvider,type ToolProvider} from '../harness/tools';
 import {registeredWorker} from '../agent-registry/workers';
 import {persistTurnTrace} from '../harness/trace-persistence';
+import {PRIVATE_CASE_START_PATH,privateCaseRouteAvailable} from '../private-case-route';
 import {ContinuationRefused,issueConversationContinuation,newConversation,verifyConversationContinuation} from './history';
 import {gatewayModelClient,type ModelClientTotals} from './model-client';
+import type {ChatImportFile} from '../../lib/chat-import';
 
 export type ConversationErrorCode='invalid_question'|'continuation_invalid'|'not_configured'|'provider_not_compliant'|'budget_daily'|'budget_monthly'|'ai_control'|'protected_input'|'provider_error';
 export class ConversationTurnError extends Error{constructor(readonly code:ConversationErrorCode){super('conversation:'+code);this.name='ConversationTurnError';}}
@@ -54,6 +56,9 @@ export type ConversationTurn=Readonly<{
  proposals:TurnResult['proposals'];reads:readonly string[];
  /** The pre-read gate routed the turn to the HR contact (any sensitive topic), refused a judgement about someone, or met a crisis. */
  sensitive:boolean;refused:boolean;crisis:boolean;fallback:boolean;
+ /** AI v2 W11: on a routed sensitive turn where the protected case route is set up for this person and company, the
+  * intake form's path ("Start a private case with HR"); otherwise null. The AI never opens or fills that form. */
+ caseRoute:string|null;
  continuation:string;
  /** For the server only (outcome evaluation): the turn's trace and its model-side transcript. Never rendered. */
  trace:TurnResult['trace'];modelTurn:TurnResult['modelTurn']}>;
@@ -66,7 +71,10 @@ export function conversationTools(explainers:boolean):ToolProvider{
 }
 
 export async function runConversationTurn(supplied:SessionContext,route:Readonly<{permit:HarnessPermit;attestedProvider:TerasAttestedProvider|null;explainers:boolean}>,
- input:Readonly<{question:unknown;continuation?:unknown;companyId:string;locale:string}>):Promise<ConversationTurn>{
+ input:Readonly<{question:unknown;continuation?:unknown;companyId:string;locale:string;
+  /** AI v2 slice 3: a file attached to this turn for an import (lib/chat-import.ts). Only prepare_import's native
+   * preparer reads it; it is never sent to the model, stored with the chat or traced. */
+  importFile?:ChatImportFile}>):Promise<ConversationTurn>{
  const ctx:SessionContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  const question=typeof input.question==='string'?input.question.trim():'';
  if(!ctx.userId||!question||question.length>MAX_QUESTION_CHARS||!input.companyId)throw new ConversationTurnError('invalid_question');
@@ -92,8 +100,8 @@ export async function runConversationTurn(supplied:SessionContext,route:Readonly
  let result:TurnResult|undefined,failure:ConversationErrorCode|null=null;
  try{
   result=await runTurn({enabled:route.permit,ctx,conversationId:conversation.conversationId,question,history:conversation.history,
-   scope:{companyId:input.companyId,locale:input.locale},model:gatewayModelClient(admitted.configuration,totals),memory:new PostgresTaskMemoryStore(ctx),
-   tools:conversationTools(route.explainers)});
+   scope:{companyId:input.companyId,locale:input.locale,...(input.importFile?{importFile:input.importFile}:{})},model:gatewayModelClient(admitted.configuration,totals),memory:new PostgresTaskMemoryStore(ctx),
+   tools:conversationTools(route.explainers),caseRouteAvailable:()=>privateCaseRouteAvailable(ctx,input.companyId)});
   await persistTurnTrace(ctx,result.trace,{companyId:input.companyId});
  }catch(error){
   failure=error instanceof AssistantQuestionBudgetError?error.budgetCode:error instanceof AiAllowanceError?'ai_control':error instanceof AiPrivacyGateError?'protected_input':'provider_error';
@@ -107,6 +115,7 @@ export async function runConversationTurn(supplied:SessionContext,route:Readonly
  return Object.freeze({turnId:result.trace.turnId,reply:result.reply,mode:result.mode,slot:result.slot,suggestion:result.suggestion,trace:result.trace,modelTurn:result.modelTurn,
   proposals:result.proposals.filter(proposal=>Date.parse(proposal.body.createdAt)>=started),reads:result.reads,
   sensitive:isSensitiveReason(reason),refused:reason==='workplace_harm',crisis:reason==='sensitive_crisis',fallback:result.trace.outcome.fallback,
+  caseRoute:result.caseRoute&&isSensitiveReason(reason)?PRIVATE_CASE_START_PATH:null,
   continuation:issueConversationContinuation(ctx,conversation.conversationId,[...conversation.history,...result.modelTurn])});
 }
 

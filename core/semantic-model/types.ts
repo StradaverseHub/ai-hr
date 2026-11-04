@@ -20,7 +20,15 @@ import type {AiJsonSchema} from '../../lib/ai/types';
 
 export type DisclosureClass='never'|'bands'|'minimum'|'full';
 export const DISCLOSURE_CLASSES:readonly DisclosureClass[]=Object.freeze(['never','bands','minimum','full']);
-export type FieldType='id'|'code'|'text'|'name'|'label'|'date'|'datetime'|'time'|'period'|'number'|'integer'|'boolean'|'enum'|'list'|'object';
+export type FieldType='id'|'code'|'text'|'name'|'label'|'date'|'datetime'|'time'|'period'|'number'|'integer'|'boolean'|'enum'|'list'|'object'
+ /** AI v2 Phase 2 P2-5: an organisation's own APPROVED wording, published to the people it applies to (an approved Living
+  * Handbook paragraph). Not `text`, which is free text a person typed about themselves or someone else and is always
+  * `never`: this is company content its readers already see, disclosed by its class like any other field. Like every
+  * string the harness sends, it is screened for identifiers first (the conversation harness's disclosure and reply checks,
+  * screenIdentifiers): an email address, IC, phone, bank account or other identifier written in the policy becomes
+  * `[<kind> removed]` before the model sees it (test/handbook-policies.test.ts). Accepted by the AI v2 coordinator on that
+  * condition; it goes into the owner's next provider-data binding packet for review. */
+ |'published_text';
 export type SemanticField=Readonly<{name:string;type:FieldType;disclosure:DisclosureClass;meaning:string;
  /** Closed vocabulary for `enum` fields. */values?:readonly string[];
  /** Row shape for `list`/`object` fields; each nested field carries its own class. An undeclared child is
@@ -46,7 +54,39 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  /** Step 5 recommendations, digest, agent registry and existing worker inputs (./entities-recommend.ts). */
  |'leave_decision_recommendation'|'daily_digest'|'agent_worker'|'payroll_anomaly'|'readiness_gap'|'pending_approval'|'followup_item'
  /** The harness's suggest_action result, including the pending leave requests an approver chooses between. */
- |'suggested_action';
+ |'suggested_action'
+ /** AI Centre issue 13b: governed pay averages for callers with payroll access (./entities-metrics.ts). */
+ |'pay_aggregate'
+ /** AI v2 W2: the caller's own attendance correction or overtime request (./entities.ts). */
+ |'attendance_request'
+ /** AI v2 W2: an own claim and an own profile change request prepared in chat (./entities-own-changes.ts). */
+ |'claim_request'|'profile_change_request'
+ /** AI v2 W2 (slice 2): the own Leave Credit request (time off in lieu) prepared in chat (./entities-toil.ts). */
+ |'leave_credit_request'
+ /** AI v2 W1: what the caller can do, import, report on or open (./entities-catalogue.ts). */
+ |'product_capability'
+ /** AI v2 W7: governed workforce metrics for administrators and, for their own team, managers (./entities-metrics.ts). */
+ |'workforce_metric'
+ /** AI v2 W5: "Why?" on the caller's own pay difference and claim limits (./entities-why.ts). */
+ |'pay_difference_explanation'|'claim_limit_explanation'
+ /** AI v2 W2 (slice 3): an assigned claim or attendance request the caller decides in chat (./entities-decisions.ts). */
+ |'claim_approval_item'|'attendance_approval_item'
+ /** AI v2 slice 3 (issue 16b): an import prepared in chat from an attached file (./entities-imports.ts). */
+ |'chat_import'
+ /** AI v2 W8: the loops overview, for administrators (./entities-loops.ts). */
+ |'loop_overview'
+ /** The harness's approval_queue result, with the leave requests waiting for the approver (./entities-recommend.ts). */
+ |'approval_queue'
+ /** AI v2 Phase 2 P2-3: the caller's own "Before payroll" checklist (./entities-payroll-readiness.ts). */
+ |'payroll_readiness'
+ /** AI v2 Phase 2 (wave 1 integration): the payroll-cycle loop pages, for administrators (./entities-payroll-loops.ts). */
+ |'payroll_cycle'|'salary_payroll_run'|'payroll_loop_setting'|'payroll_audit_status'
+ /** Spec v23 addendum: declared as text only (./entities-payroll-loops.ts PAYROLL_CHECK_ACKNOWLEDGEMENT_ENTITY), not yet offered. */
+ |'payroll_check_acknowledgement'
+ /** AI v2 Phase 2 P2-5: the approved company policies in force for the caller (./entities-handbook.ts). */
+ |'policy_handbook'
+ /** AI v2 Phase 2 P2-6: the AI quality page's figures, for administrators (./entities-quality.ts). */
+ |'ai_quality';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;

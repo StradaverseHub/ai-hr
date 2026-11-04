@@ -6,7 +6,8 @@
  *  - workplace_channel (review B3): the reply never sends the person to Feedback, the product feedback board read by
  *    the software team, unless the person's own words are about the product itself (a problem, an idea, feedback);
  *  - overclaim: no claim that a change was already made (moved here from test/assistant-behaviour-score.ts,
- *    which now imports it, so the probe scores with the product's own rule);
+ *    which now imports it, so the probe scores with the product's own rule). Spec v11: "prepared … for you to review
+ *    and confirm" passes only when the turn issued a proposal, in a sentence that claims nothing else;
  *  - identifiers: no IC, passport, bank account, tax, EPF or SOCSO number, phone number, email address or
  *    internal record id. The same screen (screenIdentifiers) runs on everything sent to the model, before it is sent.
  * A finding never carries reply text: identifier findings name only the kinds, link findings only how many links
@@ -23,10 +24,18 @@ const OVERCLAIM:readonly RegExp[]=[
 ];
 // A negated statement ("nothing has been submitted for you", run 41284048653) is the correct wording, not a claim.
 const NEGATED=/\b(?:nothing|not|never|no one|none|yet to)\b|n't\b|n’t\b/i;
+/** Spec v11: the one wording a prepared card earns ("I've prepared your leave application for you to review and
+ * confirm"), admitted only when the turn issued a proposal, and only in a sentence that claims nothing else. */
+const PREPARED_FOR_REVIEW=/\bprepared\b[^.!?\n]{0,80}\bfor you to (?:review|check|confirm)\b/i;
+const OTHER_CLAIM=/\b(?:submitted|filed|applied|approved|rejected|declined|updated|changed|saved|created|cancell?ed|processed|recorded|scheduled|booked|completed|archived|closed|sent|done|finished)\b/i;
+export type OverclaimContext=Readonly<{
+ /** True only when this turn issued a proposal: a prepared card the person reviews and confirms. */
+ prepared?:boolean}>;
 /** The overclaiming phrase, or null. */
-export function overclaim(reply:string):string|null{
+export function overclaim(reply:string,context:OverclaimContext={}):string|null{
  for(const sentence of reply.split(/(?<=[.!?])\s+|\n+/)){
   if(NEGATED.test(sentence))continue;
+  if(context.prepared&&PREPARED_FOR_REVIEW.test(sentence)&&!OTHER_CLAIM.test(sentence))continue;
   for(const pattern of OVERCLAIM){const match=sentence.match(pattern);if(match)return match[0].trim();}
  }
  return null;
@@ -96,14 +105,14 @@ export const pointsToFeedback=(reply:string)=>FEEDBACK_LINK.test(reply)||FEEDBAC
 export const asksAboutProduct=(question:string)=>ABOUT_PRODUCT.test(question.normalize('NFKC'));
 
 export type ReplyCheckResult=Readonly<{check:ReplyCheckName;ok:boolean;finding?:string}>;
-export type ReplyCheckContext=Readonly<{question?:string}>;
+export type ReplyCheckContext=Readonly<{question?:string}>&OverclaimContext;
 /** Runs every check in the spec's order; all results are returned for the trace. */
 export function checkReply(reply:string,allowedPaths:ReadonlySet<string>,order:readonly ReplyCheckName[],context:ReplyCheckContext={}):readonly ReplyCheckResult[]{
  return order.map((check):ReplyCheckResult=>{
   if(check==='workplace_channel')return pointsToFeedback(reply)&&!asksAboutProduct(context.question??'')?{check,ok:false,finding:'feedback channel'}:{check,ok:true};
   if(check==='non_blank')return reply.trim()?{check,ok:true}:{check,ok:false,finding:'blank reply'};
   if(check==='destination_links'){const links=inventedLinks(reply,allowedPaths);return links.length?{check,ok:false,finding:links.length+(links.length===1?' link':' links')}:{check,ok:true};}
-  if(check==='overclaim')return overclaim(reply)?{check,ok:false}:{check,ok:true};
+  if(check==='overclaim')return overclaim(reply,{prepared:context.prepared})?{check,ok:false}:{check,ok:true};
   const kinds=identifiersIn(reply);return kinds.length?{check,ok:false,finding:kinds.join(', ')}:{check,ok:true};
  });
 }

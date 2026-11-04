@@ -1037,6 +1037,64 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       return [...new Set(rows.map((r) => r.e))];
     },
   },
+  // AI v2 Phase 1 slice 3 (core/letter-requests.ts): HR declined an employee's letter request. The employee (the event's
+  // subject) is told only that it was declined: no letter type, no reason, no HR name. In-app only (no email category).
+  'letter-request.declined': {
+    kind: 'letter-request.declined',
+    category: null,
+    render: () => ({ severity: 'info', title: 'Letter request declined', body: 'Your letter request was declined. Open My Letters to see its status.', linkPath: '/me/letters' }),
+  },
+  // AI v2 Phase 2 P2-1 (core/loops/act-clock-outs.ts): the missed clock-outs loop, acting within its limits, set a missed
+  // clock-out to the roster end through the attendance owner. The employee (the event's subject) is told the day, the
+  // time and until when they can undo it on Today. Dates and a clock time only. In-app only (no email category).
+  'teras-loop.action.applied': {
+    kind: 'teras-loop.clock-out-set',
+    category: null,
+    render: (p) => {
+      const date = typeof p?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.date) ? p.date : 'a recent day';
+      const time = typeof p?.checkOut === 'string' && /^\d{2}:\d{2}$/.test(p.checkOut) ? p.checkOut : 'your roster end';
+      const until = typeof p?.undoUntil === 'string' && Number.isFinite(Date.parse(p.undoUntil))
+        ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(p.undoUntil)) : null;
+      return { severity: 'info', title: 'Missed clock-out filled in',
+        body: `Your missing clock-out on ${date} was set to ${time}, the end of your roster.${until ? ` If that is wrong, undo it on Today by ${until}.` : ''}`, linkPath: '/' };
+    },
+  },
+  // AI v2 Phase 2 P2-1 (core/loops/act-requests.ts): the missing employee data loop, acting within its limits, sent the
+  // employee its request to fill in their own details. A count and their own request section only; no record changed.
+  'teras-loop.request.sent': {
+    kind: 'teras-loop.details-requested',
+    category: null,
+    render: (p) => {
+      const tab = p?.tab === 'bankStatutory' || p?.tab === 'payroll' ? p.tab : 'profile';
+      const count = typeof p?.gaps === 'number' && Number.isInteger(p.gaps) && p.gaps > 0 ? p.gaps : null;
+      return { severity: 'action', title: 'Please complete your details',
+        body: count === 1 ? 'One detail is missing from your record. Fill it in on your profile; HR approves it as usual.'
+          : `${count ?? 'Some'} details are missing from your record. Fill them in on your profile; HR approves them as usual.`,
+        linkPath: `/me?tab=${tab}#section-request-${tab}` };
+    },
+  },
+  'teras-loop.request.withdrawn': {
+    kind: 'teras-loop.details-request-withdrawn',
+    category: null,
+    render: () => ({ severity: 'info', title: 'Details request withdrawn', body: 'The request to complete your details was withdrawn. You can ignore it.', linkPath: '/me' }),
+  },
+  // AI v2 Phase 2 hardening (core/loops/cut-off-reminders.ts, owner ruling 18): the Pre-salary loop's automatic cut-off
+  // reminder, 5, 2 or 1 days before a payroll cut-off, to the person (the event's subject) about their OWN pending items and
+  // the requests waiting on them. In-app only (no email category). Stored as message KEYS, which the bell renders in the
+  // reader's own language (components/notification-center.tsx, payrollReadiness.reminder.* in all six catalogues), like the
+  // greeting and letter notices: the title says how soon, the body whether items of their own, requests to decide, or
+  // both wait. Never a pay figure, an amount, a count of someone else's or another person's name. It opens Today.
+  'teras-loop.cut-off-reminder': {
+    kind: 'teras-loop.cut-off-reminder',
+    category: null,
+    render: (p) => {
+      const lead = typeof p?.leadDays === 'number' && [5, 2, 1].includes(p.leadDays) ? `lead${p.leadDays}` : 'soon';
+      const own = typeof p?.ownItems === 'number' && Number.isInteger(p.ownItems) && p.ownItems > 0;
+      const approvals = typeof p?.approvals === 'number' && Number.isInteger(p.approvals) && p.approvals > 0;
+      return { severity: 'action', title: `payrollReadiness.reminder.title.${lead}`,
+        body: `payrollReadiness.reminder.body.${own && approvals ? 'both' : approvals ? 'approvals' : 'own'}`, linkPath: '/' };
+    },
+  },
 };
 
 export type DispatchResult = { processed: number; created: number };

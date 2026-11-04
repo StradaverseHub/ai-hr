@@ -6414,6 +6414,14 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly
         deductions: payslip.totalDeductions,
         net: payslip.netPay,
         statutory: payslip.statutory,
+        // AI v2 W5 — the stored earning and deduction columns, so "why is my pay different" reads each line the
+        // payslip prints (core/pay-difference.ts) instead of re-deriving it. Every consumer maps rows explicitly.
+        basic: payslip.basicSalary,
+        allowance: payslip.allowance,
+        overtime: payslip.overtimePay,
+        bonus: payslip.bonus,
+        otherDeductions: payslip.otherDeductions,
+        daysWorked: payslip.daysWorked,
         // Step 6 (f3148da1) — the release instant, materialized at close time (RLS-safe via the batch, unlike
         // the admin-only company_payroll_config which the employee session cannot read).
         releasedAt: payrollBatch.releasedAt,

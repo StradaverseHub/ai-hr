@@ -24,10 +24,14 @@
  * (readiness, then the writer's fixed-width refusals, then the writer's self-check on the emitted bytes)
  * and returns a 422 with the operator's own words. Nothing partial is ever handed over.
  *
- * NOTHING IS TRANSMITTED AND NOTHING IS RECORDED. This module generates a file and hands it to the
- * operator; it files nothing with anybody, and it writes no `statutory_report` row and no domain event —
- * see the registry header for why, and for how that differs from the two `/payroll/reports/*` file routes.
+ * NOTHING IS TRANSMITTED AND NO RETURN IS RECORDED. This module generates a file and hands it to the
+ * operator; it files nothing with anybody, and it writes no `statutory_report` row — see the registry header
+ * for why, and for how that differs from the two `/payroll/reports/*` file routes. AI v2 P2-2b adds ONE write:
+ * the payroll access log entry (core/payroll-audit/access-log.ts, a `payroll-data.accessed` domain event with
+ * the file's sha256 and format), owner decision 9: who exported payroll data is part of the audit trail.
  */
+import { getSession } from '@/lib/session';
+import { recordPayrollExport } from '@/core/payroll-audit/access-log';
 import { submissionFormat } from '../registry';
 
 export const runtime = 'nodejs';
@@ -49,6 +53,11 @@ export async function GET(req: Request) {
   });
 
   if (!built.ok) return new Response(built.message, { status: built.status });
+  // AI v2 P2-2b: the statutory file handed over is recorded with its sha256 and format before it leaves (fail closed). The
+  // builder has already checked the company and month; they are re-validated here only to name them in the entry.
+  const companyId = q.get('companyId') ?? '', periodKey = q.get('periodKey') ?? '';
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(companyId) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(periodKey)) return new Response('Not found', { status: 404 });
+  await recordPayrollExport(await getSession(), { surface: 'statutory_file', companyId, payPeriod: periodKey, detail: format.id }, built.bytes);
 
   return new Response(built.bytes, {
     headers: {

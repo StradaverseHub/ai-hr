@@ -380,9 +380,15 @@ export type ImportCounts = {
   lastDate: string | null;
 };
 
+/** A company-scoped import (one prepared in the AI Centre names one company) never writes a clocking of an employment of
+ *  another company, even one the caller also administers: the line's result is `other` with this detail. */
+export const CLOCKING_OTHER_COMPANY = 'other_company';
+
 export type ClockingImportPreview = {
   mappingName: string;
   counts: ImportCounts;
+  /** A company-scoped import only: lines matched to an employment of another company, none of them imported. */
+  otherCompany?: number;
   /** Every line not importable, capped at PREVIEW_ERROR_ROWS. */
   errorRows: ImportLineView[];
   /** The first PREVIEW_VALID_ROWS valid lines. */
@@ -466,7 +472,7 @@ export class ClockingImportError extends Error {
  * Decide every line. Reads only; the commit calls this inside its own transaction so the checks are run
  * again at the moment of import (plan item 12).
  */
-async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantId?: string): Promise<Decided[]> {
+async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantId?: string, companyId?: string): Promise<Decided[]> {
   const now = { date: todayInKualaLumpur(), time: timeInKualaLumpur() };
   const { lines } = parseWithMapping(text, def, now);
   const decided: Decided[] = lines.map((read) => ({
@@ -537,6 +543,11 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantI
       const active = cands.filter((e) => employedOn(e, d.read.date!));
       if (active.length === 1) {
         d.emp = active[0];
+        // A company-scoped import: a clocking matched to another company's employment is never imported there.
+        if (companyId !== undefined && d.emp.companyId !== companyId) {
+          d.result = 'other';
+          d.detail = CLOCKING_OTHER_COMPANY;
+        }
         decidedHere = true;
         break;
       }
@@ -765,12 +776,12 @@ function assertFile(text: string) {
 /** VALIDATE — read the whole file, decide every line, write nothing. */
 export async function validateClockingImport(
   ctx: SessionContext,
-  p: { mappingId: string; text: string },
+  p: { mappingId: string; text: string; companyId?: string },
 ): Promise<ClockingImportPreview> {
   assertFile(p.text);
   return withTenant(ctx, async (tx) => {
     const mapping = await resolveMapping(tx, p.mappingId);
-    const decided = await decideLines(tx, mapping.def, p.text);
+    const decided = await decideLines(tx, mapping.def, p.text, undefined, p.companyId);
     const [prev] = await tx
       .select({ id: clockingImportRun.id, at: clockingImportRun.createdAt, fileName: clockingImportRun.fileName })
       .from(clockingImportRun)
@@ -785,9 +796,13 @@ export async function validateClockingImport(
       errorRows: errors.slice(0, PREVIEW_ERROR_ROWS).map(viewOf),
       validRows: valid.slice(0, PREVIEW_VALID_ROWS).map(viewOf),
       previousImport: prev ? { runId: prev.id, at: prev.at, fileName: prev.fileName } : null,
+      ...(p.companyId === undefined ? {} : { otherCompany: otherCompanyLines(decided) }),
     };
   });
 }
+
+/** Lines a company-scoped import matched to another company's employment. */
+const otherCompanyLines = (decided: Decided[]) => decided.filter((d) => d.result === 'other' && d.detail === CLOCKING_OTHER_COMPANY).length;
 
 export type ClockingImportOutcome = {
   runId: string | null;
@@ -796,6 +811,8 @@ export type ClockingImportOutcome = {
   imported: number;
   daysUpdated: number;
   failureReason: string | null;
+  /** A company-scoped import only: lines matched to another company's employment, none of them imported. */
+  otherCompany?: number;
 };
 
 async function actorPersonId(tx: Tx, ctx: SessionContext): Promise<string | null> {
@@ -816,7 +833,7 @@ async function actorPersonId(tx: Tx, ctx: SessionContext): Promise<string | null
  */
 export async function commitClockingImport(
   ctx: SessionContext,
-  p: { mappingId: string; text: string; fileName: string; fileBytes: number },
+  p: { mappingId: string; text: string; fileName: string; fileBytes: number; companyId?: string },
 ): Promise<ClockingImportOutcome> {
   p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   assertFile(p.text);
@@ -829,7 +846,7 @@ export async function commitClockingImport(
       await lockAttendanceLeaveDependenciesTx(tx,ctx,[]);
       const mapping = await resolveMapping(tx, p.mappingId);
       mappingForFailure = mapping;
-      const decided = await decideLines(tx, mapping.def, p.text, ctx.tenantId);
+      const decided = await decideLines(tx, mapping.def, p.text, ctx.tenantId, p.companyId);
       totalForFailure = decided.length;
       const counts = countsOf(decided);
       const personId = await actorPersonId(tx, ctx);
@@ -954,6 +971,7 @@ export async function commitClockingImport(
         imported,
         daysUpdated: changed.length,
         failureReason: null,
+        ...(p.companyId === undefined ? {} : { otherCompany: otherCompanyLines(decided) }),
       };
     });
   } catch (e) {

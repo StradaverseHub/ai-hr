@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import { loopActorOf } from '@/lib/ai-centre/loop-attribution';
 import type { AuditRow } from '@/core/read';
 import {
   ACTOR_DOT,
@@ -54,7 +55,8 @@ export async function AuditTable({
   return (
     <ul className="divide-y divide-border">
       {rows.map((r) => {
-        const who = r.actorName ?? ACTOR_LABEL[r.actorType] ?? r.actorType;
+        // AI v2 Phase 2 P2-1: an event an AI Centre loop wrote names the loop and its sponsor (its stored label).
+        const who = loopActorOf(r.payload)?.label ?? r.actorName ?? ACTOR_LABEL[r.actorType] ?? r.actorType;
         const href = aggregateHref(r.aggregateType, r.aggregateId);
         const detail = describePayload(r.payload);
         const recorded = r.eventType === 'payroll-batch.employee-reprocess-outcome' && r.payload

@@ -13,7 +13,7 @@ import {stagingProfileProbeCommand,validateStagingProfile,DEPLOY_RUNTIME_SELECTI
 const fixturePackageBytes=Buffer.from(JSON.stringify({dependencies:{next:runtime.next}})+'\n');
 const fixturePackageSha256=createHash('sha256').update(fixturePackageBytes).digest('hex');
 const packageHash=bytes=>createHash('sha256').update(bytes).digest('hex');
-const fixture={NODE_ENV:'production',AUTH_PROVIDER:'internal',ALLOW_DEMO_SESSION:'false',AUTH_PUBLIC_ORIGIN:'https://hr.customer.org',AUTH_SESSION_KEY:'a'.repeat(64),AI_CONFIG_SECRET:'private-fixture-config-value',AUDIT_HASH_CHAIN_ENABLED:'true',DATABASE_URL:'postgres://ai_hr_app:private-fixture-db@127.0.0.1/hr',MIGRATION_DATABASE_URL:'postgres://ai_hr_owner:private-fixture-owner@127.0.0.1/hr'};
+const fixture={NODE_ENV:'production',AUTH_PROVIDER:'internal',ALLOW_DEMO_SESSION:'false',AUTH_PUBLIC_ORIGIN:'https://hr.customer.org',AUTH_SESSION_KEY:'a'.repeat(64),AI_CONFIG_SECRET:'private-fixture-config-value',TERAS_PROPOSAL_SECRET:'private-fixture-proposal-signing-secret-0123',AUDIT_HASH_CHAIN_ENABLED:'true',DATABASE_URL:'postgres://ai_hr_app:private-fixture-db@127.0.0.1/hr',MIGRATION_DATABASE_URL:'postgres://ai_hr_owner:private-fixture-owner@127.0.0.1/hr'};
 function observe(changes={},observedRuntime=runtime,packageBytes=fixturePackageBytes){
  const command=stagingProfileProbeCommand(customerEnvironmentErrors),delimiter="<<'AIHR_PROFILE_PREFLIGHT_NODE'\n";
  assert.equal(command.split(delimiter).length,2);const source=command.split(delimiter)[1].split('\nAIHR_PROFILE_PREFLIGHT_NODE')[0];

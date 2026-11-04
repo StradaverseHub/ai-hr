@@ -19,6 +19,7 @@ import {createHmac,randomUUID,timingSafeEqual} from 'node:crypto';
 import {z} from 'zod';
 import type {SessionContext} from '../../db/client';
 import {RECOMMENDATION_CHECKS,RECOMMENDATION_RESULTS,RECOMMENDATION_VERDICTS} from '../semantic-model/entities-recommend';
+import {CHAT_IMPORT_ISSUES,CHAT_IMPORT_KINDS} from '../../lib/chat-import';
 
 export const PROPOSAL_VERSION=1 as const;
 const DOMAIN='teras:proposal:v1';
@@ -33,7 +34,7 @@ export const ProposalAuthority=z.discriminatedUnion('kind',[
 /** One native check as it ran. `ruleVersion` null means the owner publishes no rule version yet. */
 export const ProposalCheck=z.object({check:z.string().regex(/^[a-z_]+$/),owner:anchor,ruleVersion:z.string().min(1).nullable(),
  result:z.enum(['pass','needs_review','fail'])}).strict();
-const calendarDate=z.string().regex(/^\d{4}-\d{2}-\d{2}$/),figure=z.number().finite();
+const calendarDate=z.string().regex(/^\d{4}-\d{2}-\d{2}$/),figure=z.number().finite(),clockTime=z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
 export const ProposalFacts=z.object({
  leaveType:z.string().min(1).max(64),startDate:calendarDate,endDate:calendarDate,
  /** Days the request covers, as the leave engine counted them. */days:figure.nonnegative(),
@@ -42,7 +43,29 @@ export const ProposalFacts=z.object({
  /** Other people the caller may see with approved or pending leave on these dates (core/read.ts plannedAbsences). */othersAway:z.number().int().nonnegative(),
  /** Approved dates the person asks to give back (approved-leave cancellation). */cancelDates:z.array(calendarDate).min(1).max(31),
  /** The person's own decision (approvals.leave.decide). */decision:z.enum(['approved','rejected']),
- /** What confirming does, in the owner's own terms. */outcome:z.enum(['withdrawn_now','give_back_requested','rejection_if_confirmed','step_decision_if_confirmed','approval_if_native_checks_pass','submitted_not_approved']),
+ /** What confirming does, in the owner's own terms. */outcome:z.enum(['withdrawn_now','give_back_requested','rejection_if_confirmed','step_decision_if_confirmed','approval_if_native_checks_pass','submitted_not_approved',
+  // AI v2 W2: an own claim and an own profile change prepared in chat (core/proposals/claim-*.ts, profile-change.ts).
+  'claim_submitted_if_checks_pass','claim_draft_receipt_needed','claim_cancelled_now','hr_approval_required','hr_verification_required',
+  // AI v2 W2 slice 3: an assigned attendance decision is recorded at the approver's level; a later level may still decide.
+  'attendance_decision_if_checks_pass',
+  // AI v2 Phase 1 slice 3: an own letter request (core/proposals/letter-request.ts); HR prepares and issues the letter.
+  'letter_requested_hr_prepares']),
+ /** Attendance (W2): the clock times the person asks for, and what the attendance record holds now (HH:MM, KL wall time). */
+ checkIn:clockTime,checkOut:clockTime,recordedCheckIn:clockTime,recordedCheckOut:clockTime,
+ /** Overtime and time off in lieu (W2): the window the person gave (HH:MM; an earlier end is the next day). */
+ plannedStart:clockTime,plannedEnd:clockTime,
+ /** The attendance service's own minute count for that overtime window. Never a pay figure. */overtimeMinutes:z.number().int().positive(),
+ /** Days the leave service would credit for a time-off-in-lieu request, as its own review counted them. */creditDays:figure.positive(),
+ /** An own claim (claims.submit, claims.cancel): the claim type and item names, the date incurred and the amount as the
+  * claims service normalised or stored it ("42.60"), never a figure the model computed. */
+ claimType:z.string().min(1).max(64),claimItem:z.string().min(1).max(64),incurredOn:calendarDate,amount:z.string().regex(/^\d{1,9}\.\d{2}$/),
+ /** An own profile change request (ess.profile.request): which part of the record changes and how many fields; the values
+  * stay in the sealed review. A bank change names the bank and the last four digits only. */
+ profileChange:z.enum(['address','emergency_contact','dependant','bank']),fieldCount:z.number().int().min(1).max(64),
+ bankName:z.string().min(1).max(64),accountEnding:z.string().regex(/^\d{4}$/),
+ /** An own letter request (letters.request.submit): the letter type, the published template name its company opened for
+  * employee requests. Never letter content. */
+ letterType:z.string().min(1).max(64),
 }).partial().strict();
 export type ProposalFacts=z.infer<typeof ProposalFacts>;
 /** Step 5 (§3.5): the approver recommendation from native checks, when the recommender worker ran. Two verdicts
@@ -56,6 +79,17 @@ export const ProposalRecommendation=z.object({verdict:z.enum(RECOMMENDATION_VERD
  // approve only when nothing failed; a failed rule always reads needs_review.
  .refine(value=>value.verdict==='needs_review'||(value.failedRules.length===0&&value.checks.every(check=>check.result==='pass')));
 export type ProposalRecommendation=z.infer<typeof ProposalRecommendation>;
+/** AI v2 slice 3 (issue 16b): an import prepared in chat (core/proposals/chat-import.ts). The import owner's own counts and
+ * the first rows needing attention, in lib/chat-import.ts's closed vocabulary (row number, column, reason): never a cell
+ * value or an owner sentence. `company` is the administrator's own company label. */
+const count=z.number().int().nonnegative();
+export const ProposalImport=z.object({kind:z.enum(CHAT_IMPORT_KINDS),company:z.string().min(1).max(200),total:count,ready:count,attention:count,warned:count,
+ issues:z.array(z.object({row:count,field:z.string().regex(/^[a-z0-9_]{1,40}$/),reason:z.enum(CHAT_IMPORT_ISSUES)}).strict()).max(5),issueCount:count,
+ confirmable:z.boolean(),revertible:z.boolean(),replacing:count,template:z.string().regex(/^\/[a-z0-9/_-]*$/).nullable(),
+ /** Rows that belong to another company than the card's: counted among those needing attention, never imported here. */
+ otherCompany:count}).strict()
+ .refine(value=>value.ready+value.attention>=value.total&&value.issues.length<=value.issueCount&&value.otherCompany<=value.attention);
+export type ProposalImport=z.infer<typeof ProposalImport>;
 export const ProposalBody=z.object({
  kind:z.literal('teras.proposal'),version:z.literal(PROPOSAL_VERSION),id:z.guid(),
  what:z.object({action:z.string().regex(/^[a-z_-]+(?:\.[a-z_-]+)+$/),contractVersion:z.number().int().positive(),
@@ -64,16 +98,20 @@ export const ProposalBody=z.object({
   selectors:z.record(z.string(),z.string().max(64)),
   /** The owner's digest of the exact reviewed effect; the review route refuses any other. */
   reviewedDigest:digest}).strict(),
- forWhom:z.object({tenantId:z.guid(),subject:z.enum(['own_employment','assigned_request']),subjectId:z.guid()}).strict(),
+ forWhom:z.object({tenantId:z.guid(),subject:z.enum(['own_employment','assigned_request',
+  // AI v2 slice 3: an import prepared in chat is for the company it imports into (subjectId is that company).
+  'company']),subjectId:z.guid()}).strict(),
  authority:ProposalAuthority,
  checks:z.array(ProposalCheck).min(1).max(32),
  /** Where the person reviews and confirms. `href` carries at most the review custody handle, never a business
-  * identifier; `reference` is what that route's own confirmation takes. */
- review:z.object({route:z.string().regex(/^\/[a-z0-9/_-]*$/),href:z.string().regex(/^\/[a-z0-9/_-]*(?:\?[a-z]+=[0-9a-fA-F-]{36})?$/),reference:z.guid()}).strict(),
+  * identifier (a review page with several flows may name its flow first, as /assistant/attendance?flow=overtime and
+  * /assistant/claims?flow=cancel do); `reference` is what that route's own confirmation takes. */
+ review:z.object({route:z.string().regex(/^\/[a-z0-9/_-]*$/),href:z.string().regex(/^\/[a-z0-9/_-]*(?:\?(?:flow=[a-z]+&)?[a-z]+=[0-9a-fA-F-]{36})?$/),reference:z.guid()}).strict(),
  /** Key facts from the native checks, for the card (step 2). Closed vocabulary; product labels, calendar
   * dates and the owner's own figures only, never a name, identifier or free text. */
  facts:ProposalFacts.optional(),
  recommendation:ProposalRecommendation.optional(),
+ import:ProposalImport.optional(),
  createdAt:instant,expiresAt:instant,
 }).strict().refine(value=>Date.parse(value.expiresAt)>Date.parse(value.createdAt))
  .refine(value=>value.authority.tenantId===value.forWhom.tenantId)

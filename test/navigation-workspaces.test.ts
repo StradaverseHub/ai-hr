@@ -1,6 +1,8 @@
 import {describe,it,expect} from 'vitest';
 import {navigationPlacement,navigationRouteOwner,placeNavigation,NAVIGATION_MODULES} from '../lib/navigation-workspaces';
 import {performancePack} from '../packs/performance';
+import {readdirSync} from 'node:fs';
+import {join} from 'node:path';
 
 describe('Ops and Strata placement never grants authority',()=>{
  it('preserves the exact authorized destination objects and reports unknown additions instead of guessing',()=>{
@@ -41,6 +43,35 @@ describe('Ops and Strata placement never grants authority',()=>{
  it.each(['/lifecycle/v9?view=tasks','/lifecycle/v9?view=records','/','/me','/tasks','/approvals','/system-testing','/org','/assistant','/knowledge-base','/feedback','/reports'])('keeps %s shared across both sides',href=>{
   expect(navigationPlacement(href)).toEqual({area:'shared'});
  });
+ // Issue 17 (owner: "Merge both entirely"): every /control-tower page renders inside AI Centre, so it is placed with the
+ // shared AI Centre row, and that row (ownedSubpaths ['/control-tower'], components/sidebar.tsx) owns each of them.
+ const CONTROL_TOWER_PAGES=['/control-tower','/control-tower/readiness','/control-tower/exceptions','/control-tower/actions','/control-tower/opportunities',
+  '/control-tower/how-it-works','/control-tower/agents','/control-tower/agents/features','/control-tower/agents/inventory','/control-tower/agents/assistant',
+  '/control-tower/agents/allowances','/control-tower/agents/spending','/control-tower/agents/provider','/control-tower/agents/runs','/control-tower/agents/orchestrator',
+  // AI v2 W8: Operations › Loops and each loop's page.
+  '/control-tower/loops','/control-tower/loops/[loop]',
+  // AI v2 P2-2a: the Payroll cycle view, its Salary payroll page and its settings.
+  '/control-tower/loops/payroll-cycle','/control-tower/loops/payroll-cycle/salary','/control-tower/loops/payroll-cycle/settings',
+  // AI v2 P2-2b: the payroll Audit loop's page.
+  '/control-tower/loops/loop_payroll_audit',
+  // AI v2 P2-1: a loop's promote page (wave 1 integration).
+  '/control-tower/loops/[loop]/promote'];
+ it.each(CONTROL_TOWER_PAGES)('places %s under AI Centre (shared), owned by the AI Centre row',path=>{
+  expect(navigationPlacement(path)).toEqual({area:'shared'});
+  const links=[{href:'/'},{href:'/me'},{href:'/assistant',ownedSubpaths:['/control-tower']},{href:'/approvals'},{href:'/admin/personnel'}];
+  expect(navigationRouteOwner(path,'',links)?.destination.href).toBe('/assistant');
+  expect(navigationRouteOwner(path,'',links)?.placement).toEqual({area:'shared'});
+ });
+ it('covers every /control-tower page on disk',()=>{
+  const found:string[]=[];const walk=(dir:string,route:string)=>{for(const entry of readdirSync(dir,{withFileTypes:true})){
+   if(entry.isDirectory())walk(join(dir,entry.name),route+'/'+entry.name);else if(entry.name==='page.tsx')found.push(route);}};
+  walk(join(process.cwd(),'app','control-tower'),'/control-tower');
+  expect(found.length).toBeGreaterThanOrEqual(15);
+  expect(found.filter(route=>!CONTROL_TOWER_PAGES.includes(route))).toEqual([]);
+  // A neighbouring address is not swallowed by the prefix.
+  expect(navigationPlacement('/control-towers')).toBeUndefined();
+  expect(NAVIGATION_MODULES.some(module=>(module.id as string)==='controlTower')).toBe(false);
+ });
  it('collapses repeated already-authorized hrefs without changing their destination identity',()=>{
   const first={href:'/roster',gate:'manager'},second={href:'/roster',gate:'admin'};
   expect(placeNavigation([first,second]).placed).toEqual([{destination:first,placement:{area:'ops',module:'attendance',section:'hr'}}]);
@@ -70,6 +101,8 @@ describe('Ops and Strata placement never grants authority',()=>{
   expect(navigationRouteOwner(`/performance/${cycle}/cycle/calendar`,'',[area])).toBeUndefined();
  });
  it('keeps each module in exactly one workspace',()=>{
+  // Issue 17: the Control Tower module left Ops; People is first.
+  expect(NAVIGATION_MODULES.filter(module=>module.workspace==='ops').map(module=>module.id)).toEqual(['people','eLetter','onboarding','leave','attendance','claims','payroll']);
   // PT-X5: Talent and Development retired into the area's tabs; Rewards keeps its own module.
   expect(NAVIGATION_MODULES.filter(module=>module.workspace==='strata').map(module=>module.id)).toEqual(['performance','performanceAdmin','rewards','workforceInsights']);
   expect(new Set(NAVIGATION_MODULES.map(module=>module.id)).size).toBe(NAVIGATION_MODULES.length);

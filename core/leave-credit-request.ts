@@ -189,7 +189,9 @@ export async function leaveCreditRosterKinds(
  * and delegates the four controls to the canonical request preparation, without copying them. The
  * ordinary UI retains these two transactions; its historical behavior is unchanged.
  */
-export type SubmitLeaveCreditInput={employmentId:string;leaveTypeId?:string|null;rows:readonly LeaveCreditRowInput[];reason?:string;firstScheduleConsent?:boolean;today:string};
+export type SubmitLeaveCreditInput={employmentId:string;leaveTypeId?:string|null;rows:readonly LeaveCreditRowInput[];reason?:string;firstScheduleConsent?:boolean;today:string;
+ /** AI v2 W2: preparation only, before the person's own First Schedule agreement (core/replacement-request.ts). */
+ firstScheduleConsentPending?:true};
 async function prepareLeaveCreditInput(ctx:SessionContext,p:SubmitLeaveCreditInput,readRoster:()=>Promise<Map<string,ToilWorkedDayKind>>){
   if (!p.reason?.trim()) throw new ReplacementRequestInvalidError('Enter a reason for the leave credit request.');
   if (p.rows.length === 0) throw new ReplacementRequestInvalidError('Add at least one worked date.');
@@ -239,6 +241,8 @@ async function prepareLeaveCreditInput(ctx:SessionContext,p:SubmitLeaveCreditInp
     lines,
     reason: p.reason,
     firstScheduleConsent: p.firstScheduleConsent,
+    // AI v2 W2: carried only when set, so every other preparation (and its reviewed digest) is unchanged.
+    ...(p.firstScheduleConsentPending === true ? { firstScheduleConsentPending: true as const } : {}),
     today: p.today,
   };
 }

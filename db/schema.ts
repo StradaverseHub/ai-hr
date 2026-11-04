@@ -11590,6 +11590,23 @@ export const letterCounter=pgTable('letter_counter',{
 export const letterVerificationRate=pgTable('letter_verification_rate',{
  scope:text('scope').notNull(),bucket:bigint('bucket',{mode:'number'}).notNull(),hits:integer('hits').notNull(),
 },t=>[primaryKey({columns:[t.scope,t.bucket]})]);
+// AI v2 Phase 1 slice 3 (migration 0961): employee letter requests. Forced RLS: the employee reads their own, HR holding
+// the letters `generate` capability reads and updates; the lifecycle and the requestable-template rule are database-owned.
+export const letterRequestOption=pgTable('letter_request_option',{
+ tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),templateId:uuid('template_id').notNull().references(()=>letterTemplate.id),
+ requestable:boolean('requestable').notNull(),updatedBy:uuid('updated_by').notNull().references(()=>appUser.id),
+ updatedAt:timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),version:integer('version').notNull().default(1),
+},t=>[primaryKey({columns:[t.tenantId,t.templateId]})]);
+export const letterRequest=pgTable('letter_request',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ requestedBy:uuid('requested_by').notNull().references(()=>appUser.id),templateId:uuid('template_id').notNull().references(()=>letterTemplate.id),
+ letterTypeName:text('letter_type_name').notNull(),purpose:text('purpose'),clientKey:uuid('client_key'),
+ status:text('status').notNull().$type<'requested'|'in_progress'|'issued'|'declined'>().default('requested'),
+ letterId:uuid('letter_id').references(()=>letterRecord.id),declineReason:text('decline_reason'),employeeMessage:text('employee_message'),handledBy:uuid('handled_by').references(()=>appUser.id),
+ createdAt:createdAt(),statusChangedAt:timestamp('status_changed_at',{withTimezone:true}).defaultNow().notNull(),version:integer('version').notNull().default(1),
+ /** Person erasure cleared the purpose, the decline reason and the message to the employee (migration 2003). */
+ textErasedAt:timestamp('text_erased_at',{withTimezone:true}),
+},t=>[index('letter_request_company_idx').on(t.tenantId,t.companyId,t.status,t.createdAt.desc()),index('letter_request_employment_idx').on(t.tenantId,t.employmentId,t.createdAt.desc())]);
 
 // Tenant-owned email designs. Versions and assets are appended through checked native owners.
 export const emailDesign=pgTable('email_design',{

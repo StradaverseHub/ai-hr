@@ -3,20 +3,25 @@ import type {Tx} from '../db/client';
 import {createMaintenanceDb,type MaintenanceDatabase} from '../db/maintenance-client';
 import { sql } from 'drizzle-orm';
 import { retireExpiredAiCustodyTx,expiredAiCustodyQueueSql } from '../core/ai-retention-maintenance';
+import {expiredTerasChatQueueSql,retireExpiredTerasChatsTx} from '../core/teras-chat-expiry';
 
 export async function runAiRetentionTick(owner: MaintenanceDatabase) {
   return owner.db.transaction(async tx => {
     // The maintenance owner first proves physical database ownership and bounds statements. Never
     // run this aggregate with an app principal or bypass the same expired-only RLS policies.
     const result = await retireExpiredAiCustodyTx(tx as unknown as Tx);
+    // AI Centre stored chats (migration 0952): expired chats are hard-deleted with their turns and task memory, in this
+    // same owner transaction and after the custody tick. Their backlog joins the same signal.
+    const chats = await retireExpiredTerasChatsTx(tx as unknown as Tx);
     const [queue] = await tx.execute<{ remaining: boolean; oldest_age_seconds: number | null }>(sql`with oldest as (
       ${expiredAiCustodyQueueSql()}
+      union all ${expiredTerasChatQueueSql()}
     ) select exists(select 1 from oldest) as remaining,
       extract(epoch from now()-min(expires_at))::float8 as oldest_age_seconds from oldest`);
     if (!queue || typeof queue.remaining !== 'boolean' ||
       (queue.oldest_age_seconds !== null && (!Number.isFinite(queue.oldest_age_seconds) || queue.oldest_age_seconds < 0)) ||
       queue.remaining !== (queue.oldest_age_seconds !== null)) throw new Error('AI retention maintenance could not be confirmed.');
-    return Object.freeze({ ...result, backlog: queue.remaining, oldestExpiredAgeSeconds: queue.oldest_age_seconds });
+    return Object.freeze({ ...result, chats, backlog: queue.remaining, oldestExpiredAgeSeconds: queue.oldest_age_seconds });
   }, { isolationLevel: 'read committed' });
 }
 async function main() {

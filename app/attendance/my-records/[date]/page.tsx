@@ -33,7 +33,9 @@ export default async function MyAttendanceDayPage({
   searchParams,
 }: {
   params: Promise<{ date: string }>;
-  searchParams: Promise<{ from?: string; to?: string; error?: string; correctionError?: string; workflowProblem?: string; corrected?: string; employmentId?:string|string[]; home?:string } & AttendanceCalendarReturn>;
+  searchParams: Promise<{ from?: string; to?: string; error?: string; correctionError?: string; workflowProblem?: string; corrected?: string; employmentId?:string|string[]; home?:string;
+    /** AI v2 W2: the clock times a chat card asked for (HH:MM), opened by its Edit button. They only seed the boxes. */
+    checkIn?: string|string[]; checkOut?: string|string[] } & AttendanceCalendarReturn>;
 }) {
   const t = await getTranslations('attendance');
   const locale = await getLocale();
@@ -42,6 +44,8 @@ export default async function MyAttendanceDayPage({
   const { date } = await params;
   const sp = await searchParams;
   const correctionError = sp.correctionError ?? sp.error;
+  const askedTime = (value: string | string[] | undefined) => typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : null;
+  const askedIn = askedTime(sp.checkIn), askedOut = askedTime(sp.checkOut);
   const workflowProblem = parseAttendanceLevelProblemToken(sp.workflowProblem);
   const workflowText = await getTranslations('attendanceWorkflow');
 
@@ -257,11 +261,11 @@ export default async function MyAttendanceDayPage({
           <fieldset disabled={pending || future} className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end disabled:opacity-60">
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               {t('colCheckIn')}
-              <input type="time" name="checkIn" defaultValue={row.checkInAt?.slice(0, 5) ?? ''} className={inputCls} />
+              <input type="time" name="checkIn" defaultValue={askedIn ?? row.checkInAt?.slice(0, 5) ?? ''} className={inputCls} />
             </label>
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               {t('colCheckOut')}
-              <input type="time" name="checkOut" defaultValue={row.checkOutAt?.slice(0, 5) ?? ''} className={inputCls} />
+              <input type="time" name="checkOut" defaultValue={askedOut ?? row.checkOutAt?.slice(0, 5) ?? ''} className={inputCls} />
             </label>
             <label className="flex min-w-0 sm:min-w-[14rem] flex-1 flex-col gap-1 text-xs text-muted-foreground">
               {t('dayCorrectReason')}

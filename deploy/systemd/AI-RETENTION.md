@@ -66,6 +66,15 @@ capability, is incomplete; any other omission fails the pass and rolls the whole
   metadata) and `app.assistant_transcript_retirement_visible(uuid,uuid)` (feedback and strategy
   markers). `app.current_tenant_id()`, `app.current_user_id()` and `app.is_group_admin()` are also
   called there; they are PUBLIC-executable unless an installation revoked that.
+- For stored AI Centre chats (migration 0952, `core/teras-chat-expiry.ts`, run after the custody pass in the same
+  transaction): ownership of `public.teras_chat`, `public.teras_chat_turn` and `public.teras_task_memory`, and
+  EXECUTE on `app._teras_chat_erasure_subject(uuid,uuid,uuid)`, which a FORCE-RLS policy on `teras_chat` names (the
+  migration owner owns it). The pass deletes only chats whose `expires_at` has passed; their turns go by the
+  foreign-key cascade and their task memory by trigger. The owner has no policy on `teras_chat_turn`, so this pass
+  cannot read a turn.
+  HR records a chat can originate survive it and need no ownership here: a letter request confirmed from a chat card
+  (`public.letter_request`) and HR's decision are never read or changed by this pass. Its `client_key`, the card's
+  opaque idempotency key, stays (`TERAS_CHAT_SURVIVING_RECORDS` in `core/teras-chat-expiry.ts`).
 
 Expiry follows the existing native cleanup contract in one parent UPDATE: pending Payroll reopening
 roots clear before the immediate CHECK, and pending reporting-change manager/previous-manager links

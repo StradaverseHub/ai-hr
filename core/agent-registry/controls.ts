@@ -21,9 +21,21 @@ import {newRunId,writeOutcomeRecordTx} from '../outcome-record/record';
 import {registeredWorker,registeredWorkers,type WorkerDeclaration} from './workers';
 
 export class WorkerControlRefused extends Error{constructor(readonly reason:'not_administrator'|'not_switchable_here'|'module_not_enabled'|'invalid'|'attestation_not_applicable'){super('Worker control refused: '+reason);this.name='WorkerControlRefused';}}
-const SWITCHED:readonly TerasSwitchedWorker[]=Object.freeze(['approver_recommendation','explainers','conversation']);
+const SWITCHED:readonly TerasSwitchedWorker[]=Object.freeze(['approver_recommendation','explainers','conversation',
+ // AI v2 W8 (migration 0960): the five loops at the Prepare level.
+ 'loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data','loop_missed_clock_outs','loop_document_expiry',
+ // AI v2 P2-2a (migration 0964): the Salary payroll loop.
+ 'loop_salary_payroll',
+ // AI v2 P2-2b (migration 0965): the payroll Audit loop.
+ 'loop_payroll_audit']);
 /** The module each registry-controlled worker belongs to, checked on every switch change. */
-const SWITCHED_MODULE:Readonly<Record<TerasSwitchedWorker,string>>=Object.freeze({approver_recommendation:'leave',explainers:'assistant',conversation:'assistant'});
+const SWITCHED_MODULE:Readonly<Record<TerasSwitchedWorker,string>>=Object.freeze({approver_recommendation:'leave',explainers:'assistant',conversation:'assistant',
+ loop_probation_ending:'employees',loop_payroll_inputs:'payroll',loop_missing_employee_data:'employees',loop_missed_clock_outs:'attendance',loop_document_expiry:'employees',
+ loop_salary_payroll:'payroll',
+ // AI v2 P2-2b: the Audit loop's work is payroll.
+ loop_payroll_audit:'payroll'});
+/** AI v2 W8: the module a loop's work belongs to; the loop runs only while it is enabled for the tenant. */
+export const workerModule=(workerId:TerasSwitchedWorker):string=>SWITCHED_MODULE[workerId];
 const DIRECT_PROVIDERS:readonly TerasAttestedProvider[]=Object.freeze(['anthropic','openai','google']);
 /** The outcome-record identity of an administrator's switch change. It is not a worker run, so the outcome
  * summary leaves it out of the run counts (./export.ts). */

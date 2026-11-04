@@ -78,6 +78,11 @@ async function makeBatch(period: string) {
   return batch.id;
 }
 
+/** A prior cycle is a CLOSED run (design review, 4 November 2026; test/payroll-close-prior-cycle.test.ts): the fixture's
+ *  earlier month is a finished one. */
+const closeRun = (batchId: string) =>
+  owner.db.update(schema.payrollBatch).set({ status: 'closed', closedAt: new Date() }).where(eq(schema.payrollBatch.id, batchId));
+
 /**
  * One clean payslip, scaled by `k` from a 5,000 baseline.
  *
@@ -121,6 +126,7 @@ async function seedRun(): Promise<{ batchId: string; oddId: string; peerId: stri
   }
   await addPayslip(prior, oddId, PRIOR, 1);
   await addPayslip(current, oddId, PERIOD, 1);
+  await closeRun(prior);
   return { batchId: current, oddId, peerId: ids[0] };
 }
 
@@ -190,6 +196,7 @@ async function seedCrowd(flat: number, movers: number) {
     ...emps.map((e) => slip(prior, e.id, PRIOR, 1)),
     ...emps.map((e, i) => slip(current, e.id, PERIOD, i < flat ? 1 : 1.06)),
   ]);
+  await closeRun(prior);
   return { batchId: current, flatIds: emps.slice(0, flat).map((e) => e.id) };
 }
 
@@ -290,6 +297,7 @@ describe('the tenant switch is the kill switch', () => {
       await addPayslip(prior, id, PRIOR, 1);
       await addPayslip(current, id, PERIOD, 1);
     }
+    await closeRun(prior);
     await evaluateBatchAnomalies(a, { batchId: current });
 
     const run = await proposeHypotheses(a, { batchId: current });

@@ -128,9 +128,17 @@ const GUIDE_TOUR: Record<string, string> = {
   'admin-rewards': 'rewardsAdmin',
   'manager-rewards': 'rewardsReviewer',
   'admin-ai-reporting': 'intelligence',
+  // AI v2 Phase 2 (wave 1 integration): the payroll-cycle loops guide offers the AI Centre walkthrough, as the AI Centre guides do.
+  'admin-ai-payroll-loops': 'intelligence',
+  // AI v2 Phase 2 P2-6: the AI quality guide offers the same AI Centre walkthrough.
+  'admin-ai-quality': 'intelligence',
   'admin-mobile-app': 'mobileDesign',
   'employee-notifications': 'notifications',
   'admin-communications': 'communications',
+  // ADR-0173: the private cases guide offers the My Profile walkthrough, where its entry card is.
+  'private-cases': 'me',
+  // AI v2 W8: the loops guide offers the AI Centre walkthrough, as the AI Centre operations guide does.
+  'admin-ai-loops': 'intelligence',
   'operator-provisioning': 'operatorProvisioning',
   'operator-identity-email': 'operatorIdentity',
   'operator-tenant-operations': 'operatorTenantOperations',

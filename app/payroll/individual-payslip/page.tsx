@@ -1,3 +1,4 @@
+import { recordPayrollAccess } from '@/core/payroll-audit/access-log';
 import { PayslipBlock as Block, PayslipInformation as Info, PayslipRow as Row } from '@/components/payslip-sections';
 import {PayslipCompanyLogo} from '@/components/payslip-company-logo';
 import { isRecordedEmployerContribution, payslipConfiguredContributions } from '@/core/payslip-configured-contributions';
@@ -387,6 +388,9 @@ export default async function IndividualPayslipPage({
   // One payslip id, one read. `companyIds` is unchanged from what the guard above produced, so the fence
   // this row is read through is exactly the fence it was read through before r210.
   const row = sel.payslipId ? await payslipForReview(s, { companyIds, payslipId: sel.payslipId }) : null;
+  // AI v2 P2-2b: an administrator viewing one person's payslip is recorded (core/payroll-audit/access-log.ts).
+  if (row) await recordPayrollAccess(s, { surface: 'payslip_admin', action: 'view', companyId: row.companyId, payPeriod: row.payPeriod,
+    ...(row.batchId ? { batchId: row.batchId } : {}), payslipId: row.id, employmentId: row.employmentId });
   const processingOutcome = row?.batchId ? (await listReprocessEmployeeOutcomes(s, {batchId: row.batchId})).find(
     outcome => outcome.employmentId === row.employmentId && outcome.payslipId === row.id && outcome.versionAfter === row.version,
   ) : undefined;

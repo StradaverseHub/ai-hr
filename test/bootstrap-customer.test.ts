@@ -35,6 +35,8 @@ function environment(): NodeJS.ProcessEnv {
     WORKOS_API_KEY: 'sk_synthetic_bootstrap_test_key', WORKOS_CLIENT_ID: 'client_synthetic_bootstrap',
     WORKOS_COOKIE_PASSWORD: 'synthetic-bootstrap-cookie-password-at-least-32',
     SHARE_PASSWORD: 'synthetic-bootstrap-share-password', AI_CONFIG_SECRET: 'synthetic-bootstrap-ai-secret',
+    // 05258a143 made TERAS_PROPOSAL_SECRET (at least 32 characters) required in every installation; the fixture lacked it.
+    TERAS_PROPOSAL_SECRET: 'synthetic-bootstrap-proposal-secret-0123456789',
     WORKOS_API_HTTPS: 'true', NEXT_PUBLIC_WORKOS_REDIRECT_URI: 'https://hr.fixture-company.com/callback' };
   for (const key of ['ALLOW_DEMO_SESSION', 'DEV_TENANT_ID', 'DEV_USER_ID', 'NODE_TLS_REJECT_UNAUTHORIZED']) delete env[key];
   return env;
@@ -87,7 +89,7 @@ describe('fresh customer bootstrap — one audited customer without a privileged
     const configured = environment();
     const keys = ['AUTH_PROVIDER', 'KEYCLOAK_ISSUER', 'AUTH_PUBLIC_ORIGIN', 'AUTH_SESSION_KEY', 'KEYCLOAK_WEB_CLIENT_ID', 'KEYCLOAK_WEB_CLIENT_SECRET', 'KEYCLOAK_MOBILE_CLIENT_ID', 'KEYCLOAK_API_AUDIENCE', 'NODE_ENV', 'AUDIT_HASH_CHAIN_ENABLED', 'DATABASE_URL', 'MIGRATION_DATABASE_URL',
       'WORKOS_API_KEY', 'WORKOS_CLIENT_ID', 'WORKOS_COOKIE_PASSWORD', 'WORKOS_API_HTTPS',
-      'SHARE_PASSWORD', 'AI_CONFIG_SECRET', 'NEXT_PUBLIC_WORKOS_REDIRECT_URI'];
+      'SHARE_PASSWORD', 'AI_CONFIG_SECRET', 'TERAS_PROPOSAL_SECRET', 'NEXT_PUBLIC_WORKOS_REDIRECT_URI'];
     await fs.writeFile(path.join(directory, '.env.production'),
       keys.map((key) => `${key}=${JSON.stringify(configured[key])}`).join('\n'), { mode: 0o600 });
     for (let i = 0; i < 2; i++) {

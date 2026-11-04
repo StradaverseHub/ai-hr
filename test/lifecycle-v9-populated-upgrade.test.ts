@@ -14,9 +14,9 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(659); // Accepted 650-entry LOGIN baseline, the six Re-plan successors, then the 1500–1502 tenant-isolation hardening.
+ expect(journal.entries).toHaveLength(671); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors, the four AI v2 Phase 1 migrations 2000-2003 and the seven AI v2 Phase 2 migrations 2004-2010, the Phase 2 hardening migration 2011 and the ADR-0174 tenant-isolation hardening 2100-2102 below.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
- expect(journal.entries.slice(boundary)).toHaveLength(88);
+ expect(journal.entries.slice(boundary)).toHaveLength(100);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
  // The accepted V9 prefix and coordinated Feedback/Bank identities are immutable; the two coordinated Formula appends follow.
  expect(createHash('sha256').update(JSON.stringify(journal.entries.slice(0,579).map(migrationIdentity))).digest('hex')).toBe('11e5295ce4e60acb1f13c009a78098b043c862b6412ed2bbc2e102f142a87f85');
@@ -50,10 +50,36 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:797,version:'7',when:1793330000350,tag:'0950_contract_management',breakpoints:true,hash:'84bc3e3a907118e2c6806e863c63544df061b49dbb9b51fcd4fe8f85ffcef8ac'},
   {idx:798,version:'7',when:1793330000351,tag:'0951_payroll_reprocess_correction_lineage',breakpoints:true,hash:'b65a8adc2f45165fb2bdb41b30d4ca6eeb7f7b44ef2539bcdecc7efde0322057'},
   {idx:799,version:'7',when:1793330000353,tag:'0953_lifecycle_service_info_intents',breakpoints:true,hash:'6f71e2fe862f86c836026f3e07647ca29b913dd34b2171c98a033b43da0afa89'},
+  // AI v2 Phase 1, renumbered into the AI Centre block 2000-2019 at the release integration (were 0952, 0959, 0960, 0961).
+  // AI Centre stored chats (claude/noveri-chats), frozen here.
+  {idx:800,version:'7',when:1793330001400,tag:'2000_teras_chats',breakpoints:true,hash:'8cd50320de942af9aa59e515c5e39e78f6027325da86264dd8e772bff1c802b7'},
+  // AI v2 W11 protected case route (claude/aiv2-s2-case-route), frozen here.
+  {idx:801,version:'7',when:1793330001401,tag:'2001_private_cases',breakpoints:true,hash:'bcfb193a8f6e59c7fec485291bf94cf460f89f44d5abc5bb9ef80cdb6f802acc'},
+  // AI v2 W8 loops at the Prepare level (claude/aiv2-s3-loops), frozen here.
+  {idx:802,version:'7',when:1793330001402,tag:'2002_teras_loops',breakpoints:true,hash:'9614f0d8aa6855d24fe0b7ee1e75c46f80f89e19ec43161825e4bf357eefb908'},
+  // AI v2 Phase 1 slice 3 employee letter requests (claude/aiv2-s3-letter-request), frozen here.
+  {idx:803,version:'7',when:1793330001403,tag:'2003_letter_requests',breakpoints:true,hash:'86648ce2dc7af62b92091a5ec195877c68a511f6272dd9681781cedf85900041'},
+  // AI v2 Phase 2, renumbered into the AI Centre block 2000-2019 at the Phase 2 integration (were 0963-0967, 0971, 0972).
+  // AI v2 Phase 2 P2-1 autonomy ladder (claude/aiv2-p2-autonomy-ladder), frozen here.
+  {idx:804,version:'7',when:1793330001404,tag:'2004_teras_loop_autonomy',breakpoints:true,hash:'b6bdeac1995dad6df759ce9a537c98e9a3666bf01aef716a7f6cac9a9134b132'},
+  // AI v2 Phase 2 P2-2a payroll-cycle loops (claude/aiv2-p2-payroll-loops), frozen here.
+  {idx:805,version:'7',when:1793330001405,tag:'2005_teras_payroll_cycle_loops',breakpoints:true,hash:'d211dd97ebdeb673998d29a2a9b3b8d8597c39a5646259ac0c855d46eca49fbc'},
+  // AI v2 Phase 2 P2-2b Audit loop (claude/aiv2-p2-audit-loop), frozen here.
+  {idx:806,version:'7',when:1793330001406,tag:'2006_payroll_audit_loop',breakpoints:true,hash:'05bc9e35367093ae4c6aec877a7ca7ec171387cb84b28940e0db0e190fcf7723'},
+  // AI v2 Phase 2 P2-4 HR capacity baseline (claude/aiv2-p2-capacity-ledger), frozen here.
+  {idx:807,version:'7',when:1793330001407,tag:'2007_teras_capacity_baseline',breakpoints:true,hash:'8b2bb6e38d76c7bf6643e45c62c11ed89e71d954615438d527adf1b4593f22ad'},
+  // AI v2 Phase 2 P2-3 own payroll cut-off (claude/aiv2-p2-payroll-checklist), frozen here.
+  {idx:808,version:'7',when:1793330001408,tag:'2008_own_payroll_cut_off',breakpoints:true,hash:'c068fa72631c648453117fdf73cc81e6ffbbb4cc94d55d82397e40ac4e4291f8'},
+  // AI v2 Phase 2 P2-5 Living Handbook (claude/aiv2-p2-living-handbook), frozen here.
+  {idx:809,version:'7',when:1793330001409,tag:'2009_teras_living_handbook',breakpoints:true,hash:'2ffa6731bc3e8cfbc0586875ba9c33d0db2c67104376dc99e35ba181214ccae0'},
+  // AI v2 Phase 2 P2-6 learning loops (claude/aiv2-p2-learning-loops), frozen here.
+  {idx:810,version:'7',when:1793330001410,tag:'2010_teras_learning_loops',breakpoints:true,hash:'2cabdaa5975db8ef1d91f6027bb38b4b7ca1f7ce3c17561b9961926f2e02c201'},
+  // AI v2 Phase 2 hardening, payroll loops, audit and checklist (claude/aiv2-p2h-loops-hardening), frozen here.
+  {idx:811,version:'7',when:1793330001411,tag:'2011_payroll_loops_hardening',breakpoints:true,hash:'d42cceaf96f728c8682b73c40c33b5d3066de40f1d5484100dff3686c811d909'},
   // ADR-0174 tenant-isolation hardening; frozen here.
-  {idx:1347,version:'7',when:1793330000900,tag:'1500_employment_helper_tenant_pin',breakpoints:true,hash:'f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a'},
-  {idx:1348,version:'7',when:1793330000901,tag:'1501_company_tenant_fk_not_valid',breakpoints:true,hash:'42ea5f55990bca4ff885b9aa1b0d5688653081d43aacd5b5639c765d4b916743'},
-  {idx:1349,version:'7',when:1793330000902,tag:'1502_company_tenant_fk_validate',breakpoints:true,hash:'d6746ac5574d6b336f318af20fd4244863869eca0aa9a93737802308cf49e474'},
+  {idx:1347,version:'7',when:1793330001500,tag:'2100_employment_helper_tenant_pin',breakpoints:true,hash:'f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a'},
+  {idx:1348,version:'7',when:1793330001501,tag:'2101_company_tenant_fk_not_valid',breakpoints:true,hash:'5aaf9b7e1f06514771e46ae3303e2e375eb461ba3acf0f8bb21af510bf49eb18'},
+  {idx:1349,version:'7',when:1793330001502,tag:'2102_company_tenant_fk_validate',breakpoints:true,hash:'b2a6af380bb89765c2b32b6edaf8b5c7707ca23901f22806cd9f8888856983b4'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

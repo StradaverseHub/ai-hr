@@ -297,7 +297,7 @@
   "nav": {
     "roster": "Lịch ca",
     "dataPrivacy": "Quyền riêng tư dữ liệu",
-    "dashboard": "Bảng điều khiển",
+    "dashboard": "Hôm nay",
     "myWorkspace": "Hồ sơ của tôi",
     "people": "Danh bạ nhóm",
     "orgChart": "Sơ đồ tổ chức",
@@ -348,6 +348,7 @@
     "claimsConfig": "Cấu hình khoản chi",
     "claims": "Khoản chi",
     "aiConfig": "AI",
+    "aiQuality": "Chất lượng AI",
     "notifications": "Thông báo",
     "analytics": "Phân tích",
     "shift": "Ca làm việc",
@@ -383,6 +384,7 @@
     "reportPerformance": "Hiệu suất",
     "profileOptions": "Tùy chọn hồ sơ",
     "delegations": "Ủy quyền phê duyệt",
+    "policies": "Chính sách",
     "dashboardCardConfig": "Thẻ bảng điều khiển",
     "scheduledActions": "Tác vụ theo lịch",
     "systemSettings": "Cài đặt hệ thống",
@@ -394,9 +396,9 @@
     "payrollIndividualPayslip": "Phiếu lương cá nhân",
     "payrollBackPay": "Truy lĩnh",
     "payrollStatutoryAdjustment": "Điều chỉnh khoản luật định",
-    "payrollControlTower": "Trung tâm điều hành",
+    "payrollControlTower": "Vận hành",
     "assistant": "Trợ lý",
-    "aiControlTower": "Trung tâm điều hành",
+    "aiControlTower": "Vận hành",
     "controlTowerOverview": "Tổng quan",
     "controlTowerHow": "Cách hoạt động",
     "controlTowerReadiness": "Dữ liệu nhân viên",
@@ -522,7 +524,9 @@
     "contractWorkflows": "Quy trình hợp đồng",
     "contractTemplates": "Mẫu hợp đồng",
     "contractIntake": "Tiếp nhận hợp đồng và bằng chứng nghỉ hưu",
-    "passwordPolicy": "Chính sách mật khẩu"
+    "passwordPolicy": "Chính sách mật khẩu",
+    "myPrivateCases": "Hồ sơ riêng tư của tôi",
+    "privateCases": "Hồ sơ riêng tư"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -9257,7 +9261,7 @@
       }
     },
     "controlTower": {
-      "title": "Trung tâm điều hành nhân sự",
+      "title": "Tổng quan vận hành",
       "description": "Điều phối công việc nhân sự, xem xét ngoại lệ và xác minh kết quả.",
       "backToPayroll": "Bảng lương",
       "ratioTitle": "Cần bao nhiêu người để chạy bảng lương này?",
@@ -9292,14 +9296,14 @@
       "colWaiting": "Chờ người xử lý",
       "openQueue": "Mở hàng đợi",
       "notChecked": "Chưa kiểm tra",
-      "noRuns": "Không có kỳ nào đã xử lý. Trung tâm chưa có gì để theo dõi cho đến khi một kỳ được xử lý.",
+      "noRuns": "Không có kỳ nào đã xử lý. Chưa có gì để theo dõi cho đến khi một kỳ được xử lý.",
       "domainsLine": "{live} trên {total} lĩnh vực đang hoạt động.",
       "howItWorksLink": "Cách hoạt động",
       "agentsLink": "Tác nhân nào đang chạy",
       "agents": {
         "title": "Tác nhân AI",
         "description": "Những phần của hệ thống tự hoạt động, và liệu từng phần có thực sự làm được hay không.",
-        "backToTower": "Quay lại Tháp điều khiển",
+        "backToTower": "Quay lại Vận hành",
         "heading": "Những gì tự chạy mà không cần yêu cầu",
         "headingHelp": "Mỗi mục đều tắt cho đến khi bạn bật, và bật không có nghĩa là nó chạy được — công tắc nào chưa đủ điều kiện sẽ được nêu bên dưới.",
         "stateOn": "Đang chạy",
@@ -9339,7 +9343,7 @@
       "exceptions": {
         "title": "Ngoại lệ",
         "description": "Mọi nhân viên bị gắn cờ còn chờ quyết định, từ mọi kỳ trả lương, trong một danh sách.",
-        "backToTower": "Quay lại Tháp điều khiển",
+        "backToTower": "Quay lại Vận hành",
         "outstanding": "Đang chờ quyết định",
         "blocking": "Trong đó, đang chặn một kỳ",
         "capped": "Hiển thị {shown} mục cấp bách nhất trong {total}. Xử lý bớt thì phần còn lại sẽ hiện ra.",
@@ -9348,7 +9352,7 @@
         "emptyTitle": "Không có gì đang chờ",
         "emptyBody": "Mọi nhân viên bị gắn cờ ở mọi kỳ đều đã được quyết định.",
         "whyTitle": "Vì sao quyết định của bạn quan trọng",
-        "whyBody": "Ba con số trên Tháp điều khiển — các kiểm tra sai bao lâu một lần, một ngoại lệ chờ bao lâu, và khối lượng này cần bao nhiêu người — không thể tính được cho đến khi có người quyết định những mục này. Trước đó, Tháp cố ý hiển thị những gì còn thiếu thay vì một con số."
+        "whyBody": "Ba con số trên Tổng quan vận hành — các kiểm tra sai bao lâu một lần, một ngoại lệ chờ bao lâu, và khối lượng này cần bao nhiêu người — không thể tính được cho đến khi có người quyết định những mục này. Trước đó, trang tổng quan cố ý hiển thị những gì còn thiếu thay vì một con số."
       },
       "agreementTitle": "AI có đồng ý với chúng ta không?",
       "agreementUnavailable": "Chưa có gì để đo lường.",
@@ -11195,6 +11199,7 @@
         "attendanceVisibleApplications": "Chỉ các đơn chấm công đã có quyền xem theo phạm vi nhân viên, tuyến báo cáo, ủy quyền hoặc người tham gia đã lưu hiện tại. Trang này không cấp quyền xem hồ sơ nhân sự hoặc lịch sử HR rộng hơn.",
         "childReliefReview": "Chỉ liệt kê nhân viên đang làm việc trong các công ty bạn quản lý, nên tổng ringgit là tổng của những gì bạn thấy được. Chỉ đọc — không thể thay đổi thiết lập thuế nào từ màn hình này.",
         "delegations": "HR và quản trị viên thấy mọi ủy quyền; bạn chỉ thấy những ủy quyền do bạn tạo hoặc đảm nhận.",
+        "aiCentrePolicies": "Quản trị viên xem chính sách của các công ty họ quản lý; những người khác đọc chính sách đã phê duyệt của công ty mình.",
         "duplicatePersonRecords": "Chỉ liệt kê nhân viên thuộc các công ty bạn quản trị, nên một nửa của cặp trải trên hai công ty có thể không hiển thị với bạn. Chỉ đọc — không thể thay đổi hồ sơ nào từ màn hình này.",
         "identityEmail": "Quản trị viên HR có thể xem trước biểu mẫu SMTP. Việc xem hoặc thay đổi thiết lập thực tế yêu cầu đăng ký riêng làm quản trị viên danh tính của bản cài đặt.",
         "leave": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
@@ -11241,7 +11246,9 @@
         "createLogin": "Chỉ dành cho quản trị viên toàn nhóm. Thiết lập thủ công cũng yêu cầu nhà cung cấp đăng nhập được hỗ trợ và phiên quản trị viên đã xác minh.",
         "inviteUser": "Chỉ dành cho quản trị viên toàn nhóm.",
         "entra": "Chỉ quản trị viên cấp tập đoàn. Cấu hình đăng nhập Microsoft và cấp tài khoản nhân viên cho tổ chức của mình. Liên kết danh tính hiện có cần được xác nhận rõ ràng.",
-        "rewardsAccess": "Phân công Rewards đang có hiệu lực và quyền quản trị HR theo phạm vi quyết định quyền truy cập; chỉ có vai trò hệ thống không cho phép mọi hành động."
+        "rewardsAccess": "Phân công Rewards đang có hiệu lực và quyền quản trị HR theo phạm vi quyết định quyền truy cập; chỉ có vai trò hệ thống không cho phép mọi hành động.",
+        "myPrivateCases": "Chỉ các hồ sơ riêng tư của chính người đăng nhập. Vai trò đặc quyền không mở rộng phạm vi; quản trị viên không thể đọc hồ sơ của người khác tại đây.",
+        "privateCaseHandling": "Mọi người đều truy cập được, nhưng chỉ hiển thị hồ sơ cho người xử lý được chỉ định của công ty liên quan (hoặc quản trị viên tập đoàn khi không còn người xử lý phù hợp), không bao giờ cho người gửi hoặc người bị người gửi loại trừ. Vai trò không cấp quyền gì tại đây."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -13913,6 +13920,8 @@
     "typeLabel": "Loại khoản chi",
     "receiptRequired": "yêu cầu biên lai",
     "amountLabel": "Số tiền (RM)",
+    "amountLabelInCurrency": "Số tiền ({currency})",
+    "amountLabelNoCurrency": "Số tiền",
     "incurredOnLabel": "Ngày phát sinh",
     "receiptLabel": "Biên lai",
     "descriptionLabel": "Mô tả (tùy chọn)",
@@ -17478,11 +17487,11 @@
     "empty": "Chưa có câu hỏi nào. Hãy đặt một câu ở trên.",
     "noAnswer": "Không có câu trả lời nào được tạo.",
     "lookedAt": "Đã xem: {tools}",
-    "stop_refusal": "Trợ lý từ chối trả lời câu này.",
+    "stop_refusal": "Trung tâm AI từ chối trả lời câu này.",
     "stop_max_tokens": "Câu trả lời bị cắt vì quá dài. Hãy thử hỏi ít hơn mỗi lần.",
-    "stop_other": "Trợ lý dừng trước khi hoàn tất. Hồ sơ của bạn không có vấn đề — vui lòng hỏi lại.",
-    "stop_tool_use": "Trợ lý dừng khi vẫn đang tra cứu. Vui lòng hỏi lại.",
-    "stop_turn_cap": "Trợ lý đã đạt giới hạn {n} bước và dừng trước khi hoàn tất. Hãy thử tách nhỏ câu hỏi.",
+    "stop_other": "Trung tâm AI dừng trước khi hoàn tất. Hồ sơ của bạn không có vấn đề — vui lòng hỏi lại.",
+    "stop_tool_use": "Trung tâm AI dừng khi vẫn đang tra cứu. Vui lòng hỏi lại.",
+    "stop_turn_cap": "Trung tâm AI đã đạt giới hạn {n} bước và dừng trước khi hoàn tất. Hãy thử tách nhỏ câu hỏi.",
     "denied_module_off": "Tôi vẫn đang chờ sau cánh gà. Tổ chức của bạn chưa bật trợ lý. Quản trị viên HR có thể hỗ trợ.",
     "denied_no_grant": "Tôi vẫn đang chờ thẻ ra vào của bạn. Quản trị viên HR có thể giúp mở quyền dùng trợ lý.",
     "denied_no_user": "Tôi chưa ghép được lần đăng nhập này với tài khoản. Quản trị viên có thể giúp kiểm tra.",
@@ -19667,7 +19676,7 @@
       },
       "historyPrivacy": {
         "title": "Lịch sử trò chuyện của bạn",
-        "description": "Thời hạn lưu nội dung trò chuyện là 30 ngày. Bạn có thể xóa ngay cả khi quyền dùng Trợ lý đã bị tắt. Số lượt yêu cầu và bản ghi sử dụng vẫn được giữ; hồ sơ nhân sự không thay đổi.",
+        "description": "Các cuộc trò chuyện đã lưu sẽ bị xóa khi hết thời hạn lưu trò chuyện của công ty bạn (30 ngày, trừ khi quản trị viên thay đổi). Bạn có thể xóa ngay cả khi quyền dùng Trợ lý đã bị tắt. Số lượt yêu cầu và bản ghi sử dụng vẫn được giữ; hồ sơ nhân sự không thay đổi.",
         "clear": "Xóa nội dung trò chuyện của tôi",
         "confirmTitle": "Xóa nội dung trò chuyện của bạn?",
         "confirmBody": "Nội dung trò chuyện đã lưu sẽ bị xóa ngay và không thể khôi phục. Số lượt sử dụng và hồ sơ nhân sự của bạn vẫn giữ nguyên.",
@@ -21807,7 +21816,7 @@
       "working": "Đang suy nghĩ…",
       "failed": "Yêu cầu chưa gửi được. Vui lòng thử lại.",
       "noCard": "Không có thẻ trả lời cho câu hỏi này.",
-      "openInAssistant": "Mở trong Trợ lý",
+      "openInAssistant": "Mở trong Trung tâm AI",
       "question": "Câu hỏi của bạn",
       "placeholder": "Đặt câu hỏi",
       "send": "Gửi",
@@ -21829,7 +21838,7 @@
         "people": "Nhân sự",
         "rewards": "Khen thưởng",
         "analytics": "Phân tích",
-        "controlTower": "Tháp điều khiển",
+        "controlTower": "Vận hành",
         "settings": "Cài đặt"
       },
       "identity": "Trợ lý AI",
@@ -21910,9 +21919,9 @@
     "err_protected_input": "Yêu cầu cần đầu vào được bảo vệ phù hợp. Chọn tác vụ hoặc mẫu đầu vào gợi ý, hoặc dùng màn hình gốc cho chi tiết khác."
   },
   "controlTower": {
-    "howTitle": "Trung tâm điều hành hoạt động thế nào",
+    "howTitle": "Những gì đang chạy cho công ty của bạn",
     "howDescription": "Những gì chạy, theo thứ tự nào, phần nào dùng AI, và hiện đang bật những gì.",
-    "backToTower": "Quay lại Trung tâm điều hành",
+    "backToTower": "Quay lại Vận hành",
     "loopTitle": "Vòng lặp",
     "loopIntro": "Mỗi chu kỳ chạy cùng năm bước. Chỉ một bước có AI, và không bước nào tự quyết định.",
     "loopAlt": "Năm bước: chạy kiểm tra, ghi nhận phát hiện, AI diễn giải bằng lời dễ hiểu, một người quyết định, và kết quả phản hồi ngược lại.",
@@ -22023,7 +22032,7 @@
     "promise2Body": "Việc một mục được duyệt, gắn cờ hay chặn là do các quy tắc cố định quyết định trước khi AI tham gia, và phần diễn giải không thể thay đổi quyết định ấy. Không gì được duyệt, chi trả hay sửa đổi mà không có người.",
     "readinessScreen": {
       "title": "Mức sẵn sàng hồ sơ",
-      "backToTower": "Quay lại Trung tâm điều hành",
+      "backToTower": "Quay lại Vận hành",
       "description": "Mỗi nhân viên đang làm việc hoặc đã sẵn sàng để trả lương và kê khai, hoặc còn thiếu thứ gì đó. Hãy xử lý ở đây một lần, thay vì gặp lại mỗi kỳ lương.",
       "readyPct": "hồ sơ đầy đủ",
       "readyOf": "nhân viên sẵn sàng",
@@ -22054,7 +22063,7 @@
     "actions": {
       "title": "Thao tác được đề xuất",
       "description": "Công việc mà AI muốn gánh bớt cho bạn. Không có gì xảy ra ở đây cho đến khi bạn phê duyệt, và bạn thấy rõ lý do từng mục được đề xuất.",
-      "backToTower": "Quay lại Tháp điều khiển",
+      "backToTower": "Quay lại Vận hành",
       "emptyTitle": "Không có gì để phê duyệt",
       "emptyBody": "Mọi ngoại lệ bảng lương còn chờ bạn đều có một vấn đề thật phía sau. Khi có người sửa hồ sơ gốc, ngoại lệ đó sẽ xuất hiện ở đây để được đóng lại.",
       "done": "Đã đóng {closed} ngoại lệ.",
@@ -22088,7 +22097,7 @@
     "orchestrator": {
       "checking": "Đang kiểm tra hồ sơ…",
       "runFailed": "Lần tự động hóa được ghi nhận gần nhất cần được xử lý. Hãy mở chi tiết lần chạy bên dưới.",
-      "navigation": "Điều hướng trung tâm điều hành",
+      "navigation": "Các mục vận hành",
       "overview": "Tổng quan",
       "readiness": "Dữ liệu nhân viên",
       "exceptions": "Ngoại lệ bảng lương",
@@ -26921,7 +26930,7 @@
   "aiManagement": {
     "title": "Quản lý AI",
     "description": "Xem mọi chức năng AI, theo dõi hoạt động mô hình và kiểm soát hạn mức người dùng, công ty.",
-    "back": "Trung tâm điều hành",
+    "back": "Vận hành",
     "provider": "Nhà cung cấp: {provider} · {model}",
     "noProvider": "Chưa cấu hình nhà cung cấp AI. Quy trình thủ công vẫn khả dụng.",
     "configureProvider": "Cài đặt nhà cung cấp",
@@ -27246,7 +27255,8 @@
       "jobs": {
         "review-sweep": "Lượt chạy hàng đợi công việc HR ban đêm",
         "ai-retention": "Lưu giữ lịch sử chạy AI",
-        "ai-alerts": "Kiểm tra cảnh báo AI"
+        "ai-alerts": "Kiểm tra cảnh báo AI",
+        "payroll-loops": "Lượt kiểm tra định kỳ vòng lặp trước kỳ lương"
       },
       "steps": {
         "observe": "Kiểm tra hồ sơ nhân viên",
@@ -27324,7 +27334,8 @@
           "closed_references": "Tham chiếu mờ và danh mục cố định (văn bản và giá trị nguồn ở lại cục bộ)",
           "coarse_aggregate_bands": "Khoảng tổng hợp thô (không bảo đảm ẩn danh)",
           "pseudonymous_person_bands": "Khoảng theo người với bí danh ngẫu nhiên (không ẩn danh)",
-          "authored_formula_request": "Yêu cầu công thức do người dùng viết"
+          "authored_formula_request": "Yêu cầu công thức do người dùng viết",
+          "authored_policy_text": "Văn bản chính sách do quản trị viên nhân sự viết (bị từ chối nếu chứa thông tin định danh cá nhân)"
         },
         "redaction": {
           "pii_masked": "Đã che",
@@ -28688,6 +28699,7 @@
     "clear": "Xóa giá trị",
     "undo": "Hoàn tác thay đổi",
     "leaveUnsaved": "Rời trang và bỏ các thay đổi chưa lưu?",
+    "seedWithheld": "Chưa được điền sẵn: {fields}. Số tài khoản ngân hàng và số giấy tờ tùy thân không bao giờ được chuyển từ AI Centre, vì vậy hãy tự nhập tại đây.",
     "viewHelp": "Xem hồ sơ nhân sự của bạn. Yêu cầu chờ duyệt không thay thế dữ liệu chính.",
     "editHelp": "Chỉnh sửa các trường được phép trên nhiều thẻ rồi lưu một lần. Thay đổi có thể lưu trực tiếp khi không yêu cầu phê duyệt; thay đổi cần phê duyệt và các trường liên quan sẽ chờ HR.",
     "pendingValue": "Giá trị chờ duyệt: {value}",
@@ -29430,7 +29442,7 @@
       "next": "Tiếp",
       "none": "Không có mục chờ phát triển."
     },
-    "back": "Trung tâm điều hành",
+    "back": "Vận hành",
     "title": "Cơ hội tự động hóa",
     "description": "Những phần việc xử lý mà một tác tử AI có thể nhận thay cho HR, được đo từ hồ sơ của bạn. Trang này không thay đổi dữ liệu và không gọi mô hình AI.",
     "window": "Hồ sơ bắt đầu trong",
@@ -31445,7 +31457,38 @@
         "state": "Không thể thực hiện thao tác này với thư nữa.",
         "unavailable": "Tính năng thư tạm thời không khả dụng. Vui lòng thử lại sau."
       },
-      "download": "Tải PDF"
+      "download": "Tải PDF",
+      "requests": {
+        "request": "Yêu cầu thư",
+        "title": "Yêu cầu thư của bạn",
+        "requestedOn": "Đã yêu cầu ngày {date}",
+        "openLetter": "Mở thư",
+        "messageFromHr": "Lời nhắn từ bộ phận Nhân sự",
+        "sent": "Yêu cầu của bạn đã được gửi đến bộ phận Nhân sự. Bạn có thể theo dõi trạng thái tại đây.",
+        "unavailable": "Hiện không thể hiển thị các yêu cầu thư của bạn.",
+        "formTitle": "Yêu cầu thư",
+        "formDescription": "Chọn loại thư bạn cần. Bộ phận Nhân sự sẽ chuẩn bị, và bạn sẽ thấy thư trong Thư của tôi sau khi được phát hành.",
+        "none": "Công ty của bạn chưa mở loại thư nào để nhân viên yêu cầu. Hãy liên hệ bộ phận Nhân sự.",
+        "type": "Loại thư",
+        "choose": "Chọn thư",
+        "typeInCompany": "{type} ({company})",
+        "purpose": "Mục đích (không bắt buộc)",
+        "purposeHelp": "Ví dụ: vay ngân hàng hoặc xin thị thực. Chỉ bạn và bộ phận Nhân sự thấy nội dung này.",
+        "submit": "Gửi yêu cầu",
+        "status": {
+          "requested": "Đã yêu cầu",
+          "in_progress": "Nhân sự đang chuẩn bị",
+          "issued": "Đã phát hành",
+          "declined": "Bị từ chối"
+        },
+        "errors": {
+          "invalid": "Hãy kiểm tra loại thư và thử lại.",
+          "not_requestable": "Không thể yêu cầu thư này nữa. Hãy chọn thư khác.",
+          "duplicate": "Bạn đã có một yêu cầu đang mở cho thư này.",
+          "unavailable": "Hiện không thể gửi yêu cầu của bạn. Hãy thử lại sau ít phút."
+        },
+        "cancel": "Hủy"
+      }
     },
     "reports": {
       "title": "Báo cáo thư",
@@ -31836,6 +31879,39 @@
         "unavailable": "Không thể hoàn thành thao tác. Hãy thử lại.",
         "state": "Trạng thái thư hoặc lô đã thay đổi. Tải lại trước khi thử tiếp.",
         "reasonRequired": "Nhập lý do loại bỏ."
+      },
+      "requests": {
+        "title": "Yêu cầu thư",
+        "intro": "Các thư nhân viên đã yêu cầu. Chuẩn bị thư sẽ mở bản nháp cho nhân viên đó; bạn phê duyệt và phát hành như thường lệ.",
+        "empty": "Không có yêu cầu thư nào đang chờ.",
+        "unavailable": "Hiện không thể hiển thị các yêu cầu thư.",
+        "employee": "Nhân viên",
+        "purpose": "Mục đích",
+        "requestedOn": "Đã yêu cầu ngày {date}",
+        "prepare": "Chuẩn bị thư",
+        "prepareUnavailable": "Mẫu này không còn được phát hành. Hãy phát hành lại hoặc từ chối yêu cầu.",
+        "decline": "Từ chối",
+        "declineReason": "Lý do từ chối",
+        "declineHelp": "Chỉ bộ phận Nhân sự thấy lý do. Nhân viên thấy rằng yêu cầu đã bị từ chối, kèm lời nhắn của bạn nếu bạn thêm.",
+        "employeeMessage": "Lời nhắn cho nhân viên (không bắt buộc)",
+        "employeeMessageHelp": "Hiển thị cho nhân viên cùng trạng thái đã từ chối.",
+        "declineSubmit": "Từ chối yêu cầu",
+        "inProgress": "Bản nháp đã được chuẩn bị. Yêu cầu được đánh dấu đã phát hành khi thư được phát hành.",
+        "preparing": "Được chuẩn bị từ yêu cầu {type} của nhân viên.",
+        "declined": "Yêu cầu đã bị từ chối.",
+        "status": {
+          "requested": "Đã yêu cầu",
+          "in_progress": "Đang chuẩn bị",
+          "issued": "Đã phát hành",
+          "declined": "Bị từ chối"
+        },
+        "errors": {
+          "invalid": "Hãy kiểm tra yêu cầu và thử lại.",
+          "permission": "Bạn không còn có thể xử lý yêu cầu này.",
+          "state": "Yêu cầu này đã được xử lý.",
+          "stale": "Yêu cầu này đã thay đổi. Hãy xem lại.",
+          "unavailable": "Hiện không thể cập nhật yêu cầu. Hãy thử lại sau ít phút."
+        }
       }
     },
     "approval": {
@@ -31995,7 +32071,21 @@
       "empty": "Chưa có cài đặt hoặc tài nguyên.",
       "assetSearch": "Tìm theo tên tài nguyên",
       "companyCodeUnavailable": "Cấu hình mã tham chiếu công ty ngắn hoặc dùng định dạng không có biến công ty.",
-      "version": "Phiên bản cấu hình {number}"
+      "version": "Phiên bản cấu hình {number}",
+      "requests": {
+        "title": "Yêu cầu của nhân viên",
+        "intro": "Chọn những thư nhân viên có thể yêu cầu từ Thư của tôi. Mặc định tắt.",
+        "empty": "Chưa có mẫu nào được phát hành.",
+        "unavailable": "Hiện không thể hiển thị cài đặt yêu cầu của nhân viên.",
+        "allow": "Nhân viên có thể yêu cầu {name}",
+        "save": "Lưu yêu cầu của nhân viên",
+        "saved": "Đã lưu cài đặt yêu cầu của nhân viên.",
+        "errors": {
+          "invalid": "Hãy kiểm tra lựa chọn và thử lại.",
+          "permission": "Bạn không thể thay đổi cài đặt thư của công ty này.",
+          "unavailable": "Hiện không thể lưu cài đặt. Hãy thử lại sau ít phút."
+        }
+      }
     }
   },
   "performanceHome": {
@@ -33676,7 +33766,7 @@
       "anomalies": {
         "name": "Payroll anomaly checks",
         "description": "Records findings and verdicts for review. Does not change payroll amounts.",
-        "results": "Control Tower exceptions and payroll anomalies"
+        "results": "Operations exceptions and payroll anomalies"
       },
       "child-relief": {
         "name": "Child tax-relief refresh",
@@ -33742,6 +33832,11 @@
         "name": "Database backups",
         "description": "Creates database backups to an approved destination when configured.",
         "results": "Backup storage and protected backup logs"
+      },
+      "payroll-loops": {
+        "name": "Pre-salary loop tick",
+        "description": "Checks payroll inputs for the companies whose own check interval has come round. Prepares cards for payroll administrators; changes no record.",
+        "results": "Payroll cycle"
       }
     }
   },
@@ -34918,5 +35013,136 @@
     "retirementEvidencePending": "Xem xét bằng chứng nghỉ hưu đã ghi nhận trước khi mở hồ sơ này.",
     "acceptancePaused": "Quy trình này đang tạm dừng việc ký. Bạn vẫn có thể từ chối đề nghị.",
     "employeeIdentityUnavailable": "Tài khoản đăng nhập đã liên kết của nhân viên không khả dụng hoặc không thể xác nhận. Bộ phận Vận hành Nhân sự được giao xử lý cần làm việc với người phụ trách quyền truy cập. PDF đã phát hành vẫn được giữ lại."
+  },
+  "privateCases": {
+    "categories": {
+      "grievance": "Khiếu nại",
+      "harassment": "Quấy rối",
+      "safety": "An toàn",
+      "other": "Vấn đề khác"
+    },
+    "statuses": {
+      "received": "Đã nhận",
+      "in_review": "Đang xem xét",
+      "closed": "Đã đóng"
+    },
+    "errors": {
+      "invalid": "Vui lòng kiểm tra biểu mẫu: chọn nội dung liên quan và mô tả những gì đã xảy ra.",
+      "not_set_up": "Hồ sơ riêng tư chưa được thiết lập cho công ty này. Vui lòng liên hệ trực tiếp với bộ phận nhân sự.",
+      "not_found": "Bạn không thể xem hồ sơ này.",
+      "not_allowed": "Bạn không thể thực hiện thao tác này.",
+      "unavailable": "Hiện không khả dụng. Vui lòng thử lại sau.",
+      "conflict": "Nội dung đã thay đổi kể từ khi bạn mở. Vui lòng kiểm tra lại."
+    },
+    "entry": {
+      "title": "Hồ sơ riêng tư với bộ phận nhân sự",
+      "help": "Gửi khiếu nại, vấn đề quấy rối, mối lo ngại về an toàn hoặc vấn đề nhạy cảm khác bằng văn bản tới người xử lý hồ sơ nhân sự. AI Centre không bao giờ đọc nội dung này.",
+      "open": "Hồ sơ riêng tư"
+    },
+    "me": {
+      "title": "Hồ sơ riêng tư với bộ phận nhân sự",
+      "description": "Viết riêng cho người xử lý hồ sơ nhân sự của công ty bạn. Chỉ bạn và họ có thể đọc; AI Centre không bao giờ đọc, lưu trữ hay nhìn thấy những gì bạn viết.",
+      "start": "Mở một hồ sơ riêng tư",
+      "notSetUp": "Hồ sơ riêng tư chưa được thiết lập cho công ty của bạn. Vui lòng liên hệ trực tiếp với bộ phận nhân sự.",
+      "empty": "Bạn chưa mở hồ sơ riêng tư nào.",
+      "listTitle": "Hồ sơ của bạn",
+      "opened": "Mở ngày {date}",
+      "updated": "Cập nhật ngày {date}",
+      "handle": "Hồ sơ bạn xử lý",
+      "view": "Xem",
+      "unreachable": "Hiện chưa ai có thể đọc"
+    },
+    "new": {
+      "title": "Mở một hồ sơ riêng tư",
+      "description": "Hãy viết bằng lời của chính bạn. Hồ sơ được gửi tới những người xử lý hồ sơ nhân sự có tên dưới đây, không phải tới AI Centre.",
+      "back": "Hồ sơ riêng tư",
+      "company": "Công ty",
+      "chooseCompany": "Hiển thị công ty này",
+      "category": "Nội dung liên quan đến điều gì?",
+      "text": "Điều gì đã xảy ra",
+      "textHelp": "Tối đa 8.000 ký tự. Hãy chia sẻ những gì bạn cảm thấy thoải mái; người xử lý có thể liên hệ với bạn.",
+      "handlers": "Ai có thể đọc",
+      "handlersHelp": "Những người này có thể đọc hồ sơ của bạn. Nếu hồ sơ liên quan đến một người trong số họ, hoặc một người trong số họ không được xem, hãy đánh dấu tên người đó.",
+      "exclude": "Không gửi cho {name} ({role})",
+      "unnamed": "Người không có hồ sơ nhân viên",
+      "groupAdmin": "Gửi cho quản trị viên tập đoàn thay vì người xử lý hồ sơ",
+      "groupAdminHelp": "Nếu bạn loại trừ tất cả người xử lý hồ sơ, hồ sơ sẽ được gửi cho quản trị viên tập đoàn. Nếu bạn loại trừ tất cả mọi người, hồ sơ vẫn được lưu nhưng hiện chưa ai có thể đọc.",
+      "privacy": "Hồ sơ của bạn được lưu trữ ở dạng mã hóa. Người xử lý hồ sơ nhân sự thấy hồ sơ kèm tên bạn; các quản trị viên nhân sự khác, quản lý và AI Centre thì không.",
+      "submit": "Gửi cho bộ phận nhân sự",
+      "notStorable": "Hiện không thể lưu hồ sơ riêng tư. Vui lòng liên hệ trực tiếp với bộ phận nhân sự.",
+      "readerHandler": "người xử lý hồ sơ",
+      "readerGroupAdmin": "quản trị viên tập đoàn"
+    },
+    "detail": {
+      "back": "Hồ sơ riêng tư",
+      "sent": "Hồ sơ của bạn đã được gửi tới bộ phận nhân sự.",
+      "opened": "Mở ngày {date}",
+      "company": "Công ty",
+      "category": "Loại",
+      "status": "Trạng thái",
+      "text": "Nội dung bạn đã viết",
+      "history": "Lịch sử trạng thái",
+      "step": "{status}, {date}"
+    },
+    "handle": {
+      "title": "Hồ sơ riêng tư bạn xử lý",
+      "description": "Các hồ sơ gửi tới bạn với tư cách người xử lý hồ sơ. Mỗi lần một hồ sơ được mở đều được ghi lại.",
+      "none": "Bạn không xử lý hồ sơ riêng tư.",
+      "empty": "Chưa có hồ sơ riêng tư nào.",
+      "opened": "Mở ngày {date}",
+      "toGroupAdmin": "Đã gửi cho quản trị viên tập đoàn",
+      "erasure": "Người gửi đã yêu cầu xóa dữ liệu của họ: hồ sơ này sẽ bị xóa khi được đóng.",
+      "view": "Mở",
+      "back": "Hồ sơ bạn xử lý",
+      "author": "Người gửi",
+      "noName": "Không có tên",
+      "text": "Nội dung họ đã viết",
+      "status": "Trạng thái",
+      "moveTo": "Đánh dấu là {status}",
+      "notes": "Ghi chú của người xử lý",
+      "notesHelp": "Chỉ những người xử lý hồ sơ này thấy ghi chú; người gửi hồ sơ thì không.",
+      "noNotes": "Chưa có ghi chú.",
+      "noteBy": "{name}, {date}",
+      "you": "Bạn",
+      "noteLabel": "Ghi chú",
+      "saveNote": "Lưu ghi chú",
+      "closedNoNotes": "Hồ sơ này đã đóng nên không thể thêm ghi chú.",
+      "audit": "Nhật ký hồ sơ",
+      "auditCreated": "{name} đã mở",
+      "auditRead": "{name} đã đọc",
+      "auditStatus": "{name} đã đổi từ {from} sang {to}",
+      "auditNote": "{name} đã thêm ghi chú",
+      "noteSaved": "Đã lưu ghi chú.",
+      "statusSaved": "Đã thay đổi trạng thái.",
+      "erased": "Hồ sơ đã được đóng và xóa theo yêu cầu xóa dữ liệu của người gửi."
+    },
+    "admin": {
+      "title": "Người xử lý hồ sơ riêng tư",
+      "description": "Chỉ định những người nhận hồ sơ riêng tư cho từng công ty. Chỉ họ có thể đọc các hồ sơ đó: việc chỉ định người xử lý không cho phép bạn đọc chúng.",
+      "back": "Quyền riêng tư dữ liệu",
+      "company": "Công ty",
+      "show": "Hiển thị",
+      "current": "Người xử lý hiện tại",
+      "none": "Chưa có người xử lý nên công ty này chưa cung cấp hồ sơ riêng tư.",
+      "since": "Từ {date}",
+      "revoke": "Gỡ bỏ",
+      "revoked": "Đã gỡ bỏ ngày {date}",
+      "history": "Người xử lý trước đây",
+      "designate": "Thêm người xử lý",
+      "person": "Người",
+      "noRecord": "Tài khoản đăng nhập không có hồ sơ nhân viên",
+      "add": "Thêm người xử lý",
+      "selfNote": "Bạn không thể tự chỉ định mình làm người xử lý. Quản trị viên tập đoàn hoặc một quản trị viên khác của công ty sẽ chỉ định bạn.",
+      "added": "Đã thêm người xử lý.",
+      "removed": "Đã gỡ bỏ người xử lý.",
+      "noCompanies": "Bạn không quản trị công ty nào."
+    },
+    "privacyCard": {
+      "title": "Người xử lý hồ sơ riêng tư",
+      "help": "Chọn người nhận các hồ sơ riêng tư mà nhân viên gửi tới bộ phận nhân sự.",
+      "link": "Quản lý người xử lý hồ sơ"
+    },
+    "noReader": "Công ty này chưa thiết lập người đọc phù hợp nên hiện chưa ai có thể đọc hồ sơ này. Vui lòng liên hệ {channel}.",
+    "externalChannel": "[kênh bên ngoài do công ty chỉ định, ví dụ đường dây đạo đức]"
   }
 }

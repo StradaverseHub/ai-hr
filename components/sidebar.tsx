@@ -4,7 +4,6 @@ import Link from './intent-link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { AI_PRODUCT_NAME } from '@/lib/ai-centre/brand';
 import { useIsMonolith, useUiTheme } from './ui-theme-context';
 import {
   ArrowLeftRight,
@@ -17,12 +16,8 @@ import {
   Command,
   FileBarChart,
   Hash,
-  ClipboardCheck,
   FlaskConical,
-  Gauge,
-  TrendingUp,
   Sparkles,
-  Wand2,
   LayoutDashboard,
   ListChecks,
   Mail,
@@ -33,6 +28,8 @@ import {
   PanelLeftOpen,
   Receipt,
   Lock,
+  LockKeyhole,
+  FolderLock,
   ScrollText,
   Settings2,
   Share2,
@@ -237,14 +234,9 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   ...LIFECYCLE_LINKS.map((l) => [l.href, 'lifecycle'] as const),
   ...ONBOARDING_NODE.children.map(l=>[l.href,'lifecycle'] as const),
   ...(modulePackById('payroll')!.navNodes ?? []).flatMap((n) => n.children.map((c) => [c.href, 'payroll'] as const)),
-  // ADR-0104: Overview and the explainer serve core HR readiness, including tenants without payroll.
-  // r235 — payroll-gated for a sharper reason than the two above: the ONLY action type closes payroll
-  // exceptions, so without payroll this row is a permanently empty screen. It stops being payroll's when
-  // an action type lands whose subject is not a payroll finding.
-  ['/control-tower/actions', 'payroll'] as const,
-  ['/control-tower/exceptions', 'payroll'] as const,
-  // NOT payroll-gated: record completeness is not a payroll question (see CONTROL_DOMAINS). Absent from
-  // this map entirely, which is how a row says "always offered".
+  // Issue 17 (AI Centre › Operations): the former Control Tower rows left the rail, and with them their
+  // payroll gates on /control-tower/actions and /control-tower/exceptions. The same gate now hides those two
+  // section tabs (lib/ai-centre/centre-nav.ts CENTRE_SECTIONS, `payroll: true`).
   ...(modulePackById('payroll')!.navLinks ?? []).map((l) => [l.href, 'payroll'] as const),
   ...(modulePackById('performance')!.navLinks ?? []).map((l) => [l.href, 'performance'] as const),
   // deec1691 — the ONE hand-written entry, and it has to be: `system_explorer` is a catalog module
@@ -294,25 +286,9 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
 // Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children
 // map to the reporter's categories; each opens the Reports hub filtered to that category, where the
 // predefined reports AND the custom report builder live. Admin-only (every report surface is admin-gated).
-// AI management (28 Oct 2026, owner): one place to manage AI, each section its own page under
-// /control-tower/agents. A sub-menu in the Control Tower group rather than a tab row inside the page.
-// Overview is exact so it is not also current on the other sections. Spending opens only where a spend
-// policy exists; elsewhere its page returns to the Overview.
-const AI_MANAGEMENT_NODE: CollapsibleGroupItem = {
-  // AI centre (docs/design/ai-centre/PLAN.md): the nine AI management pages are grouped as the centre's
-  // three administrator tabs. Every page keeps its address and requireAdmin guard; each row owns the
-  // sections its tab groups, and the centre's own tab bar links them.
-  collapsible: true,
-  labelKey: 'aiCentreAdmin',
-  icon: Sparkles,
-  activeMatch: 'children',
-  defaultHref: '/control-tower/agents/features',
-  children: [
-    { href: '/control-tower/agents/features', labelKey: 'aiCentreWorkers', icon: ListChecks, adminOnly: true, ownedSubpaths: ['/control-tower/agents/inventory'] },
-    { href: '/control-tower/agents', labelKey: 'aiCentreSetup', icon: Gauge, adminOnly: true, exactHref: true, ownedSubpaths: ['/control-tower/agents/assistant'] },
-    { href: '/control-tower/agents/allowances', labelKey: 'aiCentreSpend', icon: Wallet, adminOnly: true, ownedSubpaths: ['/control-tower/agents/spending', '/control-tower/agents/provider', '/control-tower/agents/runs'] },
-  ],
-};
+// Issue 17 (owner: "Merge both entirely"): the AI management pages under /control-tower/agents are AI Centre ›
+// Administration, reached through the AI Centre row and its tab rows. Every page keeps its address and its
+// requireAdmin guard.
 const REPORTS_NODE: CollapsibleGroupItem = {
   collapsible: true,
   labelKey: 'reports',
@@ -428,6 +404,11 @@ const GROUPS: Group[] = [
     items: [
       { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
       { href: '/me', labelKey: 'myWorkspace', icon: UserRound, tour: 'nav-me' },
+      // AI v2 W11 (ADR-0173): a person's own private cases with HR, beside their own workspace; every login sees it
+      // (the page shows only their own cases). The handlers' queue follows, for a designated handler (or a group
+      // administrator with a case to handle) only: canSeeChild reads privateCaseHandler from app/layout.tsx.
+      { href: '/me/cases', labelKey: 'myPrivateCases', icon: LockKeyhole },
+      { href: '/cases', labelKey: 'privateCases', icon: FolderLock },
       { href: '/system-testing', labelKey: 'mySystemTesting', icon: FlaskConical },
       { href: '/org', labelKey: 'orgChart', icon: Network },
       // a7cbd895: "My Absence" — the first-level home for ALL leave self-service after the /me Leave
@@ -446,7 +427,8 @@ const GROUPS: Group[] = [
       // above; a user without a grant sees the row and is told who to ask, which is a better dead end
       // than a row that vanishes with no explanation.
       // AI centre: Ask, Inbox, Delegated jobs and How it works are views of /assistant (one row, same gate).
-      { href: '/assistant', labelKey: 'aiCentre', icon: Sparkles },
+      // Issue 17: Operations and Administration (/control-tower/*) are AI Centre tabs, so this row owns them.
+      { href: '/assistant', labelKey: 'aiCentre', icon: Sparkles, ownedSubpaths: ['/control-tower'] },
       { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
       // ca2f2fef: standalone design-preview of the future mobile app (visible to all roles).
       { href: '/mobile-preview', labelKey: 'mobilePreview', icon: Smartphone },
@@ -478,37 +460,10 @@ const GROUPS: Group[] = [
       ...ATTENDANCE_MANAGE_ROWS,
     ],
   },
-  {
-    // ADR-0083 r233 — the Control Tower promoted OUT of the Payroll menu into its own section. It was a
-    // payroll row while payroll was the only domain it watched; it is a control plane for operational HR
-    // of which payroll is the FIRST adapter and not the subject (§2.2), and leaving it under Payroll
-    // taught every reader the opposite. Its own group rather than a node inside Administration because
-    // burying a control plane under "Administration" is how it came to look like a payroll feature.
-    // `adminOnly` mirrors the route guard (requireAdmin on both pages), not a preference.
-    labelKey: 'aiControlTower',
-    adminOnly: true,
-    items: [
-      { href: '/control-tower', labelKey: 'controlTowerOverview', icon: Gauge, adminOnly: true, exactHref: true },
-      // The explainer is a first-class row rather than a link buried on the overview: "what is switched
-      // on, and which parts involve a model" is the question an admin asks BEFORE trusting the queue, so
-      // it must be reachable without first reading the thing it explains.
-      // ADR-0083 §3 item 2 — the shift-left half. Sits ABOVE the explainer because it is a working screen
-      // and the explainer is a reference one.
-      { href: '/control-tower/readiness', labelKey: 'controlTowerReadiness', icon: ClipboardCheck, adminOnly: true },
-      // ADR-0074 r245 — the cross-run payroll exceptions queue; payroll-gated through MODULE_OF_HREF.
-      { href: '/control-tower/exceptions', labelKey: 'controlTowerExceptions', icon: Receipt, adminOnly: true },
-      // ADR-0083 §2.5 — the approval queue. The only screen in the product where a person authorises an
-      // agent to write, which is why it is a row of its own rather than a panel on another page.
-      { href: '/control-tower/actions', labelKey: 'controlTowerActions', icon: Wand2, adminOnly: true },
-      // 28 Oct 2026 (owner) — this group IS the Control Tower menu; the in-page tab rows were retired, so the
-      // payroll exceptions queue and AI management live here too, in the same order the tabs used.
-      AI_MANAGEMENT_NODE,
-      // ADR-0131 Phase 1 — where agents could take work off HR, measured from the records. A working
-      // screen, so it sits above the reference explainer.
-      { href: '/control-tower/opportunities', labelKey: 'controlTowerOpportunities', icon: TrendingUp, adminOnly: true },
-      { href: '/control-tower/how-it-works', labelKey: 'controlTowerHow', icon: BookOpen, adminOnly: true },
-    ],
-  },
+  // Issue 17 (owner: "Merge both entirely", 3 November 2026): the Control Tower group stood here. Its pages are
+  // AI Centre › Operations and Administration, rendered inside the AI Centre's tab rows; the AI Centre row owns
+  // their addresses (ownedSubpaths below), so the rail has one item for both. "How the Control Tower works"
+  // answers 308 to AI Centre › How it works. Every page keeps its address and requireAdmin guard.
   {
     labelKey: 'admin',
     adminOnly: true,
@@ -619,6 +574,7 @@ export function Sidebar({
   enabledModules = null,
   assistantAccess = true,
   feedbackAccess = true,
+  privateCaseHandler = false,
   defaultCollapsed,
   viewerName = null,
   viewerCode = null,
@@ -672,6 +628,9 @@ export function Sidebar({
   assistantAccess?: boolean;
   /** 0696 — false when an operator has hidden the Feedback menu for this customer. /feedback refuses on its own. */
   feedbackAccess?: boolean;
+  /** AI v2 W11 — the login handles private cases (a current handler grant, or a case it may handle). Only then is the
+   * "Private cases" queue row offered; /cases still shows each login only what row security returns. */
+  privateCaseHandler?: boolean;
   /** Pending items awaiting THIS viewer's decision (feedback 836118c4) — badge on the
    *  "Approval Items" row. Computed once in app/layout.tsx as listPendingTasks(...).length; the rail
    *  never queries. 0 (or a viewer without the row) renders no badge. */
@@ -699,10 +658,9 @@ export function Sidebar({
   const searchParams = useSearchParams();
   const search = searchParams.toString();
   const tNav = useTranslations('nav');
-  // AI centre: its row shows the configured product name (lib/ai-centre/brand.ts), never translated;
-  // every other row reads its own nav label.
-  const t = Object.assign(((key: string, values?: Record<string, string | number>) =>
-    key === 'aiCentre' && AI_PRODUCT_NAME ? AI_PRODUCT_NAME : tNav(key as never, values as never)) as typeof tNav, tNav);
+  // Every row, AI Centre included, reads its own translated nav label (owner, 3 November 2026: the product name
+  // appears only on How it works).
+  const t = tNav;
   const tWorkspace = useTranslations('onehr.workspace');
   // `common`, NOT `nav`: the brand name lives at common.appName. Reading it off `t` would resolve
   // nav.appName, which does not exist — and a MISSING_MESSAGE passes tsc, the suite and `next build`
@@ -780,8 +738,11 @@ export function Sidebar({
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
   const securityAccess={admin:canAdministerSecurity,configure:canConfigureAccess,provision:canProvisionUsers,passwordPolicy:canConfigurePasswordPolicy};
-  const canSeeChild = (c: ChildItem) =>
-    (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
+  // Issue 17: the AI Centre row is also the only way to Operations and Administration, so an actual HR
+  // administrator (whose requireAdmin pages those are) keeps it without the Assistant grant or module; /assistant
+  // then shows its unavailable home with the centre's tabs, and every page still checks for itself.
+  const canSeeChild = (c: ChildItem) => (c.href === '/assistant' && canAdministerAi) ||
+    (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (c.href !== '/cases' || privateCaseHandler) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS

@@ -1,8 +1,7 @@
 /** AI centre step 5: rendered evidence per role, from the real components with fictional data owners
  * (no database, no authenticated server journey). Each case asserts what that role must and must not see:
- *  - employee: Inbox digest, no findings, no recommendations, no administrator tabs;
- *  - manager or approver: a leave decision card whose recommendation opens on request and names the failed
- *    rule with its version label, never a reject verdict;
+ *  - employee and manager or approver: moved to Today (test/today-home.dom.test.tsx) with the Inbox's retirement in
+ *    AI v2 Phase 1, including the recommendation that names the failed rule with its version label, never a reject;
  *  - company HR administrator: Workers without the registry or any worker switch (the registry is group
  *    administrators' only), and the refusal shown if a worker switch is posted anyway;
  *  - group administrator: the worker registry with the two registry-controlled switches, a worker's detail and
@@ -15,7 +14,9 @@ import { aiReviewDomHtml, captureAiReviewScreenshots } from './helpers/ai-review
 import { enWithAiCentre } from './helpers/ai-centre-messages';
 import { AI_FEATURES } from '../lib/ai/features';
 
-const state = vi.hoisted(() => ({ admin: false, group: false, tasks: [] as unknown[], recommendation: null as unknown }));
+const state = vi.hoisted(() => ({ admin: false, group: false, tasks: [] as unknown[], recommendation: null as unknown, recommender: true }));
+// The recommender's own gate, as the Inbox reads it; the rest of the registry stays real.
+vi.mock('../core/agent-registry/controls', async original => ({ ...(await original<typeof import('../core/agent-registry/controls')>()), workerRunGate: async () => ({ run: state.recommender, reasons: state.recommender ? [] : ['switched_off'] }) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: 'en', messages: enWithAiCentre as never, namespace }),
@@ -51,15 +52,12 @@ vi.mock('../core/hr-orchestrator', () => ({ orchestrationQueue: async () => ({})
 vi.mock('../app/control-tower/work-queue', () => ({ OrchestrationWorkQueue: () => null }));
 vi.mock('../app/control-tower/agents/actions', () => ({ applyBulkAssistantAction: vi.fn(), clearGroupAllowanceAction: vi.fn(), setGroupAllowanceAction: vi.fn(), clearUserAllowanceAction: vi.fn(), setAiSpendBudgetAction: vi.fn(), setAiAllowanceAction: vi.fn(), setAiFeatureAction: vi.fn(), setAiFeatureCapAction: vi.fn(), setAssistantPermissionAction: vi.fn() }));
 
-import { AiCentreTabs } from '../components/ai-centre/centre-tabs';
-import { AiCentreInbox } from '../app/assistant/centre/inbox';
 import { AiManagementScreen } from '../app/control-tower/agents/screen';
 import type { WorkerRow } from '../core/agent-registry/views';
 
 const FICTION = 'real components; fictional data owners; no authenticated server journey';
 const session = { tenantId: 'fictional', userId: 'fictional', roles: ['hr_admin'] } as never;
 const wrap = (node: React.ReactNode) => render(<NextIntlClientProvider locale="en" messages={enWithAiCentre as never} timeZone="Asia/Kuala_Lumpur">{node}</NextIntlClientProvider>);
-const LEAVE_ID = '22222222-2222-4222-8222-222222222222';
 afterEach(cleanup);
 
 function worker(id: string, overrides: Partial<WorkerRow>): WorkerRow {
@@ -79,48 +77,6 @@ const ROWS: WorkerRow[] = [
 ];
 
 describe('AI centre step 5, rendered per role', () => {
-  it('employee: the Inbox digest, no findings, no recommendation, no administrator tabs', async () => {
-    Object.assign(state, { admin: false, group: false, tasks: [] });
-    const view = wrap(<div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="inbox" isAdmin={false} />{await AiCentreInbox({ session })}</div>);
-    const digest = view.container.querySelector('[data-inbox-digest]') as HTMLElement;
-    // Nothing waits: "Your day" says so once, with no zero tile, no second empty box and no zero summary (review L9).
-    expect(within(digest).getByText(enWithAiCentre.aiCentre.inbox.empty)).toBeInTheDocument();
-    expect(view.container.querySelectorAll('[data-inbox-empty]')).toHaveLength(1);
-    expect(within(digest).queryByText(enWithAiCentre.aiCentre.digest.approvals)).toBeNull();
-    expect(view.container.querySelector('section[aria-labelledby="inbox-summary"]')).toBeNull();
-    expect(within(digest).queryByText(enWithAiCentre.aiCentre.digest.setup)).toBeNull();
-    expect(digest.querySelector('a[href="/approvals"]')).toBeNull();
-    expect(view.container.querySelector('[data-recommendation-loader]')).toBeNull();
-    expect(screen.queryByRole('link', { name: enWithAiCentre.aiCentre.tabs.workers })).toBeNull();
-    await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-step5-employee-inbox', FICTION, 'atelier');
-  }, 120000);
-
-  it('manager or approver: the recommendation opens on request and names the failed rule with its version', async () => {
-    Object.assign(state, { admin: false, group: false, tasks: [{ id: LEAVE_ID, kind: 'leave', subjectName: 'Fictional Person C', createdAt: '2026-11-01T02:00:00.000Z', linkPath: `/approvals?kind=leave&id=${LEAVE_ID}` }],
-      recommendation: { kind: 'recommendation', verdict: 'needs_review', failedRules: [{ check: 'balance_covers', blocking: true, version: { kind: 'leave_type', version: 3 } }, { check: 'team_coverage', blocking: false, version: null }] } });
-    // Before the approver opens it: a link, never a recommendation run.
-    const closed = wrap(await AiCentreInbox({ session }));
-    // "Your day" counts the list below and links to it on this page (review M9, M10).
-    const tile = closed.container.querySelector('[data-inbox-digest] a') as HTMLElement;
-    expect(tile).toHaveAttribute('href', '#inbox-decide');
-    expect(tile).toHaveTextContent(enWithAiCentre.aiCentre.digest.approvals);
-    expect(tile.querySelector('.text-lg')).toHaveTextContent('1');
-    expect(closed.container.querySelector('[data-recommendation-loader]')).toHaveAttribute('href', `/assistant?view=inbox&recommend=${LEAVE_ID}#recommendation-${LEAVE_ID}`);
-    expect(closed.container.querySelector('[data-recommendation]')).toBeNull();
-    closed.unmount();
-    const view = wrap(<div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="inbox" isAdmin={false} />{await AiCentreInbox({ session, recommend: LEAVE_ID })}</div>);
-    const panel = view.container.querySelector('[data-recommendation]') as HTMLElement;
-    const copy = enWithAiCentre.aiCentre.recommendation;
-    expect(panel).toHaveAttribute('data-recommendation', 'needs_review');
-    expect(within(panel).getByText(copy.check.balance_covers)).toBeInTheDocument();
-    expect(within(panel).getByText(copy.blocking)).toBeInTheDocument();
-    expect(within(panel).getByText(copy.version.leave_type.replace('{version}', '3'))).toBeInTheDocument();
-    expect(within(panel).getAllByText(/version/)).toHaveLength(1);
-    expect(panel.textContent).not.toMatch(/reject/i);
-    expect(view.container.querySelectorAll('[data-proposal-card] button, [data-proposal-card] form')).toHaveLength(0);
-    await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-step5-approver-inbox', FICTION, 'atelier');
-  }, 120000);
-
   it('company HR administrator: Workers without the registry or a worker switch', async () => {
     Object.assign(state, { admin: true, group: false });
     const view = wrap(await AiManagementScreen({ session, section: 'features', searchParams: Promise.resolve({}), builtInChecks: [], registry: null }));

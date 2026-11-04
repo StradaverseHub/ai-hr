@@ -3,9 +3,11 @@
 import React from 'react';
 import {cleanup,render,screen} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {withAiCentre} from './helpers/ai-centre-messages';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
 const fixture=vi.hoisted(()=>({allowed:true,locale:'en',actions:['employees.workforce_profile.maintain','employees.code.maintain'] as string[],navigation:vi.fn(),scope:vi.fn(),savedChats:vi.fn(),selectedChat:vi.fn(()=>{throw Error('No selected chat read in navigation fixture');})}));
-const copies:Record<string,unknown>={en,ms,zh,ta,th,vi:viMessages};
+// The AI Centre catalogue is merged as i18n/request.ts does: the page title reads aiCentre.genericName (673fb7e42).
+const copies:Record<string,unknown>={en:withAiCentre('en',en),ms:withAiCentre('ms',ms),zh:withAiCentre('zh',zh),ta:withAiCentre('ta',ta),th:withAiCentre('th',th),vi:withAiCentre('vi',viMessages)};
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>Object.assign((key:string,values?:Record<string,string|number>)=>{let value:unknown=copies[fixture.locale];for(const name of (namespace+'.'+key).split('.'))value=(value as Record<string,unknown>)?.[name];if(typeof value!=='string')throw Error('Missing translation '+namespace+'.'+key);return value.replace(/\{(\w+)\}/g,(_,name:string)=>String(values?.[name]??name));},{has:()=>false})}));
 vi.mock('next/link',()=>({default:({children,...props}:React.AnchorHTMLAttributes<HTMLAnchorElement>)=><a {...props}>{children}</a>}));
 vi.mock('../components/ui',()=>({Card:({children}:React.PropsWithChildren)=><div>{children}</div>,PageHeader:()=>null,ErrorBanner:()=>null}));
@@ -19,6 +21,8 @@ vi.mock('../core/ai-workspace',()=>({loadAiWorkspace:async()=>({access:fixture.a
 vi.mock('../app/assistant/conversation-scope',()=>({assistantBrowserConversationScope:async(...args:unknown[])=>{fixture.scope(...args);return '[]';}}));
 vi.mock('../core/assistant-threads',()=>({listOwnAssistantChats:async(...args:unknown[])=>{fixture.savedChats(...args);return{chats:[],nextCursor:null,scopeDigest:'empty-navigation-fixture'};},loadOwnAssistantChat:fixture.selectedChat}));
 vi.mock('../core/assistant',()=>({MAX_TURNS:5}));
+// AI v2 W4: Ask and Your data and privacy read the tenant's "Keep chats for" and the stored chats; fictional here.
+vi.mock('../core/teras-chats',()=>({readChatRetention:async()=>({keepDays:30,version:null,changedAt:null}),listOwnChats:async()=>({chats:[],nextCursor:null})}));
 vi.mock('../core/assistant-actions/module-action-entries',()=>({allowedModuleActionEntries:async()=>[]}));
 vi.mock('../core/workspace-module-jobs',()=>({loadCanonicalModuleJob:vi.fn()}));
 vi.mock('../components/assistant/module-jobs',()=>({CanonicalModuleJob:()=>null,ModuleJobChooser:()=>null,GroundedWorkspaceReply:()=>null,GovernedModuleJobComposer:()=>null,GovernedWorkspaceJob:()=>null}));
@@ -47,9 +51,11 @@ function findNavigation(node:React.ReactNode):React.ReactElement<{ctx:SessionCon
  return findNavigation((node.props as {children?:React.ReactNode}).children);
 }
 beforeEach(()=>{fixture.allowed=true;fixture.locale='en';fixture.actions=['employees.workforce_profile.maintain','employees.code.maintain'];fixture.navigation.mockClear();fixture.scope.mockClear();fixture.savedChats.mockClear();fixture.selectedChat.mockClear();vi.stubGlobal('fetch',vi.fn(()=>{throw Error('No navigation fetch');}));});afterEach(()=>{expect(fixture.selectedChat).not.toHaveBeenCalled();cleanup();vi.unstubAllGlobals();});
+// AI v2 W4 (issue 14): Ask is chat-only, so "Review an action" moved to More tools (?view=tools) for a person with the
+// Assistant; without it the fallback home keeps it. Neither view reads saved chats.
 for(const locale of ['en','ms','zh','ta','th','vi'])for(const allowed of [true,false])it(`renders fixed localized human links in ${locale}, workspace/history available=${allowed}, without fact cards or effects`,async()=>{
- fixture.locale=locale;fixture.allowed=allowed;const tree=await AssistantPage({searchParams:Promise.resolve({})}),entry=findNavigation(tree);if(allowed){expect(fixture.scope).toHaveBeenCalledExactlyOnceWith(ctx);expect(fixture.savedChats).toHaveBeenCalledExactlyOnceWith(ctx,{cursor:undefined},'[]');}else{expect(fixture.scope).not.toHaveBeenCalled();expect(fixture.savedChats).not.toHaveBeenCalled();}expect(entry).not.toBeNull();expect(entry!.props.ctx).toEqual(ctx);render(await PersonnelReviewNavigation(entry!.props));
+ fixture.locale=locale;fixture.allowed=allowed;const tree=await AssistantPage({searchParams:Promise.resolve(allowed?{view:'tools'}:{})}),entry=findNavigation(tree);expect(fixture.scope).not.toHaveBeenCalled();expect(fixture.savedChats).not.toHaveBeenCalled();expect(entry).not.toBeNull();expect(entry!.props.ctx).toEqual(ctx);render(await PersonnelReviewNavigation(entry!.props));
  const t=(copies[locale] as typeof en).assistant.workspace;expect(screen.getByRole('heading',{name:t.jobs.reviewAction})).toBeTruthy();expect(screen.getByText(t.jobs.humanReviewNote)).toBeTruthy();expect(screen.getByRole('link',{name:t.workforceProfileMaintenance.title}).getAttribute('href')).toBe('/assistant/workforce-profile');expect(screen.getByRole('link',{name:t.employeeCodeMaintenance.title}).getAttribute('href')).toBe('/assistant/employee-code');expect(screen.getAllByRole('link')).toHaveLength(2);expect(fixture.navigation).toHaveBeenCalledExactlyOnceWith(ctx);expect(document.querySelector('form,button,input')).toBeNull();expect(fetch).not.toHaveBeenCalled();expect(document.body.textContent).not.toContain(ctx.userId);expect(document.body.textContent).not.toContain(ctx.tenantId);
 });
-it('hides the whole card when fresh navigation refuses, independently of an accessible workspace',async()=>{fixture.actions=[];const tree=await AssistantPage({searchParams:Promise.resolve({})}),entry=findNavigation(tree);expect(entry).not.toBeNull();expect(await PersonnelReviewNavigation(entry!.props)).toBeNull();expect(fixture.navigation).toHaveBeenCalledExactlyOnceWith(ctx);});
+it('hides the whole card when fresh navigation refuses, independently of an accessible workspace',async()=>{fixture.actions=[];const tree=await AssistantPage({searchParams:Promise.resolve({view:'tools'})}),entry=findNavigation(tree);expect(entry).not.toBeNull();expect(await PersonnelReviewNavigation(entry!.props)).toBeNull();expect(fixture.navigation).toHaveBeenCalledExactlyOnceWith(ctx);});
 it('offers only the allowed closed action and never adds subject/query parameters or cost navigation',async()=>{fixture.actions=['employees.code.maintain'];render(await PersonnelReviewNavigation({ctx}));expect(screen.getAllByRole('link')).toHaveLength(1);expect(screen.getByRole('link').getAttribute('href')).toBe('/assistant/employee-code');expect(document.querySelector('a[href*="?"],a[href*="cost-allocation"]')).toBeNull();});

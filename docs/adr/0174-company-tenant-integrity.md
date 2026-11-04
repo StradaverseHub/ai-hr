@@ -26,12 +26,12 @@ The database, not the policy author, keeps a company reference inside its tenant
 
 1. Every tenant-scoped table with `tenant_id`, `company_id` and a `company_id → company(id)` key also carries
    `FOREIGN KEY (company_id, tenant_id) REFERENCES company (id, tenant_id)` named `<table>_company_tenant_fk`,
-   with the same ON DELETE action as its existing key (1501, 146 tables). It was added NOT VALID and validated
-   separately (1502), whose data check reports every offending table instead of the first. A defect stops the
+   with the same ON DELETE action as its existing key (2101, 148 tables). It was added NOT VALID and validated
+   separately (2102), whose data check reports every offending table instead of the first. A defect stops the
    upgrade; the migration never rewrites or deletes rows. New tables of that shape must carry the key;
    `test/tenant-company-fk.test.ts` fails otherwise.
 2. The three employment helpers pin `e.tenant_id = app.current_tenant_id()`, as `app.can_see_employment` has
-   since 0016, and use `SET search_path = pg_catalog, public, pg_temp` with schema-qualified relations (1500).
+   since 0016, and use `SET search_path = pg_catalog, public, pg_temp` with schema-qualified relations (2100).
 3. `app.company_subtree` walks only the session tenant and is no longer executable by PUBLIC or `ai_hr_app`.
    A future caller must be granted EXECUTE deliberately.
 
@@ -42,13 +42,13 @@ The database, not the policy author, keeps a company reference inside its tenant
 Every INSERT, and every UPDATE of `company_id` or `tenant_id`, on those tables does one more unique-index
 lookup on `company`. Writers were reviewed before the change: application writes stamp the session tenant
 under RLS, company moves and reparenting stay inside one tenant, and nothing updates `company.tenant_id`.
-Deleting a company behaves as before. When 1501 and 1502 install in the same run, the 1501 locks are held
+Deleting a company behaves as before. When 2101 and 2102 install in the same run, the 2101 locks are held
 until the commit: writes to those tables wait for the validation scans, reads continue.
 
 An installation with a cross-tenant row cannot complete the upgrade until its owner reviews and resolves
 that row. The error names each table and its first offending key, and the journal stays on its previous row.
 
-`test/tenant-company-fk-upgrade.test.ts` rehearses both outcomes on a populated database at the 656-entry
+`test/tenant-company-fk-upgrade.test.ts` rehearses both outcomes on a populated database at the 668-entry
 boundary.
 
 ## Not covered
@@ -60,3 +60,5 @@ boundary.
   (`app.is_admin_report_of`, `app.heads_department_of`), plus about forty other SECURITY DEFINER functions,
   still use `search_path = public`. Each needs the same pin, together with its callees.
 - `app.is_company_descendant` is SECURITY DEFINER, executable by PUBLIC and unfiltered by tenant.
+- `teras_chat.company_id` (2000) has no company key at all, so the composite rule does not reach it; adding one
+  changes its retention semantics and belongs with its owner.

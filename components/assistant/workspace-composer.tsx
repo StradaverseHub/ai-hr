@@ -6,6 +6,7 @@ import {ArrowUp} from 'lucide-react';
 import { btnPrimary, inputCls } from '../ui';
 import type { AiWorkspaceTaskId } from '../../lib/ai/workspace-tasks';
 import type {AttachmentChatTurn} from './use-assistant-import';
+import {useChatImportAttachment} from '../ai-centre/chat-import-attach';
 const ImportChatComposer=lazy(()=>import('./import-chat-composer').then(module=>({default:module.ImportChatComposer})));
 
 
@@ -17,6 +18,9 @@ export type Props = {
   /** 'hero': the Assistant home layout. The question box leads, with send inside it; task shortcuts follow as chips. */
   layout?: 'stacked' | 'hero';
   fileImport?: boolean;
+  /** AI v2 slice 3 (issue 16b): attach a file to import with the next question (components/ai-centre/chat-import-attach.tsx).
+   * Only for a caller whose conversation runs through the harness and who may import here; it replaces fileImport. */
+  chatImport?: boolean;
   clearAfterSubmit?: boolean;
   clientSubmit?: boolean;
   pending?: boolean;
@@ -86,7 +90,22 @@ export function ComposerFields({ tasks, labels, layout = 'stacked',question,setQ
 export function WorkspaceComposer(props:Props) {
   const [localQuestion,setLocalQuestion]=useState('');
   const question=props.question??localQuestion,setQuestion=props.onQuestionChange??setLocalQuestion;
+  if(props.chatImport)return <ChatImportComposer {...props} question={question} setQuestion={setQuestion}/>;
   return props.fileImport?<Suspense fallback={<PlainComposer {...props} question={question} setQuestion={setQuestion}/>}><ImportChatComposer {...props} question={question} setQuestion={setQuestion}/></Suspense>:<PlainComposer {...props} question={question} setQuestion={setQuestion}/>;
+}
+/** AI v2 slice 3: the composer with a paperclip. The attached file goes with the next question (as `importFile`, its
+ * name, format and text) and joins this conversation's files for its card; then the composer is clear again. */
+function ChatImportComposer({action,clearAfterSubmit,clientSubmit,question,setQuestion,...props}:ControlledProps){
+ const attachment=useChatImportAttachment(Boolean(props.pending));
+ const submit=async(data:FormData)=>{
+  const file=attachment.file;
+  if(file){data.set('importFile',JSON.stringify({name:file.name,format:file.format,text:file.text}));data.set('importFileChip',JSON.stringify({name:file.name,rows:file.rows}));attachment.clear();}
+  if(clearAfterSubmit)setQuestion('');await action(data);
+ };
+ return <form onDragOver={event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault();}} onDrop={event=>{if(!props.pending&&event.dataTransfer.files.length){event.preventDefault();void attachment.load(Array.from(event.dataTransfer.files));}}}
+  action={clientSubmit?undefined:submit} onSubmit={clientSubmit?event=>{event.preventDefault();if(!props.pending)void submit(new FormData(event.currentTarget));}:undefined} className="space-y-4">
+  <ComposerFields {...props} question={question} setQuestion={setQuestion} attachmentControls={attachment.controls} attachmentChip={attachment.chip} submitDisabled={attachment.reading}/>
+ </form>;
 }
 export type ControlledProps=Props&{question:string;setQuestion:(value:string)=>void};
 function PlainComposer({action,clearAfterSubmit,clientSubmit,question,setQuestion,...props}:ControlledProps){

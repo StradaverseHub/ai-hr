@@ -27,6 +27,24 @@ import * as ownLeaveChange from '../core/assistant-actions/own-leave-change-sour
 import * as leaveApplyProposal from '../core/proposals/leave-apply';
 import * as leaveCancelProposal from '../core/proposals/leave-cancel';
 import * as leaveDecideProposal from '../core/proposals/leave-decide';
+import * as attendanceService from '../packs/attendance/service';
+import * as ownAttendanceCorrection from '../core/assistant-actions/own-attendance-correction-source';
+import * as ownOvertimeRequest from '../core/assistant-actions/own-overtime-request-source';
+import * as attendanceRequestProposal from '../core/proposals/attendance-request';
+import * as ownClaimSubmission from '../core/assistant-actions/own-claim-submission-source';
+import * as ownClaimCancellation from '../core/assistant-actions/own-claim-cancellation-source';
+import * as ownClaimDraft from '../core/assistant-actions/own-claim-source';
+import * as ownProfileChange from '../core/assistant-actions/own-profile-change-source';
+import * as profile from '../core/profile';
+import * as profileEdit from '../core/profile-edit';
+import * as claimSubmitProposal from '../core/proposals/claim-submit';
+import * as claimCancelProposal from '../core/proposals/claim-cancel';
+import * as profileChangeProposal from '../core/proposals/profile-change';
+import * as ownToilReplacement from '../core/assistant-actions/own-toil-replacement-source';
+import * as toilRequestProposal from '../core/proposals/toil-request';
+import * as assignedDecisionSources from '../core/assistant-actions/assigned-decision-sources';
+import * as approvals from '../core/approvals';
+import * as assignedDecideProposal from '../core/proposals/assigned-decide';
 
 /** Literal imports only, so a new anchor file must be added here on purpose. */
 const OWNER_MODULES:Readonly<Record<string,Record<string,unknown>>>={
@@ -37,6 +55,17 @@ const OWNER_MODULES:Readonly<Record<string,Record<string,unknown>>>={
  'core/assistant-actions/own-leave-review-digest.ts':ownLeaveDigest,'lib/assistant-actions/own-leave-contract.ts':ownLeaveContract,
  'core/assistant-actions/own-leave-change-source.ts':ownLeaveChange,'core/proposals/leave-apply.ts':leaveApplyProposal,
  'core/proposals/leave-cancel.ts':leaveCancelProposal,'core/proposals/leave-decide.ts':leaveDecideProposal,
+ 'packs/attendance/service.ts':attendanceService,'core/assistant-actions/own-attendance-correction-source.ts':ownAttendanceCorrection,
+ 'core/assistant-actions/own-overtime-request-source.ts':ownOvertimeRequest,'core/proposals/attendance-request.ts':attendanceRequestProposal,
+ // AI v2 W2: own claims and own profile changes.
+ 'core/assistant-actions/own-claim-submission-source.ts':ownClaimSubmission,'core/assistant-actions/own-claim-cancellation-source.ts':ownClaimCancellation,
+ 'core/assistant-actions/own-claim-source.ts':ownClaimDraft,'core/assistant-actions/own-profile-change-source.ts':ownProfileChange,'core/profile.ts':profile,
+ 'core/profile-edit.ts':profileEdit,'core/proposals/claim-submit.ts':claimSubmitProposal,'core/proposals/claim-cancel.ts':claimCancelProposal,
+ 'core/proposals/profile-change.ts':profileChangeProposal,
+ // AI v2 W2 slice 2: the own Leave Credit request.
+ 'core/assistant-actions/own-toil-replacement-source.ts':ownToilReplacement,'core/proposals/toil-request.ts':toilRequestProposal,
+ // AI v2 W2 slice 3: the assigned approver's claim and attendance decisions.
+ 'core/assistant-actions/assigned-decision-sources.ts':assignedDecisionSources,'core/approvals.ts':approvals,'core/proposals/assigned-decide.ts':assignedDecideProposal,
 };
 const root=fileURLToPath(new URL('..',import.meta.url));
 function resolveAnchor(anchor:OwnerAnchor):unknown{
@@ -62,14 +91,14 @@ describe('semantic model covers every live Assistant read and registry action',(
   expect(unmodelledReads(readNames)).toEqual([]);
   expect(unmodelledReads([...readNames,'fictional_new_read'])).toEqual(['fictional_new_read']);
  });
- it('declares the three leave actions and lists every other registry action as pending, shrink only',()=>{
-  expect(SEMANTIC_ACTIONS.map(row=>row.id).sort()).toEqual(['approvals.leave.decide','leave.apply','leave.cancel']);
+ it('declares the leave and attendance actions, the own claim, profile and Leave Credit actions, the claim and attendance decisions, and lists every other registry action as pending, shrink only',()=>{
+  expect(SEMANTIC_ACTIONS.map(row=>row.id).sort()).toEqual(['approvals.attendance.decide','approvals.claim.decide','approvals.leave.decide','attendance.correction.request','attendance.overtime.request','claims.cancel','claims.submit','ess.profile.request','leave.apply','leave.cancel','toil.replacement.request']);
   expect(unaccountedActions(actionIds)).toEqual([]);
   expect(unaccountedActions([...actionIds,'fictional.new.action'])).toEqual(['fictional.new.action']);
   expect(NOT_YET_MODELLED_ACTIONS.filter(id=>!actionIds.includes(id))).toEqual([]);
   expect(NOT_YET_MODELLED_ACTIONS.filter(id=>SEMANTIC_ACTIONS.some(row=>row.id===id))).toEqual([]);
   expect(new Set(NOT_YET_MODELLED_ACTIONS).size).toBe(NOT_YET_MODELLED_ACTIONS.length);
-  expect(NOT_YET_MODELLED_ACTIONS.length).toBeLessThanOrEqual(68);
+  expect(NOT_YET_MODELLED_ACTIONS.length).toBeLessThanOrEqual(60);
   expect(NOT_YET_MODELLED_ACTIONS.length+SEMANTIC_ACTIONS.length).toBe(actionIds.length);
  });
  it('matches each read\'s module and sensitivity to the Assistant read it describes',()=>{

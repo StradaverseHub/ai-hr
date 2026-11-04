@@ -17,7 +17,8 @@ afterEach(cleanup);
 describe('runner control inventory',()=>{
  it('shows all purposes and result destinations while keeping configured activation separate from health',async()=>{
   await view(snapshot(),true);
-  expect(screen.getAllByRole('heading',{level:3})).toHaveLength(19);
+  // Twenty runners: AI v2 P2-2a adds the Pre-salary loop's tick.
+  expect(screen.getAllByRole('heading',{level:3})).toHaveLength(20);
   fireEvent.click(screen.getByRole('button',{name:'Refresh status'}));expect(router.refresh).toHaveBeenCalled();
   expect(screen.getByText('Failed')).toBeInTheDocument();expect(screen.getByText('Disabled')).toBeInTheDocument();
   expect(screen.queryByRole('link',{name:'Replacement holidays and calendars'})).toBeNull();
@@ -39,7 +40,8 @@ describe('runner control inventory',()=>{
   expect(screen.getAllByText('On hold')).toHaveLength(2);
   const held=screen.getByRole('heading',{name:'Replacement holidays'}).parentElement!.parentElement!.parentElement!;
   expect(within(held).getByText('Enabled')).toBeInTheDocument();expect(within(held).getByText('On hold')).toBeInTheDocument();
-  expect(screen.getAllByText('Configure runner')).toHaveLength(17);
+  // Twenty runners, two held in production (AI v2 P2-2a adds the Pre-salary loop's tick).
+  expect(screen.getAllByText('Configure runner')).toHaveLength(18);
  });
  it('qualifies observed unmanaged services without claiming an absent service means an external cron is off',async()=>{
   const value=snapshot();value.runners[0].managed=false;

@@ -1,7 +1,7 @@
 /**
- * ADR-0174 — a company-stamped row must name a company of its OWN tenant (migrations 1501/1502).
+ * ADR-0174 — a company-stamped row must name a company of its OWN tenant (migrations 2101/2102).
  *
- * Before 1501 a tenant-A group admin could INSERT a department in tenant A naming tenant B's company:
+ * Before 2101 a tenant-A group admin could INSERT a department in tenant A naming tenant B's company:
  * the department policy asks `app.is_admin_for(company_id)`, which answers from grants alone, and the
  * plain `company(id)` FK accepts any company. Nothing of B was readable, but the row was a dangling
  * cross-tenant reference. These tests assert the database refusal directly as `ai_hr_app`, plus a
@@ -67,7 +67,7 @@ describe('ADR-0174 — company/tenant composite keys', () => {
           AND composite.cols = ARRAY['company_id', 'tenant_id'] AND composite.refcols = ARRAY['id', 'tenant_id']
         ORDER BY s.rel`),
     );
-    expect(tables.length, 'the guard must actually see the company-stamped tables').toBeGreaterThanOrEqual(146);
+    expect(tables.length, 'the guard must actually see the company-stamped tables').toBeGreaterThanOrEqual(148);
     expect(tables.map((t) => t.rel)).toEqual(expect.arrayContaining(['department', 'employment', 'payroll_batch', 'role_assignment']));
     const missing = tables.filter((t) => !t.composite || !t.validated || t.composite_action !== t.single_action);
     expect(missing, 'add FOREIGN KEY (company_id, tenant_id) REFERENCES company (id, tenant_id) mirroring ON DELETE').toEqual([]);

@@ -4,11 +4,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Search, ArrowRight, UserCog } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Search, ArrowRight, Sparkles, UserCog } from 'lucide-react';
 import { DelegationManager } from '@/components/delegation-manager';
 import { loadDelegationContextAction, type DelegationContext } from '@/app/delegations/actions';
-import { OPEN_COMMAND_BAR_EVENT, type OpenCommandBarDetail } from '@/lib/command-bar-events';
+import { OPEN_COMMAND_BAR_EVENT, askAiCentre, type OpenCommandBarDetail } from '@/lib/command-bar-events';
+import { resolvePageContext } from '@/lib/ai/page-context';
+import { storeAskHandoff } from '@/lib/today/ask-handoff';
+import { useAiAskAvailable } from '@/components/ai-centre/ask-availability';
 import { useNavIndex } from '@/components/nav-index-context';
 
 /**
@@ -49,6 +52,15 @@ const COMMAND_ITEMS: CommandItem[] = [
 
 export function CommandBar() {
   const t = useTranslations('commandBar');
+  // AI v2 W4 — "Ask AI Centre" from any page (approved mock-up CommandBar.dc.html). Offered only to a login the
+  // shell already found may use the Assistant (components/ai-centre/ask-availability.tsx); the question still goes
+  // through the conversation command and its checks. The page context shown is the closed area the side panel
+  // knows (lib/ai/page-context.ts), never what is on the screen.
+  const tAsk = useTranslations('aiAsk.commandBar');
+  const areas = useTranslations('assistant.launcher.areas');
+  const askAvailable = useAiAskAvailable();
+  const pageContext = resolvePageContext(usePathname() ?? '');
+  const [askStatus, setAskStatus] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   // Which action's sub-panel is showing (null = the search list).
@@ -89,6 +101,7 @@ export function CommandBar() {
   const reset = useCallback(() => {
     setQuery('');
     setActive(null);
+    setAskStatus(null);
   }, []);
 
   const onOpenChange = useCallback(
@@ -111,6 +124,22 @@ export function CommandBar() {
   const go = (href: string) => {
     onOpenChange(false);
     router.push(href);
+  };
+  const typed = query.trim().slice(0, 2000);
+  const askOffered = askAvailable && typed.length > 0;
+  // The question goes to the side panel or, on Ask, to the open chat (lib/command-bar-events.ts). Nothing on this page
+  // takes it: it is carried, in this tab's storage and never the address, to a new Ask chat. No action runs from the
+  // words: a reply can hold a prepared card, which waits for the person's Confirm.
+  const ask = () => {
+    if (!askOffered) return;
+    const result = askAiCentre(typed);
+    if (result === 'busy') { setAskStatus(tAsk('busy')); return; }
+    if (result === 'sent') { onOpenChange(false); return; }
+    let storage: Storage | null = null;
+    try { storage = window.sessionStorage; } catch { /* No storage: Ask opens without the question. */ }
+    storeAskHandoff(storage, typed);
+    onOpenChange(false);
+    router.push('/assistant?chatReset=' + Date.now().toString(36));
   };
 
   return (
@@ -158,9 +187,11 @@ export function CommandBar() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => {
-                    // Enter takes the first match: an action first (as before), else the first destination.
-                    if (e.key !== 'Enter') return;
+                    // Enter takes the first match: an action first (as before), then Ask AI Centre when it is
+                    // offered ("Enter to prepare", approved mock-up), else the first destination.
+                    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
                     if (results[0]) setActive(results[0].id);
+                    else if (askOffered) ask();
                     else if (navResults[0]) go(navResults[0].href);
                   }}
                   placeholder={t('placeholder')}
@@ -168,7 +199,28 @@ export function CommandBar() {
                 />
               </div>
               <div className="p-3">
-                {results.length === 0 && navResults.length === 0 ? (
+                {askOffered && (
+                  <div data-command-bar-ask className="mb-2 space-y-1 border-b border-border pb-2">
+                    <button
+                      type="button"
+                      onClick={ask}
+                      className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+                        <Sparkles aria-hidden className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium">{tAsk('title')}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{typed}</span>
+                      </span>
+                      <ArrowRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                    </button>
+                    {pageContext && <p className="px-3 text-xs text-muted-foreground">{tAsk('onThisPage', { area: areas(pageContext.area) })}</p>}
+                    <p className="px-3 text-xs text-muted-foreground">{tAsk('hint')}</p>
+                    {askStatus && <p role="status" className="px-3 text-xs">{askStatus}</p>}
+                  </div>
+                )}
+                {results.length === 0 && navResults.length === 0 && !askOffered ? (
                   <div className="px-3 py-6 text-center text-sm text-muted-foreground">{t('noResults')}</div>
                 ) : (
                   <ul className="space-y-1">

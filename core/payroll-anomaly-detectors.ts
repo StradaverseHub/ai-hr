@@ -57,9 +57,14 @@ export type DetectorContext = {
     terminatedOn: string | null;
     /** Other LIVE employments of the same person paid in this same period. */
     concurrentPaidEmploymentIds: string[];
+    /** AI v2 Phase 2 hardening — the pay mode of the compensation in force at the period's end (compensation.pay_mode).
+     *  A daily- or hourly-rated person is paid for the days they work, so a partial daysWorked is their normal pay. */
+    payMode?: string | null;
   };
-  /** Attendance + approved leave day counts for the period. Both zero is what `pay-without-attendance` looks for. */
-  activity: { attendanceDays: number; approvedLeaveDays: number };
+  /** Attendance + approved leave day counts for the period. Both zero is what `pay-without-attendance` looks for.
+   *  `attendanceExempt` (AI v2 Phase 2 hardening): the person's schedule group is exempt from absence judgments on every
+   *  day of the period (the attendance owner's "Enable Exception"), so no attendance is their normal set-up. */
+  activity: { attendanceDays: number; approvedLeaveDays: number; attendanceExempt?: boolean };
   period: { start: string; end: string; calendarDays: number };
   /** Statutory ceilings resolved from the pack in force for this batch. */
   caps: Record<string, number>;
@@ -231,7 +236,7 @@ const payWithoutAttendance: Detector = {
   id: 'pay-without-attendance',
   requires: { priorCycles: 0 },
   evaluate: (ctx) =>
-    ctx.current.netPay > 0 && ctx.activity.attendanceDays === 0 && ctx.activity.approvedLeaveDays === 0
+    ctx.current.netPay > 0 && ctx.activity.attendanceDays === 0 && ctx.activity.approvedLeaveDays === 0 && ctx.activity.attendanceExempt !== true
       ? [
           {
             detectorId: 'pay-without-attendance',
@@ -258,6 +263,8 @@ const prorationMismatch: Detector = {
   evaluate: (ctx) => {
     const dw = ctx.current.daysWorked;
     if (dw === null) return []; // legacy / full-month slips carry no basis; nothing to contradict.
+    // Daily- or hourly-rated: paid for the days actually worked, so a partial count is the normal pay (Phase 2 hardening).
+    if (ctx.profile.payMode && ctx.profile.payMode !== 'monthly') return [];
     const joinedMidPeriod = !!ctx.profile.hiredOn && ctx.profile.hiredOn > ctx.period.start;
     const leftMidPeriod = !!ctx.profile.terminatedOn && ctx.profile.terminatedOn < ctx.period.end;
     const partialEmployment = joinedMidPeriod || leftMidPeriod;

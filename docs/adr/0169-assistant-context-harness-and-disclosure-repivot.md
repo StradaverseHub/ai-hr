@@ -193,3 +193,99 @@ Focused passes are development evidence; release follows CI policy.
 - Run-to-run variance.
 
 Nothing in this record authorises a disclosure change, deployment or production contact.
+
+## 8. Addendum (3 November 2026): pay averages
+
+**Owner decision:** "Yes, averages only" (AI Centre round, issue 13b). This is §2.2's first governed metric: a named measure with small-group suppression, never free-form queries. It adds no disclosure class and does not by itself authorise real data reaching a provider: §5.1 still gates that.
+
+**What is computed, and by whom.** The payroll pack's owner (`packs/payroll/pay-averages.ts` `payAverages`, through `packs/payroll/service`) computes every figure. The model only words them. It reports:
+- headcount, average and median of **one** measure, `basic_pay_paid`: the Basic figure each payslip of the company's latest closed regular run prints (the payslip and Payroll Register figure). This is prorated for joiners and leavers, and is rate × days or hours for daily and hourly pay. It is taken before unpaid leave and every other deduction, and it excludes allowances, overtime, bonus and claims;
+- by company, and optionally by the person's current department;
+- with averages rounded half up to the cent and medians to the nearest 10 currency units, so an odd group's median is never one person's exact pay.
+
+**Who may ask.** Only a caller with payroll access: an HR administrator or a payroll partner (`canManagePayroll`). The harness offers the read only to them. Each company is then admitted by the database's own payroll scope (`app.can_admin_payroll_for`, the payslip RLS owner), for a current principal, with the payroll module enabled. The read runs as the caller under RLS. Everyone else is refused in one sentence, and a company filter outside the scope gets the same sentence, so the refusal is not an existence oracle.
+
+**Suppression**, decided over the caller's whole scope before any filter selects what is returned:
+1. Any group of fewer than 5 people is withheld (people, not payslips; each person counts once per company). So is any group, the all-companies total included, whose members are all paid the same: its average and median would be each member's exact pay.
+2. Differencing: a group whose complement within its parent is 1–4 people is withheld. The parent is the company for a department, and all companies combined for a company.
+3. Complementary suppression: within a parent, the withheld groups must be none, or at least two groups holding at least 5 people together whose values are not all equal. Otherwise the smallest published group is withheld too, so no single withheld cell, and no set of withheld cells on one shared value, can be recovered as the total minus the rest.
+4. A withheld company withholds all its departments.
+5. The all-companies total covers the caller's whole scope whatever the filter. It is published only when the companies share one currency.
+
+A withheld group carries a reason and no headcount or figure.
+
+**What reaches the provider.** The `pay_aggregates` tool result is declared as entity `pay_aggregate` (`core/semantic-model/entities-metrics.ts`):
+- every headcount, average and median is `bands`: a placeholder plus its band, restored locally for the person;
+- company and department names are `minimum`, kept for this administrator audience;
+- no person, id, name or single person's figure is in the result;
+- the trace records counts, paths and digests only.
+
+**Residual risks** (not addressed here):
+- a group where most members share one value still shows that value through its median when it is a multiple of 10;
+- results compared across months, or between callers with different scopes, can be differenced;
+- the department is the current assignment, not the one at the run date.
+
+## 9. Addendum (3 November 2026): stored AI Centre chats, retention and erasure
+
+**Owner decisions.** "Store on server now", then "But with active removal in a few days or months, which are configurable" (AI Centre round, issue 8). The floating panel and Ask share one stored conversation (issue 18 item 1). Production is held; staging uses fictional data only. This addendum records how; it authorises no disclosure change or deployment.
+
+**What is stored.** One `teras_chat` row per Noveri conversation of one login (migration 0952, `core/teras-chats.ts`), keyed by the conversation id that `core/teras-wiring/history.ts` issues, and one `teras_chat_turn` row per answered turn:
+- the person's words, the reply they were shown and the turn's model-side rows (the only history a later turn accepts), each AES-256-GCM encrypted with the existing helper (`lib/ai/crypto.ts`). The additional data binds tenant, login, chat, sequence and field, so a ciphertext copied to another tenant, login, chat, turn or column fails;
+- for a turn the pre-read gate routed or refused (a sensitive topic, a crisis, a workplace-harms request): **no words at all**, only `withheld=true`;
+- nothing without the encryption secret; never plaintext. The chat row itself holds no words: owner, person, starting company and scope digest, turn count and times.
+
+The chat command (`app/assistant/launcher-actions.ts`) stores a turn after its reply has rendered; a storage failure never changes the reply. The panel's "Open in AI Centre" opens `/assistant?chat=<id>`. Ask reopens the chat and, while the tenant's Noveri conversation switch admits the caller, turns the stored model-side rows into a fresh signed continuation, so the next question continues the same chat. The browser's continuation is no longer the only copy of a conversation; its two-hour expiry still bounds an unopened browser session.
+
+**Who can read.** Only the login, by **forced** row-level security on all three new tables, so the physical table owner is bound too. There is no group administrator, HR, manager, agent or other-login policy, and the application role holds only `SELECT, INSERT, DELETE` and `UPDATE (turn_count)` on chats, `SELECT, INSERT` on turns and `SELECT, INSERT, UPDATE` on the setting. Listing and reopening also re-authorise the caller (current AI principal, Assistant module and grant, from fresh entitlements) and require the scope the chat started under: the same digest as saved closed-grammar chats (tenant, login, person, roles, grants, company scope). A chat from another scope or role is neither listed nor reopened; the person starts a new chat.
+
+**Retention.** A per-tenant "Keep chats for" setting (`teras_chat_retention`): 1, 7, 30, 90, 180 or 365 days, default 30. Only a current group administrator changes it, through `setChatRetention`; the database refuses anyone else and any other value, and every change is audited (`teras-chat-retention.changed`: actor, time, from, to, version). `expires_at` is stamped by the database at every turn as the last message time plus the setting. A shorter setting brings every stored expiry of the tenant forward at once; a longer one applies from each chat's next message, so an expired chat is never revived. The existing retention runner (`scripts/ai-retention-runner.ts`, `core/teras-chat-expiry.ts`) hard-deletes expired chats each pass, in the physical owner's own transaction, and reports them in its backlog signal.
+
+**Why retention cannot read words, without weakening RLS.** An earlier design proposed ENABLE-only row security because the retention runner is not BYPASSRLS; that was refused. The chosen route is the existing owner-session pattern (migration 0650), narrowed:
+- the owner's own session (`current_user = session_user`, not the application role) has policies on `teras_chat` that admit only rows with `expires_at <= now()`, and that table carries no words;
+- the owner has **no** policy on `teras_chat_turn`. Turns leave by the foreign-key cascade, which Postgres runs as the table owner with forced row security suspended; so the retention session can delete them with their chat but can never select one, live or expired;
+- the chat's task memory goes by a delete trigger.
+
+A dedicated DELETE-only role was considered and not chosen: a role is cluster-wide, would need provisioning outside migrations on every installation, and a DELETE with a predicate still needs a SELECT policy, so it would not be narrower than the owner-session policies above. `test/teras-chats-owner.test.ts` proves all of this with a restricted, non-superuser owner, because CI's superuser bypasses even forced row security.
+
+**Erasure.** A person deletes one chat or erases all of theirs, expired or not and without needing the Assistant grant; "Clear my chat text" now erases stored chats too. Person erasure (`core/pdpa.ts`) calls `app.teras_chats_redact` inside the same admitted, audited review-erasure intent as transcript redaction; it deletes the subject's chats (by the original person) and their logins' task memory, and reads no turn. Every path that removes a chat (own, retention, person erasure, a deleted login) also removes that conversation's task memory. Two narrow definer paths reach other logins' chats, each with its own owner-only policy: person erasure (admitted intent, delete only) and a shortened setting (that tenant only, `expires_at` only).
+
+**Letter requests from chat (AI v2 Phase 2 wave 2).** A letter request confirmed from a chat card survives the chat; no migration is needed. The request (letter type, purpose, status, HR's linked letter, decline reason and message, who handled it) and its `letter-request.*` events are **the HR record**: they follow the letters domain's own retention and no path that removes a chat reads or changes them. The prepared card is **chat-linked**: it is a signed proposal with no row of its own, held by the browser and, when open, by the conversation's task memory, which goes with the chat on every path. The card's id stays on the request as `client_key`, classified as an **opaque idempotency key**: a random id with no chat content, which makes a repeated Confirm of the same card the same request. Once the chat and its task memory are gone, nothing links it back to a conversation. It is deliberately kept: clearing it could let a repeated Confirm create a second request. The classification is recorded in `core/teras-chat-expiry.ts` (`TERAS_CHAT_SURVIVING_RECORDS`, beside the relations the chat pass maintains) and proved by `test/letter-request-chat-custody.test.ts`.
+
+**Not yet decided (for the AI Centre revamp).** The Chats list, per-chat delete and the "Keep chats for" control have server functions and actions (`app/assistant/chat-actions.ts`) but no screen. A reopened chat shows no line for a withheld turn. "Clear my chat text" still describes a 30-day period, which now covers transcripts only.
+
+## 10. Addendum (3 November 2026): workforce metrics (AI v2 W7)
+
+**Scope.** AI v2 Phase 1 workstream W7: governed metrics for analysis in chat, built on the §8 pattern. Four named metrics behind one read, `workforce_metrics`. It adds no disclosure class and authorises no real data reaching a provider: §5.1 still gates that.
+
+**What is computed, and by whom.** `core/workforce-metrics.ts` `workforceMetrics` computes every figure, reading as the caller under RLS. The model only words the figures and chooses a named period; it never works out dates or figures.
+- **Headcount**: people with an employment active on a date (hired on or before it, not yet terminated). Departments come from the assignment in force on that date. With a period, the headcount is on its last day; joiners and leavers are counted in it, and a move from one employment to another in the same company is neither.
+- **Turnover**: leavers ÷ the average of the first-day and last-day headcount, as a percentage to one decimal place.
+- **Overtime trend**: overtime **hours, not pay**, for each of the six full months before the current one. Each attendance day contributes its stored `ot_minutes`, or the recorded duration where an overtime pattern calculated the day: the Overtime report's own sum (`summarizeOvertimeRecords`). A month with days not yet calculated is marked not complete.
+- **Leave liability**: the outstanding annual leave balance in **days, not money**, on a date. This is the sum of annual-leave ledger entries dated on or before it; pending requests are not deducted.
+
+For all four, each person counts once per company. Named periods (this or last month, quarter or year) and the six months are resolved from the HR date owner (`lib/hr-date.ts`). Each metric carries an exact label of what it counts.
+
+**Who may ask.**
+- **An HR administrator**, for the companies the database says they administer: `app.is_admin_for`, for a current principal (`app.principal_snapshot_current`), the company not archived, with the employees module and the metric's module (attendance or leave) enabled.
+- **A manager**, for their own team only: the My Team scope (`resolveMyTeamScopeTx`, every report the page shows), and only what that page already shows. That is headcount as of today, overtime where attendance is on (the page links each person's attendance records), and annual leave days where the leave type's Available and Pending lines are visible. A manager gets no turnover, no joiners or leavers, and no past dates.
+- **Employees and payroll partners** are not offered the read, and the service refuses them in one sentence. So is a session that claims a role the database does not hold.
+
+**Suppression.** These are the §8 rules, decided over the caller's whole scope, with people as the unit. A group's size is its population: the people active on the date, or everyone employed in it during the period or month.
+1. A group of fewer than 5 people is withheld. For overtime and leave days, so is a group whose members all have the same figure, zero included: a total of zero hours or days would state each member's figure.
+2. A group whose complement within its parent is 1–4 people is withheld. The parent is the company or team for a department, and all companies for a company.
+3. Complementary suppression, as in §8.
+4. A withheld company or team withholds all its departments.
+
+A company with nobody in it reads `no_people` and protects nothing.
+
+**What reaches the provider.** The result is declared as entity `workforce_metric` (`core/semantic-model/entities-metrics.ts`, audience `admin`, page `/analytics`):
+- every count, rate, average headcount, hour figure and day figure is `bands`: a placeholder plus its band, restored locally for the person;
+- company and department names are `minimum`: configuration the administrator administers, or that the manager sees on My Team;
+- company ids and the threshold are dropped before the model sees anything. No person, id, name or single person's figure is in the result;
+- the trace records counts, paths and digests only.
+
+**Residual risks** (not addressed here):
+- One person can carry most of a group's overtime, and the total then nearly states their hours. There is no dominance rule.
+- Results compared across dates, months or callers with different scopes can be differenced.
+- A manager's team is today's team, so its overtime months cover today's members, not those of each month.
+- Overtime on a day an overtime pattern calculated is read only where the caller can read the recorded duration. Otherwise the day counts as not calculated.

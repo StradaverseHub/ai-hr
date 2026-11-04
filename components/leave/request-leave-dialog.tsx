@@ -26,6 +26,8 @@ type SummaryAction = ComponentProps<typeof LeaveDurationFields>['summaryAction']
 export function RequestLeaveDialog({
   types,
   startDefault,
+  endDefault,
+  durationDefault,
   defaultTypeId,
   employeeOptions,
   ownEmploymentId,
@@ -36,6 +38,9 @@ export function RequestLeaveDialog({
 }: {
   types: LeaveTypeOption[];
   startDefault?: string;
+  /** Issue 10 — forwarded to LeaveDurationFields: the end date and duration a chat card's Edit opens the form on. */
+  endDefault?: string;
+  durationDefault?: ComponentProps<typeof LeaveDurationFields>['durationDefault'];
   /** 76dbcaa1 — forwarded to LeaveDurationFields: the type an Apply action asked to open on. */
   defaultTypeId?: string | null;
   // Optional (item 69088c13): omitted for self-service employees so the Employee selector is hidden and the
@@ -106,6 +111,8 @@ export function RequestLeaveDialog({
             <LeaveDurationFields
               types={types}
               startDefault={startDefault}
+              endDefault={endDefault}
+              durationDefault={durationDefault}
               defaultTypeId={defaultTypeId}
               showDocumentFields
               employeeOptions={employeeOptions}

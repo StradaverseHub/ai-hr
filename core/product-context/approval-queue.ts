@@ -19,11 +19,21 @@ function queueHref(linkPath:string):string{
  const url=new URL(linkPath,'https://aihr.invalid'),category=url.pathname==='/approvals'?url.searchParams.get('category'):null;
  return url.pathname+(category?'?'+new URLSearchParams({category}):'');
 }
-/** Counts per kind of work currently assigned to this person, largest first. */
-export async function approvalQueueFor(ctx:SessionContext,companyId:string):Promise<ApprovalQueueSummary>{
- const tasks=await listPendingTasks(ctx,[companyId],{attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),
-  performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')},{noticeAcknowledgements:false});
+const pendingFor=(ctx:SessionContext,companyId:string)=>listPendingTasks(ctx,[companyId],{attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),
+ performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')},{noticeAcknowledgements:false});
+function summarise(tasks:Awaited<ReturnType<typeof pendingFor>>):ApprovalQueueSummary{
  const groups=new Map<string,{kind:string;count:number;href:string;reviewAction:string|null}>();
  for(const task of tasks){const row=groups.get(task.kind)??{kind:task.kind,count:0,href:queueHref(task.linkPath),reviewAction:REVIEW_ACTION[task.kind]??null};row.count++;groups.set(task.kind,row);}
  return Object.freeze({total:tasks.length,groups:Object.freeze([...groups.values()].sort((a,b)=>b.count-a.count||a.kind.localeCompare(b.kind)).map(row=>Object.freeze(row)))});
+}
+/** Counts per kind of work currently assigned to this person, largest first. */
+export async function approvalQueueFor(ctx:SessionContext,companyId:string):Promise<ApprovalQueueSummary>{
+ return summarise(await pendingFor(ctx,companyId));
+}
+/** The same counts from the same read, and the ids of the leave requests among them. The ids are for the conversation
+ * harness's approval_queue binding alone (approvalQueueWithLeaveRequests), which names only those of them the leave decision
+ * card can open, disclosed under its declared entity; they never leave it. */
+export async function approvalQueueWithLeaveIdsFor(ctx:SessionContext,companyId:string):Promise<Readonly<{summary:ApprovalQueueSummary;leaveRequestIds:ReadonlySet<string>}>>{
+ const tasks=await pendingFor(ctx,companyId);
+ return Object.freeze({summary:summarise(tasks),leaveRequestIds:new Set(tasks.filter(task=>task.kind==='leave').map(task=>task.id))});
 }

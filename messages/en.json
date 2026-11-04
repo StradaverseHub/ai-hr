@@ -297,7 +297,7 @@
   "nav": {
     "roster": "Roster",
     "dataPrivacy": "Data Privacy",
-    "dashboard": "Dashboard",
+    "dashboard": "Today",
     "myWorkspace": "My Profile",
     "people": "Team Directory",
     "orgChart": "Org chart",
@@ -348,6 +348,7 @@
     "claimsConfig": "Claims config",
     "claims": "Claims",
     "aiConfig": "AI",
+    "aiQuality": "AI quality",
     "notifications": "Notifications",
     "analytics": "Analytics",
     "shift": "Shift",
@@ -383,6 +384,7 @@
     "reportPerformance": "Performance",
     "profileOptions": "Profile Options",
     "delegations": "Approval Delegation",
+    "policies": "Policies",
     "dashboardCardConfig": "Dashboard cards",
     "scheduledActions": "Scheduled actions",
     "systemSettings": "System Settings",
@@ -394,9 +396,9 @@
     "payrollIndividualPayslip": "Individual Payslip",
     "payrollBackPay": "Back Pay",
     "payrollStatutoryAdjustment": "Statutory Adjustment",
-    "payrollControlTower": "Control Tower",
+    "payrollControlTower": "Operations",
     "assistant": "Assistant",
-    "aiControlTower": "Control Tower",
+    "aiControlTower": "Operations",
     "controlTowerOverview": "Overview",
     "controlTowerHow": "How it works",
     "controlTowerReadiness": "Employee data",
@@ -522,7 +524,9 @@
     "contractWorkflows": "Contract workflows",
     "contractTemplates": "Contract templates",
     "contractIntake": "Contract intake and retirement evidence",
-    "passwordPolicy": "Password Policy"
+    "passwordPolicy": "Password Policy",
+    "myPrivateCases": "My private cases",
+    "privateCases": "Private cases"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -9257,7 +9261,7 @@
       }
     },
     "controlTower": {
-      "title": "HR Control Tower",
+      "title": "Operations overview",
       "description": "Coordinate HR work, review exceptions and verify outcomes.",
       "backToPayroll": "Payroll",
       "ratioTitle": "How many people does it take to run this payroll?",
@@ -9292,14 +9296,14 @@
       "colWaiting": "Waiting on a person",
       "openQueue": "Open queue",
       "notChecked": "Not checked",
-      "noRuns": "No processed runs. The tower has nothing to watch until a run is processed.",
+      "noRuns": "No processed runs. There is nothing to watch until a run is processed.",
       "domainsLine": "{live} of {total} areas are live.",
       "howItWorksLink": "How this works",
       "agentsLink": "Which agents are running",
       "agents": {
         "title": "AI agents",
         "description": "The parts of this system that act on their own, and whether each of them actually can.",
-        "backToTower": "Back to the Control Tower",
+        "backToTower": "Back to Operations",
         "heading": "What runs without being asked",
         "headingHelp": "Each of these is off until you switch it on, and switching one on is not the same as it being able to work — a switch that has nothing behind it says so below.",
         "stateOn": "Running",
@@ -9339,7 +9343,7 @@
       "exceptions": {
         "title": "Exceptions",
         "description": "Every flagged employee still waiting for a decision, from every payroll run, in one list.",
-        "backToTower": "Back to the Control Tower",
+        "backToTower": "Back to Operations",
         "outstanding": "Waiting for a decision",
         "blocking": "Of those, blocking a run",
         "capped": "Showing the {shown} most urgent of {total}. Clear some and the rest appear.",
@@ -9348,7 +9352,7 @@
         "emptyTitle": "Nothing is waiting",
         "emptyBody": "Every flagged employee across every run has been decided.",
         "whyTitle": "Why your decisions matter here",
-        "whyBody": "Three of the figures on the Control Tower — how often the checks are wrong, how long an exception waits, and how many people this workload implies — cannot be worked out until somebody decides these. Until then the Tower shows what is missing instead of a number, on purpose."
+        "whyBody": "Three of the figures on the Operations overview — how often the checks are wrong, how long an exception waits, and how many people this workload implies — cannot be worked out until somebody decides these. Until then the overview shows what is missing instead of a number, on purpose."
       },
       "agreementTitle": "Does the AI agree with us?",
       "agreementUnavailable": "Nothing to measure yet.",
@@ -11195,6 +11199,7 @@
         "attendanceVisibleApplications": "Only attendance requests already visible through the current employee, reporting, delegation or saved participant scope. This page grants no Personnel browsing or wider HR history access.",
         "childReliefReview": "Lists only current employees in companies you administer, so the ringgit totals are the totals of what you can see. Read-only — no tax setting can be changed from this screen.",
         "delegations": "HR and admins see every delegation; you see only ones you delegated or cover.",
+        "aiCentrePolicies": "Administrators see the policies of the companies they administer; everyone else reads the approved policies of their own company.",
         "duplicatePersonRecords": "Lists only employees in companies you administer, so half of a pair spanning two companies may not be visible to you. Read-only — no record can be changed from this screen.",
         "identityEmail": "HR administrators can preview the SMTP form. Viewing or changing live settings requires separate installation identity-administrator enrollment.",
         "leave": "Everyone can open this; you see your own leave, managers and admins see their reports.",
@@ -11241,7 +11246,9 @@
         "createLogin": "Group-wide administrators only. Manual setup also requires a supported login provider and a verified administrator session.",
         "inviteUser": "Group-wide administrators only.",
         "entra": "Group administrators only. Configure Microsoft sign-in and employee provisioning for their own organization. Linking existing identities requires explicit confirmation.",
-        "rewardsAccess": "Effective Rewards assignments and scoped HR administrator authority determine access; a platform role alone does not grant every action."
+        "rewardsAccess": "Effective Rewards assignments and scoped HR administrator authority determine access; a platform role alone does not grant every action.",
+        "myPrivateCases": "Only the signed-in person’s own private cases. Privileged roles do not widen it; administrators cannot read others’ cases here.",
+        "privateCaseHandling": "Reachable by everyone, but shows cases only to the designated case handlers of the case’s company (or the group administrator when no eligible handler remains), never to the author or anyone the author left out. A role grants nothing here."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -13913,6 +13920,8 @@
     "typeLabel": "Claim type",
     "receiptRequired": "receipt required",
     "amountLabel": "Amount (RM)",
+    "amountLabelInCurrency": "Amount ({currency})",
+    "amountLabelNoCurrency": "Amount",
     "incurredOnLabel": "Date incurred",
     "receiptLabel": "Receipt",
     "descriptionLabel": "Description (optional)",
@@ -17478,11 +17487,11 @@
     "empty": "No questions yet. Ask one above.",
     "noAnswer": "No answer was produced.",
     "lookedAt": "Looked at: {tools}",
-    "stop_refusal": "The assistant declined to answer this one.",
+    "stop_refusal": "The AI Centre declined to answer this one.",
     "stop_max_tokens": "The answer was cut short because it got too long. Try asking for less at once.",
-    "stop_other": "The assistant stopped before finishing. Nothing is wrong with your records — please ask again.",
-    "stop_tool_use": "The assistant stopped while it was still looking something up. Please ask again.",
-    "stop_turn_cap": "The assistant reached its limit of {n} steps and stopped before finishing. Try splitting the question up.",
+    "stop_other": "The AI Centre stopped before finishing. Nothing is wrong with your records — please ask again.",
+    "stop_tool_use": "The AI Centre stopped while it was still looking something up. Please ask again.",
+    "stop_turn_cap": "The AI Centre reached its limit of {n} steps and stopped before finishing. Try splitting the question up.",
     "denied_module_off": "I’m waiting in the wings. Your organisation hasn’t enabled the assistant yet. Your HR administrator can help.",
     "denied_no_grant": "I’m still waiting for your access pass. Your HR administrator can help unlock the assistant.",
     "denied_no_user": "I can’t match this sign-in to an account yet. Your administrator can help reconnect the dots.",
@@ -19667,7 +19676,7 @@
       },
       "historyPrivacy": {
         "title": "Your chat history",
-        "description": "Chat cleanup uses a 30-day retention period. You can clear your saved text now, even if Assistant access is turned off. Request counts and usage records remain; your HR records are unchanged.",
+        "description": "Saved chats are removed when your company's chat keeping period ends (30 days unless an administrator changes it). You can clear your saved text now, even if Assistant access is turned off. Request counts and usage records remain; your HR records are unchanged.",
         "clear": "Clear my chat text",
         "confirmTitle": "Clear your chat text?",
         "confirmBody": "Your saved chat text goes now and can't be brought back. Usage counts and your HR records stay as they are.",
@@ -21807,7 +21816,7 @@
       "working": "Thinking…",
       "failed": "That did not go through. Please try again.",
       "noCard": "No answer card was produced for this question.",
-      "openInAssistant": "Open in Assistant",
+      "openInAssistant": "Open in AI Centre",
       "question": "Your question",
       "placeholder": "Ask a question",
       "send": "Send",
@@ -21829,7 +21838,7 @@
         "people": "People",
         "rewards": "Rewards",
         "analytics": "Analytics",
-        "controlTower": "Control Tower",
+        "controlTower": "Operations",
         "settings": "Settings"
       },
       "identity": "AI assistant",
@@ -21910,9 +21919,9 @@
     "err_protected_input": "This request needs a supported protected input. Choose a suggested task or input template, or use the native screen for other details."
   },
   "controlTower": {
-    "howTitle": "How the Control Tower works",
+    "howTitle": "What runs for your company",
     "howDescription": "What runs, in what order, which parts use AI, and what is switched on right now.",
-    "backToTower": "Back to the Control Tower",
+    "backToTower": "Back to Operations",
     "loopTitle": "The loop",
     "loopIntro": "Every cycle runs the same five steps. Only one of them involves AI, and none of them decides anything on its own.",
     "loopAlt": "Five steps: checks run, findings are recorded, AI explains them in plain words, a person decides, and the result feeds back.",
@@ -22023,7 +22032,7 @@
     "promise2Body": "Whether something is cleared, flagged or blocked is decided by fixed rules before any AI is involved, and the explanation cannot change that decision. Nothing is cleared, paid or altered without a person.",
     "readinessScreen": {
       "title": "Record readiness",
-      "backToTower": "Back to the Control Tower",
+      "backToTower": "Back to Operations",
       "description": "Every active employee is either ready to be paid and filed for, or has something missing. Fix it here, once, instead of meeting it again every payroll.",
       "readyPct": "records complete",
       "readyOf": "employees ready",
@@ -22054,7 +22063,7 @@
     "actions": {
       "title": "Proposed actions",
       "description": "Work the AI would like to take off your desk. Nothing here happens until you approve it, and you can see exactly why each one is being proposed.",
-      "backToTower": "Back to the Control Tower",
+      "backToTower": "Back to Operations",
       "emptyTitle": "Nothing to approve",
       "emptyBody": "Every payroll exception still waiting on you has a real problem behind it. When somebody fixes the underlying record, the exception will appear here to be closed.",
       "done": "Closed {closed} exception(s).",
@@ -22088,7 +22097,7 @@
     "orchestrator": {
       "checking": "Checking records…",
       "runFailed": "The latest recorded automation run needs attention. Open the run details below.",
-      "navigation": "Control Tower navigation",
+      "navigation": "Operations sections",
       "overview": "Overview",
       "readiness": "Employee data",
       "exceptions": "Payroll exceptions",
@@ -26921,7 +26930,7 @@
   "aiManagement": {
     "title": "AI management",
     "description": "See every AI capability, monitor model activity and control user and company allowances.",
-    "back": "Control Tower",
+    "back": "Operations",
     "provider": "Provider: {provider} · {model}",
     "noProvider": "No AI provider configured. Manual workflows remain available.",
     "configureProvider": "Provider settings",
@@ -27246,7 +27255,8 @@
       "jobs": {
         "review-sweep": "Nightly HR work queue pass",
         "ai-retention": "AI run history retention",
-        "ai-alerts": "AI alert check"
+        "ai-alerts": "AI alert check",
+        "payroll-loops": "Pre-salary loop tick"
       },
       "steps": {
         "observe": "Check employee records",
@@ -27324,7 +27334,8 @@
           "closed_references": "Opaque references and closed categories (source text and values stay local)",
           "coarse_aggregate_bands": "Coarse aggregate bands (not an anonymity guarantee)",
           "pseudonymous_person_bands": "Per-person bands with random aliases (not anonymous)",
-          "authored_formula_request": "User-authored formula requirement"
+          "authored_formula_request": "User-authored formula requirement",
+          "authored_policy_text": "Policy text written by HR administrators (refused if it holds a personal identifier)"
         },
         "redaction": {
           "pii_masked": "Masked",
@@ -28688,6 +28699,7 @@
     "clear": "Clear value",
     "undo": "Undo change",
     "leaveUnsaved": "Leave this page and discard your unsaved changes?",
+    "seedWithheld": "Not filled in for you: {fields}. Bank account and identity numbers are never carried over from AI Centre, so type them here yourself.",
     "viewHelp": "Review your own Personnel record. Pending requests do not replace the master record.",
     "editHelp": "Edit permitted fields across tabs, then save once. Changes can save directly when approval is off; changes requiring approval and their linked fields wait for HR.",
     "pendingValue": "Pending request: {value}",
@@ -29430,7 +29442,7 @@
       "next": "Next",
       "none": "No backlog entries."
     },
-    "back": "Control Tower",
+    "back": "Operations",
     "title": "Automation opportunities",
     "description": "Where an AI agent could take handling work off HR, measured from your records. Nothing on this page changes data or calls an AI model.",
     "window": "Cases started in the last",
@@ -31445,7 +31457,38 @@
         "state": "This action is no longer available for this letter.",
         "unavailable": "Letters are temporarily unavailable. Try again shortly."
       },
-      "download": "Download PDF"
+      "download": "Download PDF",
+      "requests": {
+        "request": "Request a letter",
+        "title": "Your letter requests",
+        "requestedOn": "Requested on {date}",
+        "openLetter": "Open letter",
+        "messageFromHr": "Message from HR",
+        "sent": "Your request was sent to HR. You can follow its status here.",
+        "unavailable": "Your letter requests could not be shown just now.",
+        "formTitle": "Request a letter",
+        "formDescription": "Choose the letter you need. HR prepares it, and you will find it under My Letters once it is issued.",
+        "none": "Your company has not opened any letters for employee requests yet. Contact your HR team.",
+        "type": "Letter type",
+        "choose": "Choose a letter",
+        "typeInCompany": "{type} ({company})",
+        "purpose": "Purpose (optional)",
+        "purposeHelp": "For example, a bank loan or a visa application. Only you and HR see it.",
+        "submit": "Send request",
+        "status": {
+          "requested": "Requested",
+          "in_progress": "HR is preparing it",
+          "issued": "Issued",
+          "declined": "Declined"
+        },
+        "errors": {
+          "invalid": "Check the letter type and try again.",
+          "not_requestable": "This letter can no longer be requested. Choose another one.",
+          "duplicate": "You already have an open request for this letter.",
+          "unavailable": "Your request could not be sent just now. Try again shortly."
+        },
+        "cancel": "Cancel"
+      }
     },
     "reports": {
       "title": "Letter Reports",
@@ -31836,6 +31879,39 @@
         "unavailable": "The action could not be completed. Try again.",
         "state": "This letter or batch has changed state. Refresh before trying again.",
         "reasonRequired": "Enter a reason for removal."
+      },
+      "requests": {
+        "title": "Letter requests",
+        "intro": "Letters employees asked for. Prepare letter opens a draft for that employee; you approve and issue it as usual.",
+        "empty": "No letter requests are waiting.",
+        "unavailable": "Letter requests could not be shown just now.",
+        "employee": "Employee",
+        "purpose": "Purpose",
+        "requestedOn": "Requested on {date}",
+        "prepare": "Prepare letter",
+        "prepareUnavailable": "This template is no longer published. Publish it again or decline the request.",
+        "decline": "Decline",
+        "declineReason": "Reason for declining",
+        "declineHelp": "Only HR sees the reason. The employee sees that the request was declined, with your message if you add one.",
+        "employeeMessage": "Message to the employee (optional)",
+        "employeeMessageHelp": "Shown to the employee with the declined status.",
+        "declineSubmit": "Decline request",
+        "inProgress": "A draft is prepared. The request is marked issued when the letter is issued.",
+        "preparing": "Prepared from an employee's request for {type}.",
+        "declined": "The request was declined.",
+        "status": {
+          "requested": "Requested",
+          "in_progress": "Being prepared",
+          "issued": "Issued",
+          "declined": "Declined"
+        },
+        "errors": {
+          "invalid": "Check the request and try again.",
+          "permission": "You can no longer handle this request.",
+          "state": "This request has already been handled.",
+          "stale": "This request changed. Review it again.",
+          "unavailable": "The request could not be updated just now. Try again shortly."
+        }
       }
     },
     "approval": {
@@ -31995,7 +32071,21 @@
       "empty": "No settings or assets yet.",
       "assetSearch": "Search asset names",
       "companyCodeUnavailable": "Configure a short company reference code or use a format without the company placeholder.",
-      "version": "Configuration version {number}"
+      "version": "Configuration version {number}",
+      "requests": {
+        "title": "Employee requests",
+        "intro": "Choose which letters employees may request from My Letters. Off by default.",
+        "empty": "No published templates yet.",
+        "unavailable": "Employee request settings could not be shown just now.",
+        "allow": "Employees may request {name}",
+        "save": "Save employee requests",
+        "saved": "Employee request settings saved.",
+        "errors": {
+          "invalid": "Check the selection and try again.",
+          "permission": "You cannot change letter settings for this company.",
+          "unavailable": "The settings could not be saved just now. Try again shortly."
+        }
+      }
     }
   },
   "performanceHome": {
@@ -33676,7 +33766,7 @@
       "anomalies": {
         "name": "Payroll anomaly checks",
         "description": "Records findings and verdicts for review. Does not change payroll amounts.",
-        "results": "Control Tower exceptions and payroll anomalies"
+        "results": "Operations exceptions and payroll anomalies"
       },
       "child-relief": {
         "name": "Child tax-relief refresh",
@@ -33742,6 +33832,11 @@
         "name": "Database backups",
         "description": "Creates database backups to an approved destination when configured.",
         "results": "Backup storage and protected backup logs"
+      },
+      "payroll-loops": {
+        "name": "Pre-salary loop tick",
+        "description": "Checks payroll inputs for the companies whose own check interval has come round. Prepares cards for payroll administrators; changes no record.",
+        "results": "Payroll cycle"
       }
     }
   },
@@ -34918,5 +35013,136 @@
     "retirementEvidencePending": "Review the recorded retirement evidence before opening this case.",
     "acceptancePaused": "Signing is paused for this workflow. You can still decline the offer.",
     "employeeIdentityUnavailable": "The employee’s linked login is unavailable or cannot be confirmed. Assigned People Ops must work with the Access owner to resolve it. The issued PDF is preserved."
+  },
+  "privateCases": {
+    "categories": {
+      "grievance": "Grievance",
+      "harassment": "Harassment",
+      "safety": "Safety",
+      "other": "Something else"
+    },
+    "statuses": {
+      "received": "Received",
+      "in_review": "In review",
+      "closed": "Closed"
+    },
+    "errors": {
+      "invalid": "Check the form: choose what it is about and write what happened.",
+      "not_set_up": "Private cases are not set up for this company. Please contact your HR team directly.",
+      "not_found": "This case is not available to you.",
+      "not_allowed": "You cannot do this.",
+      "unavailable": "This is not available just now. Please try again later.",
+      "conflict": "This changed since you opened it. Please check it again."
+    },
+    "entry": {
+      "title": "Private cases with HR",
+      "help": "Raise a grievance, harassment, a safety concern or another sensitive matter in writing with your HR case handlers. The AI Centre never reads it.",
+      "open": "Private cases"
+    },
+    "me": {
+      "title": "Private cases with HR",
+      "description": "Write to your company’s HR case handlers in private. Only you and they can read it; the AI Centre never reads, stores or sees what you write.",
+      "start": "Start a private case",
+      "notSetUp": "Private cases are not set up for your company yet. Please contact your HR team directly.",
+      "empty": "You have not opened a private case.",
+      "listTitle": "Your cases",
+      "opened": "Opened {date}",
+      "updated": "Updated {date}",
+      "handle": "Cases you handle",
+      "view": "View",
+      "unreachable": "Nobody can read it yet"
+    },
+    "new": {
+      "title": "Start a private case",
+      "description": "Write it in your own words. It goes to the HR case handlers named below, not to the AI Centre.",
+      "back": "Private cases",
+      "company": "Company",
+      "chooseCompany": "Show this company",
+      "category": "What is it about?",
+      "text": "What happened",
+      "textHelp": "Up to 8,000 characters. Share what you are comfortable sharing; a handler may contact you.",
+      "handlers": "Who can read it",
+      "handlersHelp": "These people can read your case. If it is about one of them, or one of them must not see it, tick their name.",
+      "exclude": "Do not send it to {name} ({role})",
+      "unnamed": "Someone without an employee record",
+      "groupAdmin": "Send it to the group administrator instead of the case handlers",
+      "groupAdminHelp": "If you leave out every case handler, it goes to the group administrator. If you leave out everyone, it is kept but nobody can read it yet.",
+      "privacy": "Your case is stored encrypted. Your HR case handlers see it with your name; other HR administrators, managers and the AI Centre do not.",
+      "submit": "Send to HR",
+      "notStorable": "Private cases cannot be saved just now. Please contact your HR team directly.",
+      "readerHandler": "case handler",
+      "readerGroupAdmin": "group administrator"
+    },
+    "detail": {
+      "back": "Private cases",
+      "sent": "Your case was sent to HR.",
+      "opened": "Opened {date}",
+      "company": "Company",
+      "category": "Category",
+      "status": "Status",
+      "text": "What you wrote",
+      "history": "Status history",
+      "step": "{status}, {date}"
+    },
+    "handle": {
+      "title": "Private cases you handle",
+      "description": "Cases written to you as a case handler. Each time a case is opened, it is recorded.",
+      "none": "You do not handle private cases.",
+      "empty": "No private cases yet.",
+      "opened": "Opened {date}",
+      "toGroupAdmin": "Sent to the group administrator",
+      "erasure": "Its author asked for their data to be erased: this case will be deleted when it is closed.",
+      "view": "Open",
+      "back": "Cases you handle",
+      "author": "From",
+      "noName": "Name not available",
+      "text": "What they wrote",
+      "status": "Status",
+      "moveTo": "Mark as {status}",
+      "notes": "Handler notes",
+      "notesHelp": "Only the case’s handlers see notes; the person who wrote the case does not.",
+      "noNotes": "No notes yet.",
+      "noteBy": "{name}, {date}",
+      "you": "You",
+      "noteLabel": "Note",
+      "saveNote": "Save note",
+      "closedNoNotes": "This case is closed, so notes can no longer be added.",
+      "audit": "Case record",
+      "auditCreated": "Opened by {name}",
+      "auditRead": "Read by {name}",
+      "auditStatus": "{name} changed it from {from} to {to}",
+      "auditNote": "{name} added a note",
+      "noteSaved": "Note saved.",
+      "statusSaved": "Status changed.",
+      "erased": "The case was closed and deleted, as its author’s erasure request required."
+    },
+    "admin": {
+      "title": "Private case handlers",
+      "description": "Name the people who receive private cases for each company. Only they can read those cases: naming a handler does not let you read them.",
+      "back": "Data privacy",
+      "company": "Company",
+      "show": "Show",
+      "current": "Current handlers",
+      "none": "No handlers yet, so private cases are not offered for this company.",
+      "since": "Since {date}",
+      "revoke": "Remove",
+      "revoked": "Removed {date}",
+      "history": "Earlier handlers",
+      "designate": "Add a handler",
+      "person": "Person",
+      "noRecord": "Login without an employee record",
+      "add": "Add handler",
+      "selfNote": "You cannot name yourself a handler. A group administrator, or another administrator of the company, designates you.",
+      "added": "Handler added.",
+      "removed": "Handler removed.",
+      "noCompanies": "You do not administer a company."
+    },
+    "privacyCard": {
+      "title": "Private case handlers",
+      "help": "Choose who receives the private cases people write to HR.",
+      "link": "Manage case handlers"
+    },
+    "noReader": "No eligible reader is configured for this company, so nobody can read this case yet. Please contact {channel}.",
+    "externalChannel": "[the company’s designated external channel, for example an ethics line]"
   }
 }

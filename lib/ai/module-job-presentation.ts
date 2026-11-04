@@ -16,6 +16,9 @@ const title=(row:Row,key:string,index:number):JobCard['title']=>typeof row[key]=
  {kind:'text',value:String(row[key])}:{kind:'record',number:index+1};
 const record=(index:number):JobCard['title']=>({kind:'record',number:index+1});
 const gaps=new Set(['no_compensation','no_bank_account','no_identity','no_tax_number','no_epf_number','no_socso_number']);
+/** A Mine leave balance row hides part of itself when it names fields it does not show (core/assistant-leave-projection.ts
+ * notShown), or, on a row built before notShown, carries withheld:true. Anything but an absent or empty notShown counts. */
+export const leaveBalancePartlyHidden=(row:Row):boolean=>row.withheld===true||(row.notShown!==undefined&&!(Array.isArray(row.notShown)&&row.notShown.length===0));
 export function presentCanonicalModuleData(module:AgentModuleCode,data:unknown):JobPresentation{
  if(!isAgentModuleCode(module))throw Error('Unsupported canonical module job.');
  let truncated=false;const cards:JobCard[]=[];
@@ -27,7 +30,7 @@ export function presentCanonicalModuleData(module:AgentModuleCode,data:unknown):
   case 'employees':rows(data).forEach((row,index)=>push({title:title(row,'company',index),facts:[value(row,'employeeCode','employeeCode'),value(row,'company','company'),
    value(row,'hiredOn','hiredOn','date'),value(row,'terminatedOn','terminatedOn','date'),value(row,'status','workStatus','status')]}));break;
   case 'org':rows(data).forEach(row=>list(row.reportingLines).map(object).forEach((line,index)=>push({title:title(line,'name',index),facts:[value(row,'company','company'),value(line,'employeeCode','employeeCode'),value(line,'lineType','reportingKind','status')]})));break;
-  case 'leave':rows(data).forEach(row=>list(row.balances).map(object).forEach((balance,index)=>push({title:title(balance,'leaveType',index),withheld:balance.withheld===true,
+  case 'leave':rows(data).forEach(row=>list(row.balances).map(object).forEach((balance,index)=>push({title:title(balance,'leaveType',index),withheld:leaveBalancePartlyHidden(balance),
    facts:[value(row,'company','company'),value(balance,'available','available','number'),value(balance,'taken','taken','number'),value(balance,'pending','pending','number')].filter(fact=>fact.value!==null)})));break;
   case 'ess':case 'country-my':{const row=object(data);push({title:record(0),facts:[value(row,'employees','checkedRecords','number'),value(row,'ready','readyRecords','number')]});
    list(row.gaps).map(object).forEach(gap=>{if(typeof gap.id!=='string'||!gaps.has(gap.id)||!['payment','payroll','statutory_filing'].includes(String(gap.blocks)))throw Error('Unknown canonical readiness contract.');

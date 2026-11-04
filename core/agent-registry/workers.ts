@@ -43,13 +43,29 @@ export type WorkerRecord=
  |Readonly<{kind:'outcome_record';agentIdentity:string;tools?:readonly string[]}>
  |Readonly<{kind:'mandate_runs';jobType:WorkJobType}>
  |Readonly<{kind:'agent_proposal';proposalTypes:readonly ProposalTypeId[]}>
- |Readonly<{kind:'domain_event';eventType:string;source?:string}>;
+ |Readonly<{kind:'domain_event';eventType:string;source?:string}>
+ // AI v2 W8: a loop records each run in teras_loop_run (migration 0960), its outcome record.
+ |Readonly<{kind:'loop_runs'}>;
 export type WorkerMetrics=
  |Readonly<{kind:'agreement_view';proposalTypes:readonly ProposalTypeId[]}>
  |Readonly<{kind:'outcome_followups'}>
- |Readonly<{kind:'not_measurable';reason:string}>;
+ |Readonly<{kind:'not_measurable';reason:string}>
+ // AI v2 W8: a loop's cards are measured from its cases: completed as prepared, or changed by the person. Only a card
+ // that proposes a value of its own (the clock-out time) can be changed; the others are not measurable that way.
+ |Readonly<{kind:'loop_cases';proposesValue:boolean}>;
+/** AI v2 W8: who answers for a loop. `switched_on_by`: the group administrator who switched it on; the loop reads under
+ * that person's current authority and stops when they lose it. */
+export type WorkerSponsor=Readonly<{kind:'switched_on_by'}>;
+/** AI v2 Phase 2 P2-1: what a loop may do at each level, per company (core/loops/autonomy.ts is the cap in code; a test
+ * keeps the two in step). Level 0 Watch records only; Level 1 Prepare is `effect`. `ceiling` is the highest level any
+ * company may set. `act` is the automatic step at Level 2 (Act within limits) and Level 3 (Act and audit, the same step
+ * with HR reviewing a weekly sample instead of every action); null for a loop that stays at Prepare. Every automatic
+ * step is within the company's limits, tells the person, can be undone for a set window, and drops back to Prepare when
+ * people correct more than 1% in 7 days. */
+export type WorkerAutonomy=Readonly<{ceiling:1|2|3;act:Readonly<{does:string;owner:OwnerAnchor;undo:string}>|null}>;
 export type WorkerDeclaration=Readonly<{id:string;label:string;family:WorkerFamily;owners:readonly OwnerAnchor[];trigger:WorkerTrigger;
- readScope:readonly EntityId[];effect:WorkerEffect;authority:WorkerAuthority;switch:WorkerSwitch;stop:WorkerStop;record:WorkerRecord;metrics:WorkerMetrics}>;
+ readScope:readonly EntityId[];effect:WorkerEffect;authority:WorkerAuthority;switch:WorkerSwitch;stop:WorkerStop;record:WorkerRecord;metrics:WorkerMetrics;
+ sponsor?:WorkerSponsor;autonomy?:WorkerAutonomy}>;
 
 export class WorkerNotRegistrable extends Error{constructor(readonly id:string,readonly missing:readonly string[]){super(`Worker ${id} cannot be registered: ${missing.join(', ')}`);this.name='WorkerNotRegistrable';}}
 
@@ -78,6 +94,18 @@ export function workerDeclarationProblems(value:unknown):readonly string[]{
  if(d.authority.kind==='mandate'&&(d.switch.kind!=='job_type'||d.switch.jobType!==d.authority.jobType||d.record.kind!=='mandate_runs'))problems.push('switch');
  if(d.stop.honoured===false&&!nonEmpty(d.stop.pending))problems.push('stop');
  if(d.metrics.kind==='not_measurable'&&!nonEmpty(d.metrics.reason))problems.push('metrics');
+ // AI v2 W8: a loop prepares only, as the agent principal behind its own registry switch, honours the stop switch,
+ // names its sponsor and is measured from its cases. A sponsor is declared only by a loop.
+ const loop=d.record.kind==='loop_runs';
+ if(loop&&(d.family!=='preparer'||d.effect!=='prepare'||d.authority.kind!=='tenant_switch'||d.authority.actsAs!=='agent_principal'
+  ||d.switch.kind!=='worker_control'||d.switch.workerId!==d.id||d.stop.honoured!==true||d.metrics.kind!=='loop_cases'))problems.push('loop');
+ if(loop!==(d.sponsor?.kind==='switched_on_by'))problems.push('sponsor');
+ // AI v2 Phase 2 P2-1: a loop declares what it may do at each level; nothing else declares an autonomy.
+ const autonomy=d.autonomy;
+ if(loop!==(autonomy!==undefined))problems.push('autonomy');
+ if(autonomy&&(![1,2,3].includes(autonomy.ceiling)||(autonomy.ceiling>1)!==(autonomy.act!==null)
+  ||(autonomy.act&&(!nonEmpty(autonomy.act.does)||!nonEmpty(autonomy.act.undo)||!/^[a-z0-9_./-]+\.ts#[A-Za-z_][A-Za-z0-9_]*$/.test(autonomy.act.owner)))))problems.push('autonomy');
+ if(!loop&&d.metrics.kind==='loop_cases')problems.push('metrics');
  return problems;
 }
 export function assertWorkerDeclaration(value:unknown):asserts value is WorkerDeclaration{
@@ -87,6 +115,9 @@ export function assertWorkerDeclaration(value:unknown):asserts value is WorkerDe
 
 const CLOSURE_PENDING='Its run path is in the approved provider closure; it consults the stop switch once that closure is next approved. Until then use its own switch.';
 const NIGHTLY:WorkerTrigger={kind:'schedule',detail:'Nightly sweep'};
+const LOOP_NIGHTLY:WorkerTrigger={kind:'schedule',detail:'Nightly sweep, for each company in scope'};
+/** AI v2 P2-2a: the Pre-salary loop checks each company at its own interval (hourly, twice daily or daily). */
+const LOOP_PAYROLL_INTERVAL:WorkerTrigger={kind:'schedule',detail:'Each company at its own interval: hourly, twice daily or daily'};
 
 const DECLARATIONS:readonly WorkerDeclaration[]=[
  {id:'payroll_anomaly_narrator',label:'Payroll anomaly narrator',family:'explainer',owners:['core/payroll-anomaly-narrate.ts#narrateVerdict'],
@@ -127,19 +158,23 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
   authority:{kind:'tenant_switch',actsAs:'requester'},switch:{kind:'worker_control',workerId:'approver_recommendation'},stop:{honoured:true},
   record:{kind:'outcome_record',agentIdentity:'worker.approver_recommendation'},metrics:{kind:'outcome_followups'}},
  {id:'explainers',label:'Explainers',family:'explainer',
-  owners:['core/explainers/statutory.ts#explainOwnPayslipStatutory','core/explainers/entitlement.ts#explainOwnLeaveEntitlement','core/explainers/attendance.ts#explainOwnAttendanceDay'],
+  owners:['core/explainers/statutory.ts#explainOwnPayslipStatutory','core/explainers/entitlement.ts#explainOwnLeaveEntitlement','core/explainers/attendance.ts#explainOwnAttendanceDay',
+   // AI v2 W5: the pay difference and claim limit explainers.
+   'core/explainers/pay-difference.ts#explainOwnPayDifference','core/explainers/claim-limit.ts#explainOwnClaimLimit'],
   trigger:{kind:'request',detail:'A person asks the Assistant why a figure is what it is'},
-  readScope:['statutory_explanation','entitlement_explanation','attendance_day_explanation'],effect:'none',
+  readScope:['statutory_explanation','entitlement_explanation','attendance_day_explanation','pay_difference_explanation','claim_limit_explanation'],effect:'none',
   authority:{kind:'tenant_switch',actsAs:'requester'},switch:{kind:'worker_control',workerId:'explainers'},
   // Explainers run only inside Noveri conversation turns. The conversation's gate (below) includes the tenant stop
   // switch, so a stopped tenant's chat goes back to the closed grammar and no explainer runs.
   stop:{honoured:true},
-  record:{kind:'outcome_record',agentIdentity:'teras.assistant',tools:['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day']},
+  // Spec v23: the five are topics of explain_why (core/semantic-model/topic-tools.ts), the tool a turn now calls and records;
+  // the five names stay for records written before it.
+  record:{kind:'outcome_record',agentIdentity:'teras.assistant',tools:['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day','explain_pay_difference','explain_claim_limit','explain_why']},
   metrics:{kind:'not_measurable',reason:'An explanation has no accept or decline.'}},
  {id:'conversation',label:'Noveri conversation',family:'preparer',
   owners:['core/teras-wiring/turn.ts#runConversationTurn'],trigger:{kind:'request',detail:'A person asks a question in the Assistant chat'},
   // Any read the caller is offered in a turn, and the leave cards it may prepare for the person to confirm.
-  readScope:[...new Set([...SEMANTIC_READS,...TERAS_READS].map(read=>read.entity)),'suggested_action'],effect:'prepare',
+  readScope:[...new Set([...SEMANTIC_READS,...TERAS_READS].map(read=>read.entity)),'suggested_action','product_capability'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'requester'},switch:{kind:'worker_control',workerId:'conversation'},stop:{honoured:true},
   record:{kind:'outcome_record',agentIdentity:'teras.assistant'},
   metrics:{kind:'not_measurable',reason:'A conversation turn has no accept or decline; each prepared card is decided, and measured, on its own review page.'}},
@@ -151,6 +186,53 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
   trigger:{kind:'schedule',detail:'Daily, once each HR day'},readScope:['daily_digest','pending_approval'],effect:'prepare',
   authority:{kind:'mandate',jobType:'daily_digest'},switch:{kind:'job_type',jobType:'daily_digest'},stop:{honoured:true},
   record:{kind:'mandate_runs',jobType:'daily_digest'},metrics:{kind:'not_measurable',reason:'A prepared digest completes nothing, so there is nothing to accept or undo.'}},
+ // AI v2 W8: the first five loops, at the Prepare level (core/loops). Each detects through its native owners, prepares a
+ // card for the right person, and verifies on its next run whether the work is done. Nothing changes without a person's
+ // Confirm on the owner's own page. Run by the nightly sweep (scripts/review-sweep.ts) as the agent principal.
+ {id:'loop_probation_ending',label:'Probation ending',family:'preparer',
+  owners:['core/loops/probation-ending.ts#detectProbationEnding','core/employment-review.ts#probationDecisionFacts'],
+  trigger:LOOP_NIGHTLY,readScope:['employment_profile','pending_approval'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_probation_ending'},stop:{honoured:true},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:1,act:null}},
+ // AI v2 P2-2a: the Pre-salary loop absorbs the payroll inputs loop (same id): every input check from the start of the
+ // period to the cut-off, at each company's own interval.
+ {id:'loop_payroll_inputs',label:'Pre-salary loop',family:'preparer',
+  owners:['core/loops/payroll-inputs.ts#detectPayrollInputs','core/loops/pre-salary-checks.ts#preSalaryChecks','core/payroll-readiness.ts#payrollReadiness',
+   // Wave 1 integration: the Audit loop's repeat issues, read as one of its checks (control ids only, counted).
+   'core/payroll-audit/status.ts#repeatAuditIssues'],
+  trigger:LOOP_PAYROLL_INTERVAL,readScope:['setup_copilot','readiness_gap','attendance_request','absence','leave_request','claim_request','pending_approval','payroll_anomaly'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_payroll_inputs'},stop:{honoured:true},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:1,act:null}},
+ {id:'loop_missing_employee_data',label:'Missing employee data',family:'preparer',
+  owners:['core/loops/missing-employee-data.ts#detectMissingEmployeeData','core/record-readiness.ts#readinessSnapshot','core/readiness-actions.ts#loadReadinessActions'],
+  trigger:LOOP_NIGHTLY,readScope:['readiness_gap','profile_change_request'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_missing_employee_data'},stop:{honoured:true},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:3,act:{does:'Sends the employee the request to fill in their own missing details; changes no record',owner:'core/loops/act-requests.ts#applyRequest',undo:'HR withdraws the request; the employee is told'}}},
+ {id:'loop_missed_clock_outs',label:'Missed clock-outs',family:'preparer',
+  owners:['core/loops/missed-clock-outs.ts#detectMissedClockOuts','packs/attendance/service.ts#attendanceForEmploymentsRange'],
+  trigger:LOOP_NIGHTLY,readScope:['attendance_request','absence'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_missed_clock_outs'},stop:{honoured:true},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:true},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:3,act:{does:'Sets a missed clock-out to the roster end through the attendance owner, only when the chosen condition holds; never creates overtime',owner:'packs/attendance/service.ts#requestAttendanceCorrection',undo:'A compensating correction through the attendance owner, by the employee or HR'}}},
+ {id:'loop_document_expiry',label:'Passports expiring',family:'preparer',
+  owners:['core/loops/document-expiry.ts#detectDocumentExpiry','core/automatic-followups.ts#followupItemsTx'],
+  trigger:LOOP_NIGHTLY,readScope:['followup_item'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_document_expiry'},stop:{honoured:true},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:1,act:null}},
+ // AI v2 P2-2a (migration 0964): the Salary payroll loop, from cut-off to close. Prepare only in every company: it checks
+ // each run and prepares it for payroll HR; a person runs, approves and closes payroll.
+ {id:'loop_salary_payroll',label:'Salary payroll loop',family:'preparer',
+  owners:['core/loops/salary-payroll.ts#detectSalaryPayroll','core/payroll-anomaly.ts#anomalyMetrics','core/pay-difference.ts#comparePayPeriods','core/loops/net-swing.ts#netSwings'],
+  trigger:LOOP_NIGHTLY,readScope:['payroll_anomaly','payslip','pay_difference_explanation','statutory_explanation'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_salary_payroll'},stop:{honoured:true},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:1,act:null}},
+ // AI v2 P2-2b: the payroll Audit loop (core/payroll-audit). Daily, per company and pay month: captures each run's evidence,
+ // hashed and chained, runs seven control checks that prepare findings for a person, and never files, closes or changes pay.
+ {id:'loop_payroll_audit',label:'Audit loop',family:'preparer',
+  owners:['core/payroll-audit/run.ts#runPayrollAuditLoop','core/payroll-audit/capture.ts#collectPayrollPeriodArtefactsTx',
+   'core/payroll-audit/controls.ts#detectControlFindingsTx','core/statutory-filed.ts#periodFiledTx','core/payroll-anomaly.ts#loadBatchContexts'],
+  trigger:LOOP_NIGHTLY,readScope:['payslip','pay_change','payroll_anomaly','employment_profile','absence','claim_status'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_payroll_audit'},stop:{honoured:true},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:1,act:null}},
 ];
 
 /** Builds a registry, refusing the whole list if any declaration breaks the contract or repeats an id. */

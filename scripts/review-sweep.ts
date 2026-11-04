@@ -31,6 +31,9 @@
 // exhausted ones and any live promotion whose measured action outcomes regressed (lib/ai/
 // promotion-outcome-regression.ts). Deterministic, no model and no spend (owner decision 2); its counts
 // are recorded in job_run.result. Before this, expiry was enforced only at read time.
+// AI v2 W8: the SAME principal then runs the five loops at the Prepare level (core/loops/run.ts): each only behind its
+// own switch (off by default) and the tenant stop switch, reading through the native owners under its sponsor's current
+// authority, preparing cards a person confirms, and verifying its earlier cards. Deterministic, no model and no spend.
 // Idempotent: a re-run opens nothing already open (and escalation fires once per (group, step) ever).
 // Schedule daily, e.g.
 //   0 3 * * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/review-sweep.ts
@@ -48,6 +51,8 @@ import { dispatchNotificationsFromSweep } from '../core/notifications';
 import { todayInKualaLumpur } from '../core/leave';
 import { recordJobRun } from '../core/job-run';
 import { resolveEntitlementsTx } from '../core/entitlements';
+import { runLoopsForTenant } from '../core/loops/run';
+import { runPayrollAuditLoop } from '../core/payroll-audit/run';
 
 async function main() {
   const startedAt = Date.now();
@@ -95,6 +100,12 @@ async function main() {
   let agentPromotionsRetired = 0;
   let agentPromotionsOutcomeRegressed = 0;
   let agentPromotionMaintenanceFailedTenants = 0;
+  let loopRuns = 0;
+  let loopCardsOpened = 0;
+  let loopCardsReopened = 0;
+  let loopCasesClosed = 0;
+  let loopRunsStopped = 0;
+  let loopRunsFailed = 0;
   for (const t of tenants) {
     try {
       // Engine jobs retain the legacy no-login context: actorOf stamps system.
@@ -189,6 +200,38 @@ async function main() {
       agentPromotionsRetired += releases.retired;
       agentPromotionsOutcomeRegressed += releases.outcomeRegressed;
 
+      // AI v2 W8: the loops, as the same named principal. A switched-off loop does not run; a sponsor who lost their
+      // authority or a failed owner read is recorded by the loop and counted here, never silently skipped.
+      const loops = await runLoopsForTenant({ tenantId: t.id, principalId, entitlements, today });
+      for (const loop of loops) {
+        if (loop.status === 'ran') {
+          loopRuns++;
+          loopCardsOpened += loop.totals.opened;
+          loopCardsReopened += loop.totals.reopened;
+          loopCasesClosed += loop.totals.closed;
+          if (loop.totals.capped) console.error(`  ⚠ ${loop.workerId} reached its per-company card cap; more remain for the next run.`);
+        } else if (loop.status === 'sponsor_lost') {
+          loopRunsStopped++;
+          console.error(`  ⚠ ${loop.workerId} stopped: its sponsor no longer holds administrator access. Switch it off and on again in AI Centre.`);
+        } else if (loop.status === 'failed') {
+          loopRunsFailed++;
+          console.error(`  ${loop.workerId} failed: an owner read did not complete; no card was changed.`);
+        }
+      }
+      // AI v2 P2-2b: the payroll Audit loop, as the same principal, behind its own switch. Captures and findings only.
+      const audit = await runPayrollAuditLoop({ tenantId: t.id, principalId, entitlements, today }).catch(() => null);
+      if (audit?.status === 'ran') {
+        loopRuns++;
+        loopCardsOpened += audit.findingsOpened;
+        if (audit.failed) { loopRunsFailed++; console.error(`  loop_payroll_audit could not complete ${audit.failed} compan${audit.failed === 1 ? 'y' : 'ies'}; nothing was written for them.`); }
+      } else if (audit?.status === 'sponsor_lost') {
+        loopRunsStopped++;
+        console.error('  ⚠ loop_payroll_audit stopped: its sponsor no longer holds administrator access. Switch it off and on again in AI Centre.');
+      } else if (audit === null) {
+        loopRunsFailed++;
+        console.error('  loop_payroll_audit failed before it reached a company.');
+      }
+
       // Project the new started/reminder/escalation/nudge events into notifications now — gated on the
       // tenant's `notifications` entitlement, which the snapshot above makes this context answer truthfully.
       const projection = await drainNotificationProjection(limit => dispatchNotificationsFromSweep(ctx,owner,{limit}));
@@ -197,7 +240,7 @@ async function main() {
         notificationCappedTenants++;
         console.error('  Notification queue reached its batch limit; more work may remain.');
       }
-      if (orchestration?.failed || chasers?.failed || projection.cappedOut || releasesFailed) failures++;
+      if (orchestration?.failed || chasers?.failed || projection.cappedOut || releasesFailed || loops.some(loop => loop.status === 'failed') || audit === null || (audit?.status === 'ran' && audit.failed > 0)) failures++;
       totalOpened += opened;
       totalReminders += reminders;
       totalEscalated += escalated;
@@ -209,6 +252,7 @@ async function main() {
       console.log(
         `  ✓ ${t.name} (${t.id}): ${opened} review(s) opened, ${reminders} reminder(s), ${escalated} escalation(s), ${movementsApplied} movement(s) applied` +
           (chasers ? `, ${chaseSent} automatic chase(s) using fixed templates` : ', chasers off') +
+          `, ${loops.filter(loop => loop.status === 'ran').length} loop(s) run` +
           (movementsFailed > 0 ? ` — ${movementsFailed} movement(s) COULD NOT be applied` : '') +
           // Every nudge counter is printed, not just the flattering one: `orphaned` means a real gap with
           // nobody to tell, and `cappedOut` means work was left undone. A sweep that reports only what it
@@ -288,6 +332,12 @@ async function main() {
         agentPromotionsRetired,
         agentPromotionsOutcomeRegressed,
         agentPromotionMaintenanceFailedTenants,
+        loopRuns,
+        loopCardsOpened,
+        loopCardsReopened,
+        loopCasesClosed,
+        loopRunsStopped,
+        loopRunsFailed,
       },
     });
   } catch (e) {

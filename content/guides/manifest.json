@@ -164,10 +164,17 @@
     },
     {
       "slug": "admin-ai-reporting",
-      "title": "Admin Guide: AI Control Tower, Assistant & Reporting",
+      "title": "Admin Guide: AI Centre Operations, Assistant & Reporting",
       "audience": "hr_admin",
       "category": "intelligence",
       "order": 24
+    },
+    {
+      "slug": "admin-ai-quality",
+      "title": "Admin Guide: AI Quality and Learning",
+      "audience": "hr_admin",
+      "category": "intelligence",
+      "order": 31
     },
     {
       "slug": "admin-mobile-app",
@@ -189,6 +196,20 @@
       "audience": "hr_admin",
       "category": "communications",
       "order": 27
+    },
+    {
+      "slug": "private-cases",
+      "title": "Private Cases with HR: Raising a Sensitive Matter in Writing",
+      "audience": "all",
+      "category": "me",
+      "order": 28
+    },
+    {
+      "slug": "admin-ai-loops",
+      "title": "Admin Guide: AI Centre Loops",
+      "audience": "hr_admin",
+      "category": "intelligence",
+      "order": 29
     },
     {
       "slug": "performance-faq-kpi-justification",
@@ -315,6 +336,13 @@
       "audience": "employee",
       "category": "performance-faq",
       "order": 117
+    },
+    {
+      "slug": "admin-ai-payroll-loops",
+      "title": "Admin Guide: AI Centre Payroll Cycle Loops",
+      "audience": "hr_admin",
+      "category": "intelligence",
+      "order": 30
     }
   ],
   "reviewedOn": "2026-10-12"

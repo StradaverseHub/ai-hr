@@ -4595,24 +4595,108 @@
       "breakpoints": true
     },
     {
+      "idx": 800,
+      "version": "7",
+      "when": 1793330001400,
+      "tag": "2000_teras_chats",
+      "breakpoints": true
+    },
+    {
+      "idx": 801,
+      "version": "7",
+      "when": 1793330001401,
+      "tag": "2001_private_cases",
+      "breakpoints": true
+    },
+    {
+      "idx": 802,
+      "version": "7",
+      "when": 1793330001402,
+      "tag": "2002_teras_loops",
+      "breakpoints": true
+    },
+    {
+      "idx": 803,
+      "version": "7",
+      "when": 1793330001403,
+      "tag": "2003_letter_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 804,
+      "version": "7",
+      "when": 1793330001404,
+      "tag": "2004_teras_loop_autonomy",
+      "breakpoints": true
+    },
+    {
+      "idx": 805,
+      "version": "7",
+      "when": 1793330001405,
+      "tag": "2005_teras_payroll_cycle_loops",
+      "breakpoints": true
+    },
+    {
+      "idx": 806,
+      "version": "7",
+      "when": 1793330001406,
+      "tag": "2006_payroll_audit_loop",
+      "breakpoints": true
+    },
+    {
+      "idx": 807,
+      "version": "7",
+      "when": 1793330001407,
+      "tag": "2007_teras_capacity_baseline",
+      "breakpoints": true
+    },
+    {
+      "idx": 808,
+      "version": "7",
+      "when": 1793330001408,
+      "tag": "2008_own_payroll_cut_off",
+      "breakpoints": true
+    },
+    {
+      "idx": 809,
+      "version": "7",
+      "when": 1793330001409,
+      "tag": "2009_teras_living_handbook",
+      "breakpoints": true
+    },
+    {
+      "idx": 810,
+      "version": "7",
+      "when": 1793330001410,
+      "tag": "2010_teras_learning_loops",
+      "breakpoints": true
+    },
+    {
+      "idx": 811,
+      "version": "7",
+      "when": 1793330001411,
+      "tag": "2011_payroll_loops_hardening",
+      "breakpoints": true
+    },
+    {
       "idx": 1347,
       "version": "7",
-      "when": 1793330000900,
-      "tag": "1500_employment_helper_tenant_pin",
+      "when": 1793330001500,
+      "tag": "2100_employment_helper_tenant_pin",
       "breakpoints": true
     },
     {
       "idx": 1348,
       "version": "7",
-      "when": 1793330000901,
-      "tag": "1501_company_tenant_fk_not_valid",
+      "when": 1793330001501,
+      "tag": "2101_company_tenant_fk_not_valid",
       "breakpoints": true
     },
     {
       "idx": 1349,
       "version": "7",
-      "when": 1793330000902,
-      "tag": "1502_company_tenant_fk_validate",
+      "when": 1793330001502,
+      "tag": "2102_company_tenant_fk_validate",
       "breakpoints": true
     }
   ]

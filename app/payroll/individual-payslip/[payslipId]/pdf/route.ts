@@ -1,3 +1,4 @@
+import { recordPayrollExport } from '@/core/payroll-audit/access-log';
 import { selectPayslipInformation, payslipInformationData } from '@/core/payslip-information';
 import { payslipInformationLabels } from '@/lib/payslip-information-labels';
 /**
@@ -113,6 +114,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
   });
 
   const bytes = await renderPayslipPdf(data, strings.labels);
+  // AI v2 P2-2b: the review copy is recorded with its sha256 before it is handed over (fail closed).
+  await recordPayrollExport(s, { surface: 'payslip_pdf', companyId: p.companyId, payPeriod: p.payPeriod, ...(p.batchId ? { batchId: p.batchId } : {}),
+    payslipId: p.id, employmentId: p.employmentId, format: 'pdf' }, bytes);
 
   // Same filename shape as the ESS route, so a reviewer's copy and the employee's copy of one run are
   // recognisably the same document rather than two files that look unrelated.

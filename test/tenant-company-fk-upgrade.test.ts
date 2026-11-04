@@ -1,4 +1,4 @@
-/** ADR-0174 populated upgrade through 1500–1502, on an owned disposable localhost database only.
+/** ADR-0174 populated upgrade through 2100–2102, on an owned disposable localhost database only.
  * A cross-tenant row present at the boundary must stop the whole upgrade with a readable report and leave
  * the ledger untouched; once that row is resolved the upgrade validates every key, rewrites no row and
  * changes no table, column or policy grant. This supplies no staging acceptance. */
@@ -14,17 +14,17 @@ import {createDb} from '../db/client';
 type Entry={idx:number;version:string;when:number;tag:string;breakpoints:boolean};
 const hash=(bytes:string|Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const TAIL=[
- {idx:1347,version:'7',when:1793330000900,tag:'1500_employment_helper_tenant_pin',breakpoints:true},
- {idx:1348,version:'7',when:1793330000901,tag:'1501_company_tenant_fk_not_valid',breakpoints:true},
- {idx:1349,version:'7',when:1793330000902,tag:'1502_company_tenant_fk_validate',breakpoints:true},
+ {idx:1347,version:'7',when:1793330001500,tag:'2100_employment_helper_tenant_pin',breakpoints:true},
+ {idx:1348,version:'7',when:1793330001501,tag:'2101_company_tenant_fk_not_valid',breakpoints:true},
+ {idx:1349,version:'7',when:1793330001502,tag:'2102_company_tenant_fk_validate',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:Entry[]};
  const boundary=journal.entries.findIndex(row=>row.tag===TAIL[0].tag);
- expect(boundary).toBe(656);
+ expect(boundary).toBe(668);
  expect(journal.entries.slice(boundary)).toEqual(TAIL);
- expect(journal.entries[boundary-1]).toEqual({idx:799,version:'7',when:1793330000353,tag:'0953_lifecycle_service_info_intents',breakpoints:true});
+ expect(journal.entries[boundary-1]).toEqual({idx:811,version:'7',when:1793330001411,tag:'2011_payroll_loops_hardening',breakpoints:true});
  const prefix=journal.entries.slice(0,boundary);
  const folder=mkdtempSync(join(tmpdir(),'tenant-company-fk-upgrade-')),database='ai_hr_tenant_fk_upgrade_'+randomUUID().replaceAll('-','');
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appUrl=new URL(process.env.TEST_DATABASE_URL!);
@@ -45,7 +45,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   }
   return rows;
  };
- // Everything a grant or policy could change, except the one function ACL 1500 deliberately narrows.
+ // Everything a grant or policy could change, except the one function ACL 2100 deliberately narrows.
  const privileges=async()=>({
   relations:await storage.client`select c.oid::regclass::text as rel,c.relacl::text as acl,c.relrowsecurity as rls,c.relforcerowsecurity as force
    from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','app') and c.relkind in ('r','p','v','m','S') order by 1`,
@@ -61,7 +61,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   mkdirSync(join(folder,'meta'));for(const row of prefix)copyFileSync('db/migrations/'+row.tag+'.sql',join(folder,row.tag+'.sql'));
   writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:prefix}));
   await migrate(storage.db,{migrationsFolder:folder});
-  const beforeLedger=await ledger();expect(beforeLedger).toHaveLength(656);
+  const beforeLedger=await ledger();expect(beforeLedger).toHaveLength(668);
   expect(beforeLedger.map(row=>row.hash)).toEqual(prefix.map(row=>hash(readFileSync('db/migrations/'+row.tag+'.sql'))));
   expect(await keys()).toEqual([]);
 
@@ -95,13 +95,13 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const upgradeNative=await native();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const afterLedger=await ledger();
-  expect(afterLedger).toHaveLength(659);expect(afterLedger.slice(0,656)).toEqual(beforeLedger);
-  expect(afterLedger.slice(656).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(
+  expect(afterLedger).toHaveLength(671);expect(afterLedger.slice(0,668)).toEqual(beforeLedger);
+  expect(afterLedger.slice(668).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(
    TAIL.map(row=>({hash:hash(readFileSync('db/migrations/'+row.tag+'.sql')),created_at:String(row.when)})));
   expect(await native()).toEqual(upgradeNative);
   expect(await privileges()).toEqual(beforePrivileges);
   const installed=await keys();
-  expect(installed).toHaveLength(146);
+  expect(installed).toHaveLength(148);
   expect(installed.filter(row=>!row.convalidated)).toEqual([]);
   expect(installed.map(row=>row.rel)).toEqual(expect.arrayContaining(['department','employment','location','role_assignment','app.attendance_policy_company_epoch']));
   expect(await storage.client`select has_function_privilege('ai_hr_app','app.company_subtree(uuid)','EXECUTE') as callable`).toEqual([{callable:false}]);

@@ -297,7 +297,7 @@
   "nav": {
     "roster": "Roster",
     "dataPrivacy": "Privasi Data",
-    "dashboard": "Papan pemuka",
+    "dashboard": "Hari ini",
     "myWorkspace": "Profil Saya",
     "people": "Direktori Pasukan",
     "orgChart": "Carta organisasi",
@@ -348,6 +348,7 @@
     "claimsConfig": "Konfigurasi tuntutan",
     "claims": "Tuntutan",
     "aiConfig": "AI",
+    "aiQuality": "Kualiti AI",
     "notifications": "Pemberitahuan",
     "analytics": "Analitik",
     "shift": "Syif",
@@ -383,6 +384,7 @@
     "reportPerformance": "Prestasi",
     "profileOptions": "Pilihan Profil",
     "delegations": "Perwakilan Kelulusan",
+    "policies": "Polisi",
     "dashboardCardConfig": "Kad papan pemuka",
     "scheduledActions": "Tugas Berjadual",
     "systemSettings": "Tetapan Sistem",
@@ -394,9 +396,9 @@
     "payrollIndividualPayslip": "Slip Gaji Individu",
     "payrollBackPay": "Bayaran Tunggakan",
     "payrollStatutoryAdjustment": "Pelarasan Berkanun",
-    "payrollControlTower": "Menara Kawalan",
+    "payrollControlTower": "Operasi",
     "assistant": "Pembantu",
-    "aiControlTower": "Menara Kawalan",
+    "aiControlTower": "Operasi",
     "controlTowerOverview": "Gambaran keseluruhan",
     "controlTowerHow": "Cara ia berfungsi",
     "controlTowerReadiness": "Data pekerja",
@@ -522,7 +524,9 @@
     "contractWorkflows": "Aliran kerja kontrak",
     "contractTemplates": "Templat kontrak",
     "contractIntake": "Pendaftaran kontrak dan bukti persaraan",
-    "passwordPolicy": "Dasar Kata Laluan"
+    "passwordPolicy": "Dasar Kata Laluan",
+    "myPrivateCases": "Kes peribadi saya",
+    "privateCases": "Kes peribadi"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -9257,7 +9261,7 @@
       }
     },
     "controlTower": {
-      "title": "Menara Kawalan HR",
+      "title": "Gambaran keseluruhan operasi",
       "description": "Selaraskan kerja HR, semak pengecualian dan sahkan hasil.",
       "backToPayroll": "Gaji",
       "ratioTitle": "Berapa ramai orang diperlukan untuk menjalankan gaji ini?",
@@ -9292,14 +9296,14 @@
       "colWaiting": "Menunggu manusia",
       "openQueue": "Buka barisan",
       "notChecked": "Belum disemak",
-      "noRuns": "Tiada proses diproses. Menara ini tiada apa untuk dipantau sehingga satu proses diproses.",
+      "noRuns": "Tiada proses diproses. Tiada apa untuk dipantau sehingga satu proses diproses.",
       "domainsLine": "{live} daripada {total} bidang sedang aktif.",
       "howItWorksLink": "Cara ia berfungsi",
       "agentsLink": "Ejen yang sedang berjalan",
       "agents": {
         "title": "Ejen AI",
         "description": "Bahagian sistem ini yang bertindak sendiri, dan sama ada setiap satunya benar-benar boleh.",
-        "backToTower": "Kembali ke Menara Kawalan",
+        "backToTower": "Kembali ke Operasi",
         "heading": "Apa yang berjalan tanpa diminta",
         "headingHelp": "Setiap satu dimatikan sehingga anda menghidupkannya, dan menghidupkannya bukan bermakna ia boleh berfungsi — suis yang tiada apa di belakangnya menyatakannya di bawah.",
         "stateOn": "Berjalan",
@@ -9339,7 +9343,7 @@
       "exceptions": {
         "title": "Pengecualian",
         "description": "Setiap pekerja yang ditanda dan masih menunggu keputusan, daripada setiap larian gaji, dalam satu senarai.",
-        "backToTower": "Kembali ke Menara Kawalan",
+        "backToTower": "Kembali ke Operasi",
         "outstanding": "Menunggu keputusan",
         "blocking": "Daripada itu, menyekat larian",
         "capped": "Menunjukkan {shown} paling mendesak daripada {total}. Selesaikan sebahagian dan selebihnya akan muncul.",
@@ -9348,7 +9352,7 @@
         "emptyTitle": "Tiada apa menunggu",
         "emptyBody": "Setiap pekerja yang ditanda dalam setiap larian telah diputuskan.",
         "whyTitle": "Mengapa keputusan anda penting di sini",
-        "whyBody": "Tiga daripada angka di Menara Kawalan — berapa kerap pemeriksaan tersilap, berapa lama sesuatu pengecualian menunggu, dan berapa ramai orang yang diperlukan oleh beban kerja ini — tidak boleh dikira sehingga seseorang memutuskan perkara ini. Sehingga itu, Menara menunjukkan apa yang tiada dan bukan satu nombor, dengan sengaja."
+        "whyBody": "Tiga daripada angka di Gambaran keseluruhan operasi — berapa kerap pemeriksaan tersilap, berapa lama sesuatu pengecualian menunggu, dan berapa ramai orang yang diperlukan oleh beban kerja ini — tidak boleh dikira sehingga seseorang memutuskan perkara ini. Sehingga itu, gambaran keseluruhan menunjukkan apa yang tiada dan bukan satu nombor, dengan sengaja."
       },
       "agreementTitle": "Adakah AI bersetuju dengan kita?",
       "agreementUnavailable": "Belum ada apa-apa untuk diukur.",
@@ -11195,6 +11199,7 @@
         "attendanceVisibleApplications": "Hanya permohonan kehadiran yang sudah kelihatan melalui skop pekerja, pelaporan, delegasi atau peserta disimpan semasa. Halaman ini tidak memberi akses Personnel atau sejarah HR lebih luas.",
         "childReliefReview": "Menyenaraikan hanya pekerja semasa dalam syarikat yang anda uruskan, jadi jumlah ringgit ialah jumlah bagi apa yang boleh anda lihat. Baca sahaja — tiada tetapan cukai boleh diubah dari skrin ini.",
         "delegations": "HR dan pentadbir melihat semua perwakilan; anda hanya melihat yang anda wakilkan atau gantikan.",
+        "aiCentrePolicies": "Pentadbir melihat polisi syarikat yang mereka tadbir; orang lain membaca polisi syarikat mereka sendiri yang telah diluluskan.",
         "duplicatePersonRecords": "Menyenaraikan hanya pekerja dalam syarikat yang anda uruskan, jadi separuh daripada pasangan yang merentas dua syarikat mungkin tidak kelihatan kepada anda. Baca sahaja — tiada rekod boleh diubah dari skrin ini.",
         "identityEmail": "Pentadbir HR boleh melihat pratonton borang SMTP. Melihat atau mengubah tetapan sebenar memerlukan pendaftaran berasingan sebagai pentadbir identiti pemasangan.",
         "leave": "Semua orang boleh membukanya; anda lihat cuti sendiri, pengurus dan pentadbir lihat laporan mereka.",
@@ -11241,7 +11246,9 @@
         "createLogin": "Pentadbir seluruh kumpulan sahaja. Persediaan manual juga memerlukan penyedia log masuk yang disokong dan sesi pentadbir yang disahkan.",
         "inviteUser": "Pentadbir seluruh kumpulan sahaja.",
         "entra": "Pentadbir kumpulan sahaja. Konfigurasikan log masuk Microsoft dan penyediaan akaun pekerja untuk organisasi sendiri. Pautan identiti sedia ada memerlukan pengesahan jelas.",
-        "rewardsAccess": "Penugasan Rewards berkuat kuasa dan kuasa pentadbir HR mengikut skop menentukan akses; peranan sistem sahaja tidak memberikan semua tindakan."
+        "rewardsAccess": "Penugasan Rewards berkuat kuasa dan kuasa pentadbir HR mengikut skop menentukan akses; peranan sistem sahaja tidak memberikan semua tindakan.",
+        "myPrivateCases": "Hanya kes peribadi milik orang yang log masuk. Peranan berkeistimewaan tidak meluaskannya; pentadbir tidak boleh membaca kes orang lain di sini.",
+        "privateCaseHandling": "Boleh dicapai oleh semua orang, tetapi menunjukkan kes hanya kepada pengendali kes yang dilantik bagi syarikat kes itu (atau pentadbir kumpulan apabila tiada pengendali yang layak), tidak sekali-kali kepada penulisnya atau sesiapa yang dikecualikan oleh penulis. Peranan tidak memberi apa-apa di sini."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -13913,6 +13920,8 @@
     "typeLabel": "Jenis tuntutan",
     "receiptRequired": "resit diperlukan",
     "amountLabel": "Amaun (RM)",
+    "amountLabelInCurrency": "Amaun ({currency})",
+    "amountLabelNoCurrency": "Amaun",
     "incurredOnLabel": "Tarikh ditanggung",
     "receiptLabel": "Resit",
     "descriptionLabel": "Penerangan (pilihan)",
@@ -17478,11 +17487,11 @@
     "empty": "Belum ada soalan. Tanya satu di atas.",
     "noAnswer": "Tiada jawapan dihasilkan.",
     "lookedAt": "Melihat: {tools}",
-    "stop_refusal": "Pembantu enggan menjawab yang ini.",
+    "stop_refusal": "Pusat AI enggan menjawab yang ini.",
     "stop_max_tokens": "Jawapan terpotong kerana terlalu panjang. Cuba tanya lebih sedikit pada satu masa.",
-    "stop_other": "Pembantu berhenti sebelum selesai. Tiada masalah dengan rekod anda — sila tanya semula.",
-    "stop_tool_use": "Pembantu berhenti semasa ia masih mencari sesuatu. Sila tanya semula.",
-    "stop_turn_cap": "Pembantu mencapai had {n} langkah dan berhenti sebelum selesai. Cuba pecahkan soalan itu.",
+    "stop_other": "Pusat AI berhenti sebelum selesai. Tiada masalah dengan rekod anda — sila tanya semula.",
+    "stop_tool_use": "Pusat AI berhenti semasa ia masih mencari sesuatu. Sila tanya semula.",
+    "stop_turn_cap": "Pusat AI mencapai had {n} langkah dan berhenti sebelum selesai. Cuba pecahkan soalan itu.",
     "denied_module_off": "Saya masih menunggu di belakang tabir. Organisasi anda belum mengaktifkan pembantu. Pentadbir HR boleh membantu.",
     "denied_no_grant": "Pas akses anda belum sampai lagi. Pentadbir HR boleh membantu membuka akses pembantu.",
     "denied_no_user": "Saya belum dapat memadankan log masuk ini dengan akaun. Pentadbir anda boleh membantu menyambungkan semula maklumatnya.",
@@ -19667,7 +19676,7 @@
       },
       "historyPrivacy": {
         "title": "Sejarah sembang anda",
-        "description": "Tempoh penyimpanan teks sembang ialah 30 hari. Anda boleh memadamnya sekarang walaupun akses Pembantu dimatikan. Bilangan permintaan dan rekod penggunaan kekal; rekod HR anda tidak berubah.",
+        "description": "Sembang yang disimpan dipadam apabila tempoh simpanan sembang syarikat anda tamat (30 hari melainkan pentadbir menukarnya). Anda boleh memadamnya sekarang walaupun akses Pembantu dimatikan. Bilangan permintaan dan rekod penggunaan kekal; rekod HR anda tidak berubah.",
         "clear": "Padam teks sembang saya",
         "confirmTitle": "Padam teks sembang anda?",
         "confirmBody": "Teks sembang tersimpan anda akan dipadam sekarang dan tidak boleh dipulihkan. Bilangan penggunaan dan rekod HR anda kekal seperti biasa.",
@@ -21807,7 +21816,7 @@
       "working": "Sedang berfikir…",
       "failed": "Permintaan itu tidak berjaya. Sila cuba lagi.",
       "noCard": "Tiada kad jawapan dihasilkan untuk soalan ini.",
-      "openInAssistant": "Buka dalam Pembantu",
+      "openInAssistant": "Buka dalam Pusat AI",
       "question": "Soalan anda",
       "placeholder": "Tanya soalan",
       "send": "Hantar",
@@ -21829,7 +21838,7 @@
         "people": "Pekerja",
         "rewards": "Ganjaran",
         "analytics": "Analitik",
-        "controlTower": "Menara Kawalan",
+        "controlTower": "Operasi",
         "settings": "Tetapan"
       },
       "identity": "Pembantu AI",
@@ -21910,9 +21919,9 @@
     "err_protected_input": "Permintaan ini memerlukan input terlindung yang disokong. Pilih tugas atau templat input yang dicadangkan, atau gunakan skrin asal untuk butiran lain."
   },
   "controlTower": {
-    "howTitle": "Cara Menara Kawalan berfungsi",
+    "howTitle": "Apa yang berjalan untuk syarikat anda",
     "howDescription": "Apa yang berjalan, dalam susunan apa, bahagian mana menggunakan AI, dan apa yang dihidupkan sekarang.",
-    "backToTower": "Kembali ke Menara Kawalan",
+    "backToTower": "Kembali ke Operasi",
     "loopTitle": "Gelung kerja",
     "loopIntro": "Setiap kitaran menjalankan lima langkah yang sama. Hanya satu melibatkan AI, dan tiada satu pun membuat keputusan sendiri.",
     "loopAlt": "Lima langkah: semakan berjalan, penemuan direkod, AI menerangkannya dalam bahasa mudah, seseorang membuat keputusan, dan hasilnya kembali ke permulaan.",
@@ -22023,7 +22032,7 @@
     "promise2Body": "Sama ada sesuatu lulus, ditanda atau disekat diputuskan oleh peraturan tetap sebelum sebarang AI terlibat, dan penerangan itu tidak boleh mengubah keputusan tersebut. Tiada apa diluluskan, dibayar atau diubah tanpa manusia.",
     "readinessScreen": {
       "title": "Kesediaan rekod",
-      "backToTower": "Kembali ke Menara Kawalan",
+      "backToTower": "Kembali ke Operasi",
       "description": "Setiap pekerja aktif sama ada sudah bersedia untuk dibayar dan difailkan, atau ada sesuatu yang tiada. Betulkan di sini sekali sahaja, bukannya bertemu semula setiap kali gaji.",
       "readyPct": "rekod lengkap",
       "readyOf": "pekerja bersedia",
@@ -22054,7 +22063,7 @@
     "actions": {
       "title": "Tindakan dicadangkan",
       "description": "Kerja yang AI ingin ambil daripada meja anda. Tiada apa-apa berlaku di sini sehingga anda meluluskannya, dan anda boleh lihat dengan tepat sebab setiap satu dicadangkan.",
-      "backToTower": "Kembali ke Menara Kawalan",
+      "backToTower": "Kembali ke Operasi",
       "emptyTitle": "Tiada apa-apa untuk diluluskan",
       "emptyBody": "Setiap pengecualian gaji yang masih menunggu anda mempunyai masalah sebenar di sebaliknya. Apabila seseorang membetulkan rekod asasnya, pengecualian itu akan muncul di sini untuk ditutup.",
       "done": "Menutup {closed} pengecualian.",
@@ -22088,7 +22097,7 @@
     "orchestrator": {
       "checking": "Menyemak rekod…",
       "runFailed": "Pelaksanaan automasi terkini yang direkodkan memerlukan perhatian. Buka butiran pelaksanaan di bawah.",
-      "navigation": "Navigasi Menara Kawalan",
+      "navigation": "Bahagian operasi",
       "overview": "Gambaran keseluruhan",
       "readiness": "Data pekerja",
       "exceptions": "Pengecualian gaji",
@@ -26921,7 +26930,7 @@
   "aiManagement": {
     "title": "Pengurusan AI",
     "description": "Lihat semua keupayaan AI, pantau aktiviti model dan kawal had pengguna serta syarikat.",
-    "back": "Menara Kawalan",
+    "back": "Operasi",
     "provider": "Penyedia: {provider} · {model}",
     "noProvider": "Tiada penyedia AI dikonfigurasi. Aliran kerja manual masih tersedia.",
     "configureProvider": "Tetapan penyedia",
@@ -27246,7 +27255,8 @@
       "jobs": {
         "review-sweep": "Larian malam baris kerja HR",
         "ai-retention": "Penyimpanan sejarah larian AI",
-        "ai-alerts": "Semakan amaran AI"
+        "ai-alerts": "Semakan amaran AI",
+        "payroll-loops": "Detik gelung pra-gaji"
       },
       "steps": {
         "observe": "Semak rekod pekerja",
@@ -27324,7 +27334,8 @@
           "closed_references": "Rujukan legap dan kategori tertutup (teks serta nilai sumber kekal setempat)",
           "coarse_aggregate_bands": "Julat agregat kasar (bukan jaminan tanpa nama)",
           "pseudonymous_person_bands": "Julat setiap orang dengan alias rawak (bukan tanpa nama)",
-          "authored_formula_request": "Keperluan formula yang ditulis pengguna"
+          "authored_formula_request": "Keperluan formula yang ditulis pengguna",
+          "authored_policy_text": "Teks polisi yang ditulis oleh pentadbir HR (ditolak jika ada pengecam peribadi)"
         },
         "redaction": {
           "pii_masked": "Disembunyikan",
@@ -28688,6 +28699,7 @@
     "clear": "Kosongkan nilai",
     "undo": "Buat asal perubahan",
     "leaveUnsaved": "Tinggalkan halaman ini dan buang perubahan yang belum disimpan?",
+    "seedWithheld": "Tidak diisi untuk anda: {fields}. Nombor akaun bank dan nombor pengenalan tidak pernah dibawa dari AI Centre, jadi taip sendiri di sini.",
     "viewHelp": "Semak rekod Personel anda sendiri. Permohonan tertunda tidak menggantikan rekod induk.",
     "editHelp": "Sunting medan yang dibenarkan merentas tab, kemudian simpan sekali. Perubahan boleh disimpan terus apabila kelulusan dimatikan; perubahan yang memerlukan kelulusan dan medan berkait menunggu HR.",
     "pendingValue": "Permohonan tertunda: {value}",
@@ -29430,7 +29442,7 @@
       "next": "Seterusnya",
       "none": "Tiada entri tertunggak."
     },
-    "back": "Menara Kawalan",
+    "back": "Operasi",
     "title": "Peluang automasi",
     "description": "Di mana ejen AI boleh mengambil alih kerja pengendalian daripada HR, diukur daripada rekod anda. Halaman ini tidak mengubah data atau memanggil model AI.",
     "window": "Kes dimulakan dalam tempoh",
@@ -31445,7 +31457,38 @@
         "state": "Tindakan ini tidak lagi tersedia untuk surat ini.",
         "unavailable": "Surat tidak tersedia buat sementara waktu. Cuba sebentar lagi."
       },
-      "download": "Muat turun PDF"
+      "download": "Muat turun PDF",
+      "requests": {
+        "request": "Mohon surat",
+        "title": "Permohonan surat anda",
+        "requestedOn": "Dimohon pada {date}",
+        "openLetter": "Buka surat",
+        "messageFromHr": "Mesej daripada HR",
+        "sent": "Permohonan anda telah dihantar kepada HR. Anda boleh mengikuti statusnya di sini.",
+        "unavailable": "Permohonan surat anda tidak dapat dipaparkan buat masa ini.",
+        "formTitle": "Mohon surat",
+        "formDescription": "Pilih surat yang anda perlukan. HR akan menyediakannya, dan anda akan menemuinya di Surat Saya setelah dikeluarkan.",
+        "none": "Syarikat anda belum membuka sebarang surat untuk dimohon oleh pekerja. Hubungi pasukan HR anda.",
+        "type": "Jenis surat",
+        "choose": "Pilih surat",
+        "typeInCompany": "{type} ({company})",
+        "purpose": "Tujuan (pilihan)",
+        "purposeHelp": "Contohnya, pinjaman bank atau permohonan visa. Hanya anda dan HR yang melihatnya.",
+        "submit": "Hantar permohonan",
+        "status": {
+          "requested": "Dimohon",
+          "in_progress": "HR sedang menyediakannya",
+          "issued": "Dikeluarkan",
+          "declined": "Ditolak"
+        },
+        "errors": {
+          "invalid": "Semak jenis surat dan cuba lagi.",
+          "not_requestable": "Surat ini tidak lagi boleh dimohon. Pilih surat lain.",
+          "duplicate": "Anda sudah mempunyai permohonan terbuka untuk surat ini.",
+          "unavailable": "Permohonan anda tidak dapat dihantar buat masa ini. Cuba lagi sebentar lagi."
+        },
+        "cancel": "Batal"
+      }
     },
     "reports": {
       "title": "Laporan Surat",
@@ -31836,6 +31879,39 @@
         "unavailable": "Tindakan tidak dapat diselesaikan. Cuba lagi.",
         "state": "Surat atau kelompok ini telah berubah status. Muat semula sebelum mencuba lagi.",
         "reasonRequired": "Masukkan sebab pembuangan."
+      },
+      "requests": {
+        "title": "Permohonan surat",
+        "intro": "Surat yang dimohon oleh pekerja. Sediakan surat membuka draf untuk pekerja tersebut; anda meluluskan dan mengeluarkannya seperti biasa.",
+        "empty": "Tiada permohonan surat yang menunggu.",
+        "unavailable": "Permohonan surat tidak dapat dipaparkan buat masa ini.",
+        "employee": "Pekerja",
+        "purpose": "Tujuan",
+        "requestedOn": "Dimohon pada {date}",
+        "prepare": "Sediakan surat",
+        "prepareUnavailable": "Templat ini tidak lagi diterbitkan. Terbitkannya semula atau tolak permohonan.",
+        "decline": "Tolak",
+        "declineReason": "Sebab penolakan",
+        "declineHelp": "Hanya HR yang melihat sebabnya. Pekerja melihat bahawa permohonan ditolak, berserta mesej anda jika anda menambahnya.",
+        "employeeMessage": "Mesej kepada pekerja (pilihan)",
+        "employeeMessageHelp": "Ditunjukkan kepada pekerja bersama status ditolak.",
+        "declineSubmit": "Tolak permohonan",
+        "inProgress": "Draf telah disediakan. Permohonan ditanda dikeluarkan apabila surat dikeluarkan.",
+        "preparing": "Disediakan daripada permohonan pekerja untuk {type}.",
+        "declined": "Permohonan telah ditolak.",
+        "status": {
+          "requested": "Dimohon",
+          "in_progress": "Sedang disediakan",
+          "issued": "Dikeluarkan",
+          "declined": "Ditolak"
+        },
+        "errors": {
+          "invalid": "Semak permohonan dan cuba lagi.",
+          "permission": "Anda tidak lagi boleh mengendalikan permohonan ini.",
+          "state": "Permohonan ini telah dikendalikan.",
+          "stale": "Permohonan ini telah berubah. Semak semula.",
+          "unavailable": "Permohonan tidak dapat dikemas kini buat masa ini. Cuba lagi sebentar lagi."
+        }
       }
     },
     "approval": {
@@ -31995,7 +32071,21 @@
       "empty": "Belum ada tetapan atau aset.",
       "assetSearch": "Cari nama aset",
       "companyCodeUnavailable": "Konfigurasikan kod rujukan syarikat yang pendek atau gunakan format tanpa pemegang tempat syarikat.",
-      "version": "Versi konfigurasi {number}"
+      "version": "Versi konfigurasi {number}",
+      "requests": {
+        "title": "Permohonan pekerja",
+        "intro": "Pilih surat yang boleh dimohon oleh pekerja dari Surat Saya. Dimatikan secara lalai.",
+        "empty": "Belum ada templat yang diterbitkan.",
+        "unavailable": "Tetapan permohonan pekerja tidak dapat dipaparkan buat masa ini.",
+        "allow": "Pekerja boleh memohon {name}",
+        "save": "Simpan permohonan pekerja",
+        "saved": "Tetapan permohonan pekerja disimpan.",
+        "errors": {
+          "invalid": "Semak pilihan dan cuba lagi.",
+          "permission": "Anda tidak boleh mengubah tetapan surat untuk syarikat ini.",
+          "unavailable": "Tetapan tidak dapat disimpan buat masa ini. Cuba lagi sebentar lagi."
+        }
+      }
     }
   },
   "performanceHome": {
@@ -33676,7 +33766,7 @@
       "anomalies": {
         "name": "Payroll anomaly checks",
         "description": "Records findings and verdicts for review. Does not change payroll amounts.",
-        "results": "Control Tower exceptions and payroll anomalies"
+        "results": "Operations exceptions and payroll anomalies"
       },
       "child-relief": {
         "name": "Child tax-relief refresh",
@@ -33742,6 +33832,11 @@
         "name": "Database backups",
         "description": "Creates database backups to an approved destination when configured.",
         "results": "Backup storage and protected backup logs"
+      },
+      "payroll-loops": {
+        "name": "Pre-salary loop tick",
+        "description": "Checks payroll inputs for the companies whose own check interval has come round. Prepares cards for payroll administrators; changes no record.",
+        "results": "Payroll cycle"
       }
     }
   },
@@ -34918,5 +35013,136 @@
     "retirementEvidencePending": "Semak bukti persaraan yang direkodkan sebelum membuka kes ini.",
     "acceptancePaused": "Tandatangan dijeda untuk aliran kerja ini. Anda masih boleh menolak tawaran.",
     "employeeIdentityUnavailable": "Log masuk yang dipautkan kepada pekerja tidak tersedia atau tidak dapat disahkan. People Ops yang ditugaskan perlu bekerjasama dengan pemilik Akses untuk menyelesaikannya. PDF yang telah dikeluarkan dikekalkan."
+  },
+  "privateCases": {
+    "categories": {
+      "grievance": "Rungutan",
+      "harassment": "Gangguan",
+      "safety": "Keselamatan",
+      "other": "Perkara lain"
+    },
+    "statuses": {
+      "received": "Diterima",
+      "in_review": "Dalam semakan",
+      "closed": "Ditutup"
+    },
+    "errors": {
+      "invalid": "Semak borang: pilih perkara yang berkaitan dan tulis apa yang berlaku.",
+      "not_set_up": "Kes peribadi belum disediakan untuk syarikat ini. Sila hubungi pasukan HR anda secara terus.",
+      "not_found": "Kes ini tidak tersedia untuk anda.",
+      "not_allowed": "Anda tidak boleh melakukan ini.",
+      "unavailable": "Ini tidak tersedia buat masa ini. Sila cuba lagi kemudian.",
+      "conflict": "Perkara ini telah berubah sejak anda membukanya. Sila semak semula."
+    },
+    "entry": {
+      "title": "Kes peribadi dengan HR",
+      "help": "Bangkitkan rungutan, gangguan, kebimbangan keselamatan atau perkara sensitif lain secara bertulis kepada pengendali kes HR anda. AI Centre tidak pernah membacanya.",
+      "open": "Kes peribadi"
+    },
+    "me": {
+      "title": "Kes peribadi dengan HR",
+      "description": "Tulis kepada pengendali kes HR syarikat anda secara peribadi. Hanya anda dan mereka boleh membacanya; AI Centre tidak pernah membaca, menyimpan atau melihat apa yang anda tulis.",
+      "start": "Mulakan kes peribadi",
+      "notSetUp": "Kes peribadi belum disediakan untuk syarikat anda. Sila hubungi pasukan HR anda secara terus.",
+      "empty": "Anda belum membuka sebarang kes peribadi.",
+      "listTitle": "Kes anda",
+      "opened": "Dibuka {date}",
+      "updated": "Dikemas kini {date}",
+      "handle": "Kes yang anda kendalikan",
+      "view": "Lihat",
+      "unreachable": "Belum ada sesiapa boleh membacanya"
+    },
+    "new": {
+      "title": "Mulakan kes peribadi",
+      "description": "Tulis dengan kata-kata anda sendiri. Ia dihantar kepada pengendali kes HR yang dinamakan di bawah, bukan kepada AI Centre.",
+      "back": "Kes peribadi",
+      "company": "Syarikat",
+      "chooseCompany": "Tunjukkan syarikat ini",
+      "category": "Mengenai apa?",
+      "text": "Apa yang berlaku",
+      "textHelp": "Sehingga 8,000 aksara. Kongsi apa yang anda selesa kongsikan; pengendali mungkin menghubungi anda.",
+      "handlers": "Siapa yang boleh membacanya",
+      "handlersHelp": "Orang ini boleh membaca kes anda. Jika ia mengenai salah seorang daripada mereka, atau salah seorang daripada mereka tidak patut melihatnya, tandakan nama mereka.",
+      "exclude": "Jangan hantar kepada {name} ({role})",
+      "unnamed": "Seseorang tanpa rekod pekerja",
+      "groupAdmin": "Hantar kepada pentadbir kumpulan, bukan kepada pengendali kes",
+      "groupAdminHelp": "Jika anda mengecualikan semua pengendali kes, ia dihantar kepada pentadbir kumpulan. Jika anda mengecualikan semua orang, kes ini disimpan tetapi belum ada sesiapa boleh membacanya.",
+      "privacy": "Kes anda disimpan secara tersulit. Pengendali kes HR anda melihatnya bersama nama anda; pentadbir HR lain, pengurus dan AI Centre tidak.",
+      "submit": "Hantar kepada HR",
+      "notStorable": "Kes peribadi tidak dapat disimpan buat masa ini. Sila hubungi pasukan HR anda secara terus.",
+      "readerHandler": "pengendali kes",
+      "readerGroupAdmin": "pentadbir kumpulan"
+    },
+    "detail": {
+      "back": "Kes peribadi",
+      "sent": "Kes anda telah dihantar kepada HR.",
+      "opened": "Dibuka {date}",
+      "company": "Syarikat",
+      "category": "Kategori",
+      "status": "Status",
+      "text": "Apa yang anda tulis",
+      "history": "Sejarah status",
+      "step": "{status}, {date}"
+    },
+    "handle": {
+      "title": "Kes peribadi yang anda kendalikan",
+      "description": "Kes yang ditulis kepada anda sebagai pengendali kes. Setiap kali kes dibuka, ia direkodkan.",
+      "none": "Anda tidak mengendalikan kes peribadi.",
+      "empty": "Belum ada kes peribadi.",
+      "opened": "Dibuka {date}",
+      "toGroupAdmin": "Dihantar kepada pentadbir kumpulan",
+      "erasure": "Penulisnya meminta datanya dipadam: kes ini akan dipadam apabila ia ditutup.",
+      "view": "Buka",
+      "back": "Kes yang anda kendalikan",
+      "author": "Daripada",
+      "noName": "Nama tidak tersedia",
+      "text": "Apa yang mereka tulis",
+      "status": "Status",
+      "moveTo": "Tandakan sebagai {status}",
+      "notes": "Nota pengendali",
+      "notesHelp": "Hanya pengendali kes ini melihat nota; orang yang menulis kes tidak.",
+      "noNotes": "Belum ada nota.",
+      "noteBy": "{name}, {date}",
+      "you": "Anda",
+      "noteLabel": "Nota",
+      "saveNote": "Simpan nota",
+      "closedNoNotes": "Kes ini telah ditutup, jadi nota tidak lagi boleh ditambah.",
+      "audit": "Rekod kes",
+      "auditCreated": "Dibuka oleh {name}",
+      "auditRead": "Dibaca oleh {name}",
+      "auditStatus": "{name} mengubahnya daripada {from} kepada {to}",
+      "auditNote": "{name} menambah nota",
+      "noteSaved": "Nota disimpan.",
+      "statusSaved": "Status diubah.",
+      "erased": "Kes telah ditutup dan dipadam, seperti yang dikehendaki oleh permintaan pemadaman penulisnya."
+    },
+    "admin": {
+      "title": "Pengendali kes peribadi",
+      "description": "Namakan orang yang menerima kes peribadi bagi setiap syarikat. Hanya mereka boleh membaca kes tersebut: menamakan pengendali tidak membenarkan anda membacanya.",
+      "back": "Privasi data",
+      "company": "Syarikat",
+      "show": "Tunjukkan",
+      "current": "Pengendali semasa",
+      "none": "Belum ada pengendali, jadi kes peribadi tidak ditawarkan untuk syarikat ini.",
+      "since": "Sejak {date}",
+      "revoke": "Alih keluar",
+      "revoked": "Dialih keluar {date}",
+      "history": "Pengendali terdahulu",
+      "designate": "Tambah pengendali",
+      "person": "Individu",
+      "noRecord": "Log masuk tanpa rekod pekerja",
+      "add": "Tambah pengendali",
+      "selfNote": "Anda tidak boleh menamakan diri anda sebagai pengendali. Pentadbir kumpulan, atau pentadbir lain syarikat ini, akan melantik anda.",
+      "added": "Pengendali ditambah.",
+      "removed": "Pengendali dialih keluar.",
+      "noCompanies": "Anda tidak mentadbir sebarang syarikat."
+    },
+    "privacyCard": {
+      "title": "Pengendali kes peribadi",
+      "help": "Pilih siapa yang menerima kes peribadi yang ditulis kepada HR.",
+      "link": "Urus pengendali kes"
+    },
+    "noReader": "Tiada pembaca yang layak disediakan untuk syarikat ini, jadi belum ada sesiapa boleh membaca kes ini. Sila hubungi {channel}.",
+    "externalChannel": "[saluran luar yang ditetapkan oleh syarikat, contohnya talian etika]"
   }
 }

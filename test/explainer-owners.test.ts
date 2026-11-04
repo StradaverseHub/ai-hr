@@ -24,6 +24,7 @@ import {explainOwnPayslipStatutory} from '../core/explainers/statutory';
 import {explainOwnLeaveEntitlement} from '../core/explainers/entitlement';
 import {explainOwnAttendanceDay} from '../core/explainers/attendance';
 import {TERAS_CAPABILITIES} from '../core/explainers/capabilities';
+import {FOLDED_READS} from '../core/semantic-model/topic-tools';
 import {nativeToolProvider} from '../core/harness/tools';
 import {gateTurn} from '../lib/product-context/request-gate';
 import {offerFor} from '../core/harness/runner';
@@ -95,9 +96,11 @@ describe('payslip statutory explainer',()=>{
   const {employee}=await people();
   // The model writes whichever placeholder it was given for the EPF employee share.
   const placeholder=(request:ModelRequest)=>(lastToolResult(request) as {payslips:{items:{employeeReported:string}[]}[]}).payslips[0].items[0].employeeReported.split(' ')[0];
-  const {result,model}=await turn(employee,'Why is my EPF this much?',[{calls:[{name:'explain_payslip_statutory',args:{item:'epf'}}]},request=>({final:{reply:`Your EPF was ${placeholder(request)} this month.`}})]);
-  expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['explain_payslip_statutory','ok']]);
-  const disclosure=result.trace.disclosure.find(row=>row.tool==='explain_payslip_statutory')!;
+  // Spec v23: explain_why's payslip_statutory topic, disclosed under the statutory explainer's own entity.
+  const {result,model}=await turn(employee,'Why is my EPF this much?',[{calls:[{name:'explain_why',args:{topic:'payslip_statutory',item:'epf'}}]},request=>({final:{reply:`Your EPF was ${placeholder(request)} this month.`}})]);
+  expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['explain_why','ok']]);
+  const disclosure=result.trace.disclosure.find(row=>row.tool==='explain_why')!;
+  expect(disclosure.entity).toBe('statutory_explanation');
   expect(disclosure.undeclared).toEqual([]);expect(disclosure.removed).toEqual([]);expect(disclosure.banded.length).toBeGreaterThan(5);
   const sent=lastToolResult(model.requests[1]) as {payslips:{items:{employeeReported:string}[]}[]};
   expect(sent.payslips[0].items[0].employeeReported).toMatch(/^\{\{F\d+\}\} \(/);
@@ -115,14 +118,16 @@ describe('leave entitlement explainer',()=>{
   const row=out.employments[0];
   expect(row.eligibleDays).toBe(owned!.eligibleDays);expect(row.totalEntitlement).toBe(owned!.totalEntitlement);
   expect(row.proration).toEqual(owned!.entitlement);expect(out.provenance.owner).toBe('core/read.ts#leaveEntitlementBreakdown');
+  // Spec v23: the breakdown names what it does not show (nothing here), and carries no withheld flag.
+  expect(row.notShown).toEqual([]);expect(row).not.toHaveProperty('withheld');
   expect(JSON.stringify(out)).not.toContain(mine.employmentId);
   expect(await explainOwnLeaveEntitlement(employee,{leave_type:'Fictional Sabbatical'})).toMatchObject({ok:false,refusal:'no_data',leaveTypes:['Annual Leave']});
  });
  it('discloses every returned field under a declared class through the harness',async()=>{
   const {employee}=await people();
-  const {result}=await turn(employee,'Why do I have this many days of annual leave?',[{calls:[{name:'explain_leave_entitlement',args:{leave_type:'Annual Leave'}}]},{final:{reply:'It comes from your entitlement table.'}}]);
-  expect(result.trace.calls[0].status).toBe('ok');
-  const disclosure=result.trace.disclosure[0];expect(disclosure.undeclared).toEqual([]);expect(disclosure.banded.length).toBeGreaterThan(3);
+  const {result}=await turn(employee,'Why do I have this many days of annual leave?',[{calls:[{name:'explain_why',args:{topic:'leave_entitlement',leave_type:'Annual Leave'}}]},{final:{reply:'It comes from your entitlement table.'}}]);
+  expect(result.trace.calls[0]).toMatchObject({tool:'explain_why',status:'ok'});
+  const disclosure=result.trace.disclosure[0];expect(disclosure.entity).toBe('entitlement_explanation');expect(disclosure.undeclared).toEqual([]);expect(disclosure.banded.length).toBeGreaterThan(3);
  });
 });
 
@@ -140,14 +145,15 @@ describe('attendance day explainer',()=>{
   expect(await explainOwnAttendanceDay(employee,{date:'2099-01-01'})).toMatchObject({ok:false,refusal:'out_of_range'});
   // A working day with no clocking: the owner returns the day itself (absent), with no stored working to explain.
   expect(await explainOwnAttendanceDay(employee,{date:'2026-07-02'})).toMatchObject({ok:true,status:'absent',explained:false,unavailableReason:'no-trace'});
-  const {result}=await turn(employee,'Why was I marked late on 1 July?',[{calls:[{name:'explain_attendance_day',args:{date:WORKDAY}}]},{final:{reply:'You clocked in after the grace time.'}}]);
-  expect(result.trace.calls[0].status).toBe('ok');expect(result.trace.disclosure[0].undeclared).toEqual([]);
+  const {result}=await turn(employee,'Why was I marked late on 1 July?',[{calls:[{name:'explain_why',args:{topic:'attendance_day',date:WORKDAY}}]},{final:{reply:'You clocked in after the grace time.'}}]);
+  expect(result.trace.calls[0]).toMatchObject({tool:'explain_why',status:'ok'});expect(result.trace.disclosure[0]).toMatchObject({entity:'attendance_day_explanation',undeclared:[]});
  });
  it('offers no explainer on a turn about another person',async()=>{
   const {employee}=await people();
   const {model}=await turn(employee,'Why was Fictional Explainer Colleague marked late?',[{final:{reply:'I can\'t look at another person\'s attendance.',mode:'refuse'}}]);
   const offered=model.requests[0].tools.map(tool=>tool.name);
   for(const capability of TERAS_CAPABILITIES)expect(offered).not.toContain(capability.name);
+  expect(offered).not.toContain('explain_why');
  });
 });
 
@@ -192,35 +198,47 @@ describe('public administrative page guidance',()=>{
   const disabled={...hr,entitlements:(await entitledCtx(base,['hr_admin'])).entitlements};
   expect(await corrections.run(disabled,{},scope)).toMatchObject({ok:false,refusal:'not_permitted'});
   expect((await nativeToolProvider(disabled,scope,false)).bindings.map(binding=>binding.name)).not.toContain('correction_controls_guidance');
+  // Folded into product_guidance (spec v22), the topic keeps the Payroll gate: refused while Payroll is off.
+  const disabledGuidance=(await nativeToolProvider(disabled,scope,false)).bindings.find(binding=>binding.name==='product_guidance')!;
+  expect(await disabledGuidance.run({query:'Correction Controls',topic:'correction_controls'})).toMatchObject({ok:false,refusal:'not_permitted'});
+  expect(await disabledGuidance.run({query:'Password Policy',topic:'password_policy'})).toMatchObject({ok:true,content:{page:'/admin/security-center/password-policy'}});
   expect(await password.run(disabled,{},scope)).toMatchObject({ok:true,page:'/admin/security-center/password-policy'});
  });
- it('offers and discloses the reviewed public text within the existing provider tool ceiling',async()=>{
+ it('serves the reviewed public text as product_guidance topics, adding no tool of its own (spec v22)',async()=>{
   const {hr,employee}=await people(),scope={companyId:base.companyId};
   const admin=await nativeToolProvider(hr,scope,true),names=admin.bindings.map(binding=>binding.name);
-  expect(names).toContain('password_policy_guidance');expect(names).toContain('correction_controls_guidance');
-  // The provider accepts at most 31 native tools and reserves the 32nd for inert history. Do not raise it.
-  expect(admin.bindings.length).toBeLessThanOrEqual(31);expect(new Set(names).size).toBe(names.length);
-  for(const name of ['password_policy_guidance','correction_controls_guidance'])expect(admin.bindings.find(binding=>binding.name===name)!.spec.inputSchema).toMatchObject({type:'object',properties:{},required:[],additionalProperties:false});
+  // Release merge: main's two guides are product_guidance topics, so they add no binding against the provider's tool
+  // ceiling (test/harness-tool-ceiling.test.ts computes the worst case per role).
+  expect(names).not.toContain('password_policy_guidance');expect(names).not.toContain('correction_controls_guidance');
+  expect(names).toContain('product_guidance');expect(new Set(names).size).toBe(names.length);
+  const guidance=admin.bindings.find(binding=>binding.name==='product_guidance')!;
+  expect(guidance).toMatchObject({kind:'context',entity:null});
+  expect(guidance.spec.inputSchema).toMatchObject({properties:{topic:{type:'string',enum:['password_policy','correction_controls']}},required:['query']});
   const gate=gateTurn('Where are Password Policy and Correction Controls, and who confirms changes?',{sensitive:HARNESS_SPEC.sensitive.topics});
   expect(gate).toEqual({privateReads:false,actions:true,reason:'other_person'});
   const offered=offerFor(admin.bindings,gate),offeredNames=offered.map(binding=>binding.name);
-  for(const name of ['password_policy_guidance','correction_controls_guidance']){
-   expect(admin.bindings.find(binding=>binding.name===name)).toMatchObject({kind:'context',entity:name});expect(offeredNames).toContain(name);
-  }
-  for(const capability of TERAS_CAPABILITIES.filter(row=>!['password_policy_guidance','correction_controls_guidance'].includes(row.name)))expect(admin.bindings.find(binding=>binding.name===capability.name)!.kind).toBe('read');
+  expect(offeredNames).toContain('product_guidance');
+  // Spec v23: a folded read is reached through its topic tool, itself a private read; every other capability is bound as one.
+  for(const capability of TERAS_CAPABILITIES.filter(row=>!row.topic))
+   expect(admin.bindings.find(binding=>binding.name===(FOLDED_READS.get(capability.name)?.tool??capability.name))!.kind,capability.name).toBe('read');
   const privateReads=admin.bindings.filter(binding=>binding.kind==='read');expect(privateReads.length).toBeGreaterThan(0);
   for(const binding of privateReads)expect(offeredNames).not.toContain(binding.name);
   expect(admin.bindings.find(binding=>binding.name==='setup_copilot')!.kind).toBe('read');expect(offeredNames).not.toContain('setup_copilot');
   expect(offeredNames).not.toContain('setup_readiness');expect(offeredNames).not.toContain('company_setup');
-  const ordinary=await nativeToolProvider(employee,scope,true);
-  expect(ordinary.bindings.map(binding=>binding.name)).not.toContain('password_policy_guidance');expect(ordinary.bindings.map(binding=>binding.name)).not.toContain('correction_controls_guidance');
+  // An employee still reaches neither guide: the topic is refused before the owner returns anything.
+  const ordinary=await nativeToolProvider(employee,scope,true),ordinaryGuidance=ordinary.bindings.find(binding=>binding.name==='product_guidance')!;
+  for(const topic of ['password_policy','correction_controls'])
+   expect(await ordinaryGuidance.run({query:'Where is it?',topic})).toMatchObject({ok:false,refusal:'not_permitted'});
+  expect(await guidance.run({query:'Where is it?',topic:'unlisted_topic'})).toMatchObject({ok:false,refusal:'invalid_input'});
   const {result,model}=await turn(hr,'Where are Password Policy and Correction Controls, and who confirms changes?',[
-   {calls:[{name:'password_policy_guidance'}]},{calls:[{name:'correction_controls_guidance'}]},{final:{reply:'An authorized human confirms each change on its native page.'}},
+   {calls:[{name:'product_guidance',args:{query:'Password Policy',topic:'password_policy'}}]},
+   {calls:[{name:'product_guidance',args:{query:'Correction Controls',topic:'correction_controls'}}]},
+   {final:{reply:'An authorized human confirms each change on its native page.'}},
   ]);
   expect(result.trace.gate).toEqual({privateReads:false,actions:true,reason:'other_person'});
-  expect(result.trace.offered).toContain('password_policy_guidance');expect(result.trace.offered).toContain('correction_controls_guidance');
+  expect(result.trace.offered).toContain('product_guidance');
   for(const binding of privateReads)expect(result.trace.offered).not.toContain(binding.name);
-  expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['password_policy_guidance','ok'],['correction_controls_guidance','ok']]);
+  expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['product_guidance','ok'],['product_guidance','ok']]);
   for(const applied of result.trace.disclosure){expect(applied.undeclared).toEqual([]);expect(applied.removed).toEqual([]);expect(applied.banded).toEqual([]);}
   expect(lastToolResult(model.requests[1])).toMatchObject({page:'/admin/security-center/password-policy',humanBoundary:expect.stringContaining('group administrator')});
   expect(lastToolResult(model.requests[2])).toMatchObject({page:'/payroll/setup/correction-controls',humanBoundary:expect.stringContaining('separately chooses')});

@@ -1,14 +1,14 @@
 {
   "nav": {
-    "aiCentre": "AI centre",
-    "aiCentreAdmin": "AI centre administration",
+    "aiCentre": "AI Centre",
+    "aiCentreAdmin": "AI Centre administration",
     "aiCentreWorkers": "Workers",
     "aiCentreSetup": "Setup",
     "aiCentreSpend": "Spend and providers",
-    "sectionAiManagement": "AI centre administration"
+    "sectionAiManagement": "AI Centre administration"
   },
   "aiCentre": {
-    "genericName": "AI centre",
+    "genericName": "AI Centre",
     "tabsLabel": "{name} sections",
     "subnavLabel": "In this section",
     "tabs": {
@@ -18,9 +18,314 @@
       "workers": "Workers",
       "setup": "Setup",
       "spend": "Spend and providers",
-      "how": "How it works"
+      "operations": "Operations",
+      "administration": "Administration",
+      "insights": "Insights",
+      "how": "How it works",
+      "policies": "Policies"
     },
     "inboxCount": "{count, plural, one {# item waiting} other {# items waiting}}",
+    "backToToday": "Back to Today",
+    "sectionsLabel": "{tab} sections",
+    "sections": {
+      "overview": "Overview",
+      "loops": "Loops",
+      "exceptions": "Exceptions",
+      "readiness": "Record readiness",
+      "actions": "Proposed actions",
+      "opportunities": "Opportunities",
+      "workers": "Workers",
+      "setup": "Setup",
+      "spend": "Spend and providers"
+    },
+    "loops": {
+      "title": "Loops",
+      "description": "Each loop watches one part of HR work, prepares what a person needs to do, and checks the result on its next run. At the Prepare level nothing changes until a person confirms it.",
+      "columns": {
+        "loop": "Loop",
+        "doneMeans": "Done means",
+        "level": "Level",
+        "switch": "Switch",
+        "lastRun": "Last run",
+        "prepared": "Cards, last {days} days",
+        "confirmed": "Completed as prepared",
+        "changed": "Changed by a person",
+        "sponsor": "Sponsor"
+      },
+      "names": {
+        "loop_probation_ending": "Probation ending",
+        "loop_payroll_inputs": "Pre-salary loop",
+        "loop_missing_employee_data": "Missing employee data",
+        "loop_missed_clock_outs": "Missed clock-outs",
+        "loop_document_expiry": "Passports expiring",
+        "loop_salary_payroll": "Salary payroll loop"
+      },
+      "doneMeans": {
+        "loop_probation_ending": "A decision is recorded before the probation ends",
+        "loop_payroll_inputs": "Every input is complete and approved before the cut-off",
+        "loop_missing_employee_data": "Every detail the employee can fill in is filled in and approved",
+        "loop_missed_clock_outs": "Every clock-out is on record",
+        "loop_document_expiry": "Each passport is renewed before it expires",
+        "loop_salary_payroll": "Each run is checked, approved by a person, closed and the bank file matches"
+      },
+      "doneMeansLine": "Done means: {done}.",
+      "level": {
+        "prepare": "Prepare"
+      },
+      "on": "On",
+      "off": "Off",
+      "stopped": "Stopped by the company stop switch",
+      "turnOn": "Turn on",
+      "turnOff": "Turn off",
+      "never": "Not run yet",
+      "runStatus": {
+        "ran": "Ran",
+        "sponsor_lost": "Stopped: its sponsor no longer has administrator access",
+        "failed": "Did not finish: no card was changed"
+      },
+      "notApplicable": "Not applicable",
+      "noneYet": "None yet",
+      "changedRate": "{rate} ({count, plural, one {# card} other {# cards}})",
+      "sponsorUnnamed": "An administrator",
+      "noSponsor": "None while off",
+      "pausedIn": "{count, plural, one {Paused in # company} other {Paused in # companies}}",
+      "saved": "Saved.",
+      "switchNote": "Switching a loop on or off applies to every company in the group, and whoever switches it on becomes its sponsor. Pause it for one company on its own page.",
+      "switchNoteCompany": "Only a group administrator switches loops on or off. You can pause a loop for your companies on its own page.",
+      "cap": "Pay, employment status, system access and discipline stay at Prepare: a person always decides.",
+      "errors": {
+        "invalid": "That change was not understood.",
+        "refused": "You cannot make that change.",
+        "module": "The module this loop works on is not in use.",
+        "failed": "The change could not be saved. Try again."
+      },
+      "back": "Loops",
+      "stepLabel": "{n} · {step}",
+      "steps": {
+        "detect": "Detect",
+        "diagnose": "Diagnose",
+        "prepare": "Prepare",
+        "verify": "Verify"
+      },
+      "stepText": {
+        "loop_probation_ending": {
+          "detect": "A probation ends within 14 days with no decision recorded. Checked every night.",
+          "diagnose": "Whether a review is open, and with whom: not started, with the manager or with HR.",
+          "prepare": "A confirmation review card for HR. HR records the decision; the loop never decides.",
+          "verify": "Closed when a decision is recorded. A new end date with no decision reopens it."
+        },
+        "loop_payroll_inputs": {
+          "detect": "From the start of the payroll period to the cut-off, at each company's interval: timesheets, overtime, leave, claims, joiners and leavers, bank and statutory details, pay changes and payroll set-up.",
+          "diagnose": "Each check's open, waiting and to-review items, read from the owner of each.",
+          "prepare": "A case for payroll administrators on the Payroll cycle page, and a Today card in the last 7 days before the cut-off. Each check links to the page where it is fixed.",
+          "verify": "Done when nothing is open or waiting before the cut-off. A new blocker before the cut-off reopens it."
+        },
+        "loop_missing_employee_data": {
+          "detect": "An employee record is missing details that payroll or statutory filing needs.",
+          "diagnose": "Which of them the employee may fill in through a profile change request.",
+          "prepare": "A request card for the employee. HR approves the request as usual.",
+          "verify": "Closed when nothing the employee can fill in is missing. A gap that comes back reopens it."
+        },
+        "loop_missed_clock_outs": {
+          "detect": "A day in the last 7 days with a clock-in and no clock-out.",
+          "diagnose": "The roster end time for that day, which the card proposes.",
+          "prepare": "A correction card for the employee, who confirms the time or changes it. Their approver decides as usual.",
+          "verify": "Closed when a clock-out is on record. A rejected correction reopens it."
+        },
+        "loop_document_expiry": {
+          "detect": "A recorded passport expires within 60 days.",
+          "diagnose": "The expiry date on record.",
+          "prepare": "A Today card for HR and a reminder card for the employee to renew it.",
+          "verify": "Closed when a renewed expiry date is recorded. An expiry moved back into the window reopens it."
+        },
+        "loop_salary_payroll": {
+          "detect": "After the cut-off, each company's runs for the month: salary, bonus and off-cycle. A run not yet started is prepared for HR to start.",
+          "diagnose": "The 11 anomaly checks, the change against last month by cause, net-swing flags, statutory rule versions and the bank file against net pay.",
+          "prepare": "A case per run for payroll administrators, and a flag per person for payroll HR to mark expected or a real problem. It never runs, approves or closes payroll.",
+          "verify": "Done when a person has closed the run and the bank file matches. A run reopened after close reopens it."
+        }
+      },
+      "figures": {
+        "prepared": "Cards prepared in {days} days",
+        "confirmed": "Completed as prepared",
+        "changed": "Changed by people",
+        "open": "Open now",
+        "noSpend": "No AI spend: these loops use rules only, never a model."
+      },
+      "openWaiting": "{open} open · {waiting} waiting",
+      "pause": {
+        "title": "Pause for a company",
+        "help": "A paused loop neither runs nor shows its cards in that company. Switching it off stops it everywhere.",
+        "none": "You administer no company here.",
+        "paused": "Paused",
+        "running": "Running",
+        "pause": "Pause",
+        "resume": "Resume"
+      },
+      "cases": {
+        "title": "Recent cards",
+        "none": "No cards yet.",
+        "columns": {
+          "when": "When",
+          "person": "Person",
+          "what": "What it prepared",
+          "status": "Status"
+        },
+        "reopened": "{count, plural, one {Reopened once} other {Reopened # times}}"
+      },
+      "what": {
+        "probation": "Probation ends {date}",
+        "payroll": "{count, plural, one {# input} other {# inputs}} missing before the {date} cut-off",
+        "record": "{count, plural, one {# detail} other {# details}} to fill in",
+        "clockOut": "Clock-out at {time} proposed for {date}",
+        "clockOutManual": "No clock-out on {date}: needs a manual correction by HR",
+        "passport": "Passport expires {date}",
+        "salaryRun": "{status, select, draft {Payroll run, not processed yet} processed {Payroll run, processed} closed {Payroll run, closed} other {Payroll run}}",
+        "swing": "Net pay moved more than the threshold",
+        "salaryStart": "Salary run to start after the {date} cut-off"
+      },
+      "caseState": {
+        "open": "Waiting for the person",
+        "waiting": "Sent: waiting for the usual approval",
+        "as_prepared": "Confirmed as prepared",
+        "changed": "Changed by the person",
+        "completed": "Done",
+        "inactive": "Employment ended",
+        "superseded": "No longer applies",
+        "expired": "The moment passed",
+        "out_of_scope": "Retired: out of scope"
+      },
+      "limits": {
+        "title": "Limits it never crosses",
+        "confirm": "It changes no record: it prepares a card and a person confirms on the usual page.",
+        "scope": "It reads only what its sponsor may see, and stops if the sponsor loses administrator access.",
+        "model": "It calls no AI model.",
+        "cap": "At most 200 new cards a night for each company."
+      },
+      "owner": {
+        "title": "Who answers for it",
+        "agent": "Agent: the {name} loop, run as the company's agent principal",
+        "sponsor": "Sponsor: {name}",
+        "noSponsor": "No sponsor while it is off",
+        "note": "The sponsor is the group administrator who switched it on. Every run is recorded with its rule version."
+      },
+      "runs": {
+        "title": "Recent runs",
+        "none": "No runs yet.",
+        "summary": "{opened} prepared, {closed} closed, {open} open, {waiting} waiting",
+        "capped": "Card limit reached; more on the next run."
+      },
+      "payrollCycle": "Payroll cycle"
+    },
+    "capacity": {
+      "title": "HR capacity",
+      "descriptionCompany": "What AI Centre did for the HR team of {company}, measured against its own baseline.",
+      "descriptionAll": "What AI Centre did for the HR teams of the companies you administer, each measured against its own baseline.",
+      "periodLabel": "Period",
+      "periods": {
+        "last30": "Last 30 days",
+        "quarter": "This quarter",
+        "year": "This year"
+      },
+      "companyLabel": "Company",
+      "allCompanies": "All your companies ({count})",
+      "show": "Show",
+      "noCompanies": "You do not administer any company yet.",
+      "hours": "{hours} h",
+      "minutes": "{minutes} min",
+      "items": {
+        "questions_answered": "Employee questions answered",
+        "actions_confirmed": "Prepared actions confirmed"
+      },
+      "tiles": {
+        "freed": "HR time freed",
+        "freedDays": "about {days} working days",
+        "freedNone": "Set a baseline to measure it",
+        "errors": "Payroll errors caught before the run",
+        "errorsNote": "each would have needed a correction",
+        "errorsNoPayroll": "Payroll is not in use",
+        "loops": "Loop actions completed",
+        "loopsChanged": "{rate} changed by a person",
+        "loopsNone": "none completed yet",
+        "questions": "Employee questions answered",
+        "questionsNote": "answered at once, any time of day",
+        "questionsGroupOnly": "Shown to group administrators",
+        "notShown": "Not shown"
+      },
+      "chart": {
+        "title": "HR time freed, by month",
+        "unit": "Hours freed",
+        "label": "HR time freed by month: {values}.",
+        "value": "{month} {hours} hours",
+        "marker": "Autopilot started",
+        "markerSentence": "Autopilot started in {month}.",
+        "note": "Time the team got back for work only people can do: employee conversations, planning, cases."
+      },
+      "table": {
+        "title": "Where the time came from",
+        "item": "Loop or assistant work",
+        "done": "Done",
+        "manual": "Your manual time each",
+        "review": "Review time",
+        "freed": "Hours freed",
+        "noWork": "No work done in this period yet.",
+        "notInBaseline": "Not in the baseline",
+        "withoutBaseline": "{count, plural, one {# done where the baseline has no minutes for it} other {# done where the baseline has no minutes for them}}",
+        "averaged": "Where your companies' baselines differ, the manual time each is their average, weighted by the work done."
+      },
+      "method": {
+        "summary": "How it's measured: hours freed = work done × your own manual time per item (measured from the event log before Autopilot) − the time people spent reviewing. Nothing is estimated from industry averages.",
+        "link": "Full method",
+        "work": "Work done: every loop card a person completed in the period, every employee question AI Centre answered, and every action AI Centre prepared that a person confirmed. Payroll errors caught are anomaly findings fixed before the payroll run closed; they are counted, not turned into hours.",
+        "baseline": "Your manual time each comes from your baseline: a period before Autopilot started in the company. For missed clock-outs and missing employee data, the event log measures the staff actions per case in that period (attendance corrections and profile changes), and your minutes per staff action turn them into time. For other work, it is the minutes you entered. A company without a baseline counts its work as done, freeing no time.",
+        "review": "Review time: for each item, the time between AI Centre preparing it and a person confirming it, up to {cap} minutes and never more than the item's own manual time. A longer gap means the item waited, not that someone worked on it. A loop records the confirmation when it next checks, so most items count the full allowance: the ledger under-states the time freed rather than over-states it. Answered questions have no review step.",
+        "arithmetic": "Hours freed = work done × your manual time each − review time, per company with its own baseline, then added up. A working day is {hours} hours.",
+        "access": "HR and group administrators see this for the companies they administer. Question and confirmed-action counts come from AI Centre's outcome records, which only group administrators may read across people, so other administrators do not see them.",
+        "records": "Every figure comes from the records: loop cards, outcome records and payroll anomaly findings, read with your own access. Nothing is estimated from industry averages."
+      },
+      "baseline": {
+        "notSet": "Baseline not set",
+        "notSetBody": "Hours freed are measured against your own manual time before Autopilot started. Set the baseline to see them; the event log measures what it can, and you add the minutes it cannot know.",
+        "missingSome": "{count, plural, one {# company has no baseline yet, so its work counts as done without freeing time.} other {# companies have no baseline yet, so their work counts as done without freeing time.}}",
+        "setFor": "Set the baseline for {company}",
+        "saved": "Baseline saved (version {version}).",
+        "errors": {
+          "invalid": "Enter minutes as a number up to {max}, with at most one decimal, or leave the field blank.",
+          "empty": "Enter at least one figure, or your minutes per staff action where the event log can measure the work.",
+          "not_administrator": "You can only set the baseline of a company you administer.",
+          "conflict": "Someone saved a baseline at the same time. Try again.",
+          "failed": "The baseline could not be saved. Try again."
+        }
+      },
+      "setup": {
+        "title": "Baseline for {company}",
+        "intro": "Your team's own manual time per item before Autopilot. The event log measures what it can; you add the minutes it cannot know. Saving keeps the earlier baselines.",
+        "current": "Current baseline: version {version}, {from} to {to}.",
+        "step1": "1. The baseline period",
+        "periodEnds": "It ends on {date}, the day Autopilot started here.",
+        "periodEndsToday": "Autopilot has not started here yet, so it ends today.",
+        "daysLabel": "Length",
+        "daysOption": "{days} days",
+        "usePeriod": "Use this period",
+        "period": "Period: {from} to {to}.",
+        "step2": "2. What the event log measured",
+        "processes": {
+          "attendance_correction": "Attendance corrections (missed clock-outs)",
+          "profile_change": "Profile changes (missing employee data)"
+        },
+        "evidence": "{cases} cases started, {completed} completed, {actions} staff actions ({perCase} per case).",
+        "evidenceShort": "Not enough history to measure: {completed} completed cases, at least {min} needed. Enter your minutes for it below.",
+        "evidenceOff": "Not measured: the module is not in use.",
+        "step3": "3. Your minutes",
+        "perAction": "Minutes per staff action",
+        "perActionHelp": "Used with the event log's measure, up to {max}.",
+        "itemMinutes": "Minutes each: {item}",
+        "itemMeasuredHelp": "Used only if the event log cannot measure it.",
+        "blankHelp": "Leave a field blank if you do not know it. Up to {max} minutes, with at most one decimal.",
+        "save": "Save the baseline",
+        "cancel": "Cancel"
+      }
+    },
     "subnav": {
       "workers": "All workers",
       "inventory": "Inventory and audit",
@@ -100,6 +405,10 @@
       "findingAuthority": "Your company's switch for this check",
       "findingRead": "Records in your administration scope",
       "findingModel": "None for the finding. Plain-language wording, where switched on, is shown on its page."
+    },
+    "insights": {
+      "title": "Insights",
+      "description": "What is pending before payroll, for you and for the requests you approve."
     },
     "jobs": {
       "title": "Delegated jobs",
@@ -192,7 +501,7 @@
       "mapLabel": "The AI's layers: interfaces, agentic harness, context and knowledge, HR capabilities and the HR system of record, on a foundation of trust and governance.",
       "layers": {
         "interfaces": "Interfaces",
-        "interfacesHelp": "Chat, floating chat, Inbox, review pages",
+        "interfacesHelp": "Chat, floating chat, Today, review pages",
         "harness": "Agentic harness",
         "harnessHelp": "Runs each turn within limits. The model works inside it.",
         "model": "Model",
@@ -284,7 +593,7 @@
       "walkthroughLink": "Follow a request through the AI, step by step",
       "figureCaption": "Exploded view · like a watch movement",
       "parts": {
-        "interfaces": "the dial · chat · inbox · review pages",
+        "interfaces": "the dial · chat · Today · review pages",
         "harness": "the escapement · one step at a time",
         "model": "the balance wheel · decides nothing",
         "context": "the calendar ring · guides · pages · your role",
@@ -299,6 +608,7 @@
     },
     "launcher": {
       "inbox": "Your Inbox",
+      "today": "Today",
       "inboxCount": "{count, plural, one {# waiting} other {# waiting}}",
       "earlier": "Earlier, on the {area} page",
       "continue": "Continue in the {name}",
@@ -412,7 +722,14 @@
         "explainers": "Explainers",
         "team_absence_weekly_summary": "Weekly team absence summary",
         "daily_digest": "Daily digest",
-        "conversation": "Live chat conversation"
+        "loop_probation_ending": "Probation ending",
+        "loop_payroll_inputs": "Pre-salary loop",
+        "loop_missing_employee_data": "Missing employee data",
+        "loop_missed_clock_outs": "Missed clock-outs",
+        "loop_document_expiry": "Passports expiring",
+        "loop_payroll_audit": "Audit loop",
+        "conversation": "Live chat conversation",
+        "loop_salary_payroll": "Salary payroll loop"
       },
       "switchInvalid": "That switch cannot be changed here.",
       "switchRefused": "Only a group administrator can change this switch.",
@@ -436,7 +753,8 @@
       "blocking": "A leave rule would refuse this request as it stands.",
       "version": {
         "leave_type": "Leave type rules, version {version}",
-        "approval_chain": "Approval chain, version {version}"
+        "approval_chain": "Approval chain, version {version}",
+        "recommender": "Recommendation checks, version {version}"
       },
       "youDecide": "This is advice. You decide on the request's own page.",
       "unavailable": {
@@ -447,7 +765,47 @@
         "not_assigned": "This request is not assigned to you.",
         "not_pending": "This request is no longer waiting for a decision.",
         "failed": "The recommendation could not be loaded just now."
-      }
+      },
+      "youDecideHere": "This is advice. You decide with Approve or Reject.",
+      "result": {
+        "balance_covers": {
+          "pass": "The balance covers the days requested.",
+          "fail": "The balance does not cover the days, and the leave type does not allow going that far negative.",
+          "unusual": "The balance covers the days only by going negative, which the leave type allows.",
+          "missing": "The balance could not be read."
+        },
+        "own_overlap": {
+          "pass": "No other leave of the applicant overlaps these dates.",
+          "fail": "The applicant already has approved leave on some of these dates.",
+          "unusual": "The applicant has another pending request on some of these dates.",
+          "missing": "Other leave of the applicant could not be fully read."
+        },
+        "team_coverage": {
+          "pass": "Nobody else you can see is away on these dates.",
+          "fail": "Team coverage is below the minimum.",
+          "unusual": "Others you can see are away on some of these dates.",
+          "missing": "Who else is away could not be read."
+        },
+        "policy_limits": {
+          "pass": "The leave type's document and date rules are met.",
+          "fail": "The leave type requires a document and none is attached.",
+          "unusual": "The leave starts before today.",
+          "missing": "The leave type's rules could not be read."
+        }
+      },
+      "prepared": {
+        "read": "The request, the applicant's other leave on these dates, who else you can see is away, and the leave type's rules, each read as you.",
+        "model": "None. The verdict comes from the four checks, and it never recommends rejecting.",
+        "recordLabel": "Record",
+        "record": "Kept as an outcome record. When you decide, whether you followed the recommendation is added to it."
+      },
+      "filter": {
+        "label": "Filter leave requests by recommendation",
+        "all": "All leave requests",
+        "passing": "Passes every check ({count})",
+        "help": "Showing only requests that pass every check. Select them, then approve or reject them with a confirmation. Nothing is approved automatically."
+      },
+      "openOne": "Show the recommendation"
     },
     "digest": {
       "title": "Your day",
@@ -459,17 +817,71 @@
       "lastPrepared": "Your daily digest job last prepared this at {when}."
     },
     "conversation": {
-      "routed": "Sent to your HR team: this topic is not handled by the assistant.",
+      "routed": "Sent to your HR team: this topic is not handled by the AI Centre.",
       "routedCrisis": "If you are in danger, contact emergency services now.",
+      "startPrivateCase": "Start a private case with HR",
       "days": "{count, plural, one {# day} other {# days}}",
+      "leaveApplyTitle": "{leaveType}, {start} ({days, plural, one {# day} other {# days}})",
+      "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, one {# day} other {# days}})",
+      "leaveApplyMorningTitle": "{leaveType}, {start} (half day, morning)",
+      "leaveApplyAfternoonTitle": "{leaveType}, {start} (half day, afternoon)",
+      "attendanceClockOutTitle": "Clock-out correction, {date}, {time}",
+      "attendanceClockInTitle": "Clock-in correction, {date}, {time}",
+      "attendanceClockBothTitle": "Clock correction, {date}, {start} – {end}",
+      "overtimeRequestTitle": "Overtime request, {date}, {start} – {end}",
+      "claimSubmitTitle": "{claimType} claim, RM {amount}, {date}",
+      "claimCancelTitle": "Cancel {claimType} claim, RM {amount}, {date}",
+      "profileAddressTitle": "Change your home address",
+      "profileEmergencyTitle": "Change your emergency contact",
+      "profileDependantTitle": "Add a dependant",
+      "profileBankTitle": "Change your bank account to {bankName}, ending {ending}",
+      "toilRequestTitle": "Leave Credit request, {date}, {start} – {end}",
+      "decisionApproveTitle": "Approve: {item}",
+      "decisionRejectTitle": "Reject: {item}",
+      "creditDays": "{count, plural, one {# day} other {# days}} credited if approved",
       "review": "Review",
       "open": "Open",
       "expires": "Expires {time}",
       "howPrepared": "How this was prepared",
       "preparedBy": "Prepared by",
-      "preparedByValue": "The assistant, from the system's own checks, as you",
+      "preparedByValue": "The AI Centre, from the system's own checks, as you",
       "confirmOn": "Confirmed on",
       "confirmOnValue": "The review page. Nothing changes until you confirm there.",
+      "inline": {
+        "confirm": "Confirm and submit",
+        "confirming": "Submitting…",
+        "edit": "Edit",
+        "opening": "Opening…",
+        "discard": "Discard",
+        "actionsLabel": "Confirm, edit or discard",
+        "confirmedBy": "Confirmed by you",
+        "openClaims": "Open Claims",
+        "fixIt": "Fix it on its page",
+        "error": "That did not go through. Try again in a moment.",
+        "confirmOnValue": "Here, when you press Confirm and submit. The service checks everything again first.",
+        "done": {
+          "leaveSubmitted": "Submitted for approval, not approved yet.",
+          "attendanceSubmitted": "Sent for approval, not approved yet.",
+          "claimSubmitted": "Claim submitted for approval, not approved yet.",
+          "claimDraftSaved": "Saved as a draft. Add the receipt on Claims to submit it.",
+          "claimCancelled": "Claim cancelled.",
+          "profileRequested": "Sent to HR. Nothing changes until HR approves it.",
+          "toilSubmitted": "Sent for approval, not approved yet. Nothing is credited until it is approved.",
+          "decisionApproved": "Approved. Your decision is recorded.",
+          "decisionRejected": "Rejected, with your reason. Your decision is recorded.",
+          "decisionLevelRecorded": "Your approval is recorded. The next approver decides now.",
+          "letterRequested": "Sent to HR. HR prepares the letter; you will find it under My Letters once it is issued."
+        },
+        "refused": {
+          "expired": "This card has expired. Ask again for a new one.",
+          "invalid": "This card can no longer be used. Ask again for a new one.",
+          "access": "This card no longer matches your access. Ask again for a new one.",
+          "retired": "This card was already used or replaced. Check the request on its page.",
+          "unavailable": "This could not be checked just now. Try again in a moment.",
+          "consent": "Tick the agreement above to confirm.",
+          "duplicate": "You already have an open request for this letter. Check My Letters."
+        }
+      },
       "suggestionMeta": "Complete and confirm it on its page",
       "readAs": "Read: {reads}, as you.",
       "howAnswers": "How answers are made",
@@ -484,7 +896,16 @@
         "fallback": "A change ready for your review",
         "leave_apply": "Leave application ready to review",
         "leave_cancel": "Leave cancellation ready to review",
-        "approvals_leave_decide": "Leave decision ready to review"
+        "approvals_leave_decide": "Leave decision ready to review",
+        "attendance_correction_request": "Attendance correction ready to review",
+        "attendance_overtime_request": "Overtime request ready to review",
+        "claims_submit": "Expense claim ready to review",
+        "claims_cancel": "Claim cancellation ready to review",
+        "ess_profile_request": "Profile change ready to review",
+        "toil_replacement_request": "Leave Credit request ready to review",
+        "approvals_claim_decide": "Claim decision ready to review",
+        "approvals_attendance_decide": "Attendance decision ready to review",
+        "letters_request_submit": "Letter request ready to review"
       },
       "checks": {
         "actor_current": "Your access is current",
@@ -494,7 +915,23 @@
         "leave_type_eligible": "Leave type allowed",
         "own_approved_cancellable": "Can still be cancelled",
         "own_pending_request": "Request still pending",
-        "review_contract": "Review page ready"
+        "review_contract": "Review page ready",
+        "attendance_day_read": "Read from your attendance record",
+        "attendance_request_rules": "Attendance rules allow it",
+        "approval_route": "Approval route found",
+        "claim_type_available": "Claim type available",
+        "claim_draft_reviewed": "Checked by the claims service",
+        "receipt_attached": "Receipt requirement",
+        "own_pending_claim": "Claim still pending",
+        "profile_fields_editable": "You may request these changes",
+        "profile_request_reviewed": "Checked against your record",
+        "leave_credit_offered": "You may ask for a Leave Credit",
+        "worked_day_read": "Day type read from your roster",
+        "leave_credit_rules": "Leave Credit rules allow it",
+        "assigned_approver_current": "You are its assigned approver",
+        "not_own_request": "Not your own request",
+        "request_still_pending": "Request still pending",
+        "letter_type_open_for_requests": "Letter type open for requests"
       },
       "outcomes": {
         "withdrawn_now": "Withdrawn at once",
@@ -502,7 +939,14 @@
         "rejection_if_confirmed": "Rejected if you confirm",
         "step_decision_if_confirmed": "Your step is recorded",
         "approval_if_native_checks_pass": "Approved if the checks still pass",
-        "submitted_not_approved": "Submitted for approval, not approved yet"
+        "submitted_not_approved": "Submitted for approval, not approved yet",
+        "claim_submitted_if_checks_pass": "Submitted for approval if the claims checks pass",
+        "claim_draft_receipt_needed": "Saved as a draft; add the receipt on Claims",
+        "claim_cancelled_now": "Cancelled at once",
+        "hr_approval_required": "Sent to HR; changes only when HR approves",
+        "hr_verification_required": "HR verifies the new bank details before they are used",
+        "attendance_decision_if_checks_pass": "Recorded at your approval level if the checks still pass",
+        "letter_requested_hr_prepares": "Sent to HR, who prepare and issue the letter"
       },
       "reads": {
         "my_leave_balances": "your leave balances",
@@ -524,18 +968,1888 @@
         "explain_leave_entitlement": "the entitlement calculation",
         "explain_payslip_statutory": "the statutory calculation",
         "explain_attendance_day": "the attendance calculation",
-        "setup_copilot": "setup steps"
+        "setup_copilot": "setup steps",
+        "explain_pay_difference": "your pay difference",
+        "explain_claim_limit": "your claim limits",
+        "explain_why": "the explanation",
+        "operations_status": "AI Centre operations"
       },
       "errors": {
         "invalid_question": "Please ask a question of up to 2,000 characters.",
         "continuation_invalid": "This conversation can no longer continue. Start a new chat.",
         "not_configured": "No AI provider is set up for your company. Ask your administrator.",
-        "provider_not_compliant": "Your company's AI provider is not set up for zero data retention and no training, so the assistant cannot answer. Ask your administrator.",
+        "provider_not_compliant": "Your company's AI provider is not set up for zero data retention and no training, so the AI Centre cannot answer. Ask your administrator.",
         "budget_daily": "You have reached today's question limit. Try again tomorrow.",
         "budget_monthly": "Your company has reached this month's AI limit.",
         "ai_control": "The AI is paused or limited for you or your company right now.",
         "protected_input": "This question could not be sent safely. Try asking it another way.",
-        "provider_error": "The assistant could not answer just now. Please try again."
+        "provider_error": "The AI Centre could not answer just now. Please try again."
+      },
+      "letterRequestTitle": "{letterType} request"
+    },
+    "autonomy": {
+      "levels": {
+        "watch": "Watch",
+        "prepare": "Prepare",
+        "act": "Act within limits",
+        "act_audit": "Act and audit"
+      },
+      "levelNumber": "Level {n} · {level}",
+      "levelOnly": "Level {n}",
+      "summaryNamed": "{level} · {companies}",
+      "summaryCount": "{level} · {count, plural, one {# company} other {# companies}}",
+      "companiesTitle": "Level in each company",
+      "companiesHelp": "Each company has its own level. A loop moves up one level at a time, with evidence, and can be moved back down at any time.",
+      "capped": "Pay, employment status, system access, discipline and statutory filing stay at Prepare in every company: a person always decides.",
+      "stayPrepare": "This loop stays at Prepare in every company: a person always decides.",
+      "noActor": "This loop may go above Prepare, but its automatic step is not built yet, so it stays at Prepare for now.",
+      "noCompanies": "You administer no company here.",
+      "changedBy": "Set by {name} on {date}",
+      "changedAuto": "Moved down by itself on {date}",
+      "anAdministrator": "an administrator",
+      "limitsLink": "Limits and levels",
+      "notices": {
+        "undone": "Undone. The day is back as it was, and the person gets a card to confirm their time.",
+        "expired": "The undo window has closed.",
+        "changed": "This action has already been undone or changed.",
+        "access": "You cannot undo this action.",
+        "ask_hr": "This cannot be undone from here now.",
+        "unavailable": "It could not be undone. Try again.",
+        "invalid": "That request was not understood.",
+        "reviewed": "Sample review recorded.",
+        "review_failed": "The review could not be recorded. Try again."
+      },
+      "figures": {
+        "applied": "Fixes in {days} days",
+        "corrected": "Corrected by people",
+        "undoneByEmployee": "Undone by the employee",
+        "none": "None yet",
+        "appliedRequests": "Requests sent in {days} days",
+        "withdrawn": "Withdrawn by people"
+      },
+      "actions": {
+        "title": "Recent actions",
+        "none": "No automatic actions yet.",
+        "columns": {
+          "when": "When",
+          "person": "Person",
+          "what": "What happened",
+          "status": "Status",
+          "action": "Action"
+        },
+        "set": "Clock-out set to {time} (roster end) for {date}",
+        "notSet": "Not changed for {date}: {reason}",
+        "reasons": {
+          "condition_site_exit": "no recorded site exit agrees with the roster end",
+          "condition_leave": "approved leave that day",
+          "condition_day_changed": "the day changed before the fix",
+          "condition_sponsor_self": "it is the sponsor's own day",
+          "owner_refused": "the attendance service refused it",
+          "payroll_closed": "the payroll for that day is closed",
+          "approval_pending": "the attendance approval needs a person",
+          "interrupted": "the run was interrupted",
+          "condition_other_clocking": "another clocking that day",
+          "condition_inactive": "the employment has ended",
+          "would_create_overtime": "the fix would have created overtime",
+          "approval_routed": "the attendance approval goes to a workflow"
+        },
+        "status": {
+          "fixed": "Fixed · undo until {date}",
+          "fixedClosed": "Fixed",
+          "undoneEmployee": "Undone by the employee",
+          "undoneHr": "Undone by HR",
+          "changed": "Changed by a person afterwards",
+          "applying": "In progress",
+          "toPerson": "Left for the person to confirm",
+          "withdrawnEmployee": "Withdrawn at the employee’s request",
+          "withdrawnHr": "Withdrawn by HR",
+          "sentOpen": "Sent · can be withdrawn until {date}",
+          "sentClosed": "Sent"
+        },
+        "undo": "Undo",
+        "notSent": "Not sent: {reason}",
+        "sent": "Request sent to fill in {count, plural, one {# detail} other {# details}}",
+        "withdraw": "Withdraw"
+      },
+      "limits": {
+        "title": "Limits it can never cross",
+        "clockIn": "Acts only when a clock-in and a roster end time both exist",
+        "leave": "Never touches a day with approved leave",
+        "pay": "Never changes pay, rates or overtime",
+        "perNight": "{company}: at most {count, plural, one {# fix} other {# fixes}} a night, each can be undone for {days} days",
+        "demotion": "Drops back to Prepare by itself if more than 1% are corrected in 7 days",
+        "noOvertime": "Never creates overtime: a fix that would add overtime is not kept",
+        "condition": "{company}: acts only when “{condition}”",
+        "chosenBy": "(chosen by {name} on {date})",
+        "requestOnly": "Sends the request only; never changes a record",
+        "requestActive": "Never sends a request to someone whose employment has ended",
+        "perNightRequests": "{company}: at most {count, plural, one {# request} other {# requests}} a night, each can be withdrawn for {days} days",
+        "level3": "At Act and audit, HR reviews a weekly sample instead of every action."
+      },
+      "owner": {
+        "suspended": "Suspended: its sponsor no longer has HR access.",
+        "note": "Suspended automatically if the sponsor leaves or loses HR access. Every action is recorded with its rule version."
+      },
+      "inSentence": {
+        "loop_probation_ending": "the probation ending loop",
+        "loop_payroll_inputs": "the Pre-salary loop",
+        "loop_missing_employee_data": "the missing employee data loop",
+        "loop_missed_clock_outs": "the missed clock-outs loop",
+        "loop_document_expiry": "the passports loop",
+        "loop_salary_payroll": "the Salary payroll loop"
+      },
+      "promote": {
+        "titleTo": {
+          "prepare": "Return {loop} to Prepare in {company}?",
+          "act": "Let {loop} act within limits in {company}?",
+          "act_audit": "Let {loop} act and audit in {company}?"
+        },
+        "titleAt": "Level of {loop} in {company}: {level}",
+        "intro": {
+          "prepare": "At Watch it records what it finds and shows nobody a card. At Prepare it prepares each card for the person to confirm again.",
+          "act": "Today it prepares each fix for the employee to confirm. At the next level it fixes them itself inside the limits below, tells each person, and every fix can be undone.",
+          "act_audit": "It keeps fixing inside the limits below, tells each person, and every fix can be undone. Level 3 needs 90 days at Level 2 and the evidence below."
+        },
+        "top": "It is at the highest level this loop may reach.",
+        "ladder": "Autonomy levels",
+        "now": "now",
+        "proposed": "proposed",
+        "after90": "after 90 days at Level 2",
+        "notForThisLoop": "Not for this loop",
+        "evidenceTitle": "The evidence (last {days} days, {company})",
+        "columns": {
+          "requirement": "Requirement",
+          "needed": "Needed",
+          "actual": "Actual",
+          "met": "Met"
+        },
+        "criteria": {
+          "prepared": "Prepared fixes",
+          "changed": "Changed by a person",
+          "rule_broken": "Rule broken",
+          "days_at_level": "Time at this level"
+        },
+        "needed": {
+          "prepared": "{count} or more",
+          "changed": "Under {percent}",
+          "rule_broken": "None",
+          "days_at_level": "{count} days"
+        },
+        "actual": {
+          "changed": "{percent} ({count})",
+          "unknown": "Not known yet",
+          "none": "None",
+          "days": "{count, plural, one {# day} other {# days}}"
+        },
+        "yes": "Yes",
+        "no": "No",
+        "noCertificate": "There is no level above this one to earn.",
+        "sampleTitle": "Recent cards and their outcomes",
+        "sampleNone": "No cards yet.",
+        "seeAll": "See all {count} with their outcomes",
+        "autoApplied": "Fixed automatically",
+        "limitsTitle": "Limits at Level {n}",
+        "maxPerNight": "Most fixes per night",
+        "undoFor": "Employee can undo for",
+        "undoDays": "{count} days",
+        "onlyWhen": "Only fix when",
+        "conditions": {
+          "roster_and_site_exit": "Roster end and site exit agree",
+          "roster_end": "Roster end, no approved leave and no other clocking that day"
+        },
+        "siteExitNote": "No site exit is recorded here yet, so “Roster end and site exit agree” cannot hold: with it the loop would fix nothing and keep preparing cards.",
+        "tell": "Tell each person",
+        "tellValue": "Always (fixed)",
+        "dropBack": "Drop back to Prepare when",
+        "dropBackValue": "Over 1% changed in 7 days (fixed)",
+        "currentLimits": "At most {count} a night, undo for {days} days, only when: {condition}.",
+        "noLimits": "At this level it changes no record, so there are no limits to set.",
+        "capNote": "Pay, employment status, system access and discipline can never go above Prepare, in any company. A person always decides those.",
+        "submit": "Promote to Level {n} in {company}",
+        "notYet": "Not yet",
+        "moveDown": "Move down to {level}",
+        "groupOnly": "Group administrators only. Recorded with your name; you can move it back at any time.",
+        "readOnly": "Only a group administrator can change a loop's level.",
+        "notMet": "Not every requirement is met yet, so it cannot be promoted.",
+        "saved": {
+          "promoted": "Promoted. It now stands at {level} in {company}.",
+          "moved_down": "Moved down. It now stands at {level} in {company}.",
+          "limits": "Limits saved for {company}."
+        },
+        "errors": {
+          "invalid": "That change was not understood.",
+          "refused": "Only a group administrator can change a loop's level.",
+          "capped": "This loop stays at Prepare in every company.",
+          "no_actor": "This loop's automatic step is not built yet.",
+          "not_next_level": "A loop moves up one level at a time.",
+          "certificate": "Not every requirement is met, so it was not promoted.",
+          "changed": "The level changed since you opened this page. Check it again.",
+          "unchanged": "It is already at that level.",
+          "not_found": "That company or loop was not found.",
+          "failed": "The change could not be saved. Try again.",
+          "raise_needs_promotion": "Raising a limit needs a promotion.",
+          "not_acting": "The loop is not above Prepare in this company."
+        },
+        "rosterEndNote": "With the roster-end condition, the clock-out is set to the roster end, the employee is told and can undo it, and the fix never creates overtime.",
+        "maxPerNightRequests": "Most requests per night",
+        "undoForRequests": "HR can withdraw for",
+        "currentLimitsTitle": "Limits now, at Level {n}",
+        "changeLimitsNote": "Without a promotion the limits can only be made stricter: fewer a night, or a longer undo window. The condition can be changed at any time. Every change is recorded with your name.",
+        "saveLimits": "Save the limits"
+      },
+      "cannotActYet": "It cannot act yet: no site exit is recorded, so “roster end and site exit agree” cannot hold. It keeps preparing cards.",
+      "sample": {
+        "title": "Weekly sample to review",
+        "help": "At Act and audit, HR reviews a sample of each week’s actions (at least 10% and at least 5) instead of every one.",
+        "summary": "{size} of {total} actions in the week of {week}",
+        "reviewed": "Reviewed by {name} on {date}",
+        "markReviewed": "Mark the sample reviewed",
+        "none": "No actions this week yet."
+      },
+      "attribution": {
+        "loops": {
+          "loop_probation_ending": "probation ending",
+          "loop_payroll_inputs": "pre-salary",
+          "loop_missing_employee_data": "missing employee data",
+          "loop_missed_clock_outs": "missed clock-outs",
+          "loop_document_expiry": "passports",
+          "loop_salary_payroll": "salary payroll"
+        },
+        "byLoop": "AI Centre loop ({loop}), sponsored by {sponsor}",
+        "byLoopForEmployee": "AI Centre loop ({loop}), at the request of {asker} (the employee), sponsored by {sponsor}",
+        "byLoopForHr": "AI Centre loop ({loop}), at the request of {asker} (HR), sponsored by {sponsor}",
+        "sponsorUnnamed": "its sponsor",
+        "byLoopForEmployeeUnnamed": "AI Centre loop ({loop}), at the employee’s request, sponsored by {sponsor}",
+        "byLoopForHrUnnamed": "AI Centre loop ({loop}), at HR’s request, sponsored by {sponsor}",
+        "madeBy": "Made and approved by the {actor}."
+      }
+    },
+    "payrollCycle": {
+      "title": "Payroll cycle: {month}",
+      "description": "Three loops carry each company's payroll from inputs to audit.",
+      "headerOne": "Cut-off {cutOff} · pay day {payDay} · EPF, SOCSO, EIS and PCB due {due}.",
+      "headerGroup": "EPF, SOCSO, EIS and PCB due {due}. Each company keeps its own cut-off and pay day.",
+      "company": "Company",
+      "allCompanies": "{count, plural, one {All # company} other {All # companies}}",
+      "show": "Show",
+      "noCompanies": "You administer no company here.",
+      "loopsLabel": "Payroll loops in order",
+      "backToCycle": "Payroll cycle",
+      "checks": {
+        "timesheets": "Timesheets clean",
+        "overtime": "Overtime approved",
+        "leave": "Leave and unpaid days final",
+        "claims": "Claims decided",
+        "joinersLeavers": "Joiners and leavers complete",
+        "statutoryBank": "Bank, EPF, SOCSO and tax numbers",
+        "payChanges": "Allowance and pay changes approved",
+        "setup": "Payroll set-up ready",
+        "repeatAudit": "Repeat issues from the Audit loop"
+      },
+      "pre": {
+        "title": "1 · Pre-salary loop",
+        "done": "Done when every input is complete and approved before cut-off.",
+        "note": "It checks each owner and prepares what people need to confirm. Level: Prepare, so nothing changes until a person confirms it.",
+        "open": "Open Pre-salary loop",
+        "state": {
+          "open": "{count, plural, =0 {Running · cut-off today} one {Running · # day to cut-off} other {Running · # days to cut-off}}",
+          "openPast": "Running",
+          "done": "Done",
+          "missed": "Not ready by the cut-off",
+          "not_checked": "Not checked yet",
+          "paused": "Paused",
+          "off": "Off"
+        },
+        "value": {
+          "notChecked": "Not checked yet",
+          "off": "Not in use",
+          "open": "{count} open",
+          "waiting": "{count} waiting",
+          "review": "{count} to review",
+          "done": "Done"
+        }
+      },
+      "salary": {
+        "title": "2 · Salary payroll loop",
+        "done": "Done when each run is checked, approved by a person, closed and the bank file matches.",
+        "note": "Pay is calculated only by the payroll service. This loop stays at Prepare in every company: it checks and prepares, and a person approves and closes.",
+        "open": "Open Salary payroll loop",
+        "state": {
+          "before_cut_off": "Starts at cut-off",
+          "not_checked": "Not checked yet",
+          "ready_to_start": "Ready to start",
+          "in_progress": "In progress",
+          "attention": "Needs attention",
+          "done": "Done",
+          "paused": "Paused",
+          "off": "Off"
+        },
+        "rows": {
+          "run": "Run each company's payroll",
+          "change": "Change vs last month, per person",
+          "anomalies": "{count} anomaly checks",
+          "rules": "EPF, SOCSO, EIS, PCB on current rules",
+          "close": "Approve and close",
+          "bank": "Bank file total equals net pay"
+        },
+        "value": {
+          "started": "{started} of {total} started",
+          "preparedForHr": "Prepared for HR",
+          "flagged": "{count, plural, one {# person over the threshold} other {# people over the threshold}}",
+          "explained": "Explained by cause",
+          "afterRun": "Explained by cause",
+          "exceptions": "{count, plural, one {# exception open} other {# exceptions open}}",
+          "noExceptions": "No exceptions open",
+          "toToday": "Exceptions to Today",
+          "newer": "{count, plural, one {Newer rule for # run} other {Newer rules for # runs}}",
+          "ruleVersion": "Rule version {version}",
+          "versionShown": "Rule version shown",
+          "closed": "{closed} of {total} closed",
+          "person": "A person, always",
+          "mismatch": "{count, plural, one {# run does not match} other {# runs do not match}}",
+          "matches": "Matches",
+          "beforeRelease": "Checked before release"
+        },
+        "runLine": "{type}: {status}"
+      },
+      "audit": {
+        "title": "3 · Audit loop",
+        "done": "Done when everything is paid, filed, reconciled and evidenced.",
+        "note": "Files and filings stay at Prepare: a person submits to EPF, PERKESO and LHDN."
+      },
+      "interval": {
+        "hourly": "Checked hourly",
+        "twice_daily": "Checked twice a day",
+        "daily": "Checked daily"
+      },
+      "runType": {
+        "regular": "Salary",
+        "bonus": "Bonus",
+        "off_cycle": "Off-cycle"
+      },
+      "runStatus": {
+        "draft": "Draft",
+        "processed": "Processed",
+        "closed": "Closed"
+      },
+      "byCompany": {
+        "title": "Each company",
+        "columns": {
+          "company": "Company",
+          "preSalary": "Pre-salary",
+          "salary": "Salary payroll",
+          "audit": "Audit"
+        }
+      },
+      "history": {
+        "title": "Last three cycles",
+        "columns": {
+          "month": "Month",
+          "inputsReady": "Inputs ready",
+          "issuesCaught": "Issues caught before the run",
+          "closed": "Closed",
+          "corrections": "Corrections after the run",
+          "filed": "Filed on time"
+        },
+        "notMeasured": "Not measured",
+        "missed": "Not ready by the cut-off",
+        "onCutOff": "On cut-off day",
+        "before": "{count, plural, one {# day before cut-off} other {# days before cut-off}}",
+        "after": "{count, plural, one {# day after cut-off} other {# days after cut-off}}",
+        "notClosed": "Not closed",
+        "noRun": "No run",
+        "settingsTitle": "Changes",
+        "noChanges": "No change yet: the defaults apply.",
+        "settingRow": "Version {version}: {interval}, threshold ±{threshold}, {exclusions, plural, =0 {no exclusion} one {# exclusion} other {# exclusions}} ({source}) by {name}, {when}",
+        "rejectedRow": "A proposal rejected by {name}, {when}",
+        "source": {
+          "admin": "set by an administrator",
+          "proposal": "an approved proposal"
+        }
+      },
+      "people": {
+        "title": "People loops",
+        "item": "{name} · {count} open"
+      },
+      "patternItem": "Pay item {item}",
+      "causes": {
+        "unpaid_leave": "Unpaid leave",
+        "absence": "Absence",
+        "overtime_hours": "Overtime hours",
+        "salary_change": "Salary change",
+        "days_paid": "Days paid",
+        "additional_run": "Additional run",
+        "statutory_rules": "Statutory rules",
+        "set_by_hand": "Statutory set by hand",
+        "other": "Other change"
+      },
+      "bodies": {
+        "epf": "EPF",
+        "socso": "SOCSO",
+        "eis": "EIS",
+        "pcb": "PCB",
+        "hrdf": "HRD Corp levy"
+      },
+      "bank": {
+        "match": "Matches net pay and headcount",
+        "total_mismatch": "Total does not match net pay",
+        "count_mismatch": "Record count does not match",
+        "not_available": "Bank file could not be checked, so the run is not done",
+        "blocked": "Bank file cannot be produced yet",
+        "not_ready": "Checked once processed"
+      },
+      "salaryPage": {
+        "title": "Salary payroll loop: {month}",
+        "description": "Each run's checks as the loop last recorded them. A person runs, approves and closes payroll on the payroll workbench.",
+        "level": "Prepare in every company",
+        "off": "The Salary payroll loop is off. Switch it on in Loops to check runs.",
+        "noCompanies": "You run payroll for no company here.",
+        "companyLine": "Cut-off {cutOff} · net-swing threshold ±{threshold}",
+        "readyToStart": "Ready to start: no salary run yet for {month}.",
+        "openPayroll": "Open payroll",
+        "noRuns": "No run for this month yet.",
+        "runsCaption": "Payroll runs of {company}",
+        "columns": {
+          "run": "Run",
+          "status": "Status",
+          "anomalies": "Anomaly checks",
+          "change": "Change vs last month",
+          "rules": "Statutory rules",
+          "close": "Approve and close",
+          "bank": "Bank file"
+        },
+        "runName": "{type} run {seq}",
+        "stale": "Needs recalculating",
+        "employees": "{count, plural, one {# employee} other {# employees}}",
+        "afterProcessing": "After processing",
+        "notEvaluated": "{count} checks not run yet",
+        "changed": "{count, plural, one {# person changed} other {# people changed}}",
+        "cause": "{cause} ({count})",
+        "newerRules": "Newer rule: {bodies}",
+        "closedBy": "Closed by {name}",
+        "closed": "Closed",
+        "notClosed": "Not closed yet",
+        "reopened": "{count, plural, one {Reopened once after close} other {Reopened # times after close}}",
+        "note": "The net-swing threshold starts at ±15%. It changes only when an administrator sets it or approves a proposal, and it never changes the anomaly checks.",
+        "settingsLink": "Thresholds and intervals"
+      },
+      "flags": {
+        "title": "Net-swing flags",
+        "help": "People whose net pay moved more than the company's threshold against last month. Mark each one: expected, or a real problem.",
+        "none": "No flag this month.",
+        "columns": {
+          "person": "Person",
+          "change": "Net pay change",
+          "pattern": "What moved it",
+          "disposition": "Disposition"
+        },
+        "up": "Up {swing}",
+        "down": "Down {swing}",
+        "threshold": "Threshold ±{threshold}",
+        "unnamed": "A person",
+        "disposition": {
+          "expected": "Expected",
+          "problem": "A real problem"
+        },
+        "by": "By {name}",
+        "mark": {
+          "expected": "Expected",
+          "problem": "Real problem"
+        }
+      },
+      "settings": {
+        "title": "Payroll cycle settings",
+        "description": "How often the Pre-salary loop checks each company, and the net-swing threshold the Salary payroll loop flags at. Every change is recorded with who made it.",
+        "defaults": "Defaults: checked daily, threshold ±15%",
+        "version": "Version {version}",
+        "interval": "Pre-salary check interval",
+        "intervalHelp": "From the start of the payroll period to the cut-off.",
+        "threshold": "Net-swing threshold",
+        "thresholdHelp": "Flag a person whose net pay moves by more than this against last month.",
+        "save": "Save",
+        "exclusions": "Excluded pay patterns",
+        "noExclusions": "None. An exclusion is added only by approving a proposal.",
+        "remove": "Remove",
+        "reminders": "Automatic cut-off reminders",
+        "remindersOn": "On",
+        "remindersOff": "Off",
+        "remindersTurnOn": "Turn on",
+        "remindersTurnOff": "Turn off",
+        "remindersHelp": "5, 2 and 1 days before each cut-off, each employee and approver with something pending gets one reminder of their own items. Counts only, never a pay figure."
+      },
+      "proposals": {
+        "title": "Proposals",
+        "help": "Proposed from payroll HR's dispositions over the last 30 days. Nothing applies until an administrator approves it; it then applies from the next run.",
+        "none": "No proposal: not enough flags were cleared as expected.",
+        "threshold": "Raise the threshold from ±{from} to ±{to}",
+        "exclusion": "Stop flagging changes explained by {pattern}",
+        "evidence": "{expected} of {flags} flags cleared as expected ({share}), real problems: {problems}, last {days} days",
+        "approved": "Approve",
+        "rejected": "Reject",
+        "approveGroupOnly": "A group administrator approves this; you can reject it."
+      },
+      "saved": {
+        "disposition": "Disposition recorded.",
+        "setting": "Saved. It applies from the next run.",
+        "approved": "Proposal approved. It applies from the next run.",
+        "rejected": "Proposal rejected.",
+        "grouped": "Recorded for the whole group.",
+        "acknowledged": "Recorded as expected. It stays listed and no longer counts as open.",
+        "resolved": "Resolved as expected.",
+        "revoked": "Acknowledgement revoked. The check counts again from the next run.",
+        "ruleApproved": "Standing rule approved and recorded as an acknowledgement.",
+        "ruleRejected": "Proposal rejected."
+      },
+      "errors": {
+        "invalid": "That change was not understood.",
+        "refused": "You cannot make that change.",
+        "changed": "This changed since the page opened. Look again.",
+        "already": "Already recorded, or nothing changed.",
+        "failed": "The change could not be saved. Try again.",
+        "groupAdministrator": "Only a group administrator can approve this.",
+        "ownEvidence": "You disposed of flags behind this proposal, so another group administrator must approve it.",
+        "own": "You cannot record this about yourself."
+      },
+      "patternUnknown": "A pay item no longer in the catalogue",
+      "groups": {
+        "title": "Flags by what moved the pay",
+        "help": "Check the people in a group, then decide them together. Each is still recorded as your decision.",
+        "heading": "{pattern}: {count, plural, one {# person} other {# people}}",
+        "member": "{name}: {change} ({causes})",
+        "mark": {
+          "expected": "All {count} expected",
+          "problem": "All {count} are a real problem"
+        },
+        "note": "Marking a group expected also resolves the same people's net-swing anomaly for the month, so you decide the change once."
+      },
+      "acknowledgedBlocks": {
+        "title": "Blocking exceptions with a standing acknowledgement",
+        "help": "A block is never hidden. The resolve is filled in from the acknowledgement; press it if it still holds this run.",
+        "prefilled": "Resolution (from the acknowledgement)",
+        "resolve": "Resolve as expected"
+      },
+      "acknowledge": {
+        "reason": "Why it is expected",
+        "reviewOn": "Review on (optional)",
+        "person": "Always expected for this person"
+      },
+      "acknowledgements": {
+        "title": "Standing acknowledgements",
+        "help": "Checks payroll HR marked as expected, not exceptions. A warning leaves the to-do counts but stays listed in the Audit loop and its pack; a block always stays, with its resolve filled in. Nothing changes any calculation.",
+        "none": "None recorded.",
+        "netSwing": "Net pay change against last month",
+        "group": "Department",
+        "company": "Whole company",
+        "warningLine": "Warning, hidden from to-do: {reason}. {name}, {when}",
+        "blockLine": "Block, resolve pre-filled: {reason}. {name}, {when}",
+        "reviewOn": "review on {date}",
+        "revoke": "Revoke",
+        "proposalsTitle": "Proposed standing rules",
+        "proposal": "Always expect {check} for {name}",
+        "proposalEvidence": "{expected} of the last {runs} decided as expected ({share})"
+      }
+    },
+    "policies": {
+      "title": "Policies",
+      "descriptionAdmin": "Your company handbook, in your own words. AI Centre reads the values in each policy; you confirm them, a second administrator approves a change, and the claims and leave services apply it.",
+      "descriptionReader": "Your company's approved policies. AI Centre answers your questions from these approved versions only.",
+      "handbook": "Handbook",
+      "none": "No policies yet.",
+      "new": "New policy",
+      "choose": "Choose a policy to read it.",
+      "emptyAdmin": "No policies yet. Write your first one with New policy.",
+      "emptyReader": "Your company has not published any policies here yet.",
+      "versionShort": "v{version}",
+      "badges": {
+        "draft": "draft",
+        "submitted": "waiting",
+        "drift": "{count, plural, one {# drift} other {# drifts}}"
+      },
+      "areas": {
+        "leave": "Leave",
+        "attendance": "Attendance and overtime",
+        "claims": "Claims",
+        "allowances": "Allowances",
+        "people": "People",
+        "other": "Other"
+      },
+      "status": {
+        "draft": "Draft",
+        "submitted": "Waiting for approval",
+        "approved": "Approved"
+      },
+      "statusLine": "{status} v{version} · written by {author} · applies to {companies} from {date}",
+      "anAdministrator": "an administrator",
+      "otherCompany": "another company",
+      "allCompanies": "all {count} companies",
+      "actions": {
+        "edit": "Edit text",
+        "read": "Read the values",
+        "send": "Send for approval"
+      },
+      "form": {
+        "newTitle": "New policy",
+        "titleLabel": "Title",
+        "area": "Area",
+        "effectiveFrom": "Applies from",
+        "companies": "Applies to",
+        "body": "Your policy, in your words",
+        "bodyHint": "Write it as you would for your staff. After saving, AI Centre can read the values the system can enforce, for you to confirm.",
+        "editHint": "Changing the text means its values need reading and confirming again.",
+        "create": "Save draft",
+        "save": "Save draft",
+        "cancel": "Cancel"
+      },
+      "words": "Your policy, in your words",
+      "enforce": "What the system will enforce",
+      "table": {
+        "setting": "Setting",
+        "now": "Now",
+        "fromText": "From your text",
+        "decision": "Your decision"
+      },
+      "decide": {
+        "confirmed": "Confirm",
+        "rejected": "Reject"
+      },
+      "decision": {
+        "confirmed": "Confirmed",
+        "rejected": "Rejected",
+        "pending": "Not decided"
+      },
+      "same": "Same as now",
+      "enforceNote": "AI Centre read {count, plural, one {this value} other {these # values}} from the highlighted words. You confirm each one; the owner service applies it after approval.",
+      "perClaimNote": "Shown as written. The claims service prices each claim's own distance against these bands and keeps no monthly total, so a monthly limit in your text is not enforced.",
+      "notEnforced": "Not enforced yet",
+      "notEnforcedBody": "This policy is kept as text. AI Centre answers questions from its approved version; the system does not enforce it yet.",
+      "sharedSetting": "Claims and leave settings are shared by every company in your group, so they are enforced only from a policy that applies to all of them. This one is kept as text.",
+      "noValuesDraft": "No values read yet. Use Read the values once the text is ready.",
+      "noValues": "No values were confirmed for this version.",
+      "impact": {
+        "title": "If this had applied from {from} to {to}",
+        "changedLabel": "of {total} mileage claims would change",
+        "lessPaid": "less paid in total",
+        "morePaid": "more paid in total",
+        "samePaid": "no change in the total paid",
+        "lateLabel": "of {total} claims late under the {days}-day rule",
+        "peopleLabel": "people affected",
+        "owner": "Calculated by the claims service on the last 12 months of real claims. AI Centre did not work out any amount."
+      },
+      "drift": {
+        "textBody": "the handbook says “{quote}”; the {owner} service says {system}. Applies to {companies}.",
+        "textNote": "Employees who ask AI Centre are given the system's setting, not this figure. Edit the text to match, or confirm a value in a new draft.",
+        "title": "Where the handbook and the system disagree",
+        "setting": {
+          "claims_mileage_rates": "Mileage rates",
+          "claims_submit_within_days": "Submission window ({type})",
+          "leave_entitlement_days": "{type} entitlement"
+        },
+        "body": "the handbook says {handbook}; the {owner} service says {system}. Applies to {companies}.",
+        "useHandbook": "Use the handbook",
+        "updateHandbook": "Update the handbook",
+        "draftOpen": "Finish or return the open draft of this policy first."
+      },
+      "owners": {
+        "claims": "claims",
+        "leave": "leave"
+      },
+      "approval": {
+        "blocked": "It cannot be approved while its text disagrees with what the system will enforce. Return it to draft to change the text.",
+        "title": "Approval",
+        "ruleDraft": "When you send it, a group administrator approves it. A change to what the system enforces needs a second administrator: someone who did not write or send it.",
+        "ruleSettings": "This version changes what the system enforces, so a second administrator, who did not write or send it, must approve it before it applies.",
+        "ruleText": "This version changes text only, so one approval publishes it.",
+        "approved": "Approved by {name} on {date}",
+        "returned": "Returned to draft by {name} on {date}",
+        "needSecond": "You wrote or sent this change, so another group administrator must approve it.",
+        "approveApply": "Approve and apply",
+        "approve": "Approve",
+        "return": "Return to draft",
+        "waiting": "Waiting for a group administrator to approve it."
+      },
+      "applied": {
+        "applied": "{setting}: applied by the {owner} service from {date}.",
+        "refused": "{setting}: the {owner} service refused it: {message}",
+        "scheduled": "{setting}: waits for {date}. The {owner} service applies this setting the day it is written.",
+        "applyNow": "Apply now"
+      },
+      "versions": {
+        "title": "Versions",
+        "row": "Version {version} · {status} · from {date}",
+        "inForce": "in force",
+        "restore": "Make this the draft"
+      },
+      "values": {
+        "days": "{days} days",
+        "daysDefault": "{days} days (the default)",
+        "ratePerKm": "RM {rate} per km",
+        "daysAYear": "{days} days a year",
+        "money": "RM {amount}",
+        "none": "None",
+        "noneMileage": "None (any amount)",
+        "mileageRange": "RM {rate} per km from {from} to {to} km",
+        "mileageOpen": "RM {rate} per km from {from} km",
+        "leaveRange": "{days} days from {from} to {to} years",
+        "leaveOpen": "{days} days from {from} years"
+      },
+      "settings": {
+        "mileageBand": "Rate, {from} to {to} km",
+        "mileageAfter": "Rate after {from} km",
+        "mileageAny": "Rate, any distance",
+        "submitWithin": "Submit within ({type})",
+        "leaveBand": "{type}, {from} to {to} years of service",
+        "leaveFrom": "{type}, {from} years of service or more"
+      },
+      "saved": {
+        "text_only": "Marked as text only. The system's own setting stays as it is.",
+        "text_only_withdrawn": "No longer text only. Confirm a value for it, or mark it again.",
+        "created": "Draft saved.",
+        "draft": "Draft saved.",
+        "read": "AI Centre read {accepted, plural, one {# value} other {# values}} for you to confirm{rejected, plural, =0 {.} one {; it set aside # proposal it could not match to your words.} other {; it set aside # proposals it could not match to your words.}}",
+        "unread": "AI Centre could not read any values. Check the text, or enter them on the owner's settings page.",
+        "confirmed": "Value confirmed.",
+        "rejected": "Value rejected. It will not be applied.",
+        "sent_settings": "Sent for approval. It changes what the system enforces, so a second administrator must approve it.",
+        "sent_text": "Sent for approval. It changes text only.",
+        "approved": "Approved. Each confirmed value went to its owner service.",
+        "approved_refused": "Approved, but an owner service refused a value. See Approval.",
+        "returned": "Returned to draft.",
+        "applied": "Applied.",
+        "drift_settings": "A draft is ready to apply the handbook's values again. Confirm them and send it for approval.",
+        "drift_text": "A draft is ready with the text changed to what the system does. Check it and send it for approval.",
+        "drift_text_manual": "A draft is ready. Reword the text to match the system, then read and confirm the values.",
+        "draft_made": "A new draft is ready to edit."
+      },
+      "errors": {
+        "unmarked": "Your text mentions a setting the system enforces. Confirm a value for it, or keep it as text only, before sending.",
+        "mismatch": "The text states a figure the system will not enforce. Return it to draft and change the text, or confirm the value.",
+        "not_administrator": "Only an administrator of every company this policy applies to can do that.",
+        "not_group_admin": "Only a group administrator can approve or return a policy.",
+        "invalid": "Check the title, the date, the text and at least one company.",
+        "not_found": "That policy is not available.",
+        "not_draft": "This version is no longer a draft, or its text has changed. Reload and try again.",
+        "not_submitted": "This version is not waiting for approval.",
+        "not_approved": "That version is not the approved version in force.",
+        "undecided": "Confirm or reject every value before sending it.",
+        "same_administrator": "You wrote or sent this change. Another group administrator must approve it.",
+        "stale_submission": "The system has changed since this was sent, so it now changes enforced settings. Return it to draft and send it again.",
+        "shared_setting": "These settings are shared by every company in your group. Make the policy apply to all of them first.",
+        "draft_open": "This policy already has an open draft. Finish or return it first.",
+        "no_drift": "The handbook and the system agree now.",
+        "not_due": "That value is not due yet.",
+        "model_unavailable": "AI Centre cannot read the values yet. Sending policy text to the AI provider is waiting for the owner's data review.",
+        "no_settings": "There is nothing the system can enforce for this area yet. The policy is kept as text.",
+        "failed": "That did not work. Try again."
+      },
+      "mentions": {
+        "title": "Settings your text mentions",
+        "enforced": "enforced from this policy once approved",
+        "textOnly": "text only, not enforced (marked by {name} on {date})",
+        "needed": "confirm a value for it, or keep it as text only, before sending",
+        "markTextOnly": "Keep as text only",
+        "unmark": "Undo text only",
+        "setting": {
+          "claims_mileage_rates": "Mileage rates",
+          "claims_submit_within_days": "Claim submission windows",
+          "leave_entitlement_days": "Leave entitlements"
+        }
+      },
+      "mismatch": {
+        "title": "Where your text disagrees with what the system will enforce",
+        "row": "“{quote}” ({setting}): the {owner} service will enforce {enforced}.",
+        "note": "Approval waits until they agree. Change the text, or confirm a value so that it is applied."
+      },
+      "footer": "Employees' questions are answered from the approved version only. Every version is kept.",
+      "readerLine": "Version {version} · in force since {date}",
+      "readerNote": "This is the approved version. Ask AI Centre about it on Ask, or contact your HR team.",
+      "readerSettingNote": "“{quote}” ({setting}): the current setting is {current}; HR has been told the handbook differs.",
+      "readerSettingUnavailable": "“{quote}”: the current setting could not be read just now. Ask your HR team before relying on this figure."
+    },
+    "feedback": {
+      "label": "Was this answer helpful?",
+      "helpful": "Helpful",
+      "notHelpful": "Not helpful",
+      "reasonsLabel": "What was wrong with it?",
+      "cancel": "Cancel",
+      "thanks": "Thanks",
+      "change": "Change",
+      "reasons": {
+        "wrong": "Wrong",
+        "not_what_asked": "Not what I asked",
+        "missing_something": "Missing something"
+      }
+    },
+    "quality": {
+      "title": "AI quality",
+      "descriptionCompany": "How people used AI Centre’s answers and prepared actions in {company}, what it could not do, and what the loops propose.",
+      "descriptionAll": "How people used AI Centre’s answers and prepared actions in your companies, what it could not do, and what the loops propose.",
+      "periodLabel": "Period",
+      "periods": {
+        "last30": "Last 30 days",
+        "quarter": "This quarter",
+        "year": "This year"
+      },
+      "companyLabel": "Company",
+      "allCompanies": "All {count} companies",
+      "show": "Show",
+      "noCompanies": "You do not administer any company, so there is nothing to show.",
+      "noData": "No data yet",
+      "undoDismiss": "Undo",
+      "saved": {
+        "dismissed": "Dismissed. It no longer waits for review.",
+        "reopened": "Back in the list to review.",
+        "candidate": "Saved as a draft eval candidate. Check the redacted text, then approve it.",
+        "edited": "Draft saved, redacted again.",
+        "approved": "Approved. You can now export it for a developer.",
+        "reopened_candidate": "Back to draft, so you can edit it.",
+        "withdrawn": "Withdrawn. It will not be exported.",
+        "gap_status": "Status saved.",
+        "proposal_approved": "Approved. The loop uses the new setting from its next run.",
+        "proposal_rejected": "Rejected. It is not proposed again while its evidence is the same.",
+        "proposal_reverted": "Reverted. The previous setting is back from the next run."
+      },
+      "errors": {
+        "invalid": "Something in the form was not valid. Check it and try again.",
+        "not_administrator": "Only an administrator of this company can do that.",
+        "not_found": "That item is no longer here.",
+        "changed": "Someone changed this since you opened the page. Reload and try again.",
+        "not_redacted": "The text still holds a name, number, id or address after redaction. Rewrite it with fictional details.",
+        "state": "That cannot be done at this stage.",
+        "failed": "That could not be saved. Try again."
+      },
+      "tiles": {
+        "helpful": "Answers marked helpful",
+        "helpfulNote": "{helpful} of {marked} marked answers",
+        "helpfulNone": "No answer was marked in this period",
+        "unchanged": "Prepared actions confirmed unchanged",
+        "unchangedNote": "{unchanged} of {decided}; edited {edited} ({editedCount})",
+        "preparedNone": "No prepared action was decided in this period",
+        "discarded": "Prepared actions discarded",
+        "discardedNote": "{discarded} of {decided}",
+        "gaps": "Open gaps",
+        "gapsNote": "{share} of questions it could not meet: {open} of {questions}",
+        "gapsNone": "No question it could not answer in this period"
+      },
+      "chart": {
+        "title": "Prepared actions confirmed unchanged, by month",
+        "label": "Share of prepared actions confirmed unchanged, by month: {values}.",
+        "value": "{month} {share} ({unchanged} of {decided})",
+        "valueNone": "{month} no data",
+        "unit": "Confirmed unchanged (%)",
+        "note": "Drawn from 0 to 100%. A month with no decided prepared action has no bar."
+      },
+      "gaps": {
+        "title": "Biggest gaps",
+        "help": "Questions AI Centre could not answer or do, grouped by what was asked and counted.",
+        "intent": "Intent",
+        "count": "Count",
+        "status": "Status",
+        "none": "Nothing AI Centre could not answer or do in this period.",
+        "roles": "Asked by: {roles}",
+        "statusFor": "Status of {intent}",
+        "mixed": "Differs by company",
+        "statuses": {
+          "open": "Open",
+          "planned": "Planned",
+          "wont_do": "Won’t do",
+          "duplicate": "Duplicate"
+        },
+        "duplicateOf": "Duplicate of",
+        "duplicateNone": "Not a duplicate",
+        "save": "Save"
+      },
+      "intents": {
+        "not_supported": "Asked if it can do something in {area}: not yet",
+        "no_route": "Asked it to do something in {area}: no way to prepare it",
+        "cannot_answer": "Could not answer about {area}"
+      },
+      "areas": {
+        "people": "people",
+        "organisation": "the organisation",
+        "leave": "leave",
+        "attendance": "attendance",
+        "claims": "claims",
+        "payroll": "payroll",
+        "performance": "performance",
+        "rewards": "rewards",
+        "lifecycle": "onboarding and offboarding",
+        "approvals": "approvals",
+        "self_service": "self-service",
+        "knowledge": "policies and guides",
+        "notifications": "notifications",
+        "testing": "system testing",
+        "reports": "reports",
+        "settings": "settings",
+        "security": "access and security",
+        "ai": "AI Centre",
+        "general": "something else"
+      },
+      "roles": {
+        "employee": "Employee",
+        "manager": "Manager",
+        "hr_admin": "HR administrator",
+        "payroll": "Payroll",
+        "group_admin": "Group administrator"
+      },
+      "locales": {
+        "en": "English",
+        "ms": "Malay",
+        "zh": "Chinese",
+        "vi": "Vietnamese",
+        "ta": "Tamil",
+        "th": "Thai"
+      },
+      "signals": {
+        "card_edited": "A prepared action was opened to edit",
+        "card_discarded": "A prepared action was discarded",
+        "recommendation_rejected": "A recommendation was not followed",
+        "answer_unhelpful": "An answer was marked not helpful"
+      },
+      "corrections": {
+        "title": "Corrections to review",
+        "help": "What people changed or turned down. Make one an eval candidate so the next evaluation checks it, or dismiss it. Nothing here changes AI Centre by itself.",
+        "signal": "Signal",
+        "role": "Role",
+        "when": "When",
+        "actions": "Actions",
+        "none": "Nothing to review in this period.",
+        "detail": "About {area} · {locale}",
+        "promote": "Make an eval candidate",
+        "dismiss": "Dismiss",
+        "reason": "Reason: {reason}"
+      },
+      "candidate": {
+        "question": "Question, with fictional details",
+        "expectation": "What a good reply does",
+        "kind": "Kind of reply",
+        "factor": "What it tests",
+        "kinds": {
+          "answer": "Answer",
+          "do": "Do it",
+          "clarify": "Ask one question",
+          "guide": "Guide",
+          "honest_gap": "Say it cannot yet",
+          "refuse": "Decline kindly"
+        },
+        "factors": {
+          "facts": "Facts",
+          "capability": "What it can do",
+          "doing": "Doing, not pointing",
+          "privacy_wording": "Privacy wording",
+          "brevity": "Brevity",
+          "language": "Language",
+          "safety": "Safety"
+        },
+        "redactionHelp": "Use fictional names and details. When you save, names, ids, figures, dates, e-mail addresses and phone numbers are replaced by placeholders such as NAME_A. Read the saved text before you approve it.",
+        "newTitle": "New eval candidate: {signal}",
+        "newIntro": "Recorded as a {role} question in {locale}. Write the question as it might have been asked and what a good reply does.",
+        "saveDraft": "Save draft",
+        "cancel": "Cancel",
+        "editTitle": "Edit the draft"
+      },
+      "candidates": {
+        "title": "Eval candidates",
+        "help": "A candidate leaves your company only after you approve its redacted text and export it. The file goes to a developer, who adds it to the evaluation; nothing changes AI Centre automatically.",
+        "question": "Question",
+        "role": "Role",
+        "state": "State",
+        "actions": "Actions",
+        "none": "No eval candidates yet.",
+        "expected": "Expected: {expectation}",
+        "states": {
+          "draft": "Draft",
+          "approved": "Approved",
+          "exported": "Exported",
+          "withdrawn": "Withdrawn"
+        },
+        "version": "Version {version} · {date}",
+        "edit": "Edit",
+        "approve": "Approve redacted text",
+        "export": "Export for a developer",
+        "reopen": "Back to draft",
+        "download": "Download again",
+        "withdraw": "Withdraw"
+      },
+      "proposals": {
+        "title": "Proposals",
+        "help": "Changes the loops propose from your own decisions. Each applies only when an administrator approves it, from the next run, and can be reverted. Promotions are decided on each loop’s page, never here.",
+        "change": "Change",
+        "evidence": "Evidence",
+        "state": "State",
+        "actions": "Actions",
+        "none": "No proposal from the loops.",
+        "where": "{loop} · {company}",
+        "open": "Waiting for a decision",
+        "applied": "Applied {date}",
+        "approved": "Approve",
+        "rejected": "Reject",
+        "revert": "Revert"
+      },
+      "loopCorrections": {
+        "title": "Loop corrections by month",
+        "help": "How often people changed what a loop prepared or did. Above 1% over 7 days, a loop that acts by itself drops back to Prepare on its own; nothing here promotes a loop.",
+        "loop": "Loop",
+        "none": "No loop card or action was decided yet.",
+        "counts": "{corrected} of {decided}"
+      },
+      "method": {
+        "link": "How these figures are worked out",
+        "helpful": "Answers marked helpful: answers marked helpful, out of all answers people marked helpful or not helpful in the period. Unmarked answers are not counted.",
+        "prepared": "Prepared actions confirmed unchanged: actions AI Centre prepared that were confirmed as prepared, out of all prepared actions people decided in the period. That is a card in chat confirmed, opened to edit or discarded, or a loop card completed with the value it proposed or a changed one. Edited is the share opened to edit or changed. A loop card that proposed no value of its own is left out.",
+        "discarded": "Prepared actions discarded: cards in chat that were discarded, out of the same decided prepared actions. Loop cards cannot be discarded, so unchanged, edited and discarded add up to the whole.",
+        "gaps": "Open gaps: the kinds of question AI Centre could not answer or do in the period whose status is still open, and the share of those questions that wait on them. A question counts when the reply said it cannot do that yet, when nothing could be prepared for a request, or when it could not answer. Questions are grouped by what kind of gap it was and the product area the words name.",
+        "trend": "The chart shows, for each month, the share of that month’s decided prepared actions that were confirmed unchanged, drawn from 0 to 100%.",
+        "corrections": "Corrections to review: prepared actions opened to edit or discarded, recommendations not followed and answers marked not helpful, newest first, that no administrator has dismissed or made an eval candidate. A correction shows the person’s role, never their name.",
+        "candidates": "An eval candidate is your own fictional rewrite of a question and what a good reply does. It is redacted on every save and leaves your company only as a file you export after approving it; fictional values replace the placeholders. A developer reviews it before it joins the evaluation.",
+        "proposals": "Proposals come from the loops’ own records, today the Salary payroll loop’s net-swing threshold. Approving writes a new settings version; reverting writes another with the earlier value. Every version is kept.",
+        "access": "Only HR and group administrators see this page, for the companies they administer. Every figure is a count, or a share of counts, from AI Centre’s own records about its work.",
+        "privacy": "A conversation about a sensitive topic stores no words and is never counted here. Nothing learned here leaves your company unless you export it, and learning never changes calculations, permissions or what AI Centre may show."
+      }
+    }
+  },
+  "today": {
+    "greetingMorning": "Good morning",
+    "greetingAfternoon": "Good afternoon",
+    "greetingEvening": "Good evening",
+    "greetingMorningName": "Good morning, {name}",
+    "greetingAfternoonName": "Good afternoon, {name}",
+    "greetingEveningName": "Good evening, {name}",
+    "askLabel": "Ask AI Centre",
+    "askPlaceholderAdmin": "Ask AI Centre, or tell it what to do…",
+    "askPlaceholderPersonal": "Ask AI Centre: leave, pay, claims, anything about work…",
+    "askSubmit": "Ask",
+    "askOpening": "Opening AI Centre…",
+    "suggestions": "Suggested questions",
+    "suggestLeave": "Apply for leave",
+    "suggestClaim": "Submit a claim",
+    "suggestPay": "Why is my pay different?",
+    "suggestLetter": "Get an employment letter",
+    "needsYou": "Needs you",
+    "needsYouEmpty": "Nothing needs you right now.",
+    "readyToConfirm": "Ready for you to confirm",
+    "doneForYou": "Done for you",
+    "doneForYouEmpty": "Nothing done for you in the last 7 days yet.",
+    "watching": "Watching",
+    "watchingEmpty": "Nothing to watch right now.",
+    "atAGlance": "At a glance",
+    "atAGlanceEmpty": "Nothing to show yet.",
+    "unavailable": "Some items could not be loaded. Their own pages still work.",
+    "loading": "Loading Today",
+    "more": "More",
+    "tasks": {
+      "from": "From approvals",
+      "received": "Received {date}",
+      "open": "Open",
+      "seeAll": "See all {count}",
+      "review": "Review"
+    },
+    "prepared": {
+      "leaveApply": "Leave application prepared for you",
+      "leaveCancel": "Leave cancellation prepared for you",
+      "leaveDecision": "Leave decision prepared for you",
+      "meta": "Prepared {date}",
+      "expires": "Expires {date}",
+      "cta": "Review and confirm",
+      "note": "Checked by the leave service. Nothing is submitted until you confirm.",
+      "awaiting": "Waiting for your confirmation"
+    },
+    "findings": {
+      "setupTitle": "{count, plural, one {# setup stage needs attention} other {# setup stages need attention}}",
+      "setupSource": "From today's prepared digest",
+      "setupCta": "Open readiness",
+      "readinessTitle": "{count, plural, one {# employee record is missing required data} other {# employee records are missing required data}}",
+      "readinessSource": "Record readiness",
+      "readinessCta": "Fix records",
+      "proposalsTitle": "{count, plural, one {# prepared fix waits for your approval} other {# prepared fixes wait for your approval}}",
+      "proposalsSource": "Proposed actions",
+      "proposalsCta": "Review fixes",
+      "letterRequestsTitle": "{count, plural, one {# letter request waits for you} other {# letter requests wait for you}}",
+      "letterRequestsSource": "Employee letter requests",
+      "letterRequestsCta": "Open letter requests"
+    },
+    "loops": {
+      "awaiting": "Waiting for you",
+      "source": "Prepared by AI Centre: {loop}",
+      "clockOutTitle": "Did you leave at {time} on {date}?",
+      "clockOutCheckIn": "Clock-in on record {time}",
+      "clockOutMissing": "No clock-out recorded",
+      "clockOutRoster": "Your roster ends at {time}",
+      "clockOutNote": "Nothing changes until you send the correction; your approver decides it as usual.",
+      "clockOutReasonLegend": "Why is the clock-out missing?",
+      "clockOutReasonForgot": "Forgot to clock out",
+      "clockOutReasonDevice": "Device problem",
+      "clockOutReasonOther": "Other",
+      "clockOutReasonOtherLabel": "Type the reason",
+      "clockOutActionsLabel": "Confirm or edit",
+      "clockOutChanged": "This day has changed since the card was prepared, so nothing was sent. Use Edit to check it on the form.",
+      "recordTitle": "{count, plural, one {Your record is missing # detail} other {Your record is missing # details}}",
+      "recordNote": "HR approves your update as usual.",
+      "recordCta": "Fill in",
+      "passportTitle": "Your passport expires on {date}",
+      "passportNote": "Renew it and send HR the new details.",
+      "passportCta": "Update your details",
+      "probationTitle": "Probation ends {date}: {name}",
+      "probationTitleUnnamed": "A probation ends {date}",
+      "probationStage": {
+        "none": "No review started yet",
+        "with_manager": "Review with the manager",
+        "with_hr": "Review waiting for HR"
+      },
+      "probationOverdue": "The end date has passed with no decision",
+      "probationNote": "The loop never decides: HR records the decision.",
+      "probationCta": "Review",
+      "payrollTitle": "{company}: payroll inputs missing before the {date} cut-off",
+      "payrollTitleUnnamed": "Payroll inputs missing before the {date} cut-off",
+      "payrollBlockers": "{count, plural, one {# blocks the run} other {# block the run}}",
+      "payrollCta": "Open payroll cycle",
+      "passportsTitle": "{count, plural, one {# passport expires within 60 days} other {# passports expire within 60 days}}",
+      "passportsFirst": "First on {date}",
+      "passportsCta": "Open people",
+      "names": {
+        "loop_probation_ending": "Probation ending",
+        "loop_payroll_inputs": "Pre-salary loop",
+        "loop_missing_employee_data": "Missing employee data",
+        "loop_missed_clock_outs": "Missed clock-outs",
+        "loop_document_expiry": "Passports expiring",
+        "loop_salary_payroll": "Salary payroll loop"
+      }
+    },
+    "done": {
+      "answeredLabel": "Answered",
+      "checkedLabel": "Checked",
+      "preparedLabel": "Prepared",
+      "answeredOthersTitle": "{count, plural, one {Answered # employee question} other {Answered # employee questions}}",
+      "answeredOthersBody": "In the last 7 days, for the companies in your current scope. Questions on sensitive matters go to your HR team and are not counted here.",
+      "answeredYouTitle": "{count, plural, one {Answered # of your questions} other {Answered # of your questions}}",
+      "answeredYouBody": "In the last 7 days.",
+      "leaveChecksTitle": "{count, plural, one {Checked # leave request for you} other {Checked # leave requests for you}}",
+      "leaveChecksBody": "Balance, overlap, team cover and policy, each checked by the leave service. The decision stayed yours.",
+      "preparedTitle": "{count, plural, one {Prepared # item you delegated} other {Prepared # items you delegated}}",
+      "preparedBody": "In the last 7 days, by the jobs you delegated."
+    },
+    "watch": {
+      "deadlineLabel": "Deadline",
+      "deadlineTitle": "{count, plural, one {# CP22 or CP22A notification needs filing} other {# CP22 or CP22A notifications need filing}}",
+      "deadlineOverdue": "{count, plural, one {# is overdue.} other {# are overdue.}}",
+      "deadlineBody": "Due within 7 days, from the statutory compliance worklist.",
+      "deadlinePartial": "Checked the first {n} of {total} companies in scope.",
+      "deadlineCta": "Open statutory forms",
+      "exceptionsLabel": "Payroll",
+      "exceptionsTitle": "{count, plural, one {# payroll exception is open} other {# payroll exceptions are open}}",
+      "exceptionsBlocking": "{count, plural, =0 {None blocks a payroll run.} one {# blocks a payroll run.} other {# block a payroll run.}}",
+      "exceptionsCta": "Open exceptions",
+      "expiryLabel": "Expiring",
+      "passportTitle": "{count, plural, one {# recorded passport expires within 30 days} other {# recorded passports expire within 30 days}}",
+      "passportBody": "The first expires on {date}.",
+      "passportCta": "Open people"
+    },
+    "glance": {
+      "balances": "Leave balances",
+      "daysValue": "{days} days",
+      "notShown": "Not shown",
+      "why": "Why?",
+      "whyLabel": "Why is my {leaveType} balance this figure?",
+      "payslipTitle": "{date} payslip",
+      "openPayslip": "Open",
+      "noPayslip": "No payslip released yet.",
+      "comingUp": "Coming up",
+      "managerAwayRange": "{name}, your manager, is away {start} – {end}.",
+      "managerAwayDay": "{name}, your manager, is away on {date}.",
+      "nothingComingUp": "Nothing coming up in the next two weeks.",
+      "managerAwayRangeUnnamed": "Your manager is away {start} – {end}.",
+      "managerAwayDayUnnamed": "Your manager is away on {date}."
+    },
+    "autonomy": {
+      "undo": "Undo",
+      "undoing": "Undoing…",
+      "undone": "Undone. Your day is back as it was; confirm your clock-out on its card.",
+      "actionsLabel": "Undo the fix",
+      "refused": {
+        "unavailable": "It could not be undone. Try again.",
+        "expired": "The undo window has closed. Ask HR to change it.",
+        "changed": "It has already changed. Open your attendance day to check it.",
+        "access": "You cannot undo this.",
+        "ask_hr": "It cannot be undone from here now. Ask HR to undo it."
+      },
+      "autoFixedTitle": "Clock-out set to {time} for {date}",
+      "autoFixedRoster": "Your roster end",
+      "autoFixedSource": "Done by AI Centre: {loop}",
+      "autoFixedUntil": "You can undo it until {date}",
+      "autoFixedNote": "If you left at another time, undo it and confirm the right time.",
+      "movedDownTitle": "{loop} moved down to Prepare in {company}",
+      "movedDownTitleUnnamed": "{loop} moved down to Prepare",
+      "movedDownShare": "{corrected} of {applied} fixes corrected by people in 7 days",
+      "correctionUndone": "{name} · {date} · undone by {by}",
+      "correctionChanged": "{name} · {date} · changed afterwards",
+      "byEmployee": "the employee",
+      "byHr": "HR",
+      "someone": "Someone",
+      "correctionMore": "and {count} more",
+      "movedDownNote": "It prepares cards again until a group administrator promotes it.",
+      "movedDownCta": "Open the loop",
+      "actedTitle": "{loop} made {count, plural, one {# change} other {# changes}} in {company} in the last day",
+      "actedNote": "At Act within limits every action shows here. Open the loop to undo one.",
+      "sampleTitle": "Weekly sample to review: {loop} in {company}",
+      "sampleMeta": "{size} of {total} actions this week",
+      "sampleNote": "At Act and audit, HR reviews this sample instead of every action.",
+      "sampleCta": "Review the sample",
+      "leftAloneTitle": "{loop} left {count, plural, one {# item} other {# items}} for people in {company}",
+      "leftAloneNote": "A condition did not hold, so the person confirms it themselves."
+    }
+  },
+  "why": {
+    "link": "Why?",
+    "close": "Close",
+    "ask": "Ask AI Centre about this",
+    "opening": "Opening AI Centre…",
+    "unavailable": "This explanation could not be loaded right now. Try again.",
+    "pay": {
+      "linkLabel": "Why is my pay different from last month?",
+      "title": "Why {period} is different from {previous}",
+      "netUp": "Your net pay was {amount} higher than in {previous}.",
+      "netDown": "Your net pay was {amount} lower than in {previous}.",
+      "netSame": "Your net pay was the same as in {previous}.",
+      "colItem": "Item",
+      "colChange": "Change",
+      "noLines": "No payslip line changed.",
+      "payItems": "Pay items that changed",
+      "statutory": "Statutory deductions",
+      "statutoryBase": "{name} was charged on {current}, against {previous} in {previousPeriod}.",
+      "statutoryBaseUnknown": "The wage {name} was charged on was not recorded for both months.",
+      "causes": "What the payroll service recorded",
+      "noCause": "The payroll service recorded no cause beyond the figures above. Your HR or payroll team can tell you more.",
+      "earliest": "This is your earliest released payslip, so there is no earlier month to compare it with.",
+      "noData": "There is no released payslip to compare yet.",
+      "onlyIn": "{companies} paid you in only one of the two months, so it is not compared here.",
+      "runs": "{period}: {current, plural, one {# payslip} other {# payslips}}; {previousPeriod}: {previous, plural, one {# payslip} other {# payslips}}.",
+      "note": "The payroll service calculated every figure here. AI Centre only explains it.",
+      "question": "Why is my pay for {period} different from {previous}?",
+      "cause": {
+        "unpaid_leave": "Unpaid leave: {current} in {period}, {previous} in {previousPeriod}.",
+        "absence": "Absence: {current} in {period}, {previous} in {previousPeriod}.",
+        "overtime_hours": "Overtime: {current} in {period}, {previous} in {previousPeriod}.",
+        "salary_change": "Your basic salary changed from {previous} to {current}, effective {date}.",
+        "salary_change_undated": "Your basic salary changed from {previous} to {current}.",
+        "days_paid": "Days paid: {current} in {period}, {previous} in {previousPeriod}.",
+        "additional_run": "Additional (bonus or off-cycle) payslips: {current} in {period}, {previous} in {previousPeriod}.",
+        "statutory_rules": "The statutory rules changed from version {previous} to {current}.",
+        "set_by_hand": "Set by hand by payroll in {period}: {items}."
+      },
+      "days": "{count, plural, one {# day} other {# days}}",
+      "hours": "{count, plural, one {# hour} other {# hours}}"
+    },
+    "rule": {
+      "schedule": "{name} is looked up from its contribution schedule by wage band, so the amount moves in steps.",
+      "rate": "{name} is a percentage of the wage.",
+      "mtd": "PCB follows LHDN's monthly tax deduction calculation.",
+      "manual": "{name} was set by hand, not by a rule."
+    },
+    "deduction": {
+      "linkLabel": "Why is {name} this amount?",
+      "title": "Why {name} is {amount}",
+      "takeHome": "Taken from your pay",
+      "reported": "Your full share, as filed",
+      "employerBorne": "Paid by your employer on your behalf",
+      "employer": "Your employer's own share",
+      "base": "Wage it was charged on",
+      "rate": "Effective rate (a check figure, not the rule)",
+      "notRecorded": "This payslip did not record the wage this was charged on, so its working cannot be shown.",
+      "additional": "This is an additional payslip: its amount is the increase over the whole month, so no rate can be shown.",
+      "version": "Statutory rules version {version}.",
+      "days": "Days deducted",
+      "absenceNote": "The payroll service deducted this for the days recorded on this payslip.",
+      "question": "Why is the {name} deduction on my {period} payslip this amount?",
+      "note": "The payroll service calculated every figure here. AI Centre only explains it."
+    },
+    "leave": {
+      "title": "Your {leaveType} balance",
+      "cycle": "Leave year {start} to {end}.",
+      "entitlement": "Entitlement for the year",
+      "earnedSoFar": "Earned so far",
+      "broughtForward": "Carried forward",
+      "adjustments": "Adjustments",
+      "totalEntitlement": "Total entitlement",
+      "taken": "Taken",
+      "pending": "Waiting for approval",
+      "forfeited": "Expired",
+      "available": "Available",
+      "canApplyFor": "You can apply for",
+      "table": "Entitlement table: {name}.",
+      "prorated": "You were not employed for the whole leave year, so the full-year {annual} was prorated to {display}.",
+      "rounded": "The leave type's rounding was applied.",
+      "withheld": "Your company does not show some of these figures to employees.",
+      "expiry": "Carried-forward days expire on {date}.",
+      "takenOnly": "This leave type has no entitlement; only what you have taken is counted.",
+      "daysValue": "{days} days",
+      "note": "The leave service calculated every figure here. AI Centre only explains it.",
+      "question": "Why is my {leaveType} balance what it is?"
+    },
+    "claim": {
+      "linkLabel": "Why is my {claimType} limit this figure?",
+      "title": "Your {claimType} limit",
+      "annual": "Yearly limit",
+      "usedYear": "Used this year",
+      "pendingYear": "Of which waiting for approval",
+      "remainingYear": "Left this year",
+      "monthly": "Monthly limit",
+      "usedMonth": "Used this month",
+      "remainingMonth": "Left this month",
+      "perClaim": "Most for one claim",
+      "lifetime": "Limit over your employment",
+      "usedLifetime": "Used so far",
+      "block": "Limit for this period",
+      "usedBlock": "Used this period",
+      "remainingBlock": "Left until {date}",
+      "claimsPerYear": "Claims allowed each year",
+      "claimsUsed": "Claims made this year",
+      "items": "Sub-claim limits",
+      "unlimited": "No limit is set on this claim type for you.",
+      "policyGrade": "These limits come from the policy for your job grade, in force from {date}.",
+      "policyDefault": "These limits come from the policy for all grades, in force from {date}.",
+      "usedNote": "Used counts claims waiting for approval, approved or paid, by the date of the expense. Drafts hold nothing.",
+      "note": "The claims service calculated every figure here. AI Centre only explains it.",
+      "question": "Why is my {claimType} claim limit what it is, and how much have I used?"
+    }
+  },
+  "aiAsk": {
+    "chats": "Chats",
+    "newChat": "New chat",
+    "newConversation": "New conversation",
+    "search": "Search your chats",
+    "groups": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "earlier": "Earlier"
+    },
+    "withheldTitle": "A private matter",
+    "withheldNote": "Passed to HR · no words kept",
+    "untitled": "Untitled chat",
+    "noChats": "No chats yet.",
+    "noMatches": "No chats match your search.",
+    "listUnavailable": "Your chats could not be loaded. Try again later.",
+    "moreChats": "More chats",
+    "earlierSaved": "Earlier saved conversations",
+    "moreTools": "More tools",
+    "keptFor": "{days, plural, one {Chats are kept for # day, then deleted.} other {Chats are kept for # days, then deleted.}}",
+    "keptUnknown": "Chats are deleted after the period your organisation sets.",
+    "privacyLink": "Your data and privacy",
+    "backToAsk": "Back to Ask",
+    "deleteChat": "Delete chat",
+    "deleteTitle": "Delete this chat?",
+    "deleteBody": "The chat and what AI Centre remembered for it are deleted now, for good. Your HR records are not changed.",
+    "deleteConfirm": "Delete",
+    "deleteFailed": "The chat could not be deleted. Try again.",
+    "deleted": "Chat deleted.",
+    "privacy": {
+      "title": "Your data and privacy",
+      "description": "What AI Centre keeps about you, and how to clear it."
+    },
+    "tools": {
+      "title": "More tools",
+      "description": "Shortcuts and other ways to work with AI Centre.",
+      "shortcuts": "Shortcuts"
+    },
+    "retention": {
+      "title": "Keep chats for",
+      "help": "How long AI Centre keeps each person's chats before deleting them. A chat withheld for a sensitive topic keeps no words at any setting.",
+      "legend": "How long to keep chats",
+      "option": "{days, plural, one {# day} other {# days}}",
+      "save": "Save",
+      "confirm": "Change",
+      "confirmTitle": "Change how long chats are kept?",
+      "confirmShorter": "{days, plural, one {Chats with no new message for more than # day will be deleted soon, for everyone. They cannot be recovered.} other {Chats with no new message for more than # days will be deleted soon, for everyone. They cannot be recovered.}}",
+      "confirmLonger": "{days, plural, one {Chats will be kept for # day from their next message. Chats already deleted are not restored.} other {Chats will be kept for # days from their next message. Chats already deleted are not restored.}}",
+      "saved": "{days, plural, one {Saved. Chats are kept for # day.} other {Saved. Chats are kept for # days.}}",
+      "failed": "The setting could not be saved. Try again.",
+      "notAdministrator": "Only a group administrator can change this.",
+      "readOnly": "{days, plural, one {Chats are kept for # day. Only a group administrator can change this.} other {Chats are kept for # days. Only a group administrator can change this.}}",
+      "unavailable": "The current setting could not be read."
+    },
+    "commandBar": {
+      "title": "Ask AI Centre",
+      "onThisPage": "On this page: {area}",
+      "hint": "Enter to prepare · nothing changes until you confirm",
+      "busy": "AI Centre is still answering. Try again in a moment."
+    }
+  },
+  "chatImport": {
+    "attach": "Attach a file to import",
+    "remove": "Remove {name}",
+    "reading": "Reading the file…",
+    "fileChip": "{name} · {count, plural, one {# row} other {# rows}}",
+    "errors": {
+      "one": "Attach one file at a time.",
+      "type": "Attach an Excel workbook (.xlsx or .xls), a CSV file, or a time-clock text file (.txt).",
+      "size": "Attach a file no larger than 5 MB.",
+      "empty": "That file has no rows to import.",
+      "read": "That file could not be read. Check that it opens, then attach it again."
+    },
+    "kinds": {
+      "employee_records": "Employee records import",
+      "leave_balances": "Leave balance import",
+      "payroll_history": "Payroll history import",
+      "attendance_clockings": "Attendance clocking import"
+    },
+    "title": "{kind}, {company}, {count, plural, one {# row} other {# rows}}",
+    "prepared": "Prepared for you to confirm",
+    "ready": "{count, plural, one {# row ready} other {# rows ready}}",
+    "attention": "{count, plural, one {# needs attention} other {# need attention}}",
+    "warned": "{count, plural, one {# row will be imported with a warning. The import page shows it.} other {# rows will be imported with a warning. The import page shows them.}}",
+    "replacing": "{count, plural, one {# row would replace payroll history already imported. Only new records are imported here; replace it on the import page.} other {# rows would replace payroll history already imported. Only new records are imported here; replace them on the import page.}}",
+    "allRowsFirst": "Payroll history is imported only when every row is correct. Fix the rows on the import page first.",
+    "noteRevert": "The import service checks every row again when you confirm. You can revert the whole import afterwards.",
+    "note": "The import service checks every row again when you confirm.",
+    "issuesLabel": "Rows that need attention",
+    "row": "Row",
+    "column": "Column",
+    "issue": "Issue",
+    "header": "Header",
+    "more": "{count, plural, one {And # more on the import page.} other {And # more on the import page.}}",
+    "reasons": {
+      "missing_column": "A required column is missing",
+      "missing_value": "A required value is empty",
+      "unknown_employee": "No such employee in your companies",
+      "unknown_type": "Not a type the system knows",
+      "invalid_date": "The date is not valid",
+      "invalid_time": "The time is not valid",
+      "invalid_number": "The number is not valid",
+      "duplicate_in_file": "The same row appears twice in the file",
+      "already_imported": "Already imported, so it is skipped",
+      "not_permitted": "Outside the companies you manage",
+      "not_employed": "The employee was not employed on that date",
+      "period_closed": "That period can no longer be changed",
+      "needs_page": "This needs a decision on the import page",
+      "other": "The import page explains this row",
+      "other_company": "Belongs to another company, not imported"
+    },
+    "confirm": "{count, plural, one {Confirm # row} other {Confirm # rows}}",
+    "confirming": "Importing…",
+    "fix": "{count, plural, one {Fix the # row} other {Fix the # rows}}",
+    "openPage": "Open the import page",
+    "discard": "Discard",
+    "discarded": "Discarded. Nothing was imported.",
+    "actionsLabel": "Import actions",
+    "done": "{count, plural, one {# row imported.} other {# rows imported.}}",
+    "doneLeftOut": "{count, plural, one {# row was not imported.} other {# rows were not imported.}}",
+    "otherCompany": "{count, plural, one {# row belongs to another company, not imported.} other {# rows belong to another company, not imported.}}",
+    "replayed": "This import was already confirmed.",
+    "history": "Open the import record",
+    "historyRevert": "Open the import history, where you can revert it",
+    "refused": {
+      "expired": "This card has expired. Attach the file again.",
+      "access": "You can't import this here.",
+      "file": "The file attached in this chat is no longer here, or it has changed. Attach it again.",
+      "changed": "The file or the records changed since this was prepared. Attach the file again to see the rows now.",
+      "notConfirmable": "Fix the rows on the import page first.",
+      "inProgress": "This import is already being confirmed.",
+      "invalid": "This card could not be checked. Attach the file again.",
+      "unavailable": "The import could not be completed, and nothing was imported. Try again, or use the import page."
+    }
+  },
+  "payrollAudit": {
+    "name": "Audit loop",
+    "doneMeansLine": "Done means: {done}",
+    "column": {
+      "title": "Audit loop",
+      "titleNumbered": "{n} · Audit loop",
+      "badge": "After pay day",
+      "done": "Done",
+      "doneMeans": "Done when everything is paid, filed, reconciled and evidenced.",
+      "items": {
+        "payslips": "Payslips released and opened",
+        "statutory": "EPF, SOCSO, EIS, PCB, HRD files",
+        "bank": "Bank files",
+        "corrections": "Corrections after the run",
+        "findings": "Control checks",
+        "approvals": "Who approved what, when",
+        "repeat": "Repeat issues",
+        "bankPaid": "Bank paid vs payroll"
+      },
+      "values": {
+        "payslips": "{released} of {total} released · {opened} opened",
+        "statutory": "{prepared} of {forms} prepared · {filed} filed · due {due}",
+        "bank": "{count, plural, =0 {No bank file recorded} one {# bank file recorded} other {# bank files recorded}}",
+        "corrections": "{count, plural, =0 {None · target zero} other {# · target zero}}",
+        "findings": "{count, plural, =0 {Nothing open} one {# open finding} other {# open findings}}",
+        "pack": "Audit pack per company",
+        "packLink": "Download audit pack",
+        "repeat": "{count, plural, =0 {None} other {# fed to the next Pre-salary loop}}",
+        "bankReconciled": "Reconciled",
+        "bankMismatch": "{count, plural, one {# run does not match} other {# runs do not match}}",
+        "bankPartial": "{matched} of {total} reconciled",
+        "bankNone": "Checked after the run"
+      },
+      "note": "Files and filings stay at Prepare: a person submits to EPF, PERKESO and LHDN. The audit pack is read-only evidence for your auditors.",
+      "open": "Open Audit loop"
+    },
+    "errors": {
+      "invalid": "That could not be recorded. Check the form and try again.",
+      "refused": "Only a payroll administrator of this company can do that.",
+      "module": "Payroll is not in use, so the Audit loop cannot be switched on.",
+      "failed": "That did not complete. Nothing was changed. Try again.",
+      "subject": "You cannot dispose of a finding about yourself. Another payroll administrator or a group administrator can.",
+      "groupAdministrator": "Loosening a control needs a group administrator.",
+      "already": "That is already recorded."
+    },
+    "saved": {
+      "disposed": "Disposition recorded.",
+      "cause": "Root cause recorded.",
+      "captured": "Captured and checked now.",
+      "switch": "Saved.",
+      "pause": "Saved.",
+      "settings": "Control settings saved.",
+      "granted": "Auditor access given.",
+      "revoked": "Auditor access revoked.",
+      "acknowledged": "Recorded as expected. It no longer counts as open, and stays listed."
+    },
+    "filter": {
+      "period": "Pay month",
+      "company": "Company",
+      "allCompanies": "{count, plural, one {All # company} other {All # companies}}",
+      "show": "Show"
+    },
+    "monthLine": "{month}: statutory files due {due}.",
+    "stepLabel": "{n} · {step}",
+    "steps": {
+      "capture": "Capture",
+      "check": "Check",
+      "prepare": "Prepare",
+      "verify": "Verify"
+    },
+    "stepText": {
+      "capture": "For every run, regular, bonus and off-cycle: its inputs, each change from draft to final with who and why, adjustments, rule versions, exceptions, approvals, bank and statutory files, filings, payslip opens, corrections, who viewed or exported pay data and configuration changes. Each copy is hashed and chained.",
+      "check": "Seven control checks every night, each with its evidence. Nothing is blocked or changed.",
+      "prepare": "Findings for a payroll administrator to dispose of, a root cause for each correction, and the audit pack per company.",
+      "verify": "Payslips released, statutory files prepared before {due} and filed with a receipt, corrections at zero, and every capture unchanged."
+    },
+    "figures": {
+      "captures": "Captures this month",
+      "findings": "Open findings",
+      "corrections": "Corrections after the run",
+      "filed": "Statutory files filed"
+    },
+    "ofForms": "{filed} of {forms}",
+    "companies": {
+      "title": "Companies",
+      "none": "You administer no company with payroll here.",
+      "columns": {
+        "company": "Company",
+        "runs": "Runs",
+        "payslips": "Payslips",
+        "statutory": "Filed",
+        "findings": "Findings",
+        "corrections": "Corrections",
+        "captures": "Evidence",
+        "pack": "Audit pack"
+      },
+      "noRun": "No run this month",
+      "run": "{type} run {seq}: {status}",
+      "payslips": "{released} of {total} released · {opened} opened",
+      "findings": "{open} open · {disposed} disposed",
+      "corrections": "{count, plural, =0 {None} other {#}}",
+      "captures": "{count, plural, =0 {Not captured yet} one {# capture} other {# captures}}",
+      "pack": "Download",
+      "capture": "Capture and check now",
+      "packHelp": "The audit pack is a PDF summary with CSV and JSON evidence, each listed with its sha256. Downloading it captures the month first and is itself recorded.",
+      "correctionsMissing": "{count, plural, one {# needs a root cause} other {# need a root cause}}",
+      "opensNote": "Payslip opens are counted on the web, including PDF downloads. Opens in the mobile app are not counted yet."
+    },
+    "state": {
+      "done": "Done",
+      "open": "In progress"
+    },
+    "runType": {
+      "regular": "Salary",
+      "off_cycle": "Off-cycle",
+      "bonus": "Bonus",
+      "adjustment": "Adjustment",
+      "other": "Other"
+    },
+    "runStatus": {
+      "draft": "draft",
+      "processed": "processed",
+      "closed": "closed",
+      "other": "other"
+    },
+    "statutory": {
+      "title": "Statutory files, due {due}",
+      "columns": {
+        "company": "Company",
+        "form": "File",
+        "prepared": "Prepared",
+        "filed": "Filed"
+      },
+      "beforeDue": "Before the due date",
+      "late": "After the due date",
+      "notYet": "Not prepared yet",
+      "receipt": "Receipt recorded",
+      "notFiled": "Not filed yet",
+      "help": "A person files with EPF, PERKESO, LHDN and HRD Corp and records the receipt. The Audit loop never submits anything.",
+      "notRequired": "Not required this month"
+    },
+    "forms": {
+      "epf": "EPF",
+      "socso_eis": "SOCSO and EIS",
+      "pcb_cp39": "PCB (CP39)",
+      "hrd": "HRD Corp levy"
+    },
+    "findings": {
+      "title": "Control findings",
+      "none": "No control check found anything this month.",
+      "disposition": "Disposition",
+      "choose": "Choose",
+      "note": "Note",
+      "record": "Record",
+      "openReadOnly": "Open: waiting for a payroll administrator."
+    },
+    "controls": {
+      "bank_change_before_pay_day": "Bank details changed shortly before pay day",
+      "shared_bank_account": "One bank account on two or more people",
+      "pay_after_last_day": "Pay after the last working day",
+      "pay_without_attendance": "Pay without attendance",
+      "preparer_closed_run": "Same person processed and closed a run",
+      "adjustment_without_reason": "Large manual adjustment without a reason",
+      "formula_changed_open_period": "Formula changed while a run was open"
+    },
+    "what": {
+      "bank_change_before_pay_day": "Bank account changed on {changed}, {days, plural, one {# day} other {# days}} before pay day on {payDay} (now ending {last4}).",
+      "shared_bank_account": "One account ending {last4} is on {people} people; {paid} paid by this company.",
+      "pay_after_last_day": "Net pay on a payslip that starts after the last working day, {lastDay}.",
+      "pay_without_attendance": "Net pay with no attendance and no approved leave in the period.",
+      "preparer_closed_run": "The same person processed and closed run {seq}. Flagged only: there is no second approver.",
+      "adjustment_without_reason": "A manual adjustment above {threshold} was keyed with no reason.",
+      "formula_changed_open_period": "A pay formula or pay component changed while run {seq} was open."
+    },
+    "dispositions": {
+      "expected": "Expected",
+      "corrected": "Corrected",
+      "false_positive": "Not an issue",
+      "escalated": "Escalated"
+    },
+    "corrections": {
+      "title": "Corrections after the run",
+      "none": "No run was reopened or reset this month. The target is zero.",
+      "actions": {
+        "unlock": "Closed run {seq} reopened",
+        "rollback": "Processed run {seq} reset"
+      },
+      "reason": "Reason given: {reason}",
+      "noReason": "No reason was given.",
+      "cause": "Root cause",
+      "choose": "Choose",
+      "note": "Note",
+      "record": "Record",
+      "update": "Restate"
+    },
+    "rootCauses": {
+      "late_input": "Input arrived late",
+      "input_error": "Input keyed wrongly",
+      "employee_data": "Employee data wrong",
+      "configuration": "Pay set-up wrong",
+      "rule_or_formula": "Rule or formula",
+      "missed_exception": "Exception not acted on",
+      "statutory_change": "Statutory change",
+      "other": "Other"
+    },
+    "limits": {
+      "pay": "Never changes pay, a run, a bank file or a filing.",
+      "block": "Never blocks a run: one person processing and closing is flagged only.",
+      "file": "Never files or submits: a person files with each agency and records the receipt.",
+      "model": "Calls no AI model: every check is a fixed rule."
+    },
+    "pack": {
+      "title": "Payroll audit pack",
+      "company": "Company",
+      "payPeriod": "Pay month",
+      "generated": "Generated",
+      "by": "By",
+      "runs": "Runs",
+      "runLine": "{runType} run {runSeq}: {status}, closed {closedAt}, released {releasedAt}",
+      "statutory": "Statutory and bank files",
+      "filingEvidence": "Filing evidence and receipts",
+      "findings": "Control findings",
+      "findingLine": "{control}: {count} ({open} open, {disposed} disposed)",
+      "corrections": "Corrections after the run",
+      "correctionLine": "{action} on {at}: root cause {cause}, {note}",
+      "captures": "Captures",
+      "captureLine": "{kind}: {count}",
+      "verification": "Tamper check",
+      "verified": "{count} captures verified. Chain head {head}.",
+      "notVerified": "{count} problems found. See verification.json.",
+      "anchors": "{matched} anchored in the audit log, {chained} inside its hash chain.",
+      "files": "Files",
+      "none": "None",
+      "kinds": {
+        "run": "Run",
+        "inputs_snapshot": "Inputs snapshot",
+        "payslip": "Payslip",
+        "change": "Change from draft to final",
+        "adjustment": "Manual adjustment or override",
+        "rule_version": "Rule and formula versions",
+        "exception": "Exception and disposition",
+        "approval": "Approval and close trail",
+        "bank_file": "Bank file",
+        "statutory_file": "Statutory file",
+        "filing": "Filing evidence",
+        "payslip_release": "Payslip release and opens",
+        "correction": "Post-run correction",
+        "access": "Viewed or exported",
+        "config_change": "Configuration change",
+        "control_finding": "Control finding"
+      },
+      "controls": {
+        "bank_change_before_pay_day": "Bank details changed shortly before pay day",
+        "shared_bank_account": "One bank account on two or more people",
+        "pay_after_last_day": "Pay after the last working day",
+        "pay_without_attendance": "Pay without attendance",
+        "preparer_closed_run": "Same person processed and closed a run",
+        "adjustment_without_reason": "Large manual adjustment without a reason",
+        "formula_changed_open_period": "Formula changed while a run was open"
+      },
+      "findingItem": "{control}: {who} ({state})",
+      "open": "open",
+      "unprintable": "{count} characters could not be drawn in any available font and show as '?'. The CSV and JSON files carry the exact text."
+    },
+    "administration": {
+      "title": "Settings and auditors",
+      "help": "Each change is recorded with who made it, when, and the value before and after.",
+      "bankChangeDays": "Bank change window (days before pay day)",
+      "adjustmentThreshold": "Manual adjustment amount that needs a reason",
+      "save": "Save",
+      "defaults": "Defaults until changed",
+      "version": "Version {version}",
+      "auditorsTitle": "Auditors (read-only)",
+      "none": "No auditor has access.",
+      "loginWithoutRecord": "Login without an employee record ({id})",
+      "grantedOn": "given {date}",
+      "revoke": "Revoke",
+      "login": "Login",
+      "choose": "Choose a login",
+      "grant": "Give access",
+      "auditorsHelp": "An auditor reads this company’s Audit loop evidence and audit pack, read-only, until revoked. Every grant and revocation is recorded.",
+      "preparerClosedMode": "Same login processed and closed a run",
+      "preparerClosed": {
+        "info": "Information only (no finding)",
+        "finding": "Open a finding"
+      },
+      "loosenHelp": "A bank change window of 3 to 30 days and an amount of 100.00 to 50,000.00. A shorter window, a higher amount or a finding made information loosens a control and needs a group administrator. Every change is in the month's audit pack."
+    },
+    "auditor": {
+      "readOnly": "You have read-only auditor access to the companies listed here. You can read the evidence and download the audit pack; you cannot change anything."
+    },
+    "acknowledged": {
+      "label": "Expected (standing acknowledgement)",
+      "scope": {
+        "person": "for this person",
+        "group": "for their department",
+        "company": "for the whole company"
+      },
+      "note": "Expected (standing acknowledgement): {reason}",
+      "for": "Expected",
+      "reason": "Why it is expected",
+      "reviewOn": "Review on (optional)",
+      "record": "Always expected"
+    }
+  },
+  "payrollReadiness": {
+    "todayTitle": "Before payroll on {date}",
+    "todayTitleNoDate": "Before payroll",
+    "seeAll": "See all",
+    "waitingCount": "{count, plural, one {# item is} other {# items are}} waiting for someone else to approve.",
+    "insightsTitle": "My payroll readiness",
+    "period": "{month} payroll · cut-off {date}",
+    "periodNoCutOff": "{month} payroll · your HR team can tell you the cut-off date",
+    "due": "Due {date}",
+    "range": "{from} to {to}",
+    "allDone": "Nothing is waiting on you for this payroll.",
+    "unavailable": "Some of this could not be checked just now. Try again later.",
+    "notInUse": "Payroll is not in use here, so there is nothing to get ready.",
+    "groupDone": "Nothing pending.",
+    "groupUnknown": "Could not be checked just now.",
+    "approvalsHelp": "Requests waiting for your decision before the cut-off.",
+    "notCovered": "Not checked here yet: shift swaps, roster gaps, timesheet sign-off, overtime worked but not yet applied for, and pay changes to acknowledge.",
+    "open": "Open",
+    "review": "Review",
+    "confirm": "Confirm",
+    "state": {
+      "todo": "To do",
+      "waiting": "Waiting for approval",
+      "check": "Check"
+    },
+    "status": {
+      "done": "Done",
+      "todo": "To do",
+      "waiting": "Waiting",
+      "unknown": "Could not check",
+      "off": "Not used"
+    },
+    "groups": {
+      "attendance": "Attendance",
+      "overtime": "Overtime",
+      "leave": "Leave",
+      "claims": "Claims",
+      "toil": "Replacement leave",
+      "details": "Personal and statutory details",
+      "acknowledge": "To acknowledge",
+      "approvals": "Waiting on you"
+    },
+    "fallback": {
+      "leave": "Leave",
+      "claim": "expense",
+      "someone": "a team member"
+    },
+    "kinds": {
+      "missed_clock_in": "Missing clock-in",
+      "missed_clock_out": "Missing clock-out",
+      "absent_no_leave": "Absent with no leave recorded",
+      "late_or_early": "Late arrival or early finish",
+      "attendance_request_pending": "Attendance correction waiting for approval",
+      "overtime_pending": "Overtime request waiting for approval",
+      "overtime_over_cap": "Overtime this month is over the monthly limit",
+      "leave_pending": "{label} waiting for approval",
+      "leave_unpaid": "Unpaid leave: {label}",
+      "leave_certificate_missing": "Add the supporting document for {label}",
+      "claim_deadline": "Submit your {label} claim before its receipt is too old",
+      "claim_receipt_missing": "Add the receipt to your {label} claim",
+      "claim_draft": "Submit your draft {label} claim",
+      "claim_pending": "{label} claim waiting for approval",
+      "toil_pending": "Replacement leave request waiting for approval",
+      "bank_missing": "Add your bank account",
+      "tax_number_missing": "Add your income tax number",
+      "epf_number_missing": "Add your EPF number",
+      "socso_number_missing": "Add your SOCSO number",
+      "identity_missing": "Add your IC or passport number",
+      "details_request_pending": "Your details change is waiting for HR",
+      "tp3_new_joiner": "Tell payroll about an earlier employer this year (TP3)",
+      "letter_acknowledge": "Acknowledge your letter",
+      "notice_acknowledge": "Acknowledge a notice",
+      "approve_leave": "Leave to approve · {name}",
+      "approve_leave_cancellation": "Leave cancellation to approve · {name}",
+      "approve_attendance": "Attendance or overtime to approve · {name}",
+      "approve_claim": "Claim to approve · {name}",
+      "approve_toil": "Replacement leave to approve · {name}",
+      "tp1_draft": "Send your tax relief declaration (TP1)",
+      "tp1_pending": "Your tax relief declaration (TP1) is waiting for approval",
+      "dependants_mismatch": "Check your children for tax relief: your family record lists fewer than you declared",
+      "review_acknowledge": "Acknowledge your performance review",
+      "onboarding_acknowledge": "Acknowledge your onboarding hand-over"
+    },
+    "tp3Question": {
+      "prompt": "Did you work for another employer earlier this year?",
+      "yes": "Yes",
+      "no": "No"
+    },
+    "reminder": {
+      "title": {
+        "lead5": "Payroll cut-off in 5 days",
+        "lead2": "Payroll cut-off in 2 days",
+        "lead1": "Payroll cut-off tomorrow",
+        "soon": "Payroll cut-off soon"
+      },
+      "body": {
+        "own": "You have items of your own to finish before the payroll cut-off. Open Before payroll on Today to see them.",
+        "approvals": "Requests are waiting for your decision before the payroll cut-off. Open Before payroll on Today to see them.",
+        "both": "You have items of your own to finish and requests waiting for your decision before the payroll cut-off. Open Before payroll on Today to see them."
       }
     }
   }

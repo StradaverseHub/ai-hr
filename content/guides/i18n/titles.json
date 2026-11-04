@@ -110,5 +110,26 @@
     "ta": "ஊழியர் வழிகாட்டி: உங்கள் சுயவிவரத்தைப் புதுப்பித்தல் & சுய-மதிப்பீடுகள்",
     "th": "คู่มือพนักงาน: การอัปเดตโปรไฟล์และการประเมินตนเองของคุณ",
     "vi": "Hướng Dẫn Nhân Viên: Cập Nhật Hồ Sơ & Bản Tự Đánh Giá Của Bạn"
+  },
+  "admin-ai-loops": {
+    "zh": "管理员指南：AI 中心循环",
+    "ms": "Panduan Pentadbir: Gelung Pusat AI",
+    "ta": "நிர்வாகி வழிகாட்டி: AI மையச் சுழல்கள்",
+    "th": "คู่มือผู้ดูแลระบบ: ลูปของศูนย์ AI",
+    "vi": "Hướng dẫn Quản trị viên: Vòng lặp của Trung tâm AI"
+  },
+  "admin-ai-payroll-loops": {
+    "zh": "管理员指南：AI 中心薪资周期循环",
+    "ms": "Panduan Pentadbir: Gelung Kitaran Gaji Pusat AI",
+    "ta": "நிர்வாகி வழிகாட்டி: AI மைய ஊதியச் சுழற்சிச் சுழல்கள்",
+    "th": "คู่มือผู้ดูแลระบบ: ลูปรอบเงินเดือนของศูนย์ AI",
+    "vi": "Hướng dẫn Quản trị viên: Vòng lặp chu kỳ lương của Trung tâm AI"
+  },
+  "admin-ai-quality": {
+    "zh": "管理员指南：AI 质量与学习",
+    "ms": "Panduan Pentadbir: Kualiti AI dan Pembelajaran",
+    "ta": "நிர்வாகி வழிகாட்டி: AI தரம் மற்றும் கற்றல்",
+    "th": "คู่มือผู้ดูแล: คุณภาพ AI และการเรียนรู้",
+    "vi": "Hướng dẫn quản trị: Chất lượng AI và học hỏi"
   }
 }

@@ -35,6 +35,7 @@
  * It reads `explanation.setByHand` and `item.provenance` — `statutoryProvenance`'s answer — and never
  * `statutory.adjustment` itself. Item 70b14723 extends that function; this route follows with no change.
  */
+import { recordPayrollExport } from '@/core/payroll-audit/access-log';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { payslipForReview } from '@/core/payroll-view';
@@ -199,6 +200,9 @@ export async function GET(req: Request) {
   };
 
   const file = toXlsxReport(data);
+  // AI v2 P2-2b: recorded with the file's sha256 before it is handed over (fail closed).
+  if (row) await recordPayrollExport(s, { surface: 'statutory_export', companyId: row.companyId, payPeriod: row.payPeriod, ...(row.batchId ? { batchId: row.batchId } : {}),
+    payslipId: row.id, employmentId: row.employmentId, format: 'xlsx' }, new Uint8Array(file.bytes));
   return new Response(Buffer.from(file.bytes), {
     headers: {
       'Content-Type': file.contentType,

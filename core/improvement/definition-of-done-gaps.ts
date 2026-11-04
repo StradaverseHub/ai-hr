@@ -10,18 +10,32 @@
 export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=Object.freeze({
  'corpus':[
  'action:approvals.leave.decide',
+ // AI v2 W2 (slice 2) declared the own Leave Credit request; its corpus turn is still to be written.
+ 'action:toil.replacement.request',
+ // AI Centre issue 13b gave /payroll/reports its semantic entry (pay_aggregate); its corpus turn is still to be written.
+ 'page:/payroll/reports',
+ // AI v2 W7 gave /analytics its semantic entry (workforce_metric); its corpus turn is still to be written.
+ 'page:/analytics',
  ],
  'guide,corpus':[
  'page:/personnel',
+ // AI v2 Phase 2 P2-3 gave Today (/) its semantic entry (payroll_readiness); its guide link and corpus turn are still to come.
+ 'page:/',
  ],
  'guide':[
  'page:/me/payslip',
+ // AI v2 W2 declared the own attendance correction and overtime request; their guide links are still to be written.
+ 'action:attendance.correction.request','action:attendance.overtime.request',
  ],
  'readiness':[
- 'page:/claims',
+ // AI v2 W2 declared claims.submit; the claims setup stage still has no readiness owner.
+ 'action:claims.submit','page:/claims',
+ ],
+ 'readiness,corpus':[
+ 'action:claims.cancel',
  ],
  'semantic':[
- 'action:approvals.attendance.decide','action:approvals.claim.decide','action:ess.profile.request','action:knowledge_base.article.create',
+ 'action:knowledge_base.article.create',
  'action:leave.adjustment.apply','action:notifications.email_preferences.save',
  ],
  'semantic,corpus':[
@@ -29,7 +43,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'action:attendance.missing_clock.remind','action:employees.import','action:employees.passport_expiry.remind',
  'action:employees.review_overdue.remind','action:leave.edit','action:lifecycle.acknowledgement.submit','action:lifecycle.step.chase',
  'action:org.employee_id_template.status','action:performance.checkin.cancel','action:performance.checkin.complete',
- 'action:performance.checkin.schedule','action:rewards.cancel_review','action:toil.credit.grant','action:toil.replacement.request','page:/admin/ai',
+ 'action:performance.checkin.schedule','action:rewards.cancel_review','action:toil.credit.grant','page:/admin/ai',
  'page:/admin/attendance/file-mappings','page:/admin/attendance/schedule-assignment','page:/admin/attendance/settings',
  'page:/admin/attendance/settings/overtime-patterns','page:/admin/audit','page:/admin/claims','page:/admin/claims/forms','page:/admin/claims/limits',
  'page:/admin/claims/mileage','page:/admin/claims/reimbursements','page:/admin/holidays','page:/admin/leave-config/adjustments',
@@ -40,20 +54,20 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/admin/rewards/access','page:/admin/rewards/shared','page:/admin/scheduled-actions','page:/admin/settings/email',
  'page:/admin/settings/email-templates','page:/admin/settings/employee-id','page:/admin/settings/hiring-defaults',
  'page:/admin/settings/notifications','page:/admin/settings/profile-requests','page:/admin/settings/profile-requests/rules',
- 'page:/admin/system-explorer','page:/admin/system-testing','page:/admin/users','page:/admin/work-locations/clocking','page:/analytics',
+ 'page:/admin/system-explorer','page:/admin/system-testing','page:/admin/users','page:/admin/work-locations/clocking',
  'page:/approvals','page:/approvals/history','page:/attendance','page:/attendance/breakdown','page:/attendance/clock','page:/attendance/import',
  'page:/attendance/import/logs','page:/attendance/my-roster','page:/attendance/plan-ot','page:/attendance/recompute',
  'page:/attendance/request-status','page:/attendance/requests','page:/control-tower','page:/control-tower/actions','page:/control-tower/agents',
  'page:/control-tower/exceptions','page:/control-tower/how-it-works','page:/delegations','page:/feedback','page:/knowledge-base','page:/leave/credit',
  'page:/leave/details','page:/leave/employee-balances','page:/leave/history','page:/leave/tracker','page:/lifecycle','page:/lifecycle/onboarding',
  'page:/manage/my-team','page:/me','page:/me/notifications','page:/me/performance','page:/me/tax-relief','page:/notices','page:/payroll',
- 'page:/payroll/back-pay','page:/payroll/history-import','page:/payroll/payment-submission','page:/payroll/pcb-detail','page:/payroll/reports',
+ 'page:/payroll/back-pay','page:/payroll/history-import','page:/payroll/payment-submission','page:/payroll/pcb-detail',
  'page:/payroll/setup','page:/payroll/statutory-adjustment','page:/payroll/statutory-detail','page:/payroll/statutory-forms',
  'page:/payroll/transaction-view','page:/payroll/transactions','page:/payroll/transactions/individual','page:/performance','page:/reports',
  'page:/rewards','page:/roster',
  ],
  'semantic,guide':[
- 'action:attendance.correction.request','action:attendance.overtime.request','action:employees.bank.maintain',
+ 'action:employees.bank.maintain',
  'action:employees.emergency_contact.maintain','action:employees.movement.transfer','action:multi_cycle_payroll.create_run',
  'action:org.position.archive','action:org.reporting.change','action:payroll.close','action:performance.review.acknowledge',
  'action:typed_pay_components.create',
@@ -67,7 +81,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'action:employees.workforce_profile.maintain','action:lifecycle.offboarding.case.cancel','action:lifecycle.offboarding.step.complete',
  'action:lifecycle.offboarding.step.undo','action:org.department.archive','action:org.people_general.change','action:payroll.reopen',
  'action:payroll.reset','action:performance.goal.approve','action:performance.onehr.plan.acknowledge','action:rewards.annual_review.return',
- 'action:rewards.calendar.update','action:rewards.post','action:system_testing.execution.save','page:/','page:/admin','page:/admin/attendance',
+ 'action:rewards.calendar.update','action:rewards.post','action:system_testing.execution.save','page:/admin','page:/admin/attendance',
  'page:/admin/attendance-allowance','page:/admin/attendance-allowance/new','page:/admin/attendance-policy','page:/admin/attendance-policy/rules/new',
  'page:/admin/attendance-policy/schedule','page:/admin/attendance/approval-workflow','page:/admin/attendance/approval-workflow/new',
  'page:/admin/attendance/file-mappings/new','page:/admin/attendance/new','page:/admin/attendance/schedule',
@@ -121,10 +135,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/performance/team/kpis','page:/performance/workspace','page:/reports/employee-master','page:/rewards/approvals','page:/roster/exceptions',
  'page:/roster/import','page:/system-testing','page:/tasks',
  ],
- 'semantic,readiness':[
- 'action:claims.submit',
- ],
  'semantic,readiness,corpus':[
- 'action:claims.cancel','action:claims.draft.save',
+ 'action:claims.draft.save',
  ],
 });

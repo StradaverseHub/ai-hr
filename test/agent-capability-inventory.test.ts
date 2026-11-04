@@ -117,6 +117,32 @@ describe('ADR-0151 agent capability inventory',()=>{
   }
  });
 
+ it('keeps the private case route (ADR-0173) and the loop controls as human handoffs, never AI-preparable',()=>{
+  // Written by hand: the five private-case entry points and the two loop controls.
+  const expected:Record<string,Record<string,string>>={
+   'app/me/cases/actions.ts':{openPrivateCaseAction:'handoff:private_case'},
+   'app/cases/actions.ts':{addPrivateCaseNoteAction:'handoff:private_case',setPrivateCaseStatusAction:'handoff:private_case'},
+   'app/admin/privacy/case-handlers/actions.ts':{designateCaseHandlerAction:'handoff:access_and_authentication',revokeCaseHandlerAction:'handoff:access_and_authentication'},
+   'app/control-tower/loops/actions.ts':{setLoopPauseAction:'handoff:ai_governance',setLoopSwitchAction:'handoff:ai_governance'},
+   // AI v2 P2-2b: the Audit loop's dispositions, root causes and capture are a person's, never AI-preparable.
+   'app/control-tower/loops/loop_payroll_audit/actions.ts':{acknowledgeFindingAction:'handoff:ai_governance',captureAuditNowAction:'handoff:ai_governance',disposeAuditFindingAction:'handoff:ai_governance',
+    recordCorrectionCauseAction:'handoff:ai_governance',setAuditSettingsAction:'handoff:ai_governance',
+    grantAuditReaderAction:'handoff:access_and_authentication',revokeAuditReaderAction:'handoff:access_and_authentication'},
+   // Phase 2 hardening: acknowledgements, grouped dispositions, pre-filled resolves and learned rules are a person's too.
+   'app/control-tower/loops/payroll-cycle/actions.ts':{acknowledgeCheckAction:'handoff:ai_governance',decideRuleProposalAction:'handoff:ai_governance',
+    decideThresholdProposalAction:'handoff:ai_governance',disposeSwingGroupAction:'handoff:ai_governance',recordSwingDispositionAction:'handoff:ai_governance',
+    resolveAcknowledgedBlockAction:'handoff:ai_governance',revokeAcknowledgementAction:'handoff:ai_governance',setPayrollLoopSettingAction:'handoff:ai_governance'},
+  };
+  for(const [file,entries] of Object.entries(expected)){
+   expect(actual[file]?.slice().sort(),file).toEqual(Object.keys(entries).sort());
+   expect(inventory[file],file).toEqual(entries);
+  }
+  // No other entry point in a private-case file is registered or on the backlog.
+  for(const [file,entries] of Object.entries(inventory))if(/(^|\/)cases\/|case-handlers/.test(file))
+   for(const [name,value] of Object.entries(entries))expect(value,`${file} › ${name}`).toMatch(/^handoff:/);
+  expect(AGENT_HANDOFF_REASONS).toContain('private_case');
+ });
+
  it('lets the agent principal run only Automatic specialists that exist and match its switches (ADR-0151 §4.5)',()=>{
   // The same switches migration 0672 names in its attribution read and its event stamp check.
   // WP13 (0697) replaced both policies with the same rule plus the two reminder specialists.

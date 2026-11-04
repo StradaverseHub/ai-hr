@@ -185,6 +185,10 @@ vi.mock('../app/me/actions', () => ({
 vi.mock('../app/me/request-change-card', () => ({ RequestChangeCard: () => null, pendingProposedByKey: () => new Map() }));
 // This layout fixture replaces async server slots; correction behavior is tested separately.
 vi.mock('../app/me/readiness-work', () => ({ MyReadinessWork: () => null }));
+// AI v2 W11: the private-case entry card is an async server component (its own getTranslations), which jsdom cannot
+// render; its markup and link have their own DOM test (test/private-cases-screens.dom.test.tsx). A marker stands in
+// so this layout still proves My Profile places it.
+vi.mock('@/components/private-cases/entry-cards', () => ({ PrivateCaseEntryCard: () => <div data-private-case-entry /> }));
 vi.mock('@/components/attendance-clock-button', () => ({
   AttendanceClockButton: ({ label }: { label: string }) => <button type="button">{label}</button>,
   LocationNotice: () => null,
@@ -207,6 +211,13 @@ const RECORD = {
   dependents: [],
 };
 
+// W3: Today composes above the dashboard and has its own role tests (test/today-*.dom.test.tsx); here it hands the
+// dashboard through, which resolves inside its Suspense as the streamed page finally shows it.
+vi.mock('@/components/today/today-page', async () => {
+  const React = await import('react');
+  return { TodayPage: ({ more }: { more: ReactNode }) => React.createElement(React.Fragment, null, more) };
+});
+import { resolveServerTree } from './helpers/server-tree';
 import DashboardPage from '../app/page';
 import MePage from '../app/me/page';
 
@@ -233,7 +244,7 @@ const ADMIN_LAYOUT = [
   'recentActivity',
   'noticeBoard',
 ];
-const renderDashboard = async () => wrap(await DashboardPage({ searchParams: Promise.resolve({}) }));
+const renderDashboard = async () => wrap(await resolveServerTree(await DashboardPage({ searchParams: Promise.resolve({}) })));
 const renderMe = async () => wrap(await MePage({ searchParams: Promise.resolve({}) }));
 
 /** Every number printed in `el`, normalised (commas dropped, leading zeros dropped). */
@@ -376,5 +387,6 @@ describe('My Profile approved Personnel alignment in both themes',()=>{
   const tabs=screen.getAllByRole('tab');expect(tabs).toHaveLength(11);expect(tabs[0].closest('nav')).toHaveClass('monolith:border-b');expect(tabs[0]).toHaveClass('monolith:border-ink');
   expect(screen.queryByRole('region',{name:t('me.todayHeading')})).toBeNull();expect(screen.queryByRole('button',{name:t('me.checkIn')})).toBeNull();expect(screen.queryByRole('button',{name:t('me.checkOut')})).toBeNull();
   expect(container.querySelector('input[name="employeeCode"]')).toBeNull();expect(screen.getByRole('link',{name:t('me.viewAttendanceHistory'),hidden:true})).toHaveAttribute('href','/attendance');
+  expect(container.querySelectorAll('[data-private-case-entry]')).toHaveLength(1);
  });
 });

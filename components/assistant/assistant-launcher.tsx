@@ -8,9 +8,10 @@ import { resolvePageContext, type PageArea } from '@/lib/ai/page-context';
 import {AssistantChatBoundary} from './chat-reply-boundary';
 import {ThinkingIndicator} from './thinking-indicator';
 import { askFromLauncherAction } from '@/app/assistant/launcher-actions';
-import { AI_PRODUCT_NAME, aiCentreName } from '@/lib/ai-centre/brand';
+import { aiCentreName } from '@/lib/ai-centre/brand';
+import { ASK_AI_CENTRE_EVENT, unclaimedAskQuestion } from '@/lib/command-bar-events';
 
-type Turn = { id: number; question: string; area: PageArea | null; stale?: true; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string; clarificationRequired?:true } | { ok: false; message: string } };
+type Turn = { id: number; question: string; area: PageArea | null; stale?: true; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string; clarificationRequired?:true; chatId?: string } | { ok: false; message: string } };
 
 /** The floating Assistant. Rendered only when the shell decided this login may see it (see
  * core/assistant-launcher.ts); every question still goes through the Assistant's own checks. It opens as a
@@ -20,7 +21,7 @@ type Turn = { id: number; question: string; area: PageArea | null; stale?: true;
  * launcher links to the Inbox and never reads anything itself. */
 export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { position: 'bottom-right' | 'bottom-left'; hiddenAreas: readonly PageArea[]; inboxCount?: number }) {
  const chatCopy=useTranslations('assistant.workspace.chat'),privacyNotice=chatCopy('privacy');
-  const t = useTranslations('assistant.launcher'), areas = useTranslations('assistant.launcher.areas'), tCentre = useTranslations('aiCentre.launcher');
+  const t = useTranslations('assistant.launcher'), areas = useTranslations('assistant.launcher.areas'), tCentre = useTranslations('aiCentre.launcher'), centreName = aiCentreName(useTranslations('aiCentre')('genericName'));
   const pathname = usePathname() ?? '/';
   const context = resolvePageContext(pathname);
   const [open, setOpen] = React.useState(false), [docked, setDocked] = React.useState(false);
@@ -54,11 +55,32 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
     if (followLatest.current && log.current) log.current.scrollTop = log.current.scrollHeight;
   }, [turns, open, docked]);
   // Never on the Assistant itself, outside the closed area list, or in an area the administrator hid.
-  if (pathname === '/assistant' || pathname.startsWith('/assistant/') || !context || hiddenAreas.includes(context.area)) return null;
+  const hidden = pathname === '/assistant' || pathname.startsWith('/assistant/') || !context || hiddenAreas.includes(context.area);
+  // AI v2 W4: a question typed in the command bar (lib/command-bar-events.ts) opens this panel docked and is sent as
+  // if typed here, with this page's context and this panel's chat. A panel that cannot continue starts a new chat
+  // (as its New chat would); one still answering tells the bar it is busy. Where the panel is hidden it takes nothing.
+  const sendRef = React.useRef<(typed: string, fresh: boolean) => void>(() => {});
+  const uncertainRef = React.useRef(uncertain); uncertainRef.current = uncertain;
+  React.useEffect(() => {
+    if (hidden) return;
+    const onAsk = (event: Event) => {
+      const claim = unclaimedAskQuestion(event);
+      if (!claim) return;
+      if (inFlight.current) { claim.detail.result = 'busy'; return; }
+      claim.detail.result = 'sent';
+      const fresh = uncertainRef.current;
+      if (fresh) { pageGeneration.current++; previousExchange.current = null; awaitingClarification.current = null; setUncertain(false); setTurns([]); }
+      followLatest.current = true; setOpen(true); setDocked(true);
+      sendRef.current(claim.question, fresh);
+    };
+    window.addEventListener(ASK_AI_CENTRE_EVENT, onAsk);
+    return () => window.removeEventListener(ASK_AI_CENTRE_EVENT, onAsk);
+  }, [hidden]);
+  if (hidden) return null;
   const close = () => setOpen(false);
-  async function send(clarification?:{id:string;answer:string}) {
-    const text = (clarification?.answer??question).trim();
-    if (!text || inFlight.current||uncertain) return;
+  async function send(clarification?:{id:string;answer:string}, typed?:string, fresh=false) {
+    const text = (clarification?.answer??typed??question).trim();
+    if (!text || inFlight.current||(uncertain&&!fresh)) return;
     inFlight.current = true;
     const id = ++nextTurnId.current;
     const generation = pageGeneration.current;
@@ -66,7 +88,7 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
     const clarificationId=clarification?.id??awaitingClarification.current;
     followLatest.current = true;
     setTurns(list => [...list, { id, question: text, area: context?.area ?? null }]);
-    if(!clarification)setQuestion(''); setPending(true);
+    if(!clarification&&typed===undefined)setQuestion(''); setPending(true);
     try {
       const reply = await askFromLauncherAction({ question: text, path: pathname,
         ...(clarificationId?{clarificationExchangeId:clarificationId}:previous ? { previousExchangeId: previous.id, previousConversationToken: previous.token } : {}) });
@@ -81,9 +103,10 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
       setTurns(list => list.map(turn => turn.id === id ? { ...turn, reply: { ok: false, message: t('failed') } } : turn));
     } finally { inFlight.current = false; setPending(false); }
   }
+  sendRef.current = (typed, fresh) => { void send(undefined, typed, fresh); };
   const side = position === 'bottom-left' ? 'left-4' : 'right-4';
   return <AssistantChatBoundary value={{pending:pending||uncertain,setQuestionDraft:answer=>{if(inFlight.current||uncertain)return;awaitingClarification.current=null;setQuestion(answer);box.current?.focus();},clarify:async(id,answer)=>{await send({id,answer});},setClarificationDraft:(id,answer)=>{if(inFlight.current||uncertain)return;awaitingClarification.current=id;setQuestion(answer);box.current?.focus();}}}>
-    {!open && <button ref={button} type="button" onClick={() => { followLatest.current = true; setOpen(true); }} aria-label={AI_PRODUCT_NAME ? tCentre('open', { name: AI_PRODUCT_NAME }) : t('open')} aria-haspopup="dialog"
+    {!open && <button ref={button} type="button" onClick={() => { followLatest.current = true; setOpen(true); }} aria-label={tCentre('open', { name: centreName })} aria-haspopup="dialog"
       className={`fixed bottom-4 ${side} z-40 inline-flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none`}>
       <Sparkles aria-hidden className="size-5"/>
     </button>}
@@ -96,7 +119,7 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
         <div className="flex min-w-0 items-center gap-3">
           <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Sparkles aria-hidden className="size-5"/></span>
           <div className="min-w-0">
-            <h2 id={titleId} className="text-sm font-semibold">{aiCentreName(t('title'))}</h2>
+            <h2 id={titleId} className="text-sm font-semibold">{centreName}</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">{t('identity')}</p>
             {context && <p className="mt-1 text-xs text-muted-foreground">{t('about', { area: areas(context.area) })}</p>}
           </div>
@@ -109,7 +132,7 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
         </div>
       </header>
       {inboxCount !== undefined && <InboxLink count={inboxCount}/>}
-      <div ref={log} role="log" aria-label={aiCentreName(t('title'))} aria-live="polite" aria-relevant="additions text" onScroll={event => {
+      <div ref={log} role="log" aria-label={centreName} aria-live="polite" aria-relevant="additions text" onScroll={event => {
         const element = event.currentTarget;
         followLatest.current = element.scrollHeight - element.clientHeight - element.scrollTop <= 64;
       }} className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-5 text-sm">
@@ -123,7 +146,8 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
             {!turn.reply ? <ThinkingIndicator label={t('working')}/>
               : !turn.reply.ok ? <p role="alert">{turn.reply.message}</p>
               : <div className="space-y-2">{turn.reply.answer ?? <p className="text-muted-foreground">{t('noCard')}</p>}
-                  <Link href={`/assistant?e=${encodeURIComponent(turn.reply.exchangeId)}`} className="inline-flex min-h-11 items-center text-xs font-medium text-primary hover:underline">{t('openInAssistant')}</Link></div>}
+                  {/* AI Centre issue 18: a stored chat opens in Ask and continues there; a closed-grammar exchange opens as before. */}
+                  <Link href={turn.reply.chatId ? `/assistant?chat=${encodeURIComponent(turn.reply.chatId)}` : `/assistant?e=${encodeURIComponent(turn.reply.exchangeId)}`} className="inline-flex min-h-11 items-center text-xs font-medium text-primary hover:underline">{t('openInAssistant')}</Link></div>}
           </fieldset>
         </div>)}
       </div>
@@ -144,12 +168,13 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
   </AssistantChatBoundary>;
 }
 
-/** AI centre: the floating chat's way to the Inbox. Its own translations, so a login without the count
- * (a shell that passes none) renders nothing here. */
+/** AI centre: the floating chat's way to what waits on the person: Today at `/`, which replaced the AI Centre
+ * Inbox (AI v2 Phase 1). Its own translations, so a login without the count (a shell that passes none) renders
+ * nothing here. */
 function InboxLink({ count }: { count: number }) {
   const t = useTranslations('aiCentre.launcher');
-  return <Link href="/assistant?view=inbox" className="mx-4 mt-3 flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-primary/10 px-3 text-sm hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-    <Inbox aria-hidden className="size-4 text-primary"/><span className="font-medium">{t('inbox')}</span>
+  return <Link href="/" className="mx-4 mt-3 flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-primary/10 px-3 text-sm hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <Inbox aria-hidden className="size-4 text-primary"/><span className="font-medium">{t('today')}</span>
     {count > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[0.6875rem] font-semibold leading-none tabular-nums text-primary-foreground"><span aria-hidden>{count}</span><span className="sr-only">{t('inboxCount', { count })}</span></span>}
     <ChevronRight aria-hidden className="ml-auto size-4 text-muted-foreground"/></Link>;
 }

@@ -689,3 +689,176 @@ Rewards integration. The private comparison retains the exact changed-file inven
 Only the 26 source digest values move. Existing reviewer, evidence and review time fields remain
 intact. This is a source binding decision under the existing approved purposes. It does not add a
 provider purpose, enable pending approvals, or renew agent evaluation or promotion evidence.
+
+## AI Centre round binding
+
+The AI Centre round on claude/noveri-staging-fix (code eae7be76824afcf460019eada434fb9454e11c62, which fast-forwards from main
+dfbcf85b1) carries:
+- the 3 November staging-acceptance fixes and spec v9 to v12;
+- stored chats (issue 8, migration 0952, not provider-visible);
+- pay averages (13b);
+- a leave application prepared from chat (10, with leave types named in six languages);
+- the Azure content-filter fix (19);
+- the role description, prepared-wording and admin pay-view fixes (20 to 22).
+
+The provider-data closure moves from 1255 files / `e8692840739a125c8f5f04c4be9a43cc6022bd2f81533a747a76f414d5716913` (the
+152292f7 binding on main dfbcf85b1) to 1260 files / `e5db5f47017219e3f2aa27957d60a838253f817321e1ec58ef50ffaf73500a5b`. That is
+5 files added, 0 removed and 19 changed. The packet, with every changed source and what the model receives, is
+docs/reviews/teras-whole-stack-20261102/binding-packet-ai-centre-round.md at 50e1cb033.
+
+No new contract is added. The reviewed data scope of `teras_harness_turn_v1` extends to four things:
+- the `pay_aggregates` read, for payroll-access callers only: headcount, average and median of basic pay as bands, company
+  and department names as minimum, and small, complement, complementary and identical-value groups withheld;
+- the caller's role note: role kinds and a company count, with no names or ids;
+- the admin pay-view destination note: a page path the caller can already open, with no figure or identifier;
+- the caller's own eligible leave-type options for leave.apply.
+
+The person's screened words now carry the neutral label of spec v12. The proposal, the leave service and every reply check
+still decide.
+
+The repository owner approved that exact packet directly in the coordinator session teras-noveri-handoff-54e696 ("I
+approve the packet, but the release needs to wait for the other sessions in codex to finish releasing"), answering the
+session's question to approve the AI Centre round binding packet at fingerprint e5db5f47. The session recorded the
+message on receipt at 2026-11-03T01:08:56Z. The approval covers this closure only and does not transfer to a changed one.
+The owner's condition stands: the staging release waits until the Codex sessions' releases have finished.
+
+The 24 historical approved records receive only the new sourceDigest. Their status, reviewer, evidence and reviewedAt are
+preserved byte-for-byte, and both pending records stay byte-identical. `teras_harness_turn_v1` receives the new
+sourceDigest, keeps reviewer human:zenlam repository-owner provisional, and takes evidence #ai-centre-round-binding and
+reviewedAt 2026-11-03T01:08:56Z from this approval. The module-agent manifest is regenerated last, and both `--check`
+commands are then rerun. Counsel's advice (ADR-0169 §5.1) is still required before any real tenant data reaches a
+provider. Staging uses fictional data only.
+
+This record is not a runtime PASS, staging acceptance or deployment authorisation.
+
+## Phase 1 release binding
+
+The AI v2 Phase 1 release candidate on `claude/aiv2-phase1-release` is code
+de097b2efc88aa9a0a441d4cbaf767662b11c648. It fast-forwards from main 848c7be36, 189 commits ahead and 0 behind, and carries:
+- the AI Centre revamp: Today, Ask everywhere, the capability catalogue;
+- prepared actions with Confirm, Edit and Discard;
+- the Why? panels, workforce metrics and pay aggregates;
+- stored chats and private cases;
+- the five Prepare-only loops and letter requests (migrations 2000–2003);
+- spec v22.
+
+The provider-data closure moves from 1292 files / `66cf4753ea58c94f21d00b65e489f06d49d864360b99d775eb1ac02e8b4dcf43` (main
+848c7be36) to 1351 files / `b96772fea09e857c01e8de90fdc39e6bbe7ad2b03eebc7c530a57bc12f357a32`: 59 files added, 0 removed and 48
+changed. The packet, with every changed source and what the model receives, is
+docs/reviews/teras-whole-stack-20261102/binding-packet-phase1-release.md, committed with this binding.
+
+The "AI Centre round binding" section above was never bound on main. Its approval (fingerprint e5db5f47) does not
+transfer. This section supersedes it, and the packet re-reviews that round's data scope in full.
+
+No new contract is added. The reviewed data scope of `teras_harness_turn_v1` extends to what the packet lists in its
+section 2. In summary:
+- group figures as bands, with groups under 5 withheld;
+- other people's names and dates as placeholders only;
+- company and department names for those who already see them;
+- product vocabulary;
+- import row counts as bands, never file contents.
+
+Identity, bank and phone numbers, record ids, other people's free text, letter and private-case content, and any one
+person's pay never leave the product. The proposal, the owner services and every reply check still decide. Nothing
+applies without a person's Confirm.
+
+The repository owner approved that exact packet directly in the coordinator session teras-noveri-handoff-54e696 ("I
+approve it"), answering the session's question to approve the Phase 1 binding packet for staging. The session recorded
+the message on receipt at 2026-11-03T17:21:45Z. The approval covers this closure only and does not transfer to a changed
+one.
+
+The 25 historical approved records receive only the new sourceDigest. Their status, reviewer, evidence and reviewedAt are
+preserved byte-for-byte, and both pending records stay byte-identical. `teras_harness_turn_v1` receives the new
+sourceDigest, keeps reviewer human:zenlam repository-owner provisional, and takes evidence #phase-1-release-binding and
+reviewedAt 2026-11-03T17:21:45Z from this approval. The module-agent manifest is regenerated last, and both `--check`
+commands are then rerun.
+
+Counsel's advice (ADR-0169 §5.1) is still required before any real tenant data reaches a provider. Staging uses
+fictional data only. Production remains held pending the owner's separate request.
+
+This record is not a runtime PASS, staging acceptance or deployment authorisation.
+
+## AI v2 release binding
+
+The AI v2 release candidate on `claude/aiv2-phase2-integration` is code f9fdccd615f15c78bca295bcfb2ad68f3c57b546. It merges
+main 3b3f94ccd and carries:
+- **Phase 1:** the AI Centre revamp, with the 4 November pre-release review fixes.
+- **Phase 2:**
+  - the autonomy ladder;
+  - the Pre-salary, Salary payroll and Audit loops;
+  - the Before payroll checklist;
+  - the HR capacity ledger;
+  - the Living Handbook;
+  - learning loops and AI quality;
+  - letters custody.
+- **The spec:** v23, with the `operations_status` and `explain_why` topic tools.
+- **Migrations:** 2000–2011.
+
+The provider-data closure moves to 1413 files / `fd335f2306be43959ea9059a95275e329896896a0c2cf09005072c725ac36d71`:
+- from 1292 files / `66cf4753ea58c94f21d00b65e489f06d49d864360b99d775eb1ac02e8b4dcf43`, the binding on main 3b3f94ccd: 121 files
+  added, 0 removed and 67 changed;
+- from `b96772fea09e857c01e8de90fdc39e6bbe7ad2b03eebc7c530a57bc12f357a32`, the Phase 1 binding on this branch.
+
+The packet, with every changed source and what the model receives, is
+docs/reviews/teras-whole-stack-20261102/binding-packet-ai-v2-release.md, committed with this binding.
+`core/handbook/provider-model.ts` is now a closure root.
+
+**One new contract: `handbook_policy_values_v1`** (feature hr_assistant, outgoing class `authored_policy_text`).
+- **What goes out:** when an administrator presses "Read the values", the administrator's authored policy text goes out
+  with the list of existing settings it may set. Text containing an identifier is refused.
+- **What comes back:** the model returns proposed values with their exact source spans.
+- **What decides:** a person confirms each value, a second administrator who did not contribute approves a settings
+  change, and the owner settings service applies it.
+
+**The extended data scope of `teras_harness_turn_v1`** is listed in the packet's section 2:
+- loop and payroll-cycle states and counts as bands, for administrators;
+- the person's own Before payroll items, with no pay figure;
+- approved policy paragraphs, with identifiers replaced.
+
+No earlier approval transfers: not the Phase 1 binding (b96772fe), not the unbound r2 packet (eab99545), and not the AI
+Centre round (e5db5f47).
+
+The repository owner approved that exact packet directly in the coordinator session teras-noveri-handoff-54e696 ("I
+approve it"), answering the session's question to approve the combined AI v2 binding packet. The session recorded the
+message on receipt at 2026-11-04T03:38:57Z. The approval covers this closure only and does not transfer to a changed
+one.
+
+**Records:**
+- The 25 historical approved records receive only the new sourceDigest. Their status, reviewer, evidence and
+  reviewedAt are preserved byte-for-byte, and both pending records stay byte-identical.
+- `teras_harness_turn_v1` and the new `handbook_policy_values_v1` record take the new sourceDigest, reviewer
+  human:zenlam repository-owner provisional, evidence #ai-v2-release-binding and reviewedAt 2026-11-04T03:38:57Z.
+- The module-agent manifest is regenerated last, and both `--check` commands are then rerun.
+
+Counsel's advice (ADR-0169 §5.1) is still required before any real tenant data reaches a provider. Staging uses
+fictional data only. Production remains held pending the owner's separate request.
+
+This record is not a runtime PASS, staging acceptance or deployment authorisation.
+
+## AI v2 release binding r2
+
+This supersedes the "AI v2 release binding" section above (fd335f23, commit 4ba3b25a8). The full release gate
+(run 41768537723) refused that candidate before planning or building: "Unreviewed AI manifest generator or scope:
+scripts/ai-provider-data-source-manifest.mjs". The gate admits only the fingerprint generator as reviewed on main.
+
+Commit 8fa316bad restores main's generator, withdrawing the closure root `core/handbook/provider-model.ts` that
+e69411ab1 had added. No product code changed. The handbook call site is outside the closure, as at 2109062e8. The
+contract's descriptor, gateway and adjudicator, which fix what can be sent, stay inside it.
+
+The provider-data closure for code 8fa316badc9df90812d879ed1281093fff3dee71 is 1412 files /
+`5212672bfe31dfa6c97445eb545088d58e0414caa5a4b4120dc3838419c54691`. The data scope, the new `handbook_policy_values_v1`
+contract and everything else are as stated in the section above and in the packet, including its "Reissue r2" note.
+
+The repository owner approved the release at this new fingerprint directly in the coordinator session
+teras-noveri-handoff-54e696 ("I approve it"), answering the session's question to approve the AI v2 release at
+fingerprint 5212672b. The session recorded the message on receipt at 2026-11-04T03:51:52Z. The approval covers this closure only.
+
+**Records:**
+- All 27 approved records take the new sourceDigest.
+- `teras_harness_turn_v1` and `handbook_policy_values_v1` take evidence #ai-v2-release-binding-r2 and reviewedAt 2026-11-04T03:51:52Z.
+- Every other record is unchanged apart from its digest, and both pending records stay byte-identical.
+- The module-agent manifest is regenerated last.
+
+Counsel's advice (ADR-0169 §5.1) is still required before any real tenant data reaches a provider. Staging uses
+fictional data only. Production remains held. This record is not a runtime PASS, staging acceptance or deployment
+authorisation.

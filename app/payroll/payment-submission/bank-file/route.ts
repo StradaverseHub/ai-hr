@@ -1,3 +1,4 @@
+import { recordPayrollExport } from '@/core/payroll-audit/access-log';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { withTenant } from '@/db/client';
@@ -112,6 +113,8 @@ export async function POST(req: Request) {
   try {
     const file = await auth.service.download(auth.s, parsed.data);
     if (!/^[A-Za-z0-9._-]{1,160}$/.test(file.filename)) throw new Error('Invalid filename');
+    // AI v2 P2-2b: the bank file handed over is recorded with its sha256 before it leaves (fail closed).
+    await recordPayrollExport(auth.s, { surface: 'bank_file', companyId: parsed.data.companyId, payPeriod: parsed.data.periodKey, format: 'txt', detail: parsed.data.formatId }, file.content);
     return new Response(file.content, { headers: { ...headers, 'Content-Type': 'text/plain; charset=us-ascii', 'Content-Disposition': `attachment; filename="${file.filename}"`, 'X-Content-Type-Options': 'nosniff' } });
   } catch (error) { return errorResponse(error); }
 }

@@ -15,6 +15,15 @@ import {DISCLOSURE_CLASSES,type CapabilityRow,type ConnectToolSpec,type Disclosu
 import {EXPLAIN_ENTITIES,EXPLAIN_READS} from './entities-explain';
 import {SETUP_ENTITIES,SETUP_READS} from './entities-setup';
 import {RECOMMEND_ENTITIES} from './entities-recommend';
+import {METRIC_ENTITIES,METRIC_READS} from './entities-metrics';
+import {CATALOGUE_ENTITIES} from './entities-catalogue';
+import {IMPORT_ENTITIES} from './entities-imports';
+import {WHY_ENTITIES,WHY_READS} from './entities-why';
+import {LOOP_ENTITIES,LOOP_READS} from './entities-loops';
+import {PAYROLL_READINESS_ENTITIES,PAYROLL_READINESS_READS} from './entities-payroll-readiness';
+import {PAYROLL_LOOP_ENTITIES,PAYROLL_LOOP_READS} from './entities-payroll-loops';
+import {HANDBOOK_ENTITIES,HANDBOOK_READS} from './entities-handbook';
+import {QUALITY_ENTITIES,QUALITY_READS} from './entities-quality';
 
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 const object=(properties:Record<string,unknown>,required:string[]=Object.keys(properties)):AiJsonSchema=>({type:'object',properties,required,additionalProperties:false});
@@ -68,7 +77,9 @@ export function contextToolSpecs():readonly AiToolSpec[]{
 }
 
 const JSON_TYPE:Readonly<Record<SemanticField['type'],string>>={id:'string',code:'string',text:'string',name:'string',label:'string',date:'string',datetime:'string',
- time:'string',period:'string',number:'number',integer:'integer',boolean:'boolean',enum:'string',list:'array',object:'object'};
+ time:'string',period:'string',number:'number',integer:'integer',boolean:'boolean',enum:'string',list:'array',object:'object',
+ // AI v2 Phase 2 P2-5: an approved, published policy paragraph (./types.ts published_text).
+ published_text:'string'};
 function outputProperty(field:SemanticField):Record<string,unknown>{
  const tag={'x-teras-disclosure':field.disclosure,description:field.meaning};
  if(field.disclosure==='bands')return{type:'string',...tag,description:field.meaning+' Released as a band, restored locally.'};
@@ -104,16 +115,35 @@ export function connectToolSpecs():readonly ConnectToolSpec[]{
 export const referencedPages=():readonly string[]=>Object.freeze([...new Set([...SEMANTIC_ENTITIES.map(entity=>entity.page),...SEMANTIC_ACTIONS.map(action=>action.reviewRoute)])]);
 
 /** ADR-0170 step 4 — the model as the Teras harness reads it: the declared entities (step 4's field additions
- * are declared in ./entities.ts since integration), plus the explainer and setup co-pilot entities. The
+ * are declared in ./entities.ts since integration), plus the explainer, setup co-pilot, step 5 and pay-average entities. The
  * production catalogue outputs above are unchanged; the Teras harness disclosure (disclosure.ts) discloses by these. */
 let terasModel:readonly SemanticEntity[]|undefined;
 export function terasEntities():readonly SemanticEntity[]{
- terasModel??=freeze([...SEMANTIC_ENTITIES,...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...RECOMMEND_ENTITIES]);
+ // AI v2 W1 appends the capability catalogue (./entities-catalogue.ts), disclosed for the harness's product_capabilities.
+ // AI v2 W5 appends the pay difference and claim limit explainers (./entities-why.ts).
+ // AI v2 slice 3 appends the chat import (./entities-imports.ts), disclosed for the harness's prepare_import.
+ // AI v2 W8 appends the loops overview (./entities-loops.ts), for administrators.
+ terasModel??=freeze([...SEMANTIC_ENTITIES,...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...RECOMMEND_ENTITIES,...METRIC_ENTITIES,...CATALOGUE_ENTITIES,...WHY_ENTITIES,...IMPORT_ENTITIES,...LOOP_ENTITIES,
+  // AI v2 Phase 2 P2-3 appends the "Before payroll" checklist (./entities-payroll-readiness.ts).
+  ...PAYROLL_READINESS_ENTITIES,
+  // AI v2 Phase 2 (wave 1 integration) appends the payroll-cycle loop pages (./entities-payroll-loops.ts).
+  ...PAYROLL_LOOP_ENTITIES,
+  // AI v2 Phase 2 P2-5 appends the Living Handbook's approved policies (./entities-handbook.ts).
+  ...HANDBOOK_ENTITIES,
+  // AI v2 Phase 2 P2-6 appends AI quality (./entities-quality.ts).
+  ...QUALITY_ENTITIES]);
  return terasModel;
 }
 export const terasEntity=(id:EntityId):SemanticEntity=>{const entity=terasEntities().find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};
-/** The step 4 capabilities: harness-only reads, never in the production catalogue. */
-export const TERAS_READS:readonly SemanticRead[]=Object.freeze([...EXPLAIN_READS,...SETUP_READS]);
+/** The step 4 capabilities and the governed pay averages (issue 13b): harness-only reads, never in the production catalogue. */
+// AI v2 W5 appends the pay difference and claim limit explainers; AI v2 W8 the loops overview.
+export const TERAS_READS:readonly SemanticRead[]=Object.freeze([...EXPLAIN_READS,...SETUP_READS,...METRIC_READS,...WHY_READS,...LOOP_READS,
+ // AI v2 Phase 2 P2-3 appends my_payroll_readiness; the wave 1 integration the payroll-cycle loop reads.
+ ...PAYROLL_READINESS_READS,...PAYROLL_LOOP_READS,
+ // AI v2 Phase 2 P2-5 appends my_policy_handbook.
+ ...HANDBOOK_READS,
+ // AI v2 Phase 2 P2-6 appends ai_quality_summary.
+ ...QUALITY_READS]);
 let terasSpecs:readonly AiToolSpec[]|undefined;
 export function terasToolSpecs():readonly AiToolSpec[]{
  terasSpecs??=freeze(TERAS_READS.map(read=>({name:read.name,description:describe(read,terasEntity(read.entity)),inputSchema:inputSchema(read)})));

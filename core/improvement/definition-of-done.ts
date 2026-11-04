@@ -15,6 +15,17 @@
  * nothing from test/. */
 
 export const DONE_REQUIREMENTS=Object.freeze(['semantic','guide','readiness','corpus'] as const);
+/** Private by design: no AI semantic surface. Pages listed here are exempt from the semantic and corpus requirements
+ * only, because the AI must never read them; they still need a guide link (and a readiness owner where their module
+ * has a setup stage), and stay linkable pages. Not a gap list: test/definition-of-done-registry.test.ts proves each
+ * has no semantic entity, no read and no tool that names it, so the exemption is a guard. Each entry gives its reason. */
+export const PRIVATE_BY_DESIGN:Readonly<Record<string,string>>=Object.freeze({
+ '/me/cases':'ADR-0173: the AI never sees case words.',
+ '/me/cases/new':'ADR-0173: the AI never sees case words.',
+ '/cases':'ADR-0173: the AI never sees case words.',
+ '/admin/privacy/case-handlers':'ADR-0173: the AI never sees case words.',
+});
+const privateByDesign=(path:string)=>Object.hasOwn(PRIVATE_BY_DESIGN,path);
 export type DoneRequirement=(typeof DONE_REQUIREMENTS)[number];
 export type DoneInputs=Readonly<{
  actions:readonly Readonly<{id:string;module:string;reviewRoute:string;nativeScreen:string;evaluationCases:readonly string[]}>[];
@@ -57,8 +68,9 @@ export function definitionOfDoneGaps(inputs:DoneInputs):Readonly<Record<string,r
    corpus:inputs.corpus.some(turn=>turn.ideal.mode==='propose'&&turn.ideal.action===action.id)||action.evaluationCases.some(id=>caseIds.has(id))});
  }
  for(const page of inputs.pages){
-  record('page:'+page.path,{semantic:inputs.semanticPages.has(page.path),guide:guided([page.path]),readiness:ready(page.module),
-   corpus:inputs.corpus.some(turn=>(turn.ideal.reads??[]).some(read=>inputs.readPages.get(read)===page.path)
+  const exempt=privateByDesign(page.path);
+  record('page:'+page.path,{semantic:exempt||inputs.semanticPages.has(page.path),guide:guided([page.path]),readiness:ready(page.module),
+   corpus:exempt||inputs.corpus.some(turn=>(turn.ideal.reads??[]).some(read=>inputs.readPages.get(read)===page.path)
     ||(turn.ideal.mode==='propose'&&!!turn.ideal.action&&actionRoute.get(turn.ideal.action)===page.path))});
  }
  return Object.freeze(Object.fromEntries(Object.entries(gaps).sort(([a],[b])=>a.localeCompare(b)).map(([key,value])=>[key,Object.freeze(value)])));

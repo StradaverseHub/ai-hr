@@ -18,7 +18,7 @@ import { aiManagementHref, availableAiManagementSections, type AiManagementSecti
 import { aiInventoryView, aiManagementAlerts, aiRunHistory } from '@/core/ai-inventory';
 import { AI_RUN_PAGE_SIZE } from '@/lib/ai/ai-inventory';
 import { AiInventorySection } from './inventory-section';
-import { AiCentreSubnav, AiCentreTabs } from '@/components/ai-centre/centre-tabs';
+import { AiCentreGroupTabs, AiCentreSubnav } from '@/components/ai-centre/centre-tabs';
 import { adminGroupOf } from '@/lib/ai-centre/centre-nav';
 import { BUILT_IN_PLACEMENT, FEATURE_PLACEMENT, WORKER_FAMILIES, groupByFamily } from '@/lib/ai-centre/worker-families';
 import type { AgentStatus } from '@/core/control-domains';
@@ -45,7 +45,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   // Provider setup is tenant-wide (getAiConfigView refuses a company administrator).
   const sections = availableAiManagementSections({spend:!!view.spend,provider:isGroupAdmin(s)});
   if(!sections.includes(section)) redirect(aiManagementHref('overview'));
-  // AI centre: these sections are the administrator tabs Workers, Setup, and Spend and providers. The
+  // AI centre: these sections are Administration's Workers, Setup, and Spend and providers. The
   // guard is unchanged (requireAdmin in the layout and on every page); only the chrome is shared.
   const group = adminGroupOf(section) ?? 'setup';
   const tc = await getTranslations('aiCentre');
@@ -176,7 +176,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const filtered = !!(runFilter.state||runFilter.feature);
   const defaultUse = {daily:{used:0,limit:view.userDefault?.dailyRequests??null,level:null},tokens:{used:0,limit:view.userDefault?.monthlyTokens??null,level:null},enabled:view.userDefault?.enabled!==false,maxConcurrent:view.userDefault?.maxConcurrent??null};
   return <div className={pageWideCls}>
-    <AiCentreTabs active={group} isAdmin />
+    <AiCentreGroupTabs group="administration" active={group} payroll={false} />
     <PageHeader title={tc(`titles.${group}`)} description={tc(`descriptions.${group}`)}/>
     <AiCentreSubnav group={group} active={section==='orchestrator'?'overview':section} available={sections} hrefOf={aiManagementHref}/>
     {/* Provider and Assistant pages own their refusal wording; elsewhere the banner shows owned sentences. */}

@@ -112,7 +112,11 @@ describe('after Remove: a message naming the bank and the last four', () => {
       .from(schema.domainEvent)
       .where(and(eq(schema.domainEvent.aggregateId, bp.id), eq(schema.domainEvent.eventType, 'company-bank-profile.removed')));
     expect(ev, 'the removal was logged').toBeTruthy();
-    expect(JSON.stringify(ev.payload)).not.toContain('5678');
+    // Record ids are random UUIDs and may contain the digits by chance (run 41640639040: a profile id a25678f3-…), so
+    // they are blanked before looking for any part of the account number.
+    const redacted = JSON.stringify(ev.payload).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<uuid>');
+    expect(redacted).not.toContain('5678');
+    expect(redacted).not.toContain('1234');
   });
 
   it('nothing matched (an id already gone) keeps the bare "Removed" rather than naming an account', async () => {

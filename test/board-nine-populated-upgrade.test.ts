@@ -1,4 +1,5 @@
-/** Exact post-Noveri populated upgrade, on a disposable hosted localhost database only.
+/** Exact post-Noveri populated upgrade, on a disposable hosted localhost database only: the 648-entry baseline, then
+ * staging's 656-entry main ledger, then the AI v2 Phase 1 migrations 2000-2003, then the AI v2 Phase 2 migrations 2004-2011.
  * Source bytes are pinned independently; this supplies no staging acceptance or AI approval. */
 import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -35,9 +36,25 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   {tag:'0950_contract_management',when:1793330000350},
   {tag:'0951_payroll_reprocess_correction_lineage',when:1793330000351},
   {tag:'0953_lifecycle_service_info_intents',when:1793330000353},
-  {tag:'1500_employment_helper_tenant_pin',when:1793330000900},
-  {tag:'1501_company_tenant_fk_not_valid',when:1793330000901},
-  {tag:'1502_company_tenant_fk_validate',when:1793330000902},
+  // AI v2 Phase 1 (claude/aiv2-phase1-release): the AI Centre block 2000-2019, above main's applied 0953.
+  {tag:'2000_teras_chats',when:1793330001400},
+  {tag:'2001_private_cases',when:1793330001401},
+  {tag:'2002_teras_loops',when:1793330001402},
+  {tag:'2003_letter_requests',when:1793330001403},
+  // AI v2 Phase 2 (claude/aiv2-phase2-integration): the same block, after Phase 1.
+  {tag:'2004_teras_loop_autonomy',when:1793330001404},
+  {tag:'2005_teras_payroll_cycle_loops',when:1793330001405},
+  {tag:'2006_payroll_audit_loop',when:1793330001406},
+  {tag:'2007_teras_capacity_baseline',when:1793330001407},
+  {tag:'2008_own_payroll_cut_off',when:1793330001408},
+  {tag:'2009_teras_living_handbook',when:1793330001409},
+  {tag:'2010_teras_learning_loops',when:1793330001410},
+  // AI v2 Phase 2 hardening (claude/aiv2-p2h-loops-hardening): payroll loops, audit and checklist.
+  {tag:'2011_payroll_loops_hardening',when:1793330001411},
+  // ADR-0174 tenant-isolation hardening, above the AI Centre block.
+  {tag:'2100_employment_helper_tenant_pin',when:1793330001500},
+  {tag:'2101_company_tenant_fk_not_valid',when:1793330001501},
+  {tag:'2102_company_tenant_fk_validate',when:1793330001502},
  ]);
  expect(hash(readFileSync('db/migrations/0935_password_account_unlock.sql'))).toBe('3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa');
  expect(hash(readFileSync('db/migrations/0946_draft_creation_cohort_custody.sql'))).toBe('cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390');
@@ -98,9 +115,13 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   await storage.client`update employee_draft set data=${JSON.stringify(historicalData)}::jsonb where id=${draft}`;
   // The original historical row is present at the upgrade boundary; the mutation above is preflight only.
   const upgradeNative=await native();
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  const afterLedger=await ledger();expect(afterLedger).toHaveLength(659);expect(afterLedger.slice(0,648)).toEqual(beforeLedger);
-  expect(afterLedger.slice(648).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
+  // Staging's ledger first: main 848c7be36's complete 656-entry journal through 0953, as staging runs it.
+  const staging=journal.entries.slice(0,656);expect(staging.at(-1)!.tag).toBe('0953_lifecycle_service_info_intents');
+  for(const row of staging.slice(boundary))copyFileSync('db/migrations/'+row.tag+'.sql',join(folder,row.tag+'.sql'));
+  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:staging}));
+  await migrate(storage.db,{migrationsFolder:folder});
+  const stagingLedger=await ledger();expect(stagingLedger).toHaveLength(656);expect(stagingLedger.slice(0,648)).toEqual(beforeLedger);
+  expect(stagingLedger.slice(648).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
    {hash:'3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa',created_at:'1793330000335'},
    {hash:'cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390',created_at:'1793330000346'},
    {hash:'f7a1e3725019d8ce09052efb3b3fe1763190622052b4f826a678f8231cf8914e',created_at:'1793330000347'},
@@ -109,10 +130,52 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
    {hash:'84bc3e3a907118e2c6806e863c63544df061b49dbb9b51fcd4fe8f85ffcef8ac',created_at:'1793330000350'},
    {hash:'b65a8adc2f45165fb2bdb41b30d4ca6eeb7f7b44ef2539bcdecc7efde0322057',created_at:'1793330000351'},
    {hash:'6f71e2fe862f86c836026f3e07647ca29b913dd34b2171c98a033b43da0afa89',created_at:'1793330000353'},
-   {hash:'f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a',created_at:'1793330000900'},
-   {hash:'42ea5f55990bca4ff885b9aa1b0d5688653081d43aacd5b5639c765d4b916743',created_at:'1793330000901'},
-   {hash:'d6746ac5574d6b336f318af20fd4244863869eca0aa9a93737802308cf49e474',created_at:'1793330000902'},
   ]);
+  expect(await native()).toEqual(upgradeNative);
+  const phaseOneTables=()=>storage.client`select to_regclass('public.teras_chat')::text as chats,to_regclass('public.private_case')::text as cases,to_regclass('public.teras_loop_run')::text as loops,to_regclass('public.letter_request')::text as letters`;
+  expect(await phaseOneTables()).toEqual([{chats:null,cases:null,loops:null,letters:null}]);
+  // Then the four AI v2 Phase 1 migrations, as the Phase 1 release would leave staging. Their when values sit above
+  // staging's watermark 1793330000353, so the ordinary migrator applies them on this populated ledger instead of silently
+  // skipping them.
+  const phaseOne=journal.entries.slice(0,660);expect(phaseOne.at(-1)!.tag).toBe('2003_letter_requests');
+  for(const row of phaseOne.slice(656))copyFileSync('db/migrations/'+row.tag+'.sql',join(folder,row.tag+'.sql'));
+  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:phaseOne}));
+  await migrate(storage.db,{migrationsFolder:folder});
+  const phaseOneLedger=await ledger();expect(phaseOneLedger).toHaveLength(660);expect(phaseOneLedger.slice(0,656)).toEqual(stagingLedger);
+  expect(phaseOneLedger.slice(656).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
+   {hash:'8cd50320de942af9aa59e515c5e39e78f6027325da86264dd8e772bff1c802b7',created_at:'1793330001400'},
+   {hash:'bcfb193a8f6e59c7fec485291bf94cf460f89f44d5abc5bb9ef80cdb6f802acc',created_at:'1793330001401'},
+   {hash:'9614f0d8aa6855d24fe0b7ee1e75c46f80f89e19ec43161825e4bf357eefb908',created_at:'1793330001402'},
+   {hash:'86648ce2dc7af62b92091a5ec195877c68a511f6272dd9681781cedf85900041',created_at:'1793330001403'},
+  ]);
+  expect(await phaseOneTables()).toEqual([{chats:'teras_chat',cases:'private_case',loops:'teras_loop_run',letters:'letter_request'}]);
+  const phaseTwoObjects=()=>storage.client`select to_regclass('public.teras_loop_level')::text as levels,to_regclass('public.teras_payroll_loop_setting')::text as settings,
+   to_regclass('public.payroll_audit_capture')::text as audit,to_regclass('public.teras_capacity_baseline')::text as baseline,
+   (to_regprocedure('app.own_payroll_cut_off_day(uuid)') is not null) as cutoff,to_regclass('public.teras_policy_version')::text as handbook,
+   to_regclass('public.teras_learning_signal')::text as learning,to_regclass('public.payroll_check_acknowledgement')::text as hardening`;
+  expect(await phaseTwoObjects()).toEqual([{levels:null,settings:null,audit:null,baseline:null,cutoff:false,handbook:null,learning:null,hardening:null}]);
+  expect(await native()).toEqual(upgradeNative);
+  // Then this integration's eight AI v2 Phase 2 migrations (2004-2011) and the ADR-0174 hardening (2100-2102), by the ordinary migrator over the whole journal.
+  // Their when values sit above Phase 1's 1793330001403, so none is skipped.
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  const afterLedger=await ledger();expect(afterLedger).toHaveLength(671);expect(afterLedger.slice(0,660)).toEqual(phaseOneLedger);
+  expect(afterLedger.slice(660).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
+   {hash:'b6bdeac1995dad6df759ce9a537c98e9a3666bf01aef716a7f6cac9a9134b132',created_at:'1793330001404'},
+   {hash:'d211dd97ebdeb673998d29a2a9b3b8d8597c39a5646259ac0c855d46eca49fbc',created_at:'1793330001405'},
+   {hash:'05bc9e35367093ae4c6aec877a7ca7ec171387cb84b28940e0db0e190fcf7723',created_at:'1793330001406'},
+   {hash:'8b2bb6e38d76c7bf6643e45c62c11ed89e71d954615438d527adf1b4593f22ad',created_at:'1793330001407'},
+   {hash:'c068fa72631c648453117fdf73cc81e6ffbbb4cc94d55d82397e40ac4e4291f8',created_at:'1793330001408'},
+   {hash:'2ffa6731bc3e8cfbc0586875ba9c33d0db2c67104376dc99e35ba181214ccae0',created_at:'1793330001409'},
+   {hash:'2cabdaa5975db8ef1d91f6027bb38b4b7ca1f7ce3c17561b9961926f2e02c201',created_at:'1793330001410'},
+   {hash:'d42cceaf96f728c8682b73c40c33b5d3066de40f1d5484100dff3686c811d909',created_at:'1793330001411'},
+   {hash:'f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a',created_at:'1793330001500'},
+   {hash:'5aaf9b7e1f06514771e46ae3303e2e375eb461ba3acf0f8bb21af510bf49eb18',created_at:'1793330001501'},
+   {hash:'b2a6af380bb89765c2b32b6edaf8b5c7707ca23901f22806cd9f8888856983b4',created_at:'1793330001502'},
+  ]);
+  expect(await phaseTwoObjects()).toEqual([{levels:'teras_loop_level',settings:'teras_payroll_loop_setting',audit:'payroll_audit_capture',baseline:'teras_capacity_baseline',
+   cutoff:true,handbook:'teras_policy_version',learning:'teras_learning_signal',hardening:'payroll_check_acknowledgement'}]);
+  // The applied ledger rows after the 648-entry baseline, for the release record: ids, SQL hashes and when values only.
+  console.info('[populated-upgrade-ledger]',JSON.stringify(afterLedger.slice(648).map(row=>({id:row.id,hash:row.hash,created_at:row.created_at}))));
   expect(await native()).toEqual(upgradeNative);
   const afterSource=await source();
   expect(afterSource).toEqual({...beforeSource,body:beforeSource.body.replace(oldNumericPredicate,newNumericPredicate).replace('No numeric leaf is serialized; timestamps are UTC.','Only the exact root creation cohort 1 may be numeric; timestamps are UTC.')});

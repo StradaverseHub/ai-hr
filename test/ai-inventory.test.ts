@@ -244,12 +244,15 @@ describe('static wiring', () => {
     expect(src).toContain("PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(tid::text));");
     expect(src).toContain('REFERENCES app.assistant_action_kind(id)');
   });
-  it('lists the inventory page in the permission registry and under Workers, the first AI centre administration row', () => {
+  it('lists the inventory page in the permission registry and under Workers, the first AI Centre Administration section', () => {
     expect(read('lib/permissions.ts')).toContain("'/control-tower/agents/inventory'");
     expect(read('app/control-tower/agents/inventory/page.tsx')).toContain('requireAdmin');
-    const sidebar = read('components/sidebar.tsx'), node = sidebar.slice(sidebar.indexOf('const AI_MANAGEMENT_NODE'));
-    // AI centre: Workers owns the inventory section, and Workers comes before Setup.
-    expect(node).toMatch(/'\/control-tower\/agents\/features'[^\n]*ownedSubpaths: \['\/control-tower\/agents\/inventory'\]/);
-    expect(node.indexOf("'/control-tower/agents/features'")).toBeLessThan(node.indexOf("'/control-tower/agents', labelKey"));
+    // Issue 17: the sidebar's AI management rows became AI Centre › Administration; the AI Centre row owns every
+    // /control-tower page, Workers groups the inventory section, and Workers comes before Setup.
+    expect(read('components/sidebar.tsx')).toContain("{ href: '/assistant', labelKey: 'aiCentre', icon: Sparkles, ownedSubpaths: ['/control-tower'] }");
+    const nav = read('lib/ai-centre/centre-nav.ts');
+    expect(nav).toContain("workers: [{ section: 'features', label: 'workers' }, { section: 'inventory', label: 'inventory' }],");
+    expect(nav.indexOf("{ key: 'workers', href: '/control-tower/agents/features', payroll: false }")).toBeGreaterThan(-1);
+    expect(nav.indexOf("{ key: 'workers', href: '/control-tower/agents/features'")).toBeLessThan(nav.indexOf("{ key: 'setup', href: '/control-tower/agents'"));
   });
 });

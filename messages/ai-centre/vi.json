@@ -18,9 +18,314 @@
       "workers": "Tác tử",
       "setup": "Thiết lập",
       "spend": "Chi tiêu và nhà cung cấp",
-      "how": "Cách hoạt động"
+      "operations": "Vận hành",
+      "administration": "Quản trị",
+      "insights": "Thông tin chi tiết",
+      "how": "Cách hoạt động",
+      "policies": "Chính sách"
     },
     "inboxCount": "{count, plural, one {# mục đang chờ} other {# mục đang chờ}}",
+    "backToToday": "Quay lại Hôm nay",
+    "sectionsLabel": "Các mục của {tab}",
+    "sections": {
+      "overview": "Tổng quan",
+      "loops": "Vòng lặp",
+      "exceptions": "Ngoại lệ",
+      "readiness": "Mức sẵn sàng hồ sơ",
+      "actions": "Hành động đề xuất",
+      "opportunities": "Cơ hội",
+      "workers": "Tác tử",
+      "setup": "Thiết lập",
+      "spend": "Chi tiêu và nhà cung cấp"
+    },
+    "loops": {
+      "title": "Vòng lặp",
+      "description": "Mỗi vòng lặp theo dõi một phần công việc nhân sự, chuẩn bị việc một người cần làm và kiểm tra kết quả ở lần chạy tiếp theo. Ở cấp Chuẩn bị, không có gì thay đổi cho đến khi một người xác nhận.",
+      "columns": {
+        "loop": "Vòng lặp",
+        "doneMeans": "Hoàn thành nghĩa là",
+        "level": "Cấp",
+        "switch": "Công tắc",
+        "lastRun": "Lần chạy gần nhất",
+        "prepared": "Thẻ, {days} ngày qua",
+        "confirmed": "Hoàn tất như đã chuẩn bị",
+        "changed": "Được người thay đổi",
+        "sponsor": "Người bảo trợ"
+      },
+      "names": {
+        "loop_probation_ending": "Kết thúc thử việc",
+        "loop_payroll_inputs": "Vòng lặp trước kỳ lương",
+        "loop_missing_employee_data": "Thiếu dữ liệu nhân viên",
+        "loop_missed_clock_outs": "Quên chấm công ra",
+        "loop_document_expiry": "Hộ chiếu sắp hết hạn",
+        "loop_salary_payroll": "Vòng lặp chạy lương"
+      },
+      "doneMeans": {
+        "loop_probation_ending": "Quyết định được ghi nhận trước khi thử việc kết thúc",
+        "loop_payroll_inputs": "Mọi dữ liệu đầu vào đầy đủ và được duyệt trước hạn chốt",
+        "loop_missing_employee_data": "Mọi thông tin nhân viên có thể điền đã được điền và phê duyệt",
+        "loop_missed_clock_outs": "Mọi lần chấm công ra đều có trong hồ sơ",
+        "loop_document_expiry": "Mỗi hộ chiếu được gia hạn trước khi hết hạn",
+        "loop_salary_payroll": "Mỗi lần chạy được kiểm tra, do một người duyệt, được đóng và tệp ngân hàng khớp"
+      },
+      "doneMeansLine": "Hoàn thành nghĩa là: {done}.",
+      "level": {
+        "prepare": "Chuẩn bị"
+      },
+      "on": "Bật",
+      "off": "Tắt",
+      "stopped": "Bị dừng bởi công tắc dừng của công ty",
+      "turnOn": "Bật",
+      "turnOff": "Tắt",
+      "never": "Chưa chạy",
+      "runStatus": {
+        "ran": "Đã chạy",
+        "sponsor_lost": "Đã dừng: người bảo trợ không còn quyền quản trị",
+        "failed": "Chưa hoàn tất: không thẻ nào bị thay đổi"
+      },
+      "notApplicable": "Không áp dụng",
+      "noneYet": "Chưa có",
+      "changedRate": "{rate} ({count, plural, other {# thẻ}})",
+      "sponsorUnnamed": "Một quản trị viên",
+      "noSponsor": "Không có khi tắt",
+      "pausedIn": "{count, plural, other {Tạm dừng ở # công ty}}",
+      "saved": "Đã lưu.",
+      "switchNote": "Bật hoặc tắt một vòng lặp áp dụng cho mọi công ty trong tập đoàn, và người bật nó trở thành người bảo trợ. Tạm dừng cho một công ty trên trang riêng của vòng lặp.",
+      "switchNoteCompany": "Chỉ quản trị viên tập đoàn mới bật hoặc tắt vòng lặp. Bạn có thể tạm dừng một vòng lặp cho các công ty của mình trên trang riêng của nó.",
+      "cap": "Lương, tình trạng việc làm, quyền truy cập hệ thống và kỷ luật luôn ở cấp Chuẩn bị: luôn có một người quyết định.",
+      "errors": {
+        "invalid": "Không hiểu được thay đổi đó.",
+        "refused": "Bạn không thể thực hiện thay đổi đó.",
+        "module": "Mô-đun mà vòng lặp này xử lý không được sử dụng.",
+        "failed": "Không thể lưu thay đổi. Hãy thử lại."
+      },
+      "back": "Vòng lặp",
+      "stepLabel": "{n} · {step}",
+      "steps": {
+        "detect": "Phát hiện",
+        "diagnose": "Chẩn đoán",
+        "prepare": "Chuẩn bị",
+        "verify": "Xác minh"
+      },
+      "stepText": {
+        "loop_probation_ending": {
+          "detect": "Thời gian thử việc kết thúc trong 14 ngày mà chưa ghi nhận quyết định. Kiểm tra mỗi đêm.",
+          "diagnose": "Đã mở đánh giá chưa và đang ở đâu: chưa bắt đầu, ở quản lý hay ở nhân sự.",
+          "prepare": "Một thẻ đánh giá chính thức hóa cho nhân sự. Nhân sự ghi nhận quyết định; vòng lặp không bao giờ quyết định.",
+          "verify": "Đóng khi quyết định được ghi nhận. Ngày kết thúc mới chưa có quyết định sẽ mở lại."
+        },
+        "loop_payroll_inputs": {
+          "detect": "Từ đầu kỳ lương đến hạn chốt, theo chu kỳ của từng công ty: bảng chấm công, làm thêm giờ, nghỉ phép, yêu cầu hoàn tiền, nhân viên mới và nghỉ việc, thông tin ngân hàng và pháp định, thay đổi lương và thiết lập lương.",
+          "diagnose": "Các mục đang mở, đang chờ và cần xem lại của mỗi lần kiểm tra, đọc từ chủ sở hữu của từng mục.",
+          "prepare": "Một hồ sơ cho quản trị viên lương trên trang Chu kỳ lương, và một thẻ Hôm nay trong 7 ngày cuối trước hạn chốt. Mỗi lần kiểm tra liên kết đến trang nơi nó được sửa.",
+          "verify": "Hoàn tất khi không còn mục nào mở hoặc chờ trước hạn chốt. Một trở ngại mới trước hạn chốt sẽ mở lại."
+        },
+        "loop_missing_employee_data": {
+          "detect": "Hồ sơ nhân viên thiếu thông tin cần cho tính lương hoặc khai báo theo luật định.",
+          "diagnose": "Những thông tin nào nhân viên có thể điền qua yêu cầu thay đổi hồ sơ.",
+          "prepare": "Một thẻ yêu cầu cho nhân viên. Nhân sự phê duyệt yêu cầu như thường lệ.",
+          "verify": "Đóng khi không còn thiếu thông tin nào nhân viên có thể điền. Thiếu sót quay lại sẽ mở lại."
+        },
+        "loop_missed_clock_outs": {
+          "detect": "Một ngày trong 7 ngày qua có chấm công vào nhưng không có chấm công ra.",
+          "diagnose": "Giờ kết thúc ca theo lịch của ngày đó, giờ mà thẻ đề xuất.",
+          "prepare": "Một thẻ điều chỉnh cho nhân viên, người xác nhận hoặc thay đổi giờ đó. Người duyệt quyết định như thường lệ.",
+          "verify": "Đóng khi có chấm công ra trong hồ sơ. Điều chỉnh bị từ chối sẽ mở lại."
+        },
+        "loop_document_expiry": {
+          "detect": "Hộ chiếu đã ghi nhận sẽ hết hạn trong 60 ngày.",
+          "diagnose": "Ngày hết hạn trong hồ sơ.",
+          "prepare": "Một thẻ Hôm nay cho nhân sự và một thẻ nhắc nhân viên gia hạn.",
+          "verify": "Đóng khi ngày hết hạn đã gia hạn được ghi nhận. Ngày hết hạn bị đưa lại vào khoảng thời gian sẽ mở lại."
+        },
+        "loop_salary_payroll": {
+          "detect": "Sau hạn chốt, các lần chạy trong tháng của từng công ty: lương, thưởng và ngoài chu kỳ. Lần chạy chưa bắt đầu được chuẩn bị để bộ phận nhân sự bắt đầu.",
+          "diagnose": "11 kiểm tra bất thường, thay đổi so với tháng trước theo nguyên nhân, cờ biến động lương thực nhận, phiên bản quy định pháp định và tệp ngân hàng so với lương thực nhận.",
+          "prepare": "Một hồ sơ cho mỗi lần chạy dành cho quản trị viên lương, và một cờ cho mỗi người để bộ phận lương đánh dấu là dự kiến hoặc là vấn đề thật. Nó không bao giờ chạy, duyệt hay đóng bảng lương.",
+          "verify": "Hoàn tất khi một người đã đóng lần chạy và tệp ngân hàng khớp. Lần chạy được mở lại sau khi đóng sẽ mở lại hồ sơ."
+        }
+      },
+      "figures": {
+        "prepared": "Thẻ đã chuẩn bị trong {days} ngày",
+        "confirmed": "Hoàn tất như đã chuẩn bị",
+        "changed": "Được người thay đổi",
+        "open": "Đang mở",
+        "noSpend": "Không tốn chi phí AI: các vòng lặp này chỉ dùng quy tắc, không bao giờ dùng mô hình."
+      },
+      "openWaiting": "{open} đang mở · {waiting} đang chờ",
+      "pause": {
+        "title": "Tạm dừng cho một công ty",
+        "help": "Vòng lặp bị tạm dừng sẽ không chạy và không hiện thẻ ở công ty đó. Tắt công tắc sẽ dừng nó ở mọi nơi.",
+        "none": "Bạn không quản trị công ty nào ở đây.",
+        "paused": "Đã tạm dừng",
+        "running": "Đang chạy",
+        "pause": "Tạm dừng",
+        "resume": "Tiếp tục"
+      },
+      "cases": {
+        "title": "Thẻ gần đây",
+        "none": "Chưa có thẻ.",
+        "columns": {
+          "when": "Khi nào",
+          "person": "Người",
+          "what": "Nội dung đã chuẩn bị",
+          "status": "Trạng thái"
+        },
+        "reopened": "{count, plural, other {Đã mở lại # lần}}"
+      },
+      "what": {
+        "probation": "Thử việc kết thúc ngày {date}",
+        "payroll": "Thiếu {count, plural, other {# dữ liệu}} trước hạn chốt {date}",
+        "record": "Cần điền {count, plural, other {# thông tin}}",
+        "clockOut": "Đề xuất chấm công ra lúc {time} cho ngày {date}",
+        "clockOutManual": "Không có giờ chấm công ra ngày {date}: cần HR sửa thủ công",
+        "passport": "Hộ chiếu hết hạn ngày {date}",
+        "salaryRun": "{status, select, draft {Lần chạy lương, chưa xử lý} processed {Lần chạy lương, đã xử lý} closed {Lần chạy lương, đã đóng} other {Lần chạy lương}}",
+        "swing": "Lương thực nhận biến động vượt ngưỡng",
+        "salaryStart": "Lần chạy lương cần bắt đầu sau hạn chốt {date}"
+      },
+      "caseState": {
+        "open": "Đang chờ người đó",
+        "waiting": "Đã gửi: đang chờ phê duyệt thông thường",
+        "as_prepared": "Đã xác nhận như đã chuẩn bị",
+        "changed": "Được người đó thay đổi",
+        "completed": "Hoàn tất",
+        "inactive": "Đã nghỉ việc",
+        "superseded": "Không còn áp dụng",
+        "expired": "Đã quá thời điểm",
+        "out_of_scope": "Đã gỡ: ngoài phạm vi"
+      },
+      "limits": {
+        "title": "Những giới hạn không bao giờ vượt qua",
+        "confirm": "Nó không thay đổi hồ sơ nào: nó chuẩn bị thẻ và một người xác nhận trên trang thông thường.",
+        "scope": "Nó chỉ đọc những gì người bảo trợ được xem, và dừng nếu người bảo trợ mất quyền quản trị.",
+        "model": "Nó không gọi mô hình AI nào.",
+        "cap": "Tối đa 200 thẻ mới mỗi đêm cho mỗi công ty."
+      },
+      "owner": {
+        "title": "Ai chịu trách nhiệm",
+        "agent": "Tác tử: vòng lặp {name}, chạy với tư cách tác tử chính của công ty",
+        "sponsor": "Người bảo trợ: {name}",
+        "noSponsor": "Không có người bảo trợ khi tắt",
+        "note": "Người bảo trợ là quản trị viên tập đoàn đã bật nó. Mỗi lần chạy đều được ghi lại cùng phiên bản quy tắc."
+      },
+      "runs": {
+        "title": "Các lần chạy gần đây",
+        "none": "Chưa có lần chạy nào.",
+        "summary": "{opened} đã chuẩn bị, {closed} đã đóng, {open} đang mở, {waiting} đang chờ",
+        "capped": "Đã đạt giới hạn thẻ; phần còn lại ở lần chạy sau."
+      },
+      "payrollCycle": "Chu kỳ lương"
+    },
+    "capacity": {
+      "title": "Năng lực HR",
+      "descriptionCompany": "Những gì AI Centre đã làm cho đội HR của {company}, đo theo mốc cơ sở của chính công ty.",
+      "descriptionAll": "Những gì AI Centre đã làm cho đội HR của các công ty bạn quản trị, mỗi công ty đo theo mốc cơ sở của chính mình.",
+      "periodLabel": "Khoảng thời gian",
+      "periods": {
+        "last30": "30 ngày qua",
+        "quarter": "Quý này",
+        "year": "Năm nay"
+      },
+      "companyLabel": "Công ty",
+      "allCompanies": "Tất cả công ty của bạn ({count})",
+      "show": "Hiển thị",
+      "noCompanies": "Bạn chưa quản trị công ty nào.",
+      "hours": "{hours} giờ",
+      "minutes": "{minutes} phút",
+      "items": {
+        "questions_answered": "Câu hỏi của nhân viên đã được trả lời",
+        "actions_confirmed": "Thao tác đã chuẩn bị được xác nhận"
+      },
+      "tiles": {
+        "freed": "Thời gian HR được giải phóng",
+        "freedDays": "khoảng {days} ngày làm việc",
+        "freedNone": "Đặt mốc cơ sở để đo",
+        "errors": "Lỗi lương phát hiện trước kỳ chạy",
+        "errorsNote": "mỗi lỗi lẽ ra cần một lần sửa",
+        "errorsNoPayroll": "Không sử dụng tính lương",
+        "loops": "Thao tác vòng lặp đã hoàn tất",
+        "loopsChanged": "{rate} do một người thay đổi",
+        "loopsNone": "chưa có thao tác nào hoàn tất",
+        "questions": "Câu hỏi của nhân viên đã được trả lời",
+        "questionsNote": "trả lời ngay, bất kỳ lúc nào",
+        "questionsGroupOnly": "Hiển thị cho quản trị viên tập đoàn",
+        "notShown": "Không hiển thị"
+      },
+      "chart": {
+        "title": "Thời gian HR được giải phóng theo tháng",
+        "unit": "Số giờ được giải phóng",
+        "label": "Thời gian HR được giải phóng theo tháng: {values}.",
+        "value": "{month} {hours} giờ",
+        "marker": "Autopilot bắt đầu",
+        "markerSentence": "Autopilot bắt đầu vào {month}.",
+        "note": "Thời gian đội nhận lại cho công việc chỉ con người làm được: trò chuyện với nhân viên, lập kế hoạch, xử lý hồ sơ."
+      },
+      "table": {
+        "title": "Thời gian đến từ đâu",
+        "item": "Công việc vòng lặp hoặc trợ lý",
+        "done": "Đã xong",
+        "manual": "Thời gian thủ công mỗi mục của bạn",
+        "review": "Thời gian xem xét",
+        "freed": "Số giờ được giải phóng",
+        "noWork": "Chưa có công việc nào hoàn tất trong khoảng thời gian này.",
+        "notInBaseline": "Không có trong mốc cơ sở",
+        "withoutBaseline": "{count, plural, other {# đã xong nhưng mốc cơ sở không có số phút cho mục này}}",
+        "averaged": "Khi mốc cơ sở của các công ty khác nhau, thời gian thủ công mỗi mục là giá trị trung bình, có trọng số theo khối lượng công việc đã xong."
+      },
+      "method": {
+        "summary": "Cách đo: số giờ được giải phóng = công việc đã xong × thời gian thủ công của chính bạn cho mỗi mục (đo từ nhật ký sự kiện trước Autopilot) − thời gian mọi người dành để xem xét. Không ước tính từ mức trung bình của ngành.",
+        "link": "Phương pháp đầy đủ",
+        "work": "Công việc đã xong: mỗi thẻ vòng lặp mà một người đã hoàn tất trong khoảng thời gian, mỗi câu hỏi của nhân viên mà AI Centre đã trả lời, và mỗi thao tác do AI Centre chuẩn bị được một người xác nhận. Lỗi lương được phát hiện là các phát hiện bất thường đã được sửa trước khi kỳ chạy lương đóng; chúng được đếm, không quy đổi thành giờ.",
+        "baseline": "Thời gian thủ công mỗi mục của bạn lấy từ mốc cơ sở: một khoảng thời gian trước khi Autopilot bắt đầu tại công ty. Với chấm công ra bị thiếu và dữ liệu nhân viên còn thiếu, nhật ký sự kiện đo số thao tác của nhân sự trên mỗi hồ sơ trong khoảng đó (điều chỉnh chấm công và thay đổi hồ sơ), và số phút cho mỗi thao tác của bạn quy đổi chúng thành thời gian. Với công việc khác, đó là số phút bạn đã nhập. Công ty chưa có mốc cơ sở được tính là đã xong việc nhưng không giải phóng thời gian.",
+        "review": "Thời gian xem xét: với mỗi mục, khoảng thời gian từ khi AI Centre chuẩn bị đến khi một người xác nhận, tối đa {cap} phút và không bao giờ vượt quá thời gian thủ công của chính mục đó. Khoảng cách dài hơn nghĩa là mục đó đang chờ, không phải ai đó đã làm việc với nó lâu như vậy. Vòng lặp ghi nhận xác nhận ở lần kiểm tra kế tiếp, nên phần lớn các mục được tính đủ mức tối đa: sổ này tính thấp thời gian được giải phóng chứ không tính cao. Câu hỏi đã trả lời không có bước xem xét.",
+        "arithmetic": "Số giờ được giải phóng = công việc đã xong × thời gian thủ công mỗi mục − thời gian xem xét, tính cho từng công ty theo mốc cơ sở của chính mình rồi cộng lại. Một ngày làm việc là {hours} giờ.",
+        "access": "Quản trị viên HR và quản trị viên tập đoàn xem trang này cho các công ty họ quản trị. Số câu hỏi và số thao tác được xác nhận lấy từ hồ sơ kết quả của AI Centre, mà chỉ quản trị viên tập đoàn mới được đọc trên nhiều người, nên các quản trị viên khác không thấy chúng.",
+        "records": "Mọi con số đều lấy từ hồ sơ: thẻ vòng lặp, hồ sơ kết quả và phát hiện bất thường về lương, được đọc bằng quyền truy cập của chính bạn. Không ước tính từ mức trung bình của ngành."
+      },
+      "baseline": {
+        "notSet": "Chưa đặt mốc cơ sở",
+        "notSetBody": "Số giờ được giải phóng được đo theo thời gian thủ công của chính bạn trước khi Autopilot bắt đầu. Hãy đặt mốc cơ sở để xem; nhật ký sự kiện đo những gì có thể, còn bạn bổ sung số phút mà nó không thể biết.",
+        "missingSome": "{count, plural, other {# công ty chưa có mốc cơ sở, nên công việc của họ được tính là đã xong nhưng không giải phóng thời gian.}}",
+        "setFor": "Đặt mốc cơ sở cho {company}",
+        "saved": "Đã lưu mốc cơ sở (phiên bản {version}).",
+        "errors": {
+          "invalid": "Nhập số phút là một số tối đa {max}, nhiều nhất một chữ số thập phân, hoặc để trống ô.",
+          "empty": "Nhập ít nhất một con số, hoặc số phút cho mỗi thao tác của nhân sự khi nhật ký sự kiện có thể đo công việc đó.",
+          "not_administrator": "Bạn chỉ có thể đặt mốc cơ sở cho công ty mà bạn quản trị.",
+          "conflict": "Có người đã lưu mốc cơ sở cùng lúc. Hãy thử lại.",
+          "failed": "Không thể lưu mốc cơ sở. Hãy thử lại."
+        }
+      },
+      "setup": {
+        "title": "Mốc cơ sở cho {company}",
+        "intro": "Thời gian thủ công của chính đội bạn cho mỗi mục trước Autopilot. Nhật ký sự kiện đo những gì có thể; bạn bổ sung số phút mà nó không thể biết. Khi lưu, các mốc cơ sở trước vẫn được giữ.",
+        "current": "Mốc cơ sở hiện tại: phiên bản {version}, từ {from} đến {to}.",
+        "step1": "1. Khoảng thời gian cơ sở",
+        "periodEnds": "Kết thúc vào {date}, ngày Autopilot bắt đầu tại đây.",
+        "periodEndsToday": "Autopilot chưa bắt đầu tại đây, nên kết thúc vào hôm nay.",
+        "daysLabel": "Độ dài",
+        "daysOption": "{days} ngày",
+        "usePeriod": "Dùng khoảng thời gian này",
+        "period": "Khoảng thời gian: từ {from} đến {to}.",
+        "step2": "2. Những gì nhật ký sự kiện đã đo",
+        "processes": {
+          "attendance_correction": "Điều chỉnh chấm công (chấm công ra bị thiếu)",
+          "profile_change": "Thay đổi hồ sơ (dữ liệu nhân viên còn thiếu)"
+        },
+        "evidence": "{cases} hồ sơ bắt đầu, {completed} hoàn tất, {actions} thao tác của nhân sự ({perCase} mỗi hồ sơ).",
+        "evidenceShort": "Chưa đủ lịch sử để đo: {completed} hồ sơ hoàn tất, cần ít nhất {min}. Hãy nhập số phút của bạn ở bên dưới.",
+        "evidenceOff": "Không đo: mô-đun không được sử dụng.",
+        "step3": "3. Số phút của bạn",
+        "perAction": "Số phút cho mỗi thao tác của nhân sự",
+        "perActionHelp": "Dùng cùng kết quả đo của nhật ký sự kiện, tối đa {max}.",
+        "itemMinutes": "Số phút mỗi mục: {item}",
+        "itemMeasuredHelp": "Chỉ dùng khi nhật ký sự kiện không thể đo.",
+        "blankHelp": "Để trống ô nếu bạn không biết. Tối đa {max} phút, nhiều nhất một chữ số thập phân.",
+        "save": "Lưu mốc cơ sở",
+        "cancel": "Hủy"
+      }
+    },
     "subnav": {
       "workers": "Tất cả tác tử",
       "inventory": "Danh mục và kiểm toán",
@@ -100,6 +405,10 @@
       "findingAuthority": "Công tắc của công ty bạn cho kiểm tra này",
       "findingRead": "Các bản ghi trong phạm vi quản trị của bạn",
       "findingModel": "Không có cho phát hiện này. Phần diễn đạt dễ hiểu, nếu được bật, sẽ hiển thị trên trang của nó."
+    },
+    "insights": {
+      "title": "Thông tin chi tiết",
+      "description": "Những việc còn chờ trước kỳ lương, của bạn và các yêu cầu bạn phê duyệt."
     },
     "jobs": {
       "title": "Công việc ủy quyền",
@@ -192,7 +501,7 @@
       "mapLabel": "Các lớp của AI: giao diện, bộ điều phối tác tử, ngữ cảnh và kiến thức, năng lực HR và hệ thống hồ sơ HR, trên nền tảng tin cậy và quản trị.",
       "layers": {
         "interfaces": "Giao diện",
-        "interfacesHelp": "Trò chuyện, trò chuyện nổi, Hộp thư công việc, trang xem xét",
+        "interfacesHelp": "Trò chuyện, trò chuyện nổi, Hôm nay, trang xem xét",
         "harness": "Bộ điều phối tác tử",
         "harnessHelp": "Chạy từng lượt trong giới hạn. Mô hình làm việc bên trong nó.",
         "model": "Mô hình",
@@ -284,7 +593,7 @@
       "walkthroughLink": "Theo dõi một yêu cầu đi qua AI, từng bước một",
       "figureCaption": "Hình tách lớp · như bộ máy đồng hồ",
       "parts": {
-        "interfaces": "mặt số · trò chuyện · hộp thư · trang xem xét",
+        "interfaces": "mặt số · trò chuyện · Hôm nay · trang xem xét",
         "harness": "bộ thoát · mỗi lần một bước",
         "model": "bánh xe cân bằng · không quyết định gì",
         "context": "vòng lịch · hướng dẫn · trang · vai trò của bạn",
@@ -299,6 +608,7 @@
     },
     "launcher": {
       "inbox": "Hộp thư công việc của bạn",
+      "today": "Hôm nay",
       "inboxCount": "{count, plural, one {# đang chờ} other {# đang chờ}}",
       "earlier": "Trước đó, trên trang {area}",
       "continue": "Tiếp tục trong {name}",
@@ -412,7 +722,14 @@
         "explainers": "Bộ diễn giải",
         "team_absence_weekly_summary": "Tóm tắt vắng mặt hằng tuần của nhóm",
         "daily_digest": "Bản tóm tắt hằng ngày",
-        "conversation": "Hội thoại trò chuyện trực tiếp"
+        "loop_probation_ending": "Kết thúc thử việc",
+        "loop_payroll_inputs": "Vòng lặp trước kỳ lương",
+        "loop_missing_employee_data": "Thiếu dữ liệu nhân viên",
+        "loop_missed_clock_outs": "Quên chấm công ra",
+        "loop_document_expiry": "Hộ chiếu sắp hết hạn",
+        "loop_payroll_audit": "Vòng lặp kiểm toán",
+        "conversation": "Hội thoại trò chuyện trực tiếp",
+        "loop_salary_payroll": "Vòng lặp chạy lương"
       },
       "switchInvalid": "Không thể thay đổi công tắc đó tại đây.",
       "switchRefused": "Chỉ quản trị viên tập đoàn mới có thể thay đổi công tắc này.",
@@ -436,7 +753,8 @@
       "blocking": "Một quy tắc nghỉ phép sẽ từ chối yêu cầu này ở trạng thái hiện tại.",
       "version": {
         "leave_type": "Quy tắc loại nghỉ phép, phiên bản {version}",
-        "approval_chain": "Chuỗi phê duyệt, phiên bản {version}"
+        "approval_chain": "Chuỗi phê duyệt, phiên bản {version}",
+        "recommender": "Kiểm tra gợi ý, phiên bản {version}"
       },
       "youDecide": "Đây là lời khuyên. Bạn quyết định trên trang riêng của yêu cầu.",
       "unavailable": {
@@ -447,7 +765,47 @@
         "not_assigned": "Yêu cầu này không được giao cho bạn.",
         "not_pending": "Yêu cầu này không còn chờ quyết định.",
         "failed": "Hiện không thể tải gợi ý."
-      }
+      },
+      "youDecideHere": "Đây là lời khuyên. Bạn quyết định bằng Phê duyệt hoặc Từ chối.",
+      "result": {
+        "balance_covers": {
+          "pass": "Số ngày phép còn lại đủ cho số ngày yêu cầu.",
+          "fail": "Số ngày phép còn lại không đủ, và loại nghỉ phép này không cho phép âm đến mức đó.",
+          "unusual": "Số ngày phép chỉ đủ khi bị âm, điều mà loại nghỉ phép này cho phép.",
+          "missing": "Không thể đọc số ngày phép còn lại."
+        },
+        "own_overlap": {
+          "pass": "Không có kỳ nghỉ nào khác của người nộp đơn trùng với những ngày này.",
+          "fail": "Người nộp đơn đã có kỳ nghỉ được duyệt vào một số ngày này.",
+          "unusual": "Người nộp đơn có một yêu cầu khác đang chờ vào một số ngày này.",
+          "missing": "Không thể đọc đầy đủ các kỳ nghỉ khác của người nộp đơn."
+        },
+        "team_coverage": {
+          "pass": "Không có ai khác mà bạn thấy được nghỉ vào những ngày này.",
+          "fail": "Mức bố trí nhân sự của nhóm thấp hơn mức tối thiểu.",
+          "unusual": "Có người khác mà bạn thấy được nghỉ vào một số ngày này.",
+          "missing": "Không thể đọc những ai khác đang nghỉ."
+        },
+        "policy_limits": {
+          "pass": "Đáp ứng quy tắc về giấy tờ và ngày của loại nghỉ phép.",
+          "fail": "Loại nghỉ phép này yêu cầu giấy tờ nhưng chưa đính kèm.",
+          "unusual": "Kỳ nghỉ bắt đầu trước hôm nay.",
+          "missing": "Không thể đọc quy tắc của loại nghỉ phép."
+        }
+      },
+      "prepared": {
+        "read": "Yêu cầu, các kỳ nghỉ khác của người nộp đơn vào những ngày này, những ai khác mà bạn thấy được đang nghỉ, và quy tắc của loại nghỉ phép, đều được đọc với tư cách của bạn.",
+        "model": "Không có. Kết luận đến từ bốn kiểm tra, và không bao giờ đề xuất từ chối.",
+        "recordLabel": "Bản ghi",
+        "record": "Được lưu thành bản ghi kết quả. Khi bạn quyết định, việc bạn có làm theo gợi ý hay không sẽ được thêm vào đó."
+      },
+      "filter": {
+        "label": "Lọc yêu cầu nghỉ phép theo gợi ý",
+        "all": "Tất cả yêu cầu nghỉ phép",
+        "passing": "Đạt mọi kiểm tra ({count})",
+        "help": "Chỉ hiển thị các yêu cầu đạt mọi kiểm tra. Chọn chúng, rồi phê duyệt hoặc từ chối sau khi xác nhận. Không có gì được phê duyệt tự động."
+      },
+      "openOne": "Xem gợi ý"
     },
     "digest": {
       "title": "Ngày của bạn",
@@ -459,17 +817,71 @@
       "lastPrepared": "Công việc tóm tắt hằng ngày của bạn chuẩn bị mục này lần gần nhất lúc {when}."
     },
     "conversation": {
-      "routed": "Đã chuyển đến nhóm nhân sự của bạn: trợ lý không xử lý chủ đề này.",
+      "routed": "Đã chuyển đến nhóm nhân sự của bạn: Trung tâm AI không xử lý chủ đề này.",
       "routedCrisis": "Nếu bạn đang gặp nguy hiểm, hãy liên hệ dịch vụ khẩn cấp ngay.",
+      "startPrivateCase": "Mở một hồ sơ riêng tư với bộ phận nhân sự",
       "days": "{count, plural, other {# ngày}}",
+      "leaveApplyTitle": "{leaveType}, {start} ({days, plural, other {# ngày}})",
+      "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, other {# ngày}})",
+      "leaveApplyMorningTitle": "{leaveType}, {start} (nửa ngày, buổi sáng)",
+      "leaveApplyAfternoonTitle": "{leaveType}, {start} (nửa ngày, buổi chiều)",
+      "attendanceClockOutTitle": "Điều chỉnh giờ ra, {date}, {time}",
+      "attendanceClockInTitle": "Điều chỉnh giờ vào, {date}, {time}",
+      "attendanceClockBothTitle": "Điều chỉnh chấm công, {date}, {start} – {end}",
+      "overtimeRequestTitle": "Yêu cầu làm thêm giờ, {date}, {start} – {end}",
+      "claimSubmitTitle": "Yêu cầu hoàn tiền {claimType}, RM {amount}, {date}",
+      "claimCancelTitle": "Hủy yêu cầu hoàn tiền {claimType}, RM {amount}, {date}",
+      "profileAddressTitle": "Thay đổi địa chỉ nhà của bạn",
+      "profileEmergencyTitle": "Thay đổi người liên hệ khẩn cấp của bạn",
+      "profileDependantTitle": "Thêm người phụ thuộc",
+      "profileBankTitle": "Đổi tài khoản ngân hàng của bạn sang {bankName}, đuôi {ending}",
+      "toilRequestTitle": "Yêu cầu tín dụng nghỉ phép, {date}, {start} – {end}",
+      "decisionApproveTitle": "Duyệt: {item}",
+      "decisionRejectTitle": "Từ chối: {item}",
+      "creditDays": "{count, plural, other {# ngày}} được cộng nếu được duyệt",
       "review": "Xem xét",
       "open": "Mở",
       "expires": "Hết hạn {time}",
       "howPrepared": "Cách chuẩn bị",
       "preparedBy": "Chuẩn bị bởi",
-      "preparedByValue": "Trợ lý, từ các kiểm tra của chính hệ thống, với tư cách của bạn",
+      "preparedByValue": "Trung tâm AI, từ các kiểm tra của chính hệ thống, với tư cách của bạn",
       "confirmOn": "Xác nhận tại",
       "confirmOnValue": "Trang xem xét. Không có gì thay đổi cho đến khi bạn xác nhận ở đó.",
+      "inline": {
+        "confirm": "Xác nhận và gửi",
+        "confirming": "Đang gửi…",
+        "edit": "Chỉnh sửa",
+        "opening": "Đang mở…",
+        "discard": "Bỏ qua",
+        "actionsLabel": "Xác nhận, chỉnh sửa hoặc bỏ qua",
+        "confirmedBy": "Do bạn xác nhận",
+        "openClaims": "Mở Hoàn tiền",
+        "fixIt": "Sửa trên trang của nó",
+        "error": "Thao tác chưa thành công. Vui lòng thử lại sau giây lát.",
+        "confirmOnValue": "Tại đây, khi bạn nhấn Xác nhận và gửi. Dịch vụ sẽ kiểm tra lại mọi thứ trước.",
+        "done": {
+          "leaveSubmitted": "Đã gửi để phê duyệt, chưa được duyệt.",
+          "attendanceSubmitted": "Đã gửi để phê duyệt, chưa được duyệt.",
+          "claimSubmitted": "Yêu cầu hoàn tiền đã được gửi để phê duyệt, chưa được duyệt.",
+          "claimDraftSaved": "Đã lưu bản nháp. Thêm hóa đơn ở trang Hoàn tiền để gửi.",
+          "claimCancelled": "Đã hủy yêu cầu hoàn tiền.",
+          "profileRequested": "Đã gửi cho bộ phận nhân sự. Không có gì thay đổi cho đến khi nhân sự phê duyệt.",
+          "toilSubmitted": "Đã gửi để phê duyệt, chưa được duyệt. Chưa cộng tín dụng nào cho đến khi được duyệt.",
+          "decisionApproved": "Đã duyệt. Quyết định của bạn đã được ghi nhận.",
+          "decisionRejected": "Đã từ chối, kèm lý do của bạn. Quyết định của bạn đã được ghi nhận.",
+          "decisionLevelRecorded": "Phê duyệt của bạn đã được ghi nhận. Người phê duyệt tiếp theo sẽ quyết định.",
+          "letterRequested": "Đã gửi đến bộ phận Nhân sự. Nhân sự sẽ chuẩn bị thư; bạn sẽ thấy thư trong Thư của tôi sau khi được phát hành."
+        },
+        "refused": {
+          "expired": "Thẻ này đã hết hạn. Hãy hỏi lại để nhận thẻ mới.",
+          "invalid": "Thẻ này không còn dùng được. Hãy hỏi lại để nhận thẻ mới.",
+          "access": "Thẻ này không còn khớp với quyền truy cập của bạn. Hãy hỏi lại để nhận thẻ mới.",
+          "retired": "Thẻ này đã được dùng hoặc đã được thay thế. Hãy kiểm tra yêu cầu trên trang của nó.",
+          "unavailable": "Hiện chưa thể kiểm tra. Vui lòng thử lại sau giây lát.",
+          "consent": "Hãy đánh dấu đồng ý ở trên để xác nhận.",
+          "duplicate": "Bạn đã có một yêu cầu đang mở cho thư này. Hãy xem Thư của tôi."
+        }
+      },
       "suggestionMeta": "Hoàn tất và xác nhận trên trang của nó",
       "readAs": "Đã đọc: {reads}, với tư cách của bạn.",
       "howAnswers": "Cách tạo câu trả lời",
@@ -484,7 +896,16 @@
         "fallback": "Một thay đổi sẵn sàng để bạn xem xét",
         "leave_apply": "Đơn nghỉ phép sẵn sàng để xem xét",
         "leave_cancel": "Hủy nghỉ phép sẵn sàng để xem xét",
-        "approvals_leave_decide": "Quyết định nghỉ phép sẵn sàng để xem xét"
+        "approvals_leave_decide": "Quyết định nghỉ phép sẵn sàng để xem xét",
+        "attendance_correction_request": "Điều chỉnh chấm công sẵn sàng để xem xét",
+        "attendance_overtime_request": "Yêu cầu làm thêm giờ sẵn sàng để xem xét",
+        "claims_submit": "Yêu cầu hoàn tiền sẵn sàng để xem xét",
+        "claims_cancel": "Hủy yêu cầu hoàn tiền sẵn sàng để xem xét",
+        "ess_profile_request": "Thay đổi hồ sơ sẵn sàng để xem xét",
+        "toil_replacement_request": "Yêu cầu tín dụng nghỉ phép sẵn sàng để xem xét",
+        "approvals_claim_decide": "Quyết định hoàn tiền sẵn sàng để xem xét",
+        "approvals_attendance_decide": "Quyết định chấm công sẵn sàng để xem xét",
+        "letters_request_submit": "Yêu cầu thư sẵn sàng để xem xét"
       },
       "checks": {
         "actor_current": "Quyền truy cập của bạn còn hiệu lực",
@@ -494,7 +915,23 @@
         "leave_type_eligible": "Loại phép được phép",
         "own_approved_cancellable": "Vẫn có thể hủy",
         "own_pending_request": "Đơn vẫn đang chờ",
-        "review_contract": "Trang xem xét đã sẵn sàng"
+        "review_contract": "Trang xem xét đã sẵn sàng",
+        "attendance_day_read": "Đã đọc từ hồ sơ chấm công của bạn",
+        "attendance_request_rules": "Quy định chấm công cho phép",
+        "approval_route": "Đã tìm thấy quy trình phê duyệt",
+        "claim_type_available": "Loại yêu cầu khả dụng",
+        "claim_draft_reviewed": "Đã được dịch vụ hoàn tiền kiểm tra",
+        "receipt_attached": "Yêu cầu hóa đơn",
+        "own_pending_claim": "Yêu cầu vẫn đang chờ",
+        "profile_fields_editable": "Bạn có thể yêu cầu các thay đổi này",
+        "profile_request_reviewed": "Đã đối chiếu với hồ sơ của bạn",
+        "leave_credit_offered": "Bạn có thể yêu cầu tín dụng nghỉ phép",
+        "worked_day_read": "Loại ngày được đọc từ lịch ca của bạn",
+        "leave_credit_rules": "Quy định tín dụng nghỉ phép cho phép",
+        "assigned_approver_current": "Bạn là người phê duyệt được giao",
+        "not_own_request": "Không phải đơn của chính bạn",
+        "request_still_pending": "Đơn vẫn đang chờ",
+        "letter_type_open_for_requests": "Loại thư mở cho yêu cầu"
       },
       "outcomes": {
         "withdrawn_now": "Rút lại ngay",
@@ -502,7 +939,14 @@
         "rejection_if_confirmed": "Bị từ chối nếu bạn xác nhận",
         "step_decision_if_confirmed": "Bước của bạn được ghi nhận",
         "approval_if_native_checks_pass": "Được duyệt nếu các kiểm tra vẫn đạt",
-        "submitted_not_approved": "Đã gửi để phê duyệt, chưa được duyệt"
+        "submitted_not_approved": "Đã gửi để phê duyệt, chưa được duyệt",
+        "claim_submitted_if_checks_pass": "Gửi phê duyệt nếu vượt qua kiểm tra hoàn tiền",
+        "claim_draft_receipt_needed": "Đã lưu bản nháp; thêm hóa đơn ở trang Hoàn tiền",
+        "claim_cancelled_now": "Hủy ngay",
+        "hr_approval_required": "Gửi cho bộ phận nhân sự; chỉ thay đổi khi được duyệt",
+        "hr_verification_required": "Bộ phận nhân sự xác minh thông tin ngân hàng mới trước khi sử dụng",
+        "attendance_decision_if_checks_pass": "Được ghi nhận ở cấp phê duyệt của bạn nếu các kiểm tra vẫn đạt",
+        "letter_requested_hr_prepares": "Đã gửi đến Nhân sự, bộ phận chuẩn bị và phát hành thư"
       },
       "reads": {
         "my_leave_balances": "số dư phép của bạn",
@@ -524,18 +968,1888 @@
         "explain_leave_entitlement": "cách tính ngày phép",
         "explain_payslip_statutory": "cách tính khấu trừ bắt buộc",
         "explain_attendance_day": "cách tính chấm công",
-        "setup_copilot": "các bước thiết lập"
+        "setup_copilot": "các bước thiết lập",
+        "explain_pay_difference": "chênh lệch lương của bạn",
+        "explain_claim_limit": "hạn mức hoàn ứng của bạn",
+        "explain_why": "phần giải thích",
+        "operations_status": "hoạt động của AI Centre"
       },
       "errors": {
         "invalid_question": "Vui lòng đặt câu hỏi tối đa 2.000 ký tự.",
         "continuation_invalid": "Cuộc trò chuyện này không thể tiếp tục. Hãy bắt đầu cuộc trò chuyện mới.",
         "not_configured": "Công ty bạn chưa thiết lập nhà cung cấp AI. Hãy hỏi quản trị viên.",
-        "provider_not_compliant": "Nhà cung cấp AI của công ty bạn chưa được thiết lập để không lưu dữ liệu và không huấn luyện, nên trợ lý không thể trả lời. Hãy hỏi quản trị viên.",
+        "provider_not_compliant": "Nhà cung cấp AI của công ty bạn chưa được thiết lập để không lưu dữ liệu và không huấn luyện, nên Trung tâm AI không thể trả lời. Hãy hỏi quản trị viên.",
         "budget_daily": "Bạn đã đạt giới hạn câu hỏi hôm nay. Hãy thử lại vào ngày mai.",
         "budget_monthly": "Công ty bạn đã đạt giới hạn AI tháng này.",
         "ai_control": "AI hiện đang tạm dừng hoặc bị giới hạn cho bạn hoặc công ty bạn.",
         "protected_input": "Không thể gửi câu hỏi này một cách an toàn. Hãy thử hỏi theo cách khác.",
-        "provider_error": "Trợ lý chưa thể trả lời lúc này. Vui lòng thử lại."
+        "provider_error": "Trung tâm AI chưa thể trả lời lúc này. Vui lòng thử lại."
+      },
+      "letterRequestTitle": "Yêu cầu {letterType}"
+    },
+    "autonomy": {
+      "levels": {
+        "watch": "Theo dõi",
+        "prepare": "Chuẩn bị",
+        "act": "Thực hiện trong giới hạn",
+        "act_audit": "Thực hiện và kiểm tra"
+      },
+      "levelNumber": "Cấp {n} · {level}",
+      "levelOnly": "Cấp {n}",
+      "summaryNamed": "{level} · {companies}",
+      "summaryCount": "{level} · {count, plural, other {# công ty}}",
+      "companiesTitle": "Cấp ở từng công ty",
+      "companiesHelp": "Mỗi công ty có cấp riêng. Vòng lặp chỉ lên một cấp mỗi lần, có bằng chứng, và có thể được hạ xuống bất cứ lúc nào.",
+      "capped": "Lương, tình trạng việc làm, quyền truy cập hệ thống, kỷ luật và nộp hồ sơ theo luật định luôn ở cấp Chuẩn bị tại mọi công ty: luôn có một người quyết định.",
+      "stayPrepare": "Vòng lặp này luôn ở cấp Chuẩn bị tại mọi công ty: luôn có một người quyết định.",
+      "noActor": "Vòng lặp này có thể lên trên cấp Chuẩn bị, nhưng bước tự động của nó chưa được xây dựng, nên hiện vẫn ở cấp Chuẩn bị.",
+      "noCompanies": "Bạn không quản trị công ty nào ở đây.",
+      "changedBy": "Do {name} đặt vào {date}",
+      "changedAuto": "Tự hạ cấp vào {date}",
+      "anAdministrator": "một quản trị viên",
+      "limitsLink": "Giới hạn và cấp",
+      "notices": {
+        "undone": "Đã hoàn tác. Ngày đó đã trở lại như trước, và người đó nhận được một thẻ để xác nhận giờ của mình.",
+        "expired": "Thời hạn hoàn tác đã hết.",
+        "changed": "Hành động này đã được hoàn tác hoặc thay đổi.",
+        "access": "Bạn không thể hoàn tác hành động này.",
+        "ask_hr": "Hiện không thể hoàn tác từ đây.",
+        "unavailable": "Không thể hoàn tác. Hãy thử lại.",
+        "invalid": "Không hiểu yêu cầu đó.",
+        "reviewed": "Đã ghi nhận việc xem xét mẫu.",
+        "review_failed": "Không thể ghi nhận việc xem xét. Hãy thử lại."
+      },
+      "figures": {
+        "applied": "Số lần sửa trong {days} ngày",
+        "corrected": "Được người sửa lại",
+        "undoneByEmployee": "Bị nhân viên hoàn tác",
+        "none": "Chưa có",
+        "appliedRequests": "Số yêu cầu đã gửi trong {days} ngày",
+        "withdrawn": "Bị người rút lại"
+      },
+      "actions": {
+        "title": "Hành động gần đây",
+        "none": "Chưa có hành động tự động nào.",
+        "columns": {
+          "when": "Khi nào",
+          "person": "Người",
+          "what": "Điều gì đã xảy ra",
+          "status": "Trạng thái",
+          "action": "Hành động"
+        },
+        "set": "Giờ ra được đặt thành {time} (kết thúc ca) cho {date}",
+        "notSet": "Không thay đổi cho {date}: {reason}",
+        "reasons": {
+          "condition_site_exit": "không có giờ rời địa điểm nào khớp với giờ kết thúc ca",
+          "condition_leave": "có nghỉ phép đã được duyệt vào ngày đó",
+          "condition_day_changed": "ngày đó đã thay đổi trước khi sửa",
+          "condition_sponsor_self": "đó là ngày của chính người bảo trợ",
+          "owner_refused": "dịch vụ chấm công đã từ chối",
+          "payroll_closed": "bảng lương cho ngày đó đã đóng",
+          "approval_pending": "việc duyệt chấm công cần một người",
+          "interrupted": "lần chạy bị gián đoạn",
+          "condition_other_clocking": "có lần chấm công khác trong ngày",
+          "condition_inactive": "việc làm đã kết thúc",
+          "would_create_overtime": "lần sửa sẽ tạo ra giờ làm thêm",
+          "approval_routed": "việc duyệt chấm công đi theo quy trình phê duyệt"
+        },
+        "status": {
+          "fixed": "Đã sửa · có thể hoàn tác đến {date}",
+          "fixedClosed": "Đã sửa",
+          "undoneEmployee": "Bị nhân viên hoàn tác",
+          "undoneHr": "Bị HR hoàn tác",
+          "changed": "Được một người thay đổi sau đó",
+          "applying": "Đang thực hiện",
+          "toPerson": "Để người đó xác nhận",
+          "withdrawnEmployee": "Rút lại theo yêu cầu của nhân viên",
+          "withdrawnHr": "Bị HR rút lại",
+          "sentOpen": "Đã gửi · có thể rút lại đến {date}",
+          "sentClosed": "Đã gửi"
+        },
+        "undo": "Hoàn tác",
+        "notSent": "Không gửi: {reason}",
+        "sent": "Đã gửi yêu cầu điền {count, plural, other {# thông tin}}",
+        "withdraw": "Rút lại"
+      },
+      "limits": {
+        "title": "Những giới hạn không bao giờ được vượt qua",
+        "clockIn": "Chỉ thực hiện khi có cả giờ vào và giờ kết thúc ca",
+        "leave": "Không bao giờ động đến ngày có nghỉ phép đã được duyệt",
+        "pay": "Không bao giờ thay đổi lương, mức lương hay làm thêm giờ",
+        "perNight": "{company}: tối đa {count, plural, other {# lần sửa}} mỗi đêm, mỗi lần có thể hoàn tác trong {days} ngày",
+        "demotion": "Tự trở về cấp Chuẩn bị nếu hơn 1% bị sửa lại trong 7 ngày",
+        "noOvertime": "Không bao giờ tạo ra giờ làm thêm: lần sửa làm tăng giờ làm thêm sẽ không được giữ lại",
+        "condition": "{company}: chỉ thực hiện khi “{condition}”",
+        "chosenBy": "(do {name} chọn vào {date})",
+        "requestOnly": "Chỉ gửi yêu cầu; không bao giờ thay đổi hồ sơ",
+        "requestActive": "Không bao giờ gửi yêu cầu cho người đã nghỉ việc",
+        "perNightRequests": "{company}: tối đa {count, plural, other {# yêu cầu}} mỗi đêm, mỗi yêu cầu có thể rút lại trong {days} ngày",
+        "level3": "Ở cấp Thực hiện và kiểm tra, HR xem xét mẫu hằng tuần thay vì từng hành động."
+      },
+      "owner": {
+        "suspended": "Đã tạm ngưng: người bảo trợ không còn quyền truy cập HR.",
+        "note": "Tự động tạm ngưng nếu người bảo trợ nghỉ việc hoặc mất quyền truy cập HR. Mọi hành động đều được ghi lại cùng phiên bản quy tắc."
+      },
+      "inSentence": {
+        "loop_probation_ending": "vòng lặp kết thúc thử việc",
+        "loop_payroll_inputs": "vòng lặp trước kỳ lương",
+        "loop_missing_employee_data": "vòng lặp dữ liệu nhân viên còn thiếu",
+        "loop_missed_clock_outs": "vòng lặp quên chấm công ra",
+        "loop_document_expiry": "vòng lặp hộ chiếu",
+        "loop_salary_payroll": "vòng lặp chạy lương"
+      },
+      "promote": {
+        "titleTo": {
+          "prepare": "Đưa {loop} trở lại cấp Chuẩn bị tại {company}?",
+          "act": "Cho phép {loop} thực hiện trong giới hạn tại {company}?",
+          "act_audit": "Cho phép {loop} thực hiện và kiểm tra tại {company}?"
+        },
+        "titleAt": "Cấp của {loop} tại {company}: {level}",
+        "intro": {
+          "prepare": "Ở cấp Theo dõi, nó ghi lại những gì tìm thấy và không hiển thị thẻ cho ai. Ở cấp Chuẩn bị, nó lại chuẩn bị từng thẻ để người đó xác nhận.",
+          "act": "Hiện nó chuẩn bị từng lần sửa để nhân viên xác nhận. Ở cấp tiếp theo, nó tự sửa trong các giới hạn bên dưới, thông báo cho từng người, và mọi lần sửa đều có thể hoàn tác.",
+          "act_audit": "Nó tiếp tục sửa trong các giới hạn bên dưới, thông báo cho từng người, và mọi lần sửa đều có thể hoàn tác. Cấp 3 cần 90 ngày ở Cấp 2 và bằng chứng bên dưới."
+        },
+        "top": "Nó đang ở cấp cao nhất mà vòng lặp này có thể đạt.",
+        "ladder": "Các cấp tự chủ",
+        "now": "hiện tại",
+        "proposed": "đề xuất",
+        "after90": "sau 90 ngày ở Cấp 2",
+        "notForThisLoop": "Không dành cho vòng lặp này",
+        "evidenceTitle": "Bằng chứng ({days} ngày qua, {company})",
+        "columns": {
+          "requirement": "Yêu cầu",
+          "needed": "Cần",
+          "actual": "Thực tế",
+          "met": "Đạt"
+        },
+        "criteria": {
+          "prepared": "Số lần sửa đã chuẩn bị",
+          "changed": "Được một người thay đổi",
+          "rule_broken": "Vi phạm quy tắc",
+          "days_at_level": "Thời gian ở cấp này"
+        },
+        "needed": {
+          "prepared": "{count} trở lên",
+          "changed": "Dưới {percent}",
+          "rule_broken": "Không có",
+          "days_at_level": "{count} ngày"
+        },
+        "actual": {
+          "changed": "{percent} ({count})",
+          "unknown": "Chưa biết",
+          "none": "Không có",
+          "days": "{count, plural, other {# ngày}}"
+        },
+        "yes": "Có",
+        "no": "Không",
+        "noCertificate": "Không có cấp nào cao hơn cấp này để đạt được.",
+        "sampleTitle": "Các thẻ gần đây và kết quả",
+        "sampleNone": "Chưa có thẻ nào.",
+        "seeAll": "Xem tất cả {count} cùng kết quả",
+        "autoApplied": "Đã tự động sửa",
+        "limitsTitle": "Giới hạn ở Cấp {n}",
+        "maxPerNight": "Số lần sửa tối đa mỗi đêm",
+        "undoFor": "Nhân viên có thể hoàn tác trong",
+        "undoDays": "{count} ngày",
+        "onlyWhen": "Chỉ sửa khi",
+        "conditions": {
+          "roster_and_site_exit": "Giờ kết thúc ca và giờ rời địa điểm khớp nhau",
+          "roster_end": "Có giờ kết thúc ca, không có nghỉ phép đã duyệt và không có lần chấm công khác trong ngày"
+        },
+        "siteExitNote": "Ở đây chưa ghi nhận giờ rời địa điểm, nên “Giờ kết thúc ca và giờ rời địa điểm khớp nhau” không thể đạt: với điều kiện này vòng lặp sẽ không sửa gì và tiếp tục chuẩn bị thẻ.",
+        "tell": "Thông báo cho từng người",
+        "tellValue": "Luôn luôn (cố định)",
+        "dropBack": "Trở về cấp Chuẩn bị khi",
+        "dropBackValue": "Hơn 1% bị thay đổi trong 7 ngày (cố định)",
+        "currentLimits": "Tối đa {count} mỗi đêm, hoàn tác trong {days} ngày, chỉ khi: {condition}.",
+        "noLimits": "Ở cấp này nó không thay đổi hồ sơ nào, nên không có giới hạn cần đặt.",
+        "capNote": "Lương, tình trạng việc làm, quyền truy cập hệ thống và kỷ luật không bao giờ được lên trên cấp Chuẩn bị, ở bất kỳ công ty nào. Những việc đó luôn do một người quyết định.",
+        "submit": "Nâng lên Cấp {n} tại {company}",
+        "notYet": "Chưa",
+        "moveDown": "Hạ xuống {level}",
+        "groupOnly": "Chỉ quản trị viên tập đoàn. Được ghi lại với tên của bạn; bạn có thể hạ xuống bất cứ lúc nào.",
+        "readOnly": "Chỉ quản trị viên tập đoàn mới có thể thay đổi cấp của vòng lặp.",
+        "notMet": "Chưa đạt mọi yêu cầu, nên chưa thể nâng cấp.",
+        "saved": {
+          "promoted": "Đã nâng cấp. Hiện nó ở cấp {level} tại {company}.",
+          "moved_down": "Đã hạ cấp. Hiện nó ở cấp {level} tại {company}.",
+          "limits": "Đã lưu giới hạn cho {company}."
+        },
+        "errors": {
+          "invalid": "Không hiểu thay đổi đó.",
+          "refused": "Chỉ quản trị viên tập đoàn mới có thể thay đổi cấp của vòng lặp.",
+          "capped": "Vòng lặp này luôn ở cấp Chuẩn bị tại mọi công ty.",
+          "no_actor": "Bước tự động của vòng lặp này chưa được xây dựng.",
+          "not_next_level": "Vòng lặp chỉ lên một cấp mỗi lần.",
+          "certificate": "Chưa đạt mọi yêu cầu, nên không được nâng cấp.",
+          "changed": "Cấp đã thay đổi kể từ khi bạn mở trang này. Hãy kiểm tra lại.",
+          "unchanged": "Nó đã ở cấp đó.",
+          "not_found": "Không tìm thấy công ty hoặc vòng lặp đó.",
+          "failed": "Không thể lưu thay đổi. Hãy thử lại.",
+          "raise_needs_promotion": "Nâng giới hạn cần nâng cấp.",
+          "not_acting": "Vòng lặp không ở trên cấp Chuẩn bị tại công ty này."
+        },
+        "rosterEndNote": "Với điều kiện giờ kết thúc ca, giờ ra được đặt thành giờ kết thúc ca, nhân viên được thông báo và có thể hoàn tác, và lần sửa không bao giờ tạo ra giờ làm thêm.",
+        "maxPerNightRequests": "Số yêu cầu tối đa mỗi đêm",
+        "undoForRequests": "HR có thể rút lại trong",
+        "currentLimitsTitle": "Giới hạn hiện tại, ở Cấp {n}",
+        "changeLimitsNote": "Không qua nâng cấp, giới hạn chỉ có thể chặt hơn: ít hơn mỗi đêm hoặc thời hạn hoàn tác dài hơn. Điều kiện có thể thay đổi bất cứ lúc nào. Mọi thay đổi đều được ghi lại với tên của bạn.",
+        "saveLimits": "Lưu giới hạn"
+      },
+      "cannotActYet": "Nó chưa thể thực hiện: chưa ghi nhận giờ rời địa điểm, nên “giờ kết thúc ca và giờ rời địa điểm khớp nhau” không thể đạt. Nó tiếp tục chuẩn bị thẻ.",
+      "sample": {
+        "title": "Mẫu hằng tuần cần xem xét",
+        "help": "Ở cấp Thực hiện và kiểm tra, HR xem xét một mẫu hành động mỗi tuần (ít nhất 10% và ít nhất 5) thay vì từng hành động.",
+        "summary": "{size} trên {total} hành động trong tuần {week}",
+        "reviewed": "Đã được {name} xem xét vào {date}",
+        "markReviewed": "Đánh dấu đã xem xét mẫu",
+        "none": "Chưa có hành động nào trong tuần này."
+      },
+      "attribution": {
+        "loops": {
+          "loop_probation_ending": "kết thúc thử việc",
+          "loop_payroll_inputs": "trước kỳ lương",
+          "loop_missing_employee_data": "dữ liệu nhân viên còn thiếu",
+          "loop_missed_clock_outs": "quên chấm công ra",
+          "loop_document_expiry": "hộ chiếu",
+          "loop_salary_payroll": "chạy lương"
+        },
+        "byLoop": "Vòng lặp AI Centre ({loop}), người bảo trợ: {sponsor}",
+        "byLoopForEmployee": "Vòng lặp AI Centre ({loop}), theo yêu cầu của {asker} (nhân viên), người bảo trợ: {sponsor}",
+        "byLoopForHr": "Vòng lặp AI Centre ({loop}), theo yêu cầu của {asker} (HR), người bảo trợ: {sponsor}",
+        "sponsorUnnamed": "người bảo trợ",
+        "byLoopForEmployeeUnnamed": "Vòng lặp AI Centre ({loop}), theo yêu cầu của nhân viên, người bảo trợ: {sponsor}",
+        "byLoopForHrUnnamed": "Vòng lặp AI Centre ({loop}), theo yêu cầu của HR, người bảo trợ: {sponsor}",
+        "madeBy": "Được tạo và duyệt bởi {actor}."
+      }
+    },
+    "payrollCycle": {
+      "title": "Chu kỳ lương: {month}",
+      "description": "Ba vòng lặp đưa bảng lương của mỗi công ty từ dữ liệu đầu vào đến kiểm toán.",
+      "headerOne": "Hạn chốt {cutOff} · ngày trả lương {payDay} · EPF, SOCSO, EIS và PCB đến hạn {due}.",
+      "headerGroup": "EPF, SOCSO, EIS và PCB đến hạn {due}. Mỗi công ty có hạn chốt và ngày trả lương riêng.",
+      "company": "Công ty",
+      "allCompanies": "{count, plural, other {Tất cả # công ty}}",
+      "show": "Hiển thị",
+      "noCompanies": "Bạn không quản trị công ty nào ở đây.",
+      "loopsLabel": "Các vòng lặp lương theo thứ tự",
+      "backToCycle": "Chu kỳ lương",
+      "checks": {
+        "timesheets": "Bảng chấm công hợp lệ",
+        "overtime": "Làm thêm giờ đã duyệt",
+        "leave": "Nghỉ phép và ngày không lương đã chốt",
+        "claims": "Yêu cầu hoàn tiền đã quyết định",
+        "joinersLeavers": "Nhân viên mới và nghỉ việc đầy đủ",
+        "statutoryBank": "Số ngân hàng, EPF, SOCSO và thuế",
+        "payChanges": "Phụ cấp và thay đổi lương đã duyệt",
+        "setup": "Thiết lập lương sẵn sàng",
+        "repeatAudit": "Vấn đề lặp lại từ vòng lặp kiểm toán"
+      },
+      "pre": {
+        "title": "1 · Vòng lặp trước kỳ lương",
+        "done": "Hoàn tất khi mọi dữ liệu đầu vào đầy đủ và được duyệt trước hạn chốt.",
+        "note": "Nó kiểm tra từng chủ sở hữu và chuẩn bị những gì cần xác nhận. Cấp độ: Chuẩn bị, nên không có gì thay đổi cho đến khi một người xác nhận.",
+        "open": "Mở vòng lặp trước kỳ lương",
+        "state": {
+          "open": "{count, plural, =0 {Đang chạy · hạn chốt hôm nay} other {Đang chạy · còn # ngày đến hạn chốt}}",
+          "openPast": "Đang chạy",
+          "done": "Hoàn tất",
+          "missed": "Chưa sẵn sàng trước hạn chốt",
+          "not_checked": "Chưa kiểm tra",
+          "paused": "Tạm dừng",
+          "off": "Tắt"
+        },
+        "value": {
+          "notChecked": "Chưa kiểm tra",
+          "off": "Không sử dụng",
+          "open": "{count} đang mở",
+          "waiting": "{count} đang chờ",
+          "review": "{count} cần xem lại",
+          "done": "Hoàn tất"
+        }
+      },
+      "salary": {
+        "title": "2 · Vòng lặp chạy lương",
+        "done": "Hoàn tất khi mỗi lần chạy được kiểm tra, do một người duyệt, được đóng và tệp ngân hàng khớp.",
+        "note": "Lương chỉ do dịch vụ lương tính. Vòng lặp này luôn ở mức Chuẩn bị tại mọi công ty: nó kiểm tra và chuẩn bị, còn một người duyệt và đóng.",
+        "open": "Mở vòng lặp chạy lương",
+        "state": {
+          "before_cut_off": "Bắt đầu khi đến hạn chốt",
+          "not_checked": "Chưa kiểm tra",
+          "ready_to_start": "Sẵn sàng bắt đầu",
+          "in_progress": "Đang thực hiện",
+          "attention": "Cần chú ý",
+          "done": "Hoàn tất",
+          "paused": "Tạm dừng",
+          "off": "Tắt"
+        },
+        "rows": {
+          "run": "Chạy lương cho từng công ty",
+          "change": "Thay đổi so với tháng trước, theo từng người",
+          "anomalies": "{count} kiểm tra bất thường",
+          "rules": "EPF, SOCSO, EIS, PCB theo quy định hiện hành",
+          "close": "Duyệt và đóng",
+          "bank": "Tổng tệp ngân hàng bằng lương thực nhận"
+        },
+        "value": {
+          "started": "Đã bắt đầu {started}/{total}",
+          "preparedForHr": "Đã chuẩn bị cho nhân sự",
+          "flagged": "{count, plural, other {# người vượt ngưỡng}}",
+          "explained": "Giải thích theo nguyên nhân",
+          "afterRun": "Giải thích theo nguyên nhân",
+          "exceptions": "{count, plural, other {# ngoại lệ đang mở}}",
+          "noExceptions": "Không có ngoại lệ đang mở",
+          "toToday": "Ngoại lệ chuyển đến Hôm nay",
+          "newer": "{count, plural, other {Quy định mới hơn cho # lần chạy}}",
+          "ruleVersion": "Phiên bản quy định {version}",
+          "versionShown": "Hiển thị phiên bản quy định",
+          "closed": "Đã đóng {closed}/{total}",
+          "person": "Luôn là một người",
+          "mismatch": "{count, plural, other {# lần chạy không khớp}}",
+          "matches": "Khớp",
+          "beforeRelease": "Kiểm tra trước khi phát hành"
+        },
+        "runLine": "{type}: {status}"
+      },
+      "audit": {
+        "title": "3 · Vòng lặp kiểm toán",
+        "done": "Hoàn tất khi mọi khoản đã được trả, nộp, đối chiếu và có bằng chứng.",
+        "note": "Tệp và hồ sơ nộp luôn ở mức Chuẩn bị: một người nộp cho EPF, PERKESO và LHDN."
+      },
+      "interval": {
+        "hourly": "Kiểm tra mỗi giờ",
+        "twice_daily": "Kiểm tra hai lần mỗi ngày",
+        "daily": "Kiểm tra hằng ngày"
+      },
+      "runType": {
+        "regular": "Lương",
+        "bonus": "Thưởng",
+        "off_cycle": "Ngoài chu kỳ"
+      },
+      "runStatus": {
+        "draft": "Nháp",
+        "processed": "Đã xử lý",
+        "closed": "Đã đóng"
+      },
+      "byCompany": {
+        "title": "Từng công ty",
+        "columns": {
+          "company": "Công ty",
+          "preSalary": "Trước kỳ lương",
+          "salary": "Chạy lương",
+          "audit": "Kiểm toán"
+        }
+      },
+      "history": {
+        "title": "Ba chu kỳ gần nhất",
+        "columns": {
+          "month": "Tháng",
+          "inputsReady": "Dữ liệu sẵn sàng",
+          "issuesCaught": "Vấn đề phát hiện trước khi chạy",
+          "closed": "Đóng",
+          "corrections": "Sửa sau khi chạy",
+          "filed": "Nộp đúng hạn"
+        },
+        "notMeasured": "Chưa đo",
+        "missed": "Chưa sẵn sàng trước hạn chốt",
+        "onCutOff": "Đúng ngày chốt",
+        "before": "{count, plural, other {# ngày trước hạn chốt}}",
+        "after": "{count, plural, other {# ngày sau hạn chốt}}",
+        "notClosed": "Chưa đóng",
+        "noRun": "Không có lần chạy",
+        "settingsTitle": "Thay đổi",
+        "noChanges": "Chưa có thay đổi: áp dụng giá trị mặc định.",
+        "settingRow": "Phiên bản {version}: {interval}, ngưỡng ±{threshold}, {exclusions, plural, =0 {không loại trừ} other {# loại trừ}} ({source}) bởi {name}, {when}",
+        "rejectedRow": "Một đề xuất bị {name} từ chối, {when}",
+        "source": {
+          "admin": "do quản trị viên đặt",
+          "proposal": "một đề xuất được duyệt"
+        }
+      },
+      "people": {
+        "title": "Vòng lặp nhân sự",
+        "item": "{name} · {count} đang mở"
+      },
+      "patternItem": "Khoản lương {item}",
+      "causes": {
+        "unpaid_leave": "Nghỉ không lương",
+        "absence": "Vắng mặt",
+        "overtime_hours": "Giờ làm thêm",
+        "salary_change": "Thay đổi lương",
+        "days_paid": "Số ngày được trả",
+        "additional_run": "Lần chạy bổ sung",
+        "statutory_rules": "Quy định pháp định",
+        "set_by_hand": "Khoản pháp định đặt thủ công",
+        "other": "Thay đổi khác"
+      },
+      "bodies": {
+        "epf": "EPF",
+        "socso": "SOCSO",
+        "eis": "EIS",
+        "pcb": "PCB",
+        "hrdf": "Phí HRD Corp"
+      },
+      "bank": {
+        "match": "Khớp lương thực nhận và số người",
+        "total_mismatch": "Tổng không khớp lương thực nhận",
+        "count_mismatch": "Số bản ghi không khớp",
+        "not_available": "Không thể kiểm tra tệp ngân hàng, nên đợt lương chưa xong",
+        "blocked": "Chưa thể tạo tệp ngân hàng",
+        "not_ready": "Kiểm tra sau khi xử lý"
+      },
+      "salaryPage": {
+        "title": "Vòng lặp chạy lương: {month}",
+        "description": "Các kiểm tra của mỗi lần chạy như vòng lặp ghi nhận lần gần nhất. Một người chạy, duyệt và đóng bảng lương trên bàn làm việc lương.",
+        "level": "Chuẩn bị tại mọi công ty",
+        "off": "Vòng lặp chạy lương đang tắt. Bật nó trong Vòng lặp để kiểm tra các lần chạy.",
+        "noCompanies": "Bạn không phụ trách lương của công ty nào ở đây.",
+        "companyLine": "Hạn chốt {cutOff} · ngưỡng biến động lương thực nhận ±{threshold}",
+        "readyToStart": "Sẵn sàng bắt đầu: chưa có lần chạy lương cho {month}.",
+        "openPayroll": "Mở bảng lương",
+        "noRuns": "Chưa có lần chạy nào trong tháng này.",
+        "runsCaption": "Các lần chạy lương của {company}",
+        "columns": {
+          "run": "Lần chạy",
+          "status": "Trạng thái",
+          "anomalies": "Kiểm tra bất thường",
+          "change": "Thay đổi so với tháng trước",
+          "rules": "Quy định pháp định",
+          "close": "Duyệt và đóng",
+          "bank": "Tệp ngân hàng"
+        },
+        "runName": "Lần chạy {type} {seq}",
+        "stale": "Cần tính lại",
+        "employees": "{count, plural, other {# nhân viên}}",
+        "afterProcessing": "Sau khi xử lý",
+        "notEvaluated": "{count} kiểm tra chưa chạy",
+        "changed": "{count, plural, other {# người có thay đổi}}",
+        "cause": "{cause} ({count})",
+        "newerRules": "Quy định mới hơn: {bodies}",
+        "closedBy": "Đóng bởi {name}",
+        "closed": "Đã đóng",
+        "notClosed": "Chưa đóng",
+        "reopened": "{count, plural, other {Mở lại # lần sau khi đóng}}",
+        "note": "Ngưỡng biến động lương thực nhận bắt đầu ở ±15%. Nó chỉ thay đổi khi quản trị viên đặt hoặc duyệt một đề xuất, và không bao giờ thay đổi các kiểm tra bất thường.",
+        "settingsLink": "Ngưỡng và chu kỳ"
+      },
+      "flags": {
+        "title": "Cờ biến động lương thực nhận",
+        "help": "Những người có lương thực nhận biến động vượt ngưỡng của công ty so với tháng trước. Đánh dấu từng người: dự kiến, hoặc là vấn đề thật.",
+        "none": "Không có cờ nào trong tháng này.",
+        "columns": {
+          "person": "Người",
+          "change": "Thay đổi lương thực nhận",
+          "pattern": "Nguyên nhân thay đổi",
+          "disposition": "Kết luận"
+        },
+        "up": "Tăng {swing}",
+        "down": "Giảm {swing}",
+        "threshold": "Ngưỡng ±{threshold}",
+        "unnamed": "Một người",
+        "disposition": {
+          "expected": "Dự kiến",
+          "problem": "Vấn đề thật"
+        },
+        "by": "Bởi {name}",
+        "mark": {
+          "expected": "Dự kiến",
+          "problem": "Vấn đề thật"
+        }
+      },
+      "settings": {
+        "title": "Cài đặt chu kỳ lương",
+        "description": "Tần suất vòng lặp trước kỳ lương kiểm tra từng công ty, và ngưỡng biến động lương thực nhận mà vòng lặp chạy lương gắn cờ. Mọi thay đổi đều được ghi lại cùng người thực hiện.",
+        "defaults": "Mặc định: kiểm tra hằng ngày, ngưỡng ±15%",
+        "version": "Phiên bản {version}",
+        "interval": "Chu kỳ kiểm tra trước kỳ lương",
+        "intervalHelp": "Từ đầu kỳ lương đến hạn chốt.",
+        "threshold": "Ngưỡng biến động lương thực nhận",
+        "thresholdHelp": "Gắn cờ người có lương thực nhận thay đổi nhiều hơn mức này so với tháng trước.",
+        "save": "Lưu",
+        "exclusions": "Mẫu lương được loại trừ",
+        "noExclusions": "Không có. Chỉ thêm loại trừ khi duyệt một đề xuất.",
+        "remove": "Xóa",
+        "reminders": "Nhắc hạn chốt tự động",
+        "remindersOn": "Bật",
+        "remindersOff": "Tắt",
+        "remindersTurnOn": "Bật",
+        "remindersTurnOff": "Tắt",
+        "remindersHelp": "Trước mỗi hạn chốt 5, 2 và 1 ngày, mỗi nhân viên và người duyệt có việc tồn đọng nhận một lời nhắc về việc của chính họ. Chỉ có số lượng, không bao giờ có số tiền lương."
+      },
+      "proposals": {
+        "title": "Đề xuất",
+        "help": "Được đề xuất từ kết luận của bộ phận lương trong 30 ngày qua. Không có gì được áp dụng cho đến khi quản trị viên duyệt; sau đó áp dụng từ lần chạy tiếp theo.",
+        "none": "Không có đề xuất: chưa đủ cờ được kết luận là dự kiến.",
+        "threshold": "Nâng ngưỡng từ ±{from} lên ±{to}",
+        "exclusion": "Ngừng gắn cờ các thay đổi do {pattern}",
+        "evidence": "{expected}/{flags} cờ được kết luận là dự kiến ({share}), {problems} vấn đề thật, {days} ngày qua",
+        "approved": "Duyệt",
+        "rejected": "Từ chối",
+        "approveGroupOnly": "Quản trị viên tập đoàn phê duyệt mục này; bạn có thể từ chối."
+      },
+      "saved": {
+        "disposition": "Đã ghi nhận kết luận.",
+        "setting": "Đã lưu. Áp dụng từ lần chạy tiếp theo.",
+        "approved": "Đã duyệt đề xuất. Áp dụng từ lần chạy tiếp theo.",
+        "rejected": "Đã từ chối đề xuất.",
+        "grouped": "Đã ghi nhận cho cả nhóm.",
+        "acknowledged": "Đã ghi nhận là dự kiến. Mục này vẫn được liệt kê và không còn tính là đang mở.",
+        "resolved": "Đã giải quyết là dự kiến.",
+        "revoked": "Đã thu hồi xác nhận. Kiểm tra được tính lại từ lần chạy tiếp theo.",
+        "ruleApproved": "Đã phê duyệt quy tắc thường trực và ghi nhận thành xác nhận.",
+        "ruleRejected": "Đã từ chối đề xuất."
+      },
+      "errors": {
+        "invalid": "Không hiểu được thay đổi đó.",
+        "refused": "Bạn không thể thực hiện thay đổi đó.",
+        "changed": "Nội dung đã thay đổi kể từ khi mở trang. Hãy xem lại.",
+        "already": "Đã ghi nhận, hoặc không có gì thay đổi.",
+        "failed": "Không thể lưu thay đổi. Hãy thử lại.",
+        "groupAdministrator": "Chỉ quản trị viên tập đoàn mới có thể phê duyệt mục này.",
+        "ownEvidence": "Bạn đã xử lý các cờ làm căn cứ cho đề xuất này, nên quản trị viên tập đoàn khác phải phê duyệt.",
+        "own": "Bạn không thể ghi nhận điều này về chính mình."
+      },
+      "patternUnknown": "Một khoản lương không còn trong danh mục",
+      "groups": {
+        "title": "Cờ theo nguyên nhân thay đổi lương",
+        "help": "Kiểm tra những người trong nhóm rồi quyết định cùng lúc. Mỗi người vẫn được ghi nhận là quyết định của bạn.",
+        "heading": "{pattern}: {count, plural, other {# người}}",
+        "member": "{name}: {change} ({causes})",
+        "mark": {
+          "expected": "Cả {count} đều dự kiến",
+          "problem": "Cả {count} đều là vấn đề thật"
+        },
+        "note": "Đánh dấu một nhóm là dự kiến cũng giải quyết bất thường biến động lương thực nhận của cùng những người đó trong tháng, nên bạn chỉ quyết định một lần."
+      },
+      "acknowledgedBlocks": {
+        "title": "Ngoại lệ chặn có xác nhận thường trực",
+        "help": "Mục chặn không bao giờ bị ẩn. Phần giải quyết được điền sẵn từ xác nhận; hãy bấm nếu vẫn đúng cho lần chạy này.",
+        "prefilled": "Giải quyết (từ xác nhận)",
+        "resolve": "Giải quyết là dự kiến"
+      },
+      "acknowledge": {
+        "reason": "Vì sao là dự kiến",
+        "reviewOn": "Xem lại vào (tùy chọn)",
+        "person": "Luôn dự kiến cho người này"
+      },
+      "acknowledgements": {
+        "title": "Xác nhận thường trực",
+        "help": "Các kiểm tra HR lương đánh dấu là dự kiến, không phải ngoại lệ. Cảnh báo bị loại khỏi số việc cần làm nhưng vẫn được liệt kê trong vòng Kiểm toán và gói của nó; mục chặn luôn được giữ, với phần giải quyết điền sẵn. Không phép tính nào thay đổi.",
+        "none": "Chưa ghi nhận.",
+        "netSwing": "Thay đổi lương thực nhận so với tháng trước",
+        "group": "Phòng ban",
+        "company": "Toàn công ty",
+        "warningLine": "Cảnh báo, ẩn khỏi việc cần làm: {reason}. {name}, {when}",
+        "blockLine": "Mục chặn, giải quyết điền sẵn: {reason}. {name}, {when}",
+        "reviewOn": "xem lại vào {date}",
+        "revoke": "Thu hồi",
+        "proposalsTitle": "Đề xuất quy tắc thường trực",
+        "proposal": "Luôn coi {check} của {name} là dự kiến",
+        "proposalEvidence": "{expected} trong {runs} lần gần nhất được quyết định là dự kiến ({share})"
+      }
+    },
+    "policies": {
+      "title": "Chính sách",
+      "descriptionAdmin": "Sổ tay công ty, bằng chính lời của bạn. AI Centre đọc các giá trị trong mỗi chính sách; bạn xác nhận, một quản trị viên thứ hai phê duyệt thay đổi, và dịch vụ công tác phí và nghỉ phép áp dụng nó.",
+      "descriptionReader": "Các chính sách đã được phê duyệt của công ty bạn. AI Centre chỉ trả lời câu hỏi của bạn từ các phiên bản đã phê duyệt này.",
+      "handbook": "Sổ tay",
+      "none": "Chưa có chính sách.",
+      "new": "Chính sách mới",
+      "choose": "Chọn một chính sách để đọc.",
+      "emptyAdmin": "Chưa có chính sách. Viết chính sách đầu tiên bằng Chính sách mới.",
+      "emptyReader": "Công ty bạn chưa công bố chính sách nào ở đây.",
+      "versionShort": "v{version}",
+      "badges": {
+        "draft": "bản nháp",
+        "submitted": "đang chờ",
+        "drift": "{count, plural, other {# chỗ lệch}}"
+      },
+      "areas": {
+        "leave": "Nghỉ phép",
+        "attendance": "Chấm công và làm thêm giờ",
+        "claims": "Công tác phí",
+        "allowances": "Phụ cấp",
+        "people": "Nhân sự",
+        "other": "Khác"
+      },
+      "status": {
+        "draft": "Bản nháp",
+        "submitted": "Đang chờ phê duyệt",
+        "approved": "Đã phê duyệt"
+      },
+      "statusLine": "{status} v{version} · do {author} viết · áp dụng cho {companies} từ {date}",
+      "anAdministrator": "một quản trị viên",
+      "otherCompany": "một công ty khác",
+      "allCompanies": "cả {count} công ty",
+      "actions": {
+        "edit": "Sửa văn bản",
+        "read": "Đọc các giá trị",
+        "send": "Gửi phê duyệt"
+      },
+      "form": {
+        "newTitle": "Chính sách mới",
+        "titleLabel": "Tiêu đề",
+        "area": "Lĩnh vực",
+        "effectiveFrom": "Áp dụng từ",
+        "companies": "Áp dụng cho",
+        "body": "Chính sách của bạn, bằng lời của bạn",
+        "bodyHint": "Viết như bạn viết cho nhân viên. Sau khi lưu, AI Centre có thể đọc các giá trị mà hệ thống có thể thực thi để bạn xác nhận.",
+        "editHint": "Thay đổi văn bản nghĩa là các giá trị của nó cần được đọc và xác nhận lại.",
+        "create": "Lưu bản nháp",
+        "save": "Lưu bản nháp",
+        "cancel": "Hủy"
+      },
+      "words": "Chính sách của bạn, bằng lời của bạn",
+      "enforce": "Những gì hệ thống sẽ thực thi",
+      "table": {
+        "setting": "Cài đặt",
+        "now": "Hiện tại",
+        "fromText": "Từ văn bản của bạn",
+        "decision": "Quyết định của bạn"
+      },
+      "decide": {
+        "confirmed": "Xác nhận",
+        "rejected": "Từ chối"
+      },
+      "decision": {
+        "confirmed": "Đã xác nhận",
+        "rejected": "Đã từ chối",
+        "pending": "Chưa quyết định"
+      },
+      "same": "Giống hiện tại",
+      "enforceNote": "AI Centre đã đọc {count, plural, other {# giá trị này}} từ các từ được tô sáng. Bạn xác nhận từng giá trị; dịch vụ phụ trách sẽ áp dụng sau khi phê duyệt.",
+      "perClaimNote": "Hiển thị như đã viết. Dịch vụ công tác phí tính giá quãng đường của từng yêu cầu theo các bậc này và không cộng dồn tổng theo tháng, nên giới hạn theo tháng trong văn bản của bạn không được thực thi.",
+      "notEnforced": "Chưa thực thi",
+      "notEnforcedBody": "Chính sách này được lưu dưới dạng văn bản. AI Centre trả lời câu hỏi từ phiên bản đã phê duyệt; hệ thống chưa thực thi nó.",
+      "sharedSetting": "Cài đặt công tác phí và nghỉ phép được dùng chung cho mọi công ty trong tập đoàn, nên chỉ được thực thi từ một chính sách áp dụng cho tất cả. Chính sách này được lưu dưới dạng văn bản.",
+      "noValuesDraft": "Chưa đọc giá trị nào. Dùng Đọc các giá trị khi văn bản đã sẵn sàng.",
+      "noValues": "Không có giá trị nào được xác nhận cho phiên bản này.",
+      "impact": {
+        "title": "Nếu đã áp dụng từ {from} đến {to}",
+        "changedLabel": "trong {total} yêu cầu phí đi lại sẽ thay đổi",
+        "lessPaid": "trả ít hơn tổng cộng",
+        "morePaid": "trả nhiều hơn tổng cộng",
+        "samePaid": "tổng số tiền trả không đổi",
+        "lateLabel": "trong {total} yêu cầu bị trễ theo quy tắc {days} ngày",
+        "peopleLabel": "người bị ảnh hưởng",
+        "owner": "Do dịch vụ công tác phí tính trên các yêu cầu thực tế của 12 tháng qua. AI Centre không tính bất kỳ số tiền nào."
+      },
+      "drift": {
+        "textBody": "sổ tay ghi “{quote}”; dịch vụ {owner} ghi {system}. Áp dụng cho {companies}.",
+        "textNote": "Nhân viên hỏi AI Centre sẽ nhận được thiết lập của hệ thống, không phải con số này. Hãy sửa văn bản cho khớp, hoặc xác nhận một giá trị trong bản nháp mới.",
+        "title": "Chỗ sổ tay và hệ thống không khớp",
+        "setting": {
+          "claims_mileage_rates": "Mức phí đi lại",
+          "claims_submit_within_days": "Thời hạn nộp ({type})",
+          "leave_entitlement_days": "Số ngày được hưởng {type}"
+        },
+        "body": "sổ tay ghi {handbook}; dịch vụ {owner} ghi {system}. Áp dụng cho {companies}.",
+        "useHandbook": "Dùng theo sổ tay",
+        "updateHandbook": "Cập nhật sổ tay",
+        "draftOpen": "Hãy hoàn tất hoặc trả lại bản nháp đang mở của chính sách này trước."
+      },
+      "owners": {
+        "claims": "công tác phí",
+        "leave": "nghỉ phép"
+      },
+      "approval": {
+        "blocked": "Không thể phê duyệt phiên bản này khi văn bản khác với những gì hệ thống sẽ thực thi. Hãy trả về bản nháp để sửa văn bản.",
+        "title": "Phê duyệt",
+        "ruleDraft": "Khi bạn gửi, một quản trị viên tập đoàn sẽ phê duyệt. Thay đổi những gì hệ thống thực thi cần một quản trị viên thứ hai: người không viết và không gửi nó.",
+        "ruleSettings": "Phiên bản này thay đổi những gì hệ thống thực thi, nên một quản trị viên thứ hai, người không viết và không gửi nó, phải phê duyệt trước khi áp dụng.",
+        "ruleText": "Phiên bản này chỉ thay đổi văn bản, nên một lần phê duyệt sẽ công bố nó.",
+        "approved": "Được {name} phê duyệt ngày {date}",
+        "returned": "Được {name} trả lại bản nháp ngày {date}",
+        "needSecond": "Bạn đã viết hoặc gửi thay đổi này, nên một quản trị viên tập đoàn khác phải phê duyệt.",
+        "approveApply": "Phê duyệt và áp dụng",
+        "approve": "Phê duyệt",
+        "return": "Trả lại bản nháp",
+        "waiting": "Đang chờ một quản trị viên tập đoàn phê duyệt."
+      },
+      "applied": {
+        "applied": "{setting}: dịch vụ {owner} đã áp dụng từ {date}.",
+        "refused": "{setting}: dịch vụ {owner} đã từ chối: {message}",
+        "scheduled": "{setting}: chờ đến {date}. Dịch vụ {owner} áp dụng cài đặt này ngay ngày nó được ghi.",
+        "applyNow": "Áp dụng ngay"
+      },
+      "versions": {
+        "title": "Phiên bản",
+        "row": "Phiên bản {version} · {status} · từ {date}",
+        "inForce": "đang hiệu lực",
+        "restore": "Lấy làm bản nháp"
+      },
+      "values": {
+        "days": "{days} ngày",
+        "daysDefault": "{days} ngày (mặc định)",
+        "ratePerKm": "RM {rate} mỗi km",
+        "daysAYear": "{days} ngày mỗi năm",
+        "money": "RM {amount}",
+        "none": "Không có",
+        "noneMileage": "Không có (bất kỳ số tiền nào)",
+        "mileageRange": "RM {rate} mỗi km từ {from} đến {to} km",
+        "mileageOpen": "RM {rate} mỗi km từ {from} km",
+        "leaveRange": "{days} ngày từ {from} đến {to} năm",
+        "leaveOpen": "{days} ngày từ {from} năm"
+      },
+      "settings": {
+        "mileageBand": "Mức phí, {from} đến {to} km",
+        "mileageAfter": "Mức phí sau {from} km",
+        "mileageAny": "Mức phí, mọi quãng đường",
+        "submitWithin": "Nộp trong vòng ({type})",
+        "leaveBand": "{type}, {from} đến {to} năm làm việc",
+        "leaveFrom": "{type}, từ {from} năm làm việc trở lên"
+      },
+      "saved": {
+        "text_only": "Đã đánh dấu là chỉ văn bản. Thiết lập của hệ thống được giữ nguyên.",
+        "text_only_withdrawn": "Không còn là chỉ văn bản. Hãy xác nhận một giá trị cho nó, hoặc đánh dấu lại.",
+        "created": "Đã lưu bản nháp.",
+        "draft": "Đã lưu bản nháp.",
+        "read": "AI Centre đã đọc {accepted, plural, other {# giá trị}} để bạn xác nhận{rejected, plural, =0 {.} other {; đã bỏ qua # đề xuất không khớp với lời của bạn.}}",
+        "unread": "AI Centre không đọc được giá trị nào. Hãy kiểm tra văn bản, hoặc nhập trên trang cài đặt của dịch vụ phụ trách.",
+        "confirmed": "Đã xác nhận giá trị.",
+        "rejected": "Đã từ chối giá trị. Nó sẽ không được áp dụng.",
+        "sent_settings": "Đã gửi phê duyệt. Nó thay đổi những gì hệ thống thực thi, nên một quản trị viên thứ hai phải phê duyệt.",
+        "sent_text": "Đã gửi phê duyệt. Nó chỉ thay đổi văn bản.",
+        "approved": "Đã phê duyệt. Mỗi giá trị đã xác nhận đã được chuyển đến dịch vụ phụ trách.",
+        "approved_refused": "Đã phê duyệt, nhưng một dịch vụ phụ trách đã từ chối một giá trị. Xem Phê duyệt.",
+        "returned": "Đã trả lại bản nháp.",
+        "applied": "Đã áp dụng.",
+        "drift_settings": "Một bản nháp đã sẵn sàng để áp dụng lại các giá trị của sổ tay. Hãy xác nhận và gửi phê duyệt.",
+        "drift_text": "Một bản nháp đã sẵn sàng với văn bản đổi theo những gì hệ thống đang làm. Hãy kiểm tra và gửi phê duyệt.",
+        "drift_text_manual": "Một bản nháp đã sẵn sàng. Hãy sửa văn bản cho khớp với hệ thống, rồi đọc và xác nhận các giá trị.",
+        "draft_made": "Một bản nháp mới đã sẵn sàng để sửa."
+      },
+      "errors": {
+        "unmarked": "Văn bản của bạn nhắc đến một thiết lập mà hệ thống thực thi. Hãy xác nhận một giá trị cho nó, hoặc giữ là chỉ văn bản, trước khi gửi.",
+        "mismatch": "Văn bản ghi một con số mà hệ thống sẽ không thực thi. Hãy trả về bản nháp và sửa văn bản, hoặc xác nhận giá trị đó.",
+        "not_administrator": "Chỉ quản trị viên của mọi công ty mà chính sách này áp dụng mới làm được việc đó.",
+        "not_group_admin": "Chỉ quản trị viên tập đoàn mới phê duyệt hoặc trả lại chính sách.",
+        "invalid": "Hãy kiểm tra tiêu đề, ngày, văn bản và chọn ít nhất một công ty.",
+        "not_found": "Chính sách đó không có sẵn.",
+        "not_draft": "Phiên bản này không còn là bản nháp, hoặc văn bản đã thay đổi. Hãy tải lại và thử lại.",
+        "not_submitted": "Phiên bản này không đang chờ phê duyệt.",
+        "not_approved": "Phiên bản đó không phải phiên bản đã phê duyệt đang hiệu lực.",
+        "undecided": "Hãy xác nhận hoặc từ chối mọi giá trị trước khi gửi.",
+        "same_administrator": "Bạn đã viết hoặc gửi thay đổi này. Một quản trị viên tập đoàn khác phải phê duyệt.",
+        "stale_submission": "Hệ thống đã thay đổi kể từ khi gửi, nên giờ nó thay đổi cài đặt được thực thi. Hãy trả lại bản nháp và gửi lại.",
+        "shared_setting": "Các cài đặt này được dùng chung cho mọi công ty trong tập đoàn. Hãy cho chính sách áp dụng cho tất cả trước.",
+        "draft_open": "Chính sách này đã có một bản nháp đang mở. Hãy hoàn tất hoặc trả lại trước.",
+        "no_drift": "Sổ tay và hệ thống hiện đã khớp.",
+        "not_due": "Giá trị đó chưa đến hạn.",
+        "model_unavailable": "AI Centre chưa đọc được các giá trị. Việc gửi văn bản chính sách đến nhà cung cấp AI đang chờ chủ sở hữu xem xét dữ liệu.",
+        "no_settings": "Chưa có nội dung nào hệ thống có thể thực thi cho lĩnh vực này. Chính sách được lưu dưới dạng văn bản.",
+        "failed": "Không thực hiện được. Hãy thử lại."
+      },
+      "mentions": {
+        "title": "Các thiết lập văn bản nhắc đến",
+        "enforced": "được thực thi từ chính sách này sau khi phê duyệt",
+        "textOnly": "chỉ văn bản, không thực thi (do {name} đánh dấu ngày {date})",
+        "needed": "hãy xác nhận một giá trị, hoặc giữ là chỉ văn bản, trước khi gửi",
+        "markTextOnly": "Giữ là chỉ văn bản",
+        "unmark": "Bỏ chỉ văn bản",
+        "setting": {
+          "claims_mileage_rates": "Mức phí đi lại",
+          "claims_submit_within_days": "Thời hạn nộp yêu cầu thanh toán",
+          "leave_entitlement_days": "Số ngày nghỉ được hưởng"
+        }
+      },
+      "mismatch": {
+        "title": "Chỗ văn bản khác với những gì hệ thống sẽ thực thi",
+        "row": "“{quote}” ({setting}): dịch vụ {owner} sẽ thực thi {enforced}.",
+        "note": "Việc phê duyệt chờ đến khi hai bên khớp nhau. Hãy sửa văn bản, hoặc xác nhận một giá trị để nó được áp dụng."
+      },
+      "footer": "Câu hỏi của nhân viên chỉ được trả lời từ phiên bản đã phê duyệt. Mọi phiên bản đều được lưu.",
+      "readerLine": "Phiên bản {version} · hiệu lực từ {date}",
+      "readerNote": "Đây là phiên bản đã phê duyệt. Hỏi AI Centre về nó ở mục Hỏi, hoặc liên hệ bộ phận nhân sự.",
+      "readerSettingNote": "“{quote}” ({setting}): thiết lập hiện tại là {current}; HR đã được báo rằng sổ tay khác với thiết lập này.",
+      "readerSettingUnavailable": "“{quote}”: hiện không đọc được thiết lập hiện tại. Hãy hỏi bộ phận HR trước khi dựa vào con số này."
+    },
+    "feedback": {
+      "label": "Câu trả lời này có hữu ích không?",
+      "helpful": "Hữu ích",
+      "notHelpful": "Không hữu ích",
+      "reasonsLabel": "Câu trả lời có vấn đề gì?",
+      "cancel": "Hủy",
+      "thanks": "Cảm ơn",
+      "change": "Thay đổi",
+      "reasons": {
+        "wrong": "Sai",
+        "not_what_asked": "Không đúng điều tôi hỏi",
+        "missing_something": "Còn thiếu"
+      }
+    },
+    "quality": {
+      "title": "Chất lượng AI",
+      "descriptionCompany": "Cách mọi người dùng câu trả lời và các thao tác đã chuẩn bị của AI Centre tại {company}, những gì nó chưa làm được và những gì các vòng lặp đề xuất.",
+      "descriptionAll": "Cách mọi người dùng câu trả lời và các thao tác đã chuẩn bị của AI Centre tại các công ty của bạn, những gì nó chưa làm được và những gì các vòng lặp đề xuất.",
+      "periodLabel": "Khoảng thời gian",
+      "periods": {
+        "last30": "30 ngày qua",
+        "quarter": "Quý này",
+        "year": "Năm nay"
+      },
+      "companyLabel": "Công ty",
+      "allCompanies": "Tất cả {count} công ty",
+      "show": "Hiển thị",
+      "noCompanies": "Bạn không quản trị công ty nào nên không có gì để hiển thị.",
+      "noData": "Chưa có dữ liệu",
+      "undoDismiss": "Hoàn tác",
+      "saved": {
+        "dismissed": "Đã bỏ qua. Mục này không còn chờ xem xét.",
+        "reopened": "Đã đưa lại vào danh sách cần xem xét.",
+        "candidate": "Đã lưu thành bản nháp ứng viên đánh giá. Hãy kiểm tra văn bản đã ẩn thông tin rồi phê duyệt.",
+        "edited": "Đã lưu bản nháp và ẩn thông tin lại.",
+        "approved": "Đã phê duyệt. Bây giờ bạn có thể xuất cho nhà phát triển.",
+        "reopened_candidate": "Đã trả về bản nháp để bạn chỉnh sửa.",
+        "withdrawn": "Đã rút lại. Mục này sẽ không được xuất.",
+        "gap_status": "Đã lưu trạng thái.",
+        "proposal_approved": "Đã phê duyệt. Vòng lặp dùng thiết lập mới từ lần chạy tiếp theo.",
+        "proposal_rejected": "Đã từ chối. Đề xuất sẽ không được đưa ra lại khi bằng chứng vẫn như cũ.",
+        "proposal_reverted": "Đã hoàn nguyên. Thiết lập trước đó được dùng lại từ lần chạy tiếp theo."
+      },
+      "errors": {
+        "invalid": "Có nội dung không hợp lệ trong biểu mẫu. Hãy kiểm tra và thử lại.",
+        "not_administrator": "Chỉ quản trị viên của công ty này mới làm được việc đó.",
+        "not_found": "Mục đó không còn ở đây.",
+        "changed": "Có người đã thay đổi mục này sau khi bạn mở trang. Hãy tải lại và thử lại.",
+        "not_redacted": "Văn bản vẫn còn tên, số, mã hoặc địa chỉ sau khi ẩn thông tin. Hãy viết lại bằng chi tiết hư cấu.",
+        "state": "Không thể làm việc đó ở giai đoạn này.",
+        "failed": "Không lưu được. Hãy thử lại."
+      },
+      "tiles": {
+        "helpful": "Câu trả lời được đánh dấu hữu ích",
+        "helpfulNote": "{helpful} trên {marked} câu trả lời được đánh dấu",
+        "helpfulNone": "Không có câu trả lời nào được đánh dấu trong khoảng thời gian này",
+        "unchanged": "Thao tác đã chuẩn bị được xác nhận không thay đổi",
+        "unchangedNote": "{unchanged} trên {decided}; đã sửa {edited} ({editedCount})",
+        "preparedNone": "Không có thao tác đã chuẩn bị nào được quyết định trong khoảng thời gian này",
+        "discarded": "Thao tác đã chuẩn bị bị bỏ",
+        "discardedNote": "{discarded} trên {decided}",
+        "gaps": "Khoảng trống còn mở",
+        "gapsNote": "{share} số câu hỏi nó chưa đáp ứng được: {open} trên {questions}",
+        "gapsNone": "Không có câu hỏi nào nó không trả lời được trong khoảng thời gian này"
+      },
+      "chart": {
+        "title": "Thao tác đã chuẩn bị được xác nhận không thay đổi, theo tháng",
+        "label": "Phần thao tác đã chuẩn bị được xác nhận không thay đổi, theo tháng: {values}.",
+        "value": "{month} {share} ({unchanged} trên {decided})",
+        "valueNone": "{month} không có dữ liệu",
+        "unit": "Xác nhận không thay đổi (%)",
+        "note": "Vẽ từ 0 đến 100%. Tháng không có thao tác đã chuẩn bị nào được quyết định thì không có cột."
+      },
+      "gaps": {
+        "title": "Khoảng trống lớn nhất",
+        "help": "Những câu hỏi AI Centre không trả lời hoặc không làm được, được nhóm theo nội dung được hỏi và đếm.",
+        "intent": "Ý định",
+        "count": "Số lần",
+        "status": "Trạng thái",
+        "none": "Không có việc gì AI Centre không trả lời hoặc không làm được trong khoảng thời gian này.",
+        "roles": "Người hỏi: {roles}",
+        "statusFor": "Trạng thái của {intent}",
+        "mixed": "Khác nhau theo công ty",
+        "statuses": {
+          "open": "Mở",
+          "planned": "Đã lên kế hoạch",
+          "wont_do": "Sẽ không làm",
+          "duplicate": "Trùng lặp"
+        },
+        "duplicateOf": "Trùng với",
+        "duplicateNone": "Không trùng lặp",
+        "save": "Lưu"
+      },
+      "intents": {
+        "not_supported": "Hỏi liệu nó có làm được việc về {area}: chưa",
+        "no_route": "Yêu cầu làm việc về {area}: không có cách chuẩn bị",
+        "cannot_answer": "Không trả lời được về {area}"
+      },
+      "areas": {
+        "people": "nhân sự",
+        "organisation": "tổ chức",
+        "leave": "nghỉ phép",
+        "attendance": "chấm công",
+        "claims": "hoàn ứng",
+        "payroll": "bảng lương",
+        "performance": "hiệu suất",
+        "rewards": "khen thưởng",
+        "lifecycle": "tiếp nhận và nghỉ việc",
+        "approvals": "phê duyệt",
+        "self_service": "tự phục vụ",
+        "knowledge": "chính sách và hướng dẫn",
+        "notifications": "thông báo",
+        "testing": "kiểm thử hệ thống",
+        "reports": "báo cáo",
+        "settings": "cài đặt",
+        "security": "quyền truy cập và bảo mật",
+        "ai": "AI Centre",
+        "general": "việc khác"
+      },
+      "roles": {
+        "employee": "Nhân viên",
+        "manager": "Quản lý",
+        "hr_admin": "Quản trị viên HR",
+        "payroll": "Bảng lương",
+        "group_admin": "Quản trị viên tập đoàn"
+      },
+      "locales": {
+        "en": "Tiếng Anh",
+        "ms": "Tiếng Mã Lai",
+        "zh": "Tiếng Trung",
+        "vi": "Tiếng Việt",
+        "ta": "Tiếng Tamil",
+        "th": "Tiếng Thái"
+      },
+      "signals": {
+        "card_edited": "Một thao tác đã chuẩn bị được mở để sửa",
+        "card_discarded": "Một thao tác đã chuẩn bị bị bỏ",
+        "recommendation_rejected": "Một khuyến nghị không được làm theo",
+        "answer_unhelpful": "Một câu trả lời bị đánh dấu không hữu ích"
+      },
+      "corrections": {
+        "title": "Chỉnh sửa cần xem xét",
+        "help": "Những gì mọi người đã thay đổi hoặc từ chối. Chọn một mục làm ứng viên đánh giá để lần đánh giá sau kiểm tra nó, hoặc bỏ qua. Không có gì ở đây tự thay đổi AI Centre.",
+        "signal": "Tín hiệu",
+        "role": "Vai trò",
+        "when": "Thời gian",
+        "actions": "Thao tác",
+        "none": "Không có gì cần xem xét trong khoảng thời gian này.",
+        "detail": "Về {area} · {locale}",
+        "promote": "Làm ứng viên đánh giá",
+        "dismiss": "Bỏ qua",
+        "reason": "Lý do: {reason}"
+      },
+      "candidate": {
+        "question": "Câu hỏi, với chi tiết hư cấu",
+        "expectation": "Một câu trả lời tốt cần làm gì",
+        "kind": "Loại câu trả lời",
+        "factor": "Nội dung kiểm tra",
+        "kinds": {
+          "answer": "Trả lời",
+          "do": "Thực hiện",
+          "clarify": "Hỏi lại một câu",
+          "guide": "Hướng dẫn",
+          "honest_gap": "Nói rằng chưa làm được",
+          "refuse": "Từ chối nhẹ nhàng"
+        },
+        "factors": {
+          "facts": "Dữ kiện",
+          "capability": "Những gì nó làm được",
+          "doing": "Làm thay vì chỉ đường",
+          "privacy_wording": "Cách nói về quyền riêng tư",
+          "brevity": "Ngắn gọn",
+          "language": "Ngôn ngữ",
+          "safety": "An toàn"
+        },
+        "redactionHelp": "Hãy dùng tên và chi tiết hư cấu. Khi bạn lưu, tên, mã, con số, ngày, địa chỉ e-mail và số điện thoại được thay bằng phần giữ chỗ như NAME_A. Hãy đọc văn bản đã lưu trước khi phê duyệt.",
+        "newTitle": "Ứng viên đánh giá mới: {signal}",
+        "newIntro": "Được ghi là câu hỏi của {role} bằng {locale}. Hãy viết câu hỏi như người ta có thể đã hỏi và một câu trả lời tốt cần làm gì.",
+        "saveDraft": "Lưu bản nháp",
+        "cancel": "Hủy",
+        "editTitle": "Sửa bản nháp"
+      },
+      "candidates": {
+        "title": "Ứng viên đánh giá",
+        "help": "Một ứng viên chỉ rời khỏi công ty của bạn sau khi bạn phê duyệt văn bản đã ẩn thông tin và xuất nó. Tệp được giao cho nhà phát triển để thêm vào bộ đánh giá; không có gì tự động thay đổi AI Centre.",
+        "question": "Câu hỏi",
+        "role": "Vai trò",
+        "state": "Trạng thái",
+        "actions": "Thao tác",
+        "none": "Chưa có ứng viên đánh giá nào.",
+        "expected": "Mong đợi: {expectation}",
+        "states": {
+          "draft": "Bản nháp",
+          "approved": "Đã phê duyệt",
+          "exported": "Đã xuất",
+          "withdrawn": "Đã rút lại"
+        },
+        "version": "Phiên bản {version} · {date}",
+        "edit": "Sửa",
+        "approve": "Phê duyệt văn bản đã ẩn thông tin",
+        "export": "Xuất cho nhà phát triển",
+        "reopen": "Trả về bản nháp",
+        "download": "Tải xuống lại",
+        "withdraw": "Rút lại"
+      },
+      "proposals": {
+        "title": "Đề xuất",
+        "help": "Những thay đổi các vòng lặp đề xuất từ chính quyết định của bạn. Mỗi thay đổi chỉ áp dụng khi quản trị viên phê duyệt, từ lần chạy tiếp theo, và có thể hoàn nguyên. Việc nâng cấp được quyết định trên trang của từng vòng lặp, không phải ở đây.",
+        "change": "Thay đổi",
+        "evidence": "Bằng chứng",
+        "state": "Trạng thái",
+        "actions": "Thao tác",
+        "none": "Các vòng lặp không có đề xuất nào.",
+        "where": "{loop} · {company}",
+        "open": "Đang chờ quyết định",
+        "applied": "Đã áp dụng {date}",
+        "approved": "Phê duyệt",
+        "rejected": "Từ chối",
+        "revert": "Hoàn nguyên"
+      },
+      "loopCorrections": {
+        "title": "Chỉnh sửa vòng lặp theo tháng",
+        "help": "Mức độ thường xuyên mọi người thay đổi những gì vòng lặp đã chuẩn bị hoặc đã làm. Vượt quá 1% trong 7 ngày, vòng lặp tự hành động sẽ tự quay về mức Chuẩn bị; không có gì ở đây nâng cấp vòng lặp.",
+        "loop": "Vòng lặp",
+        "none": "Chưa có thẻ hoặc thao tác vòng lặp nào được quyết định.",
+        "counts": "{corrected} trên {decided}"
+      },
+      "method": {
+        "link": "Cách tính các số liệu này",
+        "helpful": "Câu trả lời được đánh dấu hữu ích: số câu trả lời được đánh dấu hữu ích trên tất cả câu trả lời được đánh dấu hữu ích hoặc không hữu ích trong khoảng thời gian. Câu trả lời không được đánh dấu thì không được tính.",
+        "prepared": "Thao tác đã chuẩn bị được xác nhận không thay đổi: các thao tác AI Centre đã chuẩn bị và được xác nhận đúng như chuẩn bị, trên tất cả thao tác đã chuẩn bị được quyết định trong khoảng thời gian. Đó là thẻ trong cuộc trò chuyện được xác nhận, mở để sửa hoặc bị bỏ, hoặc thẻ vòng lặp được hoàn tất với giá trị nó đề xuất hoặc giá trị đã thay đổi. Đã sửa là phần được mở để sửa hoặc đã thay đổi. Thẻ vòng lặp không đề xuất giá trị riêng thì không được tính.",
+        "discarded": "Thao tác đã chuẩn bị bị bỏ: các thẻ trong cuộc trò chuyện bị bỏ, trên cùng các thao tác đã chuẩn bị được quyết định. Thẻ vòng lặp không thể bị bỏ, nên không thay đổi, đã sửa và bị bỏ cộng lại bằng tổng.",
+        "gaps": "Khoảng trống còn mở: các loại câu hỏi AI Centre không trả lời hoặc không làm được trong khoảng thời gian mà trạng thái vẫn là mở, và phần các câu hỏi đó đang chờ chúng. Một câu hỏi được tính khi câu trả lời nói rằng chưa làm được, khi không chuẩn bị được gì cho một yêu cầu, hoặc khi nó không trả lời được. Câu hỏi được nhóm theo loại khoảng trống và lĩnh vực sản phẩm được nhắc đến.",
+        "trend": "Biểu đồ cho thấy, với mỗi tháng, phần thao tác đã chuẩn bị được quyết định trong tháng đó được xác nhận không thay đổi, vẽ từ 0 đến 100%.",
+        "corrections": "Chỉnh sửa cần xem xét: các thao tác đã chuẩn bị được mở để sửa hoặc bị bỏ, các khuyến nghị không được làm theo và các câu trả lời bị đánh dấu không hữu ích, mới nhất trước, chưa được quản trị viên nào bỏ qua hoặc chọn làm ứng viên đánh giá. Chỉnh sửa chỉ hiện vai trò của người đó, không bao giờ hiện tên.",
+        "candidates": "Ứng viên đánh giá là bản viết lại hư cấu của chính bạn cho một câu hỏi và những gì một câu trả lời tốt cần làm. Nó được ẩn thông tin mỗi lần lưu và chỉ rời khỏi công ty của bạn dưới dạng tệp bạn xuất sau khi phê duyệt; giá trị hư cấu thay cho phần giữ chỗ. Nhà phát triển xem xét trước khi đưa vào bộ đánh giá.",
+        "proposals": "Đề xuất đến từ chính hồ sơ của các vòng lặp, hiện là ngưỡng biến động ròng của vòng lặp bảng lương. Phê duyệt sẽ ghi một phiên bản thiết lập mới; hoàn nguyên sẽ ghi thêm một phiên bản với giá trị trước đó. Mọi phiên bản đều được giữ lại.",
+        "access": "Chỉ quản trị viên HR và quản trị viên tập đoàn mới thấy trang này, cho các công ty họ quản trị. Mỗi số liệu là số đếm, hoặc phần trăm của số đếm, từ chính hồ sơ công việc của AI Centre.",
+        "privacy": "Cuộc trò chuyện về chủ đề nhạy cảm không lưu bất kỳ từ nào và không bao giờ được tính ở đây. Không điều gì học được ở đây rời khỏi công ty của bạn trừ khi bạn xuất nó, và việc học không bao giờ thay đổi cách tính, quyền hạn hay những gì AI Centre được phép hiển thị."
+      }
+    }
+  },
+  "today": {
+    "greetingMorning": "Chào buổi sáng",
+    "greetingAfternoon": "Chào buổi chiều",
+    "greetingEvening": "Chào buổi tối",
+    "greetingMorningName": "Chào buổi sáng, {name}",
+    "greetingAfternoonName": "Chào buổi chiều, {name}",
+    "greetingEveningName": "Chào buổi tối, {name}",
+    "askLabel": "Hỏi AI Centre",
+    "askPlaceholderAdmin": "Hỏi AI Centre, hoặc yêu cầu việc cần làm…",
+    "askPlaceholderPersonal": "Hỏi AI Centre: nghỉ phép, lương, yêu cầu hoàn tiền, mọi điều về công việc…",
+    "askSubmit": "Hỏi",
+    "askOpening": "Đang mở AI Centre…",
+    "suggestions": "Câu hỏi gợi ý",
+    "suggestLeave": "Xin nghỉ phép",
+    "suggestClaim": "Gửi yêu cầu hoàn tiền",
+    "suggestPay": "Vì sao lương của tôi khác?",
+    "suggestLetter": "Lấy thư xác nhận việc làm",
+    "needsYou": "Cần bạn xử lý",
+    "needsYouEmpty": "Hiện không có việc gì cần bạn xử lý.",
+    "readyToConfirm": "Sẵn sàng để bạn xác nhận",
+    "doneForYou": "Đã làm cho bạn",
+    "doneForYouEmpty": "Chưa có việc nào được làm cho bạn trong 7 ngày qua.",
+    "watching": "Đang theo dõi",
+    "watchingEmpty": "Hiện không có gì cần theo dõi.",
+    "atAGlance": "Tổng quan nhanh",
+    "atAGlanceEmpty": "Chưa có gì để hiển thị.",
+    "unavailable": "Một số mục không tải được. Trang riêng của chúng vẫn hoạt động.",
+    "loading": "Đang tải Hôm nay",
+    "more": "Thêm",
+    "tasks": {
+      "from": "Từ phê duyệt",
+      "received": "Nhận lúc {date}",
+      "open": "Mở",
+      "seeAll": "Xem tất cả {count} mục",
+      "review": "Xem xét"
+    },
+    "prepared": {
+      "leaveApply": "Đơn nghỉ phép đã được chuẩn bị cho bạn",
+      "leaveCancel": "Yêu cầu hủy nghỉ phép đã được chuẩn bị cho bạn",
+      "leaveDecision": "Quyết định nghỉ phép đã được chuẩn bị cho bạn",
+      "meta": "Chuẩn bị lúc {date}",
+      "expires": "Hết hạn {date}",
+      "cta": "Xem và xác nhận",
+      "note": "Đã được dịch vụ nghỉ phép kiểm tra. Không có gì được gửi cho đến khi bạn xác nhận.",
+      "awaiting": "Đang chờ bạn xác nhận"
+    },
+    "findings": {
+      "setupTitle": "{count, plural, other {# bước thiết lập cần chú ý}}",
+      "setupSource": "Từ bản tóm tắt đã chuẩn bị hôm nay",
+      "setupCta": "Mở mức sẵn sàng",
+      "readinessTitle": "{count, plural, other {# hồ sơ nhân viên thiếu dữ liệu bắt buộc}}",
+      "readinessSource": "Mức sẵn sàng của hồ sơ",
+      "readinessCta": "Sửa hồ sơ",
+      "proposalsTitle": "{count, plural, other {# bản sửa đã chuẩn bị đang chờ bạn phê duyệt}}",
+      "proposalsSource": "Hành động đề xuất",
+      "proposalsCta": "Xem các bản sửa",
+      "letterRequestsTitle": "{count, plural, other {# yêu cầu thư đang chờ bạn}}",
+      "letterRequestsSource": "Yêu cầu thư của nhân viên",
+      "letterRequestsCta": "Mở yêu cầu thư"
+    },
+    "loops": {
+      "awaiting": "Đang chờ bạn",
+      "source": "Do AI Centre chuẩn bị: {loop}",
+      "clockOutTitle": "Bạn đã về lúc {time} ngày {date} phải không?",
+      "clockOutCheckIn": "Chấm công vào lúc {time}",
+      "clockOutMissing": "Không có chấm công ra",
+      "clockOutRoster": "Ca của bạn kết thúc lúc {time}",
+      "clockOutNote": "Không có gì thay đổi cho đến khi bạn gửi điều chỉnh; người duyệt quyết định như thường lệ.",
+      "clockOutReasonLegend": "Vì sao không có chấm công ra?",
+      "clockOutReasonForgot": "Quên chấm công ra",
+      "clockOutReasonDevice": "Thiết bị gặp sự cố",
+      "clockOutReasonOther": "Khác",
+      "clockOutReasonOtherLabel": "Nhập lý do",
+      "clockOutActionsLabel": "Xác nhận hoặc chỉnh sửa",
+      "clockOutChanged": "Ngày này đã thay đổi kể từ khi thẻ được chuẩn bị nên chưa có gì được gửi. Hãy dùng Chỉnh sửa để kiểm tra trên biểu mẫu.",
+      "recordTitle": "{count, plural, other {Hồ sơ của bạn thiếu # thông tin}}",
+      "recordNote": "Nhân sự phê duyệt cập nhật của bạn như thường lệ.",
+      "recordCta": "Điền",
+      "passportTitle": "Hộ chiếu của bạn hết hạn ngày {date}",
+      "passportNote": "Hãy gia hạn và gửi thông tin mới cho nhân sự.",
+      "passportCta": "Cập nhật thông tin",
+      "probationTitle": "Thử việc kết thúc ngày {date}: {name}",
+      "probationTitleUnnamed": "Một kỳ thử việc kết thúc ngày {date}",
+      "probationStage": {
+        "none": "Chưa bắt đầu đánh giá",
+        "with_manager": "Đánh giá ở quản lý",
+        "with_hr": "Đánh giá đang chờ nhân sự"
+      },
+      "probationOverdue": "Đã qua ngày kết thúc mà chưa có quyết định",
+      "probationNote": "Vòng lặp không bao giờ quyết định: nhân sự ghi nhận quyết định.",
+      "probationCta": "Xem",
+      "payrollTitle": "{company}: thiếu dữ liệu lương trước hạn chốt {date}",
+      "payrollTitleUnnamed": "Thiếu dữ liệu lương trước hạn chốt {date}",
+      "payrollBlockers": "{count, plural, other {# mục chặn việc chạy lương}}",
+      "payrollCta": "Mở chu kỳ lương",
+      "passportsTitle": "{count, plural, other {# hộ chiếu hết hạn trong 60 ngày}}",
+      "passportsFirst": "Sớm nhất ngày {date}",
+      "passportsCta": "Mở danh sách nhân sự",
+      "names": {
+        "loop_probation_ending": "Kết thúc thử việc",
+        "loop_payroll_inputs": "Vòng lặp trước kỳ lương",
+        "loop_missing_employee_data": "Thiếu dữ liệu nhân viên",
+        "loop_missed_clock_outs": "Quên chấm công ra",
+        "loop_document_expiry": "Hộ chiếu sắp hết hạn",
+        "loop_salary_payroll": "Vòng lặp chạy lương"
+      }
+    },
+    "done": {
+      "answeredLabel": "Đã trả lời",
+      "checkedLabel": "Đã kiểm tra",
+      "preparedLabel": "Đã chuẩn bị",
+      "answeredOthersTitle": "{count, plural, other {Đã trả lời # câu hỏi của nhân viên}}",
+      "answeredOthersBody": "Trong 7 ngày qua, cho các công ty trong phạm vi hiện tại của bạn. Câu hỏi về vấn đề nhạy cảm được chuyển đến đội ngũ HR của bạn và không được tính ở đây.",
+      "answeredYouTitle": "{count, plural, other {Đã trả lời # câu hỏi của bạn}}",
+      "answeredYouBody": "Trong 7 ngày qua.",
+      "leaveChecksTitle": "{count, plural, other {Đã kiểm tra # đơn nghỉ phép cho bạn}}",
+      "leaveChecksBody": "Số dư, trùng lịch, người thay thế trong nhóm và chính sách, mỗi mục đều do dịch vụ nghỉ phép kiểm tra. Quyết định vẫn là của bạn.",
+      "preparedTitle": "{count, plural, other {Đã chuẩn bị # mục bạn ủy quyền}}",
+      "preparedBody": "Trong 7 ngày qua, bởi các công việc bạn đã ủy quyền."
+    },
+    "watch": {
+      "deadlineLabel": "Hạn chót",
+      "deadlineTitle": "{count, plural, other {# thông báo CP22 hoặc CP22A cần nộp}}",
+      "deadlineOverdue": "{count, plural, other {# đã quá hạn.}}",
+      "deadlineBody": "Đến hạn trong 7 ngày, từ danh sách công việc tuân thủ theo luật định.",
+      "deadlinePartial": "Đã kiểm tra {n} trên {total} công ty đầu tiên trong phạm vi.",
+      "deadlineCta": "Mở biểu mẫu theo luật định",
+      "exceptionsLabel": "Lương",
+      "exceptionsTitle": "{count, plural, other {# ngoại lệ bảng lương đang mở}}",
+      "exceptionsBlocking": "{count, plural, =0 {Không có ngoại lệ nào chặn kỳ tính lương.} other {# ngoại lệ chặn kỳ tính lương.}}",
+      "exceptionsCta": "Mở các ngoại lệ",
+      "expiryLabel": "Sắp hết hạn",
+      "passportTitle": "{count, plural, other {# hộ chiếu đã ghi nhận sẽ hết hạn trong 30 ngày}}",
+      "passportBody": "Hộ chiếu đầu tiên hết hạn vào {date}.",
+      "passportCta": "Mở nhân sự"
+    },
+    "glance": {
+      "balances": "Số dư nghỉ phép",
+      "daysValue": "{days} ngày",
+      "notShown": "Không hiển thị",
+      "why": "Vì sao?",
+      "whyLabel": "Vì sao số dư {leaveType} của tôi là con số này?",
+      "payslipTitle": "Phiếu lương {date}",
+      "openPayslip": "Mở",
+      "noPayslip": "Chưa có phiếu lương nào được phát hành.",
+      "comingUp": "Sắp tới",
+      "managerAwayRange": "{name}, quản lý của bạn, vắng mặt {start} – {end}.",
+      "managerAwayDay": "{name}, quản lý của bạn, vắng mặt vào {date}.",
+      "nothingComingUp": "Không có gì trong hai tuần tới.",
+      "managerAwayRangeUnnamed": "Quản lý của bạn vắng mặt {start} – {end}.",
+      "managerAwayDayUnnamed": "Quản lý của bạn vắng mặt vào {date}."
+    },
+    "autonomy": {
+      "undo": "Hoàn tác",
+      "undoing": "Đang hoàn tác…",
+      "undone": "Đã hoàn tác. Ngày của bạn đã trở lại như trước; hãy xác nhận giờ ra trên thẻ của nó.",
+      "actionsLabel": "Hoàn tác lần sửa",
+      "refused": {
+        "unavailable": "Không thể hoàn tác. Hãy thử lại.",
+        "expired": "Thời hạn hoàn tác đã hết. Hãy nhờ HR thay đổi.",
+        "changed": "Nó đã thay đổi. Hãy mở ngày chấm công của bạn để kiểm tra.",
+        "access": "Bạn không thể hoàn tác mục này.",
+        "ask_hr": "Hiện không thể hoàn tác từ đây. Hãy nhờ HR hoàn tác."
+      },
+      "autoFixedTitle": "Giờ ra được đặt thành {time} cho {date}",
+      "autoFixedRoster": "Giờ kết thúc ca của bạn",
+      "autoFixedSource": "Do AI Centre thực hiện: {loop}",
+      "autoFixedUntil": "Bạn có thể hoàn tác đến {date}",
+      "autoFixedNote": "Nếu bạn rời đi vào giờ khác, hãy hoàn tác và xác nhận giờ đúng.",
+      "movedDownTitle": "{loop} đã trở về cấp Chuẩn bị tại {company}",
+      "movedDownTitleUnnamed": "{loop} đã trở về cấp Chuẩn bị",
+      "movedDownShare": "{corrected} trên {applied} lần sửa được người sửa lại trong 7 ngày",
+      "correctionUndone": "{name} · {date} · bị {by} hoàn tác",
+      "correctionChanged": "{name} · {date} · được thay đổi sau đó",
+      "byEmployee": "nhân viên",
+      "byHr": "HR",
+      "someone": "Một người",
+      "correctionMore": "và {count} mục khác",
+      "movedDownNote": "Nó lại chuẩn bị thẻ cho đến khi quản trị viên tập đoàn nâng cấp nó.",
+      "movedDownCta": "Mở vòng lặp",
+      "actedTitle": "{loop} đã thực hiện {count, plural, other {# thay đổi}} tại {company} trong ngày qua",
+      "actedNote": "Ở cấp Thực hiện trong giới hạn, mọi hành động đều hiển thị ở đây. Mở vòng lặp để hoàn tác.",
+      "sampleTitle": "Mẫu hằng tuần cần xem xét: {loop} tại {company}",
+      "sampleMeta": "{size} trên {total} hành động tuần này",
+      "sampleNote": "Ở cấp Thực hiện và kiểm tra, HR xem xét mẫu này thay vì từng hành động.",
+      "sampleCta": "Xem xét mẫu",
+      "leftAloneTitle": "{loop} để lại {count, plural, other {# mục}} cho mọi người tại {company}",
+      "leftAloneNote": "Một điều kiện không đạt, nên người đó tự xác nhận."
+    }
+  },
+  "why": {
+    "link": "Vì sao?",
+    "close": "Đóng",
+    "ask": "Hỏi AI Centre về mục này",
+    "opening": "Đang mở AI Centre…",
+    "unavailable": "Hiện không tải được phần giải thích này. Vui lòng thử lại.",
+    "pay": {
+      "linkLabel": "Vì sao lương của tôi khác tháng trước?",
+      "title": "Vì sao {period} khác {previous}",
+      "netUp": "Lương thực lãnh của bạn cao hơn {previous} {amount}.",
+      "netDown": "Lương thực lãnh của bạn thấp hơn {previous} {amount}.",
+      "netSame": "Lương thực lãnh của bạn bằng {previous}.",
+      "colItem": "Khoản mục",
+      "colChange": "Thay đổi",
+      "noLines": "Không có dòng nào trên phiếu lương thay đổi.",
+      "payItems": "Các khoản lương đã thay đổi",
+      "statutory": "Khấu trừ theo luật định",
+      "statutoryBase": "{name} được tính trên {current}, so với {previous} vào {previousPeriod}.",
+      "statutoryBaseUnknown": "Mức lương dùng để tính {name} không được ghi nhận cho cả hai tháng.",
+      "causes": "Những gì dịch vụ tính lương đã ghi nhận",
+      "noCause": "Dịch vụ tính lương không ghi nhận nguyên nhân nào ngoài các số liệu trên. Bộ phận nhân sự hoặc tính lương có thể giải thích thêm.",
+      "earliest": "Đây là phiếu lương đã phát hành sớm nhất của bạn, nên không có tháng trước để so sánh.",
+      "noData": "Chưa có phiếu lương đã phát hành để so sánh.",
+      "onlyIn": "{companies} chỉ trả lương cho bạn trong một trong hai tháng, nên không được so sánh ở đây.",
+      "runs": "{period}: {current, plural, other {# phiếu lương}}; {previousPeriod}: {previous, plural, other {# phiếu lương}}.",
+      "note": "Dịch vụ tính lương đã tính mọi số liệu ở đây. AI Centre chỉ giải thích.",
+      "question": "Vì sao lương {period} của tôi khác {previous}?",
+      "cause": {
+        "unpaid_leave": "Nghỉ không lương: {current} trong {period}, {previous} trong {previousPeriod}.",
+        "absence": "Vắng mặt: {current} trong {period}, {previous} trong {previousPeriod}.",
+        "overtime_hours": "Tăng ca: {current} trong {period}, {previous} trong {previousPeriod}.",
+        "salary_change": "Lương cơ bản của bạn thay đổi từ {previous} thành {current}, có hiệu lực từ {date}.",
+        "salary_change_undated": "Lương cơ bản của bạn thay đổi từ {previous} thành {current}.",
+        "days_paid": "Số ngày được trả lương: {current} trong {period}, {previous} trong {previousPeriod}.",
+        "additional_run": "Phiếu lương bổ sung (thưởng hoặc ngoài kỳ): {current} trong {period}, {previous} trong {previousPeriod}.",
+        "statutory_rules": "Quy định theo luật đã thay đổi từ phiên bản {previous} sang {current}.",
+        "set_by_hand": "Bộ phận tính lương đặt thủ công trong {period}: {items}."
+      },
+      "days": "{count, plural, other {# ngày}}",
+      "hours": "{count, plural, other {# giờ}}"
+    },
+    "rule": {
+      "schedule": "{name} được tra theo bảng đóng góp theo bậc lương, nên số tiền thay đổi theo từng bậc.",
+      "rate": "{name} là một tỷ lệ phần trăm của tiền lương.",
+      "mtd": "PCB theo cách tính khấu trừ thuế hằng tháng của LHDN.",
+      "manual": "{name} được đặt thủ công, không theo quy tắc."
+    },
+    "deduction": {
+      "linkLabel": "Vì sao {name} là số tiền này?",
+      "title": "Vì sao {name} là {amount}",
+      "takeHome": "Trừ vào lương của bạn",
+      "reported": "Toàn bộ phần của bạn, như đã khai",
+      "employerBorne": "Chủ lao động trả thay bạn",
+      "employer": "Phần của chủ lao động",
+      "base": "Mức lương dùng để tính",
+      "rate": "Tỷ lệ thực tế (số đối chiếu, không phải quy tắc)",
+      "notRecorded": "Phiếu lương này không ghi nhận mức lương dùng để tính, nên không thể hiển thị cách tính.",
+      "additional": "Đây là phiếu lương bổ sung: số tiền là phần tăng thêm trên cả tháng, nên không thể hiển thị tỷ lệ.",
+      "version": "Phiên bản quy định theo luật {version}.",
+      "days": "Số ngày bị trừ",
+      "absenceNote": "Dịch vụ tính lương đã trừ khoản này theo số ngày ghi trên phiếu lương này.",
+      "question": "Vì sao khoản khấu trừ {name} trên phiếu lương {period} của tôi là số tiền này?",
+      "note": "Dịch vụ tính lương đã tính mọi số liệu ở đây. AI Centre chỉ giải thích."
+    },
+    "leave": {
+      "title": "Số dư {leaveType} của bạn",
+      "cycle": "Năm phép từ {start} đến {end}.",
+      "entitlement": "Phép được hưởng trong năm",
+      "earnedSoFar": "Đã tích lũy đến nay",
+      "broughtForward": "Chuyển từ năm trước",
+      "adjustments": "Điều chỉnh",
+      "totalEntitlement": "Tổng phép được hưởng",
+      "taken": "Đã nghỉ",
+      "pending": "Đang chờ duyệt",
+      "forfeited": "Đã hết hạn",
+      "available": "Còn lại",
+      "canApplyFor": "Bạn có thể xin",
+      "table": "Bảng phép: {name}.",
+      "prorated": "Bạn không làm việc trọn năm phép, nên {annual} cả năm được tính theo tỷ lệ thành {display}.",
+      "rounded": "Đã áp dụng cách làm tròn của loại phép này.",
+      "withheld": "Công ty bạn không hiển thị một số số liệu này cho nhân viên.",
+      "expiry": "Số ngày chuyển sang sẽ hết hạn vào {date}.",
+      "takenOnly": "Loại phép này không có định mức; chỉ tính số ngày bạn đã nghỉ.",
+      "daysValue": "{days} ngày",
+      "note": "Dịch vụ quản lý nghỉ phép đã tính mọi số liệu ở đây. AI Centre chỉ giải thích.",
+      "question": "Vì sao số dư {leaveType} của tôi là như vậy?"
+    },
+    "claim": {
+      "linkLabel": "Vì sao hạn mức {claimType} của tôi là con số này?",
+      "title": "Hạn mức {claimType} của bạn",
+      "annual": "Hạn mức năm",
+      "usedYear": "Đã dùng năm nay",
+      "pendingYear": "Trong đó đang chờ duyệt",
+      "remainingYear": "Còn lại năm nay",
+      "monthly": "Hạn mức tháng",
+      "usedMonth": "Đã dùng tháng này",
+      "remainingMonth": "Còn lại tháng này",
+      "perClaim": "Tối đa cho một yêu cầu",
+      "lifetime": "Hạn mức trong thời gian làm việc",
+      "usedLifetime": "Đã dùng đến nay",
+      "block": "Hạn mức cho giai đoạn này",
+      "usedBlock": "Đã dùng trong giai đoạn này",
+      "remainingBlock": "Còn lại đến {date}",
+      "claimsPerYear": "Số yêu cầu được phép mỗi năm",
+      "claimsUsed": "Số yêu cầu đã gửi năm nay",
+      "items": "Hạn mức mục con",
+      "unlimited": "Loại yêu cầu này không có hạn mức đối với bạn.",
+      "policyGrade": "Các hạn mức này theo chính sách cho cấp bậc của bạn, có hiệu lực từ {date}.",
+      "policyDefault": "Các hạn mức này theo chính sách cho mọi cấp bậc, có hiệu lực từ {date}.",
+      "usedNote": "Đã dùng tính các yêu cầu đang chờ duyệt, đã duyệt hoặc đã trả, theo ngày phát sinh chi phí. Bản nháp không được tính.",
+      "note": "Dịch vụ hoàn ứng đã tính mọi số liệu ở đây. AI Centre chỉ giải thích.",
+      "question": "Vì sao hạn mức hoàn ứng {claimType} của tôi là như vậy, và tôi đã dùng bao nhiêu?"
+    }
+  },
+  "aiAsk": {
+    "chats": "Trò chuyện",
+    "newChat": "Cuộc trò chuyện mới",
+    "newConversation": "Cuộc hội thoại mới",
+    "search": "Tìm cuộc trò chuyện của bạn",
+    "groups": {
+      "today": "Hôm nay",
+      "yesterday": "Hôm qua",
+      "earlier": "Trước đó"
+    },
+    "withheldTitle": "Một vấn đề riêng tư",
+    "withheldNote": "Đã chuyển cho HR · không lưu lời nào",
+    "untitled": "Cuộc trò chuyện chưa đặt tên",
+    "noChats": "Chưa có cuộc trò chuyện nào.",
+    "noMatches": "Không có cuộc trò chuyện nào khớp với tìm kiếm.",
+    "listUnavailable": "Không thể tải các cuộc trò chuyện của bạn. Hãy thử lại sau.",
+    "moreChats": "Thêm cuộc trò chuyện",
+    "earlierSaved": "Các cuộc trò chuyện đã lưu trước đây",
+    "moreTools": "Thêm công cụ",
+    "keptFor": "{days, plural, other {Cuộc trò chuyện được giữ trong # ngày, sau đó bị xóa.}}",
+    "keptUnknown": "Cuộc trò chuyện bị xóa sau khoảng thời gian tổ chức của bạn đặt ra.",
+    "privacyLink": "Dữ liệu và quyền riêng tư của bạn",
+    "backToAsk": "Quay lại Hỏi",
+    "deleteChat": "Xóa cuộc trò chuyện",
+    "deleteTitle": "Xóa cuộc trò chuyện này?",
+    "deleteBody": "Cuộc trò chuyện và những gì Trung tâm AI ghi nhớ cho nó sẽ bị xóa ngay, vĩnh viễn. Hồ sơ HR của bạn không thay đổi.",
+    "deleteConfirm": "Xóa",
+    "deleteFailed": "Không thể xóa cuộc trò chuyện. Hãy thử lại.",
+    "deleted": "Đã xóa cuộc trò chuyện.",
+    "privacy": {
+      "title": "Dữ liệu và quyền riêng tư của bạn",
+      "description": "Những gì Trung tâm AI lưu về bạn và cách xóa chúng."
+    },
+    "tools": {
+      "title": "Thêm công cụ",
+      "description": "Lối tắt và các cách khác để làm việc với Trung tâm AI.",
+      "shortcuts": "Lối tắt"
+    },
+    "retention": {
+      "title": "Giữ cuộc trò chuyện trong",
+      "help": "Trung tâm AI giữ cuộc trò chuyện của mỗi người bao lâu trước khi xóa. Cuộc trò chuyện bị giữ lại vì chủ đề nhạy cảm không lưu lời nào ở bất kỳ thiết lập nào.",
+      "legend": "Thời gian giữ cuộc trò chuyện",
+      "option": "{days, plural, other {# ngày}}",
+      "save": "Lưu",
+      "confirm": "Thay đổi",
+      "confirmTitle": "Thay đổi thời gian giữ cuộc trò chuyện?",
+      "confirmShorter": "{days, plural, other {Các cuộc trò chuyện không có tin nhắn mới trong hơn # ngày sẽ sớm bị xóa, cho tất cả mọi người. Không thể khôi phục.}}",
+      "confirmLonger": "{days, plural, other {Cuộc trò chuyện sẽ được giữ # ngày kể từ tin nhắn tiếp theo. Các cuộc trò chuyện đã xóa không được khôi phục.}}",
+      "saved": "{days, plural, other {Đã lưu. Cuộc trò chuyện được giữ trong # ngày.}}",
+      "failed": "Không thể lưu thiết lập. Hãy thử lại.",
+      "notAdministrator": "Chỉ quản trị viên tập đoàn mới có thể thay đổi mục này.",
+      "readOnly": "{days, plural, other {Cuộc trò chuyện được giữ trong # ngày. Chỉ quản trị viên tập đoàn mới có thể thay đổi mục này.}}",
+      "unavailable": "Không thể đọc thiết lập hiện tại."
+    },
+    "commandBar": {
+      "title": "Hỏi Trung tâm AI",
+      "onThisPage": "Trên trang này: {area}",
+      "hint": "Nhấn Enter để chuẩn bị · không có gì thay đổi cho đến khi bạn xác nhận",
+      "busy": "Trung tâm AI vẫn đang trả lời. Hãy thử lại sau giây lát."
+    }
+  },
+  "chatImport": {
+    "attach": "Đính kèm tệp để nhập",
+    "remove": "Xóa {name}",
+    "reading": "Đang đọc tệp…",
+    "fileChip": "{name} · {count, plural, other {# dòng}}",
+    "errors": {
+      "one": "Mỗi lần chỉ đính kèm một tệp.",
+      "type": "Hãy đính kèm sổ làm việc Excel (.xlsx hoặc .xls), tệp CSV hoặc tệp văn bản máy chấm công (.txt).",
+      "size": "Hãy đính kèm tệp không lớn hơn 5 MB.",
+      "empty": "Tệp đó không có dòng nào để nhập.",
+      "read": "Không đọc được tệp đó. Hãy kiểm tra tệp mở được, rồi đính kèm lại."
+    },
+    "kinds": {
+      "employee_records": "Nhập hồ sơ nhân viên",
+      "leave_balances": "Nhập số dư ngày phép",
+      "payroll_history": "Nhập lịch sử lương",
+      "attendance_clockings": "Nhập dữ liệu chấm công"
+    },
+    "title": "{kind}, {company}, {count, plural, other {# dòng}}",
+    "prepared": "Đã chuẩn bị để bạn xác nhận",
+    "ready": "{count, plural, other {# dòng sẵn sàng}}",
+    "attention": "{count, plural, other {# dòng cần xem lại}}",
+    "warned": "{count, plural, other {# dòng sẽ được nhập kèm cảnh báo. Trang nhập sẽ hiển thị các cảnh báo này.}}",
+    "replacing": "{count, plural, other {# dòng sẽ thay thế lịch sử lương đã nhập. Ở đây chỉ nhập các bản ghi mới; hãy thay thế các dòng đó trên trang nhập.}}",
+    "allRowsFirst": "Lịch sử lương chỉ được nhập khi mọi dòng đều đúng. Hãy sửa các dòng trên trang nhập trước.",
+    "noteRevert": "Dịch vụ nhập sẽ kiểm tra lại từng dòng khi bạn xác nhận. Sau đó bạn có thể hoàn tác toàn bộ lần nhập.",
+    "note": "Dịch vụ nhập sẽ kiểm tra lại từng dòng khi bạn xác nhận.",
+    "issuesLabel": "Các dòng cần xem lại",
+    "row": "Dòng",
+    "column": "Cột",
+    "issue": "Vấn đề",
+    "header": "Dòng tiêu đề",
+    "more": "{count, plural, other {Và # vấn đề khác trên trang nhập.}}",
+    "reasons": {
+      "missing_column": "Thiếu một cột bắt buộc",
+      "missing_value": "Một giá trị bắt buộc bị trống",
+      "unknown_employee": "Không có nhân viên này trong các công ty của bạn",
+      "unknown_type": "Hệ thống không nhận ra loại này",
+      "invalid_date": "Ngày không hợp lệ",
+      "invalid_time": "Giờ không hợp lệ",
+      "invalid_number": "Số không hợp lệ",
+      "duplicate_in_file": "Cùng một dòng xuất hiện hai lần trong tệp",
+      "already_imported": "Đã được nhập trước đó nên bị bỏ qua",
+      "not_permitted": "Nằm ngoài các công ty bạn quản lý",
+      "not_employed": "Nhân viên không làm việc vào ngày đó",
+      "period_closed": "Kỳ đó không còn thay đổi được",
+      "needs_page": "Việc này cần quyết định trên trang nhập",
+      "other": "Trang nhập sẽ giải thích dòng này",
+      "other_company": "Thuộc công ty khác, không được nhập"
+    },
+    "confirm": "{count, plural, other {Xác nhận # dòng}}",
+    "confirming": "Đang nhập…",
+    "fix": "{count, plural, other {Sửa # dòng}}",
+    "openPage": "Mở trang nhập",
+    "discard": "Bỏ",
+    "discarded": "Đã bỏ. Không có gì được nhập.",
+    "actionsLabel": "Thao tác nhập",
+    "done": "{count, plural, other {Đã nhập # dòng.}}",
+    "doneLeftOut": "{count, plural, other {# dòng không được nhập.}}",
+    "otherCompany": "{count, plural, other {# dòng thuộc công ty khác, không được nhập.}}",
+    "replayed": "Lần nhập này đã được xác nhận.",
+    "history": "Mở bản ghi lần nhập",
+    "historyRevert": "Mở lịch sử nhập, nơi bạn có thể hoàn tác",
+    "refused": {
+      "expired": "Thẻ này đã hết hạn. Hãy đính kèm tệp lại.",
+      "access": "Bạn không thể nhập nội dung này ở đây.",
+      "file": "Tệp đính kèm trong cuộc trò chuyện này không còn nữa hoặc đã thay đổi. Hãy đính kèm lại.",
+      "changed": "Tệp hoặc dữ liệu đã thay đổi kể từ khi chuẩn bị. Hãy đính kèm tệp lại để xem các dòng hiện tại.",
+      "notConfirmable": "Hãy sửa các dòng trên trang nhập trước.",
+      "inProgress": "Lần nhập này đang được xác nhận.",
+      "invalid": "Không kiểm tra được thẻ này. Hãy đính kèm tệp lại.",
+      "unavailable": "Không thể hoàn tất lần nhập và chưa có gì được nhập. Hãy thử lại, hoặc dùng trang nhập."
+    }
+  },
+  "payrollAudit": {
+    "name": "Vòng lặp kiểm toán",
+    "doneMeansLine": "Hoàn tất nghĩa là: {done}",
+    "column": {
+      "title": "Vòng lặp kiểm toán",
+      "titleNumbered": "{n} · Vòng lặp kiểm toán",
+      "badge": "Sau ngày trả lương",
+      "done": "Hoàn tất",
+      "doneMeans": "Hoàn tất khi mọi khoản đã được trả, đã nộp hồ sơ, đã đối chiếu và có bằng chứng.",
+      "items": {
+        "payslips": "Phiếu lương đã phát hành và đã mở",
+        "statutory": "Tệp EPF, SOCSO, EIS, PCB, HRD",
+        "bank": "Tệp ngân hàng",
+        "corrections": "Chỉnh sửa sau khi chạy lương",
+        "findings": "Kiểm tra kiểm soát",
+        "approvals": "Ai đã duyệt gì, khi nào",
+        "repeat": "Vấn đề lặp lại",
+        "bankPaid": "Ngân hàng đã trả so với bảng lương"
+      },
+      "values": {
+        "payslips": "Đã phát hành {released}/{total} · đã mở {opened}",
+        "statutory": "Đã chuẩn bị {prepared}/{forms} · đã nộp {filed} · hạn {due}",
+        "bank": "{count, plural, =0 {Chưa ghi nhận tệp ngân hàng} other {Đã ghi nhận # tệp ngân hàng}}",
+        "corrections": "{count, plural, =0 {Không có · mục tiêu bằng 0} other {# · mục tiêu bằng 0}}",
+        "findings": "{count, plural, =0 {Không có mục mở} other {# phát hiện đang mở}}",
+        "pack": "Gói kiểm toán cho từng công ty",
+        "packLink": "Tải gói kiểm toán",
+        "repeat": "{count, plural, =0 {Không có} other {# mục chuyển sang vòng lặp Trước lương tiếp theo}}",
+        "bankReconciled": "Đã đối chiếu",
+        "bankMismatch": "{count, plural, other {# lần chạy không khớp}}",
+        "bankPartial": "{matched}/{total} đã đối chiếu",
+        "bankNone": "Kiểm tra sau lần chạy"
+      },
+      "note": "Tệp và hồ sơ nộp vẫn ở mức Chuẩn bị: một người nộp cho EPF, PERKESO và LHDN. Gói kiểm toán là bằng chứng chỉ đọc cho kiểm toán viên của bạn.",
+      "open": "Mở vòng lặp kiểm toán"
+    },
+    "errors": {
+      "invalid": "Không thể ghi nhận. Hãy kiểm tra biểu mẫu và thử lại.",
+      "refused": "Chỉ quản trị viên lương của công ty này mới làm được việc đó.",
+      "module": "Mô-đun lương chưa được dùng, nên không thể bật vòng lặp kiểm toán.",
+      "failed": "Thao tác chưa hoàn tất. Không có gì bị thay đổi. Hãy thử lại.",
+      "subject": "Bạn không thể xử lý phát hiện về chính mình. Quản trị viên lương khác hoặc quản trị viên tập đoàn có thể làm.",
+      "groupAdministrator": "Nới lỏng một kiểm soát cần quản trị viên tập đoàn.",
+      "already": "Điều này đã được ghi nhận."
+    },
+    "saved": {
+      "disposed": "Đã ghi nhận kết luận.",
+      "cause": "Đã ghi nhận nguyên nhân gốc.",
+      "captured": "Đã ghi lại và kiểm tra ngay.",
+      "switch": "Đã lưu.",
+      "pause": "Đã lưu.",
+      "settings": "Đã lưu cài đặt kiểm soát.",
+      "granted": "Đã cấp quyền cho kiểm toán viên.",
+      "revoked": "Đã thu hồi quyền của kiểm toán viên.",
+      "acknowledged": "Đã ghi nhận là dự kiến. Mục này không còn tính là đang mở và vẫn được liệt kê."
+    },
+    "filter": {
+      "period": "Tháng lương",
+      "company": "Công ty",
+      "allCompanies": "{count, plural, other {Tất cả # công ty}}",
+      "show": "Hiển thị"
+    },
+    "monthLine": "{month}: hạn nộp tệp theo luật định là {due}.",
+    "stepLabel": "{n} · {step}",
+    "steps": {
+      "capture": "Ghi lại",
+      "check": "Kiểm tra",
+      "prepare": "Chuẩn bị",
+      "verify": "Xác minh"
+    },
+    "stepText": {
+      "capture": "Với mỗi lần chạy lương, thường kỳ, thưởng và ngoài kỳ: dữ liệu đầu vào, mọi thay đổi từ bản nháp đến bản cuối kèm người thực hiện và lý do, điều chỉnh, phiên bản quy tắc, ngoại lệ, phê duyệt, tệp ngân hàng và tệp luật định, hồ sơ nộp, việc mở phiếu lương, chỉnh sửa, ai đã xem hoặc xuất dữ liệu lương và thay đổi cấu hình. Mỗi bản sao được băm và xâu chuỗi.",
+      "check": "Bảy kiểm tra kiểm soát mỗi đêm, mỗi kiểm tra kèm bằng chứng. Không chặn hay thay đổi điều gì.",
+      "prepare": "Các phát hiện để quản trị viên lương kết luận, nguyên nhân gốc cho mỗi chỉnh sửa và gói kiểm toán cho từng công ty.",
+      "verify": "Phiếu lương đã phát hành, tệp luật định được chuẩn bị trước {due} và nộp kèm biên nhận, chỉnh sửa bằng 0, và mọi bản ghi lại không bị thay đổi."
+    },
+    "figures": {
+      "captures": "Bản ghi lại trong tháng",
+      "findings": "Phát hiện đang mở",
+      "corrections": "Chỉnh sửa sau khi chạy lương",
+      "filed": "Tệp luật định đã nộp"
+    },
+    "ofForms": "{filed}/{forms}",
+    "companies": {
+      "title": "Công ty",
+      "none": "Bạn không quản trị công ty nào có dùng lương tại đây.",
+      "columns": {
+        "company": "Công ty",
+        "runs": "Lần chạy",
+        "payslips": "Phiếu lương",
+        "statutory": "Đã nộp",
+        "findings": "Phát hiện",
+        "corrections": "Chỉnh sửa",
+        "captures": "Bằng chứng",
+        "pack": "Gói kiểm toán"
+      },
+      "noRun": "Không có lần chạy nào trong tháng",
+      "run": "Lần chạy {type} {seq}: {status}",
+      "payslips": "Đã phát hành {released}/{total} · đã mở {opened}",
+      "findings": "{open} đang mở · {disposed} đã kết luận",
+      "corrections": "{count, plural, =0 {Không có} other {#}}",
+      "correctionsMissing": "{count, plural, other {# cần nguyên nhân gốc}}",
+      "captures": "{count, plural, =0 {Chưa ghi lại} other {# bản ghi lại}}",
+      "pack": "Tải xuống",
+      "capture": "Ghi lại và kiểm tra ngay",
+      "packHelp": "Gói kiểm toán gồm bản tóm tắt PDF cùng bằng chứng CSV và JSON, mỗi tệp được liệt kê kèm sha256. Khi tải xuống, tháng đó được ghi lại trước và chính lần tải cũng được ghi nhận.",
+      "opensNote": "Lượt mở phiếu lương được đếm trên web, kể cả tải PDF. Lượt mở trong ứng dụng di động chưa được đếm."
+    },
+    "state": {
+      "done": "Hoàn tất",
+      "open": "Đang thực hiện"
+    },
+    "runType": {
+      "regular": "lương",
+      "off_cycle": "ngoài kỳ",
+      "bonus": "thưởng",
+      "adjustment": "điều chỉnh",
+      "other": "khác"
+    },
+    "runStatus": {
+      "draft": "bản nháp",
+      "processed": "đã xử lý",
+      "closed": "đã đóng",
+      "other": "khác"
+    },
+    "statutory": {
+      "title": "Tệp luật định, hạn {due}",
+      "columns": {
+        "company": "Công ty",
+        "form": "Tệp",
+        "prepared": "Đã chuẩn bị",
+        "filed": "Đã nộp"
+      },
+      "beforeDue": "Trước hạn",
+      "late": "Sau hạn",
+      "notYet": "Chưa chuẩn bị",
+      "receipt": "Đã ghi nhận biên nhận",
+      "notFiled": "Chưa nộp",
+      "help": "Một người nộp cho EPF, PERKESO, LHDN và HRD Corp rồi ghi nhận biên nhận. Vòng lặp kiểm toán không bao giờ tự nộp.",
+      "notRequired": "Không bắt buộc tháng này"
+    },
+    "forms": {
+      "epf": "EPF",
+      "socso_eis": "SOCSO và EIS",
+      "pcb_cp39": "PCB (CP39)",
+      "hrd": "Phí HRD Corp"
+    },
+    "findings": {
+      "title": "Phát hiện kiểm soát",
+      "none": "Không kiểm tra kiểm soát nào phát hiện vấn đề trong tháng này.",
+      "disposition": "Kết luận",
+      "choose": "Chọn",
+      "note": "Ghi chú",
+      "record": "Ghi nhận",
+      "openReadOnly": "Đang mở: chờ quản trị viên lương."
+    },
+    "controls": {
+      "bank_change_before_pay_day": "Thông tin ngân hàng đổi ngay trước ngày trả lương",
+      "shared_bank_account": "Một tài khoản ngân hàng cho hai người trở lên",
+      "pay_after_last_day": "Trả lương sau ngày làm việc cuối cùng",
+      "pay_without_attendance": "Trả lương khi không có chấm công",
+      "preparer_closed_run": "Cùng một người xử lý và đóng lần chạy",
+      "adjustment_without_reason": "Điều chỉnh thủ công lớn không có lý do",
+      "formula_changed_open_period": "Công thức thay đổi khi lần chạy còn mở"
+    },
+    "what": {
+      "bank_change_before_pay_day": "Tài khoản ngân hàng đổi vào {changed}, {days} ngày trước ngày trả lương {payDay} (nay kết thúc bằng {last4}).",
+      "shared_bank_account": "Một tài khoản kết thúc bằng {last4} thuộc {people} người; {paid} người do công ty này trả lương.",
+      "pay_after_last_day": "Lương thực nhận trên phiếu lương bắt đầu sau ngày làm việc cuối cùng, {lastDay}.",
+      "pay_without_attendance": "Có lương thực nhận nhưng không có chấm công và không có nghỉ phép được duyệt trong kỳ.",
+      "preparer_closed_run": "Cùng một người đã xử lý và đóng lần chạy {seq}. Chỉ đánh dấu: không có người duyệt thứ hai.",
+      "adjustment_without_reason": "Một điều chỉnh thủ công trên {threshold} được nhập mà không có lý do.",
+      "formula_changed_open_period": "Một công thức lương hoặc khoản mục lương đã thay đổi khi lần chạy {seq} còn mở."
+    },
+    "dispositions": {
+      "expected": "Đúng dự kiến",
+      "corrected": "Đã sửa",
+      "false_positive": "Không phải vấn đề",
+      "escalated": "Đã chuyển cấp trên"
+    },
+    "corrections": {
+      "title": "Chỉnh sửa sau khi chạy lương",
+      "none": "Không có lần chạy nào được mở lại hoặc đặt lại trong tháng này. Mục tiêu là 0.",
+      "actions": {
+        "unlock": "Lần chạy {seq} đã đóng được mở lại",
+        "rollback": "Lần chạy {seq} đã xử lý được đặt lại"
+      },
+      "reason": "Lý do đưa ra: {reason}",
+      "noReason": "Không có lý do nào được đưa ra.",
+      "cause": "Nguyên nhân gốc",
+      "choose": "Chọn",
+      "note": "Ghi chú",
+      "record": "Ghi nhận",
+      "update": "Nêu lại"
+    },
+    "rootCauses": {
+      "late_input": "Dữ liệu đến muộn",
+      "input_error": "Nhập sai dữ liệu",
+      "employee_data": "Dữ liệu nhân viên sai",
+      "configuration": "Thiết lập lương sai",
+      "rule_or_formula": "Quy tắc hoặc công thức",
+      "missed_exception": "Ngoại lệ không được xử lý",
+      "statutory_change": "Thay đổi luật định",
+      "other": "Khác"
+    },
+    "limits": {
+      "pay": "Không bao giờ thay đổi lương, lần chạy, tệp ngân hàng hay hồ sơ nộp.",
+      "block": "Không bao giờ chặn lần chạy: một người vừa xử lý vừa đóng chỉ bị đánh dấu.",
+      "file": "Không bao giờ tự nộp: một người nộp cho từng cơ quan và ghi nhận biên nhận.",
+      "model": "Không gọi mô hình AI: mỗi kiểm tra là một quy tắc cố định."
+    },
+    "pack": {
+      "title": "Gói kiểm toán lương",
+      "company": "Công ty",
+      "payPeriod": "Tháng lương",
+      "generated": "Tạo lúc",
+      "by": "Bởi",
+      "runs": "Lần chạy",
+      "runLine": "Lần chạy {runType} {runSeq}: {status}, đóng {closedAt}, phát hành {releasedAt}",
+      "statutory": "Tệp luật định và tệp ngân hàng",
+      "filingEvidence": "Bằng chứng nộp và biên nhận",
+      "findings": "Phát hiện kiểm soát",
+      "findingLine": "{control}: {count} ({open} đang mở, {disposed} đã kết luận)",
+      "corrections": "Chỉnh sửa sau khi chạy lương",
+      "correctionLine": "{action} vào {at}: nguyên nhân gốc {cause}, {note}",
+      "captures": "Bản ghi lại",
+      "captureLine": "{kind}: {count}",
+      "verification": "Kiểm tra chống sửa đổi",
+      "verified": "Đã xác minh {count} bản ghi lại. Đầu chuỗi {head}.",
+      "notVerified": "Phát hiện {count} vấn đề. Xem verification.json.",
+      "anchors": "{matched} được neo trong nhật ký kiểm toán, {chained} nằm trong chuỗi băm của nó.",
+      "files": "Tệp",
+      "none": "Không có",
+      "kinds": {
+        "run": "Lần chạy",
+        "inputs_snapshot": "Ảnh chụp dữ liệu đầu vào",
+        "payslip": "Phiếu lương",
+        "change": "Thay đổi từ bản nháp đến bản cuối",
+        "adjustment": "Điều chỉnh hoặc ghi đè thủ công",
+        "rule_version": "Phiên bản quy tắc và công thức",
+        "exception": "Ngoại lệ và kết luận",
+        "approval": "Dấu vết phê duyệt và đóng",
+        "bank_file": "Tệp ngân hàng",
+        "statutory_file": "Tệp luật định",
+        "filing": "Bằng chứng nộp",
+        "payslip_release": "Phát hành và mở phiếu lương",
+        "correction": "Chỉnh sửa sau khi chạy lương",
+        "access": "Đã xem hoặc xuất",
+        "config_change": "Thay đổi cấu hình",
+        "control_finding": "Phát hiện kiểm soát"
+      },
+      "controls": {
+        "bank_change_before_pay_day": "Thông tin ngân hàng đổi ngay trước ngày trả lương",
+        "shared_bank_account": "Một tài khoản ngân hàng cho hai người trở lên",
+        "pay_after_last_day": "Trả lương sau ngày làm việc cuối cùng",
+        "pay_without_attendance": "Trả lương khi không có chấm công",
+        "preparer_closed_run": "Cùng một người xử lý và đóng lần chạy",
+        "adjustment_without_reason": "Điều chỉnh thủ công lớn không có lý do",
+        "formula_changed_open_period": "Công thức thay đổi khi lần chạy còn mở"
+      },
+      "findingItem": "{control}: {who} ({state})",
+      "open": "đang mở",
+      "unprintable": "{count} ký tự không thể vẽ bằng phông chữ nào hiện có và hiển thị là '?'. Tệp CSV và JSON chứa văn bản chính xác."
+    },
+    "administration": {
+      "title": "Cài đặt và kiểm toán viên",
+      "help": "Mỗi thay đổi được ghi nhận kèm người thực hiện, thời điểm và giá trị trước, sau.",
+      "bankChangeDays": "Khoảng thay đổi ngân hàng (số ngày trước ngày trả lương)",
+      "adjustmentThreshold": "Số tiền điều chỉnh thủ công cần có lý do",
+      "save": "Lưu",
+      "defaults": "Giá trị mặc định cho đến khi thay đổi",
+      "version": "Phiên bản {version}",
+      "auditorsTitle": "Kiểm toán viên (chỉ đọc)",
+      "none": "Chưa có kiểm toán viên nào có quyền.",
+      "loginWithoutRecord": "Tài khoản đăng nhập không có hồ sơ nhân viên ({id})",
+      "grantedOn": "cấp ngày {date}",
+      "revoke": "Thu hồi",
+      "login": "Tài khoản đăng nhập",
+      "choose": "Chọn tài khoản",
+      "grant": "Cấp quyền",
+      "auditorsHelp": "Kiểm toán viên xem bằng chứng vòng lặp kiểm toán và gói kiểm toán của công ty này, chỉ đọc, cho đến khi bị thu hồi. Mỗi lần cấp và thu hồi đều được ghi nhận.",
+      "preparerClosedMode": "Cùng một tài khoản đã xử lý và đóng đợt lương",
+      "preparerClosed": {
+        "info": "Chỉ để thông tin (không tạo phát hiện)",
+        "finding": "Tạo phát hiện"
+      },
+      "loosenHelp": "Khoảng thay đổi ngân hàng từ 3 đến 30 ngày và số tiền từ 100.00 đến 50,000.00. Khoảng ngắn hơn, số tiền cao hơn hoặc chuyển phát hiện thành thông tin là nới lỏng kiểm soát và cần quản trị viên tập đoàn. Mọi thay đổi đều có trong gói kiểm toán của tháng."
+    },
+    "auditor": {
+      "readOnly": "Bạn có quyền kiểm toán viên chỉ đọc với các công ty được liệt kê ở đây. Bạn có thể đọc bằng chứng và tải gói kiểm toán; bạn không thể thay đổi gì."
+    },
+    "acknowledged": {
+      "label": "Dự kiến (xác nhận thường trực)",
+      "scope": {
+        "person": "cho người này",
+        "group": "cho phòng ban của họ",
+        "company": "cho toàn công ty"
+      },
+      "note": "Dự kiến (xác nhận thường trực): {reason}",
+      "for": "Dự kiến",
+      "reason": "Vì sao là dự kiến",
+      "reviewOn": "Xem lại vào (tùy chọn)",
+      "record": "Luôn là dự kiến"
+    }
+  },
+  "payrollReadiness": {
+    "todayTitle": "Trước kỳ lương ngày {date}",
+    "todayTitleNoDate": "Trước kỳ lương",
+    "seeAll": "Xem tất cả",
+    "waitingCount": "{count, plural, other {# mục}} đang chờ người khác phê duyệt.",
+    "insightsTitle": "Mức sẵn sàng cho kỳ lương của tôi",
+    "period": "Lương {month} · hạn chót {date}",
+    "periodNoCutOff": "Lương {month} · bộ phận nhân sự có thể cho bạn biết hạn chót",
+    "due": "Trước {date}",
+    "range": "{from} đến {to}",
+    "allDone": "Không có việc gì chờ bạn cho kỳ lương này.",
+    "unavailable": "Một số mục hiện chưa kiểm tra được. Vui lòng thử lại sau.",
+    "notInUse": "Ở đây không dùng tính lương, nên không có gì cần chuẩn bị.",
+    "groupDone": "Không có việc tồn đọng.",
+    "groupUnknown": "Hiện chưa kiểm tra được.",
+    "approvalsHelp": "Các yêu cầu chờ bạn quyết định trước hạn chót.",
+    "notCovered": "Chưa kiểm tra ở đây: đổi ca, khoảng trống lịch ca, xác nhận bảng chấm công, giờ làm thêm đã làm nhưng chưa đăng ký, và thay đổi lương cần xác nhận.",
+    "open": "Mở",
+    "review": "Xem xét",
+    "confirm": "Xác nhận",
+    "state": {
+      "todo": "Cần làm",
+      "waiting": "Đang chờ phê duyệt",
+      "check": "Kiểm tra"
+    },
+    "status": {
+      "done": "Xong",
+      "todo": "Cần làm",
+      "waiting": "Đang chờ",
+      "unknown": "Không kiểm tra được",
+      "off": "Không dùng"
+    },
+    "groups": {
+      "attendance": "Chấm công",
+      "overtime": "Làm thêm giờ",
+      "leave": "Nghỉ phép",
+      "claims": "Thanh toán chi phí",
+      "toil": "Nghỉ bù",
+      "details": "Thông tin cá nhân và theo luật định",
+      "acknowledge": "Cần xác nhận",
+      "approvals": "Đang chờ bạn"
+    },
+    "fallback": {
+      "leave": "Nghỉ phép",
+      "claim": "chi phí",
+      "someone": "một thành viên trong nhóm"
+    },
+    "kinds": {
+      "missed_clock_in": "Thiếu giờ vào",
+      "missed_clock_out": "Thiếu giờ ra",
+      "absent_no_leave": "Vắng mặt mà không có nghỉ phép",
+      "late_or_early": "Đi muộn hoặc về sớm",
+      "attendance_request_pending": "Yêu cầu sửa chấm công đang chờ phê duyệt",
+      "overtime_pending": "Yêu cầu làm thêm giờ đang chờ phê duyệt",
+      "overtime_over_cap": "Giờ làm thêm tháng này vượt mức giới hạn hằng tháng",
+      "leave_pending": "{label} đang chờ phê duyệt",
+      "leave_unpaid": "Nghỉ không lương: {label}",
+      "leave_certificate_missing": "Bổ sung giấy tờ chứng minh cho {label}",
+      "claim_deadline": "Gửi yêu cầu thanh toán {label} trước khi hóa đơn quá hạn",
+      "claim_receipt_missing": "Thêm hóa đơn vào yêu cầu thanh toán {label}",
+      "claim_draft": "Gửi bản nháp yêu cầu thanh toán {label}",
+      "claim_pending": "Yêu cầu thanh toán {label} đang chờ phê duyệt",
+      "toil_pending": "Yêu cầu nghỉ bù đang chờ phê duyệt",
+      "bank_missing": "Thêm tài khoản ngân hàng của bạn",
+      "tax_number_missing": "Thêm mã số thuế thu nhập của bạn",
+      "epf_number_missing": "Thêm số EPF của bạn",
+      "socso_number_missing": "Thêm số SOCSO của bạn",
+      "identity_missing": "Thêm số CMND (IC) hoặc hộ chiếu của bạn",
+      "details_request_pending": "Thay đổi thông tin của bạn đang chờ nhân sự",
+      "tp3_new_joiner": "Báo cho bộ phận lương về chủ cũ trong năm nay (TP3)",
+      "letter_acknowledge": "Xác nhận thư của bạn",
+      "notice_acknowledge": "Xác nhận một thông báo",
+      "approve_leave": "Nghỉ phép cần phê duyệt · {name}",
+      "approve_leave_cancellation": "Hủy nghỉ phép cần phê duyệt · {name}",
+      "approve_attendance": "Chấm công hoặc làm thêm giờ cần phê duyệt · {name}",
+      "approve_claim": "Yêu cầu thanh toán cần phê duyệt · {name}",
+      "approve_toil": "Nghỉ bù cần phê duyệt · {name}",
+      "tp1_draft": "Gửi tờ khai giảm trừ thuế (TP1) của bạn",
+      "tp1_pending": "Tờ khai giảm trừ thuế (TP1) của bạn đang chờ phê duyệt",
+      "dependants_mismatch": "Kiểm tra số con được giảm trừ thuế: hồ sơ gia đình của bạn ghi ít hơn số bạn đã khai",
+      "review_acknowledge": "Xác nhận bản đánh giá hiệu suất của bạn",
+      "onboarding_acknowledge": "Xác nhận bàn giao nhận việc của bạn"
+    },
+    "tp3Question": {
+      "prompt": "Đầu năm nay bạn có làm việc cho một chủ lao động khác không?",
+      "yes": "Có",
+      "no": "Không"
+    },
+    "reminder": {
+      "title": {
+        "lead5": "Còn 5 ngày đến hạn chốt lương",
+        "lead2": "Còn 2 ngày đến hạn chốt lương",
+        "lead1": "Ngày mai là hạn chốt lương",
+        "soon": "Sắp đến hạn chốt lương"
+      },
+      "body": {
+        "own": "Bạn có việc của mình cần hoàn tất trước hạn chốt lương. Mở Trước kỳ lương trong Hôm nay để xem.",
+        "approvals": "Có yêu cầu đang chờ bạn quyết định trước hạn chốt lương. Mở Trước kỳ lương trong Hôm nay để xem.",
+        "both": "Bạn có việc của mình cần hoàn tất và yêu cầu đang chờ bạn quyết định trước hạn chốt lương. Mở Trước kỳ lương trong Hôm nay để xem."
       }
     }
   }

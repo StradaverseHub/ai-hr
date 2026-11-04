@@ -267,7 +267,8 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
   if(input.expectedCompanyId&&(!uuid.test(input.expectedCompanyId)||source.companyIds.some(id=>id!==input.expectedCompanyId)))fail('This record-based import is restricted to its selected company. Use the original-file workflow for a multi-company import.');
   const events=await tx.select().from(historyEvent).where(eq(historyEvent.attemptId,source.id));
   if(events.some(event=>event.kind==='reverted'))fail('This import was reverted. Validate a new upload to import again.');
-  const confirmed=events.find(event=>event.kind==='confirmed');if(confirmed)return {attemptId:source.id,counts:source.plan.counts,changes:confirmed.changes,alreadyCommitted:true};
+  // importedRows: the source rows THIS call applied (none when an earlier confirmation already committed the attempt).
+  const confirmed=events.find(event=>event.kind==='confirmed');if(confirmed)return {attemptId:source.id,counts:source.plan.counts,changes:confirmed.changes,alreadyCommitted:true,importedRows:0};
   if(input.previewHash!==source.plan.previewHash||source.plan.counts.invalid||source.plan.issues.length)fail('Correct the file and validate a new attempt before confirming.');
   const skip=!!input.skipReplacements&&!input.confirmReplacement;
   const selected=input.selectedRecordKeys?new Set(input.selectedRecordKeys):null;
@@ -328,7 +329,8 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
   const skippedReplacements=fresh.rows.filter(row=>row.operation==='replace'&&!applies(row)).length;
   await tx.insert(historyEvent).values({tenantId:ctx.tenantId,attemptId:source.id,kind:'confirmed',actorId:ctx.userId!,changes,detail:{counts:fresh.counts,skippedReplacements}});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-history-import',aggregateId:source.id,eventType:'payroll-history-import.committed',actor:actorOf(ctx),payload:{counts:fresh.counts,skippedReplacements,changes}});
-  return {attemptId:source.id,counts:fresh.counts,changes,skippedReplacements,alreadyCommitted:false};
+  const importedRows=fresh.rows.filter(applies).reduce((sum,row)=>sum+row.rowNums.length,0);
+  return {attemptId:source.id,counts:fresh.counts,changes,skippedReplacements,alreadyCommitted:false,importedRows};
  });}catch(error){await failureEvent(ctx,input.attemptId,'failed',error);throw error;}
 }
 

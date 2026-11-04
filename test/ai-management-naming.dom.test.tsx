@@ -2,7 +2,7 @@ import {captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 import {MODULE_JOBS} from '../lib/ai/module-jobs';
 /** Actual screen component, fictional data owners. Optional HTML capture supports rendered review. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,render,screen,fireEvent} from '@testing-library/react';
+import {cleanup,render,screen} from '@testing-library/react';
 import {createFormatter,createTranslator,NextIntlClientProvider} from 'next-intl';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {enWithAiCentre as en,withAiCentre} from './helpers/ai-centre-messages';
@@ -47,7 +47,9 @@ describe('approved AI vocabulary in six rendered locales',()=>{
   expect(document.body.textContent).not.toContain(`${copies[locale].aiManagement.states.module} · ${count}`);
   const overview=document.body.innerHTML;
   await captureAiReviewScreenshots(overview,locale,'overview');
-  fireEvent.click(screen.getByRole('button',{name:copies[locale].nav.aiControlTower}));
+  // Issue 17: no Control Tower menu; the AI Centre row is the current row on an Administration page.
+  expect(screen.queryByRole('button',{name:copies[locale].nav.aiControlTower})).toBeNull();
+  expect(document.querySelector('a[href="/assistant"][aria-current="page"]')).not.toBeNull();
   expect(screen.queryByRole('link',{name:copies[locale].nav.aiConfig})).toBeNull();
   cleanup();
   await renderSection('orchestrator');expect(screen.getByRole('heading',{level:2,name:queueNames[locale]})).toBeInTheDocument();

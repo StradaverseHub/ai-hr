@@ -24,7 +24,7 @@
  *
  * Substrate: read-only presentation → NO DomainEvent. // substrate: read-only, no event
  */
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 // r355 (8d3a7bff) — no `next/link` here any more: this component's ONLY navigation was the pooled card's
 // "View details", and the page it navigated to is deleted. Nothing on a balance card navigates now; the
 // Details affordances are in-page panels (`leave.myLeave.details`), which is what the reporter wanted.
@@ -41,6 +41,15 @@ import { LeaveDetailsPanel } from './LeaveDetailsPanel';
 import { ReplacementLeavePanel, type ReplacementPanelData } from './ReplacementLeavePanel';
 import { LeaveBalanceRing, RING_COLORS, ringDrawable, ringSegments, type RingSegmentKey } from './leave-balance-ring';
 import type { SharedLeaveGroupEntry } from './shared-leave-group-entry';
+import { WhyLink } from '@/components/why/why-panel';
+
+/** AI v2 W5 — each card's "Why?" link (pre-translated by the RSC, per leave type) and which card's panel is open (the
+ *  page draws it and passes it as `whyPanel`). Absent ⇒ the dashboard is exactly what it was. */
+export type LeaveDashboardWhy = {
+  text: string;
+  links: Record<string, { href: string; label: string; expanded: boolean }>;
+  openId: string | null;
+};
 
 export type MyLeaveDashboardCard = MyLeaveCard & {
   /** Replacement Leave only: the per-credit table its Details opens instead of the summary side-sheet. */
@@ -103,11 +112,15 @@ export function MyLeaveDashboard({
   cards,
   sharedGroups = [],
   locale,
+  why,
+  whyPanel,
 }: {
   cards: MyLeaveDashboardCard[];
   /** Shared leave groups HR placed Primary or Secondary, pre-translated (46afcc48) — non-clickable tiles. */
   sharedGroups?: SharedLeaveGroupEntry[];
   locale: string;
+  why?: LeaveDashboardWhy;
+  whyPanel?: ReactNode;
 }) {
   const t = useTranslations('leave.myLeave');
   const tTable = useTranslations('me.leaveBalanceTable');
@@ -247,6 +260,11 @@ export function MyLeaveDashboard({
           {t('details')}
         </button>
       )}
+      {why?.links[c.leaveTypeId] && (
+        <WhyLink href={why.links[c.leaveTypeId].href} text={why.text} label={why.links[c.leaveTypeId].label}
+          expanded={why.links[c.leaveTypeId].expanded} controls={`leave-why-${c.leaveTypeId}`} className="ms-3 text-xs" />
+      )}
+      {why?.openId === c.leaveTypeId && whyPanel}
     </>
   );
 

@@ -1,0 +1,39 @@
+/** AI centre tab bar: every view marks exactly its own tab as the current page (staging acceptance, 3 November 2026,
+ * "the active tab indicator is missing on every tab except Ask"). The marker logic was already right; the visible loss
+ * was Atelier's sticky page title painting over the tab row (test/ai-centre-title-tabs.browser.test.tsx). This pins the
+ * single source of truth: the key a page passes, for every view and both viewers. Fictional; no session. */
+import {afterEach,describe,expect,it,vi} from 'vitest';
+import {cleanup,render} from '@testing-library/react';
+import {NextIntlClientProvider} from 'next-intl';
+import {enWithAiCentre} from './helpers/ai-centre-messages';
+import {AiCentreTabs} from '../components/ai-centre/centre-tabs';
+import {CENTRE_TABS,centreTabsFor,type CentreTabKey} from '../lib/ai-centre/centre-nav';
+
+vi.mock('next/navigation',()=>({usePathname:()=>'/assistant',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({push:vi.fn(),replace:vi.fn(),refresh:vi.fn()})}));
+afterEach(cleanup);
+
+const mount=(active:CentreTabKey,isAdmin:boolean)=>render(<NextIntlClientProvider locale="en" messages={enWithAiCentre as never}><AiCentreTabs active={active} isAdmin={isAdmin}/></NextIntlClientProvider>);
+
+describe('AI centre tab bar current page',()=>{
+ for(const isAdmin of [true,false])for(const tab of centreTabsFor({isAdmin}))it(`${isAdmin?'administrator':'employee'} on ${tab.key}: exactly that tab is the current page`,()=>{
+  const view=mount(tab.key,isAdmin);
+  const current=view.container.querySelectorAll('[data-ai-centre-tabs] a[aria-current="page"]');
+  expect(current).toHaveLength(1);
+  expect(current[0].getAttribute('href')).toBe(tab.href);
+  // The visible marker travels with the attribute: only the current link carries the primary underline.
+  for(const link of view.container.querySelectorAll('[data-ai-centre-tabs] a'))
+   expect(link.className.includes('border-primary'),link.getAttribute('href')??'').toBe(link===current[0]);
+ });
+ it('has no Inbox tab and no count for either viewer: Today at / replaced it (AI v2 Phase 1)',()=>{
+  for(const isAdmin of [true,false]){
+   const view=mount('ask',isAdmin);
+   expect(view.container.querySelector('[data-ai-centre-tabs] a[href*="view=inbox"]')).toBeNull();
+   expect(view.container.querySelector('[data-ai-centre-tabs] .rounded-full')).toBeNull();
+   cleanup();
+  }
+ });
+ it('lists every tab once for an administrator and hides only the administrator tabs from an employee',()=>{
+  expect(new Set(CENTRE_TABS.map(tab=>tab.key)).size).toBe(CENTRE_TABS.length);
+  expect(centreTabsFor({isAdmin:false}).map(tab=>tab.key)).toEqual(CENTRE_TABS.filter(tab=>!tab.adminOnly).map(tab=>tab.key));
+ });
+});

@@ -3,11 +3,11 @@
  * Remove an id from this list in the same change that declares it. */
 export const NOT_YET_MODELLED_ACTIONS:readonly string[]=Object.freeze([
  'employees.import','org.position.archive','org.department.archive','org.employee_id_template.status','org.people_general.change','org.reporting.change',
- 'leave.edit','ess.profile.request','approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','knowledge_base.article.create',
- 'payroll.close','payroll.reopen','payroll.reset','attendance.correction.request','attendance.overtime.request','claims.draft.save','claims.submit','claims.cancel',
+ 'leave.edit','approvals.toil.decide','knowledge_base.article.create',
+ 'payroll.close','payroll.reopen','payroll.reset','claims.draft.save',
  'performance.checkin.cancel','performance.checkin.complete','performance.checkin.schedule','performance.goal.approve','performance.review.acknowledge',
  'performance.onehr.plan.acknowledge','rewards.post','rewards.cancel_review','rewards.calendar.update','lifecycle.offboarding.step.complete',
- 'lifecycle.offboarding.step.undo','lifecycle.offboarding.case.cancel','rewards.annual_review.return','lifecycle.acknowledgement.submit','toil.replacement.request',
+ 'lifecycle.offboarding.step.undo','lifecycle.offboarding.case.cancel','rewards.annual_review.return','lifecycle.acknowledgement.submit',
  'multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save',
  'leave.adjustment.apply','employees.movement.transfer','employees.compensation.maintain','attendance.schedule_group.maintain','employees.profile_request.reject',
  'attendance.day_schedule.correct','employees.code.maintain','employees.workforce_profile.maintain','employees.bank.maintain','employees.document_metadata.maintain',

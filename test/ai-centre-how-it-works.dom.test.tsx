@@ -18,7 +18,7 @@ import th from '../messages/th.json';
 import aiEn from '../messages/ai-centre/en.json';
 import { enWithAiCentre, withAiCentre } from './helpers/ai-centre-messages';
 import { HowItWorks, HOW_STEPS } from '../components/ai-centre/how-it-works';
-import { ClockworkFigure, type ClockworkLabels } from '../components/ai-centre/clockwork-figure';
+import { ClockworkFigure, LABEL_TOP, type ClockworkLabels } from '../components/ai-centre/clockwork-figure';
 
 const how = aiEn.aiCentre.how;
 function setReducedMotion(reduce: boolean) {
@@ -112,6 +112,10 @@ describe('How it works walkthrough', () => {
       const x = Number(box.getAttribute('x')), width = Number(box.getAttribute('width'));
       expect(x).toBeGreaterThanOrEqual(0);
       expect(x + width).toBeLessThanOrEqual(1000);
+      // Below the printed title and inside the 620-unit frame, so no label is cut by the figure's edge.
+      const y = Number(box.getAttribute('y')), height = Number(box.getAttribute('height'));
+      expect(y, row.getAttribute('data-label') ?? '').toBeGreaterThanOrEqual(LABEL_TOP - 16);
+      expect(y + height).toBeLessThanOrEqual(620);
       for (const line of box.querySelectorAll('p')) expect(line.className).toContain('line-clamp-2');
     }
     expect(view.container.textContent).toContain(own.parts.context);
@@ -131,5 +135,28 @@ describe('How it works walkthrough', () => {
     expect(screen.getByRole('heading', { level: 2, name: own.steps.s0 })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: own.chapters.request })).toBeInTheDocument();
     expect(HOW_STEPS).toHaveLength(9);
+  });
+});
+
+/** AI v2 Phase 1, slice 1: Today replaced the AI Centre Inbox, so How it works names Today among the surfaces, in each
+ * language with the word the launcher uses for it, and the retired Inbox's word no longer appears. Written out by hand. */
+describe('How it works names Today, not the retired Inbox', () => {
+  const LOCALES = [
+    { locale: 'en', base: {}, today: 'Today', inbox: /inbox/i },
+    { locale: 'ms', base: ms, today: 'Hari ini', inbox: /peti masuk/i },
+    { locale: 'zh', base: zh, today: '今日', inbox: /收件箱/ },
+    { locale: 'vi', base: viCopy, today: 'Hôm nay', inbox: /hộp thư/i },
+    { locale: 'ta', base: ta, today: 'இன்று', inbox: /உள்வரும் பெட்டி/ },
+    { locale: 'th', base: th, today: 'วันนี้', inbox: /กล่องงาน/ },
+  ] as const;
+  it.each(LOCALES)('$locale', ({ locale, base, today, inbox }) => {
+    setReducedMotion(true);
+    const messages = locale === 'en' ? enWithAiCentre : withAiCentre(locale, base as Record<string, unknown>);
+    const own = (messages as unknown as { aiCentre: { how: { layers: { interfacesHelp: string }; parts: { interfaces: string } } } }).aiCentre.how;
+    expect(own.layers.interfacesHelp).toContain(today);expect(own.parts.interfaces).toContain(today);
+    const view = show(messages as Record<string, unknown>, locale);
+    expect(view.container.textContent).toContain(own.layers.interfacesHelp);
+    expect(view.container.textContent).not.toMatch(inbox);
+    view.unmount();
   });
 });

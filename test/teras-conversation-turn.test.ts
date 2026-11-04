@@ -106,8 +106,8 @@ describe('a live-chat turn with the switch on',()=>{
   expect(wire).not.toContain('17.25');expect(wire).not.toContain(b.annualLeaveTypeId);expect(wire).toContain(placeholder);
   expect(sent[0].tools.map(tool=>tool.name)).toContain('final_answer');
   for(const tool of sent[0].tools)expect(tool.inputSchema.additionalProperties).toBe(false);
-  // The explainers worker is off: its "Why?" tools are not offered.
-  expect(sent[0].tools.map(tool=>tool.name)).not.toContain('explain_leave_entitlement');
+  // The explainers worker is off: its "Why?" tool (spec v23: explain_why and its topics) is not offered.
+  expect(sent[0].tools.map(tool=>tool.name)).not.toContain('explain_why');expect(sent[0].tools.map(tool=>tool.name)).not.toContain('explain_leave_entitlement');
 
   // History: the next turn sends the model side only (the band), never the restored reply.
   script([args=>{expect(JSON.stringify(args.turns)).toContain('[an earlier figure');return final('Ask me about a specific month.');}]);
@@ -205,7 +205,10 @@ describe('the explainers worker switch',()=>{
   await setWorkerSwitch(group,{workerId:'explainers',enabled:true});
   script([()=>final('Ask me which leave type.','clarify')]);
   await turn(employee,'Why is my annual leave entitlement 17 days?');
-  expect(sent[0].tools.map(tool=>tool.name)).toContain('explain_leave_entitlement');
+  // Spec v23: offered as explain_why's leave_entitlement topic, never as a tool of its own.
+  expect(sent[0].tools.map(tool=>tool.name)).toContain('explain_why');expect(sent[0].tools.map(tool=>tool.name)).not.toContain('explain_leave_entitlement');
+  const why=sent[0].tools.find(tool=>tool.name==='explain_why')!;
+  expect((why.inputSchema as unknown as {properties:{topic:{enum:string[]}}}).properties.topic.enum).toContain('leave_entitlement');
  },60000);
 });
 

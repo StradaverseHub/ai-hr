@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { myPayslipDetail } from '@/packs/payroll/service';
+import { recordPayslipOpened } from '@/core/payroll-audit/access-log';
 // 3c473773 — which box each earning belongs in (read from the payslip's own stamp), and the employer-borne
 // disclosure (read from the payslip's own snapshot). Neither is re-derived from today's settings.
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
@@ -124,6 +125,9 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
   const s = await getSession();
   const p = await myPayslipDetail(s, payslipId);
   if (!p) notFound();
+  // AI v2 P2-2b: the employee opened their own released payslip; the Audit loop counts opens. Best effort: a count that
+  // could not be written never stops an employee reading their payslip.
+  await recordPayslipOpened(s, { payslipId, channel: 'web' }).catch(() => null);
   const st = (p.statutory ?? {}) as Stat;
   // 3c473773 — the earnings boxes as THIS payslip recorded them. Absent on every payslip issued before the
   // pay items carried a category, in which case these are the stored columns and the page is unchanged.

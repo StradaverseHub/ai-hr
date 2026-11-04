@@ -105,6 +105,9 @@ export interface ScreenEntry {
  */
 export const SCREENS: readonly ScreenEntry[] = [
   // Shared authenticated shell; facts/effects additionally require current Assistant/native access.
+  // AI v2 Phase 2 P2-5: AI Centre › Policies (the Living Handbook). Every signed-in role reaches it; what each sees is decided by
+  // migration 0971 (administrators: the companies they administer; everyone else: approved versions of their own company's policies).
+  {screenKey:'aiCentrePolicies',href:'/policies',labelKey:'nav.policies',guard:'scopedSession',routes:['/policies'],hasScopeNote:true},
   {screenKey:'assistantWorkspace',href:'/assistant',labelKey:'nav.assistant',guard:'assistantSession',routes:['/assistant','/assistant/leave','/assistant/notifications','/assistant/profile','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil','/assistant/approvals','/assistant/hr','/assistant/attendance','/assistant/pay-codes','/assistant/rewards','/assistant/payroll-close','/assistant/statutory','/assistant/payroll-runs','/assistant/bank','/assistant/compensation','/assistant/cost-allocation','/assistant/day-schedule','/assistant/document-details','/assistant/emergency-contacts','/assistant/employee-code','/assistant/employee-draft-discard','/assistant/employee-drafts','/assistant/family','/assistant/fixed-item-archive','/assistant/offboarding-case-cancel','/assistant/offboarding-step','/assistant/offboarding-step-undo','/assistant/org-departments','/assistant/org-employee-id','/assistant/org-people-general','/assistant/org-positions','/assistant/passport','/assistant/payment-method','/assistant/payroll-reopen','/assistant/payroll-reset','/assistant/performance/checkins','/assistant/performance/checkins/complete','/assistant/performance/checkins/schedule','/assistant/performance/goals','/assistant/profile-request-rejection','/assistant/qualifications','/assistant/rewards/calendar','/assistant/rewards/cancel','/assistant/rewards/return','/assistant/schedule-group','/assistant/tp3-opening','/assistant/workforce-profile'],hasScopeNote:true},
   {screenKey:'jobDescriptions',href:'/admin/job-descriptions',labelKey:'nav.jobDescriptions',guard:'requireAdmin',routes:['/admin/job-descriptions','/admin/job-descriptions/new','/admin/job-descriptions/configuration','/admin/job-descriptions/[id]','/admin/job-descriptions/[id]/print']},
   {screenKey:'rewardsAccess',href:'/admin/rewards/access',labelKey:'rewardsAccess.title',guard:'scopedSession',hasScopeNote:true,routes:['/admin/rewards/access']},
@@ -114,6 +117,11 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'myTp1',href:'/me/tax-relief',labelKey:'nav.taxRelief',guard:'scopedSession',routes:['/me/tax-relief'],hasScopeNote:true},
   {screenKey:'myPayslip',href:'/me/payslip',labelKey:'nav.myPayslips',guard:'scopedSession',routes:['/me/payslip'],hasScopeNote:true},
   {screenKey:'myLetters',href:'/me/letters',labelKey:'nav.myLetters',guard:'scopedSession',routes:['/me/letters','/me/letters/[letterId]'],hasScopeNote:true},
+  // AI v2 W11 (ADR-0173): every person reaches their own private cases; the data is their own cases only (0959 RLS).
+  {screenKey:'myPrivateCases',href:'/me/cases',labelKey:'privateCases.me.title',guard:'scopedSession',routes:['/me/cases','/me/cases/new','/me/cases/[caseId]'],hasScopeNote:true},
+  // Every person reaches the address; only a designated case handler (or, for cases no handler can take, a group
+  // administrator) sees any case, and never one they wrote or were left out of. Not a role grant.
+  {screenKey:'privateCaseHandling',href:'/cases',labelKey:'privateCases.handle.title',guard:'scopedSession',routes:['/cases','/cases/[caseId]'],hasScopeNote:true},
   {screenKey:'letterReports',href:'/letters/reports',labelKey:'letters.reports.title',guard:'scopedSession',routes:['/letters/reports'],hasScopeNote:true},
   {screenKey:'letterSettings',href:'/letters/settings',labelKey:'letters.settings.title',guard:'scopedSession',routes:['/letters/settings','/letters/settings/policy','/letters/settings/automation'],hasScopeNote:true},
   {screenKey:'letterRegister',href:'/letters/register',labelKey:'letters.register.title',guard:'scopedSession',routes:['/letters/register','/letters/register/[letterId]'],hasScopeNote:true},
@@ -1184,6 +1192,20 @@ export const SCREENS: readonly ScreenEntry[] = [
       // ADR-0131 Phase 1 — the process assessment. Same requireAdmin guard as its siblings, so it needs a
       // column here or test/function-access.test.ts fails.
       '/control-tower/opportunities',
+      // AI v2 W8 — AI Centre › Operations › Loops and each loop's page. Same requireAdmin guard as their siblings, so
+      // they need a column here or test/function-access.test.ts fails. Switching a loop is a group administrator's
+      // (core/agent-registry/controls.ts); pausing one for a company is that company's administrator's.
+      '/control-tower/loops',
+      '/control-tower/loops/[loop]',
+      // AI v2 P2-2b — the payroll Audit loop's own page, same requireAdmin guard; a static segment beside [loop].
+      '/control-tower/loops/loop_payroll_audit',
+      // AI v2 P2-2a — the Payroll cycle view, its Salary payroll page and its settings; AI v2 P2-1 — a loop's promote
+      // page. Same requireAdmin guard as their siblings (wave 1 integration: their branches did not add the columns).
+      // Changing a loop's level is a group administrator's (core/loops/levels.ts, migration 0963 policies).
+      '/control-tower/loops/payroll-cycle',
+      '/control-tower/loops/payroll-cycle/salary',
+      '/control-tower/loops/payroll-cycle/settings',
+      '/control-tower/loops/[loop]/promote',
       '/payroll/configuration',
       // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
       // each a real sub-route under the same scopedAdmin guard as the index.
@@ -1526,8 +1548,13 @@ export const SCREENS: readonly ScreenEntry[] = [
   { screenKey: 'analytics', href: '/analytics', labelKey: 'nav.analytics', guard: 'scopedAdmin', routes: ['/analytics'] },
   { screenKey: 'auditTrail', href: '/admin/audit', labelKey: 'nav.auditTrail', guard: 'requireAdmin', routes: ['/admin/audit'] },
   { screenKey: 'dataPrivacy', href: '/admin/privacy', labelKey: 'nav.dataPrivacy', guard: 'requireAdmin', routes: ['/admin/privacy'] },
+  // AI v2 W11 (ADR-0173): designating private case handlers; designating someone reads no case.
+  { screenKey: 'privateCaseHandlers', href: '/admin/privacy/case-handlers', labelKey: 'privateCases.admin.title', guard: 'requireAdmin', routes: ['/admin/privacy/case-handlers'] },
   // Provider setup moved to AI management › Provider; /admin/ai is now a redirect-only segment.
   { screenKey: 'aiConfig', href: '/control-tower/agents/provider', labelKey: 'nav.aiConfig', guard: 'requireAdmin', routes: ['/admin/ai', '/control-tower/agents/provider'] },
+  // AI v2 Phase 2 P2-6: the linkable address of AI Centre › Insights › AI quality (HR and group administrators); it reads no
+  // data and forwards to the section, which checks again.
+  { screenKey: 'aiQuality', href: '/ai-quality', labelKey: 'nav.aiQuality', guard: 'requireAdmin', routes: ['/ai-quality'] },
   { screenKey: 'usersRoles', href: '/admin/users', labelKey: 'nav.usersRoles', guard: 'requireAdmin', routes: ['/admin/users'] },
   {
     // System Analysis & Dependency Explorer (deec1691) — the record-relationship reference, moved from

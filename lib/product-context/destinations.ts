@@ -18,7 +18,7 @@ import '@/packs/register-all';
 import {listPacks,type ModulePack,type NavChildDescriptor} from '@/packs/registry';
 import {V9_NAVIGATION} from '@/lib/lifecycle-v9-navigation';
 import {SECURITY_CENTER,SECURITY_PAGES} from '@/lib/security-center-navigation';
-import {isAdmin,hasTeamAccess} from '@/lib/authz-model';
+import {canManagePayroll,isAdmin,hasTeamAccess,withEffectiveGrants} from '@/lib/authz-model';
 import {MODULE_CODES_WITH_NAV} from '@/lib/nav-entitlements';
 import type {SessionContext} from '@/db/client';
 
@@ -30,6 +30,21 @@ export const DESTINATION_PURPOSE:Readonly<Record<string,string>>=Object.freeze({
  // Review M16 (run 41343676782, pp-scope-2): a payroll partner asking for the October payroll summary was sent here.
  // Payroll runs and their reports are on the payroll pages, which only HR administrators open (scopedAdmin).
  '/me/payslip':'The signed-in person\'s own released payslips only. Never a payroll run, a payroll summary, a company report or anyone else\'s pay.',
+ // AI v2 Phase 1 slice 3: where a person asks HR for a letter ("Request a letter" on My Letters).
+ '/me/letters':'The signed-in person\'s own issued letters and letter requests, and where they ask HR for a new letter, such as an employment confirmation letter, with Request a letter when their company offers it. HR prepares and issues the letter.',
+ // Spec v20 (hr-salary, run 41615455375: "[Individual Payslip](/payroll/individual-payslip) is for your own payslips"): the
+ // payroll staff views of other people's pay say whose pay they show.
+ '/payroll/individual-payslip':'Payroll staff: the payslip of any employee they administer, run by run. Not the signed-in person\'s own payslips (those are on /me/payslip).',
+ '/payroll/transaction-view':'Payroll staff: the pay transactions of any employee they administer. Not the signed-in person\'s own payslips.',
+ '/payroll':'Payroll staff: the payroll runs of the companies they administer.',
+});
+/** Spec v20: what each pay-view page shows, for the conversation's turn note about another person's pay (the
+ * conversation's payViewNoteFor reads it from here; this file names nothing of the conversation's own). Every
+ * PAY_VIEW_PAGES entry has one. */
+export const PAY_VIEW_PURPOSE:Readonly<Record<string,string>>=Object.freeze({
+ '/payroll/individual-payslip':'where they open the payslip of any employee they administer (not their own payslips)',
+ '/payroll/transaction-view':'where they see the pay transactions of any employee they administer',
+ '/payroll':'the payroll runs of the companies they administer',
 });
 export type ProductDestination=Readonly<{href:string;labelKey:string;audience:DestinationAudience;module:string|null;source:'pack'|'lifecycle_v9'|'security'|'sidebar'}>;
 
@@ -42,6 +57,9 @@ const SIDEBAR:readonly (readonly [string,string,DestinationAudience,string|null]
  ['/personnel','people','everyone','employees'],['/approvals','approvals','manager',null],
  ['/me/payslip','myPayslips','everyone','payroll'],['/me/letters','myLetters','everyone','employees'],['/me/tax-relief','taxRelief','everyone','payroll'],
  ['/me/tp3','myTp3','everyone','payroll'],['/me/ea','myEa','everyone','payroll'],
+ // AI v2 W11: a person's own private cases (everyone); the handlers' queue is shown in the rail only to handlers, so it
+ // is offered to the model for administrators alone (audience is a coarse hint; /cases shows each login only its own).
+ ['/me/cases','myPrivateCases','everyone',null],['/cases','privateCases','admin',null],
  ['/admin/personnel','personnelAdmin','admin','employees'],['/admin/job-descriptions','jobDescriptions','admin',null],
  ['/admin/personnel/profile-changes','profileChanges','admin','employees'],['/admin/claims/reimbursements','reimbursementsDue','admin','claims'],
  ['/admin/organization','organization','admin',null],['/admin/notice-board','noticeBoard','admin',null],['/analytics','analytics','admin',null],
@@ -166,7 +184,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/admin/payroll-policy','admin',null],['/admin/personnel','admin',null],['/admin/personnel/child-relief','admin',null],
  ['/admin/personnel/duplicates','admin',null],['/admin/personnel/import','admin',null],['/admin/personnel/import/history','admin',null],
  ['/admin/personnel/new','admin',null],['/admin/personnel/profile-changes','admin',null],['/admin/personnel/settings','admin',null],
- ['/admin/privacy','admin',null],['/admin/rewards','admin','rewards'],['/admin/rewards/access','admin','rewards'],
+ ['/admin/privacy','admin',null],['/admin/privacy/case-handlers','admin',null],['/admin/rewards','admin','rewards'],['/admin/rewards/access','admin','rewards'],
  ['/admin/rewards/shared','admin','rewards'],['/admin/scheduled-actions','admin',null],['/admin/security-center','admin',null],['/admin/security-center/password-policy','admin',null],
  ['/admin/settings','admin',null],['/admin/settings/dashboard','admin',null],['/admin/settings/email','admin',null],
  ['/admin/settings/email-templates','admin',null],['/admin/settings/employee-id','admin',null],['/admin/settings/entra','admin',null],['/admin/settings/hiring-defaults','admin',null],
@@ -179,19 +197,21 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/admin/system-testing/new','admin','system_testing'],['/admin/toil','admin',null],['/admin/users','admin',null],
  ['/admin/users/access','admin',null],['/admin/users/create','admin',null],['/admin/users/function-access','admin',null],
  ['/admin/users/invite','admin',null],['/admin/work-locations','admin',null],['/admin/work-locations/clocking','admin',null],
- ['/admin/work-locations/clocking/new','admin',null],['/admin/work-locations/new','admin',null],['/analytics','admin',null],
+ ['/admin/work-locations/clocking/new','admin',null],['/admin/work-locations/new','admin',null],['/ai-quality','admin',null],['/analytics','admin',null],
  ['/approvals','admin',null],['/approvals/history','admin',null],['/attendance','everyone','attendance'],
  ['/attendance/application-history','admin','attendance'],['/attendance/application-history/visible','everyone','attendance'],
  ['/attendance/breakdown','admin','attendance'],['/attendance/clock','everyone','attendance'],['/attendance/daily','everyone','attendance'],
  ['/attendance/import','admin','attendance'],['/attendance/import/logs','admin','attendance'],['/attendance/individual','everyone','attendance'],
  ['/attendance/my-records','everyone','attendance'],['/attendance/my-roster','everyone','attendance'],['/attendance/plan-ot','everyone','attendance'],
  ['/attendance/plan-ot/apply','everyone','attendance'],['/attendance/recompute','admin','attendance'],
- ['/attendance/request-status','everyone','attendance'],['/attendance/requests','everyone','attendance'],['/claims','everyone','claims'],
+ ['/attendance/request-status','everyone','attendance'],['/attendance/requests','everyone','attendance'],['/cases','everyone',null],['/claims','everyone','claims'],
  ['/control-tower','admin',null],['/control-tower/actions','admin',null],['/control-tower/agents','admin',null],
  ['/control-tower/agents/allowances','admin',null],['/control-tower/agents/assistant','admin',null],['/control-tower/agents/features','admin',null],
  ['/control-tower/agents/inventory','admin',null],['/control-tower/agents/orchestrator','admin',null],['/control-tower/agents/provider','admin',null],
  ['/control-tower/agents/runs','admin',null],['/control-tower/agents/spending','admin',null],['/control-tower/exceptions','admin',null],
- ['/control-tower/how-it-works','admin',null],['/control-tower/opportunities','admin',null],['/control-tower/readiness','admin',null],
+ ['/control-tower/how-it-works','admin',null],['/control-tower/loops','admin',null],['/control-tower/loops/loop_payroll_audit','admin',null],
+ ['/control-tower/loops/payroll-cycle','admin',null],['/control-tower/loops/payroll-cycle/salary','admin',null],['/control-tower/loops/payroll-cycle/settings','admin',null],
+ ['/control-tower/opportunities','admin',null],['/control-tower/readiness','admin',null],
  ['/delegations','everyone',null],['/feedback','everyone',null],['/knowledge-base','everyone',null],['/leave','admin','leave'],
  ['/leave/credit','everyone','leave'],['/leave/credit-details','everyone','leave'],['/leave/details','everyone','leave'],
  ['/leave/employee-balances','admin','leave'],['/leave/employee-records','admin','leave'],['/leave/history','everyone','leave'],
@@ -201,7 +221,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/letters/settings/policy','admin','employees'],['/letters/templates','admin','employees'],['/letters/templates/new','admin','employees'],
  ['/lifecycle','everyone','lifecycle'],['/lifecycle/acknowledgement','everyone','lifecycle'],['/lifecycle/onboarding','everyone','lifecycle'],
  ['/lifecycle/onboarding/checklists','everyone','lifecycle'],['/lifecycle/requisitions/onboarding','everyone','lifecycle'],
- ['/lifecycle/v9','everyone','lifecycle'],['/manage/my-team','manager',null],['/me','everyone',null],['/me/calendar','everyone',null],
+ ['/lifecycle/v9','everyone','lifecycle'],['/manage/my-team','manager',null],['/me','everyone',null],['/me/calendar','everyone',null],['/me/cases','everyone',null],['/me/cases/new','everyone',null],
  ['/me/ea','everyone','payroll'],['/me/home','everyone',null],['/me/letters','everyone','employees'],['/me/lifecycle','everyone','lifecycle'],
  ['/me/notifications','everyone','notifications'],['/me/payslip','everyone','payroll'],['/me/performance','everyone',null],
  ['/me/tax-relief','everyone','payroll'],['/me/tp3','everyone','payroll'],['/notices','everyone',null],['/org','everyone',null],
@@ -235,6 +255,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/performance/plan','everyone','performance'],['/performance/plan/profile','everyone','performance'],
  ['/performance/plan/team','everyone','performance'],['/performance/team','everyone','performance'],
  ['/performance/team/kpis','everyone','performance'],['/performance/workspace','everyone','performance'],['/personnel','everyone',null],
+ ['/policies','everyone',null],
  ['/reports','admin',null],['/reports/employee-master','admin',null],['/rewards','everyone','rewards'],['/rewards/approvals','everyone','rewards'],
  ['/roster','everyone','attendance'],['/roster/exceptions','everyone','attendance'],['/roster/import','admin','attendance'],
  ['/system-testing','everyone','system_testing'],['/tasks','everyone',null],
@@ -246,4 +267,15 @@ export function linkablePathsFor(ctx:SessionContext,visibleModules?:readonly str
  const pages=LINKABLE_PAGES.filter(([,audience,module])=>(audience==='everyone'||(audience==='manager'&&manager)||(audience==='admin'&&admin))
   &&(module===null||visibleModules===undefined||!NAV_GATED.has(module)||visibleModules.includes(module))).map(([path])=>path);
  return Object.freeze([...new Set([...destinationsFor(ctx,visibleModules).map(row=>row.href.split(/[?#]/)[0]||'/'),...pages])]);
+}
+
+/** Issue 13 (scored evaluation, 3 November 2026): the pages where a caller with payroll access sees another person's
+ * pay, most specific first: the per-person payslip review, the transaction history, then the payroll workbench. */
+export const PAY_VIEW_PAGES=Object.freeze(['/payroll/individual-payslip','/payroll/transaction-view','/payroll'] as const);
+/** The first PAY_VIEW_PAGES destination among this caller's own linkable paths (linkablePathsFor), or null: without
+ * payroll access, or when none is linkable for them. Grants nothing and widens no list; the page's own guard decides. */
+export function payViewDestinationFor(ctx:SessionContext,linkable:readonly string[]):ProductDestination|null{
+ if(!canManagePayroll(withEffectiveGrants(ctx)))return null;
+ const href=PAY_VIEW_PAGES.find(path=>linkable.includes(path));
+ return href?productDestinations().find(row=>row.href===href)??null:null;
 }

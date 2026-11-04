@@ -28,7 +28,13 @@ import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,
 
 const root=new URL('../',import.meta.url).pathname;
 const IDS=['payroll_anomaly_narrator','claims_triage','readiness_nudges','approval_chasers','review_chasers','clock_reminders','document_reminders','lifecycle_chasers',
- 'approver_recommendation','explainers','conversation','team_absence_weekly_summary','daily_digest'];
+ 'approver_recommendation','explainers','conversation','team_absence_weekly_summary','daily_digest',
+ // AI v2 W8: the five loops at the Prepare level (test/teras-loops.test.ts).
+ 'loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data','loop_missed_clock_outs','loop_document_expiry',
+ // AI v2 P2-2a: the Salary payroll loop (test/payroll-cycle-loops.test.ts). The Pre-salary loop is loop_payroll_inputs.
+ 'loop_salary_payroll',
+ // AI v2 P2-2b: the payroll Audit loop (test/payroll-audit-loop.test.ts).
+ 'loop_payroll_audit'];
 
 describe('one contract for every worker',()=>{
  it('registers every automated worker with every field, in one family, scoped by the semantic model',async()=>{
@@ -202,8 +208,15 @@ describe('customer-facing outcome summary and export',()=>{
 
   await expect(exportAgentRegistry(manager)).rejects.toMatchObject({reason:'not_administrator'});
   await expect(outcomeSummary(report)).rejects.toMatchObject({reason:'not_administrator'});
+  // AI v2 W8: a loop is sponsored by the person who switched it on; one that is off has no sponsor.
+  await setWorkerSwitch(hr,{workerId:'loop_probation_ending',enabled:true});
   const exported=await exportAgentRegistry(hr);
   expect(exported).toMatchObject({kind:'teras.agent_registry_export',version:1,tenantId:b.tenantId,adapters:{entraAgentId:null,googleAgentIdentity:null}});
+  const sponsorOf=(workerId:string)=>exported.agents.find(agent=>agent.kind==='worker'&&agent.workerId===workerId)?.sponsor;
+  expect(sponsorOf('loop_probation_ending')).toEqual({kind:'person',userId:hr.userId});
+  expect(sponsorOf('loop_payroll_inputs')).toEqual({kind:'none'});
+  expect(sponsorOf('payroll_anomaly_narrator')).toEqual({kind:'tenant_administrators'});
+  expect(exported.agents.filter(agent=>agent.kind==='worker'&&agent.workerId.startsWith('loop_')&&agent.sponsor.kind==='tenant_administrators')).toEqual([]);
   // One identity per non-mandate worker, plus one per mandate, acting for its grantor; nothing autonomous.
   expect(exported.agents.filter(agent=>agent.kind==='worker').map(agent=>agent.workerId)).toEqual(IDS.filter(id=>!['team_absence_weekly_summary','daily_digest'].includes(id)));
   expect(exported.agents.filter(agent=>agent.kind==='mandate_agent')).toEqual([expect.objectContaining({agentId:`mandate-agent:${mandate.agentIdentityId}`,

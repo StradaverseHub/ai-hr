@@ -199,3 +199,23 @@ describe('harness returns the proposal for the matching suggestion',()=>{
   expect(await status()).toBe('pending');
  },60000);
 });
+
+/** Spec v20 (hr-check-1, runs 41612993488 and 41615455375): "is Nur's leave request ok to approve?" listed every pending
+ * request with the applicants as placeholders, so the model could not tell which was Nur's and refused or asked. The
+ * leave decision now resolves the applicant the person names, like the claim and attendance decisions, and a person named
+ * whose request is not pending for this approver, or nothing pending at all, is no match: no card. */
+describe('the leave decision resolves the named applicant (spec v20)',()=>{
+ it('prepares the named applicant\'s request, and no match for someone else or for an approver with nothing pending',async()=>{
+  const me=await login(manager);
+  const named=await prepareSuggestedProposal(me,'approvals.leave.decide',{},'is Fictional Decide Applicant\'s leave request ok to approve?');
+  if(named?.kind!=='proposal')throw Error('The named request was not prepared: '+JSON.stringify(named));
+  expect(named.proposal.body).toMatchObject({forWhom:{subjectId:requestId},what:{selectors:{decision:'approved'}}});
+  expect(await prepareSuggestedProposal(me,'approvals.leave.decide',{},'approve Nadia\'s leave')).toMatchObject({kind:'no_match'});
+  // Another approver, to whom nothing is assigned: no match, whatever is named.
+  const other=await login(otherManager);
+  expect(await prepareSuggestedProposal(other,'approvals.leave.decide',{},'approve Fictional Decide Applicant\'s leave')).toMatchObject({kind:'no_match'});
+  expect(await prepareSuggestedProposal(other,'approvals.leave.decide',{},'Please approve the leave request waiting for me.')).toMatchObject({kind:'no_match'});
+  expect(await status()).toBe('pending');
+ },60000);
+});
+

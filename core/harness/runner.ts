@@ -26,9 +26,14 @@
  * never confirms or writes a change. */
 import {createHash,randomUUID} from 'node:crypto';
 import type {SessionContext} from '../../db/client';
-import {isAdmin} from '../../lib/authz-model';
+import {canManagePayroll,isAdmin,isGroupAdmin,withEffectiveGrants} from '../../lib/authz-model';
 import {todayInKualaLumpur} from '../../lib/hr-date';
+import {PAY_VIEW_PURPOSE,payViewDestinationFor} from '../../lib/product-context/destinations';
 import {gateTurn,isSensitiveReason,TURN_GATE_NOTE} from '../../lib/product-context/request-gate';
+import {capabilityOffered} from '../../lib/product-context/capability-intent';
+import {chatImportFileInput} from '../../lib/chat-import';
+import {chatImportKindsFor} from '../chat-import/kinds';
+import {destinationLabel} from '../product-context/tools';
 import {canonicalJson,type Proposal} from '../proposals/proposal';
 import {DisclosureLedger,discloseToolOutput,type DisclosureApplied} from './disclosure';
 import {fenceNonce,fenceUntrusted} from './fence';
@@ -62,6 +67,9 @@ export type TurnOptions=Readonly<{
  /** Defaults to the native owners. Tests may substitute bindings; the offer policy still applies. */
  tools?:ToolProvider;
  clock?:()=>Date;
+ /** AI v2 W11: whether the protected case route is set up for this caller and company (core/private-case-route.ts).
+  * Asked only on a routed sensitive turn, after the gate; it reads no case and nothing of the person's words. */
+ caseRouteAvailable?:()=>Promise<boolean>;
 }>;
 export type TurnSuggestion=Readonly<{action:string;reviewRoute:string;inlineCard:boolean}>;
 export type TurnResult=Readonly<{
@@ -76,7 +84,9 @@ export type TurnResult=Readonly<{
  /** The caller's open proposals, each verified again this turn. The harness never creates or confirms one. */
  proposals:readonly Proposal[];
  /** Names of reads and context tools that returned data this turn. */
- reads:readonly string[];trace:TurnTrace;memory:TaskMemory}>;
+ reads:readonly string[];trace:TurnTrace;memory:TaskMemory;
+ /** AI v2 W11: a routed sensitive turn for a caller whose company has the protected case route set up. */
+ caseRoute:boolean}>;
 
 const S=HARNESS_SPEC;
 const finalDeclaration:HarnessToolDeclaration=Object.freeze({name:S.offer.finalTool,description:S.offer.finalDescription,parameters:{type:'object',
@@ -84,11 +94,16 @@ const finalDeclaration:HarnessToolDeclaration=Object.freeze({name:S.offer.finalT
 const digestOf=(value:string)=>createHash('sha256').update(value).digest('hex');
 const argumentsDigest=(raw:string)=>{try{return digestOf(canonicalJson(JSON.parse(raw||'{}')));}catch{return digestOf(raw);}};
 
-/** Which candidates this turn offers. Pure; the gate and the spec decide, never the model or a tool. */
-export function offerFor(bindings:readonly ToolBinding[],gate:ReturnType<typeof gateTurn>,allowTools?:readonly string[]):readonly ToolBinding[]{
+/** Which candidates this turn offers. Pure; the gate and the spec decide, never the model or a tool. Spec v17: the
+ * capability catalogue (S.offer.capabilityTool) only when `capability`, the person's words asking what they can do, how,
+ * or to import, set up, add or create something, or (v18) picking a numbered option of the previous turn's question
+ * (lib/product-context/capability-intent.ts capabilityOffered); it is not a public context tool, so a gated turn never
+ * has it. */
+export function offerFor(bindings:readonly ToolBinding[],gate:ReturnType<typeof gateTurn>,allowTools?:readonly string[],capability=false):readonly ToolBinding[]{
  const publicContext:readonly string[]=S.offer.publicContextTools,actionTools:readonly string[]=S.offer.actionTools;
  return bindings.filter(binding=>{
   if(allowTools&&!allowTools.includes(binding.name))return false;
+  if(binding.name===S.offer.capabilityTool&&!capability)return false;
   if(actionTools.includes(binding.name)&&!gate.actions)return false;
   if(binding.kind==='suggest')return gate.actions;
   if(binding.kind==='read')return gate.privateReads;
@@ -96,16 +111,53 @@ export function offerFor(bindings:readonly ToolBinding[],gate:ReturnType<typeof 
  });
 }
 
-/** The spec's contact route for a sensitive-topic turn. */
-export function routeReply():string{
- const {contact,routeReply:template,caseClause}=S.sensitive,route:string|null=contact.caseRoute;
+/** Spec v11: the caller profile, from the session's own roles and grants (lib/authz-model.ts): employee; manager;
+ * HR administrator with the companies their grants cover, or group administrator; payroll partner with theirs. It
+ * describes and never grants: the offer is fixed before it by offerFor, which never reads it, and every tool and
+ * review page still decides as the caller. Pure. */
+export function roleNoteFor(ctx:SessionContext):string{
+ const R=S.roleNote,grants=withEffectiveGrants(ctx).grants??[];
+ const caller:SessionContext={...ctx,grants,roles:ctx.roles??[...new Set(grants.map(grant=>grant.role))]};
+ const scopeOf=(roles:readonly string[])=>{const held=grants.filter(grant=>roles.includes(grant.role));
+  if(held.some(grant=>grant.companyId==null))return R.scope.group;
+  const companies=new Set(held.map(grant=>grant.companyId)).size;return companies>1?R.scope.many.replace('{n}',String(companies)):R.scope.one;};
+ const parts:string[]=[ctx.personId?R.employee:R.noRecord];
+ if(isGroupAdmin(caller))parts.push(R.groupAdmin);
+ else if(isAdmin(caller))parts.push(R.admin.replace('{scope}',scopeOf(['hr_admin','super_admin'])));
+ // An administrator already manages payroll (canManagePayroll unions the admin roles); a partner is described apart.
+ if(!isAdmin(caller)&&canManagePayroll(caller))parts.push(R.payroll.replace('{scope}',scopeOf(['payroll_partner'])));
+ if(caller.roles?.includes('manager'))parts.push(R.manager);
+ parts.push(R.tools);
+ return parts.join(' ');
+}
+
+/** Spec v11, issue 13: on a turn about another person, where a caller with payroll access can already see that
+ * person's pay, from the destination registry and this caller's own linkable paths, so the link passes the
+ * destination check. Null for a caller without payroll access: their turn is unchanged. No figure or id is in it. */
+export function payViewNoteFor(ctx:SessionContext,destinations:readonly string[],locale?:string):string|null{
+ if(!canManagePayroll(withEffectiveGrants(ctx)))return null;
+ const page=payViewDestinationFor(ctx,destinations);
+ return page?S.payView.page.replace('{label}',destinationLabel(page.labelKey,locale)).replace('{href}',page.href).replace('{purpose}',PAY_VIEW_PURPOSE[page.href]??'where they see the pay of the people they administer'):S.payView.none;
+}
+
+/** The spec's contact route for a sensitive-topic turn. AI v2 W11: the spec's case clause joins it only where the
+ * protected case route is set up for the caller (`caseRoute`), and only once the spec names a route. */
+export function routeReply(caseRoute=false):string{
+ const {contact,routeReply:template,caseClause}=S.sensitive,route:string|null=caseRoute?contact.caseRoute:null;
  return template.replace('{contact}',contact.label).replace('{case}',route?caseClause.replace('{route}',route):'');
 }
 
 export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  if(options.enabled===HARNESS_TEST_ONLY?!testProcess():!consumeHarnessPermit(options.enabled,options.ctx.tenantId,options.ctx.userId))throw new HarnessDisabled();
  const clock=options.clock??(()=>new Date()),started=clock(),startedMs=Date.now(),{ctx,model}=options;
- const callerKey=authorityKey(ctx),gate=gateTurn(options.question,{sensitive:S.sensitive.topics}),admin=isAdmin(ctx);
+ // AI v2 slice 3 (issue 16b): the attachment gate is lifted only for a turn carrying a chat import file that passes the
+ // server's own file check again here, from a caller who may prepare an import in chat. Any other file is dropped from
+ // the scope, and its words stay gated like any message about an attachment.
+ const {importFile:postedFile,...scopeWithoutFile}=options.scope;
+ const checkedFile=postedFile===undefined?null:chatImportFileInput(postedFile);
+ const importUpload=checkedFile!==null&&(await chatImportKindsFor(ctx)).length>0;
+ const scope:ToolScope=importUpload&&checkedFile?{...scopeWithoutFile,importFile:checkedFile}:scopeWithoutFile;
+ const callerKey=authorityKey(ctx),gate=gateTurn(options.question,{sensitive:S.sensitive.topics,importUpload});
  const reason=gate.privateReads?null:gate.reason,refused=reason==='workplace_harm'||reason==='instruction_override',crisis=reason==='sensitive_crisis',routed=isSensitiveReason(reason);
  // Crisis turns never reach the model (run 41307457954: the provider answered every one with a bare refusal), and
  // since spec v6 no sensitive-topic turn does: the person's words about health, harassment, a grievance or a
@@ -113,30 +165,36 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  const fixed=refused||routed;
  const history=options.history??[];
  if(history.some(row=>row?.side!=='model'))throw new PersonSideHistory();
- const candidates=await (options.tools??nativeToolProvider)(ctx,{...options.scope,personWords:options.question},gate.actions);
- // A fixed turn offers nothing: the model is never called.
- const offered=fixed?[]:offerFor(candidates.bindings,gate,options.allowTools),offeredNames=new Set(offered.map(binding=>binding.name));
+ const candidates=await (options.tools??nativeToolProvider)(ctx,{...scope,personWords:options.question},gate.actions);
 
  // Task memory: loaded for this tenant and user only, then re-authorised against what the caller is offered now.
  const stored=await options.memory.load(ctx.tenantId,ctx.userId??'',options.conversationId)??emptyMemory(ctx,options.conversationId,started);
  const callerReads=new Set(candidates.bindings.filter(binding=>binding.kind==='read').map(binding=>binding.name));
  const {memory:current,result:memoryResult}=reauthoriseMemory(stored,ctx,callerReads,started);
+ // A fixed turn offers nothing: the model is never called. Spec v18: an answer picking one option of the previous turn's
+ // question (re-authorised task memory's pendingQuestion) keeps the catalogue offered, so that entry can be acted on.
+ const offered=fixed?[]:offerFor(candidates.bindings,gate,options.allowTools,capabilityOffered(options.question,current.pendingQuestion)),offeredNames=new Set(offered.map(binding=>binding.name));
 
  // Identifiers never leave: the question, the history and the memory note are screened before any model call.
  const screening={question:0,history:0,memory:0,tools:0,kinds:[] as string[]};
  const screened=(text:string,part:'question'|'history'|'memory')=>{const result=screenIdentifiers(text);screening[part]+=result.count;
   for(const kind of result.kinds)if(!screening.kinds.includes(kind))screening.kinds.push(kind);return result.text;};
  const question=screened(options.question,'question'),nonce=fenceNonce();
+ // Spec v12: the person's (screened) words go to the model labelled, unchanged; the gate, tools, history and memory
+ // keep the bare words. Unlabelled, the upstream's content filter stopped everyday questions (spec.question).
+ const asked=S.question.label+'\n'+question;
  const gateNote=gate.privateReads?null:TURN_GATE_NOTE[gate.reason],rawNote=memoryNote(current),note=rawNote?screened(rawNote,'memory'):null;
+ // A turn about another person closes every private read; a caller with payroll access is told where they already see pay.
+ const payNote=!gate.privateReads&&gate.reason==='other_person'?payViewNoteFor(ctx,candidates.destinations,options.scope.locale):null;
  // Review H2: the goal (the person's earlier words) travels fenced in the person's own message, never in system text.
  const rawGoal=memoryGoal({...current,goal:current.goal?screened(current.goal,'memory'):null},value=>fenceUntrusted('conversation_goal',value,nonce));
- const system=[S.instructions.join(' ').replace('{today}',todayInKualaLumpur(started)),admin?S.roleNote.admin:S.roleNote.employee,...(gateNote?[gateNote]:[]),...(note?[note]:[])].join(' ');
+ const system=[S.instructions.join(' ').replace('{today}',todayInKualaLumpur(started)),roleNoteFor(ctx),...(gateNote?[gateNote]:[]),...(payNote?[payNote]:[]),...(note?[note]:[])].join(' ');
  // Review M8: the newest earlier turns up to the spec's character cap; the kept history starts with the person's turn.
  const kept:ModelHistoryMessage[]=[];let historyChars=0;
  for(const row of [...history].reverse()){historyChars+=row.content.length;if(historyChars>S.budgets.maxHistoryChars)break;kept.unshift(row);}
  while(kept.length&&kept[0].role!=='user')kept.shift();
  const messages:HarnessMessage[]=[{role:'system',content:system},...kept.map(row=>({role:row.role,content:screened(row.content,'history')}) as HarnessMessage),
-  {role:'user',content:rawGoal?rawGoal+'\n\n'+question:question}];
+  {role:'user',content:(rawGoal?rawGoal+'\n\n':'')+asked}];
  const declarations:HarnessToolDeclaration[]=[...offered.map(binding=>({name:binding.name,description:binding.spec.description,parameters:binding.spec.inputSchema as Record<string,unknown>})),finalDeclaration];
 
  const ledger=new DisclosureLedger(callerKey),seen=new Set<string>();
@@ -148,7 +206,8 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
 
  /** Runs the checks on a candidate reply; returns true when the turn may end with it. */
  const judge=(candidate:string,candidateMode:string|null,candidateSlot:string|null)=>{
-  const results=checkReply(candidate,allowedPaths(),S.replyChecks.order,{question:options.question});checks.push({attempt:checks.length+1,results});
+  // "Prepared … for you to review and confirm" is admitted only when this turn issued a proposal (a prepared card).
+  const results=checkReply(candidate,allowedPaths(),S.replyChecks.order,{question:options.question,prepared:issued.length>0});checks.push({attempt:checks.length+1,results});
   const failed=results.find(result=>!result.ok);
   if(!failed){reply=candidate;mode=candidateMode;slot=candidateSlot;return true;}
   if(checkRetries<S.retry.replyCheck){checkRetries++;retries.push({step:steps,reason:failed.check});retryPending=true;
@@ -213,8 +272,10 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
    if(unknownHandle){record('unknown_handle',{ok:false,message:'Use a handle exactly as an earlier result in this conversation turn gave it; never guess one.'});continue;}
    let run:Awaited<ReturnType<ToolBinding['run']>>;
    try{run=await binding.run(resolved);}catch{record('error',{ok:false,message:'This source is unavailable for this request.'});continue;}
-   // Reads and suggest_action are disclosed under their declared entity; context tools (no entity) are swept.
-   const disclosed=discloseToolOutput(binding.name,binding.entity,run.content,ledger,{namesInScope:run.namesInScope});disclosure.push(disclosed.applied);
+   // Reads and suggest_action are disclosed under their declared entity; context tools (no entity) are swept. Spec v23: a
+   // topic tool's result is disclosed under the entity of the topic its validated input names.
+   const entity=binding.entityOf?binding.entityOf(resolved):binding.entity;
+   const disclosed=discloseToolOutput(binding.name,entity,run.content,ledger,{namesInScope:run.namesInScope});disclosure.push(disclosed.applied);
    screening.tools+=disclosed.applied.identifiers;for(const kind of disclosed.applied.identifierKinds)if(!screening.kinds.includes(kind))screening.kinds.push(kind);
    if(run.ok&&binding.kind!=='suggest')reads.push(binding.name);
    if(run.suggestion)suggestion=run.suggestion;
@@ -225,8 +286,10 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
 
  const shown=reply??S.replyChecks.fallbackReply;
  const restoration=fallback||fixed?{reply:shown,restored:0,refused:[]}:restoreFigures(shown,ledger,callerKey,offeredNames);
- // A routed turn ends with the contact route (a crisis turn: the safe message, then the route).
- const shownReply=routed?[restoration.reply,routeReply()].filter(Boolean).join('\n\n'):restoration.reply;
+ // A routed turn ends with the contact route (a crisis turn: the safe message first, then the route). AI v2 W11: the
+ // case route is asked about only now, on a routed turn; a failure keeps the contact route alone.
+ const caseRoute=routed&&options.caseRouteAvailable?await options.caseRouteAvailable().then(value=>value===true,()=>false):false;
+ const shownReply=routed?[restoration.reply,routeReply(caseRoute)].filter(Boolean).join('\n\n'):restoration.reply;
  // The two transcripts part here: the person sees shownReply; a later model call may only see modelTurn.
  const modelTurn:readonly ModelHistoryMessage[]=Object.freeze([
   Object.freeze({role:'user' as const,content:routed?S.history.routedQuestion:reason==='instruction_override'?S.history.overrideQuestion:refused?S.history.refusedQuestion:question,side:'model' as const}),
@@ -249,5 +312,5 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
   budgets:{steps,inputTokens,outputTokens,spendUsd:Number(spendUsd.toFixed(6)),wallMs:Date.now()-startedMs,exhausted,refusedCalls},
   restoration:{restored:restoration.restored,refused:restoration.refused},memory:memoryResult,
   outcome:{mode,slot,suggestion:suggestion?.action??null,openProposals:next.openProposals.length,fallback}});
- return Object.freeze({reply:shownReply,personTurn,modelTurn,mode,slot,suggestion,proposals:next.openProposals,reads:Object.freeze(reads),trace,memory:next});
+ return Object.freeze({reply:shownReply,personTurn,modelTurn,mode,slot,suggestion,proposals:next.openProposals,reads:Object.freeze(reads),trace,memory:next,caseRoute});
 }

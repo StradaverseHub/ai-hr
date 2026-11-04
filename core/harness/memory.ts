@@ -17,13 +17,16 @@ import {canonicalJson,verifyProposal,type Proposal} from '../proposals/proposal'
 import {HARNESS_SPEC} from './spec';
 
 export const TASK_MEMORY_VERSION=1 as const;
+/** Spec v18: the pending question of a clarify turn that named no slot. Never one of the spec's finalSlots. */
+export const CHOICE_QUESTION='choice' as const;
 export type TaskMemory=Readonly<{version:typeof TASK_MEMORY_VERSION;conversationId:string;tenantId:string;userId:string;
  /** Hash of roles and grants the memory was last written under. */
  authorityKey:string;
  goal:string|null;
  /** Choices the person made (slot -> value), e.g. leave_type -> "Annual Leave". Never ids. */
  selections:Readonly<Record<string,string>>;
- /** The slot the Assistant last asked about, if any. */
+ /** The slot the Assistant last asked about, if any; spec v18: CHOICE_QUESTION when it asked a question without a slot
+  * (a numbered choice, say), so a follow-up answer is recognised (lib/product-context/capability-intent.ts). */
  pendingQuestion:string|null;
  completedReads:readonly Readonly<{tool:string;turn:number}>[];
  openProposals:readonly Proposal[];
@@ -71,7 +74,8 @@ export function reauthoriseMemory(memory:TaskMemory,ctx:SessionContext,offeredRe
  * is the person's own words, so it is never part of this system note (review H2): see memoryGoal. */
 export function memoryNote(memory:TaskMemory):string|null{
  const parts=[...(Object.keys(memory.selections).length?['Choices the person made: '+JSON.stringify(memory.selections)]:[]),
-  ...(memory.pendingQuestion?['You last asked the person to choose: '+memory.pendingQuestion+'.']:[]),
+  ...(memory.pendingQuestion===CHOICE_QUESTION?['You last asked the person a question; their reply may answer it.']
+   :memory.pendingQuestion?['You last asked the person to choose: '+memory.pendingQuestion+'.']:[]),
   ...(memory.openProposals.length?['Open review items: '+memory.openProposals.map(row=>row.body.what.action).join(', ')+'.']:[])];
  return parts.length?'Task memory (advisory; records must still be read again): '+parts.join(' '):null;
 }
@@ -83,6 +87,6 @@ export function memoryGoal(memory:TaskMemory,fence:(value:unknown)=>string):stri
 export function advanceMemory(memory:TaskMemory,turn:Readonly<{question:string;reads:readonly string[];slot:string|null;mode:string|null}>,now:Date):TaskMemory{
  const {maxCompletedReads,maxGoalChars}=HARNESS_SPEC.memory,turns=memory.turns+1;
  const reads=[...memory.completedReads,...turn.reads.map(tool=>({tool,turn:turns}))].slice(-maxCompletedReads);
- return{...memory,goal:memory.goal??turn.question.slice(0,maxGoalChars),pendingQuestion:turn.mode==='clarify'?turn.slot:null,completedReads:reads,
+ return{...memory,goal:memory.goal??turn.question.slice(0,maxGoalChars),pendingQuestion:turn.mode==='clarify'?turn.slot??CHOICE_QUESTION:null,completedReads:reads,
   openProposals:memory.openProposals.slice(0,HARNESS_SPEC.memory.maxOpenProposals),turns,updatedAt:now.toISOString()};
 }

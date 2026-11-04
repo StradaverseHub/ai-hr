@@ -11,7 +11,8 @@
 import {and,count,desc,eq,inArray,max,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {agentProposal,domainEvent} from '../../db/schema';
-import {terasMandate,terasOutcomeFollowup,terasOutcomeRecord} from '../../db/teras-schema';
+import {terasLoopRun,terasMandate,terasOutcomeFollowup,terasOutcomeRecord} from '../../db/teras-schema';
+import type {LoopId} from '../loops/types';
 import {isGroupAdmin} from '../../lib/authz-model';
 import {agreementView,type AgreementView} from '../control-tower';
 import {mandateState,type MandateState} from '../mandates/mandates';
@@ -45,6 +46,12 @@ async function lastRunTx(tx:Tx,tenantId:string,worker:WorkerDeclaration):Promise
  if(record.kind==='agent_proposal'){
   const [row]=await tx.select({at:max(agentProposal.proposedAt)}).from(agentProposal)
    .where(and(eq(agentProposal.tenantId,tenantId),inArray(agentProposal.proposalType,[...record.proposalTypes])));
+  return row?.at??null;
+ }
+ // AI v2 W8: a loop's runs, as the caller may read them (RLS: the companies they administer).
+ if(record.kind==='loop_runs'){
+  const [row]=await tx.select({at:max(terasLoopRun.startedAt)}).from(terasLoopRun)
+   .where(and(eq(terasLoopRun.tenantId,tenantId),eq(terasLoopRun.workerId,worker.id as LoopId)));
   return row?.at??null;
  }
  const [row]=await tx.select({at:max(domainEvent.occurredAt)}).from(domainEvent)
@@ -85,7 +92,8 @@ async function rowsFor(ctx:SessionContext,workers:readonly WorkerDeclaration[]):
   for(const worker of workers){
    const metrics=worker.metrics.kind==='agreement_view'?agreementMetrics(agreement,worker.metrics.proposalTypes)
     :worker.metrics.kind==='outcome_followups'&&worker.record.kind==='outcome_record'?await followupMetricsTx(tx,ctx.tenantId,worker.record.agentIdentity)
-    :Object.freeze({measured:false,acceptanceRate:null,reversalRate:null,decided:0,reason:worker.metrics.kind==='not_measurable'?worker.metrics.reason:'Not measured.'});
+    :Object.freeze({measured:false,acceptanceRate:null,reversalRate:null,decided:0,reason:worker.metrics.kind==='not_measurable'?worker.metrics.reason
+     :worker.metrics.kind==='loop_cases'?'Measured from its cards on Operations, Loops.':'Not measured.'});
    const own=worker.authority.kind==='mandate'?mandates.filter(row=>row.jobType===(worker.authority as {jobType:string}).jobType):null;
    out.push(Object.freeze({id:worker.id,label:worker.label,family:worker.family,trigger:worker.trigger,readScope:worker.readScope,effect:worker.effect,
     authority:worker.authority,owners:worker.owners,switch:await workerSwitchStateTx(tx,ctx,worker),stopped,stopHonoured:worker.stop.honoured,
@@ -134,6 +142,10 @@ export async function workerDetail(ctx:SessionContext,workerId:string):Promise<W
    const rows=await tx.select({at:agentProposal.proposedAt,decision:agentProposal.decision}).from(agentProposal)
     .where(and(eq(agentProposal.tenantId,ctx.tenantId),inArray(agentProposal.proposalType,[...record.proposalTypes]))).orderBy(desc(agentProposal.proposedAt)).limit(RECENT);
    recentRuns=rows.map(item=>Object.freeze({at:item.at,runId:null,outcomeKind:null,humanInvolvement:null,decision:item.decision,mandateId:null}));
+  }else if(record.kind==='loop_runs'){
+   const rows=await tx.select({at:terasLoopRun.startedAt,runId:terasLoopRun.runId,status:terasLoopRun.status}).from(terasLoopRun)
+    .where(and(eq(terasLoopRun.tenantId,ctx.tenantId),eq(terasLoopRun.workerId,worker.id as LoopId))).orderBy(desc(terasLoopRun.startedAt),desc(terasLoopRun.id)).limit(RECENT);
+   recentRuns=rows.map(item=>Object.freeze({at:item.at,runId:item.runId,outcomeKind:item.status==='ran'?'prepared':'stopped',humanInvolvement:'none',decision:null,mandateId:null}));
   }else{
    const rows=await tx.select({at:domainEvent.occurredAt}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.eventType,record.eventType),
     record.source?sql`${domainEvent.payload}->>'source'=${record.source}`:undefined)).orderBy(desc(domainEvent.occurredAt)).limit(RECENT);

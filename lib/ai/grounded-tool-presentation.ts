@@ -1,5 +1,5 @@
 /** Typed presentation for current canonical tool outcomes. Never consume model text as facts. */
-import {presentCanonicalModuleData} from './module-job-presentation';
+import {leaveBalancePartlyHidden,presentCanonicalModuleData} from './module-job-presentation';
 import {checkedModuleHumanHandoffs} from './module-human-handoffs';
 import {isAgentModuleCode,type AgentModuleCode} from './module-agents';
 import type {JobPresentation,JobCard,JobFact,JobFactField} from './module-jobs';
@@ -47,7 +47,8 @@ export function presentGroundedToolOutcome(name:GroundedToolName,outcome:unknown
   case 'leave_entitlement_explain':arr(source.employments).forEach((row,index)=>{
    const fields:readonly [string,JobFactField][]=[['displayEntitlementDays','displayEntitlementDays'],['currentYearEntitlement','earnedEntitlement'],['broughtForward','broughtForward'],['adjustments','adjustments'],
     ['totalEntitlement','totalEntitlement'],['takenThisCycle','taken'],['pendingApproval','pending'],['forfeitedThisCycle','forfeited'],['totalAvailable','available']];
-   push({title:title(row,'leaveType',index),withheld:row.withheld===true,facts:[fact(row,'company','company'),fact(source,'asOf','asOf','date'),fact(row,'cycleStart','cycleStart','date'),
+   // Spec v23: the breakdown names what it does not show (notShown); the same "partly hidden" rule as a balance row.
+   push({title:title(row,'leaveType',index),withheld:leaveBalancePartlyHidden(row),facts:[fact(row,'company','company'),fact(source,'asOf','asOf','date'),fact(row,'cycleStart','cycleStart','date'),
     ...fields.filter(([key])=>row[key]!==null&&row[key]!==undefined).map(([key,label])=>fact(row,key,label,'number'))]});
   });break;
  }

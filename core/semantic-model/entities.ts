@@ -8,6 +8,9 @@
  * by the production Assistant. Not-yet-modelled registry actions are listed in ./pending.ts (shrink only). */
 import {AGENT_MODULE_CODES} from '../../lib/ai/module-agents';
 import type {SemanticAction,SemanticEntity,SemanticField,SemanticRead,FieldType,DisclosureClass} from './types';
+import {OWN_CHANGE_ACTIONS,OWN_CHANGE_ENTITIES} from './entities-own-changes';
+import {TOIL_ACTIONS,TOIL_ENTITIES} from './entities-toil';
+import {DECISION_ACTIONS,DECISION_ENTITIES} from './entities-decisions';
 
 const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'|'screen'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
@@ -32,7 +35,7 @@ const MODULE_ROW_FIELDS:readonly SemanticField[]=[
  // Own leave (leave, approvals, toil).
  screened('leaveType','minimum','Leave type name.'),f('accrued','number','bands','Days accrued.'),f('taken','number','bands','Days taken.'),f('pending','number','bands','Days awaiting approval.'),
  f('balance','number','bands','Recorded balance.'),f('available','number','bands','Days available.'),f('sharedPoolName','label','minimum','Leave type whose pool a balance draws from.'),
- f('withheld','boolean','full','Whether ESS visibility hid part of the row.'),f('startDate','date','minimum','First day.'),f('endDate','date','minimum','Last day.'),
+ f('notShown','list','full','Fields of a leave balance row not shown to the person, by name; every figure present is real.'),f('startDate','date','minimum','First day.'),f('endDate','date','minimum','Last day.'),
  f('days','number','minimum','Day quantity of an own request.'),f('hours','number','minimum','Hour quantity of an own request.'),f('durationType','enum','full','Full day, half day or hours.'),
  f('hasRejectedDates','boolean','full','Whether some dates were rejected.'),
  f('active','number','bands','Replacement leave days available.'),f('expired','number','bands','Replacement leave days expired.'),f('convertedToPay','number','bands','Replacement leave days paid out.'),
@@ -73,7 +76,8 @@ export const SEMANTIC_ENTITIES:readonly SemanticEntity[]=freeze([
    f('leaveTypeId','id','never','Handle of the leave type, for the entitlement explainer.'),f('leaveType','label','full','Leave type name.'),
    f('accrued','number','bands','Days accrued this cycle.'),f('taken','number','bands','Days taken.'),f('pending','number','bands','Days awaiting approval.'),
    f('balance','number','bands','Recorded balance.'),f('available','number','bands','Days the caller can still apply for.'),
-   f('sharedPoolName','label','minimum','Leave type whose pool this balance draws from.'),f('withheld','boolean','full','Whether ESS visibility hid part of the row.')]},
+   f('sharedPoolName','label','minimum','Leave type whose pool this balance draws from.'),
+   f('notShown','list','full','Fields of this row not shown to the person, by name (ESS visibility); every figure present is real.')]},
  {id:'leave_request',label:'Leave request',meaning:'One leave application by the caller, with its status and covered dates.',
   module:'leave',sensitivity:'ordinary',audience:'self',rls:'own_employment',owners:['core/read.ts#myEmployments','core/read.ts#leaveRequestsFor'],
   ruleVersion:null,relations:[{to:'leave_balance',kind:'many_to_one',via:'leaveTypeId'},{to:'leave_approval_step',kind:'one_to_many',via:'leaveRequestId'}],page:'/leave',
@@ -97,7 +101,9 @@ export const SEMANTIC_ENTITIES:readonly SemanticEntity[]=freeze([
    f('adjustments','number','bands','Adjustments this cycle.'),f('totalEntitlement','number','bands','Total entitlement.'),
    f('takenThisCycle','number','bands','Days taken this cycle.'),f('pendingApproval','number','bands','Days awaiting approval.'),
    f('forfeitedThisCycle','number','bands','Days forfeited.'),f('carryForwardExpiryDate','date','minimum','When carried days expire.'),
-   f('totalAvailable','number','bands','Days available.'),f('withheld','boolean','full','Whether ESS visibility hid part of the breakdown.'),
+   f('totalAvailable','number','bands','Days available.'),
+   // Spec v23: the breakdown names the fields it does not show (core/assistant-leave-projection.ts), as a balance row does.
+   f('notShown','list','full','Fields of this breakdown not shown to the person, by name (ESS visibility); every figure present is real.'),
    f('transactions','list','minimum','Recent ledger rows behind the figure.',{of:[f('effectiveOn','date','minimum','Ledger date.'),f('entryType','enum','full','Ledger entry kind.'),
     f('days','number','bands','Day quantity.'),f('sourceRequestId','id','never','Handle of the leave request.'),f('reason','text','never','Free text recorded on the entry.')]}),
    // Step 4: the breakdown fields the Mine projection already returns (run 41302596155). The caller's own day
@@ -165,6 +171,23 @@ export const SEMANTIC_ENTITIES:readonly SemanticEntity[]=freeze([
   ruleVersion:null,relations:[{to:'leave_request',kind:'many_to_one',via:'leaveRequestId'}],page:'/approvals',
   fields:[f('leaveRequestId','id','never','Handle of the request.'),f('currentStepId','id','never','Handle of the step.'),
    f('decision','enum','minimum','The approver\'s decision.',{values:['approve','reject']}),f('rejectReason','text','never','Free text the approver typed.')]},
+ // AI v2 W2: one own attendance request (a clock correction or an overtime request), filed for the existing approval.
+ {id:'attendance_request',label:'Attendance request',meaning:'One request by the caller to correct their own attendance day or to work overtime, sent for the existing approval.',
+  module:'attendance',sensitivity:'ordinary',audience:'self',rls:'own_employment',owners:['core/read.ts#myEmployment','packs/attendance/service.ts#attendanceForEmploymentRange','packs/attendance/service.ts#myAttendanceCorrections'],
+  ruleVersion:null,relations:[],page:'/attendance/requests',
+  fields:[f('employmentId','id','never','Handle of the caller\'s employment.'),f('date','date','minimum','Attendance day.'),
+   f('checkIn','time','minimum','Clock-in asked for.'),f('checkOut','time','minimum','Clock-out asked for.'),
+   f('recordedCheckIn','time','minimum','Clock-in on record.'),f('recordedCheckOut','time','minimum','Clock-out on record.'),
+   f('plannedStartTime','time','minimum','Overtime start.'),f('plannedEndTime','time','minimum','Overtime end.'),
+   f('requestedOtMinutes','integer','minimum','Overtime minutes, as the attendance service counted the window.'),
+   f('status','enum','full','Where the request stands.',{values:['pending','approved','rejected','cancelled']}),
+   f('reason','text','never','Free text the person typed.'),f('remark','text','never','Free text the person typed.')]},
+ // AI v2 W2: own claims and own profile changes prepared in chat.
+ ...OWN_CHANGE_ENTITIES,
+ // AI v2 W2 (slice 2): the own Leave Credit request (time off in lieu) prepared in chat.
+ ...TOIL_ENTITIES,
+ // AI v2 W2 (slice 3): the assigned claim and attendance decisions prepared in chat.
+ ...DECISION_ENTITIES,
 ] satisfies SemanticEntity[]);
 
 /** One declaration per Assistant read, in ASSISTANT_TOOLS order. Input schemas are the catalogue's own. */
@@ -225,6 +248,30 @@ export const SEMANTIC_ACTIONS:readonly SemanticAction[]=freeze([
    actorCheck,{check:'own_approved_cancellable',owner:'core/read.ts#employeeCancelOffers',ruleVersion:null}],
   reviewRoute:'/assistant/leave',humanInputs:['employmentId','leaveRequestId','cancel'],
   nominable:[{name:'startDate',optional:true,type:'date'}],proposal:'core/proposals/leave-cancel.ts#prepareLeaveCancelProposal'},
+ // AI v2 W2: own attendance requests prepared from chat. The attendance service decides; the approval route is ADR-0121's.
+ {id:'attendance.correction.request',entity:'attendance_request',effect:'create',module:'attendance',purpose:'Ask to correct your own clock-in or clock-out on a past day.',
+  audience:'self',actor:'self',service:'packs/attendance/service.ts#requestAttendanceCorrection',guard:'core/assistant-actions/own-attendance-correction-source.ts#assertOwnAttendanceCorrectionActorTx',
+  preparer:'core/assistant-actions/own-attendance-correction-source.ts#prepareOwnAttendanceCorrectionTx',
+  checks:[{check:'actor_current',owner:'core/assistant-actions/own-attendance-correction-source.ts#assertOwnAttendanceCorrectionActorTx',ruleVersion:null},aiControls,
+   {check:'attendance_day_read',owner:'packs/attendance/service.ts#attendanceForEmploymentRange',ruleVersion:null},
+   {check:'attendance_request_rules',owner:'packs/attendance/service.ts#prepareAttendanceCorrectionRequestTx',ruleVersion:null},
+   {check:'approval_route',owner:'packs/attendance/service.ts#prepareAttendanceWorkflowSnapshotTx',ruleVersion:null}],
+  reviewRoute:'/assistant/attendance',humanInputs:['employmentId','date','checkIn','checkOut','requestedOtMinutes','plannedStartTime','plannedEndTime','otReasonCategory','reason','remark','requestKind','clockChanges','unclockedWork'],
+  nominable:[{name:'date',optional:false,type:'date'}],proposal:'core/proposals/attendance-request.ts#prepareChatAttendanceCorrectionProposal'},
+ {id:'attendance.overtime.request',entity:'attendance_request',effect:'create',module:'attendance',purpose:'Request overtime for yourself on one date, for a start and end time.',
+  audience:'self',actor:'self',service:'packs/attendance/service.ts#requestAttendanceCorrectionTx',guard:'core/assistant-actions/own-overtime-request-source.ts#withOwnOvertimeSubjectTx',
+  preparer:'core/assistant-actions/own-overtime-request-source.ts#prepareOwnOvertimeSourceTx',
+  checks:[actorCheck,aiControls,
+   {check:'attendance_request_rules',owner:'packs/attendance/service.ts#prepareAttendanceCorrectionRequestTx',ruleVersion:null},
+   {check:'approval_route',owner:'packs/attendance/service.ts#prepareAttendanceWorkflowSnapshotTx',ruleVersion:null}],
+  reviewRoute:'/assistant/attendance',humanInputs:['employmentId','date','plannedStartTime','plannedEndTime','reason','remark'],
+  nominable:[{name:'date',optional:false,type:'date'}],proposal:'core/proposals/attendance-request.ts#prepareChatOvertimeRequestProposal'},
+ // AI v2 W2: claims.submit, claims.cancel and ess.profile.request (./entities-own-changes.ts).
+ ...OWN_CHANGE_ACTIONS,
+ // AI v2 W2 (slice 2): toil.replacement.request (./entities-toil.ts).
+ ...TOIL_ACTIONS,
+ // AI v2 W2 (slice 3): approvals.claim.decide and approvals.attendance.decide (./entities-decisions.ts).
+ ...DECISION_ACTIONS,
 ] satisfies SemanticAction[]);
 
 export const semanticEntity=(id:string):SemanticEntity=>{const entity=SEMANTIC_ENTITIES.find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};

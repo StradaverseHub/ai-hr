@@ -28,6 +28,7 @@ import {
   type ReviewRecommendation,
 } from '@/core/employment-review';
 import { myEmployment } from '@/core/read';
+import { followLeaveRecommendation } from '@/app/assistant/centre/recommendation';
 
 // Thin wrappers around the same decide services the source pages use (authz lives in the
 // services: assertCanDecide / admin-only) — these just land back on /approvals.
@@ -105,6 +106,8 @@ export async function approveLeaveAction(formData: FormData) {
     // leave errors) into the viewer's language, like the /me + leave-tab flows do.
     await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
+  // AI v2 W6: after the decision committed, whether the approver followed the recommendation shown beside it.
+  await followLeaveRecommendation(s, formData.get('recommendationRecordId'), decision);
   await done(`Leave ${decision}`, nav, s);
 }
 
@@ -115,9 +118,10 @@ export async function decideLeaveDateAction(formData: FormData) {
   const nav = navOf(formData);
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
   const rejectReason = String(formData.get('rejectReason') || '') || undefined;
+  let outcome: { status: 'pending' | 'approved' | 'rejected' } | undefined;
   try {
     const me = await myEmployment(s);
-    await decideLeaveDate(s, {
+    outcome = await decideLeaveDate(s, {
       leaveRequestId: String(formData.get('id')),
       leaveDate: String(formData.get('leaveDate')),
       decision,
@@ -127,6 +131,7 @@ export async function decideLeaveDateAction(formData: FormData) {
   } catch (e) {
     await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
+  await followPerDateRecommendation(s, formData, outcome);
   await done(`Date ${decision}`, nav, s);
 }
 
@@ -152,9 +157,10 @@ export async function decideLeaveDatesAction(formData: FormData) {
   } catch (e) {
     await fail(e, nav, s);
   }
+  let outcome: { status: 'pending' | 'approved' | 'rejected' } | undefined;
   try {
     const me = await myEmployment(s);
-    await decideLeaveDates(s, {
+    outcome = await decideLeaveDates(s, {
       leaveRequestId: String(formData.get('id')),
       decisions,
       deciderEmploymentId: me?.employmentId,
@@ -162,7 +168,16 @@ export async function decideLeaveDatesAction(formData: FormData) {
   } catch (e) {
     await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
+  await followPerDateRecommendation(s, formData, outcome);
   await done('Leave decided', nav, s);
+}
+
+/** AI v2 slice 3 follow-up: the per-date path records whether the approver followed the recommendation, as the
+ * single and bulk paths do, once the request's dates are all decided and the leave engine has finalized it (approved
+ * when any date was approved, rejected when none was). While dates are still pending there is no decision yet, so
+ * nothing is recorded; the service binds the decision to the engine's own event either way. */
+async function followPerDateRecommendation(s: Awaited<ReturnType<typeof getSession>>, formData: FormData, outcome: { status: 'pending' | 'approved' | 'rejected' } | undefined) {
+  if (outcome?.status === 'approved' || outcome?.status === 'rejected') await followLeaveRecommendation(s, formData.get('recommendationRecordId'), outcome.status);
 }
 
 // Partial Leave Cancellation (ADR-0065): manager approves/rejects an employee's request to give back a
@@ -288,6 +303,8 @@ async function dispatchBulkItem(
     case 'leave':
       // decideLeave enforces the mandatory reject reason itself (MissingRejectReasonError).
       await decideLeave(s, { leaveRequestId: item.id, decision, rejectReason, deciderEmploymentId });
+      // AI v2 W6: the recommendation shown for this request, if any, learns whether it was followed.
+      if (item.recommendationRecordId) await followLeaveRecommendation(s, item.recommendationRecordId, decision);
       return;
     case 'leaveCancellation':
       await decideLeaveCancellation(s, { cancellationRequestId: item.id, decision, deciderEmploymentId });

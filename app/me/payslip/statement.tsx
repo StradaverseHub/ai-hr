@@ -4,17 +4,22 @@ import { PayslipBlock, PayslipInformation, PayslipRow } from '@/components/paysl
 import { payslipPresentationRows, type PayslipPdfData, type PayslipPdfLabels } from '@/lib/payslip-pdf';
 import { formatMoney, formatRate } from '@/lib/money';
 
+/** AI v2 W5 — the screen's "Why?" links and the panel each opens in place: one beside a deduction line (by its label),
+ * one under net pay for the difference from last month. Absent ⇒ the statement is exactly what it was. */
+export type PayslipWhySlots=Readonly<{deductionLink?:(label:string)=>ReactNode;deductionPanel?:ReactNode;netLink?:ReactNode;netPanel?:ReactNode}>;
+
 /** Own-only recorded data, using the Individual Payslip document's shared presentation. */
-export function PersonalPayslipStatement({data,labels,actions}:{data:PayslipPdfData;labels:PayslipPdfLabels;actions:ReactNode}) {
+export function PersonalPayslipStatement({data,labels,actions,why}:{data:PayslipPdfData;labels:PayslipPdfLabels;actions:ReactNode;why?:PayslipWhySlots}) {
   const money=(amount:unknown)=>formatMoney(amount,data.currency);
   const unavailable=labels.periodNotRecorded??'—';
   const periodAmount=(amount:number|null|undefined)=>amount==null?unavailable:money(amount);
   const rows=payslipPresentationRows(data,labels,value=>formatRate(value,data.currency));
-  const table=(title:string,items:typeof rows.earnings,total?:{label:string;amount:number},tone:'slate'|'earn'|'deduct'|'other'='slate',note?:string)=><PayslipBlock title={title} tone={tone} aligned>
+  const table=(title:string,items:typeof rows.earnings,total?:{label:string;amount:number},tone:'slate'|'earn'|'deduct'|'other'='slate',note?:string,rowLink?:(label:string)=>ReactNode,panel?:ReactNode)=><PayslipBlock title={title} tone={tone} aligned>
     <div className="mb-2 grid grid-cols-[2fr_1fr_1fr] gap-2 text-xs text-muted-foreground"><span>{labels.descriptionColumn}</span><span className="text-right">{labels.quantityColumn}</span><span className="text-right">{labels.amountColumn}</span></div>
-    {items.map((item,index)=><PayslipRow key={`${item.label}-${index}`} label={item.label}
+    {items.map((item,index)=><PayslipRow key={`${item.label}-${index}`} label={item.label} after={rowLink?.(item.label)}
       quantity={item.quantity?<>{item.quantity}{item.sub&&<span className="block">{item.sub}</span>}</>:undefined}
       value={item.amount==null?item.text??'—':money(item.amount)}/>)}
+    {panel}
     {total&&<div className="mt-auto flex justify-between gap-3 border-t border-border pt-3 text-sm font-semibold"><span>{total.label}</span><span className="tabular-nums">{money(total.amount)}</span></div>}
     {note&&<p className="mt-2 text-xs text-muted-foreground">{note}</p>}
   </PayslipBlock>;
@@ -38,9 +43,10 @@ export function PersonalPayslipStatement({data,labels,actions}:{data:PayslipPdfD
     </PayslipBlock>
     <div className="grid items-stretch gap-4 lg:grid-cols-2">
       {table(labels.earnings,rows.earnings,{label:labels.totalEarnings,amount:data.gross},'earn')}
-      {table(labels.deductions,rows.deductions,{label:labels.totalDeductions,amount:data.totalDeductions},'deduct')}
+      {table(labels.deductions,rows.deductions,{label:labels.totalDeductions,amount:data.totalDeductions},'deduct',undefined,why?.deductionLink,why?.deductionPanel)}
     </div>
     <Card className="flex items-baseline justify-between bg-primary px-6 py-5 text-primary-foreground"><span className="text-sm font-semibold uppercase tracking-wide">{labels.netPay}</span><span className="text-2xl font-bold tabular-nums">{money(data.net)}</span></Card>
+    {(why?.netLink||why?.netPanel)&&<div data-payslip-why="net" className="-mt-2">{why.netLink&&<div className="flex justify-end">{why.netLink}</div>}{why.netPanel}</div>}
     {data.nonPayableLines?.length ? table(labels.nonPayable,data.nonPayableLines.map(row=>({label:row.name,amount:row.amount})),undefined,'other',labels.nonPayableNote) : null}
     <div className="grid items-start gap-4 lg:grid-cols-[2fr_3fr]">
       <PayslipBlock title={labels.employerContributions}>

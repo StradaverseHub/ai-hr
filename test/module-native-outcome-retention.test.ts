@@ -15,7 +15,7 @@ import {runAiRetentionTick} from '../scripts/ai-retention-runner';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();base=await seedBase();});
-const zero={reviews:0,feedback:0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,transcripts:0};
+const zero={reviews:0,feedback:0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,transcripts:0,chats:0};
 const receipt='fictional-storage-only-not-canonical-proof';
 async function storageJob(b=base){const id=randomUUID();await owner.db.execute(sql`insert into public.ai_agent_job_receipt(id,tenant_id,user_id,request_nonce,requested_plan_digest,expires_at,receipt) values(${id}::uuid,${b.tenantId}::uuid,${b.adminUserId}::uuid,${randomUUID()}::uuid,${'a'.repeat(64)},now()+interval '1 day',${receipt})`);return id;}
 async function storageCapture(options:{b?:Base;expired?:boolean;targets?:readonly {kind:'person'|'employment';id:string}[]}={}){

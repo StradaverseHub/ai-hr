@@ -5,26 +5,27 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
-## Tenant-isolation hardening (ADR-0174) — 3 November 2026 (provisional source claim)
+## Tenant-isolation hardening (ADR-0174) — 4 November 2026 (provisional source claim)
 
-`claude/wonderful-mccarthy-2fb38f` appends three migrations above the 656-entry main journal (`848c7be36`,
-ending at 0953 / idx 799 / when 1793330000353). Its claims 0968–0970 and then 1000–1002 were each overtaken
-the same day by the permissions series, which numbers `when` as 1793330000000 + (file − 600). It therefore
-moved to a block well clear of that series and of the AI Centre's reserved 2000–2019. A read-only scan of every
-local and remote head and registered worktree on 3 November 2026 found no file 1400–1999, no `when` in
-1793330000880–1793330001000, and a maximum idx of 862. The SQL changed only in its cross-references.
+`claude/wonderful-mccarthy-2fb38f` appends three migrations above the 668-entry main journal (`aa260e8d0`,
+ending at 2011 / idx 811 / when 1793330001411 after the AI v2 release). Earlier claims (0968–0970, 1000–1002,
+1500–1502) were overtaken in turn by the permissions series and then by that release; as agreed with the AI
+Centre coordinator, the block that reached main second moves above the first. A read-only scan of 3879 local
+and remote heads, 413 journal blobs and every registered worktree on 4 November 2026 found no `when` above
+1793330001411, no file from 1016 to 1999 or from 2012 upward, and the permissions series at 1012–1015. These
+take 2100–2102 with `when` = 1793330000000 + (file − 600), clear of the AI Centre's reserved 2012–2019
+(`when` up to 1793330001419). The SQL changed only in its cross-references and the two 2003 letter tables.
 
 | Tag | idx | when | SQL SHA256 |
 | --- | ---: | ---: | --- |
-|1500_employment_helper_tenant_pin|1347|1793330000900|f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a|
-|1501_company_tenant_fk_not_valid|1348|1793330000901|42ea5f55990bca4ff885b9aa1b0d5688653081d43aacd5b5639c765d4b916743|
-|1502_company_tenant_fk_validate|1349|1793330000902|d6746ac5574d6b336f318af20fd4244863869eca0aa9a93737802308cf49e474|
+|2100_employment_helper_tenant_pin|1347|1793330001500|f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a|
+|2101_company_tenant_fk_not_valid|1348|1793330001501|5aaf9b7e1f06514771e46ae3303e2e375eb461ba3acf0f8bb21af510bf49eb18|
+|2102_company_tenant_fk_validate|1349|1793330001502|b2a6af380bb89765c2b32b6edaf8b5c7707ca23901f22806cd9f8888856983b4|
 
-1500 pins the employment helpers and `app.company_subtree` to the session tenant; 1501 adds 146 composite
-company/tenant keys NOT VALID; 1502 checks the data and validates them. The AI Centre's 2000-series already
-uses `when` values above 1793330000900, so whichever block reaches main second must move above the first.
-Unapplied source only: re-check main's highest file, idx and `when` immediately before merge, keep each
-timestamp above every earlier-applied migration, and relocate the idx with competing claims.
+2100 pins the employment helpers and `app.company_subtree` to the session tenant; 2101 adds 148 composite
+company/tenant keys NOT VALID; 2102 checks the data and validates them. Unapplied source only: re-check main's
+highest file, idx and `when` immediately before merge, keep each timestamp above every earlier-applied
+migration, and relocate the idx with competing claims.
 
 ## Nine-item BOARD split: post-Noveri refresh — 3 November 2026 (unapplied)
 
@@ -1047,3 +1048,494 @@ Reindex the final union and check freshly accepted refs plus the ordered live le
 ## Rewards access approval exemptions — 3 November 2026 (provisional)
 
 codex/approved-rewards-20261103 reserves 0947_rewards_access_approval_exemptions at idx763 / when1793330000347, after the parent scan found all local/origin and registered-worktree claims through0946 / when346. Parent coordinates0948 signing,0949 probation and0950 contracts. Source reservation only; no installation priority or permission. Re-freeze the canonical journal and live applied ledger before integration/application; preserve applied bytes, reindex only this unapplied successor in the aggregate.
+
+## AI Centre stored chats (issue 8) — 3 November 2026 (provisional source claim)
+
+Branch `claude/noveri-chats` (cut from `claude/noveri-staging-fix` 858c1d25b, journal ending
+`0929_teras_review_services` idx762 / when1793330000329) appends `0952_teras_chats` as idx763 / when1793330000352.
+The handoff's earlier number 0936 is taken (`0936_data_permission_profiles`). A fresh fetch on 3 November 2026 and a
+scan of every origin ref (1459 refs, 442 distinct migration trees) and every registered worktree (348, including their
+uncommitted files) found file claims through `0951_payroll_reprocess_correction_lineage` (with 0949 and 0950 present
+only as uncommitted files in `/private/tmp/aihr-approved-*` worktrees) and journal `when` values through
+1793330000351; no allocation document on any origin ref reserves a higher number. This claim therefore takes the next
+file number and the next `when` above every claimed one. Development source only: no installation priority, no
+deployment; the idx is this branch's own journal position and must be re-frozen above the then-installed ledger at
+integration. Sibling AI Centre round branches cut from the same base may claim the same next number; reconcile at
+integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|763|1793330000352|0952_teras_chats|e320362770eedfafd2e9260d82713b1c669f056a296db979a1f5295e785b401b|
+
+Superseded on 3 November 2026, before any application: renumbered to `2000_teras_chats` / when1793330001400 in the AI Centre block
+2000–2019 (see that entry below). This identity is not an alternative installation path.
+
+## AI v2 W11 protected case route — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-s2-case-route` (cut from `2702348f3`, journal ending `0952_teras_chats` idx763 / when1793330000352)
+appends `0959_private_cases` as idx764 / when1793330000359. A fresh fetch on 3 November 2026 and a scan of every origin
+ref (1586 refs, 337 distinct migration trees), every local branch (1897) and every registered worktree (401, including
+their uncommitted files) found file claims through `0958_qualification_import_preview` (Codex branches hold 0948–0958;
+the Teras chats migration 0952 collides with `0952_financial_letter_actions` and is renumbered at integration) and
+journal `when` values through 1793330000358; no allocation document on any ref or worktree reserves a higher number.
+This claim therefore takes the next file number and the next `when` above every claimed one. Development source only:
+no installation priority, no deployment; the idx is this branch's own journal position and must be re-frozen above the
+then-installed ledger at integration. Sibling AI v2 slice branches cut from the same base may claim the same next
+number; reconcile at integration. The unapplied SQL was revised on this branch after review (fallback exclusions, notices,
+no self-designation); a re-scan the same day (1594 origin refs, every local branch and 401 worktrees) still found claims
+ending at 0958 / when1793330000358, so the number and `when` stand. The hash below is the revised body's.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|764|1793330000359|0959_private_cases|3016959b49532efbd6da16be168ad6ef764c66f5a0af35f50b9de40112ccf55f|
+
+Superseded on 3 November 2026, before any application: renumbered to `2001_private_cases` / when1793330001401 in the AI Centre block
+2000–2019 (see that entry below). This identity is not an alternative installation path.
+
+## AI v2 W8 loops at the Prepare level — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-s3-loops` (cut from `32816437f`, journal ending `0959_private_cases` idx764 / when1793330000359)
+appends `0960_teras_loops` as idx765 / when1793330000360, the number and `when` the AI v2 coordinator assigned for this
+task. A fresh fetch on 3 November 2026 and a scan of every ref's migration files and journals and every registered
+worktree (including uncommitted files) found claims ending at 0959 / when1793330000359. The coordinator holds `0961` for
+a parallel employee letter-request task. Development source only: no installation priority, no deployment; the idx is
+this branch's own journal position and must be re-frozen above the then-installed ledger at integration. Sibling AI v2
+slice branches cut from the same base may claim the same next number; reconcile at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|765|1793330000360|0960_teras_loops|addec336da5a82869ab05d79c45bc9d884e92c3d877af6b073f3e892fdfda11d|
+
+Superseded on 3 November 2026, before any application: renumbered to `2002_teras_loops` / when1793330001402 in the AI Centre block
+2000–2019 (see that entry below). This identity is not an alternative installation path.
+
+## AI v2 Phase 1 slice 3 employee letter requests — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-s3-letter-request` (cut from `32816437f`, journal ending `0959_private_cases` idx764 / when1793330000359)
+appends `0961_letter_requests` as idx765 / when1793330000361 on its branch; at the Phase 1 final integration
+(`claude/aiv2-phase1-final`, coordinator, 3 November 2026) it is re-frozen as **idx766** after `0960_teras_loops` idx765, the
+SQL unchanged. 0960 / when1793330000360 is reserved by the coordinator for
+the parallel loops branch (`0960_teras_loops`, present only in the `aiv2-s3-loops-20261103` worktree). A fresh fetch on
+3 November 2026 and a scan of every origin ref, every local branch and every registered worktree (407, including their
+uncommitted files and allocation documents) found file claims through 0960 and journal `when` values through
+1793330000360; nothing claims 0961 or when1793330000361. This claim therefore takes 0961 with the `when` the coordinator
+assigned. Development source only: no installation priority, no deployment; the idx is this branch's own journal position
+and must be re-frozen above the then-installed ledger at integration. Sibling AI v2 slice branches cut from the same base
+may claim the same idx; reconcile at integration. The SQL was revised in place on `claude/aiv2-phase1-final` (coordinator,
+3 November 2026: the optional `employee_message` column, its checks, column grant and guard), while it was still
+unapplied source; no installation applied the earlier body
+(`fac033d489f171da966f620f058f8f688c21e691786b2700bd9fe0876495eb5e`, kept only as the slice branch's history). The hash
+below is the revised body's.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|766|1793330000361|0961_letter_requests|86b91182f7f686d32fb37d5ab117198440aee24bad0abe029f5266cef1cbafc7|
+
+Superseded on 3 November 2026, before any application: renumbered to `2003_letter_requests` / when1793330001403 in the AI Centre block
+2000–2019 (see that entry below). This identity is not an alternative installation path.
+
+## AI v2 Phase 2 P2-4 HR capacity ledger baseline — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-capacity-ledger` (cut from `360e7f065` on `claude/aiv2-phase1-final`, journal ending
+`0961_letter_requests` idx766 / when1793330000361) appends `0966_teras_capacity_baseline` as idx767 / when1793330000366, the
+number and `when` the AI v2 coordinator reserved for P2-4 ("only if needed"). It is needed: the baseline (each company's own
+manual minutes per item and the period they describe) must be recorded, attributed and kept as history, and no existing
+store is per company and writable by that company's HR administrators. A fresh fetch on 3 November 2026 and a scan of every
+origin ref, every local branch and the registered Phase 2 worktrees (including uncommitted files) found no claim on 0962 to
+0966 or on when1793330000362 to when1793330000366; 0962 to 0965 stay reserved for the coordinator, P2-1, P2-2a and P2-2b.
+Development source only: no installation priority, no deployment; the idx is this branch's own journal position and must be
+re-frozen above the then-installed ledger at integration. Sibling Phase 2 branches cut from the same base claim idx767 for
+their own numbers; reconcile at integration, ordered by number.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000366|0966_teras_capacity_baseline|0b2f62d07b398bc837909c31b27f2dcd5ee30276f5c84937d8d57440a4b5a67c|
+
+Superseded on 4 November 2026, before any application: renumbered to `2007_teras_capacity_baseline` / when1793330001407 in the AI Centre block
+2000–2019 (see the AI v2 Phase 2 integration entry below). This identity is not an alternative installation path.
+
+## AI v2 Phase 2 P2-3, own payroll cut-off — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-payroll-checklist` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 /
+when1793330000361) appends `0967_own_payroll_cut_off` as idx767 / when1793330000367, the number and `when` the AI v2
+coordinator assigned for "P2-3, own payroll cut-off". A fresh fetch on 3 November 2026 and a scan of every origin ref and
+every registered AI v2 worktree found Phase 2 claims 0963 (autonomy ladder), 0964 (payroll cycle loops), 0965 (audit loop)
+and 0966 (capacity baseline), each on its own branch and each the next journal idx after the same base, and nothing
+claiming 0967 or when1793330000367. The migration adds one STABLE SECURITY DEFINER function,
+`app.own_payroll_cut_off_day(uuid)`, returning only the calling login's own current employment's company cut-off day; no
+table, column, constraint or policy changes. Development source only: no installation priority, no deployment; idx767 is
+this branch's own journal position and is re-frozen with the sibling Phase 2 claims at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000367|0967_own_payroll_cut_off|b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca|
+
+Superseded on 4 November 2026, before any application: renumbered to `2008_own_payroll_cut_off` / when1793330001408 in the AI Centre block
+2000–2019 (see the AI v2 Phase 2 integration entry below). This identity is not an alternative installation path.
+
+## AI v2 Phase 2 P2-2b payroll Audit loop — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-audit-loop` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 / when1793330000361)
+appends `0965_payroll_audit_loop` as idx767 / when1793330000365, the number and `when` the Phase 2 coordinator reserved for this
+task (0962 renumbering reserve, 0963 P2-1, 0964 P2-2a, 0965 P2-2b, 0966 P2-4). A fresh fetch on 3 November 2026, a scan of
+every ref's history for `db/migrations/096[2-6]*` and of the registered Phase 2 worktrees (`aiv2-p2-autonomy-ladder`,
+`aiv2-p2-payroll-loops`, `aiv2-p2-capacity-ledger`, `aiv2-p2-payroll-checklist`, including uncommitted files) found no claim of
+0962–0966. Development source only: no installation priority, no deployment. The idx is this branch's own journal position:
+0963 and 0964, when merged, sit before it, so it must be re-frozen after them at integration (by number). It widens the
+`teras_worker_control`, `teras_loop_pause` and `teras_loop_run` worker CHECKs of 0960 by one value; a sibling branch that
+widens the same CHECKs must be merged as the union of both lists.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000365|0965_payroll_audit_loop|f7c68fa2a062470880715d70781a6c2c998de8afb821e580dca17b057f4f925e|
+
+Superseded on 4 November 2026, before any application: renumbered to `2006_payroll_audit_loop` / when1793330001406 in the AI Centre block
+2000–2019 (see the AI v2 Phase 2 integration entry below). This identity is not an alternative installation path.
+
+## AI v2 Phase 2 P2-2a payroll-cycle loops — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-payroll-loops` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 / when1793330000361)
+appends `0964_teras_payroll_cycle_loops` as idx767 / when1793330000364, the number and `when` the AI v2 coordinator reserved
+for this task (0962 is reserved for renumbering `0952_teras_chats`, 0963 for P2-1, 0965 for P2-2b and 0966 for P2-4). A
+fresh fetch on 3 November 2026 found no origin ref claiming 0962 or above; the parallel Phase 2 worktrees hold 0963, 0965
+and 0966 only. Development source only: no installation priority, no deployment; the idx is this branch's own journal
+position (0962 and 0963 sort before it and are not on this branch) and must be re-frozen above the then-installed ledger at
+integration. 0964 and 0965 both widen the 0960 loop-list CHECK constraints (teras_worker_control, teras_loop_pause,
+teras_loop_run and, here, teras_loop_case): whichever is applied second must list both `loop_salary_payroll` and
+`loop_payroll_audit`, or it would drop the other's value.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000364|0964_teras_payroll_cycle_loops|0a38a5628362ac03b6eb4afe67c3b3d3e632be6e7e9bff6eec9f8a0f828407f3|
+
+Superseded on 4 November 2026, before any application: renumbered to `2005_teras_payroll_cycle_loops` / when1793330001405 in the AI Centre block
+2000–2019 (see the AI v2 Phase 2 integration entry below). This identity is not an alternative installation path.
+
+
+## AI v2 Phase 2 P2-1 autonomy ladder — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-autonomy-ladder` (cut from `360e7f065` on `claude/aiv2-phase1-final`, journal ending
+`0961_letter_requests` idx766 / when1793330000361) appends `0963_teras_loop_autonomy` as idx767 / when1793330000363, the
+number and `when` the AI v2 coordinator reserved for P2-1 (Phase 2 common rules: 0962 is held for renumbering
+`0952_teras_chats` at release, 0964–0966 for P2-2a, P2-2b and P2-4). A fresh fetch on 3 November 2026 and a scan of every
+origin ref's migration files and journals (1618 refs) and every registered worktree found file claims through 0961 and
+journal `when` values through 1793330000361 on origin, and only the reserved `0966_teras_capacity_baseline` in the P2-4
+worktree; nothing claims 0963 or when1793330000363. Development source only: no installation priority, no deployment; the
+idx is this branch's own journal position and must be re-frozen above the then-installed ledger at integration (after
+0962 if the renumbered chats migration is placed first). Sibling Phase 2 branches cut from the same base may claim the
+same idx; reconcile at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000363|0963_teras_loop_autonomy|d093765e06101882dbb2b17df70fc070363b0939a1aa97e55b9059d35666f655|
+
+Superseded on 4 November 2026, before any application: renumbered to `2004_teras_loop_autonomy` / when1793330001404 in the AI Centre block
+2000–2019 (see the AI v2 Phase 2 integration entry below). This identity is not an alternative installation path.
+
+## AI v2 Phase 2 wave 1 integration re-freeze — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-phase2-wave1` (cut from `ec2beecc0` on `claude/aiv2-phase1-final`, journal ending `0961_letter_requests`
+idx766 / when1793330000361) merges P2-4, P2-3, P2-2b and P2-2a, then P2-1, each of which claimed idx767 on its own branch. The journal is re-frozen by
+number: a Phase 2 migration `09NN` takes **idx = 767 + (NN − 63)** and **when = 1793330000300 + NN**. idx767 / when1793330000363
+was first left free for `0963_teras_loop_autonomy` (P2-1 arrived last), so when it was merged it took idx767 and nothing
+shifted; the journal tests require only a strictly ascending idx and `when`, so the interim gap was allowed (the journal holds
+42 older gaps). 0963 is byte-identical to its branch (`e44303b90`). The four upgrade tests that pin the journal tail (`ai-dev-populated-upgrade`,
+`bank-import-point-read-upgrade`, `lifecycle-v9-populated-upgrade`, `payroll-tax-basis-upgrade`) pin these positions.
+
+One unapplied body changed at integration. 0964 runs before 0965 and adds `loop_salary_payroll` to the worker lists of
+`teras_worker_control`, `teras_loop_pause`, `teras_loop_case` and `teras_loop_run`; 0965 then drops and rebuilds three of those
+lists (not `teras_loop_case`) to add `loop_payroll_audit`. Left as written, 0965 would have dropped `loop_salary_payroll` again,
+so every Salary payroll loop switch, pause and run record would have been refused. 0965's three rebuilt lists now carry
+`loop_salary_payroll` before `loop_payroll_audit` (the only change, with a comment saying so); 0964's `teras_loop_case` list,
+which 0965 does not touch, stands. The change is made in 0965 rather than in a new migration because 0965 is the last
+migration to rebuild those lists and it is applied nowhere. 0965's branch body
+(`f7c68fa2a062470880715d70781a6c2c998de8afb821e580dca17b057f4f925e`) was never installed. 0964, 0966 and 0967 are byte-identical to
+their branches.
+
+A fresh fetch on 3 November 2026 found competing **file numbers and `when` values** on other workstreams' origin branches:
+`codex/permissions-*-20261103` claim `0962_workforce_draft_binding_readiness` to `0966_profile_maintenance_binding_readiness` at
+when1793330000362–366 (their idx809–813), and `claude/wonderful-mccarthy-2fb38f` claims 0968–0970 at when1793330000368–370. The
+AI v2 coordinator's Phase 2 reservations (0962–0967) were assigned before this scan; the overlap is reported to the
+coordinator and must be reconciled before either set integrates with the other (identical `when` values cannot both stand in
+one journal). Development source only: no installation priority, no deployment; re-freeze above the then-installed ledger at
+integration.
+
+| idx (wave 1) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000363|0963_teras_loop_autonomy|d093765e06101882dbb2b17df70fc070363b0939a1aa97e55b9059d35666f655|
+|768|1793330000364|0964_teras_payroll_cycle_loops|0a38a5628362ac03b6eb4afe67c3b3d3e632be6e7e9bff6eec9f8a0f828407f3|
+|769|1793330000365|0965_payroll_audit_loop|d370a0dba6fb8b04ae6c1686572dd116f300ff440b37cc43c6944c7b4fac8c41|
+|770|1793330000366|0966_teras_capacity_baseline|0b2f62d07b398bc837909c31b27f2dcd5ee30276f5c84937d8d57440a4b5a67c|
+|771|1793330000367|0967_own_payroll_cut_off|b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca|
+
+Superseded on 4 November 2026, before any application: these five positions are renumbered to 2004–2008 in the AI Centre block
+2000–2019, idx804–808 (see the AI v2 Phase 2 integration entry below). They are not alternative installation paths.
+
+## AI v2 Phase 2 P2-5 Living Handbook — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-living-handbook` (cut from `9492a6b43` on `claude/aiv2-phase2-wave1`, journal ending `0967_own_payroll_cut_off`
+idx771 / when1793330000367) appends `0971_teras_living_handbook` as idx775 / when1793330000371: the number the AI v2 coordinator
+reserved for P2-5 (wave 2: 0968–0970 for the tenant-isolation hardening PR, 0972 learning loops, 0973 letters chat custody), placed
+by the wave 1 rule (idx = 767 + (NN − 63), when = 1793330000300 + NN), so idx772–774 stay free for 0968–0970. A fresh fetch on
+3 November 2026 found competing **file numbers** on other workstreams' origin branches: `codex/permissions-*-20261103` claim
+0968 and 0970–0986 (among them `0971_leave_configuration_binding_readiness`), and `claude/wonderful-mccarthy-2fb38f` claims 0969–0970.
+The coordinator's reservation is kept, as for 0962–0967; the overlap is reported and must be reconciled before these sets integrate
+(identical file numbers or `when` values cannot both stand in one journal). Development source only: no installation priority, no
+deployment; re-freeze above the then-installed ledger at integration. All eight tables are new; `core/handbook/policies.ts` is their
+only writer.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|775|1793330000371|0971_teras_living_handbook|7abaf32815d657b559e6550acf50ecde543bd99f857538889ec48a82920048f0|
+
+Superseded on 4 November 2026, before any application: renumbered to `2009_teras_living_handbook` / when1793330001409 in the AI Centre block
+2000–2019 (see the AI v2 Phase 2 integration entry below). This identity is not an alternative installation path.
+
+## AI v2 Phase 2 wave 2 P2-6 learning loops — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-learning-loops` (cut from `9492a6b43` on `claude/aiv2-phase2-wave1`, journal ending
+`0967_own_payroll_cut_off` idx771 / when1793330000367) appends `0972_teras_learning_loops` at the place the wave 1 re-freeze
+rule gives its number: idx = 767 + (72 − 63) = 776, when = 1793330000300 + 72 = 1793330000372. 0972 is the number the AI v2
+coordinator reserved for the learning loops (wave 2: 0971 Living Handbook, 0972 learning loops, 0973 letters chat custody;
+0968–0970 are taken by `claude/wonderful-mccarthy-2fb38f`). The idx773–775 gap is left for 0968–0971; the journal tests
+require only a strictly ascending idx and `when`.
+
+A fresh fetch on 3 November 2026 found competing claims on other workstreams' origin branches: the `codex/permissions-*-20261103`
+series claims `0972_attendance_schedule_binding_readiness` at when1793330000372 (its idx819), as part of its 0962–0978 run already
+reported at wave 1 integration. Identical `when` values cannot both stand in one journal: reconcile before either set integrates
+with the other. Development source only: no installation priority, no deployment; re-freeze above the then-installed ledger at
+integration.
+
+0972 creates six FORCE row-level-security tables: `teras_learning_signal`, `teras_learning_signal_review`,
+`teras_gap_occurrence`, `teras_gap_example`, `teras_gap_status` and `teras_eval_candidate`, with the functions
+`app.teras_learning_append_only`, `app.teras_learning_signal_guard`, `app.teras_learning_own_record`, `app.teras_learning_admin`,
+`app.teras_gap_example_stamp`, `app.teras_gap_example_kept` and `app.teras_eval_candidate_guard`. Every table is new; it alters
+no existing object. A gap example references `teras_chat(id)` ON DELETE CASCADE (it goes with the asker's chat), and the signal
+table grants UPDATE on its `reason` column only. Writers reviewed: `core/learning/*` only.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|776|1793330000372|0972_teras_learning_loops|f4b3574ce920a1e4336e105d0122e779c99a054b1e3db9b452d5d52dfc98294a|
+
+Superseded on 4 November 2026, before any application: renumbered to `2010_teras_learning_loops` / when1793330001410 in the AI Centre block
+2000–2019 (see the AI v2 Phase 2 integration entry below). This identity is not an alternative installation path.
+
+## AI Centre block 2000–2019: AI v2 Phase 1 release — 3 November 2026 (unapplied source reservation)
+
+Branch `claude/aiv2-phase1-release` merges `origin/main` `848c7be36414a1a5216bb33d0ecd49429fcdd60f` (aligned with alpha; the
+AI v2 coordinator reports it as staging's `STAGING_DEPLOYED_SHA`; this session did not query the staging ledger). Main's
+journal has 656 entries ending idx799 / `0953_lifecycle_service_info_intents` / when1793330000353, after main's 0950, 0951
+and 0953.
+
+The four AI v2 Phase 1 migrations move because `0952_teras_chats` (when…352) sits below main's 0953 (when…353), so the
+ordinary migrator would silently skip it on staging, and because 0959–0961 collide with other claims: the
+`codex/permissions-*` branches claim 0950 upwards and PR #218 claims 1000–1002.
+
+This reserves the block 2000–2019 for the AI Centre: AI v2 Phase 1 takes 2000–2003; AI v2 Phase 2 waves 1 and 2 take 2004
+onward, in number order, each recorded here when written. The coordinator chose this conservative block on 3 November
+2026 after the first choice, 1010–1029, was taken during this integration: the Codex claims moved from 1007 to 1015 within
+about 30 minutes (roughly 30 numbers an hour), and the owner holds this release until the Codex releases finish, so these
+values must stay above their final watermark. A block rather than the next number, because parallel sessions keep taking
+the next number (see the Formula entries above).
+
+`when` scheme: the convention every claim since 0800/…200 follows, including all claims in the 1000-range:
+when = 1793330000000 + (file number − 600). The block's values are 1793330001400–1793330001419, strictly above main's
+1793330000353 and above every claim found.
+
+A fresh fetch and scan at 14:27 UTC on 3 November 2026 covered every local and origin ref (3681 refs, 554 distinct
+migration trees) and all 423 registered worktrees, including their uncommitted files. Claims run to
+`1015_rewards_command_port_status` / when1793330000415 (Codex, uncommitted worktree); nothing claims a file at or above
+1990 or a `when` at or above 1793330001390.
+
+| Was | idx (branch) | when | Tag | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+|0952|800|1793330001400|2000_teras_chats|8cd50320de942af9aa59e515c5e39e78f6027325da86264dd8e772bff1c802b7|
+|0959|801|1793330001401|2001_private_cases|bcfb193a8f6e59c7fec485291bf94cf460f89f44d5abc5bb9ef80cdb6f802acc|
+|0960|802|1793330001402|2002_teras_loops|9614f0d8aa6855d24fe0b7ee1e75c46f80f89e19ec43161825e4bf357eefb908|
+|0961|803|1793330001403|2003_letter_requests|86648ce2dc7af62b92091a5ec195877c68a511f6272dd9681781cedf85900041|
+
+The SQL statements are unchanged; only the header comment lines that named the provisional number changed (the files
+were never applied), hence the new hashes.
+
+Amended in place on 4 November 2026, still before any application, for the independent pre-release review of the
+Phase 1 candidate (the SHAs in the table above are the amended files'): `2001_private_cases` (a handler is eligible only
+while their login is current, and each case's handlers are frozen at filing: `handler_user_ids`, the eligibility and
+route functions, the guard, the notices and every policy call; findings 1 and 5); `2002_teras_loops` (the
+`out_of_scope` close reason, written when the runner retires a case of a company the loop no longer covers; finding 8);
+`2003_letter_requests` (no employee SELECT policy, the column-safe `app.letter_requests_own` lookup with its owner-side
+policy, and person erasure of the free text through `app.letter_requests_redact`, with `text_erased_at` and the
+decline-reason checks it needs; findings 6 and 7). `2000_teras_chats` is unchanged. The numbers, idx and `when` values
+are unchanged. Code comments that still cite 0952, 0959, 0960 or 0961 (for example
+`core/teras-chats.ts`, `core/private-cases.ts`, `core/loops/*`, `db/teras-schema.ts`) mean these migrations; they are left
+unchanged so that no provider-closure file changes for a number.
+
+Development source only: no installation priority, no deployment. At installation the numbers and `when` values are
+re-checked against staging's applied watermark (the ordered live ledger) and re-frozen above it if it has reached them;
+the owner holds this release until the Codex releases finish.
+
+Release-merge follow-up (no migration; coordinator, 3 November 2026): main's lifecycle pages need semantic, guide and
+corpus entries before they become linkable. Main's Probation Confirmation (`/lifecycle/probation…`) and Contract
+Management (`/lifecycle/contracts…`) pages stay unlinkable, as before the merge, and
+`test/capability-catalogue-drift.test.ts` holds them as NOT_YET_LINKABLE; the definition-of-done baseline is not grown.
+
+## AI Centre block 2000–2019: AI v2 Phase 2 integration — 4 November 2026 (unapplied source reservation)
+
+Branch `claude/aiv2-phase2-integration` (cut from `claude/aiv2-phase1-release` `2cee0e8b5`, whose journal has 660 entries
+ending idx803 / `2003_letter_requests` / when1793330001403) merges, in order, `claude/aiv2-phase2-wave1` `2a036b43a`,
+`claude/aiv2-p2-living-handbook` `b87335ba8`, `claude/aiv2-p2-learning-loops` `8e444bb9d` and `claude/aiv2-p2-letters-chat`
+`df3cbc08e` (which dropped its 0973 and adds no migration). Their seven migrations take 2004–2010, the next numbers of the
+block this record reserved for AI v2 Phase 2, in number order after Phase 1's 2000–2003: idx follows 803 and `when` follows
+the block convention 1793330000000 + (file number − 600).
+
+They move because their provisional `when` values (1793330000363–…372) sit below Phase 1's 1793330001400–…403, which come
+before them in this journal: once staging has applied 2000–2003, the ordinary migrator would silently skip them. Their file
+numbers and `when` values also collide with the `codex/permissions-*` claims recorded in the wave 1, Living Handbook and
+learning loops entries above.
+
+A fresh fetch and scan at about 18:40 UTC on 4 November 2026 covered every origin ref (1815 refs, 296 distinct journals) and
+the migration folders of all 420 registered worktrees, including their uncommitted files. File claims at or above 1000 run
+to `1015_rewards_command_port_status` (Codex) and `1500`–`1502` (`claude/wonderful-mccarthy-2fb38f`, when1793330000900–…902),
+plus this block's 2000–2003; nothing claims a file from 2004 to 2019 or a `when` at or above 1793330001404.
+
+| Was | idx (branch) | when | Tag | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+|0963|804|1793330001404|2004_teras_loop_autonomy|b6bdeac1995dad6df759ce9a537c98e9a3666bf01aef716a7f6cac9a9134b132|
+|0964|805|1793330001405|2005_teras_payroll_cycle_loops|31234dca83bad7cc1bb4dc82f04f9743cb6cb690a1352149acd7d4f3b613f887|
+|0965|806|1793330001406|2006_payroll_audit_loop|e0ed1ea1b561cedf2f4d2bba37853e781a23c370ba12cf7b4f220a5d002cffce|
+|0966|807|1793330001407|2007_teras_capacity_baseline|8b2bb6e38d76c7bf6643e45c62c11ed89e71d954615438d527adf1b4593f22ad|
+|0967|808|1793330001408|2008_own_payroll_cut_off|9c5f91f7380568067fbea128768a412f200ef58676d9541bb891f3539cb18c02|
+|0971|809|1793330001409|2009_teras_living_handbook|2ffa6731bc3e8cfbc0586875ba9c33d0db2c67104376dc99e35ba181214ccae0|
+|0972|810|1793330001410|2010_teras_learning_loops|316ce555983b42a896fbba7d7f75c73d4037b75ab60f41da6df611d8e0e2c3c0|
+
+The SQL statements are unchanged; only the header comment lines that named the provisional number (and, in 2006, the
+comment naming 0964's provisional idx) changed, because the files were never applied: hence the new hashes. 2006's three
+rebuilt worker CHECK lists are the wave 1 integration's and list every loop id, `loop_salary_payroll` and
+`loop_payroll_audit` among them; 2005's `teras_loop_case` list, which 2006 does not rebuild, stands. Code comments that still
+cite 0963–0967, 0971 or 0972 mean these migrations; they are left unchanged so that no provider-closure file changes for a
+number. The four tail-pinning upgrade tests pin these positions, and `test/board-nine-populated-upgrade.test.ts` applies
+staging's 656-entry ledger, then 2000–2003, then 2004–2010 on a populated database and logs the applied ledger.
+
+Development source only: no installation priority, no deployment. At installation the numbers and `when` values are
+re-checked against staging's applied watermark (the ordered live ledger) and re-frozen above it if it has reached them.
+
+### 2010 edited in place before application: no gap examples (AI v2 Phase 2 hardening, 4 November 2026)
+
+Branch `claude/aiv2-p2h-tools-privacy` (from `claude/aiv2-phase2-integration` `3a5273a02`) edits the never-applied
+`2010_teras_learning_loops` in place under the coordinator's decision on Phase 2 review finding 8 (ADR-0169 §9: chat words
+are readable only by the asker). Its number, idx 810 and `when` 1793330001410 are unchanged; only its bytes, so its hash:
+
+| idx | when | Tag | Was SHA256 | Now SHA256 |
+| ---: | ---: | --- | --- | --- |
+|810|1793330001410|2010_teras_learning_loops|316ce555983b42a896fbba7d7f75c73d4037b75ab60f41da6df611d8e0e2c3c0|da7d358eb43c1a3437a6d0d722593640d68d4f0f532097fb1df3e9c059dc8303|
+
+- `teras_gap_example` (the redacted free-text gap questions), with `app.teras_gap_example_stamp` and
+  `app.teras_gap_example_kept`, its policies and grants, is removed: no table stores words from anyone's chat.
+- `teras_gap_occurrence` loses `record_id` (and its unique key and foreign key to `teras_outcome_record`) and `at`; it gains
+  `seen_on date`, the Malaysian day, stamped by `app.teras_gap_occurrence_stamp`. Nothing an administrator reads names the
+  turn, so a gap cannot be joined to a signal or to an outcome record a group administrator may read (0928).
+- New `teras_gap_turn` (FORCE RLS; `REVOKE ALL`, then `GRANT SELECT, INSERT`; append-only; `app.teras_gap_turn_stamp`): the
+  asker's private note that a turn was counted, keyed by tenant and record so a turn counts once, readable only by the
+  login that wrote it. An occurrence is admitted only beside its writer's own note from the same transaction and company.
+- Writers reviewed: `core/learning/signals.ts` `recordGapFromTurn` is the only writer of both tables.
+
+The two tail-pinning tests that carry 2010's hash (`test/lifecycle-v9-populated-upgrade.test.ts`,
+`test/board-nine-populated-upgrade.test.ts`) pin the new one. The handbook hardening branch edits 2009 in parallel; the
+coordinator merges both pins.
+
+## AI Centre block 2000–2019: AI v2 Phase 2 hardening, payroll loops — 4 November 2026 (unapplied source reservation)
+
+Branch `claude/aiv2-p2h-loops-hardening` (cut from `claude/aiv2-phase2-integration` `3a5273a02`, whose journal ends idx810 /
+`2010_teras_learning_loops` / when1793330001410). Two kinds of change, both on files no installation has applied:
+
+- **Edited in place** (allowed while unapplied, coordinator note of 4 November 2026): `2005_teras_payroll_cycle_loops` (a
+  threshold never above 5000 bp; a `reminders_enabled` setting column; a proposal approved only by a group administrator who
+  disposed of none of its flags), `2006_payroll_audit_loop` (a capture deduplicated only against the latest capture of its
+  source key, the unique `(source_key, content_hash)` index replaced by an ordinary latest-of-key index; findings record
+  their subject logins and nobody disposes of a finding about themselves; control-setting bounds, a `preparer_closed_mode`
+  setting and a group administrator for any loosening) and `2008_own_payroll_cut_off` (the caller's own company's per-type
+  cut-off days, nothing more). Every writer of the changed tables was reviewed: `core/loops/payroll-loop-settings.ts`,
+  `core/payroll-audit/append.ts`, `core/payroll-audit/controls.ts` and `core/payroll-audit/settings.ts` are the only ones.
+- **New: `2011_payroll_loops_hardening`**, the next number of the block (idx 811, when 1793330001411 = 1793330000000 +
+  (2011 − 600)), taken as the brief allowed: the payroll close circuit's prior cycle by run type (`CREATE OR REPLACE` of
+  `app.payroll_close_circuit_inputs` and `app.payroll_close_source_people`, owner and grants unchanged), the standing
+  acknowledgements (`payroll_check_acknowledgement`) and their learned-rule decisions (`payroll_check_rule_decision`), and the
+  Pre-salary loop's cut-off reminder ledger (`teras_cut_off_reminder`, whose insert appends the reminder event through a
+  SECURITY DEFINER trigger), and (coordinator review, 4 November 2026) a new joiner's own answer to "Did you work for another
+  employer earlier this year?" (`payroll_tp3_previous_employer_answer`, append-only, the person and HR only, never pay
+  data). FORCE row-level security and exact grants on all four tables.
+
+A fresh fetch at the start of this work showed no other claim on 2011 or on a `when` at or above 1793330001411; the
+coordinator re-checks before merging (the parallel `claude/aiv2-p2h-handbook-hardening` branch edits 2009 in place only).
+
+| Number | idx | when | Tag | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+|2005|805|1793330001405|2005_teras_payroll_cycle_loops|d211dd97ebdeb673998d29a2a9b3b8d8597c39a5646259ac0c855d46eca49fbc|
+|2006|806|1793330001406|2006_payroll_audit_loop|05bc9e35367093ae4c6aec877a7ca7ec171387cb84b28940e0db0e190fcf7723|
+|2008|808|1793330001408|2008_own_payroll_cut_off|c068fa72631c648453117fdf73cc81e6ffbbb4cc94d55d82397e40ac4e4291f8|
+|2011|811|1793330001411|2011_payroll_loops_hardening|d42cceaf96f728c8682b73c40c33b5d3066de40f1d5484100dff3686c811d909|
+
+The four tail-pinning upgrade tests and `test/lifecycle-v9-populated-upgrade.test.ts` pin these hashes and the 2011
+position; `test/board-nine-populated-upgrade.test.ts` applies 2004–2011 on a populated database.
+
+Development source only: no installation priority, no deployment. At installation the numbers and `when` values are
+re-checked against staging's applied watermark and re-frozen above it if it has reached them.
+
+Phase 2 hardening, 4 November 2026 (`claude/aiv2-p2h-handbook-hardening`, still unapplied, so edited in place): 2009's
+statements changed, not only its comments. It adds `teras_policy_contribution` and `teras_policy_text_only` (FORCE RLS,
+SELECT and INSERT only, append-only triggers), the contribution-recording triggers, and guard changes: the second approver
+of a settings change contributed nothing to it, `changes_settings` is derived from the confirmed values when a version is
+sent, and a rejected value's setting must be confirmed or marked text only. Its SHA256 in the Phase 2 integration table
+above (the idx809 row), the `lifecycle-v9` journal pin and the `board-nine` applied-ledger pin are the new file's. Same number, idx and `when`.
+
+## AI Centre block 2000–2019: AI v2 Phase 2 final integration — 4 November 2026 (unapplied source reservation)
+
+Branch `claude/aiv2-phase2-integration` (from `3a5273a02`) merges, in order and `--no-ff`, `claude/aiv2-phase1-release`
+`d895f80b9` (Phase 1's review fixes: 2001, 2002 and 2003 amended), `claude/aiv2-p2h-tools-privacy` `07c395db3` (2010
+edited), `claude/aiv2-p2h-loops-hardening` `8af205b3d` (2005, 2006 and 2008 edited; new 2011) and
+`claude/aiv2-p2h-handbook-hardening` `7046bf928` (2009 edited). None of these files has been applied anywhere.
+
+One more in-place edit, of the never-applied 2010 (integration fix, small groups): a gap occurrence keeps a role band,
+a locale and a day, which can single a person out in a small company. `teras_gap_turn` (the asker's own private note)
+gains `intent_key`, the occurrence's insert policy requires the note's intent to match, and the new SECURITY DEFINER
+`app.teras_gap_detailed_intents(uuid[],date,date)` counts distinct askers over the notes (an owner-only policy,
+`teras_gap_turn_definer_count_read`, admits it under a restricted NOBYPASSRLS owner, as 2003's lookups do) and returns
+only the intent keys at least five distinct logins asked, in companies the caller administers: never a count of askers
+and never a login. Writers reviewed: `core/learning/signals.ts` `recordGapFromTurn` remains the only writer of both gap
+tables. Same number, idx and `when`.
+
+A fresh fetch and scan on 4 November 2026 of every origin ref's `db/migrations` (1238 distinct commits) found file claims
+at or above 1500 only in `1500`–`1502` (`claude/wonderful-mccarthy-2fb38f`) and this block; 2011 only on the loops
+hardening branch and its CI branches; nothing at 2012 or above, and no `when` at or above 1793330001412.
+
+The journal ends with the block, ascending: idx800–811, `when` 1793330001400–1793330001411, all above main's applied
+1793330000353. Final identities:
+
+| idx | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|800|1793330001400|2000_teras_chats|8cd50320de942af9aa59e515c5e39e78f6027325da86264dd8e772bff1c802b7|
+|801|1793330001401|2001_private_cases|bcfb193a8f6e59c7fec485291bf94cf460f89f44d5abc5bb9ef80cdb6f802acc|
+|802|1793330001402|2002_teras_loops|9614f0d8aa6855d24fe0b7ee1e75c46f80f89e19ec43161825e4bf357eefb908|
+|803|1793330001403|2003_letter_requests|86648ce2dc7af62b92091a5ec195877c68a511f6272dd9681781cedf85900041|
+|804|1793330001404|2004_teras_loop_autonomy|b6bdeac1995dad6df759ce9a537c98e9a3666bf01aef716a7f6cac9a9134b132|
+|805|1793330001405|2005_teras_payroll_cycle_loops|d211dd97ebdeb673998d29a2a9b3b8d8597c39a5646259ac0c855d46eca49fbc|
+|806|1793330001406|2006_payroll_audit_loop|05bc9e35367093ae4c6aec877a7ca7ec171387cb84b28940e0db0e190fcf7723|
+|807|1793330001407|2007_teras_capacity_baseline|8b2bb6e38d76c7bf6643e45c62c11ed89e71d954615438d527adf1b4593f22ad|
+|808|1793330001408|2008_own_payroll_cut_off|c068fa72631c648453117fdf73cc81e6ffbbb4cc94d55d82397e40ac4e4291f8|
+|809|1793330001409|2009_teras_living_handbook|2ffa6731bc3e8cfbc0586875ba9c33d0db2c67104376dc99e35ba181214ccae0|
+|810|1793330001410|2010_teras_learning_loops|2cabdaa5975db8ef1d91f6027bb38b4b7ca1f7ce3c17561b9961926f2e02c201|
+|811|1793330001411|2011_payroll_loops_hardening|d42cceaf96f728c8682b73c40c33b5d3066de40f1d5484100dff3686c811d909|
+
+`test/lifecycle-v9-populated-upgrade.test.ts` pins these identities; `test/board-nine-populated-upgrade.test.ts` applies
+staging's 656-entry ledger, then 2000–2003, then 2004–2011 on a populated database and logs the applied ledger
+(`[populated-upgrade-ledger]`). This table supersedes the per-branch hash rows above for 2001–2003, 2005, 2006 and
+2008–2010. Development source only: no installation priority, no deployment; at installation the numbers and `when`
+values are re-checked against staging's applied watermark and re-frozen above it if it has reached them.
+
+One more in-place edit, of the never-applied 2011 (design review, 4 November 2026): the close circuit's prior cycle is
+the latest **closed** run of the same run type (`payroll_status` is exactly draft, processed and closed), in
+`app.payroll_close_circuit_inputs`, in `app.payroll_close_source_people` (the prior and the "no newer prior" check) and in
+`core/payroll-anomaly.ts`; and every payslip either SECURITY DEFINER function reads passes `app.payroll_history_effective`
+(0602), so a payslip a payroll-history import superseded is no longer summed or listed. Both defects were already in
+main's 0631 versions of these functions. No statement added or removed; owner and grants unchanged. The idx811 row's
+SHA256 above, the `lifecycle-v9` journal pin and the `board-nine` applied-ledger pin are the new file's. Same number, idx
+and `when`.

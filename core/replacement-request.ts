@@ -454,7 +454,13 @@ export type SubmitReplacementRequestResult = { requestId: string; totalDays: num
  * credit is minted only when a line manager approves (`decideReplacementLeaveRequest`), which is what
  * makes the approval date the honest anchor for the expiry period.
  */
-export type SubmitReplacementRequestInput={employmentId:string;leaveTypeId?:string|null;unit:ReplacementLeaveRequestUnit;lines:ReplacementRequestLineInput[];reason?:string;firstScheduleConsent?:boolean;today:string};
+export type SubmitReplacementRequestInput={employmentId:string;leaveTypeId?:string|null;unit:ReplacementLeaveRequestUnit;lines:ReplacementRequestLineInput[];reason?:string;firstScheduleConsent?:boolean;today:string;
+ /** AI v2 W2 (owner decision 3 November 2026, "Employee ticks consent on card"): a review prepared from chat for a First
+  * Schedule employee before they have ticked the agreement. Preparation only: the First Schedule gate still runs (a
+  * company that does not allow it still refuses), the review records NO agreement, and no request is ever written from
+  * such a preparation (writePreparedReplacementLeaveRequestTx refuses it). The agreement is the person's own tick at
+  * Confirm, which prepares again with `firstScheduleConsent: true`. Never set together with `firstScheduleConsent`. */
+ firstScheduleConsentPending?:true};
 /** Read-only half of the actual canonical request owner; no rehearsal/temporary writes. Callers own
  * dependency/credit intervals when composing a reviewed command. Ordinary API keeps its own transaction. */
 export async function prepareReplacementLeaveRequestTx(tx:Tx,ctx:SessionContext,input:SubmitReplacementRequestInput){
@@ -568,6 +574,7 @@ export async function prepareReplacementLeaveRequestTx(tx:Tx,ctx:SessionContext,
       asOf: p.today,
       allowFirstScheduleEligible: policy.allowFirstScheduleEligible,
       consent: p.firstScheduleConsent === true,
+      consentPending: p.firstScheduleConsentPending === true,
     });
 
     // ── r336 · SECTION B, DERIVED — never read off the form ─────────────────────────────────────────────
@@ -809,6 +816,8 @@ export async function prepareReplacementLeaveRequestTx(tx:Tx,ctx:SessionContext,
 }
 async function writePreparedReplacementLeaveRequestTx(tx:Tx,prepared:Awaited<ReturnType<typeof prepareReplacementLeaveRequestTx>>,returnEvent=false){
  const {ctx,p,totalDays,totalHours,dates,aLines,bDerived,storedLines}=prepared;
+ // AI v2 W2: a preparation awaiting the person's own First Schedule agreement is never written as a request.
+ if(p.firstScheduleConsentPending!==undefined)throw new ReplacementRequestInvalidError('Your agreement is needed before this request can be submitted.');
     const [header] = await tx
       .insert(replacementLeaveRequest)
       .values({
@@ -924,8 +933,10 @@ export async function readOwnReplacementSubmissionTx(tx:Tx,ctx:SessionContext,re
  */
 async function assertFirstScheduleSubmissionAllowedTx(
   tx: Tx,
-  p: { employmentId: string; country: string | null; asOf: string; allowFirstScheduleEligible: boolean; consent: boolean },
+  p: { employmentId: string; country: string | null; asOf: string; allowFirstScheduleEligible: boolean; consent: boolean; consentPending?: boolean },
 ): Promise<void> {
+  // AI v2 W2: a pending agreement and a given one are exclusive; anything else is a malformed input.
+  if (p.consentPending && p.consent) throw new ReplacementRequestInvalidError('The agreement is either given or still to be asked for.');
   const eligible = await isFirstScheduleTx(tx, p);
   if (!eligible) return; // above the ceiling: overtime comp is contractual, no statutory floor to protect
   if (!p.allowFirstScheduleEligible) {
@@ -933,7 +944,8 @@ async function assertFirstScheduleSubmissionAllowedTx(
       'Statutory overtime pay applies to you (within the First Schedule), so replacement leave is not permitted under your company’s current policy.',
     );
   }
-  if (!p.consent) {
+  // AI v2 W2: preparation only (see SubmitReplacementRequestInput.firstScheduleConsentPending); nothing is written from it.
+  if (!p.consent && !p.consentPending) {
     throw new ReplacementRequestNotEligibleError(
       'Statutory overtime pay applies to you (within the First Schedule). Banking time in lieu instead of the statutory cash premium requires your explicit agreement — confirm it to proceed.',
     );

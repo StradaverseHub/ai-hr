@@ -109,12 +109,17 @@ describe('AI management page',()=>{
 
 describe('AI management sub-menu',()=>{
   // AI centre (1 Nov 2026): the old per-page tab row stays retired; the one navigation is the centre's tab
-  // bar, where Workers is current, plus the Workers section switcher (all workers, inventory).
-  it('shows the AI centre tab bar with Workers current, and one section per page',async()=>{
+  // bar, where Administration is current, its second row with Workers current, plus the Workers section switcher.
+  it('shows the AI centre tab bar with Administration › Workers current, and one section per page',async()=>{
     const {container}=await show({heldNanos:'0',confirmedNanos:null},'features');
     const tabs=container.querySelector('nav[data-ai-centre-tabs]') as HTMLElement;
     expect(within(tabs).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower/agents/features');
-    expect(screen.getAllByRole('navigation')).toHaveLength(2);
+    // Issue 17: Administration's second row (Workers, Setup, Spend and providers) sits under the tab bar, with
+    // Workers current, then the Workers section switcher.
+    const sections=container.querySelector('nav[data-ai-centre-sections="administration"]') as HTMLElement;
+    expect(within(sections).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/control-tower/agents/features','/control-tower/agents','/control-tower/agents/allowances']);
+    expect(within(sections).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower/agents/features');
+    expect(screen.getAllByRole('navigation')).toHaveLength(3);
     expect(container.querySelector('#ai-features')).not.toBeNull();
     for(const other of ['#ai-map','#ai-attention','#company-limits','#user-limits','#ai-spend','#orchestrator','#ai-runs'])expect(container.querySelector(other),other).toBeNull();
   });

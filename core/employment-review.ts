@@ -687,6 +687,107 @@ export async function sweepDueReviews(
   });
 }
 
+// ─── AI v2 W8: the probation-ending loop's facts ────────────────────────────────────────────────────
+
+export type ProbationDecisionFact = {
+  employmentId: string;
+  companyId: string;
+  /** The employment has ended (terminated_on set), or a resignation is pending. */
+  terminated: boolean;
+  resigning: boolean;
+  /** The CURRENT probation end date, as computeReviewWindow resolves it; null when no probation applies. */
+  endDate: string | null;
+  /** The latest probation review of this employment, if any. */
+  review: {
+    id: string;
+    status: 'pending_manager' | 'pending_hr' | 'completed' | 'cancelled';
+    decision: ReviewDecision | null;
+    endDate: string;
+    managerSubmitted: boolean;
+  } | null;
+};
+
+/**
+ * The probation facts one employment-review owner publishes for the probation-ending loop (core/loops): for every
+ * employment of the given companies (and the named employments wherever they now are), the current probation end
+ * date resolved by `computeReviewWindow` from the live assignment, and the latest probation review with its stage
+ * and decision. Read-only, under the caller's row-level security; the loop never decides. Only full-time
+ * employments have a probation (computeReviewWindow's rule); others are returned with endDate null.
+ */
+export function probationDecisionFacts(
+  ctx: SessionContext,
+  p: { companyIds: readonly string[]; employmentIds?: readonly string[] },
+): Promise<ProbationDecisionFact[]> {
+  const companyIds = [...new Set(p.companyIds)];
+  const employmentIds = [...new Set(p.employmentIds ?? [])];
+  if (companyIds.length === 0 && employmentIds.length === 0) return Promise.resolve([]);
+  return withTenant(ctx, async (tx) => {
+    const scope = [
+      ...(companyIds.length ? [inArray(employment.companyId, companyIds)] : []),
+      ...(employmentIds.length ? [inArray(employment.id, employmentIds)] : []),
+    ];
+    const rows = await tx
+      .select({
+        employmentId: employment.id,
+        companyId: employment.companyId,
+        terminatedOn: employment.terminatedOn,
+        employmentType: assignment.employmentType,
+        probationEndDate: employment.probationEndDate,
+        contractEndDate: employment.contractEndDate,
+        internshipEndDate: employment.internshipEndDate,
+        provisionalEndOn: employment.provisionalEndOn,
+      })
+      .from(employment)
+      .leftJoin(
+        assignment,
+        and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo), isNull(assignment.supersededAt)),
+      )
+      .where(scope.length === 1 ? scope[0] : or(...scope));
+    const ids = [...new Set(rows.map((r) => r.employmentId))];
+    if (ids.length === 0) return [];
+    const reviews = await tx
+      .select({
+        id: employmentReview.id,
+        employmentId: employmentReview.employmentId,
+        status: employmentReview.status,
+        decision: employmentReview.decision,
+        endDate: employmentReview.endDate,
+        managerSubmittedAt: employmentReview.managerSubmittedAt,
+      })
+      .from(employmentReview)
+      .where(and(inArray(employmentReview.employmentId, ids), eq(employmentReview.reviewType, 'probation')))
+      .orderBy(desc(employmentReview.createdAt), desc(employmentReview.id));
+    const resigning = new Set(
+      (await tx
+        .select({ employmentId: resignationRequest.employmentId })
+        .from(resignationRequest)
+        .where(and(inArray(resignationRequest.employmentId, ids), eq(resignationRequest.status, 'pending'))))
+        .map((r) => r.employmentId),
+    );
+    const latest = new Map<string, (typeof reviews)[number]>();
+    for (const review of reviews) if (!latest.has(review.employmentId)) latest.set(review.employmentId, review);
+    const seen = new Set<string>();
+    const out: ProbationDecisionFact[] = [];
+    for (const r of rows) {
+      if (seen.has(r.employmentId)) continue;
+      seen.add(r.employmentId);
+      const window = r.employmentType ? computeReviewWindow(r.employmentType, r) : null;
+      const review = latest.get(r.employmentId);
+      out.push({
+        employmentId: r.employmentId,
+        companyId: r.companyId,
+        terminated: r.terminatedOn != null,
+        resigning: resigning.has(r.employmentId),
+        endDate: window?.reviewType === 'probation' ? window.endDate : null,
+        review: review
+          ? { id: review.id, status: review.status, decision: review.decision, endDate: review.endDate, managerSubmitted: review.managerSubmittedAt != null }
+          : null,
+      });
+    }
+    return out;
+  });
+}
+
 // ─── Reminder cadence sweep (6522d26a Fn 2) ─────────────────────────────────────────────────────────
 
 /** Default reminder cadence: days BEFORE the review end date at which the sweep nudges manager + HR.

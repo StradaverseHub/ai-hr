@@ -217,15 +217,18 @@ export function asksWorkplaceHarm(question:string):boolean{
 export const isSensitiveReason=(reason:TurnGateReason|null|undefined):reason is SensitiveGateReason=>typeof reason==='string'&&reason.startsWith('sensitive_');
 
 /** Decide, from the person's words alone, whether this turn may use private reads and action suggestions.
- * `sensitive` lists the routed topics (the harness passes its spec's list); every topic by default. */
-export function gateTurn(question:string,options:Readonly<{sensitive?:readonly SensitiveTopic[]}>={}):TurnGate{
+ * `sensitive` lists the routed topics (the harness passes its spec's list); every topic by default.
+ * `importUpload` (AI v2 slice 3, issue 16b): this turn carries a chat import file the server checked again, from a
+ * caller who may import in chat (the harness runner decides it). Only then are words about the attachment not gated: the
+ * file goes to the import owner's preview, never to the model. Every other check still applies, in the same order. */
+export function gateTurn(question:string,options:Readonly<{sensitive?:readonly SensitiveTopic[];importUpload?:boolean}>={}):TurnGate{
  const text=question.normalize('NFKC');
  // Crisis first: whatever else the message says, it gets the safe message and the contact route.
  const topic=sensitiveTopicOf(text,options.sensitive);
  if(topic==='crisis')return closed('sensitive_crisis',false);
  if(asksWorkplaceHarm(text))return closed('workplace_harm',false);
  if(OVERRIDE.some(pattern=>pattern.test(text)))return Object.freeze({privateReads:false,actions:false,reason:'instruction_override'});
- if(ATTACHMENT.some(pattern=>pattern.test(text)))return Object.freeze({privateReads:false,actions:false,reason:'attachment'});
+ if(options.importUpload!==true&&ATTACHMENT.some(pattern=>pattern.test(text)))return Object.freeze({privateReads:false,actions:false,reason:'attachment'});
  if(topic)return closed(`sensitive_${topic}`,false);
  if(THIRD_PARTY.some(pattern=>pattern.test(text))||namedPossessive(text)||singleNamedRecord(text)||lowerNamed(text))return Object.freeze({privateReads:false,actions:true,reason:'other_person'});
  const body=sentenceLower(text);

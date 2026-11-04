@@ -7,6 +7,7 @@ import { rememberedMfaCopy } from '@/lib/remembered-mfa-copy';
 import { activationLoginHref } from '@/lib/internal-auth/login-navigation';
 import { Eye, EyeOff } from 'lucide-react';
 import { LoginShell } from './login-shell';
+import { useMicrosoftLogin } from '@/lib/entra/use-microsoft-login';
 import type { LoginPresentation } from '@/lib/login-presentation';
 import { useTranslations,useLocale } from 'next-intl';
 import { LoginWorkspaceStep } from './workspace-step';
@@ -28,6 +29,7 @@ function InternalAuthFields({ organization = '', returnTo = '/', mode = 'login',
   const passwordId = useId();
   const [showPassword, setShowPassword] = useState(false);
   const [state, setState] = useState<Reply>({ step: mode });
+  const microsoftEnabled = useMicrosoftLogin(state.step === 'login' && workspaceReady ? microsoftOrganization : '');
   const [resetToken, setResetToken] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   useEffect(() => { if (workspaceReady) heading.current?.focus({ preventScroll: true }); }, [workspaceReady, state.step]);
@@ -130,7 +132,7 @@ function InternalAuthFields({ organization = '', returnTo = '/', mode = 'login',
         {state.step === 'invite' && <a href={`/login?returnTo=${encodeURIComponent(`/invite/${invitation}/activate`)}`} className="block text-center text-sm underline">{t('existingLogin')}</a>}
         {!['login','invite','accept'].includes(state.step) && <a href="/login" className="block text-center text-sm underline">{t('back')}</a>}
       </form>}
-      {state.step==='login'&&<form action="/login/entra/start" method="get" className="login-microsoft-form"><input type="hidden" name="organization" value={microsoftOrganization}/><input type="hidden" name="returnTo" value={returnTo}/><button className="login-microsoft" disabled={busy||!microsoftOrganization.trim()}><svg aria-hidden viewBox="0 0 20 20" width={18} height={18}><path fill="#f25022" d="M1 1h8v8H1z"/><path fill="#7fba00" d="M11 1h8v8h-8z"/><path fill="#00a4ef" d="M1 11h8v8H1z"/><path fill="#ffb900" d="M11 11h8v8h-8z"/></svg>{t('microsoft')}</button></form>}
+      {state.step==='login'&&microsoftEnabled&&<form action="/login/entra/start" method="get" className="login-microsoft-form"><input type="hidden" name="organization" value={microsoftOrganization}/><input type="hidden" name="returnTo" value={returnTo}/><button className="login-microsoft" disabled={busy||!microsoftOrganization.trim()}><svg aria-hidden viewBox="0 0 20 20" width={18} height={18}><path fill="#f25022" d="M1 1h8v8H1z"/><path fill="#7fba00" d="M11 1h8v8h-8z"/><path fill="#00a4ef" d="M1 11h8v8H1z"/><path fill="#ffb900" d="M11 11h8v8h-8z"/></svg>{t('microsoft')}</button></form>}
     </section>
   </LoginShell>;
 }

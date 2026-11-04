@@ -16,6 +16,8 @@ export function PlanOtFields({
   committed,
   capMinutes,
   plannedStartPrefill,
+  plannedStartAsked,
+  plannedEndAsked,
 }: {
   /** The overtime date currently selected — the one the calendar picked and the server resolved for. */
   date: string;
@@ -29,13 +31,17 @@ export function PlanOtFields({
    * day, a public holiday or an off day there is no finishing time to start from and it opens empty.
    */
   plannedStartPrefill: string;
+  /** AI v2 W2 — the window a chat card asked for (HH:MM), opened by its Edit button. Treated as the person's own
+   *  choice, so the shift-end note does not claim it; they still change and submit it here. */
+  plannedStartAsked?: string;
+  plannedEndAsked?: string;
 }) {
   const t = useTranslations('me'),tr=useTranslations('attendance.overtimeRecords');
   // NULL means "the employee has not touched this box", which is not the same as "they emptied it". Only
   // an untouched box follows the prefill, so picking a different date moves the suggested start with it
   // while a time somebody actually chose is never overwritten behind their back.
-  const [start, setStart] = useState<string | null>(null);
-  const [end, setEnd] = useState('');
+  const [start, setStart] = useState<string | null>(plannedStartAsked ?? null);
+  const [end, setEnd] = useState(plannedEndAsked ?? '');
   const startValue = start ?? plannedStartPrefill;
 
   // Integer minutes from the shared planned-window validator. Earlier end times wrap overnight;

@@ -73,13 +73,13 @@ export const PROCESS_PROFILES: Record<ProcessId, Profile> = {
 export const PROCESS_IDS = Object.keys(PROCESS_PROFILES) as ProcessId[];
 
 /**
- * One row per source record: (case_id, row_id, person_id, created_at, decided_at, is_open, is_rework).
+ * One row per source record: (case_id, row_id, person_id, created_at, decided_at, is_open, is_rework, company_id).
  * A case may span several rows — a leave submission split per date or into paid/unpaid parts shares one
  * parent_group_id and is ONE case of handling work, not several.
  */
 const ROWS: Record<ProcessId, SQL> = {
   leave: sql`select coalesce(r.parent_group_id, r.id) as case_id, r.id as row_id, e.person_id, r.created_at, r.decided_at,
-      r.status = 'pending' as is_open, r.status in ('rejected','cancelled') as is_rework
+      r.status = 'pending' as is_open, r.status in ('rejected','cancelled') as is_rework, e.company_id
     from leave_request r join employment e on e.id = r.employment_id where not r.imported_history
       -- A partial cancellation (decideLeaveCancellation) re-issues the kept dates as NEW rows under a fresh
       -- parent_group_id while copying the ORIGINAL decided_at. Such a row was decided before it existed: it
@@ -87,23 +87,25 @@ const ROWS: Record<ProcessId, SQL> = {
       -- with a negative duration.
       and not (r.decided_at is not null and r.decided_at < r.created_at)`,
   claims: sql`select r.id as case_id, r.id as row_id, e.person_id, r.created_at, r.decided_at,
-      r.status = 'pending' as is_open, r.status in ('rejected','cancelled') as is_rework
+      r.status = 'pending' as is_open, r.status in ('rejected','cancelled') as is_rework, e.company_id
     from claim_request r join employment e on e.id = r.employment_id where r.status <> 'draft'`,
   attendance_correction: sql`select r.id as case_id, r.id as row_id, e.person_id, coalesce(r.applied_at, r.created_at) as created_at,
-      r.decided_at, r.status = 'pending' as is_open, r.status in ('rejected','cancelled') as is_rework
+      r.decided_at, r.status = 'pending' as is_open, r.status in ('rejected','cancelled') as is_rework, e.company_id
     from attendance_correction r join employment e on e.id = r.employment_id`,
   profile_change: sql`select r.id as case_id, r.id as row_id, r.person_id, r.created_at, r.decided_at,
-      r.status = 'pending' as is_open, r.status = 'rejected' as is_rework
+      r.status = 'pending' as is_open, r.status = 'rejected' as is_rework,
+      -- A scalar read, not a join: an unfiltered measure keeps every request the caller may see, as before.
+      (select e.company_id from employment e where e.id = r.employment_id) as company_id
     from profile_change_request r`,
   onboarding: sql`select c.id as case_id, c.id as row_id, c.person_id, c.created_at, c.completed_at as decided_at,
-      c.status = 'in_progress' as is_open, c.status = 'cancelled' as is_rework
+      c.status = 'in_progress' as is_open, c.status = 'cancelled' as is_rework, c.company_id
     from lc_case c where c.kind = 'onboarding'`,
   offboarding: sql`select c.id as case_id, c.id as row_id, c.person_id, c.created_at, c.completed_at as decided_at,
-      c.status = 'in_progress' as is_open, c.status = 'cancelled' as is_rework
+      c.status = 'in_progress' as is_open, c.status = 'cancelled' as is_rework, c.company_id
     from lc_case c where c.kind = 'offboarding'`,
   readiness: sql`select c.id as case_id, c.id as row_id, e.person_id, c.opened_at as created_at,
       case when c.state = 'verified' then c.verified_at end as decided_at,
-      c.state in ('needs_input','needs_review') as is_open, c.reopen_count > 0 as is_rework
+      c.state in ('needs_input','needs_review') as is_open, c.reopen_count > 0 as is_rework, e.company_id
     from hr_orchestration_case c join employment e on e.id = c.employment_id`,
 };
 
@@ -142,10 +144,12 @@ export type ProcessMeasures = {
 type Row = { people: number | null; started: number; completed: number; open: number; aged_open: number; rework: number;
   p50: number | string | null; p90: number | string | null; staff: number; employee: number; automated: number };
 
-/** Cases started in [from, to); `to` omitted means up to now. Exported for the ADR-0151 §4.6c before/after. */
-async function measureBaseline(tx: Tx, id: ProcessId, from: Date, to?: Date) {
+/** Cases started in [from, to); `to` omitted means up to now. Exported for the ADR-0151 §4.6c before/after.
+ * `companyId` (AI v2 P2-4, the HR capacity baseline) narrows the records to one company's; omitted, nothing changes. */
+async function measureBaseline(tx: Tx, id: ProcessId, from: Date, to?: Date, companyId?: string) {
   const [r] = await tx.execute<Row>(sql`
-    with rows as (${ROWS[id]}),
+    with source as (${ROWS[id]}),
+    rows as (select * from source where ${companyId ?? null}::uuid is null or company_id = ${companyId ?? null}::uuid),
     cases as (
       select case_id, (array_agg(person_id))[1] as person_id, min(created_at) as started_at,
         -- Finished only once nothing in the case is still pending; the last decision closes it.
@@ -184,6 +188,12 @@ async function measureBaseline(tx: Tx, id: ProcessId, from: Date, to?: Date) {
 /** Existing measurement contract retained for outcome comparisons and their callers. */
 export async function measure(tx: Tx, id: ProcessId, from: Date, to?: Date): Promise<ProcessMeasures> {
   return (await measureBaseline(tx, id, from, to)).measures;
+}
+
+/** One company's measure over [from, to), under the caller's row-level security: the same counting rule as `measure`,
+ * narrowed to that company's records. The HR capacity baseline (core/capacity/baseline.ts) reads it. */
+export async function measureForCompany(tx: Tx, id: ProcessId, companyId: string, from: Date, to: Date): Promise<ProcessMeasures> {
+  return (await measureBaseline(tx, id, from, to, companyId)).measures;
 }
 
 export function recommendRole(profile: Profile, enabled: boolean, m: ProcessMeasures | null): AgentRole {

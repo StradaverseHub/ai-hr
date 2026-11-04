@@ -81,6 +81,8 @@ export * from '../../core/individual-txn-import';
 
 export {lockNativePayrollPeriodsTx} from '../../core/payroll-period-lock';
 export {rewardPayrollProvenance} from './reward-provenance';
+// AI Centre issue 13b — headcount, average and median basic pay per company/department, small groups suppressed.
+export * from './pay-averages';
 
 export * from '../../core/pay-formula';
 
