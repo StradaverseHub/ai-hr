@@ -84,6 +84,9 @@ export async function completeRecovery(raw: string, password: string, code: stri
     if (!exempt && (requireVerification&&!c.totpSecret || c.totpSecret && !await verifyCredentialFactor(c, code))) return false;
     await replacePassword(tx, c, password); c.version = randomUUID(); c.mustChange = false; delete c.temporaryPasswordExpiresAt; delete c.temporaryPasswordUsed;
     if(exempt) {
+      // A verified, one-use administrator recovery grant retires the lost factor only after the
+      // replacement password passes policy. Next sign-in must enroll a fresh authenticator.
+      c.totpSecret=null;c.lastStep=-1;c.recoveryHashes=[];
       await deleteRecord(tx,exemptionKey);
       const [subject]=await tx.unsafe('select app_user_id from app.principal_by_identity($1,$2)',[c.issuer,c.subject]);
       if(subject)await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'app-user.recovery-exemption-consumed','user',$2::uuid,NULL)",[c.tenantId,subject.app_user_id]);

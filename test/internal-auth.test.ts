@@ -101,7 +101,11 @@ describe('first-party authentication with real private storage and existing HR b
     const c=(await credentialByLogin('alpha','owner'))!;
     expect(await readRecord(client,`recovery-exemption:${c.subject}`)).toBeNull();
     await expect(completeRecovery(token,'Another unused private passphrase 637!','')).rejects.toMatchObject({code:'invalidChallenge'});
-    expect((await startLogin({organization:'alpha',username:'owner',password:'Recovered new private passphrase 636!',native:false})).step).toBe('mfa');
+    expect(c.totpSecret).toBeNull();expect(c.recoveryHashes).toEqual([]);
+    const login=await startLogin({organization:'alpha',username:'owner',password:'Recovered new private passphrase 636!',native:false});
+    expect(login.step).toBe('enroll');if(login.step!=='enroll'||!login.secret)throw Error('Expected fresh authenticator enrollment');
+    expect(await readSession(challenge(login))).toBeNull();
+    completed(await verifyMfa(challenge(login),await generate({secret:login.secret})));
   });
   it('denies unlinked account management to company HR and rejects unknown targets',async()=>{
     await enroll();const ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:base.companyId}]};
