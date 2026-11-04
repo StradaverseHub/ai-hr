@@ -18,7 +18,7 @@ it('groups reminder invalidation per statement with exact per-tenant row revisio
  };
  const measure=async(phase:string)=>{
   const before=await epochs(),started=performance.now();
-  await owner.client`insert into person(id,tenant_id,full_name)select id::uuid,t::uuid,'Fictional epoch profile' from unnest(${ids}::text[],${tenants}::text[])x(id,t)`;
+  await owner.client`insert into person(id,tenant_id,full_name,primary_email)select id::uuid,t::uuid,'Fictional epoch profile',id||'@example.invalid' from unnest(${ids}::text[],${tenants}::text[])x(id,t)`;
   const inserted=performance.now();
   await owner.client`update person set full_name='Fictional epoch profile edited' where id=any(${ids}::uuid[])`;
   const updated=performance.now();
@@ -50,7 +50,7 @@ it('groups reminder invalidation per statement with exact per-tenant row revisio
   await measure('statement');await measure('statement-warm');
   const before=await epochs();
   await expect(owner.client.begin(async tx=>{
-   await tx`insert into person(tenant_id,full_name)values(${b.tenantId}::uuid,'Fictional rolled back person')`;
+   await tx`insert into person(tenant_id,full_name,primary_email)values(${b.tenantId}::uuid,'Fictional rolled back person',${randomUUID()+'@example.invalid'})`;
    throw Error('intentional fixture rollback');
   })).rejects.toThrow('intentional fixture rollback');
   expect(await epochs()).toEqual(before);
