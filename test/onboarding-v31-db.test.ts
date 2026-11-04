@@ -108,6 +108,17 @@ describe('V3.1 onboarding database and authorization', () => {
         }
         expect((await withTenant(admin,tx=>tx.execute(sql`select * from app.onboarding_directory()`))).length).toBeGreaterThan(0);
     });
+    it('loads directory names only when a projected team task actually has a claimant', async()=>{
+        const row=await prepared(),before=await onboardingTasks(tech);
+        expect(before.length).toBeGreaterThan(0);
+        expect(before.every(task=>!task.claimedBy)).toBe(true);
+        await owner.client.unsafe('REVOKE EXECUTE ON FUNCTION app.onboarding_directory() FROM ai_hr_app');
+        try {expect(await onboardingTasks(tech)).toEqual(before);}
+        finally {await owner.client.unsafe('GRANT EXECUTE ON FUNCTION app.onboarding_directory() TO ai_hr_app');}
+        const itemId=row.case.requisitions[0]!.items[0]!.id;
+        await onboardingCommand(tech,row.case.id,row.revision,{type:'fulfil',itemId,status:'progress'});
+        expect((await onboardingTasks(tech)).find(task=>task.kind==='team'&&task.itemIds?.includes(itemId))).toMatchObject({claimedBy:'Kevin Tech',assigned:true});
+    });
     it('projects only actual unlocked personal work for Home and removes a completed checklist task', async()=>{
         const row=await prepared(),tasks=await onboardingTasks(tech),assigned=await onboardingAssignedTaskMetadata(tech);
         const welcome=tasks.find(item=>item.caseId===row.case.id&&item.taskId==='welcome')!;

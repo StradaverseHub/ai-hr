@@ -931,7 +931,7 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
         // then avoid the tenant-wide directory and notes scans for an empty authorized queue.
         if (!list.length) return out;
         const allNotes = await tx.select().from(notes).orderBy(asc(notes.createdAt), asc(notes.id));
-        const names = await directoryTx(tx);
+        let names:Awaited<ReturnType<typeof directoryTx>>|undefined;
         for (const row of list) {
             const c = row.data, f = M.effectiveFacts(c), r = M.currentReq(c);
             if (c.state === 'cancelled')
@@ -969,7 +969,7 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
                             add({ kind: 'manualApproval', title: 'Choose an approver: ' + s.label, itemIds: [i.id], stepId: s.id, team: true });
                         }
                     if (M.activeItem(i) && i.state !== 'ready' && i.state !== 'handed' && M.inGroup(config, i.team, actor.id))
-                        add({ kind: 'team', title: i.name, itemIds: [i.id], due: M.equipmentDate(c, i), status: i.state === 'progress' ? 'progress' : 'todo', team: true, assigned: i.claim === actor.id, locked: !!i.claim && i.claim !== actor.id, claimedBy: i.claim ? names.find(u => u.id === i.claim)?.name ?? 'A teammate' : null });
+                        add({ kind: 'team', title: i.name, itemIds: [i.id], due: M.equipmentDate(c, i), status: i.state === 'progress' ? 'progress' : 'todo', team: true, assigned: i.claim === actor.id, locked: !!i.claim && i.claim !== actor.id, claimedBy: i.claim ? (names ??= await directoryTx(tx)).find(u => u.id === i.claim)?.name ?? 'A teammate' : null });
                 }
                 if (M.inGroup(config, config.techGroup, actor.id) && !r.items.some(i => !i.removed && i.approval === 'pending') && r.items.filter(M.activeItem).every(i => i.state === 'ready'))
                     add({ kind: 'handover', title: 'Record Day 1 handover', team: true, overdue: !!f.joinDate && f.joinDate <= today });
