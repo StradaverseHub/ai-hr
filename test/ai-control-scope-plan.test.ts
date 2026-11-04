@@ -2,7 +2,8 @@
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {sql} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
+import {AssignedWorkPrincipalUnavailableError} from '../lib/assigned-work';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {assertAssignedWorkPrincipalTx} from '../core/approvals';
 import {setAiAllowance,setAiFeature} from '../core/ai-management';
@@ -66,6 +67,54 @@ it('keeps the full native pause-policy audience with bounded visibility candidat
   expect(privateAccess.allowed).toBe(false);
   const [runs]=await owner.client`select count(*)::int as count from ai_model_run`;expect(runs.count).toBe(0);
   await owner.client.unsafe(original.ddl);expect(await measure('restored')).toEqual(expected);
+  // Compare independently expected outcomes under both bodies after scope changes. No cached
+  // context or previous truth matrix may stand in for a fresh principal decision.
+  const stateChecks:string[]=[];
+  const compareState=async(label:string,ctx:SessionContext,expectedAllowed:boolean|'refused')=>{
+   for(const ddl of [original.ddl,candidate]){
+    await owner.client.unsafe(ddl);
+    if(expectedAllowed==='refused')await expect(check(ctx)).rejects.toBeInstanceOf(AssignedWorkPrincipalUnavailableError);
+    else expect(await check(ctx)).toBe(expectedAllowed);
+   }
+   stateChecks.push(label);
+  };
+  const pause=async(companyId:string,enabled:boolean)=>setAiAllowance(base,{kind:'company',subjectId:companyId,enabled,dailyRequests:null,monthlyTokens:null});
+  // The base company has no employments: the admin arm must retain it regardless of candidate IDs.
+  await pause(b.companyId,false);
+  try{await compareState('empty company remains in group-admin audience',base,false);await compareState('empty foreign company does not affect employee',context(users[4]),true);}
+  finally{await pause(b.companyId,true);}
+  const endedId=randomUUID();
+  await owner.db.insert(s.employment).values({id:endedId,tenantId:b.tenantId,personId:users[4].personId,companyId:companies[9].id,hiredOn:'2010-01-01',terminatedOn:'2015-01-01'});
+  await pause(companies[9].id,false);
+  try{await compareState('historical own employment retains its company policy',context(users[4]),false);}
+  finally{await pause(companies[9].id,true);}
+  const [grant]=await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:users[4].id,role:'hr_admin',companyId:companies[1].id}).returning();
+  const elevated:SessionContext={...context(users[4]),roles:['employee','hr_admin'],grants:[{role:'employee',companyId:users[4].companyId},{role:'hr_admin',companyId:companies[1].id}]};
+  await pause(companies[1].id,false);
+  try{
+   await compareState('stored extra company grant expands policy audience',elevated,false);
+   await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.id,grant.id));
+   await compareState('revoked grant refuses stale principal',elevated,'refused');
+   await compareState('fresh principal after grant revocation loses extra company',context(users[4]),true);
+  }finally{await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.id,grant.id));await pause(companies[1].id,true);}
+  await owner.db.update(s.company).set({parentCompanyId:companies[0].id}).where(eq(s.company.id,companies[1].id));
+  const [edge]=await owner.db.insert(s.reportingLine).values({tenantId:b.tenantId,managerEmploymentId:users[2].employmentId,subordinateEmploymentId:users[54].employmentId,lineType:'administrative',validFrom:'2025-01-01'}).returning();
+  await pause(companies[1].id,false);
+  try{
+   await compareState('cross-company administrative report expands policy audience',context(users[2]),false);
+   await owner.db.delete(s.reportingLine).where(eq(s.reportingLine.id,edge.id));
+   await compareState('revoked reporting edge immediately removes company audience',context(users[2]),true);
+  }finally{await owner.db.delete(s.reportingLine).where(eq(s.reportingLine.id,edge.id));await owner.db.update(s.company).set({parentCompanyId:null}).where(eq(s.company.id,companies[1].id));await pause(companies[1].id,true);}
+  await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,users[4].id));
+  try{await compareState('archived user refuses the previous principal',context(users[4]),'refused');}
+  finally{await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,users[4].id));}
+  await compareState('foreign tenant refuses forged actor context',{...context(users[4]),tenantId:foreign.tenantId},'refused');
+  await compareState('unknown company grant refuses forged principal',{...context(users[4]),grants:[{role:'employee',companyId:randomUUID()}]},'refused');
+  const [finalMetadata]=await owner.client`select to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app._ai_control_context(text,boolean)'::regprocedure`;
+  expect(finalMetadata.attributes).toEqual(original.attributes);
+  const [finalRuns]=await owner.client`select count(*)::int as count from ai_model_run`;expect(finalRuns.count).toBe(0);
+  measurements.push({phase:'scope-change-contracts',checks:stateChecks,exactAudience:true});
+
  }finally{
   await owner.client.unsafe(original.ddl);
   const [restored]=await owner.client`select pg_get_functiondef('app._ai_control_context(text,boolean)'::regprocedure)as ddl`;
