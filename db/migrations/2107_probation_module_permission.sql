@@ -75,7 +75,8 @@ CREATE TABLE public.probation_activation_request(
  requested_by uuid NOT NULL REFERENCES app_user(id),digest text NOT NULL,installation_reference text NOT NULL,
  state text NOT NULL DEFAULT 'pending' CHECK(state IN('pending','completed','failed')),
  created_at timestamptz NOT NULL DEFAULT now(),completed_at timestamptz,failure text,
- UNIQUE(tenant_id,cutover_id)
+ UNIQUE(tenant_id,cutover_id),
+ FOREIGN KEY(company_id,tenant_id) REFERENCES public.company(id,tenant_id)
 );
 ALTER TABLE public.probation_activation_request ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.probation_activation_request FORCE ROW LEVEL SECURITY;

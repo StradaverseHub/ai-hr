@@ -5,6 +5,8 @@ CREATE TABLE reward_company_classification (
  canonical_company_id uuid REFERENCES company(id), reason text NOT NULL CHECK(length(app.reward_exclusion_reason_trim(reason)) BETWEEN 10 AND 2000),
  updated_by uuid NOT NULL REFERENCES app_user(id), updated_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(tenant_id,company_id),
+ FOREIGN KEY(company_id,tenant_id) REFERENCES public.company(id,tenant_id),
+ FOREIGN KEY(canonical_company_id,tenant_id) REFERENCES public.company(id,tenant_id),
  CHECK((disposition='alias' AND canonical_company_id IS NOT NULL AND canonical_company_id<>company_id) OR (disposition<>'alias' AND canonical_company_id IS NULL))
 );
 --> statement-breakpoint

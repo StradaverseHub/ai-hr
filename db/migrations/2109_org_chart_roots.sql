@@ -25,6 +25,7 @@ DECLARE check_cycle boolean:=true;
 BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||NEW.tenant_id::text,0));
  IF TG_TABLE_NAME='org_chart_root' THEN
+  IF NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=NEW.employment_id AND e.tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Top-level employee must belong to the same tenant'; END IF;
   IF EXISTS(SELECT 1 FROM reporting_line r WHERE r.tenant_id=NEW.tenant_id AND r.subordinate_employment_id=NEW.employment_id AND r.line_type='administrative' AND r.superseded_at IS NULL AND daterange(r.valid_from,r.valid_to,'[)') && daterange(NEW.valid_from,NEW.valid_to,'[)')) THEN
    RAISE EXCEPTION 'A top-level employee cannot also have a Direct Superior in the same date range';
   END IF;
