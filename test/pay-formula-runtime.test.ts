@@ -1,3 +1,5 @@
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {PAY_FORMULA_PERSONNEL_PROVIDER_VERSION} from '../lib/pay-formula-personnel';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {sql,eq} from 'drizzle-orm';
 import * as schema from '../db/schema';
@@ -169,4 +171,39 @@ it('versions only affected registrations, rejects executable source configuratio
  await expect(registerPayFormulaPersonnelField(ctx,{sourceKey:'person; drop table company',label:'Forbidden',description:'No executable source registrations',enabled:true})).rejects.toThrow(/supported typed source/);
  const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'pay-formula.personnel-registered'));expect(events).toHaveLength(1);
  await expect(withTenant(ctx,tx=>tx.execute(sql`update pay_formula_personnel_registration set enabled=false`))).rejects.toBeDefined();
+});
+
+it('reads actual current text, number and date scalars through their typed adapters',async()=>{
+ const today=todayInKualaLumpur(),current={...context,period:today.slice(0,7),asOf:today};
+ await owner.db.update(schema.employment).set({probationValue:6,contractStartDate:'2026-01-01'}).where(eq(schema.employment.id,employee.employmentId));
+ const source='If {#EmployeeInformation}("profile.personal_details.fullname") = "Fictional runtime employee" And {#EmployeeProfile}("employment.employment_dates_and_service.probationvalue") = 6 And {#EmployeeProfile}("employment.employment_dates_and_service.contractstartdate") = {#Date}("2026-01-01") Then\nReturn 11.25\nElse\nReturn 0\nEnd If';
+ const saved=await savePayFormula(ctx,{formulaId:'TYPED_CURRENT',description:'Native typed scalar boundaries',method:'write',source});
+ expect(await testPayFormula(ctx,{...saved,context:current})).toMatchObject({passed:true,amount:'11.25'});
+});
+it('uses only exact-run native payslip-referenced frozen reads with the matching Personnel provider and date',async()=>{
+ await activate('Return 1');const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});await generatePayslips(ctx,{batchId});
+ const key='profile.personal_details.fullname',source=`If {#EmployeeInformation}("${key}") = "Frozen historical name" Then\nReturn 9\nElse\nReturn 0\nEnd If`,saved=await savePayFormula(ctx,{formulaId:'FROZEN_PERSONNEL',description:'Exact native run snapshot',method:'write',source});
+ const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
+ const payload={explanations:[],reads:[{code:'EmployeeInformation',args:[{type:'string',value:key}],loc:{line:1,column:1},value:{type:'string',value:'Frozen historical name'}}],sources:{context:{...context,batchId},sourceEvidence:[{owner:'typed-personnel',provider:PAY_FORMULA_PERSONNEL_PROVIDER_VERSION,key,dateBasis:'current-only',asOf:context.asOf}]}};
+ // An owner-created historical native fixture represents a retained source read from that payroll day.
+ const [evidence]=await owner.db.insert(schema.payFormulaEvaluation).values({tenantId:base.tenantId,formulaId:saved.id,revisionId:saved.revisionId,companyId:base.companyId,employmentId:employee.employmentId,batchId,componentCode:item.code,period:context.period,amount:'9',payload,readRequirements:{categories:['identity'],fieldIds:[key],workforce:true},actorId:ctx.userId!}).returning();
+ await owner.db.update(schema.payslip).set({statutory:{...slip.statutory,formulaEvaluations:[{evaluationId:evidence.id}]}}).where(eq(schema.payslip.id,slip.id));
+ await owner.db.update(schema.person).set({fullName:'Changed live employee name'}).where(eq(schema.person.id,employee.personId));
+ const alternate=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});
+ expect(await testPayFormula(ctx,{...saved,context:{...context,batchId:alternate.batchId}})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
+ const selected={...context,batchId};expect(await testPayFormula(ctx,{...saved,context:selected})).toMatchObject({passed:true,amount:'9'});
+ expect(await testPayFormula(ctx,{...saved,context:{...selected,asOf:'2026-05-30'}})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
+ const [wrongProvider]=await owner.db.insert(schema.payFormulaEvaluation).values({...evidence,id:undefined,payload:{...payload,sources:{...payload.sources,sourceEvidence:[{...payload.sources.sourceEvidence[0],provider:'unreviewed-provider'}]}}}).returning();
+ await owner.db.update(schema.payslip).set({statutory:{...slip.statutory,formulaEvaluations:[{evaluationId:wrongProvider.id}]}}).where(eq(schema.payslip.id,slip.id));
+ expect(await testPayFormula(ctx,{...saved,context:selected})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
+ await owner.db.update(schema.payslip).set({statutory:{...slip.statutory,formulaEvaluations:[]}}).where(eq(schema.payslip.id,slip.id));
+ expect(await testPayFormula(ctx,{...saved,context:selected})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
+});
+it('requires administrator authority at both registration boundaries and refuses malformed native sources and forged audits',async()=>{
+ const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'formula-personnel-unprivileged',personId:employee.personId}).returning();
+ const unprivileged={...ctx,userId:user.id,personId:employee.personId,roles:[],grants:[]} satisfies SessionContext;
+ await expect(registerPayFormulaPersonnelField(unprivileged,{sourceKey:'companyId',label:'Employer',description:'A legitimate description does not grant authority',enabled:true})).rejects.toThrow();
+ await expect(withTenant(unprivileged,tx=>tx.execute(sql`select app.pay_formula_personnel_register('companyId','Employer','A direct call does not grant authority',true)`))).rejects.toBeDefined();
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select app.pay_formula_personnel_register('person; DROP TABLE company','Employer','No native executable source registration',true)`))).rejects.toBeDefined();
+ await expect(withTenant(ctx,tx=>tx.insert(schema.domainEvent).values({tenantId:base.tenantId,aggregateType:'pay-formula-personnel-registration',aggregateId:user.id,eventType:'pay-formula.personnel-registered',actorType:'user',actorId:ctx.userId!,payload:{sourceKey:'companyId'}}))).rejects.toBeDefined();
 });
