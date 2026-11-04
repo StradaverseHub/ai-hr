@@ -6,6 +6,7 @@ import {appendFileSync, mkdirSync, readFileSync, realpathSync, writeFileSync} fr
 import {isAbsolute, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {hostHealth} from './host-health.mjs';
+import {retainedPersonnelRequest} from './retained-personnel-request.mjs';
 import {CI_POLICY} from './policy-version.mjs';
 import {restrictedPortRequest,executeDatabaseSetup,runRestrictedPortQualification,SOURCE_PINS} from './restricted-port-qualification.mjs';
 import {capturePostgresEvidence, validatePostgresEvidence, postgresProfileFromEnv, V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
@@ -115,6 +116,7 @@ export function runFocused(destination) {
   assertCandidate(cwd, sha);
   if (!/^[0-9a-f]{40}$/.test(controller ?? '')) throw Error('Missing exact focused controller identity');
   const files = parseSelection(process.env.AIHR_FOCUSED_TESTS);
+  retainedPersonnelRequest(process.env, files);
   checkedTrackedFiles(cwd, files);
   const classifier = 'scripts/gate-db-classify.ts';
   const output = execFileSync(process.execPath, ['--import', 'tsx', classifier, 'explain'], {
@@ -202,6 +204,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const command = process.argv[2];
   if (command === 'selection' && process.argv.length === 3) {
     const files = parseSelection(process.env.AIHR_FOCUSED_TESTS);
+  retainedPersonnelRequest(process.env, files);
     appendFileSync(process.env.GITHUB_OUTPUT, `tests=${JSON.stringify(files)}\n`);
   } else if (command === 'run' && process.argv.length === 4) process.exitCode = runFocused(process.argv[3]);
   else throw Error('Usage: focused-checks.mjs selection | run <owned-evidence-directory>');
