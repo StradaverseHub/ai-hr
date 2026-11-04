@@ -36,6 +36,10 @@ describe('shared Rewards company participation and history',()=>{
   await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:scopedUser.id,role:'hr_admin',companyId:b.companyId});
   const scoped={...admin,userId:scopedUser.id,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]} satisfies SessionContext;
   expect(await rewardCompanyClassifications(scoped)).toEqual([]);
+  await owner.db.update(s.roleAssignment).set({companyId:companyB}).where(eq(s.roleAssignment.appUserId,scopedUser.id));
+  const aliasScoped={...scoped,grants:[{role:'hr_admin',companyId:companyB}]};
+  expect(await rewardCompanyClassifications(aliasScoped)).toEqual([expect.objectContaining({companyId:companyB,disposition:'alias',canonicalCompanyId:null})]);
+  await owner.db.update(s.roleAssignment).set({companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,scopedUser.id));
   await expect(classifyRewardCompany(scoped,{companyId:companyB,disposition:'visible',canonicalCompanyId:null,reason:'Out of scope designation must be refused'})).rejects.toBeDefined();
   await expect(classifyRewardCompany(scoped,{companyId:b.companyId,disposition:'alias',canonicalCompanyId:companyB,reason:'Out of scope canonical identity must be refused'})).rejects.toBeDefined();
   expect(await owner.db.select().from(s.company).where(eq(s.company.id,companyB))).toEqual(before);

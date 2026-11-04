@@ -530,7 +530,6 @@
     "privateCases": "Private cases"
   },
   "dashboard": {
-    "companyPicker": {"classificationTitle": "Company identity review", "reviewDesignation": "Review company designation", "classificationHelp": "Only explicitly reviewed designations hide companies from new shared-configuration selections. No names are matched automatically. Existing saved targets and history stay unchanged.", "noneDesignated": "No company designations have been recorded. Review the company identities before declaring test or duplicate entries cleaned up.", "company": "Company", "designation": "Designation", "visible": "Available for selection", "test_demo": "Verified test or demo company", "alias": "Verified duplicate of another legal entity", "canonicalCompany": "Verified legal entity to display", "chooseCanonical": "Select the verified legal entity", "reason": "Evidence and reason for this designation", "verification": "I verified these company identities against People Management and supporting business records.", "confirm": "Confirm reviewed designation", "cancel": "Cancel", "saveFailed": "The designation was not saved. Check your scope, the verified company and the reason, then retry.", "unavailable": "Unavailable company", "unassigned": "Not set up in People Management", "hierarchyHelp": "Business group → business unit → company. A company with multiple unit memberships appears once, with all its unit choices inside its entry.", "preserved": "Existing saved coverage retained"},
     "title": "Dashboard",
     "recentActivity": "Recent activity",
     "recentActivitySubtitle": "From the domain-event log",
@@ -23247,6 +23246,28 @@
     }
   },
   "rewards": {
+    "companyPicker": {
+      "classificationTitle": "Company identity review",
+      "reviewDesignation": "Review company designation",
+      "classificationHelp": "Only explicitly reviewed designations hide companies from new shared-configuration selections. No names are matched automatically. Existing saved targets and history stay unchanged.",
+      "noneDesignated": "No company designations have been recorded. Review the company identities before declaring test or duplicate entries cleaned up.",
+      "company": "Company",
+      "designation": "Designation",
+      "visible": "Available for selection",
+      "test_demo": "Verified test or demo company",
+      "alias": "Verified duplicate of another legal entity",
+      "canonicalCompany": "Verified legal entity to display",
+      "chooseCanonical": "Select the verified legal entity",
+      "reason": "Evidence and reason for this designation",
+      "verification": "I verified these company identities against People Management and supporting business records.",
+      "confirm": "Confirm reviewed designation",
+      "cancel": "Cancel",
+      "saveFailed": "The designation was not saved. Check your scope, the verified company and the reason, then retry.",
+      "unavailable": "Unavailable company",
+      "unassigned": "Not set up in People Management",
+      "hierarchyHelp": "Business group → business unit → company. A company with multiple unit memberships appears once, with all its unit choices inside its entry.",
+      "preserved": "Existing saved coverage retained"
+    },
     "unitBonus": {
       "noReduction": "Salary reductions are not allowed in the salary review.",
       "appliesOnlyTo": "Applies only to this review: {company} / {unit}",
@@ -24056,7 +24077,17 @@
       }
     },
     "policyGrids": {
-      "validation": {"missing": "{row} · {column}: enter the missing value or grade.", "number": "{row} · {column}: enter a value within the permitted range.", "precision": "{row} · {column}: enter a non-negative number with at most {decimals} decimal places.", "positive": "{row} · Minimum: enter a value greater than zero.", "salaryOrder": "{row} · {column}: must be greater than {previous}.", "bonusOrder": "{row} · {column}: bonus months must be greater than {previous}.", "zero": "{row} · UA: must be 0.", "grade": "{row} · {column}: use a supported grade or segment; grade 23 has no salary range.", "duplicate": "{row}: remove the duplicate grade or segment."},
+      "validation": {
+        "missing": "{row} · {column}: enter the missing value or grade.",
+        "number": "{row} · {column}: enter a value within the permitted range.",
+        "precision": "{row} · {column}: enter a non-negative number with at most {decimals} decimal places.",
+        "positive": "{row} · Minimum: enter a value greater than zero.",
+        "salaryOrder": "{row} · {column}: must be greater than {previous}.",
+        "bonusOrder": "{row} · {column}: bonus months must be greater than {previous}.",
+        "zero": "{row} · UA: must be 0.",
+        "grade": "{row} · {column}: use a supported grade or segment; grade 23 has no salary range.",
+        "duplicate": "{row}: remove the duplicate grade or segment."
+      },
       "ranges": "Salary ranges (MYR)",
       "bonusMatrix": "Bonus months by grade",
       "branchFactors": "Branch factors",
@@ -32484,7 +32515,16 @@
     "cancelled": "Cancelled",
     "create": {
       "completeBeforeCreate": "Before you can create this review",
-      "blocked": {"year": "Enter a reward year from 2000 to 2200.", "snapshotMissing": "Select the snapshot date.", "snapshotFuture": "The snapshot date must be today or earlier.", "cycleName": "Enter a name for the new review cycle (up to 160 characters).", "company": "Select an available company for this reward year.", "businessUnit": "This company has no current business unit assignment. Set it up in People Management, then refresh this page.", "conflict": "More than one shared configuration covers this company and business unit for the selected year. Group Rewards must resolve the overlapping assignments.", "policyUnavailable": "The assigned shared configuration cannot be loaded. Refresh this page or ask Group Rewards to check its saved version."},
+      "blocked": {
+        "year": "Enter a reward year from 2000 to 2200.",
+        "snapshotMissing": "Select the snapshot date.",
+        "snapshotFuture": "The snapshot date must be today or earlier.",
+        "cycleName": "Enter a name for the new review cycle (up to 160 characters).",
+        "company": "Select an available company for this reward year.",
+        "businessUnit": "This company has no current business unit assignment. Set it up in People Management, then refresh this page.",
+        "conflict": "More than one shared configuration covers this company and business unit for the selected year. Group Rewards must resolve the overlapping assignments.",
+        "policyUnavailable": "The assigned shared configuration cannot be loaded. Refresh this page or ask Group Rewards to check its saved version."
+      },
       "defaultName": "{year} Annual Compensation Review",
       "effectiveHelp": "Reward year is the performance year being rewarded; the salary effective date comes from the review settings."
     },
