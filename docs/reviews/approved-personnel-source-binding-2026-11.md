@@ -58,3 +58,20 @@ provider configuration is rebound or activated. Hashing and tests do not indepen
 subsequent covered source changes invalidate this binding and require scoped reassessment.
 
 After the literal substitutions, the agent manifest was generated last: `9cc3e203af5c225f93628cfddf667a6203616f8fdbe1bfb7ca28d5bf3444eddb` (465 files). Static regeneration checks reproduce both identities; they are not hosted qualification or release evidence.
+
+## Diagnosed native repair binding
+
+The original focused development run41854300573 is a retained terminal failure: compiler errors,
+27 database behavior/fixture failures and one inventory assertion (the database report separately
+counts its27). No evidence is relabelled. At repair checkpoint `5ea39a20d`, 17 paths changed from
+`190dfadd7`: native trigger contracts, company deletion, SQL variable ambiguities, authorized candidate
+materialization, formatted NRIC comparison, UI/compiler fixes, fixtures and the unavailable export
+inventory entry. No prompt, provider transport, operation registry or dataset definition changes.
+Independent source review confirmed the native permission gates, SQL column targets/JSON keys and
+literal passport/public matching are preserved. Hosted behavioral verification remains outstanding.
+
+The reconstructed provider closure remains1,428 files, now `fea37ccc21e80936eaaeabf362665432961221410948300a91f1f3b423b7ae12`.
+All28 approved literal records receive only this assessed digest; historical decision metadata and the
+two unrelated pending records remain unchanged. This technical renewal uses the standing owner authority
+above and claims neither fresh human hash inspection nor a behavioral PASS. Generate the agent manifest
+last; future covered source changes invalidate these bindings.
