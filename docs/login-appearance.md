@@ -15,3 +15,5 @@ The installation selects which tenant supplies the public appearance:
 Only the configured media type, media URL, description and icon URL are available through the public projection. No employee or identity fields are included. Migration `0600_login_presentation` must be applied before settings can be saved. A failed artwork read must leave authentication available.
 
 Atelier is the UI default when the `ui_theme` cookie is absent, empty or unsupported. A supported saved choice continues to win; users can change it through the account menu after signing in. Ops/Strat labels are presentation only: internal workspace IDs and route ownership stay stable. Atelier submenu sections use non-interactive headings, separated from the links by type, space and a rule.
+
+Group administrators configure **Authenticator code frequency** under **Security Center → Password**. The saved interval uses 0 for a code at every sign-in and 1–90 for the number of days a personal device can be remembered. Saving a changed interval requires remembered devices to verify again at their next sign-in.
