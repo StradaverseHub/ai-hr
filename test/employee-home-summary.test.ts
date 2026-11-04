@@ -6,7 +6,7 @@ const state=vi.hoisted(()=>({subject:vi.fn(),config:vi.fn(),tasks:vi.fn(),enable
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,read:(tx:unknown)=>unknown)=>read({})}));
 vi.mock('../core/employee-home',()=>({requireOwnHomeSubject:state.subject}));
 vi.mock('../core/employee-home-configuration',()=>({readOwnEmployeeHomeConfiguration:state.config}));
-vi.mock('../core/employee-home-tasks',()=>({readEmployeeHomeTasks:state.tasks}));
+vi.mock('../core/employee-home-tasks',()=>({countEmployeeHomeTasks:state.tasks}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:state.enabled}));
 vi.mock('../core/read',()=>({listEligibleLeaveTypesFor:state.types}));
 vi.mock('../packs/leave/service',()=>({nextApprovedLeavePresenceTx:state.leave}));
@@ -21,7 +21,7 @@ const today=todayInKualaLumpur(),offset=(days:number)=>new Date(Date.parse(today
 const read=()=>readEmployeeHomeSummary(ctx,'own','en','Replacement holiday');
 beforeEach(()=>{
  vi.clearAllMocks();state.subject.mockResolvedValue({employmentId:'own'});state.config.mockResolvedValue({configuration:defaultEmployeeHomeConfiguration()});state.enabled.mockReturnValue(true);
- state.tasks.mockResolvedValue({total:0,overdue:0});state.leave.mockResolvedValue(null);state.holidays.mockResolvedValue([]);state.replacement.mockResolvedValue([]);
+ state.tasks.mockResolvedValue(0);state.leave.mockResolvedValue(null);state.holidays.mockResolvedValue([]);state.replacement.mockResolvedValue([]);
  state.payroll.mockResolvedValue({payslips:[],nextPayment:null});state.types.mockResolvedValue([]);state.claims.mockResolvedValue(false);state.profile.mockResolvedValue({editable:new Set()});
 });
 describe('Own Home deterministic summary and current action capability',()=>{
@@ -30,7 +30,7 @@ describe('Own Home deterministic summary and current action capability',()=>{
   expect(result.quickActions).toEqual([{key:'leave',reason:'notConfigured'},{key:'claim',reason:'notConfigured'},{key:'payslip',reason:'noPayslip'},{key:'profile',reason:'detailsLocked'}]);
  });
  it('orders actual urgent work before reminders/good news, caps four and excludes private owner context',async()=>{
-  state.tasks.mockResolvedValue({total:2,overdue:1,items:[{subjectName:'private peer'}]});state.leave.mockResolvedValue({requestId:'leave-1',date:offset(2),reason:'private medical'});
+  state.tasks.mockResolvedValue(2);state.leave.mockResolvedValue({requestId:'leave-1',date:offset(2),reason:'private medical'});
   state.holidays.mockResolvedValue([{id:'holiday-1',date:offset(3),name:'Fictional holiday',tentative:false,active:true}]);
   state.payroll.mockResolvedValue({payslips:[{id:'published',period:today.slice(0,7),amount:'private salary'}],nextPayment:{date:offset(4),amount:'private salary'}});
   state.types.mockResolvedValue([{id:'eligible'}]);state.claims.mockResolvedValue(true);state.profile.mockResolvedValue({editable:new Set(['person.firstName'])});
@@ -39,11 +39,11 @@ describe('Own Home deterministic summary and current action capability',()=>{
   expect(state.payroll).toHaveBeenCalledWith(ctx,'own');expect(state.claims).toHaveBeenCalledWith(ctx,'own');
  });
  it('does not invent a calm day when HR disabled the templates for existing facts',async()=>{
-  const configuration=defaultEmployeeHomeConfiguration();configuration.templates.find(row=>row.key==='tasksPending')!.enabled=false;state.config.mockResolvedValue({configuration});state.tasks.mockResolvedValue({total:1,overdue:0});
+  const configuration=defaultEmployeeHomeConfiguration();configuration.templates.find(row=>row.key==='tasksPending')!.enabled=false;state.config.mockResolvedValue({configuration});state.tasks.mockResolvedValue(1);
   expect(await read()).toMatchObject({items:[],calm:null});
  });
  it('places one pending action before a payday reminder without inventing an overdue deadline',async()=>{
-  state.tasks.mockResolvedValue({total:1,overdue:0});state.payroll.mockResolvedValue({payslips:[],nextPayment:{date:offset(1)}});
+  state.tasks.mockResolvedValue(1);state.payroll.mockResolvedValue({payslips:[],nextPayment:{date:offset(1)}});
   const result=await read();expect(result.items.map(row=>row.key)).toEqual(['tasks','payday']);expect(result.items[0].message).toBe('Tasks waiting for you: 1.');
   expect(result.items[0].message).not.toMatch(/overdue|urgent|due today/i);
  });

@@ -786,7 +786,8 @@
       "placeholder": "Tìm mã nhân viên hoặc tên…",
       "resultsLabel": "Kết quả tìm nhân viên",
       "noMatches": "Không có nhân viên nào khớp.",
-      "currentTag": "Hiện tại"
+      "currentTag": "Hiện tại",
+      "loadFailed": "Không thể tải tìm kiếm nhân viên. Vui lòng thử lại."
     },
     "detail": {
       "incentiveDeclarations": {
@@ -5352,7 +5353,7 @@
     "submitDecisions": "Gửi",
     "employeeRemark": "Ghi chú của nhân viên",
     "closeDialog": "Đóng",
-    "bulkSelectAll": "Chọn tất cả",
+    "bulkSelectAll": "Chọn tất cả trên trang này",
     "bulkSelectRow": "Chọn yêu cầu",
     "bulkSelected": "Đã chọn: {count, plural, other {# yêu cầu}}",
     "bulkClear": "Xóa",

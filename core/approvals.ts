@@ -120,6 +120,37 @@ export async function assertCanDecide(
   throw new Error(`Only an admin or the administrative manager can decide this ${label}`);
 }
 
+/** Current authority for a bounded batch of read-only task subjects. */
+export async function decisionEmploymentAuthorityTx(
+ tx:Tx,ctx:SessionContext,employmentIds:readonly string[],scope?:{module:string;taskType:string},
+):Promise<{allowed:Set<string>;self:Set<string>}>{
+ const allowed=new Set<string>(),self=new Set<string>(),ids=[...new Set(employmentIds)];
+ const roles=ctx.roles??[],superAdmin=roles.includes('super_admin'),admin=superAdmin||roles.includes('hr_admin');
+ for(let offset=0;offset<ids.length;offset+=1000){
+  const chunk=ids.slice(offset,offset+1000);
+  const subjects=await tx.select({id:employment.id,personId:employment.personId}).from(employment).where(inArray(employment.id,chunk));
+  if(ctx.personId!=null&&!superAdmin)for(const subject of subjects)if(subject.personId===ctx.personId)self.add(subject.id);
+  const candidates=chunk.filter(id=>!self.has(id));if(!candidates.length)continue;
+  if(admin){candidates.forEach(id=>allowed.add(id));continue;}
+  if(!ctx.personId)continue;
+  // Identical current administrative-manager predicates to the scalar command guard.
+  const managers=await tx.selectDistinct({id:reportingLine.subordinateEmploymentId}).from(reportingLine)
+   .innerJoin(employment,eq(employment.id,reportingLine.managerEmploymentId)).where(and(
+    inArray(reportingLine.subordinateEmploymentId,candidates),eq(reportingLine.lineType,'administrative'),
+    lte(reportingLine.validFrom,sql`current_date`),or(isNull(reportingLine.validTo),sql`${reportingLine.validTo}>current_date`),
+    isNull(reportingLine.supersededAt),eq(employment.personId,ctx.personId),
+   ));
+  managers.forEach(row=>allowed.add(row.id));
+  const delegated=candidates.filter(id=>!allowed.has(id));if(!delegated.length)continue;
+  // Always the canonical three-argument owner: current direct manager, active one-hop edge,
+  // optional task/module coverage and delegation org coverage. Self remains excluded above.
+  const rows=await tx.execute(sql`select subject.id,app.can_decide_via_delegation(subject.id,${scope?.module??null},${scope?.taskType??null}) as ok
+   from (values ${sql.join(delegated.map(id=>sql`(${id}::uuid)`),sql`,`)}) as subject(id)`);
+  for(const row of rows as unknown as {id:string;ok:boolean}[])if(row.ok)allowed.add(row.id);
+ }
+ return {allowed,self};
+}
+
 /**
  * R51 (baf56348) — org-scope filter for the DELEGATE-facing pending lists (leave / attendance corrections /
  * claims). RLS row visibility deliberately stays unchanged (the 1-arg visibility form is untouched — 0230's

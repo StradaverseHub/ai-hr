@@ -786,7 +786,8 @@
       "placeholder": "ค้นหารหัสพนักงานหรือชื่อ…",
       "resultsLabel": "ผลการค้นหาพนักงาน",
       "noMatches": "ไม่พบพนักงานที่ตรงกัน",
-      "currentTag": "ปัจจุบัน"
+      "currentTag": "ปัจจุบัน",
+      "loadFailed": "ไม่สามารถโหลดการค้นหาพนักงานได้ กรุณาลองอีกครั้ง"
     },
     "detail": {
       "incentiveDeclarations": {
@@ -5352,7 +5353,7 @@
     "submitDecisions": "ส่ง",
     "employeeRemark": "หมายเหตุพนักงาน",
     "closeDialog": "ปิด",
-    "bulkSelectAll": "เลือกทั้งหมด",
+    "bulkSelectAll": "เลือกทั้งหมดในหน้านี้",
     "bulkSelectRow": "เลือกคำขอ",
     "bulkSelected": "เลือกแล้ว: {count, plural, other {# คำขอ}}",
     "bulkClear": "ล้าง",

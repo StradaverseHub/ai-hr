@@ -2,13 +2,26 @@
 import type {SessionContext} from '../db/client';
 import {requireOwnHomeSubject} from './employee-home';
 import {readOwnEmployeeHomeConfiguration} from './employee-home-configuration';
-import {listPendingTasks} from './approvals-inbox';
+import {listPendingTasks,pendingTaskSummary} from './approvals-inbox';
 import {pendingStandardFeedbackTaskMetadata,pendingOnehrFeedbackTaskMetadata} from '../packs/performance/service';
 import {onboardingAssignedTaskMetadata} from '../packs/lifecycle/service';
 import {isModuleEnabled} from './entitlements';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {projectHomeAssignedWork,type EmployeeHomeTasks} from '../lib/employee-home-tasks';
 import {ASSIGNED_APPROVAL_KINDS,assignedApprovalHref,type AssignedApprovalKind} from '../lib/assigned-approval-focus';
+
+/** Summary needs the exact account total, without materializing the full Claims queue. */
+export async function countEmployeeHomeTasks(ctx:SessionContext):Promise<number>{
+ const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),
+  performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
+ const [inbox,standardFeedback,onehrFeedback,onboarding]=await Promise.all([
+  pendingTaskSummary(ctx,undefined,modules),
+  modules.performance?pendingStandardFeedbackTaskMetadata(ctx):Promise.resolve([]),
+  modules.performance?pendingOnehrFeedbackTaskMetadata(ctx):Promise.resolve([]),
+  isModuleEnabled(ctx,'lifecycle')?onboardingAssignedTaskMetadata(ctx):Promise.resolve([]),
+ ]);
+ return inbox.total+standardFeedback.length+onehrFeedback.length+onboarding.length;
+}
 
 export async function readEmployeeHomeTasks(ctx:SessionContext,employmentId?:string,page?:number):Promise<EmployeeHomeTasks>{
  const subject=await requireOwnHomeSubject(ctx,employmentId);
@@ -18,14 +31,16 @@ export async function readEmployeeHomeTasks(ctx:SessionContext,employmentId?:str
  // and the projection rightly refuses a duplicate owner identity, which failed the whole list.
  const [configuration,inbox,standardFeedback,onehrFeedback,onboarding]=await Promise.all([
   readOwnEmployeeHomeConfiguration(ctx,subject.employmentId),
-  listPendingTasks(ctx,undefined,{attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')}),
+  (page??1)<=1
+   ? pendingTaskSummary(ctx,undefined,{attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')})
+   : listPendingTasks(ctx,undefined,{attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')}).then(items=>({items,total:items.length})),
   isModuleEnabled(ctx,'performance')?pendingStandardFeedbackTaskMetadata(ctx):Promise.resolve([]),
   isModuleEnabled(ctx,'performance')?pendingOnehrFeedbackTaskMetadata(ctx):Promise.resolve([]),
   isModuleEnabled(ctx,'lifecycle')?onboardingAssignedTaskMetadata(ctx):Promise.resolve([]),
  ]);
  return projectHomeAssignedWork([
-  ...inbox.map(row=>ASSIGNED_APPROVAL_KINDS.some(kind=>kind===row.kind)?{...row,linkPath:assignedApprovalHref({kind:row.kind as AssignedApprovalKind,id:row.id})}:
+  ...inbox.items.map(row=>ASSIGNED_APPROVAL_KINDS.some(kind=>kind===row.kind)?{...row,linkPath:assignedApprovalHref({kind:row.kind as AssignedApprovalKind,id:row.id})}:
    row.kind==='profile'?{...row,linkPath:`/admin/personnel/profile-changes?requestId=${row.id}&assigned=1#request-${row.id}`}:row),
   ...[...standardFeedback,...onehrFeedback,...onboarding].map(row=>({id:row.id,kind:row.kind,subjectName:row.subjectName,createdAt:row.sourceUpdatedAt.toISOString(),linkPath:row.linkPath,...(row.dueDate?{dueDate:row.dueDate}:{})})),
- ],{employmentId:subject.employmentId,today:todayInKualaLumpur(),page,effortMinutes:configuration.configuration.effortMinutes});
+ ],{employmentId:subject.employmentId,today:todayInKualaLumpur(),page,omittedClaims:inbox.total-inbox.items.length,effortMinutes:configuration.configuration.effortMinutes});
 }
