@@ -1,3 +1,4 @@
+import {PAY_FORMULA_PERSONNEL_ADAPTERS} from './pay-formula-personnel';
 /** The closed, typed variable vocabulary shared by both formula editors and authorized providers. */
 export type FormulaType = 'decimal' | 'string' | 'boolean' | 'date';
 export type FormulaValue = {type:'decimal';value:string}|{type:'string';value:string}|{type:'boolean';value:boolean}|{type:'date';value:string};
@@ -7,8 +8,8 @@ export const PAY_FORMULA_REGISTRY_VERSION = 'payroll-formula-1';
 /** Bump when Native source selection, authorization or numeric boundary semantics change. */
 export const PAY_FORMULA_PROVIDER_VERSION = 'native-payroll-sources-1';
 export const PAY_FORMULA_FIELD_TYPES:Readonly<Record<'profile'|'employee',Readonly<Record<string,FormulaType>>>> = {
- profile:{joinDate:'date',groupJoinDate:'date',resignationDate:'date',confirmationDate:'date',lastWorkingDate:'date',employmentType:'string',employeeNo:'string',departmentCode:'string',positionCode:'string',gradeCode:'string'},
- employee:{dateOfBirth:'date',gender:'string',nationality:'string',maritalStatus:'string'},
+ profile:{...Object.fromEntries(PAY_FORMULA_PERSONNEL_ADAPTERS.filter(a=>a.group==='profile').map(a=>[a.key,a.type])),joinDate:'date',groupJoinDate:'date',resignationDate:'date',confirmationDate:'date',lastWorkingDate:'date',employmentType:'string',employeeNo:'string',departmentCode:'string',positionCode:'string',gradeCode:'string'},
+ employee:{...Object.fromEntries(PAY_FORMULA_PERSONNEL_ADAPTERS.filter(a=>a.group==='employee').map(a=>[a.key,a.type])),dateOfBirth:'date',gender:'string',nationality:'string',maritalStatus:'string'},
 };
 const code:FormulaParameter={name:'Pay Item Code',type:'string',literal:true};
 const item=(codeName:string,category:string,label:string,description:string,source:string,aliases:string[]=[]):FormulaFunction=>({code:codeName,aliases,category,label,description,returns:'decimal',parameters:[code],source});

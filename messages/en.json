@@ -33074,6 +33074,41 @@
     }
   },
   "payFormula": {
+    "personnelLibrary": {
+      "help": "Personnel values stay inside authorised payroll testing and calculation. Fields with no usable period source remain unavailable.",
+      "groups": {
+        "employee": "Profile",
+        "profile": "Employment"
+      },
+      "types": {
+        "string": "Text",
+        "decimal": "Number",
+        "date": "Date",
+        "boolean": "Yes / No"
+      },
+      "dates": {
+        "current-only": "Current record only; unavailable for historical payroll dates",
+        "effective-date": "Effective at the selected payroll date",
+        "legacy-current-snapshot": "Existing source contract: recorded snapshot; not certified historical data"
+      },
+      "reasons": {
+        "repeating": "Repeating records need an explicit selection or aggregation rule.",
+        "file": "Files are not scalar formula values.",
+        "draft": "This draft-only field has no recorded employee source.",
+        "adapter": "This field needs a supported source adapter before it can be used.",
+        "permission": "Your field permission does not permit this source.",
+        "disabled": "The formula administrator disabled this source."
+      },
+      "insertField": "Insert field",
+      "permittedValues": "Permitted list values · insert a literal",
+      "register": "Register a Personnel field",
+      "registerHelp": "Choose an existing supported typed source. Registration changes its library label, description and availability; it cannot add a source connection or executable code. Affected formulas require new validation and testing.",
+      "source": "Supported typed source",
+      "label": "Library field name",
+      "description": "Description",
+      "enabled": "Enable this source for new validation and testing",
+      "saveRegistration": "Save field registration"
+    },
     "title": "Pay Formula Builder",
     "subtitle": "Build, test and version payroll formulas.",
     "back": "Payroll settings",

@@ -33074,6 +33074,41 @@
     }
   },
   "payFormula": {
+    "personnelLibrary": {
+      "help": "Nilai pekerja kekal dalam ujian dan pengiraan gaji yang dibenarkan. Medan tanpa sumber bagi tempoh dipilih tidak tersedia.",
+      "groups": {
+        "employee": "Profil",
+        "profile": "Pekerjaan"
+      },
+      "types": {
+        "string": "Teks",
+        "decimal": "Nombor",
+        "date": "Tarikh",
+        "boolean": "Ya / Tidak"
+      },
+      "dates": {
+        "current-only": "Rekod semasa sahaja; tidak tersedia untuk tarikh gaji lampau",
+        "effective-date": "Berkuat kuasa pada tarikh gaji dipilih",
+        "legacy-current-snapshot": "Kontrak sumber sedia ada: petikan direkodkan; bukan data sejarah disahkan"
+      },
+      "reasons": {
+        "repeating": "Rekod berulang memerlukan peraturan pemilihan atau pengagregatan yang jelas.",
+        "file": "Fail bukan nilai skalar formula.",
+        "draft": "Medan draf ini tiada sumber pekerja direkodkan.",
+        "adapter": "Medan ini memerlukan penyesuai sumber yang disokong.",
+        "permission": "Kebenaran medan anda tidak membenarkan sumber ini.",
+        "disabled": "Pentadbir formula melumpuhkan sumber ini."
+      },
+      "insertField": "Sisipkan medan",
+      "permittedValues": "Nilai senarai dibenarkan · sisipkan literal",
+      "register": "Daftar medan pekerja",
+      "registerHelp": "Pilih sumber berjenis yang disokong. Pendaftaran menukar nama, penerangan dan ketersediaan dalam pustaka; ia tidak menambah sambungan sumber atau kod boleh laksana. Formula terjejas memerlukan pengesahan dan ujian baharu.",
+      "source": "Sumber berjenis yang disokong",
+      "label": "Nama medan pustaka",
+      "description": "Penerangan",
+      "enabled": "Dayakan sumber untuk pengesahan dan ujian baharu",
+      "saveRegistration": "Simpan pendaftaran medan"
+    },
     "title": "Pembina Formula Gaji",
     "subtitle": "Bina, uji dan versi formula gaji.",
     "back": "Tetapan gaji",

@@ -1526,3 +1526,12 @@ The Rewards branch preserves the complete main/alpha b6077019c journal prefix th
 This additive Rewards-only designation stores explicitly reviewed company UUIDs and canonical alias
 UUIDs; no name inference, backfill, company merge, saved-policy rewrite or production data action.
 Recheck every then-applied prefix and competing claim at integration/release admission.
+
+## Approved Personnel formula registry — 4 November 2026 (unapplied)
+
+Coordinator reserved `2110_pay_formula_personnel_registry`, idx1357 / when1793330001510,
+after sibling Rewards2108/1355/1508 and Organization2109/1356/1509. This source branch preserves
+the complete b6077019c journal prefix through2011/811/1411. Registration metadata selects only
+closed typed source keys: it cannot supply executable SQL, table names, columns or source code.
+No production registration or migration has been applied. Reconcile all then-applied prefixes
+and concurrent allocations before release admission.

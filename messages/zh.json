@@ -33074,6 +33074,41 @@
     }
   },
   "payFormula": {
+    "personnelLibrary": {
+      "help": "人员数值仅用于授权的薪资测试和计算。没有适用期间数据来源的字段将不可用。",
+      "groups": {
+        "employee": "个人资料",
+        "profile": "雇佣资料"
+      },
+      "types": {
+        "string": "文本",
+        "decimal": "数字",
+        "date": "日期",
+        "boolean": "是 / 否"
+      },
+      "dates": {
+        "current-only": "仅当前记录；历史薪资日期不可用",
+        "effective-date": "适用于所选薪资日期",
+        "legacy-current-snapshot": "原有来源约定：记录的快照；未经确认为历史数据"
+      },
+      "reasons": {
+        "repeating": "多条记录需要明确的选择或汇总规则。",
+        "file": "文件不能作为公式标量值。",
+        "draft": "此草稿字段没有已记录的员工来源。",
+        "adapter": "此字段需要受支持的数据源适配器。",
+        "permission": "您的字段权限不允许使用此来源。",
+        "disabled": "公式管理员已停用此来源。"
+      },
+      "insertField": "插入字段",
+      "permittedValues": "允许的列表值 · 插入字面值",
+      "register": "注册人员字段",
+      "registerHelp": "请选择现有受支持的类型化来源。注册可修改资料库名称、说明和可用性，不能添加来源连接或可执行代码。受影响公式必须重新验证和测试。",
+      "source": "受支持的类型化来源",
+      "label": "资料库字段名称",
+      "description": "说明",
+      "enabled": "启用此来源供新验证和测试使用",
+      "saveRegistration": "保存字段注册"
+    },
     "title": "薪资公式构建器",
     "subtitle": "编写、测试及管理薪资公式版本。",
     "back": "薪资设置",
