@@ -33,8 +33,11 @@ it('retains actual employee/manager/company-HR/group-HR row boundaries',async()=
  await resetDb();const b=await seedBase(),foreign=await seedBase(),group=adminCtx(b),child=randomUUID(),sibling=randomUUID();
  await owner.client`insert into company(id,tenant_id,legal_name,country,parent_company_id) values
   (${child},${b.tenantId},'Fictional grant child','MY',${b.companyId}),(${sibling},${b.tenantId},'Fictional grant sibling','MY',null)`;
- const hire=(ctx:SessionContext,companyId:string,name:string)=>hireEmployee(ctx,{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},companyId,employmentType:'full_time',hiredOn:'2020-01-01'});
- const manager=await hire(group,b.companyId,'Fictional manager'),report=await hire(group,child,'Fictional report'),employee=await hire(group,sibling,'Fictional employee'),outside=await hire(adminCtx(foreign),foreign.companyId,'Fictional foreign');
+ const childDepartment=randomUUID(),siblingDepartment=randomUUID();
+ await owner.client`insert into department(id,tenant_id,company_id,name) values
+  (${childDepartment},${b.tenantId},${child},'Fictional child department'),(${siblingDepartment},${b.tenantId},${sibling},'Fictional sibling department')`;
+ const hire=(ctx:SessionContext,companyId:string,departmentId:string,name:string)=>hireEmployee(ctx,{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},companyId,departmentId,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const manager=await hire(group,b.companyId,b.deptA,'Fictional manager'),report=await hire(group,child,childDepartment,'Fictional report'),employee=await hire(group,sibling,siblingDepartment,'Fictional employee'),outside=await hire(adminCtx(foreign),foreign.companyId,foreign.deptA,'Fictional foreign');
  const managerUser=await createAppUser(b.tenantId,manager.personId,'manager'),employeeUser=await createAppUser(b.tenantId,employee.personId,'employee'),hrUser=await createAppUser(b.tenantId,null,'hr_admin');
  await owner.client`update role_assignment set company_id=${b.companyId} where tenant_id=${b.tenantId} and app_user_id=${hrUser}`;
  await owner.client`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from)
