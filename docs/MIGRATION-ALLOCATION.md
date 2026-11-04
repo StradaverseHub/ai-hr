@@ -1530,3 +1530,7 @@ the complete b6077019c journal prefix through2011/811/1411. Registration metadat
 closed typed source keys: it cannot supply executable SQL, table names, columns or source code.
 No production registration or migration has been applied. Reconcile all then-applied prefixes
 and concurrent allocations before release admission.
+
+## 2026-11-04 Probation organisation mapping source reservation
+
+`2111_probation_personnel_mapping`, idx `1358`, when `1793330001511`, reserved by the root approved-item coordinator. No tenant mapping enabled, no live migration applied. This source creates a dormant owner-only reviewed mapping register; release and any per-tenant switch require reporter inventory review. Existing journal prefix remains unchanged.

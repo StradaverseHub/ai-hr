@@ -4691,6 +4691,13 @@
       "when": 1793330001510,
       "tag": "2110_pay_formula_personnel_registry",
       "breakpoints": true
+    },
+    {
+      "idx": 1358,
+      "version": "7",
+      "when": 1793330001511,
+      "tag": "2111_probation_personnel_mapping",
+      "breakpoints": true
     }
   ]
 }
