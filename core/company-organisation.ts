@@ -1,6 +1,7 @@
 /** One dated company-to-organisation owner. SQL owns approval, snapshots, staging and publication. */
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {refreshOrganisationAdmission} from '../lib/internal-auth/organisation-admission';
 import {isCalendarDate} from '../lib/calendar-date';
 export type CompanyOrganisationTags={companyId:string;businessUnitId:string|null;parentCompanyId:string|null;businessGroupId:string|null;mappingVersionId:string|null;status:'legacy'|'ready'|'pending';reason:string|null};
 export type CompanyOrganisationChange={companyId:string;businessUnitId:string|null;parentCompanyId:string|null};
@@ -18,12 +19,12 @@ export async function employmentOrganisationTagsTx(tx:Tx,_ctx:SessionContext,p:{
 export async function recordEmploymentOrganisationTagsTx(tx:Tx,_ctx:SessionContext,p:{employmentId:string;companyId:string;asOf:string;trigger:string}):Promise<CompanyOrganisationTags>{
  const [row]=await tx.execute<{tags:CompanyOrganisationTags}>(sql`select app.record_employment_organisation_tags(${p.employmentId}::uuid,${p.companyId}::uuid,${day(p.asOf)}::date,${p.trigger}) tags`);if(!row?.tags)throw Error('Employee organisation is unavailable.');return row.tags;
 }
-export function prepareCompanyOrganisationRun(ctx:SessionContext,input:CompanyOrganisationRunInput){return withTenant(ctx,async tx=>{
+export async function prepareCompanyOrganisationRun(ctx:SessionContext,input:CompanyOrganisationRunInput){await refreshOrganisationAdmission(ctx);return withTenant(ctx,async tx=>{
  const [row]=await tx.execute<{id:string}>(sql`select app.prepare_company_organisation_run(${JSON.stringify({...input,effectiveOn:day(input.effectiveOn)})}::jsonb) id`);return row.id;
 });}
-export function decideCompanyOrganisationRun(ctx:SessionContext,p:{id:string;digest:string;approve:boolean;reason:string}){return withTenant(ctx,tx=>tx.execute(sql`select app.decide_company_organisation_run(${p.id}::uuid,${p.digest},${p.approve},${p.reason})`));}
+export async function decideCompanyOrganisationRun(ctx:SessionContext,p:{id:string;digest:string;approve:boolean;reason:string}){await refreshOrganisationAdmission(ctx,p.id);return withTenant(ctx,tx=>tx.execute(sql`select app.decide_company_organisation_run(${p.id}::uuid,${p.digest},${p.approve},${p.reason})`));}
 /** One bounded checkpoint phase, followed by an atomic publication when every frozen row is staged. */
-export function processCompanyOrganisationRun(ctx:SessionContext,id:string){return withTenant(ctx,async tx=>{
+export async function processCompanyOrganisationRun(ctx:SessionContext,id:string){await refreshOrganisationAdmission(ctx,id);return withTenant(ctx,async tx=>{
  const [row]=await tx.execute<{run:CompanyOrganisationRun}>(sql`select app.process_company_organisation_run(${id}::uuid,200) run`);
  if(row.run.state!=='staging'||row.run.counts.staged<row.run.counts.total)return row.run;
  await tx.execute(sql`select app.begin_company_organisation_publication(${id}::uuid)`);
@@ -32,12 +33,15 @@ export function processCompanyOrganisationRun(ctx:SessionContext,id:string){retu
  for(const item of rows)await projectEmploymentOrganisationAssignmentTx(tx,ctx,{employmentId:item.employment_id,effectiveOn:item.effective_on,trigger:'restructure'});
  const [published]=await tx.execute<{run:CompanyOrganisationRun}>(sql`select app.finish_company_organisation_publication(${id}::uuid) run`);return published.run;
 });}
-export function companyOrganisationRuns(ctx:SessionContext){return withTenant(ctx,async tx=>{
+export async function companyOrganisationRuns(ctx:SessionContext){await refreshOrganisationAdmission(ctx);
+ const ids=await withTenant(ctx,tx=>tx.execute<{id:string}>(sql`select id from company_organisation_run where tenant_id=app.current_tenant_id() order by created_at desc,id limit 30`));
+ for(const {id} of ids)await refreshOrganisationAdmission(ctx,id);
+ return withTenant(ctx,async tx=>{
  const rows=await tx.execute<{run:CompanyOrganisationRun}>(sql`select app.company_organisation_run_view(id) run from company_organisation_run where tenant_id=app.current_tenant_id() order by created_at desc,id limit 30`);return rows.map(row=>row.run);
 });}
-export function companyOrganisationRunReport(ctx:SessionContext,id:string,offset=0){return withTenant(ctx,async tx=>{
+export async function companyOrganisationRunReport(ctx:SessionContext,id:string,offset=0){await refreshOrganisationAdmission(ctx,id);return withTenant(ctx,async tx=>{
  const [row]=await tx.execute<{report:{run:CompanyOrganisationRun;rows:{employmentId:string;employee:string;employeeCode:string|null;companyId:string;company:string;projectionOn:string|null;beforeDisplay:Record<string,string|null>;afterDisplay:Record<string,string|null>;status:string;before:CompanyOrganisationTags;after:CompanyOrganisationTags;outcome:string;reason:string|null}[];hasMore:boolean}}>(sql`select app.company_organisation_run_report(${id}::uuid,${Math.max(0,Math.floor(offset))},100) report`);return row.report;
 });}
 
 export type CompanyOrganisationOptions={managed:boolean;companies:{id:string;name:string;parentCompanyId:string|null;businessUnitId:string|null;units:{id:string;name:string}[]}[]};
-export function companyOrganisationOptions(ctx:SessionContext){return withTenant(ctx,async tx=>{const [row]=await tx.execute<{options:CompanyOrganisationOptions}>(sql`select app.company_organisation_options() options`);return row.options;});}
+export async function companyOrganisationOptions(ctx:SessionContext){await refreshOrganisationAdmission(ctx);return withTenant(ctx,async tx=>{const [row]=await tx.execute<{options:CompanyOrganisationOptions}>(sql`select app.company_organisation_options() options`);return row.options;});}
