@@ -21,6 +21,7 @@ function authSql(tx:Tx):AuthSql {
  }} as unknown as AuthSql;
 }
 async function withAccount<T>(ctx:SessionContext,userId:string,operation:(tx:Tx,auth:AuthSql,c:Credential)=>Promise<T>):Promise<T>{
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  if(!internalSelected()||!ctx.userId||!isAdmin(ctx)||! /^[0-9a-f-]{36}$/i.test(userId))throw Error('forbidden');
  return withTenant(ctx,async tx=>{
   const issuer=internalIssuer(ctx.tenantId);
@@ -46,11 +47,14 @@ export type AccountCommand=
  |{type:'recovery-exemption';reason:string;minutes:number}
  |{type:'reset-email';reason:string};
 export async function manageAccount(ctx:SessionContext,userId:string,command:AccountCommand){
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ command=structuredClone(command);
+ if(!['suspend','reactivate','expiry','temporary-password','recovery-exemption','reset-email'].includes(command.type))throw Error('invalid');
  const reason=command.reason.trim();if(reason.length<5||reason.length>500)throw Error('invalid');
  const result=await withAccount(ctx,userId,async(tx,auth,c)=>{
   if(!c.enabled)throw Error('invalid'); // Provisioning/activation retains its existing owner.
   let password:string|undefined;
-  const metadata:Record<string,unknown>={reason};
+  const metadata:Record<string,unknown>={reason,beforeStatus:c.suspended?'suspended':accountAvailable(c)?'active':'expired'};
   if(command.type==='suspend'){c.suspended=true;}
   if(command.type==='reactivate'){
    if(c.accountActiveUntil&&c.accountActiveUntil<todayInKualaLumpur())throw Error('expired');
@@ -77,11 +81,15 @@ export async function manageAccount(ctx:SessionContext,userId:string,command:Acc
   c.version=randomUUID();
   await revokeCredentialsSessions(auth,c.subject);
   await writeRecord(auth,`credential:${c.subject}`,c,c.subject);
+  metadata.afterStatus=c.suspended?'suspended':accountAvailable(c)?'active':'expired';
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'app-user',aggregateId:userId,eventType:`app-user.account-${command.type}`,actor:actorOf(ctx),payload:metadata});
   return {password,organization:c.organization,username:c.username};
  });
  let delivery:'sent'|'failed'|'skipped'|'uncertain'|undefined;
- if(command.type==='reset-email'){delivery='uncertain';await requestRecovery(result.organization,result.username,undefined,attempt=>attempt(),false,'en',status=>{delivery=status;});}
+ if(command.type==='reset-email'){
+  delivery='uncertain';
+  try{await requestRecovery(result.organization,result.username,undefined,attempt=>attempt(),false,'en',status=>{delivery=status;});}catch{delivery='failed';}
+ }
  return {password:result.password,delivery};
 }
 

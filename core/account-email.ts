@@ -10,7 +10,7 @@ import {AccountEmailDeliveryError,type AccountEmailProvider,type AccountEmailDel
 /** No business transaction spans the provider call. A lost result remains held, never auto-retried. */
 export async function attemptAccountEmail(id:string,leaseToken:string,provider:AccountEmailProvider,invitationToken?:string,onResult?:(status:'sent'|'failed'|'skipped'|'uncertain')=>void):Promise<void>{
  const hash=invitationToken?createHash('sha256').update(invitationToken).digest('hex'):null;
- const finish=async(status:'sent'|'failed'|'skipped',error:AccountEmailError|null)=>{await client`select app.account_email_finish(${id}::uuid,${leaseToken}::uuid,${status},${error})`;onResult?.(status);};
+ const finish=async(status:'sent'|'failed'|'skipped',error:AccountEmailError|null)=>{const [result]=await client`select app.account_email_finish(${id}::uuid,${leaseToken}::uuid,${status},${error}) as finished`;onResult?.(result?.finished?status:'uncertain');};
  try{
   const [target]=await client<{kind:'invitation'|'recovery';email:string}[]>`select * from app.account_email_target(${id}::uuid,${leaseToken}::uuid,${hash})`;
   if(!target){await finish('skipped','notEligible');return;}

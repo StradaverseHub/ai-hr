@@ -35180,6 +35180,7 @@
       "failed": "Penghantaran e-mel gagal. Semak log sebelum mencuba semula.",
       "skipped": "Tiada e-mel dihantar. Semak kelayakan akaun dan had kadar.",
       "uncertain": "Penghantaran tidak dapat disahkan. Semak log sebelum mencuba semula."
-    }
+    },
+    "confirmPassword": "Sahkan kata laluan yang dimasukkan"
   }
 }

@@ -10,7 +10,10 @@ export async function accountAction(_state:AccountActionState,form:FormData):Pro
   let command:AccountCommand;
   if(type==='suspend'||type==='reactivate'||type==='reset-email')command={type,reason};
   else if(type==='expiry')command={type,reason,activeUntil:String(form.get('activeUntil')??'')||null};
-  else if(type==='temporary-password')command={type,reason,password:String(form.get('password')??'')||undefined,minutes:Number(form.get('minutes'))};
+  else if(type==='temporary-password'){
+   const password=String(form.get('password')??'');if(password&&password!==String(form.get('confirmPassword')??''))throw Error('invalid');
+   command={type,reason,password:password||undefined,minutes:Number(form.get('minutes'))};
+  }
   else if(type==='recovery-exemption')command={type,reason,minutes:Number(form.get('minutes'))};
   else throw Error('invalid');
   const result=await manageAccount(await getSession(),userId,command);
