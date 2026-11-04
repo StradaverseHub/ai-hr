@@ -56,7 +56,7 @@ it('rejects borrowed/expired tokens and drops a cached match whose source row ch
 it('combines stable grade codes, position and dates before pagination and displays the full Business Unit name',async()=>{
  const [grade]=await owner.db.insert(s.jobGrade).values({tenantId:b.tenantId,code:'12',name:'Grade Twelve label'}).returning();
  const [unit]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'SHORT',label:'Short label',name:'Fictional full Business Unit name retained in Personnel and exports'}).returning();
- const employee=await hire('Full named unit',{gradeId:grade.id,businessUnitId:unit.id,positionId:b.positionId,joinDate:'2024-03-01'});await hire('Other grade');
+ const employee=await hire('Full named unit',{gradeId:grade.id,businessUnitId:unit.id,positionId:b.positionId,hiredOn:'2024-03-01'});await hire('Other grade');
  const filters={companyIds:[b.companyId],jobGrades:['12'],positionIds:[b.positionId],businessUnitIds:[unit.id],joinedFrom:'2024-01-01',joinedTo:'2024-12-31'};
  const page=await listEmployeesPage(ctx,{...filters,limit:1,offset:0},'workforce');expect(page.rows.map(row=>row.employmentId)).toEqual([employee.employmentId]);expect(page.rows[0].businessUnit).toBe(unit.name);expect(page.total).toBe(1);expect((await countEmployeesByStatus(ctx,filters,'workforce')).total).toBe(1);
  expect((await list({jobGrades:['23']})).total).toBe(0);
