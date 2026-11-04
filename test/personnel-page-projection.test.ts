@@ -5,7 +5,7 @@ import {afterAll,beforeAll,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {withTenant} from '../db/client';
-import {countEmployeesByStatus,listEmployeesPage,personnelListPage} from '../core/read';
+import {countEmployeesByStatus,listEmployeesPage,personnelListPage,type EmployeeListFilters} from '../core/read';
 import {headcountFilters,parsePersonnelListQuery,type PersonnelSearchParams} from '../app/admin/personnel/list-query';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
@@ -50,6 +50,23 @@ it('retains native scope, exact rows/order, pager and status facets while evalua
  expect(empty).toEqual({rows:[],total:0,headcount:{total:0,byStatus:{}}});
  const foreignOnly=await personnelListPage(ctx,{...all.page,companyIds:[foreign.companyId]},{...all.facets,companyIds:[foreign.companyId]});
  expect(foreignOnly).toEqual(empty);
+ // Combined counting must retain independently filtered page/facet populations, including
+ // zero page rows with nonzero facets and the inverse. Separate legacy readers are the oracle.
+ const independentFilters:{page:EmployeeListFilters;facets:EmployeeListFilters;limit?:number;offset?:number}[]=[
+  {page:{q:'NO_MATCH'},facets:{}},
+  {page:{},facets:{q:'NO_MATCH'}},
+  {page:{departmentIds:[b.deptA]},facets:{departmentIds:[b.deptB]}},
+  {page:{companyIds:[]},facets:{}},
+  {page:{},facets:{companyIds:[]}},
+  {page:{employmentStatuses:['resigned']},facets:{employmentStatuses:['active']}},
+  {page:{q:'MAIN000010'},facets:{q:'MAIN000010'},limit:0},
+  {page:{},facets:{},offset:employees.length+10},
+ ];
+ for(const input of independentFilters){
+  const page={...all.page,...input.page,limit:input.limit??25,offset:input.offset??0},facets={...all.facets,...input.facets};
+  const [legacyPage,legacyFacets]=await Promise.all([listEmployeesPage(ctx,page,'workforce'),countEmployeesByStatus(ctx,facets,'workforce')]);
+  expect(await personnelListPage(ctx,page,facets)).toEqual({...legacyPage,headcount:legacyFacets});
+ }
  const pairedTimings: {round:number;order:string;legacyMs:number;composedMs:number}[]=[];
  for(let round=0;round<4;round++){
   let legacyMs=0,composedMs=0;
