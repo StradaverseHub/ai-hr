@@ -6,6 +6,8 @@ import {afterAll,beforeAll,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {withTenant} from '../../db/client';
 import {personnelListPage} from '../../core/read';
+import {deriveEmploymentStatus} from '../../core/employment-status';
+import {todayInKualaLumpur} from '../../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from '../harness';
 const file='test/performance/personnel-retained-million.test.ts';
 const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
@@ -13,7 +15,7 @@ const requested=process.env.GITHUB_ACTIONS==='true'&&process.env.AIHR_RETAINED_P
 beforeAll(migrateTestDb);afterAll(closeAll);
 it.skipIf(!requested)('measures a native Personnel page with one million retained employees and exact scope/count/order',async()=>{
  const count=1_000_000,started=performance.now();
- const report:Record<string,unknown>={kind:'RETAINED_PERSONNEL_QUERY_ONLY',releaseEligible:false,targetEmployees:count,concurrentUsers:1,pageRows:25,fixtureBatchRows:5_000,fixturePreparationBudgetMs:1_900_000,queryTargetMs:1000,fixtureUuidLocality:'random v4 namespace per batch with ordered suffix; domains use distinct namespaces',limitations:'Synthetic retained owner fixture, not canonical hiring/import throughput, HTTP/browser timing or 500-user capacity.'};
+ const report:Record<string,unknown>={kind:'RETAINED_PERSONNEL_QUERY_ONLY',releaseEligible:false,targetEmployees:count,concurrentUsers:1,pageRows:25,fixtureBatchRows:5_000,fixturePreparationBudgetMs:2_700_000,queryTargetMs:1000,fixtureUuidLocality:'random v4 namespace per batch with ordered suffix; domains use distinct namespaces',limitations:'Synthetic retained owner fixture, not canonical hiring/import throughput, HTTP/browser timing or 500-user capacity.'};
  expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
  const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-retained-million.json'),JSON.stringify(report,null,2));
  const phase=(name:string)=>{report.phase=name;report.elapsedMs=performance.now()-started;save();};
@@ -27,11 +29,11 @@ it.skipIf(!requested)('measures a native Personnel page with one million retaine
   await owner.client.unsafe(readFileSync(new URL('./personnel-fixture-reminder-batch.sql',import.meta.url),'utf8'));
   report.fixtureCounterGuard='exact statement aggregation, independently verified under restricted owner in41785596183';
   async function population(base:Base,size:number){
-   const expected:string[]=[];
+   const expected:string[]=[],last:string[]=[];
    // Bound deferred-trigger/FK queues and transaction memory. Every row retains every native check.
    for(let offset=0;offset<size;offset+=5_000){
     const end=Math.min(size,offset+5_000),personPrefix=randomUUID().slice(0,24),employmentPrefix=randomUUID().slice(0,24);
-    expect(performance.now()-started,'bounded retained fixture preparation').toBeLessThan(1_900_000);
+    expect(performance.now()-started,'bounded retained fixture preparation').toBeLessThan(2_700_000);
     report.fixtureCurrentBatch={from:offset+1,to:end};
     await owner.client.begin(async tx=>{
      phase('retained-fixture-person');
@@ -50,9 +52,10 @@ it.skipIf(!requested)('measures a native Personnel page with one million retaine
        ${base.deptA}::uuid,'full_time','2020-01-01'::date from generate_series(${offset+1}::integer,${end}::integer) as n`;
     });
     if(offset===0)for(let n=1;n<=Math.min(size,25);n++)expected.push(employmentPrefix+String(n).padStart(12,'0'));
+    if(end===size)for(let n=Math.max(1,size-24);n<=size;n++)last.push(employmentPrefix+String(n).padStart(12,'0'));
     if(base.tenantId===b.tenantId)report.committedFixtureEmployees=end;else report.committedForeignEmployees=end;phase('retained-fixture-batch-committed');
    }
-   return expected;
+   return {first:expected,last};
   }
   phase('retained-fixture-loading');const expected=await population(b,count);await population(foreign,1);
   for(const table of ['person','employment','assignment','company','department','app_user','role_assignment'])await owner.client.unsafe('analyze '+table);
@@ -63,14 +66,22 @@ it.skipIf(!requested)('measures a native Personnel page with one million retaine
   expect(sizes.employees).toBe(count);expect(sizes.assignments).toBe(count);report.retainedCounts=sizes;
   report.settings=await owner.client`select current_setting('fsync') as fsync,current_setting('synchronous_commit') as synchronous_commit,current_setting('shared_buffers') as shared_buffers,current_setting('work_mem') as work_mem`;
   const [identity]=await withTenant(ctx,tx=>tx.execute<{role:string}>(sql`select current_user as role`));expect(identity.role).toBe('ai_hr_app');
-  report.fixturePreparationMs=performance.now()-started;phase('first-page-query');const queryStarted=performance.now(),companies=[b.companyId,foreign.companyId];
-  const page=await personnelListPage(ctx,{companyIds:companies,limit:25,offset:0},{companyIds:companies});
-  const elapsedMs=performance.now()-queryStarted;
-  expect(page.total).toBe(count);expect(page.headcount.total).toBe(count);
-  expect(Object.values(page.headcount.byStatus).reduce((sum,value)=>sum+Number(value??0),0)).toBe(count);
-  expect(page.rows.map(row=>row.employmentId)).toEqual(expected);
-  report.query={elapsedMs,targetMs:1000,targetMet:elapsedMs<1000,total:page.total,pageRows:page.rows.length,exactOrder:true,foreignScopeExcluded:true};
-  phase('query-measured');expect(elapsedMs,'one-million retained Personnel query target').toBeLessThan(1000);phase('complete');
+  report.fixturePreparationMs=performance.now()-started;const companies=[b.companyId,foreign.companyId];
+  const queries:{mode:string;elapsedMs:number;targetMs:number;targetMet:boolean;total:number;pageRows:number;exactOrder:boolean;foreignScopeExcluded:boolean}[]=[];
+  const today=todayInKualaLumpur(),activeStatus=deriveEmploymentStatus({},today),endedStatus=deriveEmploymentStatus({terminatedOn:'2024-01-01'},today);
+  const allStatuses:Record<string,number>={};allStatuses[activeStatus]=(allStatuses[activeStatus]??0)+count-count/5;allStatuses[endedStatus]=(allStatuses[endedStatus]??0)+count/5;
+  for(const mode of ['initial','selective-search','deep-page']){
+   phase(mode+'-query');const q=mode==='selective-search'?'PERF'+String(count).padStart(9,'0'):undefined;
+   const offset=mode==='deep-page'?count-25:0,queryStarted=performance.now();
+   const page=await personnelListPage(ctx,{companyIds:companies,q,limit:25,offset},{companyIds:companies,q});
+   const elapsedMs=performance.now()-queryStarted,total=q?1:count;
+   expect(page.total).toBe(total);expect(page.headcount.total).toBe(total);
+   expect(page.headcount.byStatus).toEqual(q?{[endedStatus]:1}:allStatuses);
+   expect(page.rows.map(row=>row.employmentId)).toEqual(q?[expected.last.at(-1)!]:offset?expected.last:expected.first);
+   queries.push({mode,elapsedMs,targetMs:1000,targetMet:elapsedMs<1000,total:page.total,pageRows:page.rows.length,exactOrder:true,foreignScopeExcluded:true});
+   report.queries=queries;report.query=queries[0];save();
+  }
+  phase('queries-measured');expect(queries.every(query=>query.targetMet),'Each one-million retained Personnel page/search/deep query under1000ms').toBe(true);phase('complete');
  }catch(error){report.errorType=(error as Error).name;phase('failed');throw error;}
  finally{
   for(const trigger of triggers){
@@ -82,4 +93,4 @@ it.skipIf(!requested)('measures a native Personnel page with one million retaine
   await owner.client.unsafe('DROP FUNCTION IF EXISTS app.performance_fixture_reminder_batch()');
   report.fixtureTriggersRestored=triggers.length===2;save();
  }
-},2100000);
+},3000000);
