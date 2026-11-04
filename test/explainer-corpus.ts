@@ -58,6 +58,11 @@ export const EXPLAINER_CONVERSATIONS:readonly BaselineConversation[]=freeze([
  {id:'handbook',title:'Phase 2: what our approved policy says',turns:[
   {id:'handbook-mileage',question:'What does our company policy say the mileage rate per km is?',category:'explanation',ideal:answer('my_policy_handbook')},
  ]},
+ // AI Centre restructure (owner decision 27): the person's own "My payroll readiness" (my_payroll_readiness,
+ // core/pre-salary/ask.ts), now its own page. The ideal is the read itself, set from the capability catalogue before any run.
+ {id:'payroll-readiness',title:'AI Centre restructure: what I still need to do before payroll',turns:[
+  {id:'readiness-before-payroll',question:'What do I still need to do before this month\'s payroll cut-off?',category:'guidance',ideal:answer('my_payroll_readiness')},
+ ]},
  {id:'copilot',title:'Step 4: go-live setup co-pilot',persona:'admin',turns:[
   {id:'copilot-next',question:'We are going live soon. What should I set up next?',category:'guidance',ideal:copilot},
   {id:'copilot-first-payroll',question:'What still blocks our first payroll run?',category:'guidance',ideal:copilot},
