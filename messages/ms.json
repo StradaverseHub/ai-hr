@@ -34481,7 +34481,11 @@
       "activationHelp": "Pemilik pemasangan akan menyemak semula dan melaksanakan raptai yang diluluskan ini. Operasi kekal dimatikan sehingga semua semakan lulus.",
       "installationReference": "Rujukan pengesahan pemasangan",
       "checkActivation": "Semak status pengaktifan",
-      "activationStates": {"pending": "Pengaktifan dimohon. Rujukan: {reference}", "completed": "Pengaktifan selesai. Rujukan: {reference}", "failed": "Semakan pengaktifan gagal. Sediakan dan luluskan raptai baharu. Rujukan: {reference}"},
+      "activationStates": {
+        "pending": "Pengaktifan dimohon. Rujukan: {reference}",
+        "completed": "Pengaktifan selesai. Rujukan: {reference}",
+        "failed": "Semakan pengaktifan gagal. Sediakan dan luluskan raptai baharu. Rujukan: {reference}"
+      },
       "activationRequested": "Pengaktifan dimohon. Rujukan: {reference}",
       "approved": "Kelulusan anda telah direkodkan untuk simulasi tepat ini. Pengaktifan masih memerlukan pemilik pemasangan yang telah disahkan.",
       "approvalReason": "Sebab meluluskan simulasi ini",
@@ -34629,7 +34633,8 @@
       "priority": "Peraturan sepadan yang lebih khusus diutamakan. Bagi padanan sama khusus, peraturan terakhir digunakan.",
       "rule": "Peraturan {index}",
       "planMonths": "Tempoh pelan percubaan dalam bulan · kosong untuk semua",
-      "addRule": "Tambah peraturan mengikut skop"
+      "addRule": "Tambah peraturan mengikut skop",
+      "legacyMapping": "Versi tersimpan ini mengekalkan skop terdahulu: Kumpulan perniagaan bermaksud syarikat induk; Unit perniagaan bermaksud Unit Perniagaan Personnel. Identiti tersimpan dikekalkan."
     },
     "letters": {
       "prepareHelp": "Pratonton butiran Personel semasa yang dibenarkan dan templat yang telah disemak. Penyediaan membekukan versi surat baharu untuk penandatangan yang ditugaskan.",
