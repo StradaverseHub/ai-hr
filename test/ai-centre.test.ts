@@ -132,8 +132,8 @@ describe('AI centre tabs keep every permission identical', () => {
     // Workers is one list: the inventory is part of it, so it is no section of its own (its page forwards to Workers).
     expect(AI_MANAGEMENT_SECTIONS).not.toContain('inventory');
     expect(ADMIN_GROUPS.workers.map(item => item.section)).toEqual(['features']);
-    expect(read('app/control-tower/agents/screen.tsx')).toContain("const inventory = section==='features' ? await aiInventoryView(s, view) : null;");
-    expect(read('app/control-tower/agents/screen.tsx')).toContain("{section==='features'&&inventorySection}");
+    expect(read('app/control-tower/agents/screen.tsx')).toContain("const inventory = section==='features' ? await aiInventoryView(s, view).catch(() => null) : null;");
+    expect(read('app/control-tower/agents/screen.tsx')).toContain("{section==='features'&&(inventorySection ?? <p role=\"status\" data-inventory-unavailable");
     expect(adminGroupOf('orchestrator')).toBeNull();
   });
 

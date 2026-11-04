@@ -150,7 +150,7 @@ describe('HR capacity, as an administrator',()=>{
  it('shows the four figures, the chart drawn to scale, where the time came from and the method',async()=>{
   state.view=view();
   const rendered=wrap('en',await section({period:'last30'}));
-  expect(state.reads.filter(read=>read[0]!=='processes')).toEqual([['ledger',{period:'last30',companyId:undefined}]]);
+  expect(state.reads.filter(read=>(read as unknown[])[0]!=='processes')).toEqual([['ledger',{period:'last30',companyId:undefined}]]);
   expect(screen.getByRole('heading',{level:2,name:'HR capacity'})).toBeTruthy();
   expect(text(rendered.container)).toContain('What AI Centre did for the HR teams of the companies you administer, each measured against its own baseline.');
   // Periods: links that keep the company filter, the current one marked.
