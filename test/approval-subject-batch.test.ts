@@ -1,15 +1,16 @@
-/** Compare bounded native batch headers with the unchanged scalar purpose owner. */
+/** Installed native batch headers remain equal to the unchanged scalar purpose owner. */
 import {randomUUID} from 'node:crypto';
-import {readFileSync,writeFileSync} from 'node:fs';
+import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {assertAssignedWorkPrincipalTx} from '../core/approvals';
+import {createClaimType,pendingClaimTaskSummary} from '../packs/claims/service';
 import {AssignedWorkPrincipalUnavailableError} from '../lib/assigned-work';
 import {pgSqlState} from '../lib/db-error';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
 type Header={employment_id:string;person_id:string;employee:string;employee_code:string|null;company_id:string};
 it('preserves native approval labels, tenant scope and live authority with company-grouped admin checks',async()=>{
@@ -34,12 +35,14 @@ it('preserves native approval labels, tenant scope and live authority with compa
  const ended=randomUUID();await owner.db.insert(s.employment).values({id:ended,tenantId:b.tenantId,personId:users[4].personId,companyId:companies[9].id,hiredOn:'2010-01-01',terminatedOn:'2015-01-01'});
  const ids=[...users.map(u=>u.employmentId),ended,foreignEmployment,randomUUID(),users[4].employmentId];
  const [original]=await owner.client<{ddl:string;acl:string|null}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl from pg_proc where oid='app.delegated_approval_subject(uuid,text,text)'::regprocedure`;
+ const [installed]=await owner.client<{ddl:string;acl:string|null}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl from pg_proc where oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure`;
+ expect(installed.ddl).toContain('app.delegated_approval_subject');
  const measurements:unknown[]=[],controls:string[]=[];
  const read=(ctx:SessionContext,batch:boolean,selected=ids)=>withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
   const array=sql`array[${sql.join(selected.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
   const rows=await tx.execute<Header>(batch
-   ?sql`select * from app.performance_approval_subject_batch(${array},'claims','claims.claim') order by employment_id`
+   ?sql`select * from app.delegated_approval_subjects(${array},'claims','claims.claim') order by employment_id`
    :sql`with requested as materialized(select distinct unnest(${array}) as id)
       select requested.id as employment_id,header.* from requested
       join lateral app.delegated_approval_subject(requested.id,'claims','claims.claim') header on true order by requested.id`);
@@ -50,7 +53,6 @@ it('preserves native approval labels, tenant scope and live authority with compa
   expect(reference.map(row=>row.employment_id)).toEqual([...expected].sort());expect(current).toEqual(reference);controls.push(label);
  };
  try{
-  await owner.client.unsafe(readFileSync(new URL('./performance/approval-subject-batch-plan.sql',import.meta.url),'utf8'));
   const all=[...users.map(u=>u.employmentId),ended];
   await compare('group HR',base,all);await compare('company HR',context(users[0]),users.slice(0,50).map(u=>u.employmentId));
   await compare('employee retains active and ended own employment',context(users[4]),[users[4].employmentId,ended]);
@@ -78,17 +80,34 @@ it('preserves native approval labels, tenant scope and live authority with compa
   const oversized=await read(base,true,Array.from({length:1001},()=>users[0].employmentId)).then(()=>null,(error:unknown)=>error);
   expect(pgSqlState(oversized)).toBe('22023');
   expect(await read(base,true,[])).toEqual([]);
-  const [access]=await owner.client`select has_function_privilege('ai_hr_app','app.performance_approval_subject_batch(uuid[],text,text)','EXECUTE')as app_execute,
-   exists(select 1 from pg_proc p cross join lateral aclexplode(p.proacl)a where p.oid='app.performance_approval_subject_batch(uuid[],text,text)'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE')as public_execute`;
+  const [access]=await owner.client`select has_function_privilege('ai_hr_app','app.delegated_approval_subjects(uuid[],text,text)','EXECUTE')as app_execute,
+   exists(select 1 from pg_proc p cross join lateral aclexplode(p.proacl)a where p.oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE')as public_execute`;
   expect(access).toEqual({app_execute:true,public_execute:false});
   for(const [phase,batch] of [['original',false],['candidate',true],['original-warm',false],['candidate-warm',true]] as const){
    const started=performance.now();for(let i=0;i<5;i++)expect(await read(base,batch)).toHaveLength(all.length);
    measurements.push({phase,reads:5,subjectsPerRead:all.length,elapsedMs:performance.now()-started});
   }
  }finally{
-  await owner.client.unsafe('DROP FUNCTION IF EXISTS app.performance_approval_subject_batch(uuid[],text,text)');
+  const [after]=await owner.client<{ddl:string;acl:string|null}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl from pg_proc where oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure`;
+  expect(after).toEqual(installed);
   const [restored]=await owner.client<{ddl:string;acl:string|null}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl from pg_proc where oid='app.delegated_approval_subject(uuid,text,text)'::regprocedure`;
   expect(restored).toEqual(original);
-  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'approval-subject-batch-plan.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_APPROVAL_LABEL_COMPONENT_ONLY',fixturePrincipals:500,controls,measurements,canonicalScalarUnchanged:true,temporaryFunctionDropped:true},null,2));
+  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'approval-subject-batch.json'),JSON.stringify({kind:'INSTALLED_NATIVE_APPROVAL_LABEL_COMPONENT_ONLY',fixturePrincipals:500,controls,measurements,canonicalScalarUnchanged:true,installedDefinitionUnchanged:true},null,2));
  }
 },300000);
+
+it('splits more than one thousand pending subjects without truncating the exact task count or preview order',async()=>{
+ await resetDb();const b=await seedBase(),ctx:SessionContext={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
+ await setModule(b.tenantId,'claims','active');
+ const people=Array.from({length:1001},(_,i)=>({id:randomUUID(),employmentId:randomUUID(),name:'Fictional batch boundary '+i}));
+ await owner.db.insert(s.person).values(people.map(p=>({id:p.id,tenantId:b.tenantId,fullName:p.name,primaryEmail:p.id+'@example.invalid'})));
+ await owner.db.insert(s.employment).values(people.map(p=>({id:p.employmentId,tenantId:b.tenantId,personId:p.id,companyId:b.companyId,hiredOn:'2020-01-01'})));
+ const type=await createClaimType(ctx,{code:'BATCH_BOUNDARY',name:'Fictional batch boundary',requiresReceipt:false,defaultTaxable:false});
+ const ids=people.map(()=>randomUUID()).sort();
+ await owner.db.insert(s.claimRequest).values(people.map((p,i)=>({id:ids[i],tenantId:b.tenantId,employmentId:p.employmentId,claimTypeId:type.id,amount:'1.00',incurredOn:'2026-01-01',status:'pending' as const,createdAt:new Date('2026-01-02T00:00:00Z')})));
+ const started=performance.now(),result=await pendingClaimTaskSummary(ctx,[b.companyId]);
+ expect(result.total).toBe(1001);expect(result.items.map(row=>row.id)).toEqual(ids.slice(0,25));
+ expect(new Set(result.items.map(row=>row.employmentId)).size).toBe(25);
+ expect(await pendingClaimTaskSummary(ctx,[])).toEqual({items:[],total:0});
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'approval-subject-batch-boundary.json'),JSON.stringify({kind:'INSTALLED_CLAIMS_BATCH_BOUNDARY_ONLY',subjects:1001,exactTotal:result.total,pageRows:result.items.length,exactPreviewOrder:true,elapsedMs:performance.now()-started},null,2));
+},180000);

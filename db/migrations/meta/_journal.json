@@ -4726,6 +4726,13 @@
       "when": 1793330001524,
       "tag": "2124_ai_control_navigation_candidates",
       "breakpoints": true
+    },
+    {
+      "idx": 1372,
+      "version": "7",
+      "when": 1793330001525,
+      "tag": "2125_approval_subject_batch",
+      "breakpoints": true
     }
   ]
 }

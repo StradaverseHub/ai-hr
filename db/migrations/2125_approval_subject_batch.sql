@@ -1,5 +1,7 @@
--- Hosted reversible experiment only; no journal identity or installation authority.
-CREATE FUNCTION app.performance_approval_subject_batch(subject_ids uuid[],wanted_module text,wanted_task text)
+-- Bounded approval-subject projection through the existing native administrator/visibility owners.
+-- Administrator authority is evaluated once per candidate company; every other candidate uses
+-- the unchanged scalar delegated purpose reader. No Claim RLS, decision, write or identity owner changes.
+CREATE FUNCTION app.delegated_approval_subjects(subject_ids uuid[],wanted_module text,wanted_task text)
 RETURNS TABLE(employment_id uuid,person_id uuid,employee text,employee_code text,company_id uuid)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
@@ -23,5 +25,7 @@ BEGIN
  FROM non_admin c JOIN LATERAL app.delegated_approval_subject(c.id,wanted_module,wanted_task) s ON true;
 END;
 $$;
-REVOKE ALL ON FUNCTION app.performance_approval_subject_batch(uuid[],text,text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.performance_approval_subject_batch(uuid[],text,text) TO ai_hr_app;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.delegated_approval_subjects(uuid[],text,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.delegated_approval_subjects(uuid[],text,text) TO ai_hr_app;

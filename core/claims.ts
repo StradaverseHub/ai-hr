@@ -3987,21 +3987,27 @@ export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:st
 async function pendingClaimSubjectsTx(tx:Tx,ctx:SessionContext,companyIds:string[]|undefined){
   await assertAssignedWorkPrincipalTx(tx,ctx);
   if(companyIds?.length===0)return [];
-  // The native SELECT policies admit ordinary visible subjects or Claims delegates. Enumerate
-  // those existing owners once, then probe pending existence through actual Claim RLS. DISTINCT
-  // over historical requests otherwise scans every retained pending row just to discover subjects.
-  // Keep the delegated header owner: ordinary employment RLS can hide a valid delegate.
+  // Preserve the native visibility/delegation candidate owners and actual Claim RLS.
+  // Probe pending existence before projecting labels, then keep each native call bounded.
   const subjects=await tx.execute<{employmentId:string;personId:string;employee:string}>(sql`
    with candidate_subjects as materialized (
     select unnest(app.visible_employment_ids()) as employment_id
     union select unnest(app.delegated_subject_ids('claims','claims.claim')) as employment_id
-   ) select candidate.employment_id as "employmentId",approval_subject.person_id as "personId",approval_subject.employee
-   from candidate_subjects candidate
-   inner join lateral app.delegated_approval_subject(candidate.employment_id,'claims','claims.claim') as approval_subject on true
+   ), pending_subjects as materialized (
+    select candidate.employment_id from candidate_subjects candidate
+    where exists(select 1 from public.claim_request pending where pending.tenant_id=${ctx.tenantId}::uuid
+     and pending.employment_id=candidate.employment_id and pending.status='pending')
+   ), numbered_subjects as (
+    select employment_id,(row_number() over(order by employment_id)-1)/1000 as bucket from pending_subjects
+   ), subject_batches as (
+    select array_agg(employment_id order by employment_id) as ids from numbered_subjects group by bucket
+   )
+   select approval_subject.employment_id as "employmentId",approval_subject.person_id as "personId",approval_subject.employee
+   from subject_batches batch
+   cross join lateral app.delegated_approval_subjects(batch.ids,'claims','claims.claim') approval_subject
    where not app.is_self_person(approval_subject.person_id)
-    and ${companyIds===undefined?sql`true`:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}
-    and exists(select 1 from public.claim_request pending where pending.tenant_id=${ctx.tenantId}::uuid
-     and pending.employment_id=candidate.employment_id and pending.status='pending')`);
+    and ${companyIds===undefined?sql`true`:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}`);
+
   return filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
 }
 

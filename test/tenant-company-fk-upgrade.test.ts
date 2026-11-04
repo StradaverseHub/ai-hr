@@ -103,7 +103,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    TAIL.map(row=>({hash:hash(readFileSync('db/migrations/'+row.tag+'.sql')),created_at:String(row.when)})));
   expect(await native()).toEqual(upgradeNative);
   const afterPrivileges=await privileges();
-  const addedFunctions=['app.attendance_frozen_actor_identity_keys(jsonb,text)','app.may_have_attendance_task_metadata()'];
+  const addedFunctions=['app.attendance_frozen_actor_identity_keys(jsonb,text)','app.delegated_approval_subjects(uuid[],text,text)','app.may_have_attendance_task_metadata()'];
   const beforeFunctions=new Set(beforePrivileges.functions.map(row=>row.fn));
   expect(afterPrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
   for(const fn of addedFunctions){
@@ -112,7 +112,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
     from pg_proc p where p.oid=to_regprocedure(${fn})`;
    expect(permission).toEqual({app_execute:true,public_execute:false});
   }
-  // The two explicitly installed helpers are the only new function privileges. Every prior
+  // The three explicitly installed helpers are the only new function privileges. Every prior
   // function ACL and every table/column/policy privilege must still match the populated baseline.
   expect({...afterPrivileges,functions:afterPrivileges.functions.filter(row=>!addedFunctions.includes(row.fn))}).toEqual(beforePrivileges);
   const installed=await keys();

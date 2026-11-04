@@ -1623,3 +1623,27 @@ Native reversible experiment41832085030 passed11 live scope-change controls and
 evidence only; installed migration, quota/concurrency and combined browser/load checks
 remain required. Recheck competing claims and the live watermark before installation.
 Complete BOARD roles remains excluded. No deployment or provider approval is authorized.
+
+## Bounded native approval-subject projection — 4 November 2026 (uninstalled candidate)
+
+`codex/performance-claims-native-batch-20261104` reserves `2125_approval_subject_batch`,
+idx1372 / when1793330001525 / SQL SHA256 `46573298e6faa5545dccf3c7ac5fda930ac48860636630dc4d3bd14e546a5461`.
+A fresh fetch and scan covered2300 distinct heads,428 committed journals,
+580 committed migration trees and211 readable worktrees, through
+2124 / idx1371 / when1793330001524. The foreign malformed journal and its literal
+bounds were preserved and included. Read-only staging inspection again matched all671
+ordered canonical applied identities through1793330001502 on dc1c70deb, build
+I-W31qYlpals6qfOyV0p1. All previously applied SQL bytes remain unchanged.
+
+Reversible native comparison41837291100 preserved every scalar subject field and
+audience over500 fictional principals, with delegation module/expiry controls,
+reporting/grant/archive revocation, foreign/unknown/duplicate IDs, ended own employment,
+the1000-subject bound and application-only EXECUTE. Five501-subject reads took
+1339.95ms original-warm and114.67ms candidate-warm. Component evidence only.
+
+The new reader groups actual native administrator checks by company and retains the
+unchanged scalar purpose reader for all non-admin candidates. Claim RLS, native self
+exclusion, company/org filters and read/write decision owners remain authoritative.
+Installed migration, populated upgrades, native scope, browser and both500-user checks
+remain required. Recheck claims/watermark before installation. Complete BOARD roles
+remains excluded; no deployment or human provider approval is authorized.
