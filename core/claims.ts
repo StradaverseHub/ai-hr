@@ -3986,6 +3986,11 @@ export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:st
 
 async function pendingClaimSubjectsTx(tx:Tx,ctx:SessionContext,companyIds:string[]|undefined){
   await assertAssignedWorkPrincipalTx(tx,ctx);
+  // This private header reader relies on one repeatable, read-only snapshot. Refuse any future
+  // caller that changes that contract rather than reusing a proof across different authority reads.
+  const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='repeatable read'
+   and current_setting('transaction_read_only')='on' as safe`);
+  if(snapshot?.safe!==true)throw new Error('Claims metadata requires a read-only repeatable snapshot.');
   if(companyIds?.length===0)return [];
   // Preserve the native visibility/delegation candidate owners and actual Claim RLS.
   // Probe pending existence before projecting labels, then keep each native call bounded.
@@ -4008,7 +4013,10 @@ async function pendingClaimSubjectsTx(tx:Tx,ctx:SessionContext,companyIds:string
    where not app.is_self_person(approval_subject.person_id)
     and ${companyIds===undefined?sql`true`:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}`);
 
-  return filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
+  // Native labels already require visibility OR delegation scoped to claims.claim, which implies
+  // the generic NULL-module org predicate in this same snapshot. Keep that one purpose owner and
+  // the independent decisionEmploymentAuthorityTx below; broader/full-data readers retain their filter.
+  return Array.from(subjects);
 }
 
 /** Metadata remains uncapped for full task screens; shell callers use the counted preview. */

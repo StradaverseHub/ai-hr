@@ -4,7 +4,7 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {assertAssignedWorkPrincipalTx} from '../core/approvals';
+import {assertAssignedWorkPrincipalTx,filterDelegationOrgScopeTx} from '../core/approvals';
 import {createClaimType,pendingClaimTaskSummary} from '../packs/claims/service';
 import {AssignedWorkPrincipalUnavailableError} from '../lib/assigned-work';
 import {pgSqlState} from '../lib/db-error';
@@ -37,8 +37,8 @@ it('preserves native approval labels, tenant scope and live authority with compa
  const [original]=await owner.client<{ddl:string;acl:string|null}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl from pg_proc where oid='app.delegated_approval_subject(uuid,text,text)'::regprocedure`;
  const [installed]=await owner.client<{ddl:string;acl:string|null}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl from pg_proc where oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure`;
  expect(installed.ddl).toContain('app.delegated_approval_subject');
- const measurements:unknown[]=[],controls:string[]=[];
- const read=(ctx:SessionContext,batch:boolean,selected=ids)=>withTenant(ctx,async tx=>{
+ const measurements:unknown[]=[],controls:string[]=[],subsumptionChecks:{rows:number;elapsedMs:number}[]=[];
+ const read=(ctx:SessionContext,batch:boolean,selected=ids,applyOrgFilter=true)=>withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
   const array=sql`array[${sql.join(selected.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
   const rows=await tx.execute<Header>(batch
@@ -46,8 +46,16 @@ it('preserves native approval labels, tenant scope and live authority with compa
    :sql`with requested as materialized(select distinct unnest(${array}) as id)
       select requested.id as employment_id,header.* from requested
       join lateral app.delegated_approval_subject(requested.id,'claims','claims.claim') header on true order by requested.id`);
-  return Array.from(rows,row=>({...row}));
- });
+  const result=Array.from(rows,row=>({...row}));
+  if(batch&&applyOrgFilter){
+   const [carrier]=await tx.execute<{isolation:string;read_only:string}>(sql`select current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')as read_only`);
+   expect(carrier).toEqual({isolation:'repeatable read',read_only:'on'});
+   const began=performance.now(),filtered=await filterDelegationOrgScopeTx(tx,ctx,result,row=>row.employment_id);
+   expect(filtered).toEqual(result);subsumptionChecks.push({rows:result.length,elapsedMs:performance.now()-began});
+   return filtered;
+  }
+  return result;
+ },{readOnlySnapshot:true});
  const compare=async(label:string,ctx:SessionContext,expected:string[])=>{
   const reference=await read(ctx,false),current=await read(ctx,true);
   expect(reference.map(row=>row.employment_id)).toEqual([...expected].sort());expect(current).toEqual(reference);controls.push(label);
@@ -87,12 +95,18 @@ it('preserves native approval labels, tenant scope and live authority with compa
    const started=performance.now();for(let i=0;i<5;i++)expect(await read(base,batch)).toHaveLength(all.length);
    measurements.push({phase,reads:5,subjectsPerRead:all.length,elapsedMs:performance.now()-started});
   }
+  const headerSubjects=users.slice(0,50).filter(u=>u.index!==3).map(u=>u.employmentId);
+  for(const [phase,applyOrgFilter]of [['header-with-generic-filter',true],['header-native-purpose-only',false],['header-with-generic-filter-warm',true],['header-native-purpose-only-warm',false]]as const){
+   const began=performance.now();
+   for(let n=0;n<5;n++)expect((await read(context(users[3]),true,headerSubjects,applyOrgFilter)).map(row=>row.employment_id)).toEqual([...headerSubjects].sort());
+   measurements.push({phase,reads:5,subjectsPerRead:headerSubjects.length,elapsedMs:performance.now()-began});
+  }
  }finally{
   const [after]=await owner.client<{ddl:string;acl:string|null}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl from pg_proc where oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure`;
   expect(after).toEqual(installed);
   const [restored]=await owner.client<{ddl:string;acl:string|null}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl from pg_proc where oid='app.delegated_approval_subject(uuid,text,text)'::regprocedure`;
   expect(restored).toEqual(original);
-  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'approval-subject-batch.json'),JSON.stringify({kind:'INSTALLED_NATIVE_APPROVAL_LABEL_COMPONENT_ONLY',fixturePrincipals:500,controls,measurements,canonicalScalarUnchanged:true,installedDefinitionUnchanged:true},null,2));
+  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'approval-subject-batch.json'),JSON.stringify({kind:'INSTALLED_NATIVE_APPROVAL_LABEL_COMPONENT_ONLY',fixturePrincipals:500,controls,measurements,subsumptionChecks,proofSnapshot:'native REPEATABLE READ READ ONLY',canonicalScalarUnchanged:true,installedDefinitionUnchanged:true},null,2));
  }
 },300000);
 
