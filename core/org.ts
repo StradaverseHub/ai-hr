@@ -2172,7 +2172,7 @@ export async function setEmploymentAssignment(
         .from(employment)
         .where(eq(employment.id, p.employmentId))
         .limit(1);
-      if (buChanged) {
+      if (buChanged && nextBusinessUnitId) {
         const [bu] = await tx
           .select({ archivedAt: businessUnit.archivedAt })
           .from(businessUnit)
@@ -3723,7 +3723,7 @@ export async function projectEmploymentOrganisationAssignmentTx(tx:Tx,ctx:Sessio
   const [emp]=await tx.select().from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).for('update');
   if(!emp)throw new Error('Employment is unavailable.');
   const endedOn=earliestEmploymentDate(emp.resignationDate,emp.lastWorkingDate,emp.terminatedOn);
-  if(emp.voidedAt||emp.hiredOn>p.effectiveOn||(endedOn&&endedOn<=p.effectiveOn)||(emp.blacklistedAt&&todayInKualaLumpur(emp.blacklistedAt)<=p.effectiveOn))return {changed:0,assignmentIds:[]};
+  if(emp.voidedAt||emp.hiredOn>p.effectiveOn||(endedOn&&endedOn<=p.effectiveOn)||(emp.blacklistedAt&&todayInKualaLumpur(new Date(emp.blacklistedAt))<=p.effectiveOn))return {changed:0,assignmentIds:[]};
   const rows=await tx.select().from(assignment).where(and(eq(assignment.employmentId,p.employmentId),eq(assignment.tenantId,ctx.tenantId),isNull(assignment.supersededAt),or(isNull(assignment.validTo),gt(assignment.validTo,p.effectiveOn)))).orderBy(assignment.validFrom).for('update');
   const assignmentIds:string[]=[];
   let changed=0;

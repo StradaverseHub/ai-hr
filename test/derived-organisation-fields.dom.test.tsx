@@ -17,6 +17,6 @@ it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s renders read
  await captureAiReviewScreenshots(aiReviewDomHtml(view.container),locale,'derived-organisation-fields','Actual readonly tag and named blocker components; fictional static metadata, not an authenticated server journey.','atelier');
 },120_000);
 it('shows preparation, loading and failure states without editable controls',()=>{
- const view=render(<NextIntlClientProvider locale="en" messages={en}><DerivedOrganisationFields state={{data:{...data,status:'legacy',managed:false},loading:false,failed:false}}/><DerivedOrganisationFields state={{loading:true,failed:false}}/><DerivedOrganisationFields state={{loading:false,failed:true}}/></NextIntlClientProvider>);
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><DerivedOrganisationFields state={{data:{...data,status:'legacy',managed:false},loading:false,failed:false}}/><DerivedOrganisationFields state={{data:undefined,loading:true,failed:false}}/><DerivedOrganisationFields state={{data:undefined,loading:false,failed:true}}/></NextIntlClientProvider>);
  expect(screen.getByText(en.derivedOrganisation.preparation)).toBeVisible();expect(screen.getByText(en.derivedOrganisation.loading)).toBeVisible();expect(screen.getByRole('alert')).toHaveTextContent(en.derivedOrganisation.unavailable);expect(view.container.querySelector('input,select,textarea')).toBeNull();
 });
