@@ -10,6 +10,7 @@ import {hireEmployee} from '../core/org';
 import {hasPersonPhoto} from '../core/person-photo';
 import {readProfilePresentationPolicy} from '../core/profile-edit-policy';
 import {pgSqlState} from '../lib/db-error';
+import {essVisibleFields} from '../lib/personnel-ess-contract';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('overlaps real profile presentation and Home photo checks with an independent metadata reader',async()=>{
@@ -82,4 +83,35 @@ it('refuses a missing native policy generation anchor without granting access to
  expect(permission.allowed).toBe(false);
  await owner.client`delete from app.access_profile_write_generation where tenant_id=${b.tenantId}`;
  expect(await readProfilePresentationPolicy(adminCtx(b)).then(()=>null,error=>pgSqlState(error))).toBe('42501');
+});
+
+
+it('reads the policy committed by a settings writer it actually waited behind',async()=>{
+ await resetDb();const b=await seedBase(),ctx=adminCtx(b);
+ expect((await readProfilePresentationPolicy(ctx)).visible.size).toBeGreaterThan(0);
+ const hidden={version:3,fields:Object.fromEntries(essVisibleFields().map(field=>[field.id,'hide'])),primaryOnly:[]};
+ let ready!:()=>void,release!:()=>void,fail!:(error:unknown)=>void;
+ const started=new Promise<void>((yes,no)=>{ready=yes;fail=no;}),finish=new Promise<void>(yes=>{release=yes;});
+ const watchdog=setTimeout(()=>{fail(Error('policy writer handshake timed out'));release();},10000);
+ const writing=owner.client.begin(async tx=>{
+  await tx`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+  ready();await finish;
+  await tx`insert into tenant_setting(tenant_id,key,value) values(${b.tenantId},'ess.profile_change_fields',${tx.json(hidden)})
+   on conflict(tenant_id,key) do update set value=excluded.value`;
+ });void writing.catch(fail);
+ let reading:ReturnType<typeof readProfilePresentationPolicy>|undefined;
+ try{
+  await started;reading=readProfilePresentationPolicy(ctx);void reading.catch(()=>{});
+  const deadline=Date.now()+4000;let waiting=false;
+  while(Date.now()<deadline){
+   const [row]=await owner.client<{waiting:boolean}[]>`select exists(select 1 from pg_locks l where l.locktype='advisory'
+    and not l.granted and l.objsubid=1 and l.database=(select oid from pg_database where datname=current_database())
+    and ((l.classid::bigint<<32)|l.objid::bigint)=hashtextextended(${'access-configuration:'+b.tenantId},0)) as waiting`;
+   if(row.waiting){waiting=true;break;}await new Promise(resolve=>setTimeout(resolve,20));
+  }
+  expect(waiting,'actual presentation read must wait for the uncommitted writer').toBe(true);
+ }finally{release();clearTimeout(watchdog);await writing;}
+ expect(reading).toBeDefined();const result=await reading!;
+ expect([...result.visible]).toEqual([]);expect([...result.editable]).toEqual([]);
+ expect([...(await readProfilePresentationPolicy(ctx)).visible]).toEqual([]);
 });
