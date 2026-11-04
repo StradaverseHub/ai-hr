@@ -23,7 +23,7 @@ it('uses transaction-local JIT off for real pending metadata and restores the ap
   await tx.execute(sql`set local jit=on`);
   return read(new Proxy(tx,{get(target,property,receiver){const value=Reflect.get(target,property,receiver);
    if(property==='execute')return async(query:Parameters<Tx['execute']>[0])=>{
-    if(new PgDialect().sqlToQuery(query).sql.includes('candidate_subjects as materialized')){
+    if((typeof query==='string'?query:new PgDialect().sqlToQuery(query.getSQL()).sql).includes('candidate_subjects as materialized')){
      const [state]=await tx.execute<{jit:string;readOnly:boolean;isolation:string;role:string}>(sql`select current_setting('jit')as jit,current_setting('transaction_read_only')='on'as "readOnly",current_setting('transaction_isolation')as isolation,current_user as role`);states.push(state);
     }
     return Reflect.apply(value,target,[query]);
