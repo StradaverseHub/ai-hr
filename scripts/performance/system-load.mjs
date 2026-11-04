@@ -25,7 +25,7 @@ const suite=process.env.PERF_HTTP_SUITE||'claims-heavy';assert(['claims-heavy','
 const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000].includes(thinkTimeMs));
 const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
 const report={suite,kind:suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
- assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',driverMaxSockets:4000,tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
+ assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',driverMaxSockets:4000,tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,preflightBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
  workloadManifest:{readRoutes:wholeSystemRouteCount,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['concurrent Payroll close/publish','Lifecycle mutations','Performance mutations','Rewards mutations','large Personnel imports','report-definition CRUD','long-running document jobs','external email delivery'],productionEquivalent:false},
  coverage:[],boundaries:[],browser:[],homeCardFailures:[],browserHomeRequests:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
@@ -246,10 +246,11 @@ try{
   const timing=await page.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return {ttfbMs:n.responseStart-n.requestStart,domInteractiveMs:n.domInteractive,decodedBytes:n.decodedBodySize,transferBytes:n.transferSize};});
   stopHomeTracking();
   if(signIn){
-   const result={role:user.role,homeCards,homeCardIds,todaySectionIds,elapsedMs:performance.now()-start,
+   const result={phase,role:user.role,homeCards,homeCardIds,todaySectionIds,elapsedMs:performance.now()-start,
     cardFailures:report.homeCardFailures.filter(row=>row.role===user.role&&row.phase===phase).length};
-   (report.loadedBrowserSignIns??=[]).push(result);
-   if(user.index===employee.index)report.loadedBrowserSignIn=result;
+   const key=phase==='loaded'?'loadedBrowserSignIns':'preflightBrowserSignIns';
+   (report[key]??=[]).push(result);
+   if(phase==='loaded'&&user.index===employee.index)report.loadedBrowserSignIn=result;
    save();
   }
   report.browser.push({phase,role:user.role,path,heading,homeCards,homeCardIds,todaySectionIds,elapsedMs:performance.now()-start,...timing});save();
@@ -318,6 +319,12 @@ try{
   const ctx=await context(user),page=await ctx.newPage();
   try{await aiCentreJourney(page,user,'baseline');}finally{await ctx.close();}
  }));
+ // Exercise real password/MFA before any capacity test; these results are never loaded proof.
+ await Promise.all([employee,manager,hr,group].map(async user=>{
+  const ctx=await context(user,'en',true),page=await ctx.newPage();
+  try{await visit(page,user,'/','sign-in-preflight',true);}finally{await ctx.close();}
+ }));
+ assert(['employee','manager','companyHR','groupHR'].every(role=>report.preflightBrowserSignIns?.some(row=>row.role===role&&row.homeCards>0&&row.todaySectionIds.length>0&&row.cardFailures===0)),'all four preflight sign-ins must load their dashboards');
  // Tenant-wide AI spend and provider configuration keep their group-administrator guards.
  {
   const ctx=await context(hr),page=await ctx.newPage();
