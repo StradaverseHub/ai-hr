@@ -4691,6 +4691,13 @@
       "when": 1793330001504,
       "tag": "2104_contract_navigation_role_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 1352,
+      "version": "7",
+      "when": 1793330001505,
+      "tag": "2105_authorization_navigation_plans",
+      "breakpoints": true
     }
   ]
 }

@@ -1570,3 +1570,15 @@ the latest **closed** run of the same run type (`payroll_status` is exactly draf
 main's 0631 versions of these functions. No statement added or removed; owner and grants unchanged. The idx811 row's
 SHA256 above, the `lifecycle-v9` journal pin and the `board-nine` applied-ledger pin are the new file's. Same number, idx
 and `when`.
+
+## Performance authorization navigation plans — 4 November 2026 (uninstalled candidate)
+
+`codex/performance-authorization-navigation-20261104` reserves
+`2105_authorization_navigation_plans`, idx1352 / when1793330001505.
+The fresh scan covered2240 heads,416 committed journals and194 readable worktrees,
+with competing bounds through2104 / idx1351 / when1793330001504. One foreign malformed
+worktree journal was preserved and its literal bounds included. Read-only staging
+inspection found668 applied rows through1793330001411 on b6077019c; the canonical
+historical identities match every ordered row. This appends above all observed bounds;
+no applied SQL is rewritten. Recheck current claims and target ledger at integration.
+No installation or deployment is authorized.
