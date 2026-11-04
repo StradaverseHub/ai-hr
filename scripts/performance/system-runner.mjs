@@ -9,6 +9,7 @@ import http from 'node:http';
 import os from 'node:os';
 import net from 'node:net';
 import {setTimeout as pause} from 'node:timers/promises';
+import {postgresLockFailures} from './lock-failure-log.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
 assert.equal(process.env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
@@ -98,8 +99,6 @@ try{
  for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])buildEnv[key]='postgres://nobody:nothing@127.0.0.1:1/no_database';
  await run('postgres','bash',['.github/ci/postgres.sh','reset']);dbStarted=true;
  await run('migrate','pnpm',['db:migrate']);
- // Apply only to this workflow's job-owned database. This is a load experiment,
- // separate from release migration allocation.
  // Native performance helpers are installed through the ordinary migration journal.
  copyFileSync(join(focusedEvidence,'personnel-draft-discard-premigration-role-prerequisites.json'),join(out,'personnel-draft-discard-premigration-role-prerequisites.json'));
  await run('catalogs',process.execPath,['--import','tsx','scripts/seed-catalogs.ts']);
@@ -148,7 +147,17 @@ finally{
  for(const fd of appFds)closeSync(fd);
  try{summarizeNativeFailures();}catch{report.nativeFailureSummaryUnavailable=true;}
  if(apps.length)try{summarizeCpu();}catch(error){report.cpuSummaryError=String(error.message).slice(0,180);}
- if(dbStarted){const stats=spawnSync('bash',['.github/ci/postgres.sh','stats'],{env,encoding:'utf8'});writeFileSync(join(out,'postgres-resources.txt'),stats.stdout??'');await run('cleanup','bash',['.github/ci/postgres.sh','stop']).catch(()=>{report.exitCode=1;});}
+ if(dbStarted){
+  const stats=spawnSync('bash',['.github/ci/postgres.sh','stats'],{env,encoding:'utf8'});writeFileSync(join(out,'postgres-resources.txt'),stats.stdout??'');
+  try{
+   const owner=execFileSync('docker',['inspect','--format','{{index .Config.Labels "aihr-owner"}}',container],{encoding:'utf8',timeout:10000}).trim();
+   assert.equal(owner,container);
+   const logs=spawnSync('docker',['logs','--tail','10000',container],{encoding:'utf8',timeout:10000,maxBuffer:8*1024*1024});
+   assert.equal(logs.status,0);
+   writeFileSync(join(out,'postgres-lock-failures.json'),JSON.stringify({scope:'Owned disposable database only; bounded lock topology and routine frames; SQL/values/raw logs excluded',failures:postgresLockFailures((logs.stdout??'')+'\n'+(logs.stderr??''))},null,2));
+  }catch{report.postgresLockFailureSummaryUnavailable=true;}
+  await run('cleanup','bash',['.github/ci/postgres.sh','stop']).catch(()=>{report.exitCode=1;});
+ }
  save();
 }
 process.exitCode=report.exitCode;
