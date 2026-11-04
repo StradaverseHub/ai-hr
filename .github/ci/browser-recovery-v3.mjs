@@ -22,7 +22,7 @@ import {assessResumeSource} from './resume-source.mjs';
 import {validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
 import {BROWSER_WORKFLOW_ID} from './browser-recovery-policy.mjs';
 import {decodeCommittedBlobs} from './repair-impact.mjs';
-import {validateSingleShotMetadata,verifySingleShotRecovery,browserImpact,ownedBranch,SINGLE_SHOT_SCOPES} from './browser-recovery-v3-policy.mjs';
+import {validateSingleShotMetadata,verifySingleShotRecovery,browserImpact,ownedBranch,originalBrowserFailure,validateSingleShotHistory,registeredFlakes,runChecks,SINGLE_SHOT_POLICY,SINGLE_SHOT_SCOPES} from './browser-recovery-v3-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 const bytes=path=>execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{maxBuffer:128*1024**2,timeout:120000});
 function pages(path,key){const rows=[];for(let p=1;p<=10;p++){const r=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${p}`);assert(Array.isArray(r[key]),'Missing API inventory');rows.push(...r[key]);if(r[key].length<100)return rows;}throw Error('API inventory exceeds bounded recovery');}
@@ -103,22 +103,36 @@ export async function diagnoseSingleShot({candidatePath,runId,baseline,browserRu
  const verificationDiagnostic=validateRecoveryControllerDiagnostic({...metadata(diagnosticId),controller:verificationController});
  const producerDiagnostic=validateRecoveryControllerDiagnostic({...metadata(producerDiagnosticRunId),controller:browserProducerController});
  const browserMetadata=metadata(browserRunId),engine=Object.keys(SINGLE_SHOT_SCOPES).find(e=>browserMetadata.jobs.some(j=>j.name===`browser-image (${e})`));
- const producer=validateSingleShotMetadata({...browserMetadata,expected:{runId:browserRunId,controller:browserProducerController,branch:browserProducerBranch,candidateBranch:recoveryRef,engine,after:originalMetadata.run.updated_at}});
+ // A failed or foreign producer is itself a refusal; the remaining checks are still evaluated for the record.
+ let producer=null,producerRefusal=null;
+ try{producer=validateSingleShotMetadata({...browserMetadata,expected:{runId:browserRunId,controller:browserProducerController,branch:browserProducerBranch,candidateBranch:recoveryRef,engine,after:originalMetadata.run.updated_at}});}catch(e){producerRefusal=String(e?.message??e);}
  const dir=evidenceDirectory??join(controllerRoot,'scratchpad',`browser-single-shot-${runId}-${randomUUID()}`);mkdirSync(dir,{recursive:true,mode:0o700});
  const source=await collectRecoveryEvidence(runId,dir,{prefetchDirectory:process.env.AIHR_CI_PREFETCH_DIR||undefined});
  assert(isDeepStrictEqual(originalMetadata,facts(source)),'Original metadata changed during collection');
  const plan=planAt(candidatePath,controller,baseline),freshPlan=planAt(candidatePath,browserProducerController,baseline);
  const assessment=assessResumeSource({...source,expectedPlan:plan,expected:{candidate,controller,baseline,runId}});
- const fresh=await collectRecoveryEvidence(browserRunId,join(dir,'browser-'+browserRunId));assert(isDeepStrictEqual(browserMetadata,facts(fresh)),'Browser metadata changed during collection');
- const packet=fresh.parsed.get(`diagnostic-complete-image-browser-${engine}`),binding=fresh.parsed.get(`browser-recovery-runtime-${engine}`);
- assert(binding?.size===1&&binding.has('image-binding.json')&&packet?.has(`unit-browser-${engine}.json`),'Exact runtime binding and unit packet required');
  const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
  const failedUnit=plan.units.find(u=>u.kind==='browser'&&u.engine===engine),failedReport=reports.find(r=>r?.id===failedUnit?.id);
  const failing=[...new Set((failedReport?.batches??[]).flatMap(b=>b.result?.testResults??[]).filter(f=>f.status!=='passed'||f.assertionResults?.some(a=>a.status!=='passed')).map(f=>relative(failedReport.cwd,f.name).split('\\').join('/')))].sort();
  const impact=candidateImpact({candidatePath,baseline,candidate,failing});
  const executions=await engineExecutions({engine,since:originalMetadata.run.created_at,originalRunId:runId});
  const registerPath=join(controllerRoot,'docs/FLAKY-TESTS.md');let registerText='';try{registerText=readFileSync(registerPath,'utf8');}catch{/* refused by the register check */}
- const certificate=verifySingleShotRecovery({plan,freshPlan,assessment,run:source.run,jobs:source.jobs,reports,fresh:{...fresh,producer,binding:binding.get('image-binding.json'),report:packet.get(`unit-browser-${engine}.json`)},impact,executions,flakeRegister:{path:'docs/FLAKY-TESTS.md',sha256:sha256(registerText),text:registerText},verificationController,verificationDiagnostic,producerDiagnostic,reviewedController,lockSha256:sha256(readFileSync(join(candidatePath,'pnpm-lock.yaml')))},{collect});
+ let certificate;
+ if(producer){
+  const fresh=await collectRecoveryEvidence(browserRunId,join(dir,'browser-'+browserRunId));assert(isDeepStrictEqual(browserMetadata,facts(fresh)),'Browser metadata changed during collection');
+  const packet=fresh.parsed.get(`diagnostic-complete-image-browser-${engine}`),binding=fresh.parsed.get(`browser-recovery-runtime-${engine}`);
+  assert(binding?.size===1&&binding.has('image-binding.json')&&packet?.has(`unit-browser-${engine}.json`),'Exact runtime binding and unit packet required');
+  certificate=verifySingleShotRecovery({plan,freshPlan,assessment,run:source.run,jobs:source.jobs,reports,fresh:{...fresh,producer,binding:binding.get('image-binding.json'),report:packet.get(`unit-browser-${engine}.json`)},impact,executions,flakeRegister:{path:'docs/FLAKY-TESTS.md',sha256:sha256(registerText),text:registerText},verificationController,verificationDiagnostic,producerDiagnostic,reviewedController,lockSha256:sha256(readFileSync(join(candidatePath,'pnpm-lock.yaml')))},{collect});
+ }else{
+  const partial=runChecks([
+   ['fresh producer',()=>{throw Error(producerRefusal);}],
+   ['original failure',()=>originalBrowserFailure({plan,assessment,run:source.run,jobs:source.jobs,reports})],
+   ['outside impact set',()=>assert(impact.outside,'Failing browser files are inside the candidate impact set: '+impact.reasons.slice(0,5).join('; '))],
+   ['single shot',()=>validateSingleShotHistory({executions,browserRunId,candidate:plan.sha,engine}),['original failure']],
+   ['registered flake',v=>registeredFlakes(registerText,v['original failure'].failing),['original failure']],
+  ],{collect:true});
+  certificate={kind:'BROWSER_SINGLE_SHOT_DIAGNOSTIC',recoveryPolicy:SINGLE_SHOT_POLICY,result:'REFUSED',checks:partial.results,installationEligible:false,releaseAuthorized:false};
+ }
  const refState=refs(),extra=[
   ...Object.entries(refState).filter(([,ok])=>!ok).map(([name])=>({name:'frozen ref '+name,ok:false,refusal:`${name} moved away from the frozen candidate/baseline/controller`})),
   ...Object.entries(deltas).filter(([,v])=>v!=='ok').map(([name,v])=>({name:'controller delta '+name,ok:false,refusal:v})),
