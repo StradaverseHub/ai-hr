@@ -2,7 +2,7 @@
 import {getSession} from '@/lib/session';
 import {manageAccount,type AccountCommand} from '@/core/account-management';
 import {revalidatePath} from 'next/cache';
-export type AccountActionState={status:'idle'|'saved'|'failed';password?:string};
+export type AccountActionState={status:'idle'|'saved'|'failed';password?:string;delivery?:'sent'|'failed'|'skipped'|'uncertain'};
 export async function accountAction(_state:AccountActionState,form:FormData):Promise<AccountActionState>{
  try{
   if(form.get('confirmed')!=='on')throw Error('invalid');
@@ -15,6 +15,6 @@ export async function accountAction(_state:AccountActionState,form:FormData):Pro
   else throw Error('invalid');
   const result=await manageAccount(await getSession(),userId,command);
   revalidatePath('/admin/users');revalidatePath(`/admin/users/${userId}/account`);
-  return {status:'saved',...(result.password?{password:result.password}:{})};
+  return {status:'saved',...(result.password?{password:result.password}:{}),...(result.delivery?{delivery:result.delivery}:{})};
  }catch{return {status:'failed'};}
 }

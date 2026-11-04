@@ -20,6 +20,7 @@ function Control({type,userId,title}:{type:typeof commands[number];userId:string
   <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="confirmed" required className="mt-1"/>{t('confirm')}</label>
   <button type="submit" disabled={pending} className={btnGhost}>{title}</button>
   {state.status!=='idle'&&<p role={state.status==='saved'?'status':'alert'} className="text-sm">{t(state.status)}</p>}
+  {state.delivery&&<p role={state.delivery==='sent'?'status':'alert'} className="text-sm">{t(`delivery.${state.delivery}`)}</p>}
   {state.password&&!hidden&&<div className="space-y-2 rounded border border-border bg-muted p-3"><p className="text-sm">{t('shownOnce')}</p><code className="block break-all select-all">{state.password}</code><button type="button" className={btnGhost} onClick={()=>setHidden(true)}>{t('hide')}</button></div>}
  </form>;
 }

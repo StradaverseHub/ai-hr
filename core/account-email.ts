@@ -8,9 +8,9 @@ import type {IdentityEmailActor} from '../lib/identity/email-model';
 import {AccountEmailDeliveryError,type AccountEmailProvider,type AccountEmailDeliveryView,type AccountEmailError,type AccountEmailReadiness} from '../lib/account-email-model';
 
 /** No business transaction spans the provider call. A lost result remains held, never auto-retried. */
-export async function attemptAccountEmail(id:string,leaseToken:string,provider:AccountEmailProvider,invitationToken?:string):Promise<void>{
+export async function attemptAccountEmail(id:string,leaseToken:string,provider:AccountEmailProvider,invitationToken?:string,onResult?:(status:'sent'|'failed'|'skipped'|'uncertain')=>void):Promise<void>{
  const hash=invitationToken?createHash('sha256').update(invitationToken).digest('hex'):null;
- const finish=(status:'sent'|'failed'|'skipped',error:AccountEmailError|null)=>client`select app.account_email_finish(${id}::uuid,${leaseToken}::uuid,${status},${error})`;
+ const finish=async(status:'sent'|'failed'|'skipped',error:AccountEmailError|null)=>{await client`select app.account_email_finish(${id}::uuid,${leaseToken}::uuid,${status},${error})`;onResult?.(status);};
  try{
   const [target]=await client<{kind:'invitation'|'recovery';email:string}[]>`select * from app.account_email_target(${id}::uuid,${leaseToken}::uuid,${hash})`;
   if(!target){await finish('skipped','notEligible');return;}
@@ -18,7 +18,7 @@ export async function attemptAccountEmail(id:string,leaseToken:string,provider:A
   try{readiness=await provider.emailReadiness?.()??null;}catch{readiness='providerUnavailable';}
   if(readiness){await finish('failed',readiness);return;}
   const [start]=await client<{started:boolean}[]>`select app.account_email_start(${id}::uuid,${leaseToken}::uuid,${hash}) as started`;
-  if(!start?.started)return;
+  if(!start?.started){onResult?.('uncertain');return;}
   try{
    if(target.kind==='invitation'){
     if(!invitationToken||!/^[A-Za-z0-9_-]{43}$/.test(invitationToken))throw new AccountEmailDeliveryError('notEligible');
@@ -27,6 +27,7 @@ export async function attemptAccountEmail(id:string,leaseToken:string,provider:A
   }catch(error){await finish('failed',error instanceof AccountEmailDeliveryError?error.code:'uncertain');return;}
   await finish('sent',null);
  }catch{
+  onResult?.('uncertain');
   // A committed invitation or recovery request survives a delivery-ledger/provider outage. An
   // abandoned lease is recorded as unavailable/uncertain when an authorized admin opens the log.
  }

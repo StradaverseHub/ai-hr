@@ -35350,6 +35350,12 @@
     "hide": "Hide password",
     "history": "Recent account activity",
     "consumed": "Recovery exemption consumed",
-    "system": "System"
+    "system": "System",
+    "delivery": {
+      "sent": "The reset email was sent.",
+      "failed": "Email delivery failed. Review the email delivery log before retrying.",
+      "skipped": "No reset email was sent. Review account eligibility and rate limits.",
+      "uncertain": "Delivery could not be confirmed. Check the email delivery log before retrying."
+    }
   }
 }

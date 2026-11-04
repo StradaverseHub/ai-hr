@@ -6,7 +6,7 @@ import { InternalAuthError } from './errors';
 import { passwordChangeRequired } from './password-policy';
 export type Credential = { subject: string; tenantId: string; issuer: string; organization: string; username: string; email: string;
   emailVerified: boolean; enabled: boolean; password: string | null; mustChange: boolean; version: string;
-  totpSecret: string | null; lastStep: number; recoveryHashes: string[]; enrollmentId?: string; passwordChangedAt?: number; suspended?:boolean; accountActiveUntil?:string|null; temporaryPasswordExpiresAt?:number;temporaryPasswordUsed?:boolean };
+  totpSecret: string | null; lastStep: number; recoveryHashes: string[]; enrollmentId?: string; passwordChangedAt?: number; accountExpiryObservedUntil?:string;suspended?:boolean; accountActiveUntil?:string|null; temporaryPasswordExpiresAt?:number;temporaryPasswordUsed?:boolean };
 export async function assertActiveCredential(tx: AuthSql, c: Credential) {
   if (!accountAvailable(c) || !c.password || c.mustChange || !c.totpSecret || !c.emailVerified) throw new InternalAuthError('invalidLogin');
   const rows = await tx.unsafe('select app_user_id,tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
@@ -27,7 +27,7 @@ const credentialProjection=z.object({
  mustChange:z.boolean(),version:z.uuid(),totpSecret:z.string().max(1024).nullable(),
  lastStep:z.number().int().safe().min(-1),recoveryHashes:z.array(z.string().max(128)).max(1000),
  passwordChangedAt:z.number().int().safe().positive().optional(),
- suspended:z.boolean().optional(),accountActiveUntil:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+ accountExpiryObservedUntil:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),suspended:z.boolean().optional(),accountActiveUntil:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
  temporaryPasswordUsed:z.boolean().optional(),temporaryPasswordExpiresAt:z.number().int().safe().positive().optional(),
  enrollmentId:z.string().max(500).optional(),
 }).strict();
