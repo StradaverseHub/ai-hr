@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { loopsOverview, type LoopRow } from '@/core/loops/views';
@@ -8,6 +7,9 @@ import { OperationsTabs } from '../operations-tabs';
 import { setLoopSwitchAction } from './actions';
 import { loopLevelSummaries } from '@/core/loops/autonomy-views';
 import { levelKey } from '@/core/loops/autonomy-types';
+import Link from '@/components/intent-link';
+import { payrollCycleOverview } from '@/core/loops/payroll-cycle-views';
+import { PayrollLoopsList } from './payroll-loops-list';
 
 /** AI v2 W8 — AI Centre › Operations › Loops (approved mock-up Operations.dc.html, its loop table, at the Prepare level).
  *
@@ -16,13 +18,20 @@ import { levelKey } from '@/core/loops/autonomy-types';
  * changed (the correction rate, only where the card proposes a value of its own), and its sponsor. Every figure is read
  * under the viewer's row-level security (core/loops/views.ts): an HR administrator of one company sees that company's
  * cards only. A group administrator switches a loop here; anyone else sees its state. Guarded by requireAdmin, as every
- * Operations page is. Names are the AI Centre's; nothing here says Noveri. */
+ * Operations page is. Names are the AI Centre's; nothing here says Noveri.
+ *
+ * AI Centre navigation (4 Nov 2026): above the table, the three payroll loops in order (Pre-salary, Salary payroll, Audit),
+ * each with its status for this month and a link to its page (./payroll-loops-list.tsx). Their read starts with the table's
+ * and its result streams in, so the table is not kept waiting. The links prefetch their page in full on intent
+ * (components/intent-link.tsx), as the AI Centre tab rows do. */
 const ERRORS = ['invalid', 'refused', 'module', 'failed'] as const;
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const SWITCH_TONE = 'text-emerald-700 dark:text-emerald-300';
 
 export default async function LoopsPage({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
   const s = await requireAdmin();
+  // The payroll loops' statuses: started now, awaited inside their own streamed section.
+  const payroll = payrollCycleOverview(s).catch(() => null);
   const [t, f, view, query, levels, ta] = await Promise.all([getTranslations('aiCentre.loops'), getFormatter(), loopsOverview(s), searchParams,
     loopLevelSummaries(s), getTranslations('aiCentre.autonomy')]);
   // AI v2 Phase 2 P2-1: the level of each loop across the companies the viewer administers (one level: just its name).
@@ -41,6 +50,7 @@ export default async function LoopsPage({ searchParams }: { searchParams: Promis
         actions={<Link href="/control-tower/loops/payroll-cycle" data-payroll-cycle-link className={cn(btnGhost, 'pointer-coarse:min-h-11')}>{t('payrollCycle')}</Link>} />
       {error && <ErrorBanner message={t(`errors.${error}`)} />}
       {query.saved === 'switch' && <p role="status" className="rounded-lg border border-border bg-muted/50 p-3 text-sm">{t('saved')}</p>}
+      <PayrollLoopsList overview={payroll} />
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <table data-loops-table className="w-full min-w-[960px] text-left text-sm">

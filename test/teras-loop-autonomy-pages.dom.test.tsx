@@ -101,7 +101,10 @@ vi.mock('../core/loops/autonomy-views',()=>({
    limits:{maxActionsPerNight:50,undoDays:state.promoteUndo,condition:'roster_end'},limitsStored:level>=2};},
 }));
 import LoopPage from '../app/control-tower/loops/[loop]/page';
+// AI Centre navigation (4 Nov 2026): the Loops list also reads the payroll loops' statuses (ai-centre-loops-payroll-list.dom.test.tsx).
+vi.mock('../core/loops/payroll-cycle-views',()=>({payrollCycleOverview:async()=>null}));
 import LoopsPage from '../app/control-tower/loops/page';
+import {resolveServerTree} from './helpers/server-tree';
 import PromoteLoopPage from '../app/control-tower/loops/[loop]/promote/page';
 import {LoopCards} from '../components/today/loop-cards';
 
@@ -342,7 +345,7 @@ describe('round 2: limits, the condition, the sample and the overview',()=>{
  });
  it('the overview names the level in each company for each loop',async()=>{
   state.session=SESSIONS.groupAdmin;state.summaries={loop_missed_clock_outs:[{level:2,count:1},{level:1,count:4}],loop_probation_ending:[{level:1,count:5}]};
-  const view=wrap('en',await LoopsPage({searchParams:Promise.resolve({})}));
+  const view=wrap('en',await resolveServerTree(await LoopsPage({searchParams:Promise.resolve({})})));
   const cell=(id:string)=>text(view.container.querySelector(`[data-loop-row="${id}"] [data-loop-level-summary]`));
   expect(cell('loop_missed_clock_outs')).toBe('Act within limits · 1 company · Prepare · 4 companies');
   expect(cell('loop_probation_ending')).toBe('Prepare');

@@ -7,6 +7,8 @@ import { Card, PageHeader, SectionHeader, btnGhost, pageWideCls } from '@/compon
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../operations-tabs';
 import { AuditLoopCard, bankReconciliation } from './audit-loop-card';
+// The group state rule (the worst company's state) and its tones are shared with the Operations › Loops list.
+import { ATTENTION, DONE, payrollLoopStates, pill } from './loop-states';
 
 /** AI v2 P2-2a — AI Centre › Operations › Loops › Payroll cycle (owner-approved mock-up PayrollLoops.dc.html).
  *
@@ -16,16 +18,7 @@ import { AuditLoopCard, bankReconciliation } from './audit-loop-card';
  * nothing here computes pay. The Audit loop's column is its own component (./audit-loop-card.tsx): P2-2b's status for the
  * month, read with the overview, and the Salary payroll loop's bank check as its "Bank paid vs payroll" item; each company's
  * row shows its Audit status. Guarded by requireAdmin, as every Operations page is. AI Centre, never Noveri. */
-const DONE = 'text-emerald-700 dark:text-emerald-300';
-const ATTENTION = 'text-amber-700 dark:text-amber-300';
-const pill = 'rounded-full border border-border px-2.5 py-1 text-xs font-medium';
 const link = 'inline-flex min-h-9 items-center text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11';
-
-/** The group's state of one loop: the worst of its companies', in the order a person should look at them. */
-const PRE_ORDER: readonly PreSalaryState[] = ['missed', 'open', 'not_checked', 'paused', 'done', 'off'];
-const SALARY_ORDER: readonly SalaryState[] = ['attention', 'ready_to_start', 'in_progress', 'not_checked', 'paused', 'before_cut_off', 'done', 'off'];
-const worst = <T extends string>(order: readonly T[], states: readonly T[]): T | null =>
-  states.length ? order.find(state => states.includes(state)) ?? states[0] : null;
 
 export default async function PayrollCyclePage({ searchParams }: { searchParams: Promise<{ period?: string; company?: string }> }) {
   const s = await requireAdmin();
@@ -39,9 +32,7 @@ export default async function PayrollCyclePage({ searchParams }: { searchParams:
     return `/control-tower/loops/payroll-cycle${q.size ? `?${q}` : ''}`;
   };
   const one = view.companies.length === 1 ? view.companies[0] : null;
-  const pre = worst(PRE_ORDER, view.companies.map(c => c.preSalary.state));
-  const salary = worst(SALARY_ORDER, view.companies.map(c => c.salary.state));
-  const days = Math.min(...view.companies.map(c => c.preSalary.daysToCutOff));
+  const { pre, salary, daysToCutOff: days } = payrollLoopStates(view);
   const header = one
     ? t('headerOne', { cutOff: day(one.preSalary.cutOff), payDay: day(one.payDay ?? one.preSalary.cutOff), due: day(view.statutoryDue) })
     : t('headerGroup', { due: day(view.statutoryDue) });

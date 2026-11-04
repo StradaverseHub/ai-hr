@@ -23,6 +23,10 @@ export function auditPackHref(companyId: string, payPeriod: string) {
   return `${AUDIT_LOOP_HREF}/pack?${new URLSearchParams({ company: companyId, period: payPeriod })}`;
 }
 
+/** The Audit loop is done for the month when every company in view is: the column's badge, and the loop's status in the
+ * Operations › Loops list. */
+export const auditLoopDone = (summary: AuditLoopSummary) => summary.companies.length > 0 && summary.totals.companiesDone === summary.companies.length;
+
 /** The Salary payroll loop's bank check over the processed runs in view: how many match their net pay and how many do not. */
 export type AuditBankReconciliation = Readonly<{ processed: number; matched: number; mismatched: number }>;
 
@@ -34,7 +38,7 @@ export function AuditLoopColumn({ summary, position, className, bank, heading: H
   const due = f.dateTime(new Date(`${summary.dueDate}T00:00:00Z`), { day: 'numeric', month: 'short', timeZone: 'UTC' });
   const single = summary.companies.length === 1 ? summary.companies[0] : null;
   const href = `${AUDIT_LOOP_HREF}?${new URLSearchParams({ period: summary.payPeriod, ...(single ? { company: single.companyId } : {}) })}`;
-  const allDone = summary.companies.length > 0 && totals.companiesDone === summary.companies.length;
+  const allDone = auditLoopDone(summary);
   const item = (key: string, value: ReactNode, tone?: 'done' | 'waiting') => (
     <li key={key} data-audit-item={key} className="flex justify-between gap-2">
       <span>{t(`items.${key}`)}</span>
