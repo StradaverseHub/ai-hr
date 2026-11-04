@@ -4,7 +4,9 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
-import {personnelListPage} from '../../core/read';
+import {personnelListPage,searchWorkforceEmployeesTx,readWorkforcePickRowsTx} from '../../core/read';
+import {foldEmployeeCode,EMPLOYEE_SEARCH_RESULT_CAP} from '../../lib/employee-search';
+import {lockAccessConfigurationTx} from '../../core/access-configuration-lock';
 import {withTenant,type SessionContext} from '../../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 const file='test/performance/personnel-native-list-plan.test.ts';
@@ -60,6 +62,44 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
    expect(result.rows.map(row=>row.employmentId)).toEqual(expectedIds);expect(result.rows.every(row=>row.employmentId!==foreignEmployment)).toBe(true);
    measurements.push({mode,elapsedMs,total:result.total,pageRows:result.rows.length,targetMet:elapsedMs<1000});report.queries=measurements;save();
   }
+  const pickerMeasurements:{mode:string;originalElapsedMs:number;elapsedMs:number;rows:number;targetMet:boolean}[]=[];
+  // Frozen original query is an independent oracle. Only native purpose APIs are read under ai_hr_app.
+  const originalSearch=(query:string)=>withTenant(ctx,async tx=>{
+   await lockAccessConfigurationTx(tx,ctx.tenantId);
+   const raw=query.trim().toLowerCase(),folded=foldEmployeeCode(query);
+   const rank=sql`case
+    when ${folded}<>'' and search_compact<>'' and search_compact=${folded} then 0
+    when ${folded}<>'' and search_compact<>'' and left(search_compact,length(${folded}))=${folded} then 1
+    when left(search_name,length(${raw}))=${raw} then 2
+    when position(${raw} in search_code)>0 or (${folded}<>'' and position(${folded} in search_compact)>0) then 3
+    when position(${raw} in search_name)>0 then 4 else 5 end`;
+   return tx.execute(sql`with normalized as materialized(
+    select value,lower(value->>'name')as search_name,lower(coalesce(value->>'employeeCode',''))as search_code,
+     regexp_replace(lower(coalesce(value->>'employeeCode','')),'[[:space:]._-]','','g')as search_compact
+    from app.access_workforce_picker_rows(null,null::date,null::date)r(value)
+    where (value->>'companyId')::uuid=any(array[${b.companyId}::uuid,${foreign.companyId}::uuid])
+   )select (value->>'employmentId')::uuid as "employmentId",value->>'name'as name,value->>'employeeCode'as "employeeCode",
+    (value->>'companyId')::uuid as "companyId",value->>'company'as company,value->>'department'as department,value->>'terminatedOn'as "terminatedOn"
+    from normalized where ${rank}<5 order by ${rank},value->>'name',(value->>'employmentId')::uuid limit ${EMPLOYEE_SEARCH_RESULT_CAP}`);
+  });
+  for(const query of ['PERF000050000','PERF','Fictional retained','NOTPRESENT']){
+   phase('picker-'+query);const before=performance.now(),reference=await originalSearch(query),originalElapsedMs=performance.now()-before;
+   const began=performance.now(),current=await withTenant(ctx,tx=>searchWorkforceEmployeesTx(ctx,tx,companies,query)),elapsedMs=performance.now()-began;
+   expect(Array.from(current)).toEqual(Array.from(reference));
+   expect(current.map(row=>row.employmentId)).toEqual(query==='PERF000050000'?[expectedLast.at(-1)!]:query==='NOTPRESENT'?[]:expectedFirst.slice(0,8));
+   pickerMeasurements.push({mode:query,originalElapsedMs,elapsedMs,rows:current.length,targetMet:elapsedMs<1000});report.pickers=pickerMeasurements;save();
+  }
+  const selectedIds=[...expectedFirst,expectedFirst[0],foreignEmployment,randomUUID()];
+  const beforePoint=performance.now(),referencePoint=await withTenant(ctx,async tx=>{
+   await lockAccessConfigurationTx(tx,ctx.tenantId);
+   return tx.execute(sql`select (value->>'employmentId')::uuid as "employmentId",value->>'name'as name,value->>'employeeCode'as "employeeCode",
+    (value->>'companyId')::uuid as "companyId",value->>'company'as company,value->>'department'as department,value->>'terminatedOn'as "terminatedOn"
+    from app.access_workforce_list_rows()r(value)where (value->>'employmentId')::uuid=any(array[${sql.join(selectedIds.map(id=>sql`${id}::uuid`),sql`, `)}])order by (value->>'employmentId')::uuid`);
+  }),originalPointElapsedMs=performance.now()-beforePoint;
+  const beganPoint=performance.now(),currentPoint=await withTenant(ctx,tx=>readWorkforcePickRowsTx(ctx,tx,selectedIds)),pointElapsedMs=performance.now()-beganPoint;
+  expect(Array.from(currentPoint)).toEqual(Array.from(referencePoint));expect(currentPoint.map(row=>row.employmentId)).toEqual([...expectedFirst].sort());
+  report.selectedIdentityRead={rows:currentPoint.length,originalElapsedMs:originalPointElapsedMs,elapsedMs:pointElapsedMs,targetMet:pointElapsedMs<1000,duplicateForeignUnknownExcluded:true};save();
+  expect(pickerMeasurements.every(row=>row.targetMet),'Each Personnel switcher query under1000ms').toBe(true);expect(pointElapsedMs).toBeLessThan(1000);
   phase('measured');
   expect(measurements.every(row=>row.targetMet),'Each observed retained-data Personnel native query under1000ms').toBe(true);
   phase('complete');

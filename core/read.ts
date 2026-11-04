@@ -461,7 +461,8 @@ export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: strin
 export async function readWorkforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[]){
  if(ids.length>500||ids.some(id=>!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))throw new RangeError('Invalid workforce identity selection');
  if(!ids.length)return [];await lockAccessConfigurationTx(tx,ctx.tenantId);const columns=workforcePickerColumns();
- return tx.select(columns).from(workforceListSource).where(inArray(columns.employmentId,ids)).orderBy(columns.employmentId);
+ const source=sql`app.access_workforce_list_rows_for_ids(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) as workforce_row(value)`;
+ return tx.select(columns).from(source).orderBy(columns.employmentId);
 }
 /** Bounded picker over the same purpose projection, reusable inside a caller's authorization transaction.
  * Resolve a cursor only inside this exact authorized search; equal names are ordered by employment ID. */
@@ -494,17 +495,27 @@ export async function searchWorkforceEmployeesTx(ctx:SessionContext,tx:Tx,compan
     when left(${name},length(${raw})) = ${raw} then 2
     when position(${raw} in ${code}) > 0 or (${folded} <> '' and position(${folded} in ${compact}) > 0) then 3
     when position(${raw} in ${name}) > 0 then 4 else 5 end`;
-  // Normalize each authorized candidate once; ranking otherwise repeats these expressions in
-  // both its filter and ordering. This is statement-local work, not a permission/result cache.
+  // Rank authorized typed facts before building detail JSON. Preserve the exact existing rank,
+  // name/ID ordering and eight-result contract; both sources retain their native purpose guard.
   const source=sql`(
     with normalized as materialized (
-      select workforce_row.value, lower(${columns.name}) as search_name,
-        lower(coalesce(${columns.employeeCode},'')) as search_code,
-        regexp_replace(lower(coalesce(${columns.employeeCode},'')), '[[:space:]._-]', '', 'g') as search_compact
-      from app.access_workforce_picker_rows(null,null::date,null::date) as workforce_row(value)
-      where ${workforceListWhere({companyIds},workforceListColumns())}
+      select workforce_row.employment_id,workforce_row.name,
+        lower(workforce_row.name) as search_name,
+        lower(coalesce(workforce_row.employee_code,'')) as search_code,
+        regexp_replace(lower(coalesce(workforce_row.employee_code,'')), '[[:space:]._-]', '', 'g') as search_compact
+      from app.access_workforce_list_facts() as workforce_row
+      where ${workforceListWhere({companyIds},personnelFactColumns())}
+    ), scored as materialized (
+      select workforce_row.employment_id,workforce_row.name,${rank} as search_rank
+      from normalized as workforce_row
+    ), selected as materialized (
+      select employment_id,name,search_rank from scored where search_rank<5
+      order by search_rank,name,employment_id limit ${EMPLOYEE_SEARCH_RESULT_CAP}
+    ), details(value) as materialized (
+      select value from app.access_workforce_list_rows_for_ids(array(select employment_id from selected)) r(value)
     )
-    select workforce_row.value, ${rank} as search_rank from normalized as workforce_row
+    select details.value,selected.search_rank from selected
+    join details on (details.value->>'employmentId')::uuid=selected.employment_id
   ) as workforce_row`;
   return tx.select(columns).from(source).where(sql`workforce_row.search_rank < 5`)
     .orderBy(sql`workforce_row.search_rank`,columns.name,columns.employmentId).limit(EMPLOYEE_SEARCH_RESULT_CAP);
