@@ -52,8 +52,11 @@ describe('formula authoring provider admission',()=>{
   vi.mocked(openaiAdapter.generate).mockImplementationOnce(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});if(kind==='module')await setModule(base.tenantId,'payroll','disabled');else await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,base.adminUserId));return JSON.stringify({source:'Return 1',explanation:'A draft',questions:[],unsupported:[]});});
   const before=await counts();await expect(draftPayFormula(ctx,input)).rejects.toThrow();expect(await counts()).toEqual(before);
  });
- it('keeps the revised contract blocked until its exact source is reviewed',async()=>{
-  fixture.reviewed=false;await expect(draftPayFormula(ctx,input)).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();
+ it('refuses a stale exact source binding before transport',async()=>{
+  fixture.reviewed=false;fixture.stale=true;await expect(draftPayFormula(ctx,input)).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();
+ });
+ it('uses the actual current source-owned review when authorising transport',async()=>{
+  fixture.reviewed=false;expect(await draftPayFormula(ctx,input)).toMatchObject({valid:true,source:'Return {#Basic}'});expect(openaiAdapter.generate).toHaveBeenCalledOnce();
  });
  it('has no provider call when unconfigured',async()=>{
   vi.mocked(configuration.resolveActiveAiConfig).mockResolvedValueOnce(null);await expect(draftPayFormula(ctx,input)).rejects.toThrow('not_configured');expect(openaiAdapter.generate).not.toHaveBeenCalled();
