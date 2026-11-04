@@ -681,6 +681,10 @@ export async function discardEmployeeDraft(
   if (capture && !outerTx) throw new Error('Draft discard result requires an enclosing transaction.');
   const run = async (tx: Tx): Promise<void | EmployeeDraftDiscardResult> => {
     await boundNativeOutcomeTransactionTx(tx);
+    // Match create/save: authority precedes Onboarding's audit and case locks.
+    // The closed delete port repeats this native barrier; taking it here prevents
+    // a discard from holding audit custody while another writer holds authority.
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     const [row] = await tx
       .select({
         reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
