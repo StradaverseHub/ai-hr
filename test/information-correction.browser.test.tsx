@@ -1,5 +1,5 @@
 /** Actual components and CSS; command authorization and database integrity live in the native companion suite. */
-import {afterEach,describe,it,expect,vi} from 'vitest';
+import {afterAll,afterEach,beforeEach,describe,it,expect,vi} from 'vitest';
 import {cleanup,render,screen,fireEvent,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {page} from 'vitest/browser';
@@ -15,7 +15,15 @@ const {InformationCorrectionImport}=await import('../app/admin/personnel/import/
 const values={companyId:'co-a',hiredOn:'2025-01-15',joinDate:'2025-01-15',gradeId:null,employmentType:'full_time'};
 const preview:InformationPreview={effectiveOn:'2026-10-30',employmentId:'synthetic-employee',employeeCode:'EMP-001',name:'Aisha Fixture',fingerprint:'review-fingerprint',before:values,after:{...values,hiredOn:'2025-01-01'},beforeLabels:{...values,companyId:'DEMO · Demo Company'},afterLabels:{...values,companyId:'DEMO · Demo Company',hiredOn:'2025-01-01'},reason:'Correct signed employment record',changed:['hiredOn']};
 const context=()=>({preview:{...preview,changed:[],after:values},options:{companies:[{id:'co-a',code:'DEMO',name:'Demo Company'}],grades:[],employmentTypes:['full_time','part_time']},history:[]});
-afterEach(()=>{cleanup();vi.clearAllMocks();document.documentElement.removeAttribute('data-ui-theme');document.documentElement.classList.remove('dark');});
+/** DIAGNOSTIC COPY ONLY (CI branch, never release evidence): this file sends no keys, so any key event observed here is foreign. */
+const icDiag=(phase:string,extra:any={})=>console.info('IC_DIAG '+JSON.stringify({phase,w:Date.now(),test:expect.getState().currentTestName??null,hasFocus:document.hasFocus(),...extra}));
+const icListeners:[EventTarget,string,EventListener,boolean][]=[];
+const icListen=(target:EventTarget,where:string,type:string,capture:boolean)=>{const listener=(event:Event)=>icDiag('event',{where,type:event.type,trusted:event.isTrusted,key:(event as KeyboardEvent).key??null});target.addEventListener(type,listener,capture);icListeners.push([target,type,listener,capture]);};
+for(const type of ['keydown','keypress','keyup']){icListen(window,'frame',type,true);try{icListen(window.top!,'top',type,true);}catch{}}
+for(const type of ['focus','blur']){icListen(window,'frame-window',type,false);try{icListen(window.top!,'top-window',type,false);}catch{}}
+afterAll(()=>{for(const [target,type,listener,capture] of icListeners)target.removeEventListener(type,listener,capture);});
+beforeEach(()=>icDiag('test-start'));
+afterEach(()=>{icDiag('test-end');cleanup();vi.clearAllMocks();document.documentElement.removeAttribute('data-ui-theme');document.documentElement.classList.remove('dark');});
 it('requires a reason and an explicit before/after confirmation before saving the manual correction',async()=>{
  await page.viewport(1280,900);
  actions.context.mockResolvedValue(context());actions.preview.mockResolvedValue(preview);actions.save.mockImplementation(async()=>{actions.context.mockResolvedValue({...context(),preview:{...context().preview,before:preview.after}});return{changed:true};});
@@ -45,10 +53,10 @@ it('shows Excel row errors before confirmation and displays durable batch result
 });
 describe('correction review layout in the six locales and three themes',()=>{
  for(const [locale,messages] of Object.entries({en,ms,zh,ta,th,vi:viMessages}))for(const theme of ['classic','monolith','atelier'])for(const dark of [false,true])it(`${locale} ${theme} ${dark?'dark':'light'} contains its table at mobile width`,async()=>{
-  await page.viewport(390,844);document.documentElement.setAttribute('data-ui-theme',theme);document.documentElement.classList.toggle('dark',dark);
+  icDiag('viewport-start');await page.viewport(390,844);icDiag('viewport-end');document.documentElement.setAttribute('data-ui-theme',theme);document.documentElement.classList.toggle('dark',dark);
   render(<NextIntlClientProvider locale={locale} messages={messages}><main className="max-w-full bg-background p-4 text-foreground"><h1 className="mb-4 text-xl font-semibold">{messages.people.informationCorrection.title}</h1><InformationChangesTable preview={preview}/><p className="mt-4 text-sm">{messages.people.informationCorrection.protection}</p></main></NextIntlClientProvider>);
   expect(screen.getByText(messages.people.informationCorrection.fields.hiredOn)).toBeVisible();
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
-  if(locale==='en')console.info('Correction layout:',await page.screenshot({path:`../.vitest-attachments/information-correction-${theme}-${dark?'dark':'light'}.png`}));
+  if(locale==='en'){icDiag('screenshot-start');console.info('Correction layout:',await page.screenshot({path:`../.vitest-attachments/information-correction-${theme}-${dark?'dark':'light'}.png`}));icDiag('screenshot-end');}
  });
 });

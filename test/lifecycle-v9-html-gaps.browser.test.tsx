@@ -1,4 +1,4 @@
-import {afterEach,expect,it,vi} from 'vitest';
+import {afterAll,afterEach,expect,it,onTestFailed,vi} from 'vitest';
 import {page,userEvent} from 'vitest/browser';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
@@ -25,9 +25,22 @@ function contrast(a:string,b:string) {
  const luminance=(s:string)=>{const rgb=s.match(/[\d.]+/g)!.slice(0,3).map(Number).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;};
  const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);
 }
+/** DIAGNOSTIC COPY ONLY (CI branch, never release evidence): observes the existing actions; adds no focus, key, click, wait or retry. */
+const DIAG:any={events:[],rules:null,overflow:0};
+const diagDescribe=(value:any):any=>{if(!value||typeof value!=='object')return value??null;if(value===window)return 'frame-window';try{if(value===window.top)return 'top-window';if(value===window.top!.document)return 'top-document';}catch{}if(value===document)return 'frame-document';const el=value as Element;if(!el.tagName)return String(value.nodeName??'?');return {tag:el.tagName,label:el.getAttribute?.('aria-label')??null,ownFrame:el===window.frameElement,connected:(el as any).isConnected,isRules:el===DIAG.rules};};
+const diagState=()=>{let top:any=null;try{const td=window.top!.document;top={active:diagDescribe(td.activeElement),hasFocus:td.hasFocus(),scroll:[window.top!.scrollX,window.top!.scrollY]};}catch(error){top=String(error);}return {active:diagDescribe(document.activeElement),hasFocus:document.hasFocus(),visibility:document.visibilityState,scroll:[window.scrollX,window.scrollY],viewport:[window.innerWidth,window.innerHeight],frame:window.frameElement?.getBoundingClientRect().toJSON()??null,top};};
+const diagRecord=(phase:string,extra:any={})=>{if(DIAG.events.length>=600){DIAG.overflow++;return;}DIAG.events.push({phase,w:Date.now(),t:Math.round(performance.now()*10)/10,...diagState(),...extra});};
+const diagListeners:[EventTarget,string,EventListener,boolean][]=[];
+const diagListen=(target:EventTarget,where:string,type:string,capture:boolean)=>{const listener=(event:Event)=>diagRecord('event',{where,type:event.type,trusted:event.isTrusted,key:(event as KeyboardEvent).key??null,target:diagDescribe(event.target),eventPhase:event.eventPhase,defaultPrevented:event.defaultPrevented});target.addEventListener(type,listener,capture);diagListeners.push([target,type,listener,capture]);};
+for(const type of ['keydown','keypress','keyup','click','focusin','focusout']){diagListen(window,'frame',type,true);try{diagListen(window.top!,'top',type,true);}catch{}}
+for(const type of ['focus','blur']){diagListen(window,'frame-window',type,false);try{diagListen(window.top!,'top-window',type,false);}catch{}}
+afterAll(()=>{for(const [target,type,listener,capture] of diagListeners)target.removeEventListener(type,listener,capture);});
+const diagSummary=(from:number)=>DIAG.events.slice(from).filter((e:any)=>e.phase==='event').map((e:any)=>`${e.where}:${e.type}${e.key?':'+e.key:''}${e.target?.isRules?'@rules':''}`);
 for(const theme of ['classic','monolith','atelier'] as const)for(const dark of [false,true])for(const mobile of [false,true]) {
  it(`repairs reference details, keyboard sections, notice and duplicate chrome in ${theme} ${dark?'dark':'light'} ${mobile?'mobile':'desktop'}`,async()=>{
-  await page.viewport(mobile?390:1512,mobile?844:805);document.documentElement.setAttribute('data-ui-theme',theme);document.documentElement.classList.toggle('dark',dark);
+  DIAG.events=[];DIAG.rules=null;DIAG.overflow=0;diagRecord('test-start',{theme,dark,mobile});
+  onTestFailed(()=>{const current=document.querySelector('button[aria-label="Assignment rules"]');diagRecord('on-failed',{rulesExpanded:DIAG.rules?.getAttribute('aria-expanded')??null,rulesConnected:DIAG.rules?.isConnected??null,rulesActive:DIAG.rules===document.activeElement,current:diagDescribe(current),currentExpanded:current?.getAttribute('aria-expanded')??null,sameNode:current===DIAG.rules});console.info('V9_DIAG_FAIL '+JSON.stringify({theme,dark,mobile,overflow:DIAG.overflow,events:DIAG.events}));});
+  await page.viewport(mobile?390:1512,mobile?844:805);diagRecord('after-viewport');document.documentElement.setAttribute('data-ui-theme',theme);document.documentElement.classList.toggle('dark',dark);
   const view=render(workspace(theme,'leavers'));
   const notice=screen.getByText('Start a case from the employee record, review the checklist and confirm the case to begin assignments and workflows.');
   await expect.poll(()=>contrast(getComputedStyle(notice).color,getComputedStyle(notice).backgroundColor)).toBeGreaterThanOrEqual(4.5);
@@ -42,7 +55,9 @@ for(const theme of ['classic','monolith','atelier'] as const)for(const dark of [
    else {for(const rect of [n,d,o]){expect(rect.left).toBeGreaterThanOrEqual(0);expect(rect.right).toBeLessThanOrEqual(391);}expect(d.top).toBeGreaterThan(n.bottom);}
    const rules=screen.getByRole('button',{name:'Assignment rules'}),tasks=screen.getByRole('button',{name:'Tasks'});
    expect(rules.getAttribute('aria-expanded')).toBe('false');expect(tasks.getAttribute('aria-expanded')).toBe('true');
-   rules.focus();await expect.poll(()=>document.activeElement).toBe(rules);await userEvent.keyboard('{Enter}');
+   DIAG.rules=rules;diagRecord('before-focus',{route,rect:rules.getBoundingClientRect().toJSON()});
+   rules.focus();diagRecord('after-focus',{route,rect:rules.getBoundingClientRect().toJSON()});await expect.poll(()=>document.activeElement).toBe(rules);const diagFrom=DIAG.events.length;diagRecord('before-Enter',{route});await userEvent.keyboard('{Enter}');diagRecord('after-Enter',{route,expanded:rules.getAttribute('aria-expanded')});
+   console.info('V9_DIAG_ENTER '+JSON.stringify({theme,dark,mobile,route,before:DIAG.events[diagFrom],after:DIAG.events[DIAG.events.length-1],events:diagSummary(diagFrom)}));
    const rulesAtKeyReturn=rules.getAttribute('aria-expanded');await expect.poll(()=>rules.getAttribute('aria-expanded')).toBe('true');expect(screen.getByText(/Population preview/)).toBeVisible();
    console.info('V9_KEYBOARD_COMMIT '+JSON.stringify({theme,dark,mobile,route,atKeyReturn:rulesAtKeyReturn,committed:rules.getAttribute('aria-expanded'),focused:document.activeElement===rules}));
    tasks.focus();await expect.poll(()=>document.activeElement).toBe(tasks);await userEvent.keyboard(' ');await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('false');expect(screen.queryAllByRole('textbox',{name:'Task name'})).toHaveLength(0);
