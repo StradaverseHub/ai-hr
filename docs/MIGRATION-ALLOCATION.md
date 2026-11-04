@@ -1517,3 +1517,38 @@ the latest **closed** run of the same run type (`payroll_status` is exactly draf
 main's 0631 versions of these functions. No statement added or removed; owner and grants unchanged. The idx811 row's
 SHA256 above, the `lifecycle-v9` journal pin and the `board-nine` applied-ledger pin are the new file's. Same number, idx
 and `when`.
+
+## AI Centre block 2000–2019: payroll history learning, P1 — 4 November 2026 (unapplied source reservation)
+
+Branch `claude/payroll-history-learning` (from main `b6077019c`, the AI v2 release, whose journal has 668 entries ending idx811
+/ `2011_payroll_loops_hardening` / when1793330001411) appends **`2012_payroll_learned_baseline`**, the next number of the block:
+idx 812, when 1793330001412 = 1793330000000 + (2012 − 600). The 2000–2011 files are left byte for byte as main has them.
+
+A fresh fetch at the start of this work covered every origin ref (2017 refs; `git log --all` over `db/migrations/2012*`,
+`2013*` and `2014*` found nothing) and the migration folders of every registered worktree, including uncommitted files:
+nothing claims a file from 2012 to 2019 or a `when` at or above 1793330001412.
+
+| Number | idx | when | Tag | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+|2012|812|1793330001412|2012_payroll_learned_baseline|54865eb46777c2cd68d0f9fbdd8894594262c8047675608c2348f1c28599bdba|
+
+Three new tables, FORCE row-level security and exact grants (SELECT and INSERT only, everything else revoked) on each:
+`payroll_learning_mode` (the company's learning mode, off by default, append-only and versioned; classify only through an
+approved proposal), `payroll_learned_baseline` (per employment, basis, as-of month and version, integer-sen statistics from
+closed runs only; payroll administrators of the company read, never the agent principal or the person; append-only; cascades
+with the employment; deleted only by person erasure, `app.payroll_learned_baseline_redact`, and the leaver retention purge,
+`app.payroll_learned_baseline_purge`, 3 months after the final pay closed) and `payroll_learning_run` (counts only; the agent
+principal writes). Writers reviewed: the tables are new; `core/payroll-learning/mode.ts` and `core/payroll-learning/recompute.ts`
+are their only writers, `core/pdpa.ts` and `core/payroll-learning/recompute.ts` the only callers of the deleting functions.
+`test/lifecycle-v9-populated-upgrade.test.ts` pins the identity; `test/board-nine-populated-upgrade.test.ts` and
+`test/payroll-tax-basis-upgrade.test.ts` apply it on a populated database.
+
+Development source only: no installation priority, no deployment. At installation the number and `when` value are re-checked
+against staging's applied watermark and re-frozen above it if it has reached them.
+
+2012 edited in place before any application (coordinator review, 4 November 2026); same number, idx 812 and `when`
+1793330001412, and the table above carries the new SHA256 (was `f16e72833390f08b84c7bf427c0303068c1c3e8076a10eb7a27b9142f4622e64`):
+the learning mode's insert policy admits evidence only from a group administrator (off from any payroll administrator of
+the company), and the baseline insert policy refuses while the tenant's stop switch (`teras_mandate_control.stopped`) is on.
+Writers reviewed: unchanged (`core/payroll-learning/mode.ts`, `core/payroll-learning/recompute.ts`). The two populated-upgrade
+pins carry the new hash.

@@ -46,7 +46,9 @@ describe('step 4 capabilities in the semantic model',()=>{
    // AI v2 Phase 2 P2-5 appends the Living Handbook's approved policies in force (core/semantic-model/entities-handbook.ts; test/handbook-policies.test.ts).
    'my_policy_handbook',
    // AI v2 Phase 2 P2-6 appends AI quality for administrators (core/semantic-model/entities-quality.ts; test/learning-loops.test.ts).
-   'ai_quality_summary']);
+   'ai_quality_summary',
+   // Payroll history learning (P2) appends "Learned this cycle" (core/semantic-model/entities-payroll-learning.ts; test/payroll-learning.test.ts).
+   'payroll_learning_status']);
   expect(TERAS_CAPABILITIES.map(row=>row.name)).toEqual(TERAS_READS.map(row=>row.name));
   expect([...EXPLAIN_READS,...SETUP_READS].map(row=>row.entity)).toEqual(STEP4.map(entity=>entity.id));
   expect(TERAS_READS.some(row=>row.input.some(input=>input.identifier)),'no step 4 capability takes a record handle').toBe(false);
@@ -94,7 +96,7 @@ describe('step 4 capabilities in the semantic model',()=>{
   const required=Object.fromEntries(specs.map(spec=>[spec.name,(spec.inputSchema as {required:string[]}).required]));
   expect(required).toEqual({explain_payslip_statutory:[],explain_leave_entitlement:['leave_type'],explain_attendance_day:['date'],setup_copilot:[],password_policy_guidance:[],correction_controls_guidance:[],pay_aggregates:[],workforce_metrics:['metric'],
    explain_pay_difference:[],explain_claim_limit:['claim_type'],loops_overview:[],my_payroll_readiness:[],
-   payroll_cycle_status:[],salary_payroll_checks:[],payroll_loop_settings:[],payroll_audit_status:[],my_policy_handbook:[],ai_quality_summary:[]});
+   payroll_cycle_status:[],salary_payroll_checks:[],payroll_loop_settings:[],payroll_audit_status:[],my_policy_handbook:[],ai_quality_summary:[],payroll_learning_status:[]});
   const never=[...new Set(STEP4.flatMap(entity=>walk(entity.fields)).filter(field=>field.disclosure==='never').map(field=>field.name))];
   for(const spec of specs)for(const name of never)expect(spec.description).not.toMatch(new RegExp(`(^|[^A-Za-z0-9_])${name}([^A-Za-z0-9_]|$)`));
  });

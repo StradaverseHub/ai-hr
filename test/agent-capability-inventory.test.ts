@@ -131,7 +131,9 @@ describe('ADR-0151 agent capability inventory',()=>{
    // Phase 2 hardening: acknowledgements, grouped dispositions, pre-filled resolves and learned rules are a person's too.
    'app/control-tower/loops/payroll-cycle/actions.ts':{acknowledgeCheckAction:'handoff:ai_governance',decideRuleProposalAction:'handoff:ai_governance',
     decideThresholdProposalAction:'handoff:ai_governance',disposeSwingGroupAction:'handoff:ai_governance',recordSwingDispositionAction:'handoff:ai_governance',
-    resolveAcknowledgedBlockAction:'handoff:ai_governance',revokeAcknowledgementAction:'handoff:ai_governance',setPayrollLoopSettingAction:'handoff:ai_governance'},
+    resolveAcknowledgedBlockAction:'handoff:ai_governance',revokeAcknowledgementAction:'handoff:ai_governance',setPayrollLoopSettingAction:'handoff:ai_governance',
+    // Payroll history learning: switching a company's learning mode is a person's (a group administrator's to switch on).
+    setPayrollLearningModeAction:'handoff:ai_governance'},
   };
   for(const [file,entries] of Object.entries(expected)){
    expect(actual[file]?.slice().sort(),file).toEqual(Object.keys(entries).sort());

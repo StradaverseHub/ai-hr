@@ -14,9 +14,9 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(668); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors, the four AI v2 Phase 1 migrations 2000-2003 and the seven AI v2 Phase 2 migrations 2004-2010 and the Phase 2 hardening migration 2011 below.
+ expect(journal.entries).toHaveLength(669); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors, the four AI v2 Phase 1 migrations 2000-2003 and the seven AI v2 Phase 2 migrations 2004-2010, the Phase 2 hardening migration 2011 and the payroll history learning migration 2012 below.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
- expect(journal.entries.slice(boundary)).toHaveLength(97);
+ expect(journal.entries.slice(boundary)).toHaveLength(98);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
  // The accepted V9 prefix and coordinated Feedback/Bank identities are immutable; the two coordinated Formula appends follow.
  expect(createHash('sha256').update(JSON.stringify(journal.entries.slice(0,579).map(migrationIdentity))).digest('hex')).toBe('11e5295ce4e60acb1f13c009a78098b043c862b6412ed2bbc2e102f142a87f85');
@@ -76,6 +76,8 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:810,version:'7',when:1793330001410,tag:'2010_teras_learning_loops',breakpoints:true,hash:'2cabdaa5975db8ef1d91f6027bb38b4b7ca1f7ce3c17561b9961926f2e02c201'},
   // AI v2 Phase 2 hardening, payroll loops, audit and checklist (claude/aiv2-p2h-loops-hardening), frozen here.
   {idx:811,version:'7',when:1793330001411,tag:'2011_payroll_loops_hardening',breakpoints:true,hash:'d42cceaf96f728c8682b73c40c33b5d3066de40f1d5484100dff3686c811d909'},
+  // Payroll history learning P1 (claude/payroll-history-learning), frozen here.
+  {idx:812,version:'7',when:1793330001412,tag:'2012_payroll_learned_baseline',breakpoints:true,hash:'54865eb46777c2cd68d0f9fbdd8894594262c8047675608c2348f1c28599bdba'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {
