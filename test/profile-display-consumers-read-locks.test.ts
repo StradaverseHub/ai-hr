@@ -20,7 +20,7 @@ it('allows standalone workspace, facts and own request history to overlap metada
  const presentation=await readProfilePresentationPolicy(ctx);
  const readers={workspace:()=>readOwnProfileWorkspace(ctx,{employmentId:employee.employmentId}),facts:()=>readOwnProfileFacts(ctx,employee.employmentId),history:()=>myProfileChangeRequests(ctx),pageWorkspace:()=>readOwnProfileWorkspace(ctx,{employmentId:employee.employmentId},presentation),pageHistory:()=>myProfileChangeRequests(ctx,50,presentation)};
  const baseline={workspace:await readers.workspace(),facts:await readers.facts(),history:await readers.history()};
- expect(baseline.workspace.employmentId).toBe(employee.employmentId);expect(baseline.workspace.visible.length).toBeGreaterThan(0);expect(baseline.history).toEqual([]);
+ expect(baseline.workspace.employmentId).toBe(employee.employmentId);expect(baseline.workspace.visible?.length??0).toBeGreaterThan(0);expect(baseline.history).toEqual([]);
  await owner.client.begin(async holder=>{
   await holder`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
   const actual=database.withTenant;
