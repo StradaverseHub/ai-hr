@@ -834,3 +834,31 @@ Counsel's advice (ADR-0169 §5.1) is still required before any real tenant data 
 fictional data only. Production remains held pending the owner's separate request.
 
 This record is not a runtime PASS, staging acceptance or deployment authorisation.
+
+## AI v2 release binding r2
+
+This supersedes the "AI v2 release binding" section above (fd335f23, commit 4ba3b25a8). The full release gate
+(run 41768537723) refused that candidate before planning or building: "Unreviewed AI manifest generator or scope:
+scripts/ai-provider-data-source-manifest.mjs". The gate admits only the fingerprint generator as reviewed on main.
+
+Commit 8fa316bad restores main's generator, withdrawing the closure root `core/handbook/provider-model.ts` that
+e69411ab1 had added. No product code changed. The handbook call site is outside the closure, as at 2109062e8. The
+contract's descriptor, gateway and adjudicator, which fix what can be sent, stay inside it.
+
+The provider-data closure for code 8fa316badc9df90812d879ed1281093fff3dee71 is 1412 files /
+`5212672bfe31dfa6c97445eb545088d58e0414caa5a4b4120dc3838419c54691`. The data scope, the new `handbook_policy_values_v1`
+contract and everything else are as stated in the section above and in the packet, including its "Reissue r2" note.
+
+The repository owner approved the release at this new fingerprint directly in the coordinator session
+teras-noveri-handoff-54e696 ("I approve it"), answering the session's question to approve the AI v2 release at
+fingerprint 5212672b. The session recorded the message on receipt at 2026-11-04T03:51:52Z. The approval covers this closure only.
+
+**Records:**
+- All 27 approved records take the new sourceDigest.
+- `teras_harness_turn_v1` and `handbook_policy_values_v1` take evidence #ai-v2-release-binding-r2 and reviewedAt 2026-11-04T03:51:52Z.
+- Every other record is unchanged apart from its digest, and both pending records stay byte-identical.
+- The module-agent manifest is regenerated last.
+
+Counsel's advice (ADR-0169 §5.1) is still required before any real tenant data reaches a provider. Staging uses
+fictional data only. Production remains held. This record is not a runtime PASS, staging acceptance or deployment
+authorisation.

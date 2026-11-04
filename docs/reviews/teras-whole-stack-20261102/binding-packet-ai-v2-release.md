@@ -769,3 +769,20 @@ approved records changes only its `sourceDigest` (`b96772fe…` → `fd335f23…
 **Changed (2):**
 - `core/payroll-anomaly.ts`
 - `scripts/ai-provider-data-source-manifest.mjs`
+
+---
+
+## Reissue r2 (4 November 2026): the generator root is withdrawn
+- **What happened:** after the binding (4ba3b25a8, `fd335f23…`), the full release gate (run 41768537723) refused to plan
+  or build: "Unreviewed AI manifest generator or scope: scripts/ai-provider-data-source-manifest.mjs".
+  - The gate admits only the fingerprint generator exactly as reviewed on main.
+  - Adding `core/handbook/provider-model.ts` as a closure root (e69411ab1) changed the generator, so it is withdrawn.
+- **What changes:** only the fingerprint generator returns to main's version (commit after 4ba3b25a8). No product code
+  changes.
+  - The handbook call site is again outside the closure, as at `2109062e8`.
+  - The contract's descriptor, gateway and adjudicator, which fix exactly what can be sent, remain inside it.
+- **Approved by the owner in the coordinator session, recorded 2026-11-04T03:51:52Z.**
+- **New provider closure:** 1412 files, `5212672bfe31dfa6c97445eb545088d58e0414caa5a4b4120dc3838419c54691`. The previous
+  binding's approval covered `fd335f23…` only, so a fresh owner approval is needed for this digest.
+- **Follow-up after release:** land the root on main as its own reviewed change, once `core/handbook/provider-model.ts`
+  exists on main.
