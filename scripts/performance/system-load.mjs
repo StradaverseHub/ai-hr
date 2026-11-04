@@ -206,20 +206,24 @@ try{
   await username.fill(user.username);
   const password=page.locator('input[name="password"]');
   await password.fill(user.password);
+  const passwordSubmittedAt=performance.now();
   await page.locator('form').filter({has:password}).locator('button[type="submit"]').click();
   const code=page.locator('input[name="code"]');
   await code.waitFor({state:'visible',timeout:90000});
   await code.fill(await generate({strategy:'totp',secret:user.secret}));
+  const mfaSubmittedAt=performance.now();
   await page.locator('form').filter({has:code}).locator('button[type="submit"]').click();
   await page.waitForURL(url=>url.origin===base&&url.pathname==='/',{timeout:90000});
+  const homeUrlSettledAt=performance.now();
   const session=(await page.context().cookies()).find(cookie=>cookie.name==='__Host-aihr_internal');
   assert(session&&session.value!==user.token,'browser sign-in did not establish a new session');
+  return {passwordSubmittedAt,mfaSubmittedAt,homeUrlSettledAt};
  }
  async function visit(page,user,path,phase='baseline',signIn=false){
   lastPage=page;const stopHomeTracking=homeHttp.track(page,user,path);
-  const start=performance.now();let response;
+  const start=performance.now();let response,signInTiming;
   try{
-   if(signIn)await signInToHome(page,user);
+   if(signIn)signInTiming=await signInToHome(page,user);
    else response=await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});
   }
   catch(error){
@@ -248,6 +252,11 @@ try{
    // Keep collecting independent workflow evidence, then refuse load/acceptance below.
    // A handled card error must never become a passing preflight or a capacity result.
    homeCardIds=await cards.evaluateAll((cards,attribute)=>cards.map(card=>card.getAttribute(attribute)).sort(),attribute);
+   if(path==='/'){
+    const expectedCards=personal?['calendar','celebrations','notices','summary','tasks','team','timeOff','today']:
+     ['attendanceOverview','companies','headcount','headcountByCompany','latestPayroll','latestPayrollRun','noticeBoard','pendingLeave','recentActivity','recentlyJoined','upcomingEvents'];
+    assert.deepEqual(homeCardIds,[...expectedCards].sort(),'fictional Home must render every expected card');
+   }
    if(!personal){
     const expected=fixture.users.filter(actor=>actor.tenant===user.tenant&&(user.role==='groupHR'||actor.companyId===user.companyId)).length;
     assert(await page.locator('[data-dashboard-card="headcount"]').getByText(String(expected),{exact:true}).count()>0,'HR dashboard headcount must match its actual fixture scope');
@@ -262,7 +271,12 @@ try{
   const timing=await page.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return {ttfbMs:n.responseStart-n.requestStart,domInteractiveMs:n.domInteractive,decodedBytes:n.decodedBodySize,transferBytes:n.transferSize};});
   stopHomeTracking();
   if(signIn){
-   const result={phase,role:user.role,homeCards,homeCardIds,todaySectionIds,elapsedMs:performance.now()-start,
+   const cardsCheckedAt=performance.now();
+   const result={phase,role:user.role,homeCards,homeCardIds,todaySectionIds,elapsedMs:cardsCheckedAt-start,
+    passwordSubmitToAllCardsMs:cardsCheckedAt-signInTiming.passwordSubmittedAt,
+    mfaSubmitToHomeUrlMs:signInTiming.homeUrlSettledAt-signInTiming.mfaSubmittedAt,
+    mfaSubmitToAllCardsMs:cardsCheckedAt-signInTiming.mfaSubmittedAt,
+    completeCardInventory:true,
     cardFailures:report.homeCardFailures.filter(row=>row.role===user.role&&row.phase===phase).length};
    const key=phase==='loaded'?'loadedBrowserSignIns':'preflightBrowserSignIns';
    (report[key]??=[]).push(result);
