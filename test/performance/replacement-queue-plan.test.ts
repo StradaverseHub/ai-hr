@@ -6,7 +6,7 @@ import {closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from '../harnes
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('compares exact subject and tenant-wide replacement queue effects with an explicit subject branch',async()=>{
  await resetDb();const b=await seedBase(),foreign=await seedBase();
- const [original]=await owner.client`select pg_get_functiondef(oid) as ddl from pg_proc where oid='app.enqueue_replacement_holidays()'::regprocedure`;
+ const [original]=await owner.client`select pg_get_functiondef(oid) as ddl,to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app.enqueue_replacement_holidays()'::regprocedure`;
  const statement=`INSERT INTO replacement_holiday_queue(tenant_id,employment_id)
  SELECT e.tenant_id,e.id FROM employment e WHERE e.tenant_id=tid AND (eid IS NULL OR e.id=eid)
  ON CONFLICT(tenant_id,employment_id) DO UPDATE SET generation=replacement_holiday_queue.generation+1,requested_at=now(),claimed_at=NULL,claimed_generation=NULL;`;
@@ -24,9 +24,15 @@ it('compares exact subject and tenant-wide replacement queue effects with an exp
   measurements.push({phase:'original',insertMs:await population(b,'fd000000-0000-4000-8000-',5000)});
   await owner.client.unsafe(candidate);
   measurements.push({phase:'candidate',insertMs:await population(b,'fe000000-0000-4000-8000-',5000)});
+  measurements.push({phase:'candidate-warm',insertMs:await population(b,'fa100000-0000-4000-8000-',5000)});
+  await owner.client.unsafe(original.ddl);
+  measurements.push({phase:'restored',insertMs:await population(b,'fb100000-0000-4000-8000-',5000)});
+  await owner.client.unsafe(candidate);
+  const [metadata]=await owner.client`select to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app.enqueue_replacement_holidays()'::regprocedure`;
+  expect(metadata.attributes).toEqual(original.attributes);
   // An exact-subject update increments only that employee; company updates still enqueue the whole tenant.
   const rows=()=>owner.client`select tenant_id,employment_id,generation::int from replacement_holiday_queue order by tenant_id,employment_id`;
-  const before=await rows();expect(before).toHaveLength(10001);
+  const before=await rows();expect(before).toHaveLength(20001);
   await owner.client`update employment set employee_code=employee_code||'X' where id='fe000000-0000-4000-8000-000000000001'::uuid`;
   const afterSubject=await rows();
   expect(afterSubject.map((row,i)=>row.generation-before[i].generation)).toEqual(before.map(row=>row.employment_id==='fe000000-0000-4000-8000-000000000001'?1:0));
