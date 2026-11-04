@@ -157,10 +157,10 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
    to_regclass('public.teras_learning_signal')::text as learning,to_regclass('public.payroll_check_acknowledgement')::text as hardening`;
   expect(await phaseTwoObjects()).toEqual([{levels:null,settings:null,audit:null,baseline:null,cutoff:false,handbook:null,learning:null,hardening:null}]);
   expect(await native()).toEqual(upgradeNative);
-  // Then this integration's eight AI v2 Phase 2 migrations (2004-2011) and the ADR-0174 hardening (2100-2102), by the ordinary migrator over the whole journal.
+  // Apply AI v2 Phase 2, ADR-0174 hardening and the four independently pinned performance appends through the ordinary migrator.
   // Their when values sit above Phase 1's 1793330001403, so none is skipped.
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  const afterLedger=await ledger();expect(afterLedger).toHaveLength(671);expect(afterLedger.slice(0,660)).toEqual(phaseOneLedger);
+  const afterLedger=await ledger();expect(afterLedger).toHaveLength(675);expect(afterLedger.slice(0,660)).toEqual(phaseOneLedger);
   expect(afterLedger.slice(660).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
    {hash:'b6bdeac1995dad6df759ce9a537c98e9a3666bf01aef716a7f6cac9a9134b132',created_at:'1793330001404'},
    {hash:'d211dd97ebdeb673998d29a2a9b3b8d8597c39a5646259ac0c855d46eca49fbc',created_at:'1793330001405'},
@@ -173,6 +173,7 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
    {hash:'f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a',created_at:'1793330001500'},
    {hash:'5aaf9b7e1f06514771e46ae3303e2e375eb461ba3acf0f8bb21af510bf49eb18',created_at:'1793330001501'},
    {hash:'b2a6af380bb89765c2b32b6edaf8b5c7707ca23901f22806cd9f8888856983b4',created_at:'1793330001502'},
+   ...PERFORMANCE_MIGRATION_IDENTITIES.map(({hash,when})=>({hash,created_at:String(when)})),
   ]);
   expect(await phaseTwoObjects()).toEqual([{levels:'teras_loop_level',settings:'teras_payroll_loop_setting',audit:'payroll_audit_capture',baseline:'teras_capacity_baseline',
    cutoff:true,handbook:'teras_policy_version',learning:'teras_learning_signal',hardening:'payroll_check_acknowledgement'}]);

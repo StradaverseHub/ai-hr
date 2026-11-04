@@ -39,7 +39,7 @@ describe('one switch owner per AI feature (0692)', () => {
 
   it('reads the live switch key from the table, with no hard-coded CASE left', () => {
     const context = live('FUNCTION app._ai_control_context(');
-    expect(context.file).toBe(MIGRATION);
+    expect(context.file).toBe('db/migrations/2124_ai_control_navigation_candidates.sql');
     expect(context.body).not.toMatch(/CASE\s+wanted_feature/);
     for (const [, key] of settingBacked) expect(context.body).not.toContain(`'${key}'`);
     expect(context.body).toContain('SELECT s.setting_key INTO switch_key FROM app.ai_feature_setting s WHERE s.feature_id=wanted_feature');
