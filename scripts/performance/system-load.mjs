@@ -143,7 +143,7 @@ async function verifyAudit(){
 const employee=fixture.users.find(u=>u.role==='employee'),hr=fixture.users.find(u=>u.role==='companyHR'),group=fixture.users.find(u=>u.role==='groupHR'),manager=fixture.users.find(u=>u.role==='manager');
 const routePool=user=>routePools[user.role];
 const roleCounts=new Map(),roleOrdinals=new Map(fixture.users.map(user=>{const ordinal=roleCounts.get(user.role)??0;roleCounts.set(user.role,ordinal+1);return [user.index,ordinal];}));
-const pendingBrowserRequests=new WeakMap();
+const pendingBrowserRequests=new WeakMap(),browserPdfRequests=new WeakMap();
 let browser,sampling,progressTimer,sqlSnapshotTimer,browserDiagnosticTimer,contextTemplates,lastPage,runMixedWorkflow;
 async function main(){
 try{
@@ -174,7 +174,13 @@ try{
   await context.addCookies([{name:'NEXT_LOCALE',value:locale,url:base}]);
   if(!signIn)await context.addCookies([{name:'__Host-aihr_internal',value:user.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'}]);
   context.on('page',page=>{
-   const pending=new Map();pendingBrowserRequests.set(page,pending);
+   const pending=new Map(),pdfRequests=[];pendingBrowserRequests.set(page,pending);browserPdfRequests.set(page,pdfRequests);
+   const pdfRequest=req=>new URL(req.url()).origin===base&&new URL(req.url()).pathname.endsWith('/pdf');
+   const pdfResult=(req,outcome,extra={})=>{if(!pdfRequest(req))return;const row=pending.get(req);pdfRequests.push({path:new URL(req.url()).pathname,type:req.resourceType(),outcome,elapsedMs:row?performance.now()-row.startedMs:null,...extra});if(pdfRequests.length>40)pdfRequests.shift();};
+   // Keep bounded transport facts only: no cookies, queries, file names or document bytes.
+   page.on('requestfinished',req=>pdfResult(req,'finished'));
+   page.on('requestfailed',req=>pdfResult(req,'failed',{error:req.failure()?.errorText}));
+   page.on('response',response=>{if(pdfRequest(response.request()))pdfResult(response.request(),'response',{status:response.status(),contentType:response.headers()['content-type'],contentLength:response.headers()['content-length']});});
    page.on('request',req=>{const url=new URL(req.url());pending.set(req,{method:req.method(),path:url.origin===base?url.pathname:'<external>',sameOrigin:url.origin===base,type:req.resourceType(),startedMs:performance.now()});});
    page.on('requestfinished',req=>pending.delete(req));page.on('requestfailed',req=>pending.delete(req));
    page.on('response',response=>{const row=pending.get(response.request());if(row)row.status=response.status();});
@@ -216,7 +222,14 @@ try{
    if(signIn)await signInToHome(page,user);
    else response=await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});
   }
-  catch(error){report.browserPendingRequests=[...(pendingBrowserRequests.get(page)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));save();throw error;}
+  catch(error){
+   report.browserPendingRequests=[...(pendingBrowserRequests.get(page)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));
+   report.browserFailedNavigation={phase,role:user.role,path,elapsedMs:performance.now()-start,pdfRequests:browserPdfRequests.get(page)??[],
+    frames:page.frames().map(frame=>{try{const url=new URL(frame.url());return {sameOrigin:url.origin===base,path:url.origin===base?url.pathname:'<other>'};}catch{return {path:'<unavailable>'};}}),
+    dom:await page.locator('body').evaluate(body=>({readyState:document.readyState,headingCount:body.querySelectorAll('h1').length,mainCount:body.querySelectorAll('main').length,
+     iframeCount:body.querySelectorAll('iframe').length,busyCount:body.querySelectorAll('[aria-busy="true"]').length,alertCount:body.querySelectorAll('[role="alert"]').length}),undefined,{timeout:3000}).catch(()=>null)};
+   stopHomeTracking();save();throw error;
+  }
   if(response)assert.equal(response.status(),200);
   assert(!new URL(page.url()).pathname.startsWith('/login'));await page.locator('main').waitFor();assert((await page.locator('body').innerText()).includes(user.name));
   const heading=(await page.locator('h1').allTextContents()).join(' ').trim();assert(heading.length>0&&!/^404\b/.test(heading),'missing or not-found page heading');
