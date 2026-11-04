@@ -7,7 +7,7 @@ import {parseInformationWorkbook} from '../lib/information-correction-workbook';
 import {INFORMATION_HEADERS} from '../lib/information-correction';
 describe('derived organisation import transport',()=>{
  it('separates global manual-authority activation from the retained historic date',()=>{
-  const legacy={status:'legacy',businessUnitId:null};expect(organisationBusinessUnit(legacy,false,'submitted','stored')).toBe('submitted');expect(organisationBusinessUnit(legacy,true,'submitted','stored')).toBe('stored');expect(organisationBusinessUnit(legacy,true,'submitted')).toBeNull();expect(organisationBusinessUnit({status:'ready',businessUnitId:'canonical'},true,'submitted','stored')).toBe('canonical');
+  const legacy={status:'legacy',businessUnitId:null};expect(organisationBusinessUnit(legacy,false,'submitted','stored')).toBe('submitted');expect(organisationBusinessUnit(legacy,false,undefined,'stored')).toBe('stored');expect(organisationBusinessUnit(legacy,false,null,'stored')).toBeNull();expect(organisationBusinessUnit(legacy,true,'submitted','stored')).toBe('stored');expect(organisationBusinessUnit(legacy,true,'submitted')).toBeNull();expect(organisationBusinessUnit({status:'ready',businessUnitId:'canonical'},true,'submitted','stored')).toBe('canonical');
  });
  it('retains optional parent company only as ignored review input in the full hire parser',()=>{
   const parsed=parsePersonnelImportCsv('business_unit,Parent company\nManual BU,Manual Parent',{columns:['business_unit']});

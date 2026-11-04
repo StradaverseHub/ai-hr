@@ -7,5 +7,5 @@ export async function organisationManagedTx(tx:Tx):Promise<boolean>{
  const [row]=await tx.execute<{managed:boolean}>(sql`select app.company_organisation_managed() as managed`);return row?.managed===true;
 }
 export function organisationBusinessUnit(tags:{status:string;businessUnitId:string|null},managed:boolean,submitted:string|null|undefined,retained:string|null=null):string|null{
- return !managed&&tags.status==='legacy'?(submitted??null):tags.status==='legacy'?retained:tags.businessUnitId;
+ return !managed&&tags.status==='legacy'?(submitted===undefined?retained:submitted):tags.status==='legacy'?retained:tags.businessUnitId;
 }
