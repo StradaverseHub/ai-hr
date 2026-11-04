@@ -217,7 +217,7 @@ export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:stri
  for(const row of rows)for(const part of row.parts){if(part.dueOn>=today||['locked','completed_offline','cancelled'].includes(part.state))continue;part.calendarDaysOverdue=Math.round((Date.parse(today+'T00:00:00Z')-Date.parse(part.dueOn+'T00:00:00Z'))/86400000);if(part.type===1)part.workingDaysOverdue=(await workingDatesForSpan(tx,row.employmentId,addDaysIso(part.dueOn,1),today)).length;}
  return{rows:[...rows],offset,limit,hasMore:offset+rows.length<counts.total,total:counts.total,totals:{overdue:counts.overdue,end_passed:counts.end_passed,ending14:counts.ending14,low_result:counts.low_result,kpi_submit:counts.kpi_submit,kpi_ack:counts.kpi_ack},options:await trackerOptionsTx(tx,ctx)};
 });}
-export type ProbationAdministrationOptions={organisationMapping?:ProbationOrganisationMapping;organisationCatalogs?:Record<ProbationOrganisationMapping,import('../lib/probation-organisation').ProbationOrganisationCatalog>;personnelBusinessUnits?:{id:string;name:string;companyId:string}[];businessGroups:{id:string;name:string}[];grades:string[];companies:{id:string;name:string}[];users:{id:string;name:string}[];departments:{id:string;name:string;companyId:string}[];businessUnits:{id:string;name:string;companyId:string}[]};
+export type ProbationAdministrationOptions={organisationMapping?:ProbationOrganisationMapping;organisationCatalogs?:Record<ProbationOrganisationMapping,import('../lib/probation-organisation').ProbationOrganisationCatalog>;personnelBusinessUnits?:{id:string;name:string;companyId:string}[];businessGroups:{id:string;name:string;companyId?:string}[];grades:string[];companies:{id:string;name:string}[];users:{id:string;name:string}[];departments:{id:string;name:string;companyId:string}[];businessUnits:{id:string;name:string;companyId:string}[]};
 export function probationAdministrationOptions(ctx:SessionContext):Promise<ProbationAdministrationOptions>{return withProbationTenant(ctx,async tx=>{
  const companies=await tx.execute<{id:string;name:string}>(sql`select c.id,c.legal_name as name from company c where c.tenant_id=${ctx.tenantId}::uuid and c.archived_at is null and app.probation_config_admin(c.id) order by c.legal_name,c.id`);
  const allowed=companies.filter(c=>ctx.entitlementsExempt!==undefined||isModuleEnabled(ctx,'lifecycle',c.id));if(!allowed.length)throw new ProbationError('forbidden','Probation module permission is required.');
@@ -230,7 +230,7 @@ export function probationAdministrationOptions(ctx:SessionContext):Promise<Proba
  const [mapping]=await tx.execute<{mapping:ProbationOrganisationMapping}>(sql`select app.probation_organisation_mapping() as mapping`);
  const organisationMapping=mapping.mapping,organisationCatalogs={
   'legacy-v1':{businessGroups:[...businessGroups],businessUnits:[...businessUnits]},
-  'personnel-v2':{businessGroups:businessUnits.map(unit=>({id:unit.id,name:unit.name})),businessUnits:allowed.map(company=>({...company,companyId:company.id}))},
+  'personnel-v2':{businessGroups:businessUnits.map(unit=>({id:unit.id,name:unit.name,companyId:unit.companyId})),businessUnits:allowed.map(company=>({...company,companyId:company.id}))},
  };
  return{...organisationCatalogs[organisationMapping],organisationMapping,organisationCatalogs,personnelBusinessUnits:[...businessUnits],grades:[...new Set(grades.map(g=>g.code))],companies:allowed,users:[...users],departments:[...departments]};
 });}

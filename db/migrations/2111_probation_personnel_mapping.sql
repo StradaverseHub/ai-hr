@@ -42,20 +42,20 @@ $$;
 REVOKE ALL ON FUNCTION app.probation_personnel_source_unchecked(uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 -- Validate identity kinds in new definition versions; never cast a company UUID to a PM Business Unit.
-CREATE FUNCTION app.probation_assert_organisation_scope(p_scope jsonb,p_mapping text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+CREATE FUNCTION app.probation_assert_organisation_scope(p_scope jsonb,p_mapping text,p_company uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE k text;v text;is_company boolean;
 BEGIN
  FOR k,v IN SELECT key,value FROM jsonb_each_text(p_scope) WHERE key IN('businessGroupId','businessUnitId') LOOP
   IF v IS NULL THEN CONTINUE;END IF;
   is_company:=(p_mapping='personnel-v2' AND k='businessUnitId') OR (p_mapping='legacy-v1' AND k='businessGroupId');
   IF is_company THEN
-   IF NOT EXISTS(SELECT 1 FROM company WHERE tenant_id=app.current_tenant_id() AND id::text=v) THEN RAISE EXCEPTION 'Invalid company identity in Probation scope';END IF;
+   IF NOT EXISTS(SELECT 1 FROM company WHERE tenant_id=app.current_tenant_id() AND id::text=v AND (p_mapping='legacy-v1' OR id=p_company)) THEN RAISE EXCEPTION 'Invalid company identity in Probation scope';END IF;
   ELSE
-   IF NOT EXISTS(SELECT 1 FROM business_unit WHERE tenant_id=app.current_tenant_id() AND id::text=v) THEN RAISE EXCEPTION 'Invalid Personnel Business Unit identity in Probation scope';END IF;
+   IF NOT EXISTS(SELECT 1 FROM business_unit WHERE tenant_id=app.current_tenant_id() AND id::text=v AND (p_mapping='legacy-v1' OR company_id=p_company)) THEN RAISE EXCEPTION 'Invalid Personnel Business Unit identity in Probation scope';END IF;
   END IF;
  END LOOP;
 END $$;
-REVOKE ALL ON FUNCTION app.probation_assert_organisation_scope(jsonb,text) FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON FUNCTION app.probation_assert_organisation_scope(jsonb,text,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 ALTER FUNCTION app.probation_config_write(uuid,text,jsonb,boolean,integer) RENAME TO probation_config_write_legacy_organisation;
 REVOKE ALL ON FUNCTION app.probation_config_write_legacy_organisation(uuid,text,jsonb,boolean,integer) FROM PUBLIC,ai_hr_app;
@@ -67,7 +67,7 @@ BEGIN
   IF p_expected>0 THEN SELECT coalesce(data->>'organisationMapping','legacy-v1') INTO prior FROM probation_configuration WHERE tenant_id=app.current_tenant_id() AND company_id=p_company AND kind=p_kind AND version=p_expected;END IF;
   m:=coalesce(p_data->>'organisationMapping',prior,app.probation_organisation_mapping());
   IF m NOT IN('legacy-v1','personnel-v2') OR p_publish AND m='personnel-v2' AND app.probation_organisation_mapping()<>'personnel-v2' THEN RAISE EXCEPTION 'Review the organisation mapping inventory before publishing replacement scopes';END IF;
-  FOR rule IN SELECT value FROM jsonb_array_elements(coalesce(p_data->CASE WHEN p_kind='settings' THEN 'overrides' ELSE 'rules' END,'[]')) LOOP PERFORM app.probation_assert_organisation_scope(rule,m);END LOOP;
+  FOR rule IN SELECT value FROM jsonb_array_elements(coalesce(p_data->CASE WHEN p_kind='settings' THEN 'overrides' ELSE 'rules' END,'[]')) LOOP PERFORM app.probation_assert_organisation_scope(rule,m,p_company);END LOOP;
   p_data:=p_data||jsonb_build_object('organisationMapping',m);
  END IF;
  RETURN app.probation_config_write_legacy_organisation(p_company,p_kind,p_data,p_publish,p_expected);
@@ -84,10 +84,10 @@ BEGIN
  IF p_expected>0 THEN SELECT coalesce(data->>'organisationMapping','legacy-v1') INTO prior FROM probation_builder_definition WHERE tenant_id=app.current_tenant_id() AND company_id=p_company AND kind=p_kind AND definition_key=p_key AND version=p_expected;END IF;
  m:=coalesce(p_data->>'organisationMapping',prior,app.probation_organisation_mapping());
  IF m NOT IN('legacy-v1','personnel-v2') OR p_publish AND m='personnel-v2' AND app.probation_organisation_mapping()<>'personnel-v2' THEN RAISE EXCEPTION 'Review the organisation mapping inventory before publishing replacement scopes';END IF;
- IF p_kind='workflow' THEN PERFORM app.probation_assert_organisation_scope(coalesce(p_data->'conditions','{}'),m);
+ IF p_kind='workflow' THEN PERFORM app.probation_assert_organisation_scope(coalesce(p_data->'conditions','{}'),m,p_company);
  ELSIF p_kind='template' THEN
   FOR k,v IN SELECT key,value FROM jsonb_each(coalesce(p_data->'rules','{}')) WHERE key IN('businessGroup','businessUnit') LOOP
-   FOR item IN SELECT value FROM jsonb_array_elements(v) LOOP PERFORM app.probation_assert_organisation_scope(jsonb_build_object(k||'Id',item),m);END LOOP;
+   FOR item IN SELECT value FROM jsonb_array_elements(v) LOOP PERFORM app.probation_assert_organisation_scope(jsonb_build_object(k||'Id',item),m,p_company);END LOOP;
   END LOOP;
  END IF;
  RETURN app.probation_definition_save_legacy_organisation(p_company,p_key,p_kind,p_data||jsonb_build_object('organisationMapping',m),p_publish,p_expected);
