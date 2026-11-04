@@ -6,7 +6,10 @@ const input=()=>({samples:[read('employee','/',100)],pageInteractions:[navigatio
 it('refuses a slow minority route even when the pooled role p95 is fast',()=>{
  const fixture=input();fixture.routePools.employee.push('/slow');
  fixture.samples=Array.from({length:100},()=>read('employee','/',100));fixture.samples.push(read('employee','/slow',1500));
+ fixture.pageInteractions=Array.from({length:100},()=>navigation('employee','/',100));
  fixture.pageInteractions.push(navigation('employee','/slow',1600));
+ expect(fixture.samples.map(row=>row.durationMs).sort((a,b)=>a-b)[95]).toBe(100);
+ expect(fixture.pageInteractions.map(row=>row.durationMs).sort((a,b)=>a-b)[95]).toBe(100);
  const result=routeLatency(fixture);expect(result.targetMet).toBe(false);
  expect(result.slow.map(row=>[row.kind,row.route])).toEqual([['read','/slow'],['navigation','/slow']]);
 });
