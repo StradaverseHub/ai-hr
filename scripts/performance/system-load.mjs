@@ -246,6 +246,26 @@ try{
   }
   report.browser.push({phase,role:user.role,path,heading,homeCards,homeCardIds,elapsedMs:performance.now()-start,...timing});save();
  }
+ async function languageJourney(page,user,path,phase){
+  const catalog=locale=>JSON.parse(readFileSync(new URL('../../messages/'+locale+'.json',import.meta.url),'utf8'));
+  const names={zh:'简体中文',en:'English'};
+  const draft=path==='/claims'?page.locator('textarea[name="description"]'):null;
+  if(draft)await draft.fill('PERF_UNSUBMITTED_LANGUAGE_DRAFT');
+  for(const locale of ['zh','en']){
+   await page.getByRole('button',{name:'Change language',exact:true}).click();
+   const start=performance.now();
+   await page.getByRole('button',{name:names[locale],exact:true}).click();
+   await page.waitForFunction(({locale,title})=>{
+    const button=document.querySelector('button[aria-label="Change language"]');
+    return document.documentElement.lang===locale&&button?.title===title&&!button.disabled&&button.getAttribute('aria-busy')==='false';
+   },{locale,title:names[locale]},{timeout:90000});
+   const messages=catalog(locale),expected=path==='/claims'?messages.claims.title:messages.people.list.adminTitle;
+   await page.getByRole('heading',{level:1,name:expected,exact:true}).waitFor({timeout:90000});
+   assert(await page.locator('main tbody tr').count()>0,'translated list has no fixture rows');
+   if(draft)assert.equal(await draft.inputValue(),'PERF_UNSUBMITTED_LANGUAGE_DRAFT','language switch discarded an unsubmitted draft');
+   (report.browserLanguageSwitches??=[]).push({role:user.role,path,phase,locale,elapsedMs:performance.now()-start,translatedHeading:true,usable:true,draftRetained:!!draft});save();
+  }
+ }
  for(const user of [employee,manager,hr,group,fixture.users[254],fixture.users[251]]){
   const ctx=await context(user),page=await ctx.newPage();
   for(const route of suite==='whole-system'?routePool(user):user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);
@@ -268,6 +288,10 @@ try{
   const catalog=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
   assert((await page.locator('main').innerText()).includes(catalog.claims.typeLabel),'client form lost route translations');
   report.browser.push({workflow:'client navigation',from:'/leave',to:'/claims',documentRequests:0,passed:true});await ctx.close();save();
+ }
+ for(const [user,path]of [[employee,'/claims'],[hr,'/admin/personnel']]){
+  const ctx=await context(user),page=await ctx.newPage();
+  try{await visit(page,user,path);await languageJourney(page,user,path,'baseline');}finally{await ctx.close();}
  }
  // Capture progressive-enhancement action metadata from the actual built form. No hardcoded action ID.
  async function capturedAction(response){
@@ -441,9 +465,13 @@ try{
   const signIn=user.index===employee.index;
   const ctx=await context(user,'en',signIn),page=await ctx.newPage();
   try{for(const route of user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims']){
-   await visit(page,user,route,'loaded',signIn&&route==='/');await pause(thinkTimeMs);
+   await visit(page,user,route,'loaded',signIn&&route==='/');
+   if((user.role==='employee'&&route==='/claims')||(user.role==='hr'&&route==='/admin/personnel'))await languageJourney(page,user,route,'loaded');
+   await pause(thinkTimeMs);
   }
   if(user.role==='employee')await browserClaimJourney(page,user,'PERF_BROWSER_LOADED_'+user.index,'loaded');
+  }catch(error){
+   (report.browserJourneyFailures??=[]).push({role:user.role,user:user.index,phase:'loaded',errorType:error.name,timeout:error.name==='TimeoutError'});save();throw error;
   }finally{await ctx.close();}
  }));
  const results=await Promise.allSettled(fixture.users.map(async(user,i)=>{
