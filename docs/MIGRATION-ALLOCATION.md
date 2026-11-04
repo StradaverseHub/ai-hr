@@ -1,5 +1,23 @@
 # Coordinated migration reservations
 
+## Profile display read barrier — 5 November 2026 (unapplied)
+
+`codex/performance-profile-display-read-lock-20261105` reserves
+`2135_profile_presentation_read_lock`, idx1388 / when1793330001535 /
+SHA256 `b05f44a52bce44559088003111d1cc36e734ed01971a3042766909128b2d82fd`.
+Fresh source scan covers2366 heads,436 committed journals,599 migration trees and231
+readable worktrees through2134 / idx1387 / when1793330001534. Foreign malformed WIP
+and literal reservation bounds are preserved. Fresh main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e.
+Read-only staging inspection matches all671 ordered canonical identities through1793330001502.
+
+Native regression41895432699 reproduced55P03 for both actual profile presentation and
+Home photo reads behind a shared Access reader. The new function admits only native
+read-only Read Committed transactions, takes shared Access then profile-policy locks,
+and retains the required private generation-anchor existence check. Pure display readers
+use it; all existing mutation helpers, physical generation locks, grants and policy owners
+remain unchanged. Native concurrency/privacy/upgrade and browser/load qualification are
+required. Complete BOARD roles is excluded; no deployment is authorized.
+
 ## Claims visibility membership plan — 5 November 2026 (unapplied)
 
 `codex/performance-claims-set-membership-20261105` reserves

@@ -41,3 +41,45 @@ it('overlaps real profile presentation and Home photo checks with an independent
   }finally{spy.mockRestore();}
  });
 });
+
+it('admits only native read-only Read Committed carriers and preserves both exclusive write barriers',async()=>{
+ await resetDb();const b=await seedBase(),ctx=adminCtx(b);
+ const readLock=(tx:Tx)=>tx.execute(sql`select app.access_profile_policy_read_lock()`);
+ const state=(error:unknown)=>pgSqlState(error);
+ expect(await database.withTenant(ctx,readLock).then(()=>null,state)).toBe('42501');
+ expect(await database.withTenant(ctx,readLock,{readOnlySnapshot:true}).then(()=>null,state)).toBe('42501');
+ for(const namespace of ['access-configuration:','profile-edit-policy:']){
+  await owner.client.begin(async holder=>{
+   await holder`select pg_advisory_xact_lock(hashtextextended(${namespace+b.tenantId},0))`;
+   expect(await database.withTenant(ctx,async tx=>{
+    await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`SET TRANSACTION READ ONLY`);return readLock(tx);
+   }).then(()=>null,state)).toBe('55P03');
+  });
+ }
+ await database.withTenant(ctx,async reader=>{
+  await reader.execute(sql`SET TRANSACTION READ ONLY`);await readLock(reader);
+  // The actual canonical write helper and a raw relevant settings writer must both wait.
+  expect(await database.withTenant(ctx,async tx=>{
+   await tx.execute(sql`set local lock_timeout='300ms'`);
+   await tx.execute(sql`select app.access_profile_policy_write_lock()`);
+  }).then(()=>null,state)).toBe('55P03');
+  expect(await owner.client.begin(async writer=>{
+   await writer`set local lock_timeout='300ms'`;
+   await writer`insert into tenant_setting(tenant_id,key,value) values(${b.tenantId},'ess.profile_photo_edit','false'::jsonb)
+    on conflict(tenant_id,key) do update set value=excluded.value`;
+  }).then(()=>null,state)).toBe('55P03');
+ });
+ // A presentation carrier must never be upgraded into a write transaction.
+ expect(await database.withTenant(ctx,async tx=>{
+  await tx.execute(sql`SET TRANSACTION READ ONLY`);await readLock(tx);
+  await tx.execute(sql`SET TRANSACTION READ WRITE`);
+ }).then(()=>null,state)).toBe('25001');
+});
+
+it('refuses a missing native policy generation anchor without granting access to the private table',async()=>{
+ await resetDb();const b=await seedBase();
+ const [permission]=await owner.client<{allowed:boolean}[]>`select has_table_privilege('ai_hr_app','app.access_profile_write_generation','SELECT') as allowed`;
+ expect(permission.allowed).toBe(false);
+ await owner.client`delete from app.access_profile_write_generation where tenant_id=${b.tenantId}`;
+ expect(await readProfilePresentationPolicy(adminCtx(b)).then(()=>null,error=>pgSqlState(error))).toBe('42501');
+});
