@@ -10,7 +10,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
 const signature='app.proven_company_date_points(jsonb)';
-it('profiles original / cached query plan / restored with live caller RLS and an independent SQL oracle',async()=>{
+it('profiles original / grouped visible rows / restored with live caller RLS and an independent SQL oracle',async()=>{
  await resetDb();const b=await seedBase(),foreign=await seedBase(),today=todayInKualaLumpur();
  const users=Array.from({length:500},()=>({personId:randomUUID(),employmentId:randomUUID(),userId:randomUUID()}));
  await owner.db.insert(s.person).values(users.map(u=>({id:u.personId,tenantId:b.tenantId,fullName:'Fictional dated-company profile',primaryEmail:u.userId+'@example.invalid'})));
@@ -23,7 +23,26 @@ it('profiles original / cached query plan / restored with live caller RLS and an
  const [original]=await owner.client`select pg_get_functiondef(p.oid) as definition,p.prosrc as body,l.lanname as language,to_jsonb(p)-'prosrc'-'prolang' as attributes from pg_proc p join pg_language l on l.oid=p.prolang where p.oid=${signature}::regprocedure`;
  expect(original.language).toBe('sql');expect(original.body).toContain('jsonb_to_recordset(p_points)');
  const body=original.body.trim().replace(/;$/,'');const pieces=body.split('p_points');expect(pieces).toHaveLength(2);
- const candidate=original.definition.replace('LANGUAGE sql','LANGUAGE plpgsql').replace(original.body,'\nBEGIN\n RETURN QUERY\n'+body+';\nEND;\n');
+ const oldJoin = `), facts AS (
+  SELECT r.employment_id,r.on_date,e.id AS visible_employment,e.hired_on,e.terminated_on,
+   count(a.id) AS applicable_count,max(a.company_id::text)::uuid AS applicable_company
+  FROM requested r LEFT JOIN public.employment e ON e.id=r.employment_id
+  LEFT JOIN public.assignment a ON a.employment_id=e.id AND a.superseded_at IS NULL`;
+ const groupedJoin = `), visible_employments AS MATERIALIZED (
+  SELECT e.id,e.hired_on,e.terminated_on
+  FROM (SELECT DISTINCT employment_id FROM requested) r
+  JOIN public.employment e ON e.id=r.employment_id
+ ), visible_assignments AS MATERIALIZED (
+  SELECT a.id,a.employment_id,a.company_id,a.valid_from,a.valid_to
+  FROM visible_employments e JOIN public.assignment a ON a.employment_id=e.id
+  WHERE a.superseded_at IS NULL
+ ), facts AS (
+  SELECT r.employment_id,r.on_date,e.id AS visible_employment,e.hired_on,e.terminated_on,
+   count(a.id) AS applicable_count,max(a.company_id::text)::uuid AS applicable_company
+  FROM requested r LEFT JOIN visible_employments e ON e.id=r.employment_id
+  LEFT JOIN visible_assignments a ON a.employment_id=e.id`;
+ expect(original.body.split(oldJoin)).toHaveLength(2);
+ const candidate=original.definition.replace(oldJoin,groupedJoin);
  expect(candidate).not.toBe(original.definition);
  const profile:{kind:string;rows:Record<string,number>;controls:number;restored:boolean}={kind:'REVERSIBLE_COMPONENT_ONLY_NOT_500_USER_CAPACITY',rows:{},controls:0,restored:false};
  const save=()=>{if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/dated-company-plan-profile.json',JSON.stringify(profile,null,2));};
@@ -55,7 +74,7 @@ it('profiles original / cached query plan / restored with live caller RLS and an
   for(const role of ['employee','administrator'] as const){profile.rows['original-'+role]=await burst(role);save();}
   await owner.client.unsafe(candidate);
   const [changed]=await owner.client`select l.lanname as language,to_jsonb(p)-'prosrc'-'prolang' as attributes from pg_proc p join pg_language l on l.oid=p.prolang where p.oid=${signature}::regprocedure`;
-  expect(changed.language).toBe('plpgsql');expect(changed.attributes).toEqual(original.attributes);
+  expect(changed.language).toBe(original.language);expect(changed.attributes).toEqual(original.attributes);
   for(const role of ['employee','administrator'] as const){profile.rows['candidate-'+role]=await burst(role);save();}
   const a=users[0],other=users[1];
   const points:Point[]=[{employmentId:a.employmentId,date:today},{employmentId:a.employmentId,date:'2019-12-31'},{employmentId:other.employmentId,date:today},{employmentId:randomUUID(),date:today}];
