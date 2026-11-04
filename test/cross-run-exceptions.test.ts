@@ -145,6 +145,19 @@ describe('which verdicts the cross-run queue selects', () => {
     expect((await openExceptionsAcrossRuns(a, { limit: 99 })).cappedOut).toBe(false);
   });
 
+  // AI Centre restructure (Today fix d): Exceptions and Today print the reader's blocking count, so it counts every open
+  // blocking exception, not only the ones on the capped page.
+  it('counts blocking exceptions over the whole queue, beyond the cap', async () => {
+    const may = await makeBatch('2026-05');
+    for (let i = 0; i < 3; i++) await verdict(may, await makeEmp(`b${i}`), { disposition: 'block' });
+    for (let i = 0; i < 2; i++) await verdict(may, await makeEmp(`r${i}`), { disposition: 'review' });
+    const capped = await openExceptionsAcrossRuns(a, { limit: 2 });
+    expect(capped.rows.map((r) => r.disposition)).toEqual(['block', 'block']);
+    expect(capped.total).toBe(5);
+    expect(capped.blocking, 'every open block, not the two on the page').toBe(3);
+    expect((await openExceptionsAcrossRuns(a)).blocking).toBe(3);
+  });
+
   it('a decision made here leaves the queue, which is what makes the backlog finishable', async () => {
     const may = await makeBatch('2026-05');
     const v = await verdict(may, await makeEmp('Ali'));

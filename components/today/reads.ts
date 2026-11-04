@@ -204,7 +204,7 @@ export async function readWatching(s:SessionContext,p:Readonly<{scopeIds:readonl
  ]);
  return Object.freeze({
   deadlines:deadlines?.ok&&deadlines.value.overdue+deadlines.value.dueSoon>0?Object.freeze(deadlines.value):null,
-  exceptions:exceptions?.ok&&exceptions.value.total>0?Object.freeze({total:exceptions.value.total,blocking:exceptions.value.rows.filter(row=>row.disposition==='block').length}):null,
+  exceptions:exceptions?.ok&&exceptions.value.total>0?Object.freeze({total:exceptions.value.total,blocking:exceptions.value.blocking}):null,
   failed:modules.failed()||[deadlines,exceptions].some(result=>result!==null&&!result.ok),
  });
 }

@@ -40,7 +40,7 @@ const row=(verdictId:string,name:string,disposition:'block'|'review')=>({verdict
  computedAt:new Date('2026-10-28T02:00:00Z'),resolution:null,resolvedAt:null,detectorsRun:['missing-bank-profile'],detectorsSkipped:[],employeeName:name,employeeCode:null,
  findings:[{detectorId:'missing-bank-profile',severity:disposition,facts:{bank:'none'},suggestedAction:null,narrative:null}]});
 vi.mock('../core/payroll-anomaly',()=>({openExceptionsAcrossRuns:async()=>{state.reads.push('exceptions');return {rows:[row(V.fixed,'Aina Fictional','block'),
- row(V.acked,'Ben Fictional','block'),row(V.open,'Chong Fictional','review')],total:3,cappedOut:false};}}));
+ row(V.acked,'Ben Fictional','block'),row(V.open,'Chong Fictional','review')],total:3,blocking:2,cappedOut:false};}}));
 vi.mock('../core/agent-actions',()=>({proposeActions:async()=>{state.reads.push('proposals');return [{type:{id:'close_fixed_upstream',blastRadiusCap:25},count:1,overCap:false,
  subjects:[{verdictId:V.fixed,name:'Aina Fictional',detectorId:'missing-bank-profile',cause:'no_bank_account'}]}];}}));
 vi.mock('../core/loops/grouped-dispositions',()=>({acknowledgedBlocks:async(_s:unknown,input:{companyIds:string[];payPeriod:string})=>{state.reads.push(`acknowledged:${input.payPeriod}:${input.companyIds.join(',')}`);

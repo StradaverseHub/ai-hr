@@ -64,7 +64,8 @@ const recommendation=vi.hoisted(()=>({read:vi.fn(async(_session:unknown,_leaveRe
 vi.mock('@/app/assistant/centre/recommendation',()=>({readLeaveRecommendation:recommendation.read}));
 vi.mock('@/core/outcome-record/summary',()=>({summariseOutcomeRecords:async(_s:unknown,p:unknown)=>{S.calls.summary.push(p);if(S.summaryFail)throw Error('Fixture record outage');return S.summary;}}));
 vi.mock('@/core/reporting',()=>({complianceWorklist:async(_s:unknown,p:{companyId:string})=>{S.calls.worklist.push(p.companyId);return S.worklist[p.companyId]??[];}}));
-vi.mock('@/core/payroll-anomaly',()=>({openExceptionsAcrossRuns:async()=>{S.calls.exceptions++;return {...S.exceptions,cappedOut:false};}}));
+// The reader counts blocking exceptions over the whole queue (its own count, not the page's rows: Today fix d).
+vi.mock('@/core/payroll-anomaly',()=>({openExceptionsAcrossRuns:async()=>{S.calls.exceptions++;return {...S.exceptions,blocking:S.exceptions.rows.filter(row=>row.disposition==='block').length,cappedOut:false};}}));
 // The letter request owner counts only requests in companies where the viewer holds the letters `generate` capability.
 vi.mock('@/core/letter-requests',()=>({countWaitingLetterRequests:async(_s:unknown,scope:readonly string[])=>{S.calls.letters.push([...scope]);return S.letterRequests;}}));
 vi.mock('@/core/automatic-followups',()=>({followupItemsTx:async()=>{S.calls.passports++;return S.passports;}}));

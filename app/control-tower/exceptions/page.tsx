@@ -67,14 +67,13 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
     proposeActions(s),
     allowedCompanies(s).then(rows => rows.map(row => row.id)).catch(() => [] as string[]),
   ]);
-  const { rows, total, cappedOut } = queue;
+  const { rows, total, blocking, cappedOut } = queue;
   // The acknowledged blocks of each month that has an open block on screen, for the companies the viewer may see.
   const periods = [...new Set(rows.filter(row => row.disposition === 'block').map(row => row.payPeriod))].sort();
   const acknowledged: AckRow[] = companies.length
     ? (await Promise.all(periods.map(payPeriod => acknowledgedBlocks(s, { companyIds: companies, payPeriod }).then(list => list.map(block => ({ ...block, payPeriod })))))).flat()
     : [];
   const periodOf = new Map(rows.map(row => [row.verdictId, row.payPeriod]));
-  const blocks = rows.filter(r => r.disposition === 'block').length;
   // No verdict is listed twice: one in a group above is left out of the list below.
   const grouped = new Set([...proposals.flatMap(p => p.subjects.map(sub => sub.verdictId)), ...acknowledged.map(block => block.verdictId)]);
   const listed = rows.filter(row => !grouped.has(row.verdictId));
@@ -102,7 +101,7 @@ export default async function CrossRunExceptionsPage({ searchParams }: { searchP
           </div>
           <div>
             <p className="text-xs text-muted-foreground">{tx('blocking')}</p>
-            <p data-exceptions-blocking className="mt-1 text-2xl font-semibold tabular-nums">{blocks}</p>
+            <p data-exceptions-blocking className="mt-1 text-2xl font-semibold tabular-nums">{blocking}</p>
           </div>
         </div>
         {/* ⚠️ SAYS WHEN IT IS SHOWING A SUBSET. A page that silently rendered the first hundred of nine hundred would read
