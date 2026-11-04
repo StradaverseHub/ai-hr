@@ -1,3 +1,4 @@
+import {pgErrorChain} from '../lib/db-error';
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant} from '../db/client';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
@@ -32,6 +33,19 @@ describe('34b9579a date-aware permitted hierarchy and explicit roots',()=>{
  it('rejects a cycle that begins after the proposed start date',async()=>{
   const a=await hire('Alpha'),b2=await hire('Beta');await line(b2.employmentId,a.employmentId,'2027-01-01');
   await expect(line(a.employmentId,b2.employmentId,'2026-01-01')).rejects.toBeInstanceOf(ReportingCycleError);
+ });
+ it('rejects a line-type-only conversion that would turn an opposing functional edge into an administrative cycle',async()=>{
+  const a=await hire('TypeCycleAlpha'),b2=await hire('TypeCycleBeta');await line(b2.employmentId,a.employmentId);
+  const functional=await setReportingLine(adminCtx(b),{subordinateEmploymentId:a.employmentId,managerEmploymentId:b2.employmentId,lineType:'functional',validFrom:'2024-01-01'});
+  const error=await withTenant(adminCtx(b),tx=>tx.update(s.reportingLine).set({lineType:'administrative'}).where(eq(s.reportingLine.id,functional.reportingLineId))).then(()=>null,error=>error);
+  expect(pgErrorChain(error)).toContainEqual(expect.objectContaining({code:'P0001',message:'Direct Superior would create a reporting loop'}));
+  const [retained]=await owner.db.select({lineType:s.reportingLine.lineType}).from(s.reportingLine).where(eq(s.reportingLine.id,functional.reportingLineId));expect(retained.lineType).toBe('functional');
+ });
+ it('allows a line-type-only conversion when the administrative hierarchy remains acyclic',async()=>{
+  const manager=await hire('TypeSafeManager'),employee=await hire('TypeSafeEmployee');
+  const functional=await setReportingLine(adminCtx(b),{subordinateEmploymentId:employee.employmentId,managerEmploymentId:manager.employmentId,lineType:'functional',validFrom:'2024-01-01'});
+  const rows=await withTenant(adminCtx(b),tx=>tx.update(s.reportingLine).set({lineType:'administrative'}).where(eq(s.reportingLine.id,functional.reportingLineId)).returning({lineType:s.reportingLine.lineType}));
+  expect(rows).toEqual([{lineType:'administrative'}]);
  });
  it('serializes opposing concurrent canonical reporting changes; exactly one succeeds',async()=>{
   const a=await hire('Alpha'),b2=await hire('Beta');const outcomes=await Promise.allSettled([line(a.employmentId,b2.employmentId),line(b2.employmentId,a.employmentId)]);

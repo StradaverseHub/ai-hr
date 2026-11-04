@@ -7,7 +7,7 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayComponentCatalog,upsertPayComponent,setEmploymentPayComponent} from '../core/pay-components';
-import {createBatch,generatePayslips} from '../core/payroll';
+import {createBatch,createAdditionalRun,generatePayslips} from '../core/payroll';
 import {registerPayFormulaPersonnelField,payFormulaOptions,savePayFormula,testPayFormula,setPayFormulaActive,getFormulaEvaluation,saveFormulaAccumulationGroup} from '../core/pay-formula';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {withTenant,type SessionContext} from '../db/client';
@@ -195,8 +195,11 @@ it('uses only exact-run native payslip-referenced frozen reads with the matching
  const [evidence]=await owner.withTenant(ctx,tx=>tx.insert(schema.payFormulaEvaluation).values({tenantId:base.tenantId,formulaId:saved.id,revisionId:saved.revisionId,companyId:base.companyId,employmentId:employee.employmentId,batchId,componentCode:item.code,period:context.period,amount:'9',payload,readRequirements:{categories:['identity'],fieldIds:[key],workforce:true},actorId:ctx.userId!}).returning());
  await owner.db.update(schema.payslip).set({statutory:{...statutory,formulaEvaluations:[{evaluationId:evidence.id}]}}).where(eq(schema.payslip.id,slip.id));
  await owner.db.update(schema.person).set({fullName:'Changed live employee name'}).where(eq(schema.person.id,employee.personId));
- const alternate=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});
- expect(await testPayFormula(ctx,{...saved,context:{...context,batchId:alternate.batchId}})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
+ // A second regular run is forbidden. Use the native entitled additional-run path and its own cycle.
+ await setModule(base.tenantId,'multi_cycle_payroll','active');ctx=await entitledCtx(base);
+ const [bonusCycle]=await owner.db.insert(schema.payrollCycle).values({tenantId:base.tenantId,companyId:base.companyId,name:'Frozen source Bonus cycle',code:'FORMULA_FROZEN_BONUS',runType:'bonus'}).returning();
+ const alternate=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:context.period,runType:'bonus',payrollCycleId:bonusCycle.id});
+ expect(await testPayFormula(ctx,{...saved,context:{...context,cycleId:bonusCycle.id,batchId:alternate.batchId}})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
  const selected={...context,batchId};expect(await testPayFormula(ctx,{...saved,context:selected})).toMatchObject({passed:true,amount:'9'});
  expect(await testPayFormula(ctx,{...saved,context:{...selected,asOf:'2026-05-30'}})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
  const [wrongProvider]=await owner.withTenant(ctx,tx=>tx.insert(schema.payFormulaEvaluation).values({...evidence,id:undefined,payload:{...payload,sources:{...payload.sources,sourceEvidence:[{...payload.sources.sourceEvidence[0],provider:'unreviewed-provider'}]}}}).returning());

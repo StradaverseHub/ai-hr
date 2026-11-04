@@ -33,7 +33,7 @@
 @media(max-width:640px){.probation .probation-filter-grid{grid-template-columns:minmax(0,1fr)}}
 
 .v9-workspace.probation{font-family:var(--font-sans);min-width:0}
-.probation .probation-stats a{white-space:normal;min-width:0}
+.probation .probation-stats a{white-space:normal;min-width:0;overflow-wrap:anywhere}
 .probation .probation-stats strong{flex:none}
 @media(max-width:640px){
  .v9-workspace.probation .probation-list-table table tbody td{height:auto;min-height:0;overflow-wrap:anywhere}

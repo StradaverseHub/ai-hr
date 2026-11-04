@@ -32,7 +32,7 @@ BEGIN
   IF EXISTS(SELECT 1 FROM org_chart_root r WHERE r.tenant_id=NEW.tenant_id AND r.employment_id=NEW.employment_id AND r.id<>NEW.id AND daterange(r.valid_from,r.valid_to,'[)') && daterange(NEW.valid_from,NEW.valid_to,'[)')) THEN RAISE EXCEPTION 'Top-level date ranges overlap'; END IF;
  ELSE
   IF TG_OP='UPDATE' THEN
-   check_cycle:=NEW.manager_employment_id IS DISTINCT FROM OLD.manager_employment_id OR NEW.subordinate_employment_id IS DISTINCT FROM OLD.subordinate_employment_id OR NEW.valid_from<OLD.valid_from OR (OLD.valid_to IS NOT NULL AND (NEW.valid_to IS NULL OR NEW.valid_to>OLD.valid_to)) OR (OLD.superseded_at IS NOT NULL AND NEW.superseded_at IS NULL);
+   check_cycle:=NEW.manager_employment_id IS DISTINCT FROM OLD.manager_employment_id OR NEW.subordinate_employment_id IS DISTINCT FROM OLD.subordinate_employment_id OR NEW.line_type IS DISTINCT FROM OLD.line_type OR NEW.valid_from<OLD.valid_from OR (OLD.valid_to IS NOT NULL AND (NEW.valid_to IS NULL OR NEW.valid_to>OLD.valid_to)) OR (OLD.superseded_at IS NOT NULL AND NEW.superseded_at IS NULL);
   END IF;
   IF check_cycle AND NEW.line_type='administrative' AND NEW.superseded_at IS NULL THEN
    IF NEW.manager_employment_id=NEW.subordinate_employment_id THEN RAISE EXCEPTION 'Direct Superior cannot refer to self'; END IF;
