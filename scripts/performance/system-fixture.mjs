@@ -20,6 +20,7 @@ for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
 }
 const s=await import('../../db/schema.ts');
 const {hireEmployee}=await import('../../core/org.ts');
+const {grantAssistant}=await import('../../core/assistant-grant.ts');
 const {createClockingMapping,validateClockingImport}=await import('../../packs/attendance/service.ts');
 const {createClaimType}=await import('../../packs/claims/service.ts');
 const {saveAttendanceWorkflow,setAttendanceWorkflowEnabled}=await import('../../core/attendance-workflow.ts');
@@ -60,6 +61,9 @@ try{
   // Platform notifications are implemented outside a module pack. Exercise the real bell
   // and in-app projector too; no email delivery worker or external relay runs in this fixture.
   await setModule(b.tenantId,'notifications','active');
+  // Read-only AI Centre journeys must exercise admitted Ask, not a module-off fallback.
+  // No provider is configured and no prompt/turn is submitted by this harness.
+  await setModule(b.tenantId,'assistant','active');
   const ctx=await entitledCtx(b);
   const org={code:organization,tenantId:b.tenantId,name:'Performance organization '+t};
   await writeRecord(owner.client,'org:'+organization,org,null);await writeRecord(owner.client,'tenant:'+b.tenantId,org,null);
@@ -92,6 +96,7 @@ try{
    if(role==='companyHR'||role==='groupHR')grants.push({tenantId:b.tenantId,appUserId:userId,role:'hr_admin',companyId:role==='groupHR'?null:company.companyId});
    if(role==='groupHR')for(const r of ['payroll_partner','performance_comp_partner'])grants.push({tenantId:b.tenantId,appUserId:userId,role:r,companyId:null});
    await owner.db.insert(s.roleAssignment).values(grants);
+   await grantAssistant(ctx,{appUserId:userId});
    await owner.client`insert into app_external_identity(issuer,subject,app_user_id)values(${issuer},${subject},${userId}::uuid)`;
    const credential={subject,version,tenantId:b.tenantId,issuer,organization,username,email,emailVerified:true,enabled:true,password:hash,mustChange:false,totpSecret:secret,lastStep:-1,recoveryHashes:[]};
    const token=opaque(),family=randomUUID(),expiry=Date.now()+8*3600000;
@@ -167,6 +172,6 @@ try{
  const modules=await owner.client`select tenant_id,array_agg(module_code order by module_code)as modules from tenant_module where tenant_id=any(${tenants.map(t=>t.tenantId)}::uuid[])and status='active'group by tenant_id`;
 
  writeFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),JSON.stringify({today,month,users,tenants}),{mode:0o600});
- writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,operationTimingScope:'sequential fictional native fixture commands, not HTTP concurrency',operationTimings:Object.fromEntries(Object.entries(operationTimings).map(([key,values])=>[key,timingSummary(values)])),tenants:2,companies:10,users:500,claimsPerEmployee,fixtureVolumeKind:claimsPerEmployee===2000?'full-load':'workflow-preflight-only',historicalMonth,publicationMonth,monthlyBasicSalary:5000,fixtureCommandContext:'native database-resolved entitlements',payslipFixture:'500 native-generated/closed historical slips; current processing drafts start empty',attendanceDays,attendanceBounds,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.chained>0&&row.events===row.chained+row.initialization_prefix),auditPolicy:'All post-initialization events chained; one canonical initialization prefix per tenant',auditCounts,notificationFixture:'Enabled in-app projection; no external email delivery worker or relay',explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
+ writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,operationTimingScope:'sequential fictional native fixture commands, not HTTP concurrency',operationTimings:Object.fromEntries(Object.entries(operationTimings).map(([key,values])=>[key,timingSummary(values)])),tenants:2,companies:10,users:500,claimsPerEmployee,fixtureVolumeKind:claimsPerEmployee===2000?'full-load':'workflow-preflight-only',historicalMonth,publicationMonth,monthlyBasicSalary:5000,fixtureCommandContext:'native database-resolved entitlements',payslipFixture:'500 native-generated/closed historical slips; current processing drafts start empty',attendanceDays,attendanceBounds,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.chained>0&&row.events===row.chained+row.initialization_prefix),auditPolicy:'All post-initialization events chained; one canonical initialization prefix per tenant',auditCounts,notificationFixture:'Enabled in-app projection; no external email delivery worker or relay',aiCentreFixture:'Assistant module and native user grants active; no provider created or prompt submitted',explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
  console.log('[system-perf-fixture] complete; private sessions are outside artifact directory');
 }finally{await closeAll();}

@@ -147,7 +147,7 @@ try{
  save();await db`select pg_stat_statements_reset()`;
  const anonymous=await request(null,'/claims',undefined,307,false);assert(String(anonymous.headers.location).includes('/login'));report.boundaries.push({kind:'anonymous',passed:true});
  for(const user of [employee,manager,hr,group]){
-  const routes=user===employee?employeeRoutes:user===manager?['/approvals','/approvals/history','/performance/home']:hrRoutes;
+  const routes=routePool(user);
   for(const route of routes){
    const diagnostic=setTimeout(()=>{databaseSnapshot('slow-pilot').catch(()=>{});},10000);
    try{const response=await request(user,route);report.coverage.push({role:user.role,route,status:'passed',durationMs:response.durationMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});}
@@ -274,6 +274,29 @@ try{
   const ctx=await context(user),page=await ctx.newPage();
   try{for(const path of additionalBrowserRoutes[user.role])await visit(page,user,path);}
   finally{await ctx.close();}
+ }
+ async function aiCentreJourney(page,user,phase){
+  await visit(page,user,'/assistant',phase);
+  assert(await page.locator('main textarea:enabled').count()>0,'AI Centre fixture did not reach admitted Ask');
+  const documents=[];const onRequest=request=>{if(request.resourceType()==='document')documents.push(request.url());};page.on('request',onRequest);
+  try{
+   const targets=[['jobs','/assistant?view=jobs'],['policies','/policies'],['insights','/assistant?view=insights'],['how','/assistant?view=how'],['ask','/assistant']];
+   if(user.role==='companyHR')targets.splice(2,0,['operations','/control-tower'],['administration','/control-tower/agents/features']);
+   for(const [tab,path] of targets){
+    const expected=new URL(path,base),start=performance.now();
+    await Promise.all([page.waitForURL(url=>url.pathname===expected.pathname&&url.search===expected.search,{timeout:90000}),page.locator('[data-ai-centre-tabs] a[href="'+path+'"]').click()]);
+    await page.locator('[data-ai-centre-tabs] a[aria-current="page"][href="'+path+'"]').waitFor({timeout:90000});
+    await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:90000});
+    assert((await page.locator('main h1').innerText()).trim().length>0,'AI Centre heading unavailable');
+    if(tab==='ask')assert(await page.locator('main textarea:enabled').count()>0,'Ask composer unavailable after navigation');
+    assert.equal(documents.length,0,'AI Centre tab unexpectedly reloaded the document');
+    (report.browserAiCentreNavigation??=[]).push({phase,role:user.role,path,elapsedMs:performance.now()-start,usable:true,documentRequests:0,promptsSubmitted:0});save();
+   }
+  }finally{page.off('request',onRequest);}
+ }
+ for(const user of [employee,hr]){
+  const ctx=await context(user),page=await ctx.newPage();
+  try{await aiCentreJourney(page,user,'baseline');}finally{await ctx.close();}
  }
  // Locale projection and real client navigation must work before any capacity claim.
  for(const locale of ['en','ms','zh','ta','th','vi']){
@@ -473,6 +496,7 @@ try{
    if((user.role==='employee'&&route==='/claims')||route==='/admin/personnel')await languageJourney(page,user,route,'loaded');
    await pause(thinkTimeMs);
   }
+  if(user.index===employee.index||user.index===hr.index)await aiCentreJourney(page,user,'loaded');
   if(user.role==='employee')await browserClaimJourney(page,user,'PERF_BROWSER_LOADED_'+user.index,'loaded');
   }catch(error){
    (report.browserJourneyFailures??=[]).push({role:user.role,user:user.index,phase:'loaded',errorType:error.name,timeout:error.name==='TimeoutError'});save();throw error;
