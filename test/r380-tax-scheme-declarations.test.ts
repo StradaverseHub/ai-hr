@@ -173,10 +173,11 @@ describe('r382 selected payroll tax context and readiness authority',()=>{
     await expect(raw('2026-09')).rejects.toMatchObject({cause:{code:'42501'}});
     await owner.db.update(schema.assignment).set({supersededAt:null}).where(eq(schema.assignment.employmentId,subject.employmentId));
     await raw('2026-09');
+    // A membership row re-stamped into another tenant while still naming this tenant's company can no longer exist
+    // (ADR-0174 composite company/tenant key), so the policy's same-tenant branch is now backed by the schema itself.
     const other=await seedBase();
-    await owner.db.update(schema.assignment).set({tenantId:other.tenantId}).where(eq(schema.assignment.employmentId,subject.employmentId));
-    await expect(raw('2026-08')).rejects.toMatchObject({cause:{code:'42501'}});
-    await owner.db.update(schema.assignment).set({tenantId:b.tenantId}).where(eq(schema.assignment.employmentId,subject.employmentId));
+    await expect(owner.db.update(schema.assignment).set({tenantId:other.tenantId}).where(eq(schema.assignment.employmentId,subject.employmentId)))
+      .rejects.toMatchObject({cause:{code:'23503',constraint_name:'assignment_company_tenant_fk'}});
     await raw('2026-08');
     await owner.db.update(schema.company).set({country:'SG'}).where(eq(schema.company.id,b.companyId));
     await expect(raw('2026-07')).rejects.toMatchObject({cause:{code:'42501'}});
