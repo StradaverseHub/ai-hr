@@ -75,8 +75,12 @@ describe('Encrypted annual Rewards return custody', () => {
   it('qualifies shared read-only annual choices/index while native command guards and busy refusal remain intact',async()=>{
     const review=await prepare(),before=await view();
     const identitySignature='app._assistant_rewards_return_review_identity(uuid,boolean,boolean)',choicesSignature='app.assistant_rewards_return_choices()',indexSignature='app.assistant_rewards_return_reviews_index()';
-    const snapshot=async(name:string)=>{const [r]=await owner.client<{ddl:string;attributes:Record<string,unknown>}[]>`
-      select pg_get_functiondef(oid)as ddl,to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid=${name}::regprocedure`;return r;};
+    // pg_get_functiondef normalizes whitespace; reparsing it moves only the parser source offsets
+    // inside argument defaults. Compare every other byte plus the independently rendered defaults.
+    const snapshot=async(name:string)=>{const [r]=await owner.client<{ddl:string;attributes:Record<string,unknown>;defaults:string|null}[]>`
+      select pg_get_functiondef(oid)as ddl,
+       jsonb_set(to_jsonb(p)-'prosrc','{proargdefaults}',coalesce(to_jsonb(regexp_replace(proargdefaults::text,':location -?[0-9]+',':location <source>','g')),'null'::jsonb))as attributes,
+       pg_get_expr(proargdefaults,0)as defaults from pg_proc p where oid=${name}::regprocedure`;return r;};
     const identity=await snapshot(identitySignature),choices=await snapshot(choicesSignature),index=await snapshot(indexSignature);
     const exclusive="pg_try_advisory_xact_lock(hashtextextended('access-configuration:'||app.current_tenant_id()::text,0))";
     expect(identity.ddl.split(exclusive)).toHaveLength(2);
