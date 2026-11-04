@@ -10,6 +10,7 @@ import os from 'node:os';
 import net from 'node:net';
 import {setTimeout as pause} from 'node:timers/promises';
 import {postgresLockFailures} from './lock-failure-log.mjs';
+import {systemBuildEnvironment} from './build-environment.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
 assert.equal(process.env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
@@ -95,8 +96,8 @@ const apps=[],appFds=[];let proxy,upstream,dbStarted=false;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;
 try{
  for(const port of ports)await assertPortFree(port);await assertPortFree(3443);
- const buildEnv={...env,NODE_ENV:'production',NODE_OPTIONS:'--max-old-space-size=6144'};
- for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])buildEnv[key]='postgres://nobody:nothing@127.0.0.1:1/no_database';
+ const {buildEnv,admission}=systemBuildEnvironment(env,readFileSync('/proc/meminfo','utf8'));
+ report.buildHeap=admission;save();
  await run('postgres','bash',['.github/ci/postgres.sh','reset']);dbStarted=true;
  await run('migrate','pnpm',['db:migrate']);
  // Native performance helpers are installed through the ordinary migration journal.
@@ -104,7 +105,7 @@ try{
  await run('catalogs',process.execPath,['--import','tsx','scripts/seed-catalogs.ts']);
  await run('fixture',process.execPath,['--import','tsx','scripts/performance/system-fixture.mjs'],{...env,NODE_ENV:'development',TEST_DATABASE_URL:env.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:env.MIGRATION_DATABASE_URL},600000);
  // Refuse invalid database/role/fixture setup before paying for the production build.
- await run('build','pnpm',['build'],buildEnv);
+ await run('build',process.execPath,['.github/ci/build-heap.mjs','measure',join(out,'next-build-memory'),'--','pnpm','build'],buildEnv);
  report.buildId=readFileSync('.next/BUILD_ID','utf8').trim();
 
  await run('certificate','openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(privateDir,'key.pem'),'-out',join(privateDir,'cert.pem'),'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost']);

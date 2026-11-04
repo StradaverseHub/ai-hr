@@ -82,8 +82,11 @@ it('keeps installed authorization plans fresh across principals and live revocat
   expect(row).toMatchObject({lanname:'plpgsql',prosecdef:true,provolatile:'s'});
  }
  await measure();
- expect(await read(context(users[0]))).toHaveLength(50);
- expect(await read(context(users[2]))).toHaveLength(11);
+ // A current administrative manager also heads the shared department under the
+ // existing HOD rule: both it and HR see exactly that company's50 employments.
+ const companyIds=users.filter(user=>user.companyId===users[0].companyId).map(user=>user.employmentId).sort();
+ expect(await read(context(users[0]))).toEqual(companyIds);
+ expect(await read(context(users[2]))).toEqual(companyIds);
  expect(await outcome(malformed)).toEqual(controls.malformed);expect(await outcome(emptyMalformed)).toEqual(controls.emptyMalformed);
  expect(await read(adminCtx(foreign))).toEqual(controls.foreign);expect(await outcome(forged)).toEqual(forgedOutcome);
  await expect(readEmployeeHomeIdentity(forged)).rejects.toThrow();
