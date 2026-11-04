@@ -1,15 +1,16 @@
 /** AI Centre navigation speed (4 November 2026): one request resolves the signed-in person's reads once, whichever session
  * carrier asks (lib/session.ts). Ask's page calls getSession while its layout and the launcher's server actions called
- * during the render call getBrowserCommandSession, so one Ask render read the principal and the login block twice.
+ * during the render call getBrowserCommandSession, so one Ask render read the principal, the login block and the tenant's
+ * entitlement snapshot twice.
  *
  * Through the real resolver on the dev identity path (the one the CI fixture can drive), with the pool replaced by a
  * stub that records each statement and React's per-request `cache` stood in by a memo that lives for one request (outside
  * a request scope `cache` is a passthrough, which is also tested):
- *  1. in one request both carriers share the principal and login-block reads, and each still gets its own session;
+ *  1. in one request both carriers share the principal, login-block and snapshot reads, and each still gets its own session;
  *  2. outside a request every call reads afresh, exactly as before;
  *  3. each carrier keeps its own rules: an unknown selected identity self-heals to DEV_USER_ID for getSession and is
  *     refused for the command carrier, and a blocked one is refused by both;
- *  4. a failed read is not kept: the next carrier reads again.
+ *  4. a failed read is not kept: the next carrier reads again (a failed snapshot still degrades that session alone).
  * No database: the statements are fictional rows. */
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 
@@ -67,12 +68,17 @@ describe('one request, two session carriers',()=>{
   expect(command.grants).not.toBe(page.grants);
   expect(count('principal:'+ALICE)).toBe(1);
   expect(count('blocked:'+ALICE)).toBe(1);
+  // One snapshot transaction for the request, the same snapshot on both sessions.
+  expect(count('snapshot')).toBe(1);
+  expect(page.entitlements).toEqual({tenantId:TENANT,enabledModules:['payroll'],scopedModules:{},settings:{},tenantStatus:'active'});
+  expect(command.entitlements).toEqual(page.entitlements);
  });
 
  it('outside a request reads afresh on every call, as before',async()=>{
   await getSession();await getBrowserCommandSession();
   expect(count('principal:'+ALICE)).toBe(2);
   expect(count('blocked:'+ALICE)).toBe(2);
+  expect(count('snapshot')).toBe(2);
  });
 
  it('keeps each carrier\'s rules: an unknown selection self-heals for getSession and is refused for a command',async()=>{
@@ -104,5 +110,15 @@ describe('one request, two session carriers',()=>{
    expect((await getBrowserCommandSession()).userId).toBe(ALICE);
   });
   expect(count('principal:'+ALICE)).toBe(2);
+ });
+
+ it('does not keep a failed snapshot: that session degrades alone and the next one reads it again',async()=>{
+  db.failSnapshot=1;
+  const [page,command]=await inRequest(async()=>[await getSession(),await getBrowserCommandSession()] as const);
+  expect(page.entitlements).toBeUndefined();
+  expect(page.entitlementsError).toBe('Fictional snapshot failure');
+  expect(command.entitlements).toEqual({tenantId:TENANT,enabledModules:['payroll'],scopedModules:{},settings:{},tenantStatus:'active'});
+  expect(command.entitlementsError).toBeUndefined();
+  expect(count('snapshot')).toBe(2);
  });
 });

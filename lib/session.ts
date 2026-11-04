@@ -124,6 +124,42 @@ export async function resolveWorkosPrincipal(
 }
 
 /**
+ * AI Centre navigation speed (4 Nov 2026): ONE IDENTITY READ PER REQUEST, WHICHEVER CARRIER ASKS.
+ *
+ * getSession and getBrowserCommandSession are two cached carriers, and a page, its layout and a server action called
+ * during the render each resolve one of them, so one request resolved the same signed-in person twice: the identity
+ * cookie's session, the principal and the login block, twice each. Those reads are now shared by every resolution in
+ * the request. Each carrier still applies its own rules to what they return: the command carrier still requires an
+ * explicitly selected dev identity, refuses an unknown or blocked one and never falls back to DEV_USER_ID; getSession
+ * still self-heals to the fallback. Nothing a carrier decides is cached across carriers, only the reads.
+ *
+ * A FAILED READ IS NOT KEPT: it is dropped from the request's memo, so the next caller reads again, exactly as an
+ * unshared read would have. Outside a React request scope `cache` is a passthrough (see getSession below), so every
+ * call in a script, a job or a test reads afresh, as before.
+ */
+function perRequest<A extends readonly string[], R>(read: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
+  const memo = cache((): Map<string, Promise<R>> => new Map());
+  return (...args: A) => {
+    const store = memo();
+    const key = JSON.stringify(args);
+    const known = store.get(key);
+    if (known) return known;
+    const pending = read(...args);
+    store.set(key, pending);
+    pending.catch(() => { if (store.get(key) === pending) store.delete(key); });
+    return pending;
+  };
+}
+/** AI Centre navigation speed (4 Nov 2026): the tenant's entitlement snapshot, read ONCE PER REQUEST for every session
+ * resolved in it (perRequest above; one Ask render resolved two: the page's and the launcher actions'). The same
+ * transaction, GUC and statement as before; a failed read is not kept, so the next resolution tries again and degrades
+ * on its own exactly as before. Outside a request every call reads afresh. The owners' own in-transaction re-reads
+ * (resolveEntitlementsTx inside their withTenant) are untouched: they are each owner's current check in its own
+ * transaction, not this request snapshot. */
+const tenantSnapshotOnce = perRequest((tenantId: string) =>
+  client.begin((tx) => resolveEntitlementsInTenantTx((q, params) => tx.unsafe(q, params as never[]), tenantId)));
+
+/**
  * Attach the tenant's entitlement snapshot to a resolved session (ADR-0077 slice 2).
  *
  * Applied HERE rather than inside resolveDevPrincipal / resolveWorkosPrincipal because F19 is exactly
@@ -181,9 +217,7 @@ function logThrottled(key: string, message: string, detail?: unknown): void {
 
 export async function withEntitlements(session: SessionContext): Promise<SessionContext> {
   try {
-    const snapshot = await client.begin((tx) =>
-      resolveEntitlementsInTenantTx((q, params) => tx.unsafe(q, params as never[]), session.tenantId),
-    );
+    const snapshot = await tenantSnapshotOnce(session.tenantId);
     // THE SILENT FAILURE, WHICH IS THE ONE ROUND 1 ACTUALLY SHIPPED (round 3's finding). The catch below
     // covers the loud path — an exception. The dangerous state is the query SUCCEEDING and returning no
     // tenant row: `toSnapshot` records TENANT_STATUS_UNRESOLVED, every billable module closes, and until
@@ -238,33 +272,6 @@ export const getSession = cache(resolveSession);
  */
 export const getBrowserCommandSession = cache(() => resolveWebSession(true));
 
-/**
- * AI Centre navigation speed (4 Nov 2026): ONE IDENTITY READ PER REQUEST, WHICHEVER CARRIER ASKS.
- *
- * getSession and getBrowserCommandSession are two cached carriers, and a page, its layout and a server action called
- * during the render each resolve one of them, so one request resolved the same signed-in person twice: the identity
- * cookie's session, the principal and the login block, twice each. Those reads are now shared by every resolution in
- * the request. Each carrier still applies its own rules to what they return: the command carrier still requires an
- * explicitly selected dev identity, refuses an unknown or blocked one and never falls back to DEV_USER_ID; getSession
- * still self-heals to the fallback. Nothing a carrier decides is cached across carriers, only the reads.
- *
- * A FAILED READ IS NOT KEPT: it is dropped from the request's memo, so the next caller reads again, exactly as an
- * unshared read would have. Outside a React request scope `cache` is a passthrough (see getSession below), so every
- * call in a script, a job or a test reads afresh, as before.
- */
-function perRequest<A extends readonly string[], R>(read: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
-  const memo = cache((): Map<string, Promise<R>> => new Map());
-  return (...args: A) => {
-    const store = memo();
-    const key = JSON.stringify(args);
-    const known = store.get(key);
-    if (known) return known;
-    const pending = read(...args);
-    store.set(key, pending);
-    pending.catch(() => { if (store.get(key) === pending) store.delete(key); });
-    return pending;
-  };
-}
 const internalIdentityOnce = perRequest(async () => (await import('./internal-auth/web-session')).currentInternalIdentity());
 const keycloakIdentityOnce = perRequest(async () => (await import('./identity/session')).currentIdentitySession());
 const workosSessionOnce = perRequest(async () => (await import('./workos')).currentWorkosSession());
