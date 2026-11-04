@@ -38,6 +38,7 @@ it('reuses visibility plans without caching a caller or changing native results'
  const original=await definition();
  const candidate=qualified.replace('LANGUAGE sql','LANGUAGE plpgsql')
   .replace('AS $$\n',()=> 'AS $$\nBEGIN\n RETURN (\n').replace(/;\n\$\$;\s*$/, ()=> '\n );\nEND;\n$$;');
+ expect(candidate).toBe(readFileSync(new URL('./visible-employment-plan-cache.sql',import.meta.url),'utf8'));
  expect(candidate).toContain('LANGUAGE plpgsql');
  expect(candidate).toContain('BEGIN\n RETURN (');
  expect(candidate.match(/\$\$/g)).toHaveLength(2);
@@ -78,11 +79,19 @@ it('reuses visibility plans without caching a caller or changing native results'
     await owner.db.update(s.reportingLine).set({supersededAt:null}).where(eq(s.reportingLine.managerEmploymentId,manager.employmentId));
    }
   };
+  const archivedRead=async()=>{
+   try{await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,users[4].id));return await read(context(users[4]));}
+   finally{await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,users[4].id));}
+  };
+  const archivedIds=await archivedRead();
   const revokedIds=await withoutReports();
   expect(revokedIds.length).toBeLessThan(expected.get(manager.id)!.length);
   await owner.client.unsafe(candidate);
   expect(stableAttributes((await definition()).attributes)).toEqual(stableAttributes(original.attributes));
   await measure('candidate');
+  await measure('candidate-warm');
+  expect(await archivedRead()).toEqual(archivedIds);
+  expect(await read(context(users[4]))).toEqual(expected.get(users[4].id));
   expect(await read(adminCtx(foreign))).toEqual(foreignIds);
   expect(await read(forged)).toEqual(forgedIds);
   expect(await withoutReports()).toEqual(revokedIds);
