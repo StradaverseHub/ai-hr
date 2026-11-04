@@ -1591,3 +1591,11 @@ The candidate already preserves this complete prefix and reserves2106–2111. Ga
 no competing unapplied branch is silently included. Recheck the actual ordered installation ledger,
 canonical refs and competing reservations at release admission. These reservations apply no live data
 or schema and do not execute the separately reviewed employee re-tag operation.
+
+The same coordinator additionally reserves `2128_organisation_account_admission`, idx1375 /
+when1793330001528, for native account-availability reproof of the reviewed organisation operation.
+A refreshed 4,264-ref / 429-journal plus registered-worktree audit found no competing claim at2128
+or higher (2126/2127 are this coordinated source). This introduces no plaintext credential or
+employee re-tag. Its purpose-derived verifier requires explicit private technical provisioning;
+the server authentication master key is neither moved nor rotated. Installation ledger remains
+independently verified at671rows / max1793330001502. Revalidate all identities at release admission.
