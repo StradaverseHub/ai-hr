@@ -5,7 +5,8 @@ import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {withTenant} from '../../db/client';
-import {personnelListPage} from '../../core/read';
+import {personnelListPage,personnelListPageSql} from '../../core/read';
+import {lockAccessConfigurationReadTx} from '../../core/access-configuration-lock';
 import {deriveEmploymentStatus} from '../../core/employment-status';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from '../harness';
@@ -70,6 +71,7 @@ it.skipIf(!requested)('measures a native Personnel page with one million retaine
   const queries:{mode:string;elapsedMs:number;targetMs:number;targetMet:boolean;total:number;pageRows:number;exactOrder:boolean;foreignScopeExcluded:boolean}[]=[];
   const today=todayInKualaLumpur(),activeStatus=deriveEmploymentStatus({},today),endedStatus=deriveEmploymentStatus({terminatedOn:'2024-01-01'},today);
   const allStatuses:Record<string,number>={};allStatuses[activeStatus]=(allStatuses[activeStatus]??0)+count-count/5;allStatuses[endedStatus]=(allStatuses[endedStatus]??0)+count/5;
+  const observedPages=new Map<string,Awaited<ReturnType<typeof personnelListPage>>>();
   for(const mode of ['initial','selective-search','deep-page']){
    phase(mode+'-query');const q=mode==='selective-search'?'PERF'+String(count).padStart(9,'0'):undefined;
    const offset=mode==='deep-page'?count-25:0,queryStarted=performance.now();
@@ -78,8 +80,51 @@ it.skipIf(!requested)('measures a native Personnel page with one million retaine
    expect(page.total).toBe(total);expect(page.headcount.total).toBe(total);
    expect(page.headcount.byStatus).toEqual(q?{[endedStatus]:1}:allStatuses);
    expect(page.rows.map(row=>row.employmentId)).toEqual(q?[expected.last.at(-1)!]:offset?expected.last:expected.first);
+   observedPages.set(mode,page);
    queries.push({mode,elapsedMs,targetMs:1000,targetMet:elapsedMs<1000,total:page.total,pageRows:page.rows.length,exactOrder:true,foreignScopeExcluded:true});
    report.queries=queries;report.query=queries[0];save();
+  }
+  // Amortize the expensive retained fixture across reversible plan comparisons. The current app's
+  // strict measurements above remain the acceptance signal; alternative queries cannot turn it green.
+  const view='app.performance_personnel_million_facts';
+  const [absence]=await owner.client`select to_regclass(${view})as relation`;expect(absence.relation).toBeNull();
+  const [factsOwner]=await owner.client<{body:string;owner:string;columns:string[];ddl:string;acl:string|null}[]>`
+   select prosrc as body,proowner::regrole::text as owner,proargnames as columns,pg_get_functiondef(oid)as ddl,proacl::text as acl
+   from pg_proc where oid='app.access_workforce_list_facts()'::regprocedure`;
+  expect(factsOwner.columns).toHaveLength(16);
+  await owner.client.unsafe('create view '+view+'('+factsOwner.columns.map(name=>'"'+name+'"').join(',')+') with(security_barrier=true)as '+factsOwner.body);
+  try{
+   await owner.client.unsafe('revoke all on '+view+' from public;grant select on '+view+' to ai_hr_app');
+   const [properties]=await owner.client`select relowner::regrole::text as owner,reloptions as options,
+    has_table_privilege('ai_hr_app',oid,'SELECT')as app_select from pg_class where oid=to_regclass(${view})`;
+   expect(properties.owner).toBe(factsOwner.owner);expect(properties.options).toContain('security_barrier=true');expect(properties.app_select).toBe(true);
+   const comparisons:unknown[]=[];report.planComparisons=comparisons;
+   for(const mode of ['initial','selective-search','deep-page']){
+    const q=mode==='selective-search'?'PERF'+String(count).padStart(9,'0'):undefined;
+    const offset=mode==='deep-page'?count-25:0,page={companyIds:companies,q,limit:25,offset},facets={companyIds:companies,q};
+    for(const variant of ['wide-native-control','narrow-view']){
+     phase(mode+'-'+variant);
+     const observed=await withTenant(ctx,async tx=>{
+      await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+      const query=personnelListPageSql(page,facets,{source:variant==='narrow-view'?sql`app.performance_personnel_million_facts`:sql`app.access_workforce_list_facts()`,materialized:true,projectPageFacts:variant==='narrow-view'});
+      const began=performance.now(),[raw]=await tx.execute<{rows:unknown[];total:number;status_counts:{status:string;count:number}[]}>(query),elapsedMs=performance.now()-began;
+      const byStatus:Record<string,number>={};let total=0;
+      for(const row of raw.status_counts){byStatus[row.status]=Number(row.count);total+=Number(row.count);}
+      expect({rows:raw.rows,total:Number(raw.total),headcount:{total,byStatus}}).toEqual(observedPages.get(mode));
+      const plan=Array.from(await tx.execute(sql`explain(analyze,buffers,format json) ${query}`));
+      return{mode,variant,elapsedMs,targetMet:elapsedMs<1000,exactRowsCountsFacetsOrder:true,plan};
+     });comparisons.push(observed);save();
+    }
+   }
+   await owner.client`update app_user set archived_at=now()where id=${b.adminUserId}::uuid`;
+   try{expect(await withTenant(ctx,tx=>tx.execute(sql`select * from app.performance_personnel_million_facts`))).toHaveLength(0);}
+   finally{await owner.client`update app_user set archived_at=null where id=${b.adminUserId}::uuid`;}
+   expect(await withTenant(adminCtx(foreign),tx=>tx.execute(sql`select * from app.performance_personnel_million_facts where company_id=${b.companyId}::uuid`))).toHaveLength(0);
+   report.prototypePurposeRefusals=true;
+  }finally{
+   await owner.client.unsafe('drop view '+view);
+   const [after]=await owner.client`select prosrc as body,proowner::regrole::text as owner,proargnames as columns,pg_get_functiondef(oid)as ddl,proacl::text as acl from pg_proc where oid='app.access_workforce_list_facts()'::regprocedure`;
+   expect(after).toEqual(factsOwner);report.prototypeViewRemoved=true;report.nativeFactsUnchanged=true;save();
   }
   phase('queries-measured');expect(queries.every(query=>query.targetMet),'Each one-million retained Personnel page/search/deep query under1000ms').toBe(true);phase('complete');
  }catch(error){report.errorType=(error as Error).name;phase('failed');throw error;}
