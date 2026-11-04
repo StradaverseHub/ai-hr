@@ -599,25 +599,38 @@ function personnelFactColumns():EmployeeListColumns{
  * Source SQL never comes from a request. Alternate relations must preserve the native purpose owner. */
 export function personnelListPageSql(
   page:Parameters<typeof listEmployeesPage>[1],facets:EmployeeListFilters,
-  facts?:{source:SQL;materialized:boolean},
+  facts?:{source:SQL;materialized:boolean;projectPageFacts?:boolean},
 ):SQL{
   if(!Number.isSafeInteger(page.limit)||page.limit<0||page.limit>ALL_ROW_CEILING||
      !Number.isSafeInteger(page.offset)||page.offset<0)throw new RangeError('Invalid Personnel page');
     const columns=personnelFactColumns();
     const pageWhere=workforceListWhere(page,columns)??sql`true`;
     const facetWhere=workforceListWhere(facets,columns)??sql`true`;
-    const nameSort=page.sort==='company'?sql`lower(${columns.name})`:columns.name;
+    const sourceNameSort=page.sort==='company'?sql`lower(${columns.name})`:columns.name;
+    // Experimental server-only projection: evaluate the same canonical predicates/status before
+    // retaining facts. The app default remains unchanged until retained-data plans qualify it.
+    const projected=facts?.projectPageFacts===true;
+    const source=facts?.source??sql`app.access_workforce_list_facts()`;
+    const sourceFacts=projected?sql`select workforce_row.employment_id,
+      lower(workforce_row.company)as company_sort,${sourceNameSort} as name_sort,
+      (${pageWhere})as page_matches,(${facetWhere})as facet_matches,${columns.status} as status
+      from ${source} workforce_row where (${pageWhere})or(${facetWhere})`:sql`select * from ${source}`;
+    const retainedPageWhere=projected?sql`workforce_row.page_matches`:pageWhere;
+    const retainedFacetWhere=projected?sql`workforce_row.facet_matches`:facetWhere;
+    const retainedStatus=projected?sql`workforce_row.status`:columns.status;
+    const nameSort=projected?sql`workforce_row.name_sort`:sourceNameSort;
+    const companySort=projected?sql`workforce_row.company_sort`:sql`lower(workforce_row.company)`;
     const pageOrder=page.sort==='company'
-      ?sql`lower(workforce_row.company),${nameSort},workforce_row.employment_id`
+      ?sql`${companySort},${nameSort},workforce_row.employment_id`
       :sql`${nameSort},workforce_row.employment_id`;
     const aggregateOrder=page.sort==='company'
       ?sql`chosen.company_sort,chosen.name_sort,chosen.employment_id`
       :sql`chosen.name_sort,chosen.employment_id`;
     return sql`
-      with workforce_facts as ${facts?.materialized===false?sql`not materialized`:sql`materialized`}(select * from ${facts?.source??sql`app.access_workforce_list_facts()`}),
+      with workforce_facts as ${facts?.materialized===false?sql`not materialized`:sql`materialized`}(${sourceFacts}),
       selected_page as materialized(
-        select workforce_row.employment_id,lower(workforce_row.company)as company_sort,${nameSort} as name_sort
-        from workforce_facts workforce_row where ${pageWhere}
+        select workforce_row.employment_id,${companySort} as company_sort,${nameSort} as name_sort
+        from workforce_facts workforce_row where ${retainedPageWhere}
         order by ${pageOrder} limit ${page.limit} offset ${page.offset}
       ), page_projection(value)as materialized(
         select value from app.access_workforce_list_rows_for_ids(array(select employment_id from selected_page))r(value)
@@ -625,10 +638,10 @@ export function personnelListPageSql(
       select coalesce((select jsonb_agg(p.value order by ${aggregateOrder})
         from selected_page chosen join page_projection p on (p.value->>'employmentId')::uuid=chosen.employment_id),'[]'::jsonb)as rows,
       (select count(distinct workforce_row.employment_id)::int
-        from workforce_facts workforce_row where ${pageWhere})as total,
+        from workforce_facts workforce_row where ${retainedPageWhere})as total,
       coalesce((select jsonb_agg(jsonb_build_object('status',f.status,'count',f.count))from(
-        select ${columns.status} as status,count(distinct workforce_row.employment_id)::int as count
-        from workforce_facts workforce_row where ${facetWhere} group by 1
+        select ${retainedStatus} as status,count(distinct workforce_row.employment_id)::int as count
+        from workforce_facts workforce_row where ${retainedFacetWhere} group by 1
       )f),'[]'::jsonb)as status_counts
     `;
 }

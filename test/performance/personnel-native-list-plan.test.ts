@@ -115,21 +115,29 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
     union all(select * from app.performance_personnel_facts_view except all select * from app.access_workforce_list_facts())
    )difference`));expect(same.mismatches).toBe(0);
    const viewPlans:unknown[]=[];
-   for(const mode of ['initial','selective-search','deep-page']){
+   for(const mode of ['initial','selective-search','deep-page','active-page-all-status-facets','company-sort','zero-page']){
     const q=mode==='selective-search'?'PERF000050000':undefined,offset=mode==='deep-page'?count-25:0;
-    const page={companyIds:companies,q,limit:25,offset},facets={companyIds:companies,q},expected=await personnelListPage(ctx,page,facets);
+    const page:Parameters<typeof personnelListPage>[1]={companyIds:companies,q,limit:mode==='zero-page'?0:25,offset};
+    if(mode==='active-page-all-status-facets')page.status='active';
+    if(mode==='company-sort'){page.sort='company';page.departmentId=b.deptA;page.employmentType='full_time';}
+    const facets={companyIds:companies,q},expected=await personnelListPage(ctx,page,facets);
     const samples:unknown[]=[];
-    for(const materialized of [true,false]){
+    for(const variant of [
+     {source:'view',materialized:true,projectPageFacts:false},
+     {source:'view',materialized:true,projectPageFacts:true},
+     {source:'native-function',materialized:true,projectPageFacts:true},
+    ]){
+     const {materialized,projectPageFacts}=variant;
      const began=performance.now();
      const observed=await withTenant(ctx,async tx=>{
       await lockAccessConfigurationReadTx(tx,ctx.tenantId);
-      const query=personnelListPageSql(page,facets,{source:sql`app.performance_personnel_facts_view`,materialized});
+      const query=personnelListPageSql(page,facets,{source:variant.source==='view'?sql`app.performance_personnel_facts_view`:sql`app.access_workforce_list_facts()`,materialized,projectPageFacts});
       const [raw]=await tx.execute<{rows:typeof expected.rows;total:number;status_counts:{status:keyof typeof expected.headcount.byStatus;count:number}[]}>(query);
       const elapsedMs=performance.now()-began,byStatus:typeof expected.headcount.byStatus={};let total=0;
       for(const row of raw.status_counts){byStatus[row.status]=Number(row.count);total+=Number(row.count);}
       expect({rows:raw.rows,total:Number(raw.total),headcount:{total,byStatus}}).toEqual(expected);
       const plan=Array.from(await tx.execute(sql`explain(analyze,buffers,format json) ${query}`));
-      return {materialized,elapsedMs,plan,targetMet:elapsedMs<1000};
+      return {source:variant.source,materialized,projectPageFacts,elapsedMs,plan,targetMet:elapsedMs<1000};
      });samples.push(observed);
     }
     const originalPlan=await withTenant(ctx,tx=>tx.execute(sql`explain(analyze,buffers,format json) ${personnelListPageSql(page,facets)}`));
