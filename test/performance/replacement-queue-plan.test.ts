@@ -30,7 +30,7 @@ it('compares exact subject and tenant-wide replacement queue effects with an exp
   await owner.client`update employment set employee_code=employee_code||'X' where id='fe000000-0000-4000-8000-000000000001'::uuid`;
   const afterSubject=await rows();
   expect(afterSubject.map((row,i)=>row.generation-before[i].generation)).toEqual(before.map(row=>row.employment_id==='fe000000-0000-4000-8000-000000000001'?1:0));
-  await owner.client`update company set name=name||' profile' where id=${b.companyId}::uuid`;
+  await owner.client`update company set legal_name=legal_name||' profile' where id=${b.companyId}::uuid`;
   const afterTenant=await rows();
   expect(afterTenant.map((row,i)=>row.generation-afterSubject[i].generation)).toEqual(before.map(row=>row.tenant_id===b.tenantId?1:0));
  }finally{
