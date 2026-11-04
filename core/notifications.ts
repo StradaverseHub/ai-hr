@@ -1263,6 +1263,19 @@ export async function projectHomeGreetingInTx(tx:Tx,greetingId:string):Promise<v
 // ─── recipient reads (RLS scopes every query to the caller's own notifications, across all the person's
 // employments; pass employmentId only to narrow to one) ──────────────────────────────────────────────
 
+/** Indexed candidate narrowing only. The notification table's unchanged RLS still adjudicates every
+ * returned row. Resolve actual account ownership from the database, never a posted person/role or
+ * an active-employment filter: old notifications across ended own employments remain reachable. */
+async function notificationRecipientCandidatesTx(tx:Tx,ctx:SessionContext){
+ const own=await tx.select({id:employment.id}).from(employment).innerJoin(appUser,
+  and(eq(appUser.personId,employment.personId),eq(appUser.tenantId,employment.tenantId)))
+  .where(and(eq(employment.tenantId,ctx.tenantId),eq(appUser.tenantId,ctx.tenantId),sql`${appUser.id}=app.current_user_id()`));
+ return and(eq(notification.tenantId,ctx.tenantId),or(
+  own.length?inArray(notification.recipientEmploymentId,own.map(row=>row.id)):sql`false`,
+  eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000'),
+ ));
+}
+
 /** 3-tab bell (feedback 1514d366): `action` splits the severity-'action' task notices ("do something")
  *  from the informational rest — true ⇒ only action, false ⇒ only non-action, undefined ⇒ all (the
  *  pre-existing behaviour, so every current caller is unchanged). */
@@ -1276,11 +1289,13 @@ export function unreadNotificationCount(
 
 
   return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, async (tx) => {
+    const recipients=await notificationRecipientCandidatesTx(tx,ctx);
     const [r] = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(notification)
       .where(
         and(
+          recipients,
           isNull(notification.readAt),
           employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined,
           opts.letterCompanyIds!==undefined?and(isNotNull(notification.recipientUserId),inArray(notification.companyId,opts.letterCompanyIds)):undefined,
@@ -1341,14 +1356,15 @@ export function listNotifications(
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   opts = { ...opts, letterCompanyIds:opts.letterCompanyIds?.slice(), after: opts.after ? { ...opts.after } : opts.after };
 
-  return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, (tx) =>
-    tx
+  return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, async (tx) => {
+    const recipients=await notificationRecipientCandidatesTx(tx,ctx);
+    return tx
       .select(notificationColumns)
       .from(notification)
-      .where(notificationWhere(ctx, employmentId, opts))
+      .where(and(recipients,notificationWhere(ctx, employmentId, opts)))
       .orderBy(desc(notification.createdAt), desc(notification.id))
-      .limit(Math.min(Math.max(opts.limit ?? 20, 1), 100)),
-  );
+      .limit(Math.min(Math.max(opts.limit ?? 20, 1), 100));
+  });
 }
 
 /** D5 — one keyset page in listNotifications' order, each row with its exact cursor text. The caller asks
@@ -1358,14 +1374,17 @@ export function listNotificationsPage(
   ctx: SessionContext,
   opts: { limit: number; after?: NotificationCursor | null; read?: boolean; ids?: readonly string[]; employmentId?: string },
 ): Promise<(NotificationRow & { cursorAt: string })[]> {
-  return withTenant(ctx, (tx) =>
-    tx
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  opts={...opts,ids:opts.ids?.slice(),after:opts.after?{...opts.after}:opts.after};
+  return withTenant(ctx, async (tx) => {
+    const recipients=await notificationRecipientCandidatesTx(tx,ctx);
+    return tx
       .select({ ...notificationColumns, cursorAt: sql<string>`to_char(${notification.createdAt} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')` })
       .from(notification)
-      .where(notificationWhere(ctx, opts.employmentId, opts))
+      .where(and(recipients,notificationWhere(ctx, opts.employmentId, opts)))
       .orderBy(desc(notification.createdAt), desc(notification.id))
-      .limit(Math.min(Math.max(opts.limit, 1), 101)),
-  );
+      .limit(Math.min(Math.max(opts.limit, 1), 101));
+  });
 }
 
 /** Mark one notification read. RLS confines the update to the caller's own rows. */
