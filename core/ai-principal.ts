@@ -3,7 +3,7 @@
 import { sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { AiGatewayError } from '../lib/ai/types';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationTx,lockAccessConfigurationReadTx } from './access-configuration-lock';
 /** False is an actual identity/snapshot refusal. SQL failures propagate and require rollback;
  * accounting may skip a private projection on false without pretending an aborted query succeeded. */
 export async function isAiPrincipalCurrentTx(tx:Tx,supplied:SessionContext):Promise<boolean>{
@@ -11,10 +11,13 @@ export async function isAiPrincipalCurrentTx(tx:Tx,supplied:SessionContext):Prom
  if(!ctx.userId||ctx.entitlementsExempt!==undefined||ctx.statutoryOverride!==undefined)return false;
  const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));
  const roles=ctx.roles??Array.from(new Set(grants.map(g=>g.role)));
- const [carrier]=await tx.execute<{matches:boolean}>(sql`select app.current_tenant_id()=${ctx.tenantId}::uuid
-    and app.current_user_id()=${ctx.userId}::uuid and current_setting('transaction_isolation')='read committed' as matches`);
+ const [carrier]=await tx.execute<{matches:boolean;read_only:boolean}>(sql`select app.current_tenant_id()=${ctx.tenantId}::uuid
+    and app.current_user_id()=${ctx.userId}::uuid and current_setting('transaction_isolation')='read committed' as matches,
+    current_setting('transaction_read_only')='on' as read_only`);
  if(carrier?.matches!==true)return false;
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ // Only a database-enforced read-only transaction may share the revocation barrier.
+ // Command/admission/settlement callers remain exclusive; caller-supplied flags cannot opt in.
+ await (carrier.read_only===true?lockAccessConfigurationReadTx:lockAccessConfigurationTx)(tx,ctx.tenantId);
  const [row]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u
   where u.id=${ctx.userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid
    and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()
