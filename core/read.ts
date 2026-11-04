@@ -790,7 +790,7 @@ export function companyDeleteStatus(
     const [row] = await tx
       .select({
         blockedBy: sql<string | null>`(${sql.raw(companyDeleteBlockSqlText('company.id'))})`,
-        canDelete: sql<boolean>`app.is_admin_for(coalesce(company.parent_company_id, company.id))`,
+        canDelete: sql<boolean>`app.is_admin_for(coalesce(app.company_organisation_current_parent(company.id), company.id))`,
       })
       .from(company)
       .where(eq(company.id, companyId))
@@ -5741,12 +5741,12 @@ export function groupBreakdown(ctx: SessionContext) {
       .select({
         id: company.id,
         name: company.legalName,
-        parentId: company.parentCompanyId,
+        parentId: sql<string | null>`app.company_organisation_current_parent(${company.id})`,
         headcount: sql<number>`(count(${employment.id}) filter (where ${employment.terminatedOn} is null))::int`,
       })
       .from(company)
       .leftJoin(employment, eq(employment.companyId, company.id))
-      .groupBy(company.id, company.legalName, company.parentCompanyId)
+      .groupBy(company.id, company.legalName)
       .orderBy(company.legalName),
   );
 }

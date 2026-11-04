@@ -5360,7 +5360,7 @@ export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
     const rows = (await tx.execute(sql`
       select company.legal_name as "legalName", company.company_label as "code",
              company.registration_no as "registrationNo",
-             app.is_admin_for(coalesce(company.parent_company_id, company.id)) as "canDelete"
+             app.is_admin_for(coalesce(app.company_organisation_current_parent(company.id), company.id)) as "canDelete"
         from company where company.id = ${p.id}::uuid for update`)) as unknown as {
       legalName: string;
       code: string | null;

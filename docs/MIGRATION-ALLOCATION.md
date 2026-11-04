@@ -1599,3 +1599,12 @@ or higher (2126/2127 are this coordinated source). This introduces no plaintext 
 employee re-tag. Its purpose-derived verifier requires explicit private technical provisioning;
 the server authentication master key is neither moved nor rotated. Installation ledger remains
 independently verified at671rows / max1793330001502. Revalidate all identities at release admission.
+
+Final index reconciliation for this still-unapplied source: a later concurrent source claim
+`2129_personnel_native_paging` uses idx1373 / when1793330001529. The approved Personnel coordinator
+therefore reserves idx1380–1383 for2126,2127,2128 and new2130_approved_company_retention respectively,
+with timestamps1793330001526,1527,1528 and1530. These supersede the earlier provisional1373–1375
+indices above; no applied row changes. 2129 is not silently included. The2130 helper declares retention
+for the new company/Business Unit references and keeps deletion/status authority on the reviewed
+current parent. Refresh the actual installation prefix/watermark again before application; lower
+unapplied timestamps must be reallocated if a competing release reaches staging first.
