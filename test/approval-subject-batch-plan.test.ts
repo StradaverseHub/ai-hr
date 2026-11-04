@@ -29,7 +29,7 @@ it('preserves native approval labels, tenant scope and live authority with compa
 
  const foreignAdmin:SessionContext={...adminCtx(foreign),grants:[{role:'hr_admin',companyId:null}]};
  const foreignPerson=randomUUID(),foreignEmployment=randomUUID();
- await owner.db.insert(s.person).values({id:foreignPerson,tenantId:foreign.tenantId,fullName:'Fictional foreign approval subject'});
+ await owner.db.insert(s.person).values({id:foreignPerson,tenantId:foreign.tenantId,fullName:'Fictional foreign approval subject',primaryEmail:foreignPerson+'@example.invalid'});
  await owner.db.insert(s.employment).values({id:foreignEmployment,tenantId:foreign.tenantId,personId:foreignPerson,companyId:foreign.companyId,hiredOn:'2020-01-01'});
  const ended=randomUUID();await owner.db.insert(s.employment).values({id:ended,tenantId:b.tenantId,personId:users[4].personId,companyId:companies[9].id,hiredOn:'2010-01-01',terminatedOn:'2015-01-01'});
  const ids=[...users.map(u=>u.employmentId),ended,foreignEmployment,randomUUID(),users[4].employmentId];
