@@ -17,6 +17,8 @@ import {createClaimType,setClaimPolicy,submitClaim,decideClaim,cancelClaimTx} fr
 import {prepareClaimCancellationReview,confirmClaimCancellationReview,reopenClaimCancellationReview,discardClaimCancellationReview,listClaimCancellationReviews,readClaimCancellationChoices} from '../core/assistant-actions/claim-cancellation-review-store';
 import {OWN_CLAIM_CANCELLATION_ACTION as action} from '../lib/assistant-actions/own-claim-cancellation-contract';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {pgSqlState} from '../lib/db-error';
+import {assertAiPrincipalTx} from '../core/ai-principal';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,subject:{personId:string;employmentId:string},typeId:string,claimId:string;
 const group=()=>({...adminCtx(b),grants:[{role:'hr_admin' as const,companyId:null}]});
@@ -38,6 +40,53 @@ const confirm=(r:{actionId:string;reviewedDigest:string},who=ctx)=>confirmClaimC
 async function state(){return{claims:await owner.db.select({id:s.claimRequest.id,status:s.claimRequest.status}).from(s.claimRequest).where(eq(s.claimRequest.tenantId,b.tenantId)).orderBy(s.claimRequest.id),
  cancelled:await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).where(and(eq(s.domainEvent.tenantId,b.tenantId),eq(s.domainEvent.eventType,'claim-request.cancelled'))).orderBy(s.domainEvent.id)};}
 async function custody(id:string){const [row]=await owner.db.execute(sql`select r.action_kind,r.state,r.receipt_subject_kind,r.receipt_subject_id,r.receipt_event_id,r.intent_digest,r.reviewed_digest,(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies from app.assistant_own_leave_review r where r.id=${id}::uuid`);return row;}
+
+it('qualifies read-only own-review metadata overlap while command locks and exact native metadata stay intact',async()=>{
+ const review=await prepare(),before=await state();
+ const signature='app.assistant_generic_reviews_index(text)';
+ const snapshot=async()=>{const [row]=await owner.client<{ddl:string;attributes:Record<string,unknown>}[]>`
+  select pg_get_functiondef(oid)as ddl,to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid=${signature}::regprocedure`;return row;};
+ const original=await snapshot(),exclusive="PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));";
+ expect(original.ddl.split(exclusive)).toHaveLength(2);
+ const candidate=original.ddl.replace(exclusive,`IF current_setting('transaction_read_only')='on' THEN
+  PERFORM pg_advisory_xact_lock_shared(hashtextextended('access-configuration:'||t::text,0));
+ ELSE ${exclusive} END IF;`);
+ const read=(who=ctx,readOnly=true)=>withTenant(who,async tx=>{
+  if(readOnly)await tx.execute(sql`set transaction read only`);
+  await tx.execute(sql`set local lock_timeout='250ms'`);await assertAiPrincipalTx(tx,who);
+  return Array.from(await tx.execute(sql`select * from app.assistant_generic_reviews_index(${action})`));
+ });
+ const underReader=()=>owner.client.begin(async holder=>{
+  await holder`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+  return read();
+ });
+ try{
+  const expected=await read(ctx,false);expect(expected).toHaveLength(1);expect(expected[0].action_id).toBe(review.actionId);
+  const blocked=await underReader().then(()=>null,(error:unknown)=>error);expect(pgSqlState(blocked)).toBe('55P03');
+  await owner.client.unsafe(candidate);
+  expect(await underReader()).toEqual(expected);expect(await read(ctx,false)).toEqual(expected);
+  expect((await snapshot()).attributes).toEqual(original.attributes);
+  for(const readOnly of [true,false])await withTenant(ctx,async tx=>{
+   if(readOnly)await tx.execute(sql`set transaction read only`);
+   await assertAiPrincipalTx(tx,ctx);await tx.execute(sql`select * from app.assistant_generic_reviews_index(${action})`);
+   const observed=await owner.client.begin(async observer=>{
+    const [row]=await observer`select pg_try_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))as reader,
+     pg_try_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))as writer`;return row;
+   });
+   expect(observed).toEqual({reader:readOnly,writer:false});
+  });
+  const second=await createAppUser(b.tenantId,subject.personId,'employee');await grantAssistant(group(),{appUserId:second});
+  expect(await read({...ctx,userId:second})).toEqual([]);
+  await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,ctx.userId!));
+  try{await expect(read()).rejects.toThrow('Current AI calling authority');}
+  finally{await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,ctx.userId!));}
+  expect(await state()).toEqual(before);expect(await custody(review.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});
+  // Real confirm still takes its original native source/custody interval and performs exactly one effect.
+  expect((await confirm(review)).kind).toBe('completed');expect((await state()).cancelled).toHaveLength(1);
+ }finally{
+  await owner.client.unsafe(original.ddl);expect(await snapshot()).toEqual(original);
+ }
+});
 
 describe('ADR-0151 own claim cancellation custody',()=>{
  it('lists the own pending claim and prepares a sealed review without any effect',async()=>{
