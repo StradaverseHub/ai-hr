@@ -17,9 +17,9 @@ function Control({type,userId,title}:{type:typeof commands[number];userId:string
   {(type==='temporary-password'||type==='recovery-exemption')&&<label className="block text-sm">{t('minutes')}<input type="number" name="minutes" defaultValue={30} min={5} max={type==='recovery-exemption'?60:1440} required className={inputCls}/></label>}
   {type==='recovery-exemption'&&<p className="text-sm text-muted-foreground">{t('exemptionHelp')}</p>}
   {type==='expiry'&&<label className="block text-sm">{t('activeUntil')}<input type="date" name="activeUntil" className={inputCls}/><span className="text-xs text-muted-foreground">{t('expiryHelp')}</span></label>}
-  <label className="block text-sm">{t('reason')}<textarea name="reason" minLength={5} maxLength={500} required className={inputCls}/></label>
+  <label className="block text-sm">{t('reason')}<textarea name="reason" minLength={5} maxLength={500} required className={`${inputCls} min-h-20`}/></label>
   <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="confirmed" required className="mt-1"/>{t('confirm')}</label>
-  <button type="submit" disabled={pending} className={btnGhost}>{title}</button>
+  <button type="submit" disabled={pending} className={`${btnGhost.replace('h-9','min-h-11')} max-w-full whitespace-normal`}>{title}</button>
   {state.status!=='idle'&&<p role={state.status==='saved'?'status':'alert'} className="text-sm">{t(state.status)}</p>}
   {state.delivery&&<p role={state.delivery==='sent'?'status':'alert'} className="text-sm">{t(`delivery.${state.delivery}`)}</p>}
   {state.password&&state.password!==hiddenPassword&&<div className="space-y-2 rounded border border-border bg-muted p-3"><p className="text-sm">{t('shownOnce')}</p><code className="block break-all select-all">{state.password}</code><button type="button" className={btnGhost} onClick={()=>setHiddenPassword(state.password??null)}>{t('hide')}</button></div>}

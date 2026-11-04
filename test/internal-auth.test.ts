@@ -97,15 +97,32 @@ describe('first-party authentication with real private storage and existing HR b
     const before=(await credentialByLogin('alpha','owner'))!;
     await expect(completeRecovery(token,final,'')).rejects.toMatchObject({code:'passwordPolicy'});
     expect(await readRecord(client,`recovery-exemption:${before.subject}`)).not.toBeNull();
-    await completeRecovery(token,'Recovered new private passphrase 636!','');
+    const resets=await Promise.allSettled(['Recovered new private passphrase 636!','Recovered new private passphrase 637!'].map(async password=>{await completeRecovery(token,password,'');return password;}));
+    expect(resets.filter(result=>result.status==='fulfilled')).toHaveLength(1);
+    const accepted=resets.find(result=>result.status==='fulfilled');if(!accepted||accepted.status!=='fulfilled')throw Error('Expected one consumed recovery');
     const c=(await credentialByLogin('alpha','owner'))!;
     expect(await readRecord(client,`recovery-exemption:${c.subject}`)).toBeNull();
     await expect(completeRecovery(token,'Another unused private passphrase 637!','')).rejects.toMatchObject({code:'invalidChallenge'});
     expect(c.totpSecret).toBeNull();expect(c.recoveryHashes).toEqual([]);
-    const login=await startLogin({organization:'alpha',username:'owner',password:'Recovered new private passphrase 636!',native:false});
+    const login=await startLogin({organization:'alpha',username:'owner',password:accepted.value,native:false});
     expect(login.step).toBe('enroll');if(login.step!=='enroll'||!login.secret)throw Error('Expected fresh authenticator enrollment');
     expect(await readSession(challenge(login))).toBeNull();
     completed(await verifyMfa(challenge(login),await generate({secret:login.secret})));
+  });
+  it('never retires an authenticator for an expired exemption or a failed replacement password',async()=>{
+    const {signedIn}=await enroll(),ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
+    await manageAccount(ctx,base.adminUserId,{type:'recovery-exemption',reason:'Verified short-lived recovery',minutes:5});
+    await writeRecord(client,'email-state',{active:{config:{host:'smtp.invalid'}},revision:'test',drafts:{}},null);
+    let text='';await requestRecovery('alpha','owner',async(_relay,mail)=>{text=mail.text;});
+    const token=text.match(/#token=([A-Za-z0-9_-]{43})/)![1],before=(await credentialByLogin('alpha','owner'))!;
+    await expect(completeRecovery(token,final,'')).rejects.toMatchObject({code:'passwordPolicy'});
+    expect((await credentialByLogin('alpha','owner'))?.totpSecret).toBe(before.totpSecret);
+    const now=Date.now();vi.spyOn(Date,'now').mockReturnValue(now+6*60_000);
+    await expect(completeRecovery(token,'Expired exemption replacement 738!','')).rejects.toMatchObject({code:'invalidCode'});
+    const unchanged=(await credentialByLogin('alpha','owner'))!;
+    expect(unchanged.totpSecret).toBe(before.totpSecret);expect(unchanged.recoveryHashes).toEqual(before.recoveryHashes);
+    await completeRecovery(token,'Expired exemption replacement 738!',signedIn.recoveryCodes![0]);
+    expect((await credentialByLogin('alpha','owner'))?.totpSecret).toBe(before.totpSecret);
   });
   it('denies unlinked account management to company HR and rejects unknown targets',async()=>{
     await enroll();const ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:base.companyId}]};
