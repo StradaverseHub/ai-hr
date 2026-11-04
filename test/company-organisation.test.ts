@@ -14,7 +14,7 @@ const prepare=(effectiveOn=today())=>prepareCompanyOrganisationRun(adminCtx(b),{
 async function approve(id:string){const {run}=await companyOrganisationRunReport(checker,id);await decideCompanyOrganisationRun(checker,{id,digest:run.digest,approve:true,reason:'Reviewed exact fictional scope and mappings'});}
 async function publish(id:string){await approve(id);let result=await processCompanyOrganisationRun(adminCtx(b),id);for(let i=0;result.state==='staging'&&i<20;i++)result=await processCompanyOrganisationRun(adminCtx(b),id);expect(result.state).toBe('published');return result;}
 it('keeps legacy stored units, preview and approval invisible, then publishes exactly once through the native assignment owner',async()=>{
- const e=await hire('FictionalAlpha');const id=await prepare();
+ const e=await hire('FictionalAlpha');await owner.db.update(schema.assignment).set({companyId:null}).where(eq(schema.assignment.employmentId,e.employmentId));const id=await prepare();
  const tag=()=>withTenant(adminCtx(b),tx=>employmentOrganisationTagsTx(tx,adminCtx(b),{employmentId:e.employmentId,asOf:today()}));
  expect((await tag()).status).toBe('legacy');expect((await companyOrganisationRunReport(adminCtx(b),id)).run.counts.total).toBe(1);
  await approve(id);expect((await tag()).status).toBe('legacy');await processCompanyOrganisationRun(adminCtx(b),id);
@@ -106,4 +106,11 @@ it('admits a real Group Rewards checker only for the complete old/new unit footp
  const [otherUnit]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'OTHER',name:'Fictional other unit',isGlobal:true}).returning();
  const next=await prepareCompanyOrganisationRun(adminCtx(b),{kind:'mapping',companyIds:[b.companyId],effectiveOn:today(),changes:[{companyId:b.companyId,businessUnitId:otherUnit.id,parentCompanyId:null}]});
  await expect(companyOrganisationRunReport(gr,next)).rejects.toThrow();
+});
+
+it('rejects forged organisation evidence through the generic SECURITY DEFINER auth appender and consumes exact native permits',async()=>{
+ await hire('FictionalAudit');const id=await prepare();
+ await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`select app.append_auth_event(${b.tenantId}::uuid,'organisation-tag-run',${id}::uuid,'organisation-tag-run.published','user',${b.adminUserId}::uuid,'{}'::jsonb)`))).rejects.toThrow();
+ await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`select app.company_org_append_event(${b.tenantId}::uuid,'organisation-tag-run',${id}::uuid,'organisation-tag-run.published','user',${b.adminUserId}::uuid,'{}'::jsonb)`))).rejects.toThrow();
+ const [proof]=await owner.db.execute<{permits:number;published:number}>(sql`select (select count(*)::int from company_organisation_audit_permit) permits,(select count(*)::int from domain_event where aggregate_id=${id}::uuid and event_type='organisation-tag-run.published') published`);expect(proof).toEqual({permits:0,published:0});
 });

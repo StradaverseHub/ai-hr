@@ -164,6 +164,17 @@ DECLARE co uuid;BEGIN
  app.access_workforce_employment(p_employment,'workforce.view') OR app.access_workforce_employment(p_employment,'workforce.maintain') OR app.access_workforce_projection_company(co) OR app.can_admin_payroll_for(co) OR EXISTS(SELECT 1 FROM reward_entry e JOIN reward_unit u ON u.id=e.unit_id AND u.tenant_id=e.tenant_id WHERE e.tenant_id=app.current_tenant_id() AND e.employment_id=p_employment AND app.reward_access(u.id))) THEN RAISE EXCEPTION 'Employee organisation is unavailable' USING ERRCODE='42501';END IF;
  RETURN app.company_org_employment_unchecked(p_employment,p_day);
 END $$;
+-- Generic auth event appenders execute as owner too. Only this private exact-event permit can emit organisation audit evidence.
+CREATE TABLE public.company_organisation_audit_permit(xact_id xid8 NOT NULL,token text NOT NULL,PRIMARY KEY(xact_id,token));
+ALTER TABLE company_organisation_audit_permit ENABLE ROW LEVEL SECURITY;ALTER TABLE company_organisation_audit_permit FORCE ROW LEVEL SECURITY;
+CREATE POLICY company_org_audit_permit_owner ON company_organisation_audit_permit FOR ALL USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
+REVOKE ALL ON company_organisation_audit_permit FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.company_org_append_event(t uuid,aggregate text,identifier uuid,event text,actor_kind text,actor uuid,subject uuid,detail jsonb) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE token text:=encode(sha256(convert_to(jsonb_build_array(t,aggregate,identifier,event,actor_kind,actor,subject,detail)::text,'UTF8')),'hex');BEGIN
+ INSERT INTO company_organisation_audit_permit VALUES(pg_current_xact_id(),token);
+ INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(t,aggregate,identifier,event,actor_kind::actor_type,actor,subject,detail);
+END $$;
+CREATE FUNCTION app.company_org_append_event(t uuid,aggregate text,identifier uuid,event text,actor_kind text,actor uuid,detail jsonb) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$SELECT app.company_org_append_event(t,aggregate,identifier,event,actor_kind,actor,NULL,detail);$$;
 CREATE FUNCTION app.record_employment_organisation_tags(p_employment uuid,p_company uuid,p_day date,p_trigger text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE tags jsonb;previous jsonb;k text;new_id uuid;BEGIN
  PERFORM app.access_workforce_write_lock();
@@ -173,7 +184,7 @@ DECLARE tags jsonb;previous jsonb;k text;new_id uuid;BEGIN
  IF EXISTS(SELECT 1 FROM employment_organisation_classification c WHERE c.tenant_id=app.current_tenant_id() AND c.employment_id=p_employment AND c.company_id=p_company AND c.effective_on=p_day AND c.tags=tags) THEN RETURN tags;END IF;
  k:=encode(sha256(convert_to(jsonb_build_array(p_employment,p_company,p_day,p_trigger,tags)::text,'UTF8')),'hex');
  INSERT INTO employment_organisation_classification(tenant_id,employment_id,company_id,effective_on,mapping_version_id,tags,trigger,actor_id,idempotency_key) VALUES(app.current_tenant_id(),p_employment,p_company,p_day,(tags->>'mappingVersionId')::uuid,tags,p_trigger,app.current_user_id(),k) ON CONFLICT(tenant_id,idempotency_key) DO NOTHING RETURNING id INTO new_id;
- IF new_id IS NOT NULL THEN INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(app.current_tenant_id(),'employment',p_employment,'employment.organisation-tagged','user',app.current_user_id(),p_employment,jsonb_build_object('companyId',p_company,'before',previous,'after',tags,'effectiveOn',p_day,'trigger',p_trigger,'mappingVersionId',tags->'mappingVersionId'));END IF;
+ IF new_id IS NOT NULL THEN PERFORM app.company_org_append_event(app.current_tenant_id(),'employment',p_employment,'employment.organisation-tagged','user',app.current_user_id(),p_employment,jsonb_build_object('companyId',p_company,'before',previous,'after',tags,'effectiveOn',p_day,'trigger',p_trigger,'mappingVersionId',tags->'mappingVersionId'));END IF;
  RETURN tags;
 END $$;
 --> statement-breakpoint
@@ -260,7 +271,7 @@ BEGIN
  IF (SELECT count(*) FROM company_organisation_run_row WHERE run_id=r)>250000 THEN RAISE EXCEPTION 'Split the authorised population into reviewed runs of at most 250000 records';END IF;
  SELECT encode(sha256(convert_to(jsonb_build_object('tenantId',t,'kind',kind,'effectiveOn',day,'requestedBy',actor,'scope',scope,'authority',authority,'mapping',mapping,'epoch',epoch,'rows',coalesce(jsonb_agg(jsonb_build_array(employment_id,company_id,status,projection_on,before_tags,after_tags,outcome,source_digest) ORDER BY employment_id),'[]'))::text,'UTF8')),'hex') INTO token FROM company_organisation_run_row WHERE run_id=r;
  UPDATE company_organisation_run SET digest=token,structure=(SELECT jsonb_agg(jsonb_build_object('companyId',c.id,'company',c.legal_name,'before',app.company_org_resolve(c.id,old_mapping,NOT first_mapping),'after',app.company_org_resolve(c.id,mapping,true),'beforeDisplay',app.company_org_tag_labels(app.company_org_resolve(c.id,old_mapping,NOT first_mapping)),'afterDisplay',app.company_org_tag_labels(app.company_org_resolve(c.id,mapping,true))) ORDER BY c.legal_name,c.id) FROM company c WHERE c.tenant_id=t AND c.id=ANY(scope)) WHERE id=r;
- INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(t,'organisation-tag-run',r,'organisation-tag-run.prepared','user',actor,jsonb_build_object('kind',kind,'effectiveOn',day,'digest',token,'companies',scope,'population',(SELECT count(*) FROM company_organisation_run_row WHERE run_id=r)));
+ PERFORM app.company_org_append_event(t,'organisation-tag-run',r,'organisation-tag-run.prepared','user',actor,jsonb_build_object('kind',kind,'effectiveOn',day,'digest',token,'companies',scope,'population',(SELECT count(*) FROM company_organisation_run_row WHERE run_id=r)));
  RETURN r;
 END $$;
 --> statement-breakpoint
@@ -291,10 +302,10 @@ DECLARE r company_organisation_run;BEGIN
  IF p_approve AND EXISTS(SELECT 1 FROM company_organisation_run_row WHERE run_id=r.id AND outcome='failed') THEN RAISE EXCEPTION 'Resolve failed source rows and prepare a fresh preview';END IF;
  IF r.state<>'prepared' THEN RAISE EXCEPTION 'This preview has already been decided';END IF;
  IF NOT app.company_org_run_fresh(r.id) OR NOT app.company_org_hr(r.requested_by,r.authority_company_ids) OR NOT app.company_org_hr_proposed(r.requested_by,r.authority_company_ids,r.mapping) THEN
-  UPDATE company_organisation_run SET state='stale',failure='The population, mapping or source changed. Prepare a fresh preview.' WHERE id=r.id;INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(r.tenant_id,'organisation-tag-run',r.id,'organisation-tag-run.stale','user',app.current_user_id(),jsonb_build_object('digest',r.digest,'phase','review'));RETURN;
+  UPDATE company_organisation_run SET state='stale',failure='The population, mapping or source changed. Prepare a fresh preview.' WHERE id=r.id;PERFORM app.company_org_append_event(r.tenant_id,'organisation-tag-run',r.id,'organisation-tag-run.stale','user',app.current_user_id(),jsonb_build_object('digest',r.digest,'phase','review'));RETURN;
  END IF;
  UPDATE company_organisation_run SET state=CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END,checked_by=app.current_user_id(),checked_at=now(),reason=btrim(p_reason) WHERE id=r.id;
- INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(r.tenant_id,'organisation-tag-run',r.id,CASE WHEN p_approve THEN 'organisation-tag-run.approved' ELSE 'organisation-tag-run.rejected' END,'user',app.current_user_id(),jsonb_build_object('digest',r.digest,'requestedBy',r.requested_by,'reason',btrim(p_reason)));
+ PERFORM app.company_org_append_event(r.tenant_id,'organisation-tag-run',r.id,CASE WHEN p_approve THEN 'organisation-tag-run.approved' ELSE 'organisation-tag-run.rejected' END,'user',app.current_user_id(),jsonb_build_object('digest',r.digest,'requestedBy',r.requested_by,'reason',btrim(p_reason)));
 END $$;
 --> statement-breakpoint
 CREATE FUNCTION app.process_company_organisation_run(p_id uuid,p_limit integer) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -306,7 +317,7 @@ DECLARE r company_organisation_run;BEGIN
  IF NOT app.company_org_run_fresh(r.id) OR NOT app.company_org_run_checker(r.checked_by,r.id) THEN
   UPDATE company_organisation_run SET state='stale',failure='Source or actor eligibility changed. Prepare and approve a fresh preview.' WHERE id=r.id;
   UPDATE company_organisation_run_row SET outcome='failed',reason='The approved source changed; no version was published.' WHERE run_id=r.id AND outcome<>'skipped';
-  INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(r.tenant_id,'organisation-tag-run',r.id,'organisation-tag-run.stale','user',app.current_user_id(),jsonb_build_object('digest',r.digest));
+  PERFORM app.company_org_append_event(r.tenant_id,'organisation-tag-run',r.id,'organisation-tag-run.stale','user',app.current_user_id(),jsonb_build_object('digest',r.digest));
   RETURN app.company_organisation_run_view(r.id);
  END IF;
  UPDATE company_organisation_run_row SET staged=true WHERE run_id=r.id AND employment_id IN(SELECT employment_id FROM company_organisation_run_row WHERE run_id=r.id AND NOT staged ORDER BY employment_id LIMIT greatest(1,least(coalesce(p_limit,200),500)));
@@ -340,20 +351,20 @@ DECLARE r company_organisation_run;x record;before_view jsonb;k text;new_id uuid
  -- The lease validated both actors and froze every source under canonical locks before native writes.
  -- A raw application caller cannot publish while omitting the required canonical projection.
  IF EXISTS(SELECT 1 FROM company_organisation_run_row x WHERE x.run_id=r.id AND x.projection_on IS NOT NULL AND x.outcome='changed' AND NOT EXISTS(
-  SELECT 1 FROM assignment a WHERE a.tenant_id=r.tenant_id AND a.employment_id=x.employment_id AND a.superseded_at IS NULL AND a.valid_from<=x.projection_on AND (a.valid_to IS NULL OR a.valid_to>x.projection_on) AND a.company_id=x.company_id AND a.business_unit_id IS NOT DISTINCT FROM nullif(x.after_tags->>'businessUnitId','')::uuid)) THEN RAISE EXCEPTION 'Canonical assignment projection is incomplete';END IF;
+  SELECT 1 FROM assignment a WHERE a.tenant_id=r.tenant_id AND a.employment_id=x.employment_id AND a.superseded_at IS NULL AND a.valid_from<=x.projection_on AND (a.valid_to IS NULL OR a.valid_to>x.projection_on) AND coalesce(a.company_id,(SELECT company_id FROM employment WHERE id=a.employment_id AND tenant_id=a.tenant_id))=x.company_id AND a.business_unit_id IS NOT DISTINCT FROM nullif(x.after_tags->>'businessUnitId','')::uuid)) THEN RAISE EXCEPTION 'Canonical assignment projection is incomplete';END IF;
  before_view:=app.company_organisation_run_view(r.id);
  FOR x IN SELECT * FROM company_organisation_run_row WHERE run_id=r.id AND outcome='changed' ORDER BY employment_id LOOP
   IF NOT EXISTS(SELECT 1 FROM employment_organisation_classification c WHERE c.tenant_id=r.tenant_id AND c.employment_id=x.employment_id AND c.company_id=x.company_id AND c.effective_on=r.effective_on AND c.tags=x.after_tags) THEN
    k:='organisation-run:'||r.id::text||':'||x.employment_id::text;
    INSERT INTO employment_organisation_classification(tenant_id,employment_id,company_id,effective_on,mapping_version_id,tags,trigger,actor_id,idempotency_key)
     VALUES(r.tenant_id,x.employment_id,x.company_id,r.effective_on,(x.after_tags->>'mappingVersionId')::uuid,x.after_tags,CASE WHEN r.kind='retag' THEN 'retag' ELSE 'restructure' END,r.requested_by,k) ON CONFLICT(tenant_id,idempotency_key) DO NOTHING RETURNING id INTO new_id;
-   IF new_id IS NOT NULL THEN INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(r.tenant_id,'employment',x.employment_id,'employment.organisation-tagged','user',r.requested_by,x.employment_id,jsonb_build_object('companyId',x.company_id,'before',x.before_tags,'after',x.after_tags,'effectiveOn',r.effective_on,'trigger',CASE WHEN r.kind='retag' THEN 'retag' ELSE 'restructure' END,'runId',r.id,'checkedBy',r.checked_by));END IF;
+   IF new_id IS NOT NULL THEN PERFORM app.company_org_append_event(r.tenant_id,'employment',x.employment_id,'employment.organisation-tagged','user',r.requested_by,x.employment_id,jsonb_build_object('companyId',x.company_id,'before',x.before_tags,'after',x.after_tags,'effectiveOn',r.effective_on,'trigger',CASE WHEN r.kind='retag' THEN 'retag' ELSE 'restructure' END,'runId',r.id,'checkedBy',r.checked_by));END IF;
   END IF;
  END LOOP;
  UPDATE company_organisation_run SET state='published',published_at=now() WHERE id=r.id;
  UPDATE company_organisation_source_epoch SET revision=revision+1 WHERE tenant_id=r.tenant_id;
  DELETE FROM company_organisation_publish_lease WHERE xact_id=pg_current_xact_id() AND tenant_id=r.tenant_id;
- INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(r.tenant_id,'organisation-tag-run',r.id,'organisation-tag-run.published','user',app.current_user_id(),jsonb_build_object('digest',r.digest,'effectiveOn',r.effective_on,'checkedBy',r.checked_by,'counts',before_view->'counts'));
+ PERFORM app.company_org_append_event(r.tenant_id,'organisation-tag-run',r.id,'organisation-tag-run.published','user',app.current_user_id(),jsonb_build_object('digest',r.digest,'effectiveOn',r.effective_on,'checkedBy',r.checked_by,'counts',before_view->'counts'));
  RETURN before_view||jsonb_build_object('state','published','canProcess',false,'canApprove',false);
 END $$;
 --> statement-breakpoint
@@ -388,8 +399,14 @@ BEGIN
 END $$;
 CREATE TRIGGER organisation_assignment_record AFTER INSERT OR UPDATE OF business_unit_id,company_id,valid_from ON assignment FOR EACH ROW EXECUTE FUNCTION app.company_org_assignment_record();
 -- Private table mutation and audit evidence cannot be manufactured via the generic event appender.
-CREATE FUNCTION app.company_org_audit_owner() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
-BEGIN IF (NEW.aggregate_type='organisation-tag-run' OR NEW.event_type='employment.organisation-tagged') AND NOT app.acting_as_owner() THEN RAISE EXCEPTION 'Organisation audit requires its native owner' USING ERRCODE='42501';END IF;RETURN NEW;END $$;
+CREATE FUNCTION app.company_org_audit_owner() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE event_token text;BEGIN
+ IF NEW.aggregate_type='organisation-tag-run' OR NEW.event_type='employment.organisation-tagged' THEN
+  event_token:=encode(sha256(convert_to(jsonb_build_array(NEW.tenant_id,NEW.aggregate_type,NEW.aggregate_id,NEW.event_type,NEW.actor_type::text,NEW.actor_id,NEW.subject_employment_id,NEW.payload)::text,'UTF8')),'hex');
+  DELETE FROM company_organisation_audit_permit p WHERE p.xact_id=pg_current_xact_id() AND p.token=event_token;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Organisation audit requires its native exact-event permit' USING ERRCODE='42501';END IF;
+ END IF;RETURN NEW;
+END $$;
 CREATE TRIGGER company_org_audit_owner BEFORE INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION app.company_org_audit_owner();
 CREATE FUNCTION app.company_organisation_options() RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE result jsonb;BEGIN
@@ -402,7 +419,7 @@ BEGIN IF NEW.parent_company_id IS DISTINCT FROM OLD.parent_company_id AND NOT ap
 CREATE TRIGGER organisation_company_parent_guard BEFORE UPDATE OF parent_company_id ON company FOR EACH ROW EXECUTE FUNCTION app.company_org_parent_guard();
 -- Default-deny all implementation helpers. Only the declared fixed-command/read contracts are public to runtime.
 DO $$ DECLARE f record;BEGIN FOR f IN SELECT p.oid::regprocedure signature,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname IN(
- 'company_org_identity_changed','company_org_tag_labels','company_org_parent_guard','company_organisation_options','company_org_current_parent','company_organisation_current_parent','company_org_hr_proposed','company_org_lock','company_org_source_changed','company_org_hr','company_org_checker','company_org_run_access','company_org_bu_usable','company_org_mapping_at','company_org_resolve','company_org_tags_unchecked','company_org_company_read','company_organisation_tags','company_organisation_next_change','company_org_employment_company','company_org_employment_unchecked','employment_organisation_tags','record_employment_organisation_tags','company_org_employment_fingerprint','company_org_active','prepare_company_organisation_run','company_org_run_checker','company_org_run_fresh','company_organisation_run_view','decide_company_organisation_run','process_company_organisation_run','begin_company_organisation_publication','company_organisation_projection_rows','finish_company_organisation_publication','company_organisation_run_report','company_organisation_managed','company_org_assignment_guard','company_org_assignment_record','company_org_audit_owner') LOOP
+ 'company_org_append_event','company_org_identity_changed','company_org_tag_labels','company_org_parent_guard','company_organisation_options','company_org_current_parent','company_organisation_current_parent','company_org_hr_proposed','company_org_lock','company_org_source_changed','company_org_hr','company_org_checker','company_org_run_access','company_org_bu_usable','company_org_mapping_at','company_org_resolve','company_org_tags_unchecked','company_org_company_read','company_organisation_tags','company_organisation_next_change','company_org_employment_company','company_org_employment_unchecked','employment_organisation_tags','record_employment_organisation_tags','company_org_employment_fingerprint','company_org_active','prepare_company_organisation_run','company_org_run_checker','company_org_run_fresh','company_organisation_run_view','decide_company_organisation_run','process_company_organisation_run','begin_company_organisation_publication','company_organisation_projection_rows','finish_company_organisation_publication','company_organisation_run_report','company_organisation_managed','company_org_assignment_guard','company_org_assignment_record','company_org_audit_owner') LOOP
  EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,ai_hr_app',f.signature);
  IF f.proname IN('company_organisation_options','company_organisation_current_parent','company_org_run_access','company_organisation_tags','company_organisation_next_change','employment_organisation_tags','record_employment_organisation_tags','prepare_company_organisation_run','company_organisation_run_view','decide_company_organisation_run','process_company_organisation_run','begin_company_organisation_publication','company_organisation_projection_rows','finish_company_organisation_publication','company_organisation_run_report','company_organisation_managed') THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO ai_hr_app',f.signature);END IF;
  END LOOP;END $$;
