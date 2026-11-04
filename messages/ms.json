@@ -529,7 +529,6 @@
     "privateCases": "Kes peribadi"
   },
   "dashboard": {
-    "companyPicker": {"classificationTitle": "Semakan identiti syarikat", "reviewDesignation": "Semak penetapan syarikat", "classificationHelp": "Hanya penetapan yang disemak secara jelas menyembunyikan syarikat daripada pilihan konfigurasi baharu. Nama tidak dipadankan secara automatik. Sasaran dan sejarah tersimpan kekal.", "noneDesignated": "Tiada penetapan syarikat direkodkan. Semak identiti sebelum mengesahkan rekod ujian atau pendua telah dibersihkan.", "company": "Syarikat", "designation": "Penetapan", "visible": "Tersedia untuk dipilih", "test_demo": "Syarikat ujian atau demo disahkan", "alias": "Pendua entiti undang-undang lain disahkan", "canonicalCompany": "Entiti undang-undang disahkan untuk dipaparkan", "chooseCanonical": "Pilih entiti undang-undang disahkan", "reason": "Bukti dan sebab penetapan", "verification": "Saya telah menyemak identiti syarikat ini dengan Pengurusan Pekerja dan rekod perniagaan sokongan.", "confirm": "Sahkan penetapan disemak", "cancel": "Batal", "saveFailed": "Penetapan tidak disimpan. Semak skop, syarikat disahkan dan sebab, kemudian cuba lagi.", "unavailable": "Syarikat tidak tersedia", "unassigned": "Belum ditetapkan dalam Pengurusan Pekerja", "hierarchyHelp": "Kumpulan perniagaan → unit perniagaan → syarikat. Syarikat dengan beberapa unit dipaparkan sekali bersama semua pilihan unitnya.", "preserved": "Liputan tersimpan sedia ada dikekalkan"},
     "title": "Papan pemuka",
     "recentActivity": "Aktiviti terkini",
     "recentActivitySubtitle": "Daripada log peristiwa domain",
@@ -23246,6 +23245,28 @@
     }
   },
   "rewards": {
+    "companyPicker": {
+      "classificationTitle": "Semakan identiti syarikat",
+      "reviewDesignation": "Semak penetapan syarikat",
+      "classificationHelp": "Hanya penetapan yang disemak secara jelas menyembunyikan syarikat daripada pilihan konfigurasi baharu. Nama tidak dipadankan secara automatik. Sasaran dan sejarah tersimpan kekal.",
+      "noneDesignated": "Tiada penetapan syarikat direkodkan. Semak identiti sebelum mengesahkan rekod ujian atau pendua telah dibersihkan.",
+      "company": "Syarikat",
+      "designation": "Penetapan",
+      "visible": "Tersedia untuk dipilih",
+      "test_demo": "Syarikat ujian atau demo disahkan",
+      "alias": "Pendua entiti undang-undang lain disahkan",
+      "canonicalCompany": "Entiti undang-undang disahkan untuk dipaparkan",
+      "chooseCanonical": "Pilih entiti undang-undang disahkan",
+      "reason": "Bukti dan sebab penetapan",
+      "verification": "Saya telah menyemak identiti syarikat ini dengan Pengurusan Pekerja dan rekod perniagaan sokongan.",
+      "confirm": "Sahkan penetapan disemak",
+      "cancel": "Batal",
+      "saveFailed": "Penetapan tidak disimpan. Semak skop, syarikat disahkan dan sebab, kemudian cuba lagi.",
+      "unavailable": "Syarikat tidak tersedia",
+      "unassigned": "Belum ditetapkan dalam Pengurusan Pekerja",
+      "hierarchyHelp": "Kumpulan perniagaan → unit perniagaan → syarikat. Syarikat dengan beberapa unit dipaparkan sekali bersama semua pilihan unitnya.",
+      "preserved": "Liputan tersimpan sedia ada dikekalkan"
+    },
     "unitBonus": {
       "noReduction": "Pengurangan gaji tidak dibenarkan dalam semakan gaji.",
       "appliesOnlyTo": "Hanya terpakai untuk semakan ini: {company} / {unit}",
@@ -24055,7 +24076,17 @@
       }
     },
     "policyGrids": {
-      "validation": {"missing": "{row} · {column}: isi nilai atau gred yang tiada.", "number": "{row} · {column}: masukkan nilai dalam julat dibenarkan.", "precision": "{row} · {column}: masukkan nombor bukan negatif dengan maksimum {decimals} tempat perpuluhan.", "positive": "{row} · Minimum: masukkan nilai melebihi sifar.", "salaryOrder": "{row} · {column}: mesti melebihi {previous}.", "bonusOrder": "{row} · {column}: bulan bonus mesti melebihi {previous}.", "zero": "{row} · UA: mesti 0.", "grade": "{row} · {column}: gunakan gred atau segmen yang sah; gred 23 tiada julat gaji.", "duplicate": "{row}: buang gred atau segmen pendua."},
+      "validation": {
+        "missing": "{row} · {column}: isi nilai atau gred yang tiada.",
+        "number": "{row} · {column}: masukkan nilai dalam julat dibenarkan.",
+        "precision": "{row} · {column}: masukkan nombor bukan negatif dengan maksimum {decimals} tempat perpuluhan.",
+        "positive": "{row} · Minimum: masukkan nilai melebihi sifar.",
+        "salaryOrder": "{row} · {column}: mesti melebihi {previous}.",
+        "bonusOrder": "{row} · {column}: bulan bonus mesti melebihi {previous}.",
+        "zero": "{row} · UA: mesti 0.",
+        "grade": "{row} · {column}: gunakan gred atau segmen yang sah; gred 23 tiada julat gaji.",
+        "duplicate": "{row}: buang gred atau segmen pendua."
+      },
       "ranges": "Julat gaji (MYR)",
       "bonusMatrix": "Bulan bonus mengikut gred",
       "branchFactors": "Faktor cawangan",
@@ -32478,7 +32509,16 @@
     "cancelled": "Dibatalkan",
     "create": {
       "completeBeforeCreate": "Lengkapkan sebelum mencipta semakan ini",
-      "blocked": {"year": "Masukkan tahun ganjaran dari 2000 hingga 2200.", "snapshotMissing": "Pilih tarikh petikan data.", "snapshotFuture": "Tarikh petikan mestilah hari ini atau lebih awal.", "cycleName": "Masukkan nama kitaran semakan baharu (sehingga 160 aksara).", "company": "Pilih syarikat yang tersedia untuk tahun ganjaran ini.", "businessUnit": "Syarikat ini tiada tugasan unit perniagaan semasa. Tetapkan dalam Pengurusan Pekerja, kemudian muat semula halaman ini.", "conflict": "Lebih daripada satu konfigurasi dikongsi meliputi syarikat dan unit ini bagi tahun dipilih. Group Rewards perlu menyelesaikan pertindihan.", "policyUnavailable": "Konfigurasi dikongsi yang ditetapkan tidak dapat dimuatkan. Muat semula halaman atau minta Group Rewards menyemak versi tersimpan."},
+      "blocked": {
+        "year": "Masukkan tahun ganjaran dari 2000 hingga 2200.",
+        "snapshotMissing": "Pilih tarikh petikan data.",
+        "snapshotFuture": "Tarikh petikan mestilah hari ini atau lebih awal.",
+        "cycleName": "Masukkan nama kitaran semakan baharu (sehingga 160 aksara).",
+        "company": "Pilih syarikat yang tersedia untuk tahun ganjaran ini.",
+        "businessUnit": "Syarikat ini tiada tugasan unit perniagaan semasa. Tetapkan dalam Pengurusan Pekerja, kemudian muat semula halaman ini.",
+        "conflict": "Lebih daripada satu konfigurasi dikongsi meliputi syarikat dan unit ini bagi tahun dipilih. Group Rewards perlu menyelesaikan pertindihan.",
+        "policyUnavailable": "Konfigurasi dikongsi yang ditetapkan tidak dapat dimuatkan. Muat semula halaman atau minta Group Rewards menyemak versi tersimpan."
+      },
       "defaultName": "Semakan Pampasan Tahunan {year}",
       "effectiveHelp": "Tahun ganjaran ialah tahun prestasi yang diberi ganjaran; tarikh gaji berkuat kuasa diambil daripada tetapan semakan."
     },

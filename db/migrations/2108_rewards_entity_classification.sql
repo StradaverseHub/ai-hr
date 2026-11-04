@@ -13,7 +13,7 @@ ALTER TABLE reward_company_classification FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON reward_company_classification FROM PUBLIC,ai_hr_app;
 GRANT SELECT ON reward_company_classification TO ai_hr_app;
 CREATE POLICY reward_company_classification_read ON reward_company_classification FOR SELECT USING (
- tenant_id=app.current_tenant_id() AND (current_user<>'ai_hr_app' OR (app.reward_admin(company_id) AND (canonical_company_id IS NULL OR app.reward_admin(canonical_company_id)))));
+ tenant_id=app.current_tenant_id() AND (current_user<>'ai_hr_app' OR app.reward_admin(company_id)));
 CREATE POLICY reward_company_classification_write ON reward_company_classification FOR ALL USING (
  tenant_id=app.current_tenant_id() AND current_user<>'ai_hr_app') WITH CHECK(tenant_id=app.current_tenant_id() AND current_user<>'ai_hr_app');
 --> statement-breakpoint

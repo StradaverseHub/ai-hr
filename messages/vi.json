@@ -529,7 +529,6 @@
     "privateCases": "Hồ sơ riêng tư"
   },
   "dashboard": {
-    "companyPicker": {"classificationTitle": "Rà soát danh tính công ty", "reviewDesignation": "Rà soát phân loại công ty", "classificationHelp": "Chỉ phân loại đã được xác minh mới ẩn công ty khỏi lựa chọn cấu hình chung mới. Không tự động đối chiếu tên. Các đối tượng và lịch sử đã lưu không đổi.", "noneDesignated": "Chưa có phân loại công ty. Xác minh danh tính trước khi xác nhận đã dọn các mục thử nghiệm hoặc trùng lặp.", "company": "Công ty", "designation": "Phân loại", "visible": "Có thể chọn", "test_demo": "Công ty thử nghiệm hoặc demo đã xác minh", "alias": "Bản trùng đã xác minh của pháp nhân khác", "canonicalCompany": "Pháp nhân đã xác minh cần hiển thị", "chooseCanonical": "Chọn pháp nhân đã xác minh", "reason": "Bằng chứng và lý do phân loại", "verification": "Tôi đã xác minh các danh tính công ty với Quản lý nhân sự và hồ sơ kinh doanh liên quan.", "confirm": "Xác nhận phân loại đã rà soát", "cancel": "Hủy", "saveFailed": "Chưa lưu phân loại. Kiểm tra phạm vi quyền, công ty và lý do rồi thử lại.", "unavailable": "Công ty không khả dụng", "unassigned": "Chưa thiết lập trong Quản lý nhân sự", "hierarchyHelp": "Nhóm kinh doanh → đơn vị kinh doanh → công ty. Công ty thuộc nhiều đơn vị chỉ xuất hiện một lần với tất cả lựa chọn đơn vị trong mục đó.", "preserved": "Giữ nguyên phạm vi đã lưu"},
     "title": "Bảng điều khiển",
     "recentActivity": "Hoạt động gần đây",
     "recentActivitySubtitle": "Từ nhật ký sự kiện miền",
@@ -23246,6 +23245,28 @@
     }
   },
   "rewards": {
+    "companyPicker": {
+      "classificationTitle": "Rà soát danh tính công ty",
+      "reviewDesignation": "Rà soát phân loại công ty",
+      "classificationHelp": "Chỉ phân loại đã được xác minh mới ẩn công ty khỏi lựa chọn cấu hình chung mới. Không tự động đối chiếu tên. Các đối tượng và lịch sử đã lưu không đổi.",
+      "noneDesignated": "Chưa có phân loại công ty. Xác minh danh tính trước khi xác nhận đã dọn các mục thử nghiệm hoặc trùng lặp.",
+      "company": "Công ty",
+      "designation": "Phân loại",
+      "visible": "Có thể chọn",
+      "test_demo": "Công ty thử nghiệm hoặc demo đã xác minh",
+      "alias": "Bản trùng đã xác minh của pháp nhân khác",
+      "canonicalCompany": "Pháp nhân đã xác minh cần hiển thị",
+      "chooseCanonical": "Chọn pháp nhân đã xác minh",
+      "reason": "Bằng chứng và lý do phân loại",
+      "verification": "Tôi đã xác minh các danh tính công ty với Quản lý nhân sự và hồ sơ kinh doanh liên quan.",
+      "confirm": "Xác nhận phân loại đã rà soát",
+      "cancel": "Hủy",
+      "saveFailed": "Chưa lưu phân loại. Kiểm tra phạm vi quyền, công ty và lý do rồi thử lại.",
+      "unavailable": "Công ty không khả dụng",
+      "unassigned": "Chưa thiết lập trong Quản lý nhân sự",
+      "hierarchyHelp": "Nhóm kinh doanh → đơn vị kinh doanh → công ty. Công ty thuộc nhiều đơn vị chỉ xuất hiện một lần với tất cả lựa chọn đơn vị trong mục đó.",
+      "preserved": "Giữ nguyên phạm vi đã lưu"
+    },
     "unitBonus": {
       "noReduction": "Không được phép giảm lương trong đợt xét duyệt lương.",
       "appliesOnlyTo": "Chỉ áp dụng cho đợt xét duyệt này: {company} / {unit}",
@@ -24055,7 +24076,17 @@
       }
     },
     "policyGrids": {
-      "validation": {"missing": "{row} · {column}: nhập giá trị hoặc bậc còn thiếu.", "number": "{row} · {column}: nhập giá trị trong phạm vi cho phép.", "precision": "{row} · {column}: nhập số không âm với tối đa {decimals} chữ số thập phân.", "positive": "{row} · Tối thiểu: phải lớn hơn 0.", "salaryOrder": "{row} · {column}: phải lớn hơn {previous}.", "bonusOrder": "{row} · {column}: số tháng thưởng phải lớn hơn {previous}.", "zero": "{row} · UA: phải bằng 0.", "grade": "{row} · {column}: chọn bậc hoặc phân khúc hợp lệ; bậc 23 không có khung lương.", "duplicate": "{row}: xóa bậc hoặc phân khúc trùng lặp."},
+      "validation": {
+        "missing": "{row} · {column}: nhập giá trị hoặc bậc còn thiếu.",
+        "number": "{row} · {column}: nhập giá trị trong phạm vi cho phép.",
+        "precision": "{row} · {column}: nhập số không âm với tối đa {decimals} chữ số thập phân.",
+        "positive": "{row} · Tối thiểu: phải lớn hơn 0.",
+        "salaryOrder": "{row} · {column}: phải lớn hơn {previous}.",
+        "bonusOrder": "{row} · {column}: số tháng thưởng phải lớn hơn {previous}.",
+        "zero": "{row} · UA: phải bằng 0.",
+        "grade": "{row} · {column}: chọn bậc hoặc phân khúc hợp lệ; bậc 23 không có khung lương.",
+        "duplicate": "{row}: xóa bậc hoặc phân khúc trùng lặp."
+      },
       "ranges": "Khoảng lương (MYR)",
       "bonusMatrix": "Số tháng thưởng theo bậc",
       "branchFactors": "Hệ số chi nhánh",
@@ -32478,7 +32509,16 @@
     "cancelled": "Đã hủy",
     "create": {
       "completeBeforeCreate": "Hoàn tất trước khi tạo đợt đánh giá",
-      "blocked": {"year": "Nhập năm thưởng từ 2000 đến 2200.", "snapshotMissing": "Chọn ngày chụp dữ liệu.", "snapshotFuture": "Ngày chụp dữ liệu phải là hôm nay hoặc trước đó.", "cycleName": "Nhập tên chu kỳ đánh giá mới (tối đa 160 ký tự).", "company": "Chọn công ty có sẵn cho năm thưởng này.", "businessUnit": "Công ty chưa được phân công đơn vị kinh doanh hiện hành. Thiết lập trong Quản lý nhân sự rồi tải lại trang.", "conflict": "Có nhiều cấu hình chung áp dụng cho công ty và đơn vị trong năm đã chọn. Group Rewards cần giải quyết các phân công chồng chéo.", "policyUnavailable": "Không thể tải cấu hình chung đã phân công. Tải lại trang hoặc nhờ Group Rewards kiểm tra phiên bản đã lưu."},
+      "blocked": {
+        "year": "Nhập năm thưởng từ 2000 đến 2200.",
+        "snapshotMissing": "Chọn ngày chụp dữ liệu.",
+        "snapshotFuture": "Ngày chụp dữ liệu phải là hôm nay hoặc trước đó.",
+        "cycleName": "Nhập tên chu kỳ đánh giá mới (tối đa 160 ký tự).",
+        "company": "Chọn công ty có sẵn cho năm thưởng này.",
+        "businessUnit": "Công ty chưa được phân công đơn vị kinh doanh hiện hành. Thiết lập trong Quản lý nhân sự rồi tải lại trang.",
+        "conflict": "Có nhiều cấu hình chung áp dụng cho công ty và đơn vị trong năm đã chọn. Group Rewards cần giải quyết các phân công chồng chéo.",
+        "policyUnavailable": "Không thể tải cấu hình chung đã phân công. Tải lại trang hoặc nhờ Group Rewards kiểm tra phiên bản đã lưu."
+      },
       "defaultName": "Đợt xét duyệt lương thưởng năm {year}",
       "effectiveHelp": "Năm thưởng là năm hiệu suất được khen thưởng; ngày lương mới có hiệu lực lấy từ thiết lập của đợt xét duyệt."
     },
