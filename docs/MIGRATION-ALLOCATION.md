@@ -1,5 +1,30 @@
 # Coordinated migration reservations
 
+## Composed read-only action pause barrier — 5 November 2026 (unapplied)
+
+`codex/performance-ai-action-read-lock-fix-20261105` appends
+`2133_ai_action_read_only_lock`, idx1386 / when1793330001533 /
+SHA256 `d22cc6aa2e0995a4b7368127ac4d0a2d0c8f18e4bc44a5ca31480ab5d144ea8f`.
+Fresh source claims covered2351 heads,434 committed journals,597 migration trees and231 readable
+worktrees through2132 / idx1385 / when1793330001532. Foreign malformed WIP and its literal bounds
+were preserved. Main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e; read-only staging
+inspection matched all671 ordered canonical identities through1793330001502. Earlier SQL bytes,
+including2131/2132, are unchanged.
+
+Both frozen b3f500-user runs reached500 but failed. Their retained database logs identify32 and22
+deadlocks, all in `app.ai_agent_action_unpaused(text)`: read-only feature checks held a shared
+`ai-control` lock, then the individual-action check tried to upgrade it to exclusive. Native
+regression41877288302 reproduced the same two-reader deadlock;13 existing tests passed and the new
+composed guard failed. Preserve these failures as evidence; they are not accepted load results.
+
+This append changes only the existing individual-action pause function. After its unchanged
+Read Committed and known-action checks, native read-only transactions take the matching shared lock.
+Every read/write call, pause writer and budget admission remains exclusive. Owners, signatures,
+ACLs, pause values, command authority and provider gates stay unchanged. Concurrent complete action
+guards, individual writer exclusion, native effects, populated upgrades and both load scenarios must
+pass before acceptance. Complete BOARD roles remains excluded; no deployment is authorized.
+
+
 ## Assigned/Rewards read metadata and Claims preview index — 5 November 2026 (unapplied)
 
 `codex/performance-ai-metadata-claims-index-20261105` appends

@@ -4754,6 +4754,13 @@
       "when": 1793330001532,
       "tag": "2132_ai_metadata_claim_preview_index",
       "breakpoints": true
+    },
+    {
+      "idx": 1386,
+      "version": "7",
+      "when": 1793330001533,
+      "tag": "2133_ai_action_read_only_lock",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,7 @@ import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import {assertAiPrincipalTx} from '../core/ai-principal';
 import {setAiFeature,setAiAllowance} from '../core/ai-management';
+import {setAgentActionPause} from '../core/ai-inventory';
 import {pgSqlState} from '../lib/db-error';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext;
@@ -54,4 +55,28 @@ it('reads fresh company and feature pauses rather than retaining an earlier allo
  await setAiAllowance(ctx,{kind:'company',subjectId:b.companyId,enabled:true,dailyRequests:null,monthlyTokens:null});
  expect(await check()).toBe(true);await setAiFeature(ctx,'hr_assistant',false);expect(await check()).toBe(false);
  await setAiFeature(ctx,'hr_assistant',true);expect(await check()).toBe(true);
+});
+
+it.each([true,false])('keeps composed feature/action pause locks compatible (readOnly=%s)',async readOnly=>{
+ await withTenant(ctx,async tx=>{
+  if(readOnly)await tx.execute(sql`set transaction read only`);
+  await assertAiPrincipalTx(tx,ctx);
+  await tx.execute(sql`select app.ai_action_unpaused('hr_assistant',false)`);
+  const [r]=await tx.execute<{allowed:boolean}>(sql`select app.ai_agent_action_unpaused('claims.cancel')as allowed`);
+  expect(r.allowed).toBe(true);expect(await observe()).toEqual({reader:readOnly,writer:false});
+ });
+});
+it('keeps the action pause writer exclusive and observes each committed pause change',async()=>{
+ const checkAction=()=>withTenant(ctx,async tx=>{
+  await tx.execute(sql`set transaction read only`);await assertAiPrincipalTx(tx,ctx);
+  const [r]=await tx.execute<{allowed:boolean}>(sql`select app.ai_agent_action_unpaused('claims.cancel')as allowed`);return r.allowed;
+ });
+ expect(await checkAction()).toBe(true);
+ await setAgentActionPause(ctx,'claims.cancel',true);expect(await checkAction()).toBe(false);
+ await setAgentActionPause(ctx,'claims.cancel',false);expect(await checkAction()).toBe(true);
+ await withTenant(ctx,async tx=>{
+  await assertAiPrincipalTx(tx,ctx);await tx.execute(sql`select app.ai_agent_action_pause_set('claims.cancel',true)`);
+  expect(await observe()).toEqual({reader:false,writer:false});
+ });
+ expect(await checkAction()).toBe(false);
 });
