@@ -275,6 +275,23 @@ try{
   try{for(const path of additionalBrowserRoutes[user.role])await visit(page,user,path);}
   finally{await ctx.close();}
  }
+ // Measure actual AI Centre tab clicks; never submit a prompt or alter provider permissions.
+ for(const user of [employee,hr]){
+  const ctx=await context(user),page=await ctx.newPage();
+  try{
+   await visit(page,user,'/assistant?view=how');
+   const documents=[];page.on('request',request=>{if(request.resourceType()==='document')documents.push(request.url());});
+   for(const view of ['jobs','inbox','how']){
+    const path='/assistant?view='+view,start=performance.now();
+    await Promise.all([page.waitForURL(url=>url.pathname==='/assistant'&&url.searchParams.get('view')===view,{timeout:90000}),page.locator('[data-ai-centre-tabs] a[href="'+path+'"]').click()]);
+    await page.locator('[data-ai-centre="'+view+'"] [data-ai-centre-tabs] a[aria-current="page"][href="'+path+'"]').waitFor({timeout:90000});
+    assert((await page.locator('main h1').innerText()).trim().length>0,'AI Centre heading unavailable');
+    assert.equal(await page.locator('main [aria-busy="true"]').count(),0,'AI Centre remains busy');
+    assert.equal(documents.length,0,'AI Centre tab reloaded the document');
+    (report.browserAiCentreNavigation??=[]).push({phase:'baseline',role:user.role,path,elapsedMs:performance.now()-start,usable:true,documentRequests:0});save();
+   }
+  }finally{await ctx.close();}
+ }
  // Locale projection and real client navigation must work before any capacity claim.
  for(const locale of ['en','ms','zh','ta','th','vi']){
   const ctx=await context(employee,locale),page=await ctx.newPage();await visit(page,employee,'/claims');
