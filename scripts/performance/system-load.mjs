@@ -329,6 +329,22 @@ try{
     assert.equal(documents.length,0,'AI Centre tab unexpectedly reloaded the document');
     (report.browserAiCentreNavigation??=[]).push({phase,role:user.role,path,elapsedMs:performance.now()-start,usable:true,documentRequests:0,promptsSubmitted:0});save();
    }
+   // Tools and privacy are real links outside the tab row. Exercise both Ask footer
+   // navigation and the Tools shortcut, without submitting prompts or changing privacy settings.
+   for(const [view,from] of [['tools','ask-footer'],['privacy','tools-shortcut'],['ask','centre-tab'],['privacy','ask-footer'],['ask','centre-tab']]){
+    const path=view==='ask'?'/assistant':'/assistant?view='+view,expected=new URL(path,base),start=performance.now();
+    const link=view==='ask'?page.locator('[data-ai-centre-tabs] a[href="/assistant"]'):page.locator('main a[href="'+path+'"]:visible').first();
+    await Promise.all([page.waitForURL(url=>url.pathname===expected.pathname&&url.search===expected.search,{timeout:90000}),link.click()]);
+    await page.locator('main [data-ai-centre="'+view+'"]').waitFor({timeout:90000});
+    await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:90000});
+    assert((await page.locator('main h1').innerText()).trim().length>0,'AI Centre supplemental view heading unavailable');
+    assert.equal(await page.locator('main [data-read-unavailable]').count(),0,'AI Centre supplemental view unavailable');
+    if(view==='tools')await page.locator('#ai-ask-shortcuts').waitFor({timeout:90000});
+    if(view==='privacy')await page.locator('#assistant-privacy').waitFor({timeout:90000});
+    if(view==='ask')assert(await page.locator('main textarea:enabled').count()>0,'Ask composer unavailable after supplemental navigation');
+    assert.equal(documents.length,0,'AI Centre supplemental navigation unexpectedly reloaded the document');
+    (report.browserAiCentreNavigation??=[]).push({phase,role:user.role,path,from,elapsedMs:performance.now()-start,usable:true,documentRequests:0,promptsSubmitted:0,privacyChanges:0});save();
+   }
   }finally{page.off('request',onRequest);}
  }
  await Promise.all([employee,hr].map(async user=>{
