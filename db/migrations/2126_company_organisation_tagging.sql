@@ -176,16 +176,16 @@ DECLARE token text:=encode(sha256(convert_to(jsonb_build_array(t,aggregate,ident
 END $$;
 CREATE FUNCTION app.company_org_append_event(t uuid,aggregate text,identifier uuid,event text,actor_kind text,actor uuid,detail jsonb) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$SELECT app.company_org_append_event(t,aggregate,identifier,event,actor_kind,actor,NULL,detail);$$;
 CREATE FUNCTION app.record_employment_organisation_tags(p_employment uuid,p_company uuid,p_day date,p_trigger text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE tags jsonb;previous jsonb;k text;new_id uuid;BEGIN
+DECLARE v_tags jsonb;previous jsonb;k text;new_id uuid;BEGIN
  PERFORM app.access_workforce_write_lock();
  IF NOT app.principal_snapshot_current() OR NOT app.access_workforce_employment(p_employment,'workforce.maintain') OR NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id()) OR p_company IS DISTINCT FROM app.company_org_employment_company(p_employment,p_day) OR p_trigger NOT IN('hire','correction','transfer','restructure','import','retag','assignment','movement') THEN RAISE EXCEPTION 'Organisation write scope is unavailable' USING ERRCODE='42501';END IF;
- tags:=app.company_org_tags_unchecked(p_company,p_day);IF tags->>'status'='legacy' THEN RETURN tags;END IF;
+ v_tags:=app.company_org_tags_unchecked(p_company,p_day);IF v_tags->>'status'='legacy' THEN RETURN v_tags;END IF;
  SELECT c.tags INTO previous FROM employment_organisation_classification c WHERE c.tenant_id=app.current_tenant_id() AND c.employment_id=p_employment AND c.effective_on<=p_day ORDER BY c.effective_on DESC,c.created_at DESC,c.id DESC LIMIT 1;
- IF EXISTS(SELECT 1 FROM employment_organisation_classification c WHERE c.tenant_id=app.current_tenant_id() AND c.employment_id=p_employment AND c.company_id=p_company AND c.effective_on=p_day AND c.tags=tags) THEN RETURN tags;END IF;
- k:=encode(sha256(convert_to(jsonb_build_array(p_employment,p_company,p_day,p_trigger,tags)::text,'UTF8')),'hex');
- INSERT INTO employment_organisation_classification(tenant_id,employment_id,company_id,effective_on,mapping_version_id,tags,trigger,actor_id,idempotency_key) VALUES(app.current_tenant_id(),p_employment,p_company,p_day,(tags->>'mappingVersionId')::uuid,tags,p_trigger,app.current_user_id(),k) ON CONFLICT(tenant_id,idempotency_key) DO NOTHING RETURNING id INTO new_id;
- IF new_id IS NOT NULL THEN PERFORM app.company_org_append_event(app.current_tenant_id(),'employment',p_employment,'employment.organisation-tagged','user',app.current_user_id(),p_employment,jsonb_build_object('companyId',p_company,'before',previous,'after',tags,'effectiveOn',p_day,'trigger',p_trigger,'mappingVersionId',tags->'mappingVersionId'));END IF;
- RETURN tags;
+ IF EXISTS(SELECT 1 FROM employment_organisation_classification c WHERE c.tenant_id=app.current_tenant_id() AND c.employment_id=p_employment AND c.company_id=p_company AND c.effective_on=p_day AND c.tags=v_tags) THEN RETURN v_tags;END IF;
+ k:=encode(sha256(convert_to(jsonb_build_array(p_employment,p_company,p_day,p_trigger,v_tags)::text,'UTF8')),'hex');
+ INSERT INTO employment_organisation_classification(tenant_id,employment_id,company_id,effective_on,mapping_version_id,tags,trigger,actor_id,idempotency_key) VALUES(app.current_tenant_id(),p_employment,p_company,p_day,(v_tags->>'mappingVersionId')::uuid,v_tags,p_trigger,app.current_user_id(),k) ON CONFLICT(tenant_id,idempotency_key) DO NOTHING RETURNING id INTO new_id;
+ IF new_id IS NOT NULL THEN PERFORM app.company_org_append_event(app.current_tenant_id(),'employment',p_employment,'employment.organisation-tagged','user',app.current_user_id(),p_employment,jsonb_build_object('companyId',p_company,'before',previous,'after',v_tags,'effectiveOn',p_day,'trigger',p_trigger,'mappingVersionId',v_tags->'mappingVersionId'));END IF;
+ RETURN v_tags;
 END $$;
 --> statement-breakpoint
 ALTER TABLE company_organisation_run_row ADD COLUMN source_digest text NOT NULL;
@@ -206,73 +206,73 @@ CREATE FUNCTION app.company_org_tag_labels(p_tags jsonb) RETURNS jsonb LANGUAGE 
  SELECT jsonb_build_object('businessUnit', (SELECT name FROM business_unit WHERE id=nullif(p_tags->>'businessUnitId','')::uuid AND tenant_id=app.current_tenant_id()),'parentCompany',(SELECT legal_name FROM company WHERE id=nullif(p_tags->>'parentCompanyId','')::uuid AND tenant_id=app.current_tenant_id()),'businessGroup',(SELECT legal_name FROM company WHERE id=nullif(p_tags->>'businessGroupId','')::uuid AND tenant_id=app.current_tenant_id()));
 $$;
 CREATE FUNCTION app.prepare_company_organisation_run(p_input jsonb) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE t uuid:=app.current_tenant_id();actor uuid:=app.current_user_id();r uuid:=gen_random_uuid();kind text:=p_input->>'kind';day date:=(p_input->>'effectiveOn')::date;scope uuid[];authority uuid[];mapping jsonb;old_mapping jsonb;change jsonb;co uuid;parent uuid;bu uuid;tags jsonb;before_tags jsonb;emp record;active boolean;outcome text;status text;reason text;epoch bigint;token text;first_mapping boolean;projection_day date;next_day date;
+DECLARE v_t uuid:=app.current_tenant_id();v_actor uuid:=app.current_user_id();v_r uuid:=gen_random_uuid();v_kind text:=p_input->>'kind';v_day date:=(p_input->>'effectiveOn')::date;v_scope uuid[];v_authority uuid[];v_mapping jsonb;v_old_mapping jsonb;v_change jsonb;v_co uuid;v_parent uuid;v_bu uuid;v_tags jsonb;v_before_tags jsonb;v_emp record;v_active boolean;v_outcome text;v_status text;v_reason text;v_epoch bigint;v_token text;v_first_mapping boolean;v_projection_day date;v_next_day date;
 BEGIN
  PERFORM app.company_org_lock();
- IF actor IS NULL OR NOT app.principal_snapshot_current() OR kind NOT IN('mapping','restructure','retag') OR day IS NULL OR NOT isfinite(day) OR jsonb_typeof(p_input->'companyIds') IS DISTINCT FROM 'array' OR jsonb_array_length(p_input->'companyIds') NOT BETWEEN 1 AND 500 OR jsonb_typeof(coalesce(p_input->'changes','[]')) IS DISTINCT FROM 'array' OR jsonb_array_length(coalesce(p_input->'changes','[]'))>500 THEN RAISE EXCEPTION 'Choose a valid organisation run and scope';END IF;
- IF kind='retag' AND day IS DISTINCT FROM (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date THEN RAISE EXCEPTION 'Re-tag is effective on the confirmed run date';END IF;
- SELECT array_agg(DISTINCT x::uuid ORDER BY x::uuid) INTO scope FROM jsonb_array_elements_text(p_input->'companyIds') x;
- old_mapping:=app.company_org_mapping_at(day);mapping:=old_mapping;authority:=scope;
- first_mapping:=NOT EXISTS(SELECT 1 FROM company_organisation_run WHERE tenant_id=t AND state='published' AND kind<>'retag');
- IF kind='retag' AND NOT EXISTS(SELECT 1 FROM company_organisation_run WHERE tenant_id=t AND state='published' AND kind<>'retag' AND effective_on<=day) THEN RAISE EXCEPTION 'Publish a reviewed mapping before preparing a re-tag';END IF;
- IF kind<>'retag' AND jsonb_array_length(coalesce(p_input->'changes','[]'))=0 THEN RAISE EXCEPTION 'Choose explicit company mappings';END IF;
- IF kind='retag' AND jsonb_array_length(coalesce(p_input->'changes','[]'))<>0 THEN RAISE EXCEPTION 'A re-tag cannot change the structure';END IF;
+ IF v_actor IS NULL OR NOT app.principal_snapshot_current() OR v_kind NOT IN('mapping','restructure','retag') OR v_day IS NULL OR NOT isfinite(v_day) OR jsonb_typeof(p_input->'companyIds') IS DISTINCT FROM 'array' OR jsonb_array_length(p_input->'companyIds') NOT BETWEEN 1 AND 500 OR jsonb_typeof(coalesce(p_input->'changes','[]')) IS DISTINCT FROM 'array' OR jsonb_array_length(coalesce(p_input->'changes','[]'))>500 THEN RAISE EXCEPTION 'Choose a valid organisation run and scope';END IF;
+ IF v_kind='retag' AND v_day IS DISTINCT FROM (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date THEN RAISE EXCEPTION 'Re-tag is effective on the confirmed run date';END IF;
+ SELECT array_agg(DISTINCT x::uuid ORDER BY x::uuid) INTO v_scope FROM jsonb_array_elements_text(p_input->'companyIds') x;
+ v_old_mapping:=app.company_org_mapping_at(v_day);v_mapping:=v_old_mapping;v_authority:=v_scope;
+ v_first_mapping:=NOT EXISTS(SELECT 1 FROM company_organisation_run existing WHERE existing.tenant_id=v_t AND existing.state='published' AND existing.kind<>'retag');
+ IF v_kind='retag' AND NOT EXISTS(SELECT 1 FROM company_organisation_run existing WHERE existing.tenant_id=v_t AND existing.state='published' AND existing.kind<>'retag' AND existing.effective_on<=v_day) THEN RAISE EXCEPTION 'Publish a reviewed mapping before preparing a re-tag';END IF;
+ IF v_kind<>'retag' AND jsonb_array_length(coalesce(p_input->'changes','[]'))=0 THEN RAISE EXCEPTION 'Choose explicit company mappings';END IF;
+ IF v_kind='retag' AND jsonb_array_length(coalesce(p_input->'changes','[]'))<>0 THEN RAISE EXCEPTION 'A re-tag cannot change the structure';END IF;
  IF (SELECT count(*) FROM jsonb_array_elements(coalesce(p_input->'changes','[]')) c)<>(SELECT count(DISTINCT c->>'companyId') FROM jsonb_array_elements(coalesce(p_input->'changes','[]')) c) THEN RAISE EXCEPTION 'Choose each mapping once';END IF;
- FOR change IN SELECT value FROM jsonb_array_elements(coalesce(p_input->'changes','[]')) LOOP
-  co:=(change->>'companyId')::uuid;parent:=nullif(change->>'parentCompanyId','')::uuid;bu:=nullif(change->>'businessUnitId','')::uuid;
-  IF co IS NULL OR NOT(co=ANY(scope)) OR NOT(mapping?co::text) OR co=parent OR NOT(change?'businessUnitId' AND change?'parentCompanyId') THEN RAISE EXCEPTION 'Choose explicit company, parent and Business Unit identities';END IF;
-  IF parent IS NOT NULL AND NOT(mapping?parent::text) THEN RAISE EXCEPTION 'Parent company must belong to the same tenant';END IF;
-  IF bu IS NOT NULL AND NOT app.company_org_bu_usable(bu,co) THEN RAISE EXCEPTION 'Business Unit is unavailable to this company through Criteria';END IF;
-  IF parent IS NOT NULL AND NOT(parent=ANY(authority)) THEN authority:=array_append(authority,parent);END IF;
-  mapping:=jsonb_set(mapping,ARRAY[co::text],jsonb_build_object('companyId',co,'businessUnitId',bu,'parentCompanyId',parent,'mappingVersionId',r));
+ FOR v_change IN SELECT value FROM jsonb_array_elements(coalesce(p_input->'changes','[]')) LOOP
+  v_co:=(v_change->>'companyId')::uuid;v_parent:=nullif(v_change->>'parentCompanyId','')::uuid;v_bu:=nullif(v_change->>'businessUnitId','')::uuid;
+  IF v_co IS NULL OR NOT(v_co=ANY(v_scope)) OR NOT(v_mapping?v_co::text) OR v_co=v_parent OR NOT(v_change?'businessUnitId' AND v_change?'parentCompanyId') THEN RAISE EXCEPTION 'Choose explicit company, parent and Business Unit identities';END IF;
+  IF v_parent IS NOT NULL AND NOT(v_mapping?v_parent::text) THEN RAISE EXCEPTION 'Parent company must belong to the same tenant';END IF;
+  IF v_bu IS NOT NULL AND NOT app.company_org_bu_usable(v_bu,v_co) THEN RAISE EXCEPTION 'Business Unit is unavailable to this company through Criteria';END IF;
+  IF v_parent IS NOT NULL AND NOT(v_parent=ANY(v_authority)) THEN v_authority:=array_append(v_authority,v_parent);END IF;
+  v_mapping:=jsonb_set(v_mapping,ARRAY[v_co::text],jsonb_build_object('companyId',v_co,'businessUnitId',v_bu,'parentCompanyId',v_parent,'mappingVersionId',v_r));
  END LOOP;
  -- A changed ancestor changes descendant lineage too. Never accept a caller-supplied truncated cohort.
- IF first_mapping AND kind<>'retag' THEN SELECT array_agg(id ORDER BY id) INTO scope FROM company WHERE tenant_id=t;
- ELSIF kind<>'retag' THEN
-  WITH RECURSIVE affected(id) AS(SELECT unnest(scope) UNION SELECT (value->>'companyId')::uuid FROM jsonb_each(mapping) entry JOIN affected a ON entry.value->>'parentCompanyId'=a.id::text)
-  SELECT array_agg(DISTINCT id ORDER BY id) INTO scope FROM affected;
+ IF v_first_mapping AND v_kind<>'retag' THEN SELECT array_agg(id ORDER BY id) INTO v_scope FROM company WHERE tenant_id=v_t;
+ ELSIF v_kind<>'retag' THEN
+  WITH RECURSIVE affected(id) AS(SELECT unnest(v_scope) UNION SELECT (value->>'companyId')::uuid FROM jsonb_each(v_mapping) entry JOIN affected a ON entry.value->>'parentCompanyId'=a.id::text)
+  SELECT array_agg(DISTINCT id ORDER BY id) INTO v_scope FROM affected;
  END IF;
- SELECT array_agg(DISTINCT x ORDER BY x) INTO authority FROM unnest(scope||authority) x;
- IF NOT app.company_org_hr(actor,authority) OR NOT app.company_org_hr_proposed(actor,authority,mapping) OR EXISTS(SELECT 1 FROM unnest(authority) c WHERE NOT app.access_workforce_company(c,'workforce.maintain')) THEN RAISE EXCEPTION 'HR administration of the entire affected scope is required' USING ERRCODE='42501';END IF;
- FOR co IN SELECT id FROM company WHERE tenant_id=t ORDER BY id LOOP
-  tags:=app.company_org_resolve(co,mapping,true);IF tags->>'reason' IN('Group structure contains a cycle','Parent company is unavailable') THEN RAISE EXCEPTION 'Resolve the complete company hierarchy before previewing';END IF;
+ SELECT array_agg(DISTINCT x ORDER BY x) INTO v_authority FROM unnest(v_scope||v_authority) x;
+ IF NOT app.company_org_hr(v_actor,v_authority) OR NOT app.company_org_hr_proposed(v_actor,v_authority,v_mapping) OR EXISTS(SELECT 1 FROM unnest(v_authority) c WHERE NOT app.access_workforce_company(c,'workforce.maintain')) THEN RAISE EXCEPTION 'HR administration of the entire affected scope is required' USING ERRCODE='42501';END IF;
+ FOR v_co IN SELECT id FROM company WHERE tenant_id=v_t ORDER BY id LOOP
+  v_tags:=app.company_org_resolve(v_co,v_mapping,true);IF v_tags->>'reason' IN('Group structure contains a cycle','Parent company is unavailable') THEN RAISE EXCEPTION 'Resolve the complete company hierarchy before previewing';END IF;
  END LOOP;
- SELECT revision INTO epoch FROM company_organisation_source_epoch WHERE tenant_id=t;
- INSERT INTO company_organisation_run(id,tenant_id,kind,effective_on,company_ids,authority_company_ids,mapping,source_epoch,digest,requested_by) VALUES(r,t,kind,day,scope,authority,mapping,epoch,'preparing',actor);
- FOR emp IN SELECT e.*,p.full_name FROM employment e JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id WHERE e.tenant_id=t AND (app.company_org_employment_company(e.id,day)=ANY(scope) OR e.company_id=ANY(scope) OR EXISTS(SELECT 1 FROM assignment future WHERE future.tenant_id=t AND future.employment_id=e.id AND future.superseded_at IS NULL AND future.valid_from>day AND future.company_id=ANY(scope))) ORDER BY e.id LOOP
-  active:=app.company_org_active(emp.id,day);projection_day:=NULL;
-  IF active THEN SELECT day INTO projection_day WHERE EXISTS(SELECT 1 FROM assignment a WHERE a.tenant_id=t AND a.employment_id=emp.id AND a.superseded_at IS NULL AND a.valid_from<=day AND (a.valid_to IS NULL OR a.valid_to>day));
-  ELSIF emp.voided_at IS NULL AND emp.hired_on>day THEN
+ SELECT revision INTO v_epoch FROM company_organisation_source_epoch WHERE tenant_id=v_t;
+ INSERT INTO company_organisation_run(id,tenant_id,kind,effective_on,company_ids,authority_company_ids,mapping,source_epoch,digest,requested_by) VALUES(v_r,v_t,v_kind,v_day,v_scope,v_authority,v_mapping,v_epoch,'preparing',v_actor);
+ FOR v_emp IN SELECT e.*,p.full_name FROM employment e JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id WHERE e.tenant_id=v_t AND (app.company_org_employment_company(e.id,v_day)=ANY(v_scope) OR e.company_id=ANY(v_scope) OR EXISTS(SELECT 1 FROM assignment future WHERE future.tenant_id=v_t AND future.employment_id=e.id AND future.superseded_at IS NULL AND future.valid_from>v_day AND future.company_id=ANY(v_scope))) ORDER BY e.id LOOP
+  v_active:=app.company_org_active(v_emp.id,v_day);v_projection_day:=NULL;
+  IF v_active THEN SELECT v_day INTO v_projection_day WHERE EXISTS(SELECT 1 FROM assignment a WHERE a.tenant_id=v_t AND a.employment_id=v_emp.id AND a.superseded_at IS NULL AND a.valid_from<=v_day AND (a.valid_to IS NULL OR a.valid_to>v_day));
+  ELSIF v_emp.voided_at IS NULL AND v_emp.hired_on>v_day THEN
    -- Only an already-entered future interval is eligible. Never create an interval for an inactive record.
-   SELECT a.valid_from INTO projection_day FROM assignment a WHERE a.tenant_id=t AND a.employment_id=emp.id AND a.superseded_at IS NULL AND a.valid_from>=greatest(day,emp.hired_on) AND (a.valid_to IS NULL OR a.valid_to>a.valid_from) AND coalesce(a.company_id,emp.company_id)=ANY(scope) AND app.company_org_active(emp.id,a.valid_from) ORDER BY a.valid_from,a.id LIMIT 1;
+   SELECT a.valid_from INTO v_projection_day FROM assignment a WHERE a.tenant_id=v_t AND a.employment_id=v_emp.id AND a.superseded_at IS NULL AND a.valid_from>=greatest(v_day,v_emp.hired_on) AND (a.valid_to IS NULL OR a.valid_to>a.valid_from) AND coalesce(a.company_id,v_emp.company_id)=ANY(v_scope) AND app.company_org_active(v_emp.id,a.valid_from) ORDER BY a.valid_from,a.id LIMIT 1;
   END IF;
-  IF kind<>'retag' AND NOT active AND projection_day IS NULL THEN CONTINUE;END IF;
-  co:=app.company_org_employment_company(emp.id,coalesce(projection_day,day));
-  IF projection_day>day THEN
-   SELECT min(rn.effective_on) INTO next_day FROM company_organisation_mapping m JOIN company_organisation_run rn ON rn.id=m.run_id AND rn.tenant_id=m.tenant_id WHERE m.tenant_id=t AND m.company_id=co AND rn.state='published' AND rn.effective_on>day;
-   IF next_day IS NOT NULL AND projection_day>=next_day THEN IF kind<>'retag' THEN CONTINUE;ELSE projection_day:=NULL;END IF;END IF;
+  IF v_kind<>'retag' AND NOT v_active AND v_projection_day IS NULL THEN CONTINUE;END IF;
+  v_co:=app.company_org_employment_company(v_emp.id,coalesce(v_projection_day,v_day));
+  IF v_projection_day>v_day THEN
+   SELECT min(rn.effective_on) INTO v_next_day FROM company_organisation_mapping m JOIN company_organisation_run rn ON rn.id=m.run_id AND rn.tenant_id=m.tenant_id WHERE m.tenant_id=v_t AND m.company_id=v_co AND rn.state='published' AND rn.effective_on>v_day;
+   IF v_next_day IS NOT NULL AND v_projection_day>=v_next_day THEN IF v_kind<>'retag' THEN CONTINUE;ELSE v_projection_day:=NULL;END IF;END IF;
   END IF;
-  before_tags:=app.company_org_employment_unchecked(emp.id,coalesce(projection_day,day));
-  IF kind='retag' THEN
-   SELECT c.tags INTO before_tags FROM employment_organisation_classification c WHERE c.tenant_id=t AND c.employment_id=emp.id AND c.company_id=co AND c.effective_on<=day ORDER BY c.effective_on DESC,c.created_at DESC,c.id DESC LIMIT 1;
-   IF before_tags IS NULL THEN
-    before_tags:=app.company_org_employment_unchecked(emp.id,day)||jsonb_build_object('status','legacy','reason',NULL,'mappingVersionId',NULL,'businessUnitId',(SELECT a.business_unit_id FROM assignment a WHERE a.tenant_id=t AND a.employment_id=emp.id AND a.superseded_at IS NULL AND a.valid_from<=day ORDER BY a.valid_from DESC,a.id LIMIT 1));
+  v_before_tags:=app.company_org_employment_unchecked(v_emp.id,coalesce(v_projection_day,v_day));
+  IF v_kind='retag' THEN
+   SELECT c.tags INTO v_before_tags FROM employment_organisation_classification c WHERE c.tenant_id=v_t AND c.employment_id=v_emp.id AND c.company_id=v_co AND c.effective_on<=v_day ORDER BY c.effective_on DESC,c.created_at DESC,c.id DESC LIMIT 1;
+   IF v_before_tags IS NULL THEN
+    v_before_tags:=app.company_org_employment_unchecked(v_emp.id,v_day)||jsonb_build_object('status','legacy','reason',NULL,'mappingVersionId',NULL,'businessUnitId',(SELECT a.business_unit_id FROM assignment a WHERE a.tenant_id=v_t AND a.employment_id=v_emp.id AND a.superseded_at IS NULL AND a.valid_from<=v_day ORDER BY a.valid_from DESC,a.id LIMIT 1));
    END IF;
   END IF;
-  tags:=app.company_org_resolve(co,mapping,true);
-  tags:=tags||jsonb_build_object('mappingVersionId',CASE WHEN kind='retag' THEN app.company_org_tags_unchecked(co,day)->'mappingVersionId' ELSE to_jsonb(r) END);
-  status:=CASE WHEN emp.voided_at IS NOT NULL THEN 'voided' WHEN emp.hired_on>day THEN 'future' WHEN emp.blacklisted_at IS NOT NULL AND (emp.blacklisted_at AT TIME ZONE 'Asia/Kuala_Lumpur')::date<=day THEN 'blacklisted' WHEN NOT active THEN 'inactive' ELSE 'active' END;
-  reason:=CASE WHEN emp.voided_at IS NOT NULL THEN 'Voided import record retained without a new interval' ELSE tags->>'reason' END;
-  IF active AND projection_day IS NULL THEN reason:='No existing assignment covers the effective date; repair the source before publication';END IF;
-  outcome:=CASE WHEN active AND projection_day IS NULL THEN 'failed' WHEN emp.voided_at IS NOT NULL THEN 'skipped' WHEN (before_tags-'mappingVersionId') IS NOT DISTINCT FROM (tags-'mappingVersionId') THEN 'unchanged' ELSE 'changed' END;
+  v_tags:=app.company_org_resolve(v_co,v_mapping,true);
+  v_tags:=v_tags||jsonb_build_object('mappingVersionId',CASE WHEN v_kind='retag' THEN app.company_org_tags_unchecked(v_co,v_day)->'mappingVersionId' ELSE to_jsonb(v_r) END);
+  v_status:=CASE WHEN v_emp.voided_at IS NOT NULL THEN 'voided' WHEN v_emp.hired_on>v_day THEN 'future' WHEN v_emp.blacklisted_at IS NOT NULL AND (v_emp.blacklisted_at AT TIME ZONE 'Asia/Kuala_Lumpur')::date<=v_day THEN 'blacklisted' WHEN NOT v_active THEN 'inactive' ELSE 'active' END;
+  v_reason:=CASE WHEN v_emp.voided_at IS NOT NULL THEN 'Voided import record retained without a new interval' ELSE v_tags->>'reason' END;
+  IF v_active AND v_projection_day IS NULL THEN v_reason:='No existing assignment covers the effective date; repair the source before publication';END IF;
+  v_outcome:=CASE WHEN v_active AND v_projection_day IS NULL THEN 'failed' WHEN v_emp.voided_at IS NOT NULL THEN 'skipped' WHEN (v_before_tags-'mappingVersionId') IS NOT DISTINCT FROM (v_tags-'mappingVersionId') THEN 'unchanged' ELSE 'changed' END;
   INSERT INTO company_organisation_run_row(run_id,tenant_id,employment_id,company_id,employee_name,employee_code,company_name,before_labels,after_labels,status,active_on,projection_on,before_tags,after_tags,outcome,reason,source_digest)
-   VALUES(r,t,emp.id,co,emp.full_name,emp.employee_code,(SELECT legal_name FROM company WHERE id=co AND tenant_id=t),app.company_org_tag_labels(before_tags),app.company_org_tag_labels(tags),status,active,projection_day,before_tags,tags,outcome,reason,app.company_org_employment_fingerprint(emp.id));
+   VALUES(v_r,v_t,v_emp.id,v_co,v_emp.full_name,v_emp.employee_code,(SELECT legal_name FROM company WHERE id=v_co AND tenant_id=v_t),app.company_org_tag_labels(v_before_tags),app.company_org_tag_labels(v_tags),v_status,v_active,v_projection_day,v_before_tags,v_tags,v_outcome,v_reason,app.company_org_employment_fingerprint(v_emp.id));
  END LOOP;
- IF (SELECT count(*) FROM company_organisation_run_row WHERE run_id=r)>250000 THEN RAISE EXCEPTION 'Split the authorised population into reviewed runs of at most 250000 records';END IF;
- SELECT encode(sha256(convert_to(jsonb_build_object('tenantId',t,'kind',kind,'effectiveOn',day,'requestedBy',actor,'scope',scope,'authority',authority,'mapping',mapping,'epoch',epoch,'rows',coalesce(jsonb_agg(jsonb_build_array(employment_id,company_id,status,projection_on,before_tags,after_tags,outcome,source_digest) ORDER BY employment_id),'[]'))::text,'UTF8')),'hex') INTO token FROM company_organisation_run_row WHERE run_id=r;
- UPDATE company_organisation_run SET digest=token,structure=(SELECT jsonb_agg(jsonb_build_object('companyId',c.id,'company',c.legal_name,'before',app.company_org_resolve(c.id,old_mapping,NOT first_mapping),'after',app.company_org_resolve(c.id,mapping,true),'beforeDisplay',app.company_org_tag_labels(app.company_org_resolve(c.id,old_mapping,NOT first_mapping)),'afterDisplay',app.company_org_tag_labels(app.company_org_resolve(c.id,mapping,true))) ORDER BY c.legal_name,c.id) FROM company c WHERE c.tenant_id=t AND c.id=ANY(scope)) WHERE id=r;
- PERFORM app.company_org_append_event(t,'organisation-tag-run',r,'organisation-tag-run.prepared','user',actor,jsonb_build_object('kind',kind,'effectiveOn',day,'digest',token,'companies',scope,'population',(SELECT count(*) FROM company_organisation_run_row WHERE run_id=r)));
- RETURN r;
+ IF (SELECT count(*) FROM company_organisation_run_row WHERE run_id=v_r)>250000 THEN RAISE EXCEPTION 'Split the authorised population into reviewed runs of at most 250000 records';END IF;
+ SELECT encode(sha256(convert_to(jsonb_build_object('tenantId',v_t,'kind',v_kind,'effectiveOn',v_day,'requestedBy',v_actor,'scope',v_scope,'authority',v_authority,'mapping',v_mapping,'epoch',v_epoch,'rows',coalesce(jsonb_agg(jsonb_build_array(frozen.employment_id,frozen.company_id,frozen.status,frozen.projection_on,frozen.before_tags,frozen.after_tags,frozen.outcome,frozen.source_digest) ORDER BY frozen.employment_id),'[]'))::text,'UTF8')),'hex') INTO v_token FROM company_organisation_run_row frozen WHERE frozen.run_id=v_r;
+ UPDATE company_organisation_run SET digest=v_token,structure=(SELECT jsonb_agg(jsonb_build_object('companyId',c.id,'company',c.legal_name,'before',app.company_org_resolve(c.id,v_old_mapping,NOT v_first_mapping),'after',app.company_org_resolve(c.id,v_mapping,true),'beforeDisplay',app.company_org_tag_labels(app.company_org_resolve(c.id,v_old_mapping,NOT v_first_mapping)),'afterDisplay',app.company_org_tag_labels(app.company_org_resolve(c.id,v_mapping,true))) ORDER BY c.legal_name,c.id) FROM company c WHERE c.tenant_id=v_t AND c.id=ANY(v_scope)) WHERE id=v_r;
+ PERFORM app.company_org_append_event(v_t,'organisation-tag-run',v_r,'organisation-tag-run.prepared','user',v_actor,jsonb_build_object('kind',v_kind,'effectiveOn',v_day,'digest',v_token,'companies',v_scope,'population',(SELECT count(*) FROM company_organisation_run_row WHERE run_id=v_r)));
+ RETURN v_r;
 END $$;
 --> statement-breakpoint
 CREATE FUNCTION app.company_org_run_checker(p_actor uuid,p_id uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -345,26 +345,26 @@ BEGIN
  RETURN QUERY SELECT x.employment_id,x.projection_on FROM company_organisation_run_row x JOIN company_organisation_run r ON r.id=x.run_id AND r.tenant_id=x.tenant_id WHERE x.run_id=p_id AND x.projection_on IS NOT NULL AND x.outcome='changed' ORDER BY x.employment_id;
 END $$;
 CREATE FUNCTION app.finish_company_organisation_publication(p_id uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE r company_organisation_run;x record;before_view jsonb;k text;new_id uuid;BEGIN
- SELECT * INTO r FROM company_organisation_run WHERE id=p_id AND tenant_id=app.current_tenant_id() FOR UPDATE;
- IF r.id IS NULL OR NOT EXISTS(SELECT 1 FROM company_organisation_publish_lease l WHERE l.xact_id=pg_current_xact_id() AND l.tenant_id=r.tenant_id AND l.run_id=r.id AND l.actor_id=app.current_user_id()) THEN RAISE EXCEPTION 'Native publication lease is required' USING ERRCODE='42501';END IF;
+DECLARE v_run company_organisation_run;v_row record;before_view jsonb;k text;new_id uuid;BEGIN
+ SELECT * INTO v_run FROM company_organisation_run WHERE id=p_id AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF v_run.id IS NULL OR NOT EXISTS(SELECT 1 FROM company_organisation_publish_lease l WHERE l.xact_id=pg_current_xact_id() AND l.tenant_id=v_run.tenant_id AND l.run_id=v_run.id AND l.actor_id=app.current_user_id()) THEN RAISE EXCEPTION 'Native publication lease is required' USING ERRCODE='42501';END IF;
  -- The lease validated both actors and froze every source under canonical locks before native writes.
  -- A raw application caller cannot publish while omitting the required canonical projection.
- IF EXISTS(SELECT 1 FROM company_organisation_run_row x WHERE x.run_id=r.id AND x.projection_on IS NOT NULL AND x.outcome='changed' AND NOT EXISTS(
-  SELECT 1 FROM assignment a WHERE a.tenant_id=r.tenant_id AND a.employment_id=x.employment_id AND a.superseded_at IS NULL AND a.valid_from<=x.projection_on AND (a.valid_to IS NULL OR a.valid_to>x.projection_on) AND coalesce(a.company_id,(SELECT company_id FROM employment WHERE id=a.employment_id AND tenant_id=a.tenant_id))=x.company_id AND a.business_unit_id IS NOT DISTINCT FROM nullif(x.after_tags->>'businessUnitId','')::uuid)) THEN RAISE EXCEPTION 'Canonical assignment projection is incomplete';END IF;
- before_view:=app.company_organisation_run_view(r.id);
- FOR x IN SELECT * FROM company_organisation_run_row WHERE run_id=r.id AND outcome='changed' ORDER BY employment_id LOOP
-  IF NOT EXISTS(SELECT 1 FROM employment_organisation_classification c WHERE c.tenant_id=r.tenant_id AND c.employment_id=x.employment_id AND c.company_id=x.company_id AND c.effective_on=r.effective_on AND c.tags=x.after_tags) THEN
-   k:='organisation-run:'||r.id::text||':'||x.employment_id::text;
+ IF EXISTS(SELECT 1 FROM company_organisation_run_row x WHERE x.run_id=v_run.id AND x.projection_on IS NOT NULL AND x.outcome='changed' AND NOT EXISTS(
+  SELECT 1 FROM assignment a WHERE a.tenant_id=v_run.tenant_id AND a.employment_id=x.employment_id AND a.superseded_at IS NULL AND a.valid_from<=x.projection_on AND (a.valid_to IS NULL OR a.valid_to>x.projection_on) AND coalesce(a.company_id,(SELECT company_id FROM employment WHERE id=a.employment_id AND tenant_id=a.tenant_id))=x.company_id AND a.business_unit_id IS NOT DISTINCT FROM nullif(x.after_tags->>'businessUnitId','')::uuid)) THEN RAISE EXCEPTION 'Canonical assignment projection is incomplete';END IF;
+ before_view:=app.company_organisation_run_view(v_run.id);
+ FOR v_row IN SELECT * FROM company_organisation_run_row WHERE run_id=v_run.id AND outcome='changed' ORDER BY employment_id LOOP
+  IF NOT EXISTS(SELECT 1 FROM employment_organisation_classification c WHERE c.tenant_id=v_run.tenant_id AND c.employment_id=v_row.employment_id AND c.company_id=v_row.company_id AND c.effective_on=v_run.effective_on AND c.tags=v_row.after_tags) THEN
+   k:='organisation-run:'||v_run.id::text||':'||v_row.employment_id::text;
    INSERT INTO employment_organisation_classification(tenant_id,employment_id,company_id,effective_on,mapping_version_id,tags,trigger,actor_id,idempotency_key)
-    VALUES(r.tenant_id,x.employment_id,x.company_id,r.effective_on,(x.after_tags->>'mappingVersionId')::uuid,x.after_tags,CASE WHEN r.kind='retag' THEN 'retag' ELSE 'restructure' END,r.requested_by,k) ON CONFLICT(tenant_id,idempotency_key) DO NOTHING RETURNING id INTO new_id;
-   IF new_id IS NOT NULL THEN PERFORM app.company_org_append_event(r.tenant_id,'employment',x.employment_id,'employment.organisation-tagged','user',r.requested_by,x.employment_id,jsonb_build_object('companyId',x.company_id,'before',x.before_tags,'after',x.after_tags,'effectiveOn',r.effective_on,'trigger',CASE WHEN r.kind='retag' THEN 'retag' ELSE 'restructure' END,'runId',r.id,'checkedBy',r.checked_by));END IF;
+    VALUES(v_run.tenant_id,v_row.employment_id,v_row.company_id,v_run.effective_on,(v_row.after_tags->>'mappingVersionId')::uuid,v_row.after_tags,CASE WHEN v_run.kind='retag' THEN 'retag' ELSE 'restructure' END,v_run.requested_by,k) ON CONFLICT(tenant_id,idempotency_key) DO NOTHING RETURNING id INTO new_id;
+   IF new_id IS NOT NULL THEN PERFORM app.company_org_append_event(v_run.tenant_id,'employment',v_row.employment_id,'employment.organisation-tagged','user',v_run.requested_by,v_row.employment_id,jsonb_build_object('companyId',v_row.company_id,'before',v_row.before_tags,'after',v_row.after_tags,'effectiveOn',v_run.effective_on,'trigger',CASE WHEN v_run.kind='retag' THEN 'retag' ELSE 'restructure' END,'runId',v_run.id,'checkedBy',v_run.checked_by));END IF;
   END IF;
  END LOOP;
- UPDATE company_organisation_run SET state='published',published_at=now() WHERE id=r.id;
- UPDATE company_organisation_source_epoch SET revision=revision+1 WHERE tenant_id=r.tenant_id;
- DELETE FROM company_organisation_publish_lease WHERE xact_id=pg_current_xact_id() AND tenant_id=r.tenant_id;
- PERFORM app.company_org_append_event(r.tenant_id,'organisation-tag-run',r.id,'organisation-tag-run.published','user',app.current_user_id(),jsonb_build_object('digest',r.digest,'effectiveOn',r.effective_on,'checkedBy',r.checked_by,'counts',before_view->'counts'));
+ UPDATE company_organisation_run SET state='published',published_at=now() WHERE id=v_run.id;
+ UPDATE company_organisation_source_epoch SET revision=revision+1 WHERE tenant_id=v_run.tenant_id;
+ DELETE FROM company_organisation_publish_lease WHERE xact_id=pg_current_xact_id() AND tenant_id=v_run.tenant_id;
+ PERFORM app.company_org_append_event(v_run.tenant_id,'organisation-tag-run',v_run.id,'organisation-tag-run.published','user',app.current_user_id(),jsonb_build_object('digest',v_run.digest,'effectiveOn',v_run.effective_on,'checkedBy',v_run.checked_by,'counts',before_view->'counts'));
  RETURN before_view||jsonb_build_object('state','published','canProcess',false,'canApprove',false);
 END $$;
 --> statement-breakpoint
@@ -384,9 +384,9 @@ ALTER POLICY tenant_isolation ON company USING(tenant_id=app.current_tenant_id()
 CREATE POLICY company_org_insert_parent ON company AS RESTRICTIVE FOR INSERT
  WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(coalesce(parent_company_id,id)));
 CREATE POLICY company_org_update_parent ON company AS RESTRICTIVE FOR UPDATE
- USING(tenant_id=app.current_tenant_id() AND (NOT app.company_organisation_managed() OR app.is_admin_for(coalesce(app.company_organisation_current_parent(id),id))))
- WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(coalesce(CASE WHEN app.company_organisation_managed() THEN app.company_organisation_current_parent(id) ELSE parent_company_id END,id)));
-ALTER POLICY company_delete_admin ON company USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(coalesce(app.company_organisation_current_parent(id),id)));
+ USING(tenant_id=app.current_tenant_id() AND (NOT app.company_organisation_managed() OR CASE WHEN app.principal_snapshot_current() AND app.is_admin() THEN app.is_admin_for(coalesce(app.company_organisation_current_parent(id),id)) ELSE false END))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(coalesce(CASE WHEN app.company_organisation_managed() THEN CASE WHEN app.principal_snapshot_current() AND app.is_admin() THEN app.company_organisation_current_parent(id) ELSE NULL END ELSE parent_company_id END,id)) AND (NOT app.company_organisation_managed() OR app.principal_snapshot_current() AND app.is_admin()));
+ALTER POLICY company_delete_admin ON company USING(tenant_id=app.current_tenant_id() AND CASE WHEN app.principal_snapshot_current() AND app.is_admin() THEN app.is_admin_for(coalesce(app.company_organisation_current_parent(id),id)) ELSE false END);
 CREATE FUNCTION app.company_org_assignment_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE co uuid;old_co uuid;tags jsonb;managed boolean;retained_bu uuid;BEGIN
  IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() THEN

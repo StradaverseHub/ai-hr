@@ -1,3 +1,5 @@
+import {createBusinessUnit} from '../core/admin';
+import {setLabelGlobal} from '../core/system-labels';
 import {pgSqlState} from '../lib/db-error';
 import {createRewardUnit} from '../packs/rewards/service';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
@@ -9,7 +11,8 @@ import {hireEmployee,terminateEmployment} from '../core/org';
 import {companyOrganisationRunReport,prepareCompanyOrganisationRun,decideCompanyOrganisationRun,processCompanyOrganisationRun,deriveCompanyOrganisationTx,employmentOrganisationTagsTx} from '../core/company-organisation';
 import {todayInKualaLumpur} from '../lib/hr-date';
 let b:Base,checker:SessionContext,unit:string;const today=()=>todayInKualaLumpur();
-beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();checker={...adminCtx(b),userId:await createAppUser(b.tenantId,null,'hr_admin')};const [u]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'REVIEWED',name:'Fictional Independent Unit',isGlobal:true}).returning();unit=u.id;});
+beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();checker={...adminCtx(b),userId:await createAppUser(b.tenantId,null,'hr_admin')};unit=await globalUnit('REVIEWED','Fictional Independent Unit');});
+async function globalUnit(code:string,name:string){const row=await createBusinessUnit(adminCtx(b),{companyId:b.companyId,code,name});await setLabelGlobal(adminCtx(b),{kind:'business_unit',labelId:row.id,isGlobal:true});return row.id;}
 const hire=(name:string)=>hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:name+'@organisation.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
 const prepare=(effectiveOn=today())=>prepareCompanyOrganisationRun(adminCtx(b),{kind:'mapping',companyIds:[b.companyId],effectiveOn,changes:[{companyId:b.companyId,businessUnitId:unit,parentCompanyId:null}]});
 async function approve(id:string){const {run}=await companyOrganisationRunReport(checker,id);await decideCompanyOrganisationRun(checker,{id,digest:run.digest,approve:true,reason:'Reviewed exact fictional scope and mappings'});}
@@ -116,7 +119,7 @@ it('admits a real Group Rewards checker only for the complete old/new unit footp
  const id=await prepare(),report=await companyOrganisationRunReport(gr,id);expect(report.run.canApprove).toBe(true);
  await decideCompanyOrganisationRun(gr,{id,digest:report.run.digest,approve:true,reason:'Reviewed both exact old and new Rewards unit scopes'});
  await expect(processCompanyOrganisationRun(gr,id)).rejects.toThrow();expect((await processCompanyOrganisationRun(adminCtx(b),id)).state).toBe('published');
- const [otherUnit]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'OTHER',name:'Fictional other unit',isGlobal:true}).returning();
+ const otherUnit={id:await globalUnit('OTHER','Fictional other unit')};
  const next=await prepareCompanyOrganisationRun(adminCtx(b),{kind:'mapping',companyIds:[b.companyId],effectiveOn:today(),changes:[{companyId:b.companyId,businessUnitId:otherUnit.id,parentCompanyId:null}]});
  await expect(companyOrganisationRunReport(gr,next)).rejects.toThrow();
 });
@@ -128,7 +131,7 @@ it('rejects forged organisation evidence through the generic SECURITY DEFINER au
  const [proof]=await owner.db.execute<{permits:number;published:number}>(sql`select (select count(*)::int from company_organisation_audit_permit) permits,(select count(*)::int from domain_event where aggregate_id=${id}::uuid and event_type='organisation-tag-run.published') published`);expect(proof).toEqual({permits:0,published:0});
 });
 it('normalises raw backdated BU writes after activation while retaining recorded legacy corrections and publication prefixes',async()=>{
- const [legacy]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'RECORDED',name:'Fictional recorded legacy unit',isGlobal:true}).returning();
+ const legacy={id:await globalUnit('RECORDED','Fictional recorded legacy unit')};
  const e=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional Legacy Provenance',primaryEmail:'legacy-provenance@organisation.test'},companyId:b.companyId,departmentId:b.deptA,businessUnitId:legacy.id,employmentType:'full_time',hiredOn:'2024-01-01'});
  await publish(await prepare());
  const rows=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,e.employmentId));
@@ -148,4 +151,14 @@ it('normalises raw backdated BU writes after activation while retaining recorded
  expect((await owner.db.select().from(schema.assignment).where(eq(schema.assignment.id,retroSource.id)))[0].businessUnitId).toBeNull();
  // Raw INSERT also fails to introduce a value before the employment's only proven interval.
  const inserted=await withTenant(adminCtx(b),async tx=>{const [row]=await tx.insert(schema.assignment).values({tenantId:b.tenantId,employmentId:retro.employmentId,companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',validFrom:'2022-01-01',validTo:'2023-01-01',businessUnitId:legacy.id}).returning();return row;});expect(inserted.businessUnitId).toBeNull();
+});
+
+it('native company policies return zero rows for ordinary and missing-principal actors without opening the private parent projection',async()=>{
+ const e=await hire('FictionalMemberPolicy'),member=await createAppUser(b.tenantId,e.personId,'employee');await publish(await prepare());
+ const contexts:SessionContext[]=[{...adminCtx(b),userId:member,personId:e.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]},{tenantId:b.tenantId,roles:['employee'],grants:[{role:'employee',companyId:null}]}];
+ for(const ctx of contexts){
+  expect(await withTenant(ctx,tx=>tx.delete(schema.company).where(eq(schema.company.id,b.companyId)).returning({id:schema.company.id}))).toEqual([]);
+  expect(await withTenant(ctx,tx=>tx.update(schema.company).set({legalName:'Denied member update'}).where(eq(schema.company.id,b.companyId)).returning({id:schema.company.id}))).toEqual([]);
+ }
+ await expect(withTenant(contexts[1],tx=>tx.execute(sql`select app.company_organisation_current_parent(${b.companyId}::uuid)`))).rejects.toThrow();
 });
