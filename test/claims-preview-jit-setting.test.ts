@@ -33,7 +33,7 @@ it('uses transaction-local JIT off for real pending metadata and restores the ap
  },options));
  try{
   const result=await pendingClaimTaskSummary(ctx,[b.companyId]);expect(result.total).toBe(31);expect(result.items.map(row=>row.id)).toEqual(ids.slice(0,25));
-  expect(states.length).toBeGreaterThan(0);expect(states.every(state=>state.jit==='off'&&state.readOnly&&state.isolation==='repeatable read'&&state.role==='ai_hr_app')).toBe(true);
+  expect(states.length).toBeGreaterThan(0);expect(states).toEqual(states.map(()=>({jit:'off',readOnly:true,isolation:'repeatable read',role:'ai_hr_app'})));
  }finally{spy.mockRestore();}
  const [after]=await actual(ctx,tx=>tx.execute<{jit:string}>(sql`select current_setting('jit')as jit`));expect(after).toEqual(before);
 });

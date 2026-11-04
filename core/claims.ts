@@ -4027,6 +4027,10 @@ export function pendingClaimTaskSummary(ctx:SessionContext,companyIds:string[]|u
 
 async function readPendingClaimTasks(ctx:SessionContext,companyIds:string[]|undefined,limit:number){
  return withTenant(ctx,async tx=>{
+  // This bounded OLTP preview paid more to compile JIT code than to use it under large
+  // retained queues. Scope the execution setting to this existing read-only transaction;
+  // the native visibility/decision owners and exact count remain unchanged.
+  await tx.execute(sql`set local jit=off`);
   const scoped=await pendingClaimSubjectsTx(tx,ctx,companyIds);
   const allowed=await claimDecisionEmploymentsTx(tx,ctx,scoped.map(row=>row.employmentId));
   if(!allowed.size)return {items:[] as AssignedApprovalMetadata[],total:0};
