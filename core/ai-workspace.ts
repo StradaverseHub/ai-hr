@@ -31,10 +31,11 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
     // say so calmly and issue no permit for a request that could never be sent. The savepoint keeps a
     // failed provider read from aborting the rest of this read; unknown is never "configured".
     let planningProvider:boolean|null=null;try{planningProvider=await tx.transaction(async savepoint=>(await resolveAiProviderSnapshotTx(savepoint,fresh))!==null);}catch{/* Unknown provider state. */}
-    let planningPermit:string|null=null;if(planningProvider!==false)try{planningPermit=await issueOwnModulePlanPermitTx(tx,fresh);}catch{/* Issuance never falls back to a browser nonce. */}
+    // A failed optional SQL read must roll back its savepoint before the workspace continues.
+    let planningPermit:string|null=null;if(planningProvider!==false)try{planningPermit=await tx.transaction(savepoint=>issueOwnModulePlanPermitTx(savepoint,fresh));}catch{/* Issuance never falls back to a browser nonce. */}
     const planningAvailability=planningPermit?'ready' as const:planningProvider===false?'no_provider' as const:'resting' as const;
     const governedJob=governedJobId?await loadGovernedWorkspaceJobTx(fresh,tx,governedJobId):null;
-    let proposal:OwnModulePlanView|null=null;if(proposalId)try{proposal=await reopenOwnModulePlanTx(tx,fresh,proposalId);}catch{/* Bounded current-owner refusal; no existence oracle. */}
+    let proposal:OwnModulePlanView|null=null;if(proposalId)try{proposal=await tx.transaction(savepoint=>reopenOwnModulePlanTx(savepoint,fresh,proposalId));}catch{/* Bounded current-owner refusal; no existence oracle. */}
     const taskIds = workspaceTasksFor(toolsFor(fresh).map(tool => tool.spec.name));
     // HR visibility is broader than personal conversation custody. Keep the explicit actual-user
     // predicate even when RLS could let an administrator read other users' exchange rows.
