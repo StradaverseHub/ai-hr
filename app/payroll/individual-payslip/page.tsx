@@ -178,7 +178,7 @@ import {
 } from './period-options';
 // 417d4937 request 10 — the shared provenance block, so this screen and Transaction View → History
 // cannot drift the way the four record-line renderers already did.
-import { SourceTxnBlock } from '../transaction-view/source-txn-block';
+import { SourceTxnBlock, SourceTxnLink } from '../transaction-view/source-txn-block';
 // 6b134681 / 417d4937 — one label format for a pay item across every payroll result surface: the item's
 // own code and description, never the category it was classified into.
 // 417d4937 — and the read-time repair for RECORD lines, whose stored name was a free-text remark until
@@ -759,7 +759,7 @@ export default async function IndividualPayslipPage({
                 identical derivation the History grid does, so the two cannot name one item differently. */}
             {b.allowanceLines.map((l, i) => {const detail=detailFor(l,'allowance');return (
               <p key={`w${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
-                <span className="min-w-0 break-words">{payItemLabel(l)}{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
+                <span className="min-w-0 break-words"><SourceTxnLink code={l.code} rows={sourceTxns}>{payItemLabel(l)}</SourceTxnLink>{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
                 <span className="text-right tabular-nums">{quantityFor(l)}</span>
                 <span className="text-right tabular-nums">{rm(l.amount)}</span>
               </p>
@@ -775,7 +775,7 @@ export default async function IndividualPayslipPage({
                 otherwise print an itemised row under a zero Bonus total. */}
             {b.overtimeLines.map((l, i) => {const detail=detailFor(l,'overtime');return (
               <p key={`o${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
-                <span className="min-w-0 break-words">{payItemLabel(l)}{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
+                <span className="min-w-0 break-words"><SourceTxnLink code={l.code} rows={sourceTxns}>{payItemLabel(l)}</SourceTxnLink>{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
                 <span className="text-right tabular-nums">{quantityFor(l)}</span>
                 <span className="text-right tabular-nums">{rm(l.amount)}</span>
               </p>
@@ -801,7 +801,7 @@ export default async function IndividualPayslipPage({
                 Reconciled in the derivation, as above. */}
             {b.bonusLines.map((l, i) => {const detail=detailFor(l,'bonus');return (
               <p key={`b${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
-                <span className="min-w-0 break-words">{payItemLabel(l)}{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
+                <span className="min-w-0 break-words"><SourceTxnLink code={l.code} rows={sourceTxns}>{payItemLabel(l)}</SourceTxnLink>{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
                 <span className="text-right tabular-nums">{quantityFor(l)}</span>
                 <span className="text-right tabular-nums">{rm(l.amount)}</span>
               </p>
@@ -872,7 +872,7 @@ export default async function IndividualPayslipPage({
                 each line), only when they add up to it. Reconciled in the derivation. */}
             {absence.showResidual && b.deductionLines.map((l, i) => (
               <p key={`d${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
-                <span className="min-w-0 break-words">{payItemLabel(l)}</span>
+                <span className="min-w-0 break-words"><SourceTxnLink code={l.code} rows={sourceTxns}>{payItemLabel(l)}</SourceTxnLink></span>
                 <span className="text-right tabular-nums">{quantityFor(l)}</span>
                 <span className="text-right tabular-nums">{rm(l.amount)}</span>
               </p>

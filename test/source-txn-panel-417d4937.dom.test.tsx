@@ -24,7 +24,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
-import { SourceTxnBlock } from '../app/payroll/transaction-view/source-txn-block';
+import { SourceTxnBlock, SourceTxnLink } from '../app/payroll/transaction-view/source-txn-block';
 import type { PayslipSourceTxnRow } from '../core/payroll-view';
 
 const THIS_RUN = '00000000-0000-0000-0000-0000000000b1';
@@ -199,4 +199,12 @@ it('9808e638/7de6fc4e: dated entries expand by code, preserving distinct transac
   expect(details.textContent).toContain('Second date');
   expect(details.textContent).not.toContain('Separate run');
   expect(container.textContent).toContain('source amounts, not an allocation of paid payroll');
+});
+
+it('7de6fc4e: clicking a payslip code opens its existing dated source panel',()=>{
+ const rows=[txn({id:'one'}),txn({id:'two',txnDate:'2026-08-16'})];
+ const {container}=render(<NextIntlClientProvider locale="en" messages={messages}><SourceTxnLink code="A0020" rows={rows}>A0020 source entries</SourceTxnLink><SourceTxnBlock rows={rows}/></NextIntlClientProvider>);
+ expect(container.querySelector('details')!.open).toBe(false);
+ screen.getByRole('link',{name:'A0020 source entries'}).click();
+ expect(container.querySelector('details')!.open).toBe(true);
 });

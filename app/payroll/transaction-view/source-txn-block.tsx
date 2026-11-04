@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import type { PayslipSourceTxnRow } from '@/core/payroll-view';
 import { payItemLabel } from '@/core/payslip-earning-lines';
@@ -95,7 +96,7 @@ export function SourceTxnBlock({ rows }: { rows: PayslipSourceTxnRow[] }) {
         {t('view.history.sourceHeading')}
       </h3>
       {[...groups].map(([key, entries]) => entries.length > 1 ? (
-        <details key={key} className="mb-2 rounded-md border border-border px-3 py-2">
+        <details id={`source-txn-${entries[0].id}`} key={key} className="mb-2 rounded-md border border-border px-3 py-2">
           <summary className="cursor-pointer text-sm font-medium">{payItemLabel({code: entries[0].componentCode, name: entries[0].componentName}) || t(`individual.kindLabel.${KIND_KEY[entries[0].kind] ?? 'earning'}`)} · {t('view.history.sourceEntryCount', {count: entries.length})}</summary>
           {renderRows(entries)}
         </details>
@@ -103,4 +104,15 @@ export function SourceTxnBlock({ rows }: { rows: PayslipSourceTxnRow[] }) {
       <p className="mt-2 text-xs text-muted-foreground">{t('view.history.sourceNote')}</p>
     </section>
   );
+}
+
+/** Opens the existing per-code source population; this does not claim that a source input is a paid allocation. */
+export function SourceTxnLink({code, rows, children}: {code:string;rows:PayslipSourceTxnRow[];children:ReactNode}) {
+  const t=useTranslations('payroll.transactions');
+  const sameCode=rows.filter(row=>row.componentCode===code);
+  const first=sameCode.find(row=>sameCode.filter(other=>other.batchId===row.batchId && other.employmentId===row.employmentId && other.kind===row.kind).length>1);
+  if(!first)return <>{children}</>;
+  const id=`source-txn-${first.id}`;
+  return <a href={`#${id}`} title={t('view.history.sourceHeading')} className="underline decoration-dotted underline-offset-4 hover:decoration-solid"
+    onClick={event=>{const panel=document.getElementById(id);if(panel instanceof HTMLDetailsElement){event.preventDefault();panel.open=true;panel.querySelector('summary')?.focus();panel.scrollIntoView?.({block:'nearest'});}}}>{children}</a>;
 }
