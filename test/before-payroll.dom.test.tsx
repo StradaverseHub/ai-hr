@@ -85,7 +85,7 @@ describe('Today: "Before payroll on <date>"',()=>{
   expect(card.querySelector('[data-payroll-waiting]')?.textContent).toBe('1 item is waiting for someone else to approve.');
   expect(within(card).getByRole('link',{name:'See all'})).toHaveAttribute('href','/assistant?view=insights#my-payroll-readiness');
   expect(card.textContent).not.toMatch(/RM|\d+\.\d{2}/);
-  expect(fx.calls).toEqual([[{employmentId:'emp-own',scopeIds:['co-1'],locale:'en',today:'2026-11-10'}]]);
+  expect(fx.calls).toEqual([[{employmentId:'emp-own',scopeIds:['co-1'],locale:'en',today:'2026-11-10',approvalPreview:true}]]);
  });
  it('manager with no employment of their own here: no date is guessed, and the decisions waiting on them each open their approval',async()=>{
   const card=(await today(MANAGER)).container.querySelector('[data-today-section="today-before-payroll"]') as HTMLElement;
@@ -187,4 +187,21 @@ describe('AI Centre › Insights: "My payroll readiness"',()=>{
    cleanup();
   }
  });
+});
+
+it('Insights shows a bounded Claim approval preview with its exact count and paginated owner link',async()=>{
+ const claim=MANAGER.approvals.find(row=>row.kind==='approve_claim')!;
+ const result={...MANAGER,approvalTotal:500000,approvalClaimTotal:500000,approvals:Array.from({length:25},(_,i)=>({...claim,key:'approve_claim:'+i}))};
+ const view=await insights(result);
+ expect(fx.calls).toEqual([[{scopeIds:['co-1'],locale:'en',approvalPreview:true}]]);
+ const section=view.container.querySelector('[data-payroll-group="approvals"]') as HTMLElement;
+ expect(section.querySelectorAll('[data-payroll-item="approve_claim"]')).toHaveLength(25);
+ expect(section.textContent).toContain('Showing the first 25 of 500,000 rows.');
+ expect(section.querySelector('a[href="/approvals?category=claim"]')).not.toBeNull();
+});
+it('Today counts the whole approval queue while displaying only its short preview',async()=>{
+ const result={...MANAGER,approvalTotal:500000,approvalClaimTotal:500000};
+ const view=await today(result);
+ expect(view.container.querySelector('[data-today-count]')?.textContent).toBe('500000');
+ expect(view.container.querySelectorAll('[data-payroll-item]')).toHaveLength(2);
 });

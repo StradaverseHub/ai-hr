@@ -224,7 +224,7 @@ try{
   if((path==='/'||path==='/me/calendar')&&['employee','manager'].includes(user.role)){
    await page.locator('[data-home-card]').first().waitFor({timeout:90000});
    await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:90000});
-   const failures=await page.locator('main [role="alert"], main [data-today-unavailable]').allTextContents();
+   const failures=await page.locator('main [role="alert"], main [data-today-unavailable], main [data-read-unavailable]').allTextContents();
    if(path==='/'){todaySectionIds=await page.locator('main [data-today-section]').evaluateAll(sections=>sections.map(section=>section.getAttribute('data-today-section')).sort());assert(todaySectionIds.length>0,'current Today sections missing');}
    if(failures.length)report.homeCardFailures.push({role:user.role,phase,messages:failures});
    // Keep collecting independent workflow evidence, then refuse load/acceptance below.
@@ -290,6 +290,7 @@ try{
     await page.locator('[data-ai-centre-tabs] a[aria-current="page"][href="'+path+'"]').waitFor({timeout:90000});
     await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:90000});
     assert((await page.locator('main h1').innerText()).trim().length>0,'AI Centre heading unavailable');
+    assert.equal(await page.locator('main [data-read-unavailable]').count(),0,'AI Centre rendered an unavailable payroll-readiness section');
     if(tab==='ask')assert(await page.locator('main textarea:enabled').count()>0,'Ask composer unavailable after navigation');
     assert.equal(documents.length,0,'AI Centre tab unexpectedly reloaded the document');
     (report.browserAiCentreNavigation??=[]).push({phase,role:user.role,path,elapsedMs:performance.now()-start,usable:true,documentRequests:0,promptsSubmitted:0});save();

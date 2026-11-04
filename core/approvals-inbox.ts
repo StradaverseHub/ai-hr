@@ -113,8 +113,8 @@ export async function listPendingTasks(
   return (await loadPendingTasks(ctx,scopeIds,modules,options)).items;
 }
 
-export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules){
-  return loadPendingTasks(ctx,scopeIds,modules,{claimLimit:25});
+export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:{noticeAcknowledgements?:boolean}={}){
+  return loadPendingTasks(ctx,scopeIds,modules,{...options,claimLimit:25});
 }
 
 async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,

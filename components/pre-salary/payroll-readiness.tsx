@@ -75,6 +75,7 @@ export const TODAY_ITEM_LIMIT=3;
 export async function BeforePayrollCard({readiness,locale}:{readiness:PayrollReadiness|null;locale:string}){
  if(!readiness)return null;
  const rows=[...readiness.items.filter(row=>row.state!=='waiting'),...readiness.approvals];
+ const rowTotal=rows.length-readiness.approvals.length+(readiness.approvalTotal??readiness.approvals.length);
  const waiting=readiness.items.filter(row=>row.state==='waiting').length;
  if(!rows.length&&!waiting)return null;
  const t=await getTranslations('payrollReadiness');
@@ -83,13 +84,13 @@ export async function BeforePayrollCard({readiness,locale}:{readiness:PayrollRea
  return <section aria-labelledby="today-before-payroll" data-today-section="today-before-payroll" className="min-w-0 space-y-3">
   <div className="flex items-baseline gap-2">
    <h2 id="today-before-payroll" className="text-[0.9375rem] font-semibold">{title}</h2>
-   {rows.length>0&&<span data-today-count className="text-xs font-medium tabular-nums text-muted-foreground">{rows.length}</span>}
+   {rowTotal>0&&<span data-today-count className="text-xs font-medium tabular-nums text-muted-foreground">{rowTotal}</span>}
   </div>
   <div className="rounded-xl border border-border bg-card px-4 py-1">
    {shown.length>0&&<ul className="divide-y divide-border">{shown.map(row=><ItemRow key={row.key} t={t} locale={locale} row={row} todayConfirm/>)}</ul>}
    {waiting>0&&<p data-payroll-waiting className={cn('py-2.5 text-sm text-muted-foreground',shown.length>0&&'border-t border-border')}>{t('waitingCount',{count:waiting})}</p>}
   </div>
-  {readiness.failed&&<p role="status" className="text-xs text-muted-foreground">{t('unavailable')}</p>}
+  {readiness.failed&&<p data-read-unavailable role="status" className="text-xs text-muted-foreground">{t('unavailable')}</p>}
   <Link href={PAYROLL_READINESS_HREF} className="inline-flex min-h-9 items-center text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
    {t('seeAll')}</Link>
  </section>;
@@ -99,11 +100,13 @@ const OWN_GROUPS:readonly PayrollItemGroup[]=['attendance','overtime','leave','c
 /** Insights: "My payroll readiness", every item grouped, each group done or not for the month, and what waits on the
  * person as an approver. The missed clock-out Confirm card is drawn in its group. */
 export async function MyPayrollReadiness({readiness,locale}:{readiness:PayrollReadiness|null;locale:string}){
- const t=await getTranslations('payrollReadiness');
+ const [t,pagination,dashboard]=await Promise.all([getTranslations('payrollReadiness'),getTranslations('pagination'),getTranslations('dashboard')]);
  if(!readiness)return <section id="my-payroll-readiness" aria-labelledby="my-payroll-readiness-heading" data-payroll-readiness="none" className="space-y-2">
   <h2 id="my-payroll-readiness-heading" className="text-base font-semibold">{t('insightsTitle')}</h2>
   <p className="text-sm text-muted-foreground">{t('notInUse')}</p>
  </section>;
+ const shownClaims=readiness.approvals.filter(row=>row.kind==='approve_claim').length;
+ const claimTotal=readiness.approvalClaimTotal??shownClaims;
  const month=formatPayPeriodMonth(readiness.period.payPeriod,locale);
  const status=new Map(readiness.groups.map(row=>[row.group,row.status]));
  const groups=OWN_GROUPS.filter(group=>status.get(group)!=='off');
@@ -115,7 +118,7 @@ export async function MyPayrollReadiness({readiness,locale}:{readiness:PayrollRe
    <p data-payroll-period={readiness.period.payPeriod} data-payroll-cutoff={readiness.period.cutOff??'unknown'} className="text-sm text-muted-foreground">
     {readiness.period.cutOff?t('period',{month,date:hrDay(locale,readiness.period.cutOff)}):t('periodNoCutOff',{month})}</p>
    {!pending&&<p data-payroll-all-done className="text-sm">{t('allDone')}</p>}
-   {readiness.failed&&<p role="status" className="text-sm text-muted-foreground">{t('unavailable')}</p>}
+   {readiness.failed&&<p data-read-unavailable role="status" className="text-sm text-muted-foreground">{t('unavailable')}</p>}
   </div>
   <ul className="grid gap-3 lg:grid-cols-2">
    {groups.map(group=>{const rows=readiness.items.filter(row=>row.group===group),groupStatus=status.get(group)??'unknown';
@@ -137,6 +140,11 @@ export async function MyPayrollReadiness({readiness,locale}:{readiness:PayrollRe
    </div>
    <p className="mt-1 text-xs text-muted-foreground">{t('approvalsHelp')}</p>
    {readiness.approvals.length>0&&<ul className="mt-1 divide-y divide-border">{readiness.approvals.map(row=><ItemRow key={row.key} t={t} locale={locale} row={row} todayConfirm={false}/>)}</ul>}
+   {claimTotal>shownClaims&&<div className="mt-3 space-y-2 border-t border-border pt-3" aria-label={t('groups.claims')}>
+    <p className="text-sm font-medium">{t('groups.claims')}</p>
+    <p className="text-sm text-muted-foreground">{pagination('truncated',{shown:shownClaims,total:claimTotal})}</p>
+    <Link href="/approvals?category=claim" className={cn(LINK,'border border-input bg-card hover:bg-accent')}>{dashboard('viewAll')}</Link>
+   </div>}
   </section>}
   <p className="text-xs text-muted-foreground">{t('notCovered')}</p>
  </section>;

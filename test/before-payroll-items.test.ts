@@ -12,7 +12,7 @@
  * No database. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 
-const fx=vi.hoisted(()=>({cutOffRow:true as boolean,cutOffDay:20 as number|null,modules:{} as Record<string,boolean>,fail:new Set<string>(),calls:[] as unknown[][],
+const fx=vi.hoisted(()=>({approvalSummary:vi.fn(),cutOffRow:true as boolean,cutOffDay:20 as number|null,modules:{} as Record<string,boolean>,fail:new Set<string>(),calls:[] as unknown[][],
  own:true as boolean,gaps:null as null|unknown[],tp3Answer:null as null|'yes'|'no'}));
 const failing=(name:string)=>{if(fx.fail.has(name))throw new Error('Fictional owner failure: '+name);};
 
@@ -100,7 +100,7 @@ vi.mock('../packs/performance/service',()=>({myReviews:async()=>[{reviewId:'rv-r
 vi.mock('../packs/lifecycle/service',()=>({onboardingMyAcknowledgements:async()=>[{id:'case-ob',revision:'1',name:'Aina Fictional',employeeId:'E-1',joinDate:'2026-03-02',number:'ON-1',available:true,submittedAt:null},
  {id:'case-done',joinDate:'2026-03-02',available:true,submittedAt:'2026-03-05T01:00:00.000Z'},{id:'case-later',joinDate:'2026-03-02',available:false,submittedAt:null}]}));
 vi.mock('../core/notice',()=>({pendingNoticeAcknowledgementTasks:async()=>[{noticeId:'notice-1',employmentId:'emp-own',title:'Fictional notice',contentVersion:3,sourceUpdatedAt:new Date('2026-11-04T01:00:00Z')}]}));
-vi.mock('../core/approvals-inbox',()=>({listPendingTasks:async(...args:unknown[])=>{fx.calls.push(['listPendingTasks',...args.slice(1)]);failing('approvals');return [
+vi.mock('../core/approvals-inbox',()=>({pendingTaskSummary:fx.approvalSummary,listPendingTasks:async(...args:unknown[])=>{fx.calls.push(['listPendingTasks',...args.slice(1)]);failing('approvals');return [
  {id:'t-leave',kind:'leave',subjectName:'Siti Fictional',createdAt:'2026-11-05T01:00:00.000Z',linkPath:'/approvals?section=leave&focus=t-leave'},
  {id:'t-cancel',kind:'leaveCancellation',subjectName:'Wei Fictional',createdAt:'2026-11-05T01:00:00.000Z',linkPath:'/approvals?section=leave-cancellation&focus=t-cancel'},
  {id:'t-att',kind:'attendance',subjectName:'Siti Fictional',createdAt:'2026-11-06T01:00:00.000Z',linkPath:'/approvals?section=attendance&focus=t-att'},
@@ -118,7 +118,7 @@ const CTX={tenantId:'00000000-0000-4000-8000-000000000001',userId:'00000000-0000
 const TODAY='2026-11-10';
 const read=()=>readMyPayrollReadiness(CTX,{today:TODAY,locale:'en'});
 const brief=(rows:readonly PayrollItem[])=>rows.map(row=>[row.kind,row.state,row.date,row.due,row.action.kind==='confirm'?'confirm:'+row.action.caseId:row.action.kind==='answer'?'answer:'+row.action.href:row.action.href]);
-beforeEach(()=>{fx.cutOffRow=true;fx.cutOffDay=20;fx.modules={};fx.fail=new Set();fx.calls=[];fx.own=true;fx.gaps=null;fx.tp3Answer=null;});
+beforeEach(()=>{fx.approvalSummary.mockReset();fx.cutOffRow=true;fx.cutOffDay=20;fx.modules={};fx.fail=new Set();fx.calls=[];fx.own=true;fx.gaps=null;fx.tp3Answer=null;});
 
 describe('the person\'s own items, every kind',()=>{
  it('lists each pending thing with its state, day, due date and one action, the most urgent first',async()=>{
@@ -316,4 +316,19 @@ describe('the Ask read my_payroll_readiness under harness disclosure',()=>{
   fx.modules={payroll:false};
   expect(await askMyPayrollReadiness(CTX,{companyId:'co-1'})).toMatchObject({ok:false,refusal:'no_data'});
  });
+});
+
+it('bounds UI approval rows while preserving exact Claim totals and excluding unrelated task kinds',async()=>{
+ fx.own=false;
+ const claims=Array.from({length:25},(_,i)=>({id:'claim-'+i,kind:'claim',subjectName:'Fictional claimant',createdAt:'2026-11-06T01:00:00.000Z',linkPath:'/approvals?category=claim'}));
+ fx.approvalSummary.mockResolvedValue({items:[...claims,{id:'profile-1',kind:'profile',subjectName:'Fictional profile owner',linkPath:'/admin/personnel/profile-changes'}],claimTotal:500000,total:500001});
+ const result=(await readMyPayrollReadiness(CTX,{today:TODAY,locale:'en',scopeIds:['co-1'],approvalPreview:true}))!;
+ expect(result.approvals).toHaveLength(25);expect(result.approvalTotal).toBe(500000);expect(result.approvalClaimTotal).toBe(500000);
+ expect(result.approvals.every(row=>row.kind==='approve_claim')).toBe(true);
+ expect(fx.approvalSummary).toHaveBeenCalledWith(CTX,['co-1'],{attendance:true,claims:true,performance:false,rewards:false},{noticeAcknowledgements:false});
+ expect(fx.calls.some(call=>call[0]==='listPendingTasks')).toBe(false);
+});
+it('keeps the existing unabridged read contract for callers that did not request a UI preview',async()=>{
+ const result=(await read())!;expect(result.approvals).toHaveLength(5);expect(result).not.toHaveProperty('approvalTotal');
+ expect(fx.approvalSummary).not.toHaveBeenCalled();
 });

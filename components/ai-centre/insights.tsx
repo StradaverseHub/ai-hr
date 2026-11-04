@@ -22,7 +22,7 @@ import {AiQualitySection,type QualityQuery} from '@/components/ai-centre/ai-qual
  * its own (qperiod, qcompany and the result codes), so its filter and the ledger's do not move each other. */
 export async function AiCentreInsights({session,scopeIds,isAdmin,capacityQuery,qualityQuery}:{session:SessionContext;scopeIds?:readonly string[];isAdmin:boolean;capacityQuery?:CapacityQuery;qualityQuery?:QualityQuery}){
  const [t,locale]=await Promise.all([getTranslations('aiCentre.insights'),getLocale()]);
- const readiness=await readMyPayrollReadiness(session,{scopeIds,locale}).catch(()=>null);
+ const readiness=await readMyPayrollReadiness(session,{scopeIds,locale,approvalPreview:true}).catch(()=>null);
  return <div data-ai-centre-insights className="space-y-6">
   <PageHeader title={t('title')} description={t('description')}/>
   <MyPayrollReadiness readiness={readiness} locale={locale}/>
