@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 /** Explicit focused benchmark only. Synthetic retained rows do not measure hiring/import throughput. */
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -12,7 +13,7 @@ const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&se
 beforeAll(migrateTestDb);afterAll(closeAll);
 it.skipIf(!requested)('measures a native Personnel page with one million retained employees and exact scope/count/order',async()=>{
  const count=1_000_000,started=performance.now();
- const report:Record<string,unknown>={kind:'RETAINED_PERSONNEL_QUERY_ONLY',releaseEligible:false,targetEmployees:count,concurrentUsers:1,pageRows:25,limitations:'Synthetic retained owner fixture, not canonical hiring/import throughput, HTTP/browser timing or 500-user capacity.'};
+ const report:Record<string,unknown>={kind:'RETAINED_PERSONNEL_QUERY_ONLY',releaseEligible:false,targetEmployees:count,concurrentUsers:1,pageRows:25,fixtureBatchRows:50_000,fixtureUuidLocality:'random v4 namespace per batch with ordered suffix; domains use distinct namespaces',limitations:'Synthetic retained owner fixture, not canonical hiring/import throughput, HTTP/browser timing or 500-user capacity.'};
  expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
  const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-retained-million.json'),JSON.stringify(report,null,2));
  const phase=(name:string)=>{report.phase=name;report.elapsedMs=performance.now()-started;save();};
@@ -26,22 +27,27 @@ it.skipIf(!requested)('measures a native Personnel page with one million retaine
   // Match the pending load candidate's qualified, disposable native guards; restore every DDL below.
   for(const name of ['home-role-reporting-guard.sql','visible-employment-company-guard.sql','visible-employment-plan-cache.sql'])await owner.client.unsafe(readFileSync(new URL('./'+name,import.meta.url),'utf8'));
   async function population(base:Base,size:number){
-   return owner.client.begin(async tx=>{
-    await tx`create temporary table perf_personnel_rows on commit drop as
-     select n,gen_random_uuid() as person_id,gen_random_uuid() as employment_id from generate_series(1,${size}::integer) as n`;
-    await tx`insert into person(id,tenant_id,full_name,primary_email)
-     select person_id,${base.tenantId}::uuid,'Fictional retained Personnel '||lpad(n::text,9,'0'),person_id::text||'@example.invalid'
-     from perf_personnel_rows order by person_id`;
-    phase('retained-people-loaded');
-    await tx`insert into employment(id,tenant_id,person_id,company_id,employee_code,hired_on,terminated_on)
-     select employment_id,${base.tenantId}::uuid,person_id,${base.companyId}::uuid,'PERF'||lpad(n::text,9,'0'),'2020-01-01'::date,
-      case when n%5=0 then '2024-01-01'::date else null end from perf_personnel_rows order by employment_id`;
-    phase('retained-employments-loaded');
-    await tx`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from)
-     select ${base.tenantId}::uuid,employment_id,${base.companyId}::uuid,${base.deptA}::uuid,'full_time','2020-01-01'::date
-     from perf_personnel_rows order by employment_id`;
-    return (await tx<{employment_id:string}[]>`select employment_id from perf_personnel_rows order by n limit 25`).map(row=>row.employment_id);
-   });
+   const expected:string[]=[];
+   // Bound deferred-trigger/FK queues and transaction memory. Every row retains every native check.
+   for(let offset=0;offset<size;offset+=50_000){
+    const end=Math.min(size,offset+50_000),personPrefix=randomUUID().slice(0,24),employmentPrefix=randomUUID().slice(0,24);
+    await owner.client.begin(async tx=>{
+     await tx`insert into person(id,tenant_id,full_name,primary_email)
+      select (${personPrefix}||lpad(n::text,12,'0'))::uuid,${base.tenantId}::uuid,
+       'Fictional retained Personnel '||lpad(n::text,9,'0'),(${personPrefix}||lpad(n::text,12,'0'))||'@example.invalid'
+      from generate_series(${offset+1}::integer,${end}::integer) as n`;
+     await tx`insert into employment(id,tenant_id,person_id,company_id,employee_code,hired_on,terminated_on)
+      select (${employmentPrefix}||lpad(n::text,12,'0'))::uuid,${base.tenantId}::uuid,(${personPrefix}||lpad(n::text,12,'0'))::uuid,
+       ${base.companyId}::uuid,'PERF'||lpad(n::text,9,'0'),'2020-01-01'::date,
+       case when n%5=0 then '2024-01-01'::date else null end from generate_series(${offset+1}::integer,${end}::integer) as n`;
+     await tx`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from)
+      select ${base.tenantId}::uuid,(${employmentPrefix}||lpad(n::text,12,'0'))::uuid,${base.companyId}::uuid,
+       ${base.deptA}::uuid,'full_time','2020-01-01'::date from generate_series(${offset+1}::integer,${end}::integer) as n`;
+    });
+    if(offset===0)for(let n=1;n<=Math.min(size,25);n++)expected.push(employmentPrefix+String(n).padStart(12,'0'));
+    report.committedFixtureEmployees=end;phase('retained-fixture-batch-committed');
+   }
+   return expected;
   }
   phase('retained-fixture-loading');const expected=await population(b,count);await population(foreign,1);
   for(const table of ['person','employment','assignment','company','department','app_user','role_assignment'])await owner.client.unsafe('analyze '+table);
