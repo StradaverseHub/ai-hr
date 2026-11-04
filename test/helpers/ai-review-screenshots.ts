@@ -57,7 +57,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   if(script){
    const textProof=await page.evaluate(({locale,theme})=>{
     const pattern=locale==='ta'?/[\u0b80-\u0bff]/:locale==='th'?/[\u0e00-\u0e7f]/:/[\u3400-\u9fff]/;
-    const node=Array.from(document.body.querySelectorAll<HTMLElement>('*')).find(el=>el.getBoundingClientRect().width>0&&Array.from(el.childNodes).some(child=>child.nodeType===Node.TEXT_NODE&&pattern.test(child.textContent??'')));
+    const node=Array.from(document.body.querySelectorAll<HTMLElement>('*')).find(el=>el instanceof HTMLElement&&el.getBoundingClientRect().width>0&&el.getBoundingClientRect().height>0&&Array.from(el.childNodes).some(child=>child.nodeType===Node.TEXT_NODE&&pattern.test(child.textContent??'')));
     if(!node)throw Error('No actual localized script label to verify.');
     node.setAttribute('data-review-script-font-probe','');
     const root=getComputedStyle(document.documentElement);

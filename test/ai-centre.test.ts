@@ -10,6 +10,8 @@
  *  - SIX LANGUAGES, SAME KEYS AND PLACEHOLDERS.
  *  - THE APPROVED DIGESTS ARE NOT TOUCHED. The centre's files sit outside both digest scopes. */
 import { describe, expect, it } from 'vitest';
+import {messagesForLocale} from '../i18n/catalogs';
+import type {Locale} from '../i18n/config';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ADMIN_GROUPS, CENTRE_TABS, adminGroupOf, centreTabsFor, isCentreView } from '../lib/ai-centre/centre-nav';
@@ -136,10 +138,12 @@ describe('AI centre messages', () => {
     }
   });
 
-  it('is merged over the main catalogue for every locale', () => {
-    const request = read('i18n/request.ts');
-    expect(request).toContain("import aiCentreEn from '../messages/ai-centre/en.json'");
-    expect(request).toContain('import(`../messages/ai-centre/${locale}.json`)');
+  it.each(['en','ms','zh','vi','ta','th'] as const)('%s merges AI Centre copy into the request catalogue', async locale => {
+    const messages=await messagesForLocale(locale as Locale);
+    for(const [key,value] of catalogue(locale)){
+      const actual=key.split('.').reduce<unknown>((node,part)=>node&&typeof node==='object'?(node as Record<string,unknown>)[part]:undefined,messages);
+      expect(actual,key).toBe(value);
+    }
   });
 
   it('names the product through one constant, never in copy, and derives the OS label from it', () => {
