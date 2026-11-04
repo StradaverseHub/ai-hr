@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { CalendarCheck, ClipboardCheck, ListChecks, Receipt, Wand2 } from 'lucide-react';
 import type { SessionContext } from '@/db/client';
-import { listPendingTasks, pendingTaskSummary, type PendingTaskItem } from '@/core/approvals-inbox';
+import { pendingTaskSummary, type PendingTaskItem } from '@/core/approvals-inbox';
 import { allowedCompanies } from '@/core/read';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { openExceptionsAcrossRuns } from '@/core/payroll-anomaly';
@@ -26,7 +26,7 @@ async function settle<T>(read: () => Promise<T>): Promise<{ ok: true; value: T }
 
 /** ADR-0170 §3.1 "what needs you": everything waiting on this person, from owners that already decide it.
  *
- *  - Decisions: the canonical approvals queue (core/approvals-inbox.ts listPendingTasks), the same list the
+ *  - Decisions: the canonical approvals queue (core/approvals-inbox.ts pendingTaskSummary), the same list the
  *    notification bell shows, each linking to the page where the person decides.
  *  - Findings, administrators only and with the same module gates as the Control Tower rows: open payroll
  *    exceptions, proposed actions awaiting approval, and records missing data, each linking to its
@@ -34,13 +34,15 @@ async function settle<T>(read: () => Promise<T>): Promise<{ ok: true; value: T }
  * Nothing is written, prepared or decided here. */
 export async function AiCentreInbox({ session, recommend }: { session: SessionContext; recommend?: string }) {
   const t = await getTranslations('aiCentre');
+  const pagination = await getTranslations('pagination');
+  const dashboard = await getTranslations('dashboard');
   const tasksLabel = await getTranslations('notifications.task');
   const f = await getFormatter();
   const admin = isAdmin(session);
   const payroll = isModuleEnabledOrFalse(session, 'payroll');
 
   const scope = await settle(async () => getScopeIds((await allowedCompanies(session)).map(company => company.id)));
-  const tasks = scope.ok ? await settle(() => listPendingTasks(session, scope.value, {
+  const tasks = scope.ok ? await settle(() => pendingTaskSummary(session, scope.value, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
     performance: isModuleEnabledOrFalse(session, 'performance'),
@@ -50,21 +52,21 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
   // is this Inbox's own list below, handed to the digest rather than read again. The administrator's setup and
   // deadline counts come from today's prepared digest (review H4: never recomputed on a view), covering every
   // administered company as of that run. Not recorded; the viewer's last prepared digest is read beside it.
-  const [digest, lastDigest] = await Promise.all([
-    settle(() => digestPreview(session, { approvals: tasks.ok ? tasks.value : [], companyIds: scope.ok ? scope.value : undefined })),
+  const [digest, lastDigest, exceptions, proposals, readiness] = await Promise.all([
+    settle(() => digestPreview(session, { approvals: tasks.ok ? tasks.value.items : [], claimTotal: tasks.ok ? tasks.value.claimTotal : undefined, companyIds: scope.ok ? scope.value : undefined })),
     settle(() => latestDailyDigest(session)),
-  ]);
-  const [exceptions, proposals, readiness] = await Promise.all([
     admin && payroll ? settle(() => openExceptionsAcrossRuns(session, { limit: 100 })) : null,
     admin && payroll ? settle(() => proposeActions(session)) : null,
     admin ? settle(() => recordReadiness(session, { peopleLimit: 0 })) : null,
   ]);
   const failed = [tasks, exceptions, proposals, readiness].some(result => result && !result.ok);
   // The one recommendation the approver asked to open, if it is a leave request in their own queue.
-  const opened = tasks.ok && recommend && tasks.value.some(task => task.kind === 'leave' && task.id === recommend)
+  const opened = tasks.ok && recommend && tasks.value.items.some(task => task.kind === 'leave' && task.id === recommend)
     ? { id: recommend, view: await readLeaveRecommendation(session, recommend) } : null;
 
-  const decisions: PendingTaskItem[] = tasks.ok ? tasks.value : [];
+  const decisions: PendingTaskItem[] = tasks.ok ? tasks.value.items : [];
+  const decisionTotal = tasks.ok ? tasks.value.total : 0;
+  const shownClaims = decisions.filter(task => task.kind === 'claim').length;
   const findings: Finding[] = [];
   if (exceptions?.ok && exceptions.value.total > 0)
     findings.push({ key: 'exceptions', count: exceptions.value.total, blocking: exceptions.value.rows.filter(row => row.disposition === 'block').length, href: '/control-tower/exceptions' });
@@ -107,7 +109,7 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
               {hasTiles ? (
               <ul className="mt-2 grid gap-2 text-sm sm:grid-cols-3">
                 {showApprovals && <li><Link href="#inbox-decide" className="block rounded-lg border border-border p-3 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <span className="block text-xs text-muted-foreground">{t('digest.approvals')}</span><span className="text-lg font-semibold tabular-nums">{decisions.length}</span></Link></li>}
+                  <span className="block text-xs text-muted-foreground">{t('digest.approvals')}</span><span className="text-lg font-semibold tabular-nums">{decisionTotal}</span></Link></li>}
                 {setupTile && <li><Link href={setupTile.page} className="block rounded-lg border border-border p-3 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <span className="block text-xs text-muted-foreground">{t('digest.setup')}</span><span className="text-lg font-semibold tabular-nums">{setupTile.blocked + setupTile.attention}</span>
                   <span className="block text-xs text-muted-foreground">{t('digest.setupDetail', { blocked: setupTile.blocked, attention: setupTile.attention })}</span></Link></li>}
@@ -133,7 +135,7 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
           )}
           {decisions.length > 0 && (
             <section aria-labelledby="inbox-decide" className="space-y-2">
-              <div className="flex items-baseline gap-2"><h2 id="inbox-decide" className="text-[0.9375rem] font-semibold">{t('inbox.groups.decide')}</h2><span className="text-xs tabular-nums text-muted-foreground">{decisions.length}</span></div>
+              <div className="flex items-baseline gap-2"><h2 id="inbox-decide" className="text-[0.9375rem] font-semibold">{t('inbox.groups.decide')}</h2><span className="text-xs tabular-nums text-muted-foreground">{decisionTotal}</span></div>
               <p className="text-xs text-muted-foreground">{t('inbox.groups.decideHelp')}</p>
               <ul className="space-y-2">{decisions.map(task => (
                 <li key={`${task.kind}:${task.id}`}>
@@ -143,6 +145,10 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
                   {task.kind === 'leave' && (opened?.id === task.id ? <RecommendationPanel id={`recommendation-${task.id}`} view={opened.view} /> : <LeaveRecommendationLink leaveRequestId={task.id} />)}
                 </li>
               ))}</ul>
+              {tasks.ok && tasks.value.claimTotal > shownClaims && <div className="space-y-2 rounded-lg border border-border p-3">
+                <p className="text-sm text-muted-foreground">{pagination('truncated', {shown: shownClaims, total: tasks.value.claimTotal})}</p>
+                <Link href="/approvals?category=claim" className="inline-flex min-h-9 items-center text-sm font-medium text-primary hover:underline">{dashboard('viewAll')}</Link>
+              </div>}
             </section>
           )}
           <section aria-labelledby="inbox-prepared" className="space-y-2">
@@ -169,7 +175,7 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
           {!empty && <section aria-labelledby="inbox-summary" className="rounded-xl border border-border bg-card p-4 text-sm">
             <h2 id="inbox-summary" className="font-semibold">{t('inbox.summary')}</h2>
             <dl className="mt-2 divide-y divide-border">
-              <div className="flex justify-between py-1.5"><dt>{t('inbox.decisions')}</dt><dd className="font-semibold tabular-nums">{decisions.length}</dd></div>
+              <div className="flex justify-between py-1.5"><dt>{t('inbox.decisions')}</dt><dd className="font-semibold tabular-nums">{decisionTotal}</dd></div>
               {admin && <div className="flex justify-between py-1.5"><dt>{t('inbox.findingsCount')}</dt><dd className="font-semibold tabular-nums">{findings.length}</dd></div>}
             </dl>
           </section>}

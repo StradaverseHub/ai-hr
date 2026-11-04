@@ -21,7 +21,7 @@ import { cleanup, render } from '@testing-library/react';
 import { createFormatter, createTranslator, NextIntlClientProvider } from 'next-intl';
 import { enWithAiCentre } from '../helpers/ai-centre-messages';
 
-const state = vi.hoisted(() => ({ scope: ['fictional-company-a'] as string[] }));
+const state = vi.hoisted(() => ({ scope: ['fictional-company-a'] as string[], claimTotal: undefined as number|undefined }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: 'en', messages: enWithAiCentre as never, namespace }),
@@ -45,12 +45,12 @@ const LEAVE = { id: '00000000-0000-4000-8000-000000000001', kind: 'leave', subje
 const NOTICE = { id: 'n1:e1:1', kind: 'noticeAcknowledgement', subjectName: 'Fictional notice', createdAt: '2026-11-01T03:00:00.000Z', linkPath: '/notices/n1?employmentId=e1' };
 const OTHER_COMPANY = { ...LEAVE, id: '00000000-0000-4000-8000-000000000002', subjectName: 'Fictional Person B' };
 const listPendingTasks = vi.hoisted(() => vi.fn());
-vi.mock('../../core/approvals-inbox', () => ({ listPendingTasks }));
+vi.mock('../../core/approvals-inbox', () => {const owners={ listPendingTasks };return {...owners,pendingTaskSummary:async(...args:Parameters<typeof owners.listPendingTasks>)=>{const items=await owners.listPendingTasks(...args);const shown=items.filter((task:any)=>task.kind==='claim').length;return {items,total:items.length+Math.max(0,(state.claimTotal??shown)-shown),claimTotal:state.claimTotal??shown};}};});
 
 import { AiCentreInbox } from '../../app/assistant/centre/inbox';
 
 const employee = { tenantId: 'fictional-tenant', userId: 'fictional-user', personId: 'fictional-person', roles: ['employee'] } as never;
-afterEach(() => { cleanup(); listPendingTasks.mockReset(); state.scope = ['fictional-company-a']; });
+afterEach(() => { cleanup(); listPendingTasks.mockReset(); state.scope = ['fictional-company-a']; state.claimTotal=undefined; });
 
 async function renderInbox() {
   const node = await AiCentreInbox({ session: employee });
@@ -83,4 +83,14 @@ describe('Inbox digest agrees with the Inbox', () => {
     const { digest } = await renderInbox();
     expect(digest.querySelector('a[href="/approvals"]')).toBeNull();
   });
+});
+
+it('keeps half a million Claims in exact counts while rendering only the authorized 25-row preview', async()=>{
+ const claims=Array.from({length:25},(_,index)=>({...LEAVE,id:'claim-'+index,kind:'claim'}));
+ state.claimTotal=500000;listPendingTasks.mockResolvedValue([LEAVE,...claims]);
+ const {view,digestCount,decisions}=await renderInbox();
+ expect(digestCount).toBe(500001);expect(decisions).toBe(26);
+ expect(view.container.textContent).toContain('500,000');
+ expect(view.container.querySelector('a[href="/approvals?category=claim"]')).not.toBeNull();
+ expect(listPendingTasks).toHaveBeenCalledTimes(1);
 });

@@ -47,8 +47,8 @@ vi.mock('../../core/entitlements', () => ({ isModuleEnabledOrFalse: () => true, 
 vi.mock('../../core/read', () => ({ allowedCompanies: async () => [{ id: 'fictional-company' }] }));
 vi.mock('../../lib/scope', () => ({ getScopeIds: async (ids: string[]) => ids }));
 // Fictional queue per role: a manager and an HR admin have a leave decision; nobody else has one.
-vi.mock('../../core/approvals-inbox', () => ({ listPendingTasks: async () => (state.role === 'manager' || state.role === 'hr_admin' || state.role === 'group_admin'
-  ? [{ id: '00000000-0000-4000-8000-0000000000a1', kind: 'leave', subjectName: 'Fictional Person A', createdAt: '2026-11-01T02:00:00.000Z', linkPath: '/approvals?task=leave&requestId=00000000-0000-4000-8000-0000000000a1' }] : []) }));
+vi.mock('../../core/approvals-inbox', () => {const owners={ listPendingTasks: async () => (state.role === 'manager' || state.role === 'hr_admin' || state.role === 'group_admin'
+  ? [{ id: '00000000-0000-4000-8000-0000000000a1', kind: 'leave', subjectName: 'Fictional Person A', createdAt: '2026-11-01T02:00:00.000Z', linkPath: '/approvals?task=leave&requestId=00000000-0000-4000-8000-0000000000a1' }] : []) };return {...owners,pendingTaskSummary:async(...args:Parameters<typeof owners.listPendingTasks>)=>{const items=await owners.listPendingTasks(...args);return {items,total:items.length,claimTotal:items.filter((task:any)=>task.kind==='claim').length};}};});
 vi.mock('../../core/payroll-anomaly', () => ({ openExceptionsAcrossRuns: async () => ({ total: 2, cappedOut: false, rows: [{ disposition: 'block' }, { disposition: 'review' }] }) }));
 vi.mock('../../core/agent-actions', () => ({ proposeActions: async () => [{ type: 'fictional', subjects: [], count: 1, overCap: false }] }));
 vi.mock('../../core/record-readiness', () => ({ recordReadiness: async () => ({ employees: 10, ready: 8, gaps: [] }) }));

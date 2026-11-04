@@ -26,7 +26,7 @@ vi.mock('../lib/authz', () => ({ isAdmin: () => state.admin, isGroupAdmin: () =>
 vi.mock('../core/entitlements', () => ({ isModuleEnabledOrFalse: () => true, isModuleEnabled: () => true }));
 vi.mock('../core/read', () => ({ allowedCompanies: async () => [{ id: 'fictional-company' }] }));
 vi.mock('../lib/scope', () => ({ getScopeIds: async (ids: string[]) => ids }));
-vi.mock('../core/approvals-inbox', () => ({ listPendingTasks: async () => state.tasks }));
+vi.mock('../core/approvals-inbox', () => {const owners={ listPendingTasks: async () => state.tasks };return {...owners,pendingTaskSummary:async(...args:Parameters<typeof owners.listPendingTasks>)=>{const items=await owners.listPendingTasks(...args);return {items,total:items.length,claimTotal:items.filter((task:any)=>task.kind==='claim').length};}};});
 vi.mock('../core/payroll-anomaly', () => ({ openExceptionsAcrossRuns: async () => ({ total: 1, cappedOut: false, rows: [{ disposition: 'review' }] }) }));
 vi.mock('../core/agent-actions', () => ({ proposeActions: async () => [] }));
 vi.mock('../core/record-readiness', () => ({ recordReadiness: async () => ({ employees: 12, ready: 12, gaps: [] }) }));

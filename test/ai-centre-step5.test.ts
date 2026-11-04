@@ -72,7 +72,7 @@ describe('approver recommendation', () => {
     const inbox = read('app/assistant/centre/inbox.tsx');
     expect(inbox).not.toContain('recommendLeaveDecision');
     // Only the one leave request the approver opened, and only if it is in their own queue.
-    expect(inbox).toContain("tasks.value.some(task => task.kind === 'leave' && task.id === recommend)");
+    expect(inbox).toContain("tasks.value.items.some(task => task.kind === 'leave' && task.id === recommend)");
     expect(inbox).toContain('<LeaveRecommendationLink leaveRequestId={task.id} />');
     expect(read('components/ai-centre/leave-recommendation.tsx')).toContain('prefetch={false}');
     const action = read('app/assistant/centre/recommendation.ts');

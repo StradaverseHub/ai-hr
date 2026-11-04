@@ -62,7 +62,7 @@ const FICTION = 'real components; fictional data owners; no authenticated server
 const wrap = (locale: string, node: React.ReactNode) =>
   render(<NextIntlClientProvider locale={locale} messages={messagesFor(locale) as never} timeZone="Asia/Kuala_Lumpur">{node}</NextIntlClientProvider>);
 beforeEach(() => {
-  state.summary.mockReset();
+  state.summary.mockReset().mockImplementation(async()=>({items:state.tasks,total:state.tasks.length,claimTotal:state.tasks.filter((task:any)=>task.kind==='claim').length}));
   state.tasks = [
     { id: 'a1', kind: 'leave', subjectName: 'Fictional Person A', createdAt: '2026-10-31T02:00:00.000Z', linkPath: '/approvals?kind=leave&id=a1' },
     { id: 'b2', kind: 'claim', subjectName: 'Fictional Person B', createdAt: '2026-10-30T02:00:00.000Z', linkPath: '/approvals?kind=claim&id=b2' },

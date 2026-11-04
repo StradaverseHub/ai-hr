@@ -54,7 +54,7 @@ type Prepared=Readonly<{digest:DailyDigest;reads:readonly OutcomeRead[]}>;
 /** For the Inbox view: the approvals list the Inbox already read as the viewer (so the digest counts the same
  * list it shows, and the queue is not read twice), and the companies in the viewer's current scope (so the
  * setup and deadline counts cover the same companies as that list). Both absent for the scheduled job. */
-export type DigestViewInput=Readonly<{approvals?:readonly Readonly<{id:string;kind:string}>[];companyIds?:readonly string[]}>;
+export type DigestViewInput=Readonly<{approvals?:readonly Readonly<{id:string;kind:string}>[];companyIds?:readonly string[];claimTotal?:number}>;
 /** How many administered companies are checked at once: each check is itself several parallel owner reads,
  * so this keeps one digest well inside the connection pool while not walking twenty companies one by one. */
 const COMPANY_CONCURRENCY=4;
@@ -67,6 +67,11 @@ async function prepare(ctx:SessionContext,today:string,view:DigestViewInput={},s
  const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
  const tasks=view.approvals??await listPendingTasks(ctx,undefined,modules,{noticeAcknowledgements:false});
  const counts=new Map<string,number>();for(const task of tasks)counts.set(task.kind,(counts.get(task.kind)??0)+1);
+ // A UI may supply the counted Claims total alongside its authorized bounded preview.
+ // It changes display counts only; scheduled preparation still reads the full owner queue.
+ const claimTotal=view.claimTotal;
+ const omittedClaims=view.approvals&&typeof claimTotal==='number'&&Number.isSafeInteger(claimTotal)?Math.max(0,claimTotal-(counts.get('claim')??0)):0;
+ if(omittedClaims>0)counts.set('claim',(counts.get('claim')??0)+omittedClaims);
  const byKind=[...counts].map(([kind,count])=>Object.freeze({kind,count})).sort((a,b)=>b.count-a.count||a.kind.localeCompare(b.kind));
  const reads:OutcomeRead[]=[{tool:'core/approvals-inbox.ts#listPendingTasks',status:'ok',refs:tasks.map(task=>task.id).filter(id=>REF.test(id)).slice(0,200)}];
  let setup:DailyDigest['setup']=null,deadlines:DailyDigest['deadlines']=null;
@@ -100,7 +105,7 @@ async function prepare(ctx:SessionContext,today:string,view:DigestViewInput={},s
   setup=Object.freeze({blocked,attention,companies:checked,unknown,page:DIGEST_PAGES.setup});
   deadlines=payroll?Object.freeze({overdue,dueSoon,page:DIGEST_PAGES.deadlines}):null;
  }
- const body={asOf:today,approvals:Object.freeze({total:tasks.length,byKind:Object.freeze(byKind),page:DIGEST_PAGES.approvals}),setup,deadlines};
+ const body={asOf:today,approvals:Object.freeze({total:tasks.length+omittedClaims,byKind:Object.freeze(byKind),page:DIGEST_PAGES.approvals}),setup,deadlines};
  return Object.freeze({digest:Object.freeze({kind:'teras.daily_digest' as const,version:1 as const,...body,text:digestText(body)}),reads:Object.freeze(reads)});
 }
 
