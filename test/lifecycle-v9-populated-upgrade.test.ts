@@ -75,7 +75,7 @@ it('preserves populated Native issuance, private data, identity and every applie
   // AI v2 Phase 2 P2-6 learning loops (claude/aiv2-p2-learning-loops), frozen here.
   {idx:810,version:'7',when:1793330001410,tag:'2010_teras_learning_loops',breakpoints:true,hash:'2cabdaa5975db8ef1d91f6027bb38b4b7ca1f7ce3c17561b9961926f2e02c201'},
   // AI v2 Phase 2 hardening, payroll loops, audit and checklist (claude/aiv2-p2h-loops-hardening), frozen here.
-  {idx:811,version:'7',when:1793330001411,tag:'2011_payroll_loops_hardening',breakpoints:true,hash:'71c1b7ee489aef6fa8e9dda0fe0c014289fd278c7c7df01455f79185b68a0a40'},
+  {idx:811,version:'7',when:1793330001411,tag:'2011_payroll_loops_hardening',breakpoints:true,hash:'d42cceaf96f728c8682b73c40c33b5d3066de40f1d5484100dff3686c811d909'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

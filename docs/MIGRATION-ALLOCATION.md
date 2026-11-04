@@ -1450,7 +1450,7 @@ coordinator re-checks before merging (the parallel `claude/aiv2-p2h-handbook-har
 |2005|805|1793330001405|2005_teras_payroll_cycle_loops|d211dd97ebdeb673998d29a2a9b3b8d8597c39a5646259ac0c855d46eca49fbc|
 |2006|806|1793330001406|2006_payroll_audit_loop|05bc9e35367093ae4c6aec877a7ca7ec171387cb84b28940e0db0e190fcf7723|
 |2008|808|1793330001408|2008_own_payroll_cut_off|c068fa72631c648453117fdf73cc81e6ffbbb4cc94d55d82397e40ac4e4291f8|
-|2011|811|1793330001411|2011_payroll_loops_hardening|71c1b7ee489aef6fa8e9dda0fe0c014289fd278c7c7df01455f79185b68a0a40|
+|2011|811|1793330001411|2011_payroll_loops_hardening|d42cceaf96f728c8682b73c40c33b5d3066de40f1d5484100dff3686c811d909|
 
 The four tail-pinning upgrade tests and `test/lifecycle-v9-populated-upgrade.test.ts` pin these hashes and the 2011
 position; `test/board-nine-populated-upgrade.test.ts` applies 2004–2011 on a populated database.
@@ -1501,10 +1501,19 @@ The journal ends with the block, ascending: idx800–811, `when` 1793330001400�
 |808|1793330001408|2008_own_payroll_cut_off|c068fa72631c648453117fdf73cc81e6ffbbb4cc94d55d82397e40ac4e4291f8|
 |809|1793330001409|2009_teras_living_handbook|2ffa6731bc3e8cfbc0586875ba9c33d0db2c67104376dc99e35ba181214ccae0|
 |810|1793330001410|2010_teras_learning_loops|2cabdaa5975db8ef1d91f6027bb38b4b7ca1f7ce3c17561b9961926f2e02c201|
-|811|1793330001411|2011_payroll_loops_hardening|71c1b7ee489aef6fa8e9dda0fe0c014289fd278c7c7df01455f79185b68a0a40|
+|811|1793330001411|2011_payroll_loops_hardening|d42cceaf96f728c8682b73c40c33b5d3066de40f1d5484100dff3686c811d909|
 
 `test/lifecycle-v9-populated-upgrade.test.ts` pins these identities; `test/board-nine-populated-upgrade.test.ts` applies
 staging's 656-entry ledger, then 2000–2003, then 2004–2011 on a populated database and logs the applied ledger
 (`[populated-upgrade-ledger]`). This table supersedes the per-branch hash rows above for 2001–2003, 2005, 2006 and
 2008–2010. Development source only: no installation priority, no deployment; at installation the numbers and `when`
 values are re-checked against staging's applied watermark and re-frozen above it if it has reached them.
+
+One more in-place edit, of the never-applied 2011 (design review, 4 November 2026): the close circuit's prior cycle is
+the latest **closed** run of the same run type (`payroll_status` is exactly draft, processed and closed), in
+`app.payroll_close_circuit_inputs`, in `app.payroll_close_source_people` (the prior and the "no newer prior" check) and in
+`core/payroll-anomaly.ts`; and every payslip either SECURITY DEFINER function reads passes `app.payroll_history_effective`
+(0602), so a payslip a payroll-history import superseded is no longer summed or listed. Both defects were already in
+main's 0631 versions of these functions. No statement added or removed; owner and grants unchanged. The idx811 row's
+SHA256 above, the `lifecycle-v9` journal pin and the `board-nine` applied-ledger pin are the new file's. Same number, idx
+and `when`.

@@ -11,7 +11,8 @@
  *  4. A read-only auditor reads exactly their granted companies, built from what the loop captured (A9).
  *  5. The inputs snapshot is bounded: one row per employment and input kind, on a large fictional run, and a failing
  *     schedule read never stops the transaction (A6).
- *  6. The close circuit's prior cycle is the same run type, in the ordinary evaluation and in the close function (B2).
+ *  6. The close circuit's prior cycle is the same run type, in the ordinary evaluation and in the close function (B2); it is a
+ *     closed run (test/payroll-close-prior-cycle.test.ts).
  *  7. Standing acknowledgements: a warning leaves the counts and stays listed, in the loop and the pack; a block is never
  *     suppressed and its resolve is pre-filled; nobody acknowledges their own; revocable; learned standing rules are
  *     approved only by a group administrator who did not make the dispositions (B4).
@@ -266,6 +267,9 @@ describe('B2: the prior cycle is the same run type',()=>{
   const juneBonus=(await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:'2026-06',runType:'bonus'})).batchId;
   const july=(await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-07'})).batchId;
   const augustBonus=(await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:'2026-08',runType:'bonus'})).batchId;
+  // A prior cycle is a closed run (design review, 4 November 2026; test/payroll-close-prior-cycle.test.ts): May and the June
+  // bonus are finished months here.
+  await owner.db.update(schema.payrollBatch).set({status:'closed',closedAt:new Date()}).where(inArray(schema.payrollBatch.id,[may,juneBonus]));
   const prior=(batchId:string)=>withTenant(group,tx=>evaluateCircuitBreakerWithSourceTx(tx,b.tenantId,batchId)).then(result=>result.source.priorBatchId);
   const closePrior=async(batchId:string)=>(await withTenant(group,tx=>tx.execute(sql`select prior_batch_id from app.payroll_close_circuit_inputs(${batchId}::uuid)`)) as unknown as {prior_batch_id:string|null}[])[0]?.prior_batch_id??null;
   expect([await prior(july),await closePrior(july)]).toEqual([may,may]);

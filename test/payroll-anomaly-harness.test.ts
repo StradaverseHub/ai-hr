@@ -49,6 +49,11 @@ beforeEach(async () => {
   a = await entitledCtx(b);
 });
 
+/** A prior cycle is a CLOSED run (design review, 4 November 2026; test/payroll-close-prior-cycle.test.ts): the first
+ *  population's month is a finished one before the second cycle is evaluated against it. */
+const closeRun = (batchId: string) =>
+  owner.db.update(schema.payrollBatch).set({ status: 'closed', closedAt: new Date() }).where(eq(schema.payrollBatch.id, batchId));
+
 /**
  * Build one cycle of `POPULATION` employees with a known fault distribution.
  *
@@ -246,6 +251,7 @@ describe('ADR-0076 §6.1 — the synthetic harness, against ground truth', () =>
 
   it('coverage RISES to 100% on the second cycle, once the prior-period detectors can run', async () => {
     const first = await buildPopulation('2026-04');
+    await closeRun(first.batchId);
     const { batchId } = await buildPopulation('2026-05', first.truth);
 
     const run = await evaluateBatchAnomalies(a, { batchId });
@@ -260,6 +266,7 @@ describe('ADR-0076 §6.1 — the synthetic harness, against ground truth', () =>
 
   it('a second identical cycle produces no prior-period noise — stability is the baseline', async () => {
     const first = await buildPopulation('2026-04');
+    await closeRun(first.batchId);
     const { batchId, truth } = await buildPopulation('2026-05', first.truth);
     await evaluateBatchAnomalies(a, { batchId });
 

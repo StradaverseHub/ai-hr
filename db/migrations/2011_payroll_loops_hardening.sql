@@ -11,7 +11,13 @@
 --     followed a bonus-only month was measured against the bonus). app.payroll_close_circuit_inputs selects it, and
 --     app.payroll_close_source_people accepts only such a prior; the ordinary evaluation (core/payroll-anomaly.ts) selects
 --     the same row, so the two stay equal. Same company, earlier pay month, latest month first, then the highest run
---     sequence. Nothing else in either function changes (CREATE OR REPLACE keeps their owner and grants).
+--     sequence. The prior is a CLOSED run only (payroll_status 'closed'): a draft or processed run of an earlier month is
+--     unfinished (it can still be reprocessed or reset), so it is never "last month" (design review, 4 November 2026; the
+--     0631 selector, main's, took any status). Imported history months are closed `adjustment` runs and keep their
+--     treatment: they match an adjustment run only. Every payslip either function reads is an effective one
+--     (app.payroll_history_effective, 0602): as SECURITY DEFINER they bypass the restrictive payroll_history_effective_only
+--     policy, so without it a payslip a payroll-history import had superseded was summed and listed (0631 had the same
+--     gap). Nothing else in either function changes (CREATE OR REPLACE keeps their owner and grants).
 --  2. payroll_check_acknowledgement: a payroll administrator's standing "expected, not an exception" for ONE check, scoped
 --     to one person (employment), one group (department) or the whole company, with a reason, an optional review date,
 --     who and when. It changes no calculation, pay or record: a warning it covers leaves the to-do and repeat-issue counts
@@ -58,15 +64,15 @@ CREATE OR REPLACE FUNCTION app.payroll_close_circuit_inputs(p_batch uuid)
  ), selected AS (
   SELECT t.*,p.id AS prior_id,p.xmin::text AS prior_version FROM target t
   LEFT JOIN LATERAL (SELECT b.id,b.xmin FROM public.payroll_batch b
-   WHERE b.company_id=t.company_id AND b.run_type=t.run_type AND b.pay_period<t.pay_period
+   WHERE b.company_id=t.company_id AND b.run_type=t.run_type AND b.status='closed' AND b.pay_period<t.pay_period
    ORDER BY b.pay_period DESC,b.run_seq DESC,b.id DESC LIMIT 1) p ON true
  )
  SELECT s.id,s.company_id,s.prior_id,
-  (SELECT coalesce(sum(p.net_pay),0)::float8 FROM public.payslip p WHERE p.batch_id=s.id),
-  (SELECT coalesce(sum(p.net_pay),0)::float8 FROM public.payslip p WHERE p.batch_id=s.prior_id),
+  (SELECT coalesce(sum(p.net_pay),0)::float8 FROM public.payslip p WHERE p.batch_id=s.id AND app.payroll_history_effective(p.id)),
+  (SELECT coalesce(sum(p.net_pay),0)::float8 FROM public.payslip p WHERE p.batch_id=s.prior_id AND app.payroll_history_effective(p.id)),
   md5(s.version||':'||coalesce(s.prior_version,'')||':'||coalesce(s.prior_id::text,'')||':'||
-   coalesce((SELECT string_agg(p.id::text||':'||p.xmin::text,',' ORDER BY p.id) FROM public.payslip p WHERE p.batch_id=s.id OR p.batch_id=s.prior_id),'')),
-  NOT EXISTS(SELECT 1 FROM public.payslip p WHERE (p.batch_id=s.id OR p.batch_id=s.prior_id)
+   coalesce((SELECT string_agg(p.id::text||':'||p.xmin::text,',' ORDER BY p.id) FROM public.payslip p WHERE (p.batch_id=s.id OR p.batch_id=s.prior_id) AND app.payroll_history_effective(p.id)),'')),
+  NOT EXISTS(SELECT 1 FROM public.payslip p WHERE (p.batch_id=s.id OR p.batch_id=s.prior_id) AND app.payroll_history_effective(p.id)
    AND (app.can_admin_payroll_employment(p.employment_id) OR EXISTS(SELECT 1 FROM public.employment e
      WHERE e.id=p.employment_id AND app.is_self_person(e.person_id))) IS NOT TRUE)
  FROM selected s
@@ -83,11 +89,11 @@ BEGIN
   coalesce((SELECT array_agg(DISTINCT q ORDER BY q) FROM unnest(p_coverage) q),'{}'::uuid[]) IS DISTINCT FROM p_coverage
  THEN RAISE EXCEPTION 'Payroll source unavailable' USING ERRCODE='42501';END IF;
  IF p_prior IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.payroll_batch prior
-  WHERE prior.id=p_prior AND prior.tenant_id=b.tenant_id AND prior.company_id=b.company_id AND prior.run_type=b.run_type AND prior.pay_period<b.pay_period
-   AND NOT EXISTS(SELECT 1 FROM public.payroll_batch newer WHERE newer.company_id=b.company_id AND newer.run_type=b.run_type AND newer.pay_period<b.pay_period AND newer.pay_period>prior.pay_period))
+  WHERE prior.id=p_prior AND prior.tenant_id=b.tenant_id AND prior.company_id=b.company_id AND prior.run_type=b.run_type AND prior.status='closed' AND prior.pay_period<b.pay_period
+   AND NOT EXISTS(SELECT 1 FROM public.payroll_batch newer WHERE newer.company_id=b.company_id AND newer.run_type=b.run_type AND newer.status='closed' AND newer.pay_period<b.pay_period AND newer.pay_period>prior.pay_period))
  THEN RAISE EXCEPTION 'Payroll source unavailable' USING ERRCODE='42501';END IF;
  IF EXISTS(SELECT 1 FROM unnest(p_coverage) selected(id) LEFT JOIN public.employment e ON e.id=selected.id AND e.tenant_id=b.tenant_id
-  WHERE e.id IS NULL OR NOT(EXISTS(SELECT 1 FROM public.payslip slip WHERE slip.batch_id=b.id AND slip.employment_id=e.id AND slip.tenant_id=b.tenant_id)
+  WHERE e.id IS NULL OR NOT(EXISTS(SELECT 1 FROM public.payslip slip WHERE slip.batch_id=b.id AND slip.employment_id=e.id AND slip.tenant_id=b.tenant_id AND app.payroll_history_effective(slip.id))
    OR (b.run_type='regular' AND e.hired_on<=((b.pay_period||'-01')::date+interval '1 month' - interval '1 day')::date AND (e.terminated_on IS NULL OR e.terminated_on>=(b.pay_period||'-01')::date)
     -- Membership assertion only, matching entityChangedDuring/employedByCompanyDuring in
     -- core/employment-company.ts and the unchanged closeOwed tenure predicate. No new nomination.
@@ -95,7 +101,7 @@ BEGIN
     AND (e.company_id=b.company_id OR EXISTS(SELECT 1 FROM public.assignment a WHERE a.employment_id=e.id AND a.tenant_id=b.tenant_id AND a.company_id=b.company_id AND a.superseded_at IS NULL AND a.valid_from<=((b.pay_period||'-01')::date+interval '1 month' - interval '1 day')::date AND (a.valid_to IS NULL OR a.valid_to>(b.pay_period||'-01')::date))))))
  THEN RAISE EXCEPTION 'Payroll source unavailable' USING ERRCODE='42501';END IF;
  SELECT coalesce(array_agg(DISTINCT id ORDER BY id),'{}'::uuid[]) INTO sources FROM (
-  SELECT slip.employment_id AS id FROM public.payslip slip WHERE slip.batch_id IN (p_batch,p_prior) AND slip.tenant_id=b.tenant_id
+  SELECT slip.employment_id AS id FROM public.payslip slip WHERE slip.batch_id IN (p_batch,p_prior) AND slip.tenant_id=b.tenant_id AND app.payroll_history_effective(slip.id)
   UNION ALL SELECT unnest(p_coverage)
  ) q;
  IF EXISTS(SELECT 1 FROM unnest(sources) q(id) LEFT JOIN public.employment e ON e.id=q.id AND e.tenant_id=b.tenant_id LEFT JOIN public.person p ON p.id=e.person_id AND p.tenant_id=b.tenant_id WHERE e.id IS NULL OR p.id IS NULL)

@@ -211,10 +211,20 @@ describe('migration 2011',()=>{
   expect(sql).toContain('GRANT SELECT,INSERT ON public.payroll_tp3_previous_employer_answer TO ai_hr_app;');
   expect(sql).not.toMatch(/GRANT[^;]*DELETE/);
  });
- it('selects the close circuit\'s prior cycle by run type, and accepts only such a prior',()=>{
-  expect(sql).toContain('WHERE b.company_id=t.company_id AND b.run_type=t.run_type AND b.pay_period<t.pay_period');
-  expect(sql).toContain('prior.company_id=b.company_id AND prior.run_type=b.run_type AND prior.pay_period<b.pay_period');
+ it('selects the close circuit\'s prior cycle by run type and closed status, and accepts only such a prior',()=>{
+  expect(sql).toContain("WHERE b.company_id=t.company_id AND b.run_type=t.run_type AND b.status='closed' AND b.pay_period<t.pay_period");
+  expect(sql).toContain("prior.company_id=b.company_id AND prior.run_type=b.run_type AND prior.status='closed' AND prior.pay_period<b.pay_period");
+  expect(sql).toContain("newer.company_id=b.company_id AND newer.run_type=b.run_type AND newer.status='closed' AND newer.pay_period<b.pay_period");
   const anomaly=readFileSync('core/payroll-anomaly.ts','utf8');
   expect(anomaly.match(/eq\(schema\.payrollBatch\.runType, batch\.runType\)/g)).toHaveLength(2);
+  expect(anomaly.match(/eq\(schema\.payrollBatch\.status, 'closed'\)/g)).toHaveLength(2);
+ });
+ it('reads only effective payslips in both SECURITY DEFINER close functions (design review, 4 November 2026)',()=>{
+  const start=sql.indexOf('CREATE OR REPLACE FUNCTION app.payroll_close_circuit_inputs'),end=sql.indexOf('CREATE TABLE public.payroll_check_acknowledgement');
+  expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start);
+  const reads=sql.slice(start,end).match(/FROM public\.payslip (?:p|slip) WHERE[^\n]*/g)??[];
+  // Circuit inputs: the two sums, the source version and the visibility check; source people: the coverage check and the sources.
+  expect(reads).toHaveLength(6);
+  for(const read of reads)expect(read).toMatch(/app\.payroll_history_effective\((?:p|slip)\.id\)/);
  });
 });

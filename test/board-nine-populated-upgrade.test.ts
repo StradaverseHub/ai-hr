@@ -163,7 +163,7 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
    {hash:'c068fa72631c648453117fdf73cc81e6ffbbb4cc94d55d82397e40ac4e4291f8',created_at:'1793330001408'},
    {hash:'2ffa6731bc3e8cfbc0586875ba9c33d0db2c67104376dc99e35ba181214ccae0',created_at:'1793330001409'},
    {hash:'2cabdaa5975db8ef1d91f6027bb38b4b7ca1f7ce3c17561b9961926f2e02c201',created_at:'1793330001410'},
-   {hash:'71c1b7ee489aef6fa8e9dda0fe0c014289fd278c7c7df01455f79185b68a0a40',created_at:'1793330001411'},
+   {hash:'d42cceaf96f728c8682b73c40c33b5d3066de40f1d5484100dff3686c811d909',created_at:'1793330001411'},
   ]);
   expect(await phaseTwoObjects()).toEqual([{levels:'teras_loop_level',settings:'teras_payroll_loop_setting',audit:'payroll_audit_capture',baseline:'teras_capacity_baseline',
    cutoff:true,handbook:'teras_policy_version',learning:'teras_learning_signal',hardening:'payroll_check_acknowledgement'}]);

@@ -188,6 +188,11 @@ async function makeBatch(period = PERIOD) {
   return batch.id;
 }
 
+/** A prior cycle is a CLOSED run (design review, 4 November 2026; test/payroll-close-prior-cycle.test.ts): the fixture's
+ *  earlier month is a finished one. */
+const closeRun = (batchId: string) =>
+  owner.db.update(schema.payrollBatch).set({ status: 'closed', closedAt: new Date() }).where(eq(schema.payrollBatch.id, batchId));
+
 /** A clean payslip plus the day of attendance that keeps `pay-without-attendance` quiet (engine test). */
 async function addPayslip(batchId: string, employmentId: string, netPay = '4200.00', attendanceDate = '2026-05-04') {
   await owner.db
@@ -245,6 +250,7 @@ describe('r292 §A — the disclosure names the numbers the engine actually used
     const employmentId = await makeEmp('Swinger');
     const priorBatch = await makeBatch('2026-04');
     await addPayslip(priorBatch, employmentId, '4200.00', '2026-04-06');
+    await closeRun(priorBatch);
     const batchId = await makeBatch(PERIOD);
     await addPayslip(batchId, employmentId, '3400.00'); // −19.05%: inside 30, outside 5
 

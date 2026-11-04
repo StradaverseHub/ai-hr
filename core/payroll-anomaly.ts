@@ -345,9 +345,10 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string): Promise
 
   // PRIOR CYCLE — the immediately preceding period for the SAME company and the SAME RUN TYPE (AI v2 Phase 2
   // hardening: a bonus run is compared with the last bonus run, an off-cycle run with the last off-cycle run, a salary
-  // run with the last salary run, never with each other). Ordered by payPeriod (a 'YYYY-MM' string, so lexicographic
-  // order is chronological order), then the highest run sequence, and limited to one: the row
-  // app.payroll_close_circuit_inputs selects too (migration 2011).
+  // run with the last salary run, never with each other) and a CLOSED run only: a draft or processed run of an earlier
+  // month is unfinished (it can still be reprocessed or reset), so it is never "last month". Ordered by payPeriod (a
+  // 'YYYY-MM' string, so lexicographic order is chronological order), then the highest run sequence, and limited to
+  // one: the row app.payroll_close_circuit_inputs selects too (migration 2011).
   const [priorBatch] = await tx
     .select({ id: schema.payrollBatch.id })
     .from(schema.payrollBatch)
@@ -355,6 +356,7 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string): Promise
       and(
         eq(schema.payrollBatch.companyId, batch.companyId),
         eq(schema.payrollBatch.runType, batch.runType),
+        eq(schema.payrollBatch.status, 'closed'),
         lt(schema.payrollBatch.payPeriod, batch.payPeriod),
       ),
     )
@@ -989,13 +991,13 @@ async function evaluateCircuitBreakerSourceTx(tx:Tx,tenantId:string,batchId:stri
     if(priorBatchId===null)return observed({...blank,skippedReason:'no prior cycle to compare against'});
     currentNet=num(inputs.current_net);priorNet=num(inputs.prior_net);
   }else{
-  // The prior cycle of the same run type, exactly as app.payroll_close_circuit_inputs selects it (migration 2011).
+  // The last closed prior cycle of the same run type, exactly as app.payroll_close_circuit_inputs selects it (migration 2011).
   const [priorBatch] = await tx
     .select({ id: schema.payrollBatch.id })
     .from(schema.payrollBatch)
     .where(
       and(eq(schema.payrollBatch.companyId, batch.companyId), eq(schema.payrollBatch.runType, batch.runType),
-        lt(schema.payrollBatch.payPeriod, batch.payPeriod)),
+        eq(schema.payrollBatch.status, 'closed'), lt(schema.payrollBatch.payPeriod, batch.payPeriod)),
     )
     .orderBy(sql`${schema.payrollBatch.payPeriod} desc`, sql`${schema.payrollBatch.runSeq} desc`, sql`${schema.payrollBatch.id} desc`)
     .limit(1);
