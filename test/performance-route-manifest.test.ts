@@ -1,7 +1,7 @@
 import {existsSync} from 'node:fs';
 import {expect,it} from 'vitest';
 import {CENTRE_TABS,CENTRE_SECTIONS} from '../lib/ai-centre/centre-nav';
-import {routePools,wholeSystemRouteCount,additionalBrowserRoutes} from '../scripts/performance/system-route-manifest.mjs';
+import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to an existing page',()=>{
  const unique=new Set(Object.values(routePools).flat());expect(wholeSystemRouteCount).toBe(unique.size);expect(unique.size).toBeGreaterThan(60);
  for(const [role,paths]of Object.entries(routePools)){
@@ -22,4 +22,11 @@ it('covers the installed AI Centre tabs and administrator sections without grant
 
 it('includes the default Home in every role workload',()=>{
  for(const [role,paths] of Object.entries(routePools))expect(paths,role).toContain('/');
+});
+
+it('counts each known AI view separately without retaining arbitrary query values',()=>{
+ for(const path of new Set(Object.values(routePools).flat()))expect(readRouteForMeasurement(path)).toBe(path);
+ expect(readRouteForMeasurement('/assistant?view=jobs')).not.toBe(readRouteForMeasurement('/assistant?view=tools'));
+ expect(readRouteForMeasurement('/assistant?question=PRIVATE_SENTINEL')).toBe('/assistant');
+ expect(readRouteForMeasurement('/api/home/tasks?employmentId=PRIVATE_SENTINEL')).toBe('/api/home/tasks');
 });

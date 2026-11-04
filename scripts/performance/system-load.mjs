@@ -14,7 +14,7 @@ import {chromium} from 'playwright';
 import postgres from 'postgres';
 import {generate} from 'otplib';
 import {closePerformanceDbPools,performanceNativeDbClient} from './driver-shutdown.mjs';
-import {routePools,wholeSystemRouteCount,additionalBrowserRoutes} from './system-route-manifest.mjs';
+import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes} from './system-route-manifest.mjs';
 const base='https://localhost:3443',out=process.env.PERF_EVIDENCE_DIR;
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(new URL(process.env.DATABASE_URL).pathname,'/ai_hr_dev');
 const fixture=JSON.parse(readFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),'utf8'));
@@ -73,9 +73,9 @@ async function request(user,path,fields,expectedStatus=200,record=true,actionHea
    stream.on('data',chunk=>{decodedBytes+=chunk.length;if(decodedBytes>12*1024*1024){stream.destroy(new Error('Decoded response exceeded the 12MiB measurement ceiling'));return;}content+=chunk.toString();});
    stream.on('error',reject);stream.on('end',()=>resolve({status:res.statusCode,headers:res.headers,content,wireBytes,decodedBytes,ttfbMs}));
   });req.on('error',reject);req.end(body);
- }).catch(error=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:path.split('?')[0],method:fields?'POST':'GET',elapsedMs:performance.now()-started,error:String(error.message).slice(0,180)});throw error;});
+ }).catch(error=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',elapsedMs:performance.now()-started,error:String(error.message).slice(0,180)});throw error;});
  response.durationMs=performance.now()-started;
- if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:path.split('?')[0],method:fields?'POST':'GET',status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
+ if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
  assert.equal(response.status,expectedStatus,`Unexpected HTTP status for ${path.split('?')[0]}`);
  const ownPayslipPdf=/^\/me\/payslip\/[0-9a-f-]{36}\/pdf$/.test(path.split('?')[0]);
  if(!fields&&expectedStatus===200&&ownPayslipPdf){
@@ -573,7 +573,7 @@ try{
  const loaded=samples.slice(offset),reads=loaded.filter(v=>v.method==='GET'),writes=loaded.filter(v=>v.method==='POST');
  report.phases.push({name:'500-paced-HTTP-users-'+suite+'-'+thinkTimeMs+'ms-think',elapsedMs:performance.now()-started,completed:results.filter(v=>v.status==='fulfilled').length,errors:report.functionalErrors.length,
   read:summary(reads.map(v=>v.durationMs)),write:summary(writes.map(v=>v.durationMs)),ttfb:summary(loaded.map(v=>v.ttfbMs)),wireBytes:loaded.reduce((sum,v)=>sum+v.wireBytes,0),decodedBytes:loaded.reduce((sum,v)=>sum+v.decodedBytes,0)});
- report.concurrentRouteCoverage=[...new Set([...employeeRoutes,...managerRoutes,...hrRoutes])].map(route=>({route,requests:loaded.filter(sample=>sample.method==='GET'&&sample.route===route).length,users:new Set(loaded.filter(sample=>sample.method==='GET'&&sample.route===route).map(sample=>sample.user)).size}));
+ report.concurrentRouteCoverage=[...new Set(Object.values(routePools).flat())].map(route=>({route,requests:loaded.filter(sample=>sample.method==='GET'&&sample.route===route).length,users:new Set(loaded.filter(sample=>sample.method==='GET'&&sample.route===route).map(sample=>sample.user)).size}));
  const steady=loaded.filter(sample=>sample.startedMs>=steadyStart&&sample.startedMs<steadyUntil);
  report.pageInteractions=pageInteractions;
  report.steady={durationMs:steadyHoldMs,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,{

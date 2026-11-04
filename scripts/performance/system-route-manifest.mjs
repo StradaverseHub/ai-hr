@@ -21,7 +21,10 @@ export const managerRoutes=Object.freeze([
  '/','/approvals','/approvals/history','/performance/home','/claims','/tasks','/org','/delegations','/leave/tracker',
 ]);
 export const routePools=Object.freeze({employee:employeeRoutes,manager:managerRoutes,companyHR:hrRoutes,groupHR:Object.freeze([...hrRoutes,'/control-tower/agents/spending','/control-tower/agents/provider'])});
-export const wholeSystemRouteCount=new Set(Object.values(routePools).flat()).size;
+const concreteReadRoutes=new Set(Object.values(routePools).flat());
+export const wholeSystemRouteCount=concreteReadRoutes.size;
+/** Keep known static views distinct; discard arbitrary query values from measurement labels. */
+export function readRouteForMeasurement(path){return concreteReadRoutes.has(path)?path:path.split('?')[0];}
 export const additionalBrowserRoutes=Object.freeze({
  employee:[...aiCentreRoutes,'/tasks','/org','/me/calendar','/me/letters','/me/notifications','/leave/history'],
  manager:['/tasks','/delegations','/leave/tracker'],
