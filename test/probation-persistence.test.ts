@@ -1,7 +1,9 @@
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {sql} from 'drizzle-orm';
+import {PgDialect} from 'drizzle-orm/pg-core';
 import {randomUUID} from 'node:crypto';
 import {hireEmployee,setReportingLine} from '../core/org';
+import {saveMovementEventType} from '../core/movement-type';
 import {createAppUser} from './harness';
 import {newProbationPart} from '../lib/probation-model';
 import {addCalendarMonths,todayInKualaLumpur} from '../lib/hr-date';
@@ -260,10 +262,20 @@ describe('real evaluation to signed letter custody',()=>{
   const request=await releaseProbationLetter(admin,{caseId:ids.caseId,partId:prepared.partId,outcomeRevision:prepared.outcomeRevision,reason:'Release the approved signed letter'});expect(request).toMatch(/^[a-f0-9-]{36}$/);
   const[pending]=await owner.db.execute<{released:string|null;state:string}>(sql`select released_at::text as released,state from probation_outcome where id=${decision.id}::uuid`);expect(pending).toEqual({released:null,state:'release_requested'});expect((await readProbationLetter(admin,ids.caseId,prepared.partId)).canRelease).toBe(false);
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_file_save(${ids.caseId}::uuid,${ids.part}::uuid,'completed_part','forged.pdf',${Buffer.from('%PDF-forged')},1,'Forged completed source')`))).rejects.toThrow();
+  if(outcome==='confirm')await saveMovementEventType(admin,{code:'confirmation',label:'Confirmation',fieldRules:[{field:'businessUnitId',included:true,editable:true,mustChange:false,document:'none'}]});
+  const assignmentBefore=await owner.db.execute(sql`select * from assignment where employment_id=${staff.employmentId}::uuid order by id`);
+  const portQueries:string[]=[],dialect=new PgDialect();
+  const fixedPortOwner={withTenant:async<T>(context:SessionContext,run:(tx:Tx)=>Promise<T>)=>owner.withTenant(context,tx=>run(new Proxy(tx,{get(target,key){
+   if(key==='execute')return (query:Parameters<Tx['execute']>[0])=>{
+    portQueries.push(typeof query==='string'?query:dialect.sqlToQuery(query.getSQL()).sql);
+    return target.execute(query);
+   };
+   const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+  }})))};
   if(held){
    let changed=false;
    const changeAfterFiling={withTenant:async<T>(ctx:SessionContext,run:(tx:Tx)=>Promise<T>)=>{
-    const result=await owner.withTenant(ctx,run);
+    const result=await fixedPortOwner.withTenant(ctx,run);
     if(!changed){
      const [release]=await owner.db.execute<{released:boolean}>(sql`select released_at is not null as released from probation_outcome where id=${decision.id}::uuid`);
      if(release.released){
@@ -279,12 +291,12 @@ describe('real evaluation to signed letter custody',()=>{
    expect(heldOutcome).toMatchObject({failure:expect.stringContaining('canonical Personnel'),movement:null});
    await owner.db.execute(sql`update employment set probation_end_date=${endOn}::date where id=${staff.employmentId}::uuid`);
    expect(await applyProbationOutcome(admin,decision.id)).toEqual({completed:false,queued:true});
-   await sweepProbation(runner,owner);
+   await sweepProbation(runner,fixedPortOwner);
   }else if(outcome==='not_confirm'){
    let releaseAudit!:()=>void,enteredAudit!:()=>void,contender:Promise<void>|undefined;
    const auditGate=new Promise<void>(resolve=>{releaseAudit=resolve}),auditHeld=new Promise<void>(resolve=>{enteredAudit=resolve});
    const competingV9={withTenant:async<T>(ctx:SessionContext,run:(tx:Tx)=>Promise<T>)=>{
-    const result=await owner.withTenant(ctx,run);
+    const result=await fixedPortOwner.withTenant(ctx,run);
     if(!contender){
      const [filed]=await owner.db.execute<{ready:boolean}>(sql`select released_at is not null as ready from probation_outcome where id=${decision.id}::uuid`);
      if(filed.ready){
@@ -304,16 +316,23 @@ describe('real evaluation to signed letter custody',()=>{
     const [waiting]=await owner.db.execute<{handoff:string|null;failure:string|null}>(sql`select handoff_ref as handoff,failure from probation_outcome where id=${decision.id}::uuid`);
     expect(waiting).toEqual({handoff:null,failure:null});
    }finally{releaseAudit();await contender;}
-   await sweepProbation(runner,owner);
-  }else await sweepProbation(runner,owner);
+   await sweepProbation(runner,fixedPortOwner);
+  }else await sweepProbation(runner,fixedPortOwner);
   const[file]=await owner.db.execute<{content:Buffer;documentId:string;released:string}>(sql`select f.content,f.employee_document_id as "documentId",o.released_at::text as released from probation_outcome o join probation_file f on f.id=o.letter_file_id where o.id=${decision.id}::uuid`);expect(file.documentId).toBeTruthy();expect(file.released).toBeTruthy();const{PDFDocument}=await import('pdf-lib');expect((await PDFDocument.load(file.content)).getPageCount()).toBeGreaterThan(0);
-  await sweepProbation(runner,owner);
+  await sweepProbation(runner,fixedPortOwner);
   const [effect]=await owner.db.execute<{outcomeState:string;caseState:string;movement:string|null;handoff:string|null;confirmed:string|null;extended:string|null}>(sql`
    select outcome.state as "outcomeState",c.data->>'state' as "caseState",outcome.movement_ref as movement,outcome.handoff_ref as handoff,
     e.confirmation_date::text as confirmed,e.extended_confirmation_date::text as extended
    from probation_outcome outcome join probation_case c on c.id=outcome.case_id and c.tenant_id=outcome.tenant_id
    join employment e on e.id=c.employment_id and e.tenant_id=c.tenant_id where outcome.id=${decision.id}::uuid`);
   expect(effect.outcomeState).toBe('completed');
+  if(outcome==='confirm'){
+   expect(portQueries.some(query=>query.includes('app.probation_personnel_intent('))).toBe(true);
+   expect(portQueries.filter(query=>/app\.(?:company_organisation_tags|employment_organisation_tags|record_employment_organisation_tags)\(/.test(query))).toEqual([]);
+   expect(await owner.db.execute(sql`select * from assignment where employment_id=${staff.employmentId}::uuid order by id`)).toEqual(assignmentBefore);
+   const written=await owner.db.execute<{fields:string[]}>(sql`select payload->'fields' as fields from domain_event where id=${effect.movement}::uuid`);
+   expect(written).toHaveLength(1);expect(written[0].fields).not.toContain('businessUnitId');
+  }
   if(outcome==='confirm')expect(effect).toMatchObject({caseState:'confirmed',movement:expect.any(String),handoff:null,confirmed:endOn,extended:null});
   if(outcome==='extend'){
    expect(effect).toMatchObject({caseState:'extended',movement:expect.any(String),handoff:null,confirmed:null,extended:addDaysIso(addCalendarMonths(addDaysIso(endOn,1),3),-1)});

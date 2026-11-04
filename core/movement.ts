@@ -2339,9 +2339,10 @@ async function assertMovementFieldRulesTx(
   const { configured, rules } = await movementFieldRulesTx(tx, ctx.tenantId, p.typeCode ?? p.kind, p.kind);
   if (!configured && !documents.length) return documents;
   const current=await baseline();
-  const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId:p.kind==='entityTransfer'&&p.companyId?p.companyId:current.companyId,asOf:p.effectiveDate});
+  // Publication owns manual BU controls globally. A date/pay-only movement needs no
+  // company/tag read, including the released fixed Probation date-only port.
   const managed=await organisationManagedTx(tx);
-  const activeRules=!managed&&tags.status==='legacy'?rules:rules.filter(rule=>rule.field!=='businessUnitId');
+  const activeRules=managed?rules.filter(rule=>rule.field!=='businessUnitId'):rules;
   if(managed&&documents.some(document=>document.field==='businessUnitId'))throw new Error('Business Unit is derived from Group structure and cannot take a manual change document.');
   const changed = new Set(movementDeltas(p,current).changes.map((c) => c.field));
   const supplied = new Set<string>([...documents.map((d) => d.field), ...carriedFields]);
@@ -3084,6 +3085,13 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
   return dispatchMovementEventTx(tx,ctx,rawInput);
 }
 
+/** Only an assignment/company input can require dated organisation normalization.
+ * Date, compensation, grade, flat-information and reporting-only changes do not acquire
+ * an assignment effect or broader company authority through a derived Business Unit. */
+function movementHasOrganisationInput(p:CreateMovementInput){
+ return p.kind==='entityTransfer'||(['departmentId','positionId','businessUnitId','locationId','employmentType'] as const).some(key=>p[key]!==undefined);
+}
+
 /** Private admission data never comes from a form or caller-supplied baseline. */
 async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,futureAdmission?:{baseline?:MovementCurrentState;capture?:(baseline:MovementCurrentState)=>void;expectedBehaviour?:string},correction?:{fromGroupId:string|null;allowInactive?:boolean}){
   const roles = ctx.roles ?? [];
@@ -3095,12 +3103,15 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
   // mapped to, and its code travels on as `typeCode` so the ledger records what HR chose. A type that was
   // switched off is refused here rather than silently applied — that is the whole point of switching it off.
   const p = await resolveInputTypeTx(tx, ctx, rawInput, 'record', {allowInactive:correction?.allowInactive===true});
-  if(isComparisonKind(p.kind)&&isCalendarDate(p.effectiveDate)){
+  if(isComparisonKind(p.kind)&&movementHasOrganisationInput(p)&&isCalendarDate(p.effectiveDate)){
     const current=await movementCurrentStateTx(tx,p.employmentId);
     const companyId=p.kind==='entityTransfer'&&p.companyId?p.companyId:current.companyId;
     await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
     const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId,asOf:p.effectiveDate});
-    p.businessUnitId=organisationBusinessUnit(tags,await organisationManagedTx(tx),p.businessUnitId,p.kind==='entityTransfer'&&companyId!==current.companyId?null:current.businessUnitId);
+    const managed=await organisationManagedTx(tx);
+    // Before first publication, omitted input remains omitted in the retained intent;
+    // the assignment writer already carries existing facts when it actually writes.
+    if(managed||tags.status!=='legacy')p.businessUnitId=organisationBusinessUnit(tags,managed,p.businessUnitId,p.kind==='entityTransfer'&&companyId!==current.companyId?null:current.businessUnitId);
   }
   if(futureAdmission?.expectedBehaviour!==undefined&&p.kind!==futureAdmission.expectedBehaviour)throw new Error('preview_stale_revalidate');
   const execute=async()=>{

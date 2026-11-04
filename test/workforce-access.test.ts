@@ -57,14 +57,21 @@ async function recoverAdminOverride(capabilityId:'workforce.view'|'workforce.mai
 }
 const hire=(label:string)=>hireEmployee(admin(),{person:{fullName:label,primaryEmail:`${randomUUID()}@example.invalid`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
 const page=(ctx:SessionContext,companyIds=[b.companyId])=>listEmployeesPage(ctx,{companyIds,limit:25,offset:0},'workforce');
+// Remove only the explicitly added Personnel filter metadata. Every original key,
+// value, row/order and total still participates in exact parity below.
+const personnelFilterMetadata=['businessGroup','businessGroupId','businessUnitId','confirmationState','jobGradeCode','jobGradeId','parentCompany','parentCompanyId','positionId','quality'];
+const originalListShape=(value:Awaited<ReturnType<typeof listEmployeesPage>>)=>({...value,rows:value.rows.map(row=>Object.fromEntries(Object.entries(row).filter(([key])=>!personnelFilterMetadata.includes(key))))});
+
 async function sqlRefusal(work:Promise<unknown>,state='42501'){
  const error=await work.then(()=>null,error=>error);
  expect(error).not.toBeNull();expect(pgSqlState(error)).toBe(state);
 }
 describe('fresh Workforce-purpose record consumers',()=>{
- it('keeps dormant/default HR list, count and detail identical to the existing projection',async()=>{
+ it('keeps dormant/default HR list values, count and detail identical and adds explicit Personnel filter metadata',async()=>{
   const subject=await hire('Fictional default record');
-  expect(await page(admin())).toEqual(await listEmployeesPage(admin(),{companyIds:[b.companyId],limit:25,offset:0}));
+  const current=await page(admin());
+  expect(originalListShape(current)).toEqual(await listEmployeesPage(admin(),{companyIds:[b.companyId],limit:25,offset:0}));
+  expect(current.rows[0]).toMatchObject({businessGroup:'Acme Sdn Bhd',businessGroupId:b.companyId,businessUnitId:null,confirmationState:'unconfirmed',jobGradeCode:null,jobGradeId:null,parentCompany:null,parentCompanyId:null,positionId:null,quality:{company_not_in_structure:false,missing_business_unit:true,missing_direct_superior:true,missing_job_grade:true}});
   expect(await employeeDetail(admin(),subject.employmentId,'workforce')).toEqual(await employeeDetail(admin(),subject.employmentId));
   expect(await countEmployeesByStatus(admin(),{companyIds:[b.companyId]},'workforce')).toEqual(await countEmployeesByStatus(admin(),{companyIds:[b.companyId]}));
  });
@@ -101,7 +108,7 @@ describe('fresh Workforce-purpose record consumers',()=>{
    const scope={companyIds:[b.companyId],...filter};
    for(const offset of [0,1]){
     const params={...scope,limit:1,offset,sort:'company' as const};
-    expect(await listEmployeesPage(admin(),params,'workforce')).toEqual(await listEmployeesPage(admin(),params));
+    expect(originalListShape(await listEmployeesPage(admin(),params,'workforce'))).toEqual(await listEmployeesPage(admin(),params));
    }
    expect(await countEmployeesByStatus(admin(),scope,'workforce')).toEqual(await countEmployeesByStatus(admin(),scope));
   }
