@@ -22,7 +22,7 @@ it('compares chunked dated-company proof with scalar Home cohorts over more than
  const peers=Array.from({length:1005},(_,i)=>({personId:randomUUID(),employmentId:randomUUID(),name:'Fictional peer '+String(i).padStart(4,'0')}));
  for(let offset=0;offset<peers.length;offset+=250){
   const part=peers.slice(offset,offset+250);
-  await owner.db.insert(schema.person).values(part.map((p,i)=>({id:p.personId,tenantId:b.tenantId,fullName:p.name,dateOfBirth:offset+i<10?'2000-'+on.slice(5):null})));
+  await owner.db.insert(schema.person).values(part.map((p,i)=>({id:p.personId,tenantId:b.tenantId,fullName:p.name,primaryEmail:p.personId+'@example.invalid',dateOfBirth:offset+i<10?'2000-'+on.slice(5):null})));
   await owner.db.insert(schema.employment).values(part.map((p,i)=>({id:p.employmentId,tenantId:b.tenantId,personId:p.personId,companyId:b.companyId,hiredOn,employeeCode:'COHORT'+(offset+i)})));
   await owner.db.insert(schema.assignment).values(part.map(p=>({tenantId:b.tenantId,employmentId:p.employmentId,companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time' as const,validFrom:hiredOn})));
  }
