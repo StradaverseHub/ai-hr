@@ -41,4 +41,3 @@ export function messagesForLocale(locale: Locale): Promise<typeof en> {
   catalogs.set(locale, loading);
   return loading;
 }
-

@@ -5,6 +5,37 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## System performance native reads — 4 November 2026 (unapplied provisional)
+
+`codex/performance-staging-native-20261104` preserves the accepted staging source
+`3b3f94ccdc7bc6e3396caf0db2d103244413b291` and its complete656-entry journal/SQL prefix.
+A fresh read-only ledger check observed656 applied rows through1793330000353. All ordered
+identities match the existing `.github/ci/migration-history.mjs` authority, including its two
+explicit original historical SQL archives; no source or ledger hash is rewritten.
+
+| Tag | idx | when | SQL SHA256 |
+| --- | ---: | ---: | --- |
+|2103_system_performance_read_guards|1350|1793330001503|0f9ec0dfac05dfd46db765cdc868b0dfc14637e4c6266d229dea12f3691f8111|
+
+The fresh source claim scan covered2206 heads/413 unique committed journals and
+184 parsed worktree journals; maximum observed filename/index/timestamp was
+2102/1349/1793330001502. One foreign WIP journal was not valid JSON; its literal
+index/timestamp bounds and SQL filenames were also scanned, remained below those maxima, and
+were preserved. Re-fetch claims and the live ledger before admission; this provisional reservation
+claims no installation priority over other pending work, including main's later AI migrations.
+
+This append owns the qualified Home role reporting-edge precheck, company-grouped visible employment
+query with statement-plan reuse, and indexed necessary-only Attendance task discovery. The Attendance
+keys/indexes derive from the earlier unapplied0887 prototype; its precheck retains all historical
+reporting-line kinds conservatively. The later narrowing0892 prototype is excluded. Future composition
+must reuse this installation rather than replay those old identities. A positive precheck always uses
+the complete existing RLS/decision reader; no permission or result is cached.
+
+The runtime load runner now uses normal journal migration rather than post-migration experimental
+SQL installation. Existing applied SQL bytes remain unchanged. Complete BOARD roles0936–0945 remain
+excluded. Native concurrency/security, populated-upgrade, browser and both500-user checks are still
+required for this new aggregate. No deployment or provider-approval-binding update is authorized.
+
 ## Nine-item BOARD split: post-Noveri refresh — 3 November 2026 (unapplied)
 
 The nine-item candidate preserves the complete648-entry journal from aligned main/alpha

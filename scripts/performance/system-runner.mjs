@@ -100,15 +100,7 @@ try{
  await run('migrate','pnpm',['db:migrate']);
  // Apply only to this workflow's job-owned database. This is a load experiment,
  // separate from release migration allocation.
- const homeRoleGuard=readFileSync('test/performance/home-role-reporting-guard.sql','utf8');
- await run('home-role-guard','docker',['exec',container,'psql','-U','postgres','-p','5433',
-  '-d','ai_hr_dev','-v','ON_ERROR_STOP=1','-c',homeRoleGuard]);
- const visibilityGuard=readFileSync('test/performance/visible-employment-company-guard.sql','utf8');
- await run('visibility-company-guard','docker',['exec',container,'psql','-U','postgres','-p','5433',
-  '-d','ai_hr_dev','-v','ON_ERROR_STOP=1','-c',visibilityGuard]);
- const visibilityPlan=readFileSync('test/performance/visible-employment-plan-cache.sql','utf8');
- await run('visibility-plan-cache','docker',['exec',container,'psql','-U','postgres','-p','5433',
-  '-d','ai_hr_dev','-v','ON_ERROR_STOP=1','-c',visibilityPlan]);
+ // Native performance helpers are installed through the ordinary migration journal.
  copyFileSync(join(focusedEvidence,'personnel-draft-discard-premigration-role-prerequisites.json'),join(out,'personnel-draft-discard-premigration-role-prerequisites.json'));
  await run('catalogs',process.execPath,['--import','tsx','scripts/seed-catalogs.ts']);
  await run('fixture',process.execPath,['--import','tsx','scripts/performance/system-fixture.mjs'],{...env,NODE_ENV:'development',TEST_DATABASE_URL:env.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:env.MIGRATION_DATABASE_URL},600000);
