@@ -6,7 +6,9 @@
  *     one open card; the other five off, never run, nothing counted;
  *  2. loopDetail's row for each loop is the overview's row;
  *  3. the tenant stop switch: every loop stopped and not running, the probation switch still on with its sponsor;
- *  4. the work: the overview sends at most 10 statements for the six loops (it sent about 50: seven per loop plus two).
+ *  4. the work: the overview sends at most 10 statements for the six loops (it sent about 50: seven per loop plus two),
+ *     and the loop cards (Today and the "Before payroll" checklist) read the switches and the stop switch once each
+ *     (they read both once per loop).
  * Expected values are written out from the fixture, never re-derived from the owners. */
 import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
@@ -87,4 +89,10 @@ describe('the Loops overview, read in one batch',()=>{
   expect(sent.filter(text=>/from "teras_mandate_control"/.test(text))).toHaveLength(1);
  });
 
+ it('reads the loop cards\' gates once, and still shows the running loop\'s card',async()=>{
+  const {value,sent}=await statements(()=>readLoopCards(group,{scopeIds:[b.companyId],admin:true,today:TODAY}));
+  expect(value.map(card=>card.kind==='probation'?[card.kind,card.name,card.endDate]:[card.kind])).toEqual([['probation','Fictional Probationer',PROBATION_ENDS]]);
+  expect(sent.filter(text=>/from "teras_worker_control"/.test(text))).toHaveLength(1);
+  expect(sent.filter(text=>/from "teras_mandate_control"/.test(text))).toHaveLength(1);
+ });
 });

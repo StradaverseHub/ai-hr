@@ -12,7 +12,7 @@ import {company,employment,person} from '../../db/schema';
 import {terasLoopCase,terasLoopPause} from '../../db/teras-schema';
 import {terasLoopLevel} from '../../db/teras-autonomy-schema';
 import {assignedApprovalHref} from '../../lib/assigned-approval-focus';
-import {workerRunGateTx} from '../agent-registry/controls';
+import {workerRunGatesTx} from '../agent-registry/controls';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {PAYROLL_INPUTS_LEAD_DAYS,daysBetween} from './period';
 import {LOOP_IDS,type LoopFacts,type LoopId} from './types';
@@ -63,8 +63,9 @@ export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:read
  return withTenant(ctx,async tx=>{
   // P2-1: open undo windows and automatic moves down are shown whether or not the loop still runs.
   const autonomy=await readAutonomyCardsTx(tx,ctx,{scopeIds:p.scopeIds,admin:p.admin});
-  const live:LoopId[]=[];
-  for(const id of LOOP_IDS)if((await workerRunGateTx(tx,ctx,id)).run)live.push(id);
+  // Every loop's gate, each as workerRunGateTx answers it, read in one pass (AI Centre navigation speed, 4 Nov 2026).
+  const gates=await workerRunGatesTx(tx,ctx,LOOP_IDS);
+  const live:LoopId[]=LOOP_IDS.filter(id=>gates.get(id)?.gate.run===true);
   if(!live.length)return autonomy;
   const paused=new Set((await tx.select({workerId:terasLoopPause.workerId,companyId:terasLoopPause.companyId}).from(terasLoopPause)
    .where(and(eq(terasLoopPause.tenantId,ctx.tenantId),eq(terasLoopPause.paused,true)))).map(row=>`${row.workerId}:${row.companyId}`));

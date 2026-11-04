@@ -13,7 +13,9 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 
 const fx=vi.hoisted(()=>({cutOffRow:true as boolean,cutOffDay:20 as number|null,modules:{} as Record<string,boolean>,fail:new Set<string>(),calls:[] as unknown[][],
- own:true as boolean,gaps:null as null|unknown[],tp3Answer:null as null|'yes'|'no'}));
+ own:true as boolean,gaps:null as null|unknown[],tp3Answer:null as null|'yes'|'no',
+ // AI Centre navigation speed: holds the person's own employment read until released, to see what runs meanwhile.
+ subjectGate:null as null|Promise<void>,subjectFails:false as boolean}));
 const failing=(name:string)=>{if(fx.fail.has(name))throw new Error('Fictional owner failure: '+name);};
 
 // The only direct query is app.own_payroll_cut_off_day (migration 0967): one row for the person's own employment, or none.
@@ -26,7 +28,8 @@ vi.mock('../core/entitlements',()=>{
 });
 vi.mock('../core/employee-home',()=>{
  class HomeAccessError extends Error{constructor(readonly code:string){super('no own subject');}}
- return {HomeAccessError,requireOwnHomeSubject:async()=>{if(!fx.own)throw new HomeAccessError('employmentUnavailable');
+ return {HomeAccessError,requireOwnHomeSubject:async()=>{fx.calls.push(['requireOwnHomeSubject']);if(fx.subjectGate)await fx.subjectGate;
+  if(fx.subjectFails)throw new Error('Fictional employment read failure');if(!fx.own)throw new HomeAccessError('employmentUnavailable');
   return {employmentId:'emp-own',currentCompanyId:'co-1',companyProof:{companyId:'co-1'}};}};
 });
 vi.mock('../packs/payroll/service',()=>({
@@ -118,7 +121,7 @@ const CTX={tenantId:'00000000-0000-4000-8000-000000000001',userId:'00000000-0000
 const TODAY='2026-11-10';
 const read=()=>readMyPayrollReadiness(CTX,{today:TODAY,locale:'en'});
 const brief=(rows:readonly PayrollItem[])=>rows.map(row=>[row.kind,row.state,row.date,row.due,row.action.kind==='confirm'?'confirm:'+row.action.caseId:row.action.kind==='answer'?'answer:'+row.action.href:row.action.href]);
-beforeEach(()=>{fx.cutOffRow=true;fx.cutOffDay=20;fx.modules={};fx.fail=new Set();fx.calls=[];fx.own=true;fx.gaps=null;fx.tp3Answer=null;});
+beforeEach(()=>{fx.cutOffRow=true;fx.cutOffDay=20;fx.modules={};fx.fail=new Set();fx.calls=[];fx.own=true;fx.gaps=null;fx.tp3Answer=null;fx.subjectGate=null;fx.subjectFails=false;});
 
 describe('the person\'s own items, every kind',()=>{
  it('lists each pending thing with its state, day, due date and one action, the most urgent first',async()=>{
@@ -287,6 +290,38 @@ describe('honest states',()=>{
  it('an agent session or a session with no login reads nothing',async()=>{
   expect(await readMyPayrollReadiness({...CTX,agent:{principalId:'x'}} as never,{today:TODAY})).toBeNull();
   expect(await readMyPayrollReadiness({...CTX,userId:undefined} as never,{today:TODAY})).toBeNull();
+ });
+});
+
+describe('AI Centre navigation speed: the approvals read runs while the employment and period are read',()=>{
+ it('asks the approvals owner before the person\'s own employment is known, with the same call and the same result',async()=>{
+  let release!:()=>void;fx.subjectGate=new Promise<void>(resolve=>{release=resolve;});
+  const pending=read();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  // The approvals owner is asked first and, while the employment read waits, the period (it needs the employment) is not.
+  expect(fx.calls.map(call=>call[0])).toEqual(['listPendingTasks','requireOwnHomeSubject']);
+  release();
+  const result=(await pending)!;
+  expect(fx.calls.filter(call=>call[0]==='listPendingTasks')).toEqual([['listPendingTasks',undefined,{attendance:true,claims:true,performance:false,rewards:false},{noticeAcknowledgements:false}]]);
+  expect(fx.calls.filter(call=>call[0]==='ownCutOff')).toHaveLength(1);
+  // Due by the salary cut-off the period read returned afterwards, as before.
+  expect(result.approvals.map(row=>[row.kind,row.due])).toEqual([['approve_leave','2026-11-19'],['approve_leave_cancellation','2026-11-19'],
+   ['approve_attendance','2026-11-19'],['approve_claim','2026-11-19'],['approve_toil','2026-11-19']]);
+  expect(result.groups.find(row=>row.group==='approvals')).toEqual({group:'approvals',status:'todo'});
+ });
+ it('a failed approvals read is still "could not check" once the rest is known',async()=>{
+  fx.fail.add('approvals');
+  const result=(await read())!;
+  expect(result.approvals).toEqual([]);
+  expect(result.groups.find(row=>row.group==='approvals')).toEqual({group:'approvals',status:'unknown'});
+  expect(result.failed).toBe(true);
+ });
+ it('an employment read that throws still throws, and the approvals read already started leaves nothing unhandled',async()=>{
+  fx.subjectFails=true;fx.fail.add('approvals');
+  await expect(read()).rejects.toThrow('Fictional employment read failure');
+  expect(fx.calls.map(call=>call[0])).toEqual(['listPendingTasks','requireOwnHomeSubject']);
+  // Give the settled approvals read time to finish: an unhandled rejection would fail this file.
+  await new Promise(resolve=>setTimeout(resolve,0));
  });
 });
 
