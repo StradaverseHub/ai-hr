@@ -6,7 +6,8 @@ import { acknowledgedBlocks, swingFlagGroups } from '@/core/loops/grouped-dispos
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../../operations-tabs';
-import { acknowledgeCheckAction, disposeSwingGroupAction, recordSwingDispositionAction, resolveAcknowledgedBlockAction } from '../actions';
+import { PayrollCycleSubnav } from '@/components/ai-centre/centre-tabs';
+import { acknowledgeCheckAction, disposeSwingGroupAction, recordSwingDispositionAction } from '../actions';
 
 /** AI v2 P2-2a — the Salary payroll loop's page: each company's runs for the month (regular, bonus and off-cycle) with
  * their checks as the loop's last run recorded them, and the net-swing flags for payroll HR's disposition. Payroll
@@ -30,9 +31,6 @@ export default async function SalaryLoopPage({ searchParams }: { searchParams: P
   const [t, f, view] = await Promise.all([getTranslations('aiCentre.payrollCycle'), getFormatter(), salaryLoopPage(s, { period: query.period, companyId: query.company })]);
   const error = ERRORS.find(code => code === query.error), saved = SAVED.find(code => code === query.saved);
   const groups = swingFlagGroups(view.flags);
-  // The anomaly layer's own detector names (messages anomaly.detector.*), keyed in camel case.
-  const ta = await getTranslations('anomaly');
-  const detectorName = (id: string) => ta(`detector.${id.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())}`);
   const blocks = await acknowledgedBlocks(s, { companyIds: view.companies.map(c => c.companyId), payPeriod: view.period });
   const stay = (<><input type="hidden" name="back" value="salary" /><input type="hidden" name="period" value={view.period} />
     {view.filter && <input type="hidden" name="company" value={view.filter} />}</>);
@@ -46,7 +44,8 @@ export default async function SalaryLoopPage({ searchParams }: { searchParams: P
   const bankText = (run: SalaryRunView) => t(`bank.${run.bank}`);
   return (
     <div className={pageWideCls}>
-      <OperationsTabs session={s} active="loops" />
+      <OperationsTabs session={s} active="payrollCycle" />
+      <PayrollCycleSubnav active="salary" />
       <PageHeader back={{ href: back, label: t('backToCycle') }} title={t('salaryPage.title', { month: month(view.period) })} description={t('salaryPage.description')}
         actions={<span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium">{t('salaryPage.level')}</span>} />
       {error && <ErrorBanner message={t(`errors.${error}`)} />}
@@ -76,7 +75,7 @@ export default async function SalaryLoopPage({ searchParams }: { searchParams: P
                         <span className="block text-xs text-muted-foreground">{t('salaryPage.employees', { count: run.employees })}</span></td>
                       <td className="px-4 py-3">{run.status === 'draft' ? <span className="text-muted-foreground">{t('salaryPage.afterProcessing')}</span>
                         : !run.evaluated ? <span className="text-muted-foreground">{t('salaryPage.notEvaluated', { count: run.detectors })}</span>
-                          : <Link href={`/payroll/${run.batchId}/anomalies`} className={cn(link, run.exceptions ? ATTENTION : DONE)}>
+                          : <Link href={run.exceptions ? '/control-tower/exceptions' : `/payroll/${run.batchId}/anomalies`} className={cn(link, run.exceptions ? ATTENTION : DONE)}>
                             {run.exceptions ? t('salary.value.exceptions', { count: run.exceptions }) : t('salary.value.noExceptions')}</Link>}</td>
                       <td className="px-4 py-3">{run.status === 'draft' ? <span className="text-muted-foreground">{t('salaryPage.afterProcessing')}</span> : <>
                         <span>{t('salaryPage.changed', { count: run.changed })}</span>
@@ -129,22 +128,11 @@ export default async function SalaryLoopPage({ searchParams }: { searchParams: P
         <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('groups.note')}</p>
       </Card>}
 
-      {blocks.length > 0 && <Card className="overflow-hidden" data-acknowledged-blocks>
-        <SectionHeader title={t('acknowledgedBlocks.title')} subtitle={t('acknowledgedBlocks.help')} />
-        <ul className="m-0 flex list-none flex-col divide-y divide-border border-t border-border p-0">
-          {blocks.map(block => (
-            <li key={block.verdictId} data-acknowledged-block={block.verdictId} className="flex flex-col gap-2 px-4 py-3 text-sm">
-              <p className="m-0 font-medium">{block.personName ?? t('flags.unnamed')}
-                <span className="ml-2 text-xs font-normal text-muted-foreground">{block.detectors.map(detectorName).join(', ')}</span></p>
-              <form action={resolveAcknowledgedBlockAction} className="flex flex-wrap items-end gap-2">
-                {stay}<input type="hidden" name="target" value={block.companyId} /><input type="hidden" name="verdict" value={block.verdictId} />
-                <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs"><span className="text-muted-foreground">{t('acknowledgedBlocks.prefilled')}</span>
-                  <input readOnly value={block.reason} className={cn(inputCls, 'pointer-coarse:min-h-11')} /></label>
-                <button type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${t('acknowledgedBlocks.resolve')} · ${block.personName ?? t('flags.unnamed')}`}>{t('acknowledgedBlocks.resolve')}</button>
-              </form>
-            </li>
-          ))}
-        </ul>
+      {/* Owner decision 28: payroll exceptions are resolved on Exceptions only. This page counts the acknowledged blocking
+          exceptions of its month and links there, where each waits with its pre-filled resolve. */}
+      {blocks.length > 0 && <Card className="flex flex-wrap items-center justify-between gap-3 p-4" data-acknowledged-blocks={blocks.length}>
+        <p className="m-0 text-sm">{t('acknowledgedBlocks.count', { count: blocks.length })}</p>
+        <Link href="/control-tower/exceptions#acknowledged-blocks" className={link}>{t('acknowledgedBlocks.open')}</Link>
       </Card>}
 
       <Card className="overflow-hidden">

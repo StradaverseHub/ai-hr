@@ -36,7 +36,9 @@
       "opportunities": "Opportunities",
       "workers": "Workers",
       "setup": "Setup",
-      "spend": "Spend and providers"
+      "spend": "Spend and providers",
+      "payrollCycle": "Payroll cycle",
+      "buildList": "Build list"
     },
     "loops": {
       "title": "Loops",
@@ -324,6 +326,18 @@
         "blankHelp": "Leave a field blank if you do not know it. Up to {max} minutes, with at most one decimal.",
         "save": "Save the baseline",
         "cancel": "Cancel"
+      },
+      "processes": {
+        "title": "Where the work is",
+        "description": "Each process measured from your records: cases, how long they take, rework and staff actions per 30 days, and what changed after the Assistant was first used. Ranked by staff handling.",
+        "unavailable": "These figures could not be read just now.",
+        "estimate": "About {hours} h of staff time a month.",
+        "estimateLabel": "Estimated with the stored baseline’s {minutes} minutes per staff action, not a measurement.",
+        "minutesFromBaseline": "Hours are estimated from {company}’s stored baseline: {minutes} minutes per staff action.",
+        "minutesNoBaseline": "Set {company}’s baseline to estimate hours: its minutes per staff action are the only minutes used here.",
+        "minutesSeveral": "These figures cover every company you administer, so no hours are estimated: a company’s stored baseline describes that company only.",
+        "limitHours": "Hours appear only from a stored baseline’s minutes per staff action, never as a headcount. No savings are claimed until an agent runs and the before-and-after is measured.",
+        "setBaseline": "Set the baseline for {company}"
       }
     },
     "subnav": {
@@ -339,12 +353,14 @@
     "titles": {
       "workers": "Workers",
       "setup": "Setup",
-      "spend": "Spend and providers"
+      "spend": "Spend and providers",
+      "buildList": "Build list"
     },
     "descriptions": {
       "workers": "Every automated worker, grouped by what it does, with its switch and what it did last.",
       "setup": "Whether the AI can run for your company, and how the assistant is offered.",
-      "spend": "Allowances, spending, the model provider and recent model calls."
+      "spend": "Allowances, spending, the model provider and recent model calls.",
+      "buildList": "Agent capabilities ranked by the handling they would take off HR, measured from your records, with the complete export. For group administrators."
     },
     "inbox": {
       "title": "Inbox",
@@ -408,7 +424,7 @@
     },
     "insights": {
       "title": "Insights",
-      "description": "What is pending before payroll, for you and for the requests you approve."
+      "description": "HR capacity and AI quality, for the companies you administer."
     },
     "jobs": {
       "title": "Delegated jobs",
@@ -1526,7 +1542,9 @@
         "title": "Blocking exceptions with a standing acknowledgement",
         "help": "A block is never hidden. The resolve is filled in from the acknowledgement; press it if it still holds this run.",
         "prefilled": "Resolution (from the acknowledgement)",
-        "resolve": "Resolve as expected"
+        "resolve": "Resolve as expected",
+        "count": "{count, plural, one {# blocking exception this month has} other {# blocking exceptions this month have}} a standing acknowledgement. They are resolved on Exceptions.",
+        "open": "Open Exceptions"
       },
       "acknowledge": {
         "reason": "Why it is expected",
@@ -1972,7 +1990,7 @@
       },
       "proposals": {
         "title": "Proposals",
-        "help": "Changes the loops propose from your own decisions. Each applies only when an administrator approves it, from the next run, and can be reverted. Promotions are decided on each loop’s page, never here.",
+        "help": "Changes the loops propose from your own decisions. Each applies only when an administrator approves it in payroll-cycle Settings, from the next run, and can be changed back there. Promotions are decided on each loop’s page.",
         "change": "Change",
         "evidence": "Evidence",
         "state": "State",
@@ -1983,7 +2001,9 @@
         "applied": "Applied {date}",
         "approved": "Approve",
         "rejected": "Reject",
-        "revert": "Revert"
+        "revert": "Revert",
+        "decideInSettings": "Decide in Settings",
+        "changeInSettings": "Change in Settings"
       },
       "loopCorrections": {
         "title": "Loop corrections by month",
@@ -2005,6 +2025,23 @@
         "access": "Only HR and group administrators see this page, for the companies they administer. Every figure is a count, or a share of counts, from AI Centre’s own records about its work.",
         "privacy": "A conversation about a sensitive topic stores no words and is never counted here. Nothing learned here leaves your company unless you export it, and learning never changes calculations, permissions or what AI Centre may show."
       }
+    },
+    "payrollCycleSubnavLabel": "Payroll cycle pages",
+    "payrollCyclePages": {
+      "pre": "Pre-salary",
+      "salary": "Salary payroll",
+      "settings": "Settings",
+      "audit": "Audit"
+    },
+    "exceptions": {
+      "fixedTitle": "Cause already fixed",
+      "inGroups": "{count, plural, one {# exception is} other {# exceptions are}} listed in the groups above.",
+      "resolveThere": "Resolve on Exceptions"
+    },
+    "readiness": {
+      "notChecked": "Not yet checked by the HR engine",
+      "loopAsked": "The loop asked the employee on {date}",
+      "loopWaiting": "The employee's request waits for HR approval"
     }
   },
   "today": {
@@ -2056,12 +2093,12 @@
     "findings": {
       "setupTitle": "{count, plural, one {# setup stage needs attention} other {# setup stages need attention}}",
       "setupSource": "From today's prepared digest",
-      "setupCta": "Open readiness",
+      "setupCta": "Open setup",
       "readinessTitle": "{count, plural, one {# employee record is missing required data} other {# employee records are missing required data}}",
       "readinessSource": "Record readiness",
       "readinessCta": "Fix records",
       "proposalsTitle": "{count, plural, one {# prepared fix waits for your approval} other {# prepared fixes wait for your approval}}",
-      "proposalsSource": "Proposed actions",
+      "proposalsSource": "Exceptions · cause already fixed",
       "proposalsCta": "Review fixes",
       "letterRequestsTitle": "{count, plural, one {# letter request waits for you} other {# letter requests wait for you}}",
       "letterRequestsSource": "Employee letter requests",
@@ -2850,6 +2887,15 @@
         "own": "You have items of your own to finish before the payroll cut-off. Open Before payroll on Today to see them.",
         "approvals": "Requests are waiting for your decision before the payroll cut-off. Open Before payroll on Today to see them.",
         "both": "You have items of your own to finish and requests waiting for your decision before the payroll cut-off. Open Before payroll on Today to see them."
+      }
+    },
+    "backToToday": "Back to Today"
+  },
+  "payroll": {
+    "controlTower": {
+      "exceptions": {
+        "help": "Most urgent first: anything blocking a run, then whatever has waited longest. This is the one place an exception is resolved; each run’s own page links here.",
+        "whyBody": "How often the checks are wrong and how long an exception waits cannot be worked out until somebody decides these. Until then Insights › AI quality shows what is missing instead of a number, on purpose."
       }
     }
   }

@@ -6,6 +6,7 @@ import { PRE_SALARY_CHECKS, PRE_SALARY_CHECK_HREF, type PreSalaryCheckKey } from
 import { Card, PageHeader, SectionHeader, btnGhost, pageWideCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../operations-tabs';
+import { PayrollCycleSubnav } from '@/components/ai-centre/centre-tabs';
 import { AuditLoopCard, bankReconciliation } from './audit-loop-card';
 // The group state rule (the worst company's state) and its tones are shared with the Operations › Loops list.
 import { ATTENTION, DONE, payrollLoopStates, pill } from './loop-states';
@@ -38,7 +39,8 @@ export default async function PayrollCyclePage({ searchParams }: { searchParams:
     : t('headerGroup', { due: day(view.statutoryDue) });
   return (
     <div className={pageWideCls}>
-      <OperationsTabs session={s} active="loops" />
+      <OperationsTabs session={s} active="payrollCycle" />
+      <PayrollCycleSubnav active="pre" />
       <PageHeader back={{ href: '/control-tower/loops', label: tl('back') }} title={t('title', { month: month(view.period) })}
         description={<>{t('description')} {header}</>}
         actions={view.allowed.length > 1 && (

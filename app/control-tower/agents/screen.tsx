@@ -56,7 +56,8 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const byFamily = groupByFamily(view.features, feature=>FEATURE_PLACEMENT[feature.id].family);
   const queue = section==='orchestrator' ? await orchestrationQueue(s) : null;
   // WP12 (R8, R20): the inventory section, the alert banner on every section, and paged, dated run history.
-  const inventory = section==='inventory' ? await aiInventoryView(s, view) : null;
+  // AI Centre restructure: Workers is the one list of AI pieces, so the inventory (and its audit columns) is read here.
+  const inventory = section==='features' ? await aiInventoryView(s, view) : null;
   // Awaited here (not rendered as an async child) so the section renders wherever the screen does.
   const inventorySection = inventory ? await AiInventorySection({inventory,mayPause:isGroupAdmin(s)}) : null;
   const alertBanner = await aiManagementAlerts(s, view);
@@ -176,7 +177,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const filtered = !!(runFilter.state||runFilter.feature);
   const defaultUse = {daily:{used:0,limit:view.userDefault?.dailyRequests??null,level:null},tokens:{used:0,limit:view.userDefault?.monthlyTokens??null,level:null},enabled:view.userDefault?.enabled!==false,maxConcurrent:view.userDefault?.maxConcurrent??null};
   return <div className={pageWideCls}>
-    <AiCentreGroupTabs group="administration" active={group} payroll={false} />
+    <AiCentreGroupTabs group="administration" active={group} payroll={false} groupAdmin={isGroupAdmin(s)} />
     <PageHeader title={tc(`titles.${group}`)} description={tc(`descriptions.${group}`)}/>
     <AiCentreSubnav group={group} active={section==='orchestrator'?'overview':section} available={sections} hrefOf={aiManagementHref}/>
     {/* Provider and Assistant pages own their refusal wording; elsewhere the banner shows owned sentences. */}
@@ -193,7 +194,6 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       <p className="mt-2 text-xs text-muted-foreground">{t('inv.alerts.help')}</p>
     </section>}
     {alertBanner.status==='unavailable'&&<p role="status" className="rounded-xl border border-border p-4 text-sm text-muted-foreground">{t('inv.alerts.unavailable')}</p>}
-    {section==='inventory'&&inventorySection}
     {section==='overview'&&<Card id="ai-map" className="scroll-mt-4 p-5">
       <SectionHeader title={t('mapTitle')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('mapIntro')}</p>
       <ul className="mt-3 divide-y divide-border">{map.map(row=><li key={row.key} className="flex flex-wrap items-start justify-between gap-3 py-3">
@@ -245,6 +245,8 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       <SectionHeader title={tc('workers.systemJobsTitle')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{tc('workers.systemJobsHelp')}</p>
       <Link href="/admin/scheduled-actions" className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{tc('workers.systemJobsLink')}</Link>
     </Card>}
+    {/* The inventory and audit columns, on the same page: the one list of every AI piece (owner decision 29). */}
+    {section==='features'&&inventorySection}
     {section==='allowances'&&<>
     <Card id="company-limits" className="scroll-mt-4 p-5">
       <SectionHeader title={t('companyLimits')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('limitHelp')}</p><p className="mt-1 max-w-4xl text-xs text-muted-foreground">{t('concurrentHelp')}</p><p className="mt-2 max-w-4xl text-xs text-muted-foreground">{t('attribution')}</p>
@@ -334,7 +336,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         <button className={btnPrimary}>{t('save')}</button>
       </form></Card>}
     {(section==='provider'||section==='assistant')&&children}
-    {section==='orchestrator'&&queue&&<section id="orchestrator" aria-labelledby="ai-orchestrator-heading" className="scroll-mt-4 rounded-xl border border-border p-5"><h2 id="ai-orchestrator-heading" className="font-semibold">{t('orchestrator')}</h2><p className="my-3 max-w-4xl text-sm text-muted-foreground">{t('orchestratorHelp')}</p><OrchestrationWorkQueue returnTo="/control-tower/agents" view={queue} refresh={sp.refresh} canViewRuns={isGroupAdmin(s)}/></section>}
+    {section==='orchestrator'&&queue&&<section id="orchestrator" aria-labelledby="ai-orchestrator-heading" className="scroll-mt-4 rounded-xl border border-border p-5"><h2 id="ai-orchestrator-heading" className="font-semibold">{t('orchestrator')}</h2><p className="my-3 max-w-4xl text-sm text-muted-foreground">{t('orchestratorHelp')}</p><OrchestrationWorkQueue view={queue} refresh={sp.refresh} canViewRuns={isGroupAdmin(s)}/></section>}
     {section==='runs'&&<Card id="ai-runs" className="scroll-mt-4 overflow-hidden"><div className="p-5"><SectionHeader title={t('recentRuns')}/><p className="mt-1 text-sm text-muted-foreground">{t('runsHelp')}</p>
       {isGroupAdmin(s)&&<form method="get" action={aiManagementHref('runs',{anchor:'#ai-runs'})} className="mt-3 flex flex-wrap items-end gap-3 text-xs">
         {query&&<input type="hidden" name="q" value={query}/>}

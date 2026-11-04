@@ -36,7 +36,9 @@
       "opportunities": "Peluang",
       "workers": "Ejen",
       "setup": "Persediaan",
-      "spend": "Perbelanjaan dan penyedia"
+      "spend": "Perbelanjaan dan penyedia",
+      "payrollCycle": "Kitaran gaji",
+      "buildList": "Senarai bina"
     },
     "loops": {
       "title": "Gelung",
@@ -324,6 +326,18 @@
         "blankHelp": "Biarkan medan kosong jika anda tidak tahu. Sehingga {max} minit, dengan paling banyak satu perpuluhan.",
         "save": "Simpan garis dasar",
         "cancel": "Batal"
+      },
+      "processes": {
+        "title": "Di mana kerja berlaku",
+        "description": "Setiap proses diukur daripada rekod anda: kes, tempoh, kerja semula dan tindakan kakitangan setiap 30 hari, serta apa yang berubah selepas Pembantu mula digunakan. Disusun mengikut pengendalian kakitangan.",
+        "unavailable": "Angka ini tidak dapat dibaca buat masa ini.",
+        "estimate": "Kira-kira {hours} jam masa kakitangan sebulan.",
+        "estimateLabel": "Dianggarkan dengan {minutes} minit setiap tindakan kakitangan daripada garis dasar yang disimpan, bukan ukuran.",
+        "minutesFromBaseline": "Jam dianggarkan daripada garis dasar {company} yang disimpan: {minutes} minit setiap tindakan kakitangan.",
+        "minutesNoBaseline": "Tetapkan garis dasar {company} untuk menganggarkan jam: minit setiap tindakan kakitangannya ialah satu-satunya minit yang digunakan di sini.",
+        "minutesSeveral": "Angka ini meliputi setiap syarikat yang anda tadbir, jadi tiada jam dianggarkan: garis dasar sesebuah syarikat hanya menerangkan syarikat itu.",
+        "limitHours": "Jam hanya dipaparkan daripada minit setiap tindakan kakitangan dalam garis dasar yang disimpan, tidak sekali-kali sebagai bilangan kakitangan. Tiada penjimatan dituntut sehingga ejen berjalan dan perbandingan sebelum dan selepas diukur.",
+        "setBaseline": "Tetapkan garis dasar untuk {company}"
       }
     },
     "subnav": {
@@ -339,12 +353,14 @@
     "titles": {
       "workers": "Ejen",
       "setup": "Persediaan",
-      "spend": "Perbelanjaan dan penyedia"
+      "spend": "Perbelanjaan dan penyedia",
+      "buildList": "Senarai bina"
     },
     "descriptions": {
       "workers": "Setiap ejen automatik, dikumpulkan mengikut tugasnya, dengan suisnya dan perkara terakhir yang dilakukannya.",
       "setup": "Sama ada AI boleh berjalan untuk syarikat anda, dan cara pembantu ditawarkan.",
-      "spend": "Peruntukan, perbelanjaan, penyedia model dan panggilan model terkini."
+      "spend": "Peruntukan, perbelanjaan, penyedia model dan panggilan model terkini.",
+      "buildList": "Keupayaan ejen disusun mengikut kerja pengendalian yang boleh diambil alih daripada HR, diukur daripada rekod anda, dengan eksport lengkap. Untuk pentadbir kumpulan."
     },
     "inbox": {
       "title": "Peti masuk",
@@ -408,7 +424,7 @@
     },
     "insights": {
       "title": "Wawasan",
-      "description": "Perkara yang belum selesai sebelum gaji, untuk anda dan untuk permohonan yang anda luluskan."
+      "description": "Kapasiti HR dan kualiti AI, untuk syarikat yang anda tadbir."
     },
     "jobs": {
       "title": "Tugas diwakilkan",
@@ -1526,7 +1542,9 @@
         "title": "Pengecualian menyekat dengan pengakuan tetap",
         "help": "Sekatan tidak pernah disembunyikan. Penyelesaian diisi daripada pengakuan; tekan jika ia masih berlaku untuk larian ini.",
         "prefilled": "Penyelesaian (daripada pengakuan)",
-        "resolve": "Selesaikan sebagai dijangka"
+        "resolve": "Selesaikan sebagai dijangka",
+        "count": "{count, plural, other {# pengecualian menyekat bulan ini}} mempunyai pengakuan tetap. Ia diselesaikan di Pengecualian.",
+        "open": "Buka Pengecualian"
       },
       "acknowledge": {
         "reason": "Mengapa ia dijangka",
@@ -1972,7 +1990,7 @@
       },
       "proposals": {
         "title": "Cadangan",
-        "help": "Perubahan yang dicadangkan oleh gelung daripada keputusan anda sendiri. Setiap satu hanya digunakan apabila pentadbir meluluskannya, mulai larian seterusnya, dan boleh dikembalikan. Kenaikan tahap diputuskan di halaman setiap gelung, bukan di sini.",
+        "help": "Perubahan yang dicadangkan oleh gelung berdasarkan keputusan anda sendiri. Setiap satu hanya berkuat kuasa apabila pentadbir meluluskannya di Tetapan kitaran gaji, mulai larian seterusnya, dan boleh diubah semula di situ. Kenaikan tahap diputuskan di halaman setiap gelung.",
         "change": "Perubahan",
         "evidence": "Bukti",
         "state": "Keadaan",
@@ -1983,7 +2001,9 @@
         "applied": "Digunakan {date}",
         "approved": "Luluskan",
         "rejected": "Tolak",
-        "revert": "Kembalikan"
+        "revert": "Kembalikan",
+        "decideInSettings": "Putuskan di Tetapan",
+        "changeInSettings": "Ubah di Tetapan"
       },
       "loopCorrections": {
         "title": "Pembetulan gelung mengikut bulan",
@@ -2005,6 +2025,23 @@
         "access": "Hanya pentadbir HR dan kumpulan melihat halaman ini, bagi syarikat yang mereka tadbir. Setiap angka ialah kiraan, atau bahagian kiraan, daripada rekod AI Centre sendiri tentang kerjanya.",
         "privacy": "Perbualan tentang topik sensitif tidak menyimpan sebarang perkataan dan tidak pernah dikira di sini. Tiada apa yang dipelajari di sini keluar dari syarikat anda melainkan anda mengeksportnya, dan pembelajaran tidak pernah mengubah pengiraan, kebenaran atau apa yang boleh ditunjukkan oleh AI Centre."
       }
+    },
+    "payrollCycleSubnavLabel": "Halaman kitaran gaji",
+    "payrollCyclePages": {
+      "pre": "Pra-gaji",
+      "salary": "Penggajian",
+      "settings": "Tetapan",
+      "audit": "Audit"
+    },
+    "exceptions": {
+      "fixedTitle": "Punca sudah dibetulkan",
+      "inGroups": "{count, plural, other {# pengecualian}} disenaraikan dalam kumpulan di atas.",
+      "resolveThere": "Selesaikan di Pengecualian"
+    },
+    "readiness": {
+      "notChecked": "Belum disemak oleh enjin HR",
+      "loopAsked": "Gelung telah meminta pekerja pada {date}",
+      "loopWaiting": "Permohonan pekerja menunggu kelulusan HR"
     }
   },
   "today": {
@@ -2056,12 +2093,12 @@
     "findings": {
       "setupTitle": "{count, plural, other {# peringkat persediaan perlukan perhatian}}",
       "setupSource": "Daripada ringkasan harian yang disediakan hari ini",
-      "setupCta": "Buka kesediaan",
+      "setupCta": "Buka persediaan",
       "readinessTitle": "{count, plural, other {# rekod pekerja tiada data yang diperlukan}}",
       "readinessSource": "Kesediaan rekod",
       "readinessCta": "Betulkan rekod",
       "proposalsTitle": "{count, plural, other {# pembetulan yang disediakan menunggu kelulusan anda}}",
-      "proposalsSource": "Tindakan dicadangkan",
+      "proposalsSource": "Pengecualian · punca sudah dibetulkan",
       "proposalsCta": "Semak pembetulan",
       "letterRequestsTitle": "{count, plural, other {# permohonan surat menunggu anda}}",
       "letterRequestsSource": "Permohonan surat pekerja",
@@ -2850,6 +2887,15 @@
         "own": "Anda ada perkara sendiri untuk diselesaikan sebelum tarikh tutup gaji. Buka Sebelum gaji di Hari ini untuk melihatnya.",
         "approvals": "Ada permohonan yang menunggu keputusan anda sebelum tarikh tutup gaji. Buka Sebelum gaji di Hari ini untuk melihatnya.",
         "both": "Anda ada perkara sendiri untuk diselesaikan dan permohonan yang menunggu keputusan anda sebelum tarikh tutup gaji. Buka Sebelum gaji di Hari ini untuk melihatnya."
+      }
+    },
+    "backToToday": "Kembali ke Hari ini"
+  },
+  "payroll": {
+    "controlTower": {
+      "exceptions": {
+        "help": "Paling mendesak dahulu: apa-apa yang menyekat larian, kemudian yang paling lama menunggu. Di sinilah satu-satunya tempat pengecualian diselesaikan; halaman setiap larian memaut ke sini.",
+        "whyBody": "Kekerapan semakan tersilap dan berapa lama pengecualian menunggu tidak dapat dikira sehingga seseorang membuat keputusan mengenainya. Sehingga itu, Wawasan › Kualiti AI sengaja menunjukkan apa yang masih tiada dan bukannya angka."
       }
     }
   }

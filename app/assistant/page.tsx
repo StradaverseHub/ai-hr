@@ -39,12 +39,10 @@ import { eraseAgentFeedbackAction } from './feedback-actions';
 import { isCentreView } from '@/lib/ai-centre/centre-nav';
 import { AI_ARCHITECTURE_LABEL, AI_PRODUCT_NAME, aiCentreName } from '@/lib/ai-centre/brand';
 import { AiCentreTabs } from '@/components/ai-centre/centre-tabs';
-import { AiCentreDelegatedJobs } from '@/components/ai-centre/delegated-jobs';
 import { AiCentreInsights } from '@/components/ai-centre/insights';
-import { scopedSession } from '@/lib/scope';
 import { HowItWorks } from '@/components/ai-centre/how-it-works';
-import { AiCentreLiveStatus } from '@/components/ai-centre/live-status';
-import { permanentRedirect } from 'next/navigation';
+import { permanentRedirect, redirect } from 'next/navigation';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { listOwnChats, readChatRetention } from '@/core/teras-chats';
 import { AskChatHeader, AskChatsColumn, AskChatsFooter, AskChatsProvider, type AskChatSummary } from '@/components/ai-centre/ask-chats';
 import { todayInboxRedirect } from '@/lib/ai-centre/today-redirect';
@@ -86,18 +84,22 @@ export default async function AssistantPage({
   // AI v2 Phase 1: the Inbox tab is retired; Today at `/` replaces it. A saved or old Inbox link moves there
   // for good (308), carrying only an approver's recommendation request when it is a well-formed id.
   if (sp.view === 'inbox') permanentRedirect(todayInboxRedirect(sp.recommend));
+  // AI Centre restructure (owner decisions 27 and 29, 4 November 2026). Delegated jobs is hidden until it works: its view
+  // forwards to Ask (temporarily, 307). Insights is for administrators only: anyone else is forwarded to their own payroll
+  // readiness page, which is where Insights' "My payroll readiness" moved (307, because the answer depends on the role).
+  if (sp.view === 'jobs') redirect('/assistant');
+  if (sp.view === 'insights' && !admin) redirect('/me/payroll-readiness');
   if (isCentreView(sp.view)) {
     const tc = await getTranslations('aiCentre.how');
-    const insightsScope = sp.view === 'insights' ? await scopedSession().then(scoped => scoped.scopeIds).catch(() => undefined) : undefined;
     return (
       <div data-ai-centre={sp.view} className="mx-auto max-w-6xl space-y-6">
-        <AiCentreTabs active={sp.view} isAdmin={admin} />
-        {sp.view === 'jobs' && <AiCentreDelegatedJobs />}
-        {/* AI v2 Phase 2: Insights, for every role. P2-3's "My payroll readiness" for everyone; P2-4's HR capacity ledger
-            section only for HR and group administrators, guarded inside the view. Approvals follow the viewer's company
-            scope, as Today's do. */}
-        {sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} capacityQuery={sp as Readonly<Record<string, string | undefined>>} qualityQuery={sp as Readonly<Record<string, string | undefined>>} />}
-        {sp.view === 'how' && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '#ai-centre-live-status' : undefined} />{admin && <AiCentreLiveStatus session={s} />}</>}
+        <AiCentreTabs active={sp.view === 'jobs' ? null : sp.view} isAdmin={admin} />
+        {/* AI v2 Phase 2: Insights, HR and group administrators only: HR capacity and AI quality, each guarded again
+            inside the view and by its service. */}
+        {sp.view === 'insights' && <AiCentreInsights session={s} isAdmin={admin} payroll={isModuleEnabledOrFalse(s, 'payroll')} capacityQuery={sp as Readonly<Record<string, string | undefined>>} qualityQuery={sp as Readonly<Record<string, string | undefined>>} />}
+        {/* How it works is the explainer. Administrators get a link to Workers, the one list of AI pieces, instead of a
+            second live list here. */}
+        {sp.view === 'how' && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '/control-tower/agents/features' : undefined} /></>}
       </div>
     );
   }

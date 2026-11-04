@@ -7,6 +7,7 @@ import { CHECK_INTERVALS } from '@/core/loops/payroll-loop-settings';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../../operations-tabs';
+import { PayrollCycleSubnav } from '@/components/ai-centre/centre-tabs';
 import { decideRuleProposalAction, decideThresholdProposalAction, revokeAcknowledgementAction, setPayrollLoopSettingAction } from '../actions';
 
 /** AI v2 P2-2a — the payroll-cycle loops' settings, per company the viewer administers: how often the Pre-salary loop
@@ -35,7 +36,8 @@ export default async function PayrollLoopSettingsPage({ searchParams }: { search
     : view.patternNames[value] ? t('patternItem', { item: view.patternNames[value] }) : t('patternUnknown');
   return (
     <div className={pageWideCls}>
-      <OperationsTabs session={s} active="loops" />
+      <OperationsTabs session={s} active="payrollCycle" />
+      <PayrollCycleSubnav active="settings" />
       <PageHeader back={{ href: '/control-tower/loops/payroll-cycle', label: t('backToCycle') }} title={t('settings.title')} description={t('settings.description')} />
       {error && <ErrorBanner message={t(`errors.${error}`)} />}
       {saved && <p role="status" className="rounded-lg border border-border bg-muted/50 p-3 text-sm">{t(`saved.${saved}`)}</p>}

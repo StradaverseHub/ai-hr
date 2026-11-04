@@ -17,12 +17,11 @@ import { HYPOTHESIS_DETECTOR_ID } from '@/core/payroll-anomaly-detectors';
 // own `?from=`. Whitelisted by shape here for the same reason every other consumer does it: a href taken
 // straight out of searchParams is the open-redirect shape (lib/return-to.ts).
 import { payrollListReturnTo, withPayrollFrom } from '@/lib/return-to';
-import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import {
   evaluateAnomaliesAction,
   narrateAnomalyAction,
   proposeHypothesesAction,
-  resolveAnomalyAction,
 } from '../../actions';
 
 /**
@@ -80,6 +79,9 @@ export default async function AnomaliesPage({
   // payroll-admin-only by RLS, so the route gate and the row gate agree.
   const s = await requireAdmin();
   const t = await getTranslations('anomaly');
+  // AI Centre restructure (owner decision 28): an open exception is resolved on Exceptions only; this run's page lists
+  // its rows, keeps its explanations and the auto-cleared list where a missed issue is raised, and links there.
+  const resolveThere = (await getTranslations('aiCentre.exceptions'))('resolveThere');
   const sp = await searchParams;
   // d75b0c11 — Back returns the RUN, and hands the run its own `?from=` back so the run screen's Back
   // still returns the Payroll Process list as it was left. Nothing to carry ⇒ the bare run address,
@@ -294,6 +296,7 @@ export default async function AnomaliesPage({
           batchId={batchId}
           from={carry}
           explainLabel={t('explain')}
+          resolveThere={resolveThere}
           hypothesis={hypothesis}
         />
       ))}
@@ -335,6 +338,7 @@ function VerdictCard({
   batchId,
   from,
   explainLabel,
+  resolveThere,
   hypothesis,
 }: {
   row: QueueRow;
@@ -342,6 +346,8 @@ function VerdictCard({
   /** r253 — the whitelisted Payroll Process filter query this screen was opened with; see the page. */
   from?: string;
   explainLabel: string;
+  /** The link to Exceptions, where an open exception is resolved (owner decision 28). */
+  resolveThere: string;
   hypothesis: HypothesisCopy;
 }) {
   return (
@@ -408,23 +414,9 @@ function VerdictCard({
       {row.resolvedAt ? (
         <p className="mt-3 text-[11px] text-muted-foreground">{`resolved: ${row.resolution ?? ''}`}</p>
       ) : (
-        <form action={resolveAnomalyAction} className="mt-4 space-y-2">
-          <input type="hidden" name="batchId" value={batchId} />
-          <input type="hidden" name="verdictId" value={row.verdictId} />
-          {from ? <input type="hidden" name="from" value={from} /> : null}
-          <input name="note" placeholder="note (optional)" className={inputCls} />
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" size="sm" name="resolution" value="accepted" variant="secondary">
-              correct as it stands
-            </Button>
-            <Button type="submit" size="sm" name="resolution" value="fixed_upstream" variant="secondary">
-              fixed at the source
-            </Button>
-            <Button type="submit" size="sm" name="resolution" value="false_positive" variant="secondary">
-              not a real problem
-            </Button>
-          </div>
-        </form>
+        <Link href="/control-tower/exceptions" data-resolve-on-exceptions className="mt-4 inline-flex min-h-9 items-center text-sm font-medium text-primary hover:underline pointer-coarse:min-h-11">
+          {resolveThere}
+        </Link>
       )}
     </Card>
   );

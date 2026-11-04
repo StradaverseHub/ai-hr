@@ -15,8 +15,10 @@
  *    For anyone holding the letters `generate` capability, employees' letter requests waiting for HR
  *    (core/letter-requests.ts countWaitingLetterRequests; AI v2 Phase 1 slice 3).
  *  - Done for you: outcome records (core/outcome-record/summary.ts), counts only.
- *  - Watching, administrators: CP22/CP22A deadlines (core/reporting.ts complianceWorklist), open payroll
- *    exceptions (core/payroll-anomaly.ts) and recorded passport expiries (core/automatic-followups.ts).
+ *  - Watching, administrators: CP22/CP22A deadlines (core/reporting.ts complianceWorklist) and open payroll
+ *    exceptions (core/payroll-anomaly.ts, the same read and counts as Operations › Exceptions). Passport expiries are
+ *    shown once, as the passports loop's own card in Needs you (AI Centre restructure, Today fix b), not here again with
+ *    a second window.
  *  - At a glance, everyone else: own leave balances (core/employee-home-time-off.ts), the latest released
  *    payslip's metadata (core/employee-home.ts readEmployeeHomePayHints, no amounts) and a manager's absence
  *    from the Home team calendar (lib/today/coming-up.ts). */
@@ -37,7 +39,6 @@ import {RECOMMENDER_WORKER} from '@/core/recommenders/leave-decision';
 import {summariseOutcomeRecords,type OutcomeSummary} from '@/core/outcome-record/summary';
 import {complianceWorklist} from '@/core/reporting';
 import {openExceptionsAcrossRuns} from '@/core/payroll-anomaly';
-import {followupItemsTx} from '@/core/automatic-followups';
 import {readEmployeeHomeTimeOff} from '@/core/employee-home-time-off';
 import {HomeAccessError,readEmployeeHomePayHints} from '@/core/employee-home';
 import {readHomeTeamCalendar} from '@/core/employee-home-sharing';
@@ -162,7 +163,8 @@ export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonl
  const missing=readiness?.ok?readiness.value.employees-readiness.value.ready:0;
  if(missing>0)findings.push(Object.freeze({key:'readiness',count:missing,href:'/control-tower/readiness'}));
  const fixes=proposals?.ok?proposals.value.reduce((sum,proposal)=>sum+proposal.count,0):0;
- if(fixes>0)findings.push(Object.freeze({key:'proposals',count:fixes,href:'/control-tower/actions'}));
+ // Exceptions' "cause already fixed" group, where the former Proposed actions are approved (AI Centre restructure).
+ if(fixes>0)findings.push(Object.freeze({key:'proposals',count:fixes,href:'/control-tower/exceptions#fixed-causes'}));
  const waitingLetters=letterRequests.ok?letterRequests.value:0;
  if(waitingLetters>0)findings.push(Object.freeze({key:'letterRequests',count:waitingLetters,href:'/letters/generate?requests=all#letter-requests'}));
  const failed=modules.failed()||!tasks.ok||!loops.ok||[proposals,readiness,letterRequests].some(result=>result!==null&&!result.ok);
@@ -183,12 +185,11 @@ const COMPANY_CONCURRENCY=4;
 export type WatchingData=Readonly<{
  deadlines:Readonly<{overdue:number;dueSoon:number;checked:number;inScope:number}>|null;
  exceptions:Readonly<{total:number;blocking:number}>|null;
- passports:Readonly<{count:number;first:string}>|null;
  failed:boolean;
 }>;
 
 export async function readWatching(s:SessionContext,p:Readonly<{scopeIds:readonly string[];today:string}>):Promise<WatchingData>{
- const modules=moduleChecks(s),payroll=modules.on('payroll'),scope=new Set(p.scopeIds),companies=p.scopeIds.slice(0,WATCH_COMPANY_LIMIT);
+ const modules=moduleChecks(s),payroll=modules.on('payroll'),companies=p.scopeIds.slice(0,WATCH_COMPANY_LIMIT);
  const deadlineRead=payroll?settle(async()=>{
   const lists:Awaited<ReturnType<typeof complianceWorklist>>[]=[];
   for(let i=0;i<companies.length;i+=COMPANY_CONCURRENCY)
@@ -196,19 +197,15 @@ export async function readWatching(s:SessionContext,p:Readonly<{scopeIds:readonl
   const items=lists.flat();
   return {overdue:items.filter(item=>item.status==='overdue').length,dueSoon:items.filter(item=>item.status==='due_soon').length,checked:companies.length,inScope:p.scopeIds.length};
  }):null;
- const [deadlines,exceptions,passports]=await Promise.all([
+ const [deadlines,exceptions]=await Promise.all([
   deadlineRead,
-  payroll?settle(()=>openExceptionsAcrossRuns(s,{limit:100})):null,
-  // Recorded passport expiries in the next 30 days, for companies the caller administers (the follow-up
-  // owner's own window and admission), narrowed to the companies in the current scope.
-  settle(()=>withTenant(s,tx=>followupItemsTx(tx,'passport_expiry',p.today))),
+  // Today fix d: the same read, with the same arguments, as Operations › Exceptions, so its counts are that page's.
+  payroll?settle(()=>openExceptionsAcrossRuns(s)):null,
  ]);
- const expiring=passports.ok?passports.value.filter(item=>scope.has(item.companyId)).sort((a,b)=>a.waitingOn.localeCompare(b.waitingOn)):[];
  return Object.freeze({
   deadlines:deadlines?.ok&&deadlines.value.overdue+deadlines.value.dueSoon>0?Object.freeze(deadlines.value):null,
   exceptions:exceptions?.ok&&exceptions.value.total>0?Object.freeze({total:exceptions.value.total,blocking:exceptions.value.rows.filter(row=>row.disposition==='block').length}):null,
-  passports:expiring.length?Object.freeze({count:expiring.length,first:expiring[0].waitingOn}):null,
-  failed:modules.failed()||[deadlines,exceptions,passports].some(result=>result!==null&&!result.ok),
+  failed:modules.failed()||[deadlines,exceptions].some(result=>result!==null&&!result.ok),
  });
 }
 

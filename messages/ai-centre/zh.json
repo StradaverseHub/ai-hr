@@ -36,7 +36,9 @@
       "opportunities": "改进机会",
       "workers": "代理",
       "setup": "设置",
-      "spend": "支出与服务提供方"
+      "spend": "支出与服务提供方",
+      "payrollCycle": "薪资周期",
+      "buildList": "构建清单"
     },
     "loops": {
       "title": "循环",
@@ -324,6 +326,18 @@
         "blankHelp": "如不清楚，请将栏位留空。上限 {max} 分钟，最多一位小数。",
         "save": "保存基线",
         "cancel": "取消"
+      },
+      "processes": {
+        "title": "工作在哪里",
+        "description": "根据您的记录衡量每个流程：案例、所需时间、返工以及每 30 天的员工操作，以及首次使用助手后的变化。按员工处理量排序。",
+        "unavailable": "暂时无法读取这些数据。",
+        "estimate": "每月约 {hours} 小时员工时间。",
+        "estimateLabel": "按已保存基线的每次员工操作 {minutes} 分钟估算，并非实测。",
+        "minutesFromBaseline": "小时数依据 {company} 已保存的基线估算：每次员工操作 {minutes} 分钟。",
+        "minutesNoBaseline": "设置 {company} 的基线即可估算小时数：此处只使用其每次员工操作的分钟数。",
+        "minutesSeveral": "这些数据涵盖您管理的所有公司，因此不估算小时数：公司的已保存基线只描述该公司。",
+        "limitHours": "小时数只来自已保存基线中每次员工操作的分钟数，绝不以人数显示。在代理运行并衡量前后对比之前，不声称任何节省。",
+        "setBaseline": "为 {company} 设置基线"
       }
     },
     "subnav": {
@@ -339,12 +353,14 @@
     "titles": {
       "workers": "代理",
       "setup": "设置",
-      "spend": "支出与服务提供方"
+      "spend": "支出与服务提供方",
+      "buildList": "构建清单"
     },
     "descriptions": {
       "workers": "所有自动化代理，按职能分组，并显示各自的开关和最近一次执行的内容。",
       "setup": "AI 能否为贵公司运行，以及助手的提供方式。",
-      "spend": "额度、支出、模型服务提供方和最近的模型调用。"
+      "spend": "额度、支出、模型服务提供方和最近的模型调用。",
+      "buildList": "按可为 HR 分担的处理工作排序的代理能力，依据您的记录衡量，并附完整导出。仅限集团管理员。"
     },
     "inbox": {
       "title": "收件箱",
@@ -408,7 +424,7 @@
     },
     "insights": {
       "title": "洞察",
-      "description": "发薪前尚待处理的事项，包括您自己的事项和需要您审批的申请。"
+      "description": "您管理的公司的 HR 产能和 AI 质量。"
     },
     "jobs": {
       "title": "委托任务",
@@ -1526,7 +1542,9 @@
         "title": "有常设确认的阻断性异常",
         "help": "阻断项从不隐藏。解决内容已按确认预先填写；如本次运行仍适用，请点击。",
         "prefilled": "解决说明（来自确认）",
-        "resolve": "按预期解决"
+        "resolve": "按预期解决",
+        "count": "本月有 {count, plural, other {# 项阻断性异常}}已有长期确认，请在“异常”中处理。",
+        "open": "打开“异常”"
       },
       "acknowledge": {
         "reason": "为何属于预期",
@@ -1972,7 +1990,7 @@
       },
       "proposals": {
         "title": "建议",
-        "help": "各循环根据您自己的决定提出的更改。每项更改仅在管理员批准后从下一次运行起生效，并可还原。升级在各循环页面上决定，不在这里。",
+        "help": "循环根据您自己的决定提出的更改。每项更改仅在管理员于薪资周期“设置”中批准后，从下一次运行起生效，并可在该处改回。升级在各循环自己的页面上决定。",
         "change": "更改",
         "evidence": "依据",
         "state": "状态",
@@ -1983,7 +2001,9 @@
         "applied": "已于 {date} 应用",
         "approved": "批准",
         "rejected": "拒绝",
-        "revert": "还原"
+        "revert": "还原",
+        "decideInSettings": "在“设置”中决定",
+        "changeInSettings": "在“设置”中更改"
       },
       "loopCorrections": {
         "title": "各循环每月的更正",
@@ -2005,6 +2025,23 @@
         "access": "只有 HR 管理员和集团管理员可以查看此页面，且仅限其管理的公司。每个数字都是来自 AI Centre 自身工作记录的计数或计数占比。",
         "privacy": "涉及敏感话题的对话不保存任何文字，也从不计入此处。除非您导出，否则这里学到的任何内容都不会离开贵公司；学习也从不改变计算、权限或 AI Centre 可显示的内容。"
       }
+    },
+    "payrollCycleSubnavLabel": "薪资周期页面",
+    "payrollCyclePages": {
+      "pre": "发薪前",
+      "salary": "薪资发放",
+      "settings": "设置",
+      "audit": "审计"
+    },
+    "exceptions": {
+      "fixedTitle": "原因已修复",
+      "inGroups": "{count, plural, other {# 项异常}}已列在上方分组中。",
+      "resolveThere": "在“异常”中处理"
+    },
+    "readiness": {
+      "notChecked": "HR 引擎尚未检查",
+      "loopAsked": "循环已于 {date} 请员工补充",
+      "loopWaiting": "员工的申请正在等待 HR 批准"
     }
   },
   "today": {
@@ -2056,12 +2093,12 @@
     "findings": {
       "setupTitle": "{count, plural, other {# 个设置阶段需要关注}}",
       "setupSource": "来自今天准备的摘要",
-      "setupCta": "打开就绪情况",
+      "setupCta": "打开设置",
       "readinessTitle": "{count, plural, other {# 份员工记录缺少必需数据}}",
       "readinessSource": "记录就绪情况",
       "readinessCta": "修正记录",
       "proposalsTitle": "{count, plural, other {# 项准备好的修正等待您批准}}",
-      "proposalsSource": "建议的操作",
+      "proposalsSource": "异常 · 原因已修复",
       "proposalsCta": "审阅修正",
       "letterRequestsTitle": "{count, plural, other {# 份信函申请等待您处理}}",
       "letterRequestsSource": "员工信函申请",
@@ -2850,6 +2887,15 @@
         "own": "薪资截止日前，您有自己的事项需要完成。请在“今天”中打开“发薪前”查看。",
         "approvals": "薪资截止日前，有申请等待您的决定。请在“今天”中打开“发薪前”查看。",
         "both": "薪资截止日前，您有自己的事项需要完成，也有申请等待您的决定。请在“今天”中打开“发薪前”查看。"
+      }
+    },
+    "backToToday": "返回今日"
+  },
+  "payroll": {
+    "controlTower": {
+      "exceptions": {
+        "help": "最紧急的排在前面：先是阻断运行的，再是等待最久的。这里是处理异常的唯一位置；每次运行的页面都链接到这里。",
+        "whyBody": "在有人对这些异常作出决定之前，无法算出检查出错的频率和异常等待的时长。在此之前，“洞察 › AI 质量”会特意显示缺少什么，而不是一个数字。"
       }
     }
   }

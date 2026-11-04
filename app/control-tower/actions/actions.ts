@@ -5,7 +5,9 @@ import { revalidatePath } from 'next/cache';
 import { requireAdmin } from '@/lib/authz';
 import { AgentActionError, executeAction } from '@/core/agent-actions';
 
-const PAGE = '/control-tower/actions';
+// AI Centre restructure (4 Nov 2026): the proposals are Exceptions' "cause already fixed" group, so the outcome shows there.
+// Its own parameters (fixError, closed, stale) so it never reads as the per-row resolve's error or toast on that page.
+const PAGE = '/control-tower/exceptions';
 
 /**
  * ADR-0083 §2.5 — approve one proposal.
@@ -27,11 +29,10 @@ export async function approveAgentActionAction(formData: FormData) {
     result = await executeAction(s, { typeId, verdictIds });
   } catch (e) {
     const code = e instanceof AgentActionError ? e.code : 'failed';
-    redirect(`${PAGE}?error=${encodeURIComponent(code)}`);
+    redirect(`${PAGE}?fixError=${encodeURIComponent(code)}#fixed-causes`);
   }
 
   revalidatePath(PAGE);
-  revalidatePath('/control-tower');
   // Both numbers travel back. Reporting only the successes would hide the re-check doing its job.
-  redirect(`${PAGE}?closed=${result.closed}&stale=${result.stale}`);
+  redirect(`${PAGE}?closed=${result.closed}&stale=${result.stale}#fixed-causes`);
 }

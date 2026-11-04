@@ -107,6 +107,12 @@ export async function resolveAcknowledgedBlockAction(formData: FormData) {
     await resolveAcknowledgedBlock(await session(), { verdictId: formData.get('verdict'), companyId: formData.get('target'), payPeriod: formData.get('period') });
   } catch (e) { error = codeOf(e); }
   revalidatePath(ROOT, 'layout');
+  // AI Centre restructure (owner decision 28): payroll exceptions are resolved on Exceptions only, so this resolve is
+  // offered there, as its "acknowledged" group, and returns there with its own closed result code.
+  if (formData.get('back') === 'exceptions') {
+    revalidatePath('/control-tower/exceptions');
+    redirect(`/control-tower/exceptions?${new URLSearchParams(error ? { ackError: error } : { acknowledged: 'resolved' })}#acknowledged-blocks`);
+  }
   const { path, params } = pageOf(formData);
   redirect(back(path, { ...params, ...(error ? { error } : { saved: 'resolved' }) }));
 }

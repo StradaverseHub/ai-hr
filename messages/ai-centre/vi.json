@@ -36,7 +36,9 @@
       "opportunities": "Cơ hội",
       "workers": "Tác tử",
       "setup": "Thiết lập",
-      "spend": "Chi tiêu và nhà cung cấp"
+      "spend": "Chi tiêu và nhà cung cấp",
+      "payrollCycle": "Chu kỳ lương",
+      "buildList": "Danh sách xây dựng"
     },
     "loops": {
       "title": "Vòng lặp",
@@ -324,6 +326,18 @@
         "blankHelp": "Để trống ô nếu bạn không biết. Tối đa {max} phút, nhiều nhất một chữ số thập phân.",
         "save": "Lưu mốc cơ sở",
         "cancel": "Hủy"
+      },
+      "processes": {
+        "title": "Công việc nằm ở đâu",
+        "description": "Mỗi quy trình được đo từ hồ sơ của bạn: số trường hợp, thời gian xử lý, làm lại và thao tác của nhân viên mỗi 30 ngày, cùng những gì thay đổi sau lần đầu dùng Trợ lý. Xếp hạng theo khối lượng xử lý của nhân viên.",
+        "unavailable": "Hiện không thể đọc các số liệu này.",
+        "estimate": "Khoảng {hours} giờ công nhân viên mỗi tháng.",
+        "estimateLabel": "Ước tính theo {minutes} phút cho mỗi thao tác của nhân viên trong mức cơ sở đã lưu, không phải số đo.",
+        "minutesFromBaseline": "Số giờ được ước tính từ mức cơ sở đã lưu của {company}: {minutes} phút cho mỗi thao tác của nhân viên.",
+        "minutesNoBaseline": "Hãy đặt mức cơ sở của {company} để ước tính số giờ: số phút cho mỗi thao tác của nhân viên trong đó là số phút duy nhất được dùng ở đây.",
+        "minutesSeveral": "Các số liệu này bao gồm mọi công ty bạn quản trị nên không ước tính số giờ: mức cơ sở đã lưu của một công ty chỉ mô tả công ty đó.",
+        "limitHours": "Số giờ chỉ xuất hiện từ số phút cho mỗi thao tác của nhân viên trong mức cơ sở đã lưu, không bao giờ dưới dạng số người. Không công bố khoản tiết kiệm nào cho đến khi tác tử chạy và so sánh trước–sau được đo.",
+        "setBaseline": "Đặt mức cơ sở cho {company}"
       }
     },
     "subnav": {
@@ -339,12 +353,14 @@
     "titles": {
       "workers": "Tác tử",
       "setup": "Thiết lập",
-      "spend": "Chi tiêu và nhà cung cấp"
+      "spend": "Chi tiêu và nhà cung cấp",
+      "buildList": "Danh sách xây dựng"
     },
     "descriptions": {
       "workers": "Mọi tác tử tự động, được nhóm theo việc chúng làm, kèm công tắc và việc gần nhất chúng đã làm.",
       "setup": "AI có thể chạy cho công ty bạn hay không, và trợ lý được cung cấp như thế nào.",
-      "spend": "Hạn mức, chi tiêu, nhà cung cấp mô hình và các lượt gọi mô hình gần đây."
+      "spend": "Hạn mức, chi tiêu, nhà cung cấp mô hình và các lượt gọi mô hình gần đây.",
+      "buildList": "Các năng lực tác tử được xếp hạng theo khối lượng xử lý có thể giảm cho HR, đo từ hồ sơ của bạn, kèm bản xuất đầy đủ. Dành cho quản trị viên tập đoàn."
     },
     "inbox": {
       "title": "Hộp thư công việc",
@@ -408,7 +424,7 @@
     },
     "insights": {
       "title": "Thông tin chi tiết",
-      "description": "Những việc còn chờ trước kỳ lương, của bạn và các yêu cầu bạn phê duyệt."
+      "description": "Năng lực HR và chất lượng AI cho các công ty bạn quản trị."
     },
     "jobs": {
       "title": "Công việc ủy quyền",
@@ -1526,7 +1542,9 @@
         "title": "Ngoại lệ chặn có xác nhận thường trực",
         "help": "Mục chặn không bao giờ bị ẩn. Phần giải quyết được điền sẵn từ xác nhận; hãy bấm nếu vẫn đúng cho lần chạy này.",
         "prefilled": "Giải quyết (từ xác nhận)",
-        "resolve": "Giải quyết là dự kiến"
+        "resolve": "Giải quyết là dự kiến",
+        "count": "Tháng này có {count, plural, other {# ngoại lệ chặn}} đã có xác nhận thường trực. Các ngoại lệ này được xử lý tại Ngoại lệ.",
+        "open": "Mở Ngoại lệ"
       },
       "acknowledge": {
         "reason": "Vì sao là dự kiến",
@@ -1972,7 +1990,7 @@
       },
       "proposals": {
         "title": "Đề xuất",
-        "help": "Những thay đổi các vòng lặp đề xuất từ chính quyết định của bạn. Mỗi thay đổi chỉ áp dụng khi quản trị viên phê duyệt, từ lần chạy tiếp theo, và có thể hoàn nguyên. Việc nâng cấp được quyết định trên trang của từng vòng lặp, không phải ở đây.",
+        "help": "Các thay đổi do vòng lặp đề xuất từ chính quyết định của bạn. Mỗi thay đổi chỉ áp dụng khi quản trị viên phê duyệt trong Cài đặt chu kỳ lương, từ lần chạy tiếp theo, và có thể đổi lại tại đó. Việc nâng cấp được quyết định trên trang của từng vòng lặp.",
         "change": "Thay đổi",
         "evidence": "Bằng chứng",
         "state": "Trạng thái",
@@ -1983,7 +2001,9 @@
         "applied": "Đã áp dụng {date}",
         "approved": "Phê duyệt",
         "rejected": "Từ chối",
-        "revert": "Hoàn nguyên"
+        "revert": "Hoàn nguyên",
+        "decideInSettings": "Quyết định trong Cài đặt",
+        "changeInSettings": "Thay đổi trong Cài đặt"
       },
       "loopCorrections": {
         "title": "Chỉnh sửa vòng lặp theo tháng",
@@ -2005,6 +2025,23 @@
         "access": "Chỉ quản trị viên HR và quản trị viên tập đoàn mới thấy trang này, cho các công ty họ quản trị. Mỗi số liệu là số đếm, hoặc phần trăm của số đếm, từ chính hồ sơ công việc của AI Centre.",
         "privacy": "Cuộc trò chuyện về chủ đề nhạy cảm không lưu bất kỳ từ nào và không bao giờ được tính ở đây. Không điều gì học được ở đây rời khỏi công ty của bạn trừ khi bạn xuất nó, và việc học không bao giờ thay đổi cách tính, quyền hạn hay những gì AI Centre được phép hiển thị."
       }
+    },
+    "payrollCycleSubnavLabel": "Các trang chu kỳ lương",
+    "payrollCyclePages": {
+      "pre": "Trước kỳ lương",
+      "salary": "Chạy lương",
+      "settings": "Cài đặt",
+      "audit": "Kiểm toán"
+    },
+    "exceptions": {
+      "fixedTitle": "Nguyên nhân đã được khắc phục",
+      "inGroups": "{count, plural, other {# ngoại lệ}} đã được liệt kê trong các nhóm ở trên.",
+      "resolveThere": "Xử lý tại Ngoại lệ"
+    },
+    "readiness": {
+      "notChecked": "Công cụ HR chưa kiểm tra",
+      "loopAsked": "Vòng lặp đã yêu cầu nhân viên vào {date}",
+      "loopWaiting": "Yêu cầu của nhân viên đang chờ HR phê duyệt"
     }
   },
   "today": {
@@ -2056,12 +2093,12 @@
     "findings": {
       "setupTitle": "{count, plural, other {# bước thiết lập cần chú ý}}",
       "setupSource": "Từ bản tóm tắt đã chuẩn bị hôm nay",
-      "setupCta": "Mở mức sẵn sàng",
+      "setupCta": "Mở thiết lập",
       "readinessTitle": "{count, plural, other {# hồ sơ nhân viên thiếu dữ liệu bắt buộc}}",
       "readinessSource": "Mức sẵn sàng của hồ sơ",
       "readinessCta": "Sửa hồ sơ",
       "proposalsTitle": "{count, plural, other {# bản sửa đã chuẩn bị đang chờ bạn phê duyệt}}",
-      "proposalsSource": "Hành động đề xuất",
+      "proposalsSource": "Ngoại lệ · nguyên nhân đã được khắc phục",
       "proposalsCta": "Xem các bản sửa",
       "letterRequestsTitle": "{count, plural, other {# yêu cầu thư đang chờ bạn}}",
       "letterRequestsSource": "Yêu cầu thư của nhân viên",
@@ -2850,6 +2887,15 @@
         "own": "Bạn có việc của mình cần hoàn tất trước hạn chốt lương. Mở Trước kỳ lương trong Hôm nay để xem.",
         "approvals": "Có yêu cầu đang chờ bạn quyết định trước hạn chốt lương. Mở Trước kỳ lương trong Hôm nay để xem.",
         "both": "Bạn có việc của mình cần hoàn tất và yêu cầu đang chờ bạn quyết định trước hạn chốt lương. Mở Trước kỳ lương trong Hôm nay để xem."
+      }
+    },
+    "backToToday": "Quay lại Hôm nay"
+  },
+  "payroll": {
+    "controlTower": {
+      "exceptions": {
+        "help": "Khẩn cấp nhất trước: mọi thứ đang chặn một lần chạy, sau đó là những gì đã chờ lâu nhất. Đây là nơi duy nhất xử lý ngoại lệ; trang của từng lần chạy đều liên kết đến đây.",
+        "whyBody": "Chưa thể tính tần suất các kiểm tra sai và thời gian một ngoại lệ phải chờ cho đến khi có người quyết định các ngoại lệ này. Cho đến lúc đó, Thông tin chi tiết › Chất lượng AI cố ý hiển thị những gì còn thiếu thay vì một con số."
       }
     }
   }
