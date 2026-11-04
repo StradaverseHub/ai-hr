@@ -4,7 +4,8 @@ import { canConfigureIdentityEmail } from '@/lib/identity/email-settings';
 import { Plus_Jakarta_Sans, Geist_Mono, DM_Mono } from 'next/font/google';
 import localFont from 'next/font/local';
 import { cookies, headers } from 'next/headers';
-import { NextIntlClientProvider } from 'next-intl';
+import {NextIntlClientProvider} from 'next-intl';
+import {CatalogClientProvider} from '@/i18n/client-provider';
 import { getLocale } from 'next-intl/server';
 import './globals.css';
 import './login/login.css';
@@ -127,9 +128,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         suppressHydrationWarning
       >
         <body className="h-dvh overflow-auto bg-canvas font-sans">
-          <NextIntlClientProvider>
+          <NextIntlClientProvider messages={null}><CatalogClientProvider locale={locale}>
             <Providers>{children}</Providers>
-          </NextIntlClientProvider>
+          </CatalogClientProvider></NextIntlClientProvider>
         </body>
       </html>
     );
@@ -151,12 +152,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     const viewer = await viewerIdentity(session);
     return <html lang={locale} data-ui-theme={uiTheme} className={`${fontVariables} h-full antialiased`} suppressHydrationWarning>
       <body className="h-dvh overflow-hidden font-sans">
-        <NextIntlClientProvider><Providers><UiThemeProvider theme={uiTheme}>
+        <NextIntlClientProvider messages={null}><CatalogClientProvider locale={locale}><Providers><UiThemeProvider theme={uiTheme}>
           <OperatorShell name={viewer.name}>{children}</OperatorShell>
           <SessionLifecycle idleTimeoutSeconds={idleTimeoutSeconds} />
           <OnboardingTour tours={toursForRoles(session.roles)} autoStartTourId={null}/>
           <Toaster/>
-        </UiThemeProvider></Providers></NextIntlClientProvider>
+        </UiThemeProvider></Providers></CatalogClientProvider></NextIntlClientProvider>
       </body>
     </html>;
   }
@@ -271,7 +272,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       suppressHydrationWarning
     >
       <body className="h-dvh overflow-hidden bg-canvas p-3 font-sans lg:p-4 monolith:bg-background! monolith:p-0!">
-        <NextIntlClientProvider>
+        <NextIntlClientProvider messages={null}><CatalogClientProvider locale={locale}>
         <Providers>
         {/* r398 — the theme the shell's structural branches render on the server (components/ui-theme-context.tsx);
             on the client they follow <html data-ui-theme> itself. */}
@@ -507,7 +508,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <SessionLifecycle idleTimeoutSeconds={idleTimeoutSeconds} />
         </UiThemeProvider>
         </Providers>
-        </NextIntlClientProvider>
+        </CatalogClientProvider></NextIntlClientProvider>
       </body>
     </html>
   );
