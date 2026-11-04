@@ -51,7 +51,7 @@ it('keeps the two public guides as v22 product_guidance topics while retaining e
   7:'b68ea8eecdca81d9cbb2a27cd5f3957dc3fd243d58f65feb9ac149fde4f9b701',
   8:'48db87fd9276f9e828926d82ff07888f4400e4dcd40fbdf08e8a735610c0f9d2',
  });
- expect(Object.keys(HARNESS_SPEC_DIGESTS)).toEqual(['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23']);
+ expect(Object.keys(HARNESS_SPEC_DIGESTS)).toEqual(['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24']);
  expect(HARNESS_SPEC.offer.publicContextTools).toEqual(['product_destinations','product_guidance','available_actions']);
  expect(HARNESS_SPEC.offer.guidanceTopics).toEqual(['password_policy','correction_controls']);
  const v22=v22ShapedSpec(),{guidanceTopics:_topics,...v20Offer}=v22.offer;
