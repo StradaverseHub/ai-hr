@@ -1,4 +1,4 @@
-/** Purpose key cannot decrypt Auth records. Proof contains no credential material or personal data. */
+/** Purpose key cannot decrypt Auth records. Proof contains bounded account identifiers and availability, without credential secrets or employee field values. */
 import {createHmac} from 'node:crypto';
 import {z} from 'zod';
 import {isCalendarDate} from '../calendar-date';

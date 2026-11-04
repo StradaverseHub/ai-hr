@@ -4740,6 +4740,34 @@
       "when": 1793330001511,
       "tag": "2111_probation_personnel_mapping",
       "breakpoints": true
+    },
+    {
+      "idx": 1380,
+      "version": "7",
+      "when": 1793330001526,
+      "tag": "2126_company_organisation_tagging",
+      "breakpoints": true
+    },
+    {
+      "idx": 1381,
+      "version": "7",
+      "when": 1793330001527,
+      "tag": "2127_personnel_filter_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 1382,
+      "version": "7",
+      "when": 1793330001528,
+      "tag": "2128_organisation_account_admission",
+      "breakpoints": true
+    },
+    {
+      "idx": 1383,
+      "version": "7",
+      "when": 1793330001530,
+      "tag": "2130_approved_company_retention",
+      "breakpoints": true
     }
   ]
 }
