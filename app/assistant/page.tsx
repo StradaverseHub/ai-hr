@@ -229,8 +229,10 @@ export default async function AssistantPage({
   const newChatHref='/assistant?chatReset='+randomUUID();
   // AI v2 slice 3 (issue 16b): the paperclip attaches a file to import, for a caller whose chat runs through the harness
   // and who may import here (core/chat-import/kinds.ts). It replaces the older file preparation, which stays for the
-  // closed grammar. Any failure shows no paperclip. (Navigation speed: started here, awaited below.)
-  const chatImportRead=import('./launcher-actions').then(owner=>owner.chatImportOfferedAction()).catch(()=>false);
+  // closed grammar. Any failure shows no paperclip. (Navigation speed: started here, awaited below; the launcher module is
+  // loaded once for it and for the stored chat below.)
+  const launcher=import('./launcher-actions');
+  const chatImportRead=launcher.then(owner=>owner.chatImportOfferedAction()).catch(()=>false);
   const conversationScope=await assistantBrowserConversationScope(s);
   const scopeReset=assistantConversationScopeDigest(s,conversationScope);
   // AI Centre navigation speed: the chat reads below are independent, so they run together. Each reads only within
@@ -242,7 +244,7 @@ export default async function AssistantPage({
     listOwnChats(s,{},conversationScope).catch(()=>null),
     // AI Centre issue 18: the floating panel's "Open in AI Centre" opens its stored chat here (?chat=<id>) and, while the
     // Noveri conversation switch admits this caller, the next question continues that same chat.
-    sp.chat&&!sp.e?import('./launcher-actions').then(owner=>owner.openStoredChatAction({chatId:sp.chat})).then(reply=>reply.ok?reply:null).catch(()=>null):null,
+    sp.chat&&!sp.e?launcher.then(owner=>owner.openStoredChatAction({chatId:sp.chat})).then(reply=>reply.ok?reply:null).catch(()=>null):null,
   ]);
   const chatSummaries:AskChatSummary[]=(storedChats?.chats??[]).map(chat=>({chatId:chat.chatId,title:chat.title,lastMessageAt:chat.lastMessageAt.toISOString(),turns:chat.turns,withheldTurns:chat.withheldTurns}));
   const initialTurns=selectedChat?selectedChat.turns.map(exchange=>({id:exchange.id,question:exchange.question,

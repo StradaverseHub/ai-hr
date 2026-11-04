@@ -21,7 +21,8 @@ export const PAYROLL_LOOP_HREFS = Object.freeze({
   audit: AUDIT_LOOP_HREF,
 });
 
-export function PayrollLoopsList({ overview }: { overview: Promise<PayrollCycleOverview | null> }) {
+// Async, like the sections it holds, so the server renders it with the page (and a test's server-tree resolver does too).
+export async function PayrollLoopsList({ overview }: { overview: Promise<PayrollCycleOverview | null> }) {
   return (
     <Suspense fallback={<PayrollLoopsRows states={null} />}>
       <PayrollLoopsStatus overview={overview} />

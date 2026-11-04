@@ -134,7 +134,7 @@ describe('Operations › Loops: the three payroll loops',()=>{
  it('the statuses stream: names and links first, and a failed read leaves them without a status',async()=>{
   state.session=SESSIONS.groupAdmin;
   // While the read is pending, the section's fallback is the names and links alone.
-  const element=PayrollLoopsList({overview:new Promise(()=>{})}) as ReactElement<{fallback:ReactNode;children:ReactNode}>;
+  const element=await PayrollLoopsList({overview:new Promise(()=>{})}) as ReactElement<{fallback:ReactNode;children:ReactNode}>;
   expect(isValidElement(element)&&element.type).toBe(Suspense);
   const pending=wrap('en',await resolveServerTree(element.props.fallback));
   expect(section(pending.container).getAttribute('data-payroll-loops-list')).toBe('names');
