@@ -17,6 +17,8 @@ import {createClaimType,setClaimPolicy,submitClaim,decideClaim,cancelClaimTx} fr
 import {prepareClaimCancellationReview,confirmClaimCancellationReview,reopenClaimCancellationReview,discardClaimCancellationReview,listClaimCancellationReviews,readClaimCancellationChoices} from '../core/assistant-actions/claim-cancellation-review-store';
 import {OWN_CLAIM_CANCELLATION_ACTION as action} from '../lib/assistant-actions/own-claim-cancellation-contract';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {pgSqlState} from '../lib/db-error';
+import {assertAiPrincipalTx} from '../core/ai-principal';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,subject:{personId:string;employmentId:string},typeId:string,claimId:string;
 const group=()=>({...adminCtx(b),grants:[{role:'hr_admin' as const,companyId:null}]});
@@ -48,6 +50,22 @@ it('lists actual own metadata alongside an independent reader without changing c
  });
  expect(await state()).toEqual(before);expect(await custody(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});
  expect((await confirm(r)).kind).toBe('completed');expect((await state()).cancelled).toHaveLength(1);
+});
+
+it('allows two full read-only native action guards after both acquired the shared feature-policy lock',async()=>{
+ let arrived=0,release!:()=>void;const ready=new Promise<void>(resolve=>{release=resolve;});
+ const check=()=>withTenant(ctx,async tx=>{
+  try{
+   await tx.execute(sql`set transaction read only`);await tx.execute(sql`set local lock_timeout='1500ms'`);
+   await assertAiPrincipalTx(tx,ctx);
+   const [policy]=await tx.execute<{allowed:boolean}>(sql`select app.ai_action_unpaused('hr_assistant',false)as allowed`);
+   expect(policy.allowed).toBe(true);if(++arrived===2)release();await ready;
+   await withAgentActionGuard(tx,ctx,action,'confirm');
+  }catch(error){release();throw error;}
+ });
+ const settled=await Promise.allSettled([check(),check()]);
+ const observed=settled.map(result=>result.status==='fulfilled'?{status:'fulfilled'}:{status:'rejected',code:pgSqlState(result.reason)});
+ expect(observed).toEqual([{status:'fulfilled'},{status:'fulfilled'}]);
 });
 
 describe('ADR-0151 own claim cancellation custody',()=>{
