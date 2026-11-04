@@ -608,7 +608,7 @@ export async function personnelListPage(
     }>(sql`
       with workforce_facts as materialized(select * from app.access_workforce_list_facts()),
       selected_page as materialized(
-        select workforce_row.employment_id,lower(workforce_row.company)as company_sort,${nameSort}as name_sort
+        select workforce_row.employment_id,lower(workforce_row.company)as company_sort,${nameSort} as name_sort
         from workforce_facts workforce_row where ${pageWhere}
         order by ${pageOrder} limit ${page.limit} offset ${page.offset}
       ), page_projection(value)as materialized(
@@ -619,8 +619,8 @@ export async function personnelListPage(
       (select count(distinct workforce_row.employment_id)::int
         from workforce_facts workforce_row where ${pageWhere})as total,
       coalesce((select jsonb_agg(jsonb_build_object('status',f.status,'count',f.count))from(
-        select ${columns.status}as status,count(distinct workforce_row.employment_id)::int as count
-        from workforce_facts workforce_row where ${facetWhere}group by 1
+        select ${columns.status} as status,count(distinct workforce_row.employment_id)::int as count
+        from workforce_facts workforce_row where ${facetWhere} group by 1
       )f),'[]'::jsonb)as status_counts
     `);
     const byStatus:Partial<Record<EmploymentStatus,number>>={};let total=0;
