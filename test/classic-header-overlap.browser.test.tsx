@@ -125,13 +125,13 @@ describe('Classic company scope stays reachable when the rail appears',()=>{
  });
  it.each([false,true].flatMap(dark=>[640,1023].map(width=>({dark,width}))))('opens company and account menus without changing scope at $width px (dark=$dark)',async({dark,width})=>{
   const header=await mount('classic',width,dark),{company}=assertReachableHeader(header,width);
-  await page.getByRole('button',{name:'All companies',exact:true}).click();
+  console.info('CHO_CLICK '+JSON.stringify({phase:'start',target:'All companies',w:Date.now()}));await page.getByRole('button',{name:'All companies',exact:true}).click();console.info('CHO_CLICK '+JSON.stringify({phase:'end',target:'All companies',w:Date.now()}));
   expect(company).toHaveAttribute('aria-expanded','true');
   const backdrop=company.parentElement!.querySelector<HTMLElement>('.fixed.inset-0')!;
   expect(backdrop).toBeTruthy();
   expect(document.elementFromPoint(width/2,830)).toBe(backdrop);
   fireEvent.click(backdrop);expect(company).toHaveAttribute('aria-expanded','false');
-  await page.getByRole('button',{name:'Account menu',exact:true}).click();
+  console.info('CHO_CLICK '+JSON.stringify({phase:'start',target:'Account menu',w:Date.now()}));await page.getByRole('button',{name:'Account menu',exact:true}).click();console.info('CHO_CLICK '+JSON.stringify({phase:'end',target:'Account menu',w:Date.now()}));
   expect(screen.getByRole('menu',{name:'Account menu'})).toBeVisible();
   fireEvent.keyDown(document,{key:'Escape'});
   expect(screen.queryByRole('menu',{name:'Account menu'})).toBeNull();
