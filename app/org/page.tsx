@@ -1,14 +1,14 @@
 import {getTranslations} from 'next-intl/server';
 import {scopedSession} from '@/lib/scope';
-import {myEmployment,allowedCompanies} from '@/core/read';
-import {orgChartSnapshot,orgChartDate} from '@/core/org-chart';
+import {myEmployment} from '@/core/read';
+import {orgChartSnapshot,orgChartDate,orgChartCompanies} from '@/core/org-chart';
 import {Card,PageHeader} from '@/components/ui';
 import {OrgChart} from '@/components/org-chart';
 import {OrgChartFilters} from './filters';
 import {designateRoot} from './actions';
 import type {OrgChartFilter} from '@/lib/org-chart-model';
 export default async function OrgChartPage({searchParams}: {searchParams:Promise<Record<string,string|string[]|undefined>>}){
- const {s,scopeIds}=await scopedSession();const allowedIds=(await allowedCompanies(s)).map(company=>company.id);const params=await searchParams;const value=(key:string)=>typeof params[key]==='string'?params[key] as string:undefined;
+ const {s,scopeIds}=await scopedSession();const allowedIds=(await orgChartCompanies(s)).map(company=>company.id);const params=await searchParams;const value=(key:string)=>typeof params[key]==='string'?params[key] as string:undefined;
  const own=await myEmployment(s);const requested=value('companyId');const defaultCompany=own&&allowedIds.includes(own.companyId)?own.companyId:scopeIds.length===1?scopeIds[0]:undefined;
  const filter:OrgChartFilter={asOf:orgChartDate(value('asOf')),companyId:requested===undefined?defaultCompany:allowedIds.includes(requested)?requested:'__outside_scope__',businessUnitId:value('businessUnitId'),departmentId:value('departmentId'),employmentType:value('employmentType'),status:value('status')??'all'};
  const snapshot=await orgChartSnapshot(s,{companyIds:allowedIds,filter});const t=await getTranslations('org');

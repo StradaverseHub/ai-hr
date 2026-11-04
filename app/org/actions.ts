@@ -2,10 +2,9 @@
 import {redirect} from 'next/navigation';
 import {revalidatePath} from 'next/cache';
 import {scopedSession} from '@/lib/scope';
-import {allowedCompanies} from '@/core/read';
-import {setOrgChartRoot,OrgChartRootError} from '@/core/org-chart';
+import {setOrgChartRoot,OrgChartRootError,orgChartCompanies} from '@/core/org-chart';
 export async function designateRoot(form:FormData){
- const {s}=await scopedSession();const scopeIds=(await allowedCompanies(s)).map(company=>company.id);const employmentId=String(form.get('employmentId')??'');
+ const {s}=await scopedSession();const scopeIds=(await orgChartCompanies(s)).map(company=>company.id);const employmentId=String(form.get('employmentId')??'');
  const {orgChartSnapshot}=await import('@/core/org-chart');const snapshot=await orgChartSnapshot(s,{companyIds:scopeIds,filter:{asOf:String(form.get('validFrom')??'')}});
  if(!snapshot.canManage||!snapshot.employees.some(e=>e.employmentId===employmentId))throw new Error('Organisation maintenance is unavailable');
  const params=new URLSearchParams({asOf:String(form.get('validFrom')??'')});const companyId=String(form.get('companyId')??'');if(scopeIds.includes(companyId))params.set('companyId',companyId);

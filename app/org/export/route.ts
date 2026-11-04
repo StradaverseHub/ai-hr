@@ -1,14 +1,13 @@
 import {getTranslations} from 'next-intl/server';
 import {z} from 'zod';
 import {scopedSession} from '@/lib/scope';
-import {orgChartSnapshot,orgChartDate,recordOrgChartExport,orgChartActorName} from '@/core/org-chart';
-import {allowedCompanies} from '@/core/read';
+import {orgChartSnapshot,orgChartDate,recordOrgChartExport,orgChartActorName,orgChartCompanies} from '@/core/org-chart';
 import {getCompanyLogo} from '@/core/admin';
 import {orgChartVisibleIds,orgChartSearchIds} from '@/lib/org-chart-model';
 import {renderOrgChartPdf} from '@/lib/org-chart-pdf';
 const filterSchema=z.object({companyId:z.string().max(64).optional(),businessUnitId:z.string().max(64).optional(),departmentId:z.string().max(64).optional(),employmentType:z.string().max(32).optional(),status:z.enum(['all','active','probation','notice']).optional(),query:z.string().max(150).optional(),asOf:z.string().max(10)}).strict();
 export async function POST(request:Request){
- const {s}=await scopedSession();const scopeIds=(await allowedCompanies(s)).map(company=>company.id);const form=await request.formData();let filter,collapsed:string[];
+ const {s}=await scopedSession();const scopeIds=(await orgChartCompanies(s)).map(company=>company.id);const form=await request.formData();let filter,collapsed:string[];
  try{filter=filterSchema.parse(JSON.parse(String(form.get('filter')??'')));orgChartDate(filter.asOf);collapsed=z.array(z.uuid()).max(20000).parse(JSON.parse(String(form.get('collapsed')??'[]')));}catch{return new Response('Invalid organisation view',{status:400});}
  if(filter.companyId&&!scopeIds.includes(filter.companyId))return new Response('Unavailable',{status:403});
  const snapshot=await orgChartSnapshot(s,{companyIds:scopeIds,filter});if(!snapshot.canManage)return new Response('Unavailable',{status:403});

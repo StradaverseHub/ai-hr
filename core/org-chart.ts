@@ -7,6 +7,9 @@ import {projectOrgChart,type OrgChartEmployee,type OrgChartEdge,type OrgChartFil
 import {assertWorkforceEmploymentTx} from './workforce-access';
 
 export function orgChartDate(value?:string){const date=value||todayInKualaLumpur();if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date))||new Date(date).toISOString().slice(0,10)!==date)throw new Error('Invalid organisation effective date');return date;}
+/** Filter metadata follows the actual database actor, not an optional session grant projection. */
+export function orgChartCompanies(ctx:SessionContext){return withTenant(ctx,tx=>tx.select({id:company.id,name:company.legalName}).from(company)
+ .where(sql`app.is_admin_for(${company.id}) OR EXISTS(SELECT 1 FROM employment visible WHERE visible.company_id=${company.id} AND app.can_see_employment(visible.id))`).orderBy(asc(company.legalName)));}
 export async function orgChartSnapshot(ctx:SessionContext,p:{companyIds:string[];filter?:Partial<OrgChartFilter>}){
  const asOf=orgChartDate(p.filter?.asOf);const filter={...p.filter,asOf};
  if(!p.companyIds.length)return {employees:[],edges:[],issues:[],options:[],asOf,canManage:false};
@@ -48,6 +51,8 @@ export async function orgChartSnapshot(ctx:SessionContext,p:{companyIds:string[]
   const counts=new Map<string,number>();for(const edge of result.edges)if(edge.type==='administrative')counts.set(edge.manager,(counts.get(edge.manager)??0)+1);
   for(const employee of result.employees)employee.directReportCount=counts.get(employee.employmentId)??0;
   const options=[...new Map(all.filter(e=>e.status!=='inactive').map(({companyId,company,businessUnitId,businessUnit,departmentId,department})=>[JSON.stringify([companyId,businessUnitId,departmentId]),{companyId,company,businessUnitId,businessUnit,departmentId,department}])).values()];
+  const companies=await tx.select({id:company.id,name:company.legalName}).from(company).where(and(inArray(company.id,p.companyIds),sql`app.is_admin_for(${company.id}) OR EXISTS(SELECT 1 FROM employment visible WHERE visible.company_id=${company.id} AND app.can_see_employment(visible.id))`)).orderBy(asc(company.legalName));
+  for(const co of companies)if(!options.some(option=>option.companyId===co.id))options.push({companyId:co.id,company:co.name,businessUnitId:null,businessUnit:null,departmentId:null,department:null});
   return {...result,options,asOf,canManage:authority?.allowed===true};
  });
 }
