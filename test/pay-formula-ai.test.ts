@@ -1,3 +1,4 @@
+import {parsePayFormula} from '../lib/pay-formula-language';
 import {describe,it,expect} from 'vitest';
 import {adjudicatePayFormulaDraft,payFormulaDraftPrompt,payFormulaDraftRequest} from '../lib/pay-formula-ai';
 import {payFormulaSampleFields,runPayFormulaSample} from '../lib/pay-formula-sample';
@@ -70,4 +71,9 @@ describe('typed personal and employment samples',()=>{
   expect(runPayFormulaSample(date,{fields:{'EmployeeProfile:joinDate':'2025-02-30'}}).error?.code).toBe('sample_invalid');
   expect(runPayFormulaSample('Return {#PayItem}("PRIVATE")',{fields:{PRIVATE:'100'}}).error?.code).toBe('needs_employee_test');
  });
+});
+
+it('retains an insertable quoted-placeholder draft exactly while native parsing refuses execution',()=>{
+ const source='If {#EmployeeProfile}("companyId") = "{#MISSING:Company}" Then\nReturn 9\nElse\nReturn 0\nEnd If';
+ const result=adjudicatePayFormulaDraft(proposal(source,{questions:['Select the permitted Company locally.']}));expect(result).toMatchObject({source,valid:false,unresolved:true});expect(()=>parsePayFormula(result.source!)).toThrow(/Complete every reserved MISSING/);
 });
