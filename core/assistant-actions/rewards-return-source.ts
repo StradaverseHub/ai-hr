@@ -38,7 +38,7 @@ export async function confirmRewardsReturnSourceTx(tx:Tx,ctx:SessionContext,valu
 }
 export async function reconcileRewardsReturnSourceTx(tx:Tx,ctx:SessionContext,reviewId:string){const [r]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_rewards_return_receipt(${z.guid().parse(reviewId)}::uuid) receipt`);return RewardsReturnReceipt.parse(r?.receipt);}
 export async function readRewardsReturnChoicesTx(tx:Tx,ctx:SessionContext){return withRewardsReturnBoundsTx(tx,async()=>{await assertRewardsReturnActorTx(tx,ctx);const [r]=await tx.execute<{choices:unknown}>(sql`select app.assistant_rewards_return_choices() choices`),value=RewardsReturnChoices.parse(r?.choices);if(Buffer.byteLength(JSON.stringify(value))>49152)return rewardsReturnUnavailable();return value;});}
-export const readRewardsReturnChoices=(ctx:SessionContext)=>withTenant(ctx,tx=>readRewardsReturnChoicesTx(tx,ctx));
+export const readRewardsReturnChoices=(ctx:SessionContext)=>withTenant(ctx,async tx=>{await tx.execute(sql`set transaction read only`);return readRewardsReturnChoicesTx(tx,ctx);});
 export async function withRewardsReturnBoundsTx<T>(tx:Tx,work:()=>Promise<T>):Promise<T>{
  const [prior]=await tx.execute<{saved:string;milliseconds:number;unit:string}>(sql`select current_setting('lock_timeout') saved,setting::integer milliseconds,unit from pg_settings where name='lock_timeout'`);
  if(!prior||prior.unit!=='ms'||!Number.isSafeInteger(prior.milliseconds)||prior.milliseconds<0)return rewardsReturnUnavailable();

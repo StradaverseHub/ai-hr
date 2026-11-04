@@ -1,5 +1,37 @@
 # Coordinated migration reservations
 
+## Assigned/Rewards read metadata and Claims preview index — 5 November 2026 (unapplied)
+
+`codex/performance-ai-metadata-claims-index-20261105` appends
+`2132_ai_metadata_claim_preview_index`, idx1385 / when1793330001532 /
+SHA256 `ea9d1a6ee283b0586a835d98ee4c5e75196615a5f51d22d643966fc519c97508`.
+Freshly fetched main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e. The scan covered2343
+heads,432 committed journals,595 migration trees and230 readable worktrees, through2131 / idx1384 /
+when1793330001531. Foreign malformed WIP was preserved and its literal bounds included.
+Read-only staging inspection matched all671 ordered canonical applied identities through
+1793330001502. No applied SQL bytes changed;2131 is retained unchanged.
+
+Native qualification41866680656 passed38 assigned-review tests; the original write-login helper
+remained byte-identical while the metadata index used a separate private read-only helper.
+Rewards qualification41868731475 passed11 tests, including read overlap, the same native busy
+refusal, exact metadata/choices and actual annual return. Its original failed run41867307931 is
+retained: function-default parser offsets moved during normalized DDL replay; the repaired assertion
+normalizes only those source offsets and separately compares rendered default expressions.
+
+Claims qualification41866667526 retained one million pending requests across500 employments,
+ten companies and two tenants with every row trigger/constraint enabled. The covering index kept
+all RLS/grants, exact counts and preview DTO/order unchanged for group HR, company HR, employees
+and a foreign group. Group reads improved from1.11–1.17s to0.75–0.80s at one reader; index size
+was86269952 bytes. This is component evidence, not500-user capacity. The existing employment/status
+index remains because the new tenant-first index does not cover every existing access path.
+
+The application opts in its default assigned metadata adapter and the separately qualified Rewards
+choices/index only. All command intervals retain their write guards. Installed native checks,
+populated upgrades, compiler and both500-user/browser scenarios remain required. Recheck allocation
+before release admission. Complete BOARD roles stays excluded; no deployment or human approval
+binding refresh is authorized.
+
+
 ## Read-only AI metadata locks — 5 November 2026 (unapplied)
 
 `codex/performance-ai-shared-native-reads-20261105` appends

@@ -8976,7 +8976,8 @@ export const claimRequest = pgTable(
     payoutRef: text('payout_ref'),
     createdAt: createdAt(),
   },
-  (t) => [index('claim_request_employment_idx').on(t.employmentId, t.status)],
+  (t) => [index('claim_request_employment_idx').on(t.employmentId, t.status),
+    index('claim_request_preview_order_idx').on(t.tenantId,t.employmentId,t.status,t.createdAt.desc(),t.id)],
 );
 
 export const claimAttachment = pgTable(

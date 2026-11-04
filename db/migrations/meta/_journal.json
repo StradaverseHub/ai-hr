@@ -4747,6 +4747,13 @@
       "when": 1793330001531,
       "tag": "2131_ai_read_only_metadata_locks",
       "breakpoints": true
+    },
+    {
+      "idx": 1385,
+      "version": "7",
+      "when": 1793330001532,
+      "tag": "2132_ai_metadata_claim_preview_index",
+      "breakpoints": true
     }
   ]
 }

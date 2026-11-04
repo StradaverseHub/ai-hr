@@ -103,7 +103,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    TAIL.map(row=>({hash:hash(readFileSync('db/migrations/'+row.tag+'.sql')),created_at:String(row.when)})));
   expect(await native()).toEqual(upgradeNative);
   const afterPrivileges=await privileges();
-  const privateFunctions=['app._access_workforce_list_rows(uuid[])'];
+  const privateFunctions=['app._access_workforce_list_rows(uuid[])','app._assistant_assigned_index_login(uuid,boolean)'];
   const addedFunctions=[...privateFunctions,'app.access_workforce_list_facts()','app.access_workforce_list_rows_for_ids(uuid[])','app.attendance_frozen_actor_identity_keys(jsonb,text)','app.delegated_approval_subjects(uuid[],text,text)','app.may_have_attendance_task_metadata()'].sort();
   const beforeFunctions=new Set(beforePrivileges.functions.map(row=>row.fn));
   expect(afterPrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
@@ -113,7 +113,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
     from pg_proc p where p.oid=to_regprocedure(${fn})`;
    expect(permission).toEqual({app_execute:!privateFunctions.includes(fn),public_execute:false});
   }
-  // The six explicitly installed helpers are the only new functions, with the shared JSON owner private. Every prior
+  // The seven explicitly installed helpers are the only new functions, with both shared owners private. Every prior
   // function ACL and every table/column/policy privilege must still match the populated baseline.
   expect({...afterPrivileges,functions:afterPrivileges.functions.filter(row=>!addedFunctions.includes(row.fn))}).toEqual(beforePrivileges);
   const installed=await keys();
