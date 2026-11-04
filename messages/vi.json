@@ -24055,6 +24055,7 @@
       }
     },
     "policyGrids": {
+      "validation": {"missing": "{row} · {column}: nhập giá trị hoặc bậc còn thiếu.", "number": "{row} · {column}: nhập giá trị trong phạm vi cho phép.", "precision": "{row} · {column}: nhập số không âm với tối đa {decimals} chữ số thập phân.", "positive": "{row} · Tối thiểu: phải lớn hơn 0.", "salaryOrder": "{row} · {column}: phải lớn hơn {previous}.", "bonusOrder": "{row} · {column}: số tháng thưởng phải lớn hơn {previous}.", "zero": "{row} · UA: phải bằng 0.", "grade": "{row} · {column}: chọn bậc hoặc phân khúc hợp lệ; bậc 23 không có khung lương.", "duplicate": "{row}: xóa bậc hoặc phân khúc trùng lặp."},
       "ranges": "Khoảng lương (MYR)",
       "bonusMatrix": "Số tháng thưởng theo bậc",
       "branchFactors": "Hệ số chi nhánh",
@@ -32481,6 +32482,8 @@
     "verifiedOf": "Đã xác minh {verified}/{total}",
     "cancelled": "Đã hủy",
     "create": {
+      "completeBeforeCreate": "Hoàn tất trước khi tạo đợt đánh giá",
+      "blocked": {"year": "Nhập năm thưởng từ 2000 đến 2200.", "snapshotMissing": "Chọn ngày chụp dữ liệu.", "snapshotFuture": "Ngày chụp dữ liệu phải là hôm nay hoặc trước đó.", "cycleName": "Nhập tên chu kỳ đánh giá mới (tối đa 160 ký tự).", "company": "Chọn công ty có sẵn cho năm thưởng này.", "businessUnit": "Công ty chưa được phân công đơn vị kinh doanh hiện hành. Thiết lập trong Quản lý nhân sự rồi tải lại trang.", "conflict": "Có nhiều cấu hình chung áp dụng cho công ty và đơn vị trong năm đã chọn. Group Rewards cần giải quyết các phân công chồng chéo.", "policyUnavailable": "Không thể tải cấu hình chung đã phân công. Tải lại trang hoặc nhờ Group Rewards kiểm tra phiên bản đã lưu."},
       "defaultName": "Đợt xét duyệt lương thưởng năm {year}",
       "effectiveHelp": "Năm thưởng là năm hiệu suất được khen thưởng; ngày lương mới có hiệu lực lấy từ thiết lập của đợt xét duyệt."
     },
@@ -32749,7 +32752,7 @@
     "pendingPreview": "Toàn bộ yêu cầu sẽ chờ một người dùng Group Rewards độc lập phê duyệt.",
     "immediateSaved": "Đã áp dụng – không cần phê duyệt lần hai",
     "pendingSaved": "Đang chờ – quyền truy cập hiện tại không thay đổi.",
-    "proposalScope": "GR và CTRO quản lý các kỳ được giao. CEO có thể yêu cầu người đại diện có thời hạn cho vai trò của mình; PBP có thể yêu cầu quyền xem cho chính mình.",
+    "proposalScope": "Group Rewards, HR Admin và CTRO áp dụng thay đổi trực tiếp trong phạm vi được cấp quyền; không cần phê duyệt lần hai. Yêu cầu ủy quyền CEO và yêu cầu PBP xem dữ liệu của mình chờ Group Rewards xem xét. Mọi yêu cầu và thay đổi đều được ghi vào nhật ký kiểm toán.",
     "scopeExplanation": "Phân công Rewards đang có hiệu lực và quyền quản trị HR theo phạm vi quyết định quyền truy cập; chỉ có vai trò hệ thống không cho phép mọi hành động."
   },
   "emailDesign": {

@@ -1,3 +1,4 @@
+import {rewardReviewInputIssues} from './review-creation';
 import {mobileRewardPersonBlock} from './mobile-review-projection';
 import type { Tx as AiReadTx } from '../../db/client';
 import { withCanonicalAiReadTx } from '../../core/ai-read-transaction';
@@ -534,7 +535,9 @@ async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewar
 export async function createRewardUnit(ctx: SessionContext, raw: { name?: string; year: number; companyId: string; businessUnitId: string; cycleId?: string; snapshotDate: string;sharedPolicyVersionId?:string }) {
   // The cycle name is asked for only when a new cycle is created; an existing cycle keeps its own name.
   const p = z.object({ name: z.string().trim().max(160).default(''), year: z.number().int().min(2000).max(2200), companyId: idSchema, businessUnitId: idSchema, cycleId: idSchema.optional(), snapshotDate: isoDateSchema,sharedPolicyVersionId:idSchema.optional() }).parse(raw);
-  if (p.snapshotDate > todayInKualaLumpur()) throw new RewardError('The snapshot date cannot be in the future.');
+  const inputIssues=rewardReviewInputIssues({...p,cycleId:p.cycleId??'',snapshotDate:p.snapshotDate,today:todayInKualaLumpur()});
+  if(inputIssues.includes('snapshotFuture'))throw new RewardError('The snapshot date cannot be in the future.');
+  if(inputIssues.includes('cycleName'))throw new RewardError('Name the new review cycle.');
   return withRewardsTenant(ctx, async tx => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await requireAdmin(tx, p.companyId);

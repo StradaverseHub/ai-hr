@@ -106,6 +106,16 @@ describe('shared configuration pair picker',()=>{
   expect(document.querySelector<HTMLInputElement>('input[name="sharedPolicyVersionId"]')!.value).toBe('');
   expect(screen.queryByRole('option',{name:'Fictional Company A · Unit A'})).toBeNull();expect(screen.getByRole('option',{name:'Unit B'})).toBeTruthy();
  });
+ it('explains all create blockers and permits the authoritative manual-default path once complete',()=>{
+  const props={actorUserId:id(9),today,companies,units,memberships,cycles:[],shared:[]};
+  const view=render(wrap(<RewardReviewCreateForm {...props}/>));
+  const create=()=>screen.getByRole<HTMLButtonElement>('button',{name:en.rewards.createUnit});
+  expect(create().disabled).toBe(true);expect(screen.getByText(en.rewardsConfig.create.blocked.snapshotMissing)).toBeVisible();
+  fireEvent.change(screen.getByLabelText(en.rewards.snapshotDate),{target:{value:today}});expect(create().disabled).toBe(false);
+  fireEvent.change(screen.getByLabelText(en.rewards.cycle),{target:{value:'   '}});expect(create().disabled).toBe(true);expect(screen.getByText(en.rewardsConfig.create.blocked.cycleName)).toBeVisible();
+  view.rerender(wrap(<RewardReviewCreateForm {...props} memberships={[]}/>));
+  expect(screen.getByText(en.rewardsConfig.create.blocked.businessUnit)).toBeVisible();expect(screen.getByRole('link',{name:en.rewards.sharedPolicy.manageUnits})).toHaveAttribute('href','/admin/personnel');
+ });
  it('shows the selected saved version eligibility and refreshes it on unit changes without PAT',()=>{
   const makePolicy=(day:string,rating:'BE'|'ME')=>{const p=defaultPolicy(year);return {effectiveFrom:p.effectiveFrom,meritMatrix:p.meritMatrix,standardPools:p.standardPools,hPools:p.hPools,targetMonthsBp:p.targetMonthsBp,bonusMatrix:p.bonusMatrix,exemptReason:'',eligibility:{...rewardEligibilitySummary(p),activeAsOf:day,minimumBonusRating:rating,legacyDefaults:false}};};
   const shared=[{groupId:id(6),versionId:id(7),revision:2,name:'Policy A',year,companyId:id(1),businessUnitId:id(3),policy:makePolicy(`${year}-12-30`,'BE')},{groupId:id(8),versionId:id(10),revision:4,name:'Policy B',year,companyId:id(2),businessUnitId:id(4),policy:makePolicy(`${year}-11-30`,'ME')}];

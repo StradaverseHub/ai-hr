@@ -24055,6 +24055,7 @@
       }
     },
     "policyGrids": {
+      "validation": {"missing": "{row} · {column}：请填写缺少的数值或职级。", "number": "{row} · {column}：请输入允许范围内的数值。", "precision": "{row} · {column}：请输入非负数，最多 {decimals} 位小数。", "positive": "{row} · 最低值：必须大于零。", "salaryOrder": "{row} · {column}：必须大于 {previous}。", "bonusOrder": "{row} · {column}：奖金月数必须大于 {previous}。", "zero": "{row} · UA：必须为 0。", "grade": "{row} · {column}：请使用支持的职级或类别；23 级不设薪资范围。", "duplicate": "{row}：请删除重复的职级或类别。"},
       "ranges": "薪资范围（MYR）",
       "bonusMatrix": "各职级奖金月数",
       "branchFactors": "分支系数",
@@ -32481,6 +32482,8 @@
     "verifiedOf": "已核实 {verified}/{total}",
     "cancelled": "已取消",
     "create": {
+      "completeBeforeCreate": "创建审核前请完成",
+      "blocked": {"year": "请输入 2000 至 2200 年之间的奖励年份。", "snapshotMissing": "请选择数据快照日期。", "snapshotFuture": "快照日期必须为今天或更早。", "cycleName": "请输入新审核周期名称（最多 160 个字符）。", "company": "请选择此奖励年份可用的公司。", "businessUnit": "该公司目前没有业务单位分配。请在人员管理中设置，然后刷新本页。", "conflict": "所选年份有多个共享配置涵盖此公司与业务单位。请由 Group Rewards 解决重叠分配。", "policyUnavailable": "无法加载已分配的共享配置。请刷新页面或请 Group Rewards 检查其保存版本。"},
       "defaultName": "{year} 年度薪酬评审",
       "effectiveHelp": "奖励年度是被奖励的绩效年度；薪资生效日期取自评审设置。"
     },
@@ -32749,7 +32752,7 @@
     "pendingPreview": "整项申请将保持待审批，直到独立的集团薪酬用户批准。",
     "immediateSaved": "已应用－无需第二次审批",
     "pendingSaved": "待审批－现有权限保持不变。",
-    "proposalScope": "集团薪酬和CTRO管理获分配的评审。CEO可申请有期限、代表本人职责的代理；PBP可申请本人的查看权限。",
+    "proposalScope": "Group Rewards、HR Admin 和 CTRO 可在其授权范围内直接应用变更，无需再次审批。CEO 代理请求及 PBP 的本人查看权限请求需等待 Group Rewards 审核。所有请求及已应用变更均记录于审计日志。",
     "scopeExplanation": "有效薪酬职责任命及限定范围的HR管理员权限决定访问权限；仅有系统角色不代表可执行所有操作。"
   },
   "emailDesign": {

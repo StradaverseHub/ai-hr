@@ -3,7 +3,7 @@ import {useRef,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {Button,inputCls} from '@/components/ui';
 import {parseCsv} from '@/lib/csv';
-import {encodePolicyGrid,policyGridIssues,policyGridRows,policyGridWidth,type RewardPolicyGridKind} from '@/packs/rewards/policy-grid-validation';
+import {encodePolicyGrid,policyGridIssues,policyGridRows,policyGridWidth,type RewardPolicyGridKind,type PolicyGridIssue} from '@/packs/rewards/policy-grid-validation';
 import {loadPreviousRewardPolicyMatrices} from './policy-grid-actions';
 import {useRewardPolicyYear} from './policy-year-context';
 type Previous=Awaited<ReturnType<typeof loadPreviousRewardPolicyMatrices>>;
@@ -15,6 +15,10 @@ function PolicyMatrixGridDraft({kind,matrix,year,onRowsChange}:GridProps){
  const [rows,setRows]=useState(()=>policyGridRows(kind,matrix)),[proposal,setProposal]=useState<string[][]|null>(null),[previous,setPrevious]=useState<Previous|null>(null),[sourceYear,setSourceYear]=useState(year),[busy,setBusy]=useState(false),[error,setError]=useState(false),file=useRef<HTMLInputElement>(null);
  const issues=policyGridIssues(kind,rows),columns=headers[kind];
  const invalid=(name:string,col:number)=>issues.some(issue=>issue.row===name&&issue.column===col);
+ const message=(issue:PolicyGridIssue)=>t(`validation.${issue.code==='order'?(kind==='ranges'?(issue.column===1?'positive':'salaryOrder'):'bonusOrder'):issue.code}`,{row:issue.row||t('segment'),column:columns[issue.column]??columns[0],previous:columns[issue.column-1]??columns[0],decimals:kind==='branchFactors'?4:2});
+ const cellMessage=(row:string,column:number)=>issues.filter(issue=>issue.row===row&&(issue.column===column||issue.column===0)).map(message).join(' ');
+ const uniqueIssues=issues.filter((issue,index)=>issues.findIndex(other=>other.row===issue.row&&other.column===issue.column)===index);
+ const issueId=(row:string,column:number)=>`${kind}-error-${encodeURIComponent(row)}-${column}`;
  async function upload(input:File){
   setError(false);setBusy(true);setProposal(null);
   try{
@@ -45,12 +49,12 @@ function PolicyMatrixGridDraft({kind,matrix,year,onRowsChange}:GridProps){
   <input type="text" className="sr-only" tabIndex={-1} aria-label={t(kind)} aria-describedby={issues.length?`${kind}-errors`:undefined} value="" readOnly ref={node=>node?.setCustomValidity(issues.length?t('invalidCell'):'')}/>
   <input type="hidden" name={kind} value={encodePolicyGrid(kind,rows)}/><input type="hidden" name={`policyGridData.${kind}`} value={JSON.stringify(rows)}/>
   <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr>{columns.map((name,i)=><th key={name} className="p-2 text-left">{i===0?t(kind==='branchFactors'?'segment':'grade'):kind==='ranges'?t(['minimum','midpoint','maximum'][i-1]):name}</th>)}</tr></thead><tbody>{rows.map((row,index)=><tr key={index}>
-   <th scope="row" className="p-2 text-left">{kind==='branchFactors'?<input aria-label={t('segment')} value={row[0]} aria-invalid={invalid(row[0],0)} aria-describedby={invalid(row[0],0)?`${kind}-errors`:undefined} ref={node=>node?.setCustomValidity(invalid(row[0],0)?t('invalidCell'):'')} onChange={event=>update(index,0,event.target.value)} className={`${inputCls} ${invalid(row[0],0)?'border-destructive bg-destructive/5':''}`} required maxLength={80}/>:row[0]}</th>
-   {Array.from({length:policyGridWidth(kind)},(_,col)=>{const noRange=kind==='ranges'&&row[0]==='23',bad=invalid(row[0],col+1)||invalid(row[0],0);return <td key={col} className="p-2">{noRange?<span className="text-muted-foreground">{t('noRange')}</span>:<input type="number" min="0" max={kind==='ranges'?1_000_000_000:10} step={kind==='branchFactors'?'0.0001':'0.01'} required value={row[col+1]??''} aria-label={`${row[0]} ${columns[col+1]}`} aria-invalid={bad} aria-describedby={bad?`${kind}-errors`:undefined} ref={node=>node?.setCustomValidity(bad?t('invalidCell'):'')} onChange={event=>update(index,col+1,event.target.value)} className={`${inputCls} min-w-24 ${bad?'border-destructive bg-destructive/5':''}`}/>}</td>;})}
+   <th scope="row" className="p-2 text-left">{kind==='branchFactors'?<input aria-label={t('segment')} value={row[0]} aria-invalid={invalid(row[0],0)} aria-describedby={invalid(row[0],0)?issueId(row[0],0):undefined} ref={node=>node?.setCustomValidity(cellMessage(row[0],0))} onChange={event=>update(index,0,event.target.value)} className={`${inputCls} ${invalid(row[0],0)?'border-destructive bg-destructive/5':''}`} required maxLength={80}/>:row[0]}</th>
+   {Array.from({length:policyGridWidth(kind)},(_,col)=>{const noRange=kind==='ranges'&&row[0]==='23',bad=invalid(row[0],col+1)||invalid(row[0],0);return <td key={col} className="p-2">{noRange?<span className="text-muted-foreground">{t('noRange')}</span>:<input type="number" min="0" max={kind==='ranges'?1_000_000_000:10} step={kind==='branchFactors'?'0.0001':'0.01'} required value={row[col+1]??''} aria-label={`${row[0]} ${columns[col+1]}`} aria-invalid={bad} aria-describedby={bad?issues.filter(issue=>issue.row===row[0]&&(issue.column===col+1||issue.column===0)).map(issue=>issueId(issue.row,issue.column)).join(' '):undefined} ref={node=>node?.setCustomValidity(cellMessage(row[0],col+1))} onChange={event=>update(index,col+1,event.target.value)} className={`${inputCls} min-w-24 ${bad?'border-destructive bg-destructive/5':''}`}/>}</td>;})}
    {kind==='branchFactors'&&<td><Button type="button" variant="ghost" onClick={()=>changeRows(rows.filter((_,i)=>i!==index))}>{t('remove')}</Button></td>}
   </tr>)}</tbody></table></div>
   {kind==='branchFactors'&&<Button type="button" variant="outline" onClick={()=>changeRows([...rows,['', '0','','','','']])}>{t('addSegment')}</Button>}
-  {issues.length>0&&<p id={`${kind}-errors`} role="alert" className="text-sm text-destructive">{t('invalidCell')}</p>}
+  {issues.length>0&&<ul id={`${kind}-errors`} role="alert" className="space-y-1 text-sm text-destructive">{uniqueIssues.map((issue,index)=><li key={index} id={issueId(issue.row,issue.column)}>{cellMessage(issue.row,issue.column)}</li>)}</ul>}
  </section>;
 }
 function GridPreview({rows,columns}:{rows:string[][];columns:string[]}){return <div className="max-h-64 overflow-auto"><table className="w-full text-sm"><thead><tr>{columns.map(column=><th key={column} className="p-2 text-left">{column}</th>)}</tr></thead><tbody>{rows.map((row,index)=><tr key={index}>{row.map((cell,col)=><td key={col} className="p-2">{cell}</td>)}</tr>)}</tbody></table></div>;}
