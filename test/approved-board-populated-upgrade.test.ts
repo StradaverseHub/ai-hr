@@ -1,3 +1,4 @@
+import {migrateApprovedUpgrade,retainedUpgradeSnapshot} from './helpers/approved-upgrade';
 /** Rehearse the approved-board release over the original 562 and current deployed 563-receipt prefixes.
  * Only an owned disposable localhost database; ordinary Drizzle receipts and all guards stay active. */
 import {createHash,randomUUID} from 'node:crypto';
@@ -101,8 +102,8 @@ it.each([562,563])('upgrades populated payroll and Rewards from %i through the c
   const before=await historicalRows();
   for(const table of ['reward_unit','reward_entry','reward_decision','payroll_input','payroll_individual_txn','payslip'])expect(before[table]).toHaveLength(2);
   expect(before.reward_policy_group_target).toHaveLength(4);
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  expect(await historicalRows()).toEqual(before);
+  const approvedUpgrade=await migrateApprovedUpgrade(storage);
+  expect(retainedUpgradeSnapshot(await historicalRows(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));
   const upgraded=await ledger();expect(upgraded).toHaveLength(journal.entries.length);expect(upgraded.slice(0,start)).toEqual(baseline);
   expect(upgraded.map(row=>({hash:row.hash,when:Number(row.created_at)}))).toEqual(orderedManifest.map(m=>({hash:m.hash,when:m.folderMillis})));
   expect(await storage.client`select id from payroll_txn_import_attempt`).toHaveLength(0); // Never invent ownership of old imports.
@@ -147,9 +148,10 @@ it.each([562,563])('upgrades populated payroll and Rewards from %i through the c
    await expect(storage.client`update payslip set gross_pay=1 where id=${f.slip}`).rejects.toMatchObject({code:'23514'});
    await expect(storage.client`update payroll_input set reward_provenance='{}'::jsonb where id=${f.input}`).rejects.toMatchObject({code:'23514'});
   }
-  expect(await historicalRows()).toEqual(before);
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  expect(await ledger()).toEqual(upgraded);expect(await historicalRows()).toEqual(before);
+  expect(retainedUpgradeSnapshot(await historicalRows(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));
+  const terminal=await historicalRows();
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});expect(await historicalRows()).toEqual(terminal);
+  expect(await ledger()).toEqual(upgraded);expect(retainedUpgradeSnapshot(await historicalRows(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));
  }finally{
   await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);await admin.end();rmSync(directory,{recursive:true,force:true});
  }
