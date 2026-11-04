@@ -96,7 +96,7 @@ it('reads the policy committed by a settings writer it actually waited behind',a
  const writing=owner.client.begin(async tx=>{
   await tx`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
   ready();await finish;
-  await tx`insert into tenant_setting(tenant_id,key,value) values(${b.tenantId},'ess.profile_change_fields',${tx.json(hidden)})
+  await tx`insert into tenant_setting(tenant_id,key,value) values(${b.tenantId},'ess.profile_change_fields',${JSON.stringify(hidden)}::jsonb)
    on conflict(tenant_id,key) do update set value=excluded.value`;
  });void writing.catch(fail);
  let reading:ReturnType<typeof readProfilePresentationPolicy>|undefined;
