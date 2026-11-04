@@ -17,7 +17,10 @@
  *  - nobody whose learned baseline is due to go under the leaver retention rule (3 months after their final pay closed);
  *  - then the retention purge for the company (app.payroll_learned_baseline_purge), as the agent principal.
  * One append-only run row per company records the status, the sponsor and the counts. One company's failure never stops
- * the next. No model is called; nothing here changes pay, a run, a check, a permission or a disclosure rule. */
+ * the next. No model is called; nothing here changes pay, a run, a check, a permission or a disclosure rule.
+ * THE TENANT'S STOP SWITCH (teras_mandate_control, the switch every loop honours) halts it: while it is on nothing is
+ * recomputed and no evidence is shown (./evidence.ts), and the database refuses a baseline written anyway (migration 2012).
+ * The leaver retention purge still runs: it only deletes what the retention rule says must go. */
 import {createHash,randomUUID} from 'node:crypto';
 import {and,desc,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
@@ -26,6 +29,7 @@ import {payrollLearnedBaseline,payrollLearningMode,payrollLearningRun,type Basel
 import type {EntitlementSnapshot} from '../entitlement-types';
 import {isModuleEnabled} from '../entitlements';
 import {agentContext} from '../agent-principal';
+import {tenantStoppedTx} from '../agent-registry/controls';
 import {currentSponsorTx} from '../loops/run';
 import {nextPeriod} from '../loops/period';
 import {listPayComponents} from '../../packs/payroll/service';
@@ -43,7 +47,9 @@ export type LearningRunOptions=Readonly<{tenantId:string;principalId:string;enti
  /** The tick: only companies whose history changed since their last learning run. The sweep leaves it out. */
  onlyChanged?:true;now?:Date}>;
 export type LearningCompanyResult=Readonly<{companyId:string;status:'ran'|'sponsor_lost'|'failed'|'unchanged';counts:LearningRunCounts|null}>;
-export type LearningRunResult=Readonly<{runId:string;companies:readonly LearningCompanyResult[];purged:number}>;
+export type LearningRunResult=Readonly<{runId:string;companies:readonly LearningCompanyResult[];purged:number;
+ /** The tenant's stop switch is on: nothing was learned (the retention purge still ran). */
+ stopped:boolean}>;
 
 const ZERO:LearningRunCounts=Object.freeze({people:0,appended:0,none:0,provisional:0,stable:0,rebasing:0,contradicted:0,purged:0});
 const canonical=(value:unknown):string=>Array.isArray(value)?`[${value.map(canonical).join(',')}]`
@@ -88,6 +94,8 @@ async function learnCompany(sponsor:SessionContext,companyId:string,componentIds
   const [authority]=await tx.execute(sql`select app.principal_snapshot_current() is true and app.can_admin_payroll_for(${companyId}::uuid) is true
    and app.payroll_learning_mode_of(${companyId}::uuid) in ('evidence','classify') as ok`) as unknown as {ok:boolean}[];
   if(authority?.ok!==true)return null;
+  // Stopped since the run began: nothing is written.
+  if(await tenantStoppedTx(tx,sponsor.tenantId))return {...ZERO,asOf:null};
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`payroll-learning:${sponsor.tenantId}:${companyId}`},0))`);
   const [latest]=await tx.select({period:sql<string|null>`max(${payrollBatch.payPeriod})`}).from(payrollBatch)
    .where(and(eq(payrollBatch.companyId,companyId),eq(payrollBatch.status,'closed')));
@@ -145,6 +153,9 @@ export async function runPayrollLearning(options:LearningRunOptions):Promise<Lea
    .then(rows=>Number((rows as unknown as {n:number}[])[0]?.n??0)).catch(()=>0);
   purgedBy.set(row.companyId,removed);
  }
+ // The tenant's stop switch halts learning itself (no recompute, no evidence); the purge above has already run.
+ if(await withTenant(agent,tx=>tenantStoppedTx(tx,options.tenantId)))
+  return Object.freeze({runId,companies:Object.freeze([]),purged:[...purgedBy.values()].reduce((sum,n)=>sum+n,0),stopped:true});
  const payroll=modes.filter(row=>isModuleEnabled(agent,'payroll',row.companyId));
  const on=payroll.filter(row=>row.mode==='evidence'||row.mode==='classify');
  const last=on.length?await withTenant(agent,tx=>lastRunsTx(tx,options.tenantId,on.map(row=>row.companyId))):new Map<string,Date>();
@@ -184,5 +195,5 @@ export async function runPayrollLearning(options:LearningRunOptions):Promise<Lea
    results.push(Object.freeze({companyId:row.companyId,status:'failed',counts:null}));
   }
  }
- return Object.freeze({runId,companies:Object.freeze(results),purged:[...purgedBy.values()].reduce((sum,n)=>sum+n,0)});
+ return Object.freeze({runId,companies:Object.freeze(results),purged:[...purgedBy.values()].reduce((sum,n)=>sum+n,0),stopped:false});
 }

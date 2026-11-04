@@ -12,7 +12,10 @@
  *     payslips untouched).
  *  6. The trigger: the payroll tick learns after a run closes, is unlocked or reset and after a payroll-history import is
  *     confirmed or reverted, and leaves an unchanged company alone.
- *  7. P2: the evidence lines (within, above, below, from provisional or stable baselines only, none while learning is off or
+ *  7. The switch: evidence by a group administrator, off by any payroll administrator, classify never directly; each change
+ *     versioned, shown with its history and captured as configuration in the Audit loop's pack; and the tenant's stop switch
+ *     halts learning and evidence.
+ *  8. P2: the evidence lines (within, above, below, from provisional or stable baselines only, none while learning is off or
  *     for anyone but a payroll administrator), "Learned this cycle" counts, and the AI read: counts under the small-group
  *     rule, and no amount, range, person or id reaches the model.
  * Periods are relative to today in Malaysia (lib/hr-date), so the retention rule is tested against the real clock. Expected
@@ -33,7 +36,9 @@ import {readLearningHistoryTx} from '../core/payroll-learning/history';
 import {learnedThisCycle} from '../core/payroll-learning/status';
 import {runEvidence,swingFlagEvidence} from '../core/payroll-learning/evidence';
 import {runPayrollLearning} from '../core/payroll-learning/recompute';
-import {PayrollLearningRefused,setPayrollLearningMode} from '../core/payroll-learning/mode';
+import {LEARNING_MODE_EVENT,PayrollLearningRefused,learningSettingsView,setPayrollLearningMode} from '../core/payroll-learning/mode';
+import {setMandateStopSwitch} from '../core/mandates/mandates';
+import {collectPayrollPeriodArtefactsTx} from '../core/payroll-audit/capture';
 import {payrollLearningStatus} from '../core/explainers/payroll-learning';
 import {runPayrollTick} from '../core/loops/tick';
 import {nextPeriod,previousPeriod} from '../core/loops/period';
@@ -64,6 +69,12 @@ async function companyAdmin(companyId:string,base=b):Promise<Login>{
  await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:user.id,companyId,role:'hr_admin'});
  return {...(await entitledCtx(base,['hr_admin'])),userId:user.id,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId}]};
 }
+/** A group administrator: the only one who switches learning on (and so its sponsor). */
+async function groupAdmin(base=b):Promise<Login>{
+ const userId=await createAppUser(base.tenantId,null,'hr_admin');
+ return {...(await entitledCtx(base,['hr_admin'])),userId,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+}
+const switchOn=async()=>{const group=await groupAdmin();await setPayrollLearningMode(group,{companyId:b.companyId,mode:'evidence'});return group;};
 let seq=0;
 async function hire(name:string,companyId=b.companyId,departmentId=b.deptA){
  return hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:`learning-${++seq}-${randomUUID()}@fixture.test`},companyId,departmentId,employmentType:'full_time',hiredOn:'2020-01-01'});
@@ -160,7 +171,11 @@ describe('the history reader',()=>{
  it('reads closed runs only, months before the as-of month only (no look-ahead), and the effective copy only',async()=>{
   const admin=await companyAdmin(b.companyId);
   const e1=(await hire('Ravi Fictional')).employmentId;
-  for(const [i,period] of MONTHS.entries())await run(period,[{employmentId:e1,net:E1[i]}]);
+  // Part months: joined the company in month 2, an unpaid-leave line in month 4, a proration stamp in month 5, left in month 6.
+  const part=(await hire('Part Month Fictional')).employmentId;
+  await owner.db.update(schema.employment).set({joinDate:`${MONTHS[1]}-15`,terminatedOn:`${MONTHS[5]}-20`}).where(eq(schema.employment.id,part));
+  const partSlip=(i:number):Slip[]=>i<1||i>5?[]:[{employmentId:part,net:'2000.00',statutory:i===3?{unpaidLeave:{days:2,amount:180}}:i===4?{reportContext:{proration:{payMode:'monthly',factor:0.75}}}:{}}];
+  for(const [i,period] of MONTHS.entries())await run(period,[{employmentId:e1,net:E1[i]},...partSlip(i)]);
   // A processed run of the as-of month and a draft of the month after: never history.
   await run(AS_OF,[{employmentId:e1,net:'9999.00'}],{status:'processed'});
   await run(nextPeriod(AS_OF),[{employmentId:e1,net:'8888.00'}],{status:'draft'});
@@ -170,6 +185,9 @@ describe('the history reader',()=>{
   const months=all.months.get(e1)!;
   expect(months.map(month=>month.period)).toEqual([shift(MONTHS[0],-1),...MONTHS]);
   expect(all.latestClosed).toBe(MONTHS[6]);
+  // A part month is usual for nobody: the first and last month with the company and the months with unpaid leave or proration.
+  expect(all.months.get(part)!.map(month=>[month.period,month.excluded])).toEqual([[MONTHS[1],['first_month']],[MONTHS[2],[]],[MONTHS[3],['part_month']],
+   [MONTHS[4],['part_month']],[MONTHS[5],['last_month']]]);
   // The imported month: only its effective copy (the correction, 3100.00), and set aside as a correction.
   expect(months[0].rows.map(row=>[row.figures.net,row.imported,row.runType])).toEqual([['3100.00',true,'regular']]);
   expect(months[0].excluded).toEqual(['correction']);
@@ -201,14 +219,18 @@ describe('the learning run',()=>{
   const people=await company();
   expect((await learn()).companies).toEqual([]);
   expect(await owner.db.select().from(payrollLearnedBaseline)).toEqual([]);
-  expect(await setPayrollLearningMode(admin,{companyId:b.companyId,mode:'evidence'})).toMatchObject({mode:'evidence',version:1});
+  // A payroll administrator of one company may not switch it on, in the service or the database; a group administrator does.
+  await expect(setPayrollLearningMode(admin,{companyId:b.companyId,mode:'evidence'})).rejects.toMatchObject({reason:'group_administrator'});
+  await expect(withTenant(admin,tx=>tx.insert(payrollLearningMode).values({tenantId:b.tenantId,companyId:b.companyId,version:1,mode:'evidence',source:'admin',setByUserId:admin.userId}))).rejects.toThrow();
+  const group=await groupAdmin();
+  expect(await setPayrollLearningMode(group,{companyId:b.companyId,mode:'evidence'})).toMatchObject({mode:'evidence',version:1});
   const result=await learn();
   expect(result.companies).toEqual([expect.objectContaining({companyId:b.companyId,status:'ran'})]);
   // Stable: 6; provisional: e2, e3, e4; not yet: the five joiners (regular basis, the as-of month).
   expect(result.companies[0].counts).toMatchObject({people:14,stable:6,provisional:3,none:5,rebasing:0,contradicted:0,purged:0});
   const e1=(await stored(people.e1)).filter(row=>row.basis==='regular'&&row.asOfPeriod===AS_OF);
   expect(e1).toHaveLength(1);
-  expect(e1[0]).toMatchObject({companyId:b.companyId,status:'stable',runs:7,excluded:0,throughPeriod:MONTHS[6],sponsorUserId:admin.userId,method:'payroll_baseline@v1',version:expect.any(Number)});
+  expect(e1[0]).toMatchObject({companyId:b.companyId,status:'stable',runs:7,excluded:0,throughPeriod:MONTHS[6],sponsorUserId:group.userId,method:'payroll_baseline@v1',version:expect.any(Number)});
   expect(e1[0].components.net).toEqual({n:7,median:410000,p10:400000,p90:420000,nonZero:7,monthMask:expect.any(Number),fixed:false});
   // The baseline of the latest closed month rests on the six months before it.
   const latest=(await stored(people.e1)).find(row=>row.basis==='regular'&&row.asOfPeriod===MONTHS[6])!;
@@ -232,22 +254,21 @@ describe('the learning run',()=>{
  it('stops for a company whose sponsor lost payroll authority, and refuses classify and a non-administrator',async()=>{
   const admin=await companyAdmin(b.companyId);
   await company();
-  await setPayrollLearningMode(admin,{companyId:b.companyId,mode:'evidence'});
-  await expect(setPayrollLearningMode(admin,{companyId:b.companyId,mode:'classify'})).rejects.toBeInstanceOf(PayrollLearningRefused);
-  await expect(setPayrollLearningMode(admin,{companyId:b.companyId,mode:'evidence'})).rejects.toMatchObject({reason:'unchanged'});
+  const group=await switchOn();
+  await expect(setPayrollLearningMode(group,{companyId:b.companyId,mode:'classify'})).rejects.toBeInstanceOf(PayrollLearningRefused);
+  await expect(setPayrollLearningMode(group,{companyId:b.companyId,mode:'evidence'})).rejects.toMatchObject({reason:'unchanged'});
   const employee=await createAppUser(b.tenantId,null,'employee');
   await expect(setPayrollLearningMode({...(await entitledCtx(b,['employee'])),userId:employee,roles:['employee'],grants:[{role:'employee',companyId:null}]},
    {companyId:b.companyId,mode:'off'})).rejects.toMatchObject({reason:'not_permitted'});
   // The database refuses classify set directly, and an update of the mode.
   await expect(withTenant(admin,tx=>tx.insert(payrollLearningMode).values({tenantId:b.tenantId,companyId:b.companyId,version:9,mode:'classify',source:'admin',setByUserId:admin.userId}))).rejects.toThrow();
   await expect(withTenant(admin,tx=>tx.update(payrollLearningMode).set({mode:'off'}).where(eq(payrollLearningMode.companyId,b.companyId)))).rejects.toThrow();
-  await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,admin.userId));
+  await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,group.userId));
   const result=await learn();
   expect(result.companies).toEqual([expect.objectContaining({companyId:b.companyId,status:'sponsor_lost'})]);
   expect(await owner.db.select().from(payrollLearnedBaseline)).toEqual([]);
-  // Switched off again (by another payroll administrator), it is not learned and nothing is shown.
-  const next=await companyAdmin(b.companyId);
-  await setPayrollLearningMode(next,{companyId:b.companyId,mode:'off'});
+  // Switched off again by a payroll administrator of the company, it is not learned and nothing is shown.
+  await setPayrollLearningMode(admin,{companyId:b.companyId,mode:'off'});
   expect((await learn()).companies).toEqual([]);
   expect((await owner.db.select().from(payrollLearningMode).where(eq(payrollLearningMode.companyId,b.companyId))).map(row=>[row.version,row.mode])).toEqual([[1,'evidence'],[2,'off']]);
  },180000);
@@ -257,7 +278,7 @@ describe('row-level security',()=>{
  it('gives baselines to a payroll administrator of the company only: never another company, another tenant, an employee or the agent principal',async()=>{
   const admin=await companyAdmin(b.companyId);
   const people=await company();
-  await setPayrollLearningMode(admin,{companyId:b.companyId,mode:'evidence'});await learn();
+  await switchOn();await learn();
   const mine=await withTenant(admin,tx=>tx.select().from(payrollLearnedBaseline));
   expect(mine.length).toBeGreaterThan(0);
   const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Other Sdn Bhd'}).returning({id:schema.company.id});
@@ -291,7 +312,7 @@ describe('cascade, erasure and the leaver retention purge',()=>{
  it('goes with its employment, and with the person in an admitted erasure, leaving payslips and other people alone',async()=>{
   const admin=await companyAdmin(b.companyId);
   const people=await company();
-  await setPayrollLearningMode(admin,{companyId:b.companyId,mode:'evidence'});await learn();
+  await switchOn();await learn();
   // Cascade: a bare employment with one baseline, deleted.
   const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional Cascade',primaryEmail:`cascade-${randomUUID()}@fixture.test`}).returning({id:schema.person.id});
   const [bare]=await owner.db.insert(schema.employment).values({tenantId:b.tenantId,personId:person.id,companyId:b.companyId,hiredOn:'2024-01-01'}).returning({id:schema.employment.id});
@@ -320,7 +341,7 @@ describe('cascade, erasure and the leaver retention purge',()=>{
   // Early: paid months 1 to 4, the last closed at its month's end (long ago). Recent: paid all seven, the last closed 30 days ago.
   for(const [i,period] of MONTHS.entries())await run(period,[...(i<4?[{employmentId:early,net:'2800.00'}]:[]),{employmentId:recent,net:'2600.00'}],
    i===6?{closedAt:new Date(Date.now()-30*86_400_000)}:{});
-  await setPayrollLearningMode(admin,{companyId:b.companyId,mode:'evidence'});await learn();
+  await switchOn();await learn();
   expect((await stored(early)).length).toBeGreaterThan(0);expect((await stored(recent)).length).toBeGreaterThan(0);
   await owner.db.update(schema.employment).set({terminatedOn:lastDay(MONTHS[3])}).where(eq(schema.employment.id,early));
   await owner.db.update(schema.employment).set({terminatedOn:lastDay(MONTHS[6])}).where(eq(schema.employment.id,recent));
@@ -344,7 +365,7 @@ describe('the trigger: the payroll tick',()=>{
   const admin=await companyAdmin(b.companyId);
   const people=await company();
   const imported=await importedMonth(people.e1,shift(MONTHS[0],-1),'3000.00','3100.00');
-  await setPayrollLearningMode(admin,{companyId:b.companyId,mode:'evidence'});
+  await switchOn();
   const entitlements=(await entitledCtx(b)).entitlements!;
   const tick=async()=>{const result=await runPayrollTick(owner.client,{tenantId:b.tenantId,principalId,entitlements});
    if(result.status!=='ran'||!result.learning)throw Error('The tick did not run.');return result.learning.companies.map(c=>c.status);};
@@ -382,7 +403,7 @@ describe('P2: evidence lines, "Learned this cycle" and the AI read',()=>{
   const flags=[people.e1,people.steady[0],people.e2,people.fresh[0]].map(employmentId=>({companyId:b.companyId,employmentId}));
   // Off: nothing, whatever is stored.
   expect((await swingFlagEvidence(admin,{period:AS_OF,flags})).size).toBe(0);
-  await setPayrollLearningMode(admin,{companyId:b.companyId,mode:'evidence'});await learn();
+  await switchOn();await learn();
   const swing=await swingFlagEvidence(admin,{period:AS_OF,flags});
   expect(Object.fromEntries([...swing].map(([id,e])=>[id,e]))).toEqual({
    [people.e1]:{basis:'month_total',judgement:'above',runs:7,status:'stable',low:400000,high:420000,value:450000},
@@ -404,7 +425,7 @@ describe('P2: evidence lines, "Learned this cycle" and the AI read',()=>{
  it('counts the month\'s learning per company, exactly for the page and under the small-group rule for the model, and no amount reaches the model',async()=>{
   const admin=await companyAdmin(b.companyId);
   await company();
-  await setPayrollLearningMode(admin,{companyId:b.companyId,mode:'evidence'});await learn();
+  await switchOn();await learn();
   const page=await learnedThisCycle(admin,{period:AS_OF});
   expect(page.companies.map(c=>[c.companyName,c.mode,c.people])).toEqual([['Acme Sdn Bhd','evidence',{stable:6,provisional:3,none:5,rebasing:0,contradicted:0}]]);
   expect(page.companies[0].learnedOn).toBe(todayInKualaLumpur());
@@ -428,4 +449,49 @@ describe('P2: evidence lines, "Learned this cycle" and the AI read',()=>{
   // Not a payroll administrator (a manager): refused.
   expect(await payrollLearningStatus({...(await entitledCtx(b,['manager'])),userId:groupUser,roles:['manager'],grants:[{role:'manager',companyId:null}]},{})).toMatchObject({ok:false,refusal:'not_permitted'});
  },180000);
+});
+
+describe('the switch, its history and audit, and the stop switch',()=>{
+ it('is switched on by a group administrator and off by a payroll administrator, each a version shown with who, and captured in the Audit loop\'s pack',async()=>{
+  const admin=await companyAdmin(b.companyId);
+  const group=await groupAdmin();
+  await setPayrollLearningMode(group,{companyId:b.companyId,mode:'evidence'});
+  await setPayrollLearningMode(admin,{companyId:b.companyId,mode:'off'});
+  // The settings page's read: the mode now and every change, newest first, for companies whose payroll the viewer runs.
+  const view=await learningSettingsView(admin,[b.companyId]);
+  expect(view.get(b.companyId)).toMatchObject({mode:'off',version:2});
+  expect(view.get(b.companyId)!.history.map(row=>[row.version,row.mode,row.source])).toEqual([[2,'off','admin'],[1,'evidence','admin']]);
+  const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Other Sdn Bhd'}).returning({id:schema.company.id});
+  expect((await learningSettingsView(await companyAdmin(other.id),[b.companyId])).size).toBe(0);
+  // Each change is a payroll-learning.mode-set configuration event, captured for the month by the Audit loop's pack.
+  const artefacts=await withTenant(group,tx=>collectPayrollPeriodArtefactsTx(tx,group,{companyId:b.companyId,payPeriod:todayInKualaLumpur().slice(0,7)}));
+  const changes=artefacts.filter(item=>item.kind==='config_change'&&item.content.eventType===LEARNING_MODE_EVENT);
+  expect(changes.map(item=>[(item.content.payload as {mode:string;from:string}).mode,(item.content.payload as {from:string}).from,item.content.actorId]))
+   .toEqual([['evidence','off',group.userId],['off','evidence',admin.userId]]);
+ },180000);
+ it('learns nothing and shows no evidence while the tenant\'s stop switch is on, still purges, and resumes when it is off',async()=>{
+  const admin=await companyAdmin(b.companyId);
+  const people=await company();
+  const batch=await run(AS_OF,[{employmentId:people.e1,net:'4500.00'}],{status:'processed'});
+  const group=await switchOn();
+  await setMandateStopSwitch(group,true);
+  expect(await learn()).toMatchObject({stopped:true,companies:[]});
+  const entitlements=(await entitledCtx(b)).entitlements!;
+  const tick=await runPayrollTick(owner.client,{tenantId:b.tenantId,principalId,entitlements});
+  expect(tick.status==='ran'&&tick.learning?.stopped).toBe(true);
+  expect(await owner.db.select().from(payrollLearnedBaseline)).toEqual([]);
+  expect(await owner.db.select().from(payrollLearningRun)).toEqual([]);
+  // The database refuses a baseline written anyway.
+  await expect(withTenant(group,tx=>tx.insert(payrollLearnedBaseline).values({tenantId:b.tenantId,companyId:b.companyId,employmentId:people.e1,basis:'regular',asOfPeriod:AS_OF,
+   version:1,status:'none',runs:0,excluded:0,throughPeriod:null,components:{},inputDigest:'e'.repeat(64),method:'payroll_baseline@v1',sponsorUserId:group.userId}))).rejects.toThrow();
+  await setMandateStopSwitch(group,false);
+  expect(await learn()).toMatchObject({stopped:false,companies:[expect.objectContaining({status:'ran'})]});
+  const flags=[{companyId:b.companyId,employmentId:people.e1}];
+  expect((await swingFlagEvidence(admin,{period:AS_OF,flags})).get(people.e1)).toMatchObject({judgement:'above'});
+  expect((await runEvidence(admin,{batchId:batch})).get(people.e1)).toMatchObject({judgement:'above'});
+  // Stopped again: what is stored stays, but no evidence is shown.
+  await setMandateStopSwitch(group,true);
+  expect((await swingFlagEvidence(admin,{period:AS_OF,flags})).size).toBe(0);
+  expect((await runEvidence(admin,{batchId:batch})).size).toBe(0);
+ },240000);
 });

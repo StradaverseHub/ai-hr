@@ -18,7 +18,9 @@ import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 import {BASELINE_METHOD,CONTRADICTION_MIN_RUNS,EVIDENCE_MIN_RUNS,STABLE_MIN_RUNS,WINDOW_MONTHS,baselineStatus,componentStats,contradicted,givesEvidence,judge,
  nearestRank,suppressSmallCounts,toSen} from '../core/payroll-learning/baseline-math';
-import {hasManualFigure,personMonths,salaryChangeFrom,windowStart} from '../core/payroll-learning/history';
+import {hasManualFigure,isPartMonth,personMonths,salaryChangeFrom,windowStart} from '../core/payroll-learning/history';
+import {CONFIG_EVENT_PREFIXES} from '../core/payroll-audit/capture';
+import {LEARNING_MODE_EVENT} from '../core/payroll-learning/mode';
 import {LEARNED_LINES,MONTH_EXCLUSIONS,learnBaselines,rowValues,type LearningRow} from '../core/payroll-learning/learn';
 import {LEARNING_MODES,SETTABLE_LEARNING_MODES} from '../core/payroll-learning/mode';
 import {PAYROLL_LEARNING_ENTITIES,PAYROLL_LEARNING_MODES,PAYROLL_LEARNING_READS} from '../core/semantic-model/entities-payroll-learning';
@@ -102,7 +104,7 @@ describe('the excluded months and the salary change',()=>{
   expect(windowStart('2026-08')).toBe('2024-08');expect(windowStart('2026-01',1)).toBe('2025-12');
  });
  it('sets aside a problem swing, a fix at the source, a correction, a live adjustment run, a manual figure and the months before a salary change',()=>{
-  expect(MONTH_EXCLUSIONS).toEqual(['problem_swing','fixed_upstream','correction','manual_figure','before_salary_change']);
+  expect(MONTH_EXCLUSIONS).toEqual(['problem_swing','fixed_upstream','correction','manual_figure','before_salary_change','first_month','last_month','part_month']);
   const manual={adjustment:{lines:{epfEmployee:{system:550,applied:600}},reason:'Fictional agreed EPF'}};
   expect(hasManualFigure(manual)).toBe(true);expect(hasManualFigure({})).toBe(false);
   const rows=['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07'].map(period=>row(period,'4000.00',period==='2026-06'?{statutory:manual}:{}));
@@ -115,6 +117,28 @@ describe('the excluded months and the salary change',()=>{
   // An imported adjustment month is history, not a correction.
   const imported=personMonths([row('2026-01','4000.00',{runType:'adjustment',imported:true})],{problemSwings:new Set(),fixedUpstream:new Set(),corrections:new Set(),salaryFrom:new Map()});
   expect(imported.get('e1')![0].excluded).toEqual([]);
+ });
+});
+
+describe('part months are usual for nobody (coordinator review, 4 November 2026)',()=>{
+ it('reads a part month from an unpaid-leave or absence line, or a proration factor under 1, and nothing else',()=>{
+  expect(isPartMonth({unpaidLeave:{days:2,amount:300}},'300.00')).toBe(true);
+  expect(isPartMonth({absent:{days:1,amount:150}},'150.00')).toBe(true);
+  expect(isPartMonth({reportContext:{proration:{payMode:'monthly',factor:0.5}}},'0.00')).toBe(true);
+  // A full month: factor 1, a zero unpaid-leave stamp, or no stamp at all.
+  expect(isPartMonth({reportContext:{proration:{payMode:'monthly',factor:1}}},'0.00')).toBe(false);
+  expect(isPartMonth({unpaidLeave:{days:0,amount:0}},'0.00')).toBe(false);
+  expect(isPartMonth({},'0.00')).toBe(false);
+ });
+ it('sets aside the first and last month with the company and every part month, in every basis',()=>{
+  const rows=['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06'].map(period=>row(period,'4000.00',
+   period==='2026-03'?{statutory:{unpaidLeave:{days:2,amount:300}}}:period==='2026-04'?{statutory:{reportContext:{proration:{factor:0.6}}}}:{}));
+  const months=personMonths(rows,{problemSwings:new Set(),fixedUpstream:new Set(),corrections:new Set(),salaryFrom:new Map(),
+   tenure:new Map([['e1',{first:'2026-01',last:'2026-06'}]])}).get('e1')!;
+  expect(months.map(month=>[month.period,month.excluded])).toEqual([['2026-01',['first_month']],['2026-02',[]],['2026-03',['part_month']],
+   ['2026-04',['part_month']],['2026-05',[]],['2026-06',['last_month']]]);
+  // Two clean months are left: nothing is shown for this person yet.
+  expect(learnBaselines(months,componentIds).regular).toMatchObject({status:'none',runs:2,excluded:4});
  });
 });
 
@@ -208,7 +232,13 @@ describe('migration 2012',()=>{
   expect(sql).toContain("AND app.payroll_learning_mode_of(company_id) IN ('evidence','classify') AND app._payroll_learning_leaver_due(employment_id) IS NOT TRUE");
   expect(sql).toContain("+interval '3 months'<=now()");
   // An administrator sets off or evidence; classify comes only from an approved proposal.
-  expect(sql).toContain("AND source='admin' AND mode IN ('off','evidence')");expect(sql).toContain("CHECK (mode<>'classify' OR source='proposal')");
+  // Off by any payroll administrator, evidence only by a group administrator; classify only from an approved proposal.
+  expect(sql).toContain("AND source='admin'\n  AND (mode='off' OR (mode='evidence' AND app.is_group_admin() IS TRUE)));");
+  expect(sql).toContain("CHECK (mode<>'classify' OR source='proposal')");
+  // Nothing is learned while the tenant's stop switch is on.
+  expect(sql).toContain('AND NOT EXISTS (SELECT 1 FROM public.teras_mandate_control c WHERE c.tenant_id=app.current_tenant_id() AND c.stopped IS TRUE));');
+  // A mode change is configuration the Audit loop's pack captures.
+  expect(LEARNING_MODE_EVENT).toBe('payroll-learning.mode-set');expect(CONFIG_EVENT_PREFIXES).toContain(LEARNING_MODE_EVENT);
   expect(SETTABLE_LEARNING_MODES).toEqual(['off','evidence']);expect(LEARNING_MODES).toEqual(['off','evidence','classify']);
   expect(BASELINE_METHOD).toMatch(/^[a-z_]{1,40}@v[0-9]{1,4}$/);
  });

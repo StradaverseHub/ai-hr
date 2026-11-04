@@ -8,6 +8,7 @@ import { PayrollLoopRefused, decideThresholdProposal, setPayrollLoopSetting } fr
 import { recordSwingDisposition } from '@/core/loops/salary-swing-service';
 import { disposeSwingGroup, resolveAcknowledgedBlock } from '@/core/loops/grouped-dispositions';
 import { AcknowledgementRefused, acknowledgeCheck, decideRuleProposal, revokeAcknowledgement } from '@/core/loops/acknowledgements';
+import { PayrollLearningRefused, setPayrollLearningMode } from '@/core/payroll-learning/mode';
 
 /** AI v2 P2-2a — Operations › Loops › Payroll cycle. Three commands, each re-checked by its service and by the database
  * (migration 0964), each attributed to the person who sends it and audited:
@@ -26,7 +27,7 @@ import { AcknowledgementRefused, acknowledgeCheck, decideRuleProposal, revokeAck
 const ROOT = '/control-tower/loops/payroll-cycle';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
-type ErrorCode = 'invalid' | 'refused' | 'changed' | 'already' | 'failed' | 'groupAdministrator' | 'ownEvidence' | 'own';
+type ErrorCode = 'invalid' | 'refused' | 'changed' | 'already' | 'failed' | 'groupAdministrator' | 'ownEvidence' | 'own' | 'learningGroup';
 const codeOf = (e: unknown): ErrorCode => e instanceof PayrollLoopRefused || e instanceof AcknowledgementRefused
   ? (e.reason === 'not_administrator' ? 'refused' : e.reason === 'changed' ? 'changed' : e.reason === 'already' ? 'already'
     : e.reason === 'group_administrator' ? 'groupAdministrator' : e.reason === 'own_evidence' ? 'ownEvidence' : e.reason === 'own' ? 'own' : 'invalid') : 'failed';
@@ -141,4 +142,21 @@ export async function decideRuleProposalAction(formData: FormData) {
   } catch (e) { error = codeOf(e); }
   revalidatePath(ROOT, 'layout');
   redirect(back(`${ROOT}/settings`, error ? { error } : { saved: decision === 'approved' ? 'ruleApproved' : 'ruleRejected' }));
+}
+
+/** Payroll history learning (migration 2012): switch a company's learning on (evidence lines: a group administrator) or off
+ * (any payroll administrator of the company). Classify is never set here: only an approved proposal reaches it. Re-checked
+ * by the service and the database, attributed and audited as a configuration event; it changes no pay, run or check. */
+export async function setPayrollLearningModeAction(formData: FormData) {
+  const company = formData.get('company'), mode = formData.get('mode');
+  let error: ErrorCode | null = null;
+  try {
+    if (typeof company !== 'string' || !UUID.test(company) || (mode !== 'evidence' && mode !== 'off')) throw new PayrollLoopRefused('invalid');
+    await setPayrollLearningMode(await session(), { companyId: company, mode });
+  } catch (e) {
+    error = e instanceof PayrollLearningRefused ? (e.reason === 'group_administrator' ? 'learningGroup' : e.reason === 'not_permitted' ? 'refused'
+      : e.reason === 'unchanged' ? 'already' : 'invalid') : codeOf(e);
+  }
+  revalidatePath(ROOT, 'layout');
+  redirect(back(`${ROOT}/settings`, error ? { error } : { saved: 'learning' }));
 }

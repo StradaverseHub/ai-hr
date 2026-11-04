@@ -1498,7 +1498,8 @@
         "resolved": "已按预期解决。",
         "revoked": "确认已撤销。该检查从下次运行起重新计入。",
         "ruleApproved": "常设规则已批准并记录为确认。",
-        "ruleRejected": "提议已拒绝。"
+        "ruleRejected": "提议已拒绝。",
+        "learning": "已保存。学习将从下一次运行起按此进行。"
       },
       "errors": {
         "invalid": "无法理解该更改。",
@@ -1508,7 +1509,8 @@
         "failed": "无法保存更改，请重试。",
         "groupAdministrator": "只有集团管理员可以批准此项。",
         "ownEvidence": "此提议基于您处理过的标记，因此须由另一位集团管理员批准。",
-        "own": "您不能为自己记录此项。"
+        "own": "您不能为自己记录此项。",
+        "learningGroup": "只有集团管理员可以开启学习。"
       },
       "patternUnknown": "已不在目录中的薪资项目",
       "groups": {
@@ -2034,6 +2036,18 @@
         },
         "never": "尚未",
         "allOff": "这些公司已关闭从薪资历史中学习。"
+      },
+      "settings": {
+        "title": "从薪资历史中学习",
+        "help": "开启后，AI Centre 会从已关闭的薪资运行中学习每个人的通常薪资，薪资 HR 会在每个标记旁看到“此人通常水平”。它绝不会更改任何数字、检查或标记。",
+        "current": "当前：{mode}",
+        "switchOn": "开启证据说明",
+        "switchOff": "关闭",
+        "groupOnly": "由集团管理员开启学习。您可以将其关闭。",
+        "classify": "分类只能通过经批准且有回测支持的提案来启用，目前尚不可用。",
+        "historyTitle": "更改记录",
+        "historyRow": "版本 {version}：{mode}，由 {name}，{when}",
+        "noHistory": "从未开启。"
       }
     }
   },

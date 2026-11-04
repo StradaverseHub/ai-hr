@@ -237,6 +237,7 @@ async function main() {
       // under each company's sponsor; and the leaver retention purge. Deterministic statistics only, no model.
       const learning = await runPayrollLearning({ tenantId: t.id, principalId, entitlements, trigger: 'sweep' }).catch(() => null);
       if (learning === null) { loopRunsFailed++; console.error('  payroll history learning failed before it reached a company.'); }
+      else if (learning.stopped) console.log('  payroll history learning: the stop switch is on, so nothing was learned (the leaver retention purge still ran).');
       else for (const c of learning.companies) {
         if (c.status === 'sponsor_lost') { loopRunsStopped++; console.error('  ⚠ payroll history learning stopped for a company: its sponsor no longer administers its payroll; an administrator of its payroll must switch learning on again.'); }
         else if (c.status === 'failed') { loopRunsFailed++; console.error('  payroll history learning could not complete a company; nothing was written for it.'); }

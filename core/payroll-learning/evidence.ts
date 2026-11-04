@@ -6,6 +6,7 @@
  *
  * Rules:
  *  - only for a company whose learning mode is evidence or classify (./mode.ts): off shows nothing, whatever is stored;
+ *  - nothing while the tenant's stop switch is on (teras_mandate_control, the switch every loop honours);
  *  - only from a provisional or stable baseline (3 clean closed runs or more, owner decision of 4 November 2026); none,
  *    rebasing (after a salary change) and contradicted (the latest pay has moved) give no line;
  *  - NO LOOK-AHEAD: the baseline is the latest one whose as-of month is the period itself or earlier, so every month it
@@ -20,6 +21,7 @@ import {payrollBatch,payrollCycle,payslip} from '../../db/schema';
 import type {ComponentStats,LearningBasis} from '../../db/payroll-learning-schema';
 import {givesEvidence,judge,toSen,type Judgement} from './baseline-math';
 import {learningModesTx} from './mode';
+import {tenantStoppedTx} from '../agent-registry/controls';
 
 export type Evidence=Readonly<{basis:LearningBasis;judgement:Judgement;runs:number;status:'provisional'|'stable';
  /** The person's usual range, P10 to P90, in sen. */
@@ -46,6 +48,7 @@ function evidenceOf(basis:LearningBasis,stored:{status:string;runs:number;net:un
 }
 const viewer=(ctx:SessionContext)=>!!ctx.userId&&!ctx.agent;
 async function learningCompaniesTx(tx:Tx,tenantId:string,companyIds:readonly string[]){
+ if(await tenantStoppedTx(tx,tenantId))return [];
  const modes=await learningModesTx(tx,tenantId,companyIds);
  return [...modes.values()].filter(row=>row.mode==='evidence'||row.mode==='classify').map(row=>row.companyId);
 }

@@ -20,7 +20,11 @@
  *    difference service names set_by_hand);
  *  - before_salary_change: the month is before the person's latest basic salary change effective by the as-of month
  *    (the compensation record, the salary's owner). A change from the 1st counts from its own month; a change mid-month
- *    from the next month, since the month it falls in was paid at two rates.
+ *    from the next month, since the month it falls in was paid at two rates;
+ *  - first_month and last_month: the person's first month with the company (their company join date, else their group
+ *    join date) and the month their employment ended; part_month: a payslip of the month carries an unpaid-leave or
+ *    absence line, or the kernel's proration stamp with a factor under 1 (reportContext.proration). A part month is usual
+ *    for nobody (coordinator review, 4 November 2026).
  * Nothing here computes pay or writes. */
 import {and,eq,gte,inArray,isNull,lt,sql} from 'drizzle-orm';
 import type {Tx} from '../../db/client';
@@ -56,11 +60,24 @@ export function hasManualFigure(statutory:unknown):boolean{
  return STATUTORY_EXPLAIN_KEYS.some(item=>statutoryProvenance(statutory,item).source!=='computed');
 }
 
+/** Whether a payslip is for part of a month: the kernel stamped unpaid-leave or absence days or amount on it, or a
+ * proration factor under 1. The run's own stamps are read, not the payslip display (which lumps a line that exceeds its
+ * column); the deduction column is not needed. PURE. */
+export function isPartMonth(statutory:unknown,_otherDeductions?:unknown):boolean{
+ const st=(statutory??{}) as {unpaidLeave?:unknown;absent?:unknown;reportContext?:{proration?:{factor?:unknown}}};
+ const stamped=(raw:unknown)=>!!raw&&typeof raw==='object'&&(Number((raw as {days?:unknown}).days)>0||Number((raw as {amount?:unknown}).amount)>0);
+ if(stamped(st.unpaidLeave)||stamped(st.absent))return true;
+ const factor=st.reportContext?.proration?.factor;
+ return typeof factor==='number'&&Number.isFinite(factor)&&factor<1;
+}
+
 export type ExclusionFacts=Readonly<{
  /** `${employmentId}:${period}` keys. */
  problemSwings:ReadonlySet<string>;fixedUpstream:ReadonlySet<string>;corrections:ReadonlySet<string>;
  /** The first month learned from after a salary change, per employment. */
- salaryFrom:ReadonlyMap<string,string>}>;
+ salaryFrom:ReadonlyMap<string,string>;
+ /** Each person's first month with the company and the month their employment ended (null while employed). */
+ tenure?:ReadonlyMap<string,Readonly<{first:string;last:string|null}>>}>;
 
 /** Each person's months, in period order, with the reasons each is set aside. PURE. */
 export function personMonths(rows:readonly LearningRow[],facts:ExclusionFacts):Map<string,LearningMonth[]>{
@@ -81,6 +98,10 @@ export function personMonths(rows:readonly LearningRow[],facts:ExclusionFacts):M
    if(monthRows.some(row=>hasManualFigure(row.figures.statutory)))excluded.push('manual_figure');
    const from=facts.salaryFrom.get(employmentId);
    if(from&&period<from)excluded.push('before_salary_change');
+   const tenure=facts.tenure?.get(employmentId);
+   if(tenure&&period===tenure.first)excluded.push('first_month');
+   if(tenure?.last&&period===tenure.last)excluded.push('last_month');
+   if(monthRows.some(row=>isPartMonth(row.figures.statutory,row.figures.otherDeductions)))excluded.push('part_month');
    list.push(Object.freeze({period,rows:Object.freeze(monthRows),excluded:Object.freeze(excluded)}));
   }
   out.set(employmentId,list);
@@ -100,6 +121,7 @@ export type HistoryOptions=Readonly<{companyId:string;asOf:string;
  skipRetired?:boolean}>;
 
 const RUN_TYPES:readonly LearningRunType[]=['regular','bonus','off_cycle','adjustment'];
+const monthOf=(value:unknown)=>{const text=value instanceof Date?value.toISOString().slice(0,10):String(value??'');return /^\d{4}-\d{2}-\d{2}$/.test(text)?text.slice(0,7):null;};
 const runTypeOf=(value:unknown):LearningRunType=>RUN_TYPES.includes(value as LearningRunType)?value as LearningRunType:'adjustment';
 
 /** The company's closed-run history before `asOf`, as the caller may read it, grouped per person with its exclusions. */
@@ -161,7 +183,12 @@ export async function readLearningHistoryTx(tx:Tx,options:HistoryOptions):Promis
  for(const row of salaries)salaryRecords.set(row.employmentId,[...(salaryRecords.get(row.employmentId)??[]),{validFrom:String(row.validFrom),basicSalary:row.basicSalary}]);
  const salaryFrom=new Map<string,string>();
  for(const [employmentId,records] of salaryRecords){const at=salaryChangeFrom(records,options.asOf);if(at)salaryFrom.set(employmentId,at);}
+ // Each person's first and last month with the company, from the employment's own dates.
+ const dates=await tx.select({id:employment.id,hiredOn:employment.hiredOn,joinDate:employment.joinDate,terminatedOn:employment.terminatedOn}).from(employment)
+  .where(inArray(employment.id,employmentIds));
+ const tenure=new Map<string,{first:string;last:string|null}>();
+ for(const row of dates){const first=monthOf(row.joinDate)??monthOf(row.hiredOn);if(first)tenure.set(row.id,{first,last:monthOf(row.terminatedOn)});}
  const months=personMonths(rows,{problemSwings:new Set(swings.map(row=>key(row.employmentId,row.payPeriod))),
-  fixedUpstream:new Set(fixes.map(row=>key(row.employmentId,periodOf(row.batchId)))),corrections,salaryFrom});
+  fixedUpstream:new Set(fixes.map(row=>key(row.employmentId,periodOf(row.batchId)))),corrections,salaryFrom,tenure});
  return Object.freeze({companyId:options.companyId,asOf:options.asOf,from,latestClosed,months});
 }

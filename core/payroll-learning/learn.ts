@@ -20,7 +20,10 @@ export const LEARNING_BASES:readonly LearningBasis[]=Object.freeze(['regular','m
 /** The payslip's own lines learned in every basis, net first. Net and gross are always kept; the others when paid. */
 export const LEARNED_LINES=Object.freeze(['net','gross','totalDeductions','basic','allowance','overtime','bonus','claim'] as const);
 export type LearnedLine=(typeof LEARNED_LINES)[number];
-export const MONTH_EXCLUSIONS=Object.freeze(['problem_swing','fixed_upstream','correction','manual_figure','before_salary_change'] as const);
+export const MONTH_EXCLUSIONS=Object.freeze(['problem_swing','fixed_upstream','correction','manual_figure','before_salary_change',
+ // A part month is usual for nobody: the person's first and last month with the company, and a month with an unpaid-leave,
+ // absence or proration line (coordinator review, 4 November 2026).
+ 'first_month','last_month','part_month'] as const);
 export type MonthExclusion=(typeof MONTH_EXCLUSIONS)[number];
 export type LearningRunType='regular'|'bonus'|'off_cycle'|'adjustment';
 

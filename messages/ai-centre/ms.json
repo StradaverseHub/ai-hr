@@ -1498,7 +1498,8 @@
         "resolved": "Diselesaikan sebagai dijangka.",
         "revoked": "Pengakuan dibatalkan. Semakan dikira semula mulai larian seterusnya.",
         "ruleApproved": "Peraturan tetap diluluskan dan direkodkan sebagai pengakuan.",
-        "ruleRejected": "Cadangan ditolak."
+        "ruleRejected": "Cadangan ditolak.",
+        "learning": "Disimpan. Pembelajaran mengikutinya mulai lariannya yang seterusnya."
       },
       "errors": {
         "invalid": "Perubahan itu tidak difahami.",
@@ -1508,7 +1509,8 @@
         "failed": "Perubahan tidak dapat disimpan. Cuba lagi.",
         "groupAdministrator": "Hanya pentadbir kumpulan boleh meluluskan ini.",
         "ownEvidence": "Anda telah memutuskan bendera di sebalik cadangan ini, jadi pentadbir kumpulan lain mesti meluluskannya.",
-        "own": "Anda tidak boleh merekodkan ini tentang diri anda sendiri."
+        "own": "Anda tidak boleh merekodkan ini tentang diri anda sendiri.",
+        "learningGroup": "Hanya pentadbir kumpulan boleh menghidupkan pembelajaran."
       },
       "patternUnknown": "Item gaji yang tiada lagi dalam katalog",
       "groups": {
@@ -2034,6 +2036,18 @@
         },
         "never": "Belum lagi",
         "allOff": "Pembelajaran daripada sejarah gaji dimatikan untuk syarikat ini."
+      },
+      "settings": {
+        "title": "Belajar daripada sejarah gaji",
+        "help": "Apabila dihidupkan, AI Centre mempelajari gaji biasa setiap orang daripada larian gaji yang ditutup dan HR gaji melihat “Biasa bagi orang ini” di sebelah setiap bendera. Ia tidak pernah mengubah angka, semakan atau bendera.",
+        "current": "Kini: {mode}",
+        "switchOn": "Hidupkan baris bukti",
+        "switchOff": "Matikan",
+        "groupOnly": "Pentadbir kumpulan menghidupkan pembelajaran. Anda boleh mematikannya.",
+        "classify": "Klasifikasi hanya dicapai melalui cadangan yang diluluskan dan disokong oleh ujian balik. Ia belum tersedia.",
+        "historyTitle": "Perubahan",
+        "historyRow": "Versi {version}: {mode}, oleh {name}, {when}",
+        "noHistory": "Tidak pernah dihidupkan."
       }
     }
   },

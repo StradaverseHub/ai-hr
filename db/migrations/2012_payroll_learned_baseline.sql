@@ -12,8 +12,10 @@
 --  1. payroll_learning_mode: the company's learning mode, off (the default: no row), evidence (evidence lines) or classify
 --     (phase P4, reached only by an approved proposal, which phase P3 adds: no writer may set it here). One APPEND-ONLY row per
 --     change; the company's mode is its highest version, so every change is kept and is undone by setting the earlier mode
---     again. Set by a payroll administrator of the company, attributed to them; the tenant's agent principal reads it (the
---     payroll tick decides which companies to learn for, and the administrator who set the mode sponsors that learning).
+--     again. Switched on (evidence) only by a group administrator and off by any payroll administrator of the company, each
+--     attributed and audited (a payroll-learning.mode-set configuration event the Audit loop's pack captures); the tenant's
+--     agent principal reads it (the payroll tick decides which companies to learn for, and the group administrator who
+--     switched it on sponsors that learning). Nothing is learned or shown while the tenant's stop switch is on.
 --  2. payroll_learned_baseline: one APPEND-ONLY row per employment, basis (regular, month_total, bonus), as-of month and
 --     version. A row is built ONLY from the person's effective payslips of CLOSED runs of months before as_of_period (no
 --     look-ahead), with the excluded months left out (core/payroll-learning/history.ts), and holds integer-sen statistics
@@ -269,10 +271,12 @@ CREATE POLICY payroll_learning_mode_read ON public.payroll_learning_mode FOR SEL
 CREATE POLICY payroll_learning_mode_agent_read ON public.payroll_learning_mode FOR SELECT TO ai_hr_app
  USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NOT NULL);
 --> statement-breakpoint
--- An administrator sets off or evidence directly, as themself; classify only ever comes from an approved proposal (P3).
+-- A payroll administrator of the company switches learning off, as themself; only a group administrator switches evidence on
+-- (the loosening direction, as for the loops' other settings); classify only ever comes from an approved proposal (P3).
 CREATE POLICY payroll_learning_mode_insert ON public.payroll_learning_mode FOR INSERT TO ai_hr_app
  WITH CHECK (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND app.principal_snapshot_current() IS TRUE
-  AND app.can_admin_payroll_for(company_id) IS TRUE AND set_by_user_id=app.current_user_id() AND source='admin' AND mode IN ('off','evidence'));
+  AND app.can_admin_payroll_for(company_id) IS TRUE AND set_by_user_id=app.current_user_id() AND source='admin'
+  AND (mode='off' OR (mode='evidence' AND app.is_group_admin() IS TRUE)));
 --> statement-breakpoint
 -- Baselines: payroll administrators of the company only. Never the agent principal, never the person (unless they are a
 -- payroll administrator of the company, who reads payslips anyway).
@@ -280,11 +284,13 @@ CREATE POLICY payroll_learned_baseline_read ON public.payroll_learned_baseline F
  USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND app.current_user_id() IS NOT NULL
   AND app.principal_snapshot_current() IS TRUE AND app.can_admin_payroll_for(company_id) IS TRUE);
 --> statement-breakpoint
--- The sponsor appends, as themself, while learning is on for the company, and never for a leaver who is due to go.
+-- The sponsor appends, as themself, while learning is on for the company and the tenant's stop switch is off (the switch every
+-- loop honours, teras_mandate_control), and never for a leaver who is due to go.
 CREATE POLICY payroll_learned_baseline_insert ON public.payroll_learned_baseline FOR INSERT TO ai_hr_app
  WITH CHECK (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND app.principal_snapshot_current() IS TRUE
   AND app.can_admin_payroll_for(company_id) IS TRUE AND sponsor_user_id=app.current_user_id()
-  AND app.payroll_learning_mode_of(company_id) IN ('evidence','classify') AND app._payroll_learning_leaver_due(employment_id) IS NOT TRUE);
+  AND app.payroll_learning_mode_of(company_id) IN ('evidence','classify') AND app._payroll_learning_leaver_due(employment_id) IS NOT TRUE
+  AND NOT EXISTS (SELECT 1 FROM public.teras_mandate_control c WHERE c.tenant_id=app.current_tenant_id() AND c.stopped IS TRUE));
 --> statement-breakpoint
 -- Person erasure: only the table owner as current user (app.payroll_learned_baseline_redact), only the admitted subject.
 CREATE POLICY payroll_learned_baseline_erasure_read ON public.payroll_learned_baseline FOR SELECT TO PUBLIC

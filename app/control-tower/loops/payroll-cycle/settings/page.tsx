@@ -7,15 +7,19 @@ import { CHECK_INTERVALS } from '@/core/loops/payroll-loop-settings';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../../operations-tabs';
-import { decideRuleProposalAction, decideThresholdProposalAction, revokeAcknowledgementAction, setPayrollLoopSettingAction } from '../actions';
+import { decideRuleProposalAction, decideThresholdProposalAction, revokeAcknowledgementAction, setPayrollLearningModeAction, setPayrollLoopSettingAction } from '../actions';
+import { learningSettingsView, type LearningSettings } from '@/core/payroll-learning/mode';
 
 /** AI v2 P2-2a — the payroll-cycle loops' settings, per company the viewer administers: how often the Pre-salary loop
  * checks (owner decision 4) and the net-swing threshold with its exclusions (owner decision 5), the threshold proposals
  * the dispositions support, and the history of every change. Nothing applies without an administrator: a proposal is
  * approved or rejected here, and either is recorded with its evidence. A proposal changes the net-swing flag only, never
- * the payroll anomaly detectors. No mock-up covers this page: it follows the loop pages' cards, forms and buttons. */
-const ERRORS = ['invalid', 'refused', 'changed', 'already', 'failed', 'groupAdministrator', 'ownEvidence', 'own'] as const;
-const SAVED = ['setting', 'approved', 'rejected', 'revoked', 'ruleApproved', 'ruleRejected'] as const;
+ * the payroll anomaly detectors. No mock-up covers this page: it follows the loop pages' cards, forms and buttons.
+ * Payroll history learning (migration 2012): per company whose payroll the viewer administers, the learning mode now and
+ * every change of it. A group administrator switches evidence lines on; any payroll administrator switches them off;
+ * classify is only ever reached by an approved proposal, never here (core/payroll-learning/mode.ts). */
+const ERRORS = ['invalid', 'refused', 'changed', 'already', 'failed', 'groupAdministrator', 'ownEvidence', 'own', 'learningGroup'] as const;
+const SAVED = ['setting', 'approved', 'rejected', 'revoked', 'ruleApproved', 'ruleRejected', 'learning'] as const;
 
 export default async function PayrollLoopSettingsPage({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
   const s = await requireAdmin();
@@ -26,7 +30,9 @@ export default async function PayrollLoopSettingsPage({ searchParams }: { search
   const canApprove = isGroupAdmin(s);
   const percent = (bp: number) => f.number(bp / 10_000, { style: 'percent', maximumFractionDigits: 2 });
   // A check's name: an Audit loop control, a payroll anomaly detector, or the net-swing flag.
-  const [ta, tc] = await Promise.all([getTranslations('anomaly'), getTranslations('payrollAudit')]);
+  const [ta, tc, tn, learning] = await Promise.all([getTranslations('anomaly'), getTranslations('payrollAudit'), getTranslations('aiCentre.payrollLearning'),
+    // A learning read that fails leaves the section out; it never stops the page.
+    learningSettingsView(s, view.companies.map(c => c.companyId)).catch(() => new Map<string, LearningSettings>())]);
   const checkName = (id: string) => id.startsWith('audit:') ? tc(`controls.${id.slice(6)}`)
     : id.startsWith('anomaly:') ? ta(`detector.${id.slice(8).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())}`) : t('acknowledgements.netSwing');
   const when = (at: Date) => f.dateTime(at, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' });
@@ -167,6 +173,8 @@ export default async function PayrollLoopSettingsPage({ searchParams }: { search
               </ul>
             </div>}
           </div>
+          {learning.get(c.companyId) && <LearningSection settings={learning.get(c.companyId)!} companyName={c.companyName} canSwitchOn={canApprove} tn={tn}
+            unnamed={t('flags.unnamed')} when={when} />}
           <div className="border-t border-border px-4 py-3">
             <h3 className="text-sm font-semibold">{t('history.settingsTitle')}</h3>
             {c.history.length === 0 && c.decisions.length === 0 ? <p className="mt-1 text-sm text-muted-foreground">{t('history.noChanges')}</p> : (
@@ -183,6 +191,44 @@ export default async function PayrollLoopSettingsPage({ searchParams }: { search
           </div>
         </Card>
       ))}
+    </div>
+  );
+}
+
+type TN = Awaited<ReturnType<typeof getTranslations<'aiCentre.payrollLearning'>>>;
+
+/** One company's payroll history learning: the mode now, the switch the viewer may use, and every change. */
+function LearningSection({ settings, companyName, canSwitchOn, tn, unnamed, when }: { settings: LearningSettings; companyName: string; canSwitchOn: boolean; tn: TN;
+  unnamed: string; when: (at: Date) => string }) {
+  const on = settings.mode === 'evidence' || settings.mode === 'classify';
+  return (
+    <div className="border-t border-border px-4 py-3" data-learning-settings={settings.mode}>
+      <h3 className="text-sm font-semibold">{tn('settings.title')}</h3>
+      <p className="mt-1 text-xs text-muted-foreground">{tn('settings.help')}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="text-sm" data-learning-current>{tn('settings.current', { mode: tn(`cycle.mode.${settings.mode}`) })}</span>
+        {on ? (
+          <form action={setPayrollLearningModeAction}>
+            <input type="hidden" name="company" value={settings.companyId} /><input type="hidden" name="mode" value="off" />
+            <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${tn('settings.switchOff')} · ${companyName}`}>{tn('settings.switchOff')}</button>
+          </form>
+        ) : canSwitchOn ? (
+          <form action={setPayrollLearningModeAction}>
+            <input type="hidden" name="company" value={settings.companyId} /><input type="hidden" name="mode" value="evidence" />
+            <button type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${tn('settings.switchOn')} · ${companyName}`}>{tn('settings.switchOn')}</button>
+          </form>
+        ) : null}
+      </div>
+      {!on && !canSwitchOn && <p className="mt-1 text-xs text-muted-foreground" data-learning-group-only>{tn('settings.groupOnly')}</p>}
+      <p className="mt-1 text-xs text-muted-foreground">{tn('settings.classify')}</p>
+      <h4 className="mt-3 text-sm font-medium">{tn('settings.historyTitle')}</h4>
+      {settings.history.length === 0 ? <p className="mt-1 text-sm text-muted-foreground">{tn('settings.noHistory')}</p> : (
+        <ul className="mt-1 flex list-none flex-col gap-1 p-0 text-sm" data-learning-history>
+          {settings.history.map(row => (
+            <li key={`v${row.version}`}>{tn('settings.historyRow', { version: row.version, mode: tn(`cycle.mode.${row.mode}`), name: row.by ?? unnamed, when: when(row.at) })}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

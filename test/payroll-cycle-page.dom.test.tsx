@@ -45,7 +45,8 @@ vi.mock('next/navigation',()=>({
 vi.mock('../lib/session',()=>({getSession:async()=>state.session}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>true,isModuleEnabledOrFalse:()=>true}));
 vi.mock('../app/control-tower/loops/payroll-cycle/actions',()=>({recordSwingDispositionAction:vi.fn(),setPayrollLoopSettingAction:vi.fn(),decideThresholdProposalAction:vi.fn(),
- disposeSwingGroupAction:vi.fn(),resolveAcknowledgedBlockAction:vi.fn(),acknowledgeCheckAction:vi.fn(),revokeAcknowledgementAction:vi.fn(),decideRuleProposalAction:vi.fn()}));
+ disposeSwingGroupAction:vi.fn(),resolveAcknowledgedBlockAction:vi.fn(),acknowledgeCheckAction:vi.fn(),revokeAcknowledgementAction:vi.fn(),decideRuleProposalAction:vi.fn(),
+ setPayrollLearningModeAction:vi.fn()}));
 // Phase 2 hardening: the grouping is the real pure function; the acknowledged blocks are a fixture (the service is covered by
 // test/payroll-loops-hardening.test.ts).
 vi.mock('../core/loops/grouped-dispositions',async importOriginal=>({...(await importOriginal<typeof import('../core/loops/grouped-dispositions')>()),
@@ -122,6 +123,7 @@ const fx=vi.hoisted(()=>{
 // (test/payroll-learning-pages.dom.test.tsx); here they read nothing, so these pages render as before.
 vi.mock('../core/payroll-learning/evidence',()=>({swingFlagEvidence:async()=>new Map(),runEvidence:async()=>new Map()}));
 vi.mock('../core/payroll-learning/status',async importOriginal=>({...(await importOriginal<typeof import('../core/payroll-learning/status')>()),learnedThisCycle:async()=>null}));
+vi.mock('../core/payroll-learning/mode',async importOriginal=>({...(await importOriginal<typeof import('../core/payroll-learning/mode')>()),learningSettingsView:async()=>new Map()}));
 vi.mock('../core/loops/payroll-cycle-views',()=>({PayrollCycleRefused:fx.PayrollCycleRefused,
  payrollCycleOverview:async(_s:unknown,options:{companyId?:string})=>{state.reads.push('overview');return fx.overview(state.scope,typeof options.companyId==='string'?options.companyId:null,state.runs);},
  salaryLoopPage:async()=>{state.reads.push('salary');return fx.salary;},

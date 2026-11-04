@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
-/** Payroll history learning (P2) — the evidence lines on the Salary payroll loop's page and in a run's anomaly queue, and
- * "Learned this cycle" on the Payroll cycle page, rendered per role from fictional reads (the services are replaced by
+/** Payroll history learning (P2) — the evidence lines on the Salary payroll loop's page and in a run's anomaly queue,
+ * "Learned this cycle" on the Payroll cycle page, and the learning switch on the Payroll cycle settings page (a group
+ * administrator switches it on, any payroll administrator off, classify never here), rendered per role from fictional reads (the services are replaced by
  * fixtures; their behaviour is test/payroll-learning.test.ts).
  *
  * The guard is the existing requireAdmin: an employee or a manager is sent away before any read, learning's included. A
@@ -25,7 +26,7 @@ type Locale='en'|'ms'|'zh'|'vi'|'ta'|'th';
 const LOCALES:readonly Locale[]=['en','ms','zh','vi','ta','th'];
 const CATALOGUES={en,ms,zh,vi:vi_,ta,th};
 const messagesFor=(locale:Locale)=>withAiCentre(locale,CATALOGUES[locale] as Record<string,unknown>) as Record<string,unknown>;
-const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'ta'|'th',session:null as unknown,reads:[] as string[],learned:null as unknown}));
+const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'ta'|'th',session:null as unknown,reads:[] as string[],learned:null as unknown,learningSettings:null as unknown}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',async()=>{
  const {createTranslator:translator,createFormatter:formatter}=await import('next-intl');
@@ -43,7 +44,8 @@ vi.mock('next/navigation',()=>({
 vi.mock('../lib/session',()=>({getSession:async()=>state.session}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>true,isModuleEnabledOrFalse:()=>true}));
 vi.mock('../app/control-tower/loops/payroll-cycle/actions',()=>({recordSwingDispositionAction:vi.fn(),setPayrollLoopSettingAction:vi.fn(),decideThresholdProposalAction:vi.fn(),
- disposeSwingGroupAction:vi.fn(),resolveAcknowledgedBlockAction:vi.fn(),acknowledgeCheckAction:vi.fn(),revokeAcknowledgementAction:vi.fn(),decideRuleProposalAction:vi.fn()}));
+ disposeSwingGroupAction:vi.fn(),resolveAcknowledgedBlockAction:vi.fn(),acknowledgeCheckAction:vi.fn(),revokeAcknowledgementAction:vi.fn(),decideRuleProposalAction:vi.fn(),
+ setPayrollLearningModeAction:vi.fn()}));
 vi.mock('../app/payroll/actions',()=>({evaluateAnomaliesAction:vi.fn(),narrateAnomalyAction:vi.fn(),proposeHypothesesAction:vi.fn(),resolveAnomalyAction:vi.fn()}));
 vi.mock('../core/loops/grouped-dispositions',async importOriginal=>({...(await importOriginal<typeof import('../core/loops/grouped-dispositions')>()),acknowledgedBlocks:async()=>[]}));
 const fx=vi.hoisted(()=>{
@@ -69,12 +71,21 @@ const fx=vi.hoisted(()=>{
   resolution:null,resolvedAt:null,detectorsRunCount:11,detectorsSkipped:[],findings:[finding]});
  const queue=[row('v-1',RAVI,'Ravi Fictional'),row('v-2',MEI,'Mei Ling Fictional')];
  class PayrollCycleRefused extends Error{constructor(readonly reason:string){super(reason);}}
- return {A,B,RAVI,MEI,salary,overview,learned,allOff,evidence,queueEvidence,queue,PayrollCycleRefused};
+ // The settings page: one company with default settings, and its learning mode and history.
+ const settings={companies:[{companyId:A,companyName:'Fictional A Sdn Bhd',setting:{companyId:A,version:0,interval:'daily',thresholdBp:1500,exclusions:[],remindersEnabled:true,
+  source:'default',changedByUserId:null,changedAt:null},proposals:[],history:[],decisions:[],acknowledgements:[],ruleProposals:[]}],patternNames:{}};
+ const at=(iso:string)=>new Date(iso);
+ const learningOff=new Map([[A,{companyId:A,mode:'off',version:0,history:[]}]]);
+ const learningOn=new Map([[A,{companyId:A,mode:'evidence',version:3,history:[{version:3,mode:'evidence',source:'admin',by:'Aisyah Fictional',at:at('2026-11-03T15:04:00Z')},
+  {version:2,mode:'off',source:'admin',by:'Daniel Fictional',at:at('2026-11-02T15:04:00Z')},{version:1,mode:'evidence',source:'admin',by:null,at:at('2026-11-01T15:04:00Z')}]}]]);
+ return {A,B,RAVI,MEI,salary,overview,learned,allOff,evidence,queueEvidence,queue,PayrollCycleRefused,settings,learningOff,learningOn};
 });
 vi.mock('../core/loops/payroll-cycle-views',()=>({PayrollCycleRefused:fx.PayrollCycleRefused,
  payrollCycleOverview:async()=>{state.reads.push('overview');return fx.overview;},
  salaryLoopPage:async()=>{state.reads.push('salary');return fx.salary;},
- payrollLoopSettingsPage:async()=>{state.reads.push('settings');return {companies:[],patternNames:{}};}}));
+ payrollLoopSettingsPage:async()=>{state.reads.push('settings');return fx.settings;}}));
+vi.mock('../core/payroll-learning/mode',async importOriginal=>({...(await importOriginal<typeof import('../core/payroll-learning/mode')>()),
+ learningSettingsView:async()=>{state.reads.push('learningSettings');return state.learningSettings??fx.learningOff;}}));
 vi.mock('../core/payroll-learning/evidence',()=>({
  swingFlagEvidence:async()=>{state.reads.push('swingEvidence');return fx.evidence;},
  runEvidence:async()=>{state.reads.push('runEvidence');return fx.queueEvidence;}}));
@@ -90,6 +101,7 @@ vi.mock('../core/payroll-anomaly',async importOriginal=>({...(await importOrigin
 import PayrollCyclePage from '../app/control-tower/loops/payroll-cycle/page';
 import SalaryLoopPage from '../app/control-tower/loops/payroll-cycle/salary/page';
 import AnomaliesPage from '../app/payroll/[batchId]/anomalies/page';
+import PayrollLoopSettingsPage from '../app/control-tower/loops/payroll-cycle/settings/page';
 
 const TENANT='00000000-0000-4000-8000-0000000000a1';
 const SESSIONS={
@@ -106,7 +118,8 @@ const parts=(el:Element|null|undefined)=>el?[...el.childNodes].map(node=>text(no
 const cycle=()=>PayrollCyclePage({searchParams:Promise.resolve({})});
 const salary=()=>SalaryLoopPage({searchParams:Promise.resolve({})});
 const anomalies=()=>AnomaliesPage({params:Promise.resolve({batchId:'00000000-0000-4000-8000-0000000000b1'}),searchParams:Promise.resolve({})});
-afterEach(()=>{cleanup();state.locale='en';state.session=null;state.reads=[];state.learned=null;});
+const settingsPage=(query:Record<string,string>={})=>PayrollLoopSettingsPage({searchParams:Promise.resolve(query)});
+afterEach(()=>{cleanup();state.locale='en';state.session=null;state.reads=[];state.learned=null;state.learningSettings=null;});
 
 describe('who sees learning',()=>{
  it.each(['employee','manager'] as const)('%s is refused before any read, learning\'s included',async role=>{
@@ -114,6 +127,7 @@ describe('who sees learning',()=>{
   await expect(cycle()).rejects.toMatchObject({url:'/'});
   await expect(salary()).rejects.toMatchObject({url:'/'});
   await expect(anomalies()).rejects.toMatchObject({url:'/'});
+  await expect(settingsPage()).rejects.toMatchObject({url:'/'});
   expect(state.reads).toEqual([]);
  });
 });
@@ -182,6 +196,60 @@ describe('"Learned this cycle" on the Payroll cycle page',()=>{
   const view=wrap(locale,await cycle());
   const card=view.container.querySelector('[data-learned-cycle]')!;
   expect([...card.querySelectorAll('tbody tr')][0].querySelectorAll('td')[1].textContent).toBe('12');
+  expect(view.container.textContent).not.toMatch(/Noveri/);
+ });
+});
+
+describe('the learning switch on the Payroll cycle settings page',()=>{
+ const section=(container:Element)=>container.querySelector('[data-learning-settings]')!;
+ const buttons=(el:Element)=>[...el.querySelectorAll('button')].map(text);
+ const hidden=(el:Element)=>[...el.querySelectorAll('input[type="hidden"]')].map(input=>[input.getAttribute('name'),input.getAttribute('value')]);
+ it('a group administrator sees the mode, switches evidence lines on, and is told classify comes only from a proposal',async()=>{
+  state.session=SESSIONS.groupAdmin;
+  const view=wrap('en',await settingsPage());
+  expect(state.reads).toEqual(['settings','learningSettings']);
+  const el=section(view.container);
+  expect(el.getAttribute('data-learning-settings')).toBe('off');
+  expect(text(el.querySelector('h3'))).toBe('Learning from payroll history');
+  expect(text(el.querySelector('[data-learning-current]'))).toBe('Now: Off');
+  expect(buttons(el)).toEqual(['Switch on evidence lines']);
+  expect(hidden(el)).toEqual([['company',fx.A],['mode','evidence']]);
+  expect(el.querySelector('[data-learning-group-only]')).toBeNull();
+  expect(text(el)).toContain('Classify is reached only through an approved proposal backed by a backtest. It is not available yet.');
+  expect(text(el)).toContain('Never switched on.');
+  for(const button of el.querySelectorAll('button'))expect(button.className).toContain('pointer-coarse:min-h-11');
+ });
+ it('an HR administrator of one company cannot switch it on, but switches it off and sees every change with who made it',async()=>{
+  state.session=SESSIONS.hrAdmin;
+  const off=wrap('en',await settingsPage());
+  expect(buttons(section(off.container))).toEqual([]);
+  expect(text(section(off.container).querySelector('[data-learning-group-only]'))).toBe('A group administrator switches learning on. You can switch it off.');
+  cleanup();state.learningSettings=fx.learningOn;
+  const on=wrap('en',await settingsPage());
+  const el=section(on.container);
+  expect(el.getAttribute('data-learning-settings')).toBe('evidence');
+  expect(text(el.querySelector('[data-learning-current]'))).toBe('Now: Evidence lines');
+  expect(buttons(el)).toEqual(['Switch off']);
+  expect(hidden(el)).toEqual([['company',fx.A],['mode','off']]);
+  const rows=[...el.querySelectorAll('[data-learning-history] li')].map(text);
+  expect(rows).toHaveLength(3);
+  expect(rows[0]).toMatch(/^Version 3: Evidence lines, by Aisyah Fictional, Nov 3, 2026/);
+  expect(rows[1]).toMatch(/^Version 2: Off, by Daniel Fictional, Nov 2, 2026/);
+  // Who switched it, where the viewer may read their name; a person otherwise.
+  expect(rows[2]).toMatch(/^Version 1: Evidence lines, by A person, Nov 1, 2026/);
+ });
+ it('says what happened after a change and why a switch was refused',async()=>{
+  state.session=SESSIONS.groupAdmin;
+  const saved=wrap('en',await settingsPage({saved:'learning'}));
+  expect(text(saved.container.querySelector('[role="status"]'))).toBe('Saved. Learning follows it from its next run.');
+  cleanup();
+  const refused=wrap('en',await settingsPage({error:'learningGroup'}));
+  expect(refused.container.textContent).toContain('Only a group administrator can switch learning on.');
+ });
+ it.each(LOCALES)('renders in %s with no missing message, and never says Noveri',async locale=>{
+  state.session=SESSIONS.groupAdmin;state.locale=locale;state.learningSettings=fx.learningOn;
+  const view=wrap(locale,await settingsPage({saved:'learning'}));
+  expect(section(view.container).querySelectorAll('[data-learning-history] li')).toHaveLength(3);
   expect(view.container.textContent).not.toMatch(/Noveri/);
  });
 });

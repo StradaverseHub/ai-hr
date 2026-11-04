@@ -1498,7 +1498,8 @@
         "resolved": "Resolved as expected.",
         "revoked": "Acknowledgement revoked. The check counts again from the next run.",
         "ruleApproved": "Standing rule approved and recorded as an acknowledgement.",
-        "ruleRejected": "Proposal rejected."
+        "ruleRejected": "Proposal rejected.",
+        "learning": "Saved. Learning follows it from its next run."
       },
       "errors": {
         "invalid": "That change was not understood.",
@@ -1508,7 +1509,8 @@
         "failed": "The change could not be saved. Try again.",
         "groupAdministrator": "Only a group administrator can approve this.",
         "ownEvidence": "You disposed of flags behind this proposal, so another group administrator must approve it.",
-        "own": "You cannot record this about yourself."
+        "own": "You cannot record this about yourself.",
+        "learningGroup": "Only a group administrator can switch learning on."
       },
       "patternUnknown": "A pay item no longer in the catalogue",
       "groups": {
@@ -2034,6 +2036,18 @@
         },
         "never": "Not yet",
         "allOff": "Learning from payroll history is off for these companies."
+      },
+      "settings": {
+        "title": "Learning from payroll history",
+        "help": "When it is on, AI Centre learns each person’s usual pay from closed payroll runs and payroll HR sees “Usual for this person” beside each flag. It never changes a figure, a check or a flag.",
+        "current": "Now: {mode}",
+        "switchOn": "Switch on evidence lines",
+        "switchOff": "Switch off",
+        "groupOnly": "A group administrator switches learning on. You can switch it off.",
+        "classify": "Classify is reached only through an approved proposal backed by a backtest. It is not available yet.",
+        "historyTitle": "Changes",
+        "historyRow": "Version {version}: {mode}, by {name}, {when}",
+        "noHistory": "Never switched on."
       }
     }
   },

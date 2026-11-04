@@ -1498,7 +1498,8 @@
         "resolved": "Đã giải quyết là dự kiến.",
         "revoked": "Đã thu hồi xác nhận. Kiểm tra được tính lại từ lần chạy tiếp theo.",
         "ruleApproved": "Đã phê duyệt quy tắc thường trực và ghi nhận thành xác nhận.",
-        "ruleRejected": "Đã từ chối đề xuất."
+        "ruleRejected": "Đã từ chối đề xuất.",
+        "learning": "Đã lưu. Việc học áp dụng từ lần chạy tiếp theo."
       },
       "errors": {
         "invalid": "Không hiểu được thay đổi đó.",
@@ -1508,7 +1509,8 @@
         "failed": "Không thể lưu thay đổi. Hãy thử lại.",
         "groupAdministrator": "Chỉ quản trị viên tập đoàn mới có thể phê duyệt mục này.",
         "ownEvidence": "Bạn đã xử lý các cờ làm căn cứ cho đề xuất này, nên quản trị viên tập đoàn khác phải phê duyệt.",
-        "own": "Bạn không thể ghi nhận điều này về chính mình."
+        "own": "Bạn không thể ghi nhận điều này về chính mình.",
+        "learningGroup": "Chỉ quản trị viên tập đoàn mới có thể bật việc học."
       },
       "patternUnknown": "Một khoản lương không còn trong danh mục",
       "groups": {
@@ -2034,6 +2036,18 @@
         },
         "never": "Chưa",
         "allOff": "Việc học từ lịch sử lương đang tắt cho các công ty này."
+      },
+      "settings": {
+        "title": "Học từ lịch sử lương",
+        "help": "Khi bật, AI Centre học mức lương thường của từng người từ các kỳ lương đã đóng và bộ phận lương thấy “Mức thường của người này” bên cạnh mỗi cảnh báo. Nó không bao giờ thay đổi con số, phép kiểm tra hay cảnh báo.",
+        "current": "Hiện tại: {mode}",
+        "switchOn": "Bật dòng bằng chứng",
+        "switchOff": "Tắt",
+        "groupOnly": "Quản trị viên tập đoàn bật việc học. Bạn có thể tắt nó.",
+        "classify": "Phân loại chỉ được bật qua một đề xuất đã duyệt có kiểm thử ngược. Hiện chưa có.",
+        "historyTitle": "Thay đổi",
+        "historyRow": "Phiên bản {version}: {mode}, bởi {name}, {when}",
+        "noHistory": "Chưa từng bật."
       }
     }
   },
