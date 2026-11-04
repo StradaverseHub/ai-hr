@@ -80,8 +80,9 @@ export async function manageAccount(ctx:SessionContext,userId:string,command:Acc
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'app-user',aggregateId:userId,eventType:`app-user.account-${command.type}`,actor:actorOf(ctx),payload:metadata});
   return {password,organization:c.organization,username:c.username};
  });
- if(command.type==='reset-email')await requestRecovery(result.organization,result.username);
- return {password:result.password};
+ let delivery:'sent'|'failed'|'skipped'|'uncertain'|undefined;
+ if(command.type==='reset-email'){delivery='uncertain';await requestRecovery(result.organization,result.username,undefined,attempt=>attempt(),false,'en',status=>{delivery=status;});}
+ return {password:result.password,delivery};
 }
 
 /** Batched directory projection. A denied identity has no metadata and no account action link. */

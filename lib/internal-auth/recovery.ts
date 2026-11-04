@@ -17,12 +17,12 @@ type Recovery = { subject: string; version: string };
 export type RecoveryContext = { locale?:EmailLocale;subject: string; issuer: string; tenantId: string; version: string; email: string; organization: string; username: string };
 /** Public request confirmation never discloses account existence or SMTP readiness. */
 export async function requestRecovery(organization: string, username: string, transport?: MailTransport,
-  dispatch: (attempt: () => Promise<void>) => void | Promise<void> = attempt => attempt(), sourceBudgeted = false, language:EmailLocale='en') {
+  dispatch: (attempt: () => Promise<void>) => void | Promise<void> = attempt => attempt(), sourceBudgeted = false, language:EmailLocale='en',onDeliveryResult?:(status:'sent'|'failed'|'skipped'|'uncertain')=>void) {
   const locale=emailLocale.parse(language);
   if (!sourceBudgeted) await takeRate('recovery-global', 120, 3600_000);
   await takeRate(`recovery:${canonicalOrg(organization)}:${username.trim().toLowerCase()}`, 3, 3600_000);
   const c = await credentialByLogin(organization, username);
-  if (!c || !accountAvailable(c) || !c.emailVerified) return;
+  if (!c || !accountAvailable(c) || !c.emailVerified){onDeliveryResult?.('skipped');return;}
   const delivery = await authTransaction(c.subject, async tx => {
     const current = await readRecord<Credential>(tx, `credential:${c.subject}`, true);
     if (!current || !accountAvailable(current) || current.version !== c.version) return null;
@@ -34,11 +34,12 @@ export async function requestRecovery(organization: string, username: string, tr
       version: current.version,locale, email: current.email, organization: current.organization, username: current.username } satisfies RecoveryContext, current.subject);
     return { id: job.id as string, lease: job.lease_token as string };
   });
+  if(!delivery)onDeliveryResult?.('skipped');
   if (delivery) await dispatch(async () => attemptAccountEmail(delivery.id, delivery.lease, {
     sendInvitation: async () => { throw new AccountEmailDeliveryError('notEligible'); },
     sendPasswordReset: (email, context) => sendInternalRecovery(email, context, transport),
     emailReadiness: (await import('../identity/account-email-readiness')).accountEmailReadiness,
-  }));
+  },undefined,onDeliveryResult));
 }
 /** Exact delivery lease + authenticated original account binding; an email address is never a lookup. */
 export async function sendInternalRecovery(email: string, context?: { deliveryId: string; leaseToken: string }, transport?: MailTransport) {

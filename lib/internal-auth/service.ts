@@ -1,3 +1,4 @@
+import {observeAccountExpiry,observeStoredAccountExpiry} from './account-expiry';
 import {accountAvailable,temporaryPasswordAvailable} from './account-state';
 import { readRememberedMfaPolicy, rememberedFactorValid, rememberVerifiedFactor } from './remembered-mfa';
 import { passwordChangeRequired, replacePassword, effectivePasswordPolicy } from './password-policy';
@@ -74,6 +75,7 @@ export async function startLogin(input: { organization: string; username: string
   if (!input.sourceBudgeted) await takeRate('login-global', 120, 60_000);
   await takeRate(`login:${org}:${username}`, 10);
   const c = await credentialByLogin(org, username);
+  if(c?.accountActiveUntil&&!accountAvailable(c))await authTransaction(c.subject,tx=>observeStoredAccountExpiry(tx,c.subject));
   const matched = await passwordMatches(input.password, c?.password || DUMMY_PASSWORD_HASH);
   if (c?.enabled && !matched) await authTransaction(c.subject,async tx=>{
     const current=await readRecord<Credential>(tx,credentialKey(c.subject),true);
@@ -216,6 +218,7 @@ async function loadSession(token: string | undefined, native: boolean) {
   if (!session || session.native !== native || session.absoluteExpiry <= Date.now()) return null;
   const c = await readRecord<Credential>(client, credentialKey(session.subject));
   if (!c || c.version !== session.version || !await readRecord(client, `family:${session.family}`)) return null;
+  if(c.accountActiveUntil&&!accountAvailable(c)){await authTransaction(c.subject,tx=>observeStoredAccountExpiry(tx,c.subject));return null;}
   try { await assertActiveCredential(client, c); } catch (e) { if (e instanceof InternalAuthError) return null; throw e; }
   if (native) return { key, session, c, idleMs: null };
   const idleMs = await idleTimeoutMinutesFor(c.tenantId) * 60_000;
@@ -266,6 +269,7 @@ export async function rotateRefresh(token: string): Promise<AuthReply> {
     if (value.used) { await deleteRecord(tx, `family:${value.family}`); return null; }
     const c = await readRecord<Credential>(tx, credentialKey(value.subject), true);
     if (!c || c.version !== value.version || !value.native || value.absoluteExpiry <= Date.now() || !await readRecord(tx, `family:${value.family}`)) return null;
+    if(await observeAccountExpiry(tx,c))return null;
     await assertActiveCredential(tx, c);
     await writeRecord(tx, key, { ...value, used: true }, c.subject, value.absoluteExpiry);
     const next = opaque(), access = opaque();
