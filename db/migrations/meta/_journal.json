@@ -4677,6 +4677,27 @@
       "when": 1793330001411,
       "tag": "2011_payroll_loops_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 1347,
+      "version": "7",
+      "when": 1793330001500,
+      "tag": "2100_employment_helper_tenant_pin",
+      "breakpoints": true
+    },
+    {
+      "idx": 1348,
+      "version": "7",
+      "when": 1793330001501,
+      "tag": "2101_company_tenant_fk_not_valid",
+      "breakpoints": true
+    },
+    {
+      "idx": 1349,
+      "version": "7",
+      "when": 1793330001502,
+      "tag": "2102_company_tenant_fk_validate",
+      "breakpoints": true
     }
   ]
 }
