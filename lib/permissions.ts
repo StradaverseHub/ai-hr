@@ -151,6 +151,9 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'myHomePreferences',href:'/me/home',labelKey:'employeeHome.preferences.title',guard:'scopedSession',routes:['/me/home']},
   {screenKey:'myHomeGreetings',href:'/me/greetings/[id]',labelKey:'employeeHome.greetingDetail.title',guard:'scopedSession',routes:['/me/greetings/[id]']},
   {screenKey:'myCalendar',href:'/me/calendar',labelKey:'employeeHome.calendar.title',guard:'scopedSession',routes:['/me/calendar'],hasScopeNote:true},
+  // AI Centre restructure (owner decision 27, 4 Nov 2026): "My payroll readiness", every signed-in person's own page (their
+  // own items, read as them; the approvals owner's own list of decisions waiting on them).
+  {screenKey:'myPayrollReadiness',href:'/me/payroll-readiness',labelKey:'nav.myPayrollReadiness',guard:'scopedSession',routes:['/me/payroll-readiness']},
   { screenKey: 'entra', href: '/admin/settings/entra', labelKey: 'nav.entra', guard: 'scopedAdmin', routes: ['/admin/settings/entra'], hasScopeNote: true },
   { screenKey: 'loginPresentation', href: '/admin/settings/login', labelKey: 'nav.loginPresentation', guard: 'scopedAdmin', routes: ['/admin/settings/login'], hasScopeNote: true },
   {screenKey:'emailTemplates',href:'/admin/settings/email-templates',labelKey:'nav.emailTemplates',guard:'scopedAdmin',routes:['/admin/settings/email-templates'],hasScopeNote:true},
@@ -1186,6 +1189,9 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/control-tower/agents/spending',
       '/control-tower/agents/orchestrator',
       '/control-tower/agents/runs',
+      // AI Centre restructure (4 Nov 2026): Administration › Build list, from the former Opportunities page. Same requireAdmin
+      // guard as its siblings; the page sends anyone but a group administrator to Workers, and its read owner refuses them.
+      '/control-tower/agents/build-list',
       // ADR-0074 r245 — the cross-run exceptions queue. Same requireAdmin guard as its siblings and the
       // per-run queue it complements, so it needs a column here or test/function-access.test.ts fails.
       '/control-tower/exceptions',

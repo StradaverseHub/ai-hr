@@ -526,7 +526,8 @@
     "contractIntake": "รับเข้าสัญญาและหลักฐานเกษียณ",
     "passwordPolicy": "นโยบายรหัสผ่าน",
     "myPrivateCases": "เรื่องส่วนตัวของฉัน",
-    "privateCases": "เรื่องส่วนตัว"
+    "privateCases": "เรื่องส่วนตัว",
+    "myPayrollReadiness": "ความพร้อมสำหรับเงินเดือนของฉัน"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
