@@ -42,7 +42,7 @@ it('uses the latest enabled state and does not suggest a disabled descriptor thr
 it('returns no field definitions without current native author/financial authority',async()=>{
  const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'no-draft-fields-'+randomUUID()}).returning();
  const unprivileged={...ctx,userId:user.id,personId:null,roles:[],grants:[]} satisfies SessionContext;
- expect(await read(unprivileged)).toEqual({profile:[],employee:[]});expect(await read({...unprivileged,userId:null})).toEqual({profile:[],employee:[]});
+ expect(await read(unprivileged)).toEqual({profile:[],employee:[]});expect(await read({...unprivileged,userId:undefined})).toEqual({profile:[],employee:[]});
 });
 
 it('serializes no library list values when Personnel field permission is denied',async()=>{

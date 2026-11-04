@@ -188,19 +188,21 @@ it('uses only exact-run native payslip-referenced frozen reads with the matching
  await activate('Return 1');const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});await generatePayslips(ctx,{batchId});
  const key='profile.personal_details.fullname',source=`If {#EmployeeInformation}("${key}") = "Frozen historical name" Then\nReturn 9\nElse\nReturn 0\nEnd If`,saved=await savePayFormula(ctx,{formulaId:'FROZEN_PERSONNEL',description:'Exact native run snapshot',method:'write',source});
  const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
+ const statutory=slip?.statutory;
+ if(!statutory||typeof statutory!=='object'||Array.isArray(statutory))throw new Error('The native fixture payslip must contain an object statutory payload.');
  const payload={explanations:[],reads:[{code:'EmployeeInformation',args:[{type:'string',value:key}],loc:{line:1,column:1},value:{type:'string',value:'Frozen historical name'}}],sources:{context:{...context,batchId},sourceEvidence:[{owner:'typed-personnel',provider:PAY_FORMULA_PERSONNEL_PROVIDER_VERSION,key,dateBasis:'current-only',asOf:context.asOf}]}};
  // An owner-created historical native fixture represents a retained source read from that payroll day.
  const [evidence]=await owner.withTenant(ctx,tx=>tx.insert(schema.payFormulaEvaluation).values({tenantId:base.tenantId,formulaId:saved.id,revisionId:saved.revisionId,companyId:base.companyId,employmentId:employee.employmentId,batchId,componentCode:item.code,period:context.period,amount:'9',payload,readRequirements:{categories:['identity'],fieldIds:[key],workforce:true},actorId:ctx.userId!}).returning());
- await owner.db.update(schema.payslip).set({statutory:{...slip.statutory,formulaEvaluations:[{evaluationId:evidence.id}]}}).where(eq(schema.payslip.id,slip.id));
+ await owner.db.update(schema.payslip).set({statutory:{...statutory,formulaEvaluations:[{evaluationId:evidence.id}]}}).where(eq(schema.payslip.id,slip.id));
  await owner.db.update(schema.person).set({fullName:'Changed live employee name'}).where(eq(schema.person.id,employee.personId));
  const alternate=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});
  expect(await testPayFormula(ctx,{...saved,context:{...context,batchId:alternate.batchId}})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
  const selected={...context,batchId};expect(await testPayFormula(ctx,{...saved,context:selected})).toMatchObject({passed:true,amount:'9'});
  expect(await testPayFormula(ctx,{...saved,context:{...selected,asOf:'2026-05-30'}})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
  const [wrongProvider]=await owner.withTenant(ctx,tx=>tx.insert(schema.payFormulaEvaluation).values({...evidence,id:undefined,payload:{...payload,sources:{...payload.sources,sourceEvidence:[{...payload.sources.sourceEvidence[0],provider:'unreviewed-provider'}]}}}).returning());
- await owner.db.update(schema.payslip).set({statutory:{...slip.statutory,formulaEvaluations:[{evaluationId:wrongProvider.id}]}}).where(eq(schema.payslip.id,slip.id));
+ await owner.db.update(schema.payslip).set({statutory:{...statutory,formulaEvaluations:[{evaluationId:wrongProvider.id}]}}).where(eq(schema.payslip.id,slip.id));
  expect(await testPayFormula(ctx,{...saved,context:selected})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
- await owner.db.update(schema.payslip).set({statutory:{...slip.statutory,formulaEvaluations:[]}}).where(eq(schema.payslip.id,slip.id));
+ await owner.db.update(schema.payslip).set({statutory:{...statutory,formulaEvaluations:[]}}).where(eq(schema.payslip.id,slip.id));
  expect(await testPayFormula(ctx,{...saved,context:selected})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
 });
 it('requires administrator authority at both registration boundaries and refuses malformed native sources and forged audits',async()=>{
