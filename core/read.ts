@@ -5592,8 +5592,8 @@ export function eligibleDelegates(ctx: SessionContext, delegatorEmploymentId: st
 
 /** Compatibility read; the date-aware scoped Org Chart projection owns the hierarchy. */
 export async function orgChartData(ctx: SessionContext, companyIds?: string[]) {
-  const ids=companyIds ?? (await allowedCompanies(ctx)).map(company=>company.id);
-  const {orgChartSnapshot}=await import('./org-chart');
+  const {orgChartSnapshot,orgChartCompanies}=await import('./org-chart');
+  const ids=companyIds ?? (await orgChartCompanies(ctx)).map(company=>company.id);
   return orgChartSnapshot(ctx,{companyIds:ids});
 }
 

@@ -2,7 +2,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {withTenant} from '../db/client';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {hireEmployee,setReportingLine,terminateEmployment,setEmploymentAssignment,ReportingCycleError,wouldCreateAdminCycle} from '../core/org';
-import {orgChartSnapshot,setOrgChartRoot,recordOrgChartExport} from '../core/org-chart';
+import {orgChartSnapshot,setOrgChartRoot,recordOrgChartExport,orgChartCompanies} from '../core/org-chart';
 import {orgChartData} from '../core/read';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import * as s from '../db/schema';
@@ -68,4 +68,10 @@ it('34b9579a: finite historical correction windows do not inherit a cycle that s
  const a=await hire('HistoricalAlpha'),b2=await hire('HistoricalBeta');await line(b2.employmentId,a.employmentId,'2027-01-01');
  expect(await withTenant(adminCtx(b),tx=>wouldCreateAdminCycle(tx,a.employmentId,b2.employmentId,'2024-01-01','2025-01-01'))).toBe(false);
  expect(await withTenant(adminCtx(b),tx=>wouldCreateAdminCycle(tx,a.employmentId,b2.employmentId,'2024-01-01',null))).toBe(true);
+});
+
+it('34b9579a: company metadata uses the actual authorized actor even when optional session grant projections are absent',async()=>{
+ const e=await hire('VisibleEmployee');const ctx=adminCtx(b);expect(ctx.grants).toBeUndefined();
+ expect((await orgChartCompanies(ctx)).map(company=>company.id)).toContain(b.companyId);
+ expect((await orgChartData(ctx)).employees.some(employee=>employee.employmentId===e.employmentId)).toBe(true);
 });
