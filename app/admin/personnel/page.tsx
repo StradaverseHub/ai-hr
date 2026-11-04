@@ -5,11 +5,9 @@ import { getTranslations } from 'next-intl/server';
 import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fields';
 import {requireWorkforceAccess} from '@/lib/workforce-authz';
 import {
-  countEmployeesByStatus,
   listCompanies,
   listDepartments,
-  listWorkforcePickOptions,
-  listEmployeesPage,
+  personnelListPage,
 } from '@/core/read';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
@@ -126,37 +124,25 @@ export default async function PeoplePage({
   const { q, company, dept, type, draftOnly, hasFilters } = query;
 
   const [
-    { rows: employeeRows, total: employeeTotal },
-    headcount,
+    { rows: employeeRows, total: employeeTotal, headcount },
     companies,
     departments,
     allDrafts,
-    allEmployees,
     savedColumns,
     idConfigs,
   ] = await Promise.all([
-    listEmployeesPage(session, {
+    // Rows and un-narrowed status facets retain the same authorized filter owners.
+    personnelListPage(session, {
       companyIds: scopeIds,
       ...query.filters,
       limit: pq.limit,
       offset: pq.offset,
-    },'workforce'),
-    // Point 5 — the five headcount cards. Counted in SQL over the WHOLE filtered set, never over the
-    // page: "40 employees" must keep meaning forty people, not twenty-five rows. The bucket narrowing is
-    // stripped (headcountFilters) so the cards stay a facet of the current view — clicking one cannot
-    // make the other four read zero.
-    countEmployeesByStatus(session,{companyIds:scopeIds,...headcountFilters(query)},'workforce'),
+    }, {companyIds: scopeIds, ...headcountFilters(query)}),
     listCompanies(session).then(rows=>rows.filter(row=>workforceIds.has(row.id))),
     scopeIds.length?listDepartments(session,{companyIds:scopeIds}):Promise.resolve([]),
     // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees above do. They used to
     // be read with no scope at all, so choosing one company still listed every company's drafts.
     isAdmin ? listEmployeeDrafts(session, draftListScope(scopeIds, allowedCount)) : Promise.resolve([]),
-    // c002b3c3 — the switcher needs the WHOLE reachable set, not the page being displayed: searching for
-    // someone on page 7 of the list is the entire point. `listEmployees` is the same scoped read the
-    // profile route already uses for its own pickers, narrowed here by the active company context
-    // (`scopeIds`) so the box searches exactly what this screen is showing. It can only ever be NARROWER
-    // than RLS — the profile route re-resolves whatever is picked and 404s on anything out of scope.
-    listWorkforcePickOptions(session, scopeIds),
     // 579255c3 — this reader's own columns and their order. Per user (app_user.list_preferences through
     // the own-row seam), so one person's arrangement never changes what anybody else sees.
     getEmployeeListColumns(session),
@@ -453,15 +439,7 @@ export default async function PeoplePage({
                 filter's `q` box and does not narrow this table: it JUMPS to a profile. Both controls
                 are here because they answer different questions — "show me these people" and "take me
                 to this person" — and the second one previously had no answer at all. */}
-            <EmployeeSwitcher
-              employees={allEmployees.map((e) => ({
-                employmentId: e.employmentId,
-                name: e.name,
-                employeeCode: e.employeeCode,
-                company: e.company,
-                department: e.department,
-              }))}
-            />
+            <EmployeeSwitcher remote key={scopeIds.join(',')} />
             <FilterPanel
               action="/admin/personnel"
               fields={filterFields}

@@ -503,10 +503,10 @@ describe('AI v2 slice 3: the paperclip in Ask (imports inside the chat)', () => 
   });
 });
 
-// Opening Ask must not pay for privacy-only metadata or a second, unused history payload.
-it('Ask loads only the history that its chat owners render', async()=>{
+// Ask keeps its displayed retention setting, without a second unused history payload.
+it('Ask keeps the visible retention setting and loads history through its chat owners', async()=>{
  await AssistantPage({searchParams:Promise.resolve({})});
- expect(state.readChatRetention).not.toHaveBeenCalled();
+ expect(state.readChatRetention).toHaveBeenCalledTimes(1);
  expect(state.workspace).toHaveBeenCalledWith(state.session,expect.objectContaining({includeHistory:false,includeGovernance:false}));
  expect(state.listOwnChats).toHaveBeenCalledTimes(1);
 });

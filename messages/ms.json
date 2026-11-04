@@ -790,7 +790,8 @@
       "placeholder": "Cari ID pekerja atau nama…",
       "resultsLabel": "Hasil carian pekerja",
       "noMatches": "Tiada pekerja yang sepadan.",
-      "currentTag": "Semasa"
+      "currentTag": "Semasa",
+      "loadFailed": "Carian pekerja tidak dapat dimuatkan. Cuba lagi."
     },
     "detail": {
       "incentiveDeclarations": {
@@ -5356,7 +5357,7 @@
     "submitDecisions": "Hantar",
     "employeeRemark": "Catatan pekerja",
     "closeDialog": "Tutup",
-    "bulkSelectAll": "Pilih semua",
+    "bulkSelectAll": "Pilih semua pada halaman ini",
     "bulkSelectRow": "Pilih permohonan",
     "bulkSelected": "Dipilih: {count, plural, other {# permohonan}}",
     "bulkClear": "Kosongkan",

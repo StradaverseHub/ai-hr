@@ -175,12 +175,16 @@ export function withModuleTenant(code: string) {
   // it (test/module-gate.test.ts), and it is the exact class of breakage this change must not introduce:
   // a gate is allowed to refuse, never to change how a refusal ARRIVES. An async function body always
   // returns a rejected promise.
-  return async function withGatedTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return async function withGatedTenant<T>(
+    ctx: SessionContext,
+    fn: (tx: Tx) => Promise<T>,
+    options?: Parameters<typeof withTenant>[2],
+  ): Promise<T> {
     assertModuleGate(ctx, code);
     return withTenant(ctx, async tx => {
       if (code === 'payroll') await lockPayrollHistoryReadTx(tx,ctx.tenantId);
       return fn(tx);
-    });
+    }, options);
   };
 }
 

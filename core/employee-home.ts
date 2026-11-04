@@ -2,7 +2,7 @@
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {person} from '../db/schema';
-import {myOwnEmploymentSubjects,type OwnEmploymentSubject} from './read';
+import {myOwnEmploymentSubjectsTx,type OwnEmploymentSubject} from './read';
 import {hasPersonPhoto} from './person-photo';
 import {isAdmin} from '../lib/authz-model';
 import {resolveDashboardRole} from '../lib/dashboard-cards';
@@ -27,10 +27,12 @@ export async function ownHomeSubjectSelection(ctx:SessionContext,requestedEmploy
  if(!ctx.userId)throw new HomeAccessError('authentication');
  // The role/scope snapshot does not attest a caller's personId. Bind it independently through the
  // canonical actual-login predicate before an HR principal can query the own-subject inventory.
- const [principal]=await withTenant(ctx,tx=>tx.execute(sql`SELECT (app.principal_snapshot_current()
-  AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok`)) as unknown as {ok:boolean}[];
- if(!principal?.ok)throw new HomeAccessError('employmentUnavailable');
- const subjects=await myOwnEmploymentSubjects(ctx);
+ const subjects=await withTenant(ctx,async tx=>{
+  const [principal]=await tx.execute<{ok:boolean}>(sql`SELECT (app.principal_snapshot_current()
+   AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok`);
+  if(!principal?.ok)throw new HomeAccessError('employmentUnavailable');
+  return myOwnEmploymentSubjectsTx(tx,ctx);
+ },{readOnlySnapshot:true});
  if(requestedEmploymentId!==undefined){
   const subject=subjects.find(row=>row.employmentId===requestedEmploymentId);
   if(!subject)throw new HomeAccessError('employmentUnavailable');

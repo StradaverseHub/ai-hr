@@ -32,6 +32,16 @@ describe('V3.1 localized task controls', () => {
         await waitFor(() => expect(mocks.change).toHaveBeenCalledWith('case', 7, { type: 'task', taskId: 'welcome', status: 'done' }));
         expect(mocks.refresh).toHaveBeenCalledTimes(1);
     });
+    it.each(['en','ms','zh','ta','th','vi'])('keeps the full task count with a translated bounded Claims preview in %s',locale=>{
+        const catalog=messages(locale),claims=Array.from({length:25},(_,i)=>({id:'claim-'+i,kind:'claim' as const,subjectName:'Fictional claim subject '+i,createdAt:'2026-01-01T00:00:00Z',linkPath:'/approvals?category=claim&requestId=claim-'+i}));
+        render(<NextIntlClientProvider locale={locale} messages={catalog} timeZone="Asia/Kuala_Lumpur"><TasksView items={[]} existing={claims} existingTotal={100000} claimTotal={100000}/></NextIntlClientProvider>);
+        expect(screen.getAllByText(catalog.notifications.task.claim)).toHaveLength(25);
+        const preview=screen.getByRole('region',{name:catalog.approvals.claims});
+        expect(preview.textContent).toContain(new Intl.NumberFormat(locale).format(100000));
+        expect(within(preview).getByRole('link',{name:catalog.dashboard.viewAll})).toHaveAttribute('href','/approvals?category=claim');
+        const filters=screen.getByRole('navigation',{name:translation(locale,'Task filters')});
+        expect(within(filters).getAllByRole('button')[0]).toHaveTextContent('100000');
+    });
     it('autosaves checklist tasks without unrelated configuration writes and sequences revisions', async () => {
         const config = defaultConfig('owner');
         config.checklists[0]!.tasks = [{ id: 'welcome', name: 'Welcome', by: 'group', group: 'people-gbs', method: 'manual', opens: null, due: 1, gate: false }];

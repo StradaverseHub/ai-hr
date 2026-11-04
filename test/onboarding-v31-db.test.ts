@@ -93,6 +93,32 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(after.revision).toBe(before.revision); expect(after.config).toEqual(before.config);
         expect(after.actor).toMatchObject({ master: true, module: false });
     });
+    it('keeps an empty authorized task queue available without reading the tenant-wide user directory', async()=>{
+        const [permission]=await owner.client`select has_function_privilege('ai_hr_app','app.onboarding_directory()','EXECUTE') as allowed`;
+        expect(permission.allowed).toBe(true);
+        await owner.client.unsafe('REVOKE EXECUTE ON FUNCTION app.onboarding_directory() FROM ai_hr_app');
+        try {
+            // Establish the native failure injection; a spy alone would not prove the SQL was skipped.
+            await expect(withTenant(admin,tx=>tx.execute(sql`select * from app.onboarding_directory()`))).rejects.toMatchObject({cause:{code:'42501'}});
+            expect(await onboardingTasks(admin)).toEqual([]);
+            expect(await onboardingTasks(tech)).toEqual([]);
+            expect(await onboardingTasks(other)).toEqual([]);
+        } finally {
+            await owner.client.unsafe('GRANT EXECUTE ON FUNCTION app.onboarding_directory() TO ai_hr_app');
+        }
+        expect((await withTenant(admin,tx=>tx.execute(sql`select * from app.onboarding_directory()`))).length).toBeGreaterThan(0);
+    });
+    it('loads directory names only when a projected team task actually has a claimant', async()=>{
+        const row=await prepared(),before=await onboardingTasks(tech);
+        expect(before.length).toBeGreaterThan(0);
+        expect(before.every(task=>!task.claimedBy)).toBe(true);
+        await owner.client.unsafe('REVOKE EXECUTE ON FUNCTION app.onboarding_directory() FROM ai_hr_app');
+        try {expect(await onboardingTasks(tech)).toEqual(before);}
+        finally {await owner.client.unsafe('GRANT EXECUTE ON FUNCTION app.onboarding_directory() TO ai_hr_app');}
+        const itemId=row.case.requisitions[0]!.items[0]!.id;
+        await onboardingCommand(tech,row.case.id,row.revision,{type:'fulfil',itemId,status:'progress'});
+        expect((await onboardingTasks(tech)).find(task=>task.kind==='team'&&task.itemIds?.includes(itemId))).toMatchObject({claimedBy:'Kevin Tech',assigned:true});
+    });
     it('projects only actual unlocked personal work for Home and removes a completed checklist task', async()=>{
         const row=await prepared(),tasks=await onboardingTasks(tech),assigned=await onboardingAssignedTaskMetadata(tech);
         const welcome=tasks.find(item=>item.caseId===row.case.id&&item.taskId==='welcome')!;
