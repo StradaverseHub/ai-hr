@@ -10,7 +10,7 @@ import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness
 beforeAll(migrateTestDb);afterAll(closeAll);
 
 it('isolates Home role and reporting-visibility query planning with fresh native role proofs',async()=>{
- await resetDb();await owner.client`create extension if not exists pg_stat_statements`;const b=await seedBase(),foreign=await seedBase(),base=adminCtx(b);
+ await resetDb();const b=await seedBase(),foreign=await seedBase(),base=adminCtx(b);
  const companies=await owner.db.insert(s.company).values(Array.from({length:10},(_,i)=>({tenantId:b.tenantId,country:'MY',legalName:'Fictional role-profile company '+i}))).returning();
  const departments=await owner.db.insert(s.department).values(companies.map(c=>({tenantId:b.tenantId,companyId:c.id,name:'Fictional role-profile department'}))).returning();
  const users=Array.from({length:500},(_,i)=>({index:i,id:randomUUID(),personId:randomUUID(),employmentId:randomUUID(),companyId:companies[Math.floor(i/50)].id,departmentId:departments[Math.floor(i/50)].id,
@@ -70,11 +70,9 @@ it('isolates Home role and reporting-visibility query planning with fresh native
     expect(security).toEqual(definition.security);
    }
    for(const u of probes.slice(0,5))expect(await read(context(u),u.employmentId)).toBe(u.expected);
-   await owner.client`select pg_stat_statements_reset()`;
    const times:number[]=[],started=performance.now();
    const results=await Promise.allSettled(probes.map(async u=>{const before=performance.now();expect(await read(context(u),u.employmentId)).toBe(u.expected);times.push(performance.now()-before);}));
    const elapsedMs=performance.now()-started,errors=results.flatMap(result=>result.status==='rejected'?[String(result.reason)]:[]);times.sort((a,b)=>a-b);
-   const statements=await owner.client`select calls,total_exec_time,total_plan_time,left(query,1600) as normalized_query from pg_stat_statements where query not like '%pg_stat_%' order by total_exec_time+total_plan_time desc limit 12`;
    // Reusing a plan must never reuse a principal, role grant or reporting assignment result.
    expect(await read(context(users[4]),users[5].employmentId)).toBeNull();
    expect(await read(adminCtx(foreign),users[4].employmentId)).toBeNull();
@@ -84,7 +82,7 @@ it('isolates Home role and reporting-visibility query planning with fresh native
    try{await owner.db.update(s.reportingLine).set({supersededAt:new Date()}).where(eq(s.reportingLine.managerEmploymentId,users[2].employmentId));expect(await read(context(users[2]),users[2].employmentId)).toBe('employee');}
    finally{await owner.db.update(s.reportingLine).set({supersededAt:null}).where(eq(s.reportingLine.managerEmploymentId,users[2].employmentId));}
    expect(await read(context(users[2]),users[2].employmentId)).toBe('manager');
-   phases[phase]={principalInventory:500,activeProbes:100,elapsedMs,p50Ms:times[49],p95Ms:times[94],maxMs:times.at(-1),errors,liveBoundaryChecks:true,statements};
+   phases[phase]={principalInventory:500,activeProbes:100,elapsedMs,p50Ms:times[49],p95Ms:times[94],maxMs:times.at(-1),errors,liveBoundaryChecks:true};
    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'home-role-query.json'),JSON.stringify({kind:'REVERSIBLE_HOME_ROLE_PLAN_EXPERIMENT',releaseEligible:false,roleBaseline:'0584_employee_home_sharing.sql',installedRoleGuarded:roleDefinition.installedBody.trim()===guardedBody.trim(),phases},null,2));expect(errors).toEqual([]);
   }
  }finally{for(const definition of definitions)await owner.client.unsafe(definition.installed);}
