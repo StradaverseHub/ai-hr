@@ -64,13 +64,15 @@ const SIDEBAR:readonly (readonly [string,string,DestinationAudience,string|null]
  ['/admin/personnel/profile-changes','profileChanges','admin','employees'],['/admin/claims/reimbursements','reimbursementsDue','admin','claims'],
  ['/admin/organization','organization','admin',null],['/admin/notice-board','noticeBoard','admin',null],['/analytics','analytics','admin',null],
  ['/admin/audit','auditTrail','admin',null],['/reports','reports','admin',null],
- ['/control-tower','controlTowerOverview','admin',null],['/control-tower/readiness','controlTowerReadiness','admin',null],
- ['/control-tower/exceptions','controlTowerExceptions','admin',null],['/control-tower/actions','controlTowerActions','admin',null],
- ['/control-tower/opportunities','controlTowerOpportunities','admin',null],['/control-tower/how-it-works','controlTowerHow','admin',null],
- ['/control-tower/agents/inventory','aiManagementInventory','admin',null],['/control-tower/agents','aiManagementOverview','admin',null],
+ // AI Centre restructure (owner decisions 26–29, 4 Nov 2026): Operations opens on Loops, and the removed pages (the
+ // Overview, Proposed actions, Opportunities, the Inventory page and the orchestrator page) are forward stubs, not
+ // destinations (FORWARD_STUBS below), so the model is offered the page that owns each fact.
+ ['/control-tower/loops','aiControlTower','admin',null],['/control-tower/readiness','controlTowerReadiness','admin',null],
+ ['/control-tower/exceptions','controlTowerExceptions','admin',null],['/control-tower/how-it-works','controlTowerHow','admin',null],
+ ['/control-tower/agents','aiManagementOverview','admin',null],
  ['/control-tower/agents/provider','aiManagementProvider','admin',null],['/control-tower/agents/assistant','aiManagementAssistant','admin',null],
  ['/control-tower/agents/features','aiManagementFeatures','admin',null],['/control-tower/agents/allowances','aiManagementAllowances','admin',null],
- ['/control-tower/agents/spending','aiManagementSpending','admin',null],['/control-tower/agents/orchestrator','aiManagementOrchestrator','admin',null],
+ ['/control-tower/agents/spending','aiManagementSpending','admin',null],
  ['/control-tower/agents/runs','aiManagementRuns','admin',null],
  ['/reports?cat=master','reportMaster','admin',null],['/reports?cat=attendance','reportAttendance','admin',null],['/reports?cat=leave','reportLeave','admin',null],
  ['/reports?cat=payroll','reportPayroll','admin',null],['/reports?cat=claim','reportClaim','admin',null],['/reports?cat=performance','reportPerformance','admin',null],
@@ -137,8 +139,12 @@ const ADMIN_GUARD=/\b(requireAdmin|scopedAdmin|requireConfigSection|requirePayro
 const ADMIN_AREAS=['/admin','/control-tower','/payroll','/letters','/reports','/analytics'],NOT_LINKABLE=['/assistant','/login','/reset-password','/operator','/mobile-preview'];
 const AREA_MODULE:Readonly<Record<string,string>>={'/attendance':'attendance','/roster':'attendance','/leave':'leave','/claims':'claims','/performance':'performance','/payroll':'payroll','/lifecycle':'lifecycle','/rewards':'rewards','/letters':'employees'};
 const under=(route:string,area:string)=>route===area||route.startsWith(area+'/');
+/** AI Centre restructure (owner decisions 26–29, 4 Nov 2026): the guarded forward stubs of removed pages. Each only runs
+ * its guard and forwards to the page that owns the fact now, so it is not a link target; a reply links the owner. */
+export const FORWARD_STUBS:ReadonlySet<string>=new Set(['/control-tower','/control-tower/actions','/control-tower/opportunities',
+ '/control-tower/agents/inventory','/control-tower/agents/orchestrator']);
 export function classifyPage(route:string,source:string):Readonly<{audience:DestinationAudience;module:string|null}>|null{
- if(NOT_LINKABLE.some(area=>under(route,area)))return null;
+ if(NOT_LINKABLE.some(area=>under(route,area))||FORWARD_STUBS.has(route))return null;
  const area=Object.keys(AREA_MODULE).find(prefix=>under(route,prefix)),module=source.match(/requireModule\(\s*'([a-z_-]+)'/)?.[1]??(area?AREA_MODULE[area]:null);
  if(ADMIN_AREAS.some(prefix=>under(route,prefix))||ADMIN_GUARD.test(source)||(/\bisAdmin\(/.test(source)&&/\b(redirect|notFound|forbidden)\(/.test(source)))return{audience:'admin',module};
  if(/\brequireTeamAccess\(/.test(source))return{audience:'manager',module};
@@ -205,13 +211,13 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/attendance/my-records','everyone','attendance'],['/attendance/my-roster','everyone','attendance'],['/attendance/plan-ot','everyone','attendance'],
  ['/attendance/plan-ot/apply','everyone','attendance'],['/attendance/recompute','admin','attendance'],
  ['/attendance/request-status','everyone','attendance'],['/attendance/requests','everyone','attendance'],['/cases','everyone',null],['/claims','everyone','claims'],
- ['/control-tower','admin',null],['/control-tower/actions','admin',null],['/control-tower/agents','admin',null],
- ['/control-tower/agents/allowances','admin',null],['/control-tower/agents/assistant','admin',null],['/control-tower/agents/features','admin',null],
- ['/control-tower/agents/inventory','admin',null],['/control-tower/agents/orchestrator','admin',null],['/control-tower/agents/provider','admin',null],
+ ['/control-tower/agents','admin',null],
+ ['/control-tower/agents/allowances','admin',null],['/control-tower/agents/assistant','admin',null],['/control-tower/agents/build-list','admin',null],
+ ['/control-tower/agents/features','admin',null],['/control-tower/agents/provider','admin',null],
  ['/control-tower/agents/runs','admin',null],['/control-tower/agents/spending','admin',null],['/control-tower/exceptions','admin',null],
  ['/control-tower/how-it-works','admin',null],['/control-tower/loops','admin',null],['/control-tower/loops/loop_payroll_audit','admin',null],
  ['/control-tower/loops/payroll-cycle','admin',null],['/control-tower/loops/payroll-cycle/salary','admin',null],['/control-tower/loops/payroll-cycle/settings','admin',null],
- ['/control-tower/opportunities','admin',null],['/control-tower/readiness','admin',null],
+ ['/control-tower/readiness','admin',null],
  ['/delegations','everyone',null],['/feedback','everyone',null],['/knowledge-base','everyone',null],['/leave','admin','leave'],
  ['/leave/credit','everyone','leave'],['/leave/credit-details','everyone','leave'],['/leave/details','everyone','leave'],
  ['/leave/employee-balances','admin','leave'],['/leave/employee-records','admin','leave'],['/leave/history','everyone','leave'],
@@ -223,7 +229,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/lifecycle/onboarding/checklists','everyone','lifecycle'],['/lifecycle/requisitions/onboarding','everyone','lifecycle'],
  ['/lifecycle/v9','everyone','lifecycle'],['/manage/my-team','manager',null],['/me','everyone',null],['/me/calendar','everyone',null],['/me/cases','everyone',null],['/me/cases/new','everyone',null],
  ['/me/ea','everyone','payroll'],['/me/home','everyone',null],['/me/letters','everyone','employees'],['/me/lifecycle','everyone','lifecycle'],
- ['/me/notifications','everyone','notifications'],['/me/payslip','everyone','payroll'],['/me/performance','everyone',null],
+ ['/me/notifications','everyone','notifications'],['/me/payroll-readiness','everyone',null],['/me/payslip','everyone','payroll'],['/me/performance','everyone',null],
  ['/me/tax-relief','everyone','payroll'],['/me/tp3','everyone','payroll'],['/notices','everyone',null],['/org','everyone',null],
  ['/payroll','admin','payroll'],['/payroll/back-pay','admin','payroll'],['/payroll/borang-8a/preview','admin','payroll'],
  ['/payroll/borang-8b/preview','admin','payroll'],['/payroll/borang-a/preview','admin','payroll'],['/payroll/borang-bbcd/preview','admin','payroll'],
