@@ -280,7 +280,12 @@ try{
  // Additional concrete pages have explicit rendered checks, separate from HTTP route counts.
  await Promise.all([employee,manager,hr,group].map(async user=>{
   const ctx=await context(user),page=await ctx.newPage();
-  try{for(const path of additionalBrowserRoutes[user.role])await visit(page,user,path);}
+  try{for(const path of additionalBrowserRoutes[user.role]){
+   // The full workload already rendered these exact role/path pairs above. Keep each
+   // required rendered check, without paying for an identical duplicate document load.
+   if(!report.browser.some(row=>row.phase==='baseline'&&row.role===user.role&&row.path===path))await visit(page,user,path);
+   assert(report.browser.some(row=>row.phase==='baseline'&&row.role===user.role&&row.path===path),'required rendered role/path missing');
+  }}
   finally{await ctx.close();}
  }));
  async function aiCentreJourney(page,user,phase){
