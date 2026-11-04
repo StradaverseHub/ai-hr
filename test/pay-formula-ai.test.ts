@@ -12,9 +12,17 @@ describe('bounded formula authoring proposals',()=>{
   expect(()=>adjudicatePayFormulaDraft('x'.repeat(48001))).toThrow();
   expect(()=>adjudicatePayFormulaDraft('```json\n'+proposal('Return 1')+'\n```')).toThrow();
  });
- it('keeps ambiguous requests out of the editor even when a model emits code',()=>{
-  expect(adjudicatePayFormulaDraft(proposal('Return 1',{questions:['Which nationality catalogue value?']}))).toMatchObject({valid:false,source:null,variables:[]});
+ it('retains a non-applicable suggestion alongside clarifying questions',()=>{
+  expect(adjudicatePayFormulaDraft(proposal('Return 1',{questions:['Which nationality catalogue value?']}))).toMatchObject({valid:false,source:'Return 1',variables:[],unresolved:false});
   expect(adjudicatePayFormulaDraft(proposal(null,{unsupported:['Network requests']})).valid).toBe(false);
+ });
+ it('keeps explicit missing fields insertable but never executable, checking real identifiers',()=>{
+  const source='If {#MISSING:Company} = "EBAC" Then\nReturn {#Basic}\nElse\nReturn {#Input}\nEnd If';
+  expect(adjudicatePayFormulaDraft(proposal(source,{questions:['Choose the company field.']}))).toMatchObject({source,valid:false,unresolved:true,variables:['Basic','Input']});
+  expect(()=>runPayFormulaSample(source,{Basic:'500',Input:'10'}).passed).not.toThrow();
+  expect(runPayFormulaSample(source,{Basic:'500',Input:'10'}).passed).toBe(false);
+  expect(()=>adjudicatePayFormulaDraft(proposal('Return {#Invented} + {#MISSING:Decimal:Rate}'))).toThrow();
+  expect(()=>adjudicatePayFormulaDraft(proposal('Return {#MISSING:Invalid:Field}'))).toThrow();
  });
  it('requires consent and bounds the exact disclosed user text without accepting employee records',()=>{
   expect(()=>payFormulaDraftRequest.parse({requirement:'Return 1',disclosureAccepted:false})).toThrow();

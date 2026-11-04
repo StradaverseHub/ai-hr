@@ -9,7 +9,7 @@ export async function saveRememberedMfaAction(_previous: RememberedMfaResult, fo
     const raw = form.get('rememberDays'), revision = form.get('revision');
     if (typeof raw !== 'string' || !/^\d{1,2}$/.test(raw) || typeof revision !== 'string' || !/^\d+$/.test(revision)) throw new Error('invalid');
     const saved = await saveRememberedMfaPolicy(ctx, { rememberDays: Number(raw) }, Number(revision));
-    revalidatePath('/admin/settings/login');
+    revalidatePath('/admin/security-center/password-policy');
     return { status: 'saved', revision: saved.revision };
   } catch (error) {
     const code = error instanceof Error ? error.message : '';

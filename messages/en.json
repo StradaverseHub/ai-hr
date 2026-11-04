@@ -513,6 +513,7 @@
     "aiManagementInventory": "AI inventory",
     "entra": "Microsoft Entra ID",
     "probationConfirmation": "Probation Confirmation",
+    "probationTracker": "Probation tracker",
     "contractManagement": "Contract Management",
     "probationSettings": "Probation settings",
     "probationForms": "Form editor",
@@ -23240,6 +23241,10 @@
       "cta": "Manage approval workflows"
     },
     "overtimePatterns": {
+      "loadFailureTitle": "Overtime Patterns could not load",
+      "loadFailureHelp": "Try again. If the problem continues, give support the reference below.",
+      "retryLoad": "Try again",
+      "supportReference": "Support reference: {reference}",
       "title": "Overtime Patterns",
       "desc": "Configure and review employee overtime, payable duration and payroll mapping.",
       "cta": "Configure Overtime Patterns"
@@ -29822,6 +29827,7 @@
       "configure": "Manage security and permissions",
       "workforceView": "View employee records",
       "workforceMaintain": "Maintain employee records",
+      "probationModule": "Manage Probation for all companies",
       "profileReview": "Review eligible profile changes"
     },
     "workforceReadOnly": "You can view this employee record. Your current Workforce permission does not allow changes.",
@@ -33455,6 +33461,11 @@
       }
     },
     "generator": {
+      "issue": "Issue",
+      "suggestedFormula": "Suggested formula",
+      "assumptions": "Assumptions",
+      "nextStep": "Next step",
+      "noAssumptions": "No assumptions were supplied.",
       "title": "AI Formula Generator",
       "requirement": "Describe the calculation",
       "disclosure": "Your description is sent to your organisation’s approved AI provider. Use fictional examples and do not include employee records.",
@@ -33463,7 +33474,7 @@
       "regenerate": "Regenerate Formula",
       "working": "Generating…",
       "clear": "Clear",
-      "apply": "Apply to Formula Editor",
+      "apply": "Insert Suggested Formula",
       "variables": "Variables used",
       "valid": "Formula syntax checked. Review and test before saving.",
       "needsClarification": "Clarification or a supported alternative is needed.",
@@ -34254,6 +34265,7 @@
     "access": {
       "title": "Module assignments",
       "help": "Assignments opt named users into this module for the selected scope and dates. PBP and GBS authority still comes from the current Lifecycle PBP rules and People Ops group; a module assignment cannot replace those mappings.",
+      "moduleRequired": "Probation module permission is required. Manage it in Access Settings.",
       "firstPreparer": "Nominate the first preparer",
       "bootstrapHelp": "A group administrator must explicitly nominate a named preparer for this company before configuration is available.",
       "person": "Person",
@@ -34307,6 +34319,16 @@
       "futureMessages": "Projected future messages",
       "excludedMessages": "Past messages excluded from catch-up",
       "eventMessages": "Workflows waiting for a future event",
+      "requestActivation": "Request activation",
+      "activationHelp": "The installation owner will recheck and execute this exact approved rehearsal. Runtime remains off until all checks pass.",
+      "installationReference": "Installation verification reference",
+      "checkActivation": "Check activation status",
+      "activationStates": {
+        "pending": "Activation requested. Reference: {reference}",
+        "completed": "Activation completed. Reference: {reference}",
+        "failed": "Activation checks failed. Prepare and approve a fresh rehearsal. Reference: {reference}"
+      },
+      "activationRequested": "Activation requested. Reference: {reference}",
       "approved": "Your approval has been recorded for this exact rehearsal. Activation still requires the verified installation owner.",
       "approvalReason": "Reason for approving this rehearsal",
       "approve": "Approve this exact rehearsal",
@@ -34453,7 +34475,8 @@
       "priority": "More-specific matching rules take priority. For equally specific matches, the last rule wins.",
       "rule": "Rule {index}",
       "planMonths": "Probation-plan months · blank for all",
-      "addRule": "Add scoped rule"
+      "addRule": "Add scoped rule",
+      "legacyMapping": "This saved version retains its earlier scope: Business group means parent company; Business unit means Personnel Business Unit. Its stored identities are preserved."
     },
     "letters": {
       "prepareHelp": "Preview the current authorized Personnel details and reviewed template. Preparation freezes a new letter revision for the assigned signers.",

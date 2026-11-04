@@ -513,6 +513,7 @@
     "aiManagementInventory": "Inventori AI",
     "entra": "Microsoft Entra ID",
     "probationConfirmation": "Pengesahan Percubaan",
+    "probationTracker": "Penjejak percubaan",
     "contractManagement": "Pengurusan Kontrak",
     "probationSettings": "Tetapan percubaan",
     "probationForms": "Penyunting borang",
@@ -23240,6 +23241,10 @@
       "cta": "Buka aliran kerja"
     },
     "overtimePatterns": {
+      "loadFailureTitle": "Corak Kerja Lebih Masa tidak dapat dimuatkan",
+      "loadFailureHelp": "Cuba lagi. Jika masalah berterusan, berikan rujukan di bawah kepada sokongan.",
+      "retryLoad": "Cuba lagi",
+      "supportReference": "Rujukan sokongan: {reference}",
       "title": "Corak Kerja Lebih Masa",
       "desc": "Konfigurasi dan semak kerja lebih masa pekerja, tempoh bayaran dan pemetaan gaji.",
       "cta": "Konfigurasi Corak Kerja Lebih Masa"
@@ -29822,6 +29827,7 @@
       "configure": "Urus keselamatan dan kebenaran",
       "workforceView": "Lihat rekod pekerja",
       "workforceMaintain": "Selenggara rekod pekerja",
+      "probationModule": "Urus Percubaan untuk semua syarikat",
       "profileReview": "Semak perubahan profil yang layak"
     },
     "workforceReadOnly": "Anda boleh melihat rekod pekerja ini. Kebenaran Tenaga Kerja semasa anda tidak membenarkan perubahan.",
@@ -33455,6 +33461,11 @@
       }
     },
     "generator": {
+      "issue": "Isu",
+      "suggestedFormula": "Formula yang dicadangkan",
+      "assumptions": "Andaian",
+      "nextStep": "Langkah seterusnya",
+      "noAssumptions": "Tiada andaian diberikan.",
       "title": "Penjana Formula AI",
       "requirement": "Terangkan pengiraan",
       "disclosure": "Penerangan dihantar kepada pembekal AI yang diluluskan organisasi anda. Gunakan contoh rekaan tanpa rekod pekerja.",
@@ -33463,7 +33474,7 @@
       "regenerate": "Jana Semula Formula",
       "working": "Menjana…",
       "clear": "Kosongkan",
-      "apply": "Gunakan dalam Editor Formula",
+      "apply": "Sisipkan Formula Cadangan",
       "variables": "Pemboleh ubah digunakan",
       "valid": "Sintaks disemak. Semak dan uji sebelum menyimpan.",
       "needsClarification": "Penjelasan atau alternatif yang disokong diperlukan.",
@@ -34254,6 +34265,7 @@
     "access": {
       "title": "Penugasan modul",
       "help": "Penugasan membolehkan pengguna yang dinamakan menyertai modul ini bagi skop dan tarikh yang dipilih. Kuasa PBP dan GBS masih berdasarkan peraturan PBP Lifecycle semasa dan kumpulan People Ops; penugasan modul tidak boleh menggantikan pemetaan itu.",
+      "moduleRequired": "Kebenaran modul Percubaan diperlukan. Uruskannya dalam Tetapan Akses.",
       "firstPreparer": "Namakan penyedia pertama",
       "bootstrapHelp": "Pentadbir kumpulan mesti menamakan penyedia khusus untuk syarikat ini sebelum konfigurasi tersedia.",
       "person": "Individu",
@@ -34307,6 +34319,16 @@
       "futureMessages": "Mesej masa hadapan yang dijangka",
       "excludedMessages": "Mesej lampau dikecualikan daripada penghantaran susulan",
       "eventMessages": "Aliran kerja yang menunggu peristiwa masa hadapan",
+      "requestActivation": "Mohon pengaktifan",
+      "activationHelp": "Pemilik pemasangan akan menyemak semula dan melaksanakan raptai yang diluluskan ini. Operasi kekal dimatikan sehingga semua semakan lulus.",
+      "installationReference": "Rujukan pengesahan pemasangan",
+      "checkActivation": "Semak status pengaktifan",
+      "activationStates": {
+        "pending": "Pengaktifan dimohon. Rujukan: {reference}",
+        "completed": "Pengaktifan selesai. Rujukan: {reference}",
+        "failed": "Semakan pengaktifan gagal. Sediakan dan luluskan raptai baharu. Rujukan: {reference}"
+      },
+      "activationRequested": "Pengaktifan dimohon. Rujukan: {reference}",
       "approved": "Kelulusan anda telah direkodkan untuk simulasi tepat ini. Pengaktifan masih memerlukan pemilik pemasangan yang telah disahkan.",
       "approvalReason": "Sebab meluluskan simulasi ini",
       "approve": "Luluskan simulasi tepat ini",
@@ -34453,7 +34475,8 @@
       "priority": "Peraturan sepadan yang lebih khusus diutamakan. Bagi padanan sama khusus, peraturan terakhir digunakan.",
       "rule": "Peraturan {index}",
       "planMonths": "Tempoh pelan percubaan dalam bulan · kosong untuk semua",
-      "addRule": "Tambah peraturan mengikut skop"
+      "addRule": "Tambah peraturan mengikut skop",
+      "legacyMapping": "Versi tersimpan ini mengekalkan skop terdahulu: Kumpulan perniagaan bermaksud syarikat induk; Unit perniagaan bermaksud Unit Perniagaan Personnel. Identiti tersimpan dikekalkan."
     },
     "letters": {
       "prepareHelp": "Pratonton butiran Personel semasa yang dibenarkan dan templat yang telah disemak. Penyediaan membekukan versi surat baharu untuk penandatangan yang ditugaskan.",

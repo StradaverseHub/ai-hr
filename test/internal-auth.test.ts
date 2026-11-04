@@ -659,7 +659,7 @@ it('commits authorized remembered-MFA policy and audit together, and rolls polic
   await saveRememberedMfaPolicy(ctx, { rememberDays: 7 }, 0);
   expect(await readRememberedMfaPolicyEditor(ctx)).toEqual({ policy: { rememberDays: 7 }, revision: 1 });
   const before = await owner.client`select payload from domain_event where tenant_id=${base.tenantId}::uuid and event_type='remembered-mfa-policy.updated' order by id`;
-  expect(before).toHaveLength(1); expect(before[0].payload).toMatchObject({ rememberDays: 7, revision: 1 });
+  expect(before).toHaveLength(1); expect(before[0].payload).toMatchObject({ rememberDays: 7, revision: 1, source: 'security-center-password' });
   await owner.client.unsafe("CREATE FUNCTION app.test_remembered_mfa_audit_refusal() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='remembered-mfa-policy.updated' THEN RAISE EXCEPTION 'fictional remembered MFA audit refusal' USING ERRCODE='P0001'; END IF; RETURN NEW; END $$");
   await owner.client.unsafe('CREATE TRIGGER test_remembered_mfa_audit_refusal BEFORE INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION app.test_remembered_mfa_audit_refusal()');
   let failure: unknown;

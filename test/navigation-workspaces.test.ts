@@ -13,7 +13,7 @@ describe('Ops and Strata placement never grants authority',()=>{
   expect(result.unplaced).toEqual([unknown]);
  });
  it.each([
-  ['/lifecycle/probation','ops','people','hr'],['/lifecycle/probation/case/part','ops','people','hr'],['/lifecycle/probation/workflows','ops','people','config'],['/lifecycle/contracts','ops','people','hr'],['/lifecycle/contracts/templates','ops','people','config'],
+  ['/lifecycle/probation','ops','probation','hr'],['/lifecycle/probation/case/part','ops','probation','hr'],['/lifecycle/probation/workflows','ops','probation','config'],['/lifecycle/contracts','ops','contracts','hr'],['/lifecycle/contracts/templates','ops','contracts','config'],
   ['/personnel','ops','people','mine'],['/admin/personnel','ops','people','hr'],
   // 7baeb78e — letters belong to the E-Letter module, not People.
   ['/me/letters','ops','eLetter','mine'],['/letters/templates','ops','eLetter','hr'],['/letters/register/abc','ops','eLetter','hr'],['/letters/settings/policy','ops','eLetter','config'],
@@ -102,7 +102,7 @@ describe('Ops and Strata placement never grants authority',()=>{
  });
  it('keeps each module in exactly one workspace',()=>{
   // Issue 17: the Control Tower module left Ops; People is first.
-  expect(NAVIGATION_MODULES.filter(module=>module.workspace==='ops').map(module=>module.id)).toEqual(['people','eLetter','onboarding','leave','attendance','claims','payroll']);
+  expect(NAVIGATION_MODULES.filter(module=>module.workspace==='ops').map(module=>module.id)).toEqual(['people','eLetter','onboarding','leave','attendance','claims','payroll','probation','contracts']);
   // PT-X5: Talent and Development retired into the area's tabs; Rewards keeps its own module.
   expect(NAVIGATION_MODULES.filter(module=>module.workspace==='strata').map(module=>module.id)).toEqual(['performance','performanceAdmin','rewards','workforceInsights']);
   expect(new Set(NAVIGATION_MODULES.map(module=>module.id)).size).toBe(NAVIGATION_MODULES.length);
