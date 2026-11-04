@@ -2005,6 +2005,36 @@
         "access": "Hanya pentadbir HR dan kumpulan melihat halaman ini, bagi syarikat yang mereka tadbir. Setiap angka ialah kiraan, atau bahagian kiraan, daripada rekod AI Centre sendiri tentang kerjanya.",
         "privacy": "Perbualan tentang topik sensitif tidak menyimpan sebarang perkataan dan tidak pernah dikira di sini. Tiada apa yang dipelajari di sini keluar dari syarikat anda melainkan anda mengeksportnya, dan pembelajaran tidak pernah mengubah pengiraan, kebenaran atau apa yang boleh ditunjukkan oleh AI Centre."
       }
+    },
+    "payrollLearning": {
+      "evidence": {
+        "within": "Biasa bagi orang ini: dalam julat daripada {count} larian",
+        "above": "Biasa bagi orang ini: melebihi julat daripada {count} larian",
+        "below": "Biasa bagi orang ini: di bawah julat daripada {count} larian"
+      },
+      "range": "Julat biasa {low} hingga {high}",
+      "cycle": {
+        "title": "Dipelajari kitaran ini",
+        "help": "Bilangan orang yang gaji biasanya telah dipelajari oleh AI Centre daripada larian gaji yang ditutup. Kiraan sahaja. Julat biasa menerangkan sesuatu bendera; ia tidak pernah mengubah angka atau semakan.",
+        "caption": "Dipelajari kitaran ini, mengikut syarikat",
+        "columns": {
+          "company": "Syarikat",
+          "mode": "Pembelajaran",
+          "stable": "Stabil (6+ larian)",
+          "provisional": "Sementara (3–5)",
+          "none": "Belum (bawah 3)",
+          "rebasing": "Dipelajari semula selepas perubahan gaji",
+          "contradicted": "Gaji telah berubah",
+          "learnedOn": "Kali terakhir dipelajari"
+        },
+        "mode": {
+          "off": "Mati",
+          "evidence": "Baris bukti",
+          "classify": "Klasifikasi"
+        },
+        "never": "Belum lagi",
+        "allOff": "Pembelajaran daripada sejarah gaji dimatikan untuk syarikat ini."
+      }
     }
   },
   "today": {

@@ -118,6 +118,10 @@ const fx=vi.hoisted(()=>{
  class PayrollCycleRefused extends Error{constructor(readonly reason:string){super(reason);}}
  return {A,B,overview,run,salary,settings,PayrollCycleRefused};
 });
+// Payroll history learning (P2): its evidence lines and "Learned this cycle" have their own DOM test
+// (test/payroll-learning-pages.dom.test.tsx); here they read nothing, so these pages render as before.
+vi.mock('../core/payroll-learning/evidence',()=>({swingFlagEvidence:async()=>new Map(),runEvidence:async()=>new Map()}));
+vi.mock('../core/payroll-learning/status',async importOriginal=>({...(await importOriginal<typeof import('../core/payroll-learning/status')>()),learnedThisCycle:async()=>null}));
 vi.mock('../core/loops/payroll-cycle-views',()=>({PayrollCycleRefused:fx.PayrollCycleRefused,
  payrollCycleOverview:async(_s:unknown,options:{companyId?:string})=>{state.reads.push('overview');return fx.overview(state.scope,typeof options.companyId==='string'?options.companyId:null,state.runs);},
  salaryLoopPage:async()=>{state.reads.push('salary');return fx.salary;},

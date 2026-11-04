@@ -24,7 +24,9 @@ export const TOPIC_TOOLS:readonly TopicToolDeclaration[]=freeze([
  {name:'operations_status',
   purpose:'Administrators only: how AI Centre\'s operations stand for the companies they administer, one topic per call, each as its own page shows it. Pick the topic the question is about; call again with another topic for another. Topics:',
   topics:[{topic:'loops',read:'loops_overview'},{topic:'payroll_cycle',read:'payroll_cycle_status'},{topic:'salary_payroll',read:'salary_payroll_checks'},
-   {topic:'payroll_loop_settings',read:'payroll_loop_settings'},{topic:'payroll_audit',read:'payroll_audit_status'},{topic:'ai_quality',read:'ai_quality_summary'}]},
+   {topic:'payroll_loop_settings',read:'payroll_loop_settings'},{topic:'payroll_audit',read:'payroll_audit_status'},{topic:'ai_quality',read:'ai_quality_summary'},
+   // Payroll history learning (P2): its own gate (payroll administrators) and entity; no new tool. Needs spec v24's topic list.
+   {topic:'payroll_learning',read:'payroll_learning_status'}]},
  // The "Why?" explainers: ADR-0170 step 4's three and AI v2 W5's two, all under the explainers worker switch.
  {name:'explain_why',
   purpose:'Why one of the asking person\'s own figures is what it is, from its native owner\'s own working, one topic per call. Pick the topic the question is about; quote its figures exactly and name only the causes it lists. Topics:',

@@ -2005,6 +2005,36 @@
         "access": "Chỉ quản trị viên HR và quản trị viên tập đoàn mới thấy trang này, cho các công ty họ quản trị. Mỗi số liệu là số đếm, hoặc phần trăm của số đếm, từ chính hồ sơ công việc của AI Centre.",
         "privacy": "Cuộc trò chuyện về chủ đề nhạy cảm không lưu bất kỳ từ nào và không bao giờ được tính ở đây. Không điều gì học được ở đây rời khỏi công ty của bạn trừ khi bạn xuất nó, và việc học không bao giờ thay đổi cách tính, quyền hạn hay những gì AI Centre được phép hiển thị."
       }
+    },
+    "payrollLearning": {
+      "evidence": {
+        "within": "Mức thường của người này: trong khoảng, từ {count} kỳ lương",
+        "above": "Mức thường của người này: cao hơn khoảng, từ {count} kỳ lương",
+        "below": "Mức thường của người này: thấp hơn khoảng, từ {count} kỳ lương"
+      },
+      "range": "Khoảng thường {low} đến {high}",
+      "cycle": {
+        "title": "Đã học trong kỳ này",
+        "help": "Số người mà AI Centre đã học được mức lương thường từ các kỳ lương đã đóng. Chỉ có số đếm. Khoảng thường chỉ giải thích một cảnh báo; nó không bao giờ thay đổi con số hay phép kiểm tra.",
+        "caption": "Đã học trong kỳ này, theo công ty",
+        "columns": {
+          "company": "Công ty",
+          "mode": "Học",
+          "stable": "Ổn định (6+ kỳ)",
+          "provisional": "Tạm thời (3–5)",
+          "none": "Chưa (dưới 3)",
+          "rebasing": "Học lại sau khi đổi lương",
+          "contradicted": "Lương đã thay đổi",
+          "learnedOn": "Lần học gần nhất"
+        },
+        "mode": {
+          "off": "Tắt",
+          "evidence": "Dòng bằng chứng",
+          "classify": "Phân loại"
+        },
+        "never": "Chưa",
+        "allOff": "Việc học từ lịch sử lương đang tắt cho các công ty này."
+      }
     }
   },
   "today": {

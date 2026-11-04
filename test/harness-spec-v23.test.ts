@@ -23,7 +23,10 @@ import {V22_OVERCLAIM_NOTE,V22_PAY_VIEW_NONE,V23_ADDED,V23_OVERCLAIM_NOTE,V23_PA
 
 const instructions=HARNESS_SPEC.instructions as readonly string[];
 const OPERATIONS={loops:'loops_overview',payroll_cycle:'payroll_cycle_status',salary_payroll:'salary_payroll_checks',payroll_loop_settings:'payroll_loop_settings',
- payroll_audit:'payroll_audit_status',ai_quality:'ai_quality_summary'};
+ payroll_audit:'payroll_audit_status',ai_quality:'ai_quality_summary',
+ // Payroll history learning (P2): its operations_status topic. Spec v24 must list it in offer.topicTools (proposed by the
+ // learning branch, applied by the coordinator); until then the spec-mirror assertion below is red by design.
+ payroll_learning:'payroll_learning_status'};
 const WHY={pay_difference:'explain_pay_difference',payslip_statutory:'explain_payslip_statutory',claim_limit:'explain_claim_limit',
  leave_entitlement:'explain_leave_entitlement',attendance_day:'explain_attendance_day'};
 

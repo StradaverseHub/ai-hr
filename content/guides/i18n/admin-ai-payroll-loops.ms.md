@@ -19,3 +19,11 @@ Ketiga-tiga gelung kekal pada tahap Sediakan dalam setiap syarikat. Gaji dikira 
 ## Bertanya kepada Pusat AI
 
 Pentadbir boleh bertanya kepada Pusat AI dalam sembang sama ada gaji bulan ini berjalan lancar, sama ada fail bank sepadan, berapa ambang perubahan gaji bersih, atau sama ada fail berkanun telah difailkan. Jawapannya memberi keadaan dan kiraan bagi syarikat yang anda tadbir, tidak pernah siapa yang dibenderakan, berapa banyak, atau sebarang angka gaji, dan Pusat AI tidak pernah menjalankan, meluluskan atau memfailkan apa-apa.
+
+## Belajar daripada sejarah gaji
+
+Apabila pentadbir gaji menghidupkan pembelajaran bagi sesebuah syarikat, Pusat AI mempelajari gaji biasa setiap orang daripada larian gaji syarikat yang ditutup, termasuk sejarah yang diimport: gaji bersih biasa mereka bagi bulan biasa, bagi sebulan penuh dan bagi larian bonus. Ia belajar hanya daripada larian yang ditutup dan hanya daripada bulan sebelum bulan yang disemak, dan ia mengecualikan bulan yang bendera perubahan gaji bersihnya didapati masalah sebenar, pengecualian yang dibetulkan di sumber, pembetulan selepas larian, angka berkanun yang ditetapkan secara manual, dan bulan sebelum perubahan gaji. Perkhidmatan gaji mengira setiap julat; Pusat AI tidak pernah membuat pengiraan.
+
+Mulai 3 larian bersih yang ditutup, setiap bendera perubahan gaji bersih pada halaman [Gelung penggajian](/control-tower/loops/payroll-cycle/salary) dan setiap orang yang dibenderakan dalam pengecualian sesuatu larian menunjukkan baris seperti "Biasa bagi orang ini: melebihi julat daripada 7 larian", berserta julat biasanya. Baris itu menerangkan bendera dan tidak mengubah apa-apa: tiada angka, semakan atau bendera. "Dipelajari kitaran ini" pada halaman [Kitaran gaji](/control-tower/loops/payroll-cycle) mengira berapa ramai orang yang gaji biasanya stabil (6 larian atau lebih), sementara (3 hingga 5), belum dipelajari, dipelajari semula selepas perubahan gaji, atau telah berubah. Dalam sembang, pentadbir boleh bertanya kiraan yang sama; kiraan di bawah 5 tidak pernah diberikan, dan tidak pernah seseorang atau sesuatu amaun.
+
+Pembelajaran dimatikan sehingga ia dihidupkan, setiap perubahannya disimpan sebagai versi baharu, dan julat yang dipelajari bagi pekerja yang berhenti dipadam 3 bulan selepas gaji terakhir mereka ditutup. Slip gaji mereka disimpan.

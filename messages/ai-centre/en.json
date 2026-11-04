@@ -2005,6 +2005,36 @@
         "access": "Only HR and group administrators see this page, for the companies they administer. Every figure is a count, or a share of counts, from AI Centre’s own records about its work.",
         "privacy": "A conversation about a sensitive topic stores no words and is never counted here. Nothing learned here leaves your company unless you export it, and learning never changes calculations, permissions or what AI Centre may show."
       }
+    },
+    "payrollLearning": {
+      "evidence": {
+        "within": "Usual for this person: within range from {count, plural, one {# run} other {# runs}}",
+        "above": "Usual for this person: above range from {count, plural, one {# run} other {# runs}}",
+        "below": "Usual for this person: below range from {count, plural, one {# run} other {# runs}}"
+      },
+      "range": "Usual range {low} to {high}",
+      "cycle": {
+        "title": "Learned this cycle",
+        "help": "How many people’s usual pay AI Centre has learned from closed payroll runs. Counts only. A usual range explains a flag; it never changes a figure or a check.",
+        "caption": "Learned this cycle, by company",
+        "columns": {
+          "company": "Company",
+          "mode": "Learning",
+          "stable": "Settled (6+ runs)",
+          "provisional": "Provisional (3–5)",
+          "none": "Not yet (under 3)",
+          "rebasing": "Relearning after a salary change",
+          "contradicted": "Pay has moved",
+          "learnedOn": "Last learned"
+        },
+        "mode": {
+          "off": "Off",
+          "evidence": "Evidence lines",
+          "classify": "Classify"
+        },
+        "never": "Not yet",
+        "allOff": "Learning from payroll history is off for these companies."
+      }
     }
   },
   "today": {

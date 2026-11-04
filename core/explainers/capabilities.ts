@@ -28,6 +28,7 @@ import {askMyPayrollReadiness} from '../pre-salary/ask';
 import {payrollAuditStatus,payrollCycleStatus,payrollLoopSettings,salaryPayrollChecks} from './payroll-loops';
 import {askPolicyHandbook} from '../handbook/ask';
 import {askAiQuality} from '../learning/ask';
+import {payrollLearningStatus} from './payroll-learning';
 
 export type TerasCapabilityScope=Readonly<{companyId:string;locale?:string}>;
 export type TerasCapability=Readonly<{name:string;module:string|null;admin:boolean;
@@ -127,6 +128,9 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'my_policy_handbook',module:null,admin:false,worker:null,run:(ctx,input)=>askPolicyHandbook(ctx,{topic:text(input.topic)})},
  // AI v2 Phase 2 P2-6: AI quality for HR and group administrators (core/learning/ask.ts); the service checks again.
  {name:'ai_quality_summary',module:null,admin:true,worker:null,run:(ctx,input)=>askAiQuality(ctx,input)},
+ // Payroll history learning (P2): "Learned this cycle", payroll administrators only (core/payroll-learning/status.ts), counts under the
+ // small-group rule; the owner reads only the companies whose payroll the caller administers.
+ {name:'payroll_learning_status',module:'payroll',admin:true,worker:null,run:(ctx,input)=>payrollLearningStatus(ctx,input)},
 ]);
 /** Capabilities this caller may be offered. A capability that belongs to a worker is offered only while that worker's
  * run gate is open (registered, switched on, tenant not stopped), read once per call in the caller's tenant. */
