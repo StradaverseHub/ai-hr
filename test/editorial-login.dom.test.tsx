@@ -26,11 +26,13 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 vi.mock('next/image', () => ({ default: ({ unoptimized: _unoptimized, ...props }: Record<string, unknown>) => <img {...props}/> }));
 vi.mock('../app/i18n-actions', () => ({ setLocale: vi.fn() }));
 const fetcher = vi.fn<typeof fetch>();
+const availability = vi.fn<typeof fetch>();
 function mount(organization = '') {
-  vi.stubGlobal('fetch', fetcher);
+  vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
+    String(input).startsWith('/login/entra/options?') ? availability(input, init) : fetcher(input, init));
   return render(<NextIntlClientProvider locale="en" messages={enBase}><InternalAuthForm organization={organization} returnTo="/me"/></NextIntlClientProvider>);
 }
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); fetcher.mockReset(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); fetcher.mockReset(); availability.mockReset(); });
 describe('Editorial workspace entrance', () => {
   it('does no organization or identity lookup and accepts a workspace before exposing credentials', async () => {
     mount(); const user = userEvent.setup();
@@ -42,6 +44,7 @@ describe('Editorial workspace entrance', () => {
     expect(next).toBeDisabled();
     await user.clear(screen.getByLabelText(en.loginEditorial.workspaceLabel));
     await user.type(screen.getByLabelText(en.loginEditorial.workspaceLabel), '  customer-a  ');
+    expect(availability).not.toHaveBeenCalled();
     await user.keyboard('{Enter}');
     expect(screen.getByRole('heading', { name: en.loginEditorial.accountTitle })).toHaveFocus();
     expect(screen.getByText('customer-a')).toBeInTheDocument();
@@ -49,6 +52,7 @@ describe('Editorial workspace entrance', () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
   it('changing workspace removes old credentials and binds both sign-in methods to the new workspace', async () => {
+    availability.mockImplementation(async input => Response.json({ microsoft: String(input).endsWith('organization=customer-b') }));
     mount('customer-a'); const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: en.loginEditorial.continueLabel }));
     await user.type(screen.getByLabelText(en.internalAuth.username), 'first-user');
@@ -60,7 +64,8 @@ describe('Editorial workspace entrance', () => {
     await user.click(screen.getByRole('button', { name: en.loginEditorial.continueLabel }));
     expect(screen.getByLabelText(en.internalAuth.password)).toHaveValue('');
     expect(screen.getByLabelText(en.internalAuth.username)).toHaveValue('');
-    const microsoft = screen.getByRole('button', { name: en.internalAuth.microsoft }).closest('form')!;
+    const microsoft = (await screen.findByRole('button', { name: en.internalAuth.microsoft })).closest('form')!;
+    expect(availability).toHaveBeenLastCalledWith('/login/entra/options?organization=customer-b', expect.objectContaining({ credentials: 'omit' }));
     expect(Object.fromEntries(new FormData(microsoft))).toEqual({ organization: 'customer-b', returnTo: '/me' });
     fetcher.mockResolvedValue(Response.json({ error: 'invalidLogin' }, { status: 401 }));
     await user.type(screen.getByLabelText(en.internalAuth.username), 'second-user');
