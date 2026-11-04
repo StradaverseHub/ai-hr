@@ -220,11 +220,12 @@ try{
   const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});
   if(await skip.isVisible()){await skip.click();await skip.waitFor({state:'hidden'});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
   if(['/claims','/admin/personnel','/payroll'].includes(path))assert(await page.locator('main tbody tr').count()>0,'expected fictional table rows');
-  let homeCards=null,homeCardIds=[];
+  let homeCards=null,homeCardIds=[],todaySectionIds=[];
   if((path==='/'||path==='/me/calendar')&&['employee','manager'].includes(user.role)){
    await page.locator('[data-home-card]').first().waitFor({timeout:90000});
    await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:90000});
-   const failures=await page.locator('main [role="alert"]').allTextContents();
+   const failures=await page.locator('main [role="alert"], main [data-today-unavailable]').allTextContents();
+   if(path==='/'){todaySectionIds=await page.locator('main [data-today-section]').evaluateAll(sections=>sections.map(section=>section.getAttribute('data-today-section')).sort());assert(todaySectionIds.length>0,'current Today sections missing');}
    if(failures.length)report.homeCardFailures.push({role:user.role,phase,messages:failures});
    // Keep collecting independent workflow evidence, then refuse load/acceptance below.
    // A handled card error must never become a passing preflight or a capacity result.
@@ -233,6 +234,7 @@ try{
    if(signIn){
     const baseline=report.browser.find(row=>row.phase==='baseline'&&row.role===user.role&&row.path==='/');
     assert.deepEqual(homeCardIds,baseline?.homeCardIds,'loaded sign-in Home card inventory changed');
+    assert.deepEqual(todaySectionIds,baseline?.todaySectionIds,'loaded sign-in Today section inventory changed');
    }
   }
   const timing=await page.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return {ttfbMs:n.responseStart-n.requestStart,domInteractiveMs:n.domInteractive,decodedBytes:n.decodedBodySize,transferBytes:n.transferSize};});
@@ -242,7 +244,7 @@ try{
     cardFailures:report.homeCardFailures.filter(row=>row.role===user.role&&row.phase===phase).length};
    save();
   }
-  report.browser.push({phase,role:user.role,path,heading,homeCards,homeCardIds,elapsedMs:performance.now()-start,...timing});save();
+  report.browser.push({phase,role:user.role,path,heading,homeCards,homeCardIds,todaySectionIds,elapsedMs:performance.now()-start,...timing});save();
  }
  async function languageJourney(page,user,path,phase){
   const catalog=locale=>JSON.parse(readFileSync(new URL('../../messages/'+locale+'.json',import.meta.url),'utf8'));

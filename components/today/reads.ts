@@ -22,7 +22,7 @@
  *    from the Home team calendar (lib/today/coming-up.ts). */
 import {withTenant,type SessionContext} from '@/db/client';
 import {EntitlementsResolutionFailedError,isModuleEnabled} from '@/core/entitlements';
-import {listPendingTasks,type PendingTaskItem} from '@/core/approvals-inbox';
+import {listPendingTasks,pendingTaskSummary,type PendingTaskItem} from '@/core/approvals-inbox';
 import {listOwnLeaveReviewsTx,reopenOwnLeaveReviewTx} from '@/core/assistant-actions/own-leave-store';
 import {leaveCancellationReviews} from '@/core/assistant-actions/leave-change-review-store';
 import {listLeaveDecisionReviews,reopenLeaveDecisionReview} from '@/core/assistant-actions/leave-decision-review-store';
@@ -70,7 +70,7 @@ export type PreparedKind='leaveApply'|'leaveCancel'|'leaveDecision';
 export type PreparedLeave=Readonly<{leaveType:string;startDate:string;endDate:string;days:number;durationType:string|null}>;
 export type PreparedItem=Readonly<{kind:PreparedKind;actionId:string;createdAt:string;expiresAt:string;href:string;leave?:PreparedLeave|null}>;
 export type Finding=Readonly<{key:'setup'|'readiness'|'proposals'|'letterRequests';count:number;href:string}>;
-export type NeedsYouData=Readonly<{tasks:readonly PendingTaskItem[];recommender:boolean;prepared:readonly PreparedItem[];findings:readonly Finding[];
+export type NeedsYouData=Readonly<{tasks:readonly PendingTaskItem[];taskTotal?:number;recommender:boolean;prepared:readonly PreparedItem[];findings:readonly Finding[];
  /** AI v2 W8: the loops' open cards for this viewer. */
  loops:readonly LoopCard[];
  /** AI v2 W8: a probation review already waiting on this viewer as an approvals task is shown once, as that task; the
@@ -131,10 +131,12 @@ async function preparedLeave(s:SessionContext,item:PreparedItem,locale:string):P
  }catch{return null;}
 }
 
-export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonly string[];audience:TodayAudience;today:string;locale?:string;now?:number}>):Promise<NeedsYouData>{
+export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonly string[];audience:TodayAudience;today:string;locale?:string;now?:number;all?:boolean}>):Promise<NeedsYouData>{
  const modules=moduleChecks(s),now=p.now??Date.now(),admin=p.audience.layout==='administrator',payroll=modules.on('payroll'),leave=modules.on('leave');
  const [tasks,ownLeave,cancellations,decisions,proposals,readiness,digest,loops,letterRequests]=await Promise.all([
-  settle(()=>listPendingTasks(s,[...p.scopeIds],inboxModules(modules))),
+  // Home only renders five decisions. Keep its exact count without transporting every Claim.
+  // The existing explicit All view retains its complete-queue contract.
+  settle(()=>p.all?listPendingTasks(s,[...p.scopeIds],inboxModules(modules)).then(items=>({items,total:items.length})):pendingTaskSummary(s,[...p.scopeIds],inboxModules(modules))),
   leave?settle(()=>withTenant(s,tx=>listOwnLeaveReviewsTx(tx,s))):null,
   leave?settle(()=>leaveCancellationReviews.list(s)):null,
   leave?settle(()=>listLeaveDecisionReviews(s)):null,
@@ -145,7 +147,7 @@ export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonl
   // Letter requests count only in companies where the viewer holds `generate` (the owner's own filter), any layout.
   settle(()=>countWaitingLetterRequests(s,p.scopeIds)),
  ]);
- const list=tasks.ok?tasks.value:[];
+ const list=tasks.ok?tasks.value.items:[];
  // The recommendation is offered only while its worker may run, read through the gate the recommender checks.
  const recommender=list.some(task=>task.kind==='leave')?await workerRunGate(s,RECOMMENDER_WORKER).then(gate=>gate.run).catch(()=>false):false;
  const prepared=[
@@ -167,7 +169,7 @@ export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonl
  if(waitingLetters>0)findings.push(Object.freeze({key:'letterRequests',count:waitingLetters,href:'/letters/generate?requests=all#letter-requests'}));
  const failed=modules.failed()||!tasks.ok||!loops.ok||[proposals,readiness,letterRequests].some(result=>result!==null&&!result.ok);
  const merged=mergeReviewLoops(list,loops.ok?loops.value:[]);
- return Object.freeze({tasks:list,recommender,prepared:detailed,findings,loops:merged.loops,taskLoops:merged.taskLoops,failed});
+ return Object.freeze({tasks:list,taskTotal:tasks.ok?tasks.value.total:0,recommender,prepared:detailed,findings,loops:merged.loops,taskLoops:merged.taskLoops,failed});
 }
 
 // ── Done for you ────────────────────────────────────────────────────────────────────────────────────────────
