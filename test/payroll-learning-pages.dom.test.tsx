@@ -150,8 +150,11 @@ describe('the evidence lines',()=>{
   expect(state.reads).toContain('runEvidence');
   const lines=[...view.container.querySelectorAll('[data-learning-evidence]')];
   expect(lines.map(el=>[el.getAttribute('data-learning-evidence'),parts(el)])).toEqual([['below','Usual for this person: below range from 4 runs Usual range 2,500.00 to 2,500.00']]);
-  // Beside the facts, never in place of them: both flagged people keep their findings and their resolve buttons.
-  expect(view.container.querySelectorAll('form button[name="resolution"]').length).toBe(6);
+  // Beside the facts, never in place of them: both flagged people keep their findings and their way to resolve them, which
+  // since the AI Centre restructure (owner decision 28) is a link to Exceptions, the one place an exception is resolved.
+  expect([...view.container.querySelectorAll('[data-resolve-on-exceptions]')].map(a=>[a.textContent,a.getAttribute('href')]))
+   .toEqual([['Resolve on Exceptions','/control-tower/exceptions'],['Resolve on Exceptions','/control-tower/exceptions']]);
+  expect(view.container.querySelectorAll('form button[name="resolution"]')).toHaveLength(0);
  });
  it.each(LOCALES)('renders in %s with no missing message, and never says Noveri',async locale=>{
   state.session=SESSIONS.groupAdmin;state.locale=locale;

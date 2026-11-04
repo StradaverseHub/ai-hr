@@ -171,8 +171,10 @@ describe('Owner decision 28: the Salary payroll page records swing dispositions 
   const note=view.container.querySelector('[data-groups-note]')!;
   expect(text(note)).toBe('Marking a group records your decision on these flags only. Any exception for the same people is resolved on Exceptions. Resolve on Exceptions');
   expect([...note.querySelectorAll('a')].map(a=>[a.textContent,a.getAttribute('href')])).toEqual([['Resolve on Exceptions','/control-tower/exceptions']]);
-  // Every open exception's link goes to Exceptions (a run with none opens its own anomalies page, which resolves nothing).
-  expect([...view.container.querySelectorAll('a')].filter(a=>/exception/i.test(a.textContent??'')).map(a=>[text(a),a.getAttribute('href')])).toEqual([
+  // Every open exception's link in the page goes to Exceptions (a run with none opens its own anomalies page, which resolves
+  // nothing); the Operations tab row's own Exceptions tab is not part of the page.
+  expect(screen.getByRole('navigation',{name:'Operations sections'}).querySelector('a[href="/control-tower/exceptions"]')).not.toBeNull();
+  expect([...view.container.querySelectorAll('a')].filter(a=>!a.closest('nav')&&/exception/i.test(a.textContent??'')).map(a=>[text(a),a.getAttribute('href')])).toEqual([
    ['2 exceptions open','/control-tower/exceptions'],['No exceptions open','/payroll/b-2/anomalies'],['Resolve on Exceptions','/control-tower/exceptions'],
    ['Open Exceptions','/control-tower/exceptions#acknowledged-blocks']]);
   // No form here carries a verdict or a resolution: the forms are swing dispositions and acknowledgements only.
