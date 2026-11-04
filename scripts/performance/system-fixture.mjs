@@ -90,10 +90,14 @@ try{
    await owner.db.insert(s.roleAssignment).values(grants);
    await owner.client`insert into app_external_identity(issuer,subject,app_user_id)values(${issuer},${subject},${userId}::uuid)`;
    const credential={subject,version,tenantId:b.tenantId,issuer,organization,username,email,emailVerified:true,enabled:true,password:hash,mustChange:false,totpSecret:secret,lastStep:-1,recoveryHashes:[]};
-   await writeRecord(owner.client,'credential:'+subject,credential,subject);await writeRecord(owner.client,'login:'+digest(organization+'\0'+username),{subject},subject);
    const token=opaque(),family=randomUUID(),expiry=Date.now()+8*3600000;
-   await writeRecord(owner.client,'family:'+family,{subject},subject,expiry);
-   await writeRecord(owner.client,'session:'+digest(token),{subject,version,family,native:false,absoluteExpiry:expiry},subject,expiry);
+   // Keep the four related records atomic and pay one durable commit per identity.
+   await owner.client.begin(async tx=>{
+    await writeRecord(tx,'credential:'+subject,credential,subject);
+    await writeRecord(tx,'login:'+digest(organization+'\0'+username),{subject},subject);
+    await writeRecord(tx,'family:'+family,{subject},subject,expiry);
+    await writeRecord(tx,'session:'+digest(token),{subject,version,family,native:false,absoluteExpiry:expiry},subject,expiry);
+   });
    users.push({index,tenant:t,company:c,role,name,userId,subject,employmentId:hired.employmentId,personId:hired.personId,companyId:company.companyId,batchId:company.batchId,claimTypeId:type.id,leaveTypeId:b.annualLeaveTypeId,token,organization,username,password,secret});
    operationTimings.identityAndSessionProvisioning.push(performance.now()-identityStarted);
    if(index%50===49)console.log('[system-perf-fixture] provisioned '+(index+1)+' principals');
