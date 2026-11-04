@@ -141,4 +141,11 @@ test('real bootstrap creates least-privilege roles, SCRAM verifiers and grants; 
   const sql = "SET ROLE ai_hr_owner; CREATE TABLE bootstrap_probe (id integer); RESET ROLE; SELECT has_table_privilege('ai_hr_app','bootstrap_probe','SELECT,INSERT,UPDATE,DELETE'), has_table_privilege('ai_hr_platform','bootstrap_probe','SELECT');";
   const grants = success(run(path.join(pgBin, 'psql'), ['-X', '-qAt', '-v', 'ON_ERROR_STOP=1'], { input: sql, env: dbEnv({ PGDATABASE: 'ai_hr' }) }));
   assert.equal(grants, 't|f');
+  // The sweeps' downgrade edge: SET without INHERIT, never the reverse direction.
+  const edge = query("SELECT a.inherit_option, a.set_option, a.admin_option, pg_has_role('ai_hr_owner','ai_hr_app','SET'), pg_has_role('ai_hr_owner','ai_hr_app','USAGE'), pg_has_role('ai_hr_app','ai_hr_owner','MEMBER') FROM pg_auth_members a WHERE a.roleid='ai_hr_app'::regrole AND a.member='ai_hr_owner'::regrole;");
+  assert.equal(edge, 'f|t|f|t|f|f');
+  const downgrade = success(run(path.join(pgBin, 'psql'), ['-X', '--no-password', '-qAt', '-v', 'ON_ERROR_STOP=1', '--dbname=ai_hr', '--username=ai_hr_owner'], {
+    input: 'BEGIN; SET LOCAL ROLE ai_hr_app; SELECT current_user; ROLLBACK;', env: dbEnv({ PGPASSWORD: passwords[0] }),
+  }));
+  assert.equal(downgrade, 'ai_hr_app');
 });

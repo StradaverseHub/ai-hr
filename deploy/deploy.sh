@@ -273,6 +273,13 @@ echo "▸ Checking the audit hash-chain gate against the database…"
 dstate phase audit-chain
 node --env-file=.env.production --import tsx scripts/check-audit-chain-gate.ts
 
+# Same placement argument: a read-only catalog probe, free to refuse because nothing has changed yet. The
+# sweeps' notification projection needs a DBA-granted SET ROLE edge no migration can create; without it the
+# nightly review sweep and the minute notification sweep fail (staging, 25 October to 4 November 2026).
+echo "▸ Checking the sweep login can downgrade to ai_hr_app…"
+dstate phase notification-role
+node --env-file=.env.production --import tsx scripts/check-notification-role.ts
+
 echo "▸ Building production server…"
 dstate phase build
 # Heap headroom for `next build`'s TypeScript pass. Node's default old-space cap (~2 GB on this box) was

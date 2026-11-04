@@ -50,7 +50,8 @@ import { drainNotificationProjection } from '../core/orchestrator-harness';
 import { dispatchNotificationsFromSweep } from '../core/notifications';
 import { todayInKualaLumpur } from '../core/leave';
 import { recordJobRun } from '../core/job-run';
-import { resolveEntitlementsTx } from '../core/entitlements';
+import { isModuleEnabled, resolveEntitlementsTx } from '../core/entitlements';
+import { NOTIFICATION_ROLE_MISSING, notificationDowngradeReady } from './lib/notification-sweep-role';
 import { runLoopsForTenant } from '../core/loops/run';
 import { runPayrollAuditLoop } from '../core/payroll-audit/run';
 
@@ -65,6 +66,10 @@ async function main() {
   // review due today would be missed by a day.
   const today = todayInKualaLumpur();
   const owner = createDb(ownerUrl);
+  // Probed once. Without the downgrade edge every tenant's projection fails at SET ROLE, which used to discard that
+  // tenant's whole summary line; now the projection alone is skipped and counted as a failure (exit 1 remains).
+  const downgradeReady = await notificationDowngradeReady(owner.db);
+  if (!downgradeReady) console.error(`review:sweep — ${NOTIFICATION_ROLE_MISSING}`);
   // ADR-0077 slice 9 — standing is consulted BEFORE any transaction opens. A tenant that is not in
   // good standing is stepped over, not attempted: withTenant would refuse the writes anyway, and
   // discovering that as a read-only error would report a suspended customer as a nightly failure.
@@ -97,6 +102,7 @@ async function main() {
   let failures = 0;
   let notificationCappedTenants = 0;
   let notificationsCreated = 0;
+  let notificationProjectionBlockedTenants = 0;
   let agentPromotionsRetired = 0;
   let agentPromotionsOutcomeRegressed = 0;
   let agentPromotionMaintenanceFailedTenants = 0;
@@ -234,13 +240,20 @@ async function main() {
 
       // Project the new started/reminder/escalation/nudge events into notifications now — gated on the
       // tenant's `notifications` entitlement, which the snapshot above makes this context answer truthfully.
-      const projection = await drainNotificationProjection(limit => dispatchNotificationsFromSweep(ctx,owner,{limit}));
+      const notificationsOn = isModuleEnabled(ctx, 'notifications') || (entitlements.scopedModules.notifications ?? []).some(companyId => isModuleEnabled(ctx, 'notifications', companyId));
+      const projectionBlocked = notificationsOn && !downgradeReady;
+      const projection = projectionBlocked ? { created: 0, cappedOut: false }
+        : await drainNotificationProjection(limit => dispatchNotificationsFromSweep(ctx,owner,{limit}));
+      if (projectionBlocked) {
+        notificationProjectionBlockedTenants++;
+        console.error('  Notifications NOT projected: the sweep login cannot switch to ai_hr_app.');
+      }
       notificationsCreated += projection.created;
       if (projection.cappedOut) {
         notificationCappedTenants++;
         console.error('  Notification queue reached its batch limit; more work may remain.');
       }
-      if (orchestration?.failed || chasers?.failed || projection.cappedOut || releasesFailed || loops.some(loop => loop.status === 'failed') || audit === null || (audit?.status === 'ran' && audit.failed > 0)) failures++;
+      if (orchestration?.failed || chasers?.failed || projection.cappedOut || projectionBlocked || releasesFailed || loops.some(loop => loop.status === 'failed') || audit === null || (audit?.status === 'ran' && audit.failed > 0)) failures++;
       totalOpened += opened;
       totalReminders += reminders;
       totalEscalated += escalated;
@@ -329,6 +342,7 @@ async function main() {
         triageCappedTenants,
         notificationsCreated,
         notificationCappedTenants,
+        notificationProjectionBlockedTenants,
         agentPromotionsRetired,
         agentPromotionsOutcomeRegressed,
         agentPromotionMaintenanceFailedTenants,
