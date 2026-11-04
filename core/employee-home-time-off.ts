@@ -2,25 +2,27 @@
  * Available is already net of pending reservations; Home must never subtract Pending again. */
 import type {SessionContext} from '../db/client';
 import {withTenant} from '../db/client';
-import {myOwnEmploymentSubjects,listEligibleLeaveTypesFor} from './read';
-import {requireOwnHomeSubject,HomeAccessError} from './employee-home';
+import {myOwnEmploymentSubjectsTx,listEligibleLeaveTypesFor} from './read';
+import {requireOwnHomeSubjectTx,HomeAccessError} from './employee-home';
 import {myCurrentLeaveCards,nextApprovedLeavePresenceTx} from '../packs/leave/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {EmployeeHomeTimeOff} from '../lib/employee-home-read-model';
 export type {EmployeeHomeTimeOff} from '../lib/employee-home-read-model';
 export async function readEmployeeHomeTimeOff(ctx:SessionContext,employmentId?:string,locale?:string):Promise<EmployeeHomeTimeOff>{
- const subject=await requireOwnHomeSubject(ctx,employmentId);
- // A prior selected card cannot survive a blocked/archived login or a now-ended employment.
- const active=await myOwnEmploymentSubjects(ctx,{profileEdit:true});
- if(!active.some(row=>row.employmentId===subject.employmentId))throw new HomeAccessError('employmentUnavailable');
- const today=todayInKualaLumpur();
- const [cards,nextApproved,eligible]=await Promise.all([
-  myCurrentLeaveCards(ctx,subject.employmentId,{today,locale}),
-  withTenant(ctx,tx=>nextApprovedLeavePresenceTx(tx,subject.employmentId,today)),
-  listEligibleLeaveTypesFor(ctx,subject.employmentId,locale),
- ]);
- if(cards.length>100)throw Error('Own leave catalogue exceeds its supported Home limit.');
- return {version:1,employmentId:subject.employmentId,asOf:today,canApply:eligible.length>0,
-  balances:cards.map(card=>({id:card.leaveTypeId,name:card.leaveType,annualLeave:card.annualLeave,available:card.canApplyFor,pending:card.pending})),
-  nextApproved};
+ return withTenant(ctx,async tx=>{
+  const subject=await requireOwnHomeSubjectTx(tx,ctx,employmentId);
+  // A prior selected card cannot survive a blocked/archived login or a now-ended employment.
+  const active=await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true});
+  if(!active.some(row=>row.employmentId===subject.employmentId))throw new HomeAccessError('employmentUnavailable');
+  const today=todayInKualaLumpur();
+  const [cards,nextApproved,eligible]=await Promise.all([
+   myCurrentLeaveCards(ctx,subject.employmentId,{today,locale},tx),
+   nextApprovedLeavePresenceTx(tx,subject.employmentId,today),
+   listEligibleLeaveTypesFor(ctx,subject.employmentId,locale,tx),
+  ]);
+  if(cards.length>100)throw Error('Own leave catalogue exceeds its supported Home limit.');
+  return {version:1,employmentId:subject.employmentId,asOf:today,canApply:eligible.length>0,
+   balances:cards.map(card=>({id:card.leaveTypeId,name:card.leaveType,annualLeave:card.annualLeave,available:card.canApplyFor,pending:card.pending})),
+   nextApproved};
+ },{readOnlySnapshot:true});
 }

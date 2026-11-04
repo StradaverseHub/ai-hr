@@ -49,7 +49,17 @@ async function ownHomeSubjectSelectionTx(tx:Tx,ctx:SessionContext,requestedEmplo
  * still apply; this own-only check is deliberately narrower than an administrator's Personnel reach.
  */
 export async function requireOwnHomeSubject(ctx:SessionContext,employmentId?:string):Promise<OwnEmploymentSubject>{
- const selection=await ownHomeSubjectSelection(ctx,employmentId);
+ return selectedHomeSubject(await ownHomeSubjectSelection(ctx,employmentId));
+}
+/** Only complete read-only compositions can reuse the native own-subject proof in their carrier. */
+export async function requireOwnHomeSubjectTx(tx:Tx,ctx:SessionContext,employmentId?:string):Promise<OwnEmploymentSubject>{
+ const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='repeatable read'
+  and current_setting('transaction_read_only')='on' as safe`);
+ if(snapshot?.safe!==true)throw new HomeAccessError('employmentUnavailable');
+ await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+ return selectedHomeSubject(await ownHomeSubjectSelectionTx(tx,ctx,employmentId));
+}
+function selectedHomeSubject(selection:OwnSelection):OwnEmploymentSubject{
  if(selection.state!=='selected')throw new HomeAccessError(selection.state==='choose'?'chooseEmployment':'employmentUnavailable');
  return selection.subject;
 }

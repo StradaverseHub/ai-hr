@@ -274,10 +274,17 @@ export async function myCurrentLeaveCards(
   ctx: SessionContext,
   employmentId: string,
   opts: { today: string; locale?: string },
+  existingTx?: Tx,
 ): Promise<Pick<MyLeaveCard, 'leaveTypeId' | 'leaveType' | 'annualLeave' | 'canApplyFor' | 'pending'>[]> {
-  const dashboard = await buildMyLeaveDashboard(ctx, employmentId, { today: opts.today, locale: opts.locale }, false);
-  return dashboard.cards.map(({ leaveTypeId, leaveType, annualLeave, canApplyFor, pending }) =>
-    ({ leaveTypeId, leaveType, annualLeave, canApplyFor, pending }));
+  const read = async (tx: Tx) => {
+    const [snapshot] = await tx.execute<{safe: boolean}>(sql`select current_setting('transaction_isolation')='repeatable read'
+      and current_setting('transaction_read_only')='on' as safe`);
+    if (snapshot?.safe !== true) throw new Error('Current leave cards require a complete read-only snapshot.');
+    const dashboard = await buildMyLeaveDashboard(ctx, employmentId, { today: opts.today, locale: opts.locale }, false, tx);
+    return dashboard.cards.map(({ leaveTypeId, leaveType, annualLeave, canApplyFor, pending }) =>
+      ({ leaveTypeId, leaveType, annualLeave, canApplyFor, pending }));
+  };
+  return existingTx ? read(existingTx) : withTenant(ctx, read, {readOnlySnapshot: true});
 }
 
 export async function myLeaveDashboard(
@@ -293,8 +300,10 @@ async function buildMyLeaveDashboard(
   employmentId: string,
   opts: { today: string; year?: string; locale?: string },
   fullDashboard: boolean,
+  existingTx?: Tx,
 ): Promise<MyLeaveDashboard> {
   const { today, locale } = opts;
+  const read = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => existingTx ? fn(existingTx) : withTenant(ctx, fn);
   const currentYear = Number(today.slice(0, 4));
 
   // The same type list the page has always read: visible, not archived, pooled (r209) — and, since
@@ -304,7 +313,7 @@ async function buildMyLeaveDashboard(
   // not repeated here — it is `leaveBalances`'s own `includeIneligible` (default: gated), the SAME
   // `isProfileEligible` the apply dropdown has always used, so the card and the dropdown can no longer
   // disagree about whether a type is this person's.
-  const balances = (await leaveBalances(ctx, employmentId, locale, { includeArchived: false })).filter(
+  const balances = (await leaveBalances(ctx, employmentId, locale, { includeArchived: false }, existingTx)).filter(
     (b) => b.placement !== 'hidden',
   );
   if (balances.length === 0) {
@@ -318,7 +327,7 @@ async function buildMyLeaveDashboard(
   }
 
   const storyIds = [...new Set(balances.map((b) => balanceStoryTypeId(b)))];
-  const { hiredOn, companyCycle, overrides } = await withTenant(ctx, async (tx) => {
+  const { hiredOn, companyCycle, overrides } = await read(async (tx) => {
     const [emp] = await tx
       .select({ hiredOn: employment.hiredOn, leaveCycle: company.leaveCycle })
       .from(employment)
@@ -368,8 +377,8 @@ async function buildMyLeaveDashboard(
   });
   const shownPlans = plans.filter((p) => p.shown);
   const [breakdowns, applyByType] = await Promise.all([
-    leaveEntitlementBreakdowns(ctx, employmentId, shownPlans.map((p) => ({ leaveTypeId: p.storyId, asOf: p.asOf })), locale),
-    leaveTypeApplySummaries(ctx, employmentId, shownPlans.filter((p) => p.isCurrentCycle).map((p) => p.b.leaveTypeId)),
+    leaveEntitlementBreakdowns(ctx, employmentId, shownPlans.map((p) => ({ leaveTypeId: p.storyId, asOf: p.asOf })), locale, existingTx),
+    leaveTypeApplySummaries(ctx, employmentId, shownPlans.filter((p) => p.isCurrentCycle).map((p) => p.b.leaveTypeId), existingTx),
   ]);
   const breakdownByPlan = new Map(shownPlans.map((p, i) => [p, breakdowns[i]] as const));
 

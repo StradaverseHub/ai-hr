@@ -10,6 +10,7 @@ import type {SessionContext,Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {myLeaveDashboard,myCurrentLeaveCards} from '../packs/leave/service';
+import {requireOwnHomeSubjectTx} from '../core/employee-home';
 import {readEmployeeHomeTimeOff} from '../core/employee-home-time-off';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase} from './harness';
@@ -46,5 +47,16 @@ it('retains exact canonical current figures without loading historical ledger da
   expect(homeHistoryReads,'Home must not read the past-year selector date catalogue').toBe(0);
   expect(homeTransactions,'Home Time Off must use one complete read-only snapshot, without nested transactions').toBe(1);
   expect(homeTransactionStates.every(state=>state.role==='ai_hr_app'&&state.readOnly&&state.isolation==='repeatable read')).toBe(true);
+  // Neither reusable entry point accepts a mutable or Read Committed carrier.
+  for(const readOnly of [false,true]){
+   await expect(actual(ctx,async tx=>{
+    if(readOnly)await tx.execute(sql`set transaction read only`);
+    return requireOwnHomeSubjectTx(tx,ctx,employee.employmentId);
+   })).rejects.toMatchObject({code:'employmentUnavailable'});
+   await expect(actual(ctx,async tx=>{
+    if(readOnly)await tx.execute(sql`set transaction read only`);
+    return myCurrentLeaveCards(ctx,employee.employmentId,{today,locale:'en'},tx);
+   })).rejects.toThrow('complete read-only snapshot');
+  }
  }finally{spy.mockRestore();}
 });

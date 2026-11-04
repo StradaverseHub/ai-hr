@@ -1927,10 +1927,11 @@ export async function leaveTypeApplySummaries(
   ctx: SessionContext,
   employmentId: string,
   leaveTypeIds: readonly string[],
+  existingTx?: Tx,
 ): Promise<Map<string, LeaveTypeApplySummary>> {
   const ids = [...new Set(leaveTypeIds)];
   if (ids.length === 0) return new Map();
-  return withTenant(ctx, async (tx) => {
+  const read = async (tx: Tx) => {
     const typeRows = await tx
       .select({ id: leaveType.id, src: leaveType.balanceSourceTypeId, essViewConfig: leaveType.essViewConfig, role: leaveType.role, code: leaveType.code })
       .from(leaveType)
@@ -1999,7 +2000,8 @@ export async function leaveTypeApplySummaries(
       });
     }
     return out;
-  });
+  };
+  return existingTx ? read(existingTx) : withTenant(ctx, read);
 }
 
 // ── Shared Leave Group enforcement (r88, feedback 1ef1cf95; the rules themselves R44 4c48fd1f + r82a) ──

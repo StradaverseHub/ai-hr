@@ -4904,9 +4904,10 @@ export function leaveEntitlementBreakdowns(
   employmentId: string,
   items: readonly { leaveTypeId: string; asOf: string }[],
   locale?: string,
+  existingTx?: Tx,
 ): Promise<(LeaveEntitlementBreakdown | null)[]> {
   if (items.length === 0) return Promise.resolve([]);
-  return withTenant(ctx, async (tx) => {
+  const read = async (tx: Tx) => {
     const typeIds = [...new Set(items.map((i) => i.leaveTypeId))];
     const [types, [emp]] = await Promise.all([
       selectBreakdownTypes(tx).where(inArray(leaveType.id, typeIds)),
@@ -4929,7 +4930,8 @@ export function leaveEntitlementBreakdowns(
         }),
       ),
     );
-  });
+  };
+  return existingTx ? read(existingTx) : withTenant(ctx, read);
 }
 
 // RL Control Engine (0113): the active-vs-expired replacement-leave split, sourced from the toil_accrual
