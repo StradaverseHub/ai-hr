@@ -34,3 +34,29 @@ export async function personnelFormulaLibraryTx(tx:Tx,ctx:SessionContext,compani
   return {...field,key,label:registration?.label??field.label,description:registration?.description??`${field.section} · ${field.label}`,formulaType:sourceType,functionCode:field.group==='profile'?'EmployeeProfile':'EmployeeInformation',dateBasis:adapter?.dateBasis??'legacy-current-snapshot',enabled:supported&&permitted&&enabled,unavailableReason,listValues:key==='companyId'?companies.map(company=>({value:company.id,label:company.name+' · '+company.id})):catalogs.filter(row=>row.sourceKey===key).map(({value,label})=>({value,label}))};
  });
 }
+
+/** Provider-safe authoring vocabulary only: no employee reads, catalogue labels, source values or
+ * administrator-authored registration text. Native admission owns the surrounding locks/entitlements. */
+export async function payFormulaPermittedDraftFieldsTx(tx:Tx,ctx:SessionContext):Promise<{profile:string[];employee:string[]}>{
+ const permitted={profile:[] as string[],employee:[] as string[]};if(!ctx.userId)return permitted;
+ const companies=await tx.execute<{id:string}>(sql`select id from company where tenant_id=${ctx.tenantId}::uuid and archived_at is null and app.principal_snapshot_current() and app.pay_formula_catalog_access() and app.can_admin_payroll_for(id) order by id`);
+ if(!companies.length)return permitted;
+ // Read only the registration state needed for admission. Private labels/descriptions never enter
+ // this projection, including when an enabled registration changes the UI's display vocabulary.
+ const registrations=await tx.execute<{sourceKey:string;enabled:boolean}>(sql`select distinct on(source_key) source_key as "sourceKey",enabled from pay_formula_personnel_registration where tenant_id=${ctx.tenantId}::uuid order by source_key,ordinal desc`);
+ const disabledKeys=new Set(registrations.filter(row=>!row.enabled).map(row=>row.sourceKey));
+ const disabledLegacyFields=new Set(PAY_FORMULA_PERSONNEL_ADAPTERS.filter(adapter=>disabledKeys.has(adapter.key)).map(adapter=>adapter.fieldId));
+ const candidates=[...(['profile','employee'] as const).flatMap(group=>Object.entries(PAY_FORMULA_LEGACY_PERSONNEL_FIELDS[group]).map(([key,fieldId])=>({group,key,fieldId,legacy:true}))),...PAY_FORMULA_PERSONNEL_ADAPTERS.map(adapter=>({group:adapter.group,key:adapter.key,fieldId:adapter.fieldId,legacy:false}))];
+ const permissions=new Map<string,boolean>();
+ for(const candidate of candidates){
+  if(disabledKeys.has(candidate.key)||candidate.legacy&&disabledLegacyFields.has(candidate.fieldId))continue;
+  const field=PERSONNEL_FIELDS.find(field=>field.id===candidate.fieldId);if(!field)continue;
+  const sensitivity=field.sensitivity,category=sensitivity==='payroll'?'compensation':sensitivity==='restricted'||sensitivity==='documents'?'confidential_hr':sensitivity==='identity'||sensitivity==='bank'||sensitivity==='statutory'?sensitivity:'personnel';
+  if(!permissions.has(category)){
+   let allowed=false;for(const company of companies)if(await resolvePayrollPermission(tx,ctx,`report.read.${category}`,company.id)){allowed=true;break;}
+   permissions.set(category,allowed);
+  }
+  if(permissions.get(category))permitted[candidate.group].push(candidate.key);
+ }
+ return {profile:[...new Set(permitted.profile)].sort(),employee:[...new Set(permitted.employee)].sort()};
+}
