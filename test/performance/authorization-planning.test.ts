@@ -4,6 +4,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {sql,eq} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
+import {assertAssignedWorkPrincipalTx} from '../../core/approvals';
 import {readEmployeeHomeIdentity} from '../../core/employee-home';
 import {withTenant,type SessionContext} from '../../db/client';
 import * as s from '../../db/schema';
@@ -34,13 +35,17 @@ it('measures visibility candidates and native policy plan reuse across separate 
  const originals=await Promise.all(signatures.map(async signature=>({signature,...await definition(signature)})));
  const stable=(attributes:Record<string,unknown>)=>Object.fromEntries(Object.entries(attributes).filter(([key])=>key!=='prolang'));
  const read=async(ctx:SessionContext)=>{
-  const [row]=await withTenant(ctx,tx=>tx.execute<{ids:string[]}>(sql`select app.visible_employment_ids() as ids`));return row.ids.sort();
+  return withTenant(ctx,async tx=>{
+   await assertAssignedWorkPrincipalTx(tx,ctx);
+   const [row]=await tx.execute<{ids:string[]}>(sql`select app.visible_employment_ids() as ids`);return row.ids.sort();
+  });
  };
  const outcome=async(ctx:SessionContext)=>{
-  try{return {ids:await read(ctx)};}catch(error){let cause:unknown=error;while(cause instanceof Error&&cause.cause)cause=cause.cause;return {code:(cause as {code?:string})?.code??'unclassified'};}
+  try{return {ids:await read(ctx)};}catch(error){let cause:unknown=error;while(cause instanceof Error&&cause.cause)cause=cause.cause;return {code:(cause as {code?:string})?.code??'unclassified',name:(error as Error).name};}
  };
  const probes=users.slice(0,100),expected=new Map<string,string[]>(),phases:Record<string,unknown>={};
  const measure=async(phase:string)=>{
+  for(const user of probes.slice(0,5))await read(context(user));
   const started=performance.now(),times:{role:string;ms:number}[]=[];
   await Promise.all(probes.map(async user=>{
    for(let repeat=0;repeat<10;repeat++){
@@ -64,26 +69,28 @@ it('measures visibility candidates and native policy plan reuse across separate 
  };
  const archivedRead=async()=>{
   try{await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,users[4].id));
-   await expect(readEmployeeHomeIdentity(context(users[4]))).rejects.toThrow();return await read(context(users[4]));}
+   await expect(readEmployeeHomeIdentity(context(users[4]))).rejects.toThrow();return await outcome(context(users[4]));}
   finally{await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,users[4].id));}
  };
  const controls={malformed:await outcome(malformed),emptyMalformed:await outcome(emptyMalformed),foreign:await read(adminCtx(foreign)),revoked:await withoutReports(),archived:await archivedRead()};
  const forged={...context(users[4]),roles:['super_admin'],grants:[{role:'super_admin',companyId:null}]};
- const forgedIds=await read(forged);
+ const forgedOutcome=await outcome(forged);
  try{
-  for(const phase of ['original','visibility-candidate','grant-plan-cache','login-plan-cache','restored']){
+  for(const phase of ['original','visibility-candidate','grant-cache-1','grant-original','grant-cache-2','login-cache-1','login-original','login-cache-2','restored']){
    if(phase==='visibility-candidate')await owner.client.unsafe(readFileSync(new URL('./visible-employment-admin-candidate.sql',import.meta.url),'utf8'));
-   if(phase==='grant-plan-cache')await owner.client.unsafe(readFileSync(new URL('./grant-role-plan-cache.sql',import.meta.url),'utf8'));
-   if(phase==='login-plan-cache')await owner.client.unsafe(readFileSync(new URL('./login-status-plan-cache.sql',import.meta.url),'utf8'));
+   if(phase==='grant-cache-1'||phase==='grant-cache-2')await owner.client.unsafe(readFileSync(new URL('./grant-role-plan-cache.sql',import.meta.url),'utf8'));
+   if(phase==='login-cache-1'||phase==='login-cache-2')await owner.client.unsafe(readFileSync(new URL('./login-status-plan-cache.sql',import.meta.url),'utf8'));
+   if(phase==='grant-original')await owner.client.unsafe(originals.find(row=>row.signature==='app.grants_have_role_for(jsonb,text,uuid)')!.ddl);
+   if(phase==='login-original')await owner.client.unsafe(originals.find(row=>row.signature==='app.login_blocked_on(uuid,date)')!.ddl);
    if(phase==='restored')for(const original of originals)await owner.client.unsafe(original.ddl);
    for(const original of originals)expect(stable((await definition(original.signature)).attributes)).toEqual(stable(original.attributes));
    await measure(phase);
    expect(await outcome(malformed)).toEqual(controls.malformed);expect(await outcome(emptyMalformed)).toEqual(controls.emptyMalformed);
-   expect(await read(adminCtx(foreign))).toEqual(controls.foreign);expect(await read(forged)).toEqual(forgedIds);
+   expect(await read(adminCtx(foreign))).toEqual(controls.foreign);expect(await outcome(forged)).toEqual(forgedOutcome);
    await expect(readEmployeeHomeIdentity(forged)).rejects.toThrow();
    expect(await withoutReports()).toEqual(controls.revoked);expect(await archivedRead()).toEqual(controls.archived);
    expect(await read(context(users[4]))).toEqual(expected.get(users[4].id));
-   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'authorization-planning.json'),JSON.stringify({kind:'COMPONENT_ONLY',principals:500,activeProbes:100,independentTransactionsPerPhase:1000,phases,boundariesPreserved:true,limitations:'Native visibility reads, not HTTP capacity. Each additional phase is cumulative; independent rollback experiments still required if attribution is uncertain.'},null,2));
+   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'authorization-planning.json'),JSON.stringify({kind:'COMPONENT_ONLY',principals:500,activeProbes:100,independentTransactionsPerPhase:1000,phases,boundariesPreserved:true,freshNativePrincipalProof:true,limitations:'Native metadata-owner transaction shape, not HTTP capacity. Visibility stays fixed while grant and login language changes have explicit original/candidate reversals; all principal/context checks remain fresh.'},null,2));
   }
  }finally{for(const original of originals){await owner.client.unsafe(original.ddl);expect(await definition(original.signature)).toEqual({ddl:original.ddl,attributes:original.attributes});}}
 },480000);
