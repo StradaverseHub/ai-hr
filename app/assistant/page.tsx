@@ -109,9 +109,8 @@ export default async function AssistantPage({
   const privacyOutcome = Boolean(sp.historyPrivacy || sp.importHistory || sp.ownClear || (sp.nativeOutcome && !sp.governed));
   const toolsRequested = sp.view === 'tools' || sp.job !== undefined || Boolean(sp.governed || sp.proposal || sp.planning);
   // Your data and privacy works without the Assistant grant: own-data erasure survives access removal.
-  const privacyControls = async () => {
   const keepDays = await readChatRetention(s).then(value => value.keepDays).catch(() => null);
-  return (
+  const privacyControls = (
     <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-3">
       <h2 id="assistant-privacy-heading" className="text-base font-semibold">{a('privacy.title')}</h2>
       <p className="text-sm text-muted-foreground">{t('home.privacyHelp')}</p>
@@ -128,14 +127,13 @@ export default async function AssistantPage({
       </ul>
     </section>
   );
-  };
   if (sp.view === 'privacy' || (sp.view === undefined && privacyOutcome)) {
     return (
       <div data-ai-centre="privacy" className="mx-auto max-w-6xl space-y-6">
         <AiCentreTabs active={null} isAdmin={admin} />
         <div className="mx-auto max-w-3xl space-y-5">
           <PageHeader title={a('privacy.title')} description={a('privacy.description')} back={{ href: '/assistant', label: a('backToAsk') }} />
-          <Card className="p-5">{await privacyControls()}</Card>
+          <Card className="p-5">{privacyControls}</Card>
         </div>
       </div>
     );
@@ -177,7 +175,7 @@ export default async function AssistantPage({
           {homeTabs}
           <PersonnelReviewNavigation ctx={s}/>
         </div>
-        <div className="border-t border-border pt-4">{await privacyControls()}</div>
+        <div className="border-t border-border pt-4">{privacyControls}</div>
       </div>
     );
   }
