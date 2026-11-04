@@ -165,3 +165,42 @@ it('native company policies return zero rows for ordinary and missing-principal 
  }
  await expect(withTenant(contexts[1],tx=>tx.execute(sql`select app.company_organisation_current_parent(${b.companyId}::uuid)`))).rejects.toThrow();
 });
+it('keeps verified system owner tag writes working after publication and records system custody without granting human review authority',async()=>{
+ const e=await hire('FictionalOwnerMovement');const future=todayInKualaLumpur(new Date(Date.now()+7*86400000));
+ const {createMovementEvent,sweepDueMovements}=await import('../core/movement');
+ await createMovementEvent(adminCtx(b),{employmentId:e.employmentId,kind:'transfer',effectiveDate:future,departmentId:b.deptB,remarks:'Fictional previously admitted owner movement'});
+ await publish(await prepare());
+ const system:SessionContext={...adminCtx(b),userId:undefined,personId:null,grants:[{role:'hr_admin',companyId:b.companyId}]};
+ const read=sql`select app.employment_organisation_tags(${e.employmentId}::uuid,${today()}::date) as tags`;
+ expect((await owner.withTenant(system,tx=>tx.execute<{tags:{status:string;businessUnitId:string}}>(read)))[0].tags).toMatchObject({status:'ready',businessUnitId:unit});
+ await expect(withTenant(system,tx=>tx.execute(read))).rejects.toThrow();
+ await expect(owner.withTenant(system,tx=>tx.execute(sql`select app.employment_organisation_tags(${e.employmentId}::uuid,null::date)`))).rejects.toThrow();
+ await expect(owner.withTenant(system,tx=>tx.execute(sql`select app.record_employment_organisation_tags(${e.employmentId}::uuid,${b.companyId}::uuid,null::date,'movement')`))).rejects.toThrow();
+ await expect(owner.withTenant(system,async tx=>{await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);return tx.execute(read);})).rejects.toThrow();
+ await expect(withTenant(system,tx=>tx.execute(sql`select app.record_employment_organisation_tags(${e.employmentId}::uuid,${b.companyId}::uuid,${future}::date,'movement')`))).rejects.toThrow();
+ expect(await sweepDueMovements(system,{today:future},owner.withTenant)).toMatchObject({applied:1,failed:0});
+ expect(await sweepDueMovements(system,{today:future},owner.withTenant)).toMatchObject({applied:0,failed:0});
+ const classes=await owner.db.execute<{kind:string;actor:string|null;tags:{businessUnitId:string}}>(sql`select actor_kind as kind,actor_id as actor,tags from employment_organisation_classification where employment_id=${e.employmentId}::uuid and effective_on=${future}::date`);
+ expect(classes).toEqual([{kind:'system',actor:null,tags:expect.objectContaining({businessUnitId:unit})}]);
+ const events=await owner.db.execute<{kind:string;actor:string|null}>(sql`select actor_type::text as kind,actor_id as actor from domain_event where tenant_id=${b.tenantId}::uuid and subject_employment_id=${e.employmentId}::uuid and event_type='employment.organisation-tagged' and payload->>'effectiveOn'=${future}`);
+ expect(events).toEqual([{kind:'system',actor:null}]);
+ const id=await prepare(),{run}=await companyOrganisationRunReport(adminCtx(b),id);await approve(id);
+ await expect(owner.withTenant(system,tx=>tx.execute(sql`select app.prepare_company_organisation_run(${JSON.stringify({kind:'retag',companyIds:[b.companyId],effectiveOn:today()})}::jsonb)`))).rejects.toThrow();
+ await expect(owner.withTenant(system,tx=>tx.execute(sql`select app.decide_company_organisation_run(${id}::uuid,${run.digest},true,'System is never a human checker')`))).rejects.toThrow();
+ await expect(owner.withTenant(system,tx=>tx.execute(sql`select app.process_company_organisation_run(${id}::uuid,200)`))).rejects.toThrow();
+ await expect(owner.withTenant(system,tx=>tx.execute(sql`select app.begin_company_organisation_publication(${id}::uuid)`))).rejects.toThrow();
+ await expect(owner.withTenant(system,tx=>tx.execute(sql`select app.finish_company_organisation_publication(${id}::uuid)`))).rejects.toThrow();
+ expect((await companyOrganisationRunReport(adminCtx(b),id)).run.state).toBe('approved');
+});
+it('tenant- and company-pins trusted no-login owner tag reads and rejects inconsistent user/system custody pairs',async()=>{
+ const e=await hire('FictionalOwnerScope');await publish(await prepare());
+ const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional ungranted owner company'}).returning();
+ const system:SessionContext={...adminCtx(b),userId:undefined,personId:null,grants:[{role:'hr_admin',companyId:other.id}]};
+ await expect(owner.withTenant(system,tx=>tx.execute(sql`select app.company_organisation_tags(${b.companyId}::uuid,${today()}::date)`))).rejects.toThrow();
+ await expect(owner.withTenant(system,tx=>tx.execute(sql`select app.record_employment_organisation_tags(${e.employmentId}::uuid,${b.companyId}::uuid,${today()}::date,'movement')`))).rejects.toThrow();
+ const [foreign]=await owner.db.insert(schema.tenant).values({workosOrgId:'fictional-owner-foreign-tenant',name:'Fictional foreign owner tenant'}).returning();
+ await expect(owner.withTenant({...system,tenantId:foreign.id},tx=>tx.execute(sql`select app.company_organisation_tags(${b.companyId}::uuid,${today()}::date)`))).rejects.toThrow();
+ for(const pair of [{kind:'user',actor:null},{kind:'system',actor:b.adminUserId}]){
+  let failure:unknown;try{await owner.db.execute(sql`insert into employment_organisation_classification(tenant_id,employment_id,company_id,effective_on,mapping_version_id,tags,trigger,actor_kind,actor_id,idempotency_key) select tenant_id,employment_id,company_id,effective_on,mapping_version_id,tags,'movement',${pair.kind},${pair.actor}::uuid,idempotency_key||${':invalid-'+pair.kind} from employment_organisation_classification where employment_id=${e.employmentId}::uuid limit 1`);}catch(error){failure=error;}expect(pgSqlState(failure)).toBe('23514');
+ }
+});

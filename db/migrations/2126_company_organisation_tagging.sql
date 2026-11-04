@@ -25,7 +25,8 @@ CREATE TABLE public.company_organisation_run_row(
 );
 CREATE TABLE public.employment_organisation_classification(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),employment_id uuid NOT NULL REFERENCES employment(id),company_id uuid NOT NULL,
- effective_on date NOT NULL,mapping_version_id uuid NOT NULL REFERENCES company_organisation_run(id),tags jsonb NOT NULL,trigger text NOT NULL,actor_id uuid NOT NULL REFERENCES app_user(id),
+ effective_on date NOT NULL,mapping_version_id uuid NOT NULL REFERENCES company_organisation_run(id),tags jsonb NOT NULL,trigger text NOT NULL,actor_kind text NOT NULL DEFAULT 'user' CHECK(actor_kind IN('user','system')),actor_id uuid REFERENCES app_user(id),
+ CHECK((actor_kind='user' AND actor_id IS NOT NULL) OR (actor_kind='system' AND actor_id IS NULL)),
  idempotency_key text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(tenant_id,idempotency_key),FOREIGN KEY(employment_id,tenant_id) REFERENCES employment(id,tenant_id),FOREIGN KEY(actor_id,tenant_id) REFERENCES app_user(id,tenant_id),FOREIGN KEY(mapping_version_id,tenant_id) REFERENCES company_organisation_run(id,tenant_id),FOREIGN KEY(company_id,tenant_id) REFERENCES company(id,tenant_id)
 );
 CREATE TABLE public.company_organisation_source_epoch(tenant_id uuid PRIMARY KEY REFERENCES tenant(id),revision bigint NOT NULL DEFAULT 0);
@@ -100,13 +101,21 @@ CREATE FUNCTION app.company_org_mapping_at(p_day date) RETURNS jsonb LANGUAGE sq
   SELECT m.* FROM company_organisation_mapping m JOIN company_organisation_run r ON r.id=m.run_id AND r.tenant_id=m.tenant_id WHERE m.company_id=c.id AND m.tenant_id=c.tenant_id AND (r.state='published' OR EXISTS(SELECT 1 FROM company_organisation_publish_lease l WHERE l.run_id=r.id AND l.tenant_id=r.tenant_id AND l.xact_id=pg_current_xact_id())) AND r.effective_on<=p_day ORDER BY r.effective_on DESC,r.published_at DESC,r.id DESC LIMIT 1
  ) m ON true WHERE c.tenant_id=app.current_tenant_id();
 $$;
-CREATE FUNCTION app.company_org_current_parent(p_company uuid) RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+-- Explicit tenant is private to validated native source owners (for example leased workflow mail).
+-- Runtime callers retain the session-tenant APIs; no public arbitrary-tenant ancestry oracle is added.
+CREATE FUNCTION app.company_org_parent_for_tenant(p_tenant uuid,p_company uuid) RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT CASE WHEN latest.company_id IS NOT NULL THEN latest.parent_company_id ELSE c.parent_company_id END FROM company c LEFT JOIN LATERAL(
  SELECT m.company_id,m.parent_company_id FROM company_organisation_mapping m JOIN company_organisation_run r ON r.id=m.run_id AND r.tenant_id=m.tenant_id WHERE m.tenant_id=c.tenant_id AND m.company_id=c.id AND r.state='published' AND r.effective_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date ORDER BY r.effective_on DESC,r.published_at DESC,r.id DESC LIMIT 1
- ) latest ON true WHERE c.tenant_id=app.current_tenant_id() AND c.id=p_company;
+ ) latest ON true WHERE c.tenant_id=p_tenant AND c.id=p_company;
+$$;
+CREATE FUNCTION app.company_org_descendant_for_tenant(p_tenant uuid,p_child uuid,p_ancestor uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH RECURSIVE up(id,path) AS(SELECT c.id,ARRAY[c.id] FROM public.company c WHERE c.tenant_id=p_tenant AND c.id=p_child UNION ALL SELECT parent.id,up.path||parent.id FROM up JOIN public.company parent ON parent.id=app.company_org_parent_for_tenant(p_tenant,up.id) AND parent.tenant_id=p_tenant WHERE NOT(parent.id=ANY(up.path))) SELECT EXISTS(SELECT 1 FROM up WHERE id=p_ancestor);
+$$;
+CREATE FUNCTION app.company_org_current_parent(p_company uuid) RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.company_org_parent_for_tenant(app.current_tenant_id(),p_company);
 $$;
 CREATE OR REPLACE FUNCTION app.is_company_descendant(child uuid,ancestor uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- WITH RECURSIVE up(id,path) AS(SELECT c.id,ARRAY[c.id] FROM public.company c WHERE c.tenant_id=app.current_tenant_id() AND c.id=child UNION ALL SELECT p.id,up.path||p.id FROM up JOIN public.company p ON p.id=app.company_org_current_parent(up.id) AND p.tenant_id=app.current_tenant_id() WHERE NOT(p.id=ANY(up.path))) SELECT EXISTS(SELECT 1 FROM up WHERE id=ancestor);
+ SELECT app.company_org_descendant_for_tenant(app.current_tenant_id(),child,ancestor);
 $$;
 CREATE OR REPLACE FUNCTION app.company_subtree(root uuid) RETURNS TABLE(id uuid) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  WITH RECURSIVE down(id,path) AS(SELECT c.id,ARRAY[c.id] FROM public.company c WHERE c.id=root AND c.tenant_id=app.current_tenant_id() UNION ALL SELECT c.id,down.path||c.id FROM down JOIN public.company c ON app.company_org_current_parent(c.id)=down.id AND c.tenant_id=app.current_tenant_id() WHERE NOT(c.id=ANY(down.path))) SELECT down.id FROM down;
@@ -127,8 +136,9 @@ CREATE FUNCTION app.company_org_tags_unchecked(p_company uuid,p_day date) RETURN
  SELECT app.company_org_resolve(p_company,app.company_org_mapping_at(p_day),EXISTS(SELECT 1 FROM company_organisation_run r WHERE r.tenant_id=app.current_tenant_id() AND (r.state='published' OR EXISTS(SELECT 1 FROM company_organisation_publish_lease l WHERE l.run_id=r.id AND l.tenant_id=r.tenant_id AND l.xact_id=pg_current_xact_id())) AND r.kind<>'retag' AND r.effective_on<=p_day))||jsonb_build_object('mappingVersionId',coalesce(nullif(app.company_org_mapping_at(p_day)->p_company::text->'mappingVersionId','null'::jsonb),(SELECT to_jsonb(r.id) FROM company_organisation_run r WHERE r.tenant_id=app.current_tenant_id() AND (r.state='published' OR EXISTS(SELECT 1 FROM company_organisation_publish_lease l WHERE l.run_id=r.id AND l.tenant_id=r.tenant_id AND l.xact_id=pg_current_xact_id())) AND r.kind<>'retag' AND r.effective_on<=p_day ORDER BY r.effective_on DESC,r.published_at DESC NULLS FIRST,r.id DESC LIMIT 1)));
 $$;
 CREATE FUNCTION app.company_org_company_read(p_company uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM company c WHERE c.id=p_company AND c.tenant_id=app.current_tenant_id()) AND (
- app.access_workforce_company(p_company,'workforce.view') OR app.access_workforce_company(p_company,'workforce.maintain') OR app.can_admin_payroll_for(p_company) OR EXISTS(SELECT 1 FROM reward_unit u WHERE u.tenant_id=app.current_tenant_id() AND u.company_id=p_company AND app.reward_access(u.id)));
+ SELECT EXISTS(SELECT 1 FROM company c WHERE c.id=p_company AND c.tenant_id=app.current_tenant_id()) AND (
+ app.access_workforce_owner_company(p_company) OR app.principal_snapshot_current() AND (
+ app.access_workforce_company(p_company,'workforce.view') OR app.access_workforce_company(p_company,'workforce.maintain') OR app.can_admin_payroll_for(p_company) OR EXISTS(SELECT 1 FROM reward_unit u WHERE u.tenant_id=app.current_tenant_id() AND u.company_id=p_company AND app.reward_access(u.id))));
 $$;
 CREATE FUNCTION app.company_organisation_tags(p_company uuid,p_day date) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN IF p_day IS NULL OR NOT app.company_org_company_read(p_company) THEN RAISE EXCEPTION 'Company organisation is unavailable' USING ERRCODE='42501';END IF;RETURN app.company_org_tags_unchecked(p_company,p_day);END $$;
@@ -160,7 +170,7 @@ END $$;
 CREATE FUNCTION app.employment_organisation_tags(p_employment uuid,p_day date) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE co uuid;BEGIN
  co:=app.company_org_employment_company(p_employment,p_day);
- IF co IS NULL OR NOT app.principal_snapshot_current() OR NOT(
+ IF p_day IS NULL OR NOT isfinite(p_day) OR co IS NULL OR NOT(app.principal_snapshot_current() OR app.access_workforce_owner_company(co)) OR NOT(
  app.access_workforce_employment(p_employment,'workforce.view') OR app.access_workforce_employment(p_employment,'workforce.maintain') OR app.access_workforce_projection_company(co) OR app.can_admin_payroll_for(co) OR EXISTS(SELECT 1 FROM reward_entry e JOIN reward_unit u ON u.id=e.unit_id AND u.tenant_id=e.tenant_id WHERE e.tenant_id=app.current_tenant_id() AND e.employment_id=p_employment AND app.reward_access(u.id))) THEN RAISE EXCEPTION 'Employee organisation is unavailable' USING ERRCODE='42501';END IF;
  RETURN app.company_org_employment_unchecked(p_employment,p_day);
 END $$;
@@ -176,15 +186,16 @@ DECLARE token text:=encode(sha256(convert_to(jsonb_build_array(t,aggregate,ident
 END $$;
 CREATE FUNCTION app.company_org_append_event(t uuid,aggregate text,identifier uuid,event text,actor_kind text,actor uuid,detail jsonb) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$SELECT app.company_org_append_event(t,aggregate,identifier,event,actor_kind,actor,NULL,detail);$$;
 CREATE FUNCTION app.record_employment_organisation_tags(p_employment uuid,p_company uuid,p_day date,p_trigger text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE v_tags jsonb;previous jsonb;k text;new_id uuid;BEGIN
+DECLARE v_tags jsonb;previous jsonb;k text;new_id uuid;v_actor_kind text;BEGIN
  PERFORM app.access_workforce_write_lock();
- IF NOT app.principal_snapshot_current() OR NOT app.access_workforce_employment(p_employment,'workforce.maintain') OR NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id()) OR p_company IS DISTINCT FROM app.company_org_employment_company(p_employment,p_day) OR p_trigger NOT IN('hire','correction','transfer','restructure','import','retag','assignment','movement') THEN RAISE EXCEPTION 'Organisation write scope is unavailable' USING ERRCODE='42501';END IF;
+ IF p_day IS NULL OR NOT isfinite(p_day) OR NOT(app.principal_snapshot_current() OR app.access_workforce_owner_company(p_company)) OR NOT app.access_workforce_employment(p_employment,'workforce.maintain') OR NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id()) OR p_company IS DISTINCT FROM app.company_org_employment_company(p_employment,p_day) OR p_trigger NOT IN('hire','correction','transfer','restructure','import','retag','assignment','movement') THEN RAISE EXCEPTION 'Organisation write scope is unavailable' USING ERRCODE='42501';END IF;
+ v_actor_kind:=CASE WHEN app.current_user_id() IS NULL THEN 'system' ELSE 'user' END;
  v_tags:=app.company_org_tags_unchecked(p_company,p_day);IF v_tags->>'status'='legacy' THEN RETURN v_tags;END IF;
  SELECT c.tags INTO previous FROM employment_organisation_classification c WHERE c.tenant_id=app.current_tenant_id() AND c.employment_id=p_employment AND c.effective_on<=p_day ORDER BY c.effective_on DESC,c.created_at DESC,c.id DESC LIMIT 1;
  IF EXISTS(SELECT 1 FROM employment_organisation_classification c WHERE c.tenant_id=app.current_tenant_id() AND c.employment_id=p_employment AND c.company_id=p_company AND c.effective_on=p_day AND c.tags=v_tags) THEN RETURN v_tags;END IF;
  k:=encode(sha256(convert_to(jsonb_build_array(p_employment,p_company,p_day,p_trigger,v_tags)::text,'UTF8')),'hex');
- INSERT INTO employment_organisation_classification(tenant_id,employment_id,company_id,effective_on,mapping_version_id,tags,trigger,actor_id,idempotency_key) VALUES(app.current_tenant_id(),p_employment,p_company,p_day,(v_tags->>'mappingVersionId')::uuid,v_tags,p_trigger,app.current_user_id(),k) ON CONFLICT(tenant_id,idempotency_key) DO NOTHING RETURNING id INTO new_id;
- IF new_id IS NOT NULL THEN PERFORM app.company_org_append_event(app.current_tenant_id(),'employment',p_employment,'employment.organisation-tagged','user',app.current_user_id(),p_employment,jsonb_build_object('companyId',p_company,'before',previous,'after',v_tags,'effectiveOn',p_day,'trigger',p_trigger,'mappingVersionId',v_tags->'mappingVersionId'));END IF;
+ INSERT INTO employment_organisation_classification(tenant_id,employment_id,company_id,effective_on,mapping_version_id,tags,trigger,actor_kind,actor_id,idempotency_key) VALUES(app.current_tenant_id(),p_employment,p_company,p_day,(v_tags->>'mappingVersionId')::uuid,v_tags,p_trigger,v_actor_kind,app.current_user_id(),k) ON CONFLICT(tenant_id,idempotency_key) DO NOTHING RETURNING id INTO new_id;
+ IF new_id IS NOT NULL THEN PERFORM app.company_org_append_event(app.current_tenant_id(),'employment',p_employment,'employment.organisation-tagged',v_actor_kind,app.current_user_id(),p_employment,jsonb_build_object('companyId',p_company,'before',previous,'after',v_tags,'effectiveOn',p_day,'trigger',p_trigger,'mappingVersionId',v_tags->'mappingVersionId'));END IF;
  RETURN v_tags;
 END $$;
 --> statement-breakpoint
@@ -390,7 +401,7 @@ ALTER POLICY company_delete_admin ON company USING(tenant_id=app.current_tenant_
 CREATE FUNCTION app.company_org_assignment_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE co uuid;old_co uuid;tags jsonb;managed boolean;retained_bu uuid;BEGIN
  IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() THEN
-  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname=session_user AND (rolname='ai_hr_owner' OR rolsuper)) AND NOT EXISTS(SELECT 1 FROM company_organisation_run WHERE tenant_id=NEW.tenant_id AND state='published' AND kind<>'retag') THEN RETURN NEW;END IF;
+  IF app.access_workforce_storage_owner() AND NOT EXISTS(SELECT 1 FROM company_organisation_run WHERE tenant_id=NEW.tenant_id AND state='published' AND kind<>'retag') THEN RETURN NEW;END IF;
   RAISE EXCEPTION 'Tenant-bound organisation write required' USING ERRCODE='42501';
  END IF;
  IF TG_OP='UPDATE' AND NEW.tenant_id=OLD.tenant_id AND NEW.employment_id=OLD.employment_id AND NEW.business_unit_id IS NOT DISTINCT FROM OLD.business_unit_id AND NEW.company_id IS NOT DISTINCT FROM OLD.company_id AND NEW.valid_from=OLD.valid_from THEN RETURN NEW;END IF;
@@ -423,9 +434,10 @@ DECLARE co uuid;old_co uuid;tags jsonb;managed boolean;retained_bu uuid;BEGIN
 END $$;
 CREATE TRIGGER organisation_assignment_guard BEFORE INSERT OR UPDATE OF tenant_id,employment_id,business_unit_id,company_id,valid_from,valid_to,superseded_at ON assignment FOR EACH ROW EXECUTE FUNCTION app.company_org_assignment_guard();
 CREATE FUNCTION app.company_org_assignment_record() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-BEGIN
- IF NEW.tenant_id=app.current_tenant_id() AND app.current_user_id() IS NOT NULL AND NEW.superseded_at IS NULL AND (NEW.valid_to IS NULL OR NEW.valid_to>NEW.valid_from) AND EXISTS(SELECT 1 FROM company_organisation_run WHERE tenant_id=NEW.tenant_id AND state='published' AND kind<>'retag' AND effective_on<=NEW.valid_from) THEN
-  PERFORM app.record_employment_organisation_tags(NEW.employment_id,coalesce(NEW.company_id,(SELECT company_id FROM employment WHERE id=NEW.employment_id AND tenant_id=NEW.tenant_id)),NEW.valid_from,'assignment');
+DECLARE v_company uuid;BEGIN
+ v_company:=coalesce(NEW.company_id,(SELECT company_id FROM employment WHERE id=NEW.employment_id AND tenant_id=NEW.tenant_id));
+ IF NEW.tenant_id=app.current_tenant_id() AND (app.current_user_id() IS NOT NULL OR app.access_workforce_owner_company(v_company)) AND NEW.superseded_at IS NULL AND (NEW.valid_to IS NULL OR NEW.valid_to>NEW.valid_from) AND EXISTS(SELECT 1 FROM company_organisation_run WHERE tenant_id=NEW.tenant_id AND state='published' AND kind<>'retag' AND effective_on<=NEW.valid_from) THEN
+  PERFORM app.record_employment_organisation_tags(NEW.employment_id,v_company,NEW.valid_from,'assignment');
  END IF;RETURN NEW;
 END $$;
 CREATE TRIGGER organisation_assignment_record AFTER INSERT OR UPDATE OF business_unit_id,company_id,valid_from ON assignment FOR EACH ROW EXECUTE FUNCTION app.company_org_assignment_record();
@@ -448,9 +460,45 @@ END $$;
 CREATE FUNCTION app.company_org_parent_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN IF NEW.parent_company_id IS DISTINCT FROM OLD.parent_company_id AND NOT app.acting_as_owner() AND app.company_organisation_managed() THEN RAISE EXCEPTION 'Prepare an independently reviewed dated Group structure proposal' USING ERRCODE='42501';END IF;RETURN NEW;END $$;
 CREATE TRIGGER organisation_company_parent_guard BEFORE UPDATE OF parent_company_id ON company FOR EACH ROW EXECUTE FUNCTION app.company_org_parent_guard();
+-- Private mail runs without a browser/session tenant. Its leased job is the only admitted tenant source.
+CREATE OR REPLACE FUNCTION identity_email.attendance_cc_target(p_id uuid,p_token uuid,p_issuer text) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE job public.attendance_workflow_cc_delivery;identity_user uuid;identity_subject text;locale text:='en';
+BEGIN
+ SELECT d.* INTO job FROM public.attendance_workflow_cc_delivery d JOIN public.tenant t ON t.id=d.tenant_id AND t.status IN('active','trial') WHERE d.id=p_id AND d.lease_token=p_token AND d.status='pending' AND d.started_at IS NULL AND d.attempts<5 AND d.lease_until>now() AND EXISTS(SELECT 1 FROM public.notification_email_policy policy WHERE policy.tenant_id=d.tenant_id AND policy.category='attendance' AND policy.enabled AND d.source_sequence>policy.after_sequence);
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ IF job.recipient_kind='employee' THEN
+  SELECT u.id,i.subject,pref.email_locale INTO identity_user,identity_subject,locale
+  FROM public.employment e
+  JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
+  JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+  JOIN public.app_external_identity i ON i.app_user_id=u.id AND i.issuer=p_issuer AND i.revoked_at IS NULL
+  JOIN public.notification_pref pref ON pref.tenant_id=e.tenant_id AND pref.recipient_employment_id=e.id
+   AND pref.category='attendance' AND pref.channel='email' AND pref.enabled AND pref.email_consent_user_id=u.id
+   AND pref.email_after_sequence IS NOT NULL AND job.source_sequence>pref.email_after_sequence
+  JOIN public.attendance_workflow_request w ON w.id=job.request_id AND w.tenant_id=e.tenant_id
+  WHERE e.id=job.recipient_employment_id AND e.tenant_id=job.tenant_id AND u.id=job.recipient_user_id
+   AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND lower(p.primary_email)=job.address
+   AND e.blacklisted_at IS NULL AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+   AND (LEAST(e.terminated_on,e.resignation_date,e.last_working_date) IS NULL OR LEAST(e.terminated_on,e.resignation_date,e.last_working_date)>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+   AND app.company_org_descendant_for_tenant(job.tenant_id,w.company_id,e.company_id)
+   AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.app_user_id=u.id AND r.tenant_id=w.tenant_id
+    AND r.role::text IN('employee','manager','hr_admin','super_admin')
+    AND (r.company_id IS NULL OR r.company_id=w.company_id OR app.company_org_descendant_for_tenant(job.tenant_id,w.company_id,r.company_id)))
+   AND EXISTS(SELECT 1 FROM jsonb_array_elements(w.cc) frozen
+    WHERE frozen->>'kind'='employee' AND frozen->>'address'=job.address
+     AND frozen->>'employmentId'=e.id::text AND frozen->>'personId'=e.person_id::text AND frozen->>'userId'=u.id::text);
+  IF NOT FOUND THEN RETURN NULL; END IF;
+ ELSE
+  -- A custom destination cannot bypass an existing employee's consent/revocation. The configured
+  -- employee/superior source supplies internal provenance when both resolve to the same address.
+  IF EXISTS(SELECT 1 FROM public.person p WHERE p.tenant_id=job.tenant_id AND lower(p.primary_email)=job.address) THEN RETURN NULL; END IF;
+ END IF;
+ RETURN jsonb_build_object('kind',job.recipient_kind,'userId',CASE WHEN job.recipient_kind='employee' THEN identity_user END,'subject',CASE WHEN job.recipient_kind='employee' THEN identity_subject END,'email',job.address,'locale',locale,'message',job.message);
+END $$;
 -- Default-deny all implementation helpers. Only the declared fixed-command/read contracts are public to runtime.
 DO $$ DECLARE f record;BEGIN FOR f IN SELECT p.oid::regprocedure signature,p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app' AND p.proname IN(
- 'company_org_append_event','company_org_identity_changed','company_org_tag_labels','company_org_parent_guard','company_organisation_options','company_org_current_parent','company_organisation_current_parent','company_org_hr_proposed','company_org_lock','company_org_source_changed','company_org_hr','company_org_checker','company_org_run_access','company_org_bu_usable','company_org_mapping_at','company_org_resolve','company_org_tags_unchecked','company_org_company_read','company_organisation_tags','company_organisation_next_change','company_org_employment_company','company_org_employment_unchecked','employment_organisation_tags','record_employment_organisation_tags','company_org_employment_fingerprint','company_org_active','prepare_company_organisation_run','company_org_run_checker','company_org_run_fresh','company_organisation_run_view','decide_company_organisation_run','process_company_organisation_run','begin_company_organisation_publication','company_organisation_projection_rows','finish_company_organisation_publication','company_organisation_run_report','company_organisation_managed','company_org_assignment_guard','company_org_assignment_record','company_org_audit_owner') LOOP
+ 'company_org_parent_for_tenant','company_org_descendant_for_tenant','company_org_append_event','company_org_identity_changed','company_org_tag_labels','company_org_parent_guard','company_organisation_options','company_org_current_parent','company_organisation_current_parent','company_org_hr_proposed','company_org_lock','company_org_source_changed','company_org_hr','company_org_checker','company_org_run_access','company_org_bu_usable','company_org_mapping_at','company_org_resolve','company_org_tags_unchecked','company_org_company_read','company_organisation_tags','company_organisation_next_change','company_org_employment_company','company_org_employment_unchecked','employment_organisation_tags','record_employment_organisation_tags','company_org_employment_fingerprint','company_org_active','prepare_company_organisation_run','company_org_run_checker','company_org_run_fresh','company_organisation_run_view','decide_company_organisation_run','process_company_organisation_run','begin_company_organisation_publication','company_organisation_projection_rows','finish_company_organisation_publication','company_organisation_run_report','company_organisation_managed','company_org_assignment_guard','company_org_assignment_record','company_org_audit_owner') LOOP
  EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,ai_hr_app',f.signature);
  IF f.proname IN('company_organisation_options','company_organisation_current_parent','company_org_run_access','company_organisation_tags','company_organisation_next_change','employment_organisation_tags','record_employment_organisation_tags','prepare_company_organisation_run','company_organisation_run_view','decide_company_organisation_run','process_company_organisation_run','begin_company_organisation_publication','company_organisation_projection_rows','finish_company_organisation_publication','company_organisation_run_report','company_organisation_managed') THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO ai_hr_app',f.signature);END IF;
  END LOOP;END $$;

@@ -8,7 +8,7 @@ CREATE TABLE public.org_chart_root (
 ALTER TABLE public.org_chart_root ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.org_chart_root FORCE ROW LEVEL SECURITY;
 CREATE POLICY org_chart_root_read ON public.org_chart_root FOR SELECT TO ai_hr_app
- USING(tenant_id=app.current_tenant_id() AND app.can_see_employment(employment_id));
+ USING(tenant_id=app.current_tenant_id() AND employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]));
 CREATE POLICY org_chart_root_insert ON public.org_chart_root FOR INSERT TO ai_hr_app
  WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin() AND app.access_workforce_employment(employment_id,'workforce.maintain'));
 CREATE POLICY org_chart_root_update ON public.org_chart_root FOR UPDATE TO ai_hr_app
