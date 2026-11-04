@@ -14,7 +14,7 @@ vi.mock('next-intl/server',()=>({
  getTranslations:async(namespace:any)=>createTranslator({locale:visual.locale,messages:copies[visual.locale],namespace}),
  getFormatter:async()=>createFormatter({locale:visual.locale,timeZone:'Asia/Kuala_Lumpur'}),
 }));
-import { RankedBuildList } from '../app/control-tower/opportunities/build-list';
+import { RankedBuildList } from '../app/control-tower/agents/build-list/build-list';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { agentBuildList } from '../core/agent-build-list';

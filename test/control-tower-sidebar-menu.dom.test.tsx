@@ -60,6 +60,8 @@ describe('AI Centre is the one sidebar item for Operations and Administration',(
  it.each([
   '/control-tower','/control-tower/exceptions','/control-tower/readiness','/control-tower/actions','/control-tower/opportunities',
   '/control-tower/agents','/control-tower/agents/features','/control-tower/agents/inventory','/control-tower/agents/allowances','/control-tower/agents/provider',
+  // AI Centre restructure: Operations' Loops and Payroll cycle, and Administration › Build list.
+  '/control-tower/loops','/control-tower/loops/payroll-cycle','/control-tower/agents/build-list',
  ])('the AI Centre row is the one current row on %s',path=>{
   state.path=path;rail('groupAdmin');
   const current=[...document.querySelectorAll('a[aria-current="page"]')];

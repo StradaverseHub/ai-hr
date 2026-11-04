@@ -222,13 +222,18 @@ describe('AI quality, as an administrator',()=>{
   expect([...row.querySelectorAll('a,button')].map(el=>[text(el),el.getAttribute('href')])).toEqual([['Download again',`/assistant/learning/export?candidate=${K2}`]]);
  });
 
- it('lists the loops\' proposals with approve, reject or revert, and each loop\'s corrections by month; promotes nothing',async()=>{
+ it('lists the loops\' proposals read-only, each linking to Settings, and each loop\'s corrections by month; promotes nothing',async()=>{
   state.view=view();
   const rendered=wrap('en',await section());
   const proposals=[...rendered.container.querySelectorAll('[data-proposal]')];
-  expect(proposals.map(row=>[row.getAttribute('data-proposal'),cells(row).slice(0,3),[...row.querySelectorAll('button')].map(el=>text(el))])).toEqual([
-   ['open',['Raise the threshold from ±15% to ±23%Salary payroll loop · Fictional Alpha Sdn Bhd','5 of 5 flags cleared as expected (100%), real problems: 0, last 30 days','Waiting for a decision'],['Approve','Reject']],
-   ['applied',['Stop flagging changes explained by Salary changeSalary payroll loop · Fictional Beta Sdn Bhd','6 of 6 flags cleared as expected (100%), real problems: 0, last 30 days','Applied Oct 28, 2026'],['Revert']]]);
+  // AI Centre restructure (owner decision 29): read-only here. Payroll-cycle Settings is the one place a threshold proposal
+  // is decided, or an applied one changed back: no button and no form on this page, a link to Settings on each row.
+  expect(proposals.map(row=>[row.getAttribute('data-proposal'),cells(row).slice(0,3),[...row.querySelectorAll('button,form')].length,
+   [...row.querySelectorAll('a')].map(el=>[text(el),el.getAttribute('href')])])).toEqual([
+   ['open',['Raise the threshold from ±15% to ±23%Salary payroll loop · Fictional Alpha Sdn Bhd','5 of 5 flags cleared as expected (100%), real problems: 0, last 30 days','Waiting for a decision'],0,
+    [['Decide in Settings','/control-tower/loops/payroll-cycle/settings']]],
+   ['applied',['Stop flagging changes explained by Salary changeSalary payroll loop · Fictional Beta Sdn Bhd','6 of 6 flags cleared as expected (100%), real problems: 0, last 30 days','Applied Oct 28, 2026'],0,
+    [['Change in Settings','/control-tower/loops/payroll-cycle/settings']]]]);
   const loops=[...rendered.container.querySelectorAll('[data-loop-correction]')];
   expect(loops.map(cells)).toEqual([['Missed clock-outs','No data yet','0.8%2 of 250','0%0 of 40']]);
   expect(text(rendered.container)).not.toMatch(/Promote|promote a loop/);

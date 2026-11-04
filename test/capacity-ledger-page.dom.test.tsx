@@ -28,7 +28,11 @@ type Locale='en'|'ms'|'zh'|'vi'|'ta'|'th';
 const LOCALES=['en','ms','zh','vi','ta','th'] as const;
 const CATALOGUES={en,ms,zh,vi:vi_,ta,th};
 const messagesFor=(locale:Locale)=>withAiCentre(locale,CATALOGUES[locale] as Record<string,unknown>) as typeof en & {aiCentre:Record<string,any>};
-const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'ta'|'th',view:null as unknown,setup:null as unknown,reads:[] as unknown[]}));
+const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'ta'|'th',view:null as unknown,setup:null as unknown,reads:[] as unknown[],
+ // The measured part of the former Opportunities page: one fictional process, 12 staff actions per 30 days.
+ processes:{from:new Date('2026-08-05T00:00:00Z'),version:'assessment-v1',processes:[{id:'leave',enabled:true,role:'assist',staffActionsPer30:12,peopleAffected:4,
+  profile:{module:'leave',decision:'judgement',verifiable:true,actionsLinked:true,actions:[{id:'chase_overdue_approver',tier:'automatic'}]},
+  measures:{started:20,completed:15,closedUndecided:0,open:5,agedOpen:1,medianHours:30,p90Hours:70,rework:2,staffActions:36,employeeActions:20,automatedActions:4}}]} as unknown}));
 vi.mock('next/link',()=>({default:({children,prefetch:_prefetch,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('next/navigation',()=>({redirect:vi.fn(),usePathname:()=>'/assistant',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
@@ -49,6 +53,13 @@ vi.mock('../app/assistant/loop-clock-out-actions',()=>({confirmMissedClockOutAct
 vi.mock('../app/assistant/payroll-readiness-actions',()=>({answerTp3PreviousEmployerAction:vi.fn()}));
 // Wave 2: Insights also carries P2-6's AI quality for administrators (its own test: ai-quality-page.dom.test.tsx); a marker here.
 vi.mock('../components/ai-centre/ai-quality',()=>({AiQualitySection:()=><section data-ai-quality-marker/>}));
+vi.mock('../components/ai-centre/check-accuracy',()=>({CheckAccuracySection:()=>null}));
+// AI Centre restructure: the measured part of the former Opportunities page, read beside the ledger (fictional figures).
+vi.mock('../core/process-assessment',async()=>{
+ const actual=await vi.importActual<typeof import('../core/process-assessment')>('../core/process-assessment');
+ return {...actual,assessProcesses:async(_s:unknown,window:number)=>{state.reads.push(['processes',window]);return state.processes;}};
+});
+vi.mock('../core/assistant-outcomes',async()=>({MIN_AFTER_DAYS:30,assistantOutcomes:async()=>({from:new Date('2026-08-05T00:00:00Z'),version:'outcomes-v1',processes:[],actions:[],automatic:[]})}));
 import {CapacityLedgerSection} from '../components/ai-centre/capacity-ledger';
 import {AiCentreInsights} from '../components/ai-centre/insights';
 import {resolveServerTree} from './helpers/server-tree';
@@ -98,9 +109,9 @@ describe('the Insights tab',()=>{
   const nav=screen.getByRole('navigation',{name:'AI Centre sections'});
   const links=within(nav).getAllByRole('link').map(link=>[text(link),link.getAttribute('href')]);
   expect(links).toEqual(admitted
-   ?[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Operations','/control-tower'],['Policies','/policies'],['Insights','/assistant?view=insights'],
+   ?[['Ask','/assistant'],['Operations','/control-tower/loops'],['Insights','/assistant?view=insights'],['Policies','/policies'],
     ['Administration','/control-tower/agents/features'],['How it works','/assistant?view=how']]
-   :[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Policies','/policies'],['Insights','/assistant?view=insights'],['How it works','/assistant?view=how']]);
+   :[['Ask','/assistant'],['Policies','/policies'],['How it works','/assistant?view=how']]);
   expect(within(nav).getByRole('link',{current:'page'})).toHaveAttribute('href','/assistant?view=insights');
   for(const link of within(nav).getAllByRole('link'))expect(link.className).toContain('min-h-11');
  });
@@ -108,29 +119,30 @@ describe('the Insights tab',()=>{
  it.each([['employee',false],['manager',false],['hrAdmin',true],['groupAdmin',true]] as const)('%s: the ledger section is admin-only; employees see the tab without it',async(role,admitted)=>{
   state.view=view();
   const session=SESSIONS[role] as never;
-  const rendered=wrap('en',await resolveServerTree(<AiCentreInsights session={session} scopeIds={[C1]} isAdmin={isAdmin(session)} capacityQuery={{period:'last30'}} />));
-  expect(screen.getByRole('heading',{level:1,name:'Insights'})).toBeTruthy();
-  // Everyone's own payroll readiness is on the page (P2-3).
-  expect(rendered.container.querySelector('#my-payroll-readiness')).toBeTruthy();
+  const rendered=wrap('en',await resolveServerTree(<AiCentreInsights session={session} isAdmin={isAdmin(session)} payroll capacityQuery={{period:'last30'}} />));
+  // Owner decision 27: a person's own payroll readiness is its own page now, not part of Insights.
+  expect(rendered.container.querySelector('#my-payroll-readiness')).toBeNull();
   if(admitted){
+   expect(screen.getByRole('heading',{level:1,name:'Insights'})).toBeTruthy();
    expect(rendered.container.querySelectorAll('[data-capacity-ledger]')).toHaveLength(1);
+   expect(rendered.container.querySelector('#hr-capacity')).toBeTruthy();
    expect(screen.getByRole('heading',{level:2,name:'HR capacity'})).toBeTruthy();
-   expect(state.reads).toEqual([['readiness'],['ledger',{period:'last30',companyId:undefined}]]);
+   expect(state.reads).toEqual([['processes',90],['ledger',{period:'last30',companyId:undefined}]]);
   }else{
-   expect(rendered.container.querySelector('[data-capacity-ledger]')).toBeNull();
-   expect(screen.queryByRole('heading',{name:'HR capacity'})).toBeNull();
-   // Nothing of the ledger is even read for them.
-   expect(state.reads).toEqual([['readiness']]);
+   // Insights renders nothing for them, so nothing is read (the page forwards them to their own readiness page).
+   expect(rendered.container.textContent).toBe('');
+   expect(state.reads).toEqual([]);
   }
   for(const pattern of RATIO)expect(rendered.container.textContent??'').not.toMatch(pattern);
  });
 
  it('the Insights view takes the page\'s administrator check, after the inbox redirect',()=>{
   const page=fs.readFileSync(path.join(__dirname,'..','app/assistant/page.tsx'),'utf8');
-  expect(page).toContain("{sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} capacityQuery={sp as Readonly<Record<string, string | undefined>>} qualityQuery={sp as Readonly<Record<string, string | undefined>>} />}");
+  expect(page).toContain("{sp.view === 'insights' && <AiCentreInsights session={s} isAdmin={admin} payroll={isModuleEnabledOrFalse(s, 'payroll')} capacityQuery={sp as Readonly<Record<string, string | undefined>>} qualityQuery={sp as Readonly<Record<string, string | undefined>>} />}");
+  expect(page.indexOf("if (sp.view === 'insights' && !admin) redirect('/me/payroll-readiness');")).toBeLessThan(page.indexOf("sp.view === 'insights' && <AiCentreInsights"));
   expect(page).toContain('const admin = isAdmin(s);');
   expect(page.indexOf("if (sp.view === 'inbox')")).toBeLessThan(page.indexOf("sp.view === 'insights' && <AiCentreInsights"));
-  expect(fs.readFileSync(path.join(__dirname,'..','components/ai-centre/insights.tsx'),'utf8')).toContain('{isAdmin&&<CapacityLedgerSection session={session} query={capacityQuery??{}}/>}');
+  expect(fs.readFileSync(path.join(__dirname,'..','components/ai-centre/insights.tsx'),'utf8')).toContain(' if(!isAdmin)return null;');
  });
 });
 
@@ -138,7 +150,7 @@ describe('HR capacity, as an administrator',()=>{
  it('shows the four figures, the chart drawn to scale, where the time came from and the method',async()=>{
   state.view=view();
   const rendered=wrap('en',await section({period:'last30'}));
-  expect(state.reads).toEqual([['ledger',{period:'last30',companyId:undefined}]]);
+  expect(state.reads.filter(read=>read[0]!=='processes')).toEqual([['ledger',{period:'last30',companyId:undefined}]]);
   expect(screen.getByRole('heading',{level:2,name:'HR capacity'})).toBeTruthy();
   expect(text(rendered.container)).toContain('What AI Centre did for the HR teams of the companies you administer, each measured against its own baseline.');
   // Periods: links that keep the company filter, the current one marked.
@@ -270,5 +282,31 @@ describe('owner rule: no "HR staff per 100 employees" ratio anywhere',()=>{
    expect(capacity,locale).not.toMatch(/100/);
    for(const pattern of RATIO)expect(capacity,`${locale} ${pattern}`).not.toMatch(pattern);
   }
+ });
+});
+
+describe('HR capacity › where the work is (the former Opportunities page, owner decision 29)',()=>{
+ it('the stored baseline is the only minutes input: one company with a baseline estimates hours from it, never a headcount',async()=>{
+  state.view=view({companies:[COMPANIES[0]]});
+  const rendered=wrap('en',await section({period:'last30',pdays:'30'}));
+  expect(state.reads[0]).toEqual(['processes',30]);
+  const processes=rendered.container.querySelector('[data-capacity-processes]')!;
+  expect(processes.querySelector('h3')?.textContent).toBe('Where the work is');
+  // 12 staff actions × the stored 2 minutes = 24 minutes = 0.4 h, from Fictional Alpha's own baseline.
+  expect(processes.querySelector('[data-capacity-minutes]')?.getAttribute('data-capacity-minutes')).toBe('baseline');
+  expect(text(processes.querySelector('[data-capacity-minutes]'))).toBe('Hours are estimated from Fictional Alpha Sdn Bhd’s stored baseline: 2 minutes per staff action.');
+  expect(text(processes.querySelector('[data-capacity-estimate]'))).toBe('About 0.4 h of staff time a month. Estimated with the stored baseline’s 2 minutes per staff action, not a measurement.');
+  // No typed minutes or full-time hours: the window is the only input.
+  expect(processes.querySelectorAll('input[name="minutes"],input[name="fteHours"]')).toHaveLength(0);
+  expect((processes.querySelector('select[name="pdays"]') as HTMLSelectElement).value).toBe('30');
+  for(const pattern of RATIO)expect(text(processes)).not.toMatch(pattern);
+ });
+ it('several companies: no hours are estimated, because a company\'s baseline describes that company only',async()=>{
+  state.view=view();
+  const rendered=wrap('en',await section({period:'last30'}));
+  const processes=rendered.container.querySelector('[data-capacity-processes]')!;
+  expect(processes.querySelector('[data-capacity-minutes]')?.getAttribute('data-capacity-minutes')).toBe('none');
+  expect(processes.querySelector('[data-capacity-estimate]')).toBeNull();
+  expect(text(processes)).toContain('Cases started');
  });
 });

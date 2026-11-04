@@ -61,7 +61,6 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import AssistantLayout from '../app/assistant/layout';
 import AssistantPage from '../app/assistant/page';
 import ControlTowerLayout from '../app/control-tower/layout';
-import OverviewPage from '../app/control-tower/page';
 import LoopsPage from '../app/control-tower/loops/page';
 import LoopPage from '../app/control-tower/loops/[loop]/page';
 import PayrollCyclePage from '../app/control-tower/loops/payroll-cycle/page';
@@ -70,8 +69,6 @@ import PayrollLoopSettingsPage from '../app/control-tower/loops/payroll-cycle/se
 import AuditLoopPage from '../app/control-tower/loops/loop_payroll_audit/page';
 import ExceptionsPage from '../app/control-tower/exceptions/page';
 import ReadinessPage from '../app/control-tower/readiness/page';
-import ActionsPage from '../app/control-tower/actions/page';
-import OpportunitiesPage from '../app/control-tower/opportunities/page';
 import WorkersPage from '../app/control-tower/agents/features/page';
 import SetupPage from '../app/control-tower/agents/page';
 import SpendPage from '../app/control-tower/agents/allowances/page';
@@ -83,16 +80,16 @@ type Persona='admin'|'employee';
 type Page=(props:{searchParams:Promise<Record<string,string>>;params:Promise<Record<string,string>>})=>unknown;
 type Route=Readonly<{id:string;personas:readonly Persona[];group:'assistant'|'control-tower'|'policies';page:Page;searchParams?:Record<string,string>;params?:Record<string,string>}>;
 const page=(fn:unknown)=>fn as Page;
-/** Every AI Centre tab and Operations/Loops/Administration page, as each persona may open it. */
+/** Every AI Centre tab and Operations/Loops/Administration page, as each persona may open it. AI Centre restructure (owner
+ * decisions 26–29): Delegated jobs, the Overview, Proposed actions and Opportunities are guarded forward stubs now (not
+ * pages to measure), and Insights is an administrator's view. */
 const ROUTES:readonly Route[]=[
  {id:'/assistant (Ask)',personas:['admin','employee'],group:'assistant',page:page(AssistantPage)},
- {id:'/assistant?view=jobs',personas:['admin','employee'],group:'assistant',page:page(AssistantPage),searchParams:{view:'jobs'}},
- {id:'/assistant?view=insights',personas:['admin','employee'],group:'assistant',page:page(AssistantPage),searchParams:{view:'insights'}},
+ {id:'/assistant?view=insights',personas:['admin'],group:'assistant',page:page(AssistantPage),searchParams:{view:'insights'}},
  {id:'/assistant?view=how',personas:['admin','employee'],group:'assistant',page:page(AssistantPage),searchParams:{view:'how'}},
  {id:'/assistant?view=privacy',personas:['admin'],group:'assistant',page:page(AssistantPage),searchParams:{view:'privacy'}},
  {id:'/assistant?view=tools',personas:['admin'],group:'assistant',page:page(AssistantPage),searchParams:{view:'tools'}},
  {id:'/policies',personas:['admin','employee'],group:'policies',page:page(PoliciesPage)},
- {id:'/control-tower (Operations)',personas:['admin'],group:'control-tower',page:page(OverviewPage)},
  {id:'/control-tower/loops',personas:['admin'],group:'control-tower',page:page(LoopsPage)},
  {id:'/control-tower/loops/loop_payroll_inputs',personas:['admin'],group:'control-tower',page:page(LoopPage),params:{loop:'loop_payroll_inputs'}},
  {id:'/control-tower/loops/payroll-cycle',personas:['admin'],group:'control-tower',page:page(PayrollCyclePage)},
@@ -101,8 +98,6 @@ const ROUTES:readonly Route[]=[
  {id:'/control-tower/loops/loop_payroll_audit',personas:['admin'],group:'control-tower',page:page(AuditLoopPage)},
  {id:'/control-tower/exceptions',personas:['admin'],group:'control-tower',page:page(ExceptionsPage)},
  {id:'/control-tower/readiness',personas:['admin'],group:'control-tower',page:page(ReadinessPage)},
- {id:'/control-tower/actions',personas:['admin'],group:'control-tower',page:page(ActionsPage)},
- {id:'/control-tower/opportunities',personas:['admin'],group:'control-tower',page:page(OpportunitiesPage)},
  {id:'/control-tower/agents/features (Administration)',personas:['admin'],group:'control-tower',page:page(WorkersPage)},
  {id:'/control-tower/agents (Setup)',personas:['admin'],group:'control-tower',page:page(SetupPage)},
  {id:'/control-tower/agents/allowances (Spend)',personas:['admin'],group:'control-tower',page:page(SpendPage)},

@@ -55,7 +55,8 @@ vi.mock('@/core/assistant-actions/leave-change-review-store',()=>({leaveCancella
 vi.mock('@/core/assistant-actions/leave-decision-review-store',()=>({listLeaveDecisionReviews:async()=>({kind:'leave_decision_review_index',reviews:S.decisions}),reopenLeaveDecisionReview:async(_s:unknown,id:string)=>reopen(id)}));
 vi.mock('@/core/agent-actions',()=>({proposeActions:async()=>{S.calls.proposals++;return S.proposals;}}));
 vi.mock('@/core/record-readiness',()=>({recordReadiness:async()=>{S.calls.readiness++;return S.readiness;}}));
-vi.mock('@/core/digest/daily-digest',()=>({DIGEST_PAGES:{approvals:'/approvals',setup:'/control-tower/readiness',deadlines:'/payroll/statutory-forms'},latestDailyDigest:async()=>S.digest}));
+// The digest owner's own pages (core/digest/daily-digest.ts DIGEST_PAGES; test/ai-centre-restructure.test.ts pins the setup page).
+vi.mock('@/core/digest/daily-digest',()=>({DIGEST_PAGES:{approvals:'/approvals',setup:'/payroll/setup?readiness=full',deadlines:'/payroll/statutory-forms'},latestDailyDigest:async()=>S.digest}));
 vi.mock('@/core/agent-registry/controls',()=>({workerRunGate:async()=>({run:S.recommender})}));
 vi.mock('@/core/recommenders/leave-decision',()=>({RECOMMENDER_WORKER:'approver_recommendation'}));
 // The approver recommendation the person asked to open (the retired Inbox's in-place panel, now on Today).
@@ -463,16 +464,20 @@ describe('Today for an HR administrator',()=>{
   expect(view.container.querySelector('[data-today-ask] input')?.getAttribute('placeholder')).toBe('Ask AI Centre, or tell it what to do…');
   const needs=view.section('today-needs-you')!;
   expect([...needs.querySelectorAll('[data-today-finding]')].map(card=>[card.getAttribute('data-today-finding'),text(card.querySelector('h3')),card.querySelector('a')?.getAttribute('href')])).toEqual([
-   ['setup','2 setup stages need attention','/control-tower/readiness'],
+   // AI Centre restructure: setup opens the go-live setup with its stages (Today fix c), and prepared fixes open
+   // Exceptions' "cause already fixed" group, where the former Proposed actions are approved.
+   ['setup','2 setup stages need attention','/payroll/setup?readiness=full'],
    ['readiness','4 employee records are missing required data','/control-tower/readiness'],
-   ['proposals','1 prepared fix waits for your approval','/control-tower/actions'],
+   ['proposals','1 prepared fix waits for your approval','/control-tower/exceptions#fixed-causes'],
   ]);
   const watching=view.section('today-watching')!;
   expect([...watching.querySelectorAll('[data-today-note]')].map(note=>[note.getAttribute('data-today-note'),text(note.querySelector('h3')),text(note.querySelector('h3 + p')),note.querySelector('a')?.getAttribute('href')])).toEqual([
    ['deadlines','3 CP22 or CP22A notifications need filing','1 is overdue. Due within 7 days, from the statutory compliance worklist.','/payroll/statutory-forms'],
    ['exceptions','5 payroll exceptions are open','2 block a payroll run.','/control-tower/exceptions'],
-   ['passports','2 recorded passports expire within 30 days','The first expires on Nov 15, 2026.','/personnel'],
   ]);
+  // Today fix b: passports are shown once, as the passports loop's own card; the 30-day follow-up list is not read here.
+  expect(S.calls.passports).toBe(0);
+  expect(view.container.querySelector('[data-today-note="passports"]')).toBeNull();
   expect(view.section('today-at-a-glance')).toBeNull();
   expect(text(view.section('today-done-for-you')!.querySelector('[data-today-note] h3'))).toBe('Answered 1 of your questions');
  });
@@ -488,7 +493,7 @@ describe('Today for an HR administrator',()=>{
   const view=await show(HR_ADMIN,['co-a']);
   expect(S.calls).toMatchObject({proposals:0,exceptions:0,worklist:[]});
   expect(view.container.querySelector('[data-today-note="deadlines"],[data-today-note="exceptions"],[data-today-finding="proposals"]')).toBeNull();
-  expect(view.container.querySelector('[data-today-note="passports"]')).not.toBeNull();
+  expect(view.container.querySelector('[data-today-note="passports"]')).toBeNull();
  });
 
  // AI v2 Phase 1 slice 3: employees' letter requests waiting for HR, for a viewer holding the letters `generate` capability.
@@ -526,8 +531,7 @@ describe('Today for a group administrator, with the company scope switcher',()=>
   expect(page).toContain('Approve leave request · Fictional Bala');
   expect(page).not.toContain('Fictional Aminah');
   expect(text(view.container.querySelector('[data-today-note="deadlines"] h3'))).toBe('1 CP22 or CP22A notification needs filing');
-  expect(text(view.container.querySelector('[data-today-note="passports"] h3'))).toBe('1 recorded passport expires within 30 days');
-  expect(text(view.container.querySelector('[data-today-note="passports"] h3 + p'))).toBe('The first expires on Nov 25, 2026.');
+  expect(view.container.querySelector('[data-today-note="passports"]')).toBeNull();
   const answered=view.container.querySelector('[data-today-note="answeredOthers"]')!;
   expect(text(answered.querySelector('h3'))).toBe('Answered 46 employee questions');
   expect(text(answered.querySelector('h3 + p'))).toBe('In the last 7 days, for the companies in your current scope. Questions on sensitive matters go to your HR team and are not counted here.');

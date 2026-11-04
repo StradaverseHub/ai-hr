@@ -1,20 +1,13 @@
 /**
- * ADR-0074 — THE CONTROL TOWER ROLL-UP, AND THE STAFFING FIGURE IT REFUSES TO PRINT.
+ * ADR-0074 — THE PAYROLL CHECKS, ROLLED UP ACROSS RUNS, WITH NO STAFFING FIGURE.
  *
- * The per-run anomaly layer already has its own tests. What is new here is the cross-run view and one
- * decision worth guarding harder than the arithmetic around it: `impliedOperators` is NULL until the
- * tower has verdicts, the thresholds have been tuned off r177's shipped placeholders, AND a human has
- * dispositioned at least one flag.
+ * The per-run anomaly layer already has its own tests. What is pinned here is the cross-run view the AI quality page
+ * shows: every live verdict counted once, rates that are null (never 0 or 1) while their denominator is empty, and the
+ * placeholder thresholds named as such.
  *
- * WHY THAT IS THE CASE MOST WORTH PINNING. Every other number here is a count; this one is a headcount
- * projection about people's jobs, computed from checks whose sensitivity nobody has validated. AGENTS 28
- * is the rule (an absent box asserts nothing; a box with a confident wrong number asserts something
- * false) and r177 says it directly for this feature: never quote an auto-clear rate from an unvalidated
- * basis. A regression that made this render "1" on placeholder thresholds would be invisible in every
- * other test and would go straight onto a slide.
- *
- * The three blockers are asserted INDIVIDUALLY, each with the other two satisfied, so a change that
- * collapses them into one condition fails here rather than passing because some blocker still fired.
+ * AI Centre restructure (owner decision 26, 4 November 2026): the view used to turn the exception count into a headcount
+ * of operators (`impliedOperators`). That staffing ratio is removed, here and on every screen; the last case below proves
+ * the view carries no headcount field at all, even once every condition it used to wait for holds.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, isNull } from 'drizzle-orm';
@@ -25,7 +18,8 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { evaluateBatchAnomalies, resolveAnomalyVerdict } from '../core/payroll-anomaly';
-import { controlTowerView, EXCEPTIONS_PER_OPERATOR_PER_CYCLE } from '../core/control-tower';
+import * as controlTower from '../core/control-tower';
+import { controlTowerView } from '../core/control-tower';
 
 describe('ADR-0074 — the control tower, rolled up across runs', () => {
   let base: Base;
@@ -121,7 +115,8 @@ describe('ADR-0074 — the control tower, rolled up across runs', () => {
     const run = view.runs.find((r) => r.batchId === batch.batchId);
     expect(run, 'a processed run must be listed even before it is checked').toBeTruthy();
     expect(run!.autoClearRate).toBeNull();
-    expect(view.ratio.blockedBy).toContain('no_verdicts');
+    expect(view.checks.covered).toBe(0);
+    expect(view.totals.autoClearRate).toBeNull();
   });
 
   it('rolls up across runs by VERDICT, not by averaging per-run rates', async () => {
@@ -134,65 +129,56 @@ describe('ADR-0074 — the control tower, rolled up across runs', () => {
     const view = await controlTowerView(a);
     expect(view.totals.runs).toBeGreaterThanOrEqual(2);
     const seen = view.totals.autoClear + view.totals.review + view.totals.block;
-    expect(seen, 'every live verdict is counted exactly once').toBe(view.ratio.covered);
-    expect(view.ratio.exceptions).toBe(view.totals.review + view.totals.block);
-    if (view.ratio.covered > 0) {
-      expect(view.totals.autoClearRate).toBeCloseTo(view.totals.autoClear / view.ratio.covered, 10);
+    expect(seen, 'every live verdict is counted exactly once').toBe(view.checks.covered);
+    if (view.checks.covered > 0) {
+      expect(view.totals.autoClearRate).toBeCloseTo(view.totals.autoClear / view.checks.covered, 10);
     }
   });
 
-  // ── The three blockers, each isolated ───────────────────────────────────────────────────────────
-  it('BLOCKED with no verdicts, even once thresholds are tuned and a human has acted elsewhere', async () => {
+  // ── What used to block the staffing figure, now said about the checks themselves ───────────────────
+  it('with no verdicts, every rate is null, even once thresholds are tuned', async () => {
     const a = adminCtx(base);
     await tuneThresholds();
     const view = await controlTowerView(a);
-    expect(view.ratio.impliedOperators).toBeNull();
-    expect(view.ratio.blockedBy).toContain('no_verdicts');
+    expect(view.checks.covered).toBe(0);
+    expect(view.totals.autoClearRate).toBeNull();
+    expect(view.totals.coverage).toBeNull();
+    expect(view.checks.meetsTarget).toBeNull();
   });
 
-  it('BLOCKED while the thresholds are still the shipped placeholders', async () => {
+  it('names the shipped placeholder thresholds', async () => {
     const a = adminCtx(base);
     await processedRun(4);
-    await resolveOneFlag(); // satisfy the human-signal blocker so only the threshold one can fire
-
+    await resolveOneFlag();
     const view = await controlTowerView(a);
-    expect(view.ratio.thresholdsTuned).toBe(false);
-    expect(view.ratio.blockedBy).toContain('thresholds_untuned');
-    expect(view.ratio.impliedOperators, 'a staffing figure on untuned checks measures the checks').toBeNull();
+    expect(view.checks.thresholdsTuned).toBe(false);
   });
 
-  it('BLOCKED while no human has ever dispositioned a flag', async () => {
+  it('keeps the false-positive rate null while no human has dispositioned a flag', async () => {
     const a = adminCtx(base);
     await processedRun(4);
-    await tuneThresholds(); // satisfy the threshold blocker so only the signal one can fire
-
+    await tuneThresholds();
     const view = await controlTowerView(a);
     expect(view.totals.resolvedFlagged).toBe(0);
-    // NULL, not zero. "No false positives recorded" reads as "no false positives" to every reader who
-    // did not write the query.
+    // NULL, not zero. "No false positives recorded" reads as "no false positives" to every reader who did not write the query.
     expect(view.totals.falsePositiveRate).toBeNull();
-    expect(view.ratio.blockedBy).toContain('no_human_signal');
-    expect(view.ratio.impliedOperators).toBeNull();
+    expect(view.totals.mttrSeconds).toBeNull();
   });
 
-  it('and only then does it put a number on it', async () => {
+  it('owner decision 26: no staffing figure, even when everything it used to wait for holds', async () => {
     const a = adminCtx(base);
     await processedRun(4);
     await tuneThresholds();
     const resolved = await resolveOneFlag();
-
-    // NON-VACUITY: if this fixture ever stopped producing a flag, the positive path below would never
-    // run and the case would pass having asserted nothing. Assert the precondition instead of skipping.
+    // NON-VACUITY: if this fixture ever stopped producing a flag, the case would pass having asserted nothing.
     expect(resolved, 'the fixture must produce at least one flagged verdict to resolve').toBe(true);
-
     const view = await controlTowerView(a);
-    expect(view.ratio.covered).toBeGreaterThan(0);
-    expect(view.ratio.blockedBy).toEqual([]);
-    expect(view.ratio.impliedOperators).toBe(
-      Math.max(1, Math.ceil(view.ratio.exceptions / EXCEPTIONS_PER_OPERATOR_PER_CYCLE)),
-    );
-    // Never zero people: a cycle with exceptions needs somebody, and rounding down to 0 would read as
-    // "this runs itself", which is the claim ADR-0074 §7 says has to be earned rather than launched.
-    expect(view.ratio.impliedOperators).toBeGreaterThanOrEqual(1);
+    expect(view.checks.covered).toBeGreaterThan(0);
+    expect(view.checks.thresholdsTuned).toBe(true);
+    expect(view.totals.resolvedFlagged).toBeGreaterThan(0);
+    expect(view.totals.falsePositiveRate).not.toBeNull();
+    expect(Object.keys(view).sort()).toEqual(['checks', 'runs', 'totals']);
+    expect(Object.keys(view.checks).sort()).toEqual(['covered', 'meetsTarget', 'thresholdsTuned']);
+    expect(Object.keys(controlTower)).not.toContain('EXCEPTIONS_PER_OPERATOR_PER_CYCLE');
   });
 });

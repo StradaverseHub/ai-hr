@@ -169,7 +169,11 @@ describe('Operations › Loops › Payroll cycle, per role',()=>{
   state.session=SESSIONS.groupAdmin;
   const view=wrap('en',await cycle());
   expect(state.reads).toEqual(['overview']);
-  expect(within(screen.getByRole('navigation',{name:'Operations sections'})).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower/loops');
+  // AI Centre restructure: the payroll loops' pages are Operations › Payroll cycle, with their own in-section row.
+  expect(within(screen.getByRole('navigation',{name:'Operations sections'})).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower/loops/payroll-cycle');
+  expect([...within(screen.getByRole('navigation',{name:'Payroll cycle pages'})).getAllByRole('link')].map(link=>[link.textContent,link.getAttribute('href'),link.getAttribute('aria-current')])).toEqual([
+   ['Pre-salary','/control-tower/loops/payroll-cycle','page'],['Salary payroll','/control-tower/loops/payroll-cycle/salary',null],
+   ['Settings','/control-tower/loops/payroll-cycle/settings',null],['Audit','/control-tower/loops/loop_payroll_audit',null]]);
   expect(screen.getByRole('heading',{level:1,name:'Payroll cycle: November 2026'})).toBeTruthy();
   expect(text(view.container.querySelector('[data-page-header]'))).toContain('Three loops carry each company\'s payroll from inputs to audit. EPF, SOCSO, EIS and PCB due Dec 15. Each company keeps its own cut-off and pay day.');
   const filter=view.container.querySelector('[data-company-filter]')!;
@@ -274,7 +278,9 @@ describe('Operations › Loops › Payroll cycle, per role',()=>{
    ['Salary run 1','Processed 42 employees','2 exceptions open','12 people changed 2 people over the threshold Salary change (3), Overtime hours (8)','Rule version 2026.1 Newer rule: PCB','Not closed yet','Total does not match net pay'],
    ['Bonus run 2','Closed 5 employees','No exceptions open','0 people changed','Rule version 2026.1','Closed by Aisyah Fictional Reopened once after close','Matches net pay and headcount']]);
   expect(view.container.querySelector('[data-salary-run="b-1"] a')).toHaveAttribute('href','/payroll/b-1');
-  expect(view.container.querySelector('[data-salary-run="b-1"] a[href="/payroll/b-1/anomalies"]')).not.toBeNull();
+  // Owner decision 28: an open exception is resolved on Exceptions only, so the count links there; none open, the run's own page.
+  expect(view.container.querySelector('[data-salary-run="b-1"] a[href="/control-tower/exceptions"]')?.textContent).toBe('2 exceptions open');
+  expect(view.container.querySelector('[data-salary-run="b-2"] a[href="/payroll/b-2/anomalies"]')?.textContent).toBe('No exceptions open');
   expect(rows(view.container,'[data-swing-flags]').map(row=>row.slice(0,3))).toEqual([
    ['Ravi Fictional Fictional A Sdn Bhd','Up 31.1% Threshold ±15%','Salary change Salary change'],
    ['Mei Ling Fictional Fictional A Sdn Bhd','Down 23.3% Threshold ±15%','Pay item Meal Allowance']]);
@@ -299,11 +305,13 @@ describe('Operations › Loops › Payroll cycle, per role',()=>{
    ['back=salary','period=2026-10',`target=${fx.A}`,'pattern=cause:salary_change','disposition=problem']]);
   expect([...group.querySelectorAll('button')].map(text)).toEqual(['All 1 expected','All 1 are a real problem']);
   expect(view.container.querySelectorAll('[data-swing-group]')).toHaveLength(1);
-  // A blocking exception a standing acknowledgement covers: never hidden; its one-tap resolve pre-filled with the reason.
-  const block=view.container.querySelector('[data-acknowledged-block]')!;
-  expect(parts(block.querySelector('p')!)).toBe('Chong Fictional No bank account to pay into');
-  expect((block.querySelector('input[readonly]') as HTMLInputElement).value).toBe('Paid in cash at the site office');
-  expect(block.querySelector('button')?.getAttribute('aria-label')).toBe('Resolve as expected · Chong Fictional');
+  // A blocking exception a standing acknowledgement covers: never hidden. Owner decision 28: resolved on Exceptions only, so
+  // this page counts it and links there, and offers no resolve of its own.
+  const block=view.container.querySelector('[data-acknowledged-blocks]')!;
+  expect(block.getAttribute('data-acknowledged-blocks')).toBe('1');
+  expect(text(block.querySelector('p'))).toBe('1 blocking exception this month has a standing acknowledgement. They are resolved on Exceptions.');
+  expect(block.querySelector('a')?.getAttribute('href')).toBe('/control-tower/exceptions#acknowledged-blocks');
+  expect(view.container.querySelector('[data-acknowledged-block] form,input[name="verdict"]')).toBeNull();
   // Nothing on the page starts, approves or closes payroll.
   expect(text(view.container)).not.toMatch(/\b(Run payroll|Approve run|Close run)\b/);
   expect(text(view.container)).toContain('The net-swing threshold starts at ±15%.');
