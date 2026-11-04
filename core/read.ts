@@ -574,7 +574,7 @@ export async function personnelListPage(
   facets: EmployeeListFilters,
 ) {
   return withTenant(ctx, async tx => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationReadTx(tx, ctx.tenantId);
     const columns = workforceListColumns();
     const pageWhere = workforceListWhere(page, columns) ?? sql`true`;
     const facetWhere = workforceListWhere(facets, columns) ?? sql`true`;

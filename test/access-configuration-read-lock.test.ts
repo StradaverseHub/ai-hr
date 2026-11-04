@@ -1,7 +1,7 @@
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {withTenant} from '../db/client';
 import {hireEmployee} from '../core/org';
-import {listEmployees,listEmployeesPage,listWorkforcePickOptions,countEmployeesByStatus,employeeDetail} from '../core/read';
+import {listEmployees,listEmployeesPage,listWorkforcePickOptions,countEmployeesByStatus,employeeDetail,personnelListPage} from '../core/read';
 import {workforceCompanies,workforceEmploymentAccess,workforceCommandAccess} from '../core/workforce-access';
 import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from '../core/access-configuration-lock';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
@@ -62,7 +62,7 @@ it.each(['view','maintain'] as const)('keeps borrowed %s metadata exclusive for 
  expect(released.acquired).toBe(true);
 });
 
-it.each(['list','picker','counts','page','detail'] as const)('lets a complete standalone Workforce %s projection overlap another native reader',async kind=>{
+it.each(['list','picker','counts','page','personnel','detail'] as const)('lets a complete standalone Workforce %s projection overlap another native reader',async kind=>{
  await resetDb();const b=await seedBase(),ctx=adminCtx(b);
  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional projection subject',primaryEmail:'projection@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const entered=barrier(),release=barrier();
@@ -70,10 +70,10 @@ it.each(['list','picker','counts','page','detail'] as const)('lets a complete st
  let read:Promise<unknown>|undefined;
  try{
   await bounded(entered.promise);
-  read=kind==='list'?listEmployees(ctx,[b.companyId],'workforce'):kind==='picker'?listWorkforcePickOptions(ctx,[b.companyId]):kind==='counts'?countEmployeesByStatus(ctx,{companyIds:[b.companyId]},'workforce'):kind==='page'?listEmployeesPage(ctx,{companyIds:[b.companyId],limit:25,offset:0},'workforce'):employeeDetail(ctx,hired.employmentId,'workforce');
+  read=kind==='list'?listEmployees(ctx,[b.companyId],'workforce'):kind==='picker'?listWorkforcePickOptions(ctx,[b.companyId]):kind==='counts'?countEmployeesByStatus(ctx,{companyIds:[b.companyId]},'workforce'):kind==='page'?listEmployeesPage(ctx,{companyIds:[b.companyId],limit:25,offset:0},'workforce'):kind==='personnel'?personnelListPage(ctx,{companyIds:[b.companyId],limit:25,offset:0},{companyIds:[b.companyId]}):employeeDetail(ctx,hired.employmentId,'workforce');
   const value=await bounded(read);
   if(kind==='list'||kind==='picker')expect(value).toEqual([expect.objectContaining({employmentId:hired.employmentId})]);
-  else if(kind==='counts'||kind==='page')expect(value).toMatchObject({total:1});
+  else if(kind==='counts'||kind==='page'||kind==='personnel')expect(value).toMatchObject({total:1});
   else expect(value).toMatchObject({employmentId:hired.employmentId});
  }finally{release.resolve();await Promise.allSettled([holder,...(read?[read]:[])]);}
 });
