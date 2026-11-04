@@ -1,3 +1,4 @@
+import {emitPayslipPdfDiagnostic} from './helpers/payslip-pdf-diagnostics';
 /**
  * 5b2a7f0f — THE PAYSLIP PDF STOPS PRINTING TAMIL, THAI, CHINESE AND VIETNAMESE AS QUESTION MARKS.
  *
@@ -468,6 +469,7 @@ describe('5b2a7f0f — lazy English fonts and deliberate document layout pins', 
       { ...noReg, allowance: 400, earningLines: manyLines, detailNotRecorded: false },
       labels,
     );
+    await emitPayslipPdfDiagnostic('forty-lines-unregistered',long,{renderInput:{...noReg,allowance:400,earningLines:manyLines,detailNotRecorded:false},labels,normalisedDocumentDigest:await documentDigest(long),fixtureLineCount:manyLines.length});
     expect(await documentDigest(plain)).toBe(NO_REG_R383.plain);
     expect(await documentDigest(withLogo)).toBe(NO_REG_R383.logo);
     expect(await documentDigest(long)).toBe(NO_REG_R383.multipage);
@@ -496,6 +498,7 @@ describe('5b2a7f0f — lazy English fonts and deliberate document layout pins', 
       { ...data, allowance: 400, earningLines: manyLines, detailNotRecorded: false },
       labels,
     );
+    await emitPayslipPdfDiagnostic('forty-lines-registered',long,{renderInput:{...data,allowance:400,earningLines:manyLines,detailNotRecorded:false},labels,normalisedDocumentDigest:await documentDigest(long),fixtureLineCount:manyLines.length});
     expect(await documentDigest(plain)).toBe(WITH_REG_R383.plain);
     expect(await documentDigest(withLogo)).toBe(WITH_REG_R383.logo);
     expect(await documentDigest(long)).toBe(WITH_REG_R383.multipage);
