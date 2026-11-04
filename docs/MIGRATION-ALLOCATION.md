@@ -1610,3 +1610,5 @@ current parent. Refresh the actual installation prefix/watermark again before ap
 unapplied timestamps must be reallocated if a competing release reaches staging first.
 
 Focused-development repair checkpoint5ea39a20d changes only still-unapplied2126/2127 bytes. Reserved indices/timestamps remain1380/1526 and1381/1527. Source SQL SHA256s: 2126_company_organisation_tagging `180d9ae5e937ecd6dc1f92505097f7c6bc72a7f20756660229586948624b794e`, 2127_personnel_filter_search `ea5f6a7ae8b84116e143ffa0849712f78f4f93dae18548a1239e5cac6bbafa2b`. No installation ledger byte is rewritten; release preflight must verify the actual then-applied prefix.
+
+The still-unapplied2127 grant correction explicitly revokes bootstrap default table privileges before the declared column-specific SELECT/INSERT/DELETE grants. Its final SQL SHA256 is `ce56780cd696e805c4a217316b9d36bc411cfa0f8a5015c53a46e7ff9b606283`; allocation1381/1793330001527 is unchanged. No applied migration is edited. Native denial checks cover matches reads, membership updates and expiry extension.
