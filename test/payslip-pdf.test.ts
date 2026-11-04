@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import {join} from 'node:path';
+import {execFileSync} from 'node:child_process';
 /**
  * ADR-0036 (#22) — payslip PDF renderer. A pure function over the payslipDetail read + localized labels;
  * here we assert it produces a real (%PDF) document of non-trivial size and degrades gracefully on null
@@ -2125,9 +2127,19 @@ it('7de6fc4e: PDF rows keep pay codes and saved quantities separately, without a
    {code:'ABSENT',name:'ABSENT',amount:40,buckets:[{bucket:'deduct',amount:40}],detail:{qty:2,rate:20,unit:'days'}},
   ]
  }},{epf:'EPF',socso:'SOCSO',skbbk:'SKBBK',eis:'EIS',tax:'PCB'});
- const rows=payslipPresentationRows(d,labels,String);
+ const presentationLabels={...labels,periodLabel:'August 2026',paymentDate:'31 Aug 2026'};
+ const rows=payslipPresentationRows(d,presentationLabels,String);
  expect(rows.earnings).toContainEqual(expect.objectContaining({label:'OT1_5 · Overtime 1.5',quantity:'4 hours',amount:120}));
  expect(rows.deductions).toContainEqual(expect.objectContaining({label:'ABSENT · ABSENT',quantity:'2 days',amount:40}));
- const text=drawnText(await renderPayslipPdf(d,labels));
+ const bytes=await renderPayslipPdf(d,presentationLabels);
+ const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+ if(evidence){
+  if(process.env.GITHUB_ACTIONS!=='true')throw Error('PDF preview capture requires the selected GitHub Actions runner');
+  fs.mkdirSync(evidence,{recursive:true});const base=join(evidence,'payroll-7de6fc4e-fictional-itemized');fs.writeFileSync(base+'.pdf',bytes);
+  let renderedPreview:string|null=null;
+  if(fs.existsSync('/usr/bin/pdftoppm')){execFileSync('/usr/bin/pdftoppm',['-png','-r','110','-singlefile','-f','1',base+'.pdf',base]);renderedPreview=base+'.png';}
+  fs.writeFileSync(base+'.json',JSON.stringify({candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,fixture:'Actual renderPayslipPdf/buildPayslipPdfData; fictional employee/company and saved OT/ABSENT lines only; no live data, authenticated journey, or installed acceptance.',pdf:base+'.pdf',renderedPreview,renderer:renderedPreview?'pdftoppm first page':'PDF artifact; runner rasterizer unavailable'},null,2)+'\n');
+ }
+ const text=drawnText(bytes);
  expect(text).toContain('OT1_5');expect(text).toContain('ABSENT');expect(text).not.toContain('2 ABSENT');
 });
