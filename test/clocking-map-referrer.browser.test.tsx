@@ -50,3 +50,21 @@ it('real image failures show the fallback while coordinates stay editable', asyn
   expect(container.querySelector<HTMLInputElement>('[name="lat"]')?.value).toBe('3.139');
   expect(container.querySelector<HTMLInputElement>('[name="radiusM"]')?.value).toBe('150');
 });
+
+it('unmounting during the opening zoom animation leaves no Leaflet timer behind', async () => {
+  // Leaflet ends an animated zoom from an uncancellable 250 ms timer; a map removed inside that window threw
+  // `el._leaflet_pos` after it was gone (browser (webkit) in run 41780003774). Unmount mid-animation on purpose.
+  const errors: string[] = [];
+  const record = (event: ErrorEvent) => { errors.push(String(event.error?.stack ?? event.message)); };
+  window.addEventListener('error', record);
+  try {
+    const { container } = mount(tile);
+    // The opening fitBounds zooms the 150 m radius from 16 to 17; Leaflet marks the pane while it animates.
+    await waitFor(() => expect(container.querySelector('.leaflet-map-pane.leaflet-zoom-anim')).not.toBeNull(), { timeout: 5000 });
+    cleanup();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(errors).toEqual([]);
+  } finally {
+    window.removeEventListener('error', record);
+  }
+});
