@@ -14,7 +14,7 @@ import {isProfilePhotoProposal} from '../lib/profile-photo-proposal';
 import {readProfileRoutingPolicy,resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate,ProfileRoutingError,type ProfileRouteDecisionSubject} from './profile-routing';
 import type {ProfilePresentationPolicy} from './profile-edit-policy';
 import {projectOwnProfileProposal,ownProfileProposalIsIntact} from '../lib/personnel-ess-visibility';
-import {freshProfileEditPolicyTx} from './profile-edit-policy';
+import {freshProfileEditPolicyTx,freshProfilePresentationPolicyTx} from './profile-edit-policy';
 import {EssProfileError,type EssProfileProposal} from '../lib/personnel-ess-model';
 import {personnelField,PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import { isCalendarDate } from '../lib/calendar-date';
@@ -784,7 +784,9 @@ export function myProfileChangeRequests(ctx: SessionContext, limit = 50,presenta
   const personId = ctx.personId;
   if (!personId) return Promise.resolve([]);
   return withTenant(ctx, async (tx) => {
-    const policy=presentation??await freshProfileEditPolicyTx(tx,ctx);
+    await tx.execute(sql`SET TRANSACTION READ ONLY`);
+    const policy=presentation??await freshProfilePresentationPolicyTx(tx,ctx);
+    if(presentation)await tx.execute(sql`select app.access_profile_policy_read_lock()`);
     const rows=await tx
       .select({
         id: profileChangeRequest.id,
