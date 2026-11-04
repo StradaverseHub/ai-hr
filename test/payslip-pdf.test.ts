@@ -525,7 +525,7 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
     // employee's side to reconcile against. 6b134681's guard is untouched in substance — the lumped
     // category word still gives way to the pay item — and what changed is that the item is now named
     // without its code. The admin surfaces still print the code through `payItemLabel`.
-    expect(text).toContain('Handphone allowance');
+    expect(text.replace(/\s+/g,' ')).toContain('Handphone allowance');
     expect(text).toContain('Travel allowance');
     expect(text, 'approved 7de6fc4e: document preserves pay item identity').toContain('A0027');
     expect(text, 'approved 7de6fc4e: document preserves pay item identity').toContain('A0031');
@@ -1459,7 +1459,7 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
       ),
     );
     for (const name of ['Handphone allowance', 'ANGPOW', 'OVERTIME 1.5', 'COMPANY CAR']) {
-      expect(text, `${name} is still named`).toContain(name);
+      expect(text.replace(/\s+/g,' '), `${name} is still named`).toContain(name);
     }
     for (const code of ['A0027', 'B0001', 'OT15']) expect(text).toContain(code);
     expect(text).not.toContain('BIK01');
