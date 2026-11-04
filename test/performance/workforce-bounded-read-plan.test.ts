@@ -51,7 +51,10 @@ it.skipIf(!requested)('compares a bounded native Workforce reader with disjoint 
   expect(counts).toEqual({employees:count,assignments:count});report.retainedCounts=counts;report.fixturePreparationMs=performance.now()-started;
   const [identity]=await withTenant(ctx,tx=>tx.execute<{role:string}>(sql`select current_user as role`));expect(identity.role).toBe('ai_hr_app');
 
-  const [original]=await owner.client<{ddl:string;body:string;owner:string;acl:string|null}[]>`select pg_get_functiondef(oid)as ddl,prosrc as body,proowner::regrole::text as owner,proacl::text as acl from pg_proc where oid='app._access_workforce_list_rows(uuid[])'::regprocedure`;
+  const [installed]=await owner.client<{ddl:string;body:string;owner:string;acl:string|null}[]>`select pg_get_functiondef(oid)as ddl,prosrc as body,proowner::regrole::text as owner,proacl::text as acl from pg_proc where oid='app._access_workforce_list_rows(uuid[])'::regprocedure`;
+  const predecessorSql=readFileSync(new URL('../../db/migrations/2129_personnel_native_paging.sql',import.meta.url),'utf8');
+  const predecessorBody=predecessorSql.split('AS $$')[1].split('$$;')[0];
+  const original={...installed,body:predecessorBody,ddl:installed.ddl.replace(installed.body,()=>predecessorBody)};
   const needle=' FROM public.employment e JOIN permitted allowed ON allowed.id=e.company_id';
   expect(original.ddl.split(needle)).toHaveLength(2);
   // Keep the single JSON projection and every purpose/tenant/voided/subject predicate.
@@ -59,6 +62,8 @@ it.skipIf(!requested)('compares a bounded native Workforce reader with disjoint 
   // selected-ID branch to plan an indexed lookup without the full-list OR condition.
   const proposal=JSON.parse(readFileSync(new URL('./workforce-bounded-migration.proposal.json',import.meta.url),'utf8')) as {sql:string};
   const candidate=proposal.sql;
+  expect(readFileSync(new URL('../../db/migrations/2139_workforce_bounded_read_plan.sql',import.meta.url),'utf8')).toBe(candidate);
+  expect(installed.body).toBe(candidate.split('AS $$')[1].split('$$;')[0]);
   expect(candidate.split('AS $$')[1]?.split('$$;')[0]).toBe(original.body.replace(needle,` FROM (
     SELECT * FROM public.employment WHERE subject_ids IS NULL
     UNION ALL
@@ -75,7 +80,8 @@ it.skipIf(!requested)('compares a bounded native Workforce reader with disjoint 
   const measurements:unknown[]=[];
   try{
    for(const step of ['original','candidate','candidate-warm','restored']as const){
-    phase(step);if(step==='candidate')await owner.client.unsafe(candidate);
+    phase(step);if(step==='original')await owner.client.unsafe(original.ddl);
+    if(step==='candidate')await owner.client.unsafe(candidate);
     if(step==='restored')await owner.client.unsafe(original.ddl);
     const began=performance.now();for(let index=0;index<25;index++)expect(await read()).toEqual(expected);
     measurements.push({phase:step,reads:25,elapsedMs:performance.now()-began,exactSelectedRows:true});
@@ -93,9 +99,9 @@ it.skipIf(!requested)('compares a bounded native Workforce reader with disjoint 
     }
    }
   }finally{
-   await owner.client.unsafe(original.ddl);
+   await owner.client.unsafe(installed.ddl);
    const [restored]=await owner.client`select pg_get_functiondef(oid)as ddl,prosrc as body,proowner::regrole::text as owner,proacl::text as acl from pg_proc where oid='app._access_workforce_list_rows(uuid[])'::regprocedure`;
-   expect(restored).toEqual(original);report.originalFunctionRestored=true;save();
+   expect(restored).toEqual(installed);report.installedFunctionRestored=true;save();
   }
   const drifts=[
    ['body',original.ddl.replace(original.body,()=>original.body+'\n-- unreviewed predecessor probe\n')],
@@ -105,9 +111,9 @@ it.skipIf(!requested)('compares a bounded native Workforce reader with disjoint 
    ['configuration','alter function app._access_workforce_list_rows(uuid[]) set search_path=public,pg_temp'],
   ];
   for(const [,ddl]of drifts){
-   await expect(owner.client.begin(async tx=>{await tx.unsafe(ddl);await tx.unsafe(candidate);})).rejects.toMatchObject({code:'55000'});
+   await expect(owner.client.begin(async tx=>{await tx.unsafe(original.ddl);await tx.unsafe(ddl);await tx.unsafe(candidate);})).rejects.toMatchObject({code:'55000'});
    const [after]=await owner.client`select pg_get_functiondef(oid)as ddl,prosrc as body,proowner::regrole::text as owner,proacl::text as acl from pg_proc where oid='app._access_workforce_list_rows(uuid[])'::regprocedure`;
-   expect(after).toEqual(original);
+   expect(after).toEqual(installed);
   }
   report.predecessorDriftsRefused=drifts.map(([kind])=>kind);
   phase('complete');

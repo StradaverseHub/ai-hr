@@ -4796,6 +4796,13 @@
       "when": 1793330001538,
       "tag": "2138_ai_pause_company_discovery",
       "breakpoints": true
+    },
+    {
+      "idx": 1392,
+      "version": "7",
+      "when": 1793330001539,
+      "tag": "2139_workforce_bounded_read_plan",
+      "breakpoints": true
     }
   ]
 }

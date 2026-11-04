@@ -1,5 +1,28 @@
 # Coordinated migration reservations
 
+## Bounded Workforce access plan — 5 November 2026 (unapplied)
+
+`codex/performance-workforce-bounded-migration-20261105` reserves
+`2139_workforce_bounded_read_plan`, idx1392 / when1793330001539 /
+SHA256 `da60091cd9f282910810fc493c3edc5fb124819899d3e91f1d2376f704f0ac75`.
+Fresh claims cover2403 heads,440 committed journals,603 migration trees and234 readable
+worktrees through2138 / idx1391 / when1793330001538. Foreign malformed WIP and literal
+bounds remain untouched. Fresh read-only staging inspection matches all671 ordered
+canonical identities through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e.
+
+Guarded native experiment41933862555 used50000 employments and retained every native
+trigger. Twenty-five selected-person reads measured491ms original,154ms candidate,
+152ms warm and475ms after exact restoration. Selected DTO/order, the complete full-list
+digest, archived/forged refusals and private owner/ACL matched. Five predecessor/body,
+volatility, application/public EXECUTE and configuration drifts refused with55000 and
+rolled back. These are component measurements, not million-row page or500-user acceptance.
+
+The exact tested append changes only the private helper's employment access plan into
+mutually exclusive full-list/selected-ID branches. JSON projection, purpose/tenant guards,
+NULL semantics, public wrappers and limits, owner and private ACL remain unchanged.
+Installed native and populated-upgrade checks remain required. Earlier SQL bytes are
+unchanged. Complete BOARD roles is excluded; no deployment is authorized.
+
 ## Necessary AI pause company discovery — 5 November 2026 (unapplied)
 
 `codex/performance-ai-pause-purpose-context-20261105` reserves
