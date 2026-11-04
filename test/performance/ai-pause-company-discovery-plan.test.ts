@@ -1,4 +1,4 @@
-/** Reversible explicit query-fence experiment. All native scope/pause owners remain authoritative. */
+/** Reversible pause-only discovery experiment. All native scope/pause owners remain authoritative. */
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -31,8 +31,10 @@ it.skipIf(!requested)('compares necessary company discovery for actual pause che
  const context=(u:typeof users[number]):SessionContext=>({...base,userId:u.id,personId:u.personId,roles:[u.role],grants:[{role:u.role,companyId:u.companyId}]});
  await setModule(b.tenantId,'assistant','active');await setModule(foreign.tenantId,'assistant','active');
  await setAiFeature(base,'hr_assistant',true);await setAiFeature(foreignAdmin,'hr_assistant',true);
- const [installed]=await owner.client<{ddl:string;attributes:Record<string,unknown>}[]>`select pg_get_functiondef(oid)as ddl,to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app.ai_action_unpaused(text,boolean)'::regprocedure`;
- const [contextOwner]=await owner.client<{body:string;ddl:string;attributes:Record<string,unknown>;owner:string}[]>`select prosrc as body,pg_get_functiondef(oid)as ddl,to_jsonb(p)-'prosrc'as attributes,proowner::regrole::text as owner from pg_proc p where oid='app._ai_control_context(text,boolean)'::regprocedure`;
+ // Compare semantic defaults as well as every other pg_proc attribute; AST source offsets
+ // necessarily move when pg_get_functiondef is executed again. Never omit default semantics.
+ const [installed]=await owner.client<{ddl:string;attributes:Record<string,unknown>}[]>`select pg_get_functiondef(oid)as ddl,(to_jsonb(p)-'prosrc'-'proargdefaults')||jsonb_build_object('proargdefaults',pg_get_expr(p.proargdefaults,0)) as attributes from pg_proc p where oid='app.ai_action_unpaused(text,boolean)'::regprocedure`;
+ const [contextOwner]=await owner.client<{body:string;ddl:string;attributes:Record<string,unknown>;owner:string}[]>`select prosrc as body,pg_get_functiondef(oid)as ddl,(to_jsonb(p)-'prosrc'-'proargdefaults')||jsonb_build_object('proargdefaults',pg_get_expr(p.proargdefaults,0))as attributes,proowner::regrole::text as owner from pg_proc p where oid='app._ai_control_context(text,boolean)'::regprocedure`;
  const helper='app.performance_ai_pause_context_'+randomUUID().replaceAll('-','');let helperCreated=false;
  const optimized=`WITH navigation_visible AS MATERIALIZED(SELECT unnest(app.visible_employment_ids())AS id)
  SELECT coalesce(array_agg(c.id ORDER BY c.id),'{}') INTO company_ids FROM company c WHERE c.tenant_id=tid
@@ -78,7 +80,7 @@ it.skipIf(!requested)('compares necessary company discovery for actual pause che
   await owner.client.unsafe(original.ddl);
   const expected=await measure('original');await measureUnpaused('original');
   await owner.client.unsafe(candidate);expect(await measure('candidate')).toEqual(expected);await measureUnpaused('candidate');expect(await measure('candidate-warm')).toEqual(expected);await measureUnpaused('candidate-warm');
-  const [metadata]=await owner.client`select to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app.ai_action_unpaused(text,boolean)'::regprocedure`;
+  const [metadata]=await owner.client`select (to_jsonb(p)-'prosrc'-'proargdefaults')||jsonb_build_object('proargdefaults',pg_get_expr(p.proargdefaults,0)) as attributes from pg_proc p where oid='app.ai_action_unpaused(text,boolean)'::regprocedure`;
   expect(metadata.attributes).toEqual(original.attributes);
   await setAiFeature(base,'hr_assistant',false);expect(await check(context(users[4]))).toBe(false);expect(await check(foreignAdmin)).toBe(true);await setAiFeature(base,'hr_assistant',true);
   await setAiAllowance(base,{kind:'user',subjectId:users[4].id,enabled:false,dailyRequests:null,monthlyTokens:null});
@@ -153,7 +155,16 @@ it.skipIf(!requested)('compares necessary company discovery for actual pause che
    }finally{if(pending)await Promise.allSettled([pending]);await pause(companies[1].id,true);}
   }
   stateChecks.push('company pause published while native reader waits is visible after the barrier');
-  const [finalMetadata]=await owner.client`select to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app.ai_action_unpaused(text,boolean)'::regprocedure`;
+  for(const ddl of [original.ddl,candidate]){
+   await owner.client.unsafe(ddl);
+   const [defaultCall]=await withTenant(context(users[54]),async tx=>{
+    await tx.execute(sql`set transaction read only`);await assertAssignedWorkPrincipalTx(tx,context(users[54]));
+    return tx.execute<{allowed:boolean}>(sql`select app.ai_action_unpaused('hr_assistant')as allowed`);
+   });
+   expect(defaultCall.allowed).toBe(await check(context(users[54]),true));
+  }
+  stateChecks.push('omitted forced-pause argument retains the canonical false default');
+  const [finalMetadata]=await owner.client`select (to_jsonb(p)-'prosrc'-'proargdefaults')||jsonb_build_object('proargdefaults',pg_get_expr(p.proargdefaults,0)) as attributes from pg_proc p where oid='app.ai_action_unpaused(text,boolean)'::regprocedure`;
   expect(finalMetadata.attributes).toEqual(original.attributes);
   const [finalRuns]=await owner.client`select count(*)::int as count from ai_model_run`;expect(finalRuns.count).toBe(0);
   measurements.push({phase:'scope-change-contracts',checks:stateChecks,exactAudience:true});
@@ -162,7 +173,7 @@ it.skipIf(!requested)('compares necessary company discovery for actual pause che
   await owner.client.unsafe(installed.ddl);
   const [restored]=await owner.client`select pg_get_functiondef('app.ai_action_unpaused(text,boolean)'::regprocedure)as ddl`;
   expect(restored.ddl).toBe(installed.ddl);
-  const [unchangedContext]=await owner.client`select pg_get_functiondef(oid)as ddl,to_jsonb(p)-'prosrc'as attributes from pg_proc p where oid='app._ai_control_context(text,boolean)'::regprocedure`;
+  const [unchangedContext]=await owner.client`select pg_get_functiondef(oid)as ddl,(to_jsonb(p)-'prosrc'-'proargdefaults')||jsonb_build_object('proargdefaults',pg_get_expr(p.proargdefaults,0))as attributes from pg_proc p where oid='app._ai_control_context(text,boolean)'::regprocedure`;
   expect(unchangedContext).toEqual({ddl:contextOwner.ddl,attributes:contextOwner.attributes});
   if(helperCreated)await owner.client.unsafe('drop function '+helper+'(text,boolean,boolean)');
   const [absent]=await owner.client`select to_regprocedure(${helper+'(text,boolean,boolean)'})as identity`;expect(absent.identity).toBeNull();
