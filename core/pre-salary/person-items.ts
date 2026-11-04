@@ -317,7 +317,7 @@ async function approvalsGroup(ctx:SessionContext,scopeIds:readonly string[]|unde
  const modules={attendance:moduleState(ctx,'attendance'),claims:moduleState(ctx,'claims')};
  const modulesRead={attendance:modules.attendance==='on',claims:modules.claims==='on',performance:false,rewards:false};
  const scope=scopeIds?[...scopeIds]:undefined;
- const tasks=await settle(()=>preview?pendingTaskSummary(ctx,scope,modulesRead,{noticeAcknowledgements:false}):listPendingTasks(ctx,scope,modulesRead,{noticeAcknowledgements:false}).then(items=>({items,claimTotal:items.filter(task=>task.kind==='claim').length})));
+ const tasks=await settle<{items:readonly PendingTaskItem[];claimTotal:number}>(()=>preview?pendingTaskSummary(ctx,scope,modulesRead,{noticeAcknowledgements:false}):listPendingTasks(ctx,scope,modulesRead,{noticeAcknowledgements:false}).then(items=>({items,claimTotal:items.filter(task=>task.kind==='claim').length})));
  if(!tasks.ok)return failed;
  const items=tasks.value.items.flatMap(task=>{const kind=APPROVAL_KIND[task.kind];
   return kind?[item({key:`${kind}:${task.id}`,group:'approvals',kind,state:'todo',date:null,due:period.cutOff,label:task.subjectName,href:task.linkPath})]:[];});
