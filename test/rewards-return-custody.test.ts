@@ -20,6 +20,8 @@ import {createRewardUnit,getRewardUnit,listRewardUnits,saveRewardEntry,decideRew
 import {emptyFacts,type RewardRole} from '../packs/rewards/model';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {assertAiPrincipalTx} from '../core/ai-principal';
+import {readRewardsReturnChoicesTx} from '../core/assistant-actions/rewards-return-source';
 beforeAll(migrateRewardMembershipFixture);
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
 const addDays = (iso: string, days: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
@@ -70,6 +72,62 @@ describe('Encrypted annual Rewards return custody', () => {
   const confirmation=(r:{actionId:string;reviewedDigest:string})=>({action,contractVersion:1,actionId:r.actionId,reviewedDigest:r.reviewedDigest});
   const retirement=(r:{actionId:string})=>({action,contractVersion:1,actionId:r.actionId});
   async function custody(id:string){const [r]=await owner.db.execute(sql`select r.state,r.intent_digest,r.reviewed_digest,r.rewards_posted_event_id,r.rewards_return_decision_id,r.rewards_return_snapshot,r.rewards_return_completed_xid::text as sealed_xid,r.rewards_review_person_ids,(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies from app.assistant_own_leave_review r where r.id=${id}::uuid`);return r;}
+  it('qualifies shared read-only annual choices/index while native command guards and busy refusal remain intact',async()=>{
+    const review=await prepare(),before=await view();
+    const identitySignature='app._assistant_rewards_return_review_identity(uuid,boolean,boolean)',choicesSignature='app.assistant_rewards_return_choices()',indexSignature='app.assistant_rewards_return_reviews_index()';
+    const snapshot=async(name:string)=>{const [r]=await owner.client<{ddl:string;attributes:Record<string,unknown>}[]>`
+      select pg_get_functiondef(oid)as ddl,to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid=${name}::regprocedure`;return r;};
+    const identity=await snapshot(identitySignature),choices=await snapshot(choicesSignature),index=await snapshot(indexSignature);
+    const exclusive="pg_try_advisory_xact_lock(hashtextextended('access-configuration:'||app.current_tenant_id()::text,0))";
+    expect(identity.ddl.split(exclusive)).toHaveLength(2);
+    const shared="pg_try_advisory_xact_lock_shared(hashtextextended('access-configuration:'||app.current_tenant_id()::text,0))";
+    const candidateIdentity=identity.ddl.replace(exclusive,`(CASE WHEN p_write IS FALSE AND current_setting('transaction_read_only')='on' THEN ${shared} ELSE ${exclusive} END)`);
+    const call='app._assistant_rewards_return_review_identity(NULL,false)';expect(choices.ddl.split(call)).toHaveLength(2);
+    const candidateChoices=choices.ddl.replace(call,'app._assistant_rewards_return_review_identity(NULL,false,false)');
+    const readIndex=(who=admin,readOnly=true)=>withTenant(who,async tx=>{
+      if(readOnly)await tx.execute(sql`set transaction read only`);
+      await assertAiPrincipalTx(tx,who);
+      return Array.from(await tx.execute(sql`select * from app.assistant_rewards_return_reviews_index()`));
+    });
+    const readChoices=(readOnly=true)=>withTenant(admin,async tx=>{
+      if(readOnly)await tx.execute(sql`set transaction read only`);
+      return readRewardsReturnChoicesTx(tx,admin);
+    });
+    const underReader=<T,>(work:()=>Promise<T>)=>owner.client.begin(async holder=>{
+      await holder`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`;return work();
+    });
+    try{
+      const expectedIndex=await readIndex(admin,false),expectedChoices=await readChoices(false);
+      expect(expectedIndex).toHaveLength(1);expect(expectedIndex[0].action_id).toBe(review.actionId);
+      expect(expectedChoices.units.map(unit=>unit.unitId)).toContain(unitId);
+      const oldBusy=await underReader(()=>readIndex()).then(()=>null,(error:unknown)=>error);expect(pgSqlState(oldBusy)).toBe('55P03');
+      await expect(readChoices()).rejects.toBeTruthy();
+      await owner.client.unsafe(candidateIdentity);await owner.client.unsafe(candidateChoices);
+      expect(await underReader(()=>readIndex())).toEqual(expectedIndex);
+      expect(await underReader(()=>readChoices())).toEqual(expectedChoices);
+      expect(await readIndex(admin,false)).toEqual(expectedIndex);expect(await readChoices(false)).toEqual(expectedChoices);
+      for(const readOnly of [true,false])await withTenant(admin,async tx=>{
+        if(readOnly)await tx.execute(sql`set transaction read only`);
+        await tx.execute(sql`select * from app.assistant_rewards_return_reviews_index()`);
+        const observed=await owner.client.begin(async observer=>{
+          const [r]=await observer`select pg_try_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))as reader,
+            pg_try_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))as writer`;return r;
+        });expect(observed).toEqual({reader:readOnly,writer:false});
+      });
+      await owner.client.begin(async writer=>{
+        await writer`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+        const refused=await withTenant(admin,tx=>tx.execute(sql`select * from app.assistant_rewards_return_reviews_index()`)).then(()=>null,(error:unknown)=>error);
+        expect(pgSqlState(refused)).toBe('55P03');
+      });
+      expect((await snapshot(identitySignature)).attributes).toEqual(identity.attributes);
+      expect((await snapshot(choicesSignature)).attributes).toEqual(choices.attributes);expect(await snapshot(indexSignature)).toEqual(index);
+      expect(await view()).toEqual(before);expect(await custody(review.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});
+      const done=await reviews.confirm(admin,confirmation(review));expect(done.kind).toBe('completed');expect((await view()).unit.status).toBe('draft');
+    }finally{
+      await owner.client.unsafe(choices.ddl);await owner.client.unsafe(identity.ddl);
+      expect(await snapshot(identitySignature)).toEqual(identity);expect(await snapshot(choicesSignature)).toEqual(choices);expect(await snapshot(indexSignature)).toEqual(index);
+    }
+  });
   it('uses real encrypted custody and SAME native return, captures every actual participant and replays without another effect',async()=>{const r=await prepare(),before=await view(),pending=await custody(r.actionId);expect(pending).toMatchObject({state:'awaiting_confirmation',bodies:1,rewards_return_snapshot:expect.any(Object)});expect(JSON.stringify(r)).not.toMatch(/Fictional Reward Employee|basicSalary|nativeDecisionDigest|unitStableHash|wrappedDek|ciphertext/);const [sealed]=await owner.db.execute<{ciphertext:string}>(sql`select ciphertext from app.assistant_own_leave_review_content where action_id=${r.actionId}::uuid`);expect(sealed.ciphertext).not.toContain(reason);const done=await reviews.confirm(admin,confirmation(r));if(done.kind!=='completed')throw Error('Expected completed annual return');expect(done.receipt.receipt).toMatchObject({unitId,returnedRevision:r.content.revision,currentRevision:r.content.revision+1,currentStatus:'draft'});const after=await view();expect(after.unit.status).toBe('draft');expect(after.rows).toEqual(before.rows);expect(await custody(r.actionId)).toMatchObject({state:'completed',bodies:0,rewards_return_snapshot:null,rewards_review_person_ids:null,sealed_xid:expect.any(String)});const targets=await owner.db.execute<{kind:string;id:string}>(sql`select t.kind,t.target_id id from app.native_outcome_source_target t join app.native_outcome_source_capture c on c.id=t.capture_id where c.source_id=${r.actionId}::uuid order by t.kind,t.target_id`);expect(targets.length).toBeGreaterThan(0);const actual=await owner.db.execute<{kind:string;id:string}>(sql`select 'employment' kind,e.id from employment e join reward_entry re on re.employment_id=e.id and re.tenant_id=e.tenant_id where re.unit_id=${unitId}::uuid union select 'person' kind,e.person_id id from employment e join reward_entry re on re.employment_id=e.id and re.tenant_id=e.tenant_id where re.unit_id=${unitId}::uuid union select 'person' kind,${admin.personId}::uuid id order by kind,id`);expect(Array.from(targets)).toEqual(Array.from(actual));expect(await reviews.confirm(admin,confirmation(r))).toEqual(done);expect(await reviews.reopen(admin,r.actionId)).toEqual(done);await expect(reviews.discard(admin,retirement(r))).rejects.toThrow();});
   it('admits actual BG seat without an HR title and never grants another stage seat an override',async()=>{await enable(actors.bg!);const revision=await submit(),human={action,contractVersion:1 as const,unitId,revision,reason,confirmWholeAnnualReview:true as const};await expect(reviews.prepare(admin,human)).rejects.toThrow();const r=await reviews.prepare(actors.bg!,human);if(r.kind!=='prepared')throw Error();expect((await reviews.confirm(actors.bg!,confirmation(r.review))).kind).toBe('completed');});
   it('refuses changed public digest, foreign USER and SYSTEM without native return',async()=>{const r=await prepare(),before=(await view()).unit;await expect(reviews.confirm(admin,{...confirmation(r),reviewedDigest:'f'.repeat(64)})).rejects.toThrow();await expect(reviews.reopen(actors.bu!,r.actionId)).rejects.toThrow();await expect(reviews.prepare({...admin,userId:undefined},r.content)).rejects.toThrow();expect((await view()).unit).toEqual(before);});
