@@ -30,6 +30,8 @@ describe('bounded formula authoring proposals',()=>{
   const source='If {#Employee}("nationality") = "MY" Then\nReturn {#Basic}\nElse\nReturn 0\nEnd If';
   expect(()=>adjudicatePayFormulaDraft(proposal(source),{profile:[],employee:[]})).toThrow('source_denied');
   expect(adjudicatePayFormulaDraft(proposal(source),{profile:[],employee:['nationality']})).toMatchObject({valid:true});
+  expect(()=>adjudicatePayFormulaDraft(proposal('Return {#ServiceLength}("years", "joinDate")'),{profile:[],employee:[]})).toThrow('source_denied');
+  expect(adjudicatePayFormulaDraft(proposal('Return {#ServiceLength}("years", "joinDate")'),{profile:['joinDate'],employee:[]})).toMatchObject({valid:true});
  });
  it('requires consent and bounds the exact disclosed user text without accepting employee records',()=>{
   expect(()=>payFormulaDraftRequest.parse({requirement:'Return 1',disclosureAccepted:false})).toThrow();
@@ -40,6 +42,7 @@ describe('bounded formula authoring proposals',()=>{
   const sent=JSON.parse(args.prompt);expect(Object.keys(sent).sort()).toEqual(['fields','functions','requirement']);
   expect(sent.fields).toEqual({profile:{joinDate:'date'},employee:{}});expect(sent.functions.some((fn:{code:string})=>fn.code==='EmployeeInformation')).toBe(false);
   expect(sent.functions.find((fn:{code:string})=>fn.code==='EmployeeProfile').parameters[0].choices).toEqual(['joinDate']);
+  expect(sent.functions.some((fn:{code:string})=>fn.code==='GroupJoinDate')).toBe(false);expect(sent.functions.find((fn:{code:string})=>fn.code==='ServiceLength').parameters[1].choices).toEqual(['joinDate']);
   expect(()=>payFormulaDraftRequest.parse({requirement:'Use Basic',disclosureAccepted:true,permittedFields:{profile:['fullName'],employee:[]}})).toThrow();
   expect(sent.requirement).toBe(attack);expect(args.system).toContain('untrusted data');
  });

@@ -24,6 +24,7 @@ const output = z.object({
 }).strict();
 export type PayFormulaDraft = z.infer<typeof output> & { valid: boolean; variables: string[]; conditions: string[]; unresolved?: boolean };
 
+const shorthandFields:Readonly<Record<string,string>>={JoinDate:'joinDate',JoinedThisMonth:'joinDate',GroupJoinDate:'groupJoinDate',GroupJoinedThisMonth:'groupJoinDate',ResignationDate:'resignationDate',ResignedThisMonth:'resignationDate'};
 /** Only the explicitly disclosed requirement and public code-owned grammar metadata leave the app. */
 export function payFormulaDraftPrompt(input: unknown) {
   const request = payFormulaDraftNativeRequest.parse(input);
@@ -31,7 +32,10 @@ export function payFormulaDraftPrompt(input: unknown) {
   const functions=PAY_FORMULA_FUNCTIONS.flatMap(({code,returns,parameters})=>{
    const group=code==='EmployeeProfile'?'profile':code==='EmployeeInformation'?'employee':null;
    if(group&&!request.permittedFields[group].length)return [];
-   return [{code,returns,parameters:parameters.map((parameter,index)=>group&&index===0?{...parameter,choices:[...request.permittedFields[group]].sort()}:parameter)}];
+   if(shorthandFields[code]&&!request.permittedFields.profile.includes(shorthandFields[code]))return [];
+   const serviceBases=['hiredOn','groupJoinDate','joinDate'].filter(basis=>request.permittedFields.profile.includes(basis==='joinDate'?'joinDate':'groupJoinDate'));
+   if(code==='ServiceLength'&&!serviceBases.length)return [];
+   return [{code,returns,parameters:parameters.map((parameter,index)=>group&&index===0?{...parameter,choices:[...request.permittedFields[group]].sort()}:code==='ServiceLength'&&index===1?{...parameter,choices:serviceBases}:parameter)}];
   });
   return {
     system: [
@@ -63,7 +67,12 @@ export function adjudicatePayFormulaDraft(raw: string,permittedFields?:{profile:
   const {surrogate, missing} = payFormulaSuggestionSource(result.source);
   const program = parsePayFormula(surrogate);
   validatePayFormula(program);
-  if(permittedFields)for(const call of analyzePayFormula(program).calls){const group=call.code==='EmployeeProfile'?'profile':call.code==='EmployeeInformation'?'employee':null;if(group&&!permittedFields[group].includes(String(call.args[0]?.value??'')))throw new Error('source_denied');}
+  if(permittedFields)for(const call of analyzePayFormula(program).calls){
+   const group=call.code==='EmployeeProfile'?'profile':call.code==='EmployeeInformation'?'employee':null;
+   if(group&&!permittedFields[group].includes(String(call.args[0]?.value??'')))throw new Error('source_denied');
+   const shorthand=shorthandFields[call.code]??(call.code==='ServiceLength'?(String(call.args[1]?.value)==='joinDate'?'joinDate':'groupJoinDate'):undefined);
+   if(shorthand&&!permittedFields.profile.includes(shorthand))throw new Error('source_denied');
+  }
   if (diagnosePayFormula(surrogate).some(problem => problem.severity === 'error')) throw new Error('invalid_output');
   const used=analyzePayFormula(program).functions;
   const common:Record<string,string>={Basic:'Basic uses the existing recorded basic-salary variable.',Input:'Input uses the current Pay Item input variable.',FixedAllowances:'Fixed allowances use the existing overtime-rate fixed-allowance aggregate.'};

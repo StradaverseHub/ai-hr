@@ -31,3 +31,11 @@
 .probation-stats a[data-flag=kpi_submit],.probation-stats a[data-flag=kpi_ack]{border-inline-start-color:var(--primary)}
 @media(max-width:1000px){.probation .probation-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.probation .probation-filter-grid{grid-template-columns:minmax(0,1fr)}}
+
+.v9-workspace.probation{font-family:var(--font-sans);min-width:0}
+.probation .probation-stats a{white-space:normal;min-width:0}
+.probation .probation-stats strong{flex:none}
+@media(max-width:640px){
+ .v9-workspace.probation .probation-list-table table tbody td{height:auto;min-height:0;overflow-wrap:anywhere}
+ .probation .probation-list-table .v9-badge{white-space:normal;max-width:100%}
+}

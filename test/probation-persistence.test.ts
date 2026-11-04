@@ -648,6 +648,8 @@ describe('scoped Probation employee-name filtering',()=>{
   const[source]=await owner.db.execute<{data:Record<string,unknown>}>(sql`select data from probation_case where id=${ids.caseId}::uuid`);
   const data={...source.data,id,employmentId:second.employmentId,sourceKey:'employment:'+second.employmentId,gradeAtStart:'15',endOn:'2027-01-31',facts:{employeeName:'Fictional Alice Workshop',businessGroupId:bg,businessGroup:'Second group',businessUnitId:bu,businessUnit:'Second unit',departmentId:b.deptB,department:'Second department',holders:{employee:second.userId}}};
   await owner.db.execute(sql`insert into probation_case(id,tenant_id,company_id,employment_id,source_key,settings_id,form_id,route_id,data) values(${id}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${second.employmentId}::uuid,${data.sourceKey},${ids.settings}::uuid,${ids.form}::uuid,${ids.route}::uuid,${JSON.stringify(data)}::jsonb)`);
+  expect((await probationSummaryRows(admin)).rows).toEqual([]); // Setup permission is not participant authority.
+  await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) values(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'gbs','2026-01-01','Canonical People Ops tracker fixture')`);
   const page=await probationSummaryRows(admin,{limit:1});expect(page.rows).toHaveLength(1);expect(page.total).toBe(2);expect(page.options.grades).toEqual(['12','15']);expect(page.options.businessGroups).toContainEqual({id:bg,name:'Second group'});
   expect((await probationSummaryRows(admin,{search:'ALICE WORK'})).rows.map(row=>row.id)).toEqual([id]);
   expect((await probationSummaryRows(staff.ctx,{search:'Alice'})).rows).toEqual([]);

@@ -45,7 +45,7 @@ describe('formula authoring provider admission',()=>{
  });
  it('refuses field metadata disabled after preparation before transport',async()=>{
   beforeAdmission=async()=>{await owner.db.execute(sql`insert into pay_formula_personnel_registration(tenant_id,source_key,ordinal,label,description,enabled,created_by) values(${base.tenantId}::uuid,'companyId',1,'Company','Fictional registration policy',false,${base.adminUserId}::uuid)`);};
-  await expect(draftPayFormula(ctx,input)).rejects.toThrow('source_changed');expect(openaiAdapter.generate).not.toHaveBeenCalled();
+  await expect(draftPayFormula(ctx,input)).rejects.toThrow('The current AI source access could not be confirmed.');expect(openaiAdapter.generate).not.toHaveBeenCalled();
  });
  it('refuses changed outbound bytes even after native source preparation',async()=>{retarget=true;await expect(draftPayFormula(ctx,input)).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();});
  it.each(['module','login'] as const)('rechecks %s authority after the provider reply',async kind=>{
