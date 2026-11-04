@@ -1,6 +1,7 @@
 /** Salary-free self identity for employee Home. This is a read projection, not another personnel owner. */
 import {and,eq,sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {lockAccessConfigurationReadTx} from './access-configuration-lock';
 import {person} from '../db/schema';
 import {myOwnEmploymentSubjectsTx,type OwnEmploymentSubject} from './read';
 import {hasPersonPhoto} from './person-photo';
@@ -24,15 +25,17 @@ type OwnSelection=
  * Multiple own employments require an explicit choice; a foreign/stale selector never falls back.
  */
 export async function ownHomeSubjectSelection(ctx:SessionContext,requestedEmploymentId?:string):Promise<OwnSelection>{
+ return withTenant(ctx,tx=>ownHomeSubjectSelectionTx(tx,ctx,requestedEmploymentId),{readOnlySnapshot:true});
+}
+async function ownHomeSubjectSelectionTx(tx:Tx,ctx:SessionContext,requestedEmploymentId?:string):Promise<OwnSelection>{
  if(!ctx.userId)throw new HomeAccessError('authentication');
+ await lockAccessConfigurationReadTx(tx,ctx.tenantId);
  // The role/scope snapshot does not attest a caller's personId. Bind it independently through the
  // canonical actual-login predicate before an HR principal can query the own-subject inventory.
- const subjects=await withTenant(ctx,async tx=>{
-  const [principal]=await tx.execute<{ok:boolean}>(sql`SELECT (app.principal_snapshot_current()
+ const [principal]=await tx.execute<{ok:boolean}>(sql`SELECT (app.principal_snapshot_current()
    AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok`);
-  if(!principal?.ok)throw new HomeAccessError('employmentUnavailable');
-  return myOwnEmploymentSubjectsTx(tx,ctx);
- },{readOnlySnapshot:true});
+ if(!principal?.ok)throw new HomeAccessError('employmentUnavailable');
+ const subjects=await myOwnEmploymentSubjectsTx(tx,ctx);
  if(requestedEmploymentId!==undefined){
   const subject=subjects.find(row=>row.employmentId===requestedEmploymentId);
   if(!subject)throw new HomeAccessError('employmentUnavailable');
@@ -53,12 +56,20 @@ export async function requireOwnHomeSubject(ctx:SessionContext,employmentId?:str
 }
 
 export async function readEmployeeHomeIdentity(ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeIdentity>{
- const selection=await ownHomeSubjectSelection(ctx,requestedEmploymentId);
+ return withTenant(ctx,tx=>readEmployeeHomeIdentityTx(tx,ctx,requestedEmploymentId),{readOnlySnapshot:true});
+}
+/** Compose only inside a complete read-only snapshot; never carry this identity across requests.
+ * All subject, actual-login, role and dated-company owners remain inside the same transaction. */
+export async function readEmployeeHomeIdentityTx(tx:Tx,ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeIdentity>{
+ const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='repeatable read'
+  and current_setting('transaction_read_only')='on' as safe`);
+ if(snapshot?.safe!==true)throw new HomeAccessError('employmentUnavailable');
+ const selection=await ownHomeSubjectSelectionTx(tx,ctx,requestedEmploymentId);
  // Flattened roles discard their company scope. For a selected employment use the canonical SQL
  // grant/subtree predicates so a manager or HR grant elsewhere cannot choose this company's policy.
  let role=resolveDashboardRole({admin:isAdmin(ctx),managerRole:(ctx.roles??[]).includes('manager'),hasDirectReports:false});
  if(selection.subject){
-  const [proof]=await withTenant(ctx,tx=>tx.execute(sql`SELECT app.own_home_dashboard_role(${selection.subject.employmentId}::uuid) AS role`)) as unknown as {role:EmployeeHomeIdentity['role']|null}[];
+  const [proof]=await tx.execute(sql`SELECT app.own_home_dashboard_role(${selection.subject.employmentId}::uuid) AS role`) as unknown as {role:EmployeeHomeIdentity['role']|null}[];
   if(!proof?.role||!['employee','manager','hr_admin'].includes(proof.role))throw new HomeAccessError('employmentUnavailable');
   role=proof.role;
  }

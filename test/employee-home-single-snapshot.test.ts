@@ -6,6 +6,7 @@ import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {readOwnEmployeeHomeConfiguration} from '../core/employee-home-configuration';
+import {readEmployeeHomeIdentityTx} from '../core/employee-home';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,resetDb,seedBase} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('reads selected Home role, active own employment and configuration in one read-only app snapshot',async()=>{
@@ -21,4 +22,11 @@ it('reads selected Home role, active own employment and configuration in one rea
   expect(await readOwnEmployeeHomeConfiguration(ctx,employee.employmentId)).toMatchObject({employmentId:employee.employmentId,companyId:b.companyId,audienceRole:'employee',ordinal:0});
   expect(observed).toEqual([{role:'ai_hr_app',isolation:'repeatable read',readOnly:true}]);
  }finally{spy.mockRestore();}
+ // A future caller cannot reuse the composable reader from a command transaction or
+ // substitute READ COMMITTED for its complete read-only repeatable snapshot.
+ await expect(database.withTenant(ctx,tx=>readEmployeeHomeIdentityTx(tx,ctx,employee.employmentId))).rejects.toMatchObject({code:'employmentUnavailable'});
+ await expect(database.withTenant(ctx,async tx=>{
+  await tx.execute(sql`set transaction read only`);
+  return readEmployeeHomeIdentityTx(tx,ctx,employee.employmentId);
+ })).rejects.toMatchObject({code:'employmentUnavailable'});
 });
