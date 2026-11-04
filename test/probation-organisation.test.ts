@@ -50,8 +50,11 @@ describe('versioned Probation organisation vocabulary',()=>{
   const facts=await read();expect(facts).toMatchObject({organisationMapping:'personnel-v2',businessGroupId:unitId,businessUnitId:b.companyId,businessGroup:'Fictional PM Unit'});
   await saveProbationConfiguration(ctx,{companyId:b.companyId,kind:'settings',data:oldSettings,publish:true,expectedVersion:1});
   expect((await probationSetup(ctx,b.companyId)).settings?.data.organisationMapping).toBe('legacy-v1');
-  await refusesRule(saveProbationConfiguration(ctx,{companyId:b.companyId,kind:'settings',data:{...oldSettings,organisationMapping:'personnel-v2'},publish:true,expectedVersion:2}),'Invalid Personnel Business Unit identity');
   const replacement={...DEFAULT_PROBATION_CONFIG,organisationMapping:'personnel-v2' as const,overrides:[{businessGroupId:unitId,businessUnitId:b.companyId,kpiGate:'off' as const}]};
+  // Isolate each invalid identity kind: jsonb object iteration does not promise which of two
+  // invalid fields is checked first, and both distinct guards must refuse without saving a version.
+  await refusesRule(saveProbationConfiguration(ctx,{companyId:b.companyId,kind:'settings',data:{...replacement,overrides:[{...replacement.overrides[0],businessGroupId:b.companyId}]},publish:true,expectedVersion:2}),'Invalid Personnel Business Unit identity');
+  await refusesRule(saveProbationConfiguration(ctx,{companyId:b.companyId,kind:'settings',data:{...replacement,overrides:[{...replacement.overrides[0],businessUnitId:unitId}]},publish:true,expectedVersion:2}),'Invalid company identity');
   await saveProbationConfiguration(ctx,{companyId:b.companyId,kind:'settings',data:replacement,publish:true,expectedVersion:2});
   const [history]=await owner.db.execute<{n:number}>(sql`select count(*)::int n from probation_configuration where tenant_id=${b.tenantId}::uuid and data->>'organisationMapping'='legacy-v1'`);expect(history.n).toBe(2);
   const options=await probationAdministrationOptions(ctx);expect(options.businessGroups).toContainEqual(expect.objectContaining({id:unitId,name:'Fictional PM Unit'}));expect(options.businessUnits).toContainEqual(expect.objectContaining({id:b.companyId,companyId:b.companyId}));expect(options.personnelBusinessUnits).toContainEqual(expect.objectContaining({id:unitId}));
