@@ -7186,14 +7186,41 @@ export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:str
     // request RLS and live decision proof below; this result never authorizes a command or is cached.
     const [candidate]=await tx.execute<{possible:boolean}>(sql`select app.may_have_attendance_task_metadata() as possible`);
     if(candidate?.possible===false)return [];
-    const rows=await tx.select({id:attendanceCorrection.id,employmentId:attendanceCorrection.employmentId,
-      personId:sql<string>`subject.person_id`,employee:sql<string|null>`subject.employee`,createdAt:attendanceCorrection.createdAt})
-      .from(attendanceCorrection)
-      .innerJoin(sql`LATERAL app.attendance_application_subject(${attendanceCorrection.id}) AS subject`,sql`true`)
-      .where(and(eq(attendanceCorrection.tenantId,ctx.tenantId),eq(attendanceCorrection.status,'pending'),
-        sql`NOT app.is_self_person(subject.person_id)`,companyIds===undefined?undefined:companyIds.length===0?sql`false`:
-          sql`(subject.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(${attendanceCorrection.id}) IS NOT NULL)`))
-      .orderBy(desc(attendanceCorrection.createdAt),attendanceCorrection.id);
+    // The role hint chooses a query shape only. Every fast-path company is proved by
+    // the existing native administrator owner; other subjects retain the exact scalar
+    // frozen-workflow/delegation reader. RLS and the final decision owner remain live.
+    const nativeHeaders=sql`select q.id,q.employment_id,q.created_at
+      from public.attendance_correction q where q.tenant_id=${ctx.tenantId}::uuid and q.status='pending'`;
+    const administratorHint=ctx.roles?.some(role=>role==='hr_admin'||role==='super_admin')===true;
+    const source=administratorHint?sql`(
+      with headers as materialized(${nativeHeaders}),
+      distinct_subjects as(select distinct employment_id from headers),
+      numbered_subjects as(select employment_id,(row_number()over(order by employment_id)-1)/1000 as bucket from distinct_subjects),
+      subject_batches as(select array_agg(employment_id order by employment_id)as ids from numbered_subjects group by bucket),
+      subject_rows as materialized(
+        select s.* from subject_batches b cross join lateral app.delegated_approval_subjects(b.ids,'attendance','attendance.correction')s
+      ), subject_companies as(select distinct company_id from subject_rows),
+      administrator_companies as materialized(select company_id,app.is_admin_for(company_id)as allowed from subject_companies),
+      administrator_subjects as materialized(
+        select s.* from subject_rows s join administrator_companies c on c.company_id=s.company_id where c.allowed
+      )
+      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id
+      from headers h join administrator_subjects s on s.employment_id=h.employment_id
+      union all
+      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id
+      from headers h cross join lateral app.attendance_application_subject(h.id)s
+      where not exists(select 1 from administrator_subjects a where a.employment_id=h.employment_id)
+    )as pending_attendance`:sql`(
+      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id
+      from(${nativeHeaders})h cross join lateral app.attendance_application_subject(h.id)s
+    )as pending_attendance`;
+    const id=sql<string>`pending_attendance.id`,employmentId=sql<string>`pending_attendance.employment_id`,
+      personId=sql<string>`pending_attendance.person_id`,employee=sql<string|null>`pending_attendance.employee`,
+      createdAt=sql<Date>`pending_attendance.created_at`.mapWith(attendanceCorrection.createdAt);
+    const rows=await tx.select({id,employmentId,personId,employee,createdAt}).from(source)
+      .where(and(sql`NOT app.is_self_person(pending_attendance.person_id)`,companyIds===undefined?undefined:companyIds.length===0?sql`false`:
+        sql`(pending_attendance.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(pending_attendance.id) IS NOT NULL)`))
+      .orderBy(desc(createdAt),id);
     const allowed=await actionableAttendanceApplicationIdsTx(tx,ctx,rows);
     return rows.filter(row=>allowed.has(row.id));
   });
