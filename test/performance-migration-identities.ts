@@ -9,4 +9,5 @@ export const PERFORMANCE_MIGRATION_IDENTITIES = [
  {idx:1384,version:'7',when:1793330001531,tag:'2131_ai_read_only_metadata_locks',breakpoints:true,hash:'409262dd7b958eb8c2633556f9dba13ad637042efcb07b632a5bcea5c8131077'},
  {idx:1385,version:'7',when:1793330001532,tag:'2132_ai_metadata_claim_preview_index',breakpoints:true,hash:'ea9d1a6ee283b0586a835d98ee4c5e75196615a5f51d22d643966fc519c97508'},
  {idx:1386,version:'7',when:1793330001533,tag:'2133_ai_action_read_only_lock',breakpoints:true,hash:'d22cc6aa2e0995a4b7368127ac4d0a2d0c8f18e4bc44a5ca31480ab5d144ea8f'},
+ {idx:1387,version:'7',when:1793330001534,tag:'2134_claim_visibility_set_membership',breakpoints:true,hash:'a489a4293bc835003a0c6ee3f77f68d3847c618827949b54d541290563d3f2f6'},
 ] as const;

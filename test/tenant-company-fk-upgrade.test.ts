@@ -113,9 +113,27 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
     from pg_proc p where p.oid=to_regprocedure(${fn})`;
    expect(permission).toEqual({app_execute:!privateFunctions.includes(fn),public_execute:false});
   }
-  // The seven explicitly installed helpers are the only new functions, with both shared owners private. Every prior
-  // function ACL and every table/column/policy privilege must still match the populated baseline.
-  expect({...afterPrivileges,functions:afterPrivileges.functions.filter(row=>!addedFunctions.includes(row.fn))}).toEqual(beforePrivileges);
+  // Independently parse both reviewed Claim expressions against this table. No broad policy
+  // exception: only this exact USING representation may differ; WITH CHECK and every other field stay.
+  const expectedClaimQuals=await storage.client.begin(async tx=>{
+   const expressions=[
+    "tenant_id=app.current_tenant_id() and employment_id=any((select app.visible_employment_ids())::uuid[])",
+    "tenant_id=app.current_tenant_id() and employment_id in(select unnest(app.visible_employment_ids()))",
+   ],qualifiers:string[]=[];
+   for(const expression of expressions){
+    await tx.unsafe('create policy performance_expected_claim_membership on public.claim_request for select to ai_hr_app using ('+expression+')');
+    const [row]=await tx<{qual:string}[]>`select qual from pg_policies where schemaname='public' and tablename='claim_request' and policyname='performance_expected_claim_membership'`;
+    qualifiers.push(row.qual);await tx.unsafe('drop policy performance_expected_claim_membership on public.claim_request');
+   }
+   return qualifiers;
+  });
+  const isClaimPolicy=(row:(typeof beforePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='claim_request'&&row.policyname==='claim_request_rls';
+  expect(beforePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[0]);
+  expect(afterPrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[1]);
+  // The seven helpers remain the only new functions, both shared owners private. Every prior
+  // ACL/table/column/policy field still matches, except the exact Claim USING expression above.
+  expect({...afterPrivileges,functions:afterPrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
+   policies:afterPrivileges.policies.map(row=>isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:row)}).toEqual(beforePrivileges);
   const installed=await keys();
   expect(installed).toHaveLength(148);
   expect(installed.filter(row=>!row.convalidated)).toEqual([]);

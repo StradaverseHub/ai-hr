@@ -1,5 +1,31 @@
 # Coordinated migration reservations
 
+## Claims visibility membership plan — 5 November 2026 (unapplied)
+
+`codex/performance-claims-set-membership-20261105` reserves
+`2134_claim_visibility_set_membership`, idx1387 / when1793330001534 /
+SHA256 `a489a4293bc835003a0c6ee3f77f68d3847c618827949b54d541290563d3f2f6`.
+Fresh claims cover2363 heads,435 committed journals,598 migration trees and231 readable
+worktrees through2133 / idx1386 / when1793330001533. Foreign malformed WIP and its literal bounds
+remain untouched. Freshly fetched main/alpha are74db3bb7621c33de256372162a1961ee320baf6e.
+The read-only staging ledger matches all671 ordered canonical identities through1793330001502;
+its current Claim policy also matches the exact reviewed array-membership baseline.
+
+Native experiment41889955844 used one million all-pending Claims, two tenants, ten companies and
+500 employments. Actual group-HR preview852ms became329ms (warm304ms); restoring the original
+policy returned794ms. Other-tenant group806ms became335ms and restored808ms. Exact counts,
+ordered IDs and full metadata matched independent fixture oracles. Raw RLS scope checks,
+SELECT FOR UPDATE, actual own draft create/edit/delete and admin/foreign refusals passed in all
+phases. All native routines, grants, triggers, other policies and WITH CHECK stayed unchanged;
+the original policy was independently verified restored. This is component evidence, not500-user
+acceptance or deployment authority.
+
+The append changes only the existing Claim policy's USING membership representation. The native
+visibility function still executes per statement; tenant filtering, all other policies, write checks
+and command/decision owners remain. A precondition refuses unexpected existing policy text. No
+prior migration is edited. Upgrade and broader Claims/delegation verification remain required.
+Complete BOARD roles is excluded. No deployment is authorized.
+
 ## Composed read-only action pause barrier — 5 November 2026 (unapplied)
 
 `codex/performance-ai-action-read-lock-fix-20261105` appends
