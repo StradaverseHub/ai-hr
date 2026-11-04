@@ -5,7 +5,7 @@ import { resolveActiveAiConfig } from './ai-config';
 import { preparePrivateAiTask, withAiAdmissionCheck } from './ai-governance';
 import { generateDraft } from '../lib/ai';
 import { draftInputDigest } from '../lib/ai/draft-input';
-import { assertPayFormulaDraftAuthorTx, validatePayFormulaDraft } from '../packs/payroll/service';
+import { assertPayFormulaDraftAuthorTx, validatePayFormulaDraft, payFormulaPermittedDraftFieldsTx } from '../packs/payroll/service';
 import { adjudicatePayFormulaDraft, payFormulaSuggestionSource, PAY_FORMULA_DRAFT_CONTRACT, payFormulaDraftRequest } from '../lib/pay-formula-ai';
 
 export async function draftPayFormula(ctx: SessionContext, input: unknown) {
@@ -20,19 +20,20 @@ export async function draftPayFormula(ctx: SessionContext, input: unknown) {
     return resolveActiveAiConfig(tx, ctx, 'pay_rule_draft');
   });
   if (!configuration) throw new Error('not_configured');
-  let expected: string | undefined;
+  let expected: string | undefined,permittedMetadata:string|undefined,permittedFields:Awaited<ReturnType<typeof payFormulaPermittedDraftFieldsTx>>|undefined;
   const bound = withAiAdmissionCheck(configuration, 'pay_rule_draft', async (tx, call) => {
     await author(tx);
-    if (call.operation !== 'draft' || call.inputDigest !== expected) throw new Error('source_changed');
+    if (call.operation !== 'draft' || call.inputDigest !== expected || JSON.stringify(await payFormulaPermittedDraftFieldsTx(tx,ctx))!==permittedMetadata) throw new Error('source_changed');
   });
   const task = await preparePrivateAiTask(bound, PAY_FORMULA_DRAFT_CONTRACT, async (tx, current) => {
     await author(tx, current);
-    return request;
+    permittedFields=await payFormulaPermittedDraftFieldsTx(tx,current);permittedMetadata=JSON.stringify(permittedFields);return {...request,permittedFields};
   });
   try {
-    if (task.operation !== 'draft') throw new Error('invalid_output');
+    if (task.operation !== 'draft' || !permittedFields) throw new Error('invalid_output');
     expected = draftInputDigest(task.args);
-    const result = adjudicatePayFormulaDraft(await generateDraft(task.configuration, task.args));
+    const result = adjudicatePayFormulaDraft(await generateDraft(task.configuration, task.args),permittedFields);
+    await withTenant(ctx,async tx=>{await author(tx);if(JSON.stringify(await payFormulaPermittedDraftFieldsTx(tx,ctx))!==permittedMetadata)throw new Error('source_changed');});
     // No employee reads, payroll writes, formula save, activation or link operation.
     if (result.source) await validatePayFormulaDraft(ctx, result.unresolved ? payFormulaSuggestionSource(result.source).surrogate : result.source);
     else await withTenant(ctx, tx => author(tx));

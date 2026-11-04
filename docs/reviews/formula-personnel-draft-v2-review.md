@@ -1,0 +1,11 @@
+# Personnel formula draft v2 review
+
+Status: implementation candidate. This document does not issue provider approval.
+
+The public request remains only the explicitly disclosed authored requirement and consent. The native admission owner additionally computes permitted code-owned field keys from current author/financial authority, field-category permissions and enabled source registrations. The provider prompt receives the requirement and the resulting static function/type definitions. It receives no fetched employee values, company/department catalogue values, tenant registration labels/descriptions, payroll selections or credentials in the prompt. Clients cannot post a permitted-fields claim through the public request schema.
+
+Draft v2 retains a useful suggestion alongside questions and assumptions. Explicit MISSING placeholders remain unexecutable. A typed analysis surrogate checks every real language identifier and local catalogue dependency; the surrogate is never returned to the author, saved or evaluated. The actual raw suggestion can be inserted into the Write editor, but ordinary parser, save, employee-test and activation rules still reject unresolved source. AI never saves, links or activates a formula.
+
+The Personnel library inventories all Profile/Employment descriptors. Only closed typed source adapters execute. Repeating/file/unsupported fields show unavailable reasons. Administrative registrations select existing supported adapters and metadata; they cannot provide executable SQL or arbitrary columns. Current-only sources are unavailable for past dates unless an exact selected-run native snapshot supplies the proven field read. Stable organisation IDs remain separate from displayed catalogue names. New-source registry/provider revisions enter only affected dependency/evaluation fingerprints; existing formula versions retain their legacy contracts.
+
+The literal `authored_pay_formula_v2` provider-data review is pending. Generated source manifests identify bytes; they do not renew earlier owner approval. Any affected stale literal approvals continue to fail closed. Review the final candidate, hosted evidence and exact generated source digest before enabling provider egress, under `docs/reviews/formula-generator-data-contract-2026-11.md`.
