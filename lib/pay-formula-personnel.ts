@@ -608,3 +608,10 @@ export const PAY_FORMULA_LEGACY_PERSONNEL_FIELDS={
  employee:{dateOfBirth:'profile.personal_details.dateofbirth',gender:'profile.personal_details.gender',nationality:'profile.personal_details.nationality',maritalStatus:'profile.personal_details.maritalstatus'},
 };
 export type PersonnelFormulaLibraryField={fieldId:string;key:string;label:string;labelKey:string;section:string;group:'profile'|'employee';type:string;history:string;sensitivity:string;grain:string;unavailableReason:string|null;description:string;formulaType:FormulaType;functionCode:string;dateBasis:string;enabled:boolean;listValues:{value:string;label:string}[]};
+
+/** Code-owned display descriptor shared by editors; no catalogue or employee values. */
+export function personnelFormulaFieldDescriptor(code:string,key:string){
+ if(code!=='EmployeeProfile'&&code!=='EmployeeInformation')return undefined;
+ const group=code==='EmployeeProfile'?'profile':'employee',fieldId=personnelFormulaAdapter(code,key)?.fieldId??(PAY_FORMULA_LEGACY_PERSONNEL_FIELDS[group] as Record<string,string>)[key];
+ return PERSONNEL_FIELDS.find(field=>field.id===fieldId);
+}

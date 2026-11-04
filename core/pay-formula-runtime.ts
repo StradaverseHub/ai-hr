@@ -127,9 +127,9 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
   if(value!==null&&value!==undefined&&value!=='')personnelValues.set(adapter.key,value);
   sources.push({owner:'typed-personnel',provider:PAY_FORMULA_PERSONNEL_PROVIDER_VERSION,key:adapter.key,dateBasis:adapter.dateBasis,asOf:context.asOf,sourceId,value});
  }
- const personnelFieldValue=(adapter:PersonnelFormulaAdapter):FormulaValue=>{
+ const personnelFieldValue=(adapter:PersonnelFormulaAdapter,loc:FormulaRequest['loc']):FormulaValue=>{
   if(!allowed.get(adapter.fieldId))throw new PayFormulaError('Formula source permission is unavailable.','FORMULA_SOURCE_DENIED');
-  usedFields.add(adapter.fieldId);const value=personnelValues.get(adapter.key);if(value===null||value===undefined||value==='')throw unavailable(adapter.key+' ('+adapter.dateBasis+')');
+  usedFields.add(adapter.fieldId);const value=personnelValues.get(adapter.key);if(value===null||value===undefined||value==='')throw new FormulaLanguageError('source',`Personnel field ${adapter.key} is unavailable for ${context.asOf} (${adapter.dateBasis}); no recorded source is available.`,loc);
   if(adapter.type==='decimal')return decimal(String(value));if(adapter.type==='boolean')return {type:'boolean',value:value===true||value==='true'};
   return {type:adapter.type,value:String(value)};
  };
@@ -189,8 +189,8 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
  case 'PayItem':return fromMap(prorated,args[0]);case 'PayItemNoProrate':return fromMap(unprorated,args[0]);case 'PayItemInput':return fromMap(raw,args[0]);
  case 'Accumulation':{const group=groups.find(g=>g.code===args[0].toUpperCase());if(!group)throw unavailable(args[0]);return decimal(group.members.reduce((sum,c)=>addFormulaDecimal(sum,String(fromMap(prorated,c).value)),'0'));}
  case 'AnotherPayItems':{usedFields.add(basicField);const result=history.get(JSON.stringify(args));if(result instanceof Error)throw result;if(!result)throw unavailable('historical result');return result;}
- case 'EmployeeProfile':{const adapter=personnelFormulaAdapter(code,args[0]);return adapter?personnelFieldValue(adapter):fieldValue(profileFields[args[0]],/Date$/.test(args[0])?'date':'string');}
- case 'EmployeeInformation':{const adapter=personnelFormulaAdapter(code,args[0]);return adapter?personnelFieldValue(adapter):fieldValue(employeeFields[args[0]],args[0]==='dateOfBirth'?'date':'string');}
+ case 'EmployeeProfile':{const adapter=personnelFormulaAdapter(code,args[0]);return adapter?personnelFieldValue(adapter,request.loc):fieldValue(profileFields[args[0]],/Date$/.test(args[0])?'date':'string');}
+ case 'EmployeeInformation':{const adapter=personnelFormulaAdapter(code,args[0]);return adapter?personnelFieldValue(adapter,request.loc):fieldValue(employeeFields[args[0]],args[0]==='dateOfBirth'?'date':'string');}
  case 'JoinDate':case 'GroupJoinDate':case 'ResignationDate':return fieldValue(profileFields[code[0].toLowerCase()+code.slice(1)],'date');
  case 'JoinedThisMonth':case 'GroupJoinedThisMonth':case 'ResignedThisMonth':{const id=profileFields[code==='JoinedThisMonth'?'joinDate':code==='GroupJoinedThisMonth'?'groupJoinDate':'resignationDate'];usedFields.add(id);const value=values.get(id);return {type:'boolean',value:typeof value==='string'&&value.slice(0,7)===context.period};}
  case 'ServiceLength':{const basis=args[1]==='joinDate'?'joinDate':'groupJoinDate',date=read(profileFields[basis]);if(date>context.asOf)throw unavailable('service start');const start=new Date(date+'T00:00:00Z'),end=new Date(context.asOf+'T00:00:00Z');const n=args[0]==='years'?serviceYearsAt(date,context.asOf):args[0]==='months'?(end.getUTCFullYear()-start.getUTCFullYear())*12+end.getUTCMonth()-start.getUTCMonth()-(end.getUTCDate()<start.getUTCDate()?1:0):Math.floor((end.getTime()-start.getTime())/86400000);return decimal(String(n));}

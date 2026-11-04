@@ -19,7 +19,10 @@ beforeEach(async()=>{
  await resetDb();base=await seedBase();await setModule(base.tenantId,'typed_pay_components','active');ctx=await entitledCtx(base);
  employee=await hireEmployee(ctx,{person:{fullName:'Fictional runtime employee',primaryEmail:'formula-runtime@example.invalid'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
  await setCompensation(ctx,{employmentId:employee.employmentId,basicSalary:5000,monthlyAllowance:0,effectiveFrom:'2026-01-01'});
- await setStatutoryProfileMY(ctx,{personId:employee.personId,icNumber:'900101011234'});await seedPayComponentCatalog(ctx);await upsertPayComponent(ctx,{...item,rule:{kind:'fixed'}});
+ await setStatutoryProfileMY(ctx,{personId:employee.personId,icNumber:'900101011234'});await seedPayComponentCatalog(ctx);
+ // Preserve the existing standalone formula-test context. Explicit fixed intent deliberately clears
+ // rate bindings; a legacy unset-rule receiver is the supported fixture for testing named bindings.
+ await upsertPayComponent(ctx,{...item,rule:null});
  const [cycle]=await owner.db.insert(schema.payrollCycle).values({tenantId:base.tenantId,companyId:base.companyId,name:'Formula runtime cycle',code:'FORMULA_RUNTIME',runType:'regular'}).returning();
  context={companyId:base.companyId,employmentId:employee.employmentId,cycleId:cycle.id,period:'2026-05',asOf:'2026-05-31',currentCode:item.code,input:'3'};
 });
@@ -102,7 +105,7 @@ it('matches the approved Monthly overtime vocabulary and explicit rate bindings 
  const allowance=await upsertPayComponent(ctx,{...item,code:'OT_BASE_ALLOWANCE',name:'OT base allowance',rule:{kind:'fixed'}});
  await setEmploymentPayComponent(ctx,{employmentId:employee.employmentId,componentId:allowance.id,amount:500,effectiveFrom:context.period+'-01'});
  await saveFormulaAccumulationGroup(ctx,{code:'OT_GROSS',members:['OT_BASE_ALLOWANCE']});
- const formulaContext={ordinaryRate:'26',hoursPerDay:'8',rate:'1.5'};await upsertPayComponent(ctx,{...item,formulaContext,rule:{kind:'fixed'}});
+ const formulaContext={ordinaryRate:'26',hoursPerDay:'8',rate:'1.5'};await upsertPayComponent(ctx,{...item,formulaContext,rule:null});
  const source='Dim Gross As Decimal = {#Basic} + {#Accumulation}("OT_GROSS")\nIf Gross > 4000 Then\n Gross = 4000\nEnd If\nIf {#Payrate} = "Monthly" Then\n Return Gross / {#OrdinaryRate} / {#HoursPerDay} * {#Rate} * {#Input}\nElse\n Return 0\nEnd If';
  const result=await activate(source,'3',{formulaContext});expect(result.amount).toBe('86.54');
  const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});await generatePayslips(ctx,{batchId});
@@ -154,7 +157,8 @@ it('uses stable Company identities for both EBAC-style overtime branches through
  const source=(companyId:string)=>`If {#EmployeeProfile}("companyId") = "${companyId}" Then\n Return ({#Basic} + {#FixedAllowances}) / 26 / 8 * 1.5 * {#Input}\nElse\n Return {#Basic} / 26 / 8 * 1.5 * {#Input}\nEnd If`;
  const yes=await savePayFormula(ctx,{formulaId:'COMPANY_YES',description:'Company branch',method:'write',source:source(base.companyId)}),no=await savePayFormula(ctx,{formulaId:'COMPANY_NO',description:'Other-company branch',method:'write',source:source('10000000-0000-4000-8000-000000000009')});
  expect((await testPayFormula(ctx,{...yes,context})).amount).toBe('129.81');expect((await testPayFormula(ctx,{...no,context})).amount).toBe('108.17');
- const options=await payFormulaOptions(ctx),field=options.personnelFields.find(f=>f.key==='companyId');expect(field?.listValues).toContainEqual({value:base.companyId,label:'EBAC HOME SDN BHD · '+base.companyId});
+ const [duplicateLabel]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'EBAC HOME SDN BHD'}).returning();
+ const options=await payFormulaOptions(ctx),field=options.personnelFields.find(f=>f.key==='companyId');expect(field?.listValues).toContainEqual({value:base.companyId,label:'EBAC HOME SDN BHD · '+base.companyId});expect(field?.listValues).toContainEqual({value:duplicateLabel.id,label:'EBAC HOME SDN BHD · '+duplicateLabel.id});
 });
 it('refuses current-only history and sensitive authoring while retaining the existing formula contract',async()=>{
  const historical=await savePayFormula(ctx,{formulaId:'PAST',description:'No current-as-past source',method:'write',source:'{#Explain}({#EmployeeInformation}("profile.personal_details.fullname"))\nReturn 1'});
@@ -186,14 +190,14 @@ it('uses only exact-run native payslip-referenced frozen reads with the matching
  const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
  const payload={explanations:[],reads:[{code:'EmployeeInformation',args:[{type:'string',value:key}],loc:{line:1,column:1},value:{type:'string',value:'Frozen historical name'}}],sources:{context:{...context,batchId},sourceEvidence:[{owner:'typed-personnel',provider:PAY_FORMULA_PERSONNEL_PROVIDER_VERSION,key,dateBasis:'current-only',asOf:context.asOf}]}};
  // An owner-created historical native fixture represents a retained source read from that payroll day.
- const [evidence]=await owner.db.insert(schema.payFormulaEvaluation).values({tenantId:base.tenantId,formulaId:saved.id,revisionId:saved.revisionId,companyId:base.companyId,employmentId:employee.employmentId,batchId,componentCode:item.code,period:context.period,amount:'9',payload,readRequirements:{categories:['identity'],fieldIds:[key],workforce:true},actorId:ctx.userId!}).returning();
+ const [evidence]=await owner.withTenant(ctx,tx=>tx.insert(schema.payFormulaEvaluation).values({tenantId:base.tenantId,formulaId:saved.id,revisionId:saved.revisionId,companyId:base.companyId,employmentId:employee.employmentId,batchId,componentCode:item.code,period:context.period,amount:'9',payload,readRequirements:{categories:['identity'],fieldIds:[key],workforce:true},actorId:ctx.userId!}).returning());
  await owner.db.update(schema.payslip).set({statutory:{...slip.statutory,formulaEvaluations:[{evaluationId:evidence.id}]}}).where(eq(schema.payslip.id,slip.id));
  await owner.db.update(schema.person).set({fullName:'Changed live employee name'}).where(eq(schema.person.id,employee.personId));
  const alternate=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});
  expect(await testPayFormula(ctx,{...saved,context:{...context,batchId:alternate.batchId}})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
  const selected={...context,batchId};expect(await testPayFormula(ctx,{...saved,context:selected})).toMatchObject({passed:true,amount:'9'});
  expect(await testPayFormula(ctx,{...saved,context:{...selected,asOf:'2026-05-30'}})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
- const [wrongProvider]=await owner.db.insert(schema.payFormulaEvaluation).values({...evidence,id:undefined,payload:{...payload,sources:{...payload.sources,sourceEvidence:[{...payload.sources.sourceEvidence[0],provider:'unreviewed-provider'}]}}}).returning();
+ const [wrongProvider]=await owner.withTenant(ctx,tx=>tx.insert(schema.payFormulaEvaluation).values({...evidence,id:undefined,payload:{...payload,sources:{...payload.sources,sourceEvidence:[{...payload.sources.sourceEvidence[0],provider:'unreviewed-provider'}]}}}).returning());
  await owner.db.update(schema.payslip).set({statutory:{...slip.statutory,formulaEvaluations:[{evaluationId:wrongProvider.id}]}}).where(eq(schema.payslip.id,slip.id));
  expect(await testPayFormula(ctx,{...saved,context:selected})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
  await owner.db.update(schema.payslip).set({statutory:{...slip.statutory,formulaEvaluations:[]}}).where(eq(schema.payslip.id,slip.id));
