@@ -13,7 +13,7 @@ import { AI_FEATURES } from '../lib/ai/features';
 
 const copies = { en, ms, zh, th, ta, vi: viCopy };
 type Locale = keyof typeof copies;
-const state = vi.hoisted(() => ({ locale: 'en' as string, tasks: [] as unknown[], reduce: true }));
+const state = vi.hoisted(() => ({ locale: 'en' as string, tasks: [] as unknown[], reduce: true, summary: vi.fn() }));
 const messagesFor = (locale: string) => withAiCentre(locale, copies[locale as Locale] as Record<string, unknown>) as Record<string, any>;
 
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
@@ -26,7 +26,7 @@ vi.mock('../lib/authz', () => ({ isGroupAdmin: () => true, isAdmin: () => true, 
 vi.mock('../core/entitlements', () => ({ isModuleEnabledOrFalse: () => true, isModuleEnabled: () => true }));
 vi.mock('../core/read', () => ({ allowedCompanies: async () => [{ id: 'fictional-company' }] }));
 vi.mock('../lib/scope', () => ({ getScopeIds: async (ids: string[]) => ids }));
-vi.mock('../core/approvals-inbox', () => ({ listPendingTasks: async () => state.tasks }));
+vi.mock('../core/approvals-inbox', () => ({ listPendingTasks: async () => state.tasks, pendingTaskSummary: state.summary }));
 vi.mock('../core/payroll-anomaly', () => ({ openExceptionsAcrossRuns: async () => ({ total: 3, cappedOut: false, rows: [{ disposition: 'block' }, { disposition: 'review' }, { disposition: 'review' }] }) }));
 vi.mock('../core/agent-actions', () => ({ proposeActions: async () => [{ type: 'fictional', subjects: [], count: 2, overCap: false }] }));
 vi.mock('../core/record-readiness', () => ({ recordReadiness: async () => ({ employees: 40, ready: 36, gaps: [] }) }));
@@ -50,7 +50,7 @@ vi.mock('../core/digest/daily-digest', () => ({ digestPreview: async () => { thr
 vi.mock('../app/assistant/centre/recommendation', () => ({ readLeaveRecommendation: vi.fn() }));
 
 import { AiCentreTabs } from '../components/ai-centre/centre-tabs';
-import { AiCentreInbox } from '../app/assistant/centre/inbox';
+import { AiCentreInbox, aiCentreInboxCount } from '../app/assistant/centre/inbox';
 import { AiCentreDelegatedJobs } from '../components/ai-centre/delegated-jobs';
 import { HowItWorks } from '../components/ai-centre/how-it-works';
 import { AiManagementScreen } from '../app/control-tower/agents/screen';
@@ -62,6 +62,7 @@ const FICTION = 'real components; fictional data owners; no authenticated server
 const wrap = (locale: string, node: React.ReactNode) =>
   render(<NextIntlClientProvider locale={locale} messages={messagesFor(locale) as never} timeZone="Asia/Kuala_Lumpur">{node}</NextIntlClientProvider>);
 beforeEach(() => {
+  state.summary.mockReset();
   state.tasks = [
     { id: 'a1', kind: 'leave', subjectName: 'Fictional Person A', createdAt: '2026-10-31T02:00:00.000Z', linkPath: '/approvals?kind=leave&id=a1' },
     { id: 'b2', kind: 'claim', subjectName: 'Fictional Person B', createdAt: '2026-10-30T02:00:00.000Z', linkPath: '/approvals?kind=claim&id=b2' },
@@ -153,4 +154,19 @@ describe('AI centre screens', () => {
     expect(link).toHaveTextContent('2');
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-floating-chat', FICTION, 'atelier');
   }, 120000);
+});
+
+// Navigation badges must retain the exact assigned queue count without transporting every Claim.
+describe('AI centre navigation queue badge', () => {
+  it('uses the canonical counted preview and selected company scope', async () => {
+    state.summary.mockResolvedValue({items:state.tasks,total:500000,claimTotal:499999});
+    expect(await aiCentreInboxCount(session)).toBe(500000);
+    expect(state.summary).toHaveBeenCalledWith(session,['fictional-company'],{attendance:true,claims:true,performance:true,rewards:true});
+  });
+  it('preserves zero and hides unavailable counts rather than reporting zero', async () => {
+    state.summary.mockResolvedValueOnce({items:[],total:0,claimTotal:0});
+    expect(await aiCentreInboxCount(session)).toBe(0);
+    state.summary.mockRejectedValueOnce(Error('native authorization unavailable'));
+    expect(await aiCentreInboxCount(session)).toBeUndefined();
+  });
 });

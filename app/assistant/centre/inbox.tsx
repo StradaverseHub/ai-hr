@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { CalendarCheck, ClipboardCheck, ListChecks, Receipt, Wand2 } from 'lucide-react';
 import type { SessionContext } from '@/db/client';
-import { listPendingTasks, type PendingTaskItem } from '@/core/approvals-inbox';
+import { listPendingTasks, pendingTaskSummary, type PendingTaskItem } from '@/core/approvals-inbox';
 import { allowedCompanies } from '@/core/read';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { openExceptionsAcrossRuns } from '@/core/payroll-anomaly';
@@ -188,10 +188,10 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
 export async function aiCentreInboxCount(session: SessionContext): Promise<number | undefined> {
   const tasks = await settle(async () => {
     const scopeIds = await getScopeIds((await allowedCompanies(session)).map(company => company.id));
-    return listPendingTasks(session, scopeIds, {
+    return pendingTaskSummary(session, scopeIds, {
       attendance: isModuleEnabledOrFalse(session, 'attendance'), claims: isModuleEnabledOrFalse(session, 'claims'),
       performance: isModuleEnabledOrFalse(session, 'performance'), rewards: isModuleEnabledOrFalse(session, 'rewards'),
     });
   });
-  return tasks.ok ? tasks.value.length : undefined;
+  return tasks.ok ? tasks.value.total : undefined;
 }
