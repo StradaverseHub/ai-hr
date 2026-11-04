@@ -1,7 +1,7 @@
 /** Navigation placement only. Callers supply already-authorized destinations; this file grants nothing. */
 export type NavigationWorkspace = 'ops' | 'strata';
 export type NavigationSection = 'mine' | 'team' | 'hr' | 'ai' | 'config';
-export type NavigationModule = 'people' | 'eLetter' | 'onboarding' | 'leave' | 'attendance' | 'claims' | 'payroll'
+export type NavigationModule = 'people' | 'eLetter' | 'onboarding' | 'leave' | 'attendance' | 'claims' | 'payroll' | 'probation' | 'contracts'
   | 'performance' | 'performanceAdmin' | 'rewards' | 'workforceInsights';
 export type NavigationPlacement = {area:'shared' | 'system'} | {area:NavigationWorkspace;module:NavigationModule;section:NavigationSection};
 export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:NavigationWorkspace;labelKey:string}[] = [
@@ -15,6 +15,8 @@ export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:Navigat
   {id:'attendance',workspace:'ops',labelKey:'moduleAttendance'},
   {id:'claims',workspace:'ops',labelKey:'claims'},
   {id:'payroll',workspace:'ops',labelKey:'payroll'},
+  {id:'probation',workspace:'ops',labelKey:'probationConfirmation'},
+  {id:'contracts',workspace:'ops',labelKey:'contractManagement'},
   // D-P1-32 PT-X5 (APR-025 D4): Performance & Talent and Performance admin, one entry each. The former Talent and
   // Development modules held the journey's ?module= entry points, which retired into the area's tabs.
   {id:'performance',workspace:'strata',labelKey:'performanceTalent'},
@@ -50,8 +52,8 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(system.has(path))return {area:'system'};
   if(peopleConfig.has(path)||path.startsWith('/admin/settings/system-labels/'))return modulePlacement('people','config');
   if(path==='/personnel')return modulePlacement('people','mine');
-  if(path.startsWith('/lifecycle/probation'))return modulePlacement('people',/^\/lifecycle\/probation\/(settings|forms|routes|workflows|templates|intake)(\/|$)/.test(path)?'config':'hr');
-  if(path.startsWith('/lifecycle/contracts'))return modulePlacement('people',/^\/lifecycle\/contracts\/(settings|workflows|templates|intake)(\/|$)/.test(path)?'config':'hr');
+  if(path.startsWith('/lifecycle/probation'))return modulePlacement('probation',/^\/lifecycle\/probation\/(settings|forms|routes|workflows|templates|intake)(\/|$)/.test(path)?'config':'hr');
+  if(path.startsWith('/lifecycle/contracts'))return modulePlacement('contracts',/^\/lifecycle\/contracts\/(settings|workflows|templates|intake)(\/|$)/.test(path)?'config':'hr');
   if(path.startsWith('/me/letters'))return modulePlacement('eLetter','mine');
   if(path.startsWith('/letters/settings'))return modulePlacement('eLetter','config');
   if(path.startsWith('/letters'))return modulePlacement('eLetter','hr');
