@@ -481,3 +481,16 @@ describe('deriveHistoryBreakdown — overtime legs, named deductions and non-pay
     expect(b.absence.residual).toBe(bare.absence.residual);
   });
 });
+
+it('9808e638: names category-overridden OT from the run declaration, preserving hours and deduction quantities',()=>{
+ const b=deriveHistoryBreakdown(row({allowance:'0',overtime:'0',bonus:'120',otherDeductions:'40',statutory:{
+  displayEarnings:{basic:3000,allowance:0,overtime:120,bonus:0,claim:0},
+  componentLines:[
+   {code:'OT1_5',name:'Overtime 1.5',amount:120,displayCategory:'overtime',buckets:[{bucket:'bonus',amount:120}],inputQuantity:{qty:4,unit:'hours'}},
+   {code:'ABSENT',name:'ABSENT',amount:40,buckets:[{bucket:'deduct',amount:40}],detail:{qty:2,rate:20,unit:'days'}},
+  ]
+ }}));
+ expect(b.overtime).toBe(120);expect(b.bonus).toBe(0);
+ expect(b.overtimeLines).toEqual([{code:'OT1_5',name:'Overtime 1.5',amount:120,inputQuantity:{qty:4,unit:'hours'}}]);
+ expect(b.deductionLines).toEqual([{code:'ABSENT',name:'ABSENT',amount:40,detail:{qty:2,rate:20,unit:'days'}}]);
+});

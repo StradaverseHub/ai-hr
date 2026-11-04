@@ -7482,7 +7482,7 @@
           "nonPayableNote": "Tidak dibayar kepada pekerja dan tidak termasuk dalam gaji kasar atau gaji bersih.",
           "itemRemark": "Dimasukkan sebagai “{remark}”",
           "sourceHeading": "Dari mana ia datang",
-          "sourceNote": "Transaksi individu yang direkodkan terhadap pekerja ini pada larian gaji ini. Ia disenaraikan di sebelah item yang direkodkan dan bukan dipadankan dengannya: dua entri boleh berkongsi item gaji dan amaun yang sama, jadi hanya orang yang memasukkannya boleh menyatakan yang mana satu.",
+          "sourceNote": "Input transaksi asal untuk pekerja dan larian ini. Ini ialah amaun sumber, bukan agihan gaji dibayar. Jumlah gaji tersimpan di atas kekal berkuat kuasa; catatan sumber mungkin berubah selepas pemprosesan.",
           "sourcePaidByThisRun": "Dibayar oleh larian ini",
           "sourcePaidByOtherRun": "Dibayar oleh larian lain",
           "sourceNotMarkedPaid": "Belum ditanda sebagai dibayar",
@@ -7495,7 +7495,9 @@
           "exportAllHint": "Setiap slip gaji diproses yang anda dibenarkan lihat, tanpa mengambil kira tapisan di atas.",
           "exportTitle": "Sejarah Transaksi Gaji",
           "exportDetailNote": "Sesetengah larian gaji tidak menyimpan butiran setiap item, kerana ia dikira sebelum sistem gaji ini mula menyimpannya dan butiran itu tidak boleh dibina semula kemudian. Pada baris tersebut angka ringkasan dan jumlah Elaun masih tepat, dan lajur item bernama hanyalah kosong.",
-          "viewPcbCalculation": "Lihat pengiraan PCB / MTD"
+          "viewPcbCalculation": "Lihat pengiraan PCB / MTD",
+          "sourceInputNotRecorded": "Tidak direkodkan",
+          "sourceEntryCount": "{count} catatan bertarikh"
         },
         "exportCsv": "Eksport CSV",
         "outstanding": {

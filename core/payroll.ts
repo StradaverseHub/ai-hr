@@ -5193,6 +5193,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // Read by core/pay-rule.ts's fixed_allowances aggregate, which must NOT total one-offs.
       oneOff?: boolean;
       sourceId?: string;
+      inputQuantity?: { qty: number; unit: string | null };
       eaFormLine?: string | null;
       // 711adcd2 — pay_component.orp_overtime (migration 0456): the tick box that decides whether this item
       // counts towards the fixed_allowances aggregate a tenant's overtime formula reads. It REPLACED the
@@ -5356,6 +5357,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 displayCategory: t.compDisplayCategory ?? null,
                 eaFormLine: t.compEaFormLine ?? null,
                 sourceId: t.id,
+                ...(t.quantity != null ? { inputQuantity: { qty: Number(t.quantity), unit: t.unit } } : {}),
               }
             : t.kind === 'earning'
               ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', oneOff: true, amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, orpOvertime: false, orpUnpaidLeave: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null, displayCategory: null }
@@ -5489,6 +5491,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
        * input a `per_hour` / `per_day` rule consumed.
        */
       detail?: { qty: number; rate: number; unit: 'hours' | 'days' | null };
+      displayCategory?: string | null;
+      inputQuantity?: { qty: number; unit: string | null };
     };
 
     // ── Feedback 3c473773 — the DISPLAY overlay ────────────────────────────────────────────────────────
@@ -5812,7 +5816,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           qr && qrQty > 0 && round2(qrQty * qr.rate) === applied
             ? { qty: qrQty, rate: qr.rate, unit: qr.unit }
             : null;
-        currentLine = { code: c.code, name: c.name, amount: applied, buckets: [], epf: c.epf, socso: c.socso, pcb: c.pcb, hrdf: c.hrdf, ...(rateDetail ? { detail: rateDetail } : {}) };
+        currentLine = { code: c.code, name: c.name, amount: applied, displayCategory: c.displayCategory ?? null, ...(c.inputQuantity ? { inputQuantity: c.inputQuantity } : {}), buckets: [], epf: c.epf, socso: c.socso, pcb: c.pcb, hrdf: c.hrdf, ...(rateDetail ? { detail: rateDetail } : {}) };
         // Feedback 3c473773 — the box THIS item declares, read for the display tally only.
         currentCategory = c.displayCategory ?? null;
         // ── 711adcd2 — "Add to Unpaid Leave ORP Calculation" ──────────────────────────────────────

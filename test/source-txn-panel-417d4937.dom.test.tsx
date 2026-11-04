@@ -125,7 +125,7 @@ describe('417d4937 — every computed caption key exists, in every locale', () =
         .payroll.transactions.view.history;
       for (const k of [
         'sourceHeading', 'sourceNote', 'sourcePaidByThisRun', 'sourcePaidByOtherRun', 'sourceNotMarkedPaid',
-        'itemRemark',
+        'itemRemark', 'sourceInputNotRecorded', 'sourceEntryCount',
       ]) {
         expect(h[k], `${loc} view.history.${k}`).toBeTruthy();
       }
@@ -179,4 +179,24 @@ describe('417d4937 — both screens read the ledger, fenced', () => {
     expect(read).toContain('inArray(payrollBatch.companyId, p.companyIds),');
     expect(read).toContain('inArray(payrollIndividualTxn.employmentId, p.employmentIds),');
   });
+});
+
+it('9808e638/7de6fc4e: dated entries expand by code, preserving distinct transaction ids, quantities and remarks', () => {
+  const {container}=draw([
+    txn({id:'a',componentCode:'OT1_5',componentName:'Overtime 1.5',quantity:'2.50',unit:'hours',notes:'First date'}),
+    txn({id:'b',componentCode:'OT1_5',componentName:'Overtime 1.5',quantity:'1.25',unit:'hours',txnDate:'2026-08-16',notes:'Second date'}),
+    txn({id:'other-run',batchId:OTHER_RUN,componentCode:'OT1_5',componentName:'Overtime 1.5',notes:'Separate run'}),
+  ]);
+  const details=container.querySelector('details')!;
+  expect(details.open).toBe(false);
+  expect(details.querySelector('summary')!.textContent).toBe('OT1_5 · Overtime 1.5 · 2 dated entries');
+  expect(details.querySelectorAll('li')).toHaveLength(2);
+  details.querySelector('summary')!.click();
+  expect(details.open).toBe(true);
+  expect(details.textContent).toContain('2.50 Hours');
+  expect(details.textContent).toContain('1.25 Hours');
+  expect(details.textContent).toContain('First date');
+  expect(details.textContent).toContain('Second date');
+  expect(details.textContent).not.toContain('Separate run');
+  expect(container.textContent).toContain('source amounts, not an allocation of paid payroll');
 });

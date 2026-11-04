@@ -1,3 +1,4 @@
+import type { PayslipAbsenceLines } from './payslip-absence-lines';
 /**
  * b240c0ff — THE PAY ITEM LINES AN IMPORTED PAYROLL-HISTORY MONTH KEEPS, and how a payslip surface reads them.
  *
@@ -38,15 +39,17 @@ export function displayComponentLines(statutory: unknown): StoredComponentLine[]
   return imported.length ? [...stored, ...imported] : stored;
 }
 
-/**
- * The named imported deduction items behind the "Other deductions" row, or nothing.
- *
- * Handed out ONLY when they add up to the figure that row prints (`residual`, core/payslip-absence-lines.ts),
- * the same reconcile-before-replacing rule every other itemisation follows, so a deductions box can never
- * stop adding up to its TOTAL DEDUCTIONS. An imported "UPL 250.00" and a second deduction print as two rows
- * instead of one lump. Reads `importedLines` only: kernel runs keep their single row exactly as before.
- */
-export function deductionLinesFor(statutory: unknown, residual: unknown): NamedPayItemLine[] {
-  const lines = payItemLinesForBuckets(importedPayItemLines(statutory), ['deduct']);
-  return payItemLinesReconcile(lines, residual) ? lines : [];
+/** Named saved deduction items shared by History, Review and the PDF. Replace a grouped residual only
+ * when their stored contributions reconcile; the named absence carve is applied once on every surface. */
+export function deductionLinesFor(statutory: unknown, residual: unknown, absence?: PayslipAbsenceLines): NamedPayItemLine[] {
+  const lines = payItemLinesForBuckets(displayComponentLines(statutory), ['deduct']);
+  if (payItemLinesReconcile(lines, residual)) return lines;
+  // Same carve as History: a named absence row already owns this money. Never print it twice.
+  const remaining = [...lines];
+  for (const named of [absence?.unpaidLeave, absence?.absent]) {
+    if (!named) continue;
+    const at = remaining.findIndex(line => Math.round(line.amount * 100) === Math.round(named.amount * 100));
+    if (at >= 0) remaining.splice(at, 1);
+  }
+  return remaining.length < lines.length && payItemLinesReconcile(remaining, residual) ? remaining : [];
 }

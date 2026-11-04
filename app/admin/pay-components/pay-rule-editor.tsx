@@ -405,8 +405,8 @@ export function PayRuleEditor({
 
   return (
     <div ref={rootRef} className="space-y-3 rounded-xl border border-border bg-muted/30 p-3 sm:col-span-3">
-      {/* Serialised rule for the server action. Empty when fixed ⇒ null rule (legacy behaviour). */}
-      <input type="hidden" name="rule" value={rule ? JSON.stringify(rule) : ''} />
+      {/* Serialised rule for the server action. Fixed is explicit intent; a blank legacy submission preserves pending imports. */}
+      <input type="hidden" name="rule" value={JSON.stringify(kind === 'fixed' ? { kind: 'fixed' } : rule)} />
 
       <div className="flex items-center justify-between gap-3">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('sectionTitle')}</h4>
