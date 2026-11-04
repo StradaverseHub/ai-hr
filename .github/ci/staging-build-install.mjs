@@ -286,7 +286,7 @@ export async function cleanupCiBuildSession(sourceRef,installId,buildRecordId,re
  assert(!existsSync(join(p.directory,'cleanup-authorized.json'))&&!existsSync(join(p.directory,'normal-cleanup-consumed.json')),'Prior cleanup attempt requires explicit recovery');
  return withNormalCleanupLock(p.directory,{source:sourceRef,installId,pid:process.pid},async()=>{
   assert(!existsSync(join(p.directory,'cleanup-authorized.json'))&&!existsSync(join(p.directory,'normal-cleanup-consumed.json')),'Concurrent cleanup attempt requires explicit recovery');
-  if(authorizeGrant)assertEntraPrecleanupInventory(p.directory);
+  if(authorizeGrant)assertEntraPrecleanupInventory(p.directory,recovery.certificate.previousReadySha256);
   const activated=JSON.parse(regular(join(p.directory,'activated.json'),1024**2));
   const official=await import(pathToFileURL(join(source,'scripts/improve/release.ts')).href),exclude=canonicalSourceExclusions((official.deploymentRsyncArgs??official.default?.deploymentRsyncArgs)(source));
   let expectedAuthority=null;
@@ -303,7 +303,7 @@ export async function cleanupCiBuildSession(sourceRef,installId,buildRecordId,re
   const {cleanup,runtime}=await runNormalCleanupSession({grant:g,authorizeGrant,
    retainAudit:async()=>{retainNormalCleanupAudit(p,activated);for(const folder of [join(p.directory,'audit/bytes'),join(p.directory,'audit'),p.directory]){const fd=openSync(folder,'r');try{fsyncSync(fd);}finally{closeSync(fd);}}},
    audit:()=>confirmRuntime(sourceRef,installId,buildRecordId,{persist:false,allowCleanup:true,authorizeGrant}),fences,
-   persist:async(name,value)=>durableCleanupRecord(join(p.directory,'normal-cleanup-'+name+'.json'),value),
+   persist:async(name,value)=>durableCleanupRecord(join(p.directory,(authorizeGrant?'entra-recovery-':'normal-cleanup-')+name+'.json'),value),
    consume:async ready=>durableCleanupRecord(join(p.directory,'normal-cleanup-consumed.json'),{kind:'NORMAL_CLEANUP_NONCE_CONSUMED',readySha256:installHash(installJson(ready))}),
    authorize:async request=>{
  const authority=normalCleanupAuthority(source,p,activated,request);
