@@ -27,7 +27,7 @@ it('skips impossible Contract roles while retaining native navigation and live a
 
  const signatures=['app.contract_has_role(uuid,uuid,text)','app.contract_hr_admin(uuid)','app.contract_configure(uuid)','app.contract_gbs_company_scope(uuid)'];
  const definition=async(signature:string)=>{
-  const [row]=await owner.client`select pg_get_functiondef(oid)as ddl,to_jsonb(pg_proc)-'prosrc' as attributes from pg_proc where oid=${signature}::regprocedure`;
+  const [row]=await owner.client<{ddl:string;attributes:Record<string,unknown>}[]>`select pg_get_functiondef(oid)as ddl,to_jsonb(pg_proc)-'prosrc' as attributes from pg_proc where oid=${signature}::regprocedure`;
   return row;
  };
  const originals=await Promise.all(signatures.map(async signature=>({signature,...await definition(signature)})));
