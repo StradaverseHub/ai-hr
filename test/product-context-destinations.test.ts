@@ -6,7 +6,8 @@ import '@/packs/register-all';
 import {listPacks,type ModulePack} from '@/packs/registry';
 import {V9_NAVIGATION} from '@/lib/lifecycle-v9-navigation';
 import {SECURITY_PAGES} from '@/lib/security-center-navigation';
-import {destinationsFor,productDestinations} from '@/lib/product-context/destinations';
+import {DESTINATION_PURPOSE,FORWARD_STUBS,destinationsFor,productDestinations} from '@/lib/product-context/destinations';
+import {AI_FEATURES} from '@/lib/ai/features';
 import type {SessionContext} from '@/db/client';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import vi from '../messages/vi.json';import ta from '../messages/ta.json';import th from '../messages/th.json';
 
@@ -52,5 +53,33 @@ describe('product destination registry',()=>{
   expect(admin.length).toBe(rows.length);
   const leaveOnly=destinationsFor({...base,roles:['hr_admin']} as SessionContext,['leave']);
   expect(leaveOnly.some(row=>row.module==='payroll')).toBe(false);expect(leaveOnly.some(row=>row.module==='leave')).toBe(true);
+ });
+});
+describe('where the AI is switched on (grp-ai-1, run 41838331387)',()=>{
+ const groupAdmin=destinationsFor({tenantId:'00000000-0000-4000-8000-000000000001',userId:'00000000-0000-4000-8000-000000000002',roles:['super_admin']} as SessionContext);
+ const row=(href:string)=>groupAdmin.find(destination=>destination.href===href);
+ it('offers Workers (Features and agents) as the page that switches the AI on, with the provider and Assistant access beside it',()=>{
+  expect(row('/control-tower/agents/features')).toMatchObject({labelKey:'aiManagementFeatures',audience:'admin'});
+  expect(en.nav.aiManagementFeatures).toBe('Features and agents');
+  const purpose=DESTINATION_PURPOSE['/control-tower/agents/features'];
+  expect(purpose).toMatch(/^AI Centre › Administration › Workers: where the AI is switched on or off\./);
+  expect(purpose).toMatch(/the HR assistant \(the AI conversation\)/);expect(purpose).toMatch(/whole group/);expect(purpose).toMatch(/only a group administrator/);
+  expect(purpose).toMatch(/provider must be set up first/);expect(purpose).toMatch(/Assistant access \(Allowances\)/);
+  expect(row('/control-tower/agents/provider')?.labelKey).toBe('aiManagementProvider');expect(DESTINATION_PURPOSE['/control-tower/agents/provider']).toMatch(/sets up the AI provider/);
+  expect(row('/control-tower/agents/allowances')?.labelKey).toBe('aiManagementAllowances');expect(DESTINATION_PURPOSE['/control-tower/agents/allowances']).toMatch(/HR assistant access/);
+ });
+ it('says Loops (labelled Operations) is not where the AI is switched on, and the forwarded Overview is no destination',()=>{
+  expect(row('/control-tower/loops')?.labelKey).toBe('aiControlTower');
+  expect(DESTINATION_PURPOSE['/control-tower/loops']).toMatch(/Not where the AI or the HR assistant is switched on: that is Workers \(Features and agents\)\./);
+  expect(FORWARD_STUBS.has('/control-tower')).toBe(true);expect(row('/control-tower')).toBeUndefined();
+ });
+ it('the Workers page holds the HR assistant switch and Allowances the Assistant access, as the purposes say',()=>{
+  expect(AI_FEATURES.some(feature=>feature.id==='hr_assistant'&&feature.kind==='assistant')).toBe(true);
+  const screen=readFileSync(join(process.cwd(),'app','control-tower','agents','screen.tsx'),'utf8');
+  const features=screen.slice(screen.indexOf("{section==='features'&&<Card id=\"ai-features\""),screen.indexOf("{section==='features'&&<Card id=\"ai-built-in\""));
+  expect(features.length).toBeGreaterThan(500);expect(features).toContain('action={setAiFeatureAction}');
+  const allowances=screen.slice(screen.indexOf('const userRow ='),screen.indexOf("{section==='allowances'&&<>"));
+  expect(allowances.length).toBeGreaterThan(200);expect(allowances).toContain('action={setAssistantPermissionAction}');
+  expect(readFileSync(join(process.cwd(),'lib','ai-centre','centre-nav.ts'),'utf8')).toContain("{ key: 'workers', href: '/control-tower/agents/features'");
  });
 });

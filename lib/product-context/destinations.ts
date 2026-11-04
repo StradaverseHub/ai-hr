@@ -37,6 +37,14 @@ export const DESTINATION_PURPOSE:Readonly<Record<string,string>>=Object.freeze({
  '/payroll/individual-payslip':'Payroll staff: the payslip of any employee they administer, run by run. Not the signed-in person\'s own payslips (those are on /me/payslip).',
  '/payroll/transaction-view':'Payroll staff: the pay transactions of any employee they administer. Not the signed-in person\'s own payslips.',
  '/payroll':'Payroll staff: the payroll runs of the companies they administer.',
+ // grp-ai-1 (run 41838331387): after the AI Centre restructure "how do I turn on the AI for everyone in the group?" was sent
+ // to Operations, now the Loops page and labelled "Operations". The switches are on AI Centre › Administration › Workers
+ // (app/control-tower/agents/features: setAiFeatureAction -> core/ai-management.ts setAiFeature, one tenant-wide switch per
+ // feature, group administrators only); each person's Assistant access is on Allowances (setAssistantPermission, bulk too).
+ '/control-tower/agents/features':'AI Centre › Administration › Workers: where the AI is switched on or off. Each AI feature and agent has its own switch here, the HR assistant (the AI conversation) among them; a switch applies to the whole group and only a group administrator changes it. The AI provider must be set up first, and each person also needs Assistant access (Allowances).',
+ '/control-tower/agents/allowances':'AI Centre › Spend and providers › Allowances: AI usage limits for each company and person, and each person\'s HR assistant access, granted one by one or for many people at once. A group administrator changes a person\'s access.',
+ '/control-tower/agents/provider':'AI Centre › Spend and providers › Provider: where a group administrator sets up the AI provider every AI feature needs.',
+ '/control-tower/loops':'AI Centre › Operations › Loops: the loops that watch HR and payroll work, each with its own switch and, in each company, its own level; a loop never calls an AI model. Not where the AI or the HR assistant is switched on: that is Workers (Features and agents).',
 });
 /** Spec v20: what each pay-view page shows, for the conversation's turn note about another person's pay (the
  * conversation's payViewNoteFor reads it from here; this file names nothing of the conversation's own). Every
