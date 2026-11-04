@@ -78,6 +78,6 @@ it('bounds a backdated projection by the next reviewed mapping, keeps future tag
  const futureDate=new Date(Date.parse(today+'T00:00:00Z')+7*86400000).toISOString().slice(0,10);await publish(futureDate,oldBu);
  const earlierDate=new Date(Date.parse(today+'T00:00:00Z')-7*86400000).toISOString().slice(0,10);await publish(earlierDate,newBu);
  const rows=await versions(id);expect(rows.length).toBeGreaterThanOrEqual(3);expect(rows.at(-1)).toMatchObject({validFrom:futureDate,businessUnitId:oldBu});
- const before=JSON.stringify(rows);const projected=await withTenant(ctx,tx=>projectEmploymentOrganisationAssignmentTx(tx,ctx,{employmentId:id,effectiveOn:earlierDate,trigger:'reviewed_test'}));expect(projected).toEqual({changed:0,assignmentIds:[]});expect(JSON.stringify(await versions(id))).toBe(before);
+ const before=JSON.stringify(rows);const projected=await withTenant(ctx,tx=>projectEmploymentOrganisationAssignmentTx(tx,ctx,{employmentId:id,effectiveOn:earlierDate,trigger:'restructure'}));expect(projected).toEqual({changed:0,assignmentIds:[]});expect(JSON.stringify(await versions(id))).toBe(before);
  const events=await owner.db.execute<{count:string}>(sql`select count(*)::text as count from domain_event where subject_employment_id=${id}::uuid and event_type='employment.organisation.projected'`);expect(Number(events[0].count)).toBeGreaterThan(0);
 });
