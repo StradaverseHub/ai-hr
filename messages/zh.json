@@ -530,6 +530,7 @@
     "privateCases": "私密个案"
   },
   "dashboard": {
+    "companyPicker": {"classificationTitle": "公司身份审核", "reviewDesignation": "审核公司标记", "classificationHelp": "仅明确审核的标记会从新共享配置选项中隐藏公司。系统不会自动匹配名称。现有已保存目标及历史保持不变。", "noneDesignated": "尚未记录公司标记。请先核实公司身份，再确认测试或重复记录已清理。", "company": "公司", "designation": "标记", "visible": "可供选择", "test_demo": "已核实的测试或演示公司", "alias": "已核实为其他法律实体的重复记录", "canonicalCompany": "要显示的已核实法律实体", "chooseCanonical": "选择已核实法律实体", "reason": "此标记的证据与原因", "verification": "我已对照人员管理及相关业务记录核实这些公司身份。", "confirm": "确认已审核标记", "cancel": "取消", "saveFailed": "未保存标记。请检查权限范围、已核实公司及原因后重试。", "unavailable": "公司不可用", "unassigned": "尚未在人员管理中设置", "hierarchyHelp": "业务集团 → 业务单位 → 公司。属于多个单位的公司只显示一次，并在条目内列出所有单位选项。", "preserved": "保留现有已保存范围"},
     "title": "仪表盘",
     "recentActivity": "近期动态",
     "recentActivitySubtitle": "来自领域事件日志",

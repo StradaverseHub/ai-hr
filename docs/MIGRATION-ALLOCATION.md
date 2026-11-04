@@ -1534,3 +1534,12 @@ and concurrent allocations before release admission.
 ## 2026-11-04 Probation organisation mapping source reservation
 
 `2111_probation_personnel_mapping`, idx `1358`, when `1793330001511`, reserved by the root approved-item coordinator. No tenant mapping enabled, no live migration applied. This source creates a dormant owner-only reviewed mapping register; release and any per-tenant switch require reporter inventory review. Existing journal prefix remains unchanged.
+
+## Approved Rewards entity picker — 4 November 2026 (unapplied)
+
+Coordinator reserved `2108_rewards_entity_classification`, idx1355 / when1793330001508, above
+the audited staging watermark1502 and sibling provisional claims through2105/idx1352/1505.
+The Rewards branch preserves the complete main/alpha b6077019c journal prefix through2011/idx811/1411.
+This additive Rewards-only designation stores explicitly reviewed company UUIDs and canonical alias
+UUIDs; no name inference, backfill, company merge, saved-policy rewrite or production data action.
+Recheck every then-applied prefix and competing claim at integration/release admission.

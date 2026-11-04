@@ -4686,6 +4686,13 @@
       "breakpoints": true
     },
     {
+      "idx": 1355,
+      "version": "7",
+      "when": 1793330001508,
+      "tag": "2108_rewards_entity_classification",
+      "breakpoints": true
+    },
+    {
       "idx": 1357,
       "version": "7",
       "when": 1793330001510,

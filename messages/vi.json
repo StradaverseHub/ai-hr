@@ -530,6 +530,7 @@
     "privateCases": "Hồ sơ riêng tư"
   },
   "dashboard": {
+    "companyPicker": {"classificationTitle": "Rà soát danh tính công ty", "reviewDesignation": "Rà soát phân loại công ty", "classificationHelp": "Chỉ phân loại đã được xác minh mới ẩn công ty khỏi lựa chọn cấu hình chung mới. Không tự động đối chiếu tên. Các đối tượng và lịch sử đã lưu không đổi.", "noneDesignated": "Chưa có phân loại công ty. Xác minh danh tính trước khi xác nhận đã dọn các mục thử nghiệm hoặc trùng lặp.", "company": "Công ty", "designation": "Phân loại", "visible": "Có thể chọn", "test_demo": "Công ty thử nghiệm hoặc demo đã xác minh", "alias": "Bản trùng đã xác minh của pháp nhân khác", "canonicalCompany": "Pháp nhân đã xác minh cần hiển thị", "chooseCanonical": "Chọn pháp nhân đã xác minh", "reason": "Bằng chứng và lý do phân loại", "verification": "Tôi đã xác minh các danh tính công ty với Quản lý nhân sự và hồ sơ kinh doanh liên quan.", "confirm": "Xác nhận phân loại đã rà soát", "cancel": "Hủy", "saveFailed": "Chưa lưu phân loại. Kiểm tra phạm vi quyền, công ty và lý do rồi thử lại.", "unavailable": "Công ty không khả dụng", "unassigned": "Chưa thiết lập trong Quản lý nhân sự", "hierarchyHelp": "Nhóm kinh doanh → đơn vị kinh doanh → công ty. Công ty thuộc nhiều đơn vị chỉ xuất hiện một lần với tất cả lựa chọn đơn vị trong mục đó.", "preserved": "Giữ nguyên phạm vi đã lưu"},
     "title": "Bảng điều khiển",
     "recentActivity": "Hoạt động gần đây",
     "recentActivitySubtitle": "Từ nhật ký sự kiện miền",
