@@ -1547,3 +1547,7 @@ Recheck every then-applied prefix and competing claim at integration/release adm
 ### Approved Org Chart roots (4 November2026)
 
 Parent allocation reserves2109_org_chart_roots / idx1356 / when1793330001509 above discovered main/live claims. This adds explicit effective-dated roots and guards their reporting-line consistency; no roots are inferred or backfilled. Source allocation grants no deployment or live application authority. SQL SHA256: `244664d78a5d54017e7c28b063bc627cc0af7d9a524ba6fc2d710d70d845dfdd`.
+
+## 2026-11-04 approved Security Center reservation
+
+`2106_account_management_subject`, journal idx `1353`, when `1793330001506`, reserved by root delivery coordinator after read-only ref/live-ledger audit. Canonical prefix is unchanged. Recent source tail2105/idx1352/when1793330001505 and staging max1793330001502 precede this claim. No migration deployed. Live-ahead reconciliation remains a release prerequisite.

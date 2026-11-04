@@ -11355,7 +11355,8 @@
       "statusColumn": "สถานะ",
       "title": "ผู้ใช้และบทบาท",
       "unlinkedLogin": "การล็อกอินที่ไม่ได้เชื่อมโยง {id}",
-      "userCount": "{count, plural, one {# ผู้ใช้} other {# ผู้ใช้}}"
+      "userCount": "{count, plural, one {# ผู้ใช้} other {# ผู้ใช้}}",
+      "accountManagement": "Manage account"
     },
     "audit": {
       "title": "บันทึกการตรวจสอบ",
@@ -35320,5 +35321,35 @@
     },
     "noReader": "บริษัทนี้ยังไม่ได้ตั้งค่าผู้อ่านที่เหมาะสม จึงยังไม่มีใครอ่านเรื่องนี้ได้ โปรดติดต่อ {channel}",
     "externalChannel": "[ช่องทางภายนอกที่บริษัทกำหนด เช่น สายด่วนจริยธรรม]"
+  },
+  "accountManagement": {
+    "title": "Manage account",
+    "username": "Username",
+    "email": "Registered email",
+    "status": "Status",
+    "active": "Active",
+    "suspended": "Suspended",
+    "expired": "Inactive — expired",
+    "preparing": "Preparing",
+    "activeUntil": "Account Active Until",
+    "temporary-password": "Set temporary password",
+    "reset-email": "Send password reset email",
+    "recovery-exemption": "Allow one recovery step without MFA",
+    "suspend": "Suspend account",
+    "reactivate": "Reactivate account",
+    "expiry": "Change account expiry",
+    "password": "Password (leave blank to generate)",
+    "minutes": "Expires in minutes",
+    "reason": "Reason",
+    "confirm": "I confirm this sensitive account action. Existing sessions will be revoked.",
+    "exemptionHelp": "One password-reset step only, up to 60 minutes. The user must verify or enroll an authenticator before entering HR.",
+    "expiryHelp": "Inclusive Malaysia calendar date. Leave blank to remove expiry. Expired accounts must have their expiry extended before reactivation.",
+    "saved": "Account action saved. For email delivery, check the email delivery log.",
+    "failed": "The action could not be completed. Check your scope, account state, password policy and input, then retry.",
+    "shownOnce": "Copy this temporary password now. It is not stored in the audit history and cannot be viewed again after leaving this page. It must be changed before HR access.",
+    "hide": "Hide password",
+    "history": "Recent account activity",
+    "consumed": "Recovery exemption consumed",
+    "system": "System"
   }
 }
