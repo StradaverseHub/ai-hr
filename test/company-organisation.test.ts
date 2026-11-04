@@ -1,3 +1,4 @@
+import {pgSqlState} from '../lib/db-error';
 import {createRewardUnit} from '../packs/rewards/service';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
@@ -68,14 +69,26 @@ it('current permission ancestry and company-tree visuals change only at the revi
  const [child]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional moved company',parentCompanyId:b.companyId}).returning();
  const scopedUser=await createAppUser(b.tenantId,null,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,scopedUser));
  const scoped:SessionContext={...adminCtx(b),userId:scopedUser,grants:[{role:'hr_admin',companyId:b.companyId}]};
+ const destinationUser=await createAppUser(b.tenantId,null,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:destination.id}).where(eq(schema.roleAssignment.appUserId,destinationUser));
+ const destinationCtx:SessionContext={...adminCtx(b),userId:destinationUser,grants:[{role:'hr_admin',companyId:destination.id}]};
+ const rawUpdate=(ctx:SessionContext,name:string)=>withTenant(ctx,tx=>tx.update(schema.company).set({legalName:name}).where(eq(schema.company.id,child.id)).returning({id:schema.company.id}));
+ const rawDelete=(ctx:SessionContext)=>withTenant(ctx,tx=>tx.delete(schema.company).where(eq(schema.company.id,child.id)).returning({id:schema.company.id}));
+ const retainedDelete=async(ctx:SessionContext)=>{let failure:unknown;try{await rawDelete(ctx);}catch(error){failure=error;}expect(pgSqlState(failure)).toBe('23503');};
  const proposal={kind:'mapping' as const,companyIds:[child.id],effectiveOn:'2090-01-01',changes:[{companyId:child.id,businessUnitId:unit,parentCompanyId:destination.id}]};
  await expect(prepareCompanyOrganisationRun(scoped,proposal)).rejects.toThrow();
  await publish(await prepareCompanyOrganisationRun(adminCtx(b),proposal));
  const ancestry=()=>withTenant(adminCtx(b),tx=>tx.execute<{old:boolean;next:boolean;parent:string}>(sql`select app.is_company_descendant(${child.id}::uuid,${b.companyId}::uuid) old,app.is_company_descendant(${child.id}::uuid,${destination.id}::uuid) next,app.company_organisation_current_parent(${child.id}::uuid) parent`));
  expect((await ancestry())[0]).toEqual({old:true,next:false,parent:b.companyId});
+ expect(await rawUpdate(destinationCtx,'Denied future destination edit')).toEqual([]);expect(await rawDelete(destinationCtx)).toEqual([]);
+ expect(await rawUpdate(scoped,'Permitted current source edit')).toEqual([{id:child.id}]);await retainedDelete(scoped);
  const current={...proposal,effectiveOn:today()};await expect(prepareCompanyOrganisationRun(scoped,current)).rejects.toThrow();
  await publish(await prepareCompanyOrganisationRun(adminCtx(b),current));
  expect((await ancestry())[0]).toEqual({old:false,next:true,parent:destination.id});
+ expect(await rawUpdate(scoped,'Denied former source edit')).toEqual([]);expect(await rawDelete(scoped)).toEqual([]);
+ expect(await rawUpdate(destinationCtx,'Permitted current destination edit')).toEqual([{id:child.id}]);await retainedDelete(destinationCtx);
+ await expect(withTenant(scoped,tx=>tx.insert(schema.company).values({tenantId:b.tenantId,legalName:'Denied new destination child',parentCompanyId:destination.id}))).rejects.toThrow();
+ const [newChild]=await withTenant(destinationCtx,tx=>tx.insert(schema.company).values({tenantId:b.tenantId,legalName:'Permitted new destination child',parentCompanyId:destination.id}).returning({id:schema.company.id}));
+ expect(await withTenant(destinationCtx,tx=>tx.delete(schema.company).where(eq(schema.company.id,newChild.id)).returning({id:schema.company.id}))).toEqual([{id:newChild.id}]);
  await expect(withTenant(scoped,tx=>deriveCompanyOrganisationTx(tx,scoped,{companyId:child.id,asOf:today()}))).rejects.toThrow();
 });
 it('staging is bounded and resumable with no visible mapping until all frozen rows reconcile',async()=>{
@@ -113,4 +126,26 @@ it('rejects forged organisation evidence through the generic SECURITY DEFINER au
  await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`select app.append_auth_event(${b.tenantId}::uuid,'organisation-tag-run',${id}::uuid,'organisation-tag-run.published','user',${b.adminUserId}::uuid,'{}'::jsonb)`))).rejects.toThrow();
  await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`select app.company_org_append_event(${b.tenantId}::uuid,'organisation-tag-run',${id}::uuid,'organisation-tag-run.published','user',${b.adminUserId}::uuid,'{}'::jsonb)`))).rejects.toThrow();
  const [proof]=await owner.db.execute<{permits:number;published:number}>(sql`select (select count(*)::int from company_organisation_audit_permit) permits,(select count(*)::int from domain_event where aggregate_id=${id}::uuid and event_type='organisation-tag-run.published') published`);expect(proof).toEqual({permits:0,published:0});
+});
+it('normalises raw backdated BU writes after activation while retaining recorded legacy corrections and publication prefixes',async()=>{
+ const [legacy]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'RECORDED',name:'Fictional recorded legacy unit',isGlobal:true}).returning();
+ const e=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional Legacy Provenance',primaryEmail:'legacy-provenance@organisation.test'},companyId:b.companyId,departmentId:b.deptA,businessUnitId:legacy.id,employmentType:'full_time',hiredOn:'2024-01-01'});
+ await publish(await prepare());
+ const rows=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,e.employmentId));
+ const prefix=rows.find(row=>!row.supersededAt&&row.validFrom==='2024-01-01'&&row.validTo===today());expect(prefix?.businessUnitId).toBe(legacy.id);
+ // Changing a recorded legacy row cannot author a different BU, even though its date is pre-activation.
+ await withTenant(adminCtx(b),tx=>tx.update(schema.assignment).set({businessUnitId:unit}).where(eq(schema.assignment.id,prefix!.id)));
+ const [unchanged]=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.id,prefix!.id));expect(unchanged.businessUnitId).toBe(legacy.id);
+ // Native correction/reversal pattern: supersede an actual historical source and insert its exact window.
+ const restored=await withTenant(adminCtx(b),async tx=>{
+  await tx.update(schema.assignment).set({supersededAt:new Date()}).where(eq(schema.assignment.id,prefix!.id));
+  const [row]=await tx.insert(schema.assignment).values({tenantId:b.tenantId,employmentId:e.employmentId,companyId:prefix!.companyId,departmentId:prefix!.departmentId,employmentType:prefix!.employmentType,validFrom:prefix!.validFrom,validTo:prefix!.validTo,businessUnitId:unit}).returning();return row;
+ });expect(restored.businessUnitId).toBe(legacy.id);
+ // A genuinely new retroactive hire has no dated source and cannot submit a new historical BU.
+ const retro=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional New Retro Hire',primaryEmail:'new-retro@organisation.test'},companyId:b.companyId,departmentId:b.deptA,businessUnitId:legacy.id,employmentType:'full_time',hiredOn:'2023-01-01'});
+ const [retroSource]=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,retro.employmentId));expect(retroSource.businessUnitId).toBeNull();
+ await withTenant(adminCtx(b),tx=>tx.update(schema.assignment).set({businessUnitId:legacy.id}).where(eq(schema.assignment.id,retroSource.id)));
+ expect((await owner.db.select().from(schema.assignment).where(eq(schema.assignment.id,retroSource.id)))[0].businessUnitId).toBeNull();
+ // Raw INSERT also fails to introduce a value before the employment's only proven interval.
+ const inserted=await withTenant(adminCtx(b),async tx=>{const [row]=await tx.insert(schema.assignment).values({tenantId:b.tenantId,employmentId:retro.employmentId,companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',validFrom:'2022-01-01',validTo:'2023-01-01',businessUnitId:legacy.id}).returning();return row;});expect(inserted.businessUnitId).toBeNull();
 });

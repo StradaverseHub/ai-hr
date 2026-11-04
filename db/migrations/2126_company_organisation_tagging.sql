@@ -378,19 +378,50 @@ END $$;
 CREATE FUNCTION app.company_organisation_managed() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM company_organisation_run WHERE tenant_id=app.current_tenant_id() AND state='published' AND kind<>'retag');
 $$;
+-- Company SELECT stays tenant-readable. New rows still prove their submitted physical parent;
+-- current UPDATE/DELETE authority follows the same published HR-today parent as native ancestry.
+ALTER POLICY tenant_isolation ON company USING(tenant_id=app.current_tenant_id()) WITH CHECK(tenant_id=app.current_tenant_id());
+CREATE POLICY company_org_insert_parent ON company AS RESTRICTIVE FOR INSERT
+ WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(coalesce(parent_company_id,id)));
+CREATE POLICY company_org_update_parent ON company AS RESTRICTIVE FOR UPDATE
+ USING(tenant_id=app.current_tenant_id() AND (NOT app.company_organisation_managed() OR app.is_admin_for(coalesce(app.company_organisation_current_parent(id),id))))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(coalesce(CASE WHEN app.company_organisation_managed() THEN app.company_organisation_current_parent(id) ELSE parent_company_id END,id)));
+ALTER POLICY company_delete_admin ON company USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(coalesce(app.company_organisation_current_parent(id),id)));
 CREATE FUNCTION app.company_org_assignment_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE co uuid;tags jsonb;BEGIN
+DECLARE co uuid;old_co uuid;tags jsonb;managed boolean;retained_bu uuid;BEGIN
  IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() THEN
   IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname=session_user AND (rolname='ai_hr_owner' OR rolsuper)) AND NOT EXISTS(SELECT 1 FROM company_organisation_run WHERE tenant_id=NEW.tenant_id AND state='published' AND kind<>'retag') THEN RETURN NEW;END IF;
   RAISE EXCEPTION 'Tenant-bound organisation write required' USING ERRCODE='42501';
  END IF;
- IF TG_OP='UPDATE' AND NEW.business_unit_id IS NOT DISTINCT FROM OLD.business_unit_id AND NEW.company_id IS NOT DISTINCT FROM OLD.company_id AND NEW.valid_from=OLD.valid_from THEN RETURN NEW;END IF;
+ IF TG_OP='UPDATE' AND NEW.tenant_id=OLD.tenant_id AND NEW.employment_id=OLD.employment_id AND NEW.business_unit_id IS NOT DISTINCT FROM OLD.business_unit_id AND NEW.company_id IS NOT DISTINCT FROM OLD.company_id AND NEW.valid_from=OLD.valid_from THEN RETURN NEW;END IF;
  co:=NEW.company_id;IF co IS NULL THEN SELECT company_id INTO co FROM employment WHERE id=NEW.employment_id AND tenant_id=NEW.tenant_id;END IF;
  tags:=app.company_org_tags_unchecked(co,NEW.valid_from);
- IF tags->>'status'<>'legacy' THEN NEW.business_unit_id:=nullif(tags->>'businessUnitId','')::uuid;END IF;
+ IF tags->>'status'<>'legacy' THEN NEW.business_unit_id:=nullif(tags->>'businessUnitId','')::uuid;
+ ELSE
+  -- Activation is tenant-wide even for a new backdated row. A pre-activation date is not
+  -- permission to author a new BU. The private first-publication lease also activates this
+  -- rule, while keeping actual historical prefix/reversal source values intact.
+  managed:=app.company_organisation_managed() OR EXISTS(SELECT 1 FROM company_organisation_publish_lease l WHERE l.tenant_id=NEW.tenant_id AND l.xact_id=pg_current_xact_id() AND l.actor_id=app.current_user_id());
+  IF managed THEN
+   IF TG_OP='UPDATE' THEN
+    old_co:=OLD.company_id;IF old_co IS NULL THEN SELECT company_id INTO old_co FROM employment WHERE id=OLD.employment_id AND tenant_id=OLD.tenant_id;END IF;
+    IF OLD.tenant_id=NEW.tenant_id AND OLD.employment_id=NEW.employment_id AND old_co IS NOT DISTINCT FROM co THEN
+     NEW.business_unit_id:=OLD.business_unit_id;RETURN NEW;
+    END IF;
+   END IF;
+   -- Native corrections supersede their source before inserting its replacement; normal
+   -- dated assignments close it exactly at the replacement's start. Both are recorded
+   -- provenance, not a caller-supplied BU. Never search another employment or Company.
+   SELECT a.business_unit_id INTO retained_bu FROM assignment a JOIN employment e ON e.id=a.employment_id AND e.tenant_id=a.tenant_id
+   WHERE a.tenant_id=NEW.tenant_id AND a.employment_id=NEW.employment_id AND a.id<>NEW.id AND coalesce(a.company_id,e.company_id) IS NOT DISTINCT FROM co
+    AND a.valid_from<=NEW.valid_from AND (a.valid_to IS NULL OR (a.valid_to>a.valid_from AND a.valid_to>=NEW.valid_from))
+   ORDER BY a.valid_from DESC,(a.superseded_at IS NULL) DESC,a.superseded_at DESC NULLS LAST,a.id DESC LIMIT 1;
+   NEW.business_unit_id:=retained_bu;
+  END IF;
+ END IF;
  RETURN NEW;
 END $$;
-CREATE TRIGGER organisation_assignment_guard BEFORE INSERT OR UPDATE OF business_unit_id,company_id,valid_from,valid_to,superseded_at ON assignment FOR EACH ROW EXECUTE FUNCTION app.company_org_assignment_guard();
+CREATE TRIGGER organisation_assignment_guard BEFORE INSERT OR UPDATE OF tenant_id,employment_id,business_unit_id,company_id,valid_from,valid_to,superseded_at ON assignment FOR EACH ROW EXECUTE FUNCTION app.company_org_assignment_guard();
 CREATE FUNCTION app.company_org_assignment_record() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  IF NEW.tenant_id=app.current_tenant_id() AND app.current_user_id() IS NOT NULL AND NEW.superseded_at IS NULL AND (NEW.valid_to IS NULL OR NEW.valid_to>NEW.valid_from) AND EXISTS(SELECT 1 FROM company_organisation_run WHERE tenant_id=NEW.tenant_id AND state='published' AND kind<>'retag' AND effective_on<=NEW.valid_from) THEN
