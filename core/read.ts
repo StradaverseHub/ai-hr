@@ -625,7 +625,7 @@ export function personnelListPageSql(
     const source=facts?.source??sql`app.access_workforce_list_facts()`;
     const sourceFacts=projected?sql`select workforce_row.employment_id,
       lower(workforce_row.company)as company_sort,${sourceNameSort} as name_sort,
-      ${sameFilters?sql`true`:sql`(${pageWhere})`}as page_matches,${sameFilters?sql`true`:sql`(${facetWhere})`}as facet_matches,${columns.status} as status
+      ${sameFilters?sql`true`:sql`(${pageWhere})`} as page_matches,${sameFilters?sql`true`:sql`(${facetWhere})`} as facet_matches,${columns.status} as status
       from ${source} workforce_row where ${sameFilters?pageWhere:sql`(${pageWhere})or(${facetWhere})`}`:sql`select * from ${source}`;
     const retainedPageWhere=projected?sql`workforce_row.page_matches`:pageWhere;
     const retainedFacetWhere=projected?sql`workforce_row.facet_matches`:facetWhere;
