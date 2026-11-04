@@ -24,7 +24,7 @@ it('groups reminder invalidation per statement with exact per-tenant row revisio
   const updated=performance.now();
   await owner.client`delete from person where id=any(${ids}::uuid[])`;
   const deleted=performance.now(),after=await epochs();
-  for(const tenant of [b.tenantId,foreign.tenantId])expect(after.get(tenant)!-before.get(tenant)!).toBe(7500n);
+  for(const tenant of [b.tenantId,foreign.tenantId])expect(after.get(tenant)!-before.get(tenant)!).toBe(BigInt(7500));
   phases[phase]={rows:ids.length,insertMs:inserted-started,updateMs:updated-inserted,deleteMs:deleted-updated,exactTenantEpochIncrements:true};
  };
  await measure('original');
