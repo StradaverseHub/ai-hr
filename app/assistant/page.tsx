@@ -141,7 +141,7 @@ export default async function AssistantPage({
   const centreTabs = <AiCentreTabs active="ask" isAdmin={admin} />;
   const errorMessage=sp.error==='clarification_unavailable'?t('workspace.conversation.unavailable'):
     sp.error&&/^[a-z_]{1,40}$/.test(sp.error)&&t.has(`err_${sp.error}`)?t(`err_${sp.error}`):undefined;
-  const workspace = await loadAiWorkspace(s,{includeHistory:false,includeGovernance:false,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
+  const workspace = await loadAiWorkspace(s,{includeHistory:false,includeGovernance:false,includePlanning:toolsRequested,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
   const access = workspace.access;
 
   // The denied-access fallback retains own work/calendar. The active chat never preloads those
