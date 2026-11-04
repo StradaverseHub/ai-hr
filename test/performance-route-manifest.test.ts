@@ -19,3 +19,7 @@ it('covers the installed AI Centre tabs and administrator sections without grant
  expect(routePools.companyHR).not.toContain('/control-tower/agents/provider');
  expect(routePools.groupHR).toContain('/control-tower/agents/provider');
 });
+
+it('includes the default Home in every role workload',()=>{
+ for(const [role,paths] of Object.entries(routePools))expect(paths,role).toContain('/');
+});

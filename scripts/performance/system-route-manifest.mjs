@@ -8,7 +8,7 @@ export const employeeRoutes=Object.freeze([
  '/me/calendar','/me/letters','/me/notifications','/me/ea','/me/tp3','/me/tax-relief',
 ]);
 export const hrRoutes=Object.freeze([
- ...aiCentreRoutes,...aiAdminRoutes,
+ ...aiCentreRoutes,...aiAdminRoutes,'/',
  '/admin/personnel','/attendance','/payroll','/reports','/reports/employee-master','/lifecycle/onboarding','/lifecycle/offboarding','/roster','/letters/register','/performance','/rewards','/system-testing','/feedback','/knowledge-base','/control-tower','/admin/settings/movement','/admin/security-center','/payroll/formula-builder','/payroll/formula-builder/new','/claims',
  '/people','/tasks','/org','/delegations','/roster/import','/roster/exceptions',
  '/letters/approval','/letters/templates','/letters/templates/new','/letters/fields','/letters/reports','/letters/settings',
