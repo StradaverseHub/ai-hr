@@ -8,20 +8,28 @@ import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {readHomeTeamPage,readHomeCelebrationPage,readHomeTeamCalendar} from '../core/employee-home-sharing';
+import {readEmployeeHomeSummary} from '../core/employee-home-summary';
+import {readEmployeeHomeTimeOff} from '../core/employee-home-time-off';
+import {readEmployeeHomeCalendar} from '../core/employee-home-calendar';
+import {readEmployeeHomeTasks} from '../core/employee-home-tasks';
 import {saveEmployeeHomeConfiguration} from '../core/employee-home-configuration';
 import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {pgSqlState} from '../lib/db-error';
-import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
+import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
-it('lets actual Team, Celebrations and shared Calendar reads coexist with an access reader',async()=>{
+it('lets actual Home card aggregations coexist with an access reader',async()=>{
  await resetDb();const b=await seedBase(),on=todayInKualaLumpur();
  const hire=(name:string)=>hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const own=await hire('Fictional Home reader');await hire('Fictional Home peer');
- const ctx:SessionContext={tenantId:b.tenantId,userId:await createAppUser(b.tenantId,own.personId,'employee'),personId:own.personId,roles:['employee']};
+ const ctx:SessionContext={tenantId:b.tenantId,userId:await createAppUser(b.tenantId,own.personId,'employee'),personId:own.personId,roles:['employee'],entitlements:harnessSnapshot(b.tenantId)};
  const configuration=defaultEmployeeHomeConfiguration();configuration.teamVisibility='department';configuration.celebrations={enabled:true,scope:'department'};
  await saveEmployeeHomeConfiguration(adminCtx(b),{companyId:b.companyId,audienceRole:'employee',expectedOrdinal:0,configuration,reason:'Fictional read concurrency check'});
- const readers={team:()=>readHomeTeamPage(ctx,own.employmentId,{date:on}),celebrations:()=>readHomeCelebrationPage(ctx,own.employmentId),calendar:()=>readHomeTeamCalendar(ctx,own.employmentId,on,on)};
+ const readers={team:()=>readHomeTeamPage(ctx,own.employmentId,{date:on}),celebrations:()=>readHomeCelebrationPage(ctx,own.employmentId),calendar:()=>readHomeTeamCalendar(ctx,own.employmentId,on,on),
+  summary:async()=>{const {serverNow,...value}=await readEmployeeHomeSummary(ctx,own.employmentId,'en','Replacement holiday');return value;},
+  timeOff:()=>readEmployeeHomeTimeOff(ctx,own.employmentId,'en'),
+  ownCalendar:()=>readEmployeeHomeCalendar(ctx,own.employmentId,on.slice(0,7)),
+  tasks:()=>readEmployeeHomeTasks(ctx,own.employmentId)};
  const names=Object.keys(readers) as (keyof typeof readers)[];
  const baseline=await Promise.all(names.map(name=>readers[name]()));expect(baseline[0]).toMatchObject({totalPeople:1});
  await owner.client.begin(async holder=>{
@@ -33,7 +41,7 @@ it('lets actual Team, Celebrations and shared Calendar reads coexist with an acc
   try{
    const results=await Promise.allSettled(names.map(name=>readers[name]()));
    if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'home-sharing-read-locks.json'),JSON.stringify({kind:'ACTUAL_HOME_SHARING_READ_CONCURRENCY_COMPONENT_ONLY',releaseEligible:false,results:results.map((row,i)=>({reader:names[i],status:row.status,sqlState:row.status==='rejected'?pgSqlState(row.reason):null}))},null,2));
-   expect(results.map(row=>row.status)).toEqual(['fulfilled','fulfilled','fulfilled']);
+   expect(results.map(row=>row.status)).toEqual(names.map(()=>'fulfilled'));
    for(const [i,row]of results.entries())if(row.status==='fulfilled')expect(row.value).toEqual(baseline[i]);
   }finally{spy.mockRestore();}
  });
