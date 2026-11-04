@@ -1,14 +1,14 @@
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
-import {eq} from 'drizzle-orm';
+import {sql,eq} from 'drizzle-orm';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayComponentCatalog,upsertPayComponent,setEmploymentPayComponent} from '../core/pay-components';
 import {createBatch,generatePayslips} from '../core/payroll';
-import {savePayFormula,testPayFormula,setPayFormulaActive,getFormulaEvaluation,saveFormulaAccumulationGroup} from '../core/pay-formula';
+import {registerPayFormulaPersonnelField,payFormulaOptions,savePayFormula,testPayFormula,setPayFormulaActive,getFormulaEvaluation,saveFormulaAccumulationGroup} from '../core/pay-formula';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
-import type {SessionContext} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import type {PayFormulaContext} from '../lib/pay-formula-model';
 let base:Base,ctx:SessionContext,employee:{employmentId:string;personId:string},context:PayFormulaContext;
 const item={code:'EXACT_FORMULA',name:'Exact formula allowance',label:'Exact formula allowance',kind:'allowance' as const,includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false,formulaContext:{rate:'1.005'}};
@@ -143,4 +143,30 @@ it('uses the Native period-end salary owner when testing an existing run',async(
  await generatePayslips(ctx,{batchId});
  const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
  expect(slip.basicSalary).toBe('6200.00');expect((slip.statutory as {componentLines:{code:string;amount:number}[]}).componentLines.find(l=>l.code===item.code)?.amount).toBe(620);
+});
+
+it('uses stable Company identities for both EBAC-style overtime branches through the native source owner',async()=>{
+ await owner.db.update(schema.company).set({legalName:'EBAC HOME SDN BHD'}).where(eq(schema.company.id,base.companyId));
+ const allowance=await upsertPayComponent(ctx,{...item,code:'COMPANY_FIXED',name:'Company fixed allowance',orpOvertime:true,rule:null});
+ await setEmploymentPayComponent(ctx,{employmentId:employee.employmentId,componentId:allowance.id,amount:1000,effectiveFrom:context.period+'-01'});
+ const source=(companyId:string)=>`If {#EmployeeProfile}("companyId") = "${companyId}" Then\n Return ({#Basic} + {#FixedAllowances}) / 26 / 8 * 1.5 * {#Input}\nElse\n Return {#Basic} / 26 / 8 * 1.5 * {#Input}\nEnd If`;
+ const yes=await savePayFormula(ctx,{formulaId:'COMPANY_YES',description:'Company branch',method:'write',source:source(base.companyId)}),no=await savePayFormula(ctx,{formulaId:'COMPANY_NO',description:'Other-company branch',method:'write',source:source('10000000-0000-4000-8000-000000000009')});
+ expect((await testPayFormula(ctx,{...yes,context})).amount).toBe('129.81');expect((await testPayFormula(ctx,{...no,context})).amount).toBe('108.17');
+ const options=await payFormulaOptions(ctx),field=options.personnelFields.find(f=>f.key==='companyId');expect(field?.listValues).toContainEqual({value:base.companyId,label:'EBAC HOME SDN BHD · '+base.companyId});
+});
+it('refuses current-only history and sensitive authoring while retaining the existing formula contract',async()=>{
+ const historical=await savePayFormula(ctx,{formulaId:'PAST',description:'No current-as-past source',method:'write',source:'{#Explain}({#EmployeeInformation}("profile.personal_details.fullname"))\nReturn 1'});
+ expect(await testPayFormula(ctx,{...historical,context})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
+ await owner.db.insert(schema.payrollPermissionGrant).values(['hr_admin','super_admin'].map(role=>({tenantId:base.tenantId,companyId:base.companyId,role,permissionKey:'report.read.identity',allowed:false})));
+ await expect(savePayFormula(ctx,{formulaId:'DENIED_FIELD',description:'Denied sensitive source',method:'write',source:'{#Explain}({#EmployeeInformation}("profile.personal_details.fullname"))\nReturn 1'})).rejects.toThrow(/permission/);
+});
+it('versions only affected registrations, rejects executable source configuration and retains old formula receipts',async()=>{
+ const old=await savePayFormula(ctx,{formulaId:'OLD_CONTRACT',description:'Unchanged old dependency receipt',method:'write',source:'Return {#Basic} / 10'}),fresh=await savePayFormula(ctx,{formulaId:'NEW_CONTRACT',description:'New Personnel dependency receipt',method:'write',source:`If {#EmployeeProfile}("companyId") = "${base.companyId}" Then\nReturn 1\nElse\nReturn 0\nEnd If`});
+ const oldTest=await testPayFormula(ctx,{...old,context});expect(oldTest.passed).toBe(true);
+ await registerPayFormulaPersonnelField(ctx,{sourceKey:'companyId',label:'Legal employer',description:'Verified legal company identity',enabled:true});
+ expect((await testPayFormula(ctx,{...old,context})).amount).toBe(oldTest.amount);
+ await expect(testPayFormula(ctx,{...fresh,context})).rejects.toThrow(/Dependencies changed/);
+ await expect(registerPayFormulaPersonnelField(ctx,{sourceKey:'person; drop table company',label:'Forbidden',description:'No executable source registrations',enabled:true})).rejects.toThrow(/supported typed source/);
+ const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'pay-formula.personnel-registered'));expect(events).toHaveLength(1);
+ await expect(withTenant(ctx,tx=>tx.execute(sql`update pay_formula_personnel_registration set enabled=false`))).rejects.toBeDefined();
 });

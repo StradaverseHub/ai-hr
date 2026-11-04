@@ -1521,3 +1521,12 @@ and `when`.
 ## Approved feedback candidate reservations — 4 November 2026
 
 2107_probation_module_permission: idx1354, timestamp1793330001507, owned by codex/approved-ui-20261104. Checked main/alpha b6077019 and staging watermark1793330001502; discovered competing source claims through2105/1352/1505. Keep preceding journal bytes; gaps are intentional. Source reservation only, unapplied. Security2106, Rewards2108, Org Chart2109 and Personnel registry2110 are coordinated separately. Reconcile ledger/source divergence before release.
+
+## Approved Personnel formula registry — 4 November 2026 (unapplied)
+
+Coordinator reserved `2110_pay_formula_personnel_registry`, idx1357 / when1793330001510,
+after sibling Rewards2108/1355/1508 and Organization2109/1356/1509. This source branch preserves
+the complete b6077019c journal prefix through2011/811/1411. Registration metadata selects only
+closed typed source keys: it cannot supply executable SQL, table names, columns or source code.
+No production registration or migration has been applied. Reconcile all then-applied prefixes
+and concurrent allocations before release admission.

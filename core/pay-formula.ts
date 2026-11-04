@@ -1,3 +1,5 @@
+import {personnelFormulaDependencyTx,personnelFormulaLibraryTx} from './pay-formula-personnel';
+import {PAY_FORMULA_PERSONNEL_ADAPTERS} from '../lib/pay-formula-personnel';
 /** Native owner of reusable formula identities, immutable evidence and activation. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -79,7 +81,8 @@ async function dependencySnapshotTx(tx:Tx,ctx:SessionContext,program:FormulaProg
  }
  const catalog=rows.filter(r=>codes.has(r.code.toUpperCase())).map(r=>({...r,rule:r.rule?.kind==='formula_builder'&&r.rule.formulaId===selfId?{...r.rule,dependencies:undefined}:r.rule}));
  const active=await tx.execute<{code:string;revisionId:string;hash:string}>(sql`select f.formula_id as code,r.id as "revisionId",r.content_hash as hash from pay_formula f join lateral(select * from pay_formula_event e where e.formula_id=f.id and e.kind in ('activated','deactivated','deleted') order by sequence desc limit 1)e on e.kind='activated' join pay_formula_revision r on r.id=e.revision_id where f.tenant_id=${ctx.tenantId}::uuid and f.formula_id<>${selfId??''} order by f.formula_id`);
- return {catalog,groups:selectedGroups,active:active.filter(r=>relevantFormulas.has(r.code)),registry:PAY_FORMULA_REGISTRY_VERSION,provider:PAY_FORMULA_PROVIDER_VERSION,evaluator:PAY_FORMULA_EVALUATOR_VERSION,...(fixedAllowanceBasis?{fixedAllowanceBasis}:{})};
+ const personnel=await personnelFormulaDependencyTx(tx,program,ctx);
+ return {...(personnel?{personnel}:{}),catalog,groups:selectedGroups,active:active.filter(r=>relevantFormulas.has(r.code)),registry:PAY_FORMULA_REGISTRY_VERSION,provider:PAY_FORMULA_PROVIDER_VERSION,evaluator:PAY_FORMULA_EVALUATOR_VERSION,...(fixedAllowanceBasis?{fixedAllowanceBasis}:{})};
 }
 export async function formulaDependencyFingerprintTx(tx:Tx,ctx:SessionContext,program:FormulaProgram,selfId?:string){return digest(await dependencySnapshotTx(tx,ctx,program,selfId));}
 async function graph(tx:Tx,ctx:SessionContext,formulaId:string,dependencies:string[]){
@@ -199,10 +202,16 @@ export async function searchPayFormulaEmployees(ctx:SessionContext,query:string,
 export async function payFormulaOptions(ctx:SessionContext){return withTenant(ctx,async tx=>{
  await authority(tx,ctx);const companies=await tx.execute<{id:string;name:string}>(sql`select id,legal_name as name from company where tenant_id=${ctx.tenantId}::uuid and archived_at is null and app.can_admin_payroll_for(id) order by legal_name`),employees=await tx.execute<{id:string;companyId:string;code:string;name:string}>(sql`select e.id,e.company_id as "companyId",coalesce(e.employee_code,'') as code,p.full_name as name from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${ctx.tenantId}::uuid and app.can_admin_payroll_for(e.company_id) and app.access_workforce_employment(e.id,'workforce.view') order by e.employee_code,e.id limit 50`),cycles=await tx.execute<{id:string;companyId:string;code:string;label:string}>(sql`select id,company_id as "companyId",coalesce(code,id::text) as code,name as label from payroll_cycle where tenant_id=${ctx.tenantId}::uuid and archived_at is null and app.can_admin_payroll_for(company_id) order by code`),payItems=await tx.execute<{code:string;name:string}>(sql`select code,name from pay_component where tenant_id=${ctx.tenantId}::uuid and archived_at is null and kind<>'contribution' order by code`),formulas=await tx.execute<{formulaId:string}>(sql`select formula_id as "formulaId" from pay_formula where tenant_id=${ctx.tenantId}::uuid order by formula_id`),activeFormulas:{id:string;formulaId:string;description:string;revisionId:string;dependencies:string[]}[]=[];
  for(const f of formulas){try{const a=await loadActiveFormulaProgramTx(tx,ctx,f.formulaId);const [r]=await tx.execute<{description:string}>(sql`select description from pay_formula_revision where id=${a.revisionId}::uuid`);activeFormulas.push({id:a.id,formulaId:a.formulaId,revisionId:a.revisionId,description:r.description,dependencies:a.dependencies});}catch(e){if(!(e instanceof PayFormulaError))throw e;}}
- return {companies,employees,cycles,payItems:payItems.filter(p=>!isStatutoryComponent(p.code)),activeFormulas,accumulations:await loadFormulaAccumulationGroupsTx(tx,ctx),capabilities:{view:true,edit:true,test:true,activate:true,deactivate:true,delete:true}};
+ return {personnelFields:await personnelFormulaLibraryTx(tx,ctx,companies),companies,employees,cycles,payItems:payItems.filter(p=>!isStatutoryComponent(p.code)),activeFormulas,accumulations:await loadFormulaAccumulationGroupsTx(tx,ctx),capabilities:{view:true,edit:true,test:true,activate:true,deactivate:true,delete:true}};
  });}
 
 export async function listPayFormulaBatches(ctx:SessionContext,p:{companyId:string;period:string;cycleId:string}){return withTenant(ctx,async tx=>{
  if(!uuid.test(p.companyId)||!uuid.test(p.cycleId)||!/^\d{4}-(0[1-9]|1[0-2])$/.test(p.period))throw new PayFormulaError('Choose a company, period and payroll cycle.');await authority(tx,ctx,p.companyId);
  const rows=await tx.execute<{id:string;runSeq:number;status:string}>(sql`select id,run_seq as "runSeq",status from payroll_batch where tenant_id=${ctx.tenantId}::uuid and company_id=${p.companyId}::uuid and pay_period=${p.period} and (payroll_cycle_id=${p.cycleId}::uuid or (payroll_cycle_id is null and exists(select 1 from payroll_cycle c where c.id=${p.cycleId}::uuid and c.company_id=${p.companyId}::uuid and c.run_type=payroll_batch.run_type))) order by run_seq,id limit 1001`);if(rows.length>1000)throw new PayFormulaError('Too many matching payroll runs. Narrow the selected period and cycle.');return rows;
  });}
+
+/** Metadata-only registration, under the same fresh administrator and catalogue custody as formulas. */
+export async function registerPayFormulaPersonnelField(ctx:SessionContext,input:{sourceKey:string;label:string;description:string;enabled:boolean}){
+ if(!PAY_FORMULA_PERSONNEL_ADAPTERS.some(adapter=>adapter.key===input.sourceKey)||typeof input.label!=='string'||!input.label.trim()||input.label.trim().length>120||typeof input.description!=='string'||!input.description.trim()||input.description.trim().length>1000||typeof input.enabled!=='boolean')throw new PayFormulaError('Choose a supported typed source and supply its label and description.');
+ return locked(ctx,async tx=>{await tx.execute(sql`select app.pay_formula_personnel_register(${input.sourceKey},${input.label.trim()},${input.description.trim()},${input.enabled})`);return {saved:true};});
+}

@@ -33036,6 +33036,41 @@
     }
   },
   "payFormula": {
+    "personnelLibrary": {
+      "help": "Giá trị nhân sự chỉ dùng trong thử nghiệm và tính lương được cấp quyền. Trường không có nguồn dữ liệu phù hợp kỳ lương sẽ không khả dụng.",
+      "groups": {
+        "employee": "Hồ sơ",
+        "profile": "Việc làm"
+      },
+      "types": {
+        "string": "Văn bản",
+        "decimal": "Số",
+        "date": "Ngày",
+        "boolean": "Có / Không"
+      },
+      "dates": {
+        "current-only": "Chỉ bản ghi hiện tại; không dùng cho ngày lương lịch sử",
+        "effective-date": "Có hiệu lực tại ngày lương đã chọn",
+        "legacy-current-snapshot": "Hợp đồng nguồn cũ: ảnh chụp đã ghi; không chứng nhận là dữ liệu lịch sử"
+      },
+      "reasons": {
+        "repeating": "Nhiều bản ghi cần quy tắc chọn hoặc tổng hợp rõ ràng.",
+        "file": "Tệp không phải giá trị vô hướng của công thức.",
+        "draft": "Trường bản nháp chưa có nguồn nhân viên đã ghi.",
+        "adapter": "Trường cần bộ điều hợp nguồn được hỗ trợ.",
+        "permission": "Quyền trường của bạn không cho phép nguồn này.",
+        "disabled": "Quản trị viên công thức đã tắt nguồn này."
+      },
+      "insertField": "Chèn trường",
+      "permittedValues": "Giá trị danh sách được phép · chèn giá trị",
+      "register": "Đăng ký trường nhân sự",
+      "registerHelp": "Chọn nguồn có kiểu được hỗ trợ. Đăng ký thay đổi nhãn, mô tả và khả dụng trong thư viện; không thêm kết nối hoặc mã thực thi. Công thức bị ảnh hưởng cần xác thực và thử nghiệm lại.",
+      "source": "Nguồn có kiểu được hỗ trợ",
+      "label": "Tên trường thư viện",
+      "description": "Mô tả",
+      "enabled": "Bật nguồn cho xác thực và thử nghiệm mới",
+      "saveRegistration": "Lưu đăng ký trường"
+    },
     "title": "Trình tạo công thức lương",
     "subtitle": "Tạo, kiểm thử và quản lý phiên bản công thức lương.",
     "back": "Cài đặt bảng lương",
