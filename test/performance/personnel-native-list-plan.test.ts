@@ -4,9 +4,9 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
-import {personnelListPage,searchWorkforceEmployeesTx,readWorkforcePickRowsTx} from '../../core/read';
+import {personnelListPage,personnelListPageSql,searchWorkforceEmployeesTx,readWorkforcePickRowsTx} from '../../core/read';
 import {foldEmployeeCode,EMPLOYEE_SEARCH_RESULT_CAP} from '../../lib/employee-search';
-import {lockAccessConfigurationTx} from '../../core/access-configuration-lock';
+import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from '../../core/access-configuration-lock';
 import {withTenant,type SessionContext} from '../../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 const file='test/performance/personnel-native-list-plan.test.ts';
@@ -100,6 +100,51 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
   expect(Array.from(currentPoint)).toEqual(Array.from(referencePoint));expect(currentPoint.map(row=>row.employmentId)).toEqual([...expectedFirst].sort());
   report.selectedIdentityRead={rows:currentPoint.length,originalElapsedMs:originalPointElapsedMs,elapsedMs:pointElapsedMs,targetMet:pointElapsedMs<1000,duplicateForeignUnknownExcluded:true};save();
   expect(pickerMeasurements.every(row=>row.targetMet),'Each Personnel switcher query under1000ms').toBe(true);expect(pointElapsedMs).toBeLessThan(1000);
+  // Reversible native view experiment: same authorized fields/predicate, without opaque SRF spooling.
+  const view='app.performance_personnel_facts_view';
+  const [absent]=await owner.client`select to_regclass(${view})as relation`;expect(absent.relation).toBeNull();
+  const [factsOwner]=await owner.client<{body:string;owner:string;columns:string[];ddl:string;acl:string|null}[]>`select prosrc as body,proowner::regrole::text as owner,proargnames as columns,pg_get_functiondef(oid)as ddl,proacl::text as acl from pg_proc where oid='app.access_workforce_list_facts()'::regprocedure`;
+  expect(factsOwner.columns).toHaveLength(16);
+  await owner.client.unsafe('create view '+view+'('+factsOwner.columns.map(name=>'"'+name.replaceAll('"','""')+'"').join(',')+')with(security_barrier=true)as '+factsOwner.body);
+  try{
+   await owner.client.unsafe('revoke all on '+view+' from public;grant select on '+view+' to ai_hr_app');
+   const [properties]=await owner.client`select relowner::regrole::text as owner,reloptions as options,has_table_privilege('ai_hr_app',oid,'SELECT')as app_select from pg_class where oid=to_regclass(${view})`;
+   expect(properties.owner).toBe(factsOwner.owner);expect(properties.options).toContain('security_barrier=true');expect(properties.app_select).toBe(true);
+   const [same]=await withTenant(ctx,tx=>tx.execute<{mismatches:number}>(sql`select count(*)::int as mismatches from(
+    (select * from app.access_workforce_list_facts() except all select * from app.performance_personnel_facts_view)
+    union all(select * from app.performance_personnel_facts_view except all select * from app.access_workforce_list_facts())
+   )difference`));expect(same.mismatches).toBe(0);
+   const viewPlans:unknown[]=[];
+   for(const mode of ['initial','selective-search','deep-page']){
+    const q=mode==='selective-search'?'PERF000050000':undefined,offset=mode==='deep-page'?count-25:0;
+    const page={companyIds:companies,q,limit:25,offset},facets={companyIds:companies,q},expected=await personnelListPage(ctx,page,facets);
+    const samples:unknown[]=[];
+    for(const materialized of [true,false]){
+     const began=performance.now();
+     const observed=await withTenant(ctx,async tx=>{
+      await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+      const query=personnelListPageSql(page,facets,{source:sql`app.performance_personnel_facts_view`,materialized});
+      const [raw]=await tx.execute<{rows:typeof expected.rows;total:number;status_counts:{status:keyof typeof expected.headcount.byStatus;count:number}[]}>(query);
+      const elapsedMs=performance.now()-began,byStatus:typeof expected.headcount.byStatus={};let total=0;
+      for(const row of raw.status_counts){byStatus[row.status]=Number(row.count);total+=Number(row.count);}
+      expect({rows:raw.rows,total:Number(raw.total),headcount:{total,byStatus}}).toEqual(expected);
+      const plan=Array.from(await tx.execute(sql`explain(analyze,buffers,format json) ${query}`));
+      return {materialized,elapsedMs,plan,targetMet:elapsedMs<1000};
+     });samples.push(observed);
+    }
+    const originalPlan=await withTenant(ctx,tx=>tx.execute(sql`explain(analyze,buffers,format json) ${personnelListPageSql(page,facets)}`));
+    viewPlans.push({mode,samples,originalPlan:Array.from(originalPlan),exactRowsTotalStatusOrder:true});report.viewExperiment=viewPlans;save();
+   }
+   await owner.client`update app_user set archived_at=now()where id=${b.adminUserId}::uuid`;
+   try{const denied=await withTenant(ctx,tx=>tx.execute(sql`select * from app.performance_personnel_facts_view`));expect(denied).toHaveLength(0);}
+   finally{await owner.client`update app_user set archived_at=null where id=${b.adminUserId}::uuid`;}
+   const foreignRows=await withTenant({...adminCtx(foreign),grants:[{role:'hr_admin',companyId:null}]},tx=>tx.execute(sql`select * from app.performance_personnel_facts_view where company_id=${b.companyId}::uuid`));expect(foreignRows).toHaveLength(0);
+   report.viewPurposeRefusals=true;
+  }finally{
+   await owner.client.unsafe('drop view '+view);
+   const [after]=await owner.client`select prosrc as body,proowner::regrole::text as owner,proargnames as columns,pg_get_functiondef(oid)as ddl,proacl::text as acl from pg_proc where oid='app.access_workforce_list_facts()'::regprocedure`;
+   expect(after).toEqual(factsOwner);report.originalFactsFunctionUnchanged=true;report.prototypeViewDropped=true;save();
+  }
   phase('measured');
   expect(measurements.every(row=>row.targetMet),'Each observed retained-data Personnel native query under1000ms').toBe(true);
   phase('complete');

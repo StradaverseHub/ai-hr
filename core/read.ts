@@ -595,15 +595,14 @@ function personnelFactColumns():EmployeeListColumns{
 
 /** One caller-scoped statement for authorized typed facts, exact total/facets and bounded detail rows.
  * No cached permissions/results or raw-table grant; both native projections recheck Workforce purpose. */
-export async function personnelListPage(
-  ctx: SessionContext,
-  page: Parameters<typeof listEmployeesPage>[1],
-  facets: EmployeeListFilters,
-) {
+/** Trusted server-side query composition shared by the app and native EXPLAIN experiments.
+ * Source SQL never comes from a request. Alternate relations must preserve the native purpose owner. */
+export function personnelListPageSql(
+  page:Parameters<typeof listEmployeesPage>[1],facets:EmployeeListFilters,
+  facts?:{source:SQL;materialized:boolean},
+):SQL{
   if(!Number.isSafeInteger(page.limit)||page.limit<0||page.limit>ALL_ROW_CEILING||
      !Number.isSafeInteger(page.offset)||page.offset<0)throw new RangeError('Invalid Personnel page');
-  return withTenant(ctx, async tx => {
-    await lockAccessConfigurationReadTx(tx, ctx.tenantId);
     const columns=personnelFactColumns();
     const pageWhere=workforceListWhere(page,columns)??sql`true`;
     const facetWhere=workforceListWhere(facets,columns)??sql`true`;
@@ -614,10 +613,8 @@ export async function personnelListPage(
     const aggregateOrder=page.sort==='company'
       ?sql`chosen.company_sort,chosen.name_sort,chosen.employment_id`
       :sql`chosen.name_sort,chosen.employment_id`;
-    const [result]=await tx.execute<{
-      rows:EmployeeListRow[];total:number;status_counts:{status:EmploymentStatus;count:number}[];
-    }>(sql`
-      with workforce_facts as materialized(select * from app.access_workforce_list_facts()),
+    return sql`
+      with workforce_facts as ${facts?.materialized===false?sql`not materialized`:sql`materialized`}(select * from ${facts?.source??sql`app.access_workforce_list_facts()`}),
       selected_page as materialized(
         select workforce_row.employment_id,lower(workforce_row.company)as company_sort,${nameSort} as name_sort
         from workforce_facts workforce_row where ${pageWhere}
@@ -633,7 +630,19 @@ export async function personnelListPage(
         select ${columns.status} as status,count(distinct workforce_row.employment_id)::int as count
         from workforce_facts workforce_row where ${facetWhere} group by 1
       )f),'[]'::jsonb)as status_counts
-    `);
+    `;
+}
+
+export async function personnelListPage(
+  ctx:SessionContext,page:Parameters<typeof listEmployeesPage>[1],facets:EmployeeListFilters,
+){
+  if(!Number.isSafeInteger(page.limit)||page.limit<0||page.limit>ALL_ROW_CEILING||
+     !Number.isSafeInteger(page.offset)||page.offset<0)throw new RangeError('Invalid Personnel page');
+  return withTenant(ctx,async tx=>{
+    await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+    const [result]=await tx.execute<{
+      rows:EmployeeListRow[];total:number;status_counts:{status:EmploymentStatus;count:number}[];
+    }>(personnelListPageSql(page,facets));
     const byStatus:Partial<Record<EmploymentStatus,number>>={};let total=0;
     for(const row of result.status_counts){const count=Number(row.count);byStatus[row.status]=count;total+=count;}
     return {rows:result.rows,total:Number(result.total),headcount:{total,byStatus}};
