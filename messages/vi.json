@@ -22261,7 +22261,7 @@
     "month": "Tháng",
     "previous": "Kỳ trước",
     "next": "Kỳ tiếp theo",
-    "search": "Tên hoặc mã nhân viên",
+    "search": "Tên nhân viên",
     "show": "Hiển thị",
     "roster": "Lịch làm việc",
     "attendance": "Chấm công",
@@ -23240,10 +23240,6 @@
       "cta": "Mở quy trình"
     },
     "overtimePatterns": {
-    "loadFailureTitle": "Không tải được Mẫu làm thêm giờ",
-    "loadFailureHelp": "Hãy thử lại. Nếu sự cố tiếp diễn, cung cấp mã bên dưới cho bộ phận hỗ trợ.",
-    "retryLoad": "Thử lại",
-    "supportReference": "Mã hỗ trợ: {reference}",
       "title": "Mẫu làm thêm giờ",
       "desc": "Cấu hình và kiểm tra làm thêm giờ, thời lượng được trả và ánh xạ bảng lương.",
       "cta": "Cấu hình mẫu làm thêm"
@@ -27884,6 +27880,10 @@
     "reasonHistoricalSchedule": "Không có chính sách lịch làm việc trong quá khứ cho công ty/ngày này. Nhân sự phải xác nhận lịch; không được thay bằng ngày làm việc của công ty hiện tại."
   },
   "overtimePatterns": {
+    "loadFailureTitle": "Không tải được Mẫu làm thêm giờ",
+    "loadFailureHelp": "Hãy thử lại. Nếu sự cố tiếp diễn, cung cấp mã bên dưới cho bộ phận hỗ trợ.",
+    "retryLoad": "Thử lại",
+    "supportReference": "Mã hỗ trợ: {reference}",
     "guided": {
       "comparisonAmount": "Số tiền so sánh",
       "eligibilityConditions": "Điều kiện đủ tiêu chuẩn",
@@ -34209,6 +34209,8 @@
     "tracker": {
       "title": "Theo dõi thử việc",
       "scope": "Hồ sơ được giao cho bạn trong phạm vi hiện tại.",
+      "gradeAtStart": "Bậc lúc bắt đầu",
+      "suggestionsUnavailable": "Không có gợi ý tên. Bạn vẫn có thể nhập tên và áp dụng bộ lọc.",
       "search": "Tên hoặc mã nhân viên",
       "cases": "Hồ sơ",
       "empty": "Không có hồ sơ thử việc phù hợp bộ lọc.",

@@ -10,7 +10,7 @@ let b:Base,admin:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=adminCtx(b);});
 async function member(){
- const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name) values(${b.tenantId}::uuid,'Fictional module holder') returning id`);
+ const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional module holder',${randomUUID()+'@module.example.test'}) returning id`);
  const userId=await createAppUser(b.tenantId,p.id,'employee');
  return{...admin,userId,personId:p.id,roles:['employee'],grants:undefined};
 }

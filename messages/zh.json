@@ -23240,10 +23240,6 @@
       "cta": "打开审批流程"
     },
     "overtimePatterns": {
-    "loadFailureTitle": "无法加载加班模式",
-    "loadFailureHelp": "请重试。如果问题持续，请向支持人员提供以下编号。",
-    "retryLoad": "重试",
-    "supportReference": "支持编号：{reference}",
       "title": "加班模式",
       "desc": "配置和审核员工加班、应付时长及薪资映射。",
       "cta": "配置加班模式"
@@ -27884,6 +27880,10 @@
     "reasonHistoricalSchedule": "该公司和日期的历史工作排班政策不可用。人力资源部门须确认当时的排班，不能套用现雇主的工作日。"
   },
   "overtimePatterns": {
+    "loadFailureTitle": "无法加载加班模式",
+    "loadFailureHelp": "请重试。如果问题持续，请向支持人员提供以下编号。",
+    "retryLoad": "重试",
+    "supportReference": "支持编号：{reference}",
     "guided": {
       "comparisonAmount": "比较金额",
       "eligibilityConditions": "资格条件",
@@ -34209,7 +34209,9 @@
     "tracker": {
       "title": "试用期跟踪",
       "scope": "分配给您及当前权限范围内的个案。",
-      "search": "员工姓名或编号",
+      "gradeAtStart": "起始职级",
+      "suggestionsUnavailable": "姓名建议暂不可用。您仍可输入姓名并应用筛选。",
+      "search": "员工姓名",
       "cases": "个案",
       "empty": "没有符合筛选条件的试用期个案。",
       "pageRows": "显示{from}–{to}，共{total}项",

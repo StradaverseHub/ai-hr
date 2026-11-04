@@ -15,7 +15,7 @@ import {newProbationLetterTemplate} from '../lib/probation-letter-template';
 import {probationCase,saveProbationDraft,applyProbationOutcome,requestProbationDateShift,applyProbationDateShift,previewProbationWorkflow,uploadProbationEvidence,actOnProbation,saveProbationLetterTemplate,probationLetterTemplateChoices,prepareProbationLetter,readProbationLetter,actOnProbationLetter,releaseProbationLetter,probationIntakeWorkspace,saveProbationIntakeDisposition,uploadProbationCutoverEvidence,readProbationCutoverEvidence,prepareProbationCutover,approveProbationCutover,activatePreparedProbationCutover,saveProbationWorkflow,probationRequiredWorkflowStatus,requestProbationLegacyReconciliation,approveProbationLegacyReconciliation,applyProbationLegacyReconciliation,probationIntakeCompanies,probationNavigationAccess,probationInbox,supersedeProbationDateShift,pauseProbationCompany,reconcileProbationDates,probationPublicationRetirement,retireProbationPublication,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision} from '../packs/probation/service';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {adminCtx,entitledCtx,closeAll,setModule,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
-import {bootstrapProbationPreparer,installProbationDrafts,probationSetup,saveProbationConfiguration,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,canConfigureProbationWorkflows,sweepProbation} from '../packs/probation/service';
+import {bootstrapProbationPreparer,installProbationDrafts,probationSetup,saveProbationConfiguration,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,canConfigureProbationWorkflows,probationEmployeeNameSuggestions,probationSummaryRows,sweepProbation} from '../packs/probation/service';
 let b:Base,admin:SessionContext;
 beforeAll(migrateTestDb);afterAll(async()=>{await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id='workforce.maintain'`);await closeAll();});beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=adminCtx(b);await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id='workforce.maintain'`);});
 describe('native probation configuration custody and default-off authority',()=>{
@@ -243,7 +243,7 @@ describe('real evaluation to signed letter custody',()=>{
    const [bScope]=await withTenant(reviewerB.ctx,tx=>tx.execute<{ok:boolean}>(sql`select app.probation_role(${subjectB.employmentId}::uuid,'pbp') as ok`));
    expect(bScope.ok).toBe(true);
    await expect(probationLetterTemplateChoices(reviewerB.ctx,decision.id)).rejects.toThrow();
-   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_cutover_snapshot(${companyB.id}::uuid)`))).rejects.toThrow();
+   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_cutover_snapshot(${companyB.id}::uuid)`))).resolves.toMatchObject([{probation_cutover_snapshot:{companyId:companyB.id}}]);
   }
 
   let prepared=await prepareProbationLetter(admin,{outcomeId:decision.id,templateId,revision:decision.revision,edits:{}});
@@ -634,5 +634,24 @@ describe('required workflow publication warning',()=>{
   expect((await probationRequiredWorkflowStatus(admin,b.companyId))?.missing).not.toContain('review_due');
   await retireProbationPublication(admin,{companyId:b.companyId,kind:'workflow',versionId:published,expectedVersion:1,reason:'Replace the default wording'});
   expect((await probationRequiredWorkflowStatus(peer.ctx,b.companyId))?.missing).toContain('review_due');
+ });
+});
+
+describe('scoped Probation employee-name filtering',()=>{
+ it('matches literal partial names without leaking unauthorized cases, with facets before pagination',async()=>{
+  const {ids,staff,peer}=await privateCase();
+  expect(await probationEmployeeNameSuggestions(staff.ctx,{search:'ONAL ST'})).toEqual(['Fictional Staff']);
+  expect(await probationEmployeeNameSuggestions(peer.ctx,{search:'Staff'})).toEqual([]);
+  expect(await probationEmployeeNameSuggestions(admin,{search:'%Staff'})).toEqual([]);
+  expect(await probationEmployeeNameSuggestions(admin,{search:'S'})).toEqual([]);
+  const second=await person('Fictional Alice Workshop'),id=randomUUID(),bg=randomUUID(),bu=randomUUID();
+  const[source]=await owner.db.execute<{data:Record<string,unknown>}>(sql`select data from probation_case where id=${ids.caseId}::uuid`);
+  const data={...source.data,id,employmentId:second.employmentId,sourceKey:'employment:'+second.employmentId,gradeAtStart:'15',endOn:'2027-01-31',facts:{employeeName:'Fictional Alice Workshop',businessGroupId:bg,businessGroup:'Second group',businessUnitId:bu,businessUnit:'Second unit',departmentId:b.deptB,department:'Second department',holders:{employee:second.userId}}};
+  await owner.db.execute(sql`insert into probation_case(id,tenant_id,company_id,employment_id,source_key,settings_id,form_id,route_id,data) values(${id}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${second.employmentId}::uuid,${data.sourceKey},${ids.settings}::uuid,${ids.form}::uuid,${ids.route}::uuid,${JSON.stringify(data)}::jsonb)`);
+  const page=await probationSummaryRows(admin,{limit:1});expect(page.rows).toHaveLength(1);expect(page.total).toBe(2);expect(page.options.grades).toEqual(['12','15']);expect(page.options.businessGroups).toContainEqual({id:bg,name:'Second group'});
+  expect((await probationSummaryRows(admin,{search:'ALICE WORK'})).rows.map(row=>row.id)).toEqual([id]);
+  expect((await probationSummaryRows(staff.ctx,{search:'Alice'})).rows).toEqual([]);
+  await owner.db.execute(sql`update employment set grade_id=null where id=${second.employmentId}::uuid`);
+  expect((await probationSummaryRows(admin,{businessGroupId:bg,grade:'15'})).rows[0].grade).toBe('15');
  });
 });

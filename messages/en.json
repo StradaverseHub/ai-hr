@@ -23240,10 +23240,6 @@
       "cta": "Manage approval workflows"
     },
     "overtimePatterns": {
-    "loadFailureTitle": "Overtime Patterns could not load",
-    "loadFailureHelp": "Try again. If the problem continues, give support the reference below.",
-    "retryLoad": "Try again",
-    "supportReference": "Support reference: {reference}",
       "title": "Overtime Patterns",
       "desc": "Configure and review employee overtime, payable duration and payroll mapping.",
       "cta": "Configure Overtime Patterns"
@@ -27884,6 +27880,10 @@
     "reasonHistoricalSchedule": "Historical work-schedule policy is unavailable for this company/date. HR must confirm the schedule; the current employer’s weekdays cannot be substituted."
   },
   "overtimePatterns": {
+    "loadFailureTitle": "Overtime Patterns could not load",
+    "loadFailureHelp": "Try again. If the problem continues, give support the reference below.",
+    "retryLoad": "Try again",
+    "supportReference": "Support reference: {reference}",
     "guided": {
       "comparisonAmount": "Comparison amount",
       "eligibilityConditions": "Eligibility Conditions",
@@ -34209,7 +34209,9 @@
     "tracker": {
       "title": "Probation tracker",
       "scope": "Cases assigned to you and your current scope.",
-      "search": "Employee name or ID",
+      "gradeAtStart": "Grade at start",
+      "suggestionsUnavailable": "Name suggestions are unavailable. You can still enter a name and apply filters.",
+      "search": "Employee name",
       "cases": "Cases",
       "empty": "No probation cases match these filters.",
       "pageRows": "Showing {from}–{to} of {total}",

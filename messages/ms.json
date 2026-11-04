@@ -23240,10 +23240,6 @@
       "cta": "Buka aliran kerja"
     },
     "overtimePatterns": {
-    "loadFailureTitle": "Corak Kerja Lebih Masa tidak dapat dimuatkan",
-    "loadFailureHelp": "Cuba lagi. Jika masalah berterusan, berikan rujukan di bawah kepada sokongan.",
-    "retryLoad": "Cuba lagi",
-    "supportReference": "Rujukan sokongan: {reference}",
       "title": "Corak Kerja Lebih Masa",
       "desc": "Konfigurasi dan semak kerja lebih masa pekerja, tempoh bayaran dan pemetaan gaji.",
       "cta": "Konfigurasi Corak Kerja Lebih Masa"
@@ -27884,6 +27880,10 @@
     "reasonHistoricalSchedule": "Polisi jadual kerja sejarah tidak tersedia untuk syarikat/tarikh ini. HR mesti mengesahkan jadual; hari kerja majikan semasa tidak boleh digunakan sebagai ganti."
   },
   "overtimePatterns": {
+    "loadFailureTitle": "Corak Kerja Lebih Masa tidak dapat dimuatkan",
+    "loadFailureHelp": "Cuba lagi. Jika masalah berterusan, berikan rujukan di bawah kepada sokongan.",
+    "retryLoad": "Cuba lagi",
+    "supportReference": "Rujukan sokongan: {reference}",
     "guided": {
       "comparisonAmount": "Amaun perbandingan",
       "eligibilityConditions": "Syarat Kelayakan",
@@ -34209,7 +34209,9 @@
     "tracker": {
       "title": "Penjejak percubaan",
       "scope": "Kes yang ditugaskan kepada anda dalam skop semasa.",
-      "search": "Nama atau ID pekerja",
+      "gradeAtStart": "Gred pada permulaan",
+      "suggestionsUnavailable": "Cadangan nama tidak tersedia. Anda masih boleh memasukkan nama dan menggunakan penapis.",
+      "search": "Nama pekerja",
       "cases": "Kes",
       "empty": "Tiada kes percubaan sepadan dengan penapis ini.",
       "pageRows": "Memaparkan {from}–{to} daripada {total}",
