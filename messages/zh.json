@@ -23240,10 +23240,10 @@
       "cta": "打开审批流程"
     },
     "overtimePatterns": {
-    "loadFailureTitle": "无法加载加班模式",
-    "loadFailureHelp": "请重试。如果问题持续，请向支持人员提供以下编号。",
-    "retryLoad": "重试",
-    "supportReference": "支持编号：{reference}",
+      "loadFailureTitle": "无法加载加班模式",
+      "loadFailureHelp": "请重试。如果问题持续，请向支持人员提供以下编号。",
+      "retryLoad": "重试",
+      "supportReference": "支持编号：{reference}",
       "title": "加班模式",
       "desc": "配置和审核员工加班、应付时长及薪资映射。",
       "cta": "配置加班模式"
@@ -34322,7 +34322,11 @@
       "activationHelp": "安装所有者将重新检查并执行此项已批准的演练。所有检查通过前，运行保持关闭。",
       "installationReference": "安装验证编号",
       "checkActivation": "检查启用状态",
-      "activationStates": {"pending": "已请求启用。编号：{reference}", "completed": "启用已完成。编号：{reference}", "failed": "启用检查未通过。请准备并批准新的演练。编号：{reference}"},
+      "activationStates": {
+        "pending": "已请求启用。编号：{reference}",
+        "completed": "启用已完成。编号：{reference}",
+        "failed": "启用检查未通过。请准备并批准新的演练。编号：{reference}"
+      },
       "activationRequested": "已请求启用。编号：{reference}",
       "approved": "您对此次确切演练的批准已记录。启用仍需由经核实的安装负责人完成。",
       "approvalReason": "批准此次演练的原因",
@@ -34470,7 +34474,8 @@
       "priority": "更具体的匹配规则优先。同等具体的匹配中，最后一条规则生效。",
       "rule": "规则 {index}",
       "planMonths": "试用计划月数 · 留空表示全部",
-      "addRule": "添加范围规则"
+      "addRule": "添加范围规则",
+      "legacyMapping": "此已保存版本保留原范围：业务集团指母公司，业务单位指人事管理中的业务单位。已保存的标识保持不变。"
     },
     "letters": {
       "prepareHelp": "预览当前获授权的人事资料和已审核模板。准备操作会为指定签署人冻结一个新的函件版本。",

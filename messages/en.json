@@ -23240,10 +23240,10 @@
       "cta": "Manage approval workflows"
     },
     "overtimePatterns": {
-    "loadFailureTitle": "Overtime Patterns could not load",
-    "loadFailureHelp": "Try again. If the problem continues, give support the reference below.",
-    "retryLoad": "Try again",
-    "supportReference": "Support reference: {reference}",
+      "loadFailureTitle": "Overtime Patterns could not load",
+      "loadFailureHelp": "Try again. If the problem continues, give support the reference below.",
+      "retryLoad": "Try again",
+      "supportReference": "Support reference: {reference}",
       "title": "Overtime Patterns",
       "desc": "Configure and review employee overtime, payable duration and payroll mapping.",
       "cta": "Configure Overtime Patterns"
@@ -34322,7 +34322,11 @@
       "activationHelp": "The installation owner will recheck and execute this exact approved rehearsal. Runtime remains off until all checks pass.",
       "installationReference": "Installation verification reference",
       "checkActivation": "Check activation status",
-      "activationStates": {"pending": "Activation requested. Reference: {reference}", "completed": "Activation completed. Reference: {reference}", "failed": "Activation checks failed. Prepare and approve a fresh rehearsal. Reference: {reference}"},
+      "activationStates": {
+        "pending": "Activation requested. Reference: {reference}",
+        "completed": "Activation completed. Reference: {reference}",
+        "failed": "Activation checks failed. Prepare and approve a fresh rehearsal. Reference: {reference}"
+      },
       "activationRequested": "Activation requested. Reference: {reference}",
       "approved": "Your approval has been recorded for this exact rehearsal. Activation still requires the verified installation owner.",
       "approvalReason": "Reason for approving this rehearsal",
@@ -34470,7 +34474,8 @@
       "priority": "More-specific matching rules take priority. For equally specific matches, the last rule wins.",
       "rule": "Rule {index}",
       "planMonths": "Probation-plan months · blank for all",
-      "addRule": "Add scoped rule"
+      "addRule": "Add scoped rule",
+      "legacyMapping": "This saved version retains its earlier scope: Business group means parent company; Business unit means Personnel Business Unit. Its stored identities are preserved."
     },
     "letters": {
       "prepareHelp": "Preview the current authorized Personnel details and reviewed template. Preparation freezes a new letter revision for the assigned signers.",

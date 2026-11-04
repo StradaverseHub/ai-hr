@@ -23240,10 +23240,10 @@
       "cta": "Mở quy trình"
     },
     "overtimePatterns": {
-    "loadFailureTitle": "Không tải được Mẫu làm thêm giờ",
-    "loadFailureHelp": "Hãy thử lại. Nếu sự cố tiếp diễn, cung cấp mã bên dưới cho bộ phận hỗ trợ.",
-    "retryLoad": "Thử lại",
-    "supportReference": "Mã hỗ trợ: {reference}",
+      "loadFailureTitle": "Không tải được Mẫu làm thêm giờ",
+      "loadFailureHelp": "Hãy thử lại. Nếu sự cố tiếp diễn, cung cấp mã bên dưới cho bộ phận hỗ trợ.",
+      "retryLoad": "Thử lại",
+      "supportReference": "Mã hỗ trợ: {reference}",
       "title": "Mẫu làm thêm giờ",
       "desc": "Cấu hình và kiểm tra làm thêm giờ, thời lượng được trả và ánh xạ bảng lương.",
       "cta": "Cấu hình mẫu làm thêm"
@@ -34322,7 +34322,11 @@
       "activationHelp": "Chủ sở hữu bản cài đặt sẽ kiểm tra lại và thực hiện đúng bản diễn tập đã duyệt. Chức năng vẫn tắt cho đến khi mọi kiểm tra đạt.",
       "installationReference": "Mã xác minh bản cài đặt",
       "checkActivation": "Kiểm tra trạng thái kích hoạt",
-      "activationStates": {"pending": "Đã yêu cầu kích hoạt. Mã: {reference}", "completed": "Đã kích hoạt. Mã: {reference}", "failed": "Kiểm tra kích hoạt không đạt. Chuẩn bị và duyệt bản diễn tập mới. Mã: {reference}"},
+      "activationStates": {
+        "pending": "Đã yêu cầu kích hoạt. Mã: {reference}",
+        "completed": "Đã kích hoạt. Mã: {reference}",
+        "failed": "Kiểm tra kích hoạt không đạt. Chuẩn bị và duyệt bản diễn tập mới. Mã: {reference}"
+      },
       "activationRequested": "Đã yêu cầu kích hoạt. Mã: {reference}",
       "approved": "Phê duyệt của bạn đã được ghi nhận cho đúng bản diễn tập này. Việc kích hoạt vẫn cần chủ sở hữu hệ thống đã được xác minh.",
       "approvalReason": "Lý do phê duyệt bản diễn tập này",
@@ -34470,7 +34474,8 @@
       "priority": "Quy tắc khớp cụ thể hơn được ưu tiên. Nếu mức cụ thể bằng nhau, quy tắc cuối cùng được áp dụng.",
       "rule": "Quy tắc {index}",
       "planMonths": "Số tháng kế hoạch thử việc · để trống cho tất cả",
-      "addRule": "Thêm quy tắc theo phạm vi"
+      "addRule": "Thêm quy tắc theo phạm vi",
+      "legacyMapping": "Phiên bản đã lưu giữ phạm vi trước đây: Nhóm kinh doanh là công ty mẹ; Đơn vị kinh doanh là Đơn vị kinh doanh trong Quản lý nhân sự. Các mã đã lưu được giữ nguyên."
     },
     "letters": {
       "prepareHelp": "Xem trước thông tin Nhân sự hiện tại được phép truy cập và mẫu đã rà soát. Khi chuẩn bị, một phiên bản thư mới sẽ được cố định cho những người ký được chỉ định.",
