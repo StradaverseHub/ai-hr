@@ -23,6 +23,8 @@ import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readC
 import {readCompletedNativeOutcomeTx} from '../core/assistant-actions/completed-outcome-readers';
 import {ASSIGNED_CLAIM_DECISION_ACTION,ASSIGNED_ATTENDANCE_DECISION_ACTION,ASSIGNED_TOIL_DECISION_ACTION} from '../lib/assistant-actions/assigned-decision-contract';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {pgSqlState} from '../lib/db-error';
+import {assertAiPrincipalTx} from '../core/ai-principal';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 type Person={employmentId:string;personId:string};
@@ -101,6 +103,66 @@ async function native(k:Kind,id:string){
  return {status:row?.status,events:Array.from(events)};
 }
 async function custody(id:string){const [row]=await owner.db.execute(sql`select r.action_kind,r.state,r.user_id,r.person_id,r.employment_id,r.company_id,r.decision_subject_person_id,r.receipt_subject_kind,r.receipt_subject_id,r.receipt_event_id,r.intent_digest,r.reviewed_digest,(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies from app.assistant_own_leave_review r where r.id=${id}::uuid`);return row;}
+
+it('qualifies a private read-only assigned-index login without weakening the command identity helper',async()=>{
+ const k=KINDS.claim,id=await k.create(),before=await native(k,id),review=(await k.store.prepare(mgr,k.human(id))).review;
+ const signature='app.assistant_assigned_reviews_index(text)',commandSignature='app._assistant_leave_decision_login(uuid,boolean)';
+ const snapshot=async(name:string)=>{const [row]=await owner.client<{ddl:string;attributes:Record<string,unknown>}[]>`
+  select pg_get_functiondef(oid)as ddl,to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid=${name}::regprocedure`;return row;};
+ const original=await snapshot(signature),command=await snapshot(commandSignature);
+ const helper='app._performance_assigned_index_login',helperSignature=helper+'(uuid,boolean)';
+ const [absent]=await owner.client`select to_regprocedure(${helperSignature})is null as absent`;expect(absent.absent).toBe(true);
+ expect(command.ddl.split("current_setting('transaction_read_only')<>'off'")).toHaveLength(2);
+ expect(command.ddl.split("pg_advisory_xact_lock(")).toHaveLength(2);
+ const helperDdl=command.ddl.replace('app._assistant_leave_decision_login(',helper+'(')
+  .replace("current_setting('transaction_read_only')<>'off'","current_setting('transaction_read_only')<>'on'")
+  .replace('pg_advisory_xact_lock(','pg_advisory_xact_lock_shared(');
+ const call='PERFORM app._assistant_leave_decision_login();';expect(original.ddl.split(call)).toHaveLength(2);
+ const candidate=original.ddl.replace(call,`IF current_setting('transaction_read_only')='on' THEN PERFORM ${helper}(); ELSE ${call} END IF;`);
+ let helperCreated=false;
+ const read=(who=mgr,readOnly=true)=>withTenant(who,async tx=>{
+  if(readOnly)await tx.execute(sql`set transaction read only`);
+  await tx.execute(sql`set local lock_timeout='250ms'`);await assertAiPrincipalTx(tx,who);
+  return Array.from(await tx.execute(sql`select * from app.assistant_assigned_reviews_index(${k.action})`));
+ });
+ const underReader=()=>owner.client.begin(async holder=>{
+  await holder`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+  return read();
+ });
+ try{
+  const expected=await read(mgr,false);expect(expected).toHaveLength(1);expect(expected[0].action_id).toBe(review.actionId);
+  const refused=await read().then(()=>null,(error:unknown)=>error);expect(pgSqlState(refused)).toBe('42501');
+  await owner.client.unsafe(helperDdl);helperCreated=true;
+  await owner.client.unsafe('revoke all on function '+helperSignature+' from public,ai_hr_app');
+  const [privateAcl]=await owner.client`select has_function_privilege('ai_hr_app',${helperSignature},'EXECUTE')as app_execute,
+   exists(select 1 from pg_proc p cross join lateral aclexplode(p.proacl)a where p.oid=${helperSignature}::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE')as public_execute`;
+  expect(privateAcl).toEqual({app_execute:false,public_execute:false});
+  await owner.client.unsafe(candidate);
+  expect(await underReader()).toEqual(expected);expect(await read(mgr,false)).toEqual(expected);
+  expect(await read(stranger)).toEqual([]);expect(await read(group())).toEqual([]);
+  expect((await snapshot(signature)).attributes).toEqual(original.attributes);
+  expect(await snapshot(commandSignature)).toEqual(command);
+  for(const readOnly of [true,false])await withTenant(mgr,async tx=>{
+   if(readOnly)await tx.execute(sql`set transaction read only`);
+   await assertAiPrincipalTx(tx,mgr);await tx.execute(sql`select * from app.assistant_assigned_reviews_index(${k.action})`);
+   const observed=await owner.client.begin(async observer=>{
+    const [row]=await observer`select pg_try_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))as reader,
+     pg_try_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))as writer`;return row;
+   });expect(observed).toEqual({reader:readOnly,writer:false});
+  });
+  await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,mgr.userId!));
+  try{await expect(read()).rejects.toThrow('Current AI calling authority');}
+  finally{await owner.db.update(schema.appUser).set({archivedAt:null}).where(eq(schema.appUser.id,mgr.userId!));}
+  expect(await native(k,id)).toEqual(before);expect(await custody(review.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});
+  expect((await k.store.confirm(mgr,{actionId:review.actionId,reviewedDigest:review.reviewedDigest})).kind).toBe('completed');
+  expect((await native(k,id)).status).toBe('approved');
+  expect(await snapshot(commandSignature)).toEqual(command);
+ }finally{
+  await owner.client.unsafe(original.ddl);
+  if(helperCreated)await owner.client.unsafe('drop function '+helperSignature);
+  expect(await snapshot(signature)).toEqual(original);expect(await snapshot(commandSignature)).toEqual(command);
+ }
+});
 
 describe.each(['claim','attendance','toil'] as const)('ADR-0151 assigned %s decision custody',name=>{
  const k=()=>KINDS[name];
