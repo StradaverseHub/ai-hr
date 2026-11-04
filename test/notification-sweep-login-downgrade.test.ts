@@ -9,7 +9,7 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {createNotice,publishNotice} from '../core/notice';
-import {NotificationSweepRoleError,notificationDowngradeReady} from '../core/notice-projection';
+import {NOTIFICATION_ROLE_MISSING,notificationDowngradeReady} from '../scripts/lib/notification-sweep-role';
 import {dispatchNotificationsFromSweep} from '../core/notifications';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -40,13 +40,9 @@ async function sweepAsRestrictedLogin(edge:boolean){
   [seen.who]=await tx.execute<Record<string,unknown>>(sql`select session_user::text as session,current_user::text as current,
    (select rolsuper from pg_roles where rolname=session_user) as super,pg_has_role(session_user,'ai_hr_app','USAGE') as inherits_app`);
   seen.ready=await notificationDowngradeReady(tx);
-  try{seen.result=await fn(tx);}catch(error){seen.error=error;}
-  if(!edge){
-   // Non-vacuity: the refusal names the real PostgreSQL behavior, not a stricter invented rule.
-   await tx.execute(sql`SAVEPOINT raw_downgrade`);
-   try{await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);seen.rawSet='accepted';}
-   catch(error){seen.rawSet=sqlState(error);await tx.execute(sql`ROLLBACK TO SAVEPOINT raw_downgrade`);}
-  }
+  // The real entry point runs inside a savepoint so a refused SET ROLE leaves the fixture readable afterwards.
+  await tx.execute(sql`SAVEPOINT sweep`);
+  try{seen.result=await fn(tx);}catch(error){seen.error=error;seen.rawSet=sqlState(error);await tx.execute(sql`ROLLBACK TO SAVEPOINT sweep`);}
   seen.notifications=await tx.execute<{recipient:string;kind:string}>(sql`select recipient_employment_id::text as recipient,kind from public.notification
    where tenant_id=${b.tenantId}::uuid and kind='notice.published'`);
   throw rollback;
@@ -57,20 +53,20 @@ async function sweepAsRestrictedLogin(edge:boolean){
 }
 
 describe('The sweep login switches down to APP only through the installation edge',()=>{
- it('refuses before any projection work, with the prerequisite named, when the login lacks the SET edge',async()=>{
+ it('reproduces the staging refusal: the probe reports the gap and projection fails at SET ROLE with 42501',async()=>{
   await publishedNotice();
   const seen=await sweepAsRestrictedLogin(false);
   expect(seen.ready).toBe(false);
-  expect(seen.error).toBeInstanceOf(NotificationSweepRoleError);
-  expect((seen.error as Error).message).toContain('deploy/runner-control/notification-role-prerequisite.sql');
   expect(seen.rawSet).toBe('42501');
+  expect(String((seen.error as Error).message)).toContain('SET LOCAL ROLE ai_hr_app');
   expect(seen.notifications).toEqual([]);
+  expect(NOTIFICATION_ROLE_MISSING).toContain('deploy/runner-control/notification-role-prerequisite.sql');
  });
  it('projects the pending notice under the same restricted login once the INHERIT FALSE/SET TRUE edge exists',async()=>{
   const recipient=await publishedNotice();
   const seen=await sweepAsRestrictedLogin(true);
   expect(seen.ready).toBe(true);
-  expect(seen.error).toBeUndefined();
+  expect(seen.error).toBeUndefined();expect(seen.rawSet).toBeUndefined();
   expect(seen.result).toMatchObject({created:1});
   expect(seen.notifications).toEqual([{recipient,kind:'notice.published'}]);
  });

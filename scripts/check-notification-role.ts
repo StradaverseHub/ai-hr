@@ -5,7 +5,7 @@
 // pending. Refuse here, before anything is installed, built or migrated, instead of at 03:00.
 // Exit 0 ready; 1 missing edge; 2 could not check.
 import { createDb } from '../db/client';
-import { NOTIFICATION_ROLE_PREREQUISITE, notificationDowngradeReady } from '../core/notice-projection';
+import { NOTIFICATION_ROLE_PREREQUISITE, notificationDowngradeReady } from './lib/notification-sweep-role';
 
 async function main() {
   const url = process.env.MIGRATION_DATABASE_URL;
