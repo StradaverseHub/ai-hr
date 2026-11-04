@@ -462,7 +462,7 @@ export type PersonnelCompanyChoice={id:string;name:string;parentCompanyId:string
 export function personnelFilterChoices(ctx:SessionContext,companyIds:string[]){return withTenant(ctx,async tx=>{
  await lockAccessConfigurationTx(tx,ctx.tenantId);const asOf=todayInKualaLumpur();
  const companies=await tx.execute<PersonnelCompanyChoice>(sql`select * from app.personnel_filter_companies(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${asOf}::date)`);
- const rows=await tx.selectDistinct({businessUnitId:workforceListUuid('businessUnitId'),businessUnit:workforceListValue<string|null>('businessUnit'),positionId:workforceListUuid('positionId'),position:workforceListValue<string|null>('position')}).from(personnelListSource(companyIds,asOf)).where(workforceListWhere({companyIds},workforceListColumns(asOf)));
+ const rows=await tx.selectDistinct({businessUnitId:workforceListUuid('businessUnitId'),businessUnit:workforceListValue<string|null>('businessUnit'),positionId:workforceListUuid('positionId'),position:workforceListValue<string|null>('position')}).from(personnelListSource(companies.map(company=>company.id),asOf)).where(workforceListWhere({companyIds:companies.map(company=>company.id)},workforceListColumns(asOf)));
  const [duplicateAuthority]=await tx.execute<{allowed:boolean}>(sql`select coalesce(bool_or(app.is_admin_for(id) and app.personnel_identity_search_permitted(id)),false) as allowed from unnest(ARRAY[${sql.join(companies.map(company=>sql`${company.id}::uuid`),sql`, `)}]::uuid[]) id`);
  return {companies:[...companies],rows,canInspectDuplicates:duplicateAuthority?.allowed===true};
 });}

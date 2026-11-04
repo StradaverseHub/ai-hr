@@ -45,14 +45,17 @@ GRANT EXECUTE ON FUNCTION app.personnel_identity_search_permitted(uuid) TO ai_hr
 -- This is a native permission-bound memory input, never serialized into the list or sent to an AI.
 CREATE FUNCTION app.personnel_search_rows(p_scope uuid[]) RETURNS SETOF jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
- WITH public_rows AS MATERIALIZED(SELECT DISTINCT ON((value->>'employmentId')::uuid) value FROM app.access_workforce_list_rows() AS source(value) ORDER BY (value->>'employmentId')::uuid),
- admitted AS MATERIALIZED(
- SELECT v.value,e.id,e.person_id,e.tenant_id,e.xmin::text employment_revision,
- COALESCE((ot.tags->>'companyId')::uuid,e.company_id) company_id
+ WITH public_rows AS MATERIALIZED(SELECT DISTINCT ON((value->>'employmentId')::uuid) value FROM app.access_workforce_list_rows() AS source(value) WHERE (value->>'companyId')::uuid=ANY(p_scope) AND app.access_workforce_projection_company((value->>'companyId')::uuid) ORDER BY (value->>'employmentId')::uuid),
+ -- Fence the complete native candidate join before evaluating the raising dated resolver.
+ candidates AS MATERIALIZED(SELECT v.value,e.id,e.person_id,e.tenant_id,e.company_id,e.xmin::text employment_revision
  FROM public_rows v JOIN public.employment e ON e.id=(v.value->>'employmentId')::uuid AND e.tenant_id=app.current_tenant_id()
- CROSS JOIN LATERAL(SELECT app.employment_organisation_tags(e.id,(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)tags)ot
- WHERE COALESCE((ot.tags->>'companyId')::uuid,e.company_id)=ANY(p_scope)
- AND app.access_workforce_projection_company(COALESCE((ot.tags->>'companyId')::uuid,e.company_id))),
+ WHERE e.voided_at IS NULL AND app.access_workforce_projection_company(e.company_id)),
+ admitted AS MATERIALIZED(
+ SELECT c.value,c.id,c.person_id,c.tenant_id,c.employment_revision,
+ COALESCE((ot.tags->>'companyId')::uuid,c.company_id) company_id
+ FROM candidates c CROSS JOIN LATERAL(SELECT app.employment_organisation_tags(c.id,(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)tags)ot
+ WHERE COALESCE((ot.tags->>'companyId')::uuid,c.company_id)=ANY(p_scope)
+ AND app.access_workforce_projection_company(COALESCE((ot.tags->>'companyId')::uuid,c.company_id))),
  identity_companies AS MATERIALIZED(SELECT DISTINCT company_id FROM admitted WHERE app.personnel_identity_search_permitted(company_id))
  SELECT jsonb_build_object('employmentId',a.id,'companyId',a.company_id,'name',a.value->>'name','email',a.value->>'email','employeeCode',a.value->>'employeeCode',
  'personRevision',p.xmin::text,'employmentRevision',a.employment_revision,
@@ -92,18 +95,24 @@ REVOKE ALL ON FUNCTION app.employment_organisation_quality(uuid,date) FROM PUBLI
 GRANT EXECUTE ON FUNCTION app.employment_organisation_quality(uuid,date) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.personnel_filter_rows(p_as_of date,p_scope uuid[] DEFAULT NULL) RETURNS SETOF jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
- WITH admitted AS MATERIALIZED(SELECT DISTINCT ON((value->>'employmentId')::uuid) value FROM app.access_workforce_list_rows() AS admitted_source(value) WHERE p_scope IS NULL OR (value->>'companyId')::uuid=ANY(p_scope) ORDER BY (value->>'employmentId')::uuid),
- visible AS MATERIALIZED(
- SELECT b.value,e.id,e.person_id,e.hired_on,e.grade_id,e.confirmation_date,e.final_confirmation_date,e.probation_end_date,
-  a.department_id,a.position_id,a.business_unit_id,a.cost_center_id,a.location_id,a.employment_type,ot.tags,
-  COALESCE((ot.tags->>'companyId')::uuid,e.company_id) AS dated_company_id,
-  CASE WHEN ot.tags->>'status' IN ('ready','pending') THEN (ot.tags->>'businessUnitId')::uuid ELSE a.business_unit_id END AS dated_bu_id,
-  p.full_name AS permitted_name
+ WITH admitted AS MATERIALIZED(SELECT DISTINCT ON((value->>'employmentId')::uuid) value FROM app.access_workforce_list_rows() AS admitted_source(value) WHERE (p_scope IS NULL OR (value->>'companyId')::uuid=ANY(p_scope)) AND app.access_workforce_projection_company((value->>'companyId')::uuid) ORDER BY (value->>'employmentId')::uuid),
+ -- A requested company list is not authority. Finish the employment/Person join and
+ -- fresh Workforce admission before the dated resolver can see a candidate identifier.
+ candidates AS MATERIALIZED(
+ SELECT b.value,e.id,e.person_id,e.tenant_id,e.company_id,e.hired_on,e.grade_id,e.confirmation_date,e.final_confirmation_date,e.probation_end_date,p.full_name AS permitted_name
  FROM admitted b JOIN public.employment e ON e.id=(b.value->>'employmentId')::uuid AND e.tenant_id=app.current_tenant_id()
  JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
- LEFT JOIN LATERAL(SELECT x.* FROM public.assignment x WHERE x.employment_id=e.id AND x.tenant_id=e.tenant_id AND x.superseded_at IS NULL AND x.valid_from<=p_as_of AND (x.valid_to IS NULL OR x.valid_to>p_as_of) ORDER BY x.valid_from DESC,x.id DESC LIMIT 1)a ON true
- CROSS JOIN LATERAL(SELECT app.employment_organisation_tags(e.id,p_as_of) AS tags)ot
- WHERE app.access_workforce_projection_company(COALESCE((ot.tags->>'companyId')::uuid,e.company_id)))
+ WHERE e.voided_at IS NULL AND app.access_workforce_projection_company(e.company_id)),
+ visible AS MATERIALIZED(
+ SELECT b.value,b.id,b.person_id,b.hired_on,b.grade_id,b.confirmation_date,b.final_confirmation_date,b.probation_end_date,
+  a.department_id,a.position_id,a.business_unit_id,a.cost_center_id,a.location_id,a.employment_type,ot.tags,
+  COALESCE((ot.tags->>'companyId')::uuid,b.company_id) AS dated_company_id,
+  CASE WHEN ot.tags->>'status' IN ('ready','pending') THEN (ot.tags->>'businessUnitId')::uuid ELSE a.business_unit_id END AS dated_bu_id,
+  b.permitted_name
+ FROM candidates b
+ LEFT JOIN LATERAL(SELECT x.* FROM public.assignment x WHERE x.employment_id=b.id AND x.tenant_id=b.tenant_id AND x.superseded_at IS NULL AND x.valid_from<=p_as_of AND (x.valid_to IS NULL OR x.valid_to>p_as_of) ORDER BY x.valid_from DESC,x.id DESC LIMIT 1)a ON true
+ CROSS JOIN LATERAL(SELECT app.employment_organisation_tags(b.id,p_as_of) AS tags)ot
+ WHERE app.access_workforce_projection_company(COALESCE((ot.tags->>'companyId')::uuid,b.company_id)))
  SELECT v.value||jsonb_build_object(
  'companyId',v.dated_company_id,'company',co.legal_name,'departmentId',v.department_id,'department',COALESCE(NULLIF(btrim(d.label),''),d.name),
  'positionId',v.position_id,'position',COALESCE(NULLIF(btrim(pos.label),''),pos.title),'employmentType',v.employment_type,

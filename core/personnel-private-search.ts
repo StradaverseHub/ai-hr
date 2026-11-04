@@ -10,13 +10,16 @@ type SearchRow={employmentId:string;companyId:string;name:string;email:string;em
 export async function createPersonnelPrivateSearch(ctx:SessionContext,p:{text:string;companyIds:string[]}):Promise<string>{
  if(p.companyIds.length>1000)throw new PersonnelSearchLimitError();
  const needle=p.text.trim().toLocaleLowerCase();if(!needle||needle.length>200||!ctx.userId)throw new Error('Search unavailable.');
+ // The native NRIC owner stores twelve digits. Only a complete plausible NRIC gains
+ // separator normalization; letters/punctuation and literal passport/public matching do not.
+ const nricNeedle=/^[0-9]{6}[ -]?[0-9]{2}[ -]?[0-9]{4}$/.test(needle)?needle.replace(/[ -]/g,''):null;
  return withTenant(ctx,async tx=>{
   await lockAccessConfigurationTx(tx,ctx.tenantId);
   const source=await tx.execute<{row:SearchRow}>(sql`select value as row from app.personnel_search_rows(ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) as search_row(value) limit 100001`);
   if(source.length>100000)throw new PersonnelSearchLimitError();
   const matches=source.flatMap(({row})=>{
    const publicMatch=[row.name,row.email,row.employeeCode].some(value=>value?.toLocaleLowerCase().includes(needle));
-   const identityMatch=[row.icNumber,row.passportNumber].some(value=>value?.toLocaleLowerCase().includes(needle));
+   const identityMatch=!!(row.icNumber?.toLocaleLowerCase().includes(needle)||nricNeedle&&row.icNumber===nricNeedle||row.passportNumber?.toLocaleLowerCase().includes(needle));
    return publicMatch||identityMatch?[{employmentId:row.employmentId,kind:publicMatch?'public':'identity',personRevision:row.personRevision,employmentRevision:row.employmentRevision,identityRevision:identityMatch?row.identityRevision:null}]:[];
   });
   const token=randomBytes(32).toString('base64url'),hash=privateSearchHash(token)!;

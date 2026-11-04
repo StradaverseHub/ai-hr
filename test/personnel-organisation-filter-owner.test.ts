@@ -24,6 +24,20 @@ it('searches permitted identity only through private results; page/count/export-
  expect((await list({q:'900101-01-4321'})).total).toBe(0);
  const stored=await owner.withTenant(ctx,tx=>tx.execute<{matches:unknown}>(sql`select matches from personnel_private_search where token_hash=${privateSearchHash(token)}`));expect(JSON.stringify(stored)).not.toContain('900101');
 });
+it('matches canonical or conventionally formatted NRIC without converting alphanumeric identifiers or literal passport text',async()=>{
+ const employee=await hire('Fictional formatted identity');await identity(employee.personId,'900101-01-4321');
+ await owner.db.update(s.employeeStatutoryMy).set({passportNumber:'PX-AB123456Z'}).where(eq(s.employeeStatutoryMy.personId,employee.personId));
+ for(const text of ['900101014321','900101-01-4321','900101 01 4321','PX-AB123456Z','AB123456']){
+  const token=await createPersonnelPrivateSearch(ctx,{text,companyIds:[b.companyId]});const filters={companyIds:[b.companyId],privateSearch:token};
+  expect((await list({...filters,limit:1})).rows.map(row=>row.employmentId)).toEqual([employee.employmentId]);
+  expect((await countEmployeesByStatus(ctx,filters,'workforce')).total).toBe(1);
+ }
+ for(const text of ['A900101014321','900101/01/4321','900101.01.4321','PXAB123456Z']){
+  const token=await createPersonnelPrivateSearch(ctx,{text,companyIds:[b.companyId]});
+  expect((await list({privateSearch:token})).total).toBe(0);
+  expect((await countEmployeesByStatus(ctx,{companyIds:[b.companyId],privateSearch:token},'workforce')).total).toBe(0);
+ }
+});
 it('rechecks current identity permission for existing private results and does not widen denied search counts',async()=>{
  const employee=await hire('Identity denied later');await identity(employee.personId,'800202-02-3456');const token=await createPersonnelPrivateSearch(ctx,{text:'800202-02-3456',companyIds:[b.companyId]});expect((await list({privateSearch:token})).total).toBe(1);
  await owner.db.insert(s.payrollPermissionGrant).values({tenantId:b.tenantId,companyId:b.companyId,role:'hr_admin',permissionKey:'report.read.identity',allowed:false});
@@ -63,6 +77,14 @@ it('scoped company options and duplicate evidence cannot expose another company 
  const mine=await hire('Potential duplicate'),theirs=await hire('Potential duplicate',{companyId:company.id,departmentId:dept.id});
  const user=await createAppUser(b.tenantId,null,'employee');await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:user,role:'hr_admin',companyId:b.companyId});
  const scoped={...ctx,userId:user,roles:['employee','hr_admin'],grants:[{role:'employee',companyId:null},{role:'hr_admin',companyId:b.companyId}]};
+ // Direct native rows and private search must fence the same requested-but-denied company
+ // before invoking the raising dated organisation resolver (not just filter option metadata).
+ const native=await withTenant(scoped,tx=>tx.execute<{row:{employmentId:string}}>(sql`select value as row from app.personnel_filter_rows('2026-11-04'::date,ARRAY[${b.companyId}::uuid,${company.id}::uuid]) as source(value)`));
+ expect(native.map(({row})=>row.employmentId)).toEqual([mine.employmentId]);
+ const nativeSearch=await withTenant(scoped,tx=>tx.execute<{employmentId:string}>(sql`select value->>'employmentId' as "employmentId" from app.personnel_search_rows(ARRAY[${b.companyId}::uuid,${company.id}::uuid]) as source(value)`));
+ expect(nativeSearch.map(row=>row.employmentId)).toEqual([mine.employmentId]);
+ const token=await createPersonnelPrivateSearch(scoped,{text:'Potential duplicate',companyIds:[b.companyId]});
+ expect((await listEmployeesPage(scoped,{companyIds:[b.companyId],privateSearch:token,limit:100,offset:0},'workforce')).rows.map(row=>row.employmentId)).toEqual([mine.employmentId]);
  const choices=await personnelFilterChoices(scoped,[b.companyId,company.id]);expect(choices.companies.map(c=>c.id)).toEqual([b.companyId]);expect(JSON.stringify(choices)).not.toContain('Private other company');
  const rows=await listEmployeesPage(scoped,{companyIds:[b.companyId,company.id],qualityFlags:['suspected_duplicate'],limit:100,offset:0},'workforce');expect(rows.total).toBe(0);
  expect((await listEmployeesPage(scoped,{companyIds:[b.companyId,company.id],limit:100,offset:0},'workforce')).rows.map(row=>row.employmentId)).toEqual([mine.employmentId]);expect(rows.rows.map(row=>row.employmentId)).not.toContain(theirs.employmentId);
