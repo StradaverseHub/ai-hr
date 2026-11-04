@@ -98,13 +98,12 @@ CREATE FUNCTION app.personnel_filter_rows(p_as_of date,p_scope uuid[] DEFAULT NU
   a.department_id,a.position_id,a.business_unit_id,a.cost_center_id,a.location_id,a.employment_type,ot.tags,
   COALESCE((ot.tags->>'companyId')::uuid,e.company_id) AS dated_company_id,
   CASE WHEN ot.tags->>'status' IN ('ready','pending') THEN (ot.tags->>'businessUnitId')::uuid ELSE a.business_unit_id END AS dated_bu_id,
-  upper(regexp_replace(btrim(p.full_name),'\s+',' ','g')) AS duplicate_name
+  p.full_name AS permitted_name
  FROM admitted b JOIN public.employment e ON e.id=(b.value->>'employmentId')::uuid AND e.tenant_id=app.current_tenant_id()
  JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
  LEFT JOIN LATERAL(SELECT x.* FROM public.assignment x WHERE x.employment_id=e.id AND x.tenant_id=e.tenant_id AND x.superseded_at IS NULL AND x.valid_from<=p_as_of AND (x.valid_to IS NULL OR x.valid_to>p_as_of) ORDER BY x.valid_from DESC,x.id DESC LIMIT 1)a ON true
  CROSS JOIN LATERAL(SELECT app.employment_organisation_tags(e.id,p_as_of) AS tags)ot
- WHERE app.access_workforce_projection_company(COALESCE((ot.tags->>'companyId')::uuid,e.company_id))),
- duplicates AS MATERIALIZED(SELECT duplicate_name,hired_on FROM visible WHERE app.is_admin_for(dated_company_id) AND app.personnel_identity_search_permitted(dated_company_id) GROUP BY duplicate_name,hired_on HAVING count(DISTINCT person_id)>1)
+ WHERE app.access_workforce_projection_company(COALESCE((ot.tags->>'companyId')::uuid,e.company_id)))
  SELECT v.value||jsonb_build_object(
  'companyId',v.dated_company_id,'company',co.legal_name,'departmentId',v.department_id,'department',COALESCE(NULLIF(btrim(d.label),''),d.name),
  'positionId',v.position_id,'position',COALESCE(NULLIF(btrim(pos.label),''),pos.title),'employmentType',v.employment_type,
@@ -115,8 +114,7 @@ CREATE FUNCTION app.personnel_filter_rows(p_as_of date,p_scope uuid[] DEFAULT NU
  'confirmationState',CASE WHEN COALESCE(v.final_confirmation_date,v.confirmation_date)<=p_as_of THEN 'confirmed' ELSE 'unconfirmed' END,
  'jobGradeCode',g.code,'costCenter',cc.name,'workLocation',loc.name,
  'reportingTo',(SELECT mp.full_name FROM public.reporting_line r JOIN public.employment me ON me.id=r.manager_employment_id AND me.tenant_id=r.tenant_id AND me.voided_at IS NULL JOIN public.person mp ON mp.id=me.person_id AND mp.tenant_id=me.tenant_id WHERE r.tenant_id=app.current_tenant_id() AND r.subordinate_employment_id=v.id AND r.line_type='administrative' AND r.superseded_at IS NULL AND r.valid_from<=p_as_of AND (r.valid_to IS NULL OR r.valid_to>p_as_of) AND app.access_workforce_projection_company(me.company_id) ORDER BY r.valid_from DESC,r.id LIMIT 1),
- 'quality',(app.employment_organisation_quality(v.id,p_as_of)->'flags')||jsonb_build_object(
- 'suspected_duplicate',app.is_admin_for(v.dated_company_id) AND app.personnel_identity_search_permitted(v.dated_company_id) AND EXISTS(SELECT 1 FROM duplicates z WHERE z.duplicate_name=v.duplicate_name AND z.hired_on=v.hired_on)))
+ 'quality',app.employment_organisation_quality(v.id,p_as_of)->'flags')
  FROM visible v JOIN public.company co ON co.id=v.dated_company_id AND co.tenant_id=app.current_tenant_id()
  LEFT JOIN public.cost_center cc ON cc.id=v.cost_center_id AND cc.tenant_id=app.current_tenant_id()
  LEFT JOIN public.location loc ON loc.id=v.location_id AND loc.tenant_id=app.current_tenant_id()
@@ -142,3 +140,16 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 $$;
 REVOKE ALL ON FUNCTION app.personnel_filter_companies(uuid[],date) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.personnel_filter_companies(uuid[],date) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Canonical name normalization and duplicate grouping run in core/duplicate-person's existing JS owner.
+-- This bounded memory input contains only evidence admitted by the original native admin/purpose scope.
+CREATE FUNCTION app.personnel_duplicate_candidate_rows(p_scope uuid[],p_as_of date) RETURNS TABLE("employmentId" uuid,"personId" uuid,"fullName" text,"hiredOn" text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT e.id,e.person_id,value->>'name',value->>'hiredOn'
+ FROM app.personnel_filter_rows(p_as_of,p_scope) AS visible(value)
+ JOIN public.employment e ON e.id=(value->>'employmentId')::uuid AND e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL
+ WHERE app.is_admin_for((value->>'companyId')::uuid) AND app.personnel_identity_search_permitted((value->>'companyId')::uuid)
+$$;
+REVOKE ALL ON FUNCTION app.personnel_duplicate_candidate_rows(uuid[],date) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.personnel_duplicate_candidate_rows(uuid[],date) TO ai_hr_app;

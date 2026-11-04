@@ -35473,6 +35473,8 @@
     "shareView": "Buka paparan penapis untuk dikongsi",
     "privateUnavailable": "Carian peribadi telah tamat atau tidak tersedia. Cari semula.",
     "notTerminated": "Belum ditamatkan",
-    "terminated": "Ditamatkan"
+    "terminated": "Ditamatkan",
+    "duplicateHint": "Semakan pendua hanya meliputi syarikat dengan akses pentadbir dan data identiti.",
+    "duplicateUnavailable": "Bukti pendua tidak tersedia dalam skop ini. Buang penapis ini atau pilih skop yang dibenarkan."
   }
 }

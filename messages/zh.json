@@ -35473,6 +35473,8 @@
     "shareView": "打开可分享的筛选视图",
     "privateUnavailable": "私密搜索已失效或不可用。请重新搜索。",
     "notTerminated": "未离职",
-    "terminated": "已离职"
+    "terminated": "已离职",
+    "duplicateHint": "重复检查仅涵盖您拥有管理员权限及身份资料访问权的公司。",
+    "duplicateUnavailable": "此范围内无法查看重复证据。请移除此筛选或选择获准范围。"
   }
 }

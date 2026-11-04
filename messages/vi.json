@@ -35473,6 +35473,8 @@
     "shareView": "Mở chế độ lọc có thể chia sẻ",
     "privateUnavailable": "Tìm kiếm riêng tư đã hết hạn hoặc không khả dụng. Vui lòng tìm lại.",
     "notTerminated": "Chưa chấm dứt việc làm",
-    "terminated": "Đã chấm dứt việc làm"
+    "terminated": "Đã chấm dứt việc làm",
+    "duplicateHint": "Chỉ kiểm tra trùng lặp tại các công ty có quyền quản trị và truy cập dữ liệu định danh.",
+    "duplicateUnavailable": "Không có quyền xem bằng chứng trùng lặp trong phạm vi này. Hãy bỏ bộ lọc hoặc chọn phạm vi được phép."
   }
 }

@@ -22,3 +22,10 @@ export async function personnelDataQualityTx(tx:Tx,_ctx:SessionContext,p:{employ
  if(!p.employmentIds.length)return [];
  return tx.execute<{employmentId:string;quality:{companyId:string;taggingStatus:'legacy'|'ready'|'pending';reason:string|null;flags:Record<Exclude<PersonnelQualityFlag,'suspected_duplicate'>,boolean>}}>(sql`select id::text as "employmentId",app.employment_organisation_quality(id,${p.asOf}::date) quality from unnest(ARRAY[${sql.join(p.employmentIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) id`);
 }
+
+/** Full authorized evidence set, before the listing's local filters/pagination. Never substitute a SQL case-fold. */
+export async function personnelDuplicateIdsTx(tx:Tx,_ctx:SessionContext,p:{companyIds?:string[];asOf:string}):Promise<string[]>{
+ const rows=await tx.execute<{employmentId:string;personId:string;fullName:string;hiredOn:string}>(sql`select * from app.personnel_duplicate_candidate_rows(${p.companyIds?sql`ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`},${p.asOf}::date) limit 100001`);
+ if(rows.length>100000)throw new RangeError('Narrow the top company scope before reviewing this many duplicate candidates.');
+ return [...visibleDuplicateEmploymentIds(rows)];
+}

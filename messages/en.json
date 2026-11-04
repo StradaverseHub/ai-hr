@@ -35473,6 +35473,8 @@
     "shareView": "Open shareable filter view",
     "privateUnavailable": "Private search expired or is unavailable. Search again.",
     "notTerminated": "Not terminated",
-    "terminated": "Terminated"
+    "terminated": "Terminated",
+    "duplicateHint": "Duplicate checks cover only companies with administrator and identity-data access.",
+    "duplicateUnavailable": "Duplicate evidence is unavailable in this scope. Remove this filter or choose an authorised scope."
   }
 }

@@ -417,7 +417,7 @@ export default async function PeoplePage({
                 keys in all six locales — and r336's two kernel pins (core/payroll.ts and
                 core/payroll-view.ts both read child_relief_mode) would have to be rehomed first. */}
             {/* One list search below; the filter panel holds only ordinary shareable selections. */}
-            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} dataTour="people-search"/>
+            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
             <ColumnPicker
               columns={pickerColumns}
               selected={columns}
@@ -497,6 +497,7 @@ export default async function PeoplePage({
       </div>
 
       <PersonnelPrivateSearch key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} parameters={[...personnelQueryParams(sp)]} active={!!query.filters.privateSearch} labels={{label:to('search'),placeholder:to('searchPlaceholder'),submit:to('searchButton'),privateHint:to('privateHint'),active:to(searchAvailable?'privateActive':'privateUnavailable'),clear:to('clearSearch'),share:to('shareView')}}/>
+      {!organisationChoices.canInspectDuplicates&&query.filters.qualityFlags?.includes('suspected_duplicate')&&<p role="status" className="text-sm text-muted-foreground">{to('duplicateUnavailable')}</p>}
       <FilterChips
         action="/admin/personnel"
         fields={filterFields}

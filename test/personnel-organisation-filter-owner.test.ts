@@ -56,6 +56,7 @@ it('quality duplicates require distinct visible Persons and matching hire dates;
  const duplicates=await list({qualityFlags:['suspected_duplicate']});expect(duplicates.rows.map(row=>row.employmentId).sort()).toEqual([a.employmentId,b2.employmentId].sort());expect(duplicates.rows.map(row=>row.employmentId)).not.toContain(other.employmentId);
  const readiness=await withTenant(ctx,tx=>personnelGroupingReadinessTx(tx,ctx,{employmentIds:[a.employmentId],asOf:'2026-06-01'}));expect(readiness).toMatchObject([{ready:true,reason:null}]);
  const missing=await list({qualityFlags:['missing_business_unit']});expect(missing.rows.map(row=>row.employmentId)).toContain(a.employmentId);
+ const unicodeA=await hire('Straße Example'),unicodeB=await hire('STRASSE EXAMPLE');const unicode=await list({qualityFlags:['suspected_duplicate']});expect(unicode.rows.map(row=>row.employmentId)).toEqual(expect.arrayContaining([unicodeA.employmentId,unicodeB.employmentId]));expect((await countEmployeesByStatus(ctx,{companyIds:[b.companyId],qualityFlags:['suspected_duplicate']},'workforce')).total).toBe(unicode.total);
 });
 it('scoped company options and duplicate evidence cannot expose another company or tenant',async()=>{
  const [company]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Private other company'}).returning();const [dept]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:company.id,name:'Other dept'}).returning();

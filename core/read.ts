@@ -1,5 +1,5 @@
 import {privateSearchHash} from './personnel-private-search';
-import type {PersonnelQualityFlag} from './personnel-quality';
+import {personnelDuplicateIdsTx,type PersonnelQualityFlag} from './personnel-quality';
 import {payrollEmploymentPredicate,payrollCompensationEffectiveOn,payrollRunContextsTx,outstandingPaymentPredicate,payrollEmploymentEnd} from '../packs/payroll/service';
 import {settingEnabled} from './entitlements';
 import {assertReviewedPayrollScopeCompanyTx} from './payroll-run-selection';
@@ -442,7 +442,7 @@ function workforceListColumns(asOf=todayInKualaLumpur()): EmployeeListColumns {
     status: employmentStatusSql(asOf, status),
   };
 }
-const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns) =>
+const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns,duplicateIds:readonly string[]=[]) =>
   and(p.companyIds?.length === 0 ? sql`false` : undefined, employeeListWhere(p, columns),
    p.businessUnitIds?.length?inArray(workforceListUuid('businessUnitId'),p.businessUnitIds):undefined,
    p.parentCompanyIds?.length?inArray(workforceListUuid('parentCompanyId'),p.parentCompanyIds):undefined,
@@ -454,7 +454,7 @@ const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns
    p.joinedTo?lte(workforceListDate('joinDate'),p.joinedTo):undefined,
    p.probationEndFrom?gte(workforceListDate('probationEndDate'),p.probationEndFrom):undefined,
    p.probationEndTo?lte(workforceListDate('probationEndDate'),p.probationEndTo):undefined,
-   p.qualityFlags?.length?or(...p.qualityFlags.map(flag=>sql`(workforce_row.value->'quality'->>${flag})::boolean is true`)):undefined,
+   p.qualityFlags?.length?or(...p.qualityFlags.map(flag=>flag==='suspected_duplicate'?(duplicateIds.length?inArray(workforceListUuid('employmentId'),[...duplicateIds]):sql`false`):sql`(workforce_row.value->'quality'->>${flag})::boolean is true`)):undefined,
    p.privateSearch?sql`app.personnel_private_search_matches(${privateSearchHash(p.privateSearch)??''},${workforceListUuid('employmentId')},${columns.companyId},${p.companyIds?sql`ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`})`:undefined);
 
 export type PersonnelCompanyChoice={id:string;name:string;parentCompanyId:string|null;parentCompany:string|null;businessGroupId:string|null;businessGroup:string|null;businessUnitId:string|null;businessUnit:string|null};
@@ -463,7 +463,8 @@ export function personnelFilterChoices(ctx:SessionContext,companyIds:string[]){r
  await lockAccessConfigurationTx(tx,ctx.tenantId);const asOf=todayInKualaLumpur();
  const companies=await tx.execute<PersonnelCompanyChoice>(sql`select * from app.personnel_filter_companies(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${asOf}::date)`);
  const rows=await tx.selectDistinct({businessUnitId:workforceListUuid('businessUnitId'),businessUnit:workforceListValue<string|null>('businessUnit'),positionId:workforceListUuid('positionId'),position:workforceListValue<string|null>('position')}).from(personnelListSource(companyIds,asOf)).where(workforceListWhere({companyIds},workforceListColumns(asOf)));
- return {companies:[...companies],rows};
+ const [duplicateAuthority]=await tx.execute<{allowed:boolean}>(sql`select coalesce(bool_or(app.is_admin_for(id) and app.personnel_identity_search_permitted(id)),false) as allowed from unnest(ARRAY[${sql.join(companies.map(company=>sql`${company.id}::uuid`),sql`, `)}]::uuid[]) id`);
+ return {companies:[...companies],rows,canInspectDuplicates:duplicateAuthority?.allowed===true};
 });}
 
 
@@ -527,8 +528,9 @@ export function countEmployeesByStatus(
     if (purpose) {
       await lockAccessConfigurationTx(tx, ctx.tenantId);
       const asOf=todayInKualaLumpur(),columns = workforceListColumns(asOf);
+      const duplicateIds=p.qualityFlags?.includes('suspected_duplicate')?await personnelDuplicateIdsTx(tx,ctx,{companyIds:p.companyIds,asOf}):[];
       const rows = await tx.select({ status: columns.status, count: sql<number>`count(distinct ${workforceListUuid('employmentId')})::int` })
-        .from(personnelListSource(p.companyIds,asOf)).where(workforceListWhere(p, columns)).groupBy(sql`1`);
+        .from(personnelListSource(p.companyIds,asOf)).where(workforceListWhere(p, columns,duplicateIds)).groupBy(sql`1`);
       const byStatus: Partial<Record<EmploymentStatus, number>> = {};
       let total = 0;
       for (const row of rows) { const count = Number(row.count); byStatus[row.status] = count; total += count; }
@@ -581,7 +583,8 @@ export function listEmployeesPage(
     if (purpose) {
       await lockAccessConfigurationTx(tx, ctx.tenantId);
       const asOf=todayInKualaLumpur(),columns = workforceListColumns(asOf);
-      const where = workforceListWhere(p, columns);
+      const duplicateIds=p.qualityFlags?.includes('suspected_duplicate')?await personnelDuplicateIdsTx(tx,ctx,{companyIds:p.companyIds,asOf}):[];
+      const where = workforceListWhere(p, columns,duplicateIds);
       const rows = await tx.select({ row: sql<EmployeeListRow>`workforce_row.value` })
         .from(personnelListSource(p.companyIds,asOf)).where(where)
         .orderBy(...(p.sort === 'company' ? [sql`lower(${workforceListValue('company')})`, sql`lower(${columns.name})`] : [columns.name]))
