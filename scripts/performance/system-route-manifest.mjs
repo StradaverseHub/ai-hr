@@ -1,6 +1,6 @@
 /** Concrete read routes only; dynamic record/workflow routes retain their seeded owner journeys. */
 export const aiCentreRoutes=Object.freeze(['/assistant','/assistant?view=jobs','/policies','/assistant?view=insights','/assistant?view=how','/assistant?view=privacy','/assistant?view=tools']);
-const aiAdminRoutes=['/control-tower/loops','/control-tower/exceptions','/control-tower/readiness','/control-tower/actions','/control-tower/opportunities','/control-tower/agents','/control-tower/agents/features','/control-tower/agents/inventory','/control-tower/agents/assistant','/control-tower/agents/allowances','/control-tower/agents/spending','/control-tower/agents/runs'];
+const aiAdminRoutes=['/control-tower/loops','/control-tower/exceptions','/control-tower/readiness','/control-tower/actions','/control-tower/opportunities','/control-tower/agents','/control-tower/agents/features','/control-tower/agents/inventory','/control-tower/agents/assistant','/control-tower/agents/allowances','/control-tower/agents/runs'];
 export const employeeRoutes=Object.freeze([
  ...aiCentreRoutes,
  '/','/me','/claims','/leave','/attendance/individual','/me/payslip','/notices','/performance/home','/lifecycle',
@@ -20,11 +20,11 @@ export const managerRoutes=Object.freeze([
  ...aiCentreRoutes,
  '/','/approvals','/approvals/history','/performance/home','/claims','/tasks','/org','/delegations','/leave/tracker',
 ]);
-export const routePools=Object.freeze({employee:employeeRoutes,manager:managerRoutes,companyHR:hrRoutes,groupHR:Object.freeze([...hrRoutes,'/control-tower/agents/provider'])});
+export const routePools=Object.freeze({employee:employeeRoutes,manager:managerRoutes,companyHR:hrRoutes,groupHR:Object.freeze([...hrRoutes,'/control-tower/agents/spending','/control-tower/agents/provider'])});
 export const wholeSystemRouteCount=new Set(Object.values(routePools).flat()).size;
 export const additionalBrowserRoutes=Object.freeze({
  employee:[...aiCentreRoutes,'/tasks','/org','/me/calendar','/me/letters','/me/notifications','/leave/history'],
  manager:['/tasks','/delegations','/leave/tracker'],
  companyHR:[...aiAdminRoutes,'/admin/claims','/admin/attendance-policy','/roster/import'],
- groupHR:['/control-tower/agents/provider','/letters/templates','/letters/settings','/admin/rewards','/admin/notice-board'],
+ groupHR:['/control-tower/agents/spending','/control-tower/agents/provider','/letters/templates','/letters/settings','/admin/rewards','/admin/notice-board'],
 });

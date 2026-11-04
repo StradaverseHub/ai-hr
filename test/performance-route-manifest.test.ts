@@ -14,6 +14,8 @@ it('counts the actual distinct route pools and binds every concrete path to an e
 it('covers the installed AI Centre tabs and administrator sections without granting employees admin routes',()=>{
  for(const tab of CENTRE_TABS){expect(routePools.companyHR).toContain(tab.href);if(!tab.adminOnly)expect(routePools.employee).toContain(tab.href);else expect(routePools.employee).not.toContain(tab.href);}
  for(const section of Object.values(CENTRE_SECTIONS).flat())expect(routePools.companyHR).toContain(section.href);
+ expect(routePools.companyHR).not.toContain('/control-tower/agents/spending');
+ expect(routePools.groupHR).toContain('/control-tower/agents/spending');
  expect(routePools.companyHR).not.toContain('/control-tower/agents/provider');
  expect(routePools.groupHR).toContain('/control-tower/agents/provider');
 });

@@ -14,7 +14,7 @@ import {chromium} from 'playwright';
 import postgres from 'postgres';
 import {generate} from 'otplib';
 import {closePerformanceDbPools,performanceNativeDbClient} from './driver-shutdown.mjs';
-import {employeeRoutes,hrRoutes,managerRoutes,routePools,wholeSystemRouteCount,additionalBrowserRoutes} from './system-route-manifest.mjs';
+import {routePools,wholeSystemRouteCount,additionalBrowserRoutes} from './system-route-manifest.mjs';
 const base='https://localhost:3443',out=process.env.PERF_EVIDENCE_DIR;
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(new URL(process.env.DATABASE_URL).pathname,'/ai_hr_dev');
 const fixture=JSON.parse(readFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),'utf8'));
@@ -299,6 +299,15 @@ try{
  for(const user of [employee,hr]){
   const ctx=await context(user),page=await ctx.newPage();
   try{await aiCentreJourney(page,user,'baseline');}finally{await ctx.close();}
+ }
+ // Tenant-wide AI spend and provider configuration keep their group-administrator guards.
+ {
+  const ctx=await context(hr),page=await ctx.newPage();
+  try{for(const path of ['/control-tower/agents/spending','/control-tower/agents/provider']){
+   await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});
+   await page.waitForURL(url=>url.pathname==='/control-tower/agents',{timeout:90000});
+   report.boundaries.push({kind:'AI group-administrator-only route',role:hr.role,path,redirectDenied:true});save();
+  }}finally{await ctx.close();}
  }
  // Locale projection and real client navigation must work before any capacity claim.
  for(const locale of ['en','ms','zh','ta','th','vi']){
