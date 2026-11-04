@@ -62,8 +62,12 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
     node.setAttribute('data-review-script-font-probe','');
     const root=getComputedStyle(document.documentElement);
     if(theme==='monolith'&&(!root.getPropertyValue('--font-schibsted').trim()||!root.getPropertyValue('--font-dm-mono').trim()))throw Error('Monolith layout font variables are missing.');
-    return {fontFamily:getComputedStyle(node).fontFamily,bodyFontFamily:getComputedStyle(document.body).fontFamily};
+    return {tag:node.tagName,text:node.textContent?.slice(0,60),fontFamily:getComputedStyle(node).fontFamily,bodyFontFamily:getComputedStyle(document.body).fontFamily};
    },{locale,theme});
+   // Explicitly finish the shipped font load after the probe forces layout. The CDP
+   // glyph assertion below still proves that the actual label uses the right face.
+   await page.evaluate(async ({family,text})=>{await document.fonts.load('16px "'+family+'"',text);await document.fonts.ready;},
+    {family:script==='Tamil'?'Noto Sans Tamil':script==='Thai'?'Noto Sans Thai':'Noto Sans SC',text:textProof.text??''});
    const cdp=await page.context().newCDPSession(page);
    try{
     await cdp.send('DOM.enable');await cdp.send('CSS.enable');
@@ -71,7 +75,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
     const {nodeId}=await cdp.send('DOM.querySelector',{nodeId:root.nodeId,selector:'[data-review-script-font-probe]'});
     const {fonts}=await cdp.send('CSS.getPlatformFontsForNode',{nodeId});
     const family=script==='Tamil'?/Tamil/i:script==='Thai'?/Thai/i:/(?:Sans.*(?:SC|CJK)|CJK.*SC)/i;
-    if(!fonts.some(font=>font.glyphCount>0&&family.test(font.familyName)))throw Error('Actual localized text did not use its script font: '+JSON.stringify(fonts));
+    if(!fonts.some(font=>font.glyphCount>0&&family.test(font.familyName)))throw Error('Actual localized text did not use its script font: '+JSON.stringify({...textProof,fonts}));
     scriptFontProof={script,...textProof,fonts};
    }finally{await cdp.detach();}
    await page.locator('[data-review-script-font-probe]').evaluate(node=>node.removeAttribute('data-review-script-font-probe'));
