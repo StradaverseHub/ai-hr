@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {claimRequest} from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {createClaimType, listClaimHistoryPage, listPendingClaimsPage, listClaimDraftsForEmployment, listClaimsForEmployment} from '../packs/claims/service';
+import {createClaimType, pendingClaimTaskSummary, listClaimHistoryPage, listPendingClaimsPage, listClaimDraftsForEmployment, listClaimsForEmployment} from '../packs/claims/service';
 import {adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
 import {ALL_ROW_CEILING} from '../lib/pagination';
 let base: Base;
@@ -50,6 +50,13 @@ describe('claims history database pagination', () => {
     expect(first.rows.map(row=>row.id)).toEqual(expected.slice(0,25));
     expect(second.rows.map(row=>row.id)).toEqual(expected.slice(25,50));
     expect((await listPendingClaimsPage(ctx,{companyIds:[]})).page.total).toBe(0);
+  });
+  it('returns a counted task preview without transporting the complete Claims queue',async()=>{
+    const {ctx,ids}=await fixture(),expected=ids.slice(0,60).sort();
+    const preview=await pendingClaimTaskSummary(ctx,[base.companyId]);
+    expect(preview.total).toBe(60);expect(preview.items.map(row=>row.id)).toEqual(expected.slice(0,25));
+    expect(await pendingClaimTaskSummary(ctx,[])).toEqual({items:[],total:0});
+    const foreign=await seedBase();expect(await pendingClaimTaskSummary(adminCtx(foreign),[base.companyId])).toEqual({items:[],total:0});
   });
   it('preserves tenant and employment isolation for paged and detail reads', async () => {
     const {subject, ids} = await fixture();
