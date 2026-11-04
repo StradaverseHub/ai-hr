@@ -23,7 +23,10 @@ import { PayrollLoopsList } from './payroll-loops-list';
  * AI Centre navigation (4 Nov 2026): above the table, the three payroll loops in order (Pre-salary, Salary payroll, Audit),
  * each with its status for this month and a link to its page (./payroll-loops-list.tsx). Their read starts with the table's
  * and its result streams in, so the table is not kept waiting. The links prefetch their page in full on intent
- * (components/intent-link.tsx), as the AI Centre tab rows do. */
+ * (components/intent-link.tsx), as the AI Centre tab rows do.
+ *
+ * AI Centre restructure: Operations opens here (/control-tower forwards to this page), so the intelligence walkthrough's
+ * first step anchors here (lib/module-tours.json, data-tour="intelligence-control-tower"). */
 const ERRORS = ['invalid', 'refused', 'module', 'failed'] as const;
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const SWITCH_TONE = 'text-emerald-700 dark:text-emerald-300';
@@ -44,7 +47,7 @@ export default async function LoopsPage({ searchParams }: { searchParams: Promis
   const when = (date: Date) => f.dateTime(date, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' });
   const name = (row: LoopRow) => t(`names.${row.id}`);
   return (
-    <div className={pageWideCls}>
+    <div data-tour="intelligence-control-tower" className={pageWideCls}>
       <OperationsTabs session={s} active="loops" />
       <PageHeader title={t('title')} description={t('description')}
         actions={<Link href="/control-tower/loops/payroll-cycle" data-payroll-cycle-link className={cn(btnGhost, 'pointer-coarse:min-h-11')}>{t('payrollCycle')}</Link>} />

@@ -899,7 +899,7 @@
     "steps": [
       {
         "id": "1",
-        "route": "/control-tower",
+        "route": "/control-tower/loops",
         "target": "[data-tour=\"intelligence-control-tower\"]",
         "placement": "bottom",
         "text": {
