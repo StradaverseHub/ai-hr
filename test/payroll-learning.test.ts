@@ -409,7 +409,7 @@ describe('P2: evidence lines, "Learned this cycle" and the AI read',()=>{
   expect(page.companies.map(c=>[c.companyName,c.mode,c.people])).toEqual([['Acme Sdn Bhd','evidence',{stable:6,provisional:3,none:5,rebasing:0,contradicted:0}]]);
   expect(page.companies[0].learnedOn).toBe(todayInKualaLumpur());
   // The read: 3 provisional is under 5, and the next smallest (5 not yet) is withheld with it.
-  const out=await payrollLearningStatus(admin,{period:AS_OF}) as Record<string,unknown>&{companies:{company:string;mode:string;people:Record<string,number|null>}[]};
+  const out=await payrollLearningStatus(admin,{period:AS_OF}) as unknown as Record<string,unknown>&{companies:{company:string;mode:string;people:Record<string,number|null>}[]};
   expect(out.companies).toEqual([{company:'Acme Sdn Bhd',mode:'evidence',learnedOn:todayInKualaLumpur(),people:{stable:6,provisional:null,notYet:null,rebasing:0,contradicted:0}}]);
   expect(JSON.stringify(out)).not.toMatch(UUID);
   for(const amount of ['4000','4100','410000','400000','3000','300000','2500'])expect(JSON.stringify(out.companies)).not.toContain(amount);

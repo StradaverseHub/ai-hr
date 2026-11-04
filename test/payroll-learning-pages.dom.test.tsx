@@ -101,6 +101,8 @@ const SESSIONS={
 const wrap=(locale:Locale,node:ReactNode)=>render(<NextIntlClientProvider locale={locale} messages={messagesFor(locale) as never} onError={error=>{throw error;}} timeZone="Asia/Kuala_Lumpur">
  <main className="relative min-w-0"><div className="min-w-0">{node}</div></main></NextIntlClientProvider>);
 const text=(el:Node|null|undefined)=>(el?.textContent??'').replace(/\s+/g,' ').trim();
+/** An element's text with its child nodes (a line and its block span) joined by a space. */
+const parts=(el:Element|null|undefined)=>el?[...el.childNodes].map(node=>text(node)).filter(Boolean).join(' '):'';
 const cycle=()=>PayrollCyclePage({searchParams:Promise.resolve({})});
 const salary=()=>SalaryLoopPage({searchParams:Promise.resolve({})});
 const anomalies=()=>AnomaliesPage({params:Promise.resolve({batchId:'00000000-0000-4000-8000-0000000000b1'}),searchParams:Promise.resolve({})});
@@ -124,7 +126,7 @@ describe('the evidence lines',()=>{
   const [ravi,mei]=[...view.container.querySelectorAll('[data-swing-flags] tbody tr')];
   const line=ravi.querySelector('[data-learning-evidence]')!;
   expect(line.getAttribute('data-learning-evidence')).toBe('above');
-  expect(text(line)).toBe('Usual for this person: above range from 7 runs Usual range 4,000.00 to 4,200.00');
+  expect(parts(line)).toBe('Usual for this person: above range from 7 runs Usual range 4,000.00 to 4,200.00');
   expect(line.querySelector('button,a,input,form')).toBeNull();
   expect(mei.querySelector('[data-learning-evidence]')).toBeNull();
  });
@@ -133,7 +135,7 @@ describe('the evidence lines',()=>{
   const view=wrap('en',await anomalies());
   expect(state.reads).toContain('runEvidence');
   const lines=[...view.container.querySelectorAll('[data-learning-evidence]')];
-  expect(lines.map(el=>[el.getAttribute('data-learning-evidence'),text(el)])).toEqual([['below','Usual for this person: below range from 4 runs Usual range 2,500.00 to 2,500.00']]);
+  expect(lines.map(el=>[el.getAttribute('data-learning-evidence'),parts(el)])).toEqual([['below','Usual for this person: below range from 4 runs Usual range 2,500.00 to 2,500.00']]);
   // Beside the facts, never in place of them: both flagged people keep their findings and their resolve buttons.
   expect(view.container.querySelectorAll('form button[name="resolution"]').length).toBe(6);
  });
@@ -155,7 +157,7 @@ describe('"Learned this cycle" on the Payroll cycle page',()=>{
   const view=wrap('en',await cycle());
   expect(state.reads).toEqual(['overview','learned']);
   const card=view.container.querySelector('[data-learned-cycle]')!;
-  expect(text(card.querySelector('[data-ui-section-header]'))).toMatch(/^Learned this cycle How many people’s usual pay AI Centre has learned/);
+  expect(parts(card.querySelector('[data-ui-section-header]'))).toMatch(/^Learned this cycle How many people’s usual pay AI Centre has learned/);
   expect(text(card)).toContain('Counts only. A usual range explains a flag; it never changes a figure or a check.');
   expect([...card.querySelectorAll('thead th')].map(text)).toEqual(['Company','Learning','Settled (6+ runs)','Provisional (3–5)','Not yet (under 3)',
    'Relearning after a salary change','Pay has moved','Last learned']);
