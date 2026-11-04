@@ -1,3 +1,4 @@
+import {PERFORMANCE_MIGRATION_IDENTITIES} from './performance-migration-identities';
 /** Exact post-Noveri populated upgrade, on a disposable hosted localhost database only: the 648-entry baseline, then
  * staging's 656-entry main ledger, then the AI v2 Phase 1 migrations 2000-2003, then the AI v2 Phase 2 migrations 2004-2011.
  * Source bytes are pinned independently; this supplies no staging acceptance or AI approval. */
@@ -55,6 +56,7 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   {tag:'2100_employment_helper_tenant_pin',when:1793330001500},
   {tag:'2101_company_tenant_fk_not_valid',when:1793330001501},
   {tag:'2102_company_tenant_fk_validate',when:1793330001502},
+  ...PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,when})=>({tag,when})),
  ]);
  expect(hash(readFileSync('db/migrations/0935_password_account_unlock.sql'))).toBe('3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa');
  expect(hash(readFileSync('db/migrations/0946_draft_creation_cohort_custody.sql'))).toBe('cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390');

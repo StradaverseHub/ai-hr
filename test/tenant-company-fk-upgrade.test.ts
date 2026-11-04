@@ -1,3 +1,4 @@
+import {PERFORMANCE_MIGRATION_IDENTITIES} from './performance-migration-identities';
 /** ADR-0174 populated upgrade through 2100–2102, on an owned disposable localhost database only.
  * A cross-tenant row present at the boundary must stop the whole upgrade with a readable report and leave
  * the ledger untouched; once that row is resolved the upgrade validates every key, rewrites no row and
@@ -17,6 +18,7 @@ const TAIL=[
  {idx:1347,version:'7',when:1793330001500,tag:'2100_employment_helper_tenant_pin',breakpoints:true},
  {idx:1348,version:'7',when:1793330001501,tag:'2101_company_tenant_fk_not_valid',breakpoints:true},
  {idx:1349,version:'7',when:1793330001502,tag:'2102_company_tenant_fk_validate',breakpoints:true},
+ ...PERFORMANCE_MIGRATION_IDENTITIES.map(({hash:_,...entry})=>entry),
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -24,6 +26,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
  const boundary=journal.entries.findIndex(row=>row.tag===TAIL[0].tag);
  expect(boundary).toBe(668);
  expect(journal.entries.slice(boundary)).toEqual(TAIL);
+ for(const entry of PERFORMANCE_MIGRATION_IDENTITIES)expect(hash(readFileSync('db/migrations/'+entry.tag+'.sql'))).toBe(entry.hash);
  expect(journal.entries[boundary-1]).toEqual({idx:811,version:'7',when:1793330001411,tag:'2011_payroll_loops_hardening',breakpoints:true});
  const prefix=journal.entries.slice(0,boundary);
  const folder=mkdtempSync(join(tmpdir(),'tenant-company-fk-upgrade-')),database='ai_hr_tenant_fk_upgrade_'+randomUUID().replaceAll('-','');
@@ -95,11 +98,23 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const upgradeNative=await native();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const afterLedger=await ledger();
-  expect(afterLedger).toHaveLength(671);expect(afterLedger.slice(0,668)).toEqual(beforeLedger);
+  expect(afterLedger).toHaveLength(668+TAIL.length);expect(afterLedger.slice(0,668)).toEqual(beforeLedger);
   expect(afterLedger.slice(668).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(
    TAIL.map(row=>({hash:hash(readFileSync('db/migrations/'+row.tag+'.sql')),created_at:String(row.when)})));
   expect(await native()).toEqual(upgradeNative);
-  expect(await privileges()).toEqual(beforePrivileges);
+  const afterPrivileges=await privileges();
+  const addedFunctions=['app.attendance_frozen_actor_identity_keys(jsonb,text)','app.may_have_attendance_task_metadata()'];
+  const beforeFunctions=new Set(beforePrivileges.functions.map(row=>row.fn));
+  expect(afterPrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
+  for(const fn of addedFunctions){
+   const [permission]=await storage.client`select has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app_execute,
+    exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_execute
+    from pg_proc p where p.oid=to_regprocedure(${fn})`;
+   expect(permission).toEqual({app_execute:true,public_execute:false});
+  }
+  // The two explicitly installed helpers are the only new function privileges. Every prior
+  // function ACL and every table/column/policy privilege must still match the populated baseline.
+  expect({...afterPrivileges,functions:afterPrivileges.functions.filter(row=>!addedFunctions.includes(row.fn))}).toEqual(beforePrivileges);
   const installed=await keys();
   expect(installed).toHaveLength(148);
   expect(installed.filter(row=>!row.convalidated)).toEqual([]);
