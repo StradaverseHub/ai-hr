@@ -1,24 +1,19 @@
 /** Minute notification projection + conditional email delivery. Use flock in cron, not a web request. */
+// Only node builtins are imported statically. The parent process exists to respawn under the server runtime,
+// and static imports would make it load and transpile the whole HR graph each minute before the child loads it again.
 import { spawn } from 'node:child_process';
-import { createDb,type SessionContext } from '../db/client';
-import { loadSweepScope,describeSkips } from '../core/sweep-scope';
-import { resolveEntitlementsTx,isModuleEnabled } from '../core/entitlements';
-import { sweepOnboarding, refreshOnboardingPersonnel, v9Sweep, v9DeliverEmails } from '../packs/lifecycle/service';
-import {sweepProbation} from '../packs/probation/service';
-import {sweepContractManagement} from '../packs/contracts/service';
-import { sweepAssessmentReminders } from '../packs/performance/service';
-import { dispatchNotificationsFromSweep } from '../core/notifications';
-import { deliverNotificationEmails,deliverAttendanceCcEmails } from '../core/notification-email-delivery';
-import {deliverLetterEmailsFromSweep} from '../core/letter-email-delivery';
-import {sweepLetterAutomationFromSweep} from '../core/letter-automation';
-import {projectLetterNotificationsFromSweep} from '../core/letter-notifications';
-import {createNoticeSweepAccess} from '../core/notice-projection';
+import type { SessionContext } from '../db/client';
 async function main(){
+ const [{createDb},{loadSweepScope,describeSkips},{resolveEntitlementsTx,isModuleEnabled},{sweepOnboarding,refreshOnboardingPersonnel,v9Sweep,v9DeliverEmails},{sweepProbation},{sweepContractManagement},{sweepAssessmentReminders},{dispatchNotificationsFromSweep},{deliverNotificationEmails,deliverAttendanceCcEmails},{deliverLetterEmailsFromSweep},{sweepLetterAutomationFromSweep},{projectLetterNotificationsFromSweep},{createNoticeSweepAccess,NotificationSweepRoleError}]=await Promise.all([
+  import('../db/client'),import('../core/sweep-scope'),import('../core/entitlements'),import('../packs/lifecycle/service'),import('../packs/probation/service'),
+  import('../packs/contracts/service'),import('../packs/performance/service'),import('../core/notifications'),import('../core/notification-email-delivery'),
+  import('../core/letter-email-delivery'),import('../core/letter-automation'),import('../core/letter-notifications'),import('../core/notice-projection')]);
  const url=process.env.MIGRATION_DATABASE_URL;if(!url)throw new Error('Migration database required');
  const owner=createDb(url);let failed=0;
  try{
   const scope=await loadSweepScope(owner.db);for(const line of describeSkips(scope))console.log(line);
   for(const tenant of scope.run){
+   const startedAt=Date.now();
    try{
     const entitlements=await owner.db.transaction(tx=>resolveEntitlementsTx(tx,tenant.id));
     const ctx:SessionContext={tenantId:tenant.id,roles:['hr_admin'],entitlements};
@@ -36,8 +31,12 @@ async function main(){
     const letters=await projectLetterNotificationsFromSweep(ctx,owner),letterMail=await deliverLetterEmailsFromSweep(ctx,owner),projected=await dispatchNotificationsFromSweep(ctx,owner),delivered=await deliverNotificationEmails(ctx,undefined,{noticeSweep}),attendanceCc=await deliverAttendanceCcEmails(ctx);
     if(letters.failed>0||letterMail.failed>0)failed++;
     // Outcome details live in the delivery log. No addresses, frozen HR text, credentials or raw SMTP errors.
-    console.log(JSON.stringify({tenantId:tenant.id,projected:projected.created,letters,letterMail,...delivered,attendanceCc}));
-   }catch{failed++;console.error('Workflow email sweep failed for tenant '+tenant.id);}
+    console.log(JSON.stringify({tenantId:tenant.id,projected:projected.created,letters,letterMail,...delivered,attendanceCc,ms:Date.now()-startedAt}));
+   }catch(error){
+    failed++;
+    // Only the fixed installation-prerequisite message is printed; other errors may carry HR values.
+    console.error('Workflow email sweep failed for tenant '+tenant.id+' after '+(Date.now()-startedAt)+'ms'+(error instanceof NotificationSweepRoleError?': '+error.message:''));
+   }
   }
  }finally{await owner.client.end();}
  process.exit(failed?1:0);

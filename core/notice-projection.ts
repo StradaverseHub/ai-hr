@@ -30,6 +30,20 @@ export async function noticeNotificationRecipientsTx(tx:Tx,noticeId:string):Prom
  return noticeSnapshotIdsTx(tx,scope.tenant_id,noticeId);
 }
 
+/** PostgreSQL 16 checks SET ROLE against the LOGIN, so projection's downgrade to APP needs an explicit
+ * INHERIT FALSE/SET TRUE edge. Only an installation DBA can grant it (the owner holds no ADMIN on APP), so
+ * no migration can repair its absence; refuse before any work and name the prerequisite. */
+export const NOTIFICATION_ROLE_PREREQUISITE='deploy/runner-control/notification-role-prerequisite.sql';
+export class NotificationSweepRoleError extends Error{
+ constructor(){super(`Notification sweep login cannot switch to ai_hr_app; an installation DBA must run ${NOTIFICATION_ROLE_PREREQUISITE}.`);this.name='NotificationSweepRoleError';}
+}
+/** Read-only catalog probe shared by the sweep guard and the deploy preflight. */
+export async function notificationDowngradeReady(tx:Pick<Tx,'execute'>):Promise<boolean>{
+ const [edge]=await tx.execute(sql`SELECT pg_catalog.pg_has_role(session_user,'ai_hr_app','SET')
+  AND NOT pg_catalog.pg_has_role('ai_hr_app',session_user,'MEMBER') AS ready`) as unknown as {ready:boolean}[];
+ return edge?.ready===true;
+}
+
 /** Inline catalog proof also works before the unshipped migration reaches the server. SECURITY DEFINER
  * current_user is deliberately excluded: both the login and its explicitly selected role must own the
  * protected storage (without FORCE RLS), or hold PostgreSQL's real bypass authority. */
@@ -49,6 +63,7 @@ export async function assertNotificationSweepConnection(tx:Tx):Promise<string>{
   ),false) AS privileged FROM actor a
  `) as unknown as {login:string;effective:string;prior_role:string;privileged:boolean}[];
  if(!role?.privileged||role.effective==='ai_hr_app'||role.login==='ai_hr_app')throw Error('Notice sweep access requires an explicit privileged database connection.');
+ if(!await notificationDowngradeReady(tx))throw new NotificationSweepRoleError();
  return role.prior_role||'none';
 }
 

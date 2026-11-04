@@ -101,6 +101,14 @@ The wrapper reads owner, application and platform passwords through hidden promp
 
 This creates ai_hr owned by ai_hr_owner, the restricted ai_hr_app, the BYPASSRLS ai_hr_platform control-plane role and migration default grants. Do not blanket-grant tables after migrations.
 
+It also grants `ai_hr_app` to `ai_hr_owner` WITH INHERIT FALSE, SET TRUE: the review and notification sweeps connect as the owner and switch DOWN to the application role before projecting notifications. The owner gains no application privileges by inheritance and the application never becomes a member of the owner. Installations bootstrapped before this edge existed need it once from the installation DBA (the owner cannot grant it to itself, so no migration can):
+
+```bash
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 --dbname=ai_hr --file=deploy/runner-control/notification-role-prerequisite.sql
+```
+
+Without it the 03:00 review sweep exits 1 for every tenant with notifications, and the minute notification sweep fails whenever events are pending (staging, 25 October to 4 November 2026). `deploy.sh` refuses at `phase=notification-role` until it is present.
+
 ## 3. Configure the environment (gated demo)
 
 ```bash
@@ -616,7 +624,7 @@ that DIED PARTWAY all look the same: no output, a URL that still answers, a serv
     ssh aihr-staging 'cd /opt/ai-hr && deploy/deploy-state.sh status'
 
     state=ok | running | failed | died | incomplete | unknown
-    phase=preflight|install|audit-chain|build|migrate|catalogs|seed|restart|migrate-only
+    phase=preflight|install|audit-chain|notification-role|build|migrate|catalogs|seed|restart|migrate-only
     ref=<the source ref improve:release shipped>     built_ref=<what .next was built from>
     build_id=<.next/BUILD_ID on disk>                built_build_id=<what the last clean deploy built>
     stale_build=0|1                                  log=<the full output of that deploy>

@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {describe,expect,it} from 'vitest';
 
@@ -21,6 +22,21 @@ describe('scheduled review CLI startup',()=>{
   expect(result.error).toBeUndefined();expect(result.status).toBe(1);
   expect(result.stderr).toContain('Provisioning-only tick failed; check its protected maintenance logs.');
   expect(result.stderr).not.toContain('Replacement holiday tick');expect(result.stderr).not.toContain('Employee master report tick');
+ },25_000);
+ it('respawns the minute notification sweep without loading the HR graph in the parent',()=>{
+  // Staging paid two full graph loads every minute: static imports ran in the parent before it respawned.
+  const source=readFileSync('scripts/notification-email-sweep.ts','utf8');
+  const runtime=[...source.matchAll(/^import\s+(?!type\b)[^;]*?from\s+'([^']+)'/gm)].map(match=>match[1]);
+  expect(runtime).toEqual(['node:child_process']);
+  expect(source).toContain("import('../core/notifications')");
+  const result=spawnSync(process.execPath,['--import','tsx','scripts/notification-email-sweep.ts'],{
+   cwd:process.cwd(),encoding:'utf8',timeout:20_000,
+   env:{...process.env,NODE_OPTIONS:'',DATABASE_URL:'postgres://nobody:nothing@127.0.0.1:1/no_database',MIGRATION_DATABASE_URL:'',AUTH_PROVIDER:'internal'},
+  });
+  expect(result.error).toBeUndefined();expect(result.status).toBe(1);
+  expect(result.stderr).toContain('Workflow email sweep failed.');
+  expect(result.stderr).not.toContain('Workflow email server runtime unavailable.');
+  expect(result.stderr).not.toContain('Client Component');
  },25_000);
 
 });
