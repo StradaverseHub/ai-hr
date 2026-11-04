@@ -1,6 +1,6 @@
 /** Explicit hosted retained-data diagnosis only; native row triggers/constraints remain enabled. */
 import {randomUUID} from 'node:crypto';
-import {writeFileSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
@@ -57,11 +57,13 @@ it.skipIf(!requested)('compares a bounded native Workforce reader with disjoint 
   // Keep the single JSON projection and every purpose/tenant/voided/subject predicate.
   // Only the employment source is split into mutually exclusive branches, allowing the
   // selected-ID branch to plan an indexed lookup without the full-list OR condition.
-  const candidate=original.ddl.replace(needle,` FROM (
+  const proposal=JSON.parse(readFileSync(new URL('./workforce-bounded-migration.proposal.json',import.meta.url),'utf8')) as {sql:string};
+  const candidate=proposal.sql;
+  expect(candidate.split('AS $$')[1]?.split('$$;')[0]).toBe(original.body.replace(needle,` FROM (
     SELECT * FROM public.employment WHERE subject_ids IS NULL
     UNION ALL
     SELECT * FROM public.employment WHERE subject_ids IS NOT NULL AND id=ANY(subject_ids)
-   )e JOIN permitted allowed ON allowed.id=e.company_id`);
+   )e JOIN permitted allowed ON allowed.id=e.company_id`));
   const ids=[...expectedFirst,expectedFirst[0],foreignEmployment,randomUUID()];
   const read=()=>withTenant(ctx,tx=>readWorkforcePickRowsTx(ctx,tx,ids));
   const full=()=>withTenant(ctx,async tx=>{
@@ -95,6 +97,19 @@ it.skipIf(!requested)('compares a bounded native Workforce reader with disjoint 
    const [restored]=await owner.client`select pg_get_functiondef(oid)as ddl,prosrc as body,proowner::regrole::text as owner,proacl::text as acl from pg_proc where oid='app._access_workforce_list_rows(uuid[])'::regprocedure`;
    expect(restored).toEqual(original);report.originalFunctionRestored=true;save();
   }
+  const drifts=[
+   ['body',original.ddl.replace(original.body,()=>original.body+'\n-- unreviewed predecessor probe\n')],
+   ['volatility','alter function app._access_workforce_list_rows(uuid[]) volatile'],
+   ['application-execute','grant execute on function app._access_workforce_list_rows(uuid[]) to ai_hr_app'],
+   ['public-execute','grant execute on function app._access_workforce_list_rows(uuid[]) to public'],
+   ['configuration','alter function app._access_workforce_list_rows(uuid[]) set search_path=public,pg_temp'],
+  ];
+  for(const [,ddl]of drifts){
+   await expect(owner.client.begin(async tx=>{await tx.unsafe(ddl);await tx.unsafe(candidate);})).rejects.toMatchObject({code:'55000'});
+   const [after]=await owner.client`select pg_get_functiondef(oid)as ddl,prosrc as body,proowner::regrole::text as owner,proacl::text as acl from pg_proc where oid='app._access_workforce_list_rows(uuid[])'::regprocedure`;
+   expect(after).toEqual(original);
+  }
+  report.predecessorDriftsRefused=drifts.map(([kind])=>kind);
   phase('complete');
  }catch(error){report.errorType=(error as Error).name;phase('failed');throw error;}
  finally{save();}
