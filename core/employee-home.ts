@@ -29,7 +29,6 @@ export async function ownHomeSubjectSelection(ctx:SessionContext,requestedEmploy
 }
 async function ownHomeSubjectSelectionTx(tx:Tx,ctx:SessionContext,requestedEmploymentId?:string):Promise<OwnSelection>{
  if(!ctx.userId)throw new HomeAccessError('authentication');
- await lockAccessConfigurationReadTx(tx,ctx.tenantId);
  // The role/scope snapshot does not attest a caller's personId. Bind it independently through the
  // canonical actual-login predicate before an HR principal can query the own-subject inventory.
  const [principal]=await tx.execute<{ok:boolean}>(sql`SELECT (app.principal_snapshot_current()
@@ -64,6 +63,9 @@ export async function readEmployeeHomeIdentityTx(tx:Tx,ctx:SessionContext,reques
  const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='repeatable read'
   and current_setting('transaction_read_only')='on' as safe`);
  if(snapshot?.safe!==true)throw new HomeAccessError('employmentUnavailable');
+ // This barrier belongs to the composed read. Ordinary subject preflight is also used by
+ // greeting commands, whose canonical native command must retain its original first lock.
+ await lockAccessConfigurationReadTx(tx,ctx.tenantId);
  const selection=await ownHomeSubjectSelectionTx(tx,ctx,requestedEmploymentId);
  // Flattened roles discard their company scope. For a selected employment use the canonical SQL
  // grant/subtree predicates so a manager or HR grant elsewhere cannot choose this company's policy.
