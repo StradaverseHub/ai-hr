@@ -1573,3 +1573,21 @@ Parent allocation reserves2109_org_chart_roots / idx1356 / when1793330001509 abo
 ## 2026-11-04 approved Security Center reservation
 
 `2106_account_management_subject`, journal idx `1353`, when `1793330001506`, reserved by root delivery coordinator after read-only ref/live-ledger audit. Canonical prefix is unchanged. Recent source tail2105/idx1352/when1793330001505 and staging max1793330001502 precede this claim. No migration deployed. Live-ahead reconciliation remains a release prerequisite.
+
+## Approved Personnel organisation tagging and filters — 4 November 2026 (unapplied)
+
+Coordinator `codex/approved-ui-20261104` reserves `2126_company_organisation_tagging`, idx1373 /
+when1793330001526, for the shared explicit dated mapping, independent structure/re-tag review and
+published classification owner; and `2127_personnel_filter_search`, idx1374 / when1793330001527,
+for the authorised Personnel projection and private sensitive-search state. The implementation worktrees
+are `codex/approved-organisation-owner-20261104`, `codex/approved-organisation-writers-20261104` and
+`codex/approved-personnel-filters-20261104`.
+
+A fresh read-only audit covered 4,256 local/remote heads, 429 distinct journals and every registered
+worktree, including uncommitted migration filenames. Competing source claims end at2125/idx1372/
+when1793330001525. Main/alpha and the independently observed healthy staging source are
+74db3bb7621c33de256372162a1961ee320baf6e; its canonical journal ends at2102/idx1349/when1793330001502.
+The candidate already preserves this complete prefix and reserves2106–2111. Gaps remain intentional;
+no competing unapplied branch is silently included. Recheck the actual ordered installation ledger,
+canonical refs and competing reservations at release admission. These reservations apply no live data
+or schema and do not execute the separately reviewed employee re-tag operation.
