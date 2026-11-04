@@ -670,10 +670,15 @@ async function reviewedPayComponentPreflightTx(tx:Tx,supplied:SessionContext,inp
  await lockAccessConfigurationTx(tx,ctx.tenantId);await assertReviewedPayCatalogPrincipalTx(tx,ctx);await lockPayComponentCatalogTx(tx,ctx,true);
  if(captured.pendingInputKind!==undefined&&captured.pendingInputKind!==null)throw new PayComponentInputError([{field:'inputKind',code:'invalidPendingCalculation'}]);
  const p=await preparePayComponentCreateInputTx(tx,ctx,captured),prepared=await preparePayComponentWriteTx(tx,ctx,p,{createOnly:true});
- const {tenantId: _tenant,pendingInputKind: _readyPending,...review}=payComponentCreateValues(ctx,p,prepared,{});
+ const storage=payComponentCreateValues(ctx,p,prepared,{});
+ // The finite reviewed CREATE vocabulary does not include formula-builder context.
+ // Fixed native normalization clears that internal storage attribute to null; it
+ // must neither widen human input nor make a valid fixed rule fail strict review.
+ const {tenantId:_tenant,pendingInputKind:_readyPending,formulaContext:_formulaContext,...review}=storage;
+ if(_formulaContext!=null)throw new PayComponentInputError([{field:'inputKind',code:'OUT_OF_RANGE'}]);
  const catalog=await tx.execute(sql`select c.id,c.xmin::text as version,to_jsonb(c) as record from public.pay_component c where c.tenant_id=${ctx.tenantId}::uuid order by c.id`);
  const reviewedDigest=createHash('sha256').update(JSON.stringify(['reviewed-pay-component-create:v1',
-  {tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},captured,review,catalog])).digest('hex');
+  {tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},captured,storage,review,catalog])).digest('hex');
  return {ctx,p,review,reviewedDigest};
 }
 /** Same-Tx reviewed catalogue vocabulary, never employee data. A large catalogue refuses honestly
