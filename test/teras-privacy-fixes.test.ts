@@ -107,7 +107,11 @@ describe('defect 4: identifiers are screened on the way in',()=>{
 describe('defect 5: minimum is narrower than full',()=>{
  it('withholds another person\'s minimum fields and a colleague\'s name, keeps full fields, and keeps the caller\'s own minimum fields exact',async()=>{
   const {result,model}=await turn('Who is away this week?',[{calls:[{name:'who_is_away',args:{from:'2026-11-02',to:'2026-11-08'}}]},{final:{reply:'{{T1}} is away from {{T3}} to {{T4}} ({{T2}}).'}}]);
-  for(const leak of ['Fictional Colleague Mei','FX-0007','Medical Leave','2026-11-05','2026-11-06'])expect(sent(model),leak).not.toContain(leak);
+  for(const leak of ['Fictional Colleague Mei','FX-0007','Medical Leave'])expect(sent(model),leak).not.toContain(leak);
+  // The trusted system prompt legitimately states today's date; on5/6Nov it equals a fixture date.
+  // Check every non-system message for private dates, retaining the complete name/type checks above.
+  const privateMessages=JSON.stringify(model.requests.map(request=>request.messages.filter(message=>message.role!=='system')));
+  for(const leak of ['2026-11-05','2026-11-06'])expect(privateMessages,leak).not.toContain(leak);
   expect(sent(model)).toContain('approved');
   expect(result.reply).toBe('Fictional Colleague Mei is away from 2026-11-05 to 2026-11-06 (Medical Leave).');
   const ledger=new DisclosureLedger('me');
