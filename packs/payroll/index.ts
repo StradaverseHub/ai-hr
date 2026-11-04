@@ -34,6 +34,7 @@
  *   step-up), `core/pay-components.ts` (the pay-component catalog + statutory allowlist resolution
  *   via the active country pack — the D6 vocabulary consumer), `core/pay-rule.ts` +
  *   `core/pay-rule-ai.ts` (pay-rule library + AI drafting), `core/pay-formula.ts` (immutable formula lifecycle),
+ *   `core/pay-formula-personnel.ts` (permission-bound Personnel formula catalogue and snapshots; private Payroll implementation),
  *   `core/pay-formula-runtime.ts` (authorized source snapshots), `core/payroll-formula-inputs.ts` (shared Native input owners), `core/cp38.ts` (CP38/CP39 IRB deduction
  *   orders), `core/ea-override.ts` (EA-statement field overrides, consuming `pack.eaFields`),
  *   `core/tax-relief.ts` (TP1 tax-relief declarations), `core/loans.ts` + `core/loans-compute.ts`
