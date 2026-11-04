@@ -1,6 +1,6 @@
 # Release speed review — 4 November 2026
 
-Status: **review and proposal only.** Nothing in this document changes a workflow, `.github/ci/*`, the release controller, the staging queue, a manifest or an approval file. Each control change below is a proposal that must be reviewed and validated under [CI policy § Change control](../CI-STAGING-VERIFICATION-POLICY.md#change-control) before use.
+Status: **accepted by the owner on 4 November 2026 ("Okay go ahead"); recorded as [ADR-0175](../adr/0175-first-time-right-releases.md), with Option A for AI approval.** Phase 0 tooling: `scripts/release/preflight.mjs`, `scripts/release/select-focused.ts`, `scripts/release/migrations-renumber.mjs`, the [fast path](../RELEASE-FAST-PATH.md) and the [flaky test register](../FLAKY-TESTS.md). Phase 1 controller changes are still proposals. Original status: **review and proposal only.** Nothing in this document changes a workflow, `.github/ci/*`, the release controller, the staging queue, a manifest or an approval file. Each control change below is a proposal that must be reviewed and validated under [CI policy § Change control](../CI-STAGING-VERIFICATION-POLICY.md#change-control) before use.
 
 Sources: the running log `ai-hr-builders/RESUME/TERAS-RELEASE-STATUS.md` (2–4 November), GitHub Actions run and job records read through the API on 4 November 2026 at 05:58 UTC, and the controller source on main `aa260e8d0`. Times are Kuala Lumpur time (UTC+8) unless marked Z. Figures marked *log* come from the log and were not re-measured.
 
@@ -331,7 +331,7 @@ P4 Option B, the P5 allocation lease in the queue, and P9 staging windows and sp
 
 ---
 
-## Part 3 — Draft ADR for owner approval
+## Part 3 — Draft ADR for owner approval (as submitted; the accepted text is ADR-0175)
 
 > **ADR-0175 — First-time-right releases with bounded recovery and single binding**
 >
@@ -359,3 +359,8 @@ P4 Option B, the P5 allocation lease in the queue, and P9 staging windows and sp
 > **Validation.** Each controller change follows CI policy change control: a frozen controller, refusal fixtures, a controller-only diagnostic, a read-only diagnostic exercise on real retained failures, independent review, then a fresh whole witness under a new policy version.
 >
 > **Measure.** For each release, record the time from ready candidate to installed, the number of full gates, first-time pass (yes/no), recoveries used, approval rounds and queue wait. Target: one full gate, at most one recovery, and under 90 minutes from ready candidate to installed. Owner goal (unchanged): under 10 minutes for automated verification plus deployment.
+
+## Addendum — Phase 0 measurements (4 November 2026, after acceptance)
+
+- **Preflight replay.** On the 4 November binding commit 4ba3b25a8 against 3b3f94ccd, `preflight.mjs` reports `generator/scope: DIFFERS`. That is the refusal CI raised at plan and build in 41768537723. On 3ceeb26ef it reports identical generators and a 186-file approval delta (6 locale catalogue, 7 schema, 18 disclosure/entity, 7 spec/harness/tools, 1 transport, 14 AI code, 106 HR core, 4 pack, 23 other). With the watermark set to 1793330001500 it flags all twelve 2000-block migrations as skippable, which is the ordering rule agreed with PR #218. Each run takes about 9 seconds.
+- **Selector on the release diff.** `select-focused.ts --base 3b3f94ccd` on the AI v2 release diff returns `tier=full`: 111 full-verification reasons, 2,974 files, 47 chunks. The selection includes `r394-route-loading`, `ai-management-contract`, `company-referrers`, `payroll-pack-drift` and `module-catalog-drift`. Integration diffs of this size need the whole suite. The fast path therefore dispatches every chunk before the packet, at about the cost of the 40 hand-picked union runs that were made instead.
