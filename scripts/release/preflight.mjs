@@ -24,6 +24,7 @@ const GENERATORS={provider:'scripts/ai-provider-data-source-manifest.mjs',module
 const git=(args,options={})=>execFileSync('git',args,{encoding:'utf8',maxBuffer:256*1024**2,...options});
 const blob=(rev,path)=>{try{return execFileSync('git',['show',`${rev}:${path}`],{maxBuffer:64*1024**2,stdio:['ignore','pipe','ignore']});}catch{return null;}};
 
+/** @param {string} headRev @param {string} baseRev @param {(rev:string,path:string)=>Buffer|null} [read] */
 export function compareGenerators(headRev,baseRev,read=blob){
   return AI_MANIFEST_INPUTS.map(path=>{
     const head=read(headRev,path),base=read(baseRev,path);
@@ -31,7 +32,8 @@ export function compareGenerators(headRev,baseRev,read=blob){
   });
 }
 
-/** Classify a closure file by what kind of change it represents for the owner's approval delta. */
+/** Classify a closure file by what kind of change it represents for the owner's approval delta.
+ * @param {string} path */
 export function classifyClosureFile(path){
   if(/^messages\/.+\.json$/.test(path))return 'locale catalogue';
   if(path==='package.json'||path==='pnpm-lock.yaml')return 'dependencies';
@@ -46,16 +48,25 @@ export function classifyClosureFile(path){
   return 'other';
 }
 
+/** @typedef {{sources:{path:string,sha256:string}[]}} ClosureSources
+ * @param {ClosureSources} base @param {ClosureSources} head */
 export function closureDelta(base,head){
   const before=new Map(base.sources.map(s=>[s.path,s.sha256])),after=new Map(head.sources.map(s=>[s.path,s.sha256]));
+  /** @type {{path:string,change:string}[]} */
   const rows=[];
   for(const [path,sha]of after)if(!before.has(path))rows.push({path,change:'added'});else if(before.get(path)!==sha)rows.push({path,change:'changed'});
   for(const path of before.keys())if(!after.has(path))rows.push({path,change:'removed'});
   return rows.sort((a,b)=>a.path.localeCompare(b.path)).map(r=>({...r,kind:classifyClosureFile(r.path)}));
 }
 
+/** @typedef {{tag:string,idx:number,when:number}} JournalEntry
+ * @param {JournalEntry[]} baseEntries @param {JournalEntry[]} headEntries
+ * @param {{stagingWatermark?:number|null,sqlExists?:(tag:string)=>boolean}} [options] */
 export function migrationProblems(baseEntries,headEntries,{stagingWatermark=null,sqlExists=()=>true}={}){
-  const problems=[],added=[];
+  /** @type {string[]} */
+  const problems=[];
+  /** @type {string[]} */
+  const added=[];
   baseEntries.forEach((entry,i)=>{
     const h=headEntries[i];
     if(!h||h.tag!==entry.tag||h.when!==entry.when||h.idx!==entry.idx)problems.push(`Base journal entry ${i} (${entry.tag}) is not an exact prefix of HEAD`);

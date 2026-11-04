@@ -16,8 +16,12 @@ import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 
 const JOURNAL='db/migrations/meta/_journal.json';
+/** @param {string} tag */
 const numberOf=tag=>{const m=/^(\d+)_/.exec(tag);return m?Number(m[1]):null;};
 
+/** @template {{tag:string,idx:number,when:number}} E
+ * @param {E[]} baseEntries @param {E[]} headEntries
+ * @param {{stagingWatermark?:number|null,startFile?:number|null}} [options] */
 export function renumberPlan(baseEntries,headEntries,{stagingWatermark=null,startFile=null}={}){
   baseEntries.forEach((entry,i)=>{
     const h=headEntries[i];
