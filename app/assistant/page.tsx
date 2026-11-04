@@ -109,8 +109,9 @@ export default async function AssistantPage({
   const privacyOutcome = Boolean(sp.historyPrivacy || sp.importHistory || sp.ownClear || (sp.nativeOutcome && !sp.governed));
   const toolsRequested = sp.view === 'tools' || sp.job !== undefined || Boolean(sp.governed || sp.proposal || sp.planning);
   // Your data and privacy works without the Assistant grant: own-data erasure survives access removal.
+  const privacyControls = async () => {
   const keepDays = await readChatRetention(s).then(value => value.keepDays).catch(() => null);
-  const privacyControls = (
+  return (
     <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-3">
       <h2 id="assistant-privacy-heading" className="text-base font-semibold">{a('privacy.title')}</h2>
       <p className="text-sm text-muted-foreground">{t('home.privacyHelp')}</p>
@@ -127,13 +128,14 @@ export default async function AssistantPage({
       </ul>
     </section>
   );
+  };
   if (sp.view === 'privacy' || (sp.view === undefined && privacyOutcome)) {
     return (
       <div data-ai-centre="privacy" className="mx-auto max-w-6xl space-y-6">
         <AiCentreTabs active={null} isAdmin={admin} />
         <div className="mx-auto max-w-3xl space-y-5">
           <PageHeader title={a('privacy.title')} description={a('privacy.description')} back={{ href: '/assistant', label: a('backToAsk') }} />
-          <Card className="p-5">{privacyControls}</Card>
+          <Card className="p-5">{await privacyControls()}</Card>
         </div>
       </div>
     );
@@ -141,7 +143,7 @@ export default async function AssistantPage({
   const centreTabs = <AiCentreTabs active="ask" isAdmin={admin} />;
   const errorMessage=sp.error==='clarification_unavailable'?t('workspace.conversation.unavailable'):
     sp.error&&/^[a-z_]{1,40}$/.test(sp.error)&&t.has(`err_${sp.error}`)?t(`err_${sp.error}`):undefined;
-  const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:false,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
+  const workspace = await loadAiWorkspace(s,{includeHistory:false,includeGovernance:false,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
   const access = workspace.access;
 
   // The denied-access fallback retains own work/calendar. The active chat never preloads those
@@ -175,7 +177,7 @@ export default async function AssistantPage({
           {homeTabs}
           <PersonnelReviewNavigation ctx={s}/>
         </div>
-        <div className="border-t border-border pt-4">{privacyControls}</div>
+        <div className="border-t border-border pt-4">{await privacyControls()}</div>
       </div>
     );
   }
@@ -217,14 +219,18 @@ export default async function AssistantPage({
   const newChatHref='/assistant?chatReset='+randomUUID();
   const conversationScope=await assistantBrowserConversationScope(s);
   const scopeReset=assistantConversationScopeDigest(s,conversationScope);
-  const savedChats=await listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null);
-  const selectedChat=sp.e?await loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null):null;
-  // AI v2 W4: the Chats column lists the person's stored AI Centre chats (core/teras-chats.ts, re-authorised there).
-  const storedChats=await listOwnChats(s,{},conversationScope).catch(()=>null);
+  // Each owner re-authorizes its own read. Once scope is known these reads are independent;
+  // no chat row or permission decision is cached between requests.
+  const [savedChats,selectedChat,storedChats,storedChat,chatImport]=await Promise.all([
+    listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null),
+    sp.e?loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null):Promise.resolve(null),
+    listOwnChats(s,{},conversationScope).catch(()=>null),
+    sp.chat&&!sp.e?import('./launcher-actions').then(owner=>owner.openStoredChatAction({chatId:sp.chat})).then(reply=>reply.ok?reply:null).catch(()=>null):Promise.resolve(null),
+    import('./launcher-actions').then(owner=>owner.chatImportOfferedAction()).catch(()=>false),
+  ]);
   const chatSummaries:AskChatSummary[]=(storedChats?.chats??[]).map(chat=>({chatId:chat.chatId,title:chat.title,lastMessageAt:chat.lastMessageAt.toISOString(),turns:chat.turns,withheldTurns:chat.withheldTurns}));
   // AI Centre issue 18: the floating panel's "Open in AI Centre" opens its stored chat here (?chat=<id>) and, while the
   // Noveri conversation switch admits this caller, the next question continues that same chat.
-  const storedChat=sp.chat&&!sp.e?await import('./launcher-actions').then(owner=>owner.openStoredChatAction({chatId:sp.chat})).then(reply=>reply.ok?reply:null).catch(()=>null):null;
   const initialTurns=selectedChat?selectedChat.turns.map(exchange=>({id:exchange.id,question:exchange.question,
     clarificationRequired:exchange.grounded?.conversation?.plan.mode==='clarify'&&exchange.grounded?.conversation?.clarificationAllowed!==false,
     answer:<ExchangeReply exchange={exchange} ctx={s}/>})):storedChat?.turns;
@@ -232,7 +238,6 @@ export default async function AssistantPage({
   // AI v2 slice 3 (issue 16b): the paperclip attaches a file to import, for a caller whose chat runs through the harness
   // and who may import here (core/chat-import/kinds.ts). It replaces the older file preparation, which stays for the
   // closed grammar. Any failure shows no paperclip.
-  const chatImport=await import('./launcher-actions').then(owner=>owner.chatImportOfferedAction()).catch(()=>false);
   const today = todayInKualaLumpur();
   const tasks = workspace.taskIds.map(id => ({
     id, label: t(`workspace.${id}_label`), prompt: t(`workspace.${id}_prompt`, { date: today }),
