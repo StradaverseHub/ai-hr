@@ -81,6 +81,16 @@ describe('first-party authentication with real private storage and existing HR b
     expect(JSON.stringify(await readManagedAccount(ctx,base.adminUserId))).not.toContain(password);
     expect(JSON.stringify(await owner.client`select payload from domain_event where aggregate_id=${base.adminUserId}::uuid`)).not.toContain(password);
   });
+  it('generates temporary passwords within saved maximum/minimum lengths and required character classes',async()=>{
+    await enroll();const ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
+    await savePasswordPolicy(ctx,{enabled:false,interval:90,unit:'days',requirements:{...NEW_PASSWORD_REQUIREMENTS,maxLength:32,uppercase:true,lowercase:true,numbers:true,special:true}},0);
+    const first=await manageAccount(ctx,base.adminUserId,{type:'temporary-password',reason:'Verified generated recovery',minutes:30});
+    expect(first.password).toHaveLength(32);expect(first.password).toMatch(/[A-Z]/);expect(first.password).toMatch(/[a-z]/);expect(first.password).toMatch(/[0-9]/);expect(first.password).toMatch(/[^A-Za-z0-9\s]/);
+    expect((await startLogin({organization:'alpha',username:'owner',password:first.password!,native:false})).step).toBe('mfa');
+    await savePasswordPolicy(ctx,{enabled:false,interval:90,unit:'days',requirements:{...NEW_PASSWORD_REQUIREMENTS,minLength:80,maxLength:100}},1);
+    const second=await manageAccount(ctx,base.adminUserId,{type:'temporary-password',reason:'Verified long generated recovery',minutes:30});
+    expect(second.password).toHaveLength(80);expect((await startLogin({organization:'alpha',username:'owner',password:second.password!,native:false})).step).toBe('mfa');
+  });
   it('enforces account expiry on existing web/native sessions without relying on a scheduler',async()=>{
     const {signedIn}=await enroll(true),c=(await credentialByLogin('alpha','owner'))!;
     c.accountActiveUntil='2000-01-01';await writeRecord(client,`credential:${c.subject}`,c,c.subject);

@@ -1,5 +1,5 @@
 /** Security Center account actions. Each read/write re-proves complete target scope inside its transaction. */
-import {randomBytes,randomUUID} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
@@ -8,7 +8,7 @@ import {internalSelected,internalIssuer} from '../lib/internal-auth/config';
 import {readRecord,writeRecord,revokeCredentialsSessions,type AuthSql} from '../lib/internal-auth/record-store';
 import type {Credential} from '../lib/internal-auth/credential';
 import {accountAvailable,type RecoveryExemption} from '../lib/internal-auth/account-state';
-import {replacePassword} from '../lib/internal-auth/password-policy';
+import {replacePassword,generateTemporaryPassword} from '../lib/internal-auth/password-policy';
 import {isCalendarDate} from '../lib/calendar-date';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {requestRecovery} from '../lib/internal-auth/recovery';
@@ -66,7 +66,7 @@ export async function manageAccount(ctx:SessionContext,userId:string,command:Acc
   }
   if(command.type==='temporary-password'){
    if(!accountAvailable(c)||!Number.isSafeInteger(command.minutes)||command.minutes<5||command.minutes>1440)throw Error('invalid');
-   password=command.password||`Aa9!${randomBytes(24).toString('base64url')}`;
+   password=command.password||await generateTemporaryPassword(auth,c);
    await replacePassword(auth,c,password);c.mustChange=true;c.temporaryPasswordUsed=false;c.temporaryPasswordExpiresAt=Date.now()+command.minutes*60_000;
    metadata.expiresAt=c.temporaryPasswordExpiresAt;
   }
