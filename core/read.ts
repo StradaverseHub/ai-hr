@@ -4,7 +4,7 @@ import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce
 import {isCalendarDate} from '../lib/calendar-date';
 import {lockPayrollHistoryReadTx,tryLockPayrollHistoryReadTx} from './payroll-history-lock';
 import {ownPersonPredicate} from './own-person';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from './access-configuration-lock';
 import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
 import {formulaOvertimeForRowsTx} from '../packs/attendance/service';
 import {payrollPublicationState} from '../lib/payroll-publication';
@@ -38,6 +38,12 @@ async function withReadTx<T>(ctx: SessionContext, existingTx: Tx | undefined, re
   if (!existingTx) return withTenant(ctx, read);
   await assertAiPrincipalTx(existingTx, ctx);
   return read(existingTx);
+}
+
+/** Complete owned projections only read. A supplied transaction may write later, so it
+ * retains the exclusive barrier and never introduces a shared-to-exclusive upgrade. */
+function lockProjectionConfigurationTx(tx:Tx,tenantId:string,existingTx?:Tx){
+ return existingTx?lockAccessConfigurationTx(tx,tenantId):lockAccessConfigurationReadTx(tx,tenantId);
 }
 
 import { companyDeleteBlockSqlText } from './company-refs';
@@ -198,7 +204,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
 // employee, not a page, or the checkbox set would silently drop people past the page boundary.
 export function listEmployees(ctx: SessionContext, companyIds?: string[],purpose?:'workforce',existingTx?:Tx) {
-  return withReadTx(ctx,existingTx,async tx=>{if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);return listEmployeesTx(tx,companyIds,purpose);});
+  return withReadTx(ctx,existingTx,async tx=>{if(purpose)await lockProjectionConfigurationTx(tx,ctx.tenantId,existingTx);return listEmployeesTx(tx,companyIds,purpose);});
 }
 export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforce') {
   return tx
@@ -444,7 +450,7 @@ function workforcePickerColumns(){return {
 };}
 export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, async tx => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationReadTx(tx, ctx.tenantId);
     return tx.select(workforcePickerColumns()).from(workforceListSource).where(workforceListWhere({ companyIds }, workforceListColumns()))
       .orderBy(workforceListValue('name'), workforceListUuid('employmentId'));
   });
@@ -523,7 +529,7 @@ export function countEmployeesByStatus(
 ): Promise<{ total: number; byStatus: Partial<Record<EmploymentStatus, number>> }> {
   return withTenant(ctx, async (tx) => {
     if (purpose) {
-      await lockAccessConfigurationTx(tx, ctx.tenantId);
+      await lockAccessConfigurationReadTx(tx, ctx.tenantId);
       const columns = workforceListColumns();
       const rows = await tx.select({ status: columns.status, count: sql<number>`count(distinct ${workforceListUuid('employmentId')})::int` })
         .from(workforceListSource).where(workforceListWhere(p, columns)).groupBy(sql`1`);
@@ -637,7 +643,7 @@ export function listEmployeesPage(
 ): Promise<{ rows: EmployeeListRow[]; total: number }> {
   const read = async (tx: Tx) => {
     if (purpose) {
-      await lockAccessConfigurationTx(tx, ctx.tenantId);
+      await lockProjectionConfigurationTx(tx, ctx.tenantId,existingTx);
       const columns = workforceListColumns();
       const where = workforceListWhere(p, columns);
       const rows = await tx.select({ row: sql<EmployeeListRow>`workforce_row.value` })
@@ -2638,7 +2644,7 @@ export function employmentCompanyEditable(ctx: SessionContext, employmentId: str
 
 export function employeeDetail(ctx: SessionContext, employmentId: string,purpose?:'workforce', existingTx?: Tx) {
   return withReadTx(ctx, existingTx, async (tx) => {
-    if(purpose)await lockAccessConfigurationTx(tx,ctx.tenantId);
+    if(purpose)await lockProjectionConfigurationTx(tx,ctx.tenantId,existingTx);
     const [row] = await tx
       .select({
         employmentId: employment.id,
