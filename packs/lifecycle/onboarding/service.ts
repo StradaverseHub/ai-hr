@@ -927,6 +927,9 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
     return withTenant(ctx, async (tx) => {
         const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config), today = todayInKualaLumpur();
         const list = await tx.select().from(cases).orderBy(asc(cases.id)), out: OnboardingTask[] = [];
+        // A task/mention always belongs to a visible case. Keep the fresh actor check above,
+        // then avoid the tenant-wide directory and notes scans for an empty authorized queue.
+        if (!list.length) return out;
         const allNotes = await tx.select().from(notes).orderBy(asc(notes.createdAt), asc(notes.id));
         const names = await directoryTx(tx);
         for (const row of list) {

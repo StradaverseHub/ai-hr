@@ -93,6 +93,21 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(after.revision).toBe(before.revision); expect(after.config).toEqual(before.config);
         expect(after.actor).toMatchObject({ master: true, module: false });
     });
+    it('keeps an empty authorized task queue available without reading the tenant-wide user directory', async()=>{
+        const [permission]=await owner.client`select has_function_privilege('ai_hr_app','app.onboarding_directory()','EXECUTE') as allowed`;
+        expect(permission.allowed).toBe(true);
+        await owner.client.unsafe('REVOKE EXECUTE ON FUNCTION app.onboarding_directory() FROM ai_hr_app');
+        try {
+            // Establish the native failure injection; a spy alone would not prove the SQL was skipped.
+            await expect(withTenant(admin,tx=>tx.execute(sql`select * from app.onboarding_directory()`))).rejects.toThrow(/permission denied/i);
+            expect(await onboardingTasks(admin)).toEqual([]);
+            expect(await onboardingTasks(tech)).toEqual([]);
+            expect(await onboardingTasks(other)).toEqual([]);
+        } finally {
+            await owner.client.unsafe('GRANT EXECUTE ON FUNCTION app.onboarding_directory() TO ai_hr_app');
+        }
+        expect((await withTenant(admin,tx=>tx.execute(sql`select * from app.onboarding_directory()`))).length).toBeGreaterThan(0);
+    });
     it('projects only actual unlocked personal work for Home and removes a completed checklist task', async()=>{
         const row=await prepared(),tasks=await onboardingTasks(tech),assigned=await onboardingAssignedTaskMetadata(tech);
         const welcome=tasks.find(item=>item.caseId===row.case.id&&item.taskId==='welcome')!;
