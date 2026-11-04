@@ -167,7 +167,8 @@ it('native company policies return zero rows for ordinary and missing-principal 
 });
 it('keeps verified system owner tag writes working after publication and records system custody without granting human review authority',async()=>{
  const e=await hire('FictionalOwnerMovement');const future=todayInKualaLumpur(new Date(Date.now()+7*86400000));
- const {createMovementEvent,sweepDueMovements}=await import('../core/movement');
+ const {createMovementEvent}=await import('../core/movement');
+ const {sweepDueMovements}=await import('../core/movement-apply');
  await createMovementEvent(adminCtx(b),{employmentId:e.employmentId,kind:'transfer',effectiveDate:future,departmentId:b.deptB,remarks:'Fictional previously admitted owner movement'});
  await publish(await prepare());
  const system:SessionContext={...adminCtx(b),userId:undefined,personId:null,grants:[{role:'hr_admin',companyId:b.companyId}]};
