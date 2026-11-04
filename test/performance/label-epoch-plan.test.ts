@@ -3,6 +3,7 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
+import {pgErrorChain,pgSqlState} from '../../lib/db-error';
 import {withTenant} from '../../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -15,6 +16,11 @@ it('preserves native criteria revisions and foreign-tenant refusals with one ato
  const candidate=original.ddl.replace(old,`INSERT INTO public.system_label_criteria_epoch(tenant_id,label_kind,revision) VALUES(p_tenant,p_kind,1)
   ON CONFLICT(tenant_id,label_kind) DO UPDATE SET revision=system_label_criteria_epoch.revision+1;`);
  const measurements:unknown[]=[];
+ const refused=async(query:Promise<unknown>,code:string,message:string)=>{
+  let failure:unknown;try{await query;}catch(error){failure=error;}
+  expect(pgSqlState(failure)).toBe(code);
+  expect(pgErrorChain(failure).some(error=>error.code===code&&error.message===message)).toBe(true);
+ };
  const revision=async()=>{const [row]=await owner.client`select revision::int from system_label_criteria_epoch where tenant_id=${b.tenantId}::uuid and label_kind='department'`;return row?.revision??0;};
  const measure=async(phase:string)=>{
   const before=await revision(),started=performance.now();
@@ -26,8 +32,8 @@ it('preserves native criteria revisions and foreign-tenant refusals with one ato
   await measure('original');await owner.client.unsafe(candidate);await measure('candidate');await measure('candidate-warm');
   const [attributes]=await owner.client`select to_jsonb(p)-'prosrc' as value from pg_proc p where oid='app.lock_system_label_criteria(uuid,text)'::regprocedure`;
   expect(attributes.value).toEqual(original.attributes);
-  await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`select app.lock_system_label_criteria(${foreign.tenantId}::uuid,'department')`))).rejects.toThrow('Label tenant mismatch');
-  await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`select app.lock_system_label_criteria(${b.tenantId}::uuid,'invalid')`))).rejects.toThrow('Invalid label criteria identity');
+  await refused(withTenant(adminCtx(b),tx=>tx.execute(sql`select app.lock_system_label_criteria(${foreign.tenantId}::uuid,'department')`)),'42501','Label tenant mismatch');
+  await refused(withTenant(adminCtx(b),tx=>tx.execute(sql`select app.lock_system_label_criteria(${b.tenantId}::uuid,'invalid')`)),'23514','Invalid label criteria identity');
   await owner.client.unsafe(original.ddl);await measure('restored');
  }finally{
   await owner.client.unsafe(original.ddl);
