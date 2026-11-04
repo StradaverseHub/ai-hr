@@ -59,3 +59,28 @@ It returns either `AUTHENTICATED_BROWSER_SINGLE_SHOT_RECOVERY` with `RECOVERED_P
 - **Register location.** The register is read from the verification controller, so registering a new flake means a reviewed controller update. The alternative is reading it from main, which conflicts with the frozen-ref rule.
 - **Other engines.** Chromium and WebKit need single-engine suite scopes that upload a runtime binding, which is a browser-workflow change.
 - **Static closure limits.** The closure follows static and literal-dynamic imports. Files with computed loads anywhere in the closure refuse, rather than being resolved.
+
+## Validation evidence (4 November 2026)
+
+- **Controller-only diagnostics** on standard hosted runners. Both are successful first attempts with all application jobs skipped. The integrity step ran 862 of 862 controller tests, including the v3 refusal suite.
+  - [41838763242](https://github.com/StradaverseHub/ai-hr/actions/runs/41838763242) at a64fed221 (the producer controller).
+  - [41839972873](https://github.com/StradaverseHub/ai-hr/actions/runs/41839972873) at 61a6e8ba8 (the verifier controller).
+- **The single fresh execution:** [41838975193](https://github.com/StradaverseHub/ai-hr/actions/runs/41838975193). It reran the complete Firefox unit for candidate aa260e8d0 from the producer controller and **failed** in the same file, `test/lifecycle-v9-html-gaps.browser.test.tsx:46` (atelier light desktop this time; atelier light mobile in the original), with 1 failed and 527 passed.
+  - An earlier dispatch, [41838848518](https://github.com/StradaverseHub/ai-hr/actions/runs/41838848518), failed at resolve because the recovery ref push had failed. It executed nothing and is kept as recorded.
+- **Read-only diagnosis** of release gate [41773236616](https://github.com/StradaverseHub/ai-hr/actions/runs/41773236616) (main aa260e8d0, baseline 3b3f94ccd) with fresh run 41838975193. Result: `BROWSER_SINGLE_SHOT_DIAGNOSTIC` / **`REFUSED`**, `installationEligible:false`, `releaseAuthorized:false`.
+
+  | Check | Outcome |
+  | --- | --- |
+  | original failure | pass: exactly one failed area; failing file `test/lifecycle-v9-html-gaps.browser.test.tsx` |
+  | fresh producer | **refused**: the single rerun failed |
+  | outside impact set | **refused**: 47 reasons, including `app/globals.css` (a global input) and AI v2 changes such as `core/company-refs.ts` and `core/attendance-clock-data.ts` in the failing file's static import closure |
+  | single shot | **refused**: the one execution for aa260e8d0 failed. The 38 browser-workflow executions found since the original run were all on other candidates (fix attempts); 9 of them failed |
+  | registered flake | pass |
+  | frozen refs | **refused**: main and alpha have moved on to dc1c70deb (staging), and the producer branch has advanced past the producer controller |
+
+  This is the expected outcome for a case that has since been released differently. It shows three refusals on real data:
+  - a failed single shot closes recovery;
+  - the "unrelated test" claim does not hold under the static impact closure;
+  - moved refs refuse.
+
+  No successful-path exercise on real data exists yet.
