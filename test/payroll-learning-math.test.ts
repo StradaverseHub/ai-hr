@@ -204,8 +204,8 @@ describe('the small-group rule of the AI read',()=>{
  });
 });
 
-const sql=readFileSync('db/migrations/2012_payroll_learned_baseline.sql','utf8');
-describe('migration 2012',()=>{
+const sql=readFileSync('db/migrations/2013_payroll_learned_baseline.sql','utf8');
+describe('migration 2013 (first claimed as 2012)',()=>{
  it('forces row-level security and grants read and append only on every table, revoking everything else',()=>{
   for(const table of ['payroll_learning_mode','payroll_learned_baseline','payroll_learning_run']){
    expect(sql).toContain(`ALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY;`);expect(sql).toContain(`ALTER TABLE public.${table} FORCE ROW LEVEL SECURITY;`);
@@ -242,9 +242,9 @@ describe('migration 2012',()=>{
   expect(SETTABLE_LEARNING_MODES).toEqual(['off','evidence']);expect(LEARNING_MODES).toEqual(['off','evidence','classify']);
   expect(BASELINE_METHOD).toMatch(/^[a-z_]{1,40}@v[0-9]{1,4}$/);
  });
- it('is the next journal entry of the AI Centre block: 2012, idx 812, when 1793330001412',()=>{
+ it('is the journal\'s last entry, after 2011: 2013, idx 1350, when 1793330001503',()=>{
   const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{idx:number;when:number;tag:string}[]};
-  expect(journal.entries.at(-1)).toMatchObject({idx:812,when:1793330001412,tag:'2012_payroll_learned_baseline'});
+  expect(journal.entries.at(-1)).toMatchObject({idx:1350,when:1793330001503,tag:'2013_payroll_learned_baseline'});
   expect(journal.entries.at(-2)).toMatchObject({idx:811,when:1793330001411,tag:'2011_payroll_loops_hardening'});
  });
 });

@@ -6,7 +6,7 @@
 - **Number:** provisional. A scan of every origin ref on 4 November 2026 found ADR-0174 claimed on another branch (`0174-company-tenant-integrity.md`); reconcile at integration.
 - **Date:** 2026-11-04
 - **Relates to:** [ADR-0076](0076-payroll-anomaly-layer-design.md) (the anomaly layer; its phase 1b self-baseline needed history), [ADR-0084](0084-propose-adjudicate-learn.md) (models propose, deterministic services adjudicate, outcomes are learned), [ADR-0170](0170-teras-ai-operating-architecture.md) (the AI Centre architecture and its disclosure classes), [ADR-0030](0030-audit-log-pdpa.md) (PDPA erasure).
-- **Migration:** `2012_payroll_learned_baseline` (AI Centre block 2000–2019; see [migration allocation](../MIGRATION-ALLOCATION.md)).
+- **Migration:** `2013_payroll_learned_baseline` (idx 1350, `when` 1793330001503, after main's 2100–2102; first claimed as 2012; see [migration allocation](../MIGRATION-ALLOCATION.md)).
 
 ## 1. Context
 

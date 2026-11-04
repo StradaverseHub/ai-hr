@@ -1,6 +1,7 @@
 -- Payroll history learning, phase P1 (4 November 2026; design RESUME/research/payroll-history-learning-design-20261104.md).
--- Source allocation 2012 / when1793330001412 / idx812 in the AI Centre block 2000-2019 (docs/MIGRATION-ALLOCATION.md), the
--- next number after 2011. It grants no installation. Production is held.
+-- Source allocation 2013 / when1793330001503 / idx1350 in the AI Centre block 2000-2019 (docs/MIGRATION-ALLOCATION.md), placed
+-- after main's 2100-2102 (idx1347-1349, when1793330001500-1502); first claimed as 2012 / when1793330001412 / idx812, never
+-- applied. Code comments that cite "migration 2012" mean this file. It grants no installation. Production is held.
 --
 -- Owner rules: nothing learned does money maths through a model (the service computes deterministic statistics in integer
 -- sen; a model only ever words bands); learning never changes calculation code, permissions or disclosure rules; nothing

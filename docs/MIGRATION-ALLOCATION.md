@@ -1552,3 +1552,41 @@ the learning mode's insert policy admits evidence only from a group administrato
 the company), and the baseline insert policy refuses while the tenant's stop switch (`teras_mandate_control.stopped`) is on.
 Writers reviewed: unchanged (`core/payroll-learning/mode.ts`, `core/payroll-learning/recompute.ts`). The two populated-upgrade
 pins carry the new hash.
+
+Superseded on 4 November 2026, before any application: renumbered to `2013_payroll_learned_baseline` / idx1350 /
+when1793330001503 (see the next entry). This identity is not an alternative installation path.
+
+## AI Centre block 2000–2019: payroll history learning renumbered after PR #218 — 4 November 2026 (unapplied source reservation)
+
+Branch `claude/aiv2-centre-restructure` merges `claude/payroll-history-learning` `7a6772d79` and then main
+`dc1c70debfce0314aac909202369584e3528c04c` (PR #218, which staging runs): main's journal has 671 entries ending
+`2102_company_tenant_fk_validate` / idx1349 / when1793330001502, after 2100–2102 at idx1347–1349 / when1793330001500–…502.
+Left as 2012 / when1793330001412, the learning migration would sit below 2100–2102's `when` values in an installation that
+applied them first, and the ordinary migrator would silently skip it. The AI v2 coordinator assigns it **2013**, idx **1350**
+(the next after main's highest), when **1793330001503** (above main's 1793330001502), a number of the block this record
+reserved for the AI Centre.
+
+Only the header comment changed (the new number and the old one); the SQL statements are byte for byte the edited 2012's, so
+the SHA256 is new. Code comments that cite "migration 2012" (`core/payroll-learning/*`, `core/company-refs.ts`, `core/pdpa.ts`,
+`core/loops/tick.ts`, `core/payroll-audit/capture.ts`, `db/payroll-learning-schema.ts`, `app/control-tower/loops/payroll-cycle/*`,
+`scripts/review-sweep.ts`) mean this file; they are left unchanged so that no provider-closure file changes for a number.
+The three tables carry only the composite `(company_id, tenant_id) -> company(id, tenant_id)` key (no single-column company
+key), the shape ADR-0174's catalogue guard (`test/tenant-company-fk.test.ts`) accepts.
+
+| Was | idx | when | Tag | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+|2012 / 812 / 1793330001412|1350|1793330001503|2013_payroll_learned_baseline|bd490fda5f21c713262ecc6c8a29e8ed5dc88e0c963e201be7745bdc5a351da3|
+
+**Competing claim, to reconcile before either integrates with the other.** A fresh fetch and scan of every origin ref (2142
+refs) on 4 November 2026 found, besides this block and main's 2100–2102, file claims 2103–2110 on `codex/performance-*`,
+`codex/approved-*` and related branches, and `2103_system_performance_read_guards` claims the **same idx 1350 and `when`
+1793330001503** (`codex/performance-ai-centre-*-20261104`, provisional, recorded on that branch as claiming no installation
+priority over main's later AI migrations); 2104–2110 take idx1351–1357 and when1793330001504–…510. Identical `when` values
+cannot both stand in one journal. The coordinator's assignment is kept here and the overlap is reported. No other claim on a
+file 2012–2019.
+
+`test/lifecycle-v9-populated-upgrade.test.ts` pins the identity; `test/board-nine-populated-upgrade.test.ts`,
+`test/ai-dev-populated-upgrade.test.ts`, `test/bank-import-point-read-upgrade.test.ts` and
+`test/payroll-tax-basis-upgrade.test.ts` pin the journal tail; `test/payroll-learning-math.test.ts` pins it as the last entry.
+Development source only: no installation priority, no deployment. At installation the number and `when` value are re-checked
+against staging's applied watermark and re-frozen above it if it has reached them.

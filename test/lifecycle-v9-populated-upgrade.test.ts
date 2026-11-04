@@ -77,7 +77,7 @@ it('preserves populated Native issuance, private data, identity and every applie
   // AI v2 Phase 2 hardening, payroll loops, audit and checklist (claude/aiv2-p2h-loops-hardening), frozen here.
   {idx:811,version:'7',when:1793330001411,tag:'2011_payroll_loops_hardening',breakpoints:true,hash:'d42cceaf96f728c8682b73c40c33b5d3066de40f1d5484100dff3686c811d909'},
   // Payroll history learning P1 (claude/payroll-history-learning), frozen here.
-  {idx:812,version:'7',when:1793330001412,tag:'2012_payroll_learned_baseline',breakpoints:true,hash:'54865eb46777c2cd68d0f9fbdd8894594262c8047675608c2348f1c28599bdba'},
+  {idx:1350,version:'7',when:1793330001503,tag:'2013_payroll_learned_baseline',breakpoints:true,hash:'bd490fda5f21c713262ecc6c8a29e8ed5dc88e0c963e201be7745bdc5a351da3'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {
