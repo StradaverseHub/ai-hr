@@ -13,6 +13,9 @@ ALTER TABLE public.personnel_private_search FORCE ROW LEVEL SECURITY;
 CREATE POLICY personnel_private_search_own ON public.personnel_private_search FOR ALL TO PUBLIC
  USING(tenant_id=app.current_tenant_id() AND actor_id=app.current_user_id() AND app.principal_snapshot_current())
  WITH CHECK(tenant_id=app.current_tenant_id() AND actor_id=app.current_user_id() AND app.principal_snapshot_current());
+-- Bootstrap defaults grant broad table rights. Clear them before granting only native
+-- insertion/deletion and non-sensitive status metadata; cached membership is never readable/updateable.
+REVOKE ALL ON public.personnel_private_search FROM PUBLIC,ai_hr_app;
 GRANT SELECT(token_hash,tenant_id,actor_id,created_at,expires_at,scope_ids),INSERT,DELETE ON public.personnel_private_search TO ai_hr_app;
 CREATE INDEX personnel_private_search_actor_expiry ON public.personnel_private_search(tenant_id,actor_id,expires_at);
 --> statement-breakpoint

@@ -21,6 +21,9 @@ it('searches permitted identity only through private results; page/count/export-
  expect(page.rows.map(row=>row.employmentId)).toEqual([employee.employmentId]);expect(exportRows.rows).toEqual(page.rows);expect(page.total).toBe(1);expect(count.total).toBe(1);
  expect(JSON.stringify(page)).not.toContain('900101');expect(JSON.stringify(page)).not.toContain('icNumber');
  await expect(withTenant(ctx,tx=>tx.execute(sql`select matches from personnel_private_search`))).rejects.toThrow();
+ await expect(withTenant(ctx,tx=>tx.execute(sql`update personnel_private_search set matches='[]'::jsonb`))).rejects.toThrow();
+ await expect(withTenant(ctx,tx=>tx.execute(sql`update personnel_private_search set expires_at=now()+interval '1 hour'`))).rejects.toThrow();
+ expect(await personnelPrivateSearchAvailable(ctx,token,[b.companyId])).toBe(true);
  expect((await list({q:'900101-01-4321'})).total).toBe(0);
  const stored=await owner.withTenant(ctx,tx=>tx.execute<{matches:unknown}>(sql`select matches from personnel_private_search where token_hash=${privateSearchHash(token)}`));expect(JSON.stringify(stored)).not.toContain('900101');
 });
