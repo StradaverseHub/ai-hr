@@ -107,7 +107,7 @@ const ROUTES:readonly Route[]=[
  {id:'/control-tower/agents (Setup)',personas:['admin'],group:'control-tower',page:page(SetupPage)},
  {id:'/control-tower/agents/allowances (Spend)',personas:['admin'],group:'control-tower',page:page(SpendPage)},
 ];
-const LAYOUTS={assistant:AssistantLayout as (props:{children:ReactNode})=>unknown,'control-tower':ControlTowerLayout as (props:{children:ReactNode})=>unknown};
+const LAYOUTS={assistant:AssistantLayout as (props:{children:ReactNode})=>Promise<unknown>,'control-tower':ControlTowerLayout as (props:{children:ReactNode})=>Promise<unknown>};
 
 /** Renders what the server renders for this element tree; returns the names of components that needed a browser hook. */
 async function renderTree(node:unknown,skipped:Set<string>):Promise<void>{
@@ -129,16 +129,19 @@ async function renderTree(node:unknown,skipped:Set<string>):Promise<void>{
 const isNextControlFlow=(error:unknown)=>/^NEXT_(REDIRECT|NOT_FOUND|HTTP_ERROR_FALLBACK)/.test(String((error as {digest?:unknown})?.digest??''));
 
 type Sample=Readonly<{statements:number;transactions:number;ms:number}>;
+/** A statement's shape without its values, to find the same read issued twice in one navigation. */
+const shapeOf=(text:string)=>text.replace(/\s+/g,' ').replace(/\$\d+/g,'$').trim().slice(0,160);
 /** One navigation: a fresh request scope, every statement counted, the wall time taken. */
-async function navigate(userId:string,run:()=>Promise<void>):Promise<Sample&{outcome:string}>{
+async function navigate(userId:string,run:()=>Promise<void>):Promise<Sample&{outcome:string;shapes:Map<string,number>}>{
  const sqlClient=client as unknown as {options:{debug?:unknown}};
- let statements=0,transactions=0;
+ let statements=0,transactions=0;const shapes=new Map<string,number>();
  nav.store=new Map();nav.userId=userId;
- sqlClient.options.debug=(_id:number,text:string)=>{const s=text.trim().toLowerCase();if(/^begin/.test(s))transactions++;if(!/^(begin|commit|rollback|savepoint|release)/.test(s))statements++;};
+ sqlClient.options.debug=(_id:number,text:string)=>{const s=text.trim().toLowerCase();if(/^begin/.test(s))transactions++;
+  if(!/^(begin|commit|rollback|savepoint|release)/.test(s)){statements++;const shape=shapeOf(text);shapes.set(shape,(shapes.get(shape)??0)+1);}};
  const started=performance.now();let outcome='rendered';
  try{await run();}catch(error){const digest=String((error as {digest?:unknown})?.digest??'');if(!isNextControlFlow(error))throw error;outcome=digest.split(';').slice(0,3).join(';');}
  finally{sqlClient.options.debug=undefined;nav.store=null;}
- return {statements,transactions,ms:Math.round((performance.now()-started)*100)/100,outcome};
+ return {statements,transactions,ms:Math.round((performance.now()-started)*100)/100,outcome,shapes};
 }
 
 let b:Base;const people={} as Record<Persona,{ctx:SessionContext;userId:string}>;
@@ -170,26 +173,26 @@ const median=(values:readonly number[])=>{if(!values.length)return 0;const sorte
 
 describe('AI Centre navigation: server work per navigation',()=>{
  it('renders every AI Centre route through the real code and counts its statements, transactions and time',async()=>{
-  const samples:Record<string,{page:Sample[];layout:Sample[];outcome:string;skipped:string[]}>={};
+  const samples:Record<string,{page:Sample[];entering:Sample[];outcome:string;skipped:string[];repeated:Record<string,number>}>={};
   for(let run=0;run<RUNS;run++)for(const route of ROUTES)for(const persona of route.personas){
    const key=`${route.id} · ${persona}`,skipped=new Set<string>();
-   const props={searchParams:Promise.resolve(route.searchParams??{}),params:Promise.resolve(route.params??{})};
-   const pageSample=await navigate(people[persona].userId,async()=>{await renderTree(await route.page(props),skipped);});
+   const props=()=>({searchParams:Promise.resolve(route.searchParams??{}),params:Promise.resolve(route.params??{})});
+   // A tab switch inside the group: the page alone. Entering the group: its layout and the page in one request, as Next
+   // renders them on that navigation (one request scope, so the layout's and the page's session reads share its cache).
+   const pageSample=await navigate(people[persona].userId,async()=>{await renderTree(await route.page(props()),skipped);});
    const layout=route.group==='policies'?null:LAYOUTS[route.group];
-   const layoutSample=layout?await navigate(people[persona].userId,async()=>{await renderTree(await layout({children:null}),skipped);}):{statements:0,transactions:0,ms:0,outcome:'none'};
-   const entry=samples[key]??={page:[],layout:[],outcome:pageSample.outcome,skipped:[]};
+   const enteringSample=layout?await navigate(people[persona].userId,async()=>{await renderTree(await layout({children:null}),skipped);await renderTree(await route.page(props()),skipped);}):pageSample;
+   const entry=samples[key]??={page:[],entering:[],outcome:pageSample.outcome,skipped:[],repeated:{}};
    entry.skipped=[...skipped].sort();
-   if(run>=WARMUP){entry.page.push(pageSample);entry.layout.push(layoutSample);}
+   entry.repeated=Object.fromEntries([...enteringSample.shapes].filter(([,n])=>n>1).sort((x,y)=>y[1]-x[1]).slice(0,12));
+   if(run>=WARMUP){entry.page.push({statements:pageSample.statements,transactions:pageSample.transactions,ms:pageSample.ms});entry.entering.push({statements:enteringSample.statements,transactions:enteringSample.transactions,ms:enteringSample.ms});}
   }
-  const report=Object.fromEntries(Object.entries(samples).map(([key,entry])=>{
-   const page={statements:median(entry.page.map(s=>s.statements)),transactions:median(entry.page.map(s=>s.transactions)),medianMs:median(entry.page.map(s=>s.ms))};
-   const layout={statements:median(entry.layout.map(s=>s.statements)),transactions:median(entry.layout.map(s=>s.transactions)),medianMs:median(entry.layout.map(s=>s.ms))};
-   return [key,{outcome:entry.outcome,tabSwitch:page,enteringGroup:{statements:page.statements+layout.statements,transactions:page.transactions+layout.transactions,medianMs:Math.round((page.medianMs+layout.medianMs)*10)/10},layout,
-    statementRange:[Math.min(...entry.page.map(s=>s.statements)),Math.max(...entry.page.map(s=>s.statements))],browserHookComponentsNotCalled:entry.skipped}];
-  }));
+  const summary=(list:readonly Sample[])=>({statements:median(list.map(s=>s.statements)),transactions:median(list.map(s=>s.transactions)),medianMs:median(list.map(s=>s.ms))});
+  const report=Object.fromEntries(Object.entries(samples).map(([key,entry])=>[key,{outcome:entry.outcome,tabSwitch:summary(entry.page),enteringGroup:summary(entry.entering),
+   statementRange:[Math.min(...entry.page.map(s=>s.statements)),Math.max(...entry.page.map(s=>s.statements))],repeatedStatementShapes:entry.repeated,browserHookComponentsNotCalled:entry.skipped}]));
   const dir=process.env.RUNNER_TEMP?join(process.env.RUNNER_TEMP,'aihr-focused'):join(process.cwd(),'.review-evidence');mkdirSync(dir,{recursive:true});
   writeFileSync(join(dir,'ai-centre-navigation-work.json'),JSON.stringify({kind:'ai-centre.navigation-work',version:1,runs:RUNS,warmup:WARMUP,
-   note:'Server work of one navigation on the CI fixture: the destination page and its async server components (tabSwitch), plus the group layout when entering the group (enteringGroup). Real session resolver (dev identity path), one per-request cache per navigation. Request pipeline, RSC serialisation, network and browser are not included.',
+   note:'Server work of one navigation on the CI fixture: the destination page and its async server components (tabSwitch), and the group layout with the page in one request when entering the group (enteringGroup). repeatedStatementShapes: the same statement shape sent more than once in one entering navigation. Real session resolver (dev identity path), one per-request cache per navigation. Request pipeline, RSC serialisation, network and browser are not included.',
    ...(process.env.GITHUB_RUN_ID?{runId:process.env.GITHUB_RUN_ID}:{}),...(process.env.AIHR_CI_HEAD?{sha:process.env.AIHR_CI_HEAD}:{}),report,samples},null,1));
   process.stdout.write('AIHR_AI_CENTRE_NAVIGATION_WORK '+JSON.stringify(Object.fromEntries(Object.entries(report).map(([key,row])=>[key,{q:row.tabSwitch.statements,tx:row.tabSwitch.transactions,ms:row.tabSwitch.medianMs,enterQ:row.enteringGroup.statements,enterMs:row.enteringGroup.medianMs,outcome:row.outcome}])))+'\n');
   // Every route rendered for every persona that may open it (an administrator page never redirected the administrator).
