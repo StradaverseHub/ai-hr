@@ -12,12 +12,36 @@ import {owner} from '../harness';
 
 export async function personnelNativeAggregatePrototype(
  page:Parameters<typeof personnelListPageSql>[0],facets:Parameters<typeof personnelListPageSql>[1],
- facts:{body:string;owner:string;columns:string[]},materialized:boolean,
+ facts:{body:string;owner:string;columns:string[]},materialized:boolean,splitCounts=false,
 ):Promise<{query:SQL;drop:()=>Promise<void>}>{
  const name='app.performance_personnel_aggregate_'+randomUUID().replaceAll('-','');
  const source=sql.raw('(select * from ('+facts.body.trim().replace(/;$/,'')+') native_facts('+facts.columns.map(c=>'"'+c.replaceAll('"','""')+'"').join(',')+'))');
  const composed=personnelListPageSql(page,facets,{source,materialized,projectPageFacts:true});
- const compiled=new PgDialect().sqlToQuery(composed);
+ const dialect=new PgDialect(),compiled=dialect.sqlToQuery(composed);
+ if(splitCounts){
+  if(materialized)throw Error('Split-count prototype requires independently planned facts');
+  const needsAssignment=(filters:Parameters<typeof personnelListPageSql>[1])=>Boolean(filters.departmentId||filters.departmentIds?.length||filters.employmentType);
+  if(!needsAssignment(page)&&!needsAssignment(facets)){
+   // DISTINCT employment counts do not depend on LEFT assignment fanout when neither
+   // predicate references assignment. Keep the person/company tenant joins and every
+   // native purpose guard; the selected page still uses the complete original source.
+   const join=' LEFT JOIN public.assignment a ON a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.valid_to IS NULL AND a.superseded_at IS NULL';
+   expect(facts.body.split(join)).toHaveLength(2);
+   const countBody=facts.body.replace(join,'').replace('a.department_id,a.employment_type::text','NULL::uuid,NULL::text');
+   expect(countBody).not.toContain('a.department_id');expect(countBody).not.toContain('a.employment_type');
+   const countSource=sql.raw('(select * from ('+countBody.trim().replace(/;$/,'')+') native_facts('+facts.columns.map(c=>'"'+c.replaceAll('"','""')+'"').join(',')+'))');
+   const countCompiled=dialect.sqlToQuery(personnelListPageSql(page,facets,{source:countSource,materialized:false,projectPageFacts:true}));
+   expect(countCompiled.params).toEqual(compiled.params);
+   const startMarker='with workforce_facts as not materialized(',endMarker='),\n      selected_page as materialized(';
+   const begin=countCompiled.sql.indexOf(startMarker),end=countCompiled.sql.indexOf(endMarker,begin);
+   expect(begin).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(begin);
+   const countFacts=countCompiled.sql.slice(begin+startMarker.length,end);
+   const target='from workforce_facts workforce_row group by 1';
+   expect(compiled.sql.split(target)).toHaveLength(2);
+   compiled.sql=compiled.sql.replace(target,'from ('+countFacts+') workforce_row group by 1');
+  }
+ }
+
  const prepare='performance_personnel_parameter_types';
  let signature='';
  await owner.client.begin(async tx=>{
