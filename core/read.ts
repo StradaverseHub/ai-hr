@@ -6611,7 +6611,7 @@ export function companyTree(ctx: SessionContext) {
         id: company.id,
         name: company.legalName,
         country: company.country,
-        parentId: company.parentCompanyId,
+        parentId: sql<string | null>`app.company_organisation_current_parent(${company.id})`,
       })
       .from(company)
       .orderBy(company.legalName),

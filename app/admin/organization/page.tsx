@@ -1,3 +1,4 @@
+import {OrganisationTaggingWorkspace} from './organisation-tagging-workspace';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -183,6 +184,8 @@ export default async function OrganizationPage({
           </div>
         </details>
       </Card>
+
+      <OrganisationTaggingWorkspace session={s}/>
 
       {/* Feedback efece4ce — statutory-registration gaps, listed BEFORE the company grid so they are read
           rather than scrolled past. Read-only: which rate each company should carry is the operator's call,
