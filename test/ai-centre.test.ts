@@ -109,7 +109,7 @@ describe('AI centre tabs keep every permission identical', () => {
     }
     // Delegated jobs is hidden until it works: no tab, and its view forwards to Ask before any view renders.
     expect(CENTRE_TABS.some(tab => tab.href.includes('view=jobs'))).toBe(false);
-    expect(read('app/assistant/page.tsx')).toContain("if (sp.view === 'jobs') redirect('/assistant');"));
+    expect(read('app/assistant/page.tsx')).toContain("if (sp.view === 'jobs') redirect('/assistant');");
     expect(isCentreView('workers')).toBe(false);
     // The retired Inbox view is no tab and no view: its address moves to Today for good (308), before any view renders.
     expect(isCentreView('inbox')).toBe(false);

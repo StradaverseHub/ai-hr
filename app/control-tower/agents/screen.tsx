@@ -56,8 +56,9 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const byFamily = groupByFamily(view.features, feature=>FEATURE_PLACEMENT[feature.id].family);
   const queue = section==='orchestrator' ? await orchestrationQueue(s) : null;
   // WP12 (R8, R20): the inventory section, the alert banner on every section, and paged, dated run history.
-  // AI Centre restructure: Workers is the one list of AI pieces, so the inventory (and its audit columns) is read here.
-  const inventory = section==='features' ? await aiInventoryView(s, view) : null;
+  // AI Centre restructure: Workers is the one list of AI pieces, so the inventory (and its audit columns) is read here. As
+  // the Workers page's other reads, a failed read leaves it out with one sentence rather than taking the page down.
+  const inventory = section==='features' ? await aiInventoryView(s, view).catch(() => null) : null;
   // Awaited here (not rendered as an async child) so the section renders wherever the screen does.
   const inventorySection = inventory ? await AiInventorySection({inventory,mayPause:isGroupAdmin(s)}) : null;
   const alertBanner = await aiManagementAlerts(s, view);
@@ -246,7 +247,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       <Link href="/admin/scheduled-actions" className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{tc('workers.systemJobsLink')}</Link>
     </Card>}
     {/* The inventory and audit columns, on the same page: the one list of every AI piece (owner decision 29). */}
-    {section==='features'&&inventorySection}
+    {section==='features'&&(inventorySection ?? <p role="status" data-inventory-unavailable className="rounded-xl border border-border p-4 text-sm text-muted-foreground">{t('inv.alerts.unavailable')}</p>)}
     {section==='allowances'&&<>
     <Card id="company-limits" className="scroll-mt-4 p-5">
       <SectionHeader title={t('companyLimits')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('limitHelp')}</p><p className="mt-1 max-w-4xl text-xs text-muted-foreground">{t('concurrentHelp')}</p><p className="mt-2 max-w-4xl text-xs text-muted-foreground">{t('attribution')}</p>

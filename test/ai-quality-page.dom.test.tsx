@@ -45,6 +45,8 @@ vi.mock('../app/assistant/learning-actions',()=>Object.fromEntries(['approveCand
 vi.mock('../core/learning/quality',async()=>({aiQuality:async(_session:unknown,input:unknown)=>{state.reads.push(['quality',input]);return state.view;}}));
 // The rest of Insights, as markers or empty reads (their own tests: capacity-ledger-page.dom.test.tsx, before-payroll.dom.test.tsx).
 vi.mock('../components/ai-centre/capacity-ledger',()=>({CapacityLedgerSection:()=><section data-capacity-ledger-marker/>}));
+// The agreement and payroll-check figures inside AI quality (AI Centre restructure) are read by their own owners; a marker.
+vi.mock('../components/ai-centre/check-accuracy',()=>({CheckAccuracySection:()=><section data-check-accuracy-marker/>}));
 vi.mock('../core/pre-salary/person-items',()=>({readMyPayrollReadiness:async()=>{state.reads.push(['readiness']);return null;}}));
 vi.mock('../app/assistant/loop-clock-out-actions',()=>({confirmMissedClockOutAction:vi.fn()}));
 vi.mock('../app/assistant/payroll-readiness-actions',()=>({answerTp3PreviousEmployerAction:vi.fn()}));
@@ -111,17 +113,22 @@ describe('who sees AI quality',()=>{
   state.view=view();
   const session=SESSIONS[role] as never;
   expect(isAdmin(session)).toBe(admitted);
-  const rendered=wrap('en',await resolveServerTree(<AiCentreInsights session={session} scopeIds={[C1]} isAdmin={isAdmin(session)} qualityQuery={{qperiod:'quarter'}} />));
+  const rendered=wrap('en',await resolveServerTree(<AiCentreInsights session={session} isAdmin={isAdmin(session)} payroll qualityQuery={{qperiod:'quarter'}} />));
   if(admitted){
    expect(rendered.container.querySelectorAll('[data-ai-quality]')).toHaveLength(1);
    expect(screen.getByRole('heading',{level:2,name:'AI quality'})).toBeTruthy();
-   expect(state.reads).toEqual([['readiness'],['quality',{period:'quarter',companyId:undefined}]]);
+   // Owner decision 27: a person's own payroll readiness is its own page, so Insights reads only its two sections.
+   expect(state.reads).toEqual([['quality',{period:'quarter',companyId:undefined}]]);
+   // The former Overview's agreement and payroll-check figures sit inside AI quality.
+   expect(rendered.container.querySelector('[data-ai-quality] [data-check-accuracy-marker]')).not.toBeNull();
    // After the HR capacity ledger.
    const ledger=rendered.container.querySelector('[data-capacity-ledger-marker]')!,quality=rendered.container.querySelector('[data-ai-quality]')!;
    expect(ledger.compareDocumentPosition(quality)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   }else{
    expect(rendered.container.querySelector('[data-ai-quality]')).toBeNull();
-   expect(state.reads).toEqual([['readiness']]);
+   // Insights is for administrators only (owner decision 27): nothing renders and nothing is read.
+   expect(rendered.container.textContent).toBe('');
+   expect(state.reads).toEqual([]);
   }
   for(const pattern of RATIO)expect(rendered.container.textContent??'').not.toMatch(pattern);
  });

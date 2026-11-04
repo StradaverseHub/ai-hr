@@ -103,16 +103,16 @@ const RATIO=[/per\s*100\b/i,/per\s+hundred/i,/staff\s+per\b/i,/staff[-\s]+to[-\s
  /setiap\s+100/i,/nisbah/i,/每\s*(百|100)/,/比率/,/tỷ\s*lệ/i,/trên\s+100/i,/விகிதம்/,/อัตราส่วน/,/ต่อ\s*100/];
 
 describe('the Insights tab',()=>{
- it.each([['employee',false],['manager',false],['hrAdmin',true],['groupAdmin',true]] as const)('%s: offered to every role, between Policies (AI v2 Phase 2 P2-5) and Administration where those are shown',(role,admitted)=>{
+ it.each([['employee',false],['manager',false],['hrAdmin',true],['groupAdmin',true]] as const)('%s: offered to administrators only (owner decision 27), after Operations',(role,admitted)=>{
   expect(isAdmin(SESSIONS[role] as never)).toBe(admitted);
-  wrap('en',<AiCentreTabs active="insights" isAdmin={admitted} />);
+  wrap('en',<AiCentreTabs active={admitted?'insights':'ask'} isAdmin={admitted} />);
   const nav=screen.getByRole('navigation',{name:'AI Centre sections'});
   const links=within(nav).getAllByRole('link').map(link=>[text(link),link.getAttribute('href')]);
   expect(links).toEqual(admitted
    ?[['Ask','/assistant'],['Operations','/control-tower/loops'],['Insights','/assistant?view=insights'],['Policies','/policies'],
     ['Administration','/control-tower/agents/features'],['How it works','/assistant?view=how']]
    :[['Ask','/assistant'],['Policies','/policies'],['How it works','/assistant?view=how']]);
-  expect(within(nav).getByRole('link',{current:'page'})).toHaveAttribute('href','/assistant?view=insights');
+  expect(within(nav).getByRole('link',{current:'page'})).toHaveAttribute('href',admitted?'/assistant?view=insights':'/assistant');
   for(const link of within(nav).getAllByRole('link'))expect(link.className).toContain('min-h-11');
  });
 

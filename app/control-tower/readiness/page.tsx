@@ -28,7 +28,7 @@ import { OrchestrationWorkQueue } from '../work-queue';
  * person whose gap appeared after the last check says so rather than borrowing an older answer. HR and group
  * administrators only (requireAdmin); every read is under the viewer's row-level security.
  */
-export default async function ReadinessPage({ searchParams }: { searchParams?: Promise<{ refresh?: string }> }) {
+export default async function ReadinessPage({ searchParams }: { searchParams?: Promise<{ refresh?: string }> } = {}) {
   const s = await requireAdmin();
   const [t, to, tc, f, sp, view, queue] = await Promise.all([getTranslations('controlTower.readinessScreen'), getTranslations('controlTower.orchestrator'),
     getTranslations('controlTower.corrections'), getFormatter(), searchParams ?? Promise.resolve({} as { refresh?: string }),
