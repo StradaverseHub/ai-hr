@@ -53,7 +53,8 @@ async function fixturePhase(tenant,phase,run){
 }
 try{
  await owner.client`create extension if not exists pg_stat_statements`;
- for(let t=0;t<2;t++){
+ // Tenants have independent identity, payroll and audit state.
+ const seeded=await Promise.allSettled([0,1].map(async t=>{
   const b=await seedBase(),organization=t?'perf-b':'perf-a';
   await owner.db.insert(s.tenantModule).values(MODULE_CATALOG.filter(m=>!m.isCore&&(m.packBacked||m.code==='system_testing'||m.code==='system_explorer')).map(m=>({tenantId:b.tenantId,moduleCode:m.code,status:'active'}))).onConflictDoNothing();
   const ctx=await entitledCtx(b);
@@ -74,7 +75,7 @@ try{
    const publicationBatchId=t===0&&c===1?(await createBatch(ctx,{companyId,payPeriod:publicationMonth})).batchId:undefined;
    companies.push({companyId,departmentId,batchId,historicalBatchId,publicationBatchId});
   }
-  tenants.push({tenantId:b.tenantId,organization,claimTypeId:type.id,clockingMappingId,companies});
+  tenants[t]={tenantId:b.tenantId,organization,claimTypeId:type.id,clockingMappingId,companies};
   for(let i=0;i<250;i++){
    const index=t*250+i,c=Math.floor(i/50),position=i%50,company=companies[c];
    const role=position===0&&c===0?'groupHR':position<2?'companyHR':position<4?'manager':'employee';
@@ -130,7 +131,9 @@ try{
   }
   // A real current administrative reporting line, inside the same company, for each manager.
   await owner.db.insert(s.reportingLine).values(cohort.filter(u=>u.role==='manager').flatMap(u=>cohort.filter(v=>v.company===u.company&&v.index%50>=4+(u.index%50-2)*10&&v.index%50<14+(u.index%50-2)*10).map(v=>({tenantId:b.tenantId,managerEmploymentId:u.employmentId,subordinateEmploymentId:v.employmentId,lineType:'administrative',validFrom:'2025-01-01'}))));
- }
+ }));
+ for(const result of seeded)if(result.status==='rejected')throw result.reason;
+ users.sort((a,b)=>a.index-b.index);
  for(const table of ['claim_request','attendance','employment','person','app_user','role_assignment','assignment','reporting_line','payslip'])await owner.client.unsafe('analyze '+table);
  const counts=await owner.client`select (select count(*)::int from claim_request)as claims,(select count(*)::int from attendance)as attendance,(select count(*)::int from payslip)as payslips`;
  assert.equal(counts[0].claims,500*claimsPerEmployee);assert.equal(users.length,500);
