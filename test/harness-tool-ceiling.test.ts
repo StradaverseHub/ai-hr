@@ -81,6 +81,7 @@ describe('the provider tool ceiling',()=>{
   const {bindings}=await nativeToolProvider(callers.groupAdmin,{companyId:base.companyId,locale:'en'},true);
   expect(bindings.map(binding=>binding.name)).not.toContain('password_policy_guidance');
   expect(bindings.map(binding=>binding.name)).not.toContain('correction_controls_guidance');
+  expect(bindings.map(binding=>binding.name)).not.toContain('organisation_tagging_guidance');
   // v23: every folded read is reached through its topic tool, never bound itself; both topic tools are bound for a group
   // administrator, explain_why for everyone (the explainers worker is on), operations_status for administrators only.
   for(const read of FOLDED_READS.keys())expect(bindings.map(binding=>binding.name),read).not.toContain(read);

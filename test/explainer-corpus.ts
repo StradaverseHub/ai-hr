@@ -69,6 +69,10 @@ export const EXPLAINER_CONVERSATIONS:readonly BaselineConversation[]=freeze([
   {id:'password-policy-location',question:'Where can I review the password policy controls, and who is allowed to save them?',category:'guidance',ideal:answer('password_policy_guidance')},
   {id:'password-policy-human-boundary',question:'Does password policy guidance unlock an account or reset a password for me, or must an authorized administrator decide and use the account controls?',category:'guidance',continues:true,ideal:answer('password_policy_guidance')},
  ]},
+ {id:'admin-organisation-tagging-guidance',title:'Administrator: find organisation review and keep mapping and re-tag decisions human',persona:'admin',turns:[
+  {id:'organisation-tagging-location',question:'Where do I review a Group structure proposal or an all-record organisation re-tag preview?',category:'guidance',ideal:answer('organisation_tagging_guidance')},
+  {id:'organisation-tagging-human-boundary',question:'Can this guidance choose Business Units, inspect a private run or approve and publish a re-tag, or do the independent checker and original HR doer act on the native review page?',category:'guidance',continues:true,ideal:answer('organisation_tagging_guidance')},
+ ]},
  {id:'admin-correction-controls-guidance',title:'Administrator: find correction controls without changing payroll',persona:'admin',turns:[
   {id:'correction-controls-location',question:'Where can I review payroll correction controls, and who can save that setting?',category:'guidance',ideal:answer('correction_controls_guidance')},
   {id:'correction-controls-human-boundary',question:'Does correction-controls guidance reset or reprocess a payroll run, or must I review the run and choose its native action myself?',category:'guidance',continues:true,ideal:answer('correction_controls_guidance')},
