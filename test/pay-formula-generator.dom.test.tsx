@@ -35,5 +35,12 @@ describe('formula generation remains an explicit unsaved draft',()=>{
   await waitFor(()=>expect(screen.queryByText(result.value.explanation)).toBeNull());state.draft.mockRejectedValueOnce(new Error('PRIVATE provider payload'));request();
   expect(await screen.findByRole('alert')).toHaveTextContent(t.failed);expect(screen.queryByText(/PRIVATE/)).toBeNull();
  });
+ it('inserts an explicitly unfinished suggestion without claiming it is valid or saving it',async()=>{
+  const source='If {#MISSING:Company} = "EBAC" Then\nReturn {#Basic}\nElse\nReturn 0\nEnd If';
+  state.draft.mockResolvedValue({ok:true,value:{...result.value,source,valid:false,unresolved:true,assumptions:['Basic means recorded basic salary.'],questions:['Resolve Company before validation.']}});
+  const apply=mount('');request();await screen.findByText('Resolve Company before validation.');
+  for(const label of [t.issue,t.suggestedFormula,t.assumptions,t.nextStep])expect(screen.getByRole('heading',{name:label})).toBeVisible();
+  expect(screen.getByText(t.needsClarification)).toBeVisible();fireEvent.click(screen.getByRole('button',{name:t.apply}));expect(apply).toHaveBeenCalledExactlyOnceWith(source);
+ });
  it('prevents unauthorized interaction',()=>{mount('',true);expect(screen.getByRole('textbox')).toBeDisabled();expect(screen.getByRole('checkbox')).toBeDisabled();});
 });

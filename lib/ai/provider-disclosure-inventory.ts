@@ -24,6 +24,7 @@ export const WORKLOAD_DISCLOSURE_FIELDS=Object.freeze({
  claim_detail_triage_v1:'closed_references',
  payroll_feature_hypothesis_v1:'closed_references',
  payroll_detector_explanation_v1:'closed_references',
+ authored_pay_formula_v2:'authored_formula_request',
  authored_pay_formula_v1:'authored_formula_request',
  authored_pay_rule_v1:'closed_references',
  authored_report_plan_v1:'closed_references',

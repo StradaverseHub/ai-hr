@@ -77,7 +77,7 @@ export async function installProbationDrafts(ctx:SessionContext,companyId:string
 }
 export function probationIntakeCandidates(ctx:SessionContext,companyId:string){return withProbationTenant(ctx,async tx=>{
  companyGate(ctx,companyId);
- const[access]=await tx.execute<{ok:boolean}>(sql`select app.probation_config_admin(${uuid(companyId)}::uuid) as ok`);if(!access?.ok)throw new ProbationError('forbidden','Named probation preparer access is required.');
+ const[access]=await tx.execute<{ok:boolean}>(sql`select app.probation_config_admin(${uuid(companyId)}::uuid) as ok`);if(!access?.ok)throw new ProbationError('forbidden','Probation module permission is required.');
  const ids=await tx.execute<{id:string}>(sql`select id from employment e where tenant_id=${ctx.tenantId}::uuid and company_id=${companyId}::uuid and not exists(select 1 from probation_case c where c.employment_id=e.id and c.tenant_id=e.tenant_id) order by employee_code,id limit 1000`);
  return Promise.all(ids.map(r=>sourceTx(tx,r.id)));
 });}
@@ -218,8 +218,8 @@ export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:stri
 });}
 export type ProbationAdministrationOptions={businessGroups:{id:string;name:string}[];grades:string[];companies:{id:string;name:string}[];users:{id:string;name:string}[];departments:{id:string;name:string;companyId:string}[];businessUnits:{id:string;name:string;companyId:string}[]};
 export function probationAdministrationOptions(ctx:SessionContext):Promise<ProbationAdministrationOptions>{return withProbationTenant(ctx,async tx=>{
- const companies=await tx.execute<{id:string;name:string}>(sql`select c.id,c.legal_name as name from company c where c.tenant_id=${ctx.tenantId}::uuid and c.archived_at is null and (app.probation_config_admin(c.id) or app.is_group_admin() and app.is_admin_for(c.id) and not exists(select 1 from probation_access a where a.company_id=c.id and a.tenant_id=c.tenant_id and a.role='admin' and a.valid_from<=${todayInKualaLumpur()}::date and (a.valid_to is null or a.valid_to>=${todayInKualaLumpur()}::date))) order by c.legal_name,c.id`);
- const allowed=companies.filter(c=>ctx.entitlementsExempt!==undefined||isModuleEnabled(ctx,'lifecycle',c.id));if(!allowed.length)throw new ProbationError('forbidden','Named probation administration access is required.');
+ const companies=await tx.execute<{id:string;name:string}>(sql`select c.id,c.legal_name as name from company c where c.tenant_id=${ctx.tenantId}::uuid and c.archived_at is null and app.probation_config_admin(c.id) order by c.legal_name,c.id`);
+ const allowed=companies.filter(c=>ctx.entitlementsExempt!==undefined||isModuleEnabled(ctx,'lifecycle',c.id));if(!allowed.length)throw new ProbationError('forbidden','Probation module permission is required.');
  const users=await tx.execute<{id:string;name:string}>(sql`select u.id,p.full_name as name from app_user u join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and app.access_workforce_person(p.id,'workforce.view') order by p.full_name,u.id limit 1000`);
  const scope=sql`array[${sql.join(allowed.map(c=>sql`${c.id}::uuid`),sql`, `)}]::uuid[]`;
  const departments=await tx.execute<{id:string;name:string;companyId:string}>(sql`select id,name,company_id as "companyId" from department where tenant_id=${ctx.tenantId}::uuid and company_id=any(${scope}) and archived_at is null order by name,id`);
@@ -257,12 +257,21 @@ export async function prepareProbationCutover(ctx:SessionContext,companyId:strin
 export function approveProbationCutover(ctx:SessionContext,input:{id:string;digest:string;reason:string}){return withProbationTenant(ctx,async tx=>{await tx.execute(sql`select app.probation_approve_cutover(${input.id}::uuid,${input.digest},${input.reason})`);const[receipt]=await tx.execute<{id:string;digest:string;snapshot:import('./probation-cutover').ProbationCutoverPlan;approvedBy:string;approvedAt:string;reason:string}>(sql`select id,digest,data as snapshot,approved_by as "approvedBy",approved_at::text as "approvedAt",reason from probation_cutover where id=${input.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);return{...receipt,sends:false as const};});}
 
 /** Existing minute sweep supplies a real privileged connection; context roles confer no maintenance power. */
+export function requestProbationActivation(ctx:SessionContext,input:{id:string;digest:string;installationReference:string}) {
+ return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{id:string}>(sql`select app.probation_request_activation(${uuid(input.id)}::uuid,${input.digest},${input.installationReference}) as id`);return probationActivationRequestTx(tx,ctx,row.id);});
+}
+async function probationActivationRequestTx(tx:Tx,ctx:SessionContext,id:string){
+ const[row]=await tx.execute<{id:string;state:'pending'|'completed'|'failed'}>(sql`select id,state from probation_activation_request where id=${uuid(id)}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+ if(!row)throw new ProbationError('forbidden','Activation request is unavailable.');return row;
+}
+export function probationActivationRequest(ctx:SessionContext,id:string){return withProbationTenant(ctx,tx=>probationActivationRequestTx(tx,ctx,id));}
 export async function sweepProbation(ctx:SessionContext,connection:import('./notice-projection').NotificationSweepConnection,now=new Date()):Promise<{processed:number;failed:number}>{
  if(ctx.userId)throw new ProbationError('forbidden','Probation maintenance requires the verified no-login owner connection.');
  ctx={...ctx,roles:[],grants:undefined}; // The actual owner connection and protected source intent confer authority.
  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kuala_Lumpur',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
+ const activationRequests=await (await import('./probation-cutover')).processRequestedProbationActivations(ctx,connection);
  const companies=await connection.withTenant(ctx,async tx=>{const[owner]=await tx.execute<{ok:boolean}>(sql`select app.probation_storage_runner() as ok`);if(!owner?.ok)throw new ProbationError('forbidden','Verified probation storage owner required.');return tx.execute<{companyId:string;activationOn:string}>(sql`select company_id as "companyId",activation_on::text as "activationOn" from probation_activation where tenant_id=${ctx.tenantId}::uuid and enabled and activation_on<=${today}::date order by company_id`);});
- let processed=0,failed=0;
+ let processed=activationRequests.processed,failed=activationRequests.failed;
  const scheduleRequests=await connection.withTenant(ctx,tx=>tx.execute<{id:string;companyId:string}>(sql`
   select q.id,c.company_id as "companyId" from probation_schedule_reconciliation_request q
   join probation_case c on c.id=q.case_id and c.tenant_id=q.tenant_id

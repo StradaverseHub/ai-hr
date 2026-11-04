@@ -13,7 +13,7 @@ const fixture=vi.hoisted(()=>({reviewed:true,stale:false}));
 vi.mock('../lib/ai/provider-data-reviews',async original=>{
  const actual=await original<typeof import('../lib/ai/provider-data-reviews')>();
  return {...actual,assertProviderDataContractReviewed:(contract:string,digest:string)=>{
-  if(contract==='authored_pay_formula_v1'&&fixture.reviewed)return;
+  if(contract==='authored_pay_formula_v2'&&fixture.reviewed)return;
   return actual.assertProviderDataContractReviewed(contract,fixture.stale?'0'.repeat(64):digest);
  }};
 });
@@ -48,8 +48,8 @@ describe('formula authoring provider admission',()=>{
   vi.mocked(openaiAdapter.generate).mockImplementationOnce(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});if(kind==='module')await setModule(base.tenantId,'payroll','disabled');else await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,base.adminUserId));return JSON.stringify({source:'Return 1',explanation:'A draft',questions:[],unsupported:[]});});
   const before=await counts();await expect(draftPayFormula(ctx,input)).rejects.toThrow();expect(await counts()).toEqual(before);
  });
- it('uses the actual owner-reviewed source binding with synthetic provider transport',async()=>{
-  fixture.reviewed=false;expect(await draftPayFormula(ctx,input)).toMatchObject({valid:true,source:'Return {#Basic}'});expect(openaiAdapter.generate).toHaveBeenCalledOnce();
+ it('keeps the revised contract blocked until its exact source is reviewed',async()=>{
+  fixture.reviewed=false;await expect(draftPayFormula(ctx,input)).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();
  });
  it('has no provider call when unconfigured',async()=>{
   vi.mocked(configuration.resolveActiveAiConfig).mockResolvedValueOnce(null);await expect(draftPayFormula(ctx,input)).rejects.toThrow('not_configured');expect(openaiAdapter.generate).not.toHaveBeenCalled();

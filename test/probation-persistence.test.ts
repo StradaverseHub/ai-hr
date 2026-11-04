@@ -19,9 +19,9 @@ import {bootstrapProbationPreparer,installProbationDrafts,probationSetup,savePro
 let b:Base,admin:SessionContext;
 beforeAll(migrateTestDb);afterAll(async()=>{await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id='workforce.maintain'`);await closeAll();});beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=adminCtx(b);await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id='workforce.maintain'`);});
 describe('native probation configuration custody and default-off authority',()=>{
- it('starts hidden and disabled and only bounded bootstrap creates named configuration authority',async()=>{
-  expect(await canConfigureProbationWorkflows(admin)).toBe(false);
-  await bootstrapProbationPreparer(admin,{companyId:b.companyId,userId:admin.userId!,reason:'Named staging preparer'});
+ it('starts disabled and permits module holders to prepare without nomination',async()=>{
+  expect(await canConfigureProbationWorkflows(admin)).toBe(true);
+
   expect(await canConfigureProbationWorkflows(admin)).toBe(true);
   await expect(bootstrapProbationPreparer(admin,{companyId:b.companyId,userId:admin.userId!,reason:'Second bootstrap'})).rejects.toThrow();
   await installProbationDrafts(admin,b.companyId);await installProbationDrafts(admin,b.companyId);
@@ -30,12 +30,12 @@ describe('native probation configuration custody and default-off authority',()=>
   await saveProbationConfiguration(admin,{companyId:b.companyId,kind:'settings',data:DEFAULT_PROBATION_CONFIG,publish:true,expectedVersion:1});expect((await probationSetup(admin,b.companyId)).settings?.version).toBe(2);
  });
  it('distinguishes an omitted hire period from an explicit zero-period exclusion and gives preparers no PBP adjudication authority',async()=>{
-  await bootstrapProbationPreparer(admin,{companyId:b.companyId,userId:admin.userId!,reason:'Named missing-data preparer'});const missing=await person('Fictional missing period');
+const missing=await person('Fictional missing period');
   const candidate=(await probationIntakeWorkspace(admin,b.companyId)).candidates.find(c=>c.source.employmentId===missing.employmentId)!;expect(candidate.source).toMatchObject({explicitNoProbation:false,unknownPeriod:true});expect(candidate.classification).toBe('held');expect(candidate.canValidate).toBe(false);
   await owner.db.execute(sql`update employment set probation_months=0,probation_value=0 where id=${missing.employmentId}::uuid`);const[source]=await withTenant(admin,tx=>tx.execute<{data:{explicitNoProbation:boolean}}>(sql`select app.probation_personnel_source(${missing.employmentId}::uuid) as data`));expect(source.data.explicitNoProbation).toBe(true);const after=await probationIntakeWorkspace(admin,b.companyId);expect(after.candidates.some(c=>c.source.employmentId===missing.employmentId)).toBe(false);expect(after.excludedCount).toBe(1);
  });
  it('rejects direct table writes, unapproved Grade H and an unrunnable evaluation route',async()=>{
-  await bootstrapProbationPreparer(admin,{companyId:b.companyId,userId:admin.userId!,reason:'Named configuration preparer'});
+
   await expect(withTenant(admin,tx=>tx.execute(sql`insert into probation_activation(tenant_id,company_id,enabled) values(${b.tenantId}::uuid,${b.companyId}::uuid,true)`))).rejects.toThrow();
   await expect(saveProbationConfiguration(admin,{companyId:b.companyId,kind:'settings',data:{...DEFAULT_PROBATION_CONFIG,gradeHEnabled:true,gradeHFormPublished:true},publish:true,expectedVersion:0})).rejects.toThrow();
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_config_write(${b.companyId}::uuid,'settings',${JSON.stringify({...DEFAULT_PROBATION_CONFIG,eligibleGrades:['12','H']})}::jsonb,true,0)`))).rejects.toThrow();
@@ -55,7 +55,7 @@ describe('native probation configuration custody and default-off authority',()=>
 
 async function person(name:string){const e=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@probation.example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});const userId=await createAppUser(b.tenantId,e.personId,'employee');return{...e,userId,ctx:{...admin,userId,personId:e.personId,roles:['employee'],grants:undefined}};}
 async function privateCase(){
- await bootstrapProbationPreparer(admin,{companyId:b.companyId,userId:admin.userId!,reason:'Named privacy fixture preparer'});
+
  const[hrPerson]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional HR Partner',${randomUUID()+'@probation.example.test'}) returning id`);await owner.db.execute(sql`update app_user set person_id=${hrPerson.id}::uuid where id=${admin.userId}::uuid`);admin={...admin,personId:hrPerson.id};
  const staff=await person('Fictional Staff'),manager=await person('Fictional Manager'),peer=await person('Fictional Peer');
  await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',bpRules:[{rules:{company:[b.companyId]},userId:admin.userId}]})}::jsonb)`);

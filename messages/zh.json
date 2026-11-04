@@ -23240,6 +23240,10 @@
       "cta": "打开审批流程"
     },
     "overtimePatterns": {
+    "loadFailureTitle": "无法加载加班模式",
+    "loadFailureHelp": "请重试。如果问题持续，请向支持人员提供以下编号。",
+    "retryLoad": "重试",
+    "supportReference": "支持编号：{reference}",
       "title": "加班模式",
       "desc": "配置和审核员工加班、应付时长及薪资映射。",
       "cta": "配置加班模式"
@@ -29822,6 +29826,7 @@
       "configure": "管理安全与权限",
       "workforceView": "查看员工资料",
       "workforceMaintain": "维护员工资料",
+      "probationModule": "管理所有公司的试用期",
       "profileReview": "审核符合条件的资料更改"
     },
     "workforceReadOnly": "您可以查看此员工记录。您当前的人事权限不允许修改。",
@@ -33455,6 +33460,11 @@
       }
     },
     "generator": {
+      "issue": "问题",
+      "suggestedFormula": "建议公式",
+      "assumptions": "假设",
+      "nextStep": "下一步",
+      "noAssumptions": "未提供假设。",
       "title": "AI公式生成器",
       "requirement": "描述计算要求",
       "disclosure": "您的描述将发送给组织批准的AI服务商。请使用虚构示例，不要包含员工记录。",
@@ -33463,7 +33473,7 @@
       "regenerate": "重新生成公式",
       "working": "正在生成…",
       "clear": "清空",
-      "apply": "应用到公式编辑器",
+      "apply": "插入建议公式",
       "variables": "使用的变量",
       "valid": "公式语法已检查。保存前请审核并测试。",
       "needsClarification": "需要补充说明或选择受支持的替代方案。",
@@ -34254,6 +34264,7 @@
     "access": {
       "title": "模块分配",
       "help": "分配用于让指定用户在所选范围和日期内使用此模块。PBP 和 GBS 权限仍来自当前 Lifecycle PBP 规则及 People Ops 群组；模块分配不能替代这些映射。",
+      "moduleRequired": "需要试用期模块权限。请在访问设置中管理。",
       "firstPreparer": "指定首位准备人员",
       "bootstrapHelp": "集团管理员必须明确指定此公司的准备人员，之后才能配置。",
       "person": "人员",
@@ -34307,6 +34318,12 @@
       "futureMessages": "预计未来消息",
       "excludedMessages": "不予补发的历史消息",
       "eventMessages": "等待未来事件的工作流",
+      "requestActivation": "请求启用",
+      "activationHelp": "安装所有者将重新检查并执行此项已批准的演练。所有检查通过前，运行保持关闭。",
+      "installationReference": "安装验证编号",
+      "checkActivation": "检查启用状态",
+      "activationStates": {"pending": "已请求启用。编号：{reference}", "completed": "启用已完成。编号：{reference}", "failed": "启用检查未通过。请准备并批准新的演练。编号：{reference}"},
+      "activationRequested": "已请求启用。编号：{reference}",
       "approved": "您对此次确切演练的批准已记录。启用仍需由经核实的安装负责人完成。",
       "approvalReason": "批准此次演练的原因",
       "approve": "批准此次确切演练",

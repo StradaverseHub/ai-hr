@@ -1517,3 +1517,7 @@ the latest **closed** run of the same run type (`payroll_status` is exactly draf
 main's 0631 versions of these functions. No statement added or removed; owner and grants unchanged. The idx811 row's
 SHA256 above, the `lifecycle-v9` journal pin and the `board-nine` applied-ledger pin are the new file's. Same number, idx
 and `when`.
+
+## Approved feedback candidate reservations — 4 November 2026
+
+2107_probation_module_permission: idx1354, timestamp1793330001507, owned by codex/approved-ui-20261104. Checked main/alpha b6077019 and staging watermark1793330001502; discovered competing source claims through2105/1352/1505. Keep preceding journal bytes; gaps are intentional. Source reservation only, unapplied. Security2106, Rewards2108, Org Chart2109 and Personnel registry2110 are coordinated separately. Reconcile ledger/source divergence before release.

@@ -144,6 +144,41 @@ export async function activatePreparedProbationCutover(ctx:SessionContext,connec
   const[receipt]=await tx.execute<{data:unknown}>(sql`select app.probation_finalize_cutover(${input.id}::uuid,${JSON.stringify(input.installationReceipt)}::jsonb) as data`);return{alreadyApplied:false,receipt:receipt.data};
  });
 }
+/** Execute module users' reviewed requests through the existing full installation-owner
+ * adjudicator. Each request and all of its effects commit atomically; failures leave runtime off. */
+export async function processRequestedProbationActivations(ctx:SessionContext,connection:import('./notice-projection').NotificationSweepConnection) {
+ if(ctx.userId)throw new ProbationError('forbidden','Activation processing requires the installation owner.');
+ const requests=await connection.withTenant(ctx,async tx=>{
+  const[owner]=await tx.execute<{ok:boolean}>(sql`select app.probation_storage_runner() as ok`);
+  if(!owner?.ok)throw new ProbationError('forbidden','Verified probation storage owner required.');
+  return tx.execute<{id:string}>(sql`select id from probation_activation_request where tenant_id=${ctx.tenantId}::uuid and state='pending' order by created_at,id limit 200`);
+ });
+ let processed=0,failed=0;
+ for(const request of requests) {
+  const outcome=await connection.withTenant(ctx,async tx=>{
+   const[row]=await tx.execute<{id:string;cutoverId:string;digest:string;requestedBy:string;reference:string;origin:string}>(sql`select r.id,r.cutover_id as "cutoverId",r.digest,r.requested_by as "requestedBy",r.installation_reference as reference,c.data->'environment'->>'configuredOrigin' as origin from probation_activation_request r join probation_cutover c on c.id=r.cutover_id and c.tenant_id=r.tenant_id where r.id=${request.id}::uuid and r.tenant_id=${ctx.tenantId}::uuid and r.state='pending' for update of r skip locked`);
+   if(!row)return null;
+   try {
+    await tx.transaction(async nested=>{
+     await nested.execute(sql`select app.probation_write_lock()`);
+     const[actor]=await nested.execute<{ok:boolean}>(sql`select app.access_allowed_for_tenant(${ctx.tenantId}::uuid,${row.requestedBy}::uuid,'probation.module',NULL) as ok`);
+     if(!actor?.ok)throw new ProbationError('forbidden','Activation requester no longer has module permission.');
+     const sameConnection:import('./notice-projection').NotificationSweepConnection={withTenant:async(_context,work)=>work(nested)};
+     await activatePreparedProbationCutover(ctx,sameConnection,{id:row.cutoverId,digest:row.digest,installationReceipt:{origin:row.origin,reference:row.reference}});
+     await nested.execute(sql`update probation_activation_request set state='completed',completed_at=now() where id=${row.id}::uuid`);
+    });
+    return 'completed';
+   } catch(error) {
+    console.error('[probation activation request]',{requestId:row.id,code:'activation_review_failed'});
+    await tx.execute(sql`update probation_activation_request set state='failed',completed_at=now(),failure='Current activation checks did not pass. Prepare and review a fresh rehearsal.' where id=${row.id}::uuid`);
+    await tx.execute(sql`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) select tenant_id,'probation',company_id,'probation.runtime.activation-failed','system',NULL,jsonb_build_object('requestId',id,'cutoverId',cutover_id,'code','activation_review_failed') from probation_activation_request where id=${row.id}::uuid`);
+    return 'failed';
+   }
+  });
+  if(outcome==='completed')processed++;else if(outcome==='failed')failed++;
+ }
+ return{processed,failed};
+}
 export function requestProbationLegacyReconciliation(ctx:SessionContext,input:{caseId:string;revision:number;reason:string}){return withScopedLifecycleTenant(ctx,async tx=>{const[row]=await tx.execute<{id:string}>(sql`select app.probation_request_legacy_reconciliation(${input.caseId}::uuid,${input.revision},${input.reason}) as id`);return row.id;});}
 export function approveProbationLegacyReconciliation(ctx:SessionContext,input:{id:string;reason:string}){return withScopedLifecycleTenant(ctx,tx=>tx.execute(sql`select app.probation_approve_legacy_reconciliation(${input.id}::uuid,${input.reason})`));}
 export function applyProbationLegacyReconciliation(ctx:SessionContext,connection:import('./notice-projection').NotificationSweepConnection,id:string){if(ctx.userId)throw new ProbationError('forbidden','Verified no-login reconciliation owner required.');return connection.withTenant({...ctx,roles:[],grants:undefined},tx=>tx.execute(sql`select app.probation_apply_legacy_reconciliation(${id}::uuid)`));}

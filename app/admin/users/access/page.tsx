@@ -3,7 +3,7 @@ import {requireAccessConfiguration} from '@/lib/access-configuration-authz';
 import {AccessConfigurationEditor} from '../access-editor';
 import {previewAccessConfigurationAction,saveAccessConfigurationAction} from './actions';
 import {SecurityBackLink} from '../security-page';
-const capabilityKeys:Record<string,string>={'access.system_admin':'systemAdministrator','access.configure':'configure','workforce.view':'workforceView','workforce.maintain':'workforceMaintain','profile.review':'profileReview'};
+const capabilityKeys:Record<string,string>={'access.system_admin':'systemAdministrator','access.configure':'configure','workforce.view':'workforceView','workforce.maintain':'workforceMaintain','profile.review':'profileReview','probation.module':'probationModule'};
 export default async function AccessConfigurationPage(){
  const {session,data}=await requireAccessConfiguration(),t=await getTranslations('accessConfiguration'),locale=await getLocale();
  const users=data.users.map(user=>({...user,label:data.snapshot.users.find(row=>row.id===user.id)?.active?user.label:`${user.label} · ${t('inactive')}`}));

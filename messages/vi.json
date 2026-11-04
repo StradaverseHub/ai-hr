@@ -23240,6 +23240,10 @@
       "cta": "Mở quy trình"
     },
     "overtimePatterns": {
+    "loadFailureTitle": "Không tải được Mẫu làm thêm giờ",
+    "loadFailureHelp": "Hãy thử lại. Nếu sự cố tiếp diễn, cung cấp mã bên dưới cho bộ phận hỗ trợ.",
+    "retryLoad": "Thử lại",
+    "supportReference": "Mã hỗ trợ: {reference}",
       "title": "Mẫu làm thêm giờ",
       "desc": "Cấu hình và kiểm tra làm thêm giờ, thời lượng được trả và ánh xạ bảng lương.",
       "cta": "Cấu hình mẫu làm thêm"
@@ -29822,6 +29826,7 @@
       "configure": "Quản lý bảo mật và quyền",
       "workforceView": "Xem hồ sơ nhân viên",
       "workforceMaintain": "Duy trì hồ sơ nhân viên",
+      "probationModule": "Quản lý Thử việc cho mọi công ty",
       "profileReview": "Xét duyệt thay đổi hồ sơ đủ điều kiện"
     },
     "workforceReadOnly": "Bạn có thể xem hồ sơ nhân viên này. Quyền nhân sự hiện tại của bạn không cho phép thay đổi.",
@@ -33455,6 +33460,11 @@
       }
     },
     "generator": {
+      "issue": "Vấn đề",
+      "suggestedFormula": "Công thức đề xuất",
+      "assumptions": "Giả định",
+      "nextStep": "Bước tiếp theo",
+      "noAssumptions": "Không có giả định được cung cấp.",
       "title": "Trình tạo công thức AI",
       "requirement": "Mô tả phép tính",
       "disclosure": "Mô tả được gửi tới nhà cung cấp AI được tổ chức phê duyệt. Dùng ví dụ hư cấu, không đưa hồ sơ nhân viên vào.",
@@ -33463,7 +33473,7 @@
       "regenerate": "Tạo lại công thức",
       "working": "Đang tạo…",
       "clear": "Xóa",
-      "apply": "Áp dụng vào trình sửa công thức",
+      "apply": "Chèn công thức đề xuất",
       "variables": "Biến được dùng",
       "valid": "Đã kiểm tra cú pháp. Xem lại và thử trước khi lưu.",
       "needsClarification": "Cần làm rõ hoặc chọn phương án được hỗ trợ.",
@@ -34254,6 +34264,7 @@
     "access": {
       "title": "Phân công mô-đun",
       "help": "Phân công cho phép người dùng được chỉ định tham gia mô-đun trong phạm vi và thời gian đã chọn. Quyền PBP và GBS vẫn dựa trên quy tắc PBP Lifecycle hiện tại và nhóm People Ops; phân công mô-đun không thể thay thế các ánh xạ đó.",
+      "moduleRequired": "Cần quyền mô-đun Thử việc. Quản lý quyền trong Cài đặt truy cập.",
       "firstPreparer": "Chỉ định người chuẩn bị đầu tiên",
       "bootstrapHelp": "Quản trị viên tập đoàn phải chỉ định rõ người chuẩn bị cho công ty này trước khi cấu hình được mở.",
       "person": "Cá nhân",
@@ -34307,6 +34318,12 @@
       "futureMessages": "Tin nhắn dự kiến trong tương lai",
       "excludedMessages": "Tin nhắn quá khứ không được gửi bù",
       "eventMessages": "Quy trình đang chờ sự kiện trong tương lai",
+      "requestActivation": "Yêu cầu kích hoạt",
+      "activationHelp": "Chủ sở hữu bản cài đặt sẽ kiểm tra lại và thực hiện đúng bản diễn tập đã duyệt. Chức năng vẫn tắt cho đến khi mọi kiểm tra đạt.",
+      "installationReference": "Mã xác minh bản cài đặt",
+      "checkActivation": "Kiểm tra trạng thái kích hoạt",
+      "activationStates": {"pending": "Đã yêu cầu kích hoạt. Mã: {reference}", "completed": "Đã kích hoạt. Mã: {reference}", "failed": "Kiểm tra kích hoạt không đạt. Chuẩn bị và duyệt bản diễn tập mới. Mã: {reference}"},
+      "activationRequested": "Đã yêu cầu kích hoạt. Mã: {reference}",
       "approved": "Phê duyệt của bạn đã được ghi nhận cho đúng bản diễn tập này. Việc kích hoạt vẫn cần chủ sở hữu hệ thống đã được xác minh.",
       "approvalReason": "Lý do phê duyệt bản diễn tập này",
       "approve": "Phê duyệt đúng bản diễn tập này",

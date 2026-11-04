@@ -6,7 +6,7 @@ import { preparePrivateAiTask, withAiAdmissionCheck } from './ai-governance';
 import { generateDraft } from '../lib/ai';
 import { draftInputDigest } from '../lib/ai/draft-input';
 import { assertPayFormulaDraftAuthorTx, validatePayFormulaDraft } from '../packs/payroll/service';
-import { adjudicatePayFormulaDraft, PAY_FORMULA_DRAFT_CONTRACT, payFormulaDraftRequest } from '../lib/pay-formula-ai';
+import { adjudicatePayFormulaDraft, payFormulaSuggestionSource, PAY_FORMULA_DRAFT_CONTRACT, payFormulaDraftRequest } from '../lib/pay-formula-ai';
 
 export async function draftPayFormula(ctx: SessionContext, input: unknown) {
   const request = Object.freeze(payFormulaDraftRequest.parse(input));
@@ -34,7 +34,7 @@ export async function draftPayFormula(ctx: SessionContext, input: unknown) {
     expected = draftInputDigest(task.args);
     const result = adjudicatePayFormulaDraft(await generateDraft(task.configuration, task.args));
     // No employee reads, payroll writes, formula save, activation or link operation.
-    if (result.valid && result.source) await validatePayFormulaDraft(ctx, result.source);
+    if (result.source && (result.valid || result.unresolved)) await validatePayFormulaDraft(ctx, result.unresolved ? payFormulaSuggestionSource(result.source).surrogate : result.source);
     else await withTenant(ctx, tx => author(tx));
     return result;
   } finally { task.dispose(); }
