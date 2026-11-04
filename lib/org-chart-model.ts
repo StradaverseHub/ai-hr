@@ -59,3 +59,40 @@ export function orgChartSearchIds(employees:{employmentId:string;name:string;emp
  const visible=new Set(matches);for(const hit of matches){let next=hit;const seen=new Set<string>();while(!seen.has(next)){seen.add(next);const edge=edges.find(edge=>edge.type==='administrative'&&edge.subordinate===next);if(!edge)break;visible.add(edge.manager);next=edge.manager;}for(const edge of edges)if(edge.type==='administrative'&&edge.manager===hit)visible.add(edge.subordinate);}
  return visible;
 }
+
+export type OrgChartNodePosition={cx:number;cy:number;t:number;b:number;l:number;r:number};
+/** One connector owner for the live measured chart and inert real-component browser evidence. */
+export function orgChartConnectorPath(m:OrgChartNodePosition,s:OrgChartNodePosition,type:OrgChartEdge['type'],horizontal:boolean):string {
+    let d: string;
+    if (type === 'administrative' && horizontal) {
+      const mid=(m.r+s.l)/2;d=`M ${m.r} ${m.cy} L ${mid} ${m.cy} L ${mid} ${s.cy} L ${s.l} ${s.cy}`;
+    } else if (type === 'administrative') {
+      const px = m.cx;
+      const py = m.b;
+      const cx = s.cx;
+      const cy = s.t;
+      const midY = (py + cy) / 2;
+      const r = Math.min(8, Math.abs(cx - px) / 2, Math.max((cy - py) / 2, 0));
+      if (Math.abs(cx - px) < 1 || r < 1) {
+        d = `M ${px} ${py} L ${cx} ${cy}`;
+      } else {
+        const dir = cx > px ? 1 : -1;
+        d = `M ${px} ${py} L ${px} ${midY - r} Q ${px} ${midY} ${px + dir * r} ${midY} L ${cx - dir * r} ${midY} Q ${cx} ${midY} ${cx} ${midY + r} L ${cx} ${cy}`;
+      }
+    } else if (Math.abs(s.cy - m.cy) < 24) {
+      // same level → connect nearest sides
+      const fromR = s.cx >= m.cx;
+      const x1 = fromR ? m.r : m.l;
+      const x2 = fromR ? s.l : s.r;
+      const mx = (x1 + x2) / 2;
+      d = `M ${x1} ${m.cy} C ${mx} ${m.cy}, ${mx} ${s.cy}, ${x2} ${s.cy}`;
+    } else {
+      // different level → connect top/bottom with a smooth curve
+      const down = s.cy > m.cy;
+      const y1 = down ? m.b : m.t;
+      const y2 = down ? s.t : s.b;
+      const my = (y1 + y2) / 2;
+      d = `M ${m.cx} ${y1} C ${m.cx} ${my}, ${s.cx} ${my}, ${s.cx} ${y2}`;
+    }
+    return d;
+}

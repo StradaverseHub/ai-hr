@@ -7,7 +7,7 @@ import { useTranslations } from 'next-intl';
 import { ChevronDown, ChevronUp, Minus, Plus, Search } from 'lucide-react';
 import { Avatar, EmployeeName } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import {orgChartSearchIds,type OrgChartEmployee,type OrgChartFilter} from '@/lib/org-chart-model';
+import {orgChartConnectorPath,orgChartSearchIds,type OrgChartEmployee,type OrgChartFilter} from '@/lib/org-chart-model';
 
 export type OrgEmp = {
   employmentId: string;
@@ -147,38 +147,8 @@ export function OrgChart({ employees, edges, filter, canExport=false }: { employ
     const s = box.pos.get(e.subordinate);
     if (!m || !s) return [];
     const style = LINE[e.type];
-    let d: string;
-    if (e.type === 'administrative' && horizontal) {
-      const mid=(m.r+s.l)/2;d=`M ${m.r} ${m.cy} L ${mid} ${m.cy} L ${mid} ${s.cy} L ${s.l} ${s.cy}`;
-    } else if (e.type === 'administrative') {
-      const px = m.cx;
-      const py = m.b;
-      const cx = s.cx;
-      const cy = s.t;
-      const midY = (py + cy) / 2;
-      const r = Math.min(8, Math.abs(cx - px) / 2, Math.max((cy - py) / 2, 0));
-      if (Math.abs(cx - px) < 1 || r < 1) {
-        d = `M ${px} ${py} L ${cx} ${cy}`;
-      } else {
-        const dir = cx > px ? 1 : -1;
-        d = `M ${px} ${py} L ${px} ${midY - r} Q ${px} ${midY} ${px + dir * r} ${midY} L ${cx - dir * r} ${midY} Q ${cx} ${midY} ${cx} ${midY + r} L ${cx} ${cy}`;
-      }
-    } else if (Math.abs(s.cy - m.cy) < 24) {
-      // same level → connect nearest sides
-      const fromR = s.cx >= m.cx;
-      const x1 = fromR ? m.r : m.l;
-      const x2 = fromR ? s.l : s.r;
-      const mx = (x1 + x2) / 2;
-      d = `M ${x1} ${m.cy} C ${mx} ${m.cy}, ${mx} ${s.cy}, ${x2} ${s.cy}`;
-    } else {
-      // different level → connect top/bottom with a smooth curve
-      const down = s.cy > m.cy;
-      const y1 = down ? m.b : m.t;
-      const y2 = down ? s.t : s.b;
-      const my = (y1 + y2) / 2;
-      d = `M ${m.cx} ${y1} C ${m.cx} ${my}, ${s.cx} ${my}, ${s.cx} ${y2}`;
-    }
-    return [{ key: `${e.manager}-${e.subordinate}-${i}`, d, stroke: style.stroke, dash: style.dash }];
+    const d=orgChartConnectorPath(m,s,e.type,horizontal);
+    return [{ key: `${e.manager}-${e.subordinate}-${i}`, d, manager:e.manager,subordinate:e.subordinate,type:e.type,stroke: style.stroke, dash: style.dash }];
   });
 
   const renderNode = (id: string): ReactNode => {
@@ -189,6 +159,7 @@ export function OrgChart({ employees, edges, filter, canExport=false }: { employ
       <button
         type="button"
         ref={setNode(id)}
+        data-org-node={id}
         onClick={event=>{quickReturnRef.current=event.currentTarget;setQuick(e)}}
         className={cn(
           'relative z-10 flex w-52 text-start flex-col gap-2 rounded-2xl border border-border bg-card p-3 shadow-[var(--shadow-card)] transition-colors hover:border-primary',
@@ -311,16 +282,17 @@ export function OrgChart({ employees, edges, filter, canExport=false }: { employ
       <div ref={viewportRef} className="max-h-[70vh] overflow-auto pb-2 touch-pan-x touch-pan-y" onPointerDown={e=>{if((e.target as HTMLElement).closest('button,a,input,select'))return;const view=viewportRef.current!;pan.current={x:e.clientX,y:e.clientY,left:view.scrollLeft,top:view.scrollTop};e.currentTarget.setPointerCapture?.(e.pointerId);}} onPointerMove={e=>{if(!pan.current)return;const view=viewportRef.current!;view.scrollLeft=pan.current.left-(e.clientX-pan.current.x);view.scrollTop=pan.current.top-(e.clientY-pan.current.y);}} onPointerUp={()=>{pan.current=null;}} onPointerCancel={()=>{pan.current=null;}}>
 
         <div
-          className="relative mx-auto"
+          data-org-wrapper="" className="relative mx-auto"
           style={box.w ? { width: box.w * scale, height: box.h * scale } : undefined}
         >
           <div
             ref={treeRef}
+            data-org-tree="" data-org-horizontal={String(horizontal)}
             className="relative w-max px-6 py-2"
             style={{ transform: `scale(${scale})`, transformOrigin: 'top left' }}
           >
             <svg
-              className="pointer-events-none absolute left-0 top-0 z-0"
+              data-org-connectors="" className="pointer-events-none absolute left-0 top-0 z-0"
               width={box.w || 1}
               height={box.h || 1}
               fill="none"
@@ -328,6 +300,7 @@ export function OrgChart({ employees, edges, filter, canExport=false }: { employ
               {paths.map((p) => (
                 <path
                   key={p.key}
+                  data-org-manager={p.manager} data-org-subordinate={p.subordinate} data-org-type={p.type}
                   d={p.d}
                   stroke={p.stroke}
                   strokeWidth="2"
