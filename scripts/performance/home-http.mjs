@@ -10,7 +10,7 @@ const paths=new Set(['summary','today','calendar','team','celebrations','time-of
 export function createHomeHttpReplay({base,request,report}){
  const templates=new Map();report.homeApiTraffic={templates:[],completed:{}};
  function track(page,user,path){
-  if(path!=='/'||!['employee','manager'].includes(user.role))return()=>{};
+  if(path!=='/')return()=>{};
   const observed=new Set(),listener=req=>{
    const url=new URL(req.url());
    if(req.method()==='GET'&&url.origin===base&&paths.has(url.pathname)&&url.searchParams.get('employmentId')===user.employmentId){url.searchParams.set('employmentId','__PERF_SUBJECT__');observed.add(url.pathname+url.search);}

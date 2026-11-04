@@ -523,7 +523,7 @@ try{
   const pool=routePool(user);
   const routes=suite==='whole-system'?Array.from({length:3},(_,step)=>pool[(roleOrdinals.get(user.index)+iteration*3+step)%pool.length]):user.role==='employee'?['/me','/claims','/leave']:user.role==='manager'?['/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims'];
   for(const route of routes){const navigationStarted=performance.now();await request(user,route);
-   if(route==='/'&&['employee','manager'].includes(user.role))await homeHttp.read(user,true);
+   if(route==='/')await homeHttp.read(user,true);
    pageInteractions.push({role:user.role,route,startedMs:navigationStarted,durationMs:performance.now()-navigationStarted});await pause(thinkTimeMs);
   }
   if(runMixedWorkflow&&await runMixedWorkflow(user,iteration)){await pause(thinkTimeMs);iteration++;progress.iterations++;continue;}
