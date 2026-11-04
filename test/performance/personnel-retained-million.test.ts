@@ -86,27 +86,41 @@ it.skipIf(!requested)('measures a native Personnel page with one million retaine
   }
   // Amortize the expensive retained fixture across reversible plan comparisons. The current app's
   // strict measurements above remain the acceptance signal; alternative queries cannot turn it green.
-  const view='app.performance_personnel_million_facts';
+  const view='app.performance_personnel_million_facts',tenantView='app.performance_personnel_million_tenant_facts';
   const [absence]=await owner.client`select to_regclass(${view})as relation`;expect(absence.relation).toBeNull();
   const [factsOwner]=await owner.client<{body:string;owner:string;columns:string[];ddl:string;acl:string|null}[]>`
    select prosrc as body,proowner::regrole::text as owner,proargnames as columns,pg_get_functiondef(oid)as ddl,proacl::text as acl
    from pg_proc where oid='app.access_workforce_list_facts()'::regprocedure`;
   expect(factsOwner.columns).toHaveLength(16);
+  const tenantKeys=[
+   ['SELECT c.id FROM public.company c','SELECT c.id,c.tenant_id FROM public.company c'],
+   ['JOIN permitted allowed ON allowed.id=e.company_id','JOIN permitted allowed ON allowed.id=e.company_id AND allowed.tenant_id=e.tenant_id'],
+   ['WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL','WHERE e.voided_at IS NULL'],
+  ];
+  let tenantBody=factsOwner.body;
+  for(const [before,after]of tenantKeys){expect(tenantBody.split(before)).toHaveLength(2);tenantBody=tenantBody.replace(before,after);}
+  const [tenantAbsence]=await owner.client`select to_regclass(${tenantView})as relation`;expect(tenantAbsence.relation).toBeNull();
+  let tenantViewCreated=false;
   await owner.client.unsafe('create view '+view+'('+factsOwner.columns.map(name=>'"'+name+'"').join(',')+') with(security_barrier=true)as '+factsOwner.body);
   try{
+   await owner.client.unsafe('create view '+tenantView+'('+factsOwner.columns.map(name=>'"'+name+'"').join(',')+') with(security_barrier=true)as '+tenantBody);tenantViewCreated=true;
+   await owner.client.unsafe('revoke all on '+tenantView+' from public;grant select on '+tenantView+' to ai_hr_app');
    await owner.client.unsafe('revoke all on '+view+' from public;grant select on '+view+' to ai_hr_app');
-   const [properties]=await owner.client`select relowner::regrole::text as owner,reloptions as options,
-    has_table_privilege('ai_hr_app',oid,'SELECT')as app_select from pg_class where oid=to_regclass(${view})`;
-   expect(properties.owner).toBe(factsOwner.owner);expect(properties.options).toContain('security_barrier=true');expect(properties.app_select).toBe(true);
+   for(const relation of [view,tenantView]){
+    const [properties]=await owner.client`select relowner::regrole::text as owner,reloptions as options,
+     has_table_privilege('ai_hr_app',oid,'SELECT')as app_select from pg_class where oid=to_regclass(${relation})`;
+    expect(properties.owner).toBe(factsOwner.owner);expect(properties.options).toContain('security_barrier=true');expect(properties.app_select).toBe(true);
+   }
    const comparisons:unknown[]=[];report.planComparisons=comparisons;
    for(const mode of ['initial','selective-search','deep-page']){
     const q=mode==='selective-search'?'PERF'+String(count).padStart(9,'0'):undefined;
     const offset=mode==='deep-page'?count-25:0,page={companyIds:companies,q,limit:25,offset},facets={companyIds:companies,q};
-    for(const variant of ['wide-native-control','narrow-view']){
+    for(const variant of ['wide-native-control','narrow-view','narrow-view-tenant-key']){
      phase(mode+'-'+variant);
      const observed=await withTenant(ctx,async tx=>{
       await lockAccessConfigurationReadTx(tx,ctx.tenantId);
-      const query=personnelListPageSql(page,facets,{source:variant==='narrow-view'?sql`app.performance_personnel_million_facts`:sql`app.access_workforce_list_facts()`,materialized:true,projectPageFacts:variant==='narrow-view'});
+      const source=variant==='wide-native-control'?sql`app.access_workforce_list_facts()`:variant==='narrow-view'?sql`app.performance_personnel_million_facts`:sql`app.performance_personnel_million_tenant_facts`;
+      const query=personnelListPageSql(page,facets,{source,materialized:true,projectPageFacts:variant!=='wide-native-control'});
       const began=performance.now(),[raw]=await tx.execute<{rows:unknown[];total:number;status_counts:{status:string;count:number}[]}>(query),elapsedMs=performance.now()-began;
       const byStatus:Record<string,number>={};let total=0;
       for(const row of raw.status_counts){byStatus[row.status]=Number(row.count);total+=Number(row.count);}
@@ -117,11 +131,12 @@ it.skipIf(!requested)('measures a native Personnel page with one million retaine
     }
    }
    await owner.client`update app_user set archived_at=now()where id=${b.adminUserId}::uuid`;
-   try{expect(await withTenant(ctx,tx=>tx.execute(sql`select * from app.performance_personnel_million_facts`))).toHaveLength(0);}
+   try{for(const relation of [view,tenantView])expect(await withTenant(ctx,tx=>tx.execute(sql`select * from ${sql.raw(relation)}`))).toHaveLength(0);}
    finally{await owner.client`update app_user set archived_at=null where id=${b.adminUserId}::uuid`;}
-   expect(await withTenant(adminCtx(foreign),tx=>tx.execute(sql`select * from app.performance_personnel_million_facts where company_id=${b.companyId}::uuid`))).toHaveLength(0);
+   for(const relation of [view,tenantView])expect(await withTenant(adminCtx(foreign),tx=>tx.execute(sql`select * from ${sql.raw(relation)} where company_id=${b.companyId}::uuid`))).toHaveLength(0);
    report.prototypePurposeRefusals=true;
   }finally{
+   if(tenantViewCreated)await owner.client.unsafe('drop view '+tenantView);
    await owner.client.unsafe('drop view '+view);
    const [after]=await owner.client`select prosrc as body,proowner::regrole::text as owner,proargnames as columns,pg_get_functiondef(oid)as ddl,proacl::text as acl from pg_proc where oid='app.access_workforce_list_facts()'::regprocedure`;
    expect(after).toEqual(factsOwner);report.prototypeViewRemoved=true;report.nativeFactsUnchanged=true;save();
