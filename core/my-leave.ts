@@ -268,10 +268,31 @@ export function resolveSelectedLeaveYear(raw: string | undefined, years: readonl
   return years.includes(y) ? y : currentYear;
 }
 
+/** Current Home figures use the same eligibility, visibility and calculation owner as My Leave.
+ * Historical year choices and balance footnotes belong only to the full dashboard. */
+export async function myCurrentLeaveCards(
+  ctx: SessionContext,
+  employmentId: string,
+  opts: { today: string; locale?: string },
+): Promise<Pick<MyLeaveCard, 'leaveTypeId' | 'leaveType' | 'annualLeave' | 'canApplyFor' | 'pending'>[]> {
+  const dashboard = await buildMyLeaveDashboard(ctx, employmentId, { today: opts.today, locale: opts.locale }, false);
+  return dashboard.cards.map(({ leaveTypeId, leaveType, annualLeave, canApplyFor, pending }) =>
+    ({ leaveTypeId, leaveType, annualLeave, canApplyFor, pending }));
+}
+
 export async function myLeaveDashboard(
   ctx: SessionContext,
   employmentId: string,
   opts: { today: string; year?: string; locale?: string },
+): Promise<MyLeaveDashboard> {
+  return buildMyLeaveDashboard(ctx, employmentId, opts, true);
+}
+
+async function buildMyLeaveDashboard(
+  ctx: SessionContext,
+  employmentId: string,
+  opts: { today: string; year?: string; locale?: string },
+  fullDashboard: boolean,
 ): Promise<MyLeaveDashboard> {
   const { today, locale } = opts;
   const currentYear = Number(today.slice(0, 4));
@@ -321,8 +342,8 @@ export async function myLeaveDashboard(
   // r302 hand-fix (second verification, defect 3) — the selector offers exactly the selections whose cycles hold
   // rows, under the SAME year → cycle mapping the cards use (N years back = N cycles back from today's), so every
   // cycle with rows is reachable and no offered year maps to an empty cycle for want of a calendar-year match.
-  const years = await offeredLeaveYears(ctx, employmentId, today, hiredOn, cycleByType);
-  const selectedYear = resolveSelectedLeaveYear(opts.year, years, currentYear);
+  const years = fullDashboard ? await offeredLeaveYears(ctx, employmentId, today, hiredOn, cycleByType) : [currentYear];
+  const selectedYear = fullDashboard ? resolveSelectedLeaveYear(opts.year, years, currentYear) : currentYear;
 
   // r397 — EACH CARD'S LEAVE YEAR IS DECIDED FIRST, WITH NO READ (it is pure date arithmetic on `hiredOn`, `today`
   // and the type's cycle), so the two per-type reads below can be asked for EVERY card at once: one transaction
@@ -367,7 +388,7 @@ export async function myLeaveDashboard(
       // otherwise let a hidden figure be recovered by subtraction.
       const balanceShown = bd != null && !takenOnly && shows('available') && shows('taken');
       const balanceIncludesLater =
-        balanceShown && apply && round2(apply.balance) !== round2(bd!.balance)
+        fullDashboard && balanceShown && apply && round2(apply.balance) !== round2(bd!.balance)
           ? await ledgerAfterCycle(ctx, employmentId, storyId, cycleEnd, apply.balance - bd!.balance)
           : null;
       return {

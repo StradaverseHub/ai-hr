@@ -8,7 +8,7 @@ import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {myLeaveDashboard} from '../packs/leave/service';
+import {myLeaveDashboard,myCurrentLeaveCards} from '../packs/leave/service';
 import {readEmployeeHomeTimeOff} from '../core/employee-home-time-off';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase} from './harness';
@@ -32,6 +32,11 @@ it('retains exact canonical current figures without loading historical ledger da
   expect(canonical.cards.length).toBeGreaterThan(0);expect(canonical.years).toContain(year-1);expect(dashboardHistoryReads).toBeGreaterThan(0);
   historicalReads=0;const start=performance.now(),home=await readEmployeeHomeTimeOff(ctx,employee.employmentId,'en'),elapsedMs=performance.now()-start,homeHistoryReads=historicalReads;
   expect(home.balances).toEqual(canonical.cards.map(card=>({id:card.leaveTypeId,name:card.leaveType,annualLeave:card.annualLeave,available:card.canApplyFor,pending:card.pending})));
+  const expectedCurrent=canonical.cards.map(({leaveTypeId,leaveType,annualLeave,canApplyFor,pending})=>({leaveTypeId,leaveType,annualLeave,canApplyFor,pending}));
+  // Home's purpose cannot be turned into a historical read by an untyped posted year.
+  expect(await myCurrentLeaveCards(ctx,employee.employmentId,{today,locale:'en',...{year:String(year-1)}})).toEqual(expectedCurrent);
+  const previous=await myLeaveDashboard(ctx,employee.employmentId,{today,locale:'en',year:String(year-1)});
+  expect(previous.selectedYear).toBe(year-1);expect(previous.cards.length).toBeGreaterThan(0);
   historicalReads=0;const fullAgain=await myLeaveDashboard(ctx,employee.employmentId,{today,locale:'en'});
   expect(fullAgain).toEqual(canonical);expect(historicalReads).toBeGreaterThan(0);
   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'home-time-off-projection-work.json'),JSON.stringify({kind:'ACTUAL_HOME_CURRENT_FIGURES_COMPONENT_ONLY',releaseEligible:false,dashboardHistoryReads,homeHistoryReads,fullHistoryStillAvailable:true,cardCount:home.balances.length,exactCanonicalFigures:true,elapsedMs},null,2));
