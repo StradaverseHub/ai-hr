@@ -8,6 +8,7 @@
  * Canonical home of the helper previously defined in core/leave.ts (which now re-exports it): pure,
  * dependency-free, safe to import from leaf modules like core/employment-status.ts and from tests.
  */
+import {dateTimeFormatter} from './date-time-formatter';
 import {isCalendarDate} from './calendar-date';
 export const HR_LOCAL_TZ = 'Asia/Kuala_Lumpur';
 // Cache only immutable formatters. Each call still formats its own fresh instant, including midnight.
@@ -73,7 +74,7 @@ export function yearOptions(today: string, selected?: string, back = 6): string[
 export function formatPayPeriodMonth(payPeriod: string, locale: string): string {
   const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(payPeriod);
   if (!m) return payPeriod;
-  return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+  return dateTimeFormatter(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
     new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1)),
   );
 }

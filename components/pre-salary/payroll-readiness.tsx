@@ -1,3 +1,4 @@
+import {dateTimeFormatter} from '@/lib/date-time-formatter';
 import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
 import {formatPayPeriodMonth} from '@/lib/hr-date';
@@ -13,7 +14,7 @@ import {PAYROLL_READINESS_HREF,type GroupStatus,type PayrollItem,type PayrollIte
  * otherwise a link to the owner's page. Status is always words beside its colour. */
 
 /** An HR calendar date (yyyy-mm-dd) is a day, not an instant: format it as UTC so no offset moves it. */
-const hrDay=(locale:string,iso:string)=>new Intl.DateTimeFormat(locale,{day:'numeric',month:'short',timeZone:'UTC'}).format(new Date(`${iso}T00:00:00Z`));
+const hrDay=(locale:string,iso:string)=>dateTimeFormatter(locale,{day:'numeric',month:'short',timeZone:'UTC'}).format(new Date(`${iso}T00:00:00Z`));
 const LINK='inline-flex min-h-9 flex-none items-center justify-center rounded-md px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11';
 const PILL='inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium before:size-1.5 before:rounded-full before:bg-current';
 const TONE:Readonly<Record<GroupStatus|'check',string>>={done:'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300',todo:'bg-amber-500/10 text-amber-800 dark:text-amber-300',

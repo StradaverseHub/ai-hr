@@ -1,3 +1,4 @@
+import {dateTimeFormatter} from '@/lib/date-time-formatter';
 import {Suspense,type ReactNode} from 'react';
 import {getLocale,getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
@@ -34,9 +35,9 @@ export async function TodayPage({session,scopeIds,employmentId,notice,more,needs
 }){
  const [t,locale]=await Promise.all([getTranslations('today'),getLocale()]);
  const audience=todayAudience(session),today=todayInKualaLumpur(now);
- const hour=Number(new Intl.DateTimeFormat('en-GB',{hour:'2-digit',hourCycle:'h23',timeZone:HR_LOCAL_TZ}).format(now));
+ const hour=Number(dateTimeFormatter('en-GB',{hour:'2-digit',hourCycle:'h23',timeZone:HR_LOCAL_TZ}).format(now));
  const greeting=t(greetingFor(hour));
- const dateLine=new Intl.DateTimeFormat(locale,{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${today}T00:00:00Z`));
+ const dateLine=dateTimeFormatter(locale,{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${today}T00:00:00Z`));
  const common={session,scopeIds,audience,today,locale};
  const admin=audience.layout==='administrator';
  return <div data-today={audience.layout} className="mx-auto w-full max-w-[72rem] min-w-0 space-y-8">
