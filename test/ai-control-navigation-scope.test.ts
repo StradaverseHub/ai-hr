@@ -28,7 +28,7 @@ it('keeps the full native pause-policy audience with bounded visibility candidat
  const context=(u:typeof users[number]):SessionContext=>({...base,userId:u.id,personId:u.personId,roles:[u.role],grants:[{role:u.role,companyId:u.companyId}]});
  await setModule(b.tenantId,'assistant','active');await setModule(foreign.tenantId,'assistant','active');
  await setAiFeature(base,'hr_assistant',true);await setAiFeature(foreignAdmin,'hr_assistant',true);
- const [installed]=await owner.client`select pg_get_functiondef(oid)as ddl,to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app._ai_control_context(text,boolean)'::regprocedure`;
+ const [installed]=await owner.client<{ddl:string;attributes:Record<string,unknown>}[]>`select pg_get_functiondef(oid)as ddl,to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid='app._ai_control_context(text,boolean)'::regprocedure`;
  const statement="SELECT coalesce(array_agg(c.id ORDER BY c.id),'{}') INTO company_ids FROM company c WHERE c.tenant_id=tid AND(app.is_admin_for(c.id) OR EXISTS(SELECT 1 FROM employment e WHERE e.tenant_id=tid AND e.company_id=c.id AND app.can_see_employment(e.id)));";
  const optimized=`WITH navigation_visible AS MATERIALIZED(SELECT unnest(app.visible_employment_ids())AS id)
  SELECT coalesce(array_agg(c.id ORDER BY c.id),'{}') INTO company_ids FROM company c WHERE c.tenant_id=tid
