@@ -17,11 +17,11 @@ export async function waitForRealReadyClock(ready,{now=()=>Date.now(),sleep=ms=>
  const at=Date.parse(ready?.readyAt),start=now();assert(Number.isFinite(at)&&at-start<=2000,'Cross-host clock gap exceeds bounded real wait');
  while(now()<at){assert(now()-start<=2100,'Real clock wait exceeded bound');await sleep(Math.min(10,Math.max(1,at-now())));}
 }
-export async function driveNormalCleanup({channel,grant,arrival,checksum,frozen,save,now=()=>Date.now(),wait=waitForRealReadyClock}){
+export async function driveNormalCleanup({channel,grant,arrival,checksum,frozen,save,authorizeGrant,now=()=>Date.now(),wait=waitForRealReadyClock}){
  try{
-  const raw=await channel.frames.next();await wait(raw);const ready=validateReady(raw,grant,{now:now()});save('cleanup-session-ready.json',ready);frozen();
+  const raw=await channel.frames.next();await wait(raw);const ready=validateReady(raw,grant,{now:now(),authorizeGrant});save('cleanup-session-ready.json',ready);frozen();
   const output=await checksum(),checkedAt=new Date(now()).toISOString();save('cleanup-fresh-source-arrival.json',{source:grant.source,output,checkedAt,checksum:true});frozen();
-  const proof=createCleanupRequest(grant,{output,checkedAt,arrival}),commit=createCommit(ready,proof,grant);save('cleanup-session-commit.json',commit);
+  const proof=createCleanupRequest(grant,{output,checkedAt,arrival},{now:now(),authorize:authorizeGrant}),commit=createCommit(ready,proof,grant,{now:now(),authorizeGrant});save('cleanup-session-commit.json',commit);
   channel.stdin.end(installJson(commit)+'\n');
   const message=await channel.frames.next();assert(message&&Object.keys(message).sort().join(',')==='format,kind,result'&&message.format===1&&message.kind===RESULT_KIND,'Exact normal cleanup result marker required');
   await channel.success();save('cleanup-session-stderr.json',{stderr:channel.stderr()});frozen();return message.result;

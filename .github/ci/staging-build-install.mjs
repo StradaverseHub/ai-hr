@@ -18,6 +18,8 @@ import {validateInstallGrant,installJson,installHash} from './ci-install-grant.m
 import {inspectCiBuildPacket} from './build-artifact.mjs';
 import {assertBuildRuntime,assertBuildDotenvCompileKeys,assertBuildCapacityProfile} from './build-production.mjs';
 import {guardServerCli,COORDINATOR} from '../../scripts/staging/lease.mjs';
+import {assertEntraRecoveryAuthorization} from './entra-precleanup-authorization.mjs';
+import {assertEntraPrecleanupInventory} from './entra-precleanup-inventory.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 // Hashing or unpacking the ~850 MB build bundle on the 4 GB staging host exceeded 120 s under host load (wave 1b,
 // 29 Oct 2026). Each call stays well inside release.ts's 60-minute deploy deadline, even across the three verifications.
@@ -69,8 +71,9 @@ function targetRoot(source=ROOT){
  source=resolve(source);assert(source==='/opt/ai-hr'&&realpathSync(source)===source&&process.platform==='linux','Installer is restricted to the existing Linux alpha/staging source');
  return source;
 }
-function selected(installId,sourceRef,buildRecordId,{allowCleanup=false}={}){
- const p=readPrivateInstall(installId,{allowCleanup});
+function selected(installId,sourceRef,buildRecordId,{allowCleanup=false,authorizeGrant}={}){
+ const p=readPrivateInstall(installId,{allowCleanup,allowExpired:authorizeGrant!==undefined});
+ authorizeGrant?.(p.grant);
  assert(p.grant.source===sourceRef&&p.grant.build.buildRecordId===buildRecordId,'Selected source/record differs from installation grant');
  return p;
 }
@@ -122,7 +125,7 @@ function compiledContract(next,testing,prepared){
  assert(config.config.typescript.ignoreBuildErrors!==true&&config.config.experimental.useTypeScriptCli===true&&config.config.typescript.tsconfigPath==='tsconfig.build.json','CI application compiler contract differs');
 }
 function verifyDirectory(source,p,{active=false,records=p.packet}={}){
- const output=execFileSync('python3',[join(ROOT,'.github/ci/build-bundle.py'),active?'verify-active-directory':'verify-directory',active?join(source,'.next'):p.next,join(records,'bytes/build-bundle-files.json'),source,p.grant.build.buildSourcePath],{stdio:active?'pipe':'inherit',encoding:active?'utf8':undefined,timeout:BUNDLE_PYTHON_TIMEOUT_MS,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
+ const output=execFileSync('python3',[join(source,'.github/ci/build-bundle.py'),active?'verify-active-directory':'verify-directory',active?join(source,'.next'):p.next,join(records,'bytes/build-bundle-files.json'),source,p.grant.build.buildSourcePath],{stdio:active?'pipe':'inherit',encoding:active?'utf8':undefined,timeout:BUNDLE_PYTHON_TIMEOUT_MS,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
  if(!active)return undefined;
  const inventory=JSON.parse(output);assert(inventory.format===2,'Current compiled inventory format required');assertBuildCapacityProfile(inventory.capacityProfile);return inventory;
 }
@@ -190,8 +193,8 @@ export async function activateCiBuild(sourceRef,installId,buildRecordId){
   bootIdSha256:installHash(readFileSync('/proc/sys/kernel/random/boot_id')),activatedAt:new Date().toISOString(),releaseAuthorized:false,activeServiceVerified:false};
  save(join(p.directory,'activated.json'),result);return result;
 }
-async function confirmRuntime(sourceRef,installId,buildRecordId,{persist=true,allowCleanup=false}={}){
- const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId,{allowCleanup}),g=p.grant;
+async function confirmRuntime(sourceRef,installId,buildRecordId,{persist=true,allowCleanup=false,authorizeGrant}={}){
+ const source=targetRoot(authorizeGrant ? '/opt/ai-hr' : undefined),p=selected(installId,sourceRef,buildRecordId,{allowCleanup,authorizeGrant}),g=p.grant;
  const activated=JSON.parse(regular(join(p.directory,'activated.json'),1024**2));
  assert(activated.installId===installId&&activated.source===sourceRef&&activated.buildRecordId===buildRecordId&&activated.authorizationSha256===p.authorizationSha256,'Activated installation differs');
  runtimeContract(source,g);const bound=await sourceContract(source,p);
@@ -272,34 +275,41 @@ export function retainNormalCleanupAudit(p,activated){
  for(const folder of [join(p.directory,'audit/bytes'),join(p.directory,'audit'),p.directory]){const fd=openSync(folder,'r');try{fsyncSync(fd);}finally{closeSync(fd);}}
 }
 
-export async function cleanupCiBuildSession(sourceRef,installId,buildRecordId){
- const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId),g=p.grant;
+export async function cleanupCiBuildSession(sourceRef,installId,buildRecordId,recovery){
+ const authorizeGrant=recovery===undefined ? undefined : (grant, options={})=>{
+  guardServerCli(sourceRef);
+  const lease={batch:process.env.AIHR_STAGING_BATCH,epoch:process.env.AIHR_STAGING_EPOCH};
+  assertEntraRecoveryAuthorization(recovery.certificate,{grant,lease,evidence:recovery.evidence,now:options.now});
+ };
+ const source=targetRoot(authorizeGrant ? '/opt/ai-hr' : undefined);
+ const p=selected(installId,sourceRef,buildRecordId,{authorizeGrant}),g=p.grant;
  assert(!existsSync(join(p.directory,'cleanup-authorized.json'))&&!existsSync(join(p.directory,'normal-cleanup-consumed.json')),'Prior cleanup attempt requires explicit recovery');
  return withNormalCleanupLock(p.directory,{source:sourceRef,installId,pid:process.pid},async()=>{
   assert(!existsSync(join(p.directory,'cleanup-authorized.json'))&&!existsSync(join(p.directory,'normal-cleanup-consumed.json')),'Concurrent cleanup attempt requires explicit recovery');
+  if(authorizeGrant)assertEntraPrecleanupInventory(p.directory);
   const activated=JSON.parse(regular(join(p.directory,'activated.json'),1024**2));
   const official=await import(pathToFileURL(join(source,'scripts/improve/release.ts')).href),exclude=canonicalSourceExclusions((official.deploymentRsyncArgs??official.default?.deploymentRsyncArgs)(source));
   let expectedAuthority=null;
   const recordNames=['authorization.json','store.json','verified.json','activated.json','audit/system-testing.json','audit/successful-build.json','audit/build-provenance.json','audit/bytes/build-bundle-files.json'];
   const show=name=>execFileSync('systemctl',['show','aihr','--property='+name,'--value'],{encoding:'utf8',timeout:3000}).trim();
   const fences=()=>captureNormalCleanupFences({source,p,activated,exclude,recordNames,ports:{
-   authority:async()=>{const current=selected(installId,sourceRef,buildRecordId);assert(current.authorizationSha256===p.authorizationSha256,'Original grant changed');if(expectedAuthority)assert(regular(join(p.directory,'cleanup-authorized.json'),32768).equals(Buffer.from(installJson(expectedAuthority)+'\n')),'Cleanup authority changed');},
+   authority:async()=>{const current=selected(installId,sourceRef,buildRecordId,{allowCleanup:expectedAuthority!==null,authorizeGrant});assert(current.authorizationSha256===p.authorizationSha256,'Original grant changed');if(expectedAuthority)assert(regular(join(p.directory,'cleanup-authorized.json'),32768).equals(Buffer.from(installJson(expectedAuthority)+'\n')),'Cleanup authority changed');},
    lease:async()=>guardServerCli(sourceRef),leaseIdentity:async()=>({batch:process.env.AIHR_STAGING_BATCH,epoch:process.env.AIHR_STAGING_EPOCH}),
    runtime:async()=>{runtimeContract(source,g);assert(buildId(join(source,'.next'))===g.build.nextBuildId,'Active build changed');},
    service:async()=>({pid:show('MainPID'),started:show('ExecMainStartTimestampMonotonic'),active:execFileSync('systemctl',['is-active','aihr'],{encoding:'utf8',timeout:3000}).trim()==='active'}),
    boot:async()=>installHash(readFileSync('/proc/sys/kernel/random/boot_id')),environment:async()=>fingerprintStagingEnvironment(source),ledger:async()=>collectMigrationLedger(source),
    health:async()=>{const response=await fetch('http://127.0.0.1:'+(process.env.PORT??'3000')+'/health',{redirect:'manual',signal:AbortSignal.timeout(3000)});await response.arrayBuffer();return response.status;}
   }});
-  const {cleanup,runtime}=await runNormalCleanupSession({grant:g,
+  const {cleanup,runtime}=await runNormalCleanupSession({grant:g,authorizeGrant,
    retainAudit:async()=>{retainNormalCleanupAudit(p,activated);for(const folder of [join(p.directory,'audit/bytes'),join(p.directory,'audit'),p.directory]){const fd=openSync(folder,'r');try{fsyncSync(fd);}finally{closeSync(fd);}}},
-   audit:()=>confirmRuntime(sourceRef,installId,buildRecordId,{persist:false,allowCleanup:true}),fences,
+   audit:()=>confirmRuntime(sourceRef,installId,buildRecordId,{persist:false,allowCleanup:true,authorizeGrant}),fences,
    persist:async(name,value)=>durableCleanupRecord(join(p.directory,'normal-cleanup-'+name+'.json'),value),
    consume:async ready=>durableCleanupRecord(join(p.directory,'normal-cleanup-consumed.json'),{kind:'NORMAL_CLEANUP_NONCE_CONSUMED',readySha256:installHash(installJson(ready))}),
    authorize:async request=>{
  const authority=normalCleanupAuthority(source,p,activated,request);
  durableCleanupRecord(join(p.directory,'cleanup-authorized.json'),authority);expectedAuthority=authority;
    },
-   removeOwned:async()=>JSON.parse(execFileSync('python3',[join(ROOT,'.github/ci/cleanup-install.py'),p.directory],{encoding:'utf8',timeout:120000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}})),
+   removeOwned:async()=>JSON.parse(execFileSync('python3',[join(source,'.github/ci/cleanup-install.py'),p.directory],{encoding:'utf8',timeout:120000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}})),
    io:{ready:async ready=>{process.stdout.write(installJson(ready)+'\n');},commit:()=>readSingleCleanupCommit(process.stdin)}});
   assert(cleanup.kind==='OWNED_INSTALL_BYTES_ABSENT_AUDIT_RETAINED'&&cleanup.authorizationSha256===p.authorizationSha256&&cleanup.source===sourceRef&&cleanup.installId===installId&&cleanup.nextBuildId===g.build.nextBuildId&&cleanup.auditEvidenceRetained===true&&isDeepStrictEqual(cleanup.verifiedAbsent,['next','packet']),'Owned cleanup result differs');
   return {format:1,kind:RESULT_KIND,result:{format:1,kind:'CI_INSTALL_OWNED_CLEANUP_AND_FINAL_RUNTIME_VERIFIED',source:sourceRef,installId,buildRecordId,nextBuildId:g.build.nextBuildId,authorizationSha256:p.authorizationSha256,cleanup,runtime,ownedResourceCleanupVerified:true,releaseHandbackVerified:false}};

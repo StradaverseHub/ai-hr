@@ -1040,7 +1040,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          node --import tsx --test .github/ci/normal-cleanup-session.test.mjs .github/ci/normal-cleanup-io.test.mjs .github/ci/normal-cleanup-operator.test.mjs .github/ci/staging-cleanup-protocol.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs 2>&1 | tee "$RUNNER_TEMP/normal-cleanup-controls.log"
+          node --import tsx --test .github/ci/entra-precleanup-inventory.test.mjs .github/ci/normal-cleanup-session.test.mjs .github/ci/normal-cleanup-io.test.mjs .github/ci/normal-cleanup-operator.test.mjs .github/ci/staging-cleanup-protocol.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs 2>&1 | tee "$RUNNER_TEMP/normal-cleanup-controls.log"
           python3 .github/ci/cleanup-install.test.py 2>&1 | tee "$RUNNER_TEMP/normal-cleanup-engine.log"
           git diff --exit-code
       - if: always()
