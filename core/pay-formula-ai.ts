@@ -34,7 +34,7 @@ export async function draftPayFormula(ctx: SessionContext, input: unknown) {
     expected = draftInputDigest(task.args);
     const result = adjudicatePayFormulaDraft(await generateDraft(task.configuration, task.args));
     // No employee reads, payroll writes, formula save, activation or link operation.
-    if (result.source && (result.valid || result.unresolved)) await validatePayFormulaDraft(ctx, result.unresolved ? payFormulaSuggestionSource(result.source).surrogate : result.source);
+    if (result.source) await validatePayFormulaDraft(ctx, result.unresolved ? payFormulaSuggestionSource(result.source).surrogate : result.source);
     else await withTenant(ctx, tx => author(tx));
     return result;
   } finally { task.dispose(); }
