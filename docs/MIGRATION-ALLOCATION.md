@@ -1,5 +1,29 @@
 # Coordinated migration reservations
 
+## Necessary AI pause company discovery — 5 November 2026 (unapplied)
+
+`codex/performance-ai-pause-purpose-context-20261105` reserves
+`2138_ai_pause_company_discovery`, idx1391 / when1793330001538 /
+SHA256 `bc44d218c30fcaa1db8a2f92e661be228cc4638fdfeb4280be0cacef388e5574`.
+Fresh scan covers2396 heads,439 committed journals,602 migration trees and231 readable
+worktrees through2137 / idx1390 / when1793330001537. Foreign malformed WIP and literal
+claims remain untouched. Fresh read-only staging inspection matches671 ordered canonical
+identities through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e. Both existing
+control routines retain the same ai_hr_owner definer owner; the append preserves that owner.
+
+Native reversible experiment41921332862 preserved150 company-pause audience outcomes,
+live grant/reporting/archive/foreign-principal controls, omitted-default semantics and
+a company pause published while a reader waited on the native barrier. All originals were
+restored and the temporary helper removed; zero model runs occurred. For150 unpaused
+checks,2137ms became393ms (warm361ms), returning2112ms after restoration. Disabled-company
+checks retained the full original discovery and similar timing. These are component
+measurements, not500-user capacity. The new private helper is the single control-context
+owner: ordinary context/admission calls request full scope; Boolean pause checks skip
+company discovery only when no company policy can deny them, decided under the unchanged
+lock. Predecessor/default/owner drift refuses; no permissions, provider access or writer
+locks expand. Installed native, ownership, populated-upgrade and browser/load qualification
+remain required. Complete BOARD roles is excluded; no deployment is authorized.
+
 ## Home peer proof batching — 5 November 2026 (unapplied)
 
 `codex/performance-home-cohort-batch-migration-20261105` reserves

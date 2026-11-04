@@ -103,7 +103,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    TAIL.map(row=>({hash:hash(readFileSync('db/migrations/'+row.tag+'.sql')),created_at:String(row.when)})));
   expect(await native()).toEqual(upgradeNative);
   const afterPrivileges=await privileges();
-  const privateFunctions=['app._access_workforce_list_rows(uuid[])','app._assistant_assigned_index_login(uuid,boolean)'];
+  const privateFunctions=['app._ai_control_context_for_purpose(text,boolean,boolean)','app._access_workforce_list_rows(uuid[])','app._assistant_assigned_index_login(uuid,boolean)'];
   const addedFunctions=[...privateFunctions,'app.access_profile_policy_read_lock()','app.access_workforce_list_facts()','app.access_workforce_list_rows_for_ids(uuid[])','app.attendance_frozen_actor_identity_keys(jsonb,text)','app.delegated_approval_subjects(uuid[],text,text)','app.may_have_attendance_task_metadata()'].sort();
   const beforeFunctions=new Set(beforePrivileges.functions.map(row=>row.fn));
   expect(afterPrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
@@ -130,7 +130,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const isClaimPolicy=(row:(typeof beforePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='claim_request'&&row.policyname==='claim_request_rls';
   expect(beforePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[0]);
   expect(afterPrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[1]);
-  // The eight helpers remain the only new functions, both shared owners private. Every prior
+  // The nine helpers remain the only new functions, with three shared owners private. Every prior
   // ACL/table/column/policy field still matches, except the exact Claim USING expression above.
   expect({...afterPrivileges,functions:afterPrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
    policies:afterPrivileges.policies.map(row=>isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:row)}).toEqual(beforePrivileges);

@@ -4789,6 +4789,13 @@
       "when": 1793330001537,
       "tag": "2137_home_peer_cohort_batch",
       "breakpoints": true
+    },
+    {
+      "idx": 1391,
+      "version": "7",
+      "when": 1793330001538,
+      "tag": "2138_ai_pause_company_discovery",
+      "breakpoints": true
     }
   ]
 }
