@@ -24054,6 +24054,7 @@
       }
     },
     "policyGrids": {
+      "validation": {"missing": "{row} · {column}: enter the missing value or grade.", "number": "{row} · {column}: enter a value within the permitted range.", "precision": "{row} · {column}: enter a non-negative number with at most {decimals} decimal places.", "positive": "{row} · Minimum: enter a value greater than zero.", "salaryOrder": "{row} · {column}: must be greater than {previous}.", "bonusOrder": "{row} · {column}: bonus months must be greater than {previous}.", "zero": "{row} · UA: must be 0.", "grade": "{row} · {column}: use a supported grade or segment; grade 23 has no salary range.", "duplicate": "{row}: remove the duplicate grade or segment."},
       "ranges": "Salary ranges (MYR)",
       "bonusMatrix": "Bonus months by grade",
       "branchFactors": "Branch factors",
@@ -32475,6 +32476,8 @@
     "verifiedOf": "{verified} of {total} verified",
     "cancelled": "Cancelled",
     "create": {
+      "completeBeforeCreate": "Before you can create this review",
+      "blocked": {"year": "Enter a reward year from 2000 to 2200.", "snapshotMissing": "Select the snapshot date.", "snapshotFuture": "The snapshot date must be today or earlier.", "cycleName": "Enter a name for the new review cycle (up to 160 characters).", "company": "Select an available company for this reward year.", "businessUnit": "This company has no current business unit assignment. Set it up in People Management, then refresh this page.", "conflict": "More than one shared configuration covers this company and business unit for the selected year. Group Rewards must resolve the overlapping assignments.", "policyUnavailable": "The assigned shared configuration cannot be loaded. Refresh this page or ask Group Rewards to check its saved version."},
       "defaultName": "{year} Annual Compensation Review",
       "effectiveHelp": "Reward year is the performance year being rewarded; the salary effective date comes from the review settings."
     },
@@ -32743,7 +32746,7 @@
     "pendingPreview": "This whole request will stay Pending until an independent Group Rewards user approves it.",
     "immediateSaved": "Applied – no second approval required",
     "pendingSaved": "Pending – existing access remains unchanged.",
-    "proposalScope": "GR and CTRO manage their assigned reviews. CEOs may request dated proxies covering their own seat; PBPs may request their own view access.",
+    "proposalScope": "Group Rewards, HR Admin and CTRO apply changes directly within their authorised scope; no second approval is required. CEO proxy requests and PBP requests for their own view access wait for Group Rewards review. Every request and applied change is recorded in the audit log.",
     "scopeExplanation": "Effective Rewards assignments and scoped HR administrator authority determine access; a platform role alone does not grant every action."
   },
   "emailDesign": {

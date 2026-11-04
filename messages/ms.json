@@ -24054,6 +24054,7 @@
       }
     },
     "policyGrids": {
+      "validation": {"missing": "{row} · {column}: isi nilai atau gred yang tiada.", "number": "{row} · {column}: masukkan nilai dalam julat dibenarkan.", "precision": "{row} · {column}: masukkan nombor bukan negatif dengan maksimum {decimals} tempat perpuluhan.", "positive": "{row} · Minimum: masukkan nilai melebihi sifar.", "salaryOrder": "{row} · {column}: mesti melebihi {previous}.", "bonusOrder": "{row} · {column}: bulan bonus mesti melebihi {previous}.", "zero": "{row} · UA: mesti 0.", "grade": "{row} · {column}: gunakan gred atau segmen yang sah; gred 23 tiada julat gaji.", "duplicate": "{row}: buang gred atau segmen pendua."},
       "ranges": "Julat gaji (MYR)",
       "bonusMatrix": "Bulan bonus mengikut gred",
       "branchFactors": "Faktor cawangan",
@@ -32475,6 +32476,8 @@
     "verifiedOf": "{verified} daripada {total} disahkan",
     "cancelled": "Dibatalkan",
     "create": {
+      "completeBeforeCreate": "Lengkapkan sebelum mencipta semakan ini",
+      "blocked": {"year": "Masukkan tahun ganjaran dari 2000 hingga 2200.", "snapshotMissing": "Pilih tarikh petikan data.", "snapshotFuture": "Tarikh petikan mestilah hari ini atau lebih awal.", "cycleName": "Masukkan nama kitaran semakan baharu (sehingga 160 aksara).", "company": "Pilih syarikat yang tersedia untuk tahun ganjaran ini.", "businessUnit": "Syarikat ini tiada tugasan unit perniagaan semasa. Tetapkan dalam Pengurusan Pekerja, kemudian muat semula halaman ini.", "conflict": "Lebih daripada satu konfigurasi dikongsi meliputi syarikat dan unit ini bagi tahun dipilih. Group Rewards perlu menyelesaikan pertindihan.", "policyUnavailable": "Konfigurasi dikongsi yang ditetapkan tidak dapat dimuatkan. Muat semula halaman atau minta Group Rewards menyemak versi tersimpan."},
       "defaultName": "Semakan Pampasan Tahunan {year}",
       "effectiveHelp": "Tahun ganjaran ialah tahun prestasi yang diberi ganjaran; tarikh gaji berkuat kuasa diambil daripada tetapan semakan."
     },
@@ -32743,7 +32746,7 @@
     "pendingPreview": "Seluruh permintaan ini kekal Menunggu sehingga pengguna Group Rewards yang bebas meluluskannya.",
     "immediateSaved": "Digunakan – tiada kelulusan kedua diperlukan",
     "pendingSaved": "Menunggu – akses sedia ada tidak berubah.",
-    "proposalScope": "GR dan CTRO mengurus semakan yang ditugaskan. CEO boleh meminta proksi bertarikh bagi peranan sendiri; PBP boleh meminta akses paparan sendiri.",
+    "proposalScope": "Group Rewards, HR Admin dan CTRO melaksanakan perubahan terus dalam skop kuasa mereka; kelulusan kedua tidak diperlukan. Permintaan proksi CEO dan permintaan PBP untuk akses lihat sendiri menunggu semakan Group Rewards. Setiap permintaan dan perubahan direkodkan dalam log audit.",
     "scopeExplanation": "Penugasan Rewards berkuat kuasa dan kuasa pentadbir HR mengikut skop menentukan akses; peranan sistem sahaja tidak memberikan semua tindakan."
   },
   "emailDesign": {
