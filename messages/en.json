@@ -35356,6 +35356,7 @@
       "failed": "Email delivery failed. Review the email delivery log before retrying.",
       "skipped": "No reset email was sent. Review account eligibility and rate limits.",
       "uncertain": "Delivery could not be confirmed. Check the email delivery log before retrying."
-    }
+    },
+    "confirmPassword": "Confirm manually entered password"
   }
 }

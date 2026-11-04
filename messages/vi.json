@@ -35356,6 +35356,7 @@
       "failed": "Gửi email thất bại. Kiểm tra nhật ký trước khi thử lại.",
       "skipped": "Chưa gửi email. Kiểm tra điều kiện tài khoản và giới hạn tần suất.",
       "uncertain": "Chưa xác nhận được kết quả gửi. Kiểm tra nhật ký trước khi thử lại."
-    }
+    },
+    "confirmPassword": "Xác nhận mật khẩu nhập thủ công"
   }
 }

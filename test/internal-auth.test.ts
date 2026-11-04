@@ -69,10 +69,14 @@ describe('first-party authentication with real private storage and existing HR b
     expect(await readSession(signedIn.access_token,true)).toBeNull();
   });
   it('admits a temporary password once and never exposes it in audit or summary',async()=>{
-    await enroll();const ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]},password='A new single use password 529!';
+    const {signedIn}=await enroll();const ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]},password='A new single use password 529!';
     await manageAccount(ctx,base.adminUserId,{type:'temporary-password',reason:'Verified account recovery',password,minutes:30});
-    const login=await startLogin({organization:'alpha',username:'owner',password,native:false});
-    expect(login.step).toBe('mfa');
+    const attempts=await Promise.allSettled([startLogin({organization:'alpha',username:'owner',password,native:false}),startLogin({organization:'alpha',username:'owner',password,native:false})]);
+    expect(attempts.filter(result=>result.status==='fulfilled')).toHaveLength(1);
+    const accepted=attempts.find(result=>result.status==='fulfilled');if(!accepted||accepted.status!=='fulfilled')throw Error('Expected one admitted challenge');
+    const login=accepted.value;expect(login.step).toBe('mfa');
+    const change=await verifyMfa(challenge(login),signedIn.recoveryCodes![0]);expect(change.step).toBe('password');
+    completed(await changeInitialPassword(challenge(change),'New permanent private passphrase 731!'));
     await expect(startLogin({organization:'alpha',username:'owner',password,native:false})).rejects.toMatchObject({code:'invalidLogin'});
     expect(JSON.stringify(await readManagedAccount(ctx,base.adminUserId))).not.toContain(password);
     expect(JSON.stringify(await owner.client`select payload from domain_event where aggregate_id=${base.adminUserId}::uuid`)).not.toContain(password);
@@ -90,18 +94,38 @@ describe('first-party authentication with real private storage and existing HR b
     await writeRecord(client,'email-state',{active:{config:{host:'smtp.invalid'}},revision:'test',drafts:{}},null);
     let text='';await requestRecovery('alpha','owner',async(_relay,mail)=>{text=mail.text;});
     const token=text.match(/#token=([A-Za-z0-9_-]{43})/)![1];
+    const before=(await credentialByLogin('alpha','owner'))!;
+    await expect(completeRecovery(token,final,'')).rejects.toMatchObject({code:'passwordPolicy'});
+    expect(await readRecord(client,`recovery-exemption:${before.subject}`)).not.toBeNull();
     await completeRecovery(token,'Recovered new private passphrase 636!','');
     const c=(await credentialByLogin('alpha','owner'))!;
     expect(await readRecord(client,`recovery-exemption:${c.subject}`)).toBeNull();
     await expect(completeRecovery(token,'Another unused private passphrase 637!','')).rejects.toMatchObject({code:'invalidChallenge'});
     expect((await startLogin({organization:'alpha',username:'owner',password:'Recovered new private passphrase 636!',native:false})).step).toBe('mfa');
   });
-  it('denies unlinked account management to company HR and rejects cross-tenant targets',async()=>{
+  it('denies unlinked account management to company HR and rejects unknown targets',async()=>{
     await enroll();const ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:base.companyId}]};
     await expect(manageAccount(ctx,base.adminUserId,{type:'suspend',reason:'Unauthorized scoped action'})).rejects.toThrow();
     const group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
     await expect(manageAccount(group,randomUUID(),{type:'suspend',reason:'Unknown target account'})).rejects.toThrow('forbidden');
     expect((await credentialByLogin('alpha','owner'))?.suspended).not.toBe(true);
+  });
+  it('limits delegated HR to accounts wholly within their administered companies and protects group admins',async()=>{
+    await enroll();const group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
+    const employee=await hireEmployee(group,{person:{fullName:'Scoped account',primaryEmail:'scoped@example.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+    const userId=await createManualAccount(group,{id:randomUUID(),personId:employee.personId,username:'scoped.user',email:'scoped@example.test',role:'employee',companyId:null,password:temp,ownershipAttested:true});
+    await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,base.adminUserId));
+    await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:base.adminUserId,role:'hr_admin',companyId:base.companyId});
+    const scoped={...adminCtx(base),grants:[{role:'hr_admin',companyId:base.companyId}]};
+    await manageAccount(scoped,userId,{type:'suspend',reason:'Verified scoped suspension'});
+    await manageAccount(scoped,userId,{type:'reactivate',reason:'Verified scoped restoration'});
+    await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:userId,role:'hr_admin',companyId:null});
+    await expect(manageAccount(scoped,userId,{type:'suspend',reason:'Forbidden group admin suspension'})).rejects.toThrow('forbidden');
+    await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,userId));
+    const [outside]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Outside scope'}).returning({id:schema.company.id});
+    await owner.db.insert(schema.employment).values({tenantId:base.tenantId,personId:employee.personId,companyId:outside.id,hiredOn:todayInKualaLumpur()});
+    await expect(manageAccount(scoped,userId,{type:'suspend',reason:'Forbidden mixed-company account'})).rejects.toThrow('forbidden');
+    expect((await credentialByLogin('alpha','scoped.user'))?.suspended).toBe(false);
   });
   it('requires password change and confirmed MFA before granting any browser or API session', async () => {
     const externalHttp = vi.fn(async () => { throw new Error('External HTTP is blocked in this on-prem fixture.'); });
