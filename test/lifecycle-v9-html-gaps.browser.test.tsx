@@ -25,6 +25,30 @@ function contrast(a:string,b:string) {
  const luminance=(s:string)=>{const rgb=s.match(/[\d.]+/g)!.slice(0,3).map(Number).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;};
  const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);
 }
+/**
+ * Give a native button the browser's keyboard focus, then press a key on it.
+ *
+ * Firefox activates a button from the keyboard only while it is the focus manager's focused element, which `:focus`
+ * reflects. In the CI browser unit two test files run at once in separate Playwright pages (windows) of one Firefox,
+ * and Playwright's Firefox backend raises a page's window for each of its mouse actions. A raise in the other file
+ * lowers this window: the button blurs and stops matching `:focus` while `document.activeElement` still names it, so
+ * `focus()` is a no-op and the key reaches the button without activating it (release run 41773236616; diagnostic
+ * runs 41779024521, 41779032219 and 41779039571 recorded that blur within 60 ms of the other file's `.click()`).
+ * The precondition is therefore `:focus`, re-established with blur() and focus() when lost. A press during which
+ * another window took focus did not exercise this control; it is logged and pressed again. A press on a button that
+ * kept focus is never repeated, so a real keyboard regression still fails the caller's assertion.
+ */
+async function pressWithFocus(button:HTMLElement,key:string,step:string) {
+ for(let attempt=1;attempt<=3;attempt++){
+  await expect.poll(()=>{if(!button.matches(':focus')){button.blur();button.focus();}return document.activeElement===button&&button.matches(':focus');}).toBe(true);
+  let focusTaken=false,activated=false;const taken=()=>{focusTaken=true;},clicked=()=>{activated=true;};
+  button.addEventListener('blur',taken);button.addEventListener('click',clicked);
+  try{await userEvent.keyboard(key);}finally{button.removeEventListener('blur',taken);button.removeEventListener('click',clicked);}
+  if(activated||!focusTaken)return;
+  console.info('V9_KEYBOARD_FOCUS_TAKEN '+JSON.stringify({step,key,attempt}));
+ }
+ throw new Error(`${step}: another browser window took keyboard focus during every press`);
+}
 for(const theme of ['classic','monolith','atelier'] as const)for(const dark of [false,true])for(const mobile of [false,true]) {
  it(`repairs reference details, keyboard sections, notice and duplicate chrome in ${theme} ${dark?'dark':'light'} ${mobile?'mobile':'desktop'}`,async()=>{
   await page.viewport(mobile?390:1512,mobile?844:805);document.documentElement.setAttribute('data-ui-theme',theme);document.documentElement.classList.toggle('dark',dark);
@@ -42,12 +66,12 @@ for(const theme of ['classic','monolith','atelier'] as const)for(const dark of [
    else {for(const rect of [n,d,o]){expect(rect.left).toBeGreaterThanOrEqual(0);expect(rect.right).toBeLessThanOrEqual(391);}expect(d.top).toBeGreaterThan(n.bottom);}
    const rules=screen.getByRole('button',{name:'Assignment rules'}),tasks=screen.getByRole('button',{name:'Tasks'});
    expect(rules.getAttribute('aria-expanded')).toBe('false');expect(tasks.getAttribute('aria-expanded')).toBe('true');
-   rules.focus();await expect.poll(()=>document.activeElement).toBe(rules);await userEvent.keyboard('{Enter}');
+   await pressWithFocus(rules,'{Enter}','open Assignment rules');
    const rulesAtKeyReturn=rules.getAttribute('aria-expanded');await expect.poll(()=>rules.getAttribute('aria-expanded')).toBe('true');expect(screen.getByText(/Population preview/)).toBeVisible();
    console.info('V9_KEYBOARD_COMMIT '+JSON.stringify({theme,dark,mobile,route,atKeyReturn:rulesAtKeyReturn,committed:rules.getAttribute('aria-expanded'),focused:document.activeElement===rules}));
-   tasks.focus();await expect.poll(()=>document.activeElement).toBe(tasks);await userEvent.keyboard(' ');await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('false');expect(screen.queryAllByRole('textbox',{name:'Task name'})).toHaveLength(0);
-   await userEvent.keyboard('{Enter}');await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('true');expect(screen.getAllByRole('textbox',{name:'Task name'}).length).toBeGreaterThan(0);
-   rules.focus();await expect.poll(()=>document.activeElement).toBe(rules);await userEvent.keyboard('{Enter}');await expect.poll(()=>rules.getAttribute('aria-expanded')).toBe('false');
+   await pressWithFocus(tasks,' ','collapse Tasks');await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('false');expect(screen.queryAllByRole('textbox',{name:'Task name'})).toHaveLength(0);
+   await pressWithFocus(tasks,'{Enter}','expand Tasks');await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('true');expect(screen.getAllByRole('textbox',{name:'Task name'}).length).toBeGreaterThan(0);
+   await pressWithFocus(rules,'{Enter}','close Assignment rules');await expect.poll(()=>rules.getAttribute('aria-expanded')).toBe('false');
    console.info('V9_CHECKLIST_GEOMETRY '+JSON.stringify({theme,dark,mobile,route,name:n.toJSON(),duplicate:d.toJSON(),owner:o.toJSON()}));
    // Fictional derived fixture only, never labelled as staging or the reference artifact.
    name.focus();const shot=await page.screenshot({base64:true,path:`../.vitest-attachments/v9-html-gaps-${theme}-${dark?'dark':'light'}-${mobile?'mobile':'desktop'}-${route}.png`,animations:'disabled',scale:'css'});console.info('V9_HTML_GAPS_SCREENSHOT '+JSON.stringify({theme,dark,mobile,route,fixture:'fictional-derived-not-staging',base64:shot.base64}));

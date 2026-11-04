@@ -93,6 +93,18 @@ async function mount(theme:UiTheme,width:number,dark:boolean,longLabels=false){
  if(animations.length)console.info('SYNTHETIC_HEADER_ANIMATION_SETTLED',JSON.stringify({theme,width,box:box(header).toJSON(),animations:animations.map(animation=>({playState:animation.playState,currentTime:animation.currentTime}))}));
  return header;
 }
+/**
+ * Await the header's finite animations, including descendants. A real Playwright click leaves the pressed
+ * control easing back from `active:scale-[0.98]` over 150 ms, and getBoundingClientRect includes that transform:
+ * Firefox measured Account menu at 43.68 px against the 44 px minimum in run 41783311202. The live-dot loop is
+ * infinite and unrelated, so only animations with a finite end are awaited; a transition cancelled by a later
+ * style change has already reached its end value.
+ */
+async function settleHeaderAnimations(header:HTMLElement){
+ const animations=header.getAnimations({subtree:true}).filter(animation=>Number.isFinite(animation.effect?.getComputedTiming().endTime));
+ await Promise.all(animations.map(animation=>animation.finished.catch(error=>{if(!(error instanceof DOMException&&error.name==='AbortError'))throw error;})));
+ await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
+}
 function assertReachableHeader(header:HTMLElement,width:number){
  const company=header.querySelector<HTMLButtonElement>('[data-company-switcher]')!;
  const named=within(header),bell=named.getByRole('button',{name:/^Notifications,/});
@@ -136,7 +148,7 @@ describe('Classic company scope stays reachable when the rail appears',()=>{
   fireEvent.keyDown(document,{key:'Escape'});
   expect(screen.queryByRole('menu',{name:'Account menu'})).toBeNull();
   expect(within(header).getByRole('button',{name:'Account menu'})).toBe(document.activeElement);
-  assertReachableHeader(header,width);
+  await settleHeaderAnimations(header);assertReachableHeader(header,width);
  });
 });
 describe('Classic-only CSS preserves the other shell themes',()=>{

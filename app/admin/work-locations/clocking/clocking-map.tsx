@@ -48,6 +48,24 @@ const SETTLE_MS = 250;
 
 type Status = 'loading' | 'ready' | 'unavailable';
 
+/** The two members of leaflet@1.9.4's Map (pinned exactly in package.json) that a safe teardown needs. */
+type AnimatingMap = Leaflet.Map & { _animatingZoom?: boolean; _onZoomTransitionEnd?: () => void };
+
+/**
+ * TEAR DOWN ONLY A MAP THAT IS NOT MID-ZOOM. Leaflet 1.9.4 ends an animated zoom — this card's opening
+ * fitBounds, a picked search result, the +/- control — from a 250 ms setTimeout that nothing can cancel
+ * (Map._animateZoom, its workaround for WebKit not firing transitionend). `remove()` deletes the map pane but
+ * leaves that timer and the animating flag in place, so unmounting inside the window threw
+ * `undefined is not an object (evaluating 'el._leaflet_pos')` from _onZoomTransitionEnd after the map was
+ * gone (browser (webkit) in run 41780003774). Finishing the zoom first, with the very call Leaflet makes on
+ * transitionend, leaves the pending timer nothing to do.
+ */
+function removeMap(map: Leaflet.Map) {
+  const animating = map as AnimatingMap;
+  if (animating._animatingZoom) animating._onZoomTransitionEnd?.();
+  map.remove();
+}
+
 export function ClockingMap({ provider }: { provider: MapProvider }) {
   const t = useTranslations('admin.locations');
   const hostRef = useRef<HTMLDivElement>(null);
@@ -228,7 +246,7 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
     return () => {
       cancelled = true;
       detach?.();
-      mapRef.current?.remove();
+      if (mapRef.current) removeMap(mapRef.current);
       mapRef.current = null;
       tileRef.current = null;
     };
