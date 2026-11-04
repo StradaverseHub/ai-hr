@@ -47,6 +47,7 @@ it('keeps the exact uncapped actionable queue while reducing repeated administra
   const day=new Date(today+'T00:00:00Z');day.setUTCDate(day.getUTCDate()-index);
   const {correctionId}=await requestAttendanceCorrection(self,{employmentId:subject.employmentId,date:day.toISOString().slice(0,10),checkIn:'09:00',checkOut:'18:00',reason:'PRIVATE_METADATA_REASON_NOT_FOR_HEADER'});ids.push(correctionId);
  }
+ const fixturePreparationMs=performance.now()-fixtureStarted;
  const expected=await legacyPendingAttendanceTaskMetadata(admin,[b.companyId]);expect(expected).toHaveLength(211);
  expect(new Set(expected.map(row=>row.id))).toEqual(new Set(ids));expect(JSON.stringify(expected)).not.toContain('PRIVATE_METADATA_REASON');
  const audienceChecks:string[]=[];
@@ -62,6 +63,6 @@ it('keeps the exact uncapped actionable queue while reducing repeated administra
   measurements.push({phase,reads:15,elapsedMs:performance.now()-started});
  }
  const control=Math.min(measurements[0].elapsedMs,measurements[3].elapsedMs),candidate=Math.max(measurements[1].elapsedMs,measurements[2].elapsedMs);
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'attendance-task-subject-batch.json'),JSON.stringify({kind:'NATIVE_ATTENDANCE_SUBJECT_BATCH_COMPONENT_ONLY',releaseEligible:false,fixtureRequests:ids.length,fixture:'211 actual native self-submission commands; all triggers and RLS intact',fixturePreparationMs:performance.now()-fixtureStarted,measurements,audienceChecks,exactUncappedDTOOrder:true,privatePayloadOmitted:true,improvementRatio:candidate/control,limitations:'single principal and211requests; not500-usercapacity or wholepage timings'},null,2));
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'attendance-task-subject-batch.json'),JSON.stringify({kind:'NATIVE_ATTENDANCE_SUBJECT_BATCH_COMPONENT_ONLY',releaseEligible:false,fixtureRequests:ids.length,fixture:'211 actual native self-submission commands; all triggers and RLS intact',fixturePreparationMs,measurements,audienceChecks,exactUncappedDTOOrder:true,privatePayloadOmitted:true,improvementRatio:candidate/control,limitations:'single principal and211requests; not500-usercapacity or wholepage timings'},null,2));
  expect(candidate,'Both measured batch phases must improve at least20% over the faster control').toBeLessThan(control*.8);
 },600000);
