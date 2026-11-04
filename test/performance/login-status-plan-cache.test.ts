@@ -11,7 +11,7 @@ beforeAll(migrateTestDb);afterAll(closeAll);
 it('reuses dated login plans while preserving live employment, archive, date and private-call boundaries',async()=>{
  await resetDb();const b=await seedBase();
  const users=Array.from({length:500},(_,i)=>({id:randomUUID(),personId:randomUUID(),employmentId:randomUUID(),i}));
- await owner.client`insert into person(id,tenant_id,full_name) select p::uuid,${b.tenantId}::uuid,'Fictional login plan subject' from unnest(${users.map(u=>u.personId)}::text[])p`;
+ await owner.client`insert into person(id,tenant_id,full_name,primary_email) select p::uuid,${b.tenantId}::uuid,'Fictional login plan subject',p||'@example.invalid' from unnest(${users.map(u=>u.personId)}::text[])p`;
  await owner.client`insert into employment(id,tenant_id,person_id,company_id,hired_on,terminated_on)
   select e::uuid,${b.tenantId}::uuid,p::uuid,${b.companyId}::uuid,'2020-01-01'::date,
    case when n%5=0 then '2025-01-01'::date else null end
