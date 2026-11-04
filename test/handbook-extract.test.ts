@@ -109,7 +109,7 @@ describe('the settings catalogue and the contract',()=>{
   const descriptor=getProviderWorkloadDescriptor('handbook_policy_values_v1')!;
   expect(descriptor.features).toEqual(['hr_assistant']);
   expect(WORKLOAD_DISCLOSURE_FIELDS.handbook_policy_values_v1).toBe('authored_policy_text');
-  expect(providerDataReviewStatus('handbook_policy_values_v1')).toBe('pending');
+  expect(providerDataReviewStatus('handbook_policy_values_v1')).toBe('approved');
   const settings=settingPrompts(CLAIMS,TARGETS).map(row=>({setting:row.setting,meaning:row.meaning,targets:[...row.targets]}));
   const captured=descriptor.capture({text:TEXT,settings});
   expect(JSON.parse((captured.args as {prompt:string}).prompt)).toEqual({settings,policy:TEXT});
