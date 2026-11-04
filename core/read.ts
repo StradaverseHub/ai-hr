@@ -1,3 +1,5 @@
+import {privateSearchHash} from './personnel-private-search';
+import type {PersonnelQualityFlag} from './personnel-quality';
 import {payrollEmploymentPredicate,payrollCompensationEffectiveOn,payrollRunContextsTx,outstandingPaymentPredicate,payrollEmploymentEnd} from '../packs/payroll/service';
 import {settingEnabled} from './entitlements';
 import {assertReviewedPayrollScopeCompanyTx} from './payroll-run-selection';
@@ -373,6 +375,12 @@ export type EmployeeListFilters = {
    *  deriver, so it narrows through employmentStatusSql — the twin pinned equal by
    *  test/personnel-status-sync.test.ts. There is no stored status column to confuse it with (R81). */
   employmentStatuses?: EmploymentStatus[];
+  businessUnitIds?: string[]; parentCompanyIds?: string[]; businessGroupIds?: string[];
+  jobGrades?: string[]; positionIds?: string[]; confirmationState?: 'confirmed'|'unconfirmed';
+  probationEndFrom?: string; probationEndTo?: string; joinedFrom?: string; joinedTo?: string;
+  qualityFlags?: PersonnelQualityFlag[];
+  /** Opaque, principal-bound five-minute result membership; never raw identity text. */
+  privateSearch?: string;
 };
 
 /** The current-assignment join (≤1 row per employment) — shared by every employee-listing query so the
@@ -380,7 +388,8 @@ export type EmployeeListFilters = {
 const currentAssignmentJoin = () =>
   and(
     eq(assignment.employmentId, employment.id),
-    isNull(assignment.validTo),
+    lte(assignment.validFrom,todayInKualaLumpur()),
+    or(isNull(assignment.validTo),gt(assignment.validTo,todayInKualaLumpur())),
     isNull(assignment.supersededAt),
   );
 
@@ -408,17 +417,18 @@ function employeeListWhere(p: EmployeeListFilters, c: EmployeeListColumns = empl
     p.employmentStatuses && p.employmentStatuses.length ? inArray(c.status, p.employmentStatuses) : undefined,
     p.status === 'terminated' ? isNotNull(c.terminatedOn) : p.status === 'active' ? isNull(c.terminatedOn) : undefined,
     p.employmentType ? eq(c.employmentType, p.employmentType) : undefined,
-    q ? sql`(${c.name} ilike ${'%' + q + '%'} or ${c.email} ilike ${'%' + q + '%'} or ${c.employeeCode} ilike ${'%' + q + '%'})` : undefined,
+    q ? sql`(${c.name} ilike ${'%' + q.replace(/[\\%_]/g,'\\$&') + '%'} or ${c.email} ilike ${'%' + q.replace(/[\\%_]/g,'\\$&') + '%'} or ${c.employeeCode} ilike ${'%' + q.replace(/[\\%_]/g,'\\$&') + '%'})` : undefined,
   );
 }
 
 /** The JSON owner declares every field. Query expressions are fixed server source, never a caller's
  * field/table selector. Reuse the exact status/filter owner above; no second interpretation in SQL. */
 const workforceListSource = sql`app.access_workforce_list_rows() as workforce_row(value)`;
+const personnelListSource = (companyIds?:string[],asOf=todayInKualaLumpur()) => sql`app.personnel_filter_rows(${asOf}::date,${companyIds?sql`ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`}) as workforce_row(value)`;
 const workforceListValue = <T>(key: string): SQL<T> => sql<T>`workforce_row.value ->> ${key}`;
 const workforceListDate = (key: string) => sql<string | null>`(${workforceListValue(key)})::date`;
 const workforceListUuid = (key: string) => sql<string>`(${workforceListValue(key)})::uuid`;
-function workforceListColumns(): EmployeeListColumns {
+function workforceListColumns(asOf=todayInKualaLumpur()): EmployeeListColumns {
   const status: EmploymentStatusColumns = {
     finalConfirmationDate: workforceListDate('finalConfirmationDate'), confirmationDate: workforceListDate('confirmationDate'),
     probationEndDate: workforceListDate('probationEndDate'), provisionalEndOn: workforceListDate('provisionalEndOn'),
@@ -429,11 +439,33 @@ function workforceListColumns(): EmployeeListColumns {
     companyId: workforceListUuid('companyId'), departmentId: workforceListUuid('departmentId'),
     employmentType: workforceListValue('employmentType'), terminatedOn: workforceListDate('terminatedOn'),
     name: workforceListValue('name'), email: workforceListValue('email'), employeeCode: workforceListValue('employeeCode'),
-    status: employmentStatusSql(todayInKualaLumpur(), status),
+    status: employmentStatusSql(asOf, status),
   };
 }
 const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns) =>
-  and(p.companyIds?.length === 0 ? sql`false` : undefined, employeeListWhere(p, columns));
+  and(p.companyIds?.length === 0 ? sql`false` : undefined, employeeListWhere(p, columns),
+   p.businessUnitIds?.length?inArray(workforceListUuid('businessUnitId'),p.businessUnitIds):undefined,
+   p.parentCompanyIds?.length?inArray(workforceListUuid('parentCompanyId'),p.parentCompanyIds):undefined,
+   p.businessGroupIds?.length?inArray(workforceListUuid('businessGroupId'),p.businessGroupIds):undefined,
+   p.jobGrades?.length?inArray(workforceListValue<string>('jobGradeCode'),p.jobGrades):undefined,
+   p.positionIds?.length?inArray(workforceListUuid('positionId'),p.positionIds):undefined,
+   p.confirmationState?eq(workforceListValue<string>('confirmationState'),p.confirmationState):undefined,
+   p.joinedFrom?gte(workforceListDate('joinDate'),p.joinedFrom):undefined,
+   p.joinedTo?lte(workforceListDate('joinDate'),p.joinedTo):undefined,
+   p.probationEndFrom?gte(workforceListDate('probationEndDate'),p.probationEndFrom):undefined,
+   p.probationEndTo?lte(workforceListDate('probationEndDate'),p.probationEndTo):undefined,
+   p.qualityFlags?.length?or(...p.qualityFlags.map(flag=>sql`(workforce_row.value->'quality'->>${flag})::boolean is true`)):undefined,
+   p.privateSearch?sql`app.personnel_private_search_matches(${privateSearchHash(p.privateSearch)??''},${workforceListUuid('employmentId')},${columns.companyId},${p.companyIds?sql`ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`})`:undefined);
+
+export type PersonnelCompanyChoice={id:string;name:string;parentCompanyId:string|null;parentCompany:string|null;businessGroupId:string|null;businessGroup:string|null;businessUnitId:string|null;businessUnit:string|null};
+/** Options are resolved before pagination through the current Workforce purpose scope. */
+export function personnelFilterChoices(ctx:SessionContext,companyIds:string[]){return withTenant(ctx,async tx=>{
+ await lockAccessConfigurationTx(tx,ctx.tenantId);const asOf=todayInKualaLumpur();
+ const companies=await tx.execute<PersonnelCompanyChoice>(sql`select * from app.personnel_filter_companies(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${asOf}::date)`);
+ const rows=await tx.selectDistinct({businessUnitId:workforceListUuid('businessUnitId'),businessUnit:workforceListValue<string|null>('businessUnit'),positionId:workforceListUuid('positionId'),position:workforceListValue<string|null>('position')}).from(personnelListSource(companyIds,asOf)).where(workforceListWhere({companyIds},workforceListColumns(asOf)));
+ return {companies:[...companies],rows};
+});}
+
 
 /** Whole authorized Workforce picker population. Do not repurpose the independent payroll/clocking
  * picker or transfer its person/card identifiers into a new grant's screen props. */
@@ -494,9 +526,9 @@ export function countEmployeesByStatus(
   return withTenant(ctx, async (tx) => {
     if (purpose) {
       await lockAccessConfigurationTx(tx, ctx.tenantId);
-      const columns = workforceListColumns();
+      const asOf=todayInKualaLumpur(),columns = workforceListColumns(asOf);
       const rows = await tx.select({ status: columns.status, count: sql<number>`count(distinct ${workforceListUuid('employmentId')})::int` })
-        .from(workforceListSource).where(workforceListWhere(p, columns)).groupBy(sql`1`);
+        .from(personnelListSource(p.companyIds,asOf)).where(workforceListWhere(p, columns)).groupBy(sql`1`);
       const byStatus: Partial<Record<EmploymentStatus, number>> = {};
       let total = 0;
       for (const row of rows) { const count = Number(row.count); byStatus[row.status] = count; total += count; }
@@ -548,14 +580,14 @@ export function listEmployeesPage(
   const read = async (tx: Tx) => {
     if (purpose) {
       await lockAccessConfigurationTx(tx, ctx.tenantId);
-      const columns = workforceListColumns();
+      const asOf=todayInKualaLumpur(),columns = workforceListColumns(asOf);
       const where = workforceListWhere(p, columns);
       const rows = await tx.select({ row: sql<EmployeeListRow>`workforce_row.value` })
-        .from(workforceListSource).where(where)
+        .from(personnelListSource(p.companyIds,asOf)).where(where)
         .orderBy(...(p.sort === 'company' ? [sql`lower(${workforceListValue('company')})`, sql`lower(${columns.name})`] : [columns.name]))
         .limit(p.limit).offset(p.offset);
       const [count] = await tx.select({ count: sql<number>`count(distinct ${workforceListUuid('employmentId')})::int` })
-        .from(workforceListSource).where(where);
+        .from(personnelListSource(p.companyIds,asOf)).where(where);
       return { rows: rows.map(({ row }) => row), total: Number(count.count) };
     }
     const currentAssignment = currentAssignmentJoin();
@@ -588,7 +620,7 @@ export function listEmployeesPage(
         // the row count is unchanged and the count query below needs no edit at all.
         jobGrade: jobGrade.name,
         employmentType: assignment.employmentType,
-        businessUnit: sql<string|null>`coalesce(nullif(trim(${businessUnit.label}), ''), ${businessUnit.code})`,
+        businessUnit: businessUnit.name,
         costCenter: costCenter.name,
         workLocation: location.name,
         joinDate: employment.joinDate,

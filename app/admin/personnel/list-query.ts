@@ -1,3 +1,5 @@
+import {isCalendarDate} from '@/lib/calendar-date';
+import {PERSONNEL_QUALITY_FLAGS,type PersonnelQualityFlag} from '@/core/personnel-quality';
 /**
  * ONE reading of the Personnel listing's query string (feedback 579255c3), shared by the screen
  * (page.tsx) and the Excel export (export/route.ts).
@@ -49,7 +51,16 @@ export type PersonnelSearchParams = {
   bucket?: string;
   /** Explicit column list for the export, comma-separated (lib/employee-columns.columnsFromParam). */
   cols?: string;
+  companies?:string|string[]; bu?:string|string[]; parent?:string|string[]; group?:string|string[];
+  grade?:string|string[]; position?:string|string[]; quality?:string|string[];
+  confirmation?:string; joinedFrom?:string; joinedTo?:string; probationFrom?:string; probationTo?:string;
+  search?:string;
+
 };
+
+const values=(value:string|string[]|undefined)=>{const selected=[...new Set((Array.isArray(value)?value:value?[value]:[]).flatMap(item=>item.split(',')).map(item=>item.trim()).filter(Boolean))];if(selected.length>1000)throw new RangeError('Too many selected filters. Narrow the selection.');return selected;};
+const uuidValues=(value:string|string[]|undefined)=>values(value).filter(item=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item));
+const dateValue=(value:string|undefined)=>typeof value==='string'&&isCalendarDate(value)?value:undefined;
 
 const isBucket = (v: string | undefined): v is EmploymentStatus =>
   !!v && (EMPLOYEE_STATUS_BUCKETS as readonly string[]).includes(v);
@@ -77,10 +88,10 @@ export type PersonnelListQuery = {
  * is the conflation 8ec63139 called out on the leave read.
  */
 export function parsePersonnelListQuery(sp: PersonnelSearchParams): PersonnelListQuery {
-  const q = sp.q?.trim() || undefined;
-  const company = sp.company || undefined;
-  const dept = sp.dept || undefined;
-  const type = sp.type || undefined;
+  const q = typeof sp.q==='string'?sp.q.trim()||undefined:undefined;
+  const company = typeof sp.company==='string'?sp.company||undefined:undefined;
+  const dept = typeof sp.dept==='string'?sp.dept||undefined:undefined;
+  const type = typeof sp.type==='string'?sp.type||undefined:undefined;
   const legacyStatus = sp.status === 'active' || sp.status === 'terminated' ? sp.status : undefined;
   const bucket = isBucket(sp.bucket) ? sp.bucket : undefined;
   const draftOnly = sp.bucket === DRAFT_BUCKET || sp.status === DRAFT_BUCKET;
@@ -92,9 +103,15 @@ export function parsePersonnelListQuery(sp: PersonnelSearchParams): PersonnelLis
     legacyStatus,
     bucket,
     draftOnly,
-    hasFilters: !!(q || company || dept || type || sp.status || sp.bucket),
+    hasFilters: !!(q || company || dept || type || sp.status || sp.bucket || sp.search || [sp.companies,sp.bu,sp.parent,sp.group,sp.grade,sp.position,sp.quality,sp.confirmation,sp.joinedFrom,sp.joinedTo,sp.probationFrom,sp.probationTo].some(value=>Array.isArray(value)?value.length:!!value)),
     filters: {
       q,
+      privateSearch: sp.search&&/^[A-Za-z0-9_-]{43}$/.test(sp.search)?sp.search:sp.search?'invalid':undefined,
+      filterCompanyIds:uuidValues(sp.companies),businessUnitIds:uuidValues(sp.bu),parentCompanyIds:uuidValues(sp.parent),businessGroupIds:uuidValues(sp.group),
+      jobGrades:values(sp.grade).filter(value=>value==='H'||/^(1[2-9]|2[0-3])$/.test(value)),positionIds:uuidValues(sp.position),
+      qualityFlags:values(sp.quality).filter((value):value is PersonnelQualityFlag=>(PERSONNEL_QUALITY_FLAGS as readonly string[]).includes(value)),
+      confirmationState:sp.confirmation==='confirmed'||sp.confirmation==='unconfirmed'?sp.confirmation:undefined,
+      joinedFrom:dateValue(sp.joinedFrom),joinedTo:dateValue(sp.joinedTo),probationEndFrom:dateValue(sp.probationFrom),probationEndTo:dateValue(sp.probationTo),
       companyId: company,
       departmentId: dept,
       status: legacyStatus,
@@ -133,7 +150,8 @@ export function draftMatchesQuery(
   },
   query: PersonnelListQuery,
 ): boolean {
-  if (query.dept || query.type || query.legacyStatus) return false;
+  if (query.dept || query.type || query.legacyStatus || query.filters.privateSearch || query.filters.businessUnitIds?.length || query.filters.parentCompanyIds?.length || query.filters.businessGroupIds?.length || query.filters.jobGrades?.length || query.filters.positionIds?.length || query.filters.qualityFlags?.length || query.filters.confirmationState || query.filters.joinedFrom || query.filters.joinedTo || query.filters.probationEndFrom || query.filters.probationEndTo) return false;
+  if(query.filters.filterCompanyIds?.length&&(!d.companyId||!query.filters.filterCompanyIds.includes(d.companyId)))return false;
   if (query.bucket) return false; // a derived employment bucket can never contain a draft
   if (query.company && d.companyId !== query.company) return false;
   if (query.q) {
@@ -165,4 +183,12 @@ export function draftListScope(
   // selected, not two, and must not read as the whole of a two-company tenant.
   const selected = new Set(scopeIds).size;
   return { companyIds: scopeIds, includeWithoutCompany: selected > 0 && selected >= allowedCount };
+}
+
+/** Every navigation/export path carries the same validated ordinary filter vocabulary. */
+export function personnelQueryParams(sp:PersonnelSearchParams):URLSearchParams{
+ const parsed=parsePersonnelListQuery(sp),f=parsed.filters,out=new URLSearchParams();
+ for(const [key,value] of Object.entries({q:parsed.q,company:parsed.company,dept:parsed.dept,type:parsed.type,status:parsed.legacyStatus,bucket:parsed.draftOnly?'draft':parsed.bucket,search:f.privateSearch,confirmation:f.confirmationState,joinedFrom:f.joinedFrom,joinedTo:f.joinedTo,probationFrom:f.probationEndFrom,probationTo:f.probationEndTo}))if(value)out.set(key,value);
+ for(const [key,value] of Object.entries({companies:f.filterCompanyIds,bu:f.businessUnitIds,parent:f.parentCompanyIds,group:f.businessGroupIds,grade:f.jobGrades,position:f.positionIds,quality:f.qualityFlags}))if(value?.length)out.set(key,value.join(','));
+ return out;
 }
