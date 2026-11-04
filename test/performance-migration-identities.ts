@@ -12,4 +12,5 @@ export const PERFORMANCE_MIGRATION_IDENTITIES = [
  {idx:1387,version:'7',when:1793330001534,tag:'2134_claim_visibility_set_membership',breakpoints:true,hash:'a489a4293bc835003a0c6ee3f77f68d3847c618827949b54d541290563d3f2f6'},
  {idx:1388,version:'7',when:1793330001535,tag:'2135_profile_presentation_read_lock',breakpoints:true,hash:'b05f44a52bce44559088003111d1cc36e734ed01971a3042766909128b2d82fd'},
  {idx:1389,version:'7',when:1793330001536,tag:'2136_grant_admin_role_precheck',breakpoints:true,hash:'c2c67726492e0aa45bb601fe6f0c0e61c54ca39bbfb2658cad476958ced6a027'},
+ {idx:1390,version:'7',when:1793330001537,tag:'2137_home_peer_cohort_batch',breakpoints:true,hash:'25b659236aa53f5dfd268eef64dfbda0315bfdc84aca122463d37cb943555597'},
 ] as const;

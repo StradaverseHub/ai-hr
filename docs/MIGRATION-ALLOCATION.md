@@ -1,5 +1,24 @@
 # Coordinated migration reservations
 
+## Home peer proof batching — 5 November 2026 (unapplied)
+
+`codex/performance-home-cohort-batch-migration-20261105` reserves
+`2137_home_peer_cohort_batch`, idx1390 / when1793330001537 /
+SHA256 `25b659236aa53f5dfd268eef64dfbda0315bfdc84aca122463d37cb943555597`.
+Fresh source scan covers2382 heads,438 committed journals,601 migration trees and231
+readable worktrees through2136 / idx1389 / when1793330001536. Foreign malformed WIP
+and literal claims remain untouched. Fresh read-only staging inspection matches all671
+ordered canonical identities through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e.
+
+Native reversible experiment41913005395 measured1541ms original,201ms candidate,
+201ms warm and1524ms after exact restoration over1005 peers/1006 employments.
+Public Team and Celebrations JSON matched exactly, including person deduplication and
+birthday opt-out. The same dated-company proof now receives at most1000 points per call;
+policy, caller, effective-date checks, ordering, owner, signature and private ACL remain unchanged.
+The append refuses an unexpected predecessor. Installed migration, privacy/revocation,
+populated upgrade and combined browser/load checks remain required. Complete BOARD roles
+is excluded; no deployment is authorized. This is component evidence, not500-user acceptance.
+
 ## Administrator-role necessary precheck — 5 November 2026 (unapplied)
 
 `codex/performance-grant-admin-negative-precheck-20261105` reserves
