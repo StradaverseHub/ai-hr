@@ -54,7 +54,7 @@ export const RECOMMEND_ENTITIES:readonly SemanticEntity[]=freeze([
   meaning:'One registered automated worker: its family, trigger, read scope, declared effect, authority, per-tenant switch, stop switch, last run, and acceptance and reversal rates where they are measurable.',
   module:null,sensitivity:'ordinary',audience:'admin',rls:'administered_scope',
   owners:['core/agent-registry/views.ts#listWorkers','core/agent-registry/views.ts#workerDetail','core/agent-registry/export.ts#exportAgentRegistry'],
-  ruleVersion:null,relations:[],page:'/control-tower/agents',
+  ruleVersion:null,relations:[],page:'/control-tower/agents/features',
   fields:[f('id','label','full','Worker key.'),f('family','enum','full','Worker family.',{values:WORKER_FAMILIES}),f('effect','enum','full','Declared effect.',{values:WORKER_EFFECTS}),
    f('trigger','label','full','What starts it.'),f('readScope','list','full','Semantic entities it reads.'),f('enabled','boolean','full','Its tenant switch.'),
    f('stopped','boolean','full','The tenant-wide stop switch.'),f('lastRunAt','datetime','full','When it last ran.'),
@@ -62,7 +62,7 @@ export const RECOMMEND_ENTITIES:readonly SemanticEntity[]=freeze([
  // Inputs of the existing automated workers (§3.7), declared so their read scope comes from the model.
  {id:'payroll_anomaly',label:'Payroll anomaly',meaning:'A deterministic detector finding on one payroll run line, with its disposition and the facts behind it.',
   module:'payroll',sensitivity:'pay',audience:'admin',rls:'administered_scope',owners:['core/payroll-anomaly.ts#evaluateBatchAnomalies','core/payroll-anomaly-narrate.ts#narrateVerdict'],
-  ruleVersion:null,relations:[],page:'/control-tower',
+  ruleVersion:null,relations:[],page:'/control-tower/exceptions',
   fields:[f('detector','label','full','Detector key.'),f('disposition','enum','full','Auto-clear, review or block.',{values:['auto_clear','review','block']}),
    f('facts','object','bands','The figures the detector compared.'),f('employmentId','id','never','Handle of the employment.')]},
  {id:'readiness_gap',label:'Record readiness gap',meaning:'A missing field on an employee record that blocks or weakens payroll or statutory filing.',
