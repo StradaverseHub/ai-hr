@@ -57,7 +57,9 @@ GRANT EXECUTE ON FUNCTION app.organisation_admission_submit(text,text) TO ai_hr_
 CREATE OR REPLACE FUNCTION app.organisation_actor_account_available(p_actor uuid) RETURNS boolean
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE u app_user;i app_external_identity;c jsonb;r app_internal_auth_record;BEGIN
- SELECT * INTO u FROM app_user WHERE id=p_actor AND tenant_id=app.current_tenant_id() FOR SHARE;
+ -- Parent UPDATE lock conflicts with identity FK KEY SHARE, closing concurrent new/rebound bindings.
+ -- Lock order stays user -> verifier -> identity -> credential throughout native admission.
+ SELECT * INTO u FROM app_user WHERE id=p_actor AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF u.id IS NULL OR u.archived_at IS NOT NULL OR app.login_blocked(u.id) THEN RETURN false;END IF;
  -- A revoked/missing native binding never falls back to compatibility admission.
  IF NOT EXISTS(SELECT 1 FROM app.organisation_native_identity_history h WHERE h.tenant_id=u.tenant_id AND h.user_id=u.id) THEN RETURN true;END IF;

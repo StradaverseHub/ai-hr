@@ -119,3 +119,30 @@ it('binds native proof to the exact current person without creating a forged che
  expect((await nativeOptions(current)).companies).toHaveLength(0);
  expect((await companyOrganisationOptions(current)).companies).toHaveLength(1);
 });
+
+it('closes identity FK insert phantoms until native admission commits through the STABLE options caller',async()=>{
+ await refreshOrganisationAdmission(adminCtx(b));
+ let release!:()=>void,ready!:()=>void,rejectReady!:(error:unknown)=>void;
+ const released=new Promise<void>(resolve=>{release=resolve;}),started=new Promise<void>((resolve,reject)=>{ready=resolve;rejectReady=reject;});
+ const issuer=internalIssuer(b.tenantId),subject=randomUUID();
+ // company_organisation_options is SQL STABLE and invokes the VOLATILE native lock helper.
+ // Success here proves that the real outer caller can take and retain the admission locks.
+ const holding=withTenant(adminCtx(b),async tx=>{
+  const [row]=await tx.execute<{options:{companies:{id:string}[]}}>(sql`select app.company_organisation_options() options`);
+  expect(row.options.companies.map(company=>company.id)).toContain(b.companyId);
+  ready();await released;
+ });
+ void holding.catch(rejectReady);
+ try{
+  await started;
+  await expect(owner.client.begin(async tx=>{
+   await tx.unsafe("set local lock_timeout='100ms'");
+   await tx`insert into app_external_identity(issuer,subject,app_user_id) values(${issuer},${subject},${b.adminUserId})`;
+  })).rejects.toMatchObject({code:'55P03'});
+ }finally{release();await holding;}
+ // The same FK insert succeeds after commit; the extra live native binding then fails closed.
+ await owner.client`insert into app_external_identity(issuer,subject,app_user_id) values(${issuer},${subject},${b.adminUserId})`;
+ const [inserted]=await owner.client`select count(*)::int count from app_external_identity where issuer=${issuer} and subject=${subject} and app_user_id=${b.adminUserId}`;
+ expect(inserted.count).toBe(1);
+ expect((await nativeOptions()).companies).toHaveLength(0);
+});
