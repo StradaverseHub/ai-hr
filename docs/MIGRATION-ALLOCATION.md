@@ -1604,3 +1604,22 @@ inspection found668 applied rows through1793330001411 on b6077019c; the canonica
 historical identities match every ordered row. This appends above all observed bounds;
 no applied SQL is rewritten. Recheck current claims and target ledger at integration.
 No installation or deployment is authorized.
+
+## AI control navigation candidates — 4 November 2026 (uninstalled candidate)
+
+`codex/performance-ai-control-navigation-20261104` reserves `2124_ai_control_navigation_candidates`,
+idx1371 / when1793330001524 / SQL SHA256 `ed8666bfc29767ce266c362f07046dcd6b5b65b8434738bb9257daf5e328292c`.
+A fresh fetch and source scan covered2291 distinct heads,427 committed journals,579
+committed migration trees and208 readable worktrees. The highest observed reservation
+was2123 / idx1370 / when1793330001523, including uncommitted SQL filenames and literal
+bounds from one foreign malformed worktree journal, which was preserved. Read-only
+staging inspection found671 applied rows through1793330001502 on dc1c70deb, build
+I-W31qYlpals6qfOyV0p1. All671 canonical ordered identities matched. No applied SQL changes.
+
+The original private control function keeps its exclusive transaction lock, native
+final visibility checks, switch owner, signatures, configuration and existing ACL.
+Native reversible experiment41832085030 passed11 live scope-change controls and
+150-reader original/candidate/restored matrices over500 principals. This is component
+evidence only; installed migration, quota/concurrency and combined browser/load checks
+remain required. Recheck competing claims and the live watermark before installation.
+Complete BOARD roles remains excluded. No deployment or provider approval is authorized.

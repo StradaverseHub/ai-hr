@@ -4719,6 +4719,13 @@
       "when": 1793330001505,
       "tag": "2105_authorization_navigation_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 1371,
+      "version": "7",
+      "when": 1793330001524,
+      "tag": "2124_ai_control_navigation_candidates",
+      "breakpoints": true
     }
   ]
 }
