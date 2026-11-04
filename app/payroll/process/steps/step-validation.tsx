@@ -1,5 +1,6 @@
 'use client';
 
+import {DerivedOrganisationPayroll} from '@/components/derived-organisation-payroll';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { checkPayrollCycleReadiness, checkUnattachedForSelection, validatePayrollSelection } from '../actions';
@@ -109,7 +110,7 @@ export function StepValidation({
           a.missingCompensation.length +
             (a.zeroBasic?.length ?? 0) +
             (a.unpayablePayMode?.length ?? 0) +
-            (a.tp3YearMismatch?.length ?? 0) >
+            (a.tp3YearMismatch?.length ?? 0)+(a.organisationGrouping?.length??0) >
           0;
         onStatusChange({ loading: false, hasBlockers });
       })
@@ -150,7 +151,7 @@ export function StepValidation({
     advisory.missingCompensation.length +
     (advisory.zeroBasic?.length ?? 0) +
     (advisory.unpayablePayMode?.length ?? 0) +
-    (advisory.tp3YearMismatch?.length ?? 0);
+    (advisory.tp3YearMismatch?.length ?? 0)+(advisory.organisationGrouping?.length??0);
   // 297ae65a — a non-MYR/mixed-currency salary is an AMBER warning (Process stays allowed).
   // r79 — an explicit "Subject to HRDF = Yes" at an unregistered company is AMBER for the same reason:
   // the run is honest work that must not be blocked, but the contradiction has to be seen before Process.
@@ -298,6 +299,7 @@ export function StepValidation({
         </div>
       )}
 
+      <DerivedOrganisationPayroll rows={advisory.organisationGrouping??[]}/>
       {groups.map(([groupKey, rows, isBlocker]) =>
         rows.length === 0 ? null : (
           <div key={groupKey}>

@@ -35422,5 +35422,22 @@
       "stale": "Stale — prepare a new preview",
       "rejected": "Rejected"
     }
+  },
+  "derivedOrganisation": {
+    "historical": "No reviewed mapping applies on this date. Manual organisation values are ignored; historical values are retained.",
+    "title": "Organisation from Group structure",
+    "businessUnit": "Business Unit",
+    "parentCompany": "Parent company",
+    "businessGroup": "Business group",
+    "derived": "Set from Group structure",
+    "reference": "Reference date {date} · Version {version}",
+    "pending": "Company not in Group structure",
+    "missingBusinessUnit": "Business Unit not assigned",
+    "topLevel": "Top-level company — no parent",
+    "preparation": "No reviewed mapping has been published. Existing organisation fields continue to apply.",
+    "loading": "Loading Group structure…",
+    "unavailable": "Group structure is unavailable. Reload before saving organisation details.",
+    "groupingBlocked": "Group structure tagging is pending",
+    "groupingHint": "Review and publish the company mapping before Rewards or payroll grouping. Employment details can still be saved."
   }
 }

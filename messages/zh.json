@@ -35422,5 +35422,22 @@
       "stale": "已过期 — 请重新预览",
       "rejected": "已拒绝"
     }
+  },
+  "derivedOrganisation": {
+    "historical": "此日期没有适用的经审核映射。忽略手动组织值，并保留历史值。",
+    "title": "来自集团结构的组织信息",
+    "businessUnit": "业务单元",
+    "parentCompany": "母公司",
+    "businessGroup": "业务集团",
+    "derived": "根据集团结构设置",
+    "reference": "参考日期 {date} · 版本 {version}",
+    "pending": "公司不在集团结构中",
+    "missingBusinessUnit": "尚未分配业务单元",
+    "topLevel": "顶层公司 — 无母公司",
+    "preparation": "尚未发布经审核的映射。继续使用现有组织字段。",
+    "loading": "正在加载集团结构…",
+    "unavailable": "集团结构暂不可用。保存组织信息前请重新加载。",
+    "groupingBlocked": "集团结构标记待处理",
+    "groupingHint": "请先审核并发布公司映射，再进行薪酬或工资分组。仍可保存雇佣信息。"
   }
 }

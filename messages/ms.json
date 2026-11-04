@@ -35422,5 +35422,22 @@
       "stale": "Lapuk — sediakan pratonton baharu",
       "rejected": "Ditolak"
     }
+  },
+  "derivedOrganisation": {
+    "historical": "Tiada pemetaan yang disemak berkuat kuasa pada tarikh ini. Nilai organisasi manual diabaikan; nilai sejarah dikekalkan.",
+    "title": "Organisasi daripada Struktur kumpulan",
+    "businessUnit": "Unit Perniagaan",
+    "parentCompany": "Syarikat induk",
+    "businessGroup": "Kumpulan perniagaan",
+    "derived": "Ditetapkan daripada Struktur kumpulan",
+    "reference": "Tarikh rujukan {date} · Versi {version}",
+    "pending": "Syarikat tiada dalam Struktur kumpulan",
+    "missingBusinessUnit": "Unit Perniagaan belum ditetapkan",
+    "topLevel": "Syarikat peringkat atas — tiada induk",
+    "preparation": "Tiada pemetaan yang disemak telah diterbitkan. Medan organisasi sedia ada masih digunakan.",
+    "loading": "Memuatkan Struktur kumpulan…",
+    "unavailable": "Struktur kumpulan tidak tersedia. Muat semula sebelum menyimpan butiran organisasi.",
+    "groupingBlocked": "Penandaan Struktur kumpulan belum selesai",
+    "groupingHint": "Semak dan terbitkan pemetaan syarikat sebelum pengelompokan Ganjaran atau gaji. Butiran pekerjaan masih boleh disimpan."
   }
 }

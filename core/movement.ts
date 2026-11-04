@@ -1,9 +1,11 @@
+import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
+import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx,employmentOrganisationTagsTx} from './company-organisation';
 import {personnelInformationCorrections,type InformationHistoryCorrection} from '../lib/personnel-history';
 import {withProbationPersonnelIntentTx,withProbationDateShiftIntentTx,probationMovementAuthorityTx} from './probation-effect-authority';
 import { withExitDateAuthorityTx } from './exit-date-authority';
 import { isDatabaseError } from '../lib/db-error';
 import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
-import {assertWorkforceEmploymentTx,WorkforceAccessError} from './workforce-access';
+import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,WorkforceAccessError} from './workforce-access';
 import {ownPersonPredicate} from './own-person';
 /**
  * Employment History — Movement tab redesign (78853b97).
@@ -2336,9 +2338,15 @@ async function assertMovementFieldRulesTx(
   const documents = validateMovementDocuments(p.documents);
   const { configured, rules } = await movementFieldRulesTx(tx, ctx.tenantId, p.typeCode ?? p.kind, p.kind);
   if (!configured && !documents.length) return documents;
-  const changed = new Set(movementDeltas(p, await baseline()).changes.map((c) => c.field));
+  const current=await baseline();
+  const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId:p.kind==='entityTransfer'&&p.companyId?p.companyId:current.companyId,asOf:p.effectiveDate});
+  const managed=await organisationManagedTx(tx);
+  const activeRules=!managed&&tags.status==='legacy'?rules:rules.filter(rule=>rule.field!=='businessUnitId');
+  if(managed&&documents.some(document=>document.field==='businessUnitId'))throw new Error('Business Unit is derived from Group structure and cannot take a manual change document.');
+  const changed = new Set(movementDeltas(p,current).changes.map((c) => c.field));
   const supplied = new Set<string>([...documents.map((d) => d.field), ...carriedFields]);
-  const violations = movementFieldRuleViolations(rules, changed, supplied);
+  if(managed)supplied.delete('businessUnitId');
+  const violations = movementFieldRuleViolations(activeRules, changed, supplied);
   if (violations.length) throw new MovementFieldRuleError(violations[0]);
   return documents;
 }
@@ -3087,6 +3095,13 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
   // mapped to, and its code travels on as `typeCode` so the ledger records what HR chose. A type that was
   // switched off is refused here rather than silently applied — that is the whole point of switching it off.
   const p = await resolveInputTypeTx(tx, ctx, rawInput, 'record', {allowInactive:correction?.allowInactive===true});
+  if(isComparisonKind(p.kind)&&isCalendarDate(p.effectiveDate)){
+    const current=await movementCurrentStateTx(tx,p.employmentId);
+    const companyId=p.kind==='entityTransfer'&&p.companyId?p.companyId:current.companyId;
+    await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
+    const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId,asOf:p.effectiveDate});
+    p.businessUnitId=organisationBusinessUnit(tags,await organisationManagedTx(tx),p.businessUnitId,p.kind==='entityTransfer'&&companyId!==current.companyId?null:current.businessUnitId);
+  }
   if(futureAdmission?.expectedBehaviour!==undefined&&p.kind!==futureAdmission.expectedBehaviour)throw new Error('preview_stale_revalidate');
   const execute=async()=>{
   if (p.kind !== 'blacklist' && !/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
@@ -4202,6 +4217,8 @@ async function reverseMovementTx(
   for (const e of [...group].sort((a, b) => b.sequence - a.sequence)) {
     await reverseLegTx(tx, ctx, employmentId, e, tag, hireCorrections, reason);
   }
+  const organisation=await employmentOrganisationTagsTx(tx,ctx,{employmentId,asOf:row.effectiveDate});
+  await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId,companyId:organisation.companyId,asOf:row.effectiveDate,trigger:'movement_reversal'});
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'employment',

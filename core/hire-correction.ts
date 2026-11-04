@@ -1,3 +1,5 @@
+import {organisationManagedTx} from './organisation-write-policy';
+import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx} from './company-organisation';
 import {assertWorkforceEmploymentTx} from './workforce-access';
 /**
  * c063eea9 — "Correct hire details" on the Hired movement event.
@@ -721,6 +723,7 @@ export async function correctHireDetails(
 
     const plan = await loadPlanTx(tx, ctx.tenantId, input.employmentId);
 
+    if(await organisationManagedTx(tx))delete requested.businessUnitId;
     // The effective change set: a requested value equal to the hire's own value is not a change.
     const changes: { field: HireCorrectionField; before: string | null; after: string | null }[] = [];
     for (const f of HIRE_CORRECTION_FIELDS) {
@@ -813,6 +816,7 @@ export async function correctHireDetails(
       if (done.length !== 1) throw new HireCorrectionError('The hire record changed while it was being corrected. Reload and try again.');
       const next: Partial<Record<HireCorrectionAssignmentField, string | null>> = {};
       for (const f of fields) next[f] = changed.get(f) ?? null;
+      const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId:v.companyId,asOf:v.row.validFrom});
       const [ins] = await tx
         .insert(assignment)
         .values({
@@ -820,7 +824,7 @@ export async function correctHireDetails(
           employmentId: v.row.employmentId,
           departmentId: (next.departmentId ?? v.row.departmentId) as string,
           positionId: 'positionId' in next ? (next.positionId ?? null) : v.row.positionId,
-          businessUnitId: 'businessUnitId' in next ? (next.businessUnitId ?? null) : v.row.businessUnitId,
+          businessUnitId: tags.status==='legacy'?('businessUnitId' in next ? (next.businessUnitId ?? null) : v.row.businessUnitId):tags.businessUnitId,
           costCenterId: 'costCenterId' in next ? (next.costCenterId ?? null) : v.row.costCenterId,
           locationId: 'locationId' in next ? (next.locationId ?? null) : v.row.locationId,
           companyId: v.row.companyId,
@@ -829,6 +833,7 @@ export async function correctHireDetails(
           validTo: v.row.validTo,
         })
         .returning({ id: assignment.id });
+      await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:input.employmentId,companyId:v.companyId,asOf:v.row.validFrom,trigger:'hire_correction'});
       replaced.push({
         supersededId: v.row.id,
         replacementId: ins.id,

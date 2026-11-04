@@ -1,3 +1,4 @@
+import {DerivedOrganisationControl} from '@/components/derived-organisation-fields';
 import {latestPersonnelHistory} from '@/lib/personnel-history';
 import {movementHistoryHref,movementPageHref} from '@/lib/personnel-movement-navigation';
 import {MovementActionShell} from './movement-action-shell';
@@ -3865,6 +3866,7 @@ export default async function EmployeePage({
                 ))}
               </select>
             </PersonnelField>
+            <DerivedOrganisationControl companyId={pendingCompany.id} asOf={emp.hiredOn??today}>
             <PersonnelField fieldId="employment.organisation_assignment.businessunitname" mode="edit">
               <select {...personnelControl('employment.organisation_assignment.businessunitname','edit')} defaultValue="" className={inputCls}>
                 <option value="">{t('employmentInfo.positionNone')}</option>
@@ -3875,6 +3877,7 @@ export default async function EmployeePage({
                 ))}
               </select>
             </PersonnelField>
+            </DerivedOrganisationControl>
             <PersonnelField fieldId="employment.organisation_assignment.positionname" mode="edit">
               <select {...personnelControl('employment.organisation_assignment.positionname','edit')} defaultValue="" className={inputCls}>
                 <option value="">{t('employmentInfo.positionNone')}</option>
@@ -3961,9 +3964,15 @@ export default async function EmployeePage({
               STORED, resolved through the same `current` assignment projection the editable selects used, so
               a value that is no longer in its company-scoped option list still displays (the 570e3311
               pinned-current problem disappears entirely once nothing is a <select>). */}
+          {canMaintainWorkforce?<DerivedOrganisationControl companyId={emp.companyId} asOf={today}>
           <PersonnelField fieldId="employment.organisation_assignment.businessunitname" mode="edit">
             {readOnlyValue("employment.organisation_assignment.businessunitname", current?.businessUnit)}
           </PersonnelField>
+          </DerivedOrganisationControl>:<>
+          <PersonnelField fieldId="employment.organisation_assignment.businessunitname" mode="edit">
+            {readOnlyValue("employment.organisation_assignment.businessunitname", current?.businessUnit)}
+          </PersonnelField>
+          </>}
           <PersonnelField fieldId="employment.organisation_assignment.departmentname" mode="edit">
             {readOnlyValue("employment.organisation_assignment.departmentname", current?.department)}
           </PersonnelField>

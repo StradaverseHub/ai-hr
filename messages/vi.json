@@ -35422,5 +35422,22 @@
       "stale": "Lỗi thời — tạo bản xem trước mới",
       "rejected": "Đã từ chối"
     }
+  },
+  "derivedOrganisation": {
+    "historical": "Không có ánh xạ đã xét duyệt áp dụng vào ngày này. Bỏ qua giá trị tổ chức nhập tay; giữ nguyên giá trị lịch sử.",
+    "title": "Cơ cấu từ Sơ đồ tập đoàn",
+    "businessUnit": "Đơn vị kinh doanh",
+    "parentCompany": "Công ty mẹ",
+    "businessGroup": "Tập đoàn kinh doanh",
+    "derived": "Được xác định từ Sơ đồ tập đoàn",
+    "reference": "Ngày tham chiếu {date} · Phiên bản {version}",
+    "pending": "Công ty chưa có trong Sơ đồ tập đoàn",
+    "missingBusinessUnit": "Chưa gán đơn vị kinh doanh",
+    "topLevel": "Công ty cấp cao nhất — không có công ty mẹ",
+    "preparation": "Chưa công bố ánh xạ đã xét duyệt. Các trường tổ chức hiện tại vẫn được áp dụng.",
+    "loading": "Đang tải Sơ đồ tập đoàn…",
+    "unavailable": "Không thể tải Sơ đồ tập đoàn. Hãy tải lại trước khi lưu thông tin tổ chức.",
+    "groupingBlocked": "Đang chờ gán cơ cấu tập đoàn",
+    "groupingHint": "Xét duyệt và công bố ánh xạ công ty trước khi nhóm Lương thưởng hoặc bảng lương. Vẫn có thể lưu thông tin việc làm."
   }
 }

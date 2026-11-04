@@ -1,3 +1,4 @@
+import {deriveCompanyOrganisationTx} from './company-organisation';
 import { tenantMutation } from '../db/tenant-mutation';
 /**
  * Admin / setup services — org structure, leave config, and role management.
@@ -570,6 +571,12 @@ export async function setCompanyParent(
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    const [current]=await tx.select({parentCompanyId:company.parentCompanyId}).from(company).where(eq(company.id,p.companyId)).for('update');
+    if(!current)throw new Error('Company is unavailable.');
+    const [managed]=await tx.execute<{managed:boolean}>(sql`select app.company_organisation_managed() as managed`);
+    const canonicalParent=managed?.managed?(await deriveCompanyOrganisationTx(tx,ctx,{companyId:p.companyId,asOf:todayInKualaLumpur()})).parentCompanyId:current.parentCompanyId;
+    if(managed?.managed&&canonicalParent!==p.parentCompanyId)throw new Error('Group structure is managed through reviewed dated changes. Create a reviewed Group structure proposal instead.');
+    if(managed?.managed||canonicalParent===p.parentCompanyId)return {id:p.companyId};
     await tx
       .update(company)
       .set({ parentCompanyId: p.parentCompanyId })

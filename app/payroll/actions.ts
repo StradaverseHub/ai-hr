@@ -133,6 +133,8 @@ export async function generateAction(formData: FormData) {
       errMsg = t('preChecksBlockedPayModeError', { n: payModeBlockers });
     } else if (tp3Blockers > 0) {
       errMsg = t('preChecksBlockedTp3Error', { n: tp3Blockers });
+    } else if ((checks.organisationGrouping?.length??0)>0) {
+      const td=await getTranslations('derivedOrganisation');errMsg=td('groupingBlocked');
     } else if (warnings > 0 && !acknowledged) {
       errMsg = t('preChecksConfirmRequired', { n: warnings });
     } else {

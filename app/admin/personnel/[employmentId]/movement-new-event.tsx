@@ -1,4 +1,5 @@
 'use client';
+import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/derived-organisation-fields';
 
 // Movement tab redesign (78853b97), comparison redesign (08913328) — client half of "New Event".
 //
@@ -298,6 +299,7 @@ export function MovementNewEvent({
   const isEntityTransfer = behaviour === 'entityTransfer';
   const [destCompanyId, setDestCompanyId] = useState<string>(saved?.companyId ?? current.companyId);
   const scopeCompanyId = isEntityTransfer ? destCompanyId : current.companyId;
+  const derivedOrganisation=useDerivedOrganisation({companyId:scopeCompanyId,asOf:correctionDate});
   const scopeChanged = scopeCompanyId !== current.companyId;
   const scoped: MovementOrgScope = orgByCompany?.[scopeCompanyId] ?? {
     departments,
@@ -474,8 +476,8 @@ export function MovementNewEvent({
         <span className="text-sm text-muted-foreground">{t('form.companyReadOnly')}</span>
       ),
     ),
-    row('businessUnitId', 'businessUnit', label(movementField('businessUnitId')), nameOf(businessUnits, current.businessUnitId),
-      select('businessUnitId', after.businessUnitId, scoped.businessUnits, t('form.none'))),
+    derivedOrganisation.data?.status==='legacy'&&!derivedOrganisation.data.managed?row('businessUnitId', 'businessUnit', label(movementField('businessUnitId')), nameOf(businessUnits, current.businessUnitId),
+      select('businessUnitId', after.businessUnitId, scoped.businessUnits, t('form.none'))):null,
     row('orgDivision', 'orgDivision', label(movementField('orgDivision')), current.orgDivision, text('orgDivision', after.orgDivision)),
     row('departmentId', 'department', label(movementField('departmentId')), nameOf(departments, current.departmentId),
       select('departmentId', after.departmentId, scoped.departments, null)),
@@ -557,7 +559,7 @@ export function MovementNewEvent({
         if (!typeRules) return;
         const data = new FormData(event.currentTarget);
         const unchanged = typeRules.find((r) => {
-          if (!r.mustChange) return false;
+          if (!r.mustChange||(r.field==='businessUnitId'&&(derivedOrganisation.data?.managed||derivedOrganisation.data?.status!=='legacy'))) return false;
           const posted = data.get(r.field);
           if (posted == null) return true;
           const before = r.field === 'companyId' ? current.companyId : (current as Record<string, string | null>)[r.field] ?? '';
@@ -580,6 +582,7 @@ export function MovementNewEvent({
       {pageContext&&<><input type="hidden" name="movementPage" value={edit?'edit':'new'}/><input type="hidden" name="showCorrected" value={pageContext.showCorrected??''}/><input type="hidden" name="from" value={pageContext.from??''}/></>}
       {pageError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive">{pageError}</p>}
       <input type="hidden" name="employmentId" value={employmentId} />
+      <DerivedOrganisationFields state={derivedOrganisation}/>
       {edit && <input type="hidden" name="movementId" value={edit.movementId} />}
       {ruleError && (
         <p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive">
