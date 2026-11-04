@@ -58,6 +58,28 @@ original/candidate/restored outcomes and live authority controls. Positive popul
 aggregate compiler/browser/load and populated upgrade checks remain required. Re-freeze allocation
 before eventual admission. Complete BOARD roles remains excluded; no deployment is authorized.
 
+## Tenant-isolation hardening (ADR-0174) — 4 November 2026 (provisional source claim)
+
+`claude/wonderful-mccarthy-2fb38f` appends three migrations above the 668-entry main journal (`aa260e8d0`,
+ending at 2011 / idx 811 / when 1793330001411 after the AI v2 release). Earlier claims (0968–0970, 1000–1002,
+1500–1502) were overtaken in turn by the permissions series and then by that release; as agreed with the AI
+Centre coordinator, the block that reached main second moves above the first. A read-only scan of 3879 local
+and remote heads, 413 journal blobs and every registered worktree on 4 November 2026 found no `when` above
+1793330001411, no file from 1016 to 1999 or from 2012 upward, and the permissions series at 1012–1015. These
+take 2100–2102 with `when` = 1793330000000 + (file − 600), clear of the AI Centre's reserved 2012–2019
+(`when` up to 1793330001419). The SQL changed only in its cross-references and the two 2003 letter tables.
+
+| Tag | idx | when | SQL SHA256 |
+| --- | ---: | ---: | --- |
+|2100_employment_helper_tenant_pin|1347|1793330001500|f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a|
+|2101_company_tenant_fk_not_valid|1348|1793330001501|5aaf9b7e1f06514771e46ae3303e2e375eb461ba3acf0f8bb21af510bf49eb18|
+|2102_company_tenant_fk_validate|1349|1793330001502|b2a6af380bb89765c2b32b6edaf8b5c7707ca23901f22806cd9f8888856983b4|
+
+2100 pins the employment helpers and `app.company_subtree` to the session tenant; 2101 adds 148 composite
+company/tenant keys NOT VALID; 2102 checks the data and validates them. Unapplied source only: re-check main's
+highest file, idx and `when` immediately before merge, keep each timestamp above every earlier-applied
+migration, and relocate the idx with competing claims.
+
 ## Nine-item BOARD split: post-Noveri refresh — 3 November 2026 (unapplied)
 
 The nine-item candidate preserves the complete648-entry journal from aligned main/alpha
