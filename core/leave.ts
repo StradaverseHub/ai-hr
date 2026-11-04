@@ -9,6 +9,7 @@ import { aliasedTable, and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, l
 import { randomUUID, createHash } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {assertAiPrincipalTx} from './ai-principal';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import { appendEvent, actorOf, type Actor } from '../db/events';
@@ -2001,7 +2002,11 @@ export async function leaveTypeApplySummaries(
     }
     return out;
   };
-  return existingTx ? read(existingTx) : withTenant(ctx, read);
+  if (existingTx) {
+    await assertAiPrincipalTx(existingTx, ctx);
+    return read(existingTx);
+  }
+  return withTenant(ctx, read);
 }
 
 // ── Shared Leave Group enforcement (r88, feedback 1ef1cf95; the rules themselves R44 4c48fd1f + r82a) ──

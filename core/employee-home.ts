@@ -2,6 +2,7 @@
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {lockAccessConfigurationReadTx} from './access-configuration-lock';
+import {isAiPrincipalCurrentTx} from './ai-principal';
 import {person} from '../db/schema';
 import {myOwnEmploymentSubjectsTx,type OwnEmploymentSubject} from './read';
 import {hasPersonPhoto} from './person-photo';
@@ -53,10 +54,11 @@ export async function requireOwnHomeSubject(ctx:SessionContext,employmentId?:str
 }
 /** Only complete read-only compositions can reuse the native own-subject proof in their carrier. */
 export async function requireOwnHomeSubjectTx(tx:Tx,ctx:SessionContext,employmentId?:string):Promise<OwnEmploymentSubject>{
- const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='repeatable read'
+ const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='read committed'
   and current_setting('transaction_read_only')='on' as safe`);
  if(snapshot?.safe!==true)throw new HomeAccessError('employmentUnavailable');
- await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+ if(!ctx.userId)throw new HomeAccessError('authentication');
+ if(await isAiPrincipalCurrentTx(tx,ctx)!==true)throw new HomeAccessError('employmentUnavailable');
  return selectedHomeSubject(await ownHomeSubjectSelectionTx(tx,ctx,employmentId));
 }
 function selectedHomeSubject(selection:OwnSelection):OwnEmploymentSubject{

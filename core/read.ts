@@ -4931,7 +4931,7 @@ export function leaveEntitlementBreakdowns(
       ),
     );
   };
-  return existingTx ? read(existingTx) : withTenant(ctx, read);
+  return withReadTx(ctx, existingTx, read);
 }
 
 // RL Control Engine (0113): the active-vs-expired replacement-leave split, sourced from the toil_accrual

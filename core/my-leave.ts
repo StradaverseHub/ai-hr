@@ -277,14 +277,17 @@ export async function myCurrentLeaveCards(
   existingTx?: Tx,
 ): Promise<Pick<MyLeaveCard, 'leaveTypeId' | 'leaveType' | 'annualLeave' | 'canApplyFor' | 'pending'>[]> {
   const read = async (tx: Tx) => {
-    const [snapshot] = await tx.execute<{safe: boolean}>(sql`select current_setting('transaction_isolation')='repeatable read'
+    const [snapshot] = await tx.execute<{safe: boolean}>(sql`select current_setting('transaction_isolation')='read committed'
       and current_setting('transaction_read_only')='on' as safe`);
-    if (snapshot?.safe !== true) throw new Error('Current leave cards require a complete read-only snapshot.');
+    if (snapshot?.safe !== true) throw new Error('Current leave cards require a complete read-only Read Committed transaction.');
     const dashboard = await buildMyLeaveDashboard(ctx, employmentId, { today: opts.today, locale: opts.locale }, false, tx);
     return dashboard.cards.map(({ leaveTypeId, leaveType, annualLeave, canApplyFor, pending }) =>
       ({ leaveTypeId, leaveType, annualLeave, canApplyFor, pending }));
   };
-  return existingTx ? read(existingTx) : withTenant(ctx, read, {readOnlySnapshot: true});
+  return existingTx ? read(existingTx) : withTenant(ctx, async tx => {
+    await tx.execute(sql`set transaction read only`);
+    return read(tx);
+  });
 }
 
 export async function myLeaveDashboard(
