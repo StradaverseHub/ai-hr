@@ -14,7 +14,7 @@ import { provenCompanyDatesTx } from './employment-company';
 import { fullFlexiIntervals, fullFlexiBreakMinutes, type ClosedClockInterval } from '../lib/full-flexi-time';
 import { exceptionRevisionOn } from '../lib/schedule-exception';
 import { lockPayrollForOwnAttendanceRemoval } from '../packs/payroll/service';
-import { retainedAttendancePolicyPlanCancellationTx,attendancePolicyCompleteApprovedPlanSetTx,attendancePolicyPlanProtectionDatesTx, readOvertimeSettlementForDayTx, retainedAttestedPolicyCancellationTx, lockOvertimeDayForAttendanceWriteTx, attendancePolicyUnclockedWorkComparison, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
+import { retainedAttendancePolicyPlanCancellationTx,attendancePolicyCompleteApprovedPlanSetTx,attendancePolicyPlanProtectionDatesTx, readOvertimeSettlementForDayTx, retainedAttestedPolicyCancellationTx, lockOvertimeDayForAttendanceWriteTx, attendancePolicyUnclockedWorkComparison, attendancePolicySystemEligibleMinutes, attendancePolicyTraceBinding, lockAttendancePolicyImportTx, attendancePolicyImportRoutesTx, attendancePolicyUncapturedRawDay, attendancePolicyRawInputTx, attendancePolicyRawDay, captureCanonicalOvertimePersonnelContextTx, refreshOvertimePatternDayTx, refreshOvertimePatternDaysTx, formulaOvertimeForRowsTx, hasRecordedAttendanceGroupPolicyTx } from '../packs/attendance/service';
 import { clockCommandContext } from '../lib/clock-command-context';
 import {resolveOwnClockEmployment} from './attendance-clock-subject';
 import { removalPreservesSequence } from '../lib/attendance-removal';
@@ -6711,7 +6711,7 @@ export async function addImportedPunchesBatchTx(
     if (planned != null) plannedBy.set(keyOf(o.employmentId, o.day), planned);
   }
 
-  for (const d of days) if (!plannedBy.has(keyOf(d.employmentId,d.day))) await refreshOvertimePatternDayTx(tx,ctx,{employmentId:d.employmentId,date:d.day,reason:'Imported clocking day'});
+  await refreshOvertimePatternDaysTx(tx,ctx,days.filter(d=>!plannedBy.has(keyOf(d.employmentId,d.day))).map(d=>({employmentId:d.employmentId,date:d.day,reason:'Imported clocking day'})));
   // Work arrival, not public recalculation, triggers the existing opted-in credit owner.
   // Batched plan metadata supplies only Request Date; the owner replays the complete
   // current approved union, independent duration and original physical source again.

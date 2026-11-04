@@ -6,6 +6,9 @@ import {performance} from 'node:perf_hooks';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {commitClockingImport} from '../core/attendance-clocking-import';
 import {hireEmployee} from '../core/org';
+import {withTenant} from '../db/client';
+import {sql} from 'drizzle-orm';
+import {refreshOvertimePatternDaysTx} from '../packs/attendance/service';
 import {BUILTIN_MAPPING_ID} from '../lib/clocking-file';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
@@ -35,6 +38,12 @@ it('imports fifty legacy days without rewriting unchanged overtime trace values'
   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'clocking-import-refresh-work.json'),JSON.stringify({kind:'REAL_IMPORT_REDUNDANT_WRITE_COMPONENT_ONLY',releaseEligible:false,elapsedMs,counts},null,2));
   expect(counts.days).toBe(50);expect(counts.punches).toBe(100);expect(counts.events).toBe(50);
   expect(counts.noop,'import must not issue redundant per-day overtime trace writes').toBe(0);
+  // A read-only carrier cannot use absence to opt into this command's no-op fast course.
+  // Outside the native writer interval it must retain the canonical scalar refusal.
+  await expect(withTenant(ctx,async tx=>{
+   await tx.execute(sql`SET TRANSACTION READ ONLY`);
+   await refreshOvertimePatternDaysTx(tx,ctx,[{employmentId:hired.employmentId,date:dates[0],reason:'Fictional unsafe carrier probe'}]);
+  })).rejects.toThrow();
  }finally{
   await owner.client`drop trigger performance_import_update_probe on public.attendance`;
   await owner.client`drop function app.performance_import_update_probe_fn()`;
