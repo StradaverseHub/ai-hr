@@ -1543,3 +1543,7 @@ The Rewards branch preserves the complete main/alpha b6077019c journal prefix th
 This additive Rewards-only designation stores explicitly reviewed company UUIDs and canonical alias
 UUIDs; no name inference, backfill, company merge, saved-policy rewrite or production data action.
 Recheck every then-applied prefix and competing claim at integration/release admission.
+
+### Approved Org Chart roots (4 November2026)
+
+Parent allocation reserves2109_org_chart_roots / idx1356 / when1793330001509 above discovered main/live claims. This adds explicit effective-dated roots and guards their reporting-line consistency; no roots are inferred or backfilled. Source allocation grants no deployment or live application authority. SQL SHA256: `244664d78a5d54017e7c28b063bc627cc0af7d9a524ba6fc2d710d70d845dfdd`.

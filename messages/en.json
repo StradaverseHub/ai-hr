@@ -4682,7 +4682,82 @@
     "resetZoom": "Reset zoom",
     "noMatch": "No one matches “{query}”.",
     "expandReports": "Expand {count, plural, one {# report} other {# reports}}",
-    "collapseReports": "Collapse reports"
+    "collapseReports": "Collapse reports",
+    "filters": {
+      "company": "Company",
+      "businessUnit": "Business unit",
+      "department": "Department",
+      "employmentType": "Employment type",
+      "status": "Status",
+      "asOf": "Effective date",
+      "all": "All permitted",
+      "apply": "Apply filters",
+      "reset": "Reset"
+    },
+    "filterEmpty": "No employees found for the selected filter",
+    "directReports": "{count} direct reports",
+    "crossCompany": "Cross-company reporting",
+    "outsideFilter": "Reports to: {name} (outside filter)",
+    "outsideShort": "Reports outside filter",
+    "restrictedSuperior": "Superior outside permitted view",
+    "vacantSuperior": "Superior vacant / pending reassignment",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "levels": "Levels",
+    "showLevels": "Show levels",
+    "fit": "Fit to screen",
+    "vertical": "Vertical layout",
+    "horizontal": "Horizontal layout",
+    "minimap": "Chart overview",
+    "profile": "Open full profile",
+    "close": "Close",
+    "integrity": {
+      "title": "Data integrity report",
+      "note": "Review unresolved reporting links before using the chart. Top-level roles require an explicit HR designation.",
+      "clear": "No unresolved links in this view",
+      "unassigned": "Unassigned",
+      "missing": "Missing superior",
+      "inactive": "Inactive superior",
+      "invalid": "Invalid reporting link"
+    },
+    "topLevel": {
+      "tag": "Top level",
+      "employee": "Top-level employee",
+      "designate": "Designate top level",
+      "end": "End top-level designation",
+      "save": "Save designation",
+      "hasSuperior": "End the Direct Superior relationship before designating this employee as top level.",
+      "inactive": "The employee is inactive on the selected date.",
+      "saved": "Top-level designation saved."
+    },
+    "export": {
+      "button": "Export to PDF",
+      "scope": "Export scope",
+      "current": "Current view",
+      "branch": "Full selected branch",
+      "choose": "Choose a branch",
+      "paper": "Paper size",
+      "orientation": "Paper orientation",
+      "landscape": "Landscape",
+      "portrait": "Portrait",
+      "pagination": "Page layout",
+      "fit": "Fit to one page",
+      "pages": "Numbered pages",
+      "confidential": "Confidential",
+      "page": "Page"
+    },
+    "types": {
+      "full_time": "Permanent",
+      "part_time": "Part time",
+      "contract": "Contract",
+      "intern": "Intern"
+    },
+    "statuses": {
+      "all": "Active (including probation / notice)",
+      "active": "Active",
+      "probation": "Probation",
+      "notice": "Notice"
+    }
   },
   "me": {
     "title": "My Profile",

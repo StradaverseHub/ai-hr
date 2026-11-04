@@ -961,21 +961,20 @@ export async function wouldCreateAdminCycle(
   managerId: string,
   asOf: string,
 ): Promise<boolean> {
+  // A future-dated chain must be safe throughout the new edge's open interval, not merely on day one.
+  // Range intersection carries the dates on which every link in a candidate cycle exists together.
   const res = await tx.execute(sql`
-    WITH RECURSIVE ancestors AS (
-      SELECT manager_employment_id AS mgr
-      FROM reporting_line
-      WHERE subordinate_employment_id = ${managerId}
-        AND line_type = 'administrative' AND superseded_at IS NULL
-        AND valid_from <= ${asOf} AND (valid_to IS NULL OR valid_to > ${asOf})
+    WITH RECURSIVE ancestors(mgr, effective) AS (
+      SELECT manager_employment_id, daterange(valid_from,valid_to,'[)') * daterange(${asOf}::date,NULL,'[)')
+      FROM reporting_line WHERE subordinate_employment_id=${managerId}
+       AND line_type='administrative' AND superseded_at IS NULL
+       AND daterange(valid_from,valid_to,'[)') && daterange(${asOf}::date,NULL,'[)')
       UNION
-      SELECT rl.manager_employment_id
-      FROM reporting_line rl
-      JOIN ancestors a ON rl.subordinate_employment_id = a.mgr
-      WHERE rl.line_type = 'administrative' AND rl.superseded_at IS NULL
-        AND rl.valid_from <= ${asOf} AND (rl.valid_to IS NULL OR rl.valid_to > ${asOf})
-    )
-    SELECT 1 FROM ancestors WHERE mgr = ${subordinateId} LIMIT 1
+      SELECT rl.manager_employment_id, a.effective * daterange(rl.valid_from,rl.valid_to,'[)')
+      FROM reporting_line rl JOIN ancestors a ON rl.subordinate_employment_id=a.mgr
+      WHERE rl.line_type='administrative' AND rl.superseded_at IS NULL
+       AND a.effective && daterange(rl.valid_from,rl.valid_to,'[)')
+    ) SELECT 1 FROM ancestors WHERE mgr=${subordinateId} LIMIT 1
   `);
   return res.length > 0;
 }
