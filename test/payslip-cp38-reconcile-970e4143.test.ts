@@ -1,3 +1,4 @@
+import {emitPayslipPdfDiagnostic,payslipPdfDiagnosticsEnabled} from './helpers/payslip-pdf-diagnostics';
 /**
  * Item 970e4143 — A PAYSLIP WITH A CP38 INSTALMENT DID NOT ADD UP, AND ON A CLAMPED ONE IT OVERSTATED
  * MONEY TAKEN FROM AN EMPLOYEE. Two faults, eight surfaces, and one check that should have existed.
@@ -400,7 +401,7 @@ const PDF_DEDUCTION_LABELS = [
   labels.cp38, labels.zakat, labels.unpaidLeaveLine, labels.absentLine, labels.otherDeductions,
 ] as const;
 
-async function pdfDeductions(payslipId: string) {
+async function pdfDeductions(payslipId: string,diagnosticName?:string) {
   const p = await payslipForReview(admin, { companyIds: [base.companyId], payslipId });
   expect(p, 'the admin review read found the payslip').toBeTruthy();
   const data = buildPayslipPdfData(
@@ -409,7 +410,12 @@ async function pdfDeductions(payslipId: string) {
     { epf: labels.epf, socso: labels.socso, skbbk: labels.skbbk, eis: labels.eis, tax: labels.pcb },
     { currency: p!.currency },
   );
-  const pl = drawnPlacements(await renderPayslipPdf(data, labels));
+  const bytes=await renderPayslipPdf(data,labels);
+  if(diagnosticName&&payslipPdfDiagnosticsEnabled()){
+    const [stored]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,payslipId));
+    await emitPayslipPdfDiagnostic(diagnosticName,bytes,{storedPayslip:stored,readModel:p,buildPayslipPdfData:data,labels,fixture:'Existing unclamped CP38 450 + keyed DB368 manual deduction 125; stamped then same saved slip with only cp38Applied removed.'});
+  }
+  const pl = drawnPlacements(bytes);
   const beside = (label: string) => {
     const row = pl.find((r) => r.text === label);
     if (!row) return null;
@@ -608,9 +614,9 @@ async function unstamp(payslipId: string) {
 describe('970e4143 C — a payslip issued before the stamp', () => {
   it('UNCLAMPED: byte-identical to the stamped slip — the same rows, the same figures', async () => {
     const { slip } = await runWithCp38(450, { email: 'cp38.legacy@acme.test', ic: '900101011234', manual: 125 });
-    const stamped = await pdfDeductions(slip.id);
+    const stamped = await pdfDeductions(slip.id,'cp38-db368-stamped');
     await unstamp(slip.id);
-    const legacy = await pdfDeductions(slip.id);
+    const legacy = await pdfDeductions(slip.id,'cp38-db368-unstamped');
     expect(legacy.rows, 'an unclamped legacy slip cannot tell the difference and must not look different')
       .toEqual(stamped.rows);
     expect(legacy.total).toBe(stamped.total);
