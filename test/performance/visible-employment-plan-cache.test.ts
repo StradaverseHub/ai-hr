@@ -37,9 +37,10 @@ it('reuses visibility plans without caching a caller or changing native results'
  await owner.client.unsafe(qualified);
  const original=await definition();
  const candidate=qualified.replace('LANGUAGE sql','LANGUAGE plpgsql')
-  .replace('AS $$\n','AS $$\nBEGIN\n RETURN (\n').replace(/;\n\$\$;\s*$/, '\n );\nEND;\n$$;');
+  .replace('AS $$\n',()=> 'AS $$\nBEGIN\n RETURN (\n').replace(/;\n\$\$;\s*$/, ()=> '\n );\nEND;\n$$;');
  expect(candidate).toContain('LANGUAGE plpgsql');
  expect(candidate).toContain('BEGIN\n RETURN (');
+ expect(candidate.match(/\$\$/g)).toHaveLength(2);
  const stableAttributes=(attributes:Record<string,unknown>)=>Object.fromEntries(Object.entries(attributes).filter(([key])=>key!=='prolang'));
 
  const read=async(ctx:SessionContext)=>{
