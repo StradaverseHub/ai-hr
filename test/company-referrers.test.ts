@@ -1377,7 +1377,7 @@ describe('approved organisation and Rewards company retention',()=>{
  }
  it('retains an actual prepared and rejected review scope without publishing or changing classifications',async()=>{
   const id=await bare();expect(await verdict(ADMIN(),id)).toBeNull();
-  const [unit]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'RETAIN-REVIEW',name:'Fictional reviewed unit',isGlobal:true}).returning();
+  const [unit]=await owner.withTenant(ADMIN(),tx=>tx.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'RETAIN-REVIEW',name:'Fictional reviewed unit',isGlobal:true}).returning());
   const runId=await prepareCompanyOrganisationRun(ADMIN(),{kind:'mapping',companyIds:[id],effectiveOn:todayInKualaLumpur(),changes:[{companyId:id,businessUnitId:unit.id,parentCompanyId:null}]});
   await refusal(id);
   const checker={...ADMIN(),userId:await createAppUser(b.tenantId,null,'hr_admin')};
@@ -1398,7 +1398,7 @@ describe('approved organisation and Rewards company retention',()=>{
   expect(await verdict(ADMIN(),id)).toBeNull();
   let unit:string|null=null;
   if(kind==='business-unit-origin'){
-   const [row]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:id,code:'RETAIN-SHARED',name:'Fictional shared reviewed unit',isGlobal:true}).returning();unit=row.id;
+   const [row]=await owner.withTenant(ADMIN(),tx=>tx.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:id,code:'RETAIN-SHARED',name:'Fictional shared reviewed unit',isGlobal:true}).returning());unit=row.id;
   }
   // Owner fixtures isolate each retained FK independently of the run's scope arrays, current
   // company parent and employee links. The public deletion path must retain the historical row.
