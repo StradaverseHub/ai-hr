@@ -27,7 +27,8 @@ import th from '../messages/th.json';
 type Locale='en'|'ms'|'zh'|'vi'|'ta'|'th';
 const CATALOGUES={en,ms,zh,vi:vi_,ta,th};
 const messagesFor=(locale:Locale)=>withAiCentre(locale,CATALOGUES[locale] as Record<string,unknown>) as typeof en & {aiCentre:Record<string,any>};
-const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'ta'|'th',session:null as unknown,reads:[] as string[],scope:'group' as 'group'|'company',runs:[] as unknown[]}));
+const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'ta'|'th',session:null as unknown,reads:[] as string[],scope:'group' as 'group'|'company',runs:[] as unknown[],
+ salaryView:null as unknown}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',async()=>{
  const {createTranslator:translator,createFormatter:formatter}=await import('next-intl');
@@ -126,7 +127,7 @@ vi.mock('../core/payroll-learning/status',async importOriginal=>({...(await impo
 vi.mock('../core/payroll-learning/mode',async importOriginal=>({...(await importOriginal<typeof import('../core/payroll-learning/mode')>()),learningSettingsView:async()=>new Map()}));
 vi.mock('../core/loops/payroll-cycle-views',()=>({PayrollCycleRefused:fx.PayrollCycleRefused,
  payrollCycleOverview:async(_s:unknown,options:{companyId?:string})=>{state.reads.push('overview');return fx.overview(state.scope,typeof options.companyId==='string'?options.companyId:null,state.runs);},
- salaryLoopPage:async()=>{state.reads.push('salary');return fx.salary;},
+ salaryLoopPage:async()=>{state.reads.push('salary');return state.salaryView??fx.salary;},
  payrollLoopSettingsPage:async()=>{state.reads.push('settings');return fx.settings;}}));
 import PayrollCyclePage from '../app/control-tower/loops/payroll-cycle/page';
 import SalaryLoopPage from '../app/control-tower/loops/payroll-cycle/salary/page';
@@ -149,7 +150,7 @@ const settings=async(query:Record<string,string>={})=>PayrollLoopSettingsPage({s
 const rows=(container:Element,selector:string)=>[...container.querySelectorAll(`${selector} tbody tr`)].map(row=>[...row.querySelectorAll('th,td')].map(parts));
 const coarse=(container:Element)=>{for(const el of container.querySelectorAll('main button, main select, main input:not([type=hidden]), [data-payroll-loops] a, [data-people-loops] a, [data-swing-flags] button'))
  expect(el.className,el.outerHTML.slice(0,120)).toContain('pointer-coarse:min-h-11');};
-afterEach(()=>{cleanup();state.locale='en';state.session=null;state.reads=[];state.scope='group';state.runs=[];});
+afterEach(()=>{cleanup();state.locale='en';state.session=null;state.reads=[];state.scope='group';state.runs=[];state.salaryView=null;});
 
 describe('Phase 2 hardening: approving is a group administrator\'s',()=>{
  it('an HR administrator of one company may reject a proposal but is not offered Approve',async()=>{
@@ -159,6 +160,43 @@ describe('Phase 2 hardening: approving is a group administrator\'s',()=>{
   expect([...proposal.querySelectorAll('button')].map(text)).toEqual(['Reject']);
   expect(text(proposal)).toContain('A group administrator approves this; you can reject it.');
   expect([...view.container.querySelectorAll('[data-rule-proposal] button')].map(text)).toEqual(['Reject']);
+ });
+});
+
+describe('Owner decision 28: the Salary payroll page records swing dispositions only and resolves no exception',()=>{
+ it('says a group\'s tap decides only its flags and links to Exceptions while the month has open exceptions; no control here resolves one',async()=>{
+  state.session=SESSIONS.groupAdmin;
+  const view=wrap('en',await salary({period:'2026-10'}));
+  // The fixture's salary run has 2 open exceptions.
+  const note=view.container.querySelector('[data-groups-note]')!;
+  expect(text(note)).toBe('Marking a group records your decision on these flags only. Any exception for the same people is resolved on Exceptions. Resolve on Exceptions');
+  expect([...note.querySelectorAll('a')].map(a=>[a.textContent,a.getAttribute('href')])).toEqual([['Resolve on Exceptions','/control-tower/exceptions']]);
+  // Every open exception's link goes to Exceptions (a run with none opens its own anomalies page, which resolves nothing).
+  expect([...view.container.querySelectorAll('a')].filter(a=>/exception/i.test(a.textContent??'')).map(a=>[text(a),a.getAttribute('href')])).toEqual([
+   ['2 exceptions open','/control-tower/exceptions'],['No exceptions open','/payroll/b-2/anomalies'],['Resolve on Exceptions','/control-tower/exceptions'],
+   ['Open Exceptions','/control-tower/exceptions#acknowledged-blocks']]);
+  // No form here carries a verdict or a resolution: the forms are swing dispositions and acknowledgements only.
+  expect(view.container.querySelectorAll('input[name="verdict"],input[name="verdictId"],input[name="resolution"],input[name="batchId"]')).toHaveLength(0);
+  const posted=new Set([...view.container.querySelectorAll('form input')].map(input=>input.getAttribute('name')));
+  expect(posted.size).toBeGreaterThan(0);
+  for(const name of posted)expect(['back','case','check','company','disposition','employment','pattern','period','reason','reviewOn','scope','target'],String(name)).toContain(name);
+ });
+ it('drops the link when the month has no open exception, and words the note in every locale',async()=>{
+  state.session=SESSIONS.groupAdmin;
+  state.salaryView={...fx.salary,companies:fx.salary.companies.map(c=>({...c,runs:c.runs.map(run=>({...run,exceptions:0}))}))};
+  const view=wrap('en',await salary({period:'2026-10'}));
+  const note=view.container.querySelector('[data-groups-note]')!;
+  expect(text(note)).toBe('Marking a group records your decision on these flags only. Any exception for the same people is resolved on Exceptions.');
+  expect(note.querySelectorAll('a')).toHaveLength(0);
+  cleanup();
+  for(const locale of ['ms','zh','vi','ta','th'] as const){
+   state.locale=locale;
+   const local=wrap(locale,await salary({period:'2026-10'}));
+   const expected=(messagesFor(locale).aiCentre.payrollCycle as {groups:{note:string}}).groups.note;
+   expect(expected,locale).not.toBe(messagesFor('en').aiCentre.payrollCycle.groups.note);
+   expect(text(local.container.querySelector('[data-groups-note]')),locale).toBe(expected);
+   cleanup();
+  }
  });
 });
 

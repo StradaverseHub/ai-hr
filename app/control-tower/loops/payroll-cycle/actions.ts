@@ -19,8 +19,9 @@ import { PayrollLearningRefused, setPayrollLearningMode } from '@/core/payroll-l
  *    administrator of the company rejects one (approving re-derives it first).
  * Phase 2 hardening adds, each a person's own decision re-checked by its service and the database (migration 2011):
  *  - payroll HR disposes of a whole group of net-swing flags (one company, month and pattern) in one tap, having seen the
- *    evidence; "expected" also resolves the same people's net-swing-only anomaly verdicts (one decision, not two);
- *  - payroll HR resolves an acknowledged blocking exception with its pre-filled reason;
+ *    evidence; the tap records swing dispositions only, and the same people's exceptions are resolved on Exceptions
+ *    (AI Centre restructure, owner decision 28);
+ *  - payroll HR resolves an acknowledged blocking exception with its pre-filled reason, on Exceptions;
  *  - payroll HR records or revokes a standing "expected" acknowledgement; a group administrator approves a proposed
  *    standing rule, or any administrator rejects one.
  * None of them changes pay, a payroll run or a detector. Each returns to its page with a closed result code. */

@@ -1538,7 +1538,7 @@
           "expected": "All {count} expected",
           "problem": "All {count} are a real problem"
         },
-        "note": "Marking a group expected also resolves the same people's net-swing anomaly for the month, so you decide the change once."
+        "note": "Marking a group records your decision on these flags only. Any exception for the same people is resolved on Exceptions."
       },
       "acknowledgedBlocks": {
         "title": "Blocking exceptions with a standing acknowledgement",

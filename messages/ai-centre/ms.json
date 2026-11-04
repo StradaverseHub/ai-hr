@@ -1538,7 +1538,7 @@
           "expected": "Kesemua {count} dijangka",
           "problem": "Kesemua {count} masalah sebenar"
         },
-        "note": "Menandakan kumpulan sebagai dijangka juga menyelesaikan anomali ayunan bersih orang yang sama untuk bulan itu, jadi anda memutuskan perubahan sekali sahaja."
+        "note": "Menandakan kumpulan hanya merekodkan keputusan anda bagi bendera ini. Sebarang pengecualian bagi orang yang sama diselesaikan di Pengecualian."
       },
       "acknowledgedBlocks": {
         "title": "Pengecualian menyekat dengan pengakuan tetap",

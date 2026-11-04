@@ -17,7 +17,9 @@ import { acknowledgeCheckAction, disposeSwingGroupAction, recordSwingDisposition
  * where a person does that. A disposition changes no pay. No mock-up covers this page: it follows the loop pages' own
  * tables and buttons (core vocabulary, no new colour).
  * Phase 2 hardening: the open flags are also shown grouped by what moved the pay (company, month and pattern), each group
- * with its evidence and one tap for all of it (core/loops/grouped-dispositions.ts); a flag can be acknowledged as
+ * with its evidence and one tap for all of it (core/loops/grouped-dispositions.ts), which records swing dispositions only:
+ * an exception (an anomaly verdict, net-swing ones included) is resolved on Exceptions only (owner decision 28), so the
+ * runs' exception counts and the groups' note link there and nothing here resolves one; a flag can be acknowledged as
  * standing "expected" for its person (core/loops/acknowledgements.ts); and a blocking exception a standing acknowledgement
  * covers is listed with its one-tap resolve pre-filled (a person still presses it).
  * Payroll history learning (P2): each flag of a company learning is on for shows the person's evidence line, "Usual for this
@@ -33,9 +35,12 @@ const link = 'inline-flex min-h-9 items-center text-primary hover:underline focu
 export default async function SalaryLoopPage({ searchParams }: { searchParams: Promise<{ period?: string; company?: string; error?: string; saved?: string }> }) {
   const s = await requireAdmin();
   const query = await searchParams;
-  const [t, f, view] = await Promise.all([getTranslations('aiCentre.payrollCycle'), getFormatter(), salaryLoopPage(s, { period: query.period, companyId: query.company })]);
+  const [t, te, f, view] = await Promise.all([getTranslations('aiCentre.payrollCycle'), getTranslations('aiCentre.exceptions'), getFormatter(),
+    salaryLoopPage(s, { period: query.period, companyId: query.company })]);
   const error = ERRORS.find(code => code === query.error), saved = SAVED.find(code => code === query.saved);
   const groups = swingFlagGroups(view.flags);
+  // The month's open exceptions, as the runs' own checks counted them: resolved on Exceptions only (owner decision 28).
+  const openExceptions = view.companies.reduce((sum, c) => sum + c.runs.reduce((runs, run) => runs + (run.status === 'draft' ? 0 : run.exceptions), 0), 0);
   const blocks = await acknowledgedBlocks(s, { companyIds: view.companies.map(c => c.companyId), payPeriod: view.period });
   // A learning read that fails leaves the flags without evidence lines; it never stops the page.
   const [tl, evidence] = await Promise.all([getTranslations('aiCentre.payrollLearning'),
@@ -135,7 +140,8 @@ export default async function SalaryLoopPage({ searchParams }: { searchParams: P
             </li>
           ))}
         </ul>
-        <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('groups.note')}</p>
+        <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground" data-groups-note>{t('groups.note')}
+          {openExceptions > 0 && <>{' '}<Link href="/control-tower/exceptions" className={cn(link, 'min-h-0')}>{te('resolveThere')}</Link></>}</p>
       </Card>}
 
       {/* Owner decision 28: payroll exceptions are resolved on Exceptions only. This page counts the acknowledged blocking
