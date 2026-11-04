@@ -82,8 +82,8 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:1349,version:'7',when:1793330001502,tag:'2102_company_tenant_fk_validate',breakpoints:true,hash:'b2a6af380bb89765c2b32b6edaf8b5c7707ca23901f22806cd9f8888856983b4'},
   {idx:1367,version:'7',when:1793330001520,tag:'2120_definer_search_path_pin',breakpoints:true,hash:'d3154b1a705b519b3df8263492338253d3a445126e0e29aae8d228658b176238'},
   {idx:1368,version:'7',when:1793330001521,tag:'2121_company_descendant_tenant_pin',breakpoints:true,hash:'226a62add7c1b827f5486e327419186da115f7f74834dea87e1c385b711a0a34'},
-  {idx:1369,version:'7',when:1793330001522,tag:'2122_company_reference_tenant_fk_not_valid',breakpoints:true,hash:'8767ebd96940ca969a9e3eaa2e54a40ed7c49bc4d8d95c73d05e3404fdbaa797'},
-  {idx:1370,version:'7',when:1793330001523,tag:'2123_company_reference_tenant_fk_validate',breakpoints:true,hash:'8e273d007ca71ad707e579bc7c0ca6df8715dabc67d0067a743ca8ab34f278c4'},
+  {idx:1369,version:'7',when:1793330001522,tag:'2122_company_reference_tenant_fk_not_valid',breakpoints:true,hash:'91bf130056cf56c6d114c472cfe27afed5725f2956b24f62f2a5f94cf8756752'},
+  {idx:1370,version:'7',when:1793330001523,tag:'2123_company_reference_tenant_fk_validate',breakpoints:true,hash:'64a6df6bf067290871d7415d0efbd11a1c27f6f4c268313f4a673c331bebaaa4'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

@@ -8,7 +8,7 @@
 -- VALIDATE reads past row-level security, as every foreign-key check does.
 --
 -- VALIDATE takes SHARE UPDATE EXCLUSIVE on each table and ROW SHARE on company; when 2122 lands in the same
--- run its locks are held until the commit (writes to these six tables wait, reads continue).
+-- run its locks are held until the commit (writes to these seven tables wait, reads continue).
 DO $company_reference_validate$
 DECLARE
   target text[];
@@ -21,7 +21,8 @@ BEGIN
     ['public.overtime_pattern', 'overtime_pattern_creation_company_tenant_fk'],
     ['public.overtime_pattern_version', 'overtime_pattern_version_creation_company_tenant_fk'],
     ['public.performance_kpi_library', 'performance_kpi_library_group_company_tenant_fk'],
-    ['public.reporting_line', 'reporting_line_scope_company_tenant_fk']
+    ['public.reporting_line', 'reporting_line_scope_company_tenant_fk'],
+    ['public.teras_chat', 'teras_chat_company_tenant_fk']
   ] LOOP
     BEGIN
       EXECUTE pg_catalog.format('ALTER TABLE %s VALIDATE CONSTRAINT %I', target[1]::regclass, target[2]);

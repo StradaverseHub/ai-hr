@@ -178,8 +178,8 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
    {hash:'b2a6af380bb89765c2b32b6edaf8b5c7707ca23901f22806cd9f8888856983b4',created_at:'1793330001502'},
    {hash:'d3154b1a705b519b3df8263492338253d3a445126e0e29aae8d228658b176238',created_at:'1793330001520'},
    {hash:'226a62add7c1b827f5486e327419186da115f7f74834dea87e1c385b711a0a34',created_at:'1793330001521'},
-   {hash:'8767ebd96940ca969a9e3eaa2e54a40ed7c49bc4d8d95c73d05e3404fdbaa797',created_at:'1793330001522'},
-   {hash:'8e273d007ca71ad707e579bc7c0ca6df8715dabc67d0067a743ca8ab34f278c4',created_at:'1793330001523'},
+   {hash:'91bf130056cf56c6d114c472cfe27afed5725f2956b24f62f2a5f94cf8756752',created_at:'1793330001522'},
+   {hash:'64a6df6bf067290871d7415d0efbd11a1c27f6f4c268313f4a673c331bebaaa4',created_at:'1793330001523'},
   ]);
   expect(await phaseTwoObjects()).toEqual([{levels:'teras_loop_level',settings:'teras_payroll_loop_setting',audit:'payroll_audit_capture',baseline:'teras_capacity_baseline',
    cutoff:true,handbook:'teras_policy_version',learning:'teras_learning_signal',hardening:'payroll_check_acknowledgement'}]);

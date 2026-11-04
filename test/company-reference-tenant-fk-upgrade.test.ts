@@ -1,7 +1,7 @@
 /** ADR-0174 follow-up populated upgrade through 2120–2123, on an owned disposable localhost database only.
  * Cross-tenant references present at the 671-entry boundary must stop the whole upgrade with a report naming
  * every offending table and leave the ledger and every function untouched. Once the owner resolves them, the
- * upgrade validates the six keys, rewrites no row, changes no grant or policy, appends pg_temp to every
+ * upgrade validates the seven keys, rewrites no row, changes no grant or policy, appends pg_temp to every
  * unpinned path and changes only the five function bodies it re-issues. This supplies no staging acceptance. */
 import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -22,7 +22,8 @@ const TAIL=[
  {idx:1370,version:'7',when:1793330001523,tag:'2123_company_reference_tenant_fk_validate',breakpoints:true},
 ];
 const KEYS=['company_parent_company_tenant_fk','notice_owner_company_tenant_fk','overtime_pattern_creation_company_tenant_fk',
- 'overtime_pattern_version_creation_company_tenant_fk','performance_kpi_library_group_company_tenant_fk','reporting_line_scope_company_tenant_fk'];
+ 'overtime_pattern_version_creation_company_tenant_fk','performance_kpi_library_group_company_tenant_fk','reporting_line_scope_company_tenant_fk',
+ 'teras_chat_company_tenant_fk'];
 const REISSUED=['app.can_see_employment(uuid)','app.can_see_person(uuid)','app.heads_department_of(uuid,uuid)','app.is_admin_report_of(uuid,uuid)','app.is_company_descendant(uuid,uuid)'];
 /** What 2120 does to a path: append pg_temp; a bare `public` resolves identically as `pg_catalog, public, pg_temp`. */
 const pinned=(config:string[]|null)=>config?.map(setting=>{
@@ -32,7 +33,7 @@ const pinned=(config:string[]|null)=>config?.map(setting=>{
  return 'search_path='+(parts.length===1&&parts[0]==='public'?['pg_catalog','public']:parts).concat('pg_temp').join(', ');
 })??null;
 
-it('stops on cross-tenant references, then pins every definer and validates the six keys without changing data or grants',async()=>{
+it('stops on cross-tenant references, then pins every definer and validates the seven keys without changing data or grants',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:Entry[]};
  const boundary=journal.entries.findIndex(row=>row.tag===TAIL[0].tag);
  expect(boundary).toBe(671);
@@ -54,12 +55,12 @@ it('stops on cross-tenant references, then pins every definer and validates the 
  const tenantA=randomUUID(),tenantB=randomUUID(),holdingA=randomUUID(),subsidiaryA=randomUUID(),holdingB=randomUUID(),subsidiaryB=randomUUID(),misparented=randomUUID();
  const deptA=randomUUID(),deptB=randomUUID(),userA=randomUUID(),userManagerA=randomUUID();
  const [managerA,reportA,managerB,reportB]=[randomUUID(),randomUUID(),randomUUID(),randomUUID()],persons=[randomUUID(),randomUUID(),randomUUID(),randomUUID()];
- const strayLine=randomUUID();
+ const strayLine=randomUUID(),ownChat=randomUUID(),strayChat=randomUUID();
  const ledger=()=>storage.client`select id,hash,created_at::text as created_at from drizzle.__drizzle_migrations order by id`;
  const keys=()=>storage.client`select conrelid::regclass::text as rel,conname,convalidated from pg_constraint where conname=any(${KEYS}) order by 1`;
  const native=async()=>{
   const rows:Record<string,unknown>={};
-  for(const table of ['tenant','company','person','app_user','role_assignment','department','employment','assignment','reporting_line','notice','performance_kpi_library']){
+  for(const table of ['tenant','company','person','app_user','role_assignment','department','employment','assignment','reporting_line','notice','performance_kpi_library','teras_chat']){
    rows[table]=await storage.client.unsafe(`select to_jsonb(t) as row from public.${table} t where ${table==='tenant'?'id':'tenant_id'}=any($1::uuid[]) order by to_jsonb(t)::text`,[[tenantA,tenantB]]);
   }
   return rows;
@@ -114,13 +115,16 @@ it('stops on cross-tenant references, then pins every definer and validates the 
   await storage.client`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from,scope_company_id) values
    (${tenantA},${reportA},${managerA},'administrative','2024-01-01',${holdingA}),(${tenantB},${reportB},${managerB},'administrative','2024-01-01',null)`;
   await storage.client`insert into performance_kpi_library(tenant_id,name,template,group_company_id) values(${tenantA},'Fictional group KPI','{}'::jsonb,${holdingA})`;
+  await storage.client`insert into teras_chat(id,tenant_id,app_user_id,person_id,company_id,scope_digest) values(${ownChat},${tenantA},${userManagerA},${persons[0]},${holdingA},${'a'.repeat(64)})`;
   // The gaps 2120/2121 close: tenant A's session reaches tenant B's reporting line and company tree.
   expect(await answers()).toEqual([{own_report:true,own_line:true,foreign_line:true,foreign_head:true,foreign_tree:true,own_tree:true}]);
 
-  // The defects the old plain keys accepted: a tenant A company under tenant B's holding, and a tenant A line scoped to B.
+  // The defects the old keys accepted: a tenant A company under tenant B's holding, a tenant A line scoped to B, and a
+  // tenant A chat naming B's company (teras_chat.company_id had no key at all).
   await storage.client`insert into company(id,tenant_id,legal_name,parent_company_id) values(${misparented},${tenantA},'Fictional misparented company',${holdingB})`;
   await storage.client`insert into reporting_line(id,tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from,valid_to,scope_company_id)
    values(${strayLine},${tenantA},${managerA},${reportA},'administrative','2020-01-01','2020-12-31',${holdingB})`;
+  await storage.client`insert into teras_chat(id,tenant_id,app_user_id,person_id,company_id,scope_digest) values(${strayChat},${tenantA},${userManagerA},${persons[0]},${holdingB},${'b'.repeat(64)})`;
   const withDefects=await native(),beforePrivileges=await privileges(),beforeFunctions=await functions();
   const refused=await migrate(storage.db,{migrationsFolder:folder('through',through)}).then(()=>null,(e:unknown)=>e);
   const chain:{message?:string;detail?:string;code?:string}[]=[];
@@ -130,6 +134,7 @@ it('stops on cross-tenant references, then pins every definer and validates the 
   expect(report?.detail?.split('; ')).toEqual([
    expect.stringMatching(/^public\.company: Key \(parent_company_id, tenant_id\)=\([0-9a-f-]{36}, [0-9a-f-]{36}\) is not present in table "company"\.$/),
    expect.stringMatching(/^public\.reporting_line: Key \(scope_company_id, tenant_id\)=\([0-9a-f-]{36}, [0-9a-f-]{36}\) is not present in table "company"\.$/),
+   expect.stringMatching(/^public\.teras_chat: Key \(company_id, tenant_id\)=\([0-9a-f-]{36}, [0-9a-f-]{36}\) is not present in table "company"\.$/),
   ]);
   expect(await ledger()).toEqual(beforeLedger);expect(await keys()).toEqual([]);
   expect(await native()).toEqual(withDefects);expect(await functions()).toEqual(beforeFunctions);expect(await unpinned()).toBe(168);
@@ -137,6 +142,7 @@ it('stops on cross-tenant references, then pins every definer and validates the 
   // The owner resolves the defects deliberately; the upgrade itself never rewrites or deletes them.
   await storage.client`update company set parent_company_id=null where id=${misparented}`;
   await storage.client`delete from reporting_line where id=${strayLine}`;
+  await storage.client`delete from teras_chat where id=${strayChat}`;
   const upgradeNative=await native();
   await migrate(storage.db,{migrationsFolder:folder('through-resolved',through)});
   const afterLedger=await ledger();

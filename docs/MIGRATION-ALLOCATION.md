@@ -18,12 +18,12 @@ series.
 | --- | ---: | ---: | --- |
 |2120_definer_search_path_pin|1367|1793330001520|d3154b1a705b519b3df8263492338253d3a445126e0e29aae8d228658b176238|
 |2121_company_descendant_tenant_pin|1368|1793330001521|226a62add7c1b827f5486e327419186da115f7f74834dea87e1c385b711a0a34|
-|2122_company_reference_tenant_fk_not_valid|1369|1793330001522|8767ebd96940ca969a9e3eaa2e54a40ed7c49bc4d8d95c73d05e3404fdbaa797|
-|2123_company_reference_tenant_fk_validate|1370|1793330001523|8e273d007ca71ad707e579bc7c0ca6df8715dabc67d0067a743ca8ab34f278c4|
+|2122_company_reference_tenant_fk_not_valid|1369|1793330001522|91bf130056cf56c6d114c472cfe27afed5725f2956b24f62f2a5f94cf8756752|
+|2123_company_reference_tenant_fk_validate|1370|1793330001523|64a6df6bf067290871d7415d0efbd11a1c27f6f4c268313f4a673c331bebaaa4|
 
 2120 appends pg_temp to every unpinned function path and re-issues the four visibility helpers; 2121
-tenant-filters `app.is_company_descendant`; 2122 adds six company/tenant keys NOT VALID; 2123 checks the data
-and validates them. Unapplied source only: re-check main's highest file, idx and `when` immediately before
+tenant-filters `app.is_company_descendant`; 2122 adds seven company/tenant keys NOT VALID (the seventh,
+`teras_chat.company_id`, ON DELETE NO ACTION by owner decision); 2123 checks the data and validates them. Unapplied source only: re-check main's highest file, idx and `when` immediately before
 merge and keep each timestamp above every earlier-applied migration.
 
 Integration notes: Codex's 2103 and 2105 re-issue `app.visible_employment_ids` with `SET search_path = public`.

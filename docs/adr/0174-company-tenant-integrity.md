@@ -74,12 +74,14 @@ are closed as follows. None was a known exploitable path.
    `company.parent_company_id`, `reporting_line.scope_company_id`, `notice.owner_company_id`,
    `overtime_pattern(.version).creation_company_id` and `performance_kpi_library.group_company_id` reference
    `company(id, tenant_id)` as `<table>_<column minus _id>_tenant_fk`, ON DELETE NO ACTION like their plain
-   keys. `setCompanyParent` and the delegation scope picker pass a submitted company id straight through, so
-   the key is what refuses another tenant's. 2123 reports every offending table and stops the upgrade, as 2102
+   keys. `teras_chat.company_id` (2000), which had no company key, gets `teras_chat_company_tenant_fk`. `setCompanyParent` and the delegation scope picker pass a submitted company id straight through, so
+   the key is what refuses another tenant's; a chat takes its company from the browser's conversation scope.
+   2123 reports every offending table and stops the upgrade, as 2102
    does. `test/tenant-company-fk.test.ts` now requires a twin for every single-column company key on a tenant
    table, and `test/company-reference-tenant-fk-upgrade.test.ts` rehearses both outcomes at the 671-entry
    boundary.
 
-Still open: `teras_chat.company_id` (2000) is NOT NULL with no company key. A key needs an ON DELETE choice that
-changes chat retention (NO ACTION keeps a company with unexpired chats undeletable; CASCADE deletes them and
-their turns with the company), so it waits for its owner's decision.
+The owner chose ON DELETE NO ACTION for `teras_chat` (4 November 2026) over CASCADE. A company with chats or chat
+tombstones refuses deletion as `other` (declared in `core/company-refs.ts`) until retention removes them, at most
+the tenant's "Keep chats for" period (1 to 365 days). Deleting a company never deletes anyone's chats. A chat
+naming a company outside the tenant is not stored; the reply is still shown.

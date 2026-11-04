@@ -7,11 +7,14 @@
  * cross-tenant reference. These tests assert the database refusal directly as `ai_hr_app`, plus a
  * catalog guard so a future company-stamped table cannot ship without the composite key. 2122/2123 extend the
  * rule to the six company references not called company_id (parent company, reporting-line scope, notice
- * owner, overtime creation company, KPI group); the second guard covers every single-column company key.
+ * owner, overtime creation company, KPI group) and to teras_chat.company_id, which had no company key at all;
+ * the second guard covers every single-column company key.
  */
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import * as schema from '../db/schema';
+import { terasChat } from '../db/teras-chat-schema';
 import { withTenant, type Tx } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompanyParent } from '../core/admin';
@@ -105,6 +108,10 @@ describe('ADR-0174 — company/tenant composite keys', () => {
     ]));
     const missing = keys.filter((k) => !k.composite || !k.validated || !k.same_action);
     expect(missing, 'add FOREIGN KEY (column, tenant_id) REFERENCES company (id, tenant_id) mirroring ON DELETE').toEqual([]);
+    // teras_chat has no single-column key to twin: its only company key is the composite, NO ACTION by owner decision.
+    const [chat] = rowsOf<{ definition: string; validated: boolean }>(await owner.db.execute(sql`SELECT pg_get_constraintdef(oid) AS definition,
+      convalidated AS validated FROM pg_constraint WHERE conrelid = 'public.teras_chat'::regclass AND confrelid = 'public.company'::regclass`));
+    expect(chat).toEqual({ definition: 'FOREIGN KEY (company_id, tenant_id) REFERENCES company(id, tenant_id)', validated: true });
   });
 
   it("refuses a parent company from another tenant through the application's reparent", async () => {
@@ -140,6 +147,7 @@ describe('ADR-0174 — company/tenant composite keys', () => {
       ['overtime_pattern_version', 'overtime_pattern_version_creation_company_tenant_fk', (tx) => tx.insert(schema.overtimePatternVersion).values({ tenantId: a.tenantId, patternId: pattern.id, kind: 'formula', creationCompanyId: b.companyId, ordinal: 1, name: 'Foreign', definition: {}, digest: '0'.repeat(64) })],
       ['performance_kpi_library', 'performance_kpi_library_group_company_tenant_fk', (tx) => tx.insert(schema.performanceKpiLibrary).values({ tenantId: a.tenantId, name: 'Foreign', template: {}, groupCompanyId: b.companyId })],
       ['reporting_line', 'reporting_line_scope_company_tenant_fk', (tx) => tx.insert(schema.reportingLine).values({ tenantId: a.tenantId, subordinateEmploymentId: sub.employmentId, managerEmploymentId: mgr.employmentId, lineType: 'administrative', validFrom: '2024-01-01', scopeCompanyId: b.companyId })],
+      ['teras_chat', 'teras_chat_company_tenant_fk', (tx) => tx.insert(terasChat).values({ id: randomUUID(), tenantId: a.tenantId, appUserId: a.adminUserId, companyId: b.companyId, scopeDigest: '0'.repeat(64), expiresAt: new Date(Date.now() + 86_400_000) })],
     ];
     const outcomes = [];
     for (const [table, constraint, write] of attempts) outcomes.push({ constraint, ...refusal(await alone(table, write).catch((e) => e)) });
