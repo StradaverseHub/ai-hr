@@ -222,14 +222,20 @@ try{
   if(['/claims','/admin/personnel','/payroll'].includes(path))assert(await page.locator('main tbody tr').count()>0,'expected fictional table rows');
   let homeCards=null,homeCardIds=[],todaySectionIds=[];
   if(path==='/'||(path==='/me/calendar'&&['employee','manager'].includes(user.role))){
-   await page.locator('[data-home-card]').first().waitFor({timeout:90000});
+   const personal=['employee','manager'].includes(user.role),attribute=personal?'data-home-card':'data-dashboard-card';
+   const cards=page.locator('main ['+attribute+']');
+   await cards.first().waitFor({timeout:90000});
    await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:90000});
    const failures=await page.locator('main [role="alert"], main [data-today-unavailable], main [data-read-unavailable]').allTextContents();
    if(path==='/'){todaySectionIds=await page.locator('main [data-today-section]').evaluateAll(sections=>sections.map(section=>section.getAttribute('data-today-section')).sort());assert(todaySectionIds.length>0,'current Today sections missing');}
    if(failures.length)report.homeCardFailures.push({role:user.role,phase,messages:failures});
    // Keep collecting independent workflow evidence, then refuse load/acceptance below.
    // A handled card error must never become a passing preflight or a capacity result.
-   homeCardIds=await page.locator('main [data-home-card]').evaluateAll(cards=>cards.map(card=>card.getAttribute('data-home-card')).sort());
+   homeCardIds=await cards.evaluateAll((cards,attribute)=>cards.map(card=>card.getAttribute(attribute)).sort(),attribute);
+   if(!personal){
+    const expected=fixture.users.filter(actor=>actor.tenant===user.tenant&&(user.role==='groupHR'||actor.companyId===user.companyId)).length;
+    assert(await page.locator('[data-dashboard-card="headcount"]').getByText(String(expected),{exact:true}).count()>0,'HR dashboard headcount must match its actual fixture scope');
+   }
    homeCards=homeCardIds.length;assert(homeCards>0,'expected fictional Home cards');
    if(signIn){
     const baseline=report.browser.find(row=>row.phase==='baseline'&&row.role===user.role&&row.path==='/');
@@ -532,7 +538,7 @@ try{
   const pool=routePool(user);
   const routes=suite==='whole-system'?Array.from({length:3},(_,step)=>pool[(roleOrdinals.get(user.index)+iteration*3+step)%pool.length]):user.role==='employee'?['/me','/claims','/leave']:user.role==='manager'?['/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims'];
   for(const route of routes){const navigationStarted=performance.now();await request(user,route);
-   if(route==='/')await homeHttp.read(user,true);
+   if(route==='/'&&['employee','manager'].includes(user.role))await homeHttp.read(user,true);
    pageInteractions.push({role:user.role,route,startedMs:navigationStarted,durationMs:performance.now()-navigationStarted});await pause(thinkTimeMs);
   }
   if(runMixedWorkflow&&await runMixedWorkflow(user,iteration)){await pause(thinkTimeMs);iteration++;progress.iterations++;continue;}

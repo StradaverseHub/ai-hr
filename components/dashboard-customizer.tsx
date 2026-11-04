@@ -630,7 +630,7 @@ export function DashboardCustomizer({
           {row1Keys.length > 0 && (
             <div className={`grid gap-6 ${gridColsFor(row1Keys.length)} ${MONO_ROW1}`}>
               {row1Keys.map((key) => (
-                <div key={key} className={`h-full ${MONO_ROW1_CELL}`}>{nodeFor(key)}</div>
+                <div key={key} data-dashboard-card={key} className={`h-full ${MONO_ROW1_CELL}`}>{nodeFor(key)}</div>
               ))}
             </div>
           )}
@@ -639,7 +639,7 @@ export function DashboardCustomizer({
           {shortcutRowKeys.length > 0 && (
             <div className={`grid gap-6 ${gridColsFor(shortcutRowKeys.length)} ${MONO_ROWS}`}>
               {shortcutRowKeys.map((key) => (
-                <div key={key} className="h-full">{nodeFor(key)}</div>
+                <div key={key} data-dashboard-card={key} className="h-full">{nodeFor(key)}</div>
               ))}
             </div>
           )}
@@ -647,7 +647,7 @@ export function DashboardCustomizer({
           {fixedKeys.length > 0 && (
             <div className={`grid gap-6 ${gridColsFor(fixedKeys.length)} ${MONO_ROWS}`}>
               {fixedKeys.map((key) => (
-                <div key={key} className="h-full">{nodeFor(key)}</div>
+                <div key={key} data-dashboard-card={key} className="h-full">{nodeFor(key)}</div>
               ))}
             </div>
           )}
@@ -655,7 +655,7 @@ export function DashboardCustomizer({
           {row3Keys.length > 0 && (
             <div className={`grid gap-6 ${gridColsFor(row3Keys.length)} ${MONO_ROWS}`}>
               {row3Keys.map((key) => (
-                <div key={key} className="h-full">{nodeFor(key)}</div>
+                <div key={key} data-dashboard-card={key} className="h-full">{nodeFor(key)}</div>
               ))}
             </div>
           )}
