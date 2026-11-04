@@ -17,6 +17,6 @@ Each figure is a percentage with its counts. The chart shows the confirmed-uncha
 
 ## Proposals
 
-**Proposals** lists what the loops propose from your own decisions. A proposal applies only when an administrator approves it, from the next run, and **Revert** restores the earlier setting as a new version. Each loop's corrections by month are shown beside it; a loop's level changes only on its own page.
+**Proposals** lists what the loops propose from your own decisions, read-only here. Each is decided in [Payroll cycle settings](/control-tower/loops/payroll-cycle/settings): a proposal applies only when an administrator approves it there, from the next run, and an applied one is changed back there as a new version. Each loop's corrections by month are shown beside it; a loop's level changes only on its own page.
 
 Learning never changes calculations, permissions or what AI Centre may show.

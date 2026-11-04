@@ -46,3 +46,34 @@ _Avoid_: Radius expansion, spoof-proof location
 An employee's decision to prevent an unaccepted pending submission from being recorded. An already
 accepted request keeps its outcome and follows the normal attendance correction or leave cancellation process.
 _Avoid_: Delete attendance, cancel approved leave, erase history
+
+## AI Centre operations
+
+Each of these facts has one page that owns it (AI Centre restructure, owner decisions 26–29). Every other screen,
+the Assistant included, shows a count or a link to that page.
+
+**Exception**:
+A payroll anomaly verdict, flagged for review or blocking a run, that a person has not yet resolved. It is resolved on
+Operations › Exceptions only; a run's own page lists it and links there.
+_Avoid_: Alert, error, incident, finding (a finding is one detector's evidence inside an exception)
+
+**Finding**:
+One check's evidence about a record or a run: what it compared and what it found. An exception carries one or more
+findings; Today shows an administrator's findings as counts that open the page owning them.
+_Avoid_: Exception, issue, recommendation
+
+**Gap**:
+A missing field on an active employment's record that stops or weakens payroll, payment or statutory filing, as the
+one readiness rule defines it. Gaps are listed on Operations › Record readiness only.
+_Avoid_: Error, exception, incomplete employee
+
+**Loop card**:
+A card a loop prepared for one person to act on (for example, confirm a missed clock-out or fill in a missing detail).
+The person's own Confirm is the decision; the loop never decides for them. A loop's card is the one place its subject is
+shown (passport expiries, for example, appear once, as the passports loop's card).
+_Avoid_: Notification, task, automatic action
+
+**Readiness**:
+Whether something is complete enough for its next step. Record readiness is an employment's gaps; payroll readiness is
+a person's own items before this month's payroll cut-off, on their own page; setup readiness is the go-live stages.
+_Avoid_: Using one of the three to mean another, health, compliance score
