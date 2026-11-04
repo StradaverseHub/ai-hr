@@ -72,7 +72,18 @@ it('measures visibility candidates and native policy plan reuse across separate 
    await expect(readEmployeeHomeIdentity(context(users[4]))).rejects.toThrow();return await outcome(context(users[4]));}
   finally{await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,users[4].id));}
  };
- const controls={malformed:await outcome(malformed),emptyMalformed:await outcome(emptyMalformed),foreign:await read(adminCtx(foreign)),revoked:await withoutReports(),archived:await archivedRead()};
+ const changedGrant=async()=>{
+  const admin=users[0],stale=context(admin),fresh:SessionContext={...stale,roles:['employee'],grants:[{role:'employee',companyId:admin.companyId}]};
+  try{
+   await owner.db.update(s.roleAssignment).set({role:'employee'}).where(eq(s.roleAssignment.appUserId,admin.id));
+   const refusal=await outcome(stale);expect(refusal).toMatchObject({name:'AssignedWorkPrincipalUnavailableError'});
+   await expect(readEmployeeHomeIdentity(stale)).rejects.toThrow();
+   const ids=await read(fresh);expect(ids).toEqual([admin.employmentId]);
+   expect(await readEmployeeHomeIdentity(fresh)).toMatchObject({role:'employee',selectedEmploymentId:admin.employmentId});
+   return {refusal,ids};
+  }finally{await owner.db.update(s.roleAssignment).set({role:'hr_admin'}).where(eq(s.roleAssignment.appUserId,admin.id));}
+ };
+ const controls={malformed:await outcome(malformed),emptyMalformed:await outcome(emptyMalformed),foreign:await read(adminCtx(foreign)),revoked:await withoutReports(),archived:await archivedRead(),changedGrant:await changedGrant()};
  const forged={...context(users[4]),roles:['super_admin'],grants:[{role:'super_admin',companyId:null}]};
  const forgedOutcome=await outcome(forged);
  try{
@@ -88,7 +99,7 @@ it('measures visibility candidates and native policy plan reuse across separate 
    expect(await outcome(malformed)).toEqual(controls.malformed);expect(await outcome(emptyMalformed)).toEqual(controls.emptyMalformed);
    expect(await read(adminCtx(foreign))).toEqual(controls.foreign);expect(await outcome(forged)).toEqual(forgedOutcome);
    await expect(readEmployeeHomeIdentity(forged)).rejects.toThrow();
-   expect(await withoutReports()).toEqual(controls.revoked);expect(await archivedRead()).toEqual(controls.archived);
+   expect(await withoutReports()).toEqual(controls.revoked);expect(await archivedRead()).toEqual(controls.archived);expect(await changedGrant()).toEqual(controls.changedGrant);
    expect(await read(context(users[4]))).toEqual(expected.get(users[4].id));
    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'authorization-planning.json'),JSON.stringify({kind:'COMPONENT_ONLY',principals:500,activeProbes:100,independentTransactionsPerPhase:1000,phases,boundariesPreserved:true,freshNativePrincipalProof:true,limitations:'Native metadata-owner transaction shape, not HTTP capacity. Visibility stays fixed while grant and login language changes have explicit original/candidate reversals; all principal/context checks remain fresh.'},null,2));
   }
