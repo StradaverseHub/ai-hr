@@ -960,15 +960,16 @@ export async function wouldCreateAdminCycle(
   subordinateId: string,
   managerId: string,
   asOf: string,
+  validTo: string | null = null,
 ): Promise<boolean> {
-  // A future-dated chain must be safe throughout the new edge's open interval, not merely on day one.
+  // A future-dated chain must be safe throughout the proposed date range, not merely on day one.
   // Range intersection carries the dates on which every link in a candidate cycle exists together.
   const res = await tx.execute(sql`
     WITH RECURSIVE ancestors(mgr, effective) AS (
-      SELECT manager_employment_id, daterange(valid_from,valid_to,'[)') * daterange(${asOf}::date,NULL,'[)')
+      SELECT manager_employment_id, daterange(valid_from,valid_to,'[)') * daterange(${asOf}::date,${validTo}::date,'[)')
       FROM reporting_line WHERE subordinate_employment_id=${managerId}
        AND line_type='administrative' AND superseded_at IS NULL
-       AND daterange(valid_from,valid_to,'[)') && daterange(${asOf}::date,NULL,'[)')
+       AND daterange(valid_from,valid_to,'[)') && daterange(${asOf}::date,${validTo}::date,'[)')
       UNION
       SELECT rl.manager_employment_id, a.effective * daterange(rl.valid_from,rl.valid_to,'[)')
       FROM reporting_line rl JOIN ancestors a ON rl.subordinate_employment_id=a.mgr

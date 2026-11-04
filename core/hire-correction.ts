@@ -777,17 +777,12 @@ export async function correctHireDetails(
         if (manager === input.employmentId) throw new HireCorrectionError('An employee cannot report to themselves.');
         const [m] = await tx.select({ id: employment.id }).from(employment).where(eq(employment.id, manager)).limit(1);
         if (!m) throw new HireCorrectionError('The selected reporting manager could not be found.');
-        // The SAME cycle rule setReportingLine applies, asked at the start of the range and, for a range
-        // that is still running, today as well (the chain above the manager may have moved since hire).
-        const today = todayInKualaLumpur();
-        const checkDates = [from];
-        if (from < today && (to === null || to > today)) checkDates.push(today);
-        for (const d of checkDates) {
-          if (await wouldCreateAdminCycle(tx, input.employmentId, manager, d)) {
-            throw new HireCorrectionError(
-              'This reporting manager would create a reporting cycle (they report, directly or indirectly, to this employee).',
-            );
-          }
+        // Use the canonical temporal rule over this correction's actual finite/open range. A cycle
+        // arising only AFTER its historical end must not veto a safe correction to the hire record.
+        if (await wouldCreateAdminCycle(tx, input.employmentId, manager, from, to)) {
+          throw new HireCorrectionError(
+            'This reporting manager would create a reporting cycle (they report, directly or indirectly, to this employee).',
+          );
         }
       }
       rlPlan = { supersede: plan.rlV1, insert: manager ? { from, to, manager } : null };

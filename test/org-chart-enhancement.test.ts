@@ -1,6 +1,7 @@
 import {and,eq,sql} from 'drizzle-orm';
+import {withTenant} from '../db/client';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {hireEmployee,setReportingLine,terminateEmployment,setEmploymentAssignment,ReportingCycleError} from '../core/org';
+import {hireEmployee,setReportingLine,terminateEmployment,setEmploymentAssignment,ReportingCycleError,wouldCreateAdminCycle} from '../core/org';
 import {orgChartSnapshot,setOrgChartRoot,recordOrgChartExport} from '../core/org-chart';
 import {orgChartData} from '../core/read';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -61,4 +62,10 @@ it('34b9579a: a concurrent root designation and manager assignment cannot both c
  const outcomes=await Promise.allSettled([setOrgChartRoot(adminCtx(b),{employmentId:a.employmentId,validFrom:'2025-01-01',enabled:true}),line(a.employmentId,manager.employmentId,'2025-01-01')]);
  expect(outcomes.filter(result=>result.status==='fulfilled')).toHaveLength(1);expect(outcomes.filter(result=>result.status==='rejected')).toHaveLength(1);
  const view=await snapshot();const target=view.employees.find(e=>e.employmentId===a.employmentId)!;expect(target.topLevel&&view.edges.some(edge=>edge.subordinate===a.employmentId)).toBe(false);
+});
+
+it('34b9579a: finite historical correction windows do not inherit a cycle that starts after they end',async()=>{
+ const a=await hire('HistoricalAlpha'),b2=await hire('HistoricalBeta');await line(b2.employmentId,a.employmentId,'2027-01-01');
+ expect(await withTenant(adminCtx(b),tx=>wouldCreateAdminCycle(tx,a.employmentId,b2.employmentId,'2024-01-01','2025-01-01'))).toBe(false);
+ expect(await withTenant(adminCtx(b),tx=>wouldCreateAdminCycle(tx,a.employmentId,b2.employmentId,'2024-01-01',null))).toBe(true);
 });
