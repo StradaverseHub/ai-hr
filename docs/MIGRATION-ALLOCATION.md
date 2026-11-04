@@ -1,5 +1,25 @@
 # Coordinated migration reservations
 
+## Administrator-role necessary precheck — 5 November 2026 (unapplied)
+
+`codex/performance-grant-admin-negative-precheck-20261105` reserves
+`2136_grant_admin_role_precheck`, idx1389 / when1793330001536 /
+SHA256 `c2c67726492e0aa45bb601fe6f0c0e61c54ca39bbfb2658cad476958ced6a027`.
+Fresh source scan covers2376 heads,437 committed journals,600 migration trees and231
+readable worktrees through2135 / idx1388 / when1793330001535. Foreign malformed WIP
+and its literal claims remain untouched. Main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e.
+Fresh read-only staging inspection again matches all671 ordered canonical identities
+through1793330001502. No applied or committed SQL is rewritten.
+
+Native experiment41905978845 preserved96 provided-grant/scope/error cases and all
+function ACL/security/configuration metadata. The positive branch still calls the exact
+canonical role/scope owner. A25,000-call mixed synthetic-grant component measured187ms
+original,113ms candidate,114ms warm and189ms after independent exact restoration.
+This is not500 concurrent users or a whole-system speed claim. The append refuses an
+unexpected predecessor and changes only the existing helper body, retaining its signature,
+owner, grants, stability and invoker mode. Populated upgrades and real permission/read/write
+consumers require qualification. Complete BOARD roles is excluded; no deployment is authorized.
+
 ## Profile display read barrier — 5 November 2026 (unapplied)
 
 `codex/performance-profile-display-read-lock-20261105` reserves
