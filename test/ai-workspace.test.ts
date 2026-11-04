@@ -1,8 +1,10 @@
 /** Actual workspace principal/grant/history custody cases, authored UNRUN. No provider requests. */
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq,sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as principal from '../core/ai-principal';
+import * as planning from '../core/module-agent-releases';
+import * as providerSnapshot from '../core/ai-provider-snapshot';
 import { loadAiWorkspace } from '../core/ai-workspace';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
 import { ASSISTANT_TOOLS } from '../core/assistant-tools';
@@ -42,6 +44,32 @@ async function profileReceipt() {
 }
 
 describe('actual AI workspace source read', () => {
+  it.each(['permit','proposal']as const)('keeps the workspace usable after an optional %s SQL failure',async phase=>{
+    const ctx=await grant(),[own]=await exchange(base.tenantId,ctx.userId!,'Fictional retained own workspace question');
+    // Inject a real PostgreSQL error at the optional-reader seam, never a provider request.
+    // A caught JS exception alone would miss the aborted-transaction behavior being tested.
+    const provider=vi.spyOn(providerSnapshot,'resolveAiProviderSnapshotTx');
+    const permit=vi.spyOn(planning,'issueOwnModulePlanPermitTx');
+    const proposal=vi.spyOn(planning,'reopenOwnModulePlanTx');
+    try{
+      if(phase==='permit'){
+        provider.mockRejectedValue(new Error('Fictional provider snapshot unavailable'));
+        permit.mockImplementation(async tx=>{await tx.execute(sql`select 1/0`);return 'unreachable';});
+      }else{
+        provider.mockResolvedValue(null);
+        proposal.mockImplementation(async tx=>{await tx.execute(sql`select 1/0`);throw Error('Unreachable');});
+      }
+      const result=await loadAiWorkspace(ctx,{includeGovernance:false,...phase==='proposal'?{proposalId:randomUUID()}:{}});
+      expect(result.access.allowed).toBe(true);
+      expect(result.history.map(row=>row.id)).toEqual([own.id]);
+      expect(result.taskIds.length).toBeGreaterThan(0);
+      expect(result.planningPermit).toBeNull();expect(result.proposal).toBeNull();
+      expect(result.planningAvailability).toBe(phase==='permit'?'resting':'no_provider');
+      expect(phase==='permit'?permit:proposal).toHaveBeenCalledOnce();
+      expect(await owner.db.select().from(schema.aiModelRun)).toEqual([]);
+    }finally{provider.mockRestore();permit.mockRestore();proposal.mockRestore();}
+  });
+
   it('opens an older retained own exchange beyond ten recent turns without admitting a foreign selection',async()=>{
     const ctx=await grant(),[old]=await owner.db.insert(schema.assistantExchange).values({tenantId:base.tenantId,appUserId:ctx.userId!,question:'Older own question',answer:'UNTRUSTED_OLDER_BODY',stop:'end',askedAt:new Date(Date.now()-60000)}).returning({id:schema.assistantExchange.id});
     for(let index=0;index<12;index++)await exchange(base.tenantId,ctx.userId!,'Newer '+index);
