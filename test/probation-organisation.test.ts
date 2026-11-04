@@ -49,7 +49,7 @@ describe('versioned Probation organisation vocabulary',()=>{
   const replacement={...DEFAULT_PROBATION_CONFIG,organisationMapping:'personnel-v2' as const,overrides:[{businessGroupId:unitId,businessUnitId:b.companyId,kpiGate:'off' as const}]};
   await saveProbationConfiguration(ctx,{companyId:b.companyId,kind:'settings',data:replacement,publish:true,expectedVersion:2});
   const [history]=await owner.db.execute<{n:number}>(sql`select count(*)::int n from probation_configuration where tenant_id=${b.tenantId}::uuid and data->>'organisationMapping'='legacy-v1'`);expect(history.n).toBe(2);
-  const options=await probationAdministrationOptions(ctx);expect(options.businessGroups).toContainEqual({id:unitId,name:'Fictional PM Unit'});expect(options.businessUnits).toContainEqual(expect.objectContaining({id:b.companyId,companyId:b.companyId}));expect(options.personnelBusinessUnits).toContainEqual(expect.objectContaining({id:unitId}));
+  const options=await probationAdministrationOptions(ctx);expect(options.businessGroups).toContainEqual(expect.objectContaining({id:unitId,name:'Fictional PM Unit'}));expect(options.businessUnits).toContainEqual(expect.objectContaining({id:b.companyId,companyId:b.companyId}));expect(options.personnelBusinessUnits).toContainEqual(expect.objectContaining({id:unitId}));
   const [sqlScope]=await withTenant(ctx,tx=>tx.execute<{facts:Record<string,unknown>}>(sql`select app.probation_organisation_facts(${JSON.stringify(facts)}::jsonb,'{}'::jsonb) facts`));expect(sqlScope.facts).toMatchObject({businessGroupId:b.companyId,businessUnitId:unitId});
  });
 });

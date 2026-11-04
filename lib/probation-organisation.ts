@@ -12,7 +12,7 @@ export function probationOrganisationFacts<T extends ProbationOrganisationFacts>
  // The legacy parent-company identity cannot be inferred from a PM Business Unit UUID.
  return {...facts,organisationMapping:mapping,businessGroupId:legacy?.businessGroupId??null,businessGroup:legacy?.businessGroup??null,businessUnitId:legacy?.businessUnitId??facts.businessGroupId,businessUnit:legacy?.businessUnit??facts.businessGroup??null};
 }
-export type ProbationOrganisationCatalog={businessGroups:{id:string;name:string}[];businessUnits:{id:string;name:string;companyId:string}[]};
+export type ProbationOrganisationCatalog={businessGroups:{id:string;name:string;companyId?:string}[];businessUnits:{id:string;name:string;companyId:string}[]};
 export function probationOrganisationCatalog<T extends ProbationOrganisationCatalog&{organisationCatalogs?:Record<ProbationOrganisationMapping,ProbationOrganisationCatalog>}>(options:T,mapping:ProbationOrganisationMapping='legacy-v1'):T{
  return {...options,...options.organisationCatalogs?.[mapping]};
 }
