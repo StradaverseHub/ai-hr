@@ -14,6 +14,7 @@ import {chromium} from 'playwright';
 import postgres from 'postgres';
 import {generate} from 'otplib';
 import {closePerformanceDbPools,performanceNativeDbClient} from './driver-shutdown.mjs';
+import {employeeRoutes,hrRoutes,managerRoutes,routePools,wholeSystemRouteCount,additionalBrowserRoutes} from './system-route-manifest.mjs';
 const base='https://localhost:3443',out=process.env.PERF_EVIDENCE_DIR;
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(new URL(process.env.DATABASE_URL).pathname,'/ai_hr_dev');
 const fixture=JSON.parse(readFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),'utf8'));
@@ -25,7 +26,7 @@ const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000
 const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
 const report={suite,kind:suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
  assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',driverMaxSockets:4000,tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:1,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
- workloadManifest:{readRoutes:30,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['concurrent Payroll close/publish','Lifecycle mutations','Performance mutations','Rewards mutations','large Personnel imports','report-definition CRUD','long-running document jobs'],productionEquivalent:false},
+ workloadManifest:{readRoutes:30,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['concurrent Payroll close/publish','Lifecycle mutations','Performance mutations','Rewards mutations','large Personnel imports','report-definition CRUD','long-running document jobs','external email delivery'],productionEquivalent:false},
  coverage:[],boundaries:[],browser:[],homeCardFailures:[],browserHomeRequests:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
 function processCpu(ids){
@@ -137,10 +138,8 @@ async function verifyAudit(){
  assert.equal(report.auditVerification.length,2);
 }
 const employee=fixture.users.find(u=>u.role==='employee'),hr=fixture.users.find(u=>u.role==='companyHR'),group=fixture.users.find(u=>u.role==='groupHR'),manager=fixture.users.find(u=>u.role==='manager');
-const employeeRoutes=['/','/me','/claims','/leave','/attendance/individual','/me/payslip','/notices','/performance/home','/lifecycle'];
-const hrRoutes=['/admin/personnel','/attendance','/payroll','/reports','/reports/employee-master','/lifecycle/onboarding','/lifecycle/offboarding','/roster','/letters/register','/performance','/rewards','/system-testing','/feedback','/knowledge-base','/control-tower','/admin/settings/movement','/admin/security-center','/payroll/formula-builder','/payroll/formula-builder/new'];
-const managerRoutes=['/','/approvals','/approvals/history','/performance/home','/claims'];
-const routePool=user=>user.role==='employee'?employeeRoutes:user.role==='manager'?managerRoutes:[...hrRoutes,'/claims'];
+report.workloadManifest.readRoutes=wholeSystemRouteCount;
+const routePool=user=>routePools[user.role];
 const roleCounts=new Map(),roleOrdinals=new Map(fixture.users.map(user=>{const ordinal=roleCounts.get(user.role)??0;roleCounts.set(user.role,ordinal+1);return [user.index,ordinal];}));
 const pendingBrowserRequests=new WeakMap();
 let browser,sampling,progressTimer,sqlSnapshotTimer,browserDiagnosticTimer,contextTemplates,lastPage,runMixedWorkflow;
@@ -223,7 +222,7 @@ try{
   if(await skip.isVisible()){await skip.click();await skip.waitFor({state:'hidden'});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
   if(['/claims','/admin/personnel','/payroll'].includes(path))assert(await page.locator('main tbody tr').count()>0,'expected fictional table rows');
   let homeCards=null,homeCardIds=[];
-  if(path==='/'&&['employee','manager'].includes(user.role)){
+  if((path==='/'||path==='/me/calendar')&&['employee','manager'].includes(user.role)){
    await page.locator('[data-home-card]').first().waitFor({timeout:90000});
    await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:90000});
    const failures=await page.locator('main [role="alert"]').allTextContents();
@@ -270,6 +269,12 @@ try{
   const ctx=await context(user),page=await ctx.newPage();
   for(const route of suite==='whole-system'?routePool(user):user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});await ctx.close();
+ }
+ // Additional concrete pages have explicit rendered checks, separate from HTTP route counts.
+ for(const user of [employee,manager,hr,group]){
+  const ctx=await context(user),page=await ctx.newPage();
+  try{for(const path of additionalBrowserRoutes[user.role])await visit(page,user,path);}
+  finally{await ctx.close();}
  }
  // Locale projection and real client navigation must work before any capacity claim.
  for(const locale of ['en','ms','zh','ta','th','vi']){

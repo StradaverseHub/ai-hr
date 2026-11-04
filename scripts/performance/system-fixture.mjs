@@ -11,7 +11,7 @@ for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
 }
 const auditRequested=process.env.AUDIT_HASH_CHAIN_ENABLED==='true';
 assert(auditRequested,'the production workload requires audit chaining');
-const {seedBase,entitledCtx,owner,closeAll}=await import('../../test/harness.ts');
+const {seedBase,entitledCtx,owner,closeAll,setModule}=await import('../../test/harness.ts');
 // The ordinary unit harness deliberately clears deployment gates. Restore this fixture's
 // explicit opt-in before seeding any domain events; production app/driver already retain it.
 process.env.AUDIT_HASH_CHAIN_ENABLED='true';
@@ -57,6 +57,9 @@ try{
  const seeded=await Promise.allSettled([0,1].map(async t=>{
   const b=await seedBase(),organization=t?'perf-b':'perf-a';
   await owner.db.insert(s.tenantModule).values(MODULE_CATALOG.filter(m=>!m.isCore&&(m.packBacked||m.code==='system_testing'||m.code==='system_explorer')).map(m=>({tenantId:b.tenantId,moduleCode:m.code,status:'active'}))).onConflictDoNothing();
+  // Platform notifications are implemented outside a module pack. Exercise the real bell
+  // and in-app projector too; no email delivery worker or external relay runs in this fixture.
+  await setModule(b.tenantId,'notifications','active');
   const ctx=await entitledCtx(b);
   const org={code:organization,tenantId:b.tenantId,name:'Performance organization '+t};
   await writeRecord(owner.client,'org:'+organization,org,null);await writeRecord(owner.client,'tenant:'+b.tenantId,org,null);
@@ -164,6 +167,6 @@ try{
  const modules=await owner.client`select tenant_id,array_agg(module_code order by module_code)as modules from tenant_module where tenant_id=any(${tenants.map(t=>t.tenantId)}::uuid[])and status='active'group by tenant_id`;
 
  writeFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),JSON.stringify({today,month,users,tenants}),{mode:0o600});
- writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,operationTimingScope:'sequential fictional native fixture commands, not HTTP concurrency',operationTimings:Object.fromEntries(Object.entries(operationTimings).map(([key,values])=>[key,timingSummary(values)])),tenants:2,companies:10,users:500,claimsPerEmployee,fixtureVolumeKind:claimsPerEmployee===2000?'full-load':'workflow-preflight-only',historicalMonth,publicationMonth,monthlyBasicSalary:5000,fixtureCommandContext:'native database-resolved entitlements',payslipFixture:'500 native-generated/closed historical slips; current processing drafts start empty',attendanceDays,attendanceBounds,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.chained>0&&row.events===row.chained+row.initialization_prefix),auditPolicy:'All post-initialization events chained; one canonical initialization prefix per tenant',auditCounts,explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
+ writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,operationTimingScope:'sequential fictional native fixture commands, not HTTP concurrency',operationTimings:Object.fromEntries(Object.entries(operationTimings).map(([key,values])=>[key,timingSummary(values)])),tenants:2,companies:10,users:500,claimsPerEmployee,fixtureVolumeKind:claimsPerEmployee===2000?'full-load':'workflow-preflight-only',historicalMonth,publicationMonth,monthlyBasicSalary:5000,fixtureCommandContext:'native database-resolved entitlements',payslipFixture:'500 native-generated/closed historical slips; current processing drafts start empty',attendanceDays,attendanceBounds,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.chained>0&&row.events===row.chained+row.initialization_prefix),auditPolicy:'All post-initialization events chained; one canonical initialization prefix per tenant',auditCounts,notificationFixture:'Enabled in-app projection; no external email delivery worker or relay',explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
  console.log('[system-perf-fixture] complete; private sessions are outside artifact directory');
 }finally{await closeAll();}
