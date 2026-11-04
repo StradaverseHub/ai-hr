@@ -19,14 +19,23 @@ import {AiQualitySection,type QualityQuery} from '@/components/ai-centre/ai-qual
  *
  * P2-6: AI quality, for HR and group administrators only, guarded the same way: this view renders it only for an
  * administrator, and core/learning/quality.ts checks again under the viewer's row-level security. Its query parameters are
- * its own (qperiod, qcompany and the result codes), so its filter and the ledger's do not move each other. */
+ * its own (qperiod, qcompany and the result codes), so its filter and the ledger's do not move each other.
+ *
+ * AI Centre navigation speed (4 Nov 2026): the readiness read is its own section, so an administrator's ledger and quality
+ * sections are read at the same time as it instead of after it. The same reads, arguments and guards. */
 export async function AiCentreInsights({session,scopeIds,isAdmin,capacityQuery,qualityQuery}:{session:SessionContext;scopeIds?:readonly string[];isAdmin:boolean;capacityQuery?:CapacityQuery;qualityQuery?:QualityQuery}){
  const [t,locale]=await Promise.all([getTranslations('aiCentre.insights'),getLocale()]);
- const readiness=await readMyPayrollReadiness(session,{scopeIds,locale}).catch(()=>null);
  return <div data-ai-centre-insights className="space-y-6">
   <PageHeader title={t('title')} description={t('description')}/>
-  <MyPayrollReadiness readiness={readiness} locale={locale}/>
+  <MyPayrollReadinessSection session={session} scopeIds={scopeIds} locale={locale}/>
   {isAdmin&&<CapacityLedgerSection session={session} query={capacityQuery??{}}/>}
   {isAdmin&&<AiQualitySection session={session} query={qualityQuery??{}}/>}
  </div>;
+}
+
+/** The person's own "Before payroll" checklist, read as them (P2-3); its own section so the sections beside it are not kept
+ * waiting for it. */
+async function MyPayrollReadinessSection({session,scopeIds,locale}:{session:SessionContext;scopeIds?:readonly string[];locale:string}){
+ const readiness=await readMyPayrollReadiness(session,{scopeIds,locale}).catch(()=>null);
+ return <MyPayrollReadiness readiness={readiness} locale={locale}/>;
 }

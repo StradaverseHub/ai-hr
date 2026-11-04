@@ -11,15 +11,19 @@ import { OperationsTabs } from './operations-tabs';
 /** ADR-0109: shared operations workspace, with payroll and AI quality evidence retained below. */
 export default async function ControlTowerPage({ searchParams }: { searchParams: Promise<{ refresh?: string }> }) {
   const s = await requireAdmin();
-  const queue = await orchestrationQueue(s);
+  // AI Centre navigation speed (4 Nov 2026): the page's three reads are independent, so they run together, each in its
+  // own transaction as before, after the same guard.
+  const [queue, view, agreement] = await Promise.all([
+    orchestrationQueue(s),
+    isModuleEnabled(s, 'payroll') ? controlTowerView(s) : null,
+    // ⚠️ A SECOND, SEPARATE CALL ON PURPOSE — see agreementView's header. It reads the proposal ledger,
+    // which opens its own transaction, and controlTowerView is one big one. Folding this into that view
+    // would nest `withTenant` inside `withTenant`, which core/agent-proposal.ts property 2 forbids.
+    agreementView(s),
+  ]);
   const sp = await searchParams;
   const orchestration = await getTranslations('controlTower.orchestrator');
   const t = await getTranslations('payroll.controlTower');
-  const view = isModuleEnabled(s, 'payroll') ? await controlTowerView(s) : null;
-  // ⚠️ A SECOND, SEPARATE CALL ON PURPOSE — see agreementView's header. It reads the proposal ledger,
-  // which opens its own transaction, and controlTowerView is one big one. Folding this into that view
-  // would nest `withTenant` inside `withTenant`, which core/agent-proposal.ts property 2 forbids.
-  const agreement = await agreementView(s);
 
   const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`);
   const mins = (v: number | null) => (v == null ? '—' : `${Math.round(v / 60)}m`);

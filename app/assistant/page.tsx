@@ -108,6 +108,13 @@ export default async function AssistantPage({
   // that shows the outcome.
   const privacyOutcome = Boolean(sp.historyPrivacy || sp.importHistory || sp.ownClear || (sp.nativeOutcome && !sp.governed));
   const toolsRequested = sp.view === 'tools' || sp.job !== undefined || Boolean(sp.governed || sp.proposal || sp.planning);
+  const privacyView = sp.view === 'privacy' || (sp.view === undefined && privacyOutcome);
+  // AI Centre navigation speed (4 Nov 2026): every view but Your data and privacy reads the workspace, so that read starts
+  // with the retention read instead of after it. The same reads with the same arguments and checks; only the waiting overlaps.
+  const loadWorkspace = () => loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:false,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
+  const workspaceRead = privacyView ? null : loadWorkspace();
+  // Awaited below; this only keeps a failure from being reported as unhandled while the retention read finishes.
+  workspaceRead?.catch(() => undefined);
   // Your data and privacy works without the Assistant grant: own-data erasure survives access removal.
   const keepDays = await readChatRetention(s).then(value => value.keepDays).catch(() => null);
   const privacyControls = (
@@ -127,7 +134,7 @@ export default async function AssistantPage({
       </ul>
     </section>
   );
-  if (sp.view === 'privacy' || (sp.view === undefined && privacyOutcome)) {
+  if (privacyView) {
     return (
       <div data-ai-centre="privacy" className="mx-auto max-w-6xl space-y-6">
         <AiCentreTabs active={null} isAdmin={admin} />
@@ -141,17 +148,19 @@ export default async function AssistantPage({
   const centreTabs = <AiCentreTabs active="ask" isAdmin={admin} />;
   const errorMessage=sp.error==='clarification_unavailable'?t('workspace.conversation.unavailable'):
     sp.error&&/^[a-z_]{1,40}$/.test(sp.error)&&t.has(`err_${sp.error}`)?t(`err_${sp.error}`):undefined;
-  const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:false,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
+  const workspace = await (workspaceRead ?? loadWorkspace());
   const access = workspace.access;
 
   // The denied-access fallback retains own work/calendar. The active chat never preloads those
-  // unrelated records; More tools links to the dashboard instead.
+  // unrelated records; More tools links to the dashboard instead. Its two own-identity reads run together.
   const clock = homeDisplayClock(new Date(), 'Asia/Kuala_Lumpur');
-  const name = !access.allowed?await viewerIdentity(s).then(viewer => viewer.name?.trim() || null).catch(() => null):null;
+  const [name, employmentId] = access.allowed ? [null, null] as const : await Promise.all([
+    viewerIdentity(s).then(viewer => viewer.name?.trim() || null).catch(() => null),
+    readEmployeeHomeIdentity(s).then(identity => identity.selectedEmploymentId).catch(() => null),
+  ]);
   const greeting = clock.hour < 12 ? (name ? t('home.morning', { name }) : t('home.morningNoName'))
     : clock.hour < 18 ? (name ? t('home.afternoon', { name }) : t('home.afternoonNoName'))
     : (name ? t('home.evening', { name }) : t('home.eveningNoName'));
-  const employmentId = !access.allowed?await readEmployeeHomeIdentity(s).then(identity => identity.selectedEmploymentId).catch(() => null):null;
   const homeTabs = employmentId ? <AssistantHomeTabs labels={{tabs:t('home.tabs'),work:t('home.myWork'),calendar:t('home.calendar')}}
     work={<HomeTasksCard employmentId={employmentId}/>}
     calendar={<HomeCalendarCard employmentId={employmentId} initialMonth={clock.date.slice(0,7)}/>}/>
@@ -183,10 +192,13 @@ export default async function AssistantPage({
   if (toolsRequested) {
     // More tools: the shortcuts and ways to work that used to sit under Ask's conversation. Each keeps its owner's
     // checks; a job, governed job, proposal or planning outcome address opens here.
-    const analysisScope=isAdmin(s)?await allowedCompanies(s).then(rows=>getScopeIds(rows.map(row=>row.id))).catch(()=>[]):[];
-    const selectedJob=sp.job===undefined||sp.governed!==undefined?null:await loadCanonicalModuleJob(s,{module:sp.job});
-    // Shortcuts are offered only where the target's own authorization rules admit this session.
-    const actionEntries=await allowedModuleActionEntries(s,workspace.jobModules);
+    // The three reads are independent and run together; each keeps its own checks and failure handling.
+    const [analysisScope,selectedJob,actionEntries]=await Promise.all([
+      isAdmin(s)?allowedCompanies(s).then(rows=>getScopeIds(rows.map(row=>row.id))).catch(()=>[]):[],
+      sp.job===undefined||sp.governed!==undefined?null:loadCanonicalModuleJob(s,{module:sp.job}),
+      // Shortcuts are offered only where the target's own authorization rules admit this session.
+      allowedModuleActionEntries(s,workspace.jobModules),
+    ]);
     return (
       <div data-tour="intelligence-assistant" data-ai-centre="tools" className="mx-auto max-w-6xl space-y-6">
         {centreTabs}
@@ -215,24 +227,29 @@ export default async function AssistantPage({
   }
 
   const newChatHref='/assistant?chatReset='+randomUUID();
+  // AI v2 slice 3 (issue 16b): the paperclip attaches a file to import, for a caller whose chat runs through the harness
+  // and who may import here (core/chat-import/kinds.ts). It replaces the older file preparation, which stays for the
+  // closed grammar. Any failure shows no paperclip. (Navigation speed: started here, awaited below.)
+  const chatImportRead=import('./launcher-actions').then(owner=>owner.chatImportOfferedAction()).catch(()=>false);
   const conversationScope=await assistantBrowserConversationScope(s);
   const scopeReset=assistantConversationScopeDigest(s,conversationScope);
-  const savedChats=await listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null);
-  const selectedChat=sp.e?await loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null):null;
-  // AI v2 W4: the Chats column lists the person's stored AI Centre chats (core/teras-chats.ts, re-authorised there).
-  const storedChats=await listOwnChats(s,{},conversationScope).catch(()=>null);
+  // AI Centre navigation speed: the chat reads below are independent, so they run together. Each reads only within
+  // this conversation scope and keeps its own checks and failure handling.
+  const [savedChats,selectedChat,storedChats,storedChat]=await Promise.all([
+    listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null),
+    sp.e?loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null):null,
+    // AI v2 W4: the Chats column lists the person's stored AI Centre chats (core/teras-chats.ts, re-authorised there).
+    listOwnChats(s,{},conversationScope).catch(()=>null),
+    // AI Centre issue 18: the floating panel's "Open in AI Centre" opens its stored chat here (?chat=<id>) and, while the
+    // Noveri conversation switch admits this caller, the next question continues that same chat.
+    sp.chat&&!sp.e?import('./launcher-actions').then(owner=>owner.openStoredChatAction({chatId:sp.chat})).then(reply=>reply.ok?reply:null).catch(()=>null):null,
+  ]);
   const chatSummaries:AskChatSummary[]=(storedChats?.chats??[]).map(chat=>({chatId:chat.chatId,title:chat.title,lastMessageAt:chat.lastMessageAt.toISOString(),turns:chat.turns,withheldTurns:chat.withheldTurns}));
-  // AI Centre issue 18: the floating panel's "Open in AI Centre" opens its stored chat here (?chat=<id>) and, while the
-  // Noveri conversation switch admits this caller, the next question continues that same chat.
-  const storedChat=sp.chat&&!sp.e?await import('./launcher-actions').then(owner=>owner.openStoredChatAction({chatId:sp.chat})).then(reply=>reply.ok?reply:null).catch(()=>null):null;
   const initialTurns=selectedChat?selectedChat.turns.map(exchange=>({id:exchange.id,question:exchange.question,
     clarificationRequired:exchange.grounded?.conversation?.plan.mode==='clarify'&&exchange.grounded?.conversation?.clarificationAllowed!==false,
     answer:<ExchangeReply exchange={exchange} ctx={s}/>})):storedChat?.turns;
   const storedResume=storedChat?.conversationToken?{exchangeId:'teras-chat-'+storedChat.chatId,conversationToken:storedChat.conversationToken}:undefined;
-  // AI v2 slice 3 (issue 16b): the paperclip attaches a file to import, for a caller whose chat runs through the harness
-  // and who may import here (core/chat-import/kinds.ts). It replaces the older file preparation, which stays for the
-  // closed grammar. Any failure shows no paperclip.
-  const chatImport=await import('./launcher-actions').then(owner=>owner.chatImportOfferedAction()).catch(()=>false);
+  const chatImport=await chatImportRead;
   const today = todayInKualaLumpur();
   const tasks = workspace.taskIds.map(id => ({
     id, label: t(`workspace.${id}_label`), prompt: t(`workspace.${id}_prompt`, { date: today }),
