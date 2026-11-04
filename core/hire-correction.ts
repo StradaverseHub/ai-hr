@@ -833,7 +833,7 @@ export async function correctHireDetails(
           validTo: v.row.validTo,
         })
         .returning({ id: assignment.id });
-      await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:input.employmentId,companyId:v.companyId,asOf:v.row.validFrom,trigger:'hire_correction'});
+      await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:input.employmentId,companyId:v.companyId,asOf:v.row.validFrom,trigger:'correction'});
       replaced.push({
         supersededId: v.row.id,
         replacementId: ins.id,

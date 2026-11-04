@@ -3,6 +3,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {refreshOrganisationAdmission} from '../lib/internal-auth/organisation-admission';
 import {isCalendarDate} from '../lib/calendar-date';
+export type OrganisationTagTrigger='hire'|'correction'|'transfer'|'restructure'|'import'|'retag'|'assignment'|'movement';
 export type CompanyOrganisationTags={companyId:string;businessUnitId:string|null;parentCompanyId:string|null;businessGroupId:string|null;mappingVersionId:string|null;status:'legacy'|'ready'|'pending';reason:string|null};
 export type CompanyOrganisationChange={companyId:string;businessUnitId:string|null;parentCompanyId:string|null};
 export type CompanyOrganisationRunInput={kind:'mapping'|'restructure'|'retag';companyIds:string[];effectiveOn:string;changes?:CompanyOrganisationChange[]};
@@ -16,7 +17,7 @@ export async function employmentOrganisationTagsTx(tx:Tx,_ctx:SessionContext,p:{
 }
 /** Invoke inside the existing native writer transaction after its authoritative company/assignment effect.
  * Legacy mode records nothing; reviewed mode records one idempotent classification, no active interval. */
-export async function recordEmploymentOrganisationTagsTx(tx:Tx,_ctx:SessionContext,p:{employmentId:string;companyId:string;asOf:string;trigger:string}):Promise<CompanyOrganisationTags>{
+export async function recordEmploymentOrganisationTagsTx(tx:Tx,_ctx:SessionContext,p:{employmentId:string;companyId:string;asOf:string;trigger:OrganisationTagTrigger}):Promise<CompanyOrganisationTags>{
  const [row]=await tx.execute<{tags:CompanyOrganisationTags}>(sql`select app.record_employment_organisation_tags(${p.employmentId}::uuid,${p.companyId}::uuid,${day(p.asOf)}::date,${p.trigger}) tags`);if(!row?.tags)throw Error('Employee organisation is unavailable.');return row.tags;
 }
 export async function prepareCompanyOrganisationRun(ctx:SessionContext,input:CompanyOrganisationRunInput){await refreshOrganisationAdmission(ctx);return withTenant(ctx,async tx=>{

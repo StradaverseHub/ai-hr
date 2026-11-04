@@ -1,5 +1,5 @@
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
-import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx} from './company-organisation';
+import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx,type OrganisationTagTrigger} from './company-organisation';
 import {probationDateAuthorityTx} from './probation-effect-authority';
 import {contractDateAuthorityTx,withAcceptedContractRecordIntentTx,withContractMaternityRecordIntentTx} from './contract-record-authority';
 import {setCompensation} from './comp';
@@ -663,7 +663,7 @@ export async function transferEmployee(
         ...(p.movement ? { movement: p.movement } : {}),
       },
     });
-    await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:emp!.companyId,asOf:p.effectiveDate,trigger:p.movement?.type??'transfer'});
+    await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:emp!.companyId,asOf:p.effectiveDate,trigger:p.movement?'movement':'transfer'});
     return { assignmentId: next.id };
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
@@ -927,7 +927,7 @@ export async function reverseTerminationTx(
     category: 'termination',
     from: p.terminationDate,
   });
-  await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:emp.companyId,asOf:p.terminationDate,trigger:'termination_reversal'});
+  await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:emp.companyId,asOf:p.terminationDate,trigger:'movement'});
   return { reopenedAssignmentId: closed?.id ?? null, reopenedReportingLineIds: reopened };
 }
 
@@ -2261,7 +2261,7 @@ export async function setEmploymentAssignment(
       // a no-op; the resolved value is still what gets STAMPED whenever some other dimension does move,
       // so history accretes on real changes without inventing one.
       !(p.companyId !== undefined && p.companyId !== cur.companyId);
-    if (unchanged){await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:nextCompanyId,asOf:p.effectiveDate,trigger:p.movement?.type??'assignment'});return { assignmentId: cur.id, changed: false as const };}
+    if (unchanged){await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:nextCompanyId,asOf:p.effectiveDate,trigger:p.movement?'movement':'assignment'});return { assignmentId: cur.id, changed: false as const };}
 
     // CLOSE current (set valid_to), then INSERT the new version — ranges don't overlap.
     await tx.update(assignment).set({ validTo: p.effectiveDate }).where(eq(assignment.id, cur.id));
@@ -2313,7 +2313,7 @@ export async function setEmploymentAssignment(
         ...(p.movement ? { movement: p.movement } : {}),
       },
     });
-    await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:nextCompanyId,asOf:p.effectiveDate,trigger:p.movement?.type??'assignment'});
+    await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:nextCompanyId,asOf:p.effectiveDate,trigger:p.movement?'movement':'assignment'});
     return { assignmentId: next.id, changed: true as const };
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
@@ -3447,7 +3447,7 @@ export async function setEmploymentInfo(
         from: earlierDate(before.hiredOn ?? null, (set.hiredOn as string | null) ?? null),
       });
     }
-    if(set.hiredOn!==undefined){const [source]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,p.employmentId));if(source)await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:source.companyId,asOf:String(set.hiredOn),trigger:'hire_date_correction'});}
+    if(set.hiredOn!==undefined){const [source]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,p.employmentId));if(source)await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:source.companyId,asOf:String(set.hiredOn),trigger:'correction'});}
     const after = { ...before, ...set };
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -3716,7 +3716,7 @@ export async function applyContractMaternityEndTx(tx:Tx,ctx:SessionContext,caseI
 /** Reviewed mapping publication delegate. The real HR doer calls this inside the publication
  * transaction, after the version becomes visible. Split only live effective history; frozen
  * payroll/review memberships and the superseded source row remain unchanged. */
-export async function projectEmploymentOrganisationAssignmentTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;effectiveOn:string;trigger:string}):Promise<{changed:number;assignmentIds:string[]}>{
+export async function projectEmploymentOrganisationAssignmentTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;effectiveOn:string;trigger:OrganisationTagTrigger}):Promise<{changed:number;assignmentIds:string[]}>{
   if(!isCalendarDate(p.effectiveOn))throw new Error('Select a valid organisation reference date.');
   await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
   await tx.execute(sql`select app.access_workforce_write_lock()`);

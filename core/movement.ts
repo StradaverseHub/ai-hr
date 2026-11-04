@@ -4218,7 +4218,7 @@ async function reverseMovementTx(
     await reverseLegTx(tx, ctx, employmentId, e, tag, hireCorrections, reason);
   }
   const organisation=await employmentOrganisationTagsTx(tx,ctx,{employmentId,asOf:row.effectiveDate});
-  await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId,companyId:organisation.companyId,asOf:row.effectiveDate,trigger:'movement_reversal'});
+  await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId,companyId:organisation.companyId,asOf:row.effectiveDate,trigger:'movement'});
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'employment',
