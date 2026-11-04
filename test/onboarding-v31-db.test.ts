@@ -99,7 +99,7 @@ describe('V3.1 onboarding database and authorization', () => {
         await owner.client.unsafe('REVOKE EXECUTE ON FUNCTION app.onboarding_directory() FROM ai_hr_app');
         try {
             // Establish the native failure injection; a spy alone would not prove the SQL was skipped.
-            await expect(withTenant(admin,tx=>tx.execute(sql`select * from app.onboarding_directory()`))).rejects.toThrow(/permission denied/i);
+            await expect(withTenant(admin,tx=>tx.execute(sql`select * from app.onboarding_directory()`))).rejects.toMatchObject({cause:{code:'42501'}});
             expect(await onboardingTasks(admin)).toEqual([]);
             expect(await onboardingTasks(tech)).toEqual([]);
             expect(await onboardingTasks(other)).toEqual([]);
