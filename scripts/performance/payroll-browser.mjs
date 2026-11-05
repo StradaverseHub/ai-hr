@@ -62,8 +62,9 @@ export async function exercisePayrollBrowser({base,page,user,fixture,report,save
   await check('anomalies',anomalyPath(target.historicalBatchId),async(status,remaining)=>{
    assert.equal(status,200);
    await heading(anomaly.title).waitFor({state:'visible',timeout:remaining()});
-   await main.getByRole('link',{name:anomaly.backToBatch,exact:true}).waitFor({state:'visible',timeout:remaining()});
-   assert.equal(await main.getByRole('link',{name:anomaly.backToBatch,exact:true}).getAttribute('href'),'/payroll/'+target.historicalBatchId);
+   // The shared PageHeader prepends a visible arrow to the localized link label.
+   const batchLink=main.locator('a[href="/payroll/'+target.historicalBatchId+'"]').filter({hasText:anomaly.backToBatch});
+   await batchLink.waitFor({state:'visible',timeout:remaining()});
    // Some fixture versions already have a verdict; others offer the read-only check to the operator.
    const initial=action(target.historicalBatchId,anomaly.runNow);
    const verdict=main.getByText(anomaly.metricAutoClear,{exact:true});
