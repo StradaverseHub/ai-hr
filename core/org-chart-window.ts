@@ -3,13 +3,10 @@ import {sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {lockAccessConfigurationReadTx} from './access-configuration-lock';
 
-export const ORG_WINDOW_SIZE=50;
-export type OrgRelation='administrative'|'functional'|'project'|'dotted';
-export type OrgWindowView='roots'|'children'|'parents'|'search'|'connections';
-export type OrgWindowNode={employmentId:string;name:string;employeeCode:string|null;role:string|null;department:string|null;assignmentCount:number};
-export type OrgWindowItem={key:string;node:OrgWindowNode|null;otherEmploymentId:string;type:OrgRelation|null;direction:'outgoing'|'incoming'|null;inSelectedScope:boolean};
-export type OrgWindowRequest={view:OrgWindowView;focusId?:string;after?:string;q?:string};
-export type OrgWindow={version:1;view:OrgWindowView;focus:OrgWindowNode|null;items:OrgWindowItem[];totalPeople:number;totalItems:number;pageSize:number;nextCursor:string|null};
+import {ORG_WINDOW_SIZE,type OrgWindow,type OrgWindowRequest} from '../lib/org-chart-window';
+export {ORG_WINDOW_SIZE} from '../lib/org-chart-window';
+export type {OrgRelation,OrgWindowView,OrgWindowNode,OrgWindowItem,OrgWindowRequest,OrgWindow} from '../lib/org-chart-window';
+import type {OrgWindowNode,OrgWindowItem} from '../lib/org-chart-window';
 export class OrgWindowUnavailableError extends Error{
  constructor(public reason:'principal'|'focus'|'cursor'){super('The organization view is no longer available.');this.name='OrgWindowUnavailableError';}
 }

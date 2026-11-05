@@ -1,12 +1,16 @@
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { orgChartData } from '@/core/read';
+import { orgChartEntry } from '@/core/org-chart-window';
+import { personnelImportBrowserKey } from '@/lib/personnel-import-browser-key';
+import { OrgChartExplorer } from '@/components/org-chart-explorer';
 import { Card, PageHeader } from '@/components/ui';
 import { OrgChart } from '@/components/org-chart';
 
 export default async function OrgChartPage() {
   const { s, scopeIds } = await scopedSession();
-  const { employees, edges } = await orgChartData(s, scopeIds);
+  const entry = await orgChartEntry(s, scopeIds);
+  const count = entry.mode === 'full' ? entry.employees.length : entry.initial.totalPeople;
+  const locale = await getLocale();
   const t = await getTranslations('org');
 
   return (
@@ -16,17 +20,19 @@ export default async function OrgChartPage() {
           title={t('title')}
           actions={
             <span className="text-sm text-muted-foreground">
-              {t('peopleCount', { count: employees.length })}
+              {t('peopleCount', { count })}
             </span>
           }
         />
       </div>
 
       <Card className="p-5" data-tour="org-chart">
-        {employees.length === 0 ? (
+        {entry.mode === 'explorer' ? (
+          <OrgChartExplorer key={`${personnelImportBrowserKey(s, scopeIds)}:${locale}`} initial={entry.initial} />
+        ) : entry.employees.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
-          <OrgChart employees={employees} edges={edges} />
+          <OrgChart employees={entry.employees} edges={entry.edges} />
         )}
       </Card>
 
