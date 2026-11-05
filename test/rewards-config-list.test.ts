@@ -7,10 +7,9 @@ import { and, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { withRewardsTenant } from '../core/module-gate';
 import { setCompensation } from '../core/comp';
-import { cancelRewardReviewTx, cancelRewardReview, createRewardUnit, createRewardUnitTx, decideRewardUnit, emptyRewardCalendar, getRewardUnit, listRewardReviewStatus, listRewardUnits, pendingRewardTasks, rewardApprovalsBoard, saveRewardCalendar, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
-import { emptyFacts, type RewardRole } from '../packs/rewards/model';
+import { cancelRewardReviewTx, cancelRewardReview, createRewardUnit, decideRewardUnit, emptyRewardCalendar, getRewardUnit, listRewardReviewStatus, listRewardUnits, pendingRewardTasks, rewardApprovalsBoard, saveRewardCalendar, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
+import { defaultPolicy, emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -165,7 +164,7 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     expect(Object.keys((policy.payload as { after: object }).after)).not.toContain('patActual');
     expect(Object.keys((policy.payload as { after: object }).after)).not.toContain('meritMatrix');
   });
-  // Allow time for 49 approved admissions on shared runners. The metric times only the list read.
+  // The list must project both current admissions and preserved annual reviews.
   it('9040c2eb: measures one projection per review with a 50-company annual-review fixture',async()=>{
     const companyIds=[b.companyId],targets:{companyId:string;businessUnitId:string}[]=[];
     for(let i=1;i<50;i++){
@@ -173,12 +172,17 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
       const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:company.id,code:`OVERVIEW-${i}`,label:`Fictional unit ${i}`,name:`Fictional unit ${i}`}).returning();
       await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:company.id,businessUnitId:bu.id,year});targets.push({companyId:company.id,businessUnitId:bu.id});
     }
-    const first=await createApprovedRewardUnit(admin,{name:'Fictional overview review',year,...targets[0],snapshotDate:today},undefined,targets);
-    const versionId=(await getRewardUnit(admin,first)).unit.policyGroupVersionId!;
-    await withRewardsTenant(admin, async tx => {
-      for (const target of targets.slice(1)) {
-        await createRewardUnitTx(tx, admin, { ...target, year, snapshotDate: today, approvedPlanVersionId: versionId });
-      }
+    await owner.withTenant(admin, async tx => {
+      const [cycle] = await tx.insert(schema.rewardCycle).values({
+        tenantId: b.tenantId, createdBy: admin.userId!, year, name: 'Fictional historical review cycle',
+      }).returning();
+      const reviews = await tx.insert(schema.rewardUnit).values(targets.map(target => ({
+        ...target, tenantId: b.tenantId, createdBy: admin.userId!, cycleId: cycle.id,
+        snapshotDate: today, policy: defaultPolicy(year),
+      }))).returning({ id: schema.rewardUnit.id });
+      await tx.insert(schema.rewardMember).values(reviews.map(review => ({
+        tenantId: b.tenantId, unitId: review.id, userId: admin.userId!, role: 'gr',
+      })));
     });
     const started=performance.now(),overview=await listRewardReviewStatus(admin,companyIds),elapsed=performance.now()-started;
     expect(overview.rows).toHaveLength(50);expect(new Set(overview.rows.map(row=>row.id)).size).toBe(50);
