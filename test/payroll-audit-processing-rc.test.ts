@@ -100,7 +100,7 @@ async function loadAuditFixture(members:number){
  const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
  for(let i=0;i<others.length;i+=100){
   const chunk=others.slice(i,i+100);
-  await owner.db.insert(schema.person).values(chunk.map(v=>({id:v.id,tenantId:b.tenantId,fullName:v.name})));
+  await owner.db.insert(schema.person).values(chunk.map(v=>({id:v.id,tenantId:b.tenantId,fullName:v.name,primaryEmail:v.id+'@example.invalid'})));
   await owner.db.insert(schema.employment).values(chunk.map(v=>({id:v.employmentId,tenantId:b.tenantId,personId:v.id,companyId:b.companyId,hiredOn:'2020-01-01'})));
   // Isolated cardinality fixtures, never claim that cloning calculates money or clock results.
   await owner.db.insert(schema.payslip).values(chunk.map(v=>({...slip,id:randomUUID(),employmentId:v.employmentId})));
@@ -156,13 +156,14 @@ it.each([1,1001])('compares exact original/candidate/warm/restored count and Att
 },600000);
 
 it('pins the actual clock writer until processing releases its native Access barrier',async()=>{
- const {root,actor,worker,batchId}=await loadAuditFixture(1);
+ const {root,worker,batchId}=await loadAuditFixture(1);
  let writer:Promise<unknown>|undefined,completed=false;
  try{
   await processingTx(root,batchId,async tx=>{
    const [holder]=await tx.execute(sql`select pg_backend_pid() as pid`);
    const baseline=await groupReads(tx,batchId,false);
-   writer=checkInTx(actor,{employmentId:worker.employmentId,date:'2026-01-12',time:'09:00'}).finally(()=>{completed=true;});
+   // Use the existing administrator route; employee web receipts require a separate photo fixture.
+   writer=checkInTx(root,{employmentId:worker.employmentId,date:'2026-01-12',time:'09:00'}).finally(()=>{completed=true;});
    // Attach a handler immediately, while preserving the actual error for the later await.
    void writer.catch(()=>undefined);
    const until=performance.now()+7000;let blocked=false;
