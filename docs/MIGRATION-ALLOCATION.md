@@ -1,5 +1,31 @@
 # Coordinated migration reservations
 
+## Probation navigation mapping probe — 5 November 2026 (unapplied)
+
+`codex/performance-probation-navigation-migration-20261105` reserves
+`2140_probation_navigation_mapping_probe`, idx1393 / when1793330001540 /
+SHA256 `45c65af3ce13c35d8adaa1f4cb0caf55b92268d6b03be3af46b78bc88c922a83`.
+Fresh claims cover2407 heads,441 committed journals,604 migration trees and234 readable
+worktrees through2139 / idx1392 / when1793330001539. Foreign malformed WIP and its
+literal claims remain untouched. Read-only staging matches all671 ordered canonical
+identities through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e. Its native
+Probation navigation body matches8ca468e565496b3845dca9a10beed985 and retains ai_hr_owner
+ownership and application-only nonowner EXECUTE.
+
+Guarded reversible native experiment41942549866 compared50 calls over five companies:
+260ms original,58ms candidate,58ms warm,270ms restored. Actual employee, group and
+named admin, expired/nonadmin mapping, foreign principal, archived/forged user and
+module-disabled outcomes match. Seven source/security/privilege drifts refuse55000
+and roll back; original function and owner/ACL are restored. These are component
+measurements, not500-user acceptance.
+
+The exact tested SQL preserves the first current-user check, all group bootstrap,
+participant and PBP/GBS paths. Only absence of a native tenant/user admin mapping
+skips two canonical configuration-admin calls; positives retain those exact owners.
+No permission cache, writer lock or grant changes. Installed native, populated upgrade,
+full compiler and combined browser/load checks remain required. Complete BOARD roles
+stays excluded. No deployment is authorized.
+
 ## Bounded Workforce access plan — 5 November 2026 (unapplied)
 
 `codex/performance-workforce-bounded-migration-20261105` reserves

@@ -1,0 +1,40 @@
+-- Necessary-only mapping precheck; all positive authority and current-principal owners remain unchanged.
+DO $navigation_predecessor$
+DECLARE p pg_catalog.pg_proc%ROWTYPE; app_role oid;
+BEGIN
+ SELECT oid INTO app_role FROM pg_catalog.pg_roles WHERE rolname='ai_hr_app';
+ SELECT * INTO p FROM pg_catalog.pg_proc WHERE oid=to_regprocedure('app.probation_navigation_access()');
+ IF NOT FOUND OR md5(p.prosrc) IS DISTINCT FROM '8ca468e565496b3845dca9a10beed985'
+  OR app_role IS NULL OR p.prosecdef IS DISTINCT FROM true OR p.proisstrict OR p.proleakproof
+  OR p.provolatile<>'s' OR p.proparallel<>'u' OR p.prokind<>'f' OR p.proretset
+  OR p.prorettype IS DISTINCT FROM ('jsonb'::regtype)::oid
+  OR p.pronargs<>0 OR p.proargtypes<>''::oidvector OR p.proargnames IS NOT NULL
+  OR p.proallargtypes IS NOT NULL OR p.proargmodes IS NOT NULL OR p.pronargdefaults<>0 OR p.proargdefaults IS NOT NULL
+  OR p.procost<>100 OR p.prorows<>0
+  OR p.prolang IS DISTINCT FROM (SELECT oid FROM pg_catalog.pg_language WHERE lanname='plpgsql')
+  OR p.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, public, pg_temp']::text[] THEN
+  RAISE EXCEPTION 'Unexpected Probation navigation predecessor; review before changing its plan' USING ERRCODE='55000';
+ END IF;
+ IF EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
+    WHERE a.grantee NOT IN(p.proowner,app_role) OR a.privilege_type<>'EXECUTE'
+     OR (a.grantee=app_role AND a.is_grantable))
+  OR NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
+    WHERE a.grantee=p.proowner AND a.privilege_type='EXECUTE')
+  OR NOT EXISTS(SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a
+    WHERE a.grantee=app_role AND a.privilege_type='EXECUTE') THEN
+  RAISE EXCEPTION 'Unexpected Probation navigation privileges; review before changing its plan' USING ERRCODE='55000';
+ END IF;
+END;
+$navigation_predecessor$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.probation_navigation_access() RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE configuration boolean;participant boolean;intake boolean;has_admin_mapping boolean;
+BEGIN
+ IF app.probation_active_user() IS NOT TRUE THEN RETURN jsonb_build_object('page',false,'configure',false,'intake',false);END IF;
+ SELECT EXISTS(SELECT 1 FROM public.probation_access a WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id() AND a.role='admin') INTO has_admin_mapping;
+ SELECT EXISTS(SELECT 1 FROM company c WHERE c.tenant_id=app.current_tenant_id() AND c.archived_at IS NULL AND app.probation_company_entitled(c.id) AND (CASE WHEN has_admin_mapping THEN app.probation_config_admin(c.id) ELSE false END OR app.is_group_admin() AND app.is_admin_for(c.id) AND NOT EXISTS(SELECT 1 FROM probation_access a WHERE a.tenant_id=c.tenant_id AND a.company_id=c.id AND a.role='admin' AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (a.valid_to IS NULL OR a.valid_to>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)))) INTO configuration;
+ SELECT EXISTS(SELECT 1 FROM probation_case c WHERE c.tenant_id=app.current_tenant_id() AND app.probation_case_access(c.id)) INTO participant;
+ SELECT EXISTS(SELECT 1 FROM company co WHERE co.tenant_id=app.current_tenant_id() AND co.archived_at IS NULL AND app.probation_company_entitled(co.id) AND (CASE WHEN has_admin_mapping THEN app.probation_config_admin(co.id) ELSE false END OR CASE WHEN EXISTS(SELECT 1 FROM probation_access opted WHERE opted.tenant_id=co.tenant_id AND opted.user_id=app.current_user_id() AND opted.role IN('pbp','gbs') AND app.is_company_descendant(co.id,opted.company_id) AND opted.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (opted.valid_to IS NULL OR opted.valid_to>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)) THEN EXISTS(SELECT 1 FROM employment employee WHERE employee.tenant_id=co.tenant_id AND employee.company_id=co.id AND (app.probation_role(employee.id,'pbp') OR app.probation_role(employee.id,'gbs'))) ELSE false END)) INTO intake;
+ RETURN jsonb_build_object('page',configuration OR participant,'configure',configuration,'intake',intake);
+END $$;

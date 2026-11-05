@@ -1,4 +1,4 @@
-/** Reversible native experiment only: no installed migration or production function changes. */
+/** Installed native migration with independently frozen predecessor comparison and exact restoration. */
 import {randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -18,8 +18,10 @@ it('compares a necessary admin-mapping probe against the installed navigation ow
  const foreign=await seedBase();await setModule(foreign.tenantId,'lifecycle','active');
  const catalog=async()=>owner.db.execute(sql`select p.proowner::text,p.proacl::text,p.prosecdef,p.provolatile,p.proparallel,p.proisstrict,p.proleakproof,p.proconfig,p.prorettype::text,p.proargtypes::text,p.procost,p.prorows from pg_proc p where p.oid='app.probation_navigation_access()'::regprocedure`);
  const metadata=await catalog();
- const [definition]=await owner.db.execute<{ddl:string}>(sql`select pg_get_functiondef('app.probation_navigation_access()'::regprocedure) as ddl`);
- const original=definition.ddl;
+ const [definition]=await owner.db.execute<{ddl:string;body:string}>(sql`select pg_get_functiondef(oid) as ddl,prosrc as body from pg_proc where oid='app.probation_navigation_access()'::regprocedure`);
+ const predecessorSql=readFileSync(new URL('../db/migrations/0949_probation_confirmation.sql',import.meta.url),'utf8');
+ const predecessorBody=predecessorSql.split('CREATE FUNCTION app.probation_navigation_access()')[1].split('AS $$')[1].split('$$;')[0];
+ const original=definition.ddl.replace(definition.body,()=>predecessorBody);
  let proposedDefinition=original.replace('DECLARE configuration boolean;participant boolean;intake boolean;','DECLARE configuration boolean;participant boolean;intake boolean;has_admin_mapping boolean;');
  const entry="IF app.probation_active_user() IS NOT TRUE THEN RETURN jsonb_build_object('page',false,'configure',false,'intake',false);END IF;";
  expect(proposedDefinition.split(entry)).toHaveLength(2);
@@ -31,6 +33,8 @@ it('compares a necessary admin-mapping probe against the installed navigation ow
  expect(proposedDefinition).not.toBe(original);
  const proposal=JSON.parse(readFileSync(new URL('./performance/probation-navigation-migration.proposal.json',import.meta.url),'utf8')) as {sql:string};
  const candidate=proposal.sql;
+ expect(readFileSync(new URL('../db/migrations/2140_probation_navigation_mapping_probe.sql',import.meta.url),'utf8')).toBe(candidate);
+ expect(definition.body).toBe(candidate.split('AS $$')[1].split('$$;')[0]);
  expect(candidate.split('AS $$')[1].split('$$;')[0]).toBe(proposedDefinition.split('AS $function$')[1]?.split('$function$')[0]??proposedDefinition.split('AS $$')[1].split('$$;')[0]);
  const read=(ctx:SessionContext)=>withTenant(ctx,async tx=>{
   const [row]=await tx.execute<{data:{page:boolean;configure:boolean;intake:boolean}}>(sql`select app.probation_navigation_access() as data`);return row.data;
@@ -81,10 +85,10 @@ it('compares a necessary admin-mapping probe against the installed navigation ow
   }
   controls.predecessorDriftsRefused=drifts.map(([kind])=>kind);
  }finally{
-  await owner.client.unsafe(original);expect(await catalog()).toEqual(metadata);
-  const [restored]=await owner.db.execute<{ddl:string}>(sql`select pg_get_functiondef('app.probation_navigation_access()'::regprocedure) as ddl`);expect(restored.ddl).toBe(original);
+  await owner.client.unsafe(definition.ddl);expect(await catalog()).toEqual(metadata);
+  const [restored]=await owner.db.execute<{ddl:string}>(sql`select pg_get_functiondef('app.probation_navigation_access()'::regprocedure) as ddl`);expect(restored.ddl).toBe(definition.ddl);
  }
  const control=Math.min(measurements[0].elapsedMs,measurements[3].elapsedMs),fast=Math.max(measurements[1].elapsedMs,measurements[2].elapsedMs);
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'probation-navigation-work.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_PROBATION_NAVIGATION_ONLY',releaseEligible:false,companies:5,measurements,controls,improvementRatio:fast/control,ownerAclAndFunctionRestored:true,limitations:'componentonly; no500acceptance; participant/PBP/GBSqualificationstillrequired'},null,2));
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'probation-navigation-work.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_PROBATION_NAVIGATION_ONLY',releaseEligible:false,companies:5,measurements,controls,improvementRatio:fast/control,ownerAclAndFunctionRestored:true,installedFunctionRestored:true,limitations:'componentonly; no500acceptance; participant/PBP/GBSqualificationstillrequired'},null,2));
  expect(fast,'Both candidate phases must be at least20% faster than the faster native control').toBeLessThan(control*.8);
 },600000);
