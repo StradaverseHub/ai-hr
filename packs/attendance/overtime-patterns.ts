@@ -513,8 +513,28 @@ export async function hasOvertimePatternForDayTx(tx:Tx,ctx:SessionContext,p:{emp
  uuid(p.employmentId);date(p.date);const [recorded]=await tx.select({id:s.attendanceOvertimeSource.id}).from(s.attendanceOvertimeSource).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),eq(s.attendanceOvertimeSource.employmentId,p.employmentId),eq(s.attendanceOvertimeSource.attendanceDate,p.date),sql`${s.attendanceOvertimeSource.currentCalculationId} is not null`)).limit(1);if(recorded)return true;
  const [marker]=await tx.select({id:s.attendance.id}).from(s.attendance).where(and(eq(s.attendance.tenantId,ctx.tenantId),eq(s.attendance.employmentId,p.employmentId),eq(s.attendance.attendanceDate,p.date),sql`${s.attendance.calcTrace}->'overtimePattern'->>'status'='refused' and ${s.attendance.calcTrace}->'overtimePattern'->>'reason'='sourceUnavailable'`)).limit(1);if(marker)return true;
  if(await hasRecordedAttendanceGroupPolicyTx(tx,ctx,p))return true;
- const proof=(await provenCompanyDatesTx(tx,[{employmentId:p.employmentId,date:p.date}])).get(p.employmentId+'|'+p.date);
- const [candidate]=await tx.select({id:s.overtimePatternAssignment.id}).from(s.overtimePatternAssignment).innerJoin(s.overtimePatternVersion,eq(s.overtimePatternVersion.id,s.overtimePatternAssignment.versionId)).innerJoin(s.overtimePattern,eq(s.overtimePattern.id,s.overtimePatternVersion.patternId)).where(and(eq(s.overtimePatternAssignment.tenantId,ctx.tenantId),eq(s.overtimePatternVersion.kind,'formula'),isNull(s.overtimePattern.archivedAt),isNull(s.overtimePatternAssignment.supersededAt),lte(s.overtimePatternAssignment.validFrom,p.date),or(isNull(s.overtimePatternAssignment.validTo),gt(s.overtimePatternAssignment.validTo,p.date)),sql`(${s.overtimePatternAssignment.target}->>'type'='group' OR ${s.overtimePatternAssignment.target}->'employmentIds' ? ${p.employmentId})`,proof?.companyId?sql`exists(select 1 from overtime_pattern_version_company co where co.version_id=${s.overtimePatternVersion.id} and co.company_id=${proof.companyId}::uuid)`:undefined,sql`(select state from overtime_pattern_version_state st where st.version_id=${s.overtimePatternVersion.id} and st.effective_from<=${p.date}::date order by effective_from desc,sequence desc limit 1)='active'`)).orderBy(asc(s.overtimePatternAssignment.id)).limit(1);return !!candidate;
+ // The native invoker proof still supplies the company, including the unknown-company case.
+ // Keep the exact requested key check used by provenCompanyDatesTx before evaluating any candidate.
+ const assignment=s.overtimePatternAssignment,version=s.overtimePatternVersion,pattern=s.overtimePattern;
+ const candidate=tx.select({id:assignment.id}).from(assignment)
+  .innerJoin(version,eq(version.id,assignment.versionId)).innerJoin(pattern,eq(pattern.id,version.patternId))
+  .where(and(eq(assignment.tenantId,ctx.tenantId),eq(version.kind,'formula'),isNull(pattern.archivedAt),
+   isNull(assignment.supersededAt),lte(assignment.validFrom,p.date),
+   or(isNull(assignment.validTo),gt(assignment.validTo,p.date)),
+   sql`(${assignment.target}->>'type'='group' or ${assignment.target}->'employmentIds' ? ${p.employmentId})`,
+   sql`case when proof.company_id is null then true else exists(
+    select 1 from overtime_pattern_version_company co
+    where co.version_id=${version.id} and co.company_id=proof.company_id) end`,
+   sql`(select state from overtime_pattern_version_state st where st.version_id=${version.id} and st.effective_from<=${p.date}::date order by effective_from desc,sequence desc limit 1)='active'`));
+ const [result]=await tx.execute<{present:boolean}>(sql`
+  with proof as materialized (
+   select company_id from app.proven_company_date_points(${JSON.stringify([{employmentId:p.employmentId,date:p.date}])}::jsonb)
+   where employment_id::text collate "C"=${p.employmentId}::text
+     and on_date::text collate "C"=${p.date}::text
+  )
+  select exists(${candidate}) as present from proof`);
+ if(!result)throw Error('Dated company proof is incomplete.');
+ return result.present;
 }
 
 /** Canonical pre-batch order: existing Attendance day -> existing OT source -> caller's batch.
