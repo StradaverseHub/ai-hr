@@ -560,10 +560,25 @@ try{
  const progress={launched:0,active:0,peakActive:0,completed:0,failed:0,iterations:0};
  report.trafficSettled=false;report.functionalAccountingComplete=false;
  report.measurementWindow={startPerformanceMs:started,steadyStartPerformanceMs:steadyStart,steadyUntilPerformanceMs:steadyUntil};
- report.telemetry={querySnapshotIntervalMs:30000,holderQueries:'bounded native pid/state/query-id; up to128normalizedrootquerytexts withoutparameters',partialSamplesAreAcceptance:false};
+ report.telemetry={querySnapshotIntervalMs:30000,resourceCounterIntervalMs:30000,holderQueries:'bounded native pid/state/query-id; up to128normalizedrootquerytexts withoutparameters',partialSamplesAreAcceptance:false};
  let sqlSnapshotBusy=false;
  sqlSnapshotTimer=setInterval(async()=>{
   if(sqlSnapshotBusy)return;sqlSnapshotBusy=true;
+  // Persist CPU counters during traffic too: a timed-out driver never reaches the final delta.
+  // Keep the same bounded30s observation cadence; this does not extend the acceptance window.
+  const captureStarted=performance.now();
+  try{
+   const counters=resourceCpu(),elapsedSeconds=(performance.now()-started)/1000;
+   const delta=Object.fromEntries(Object.keys(resourceCpuBefore).map(key=>{
+    const before=resourceCpuBefore[key],after=counters[key];
+    return [key,before!==null&&after!==null&&after>=before?after-before:null];
+   }));
+   (report.resourceCpuProgress??=[]).push({kind:'INCOMPLETE_PROGRESS_SNAPSHOT',complete:false,elapsedSeconds,
+    captureMs:performance.now()-captureStarted,counterDelta:delta,
+    countersAvailable:Object.values(delta).every(value=>value!==null),countersOverlap:true,
+    scope:'PostgreSQL cgroup includes capture helpers; host counters overlap all components. Not completed-window acceptance.'});
+   save();
+  }catch{report.resourceCpuProgressFailures=(report.resourceCpuProgressFailures??0)+1;save();}
   try{await databaseSnapshot('loaded-progress');report.sqlProgressSnapshots=(report.sqlProgressSnapshots??0)+1;}
   catch{report.sqlProgressSnapshotFailures=(report.sqlProgressSnapshotFailures??0)+1;}
   finally{sqlSnapshotBusy=false;}
