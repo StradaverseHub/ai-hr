@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import {routeLatency} from '../scripts/performance/route-latency.mjs';
-const read=(role:string,route:string,durationMs:number,startedMs=20)=>({role,route,durationMs,startedMs,method:'GET'});
+const read=(role:string,route:string,durationMs:number,startedMs=20,action?:string)=>({role,route,durationMs,startedMs,action,method:'GET'});
 const navigation=(role:string,route:string,durationMs:number,startedMs=20)=>({role,route,durationMs,startedMs});
 const input=()=>({samples:[read('employee','/',100)],pageInteractions:[navigation('employee','/',150)],routePools:{employee:['/']},homeTemplates:[] as {role:string;requests:{path:string}[]}[],steadyStart:10,steadyUntil:100});
 it('refuses a slow minority route even when the pooled role p95 is fast',()=>{
@@ -30,6 +30,18 @@ it('retains strict existing read/navigation and write ceilings and exposes sampl
  let result=routeLatency(fixture);expect(result.targetMet).toBe(false);expect(result.slow[0]).toMatchObject({kind:'write',samples:1,p95Ms:500,targetMs:500});
  fixture.samples[1].durationMs=499;result=routeLatency(fixture);expect(result.targetMet).toBe(true);expect(result.sparse).toHaveLength(3);
  fixture.pageInteractions[0].durationMs=1000;expect(routeLatency(fixture).targetMet).toBe(false);
+});
+it('reports distinct write actions on the same route and requires observed actions in the steady window',()=>{
+ const fixture=input();
+ fixture.samples.push(
+  {...read('employee','/claims',100),method:'POST',action:'claimsCreate'},
+  {...read('employee','/claims',700),method:'POST',action:'claimsEdit'},
+  {...read('employee','/claims',100,101),method:'POST',action:'claimsDelete'},
+ );
+ const result=routeLatency(fixture);
+ expect(result.slow.map(row=>row.action)).toEqual(['claimsEdit']);
+ expect(result.missing.map(row=>row.action)).toEqual(['claimsDelete']);
+ expect(result.targetMet).toBe(false);
 });
 it('does not conceal an invalid measurement as a passing sample',()=>{
  const fixture=input();fixture.samples[0].durationMs=NaN;expect(()=>routeLatency(fixture)).toThrow(RangeError);
