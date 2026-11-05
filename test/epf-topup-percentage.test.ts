@@ -25,7 +25,7 @@ describe('b6dbadc5 additive Top-up — calculator',()=>{
  });
  it('0% and a blank side add nothing: the statutory schedule amount stands',()=>{
   const statutory=epf(4000,0);
-  expect(statutory).toEqual({employee:440,employer:520});
+  expect(statutory).toEqual({employee:360,employer:520});
   expect(epf(4000,0,undefined,topup(0,0))).toEqual(statutory);
   expect(epf(4000,0,undefined,topup(null,null))).toEqual(statutory);
   expect(epf(4000,0,undefined,topup(.01,null))).toEqual({employee:480,employer:520});
@@ -51,9 +51,9 @@ describe('b6dbadc5 additive Top-up — calculator',()=>{
  it('adds nothing from 75, where there is no contribution',()=>{
   expect(epfContribution(3000,0,undefined,topup(.05,.05),{age:78,citizenship:'citizen'})).toEqual({employee:0,employer:0,employeeOnBonus:0});
  });
- it('leaves Semi-Auto (voluntary_excess, employee only) on its total-rate max(elected, statutory) meaning',()=>{
+ it('leaves Semi-Auto (voluntary_excess, employee only) as an entered employee rate with a statutory employer share',()=>{
   expect(epf(4000,0,undefined,{mode:'voluntary_excess',employeeRate:.12,employerRate:null})).toEqual({employee:480,employer:520});
-  expect(epf(4000,0,undefined,{mode:'voluntary_excess',employeeRate:.09,employerRate:null})).toEqual({employee:440,employer:520});
+  expect(epf(4000,0,undefined,{mode:'voluntary_excess',employeeRate:.09,employerRate:null})).toEqual({employee:360,employer:520});
   expect(resolveEpfRates(4000,undefined,{mode:'voluntary_excess',employeeRate:.15})).toEqual({employeeRate:.15,employerRate:.13});
  });
 });

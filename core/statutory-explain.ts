@@ -99,6 +99,7 @@
  * "We did not record what this was charged on" and "it was charged on nothing" are different
  * statements, and the second must never be printed when the first is meant.
  */
+import { z } from 'zod';
 import { payslipProvenance, payslipStatutoryBases, type StatutoryBases } from './payslip-recompute';
 import { payslipEmployerBorne, type EmployerBorneView } from './payslip-employer-borne';
 
@@ -128,6 +129,7 @@ export type StatutoryExplainKey = (typeof STATUTORY_EXPLAIN_KEYS)[number];
  *                    product would not evaluate there either.
  *                `effectiveEmployeeRate` is still reported for all of these, but as a check figure the
  *                screen must caption as effective — never as "the rate".
+ *   'epf_working' — the stored EPF method for each leg, including the actual and rounded wages.
  *   'mtd'      — LHDN's computerised MTD calculation (PCB). Reliefs, accumulators and a schedule; not
  *                expressible as a rate at all. The whole working already lives at /payroll/pcb-detail
  *                off the same payslip's `pcbMeta`, and this module deliberately does NOT reimplement it
@@ -145,7 +147,7 @@ export type StatutoryExplainKey = (typeof STATUTORY_EXPLAIN_KEYS)[number];
  *                screen already discloses the override in full, and the link across is the product's one
  *                MTD display. A hand-set PCB is still flagged — through `provenance` and the banner.
  */
-export type StatutoryRuleKind = 'rate' | 'schedule' | 'mtd' | 'manual';
+export type StatutoryRuleKind = 'rate' | 'schedule' | 'mtd' | 'manual' | 'epf_working';
 
 /**
  * WHERE A FIGURE CAME FROM. A union rather than a boolean because 70b14723 adds a second source and the
@@ -263,8 +265,47 @@ export type StatutoryItemExplanation = {
   provenance: StatutoryProvenance;
 };
 
+const epfWorkingSchema = z.object({
+  actualWage: z.number().nonnegative(),
+  roundedWage: z.number().nonnegative(),
+  increment: z.number().positive(),
+  employee: z.object({
+    method: z.literal('entered_rate'),
+    rate: z.number().nonnegative(),
+    amount: z.number().nonnegative(),
+  }),
+  employer: z.discriminatedUnion('method', [
+    z.object({ method: z.literal('entered_rate'), rate: z.number().nonnegative(), amount: z.number().nonnegative() }),
+    z.object({
+      method: z.literal('schedule_row'),
+      schedulePart: z.string().min(1),
+      bandFrom: z.number().nonnegative(),
+      bandUpTo: z.number().nonnegative(),
+      amount: z.number().nonnegative(),
+    }),
+    z.object({
+      method: z.literal('schedule_formula'),
+      schedulePart: z.string().min(1),
+      rate: z.number().nonnegative(),
+      amount: z.number().nonnegative(),
+    }),
+    z.object({ method: z.literal('no_contribution'), amount: z.number().nonnegative() }),
+  ]),
+  scheduleEffectiveFrom: z.iso.date().optional(),
+  items: z.array(z.object({ label: z.string(), amount: z.number() })),
+  employeeThisRun: z.number(),
+  employerThisRun: z.number(),
+});
+
+/** The recorded calculation plus the final EPF amounts from the same payslip. */
+export type EpfWorkingExplanation = z.infer<typeof epfWorkingSchema> & {
+  finalEmployee: number;
+  finalEmployer: number;
+};
+
 export type StatutoryExplanation = {
   items: StatutoryItemExplanation[];
+  epfWorking: EpfWorkingExplanation | null;
   /**
    * The headline flag: this payslip carries no `statutory.bases` object at all, so EVERY item's working
    * is unavailable. Distinct from a per-item `workingNotRecorded` so the screen can lead with one honest
@@ -334,6 +375,7 @@ type Blob = {
   /** 70b14723 — the kernel's standing-manual-EPF stamp (`epfManualStamp`, core/payroll.ts). Read ONLY
    *  through `statutoryProvenance`, for the same reason and under the same guard as `adjustment`. */
   epfManual?: unknown;
+  epfWorking?: unknown;
 };
 
 /**
@@ -515,7 +557,7 @@ export function explainStatutory(statutory: unknown, runType: string): Statutory
     // NO RATE IS DERIVABLE, and for two independent reasons that can both hold at once: an increment over a
     // cumulative wage is not a rate, and neither is a typed amount over the wage the rule would have used.
     // Both legs go when EITHER was typed — the header records that choice and its reversal.
-    const noRate = amountsAreIncremental || manual;
+    const noRate = amountsAreIncremental || manual || ruleKind === 'epf_working';
     return {
     key,
     // PCB keeps the rule that produced its working, because that working is on its own screen and is
@@ -540,11 +582,12 @@ export function explainStatutory(statutory: unknown, runType: string): Statutory
     };
   };
 
+  const epfWorking = epfWorkingSchema.safeParse(st.epfWorking);
   const items: StatutoryItemExplanation[] = [
     // EPF is a SCHEDULE item, not a rate one: the normal monthly wage is looked up in the KWSP Third
     // Schedule band table for every wage up to RM20,000. See the `ruleKind` note above for why the
     // first cut's 'rate' was wrong and what it printed.
-    item('epf', 'schedule', epfBase, n(st.epfEmployee), n(st.epfEmployer), eb.borne.epf, epfAdditional, epfTotalBase),
+    item('epf', epfWorking.success ? 'epf_working' : 'schedule', epfBase, n(st.epfEmployee), n(st.epfEmployer), eb.borne.epf, epfAdditional, epfTotalBase),
     item('socso', 'schedule', socsoEisBase, n(st.socsoEmployee), n(st.socsoEmployer), eb.borne.socso),
     // SKBBK (Lindung 24 Jam) is an employee-side leg of the same PERKESO schedule, gated independently of
     // SOCSO (item 5a461b99). Employer share 0 — it has none, which is why 0 here is a fact and not a gap.
@@ -567,6 +610,9 @@ export function explainStatutory(statutory: unknown, runType: string): Statutory
 
   return {
     items,
+    epfWorking: epfWorking.success
+      ? { ...epfWorking.data, finalEmployee: items[0].employeeReported, finalEmployer: items[0].employer }
+      : null,
     basesNotRecorded: bases == null,
     basesCoverWholeMonth: amountsAreIncremental,
     setByHand:
