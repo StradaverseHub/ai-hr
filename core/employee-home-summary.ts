@@ -1,7 +1,6 @@
 /** Rendered, deterministic sentences over canonical owners. No salary, reason, peer record or model
  * context is transported. A failed owner fails this section; it never supplies a false calm state. */
 import {withTenant,type SessionContext} from '../db/client';
-import {requireOwnHomeSubject} from './employee-home';
 import {readOwnEmployeeHomeConfiguration} from './employee-home-configuration';
 import {countEmployeeHomeTasks} from './employee-home-tasks';
 import {isModuleEnabled} from './entitlements';
@@ -20,22 +19,21 @@ import type {Locale} from '../i18n/config';
 /** Seven civil business dates ahead is a presentation window, not an eligibility or payroll rule. */
 export const HOME_SUMMARY_LOOKAHEAD_DAYS=7;
 export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:string,locale:Locale,replacementHolidayName:string):Promise<EmployeeHomeSummary>{
- const subject=await requireOwnHomeSubject(ctx,employmentId);
- // Also establishes current active own employment and the actual selected-company/role config.
- const {configuration}=await readOwnEmployeeHomeConfiguration(ctx,subject.employmentId);
+ // The configuration owner already proves the exact current own employment and its company role.
+ const {configuration,employmentId:subjectId}=await readOwnEmployeeHomeConfiguration(ctx,employmentId);
  const now=new Date(),today=todayInKualaLumpur(now),through=new Date(Date.parse(today+'T00:00:00Z')+HOME_SUMMARY_LOOKAHEAD_DAYS*86400000).toISOString().slice(0,10);
  const leaveOn=isModuleEnabled(ctx,'leave'),payrollOn=isModuleEnabled(ctx,'payroll'),claimsOn=isModuleEnabled(ctx,'claims');
  const configured=new Set(configuration.quickActions);
  const [taskCount,[leave,holidays,replacements],payroll,leaveTypes,claimAvailable,profile]=await Promise.all([
   countEmployeeHomeTasks(ctx),
   withTenant(ctx,tx=>Promise.all([
-   leaveOn?nextApprovedLeavePresenceTx(tx,subject.employmentId,today):null,
-   originalHolidayCalendarFor(tx,{employmentId:subject.employmentId,startDate:today,endDate:through}),
-   replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subject.employmentId],startDate:today,endDate:through}),
+   leaveOn?nextApprovedLeavePresenceTx(tx,subjectId,today):null,
+   originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:today,endDate:through}),
+   replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:today,endDate:through}),
   ])),
-  payrollOn?readOwnPayrollHomeMetadata(ctx,subject.employmentId):Promise.resolve(null),
-  leaveOn&&configured.has('leave')?listEligibleLeaveTypesFor(ctx,subject.employmentId,locale):Promise.resolve([]),
-  claimsOn&&configured.has('claim')?ownClaimFormAvailable(ctx,subject.employmentId):Promise.resolve(false),
+  payrollOn?readOwnPayrollHomeMetadata(ctx,subjectId):Promise.resolve(null),
+  leaveOn&&configured.has('leave')?listEligibleLeaveTypesFor(ctx,subjectId,locale):Promise.resolve([]),
+  claimsOn&&configured.has('claim')?ownClaimFormAvailable(ctx,subjectId):Promise.resolve(false),
   configured.has('profile')?readProfilePresentationPolicy(ctx):Promise.resolve(null),
  ]);
  const date=(day:string)=>new Intl.DateTimeFormat(locale,{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(day+'T00:00:00Z'));
@@ -61,7 +59,7 @@ export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:st
   payslip:!payrollOn?'moduleUnavailable':!slip?'noPayslip':null,
   profile:profile&&profile.editable.size>0?null:'detailsLocked',calendar:null,notices:null,
  };
- return {version:1,employmentId:subject.employmentId,serverNow:now.toISOString(),
+ return {version:1,employmentId:subjectId,serverNow:now.toISOString(),
   items:homeSummaryCandidates(candidates,configuration.templates).map(row=>({key:row.key,destination:row.destination,message:renderHomeTemplate(templates.get(row.templateKey)!,locale,row.values)})),
   // Disabled positive templates do not establish an empty day; never satisfy a sentence quota with
   // an invented fact. All underlying reads must have succeeded to reach this branch.
