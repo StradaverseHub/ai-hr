@@ -12,6 +12,7 @@ import {
   type OtLegKind,
   type PayItemRateDetail,
   type PayItemInputQuantity,
+  type PayslipQuantitySource,
 } from '@/core/payslip-earning-lines';
 // 5a5309d5 — the ONE answer to "is this record line a non-payable amount?", shared with the printed document.
 import { isNonPayableRecordLine } from '@/core/payslip-configured-contributions';
@@ -276,7 +277,7 @@ function asSubLine(l: NamedPayItemLine): BreakdownSubLine {
   };
 }
 
-export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBreakdown {
+export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow, sources: readonly PayslipQuantitySource[] = []): HistoryBreakdown {
   const st = (row.statutory ?? {}) as BreakdownStat;
   const otConvertAmount = num(st.otConvert?.amount);
   const epf = num(st.epfEmployer);
@@ -301,7 +302,7 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
   // Hoisted so the reconciliation gate below can compare against the SAME expression the field carries —
   // computing it twice is how the figure and the guard on the figure start to disagree.
   const allowanceNet = disp.allowance - otConvertAmount;
-  const { absence, deductionLines } = payslipDeductionBreakdown(row.statutory, row.otherDeductions);
+  const { absence, deductionLines } = payslipDeductionBreakdown(row.statutory, row.otherDeductions, sources);
   const recordLines = st.recordLines ?? [];
   // 5a5309d5 — one pass, so a line is in exactly one of the two sections and none is lost or repeated.
   const nonPayableLines = recordLines.filter(isNonPayableRecordLine);
@@ -351,7 +352,7 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     //
     // 5a5309d5 — and, when the run's overtime came from ATTENDANCE rather than from a pay item, the
     // statutory legs it recorded (rate, hours, amount), through the same gate against the same figure.
-    overtimeLines: reconciled(payslipOvertimeLines(componentLines, row.statutory).map(asSubLine), disp.overtime),
+    overtimeLines: reconciled(payslipOvertimeLines(componentLines, row.statutory, sources).map(asSubLine), disp.overtime),
     bonusLines: reconciled(payItemLinesForCategory(componentLines, 'bonus').map(asSubLine), disp.bonus),
     // 5a5309d5 — the kernel's deduct stamp AND imported history's lines (both are in `byBucket`), for this
     // panel only; the payslip and the PDF keep reading imported lines alone (core/payslip-imported-lines.ts).

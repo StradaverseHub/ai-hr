@@ -41,6 +41,7 @@ import {
   type OtLegKind,
   type PayItemRateDetail,
   type PayItemInputQuantity,
+  type PayslipQuantitySource,
   type StoredComponentLine,
 } from '../core/payslip-earning-lines';
 
@@ -420,6 +421,7 @@ export function buildPayslipPdfData(
     payPeriod: string; basic: unknown; allowance: unknown; overtime: unknown; bonus: unknown;
     gross: unknown; statutory: unknown; otherDeductions: unknown; totalDeductions: unknown;
     net: unknown; employerCost: unknown; daysWorked: unknown;
+    quantitySources?: readonly PayslipQuantitySource[];
   },
   borneLabels: Record<EmployerBorneKey, string>,
   extra: Partial<
@@ -434,7 +436,7 @@ export function buildPayslipPdfData(
   // 970e4143 — hoisted, because `cp38` below is read OUT of it. The carve decision (which of the three
   // claims on `other_deductions` fit inside it, and therefore which rows may print) is made once, in
   // core/payslip-absence-lines.ts, and this document reads the answer rather than deciding for itself.
-  const { absence, deductionLines } = payslipDeductionBreakdown(p.statutory, p.otherDeductions);
+  const { absence, deductionLines } = payslipDeductionBreakdown(p.statutory, p.otherDeductions, p.quantitySources);
   return {
     employee: p.employee,
     employeeCode: p.employeeCode,
@@ -492,7 +494,7 @@ export function buildPayslipPdfData(
     // name and the statutory legs do not; and `earningsRowsOf`'s reconciliation guard is what actually
     // decides whether either may replace the grouped row, so a wrong guess here degrades to today's
     // document rather than to a wrong one.
-    overtimeLines: payslipOvertimeLines(componentLines, p.statutory),
+    overtimeLines: payslipOvertimeLines(componentLines, p.statutory, p.quantitySources),
     // b240c0ff — imported payroll history keeps each deduction line; reconciled against the row it replaces.
     deductionLines,
     detailNotRecorded: componentLines.length === 0,
@@ -1497,7 +1499,7 @@ function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels, rate: (v: number
   const push = (lines: PayslipEarningLine[] | undefined, total: number, grouped: string) => {
     const named = lines ?? [];
     if (payItemLinesReconcile(named, total)) {
-      // Approved 7de6fc4e: the document and Review share CODE · DESCRIPTION plus a separate saved quantity.
+      // The document and Review show the saved description and a separate quantity.
       // A statutory overtime leg has no pay-item identity and keeps its localized leg caption.
       for (const l of named) {
         // a96d320c rev 2 — an item that contributed nothing to this figure is not a row about it. Both

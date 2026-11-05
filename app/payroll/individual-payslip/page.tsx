@@ -433,7 +433,7 @@ export default async function IndividualPayslipPage({
   const ytd = sumPayslipYtd(ytdRows);
   const employerPeriodTotals = row ? sumPayslipEmployerPeriodTotals(ytdRows,row.payPeriod) : null;
 
-  const b = row ? deriveHistoryBreakdown(row) : null;
+  const b = row ? deriveHistoryBreakdown(row, sourceTxns) : null;
   const quantityFor = (line:{ detail?: {qty:number;unit:string|null}|null; inputQuantity?: {qty:number;unit:string|null} }) => {
     const q=line.detail ?? line.inputQuantity;
     return q ? `${q.qty}${q.unit==='hours'?' '+tSlip(q.qty===1?'hourUnit':'hoursUnit'):q.unit==='days'?' '+tSlip(q.qty===1?'dayUnit':'daysUnit'):''}` : '—';

@@ -195,7 +195,7 @@ export function HistoryTable({
         </thead>
         <tbody className="divide-y divide-border">
           {pageRows.map((r) => {
-            const b = deriveHistoryBreakdown(r);
+            const b = deriveHistoryBreakdown(r, sourceTxnsByPayslip?.[`${r.batchId}:${r.employmentId}`]);
             const outcome=processingOutcomes?.[r.id];
             const st = b.st;
             const isOpen = open.has(r.id);

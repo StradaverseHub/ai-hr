@@ -20,6 +20,8 @@ import {
   payItemLinesForBuckets,
   payItemLinesReconcile,
   storedComponentLines,
+  restorePayItemQuantities,
+  type PayslipQuantitySource,
   type NamedPayItemLine,
   type StoredComponentLine,
 } from './payslip-earning-lines';
@@ -42,10 +44,10 @@ export function displayComponentLines(statutory: unknown): StoredComponentLine[]
 
 /** Named saved deduction items shared by History, Review and the PDF. Replace a grouped residual only
  * when their stored contributions reconcile; the named absence carve is applied once on every surface. */
-export function deductionLinesFor(statutory: unknown, residual: unknown, absence?: PayslipAbsenceLines): NamedPayItemLine[] {
+export function deductionLinesFor(statutory: unknown, residual: unknown, absence?: PayslipAbsenceLines, sources: readonly PayslipQuantitySource[] = []): NamedPayItemLine[] {
   const lines = payItemLinesForBuckets(displayComponentLines(statutory), ['deduct']);
   // Group ABSENT separately from unrelated deductions and preserve their order.
-  const items = groupNamedPayItemLines(lines, 'ABSENT');
+  const items = groupNamedPayItemLines(restorePayItemQuantities(lines, sources, 'deduction'), 'ABSENT');
   if (payItemLinesReconcile(items, residual)) return items;
   // A named stamp can already account for a saved component. Confirm the
   // remaining total before suppressing that component.
@@ -61,9 +63,9 @@ export function deductionLinesFor(statutory: unknown, residual: unknown, absence
 /** Present a single Absent row when both the stamp and a separate paid
  * ABSENT component contribute to the same slip. The residual was reconciled
  * independently before the stamp is moved into the itemized rows. */
-export function payslipDeductionBreakdown(statutory: unknown, otherDeductions: unknown) {
+export function payslipDeductionBreakdown(statutory: unknown, otherDeductions: unknown, sources: readonly PayslipQuantitySource[] = []) {
   const absence = payslipAbsenceLines(statutory, otherDeductions);
-  const deductionLines = deductionLinesFor(statutory, absence.residual, absence);
+  const deductionLines = deductionLinesFor(statutory, absence.residual, absence, sources);
   if (!absence.absent || !deductionLines.some(line => line.code === 'ABSENT')) return { absence, deductionLines };
 
   const { days, amount } = absence.absent;
