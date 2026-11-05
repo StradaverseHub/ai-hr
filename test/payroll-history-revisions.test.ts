@@ -6,7 +6,7 @@ import * as schema from '../db/schema';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload,listPayrollHistoryAttempts,getPayrollHistoryAttempt,payrollHistorySource} from '../core/payroll-history-revisions';
 import {hireEmployee} from '../core/org';
 import {createCompany,createDepartment} from '../core/admin';
-import {createBatch,generatePayslips,closeBatch,myPayslipDetail,listBatches,payrollDashboardCounts,paymentSummaryForBatch} from '../core/payroll';
+import {batchHeader,batchDetail,createBatch,generatePayslips,closeBatch,myPayslipDetail,listBatches,payrollDashboardCounts,paymentSummaryForBatch} from '../core/payroll';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {historyRecordKey} from '../lib/payroll-history-revisions';
@@ -49,6 +49,9 @@ describe('immutable payroll history correction and recovery',()=>{
   const correction=await upload('6000.00');expect(correction.plan.counts.replaced).toBe(1);expect(correction.plan.rows[0].beforeValues?.grossPay).toBe('5000.00');
   await expect(confirm(correction,false)).rejects.toThrow(/Confirm replacement/);expect(await effective()).toHaveLength(1);
   await confirm(correction);expect((await effective()).map(row=>Number(row.grossPay))).toEqual([6000]);
+  const [replacement]=await effective(),detail=await batchDetail(ctx,replacement.batchId);
+  expect(await batchHeader(ctx,replacement.batchId)).toEqual({batch:detail?.batch});
+  expect(detail?.batch.employeeCount).toBe(1);expect(detail?.batch.totals).toMatchObject({gross:6000});
   expect(await payrollDashboardCounts(ctx,[b.companyId])).toEqual({totalCount:(await listBatches(ctx,[b.companyId])).length,unpublishedCount:0});
   expect(await listBatches(ctx,[b.companyId])).toMatchObject([{historyImportCycleName:'Monthly',employeeCount:1,batchDate:null}]);
   expect(await owner.db.select().from(schema.payslip)).toHaveLength(2);

@@ -6,7 +6,7 @@
  * (see ./transaction-detail-report.ts for why that matters and what the columns are).
  *
  * SCOPE. `scopedAdmin()` fences the caller to their authorised companies, and the run itself is resolved
- * through `batchDetail`, which reads under RLS — a batch in another tenant returns null. The company is
+ * through `batchHeader`, which reads under RLS — a batch in another tenant returns null. The company is
  * then re-checked against `scopeIds` before anything is read, so a guessed batch id belonging to a
  * company outside the caller's scope 404s rather than exporting a payroll. Per-employee pay is the most
  * sensitive payload in the product; this route fails closed twice on purpose.
@@ -19,7 +19,7 @@
  */
 import { recordPayrollExport } from '@/core/payroll-audit/access-log';
 import { scopedAdmin } from '@/lib/scope';
-import { batchDetail } from '@/core/payroll';
+import { batchHeader } from '@/core/payroll';
 import { listPayrollRegisterAcross } from '@/core/payroll-view';
 import { serializeReport, type ReportFormat } from '@/lib/report-export';
 import { rowsForRun, transactionDetailReport } from '../transaction-detail-report';
@@ -44,7 +44,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ batchId:
   const { batchId } = await params;
   if (!UUID_RE.test(batchId)) return new Response('Not found', { status: 404 });
 
-  const data = await batchDetail(s, batchId);
+  const data = await batchHeader(s, batchId);
   // Not found, another tenant (RLS), or a company this admin is not scoped to — all one answer, so the
   // response cannot be used to probe which batch ids exist.
   if (!data || !scopeIds.includes(data.batch.companyId)) return new Response('Not found', { status: 404 });

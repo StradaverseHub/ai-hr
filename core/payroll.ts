@@ -11416,9 +11416,22 @@ export function preProcessAdvisoryForSelection(
   });
 }
 
+async function readBatchHeaderTx(tx: Tx, batchId: string) {
+  const [batch] = await tx.select().from(payrollHistoryEffectiveBatch).where(eq(payrollBatch.id, batchId)).limit(1);
+  return batch ?? null;
+}
+
+/** Same Payroll gate and effective-history header as batchDetail, without reading employee money rows. */
+export function batchHeader(ctx: SessionContext, batchId: string) {
+  return withTenant(ctx, async (tx) => {
+    const batch = await readBatchHeaderTx(tx, batchId);
+    return batch ? { batch } : null;
+  });
+}
+
 export function batchDetail(ctx: SessionContext, batchId: string) {
   return withTenant(ctx, async (tx) => {
-    const [batch] = await tx.select().from(payrollHistoryEffectiveBatch).where(eq(payrollBatch.id, batchId)).limit(1);
+    const batch = await readBatchHeaderTx(tx, batchId);
     if (!batch) return null;
     const slips = await tx
       .select({
