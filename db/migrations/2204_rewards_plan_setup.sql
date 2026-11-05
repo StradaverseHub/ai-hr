@@ -173,7 +173,7 @@ BEGIN
   IF EXISTS(SELECT 1 FROM public.reward_policy_group other_group
    JOIN public.reward_policy_group_version other_version ON other_version.id=other_group.current_version_id AND other_version.tenant_id=other_group.tenant_id
    JOIN public.reward_policy_group_target other_target ON other_target.version_id=other_version.id AND other_target.tenant_id=other_version.tenant_id
-   WHERE other_group.tenant_id=t AND other_group.id IS DISTINCT FROM p_group AND other_target.company_id=c 
+   WHERE other_group.tenant_id=t AND other_group.id IS DISTINCT FROM p_group AND other_target.company_id=c
     AND other_version.policy->>'year'=p_policy->>'year') THEN
    RAISE EXCEPTION 'reward policy group overlaps another current configuration' USING ERRCODE='23514'; END IF;
  END LOOP;

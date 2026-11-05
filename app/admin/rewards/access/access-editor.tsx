@@ -55,9 +55,9 @@ export function RewardAccessEditor({ value,requests=[],singleAdminCompanies=[],i
     const unchanged = !!editor?.before && !editor.remove && editor.before.userId === userId && editor.before.role === role && (editor.before.validFrom??todayInKualaLumpur())===validFrom && (editor.before.validTo??'')===validTo && (editor.before.coversUserId??'')===coversUserId&&!restoring;
     return <div className="space-y-6">
   {singleAdminCompanies.length>0&&<p role="status" className="rounded-md border border-warning/40 p-3 text-sm">{c('singleAdmin',{companies:singleAdminCompanies.join(', ')})}</p>}
-  
-  
-  
+
+
+
   <p className="text-sm text-muted-foreground">{c('proposalScope')}</p>
   <div className="flex flex-wrap items-end justify-between gap-3"><div className="flex flex-wrap items-end gap-3">
    <Field label={t('search')}><input type="search" value={query} onChange={e => setQuery(e.target.value)} className={inputCls}/></Field>
