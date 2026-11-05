@@ -5998,15 +5998,23 @@ async function lockLeaveCohortDependenciesTx(tx: Tx, ctx: SessionContext, scope:
 /** Exported for the Assistant's leave-change review (ADR-0151), which takes this same lock before comparing
  *  the reviewed values, so the comparison and the native write see one state. */
 export async function lockLeaveRequestDependenciesTx(tx: Tx, ctx: SessionContext, requestId: string): Promise<void> {
+  await readLeaveRequestWithDependenciesTx(tx, ctx, requestId, () =>
+    tx.select({ employmentId: leaveRequest.employmentId }).from(leaveRequest)
+      .where(eq(leaveRequest.id, requestId)).limit(1));
+}
+
+async function readLeaveRequestWithDependenciesTx<T extends { employmentId: string }>(
+  tx: Tx, ctx: SessionContext, requestId: string, readCurrent: () => PromiseLike<readonly T[]>,
+): Promise<T> {
   await lockAccessConfigurationTx(tx, ctx.tenantId);
   await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
-  const read = () => tx.select({ employmentId: leaveRequest.employmentId }).from(leaveRequest)
+  const [nominated] = await tx.select({ employmentId: leaveRequest.employmentId }).from(leaveRequest)
     .where(eq(leaveRequest.id, requestId)).limit(1);
-  const [nominated] = await read();
   if (!nominated) throw new Error('leave request not found (or not visible)');
   await lockLeaveDependenciesTx(tx, ctx.tenantId, [nominated.employmentId]);
-  const [current] = await read();
+  const [current] = await readCurrent();
   if (!current || current.employmentId !== nominated.employmentId) throw new LeaveDependencyUnavailable();
+  return current;
 }
 
 /** Decide a leave request. With a multi-step chain (2B-1) this advances the current step and only
@@ -7835,14 +7843,18 @@ export async function editLeaveRequestTx(
   },
 ): Promise<{ leaveRequestId: string; days: number; eventId: string }> {
   {
-    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
-    const [row] = await tx
-      .select({ request: leaveRequest, subjectPersonId: employment.personId })
+    const row = await readLeaveRequestWithDependenciesTx(tx, ctx, p.leaveRequestId, () => tx
+      .select({
+        request: leaveRequest,
+        employmentId: leaveRequest.employmentId,
+        subjectPersonId: employment.personId,
+        hasDateRows: sql<boolean>`exists(select 1 from ${leaveRequestDate}
+          where ${leaveRequestDate.leaveRequestId} = ${leaveRequest.id})`,
+      })
       .from(leaveRequest)
       .leftJoin(employment, eq(employment.id, leaveRequest.employmentId))
       .where(eq(leaveRequest.id, p.leaveRequestId))
-      .limit(1);
-    if (!row) throw new Error('leave request not found (or not visible)');
+      .limit(1));
 
     // A visible request with a hidden or different subject still fails the creator-only rule.
     const { request: req, subjectPersonId } = row;
@@ -7857,12 +7869,7 @@ export async function editLeaveRequestTx(
     if (req.parentGroupId != null) {
       throw new LeaveEditNotAllowedError('grouped (emergency / split) leave cannot be edited here');
     }
-    const [hasDateRows] = await tx
-      .select({ id: leaveRequestDate.id })
-      .from(leaveRequestDate)
-      .where(eq(leaveRequestDate.leaveRequestId, req.id))
-      .limit(1);
-    if (hasDateRows) {
+    if (row.hasDateRows) {
       throw new LeaveEditNotAllowedError('per-date-approval leave cannot be edited here');
     }
 
