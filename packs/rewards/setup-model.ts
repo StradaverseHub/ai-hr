@@ -70,3 +70,8 @@ export function suggestRewardLibrary(candidates:readonly LibraryCandidate[],p:{k
 }
 export function gradeCodeForLibrary(raw:string):ArchitectureGrade{const g=architectureGrade(raw);if(!g)throw new RewardSetupError('invalid','Choose an active Grade Ladder grade.');return g;}
 export const BONUS_COLUMNS=performances;
+/** An explicit editable reconciliation preview; incomplete historical grids are never auto-filled. */
+export function legacyLibraryDraft(kind:'salary'|'bonus',policy:RewardPolicy,grades:readonly {gradeId:string;grade:string}[]):RewardLibrary{
+ if(kind==='salary')return{kind,rows:grades.map(g=>{const grade=gradeCodeForLibrary(g.grade),values=grade==='23'?null:policy.ranges[grade];return{gradeId:g.gradeId,grade,minimumCents:values?.[0]??null,midpointCents:values?.[1]??null,maximumCents:values?.[2]??null};})};
+ return{kind,type:policy.bonusStructure,rows:grades.flatMap(g=>{const grade=gradeCodeForLibrary(g.grade),months=policy.bonusMatrix[grade];return months?[{gradeId:g.gradeId,grade,months}]:[];}),segments:policy.bonusStructure==='branch'?Object.entries(policy.branchFactors).map(([name,factors])=>({name,factors})):[]};
+}

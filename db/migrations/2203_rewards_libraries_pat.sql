@@ -26,7 +26,7 @@ REVOKE ALL ON FUNCTION app.reward_setup_allowed(uuid,text) FROM PUBLIC;GRANT EXE
 CREATE TABLE reward_library(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),kind text NOT NULL CHECK(kind IN('salary','bonus')),
  name text NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 100),year integer NOT NULL CHECK(year BETWEEN 2000 AND 2200),tags text[] NOT NULL DEFAULT '{}',group_default boolean NOT NULL DEFAULT false,
- previous_library_id uuid,created_by uuid NOT NULL REFERENCES app_user(id),created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(tenant_id,id),FOREIGN KEY(tenant_id,previous_library_id) REFERENCES reward_library(tenant_id,id)
+ previous_library_id uuid,source_policy_version_id uuid,created_by uuid NOT NULL REFERENCES app_user(id),created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(tenant_id,id),FOREIGN KEY(tenant_id,previous_library_id) REFERENCES reward_library(tenant_id,id),FOREIGN KEY(tenant_id,source_policy_version_id) REFERENCES reward_policy_group_version(tenant_id,id),CHECK(previous_library_id IS NULL OR source_policy_version_id IS NULL)
 );
 CREATE UNIQUE INDEX reward_library_name_year ON reward_library(tenant_id,kind,year,lower(name));
 CREATE TABLE reward_library_version(

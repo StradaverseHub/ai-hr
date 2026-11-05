@@ -1,5 +1,5 @@
 import {rewardArchitectureForSourceTx} from './architecture-source';
-import {advisorNeedsOverrideReason,defaultAdvisorSettings,type AdvisorSettings} from './advisor-model';
+import {advisorNeedsOverrideReason} from './advisor-model';
 import {calculateUploadedRewards} from './uploaded-awards-model';
 import {assertRewardCapabilityTx,assertRewardWritableTx} from './access-policy';
 import {personnelGroupingReadinessTx} from '../../core/personnel-quality';
@@ -200,7 +200,7 @@ export async function saveRewardSeniorAward(ctx:SessionContext,unitId:string,rev
 export async function readRewardSeniorEvidence(ctx:SessionContext,unitId:string,evidenceId:string){
  idSchema.parse(evidenceId);
  return withRewardsTenant(ctx,async tx=>{
-  const {roles,entries}=await load(tx,unitId);if(!maySeeSeniorAmounts(roles))throw new RewardError('Senior plan evidence is restricted.');
+  await assertRewardWritableTx(tx);const {roles,entries}=await load(tx,unitId);if(!maySeeSeniorAmounts(roles))throw new RewardError('Senior plan evidence is restricted.');
   const [file]=await tx.select().from(rewardSeniorEvidence).where(and(eq(rewardSeniorEvidence.unitId,unitId),eq(rewardSeniorEvidence.id,evidenceId)));
   const entry=file&&entries.find(entry=>entry.id===file.entryId);if(!file||!entry||!visibleEntry(entry,roles,ctx.personId))throw new RewardError('Evidence is not available.');
   return {name:file.name,mime:file.mime,content:file.content};
@@ -220,7 +220,7 @@ export async function annualRewardCalculationTx(tx:Tx,unit:typeof rewardUnit.$in
 }
 async function calculateUnit(tx: Tx, unit: typeof rewardUnit.$inferSelect, entries: RewardEntry[],posting=false) {
   const [upload]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from reward_uploaded_review where unit_id=${unit.id}::uuid and tenant_id=app.current_tenant_id()) as present`);
-  if(upload?.present){const awards=posting?(await tx.execute<{value:import('./uploaded-awards-model').UploadedAward[]}>(sql`select app.reward_uploaded_awards_for_post(${unit.id}::uuid) as value`))[0]?.value??[]:(await tx.execute<{award:import('./uploaded-awards-model').UploadedAward}>(sql`select award from reward_uploaded_award where unit_id=${unit.id}::uuid and tenant_id=app.current_tenant_id()`)).map(r=>r.award);const grades=await tx.execute<{code:string}>(sql`select app.architecture_grade(code) as code from job_grade where tenant_id=app.current_tenant_id() and app.architecture_grade_assignable(id) and app.architecture_grade(code) is not null group by app.architecture_grade(code) having count(*)=1`);const result=calculateUploadedRewards(entries,unit.policy,awards,grades.map(g=>g.code));const [validation]=await tx.execute<{value:{valid:boolean;warnings:boolean}}>(sql`select app.reward_uploaded_validation(${unit.id}::uuid) as value`);if(validation?.value.valid)result.flags=result.flags.filter(f=>f.code!=='UPL-01'||!f.message.startsWith('Upload and independently'));else if(!result.flags.some(f=>f.severity==='block'))result.flags.push({severity:'block',code:'UPL-01',message:'An uploaded record needs correction by its authorized reviewer.'});if(validation?.value.warnings&&!result.flags.some(f=>f.code==='UPL-02'))result.flags.push({severity:'warning',code:'UPL-02',message:'restricted'});return result;}
+  if(upload?.present){const awards=posting?(await tx.execute<{value:import('./uploaded-awards-model').UploadedAward[]}>(sql`select app.reward_uploaded_awards_for_post(${unit.id}::uuid) as value`))[0]?.value??[]:(await tx.execute<{award:import('./uploaded-awards-model').UploadedAward}>(sql`select award from reward_uploaded_award where unit_id=${unit.id}::uuid and tenant_id=app.current_tenant_id()`)).map(r=>r.award);const grades=await tx.execute<{code:string}>(sql`select app.architecture_grade(code) as code from job_grade where tenant_id=app.current_tenant_id() and app.architecture_grade_assignable(id) and app.architecture_grade(code) is not null group by app.architecture_grade(code) having count(*)=1`);const result=calculateUploadedRewards(entries,unit.policy,awards,grades.map(g=>g.code));const [validation]=await tx.execute<{value:{valid:boolean;warnings:boolean}}>(sql`select app.reward_uploaded_validation(${unit.id}::uuid) as value`);if(validation?.value.valid)result.flags=result.flags.filter(f=>f.code!=='UPL-01'||!f.message.startsWith('Upload and independently'));else if(!result.flags.some(f=>f.severity==='block'))result.flags.push({severity:'block',code:'UPL-01',message:'An uploaded record needs correction by its authorized reviewer.'});if(validation?.value.warnings&&!result.flags.some(f=>f.code==='UPL-02'))result.flags.push({severity:'warning',code:'UPL-02',message:'restricted'});if(posting){const authorizedIds=new Set(awards.map(a=>a.employmentId));result.rows=result.rows.filter(row=>authorizedIds.has(row.source.employmentId));}return result;}
 
   if (unit.kind === 'annual') {
     const {policy,controls,publicState}=await annualRewardCalculationTx(tx,unit,entries,posting);
@@ -314,6 +314,14 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
   await withRewardsTenant(ctx,tx=>tx.execute(sql`select app.reward_access_observe(${unitId}::uuid)`));
   return withRewardsTenant(ctx, tx => reviewProjectionTx(tx, ctx, unitId));
 }
+export function exportRewardReview(ctx:SessionContext,unitId:string){
+  return withRewardsTenant(ctx,async tx=>{
+    await assertRewardWritableTx(tx);
+    const projection=await reviewProjectionTx(tx,ctx,unitId);
+    if(!projection.roles.includes('gr'))throw new RewardError('Group Rewards access is required.');
+    return projection;
+  });
+}
 /**
  * The review read path. getRewardUnit and the Approvals board (rewardApprovalsBoard) both read a review
  * through this one function, so membership, entry visibility (visibleEntry, including the own-person
@@ -369,7 +377,7 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
       .leftJoin(appUser, eq(appUser.id, domainEvent.actorId)).leftJoin(person, and(eq(person.id, appUser.personId), visibleSeatHolder))
       .where(and(eq(domainEvent.aggregateType, 'reward-unit'), eq(domainEvent.aggregateId, unitId), eq(domainEvent.eventType, 'reward-unit.lump-updated'))).orderBy(desc(domainEvent.occurredAt)).limit(1) : [];
     const [libraryBinding]=await tx.execute<{bound:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as bound`);
-    return { libraryBound:libraryBinding?.bound??false,...(caps?{capabilities:caps.value}:{}),uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
+    return { libraryBound:libraryBinding?.bound??false,...(caps?{capabilities:{...caps.value,snapshotRefresh:!uploadedReview?.present&&caps.value.snapshotRefresh}}:{}),uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
       rows: visible.map(e=>{const {uploadedAward:_award,...safe}=e as typeof e&{uploadedAward?:unknown};return safe;}), flags, hiddenCount: entries.length - visible.length,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
       bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
@@ -784,7 +792,7 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
     if(validatedFacts&&validatedFacts.seniorPlan!==entry.facts.seniorPlan)throw new RewardError('Use the checked Senior membership workflow to change selection.');
     if (validatedFacts && belowConfidentialityFloor(validatedFacts, entry.source)) throw new RewardError(confidentialityFloorMessage);
     const [advice]=await tx.execute<{id:string;recommendation:typeof rec}>(sql`select id,recommendation from reward_advisor_suggestion where unit_id=${unitId}::uuid and entry_id=${entryId}::uuid and status='pending' and unit_revision=${unit.revision} order by created_at desc,id desc limit 1`);
-    if(advice){const [setting]=await tx.execute<{settings:AdvisorSettings}>(sql`select settings from reward_advisor_setting where unit_id=${unitId}::uuid`);if(advisorNeedsOverrideReason(rec,advice.recommendation,(setting?.settings??defaultAdvisorSettings).overrideThresholdBp)&&rec.reason.trim().length<10)throw new RewardError('Explain the difference from the advisor suggestion in at least 10 characters.');await tx.execute(sql`update reward_advisor_suggestion set status='adjusted',decided_by=app.current_user_id(),decided_at=now(),decision_reason=${rec.reason},final_recommendation=${JSON.stringify(rec)}::jsonb where id=${advice.id}::uuid`);}
+    if(advice){const {rewardAdvisorSettingTx}=await import('./advisor');const setting=await rewardAdvisorSettingTx(tx,unitId);if(advisorNeedsOverrideReason(rec,advice.recommendation,setting.settings.overrideThresholdBp)&&rec.reason.trim().length<10)throw new RewardError('Explain the difference from the advisor suggestion in at least 10 characters.');await tx.execute(sql`update reward_advisor_suggestion set status='adjusted',decided_by=app.current_user_id(),decided_at=now(),decision_reason=${rec.reason},final_recommendation=${JSON.stringify(rec)}::jsonb where id=${advice.id}::uuid`);}
     await tx.update(rewardEntry).set({ recommendation: rec, ...(validatedFacts ? { facts: validatedFacts } : {}), updatedAt: new Date() }).where(eq(rewardEntry.id, entryId));
     await touch(tx, unitId); await stamp(tx, ctx, unitId, 'recommendation-updated', { entryId, revision: unit.revision + 1 });
   });
@@ -1110,7 +1118,7 @@ async function prepareRewardPostTx(tx:Tx,ctx:SessionContext,unitId:string,revisi
     if(!uploaded&&unit.kind==='annual'&&entries.some(entry=>isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade)&&(!postingAwards[entry.id]?.confirmedBy||postingAwards[entry.id].sourceFingerprint!==seniorSourceFingerprint(entry))))throw new RewardError('Every Senior plan member needs an independently confirmed offline decision before payroll transfer.');
     const result = await calculateUnit(tx, unit, entries,true);
     if (result.flags.some(f => f.severity === 'block')) throw new RewardError('The approved review no longer passes validation.');
-    const hasBonus = result.rows.some(e => e.bonusCents + e.lumpCents > 0||isSeniorPlanMember(unit.policy,e.facts,e.source.grade));
+    const hasBonus = result.rows.some(e => e.bonusCents + e.lumpCents > 0||!uploaded&&isSeniorPlanMember(unit.policy,e.facts,e.source.grade));
     if (hasBonus && !batchId) throw new RewardError('Select a draft payroll batch for the bonus and lump-sum awards.');
     if (batchId) {
       const query=tx.select().from(payrollBatch).where(eq(payrollBatch.id,batchId));
@@ -1154,7 +1162,7 @@ async function postRewardEffectTx(tx:Tx,ctx:SessionContext,unitId:string,revisio
         await setEmploymentGrade(ctx, { employmentId: emp.id, gradeId: grade.id }, tx);
       }
       const award = e.bonusCents + e.lumpCents;
-      if ((award||isSeniorPlanMember(unit.policy,e.facts,e.source.grade)) && batchId) {
+      if ((award||!prepared.uploaded&&isSeniorPlanMember(unit.policy,e.facts,e.source.grade)) && batchId) {
         const [existing] = await tx.select().from(payrollInput).where(and(eq(payrollInput.batchId, batchId), eq(payrollInput.employmentId, emp.id))).for('update');
         await setPayrollInput(ctx, { batchId, employmentId: emp.id, overtimeAmount: Number(existing?.overtimeAmount ?? 0), bonusAmount: Number(existing?.bonusAmount ?? 0) + award / 100, tp1Deduction: Number(existing?.tp1Deduction ?? 0), zakat: Number(existing?.zakat ?? 0), otSource: 'preserve', tp1SourceMode: 'preserve' }, tx);
         if(isSeniorPlanMember(unit.policy,e.facts,e.source.grade)&&!prepared.uploaded){

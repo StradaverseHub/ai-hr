@@ -35495,7 +35495,13 @@
     "draftOnly": "This creates a draft only. A different Group Rewards user must approve the plan before reviews can be created.",
     "createDraftPlan": "Create draft plan",
     "already-assigned": "Already assigned to another plan for this reward year.",
-    "branchAllAcknowledged": "Every selected company is configured to use branch factors"
+    "branchAllAcknowledged": "Every selected company is configured to use branch factors",
+    "noPriorLibrary": "No confirmed library from last year.",
+    "salaryMissing": "Grade {grade}: fill in Minimum, Midpoint and Maximum.",
+    "salaryOrder": "Grade {grade}: Minimum must be below Midpoint, and Midpoint below Maximum.",
+    "copyPriorLibrary": "Copy last year’s library",
+    "fromShared": "Reconcile an existing shared configuration",
+    "fromSharedHelp": "Review the retained values before saving a draft. Missing active grades stay blank. Existing reviews keep their recorded settings."
   },
   "jobArchitecture": {
     "title": "Job Architecture",
@@ -35909,6 +35915,7 @@
     "inactive": "Inactive"
   },
   "rewardAdvisor": {
+    "saveCycle": "Save as cycle default",
     "title": "Recommendation advisor",
     "back": "Compensation review",
     "advisory": "Advisory only. The deterministic rules calculate every figure. A human decides and the normal approvals still apply.",
