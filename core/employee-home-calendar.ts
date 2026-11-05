@@ -3,8 +3,7 @@
 import {withTenant,type SessionContext} from '../db/client';
 import {requireOwnHomeSubject} from './employee-home';
 import {listEligibleLeaveTypesFor,myOwnEmploymentSubjectsTx} from './read';
-import {listEmployeeHomeCards} from './dashboard-card-config';
-import {getEmployeeHomePreferences} from './dashboard-prefs';
+import {getEmployeeHomeDisplayPreferences} from './dashboard-prefs';
 import {homeDisplayClock} from '../lib/employee-home';
 import {homeCalendarGrid,type EmployeeHomeCalendar,type HomeCalendarEntry} from '../lib/employee-home-calendar';
 import {leaveCalendarPresenceByEmploymentTx} from '../packs/leave/service';
@@ -17,7 +16,7 @@ import {readHomeTeamCalendar} from './employee-home-sharing';
 
 export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:string,requestedMonth?:string,now=new Date()):Promise<EmployeeHomeCalendar>{
  const subject=await requireOwnHomeSubject(ctx,employmentId);
- const preferences=await listEmployeeHomeCards(ctx).then(cards=>getEmployeeHomePreferences(ctx,cards));
+ const preferences=await getEmployeeHomeDisplayPreferences(ctx);
  const display=homeDisplayClock(now,preferences.timeZone??'Asia/Kuala_Lumpur');
  const month=requestedMonth??display.date.slice(0,7),dates=homeCalendarGrid(month,preferences.weekStartsOn);
  const from=dates[0],to=dates[dates.length-1];

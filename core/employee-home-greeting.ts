@@ -5,8 +5,7 @@ import {person} from '../db/schema';
 import {requireOwnHomeSubject} from './employee-home';
 import {readEmployeeHomeGreetingIdentity} from './employee-home';
 import {readOwnEmployeeHomeConfiguration} from './employee-home-configuration';
-import {listEmployeeHomeCards} from './dashboard-card-config';
-import {getEmployeeHomePreferences} from './dashboard-prefs';
+import {getEmployeeHomeDisplayPreferences} from './dashboard-prefs';
 import {approvedLeavePresenceByEmploymentTx} from '../packs/leave/service';
 import {workedDayKindForTx} from '../packs/attendance/service';
 import {isModuleEnabled} from './entitlements';
@@ -45,7 +44,7 @@ export async function readEmployeeHomeGreeting(ctx:SessionContext,employmentId:s
  const [identity,view,preferences]=await Promise.all([
   readEmployeeHomeGreetingIdentity(ctx,subject.employmentId),
   readOwnEmployeeHomeConfiguration(ctx,subject.employmentId),
-  listEmployeeHomeCards(ctx).then(cards=>getEmployeeHomePreferences(ctx,cards)),
+  getEmployeeHomeDisplayPreferences(ctx),
  ]);
  const display=homeDisplayClock(now,preferences.timeZone??'Asia/Kuala_Lumpur'),today=todayInKualaLumpur(now);
  const [birthday,returnedFromLeave]=await Promise.all([

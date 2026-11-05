@@ -109,15 +109,27 @@ export function resetDashboardLayout(
 }
 
 
+function homeDisplayPreferences(raw: unknown) {
+  const metadata=raw&&typeof raw==='object'&&!Array.isArray(raw)?(raw as Record<string,unknown>).homeDisplay:null;
+  const {timeZone,weekStartsOn}=readEmployeeHomePreferences({
+    ...defaultEmployeeHomePreferences(),...(metadata&&typeof metadata==='object'&&!Array.isArray(metadata)?metadata:{}),
+  });
+  return {timeZone,weekStartsOn};
+}
+
+/** Calendar and greeting use the same saved display metadata without loading the card catalogue. */
+export function getEmployeeHomeDisplayPreferences(ctx: SessionContext): Promise<Pick<EmployeeHomePreferences,'timeZone'|'weekStartsOn'>> {
+  if(!ctx.userId)return Promise.resolve(homeDisplayPreferences(null));
+  return withTenant(ctx,async tx=>homeDisplayPreferences(await readRawLayout(tx)));
+}
+
 /** Home reads card selection/order from the SAME employee-role layout as the existing dashboard.
  * Only display timezone/week-start are metadata; the business-day clock and permissions stay canonical. */
 export function getEmployeeHomePreferences(ctx: SessionContext, cards: readonly DashboardCardChoice[]): Promise<EmployeeHomePreferences> {
   if (!ctx.userId) return Promise.resolve(defaultEmployeeHomePreferences());
   return withTenant(ctx, async tx => {
     const raw=await readRawLayout(tx);
-    const metadata=raw&&typeof raw==='object'&&!Array.isArray(raw)?(raw as Record<string,unknown>).homeDisplay:null;
-    const defaults=defaultEmployeeHomePreferences();
-    const display=readEmployeeHomePreferences({...defaults,...(metadata&&typeof metadata==='object'&&!Array.isArray(metadata)?metadata:{})});
+    const display=homeDisplayPreferences(raw);
     const layout=normalizeDashboardLayout(employeeHomeLayoutInput(extractRoleLayout(raw,'employee'),cards.filter(card=>card.mandatory||card.defaultDisplay).map(card=>card.cardKey)),cards);
     const ordered=layout.order.filter((key):key is EmployeeHomePreferences['cardOrder'][number]=>EMPLOYEE_HOME_CARDS.some(card=>card===key));
     return {version:1,timeZone:display.timeZone,weekStartsOn:display.weekStartsOn,
