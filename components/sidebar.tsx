@@ -443,7 +443,7 @@ const GROUPS: Group[] = [
     items: [
       { href: '/tasks', labelKey: 'myTasks', icon: ListChecks },
       { href: '/admin/personnel', labelKey: 'personnelAdmin', icon: Users, adminOnly: true },
-      { href: '/admin/job-descriptions', labelKey: 'jobDescriptions', icon: BookOpen, adminOnly: true },
+      { href: '/admin/job-architecture', labelKey: 'jobDescriptions', icon: BookOpen, adminOnly: true },
       ONBOARDING_NODE,
       ONBOARDING_REQUISITIONS_NODE,
       ...LIFECYCLE_LINKS.filter(link=>link.group==='manage'&&link.href!=='/lifecycle/requisitions/onboarding'),
