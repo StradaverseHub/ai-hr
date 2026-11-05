@@ -6,6 +6,6 @@ import {BeforePayrollCard} from '@/components/pre-salary/payroll-readiness';
  * its own Suspense boundary. The checklist is read as the viewer (core/pre-salary/person-items.ts); a read that
  * fails leaves the card out rather than taking Today with it. */
 export async function BeforePayrollSection({session,employmentId,scopeIds,locale,today}:{session:SessionContext;employmentId?:string;scopeIds:readonly string[];locale:string;today:string}){
- const readiness=await readMyPayrollReadiness(session,{employmentId,scopeIds,locale,today,approvalPreview:true}).catch(()=>null);
+ const readiness=await readMyPayrollReadiness(session,{employmentId,scopeIds,locale,today,includeApprovals:false}).catch(()=>null);
  return <BeforePayrollCard readiness={readiness} locale={locale}/>;
 }

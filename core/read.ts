@@ -797,11 +797,19 @@ function personnelFactColumns():EmployeeListColumns{
     status:employmentStatusSql(todayInKualaLumpur(),dates)};
 }
 
+const personnelFactFilterSupport = {
+  companyIds:true,q:true,companyId:true,departmentId:true,status:true,employmentType:true,
+  filterCompanyIds:true,departmentIds:true,employmentStatuses:true,
+  businessUnitIds:false,parentCompanyIds:false,businessGroupIds:false,jobGrades:false,positionIds:false,
+  confirmationState:false,probationEndFrom:false,probationEndTo:false,joinedFrom:false,joinedTo:false,
+  qualityFlags:false,privateSearch:false,
+} satisfies Record<keyof EmployeeListFilters, boolean>;
+const personnelFactFilterKeys = Object.keys(personnelFactFilterSupport) as (keyof EmployeeListFilters)[];
+
 /** Conservative equality over filter inputs only. Paging/order are deliberately independent.
  * Different but equivalent spellings may miss this optimization; they never broaden a filter. */
 function samePersonnelFilters(page:EmployeeListFilters,facets:EmployeeListFilters):boolean{
-  const fields:Record<keyof EmployeeListFilters,true>={companyIds:true,q:true,companyId:true,departmentId:true,status:true,employmentType:true,filterCompanyIds:true,departmentIds:true,employmentStatuses:true};
-  return (Object.keys(fields)as(keyof EmployeeListFilters)[]).every(key=>{
+  return personnelFactFilterKeys.every(key=>{
     const left=page[key],right=facets[key];
     return Array.isArray(left)&&Array.isArray(right)
       ?left.length===right.length&&left.every((value,index)=>value===right[index]):left===right;
@@ -818,6 +826,10 @@ export function personnelListPageSql(
 ):SQL{
   if(!Number.isSafeInteger(page.limit)||page.limit<0||page.limit>ALL_ROW_CEILING||
      !Number.isSafeInteger(page.offset)||page.offset<0)throw new RangeError('Invalid Personnel page');
+    if (personnelFactFilterKeys.some(key => !personnelFactFilterSupport[key]
+      && (page[key] !== undefined || facets[key] !== undefined))) {
+      throw new RangeError('The typed Personnel projection does not support these filters');
+    }
     const columns=personnelFactColumns();
     const pageWhere=workforceListWhere(page,columns)??sql`true`;
     const facetWhere=workforceListWhere(facets,columns)??sql`true`;

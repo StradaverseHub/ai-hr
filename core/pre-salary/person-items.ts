@@ -333,13 +333,13 @@ async function approvalsGroup(approvalsRead:ReturnType<typeof startApprovals>,pe
 /** The person's "Before payroll" checklist. `null` when payroll is not in use for the tenant: there is no payroll to be
  * ready for. Someone with no own employment (or several and none chosen) gets no own items, only their approvals.
  * `scopeIds`: the companies in the viewer's current scope, for the approvals owner's company filter (Today's own). */
-export async function readMyPayrollReadiness(ctx:SessionContext,p:Readonly<{employmentId?:string;scopeIds?:readonly string[];locale?:string;today?:string;approvalPreview?:boolean}>={}):Promise<PayrollReadiness|null>{
+export async function readMyPayrollReadiness(ctx:SessionContext,p:Readonly<{employmentId?:string;scopeIds?:readonly string[];locale?:string;today?:string;approvalPreview?:boolean;includeApprovals?:false}>={}):Promise<PayrollReadiness|null>{
  if(!ctx.userId||ctx.agent)return null;
  const payroll=moduleState(ctx,'payroll');
  if(payroll==='off')return null;
  const today=p.today??todayInKualaLumpur(),locale=p.locale??'en';
  // The approvals read depends on neither the subject nor the period, so it starts now and runs while they are resolved.
- const approvalsRead=startApprovals(ctx,p.scopeIds,p.approvalPreview);
+ const approvalsRead=p.includeApprovals===false?null:startApprovals(ctx,p.scopeIds,p.approvalPreview);
  let subject:Subject|null=null;
  try{const own=await requireOwnHomeSubject(ctx,p.employmentId);subject={employmentId:own.employmentId,companyId:own.companyProof.companyId??own.currentCompanyId??null};}
  catch(error){if(!(error instanceof HomeAccessError))throw error;}
@@ -355,7 +355,7 @@ export async function readMyPayrollReadiness(ctx:SessionContext,p:Readonly<{empl
   subject?toilGroup(ctx,subject,period):none,
   subject?detailsGroup(ctx,subject,period,today):none,
   subject?acknowledgeGroup(ctx,subject,period):none,
-  approvalsGroup(approvalsRead,period),
+  approvalsRead?approvalsGroup(approvalsRead,period):none,
  ]);
  const reads:Readonly<Record<PayrollItemGroup,GroupRead>>={attendance:att.attendance,overtime:att.overtime,leave,claims,toil,details,acknowledge,approvals};
  const groups:GroupState[]=PAYROLL_ITEM_GROUPS.map(group=>Object.freeze({group,status:groupStatus(reads[group].items,reads[group].read)}));

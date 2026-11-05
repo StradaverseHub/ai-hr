@@ -1615,7 +1615,7 @@ async function reviewListSummaryTx(tx: Tx, ctx: SessionContext, unitId: string) 
     budgets: { standard: facts.calculated.budgets.standard, h: facts.calculated.budgets.h },
     posting: await rewardPostingAuthorityTx(tx, facts.unit, facts.roles),
   });
-  return { status: facts.unit.status, route: facts.route, summary };
+  return { status: facts.unit.status, route: facts.route, summary, verified: facts.visible.filter(row => row.facts.reviewed).length };
 }
 
 /**
@@ -1655,7 +1655,7 @@ export async function listRewardReviewStatus(ctx:SessionContext,companyIds:strin
    const projection=await reviewListSummaryTx(tx,ctx,unit.id),board=projection.summary;
    const step=rewardStageStep(projection.status,projection.route);
    const laterSeats=step?([...projection.route,'payroll'] as RewardRole[]).filter((seat,index)=>index>=step.step&&roles.includes(seat)):[];
-   rows.push({...unit,people:projection.rows.length,verified:projection.rows.filter(row=>row.facts.reviewed).length,roles,waiting:board.waiting,salary:board.salary,bonus:board.bonus,blocking:board.blocking,exceptions:board.exceptions,laterSeats});
+   rows.push({...unit,people:board.people,verified:projection.verified,roles,waiting:board.waiting,salary:board.salary,bonus:board.bonus,blocking:board.blocking,exceptions:board.exceptions,laterSeats});
   }
   let emptyReason:'noScope'|'noCycle'|'noRole'|'otherScope'|null=null;
   if(!rows.length){
