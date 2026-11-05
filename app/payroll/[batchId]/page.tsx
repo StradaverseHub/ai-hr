@@ -396,13 +396,13 @@ export default async function BatchPage({
               </Link>
             )}
             {batch.status !== 'draft' && (
-              <a
+              <ExportDownloadLink
                 href={`/payroll/reports/payment-summary?batchId=${batch.id}`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
                 title={t('paymentSummaryTitle')}
               >
                 ⬇ {t('paymentSummary')}
-              </a>
+              </ExportDownloadLink>
             )}
             {/* e440991b point 6 — the whole run into Excel, one row per employee with every earning,
                 deduction, employer contribution and total, off the stored payslips. A plain <a>, not a

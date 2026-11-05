@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import {taxBasisNoticeReferences} from '@/packs/payroll/service';
 import {taxBasisNoticeStrings} from '@/lib/payroll-tax-basis-notice-labels';
 import Link from 'next/link';
@@ -151,23 +152,23 @@ export default async function ReportsPage({
             <>
               {reportId === 'my.cp39' && result.readiness.length === 0 && (
                 /* Layer-B (Exhibit 4 byte layout): each download records an artefact + event. */
-                <a
+                <ExportDownloadLink
                   href={`/payroll/reports/cp39-file?companyId=${companyId}&periodKey=${periodKey}`}
                   className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
                   title={t('cp39DownloadTitle')}
                 >
                   ⬇ {t('cp39DownloadLabel')}
-                </a>
+                </ExportDownloadLink>
               )}
               {reportId === 'my.socso-eis' && result.readiness.length === 0 && (
                 /* PERKESO ASSIST combined SOCSO+EIS textfile (v2.0 with SKBBK). */
-                <a
+                <ExportDownloadLink
                   href={`/payroll/reports/socso-eis-file?companyId=${companyId}&periodKey=${periodKey}`}
                   className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
                   title={t('socsoEisDownloadTitle')}
                 >
                   ⬇ {t('socsoEisDownloadLabel')}
-                </a>
+                </ExportDownloadLink>
               )}
               <DownloadCsv
                 columns={result.columns}

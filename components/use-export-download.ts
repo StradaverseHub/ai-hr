@@ -29,7 +29,8 @@ export function useExportDownload() {
       document.body.append(link);
       try { link.click(); } finally {
         link.remove();
-        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        const revoke = URL.revokeObjectURL.bind(URL);
+        setTimeout(() => revoke(objectUrl), 1000);
       }
       toast.success(name);
       return true;

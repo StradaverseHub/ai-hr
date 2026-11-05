@@ -3,6 +3,9 @@
   cursor: progress;
   animation: atelier-action-pulse 900ms ease-in-out infinite alternate;
 }
+[data-ui-theme='atelier'] [data-action-region][aria-busy='true'] {
+  box-shadow: inset 0 2px 0 var(--primary);
+}
 
 .atelier-navigation-feedback, .atelier-filter-feedback { display: none; }
 [data-ui-theme='atelier'] .atelier-navigation-feedback {

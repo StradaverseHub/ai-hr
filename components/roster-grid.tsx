@@ -203,7 +203,7 @@ export function RosterGrid({
   const [cells, setCells] = useState<Record<string, AssignedCell>>(initial);
   const [brush, setBrush] = useState<Brush>(shifts[0]?.id ?? 'rest');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [, startTx] = useTransition();
+  const [rosterPending, startTx] = useTransition();
 
   const shiftById = useMemo(() => new Map(shifts.map((s) => [s.id, s])), [shifts]);
   const shiftIndex = (id: string) => shifts.findIndex((s) => s.id === id);
@@ -311,7 +311,7 @@ export function RosterGrid({
   const pinned = pinnedLayout(canEdit);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" aria-busy={rosterPending} data-action-region>
       <div className="flex flex-wrap items-center gap-3">
         <RosterLegend entries={legendEntries} active={brush} onChoose={canEdit ? setBrush : undefined} />
         <p className="text-xs text-muted-foreground">{t('dayContextHelp')}</p>

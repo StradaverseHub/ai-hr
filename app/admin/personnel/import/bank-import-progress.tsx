@@ -1,4 +1,5 @@
 'use client';
+import { ExportDownloadLink } from '@/components/export-download-link';
 import {useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
 import {useTranslations} from 'next-intl';
@@ -69,7 +70,7 @@ export function BankImportProgress(){
    {job.state==='uploading'&&!busy&&<><p className="text-sm">{j('resumeUpload')}</p><Button variant="secondary" onClick={()=>void command('cancel')}>{j('cancel')}</Button></>}
    {job.state==='completed'&&<p role="status" className="text-sm font-medium">{j('result',{saved:job.saved,failed:job.failed+job.invalid})}</p>}
    {job.error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{job.error}</p>}
-   {job.invalid+job.failed>0&&['ready','completed','failed','cancelled'].includes(job.state)&&<a href={`${endpoint}/${job.id}/errors`} className="inline-block text-sm text-primary underline">{t('downloadErrors')}</a>}
+   {job.invalid+job.failed>0&&['ready','completed','failed','cancelled'].includes(job.state)&&<ExportDownloadLink href={`${endpoint}/${job.id}/errors`} className="inline-block text-sm text-primary underline">{t('downloadErrors')}</ExportDownloadLink>}
    {job.attemptId&&<Link href={`/admin/personnel/import/history/${job.attemptId}`} className="inline-block text-sm text-primary underline">{t('viewImportHistoryEntry')}</Link>}
    {rows.some(r=>r.preview)&&<div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b border-border"><th className="p-2">#</th><th className="p-2">{t('colEmployeeCode')}</th><th className="p-2">{t('colEmployee')}</th><th className="p-2">{t('colChanges')}</th><th className="p-2">{t('colResult')}</th></tr></thead><tbody>{rows.map(row=><tr key={row.ordinal} className="border-b border-border"><td className="p-2 tabular-nums">{row.ordinal}</td><td className="p-2">{row.preview?.employeeCode}</td><td className="p-2">{row.preview?.employeeName}</td><td className="p-2">{row.preview?.changes.map(fieldLabel).join(', ')}<PersonnelImportValues values={row.preview?.proposed} sheet="employee"/></td><td className="p-2">{row.error??(row.preview?.errors.length?row.preview.errors.join('; '):row.state==='applied'?j('saved'):row.state==='unchanged'||row.state==='skipped'?t('verdictSkip'):row.state==='invalid'?t('verdictBlocked'):t('ready'))}</td></tr>)}</tbody></table><div className="mt-3 flex items-center justify-between gap-3"><Button variant="secondary" disabled={page===0} onClick={()=>setPage(p=>p-1)}>{j('previous')}</Button><span className="text-xs">{j('page',{page:page+1,total:Math.max(1,Math.ceil(job.total/100))})}</span><Button variant="secondary" disabled={(page+1)*100>=job.total} onClick={()=>setPage(p=>p+1)}>{j('next')}</Button></div></div>}
   </Card>}
