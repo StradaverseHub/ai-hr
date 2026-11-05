@@ -62,3 +62,9 @@ it('refuses setup-policy audit impersonation by an ordinary runtime GR session',
  const maker=await realSetupActor('gr');
  await expect(withTenant(maker,tx=>tx.execute(sql`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) values(${b.tenantId}::uuid,'reward-policy-group',${randomUUID()}::uuid,'reward-policy-group.setup-version-saved','user',${maker.userId}::uuid,'{}'::jsonb)`))).rejects.toMatchObject({cause:{code:'42501',message:'reward policy audit owner required'}});
 });
+
+it('does not capture a forged movement event for an older compensation row',async()=>{
+ const [row]=await owner.db.execute<{id:string;employment_id:string}>(sql`select id,employment_id from compensation where tenant_id=${b.tenantId}::uuid and valid_from='2024-01-01'`);
+ await withTenant(adminCtx(b),tx=>tx.execute(sql`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) values(${b.tenantId}::uuid,'compensation',${row.id}::uuid,'compensation.set','user',${b.adminUserId}::uuid,${row.employment_id}::uuid,${JSON.stringify({employmentId:row.employment_id,effectiveFrom:'2024-01-01',movement:{type:'promotion'}})}::jsonb)`));
+ expect(await owner.db.execute(sql`select compensation_id from reward_snapshot_comp_movement where compensation_id=${row.id}::uuid`)).toHaveLength(0);
+});
