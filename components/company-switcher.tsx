@@ -121,8 +121,11 @@ export function CompanySwitcher({
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <form
             action={setCompanyScope}
-            className="absolute right-0 z-50 mt-1 w-64 origin-top-right scale-100 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground opacity-100 shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
+            className="absolute right-0 z-50 mt-1 flex max-h-[calc(100dvh-6rem)] w-64 origin-top-right scale-100 flex-col rounded-lg border border-border bg-popover p-1.5 text-popover-foreground opacity-100 shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
           >
+            {/* The topbar sits outside the page's only scroller (body is overflow-hidden), so a panel taller
+                than the window could never be scrolled into view. The panel is capped to the viewport and the
+                company list scrolls inside it; the heading and Select all stay pinned above the list. */}
             {inquiryReturnPath && <input type="hidden" name="returnPath" value={inquiryReturnPath} />}
             <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               {t('companyContext')}
@@ -144,31 +147,35 @@ export function CompanySwitcher({
             >
               {allSelected ? t('deselectAll') : t('selectAll')}
             </button>
-            {companies.map((c) => (
-              <label
-                key={c.id}
-                className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
-              >
-                <input
-                  type="checkbox"
-                  name="companyId"
-                  value={c.id}
-                  checked={sel.has(c.id)}
-                  onChange={(e) => {
-                    // The native tick is already in the DOM when onChange fires, so this synchronous
-                    // submit posts the correct companyId set for this one change (no flushSync).
-                    const form = e.currentTarget.form;
-                    const next = new Set(sel);
-                    if (e.currentTarget.checked) next.add(c.id);
-                    else next.delete(c.id);
-                    setSel(next);
-                    form?.requestSubmit();
-                  }}
-                  className="size-4 accent-[var(--color-primary)]"
-                />
-                <span className="truncate">{c.name}</span>
-              </label>
-            ))}
+            <div className="-mx-1.5 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5">
+              {companies.map((c) => (
+                <label
+                  key={c.id}
+                  className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
+                >
+                  <input
+                    type="checkbox"
+                    name="companyId"
+                    value={c.id}
+                    checked={sel.has(c.id)}
+                    onChange={(e) => {
+                      // The native tick is already in the DOM when onChange fires, so this synchronous
+                      // submit posts the correct companyId set for this one change (no flushSync).
+                      const form = e.currentTarget.form;
+                      const next = new Set(sel);
+                      if (e.currentTarget.checked) next.add(c.id);
+                      else next.delete(c.id);
+                      setSel(next);
+                      form?.requestSubmit();
+                    }}
+                    className="size-4 shrink-0 accent-[var(--color-primary)]"
+                  />
+                  <span className="truncate" title={c.name}>
+                    {c.name}
+                  </span>
+                </label>
+              ))}
+            </div>
           </form>
         </>
       )}
