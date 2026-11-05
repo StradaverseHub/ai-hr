@@ -1,4 +1,4 @@
-/** aihr-browser-recovery/v3 (ADR-0175 decision 4a): ONE single-shot rerun of ONE failed browser engine unit
+/** aihr-browser-recovery/v3 (ADR-0176 decision 4a): ONE single-shot rerun of ONE failed browser engine unit
  * that executed tests, on the unchanged candidate. The original failure, every retained unit and both plan
  * identities stay intact. A second execution of that engine unit for the candidate closes recovery: fix the
  * source instead. Proposed controller: review-only, never installation evidence until separately adopted. */

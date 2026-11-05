@@ -1,4 +1,4 @@
-/** aihr-browser-recovery/v3 read-only adapter (ADR-0175 decision 4a). It authenticates the original failed gate,
+/** aihr-browser-recovery/v3 read-only adapter (ADR-0176 decision 4a). It authenticates the original failed gate,
  * the single fresh engine execution, every other execution of that engine since the original run, the static
  * impact of the candidate and the flaky test register, then returns a certificate or a full refusal list.
  * It never contacts staging, never builds a grant and never authorizes installation (no v3 install route exists).

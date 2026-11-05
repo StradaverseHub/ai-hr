@@ -1,6 +1,6 @@
 # Single-shot browser recovery v3 — proposed, review only, not release authority
 
-[ADR-0175](adr/0175-first-time-right-releases.md) decision 4(a) and the owner's 30 October rule (rerun only failed areas after a complete frozen gate) apply to the case the existing routes refuse: **one browser engine unit that actually executed tests and failed**, while every other job passed.
+[ADR-0176](adr/0176-first-time-right-releases.md) decision 4(a) and the owner's 30 October rule (rerun only failed areas after a complete frozen gate) apply to the case the existing routes refuse: **one browser engine unit that actually executed tests and failed**, while every other job passed.
 
 | Route | Admits |
 | --- | --- |
