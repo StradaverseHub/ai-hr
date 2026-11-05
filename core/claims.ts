@@ -45,7 +45,7 @@ import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } fr
 import { calendarWindowFor } from './payroll-policy-config';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
-import {myOwnEmploymentSubjectsTx} from './read';
+import {isOwnProfileEditEmploymentTx,myOwnEmploymentSubjectsTx} from './read';
 import { assertAiPrincipalTx } from './ai-principal';
 import { assertModuleEnabled, resolveEntitlementsTx } from './entitlements';
 
@@ -1790,10 +1790,10 @@ export type EmployeeClaimType = {
  * loading reimbursement amounts, grade rates, receipts or balances. Submission still owns policy. */
 export function ownClaimFormAvailable(ctx:SessionContext,employmentId:string):Promise<boolean>{
  return withTenant(ctx,async tx=>{
-  if(!ctx.userId||!ctx.personId)throw new ClaimError('The own claim context is unavailable');
-  const own=await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true});
-  if(!own.some(row=>row.employmentId===employmentId))throw new ClaimError('The own claim context is unavailable');
-  const [row]=await tx.select({id:claimType.id}).from(claimType).where(isNull(claimType.archivedAt)).orderBy(claimType.id).limit(1);
+  if(!ctx.userId||!ctx.personId||typeof employmentId!=='string'
+   ||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(employmentId)
+   ||!await isOwnProfileEditEmploymentTx(tx,ctx,employmentId))throw new ClaimError('The own claim context is unavailable');
+  const [row]=await tx.select({id:claimType.id}).from(claimType).where(isNull(claimType.archivedAt)).limit(1);
   return Boolean(row);
  });
 }
