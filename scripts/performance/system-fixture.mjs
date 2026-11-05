@@ -119,6 +119,25 @@ try{
    if(index%50===49)console.log('[system-perf-fixture] provisioned '+(index+1)+' principals');
   }
   const cohort=users.filter(u=>u.tenant===t);
+  if(process.env.PERF_HTTP_SUITE==='workflow-preflight'&&t===0){
+   tenants[t].letterDraft=await fixturePhase(t,'letter-draft-prerequisites',async()=>{
+    const {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy}=await import('../../core/letters.ts');
+    const companyId=companies[2].companyId;
+    const [reviewer,author]=cohort.filter(user=>user.companyId===companyId&&user.role==='companyHR');
+    assert(reviewer&&author&&reviewer.userId!==author.userId);
+    const reviewerContext={...ctx,userId:reviewer.userId,personId:reviewer.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId}]};
+    const category='confirmation',name='Fictional browser draft lifecycle';
+    const employee=await saveLetterField(ctx,{companyId,definition:{key:'employeeName',label:'Employee name',description:'Fictional recipient',kind:'text',source:'employee.name',required:true,editable:false,sensitive:false},active:true});
+    const date=await saveLetterField(ctx,{companyId,definition:{key:'effectiveDate',label:'Effective date',description:'Fictional date for the browser journey',kind:'date',source:'custom.date',required:true,editable:true,sensitive:false},active:true});
+    const template=await saveLetterTemplate(ctx,{companyId,code:'PERF-LETTER-DRAFT',name,category,effectiveFrom:today,
+     document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'text',text:'Fictional letter for '},{type:'field',key:'employeeName'},{type:'text',text:' effective '},{type:'field',key:'effectiveDate'}]}]},
+     fieldVersionIds:[employee.id,date.id]});
+    await decideLetterTemplate(ctx,{versionId:template.versionId,expectedStatus:'draft',action:'submit'});
+    await decideLetterTemplate(reviewerContext,{versionId:template.versionId,expectedStatus:'submitted',action:'approve'});
+    await saveLetterPolicy(ctx,{companyId,category,enabled:true,policy:{version:1,stages:[{key:'signatory',label:'Fictional signatory',userIds:[reviewer.userId],allowDelegation:false}],signatoryUserId:reviewer.userId,signingMode:'authenticated',signatureAssetId:null,letterheadAssetId:null,referenceFormat:'HR/{YYYY}/{SEQ:6}',retentionDays:365,sensitiveLinkMinutes:15,acknowledgement:'acknowledge',approvalDueHours:48,acknowledgementDueDays:7,reminderHours:24,escalationUserId:null,portalNotifications:false,emailNotifications:false}});
+    return {companyId,versionId:template.versionId,authorIndex:author.index,name};
+   });
+  }
   const historyStarted=performance.now();
   await fixturePhase(t,'claims-history',()=>owner.client`insert into claim_request(tenant_id,employment_id,claim_type_id,amount,incurred_on,status,created_at)
     select ${b.tenantId}::uuid,e.id,${type.id}::uuid,1,${today}::date,'pending',now()-n*interval '1 minute'
