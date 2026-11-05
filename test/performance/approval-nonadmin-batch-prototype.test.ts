@@ -1,6 +1,6 @@
 /** Reversible native experiment; no migration or production authorization contract changes. */
 import {randomUUID} from 'node:crypto';
-import {writeFileSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
@@ -53,7 +53,13 @@ it('compares one visible set per non-admin batch against every canonical scalar 
 `+scalarSelect).replace(oldTail,' FROM unseen c JOIN LATERAL app.delegated_approval_subject(c.id,wanted_module,wanted_task) s ON true;');
  expect(candidate).toContain('FROM non_admin c CROSS JOIN visible_set v WHERE c.id=ANY(v.ids)');
  expect(candidate).toContain('visible_set AS MATERIALIZED');expect(candidate).toContain('FROM unseen c JOIN LATERAL');
+ const proposal=JSON.parse(readFileSync(new URL('./approval-nonadmin-batch-migration.proposal.json',import.meta.url),'utf8')) as {sql:string};
+ expect(proposal.sql.split('AS $$')[1].split('$$;')[0]).toBe(candidate.split('AS $function$')[1].split('$function$')[0]);
+ candidate=proposal.sql;
+ const dependencyDefinitions=await owner.client<{identity:string;ddl:string;body:string}[]>`select oid::regprocedure::text as identity,pg_get_functiondef(oid)as ddl,prosrc as body from pg_proc where oid=any(array['app.visible_employment_ids()'::regprocedure,'app.delegated_approval_subject(uuid,text,text)'::regprocedure,'app.can_see_employment(uuid)'::regprocedure])order by 1`;
+ const dependencyCatalog=await owner.client`select oid::regprocedure::text as identity,md5(prosrc)as fingerprint,proowner::regrole::text as owner,proacl::text,prosecdef,provolatile,proparallel,proisstrict,proleakproof,proconfig,prorettype::regtype::text,proretset,proargtypes::text,proallargtypes::text,proargmodes::text,proargnames from pg_proc where oid=any(array['app.delegated_approval_subjects(uuid[],text,text)'::regprocedure,'app.visible_employment_ids()'::regprocedure,'app.delegated_approval_subject(uuid,text,text)'::regprocedure,'app.can_see_employment(uuid)'::regprocedure])order by 1`;
  let improvementRatio:number|null=null;
+
 
  const measurements:unknown[]=[],controls:string[]=[],subsumptionChecks:{rows:number;elapsedMs:number}[]=[];
  const read=(ctx:SessionContext,batch:boolean,selected=ids,applyOrgFilter=true)=>withTenant(ctx,async tx=>{
@@ -112,7 +118,8 @@ it('compares one visible set per non-admin batch against every canonical scalar 
   expect(access).toEqual({app_execute:true,public_execute:false});
   const headerSubjects=users.slice(0,50).filter(u=>u.index!==3).map(u=>u.employmentId);
   for(const phase of ['original','candidate','candidate-warm','restored']){
-   await owner.client.unsafe(phase==='original'||phase==='restored'?installed.ddl:candidate);
+   await owner.client.unsafe(installed.ddl);
+   if(phase==='candidate'||phase==='candidate-warm')await owner.client.unsafe(candidate);
    const started=performance.now();for(let i=0;i<10;i++)expect((await read(context(users[3]),true,headerSubjects,false)).map(row=>row.employment_id)).toEqual([...headerSubjects].sort());
    measurements.push({phase,reads:10,subjectsPerRead:headerSubjects.length,elapsedMs:performance.now()-started});
   }
@@ -122,14 +129,31 @@ it('compares one visible set per non-admin batch against every canonical scalar 
    for(let n=0;n<5;n++)expect((await read(context(users[3]),true,headerSubjects,applyOrgFilter)).map(row=>row.employment_id)).toEqual([...headerSubjects].sort());
    measurements.push({phase,reads:5,subjectsPerRead:headerSubjects.length,elapsedMs:performance.now()-began});
   }
+  await owner.client.unsafe(installed.ddl);
+  const drifts:[string,string][]=[
+   ['batch-body',installed.ddl.replace('BEGIN','-- controlled predecessor drift\nBEGIN')],
+   ['batch-volatility','ALTER FUNCTION app.delegated_approval_subjects(uuid[],text,text) VOLATILE'],
+   ['batch-app-execute','REVOKE EXECUTE ON FUNCTION app.delegated_approval_subjects(uuid[],text,text) FROM ai_hr_app'],
+   ['batch-public-execute','GRANT EXECUTE ON FUNCTION app.delegated_approval_subjects(uuid[],text,text) TO PUBLIC'],
+   ['batch-grant-option','GRANT EXECUTE ON FUNCTION app.delegated_approval_subjects(uuid[],text,text) TO ai_hr_app WITH GRANT OPTION'],
+   ['batch-configuration','ALTER FUNCTION app.delegated_approval_subjects(uuid[],text,text) SET search_path=public'],
+  ];
+  for(const dependency of dependencyDefinitions)drifts.push([dependency.identity+'-body',dependency.ddl.replace(dependency.body,()=>'\n-- controlled dependency drift\n'+dependency.body)]);
+  drifts.push(['visible-security','ALTER FUNCTION app.visible_employment_ids() SECURITY INVOKER'],['scalar-volatility','ALTER FUNCTION app.delegated_approval_subject(uuid,text,text) VOLATILE']);
+  for(const [kind,ddl]of drifts){
+   await expect(owner.client.begin(async tx=>{await tx.unsafe(ddl);await tx.unsafe(candidate);})).rejects.toMatchObject({code:'55000'});
+   const [restored]=await owner.client<{ddl:string;acl:string|null;owner:string}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl,proowner::text as owner from pg_proc where oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure`;expect(restored).toEqual(installed);
+   controls.push('drift-refused:'+kind);
+  }
  }finally{
   await owner.client.unsafe(installed.ddl);
   const [after]=await owner.client<{ddl:string;acl:string|null;owner:string}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl,proowner::text as owner from pg_proc where oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure`;
   expect(after).toEqual(installed);
   const [restored]=await owner.client<{ddl:string;acl:string|null;owner:string}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl,proowner::text as owner from pg_proc where oid='app.delegated_approval_subject(uuid,text,text)'::regprocedure`;
   expect(restored).toEqual(original);
+  const dependenciesAfter=await owner.client<{identity:string;ddl:string;body:string}[]>`select oid::regprocedure::text as identity,pg_get_functiondef(oid)as ddl,prosrc as body from pg_proc where oid=any(array['app.visible_employment_ids()'::regprocedure,'app.delegated_approval_subject(uuid,text,text)'::regprocedure,'app.can_see_employment(uuid)'::regprocedure])order by 1`;expect(dependenciesAfter).toEqual(dependencyDefinitions);
   if(measurements.length>=4){const m=measurements as {elapsedMs:number}[];improvementRatio=Math.max(m[1].elapsedMs,m[2].elapsedMs)/Math.min(m[0].elapsedMs,m[3].elapsedMs);}
-  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'approval-nonadmin-batch-prototype.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_NONADMIN_BATCH_PROTOTYPE_ONLY',releaseEligible:false,improvementRatio,fixturePrincipals:500,controls,measurements,subsumptionChecks,proofSnapshot:'native REPEATABLE READ READ ONLY',canonicalScalarUnchanged:true,installedDefinitionRestored:true,productMigrationAllocated:false},null,2));
+  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'approval-nonadmin-batch-prototype.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_NONADMIN_BATCH_PROTOTYPE_ONLY',releaseEligible:false,improvementRatio,dependencyCatalog,fixturePrincipals:500,controls,measurements,subsumptionChecks,proofSnapshot:'native REPEATABLE READ READ ONLY',canonicalScalarUnchanged:true,installedDefinitionRestored:true,productMigrationAllocated:false},null,2));
  }
  if(improvementRatio!==null)expect(improvementRatio,'Both candidate phases must improve at least20% against the faster control').toBeLessThan(.8);
 },600000);
