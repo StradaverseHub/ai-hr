@@ -186,7 +186,7 @@ DECLARE cycle uuid;
 BEGIN
  IF NOT 'payroll'=ANY(ARRAY(SELECT app.reward_roles(wanted_unit))) THEN RAISE EXCEPTION 'Payroll seat required';END IF;
  SELECT cycle_id INTO cycle FROM reward_unit WHERE id=wanted_unit AND tenant_id=app.current_tenant_id() AND deleted_at IS NULL;
- RETURN cycle IS NOT NULL AND NOT EXISTS(SELECT 1 FROM reward_unit u JOIN reward_uploaded_review r ON r.unit_id=u.id AND r.tenant_id=u.tenant_id WHERE u.tenant_id=app.current_tenant_id() AND u.cycle_id=cycle AND u.deleted_at IS NULL AND u.status NOT IN('approved','posted'));
+ RETURN cycle IS NOT NULL AND NOT EXISTS(SELECT 1 FROM reward_unit u JOIN reward_uploaded_review r ON r.unit_id=u.id AND r.tenant_id=u.tenant_id WHERE u.tenant_id=app.current_tenant_id() AND u.cycle_id=cycle AND u.deleted_at IS NULL AND u.status IN('draft','bg','gr','ctro','ec'));
 END $$;
 ALTER FUNCTION app.reward_uploaded_cycle_ready(uuid) OWNER TO ai_hr_reward_upload_reader;
 REVOKE ALL ON FUNCTION app.reward_uploaded_cycle_ready(uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_uploaded_cycle_ready(uuid) TO ai_hr_app;

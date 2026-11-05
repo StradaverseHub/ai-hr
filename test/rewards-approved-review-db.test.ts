@@ -10,7 +10,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {owner,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,closeAll,type Base} from './harness';
-import {getRewardUnit,saveRewardEntry,decideRewardUnit,postRewardUnit,exportRewardReview,readOnlyRewardProjection,refreshRewardPatBasis,rewardApprovalsBoard,rewardsAnalysisSourceTx} from '../packs/rewards/service';
+import {getRewardUnit,saveRewardEntry,decideRewardUnit,postRewardUnit,exportRewardReview,readOnlyRewardProjection,refreshRewardPatBasis,rewardApprovalsBoard,rewardsAnalysisSourceTx,cancelRewardReview} from '../packs/rewards/service';
 import {beginRewardViewAs,endRewardViewAs,changeRewardPermission,saveRewardSetupGrant,rewardPermissions,rewardViewAsState,saveRewardPersonalPage} from '../packs/rewards/access-policy';
 import {createUploadedRewards,uploadedRewards,previewUploadedRewards,saveUploadedRewards,confirmUploadedRewards,adjustUploadedAward,refreshUploadedRewardSources} from '../packs/rewards/uploaded-awards';
 import {emptyFacts,emptyRecommendation} from '../packs/rewards/model';
@@ -109,6 +109,14 @@ describe('approved Rewards review SQL custody',()=>{
  expect((await owner.db.execute<{reason:string}>(sql`select reason from reward_uploaded_version where unit_id=${unitId}::uuid`))[0].reason).toBe('Fictional immutable upload record');
  });
 
+ it('blocks the cycle for a pending uploaded review but releases a cancelled route',async()=>{
+  await uploadFixtureMetadata();
+  await owner.db.insert(schema.rewardMember).values({tenantId:b.tenantId,unitId,userId:checker.userId!,role:'payroll'});
+  const ready=()=>withTenant(checker,tx=>tx.execute<{ready:boolean}>(sql`select app.reward_uploaded_cycle_ready(${unitId}::uuid) as ready`));
+  expect((await ready())[0].ready).toBe(false);
+  await cancelRewardReview(gr,unitId,1,'Cancel the upload before any awards are handed off');
+  expect((await ready())[0].ready).toBe(true);
+ });
  it('creates a company upload, independently checks it, revalidates each route edit and posts Payroll once',async()=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'notifications','active');gr=await entitledCtx(b);
   const [co]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional uploaded company'}).returning();
