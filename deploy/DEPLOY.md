@@ -109,6 +109,23 @@ sudo -u postgres psql -X -v ON_ERROR_STOP=1 --dbname=ai_hr --file=deploy/runner-
 
 Without it the 03:00 review sweep exits 1 for every tenant with notifications, and the minute notification sweep fails whenever events are pending (staging, 25 October to 4 November 2026). `deploy.sh` refuses at `phase=notification-role` until it is present.
 
+### Rewards database prerequisite
+
+After the Rewards migrations, the installation DBA must apply this script once to the
+same application database used by the migration account. It is safe to repeat. On a fresh
+install or an upgrade that has yet to apply the Rewards migrations, run the applicable
+deployment command with `--migrate-only` first. Then run:
+
+```sh
+sudo -u postgres psql -X -v ON_ERROR_STOP=1 --dbname=ai_hr --file=deploy/runner-control/rewards-deletion-role-prerequisite.sql
+```
+
+For a remote database, use the approved DBA connection for that installation and the same
+SQL file. Resume the regular deployment after the script commits. The deploy script checks
+the grant before build activation or service restart. The grant lets the existing Rewards
+deletion guard evaluate row policies and does not change application user permissions.
+
+
 ## 3. Configure the environment (gated demo)
 
 ```bash
