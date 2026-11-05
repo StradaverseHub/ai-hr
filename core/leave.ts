@@ -2139,9 +2139,10 @@ async function enforceApplicationLengthLimit(
      *  with the type's counting mode; never recomputed here (one working-day count, not two). */
     chargedDays: number;
   },
+  config?: Pick<typeof leaveType.$inferSelect, 'name' | 'maxConsecutiveDays' | 'maxConsecutiveUnit'> | null,
 ): Promise<void> {
   if (p.chargedDays <= 0) return;
-  const [lt] = await tx
+  const lt = config === undefined ? (await tx
     .select({
       name: leaveType.name,
       maxConsecutiveDays: leaveType.maxConsecutiveDays,
@@ -2149,7 +2150,7 @@ async function enforceApplicationLengthLimit(
     })
     .from(leaveType)
     .where(eq(leaveType.id, p.leaveTypeId))
-    .limit(1);
+    .limit(1))[0] : config;
   const candidates: ApplicationLengthLimit[] = [];
   if (lt?.maxConsecutiveDays != null) {
     const cap = Number(lt.maxConsecutiveDays);
@@ -2403,9 +2404,10 @@ async function enforceLeaveYearApplicationLimit(
     requestedDays: number;
     excludeRequestId?: string;
   },
+  config?: Pick<typeof leaveType.$inferSelect, 'name' | 'maxDaysPerLeaveYear' | 'maxDaysPeriod' | 'yearCycleOverride'> | null,
 ): Promise<void> {
   if (p.requestedDays <= 0) return;
-  const [lt] = await tx
+  const lt = config === undefined ? (await tx
     .select({
       name: leaveType.name,
       maxDaysPerLeaveYear: leaveType.maxDaysPerLeaveYear,
@@ -2414,7 +2416,7 @@ async function enforceLeaveYearApplicationLimit(
     })
     .from(leaveType)
     .where(eq(leaveType.id, p.leaveTypeId))
-    .limit(1);
+    .limit(1))[0] : config;
   // NULL ⇒ unlimited. A non-positive figure is refused by the DB CHECK and by the write-time validator, but
   // the guard is restated here so a hand-edited row cannot refuse every application of a type.
   if (!lt || lt.maxDaysPerLeaveYear == null) return;
@@ -3231,6 +3233,11 @@ const leaveTypeRequestColumns = {
   // Configurable Negative Leave Balance Validation (0ef0defd): false ⇒ reject a submit that would take
   // the balance negative (enforced below, after `days` is known); true ⇒ skip the submit-time check.
   allowNegativeBalance: leaveType.allowNegativeBalance,
+  maxConsecutiveDays: leaveType.maxConsecutiveDays,
+  maxConsecutiveUnit: leaveType.maxConsecutiveUnit,
+  maxDaysPerLeaveYear: leaveType.maxDaysPerLeaveYear,
+  maxDaysPeriod: leaveType.maxDaysPeriod,
+  yearCycleOverride: leaveType.yearCycleOverride,
   maxNegativeBalance: leaveType.maxNegativeBalance,
   // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): the two settings that decide
   // WHICH balance this application is measured against and what happens to the part it cannot cover.
@@ -3985,7 +3992,7 @@ export async function requestLeave(
       startDate: p.startDate,
       endDate: p.endDate,
       chargedDays: days,
-    });
+    }, lt ?? null);
     await enforceSharedLeaveGroupLimit(tx, sharedGroup, {
       employmentId: p.employmentId,
       startDate: p.startDate,
@@ -4001,7 +4008,7 @@ export async function requestLeave(
       leaveTypeId: p.leaveTypeId,
       startDate: p.startDate,
       requestedDays: days,
-    });
+    }, lt ?? null);
 
     // ADR-0069: a friendly UX pre-check — the DB trigger (guard_frozen_leave_balance) is the real
     // enforcement at approval time, but failing fast here gives the employee a readable error immediately
