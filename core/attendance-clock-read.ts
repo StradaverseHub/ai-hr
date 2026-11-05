@@ -3,12 +3,13 @@ import { clockFingerprint, punchesForCorrectionTx } from './attendance-punch-cha
 import { and, asc, desc, eq, isNotNull, isNull, type SQL } from 'drizzle-orm';
 import { attendance, attendancePunch, attendanceClockCapture, attendanceCorrection, clockingLocation, employment } from '../db/schema';
 import type { SessionContext, Tx } from '../db/client';
-import { withAttendanceTenant as withTenant } from './module-gate';
+import { assertModuleGate, withAttendanceTenant as withTenant } from './module-gate';
 import {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
 import { clockScheduleForTx, resolveGeofence,OutsideGeofenceError,GeofenceQualityError } from './attendance';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { clockCommandContext } from '../lib/clock-command-context';
 import { clockCaptureInstantTx } from './attendance-clock';
+import { isOwnProfileEditEmploymentTx } from './read';
 
 type ClockGeo={lat:number;lng:number;accuracy:number};
 
@@ -109,10 +110,23 @@ export async function ownClockToday(ctx: SessionContext, geo?: { lat: number; ln
   });
 }
 
+async function readClockSummaryTx(tx:Tx,employmentId:string){
+ const value=await ownClockCoreTx(tx,employmentId);
+ return {...value.summary,crossesMidnight:value.crossesMidnight};
+}
+
+/** Explicit own-subject summary for an existing request transaction. */
+export async function ownClockTodaySummaryTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ if(!ctx.userId||!ctx.personId||typeof employmentId!=='string'||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(employmentId)
+  ||!await isOwnProfileEditEmploymentTx(tx,ctx,employmentId))throw new OwnClockEmploymentUnavailableError();
+ assertModuleGate(ctx,'attendance');
+ return readClockSummaryTx(tx,employmentId);
+}
+
 /** Own clock summary without selecting capture coordinates, photographs or removal commands. */
 export async function ownClockTodaySummary(ctx:SessionContext,selectedEmploymentId:string){
  if(typeof selectedEmploymentId!=='string')throw new OwnClockEmploymentUnavailableError();
  const me=await resolveOwnClockEmployment(ctx,selectedEmploymentId);
  if(!me)throw new OwnClockEmploymentUnavailableError();
- return withTenant(ctx,async tx=>{const value=await ownClockCoreTx(tx,me.employmentId);return {...value.summary,crossesMidnight:value.crossesMidnight};});
+ return withTenant(ctx,tx=>readClockSummaryTx(tx,me.employmentId));
 }
