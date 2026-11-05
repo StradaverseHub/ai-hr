@@ -309,7 +309,7 @@ function epfSemiAutoEmployeeRate(election?: EpfElection): number | null {
 }
 
 function epfContributionAtRate(cents: number, rate: number): number {
-  return Number((BigInt(cents) * BigInt(Math.round(rate * 10000)) + 999999n) / 1000000n);
+  return Number((BigInt(cents) * BigInt(Math.round(rate * 10000)) + BigInt(999999)) / BigInt(1000000));
 }
 
 // KWSP Part C shares the A/E wage bands. Verified against all 401 employer rows in the
