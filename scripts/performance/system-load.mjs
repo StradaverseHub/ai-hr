@@ -252,6 +252,14 @@ try{
    // and prove the real document control exists before taking identity/readiness snapshots.
    await page.getByRole('link',{name:'Download PDF',exact:true}).waitFor({state:'visible',timeout:90000});
   }
+  if(suite==='whole-system'&&path==='/lifecycle'&&['companyHR','groupHR'].includes(user.role)){
+   visitStage='lifecycle-staff-tiles';
+   const open=user.role==='groupHR'?2:user.company<2?1:0,pending=user.role==='groupHR'||user.company===0?1:0;
+   for(const [href,count] of [['/lifecycle/requisitions',open],['/lifecycle/requisitions?approval=pending',pending]]){
+    await page.locator('main a[href="'+href+'"]').getByText(String(count),{exact:true}).waitFor({state:'visible',timeout:90000});
+   }
+   (report.lifecycleStaffHub??=[]).push({phase,role:user.role,open,pending});save();
+  }
   let homeCards=null,homeCardIds=[],todaySectionIds=[];
   visitStage='home-cards';
   if(path==='/'||(path==='/me/calendar'&&['employee','manager'].includes(user.role))){
@@ -644,6 +652,7 @@ try{
    if((user.role==='employee'&&route==='/claims')||route==='/admin/personnel')await languageJourney(page,user,route,'loaded');
    await pause(thinkTimeMs);
   }
+  if(suite==='whole-system'&&(user.index===group.index||user.index===hr.index))await visit(page,user,'/lifecycle','loaded');
   if(suite==='whole-system'&&user.index===group.index)await exerciseOrgExplorer({page,user,fixture,report,save,phase:'loaded'});
   if(fixture.assistantHistory?.[user.index]||user.index===employee.index||user.index===hr.index)await aiCentreJourney(page,user,'loaded');
   if(user.role==='employee')await browserClaimJourney(page,user,'PERF_BROWSER_LOADED_'+user.index,'loaded');

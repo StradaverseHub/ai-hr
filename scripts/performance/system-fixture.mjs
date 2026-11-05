@@ -84,6 +84,12 @@ try{
    companies.push({companyId,departmentId,batchId,historicalBatchId,publicationBatchId});
   }
   tenants[t]={tenantId:b.tenantId,organization,claimTypeId:type.id,clockingMappingId,companies};
+  // Two companies make the staff hub's open count distinguish group and company scope.
+  if(process.env.PERF_HTTP_SUITE==='whole-system')await fixturePhase(t,'lifecycle-hub',()=>owner.db.insert(s.itRequisition).values([
+   {tenantId:b.tenantId,companyId:companies[0].companyId,number:'REQ-PERF-PENDING',kind:'standalone',status:'open',approvalStatus:'pending',approvalLevels:1,fullName:'Fictional pending requisition',employeeNo:'PERF-REQ-01'},
+   {tenantId:b.tenantId,companyId:companies[1].companyId,number:'REQ-PERF-APPROVED',kind:'standalone',status:'open',approvalStatus:'approved',approvalLevels:1,fullName:'Fictional approved requisition',employeeNo:'PERF-REQ-02'},
+   {tenantId:b.tenantId,companyId:companies[0].companyId,number:'REQ-PERF-CANCELLED',kind:'standalone',status:'cancelled',approvalStatus:'pending',approvalLevels:1,fullName:'Fictional cancelled requisition',employeeNo:'PERF-REQ-03'},
+  ]));
   for(let i=0;i<250;i++){
    const index=t*250+i,c=Math.floor(i/50),position=i%50,company=companies[c];
    const role=position===0&&c===0?'groupHR':position<2?'companyHR':position<4?'manager':'employee';

@@ -9,7 +9,7 @@ export const employeeRoutes=Object.freeze([
 ]);
 export const hrRoutes=Object.freeze([
  ...aiCentreRoutes,...aiAdminRoutes,'/',
- '/admin/personnel','/attendance','/payroll','/reports','/reports/employee-master','/lifecycle/onboarding','/lifecycle/offboarding','/roster','/letters/register','/performance','/rewards','/system-testing','/feedback','/knowledge-base','/control-tower','/admin/settings/movement','/admin/security-center','/payroll/formula-builder','/payroll/formula-builder/new','/claims',
+ '/admin/personnel','/attendance','/payroll','/reports','/reports/employee-master','/lifecycle','/lifecycle/onboarding','/lifecycle/offboarding','/roster','/letters/register','/performance','/rewards','/system-testing','/feedback','/knowledge-base','/control-tower','/admin/settings/movement','/admin/security-center','/payroll/formula-builder','/payroll/formula-builder/new','/claims',
  '/people','/tasks','/org','/delegations','/roster/import','/roster/exceptions',
  '/letters/approval','/letters/templates','/letters/templates/new','/letters/fields','/letters/reports','/letters/settings',
  '/admin/claims','/admin/claims/forms','/admin/claims/limits','/admin/claims/mileage','/admin/claims/reimbursements',
@@ -28,6 +28,6 @@ export function readRouteForMeasurement(path){return concreteReadRoutes.has(path
 export const additionalBrowserRoutes=Object.freeze({
  employee:[...aiCentreRoutes,'/tasks','/org','/me/calendar','/me/letters','/me/notifications','/leave/history'],
  manager:['/tasks','/delegations','/leave/tracker'],
- companyHR:[...aiAdminRoutes,'/admin/claims','/admin/attendance-policy','/roster/import'],
- groupHR:['/control-tower/agents/spending','/control-tower/agents/provider','/letters/templates','/letters/settings','/admin/rewards','/admin/notice-board'],
+ companyHR:['/lifecycle',...aiAdminRoutes,'/admin/claims','/admin/attendance-policy','/roster/import'],
+ groupHR:['/lifecycle','/control-tower/agents/spending','/control-tower/agents/provider','/letters/templates','/letters/settings','/admin/rewards','/admin/notice-board'],
 });
