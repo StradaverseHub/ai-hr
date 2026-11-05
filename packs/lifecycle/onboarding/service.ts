@@ -21,6 +21,7 @@ import { visibleLabelIdsCondition } from '../../../core/system-labels';
 import type { EmployeeDraftData } from '../../../lib/employee-draft-schema';
 import * as M from '../../../lib/onboarding-model';
 import { recentOnboardingJoinerCountTx } from './navigation-count';
+import { readOnboardingTaskQueueInputsTx } from './task-queue-read';
 export type { Config as OnboardingConfig, Case as OnboardingCase, Note as OnboardingNote, Facts as OnboardingFacts, Actor as OnboardingActor } from '../../../lib/onboarding-model';
 export { effectiveFacts as onboardingFacts, matchChecklist as onboardingChecklist, matches as onboardingMatches, progress as onboardingProgress, currentReq as onboardingRequisition, requisitionStatus as onboardingRequisitionStatus, stepOpen as onboardingStepOpen, activeItem as onboardingActiveItem, inGroup as onboardingGroupMember } from '../../../lib/onboarding-model';
 const uid = (ctx: SessionContext) => ctx.userId ?? M.fail('Sign in to continue.', 'forbidden');
@@ -957,11 +958,10 @@ export type OnboardingTask = {
 export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTask[]> {
     return withTenant(ctx, async (tx) => {
         const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config), today = todayInKualaLumpur();
-        const list = await tx.select().from(cases).orderBy(asc(cases.id)), out: OnboardingTask[] = [];
-        // A task/mention always belongs to a visible case. Keep the fresh actor check above,
-        // then avoid the tenant-wide directory and notes scans for an empty authorized queue.
+        const { list, notesByCase } = await readOnboardingTaskQueueInputsTx(tx, ctx.tenantId, actor);
+        const out: OnboardingTask[] = [];
+        // An empty candidate list needs no directory; actual claimant names remain lazy below.
         if (!list.length) return out;
-        const allNotes = await tx.select().from(notes).orderBy(asc(notes.createdAt), asc(notes.id));
         let names:Awaited<ReturnType<typeof directoryTx>>|undefined;
         for (const row of list) {
             const c = row.data, f = M.effectiveFacts(c), r = M.currentReq(c);
@@ -1007,7 +1007,7 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
                 if (r.hrNote && r.noteAcks[actor.id] !== r.noteVersion && (r.items.some(i => M.inGroup(config, i.team, actor.id)) || config.exceptions.groups.some(g => M.inGroup(config, g, actor.id))))
                     add({ kind: 'hrNote', title: 'Read People GBS note', team: true });
             }
-            for (const n of allNotes.filter(n => n.caseId === c.id).map(n => n.data))
+            for (const n of notesByCase.get(c.id) ?? [])
                 if (!n.deleted && (!c.submittedAt || n.at >= c.submittedAt) && n.mentions.includes(actor.id) && !n.resolved.includes(actor.id)) {
                     const within = !!f.joinDate && f.joinDate <= M.dayDate(today, config.exceptions.remindDays + 1);
                     add({ kind: 'mention', title: n.name + ' mentioned you', noteId: n.id, context: n.context, tagged: true, assigned: true, overdue: within });

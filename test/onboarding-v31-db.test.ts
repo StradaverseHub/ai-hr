@@ -1,6 +1,9 @@
-import { afterAll, beforeEach, describe, it, expect } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterAll, beforeEach, describe, it, expect, vi } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { client, withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { saveEmployeeDraft, discardEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { hireEmployee } from '../core/org';
@@ -10,6 +13,7 @@ import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUs
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { dayDate } from '../lib/onboarding-model';
 import { onboardingConfigSchema } from '../lib/onboarding-validation';
+import { readOnboardingTaskQueueInputsTx } from '../packs/lifecycle/onboarding/task-queue-read';
 describe('V3.1 onboarding database and authorization', () => {
     let b: Base, admin: SessionContext, tech: SessionContext, other: SessionContext;
     beforeEach(async () => {
@@ -129,6 +133,115 @@ describe('V3.1 onboarding database and authorization', () => {
         await onboardingCommand(tech,row.case.id,row.revision,{type:'task',taskId:'welcome',status:'done'});
         expect((await onboardingAssignedTaskMetadata(tech)).some(item=>item.id===welcome.id)).toBe(false);
     });
+    it('profiles shared onboarding task output with real assignments and completed retained history', async () => {
+        const active = await prepared();
+        await onboardingNote(admin, active.case.id, { context: 'requisition', body: 'Fictional current discussion', mentions: [tech.userId!] });
+        const beforeAdmin = await onboardingTasks(admin), beforeTech = await onboardingTasks(tech);
+        expect(beforeTech.find(task => task.taskId === 'welcome')).toMatchObject({ kind: 'checklist', assigned: true, caseId: active.case.id });
+        expect(beforeTech.find(task => task.kind === 'mention')).toMatchObject({ assigned: true, tagged: true, caseId: active.case.id });
+        const historicAt = '2024-01-02T12:00:00.000Z';
+        const retained = Array.from({ length: 1200 }, (_, i) => {
+            const id = randomUUID();
+            return { id, tenantId: b.tenantId, companyId: b.companyId, data: {
+                ...structuredClone(active.case), id, number: 'RETAINED-QUEUE-' + i, sourceDraftId: null, personId: null, employmentId: null,
+                state: i % 4 ? 'submitted' as const : 'cancelled' as const, submittedAt: historicAt,
+                source: { fullName: 'Fictional historical onboarding', joinDate: '2024-01-01' },
+                tasks: active.case.tasks.map(task => ({ ...task, status: 'done' as const, completedAt: historicAt })),
+                requisitions: active.case.requisitions.map(req => ({ ...req, handedAt: historicAt })),
+                notes: 'Fictional retained detail. '.repeat(100),
+            } };
+        });
+        for (let offset = 0; offset < retained.length; offset += 150) await owner.db.insert(schema.lcOnboardingCase).values(retained.slice(offset, offset + 150));
+        const retainedNotes = retained.map(({ id: caseId }, i) => {
+            const id = randomUUID();
+            return { id, tenantId: b.tenantId, caseId, data: {
+                id, context: 'requisition', body: 'Fictional retained conversation. '.repeat(48), by: b.adminUserId,
+                name: 'Fictional admin', at: historicAt, edited: false, deleted: i === 2,
+                mentions: i < 3 ? [tech.userId!] : [], resolved: i === 1 ? [tech.userId!] : [],
+            } };
+        });
+        for (let offset = 0; offset < retainedNotes.length; offset += 150) await owner.db.insert(schema.lcOnboardingNote).values(retainedNotes.slice(offset, offset + 150));
+        const nativeBegin = client.begin.bind(client), reads: string[] = [];
+        const spy = vi.spyOn(client, 'begin').mockImplementation(((...args: unknown[]) => {
+            const index = args.findIndex(arg => typeof arg === 'function'), callback = args[index] as (native: typeof client) => unknown;
+            args[index] = (native: typeof client) => callback(new Proxy(native, { get(target, key, receiver) {
+                if (key === 'unsafe') return (...query: unknown[]) => {
+                    if (typeof query[0] === 'string') reads.push(query[0].toLowerCase());
+                    return Reflect.apply(target.unsafe, target, query);
+                };
+                return Reflect.get(target, key, receiver);
+            } }));
+            return Reflect.apply(nativeBegin, client, args);
+        }) as typeof client.begin);
+        const start = performance.now();
+        const afterAdmin = await onboardingTasks(admin), elapsedMs = performance.now() - start;
+        spy.mockRestore();
+        expect(afterAdmin).toEqual(beforeAdmin);
+        expect(await onboardingTasks(tech)).toEqual(beforeTech);
+        expect(await onboardingTasks(other)).toEqual([]);
+        const metadata = await onboardingAssignedTaskMetadata(tech);
+        expect(metadata.find(task => task.id === beforeTech.find(task => task.taskId === 'welcome')?.id)).toMatchObject({ kind: 'onboarding', dueDate: beforeTech.find(task => task.taskId === 'welcome')?.due });
+        expect(metadata.find(task => task.id === beforeTech.find(task => task.kind === 'mention')?.id)).not.toHaveProperty('dueDate');
+        const candidateReads = reads.filter(text => text.includes('from "lc_onboarding_case"') || text.includes('from "lc_onboarding_note"'));
+        expect(candidateReads).toHaveLength(2);
+        expect(candidateReads[0]).toContain("->>'state' = 'submitted'");
+        expect(candidateReads[1]).toContain('= any(');
+        expect(candidateReads[1]).toContain("->'mentions'");
+        const nativeCandidates = await withTenant(admin, tx => readOnboardingTaskQueueInputsTx(tx, b.tenantId, { id: admin.userId!, module: true }));
+        expect(nativeCandidates.list).toHaveLength(901);
+        expect(nativeCandidates.list.some(row => row.data.id === active.case.id)).toBe(true);
+        expect(nativeCandidates.list.every(row => row.data.state === 'submitted')).toBe(true);
+        expect(nativeCandidates.notesByCase.size).toBe(0);
+        const compare = async (principal: SessionContext, module: boolean) => {
+            const baseline = () => withTenant(principal, async tx => {
+                const cases = await tx.select().from(schema.lcOnboardingCase).orderBy(schema.lcOnboardingCase.id);
+                const notes = cases.length ? await tx.select().from(schema.lcOnboardingNote).orderBy(schema.lcOnboardingNote.createdAt, schema.lcOnboardingNote.id) : [];
+                return [cases.length, notes.length];
+            });
+            const compact = () => withTenant(principal, async tx => {
+                const result = await readOnboardingTaskQueueInputsTx(tx, principal.tenantId, { id: principal.userId!, module });
+                return [result.list.length, [...result.notesByCase.values()].reduce((total, notes) => total + notes.length, 0)];
+            });
+            const timed = async (read: () => Promise<number[]>) => {
+                const started = performance.now(), rows = await read();
+                return { rows, ms: performance.now() - started };
+            };
+            const old = [], next = [];
+            for (let i = 0; i < 3; i++) {
+                if (i % 2) { next.push(await timed(compact)); old.push(await timed(baseline)); }
+                else { old.push(await timed(baseline)); next.push(await timed(compact)); }
+            }
+            return { old, next };
+        };
+        const sameRunReadProfile = { admin: await compare(admin, true), assignedActor: await compare(tech, false) };
+        expect(sameRunReadProfile.admin.old.every(sample => sample.rows[0] === 1201 && sample.rows[1] === 1201)).toBe(true);
+        expect(sameRunReadProfile.admin.next.every(sample => sample.rows[0] === 901 && sample.rows[1] === 0)).toBe(true);
+        // The interpreter must see a newly posted mention even when the case has no open task or equipment.
+        const mentionOnly = retained[3]!;
+        await onboardingNote(admin, mentionOnly.id, { context: 'requisition', body: 'Fictional mention on completed work', mentions: [tech.userId!] });
+        const visibleMention = (await onboardingTasks(tech)).filter(task => task.caseId === mentionOnly.id);
+        expect(visibleMention).toHaveLength(1);
+        expect(visibleMention[0]).toMatchObject({ kind: 'mention', tagged: true, assigned: true });
+        expect(await onboardingTasks(other)).toEqual([]);
+        await onboardingNote(tech, mentionOnly.id, { context: 'requisition', body: 'Fictional reply resolving the mention', mentions: [] });
+        expect((await onboardingTasks(tech)).some(task => task.caseId === mentionOnly.id)).toBe(false);
+        // Do not turn an unsupported persisted case shape into a silently clean queue.
+        const malformedId = randomUUID();
+        await owner.db.insert(schema.lcOnboardingCase).values({ ...retained[0]!, id: malformedId,
+            data: { ...retained[0]!.data, id: malformedId, requisitions: null as unknown as typeof active.case.requisitions } });
+        await expect(onboardingTasks(admin)).rejects.toThrow();
+        if (process.env.AIHR_FOCUSED_EVIDENCE_DIR) writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR, 'onboarding-task-queue-profile.json'), JSON.stringify({
+            kind: 'NATIVE_SHARED_ONBOARDING_QUEUE_COMPONENT_ONLY', releaseEligible: false,
+            retainedCases: retained.length, retainedNotes: retainedNotes.length,
+            rawFixtureCaseJsonBytes: Buffer.byteLength(JSON.stringify(retained.map(row => row.data))),
+            rawFixtureNoteJsonBytes: Buffer.byteLength(JSON.stringify(retainedNotes.map(row => row.data))),
+            retainedHistoryAddsNoTasks: true, nativeActualAssignmentsAndMentions: true,
+            nativeAdminCandidateCases: nativeCandidates.list.length, nativeAdminMentionNotes: nativeCandidates.notesByCase.size,
+            mentionOnlyCaseAndReplyPreserved: true, malformedHistoryNotSilentlyIgnored: true,
+            adminQueueSize: afterAdmin.length, actorQueueSize: beforeTech.length, applicationRoundTrips: reads.length,
+            elapsedMs, sameRunReadProfile, providerCalls: 0, limitations: 'Native component only; no browser or 500-user claim.',
+        }, null, 2));
+    }, 300000);
     it('counts the same visible joiners and checklists as the authorized module without leaking counts to task-only users', async()=>{
         await draft();
         expect(await onboardingNavigation(admin)).toMatchObject({module:true,joiners:1,checklists:1});
