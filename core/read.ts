@@ -29,7 +29,7 @@ import {
   type AnyColumn,
   type SQL,
 } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { alias, type SelectedFields } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { assertModuleGate } from './module-gate';
 import { assertAiPrincipalTx } from './ai-principal';
@@ -209,8 +209,7 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[],purpose
   return withReadTx(ctx,existingTx,async tx=>{if(purpose)await lockProjectionConfigurationTx(tx,ctx.tenantId,existingTx);return listEmployeesTx(tx,companyIds,purpose);});
 }
 export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforce') {
-  return tx
-      .select({
+  return employeeListRowsTx(tx,{
         employmentId: employment.id,
         name: person.fullName,
         email: person.primaryEmail,
@@ -263,6 +262,12 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforc
         lastWorkingDate: employment.lastWorkingDate,
         blacklistedAt: employment.blacklistedAt,
       })
+      .where(and(companyIds&&companyIds.length?inArray(employment.companyId,companyIds):undefined,purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',companyIds):undefined))
+      .orderBy(person.fullName);
+}
+
+function employeeListRowsTx<T extends SelectedFields>(tx:Tx,selection:T) {
+  return tx.select(selection)
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
@@ -276,9 +281,27 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforc
       )
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
-      .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
-      .where(and(companyIds&&companyIds.length?inArray(employment.companyId,companyIds):undefined,purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',companyIds):undefined))
-      .orderBy(person.fullName);
+      .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId));
+}
+
+/** Intersect a posted selection with the exact RLS-visible company rows. Keep input order and duplicates. */
+export async function payrollProcessEmployeeSelection(ctx:SessionContext,companyId:string,submittedIds:string[]) {
+  // The legacy string comparison never matched alternate UUID spellings or malformed input.
+  const ids=[...new Set(submittedIds.filter(id=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id)))];
+  if(!ids.length)return [];
+  const visible=await withTenant(ctx,tx=>employeeListRowsTx(tx,{id:employment.id}).where(and(
+    eq(employment.companyId,companyId),sql`${employment.id} = any(${'{' + ids.join(',') + '}'}::uuid[])`,
+  )));
+  const allowed=new Set(visible.map(row=>row.id));
+  return submittedIds.filter(id=>allowed.has(id));
+}
+
+/** Exact count of the same legacy company list, including its join multiplicity and retained employments. */
+export function payrollProcessEmployeeCount(ctx:SessionContext,companyId:string) {
+  return withTenant(ctx,async tx=>{
+    const [row]=await employeeListRowsTx(tx,{total:sql<number>`count(*)`.mapWith(Number)}).where(eq(employment.companyId,companyId));
+    return row.total;
+  });
 }
 
 /**
