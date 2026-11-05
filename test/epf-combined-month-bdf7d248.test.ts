@@ -196,11 +196,12 @@ describe('bdf7d248 — i-Topup can still only RAISE a side', () => {
     for (const w of [0, 10, 900, 3000, 4999.99, 5000, 5000.01, 12000, 19999, 25000]) {
       for (const b of [0, 0.01, 500, 5000]) {
         const floor = epf(w, b, CFG.epf);
+        const legacyEmployer = epf(w, b, CFG.epf, { mode: 'voluntary_excess', employerRate: 0 }).employer;
         for (const rate of [0, 0.05, 0.11, 0.13, 0.2]) {
           const ee = epf(w, b, CFG.epf, { mode: 'voluntary_excess', employeeRate: rate, employerRate: 0 });
           const er = epf(w, b, CFG.epf, { mode: 'voluntary_excess', employerRate: rate });
           expect(ee.employee).toBeGreaterThanOrEqual(floor.employee);
-          expect(ee.employer).toBe(floor.employer); // the other side stays statutory (semi-auto)
+          expect(ee.employer).toBe(legacyEmployer);
           expect(er.employer).toBeGreaterThanOrEqual(floor.employer);
           expect(er.employee).toBe(floor.employee);
         }

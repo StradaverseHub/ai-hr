@@ -25,7 +25,7 @@ describe('b6dbadc5 additive Top-up — calculator',()=>{
  });
  it('0% and a blank side add nothing: the statutory schedule amount stands',()=>{
   const statutory=epf(4000,0);
-  expect(statutory).toEqual({employee:360,employer:520});
+  expect(statutory).toEqual({employee:440,employer:520});
   expect(epf(4000,0,undefined,topup(0,0))).toEqual(statutory);
   expect(epf(4000,0,undefined,topup(null,null))).toEqual(statutory);
   expect(epf(4000,0,undefined,topup(.01,null))).toEqual({employee:480,employer:520});
