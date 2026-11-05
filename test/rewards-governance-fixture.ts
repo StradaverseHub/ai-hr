@@ -41,8 +41,10 @@ async function refreshCompanyPatFixture(ctx:SessionContext,unitId:string,inputs:
  if(!binding.present)return;
  const v=await getRewardUnit(ctx,unitId),g=await getRewardUnitGovernance(ctx,unitId),current=g.inputs;
  if(current&&(['targetCents','forecastCents','actualCents','targetMonthsBp'] as const).every(key=>current[key]===inputs[key]))return;
+ if(v.unit.status==='draft'&&current)await saveRewardUnitInputs(ctx,unitId,g.revision,current,'Refresh the fictional basis with its unchanged confirmed PAT');
  await confirmFixturePat(ctx,v.unit.companyId,v.unit.policy.year,inputs);
- await adoptConfirmedCompanyPat(ctx,unitId,(await getRewardUnit(ctx,unitId)).unit.revision,'Adopt independently checked fictional company PAT');
+ const after=await getRewardUnitGovernance(ctx,unitId);
+ if(after.patRecalculationRequired&&v.unit.status==='draft')await adoptConfirmedCompanyPat(ctx,unitId,after.revision,'Adopt independently checked fictional company PAT');
 }
 export async function configureRewardFixture(ctx:SessionContext,unitId:string,_revision:number,raw:RewardPolicy){
  const checker=await initializeRewardGovernanceFixture(ctx,unitId),policy=completeRewardFixturePolicy(raw);
