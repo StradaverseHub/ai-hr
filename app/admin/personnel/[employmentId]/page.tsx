@@ -279,6 +279,9 @@ export default async function EmployeePage({
   // reader back onto a bare tab.
   const rawSearchParams = await searchParams;
   const movementPage=rawSearchParams.movementPage;
+  // Dedicated Movement screens return only their action card. Profile-only
+  // catalogs and employee records cannot affect that card's scope or options.
+  const readProfileCards = admin && !movementPage;
   const movementContext={showCorrected:rawSearchParams.showCorrected,from:rawSearchParams.from};
   const historyHref=movementHistoryHref(employmentId,movementContext);
   if(!movementPage){
@@ -373,26 +376,26 @@ export default async function EmployeePage({
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
-  const salaryHistory = admin ? await compensationHistoryDetailed(s, employmentId) : [];
+  const salaryHistory = readProfileCards ? await compensationHistoryDetailed(s, employmentId) : [];
   // 7c7c2f80 — periods of CLOSED payroll runs that paid this employee: drives the per-row "deletable"
   // flag on the salary history (records a closed run relied on are payroll evidence and cannot go).
   const closedPayrollPeriods = admin ? await closedPayrollPeriodsFor(s, employmentId) : [];
   // Rung 5c — the acting company's country pack; statutory reads + the SOCSO/EIS default resolve through it.
   const countryPack = packFor('MY');
   // This scoped service verifies the owning company is MY; a person-level tax flag is not approval.
-  const taxSelection = admin && payrollOn
+  const taxSelection = readProfileCards && payrollOn
     ? await countryPack?.statutory.getTaxSelection?.(s, emp.employmentId) ?? null : null;
   // Rung 5c — the holiday-calendar state pick-list comes from the country packs via the registry
   // (union-read, the rung-5a `countryPacks()` precedent). MY-only ⇒ byte-identical to the old MY_STATES.
   const stateOptions = countryPacks().flatMap((p) => p.states);
-  const statutory = admin ? ((await countryPack?.statutory.get(s, emp.personId)) ?? null) : null;
+  const statutory = readProfileCards ? ((await countryPack?.statutory.get(s, emp.personId)) ?? null) : null;
   // 04b88724 — the QUALIFYING-CHILDREN figure and its working. `num_children` (the head count Form E, CP8D
   // and the EA statement read) and C (what the projection of P counts in) are two different numbers, and the
   // card used to show one of them under a caption that implied both. This resolves the ruleset and returns
   // the pack's own prices plus the Family register's child rows; the card multiplies those prices by the
   // counts on screen so the figure stays true while the admin types. null ⇒ no pack / no PCB reliefs, and
   // the card then names no figure rather than inventing a rate. 'MY' matches this page's own packFor('MY').
-  const qualifyingChildRelief = admin
+  const qualifyingChildRelief = readProfileCards
     ? await qualifyingChildReliefFor(s, { personId: emp.personId, country: 'MY', asOf: today })
     : null;
   // r351 — THE ONE INSTANT THE FAMILY TAB'S AGE AND RELIEF COLUMNS ARE TAKEN AT, and it is the same date the
@@ -426,11 +429,11 @@ export default async function EmployeePage({
   // company with no HRDF Contribution Rate is accepted by the save and then silently discarded at payroll
   // time (pack.payroll.hrdfSubject honours the flag, but hrdfLevy rates not_registered to 0). HR set
   // something and nothing happened, with nothing on any screen saying why. Must NOT touch defaultValue.
-  const companyHrdf = admin ? ((await countryPack?.companyStatutory.get(s, emp.companyId)) ?? null) : null;
+  const companyHrdf = readProfileCards ? ((await countryPack?.companyStatutory.get(s, emp.companyId)) ?? null) : null;
   const companyHrdfUnregistered = (companyHrdf?.hrdfStatus ?? 'not_registered') === 'not_registered';
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
-  const holidayGroups = admin ? await listHolidayGroups(s) : [];
-  const holidayCalendarRows=admin?await employmentHolidayCalendarHistory(s,employmentId):[];
+  const holidayGroups = readProfileCards ? await listHolidayGroups(s) : [];
+  const holidayCalendarRows=readProfileCards?await employmentHolidayCalendarHistory(s,employmentId):[];
   /**
    * f513ec02 — THE SCHEDULE GROUP PICKER'S OPTIONS AND ITS CURRENT VALUE.
    *
@@ -444,8 +447,8 @@ export default async function EmployeePage({
    * something other than what is stored, then persisting it), reached by a different route. The extra
    * option is marked inactive so the reader is told why it is there.
    */
-  const scheduleGroupCurrentId = admin ? await employmentScheduleGroupId(s, employmentId) : null;
-  const attendanceRules = admin ? await listAttendanceRules(s) : [];
+  const scheduleGroupCurrentId = readProfileCards ? await employmentScheduleGroupId(s, employmentId) : null;
+  const attendanceRules = readProfileCards ? await listAttendanceRules(s) : [];
   const scheduleGroupOptions = attendanceRules.filter(
     (r) => r.status === 'active' || r.id === scheduleGroupCurrentId,
   );
@@ -466,37 +469,37 @@ export default async function EmployeePage({
   const orgLocations = pendingCompany ? await listLocations(s, [orgScopeCompanyId]) : locations;
   // Typed pay components (Wave 3 #9) — recurring components for this employee + the catalog to add from.
   // r298 — Payroll-owned: not read at all for a tenant without Payroll (see `payrollOn`).
-  const payComps = admin && payrollOn ? await listEmploymentPayComponents(s, employmentId) : [];
-  const componentCatalog = admin && payrollOn ? await listPayComponents(s, { readyOnly: true }) : [];
+  const payComps = readProfileCards && payrollOn ? await listEmploymentPayComponents(s, employmentId) : [];
+  const componentCatalog = readProfileCards && payrollOn ? await listPayComponents(s, { readyOnly: true }) : [];
   // 1.2.3 CP38 — per-employee LHDN instalment records (admin-only master data). r298 — Payroll-owned.
-  const cp38Records = admin && payrollOn ? await listCp38(s, { employmentId }) : [];
+  const cp38Records = readProfileCards && payrollOn ? await listCp38(s, { employmentId }) : [];
   // ADR-0069 — leave encashment snapshot, admin-only card. Null when no resignation has been frozen
   // (policy off, or the employment was terminated directly bypassing the resignation flow).
-  const encashmentSnapshot = admin ? await encashmentSnapshotForEmployment(s, employmentId) : null;
+  const encashmentSnapshot = readProfileCards ? await encashmentSnapshotForEmployment(s, employmentId) : null;
   // Personnel — Family / Dependents (phase 1): per-person benefits/insurance register (admin-only). Keyed
   // on person_id (already loaded on emp), NOT employment_id. Does NOT feed the tax num_children figure.
-  const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
+  const dependents = readProfileCards ? await listDependents(s, { personId: emp.personId }) : [];
   // Feedback a949184a — Qualification tab: this employment's academic/professional qualification records
   // (admin-only surface; employment-keyed, unlike the person-keyed Family register). Sorted by the service:
   // most recent graduation first, in-progress (blank graduation date) last.
-  const qualifications = admin ? await listQualifications(s, { employmentId }) : [];
+  const qualifications = readProfileCards ? await listQualifications(s, { employmentId }) : [];
   // Feedback 23ad620e — Emergency Contact register: every person to call for this employee, in resolution
   // order (Primary → Secondary → Other). PERSON-keyed like the Family register, so it survives termination
   // and is visible to a second company's admin.
-  const emergencyContacts = admin ? await listEmergencyContacts(s, { personId: emp.personId }) : [];
+  const emergencyContacts = readProfileCards ? await listEmergencyContacts(s, { personId: emp.personId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   // r298 — Payroll-owned (core/payroll-policy.ts): not read for a tenant without Payroll.
-  const assignablePolicies = admin && payrollOn ? await listAssignablePolicies(s, emp.companyId) : [];
+  const assignablePolicies = readProfileCards && payrollOn ? await listAssignablePolicies(s, emp.companyId) : [];
   // 297ae65a — the company's currency: the Basic Salary form preselects it for a brand-new first record.
   // r79a (4fb8b75a step 3): read from `company.currency` (owned by Organization → General) instead of the
   // duplicate company_payroll_config.default_currency the pair collapsed into it (migration 0324).
-  const defaultSalaryCurrency = admin ? await getCompanyCurrency(s, emp.companyId) : 'MYR';
+  const defaultSalaryCurrency = readProfileCards ? await getCompanyCurrency(s, emp.companyId) : 'MYR';
   // ADR-0070 — Clocking Location & Geofencing: the picker's options + this employee's current assignment
   // (admin-only). r423 (83c0d3c8) REVERSES f9afd1ce's "every active site in the tenant": the picker offers
   // only the ACTIVE locations OPEN TO THIS EMPLOYEE'S COMPANY (clocking_location_company). The service
   // (setClockingControl) refuses anything else, so this filter is the courtesy and the service the rule.
-  const clockingLocations = admin ? await listClockingLocations(s, { companyId: emp.companyId }) : [];
-  const assignedClockingLocations = admin ? await listEmployeeClockingLocations(s, employmentId) : [];
+  const clockingLocations = readProfileCards ? await listClockingLocations(s, { companyId: emp.companyId }) : [];
+  const assignedClockingLocations = readProfileCards ? await listEmployeeClockingLocations(s, employmentId) : [];
   const assignedClockingLocationIds = new Set(assignedClockingLocations.map((l) => l.id));
   /**
    * r272 (0e8cf366) — THE PRE-TICK IS GONE, AND ITS REMOVAL IS THE POINT OF THE ITEM.
@@ -599,8 +602,8 @@ export default async function EmployeePage({
   // 1d58019a Step 2 — the movement's supporting documents; the service applies history visibility and the
   // table's pay rule, so a document this admin may not see is simply not listed.
   const movementDocuments = movementDetailData && spMovement ? await movementAttachments(s, employmentId, spMovement) : [];
-  const resignationInfo = admin ? await resignationInformation(s, employmentId) : null;
-  const costAllocationView = admin && emp.companyId ? await getEmploymentCostAllocations(s, employmentId) : null;
+  const resignationInfo = readProfileCards ? await resignationInformation(s, employmentId) : null;
+  const costAllocationView = readProfileCards && emp.companyId ? await getEmploymentCostAllocations(s, employmentId) : null;
   /**
    * c063eea9 — the Correct hire details form (?correctHire=1). Read ONLY while it is open, and only where
    * the caller may correct the employment, including after an exit.
@@ -675,7 +678,7 @@ export default async function EmployeePage({
     // have one option and silently re-affirm the move it is meant to be able to fix.
     movementCurrent
       ? await (async () => {
-          const managed = await adminCompanies(s);
+          const managed = companyEditable ? managedCompanies : await adminCompanies(s);
           // The current company leads and is always present, even for an actor who does not administer it:
           // it is the select's initial value, and a control whose value matches no option is a broken one.
           return [
@@ -686,13 +689,16 @@ export default async function EmployeePage({
       : [];
   const movementOrgByCompany = Object.fromEntries(
     await Promise.all(
-      movementCompanies.map((c) => withTenant(s, async (tx) => {
-        const [deps, poss, bus, locs] = await Promise.all([
-          listDepartments(s, { companyIds: [c.id] }, tx),
-          listPositions(s, { companyIds: [c.id] }, tx),
-          listBusinessUnits(s, { companyIds: [c.id] }, tx),
-          listLocations(s, [c.id], {}, tx),
-        ]);
+      movementCompanies.map(async (c) => {
+        // The current-company form already loaded these exact scoped lists.
+        const [deps, poss, bus, locs] = c.id === emp.companyId
+          ? [departments, positions, businessUnits, locations] as const
+          : await withTenant(s, (tx) => Promise.all([
+              listDepartments(s, { companyIds: [c.id] }, tx),
+              listPositions(s, { companyIds: [c.id] }, tx),
+              listBusinessUnits(s, { companyIds: [c.id] }, tx),
+              listLocations(s, [c.id], {}, tx),
+            ]));
         return [
           c.id,
           {
@@ -702,7 +708,7 @@ export default async function EmployeePage({
             locations: locs.map((l) => ({ id: l.id, name: `${l.name} (${l.code})` })),
           },
         ] as const;
-      })),
+      }),
     ),
   );
   // 7d309da7 — configurable profile-field dropdown catalogs (religion / race / nationality / state /
@@ -1025,7 +1031,7 @@ export default async function EmployeePage({
     payroll: [t('payMethodGroup'), ...whenPayroll(...whenLive(tp('assignTitle'))), t('tp3SectionTitle')],
   };
 
-  const canEditPassport=admin&&canMaintainWorkforce&&!!await countryPack?.statutory.passportEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
+  const canEditPassport=readProfileCards&&canMaintainWorkforce&&!!await countryPack?.statutory.passportEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
   const profilePanel = admin ? (
     <>
       {/* 420ebab5 part two — ONE "Save Changes" for the Profile tab. TabSaveScope wraps the bucket (a) cards
@@ -2891,7 +2897,7 @@ export default async function EmployeePage({
   // name is now a pick-from-catalog select and the card adds the custom-payment-holder function (pay salary
   // to a third party's account). It's a client island (interactive reveal/require) rendered as JSX only, so
   // the RSC server/client boundary is respected.
-  const canEditBank=admin&&canMaintainWorkforce&&!!await countryPack?.statutory.bankEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
+  const canEditBank=readProfileCards&&canMaintainWorkforce&&!!await countryPack?.statutory.bankEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
   const bankCard = admin ? (
     <>
     {!canEditBank&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}

@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { isCorrectedMovementRow, partitionMovementRows } from '../lib/movement-visibility';
 import type { MovementHistoryRow, MovementReversal, MovementStatus } from '../core/movement';
 import { COMPARISON_KINDS,isComparisonKind } from '../core/movement-kinds';
+import {movementScreenAccess} from '../lib/movement-screen-access';
 import { movementFormFields } from '../lib/movement-form-contract';
 
 const PAGE = fs.readFileSync(
@@ -86,7 +87,11 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
 
   it('exposes the New Event entry point (hidden once terminated) and the key columns', () => {
     expect(PAGE.includes("t('movement.newEvent')")).toBe(true);
-    expect(PAGE.includes('const {canCreateMovement, canCorrectMovement} = movementScreenAccess(')).toBe(true);
+    expect(PAGE).toMatch(/const \{\s*canCreateMovement,\s*canCorrectMovement\s*\}\s*=\s*movementScreenAccess\(/);
+    const maintainer = {admin:true,canMaintainWorkforce:true};
+    expect(movementScreenAccess({...maintainer,terminatedOn:null}).canCreateMovement).toBe(true);
+    expect(movementScreenAccess({...maintainer,terminatedOn:'2026-01-01'})).toEqual({canCreateMovement:false,canCorrectMovement:true});
+    expect(movementScreenAccess({...maintainer,canMaintainWorkforce:false,terminatedOn:null}).canCreateMovement).toBe(false);
     for (const col of ['eventType', 'effectiveDate', 'endDate', 'remarks', 'action']) {
       expect(PAGE.includes(`t('movement.columns.${col}')`), `missing column ${col}`).toBe(true);
     }
@@ -188,7 +193,7 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     // The projection is read whole and never narrowed at the source.
     expect(PAGE.includes('await movementHistory(s, employmentId)')).toBe(true);
     // The Edit lookup resolves against the FULL history, so a hidden row is still reachable by id.
-    expect(PAGE.includes('movements.find((m) => m.id === spEditMovement')).toBe(true);
+    expect(PAGE).toMatch(/movements\.find\(\((\w+)\)\s*=>\s*\1\.id\s*===\s*spEditMovement\s*&&\s*\1\.canEdit\)/);
     // …and the pending banner on the Employment tab reads the full history too.
     expect(PAGE.includes("movements\n    .filter((m) => m.status === 'pending')")).toBe(true);
   });
