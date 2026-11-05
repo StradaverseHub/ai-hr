@@ -3,7 +3,7 @@ import { and, asc, desc, eq, inArray, isNull, isNotNull, sql } from 'drizzle-orm
 import { type SessionContext, type Tx } from '../db/client';
 import { withAttendanceTenant as withTenant,assertModuleGate } from './module-gate';
 import { actorOf, appendEvent, type AppendEventArgs } from '../db/events';
-import { attendanceWorkflowTemplate as template, attendanceWorkflowSetting as setting, attendanceWorkflowRequest as request, attendanceWorkflowDecision as decision, attendanceWorkflowReassignment as reassignment, attendanceWorkflowParticipantDecision as participantDecision, attendanceWorkflowParticipantReassignment as participantReassignment, employment, person, department, businessUnit, jobGrade, profileOption, position } from '../db/schema';
+import { attendanceCorrection, attendanceWorkflowTemplate as template, attendanceWorkflowSetting as setting, attendanceWorkflowRequest as request, attendanceWorkflowDecision as decision, attendanceWorkflowReassignment as reassignment, attendanceWorkflowParticipantDecision as participantDecision, attendanceWorkflowParticipantReassignment as participantReassignment, employment, person, department, businessUnit, jobGrade, profileOption, position } from '../db/schema';
 import { approversOf } from '../lib/leave-approval-kinds';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { resolveOrgCriteriaTargets } from './org-criteria';
@@ -11,7 +11,7 @@ import { assertCanDecide,decisionEmploymentAuthorityTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
 import { labelUsableByCompany } from './system-labels';
-import { AttendanceWorkflowError, attendanceScopesOverlap, validateAttendanceWorkflow, type AttendanceWorkflowInput, type AttendanceApplicationType, type AttendanceResolvedStage, type AttendanceResolvedApprover } from '../lib/attendance-workflow';
+import { attendanceApplicationType, AttendanceWorkflowError, attendanceScopesOverlap, validateAttendanceWorkflow, type AttendanceWorkflowInput, type AttendanceApplicationType, type AttendanceResolvedStage, type AttendanceResolvedApprover } from '../lib/attendance-workflow';
 import { AttendanceLevelError, type AttendanceLevelProblem, type AttendanceV3FrozenLevel } from '../lib/attendance-workflow-v3';
 import {validateAnyAttendanceWorkflow,attendanceWorkflowConfiguration,type AnyAttendanceWorkflowInput} from '../lib/attendance-workflow-config';
 import {AttendanceCcError,type AttendanceCcSource,type AttendanceCcRecipient} from '../lib/attendance-workflow-v4';
@@ -239,7 +239,35 @@ export async function prepareAttendanceWorkflowSnapshotTx(tx:Tx,ctx:SessionConte
     return {subject,selected,validated,stages,cc};
 }
 export async function snapshotAttendanceWorkflowTx(tx: Tx, ctx: SessionContext, correctionId: string, employmentId: string, applicationType: AttendanceApplicationType) {
-    const prepared=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,employmentId,applicationType);if(!prepared)return null;
+    const prepared=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,employmentId,applicationType);
+    return persistAttendanceWorkflowSnapshotTx(tx,ctx,correctionId,employmentId,applicationType,prepared);
+}
+/** Resolve using the native owner before the correction INSERT, retaining source → route → INSERT
+ * error order. The prepared route stays inside this owner and this transaction; callers supply no
+ * reviewed projection or trusted routing object. The callback only inserts the already validated row. */
+export async function snapshotAttendanceWorkflowForInsertTx(tx:Tx,ctx:SessionContext,employmentId:string,applicationType:AttendanceApplicationType,insert:()=>Promise<string>){
+    const prepared=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,employmentId,applicationType);
+    // The trusted module callback inserts one row. Refuse owner-input changes even in this same
+    // transaction (an advisory lock alone does not prevent the holder changing its own settings).
+    const state=await attendanceWorkflowInsertStateTx(tx,ctx,employmentId,applicationType);
+    const correctionId=await insert();
+    if(state!==await attendanceWorkflowInsertStateTx(tx,ctx,employmentId,applicationType))throw new AttendanceWorkflowError('scope','Attendance workflow source changed during insertion.');
+    const [correction]=await tx.select({tenantId:attendanceCorrection.tenantId,employmentId:attendanceCorrection.employmentId,status:attendanceCorrection.status,requestKind:attendanceCorrection.requestKind,proposedCheckIn:attendanceCorrection.proposedCheckIn,proposedCheckOut:attendanceCorrection.proposedCheckOut,clockChanges:attendanceCorrection.clockChanges,requestedOtMinutes:attendanceCorrection.requestedOtMinutes,activeWrite:sql<boolean>`app.attendance_workflow_active_write(xmin)`,currentPrincipal:sql<boolean>`app.principal_snapshot_current()`}).from(attendanceCorrection).where(eq(attendanceCorrection.id,correctionId)).limit(1);
+    if(!correction||correction.tenantId!==ctx.tenantId||correction.employmentId!==employmentId||correction.status!=='pending'||!correction.activeWrite||!correction.currentPrincipal||attendanceApplicationType(correction)!==applicationType)throw new AttendanceWorkflowError('scope','Invalid workflow application links');
+    await persistAttendanceWorkflowSnapshotTx(tx,ctx,correctionId,employmentId,applicationType,prepared);
+    return correctionId;
+}
+/** Ephemeral source fence, never cached or exposed as authority. All native snapshot guards still run. */
+async function attendanceWorkflowInsertStateTx(tx:Tx,ctx:SessionContext,employmentId:string,applicationType:AttendanceApplicationType){
+ const [row]=await tx.execute(sql`select md5(jsonb_build_object(
+ 'subject',(select to_jsonb(e) from public.employment e where e.id=${employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid),
+ 'settings',(select jsonb_agg(to_jsonb(s) order by s.id) from public.attendance_workflow_setting s where s.tenant_id=${ctx.tenantId}::uuid and s.company_id=(select e.company_id from public.employment e where e.id=${employmentId}::uuid) and s.application_type=${applicationType}),
+ 'templates',(select jsonb_agg(to_jsonb(t) order by t.id) from public.attendance_workflow_template t where t.tenant_id=${ctx.tenantId}::uuid and t.company_id=(select e.company_id from public.employment e where e.id=${employmentId}::uuid) and t.application_type=${applicationType}),
+ 'tenant',app.current_tenant_id(),'user',app.current_user_id(),'principal',app.principal_snapshot_current())::text) as stamp`) as unknown as {stamp:string}[];
+ return row?.stamp;
+}
+async function persistAttendanceWorkflowSnapshotTx(tx:Tx,ctx:SessionContext,correctionId:string,employmentId:string,applicationType:AttendanceApplicationType,prepared:Awaited<ReturnType<typeof prepareAttendanceWorkflowSnapshotTx>>){
+    if(!prepared)return null;
     const {subject,selected,validated,stages,cc}=prepared;
     const [snapshot] = await tx.insert(request).values({ tenantId: ctx.tenantId, correctionId, employmentId, companyId: subject.companyId, templateId: selected.id, templateCode: selected.code, templateName: selected.name, templateVersion: selected.version, applicationType, routingVersion: validated.routingVersion, stages, cc }).returning();
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-correction', aggregateId: correctionId, eventType: 'attendance-workflow.resolved', actor: actorOf(ctx), subjectEmploymentId: employmentId, payload: { workflowRequestId: snapshot.id, templateId: selected.id, templateVersion: selected.version, stages } });

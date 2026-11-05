@@ -31,7 +31,7 @@ import { applyClockChangesTx, clockFingerprint, punchesForCorrectionTx, validate
 import { rotationLookupTx, rotationScheduleRow } from './attendance-rotation';
 import { isDeepStrictEqual } from 'node:util';
 import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
-import { prepareAttendanceWorkflowSnapshotTx, snapshotAttendanceWorkflowTx, assertCanDecideAttendanceApplicationTx, actionableAttendanceApplicationIdsTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
+import { prepareAttendanceWorkflowSnapshotTx, snapshotAttendanceWorkflowTx, snapshotAttendanceWorkflowForInsertTx, assertCanDecideAttendanceApplicationTx, actionableAttendanceApplicationIdsTx, decideAttendanceWorkflowStageTx, attendanceWorkflowsForTx } from './attendance-workflow';
 import { attendanceApplicationType } from '../lib/attendance-workflow';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
@@ -3600,7 +3600,7 @@ function normalizeAttendanceCorrectionRequest(input:AttendanceCorrectionRequestI
 }
 /** Full canonical preflight with no correction/workflow/event INSERT. Infrastructure policy-epoch
  * initialization remains the existing canonical barrier, not a request or an approval effect. */
-export async function prepareAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput){
+async function prepareAttendanceCorrectionDataTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput){
  ctx=captureAttendanceContext(ctx);assertModuleGate(ctx,'attendance');
  const {p,hasOt,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork}=normalizeAttendanceCorrectionRequest(input);
  await lockAccessConfigurationTx(tx,ctx.tenantId);
@@ -3716,16 +3716,26 @@ export async function prepareAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionCont
     }
  const pending=await tx.select({id:attendanceCorrection.id}).from(attendanceCorrection).where(and(eq(attendanceCorrection.employmentId,p.employmentId),eq(attendanceCorrection.attendanceDate,p.date),eq(attendanceCorrection.status,'pending'))).limit(1);if(pending.length)throw new AttendanceCorrectionPendingError();
  const data={employmentId:p.employmentId,date:p.date,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork};
+ return data;
+}
+/** Complete read-only review remains fresh and includes policy, clocks and routing. */
+export async function prepareAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput){
+ const data=await prepareAttendanceCorrectionDataTx(tx,ctx,input);
  const source=await prepareAttendanceCorrectionInsertSourceTx(tx,ctx,data);
- const workflow=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,p.employmentId,attendanceApplicationType({requestKind,proposedCheckIn:checkIn,proposedCheckOut:checkOut,clockChanges,requestedOtMinutes}));
+ const workflow=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,data.employmentId,attendanceApplicationType({requestKind:data.requestKind,proposedCheckIn:data.checkIn,proposedCheckOut:data.checkOut,clockChanges:data.clockChanges,requestedOtMinutes:data.requestedOtMinutes}));
  return {data,source,workflow,asOf:todayInKualaLumpur()};
 }
 export function attendanceCorrectionPreparedDigest(ctx:SessionContext,prepared:Awaited<ReturnType<typeof prepareAttendanceCorrectionRequestTx>>){return createHash('sha256').update(JSON.stringify({version:1,tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId,prepared})).digest('hex');}
 /** Reviewed digest is refusal-only, never a source of policy, clocks, routing, actor or approval. */
 export async function requestAttendanceCorrectionTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput,reviewed?:{expectedDigest:string}){
- const current=captureAttendanceContext(ctx),captured=structuredClone(input),expected=reviewed?.expectedDigest,prepared=await prepareAttendanceCorrectionRequestTx(tx,current,captured);
- if(reviewed&&(typeof expected!=='string'||attendanceCorrectionPreparedDigest(current,prepared)!==expected))throw Error('Attendance source changed; review it again.');
- return insertAttendanceCorrectionRequestTx(tx,current,prepared.data,{returnEventId:true});
+ const current=captureAttendanceContext(ctx),captured=structuredClone(input);
+ if(reviewed){
+  const prepared=await prepareAttendanceCorrectionRequestTx(tx,current,captured),expected=reviewed.expectedDigest;
+  if(typeof expected!=='string'||attendanceCorrectionPreparedDigest(current,prepared)!==expected)throw Error('Attendance source changed; review it again.');
+  return insertAttendanceCorrectionRequestTx(tx,current,prepared.data,{returnEventId:true});
+ }
+ const data=await prepareAttendanceCorrectionDataTx(tx,current,captured);
+ return insertAttendanceCorrectionRequestTx(tx,current,data,{returnEventId:true,resolveWorkflowBeforeInsert:true});
 }
 function attendanceCorrectionSubmissionFailure(error:unknown):never{
     // Preserve the database's atomic pending-request fence, including simultaneous submissions.
@@ -7059,9 +7069,9 @@ async function prepareAttendanceCorrectionInsertSourceTx(tx:Tx,ctx:SessionContex
     }).from(attendance).where(and(eq(attendance.employmentId, p.employmentId), eq(attendance.attendanceDate, p.date))).limit(1) : [];
  return {executionPolicy,original:original??null};
 }
-async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:AttendanceCorrectionInsertInput,options:{returnEventId:true}):Promise<{correctionId:string;eventId:string}>;
+async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:AttendanceCorrectionInsertInput,options:{returnEventId:true;resolveWorkflowBeforeInsert?:boolean}):Promise<{correctionId:string;eventId:string}>;
 async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:AttendanceCorrectionInsertInput):Promise<{correctionId:string}>;
-async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:AttendanceCorrectionInsertInput,options?:{returnEventId:true}){
+async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:AttendanceCorrectionInsertInput,options?:{returnEventId:true;resolveWorkflowBeforeInsert?:boolean}){
  const {clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind}=p;
  const {executionPolicy,original}=await prepareAttendanceCorrectionInsertSourceTx(tx,ctx,p);
     const originalClockSnapshot = clockChanges || checkIn || checkOut || executionPolicy ? {
@@ -7071,7 +7081,7 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:At
       ...(executionPolicy?{executionPolicy}:{}),
       ...(p.unclockedWork?{unclockedWork:structuredClone(p.unclockedWork)}:{}),
     } : null;
-    const [row] = await tx
+    const insert=async()=>{const [row] = await tx
       .insert(attendanceCorrection)
       .values({
         ...(p.id?{id:p.id}:{}),
@@ -7092,11 +7102,17 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:At
         clockChanges,
       })
       .returning({ id: attendanceCorrection.id });
-    await snapshotAttendanceWorkflowTx(tx, ctx, row.id, p.employmentId, attendanceApplicationType({ requestKind, proposedCheckIn: checkIn, proposedCheckOut: checkOut, clockChanges, requestedOtMinutes }));
+      return row.id;
+    };
+    const applicationType=attendanceApplicationType({ requestKind, proposedCheckIn: checkIn, proposedCheckOut: checkOut, clockChanges, requestedOtMinutes });
+    const correctionId=options?.resolveWorkflowBeforeInsert
+      ?await snapshotAttendanceWorkflowForInsertTx(tx,ctx,p.employmentId,applicationType,insert)
+      :await insert();
+    if(!options?.resolveWorkflowBeforeInsert)await snapshotAttendanceWorkflowTx(tx,ctx,correctionId,p.employmentId,applicationType);
     const eventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'attendance-correction',
-      aggregateId: row.id,
+      aggregateId: correctionId,
       eventType: 'attendance-correction.requested',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
@@ -7116,8 +7132,8 @@ async function insertAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,p:At
         clockChanges,
       },
     },{returnId:!!options?.returnEventId});
-    if(options?.returnEventId){if(!eventId)throw Error('Attendance event reference unavailable.');return {correctionId:row.id,eventId};}
-    return { correctionId: row.id };
+    if(options?.returnEventId){if(!eventId)throw Error('Attendance event reference unavailable.');return {correctionId,eventId};}
+    return { correctionId };
 }
 
 /** Own web punch only. A selector must resolve to an own active employment; the caller cannot supply
