@@ -242,6 +242,14 @@ export async function effectiveHolidayState(
   return { country: emp.country, state,states:Array.isArray(effEmpGroupStates)?effEmpGroupStates:state?[state]:[] };
 }
 
+type HolidayCompletenessEvent = {
+  module: string;
+  aggregateType: string;
+  aggregateId: string;
+  subjectEmploymentId?: string | null;
+  context?: Record<string, unknown>;
+};
+
 /**
  * The high-value safety net (Phase-B #15 Part A). For each (state, year) the given window spans, check
  * whether the loaded gazette meets the s.60D minimum; if not, append a NON-BLOCKING warning domain event
@@ -252,18 +260,19 @@ export async function effectiveHolidayState(
 export async function warnIfHolidaysIncomplete(
   tx: Tx,
   ctx: SessionContext,
-  args: {
-    country: string;
-    state: string | null;
-    years: number[];
-    module: string;
-    aggregateType: string;
-    aggregateId: string;
-    subjectEmploymentId?: string | null;
-    context?: Record<string, unknown>;
-  },
+  args: HolidayCompletenessEvent & { country: string; state: string | null; years: number[] },
 ): Promise<HolidayCompletenessWarning[]> {
   const warnings = await readHolidayCompletenessWarnings(tx, args.country, args.state, args.years);
+  await appendHolidayCompletenessWarnings(tx, ctx, args, warnings);
+  return warnings;
+}
+
+export async function appendHolidayCompletenessWarnings(
+  tx: Tx,
+  ctx: SessionContext,
+  args: HolidayCompletenessEvent,
+  warnings: readonly HolidayCompletenessWarning[],
+): Promise<void> {
   for (const warning of warnings) {
     // NON-BLOCKING: the gazetted-holiday count is below the s.60D minimum for this (state, year). Loud,
     // not fatal — the leave/payroll write still commits; HR must finish loading the state gazette.
@@ -285,7 +294,6 @@ export async function warnIfHolidaysIncomplete(
       },
     });
   }
-  return warnings;
 }
 
 /** The set of holiday dates in [startDate, endDate] for an employment, resolved business-group → state →

@@ -70,7 +70,7 @@ import {
   holidayDatesFor,
   effectiveHolidayState,
   readHolidayCompletenessWarnings,
-  warnIfHolidaysIncomplete,
+  appendHolidayCompletenessWarnings,
   yearsSpanned,
   type HolidayCompletenessWarning,
 } from './holidays';
@@ -4129,11 +4129,18 @@ export async function requestLeave(
       const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
       if (days !== reviewedOwnLeave.days || available !== reviewedOwnLeave.availableBalance)
         throw new LeaveReviewedEffectError('changed');
-      const warnings = lt?.counting === 'working_days'
-        ? await leaveHolidayCompletenessTx(tx, p.employmentId, p.startDate, p.endDate) : [];
+    }
+
+    // Resolve the holiday sources before the submitted event takes the audit-chain lock.
+    const holidayWarningWindows = lt?.counting === 'working_days'
+      ? await readLeaveHolidayWarningWindows(tx, p.employmentId, p.startDate, p.endDate)
+      : [];
+    const holidayWarnings = holidayWarningWindows.flatMap(window => window.warnings);
+
+    if (reviewedOwnLeave) {
       const reviewedWarnings = reviewedOwnLeave.holidayWarnings;
-      if (warnings.length !== reviewedWarnings.length
-        || warnings.some((warning, index) => {
+      if (holidayWarnings.length !== reviewedWarnings.length
+        || holidayWarnings.some((warning, index) => {
           const reviewed = reviewedWarnings[index];
           return warning.country !== reviewed.country || warning.state !== reviewed.state
             || warning.year !== reviewed.year || warning.loaded !== reviewed.loaded
@@ -4243,9 +4250,12 @@ export async function requestLeave(
     // holidays loaded for the employee's (state, year). If fewer than the s.60D minimum of 11 are loaded,
     // warn LOUDLY (domain event + returned warning) but do NOT block — the count may be wrong until HR loads
     // the rest of the state gazette. Only meaningful for working_days types (calendar types ignore holidays).
-    const holidayWarnings = lt?.counting === 'working_days'
-      ? await leaveHolidayCompletenessTx(tx, p.employmentId, p.startDate, p.endDate, { ctx, leaveRequestId: id })
-      : [];
+    for (const window of holidayWarningWindows) {
+      await appendHolidayCompletenessWarnings(tx, ctx, {
+        module: 'leave', aggregateType: 'leave-request', aggregateId: id, subjectEmploymentId: p.employmentId,
+        context: { leaveRequestId: id, startDate: window.from, endDate: window.to },
+      }, window.warnings);
+    }
 
     return {
       leaveRequestId: id,
@@ -4492,7 +4502,7 @@ export async function previewLeaveDeduction(
       : undefined;
     const holidayWarnings = p.includeHolidayWarnings
       ? lt?.counting === 'working_days'
-        ? await leaveHolidayCompletenessTx(tx, p.employmentId, p.startDate, p.endDate)
+        ? (await readLeaveHolidayWarningWindows(tx, p.employmentId, p.startDate, p.endDate)).flatMap(window => window.warnings)
         : []
       : undefined;
     return {
@@ -4592,33 +4602,27 @@ async function resolveApplyDayRows(
   });
 }
 
-/** One dated-calendar owner for read-only previews and post-submission warning events. Passing an
- * event target preserves the existing warning audit; omitting it performs only source reads. */
-async function leaveHolidayCompletenessTx(
+/** Read dated holiday warnings and retain the source windows for the submission audit. */
+async function readLeaveHolidayWarningWindows(
   tx: Tx,
   employmentId: string,
   startDate: string,
   endDate: string,
-  event?: { ctx: SessionContext; leaveRequestId: string },
-): Promise<HolidayCompletenessWarning[]> {
+) {
   const periods=(await holidayCalendarPeriodsByEmploymentTx(tx,[employmentId],startDate,endDate)).get(employmentId)??[];
   const segments=await companySegmentsForPeriod(tx,employmentId,startDate,endDate);
-  const warnings:HolidayCompletenessWarning[]=[],seen=new Set<string>();
+  const windows: { from: string; to: string; warnings: HolidayCompletenessWarning[] }[] = [];
+  const seen = new Set<string>();
   for(const segment of segments)for(const window of holidayCalendarWindows(segment.from,segment.to,periods)){
     const eff=await effectiveHolidayState(tx,employmentId,segment.companyId,window.from);
     if(!eff||eff.skipCompleteness)continue;
     const years=yearsSpanned(window.from,window.to).filter(year=>{
       const key=JSON.stringify([eff.country,eff.state,year]);if(seen.has(key))return false;seen.add(key);return true;
     });
-    const currentWarnings = event
-      ? await warnIfHolidaysIncomplete(tx,event.ctx,{
-        country:eff.country,state:eff.state,years,module:'leave',aggregateType:'leave-request',aggregateId:event.leaveRequestId,
-        subjectEmploymentId:employmentId,context:{leaveRequestId:event.leaveRequestId,startDate:window.from,endDate:window.to},
-      })
-      : await readHolidayCompletenessWarnings(tx,eff.country,eff.state,years);
-    warnings.push(...currentWarnings);
+    const warnings = await readHolidayCompletenessWarnings(tx, eff.country, eff.state, years);
+    if (warnings.length) windows.push({ from: window.from, to: window.to, warnings });
   }
-  return warnings;
+  return windows;
 }
 
 /**
