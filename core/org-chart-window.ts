@@ -1,4 +1,4 @@
-/** Bounded, fresh Org exploration. The legacy full-chart reader remains unchanged. */
+/** Fresh Org Chart reads for both bounded exploration and the small full graph. */
 import {sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {lockAccessConfigurationReadTx} from './access-configuration-lock';
@@ -26,6 +26,13 @@ function orgGraphRelations(scopeWhere:SQL):SQL{return sql`visibility as material
     from public.reporting_line r join live manager on manager.id=r.manager_employment_id join live subordinate on subordinate.id=r.subordinate_employment_id
     where r.valid_to is null and r.superseded_at is null and r.line_type<>'delegate'
    )`;}
+
+/** Full-chart edges are caller-wide, independent of the selected node company filter. */
+export function readOrgChartEdgesTx(tx:Tx){
+ return tx.execute<{manager:string;subordinate:string;type:'administrative'|'functional'|'project'|'dotted'}>(sql`
+  with ${orgGraphRelations(sql`true`)}
+  select manager_id as manager,subordinate_id as subordinate,type from native_edges`);
+}
 
 async function withOrgChartReadTx<T>(ctx:SessionContext,read:(tx:Tx)=>Promise<T>):Promise<T>{
  const actor={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};

@@ -1,3 +1,4 @@
+import {readOrgChartEdgesTx} from './org-chart-window';
 import {payrollEmploymentPredicate,payrollCompensationEffectiveOn,payrollRunContextsTx,outstandingPaymentPredicate,payrollEmploymentEnd} from '../packs/payroll/service';
 import {settingEnabled} from './entitlements';
 import {foldEmployeeCode,EMPLOYEE_SEARCH_RESULT_CAP} from '../lib/employee-search';
@@ -5820,33 +5821,8 @@ export function orgChartData(ctx: SessionContext, companyIds?: string[],existing
         ),
       )
       .orderBy(person.fullName);
-    // Hierarchy Management (ADR-0052 Step 6): the edge query SELECTs straight from reporting_line, whose
-    // RLS is tenant-only (it does NOT call can_see_employment), so previously it returned EVERY edge in
-    // the tenant — including edges where an endpoint is terminated. Scope it so only edges with BOTH
-    // endpoints visible to the caller AND both endpoints live (non-terminated) are returned: a mid-level
-    // manager's /org then shows only their subtree, and stale edges through a fired manager are dropped.
-    // `delegate` edges are approver-routing, not org structure, so they are excluded from the chart.
-    const edgeRows = await tx
-      .select({
-        manager: reportingLine.managerEmploymentId,
-        subordinate: reportingLine.subordinateEmploymentId,
-        type: reportingLine.lineType,
-      })
-      .from(reportingLine)
-      .where(
-        and(
-          isNull(reportingLine.validTo),
-          isNull(reportingLine.supersededAt),
-          sql`${reportingLine.lineType} <> 'delegate'`,
-          sql`app.can_see_employment(${reportingLine.managerEmploymentId})`,
-          sql`app.can_see_employment(${reportingLine.subordinateEmploymentId})`,
-          sql`EXISTS (SELECT 1 FROM employment mgr_e WHERE mgr_e.id = ${reportingLine.managerEmploymentId} AND mgr_e.terminated_on IS NULL)`,
-          sql`EXISTS (SELECT 1 FROM employment sub_e WHERE sub_e.id = ${reportingLine.subordinateEmploymentId} AND sub_e.terminated_on IS NULL)`,
-        ),
-      );
-    // delegate edges are filtered out in the query above, so the chart's edge type stays the structural
-    // union (administrative | functional | project | dotted) the OrgChart component expects.
-    const edges = edgeRows as { manager: string; subordinate: string; type: 'administrative' | 'functional' | 'project' | 'dotted' }[];
+    // Use the same authorized, live endpoint set as the bounded chart.
+    const edges = await readOrgChartEdgesTx(tx);
     return { employees, edges };
   });
 }
