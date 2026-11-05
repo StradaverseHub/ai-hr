@@ -164,6 +164,7 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     expect(Object.keys((policy.payload as { after: object }).after)).not.toContain('patActual');
     expect(Object.keys((policy.payload as { after: object }).after)).not.toContain('meritMatrix');
   });
+  // Allow time for 49 approved admissions on shared runners. The metric times only the list read.
   it('9040c2eb: measures one projection per review with a 50-company annual-review fixture',async()=>{
     const companyIds=[b.companyId],targets:{companyId:string;businessUnitId:string}[]=[];
     for(let i=1;i<50;i++){
@@ -177,7 +178,7 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     const started=performance.now(),overview=await listRewardReviewStatus(admin,companyIds),elapsed=performance.now()-started;
     expect(overview.rows).toHaveLength(50);expect(new Set(overview.rows.map(row=>row.id)).size).toBe(50);
     console.info(`Rewards review list 50-review fixture: ${elapsed.toFixed(1)} ms`);
-  },60_000);
+  },120_000);
   it('b4729de7: gives scope-safe empty reasons without another company or cycle name',async()=>{
     expect((await listRewardReviewStatus(admin,[])).emptyReason).toBe('noScope');
     const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional empty company'}).returning();
