@@ -7,7 +7,7 @@ import { hireEmployee } from '../core/org';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { createApprovedRewardUnit } from './rewards-setup-fixture';
 import { pgSqlState } from '../lib/db-error';
-import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 let base: Base;
 let admin: SessionContext;
@@ -19,7 +19,8 @@ afterAll(closeAll);
 beforeEach(async () => {
   await resetDb();
   base = await seedBase();
-  admin = adminCtx(base);
+  await setModule(base.tenantId, 'rewards', 'active');
+  admin = await entitledCtx(base);
   const hired = await hireEmployee(admin, {
     companyId: base.companyId,
     departmentId: base.deptA,
