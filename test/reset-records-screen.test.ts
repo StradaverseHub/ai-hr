@@ -527,8 +527,9 @@ describe('7f69bd71 — the Reset records page renders, for real, both sub-tabs w
     expect(html).toContain(' · 2</option>');
     expect(html).toContain('r268-config-release-one · ');
     expect(html).toContain('>Show</button>');
-    expect(html).toContain(`href="${CSV_CONFIGURATION}?capture=r268-config-2026-09-11"`);
-    expect(html).toContain('>Download as CSV</a>');
+    expect(html).toContain(
+      `href="${CSV_CONFIGURATION}?capture=r268-config-2026-09-11">Download as CSV<span class="sr-only" role="status"></span></a>`,
+    );
     // The rows of the newest capture, under the template/rule header, and not the older capture's.
     expect(html).toContain('Annual leave table — grade A');
     expect(html).toContain('Rule: everyone at Seeded Co');
