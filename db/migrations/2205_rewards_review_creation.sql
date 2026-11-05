@@ -136,12 +136,18 @@ GRANT SELECT,INSERT,UPDATE ON reward_pat_basis TO ai_hr_reward_setup_reader;
 GRANT SELECT ON reward_entry,reward_governance,reward_governance_public TO ai_hr_reward_setup_reader;
 GRANT UPDATE ON reward_governance,reward_governance_public,reward_unit TO ai_hr_reward_setup_reader;
 GRANT INSERT ON reward_governance_history TO ai_hr_reward_setup_reader;
+GRANT UPDATE(pat_version_id,previous_pat_version_id,pool_recalculation_required,updated_at) ON reward_unit_setup TO ai_hr_reward_setup_reader;
+REVOKE INSERT ON reward_unit_setup,reward_company_year_review FROM ai_hr_app;
 CREATE POLICY reward_pat_basis_owner ON reward_pat_basis FOR ALL TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_pat_basis.tenant_id AND app.reward_setup_allowed(u.company_id,'manage'))) WITH CHECK(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_pat_basis.tenant_id AND app.reward_setup_allowed(u.company_id,'manage')));
 CREATE POLICY reward_pat_basis_entries ON reward_entry FOR SELECT TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_entry.tenant_id AND app.reward_setup_allowed(u.company_id,'manage')));
 CREATE POLICY reward_pat_draft_governance ON reward_governance FOR ALL TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_governance.tenant_id AND u.status='draft' AND app.reward_setup_allowed(u.company_id,'manage'))) WITH CHECK(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_governance.tenant_id AND u.status='draft' AND app.reward_setup_allowed(u.company_id,'manage')));
 CREATE POLICY reward_pat_draft_public ON reward_governance_public FOR ALL TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_governance_public.tenant_id AND u.status='draft' AND app.reward_setup_allowed(u.company_id,'manage'))) WITH CHECK(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_governance_public.tenant_id AND u.status='draft' AND app.reward_setup_allowed(u.company_id,'manage')));
 CREATE POLICY reward_pat_draft_history ON reward_governance_history FOR INSERT TO ai_hr_reward_setup_reader WITH CHECK(tenant_id=app.current_tenant_id() AND actor_id=app.current_user_id() AND kind='company-pat-confirmed' AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_governance_history.tenant_id AND u.status='draft' AND app.reward_setup_allowed(u.company_id,'manage')));
 CREATE POLICY reward_pat_draft_unit ON reward_unit FOR UPDATE TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND status='draft' AND app.reward_setup_allowed(company_id,'manage')) WITH CHECK(tenant_id=app.current_tenant_id() AND status='draft' AND app.reward_setup_allowed(company_id,'manage'));
+-- Row locks also cover reviews beyond Draft so the checker can mark those reviews without modifying their monetary snapshot.
+CREATE POLICY reward_pat_bound_unit_lock ON reward_unit FOR UPDATE TO ai_hr_reward_setup_reader USING(
+ tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(company_id,'manage')
+) WITH CHECK(false);
 CREATE FUNCTION app.reward_pat_basis_fingerprint(wanted_unit uuid) RETURNS text LANGUAGE sql STABLE SET search_path=pg_catalog,public,app AS $$
  SELECT encode(sha256(convert_to(jsonb_build_object('policy',(SELECT jsonb_object_agg(key,value) FROM jsonb_each(u.policy) WHERE key=ANY(ARRAY['year','activeAsOf','minimumBonusRating','excludeNotice','excludeErCase','confirmedBy','blockedFrom','blockedTo','payWindowKeep','seniorMembershipMode','seniorGrades'])),'entries',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',e.id,'source',e.source,'facts',jsonb_build_object('performance',e.facts->'performance','seniorPlan',e.facts->'seniorPlan','erCase',e.facts->'erCase','confidentiality',e.facts->'confidentiality'))ORDER BY e.id),'[]'::jsonb)FROM reward_entry e WHERE e.unit_id=u.id AND e.tenant_id=u.tenant_id),'selection',g.state->'selection')::text,'UTF8')),'hex') FROM reward_unit u JOIN reward_governance g ON g.unit_id=u.id AND g.tenant_id=u.tenant_id WHERE u.id=wanted_unit AND u.tenant_id=app.current_tenant_id()
 $$;
@@ -151,6 +157,7 @@ CREATE FUNCTION app.reward_record_pat_basis(wanted_unit uuid,wanted_basis text,p
 DECLARE u reward_unit%ROWTYPE;actual text;
 BEGIN
  SELECT * INTO u FROM reward_unit WHERE id=wanted_unit AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT EXISTS(SELECT 1 FROM reward_unit_setup s WHERE s.unit_id=wanted_unit AND s.tenant_id=app.current_tenant_id()) THEN RETURN;END IF;
  IF u.id IS NULL OR NOT EXISTS(SELECT 1 FROM app.reward_roles(u.id)seat WHERE seat='gr') OR NOT app.reward_setup_allowed(u.company_id,'manage') OR p_standard_payroll NOT BETWEEN 0 AND 9007199254740991 OR p_h_payroll NOT BETWEEN 0 AND 9007199254740991 OR wanted_basis !~ '^[0-9a-f]{64}$' THEN RAISE EXCEPTION 'Canonical Rewards basis is unavailable' USING ERRCODE='42501';END IF;
  actual:=app.reward_pat_basis_fingerprint(u.id);IF actual IS NULL OR NOT EXISTS(SELECT 1 FROM reward_governance_public p WHERE p.unit_id=u.id AND p.tenant_id=u.tenant_id AND p.snapshot->>'basis'=wanted_basis) THEN RAISE EXCEPTION 'Refresh the current unit budget basis';END IF;
  INSERT INTO reward_pat_basis(unit_id,tenant_id,fingerprint,engine_basis,standard_payroll,h_payroll) VALUES(u.id,u.tenant_id,actual,wanted_basis,p_standard_payroll,p_h_payroll) ON CONFLICT(unit_id)DO UPDATE SET fingerprint=excluded.fingerprint,engine_basis=excluded.engine_basis,standard_payroll=excluded.standard_payroll,h_payroll=excluded.h_payroll,updated_at=now();
@@ -205,7 +212,22 @@ BEGIN
 END $$;
 ALTER FUNCTION app.reward_apply_confirmed_pat(uuid,uuid) OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_apply_confirmed_pat(uuid,uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.reward_apply_confirmed_pat(uuid,uuid) TO ai_hr_app;
+REVOKE EXECUTE ON FUNCTION app.reward_apply_confirmed_pat(uuid,uuid) FROM ai_hr_app;
+CREATE FUNCTION app.reward_pat_confirm_apply() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE affected record;
+BEGIN
+ IF OLD.state='pending' AND NEW.state='confirmed' THEN
+  FOR affected IN SELECT * FROM app.reward_pat_affected_units(NEW.company_id,NEW.year) LOOP
+   PERFORM app.reward_apply_confirmed_pat(affected.id,NEW.id);
+  END LOOP;
+ END IF;
+ RETURN NEW;
+END;
+$$;
+ALTER FUNCTION app.reward_pat_confirm_apply() OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_pat_confirm_apply() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER reward_pat_confirm_apply AFTER UPDATE ON reward_pat_version FOR EACH ROW EXECUTE FUNCTION app.reward_pat_confirm_apply();
 REVOKE EXECUTE ON FUNCTION app.reward_reprice_draft_pat(uuid,uuid) FROM ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.reward_consumed_library_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
@@ -343,7 +365,7 @@ BEGIN
   IF TG_OP='INSERT' THEN NEW.created_by_person_id:=actor_person;
   ELSE
    IF NEW.created_by_person_id IS DISTINCT FROM OLD.created_by_person_id THEN RAISE EXCEPTION 'PAT maker identity is immutable';END IF;
-   IF NEW.state='confirmed' THEN IF actor_person=OLD.created_by_person_id THEN RAISE EXCEPTION 'A different person must confirm company PAT';END IF;NEW.confirmed_by_person_id:=actor_person;END IF;
+   IF NEW.state='confirmed' THEN IF actor_person=OLD.created_by_person_id THEN RAISE EXCEPTION 'A different person must confirm company PAT';END IF;NEW.confirmed_by_person_id:=actor_person;NEW.confirmed_at:=transaction_timestamp();END IF;
   END IF;
  ELSIF TG_TABLE_NAME='reward_library_version' THEN
   IF TG_OP='INSERT' THEN NEW.created_by_person_id:=actor_person;NEW.contributor_person_ids:=ARRAY[actor_person];
@@ -510,28 +532,52 @@ END;
 $$;
 
 --> statement-breakpoint
--- Preserve the compensation owner's movement classification without making event payloads public.
-GRANT SELECT(tenant_id,aggregate_type,aggregate_id,event_type,payload,sequence) ON domain_event TO ai_hr_reward_setup_reader;
+-- Derive only the movement code from the canonical compensation event. The roster owner cannot read raw events.
+CREATE TABLE reward_snapshot_comp_movement(
+ tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+ compensation_id uuid NOT NULL REFERENCES compensation(id) ON DELETE CASCADE,
+ source_sequence bigint NOT NULL,
+ movement_code text NOT NULL,
+ PRIMARY KEY(tenant_id,compensation_id)
+);
+INSERT INTO reward_snapshot_comp_movement(tenant_id,compensation_id,source_sequence,movement_code)
+ SELECT DISTINCT ON(event.tenant_id,event.aggregate_id) event.tenant_id,event.aggregate_id,event.sequence,event.payload->'movement'->>'type'
+ FROM domain_event event JOIN compensation c ON c.tenant_id=event.tenant_id AND c.id=event.aggregate_id
+ WHERE event.aggregate_type='compensation' AND event.event_type='compensation.set' AND event.payload->'movement'->>'type' IS NOT NULL
+ ORDER BY event.tenant_id,event.aggregate_id,event.sequence DESC;
+ALTER TABLE reward_snapshot_comp_movement ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reward_snapshot_comp_movement FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON reward_snapshot_comp_movement FROM PUBLIC,ai_hr_app;
+GRANT SELECT,INSERT ON reward_snapshot_comp_movement TO ai_hr_reward_setup_reader;
 GRANT SELECT(tenant_id,code,behaviour_kind) ON movement_event_type TO ai_hr_reward_setup_reader;
-CREATE POLICY reward_snapshot_pay_change_event ON domain_event FOR SELECT TO ai_hr_reward_setup_reader USING(
- tenant_id=app.current_tenant_id() AND aggregate_type='compensation' AND event_type='compensation.set'
- AND EXISTS(SELECT 1 FROM compensation c WHERE c.tenant_id=domain_event.tenant_id AND c.id=domain_event.aggregate_id)
+CREATE POLICY reward_snapshot_pay_change_read ON reward_snapshot_comp_movement FOR SELECT TO ai_hr_reward_setup_reader USING(
+ tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM compensation c WHERE c.tenant_id=reward_snapshot_comp_movement.tenant_id AND c.id=compensation_id)
 );
-CREATE POLICY reward_snapshot_pay_change_event_bound ON domain_event AS RESTRICTIVE FOR SELECT TO ai_hr_reward_setup_reader USING(
- tenant_id=app.current_tenant_id() AND aggregate_type='compensation' AND event_type='compensation.set'
- AND EXISTS(SELECT 1 FROM compensation c WHERE c.tenant_id=domain_event.tenant_id AND c.id=domain_event.aggregate_id)
-);
+CREATE POLICY reward_snapshot_pay_change_write ON reward_snapshot_comp_movement FOR INSERT TO ai_hr_reward_setup_reader WITH CHECK(tenant_id=app.current_tenant_id());
 CREATE POLICY reward_snapshot_pay_change_type ON movement_event_type FOR SELECT TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id());
+CREATE FUNCTION app.reward_capture_comp_movement() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF NEW.tenant_id=app.current_tenant_id() AND NEW.aggregate_type='compensation' AND NEW.event_type='compensation.set' AND NEW.payload->'movement'->>'type' IS NOT NULL THEN
+  INSERT INTO reward_snapshot_comp_movement(tenant_id,compensation_id,source_sequence,movement_code)
+  VALUES(NEW.tenant_id,NEW.aggregate_id,NEW.sequence,NEW.payload->'movement'->>'type')
+  ON CONFLICT(tenant_id,compensation_id) DO NOTHING;
+ END IF;
+ RETURN NEW;
+END;
+$$;
+ALTER FUNCTION app.reward_capture_comp_movement() OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_capture_comp_movement() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER reward_capture_comp_movement AFTER INSERT ON domain_event FOR EACH ROW
+ WHEN(NEW.aggregate_type='compensation' AND NEW.event_type='compensation.set') EXECUTE FUNCTION app.reward_capture_comp_movement();
 CREATE FUNCTION app.reward_snapshot_pay_change_kind(wanted_compensation uuid) RETURNS text
 LANGUAGE sql STABLE SET search_path=pg_catalog,public,app AS $$
- SELECT coalesce(kind.behaviour_kind,event.payload->'movement'->>'type')
- FROM domain_event event LEFT JOIN movement_event_type kind ON kind.tenant_id=event.tenant_id AND kind.code=event.payload->'movement'->>'type'
- WHERE event.tenant_id=app.current_tenant_id() AND event.aggregate_type='compensation' AND event.event_type='compensation.set'
- AND event.aggregate_id=wanted_compensation AND event.payload->'movement'->>'type' IS NOT NULL ORDER BY event.sequence DESC LIMIT 1
+ SELECT coalesce(kind.behaviour_kind,tag.movement_code)
+ FROM reward_snapshot_comp_movement tag LEFT JOIN movement_event_type kind ON kind.tenant_id=tag.tenant_id AND kind.code=tag.movement_code
+ WHERE tag.tenant_id=app.current_tenant_id() AND tag.compensation_id=wanted_compensation
 $$;
 ALTER FUNCTION app.reward_snapshot_pay_change_kind(uuid) OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_snapshot_pay_change_kind(uuid) FROM PUBLIC,ai_hr_app;
-
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.reward_policy_unit_origin(p_unit uuid) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$

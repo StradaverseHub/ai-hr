@@ -279,6 +279,7 @@ CREATE TABLE reward_library_revision_audit(
 );
 ALTER TABLE reward_library_revision_audit ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reward_library_revision_audit FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON reward_library_revision_audit FROM PUBLIC,ai_hr_app;
 GRANT SELECT ON reward_library_revision_audit TO ai_hr_app;
 GRANT INSERT ON reward_library_revision_audit TO ai_hr_reward_setup_reader;
 CREATE POLICY reward_library_revision_audit_read ON reward_library_revision_audit FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(NULL,'library_view'));

@@ -45,9 +45,12 @@ it('runs the real GR-only library, checked plan, dated roster and atomic draft P
  const unit=await getRewardUnit(maker,id);expect(unit.rows.map(r=>r.source.employeeCode)).toEqual(['PAT-BASIS']);expect(unit.roles).toContain('gr');const [origin]=await withTenant(maker,tx=>tx.execute<{value:{changed:boolean}}>(sql`select app.reward_policy_unit_origin(${id}::uuid) as value`));expect(origin.value.changed).toBe(false);expect(unit.rows[0].source.payChanges).toEqual([{on:'2026-02-01',basicCents:520000,kind:'promotion'}]);
  await expect(saveRewardPolicy(maker,id,unit.unit.revision,{...unit.unit.policy,ranges:{...unit.unit.policy.ranges,'12':[1,2,3]}})).rejects.toThrow(/read-only/);
  await saveRewardEntry(maker,id,unit.unit.revision,unit.rows[0].id,emptyRecommendation(),{...emptyFacts(),performance:'ME',reviewed:true});
+ const next=await proposeRewardPat(maker,{companyId:b.companyId,year:2026,expectedRevision:1,inputs:{targetCents:3,forecastCents:null,actualCents:2,targetMonthsBp:15000},reason});
+ await expect(confirmRewardPat(checker,next)).rejects.toMatchObject({cause:{code:'40001'}});
+ const [pendingPat]=await owner.db.execute(sql`select state from reward_pat_version where id=${next}::uuid`);expect(pendingPat.state).toBe('pending');
  const basis=await getRewardUnitGovernance(maker,id);expect(basis.patBasisStale).toBe(true);await refreshRewardPatBasis(maker,id,basis.revision,reason);
  expect((await getRewardUnitGovernance(maker,id)).pools.standard).toBe(1000000);
- const next=await proposeRewardPat(maker,{companyId:b.companyId,year:2026,expectedRevision:1,inputs:{targetCents:3,forecastCents:null,actualCents:2,targetMonthsBp:15000},reason});expect(await confirmRewardPat(checker,next)).toEqual([id]);
+ expect(await confirmRewardPat(checker,next)).toEqual([id]);
  const repriced=await getRewardUnitGovernance(maker,id);expect(repriced.pools.standard).toBe(499999);expect(repriced.previousPools?.standard).toBe(1000000);expect(repriced.inputs?.actualCents).toBe(2);expect(repriced.patRecalculationRequired).toBe(false);
  const [links]=await owner.db.execute(sql`select salary_version_id,bonus_version_id,pat_version_id,previous_pat_version_id from reward_unit_setup where unit_id=${id}::uuid`);expect(links).toEqual({salary_version_id:salary,bonus_version_id:bonus,pat_version_id:next,previous_pat_version_id:pat});
  await expect(withTenant(maker,tx=>tx.execute(sql`select * from reward_pat_basis where unit_id=${id}::uuid`))).rejects.toThrow();
