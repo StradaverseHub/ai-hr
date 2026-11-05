@@ -129,3 +129,14 @@ The seven changed files in the provider closure implement payroll display and qu
 or Personnel read locking and company scope. Provider contracts, serializers and transport
 are unchanged. The 28 existing approvals retain their original provenance and both pending
 records retain their status. This entry records the owner's approval of the exact source binding.
+
+## Payroll and Personnel follow-up source binding
+
+The repository owner explicitly approved carrying the 28 existing provider data approvals
+forward on 5 November 2026 in the approved-items release chat. The approval covers
+candidate `47e5be42dba4ad946ed430af6dc2e6e4dbfbb783` and the 1,453-file provider
+digest `7b23d55f35aca919979df21d1faeadbfc8616c394fe17b7662fa5c752a03063c`.
+
+The two changed files in the provider closure recover saved overtime display details and
+add a shared lock for read-only navigation. Provider contracts and transport are unchanged.
+The existing approval provenance and pending records are preserved.
