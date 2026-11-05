@@ -4084,11 +4084,18 @@ export async function decideAttendanceCorrection(
     if (!cor) throw new Error('correction request not found (or not visible)');
     if (cor.status !== 'pending') throw new Error(`correction request is already ${cor.status}`);
 
-    await assertCanDecideAttendanceApplicationTx(tx, ctx, cor.id, cor.employmentId);
-    if (!['approved', 'rejected'].includes(p.decision)) throw new Error('Invalid attendance decision');
     const rejectReason = p.decision === 'rejected' ? (p.rejectReason ?? '').trim() : null;
-    if (p.decision === 'rejected' && (!rejectReason || rejectReason.length > 1000)) throw new MissingAttendanceRejectReasonError();
-    if (p.remarks && p.remarks.trim().length > 1000) throw new Error('Approval remarks must be at most 1000 characters.');
+    const validationError = !['approved', 'rejected'].includes(p.decision)
+      ? new Error('Invalid attendance decision')
+      : p.decision === 'rejected' && (!rejectReason || rejectReason.length > 1000)
+        ? new MissingAttendanceRejectReasonError()
+        : p.remarks && p.remarks.trim().length > 1000
+          ? new Error('Approval remarks must be at most 1000 characters.')
+          : null;
+    if (validationError) {
+      await assertCanDecideAttendanceApplicationTx(tx, ctx, cor.id, cor.employmentId);
+      throw validationError;
+    }
     const workflowStage = await decideAttendanceWorkflowStageTx(tx, ctx, { correctionId: cor.id, employmentId: cor.employmentId, decision: p.decision, remarks: p.decision === 'rejected' ? rejectReason ?? undefined : p.remarks, expectedStageIndex: p.expectedStageIndex, expectedParticipantSlot: p.expectedParticipantSlot });
     if (rejectionSubject !== undefined && (workflowStage.versionedFinalEffect || workflowStage.delegatedFinalStageIndex != null)) {
       throw retryAttendanceRejectionExclusively;
