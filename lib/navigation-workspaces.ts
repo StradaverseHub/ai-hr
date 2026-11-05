@@ -83,7 +83,7 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   // Performance admin: the cycle list (no cycle yet) and the admin area of one cycle, /performance/<cycle>/….
   if(path==='/performance'||PERFORMANCE_CYCLE_PATH.test(path))return modulePlacement('performanceAdmin','hr');
   if(path.startsWith('/performance'))return modulePlacement('performance','mine');
-  if(path.startsWith('/admin/rewards'))return modulePlacement('rewards','config');
+  if(path==='/rewards/rules'||path.startsWith('/admin/rewards'))return modulePlacement('rewards','config');
   if(path.startsWith('/rewards'))return modulePlacement('rewards','mine');
   if(path==='/analytics'||path.startsWith('/reports'))return modulePlacement('workforceInsights','hr');
   return undefined;

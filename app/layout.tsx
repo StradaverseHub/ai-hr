@@ -188,6 +188,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     canViewJobArchitecture(session),
   ]);
   const letterDestinations=isModuleEnabledOrFalse(session,'employees')?await letterNavigation(session,scopeIds):[];
+  const rewardDestinations = isModuleEnabledOrFalse(session, 'rewards')
+    ? await import('@/packs/rewards/access-policy').then(({ rewardNavigation }) =>
+      rewardNavigation(session, isAdmin(session)),
+    ).catch(() => [])
+    : [];
   const onboarded = await getOnboardingStatus(session);
   const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
@@ -289,6 +294,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <Sidebar
               canViewJobArchitecture={architectureAvailable}
               letterDestinations={letterDestinations}
+              rewardDestinations={rewardDestinations}
               canConfigureLoginPresentation={isGroupAdmin(session)}
               canConfigurePasswordPolicy={isGroupAdmin(session)&&internalSelected()}
               // ADR-0049: a partner is an admin who sees a subset, so it gets the admin nav group;

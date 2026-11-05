@@ -63,3 +63,38 @@ export async function rewardSetupEntry(ctx:SessionContext){return withRewardsTen
 /** Explicit platform GroupAdmin bootstrap: module-only authority, never an HR or login grant. */
 export async function rewardSetupGrantAdministration(ctx:SessionContext){return withRewardsTenant(ctx,async tx=>{const [actor]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);if(!actor?.allowed)throw Error('Group administrator authority is required.');const users=await tx.execute<{id:string;name:string;active:boolean}>(sql`select u.id,p.full_name as name,(u.archived_at is null and not app.login_blocked(u.id)) as active from app_user u join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=app.current_tenant_id() and app.access_workforce_person(p.id,'workforce.view') order by p.full_name,u.id`);const companies=await tx.execute<{id:string;name:string}>(sql`select id,legal_name as name from company where tenant_id=app.current_tenant_id() and archived_at is null order by legal_name`);const grants=await tx.execute<{id:string;userId:string;companyId:string|null;role:'gr'|'ctro';validFrom:string;validTo:string|null;active:boolean;reason:string;revision:number}>(sql`select id,user_id as "userId",company_id as "companyId",role,valid_from::text as "validFrom",valid_to::text as "validTo",active,reason,revision from reward_setup_grant where tenant_id=app.current_tenant_id() order by created_at desc,id`);return{users,companies,grants};});}
 export async function saveRewardSetupGrant(ctx:SessionContext,raw:unknown){const p=z.object({id:z.uuid().nullable(),revision:z.number().int().nonnegative(),userId:z.uuid(),companyId:z.uuid().nullable(),role:z.enum(['gr','ctro']),validFrom:z.iso.date(),validTo:z.iso.date().nullable(),active:z.boolean(),reason:z.string().trim().min(10).max(4000)}).strict().parse(raw);if(p.validTo&&p.validTo<p.validFrom)throw Error('End date must follow start date.');return withRewardsTenant(ctx,async tx=>{const{lockAccessConfigurationTx}=await import('../../core/access-configuration-lock');await lockAccessConfigurationTx(tx,ctx.tenantId);await assertRewardWritableTx(tx);const [actor]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);if(!actor?.allowed)throw Error('Group administrator authority is required.');const [user]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from app_user u join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.id=${p.userId}::uuid and u.tenant_id=app.current_tenant_id() and u.archived_at is null and not app.login_blocked(u.id) and app.access_workforce_person(p.id,'workforce.view')) as allowed`);if(p.active&&!user?.allowed)throw Error('Choose a currently authorized login.');if(p.active){const [overlap]=await tx.execute<{exists:boolean}>(sql`select exists(select 1 from reward_setup_grant g where g.tenant_id=app.current_tenant_id() and g.user_id=${p.userId}::uuid and g.company_id is not distinct from ${p.companyId}::uuid and g.role=${p.role} and g.active and g.id is distinct from ${p.id}::uuid and coalesce(g.valid_to,'infinity'::date)>=${p.validFrom}::date and coalesce(${p.validTo}::date,'infinity'::date)>=g.valid_from) as exists`);if(overlap?.exists)throw Error('An active grant already overlaps this user, role and scope.');}let before:unknown=null,id=p.id;if(id){const [old]=await tx.execute<{revision:number;userId:string;companyId:string|null;role:string}>(sql`select revision,user_id as "userId",company_id as "companyId",role,valid_from,valid_to,active,reason from reward_setup_grant where id=${id}::uuid and tenant_id=app.current_tenant_id() for update`);if(!old||old.revision!==p.revision||old.userId!==p.userId||old.companyId!==p.companyId||old.role!==p.role)throw Error('This setup grant changed. Reload before saving.');before=old;await tx.execute(sql`update reward_setup_grant set valid_from=${p.validFrom}::date,valid_to=${p.validTo}::date,active=${p.active},reason=${p.reason},revision=revision+1,updated_at=now() where id=${id}::uuid`);}else{if(p.revision!==0)throw Error('New grants must start at revision zero.');const [added]=await tx.execute<{id:string}>(sql`insert into reward_setup_grant(tenant_id,user_id,company_id,role,valid_from,valid_to,active,created_by,reason) values(app.current_tenant_id(),${p.userId}::uuid,${p.companyId}::uuid,${p.role},${p.validFrom}::date,${p.validTo}::date,${p.active},app.current_user_id(),${p.reason}) returning id`);id=added.id;}await policyAuditTx(tx,'setup-authority.changed',id!,{before,after:{...p,id,revision:p.revision+1},reason:p.reason});return id!;});}
+
+/** Menu visibility follows the same capabilities and setup authority as the destination pages. */
+export function rewardNavigation(ctx: SessionContext, isPlatformAdmin: boolean) {
+  return withRewardsTenant(ctx, async tx => {
+    const [pages] = await tx.execute<{
+      review: boolean; analytics: boolean; approvals: boolean; rules: boolean;
+      manage: boolean; libraries: boolean; access: boolean; bootstrap: boolean;
+    }>(sql`
+      with visible_units as (
+        select id from reward_unit
+        where tenant_id = app.current_tenant_id() and deleted_at is null
+      )
+      select
+        exists(select 1 from visible_units u where app.reward_capability(u.id, 'review.view')) as review,
+        exists(select 1 from visible_units u where app.reward_capability(u.id, 'analytics.view')) as analytics,
+        exists(select 1 from visible_units u where app.reward_capability(u.id, 'approvals.view')) as approvals,
+        exists(select 1 from visible_units u where app.reward_capability(u.id, 'rules.view')) as rules,
+        app.reward_setup_allowed(null, 'manage') as manage,
+        app.reward_setup_allowed(null, 'library_view') as libraries,
+        app.is_group_admin() as bootstrap,
+        exists(select 1 from visible_units u where 'gr' = any(array(select app.reward_roles(u.id)))) as access
+    `);
+    if (!pages) return [];
+    return [
+      ...(pages.review ? ['/rewards'] : []),
+      ...(pages.analytics ? ['/rewards/analytics'] : []),
+      ...(pages.approvals ? ['/rewards/approvals'] : []),
+      ...(pages.rules ? ['/rewards/rules'] : []),
+      ...(pages.manage && isPlatformAdmin ? ['/admin/rewards', '/admin/rewards/shared'] : []),
+      ...(pages.libraries ? ['/admin/rewards/salary-structures', '/admin/rewards/bonus-matrices'] : []),
+      ...(pages.manage ? ['/admin/rewards/pat-inputs'] : []),
+      ...(pages.access || pages.bootstrap ? ['/admin/rewards/access'] : []),
+    ];
+  });
+}

@@ -141,7 +141,7 @@ export default async function OrganizationPage({
                 {missingStatutory.map(({ company }) => (
                   <li key={company.id}>
                     <Link href={`/admin/organization/${company.id}/statutory`} className="text-primary underline underline-offset-2">
-                      {company.legalName}
+                      {company.name}
                     </Link>
                   </li>
                 ))}

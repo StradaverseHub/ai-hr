@@ -69,7 +69,7 @@ export default async function RewardApprovalsPage({ searchParams }: { searchPara
 
   return <div className="w-full space-y-6">
     <Link href="/rewards" className="text-sm text-primary hover:underline">← {t('title')}</Link>
-    <PageHeader title={t('board.title')} description={steps.length ? t('board.yourStep', { steps: steps.join('; ') }) : t('board.nothingYours')}
+    <PageHeader title={(await getTranslations('nav'))('rewardsApprovalsBoard')} description={steps.length ? t('board.yourStep', { steps: steps.join('; ') }) : t('board.nothingYours')}
       actions={<>
         {all.length > 0 && <nav aria-label={t('board.view.label')} className={SEGMENTED_GROUP}>{(['matrix', 'list'] as const).map(v =>
           <Link key={v} href={href({ view: v, group })} aria-current={view === v ? 'page' : undefined} className={`${SEGMENTED_BTN} ${view === v ? SEGMENTED_BTN_ACTIVE : SEGMENTED_BTN_INACTIVE}`}>{t(`board.view.${v}`)}</Link>)}</nav>}

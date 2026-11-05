@@ -32,7 +32,7 @@ export default async function RewardsConfigurationPage({ searchParams }: { searc
   const today = todayInKualaLumpur(); const ts=await getTranslations('rewardSetup');
   const shared=await rewardSharedPolicyChoices(s,choices.companies.map(c=>c.id));
   return <div className="w-full space-y-6">
-    <div data-tour="rewards-configuration"><PageHeader title={t('adminTitle')} description={t('adminDescription')} /></div>
+    <div data-tour="rewards-configuration"><PageHeader title={(await getTranslations('nav'))('rewardsReviewCycles')} description={t('adminDescription')} /></div>
     <RewardsAdminTabs current="configuration"/>
     <ErrorBanner message={error} />
     <ErrorBanner message={deletionError?td('error'):undefined}/>
