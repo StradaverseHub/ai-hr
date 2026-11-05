@@ -20,8 +20,9 @@ import framework from '../packs/performance/onehr/framework.json';
 import { getRewardUnit, importOnehrRewardResults } from '../packs/rewards/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
-const refusal=demoSeedRefusal(process.env);if(refusal)throw Error(refusal);
 import {approvedRewardFixtures} from './fixtures/reward-approved';
+
+const refusal=demoSeedRefusal(process.env);if(refusal)throw Error(refusal);
 
 const owner=createDb(process.env.MIGRATION_DATABASE_URL!);
 const tenantId=DEMO_TENANT_ID,companyName='OneHR native (dev fixture)',cycleName='OneHR annual (dev fixture)';
