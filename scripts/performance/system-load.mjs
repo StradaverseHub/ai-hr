@@ -237,7 +237,7 @@ try{
  async function visit(page,user,path,phase='baseline',signIn=false,loadState){
   lastPage=page;const stopHomeTracking=homeHttp.track(page,user,path);
   const start=performance.now();let response,signInTiming,visitStage=signIn?'sign-in':'navigation';
-  const signInStartedWith=signIn ? loadState?.() : undefined;
+  const startedWith=loadState?.();
   try{
    if(signIn)signInTiming=await signInToHome(page,user);
    // Readiness is proved below. Network-idle adds an unrelated500ms quiet window.
@@ -306,7 +306,7 @@ try{
   if(signIn){
    const cardsCheckedAt=performance.now();
    const result={phase,role:user.role,homeCards,homeCardIds,todaySectionIds,elapsedMs:cardsCheckedAt-start,
-    startedWith:signInStartedWith,allCardsReadyWith:loadState?.(),
+    startedWith,allCardsReadyWith:loadState?.(),
     passwordSubmitToAllCardsMs:cardsCheckedAt-signInTiming.passwordSubmittedAt,
     mfaSubmitToHomeUrlMs:signInTiming.homeUrlSettledAt-signInTiming.mfaSubmittedAt,
     mfaSubmitToAllCardsMs:cardsCheckedAt-signInTiming.mfaSubmittedAt,
@@ -317,9 +317,9 @@ try{
    if(phase==='loaded'&&user.index===employee.index)report.loadedBrowserSignIn=result;
    save();
   }
-  report.browser.push({phase,role:user.role,path,heading,homeCards,homeCardIds,todaySectionIds,elapsedMs:performance.now()-start,...timing});save();
+  report.browser.push({phase,role:user.role,path,heading,homeCards,homeCardIds,todaySectionIds,startedWith,elapsedMs:performance.now()-start,...timing});save();
   }catch(error){
-   const detail={phase,role:user.role,user:user.index,path,errorType:error.name,visitStage,signInStartedWith,...browserFailureLocation(error),elapsedMs:performance.now()-start,
+   const detail={phase,role:user.role,user:user.index,path,errorType:error.name,visitStage,startedWith,...browserFailureLocation(error),elapsedMs:performance.now()-start,
     pdfRequests:browserPdfRequests.get(page)??[],
     frames:page.frames().map(frame=>{try{const url=new URL(frame.url());return {sameOrigin:url.origin===base,path:url.origin===base?url.pathname:'<other>'};}catch{return {path:'<unavailable>'};}}),dom:null};
    // Promise.all shutdown can make other pages fail later. Preserve the actual first visit.
@@ -337,14 +337,14 @@ try{
   return page.locator('main [data-tour="claims-compose"]:visible form:visible')
    .filter({has:page.locator('button[name="intent"][value="draft"]:visible')});
  }
- async function languageJourney(page,user,path,phase){
+ async function languageJourney(page,user,path,phase,loadState){
   const catalog=locale=>JSON.parse(readFileSync(new URL('../../messages/'+locale+'.json',import.meta.url),'utf8'));
   const names={zh:'简体中文',en:'English'};
   const draft=path==='/claims'?claimDraftForm(page).locator('textarea[name="description"]:visible'):null;
   if(draft)await draft.fill('PERF_UNSUBMITTED_LANGUAGE_DRAFT');
   for(const locale of ['zh','en']){
    await page.getByRole('button',{name:'Change language',exact:true}).click();
-   const start=performance.now();
+   const start=performance.now(),startedWith=loadState?.();
    await page.getByRole('button',{name:names[locale],exact:true}).click();
    await page.waitForFunction(({locale,title})=>{
     const button=document.querySelector('button[aria-label="Change language"]');
@@ -352,9 +352,9 @@ try{
    },{locale,title:names[locale]},{timeout:90000});
    const messages=catalog(locale),expected=path==='/claims'?messages.claims.title:messages.people.list.adminTitle;
    await page.getByRole('heading',{level:1,name:expected,exact:true}).waitFor({timeout:90000});
-   assert(await page.locator('main tbody tr').count()>0,'translated list has no fixture rows');
+   await page.locator('main tbody tr').first().waitFor({state:'visible',timeout:90000});
    if(draft)assert.equal(await draft.inputValue(),'PERF_UNSUBMITTED_LANGUAGE_DRAFT','language switch discarded an unsubmitted draft');
-   (report.browserLanguageSwitches??=[]).push({role:user.role,path,phase,locale,elapsedMs:performance.now()-start,translatedHeading:true,usable:true,draftRetained:!!draft});save();
+   (report.browserLanguageSwitches??=[]).push({role:user.role,path,phase,locale,startedWith,usableWith:loadState?.(),elapsedMs:performance.now()-start,translatedHeading:true,usable:true,draftRetained:!!draft});save();
   }
  }
  // These six independent read-only contexts run concurrently, matching the loaded browser bound.
@@ -734,9 +734,14 @@ try{
  const browserLoad=Promise.allSettled([employee,manager,hr,group,fixture.users[254],fixture.users[251]].map(async user=>{
   const signIn=[employee,manager,hr,group].some(actor=>actor.index===user.index);
   const ctx=await context(user,'en',signIn),page=await ctx.newPage();
-  try{await waitForSteadyUsers();for(const route of user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/claims','/performance/home']:['/','/admin/personnel','/payroll','/claims']){
+  const routes=user.role==='employee'?['/','/claims','/leave','/attendance/individual']
+   :user.role==='manager'?['/','/approvals','/claims','/performance/home']:['/','/admin/personnel','/payroll','/claims'];
+  // The two existing-session actors start on the target pages so the language proof
+  // is not queued behind the sign-in and Home sequence of the four real-login actors.
+  if(suite==='whole-system'&&!signIn)routes.unshift(...routes.splice(1,1));
+  try{await waitForSteadyUsers();for(const route of routes){
    await visit(page,user,route,'loaded',signIn&&route==='/',loadState);
-   if((user.role==='employee'&&route==='/claims')||route==='/admin/personnel')await languageJourney(page,user,route,'loaded');
+   if((user.role==='employee'&&route==='/claims')||route==='/admin/personnel')await languageJourney(page,user,route,'loaded',loadState);
    await pause(thinkTimeMs);
   }
   if(suite==='whole-system'&&(user.index===group.index||user.index===hr.index))await visit(page,user,'/lifecycle','loaded');
@@ -867,7 +872,15 @@ try{
   row.role===role&&row.homeCards>0&&row.todaySectionIds.length>0&&row.cardFailures===0
   &&row.startedWith?.active===500&&row.startedWith.inSteadyWindow
  )),'all four role dashboards must load after real sign-in started during steady 500-user load');
- if(suite==='whole-system')assert(['/claims','/admin/personnel'].every(path=>report.browserLanguageSwitches?.some(row=>row.phase==='loaded'&&row.path===path&&row.usable)),'loaded language switching did not finish on Claims and Personnel');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');if(suite==='whole-system')assert(['baseline','loaded'].every(phase=>report.orgExplorerJourneys?.some(row=>row.phase===phase&&row.status==='passed')),'Org browser scope and language journeys did not finish');if(fixture.assistantHistory)assert(aiBrowserActors.every(user=>['saved-history-list','saved-history-open','saved-history-return'].every(step=>report.browserAssistantHistory?.some(row=>row.phase==='loaded'&&row.userIndex===user.index&&row.step===step&&row.targetMet))),'populated saved-history browser navigation incomplete or above1s target');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
+ if(suite==='whole-system'){
+  const duringSteady500=row=>row.startedWith?.active===500&&row.startedWith.inSteadyWindow;
+  assert(report.browser.some(row=>row.phase==='loaded'&&row.path==='/admin/personnel'&&duringSteady500(row)),
+   'Personnel browser navigation did not start during steady 500-user load');
+  assert(['/claims','/admin/personnel'].every(path=>['zh','en'].every(locale=>
+   report.browserLanguageSwitches?.some(row=>row.phase==='loaded'&&row.path===path&&row.locale===locale&&row.usable&&duringSteady500(row))
+  )),'Claims and Personnel language switches must start during steady 500-user load');
+ }
+ assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');if(suite==='whole-system')assert(['baseline','loaded'].every(phase=>report.orgExplorerJourneys?.some(row=>row.phase===phase&&row.status==='passed')),'Org browser scope and language journeys did not finish');if(fixture.assistantHistory)assert(aiBrowserActors.every(user=>['saved-history-list','saved-history-open','saved-history-return'].every(step=>report.browserAssistantHistory?.some(row=>row.phase==='loaded'&&row.userIndex===user.index&&row.step===step&&row.targetMet))),'populated saved-history browser navigation incomplete or above1s target');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
 }catch(error){report.browserPendingRequests??=[...(pendingBrowserRequests.get(lastPage)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
 finally{
  if(sqlSnapshotTimer)clearInterval(sqlSnapshotTimer);if(browserDiagnosticTimer)clearInterval(browserDiagnosticTimer);if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);
