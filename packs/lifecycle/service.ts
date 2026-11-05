@@ -10,6 +10,7 @@ export * from '../../core/lifecycle-assets';
 export * from '../../core/lifecycle-self';
 export * from '../../core/lifecycle-import';
 export * from '../../core/lifecycle-worklist';
+export { lifecycleHubTileCounts } from '../../core/lifecycle-hub';
 export * from '../../core/lifecycle-export';
 export * from '../../core/lifecycle-rules';
 export * from '../../core/lifecycle-defaults';
