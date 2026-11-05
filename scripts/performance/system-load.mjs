@@ -467,6 +467,23 @@ try{
     await page.locator('#section-movement-new-event form select').first().waitFor({state:'visible',timeout:90000});
     report.browserMovement.newEventFormUsableMs=performance.now()-formStart;
     save();
+    if(suite==='workflow-preflight'){
+     const form=page.locator('#section-movement-new-event form');
+     await form.locator('select').first().selectOption('secondment',{timeout:90000});
+     const marker='Fictional performance Movement save';
+     await form.getByRole('textbox',{name:'Remarks',exact:true}).fill(marker,{timeout:90000});
+     const saveStart=performance.now();
+     await form.getByRole('button',{name:'Save Event',exact:true}).click({timeout:90000});
+     await page.waitForURL(url=>url.pathname===movementPath&&url.searchParams.get('tab')==='careerMovement',{timeout:90000});
+     await history.getByRole('cell',{name:'Secondment',exact:true}).waitFor({state:'visible',timeout:90000});
+     const elapsedMs=performance.now()-saveStart;
+     const records=await db`select actor_id from domain_event where tenant_id=${fixture.tenants[group.tenant].tenantId}::uuid
+       and subject_employment_id=${employee.employmentId}::uuid and event_type='employment.movement.recorded'
+       and payload->>'type'='secondment' and payload->>'remarks'=${marker}`;
+     assert.deepEqual(records.map(record=>record.actor_id),[group.userId],'Movement save did not produce one audited event for the expected actor');
+     report.browserMovement.save={elapsedMs,auditVerified:true,kind:'secondment'};
+     save();
+    }
    }finally{
     await page.removeLocatorHandler(tour);
    }
