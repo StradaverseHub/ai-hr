@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {completeSharedRewardPolicy,establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {randomUUID} from 'node:crypto';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
@@ -24,13 +25,13 @@ const group=(targets=[{companyId:b.companyId,businessUnitId:buA}])=>saveRewardPo
 describe('shared Rewards company participation and history',()=>{
  it('records exclusion and ending reasons, denies new shared coverage/reviews, and leaves old reviews intact',async()=>{
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_company_exclusion_change(${b.companyId}::uuid,${year},repeat(chr(12)||chr(160),12),NULL)`))).rejects.toBeDefined();
-  const v=await group(),review=await createRewardUnit(admin,{name:'Fictional cycle',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today,sharedPolicyVersionId:v.versionId});
+  const v=await group(),review=await createApprovedRewardUnit(admin,{name:'Fictional cycle',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today,sharedPolicyVersionId:v.versionId});
   const before=await owner.db.select().from(s.rewardUnit).where(eq(s.rewardUnit.id,review));
   const id=await changeRewardCompanyExclusion(admin,{companyId:b.companyId,year,reason:'No rewards cycle for this year',endId:null});
   const [exclusion]=await rewardCompanyExclusions(admin,year);expect(exclusion).toMatchObject({id,companyId:b.companyId,reason:'No rewards cycle for this year',endedAt:null});
   expect((await rewardSetupChoices(admin,[b.companyId],{sharedPolicy:true})).companies[0].excludedYears).toEqual([year]);
   await expect(saveRewardPolicyGroup(admin,{groupId:v.groupId,expectedRevision:1,name:v.name,policy:v.policy,targets:v.targets})).rejects.toMatchObject({code:'excluded'});
-  await expect(createRewardUnit(admin,{name:'Refused cycle',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today,sharedPolicyVersionId:v.versionId})).rejects.toThrow('excluded');
+  await expect(createRewardUnit(admin,{name:'Refused cycle',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today,approvedPlanVersionId:v.versionId})).rejects.toThrow('Choose an active legal employer included in this reward year.');
   expect(await owner.db.select().from(s.rewardUnit).where(eq(s.rewardUnit.id,review))).toEqual(before);
   await changeRewardCompanyExclusion(admin,{companyId:b.companyId,year,reason:'Company is taking part again',endId:id});
   expect((await rewardCompanyExclusions(admin,year))[0]).toMatchObject({id,endReason:'Company is taking part again'});
@@ -75,7 +76,7 @@ describe('shared Rewards company participation and history',()=>{
   })).rejects.toMatchObject({code:'40001'});
  });
  it('orders versions newest first and derives archived and locked states from stored owners',async()=>{
-  const v=await group();const review=await createRewardUnit(admin,{name:'Locked history cycle',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today,sharedPolicyVersionId:v.versionId});
+  const v=await group();const review=await createApprovedRewardUnit(admin,{name:'Locked history cycle',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today,sharedPolicyVersionId:v.versionId});
   await owner.db.update(s.rewardUnit).set({status:'bg'}).where(eq(s.rewardUnit.id,review));
   expect((await rewardPolicyHistory(admin,v.groupId))[0]).toMatchObject({locked:true,usageCount:1});
   await saveRewardPolicyGroup(admin,{groupId:v.groupId,expectedRevision:1,name:v.name,policy:{...v.policy,standardPools:[600,100,100]},targets:[]});
