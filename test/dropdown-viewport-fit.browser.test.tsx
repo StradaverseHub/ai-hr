@@ -83,6 +83,8 @@ describe('topbar menus stay inside a short window', () => {
     await act(async () => (container.querySelector('[data-company-switcher]') as HTMLButtonElement).click());
 
     const form = container.querySelector('form') as HTMLFormElement;
+    // Compare the scroll geometry after the panel's opening scale transition has settled.
+    await Promise.all(form.getAnimations().map((animation) => animation.finished));
     expectOnScreen(form, 'the company panel');
 
     const labels = form.querySelectorAll('label');
