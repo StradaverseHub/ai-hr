@@ -2,11 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { appUser, businessUnit, company, domainEvent, employment, rewardUnit } from '../db/schema';
+import { appUser, businessUnit, company, domainEvent, employment } from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { createApprovedRewardUnit } from './rewards-setup-fixture';
 import { pgSqlState } from '../lib/db-error';
+import { listRewardUnits } from '../packs/rewards/service';
 import { closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 let base: Base;
@@ -110,8 +111,10 @@ it('resolves grants on future draft reviews without assigning a review seat', as
     return row;
   }
   expect(await access()).toEqual({review:true,edit:false,coverage:['gr']});
-  await owner.withTenant(admin, tx => tx.update(rewardUnit).set({status:'gr'}).where(eq(rewardUnit.id,unitId)));
-  expect(await access()).toEqual({review:true,edit:true,coverage:['gr']});
+  expect(await listRewardUnits(reviewer, [target.companyId])).toEqual([
+    expect.objectContaining({ id: unitId, status: 'draft' }),
+  ]);
   await save(admin, reviewer.userId!, false, 1);
   expect(await access()).toEqual({review:false,edit:false,coverage:[]});
+  expect(await listRewardUnits(reviewer, [target.companyId])).toEqual([]);
 });
