@@ -35367,6 +35367,10 @@
     "externalChannel": "[the company’s designated external channel, for example an ethics line]"
   },
   "rewardSetup": {
+    "libraryHistory": "Change history",
+    "libraryChangedValues": "See changed values",
+    "libraryBefore": "Before",
+    "libraryAfter": "After",
     "salaryStructures": "Salary Structures",
     "bonusMatrices": "Bonus Matrices",
     "patInputs": "PAT Inputs",

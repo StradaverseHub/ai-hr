@@ -39,7 +39,7 @@ BEGIN
  SELECT * INTO pat FROM reward_pat_version WHERE tenant_id=t AND company_id=wanted_company AND year=p.year AND state='confirmed' ORDER BY revision DESC LIMIT 1;
  IF s IS NULL OR v IS NULL OR pat.id IS NULL OR(pat.inputs->>'targetCents')::bigint<=0 OR coalesce(pat.inputs->>'actualCents',pat.inputs->>'forecastCents') IS NULL THEN RAISE EXCEPTION 'Confirmed libraries and PAT are required';END IF;
  source:=app.reward_setup_policy_source(wanted_version);policy:=source->'policy';
- policy:=policy||jsonb_build_object('ranges',(SELECT coalesce(jsonb_object_agg(r->>'grade',jsonb_build_array((r->>'minimumCents')::bigint,(r->>'midpointCents')::bigint,(r->>'maximumCents')::bigint)),'{}'::jsonb) FROM jsonb_array_elements(s->'rows')r WHERE r->>'grade'<>'23'),'bonusMatrix',(SELECT jsonb_object_agg(r->>'grade',r->'months') FROM jsonb_array_elements(v->'rows')r),'bonusStructure',v->>'type','branchFactors',(SELECT coalesce(jsonb_object_agg(r->>'name',r->'factors'),'{}'::jsonb) FROM jsonb_array_elements(v->'segments')r),'patTarget',(pat.inputs->>'targetCents')::bigint,'patActual',greatest(0,coalesce(pat.inputs->>'actualCents',pat.inputs->>'forecastCents')::bigint),'targetMonthsBp',(pat.inputs->>'targetMonthsBp')::integer,'multiplierBp',CASE WHEN v->>'type'='branch' THEN '10000'::jsonb ELSE 'null'::jsonb END);
+ policy:=app.reward_planned_policy_snapshot(policy,s,v,pat.inputs);
  SELECT c.id,c.name INTO cycle,existing_cycle_name FROM reward_setup_cycle link JOIN reward_cycle c ON c.id=link.cycle_id AND c.tenant_id=link.tenant_id WHERE link.tenant_id=t AND link.group_id=p.group_id AND link.year=p.year;
  IF cycle IS NULL THEN INSERT INTO reward_cycle(tenant_id,name,year,created_by) VALUES(t,p.cycle_name,p.year,actor) RETURNING id INTO cycle;INSERT INTO reward_setup_cycle VALUES(t,p.group_id,p.year,wanted_version,cycle);ELSIF existing_cycle_name IS DISTINCT FROM p.cycle_name THEN RAISE EXCEPTION 'The cycle name is fixed after the first review is created';END IF;
  INSERT INTO reward_unit(id,tenant_id,created_by,cycle_id,company_id,business_unit_id,policy,policy_group_version_id,snapshot_date) VALUES(unit,t,actor,cycle,wanted_company,wanted_business_unit,policy,wanted_version,p.snapshot_date);
@@ -453,3 +453,57 @@ END $$;
 ALTER FUNCTION app.reward_setup_grade_choices() OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_setup_grade_choices() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_setup_grade_choices() TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.reward_planned_policy_snapshot(policy jsonb,s jsonb,v jsonb,pat jsonb) RETURNS jsonb
+LANGUAGE sql IMMUTABLE STRICT SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT policy||jsonb_build_object('ranges',(SELECT coalesce(jsonb_object_agg(r->>'grade',jsonb_build_array((r->>'minimumCents')::bigint,(r->>'midpointCents')::bigint,(r->>'maximumCents')::bigint)),'{}'::jsonb) FROM jsonb_array_elements(s->'rows')r WHERE r->>'grade'<>'23'),'bonusMatrix',(SELECT jsonb_object_agg(r->>'grade',r->'months') FROM jsonb_array_elements(v->'rows')r),'bonusStructure',v->>'type','branchFactors',(SELECT coalesce(jsonb_object_agg(r->>'name',r->'factors'),'{}'::jsonb) FROM jsonb_array_elements(v->'segments')r),'patTarget',(pat->>'targetCents')::bigint,'patActual',greatest(0,coalesce(pat->>'actualCents',pat->>'forecastCents')::bigint),'targetMonthsBp',(pat->>'targetMonthsBp')::integer,'multiplierBp',CASE WHEN v->>'type'='branch' THEN '10000'::jsonb ELSE 'null'::jsonb END)
+$$;
+ALTER FUNCTION app.reward_planned_policy_snapshot(jsonb,jsonb,jsonb,jsonb) OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_planned_policy_snapshot(jsonb,jsonb,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.reward_policy_binding_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE binding jsonb; expected_policy jsonb; year_value integer; uploaded boolean:=false;
+BEGIN
+ IF TG_OP='UPDATE' THEN
+  IF NEW.policy_group_version_id IS DISTINCT FROM OLD.policy_group_version_id OR
+   (OLD.policy_group_version_id IS NOT NULL AND (NEW.company_id IS DISTINCT FROM OLD.company_id
+    OR NEW.business_unit_id IS DISTINCT FROM OLD.business_unit_id OR NEW.kind IS DISTINCT FROM OLD.kind
+    OR NEW.cycle_id IS DISTINCT FROM OLD.cycle_id OR NEW.policy->'year' IS DISTINCT FROM OLD.policy->'year')) THEN
+   RAISE EXCEPTION 'reward policy lineage is immutable' USING ERRCODE='23514'; END IF;
+ ELSIF NEW.kind='annual' THEN
+  IF COALESCE(NEW.policy->>'year','') !~ '^(20[0-9]{2}|21[0-9]{2}|2200)$' THEN RAISE EXCEPTION 'reward policy year is invalid' USING ERRCODE='23514'; END IF;
+  year_value:=(NEW.policy->>'year')::integer;
+  IF current_user='ai_hr_reward_setup_reader' AND NEW.tenant_id=app.current_tenant_id() AND NEW.created_by=app.current_user_id() AND app.reward_setup_allowed(NEW.company_id,'manage') THEN
+   IF NEW.policy_group_version_id IS NULL THEN
+    IF EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='public.reward_company_exclusion'::regclass AND attname='award_type' AND NOT attisdropped) THEN
+     EXECUTE 'select exists(select 1 from public.reward_company_exclusion where tenant_id=$1 and company_id=$2 and year=$3 and ended_at is null and award_type=''uploaded'')' INTO uploaded USING NEW.tenant_id,NEW.company_id,year_value;
+    END IF;
+    IF NOT uploaded THEN RAISE EXCEPTION 'Uploaded annual participation is not active' USING ERRCODE='42501';END IF;
+   ELSE
+    SELECT app.reward_planned_policy_snapshot(src.policy,salary.data,bonus.data,pat.inputs) INTO expected_policy
+    FROM public.reward_plan_setup p
+    JOIN public.reward_plan_company c ON c.tenant_id=p.tenant_id AND c.plan_version_id=p.version_id AND c.company_id=NEW.company_id AND c.year=p.year
+    JOIN public.reward_policy_group_version src ON src.tenant_id=p.tenant_id AND src.id=p.version_id
+    CROSS JOIN LATERAL jsonb_array_elements(p.bindings) b
+    JOIN public.reward_library_version salary ON salary.tenant_id=p.tenant_id AND salary.id=(b->>'salaryVersionId')::uuid AND salary.state='confirmed'
+    JOIN public.reward_library_version bonus ON bonus.tenant_id=p.tenant_id AND bonus.id=(b->>'bonusVersionId')::uuid AND bonus.state='confirmed'
+    JOIN LATERAL(SELECT inputs FROM public.reward_pat_version pv WHERE pv.tenant_id=p.tenant_id AND pv.company_id=c.company_id AND pv.year=p.year AND pv.state='confirmed' ORDER BY pv.revision DESC LIMIT 1)pat ON true
+    WHERE p.tenant_id=NEW.tenant_id AND p.version_id=NEW.policy_group_version_id AND p.state='approved' AND p.year=year_value AND p.snapshot_date=NEW.snapshot_date AND b->>'companyId'=NEW.company_id::text AND b->>'businessUnitId'=NEW.business_unit_id::text;
+    IF expected_policy IS NULL OR NEW.policy IS DISTINCT FROM expected_policy THEN
+     RAISE EXCEPTION 'Reward policy snapshot does not match approved plan and applied inputs' USING ERRCODE='23514';
+    END IF;
+   END IF;
+  ELSIF current_user='ai_hr_app' THEN
+   RAISE EXCEPTION 'Use approved Rewards annual admission' USING ERRCODE='42501';
+  ELSE
+   binding:=app.reward_policy_for_review(NEW.policy_group_version_id,NEW.company_id,NEW.business_unit_id,year_value);
+   IF binding IS NOT NULL AND NEW.policy IS DISTINCT FROM binding->'policy' THEN RAISE EXCEPTION 'reward policy snapshot does not match selected version' USING ERRCODE='23514'; END IF;
+  END IF;
+ ELSIF NEW.policy_group_version_id IS NOT NULL THEN
+  RAISE EXCEPTION 'shared policy binds only a future annual review' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$$;

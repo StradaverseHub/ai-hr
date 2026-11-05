@@ -35367,6 +35367,10 @@
     "externalChannel": "[kênh bên ngoài do công ty chỉ định, ví dụ đường dây đạo đức]"
   },
   "rewardSetup": {
+    "libraryHistory": "Lịch sử thay đổi",
+    "libraryChangedValues": "Xem các giá trị thay đổi",
+    "libraryBefore": "Trước",
+    "libraryAfter": "Sau",
     "salaryStructures": "Cơ cấu lương",
     "bonusMatrices": "Ma trận thưởng",
     "patInputs": "Dữ liệu PAT",

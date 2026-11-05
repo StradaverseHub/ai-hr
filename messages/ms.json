@@ -35367,6 +35367,10 @@
     "externalChannel": "[saluran luar yang ditetapkan oleh syarikat, contohnya talian etika]"
   },
   "rewardSetup": {
+    "libraryHistory": "Sejarah perubahan",
+    "libraryChangedValues": "Lihat nilai yang berubah",
+    "libraryBefore": "Sebelum",
+    "libraryAfter": "Selepas",
     "salaryStructures": "Struktur Gaji",
     "bonusMatrices": "Matriks Bonus",
     "patInputs": "Input PAT",

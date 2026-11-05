@@ -35367,6 +35367,10 @@
     "externalChannel": "[ช่องทางภายนอกที่บริษัทกำหนด เช่น สายด่วนจริยธรรม]"
   },
   "rewardSetup": {
+    "libraryHistory": "ประวัติการเปลี่ยนแปลง",
+    "libraryChangedValues": "ดูค่าที่เปลี่ยนแปลง",
+    "libraryBefore": "ก่อน",
+    "libraryAfter": "หลัง",
     "salaryStructures": "โครงสร้างเงินเดือน",
     "bonusMatrices": "ตารางโบนัส",
     "patInputs": "ข้อมูล PAT",
