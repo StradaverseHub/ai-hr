@@ -142,6 +142,16 @@ it('profiles the complete shell DTO and exact admitted recent joiner count', asy
   });
   expect(sqlReads.some(text => text.includes('from "lc_onboarding_case"'))).toBe(false);
 
+  const foreign = await seedBase();
+  await setModule(foreign.tenantId, 'lifecycle', 'active');
+  const foreignAdmin = await entitledCtx(foreign);
+  await onboardingSetup(foreignAdmin);
+  expect(await onboardingNavigation(foreignAdmin)).toMatchObject({ module: true, master: true, joiners: 0 });
+  const fresh = await onboardingContext(admin);
+  fresh.config.access.onboarding = fresh.config.access.onboarding.filter(user => user !== memberId);
+  await onboardingSaveConfig(admin, fresh.revision, fresh.config);
+  expect(await onboardingNavigation(employee(memberId))).toMatchObject({ module: false, master: false, joiners: 0, checklists: 0 });
+
   // Earlier JSON restores can contain values outside the TypeScript model. Preserve the same JS
   // result on these unusual shapes without transferring healthy historical records to Node.
   const legacy = [
@@ -153,15 +163,6 @@ it('profiles the complete shell DTO and exact admitted recent joiner count', asy
   expect(legacy.map(row => visibleRecentJoiner(config, row.data, today))).toEqual([true, true, true, false]);
   await owner.db.insert(lcOnboardingCase).values(legacy);
   expect((await onboardingNavigation(admin)).joiners).toBe(expected + 3);
-  const foreign = await seedBase();
-  await setModule(foreign.tenantId, 'lifecycle', 'active');
-  const foreignAdmin = await entitledCtx(foreign);
-  await onboardingSetup(foreignAdmin);
-  expect(await onboardingNavigation(foreignAdmin)).toMatchObject({ module: true, master: true, joiners: 0 });
-  const fresh = await onboardingContext(admin);
-  fresh.config.access.onboarding = fresh.config.access.onboarding.filter(user => user !== memberId);
-  await onboardingSaveConfig(admin, fresh.revision, fresh.config);
-  expect(await onboardingNavigation(employee(memberId))).toMatchObject({ module: false, master: false, joiners: 0, checklists: 0 });
 
   const evidence = {
     kind: 'NATIVE_SHARED_ONBOARDING_SHELL_COUNT_COMPONENT_ONLY', releaseEligible: false, retainedRows: originalRows.length,
