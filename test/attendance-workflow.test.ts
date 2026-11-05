@@ -283,8 +283,19 @@ describe('scoped application history and reversible cancellation', () => {
         const { a, worker } = await fixture();
         await enable(a, input(['hr_admin']));
         const before = await day(worker.employmentId), id = await submit(a, worker.employmentId);
+        const originals = (await attendanceClockData(a, worker.employmentId, date)).rows;
         await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
-        const activePunches = (await attendanceClockData(a, worker.employmentId, date)).rows.filter(p => !p.voidedAt);
+        const correctedPunches = (await attendanceClockData(a, worker.employmentId, date)).rows;
+        const activePunches = correctedPunches.filter(p => !p.voidedAt);
+        expect(correctedPunches.filter(p => p.voidedAt).map(p => p.id)).toEqual(originals.map(p => p.id));
+        const voided = await owner.db.select({id: schema.domainEvent.aggregateId, payload: schema.domainEvent.payload})
+            .from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType, 'attendance.punch.voided'),
+                sql`${schema.domainEvent.payload}->>'correctionId'=${id}`)).orderBy(asc(schema.domainEvent.sequence));
+        expect(voided.map(event => event.id)).toEqual(originals.map(p => p.id));
+        expect(voided.map(event => event.payload)).toMatchObject(originals.map(punch => ({
+            before: {punchAt: punch.punchAt, direction: punch.direction},
+            after: {voidedBy: a.userId, voidReason: 'Verified clock correction'},
+        })));
         const added = await owner.db.select({ id: schema.domainEvent.aggregateId, payload: schema.domainEvent.payload })
             .from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType, 'attendance.punch.added'),
                 sql`${schema.domainEvent.payload}->>'correctionId'=${id}`)).orderBy(asc(schema.domainEvent.sequence));
