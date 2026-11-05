@@ -10,7 +10,7 @@
  *
  * Future dates (Aug 2026) so no backdating/advance-notice gate interferes. 2026-08-10..12 = Mon–Wed (3 wd).
  */
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -120,6 +120,28 @@ afterAll(async () => {
 });
 
 describe('editLeaveRequest — pending edit', () => {
+  it('allows an own pending edit while another transaction shares the Access lock', async () => {
+    const id = await pendingThreeDay();
+    let edit: ReturnType<typeof editLeaveRequest> | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await owner.db.transaction(async tx => {
+        await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + b.tenantId},0))`);
+        edit = editLeaveRequest(subjectCtx, {
+          leaveRequestId: id, leaveTypeId: b.annualLeaveTypeId,
+          startDate: '2026-08-10', endDate: '2026-08-11',
+        });
+        const result = await Promise.race([edit, new Promise<null>(resolve => {
+          timeout = setTimeout(() => resolve(null), 5000);
+        })]);
+        expect(result).toEqual({leaveRequestId: id, days: 2});
+      });
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      await edit?.catch(() => undefined);
+    }
+  });
+
   it('edits a pending leave in place, keeps it pending, recomputes days, appends leave-request.edited', async () => {
     const id = await pendingThreeDay();
     expect((await rowOf(id)).days).toBe('3.00');

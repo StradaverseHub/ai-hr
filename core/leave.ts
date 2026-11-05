@@ -5966,8 +5966,9 @@ export async function lockLeaveRequestDependenciesTx(tx: Tx, ctx: SessionContext
 
 async function readLeaveRequestWithDependenciesTx<T extends { employmentId: string }>(
   tx: Tx, ctx: SessionContext, requestId: string, readCurrent: () => PromiseLike<readonly T[]>,
+  sharedAccessHeld = false,
 ): Promise<T> {
-  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  if (!sharedAccessHeld) await lockAccessConfigurationTx(tx, ctx.tenantId);
   await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
   const [nominated] = await tx.select({ employmentId: leaveRequest.employmentId }).from(leaveRequest)
     .where(eq(leaveRequest.id, requestId)).limit(1);
@@ -7767,42 +7768,45 @@ export async function adminCancelLeave(
  * {before, after, diff} for the audit trail (CLAUDE.md substrate discipline).
  */
 export async function editLeaveRequest(
-  ctx: SessionContext,
-  p: {
-    leaveRequestId: string;
-    leaveTypeId: string;
-    startDate: string;
-    endDate: string;
-    reason?: string;
-    employeeRemark?: string;
-    durationType?: LeaveDurationType;
-    fromTime?: string;
-    toTime?: string;
-    today?: string;
-  },
+  ctx: SessionContext, p: LeaveEditInput,
 ): Promise<{ leaveRequestId: string; days: number }> {
-  const { leaveRequestId, days } = await withTenant(ctx, (tx) => editLeaveRequestTx(tx, ctx, p));
-  return { leaveRequestId, days };
+  const {leaveRequestId, days} = await withTenant(ctx, async tx => {
+    if (ctx.userId && ctx.personId && !ctx.agent && !isAdmin(ctx)) {
+      // This owned transaction edits a pending request and its approval steps. Access
+      // configuration writers still exclude it, and the subject dependency remains exclusive.
+      await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + ctx.tenantId},0))`);
+      const [principal] = await tx.execute<{current: boolean}>(sql`
+        select (app.principal_snapshot_current() and app.is_self_person(${ctx.personId}::uuid)) as current
+      `);
+      if (principal?.current !== true) throw new LeaveEditNotAllowedError('only the employee who applied can edit their leave');
+      return editLeaveRequestInTransaction(tx, ctx, p, true);
+    }
+    return editLeaveRequestTx(tx, ctx, p);
+  });
+  return {leaveRequestId, days};
 }
 
-/** editLeaveRequest in the caller's transaction (ADR-0151): returns the edited event id for the Assistant's
- *  leave-edit review receipt. Same gates, same writes. */
-export async function editLeaveRequestTx(
-  tx: Tx,
-  ctx: SessionContext,
-  p: {
-    leaveRequestId: string;
-    leaveTypeId: string;
-    startDate: string;
-    endDate: string;
-    reason?: string;
-    employeeRemark?: string;
-    durationType?: LeaveDurationType;
-    fromTime?: string;
-    toTime?: string;
-    today?: string;
-  },
-): Promise<{ leaveRequestId: string; days: number; eventId: string }> {
+type LeaveEditInput = {
+  leaveRequestId: string;
+  leaveTypeId: string;
+  startDate: string;
+  endDate: string;
+  reason?: string;
+  employeeRemark?: string;
+  durationType?: LeaveDurationType;
+  fromTime?: string;
+  toTime?: string;
+  today?: string;
+};
+
+/** Caller-owned transaction used by the Assistant's reviewed action. */
+export function editLeaveRequestTx(tx: Tx, ctx: SessionContext, p: LeaveEditInput) {
+  return editLeaveRequestInTransaction(tx, ctx, p, false);
+}
+
+async function editLeaveRequestInTransaction(
+  tx: Tx, ctx: SessionContext, p: LeaveEditInput, sharedAccessHeld: boolean,
+): Promise<{leaveRequestId: string; days: number; eventId: string}> {
   {
     const row = await readLeaveRequestWithDependenciesTx(tx, ctx, p.leaveRequestId, () => tx
       .select({
@@ -7815,7 +7819,7 @@ export async function editLeaveRequestTx(
       .from(leaveRequest)
       .leftJoin(employment, eq(employment.id, leaveRequest.employmentId))
       .where(eq(leaveRequest.id, p.leaveRequestId))
-      .limit(1));
+      .limit(1), sharedAccessHeld);
 
     // A visible request with a hidden or different subject still fails the creator-only rule.
     const { request: req, subjectPersonId } = row;
