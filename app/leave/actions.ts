@@ -6,7 +6,8 @@ import { leaveSelfReturnUrl,withLeaveEmploymentContext } from '@/lib/leave-retur
 import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { listLeaveTypes, myEmployment,myOwnEmploymentSubjects } from '@/core/read';
+import { isOwnProfileEditEmploymentTx, listLeaveTypes, myEmployment, myOwnEmploymentSubjects } from '@/core/read';
+import { withTenant } from '@/db/client';
 import {
   // 65f466e2 — role-aware identity, replacing a dead `code === 'EMERGENCY'` comparison.
   leaveTypeIs,
@@ -183,9 +184,12 @@ export async function requestLeaveAction(formData: FormData) {
   let refusedOnBehalf = false;
   try {
     if(formData.getAll('employmentId').length>1)throw Error('Choose one employment.');
-    if(postedEmploymentId){
-      const ownActive=await myOwnEmploymentSubjects(session,{profileEdit:true});
-      selectedOwnReturnId=ownActive.find(row=>row.employmentId===postedEmploymentId)?.employmentId;
+    // Match the canonical IDs previously returned by the employment inventory.
+    if (
+      /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(postedEmploymentId) &&
+      await withTenant(session, (tx) => isOwnProfileEditEmploymentTx(tx, session, postedEmploymentId))
+    ) {
+      selectedOwnReturnId = postedEmploymentId;
     }
     // Orphan-prevention: validate the file BEFORE requestLeave commits the row + event, so a
     // disallowed/oversized file is rejected with no committed pending request left behind.
@@ -210,13 +214,13 @@ export async function requestLeaveAction(formData: FormData) {
     // subject who is not the caller unless the caller holds `leave.apply_on_behalf` (LeaveOnBehalfNotAllowedError,
     // localized below). This line is unchanged on purpose: the fallback is what a self-service submit relies
     // on, and re-deriving the employment here would only move the check to the weaker of the two places.
-    const ownEmploymentId = (await myEmployment(session))?.employmentId;
+    const ownEmploymentId = selectedOwnReturnId ?? (await myEmployment(session))?.employmentId;
     const employmentId = postedEmploymentId || ownEmploymentId;
     if (!employmentId) {
       throw new Error('No employment on record for this account.');
     }
     refusedEmploymentId = employmentId;
-    refusedOnBehalf = employmentId !== ownEmploymentId&&selectedOwnReturnId===undefined;
+    refusedOnBehalf = employmentId !== ownEmploymentId;
     const res = await requestLeave(session, {
       employmentId,
       leaveTypeId,
