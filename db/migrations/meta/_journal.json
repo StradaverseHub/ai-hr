@@ -4859,6 +4859,13 @@
       "when": 1793330001622,
       "tag": "2211_company_retention_approved_expansion",
       "breakpoints": true
+    },
+    {
+      "idx": 1500,
+      "version": "7",
+      "when": 1793330001700,
+      "tag": "2300_retire_job_architecture_workflows",
+      "breakpoints": true
     }
   ]
 }

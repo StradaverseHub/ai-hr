@@ -1,5 +1,4 @@
 vi.mock('../components/derived-organisation-fields',()=>({useDerivedOrganisation:()=>({data:{status:'legacy'},loading:false,failed:false}),DerivedOrganisationFields:()=>null}));
-vi.mock('../app/admin/personnel/approved-position-architecture-action',()=>({readApprovedPositionArchitecture:vi.fn(async()=>({value:null}))}));
 /**
  * r392 — item 685d2380 STEP 1, the draft's Employment tab ON THE SCREEN.
  *

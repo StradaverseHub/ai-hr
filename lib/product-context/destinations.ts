@@ -153,7 +153,6 @@ export const FORWARD_STUBS:ReadonlySet<string>=new Set(['/control-tower','/contr
  '/control-tower/agents/inventory','/control-tower/agents/orchestrator']);
 /** Native workflow grants and an active View As session cannot be inferred from a coarse role or module. */
 export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
- '/admin/job-architecture',
  '/admin/rewards/access/view-as',
  '/admin/rewards/bonus-matrices',
  '/admin/rewards/pat-inputs',
@@ -249,7 +248,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/lifecycle','everyone','lifecycle'],['/lifecycle/acknowledgement','everyone','lifecycle'],['/lifecycle/onboarding','everyone','lifecycle'],
  ['/lifecycle/onboarding/checklists','everyone','lifecycle'],['/lifecycle/requisitions/onboarding','everyone','lifecycle'],
  ['/lifecycle/v9','everyone','lifecycle'],['/manage/my-team','manager',null],['/me','everyone',null],['/me/calendar','everyone',null],['/me/cases','everyone',null],['/me/cases/new','everyone',null],
- ['/me/ea','everyone','payroll'],['/me/home','everyone',null],['/me/job-description','everyone',null],['/me/letters','everyone','employees'],['/me/lifecycle','everyone','lifecycle'],
+ ['/me/ea','everyone','payroll'],['/me/home','everyone',null],['/me/letters','everyone','employees'],['/me/lifecycle','everyone','lifecycle'],
  ['/me/notifications','everyone','notifications'],['/me/payroll-readiness','everyone',null],['/me/payslip','everyone','payroll'],['/me/performance','everyone',null],
  ['/me/tax-relief','everyone','payroll'],['/me/tp3','everyone','payroll'],['/notices','everyone',null],['/org','everyone',null],
  ['/payroll','admin','payroll'],['/payroll/back-pay','admin','payroll'],['/payroll/borang-8a/preview','admin','payroll'],
