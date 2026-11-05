@@ -4985,6 +4985,13 @@
       "when": 1793330001669,
       "tag": "2212_payroll_audit_claim_lookup_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 1501,
+      "version": "7",
+      "when": 1793330001701,
+      "tag": "2301_attendance_workflow_submission_shared_lock",
+      "breakpoints": true
     }
   ]
 }

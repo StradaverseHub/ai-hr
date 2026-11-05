@@ -220,7 +220,10 @@ export async function prepareAttendanceWorkflowSnapshotTx(tx:Tx,ctx:SessionConte
     const [subject] = await tx.select({ companyId: employment.companyId }).from(employment).where(eq(employment.id, employmentId)).limit(1);
     if (!subject)
         throw new AttendanceWorkflowError('scope', 'The employee is not visible.');
-    await companyLock(tx, ctx.tenantId, subject.companyId, applicationType);
+    // Snapshot selection and the insert trigger share this key. Configuration
+    // writers and retirement still acquire it exclusively.
+    await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(
+        ${ctx.tenantId + ':attendance-workflow:' + subject.companyId + ':' + applicationType},0))`);
     const [config] = await tx.select().from(setting).where(and(eq(setting.companyId, subject.companyId), eq(setting.applicationType, applicationType)));
     if (!config?.enabled)
         return null;

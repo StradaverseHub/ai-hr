@@ -1,5 +1,16 @@
 # Coordinated migration reservations
 
+## Shared Attendance workflow submission lock — 6 November 2026 (unapplied)
+
+`codex/performance-staging-integration-20261105` reserves
+`2301_attendance_workflow_submission_shared_lock`, idx 1501, when 1793330001701,
+above the observed `2300` reservation. The isolated candidate retains its
+existing journal prefix and appends this migration without importing 2300.
+The migration preserves the trigger owner, grants, and checks and changes only
+the lock mode for workflow request insertion. Configuration writers retain the
+exclusive lock on the same key. Recheck the integrated journal and installed
+watermark before deployment.
+
 ## Combined performance integration — 5 November 2026 (unapplied)
 
 `codex/performance-staging-integration-20261105` preserves the 694-entry main/alpha
