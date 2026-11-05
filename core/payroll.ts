@@ -11446,11 +11446,12 @@ const batchRegisterSlipColumns = {
 };
 
 function batchPayslipRead<T extends SelectedFields>(tx: Tx, batchId: string, columns: T, employmentIds?: readonly string[]) {
+  const selectedIds = employmentIds && '{' + employmentIds.join(',') + '}';
   return tx.select(columns)
     .from(payslip)
     .innerJoin(employment, eq(employment.id, payslip.employmentId))
     .innerJoin(person, eq(person.id, employment.personId))
-    .where(and(eq(payslip.batchId, batchId), employmentIds && inArray(payslip.employmentId, employmentIds)));
+    .where(and(eq(payslip.batchId, batchId), selectedIds && sql`${payslip.employmentId} = any(${selectedIds}::uuid[])`));
 }
 
 export function batchDetail(ctx: SessionContext, batchId: string) {
@@ -11485,7 +11486,10 @@ export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, pag
 
 /** Run-wide stale banner identities, including people outside the visible register page. */
 export function listBatchRecalcPayslipIdentities(ctx: SessionContext, batchId: string, employmentIds: readonly string[]) {
-  if (employmentIds.length === 0) return Promise.resolve([]);
+  // The prior JS join matched the exact lowercase IDs returned by Postgres. Invalid or differently
+  // formatted IDs in a retained event did not match any payslip.
+  const ids = employmentIds.filter(id => /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(id));
+  if (ids.length === 0) return Promise.resolve([]);
   return withTenant(ctx, async tx => {
     const batch = await readBatchHeaderTx(tx, batchId);
     if (!batch) return [];
@@ -11493,7 +11497,7 @@ export function listBatchRecalcPayslipIdentities(ctx: SessionContext, batchId: s
       employmentId: payslip.employmentId,
       name: person.fullName,
       employeeCode: employment.employeeCode,
-    }, employmentIds).orderBy(asc(person.fullName), asc(payslip.id));
+    }, ids).orderBy(asc(person.fullName), asc(payslip.id));
   });
 }
 

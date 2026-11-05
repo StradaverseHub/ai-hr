@@ -84,7 +84,7 @@ it('reads the exact effective header and visible slip count without exporting di
  }
  const firstPage=registerRows.slice(0,25),offPage=registerRows.at(-1)!;
  expect(firstPage.some(row=>row.employmentId===offPage.employmentId)).toBe(false);
- const bannerIds=[offPage.employmentId,extra[0].employmentId];
+ const bannerIds=[offPage.employmentId,extra[0].employmentId,firstPage[0].employmentId.toUpperCase(),'not-a-uuid'];
  expect(await listBatchRecalcPayslipIdentities(root,batchId,bannerIds)).toEqual([{
   employmentId:offPage.employmentId,name:offPage.name,employeeCode:offPage.employeeCode,
  }]);
