@@ -26,6 +26,7 @@ import { randomUUID } from 'node:crypto';
 import { notificationEmailCategory, type NotificationEmailCategory } from '../lib/notification-email-model';
 import {assertNotificationSweepConnection,noticeNotificationRecipientsTx,noticeSnapshotIdsTx,type NoticeRecipientReader,type NoticeEventReader,probationSweepRecipientsForTx,type NoticeSweepAccess,type NotificationSweepConnection} from './notice-projection';
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { unionAll } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   appUser,
@@ -1396,9 +1397,16 @@ export function notificationBellSummary(ctx: SessionContext, scope: { letterComp
       unread: sql<number>`count(*) filter (where ${notification.severity} <> 'action')::int`,
       taskCount: sql<number>`count(*) filter (where ${notification.severity} = 'action')::int`,
     }).from(notification).where(and(recipients, notificationWhere(ctx, undefined, { ...scope, read: false })));
-    const items = await notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: false, action: false });
-    const tasks = await notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: false, action: true });
-    const read = await notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: true });
+    // Bound each tab before combining it so history cannot crowd out unread or action items.
+    const previews = unionAll(
+      notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: false, action: false }),
+      notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: false, action: true }),
+      notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: true }),
+    ).as('bell_previews');
+    const rows = await tx.select().from(previews).orderBy(desc(previews.createdAt), desc(previews.id));
+    const items = rows.filter(row => row.readAt === null && row.severity !== 'action');
+    const tasks = rows.filter(row => row.readAt === null && row.severity === 'action');
+    const read = rows.filter(row => row.readAt !== null);
     return { unread: counts?.unread ?? 0, taskCount: counts?.taskCount ?? 0, items, tasks, read };
   });
 }
