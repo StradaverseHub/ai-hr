@@ -116,6 +116,17 @@ it('refuses queued Personnel scope, list and export reads while the tenant acces
   await expect(readPersonnelOverview(ctx, input, {})).resolves.toHaveProperty('employees.rows');
 });
 
+it('recovers a standalone Personnel read when a brief Access writer releases its lock', async () => {
+  let read: ReturnType<typeof workforceViewScope> | undefined;
+  await owner.withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    read = workforceViewScope(ctx, { personnelList: true });
+    // The first attempts encounter the writer, then the successful attempt opens a fresh transaction.
+    await new Promise(resolve => setTimeout(resolve, 80));
+  });
+  await expect(read).resolves.toMatchObject({ companyIds: [b.companyId] });
+});
+
 it('retains unpaginated totals, status counts and company choices past the last Personnel row', async () => {
   const employee = await hire('Fictional Overview Employee');
   const companyIds = [b.companyId];
