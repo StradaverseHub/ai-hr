@@ -183,7 +183,7 @@ WITH CHECK (NOT EXISTS (SELECT 1 FROM app.reward_current_group_roles()) OR app.r
 -- Group Rewards may maintain setup. CTRO receives library view only, and
 -- Executive Chairman receives no configuration authority from this grant.
 GRANT EXECUTE ON FUNCTION app.reward_current_group_roles() TO ai_hr_reward_setup_reader;
-CREATE OR REPLACE FUNCTION app.reward_setup_allowed(wanted_company uuid,wanted_operation text) RETURNS boolean LANGUAGE sql STABLE SET search_path=pg_catalog,public,app AS $$
+CREATE OR REPLACE FUNCTION app.reward_setup_allowed(wanted_company uuid,wanted_operation text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  SELECT wanted_operation IN('library_view','manage')
  AND EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
  AND (wanted_company IS NULL OR EXISTS(SELECT 1 FROM company c WHERE c.id=wanted_company AND c.tenant_id=app.current_tenant_id()))
