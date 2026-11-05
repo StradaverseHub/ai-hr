@@ -31,7 +31,7 @@ async function storedProof(userId=b.adminUserId){const [row]=await owner.client`
 it('admits a real native account with existing PostgreSQL tenant/user/person IDs and still refuses its suspension',async()=>{
  const tenantId='11111111-1111-1111-1111-111111111111',userId='22222222-2222-2222-2222-222222222222',personId='33333333-3333-3333-3333-333333333333';
  await owner.client`insert into tenant(id,workos_org_id,name) values(${tenantId},${'org_legacy_'+randomUUID()},'Fictional legacy tenant')`;
- await owner.client`insert into person(id,tenant_id,full_name) values(${personId},${tenantId},'Fictional legacy administrator')`;
+ await owner.client`insert into person(id,tenant_id,full_name,primary_email) values(${personId},${tenantId},'Fictional legacy administrator','legacy-administrator@admission.test')`;
  await owner.client`insert into app_user(id,tenant_id,workos_user_id,person_id) values(${userId},${tenantId},${'user_legacy_'+randomUUID()},${personId})`;
  await owner.client`insert into role_assignment(tenant_id,app_user_id,company_id,role) values(${tenantId},${userId},null,'hr_admin')`;
  const [company]=await owner.client`insert into company(tenant_id,legal_name) values(${tenantId},'Fictional legacy company') returning id`;
