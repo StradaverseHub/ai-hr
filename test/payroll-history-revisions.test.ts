@@ -41,6 +41,12 @@ beforeEach(async()=>{
 afterAll(closeAll);
 
 describe('immutable payroll history correction and recovery',()=>{
+ it('revert eligibility is repeatable and adds no native request, history, audit or money effects',async()=>{
+  const confirmed=await confirm(await upload());
+  const state=async()=>({attempts:await owner.db.select().from(schema.payrollHistoryImportAttempt),records:await owner.db.select().from(schema.payrollHistoryImportRecord),snapshots:await owner.db.select().from(schema.payrollHistoryImportSnapshot),revisions:await owner.db.select().from(schema.payrollHistoryImportRevision),history:await owner.db.select().from(schema.payrollHistoryImportEvent),events:await owner.db.select().from(schema.domainEvent),batches:await owner.db.select().from(schema.payrollBatch),payslips:await owner.db.select().from(schema.payslip)});
+  const before=await state(),first=await previewPayrollHistoryRevert(ctx,confirmed.attemptId),again=await previewPayrollHistoryRevert(ctx,confirmed.attemptId);
+  expect(first).toEqual(again);expect(first.count).toBe(1);expect(await state()).toEqual(before);
+ });
  it('preserves original rows while replacing and reverting the effective money exactly once',async()=>{
   const first=await upload();expect(first.plan.counts).toEqual({created:1,replaced:0,unchanged:0,invalid:0});
   const initial=await confirm(first);expect(payrollPublicationState((await listBatches(ctx,[b.companyId]))[0])).toBe('history');await expect(paymentSummaryForBatch(ctx,(await listBatches(ctx,[b.companyId]))[0].id)).rejects.toThrow(/Imported history/);const original=(await effective())[0];expect(Number(original.grossPay)).toBe(5000);

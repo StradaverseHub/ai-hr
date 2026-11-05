@@ -355,6 +355,7 @@ async function revertTargetsTx(tx:Tx,ctx:SessionContext,source:RevertSource,lock
 /** User-requested read-only eligibility review. No recovery event or money changes occur here. */
 export async function previewPayrollHistoryRevert(ctx:SessionContext,id:string){
  assertModuleGate(ctx,'payroll');if(!uuid.test(id))fail('Import attempt unavailable.');return withTenant(ctx,async tx=>{
+  await tx.execute(sql`set transaction read only`);
   await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await principal(tx,ctx);
   const [source]=await tx.select({id:attempt.id,companyIds:attempt.companyIds}).from(attempt).where(eq(attempt.id,id));if(!source)fail('Import attempt unavailable.');const plan=await revertTargetsTx(tx,ctx,source,false);
   return {attemptId:id,count:plan.targets.length,previewHash:plan.previewHash};
