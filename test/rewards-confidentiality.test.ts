@@ -7,7 +7,7 @@ import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { createRewardUnit, getRewardUnit, importRewardFacts, refreshRewardSources, saveRewardEntry } from '../packs/rewards/service';
+import { getRewardUnit, importRewardFacts, refreshRewardSources, saveRewardEntry } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -64,15 +64,19 @@ describe('Rewards derived confidentiality', () => {
 
   it('hides a BG direct report from the BU CEO and PBP and an EC direct report from all but GR/CTRO/EC, totals unchanged', async () => {
     const gr = await view();
+    const visibleIds = (v: Awaited<ReturnType<typeof view>>) => v.rows.map(r => r.source.employmentId).sort();
+    const idsFor = (...keys: string[]) => keys.map(key => emp[key].employmentId).sort();
+    // The company-wide review includes the seat holders. The own-row rule still applies.
+    expect(visibleIds(gr)).toEqual(idsFor('bgCeo', 'chairman', 'bgReport', 'ecReport', 'plain'));
     for (const role of ['bu', 'pbp'] as const) {
       const v = await view(actors[role]);
-      expect(v.rows.map(r => r.source.employmentId)).toEqual([emp.plain.employmentId]);
+      expect(visibleIds(v)).toEqual(idsFor('bgCeo', 'chairman', 'plain'));
       expect(v.hiddenCount).toBe(2);
       expect(v.budgets.standard.payrollCents).toBe(gr.budgets.standard.payrollCents);
     }
-    const bg = await view(actors.bg);
-    expect(bg.rows.map(r => r.source.employmentId).sort()).toEqual([emp.bgReport.employmentId, emp.plain.employmentId].sort());
-    for (const role of ['ctro', 'ec'] as const) expect((await view(actors[role])).rows).toHaveLength(3);
+    expect(visibleIds(await view(actors.bg))).toEqual(idsFor('chairman', 'bgReport', 'plain'));
+    expect(visibleIds(await view(actors.ctro))).toEqual(visibleIds(gr));
+    expect(visibleIds(await view(actors.ec))).toEqual(idsFor('bgCeo', 'bgReport', 'ecReport', 'plain'));
   });
 
   it('Group Rewards can make a marking stricter but never lower, by screen or import', async () => {
