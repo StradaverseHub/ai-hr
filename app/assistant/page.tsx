@@ -26,6 +26,7 @@ import {SpecialistJobComposer} from '@/components/assistant/module-specialist-re
 import { WorkspaceConversation } from '@/components/assistant/workspace-conversation';
 import { ExchangeReply } from '@/components/assistant/exchange-reply';
 import Link from 'next/link';
+import {CentreNavigationLink} from '@/components/ai-centre/centre-navigation-link';
 import { isGroupAdmin } from '@/lib/authz';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { viewerIdentity } from '@/lib/viewer';
@@ -196,7 +197,7 @@ export default async function AssistantPage({
           <h2 id="ai-ask-shortcuts" className="text-base font-semibold">{a('tools.shortcuts')}</h2>
           <ul className="flex flex-wrap gap-2">
             <li><Link href="/" className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('home.tabs')}</Link></li>
-            <li><Link href="/assistant?view=privacy" className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{a('privacyLink')}</Link></li>
+            <li><CentreNavigationLink intent={false} href="/assistant?view=privacy" className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{a('privacyLink')}</CentreNavigationLink></li>
           </ul>
           <PersonnelReviewNavigation ctx={s}/>
         </section>
