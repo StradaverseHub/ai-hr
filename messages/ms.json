@@ -36005,6 +36005,9 @@
     }
   },
   "rewardUploaded": {
+    "adjustmentHistory": "Sejarah pelarasan",
+    "acceptedRows": "Baris diterima",
+    "employee": "Pekerja",
     "refreshSources": "Muat semula sumber Gaji",
     "refreshHelp": "Fail lama kekal dalam sejarah. Muat turun templat baharu, gantikan fail dan minta penyemak Group Rewards yang lain menyemaknya.",
     "newUploadRequired": "Muat naik baharu diperlukan",

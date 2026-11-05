@@ -88,7 +88,7 @@ BEGIN
  PERFORM app.access_workforce_write_lock();PERFORM pg_advisory_xact_lock(hashtextextended(t::text||':company-year:'||wanted_company::text||':'||wanted_year::text,2203));
  IF NOT app.reward_setup_allowed(wanted_company,'manage') OR NOT app.reward_not_viewing_as() THEN RAISE EXCEPTION 'Group Rewards creation authority required';END IF;
  company_tags:=app.reward_company_structure(wanted_company,wanted_snapshot);IF company_tags->>'status' IS DISTINCT FROM 'ready' OR nullif(company_tags->>'businessUnitId','')::uuid IS DISTINCT FROM wanted_business_unit THEN RAISE EXCEPTION 'Confirmed dated company Business unit required for an uploaded review';END IF;
- IF wanted_snapshot>timezone('Asia/Kuala_Lumpur',now())::date OR wanted_policy->>'year'<>wanted_year::text OR(wanted_cycle IS NOT NULL AND NOT EXISTS(SELECT 1 FROM reward_cycle WHERE id=wanted_cycle AND tenant_id=t AND year=wanted_year)) OR NOT EXISTS(SELECT 1 FROM reward_company_exclusion WHERE tenant_id=t AND company_id=wanted_company AND year=wanted_year AND ended_at IS NULL AND award_type='uploaded') THEN RAISE EXCEPTION 'Select an uploaded-awards company and current cycle';END IF;
+ IF wanted_snapshot IS NULL OR wanted_snapshot>timezone('Asia/Kuala_Lumpur',now())::date OR wanted_policy->>'year' IS DISTINCT FROM wanted_year::text OR(wanted_cycle IS NOT NULL AND NOT EXISTS(SELECT 1 FROM reward_cycle WHERE id=wanted_cycle AND tenant_id=t AND year=wanted_year)) OR NOT EXISTS(SELECT 1 FROM reward_company_exclusion WHERE tenant_id=t AND company_id=wanted_company AND year=wanted_year AND ended_at IS NULL AND award_type='uploaded') THEN RAISE EXCEPTION 'Select an uploaded-awards company and current cycle';END IF;
  IF EXISTS(SELECT 1 FROM reward_company_year_review WHERE tenant_id=t AND company_id=wanted_company AND year=wanted_year) OR EXISTS(SELECT 1 FROM reward_unit u JOIN reward_cycle c ON c.id=u.cycle_id AND c.tenant_id=u.tenant_id WHERE u.tenant_id=t AND u.company_id=wanted_company AND c.year=wanted_year AND u.deleted_at IS NULL AND u.kind='annual') THEN RAISE EXCEPTION 'Company already has a review for this year';END IF;
  IF wanted_cycle IS NULL THEN IF NOT app.reward_setup_allowed(NULL,'manage') OR length(trim(coalesce(wanted_cycle_name,''))) NOT BETWEEN 1 AND 160 THEN RAISE EXCEPTION 'Group-wide Rewards authority and a cycle name are required';END IF;INSERT INTO reward_cycle(tenant_id,name,year,created_by) VALUES(t,trim(wanted_cycle_name),wanted_year,actor) RETURNING id INTO wanted_cycle;END IF;
  INSERT INTO reward_unit(id,tenant_id,created_by,cycle_id,company_id,business_unit_id,policy,snapshot_date) VALUES(unit,t,actor,wanted_cycle,wanted_company,wanted_business_unit,wanted_policy,wanted_snapshot);
@@ -211,7 +211,7 @@ GRANT UPDATE(uploaded_award_digest) ON reward_unit TO ai_hr_reward_upload_reader
 CREATE POLICY reward_upload_digest_write ON reward_unit FOR UPDATE TO ai_hr_reward_upload_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM app.reward_roles(id))) WITH CHECK(tenant_id=app.current_tenant_id());
 CREATE POLICY reward_upload_private_owner ON reward_uploaded_award FOR SELECT TO ai_hr_reward_upload_reader USING(tenant_id=app.current_tenant_id());
 CREATE FUNCTION app.reward_uploaded_award_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
-DECLARE r reward_entry%ROWTYPE;u reward_unit%ROWTYPE;a jsonb;wanted uuid;target uuid;version integer;roles text[];
+DECLARE r reward_entry%ROWTYPE;u reward_unit%ROWTYPE;a jsonb;wanted uuid;target uuid;version integer;roles text[];basis numeric;bp numeric;
 BEGIN
  wanted:=CASE WHEN TG_OP='DELETE' THEN OLD.unit_id ELSE NEW.unit_id END;target:=CASE WHEN TG_OP='DELETE' THEN OLD.entry_id ELSE NEW.entry_id END;
  SELECT * INTO u FROM reward_unit WHERE id=wanted AND tenant_id=app.current_tenant_id();SELECT * INTO r FROM reward_entry WHERE id=target AND unit_id=wanted AND tenant_id=app.current_tenant_id();
@@ -228,6 +228,12 @@ BEGIN
   IF version IS NULL OR NOT(NEW.source_version=version OR u.status='draft' AND 'gr'=ANY(roles) AND NEW.source_version=version+1 AND EXISTS(SELECT 1 FROM reward_uploaded_version v WHERE v.unit_id=wanted AND v.tenant_id=r.tenant_id AND v.version=NEW.source_version AND v.uploaded_by=app.current_user_id())) THEN RAISE EXCEPTION 'Uploaded award version is stale';END IF;
   a:=NEW.award;IF jsonb_typeof(a->'newBasicCents') IS DISTINCT FROM 'number' OR jsonb_typeof(a->'bonusCents') IS DISTINCT FROM 'number' OR jsonb_typeof(a->'lumpCents') IS DISTINCT FROM 'number' THEN RAISE EXCEPTION 'Uploaded amounts must be nonnegative integer minor units';END IF;
   IF a->>'employmentId' IS DISTINCT FROM r.employment_id::text OR a->>'incrementType' IS NULL OR a->>'incrementType' NOT IN('merit','promotion','special') OR(a->>'newBasicCents')::numeric IS NULL OR(a->>'newBasicCents')::numeric<(r.source->>'basicCents')::numeric OR(a->>'newBasicCents')::numeric<>trunc((a->>'newBasicCents')::numeric) OR(a->>'bonusCents')::numeric<0 OR(a->>'lumpCents')::numeric<0 OR(a->>'bonusCents')::numeric<>trunc((a->>'bonusCents')::numeric) OR(a->>'lumpCents')::numeric<>trunc((a->>'lumpCents')::numeric) THEN RAISE EXCEPTION 'Invalid uploaded amounts or identity';END IF;
+  basis:=(r.source->>'basicCents')::numeric;
+  IF basis IS NULL OR basis<=0 OR r.source->>'currency' IS DISTINCT FROM 'MYR' OR r.source->>'leftOn' IS NOT NULL OR NOT app.reward_uploaded_source_current(wanted,r.employment_id) OR greatest((a->>'newBasicCents')::numeric,(a->>'bonusCents')::numeric,(a->>'lumpCents')::numeric)>9007199254740991 THEN RAISE EXCEPTION 'An active employee needs a current supported Payroll salary';END IF;
+  IF a->>'incrementBp' IS NOT NULL THEN
+   bp:=(a->>'incrementBp')::numeric;IF jsonb_typeof(a->'incrementBp')<>'number' OR bp<>trunc(bp) OR bp NOT BETWEEN 0 AND 1000000 OR (a->>'newBasicCents')::numeric<>basis+floor(basis*bp/10000+0.5) THEN RAISE EXCEPTION 'Uploaded increment and basic salary disagree';END IF;
+  END IF;
+  IF a->>'incrementType'<>'promotion' AND a->>'newGrade' IS NOT NULL THEN RAISE EXCEPTION 'A new grade is available only for a promotion';END IF;
   IF a->>'incrementType'='promotion' AND (SELECT count(*) FROM job_grade g WHERE g.tenant_id=r.tenant_id AND app.architecture_grade_assignable(g.id) AND app.architecture_grade(g.code)=a->>'newGrade')<>1 THEN RAISE EXCEPTION 'Promotion grade must be active';END IF;
  END IF;
  RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
@@ -325,7 +331,7 @@ REVOKE ALL ON FUNCTION app.reward_refresh_uploaded_sources(uuid,integer,text) FR
 
 -- Uploaded money cannot enter or skip the approval route through a generic unit update.
 CREATE FUNCTION app.reward_uploaded_route_guard() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
 DECLARE upload reward_uploaded_review%ROWTYPE; roles text[]; needed text; action_name text; facts jsonb; last_actor uuid;
 BEGIN
  IF NEW.status=OLD.status THEN RETURN NEW; END IF;
@@ -355,8 +361,58 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM reward_decision d WHERE d.tenant_id=OLD.tenant_id AND d.unit_id=OLD.id AND d.revision=OLD.revision AND d.actor_id=app.current_user_id() AND d.action=action_name AND d.from_stage=OLD.status AND d.to_stage=NEW.status AND (action_name='return' OR d.digest=NEW.approved_digest) AND (NOT coalesce((facts->>'warnings')::boolean,false) AND action_name<>'return' OR length(trim(d.reason))>=10) AND d.xmin=pg_current_xact_id()::text::xid) THEN RAISE EXCEPTION 'The uploaded review requires its authorized decision in the same transaction'; END IF;
  RETURN NEW;
 END $$;
-GRANT SELECT ON reward_decision,reward_role_permission,reward_page_grant,reward_setup_grant TO ai_hr_reward_upload_reader;
-GRANT EXECUTE ON FUNCTION app.reward_not_viewing_as(),app.reward_capability(uuid,text),app.reward_role_native_capability(text,text),app.reward_member_eligible(uuid),app.reward_setup_allowed(uuid,text) TO ai_hr_reward_upload_reader;
-ALTER FUNCTION app.reward_uploaded_route_guard() OWNER TO ai_hr_reward_upload_reader;
 REVOKE ALL ON FUNCTION app.reward_uploaded_route_guard() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_uploaded_route_guard() TO ai_hr_app;
 CREATE TRIGGER reward_uploaded_route_guard BEFORE UPDATE OF status ON reward_unit FOR EACH ROW EXECUTE FUNCTION app.reward_uploaded_route_guard();
+
+-- Only the canonical dated source owner may replace uploaded source identity, grade or salary.
+-- The existing Access owner can still update only confidentiality markings when seats change.
+CREATE FUNCTION app.reward_uploaded_source_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF current_user='ai_hr_reward_setup_reader' OR NOT EXISTS(SELECT 1 FROM reward_uploaded_review r WHERE r.unit_id=NEW.unit_id AND r.tenant_id=NEW.tenant_id) THEN RETURN NEW; END IF;
+ IF TG_OP='INSERT' THEN RAISE EXCEPTION 'Create uploaded source entries through the dated Payroll snapshot' USING ERRCODE='42501'; END IF;
+ IF OLD.unit_id IS DISTINCT FROM NEW.unit_id OR OLD.tenant_id IS DISTINCT FROM NEW.tenant_id OR OLD.employment_id IS DISTINCT FROM NEW.employment_id OR (OLD.source-ARRAY['confidentialityFloor','confidentialityReason']) IS DISTINCT FROM (NEW.source-ARRAY['confidentialityFloor','confidentialityReason']) THEN RAISE EXCEPTION 'Refresh uploaded source identity and salary through the dated Payroll snapshot' USING ERRCODE='42501'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER reward_uploaded_source_guard BEFORE INSERT OR UPDATE OF unit_id,tenant_id,employment_id,source ON reward_entry FOR EACH ROW EXECUTE FUNCTION app.reward_uploaded_source_guard();
+
+ALTER TABLE reward_uploaded_version ADD CONSTRAINT reward_uploaded_version_evidence_format CHECK(
+ (evidence_name IS NULL AND evidence_mime IS NULL AND evidence_content IS NULL) OR
+ (evidence_name IS NOT NULL AND evidence_mime IS NOT NULL AND evidence_content IS NOT NULL AND length(trim(evidence_name)) BETWEEN 1 AND 200 AND length(evidence_content) BETWEEN 4 AND 6666668 AND evidence_content~'^[A-Za-z0-9+/]+={0,2}$'
+  AND CASE evidence_mime
+   WHEN 'application/pdf' THEN substring(decode(evidence_content,'base64') from 1 for 5)=decode('255044462d','hex')
+   WHEN 'image/png' THEN substring(decode(evidence_content,'base64') from 1 for 8)=decode('89504e470d0a1a0a','hex')
+   WHEN 'image/jpeg' THEN substring(decode(evidence_content,'base64') from 1 for 3)=decode('ffd8ff','hex')
+   ELSE false END AND octet_length(decode(evidence_content,'base64'))<=5000000)
+);
+
+-- Exact before/after money stays with the private award, never in the general tenant event payload.
+CREATE TABLE reward_uploaded_adjustment(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),unit_id uuid NOT NULL REFERENCES reward_unit(id),
+ entry_id uuid NOT NULL REFERENCES reward_entry(id),source_version integer NOT NULL,stage text NOT NULL,actor_id uuid NOT NULL REFERENCES app_user(id),
+ changed_at timestamptz NOT NULL DEFAULT clock_timestamp(),before_award jsonb,after_award jsonb NOT NULL,reason text NOT NULL CHECK(length(trim(reason)) BETWEEN 10 AND 4000),
+ FOREIGN KEY(tenant_id,unit_id,source_version) REFERENCES reward_uploaded_version(tenant_id,unit_id,version)
+);
+CREATE INDEX reward_uploaded_adjustment_entry ON reward_uploaded_adjustment(tenant_id,unit_id,entry_id,changed_at DESC);
+ALTER TABLE reward_uploaded_adjustment ENABLE ROW LEVEL SECURITY;ALTER TABLE reward_uploaded_adjustment FORCE ROW LEVEL SECURITY;
+CREATE POLICY reward_uploaded_adjustment_read ON reward_uploaded_adjustment FOR SELECT TO ai_hr_app USING(
+ tenant_id=app.current_tenant_id() AND app.reward_private_entry_visible(unit_id,entry_id) AND
+ ('gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id))) OR EXISTS(SELECT 1 FROM reward_uploaded_review r WHERE r.unit_id=reward_uploaded_adjustment.unit_id AND r.tenant_id=reward_uploaded_adjustment.tenant_id AND r.current_version>0 AND r.checked_version=r.current_version))
+);
+CREATE POLICY reward_uploaded_adjustment_append ON reward_uploaded_adjustment FOR INSERT TO ai_hr_reward_upload_reader WITH CHECK(tenant_id=app.current_tenant_id() AND actor_id=app.current_user_id() AND app.reward_not_viewing_as());
+GRANT SELECT ON reward_uploaded_adjustment TO ai_hr_app;
+GRANT INSERT ON reward_uploaded_adjustment TO ai_hr_reward_upload_reader;
+CREATE FUNCTION app.reward_uploaded_adjustment_record() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE current_version integer;current_step text;prior jsonb;
+BEGIN
+ SELECT m.current_version,u.status INTO current_version,current_step FROM reward_uploaded_review m JOIN reward_unit u ON u.id=m.unit_id AND u.tenant_id=m.tenant_id WHERE m.unit_id=NEW.unit_id AND m.tenant_id=NEW.tenant_id AND m.checked_version=m.current_version;
+ IF current_version IS NULL OR NEW.source_version<>current_version THEN RETURN NEW; END IF;
+ prior:=CASE WHEN TG_OP='UPDATE' THEN OLD.award ELSE NULL END;
+ IF prior IS NOT DISTINCT FROM NEW.award THEN RETURN NEW; END IF;
+ INSERT INTO reward_uploaded_adjustment(tenant_id,unit_id,entry_id,source_version,stage,actor_id,before_award,after_award,reason)
+ VALUES(NEW.tenant_id,NEW.unit_id,NEW.entry_id,NEW.source_version,current_step,NEW.updated_by,prior,NEW.award,trim(NEW.award->>'remarks'));
+ RETURN NEW;
+END $$;
+ALTER FUNCTION app.reward_uploaded_adjustment_record() OWNER TO ai_hr_reward_upload_reader;
+REVOKE ALL ON FUNCTION app.reward_uploaded_adjustment_record() FROM PUBLIC;
+CREATE TRIGGER reward_uploaded_adjustment_record AFTER INSERT OR UPDATE ON reward_uploaded_award FOR EACH ROW EXECUTE FUNCTION app.reward_uploaded_adjustment_record();

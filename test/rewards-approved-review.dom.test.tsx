@@ -26,12 +26,13 @@ it('captures the populated role permission matrix and reason control',async()=>{
 
 it('previews an uploaded file with row diagnostics, disables save and captures the actual controls',async()=>{
  const id='30000000-0000-4000-8000-000000000010';
- ports.preview.mockResolvedValue({revision:5,accepted:[{employmentId:'30000000-0000-4000-8000-000000000011'}],rejected:[{row:3,reason:'Enter a valid nonnegative amount.'}],warnings:[{employmentId:'30000000-0000-4000-8000-000000000011',code:'notice'}],totals:{people:1,payrollCents:500000,incrementCents:50000,incrementBp:1000,bonusCents:10000,lumpCents:0}});
+ ports.preview.mockResolvedValue({ok:true,preview:{revision:5,accepted:[{employmentId:'30000000-0000-4000-8000-000000000011',employeeCode:'E-101',name:'Fictional award recipient',incrementType:'merit',newBasicCents:550000,bonusCents:10000,lumpCents:0}],rejected:[{row:3,reason:'Enter a valid nonnegative amount.'}],warnings:[{employmentId:'30000000-0000-4000-8000-000000000011',code:'notice'}],totals:{people:1,payrollCents:500000,incrementCents:50000,incrementBp:1000,bonusCents:10000,lumpCents:0}}});
  const view=render(<NextIntlClientProvider locale="en" messages={en}><UploadAwardsEditor unitId={id}/></NextIntlClientProvider>);
  const file=Object.assign(new File(['fictional'], 'review-awards.csv',{type:'text/csv'}),{text:async()=> 'fictional'});
  fireEvent.change(screen.getByLabelText(en.rewardUploaded.chooseFile),{target:{files:[file]}});
  expect((await screen.findByRole('status')).textContent).toContain('1');
  expect(screen.getByText(/3: Enter a valid nonnegative amount/)).toBeTruthy();
+ expect(screen.getByText(/Fictional award recipient · E-101/)).toBeTruthy();
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'Reviewed external company award file'}});
  expect(screen.getByRole('button',{name:en.rewardUploaded.save}).hasAttribute('disabled')).toBe(true);
  expect(ports.preview).toHaveBeenCalledWith(id,{csv:'fictional',name:'review-awards.csv'});
