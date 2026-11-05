@@ -45,16 +45,14 @@ export const ORG_FULL_GRAPH_LIMIT=200;
  */
 export async function orgChartEntry(ctx:SessionContext,companyIds:string[]|undefined){
  const actor={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))},scope=companyIds?.slice();
- const selected=await withOrgChartReadTx(actor,async tx=>{
-  const [size]=await tx.execute<{large:boolean}>(sql`with ${orgGraphRelations(sql`true`)}
-   select case when (select count(*) from(select id from live limit ${ORG_FULL_GRAPH_LIMIT+1})people)>${ORG_FULL_GRAPH_LIMIT} then true
-    else (select count(*) from(select id from native_edges limit ${ORG_FULL_GRAPH_LIMIT+1})edges)>${ORG_FULL_GRAPH_LIMIT} end as large`);
-  if(size.large)return {mode:'explorer' as const};
+ return withOrgChartReadTx(actor,async tx=>{
+  // Decide the mode and, for a large graph, read its first root window from the same
+  // visibility relation and statement snapshot. The small-chart branch does no window work.
+  const initial=await readOrgChartWindowTx(tx,scope,{view:'roots',q:''},true);
+  if(initial)return {mode:'explorer' as const,initial};
   const {orgChartData}=await import('./read');
   return {mode:'full' as const,...await orgChartData(actor,scope,tx)};
  });
- if(selected.mode==='full')return selected;
- return {mode:'explorer' as const,initial:await orgChartWindow(actor,scope,{view:'roots'})};
 }
 
 /** Company selection filters PEOPLE, matching the existing reader. Structural edge authorization
@@ -70,6 +68,13 @@ export async function orgChartWindow(ctx:SessionContext,companyIds:string[]|unde
  if(focused&&!request.focusId||!focused&&request.focusId!==undefined||request.view!=='search'&&request.q)throw new RangeError('Invalid organization window');
  const actor={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  const scope=companyIds?.slice();
+ return withOrgChartReadTx(actor,tx=>readOrgChartWindowTx(tx,scope,request));
+}
+
+type NormalizedOrgWindowRequest=OrgWindowRequest&{q:string};
+function readOrgChartWindowTx(tx:Tx,scope:string[]|undefined,request:NormalizedOrgWindowRequest,entry:true):Promise<OrgWindow|null>;
+function readOrgChartWindowTx(tx:Tx,scope:string[]|undefined,request:NormalizedOrgWindowRequest):Promise<OrgWindow>;
+async function readOrgChartWindowTx(tx:Tx,scope:string[]|undefined,request:NormalizedOrgWindowRequest,entry=false):Promise<OrgWindow|null>{
  const scopeWhere=scope?.length?sql`l.company_id in (${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)})`:sql`true`;
  const focus=sql`${request.focusId??null}::uuid`,after=sql`${request.after??null}::uuid`;
  let candidates:SQL;
@@ -92,9 +97,25 @@ export async function orgChartWindow(ctx:SessionContext,companyIds:string[]|unde
   const direction=request.view==='children'?'outgoing':request.view==='parents'?'incoming':null;
   candidates=sql`select n.id as row_key,n.name as sort_name,n.id as node_id,${relation}::text as type,${direction}::text as direction from eligible n where ${predicate}`;
  }
- return withOrgChartReadTx(actor,async tx=>{
-  const [result]=await tx.execute<{focus:OrgWindowNode|null;items:OrgWindowItem[];total_people:number;total_items:number;focus_exists:boolean;cursor_exists:boolean}>(sql`
-   with ${orgGraphRelations(scopeWhere)},candidates as materialized(${candidates}),selected as materialized(
+ const entryMode=entry?sql`entry_mode as materialized(
+  select case when (select count(*) from(select id from live limit ${ORG_FULL_GRAPH_LIMIT+1})people)>${ORG_FULL_GRAPH_LIMIT} then true
+   else (select count(*) from(select id from native_edges limit ${ORG_FULL_GRAPH_LIMIT+1})edges)>${ORG_FULL_GRAPH_LIMIT} end as large
+ ),`:sql``;
+ const windowRow=sql`
+  select (select value from node_details where id=${focus}) as focus,
+    coalesce((select jsonb_agg(jsonb_build_object('key',s.row_key,'node',d.value,'otherEmploymentId',s.node_id,
+      'type',s.type,'direction',s.direction,'inSelectedScope',d.id is not null)order by s.sort_name,s.row_key)
+      from selected s left join node_details d on d.id=s.node_id),'[]'::jsonb) as items,
+    (select count(*)::int from eligible) as total_people,(select count(*)::int from candidates) as total_items,
+    (${focus} is null or exists(select 1 from eligible where id=${focus})) as focus_exists,
+    (${after} is null or exists(select 1 from candidates where row_key=${after})) as cursor_exists,
+    true as window_ready`;
+ const resultRows=entry?sql`
+  ${windowRow} where (select large from entry_mode)
+  union all select null::jsonb,'[]'::jsonb,0::int,0::int,true,true,false where not (select large from entry_mode)
+ `:windowRow;
+ const [result]=await tx.execute<{focus:OrgWindowNode|null;items:OrgWindowItem[];total_people:number;total_items:number;focus_exists:boolean;cursor_exists:boolean;window_ready:boolean}>(sql`
+   with ${orgGraphRelations(scopeWhere)},${entryMode} candidates as materialized(${candidates}),selected as materialized(
     select c.* from candidates c where ${after} is null or (c.sort_name,c.row_key)>(select a.sort_name,a.row_key from candidates a where a.row_key=${after})
     order by c.sort_name,c.row_key limit ${ORG_WINDOW_SIZE+1}
    ),requested_nodes as materialized(select node_id as id from selected union select ${focus}),
@@ -108,18 +129,12 @@ export async function orgChartWindow(ctx:SessionContext,companyIds:string[]|unde
      where a.employment_id=n.id and a.valid_to is null and a.superseded_at is null
     ) labels
    )
-   select (select value from node_details where id=${focus}) as focus,
-    coalesce((select jsonb_agg(jsonb_build_object('key',s.row_key,'node',d.value,'otherEmploymentId',s.node_id,
-      'type',s.type,'direction',s.direction,'inSelectedScope',d.id is not null)order by s.sort_name,s.row_key)
-      from selected s left join node_details d on d.id=s.node_id),'[]'::jsonb) as items,
-    (select count(*)::int from eligible) as total_people,(select count(*)::int from candidates) as total_items,
-    (${focus} is null or exists(select 1 from eligible where id=${focus})) as focus_exists,
-    (${after} is null or exists(select 1 from candidates where row_key=${after})) as cursor_exists
-  `);
-  if(result.focus_exists!==true)throw new OrgWindowUnavailableError('focus');
-  if(result.cursor_exists!==true)throw new OrgWindowUnavailableError('cursor');
-  const items=result.items.slice(0,ORG_WINDOW_SIZE);
-  return {version:1 as const,view:request.view,focus:result.focus,items,totalPeople:Number(result.total_people),totalItems:Number(result.total_items),pageSize:ORG_WINDOW_SIZE,
-   nextCursor:result.items.length>ORG_WINDOW_SIZE?items.at(-1)!.key:null};
- });
+   ${resultRows}
+ `);
+ if(!result.window_ready)return null;
+ if(result.focus_exists!==true)throw new OrgWindowUnavailableError('focus');
+ if(result.cursor_exists!==true)throw new OrgWindowUnavailableError('cursor');
+ const items=result.items.slice(0,ORG_WINDOW_SIZE);
+ return {version:1 as const,view:request.view,focus:result.focus,items,totalPeople:Number(result.total_people),totalItems:Number(result.total_items),pageSize:ORG_WINDOW_SIZE,
+  nextCursor:result.items.length>ORG_WINDOW_SIZE?items.at(-1)!.key:null};
 }

@@ -3,12 +3,53 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
+import {lockAccessConfigurationReadTx} from '../core/access-configuration-lock';
 import {orgChartData} from '../core/read';
-import {orgChartEntry,orgChartWindow,OrgWindowUnavailableError,type OrgWindowRequest} from '../core/org-chart-window';
-import {type SessionContext} from '../db/client';
+import {orgChartEntry,orgChartWindow,OrgWindowUnavailableError,ORG_FULL_GRAPH_LIMIT,type OrgWindowRequest} from '../core/org-chart-window';
+import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
+
+
+/** Frozen previous entry: threshold resolution and the initial explorer root request used two
+ * independently authorized transactions. Keep this as a test-only timing and DTO oracle. */
+async function previousOrgChartEntry(actor:SessionContext,scope:string[]|undefined){
+ const selected=await withTenant(actor,async tx=>{
+  await tx.execute(sql`set transaction read only`);
+  await lockAccessConfigurationReadTx(tx,actor.tenantId);
+  const [proof]=await tx.execute<{allowed:boolean}>(sql`select app.current_user_id()=${actor.userId??null}::uuid and app.principal_snapshot_current() as allowed`);
+  if(!actor.userId||proof?.allowed!==true)throw new OrgWindowUnavailableError('principal');
+  const [size]=await tx.execute<{large:boolean}>(sql`with visibility as materialized(select unnest(app.visible_employment_ids()) as id),
+   live as materialized(
+    select e.id,e.tenant_id,e.person_id,e.employee_code,e.company_id
+    from public.employment e join visibility v on v.id=e.id
+    where e.tenant_id=app.current_tenant_id() and e.terminated_on is null
+   ),native_edges as not materialized(
+    select r.id,r.manager_employment_id as manager_id,r.subordinate_employment_id as subordinate_id,r.line_type::text as type
+    from public.reporting_line r join live manager on manager.id=r.manager_employment_id join live subordinate on subordinate.id=r.subordinate_employment_id
+    where r.valid_to is null and r.superseded_at is null and r.line_type<>'delegate'
+   )
+   select case when (select count(*) from(select id from live limit ${ORG_FULL_GRAPH_LIMIT+1})people)>${ORG_FULL_GRAPH_LIMIT} then true
+    else (select count(*) from(select id from native_edges limit ${ORG_FULL_GRAPH_LIMIT+1})edges)>${ORG_FULL_GRAPH_LIMIT} end as large`);
+  if(size.large)return {mode:'explorer' as const};
+  return {mode:'full' as const,...await orgChartData(actor,scope,tx)};
+ });
+ if(selected.mode==='full')return selected;
+ return {mode:'explorer' as const,initial:await orgChartWindow(actor,scope,{view:'roots'})};
+}
+
+async function compareEntries(actor:SessionContext,scope:string[]|undefined,mode:'full'|'explorer'){
+ const first=await previousOrgChartEntry(actor,scope);expect(first.mode).toBe(mode);
+ const records:{phase:string;elapsedMs:number;bytes:number}[]=[];
+ for(const phase of ['original','candidate','candidate-warm','restored']){
+  const started=performance.now();
+  const result=phase.startsWith('candidate')?await orgChartEntry(actor,scope):await previousOrgChartEntry(actor,scope);
+  records.push({phase,elapsedMs:performance.now()-started,bytes:Buffer.byteLength(JSON.stringify(result))});
+  expect(result).toEqual(first);
+ }
+ return records;
+}
 
 it('preserves the complete authorized graph through bounded roots, branches, literal search and all connector types',async()=>{
  await resetDb();const b=await seedBase(),foreign=await seedBase(),ctx=adminCtx(b);
@@ -100,12 +141,25 @@ it('preserves the complete authorized graph through bounded roots, branches, lit
 },600000);
 
 it('keeps a small authorized graph exactly on the legacy full-tree path',async()=>{
- await resetDb();const b=await seedBase(),ctx=adminCtx(b),people=Array.from({length:6},(_,index)=>({id:randomUUID(),personId:randomUUID(),name:'Small chart '+index}));
+ await resetDb();const b=await seedBase(),ctx=adminCtx(b),people=Array.from({length:80},(_,index)=>({id:randomUUID(),personId:randomUUID(),name:'Small chart '+index}));
  await owner.db.insert(s.person).values(people.map(p=>({id:p.personId,tenantId:b.tenantId,fullName:p.name,primaryEmail:p.personId+'@example.invalid'})));
  await owner.db.insert(s.employment).values(people.map(p=>({id:p.id,tenantId:b.tenantId,personId:p.personId,companyId:b.companyId,hiredOn:'2020-01-01'})));
  await owner.db.insert(s.reportingLine).values(people.slice(1).map(p=>({tenantId:b.tenantId,managerEmploymentId:people[0].id,subordinateEmploymentId:p.id,lineType:'administrative' as const,validFrom:'2020-01-01'})));
  expect(await orgChartEntry(ctx,[b.companyId])).toEqual({mode:'full',...await orgChartData(ctx,[b.companyId])});
+ const small=await compareEntries(ctx,[b.companyId],'full');
+ // Fewer than 201 people can still have >200 caller-wide structural edges.
+ await owner.db.insert(s.reportingLine).values(people.slice(1).flatMap(p=>(['functional','project'] as const).map(lineType=>({
+  tenantId:b.tenantId,managerEmploymentId:people[0].id,subordinateEmploymentId:p.id,lineType,validFrom:'2020-01-01',
+ }))));
+ const edgeThreshold=await orgChartEntry(ctx,[b.companyId]);
+ expect(edgeThreshold.mode).toBe('explorer');
+ if(edgeThreshold.mode==='explorer'){
+  expect(edgeThreshold.initial.totalPeople).toBe(80);expect(edgeThreshold.initial.totalItems).toBe(1);
+ }
+ expect(edgeThreshold).toEqual(await previousOrgChartEntry(ctx,[b.companyId]));
  await expect(orgChartEntry({...ctx,userId:randomUUID()},[b.companyId])).rejects.toMatchObject({reason:'principal'});
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'org-chart-entry-small.json'),
+  JSON.stringify({people:80,smallEdges:79,largeEdges:237,legacyModeParity:true,edgeThresholdParity:true,small},null,2));
 });
 
 it('keeps the response bounded while all five thousand direct reports remain reachable',async()=>{
@@ -131,10 +185,16 @@ it('keeps the response bounded while all five thousand direct reports remain rea
    measurements.push({phase,elapsedMs:performance.now()-began,bytes:Buffer.byteLength(JSON.stringify(window)),people:window.items.length});
   }
  }
+ const entry=await compareEntries(ctx,[b.companyId],'explorer');
+ const entryRatio=Math.max(entry[1].elapsedMs,entry[2].elapsedMs)/Math.min(entry[0].elapsedMs,entry[3].elapsedMs);
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'org-chart-entry-large.json'),
+  JSON.stringify({kind:'ORG_CHART_ACTUAL_ENTRY_NATIVE_COMPONENT_ONLY',releaseEligible:false,people:count+1,edges:count,
+   exactEntryDto:true,entry,entryRatio,limitations:'Native 5001-person initial entry; no browser, million-row or500-user evidence.'},null,2));
  const last=employmentPrefix+String(count-50).padStart(12,'0');
  const tail=await orgChartWindow(ctx,undefined,{view:'children',focusId:root,after:last});expect(tail.items).toHaveLength(50);expect(tail.nextCursor).toBeNull();expect(tail.items.at(-1)!.node!.name).toBe('Bounded Org Person 005000');
  const report={kind:'NATIVE_BOUNDED_ORG_WINDOW_NOT_BROWSER_OR500_ACCEPTANCE',releaseEligible:false,employees:count+1,directReports:count,measurements,tailReachable:true,
   nativeAuthority:'fresh principal, native visibility owner plus existing RLS; no authorization/data cache',limitations:'First bounded contract experiment; small graph page and large graph explorer/browser integration not implemented.'};
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'org-chart-window.json'),JSON.stringify(report,null,2));
  expect(Math.max(measurements[1].bytes,measurements[2].bytes)).toBeLessThan(measurements[0].bytes*.1);
+ expect(entryRatio,'single native large entry should improve ≥20% against the faster previous entry').toBeLessThan(.8);
 },600000);
