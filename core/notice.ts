@@ -667,11 +667,15 @@ export type EmployeeNoticePage={items:EmployeeNoticeSummary[];total:number;unrea
  * Search executes inside the authorized live-recipient query. It does not transport body text.
  * Counts and the following page are independent current reads; concurrent edits may change the list.
  */
-export function employeeNoticeBoard(ctx:SessionContext,employmentId:string,options:{query?:string;category?:string;page?:number;pageSize?:number}={}):Promise<EmployeeNoticePage>{
- const query=(options.query??'').trim().slice(0,120),category=(options.category??'').trim().slice(0,80);
- const size=Number.isSafeInteger(options.pageSize)?Math.max(1,Math.min(20,options.pageSize!)):20;
- const requested=Number.isSafeInteger(options.page)&&options.page!>0?options.page!:1;
- return withTenant(ctx,async tx=>{
+type EmployeeNoticeBoardOptions={query?:string;category?:string;page?:number;pageSize?:number};
+export function employeeNoticeBoard(ctx:SessionContext,employmentId:string,options:EmployeeNoticeBoardOptions={}):Promise<EmployeeNoticePage>{
+ return withTenant(ctx,tx=>employeeNoticeBoardTx(tx,employmentId,options));
+}
+
+export async function employeeNoticeBoardTx(tx:Tx,employmentId:string,options:EmployeeNoticeBoardOptions):Promise<EmployeeNoticePage>{
+  const query=(options.query??'').trim().slice(0,120),category=(options.category??'').trim().slice(0,80);
+  const size=Number.isSafeInteger(options.pageSize)?Math.max(1,Math.min(20,options.pageSize!)):20;
+  const requested=Number.isSafeInteger(options.page)&&options.page!>0?options.page!:1;
   const eligible=and(liveEmployeeNotice(employmentId,todayInKualaLumpur(),true),
    query?sql`position(lower(${query}) in lower(${notice.title} || ' ' || ${notice.summary} || ' ' || ${notice.body})) > 0`:undefined,
    category?eq(notice.category,category):undefined);
@@ -686,7 +690,6 @@ export function employeeNoticeBoard(ctx:SessionContext,employmentId:string,optio
   const items=await tx.select(summaryFields).from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId))
    .where(eligible).orderBy(desc(notice.pinned),desc(notice.publishedAt),asc(notice.id)).limit(size).offset((page-1)*size);
   return {items,total,unread:counts?.unread??0,acknowledgementRequired:counts?.acknowledgementRequired??0,page,pageSize:size,pages};
- });
 }
 
 /** Canonical assigned work, across the actual login's own recipient employments. Read/dismissed and

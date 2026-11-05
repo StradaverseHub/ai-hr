@@ -55,8 +55,11 @@ export async function requireOwnHomeSubject(ctx:SessionContext,employmentId?:str
 /** A card with an explicit selection can prove ownership without projecting the whole inventory. */
 export async function requireSelectedOwnHomeEmploymentId(ctx:SessionContext,employmentId:string):Promise<string>{
  if(!ctx.userId)throw new HomeAccessError('authentication');
- const allowed=await withTenant(ctx,tx=>isCurrentOwnHomeEmploymentTx(tx,ctx,employmentId),{readOnlySnapshot:true});
- if(!allowed)throw new HomeAccessError('employmentUnavailable');
+ return withTenant(ctx,tx=>requireSelectedOwnHomeEmploymentIdTx(tx,ctx,employmentId),{readOnlySnapshot:true});
+}
+export async function requireSelectedOwnHomeEmploymentIdTx(tx:Tx,ctx:SessionContext,employmentId:string):Promise<string>{
+ if(!ctx.userId)throw new HomeAccessError('authentication');
+ if(!await isCurrentOwnHomeEmploymentTx(tx,ctx,employmentId))throw new HomeAccessError('employmentUnavailable');
  return employmentId;
 }
 async function assertReadOnlyHomePrincipalTx(tx:Tx,ctx:SessionContext):Promise<void>{

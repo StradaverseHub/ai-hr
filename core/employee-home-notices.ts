@@ -1,11 +1,14 @@
 /** Own employment is selected before the canonical Notice reader; HR reach is never self-service reach. */
-import type {SessionContext} from '../db/client';
-import {requireSelectedOwnHomeEmploymentId} from './employee-home';
-import {employeeNoticeBoard,employeeNoticeById} from './notice';
+import {withTenant,type SessionContext} from '../db/client';
+import {HomeAccessError,requireSelectedOwnHomeEmploymentId,requireSelectedOwnHomeEmploymentIdTx} from './employee-home';
+import {employeeNoticeBoardTx,employeeNoticeById} from './notice';
 
-export async function readOwnNoticeBoard(ctx:SessionContext,employmentId:string,options:Parameters<typeof employeeNoticeBoard>[2]={}){
- const subjectId=await requireSelectedOwnHomeEmploymentId(ctx,employmentId);
- return employeeNoticeBoard(ctx,subjectId,options);
+export async function readOwnNoticeBoard(ctx:SessionContext,employmentId:string,options:Parameters<typeof employeeNoticeBoardTx>[2]={}){
+ if(!ctx.userId)throw new HomeAccessError('authentication');
+ return withTenant(ctx,async tx=>{
+  const subjectId=await requireSelectedOwnHomeEmploymentIdTx(tx,ctx,employmentId);
+  return employeeNoticeBoardTx(tx,subjectId,options);
+ });
 }
 export async function readOwnNotice(ctx:SessionContext,employmentId:string,id:string){
  const subjectId=await requireSelectedOwnHomeEmploymentId(ctx,employmentId);
