@@ -67,6 +67,7 @@ import type {GenerateArgs} from '../lib/ai/types';
 import { resolveActiveAiConfig } from './ai-config';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { pageState, parsePageQuery, type PageState } from '../lib/pagination';
 import { onehrAttachmentSubjectTx, assertStandardCycleTx, prepareAssessmentClosureTx, initializeOnehrCycleTx } from '../packs/performance/onehr/service';
 
 export class PerfError extends Error {
@@ -1405,44 +1406,73 @@ export type CycleSummary = {
   pendingComp: number; // recommendations awaiting enactment
 };
 
-/** Cycles for the management view, each with progress counts. RLS scopes to the tenant. */
+const cycleListColumns = {
+  id: reviewCycle.id,
+  name: reviewCycle.name,
+  companyId: reviewCycle.companyId,
+  periodStart: reviewCycle.periodStart,
+  periodEnd: reviewCycle.periodEnd,
+  status: reviewCycle.status,
+  releasedAt: reviewCycle.releasedAt,
+};
+type CycleListMetadata = Omit<CycleSummary, 'total' | 'submitted' | 'acknowledged' | 'pendingComp'>;
+
+async function summarizeCyclesTx(tx: Tx, cycles: CycleListMetadata[]): Promise<CycleSummary[]> {
+  if (cycles.length === 0) return [];
+  const counts = await tx
+    .select({
+      cycleId: performanceReview.cycleId,
+      total: sql<number>`count(*)::int`,
+      submitted: sql<number>`count(*) filter (where ${performanceReview.status} in ('submitted','acknowledged'))::int`,
+      acknowledged: sql<number>`count(*) filter (where ${performanceReview.status} = 'acknowledged')::int`,
+      pendingComp: sql<number>`count(*) filter (where ${performanceReview.compActionStatus} = 'recommended')::int`,
+    })
+    .from(performanceReview)
+    .where(
+      inArray(
+        performanceReview.cycleId,
+        cycles.map((c) => c.id),
+      ),
+    )
+    .groupBy(performanceReview.cycleId);
+  const byId = new Map(counts.map((c) => [c.cycleId, c]));
+  return cycles.map((c) => {
+    const k = byId.get(c.id);
+    return {
+      id: c.id,
+      name: c.name,
+      companyId: c.companyId,
+      periodStart: c.periodStart,
+      periodEnd: c.periodEnd,
+      status: c.status,
+      releasedAt: c.releasedAt,
+      total: k?.total ?? 0,
+      submitted: k?.submitted ?? 0,
+      acknowledged: k?.acknowledged ?? 0,
+      pendingComp: k?.pendingComp ?? 0,
+    };
+  });
+}
+
+/** Cycles for the management view, each with progress counts. RLS scopes to the tenant.
+ * Retained full-list callers keep their existing rows and ordering; list-only reads omit configuration JSON. */
 export function listCycles(ctx: SessionContext): Promise<CycleSummary[]> {
   return withTenant(ctx, async (tx) => {
-    const cycles = await tx.select().from(reviewCycle).orderBy(desc(reviewCycle.periodStart));
-    if (cycles.length === 0) return [];
-    const counts = await tx
-      .select({
-        cycleId: performanceReview.cycleId,
-        total: sql<number>`count(*)::int`,
-        submitted: sql<number>`count(*) filter (where ${performanceReview.status} in ('submitted','acknowledged'))::int`,
-        acknowledged: sql<number>`count(*) filter (where ${performanceReview.status} = 'acknowledged')::int`,
-        pendingComp: sql<number>`count(*) filter (where ${performanceReview.compActionStatus} = 'recommended')::int`,
-      })
-      .from(performanceReview)
-      .where(
-        inArray(
-          performanceReview.cycleId,
-          cycles.map((c) => c.id),
-        ),
-      )
-      .groupBy(performanceReview.cycleId);
-    const byId = new Map(counts.map((c) => [c.cycleId, c]));
-    return cycles.map((c) => {
-      const k = byId.get(c.id);
-      return {
-        id: c.id,
-        name: c.name,
-        companyId: c.companyId,
-        periodStart: c.periodStart,
-        periodEnd: c.periodEnd,
-        status: c.status,
-        releasedAt: c.releasedAt,
-        total: k?.total ?? 0,
-        submitted: k?.submitted ?? 0,
-        acknowledged: k?.acknowledged ?? 0,
-        pendingComp: k?.pendingComp ?? 0,
-      };
-    });
+    const cycles = await tx.select(cycleListColumns).from(reviewCycle).orderBy(desc(reviewCycle.periodStart));
+    return summarizeCyclesTx(tx, cycles);
+  });
+}
+
+/** Native paging for HR's cycle list. Count metadata under the same current tenant/module gate;
+ * load progress only for the selected cycle IDs. OneHR partners retain their distinct scoped reader. */
+export function listCyclePage(ctx: SessionContext, query: { page?: string; size?: string } = {}): Promise<{ rows: CycleSummary[]; state: PageState }> {
+  const q = parsePageQuery(query);
+  return withTenant(ctx, async (tx) => {
+    const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(reviewCycle);
+    const cycles = await tx.select(cycleListColumns).from(reviewCycle)
+      .orderBy(desc(reviewCycle.periodStart), reviewCycle.id).limit(q.limit).offset(q.offset);
+    const rows = await summarizeCyclesTx(tx, cycles);
+    return { rows, state: pageState(q, count.total, rows.length) };
   });
 }
 

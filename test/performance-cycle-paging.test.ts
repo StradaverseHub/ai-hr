@@ -45,6 +45,7 @@ it('pages retained cycles before projecting details and aggregating review count
  const save=()=>{if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'performance-cycle-paging.json'),JSON.stringify(evidence,null,2));};
  try{
   expect(first).toEqual(paginateRows(reference,parsePageQuery({})));
+  expect(first.rows.slice(0,2).map(({total,submitted,acknowledged,pendingComp})=>({total,submitted,acknowledged,pendingComp}))).toEqual([{total:1,submitted:1,acknowledged:1,pendingComp:1},{total:1,submitted:1,acknowledged:0,pendingComp:0}]);
   expect(bounded,'The production page must bound the native cycle projection before reading configuration or review counts').toBe(true);
   expect(countParameterWidths).toEqual([25]);
   for(const query of [{page:'1'},{size:'50',page:'2'},{page:'9999'},{size:'all'},{page:'-1',size:'nonsense'}])expect(await readPage(ctx,query)).toEqual(paginateRows(reference,parsePageQuery(query)));
