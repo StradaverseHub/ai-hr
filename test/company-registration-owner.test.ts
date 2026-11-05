@@ -4,8 +4,10 @@ import {beforeAll,beforeEach,afterAll,it,expect} from 'vitest';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {company,appUser,person,roleAssignment} from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
-import {companyRegistrationOverview,changeCompanyRegistrationClassification} from '../core/company-registration-readiness';
+import {companyRegistrationOverview,changeCompanyRegistrationClassification,companyRegistrationPayrollWarning} from '../core/company-registration-readiness';
 import {packFor} from '../localization/registry';
+import {hireEmployee} from '../core/org';
+import {todayInKualaLumpur} from '../lib/hr-date';
 let b:Base;
 beforeAll(async()=>{await migrateTestDb();});beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
 it('recognizes a partially filled registration, excludes explicit group/test/archive records and records classification history',async()=>{
@@ -33,4 +35,18 @@ it('narrows readiness and classification to an actual company-scoped administrat
  const[c]=await owner.db.insert(company).values({tenantId:b.tenantId,legalName:'Outside admin scope'}).returning();const[p]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Scoped reviewer',primaryEmail:randomUUID()+'@registration.test'}).returning();const[u]=await owner.db.insert(appUser).values({tenantId:b.tenantId,personId:p.id,workosUserId:randomUUID()}).returning();await owner.db.insert(roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,companyId:b.companyId,role:'hr_admin'});
  const ctx:SessionContext={...adminCtx(b),userId:u.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]};
  expect((await companyRegistrationOverview(ctx)).some(r=>r.id===c.id)).toBe(false);await expect(changeCompanyRegistrationClassification(ctx,{companyId:c.id,entityKind:'grouping_node',isTestEntity:false,expectedRevision:0})).rejects.toThrow(/not available/);
+});
+
+it('counts only actual selected payroll-period employments and does not claim levy loss when HRDF is registered',async()=>{
+ const ctx=adminCtx(b),today=todayInKualaLumpur(),year=Number(today.slice(0,4));
+ const hire=(name:string,hiredOn:string)=>hireEmployee(ctx,{person:{fullName:name,primaryEmail:randomUUID()+'@payroll-registration.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn});
+ const first=await hire('First eligible payroll person',`${year-1}-01-01`),second=await hire('Second eligible payroll person',`${year-1}-01-01`);
+ await hire('Future hire outside this payroll period',`${year+1}-01-01`);
+ const input={companyIds:[b.companyId],payPeriod:today.slice(0,7)};
+ expect(await companyRegistrationPayrollWarning(ctx,input)).toMatchObject({employees:2,companies:1});
+ expect(await companyRegistrationPayrollWarning(ctx,{...input,employmentIds:[second.employmentId,randomUUID()]})).toMatchObject({employees:1});
+ expect(await companyRegistrationPayrollWarning(ctx,{...input,employmentIds:[]})).toMatchObject({employees:0});
+ await packFor('MY')!.companyStatutory.set(ctx,{companyId:b.companyId,epfEmployerNo:'PARTIAL-EPF',hrdfStatus:'mandatory'});
+ expect((await companyRegistrationOverview(ctx)).find(r=>r.id===b.companyId)?.status).toBe('missing');
+ expect(await companyRegistrationPayrollWarning(ctx,{...input,employmentIds:[first.employmentId]})).toMatchObject({employees:0});
 });
