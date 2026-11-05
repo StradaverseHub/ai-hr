@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { formatPayPeriodMonth } from '@/lib/hr-date';
 import { requireAdmin } from '@/lib/authz';
-import { payrollRunRegisterPage, listBatchRecalcPayslipIdentities, listBatches, listRecalcChangeCategories, listReprocessEmployeeOutcomes, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory, type BatchScope } from '@/core/payroll';
+import { payrollRunRegisterPage, listBatchRecalcPayslipIdentities, listRecalcChangeCategories, listReprocessEmployeeOutcomes, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory, type BatchScope } from '@/core/payroll';
 import { payrollReadiness, type PayrollReadiness } from '@/core/payroll-readiness';
 import {batchScopeHeadcount} from '@/packs/payroll/service';
 import {PendingMoneyStatus,PendingOvertimeCashAmount,PendingOvertimeCashDetails} from './pending-overtime';
@@ -90,7 +90,7 @@ export default async function BatchPage({
   const fromSuffix = backHref === '/payroll' ? '' : `?from=${encodeURIComponent(backHref)}`;
   const data = await payrollRunRegisterPage(s, batchId, parsePageQuery(sp));
   if (!data) notFound();
-  const { batch, slipPage } = data;
+  const { batch, closeCycleName, slipPage } = data;
   const slipCount = slipPage.state.total;
   // AI v2 P2-2b: who viewed this run's payroll register is recorded (core/payroll-audit/access-log.ts), before it renders.
   await recordPayrollAccess(s, { surface: 'register', action: 'view', companyId: batch.companyId, payPeriod: batch.payPeriod, batchId: batch.id });
@@ -213,9 +213,7 @@ export default async function BatchPage({
           cycle: payrollCloseCycleLabel(
             {
               ...batch,
-              payrollCycleName:
-                (await listBatches(s, [batch.companyId], batch.payPeriod)).find((b) => b.id === batch.id)
-                  ?.payrollCycleName ?? null,
+              payrollCycleName: closeCycleName,
             },
             tList(`runType.${batch.runType}`),
           ),

@@ -41,7 +41,8 @@ it('reads the exact effective header and visible slip count without exporting di
  const target=await hireEmployee(root,{person:{fullName:'Fictional payroll summary person',primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employeeCode:'0007',employmentType:'full_time',hiredOn:'2020-01-01'});
  await setCompensation(root,{employmentId:target.employmentId,basicSalary:3000,effectiveFrom:'2020-01-01'});
  await setStatutoryProfileMY(root,{personId:target.personId,icNumber:'900101015551',taxCategory:1,numChildren:0});
- const {batchId}=await createBatch(root,{companyId:b.companyId,payPeriod:'2026-01'});await generatePayslips(root,{batchId});
+ const [cycle]=await owner.db.insert(s.payrollCycle).values({tenantId:b.tenantId,companyId:b.companyId,name:'Fictional monthly',code:'REG',runType:'regular'}).returning();
+ const {batchId}=await createBatch(root,{companyId:b.companyId,payPeriod:'2026-01',payrollCycleId:cycle.id});await generatePayslips(root,{batchId});
  const {batchId:draftId}=await createBatch(root,{companyId:b.companyId,payPeriod:'2026-02'});
  const [actual]=await owner.db.select().from(s.payslip).where(eq(s.payslip.batchId,batchId));expect(actual).toBeTruthy();
  const extra=Array.from({length:1000},()=>({personId:randomUUID(),employmentId:randomUUID()}));
@@ -66,7 +67,7 @@ it('reads the exact effective header and visible slip count without exporting di
   expect(await batchHeader(ctx,id)).toEqual(old?{batch:old.batch}:null);
   expect(await countProbe(ctx,id)).toEqual(old?{batch:old.batch,slipCount:old.slips.length}:null);
   const page=parsePageQuery();
-  expect(await payrollRunRegisterPage(ctx,id,page)).toEqual(old?{batch:old.batch,slipPage:paginateRows(old.slips.map(({totalDeductions:_d,employerCost:_c,...row})=>row),page)}:null);
+  expect(await payrollRunRegisterPage(ctx,id,page)).toEqual(old?{batch:old.batch,closeCycleName:old.batch.status==='processed'?cycle.name:null,slipPage:paginateRows(old.slips.map(({totalDeductions:_d,employerCost:_c,...row})=>row),page)}:null);
  }
  const exact=await batchDetail(root,batchId);expect(exact?.slips.length).toBe(1000);expect(exact).not.toBeNull();
  const list=exact!.slips;
@@ -81,7 +82,7 @@ it('reads the exact effective header and visible slip count without exporting di
  expect(tied).toHaveLength(2);
  for(const raw of [{},{page:'1',size:'50'},{page:'200',size:'200'},{page:String(Number.MAX_SAFE_INTEGER),size:'200'},{size:'all'}]){
   const page=parsePageQuery(raw);
-  expect(await payrollRunRegisterPage(root,batchId,page)).toEqual({batch:exact!.batch,slipPage:paginateRows(registerRows,page)});
+  expect(await payrollRunRegisterPage(root,batchId,page)).toEqual({batch:exact!.batch,closeCycleName:cycle.name,slipPage:paginateRows(registerRows,page)});
  }
  const firstPage=registerRows.slice(0,25),offPage=registerRows.at(-1)!;
  expect(firstPage.some(row=>row.employmentId===offPage.employmentId)).toBe(false);

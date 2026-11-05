@@ -11508,8 +11508,17 @@ export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, pag
       net: payslip.netPay,
       version: payslip.version,
     }).from(payslip).where(eq(payslip.id, registerPage.id)).limit(1).as('page_slip');
+    // The close prompt needs one cycle label. Keep it in this register query instead of
+    // listing every run in the company and period after the access audit.
+    const closeCycleName = batch.status === 'processed' && batch.payrollCycleId &&
+      (!batch.historyImportAttemptId || batch.employeeCount > 0)
+      ? sql<string|null>`(${tx.select({name:payrollCycle.name}).from(payrollCycle)
+        .innerJoin(company,eq(company.id,batch.companyId))
+        .where(eq(payrollCycle.id,batch.payrollCycleId)).limit(1)})`
+      : sql<string|null>`null`;
     const entries = await tx.with(visibleRegister).select({
       total: registerTotal.total,
+      closeCycleName,
       employmentId: registerPage.employmentId,
       name: registerPage.name,
       employeeCode: registerPage.employeeCode,
@@ -11529,7 +11538,7 @@ export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, pag
       .orderBy(asc(registerPage.name), asc(registerPage.id));
     const rows = entries.flatMap(({ slip, employmentId, name, employeeCode }) =>
       slip === null || employmentId === null || name === null ? [] : [{ ...slip, employmentId, name, employeeCode }]);
-    return { batch, slipPage: { rows, state: pageState(page, entries[0].total, rows.length) } };
+    return { batch, closeCycleName:entries[0].closeCycleName, slipPage: { rows, state: pageState(page, entries[0].total, rows.length) } };
   });
 }
 
