@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHomeHttpReplay} from './home-http.mjs';
+import {browserFailureLocation} from './browser-failure.ts';
 import {routeLatency} from './route-latency.mjs';
 import {navigationRoutesForIteration} from './route-scheduling.mjs';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
@@ -221,17 +222,21 @@ try{
  }
  async function visit(page,user,path,phase='baseline',signIn=false){
   lastPage=page;const stopHomeTracking=homeHttp.track(page,user,path);
-  const start=performance.now();let response,signInTiming;
+  const start=performance.now();let response,signInTiming,visitStage=signIn?'sign-in':'navigation';
   try{
    if(signIn)signInTiming=await signInToHome(page,user);
    else response=await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});
+  visitStage='page-content';
   if(response)assert.equal(response.status(),200);
   assert(!new URL(page.url()).pathname.startsWith('/login'));await page.locator('main').waitFor();assert((await page.locator('body').innerText()).includes(user.name));
+  visitStage='heading';
   const heading=(await page.locator('h1').first().innerText()).trim();assert(heading.length>0&&!/^404\b/.test(heading),'missing or not-found page heading');
   const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});
   if(await skip.isVisible()){await skip.click();await skip.waitFor({state:'hidden'});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
+  visitStage='table-data';
   if(['/claims','/admin/personnel','/payroll'].includes(path))assert(await page.locator('main tbody tr').count()>0,'expected fictional table rows');
   let homeCards=null,homeCardIds=[],todaySectionIds=[];
+  visitStage='home-cards';
   if(path==='/'||(path==='/me/calendar'&&['employee','manager'].includes(user.role))){
    const personal=['employee','manager'].includes(user.role),attribute=personal?'data-home-card':'data-dashboard-card';
    const cards=page.locator('main ['+attribute+']');
@@ -259,6 +264,7 @@ try{
     assert.deepEqual(todaySectionIds,baseline?.todaySectionIds,'loaded sign-in Today section inventory changed');
    }
   }
+  visitStage='navigation-timing';
   const timing=await page.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return {ttfbMs:n.responseStart-n.requestStart,domInteractiveMs:n.domInteractive,decodedBytes:n.decodedBodySize,transferBytes:n.transferSize};});
   if(signIn){
    const cardsCheckedAt=performance.now();
@@ -275,12 +281,12 @@ try{
   }
   report.browser.push({phase,role:user.role,path,heading,homeCards,homeCardIds,todaySectionIds,elapsedMs:performance.now()-start,...timing});save();
   }catch(error){
-   const detail={phase,role:user.role,user:user.index,path,errorType:error.name,elapsedMs:performance.now()-start,
+   const detail={phase,role:user.role,user:user.index,path,errorType:error.name,visitStage,...browserFailureLocation(error),elapsedMs:performance.now()-start,
     pdfRequests:browserPdfRequests.get(page)??[],
     frames:page.frames().map(frame=>{try{const url=new URL(frame.url());return {sameOrigin:url.origin===base,path:url.origin===base?url.pathname:'<other>'};}catch{return {path:'<unavailable>'};}}),dom:null};
    // Promise.all shutdown can make other pages fail later. Preserve the actual first visit.
    report.browserFailedNavigation??=detail;
-   (report.browserVisitFailures??=[]).push({phase,role:user.role,user:user.index,path,errorType:error.name});
+   (report.browserVisitFailures??=[]).push({phase,role:user.role,user:user.index,path,errorType:error.name,visitStage,...browserFailureLocation(error)});
    report.browserPendingRequests=[...(pendingBrowserRequests.get(page)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));
    detail.dom=await page.locator('body').evaluate(body=>({readyState:document.readyState,headingCount:body.querySelectorAll('h1').length,mainCount:body.querySelectorAll('main').length,
     iframeCount:body.querySelectorAll('iframe').length,busyCount:body.querySelectorAll('[aria-busy="true"]').length,alertCount:body.querySelectorAll('[role="alert"]').length}),undefined,{timeout:3000}).catch(()=>null);
@@ -583,7 +589,7 @@ try{
   if(user.index===employee.index||user.index===hr.index)await aiCentreJourney(page,user,'loaded');
   if(user.role==='employee')await browserClaimJourney(page,user,'PERF_BROWSER_LOADED_'+user.index,'loaded');
   }catch(error){
-   (report.browserJourneyFailures??=[]).push({role:user.role,user:user.index,phase:'loaded',errorType:error.name,timeout:error.name==='TimeoutError'});save();throw error;
+   (report.browserJourneyFailures??=[]).push({role:user.role,user:user.index,phase:'loaded',errorType:error.name,...browserFailureLocation(error),timeout:error.name==='TimeoutError'});save();throw error;
   }finally{await ctx.close();}
  }));
  const results=await Promise.allSettled(fixture.users.map(async(user,i)=>{
