@@ -21,6 +21,7 @@ export const DONE_REQUIREMENTS=Object.freeze(['semantic','guide','readiness','co
  * has no semantic entity, no read and no tool that names it, so the exemption is a guard. Each entry gives its reason. */
 export const PRIVATE_BY_DESIGN:Readonly<Record<string,string>>=Object.freeze({
  '/me/cases':'ADR-0173: the AI never sees case words.',
+ '/me/job-description':'Own Job Description: the Assistant can link the page, and the native owner alone reads the employee’s approved description.',
  '/me/cases/new':'ADR-0173: the AI never sees case words.',
  '/cases':'ADR-0173: the AI never sees case words.',
  '/admin/privacy/case-handlers':'ADR-0173: the AI never sees case words.',

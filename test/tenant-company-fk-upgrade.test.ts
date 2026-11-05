@@ -126,11 +126,24 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   await migrateApprovedUpgrade(storage);
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));
-  expect(await native()).toEqual(beforeRerun);expect(await keys()).toEqual(installed);
+  expect(await native()).toEqual(beforeRerun);
+  // The final 2211 expansion adds validated tenant matches beside the original NO ACTION keys.
+  const expansionRelations = [
+   'company_registration_classification', 'job_architecture_import_preview', 'job_architecture_jd_publication',
+   'job_architecture_position_revision', 'job_architecture_proposal', 'job_architecture_seat',
+   'job_architecture_suggestion', 'reward_company_year_review', 'reward_page_grant',
+   'reward_pat_version', 'reward_plan_company', 'reward_setup_grant',
+  ];
+  const expansionNames = new Set(expansionRelations.map(rel => rel + '_company_tenant_fk'));
+  const completeKeys = await keys();
+  expect(completeKeys.filter(row => !expansionNames.has(row.conname))).toEqual(installed);
+  expect(completeKeys.filter(row => expansionNames.has(row.conname))).toEqual(expansionRelations.map(rel => ({
+   rel, conname: rel + '_company_tenant_fk', convalidated: true, action: 'a',
+  })));
   expect(await asAdmin(tx=>tx`select app.can_admin_employment(${employmentA}::uuid) own,app.can_admin_employment(${employmentB}::uuid) foreign`)).toEqual([{own:true,foreign:false}]);
   const terminalPrivileges=await privileges();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  expect(await ledger()).toEqual(complete);expect(await native()).toEqual(beforeRerun);expect(await privileges()).toEqual(terminalPrivileges);
+  expect(await ledger()).toEqual(complete);expect(await native()).toEqual(beforeRerun);expect(await privileges()).toEqual(terminalPrivileges);expect(await keys()).toEqual(completeKeys);
  }finally{
   await application.client.end();await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`);await admin.end();rmSync(folder,{recursive:true,force:true});
  }
