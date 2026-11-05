@@ -35474,6 +35474,18 @@
     "readyNotificationBody": "Group Rewards independently checked this upload. Open the review to assess the awards.",
     "participation": "Participation",
     "excludedNoAwards": "Excluded – no awards this year",
-    "excludedUploaded": "Excluded – awards uploaded"
+    "excludedUploaded": "Excluded – awards uploaded",
+    "cycleName": "New cycle name (when creating a cycle)"
+  },
+  "rewardSetupAccess": {
+    "title": "Rewards setup authority",
+    "help": "Explicit module-only grants for Group Rewards and CTRO. Only a Group Administrator can assign scope and dates. This grants no HR, login or employee-record permissions.",
+    "back": "Rewards",
+    "role": "Role",
+    "scope": "Scope",
+    "groupWide": "Group-wide",
+    "newGrant": "New grant",
+    "grants": "Existing grants",
+    "edit": "Edit grant"
   }
 }

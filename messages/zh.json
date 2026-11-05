@@ -35474,6 +35474,18 @@
     "readyNotificationBody": "集团薪酬已独立核查此上传。请打开审核评估奖励。",
     "participation": "参与方式",
     "excludedNoAwards": "已排除 — 本年不发放奖励",
-    "excludedUploaded": "已排除 — 奖励通过上传"
+    "excludedUploaded": "已排除 — 奖励通过上传",
+    "cycleName": "新周期名称（新建周期时填写）"
+  },
+  "rewardSetupAccess": {
+    "title": "薪酬配置权限",
+    "help": "仅适用于集团薪酬及 CTRO 的明确模块授权。只有集团管理员可设置范围和日期。此授权不授予人力资源、登录或员工记录权限。",
+    "back": "薪酬",
+    "role": "角色",
+    "scope": "范围",
+    "groupWide": "全集团",
+    "newGrant": "新增授权",
+    "grants": "现有授权",
+    "edit": "编辑授权"
   }
 }

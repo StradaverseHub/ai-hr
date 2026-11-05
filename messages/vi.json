@@ -35474,6 +35474,18 @@
     "readyNotificationBody": "Bộ phận Đãi ngộ Tập đoàn đã kiểm tra độc lập. Mở đợt rà soát để đánh giá khoản đãi ngộ.",
     "participation": "Hình thức tham gia",
     "excludedNoAwards": "Loại trừ – không có đãi ngộ năm nay",
-    "excludedUploaded": "Loại trừ – khoản đãi ngộ tải lên"
+    "excludedUploaded": "Loại trừ – khoản đãi ngộ tải lên",
+    "cycleName": "Tên chu kỳ mới (khi tạo chu kỳ)"
+  },
+  "rewardSetupAccess": {
+    "title": "Quyền cấu hình đãi ngộ",
+    "help": "Quyền riêng cho mô-đun dành cho Bộ phận Đãi ngộ Tập đoàn và CTRO. Chỉ Quản trị viên Tập đoàn được đặt phạm vi và ngày hiệu lực. Không cấp quyền nhân sự, đăng nhập hoặc hồ sơ nhân viên.",
+    "back": "Đãi ngộ",
+    "role": "Vai trò",
+    "scope": "Phạm vi",
+    "groupWide": "Toàn tập đoàn",
+    "newGrant": "Cấp quyền mới",
+    "grants": "Quyền hiện có",
+    "edit": "Sửa quyền"
   }
 }

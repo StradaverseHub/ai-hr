@@ -35474,6 +35474,18 @@
     "readyNotificationBody": "Group Rewards telah menyemak muat naik ini secara bebas. Buka semakan untuk menilai ganjaran.",
     "participation": "Penyertaan",
     "excludedNoAwards": "Dikecualikan – tiada ganjaran tahun ini",
-    "excludedUploaded": "Dikecualikan – ganjaran dimuat naik"
+    "excludedUploaded": "Dikecualikan – ganjaran dimuat naik",
+    "cycleName": "Nama kitaran baharu (jika mencipta kitaran)"
+  },
+  "rewardSetupAccess": {
+    "title": "Kuasa persediaan Rewards",
+    "help": "Pemberian khusus modul untuk Group Rewards dan CTRO. Hanya Pentadbir Kumpulan boleh menetapkan skop dan tarikh. Ini tidak memberikan kebenaran HR, log masuk atau rekod pekerja.",
+    "back": "Rewards",
+    "role": "Peranan",
+    "scope": "Skop",
+    "groupWide": "Seluruh kumpulan",
+    "newGrant": "Pemberian baharu",
+    "grants": "Pemberian sedia ada",
+    "edit": "Edit pemberian"
   }
 }
