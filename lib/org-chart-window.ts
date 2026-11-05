@@ -16,7 +16,14 @@ function node(v:unknown):v is OrgWindowNode{
   &&nullableText(v.employeeCode)&&nullableText(v.role)&&nullableText(v.department)&&count(v.assignmentCount);
 }
 /** Reject a stale/malformed response rather than present it as a complete empty organization. */
-export function decodeOrgWindow(value:unknown,request:OrgWindowRequest):OrgWindow{
+export class OrgWindowContextChangedError extends Error{
+ constructor(){super('Organization browser context changed');this.name='OrgWindowContextChangedError';}
+}
+export function decodeOrgWindow(value:unknown,request:OrgWindowRequest,expectedBrowserKey?:string):OrgWindow{
+ if(expectedBrowserKey!==undefined){
+  if(record(value)&&typeof value.browserKey==='string'&&value.browserKey!==expectedBrowserKey)throw new OrgWindowContextChangedError();
+  if(!record(value)||value.browserKey!==expectedBrowserKey)throw new Error('Missing organization browser context');
+ }
  const focused=['children','parents','connections'].includes(request.view);
  if(!record(value)||value.version!==1||value.view!==request.view||value.pageSize!==ORG_WINDOW_SIZE
   ||!count(value.totalPeople)||!count(value.totalItems)||!Array.isArray(value.items)||value.items.length>ORG_WINDOW_SIZE

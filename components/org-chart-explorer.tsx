@@ -4,49 +4,61 @@ import {useEffect,useRef,useState,type FormEvent} from 'react';
 import Link from 'next/link';
 import {useTranslations} from 'next-intl';
 import {Button,inputCls} from '@/components/ui';
-import {decodeOrgWindow,type OrgWindow,type OrgWindowNode,type OrgWindowRequest} from '@/lib/org-chart-window';
+import {decodeOrgWindow,OrgWindowContextChangedError,type OrgWindow,type OrgWindowNode,type OrgWindowRequest} from '@/lib/org-chart-window';
 
-type Crumb={id:string;name:string};
-type Navigation={request:OrgWindowRequest;crumbs:Crumb[]};
-const root:Navigation={request:{view:'roots'},crumbs:[]};
+type Crumb={id:string;name:string;parent?:Crumb};
+type Navigation={request:OrgWindowRequest;trail?:Crumb};
+type History={navigation:Navigation;previous:History|null};
+const root:Navigation={request:{view:'roots'}};
 const relationKey={administrative:'direct',functional:'functional',project:'project',dotted:'dotted'} as const;
 
 /** Fifty rows at a time, with fresh server authorization on every navigation. No full-tree DOM,
  * graph layout pass, prefetch, response cache or retained pages. Breadcrumbs show navigation history,
  * not an invented single managerial lineage (a person can have several managers).
  */
-export function OrgChartExplorer({initial}:{initial:OrgWindow}){
+export function OrgChartExplorer({initial,browserKey}:{initial:OrgWindow;browserKey:string}){
  const t=useTranslations('org');
  const [data,setData]=useState<OrgWindow|null>(initial),[nav,setNav]=useState<Navigation>(root);
- const [history,setHistory]=useState<Navigation[]>([]),[query,setQuery]=useState('');
+ const [history,setHistory]=useState<History|null>(null),[query,setQuery]=useState('');
  const [busy,setBusy]=useState(false),[error,setError]=useState<'retry'|'refresh'|'access'|null>(null);
  const pending=useRef<Navigation>(root),controller=useRef<AbortController|null>(null),sequence=useRef(0);
  const heading=useRef<HTMLHeadingElement>(null);
+ const crumbs:Crumb[]=[];let earlier=nav.trail;
+ while(earlier&&crumbs.length<8){crumbs.push(earlier);earlier=earlier.parent;}
+ crumbs.reverse();
  useEffect(()=>()=>{sequence.current++;controller.current?.abort();},[]);
  async function load(target:Navigation,back=false){
   controller.current?.abort();const abort=new AbortController();controller.current=abort;
   const current=++sequence.current;pending.current=target;setBusy(true);setError(null);
+  // A hung transport must leave an explicit retry state; late responses cannot revive it.
+  const deadline=setTimeout(()=>{
+   if(current!==sequence.current)return;
+   sequence.current++;abort.abort();setBusy(false);setError('retry');
+  },15000);
   try{
    const params=new URLSearchParams(Object.entries(target.request).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));
    const response=await fetch(`/api/org/window?${params}`,{cache:'no-store',credentials:'same-origin',signal:abort.signal});
    if(current!==sequence.current)return;
    if(!response.ok){
-    if(response.status===401||response.status===403){setData(null);setHistory([]);setNav(root);setQuery('');setError('access');}
+    if(response.status===401||response.status===403){setData(null);setHistory(null);setNav(root);setQuery('');setError('access');}
     else setError(response.status===409?'refresh':'retry');
     return;
    }
-   const next=decodeOrgWindow(await response.json(),target.request);
+   const next=decodeOrgWindow(await response.json(),target.request,browserKey);
    if(current!==sequence.current)return;
-   setHistory(previous=>back?previous.slice(0,-1):[...previous,nav]);
+   setHistory(previous=>back?previous?.previous??null:{navigation:nav,previous});
    setNav(target);setData(next);heading.current?.focus();
-  }catch{
-   if(current===sequence.current&&!abort.signal.aborted)setError('retry');
-  }finally{if(current===sequence.current)setBusy(false);}
+  }catch(error){
+   if(current===sequence.current&&!abort.signal.aborted){
+    if(error instanceof OrgWindowContextChangedError){setData(null);setHistory(null);setNav(root);setQuery('');setError('access');}
+    else setError('retry');
+   }
+  }finally{clearTimeout(deadline);if(current===sequence.current)setBusy(false);}
  }
  function focus(person:OrgWindowNode){
-  void load({request:{view:'children',focusId:person.employmentId},crumbs:[...nav.crumbs,{id:person.employmentId,name:person.name}]});
+  void load({request:{view:'children',focusId:person.employmentId},trail:{id:person.employmentId,name:person.name,parent:nav.trail}});
  }
- function search(event:FormEvent){event.preventDefault();void load({request:{view:'search',q:query.trim()},crumbs:[]});}
+ function search(event:FormEvent){event.preventDefault();void load({request:{view:'search',q:query.trim()}});}
  const viewTitle=nav.request.view==='roots'?t('explorer.topLevel'):nav.request.view==='search'?t('explorer.searchResults'):
   nav.request.view==='children'?t('explorer.reports'):nav.request.view==='parents'?t('explorer.managers'):t('explorer.connections');
  return <section data-org-explorer data-org-total-people={data?.totalPeople} data-org-view={data?.view} className="space-y-5">
@@ -59,12 +71,12 @@ export function OrgChartExplorer({initial}:{initial:OrgWindow}){
     <Button type="submit" className="min-h-11">{t('explorer.search')}</Button>
    </form>
    <Button variant="outline" className="min-h-11" disabled={busy||error==='access'} onClick={()=>void load(root)}>{t('explorer.topLevel')}</Button>
-   <Button variant="outline" className="min-h-11" disabled={busy||error==='access'} onClick={()=>{setQuery('');void load({request:{view:'search',q:''},crumbs:[]});}}>{t('explorer.allPeople')}</Button>
+   <Button variant="outline" className="min-h-11" disabled={busy||error==='access'} onClick={()=>{setQuery('');void load({request:{view:'search',q:''}});}}>{t('explorer.allPeople')}</Button>
   </div>
-  {nav.crumbs.length>0&&<nav aria-label={t('explorer.history')} className="flex flex-wrap items-center gap-2 text-sm">
+  {crumbs.length>0&&<nav aria-label={t('explorer.history')} className="flex flex-wrap items-center gap-2 text-sm">
    <span className="text-muted-foreground">{t('explorer.history')}:</span>
-   {nav.crumbs.length>8&&<span aria-hidden="true">…</span>}
-   {nav.crumbs.slice(-8).map((crumb,index)=><Button key={`${crumb.id}-${index}`} variant="link" disabled={busy||error==='access'} onClick={()=>void load({request:{view:'children',focusId:crumb.id},crumbs:nav.crumbs.slice(0,nav.crumbs.length-Math.min(8,nav.crumbs.length)+index+1)})}>{crumb.name}</Button>)}
+   {!!earlier&&<span aria-hidden="true">…</span>}
+   {crumbs.map((crumb,index)=><Button key={`${crumb.id}-${index}`} variant="link" disabled={busy||error==='access'} onClick={()=>void load({request:{view:'children',focusId:crumb.id},trail:crumb})}>{crumb.name}</Button>)}
   </nav>}
   <div aria-live="polite" role="status" className="text-sm text-muted-foreground">{busy?t('explorer.loading'):data?t('explorer.loaded',{loaded:data.items.length,total:data.totalItems,people:data.totalPeople}):null}</div>
   {error&&<div role="alert" className="space-y-2 rounded-md border p-4">
@@ -93,7 +105,7 @@ export function OrgChartExplorer({initial}:{initial:OrgWindow}){
      </li>)}
     </ul>}
     <div className="flex justify-between gap-3">
-     <Button variant="outline" className="min-h-11" disabled={busy||history.length===0} onClick={()=>void load(history[history.length-1],true)}>{t('explorer.back')}</Button>
+     <Button variant="outline" className="min-h-11" disabled={busy||!history} onClick={()=>void load(history!.navigation,true)}>{t('explorer.back')}</Button>
      <Button variant="outline" className="min-h-11" disabled={busy||!data.nextCursor} onClick={()=>void load({...nav,request:{...nav.request,after:data.nextCursor!}})}>{t('explorer.next')}</Button>
     </div>
    </>}

@@ -11,6 +11,7 @@ export default async function OrgChartPage() {
   const entry = await orgChartEntry(s, scopeIds);
   const count = entry.mode === 'full' ? entry.employees.length : entry.initial.totalPeople;
   const locale = await getLocale();
+  const browserKey = personnelImportBrowserKey(s, scopeIds);
   const t = await getTranslations('org');
 
   return (
@@ -28,7 +29,7 @@ export default async function OrgChartPage() {
 
       <Card className="p-5" data-tour="org-chart">
         {entry.mode === 'explorer' ? (
-          <OrgChartExplorer key={`${personnelImportBrowserKey(s, scopeIds)}:${locale}`} initial={entry.initial} />
+          <OrgChartExplorer key={`${browserKey}:${locale}`} initial={entry.initial} browserKey={browserKey} />
         ) : entry.employees.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
