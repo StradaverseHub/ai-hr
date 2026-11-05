@@ -375,7 +375,16 @@ try{
  }));
  async function aiCentreJourney(page,user,phase){
   await visit(page,user,'/assistant',phase);
-  assert(await page.locator('main textarea:enabled').count()>0,'AI Centre fixture did not reach admitted Ask');
+  const askStarted=performance.now();
+  try{
+   // The page shell may finish before the streamed Ask composer. Require the actual enabled control.
+   await page.locator('main textarea[name="question"]:enabled').waitFor({state:'visible',timeout:90000});
+  }catch(error){
+   (report.browserAiAskFailures??=[]).push({role:user.role,user:user.index,phase,path:new URL(page.url()).pathname,
+    elapsedMs:performance.now()-askStarted});
+   save();
+   throw error;
+  }
   const documents=[];const onRequest=request=>{if(request.resourceType()==='document')documents.push(request.url());};page.on('request',onRequest);
   try{
    const targets=[['jobs','/assistant?view=jobs'],['policies','/policies'],['insights','/assistant?view=insights'],['how','/assistant?view=how'],['ask','/assistant']];
