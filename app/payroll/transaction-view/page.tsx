@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listReprocessEmployeeOutcomes } from '@/packs/payroll/service';
-import { listCompanies, listEmployees } from '@/core/read';
+import { listCompanies, listPayrollTransactionEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
 import {
   INDIVIDUAL_TXN_STATUS_FILTERS,
@@ -175,7 +175,7 @@ export default async function TransactionViewPage({
   const tab: Tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : 'history';
 
   const [employees, companies, components, creators, gridComponents] = await Promise.all([
-    listEmployees(s, scopeIds),
+    listPayrollTransactionEmployees(s, scopeIds),
     listCompanies(s),
     tab === 'fixed' ? listPayComponents(s) : Promise.resolve([]),
     tab === 'individual' ? listIndividualTxnCreators(s, { companyIds: scopeIds }) : Promise.resolve([]),
@@ -404,7 +404,7 @@ export default async function TransactionViewPage({
   //
   // 98e69987 rev 2 restored this rail after r179 replaced it with a top-row search box: the reporter saw
   // both live and asked for the list back. It is fed from the SAME scope-fenced read the search box was,
-  // `listEmployees(s, scopeIds)` run once at the top of this render, so the access-fenced set is unchanged
+  // `listPayrollTransactionEmployees(s, scopeIds)` runs once for both controls, so their population is the same
   // either way; the id it navigates to is re-guarded above (`employmentId`) before any read uses it, so
   // the list is never what grants access.
   const panelEmployees: ScopeEmployee[] = employees.map((e) => ({

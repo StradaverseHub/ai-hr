@@ -230,6 +230,17 @@ describe('multi-company payroll — orchestration (DB)', () => {
         expect(await payrollRead.payrollProcessEmployeeSelection(ctx,companyId,posted)).toEqual(posted.filter(id=>ids.has(id)));
       }
     }
+    for(const ctx of [group,scoped]){
+      for(const companyIds of [[],[base.companyId],[companyB],[base.companyId,companyB]]){
+        const legacy=await payrollRead.listEmployees(ctx,companyIds);
+        expect(await payrollRead.listPayrollTransactionEmployees(ctx,companyIds)).toEqual(legacy.map(row=>({
+          employmentId:row.employmentId,name:row.name,employeeCode:row.employeeCode,company:row.company,companyId:row.companyId,
+          department:row.department,departmentLabel:row.departmentLabel,departmentCode:row.departmentCode,departmentId:row.departmentId,
+          businessUnit:row.businessUnit,businessUnitLabel:row.businessUnitLabel,businessUnitCode:row.businessUnitCode,
+          businessUnitId:row.businessUnitId,terminatedOn:row.terminatedOn,
+        })));
+      }
+    }
     expect(await payrollRead.payrollProcessEmployeeSelection(scoped,base.companyId,posted)).toEqual([own.employmentId,own.employmentId]);
     expect(await payrollRead.payrollProcessEmployeeCount(scoped,companyB)).toBe(0);
   });

@@ -294,6 +294,29 @@ const payrollProcessEmployeeFrom = sql`
   left join ${businessUnit} on ${businessUnit.id} = ${assignment.businessUnitId}
 `;
 
+type PayrollTransactionEmployee = Pick<Awaited<ReturnType<typeof listEmployees>>[number],
+  'employmentId' | 'name' | 'employeeCode' | 'company' | 'companyId' |
+  'department' | 'departmentLabel' | 'departmentCode' | 'departmentId' |
+  'businessUnit' | 'businessUnitLabel' | 'businessUnitCode' | 'businessUnitId' | 'terminatedOn'>;
+
+/** Transaction View needs only the fields used in its scope rail and filter validation. */
+export function listPayrollTransactionEmployees(ctx:SessionContext,companyIds:string[]){
+  return withTenant(ctx,tx=>tx.execute<PayrollTransactionEmployee>(sql`
+    select ${employment.id} as "employmentId", ${person.fullName} as name,
+      ${employment.employeeCode} as "employeeCode", ${company.legalName} as company,
+      ${employment.companyId} as "companyId", ${department.name} as department,
+      coalesce(nullif(trim(${department.label}), ''), nullif(trim(${department.description}), ''), ${department.name}) as "departmentLabel",
+      ${department.name} as "departmentCode", ${assignment.departmentId} as "departmentId",
+      ${businessUnit.name} as "businessUnit",
+      coalesce(nullif(trim(${businessUnit.label}), ''), nullif(trim(${businessUnit.name}), ''), ${businessUnit.code}) as "businessUnitLabel",
+      ${businessUnit.code} as "businessUnitCode", ${assignment.businessUnitId} as "businessUnitId",
+      ${employment.terminatedOn}::text as "terminatedOn"
+    ${payrollProcessEmployeeFrom}
+    ${companyIds.length?sql`where ${inArray(employment.companyId,companyIds)}`:sql``}
+    order by ${person.fullName}
+  `));
+}
+
 /** Intersect a posted selection with the exact RLS-visible company rows. Keep input order and duplicates. */
 export async function payrollProcessEmployeeSelection(ctx:SessionContext,companyId:string,submittedIds:string[]) {
   // The legacy string comparison never matched alternate UUID spellings or malformed input.
