@@ -14,7 +14,9 @@ import {createMovementEvent} from '../core/movement';
 import {correctHireDetails} from '../core/hire-correction';
 import {correctInformation,previewInformationCorrection} from '../core/information-correction';
 import {createBatch,preProcessAdvisory,generatePayslips} from '../core/payroll';
-import {createRewardUnit,rewardPolicyMemberships} from '../packs/rewards/service';
+import {rewardPolicyMemberships} from '../packs/rewards/service';
+import {setupChecker,setupRewardLibrariesFixture} from './rewards-setup-fixture';
+import {saveRewardPlanConfiguration,saveRewardSetupPlan} from '../packs/rewards/plan-configuration';
 import {todayInKualaLumpur} from '../lib/hr-date';
 let b:Base,ctx:SessionContext,checker:SessionContext,oldBu:string,newBu:string;
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4)),hireDate=`${year-2}-01-01`;
@@ -64,12 +66,14 @@ it('makes an explicit missing-BU mapping pending, saves Personnel and blocks pay
  const advisory=await preProcessAdvisory(ctx,batchId);expect(advisory.organisationGrouping).toEqual([expect.objectContaining({employmentId:next.employmentId,name:'Fictional pending'})]);
  await expect(generatePayslips(ctx,{batchId})).rejects.toThrow();expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual([]);
  // New Rewards reviews require a proven current company/BU membership before their dated
- // roster is read. Establish it through a second reviewed mapping while retaining yesterday's
- // pending classification, which the historical snapshot must still name rather than omit.
+ // roster is read. Today's corrected mapping must not clear yesterday's pending plan snapshot.
  await publish(today,newBu);
  expect(await rewardPolicyMemberships(ctx,[b.companyId])).toContainEqual({companyId:b.companyId,businessUnitId:newBu});
  expect(await withTenant(ctx,tx=>employmentOrganisationTagsTx(tx,ctx,{employmentId:next.employmentId,asOf:pendingOn}))).toMatchObject({status:'pending',businessUnitId:null});
- await expect(createRewardUnit(ctx,{companyId:b.companyId,businessUnitId:newBu,name:'Pending review',year,snapshotDate:pendingOn})).rejects.toThrow('Fictional pending');expect(await owner.db.select().from(schema.rewardUnit)).toEqual([]);
+ const grChecker=await setupChecker(ctx),{policy,salary,bonus}=await setupRewardLibrariesFixture(ctx,year,undefined,grChecker);
+ const target={companyId:b.companyId,businessUnitId:newBu},source=await saveRewardPlanConfiguration(ctx,{groupId:null,expectedRevision:0,name:'Pending review',policy,targets:[target]});
+ await expect(saveRewardSetupPlan(ctx,{versionId:source.versionId,expectedRevision:0,cycleName:'Pending review',snapshotDate:pendingOn,bindings:[{...target,salaryVersionId:salary,bonusVersionId:bonus,branchAcknowledged:false}],reason:'Check historical company structure'})).rejects.toThrow(/Group structure at the plan snapshot date/);
+ expect(await owner.db.select().from(schema.rewardUnit)).toEqual([]);
  expect(await owner.db.select().from(schema.rewardEntry)).toEqual([]);
  expect(await owner.db.select().from(schema.rewardCycle)).toEqual([]);
  expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual([]);

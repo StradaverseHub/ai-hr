@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {rewardEligibilitySummary} from '../packs/rewards/policy-eligibility';
 import {completeSharedRewardPolicy,establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 /** Real owners/RLS/rollback cases, prepared but not run until the complete resource handover. */
@@ -30,7 +31,7 @@ beforeEach(async()=>{
 afterAll(closeAll);
 const targets=()=>[{companyId:b.companyId,businessUnitId:buA},{companyId:companyB,businessUnitId:buB}];
 const createGroup=()=>saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name:'Fictional shared rewards',policy,targets:targets()});
-const unit=(companyId:string,businessUnitId:string,versionId?:string)=>createRewardUnit(admin,{name:`Fictional review ${randomUUID()}`,year,companyId,businessUnitId,snapshotDate:today,sharedPolicyVersionId:versionId});
+const unit=(companyId:string,businessUnitId:string,versionId:string)=>createApprovedRewardUnit(admin,{name:'Fictional checked shared review',year,companyId,businessUnitId,snapshotDate:today,sharedPolicyVersionId:versionId});
 async function scopeActor(){
  const [user]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:`fictional_shared_${randomUUID()}`}).returning({id:schema.appUser.id});
  const [role]=await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:b.companyId}).returning({id:schema.roleAssignment.id});
@@ -45,10 +46,10 @@ describe('shared reward configuration versions',()=>{
   const v2=await saveRewardPolicyGroup(admin,{groupId:v1.groupId,expectedRevision:v1.revision,name:v1.name,policy:{...policy,standardPools:[600,100,100]},targets:targets()});
   expect(v2.versionId).not.toBe(v1.versionId);expect(v2.revision).toBe(2);
   expect(await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id,a))).toEqual(before);
-  const d=await unit(b.companyId,buA,v2.versionId),configuration=await getRewardConfiguration(admin,d);
-  expect(configuration.unit.policy.standardPools).toEqual([600,100,100]);expect(configuration.unit.policyGroupVersionId).toBe(v2.versionId);
-  expect(configuration.policyOrigin).toMatchObject({name:v2.name,revision:2,changed:false});
-  expect((await rewardPolicyGroupUsage(admin,v1.groupId)).map(row=>row.unitId).sort()).toEqual([a,c,d].sort());
+  expect((await listRewardPolicyGroups(admin)).find(x=>x.groupId===v1.groupId)?.policy.standardPools).toEqual([600,100,100]);
+  await expect(unit(b.companyId,buA,v2.versionId)).rejects.toBeDefined();
+  expect(await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id,a))).toEqual(before);
+  expect((await rewardPolicyGroupUsage(admin,v1.groupId)).map(row=>row.unitId).sort()).toEqual([a,c].sort());
  });
  it('creates a named-members review from an immutable legacy shared version without inheriting private unit inputs',async()=>{
   const legacy={...policy,seniorMembershipMode:'named-members',seniorGrades:[],patActual:1200000,patTarget:900000,targetMonthsBp:25000,multiplierBp:8000,branchRatings:{Legacy:'AE'},exemptReason:'Historical approved exemption'};
@@ -63,7 +64,7 @@ describe('shared reward configuration versions',()=>{
   const v1=await createGroup();await saveRewardPolicyGroup(admin,{groupId:v1.groupId,expectedRevision:1,name:v1.name,policy,targets:targets()});
   const before=await owner.db.select({id:schema.rewardCycle.id}).from(schema.rewardCycle).orderBy(schema.rewardCycle.id);
   await expect(unit(b.companyId,buA,v1.versionId)).rejects.toMatchObject({code:'changed'});
-  await expect(unit(b.companyId,buA)).rejects.toMatchObject({code:'changed'});
+  await expect(createRewardUnit(admin,{name:'No checked plan',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today})).rejects.toThrow(/independently approved/);
   expect(await owner.db.select({id:schema.rewardCycle.id}).from(schema.rewardCycle).orderBy(schema.rewardCycle.id)).toEqual(before);
  });
  it('does not multiply global units into unselected companies and refuses incompatible or overlapping pairs',async()=>{
@@ -73,12 +74,15 @@ describe('shared reward configuration versions',()=>{
   await expect(saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name:'Fictional overlap',policy,targets:v.targets})).rejects.toMatchObject({code:'overlap',conflicts:[{companyId:b.companyId,businessUnitId:globalBu,groupId:v.groupId,name:v.name}]});
   await expect(saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name:'Fictional invalid pair',policy,targets:[{companyId:b.companyId,businessUnitId:buB}]})).rejects.toMatchObject({code:'scope'});
  });
- it('allows an authorised company to consume its own pair while hiding other companies and refusing partial edits of the group',async()=>{
+ it('keeps company-scoped choices private and requires separate Group Rewards authority to consume an approved plan',async()=>{
   const v=await createGroup(),actor=await scopeActor();
   expect(await listRewardPolicyGroups(actor.ctx)).toEqual([]);
   const choices=await rewardSharedPolicyChoices(actor.ctx,[b.companyId,companyB]);expect(choices).toHaveLength(1);expect(choices[0]).toMatchObject({companyId:b.companyId,businessUnitId:buA});
   await expect(saveRewardPolicyGroup(actor.ctx,{groupId:v.groupId,expectedRevision:1,name:'Never saved',policy,targets:[{companyId:b.companyId,businessUnitId:buA}]})).rejects.toMatchObject({code:'scope'});
-  const own=await createRewardUnit(actor.ctx,{name:'Fictional own review',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today,sharedPolicyVersionId:v.versionId});expect(own).toBeTruthy();
+  await unit(companyB,buB,v.versionId); // Approve both pairs, then create only the second company.
+  await expect(createRewardUnit(actor.ctx,{name:'Fictional checked shared review',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today,approvedPlanVersionId:v.versionId})).rejects.toBeDefined();
+  expect(await owner.db.select({id:schema.rewardUnit.id}).from(schema.rewardUnit).where(eq(schema.rewardUnit.companyId,b.companyId))).toHaveLength(0);
+  expect(await unit(b.companyId,buA,v.versionId)).toBeTruthy();
   await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.id,actor.grantId));
   expect(await rewardSharedPolicyChoices(actor.ctx,[b.companyId])).toEqual([]);
   await expect(saveRewardPolicyGroup(actor.ctx,{groupId:null,expectedRevision:0,name:'Revoked actor cannot save',policy,targets:[{companyId:b.companyId,businessUnitId:globalBu}]})).rejects.toMatchObject({code:'scope'});
@@ -106,14 +110,14 @@ describe('shared reward configuration versions',()=>{
   await sqlRefusal(()=>withTenant(admin,tx=>tx.update(schema.rewardUnit).set({companyId:companyB,businessUnitId:buB}).where(eq(schema.rewardUnit.id,reviewId))),'23514');
   await sqlRefusal(()=>withTenant(admin,tx=>tx.update(schema.rewardUnit).set({policy:{...policy,year:year+1}}).where(eq(schema.rewardUnit.id,reviewId))),'23514');
  });
- it('archives future assignment without rewriting old snapshots and refuses a stale pre-archive review',async()=>{
+ it('archives the legacy target list without rewriting existing reviews or admitting a duplicate',async()=>{
   const v=await createGroup(),reviewId=await unit(b.companyId,buA,v.versionId);
   const before=await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id,reviewId));
   const archived=await saveRewardPolicyGroup(admin,{groupId:v.groupId,expectedRevision:1,name:v.name,policy,targets:[]});
   expect(archived.targets).toEqual([]);expect(archived.revision).toBe(2);
   expect(await listRewardPolicyGroups(admin)).toContainEqual(archived);
   expect(await rewardSharedPolicyChoices(admin,[b.companyId,companyB])).toEqual([]);
-  await expect(unit(b.companyId,buA,v.versionId)).rejects.toMatchObject({code:'changed'});
+  await expect(unit(b.companyId,buA,v.versionId)).rejects.toBeDefined();
   expect(await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id,reviewId))).toEqual(before);
   const actor=await scopeActor();expect(await listRewardPolicyGroups(actor.ctx)).toEqual([]);
   await expect(saveRewardPolicyGroup(actor.ctx,{groupId:v.groupId,expectedRevision:2,name:v.name,policy,targets:[]})).rejects.toMatchObject({code:'scope'});
@@ -140,7 +144,7 @@ describe('shared reward configuration versions',()=>{
   expect(await rewardSharedPolicyChoices(foreignCtx,[b.companyId])).toEqual([]);
   await expect(saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name:'Foreign company refused',policy,targets:[{companyId:foreign.companyId,businessUnitId:foreignUnit.id}]})).rejects.toMatchObject({code:'scope'});
   await expect(saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name:'Foreign unit refused',policy,targets:[{companyId:b.companyId,businessUnitId:foreignUnit.id}]})).rejects.toMatchObject({code:'scope'});
-  await expect(createRewardUnit(foreignCtx,{name:'Foreign version refused',year,companyId:foreign.companyId,businessUnitId:foreignUnit.id,snapshotDate:today,sharedPolicyVersionId:v.versionId})).rejects.toMatchObject({code:'changed'});
+  await expect(createRewardUnit(foreignCtx,{name:'Foreign version refused',year,companyId:foreign.companyId,businessUnitId:foreignUnit.id,snapshotDate:today,approvedPlanVersionId:v.versionId})).rejects.toBeDefined();
  });
  it('refuses a raw runtime append pretending to be a canonical shared policy audit event',async()=>{
   const v=await createGroup();

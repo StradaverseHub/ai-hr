@@ -49,25 +49,30 @@ export async function confirmFixturePat(ctx:SessionContext,companyId:string,year
  await confirmRewardPat(reviewer,id);
  return id;
 }
-/** Existing versions are retained exactly; no replacement policy is invented for provenance tests. */
-export async function createApprovedRewardUnit(ctx:SessionContext,raw:PlannedRewardUnitInput,fixturePolicy?:RewardPolicy,fixtureTargets?:{companyId:string;businessUnitId:string}[]){
- const existing=raw.sharedPolicyVersionId?await rewardSetupPlan(ctx,raw.sharedPolicyVersionId):null;
- if(existing?.setup?.state==='approved')return createRewardUnit(ctx,{...raw,name:existing.setup.cycleName,cycleId:undefined,approvedPlanVersionId:existing.source.versionId});
- const checker=await setupChecker(ctx),grades=await setupGrades(ctx),why='Reviewed fixture configuration';
- const basePolicy=fixturePolicy??existing?.source.policy??defaultPolicy(raw.year);
+/** Valid independent library records shared by plan-admission and review fixtures. */
+export async function setupRewardLibrariesFixture(ctx:SessionContext,year:number,basePolicy:RewardPolicy=defaultPolicy(year),reviewer?:SessionContext){
+ const checker=reviewer??await setupChecker(ctx),grades=await setupGrades(ctx),why='Reviewed fixture configuration';
  const policy:RewardPolicy={...basePolicy,ranges:{...basePolicy.ranges},bonusMatrix:{...basePolicy.bonusMatrix}};
  for(const {grade} of grades){
   if(grade==='23')delete policy.ranges[grade];
   else policy.ranges[grade]??=grade==='12'?[300000,500000,700000]:[100000,500000,1000000];
   policy.bonusMatrix[grade]??=[0,10000,20000,25000,30000];
  }
+ const salary=await saveRewardLibrary(ctx,{libraryId:null,versionId:null,expectedLock:0,name:'Fixture Salary '+randomUUID(),year:year,tags:[],groupDefault:false,previousLibraryId:null,data:{kind:'salary',rows:grades.map(g=>{const band=policy.ranges[g.grade]??[100000,500000,1000000];return {...g,minimumCents:g.grade==='23'?null:band[0],midpointCents:g.grade==='23'?null:band[1],maximumCents:g.grade==='23'?null:band[2]};})},reason:why});
+ await submitRewardLibrary(ctx,salary,1);await confirmRewardLibrary(checker,salary,2);
+ const bonus=await saveRewardLibrary(ctx,{libraryId:null,versionId:null,expectedLock:0,name:'Fixture Bonus '+randomUUID(),year:year,tags:[],groupDefault:false,previousLibraryId:null,data:{kind:'bonus',type:policy.bonusStructure,rows:grades.map(g=>({...g,months:policy.bonusMatrix[g.grade]??[0,10000,20000,25000,30000]})),segments:Object.entries(policy.branchFactors).map(([name,factors])=>({name,factors}))},reason:why});
+ await submitRewardLibrary(ctx,bonus,1);await confirmRewardLibrary(checker,bonus,2);
+ return {policy,salary,bonus};
+}
+/** Existing versions are retained exactly; no replacement policy is invented for provenance tests. */
+export async function createApprovedRewardUnit(ctx:SessionContext,raw:PlannedRewardUnitInput,fixturePolicy?:RewardPolicy,fixtureTargets?:{companyId:string;businessUnitId:string}[]){
+ const existing=raw.sharedPolicyVersionId?await rewardSetupPlan(ctx,raw.sharedPolicyVersionId):null;
+ if(existing?.setup?.state==='approved')return createRewardUnit(ctx,{...raw,name:existing.setup.cycleName,cycleId:undefined,approvedPlanVersionId:existing.source.versionId});
+ const checker=await setupChecker(ctx),why='Reviewed fixture configuration';
  const name=raw.name||'Approved fixture '+randomUUID().slice(0,8);
  const targets=existing?.source.targets??fixtureTargets??[{companyId:raw.companyId,businessUnitId:raw.businessUnitId}];
  await setupCompanyStructureFixture(ctx,targets,raw.snapshotDate,checker);
- const salary=await saveRewardLibrary(ctx,{libraryId:null,versionId:null,expectedLock:0,name:'Fixture Salary '+randomUUID(),year:raw.year,tags:[],groupDefault:false,previousLibraryId:null,data:{kind:'salary',rows:grades.map(g=>{const band=policy.ranges[g.grade]??[100000,500000,1000000];return {...g,minimumCents:g.grade==='23'?null:band[0],midpointCents:g.grade==='23'?null:band[1],maximumCents:g.grade==='23'?null:band[2]};})},reason:why});
- await submitRewardLibrary(ctx,salary,1);await confirmRewardLibrary(checker,salary,2);
- const bonus=await saveRewardLibrary(ctx,{libraryId:null,versionId:null,expectedLock:0,name:'Fixture Bonus '+randomUUID(),year:raw.year,tags:[],groupDefault:false,previousLibraryId:null,data:{kind:'bonus',type:policy.bonusStructure,rows:grades.map(g=>({...g,months:policy.bonusMatrix[g.grade]??[0,10000,20000,25000,30000]})),segments:Object.entries(policy.branchFactors).map(([name,factors])=>({name,factors}))},reason:why});
- await submitRewardLibrary(ctx,bonus,1);await confirmRewardLibrary(checker,bonus,2);
+ const {policy,salary,bonus}=await setupRewardLibrariesFixture(ctx,raw.year,fixturePolicy??existing?.source.policy??defaultPolicy(raw.year),checker);
  for(const target of targets)await confirmFixturePat(ctx,target.companyId,raw.year,{targetCents:policy.patTarget,forecastCents:null,actualCents:policy.patActual,targetMonthsBp:policy.targetMonthsBp},checker);
  const version=existing?.source??await saveRewardPlanConfiguration(ctx,{groupId:null,expectedRevision:0,name,policy,targets});
  const revision=await saveRewardSetupPlan(ctx,{versionId:version.versionId,expectedRevision:existing?.setup?.revision??0,cycleName:name,snapshotDate:raw.snapshotDate,bindings:targets.map(t=>({...t,salaryVersionId:salary,bonusVersionId:bonus,branchAcknowledged:policy.bonusStructure==='branch'})),reason:why});

@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
@@ -16,7 +17,7 @@ import { assignRole, createCompany } from '../core/admin';
 import { setCompensation } from '../core/comp';
 import { createBatch, setPayrollInput } from '../packs/payroll/service';
 import { canPostRewardUnit, createRewardUnit, decideRewardUnit, getRewardCalendar, getRewardUnit, listRewardReviewStatus, postRewardUnit, rewardApprovalsBoard, rewardDueWording, saveRewardCalendar, saveRewardEntry, saveRewardPolicy, sendReadyRewardUnits, emptyRewardCalendar } from '../packs/rewards/service';
-import { emptyFacts, type RewardRole } from '../packs/rewards/model';
+import { defaultPolicy, emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import en from '../messages/en.json';
@@ -36,18 +37,18 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
     const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: `${label} (fictional)`, primaryEmail: `${label}-${n++}@board.test` }).returning();
     return p;
   }
-  async function employee(code: string, salary: number, bu: string) {
-    const hire = await hireEmployee(admin, { person: { fullName: `Board ${code}`, primaryEmail: `${code}-${n++}@board.test` }, companyId: b.companyId, departmentId: b.deptA, businessUnitId:bu, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
+  async function employee(code: string, salary: number, bu: string, companyId:string,departmentId:string) {
+    const hire = await hireEmployee(admin, { person: { fullName: `Board ${code}`, primaryEmail: `${code}-${n++}@board.test` }, companyId, departmentId, businessUnitId:bu, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
     const [grade] = await owner.db.select().from(schema.jobGrade).where(and(eq(schema.jobGrade.tenantId, b.tenantId), eq(schema.jobGrade.code, '12')));
     await owner.db.update(schema.employment).set({ gradeId: grade.id, confirmationDate: `${year - 2}-04-01` }).where(eq(schema.employment.id, hire.employmentId));
     await setCompensation(admin, { employmentId: hire.employmentId, basicSalary: salary, effectiveFrom: `${year - 2}-01-01` });
     return hire.employmentId;
   }
   /** A unit with every seat assigned, policy configured, facts verified. confidentiality by salary. */
-  async function unit(code: string, people: { salary: number; confidentiality?: 'standard' | 'bg' | 'ec' }[], buActor: SessionContext = actors.bu!) {
-    const [bu] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code, name: `Unit ${code}` }).returning();
-    for (const [i, p] of people.entries()) await employee(`${code}-${i}`, p.salary, bu.id);
-    const id = await createRewardUnit(admin, { name: 'Board cycle', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
+  async function unit(code: string, people: { salary: number; confidentiality?: 'standard' | 'bg' | 'ec' }[], buActor: SessionContext = actors.bu!, companyId=b.companyId,departmentId=b.deptA) {
+    const [bu] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId, code, name: `Unit ${code}` }).returning();
+    for (const [i, p] of people.entries()) await employee(`${code}-${i}`, p.salary, bu.id,companyId,departmentId);
+    const id=await createApprovedRewardUnit(admin,{name:'Board cycle',year,companyId,businessUnitId:bu.id,snapshotDate:today},{...defaultPolicy(year),ranges:{'12':[300000,600000,1200000]}});
     const rev = async () => (await getRewardUnit(admin, id)).unit.revision;
     for (const seat of ['bu', 'bg', 'ctro', 'ec', 'pbp'] as const) await setRewardMember(admin, id, await rev(), (seat === 'bu' ? buActor : actors[seat]!).userId!, seat);
     await setRewardMember(admin, id, await rev(), admin.userId!, 'payroll');
@@ -250,7 +251,7 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       const other = await createCompany(admin, { legalName: 'Board Other Co (fictional)', companyLabel: 'BRD-OTHER' });
       const [obu] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: other.id, code: 'OTH', name: 'Other unit' }).returning();
       await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:other.id,businessUnitId:obu.id,year});
-      const otherUnit = await createRewardUnit(admin, { name: 'Board cycle', year, companyId: other.id, businessUnitId: obu.id, snapshotDate: today });
+      const otherUnit = await createApprovedRewardUnit(admin, { name: 'Board cycle', year, companyId: other.id, businessUnitId: obu.id, snapshotDate: today });
       expect((await rewardApprovalsBoard(admin, [b.companyId])).map(r => r.id)).toEqual([id]);
       expect((await rewardApprovalsBoard(admin, [b.companyId, other.id])).map(r => r.id).sort()).toEqual([id, otherUnit].sort());
       expect((await rewardApprovalsBoard(actors.bu!, [b.companyId, other.id])).map(r => r.id)).toEqual([id]);
@@ -265,11 +266,14 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
   describe('Send all ready', () => {
     it('sends ready units, skips a blocked one, refuses one that changed, one decision per success', async () => {
       // Each BU CEO has their own real People placement; BG remains a group reviewer across units.
-      const buActors = new Map<string, SessionContext>();
+      const buActors = new Map<string, SessionContext>(),companies:string[]=[];
       async function boardUnit(code: string, salary: number) {
         const p = await person(`${code}-bu`), userId = await createAppUser(b.tenantId, p.id, 'employee');
         const buActor: SessionContext = { ...admin, userId, personId: p.id, roles: ['employee'], grants: undefined };
-        const id = await unit(code, [{ salary }], buActor); buActors.set(id, buActor); return id;
+        const [company]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:`Fictional ${code} employer`}).returning();
+        const [department]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:company.id,name:`${code} Operations`}).returning();
+        companies.push(company.id);
+        const id=await unit(code,[{salary}],buActor,company.id,department.id);buActors.set(id,buActor);return id;
       }
       const ready1 = await boardUnit('RDY1', 5000), ready2 = await boardUnit('RDY2', 5200);
       const blocked = await boardUnit('BLK', 5400), changed = await boardUnit('CHG', 5600);
@@ -279,7 +283,7 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       // Drift after submission: a record loses verification, so the BG seat sees a blocking restricted check.
       const [entry] = await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId, blocked));
       await owner.db.update(schema.rewardEntry).set({ facts: { ...entry.facts, reviewed: false } }).where(eq(schema.rewardEntry.id, entry.id));
-      const board = await rewardApprovalsBoard(actors.bg!, [b.companyId]);
+      const board = await rewardApprovalsBoard(actors.bg!, companies);
       const seen = board.filter(r => r.waiting && r.action === 'approve').map(r => ({ unitId: r.id, revision: r.revision }));
       expect(seen.map(s => s.unitId).sort()).toEqual([ready1, ready2, blocked, changed].sort());
       expect(board.find(r => r.id === blocked)!.blocking).toBeGreaterThan(0);
@@ -288,7 +292,7 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       await decideRewardUnit(actors.bg!, changed, seen.find(s => s.unitId === changed)!.revision, 'return', 'Returned by another session for a fix');
       await submit(changed, buActors.get(changed)!);
       const before = Object.fromEntries(await Promise.all([ready1, ready2, blocked, changed].map(async id => [id, (await decisions(id)).length] as const)));
-      const result = await sendReadyRewardUnits(actors.bg!, [b.companyId], seen);
+      const result = await sendReadyRewardUnits(actors.bg!, companies, seen);
       expect(result.sent.sort()).toEqual([ready1, ready2].sort());
       expect(result.skipped).toEqual([blocked]);
       expect(result.refused.map(r => r.id)).toEqual([changed]);
