@@ -11,9 +11,9 @@ export function completeSharedRewardPolicy(year:number):RewardPolicy{
  return {...defaultPolicy(year),ranges:Object.fromEntries(REWARD_POLICY_GRADES.filter(grade=>grade!=='23').map(grade=>[grade,[10000,20000,30000] as [number,number,number]])),bonusMatrix:Object.fromEntries(REWARD_POLICY_GRADES.map(grade=>[grade,[0,10000,20000,30000,40000] as [number,number,number,number,number]]))};
 }
 /** Explicit People writer establishes membership. A master catalogue row never substitutes for this fact. */
-export async function establishRewardMembership(ctx:SessionContext,p:{tenantId:string;companyId:string;businessUnitId:string;departmentId?:string;year:number}){
+export async function establishRewardMembership(ctx:SessionContext,p:{tenantId:string;companyId:string;businessUnitId:string;departmentId?:string;year:number;hiredOn?:string}){
  const departmentId=p.departmentId??(await owner.db.insert(schema.department).values({tenantId:p.tenantId,companyId:p.companyId,name:`Rewards membership ${randomUUID()}`}).returning({id:schema.department.id}))[0].id;
- return hireEmployee(ctx,{person:{fullName:'Rewards scope fixture',primaryEmail:`${randomUUID()}@reward-scope.test`},companyId:p.companyId,businessUnitId:p.businessUnitId,departmentId,employmentType:'full_time',hiredOn:`${p.year-2}-01-01`});
+ return hireEmployee(ctx,{person:{fullName:'Rewards scope fixture',primaryEmail:`${randomUUID()}@reward-scope.test`},companyId:p.companyId,businessUnitId:p.businessUnitId,departmentId,employmentType:'full_time',hiredOn:p.hiredOn??`${p.year-2}-01-01`});
 }
 /** The ordinary journal must install the allocated membership schema in every worker. */
 export async function migrateRewardMembershipFixture(){

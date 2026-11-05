@@ -1,4 +1,4 @@
-import {createApprovedRewardUnit} from './rewards-setup-fixture';
+import {createApprovedRewardUnit,setupCompanyStructureFixture} from './rewards-setup-fixture';
 import {establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs,completeRewardFixturePolicy} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
@@ -170,7 +170,11 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     for(let i=1;i<50;i++){
       const [company]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:`Overview company ${i}`}).returning();companyIds.push(company.id);
       const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:company.id,code:`OVERVIEW-${i}`,label:`Fictional unit ${i}`,name:`Fictional unit ${i}`}).returning();
-      await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:company.id,businessUnitId:bu.id,year});targets.push({companyId:company.id,businessUnitId:bu.id});
+      targets.push({companyId:company.id,businessUnitId:bu.id});
+    }
+    await setupCompanyStructureFixture(admin, targets, today);
+    for (const target of targets) {
+      await establishRewardMembership(admin, { ...target, tenantId: b.tenantId, year, hiredOn: today });
     }
     await owner.withTenant(admin, async tx => {
       const [cycle] = await tx.insert(schema.rewardCycle).values({
