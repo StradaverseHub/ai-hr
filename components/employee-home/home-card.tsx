@@ -4,7 +4,7 @@ import * as React from 'react';
 import {Button} from '@/components/ui';
 import {Card,CardContent,CardHeader} from '@/components/ui/card';
 import type {EmployeeHomeCard} from '@/lib/employee-home';
-import {deliverHomeCard,type HomeCardDelivery,type HomeCardReader} from '@/lib/employee-home-delivery';
+import {HOME_CARD_READ_TIMEOUT_MS,deliverHomeCard,type HomeCardDelivery,type HomeCardReader} from '@/lib/employee-home-delivery';
 
 type Labels={loading:string;failed:string;timeout:string;retry:string;refresh:string};
 type View<T>={key:string;result:HomeCardDelivery<T>|{state:'loading'}};
@@ -19,6 +19,31 @@ class CardRenderBoundary extends React.Component<{
 }
 function DeliveredBody<T>({value,render}:{value:T;render:(value:T)=>React.ReactNode}){
   return render(value);
+}
+
+/** Focus and visibility can report the same tab activation separately. Let the first automatic
+ * refresh reach its deadline before a second signal can cancel it and start another request. */
+export function useHomeCardRefresh(intervalMs:number){
+  const [refresh,setRefresh]=React.useState(0);
+  React.useEffect(()=>{
+    let lastRefresh=-Infinity;
+    const update=()=>{
+      if(document.visibilityState!=='visible')return;
+      const now=performance.now();
+      if(now-lastRefresh<HOME_CARD_READ_TIMEOUT_MS)return;
+      lastRefresh=now;
+      setRefresh(value=>value+1);
+    };
+    window.addEventListener('focus',update);
+    document.addEventListener('visibilitychange',update);
+    const timer=window.setInterval(update,intervalMs);
+    return ()=>{
+      window.removeEventListener('focus',update);
+      document.removeEventListener('visibilitychange',update);
+      window.clearInterval(timer);
+    };
+  },[intervalMs]);
+  return refresh;
 }
 
 /** Client-side composition boundary. Supply a stable reader from the client card owner, not an

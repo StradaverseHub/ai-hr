@@ -3,18 +3,12 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {useLocale,useTranslations} from 'next-intl';
-import {IndependentHomeCard} from './home-card';
+import {IndependentHomeCard,useHomeCardRefresh} from './home-card';
 import type {EmployeeHomeNotices} from '@/lib/employee-home-read-model';
 
 export function HomeNoticesCard({employmentId,timeZone='Asia/Kuala_Lumpur'}:{employmentId:string;timeZone?:string}){
  const t=useTranslations('employeeHome.notices'),n=useTranslations('notices'),locale=useLocale();
- const [refresh,setRefresh]=React.useState(0);
- React.useEffect(()=>{
-  const update=()=>{if(document.visibilityState==='visible')setRefresh(value=>value+1);};
-  window.addEventListener('focus',update);document.addEventListener('visibilitychange',update);
-  const timer=window.setInterval(update,30000);
-  return ()=>{window.removeEventListener('focus',update);document.removeEventListener('visibilitychange',update);window.clearInterval(timer);};
- },[]);
+ const refresh=useHomeCardRefresh(30000);
  const read=React.useCallback(async(signal:AbortSignal):Promise<EmployeeHomeNotices>=>{
   const response=await fetch('/api/home/notices?'+new URLSearchParams({employmentId}),{signal,cache:'no-store',credentials:'same-origin'});
   if(!response.ok)throw Error('Notice Board unavailable');
