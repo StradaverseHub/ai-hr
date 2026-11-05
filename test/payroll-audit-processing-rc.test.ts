@@ -3,8 +3,9 @@ import {createHash,randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {eq,sql,type SQL} from 'drizzle-orm';
+import {and,eq,sql,type SQL} from 'drizzle-orm';
 import * as schema from '../db/schema';
+import {payrollAuditCapture} from '../db/payroll-audit-schema';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {withPayrollTenant} from '../core/module-gate';
 import {hireEmployee} from '../core/org';
@@ -181,4 +182,18 @@ it('pins the actual clock writer until processing releases its native Access bar
    expect(await groupReads(tx,batchId,true)).toEqual(fresh);
   });
  }finally{await writer?.catch(()=>undefined);}
+},60000);
+
+it('captures exact nonempty Attendance and OT evidence from the real Payroll processing owner',async()=>{
+ const {root,worker,b}=await loadAuditFixture(1);
+ await owner.db.insert(schema.attendance).values([
+  {tenantId:b.tenantId,employmentId:worker.employmentId,attendanceDate:'2026-02-10',status:'present',otMinutes:30},
+  {tenantId:b.tenantId,employmentId:worker.employmentId,attendanceDate:'2026-02-12',status:'present'},
+ ]);
+ const {batchId}=await createBatch(root,{companyId:b.companyId,payPeriod:'2026-02'});await generatePayslips(root,{batchId});
+ const [capture]=await owner.db.select().from(payrollAuditCapture).where(and(eq(payrollAuditCapture.tenantId,b.tenantId),eq(payrollAuditCapture.sourceKey,'inputs:'+batchId)));
+ const month={start:'2026-02-01',end:'2026-02-28'},windows={attendance:month,overtime:month,leave:month,claim:month};
+ const original=await withTenant(root,tx=>runInputsTx(tx,{batchId,payPeriod:'2026-02',windows}));
+ expect(original.components.attendance.rows).toBe(2);expect(original.components.overtime.rows).toBe(1);
+ expect(capture).toMatchObject({kind:'inputs_snapshot',writer:'user',writerId:root.userId,content:{...original,basis:'processed',trigger:'processed',processedBy:root.userId}});
 },60000);
