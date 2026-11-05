@@ -5,7 +5,7 @@ import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from '
 import {appUser,person,roleAssignment,company,jobGrade,employment} from '../db/schema';
 import {type SessionContext,withTenant} from '../db/client';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {architectureWorkspace,assignArchitectureSeat,proposeArchitectureCatalogue,decideArchitectureProposal,scanArchitecture,proposeOutlierResolution} from '../packs/job-architecture/service';
+import {architectureWorkspace,assignArchitectureSeat,proposeArchitectureCatalogue,decideArchitectureProposal,scanArchitecture,proposeOutlierResolution,proposeArchitecturePositions} from '../packs/job-architecture/service';
 let b:Base,checker:SessionContext;
 beforeAll(async()=>{await migrateTestDb();});
 beforeEach(async()=>{await resetDb();b=await seedBase();await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id in ('workforce.view','workforce.maintain')`);const[p]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Independent architecture checker',primaryEmail:randomUUID()+'@architecture.test'}).returning();const[u]=await owner.db.insert(appUser).values({tenantId:b.tenantId,personId:p.id,workosUserId:randomUUID()}).returning();await owner.db.insert(roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,role:'hr_admin',companyId:null});checker={...adminCtx(b),userId:u.id};await assignArchitectureSeat(adminCtx(b),{userId:b.adminUserId,companyId:null,role:'group_rewards',validFrom:todayInKualaLumpur(),validTo:null});await assignArchitectureSeat(adminCtx(b),{userId:u.id,companyId:null,role:'group_rewards',validFrom:todayInKualaLumpur(),validTo:null});});
@@ -48,11 +48,13 @@ it('guards every employment writer while preserving unchanged historical grades 
  const [e]=await owner.db.insert(employment).values({tenantId:b.tenantId,companyId:b.companyId,personId:p.id,hiredOn:todayInKualaLumpur(),gradeId:legacy.id}).returning();
  await expect(owner.db.execute(sql`update employment set grade_id=${future.id}::uuid where id=${e.id}::uuid`)).rejects.toMatchObject({cause:expect.objectContaining({message:'Future architecture grades are not in use',code:'23514'})});
  const codes=['H','12','13','14','15','16','17','18','19','20','21','22','23'];const grades=await owner.db.insert(jobGrade).values(codes.map(code=>({tenantId:b.tenantId,code,name:'Active '+code}))).returning();const ladder=grades.map(g=>({gradeId:g.id,code:g.code,name:g.name,complexity:'Scope',authority:'Authority',people:'People',impact:'Impact',qualifications:'Qualifications'}));
- const proposal=await proposeArchitectureCatalogue(adminCtx(b),{catalogue:{nodes:[],ladder},baseRevision:0,reason:'Official complete active grade ladder'});await decideArchitectureProposal(checker,{id:proposal,approve:true});
+ const ids=[randomUUID(),randomUUID(),randomUUID(),randomUUID()];const nodes=ids.map((id,i)=>({id,kind:(['family','subfamily','specialisation','unit'] as const)[i],code:'GRADE-CHECK-'+i,title:'Grade binding '+i,parentId:i?ids[i-1]:null,minGrade:i===3?'12':null,maxGrade:i===3?'19':null,statutory:false,sme:false,description:''}));
+ const proposal=await proposeArchitectureCatalogue(adminCtx(b),{catalogue:{nodes,ladder},baseRevision:0,reason:'Official complete active grade ladder'});await decideArchitectureProposal(checker,{id:proposal,approve:true});
  await owner.db.execute(sql`update employment set grade_id=grade_id where id=${e.id}::uuid`);
  await owner.db.execute(sql`update employment set grade_id=${grades[0].id}::uuid where id=${e.id}::uuid`);
  await expect(owner.db.execute(sql`update employment set grade_id=${legacy.id}::uuid where id=${e.id}::uuid`)).rejects.toMatchObject({cause:expect.objectContaining({message:'Choose an approved active architecture grade',code:'23514'})});
  await owner.db.execute(sql`update employment set grade_id=null where id=${e.id}::uuid`);
+ const [alias]=await owner.db.insert(jobGrade).values({tenantId:b.tenantId,code:'JG 13',name:'Alternate grade13 master'}).returning();const w=await architectureWorkspace(adminCtx(b),b.companyId);expect(w.grades.some(g=>g.id===alias.id)).toBe(false);await expect(proposeArchitecturePositions(adminCtx(b),{companyId:b.companyId,catalogueRevision:w.catalogue.revision,sourceDigest:w.sourceDigest,mappings:[{positionId:b.positionId,companyId:b.companyId,businessUnitId:null,reportsToPositionId:null,jobUnitId:ids[3],gradeId:alias.id,grade:'13',status:'vacant'}],reason:'An alternate UUID is not the official grade identity'})).rejects.toThrow(/Grade identity/);
  await expect(proposeArchitectureCatalogue(adminCtx(b),{catalogue:empty,baseRevision:1,reason:'Must not silently remove official ladder'})).rejects.toThrow(/retain/);
 });
 

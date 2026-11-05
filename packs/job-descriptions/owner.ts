@@ -113,7 +113,7 @@ export async function getJobMasters(ctx: SessionContext): Promise<Masters> {
         const bus = await tx.select({ id: businessUnit.id, name: businessUnit.name, label: businessUnit.label, code: businessUnit.code, companyIds: labelCompanyIdsSql(businessUnit, 'business_unit'), isGlobal: businessUnit.isGlobal }).from(businessUnit).where(and(eq(businessUnit.tenantId, ctx.tenantId), isNull(businessUnit.archivedAt), visibleLabelIdsCondition(businessUnit, 'business_unit', ids))).orderBy(asc(businessUnit.name), asc(businessUnit.id));
         const departments = await tx.select({ id: department.id, name: department.name, code: department.name, label: department.label, description: department.description, businessUnitId: department.businessUnitId, companyIds: labelCompanyIdsSql(department, 'department'), isGlobal: department.isGlobal }).from(department).where(and(eq(department.tenantId, ctx.tenantId), isNull(department.archivedAt), visibleLabelIdsCondition(department, 'department', ids))).orderBy(asc(department.name), asc(department.id));
         const positions = await tx.select({ id: position.id, title: position.title, code: position.title, label: position.label, description: position.description, family: position.jobFamily, companyIds: labelCompanyIdsSql(position, 'position'), isGlobal: position.isGlobal }).from(position).where(and(eq(position.tenantId, ctx.tenantId), isNull(position.archivedAt), visibleLabelIdsCondition(position, 'position', ids))).orderBy(asc(position.title), asc(position.id));
-        const grades = await tx.select({ id: jobGrade.id, name: jobGrade.name, code: jobGrade.code }).from(jobGrade).where(and(eq(jobGrade.tenantId, ctx.tenantId), isNull(jobGrade.archivedAt))).orderBy(asc(jobGrade.rank), asc(jobGrade.id));
+        const grades = await tx.select({ id: jobGrade.id, name: jobGrade.name, code: jobGrade.code }).from(jobGrade).where(and(eq(jobGrade.tenantId, ctx.tenantId), isNull(jobGrade.archivedAt),sql`app.architecture_grade_assignable(${jobGrade.id})`)).orderBy(asc(jobGrade.rank), asc(jobGrade.id));
         const locations = await tx.select({ id: location.id, name: location.name, companyId: location.companyId }).from(location).where(and(eq(location.tenantId, ctx.tenantId), isNull(location.archivedAt), sql `(app.access_workforce_company(${location.companyId},'workforce.view') OR app.job_architecture_can(${location.companyId},'view'))`)).orderBy(asc(location.name), asc(location.id));
         const profiles = await tx.select().from(profileOption).where(and(eq(profileOption.tenantId, ctx.tenantId), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.id));
         const people = await rows<{value:string;label:string;companyIds:string[];isGlobal:boolean}>(tx,sql`
@@ -168,7 +168,7 @@ async function orgLabels(tx: Tx, ctx: SessionContext, x: JobInput, previous?: Jo
         }
         else if (key === 'grade') {
             uuid(id);
-            const [r] = await tx.select().from(jobGrade).where(and(eq(jobGrade.id, id), eq(jobGrade.tenantId, ctx.tenantId), isNull(jobGrade.archivedAt))).for('share');
+            const [r] = await tx.select().from(jobGrade).where(and(eq(jobGrade.id, id), eq(jobGrade.tenantId, ctx.tenantId), isNull(jobGrade.archivedAt),sql`app.architecture_grade_assignable(${jobGrade.id})`)).for('share');
             if (!r)
                 throw new JobDocumentError('Choose an active job grade');
             labels[key] = label(r);
@@ -431,7 +431,7 @@ async function jobArchitectureBinding(tx:Tx,ctx:SessionContext,input:JobInput,la
  if(!input.jobUnitId)return null;uuid(input.jobUnitId);
  const [current]=await tx.execute<{revision:number;catalogue:ArchitectureCatalogue}>(sql`select revision,catalogue from job_architecture_catalogue_revision where tenant_id=${ctx.tenantId}::uuid order by revision desc limit 1`);
  const unit=current?.catalogue.nodes.find(n=>n.id===input.jobUnitId&&n.kind==='unit');if(!unit||!unit.minGrade||!unit.maxGrade)throw new JobDocumentError('Choose an approved job unit.');
- const [grade]=await tx.execute<{code:string}>(sql`select code from job_grade where id=${input.org.grade??null}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null`);
+ const [grade]=await tx.execute<{code:string}>(sql`select code from job_grade where id=${input.org.grade??null}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null and app.architecture_grade_assignable(id)`);
  const code=grade&&architectureGrade(grade.code);if(!code||!gradeInRange(code,unit.minGrade,unit.maxGrade))throw new JobDocumentError('Choose an active grade within the job unit range.');
  if(input.title.trim()!==unit.title)throw new JobDocumentError('The job title is set by the approved job unit.');
  const path=cataloguePath(current.catalogue.nodes,unit.id);for(const n of path)labels[n.kind==='unit'?'jobUnit':n.kind]=n.title;
@@ -440,7 +440,7 @@ async function jobArchitectureBinding(tx:Tx,ctx:SessionContext,input:JobInput,la
 async function validateJobScopeForApproval(tx:Tx,ctx:SessionContext,job:Job,r:JobRevision){
  const binding=r.architecture;if(!binding)return;
  const [unresolved]=await tx.execute(sql`select id from job_architecture_outlier where tenant_id=${ctx.tenantId}::uuid and fingerprint=${'jd_scope:'+r.id} and state<>'resolved' limit 1`);if(unresolved)throw new JobDocumentError('Resolve the linked scope Outlier before approval.');
- const unit=binding.path.find(n=>n.kind==='unit');const [g]=await tx.execute<{code:string}>(sql`select code from job_grade where id=${r.org.grade??null}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null`);
+ const unit=binding.path.find(n=>n.kind==='unit');const [g]=await tx.execute<{code:string}>(sql`select code from job_grade where id=${r.org.grade??null}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null and app.architecture_grade_assignable(id)`);
  const code=g&&architectureGrade(g.code);if(!unit?.minGrade||!unit.maxGrade||!code||!gradeInRange(code,unit.minGrade,unit.maxGrade)||code!==binding.grade)throw new JobDocumentError('The grade differs from the reviewed job-unit scope. Resolve the linked Outlier before approval.');
 }
 async function publishArchitectureJob(tx:Tx,ctx:SessionContext,job:Job,r:JobRevision){
