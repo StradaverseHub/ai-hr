@@ -35480,7 +35480,12 @@
       "none": "Không có đề xuất rõ ràng; chọn phiên bản"
     },
     "libraryReadOnly": "Giá trị thư viện lương và thưởng đã dùng chỉ cho phép xem. Phê duyệt phiên bản kế hoạch mới cho đợt đánh giá sau.",
-    "businessUnit": "Đơn vị kinh doanh"
+    "businessUnit": "Đơn vị kinh doanh",
+    "planSettings": "Thiết lập chính sách kế hoạch",
+    "saveSettings": "Lưu thiết lập thành phiên bản nháp mới",
+    "newPlanVersion": "Tạo phiên bản kế hoạch tiếp theo",
+    "successorHelp": "Tạo bản nháp kế tiếp để thay đổi thiết lập tương lai. Bản chụp đợt đánh giá hiện có giữ nguyên phiên bản đã ghi nhận.",
+    "structure-not-ready": "Chưa có phân công đơn vị kinh doanh theo ngày có hiệu lực rõ ràng. Kiểm tra cơ cấu công ty trước khi phân bổ thư viện."
   },
   "jobArchitecture": {
     "title": "Kiến trúc công việc",
