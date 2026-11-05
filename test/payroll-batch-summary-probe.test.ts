@@ -11,7 +11,7 @@ import {GET as exportRun} from '../app/payroll/[batchId]/export/route';
 import {rowsForRun,transactionDetailReport} from '../app/payroll/[batchId]/transaction-detail-report';
 import {listPayrollRegisterAcross} from '../core/payroll-view';
 import {serializeReport} from '../lib/report-export';
-import {PAYROLL_ACCESS_EVENT} from '../core/payroll-audit/access-log';
+import {PAYROLL_ACCESS_EVENT} from '../core/payroll-audit/types';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
