@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 
 const budgetMs=90_000;
 const code=person=>'PERF'+String(person.index).padStart(4,'0');
 const profile=person=>'/admin/personnel/'+person.employmentId;
+const messages=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
+const listSearch=page=>page.locator('main form[action="/admin/personnel/search"]');
 const box=page=>page.locator('main [data-tour="personnel-employee-switcher"]:visible');
 
-/** Read-only journey for the already-authenticated group HR context; no extra browser or lease. */
+/** Authenticated Personnel journey using the private list search and the profile switcher. */
 export async function exercisePersonnelSwitcher({page,user,fixture,report,save,phase,loadState}){
  assert.equal(user.role,'groupHR');
  const deadline=performance.now()+budgetMs;
@@ -31,32 +34,33 @@ export async function exercisePersonnelSwitcher({page,user,fixture,report,save,p
   const response=await page.goto(new URL(path,page.url()).href,{waitUntil:'domcontentloaded',timeout:remaining()});
   assert(response?.ok(),'Personnel navigation refused');
   await page.getByRole('heading',{level:1,name:heading,exact:true}).waitFor({timeout:remaining()});
-  await box(page).waitFor({timeout:remaining()});
-  capture(path.includes('?tab=')?'profile-open':'list-open',began);
+  const isProfile=path.includes('?tab=');
+  await (isProfile?box(page):listSearch(page)).waitFor({timeout:remaining()});
+  capture(isProfile?'profile-open':'list-open',began);
  }
- async function search(person,step,visible){
-  const began=performance.now(),q=code(person);
-  const [actual]=await Promise.all([page.waitForResponse(response=>{
-   const url=new URL(response.url());
-   return url.pathname==='/api/personnel/search'&&url.searchParams.get('q')===q;
-  },{timeout:remaining()}),box(page).fill(q,{timeout:remaining()})]);
-  assert(actual.ok(),'Personnel search failed');
-  assert.equal(actual.headers()['cache-control'],'private, no-store');
-  const payload=await actual.json();
-  assert(Array.isArray(payload.rows)&&payload.rows.length<=8,'invalid switcher result bound');
-  if(!visible){
-   assert.equal(payload.rows.length,0);
-   const list=await results();
-   await list.getByText('No employee matches that.',{exact:true}).waitFor({timeout:remaining()});
-   assert.equal(await list.getByRole('option').count(),0);
-   capture(step,began,{resultCount:0});
-   return null;
+ async function searchList(person,step,visible){
+  const began=performance.now(),term=code(person),form=listSearch(page);
+  const oldToken=new URL(page.url()).searchParams.get('search');
+  await form.locator('input[name="term"]').fill(term,{timeout:remaining()});
+  const [response]=await Promise.all([
+   page.waitForResponse(response=>new URL(response.url()).pathname==='/admin/personnel/search'&&response.request().method()==='POST',{timeout:remaining()}),
+   form.locator('button[type="submit"]').click({timeout:remaining()}),
+  ]);
+  assert.equal(response.status(),303,'Personnel private search did not redirect');
+  assert.equal(response.headers()['cache-control'],'private, no-store');
+  await page.waitForURL(url=>{
+   const token=url.searchParams.get('search');
+   return url.pathname==='/admin/personnel'&&token!==null&&token!==oldToken&&/^[A-Za-z0-9_-]{43}$/.test(token);
+  },{timeout:remaining()});
+  assert(!page.url().includes(term),'Private search exposed the term in its result URL');
+  await page.getByText(messages.personnelOrganisationFilters.privateActive,{exact:true}).waitFor({timeout:remaining()});
+  const table=page.locator('main tbody');
+  if(visible)await table.getByText(person.name,{exact:true}).waitFor({timeout:remaining()});
+  else{
+   await table.getByText(messages.people.list.emptyFiltered,{exact:true}).waitFor({timeout:remaining()});
+   assert.equal(await table.getByText(person.name,{exact:true}).count(),0);
   }
-  assert.equal(payload.rows[0]?.employmentId,person.employmentId,'exact employee code must rank first');
-  const option=(await results()).getByRole('option').filter({hasText:person.name});
-  await option.waitFor({timeout:remaining()});
-  capture(step,began,{resultCount:payload.rows.length});
-  return option;
+  capture(step,began,{matched:visible,opaqueResult:true});
  }
  async function jump(option,person,tab){
   assert(option);
@@ -71,9 +75,9 @@ export async function exercisePersonnelSwitcher({page,user,fixture,report,save,p
  const en=await page.locator('html').getAttribute('lang',{timeout:remaining()});
  assert.equal(en,'en');
  if(new URL(page.url()).pathname!=='/admin/personnel')await goto('/admin/personnel','Personnel Management');
- else await box(page).waitFor({timeout:remaining()});
- await search(outside,'outside-tenant-search-refused',false);
- await search(first,'list-code-search',true);
+ else await listSearch(page).waitFor({timeout:remaining()});
+ await searchList(outside,'outside-tenant-search-refused',false);
+ await searchList(first,'list-code-search',true);
  await goto(profile(first)+'?tab=job',first.name);
  const began=performance.now();
  await box(page).fill(code(second),{timeout:remaining()});
