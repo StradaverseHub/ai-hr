@@ -94,7 +94,8 @@ it('reads the exact effective header and visible slip count without exporting di
  for(const [name,read,statements]of [
   ['original',()=>batchDetail(root,batchId),2],['register-page',()=>payrollRunRegisterPage(root,batchId,parsePageQuery()),2],['header',()=>batchHeader(root,batchId),1],
   ['header-warm',()=>batchHeader(root,batchId),1],['count',()=>countProbe(root,batchId),2],
-  ['count-warm',()=>countProbe(root,batchId),2],['restored-original',()=>batchDetail(root,batchId),2],
+  ['count-warm',()=>countProbe(root,batchId),2],
+  ['register-page-repeat',()=>payrollRunRegisterPage(root,batchId,parsePageQuery()),2],['restored-original',()=>batchDetail(root,batchId),2],
  ] as const){
   let elapsedMs=0,bytes=0;
   for(let i=0;i<5;i++){
@@ -145,5 +146,7 @@ it('reads the exact effective header and visible slip count without exporting di
  } finally {
   await waitingRead?.catch(() => undefined);
  }
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'payroll-batch-summary-probe.json'),JSON.stringify({kind:'NATIVE_PAYROLL_BATCH_SUMMARY',releaseEligible:false,physicalMembers:1001,visibleDetailRows:exact?.slips.length,readsPerPhase:5,phases,numericalPayrollCalculationClaim:false},null,2));
+ const bestBeforeMs = Math.min(...phases.filter(p => p.name === 'original' || p.name === 'restored-original').map(p => p.elapsedMs));
+ const worstAfterMs = Math.max(...phases.filter(p => p.name.startsWith('register-page')).map(p => p.elapsedMs));
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'payroll-batch-summary-probe.json'),JSON.stringify({kind:'NATIVE_PAYROLL_BATCH_SUMMARY',releaseEligible:false,physicalMembers:1001,visibleDetailRows:exact?.slips.length,readsPerPhase:5,phases,comparison:{bestBeforeMs,worstAfterMs,noRegression:worstAfterMs<=bestBeforeMs},numericalPayrollCalculationClaim:false},null,2));
 },600000);

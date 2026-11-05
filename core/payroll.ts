@@ -11430,20 +11430,6 @@ export function batchHeader(ctx: SessionContext, batchId: string) {
   });
 }
 
-const batchRegisterSlipColumns = {
-  id: payslip.id,
-  employmentId: payslip.employmentId,
-  name: person.fullName,
-  employeeCode: employment.employeeCode,
-  basic: payslip.basicSalary,
-  bonus: payslip.bonus,
-  daysWorked: payslip.daysWorked,
-  gross: payslip.grossPay,
-  statutory: payslip.statutory,
-  net: payslip.netPay,
-  version: payslip.version,
-};
-
 export function batchDetail(ctx: SessionContext, batchId: string) {
   return withTenant(ctx, async (tx) => {
     const batch = await readBatchHeaderTx(tx, batchId);
@@ -11481,39 +11467,55 @@ export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, pag
   return withTenant(ctx, async tx => {
     const batch = await readBatchHeaderTx(tx, batchId);
     if (!batch) return null;
+    // Both consumers reference the same CTE, so Postgres materializes one narrow RLS-visible set.
+    // The payload stays on payslip and is fetched only for the requested page.
+    const visibleRegister = tx.$with('visible_register').as(tx.select({
+      id: payslip.id,
+      employmentId: payslip.employmentId,
+      name: person.fullName,
+      employeeCode: employment.employeeCode,
+    }).from(payslip)
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(payslip.batchId, batchId)));
     const registerTotal = tx.select({ total: sql<number>`count(*)`.mapWith(Number).as('total') })
-      .from(payslip)
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payslip.batchId, batchId)).as('register_total');
-    const registerPage = tx.select(batchRegisterSlipColumns)
-      .from(payslip)
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payslip.batchId, batchId))
-      .orderBy(asc(person.fullName), asc(payslip.id)).limit(page.limit)
+      .from(visibleRegister).as('register_total');
+    const registerPage = tx.select().from(visibleRegister)
+      .orderBy(asc(visibleRegister.name), asc(visibleRegister.id)).limit(page.limit)
+      // An oversized URL offset cannot address a real row, but must still fit Postgres bigint.
       .offset(Math.min(page.offset, Number.MAX_SAFE_INTEGER))
       .as('register_page');
-    // A page past the end still has its exact count. Clamp oversized URL offsets to a valid
-    // bigint argument before executing SQL. They cannot address a real row in this register.
-    const entries = await tx.select({
+    const pageSlip = tx.select({
+      id: payslip.id,
+      basic: payslip.basicSalary,
+      bonus: payslip.bonus,
+      daysWorked: payslip.daysWorked,
+      gross: payslip.grossPay,
+      statutory: payslip.statutory,
+      net: payslip.netPay,
+      version: payslip.version,
+    }).from(payslip).where(eq(payslip.id, registerPage.id)).limit(1).as('page_slip');
+    const entries = await tx.with(visibleRegister).select({
       total: registerTotal.total,
-      row: {
-        id: registerPage.id,
-        employmentId: registerPage.employmentId,
-        name: registerPage.name,
-        employeeCode: registerPage.employeeCode,
-        basic: registerPage.basic,
-        bonus: registerPage.bonus,
-        daysWorked: registerPage.daysWorked,
-        gross: registerPage.gross,
-        statutory: registerPage.statutory,
-        net: registerPage.net,
-        version: registerPage.version,
+      employmentId: registerPage.employmentId,
+      name: registerPage.name,
+      employeeCode: registerPage.employeeCode,
+      slip: {
+        id: pageSlip.id,
+        basic: pageSlip.basic,
+        bonus: pageSlip.bonus,
+        daysWorked: pageSlip.daysWorked,
+        gross: pageSlip.gross,
+        statutory: pageSlip.statutory,
+        net: pageSlip.net,
+        version: pageSlip.version,
       },
-    }).from(registerTotal).leftJoin(registerPage, sql`true`)
+    }).from(registerTotal)
+      .leftJoin(registerPage, sql`true`)
+      .leftJoinLateral(pageSlip, sql`true`)
       .orderBy(asc(registerPage.name), asc(registerPage.id));
-    const rows = entries.flatMap(({ row }) => row === null ? [] : [row]);
+    const rows = entries.flatMap(({ slip, employmentId, name, employeeCode }) =>
+      slip === null || employmentId === null || name === null ? [] : [{ ...slip, employmentId, name, employeeCode }]);
     return { batch, slipPage: { rows, state: pageState(page, entries[0].total, rows.length) } };
   });
 }
