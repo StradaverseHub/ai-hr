@@ -7329,6 +7329,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           items,
           employeeThisRun: stComputed.epfEmployee,
           employerThisRun: stComputed.epfEmployer,
+          ...(earlierEpf?.employee != null ? { employeeEarlierRuns: earlierEpf.employee } : {}),
+          ...(earlierEpf?.employer != null ? { employerEarlierRuns: earlierEpf.employer } : {}),
         };
       })() : null;
 
