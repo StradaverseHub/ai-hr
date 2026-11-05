@@ -553,7 +553,6 @@ try{
   await request(victim,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:victim.employmentId,[deleteTemplate.prefix+'id']:protectedDraft.id},deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
   assert.equal((await db`select id from claim_request where id=${protectedDraft.id}::uuid`).length,0);
  }
- if(suite==='workflow-preflight')await exerciseLetterDraft({base,context,visit,fixture,db,report,save});
  if(suite!=='claims-heavy')runMixedWorkflow=await prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs});
  if(suite!=='claims-heavy'){
   const ctx=await context(employee),page=await ctx.newPage();let automaticPdfRequests=0;
@@ -590,6 +589,7 @@ try{
  await databaseSnapshot('pilot');
  if(report.coverage.some(v=>v.status==='failed'))throw Error('Pilot route failures must be diagnosed before a 500-user run');
  if(suite==='workflow-preflight'){
+  await exerciseLetterDraft({base,context,visit,fixture,db,report,save});
   await verifyAudit();save();
   assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure');
   report.preflightPassed=true;save();return;
