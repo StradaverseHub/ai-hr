@@ -332,7 +332,10 @@ describe('Attendance OT-stage detection point reads',()=>{
    expect((await provenCompanyDatesTx(tx,[point()])).get(employmentId+'|'+day())).toMatchObject({companyId:null});
   });
   await parity(ctx,true);
-  await owner.db.update(s.overtimePatternAssignment).set({supersededAt:new Date()}).where(eq(s.overtimePatternAssignment.versionId,saved.versionId));
+  const detail=await getOvertimePattern(ctx,saved.patternId);
+  const version=detail?.versions.find(row=>row.id===saved.versionId);
+  expect(version).toBeDefined();
+  await stopOvertimePatternVersion(ctx,{versionId:saved.versionId,expectedRevision:version!.revision,effectiveFrom:day(),reason:'Fixture stops the formula today'});
   await parity(ctx,false);
  });
 
