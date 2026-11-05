@@ -3975,21 +3975,7 @@ export const AMENDED_FIGURE_KEYS = Object.keys(AMENDED_FIGURE_COLUMNS) as readon
 
 export type AmendedFigures = { [K in keyof typeof AMENDED_FIGURE_COLUMNS]: unknown };
 
-/** The day's figures BY (employment, date) — the pair the correction's upsert targets, and the only handle
- *  available before the row exists. `null` means NO ROW EXISTED, which is not an empty object and not a row
- *  of nulls: "nothing was recorded" and "an explicit zero" are different befores, so `before: null` is the
- *  honest answer and `describePayload` renders each key as "— → value" from it. */
-async function attendanceFiguresTx(tx: Tx, employmentId: string, date: string): Promise<AmendedFigures | null> {
-  const [row] = await tx
-    .select(AMENDED_FIGURE_COLUMNS)
-    .from(attendance)
-    .where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date)))
-    .limit(1);
-  return row ?? null;
-}
-
-/** The same projection BY ROW ID, for the after-image and for `applyApprovedOtPlanTx` (which is handed the
- *  attendance id). Exact rather than re-resolving (employment, date) after a write. */
+/** Re-read the final figures by row ID after all effect writers have finished. */
 async function attendanceFiguresByIdTx(tx: Tx, attendanceId: string): Promise<AmendedFigures | null> {
   const [row] = await tx
     .select(AMENDED_FIGURE_COLUMNS)
@@ -4243,16 +4229,7 @@ export async function decideAttendanceCorrection(
         } else if (hasClockCorrection) {
           systemOtForComparison = deriveAttendance(sched, cor.proposedCheckIn!, cor.proposedCheckOut, cor.attendanceDate).otMinutes;
         } else {
-          const [existing] = await tx
-            .select({ checkInAt: attendance.checkInAt, checkOutAt: attendance.checkOutAt })
-            .from(attendance)
-            .where(
-              and(
-                eq(attendance.employmentId, cor.employmentId),
-                eq(attendance.attendanceDate, cor.attendanceDate),
-              ),
-            )
-            .limit(1);
+          const existing = lockedDay?.figures;
           if(existing?.checkInAt!=null){
             const raw=await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
             if(raw.state==='unavailable')throw Error('Canonical overtime comparison inputs are unavailable.');
@@ -4283,13 +4260,7 @@ export async function decideAttendanceCorrection(
       // Skipped for a DEFERRED approval, which writes nothing to attendance and emits no
       // `attendance.amended` at all: its before/after is taken at the moment the plan LANDS, in
       // applyApprovedOtPlanTx, because that is the moment a figure actually moves.
-      let beforeFigures: AmendedFigures | null = null;
-      if (!deferred) {
-        // For a non-OT decision, a locked row cannot change between these two points.
-        beforeFigures = !hasOtRequest && lockedDay
-          ? lockedDay.figures
-          : await attendanceFiguresTx(tx, cor.employmentId, cor.attendanceDate);
-      }
+      const beforeFigures = lockedDay?.figures ?? null;
       const originalPunchRows = deferred ? [] : await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate);
       const beforePunches = originalPunchRows.filter(row => !row.voidedAt)
         .map(row=>({id:row.id,punchAt:row.punchAt,direction:row.direction}));
@@ -4454,16 +4425,7 @@ export async function decideAttendanceCorrection(
         // OT-only request: there MUST already be an attendance row (you cannot bank OT against a day with no
         // recorded work). Frozen legacy days retain scalar landing. A bound policy day replays
         // captured raw inputs and retains the approved scalar only on its decision, not on raw work.
-        const [existing] = await tx
-          .select({ id: attendance.id })
-          .from(attendance)
-          .where(
-            and(
-              eq(attendance.employmentId, cor.employmentId),
-              eq(attendance.attendanceDate, cor.attendanceDate),
-            ),
-          )
-          .limit(1);
+        const existing = lockedDay;
         if (!existing) {
           // 1e9145d4: reachable ONLY for a date that is today or in the past — a future-dated plan took the
           // deferred branch above and never gets here. So this still means what it has always meant:
