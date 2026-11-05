@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
 import * as schema from '../db/schema';
-import {getRewardUnit,adoptConfirmedCompanyPat,getRewardUnitGovernance,saveRewardPolicy,saveRewardUnitInputs,confirmRewardGovernance,proposeRewardExemption,getRewardSeniorMembership,previewRewardSeniorMembership,saveRewardSeniorMembership} from '../packs/rewards/service';
+import {getRewardUnit,adoptConfirmedCompanyPat,refreshRewardPatBasis,getRewardUnitGovernance,saveRewardPolicy,saveRewardUnitInputs,confirmRewardGovernance,proposeRewardExemption,getRewardSeniorMembership,previewRewardSeniorMembership,saveRewardSeniorMembership} from '../packs/rewards/service';
 import {defaultPolicy,type RewardPolicy} from '../packs/rewards/model';
 import {owner,createAppUser} from './harness';
 import {setRewardMember} from './rewards-access-fixture';
@@ -41,7 +41,7 @@ async function refreshCompanyPatFixture(ctx:SessionContext,unitId:string,inputs:
  if(!binding.present)return;
  const v=await getRewardUnit(ctx,unitId),g=await getRewardUnitGovernance(ctx,unitId),current=g.inputs;
  if(current&&(['targetCents','forecastCents','actualCents','targetMonthsBp'] as const).every(key=>current[key]===inputs[key]))return;
- if(v.unit.status==='draft'&&current)await saveRewardUnitInputs(ctx,unitId,g.revision,current,'Refresh the fictional basis with its unchanged confirmed PAT');
+ if(v.unit.status==='draft'&&g.patBasisStale&&!g.patRecalculationRequired)await refreshRewardPatBasis(ctx,unitId,g.revision,'Refresh the fictional basis with its unchanged confirmed PAT');
  await confirmFixturePat(ctx,v.unit.companyId,v.unit.policy.year,inputs);
  const after=await getRewardUnitGovernance(ctx,unitId);
  if(after.patRecalculationRequired&&v.unit.status==='draft')await adoptConfirmedCompanyPat(ctx,unitId,after.revision,'Adopt independently checked fictional company PAT');
