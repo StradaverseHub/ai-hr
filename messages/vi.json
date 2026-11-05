@@ -527,7 +527,8 @@
     "passwordPolicy": "Chính sách mật khẩu",
     "myPrivateCases": "Hồ sơ riêng tư của tôi",
     "privateCases": "Hồ sơ riêng tư",
-    "probationTracker": "Theo dõi thử việc"
+    "probationTracker": "Theo dõi thử việc",
+    "myPayrollReadiness": "Mức sẵn sàng cho kỳ lương của tôi"
   },
   "dashboard": {
     "title": "Bảng điều khiển",

@@ -23,7 +23,7 @@ export const SETUP_ENTITIES:readonly SemanticEntity[]=freeze([
  {id:'setup_copilot',label:'Go-live setup',meaning:'Which setup stages are done, which block the next one and the page to fix each, for the administrator\'s current company.',
   module:null,sensitivity:'ordinary',audience:'admin',rls:'administered_scope',
   owners:['core/product-context/setup-readiness.ts#setupReadiness','core/product-context/coverage-readiness.ts#coverageReadiness','core/setup-copilot/copilot.ts#setupCopilot'],
-  ruleVersion:null,relations:[],page:'/control-tower/readiness',
+  ruleVersion:null,relations:[],page:'/payroll/setup',
   fields:[f('payPeriod','period','full','Pay period payroll readiness was checked for.'),f('complete','boolean','full','Every stage in use is done.'),
    f('next','object','full','The first stage still to do, and its page.',{of:[stage,status,f('page','label','full','Where to fix it.')]}),
    f('stages','list','full','Every stage in order.',{of:[stage,status,f('page','label','full','Where the stage is set up.'),

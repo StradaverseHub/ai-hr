@@ -527,7 +527,8 @@
     "passwordPolicy": "Dasar Kata Laluan",
     "myPrivateCases": "Kes peribadi saya",
     "privateCases": "Kes peribadi",
-    "probationTracker": "Penjejak percubaan"
+    "probationTracker": "Penjejak percubaan",
+    "myPayrollReadiness": "Kesediaan gaji saya"
   },
   "dashboard": {
     "title": "Papan pemuka",

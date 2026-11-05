@@ -1,32 +1,20 @@
 /**
- * ADR-0074 — THE CONTROL TOWER, ROLLED UP ACROSS RUNS, AND THE RATIO QUESTION ANSWERED HONESTLY.
+ * ADR-0074 — THE PAYROLL CHECKS, ROLLED UP ACROSS RUNS.
  *
  * The anomaly layer (ADR-0076) shipped per BATCH: `evaluateBatchAnomalies` writes verdicts, the queue at
- * /payroll/<batch>/anomalies works one run, and `anomalyMetrics` reports on one run. That is the right
- * shape for an operator clearing today's exceptions and the wrong shape for the question the owner
- * actually asks, which is about the whole operation: **does this let three people run three thousand?**
+ * /payroll/<batch>/anomalies works one run, and `anomalyMetrics` reports on one run. This module rolls the live verdicts
+ * of every processed run up into the checks' own accuracy figures (how many cleared, how much of each check could run,
+ * how often a person found a flag wrong, how long a flag waited), which AI Centre › Insights › AI quality shows.
  *
- * This module answers that, and the interesting part is what it REFUSES to answer.
+ * WHAT IT REFUSES TO SAY. A rate whose denominator is empty is null, never 0 or 1: an evaluator that has not run has not
+ * cleared everything, and a system nobody has audited has no measured accuracy. It also names when the thresholds are
+ * still the shipped placeholders, because an auto-clear rate computed from placeholder thresholds measures the
+ * placeholders.
  *
- * ADR-0074's arithmetic is simple — at a 97% auto-clear rate ~90 of 3,000 need human eyes per cycle,
- * about 1.4 per operator per working day — and it is only as good as the two inputs underneath it:
+ * NO STAFFING FIGURE (owner decision 26, 4 November 2026). It used to turn the exception count into a headcount of
+ * operators; that ratio is removed, here and on every screen. HR capacity reports hours, never a ratio of HR staff.
  *
- *   1. ARE THE THRESHOLDS TUNED? `payroll_anomaly_config` is empty on production today, so every verdict
- *      was classified by the 30%/15% PLACEHOLDERS r177 shipped and labelled as untuned. An auto-clear
- *      rate computed from placeholder thresholds measures the placeholders.
- *   2. HAS A HUMAN EVER DISAGREED? `falsePositiveRate` needs resolved verdicts. With none resolved it is
- *      null — not zero. A system nobody has audited has no measured accuracy, and "no false positives
- *      recorded" reads as "no false positives" to everyone who did not write it.
- *
- * So `impliedOperators` is `number | null`, and it is null until both hold. AGENTS 28 is the rule and a
- * staffing number is exactly the shape it warns about: a headcount projection on a slide is acted on. An
- * absent figure with a stated reason is honest; a confident wrong one gets somebody's job cut. The screen
- * renders `blockedBy` instead, which names what is missing rather than printing a number nobody can
- * defend — and r177's own warning says it in as many words: never quote an auto-clear rate from the
- * synthetic harness.
- *
- * NOTHING HERE COMPUTES OR TOUCHES MONEY. It reads verdicts and batch rows. Same guarantee as the layer
- * it reports on.
+ * NOTHING HERE COMPUTES OR TOUCHES MONEY. It reads verdicts and batch rows. Same guarantee as the layer it reports on.
  */
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
@@ -38,16 +26,6 @@ import { agentSwitchStatesTx } from './agent-principal';
 
 /** ADR-0074 §"the reframe": the target the whole design serves. */
 export const TARGET_AUTO_CLEAR_RATE = 0.95;
-
-/**
- * Exceptions one operator can carry per cycle, used only to turn an exception COUNT into a headcount.
- *
- * ADR-0074 works the example the other way round (90 exceptions across 3 operators over a working month
- * is ~1.4 each per day); at ~20 working days that is ~30 per operator per cycle. Stated as a named
- * constant rather than buried in an expression because it is an ASSUMPTION, it is the one input here that
- * did not come from this database, and the screen labels it as such.
- */
-export const EXCEPTIONS_PER_OPERATOR_PER_CYCLE = 30;
 
 /** One run, as the tower lists it. */
 export type ControlTowerRun = {
@@ -63,9 +41,6 @@ export type ControlTowerRun = {
   /** Null when the evaluator has never written a live verdict for this run. */
   autoClearRate: number | null;
 };
-
-/** Why a staffing projection is not being shown. Empty = it is. */
-export type RatioBlocker = 'no_verdicts' | 'thresholds_untuned' | 'no_human_signal';
 
 export type ControlTowerView = {
   /** Open runs (processed, not yet closed) newest first — the window where the queue is actionable. */
@@ -86,15 +61,9 @@ export type ControlTowerView = {
     /** Flagged verdicts a human has dispositioned. The denominator of every accuracy claim. */
     resolvedFlagged: number;
   };
-  ratio: {
-    /** Employees the tower actually opined on. */
+  checks: {
+    /** Employees the checks actually opined on. */
     covered: number;
-    /** review + block — the ones that needed a person. */
-    exceptions: number;
-    /** Operators implied at EXCEPTIONS_PER_OPERATOR_PER_CYCLE. NULL while `blockedBy` is non-empty. */
-    impliedOperators: number | null;
-    /** What has to be true before the figure above means anything. */
-    blockedBy: RatioBlocker[];
     thresholdsTuned: boolean;
     meetsTarget: boolean | null;
   };
@@ -207,13 +176,6 @@ export async function controlTowerView(ctx: SessionContext): Promise<ControlTowe
         : (durations[durations.length / 2 - 1]! + durations[durations.length / 2]!) / 2
       : null;
 
-    // ── The ratio, and the three things that have to be true before it is worth printing ──────────────
-    const blockedBy: RatioBlocker[] = [];
-    if (total === 0) blockedBy.push('no_verdicts');
-    if (!thresholdsTuned) blockedBy.push('thresholds_untuned');
-    if (resolvedFlags.length === 0) blockedBy.push('no_human_signal');
-
-    const exceptions = review + block;
     const autoClearRate = total ? autoClear / total : null;
 
     return {
@@ -233,13 +195,8 @@ export async function controlTowerView(ctx: SessionContext): Promise<ControlTowe
         mttrSeconds,
         resolvedFlagged: resolvedFlags.length,
       },
-      ratio: {
+      checks: {
         covered: total,
-        exceptions,
-        impliedOperators: blockedBy.length
-          ? null
-          : Math.max(1, Math.ceil(exceptions / EXCEPTIONS_PER_OPERATOR_PER_CYCLE)),
-        blockedBy,
         thresholdsTuned,
         meetsTarget: autoClearRate == null ? null : autoClearRate >= TARGET_AUTO_CLEAR_RATE,
       },
@@ -253,8 +210,7 @@ export async function controlTowerView(ctx: SessionContext): Promise<ControlTowe
  * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
 
 /**
- * Why there is nothing to measure. Same shape and same discipline as `ratio.blockedBy` above: name what
- * is missing rather than print a figure nobody can defend.
+ * Why there is nothing to measure: name what is missing rather than print a figure nobody can defend.
  *
  * The order is causal, not alphabetical — a tenant with no provider ALSO has no proposals, and telling
  * them "nothing proposed yet" first would send them looking in the wrong place.

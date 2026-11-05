@@ -61,7 +61,7 @@ describe('gating each topic',()=>{
  it('refuses a topic the caller is not permitted before any runner, and runs a permitted one as its capability',async()=>{
   const {calls,bindings}=recorded(['loops_overview','ai_quality_summary'],name=>({ok:true,from:name}));
   const operations=tool(bindings,'operations_status');
-  for(const topic of ['payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit']){
+  for(const topic of ['payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit','payroll_learning']){
    const run=await operations.run({topic});
    expect(run,topic).toMatchObject({ok:false,refusal:'not_permitted',content:{ok:false,refusal:'not_permitted'}});
    expect(String((run.content as {message:string}).message)).toMatch(/^This topic is not available to this person here\./);

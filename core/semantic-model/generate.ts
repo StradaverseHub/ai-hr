@@ -24,6 +24,7 @@ import {PAYROLL_READINESS_ENTITIES,PAYROLL_READINESS_READS} from './entities-pay
 import {PAYROLL_LOOP_ENTITIES,PAYROLL_LOOP_READS} from './entities-payroll-loops';
 import {HANDBOOK_ENTITIES,HANDBOOK_READS} from './entities-handbook';
 import {QUALITY_ENTITIES,QUALITY_READS} from './entities-quality';
+import {PAYROLL_LEARNING_ENTITIES,PAYROLL_LEARNING_READS} from './entities-payroll-learning';
 
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 const object=(properties:Record<string,unknown>,required:string[]=Object.keys(properties)):AiJsonSchema=>({type:'object',properties,required,additionalProperties:false});
@@ -131,7 +132,9 @@ export function terasEntities():readonly SemanticEntity[]{
   // AI v2 Phase 2 P2-5 appends the Living Handbook's approved policies (./entities-handbook.ts).
   ...HANDBOOK_ENTITIES,
   // AI v2 Phase 2 P2-6 appends AI quality (./entities-quality.ts).
-  ...QUALITY_ENTITIES]);
+  ...QUALITY_ENTITIES,
+  // Payroll history learning (P2) appends "Learned this cycle" (./entities-payroll-learning.ts).
+  ...PAYROLL_LEARNING_ENTITIES]);
  return terasModel;
 }
 export const terasEntity=(id:EntityId):SemanticEntity=>{const entity=terasEntities().find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};
@@ -143,7 +146,9 @@ export const TERAS_READS:readonly SemanticRead[]=Object.freeze([...EXPLAIN_READS
  // AI v2 Phase 2 P2-5 appends my_policy_handbook.
  ...HANDBOOK_READS,
  // AI v2 Phase 2 P2-6 appends ai_quality_summary.
- ...QUALITY_READS]);
+ ...QUALITY_READS,
+ // Payroll history learning (P2) appends payroll_learning_status.
+ ...PAYROLL_LEARNING_READS]);
 let terasSpecs:readonly AiToolSpec[]|undefined;
 export function terasToolSpecs():readonly AiToolSpec[]{
  terasSpecs??=freeze(TERAS_READS.map(read=>({name:read.name,description:describe(read,terasEntity(read.entity)),inputSchema:inputSchema(read)})));

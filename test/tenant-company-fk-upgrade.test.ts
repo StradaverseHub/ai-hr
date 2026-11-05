@@ -81,8 +81,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
 
   // The defect the old plain FK accepted: tenant A's row naming tenant B's company.
   await storage.client`insert into location(id,tenant_id,company_id,code,name) values(${defect},${tenantA},${foreign},'XB','Fictional misfiled site')`;
+  for(const row of TAIL)copyFileSync('db/migrations/'+row.tag+'.sql',join(folder,row.tag+'.sql'));
+  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:[...prefix,...TAIL]}));
   const withDefect=await native(),beforePrivileges=await privileges();
-  const refused=await migrate(storage.db,{migrationsFolder:'db/migrations'}).then(()=>null,(e:unknown)=>e);
+  const refused=await migrate(storage.db,{migrationsFolder:folder}).then(()=>null,(e:unknown)=>e);
   const chain:{message?:string;detail?:string;code?:string}[]=[];
   for(let cur=refused as {message?:string;detail?:string;code?:string;cause?:unknown}|null,i=0;cur&&i<4;cur=cur.cause as typeof cur,i++)chain.push(cur);
   const report=chain.find(link=>link.code==='23503');
@@ -95,8 +97,6 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // The owner resolves the defect deliberately; the upgrade itself never rewrites or deletes it.
   // Complete the original exact 2100-2102 proof before later migrations intentionally add
   // private tables/functions and change policies. The forward-to-current phase follows below.
-  for(const row of TAIL)copyFileSync('db/migrations/'+row.tag+'.sql',join(folder,row.tag+'.sql'));
-  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,671)}));
   await storage.client`delete from location where id=${defect}`;
   const upgradeNative=await native();
   await migrate(storage.db,{migrationsFolder:folder});
@@ -124,7 +124,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:folder});
   expect(await ledger()).toEqual(afterLedger);expect(await native()).toEqual(beforeRerun);
   await migrateApprovedUpgrade(storage);
-  const complete=await ledger();expect(complete).toHaveLength(682);expect(complete.slice(0,671)).toEqual(afterLedger);
+  const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));
   expect(await native()).toEqual(beforeRerun);expect(await keys()).toEqual(installed);
   expect(await asAdmin(tx=>tx`select app.can_admin_employment(${employmentA}::uuid) own,app.can_admin_employment(${employmentB}::uuid) foreign`)).toEqual([{own:true,foreign:false}]);

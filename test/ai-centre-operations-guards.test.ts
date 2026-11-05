@@ -17,6 +17,12 @@ vi.mock('../core/payroll-audit/reader-grant',()=>({hasAuditReaderGrant:async()=>
 vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>{throw Error('not read by requireAdmin');}}));
 import ControlTowerLayout from '../app/control-tower/layout';
 import HowItWorksPage from '../app/control-tower/how-it-works/page';
+import OverviewStub from '../app/control-tower/page';
+import ProposedActionsStub from '../app/control-tower/actions/page';
+import OpportunitiesStub from '../app/control-tower/opportunities/page';
+import InventoryStub from '../app/control-tower/agents/inventory/page';
+import OrchestratorStub from '../app/control-tower/agents/orchestrator/page';
+import BuildListPage from '../app/control-tower/agents/build-list/page';
 import {requireAdmin} from '../lib/authz';
 
 const ROOT=path.resolve(__dirname,'..');
@@ -93,7 +99,8 @@ describe('guards are unchanged by the merge',()=>{
   // AI v2 P2-2a's Payroll cycle view, its Salary payroll page and its settings (app/control-tower/loops/payroll-cycle/), and
   // the AI v2 P2-2b Audit loop page (app/control-tower/loops/loop_payroll_audit/page.tsx), and AI v2 P2-1's promote page
   // (app/control-tower/loops/[loop]/promote/page.tsx).
-  expect(pages.length).toBe(22);
+  // AI Centre restructure (4 Nov 2026): plus Administration › Build list (app/control-tower/agents/build-list/page.tsx).
+  expect(pages.length).toBe(23);
   expect(pages).toContain(path.join('app/control-tower/loops','[loop]','promote','page.tsx'));
   expect(pages).toEqual(expect.arrayContaining([path.join('app/control-tower/loops','page.tsx'),path.join('app/control-tower/loops','[loop]','page.tsx'),
    path.join('app/control-tower/loops','loop_payroll_audit','page.tsx')]));
@@ -102,5 +109,37 @@ describe('guards are unchanged by the merge',()=>{
   // Phase 2 hardening: the Audit loop page alone admits a read-only auditor (its own read is the auditor's granted companies).
   const auditPage=path.join('app/control-tower/loops','loop_payroll_audit','page.tsx');
   for(const page of pages)expect(read(page),page).toMatch(page===auditPage?/await requireAdminOrAuditReader\(\)/:/await requireAdmin\(\)/);
+ });
+
+ // AI Centre restructure (owner decisions 26–29, 4 Nov 2026): every removed page is a guarded forward stub. Each runs the
+ // unchanged requireAdmin first (a non-administrator, and an auditor, is refused exactly as before and never learns the new
+ // address) and forwards an administrator, permanently, to the one page that owns the fact now. None of them reads.
+ const STUBS=[
+  ['/control-tower (Overview)',OverviewStub,'/control-tower/loops','308'],
+  ['/control-tower/actions (Proposed actions)',ProposedActionsStub,'/control-tower/exceptions#fixed-causes','308'],
+  ['/control-tower/opportunities',OpportunitiesStub,'/assistant?view=insights#hr-capacity','308'],
+  ['/control-tower/agents/inventory',InventoryStub,'/control-tower/agents/features#ai-inventory','308'],
+  ['/control-tower/agents/orchestrator',OrchestratorStub,'/control-tower/readiness','307'],
+ ] as const;
+ it.each(STUBS)('%s refuses employees, managers and auditors before forwarding',async(_name,page)=>{
+  for(const role of ['employee','manager'] as const){state.session=SESSIONS[role];expect(await redirectOf(()=>page())).toEqual({url:'/',status:'307'});}
+  state.session=SESSIONS.employee;state.auditor=true;
+  expect(await redirectOf(()=>page())).toEqual({url:'/',status:'307'});
+ });
+ it.each(STUBS)('%s forwards an HR or group administrator to its single source',async(_name,page,url,status)=>{
+  for(const role of ['hrAdmin','groupAdmin'] as const){state.session=SESSIONS[role];expect(await redirectOf(()=>page())).toEqual({url,status});}
+ });
+ it('each stub reads nothing: its code is the guard and the forward',()=>{
+  for(const file of ['app/control-tower/page.tsx','app/control-tower/actions/page.tsx','app/control-tower/opportunities/page.tsx','app/control-tower/agents/inventory/page.tsx','app/control-tower/agents/orchestrator/page.tsx']){
+   const code=read(file).replace(/\/\*[\s\S]*?\*\//g,'').replace(/^\s*\/\/.*$/gm,'');
+   expect(code.match(/^import .*$/gm),file).toEqual([expect.stringMatching(/next\/navigation/),"import { requireAdmin } from '@/lib/authz';"]);
+   expect(code,file).toMatch(/await requireAdmin\(\);\s*(permanentRedirect|redirect)\('/);
+  }
+ });
+ it('Build list: a company HR administrator is sent to Workers before anything is read; employees are refused',async()=>{
+  state.session=SESSIONS.hrAdmin;
+  expect(await redirectOf(()=>BuildListPage({searchParams:Promise.resolve({})}))).toEqual({url:'/control-tower/agents/features',status:'307'});
+  state.session=SESSIONS.employee;
+  expect(await redirectOf(()=>BuildListPage({searchParams:Promise.resolve({})}))).toEqual({url:'/',status:'307'});
  });
 });

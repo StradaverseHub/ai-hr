@@ -276,7 +276,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
    // same populated ledger, preserving the original synthetic identity/import facts.
    const forward=await captureTenantUpgradeRows(storage,[String(t1.id),String(t2.id)],['tenant','company','person','app_user','role_assignment','employment','employee_statutory_my','import_attempt','import_attempt_item','import_attempt_event','domain_event']);
    const approvedUpgrade=await migrateApprovedUpgrade(storage);
-   const complete=await ledger();expect(complete).toHaveLength(682);exact(complete.slice(0,581),applied,'The complete Bank receipts survive the forward-to-current upgrade');
+   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);exact(complete.slice(0,581),applied,'The complete Bank receipts survive the forward-to-current upgrade');
    exact(complete.slice(581).map(({hash,created_at})=>({hash,created_at})),sourceJournal.entries.slice(581).map(entry=>({hash:sha(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})),'Every successor is applied with its current source hash');
    expect(retainedUpgradeSnapshot(await forward.read(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(forward.before));
    const terminal=await allFacts();await migrate(storage.db,{migrationsFolder:'db/migrations'});

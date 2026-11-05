@@ -59,7 +59,7 @@ describe('AI Centre tabs prefetch the whole destination on intent',()=>{
 
  // Issue 17 merged Control Tower into AI Centre: the Operations and Administration pages carry a second tab row,
  // which keeps the same intent prefetch (slice 1 integration of W9 with the operations merge).
- for(const [group,active] of [['operations','overview'],['administration','workers']] as const)it(`${group} section row: the same intent prefetch on every section link`,()=>{
+ for(const [group,active] of [['operations','loops'],['administration','workers']] as const)it(`${group} section row: the same intent prefetch on every section link`,()=>{
   const view=wrap(<AiCentreSectionTabs group={group} active={active} payroll/>);
   const items=[...view.container.querySelectorAll<HTMLAnchorElement>(`[data-ai-centre-sections="${group}"] a`)];
   expect(items.map(link=>link.getAttribute('href'))).toEqual(centreSectionsFor(group,{payroll:true}).map(section=>section.href));

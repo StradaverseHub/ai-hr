@@ -106,7 +106,9 @@ describe('defect 4: identifiers are screened on the way in',()=>{
 
 describe('defect 5: minimum is narrower than full',()=>{
  it('withholds another person\'s minimum fields and a colleague\'s name, keeps full fields, and keeps the caller\'s own minimum fields exact',async()=>{
-  const {result,model}=await turn('Who is away this week?',[{calls:[{name:'who_is_away',args:{from:'2026-11-02',to:'2026-11-08'}}]},{final:{reply:'{{T1}} is away from {{T3}} to {{T4}} ({{T2}}).'}}],{clock:()=>new Date('2026-11-02T04:00:00Z')});
+  // The system text names today: pinned, so a fixture date is never today's (run 41956986309 ran on 2026-11-05 in Kuala Lumpur).
+  const {result,model}=await turn('Who is away this week?',[{calls:[{name:'who_is_away',args:{from:'2026-11-02',to:'2026-11-08'}}]},{final:{reply:'{{T1}} is away from {{T3}} to {{T4}} ({{T2}}).'}}],
+   {clock:()=>new Date('2026-11-02T04:00:00Z')});
   for(const leak of ['Fictional Colleague Mei','FX-0007','Medical Leave','2026-11-05','2026-11-06'])expect(sent(model),leak).not.toContain(leak);
   expect(sent(model)).toContain('approved');
   expect(result.reply).toBe('Fictional Colleague Mei is away from 2026-11-05 to 2026-11-06 (Medical Leave).');

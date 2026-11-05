@@ -3,7 +3,7 @@ import { getFormatter, getTranslations } from 'next-intl/server';
 import { CalendarDays, ShieldCheck } from 'lucide-react';
 import type { ConversationTurn } from '@/core/teras-wiring/turn';
 import { ruleVersionLabel } from '@/lib/ai-centre/rule-version';
-import { leaveApplyCardTitle, LEAVE_APPLY_TITLE_DATE } from '@/lib/ai-centre/leave-apply-title';
+import { leaveApplyCardTitle, LEAVE_APPLY_TITLE_DATE, OTHER_DATE_PROMPT_DATE } from '@/lib/ai-centre/leave-apply-title';
 import { attendanceRequestCardTitle, ATTENDANCE_TITLE_DATE, ATTENDANCE_TITLE_TIME } from '@/lib/ai-centre/attendance-request-title';
 import { ownChangeCardTitle, OWN_CHANGE_TITLE_DATE } from '@/lib/ai-centre/own-change-title';
 import { toilRequestCardTitle } from '@/lib/ai-centre/toil-request-title';
@@ -123,6 +123,11 @@ export async function ConversationReply({ turn, links = new Map(), applicants = 
         const shownTitle = applicant ? `${title} · ${applicant}` : title;
         // The leave service decided, when the card was prepared, that the person's own First Schedule agreement is asked for.
         const agreement = kind === 'toil' && body.what.selectors.firstScheduleAgreement === 'required' ? { label: tLeaveCredit('firstScheduleConsent') } : undefined;
+        // Owner, 5 November 2026 ("Fix dates first"): the card shows the date the HR date owner chose from the person's words;
+        // another date those words may mean is offered right under it. A press only fills the person's message: they send it.
+        const otherDates = (kind === 'leave' || kind === 'attendance') && facts.otherDates ? facts.otherDates : [];
+        const switches = otherDates.map(date => { const day = new Date(date + 'T00:00:00.000Z');
+          return { label: t('otherDate', { date: format.dateTime(day, LEAVE_APPLY_TITLE_DATE) }), prompt: t('otherDatePrompt', { date: format.dateTime(day, OTHER_DATE_PROMPT_DATE) }) }; });
         return (
           <div key={body.id} className="space-y-1">
             {kind ? (
@@ -135,6 +140,7 @@ export async function ConversationReply({ turn, links = new Map(), applicants = 
                 href={body.review.href} cta={t('review')} expires={expires}
                 prepared={{ summary: t('howPrepared'), rows: [[t('preparedBy'), t('preparedByValue')], [t('confirmOn'), t('confirmOnValue')]] }} />
             )}
+            {switches.length > 0 && <ConversationSuggestions suggestions={switches} label={t('otherDatesLabel')} />}
             {recommendation && <RecommendationPanel view={{ kind: 'recommendation', verdict: recommendation.verdict,
               failedRules: recommendation.failedRules.map(rule => ({ check: rule.check, blocking: rule.blocking, version: ruleVersionLabel(rule.ruleVersion) })) }} />}
           </div>

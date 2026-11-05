@@ -1181,10 +1181,12 @@ export type QueueRow = {
 /** A queue row plus the run it came from — out of its own batch, a row has to say which period it is. */
 export type OpenExceptionRow = QueueRow & { payPeriod: string; batchId: string };
 
+/** AI Centre restructure (Today fix d): `blocking` counts every open blocking exception, not only those on the capped
+ * page, so Exceptions and Today print the same two numbers however long the queue is. */
 export async function openExceptionsAcrossRuns(
   ctx: SessionContext,
   p?: { limit?: number },
-): Promise<{ rows: OpenExceptionRow[]; total: number; cappedOut: boolean }> {
+): Promise<{ rows: OpenExceptionRow[]; total: number; blocking: number; cappedOut: boolean }> {
   const limit = p?.limit ?? 100;
   return withTenant(ctx, async (tx) => {
     const verdicts = await tx
@@ -1220,7 +1222,7 @@ export async function openExceptionsAcrossRuns(
           ne(schema.payrollAnomalyVerdict.disposition, 'auto_clear'),
         ),
       );
-    if (verdicts.length === 0) return { rows: [], total: 0, cappedOut: false };
+    if (verdicts.length === 0) return { rows: [], total: 0, blocking: 0, cappedOut: false };
 
     const rank: Record<string, number> = { block: 0, review: 1, auto_clear: 2 };
     const ordered = verdicts.sort((x, y) => {
@@ -1282,6 +1284,7 @@ export async function openExceptionsAcrossRuns(
         batchId: v.batchId,
       })),
       total: ordered.length,
+      blocking: ordered.filter((v) => v.disposition === 'block').length,
       cappedOut: ordered.length > page.length,
     };
   });

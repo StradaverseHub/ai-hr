@@ -527,7 +527,8 @@
     "passwordPolicy": "Password Policy",
     "myPrivateCases": "My private cases",
     "privateCases": "Private cases",
-    "probationTracker": "Probation tracker"
+    "probationTracker": "Probation tracker",
+    "myPayrollReadiness": "My payroll readiness"
   },
   "dashboard": {
     "title": "Dashboard",

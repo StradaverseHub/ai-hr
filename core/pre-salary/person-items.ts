@@ -313,9 +313,16 @@ async function acknowledgeGroup(ctx:SessionContext,subject:Subject,period:Payrol
 /** The approvals owner's task kinds that feed pay, and the checklist kind each becomes. */
 export const APPROVAL_KIND:Readonly<Partial<Record<PendingTaskItem['kind'],PayrollItemKind>>>=Object.freeze({
  leave:'approve_leave',leaveCancellation:'approve_leave_cancellation',attendance:'approve_attendance',claim:'approve_claim',replacementLeave:'approve_toil'});
-async function approvalsGroup(ctx:SessionContext,scopeIds:readonly string[]|undefined,period:PayrollPeriod):Promise<GroupRead>{
- const modules={attendance:moduleState(ctx,'attendance'),claims:moduleState(ctx,'claims')};
- const tasks=await settle(()=>listPendingTasks(ctx,scopeIds?[...scopeIds]:undefined,{attendance:modules.attendance==='on',claims:modules.claims==='on',performance:false,rewards:false},{noticeAcknowledgements:false}));
+type ApprovalsRead=Readonly<{modules:Readonly<{attendance:'on'|'off'|'failed';claims:'on'|'off'|'failed'}>;tasks:Promise<Read<Awaited<ReturnType<typeof listPendingTasks>>>>}>;
+/** The approvals owner's read, started before the person's own employment and the pay period are resolved: it needs
+ * neither (AI Centre navigation speed, 4 Nov 2026), so it runs while they are read. The same call with the same
+ * arguments as before; only its start moved. Never rejects (settle). */
+function startApprovals(ctx:SessionContext,scopeIds:readonly string[]|undefined):ApprovalsRead{
+ const modules=Object.freeze({attendance:moduleState(ctx,'attendance'),claims:moduleState(ctx,'claims')});
+ return {modules,tasks:settle(()=>listPendingTasks(ctx,scopeIds?[...scopeIds]:undefined,{attendance:modules.attendance==='on',claims:modules.claims==='on',performance:false,rewards:false},{noticeAcknowledgements:false}))};
+}
+async function approvalsGroup(approvalsRead:ApprovalsRead,period:PayrollPeriod):Promise<GroupRead>{
+ const {modules}=approvalsRead,tasks=await approvalsRead.tasks;
  if(!tasks.ok)return failed;
  return {read:modules.attendance==='failed'||modules.claims==='failed'?'failed':'ok',items:tasks.value.flatMap(task=>{const kind=APPROVAL_KIND[task.kind];
   return kind?[item({key:`${kind}:${task.id}`,group:'approvals',kind,state:'todo',date:null,due:period.cutOff,label:task.subjectName,href:task.linkPath})]:[];})};
@@ -329,6 +336,8 @@ export async function readMyPayrollReadiness(ctx:SessionContext,p:Readonly<{empl
  const payroll=moduleState(ctx,'payroll');
  if(payroll==='off')return null;
  const today=p.today??todayInKualaLumpur(),locale=p.locale??'en';
+ // The approvals read depends on neither the subject nor the period, so it starts now and runs while they are resolved.
+ const approvalsRead=startApprovals(ctx,p.scopeIds);
  let subject:Subject|null=null;
  try{const own=await requireOwnHomeSubject(ctx,p.employmentId);subject={employmentId:own.employmentId,companyId:own.companyProof.companyId??own.currentCompanyId??null};}
  catch(error){if(!(error instanceof HomeAccessError))throw error;}
@@ -344,7 +353,7 @@ export async function readMyPayrollReadiness(ctx:SessionContext,p:Readonly<{empl
   subject?toilGroup(ctx,subject,period):none,
   subject?detailsGroup(ctx,subject,period,today):none,
   subject?acknowledgeGroup(ctx,subject,period):none,
-  approvalsGroup(ctx,p.scopeIds,period),
+  approvalsGroup(approvalsRead,period),
  ]);
  const reads:Readonly<Record<PayrollItemGroup,GroupRead>>={attendance:att.attendance,overtime:att.overtime,leave,claims,toil,details,acknowledge,approvals};
  const groups:GroupState[]=PAYROLL_ITEM_GROUPS.map(group=>Object.freeze({group,status:groupStatus(reads[group].items,reads[group].read)}));

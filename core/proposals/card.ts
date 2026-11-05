@@ -22,6 +22,8 @@ const FACT_LABELS:Readonly<Record<FactKey,string>>=Object.freeze({
  profileChange:'What changes',fieldCount:'Details changed',bankName:'Bank',accountEnding:'Account ending',
  // AI v2 Phase 1 slice 3: an own letter request.
  letterType:'Letter type',
+ // Owner, 5 November 2026: other days the person's words may mean, offered beside the card.
+ otherDates:'Or did you mean',
 });
 const OUTCOME_TEXT:Readonly<Record<NonNullable<ProposalFacts['outcome']>,string>>=Object.freeze({
  withdrawn_now:'The request is withdrawn at once.',give_back_requested:'Asks to give these dates back; the request goes through the usual approval before the days return.',

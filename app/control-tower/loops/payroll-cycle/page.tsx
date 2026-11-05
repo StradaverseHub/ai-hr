@@ -6,7 +6,11 @@ import { PRE_SALARY_CHECKS, PRE_SALARY_CHECK_HREF, type PreSalaryCheckKey } from
 import { Card, PageHeader, SectionHeader, btnGhost, pageWideCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../operations-tabs';
+import { PayrollCycleSubnav } from '@/components/ai-centre/centre-tabs';
 import { AuditLoopCard, bankReconciliation } from './audit-loop-card';
+// The group state rule (the worst company's state) and its tones are shared with the Operations › Loops list.
+import { ATTENTION, DONE, payrollLoopStates, pill } from './loop-states';
+import { LEARNING_STATUSES, learnedThisCycle, type LearnedThisCycle } from '@/core/payroll-learning/status';
 
 /** AI v2 P2-2a — AI Centre › Operations › Loops › Payroll cycle (owner-approved mock-up PayrollLoops.dc.html).
  *
@@ -15,17 +19,11 @@ import { AuditLoopCard, bankReconciliation } from './audit-loop-card';
  * Every figure is the loops' own record, read under the viewer's row-level security (core/loops/payroll-cycle-views.ts);
  * nothing here computes pay. The Audit loop's column is its own component (./audit-loop-card.tsx): P2-2b's status for the
  * month, read with the overview, and the Salary payroll loop's bank check as its "Bank paid vs payroll" item; each company's
- * row shows its Audit status. Guarded by requireAdmin, as every Operations page is. AI Centre, never Noveri. */
-const DONE = 'text-emerald-700 dark:text-emerald-300';
-const ATTENTION = 'text-amber-700 dark:text-amber-300';
-const pill = 'rounded-full border border-border px-2.5 py-1 text-xs font-medium';
+ * row shows its Audit status. Guarded by requireAdmin, as every Operations page is. AI Centre, never Noveri.
+ * Payroll history learning (P2): "Learned this cycle", per company whose payroll the viewer administers, counts only: the
+ * learning mode, how many people's usual pay for the month is settled, provisional, not yet learned, relearning after a
+ * salary change or has moved, and when it last learned (core/payroll-learning/status.ts learnedThisCycle). */
 const link = 'inline-flex min-h-9 items-center text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11';
-
-/** The group's state of one loop: the worst of its companies', in the order a person should look at them. */
-const PRE_ORDER: readonly PreSalaryState[] = ['missed', 'open', 'not_checked', 'paused', 'done', 'off'];
-const SALARY_ORDER: readonly SalaryState[] = ['attention', 'ready_to_start', 'in_progress', 'not_checked', 'paused', 'before_cut_off', 'done', 'off'];
-const worst = <T extends string>(order: readonly T[], states: readonly T[]): T | null =>
-  states.length ? order.find(state => states.includes(state)) ?? states[0] : null;
 
 export default async function PayrollCyclePage({ searchParams }: { searchParams: Promise<{ period?: string; company?: string }> }) {
   const s = await requireAdmin();
@@ -38,16 +36,18 @@ export default async function PayrollCyclePage({ searchParams }: { searchParams:
     const q = new URLSearchParams(Object.entries(params).filter((entry): entry is [string, string] => !!entry[1]));
     return `/control-tower/loops/payroll-cycle${q.size ? `?${q}` : ''}`;
   };
+  // A learning read that fails leaves the section out; it never stops the page.
+  const [tn, learned] = await Promise.all([getTranslations('aiCentre.payrollLearning'),
+    view.companies.length ? learnedThisCycle(s, { period: view.period, companyIds: view.companies.map(c => c.companyId) }).catch((): LearnedThisCycle | null => null) : null]);
   const one = view.companies.length === 1 ? view.companies[0] : null;
-  const pre = worst(PRE_ORDER, view.companies.map(c => c.preSalary.state));
-  const salary = worst(SALARY_ORDER, view.companies.map(c => c.salary.state));
-  const days = Math.min(...view.companies.map(c => c.preSalary.daysToCutOff));
+  const { pre, salary, daysToCutOff: days } = payrollLoopStates(view);
   const header = one
     ? t('headerOne', { cutOff: day(one.preSalary.cutOff), payDay: day(one.payDay ?? one.preSalary.cutOff), due: day(view.statutoryDue) })
     : t('headerGroup', { due: day(view.statutoryDue) });
   return (
     <div className={pageWideCls}>
-      <OperationsTabs session={s} active="loops" />
+      <OperationsTabs session={s} active="payrollCycle" />
+      <PayrollCycleSubnav active="pre" />
       <PageHeader back={{ href: '/control-tower/loops', label: tl('back') }} title={t('title', { month: month(view.period) })}
         description={<>{t('description')} {header}</>}
         actions={view.allowed.length > 1 && (
@@ -94,6 +94,8 @@ export default async function PayrollCyclePage({ searchParams }: { searchParams:
           </div>
         </Card>
 
+        {learned && learned.companies.length > 0 && <LearnedCard learned={learned} tn={tn} day={day} />}
+
         <Card className="overflow-hidden">
           <SectionHeader title={t('history.title')} />
           <div className="overflow-x-auto">
@@ -135,6 +137,37 @@ export default async function PayrollCyclePage({ searchParams }: { searchParams:
 }
 
 type T = Awaited<ReturnType<typeof getTranslations<'aiCentre.payrollCycle'>>>;
+type TN = Awaited<ReturnType<typeof getTranslations<'aiCentre.payrollLearning'>>>;
+
+/** "Learned this cycle": counts only, one row per company whose payroll the viewer administers. */
+function LearnedCard({ learned, tn, day }: { learned: LearnedThisCycle; tn: TN; day: (iso: string) => string }) {
+  const allOff = learned.companies.every(c => c.mode === 'off');
+  return (
+    <Card className="overflow-hidden" data-learned-cycle>
+      <SectionHeader title={tn('cycle.title')} subtitle={tn('cycle.help')} />
+      {allOff ? <p data-learning-off className="px-4 py-4 text-sm text-muted-foreground">{tn('cycle.allOff')}</p> : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[880px] text-left text-sm">
+            <caption className="sr-only">{tn('cycle.caption')}</caption>
+            <thead className="border-y border-border bg-muted/40"><tr>
+              {(['company', 'mode', ...LEARNING_STATUSES, 'learnedOn'] as const).map(key => <th key={key} scope="col" className="px-4 py-3 font-medium">{tn(`cycle.columns.${key}`)}</th>)}
+            </tr></thead>
+            <tbody className="divide-y divide-border">
+              {learned.companies.map(c => (
+                <tr key={c.companyId} data-learned-company={c.companyId} className="align-top">
+                  <th scope="row" className="px-4 py-3 font-medium">{c.companyName}</th>
+                  <td className="px-4 py-3" data-learning-mode={c.mode}>{tn(`cycle.mode.${c.mode}`)}</td>
+                  {LEARNING_STATUSES.map(status => <td key={status} className="px-4 py-3 tabular-nums" data-learned-status={status}>{c.mode === 'off' ? '—' : c.people[status]}</td>)}
+                  <td className="px-4 py-3 text-muted-foreground">{c.learnedOn ? day(c.learnedOn) : tn('cycle.never')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 function Row({ label, value, tone, href }: { label: string; value: string; tone?: string; href?: string }) {
   return (

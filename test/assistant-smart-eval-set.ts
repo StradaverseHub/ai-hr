@@ -39,6 +39,8 @@
  *   run, withholding any group under five people. Acme's latest closed run (August 2026) pays one person, so every Acme
  *   average is withheld: "too small to report" is the right answer here, and a published average is right only for a
  *   group of five or more.
+ * - Dates the person names (owner decision, 5 November 2026): weeks run Monday to Sunday in Kuala Lumpur; "next <weekday>"
+ *   is that weekday in the following week and "this <weekday>" the current week's (the next one once it has passed).
  * - Leave applications (issue 10): prepared from chat as a filled Request Leave form for the person to check and
  *   submit; when the leave type or dates are missing or unclear, one short question with the leave types numbered.
  * - What the product cannot do in chat today: let the assistant read a file, show any individual's pay, or
@@ -98,7 +100,9 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
    actions:['leave.apply']},
   {id:'emp-apply-2',question:'annual leave next friday',locale:'en',continues:true,kind:'do',factor:'doing',
    source:{kind:'reconstructed',issues:['10'],from:'The follow-up with the details; the owner expects a filled card and Confirm.'},
-   ideal:'Prepares or offers the Annual Leave application for next Friday (states that date correctly from today), for the person to check and confirm. Does not say it is submitted or approved.',
+   // The company's rule for "next <weekday>" (owner decision, 5 November 2026; lib/hr-date-phrase.ts), stated so the judge
+   // scores against the product's rule; the same rule is in the evaluation's facts.
+   ideal:'Prepares or offers the Annual Leave application for next Friday, which by the company\'s rule is the Friday of the following Monday-to-Sunday week (owner rule, 5 November 2026; "this Friday" would be the current week\'s), stating that date with its weekday correctly from today, for the person to check and confirm; it may also mention the other date the card offers. Does not say it is submitted or approved.',
    actions:['leave.apply']}]},
  {id:'emp-howto',role:'employee',turns:[{id:'emp-howto-1',question:'how do i apply for leave',locale:'en',kind:'guide',factor:'brevity',
   source:{kind:'reconstructed',issues:['9','16'],from:'Replies too wordy; it should offer to do it ("Yes, I can …") rather than only explain.'},

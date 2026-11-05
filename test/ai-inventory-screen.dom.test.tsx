@@ -47,7 +47,7 @@ vi.mock('../core/ai-inventory',async()=>{
 import {AiManagementScreen} from '../app/control-tower/agents/screen';
 afterEach(()=>{cleanup();state.group=true;state.alertsUnavailable=false;});
 const session={tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never;
-const renderPage=async(locale:keyof typeof copies,section:'inventory'|'runs',searchParams={})=>{
+const renderPage=async(locale:keyof typeof copies,section:'features'|'runs',searchParams={})=>{
  const page=await AiManagementScreen({session,section,searchParams:Promise.resolve(searchParams)});
  return render(<NextIntlClientProvider locale={locale} messages={copies[locale] as any}><main className="min-w-0 p-4">{page}</main></NextIntlClientProvider>);
 };
@@ -55,7 +55,7 @@ const renderPage=async(locale:keyof typeof copies,section:'inventory'|'runs',sea
 describe('AI inventory in six rendered locales',()=>{
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s: group administrator sees every component group, the pause control, alerts and the data register',async locale=>{
   state.locale=locale;state.group=true;const inv=copies[locale].aiManagement.inv;
-  await renderPage(locale,'inventory');
+  await renderPage(locale,'features');
   expect(screen.getByRole('alert')).toHaveTextContent(inv.alerts.title);
   for(const kind of Object.keys(inv.kinds) as (keyof typeof inv.kinds)[])expect(screen.getByRole('heading',{level:3,name:new RegExp(inv.kinds[kind].replace(/[()]/g,'\\$&'))})).toBeInTheDocument();
   expect(screen.getAllByText('hr_assistant:leave.cancel').length).toBeGreaterThan(0);
@@ -80,7 +80,7 @@ describe('AI inventory in six rendered locales',()=>{
 
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s: company HR sees the read-only registry and tier view only',async locale=>{
   state.locale=locale;state.group=false;const inv=copies[locale].aiManagement.inv;
-  await renderPage(locale,'inventory');
+  await renderPage(locale,'features');
   expect(screen.getByRole('note')).toHaveTextContent(inv.registryNotice);
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.queryByRole('button',{name:new RegExp(inv.pauseAction)})).toBeNull();
@@ -94,7 +94,7 @@ describe('AI inventory in six rendered locales',()=>{
 
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s: a failed alert check is shown as not checked, never as all clear',async locale=>{
   state.locale=locale;state.group=true;state.alertsUnavailable=true;const inv=copies[locale].aiManagement.inv;
-  await renderPage(locale,'inventory');
+  await renderPage(locale,'features');
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.getAllByRole('status').some(node=>node.textContent===inv.alerts.unavailable)).toBe(true);
  },60000);

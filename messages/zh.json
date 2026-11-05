@@ -527,7 +527,8 @@
     "passwordPolicy": "密码策略",
     "myPrivateCases": "我的私密个案",
     "privateCases": "私密个案",
-    "probationTracker": "试用期跟踪"
+    "probationTracker": "试用期跟踪",
+    "myPayrollReadiness": "我的发薪准备"
   },
   "dashboard": {
     "title": "仪表盘",

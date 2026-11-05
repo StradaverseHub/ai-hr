@@ -217,15 +217,15 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   "status": "approved",
   "sourceDigest": "bc67146b4838f43977107d6ea5b34d39284d16f105caa7e2cd85d7bfac67d053",
   "reviewer": "human:zenlam repository-owner provisional",
-  "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#ai-v2-release-binding-r2",
-  "reviewedAt": "2026-11-04T03:51:52Z"
+  "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#ai-centre-restructure-binding",
+  "reviewedAt": "2026-11-05T06:09:20Z"
 },
 {
   "contractId": "handbook_policy_values_v1",
   "status": "approved",
   "sourceDigest": "bc67146b4838f43977107d6ea5b34d39284d16f105caa7e2cd85d7bfac67d053",
   "reviewer": "human:zenlam repository-owner provisional",
-  "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#ai-v2-release-binding-r2",
-  "reviewedAt": "2026-11-04T03:51:52Z"
+  "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#ai-centre-restructure-binding",
+  "reviewedAt": "2026-11-05T06:09:20Z"
 }
 ].map(row=>Object.freeze(row as ProviderDataReviewRecord)));

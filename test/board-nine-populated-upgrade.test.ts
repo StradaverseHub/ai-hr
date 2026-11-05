@@ -1,6 +1,6 @@
 import {APPROVED_UPGRADE_TAIL,assertApprovedUpgradeTail,migrateApprovedUpgrade} from './helpers/approved-upgrade';
 /** Exact post-Noveri populated upgrade, on a disposable hosted localhost database only: the 648-entry baseline, then
- * staging's 656-entry main ledger, then the AI v2 Phase 1 migrations 2000-2003, then the AI v2 Phase 2 migrations 2004-2011.
+ * staging's 656-entry main ledger, then the AI v2 Phase 1 migrations 2000-2003, then the AI v2 Phase 2 migrations 2004-2011 and 2013.
  * Source bytes are pinned independently; this supplies no staging acceptance or AI approval. */
 import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -158,10 +158,10 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
    to_regclass('public.teras_learning_signal')::text as learning,to_regclass('public.payroll_check_acknowledgement')::text as hardening`;
   expect(await phaseTwoObjects()).toEqual([{levels:null,settings:null,audit:null,baseline:null,cutoff:false,handbook:null,learning:null,hardening:null}]);
   expect(await native()).toEqual(upgradeNative);
-  // Then this integration's eight AI v2 Phase 2 migrations (2004-2011) and the ADR-0174 hardening (2100-2102), by the ordinary migrator over the whole journal.
+  // Then this integration's eight AI v2 Phase 2 migrations (2004-2011), the ADR-0174 hardening (2100-2102) and the combined release tail, by the ordinary migrator over the whole journal.
   // Their when values sit above Phase 1's 1793330001403, so none is skipped.
   await migrateApprovedUpgrade(storage);
-  const afterLedger=await ledger();expect(afterLedger).toHaveLength(682);expect(afterLedger.slice(0,660)).toEqual(phaseOneLedger);
+  const afterLedger=await ledger();expect(afterLedger).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(afterLedger.slice(0,660)).toEqual(phaseOneLedger);
   expect(afterLedger.slice(660,671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
    {hash:'b6bdeac1995dad6df759ce9a537c98e9a3666bf01aef716a7f6cac9a9134b132',created_at:'1793330001404'},
    {hash:'d211dd97ebdeb673998d29a2a9b3b8d8597c39a5646259ac0c855d46eca49fbc',created_at:'1793330001405'},

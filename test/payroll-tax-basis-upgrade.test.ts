@@ -1,6 +1,6 @@
 import {migrateApprovedUpgrade,retainedUpgradeSnapshot,assertApprovedUpgradeTail,APPROVED_UPGRADE_TAIL} from './helpers/approved-upgrade';
 /** Ordinary journal upgrade over a populated, trigger-protected database at the installed 636-entry prefix,
- *  through the appended tail (0873 movement, 0874 tax, 0875 Rewards read-policy role, 0876 EPF manual 0%, 0898 idle policy, 0899 Entra, 0924–0929 Teras, 0935 account unlock, 0946 cohort custody, 0947–0953 Re-plan, 2000–2011 AI v2, 2100–2102 tenant-isolation hardening). Hosted only. */
+ *  through the appended tail (0873 movement, 0874 tax, 0875 Rewards read-policy role, 0876 EPF manual 0%, 0898 idle policy, 0899 Entra, 0924–0929 Teras, 0935 account unlock, 0946 cohort custody, 0947–0953 Re-plan, 2000–2011 AI v2, 2100–2102 tenant-isolation hardening, 2013 payroll history learning). Hosted only. */
 import {randomUUID,createHash} from 'node:crypto';
 import {copyFileSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';

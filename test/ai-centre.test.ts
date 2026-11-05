@@ -5,7 +5,8 @@
  *    had before, and lib/permissions.ts still lists it. Administrator tabs are hidden from non-administrators,
  *    but the page's own requireAdmin stays the gate.
  *  - THE OLD ADDRESS FORWARDS. The orchestrator page repeated the Control Tower work queue; it now forwards
- *    there after the same guard.
+ *    there after the same guard. The AI Centre restructure (owner decisions 26–29) keeps a guarded forward stub for
+ *    every removed page (test/ai-centre-operations-guards.test.ts runs them with the real guards).
  *  - EVERY WORKER HAS A FAMILY (ADR-0170 §3.13). A new AI feature or built-in check without a placement fails.
  *  - SIX LANGUAGES, SAME KEYS AND PLACEHOLDERS.
  *  - THE APPROVED DIGESTS ARE NOT TOUCHED. The centre's files sit outside both digest scopes. */
@@ -47,21 +48,21 @@ describe('AI centre tabs keep every permission identical', () => {
   it('administrator tabs are the former Control Tower pages behind requireAdmin, and only administrators see them', () => {
     const admin = CENTRE_TABS.filter(tab => tab.adminOnly);
     // Issue 17 (owner: "Merge both entirely"): Operations and Administration, each a group with a second tab row.
-    expect(admin.map(tab => [tab.key, tab.href, tab.sections])).toEqual([['operations', '/control-tower', true], ['administration', '/control-tower/agents/features', true]]);
-    for (const tab of admin) expect(read(pageOf(tab.href))).toContain('requireAdmin');
-    // AI v2 Phase 2: Insights is a tab for everyone (P2-3); its HR capacity ledger section (P2-4) is guarded inside the
-    // view, which only an administrator's page asks for, and the ledger service checks the administrator again.
-    expect(read('app/assistant/page.tsx')).toContain("{sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} ");
-    expect(read('components/ai-centre/insights.tsx')).toContain('{isAdmin&&<CapacityLedgerSection ');
+    // AI Centre restructure (owner decision 27): Insights is an administrator tab too (a view of /assistant, guarded inside
+    // the view and by its services); Operations opens on Loops.
+    expect(admin.map(tab => [tab.key, tab.href, tab.sections])).toEqual([['operations', '/control-tower/loops', true], ['insights', '/assistant?view=insights', false], ['administration', '/control-tower/agents/features', true]]);
+    for (const tab of admin.filter(tab => tab.href.startsWith('/control-tower'))) expect(read(pageOf(tab.href))).toContain('requireAdmin');
+    expect(read('app/assistant/page.tsx')).toContain("if (sp.view === 'insights' && !admin) redirect('/me/payroll-readiness');");
+    expect(read('app/assistant/page.tsx')).toContain("{sp.view === 'insights' && <AiCentreInsights session={s} isAdmin={admin} ");
+    expect(read('components/ai-centre/insights.tsx')).toContain('if(!isAdmin)return null;');
     expect(read('core/capacity/ledger.ts')).toContain('requireCapacityAdmin(ctx);');
     // Phase 2 hardening: the layout also admits a read-only auditor, for the Audit loop page only (every other page
     // calls requireAdmin itself; test/ai-centre-operations-guards.test.ts pins both).
     expect(read('app/control-tower/layout.tsx')).toContain('await requireAdminOrAuditReader();');
-    // AI v2 Phase 1: the Inbox tab is retired; Today at / replaces it.
-    // AI v2 Phase 2 (P2-3): Insights, for everyone, between Operations and Administration as in the approved mock-ups.
-    // AI v2 Phase 2 (P2-5): Policies, for everyone, between Operations and Insights ("Operations ▾ · Policies · Insights").
-    expect(centreTabsFor({ isAdmin: false }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'policies', 'insights', 'how']);
-    expect(centreTabsFor({ isAdmin: true }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'operations', 'policies', 'insights', 'administration', 'how']);
+    // AI v2 Phase 1: the Inbox tab is retired; Today at / replaces it. AI Centre restructure (owner decision 29): the
+    // approved order, Ask · Operations ▾ · Insights · Policies · Administration ▾ · How it works; Delegated jobs hidden.
+    expect(centreTabsFor({ isAdmin: false }).map(tab => tab.key)).toEqual(['ask', 'policies', 'how']);
+    expect(centreTabsFor({ isAdmin: true }).map(tab => tab.key)).toEqual(['ask', 'operations', 'insights', 'policies', 'administration', 'how']);
     // Its own linkable page (app/policies, a signed-in session) inside the AI Centre tab bar, so Ask can link it.
     expect(read('app/policies/page.tsx')).toContain('<AiCentrePolicies session={s} query={query} />');
     expect(read('app/policies/page.tsx')).toContain('<AiCentreTabs active="policies" isAdmin={isAdmin(s)} />');
@@ -71,8 +72,8 @@ describe('AI centre tabs keep every permission identical', () => {
     const permissions = read('lib/permissions.ts');
     const all = Object.values(CENTRE_SECTIONS).flat();
     // AI v2 W8: Loops (app/control-tower/loops, requireAdmin, lib/permissions.ts) sits after the overview; checked below.
-    expect(CENTRE_SECTIONS.operations.map(section => section.key)).toEqual(['overview', 'loops', 'exceptions', 'readiness', 'actions', 'opportunities']);
-    expect(CENTRE_SECTIONS.administration.map(section => section.key)).toEqual(['workers', 'setup', 'spend']);
+    expect(CENTRE_SECTIONS.operations.map(section => section.key)).toEqual(['loops', 'payrollCycle', 'exceptions', 'readiness']);
+    expect(CENTRE_SECTIONS.administration.map(section => section.key)).toEqual(['workers', 'setup', 'spend', 'buildList']);
     for (const section of all) {
       expect(section.href.startsWith('/control-tower'), section.href).toBe(true);
       expect(read(pageOf(section.href)), section.href).toContain('requireAdmin()');
@@ -81,21 +82,34 @@ describe('AI centre tabs keep every permission identical', () => {
     // Each group tab opens its first section, and each page lights its own section tab.
     for (const tab of CENTRE_TABS.filter(tab => tab.sections)) expect(CENTRE_SECTIONS[tab.key as 'operations' | 'administration'][0].href).toBe(tab.href);
     for (const section of CENTRE_SECTIONS.operations) expect(read(pageOf(section.href)), section.href).toContain(`<OperationsTabs session={s} active="${section.key}" />`);
-    expect(read('app/control-tower/agents/screen.tsx')).toContain('<AiCentreGroupTabs group="administration" active={group} payroll={false} />');
+    expect(read('app/control-tower/agents/screen.tsx')).toContain('<AiCentreGroupTabs group="administration" active={group} payroll={false} groupAdmin={isGroupAdmin(s)} />');
+    expect(read('app/control-tower/agents/build-list/page.tsx')).toContain('<AiCentreGroupTabs group="administration" active="buildList" payroll={false} groupAdmin />');
+    // The Payroll cycle section's four pages each light it, with their in-section row.
+    for (const [file, page] of [['app/control-tower/loops/payroll-cycle/page.tsx', 'pre'], ['app/control-tower/loops/payroll-cycle/salary/page.tsx', 'salary'],
+      ['app/control-tower/loops/payroll-cycle/settings/page.tsx', 'settings']] as const) {
+      expect(read(file), file).toContain('<OperationsTabs session={s} active="payrollCycle" />');
+      expect(read(file), file).toContain(`<PayrollCycleSubnav active="${page}" />`);
+    }
+    expect(read('app/control-tower/loops/loop_payroll_audit/page.tsx')).toContain('{!auditor && <><OperationsTabs session={s} active="payrollCycle" /><PayrollCycleSubnav active="audit" /></>}');
   });
 
   it('the payroll queues are offered only with payroll, as their former sidebar rows were', () => {
-    // Loops is not a payroll queue: offered with or without payroll.
-    expect(centreSectionsFor('operations', { payroll: false }).map(section => section.key)).toEqual(['overview', 'loops', 'readiness', 'opportunities']);
-    expect(centreSectionsFor('operations', { payroll: true }).map(section => section.key)).toEqual(['overview', 'loops', 'exceptions', 'readiness', 'actions', 'opportunities']);
-    expect(centreSectionsFor('administration', { payroll: false })).toHaveLength(3);
+    // Loops and Record readiness are not payroll queues: offered with or without payroll.
+    expect(centreSectionsFor('operations', { payroll: false }).map(section => section.key)).toEqual(['loops', 'readiness']);
+    expect(centreSectionsFor('operations', { payroll: true }).map(section => section.key)).toEqual(['loops', 'payrollCycle', 'exceptions', 'readiness']);
+    // The Build list is offered to a group administrator only, as its page admits only them.
+    expect(centreSectionsFor('administration', { payroll: false }).map(section => section.key)).toEqual(['workers', 'setup', 'spend']);
+    expect(centreSectionsFor('administration', { payroll: false, groupAdmin: true }).map(section => section.key)).toEqual(['workers', 'setup', 'spend', 'buildList']);
   });
 
   it('the employee views live on /assistant, behind its unchanged session layout', () => {
-    for (const view of ['jobs', 'how', 'insights']) {
+    for (const view of ['how', 'insights']) {
       expect(isCentreView(view)).toBe(true);
       expect(CENTRE_TABS.some(tab => tab.href === `/assistant?view=${view}`)).toBe(true);
     }
+    // Delegated jobs is hidden until it works: no tab, and its view forwards to Ask before any view renders.
+    expect(CENTRE_TABS.some(tab => tab.href.includes('view=jobs'))).toBe(false);
+    expect(read('app/assistant/page.tsx')).toContain("if (sp.view === 'jobs') redirect('/assistant');");
     expect(isCentreView('workers')).toBe(false);
     // The retired Inbox view is no tab and no view: its address moves to Today for good (308), before any view renders.
     expect(isCentreView('inbox')).toBe(false);
@@ -115,7 +129,11 @@ describe('AI centre tabs keep every permission identical', () => {
     const grouped = Object.values(ADMIN_GROUPS).flat().map(item => item.section);
     expect([...grouped].sort()).toEqual(AI_MANAGEMENT_SECTIONS.filter(section => section !== 'orchestrator').sort());
     expect(adminGroupOf('provider')).toBe('spend');
-    expect(adminGroupOf('inventory')).toBe('workers');
+    // Workers is one list: the inventory is part of it, so it is no section of its own (its page forwards to Workers).
+    expect(AI_MANAGEMENT_SECTIONS).not.toContain('inventory');
+    expect(ADMIN_GROUPS.workers.map(item => item.section)).toEqual(['features']);
+    expect(read('app/control-tower/agents/screen.tsx')).toContain("const inventory = section==='features' ? await aiInventoryView(s, view).catch(() => null) : null;");
+    expect(read('app/control-tower/agents/screen.tsx')).toContain("{section==='features'&&(inventorySection ?? <p role=\"status\" data-inventory-unavailable");
     expect(adminGroupOf('orchestrator')).toBeNull();
   });
 
@@ -126,14 +144,14 @@ describe('AI centre tabs keep every permission identical', () => {
 });
 
 describe('old AI management addresses', () => {
-  it('the orchestrator page forwards to the Control Tower work queue after the same guard', () => {
+  it('the orchestrator page forwards to Record readiness, where its work queue now is, after the same guard', () => {
     const page = read('app/control-tower/agents/orchestrator/page.tsx');
     expect(page.indexOf('await requireAdmin()')).toBeGreaterThan(-1);
-    expect(page.indexOf('await requireAdmin()')).toBeLessThan(page.indexOf("redirect('/control-tower')"));
+    expect(page.indexOf('await requireAdmin()')).toBeLessThan(page.indexOf("redirect('/control-tower/readiness')"));
   });
 
   it('every other AI management page still renders its section under requireAdmin', () => {
-    for (const section of ['inventory', 'provider', 'assistant', 'features', 'allowances', 'spending', 'runs']) {
+    for (const section of ['provider', 'assistant', 'features', 'allowances', 'spending', 'runs']) {
       const page = read(`app/control-tower/agents/${section}/page.tsx`);
       expect(page, section).toContain('requireAdmin');
       expect(page, section).toContain(`section:'${section}'`);

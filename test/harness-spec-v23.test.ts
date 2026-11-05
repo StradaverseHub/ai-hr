@@ -1,4 +1,7 @@
 /** Spec v23 (AI v2 Phase 2 hardening, coordinator decision of 4 November 2026): topic tools and the queued Phase 2 lines.
+ * Superseded by v24 (test/harness-spec-v24.test.ts): v23's digest stays recorded and the v23-shaped spec (v24's changes
+ * reverted, test/harness-spec-shapes.ts) still hashes to it; the lines below are checked as v23 had them. The topic tools'
+ * checks are today's (v24 adds the payroll_learning topic, test/harness-spec-v24.test.ts).
  *
  * Phase 2's seven reads put an HR or group administrator's biggest turn at 39 tools against the provider's 32. v23 serves
  * two families of reads as topic tools (core/semantic-model/topic-tools.ts): operations_status (the loops overview and the
@@ -21,16 +24,20 @@ import {registeredWorker} from '../core/agent-registry/workers';
 import {ANSWERED_BY} from './assistant-behaviour-score';
 import {V22_OVERCLAIM_NOTE,V22_PAY_VIEW_NONE,V23_ADDED,V23_OVERCLAIM_NOTE,V23_PAY_VIEW_NONE,V23_REPLACED,v22ShapedSpec,v23ShapedSpec} from './harness-spec-shapes';
 
-const instructions=HARNESS_SPEC.instructions as readonly string[];
+/** v23's instructions, as the v23-shaped spec has them. */
+const instructions=v23ShapedSpec().instructions as readonly string[];
 const OPERATIONS={loops:'loops_overview',payroll_cycle:'payroll_cycle_status',salary_payroll:'salary_payroll_checks',payroll_loop_settings:'payroll_loop_settings',
- payroll_audit:'payroll_audit_status',ai_quality:'ai_quality_summary'};
+ payroll_audit:'payroll_audit_status',ai_quality:'ai_quality_summary',
+ // Payroll history learning (P2): its operations_status topic, listed in offer.topicTools from spec v24.
+ payroll_learning:'payroll_learning_status'};
 const WHY={pay_difference:'explain_pay_difference',payslip_statutory:'explain_payslip_statutory',claim_limit:'explain_claim_limit',
  leave_entitlement:'explain_leave_entitlement',attendance_day:'explain_attendance_day'};
 
 describe('spec v23',()=>{
- it('is version 23 with its digest recorded, and every earlier digest is kept',()=>{
+ it('keeps its digest recorded after v22, before v24: the v23-shaped spec hashes to it, and every earlier digest is kept',()=>{
   expect(HARNESS_SPEC.version).toBeGreaterThan(23);expect(HARNESS_SPEC_DIGESTS[23]).toBe(harnessSpecDigest(v23ShapedSpec()));
   expect(HARNESS_SPEC_DIGESTS[23]).toBe('0052cefe8d066154db37c62bc213dfb26eabcbe0cc861577103212d6e4e5f0c5');
+  expect(harnessSpecDigest({...HARNESS_SPEC,version:23})).not.toBe(HARNESS_SPEC_DIGESTS[23]);
   expect(HARNESS_SPEC_DIGESTS[22]).toBe('23c7a0b27b5d0029510b44935af4b07dd27d25aa34f1ff2607d0075f075e85d3');
   expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number).slice(0,23)).toEqual(Array.from({length:23},(_,index)=>index+1));
  });
@@ -41,7 +48,7 @@ describe('spec v23',()=>{
   expect(V23_REPLACED).toHaveLength(4);expect(V23_ADDED).toHaveLength(6);expect(instructions).toHaveLength(30);
   expect(HARNESS_SPEC.payView.none).toBe(V23_PAY_VIEW_NONE);expect(HARNESS_SPEC.retryNotes.overclaim).toBe(V23_OVERCLAIM_NOTE);
   expect(V22_PAY_VIEW_NONE).not.toBe(V23_PAY_VIEW_NONE);expect(V22_OVERCLAIM_NOTE).not.toBe(V23_OVERCLAIM_NOTE);
-  expect(Object.keys(HARNESS_SPEC.offer)).toContain('topicTools');expect(Object.keys(v22ShapedSpec().offer)).not.toContain('topicTools');
+  expect(Object.keys(v23ShapedSpec().offer)).toContain('topicTools');expect(Object.keys(v22ShapedSpec().offer)).not.toContain('topicTools');
  });
 });
 

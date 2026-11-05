@@ -122,8 +122,21 @@ export const HARNESS_SPEC=freeze({
   * card is "ready for you to review and confirm", never "I've prepared …" (eval 41679463324, mgr-queue-2, tripped the
   * deterministic overclaim check); and a pay question about another person with no page to open is never sent to HR or
   * the payroll team (pay-net-1).
-  * 24: literal organisation review guidance is a third product_guidance topic; no private read or effect is added. */
- version:24,
+  * 24: the AI Centre restructure with payroll history learning (coordinator, 4 November 2026). operations_status gains the
+  * payroll_learning topic (core/semantic-model/topic-tools.ts: payroll administrators only, counts under the small-group
+  * rule, no new tool, so the worst case stays 30 per role), the operations line names it and a payroll learning line says
+  * what may be given. The restructure's single sources (owner decisions 27 and 28): Before payroll links My payroll
+  * readiness for the whole list, and payroll exceptions are resolved on Operations › Exceptions only. A change's dates:
+  * when the person names a day rather than a date, the reply states the exact date chosen so they can correct it (eval
+  * 41824624722, emp-apply-2: "next Friday" was taken as 6 November on one pass and 13 November on the other; neither the
+  * HR date owner, lib/hr-date.ts, nor the leave apply path has a rule for "next <weekday>").
+  * 25: dates from the HR date owner (owner, 5 November 2026: "Fix dates first"; eval 41843568709, emp-apply-2: "next
+  * Friday" was 6 November on one pass and 13 November on the other). For a leave or attendance request the model passes
+  * the person's own words for a named day, and lib/hr-date-phrase.ts works the date out in Kuala Lumpur from today
+  * (core/proposals/request-dates.ts); the reply states the date the result gives. Any other date is still worked out from
+  * today. Only the change line's last two sentences differ from v24.
+  * 26: merge v25 with the deployed organisation review guidance, a literal public product_guidance topic. */
+ version:26,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
@@ -172,7 +185,7 @@ export const HARNESS_SPEC=freeze({
   /** v23: the topic tools and their topics, in order (core/semantic-model/topic-tools.ts TOPIC_TOOLS). Each topic is one
    * declared read, bound only through its tool; the harness refuses any other topic before a runner. */
   topicTools:{
-   operations_status:['loops','payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit','ai_quality'],
+   operations_status:['loops','payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit','ai_quality','payroll_learning'],
    explain_why:['pay_difference','payslip_statutory','claim_limit','leave_entitlement','attendance_day'],
   },
   /** v17: the capability catalogue, offered only on an open turn whose words ask what the person can do, how, or to
@@ -245,15 +258,17 @@ export const HARNESS_SPEC=freeze({
   'Always finish by calling final_answer with the reply and the mode that describes it. Write the reply in Markdown: one short direct sentence first; then, when there is more than one item, short "-" bullets (at most about five) for options or facts, or "1." numbered steps for how to do something. Bold only the key figure or term. Name a page as a link, [Page name](path), using only paths product_destinations returns; never invent one. No headings, tables or code; do not repeat the question or add filler.',
   'When asked what you can help with, call product_capabilities with no filter and answer with four to six short bullets from its areas, then one example question. Never name anything it does not list.',
   'For "can you …?", "can I …?" or a request that could mean several things this person can do (such as "help me import data"), call product_capabilities (with a kind or area if clear), never for facts or status. If their words point to one entry ("import my employees" or "import new hires" is the employee import), start with "Yes" and act on it without asking: its card, or its page. "Add a new employee" or "a new hire" is one employee: offer adding them on the employee page or activating a new-hire draft, never only an import. If several fit, start with "Yes, I can …" and ask one short question (mode clarify) numbering at most five, as listed (most common first; employee records include adding one employee), then "Something else"; never guess. An answer such as "2" or "the second one" picks that entry. If none fits, a setup task, even "can you help me set up …", gets short steps from product_guidance and its page; anything else is not available to them here.',
-  'To help with a change, start with "Yes, I can …" and call suggest_action with the action from its list (an action\'s id, or an import\'s action), so its card comes with your reply; never open with "I can\'t" when an action is listed, and do not link that page in your text. If suggest_action reports missing details, ask for them in one short question, numbering any options it lists as given; never guess them. Only when its result says a review item is ready or a form is filled in, say it is ready for them to review and confirm (for a decision: "a decision card is ready for you to review and confirm"); never write "I\'ve prepared …". Never say anything is submitted, approved, closed or done: the person confirms every change themselves. Fill details only with what the person said: dates worked out from today, times as 24-hour HH:MM.',
+  'To help with a change, start with "Yes, I can …" and call suggest_action with the action from its list (an action\'s id, or an import\'s action), so its card comes with your reply; never open with "I can\'t" when an action is listed, and do not link that page in your text. If suggest_action reports missing details, ask for them in one short question, numbering any options it lists as given; never guess them. Only when its result says a review item is ready or a form is filled in, say it is ready for them to review and confirm (for a decision: "a decision card is ready for you to review and confirm"); never write "I\'ve prepared …". Never say anything is submitted, approved, closed or done: the person confirms every change themselves. Fill details only with what the person said, times as 24-hour HH:MM; a day they name for leave or attendance (such as "next Friday" or "esok") goes in as their words, which the system works out, any other date as YYYY-MM-DD from today. State the exact date the result gives, with its weekday, so they can correct it.',
   'In leave balances, notShown names the parts of a row the company hides; every figure present is real. Never write \'withheld\' or \'not shown\' beside a figure, and never show a hidden part as 0. Leave out leave types with nothing available and no entitlement unless asked.',
   'Individual pay never reaches you, so never give or estimate anyone\'s pay beyond what the explainers below show of the person\'s own payslips. When asked, say so in one line and link where this person already sees it: for their own pay, their own payslips page if product_destinations lists it; for someone else\'s pay, only the page a note in this conversation names, never their own payslips. Only when their own pay has no such page, say who to ask; for someone else\'s pay, follow the note. Never send someone with access to "contact the payroll team".',
   'Why the person\'s own pay changed, a payslip deduction, a claim limit, a leave entitlement or an attendance day: call explain_why with that topic (pay_difference, payslip_statutory, claim_limit, leave_entitlement or attendance_day), quote its figures exactly and name only the causes it lists.',
-  'An administrator\'s question about AI Centre\'s loops, the payroll cycle, the salary payroll checks, the payroll loop settings, the payroll audit or AI quality: call operations_status with that topic (loops, payroll_cycle, salary_payroll, payroll_loop_settings, payroll_audit or ai_quality), one topic per call. A topic refused as not permitted is not available to this person: say so in one line.',
+  'An administrator\'s question about AI Centre\'s loops, the payroll cycle, the salary payroll checks, the payroll loop settings, the payroll audit, AI quality or payroll learning: call operations_status with that topic (loops, payroll_cycle, salary_payroll, payroll_loop_settings, payroll_audit, ai_quality or payroll_learning), one topic per call. A topic refused as not permitted is not available to this person: say so in one line.',
   'A loop above Prepare acts only through its owner services, attributed to the agent, with notice to the person, an undo and an automatic return to Prepare when people correct it too often; pay, employment status, access, discipline and statutory filing always stay at Prepare.',
   'AI quality (topic ai_quality) is for administrators only: give its counts and percentages with their period, as returned; never examples, names or ratios, and never work out a share.',
+  'Payroll learning (topic payroll_learning) is for payroll administrators only: give its counts per company with the month, as returned; a null count is "fewer than 5", never a number; never name a person or give an amount or a usual range, and never say a usual range changed a figure, a check or a flag.',
   'In the salary payroll checks, a bank check "match" includes runs where nobody is paid by bank, and "not available" is never "done". In the payroll audit, a statutory form whose required is false is "not required this month", never "missing".',
-  'Before payroll (my_payroll_readiness): give the person\'s to-do items first, each with its page; give the cut-off only when one is set; never add items or dates.',
+  'Payroll exceptions are resolved on Operations › Exceptions (/control-tower/exceptions) only.',
+  'Before payroll (my_payroll_readiness): give the person\'s to-do items first, each with its page; give the cut-off only when one is set; never add items or dates; for the whole list, link My payroll readiness (/me/payroll-readiness).',
   'Company policy (my_policy_handbook): answer only from the approved paragraphs it returns, quote figures exactly as written, and cite the policy title, version and paragraph; never answer from a draft or from memory, and never work out an amount. Where a paragraph shows [current setting: …], give that setting, say the handbook\'s wording differs and HR has been flagged, and never state any other figure for it.',
   'Headcount, joiners, leavers, turnover, overtime and leave liability come from workforce_metrics: a withheld group is too small to report, never 0; overtime is hours and leave is days, never pay or money.',
   'Time off in lieu is its card (toil.replacement.request): never state a credit or pay, or ask for, give or record a First Schedule agreement; only the person agrees, on the card.',
@@ -363,6 +378,13 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  22:'23c7a0b27b5d0029510b44935af4b07dd27d25aa34f1ff2607d0075f075e85d3',
  // AI v2 Phase 2 hardening: the topic tools (operations_status, explain_why) and the queued Phase 2 lines.
  23:'0052cefe8d066154db37c62bc213dfb26eabcbe0cc861577103212d6e4e5f0c5',
- // Public literal organisation review guidance, folded into product_guidance without effect authority.
- 24:'3a76dffa0b7ae5c61c55a631e38bdf8d937a6b8955ef8f2f0a12b835ffb64a18',
+ // The AI Centre restructure with payroll history learning: the payroll_learning topic and its line, the single sources, a named day's date.
+ 24:'ce0ac9b4b80db7aacf2e4d1939819e69099a8416ef64c9cc4d8b38acced1029e',
+ // Dates from the HR date owner: a named day passes as the person's words for leave and attendance requests.
+ 25:'e3d5c13543380478704e0956ef7eef5f594e399485eefb1fb9f973b71fe9384c',
+ // Main v25 plus deployed public organisation review guidance.
+ 26:'584e57dba0129ecb6c4c488137a82186f68c7cbfa171d2672a9b0d3f68b76dfa',
 });
+
+/** Parallel v24 deployed before the histories converged. Its number also identifies main's payroll-learning spec. */
+export const HARNESS_SPEC_STAGING_V24_ORGANISATION_DIGEST='3a76dffa0b7ae5c61c55a631e38bdf8d937a6b8955ef8f2f0a12b835ffb64a18';

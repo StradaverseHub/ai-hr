@@ -22,7 +22,7 @@ export const PAYROLL_READINESS_ENTITIES:readonly SemanticEntity[]=freeze([
   meaning:'What the caller still needs to do before this month\'s payroll cut-off, from their own records: each pending item with when it is due, and how many approvals wait on them.',
   module:null,sensitivity:'ordinary',audience:'self',rls:'own_person',
   owners:['core/pre-salary/person-items.ts#readMyPayrollReadiness','core/pre-salary/person-items.ts#resolvePayrollPeriod'],
-  ruleVersion:null,relations:[],page:'/',
+  ruleVersion:null,relations:[],page:'/me/payroll-readiness',
   fields:[
    f('period','object','minimum','The pay period this checklist is for and its cut-off.',{of:[
     f('payPeriod','period','full','The pay month.'),f('start','date','minimum','The first day whose attendance and leave count towards it.'),

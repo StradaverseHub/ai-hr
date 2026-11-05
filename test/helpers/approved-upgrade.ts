@@ -21,6 +21,18 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:1382,when:1793330001528,tag:'2128_organisation_account_admission'},
  {idx:1383,when:1793330001530,tag:'2130_approved_company_retention'},
  {idx:1410,when:1793330001610,tag:'2210_personnel_projection_reuse'},
+ // Pending main payroll learning, then the combined Architecture, Rewards and Registration successors.
+ {idx:1411,when:1793330001611,tag:'2013_payroll_learned_baseline'},
+ {idx:1412,when:1793330001612,tag:'2200_job_architecture'},
+ {idx:1413,when:1793330001613,tag:'2201_job_architecture_documents'},
+ {idx:1414,when:1793330001614,tag:'2202_job_architecture_profile'},
+ {idx:1415,when:1793330001615,tag:'2203_rewards_libraries_pat'},
+ {idx:1416,when:1793330001616,tag:'2204_rewards_plan_setup'},
+ {idx:1417,when:1793330001617,tag:'2205_rewards_review_creation'},
+ {idx:1418,when:1793330001618,tag:'2206_rewards_role_permissions'},
+ {idx:1419,when:1793330001619,tag:'2207_reward_advisor'},
+ {idx:1420,when:1793330001620,tag:'2208_rewards_uploaded_awards'},
+ {idx:1421,when:1793330001621,tag:'2209_company_registration_classification'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -35,9 +47,20 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '2128_organisation_account_admission':'c239e97d982c0e5e2075e30c5b431ef03f8f61ff367f6660602234a6c74dd62d',
  '2130_approved_company_retention':'6d549d157a0c21f1da680daa1546cd45bd2f19187b8d7a9d9a4dc56482d68d2c',
  '2210_personnel_projection_reuse':'84665a381ed31061437c601197d9a9f8da5f8a5573abef5c09c0603b4546d613',
+ '2013_payroll_learned_baseline':'bd490fda5f21c713262ecc6c8a29e8ed5dc88e0c963e201be7745bdc5a351da3',
+ '2200_job_architecture':'85a609473361238e5aa44aaaea0b788cd0b8d354b6fd67c70be3c3506dd52a64',
+ '2201_job_architecture_documents':'54bdaf9bf1a810fc5b7304813fb396a1a3640d323c2e9e2cf236cdf184cb12f7',
+ '2202_job_architecture_profile':'2d49add7961177b8032cdf891446e6d4758c4e94e53ed957406bb7fcbdf3224d',
+ '2203_rewards_libraries_pat':'f03d8d83b009054cce059cb9b87b35d3ea97bb54a6d63d96e311cfdffc3504ad',
+ '2204_rewards_plan_setup':'311201ad2e3e745ea142e6ec8ea275887bfd02097e009f81c6a08ea7ad06e56c',
+ '2205_rewards_review_creation':'37ffb2122b551cb7e01c5df2b4765d0ceaf1af030da2fb8c8c7a2977c3dbcd53',
+ '2206_rewards_role_permissions':'30788b82fa2a31be1168596e88bd59f73f42db79040f341463e907443aa7edaf',
+ '2207_reward_advisor':'be660e08105928d50c81775a9f01eab3a5c1a572dbec9e1a8929f682fc68ef6b',
+ '2208_rewards_uploaded_awards':'97012d64969a58fe52f611aee883d61822e3021d5ed49bccac276f217119eefb',
+ '2209_company_registration_classification':'9685fcef72990612baedf333b4af3fe8c4d3e0a6ebe9611bcc7eabea466ad0e0',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
- expect(entries).toHaveLength(682);
+ expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);
  expect(entries.slice(671)).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({...entry,version:'7',breakpoints:true})));
  for(const entry of APPROVED_UPGRADE_TAIL)expect(createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex'),entry.tag+' reviewed pending SQL identity').toBe(APPROVED_UPGRADE_HASHES[entry.tag]);
 }

@@ -47,14 +47,14 @@ describe('AI centre title and tab row',()=>{
   // Every tab label is whole inside the row.
   for(const link of tabs.querySelectorAll('a'))expect(link.getBoundingClientRect().bottom).toBeLessThanOrEqual(tabs.getBoundingClientRect().bottom+.5);
  });
- // Delegated jobs, How it works and the administrator pages (and formerly the Inbox) put the title straight under the tab bar, so
+ // How it works and the administrator pages (and formerly the Inbox and Delegated jobs) put the title straight under the tab bar, so
  // Atelier's cover sat on the active tab's 2px underline and hid it ("no tab is marked" except on Ask).
  it.each([['classic',1280],['atelier',1280],['atelier',390]] as const)('%s at %ipx: with the title straight under the tabs the active underline stays visible',async(theme,width)=>{
   await page.viewport(width,844);document.body.style.margin='0';document.documentElement.setAttribute('data-ui-theme',theme);
   const view=render(<NextIntlClientProvider locale="en" messages={messages}><main style={{height:'640px',overflowY:'auto'}}><div className="mx-auto max-w-6xl space-y-6">
-   <AiCentreTabs active="jobs" isAdmin /><PageHeader title="Delegated jobs" /><div style={{height:'2400px'}} /></div></main></NextIntlClientProvider>);
+   <AiCentreTabs active="how" isAdmin /><PageHeader title="How it works" /><div style={{height:'2400px'}} /></div></main></NextIntlClientProvider>);
   const tabs=view.container.querySelector('[data-ai-centre-tabs]')!,header=view.container.querySelector('[data-page-header]')!,current=tabs.querySelector('a[aria-current="page"]')!;
-  expect(current.getAttribute('href')).toBe('/assistant?view=jobs');
+  expect(current.getAttribute('href')).toBe('/assistant?view=how');
   expect(getComputedStyle(header).position).not.toBe('sticky');expect(getComputedStyle(header).boxShadow).toBe('none');
   // The underline is a real, coloured 2px bottom border inside the row, above the title.
   expect(getComputedStyle(current).borderBottomWidth).toBe('2px');expect(getComputedStyle(current).borderBottomColor).not.toBe('rgba(0, 0, 0, 0)');

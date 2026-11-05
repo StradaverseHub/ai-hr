@@ -1,9 +1,12 @@
+import { permanentRedirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
-import { AiManagementScreen, type AiManagementSearch } from '../screen';
 
-/** WP12 (R8): the one AI inventory. requireAdmin opens it; core/ai-inventory.ts narrows a company HR administrator
- *  to the read-only registry/tier view (ADR-0151 §4.7). */
-export default async function AiManagementInventoryPage({searchParams}:{searchParams:Promise<AiManagementSearch>}) {
-  const session = await requireAdmin();
-  return AiManagementScreen({session,section:'inventory',searchParams});
+/** AI Centre restructure (owner decision 29, 4 November 2026): Workers is the one list of AI pieces, so the inventory and
+ * its audit columns are a section of the Workers page. This address stays for old links and for lib/permissions.ts
+ * (test/function-access.test.ts needs every registered route on disk as a guarded route): requireAdmin() is the unchanged
+ * guard, core/ai-inventory.ts still narrows a company HR administrator to the read-only registry view on the Workers page,
+ * and this page reads nothing. */
+export default async function AiManagementInventoryPage() {
+  await requireAdmin();
+  permanentRedirect('/control-tower/agents/features#ai-inventory');
 }

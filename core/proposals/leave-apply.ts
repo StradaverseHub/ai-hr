@@ -32,8 +32,15 @@ const passedChecks=()=>declared.checks.map(check=>({check:check.check,owner:chec
 
 export type LeaveApplyProposalResult=Readonly<{kind:'proposal';proposal:Proposal}>
  |Readonly<{kind:'unavailable'|'needs_selection'|'needs_employee_remark'|'use_leave_form'}>;
+/** Owner, 5 November 2026 ("Fix dates first"): other days the person's words may mean, worked out by the HR date owner's
+ * rule (./request-dates.ts), for the card to offer. Only a calendar date reaches the card; nothing is checked for them. */
+export type LeaveApplyCardExtras=Readonly<{otherDates?:readonly string[]}>;
+const otherDatesFact=(extras:LeaveApplyCardExtras,chosen:string)=>{
+ const dates=[...new Set((extras.otherDates??[]).filter(date=>isCalendarDate(date)&&date!==chosen))].slice(0,2);
+ return dates.length?{otherDates:dates}:{};
+};
 /** Inputs come from the person's own selection and text, never from a model or a posted session. */
-export async function prepareLeaveApplyProposal(supplied:SessionContext,input:Readonly<{nomination:unknown;selection:unknown;humanText:unknown}>,locale?:string):Promise<LeaveApplyProposalResult>{
+export async function prepareLeaveApplyProposal(supplied:SessionContext,input:Readonly<{nomination:unknown;selection:unknown;humanText:unknown}>,locale?:string,extras:LeaveApplyCardExtras={}):Promise<LeaveApplyProposalResult>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  const nomination=OwnLeaveNomination.safeParse(input.nomination);
  const prepared=await withTenant(ctx,tx=>prepareOwnLeaveReviewTx(tx,ctx,input.nomination,input.selection,input.humanText,locale));
@@ -50,7 +57,7 @@ export async function prepareLeaveApplyProposal(supplied:SessionContext,input:Re
   checks:passedChecks(),
   review:{route:declared.reviewRoute,href:`${declared.reviewRoute}?review=${review.actionId}`,reference:review.actionId},
   facts:{leaveType:review.leaveTypeName.slice(0,64),startDate:review.date,endDate:review.date,days:review.deductionDays,
-   ...(review.estimatedAvailableAfter===null?{}:{balanceAfter:review.estimatedAvailableAfter}),outcome:'submitted_not_approved'},
+   ...(review.estimatedAvailableAfter===null?{}:{balanceAfter:review.estimatedAvailableAfter}),outcome:'submitted_not_approved',...otherDatesFact(extras,review.date)},
   createdAt:review.createdAt,expiresAt:review.expiresAt})});
 }
 
@@ -90,7 +97,7 @@ export type LeaveApplyFormInput=Readonly<{leaveTypeId:string;startDate:string;en
 /** A proposal confirmed on the Request Leave form, from the leave service's own preview as the caller. The check
  * `deduction_and_balance` reads needs_review when the service says the balance does not cover it (or hides it), so
  * the card says so; the form refuses or converts as the leave rules decide when the person submits. */
-export async function prepareLeaveApplyFormProposal(supplied:SessionContext,input:LeaveApplyFormInput,locale?:string,now:Date=new Date()):Promise<Readonly<{kind:'proposal';proposal:Proposal}>|Readonly<{kind:'unavailable'}>>{
+export async function prepareLeaveApplyFormProposal(supplied:SessionContext,input:LeaveApplyFormInput,locale?:string,now:Date=new Date(),extras:LeaveApplyCardExtras={}):Promise<Readonly<{kind:'proposal';proposal:Proposal}>|Readonly<{kind:'unavailable'}>>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))},unavailable=Object.freeze({kind:'unavailable' as const});
  const personId=ctx.personId,userId=ctx.userId,{leaveTypeId,startDate,endDate,durationType}=input;
  if(!personId||!userId||!isUuid(leaveTypeId)||!isCalendarDate(startDate)||!isCalendarDate(endDate)||!isChatLeaveDuration(durationType)||endDate<startDate||leaveApplyDaySpan(startDate,endDate)>LEAVE_APPLY_MAX_DAYS)return unavailable;
@@ -109,7 +116,7 @@ export async function prepareLeaveApplyFormProposal(supplied:SessionContext,inpu
   // The form takes the leave type (and the person's own employment, from their login); no review is saved.
   review:{route:LEAVE_APPLY_FORM_ROUTE,href:LEAVE_APPLY_FORM_ROUTE,reference:leaveTypeId},
   facts:{leaveType:candidate.leaveTypeName.slice(0,64),startDate,endDate,days:candidate.days,
-   ...(candidate.availableAfter===null?{}:{balanceAfter:candidate.availableAfter}),outcome:'submitted_not_approved'},
+   ...(candidate.availableAfter===null?{}:{balanceAfter:candidate.availableAfter}),outcome:'submitted_not_approved',...(startDate===endDate?otherDatesFact(extras,startDate):{})},
   createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+FORM_TTL_MS).toISOString()})});
 }
 

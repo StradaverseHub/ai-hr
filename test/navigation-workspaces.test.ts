@@ -55,7 +55,9 @@ describe('Ops and Strata placement never grants authority',()=>{
   // AI v2 P2-2b: the payroll Audit loop's page.
   '/control-tower/loops/loop_payroll_audit',
   // AI v2 P2-1: a loop's promote page (wave 1 integration).
-  '/control-tower/loops/[loop]/promote'];
+  '/control-tower/loops/[loop]/promote',
+  // AI Centre restructure (4 Nov 2026): Administration › Build list.
+  '/control-tower/agents/build-list'];
  it.each(CONTROL_TOWER_PAGES)('places %s under AI Centre (shared), owned by the AI Centre row',path=>{
   expect(navigationPlacement(path)).toEqual({area:'shared'});
   const links=[{href:'/'},{href:'/me'},{href:'/assistant',ownedSubpaths:['/control-tower']},{href:'/approvals'},{href:'/admin/personnel'}];

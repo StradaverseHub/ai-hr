@@ -6,8 +6,9 @@ import {LoopCards} from '@/components/today/loop-cards';
 import {answerTp3PreviousEmployerAction} from '@/app/assistant/payroll-readiness-actions';
 import {PAYROLL_READINESS_HREF,type GroupStatus,type PayrollItem,type PayrollItemGroup,type PayrollReadiness} from '@/lib/pre-salary/items';
 
-/** AI v2 Phase 2, P2-3 — the "Before payroll" checklist, as Today's card and as AI Centre › Insights' "My payroll
- * readiness" (owner decisions 7 and 8, 3 November 2026). Server components; every value is the person's own, read by
+/** AI v2 Phase 2, P2-3 — the "Before payroll" checklist, as Today's card and as "My payroll readiness" (owner decisions
+ * 7 and 8, 3 November 2026), which is its own personal page, /me/payroll-readiness, since the AI Centre restructure
+ * (owner decision 27, 4 November 2026). Server components; every value is the person's own, read by
  * core/pre-salary/person-items.ts as them. No pay figure is ever passed in. Each row has one action: the missed
  * clock-out loop's own Confirm card where it exists (on Today it waits in Needs you; on Insights it is drawn here),
  * otherwise a link to the owner's page. Status is always words beside its colour. */
@@ -70,11 +71,13 @@ function ItemRow({t,locale,row,todayConfirm}:{t:T;locale:string;row:PayrollItem;
 }
 
 /** Today: "Before payroll on <date>", the first few items and "See all". Nothing pending and nothing waiting on the
- * person: no card (Today shows only what needs them). */
+ * person: no card (Today shows only what needs them).
+ * AI Centre restructure (Today fix a): the decisions waiting on the person as an approver are already in Today's "Needs
+ * you" (the approvals owner's own list), so this card lists only the person's own items; the personal page lists both. */
 export const TODAY_ITEM_LIMIT=3;
 export async function BeforePayrollCard({readiness,locale}:{readiness:PayrollReadiness|null;locale:string}){
  if(!readiness)return null;
- const rows=[...readiness.items.filter(row=>row.state!=='waiting'),...readiness.approvals];
+ const rows=readiness.items.filter(row=>row.state!=='waiting');
  const waiting=readiness.items.filter(row=>row.state==='waiting').length;
  if(!rows.length&&!waiting)return null;
  const t=await getTranslations('payrollReadiness');
@@ -96,12 +99,14 @@ export async function BeforePayrollCard({readiness,locale}:{readiness:PayrollRea
 }
 
 const OWN_GROUPS:readonly PayrollItemGroup[]=['attendance','overtime','leave','claims','toil','details','acknowledge'];
-/** Insights: "My payroll readiness", every item grouped, each group done or not for the month, and what waits on the
- * person as an approver. The missed clock-out Confirm card is drawn in its group. */
-export async function MyPayrollReadiness({readiness,locale}:{readiness:PayrollReadiness|null;locale:string}){
+/** "My payroll readiness" (its own page, /me/payroll-readiness): every item grouped, each group done or not for the
+ * month, and what waits on the person as an approver. The missed clock-out Confirm card is drawn in its group.
+ * `headingLevel` 1: the page's own title. */
+export async function MyPayrollReadiness({readiness,locale,headingLevel=2}:{readiness:PayrollReadiness|null;locale:string;headingLevel?:1|2}){
  const t=await getTranslations('payrollReadiness');
+ const Heading=headingLevel===1?'h1':'h2',headingCls=headingLevel===1?'text-xl font-semibold tracking-tight':'text-base font-semibold';
  if(!readiness)return <section id="my-payroll-readiness" aria-labelledby="my-payroll-readiness-heading" data-payroll-readiness="none" className="space-y-2">
-  <h2 id="my-payroll-readiness-heading" className="text-base font-semibold">{t('insightsTitle')}</h2>
+  <Heading id="my-payroll-readiness-heading" className={headingCls}>{t('insightsTitle')}</Heading>
   <p className="text-sm text-muted-foreground">{t('notInUse')}</p>
  </section>;
  const month=formatPayPeriodMonth(readiness.period.payPeriod,locale);
@@ -111,7 +116,7 @@ export async function MyPayrollReadiness({readiness,locale}:{readiness:PayrollRe
  const pending=readiness.items.some(row=>row.state==='todo');
  return <section id="my-payroll-readiness" aria-labelledby="my-payroll-readiness-heading" data-payroll-readiness="ready" className="scroll-mt-4 space-y-4">
   <div className="space-y-1">
-   <h2 id="my-payroll-readiness-heading" className="text-base font-semibold">{t('insightsTitle')}</h2>
+   <Heading id="my-payroll-readiness-heading" className={headingCls}>{t('insightsTitle')}</Heading>
    <p data-payroll-period={readiness.period.payPeriod} data-payroll-cutoff={readiness.period.cutOff??'unknown'} className="text-sm text-muted-foreground">
     {readiness.period.cutOff?t('period',{month,date:hrDay(locale,readiness.period.cutOff)}):t('periodNoCutOff',{month})}</p>
    {!pending&&<p data-payroll-all-done className="text-sm">{t('allDone')}</p>}

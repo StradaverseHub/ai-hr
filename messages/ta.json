@@ -527,7 +527,8 @@
     "passwordPolicy": "கடவுச்சொல் கொள்கை",
     "myPrivateCases": "எனது தனிப்பட்ட புகார்கள்",
     "privateCases": "தனிப்பட்ட புகார்கள்",
-    "probationTracker": "சோதனைக் காலக் கண்காணிப்பு"
+    "probationTracker": "சோதனைக் காலக் கண்காணிப்பு",
+    "myPayrollReadiness": "எனது சம்பளத் தயார்நிலை"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",

@@ -527,7 +527,8 @@
     "passwordPolicy": "นโยบายรหัสผ่าน",
     "myPrivateCases": "เรื่องส่วนตัวของฉัน",
     "privateCases": "เรื่องส่วนตัว",
-    "probationTracker": "ติดตามทดลองงาน"
+    "probationTracker": "ติดตามทดลองงาน",
+    "myPayrollReadiness": "ความพร้อมสำหรับเงินเดือนของฉัน"
   },
   "dashboard": {
     "title": "แดชบอร์ด",

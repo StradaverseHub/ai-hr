@@ -10,8 +10,8 @@ import type { LoopProposalView } from '@/core/learning/proposals';
 import type { Share } from '@/core/learning/quality-math';
 import { candidateDefaults, EVAL_FACTORS, EVAL_KINDS, EXPECTATION_MAX_CHARS, GAP_STATUSES, QUALITY_PERIODS, QUESTION_MAX_CHARS, type QualityPeriod } from '@/core/learning/types';
 import {
-  approveCandidateAction, decideProposalAction, dismissSignalAction, editCandidateAction, exportCandidateAction, promoteSignalAction, reopenCandidateAction,
-  reopenSignalAction, revertProposalAction, setGapStatusAction, withdrawCandidateAction,
+  approveCandidateAction, dismissSignalAction, editCandidateAction, exportCandidateAction, promoteSignalAction, reopenCandidateAction,
+  reopenSignalAction, setGapStatusAction, withdrawCandidateAction,
 } from '@/app/assistant/learning-actions';
 import { cn } from '@/lib/utils';
 
@@ -23,7 +23,9 @@ import { cn } from '@/lib/utils';
  * share by month drawn to scale from 0 to 100%; the biggest gaps and their status (counted, never their words: AI v2 Phase 2
  * hardening, ADR-0169 §9); the corrections
  * to review, made eval candidates or dismissed; the candidates, approved and exported by an administrator; the loops'
- * proposals, approved, rejected or reverted by an administrator, with each loop's corrections by month; the method.
+ * proposals, read-only here (AI Centre restructure, owner decision 29: payroll-cycle Settings is the one place to decide a
+ * threshold, so each row links there), with each loop's corrections by month; the agreement and payroll-check figures the
+ * former Operations overview showed (passed in as `accuracy`, ./check-accuracy.tsx); the method.
  * Rendered only for an administrator (the Insights view checks isAdmin, and core/learning/quality.ts checks it again);
  * every figure is read under their row-level security. No ratio of HR staff to employees appears anywhere (owner rule). */
 export type QualityQuery = {
@@ -34,6 +36,8 @@ const ERRORS = ['invalid', 'not_administrator', 'not_found', 'changed', 'not_red
 const target = 'pointer-coarse:min-h-11';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const cell = 'px-4 py-3 align-top';
+/** The one place a loop's threshold proposal is decided (app/control-tower/loops/payroll-cycle/settings). */
+const SETTINGS_HREF = '/control-tower/loops/payroll-cycle/settings';
 
 function href(query: Readonly<Record<string, string | null | undefined>>, anchor?: string) {
   const params = new URLSearchParams({ view: 'insights' });
@@ -44,7 +48,9 @@ function href(query: Readonly<Record<string, string | null | undefined>>, anchor
 type T = Awaited<ReturnType<typeof getTranslations<'aiCentre.quality'>>>;
 type F = Awaited<ReturnType<typeof getFormatter>>;
 
-export async function AiQualitySection({ session, query }: { session: SessionContext; query: QualityQuery }) {
+/** `accuracy`: the agreement table and the payroll checks' figures (./check-accuracy.tsx), read by the Insights view beside
+ * this section's own read, so AI accuracy has one place. */
+export async function AiQualitySection({ session, query, accuracy }: { session: SessionContext; query: QualityQuery; accuracy?: ReactNode }) {
   const [t, tl, tp, tf, f] = await Promise.all([getTranslations('aiCentre.quality'), getTranslations('aiCentre.loops'), getTranslations('aiCentre.payrollCycle'),
     getTranslations('aiCentre.feedback'), getFormatter()]);
   const view = await aiQuality(session, { period: query.qperiod, companyId: query.qcompany });
@@ -135,10 +141,12 @@ export async function AiQualitySection({ session, query }: { session: SessionCon
           <p className="text-xs text-muted-foreground">{t('chart.note')}</p>
         </section>
 
+        {accuracy}
+
         <GapsTable view={view} t={t} f={f} hidden={hidden} />
         <CorrectionsTable view={view} t={t} tf={tf} day={day} hidden={hidden} keep={keep} promote={promoteSignal} />
         <CandidatesTable view={view} t={t} day={day} hidden={hidden} keep={keep} open={openCandidate} />
-        <ProposalsTable view={view} t={t} tl={tl} tp={tp} f={f} day={day} hidden={hidden} monthLabel={monthLabel} pct={pct} />
+        <ProposalsTable view={view} t={t} tl={tl} tp={tp} f={f} day={day} monthLabel={monthLabel} pct={pct} />
 
         <details id="ai-quality-method" className="max-w-4xl text-xs text-muted-foreground" data-quality-method>
           <summary className={cn('inline-flex min-h-9 cursor-pointer items-center font-medium text-primary hover:underline', target)}>{t('method.link')}</summary>
@@ -352,9 +360,9 @@ function CandidatesTable({ view, t, day, hidden, keep, open }: { view: QualityVi
   );
 }
 
-function ProposalsTable({ view, t, tl, tp, f, day, hidden, monthLabel, pct }: { view: QualityView; t: T;
+function ProposalsTable({ view, t, tl, tp, f, day, monthLabel, pct }: { view: QualityView; t: T;
   tl: Awaited<ReturnType<typeof getTranslations<'aiCentre.loops'>>>; tp: Awaited<ReturnType<typeof getTranslations<'aiCentre.payrollCycle'>>>; f: F;
-  day: (at: Date) => string; hidden: ReactNode; monthLabel: (month: string, style: 'short' | 'long') => string; pct: (value: number | null) => string }) {
+  day: (at: Date) => string; monthLabel: (month: string, style: 'short' | 'long') => string; pct: (value: number | null) => string }) {
   const percent = (bp: number) => f.number(bp / 10_000, { style: 'percent', maximumFractionDigits: 2 });
   const pattern = (value: string) => value.startsWith('cause:') ? (tp.has(`causes.${value.slice(6)}`) ? tp(`causes.${value.slice(6)}`) : tp('patternUnknown'))
     : view.patternNames[value] ? tp('patternItem', { item: view.patternNames[value] }) : tp('patternUnknown');
@@ -377,21 +385,12 @@ function ProposalsTable({ view, t, tl, tp, f, day, hidden, monthLabel, pct }: { 
                 <td className={cn(cell, 'text-xs text-muted-foreground')}>{tp('proposals.evidence', { flags: row.evidence.flags, expected: row.evidence.expected, problems: row.evidence.problems,
                   share: percent(row.evidence.expectedShareBp), days: row.evidence.windowDays })}</td>
                 <td className={cell}>{row.state === 'open' ? t('proposals.open') : t('proposals.applied', { date: row.decidedAt ? day(row.decidedAt) : '' })}</td>
+                {/* Read-only here: payroll-cycle Settings is the one place a threshold proposal is decided (and an applied one
+                    changed back), with the evidence and the approver rules beside it. */}
                 <td className={cell}>
-                  <div className="flex flex-wrap gap-2">
-                    {row.state === 'open' && row.proposalKey && (['approved', 'rejected'] as const).map(decision => (
-                      <form key={decision} action={decideProposalAction}>{hidden}
-                        <input type="hidden" name="companyId" value={row.companyId} /><input type="hidden" name="proposalKey" value={row.proposalKey!} /><input type="hidden" name="decision" value={decision} />
-                        <button type="submit" className={cn(decision === 'approved' ? btnPrimary : btnGhost, target)} aria-label={`${t(`proposals.${decision}`)} · ${what(row)}`}>{t(`proposals.${decision}`)}</button>
-                      </form>
-                    ))}
-                    {row.state === 'applied' && row.decisionId && (
-                      <form action={revertProposalAction}>{hidden}
-                        <input type="hidden" name="companyId" value={row.companyId} /><input type="hidden" name="decisionId" value={row.decisionId} />
-                        <button type="submit" className={cn(btnGhost, target)} aria-label={`${t('proposals.revert')} · ${what(row)}`}>{t('proposals.revert')}</button>
-                      </form>
-                    )}
-                  </div>
+                  <Link href={SETTINGS_HREF} data-proposal-settings className={cn('inline-flex min-h-9 items-center text-sm font-medium text-primary hover:underline', target)}
+                    aria-label={`${t(row.state === 'open' ? 'proposals.decideInSettings' : 'proposals.changeInSettings')} · ${what(row)}`}>
+                    {t(row.state === 'open' ? 'proposals.decideInSettings' : 'proposals.changeInSettings')}</Link>
                 </td>
               </tr>
             ))}
