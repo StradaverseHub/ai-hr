@@ -1699,7 +1699,7 @@ export async function adoptConfirmedCompanyPat(ctx:SessionContext,unitId:string,
  const latest=await latestConfirmedPatTx(tx,ctx,unit.companyId,unit.policy.year);if(!latest)throw new RewardError('Confirm the company PAT inputs first.');
  const before=await governanceStateTx(tx,unitId),prior=before??emptyGovernance(),old=await calculateUnit(tx,unit,entries);
  const after:RewardGovernance={...prior,inputs:{...latest.inputs,multiplierBp:unit.policy.bonusStructure==='branch'?10000:prior.inputs?.multiplierBp??null,branchRatings:prior.inputs?.branchRatings??{}},previousPools:{standard:old.budgets.standard.bonusPoolCents,h:old.budgets.h.bonusPoolCents}};
- await saveGovernanceTx(tx,ctx,unitId,before,after,'company-pat-adopted',why);await tx.execute(sql`update reward_unit_setup set previous_pat_version_id=pat_version_id,pat_version_id=${latest.id}::uuid,pool_recalculation_required=false,updated_at=now() where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);return latest.id;
+ await tx.execute(sql`update reward_unit_setup set previous_pat_version_id=pat_version_id,pat_version_id=${latest.id}::uuid,pool_recalculation_required=false,updated_at=now() where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);await saveGovernanceTx(tx,ctx,unitId,before,after,'company-pat-adopted',why);return latest.id;
  });
 }
 /** Internal extension seam: scoped read or locked mutation with native state/calculation ownership. */

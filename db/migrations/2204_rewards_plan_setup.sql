@@ -40,9 +40,10 @@ GRANT SELECT,INSERT,UPDATE ON reward_plan_setup,reward_plan_company,reward_unit_
 GRANT SELECT,INSERT ON reward_company_year_review TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.reward_setup_company_eligible(wanted_company uuid,wanted_year integer) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
-DECLARE classified boolean:=true;
+DECLARE classified boolean:=true;reward_visible boolean:=true;
 BEGIN
  IF NOT app.reward_setup_allowed(wanted_company,'manage') OR NOT EXISTS(SELECT 1 FROM company c WHERE c.id=wanted_company AND c.tenant_id=app.current_tenant_id() AND c.archived_at IS NULL AND c.currency='MYR') OR EXISTS(SELECT 1 FROM reward_company_exclusion e WHERE e.tenant_id=app.current_tenant_id() AND e.company_id=wanted_company AND e.year=wanted_year AND e.ended_at IS NULL) THEN RETURN false;END IF;
+ IF to_regclass('public.reward_company_classification') IS NOT NULL THEN EXECUTE 'select not exists(select 1 from public.reward_company_classification where tenant_id=$1 and company_id=$2 and disposition<>''visible'')' INTO reward_visible USING app.current_tenant_id(),wanted_company;IF NOT reward_visible THEN RETURN false;END IF;END IF;
  IF to_regclass('public.company_registration_classification') IS NOT NULL THEN EXECUTE 'select not exists(select 1 from public.company_registration_classification where tenant_id=$1 and company_id=$2 and(entity_kind<>''legal_entity'' or is_test_entity))' INTO classified USING app.current_tenant_id(),wanted_company;END IF;
  RETURN classified;
 END $$;
@@ -206,3 +207,10 @@ CREATE POLICY reward_setup_policy_event_insert ON domain_event FOR INSERT TO ai_
 --> statement-breakpoint
 -- Existing permissive policies still parse their bounded authorization helpers for this purpose role.
 GRANT EXECUTE ON FUNCTION app.reward_admin(uuid),app.is_admin(),app.is_group_admin(),app.acting_as_owner() TO ai_hr_reward_setup_reader;
+
+--> statement-breakpoint
+DO $$ BEGIN
+ IF to_regclass('public.reward_company_classification') IS NOT NULL THEN
+  GRANT SELECT ON reward_company_classification TO ai_hr_reward_setup_reader;
+ END IF;
+END $$;

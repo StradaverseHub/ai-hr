@@ -35479,7 +35479,8 @@
       "multiple-matches": "Nhiều kết quả phù hợp; chọn phiên bản",
       "none": "Không có đề xuất rõ ràng; chọn phiên bản"
     },
-    "libraryReadOnly": "Giá trị thư viện lương và thưởng đã dùng chỉ cho phép xem. Phê duyệt phiên bản kế hoạch mới cho đợt đánh giá sau."
+    "libraryReadOnly": "Giá trị thư viện lương và thưởng đã dùng chỉ cho phép xem. Phê duyệt phiên bản kế hoạch mới cho đợt đánh giá sau.",
+    "businessUnit": "Đơn vị kinh doanh"
   },
   "jobArchitecture": {
     "title": "Kiến trúc công việc",

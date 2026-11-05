@@ -35479,7 +35479,8 @@
       "multiple-matches": "多个匹配项；请选择版本",
       "none": "没有明确建议；请选择版本"
     },
-    "libraryReadOnly": "已使用的薪资和奖金资料库数值仅供查看。请为未来审核批准新计划版本。"
+    "libraryReadOnly": "已使用的薪资和奖金资料库数值仅供查看。请为未来审核批准新计划版本。",
+    "businessUnit": "业务单位"
   },
   "jobArchitecture": {
     "title": "岗位架构",
