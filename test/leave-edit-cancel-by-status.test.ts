@@ -142,6 +142,37 @@ describe('editLeaveRequest — pending edit', () => {
     }
   });
 
+  it('waits for the exclusive Access writer before reading or editing the request', async () => {
+    const id = await pendingThreeDay();
+    let edit: ReturnType<typeof editLeaveRequest> | undefined;
+    try {
+      await owner.db.transaction(async tx => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:' + b.tenantId},0))`);
+        const [writer] = await tx.execute<{pid: number}>(sql`select pg_backend_pid() as pid`);
+        edit = editLeaveRequest(subjectCtx, {
+          leaveRequestId: id, leaveTypeId: b.annualLeaveTypeId,
+          startDate: '2026-08-10', endDate: '2026-08-11',
+        });
+        void edit.catch(() => undefined);
+        let blocked = false;
+        const deadline = performance.now() + 5000;
+        while (!blocked && performance.now() < deadline) {
+          const [state] = await tx.execute<{blocked: boolean}>(sql`
+            select exists(select 1 from pg_locks l
+              where l.locktype = 'advisory' and l.mode = 'ShareLock' and not l.granted
+                and ${writer.pid}::integer = any(pg_blocking_pids(l.pid))) as blocked
+          `);
+          blocked = state.blocked;
+          if (!blocked) await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        expect(blocked).toBe(true);
+      });
+      await expect(edit).resolves.toEqual({leaveRequestId: id, days: 2});
+    } finally {
+      await edit?.catch(() => undefined);
+    }
+  });
+
   it('edits a pending leave in place, keeps it pending, recomputes days, appends leave-request.edited', async () => {
     const id = await pendingThreeDay();
     expect((await rowOf(id)).days).toBe('3.00');
