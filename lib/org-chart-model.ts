@@ -50,13 +50,35 @@ export function layoutOrgChart(employees:{employmentId:string}[],edges:OrgChartE
   if(!node.exit){if(seen.has(node.id))continue;seen.add(node.id);stack.push({...node,exit:true});for(const id of [...(children.get(node.id)??[])].reverse())stack.push({id,depth:node.depth+1,exit:false});}
   else{const kids=(children.get(node.id)??[]).map(id=>positions.get(id)).filter((p):p is {x:number;y:number;width:number;height:number}=>!!p);const axis=kids.length?(horizontal?(kids[0].y+kids[kids.length-1].y)/2:(kids[0].x+kids[kids.length-1].x)/2):leaf++*(horizontal?cardHeight+32:232);positions.set(node.id,{x:horizontal?node.depth*250:axis,y:horizontal?axis:node.depth*(cardHeight+48),width:200,height:cardHeight});}
  }}
- return {positions,width:Math.max(1,...[...positions.values()].map(p=>p.x+p.width)),height:Math.max(1,...[...positions.values()].map(p=>p.y+p.height))};
+ let width=1,height=1;
+ for(const position of positions.values()){
+  width=Math.max(width,position.x+position.width);
+  height=Math.max(height,position.y+position.height);
+ }
+ return {positions,width,height};
 }
 
 /** Search focuses the permitted superior path and immediate reports, without mounting unrelated branches. */
 export function orgChartSearchIds(employees:{employmentId:string;name:string;employeeCode:string|null;role:string|null;department:string|null}[],edges:OrgChartEdge[],query:string){
  const q=query.trim().toLowerCase();const matches=new Set(employees.filter(e=>`${e.employeeCode??''} ${e.name} ${e.role??''} ${e.department??''}`.toLowerCase().includes(q)).map(e=>e.employmentId));
- const visible=new Set(matches);for(const hit of matches){let next=hit;const seen=new Set<string>();while(!seen.has(next)){seen.add(next);const edge=edges.find(edge=>edge.type==='administrative'&&edge.subordinate===next);if(!edge)break;visible.add(edge.manager);next=edge.manager;}for(const edge of edges)if(edge.type==='administrative'&&edge.manager===hit)visible.add(edge.subordinate);}
+ const firstManager=new Map<string,string>();
+ const directReports=new Map<string,string[]>();
+ for(const edge of edges){
+  if(edge.type!=='administrative')continue;
+  if(!firstManager.has(edge.subordinate))firstManager.set(edge.subordinate,edge.manager);
+  const reports=directReports.get(edge.manager);
+  if(reports)reports.push(edge.subordinate);
+  else directReports.set(edge.manager,[edge.subordinate]);
+ }
+ const visible=new Set(matches),visited=new Set<string>();
+ for(const hit of matches){
+  let current:string|undefined=hit;
+  while(current!==undefined&&!visited.has(current)){
+   visited.add(current);visible.add(current);
+   current=firstManager.get(current);
+  }
+  for(const subordinate of directReports.get(hit)??[])visible.add(subordinate);
+ }
  return visible;
 }
 
