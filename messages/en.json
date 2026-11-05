@@ -35460,7 +35460,7 @@
     "newVersion": "Create next version",
     "companyPatOwner": "PAT inputs are owned by the company-year PAT Inputs screen.",
     "adoptPat": "Adopt confirmed company PAT",
-    "patChanged": "Company PAT has changed. Adopt the confirmed version in draft before submitting.",
+    "patChanged": "Company PAT has changed. Group Rewards must adopt the confirmed version in Draft before the review can progress.",
     "patHistory": "Prior confirmed versions remain in the audit history.",
     "uncoveredPlans": "Uncovered companies",
     "previewUncovered": "Preview draft plans",
@@ -35490,7 +35490,12 @@
     "saveSettings": "Save settings as a new draft version",
     "newPlanVersion": "Create next plan version",
     "successorHelp": "Create a draft successor to change future settings. Existing review snapshots keep their recorded versions.",
-    "structure-not-ready": "No unambiguous dated Business unit assignment is available. Review the company structure before assigning libraries."
+    "structure-not-ready": "No unambiguous dated Business unit assignment is available. Review the company structure before assigning libraries.",
+    "newPlan": "New rewards plan",
+    "draftOnly": "This creates a draft only. A different Group Rewards user must approve the plan before reviews can be created.",
+    "createDraftPlan": "Create draft plan",
+    "already-assigned": "Already assigned to another plan for this reward year.",
+    "branchAllAcknowledged": "Every selected company is configured to use branch factors"
   },
   "jobArchitecture": {
     "title": "Job Architecture",

@@ -35460,7 +35460,7 @@
     "newVersion": "创建下一版本",
     "companyPatOwner": "PAT 数据由公司年度 PAT 数据页面统一管理。",
     "adoptPat": "采用已确认的公司 PAT",
-    "patChanged": "公司 PAT 已变更。提交前，请在草稿中采用已确认的版本。",
+    "patChanged": "公司 PAT 已变更。集团薪酬奖励团队必须在草稿中采用已确认的版本，审核才能继续。",
     "patHistory": "之前确认的版本保留在审计记录中。",
     "uncoveredPlans": "尚未覆盖的公司",
     "previewUncovered": "预览计划草稿",
@@ -35490,7 +35490,12 @@
     "saveSettings": "将设置保存为新的草稿版本",
     "newPlanVersion": "创建下一计划版本",
     "successorHelp": "创建后续草稿以更改未来设置。现有审核快照仍保留其已记录的版本。",
-    "structure-not-ready": "暂无明确且生效的业务单位分配。分配资料库前，请先检查公司架构。"
+    "structure-not-ready": "暂无明确且生效的业务单位分配。分配资料库前，请先检查公司架构。",
+    "newPlan": "新建奖励计划",
+    "draftOnly": "此操作仅创建草稿。创建审核前，须由另一名集团薪酬奖励用户批准计划。",
+    "createDraftPlan": "创建计划草稿",
+    "already-assigned": "本奖励年度已分配至另一计划。",
+    "branchAllAcknowledged": "所有选定公司均已配置为使用分行系数"
   },
   "jobArchitecture": {
     "title": "岗位架构",

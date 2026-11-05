@@ -2,9 +2,9 @@ CREATE TABLE reward_plan_setup(
  tenant_id uuid NOT NULL REFERENCES tenant(id),version_id uuid NOT NULL,group_id uuid NOT NULL,year integer NOT NULL,
  company_ids uuid[] NOT NULL,cycle_name text NOT NULL CHECK(length(trim(cycle_name)) BETWEEN 1 AND 160),snapshot_date date NOT NULL,
  bindings jsonb NOT NULL CHECK(jsonb_typeof(bindings)='array'),state text NOT NULL CHECK(state IN('draft','pending','approved')),
- created_by uuid NOT NULL REFERENCES app_user(id),contributor_ids uuid[] NOT NULL,approved_by uuid REFERENCES app_user(id),approved_at timestamptz,
+ created_by uuid NOT NULL REFERENCES app_user(id),created_by_person_id uuid NOT NULL REFERENCES person(id),contributor_ids uuid[] NOT NULL,contributor_person_ids uuid[] NOT NULL DEFAULT '{}',approved_by uuid REFERENCES app_user(id),approved_by_person_id uuid REFERENCES person(id),previous_plan_version_id uuid,approved_at timestamptz,
  reason text NOT NULL CHECK(length(trim(reason)) BETWEEN 10 AND 4000),revision integer NOT NULL DEFAULT 1,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),
- PRIMARY KEY(tenant_id,version_id),FOREIGN KEY(tenant_id,version_id) REFERENCES reward_policy_group_version(tenant_id,id),
+ PRIMARY KEY(tenant_id,version_id),FOREIGN KEY(tenant_id,previous_plan_version_id) REFERENCES reward_plan_setup(tenant_id,version_id),CHECK(previous_plan_version_id IS DISTINCT FROM version_id),FOREIGN KEY(tenant_id,version_id) REFERENCES reward_policy_group_version(tenant_id,id),
  CHECK(cardinality(company_ids)>0),CHECK((state='approved')=(approved_by IS NOT NULL)),CHECK(approved_by IS NULL OR NOT approved_by=ANY(contributor_ids))
 );
 CREATE TABLE reward_plan_company(
@@ -61,7 +61,7 @@ CREATE FUNCTION app.reward_library_locked(wanted_version uuid) RETURNS boolean L
  SELECT app.reward_setup_allowed(NULL,'library_view') AND EXISTS(SELECT 1 FROM reward_unit_setup s JOIN reward_unit u ON u.id=s.unit_id AND u.tenant_id=s.tenant_id WHERE s.tenant_id=app.current_tenant_id() AND(s.salary_version_id=wanted_version OR s.bonus_version_id=wanted_version) AND u.status<>'draft')
 $$;
 CREATE FUNCTION app.reward_applied_public_references(wanted_unit uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
- SELECT jsonb_build_object('plan',jsonb_build_object('name',p.name,'version',p.revision),'salary',jsonb_build_object('name',sl.name,'version',sv.revision),'bonus',jsonb_build_object('name',bl.name,'version',bv.revision,'type',bv.data->>'type'),'pat',jsonb_build_object('status',CASE WHEN pv.inputs->>'actualCents' IS NOT NULL THEN 'final' ELSE 'provisional' END,'version',pv.revision))
+ SELECT jsonb_build_object('plan',jsonb_build_object('name',p.name,'version',p.revision),'salary',jsonb_build_object('name',sl.name,'version',sv.revision),'bonus',jsonb_build_object('name',bl.name,'version',bv.revision,'type',bv.data->>'type'),'pat',jsonb_build_object('status',CASE WHEN pv.inputs->>'targetCents' IS NULL OR coalesce(pv.inputs->>'actualCents',pv.inputs->>'forecastCents') IS NULL THEN 'not-set' WHEN pv.inputs->>'actualCents' IS NOT NULL THEN 'final' ELSE 'provisional' END,'version',pv.revision))
  FROM reward_unit_setup s JOIN reward_unit u ON u.id=s.unit_id AND u.tenant_id=s.tenant_id JOIN reward_policy_group_version p ON p.id=s.plan_version_id AND p.tenant_id=s.tenant_id
  JOIN reward_library_version sv ON sv.id=s.salary_version_id AND sv.tenant_id=s.tenant_id JOIN reward_library sl ON sl.id=sv.library_id AND sl.tenant_id=sv.tenant_id
  JOIN reward_library_version bv ON bv.id=s.bonus_version_id AND bv.tenant_id=s.tenant_id JOIN reward_library bl ON bl.id=bv.library_id AND bl.tenant_id=bv.tenant_id JOIN reward_pat_version pv ON pv.id=s.pat_version_id AND pv.tenant_id=s.tenant_id
@@ -110,6 +110,7 @@ BEGIN
   IF EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.bindings)b WHERE NOT EXISTS(SELECT 1 FROM reward_policy_group_target x WHERE x.tenant_id=NEW.tenant_id AND x.version_id=NEW.version_id AND x.company_id=(b->>'companyId')::uuid AND x.business_unit_id=(b->>'businessUnitId')::uuid) OR NOT EXISTS(SELECT 1 FROM reward_library_version v JOIN reward_library l ON l.id=v.library_id AND l.tenant_id=v.tenant_id WHERE v.id=(b->>'salaryVersionId')::uuid AND v.tenant_id=NEW.tenant_id AND v.state='confirmed' AND l.kind='salary' AND l.year=NEW.year) OR NOT EXISTS(SELECT 1 FROM reward_library_version v JOIN reward_library l ON l.id=v.library_id AND l.tenant_id=v.tenant_id WHERE v.id=(b->>'bonusVersionId')::uuid AND v.tenant_id=NEW.tenant_id AND v.state='confirmed' AND l.kind='bonus' AND l.year=NEW.year AND(v.data->>'type'<>'branch' OR b->>'branchAcknowledged'='true'))) THEN RAISE EXCEPTION 'Plan requires exact shared targets and confirmed matching libraries';END IF;
   IF (SELECT count(DISTINCT b->>'companyId') FROM jsonb_array_elements(NEW.bindings)b)<>cardinality(NEW.company_ids) THEN RAISE EXCEPTION 'Each plan company has one binding';END IF;
  ELSIF TG_TABLE_NAME='reward_plan_company' THEN
+  IF TG_OP='UPDATE' AND EXISTS(SELECT 1 FROM reward_plan_setup previous_plan JOIN reward_plan_setup next_plan ON next_plan.tenant_id=previous_plan.tenant_id LEFT JOIN reward_plan_setup lineage ON lineage.version_id=next_plan.previous_plan_version_id AND lineage.tenant_id=next_plan.tenant_id WHERE previous_plan.tenant_id=NEW.tenant_id AND previous_plan.version_id=OLD.plan_version_id AND next_plan.version_id=NEW.plan_version_id AND previous_plan.group_id<>next_plan.group_id AND(lineage.group_id IS DISTINCT FROM previous_plan.group_id OR NOT NEW.company_id=ANY(lineage.company_ids))) THEN RAISE EXCEPTION 'A company-year assignment can move only through an independently checked draft split';END IF;
   IF NOT EXISTS(SELECT 1 FROM reward_plan_setup p WHERE p.tenant_id=NEW.tenant_id AND p.version_id=NEW.plan_version_id AND p.state='approved' AND p.year=NEW.year AND NEW.company_id=ANY(p.company_ids) AND EXISTS(SELECT 1 FROM jsonb_array_elements(p.bindings)b WHERE b->>'companyId'=NEW.company_id::text AND b->>'salaryVersionId'=NEW.salary_version_id::text AND b->>'bonusVersionId'=NEW.bonus_version_id::text)) THEN RAISE EXCEPTION 'Company assignment must match an independently approved plan';END IF;
  ELSIF TG_TABLE_NAME='reward_company_year_review' THEN
   IF NOT EXISTS(SELECT 1 FROM reward_unit u JOIN reward_cycle c ON c.id=u.cycle_id AND c.tenant_id=u.tenant_id WHERE u.id=NEW.unit_id AND u.tenant_id=NEW.tenant_id AND u.company_id=NEW.company_id AND c.year=NEW.year AND u.kind='annual') THEN RAISE EXCEPTION 'Review admission must match actual company and reward year';END IF;
@@ -214,3 +215,23 @@ DO $$ BEGIN
   GRANT SELECT ON reward_company_classification TO ai_hr_reward_setup_reader;
  END IF;
 END $$;
+--> statement-breakpoint
+GRANT USAGE ON SEQUENCE public.domain_event_sequence_seq TO ai_hr_reward_setup_reader;
+CREATE FUNCTION app.reward_setup_company_covered(wanted_company uuid,wanted_year integer) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF NOT app.reward_setup_allowed(wanted_company,'manage') THEN RAISE EXCEPTION 'Company plan coverage is outside your scope' USING ERRCODE='42501';END IF;
+ RETURN EXISTS(SELECT 1 FROM reward_policy_group g JOIN reward_policy_group_version v ON v.id=g.current_version_id AND v.tenant_id=g.tenant_id JOIN reward_policy_group_target x ON x.version_id=v.id AND x.tenant_id=v.tenant_id WHERE g.tenant_id=app.current_tenant_id() AND x.company_id=wanted_company AND (v.policy->>'year')::integer=wanted_year) OR EXISTS(SELECT 1 FROM reward_plan_company WHERE tenant_id=app.current_tenant_id() AND company_id=wanted_company AND year=wanted_year);
+END $$;
+ALTER FUNCTION app.reward_setup_company_covered(uuid,integer) OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_setup_company_covered(uuid,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_setup_company_covered(uuid,integer) TO ai_hr_app;
+CREATE FUNCTION app.reward_setup_company_review(wanted_company uuid,wanted_year integer) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE result jsonb;
+BEGIN
+ IF NOT app.reward_setup_allowed(wanted_company,'manage') THEN RAISE EXCEPTION 'Company review coverage is outside your scope' USING ERRCODE='42501';END IF;
+ SELECT jsonb_build_object('exists',true,'unitId',CASE WHEN u.deleted_at IS NULL AND app.reward_access(u.id) THEN u.id ELSE NULL END) INTO result FROM reward_unit u JOIN reward_cycle c ON c.id=u.cycle_id AND c.tenant_id=u.tenant_id WHERE u.tenant_id=app.current_tenant_id() AND u.company_id=wanted_company AND c.year=wanted_year AND u.kind='annual' AND(u.deleted_at IS NULL OR EXISTS(SELECT 1 FROM reward_company_year_review r WHERE r.tenant_id=u.tenant_id AND r.unit_id=u.id AND r.year=wanted_year)) ORDER BY u.created_at,u.id LIMIT 1;
+ RETURN coalesce(result,jsonb_build_object('exists',false,'unitId',NULL));
+END $$;
+ALTER FUNCTION app.reward_setup_company_review(uuid,integer) OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_setup_company_review(uuid,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_setup_company_review(uuid,integer) TO ai_hr_app;
