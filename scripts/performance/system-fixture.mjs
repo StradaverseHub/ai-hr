@@ -81,7 +81,10 @@ try{
    const {batchId:historicalBatchId}=await createBatch(ctx,{companyId,payPeriod:historicalMonth});
    // Separate past-month draft: HTTP publication must not close the live correction workload's period.
    const publicationBatchId=t===0&&c===1?(await createBatch(ctx,{companyId,payPeriod:publicationMonth})).batchId:undefined;
-   companies.push({companyId,departmentId,batchId,historicalBatchId,publicationBatchId});
+   // The isolated preflight closes two different companies in one tenant at the same time.
+   const concurrentCloseBatchId=process.env.PERF_HTTP_SUITE==='workflow-preflight'&&t===0&&[3,4].includes(c)
+     ?(await createBatch(ctx,{companyId,payPeriod:publicationMonth})).batchId:undefined;
+   companies.push({companyId,departmentId,batchId,historicalBatchId,publicationBatchId,concurrentCloseBatchId});
   }
   tenants[t]={tenantId:b.tenantId,organization,claimTypeId:type.id,clockingMappingId,companies};
   // Two companies make the staff hub's open count distinguish group and company scope.
