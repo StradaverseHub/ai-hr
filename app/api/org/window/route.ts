@@ -1,4 +1,5 @@
 import {scopedSession} from '@/lib/scope';
+import {personnelImportBrowserKey} from '@/lib/personnel-import-browser-key';
 import {AuthRequiredError} from '@/lib/auth-errors';
 import {orgChartWindow,OrgWindowUnavailableError} from '@/core/org-chart-window';
 import type {OrgWindowRequest} from '@/lib/org-chart-window';
@@ -13,7 +14,8 @@ export async function GET(request:Request){
   const input:OrgWindowRequest={view:(params.get('view')??'roots') as OrgWindowRequest['view']};
   for(const key of ['focusId','after','q'] as const)if(params.has(key))input[key]=params.get(key)!;
   const {s,scopeIds}=await scopedSession();
-  return respond(await orgChartWindow(s,scopeIds,input));
+  const window=await orgChartWindow(s,scopeIds,input);
+  return respond({...window,browserKey:personnelImportBrowserKey(s,scopeIds)});
  }catch(error){
   if(error instanceof AuthRequiredError)return respond({error:'authentication_required'},401);
   if(error instanceof RangeError)return respond({error:'invalid_window'},400);
