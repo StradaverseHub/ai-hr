@@ -43,8 +43,9 @@ it('reads the exact effective header and visible slip count without exporting di
   await owner.db.insert(s.employment).values(members.map(({personId,employmentId})=>({id:employmentId,tenantId:b.tenantId,personId,companyId:b.companyId,hiredOn:'2020-01-01'})));
   await owner.db.insert(s.payslip).values(members.map(({employmentId})=>({...actual,id:randomUUID(),employmentId})));
  }
- // This deliberately tests the exact old detail join: visible employment/person filtering affects its length.
- await owner.db.update(s.employment).set({voidedAt:new Date()}).where(eq(s.employment.id,extra[0].employmentId));
+ // Synthetic owner fixture for the retained historical join: normal void does not accept an existing
+ // payslip. Fill the complete void bundle without disabling the database guard or constraint.
+ await owner.db.update(s.employment).set({voidedAt:new Date(),voidedBy:b.adminUserId,voidReason:'Fictional retained join fixture',voidedImportAttemptId:randomUUID()}).where(eq(s.employment.id,extra[0].employmentId));
  for(const name of ['person','employment','payslip','payroll_batch','role_assignment'])await owner.client.unsafe('analyze public.'+name);
  const worker:SessionContext={...root,userId:await createAppUser(b.tenantId,target.personId,'employee'),personId:target.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
  const [otherCompany]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional out-of-scope company'}).returning({id:s.company.id});
