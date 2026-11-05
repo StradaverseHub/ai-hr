@@ -1,15 +1,15 @@
 /** Own employment is selected before the canonical Notice reader; HR reach is never self-service reach. */
 import type {SessionContext} from '../db/client';
-import {requireOwnHomeSubject} from './employee-home';
+import {requireSelectedOwnHomeEmploymentId} from './employee-home';
 import {employeeNoticeBoard,employeeNoticeById} from './notice';
 
 export async function readOwnNoticeBoard(ctx:SessionContext,employmentId:string,options:Parameters<typeof employeeNoticeBoard>[2]={}){
- const subject=await requireOwnHomeSubject(ctx,employmentId);
- return employeeNoticeBoard(ctx,subject.employmentId,options);
+ const subjectId=await requireSelectedOwnHomeEmploymentId(ctx,employmentId);
+ return employeeNoticeBoard(ctx,subjectId,options);
 }
 export async function readOwnNotice(ctx:SessionContext,employmentId:string,id:string){
- const subject=await requireOwnHomeSubject(ctx,employmentId);
- return employeeNoticeById(ctx,subject.employmentId,id);
+ const subjectId=await requireSelectedOwnHomeEmploymentId(ctx,employmentId);
+ return employeeNoticeById(ctx,subjectId,id);
 }
 
 /** Home consumes five current summaries with exact full-population counts from the Notice owner.

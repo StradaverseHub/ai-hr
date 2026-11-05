@@ -4,7 +4,7 @@ import {liveClockSeconds} from '../lib/clock-elapsed';
 import {validateEmployeeHomeToday,type EmployeeHomeToday} from '../lib/employee-home-today';
 const state=vi.hoisted(()=>({subject:vi.fn(),enabled:vi.fn(),clock:vi.fn(),kind:vi.fn(),locations:vi.fn(),leave:vi.fn(),payroll:vi.fn()}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,read:(tx:unknown)=>unknown)=>read({})}));
-vi.mock('../core/employee-home',()=>({requireOwnHomeSubject:state.subject}));
+vi.mock('../core/employee-home',()=>({requireSelectedOwnHomeEmploymentId:state.subject}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:state.enabled}));
 vi.mock('../packs/attendance/service',()=>({ownClockTodaySummaryTx:state.clock,workedDayKindForTx:state.kind,employeeClockingLocationLabelsTx:state.locations}));
 vi.mock('../packs/leave/service',()=>({approvedLeavePresenceByEmploymentTx:state.leave}));
@@ -12,7 +12,7 @@ vi.mock('../packs/payroll/service',()=>({readOwnNextPayrollPaymentDate:state.pay
 import {readEmployeeHomeToday} from '../core/employee-home-today';
 const now=new Date().toISOString(),date=todayInKualaLumpur(new Date(now)),ctx={tenantId:'tenant',personId:'person',userId:'login',roles:['employee']} as Parameters<typeof readEmployeeHomeToday>[0];
 export function todayData():EmployeeHomeToday{return {version:1,employmentId:'own',serverNow:now,businessDate:date,attendanceEnabled:true,payrollEnabled:true,clock:{date,clockedIn:false,openSince:null,workedSeconds:300,crossesMidnight:false,shift:{code:'SF',start:'09:00',end:'18:00'},geofencingRequired:false,photoRequired:false},dayKind:'workday',leavePresence:null,workLocations:{total:1,names:['Fictional HQ']},payday:{date,daysAway:0}};}
-beforeEach(()=>{vi.clearAllMocks();state.subject.mockResolvedValue({employmentId:'own'});state.enabled.mockReturnValue(true);state.clock.mockResolvedValue({...todayData().clock,serverNow:now,attendancePhotoSetting:'not_required',captureGPS:'private'});state.kind.mockResolvedValue('workday');state.locations.mockResolvedValue({total:1,names:['Fictional HQ']});state.leave.mockResolvedValue(new Map());state.payroll.mockResolvedValue(date);});
+beforeEach(()=>{vi.clearAllMocks();state.subject.mockResolvedValue('own');state.enabled.mockReturnValue(true);state.clock.mockResolvedValue({...todayData().clock,serverNow:now,attendancePhotoSetting:'not_required',captureGPS:'private'});state.kind.mockResolvedValue('workday');state.locations.mockResolvedValue({total:1,names:['Fictional HQ']});state.leave.mockResolvedValue(new Map());state.payroll.mockResolvedValue(date);});
 describe('Your Day independent own metadata',()=>{
  it('uses canonical owners and sends only the small clock and recorded payment facts',async()=>{
   const value=await readEmployeeHomeToday(ctx,'own');expect(validateEmployeeHomeToday(value,'own')).toEqual(todayData());
