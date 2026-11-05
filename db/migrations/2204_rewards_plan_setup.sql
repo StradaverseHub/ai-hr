@@ -247,3 +247,18 @@ $$;
 ALTER FUNCTION app.reward_setup_companies(integer) OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_setup_companies(integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_setup_companies(integer) TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.reward_policy_audit_owner() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF (NEW.aggregate_type='reward-policy-group' OR NEW.event_type LIKE 'reward-policy-group.%') AND NOT app.acting_as_owner() THEN
+  IF NOT coalesce(current_user='ai_hr_reward_setup_reader'
+   AND NEW.aggregate_type='reward-policy-group' AND NEW.event_type='reward-policy-group.setup-version-saved'
+   AND NEW.tenant_id=app.current_tenant_id() AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id()
+   AND app.reward_setup_allowed(NULL,'manage'),false) THEN
+   RAISE EXCEPTION 'reward policy audit owner required' USING ERRCODE='42501';
+  END IF;
+ END IF;
+ RETURN NEW;
+END;
+$$;
