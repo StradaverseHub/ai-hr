@@ -4707,6 +4707,27 @@
       "breakpoints": true
     },
     {
+      "idx": 1403,
+      "version": "7",
+      "when": 1793330001603,
+      "tag": "2203_rewards_libraries_pat",
+      "breakpoints": true
+    },
+    {
+      "idx": 1404,
+      "version": "7",
+      "when": 1793330001604,
+      "tag": "2204_rewards_plan_setup",
+      "breakpoints": true
+    },
+    {
+      "idx": 1405,
+      "version": "7",
+      "when": 1793330001605,
+      "tag": "2205_rewards_review_creation",
+      "breakpoints": true
+    },
+    {
       "idx": 1409,
       "version": "7",
       "when": 1793330001609,
