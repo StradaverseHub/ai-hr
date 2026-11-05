@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { getTranslations } from 'next-intl/server';
 
 import type { SessionContext } from '@/db/client';
@@ -88,9 +89,9 @@ export async function ResetRecordConfiguration({ s, capture }: { s: SessionConte
             <button type="submit" className={btnPrimary}>
               {t('show')}
             </button>
-            <a href={csvHref} className="text-sm underline">
+            <ExportDownloadLink href={csvHref} className="text-sm underline">
               {t('downloadCsv')}
-            </a>
+            </ExportDownloadLink>
           </form>
 
           <div className="overflow-x-auto">
