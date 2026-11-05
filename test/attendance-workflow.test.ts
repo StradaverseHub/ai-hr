@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { client, withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, cancelAttendanceApplication, cancelOwnAttendanceCorrection, cancelPlannedOvertime, listAttendanceCorrections, allowanceScheduleFactsTx } from '../core/attendance';
@@ -187,6 +187,39 @@ describe('Attendance approval routing and exactly-once effects', () => {
         await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 1 });
         await expect(decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 1 })).rejects.toThrow(/already approved/);
         expect(await events(id, 'attendance-correction.effect.recorded')).toHaveLength(1);
+    });
+    it('keeps a connection available when same-tenant approvals wait on Access', async () => {
+        const { a, worker } = await fixture();
+        await enable(a, input(['hr_admin']));
+        const id = await submit(a, worker.employmentId);
+        const key = 'access-configuration:' + a.tenantId;
+        let approvals: Promise<PromiseSettledResult<unknown>[]> | undefined;
+        let reader: Promise<unknown> | undefined;
+        try {
+            await owner.db.transaction(async tx => {
+                const [blocker] = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+                await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key},0))`);
+                approvals = Promise.allSettled(Array.from({length:client.options.max + 1}, () =>
+                    decideAttendanceCorrection(a, { correctionId:id, decision:'approved', expectedStageIndex:0 }),
+                ));
+                const directWaiters = async () => {
+                    const [row] = await owner.db.execute<{ count: number }>(sql`select count(*)::int as count
+                        from pg_stat_activity where ${blocker.pid}=any(pg_blocking_pids(pid)) and wait_event='advisory'`);
+                    return row.count;
+                };
+                await expect.poll(directWaiters, {timeout:5000}).toBe(1);
+                let readFinished = false;
+                reader = withTenant(a, tx => tx.execute(sql`select 1`)).then(() => { readFinished = true; }, () => {});
+                await expect.poll(() => readFinished, {timeout:5000}).toBe(true);
+                expect(await directWaiters()).toBe(1);
+            });
+        } finally {
+            await reader;
+            await approvals;
+        }
+        const results = await approvals;
+        expect(results?.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+        expect((await correction(id)).status).toBe('approved');
     });
     it('keeps a frozen manager after an org move and allows scoped HR handoff', async () => {
         const { a, worker, mgr } = await fixture();
