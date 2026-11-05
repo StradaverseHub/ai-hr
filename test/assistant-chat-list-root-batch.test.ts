@@ -1,4 +1,5 @@
 /** Real native saved-chat reads: trace SQL only; every principal, grant and receipt owner executes. */
+import {eq} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -49,8 +50,30 @@ it('reads twenty authenticated root titles outside the scan with a bounded nativ
  const began=performance.now(),listed=await listOwnAssistantChats(ctx,{},scope),elapsedMs=performance.now()-began,queryCount=historyReads;
  expect(listed.chats.map(chat=>({id:chat.threadId,leaf:chat.exchangeId,title:chat.title}))).toEqual(rootIds.map((id,index)=>({id,leaf:leafIds[index],title:'Fictional root '+index})));
  expect(listed.nextCursor).toBeTruthy();
+ const controls:string[]=[];
+ // A retained leaf never regains unavailable root text through the batched title read.
+ await owner.db.update(assistantExchange).set({contentRetiredAt:new Date()}).where(eq(assistantExchange.id,rootIds[0]));
+ await owner.db.update(assistantExchange).set({askedAt:new Date(now-31*86400000)}).where(eq(assistantExchange.id,rootIds[1]));
+ await owner.db.update(assistantExchange).set({answer:'Fictional unauthenticated terminal'}).where(eq(assistantExchange.id,rootIds[2]));
+ const scopeQuestion='Fictional root 3',scopeAnswer=JSON.stringify(plan);
+ await owner.db.update(assistantExchange).set({disclosureReceipt:sealAssistantDisclosure({tenantId:b.tenantId,userId,exchangeId:rootIds[3],question:scopeQuestion,answer:scopeAnswer},[],plan,{threadId:rootIds[3],scopeDigest:assistantConversationScopeDigest(ctx,'other-scope')})}).where(eq(assistantExchange.id,rootIds[3]));
+ await owner.db.delete(assistantExchange).where(eq(assistantExchange.id,rootIds[4]));
+ const unavailable=await listOwnAssistantChats(ctx,{},scope);
+ for(let index=0;index<5;index++)expect(unavailable.chats.find(chat=>chat.threadId===rootIds[index])?.title).toBe('Fictional follow-up '+index);
+ controls.push('retired root','expired root','corrupt root receipt','other-scope root','missing root');
+ const foreign=await seedBase(),otherUser=await createAppUser(b.tenantId,null,'employee');
+ for(const [tenantId,ownerId,label]of [[b.tenantId,otherUser,'other-user'],[foreign.tenantId,foreign.adminUserId,'foreign-tenant']]as const){
+  const rootId=randomUUID(),leafId=randomUUID(),answer=JSON.stringify(plan),question='Fictional hidden '+label+' root';
+  await owner.db.insert(assistantExchange).values({id:rootId,tenantId,appUserId:ownerId,question,answer,disclosureReceipt:sealAssistantDisclosure({tenantId,userId:ownerId,exchangeId:rootId,question,answer},[],plan,{threadId:rootId,scopeDigest}),stop:'end',askedAt:new Date(now-2*86400000)});
+  const leafQuestion='Fictional own '+label+' leaf';
+  await owner.db.insert(assistantExchange).values({id:leafId,tenantId:b.tenantId,appUserId:userId,question:leafQuestion,answer,disclosureReceipt:sealAssistantDisclosure({tenantId:b.tenantId,userId,exchangeId:leafId,question:leafQuestion,answer},[],plan,{threadId:rootId,scopeDigest}),stop:'end',askedAt:new Date(now-1000)});
+  const scoped=await listOwnAssistantChats(ctx,{},scope);expect(scoped.chats.find(chat=>chat.threadId===rootId)?.title).toBe(leafQuestion);expect(scoped.chats.some(chat=>chat.title===question)).toBe(false);controls.push(label+' root refused');
+ }
+ await owner.client.unsafe('revoke select on public.assistant_exchange from ai_hr_app');
+ try{await expect(listOwnAssistantChats(ctx,{},scope)).rejects.toThrow('Saved chat unavailable.');controls.push('database SELECT failure refused');}
+ finally{await owner.client.unsafe('grant select on public.assistant_exchange to ai_hr_app');}
  // Actual current authority still owns every new read.
  await revokeAssistant(admin,{appUserId:userId});await expect(listOwnAssistantChats(ctx,{},scope)).rejects.toThrow('Saved chat unavailable.');
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'assistant-chat-list-root-batch.json'),JSON.stringify({kind:'NATIVE_CHAT_ROOT_READ_COUNT_COMPONENT_ONLY',releaseEligible:false,authenticatedChats:20,retainedExchanges:160,rootsOutsideRecentScan:true,rootTitlesAndOrderExact:true,revokedGrantRefused:true,historyReads:queryCount,elapsedMs,providerCalls:0,limitations:'native component query count, not browser navigation latency or500-user capacity'},null,2));
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'assistant-chat-list-root-batch.json'),JSON.stringify({kind:'NATIVE_CHAT_ROOT_READ_COUNT_COMPONENT_ONLY',releaseEligible:false,authenticatedChats:20,retainedExchanges:160,rootsOutsideRecentScan:true,rootTitlesAndOrderExact:true,revokedGrantRefused:true,controls,historyReads:queryCount,elapsedMs,providerCalls:0,limitations:'native component query count, not browser navigation latency or500-user capacity'},null,2));
  expect(queryCount,'Listing a page must use one scan and at most one bounded root lookup').toBeLessThanOrEqual(2);
 },300000);
