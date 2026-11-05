@@ -1,3 +1,4 @@
+vi.mock('../app/admin/personnel/approved-position-architecture-action',()=>({readApprovedPositionArchitecture:vi.fn(async()=>({value:null}))}));
 import fs from 'node:fs';
 import path from 'node:path';
 import {afterEach,describe,it,expect,vi} from 'vitest';

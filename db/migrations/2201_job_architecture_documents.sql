@@ -135,3 +135,12 @@ END $$;
 CREATE TRIGGER architecture_jd_publication_binding BEFORE INSERT OR UPDATE ON job_architecture_jd_publication FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_jd_publication();
 CREATE TRIGGER architecture_jd_history_binding BEFORE INSERT ON job_architecture_jd_publication_history FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_jd_publication();
 REVOKE ALL ON FUNCTION app.guard_architecture_jd_publication() FROM PUBLIC;
+
+ALTER TABLE job_architecture_outlier ADD COLUMN business_unit_id uuid REFERENCES business_unit(id);
+CREATE FUNCTION app.guard_architecture_outlier_bu() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$
+BEGIN
+ IF NEW.business_unit_id IS NOT NULL AND (cardinality(NEW.company_ids)<>1 OR NOT EXISTS(SELECT 1 FROM business_unit b WHERE b.id=NEW.business_unit_id AND b.tenant_id=NEW.tenant_id AND b.archived_at IS NULL AND (b.is_global OR EXISTS(SELECT 1 FROM label_company_assignment a WHERE a.tenant_id=b.tenant_id AND a.label_kind='business_unit' AND a.label_id=b.id AND a.company_id=NEW.company_ids[1])))) THEN RAISE EXCEPTION 'Choose a business unit available to the outlier company'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER architecture_outlier_bu BEFORE INSERT OR UPDATE ON job_architecture_outlier FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_outlier_bu();
+REVOKE ALL ON FUNCTION app.guard_architecture_outlier_bu() FROM PUBLIC;

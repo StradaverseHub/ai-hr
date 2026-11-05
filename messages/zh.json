@@ -35338,7 +35338,8 @@
     "roles": {
       "group_rewards": "集团薪酬团队",
       "org_design": "组织设计团队",
-      "pbp": "人力业务伙伴"
+      "pbp": "人力业务伙伴",
+      "hod": "部门主管"
     },
     "proposalKinds": {
       "catalogue": "职级阶梯／岗位目录提案",
@@ -35363,6 +35364,14 @@
       "changed": "记录已更改或预览已过期。请重新打开并预览。",
       "independent": "此更改须由另一名获授权人员确认。",
       "missing": "所选记录或已批准的配置不可用。"
-    }
+    },
+    "positionPreviewLoading": "正在加载已批准的职位范围…",
+    "positionPreviewUnavailable": "已批准的职位范围不可用。请重新打开职位后重试。",
+    "positionPreviewUnmapped": "此职位尚无可用的已批准岗位映射。",
+    "approvedPositionScope": "已批准的职位范围",
+    "usePositionGrade": "使用职位职级",
+    "positionMovementHint": "此操作仅填写建议职级。须保存并批准有生效日期的异动后，才会更改员工职级。",
+    "positionReadonlyHint": "此异动类型无法编辑职级。请使用获授权且有生效日期的异动来更改。",
+    "positionDraftHint": "此操作仅填写草稿职级。启用前请审核员工草稿。"
   }
 }
