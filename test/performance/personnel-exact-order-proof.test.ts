@@ -260,9 +260,12 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
   const barrier=()=>{let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return {resolve,promise};};
   report.writeTimings=timings;save();
   const entered=barrier(),release=barrier();
+  let writerPid:number|undefined;
   const writer=rollback(async tx=>{
+   const [identity]=await tx`select pg_backend_pid() as pid`;writerPid=identity.pid;
    await writeSet(tx);await refresh(tx,changedIds);
    await readWithinWriter(tx);
+   report.insideWriterExact=true;save();
    entered.resolve();await release.promise;
   });
   const bounded=async<T>(task:Promise<T>,description:string)=>{
@@ -270,14 +273,35 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
    try{return await Promise.race([task,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error(description)),5000);})]);}
    finally{if(timer)clearTimeout(timer);}
   };
-  let reader:Promise<void>|undefined,independentWriter:Promise<void>|undefined,readerMs=0,independentWriterMs=0;
+  const readCandidate=()=>withTenant(ctx,async tx=>{
+   await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+   const array=(ids:string[])=>sql`array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+   const [row]=await tx.execute<{rows:unknown[];total:number;status_counts:{status:string;count:number}[]}>(sql`
+    select * from ${sql.raw(namespace+'name_range')}(${array(all)},${array(narrow)},25,${count-25}::int,${today}::date)
+   `);
+   return normalize(row);
+  });
+  const readers:Promise<unknown>[]=[];
+  let outsideReader:Promise<void>|undefined,independentWriter:Promise<void>|undefined,outsideReaderMs=0,independentWriterMs=0;
   try{
    await bounded(Promise.race([entered.promise,writer]),'writer did not reach the uncommitted checkpoint');
-   const start=performance.now();
-   reader=compare(ctx,'name',all,narrow,25,count-25,false,true);
-   await bounded(reader,'reader did not finish while base and projection writes were uncommitted');
-   readerMs=performance.now()-start;
-   // Independent tenant writes remain free to update their own point projection.
+   // The base employment insert/transfer/lifecycle triggers deliberately hold the exclusive
+   // Access key. Verify both actual paths wait on it; do not bypass it to test MVCC.
+   readers.push(personnelListPage(ctx,{companyIds:all,limit:25,offset:count-25},{companyIds:narrow}),readCandidate());
+   const stop=Date.now()+5000;let waiting=0;
+   while(waiting<2&&Date.now()<stop){
+    const [row]=await owner.client`select count(*)::int as waiting from pg_locks where locktype='advisory'
+     and mode='ShareLock' and not granted and ${writerPid!}::int=any(pg_blocking_pids(pid))`;
+    waiting=Number(row.waiting);if(waiting<2)await new Promise(resolve=>setTimeout(resolve,25));
+   }
+   report.waitingReaders=waiting;save();expect(waiting).toBe(2);
+   const [invisible]=await owner.client`select exists(select 1 from employment where id=${duplicateId}::uuid) as base,
+    exists(select 1 from app.performance_personnel_order where employment_id=${duplicateId}::uuid) as projection`;
+   expect(invisible).toEqual({base:false,projection:false});
+   const outsideStart=performance.now();
+   outsideReader=compare(adminCtx(foreign),'name',[foreign.companyId],[foreign.companyId],25,0,false,true);
+   await bounded(outsideReader,'independent tenant reader did not finish while base/projection writes were uncommitted');
+   outsideReaderMs=performance.now()-outsideStart;
    const writerStart=performance.now();
    independentWriter=rollback(async tx=>{
     await tx`update person set full_name='AAA independent writer' where id=${fp}::uuid`;
@@ -285,8 +309,12 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
    });
    await bounded(independentWriter,'independent writer did not finish while first writer held its changes');
    independentWriterMs=performance.now()-writerStart;
-  }finally{release.resolve();await Promise.allSettled([writer,...(reader?[reader]:[]),...(independentWriter?[independentWriter]:[])]);}
+  }finally{release.resolve();await Promise.allSettled([writer,...readers,...(outsideReader?[outsideReader]:[]),...(independentWriter?[independentWriter]:[])]);}
   await writer;
+  const [ordinary,ranged]=await Promise.all(readers);
+  const old=ordinary as Awaited<ReturnType<typeof personnelListPage>>;
+  expect(ranged).toEqual({rows:old.rows,total:old.total,statusCounts:old.headcount.byStatus});
+  expect(old.total).toBe(count);
   const [restored]=await owner.client`select exists(select 1 from employment where id=${duplicateId}::uuid) as source_insert,
    exists(select 1 from app.performance_personnel_order where employment_id=${duplicateId}::uuid) as projection_insert,
    (select full_name from person where id=${fp}::uuid) as other_name,
@@ -295,8 +323,8 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
    (select resignation_date from employment where id=${lifecycleId}::uuid) as restored_date`;
   expect(restored).toEqual({source_insert:false,projection_insert:false,other_name:'AAA outside',restored_name:'Person 001999',restored_company:other.id,restored_date:null});
   for(const mode of modeNames)await compare(ctx,mode,all,narrow,25,count-25,false,true);
-  report.writer={exactEightNativeWindowsDuringWrite:true,existingRoleReaderNeverWaitedOnUncommittedData:true,
-   independentTenantWriterOverlapped:true,readerMs,independentWriterMs,timings,rolledBack:true,
+  report.writer={exactEightNativeWindowsDuringWrite:true,bothReadersWaitedOnExistingAccessWriterAndResumedExactly:true,
+   independentTenantReaderOverlapped:true,independentTenantWriterOverlapped:true,outsideReaderMs,independentWriterMs,timings,rolledBack:true,
    scope:'Four owner fixture writes + one explicit delta refresh; not actual application write throughput, same-key contention, or live triggers.'};
   save();
  }finally{
