@@ -4,8 +4,7 @@ import {notFound} from 'next/navigation';
 import {getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
 import {HomeAccessError,readEmployeeHomeIdentity} from '@/core/employee-home';
-import {listEmployeeHomeCards} from '@/core/dashboard-card-config';
-import {getEmployeeHomePreferences} from '@/core/dashboard-prefs';
+import {getEmployeeHomePresentation} from '@/core/dashboard-prefs';
 import {EmployeeHomeSurface} from './home-surface';
 import {HomeInitialSharing} from './sharing-cohort';
 import {HomeGreetingCard} from './greeting-card';
@@ -27,8 +26,8 @@ export async function EmployeePersonalHome({session,employmentId,greetingsEnable
   if(error instanceof HomeAccessError&&error.code==='employmentUnavailable')notFound();
   throw error;
  });
- const [identity,catalogue,t]=await Promise.all([ownIdentity,listEmployeeHomeCards(session),getTranslations('employeeHome')]);
- const preferences=await getEmployeeHomePreferences(session,catalogue),selected=identity.selectedEmploymentId;
+ const [identity,{catalogue,preferences},t]=await Promise.all([ownIdentity,getEmployeeHomePresentation(session),getTranslations('employeeHome')]);
+ const selected=identity.selectedEmploymentId;
  const permitted=new Set(catalogue.map(card=>card.cardKey));
  const available:Partial<Record<EmployeeHomeCard,ReactNode>>=selected?{
   summary:<HomeGreetingCard employmentId={selected}><HomeSummaryOverview key={selected} employmentId={selected}/></HomeGreetingCard>,

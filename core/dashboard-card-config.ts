@@ -322,32 +322,34 @@ export type DashboardCardRow = {
 
 /** List every dashboard card in the tenant catalog, ordered by display order then name. */
 export async function listCards(ctx: SessionContext): Promise<DashboardCardRow[]> {
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select({
-        id: dashboardCardConfig.id,
-        cardKey: dashboardCardConfig.cardKey,
-        name: dashboardCardConfig.name,
-        description: dashboardCardConfig.description,
-        cardType: dashboardCardConfig.cardType,
-        status: dashboardCardConfig.status,
-        employeeSelectable: dashboardCardConfig.employeeSelectable,
-        defaultDisplay: dashboardCardConfig.defaultDisplay,
-        mandatory: dashboardCardConfig.mandatory,
-        displayOrder: dashboardCardConfig.displayOrder,
-        href: dashboardCardConfig.href,
-        audience: dashboardCardConfig.audience,
-        updatedAt: dashboardCardConfig.updatedAt,
-      })
-      .from(dashboardCardConfig)
-      .orderBy(dashboardCardConfig.displayOrder, dashboardCardConfig.name);
-    return rows.map((r) => ({
-      ...r,
-      cardType: r.cardType as DashboardCardType,
-      status: r.status as DashboardCardStatus,
-      audience: normalizeAudience(r.audience),
-    }));
-  });
+  return withTenant(ctx, tx => listCardsTx(tx));
+}
+
+async function listCardsTx(tx: Tx): Promise<DashboardCardRow[]> {
+  const rows = await tx
+    .select({
+      id: dashboardCardConfig.id,
+      cardKey: dashboardCardConfig.cardKey,
+      name: dashboardCardConfig.name,
+      description: dashboardCardConfig.description,
+      cardType: dashboardCardConfig.cardType,
+      status: dashboardCardConfig.status,
+      employeeSelectable: dashboardCardConfig.employeeSelectable,
+      defaultDisplay: dashboardCardConfig.defaultDisplay,
+      mandatory: dashboardCardConfig.mandatory,
+      displayOrder: dashboardCardConfig.displayOrder,
+      href: dashboardCardConfig.href,
+      audience: dashboardCardConfig.audience,
+      updatedAt: dashboardCardConfig.updatedAt,
+    })
+    .from(dashboardCardConfig)
+    .orderBy(dashboardCardConfig.displayOrder, dashboardCardConfig.name);
+  return rows.map((r) => ({
+    ...r,
+    cardType: r.cardType as DashboardCardType,
+    status: r.status as DashboardCardStatus,
+    audience: normalizeAudience(r.audience),
+  }));
 }
 
 export async function getCard(ctx: SessionContext, id: string): Promise<DashboardCardRow | null> {
@@ -401,7 +403,11 @@ export async function listEmployeeDashboardCards(ctx: SessionContext): Promise<E
 /** Home consumes the same HR master. Missing defaults remain available for a newly provisioned tenant;
  * an explicit inactive or non-employee row is respected and is never revived by a fallback. */
 export async function listEmployeeHomeCards(ctx:SessionContext):Promise<EmployeeDashboardCard[]>{
- const rows=await listCards(ctx),byKey=new Map(rows.map(row=>[row.cardKey,row]));
+ return withTenant(ctx, tx => listEmployeeHomeCardsTx(tx));
+}
+
+export async function listEmployeeHomeCardsTx(tx:Tx):Promise<EmployeeDashboardCard[]>{
+ const rows=await listCardsTx(tx),byKey=new Map(rows.map(row=>[row.cardKey,row]));
  return EMPLOYEE_HOME_CARD_DEFAULTS.flatMap(fallback=>{
   const row=byKey.get(fallback.cardKey);
   if(row&&(row.status!=='active'||!row.audience.includes('employee')))return [];
