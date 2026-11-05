@@ -35495,7 +35495,13 @@
     "draftOnly": "Thao tác này chỉ tạo bản nháp. Một người khác trong Nhóm Đãi ngộ tập đoàn phải phê duyệt kế hoạch trước khi tạo đợt đánh giá.",
     "createDraftPlan": "Tạo kế hoạch nháp",
     "already-assigned": "Đã được phân công vào kế hoạch khác cho năm đãi ngộ này.",
-    "branchAllAcknowledged": "Mọi công ty đã chọn đều được cấu hình để dùng hệ số chi nhánh"
+    "branchAllAcknowledged": "Mọi công ty đã chọn đều được cấu hình để dùng hệ số chi nhánh",
+    "noPriorLibrary": "Không có thư viện đã xác nhận từ năm trước.",
+    "salaryMissing": "Bậc {grade}: điền Tối thiểu, Trung vị và Tối đa.",
+    "salaryOrder": "Bậc {grade}: Tối thiểu phải thấp hơn Trung vị và Trung vị phải thấp hơn Tối đa.",
+    "copyPriorLibrary": "Sao chép thư viện năm trước",
+    "fromShared": "Đối chiếu cấu hình dùng chung hiện có",
+    "fromSharedHelp": "Kiểm tra các giá trị được giữ lại trước khi lưu bản nháp. Bậc đang hoạt động bị thiếu vẫn để trống. Đợt đánh giá hiện có giữ thiết lập đã ghi nhận."
   },
   "jobArchitecture": {
     "title": "Kiến trúc công việc",

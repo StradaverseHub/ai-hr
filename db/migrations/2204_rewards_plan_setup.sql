@@ -105,6 +105,7 @@ CREATE POLICY reward_plan_setup_update ON reward_plan_setup FOR UPDATE USING(ten
 CREATE FUNCTION app.reward_setup_links() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 BEGIN
  IF TG_TABLE_NAME='reward_plan_setup' THEN
+  IF NOT EXISTS(SELECT 1 FROM reward_policy_group g WHERE g.tenant_id=NEW.tenant_id AND g.id=NEW.group_id AND g.current_version_id=NEW.version_id) THEN RAISE EXCEPTION 'The current shared configuration changed' USING ERRCODE='40001';END IF;
   IF NOT EXISTS(SELECT 1 FROM reward_policy_group_version v WHERE v.id=NEW.version_id AND v.tenant_id=NEW.tenant_id AND v.group_id=NEW.group_id AND (v.policy->>'year')::integer=NEW.year AND v.created_by=ANY(NEW.contributor_ids)) THEN RAISE EXCEPTION 'Plan must retain its exact source and all source contributors';END IF;
   IF (SELECT array_agg(DISTINCT x ORDER BY x) FROM unnest(NEW.company_ids)x) IS DISTINCT FROM (SELECT array_agg(DISTINCT x.company_id ORDER BY x.company_id) FROM reward_policy_group_target x WHERE x.version_id=NEW.version_id AND x.tenant_id=NEW.tenant_id) OR jsonb_array_length(NEW.bindings)<>cardinality(NEW.company_ids) THEN RAISE EXCEPTION 'Plan company set must match its shared source';END IF;
   IF EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.bindings)b WHERE NOT EXISTS(SELECT 1 FROM reward_policy_group_target x WHERE x.tenant_id=NEW.tenant_id AND x.version_id=NEW.version_id AND x.company_id=(b->>'companyId')::uuid AND x.business_unit_id=(b->>'businessUnitId')::uuid) OR NOT EXISTS(SELECT 1 FROM reward_library_version v JOIN reward_library l ON l.id=v.library_id AND l.tenant_id=v.tenant_id WHERE v.id=(b->>'salaryVersionId')::uuid AND v.tenant_id=NEW.tenant_id AND v.state='confirmed' AND l.kind='salary' AND l.year=NEW.year) OR NOT EXISTS(SELECT 1 FROM reward_library_version v JOIN reward_library l ON l.id=v.library_id AND l.tenant_id=v.tenant_id WHERE v.id=(b->>'bonusVersionId')::uuid AND v.tenant_id=NEW.tenant_id AND v.state='confirmed' AND l.kind='bonus' AND l.year=NEW.year AND(v.data->>'type'<>'branch' OR b->>'branchAcknowledged'='true'))) THEN RAISE EXCEPTION 'Plan requires exact shared targets and confirmed matching libraries';END IF;
@@ -167,7 +168,7 @@ BEGIN
   IF jsonb_typeof(target)<>'object' OR NOT (target ?& ARRAY['companyId','businessUnitId']) OR (target-ARRAY['companyId','businessUnitId'])<>'{}'::jsonb THEN
    RAISE EXCEPTION 'reward policy group invalid' USING ERRCODE='23514'; END IF;
   c:=(target->>'companyId')::uuid;b:=(target->>'businessUnitId')::uuid;
-  IF c IS NULL OR b IS NULL OR NOT app.reward_policy_pair_valid(t,c,b) OR NOT app.reward_setup_allowed(c,'manage') OR NOT app.reward_setup_company_eligible(c,(p_policy->>'year')::integer) THEN
+  IF c IS NULL OR b IS NULL OR NOT app.reward_dated_company_pair(t,c,b) OR NOT app.reward_setup_allowed(c,'manage') OR NOT app.reward_setup_company_eligible(c,(p_policy->>'year')::integer) THEN
    RAISE EXCEPTION 'reward policy group scope' USING ERRCODE='42501'; END IF;
   IF EXISTS(SELECT 1 FROM public.reward_policy_group other_group
    JOIN public.reward_policy_group_version other_version ON other_version.id=other_group.current_version_id AND other_version.tenant_id=other_group.tenant_id
@@ -235,3 +236,14 @@ END $$;
 ALTER FUNCTION app.reward_setup_company_review(uuid,integer) OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_setup_company_review(uuid,integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_setup_company_review(uuid,integer) TO ai_hr_app;
+--> statement-breakpoint
+-- The scope predicate must see canonical tenant company IDs even when Workforce RLS hides company rows.
+ALTER FUNCTION app.reward_setup_allowed(uuid,text) SECURITY DEFINER;
+ALTER FUNCTION app.reward_setup_allowed(uuid,text) OWNER TO ai_hr_reward_setup_reader;
+GRANT EXECUTE ON FUNCTION app.teras_loop_attribution() TO ai_hr_reward_setup_reader;
+CREATE FUNCTION app.reward_setup_companies(wanted_year integer) RETURNS TABLE(id uuid,name text,"parentId" uuid,"parentName" text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT c.id,c.legal_name,p.id,p.legal_name FROM company c LEFT JOIN company p ON p.id=c.parent_company_id AND p.tenant_id=c.tenant_id WHERE c.tenant_id=app.current_tenant_id() AND wanted_year BETWEEN 2000 AND 2200 AND app.reward_setup_allowed(NULL,'manage') AND app.reward_setup_company_eligible(c.id,wanted_year) ORDER BY coalesce(p.legal_name,''),c.legal_name,c.id
+$$;
+ALTER FUNCTION app.reward_setup_companies(integer) OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_setup_companies(integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_setup_companies(integer) TO ai_hr_app;
