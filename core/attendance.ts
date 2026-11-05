@@ -4101,16 +4101,20 @@ export async function decideAttendanceCorrection(
     const rejectReason = p.decision === 'rejected' ? (p.rejectReason ?? '').trim() : null;
     if (p.decision === 'rejected' && (!rejectReason || rejectReason.length > 1000)) throw new MissingAttendanceRejectReasonError();
     if (p.remarks && p.remarks.trim().length > 1000) throw new Error('Approval remarks must be at most 1000 characters.');
-    // Identity is resolved from the authenticated actor, never from a caller-supplied employment id.
-    const [actualDecider] = ctx.personId ? await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId)).orderBy(asc(employment.id)).limit(1) : [];
-    let actualDeciderEmploymentId:string|null = actualDecider?.id ?? null;
     const workflowStage = await decideAttendanceWorkflowStageTx(tx, ctx, { correctionId: cor.id, employmentId: cor.employmentId, decision: p.decision, remarks: p.decision === 'rejected' ? rejectReason ?? undefined : p.remarks, expectedStageIndex: p.expectedStageIndex, expectedParticipantSlot: p.expectedParticipantSlot });
     if (rejectionSubject !== undefined && (workflowStage.versionedFinalEffect || workflowStage.delegatedFinalStageIndex != null)) {
       throw retryAttendanceRejectionExclusively;
     }
-    if (workflowStage.actualDeciderEmploymentId !== undefined) actualDeciderEmploymentId = workflowStage.actualDeciderEmploymentId;
     if (!workflowStage.final) return { status: 'pending' as const, deferred: false };
-
+    // Routed decisions already prove the actual actor. Only final legacy paths without
+    // that result need the canonical employment lookup under the original identity.
+    const [legacyDecider] = workflowStage.actualDeciderEmploymentId === undefined && ctx.personId
+      ? await tx.select({ id: employment.id }).from(employment)
+        .where(eq(employment.personId, ctx.personId)).orderBy(asc(employment.id)).limit(1)
+      : [];
+    const actualDeciderEmploymentId = workflowStage.actualDeciderEmploymentId === undefined
+      ? legacyDecider?.id ?? null
+      : workflowStage.actualDeciderEmploymentId;
 
     // 1e9145d4 — true when this approval was HELD ON THE PLAN rather than written to an attendance day.
     // Surfaced in the decision event's payload and in the return value, so a caller (and an auditor) can
