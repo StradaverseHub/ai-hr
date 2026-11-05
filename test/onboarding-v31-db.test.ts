@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeEach, describe, it, expect, vi } from 'vitest';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { client, withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { saveEmployeeDraft, discardEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
@@ -13,7 +13,7 @@ import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUs
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { dayDate } from '../lib/onboarding-model';
 import { onboardingConfigSchema } from '../lib/onboarding-validation';
-import { possibleOnboardingMention, possibleOnboardingTaskCase } from '../packs/lifecycle/onboarding/task-queue-read';
+import { readOnboardingTaskQueueInputsTx } from '../packs/lifecycle/onboarding/task-queue-read';
 describe('V3.1 onboarding database and authorization', () => {
     let b: Base, admin: SessionContext, tech: SessionContext, other: SessionContext;
     beforeEach(async () => {
@@ -182,19 +182,13 @@ describe('V3.1 onboarding database and authorization', () => {
         const metadata = await onboardingAssignedTaskMetadata(tech);
         expect(metadata.find(task => task.id === beforeTech.find(task => task.taskId === 'welcome')?.id)).toMatchObject({ kind: 'onboarding', dueDate: beforeTech.find(task => task.taskId === 'welcome')?.due });
         expect(metadata.find(task => task.id === beforeTech.find(task => task.kind === 'mention')?.id)).not.toHaveProperty('dueDate');
-        const [caseRead] = reads.filter(text => text.includes('from "lc_onboarding_case"'));
-        const [noteRead] = reads.filter(text => text.startsWith('select "case_id", "data" from "lc_onboarding_note"'));
-        expect(caseRead).toContain('select "revision", "data"');
-        expect(noteRead).toContain('select "case_id", "data"');
-        expect(caseRead).toContain('jsonb_array_elements(');
-        expect(noteRead).toContain('jsonb_typeof(');
-        const nativeCandidates = await withTenant(admin, async tx => ({
-            cases: await tx.select({ id: schema.lcOnboardingCase.id }).from(schema.lcOnboardingCase)
-                .where(possibleOnboardingTaskCase(b.tenantId, admin.userId!, true)),
-            notes: await tx.select({ id: schema.lcOnboardingNote.id }).from(schema.lcOnboardingNote)
-                .where(possibleOnboardingMention(admin.userId!)),
-        }));
-        expect(nativeCandidates).toEqual({ cases: [{ id: active.case.id }], notes: [] });
+        const candidateReads = reads.filter(text => text.includes('from "lc_onboarding_case"') || text.includes('from "lc_onboarding_note"'));
+        expect(candidateReads).toHaveLength(1);
+        expect(candidateReads[0]).toContain('with actor_mentions as materialized');
+        expect(candidateReads[0]).toContain('jsonb_array_elements(');
+        const nativeCandidates = await withTenant(admin, tx => readOnboardingTaskQueueInputsTx(tx, b.tenantId, { id: admin.userId!, module: true }));
+        expect(nativeCandidates.list.map(row => row.data.id)).toEqual([active.case.id]);
+        expect(nativeCandidates.notesByCase.size).toBe(0);
         const compare = async (principal: SessionContext, module: boolean) => {
             const baseline = () => withTenant(principal, async tx => {
                 const cases = await tx.select().from(schema.lcOnboardingCase).orderBy(schema.lcOnboardingCase.id);
@@ -202,13 +196,8 @@ describe('V3.1 onboarding database and authorization', () => {
                 return [cases.length, notes.length];
             });
             const compact = () => withTenant(principal, async tx => {
-                const cases = await tx.select({ revision: schema.lcOnboardingCase.revision, data: schema.lcOnboardingCase.data })
-                    .from(schema.lcOnboardingCase).where(and(eq(schema.lcOnboardingCase.tenantId, principal.tenantId),
-                        possibleOnboardingTaskCase(principal.tenantId, principal.userId!, module))).orderBy(schema.lcOnboardingCase.id);
-                const notes = cases.length ? await tx.select({ caseId: schema.lcOnboardingNote.caseId, data: schema.lcOnboardingNote.data })
-                    .from(schema.lcOnboardingNote).where(and(eq(schema.lcOnboardingNote.tenantId, principal.tenantId), possibleOnboardingMention(principal.userId!)))
-                    .orderBy(schema.lcOnboardingNote.createdAt, schema.lcOnboardingNote.id) : [];
-                return [cases.length, notes.length];
+                const result = await readOnboardingTaskQueueInputsTx(tx, principal.tenantId, { id: principal.userId!, module });
+                return [result.list.length, [...result.notesByCase.values()].reduce((total, notes) => total + notes.length, 0)];
             });
             const timed = async (read: () => Promise<number[]>) => {
                 const started = performance.now(), rows = await read();
@@ -244,7 +233,7 @@ describe('V3.1 onboarding database and authorization', () => {
             rawFixtureCaseJsonBytes: Buffer.byteLength(JSON.stringify(retained.map(row => row.data))),
             rawFixtureNoteJsonBytes: Buffer.byteLength(JSON.stringify(retainedNotes.map(row => row.data))),
             retainedHistoryAddsNoTasks: true, nativeActualAssignmentsAndMentions: true,
-            nativeAdminCandidateCases: nativeCandidates.cases.length, nativeAdminMentionNotes: nativeCandidates.notes.length,
+            nativeAdminCandidateCases: nativeCandidates.list.length, nativeAdminMentionNotes: nativeCandidates.notesByCase.size,
             mentionOnlyCaseAndReplyPreserved: true, malformedHistoryNotSilentlyIgnored: true,
             adminQueueSize: afterAdmin.length, actorQueueSize: beforeTech.length, applicationRoundTrips: reads.length,
             elapsedMs, sameRunReadProfile, providerCalls: 0, limitations: 'Native component only; no browser or 500-user claim.',

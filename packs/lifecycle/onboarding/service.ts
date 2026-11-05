@@ -20,7 +20,7 @@ import type {AssignedPersonalTaskMetadata} from '../../../lib/assigned-work';
 import { visibleLabelIdsCondition } from '../../../core/system-labels';
 import type { EmployeeDraftData } from '../../../lib/employee-draft-schema';
 import * as M from '../../../lib/onboarding-model';
-import { possibleOnboardingMention, possibleOnboardingTaskCase } from './task-queue-read';
+import { readOnboardingTaskQueueInputsTx } from './task-queue-read';
 export type { Config as OnboardingConfig, Case as OnboardingCase, Note as OnboardingNote, Facts as OnboardingFacts, Actor as OnboardingActor } from '../../../lib/onboarding-model';
 export { effectiveFacts as onboardingFacts, matchChecklist as onboardingChecklist, matches as onboardingMatches, progress as onboardingProgress, currentReq as onboardingRequisition, requisitionStatus as onboardingRequisitionStatus, stepOpen as onboardingStepOpen, activeItem as onboardingActiveItem, inGroup as onboardingGroupMember } from '../../../lib/onboarding-model';
 const uid = (ctx: SessionContext) => ctx.userId ?? M.fail('Sign in to continue.', 'forbidden');
@@ -927,20 +927,10 @@ export type OnboardingTask = {
 export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTask[]> {
     return withTenant(ctx, async (tx) => {
         const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config), today = todayInKualaLumpur();
-        const list = await tx.select({ revision: cases.revision, data: cases.data }).from(cases)
-            .where(and(eq(cases.tenantId, ctx.tenantId), possibleOnboardingTaskCase(ctx.tenantId, actor.id, actor.module))).orderBy(asc(cases.id));
+        const { list, notesByCase } = await readOnboardingTaskQueueInputsTx(tx, ctx.tenantId, actor);
         const out: OnboardingTask[] = [];
-        // A task/mention always belongs to a visible case. Keep the fresh actor check above,
-        // then avoid the tenant-wide directory and notes scans for an empty authorized queue.
+        // An empty candidate list needs no directory; actual claimant names remain lazy below.
         if (!list.length) return out;
-        const mentionNotes = await tx.select({ caseId: notes.caseId, data: notes.data }).from(notes)
-            .where(and(eq(notes.tenantId, ctx.tenantId), possibleOnboardingMention(actor.id))).orderBy(asc(notes.createdAt), asc(notes.id));
-        const notesByCase = new Map<string, M.Note[]>();
-        for (const note of mentionNotes) {
-            const matching = notesByCase.get(note.caseId);
-            if (matching) matching.push(note.data);
-            else notesByCase.set(note.caseId, [note.data]);
-        }
         let names:Awaited<ReturnType<typeof directoryTx>>|undefined;
         for (const row of list) {
             const c = row.data, f = M.effectiveFacts(c), r = M.currentReq(c);
