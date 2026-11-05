@@ -4210,6 +4210,7 @@ export async function decideAttendanceCorrection(
       let approvedOtMinutes: number | null = null;
       let otApprovalMethod: OtApprovalMethod | null = null;
       let systemOtForComparison: number | null = null;
+      let overtimeOnlyRaw: Awaited<ReturnType<typeof attendancePolicyRawInputTx>> | undefined;
       if (hasOtRequest) {
         otApprovalMethod = await otApprovalCalculationFor(tx, cor.employmentId, cor.id);
         // The system-calculated comparison figure: derive live from the punches that WILL be authoritative for the
@@ -4232,6 +4233,7 @@ export async function decideAttendanceCorrection(
           const existing = lockedDay?.figures;
           if(existing?.checkInAt!=null){
             const raw=await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+            overtimeOnlyRaw = raw;
             if(raw.state==='unavailable')throw Error('Canonical overtime comparison inputs are unavailable.');
             if(raw.state==='policy'){
               const comparison=attendancePolicySystemEligibleMinutes(raw.context,raw.work);
@@ -4432,7 +4434,8 @@ export async function decideAttendanceCorrection(
           // overtime is being claimed for a day on which no work was ever recorded.
           throw new Error('No attendance record exists for this date to attach overtime to.');
         }
-        const raw=await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
+        // No Attendance or punch write precedes this branch. Reuse the comparison input.
+        const raw=overtimeOnlyRaw ?? await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
         if(raw.state==='unavailable')throw Error('Canonical overtime decision inputs are unavailable.');
         if(raw.state==='policy'){
           if(!workflowStage.versionedFinalEffect)throw Error('A dated policy overtime decision requires its frozen versioned workflow.');
