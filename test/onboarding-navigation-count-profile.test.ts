@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { saveEmployeeDraft } from '../core/employee-draft';
-import { client, type SessionContext } from '../db/client';
+import { client, withTenant, type SessionContext } from '../db/client';
 import { company, lcOnboardingCase } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { dayDate, visibleRecentJoiner, type Case, type Requisition, type Task } from '../lib/onboarding-model';
@@ -82,11 +82,23 @@ it('profiles the complete shell DTO and exact admitted recent joiner count', asy
     [false, make('SOURCE-EMPTY-WINS', { source: { joinDate: '' }, local: { joinDate: cutoff } })],
     [true, make('FUTURE', { source: { joinDate: dayDate(today, 45) } })],
   ] as const;
-  for (const [visible, row] of explicit) expect(visibleRecentJoiner(config, row.data, today), row.data.number).toBe(visible);
-  const retained = [...explicit.map(([, row]) => row), ...Array.from({ length: 1200 }, (_, i) => make(`RETAINED-${i}`))];
+  let exactCount = 1; // The real saved Personnel draft remains visible.
+  for (const [visible, row] of explicit) {
+    expect(visibleRecentJoiner(config, row.data, today), row.data.number).toBe(visible);
+    await owner.db.insert(lcOnboardingCase).values(row);
+    if (visible) exactCount++;
+    expect((await onboardingNavigation(admin)).joiners, row.data.number).toBe(exactCount);
+  }
+  const retained = Array.from({ length: 1200 }, (_, i) => make(`RETAINED-${i}`));
   for (let offset = 0; offset < retained.length; offset += 150) await owner.db.insert(lcOnboardingCase).values(retained.slice(offset, offset + 150));
   const expected = 1 + explicit.filter(([visible]) => visible).length;
   expect(expected).toBe(11);
+  const originalReadStart = performance.now();
+  const originalRows = await withTenant(admin, tx => tx.select({ data: lcOnboardingCase.data }).from(lcOnboardingCase).orderBy(lcOnboardingCase.id));
+  const originalCount = originalRows.filter(row => visibleRecentJoiner(config, row.data, today)).length;
+  const originalReadMs = performance.now() - originalReadStart;
+  expect(originalRows).toHaveLength(1218);
+  expect(originalCount).toBe(expected);
 
   const nativeBegin = client.begin.bind(client);
   let capture = true;
@@ -113,9 +125,34 @@ it('profiles the complete shell DTO and exact admitted recent joiner count', asy
   });
   const caseReads = sqlReads.filter(text => text.includes('from "lc_onboarding_case"'));
   expect(caseReads).toHaveLength(1);
-  expect(caseReads[0]).toContain('select "data"');
-  expect(await onboardingNavigation(employee(memberId))).toMatchObject({ module: true, master: false, joiners: expected, checklists: 1 });
-  expect(await onboardingNavigation(employee(otherId))).toMatchObject({ module: false, master: false, joiners: 0, checklists: 0 });
+  expect(caseReads[0]).toContain('select count(*) filter (where evaluated.recent)');
+  expect(caseReads[0]).toContain('filter (where evaluated.recent is null) as fallback');
+  const aggregateRoundTrips = sqlReads.length;
+  expect(await onboardingNavigation(employee(memberId))).toEqual({
+    module: true, master: false, v9: false, requisitions: true, joiners: expected, checklists: 1,
+    v9Navigation: { onboarding: true, offboarding: false, administration: false, records: true },
+  });
+  sqlReads.length = 0;
+  capture = true;
+  const ordinary = await onboardingNavigation(employee(otherId));
+  capture = false;
+  expect(ordinary).toEqual({
+    module: false, master: false, v9: false, requisitions: false, joiners: 0, checklists: 0,
+    v9Navigation: { onboarding: false, offboarding: false, administration: false, records: false },
+  });
+  expect(sqlReads.some(text => text.includes('from "lc_onboarding_case"'))).toBe(false);
+
+  // Earlier JSON restores can contain values outside the TypeScript model. Preserve the same JS
+  // result on these unusual shapes without transferring healthy historical records to Node.
+  const legacy = [
+    make('LEGACY-ARRAY-DATE', { source: { joinDate: [cutoff] as unknown as string } }),
+    make('LEGACY-NULL-TASK-AFTER-OPEN', { tasks: [task, null as unknown as Task] }),
+    make('LEGACY-EMPTY-CANCEL', { requisitions: [req('', null)] }),
+    make('LEGACY-NULL-SOURCE', { source: { joinDate: null as unknown as string }, local: { joinDate: cutoff } }),
+  ];
+  expect(legacy.map(row => visibleRecentJoiner(config, row.data, today))).toEqual([true, true, true, false]);
+  await owner.db.insert(lcOnboardingCase).values(legacy);
+  expect((await onboardingNavigation(admin)).joiners).toBe(expected + 3);
   const foreign = await seedBase();
   await setModule(foreign.tenantId, 'lifecycle', 'active');
   const foreignAdmin = await entitledCtx(foreign);
@@ -127,10 +164,12 @@ it('profiles the complete shell DTO and exact admitted recent joiner count', asy
   expect(await onboardingNavigation(employee(memberId))).toMatchObject({ module: false, master: false, joiners: 0, checklists: 0 });
 
   const evidence = {
-    kind: 'NATIVE_SHARED_ONBOARDING_SHELL_COUNT_BASELINE_ONLY', releaseEligible: false, retainedRows: retained.length + 1,
-    literalExpectedJoiners: expected, applicationRoundTrips: sqlReads.length,
-    fullCaseReads: caseReads.length, rawFixturePublicJsonBytes: Buffer.byteLength(JSON.stringify([actual.data, ...retained.map(row => row.data)])),
-    shellDtoBytes: Buffer.byteLength(JSON.stringify(reference)), elapsedMs, scopeAndRevocationProven: true,
+    kind: 'NATIVE_SHARED_ONBOARDING_SHELL_COUNT_COMPONENT_ONLY', releaseEligible: false, retainedRows: originalRows.length,
+    literalExpectedJoiners: expected, applicationRoundTrips: aggregateRoundTrips,
+    nativeAggregateCaseReads: caseReads.length, baselineFullCaseDtoBytes: Buffer.byteLength(JSON.stringify(originalRows)),
+    standardCaseDtoHydrationRemoved: true, legacyFallbackExact: true, independentBoundaryControls: explicit.length,
+    shellDtoBytes: Buffer.byteLength(JSON.stringify(reference)), baselineReadAndCanonicalFilterMs: originalReadMs,
+    completeAggregateNavigationMs: elapsedMs, scopeAndRevocationProven: true,
     providerCalls: 0, limitations: 'Native component on fictional retained data; no browser latency or 500-user claim.',
   };
   if (process.env.AIHR_FOCUSED_EVIDENCE_DIR) writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR, 'onboarding-navigation-count-profile.json'), JSON.stringify(evidence, null, 2));
