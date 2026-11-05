@@ -269,12 +269,12 @@ async function requireAdmin(tx: Tx, companyId: string) {
 }
 async function load(tx: Tx, unitId: string, lock = false,capability:import('./access-policy-model').RewardCapability='review.view') {
   idSchema.parse(unitId);
+  if(lock)await assertRewardWritableTx(tx);
   const query = tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId));
   const [unit] = await (lock ? query.for('update') : query);
   if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
   const roles = await rolesFor(tx, unitId);
   await assertRewardCapabilityTx(tx,unitId,capability);
-  if(lock)await assertRewardWritableTx(tx);
   if (!roles.length) throw new RewardError('Ask an administrator to assign your Reward Desk role for this unit.');
   const entries = await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId, unitId)).orderBy(asc(rewardEntry.id));
   const awards=await tx.execute<{entryId:string;award:import('./uploaded-awards-model').UploadedAward}>(sql`select entry_id as "entryId",award from reward_uploaded_award where unit_id=${unitId}::uuid and tenant_id=app.current_tenant_id()`);
