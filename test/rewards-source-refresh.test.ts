@@ -7,7 +7,7 @@ import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { createRewardUnit, getRewardUnit, previewRewardSourceRefresh, saveRewardEntry, saveRewardSourceRefresh } from '../packs/rewards/service';
+import { getRewardUnit, previewRewardSourceRefresh, saveRewardEntry, saveRewardSourceRefresh } from '../packs/rewards/service';
 import { emptyFacts } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -49,7 +49,10 @@ describe('Rewards source refresh preview and confirm', () => {
     // Personnel and Compensation change after the snapshot.
     await owner.db.update(schema.employment).set({ confirmationDate: today }).where(eq(schema.employment.id, ids.confirmed));
     await owner.db.update(schema.employment).set({ tenderResignationDate: today }).where(eq(schema.employment.id, ids.notice));
-    const [g13] = await owner.db.insert(schema.jobGrade).values({ tenantId: b.tenantId, code: '13', name: 'Grade 13' }).returning();
+    const [g13] = await owner.db.select({ id: schema.jobGrade.id }).from(schema.jobGrade).where(and(
+      eq(schema.jobGrade.tenantId, b.tenantId), eq(schema.jobGrade.code, '13'),
+    ));
+    if (!g13) throw new Error('The approved library fixture must provide grade 13');
     await owner.db.update(schema.employment).set({ gradeId: g13.id }).where(eq(schema.employment.id, ids.grade));
     await setCompensation(admin, { employmentId: ids.salary, basicSalary: 6000, effectiveFrom: today });
     await owner.db.update(schema.employment).set({ terminatedOn: today }).where(eq(schema.employment.id, ids.terminated));
