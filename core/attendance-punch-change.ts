@@ -81,13 +81,18 @@ export async function applyClockChangesTx(tx: Tx, ctx: SessionContext, p: {
   // Void superseded entries before restoring/inserting, so the live unique index sees the final set.
   const superseded = rows.filter(row => !row.voidedAt && !unchanged.has(row.id));
   const metadata = { voidedAt: now, voidedBy: ctx.userId ?? 'system', voidReason: p.reason };
+  const replacesWithNewPunches = entries.length > 1 && entries.every(e => !e.id);
+  const deferVoidAudit = replacesWithNewPunches && superseded.length + entries.length <= 500;
+  const replacementAudit: AppendEventArgs[] = [];
   for (let offset = 0; offset < superseded.length; offset += 500) {
     const batch = superseded.slice(offset, offset + 500);
     await tx.update(attendancePunch).set(metadata)
       .where(inArray(attendancePunch.id, batch.map(row => row.id)));
-    await appendEvents(tx, batch.map(row => auditEntry(
+    const events = batch.map(row => auditEntry(
       'attendance.punch.voided', row.id, { punchAt: row.punchAt, direction: row.direction }, metadata,
-    )));
+    ));
+    if (deferVoidAudit) replacementAudit.push(...events);
+    else await appendEvents(tx, events);
   }
   const newPunch = (e: ClockEntry) => ({
     tenantId: ctx.tenantId, attendanceId: p.attendanceId, employmentId: p.employmentId,
@@ -95,7 +100,7 @@ export async function applyClockChangesTx(tx: Tx, ctx: SessionContext, p: {
   });
   // A replacement pair has no existing punch IDs. Insert it in one statement
   // and retain the original per-punch audit order, independent of RETURNING order.
-  if (entries.length > 1 && entries.every(e => !e.id)) {
+  if (replacesWithNewPunches) {
     const added = await tx.insert(attendancePunch).values(entries.map(newPunch)).returning({
       id: attendancePunch.id, punchAt: attendancePunch.punchAt, direction: attendancePunch.direction,
     });
@@ -105,7 +110,8 @@ export async function applyClockChangesTx(tx: Tx, ctx: SessionContext, p: {
       if (!id) throw new Error('The replacement clocking could not be recorded.');
       return auditEntry('attendance.punch.added', id, null, { punchAt: entry.punchAt, direction: entry.direction, method: 'admin' });
     });
-    await appendEvents(tx, events);
+    // Append both sets in order after the punch writes, reducing time under the audit-chain lock.
+    await appendEvents(tx, [...replacementAudit, ...events]);
     return;
   }
   for (const e of entries) {

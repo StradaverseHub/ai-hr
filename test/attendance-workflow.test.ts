@@ -288,7 +288,7 @@ describe('scoped application history and reversible cancellation', () => {
         const correctedPunches = (await attendanceClockData(a, worker.employmentId, date)).rows;
         const activePunches = correctedPunches.filter(p => !p.voidedAt);
         expect(correctedPunches.filter(p => p.voidedAt).map(p => p.id)).toEqual(originals.map(p => p.id));
-        const voided = await owner.db.select({id: schema.domainEvent.aggregateId, payload: schema.domainEvent.payload})
+        const voided = await owner.db.select({id: schema.domainEvent.aggregateId, payload: schema.domainEvent.payload, sequence: schema.domainEvent.sequence})
             .from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType, 'attendance.punch.voided'),
                 sql`${schema.domainEvent.payload}->>'correctionId'=${id}`)).orderBy(asc(schema.domainEvent.sequence));
         expect(voided.map(event => event.id)).toEqual(originals.map(p => p.id));
@@ -296,7 +296,7 @@ describe('scoped application history and reversible cancellation', () => {
             before: {punchAt: punch.punchAt, direction: punch.direction},
             after: {voidedBy: a.userId, voidReason: 'Verified clock correction'},
         })));
-        const added = await owner.db.select({ id: schema.domainEvent.aggregateId, payload: schema.domainEvent.payload })
+        const added = await owner.db.select({ id: schema.domainEvent.aggregateId, payload: schema.domainEvent.payload, sequence: schema.domainEvent.sequence })
             .from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType, 'attendance.punch.added'),
                 sql`${schema.domainEvent.payload}->>'correctionId'=${id}`)).orderBy(asc(schema.domainEvent.sequence));
         expect(added.map(event => event.id)).toEqual(activePunches.map(punch => punch.id));
@@ -304,6 +304,7 @@ describe('scoped application history and reversible cancellation', () => {
             { before: null, after: { punchAt: '09:00:00', direction: 'in', method: 'admin' } },
             { before: null, after: { punchAt: '18:00:00', direction: 'out', method: 'admin' } },
         ]);
+        expect(voided.at(-1)!.sequence < added[0].sequence).toBe(true);
         const trail = await decisions();
         expect(await cancelAttendanceApplication(a, { correctionId: id, kind: 'cancelled', reason: 'Approved in error' })).toEqual({ status: 'cancelled', reversed: true });
         const after = await day(worker.employmentId);
