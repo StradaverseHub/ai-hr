@@ -68,9 +68,10 @@ export default async function NewCompanyPage({
    * anyway, because a code recycled from a company retired years ago is not a collision worth a warning.
    * ⚠️ DO NOT widen either of those to make the warning fire more often — see lib/company-code.ts.
    */
-  const codesInUse = companyCodeHolders(await listCompanies(s, { adminOnly: true }));
-
-  const groupOptions = await companyDisplayGroupOptions(s);
+  const [companies, groupOptions] = await Promise.all([
+    listCompanies(s, { adminOnly: true }), companyDisplayGroupOptions(s),
+  ]);
+  const codesInUse = companyCodeHolders(companies);
 
   return (
     <div className={pageWideCls}>
@@ -135,7 +136,14 @@ export default async function NewCompanyPage({
               ))}
             </select>
           </Field>
-          <CompanyDisplayGroupFields options={groupOptions} />
+          <CompanyDisplayGroupFields options={groupOptions}>
+            <Field label={t('parentCompany')}>
+              <select name="parentCompanyId" className={inputCls} defaultValue="">
+                <option value="">{t('noneGroupRoot')}</option>
+                {companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}
+              </select>
+            </Field>
+          </CompanyDisplayGroupFields>
           <div className="flex items-center gap-2 pt-1">
             <button type="submit" className={btnPrimary}>
               {t('addCompany')}

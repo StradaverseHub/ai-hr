@@ -398,6 +398,7 @@ function resolveDefaultCycleName(v: string | undefined): string {
 export async function createCompany(
   ctx: SessionContext,
   p: {
+    parentCompanyId?: string;
     displayGroup?: { field: string; id: string };
     legalName: string;
     country?: string;
@@ -451,10 +452,17 @@ export async function createCompany(
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    if (p.parentCompanyId) {
+      const [parent] = await tx.select({ id: company.id }).from(company)
+        .where(and(eq(company.tenantId, ctx.tenantId), eq(company.id, p.parentCompanyId),
+          isNull(company.archivedAt), sql`app.principal_snapshot_current() and app.is_group_admin()`));
+      if (!parent) throw Error('Choose an available parent company.');
+    }
     const [row] = await tx
       .insert(company)
       .values({
         tenantId: ctx.tenantId,
+        parentCompanyId: p.parentCompanyId ?? null,
         legalName,
         country,
         currency,

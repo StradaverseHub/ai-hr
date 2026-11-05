@@ -340,6 +340,7 @@ export async function createCompanyAction(formData: FormData) {
   try {
     await createCompany(s, {
       displayGroup: companyDisplayGroupFromForm(formData),
+      parentCompanyId: String(formData.get('parentCompanyId') ?? '') || undefined,
       legalName: String(formData.get('legalName') ?? '').trim(),
       country: String(formData.get('country') ?? 'MY'),
       currency: String(formData.get('currency') ?? 'MYR'),
