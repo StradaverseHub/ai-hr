@@ -1,5 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
+import {createElement,type ReactNode} from 'react';
+import {NextIntlClientProvider} from 'next-intl';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {defaultEmployeeHomePreferences} from '../lib/employee-home';
 const m=vi.hoisted(()=>({identity:vi.fn(),presentation:vi.fn(),missing:vi.fn()}));
@@ -9,6 +11,9 @@ vi.mock('next-intl/server',()=>({getTranslations:async()=>(key:string)=>key}));
 vi.mock('next/navigation',()=>({notFound:m.missing}));
 import {HomeAccessError} from '@/core/employee-home';
 import {EmployeePersonalHome} from '../components/employee-home/personal-home';
+const renderHome=(home:ReactNode)=>renderToStaticMarkup(
+ createElement(NextIntlClientProvider,{locale:'en',timeZone:'Asia/Kuala_Lumpur',children:home}),
+);
 const ctx={tenantId:'fictional-tenant',userId:'fictional-login',personId:'fictional-person',roles:['employee'],entitlements:{tenantId:'fictional-tenant',tenantStatus:'active',enabledModules:[],scopedModules:{},settings:{}}};
 beforeEach(()=>{vi.resetAllMocks();m.presentation.mockResolvedValue({catalogue:[],preferences:defaultEmployeeHomePreferences()});m.missing.mockImplementation(()=>{throw Error('fixture-not-found');});});
 describe('personal Home selection refusal',()=>{
@@ -32,11 +37,11 @@ describe('personal Home selection refusal',()=>{
  it('derives the workbench link from the selected salary-free identity and retains its employment',async()=>{
   m.identity.mockResolvedValue({version:1,role:'manager',employmentState:'selected',selectedEmploymentId:'own-second',companyEstablished:true,
    employments:[{employmentId:'own-first',employeeCode:'A',company:'Fictional A'},{employmentId:'own-second',employeeCode:'B',company:'Fictional B'}]});
-  const html=renderToStaticMarkup(await EmployeePersonalHome({session:ctx,employmentId:'own-second'}));
+  const html=renderHome(await EmployeePersonalHome({session:ctx,employmentId:'own-second'}));
   expect(html).toContain('workspace=team&amp;employmentId=own-second');
   m.identity.mockResolvedValue({version:1,role:'employee',employmentState:'selected',selectedEmploymentId:'own-second',companyEstablished:true,
    employments:[{employmentId:'own-second',employeeCode:'B',company:'Fictional B'}]});
-  const employeeHtml=renderToStaticMarkup(await EmployeePersonalHome({session:{...ctx,roles:['manager']},employmentId:'own-second'}));
+  const employeeHtml=renderHome(await EmployeePersonalHome({session:{...ctx,roles:['manager']},employmentId:'own-second'}));
   expect(employeeHtml).not.toContain('workspace=team');
  });
 });
