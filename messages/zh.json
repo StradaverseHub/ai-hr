@@ -35495,7 +35495,13 @@
     "draftOnly": "此操作仅创建草稿。创建审核前，须由另一名集团薪酬奖励用户批准计划。",
     "createDraftPlan": "创建计划草稿",
     "already-assigned": "本奖励年度已分配至另一计划。",
-    "branchAllAcknowledged": "所有选定公司均已配置为使用分行系数"
+    "branchAllAcknowledged": "所有选定公司均已配置为使用分行系数",
+    "noPriorLibrary": "去年没有已确认的资料库。",
+    "salaryMissing": "职级 {grade}：请填写最低值、中位值和最高值。",
+    "salaryOrder": "职级 {grade}：最低值必须低于中位值，中位值必须低于最高值。",
+    "copyPriorLibrary": "复制去年的资料库",
+    "fromShared": "核对现有共享配置",
+    "fromSharedHelp": "保存草稿前请检查保留的数值。缺失的有效职级保持空白。现有审核仍使用已记录的设置。"
   },
   "jobArchitecture": {
     "title": "岗位架构",

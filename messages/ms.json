@@ -35495,7 +35495,13 @@
     "draftOnly": "Ini hanya mencipta draf. Pengguna Group Rewards yang lain mesti meluluskan pelan sebelum semakan boleh dicipta.",
     "createDraftPlan": "Cipta pelan draf",
     "already-assigned": "Sudah ditugaskan kepada pelan lain bagi tahun ganjaran ini.",
-    "branchAllAcknowledged": "Setiap syarikat yang dipilih dikonfigurasi untuk menggunakan faktor cawangan"
+    "branchAllAcknowledged": "Setiap syarikat yang dipilih dikonfigurasi untuk menggunakan faktor cawangan",
+    "noPriorLibrary": "Tiada pustaka disahkan daripada tahun lalu.",
+    "salaryMissing": "Gred {grade}: isi Minimum, Titik tengah dan Maksimum.",
+    "salaryOrder": "Gred {grade}: Minimum mesti di bawah Titik tengah, dan Titik tengah di bawah Maksimum.",
+    "copyPriorLibrary": "Salin pustaka tahun lalu",
+    "fromShared": "Selaraskan konfigurasi bersama sedia ada",
+    "fromSharedHelp": "Semak nilai yang dikekalkan sebelum menyimpan draf. Gred aktif yang tiada dibiarkan kosong. Semakan sedia ada mengekalkan tetapan yang direkodkan."
   },
   "jobArchitecture": {
     "title": "Seni Bina Kerja",

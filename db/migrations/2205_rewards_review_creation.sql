@@ -401,11 +401,12 @@ ALTER POLICY reward_setup_performance_source ON performance_review USING(tenant_
 --> statement-breakpoint
 -- Extend the retained link validator to the existing dated Personnel company owner.
 CREATE OR REPLACE FUNCTION app.reward_validate_links() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
-DECLARE current_company uuid;dated_company uuid;unit_company uuid;unit_day date;
+DECLARE current_company uuid;dated_company uuid;unit_company uuid;unit_day date;validate_pair boolean;
 BEGIN
  IF TG_TABLE_NAME='reward_unit' THEN
-  IF NOT EXISTS(SELECT 1 FROM company c WHERE c.id=NEW.company_id AND c.tenant_id=NEW.tenant_id)
-   OR NOT EXISTS(SELECT 1 FROM business_unit b WHERE b.id=NEW.business_unit_id AND b.tenant_id=NEW.tenant_id AND (b.company_id=NEW.company_id OR b.is_global))
+  validate_pair:=TG_OP='INSERT';IF TG_OP='UPDATE' THEN validate_pair:=NEW.tenant_id<>OLD.tenant_id OR NEW.company_id<>OLD.company_id OR NEW.business_unit_id<>OLD.business_unit_id;END IF;
+  IF validate_pair AND (NOT EXISTS(SELECT 1 FROM company c WHERE c.id=NEW.company_id AND c.tenant_id=NEW.tenant_id)
+   OR NOT app.reward_dated_company_pair(NEW.tenant_id,NEW.company_id,NEW.business_unit_id))
    THEN RAISE EXCEPTION 'Invalid reward company or business unit'; END IF;
   IF NEW.parent_unit_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM reward_unit p WHERE p.id=NEW.parent_unit_id AND p.tenant_id=NEW.tenant_id AND p.company_id=NEW.company_id AND p.business_unit_id=NEW.business_unit_id AND p.kind='annual' AND p.status='posted') THEN RAISE EXCEPTION 'Invalid annual reward funding source'; END IF;
  ELSIF TG_TABLE_NAME='reward_member' THEN
@@ -429,3 +430,26 @@ $$;
 ALTER FUNCTION app.reward_setup_cycle_name(uuid,integer) OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_setup_cycle_name(uuid,integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_setup_cycle_name(uuid,integer) TO ai_hr_app;
+--> statement-breakpoint
+DO $$ BEGIN
+ IF to_regprocedure('app.company_org_bu_usable(uuid,uuid)') IS NOT NULL THEN GRANT EXECUTE ON FUNCTION app.company_org_bu_usable(uuid,uuid) TO ai_hr_reward_setup_reader;END IF;
+END $$;
+CREATE FUNCTION app.reward_dated_company_pair(wanted_tenant uuid,wanted_company uuid,wanted_bu uuid) RETURNS boolean LANGUAGE plpgsql STABLE SET search_path=pg_catalog,public,app AS $$
+DECLARE result boolean;
+BEGIN
+ IF wanted_tenant=app.current_tenant_id() AND to_regprocedure('app.company_org_bu_usable(uuid,uuid)') IS NOT NULL THEN EXECUTE 'select app.company_org_bu_usable($1,$2)' INTO result USING wanted_bu,wanted_company;RETURN coalesce(result,false);END IF;
+ RETURN app.reward_policy_pair_valid(wanted_tenant,wanted_company,wanted_bu,false);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_dated_company_pair(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.reward_dated_company_pair(uuid,uuid,uuid) TO ai_hr_reward_setup_reader;
+CREATE FUNCTION app.reward_setup_grade_choices() RETURNS TABLE(id uuid,code text,name text) LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF NOT app.reward_setup_allowed(NULL,'library_view') THEN RAISE EXCEPTION 'Grade Ladder library authority required' USING ERRCODE='42501';END IF;
+ IF to_regprocedure('app.architecture_grade_assignable(uuid)') IS NOT NULL THEN
+  RETURN QUERY EXECUTE 'select g.id,g.code,g.name from public.job_grade g where g.tenant_id=app.current_tenant_id() and g.archived_at is null and app.architecture_grade(g.code) is not null and app.architecture_grade_assignable(g.id) order by g.rank,g.code,g.id';
+ ELSE RETURN QUERY SELECT g.id,g.code,g.name FROM job_grade g WHERE g.tenant_id=app.current_tenant_id() AND g.archived_at IS NULL AND app.architecture_grade(g.code) IS NOT NULL ORDER BY g.rank,g.code,g.id;
+ END IF;
+END $$;
+ALTER FUNCTION app.reward_setup_grade_choices() OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_setup_grade_choices() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_setup_grade_choices() TO ai_hr_app;
