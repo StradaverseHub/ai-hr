@@ -30531,7 +30531,12 @@
     },
     "subfamily": "岗位子族",
     "specialisation": "专业方向",
-    "jobUnit": "标准岗位"
+    "jobUnit": "标准岗位",
+    "actorNameUnavailable": "未记录姓名",
+    "jobHolderAcknowledgement": "任职者确认",
+    "acknowledgementName": "姓名",
+    "acknowledgementSignature": "签名",
+    "acknowledgementDate": "日期"
   },
   "rewardsAccess": {
     "title": "奖励访问权限",
@@ -35711,7 +35716,8 @@
     "positionMovementHint": "此操作仅填写建议职级。须保存并批准有生效日期的异动后，才会更改员工职级。",
     "positionReadonlyHint": "此异动类型无法编辑职级。请使用获授权且有生效日期的异动来更改。",
     "positionDraftHint": "此操作仅填写草稿职级。启用前请审核员工草稿。",
-    "pdfExport": "导出 PDF"
+    "pdfExport": "导出 PDF",
+    "employeeGradeAccessHint": "比较员工职级需要员工资料访问权限。职位和目录检查仍可使用。"
   },
   "rewardRules": {
     "title": "规则",

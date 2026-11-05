@@ -34,7 +34,7 @@ GRANT EXECUTE ON FUNCTION app.job_architecture_can(uuid,text) TO ai_hr_app;
 CREATE TABLE job_architecture_proposal (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),company_id uuid REFERENCES company(id),
  kind text NOT NULL CHECK(kind IN('catalogue','positions','outlier_resolution')),affected_company_ids uuid[] NOT NULL DEFAULT '{}',base_revision integer NOT NULL CHECK(base_revision>=0),
- payload jsonb NOT NULL CHECK(jsonb_typeof(payload)='object'),reason text NOT NULL CHECK(length(trim(reason)) BETWEEN 10 AND 4000),
+ payload jsonb NOT NULL CHECK(jsonb_typeof(payload)='object'),reason text NOT NULL CHECK(length(trim(reason)) BETWEEN 10 AND 4000),created_person_id uuid REFERENCES person(id),
  created_by uuid NOT NULL REFERENCES app_user(id),created_at timestamptz NOT NULL DEFAULT now(),
  status text NOT NULL DEFAULT 'pending' CHECK(status IN('pending','approved','rejected')),checked_by uuid REFERENCES app_user(id),checked_at timestamptz,
  CHECK(checked_by IS NULL OR checked_by<>created_by),CHECK((status='pending')=(checked_by IS NULL)),UNIQUE(tenant_id,id)
@@ -76,8 +76,17 @@ CREATE POLICY job_architecture_outlier_write ON job_architecture_outlier FOR ALL
 GRANT SELECT,INSERT,UPDATE ON job_architecture_proposal,job_architecture_outlier TO ai_hr_app;
 GRANT SELECT,INSERT ON job_architecture_catalogue_revision,job_architecture_position_revision TO ai_hr_app;
 --> statement-breakpoint
+
+-- Known person identity, never email/name inference. Runtime already reads its tenant's app_user links.
+CREATE FUNCTION app.same_known_person_as_current_user(wanted_user uuid,captured_person uuid DEFAULT NULL) RETURNS boolean LANGUAGE sql STABLE SET search_path=pg_catalog,public,app AS $$
+ SELECT coalesce((SELECT a.person_id IS NOT NULL AND (a.person_id=captured_person OR a.person_id=m.person_id) FROM public.app_user a LEFT JOIN public.app_user m ON m.id=wanted_user AND m.tenant_id=a.tenant_id WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()),false)
+$$;
+REVOKE ALL ON FUNCTION app.same_known_person_as_current_user(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.same_known_person_as_current_user(uuid,uuid) TO ai_hr_app;
+
 CREATE FUNCTION app.job_architecture_links() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
 BEGIN
+ IF TG_TABLE_NAME='job_architecture_proposal' AND TG_OP='INSERT' THEN SELECT person_id INTO NEW.created_person_id FROM app_user WHERE id=NEW.created_by AND tenant_id=NEW.tenant_id;RETURN NEW;END IF;
  IF TG_TABLE_NAME='job_architecture_seat' THEN
   IF NOT EXISTS(SELECT 1 FROM app_user WHERE id=NEW.user_id AND tenant_id=NEW.tenant_id) OR NEW.company_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM company WHERE id=NEW.company_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Architecture seat must remain in its tenant'; END IF;
  ELSIF TG_TABLE_NAME='job_architecture_position_revision' THEN
@@ -85,12 +94,13 @@ BEGIN
    OR NOT EXISTS(SELECT 1 FROM company c WHERE c.id=NEW.company_id AND c.tenant_id=NEW.tenant_id)
    OR NEW.mapping->>'positionId'<>NEW.position_id::text OR NEW.mapping->>'companyId'<>NEW.company_id::text THEN RAISE EXCEPTION 'Invalid architecture position binding'; END IF;
  ELSIF TG_TABLE_NAME='job_architecture_proposal' AND TG_OP='UPDATE' THEN
-  IF NEW.payload IS DISTINCT FROM OLD.payload OR NEW.kind<>OLD.kind OR NEW.base_revision<>OLD.base_revision OR NEW.company_id IS DISTINCT FROM OLD.company_id OR NEW.created_by<>OLD.created_by OR NEW.reason<>OLD.reason OR NEW.affected_company_ids IS DISTINCT FROM OLD.affected_company_ids OR NEW.tenant_id<>OLD.tenant_id OR NEW.id<>OLD.id THEN RAISE EXCEPTION 'Only the independent decision may change a proposal'; END IF;
+  IF NEW.checked_by IS NOT NULL AND app.same_known_person_as_current_user(OLD.created_by,OLD.created_person_id) THEN RAISE EXCEPTION 'A different person must check this proposal';END IF;
+  IF NEW.created_person_id IS DISTINCT FROM OLD.created_person_id OR NEW.payload IS DISTINCT FROM OLD.payload OR NEW.kind<>OLD.kind OR NEW.base_revision<>OLD.base_revision OR NEW.company_id IS DISTINCT FROM OLD.company_id OR NEW.created_by<>OLD.created_by OR NEW.reason<>OLD.reason OR NEW.affected_company_ids IS DISTINCT FROM OLD.affected_company_ids OR NEW.tenant_id<>OLD.tenant_id OR NEW.id<>OLD.id THEN RAISE EXCEPTION 'Only the independent decision may change a proposal'; END IF;
  END IF;RETURN NEW;
 END $$;
 CREATE TRIGGER job_architecture_seat_links BEFORE INSERT OR UPDATE ON job_architecture_seat FOR EACH ROW EXECUTE FUNCTION app.job_architecture_links();
 CREATE TRIGGER job_architecture_position_links BEFORE INSERT ON job_architecture_position_revision FOR EACH ROW EXECUTE FUNCTION app.job_architecture_links();
-CREATE TRIGGER job_architecture_proposal_links BEFORE UPDATE ON job_architecture_proposal FOR EACH ROW EXECUTE FUNCTION app.job_architecture_links();
+CREATE TRIGGER job_architecture_proposal_links BEFORE INSERT OR UPDATE ON job_architecture_proposal FOR EACH ROW EXECUTE FUNCTION app.job_architecture_links();
 REVOKE ALL ON FUNCTION app.job_architecture_links() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.job_architecture_links() TO ai_hr_app;
 --> statement-breakpoint
@@ -117,15 +127,44 @@ GRANT USAGE ON SCHEMA public,app TO ai_hr_architecture_grade_guard;
 GRANT SELECT ON job_grade,job_architecture_catalogue_revision TO ai_hr_architecture_grade_guard;
 CREATE POLICY architecture_grade_guard_grades ON job_grade FOR SELECT TO ai_hr_architecture_grade_guard USING(true);
 CREATE POLICY architecture_grade_guard_catalogue ON job_architecture_catalogue_revision FOR SELECT TO ai_hr_architecture_grade_guard USING(true);
+
+-- One lexical normalization owner, including ECMAScript trim whitespace.
+CREATE FUNCTION app.architecture_grade_code(raw text) RETURNS text LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE SET search_path=pg_catalog AS $$
+ SELECT regexp_replace(regexp_replace(upper(raw),U&'^[[:space:]\00A0\1680\2000-\200A\2028\2029\202F\205F\3000\FEFF]+|[[:space:]\00A0\1680\2000-\200A\2028\2029\202F\205F\3000\FEFF]+$','','g'),U&'^JG[[:space:]\00A0\1680\2000-\200A\2028\2029\202F\205F\3000\FEFF]*','')
+$$;
+REVOKE ALL ON FUNCTION app.architecture_grade_code(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.architecture_grade_code(text) TO ai_hr_app,ai_hr_architecture_grade_guard;
+CREATE FUNCTION app.architecture_grade(raw text) RETURNS text LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE SET search_path=pg_catalog,app AS $$
+ SELECT CASE WHEN code=ANY(ARRAY['H','12','13','14','15','16','17','18','19','20','21','22','23']) THEN code ELSE NULL END FROM(SELECT app.architecture_grade_code(raw) AS code) normalized
+$$;
+REVOKE ALL ON FUNCTION app.architecture_grade(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.architecture_grade(text) TO ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.current_tenant_id() TO ai_hr_architecture_grade_guard;
+CREATE FUNCTION app.architecture_grade_assignable_in_tenant(wanted_tenant uuid,wanted_grade uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ WITH latest AS(SELECT catalogue->'ladder' AS ladder FROM public.job_architecture_catalogue_revision WHERE tenant_id=wanted_tenant ORDER BY revision DESC LIMIT 1),
+ selected AS(SELECT g.id,app.architecture_grade_code(g.code) AS code FROM public.job_grade g WHERE g.id=wanted_grade AND g.tenant_id=wanted_tenant AND g.archived_at IS NULL),
+ official AS(SELECT coalesce((SELECT ladder FROM latest),'[]'::jsonb) AS ladder)
+ SELECT coalesce((SELECT code<>'' AND code!~'^[HTS][1-4]$' AND (NOT(jsonb_array_length(ladder)=13 AND NOT EXISTS(SELECT 1 FROM unnest(ARRAY['H','12','13','14','15','16','17','18','19','20','21','22','23']) expected WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(ladder) entry WHERE entry->>'code'=expected))) OR EXISTS(SELECT 1 FROM jsonb_array_elements(ladder) entry WHERE entry->>'gradeId'=wanted_grade::text AND entry->>'code'=selected.code)) FROM selected CROSS JOIN official),false)
+$$;
+ALTER FUNCTION app.architecture_grade_assignable_in_tenant(uuid,uuid) OWNER TO ai_hr_architecture_grade_guard;
+REVOKE ALL ON FUNCTION app.architecture_grade_assignable_in_tenant(uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.architecture_grade_assignable(wanted_grade uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,app AS $$
+ SELECT app.architecture_grade_assignable_in_tenant(app.current_tenant_id(),wanted_grade)
+$$;
+ALTER FUNCTION app.architecture_grade_assignable(uuid) OWNER TO ai_hr_architecture_grade_guard;
+REVOKE ALL ON FUNCTION app.architecture_grade_assignable(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.architecture_grade_assignable(uuid) TO ai_hr_app;
+
 CREATE FUNCTION app.guard_employment_architecture_grade() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
-DECLARE code text;ladder jsonb;
+DECLARE code text;
 BEGIN
  IF NEW.grade_id IS NULL OR (TG_OP='UPDATE' AND NEW.grade_id IS NOT DISTINCT FROM OLD.grade_id AND NEW.tenant_id=OLD.tenant_id) THEN RETURN NEW; END IF;
- SELECT regexp_replace(upper(trim(g.code)),'^JG\s*','') INTO code FROM public.job_grade g WHERE g.id=NEW.grade_id AND g.tenant_id=NEW.tenant_id AND g.archived_at IS NULL;
- IF code IS NULL THEN RAISE EXCEPTION 'Choose an available grade in the employment tenant' USING ERRCODE='23514'; END IF;
- IF code ~ '^[HTS][1-4]$' THEN RAISE EXCEPTION 'Future architecture grades are not in use' USING ERRCODE='23514'; END IF;
- SELECT c.catalogue->'ladder' INTO ladder FROM public.job_architecture_catalogue_revision c WHERE c.tenant_id=NEW.tenant_id ORDER BY c.revision DESC LIMIT 1;
- IF jsonb_array_length(coalesce(ladder,'[]'::jsonb))=13 AND NOT EXISTS(SELECT 1 FROM unnest(ARRAY['H','12','13','14','15','16','17','18','19','20','21','22','23']) expected WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(ladder) g WHERE g->>'code'=expected)) AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(ladder) g WHERE g->>'gradeId'=NEW.grade_id::text AND g->>'code'=code) THEN RAISE EXCEPTION 'Choose an approved active architecture grade' USING ERRCODE='23514'; END IF;
+ IF NOT app.architecture_grade_assignable_in_tenant(NEW.tenant_id,NEW.grade_id) THEN
+  SELECT app.architecture_grade_code(g.code) INTO code FROM public.job_grade g WHERE g.id=NEW.grade_id AND g.tenant_id=NEW.tenant_id AND g.archived_at IS NULL;
+  IF code IS NULL THEN RAISE EXCEPTION 'Choose an available grade in the employment tenant' USING ERRCODE='23514'; END IF;
+  IF code~'^[HTS][1-4]$' THEN RAISE EXCEPTION 'Future architecture grades are not in use' USING ERRCODE='23514'; END IF;
+  RAISE EXCEPTION 'Choose an approved active architecture grade' USING ERRCODE='23514';
+ END IF;
  RETURN NEW;
 END $$;
 ALTER FUNCTION app.guard_employment_architecture_grade() OWNER TO ai_hr_architecture_grade_guard;
@@ -141,10 +180,3 @@ BEGIN
 END $$;
 CREATE TRIGGER architecture_outlier_closure BEFORE INSERT OR UPDATE ON job_architecture_outlier FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_outlier_closure();
 REVOKE ALL ON FUNCTION app.guard_architecture_outlier_closure() FROM PUBLIC;
-
--- Shared lexical owner for consumers that validate SQL-authored grade references.
-CREATE FUNCTION app.architecture_grade(raw text) RETURNS text LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE SET search_path=pg_catalog AS $$
- SELECT CASE WHEN code=ANY(ARRAY['H','12','13','14','15','16','17','18','19','20','21','22','23']) THEN code ELSE NULL END FROM(SELECT regexp_replace(upper(trim(raw)),'^JG\s*','') AS code) normalized
-$$;
-REVOKE ALL ON FUNCTION app.architecture_grade(text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.architecture_grade(text) TO ai_hr_app;

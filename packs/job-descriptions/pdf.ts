@@ -22,15 +22,15 @@ export async function renderJobDescriptionPdf(detail:Detail,t:Translate):Promise
  const next=()=>{page=doc.addPage([W,H]);header();};
  const ensure=(height:number)=>{if(y-height<50)next();};
  const paragraph=(text:string,strong=false,size=10,indent=0)=>{for(const line of wrap(text,size,usable-indent,strong)){ensure(15);draw(line,M+indent,y,size,strong);y-=15;}};
- const field=(caption:string,value:unknown)=>{const text=value===null||value===undefined||value===''?'—':String(value);ensure(42);paragraph(caption,true,9);paragraph(text,false,10,8);y-=5;page.drawLine({start:{x:M,y:y+2},end:{x:W-M,y:y+2},thickness:.3,color:rgb(.82,.82,.82)});y-=5;};
- header();const human=(id:string|null)=>id?detail.principals[id]??id:'—';
+ const field=(caption:string,value:unknown)=>{const text=value===null||value===undefined||value===''?'—':String(value);ensure(49);paragraph(caption,true,9);paragraph(text,false,10,8);y-=5;page.drawLine({start:{x:M,y:y+2},end:{x:W-M,y:y+2},thickness:.3,color:rgb(.82,.82,.82)});y-=12;};
+ header();const human=(id:string|null)=>id?detail.principals[id]??t('actorNameUnavailable'):'—';
  for(const [key,value] of [['owner',r.document_owner],['preparedBy',human(r.prepared_by)],['approvedBy',human(r.approved_by)],['effectiveOn',r.effective_on],['reviewOn',r.review_on],...Object.entries(r.org_labels)] as [string,unknown][])field(t(key),value);
  for(const section of r.definition.sections){const standard=DEFAULT_FORM.sections.find(s=>s.id===section.id);const title=standard?t('sections.'+section.id):section.label;
   if(form!==t(section.form)){form=t(section.form);next();}ensure(50);paragraph(title,true,12);y-=5;
   const rows=r.answers[section.id]??[];if(!rows.length)paragraph(t('notProvided'));
-  for(const [index,row]of rows.entries()){if(section.repeated){ensure(30);paragraph(t('row',{number:index+1}),true,9);}for(const f of section.fields){const caption=standard?.fields.some(v=>v.id===f.id)?t(`fields.${section.id}.${f.id}`):f.label,value=row[f.id],choice=standardJobChoiceKey(section.id,f.id,String(value));field(caption,value===true?t('yes'):value===false?t('no'):choice?t(choice):value);}}
+  for(const [index,row]of rows.entries()){if(section.repeated){ensure(30);paragraph(t('row',{number:index+1}),true,9);}for(const f of section.fields){const caption=standard?.fields.some(v=>v.id===f.id)?t(`fields.${section.id}.${f.id}`):f.label,value=row[f.id],choice=standardJobChoiceKey(section.id,f.id,String(value));field(caption,value===true?t('yes'):value===false?t('no'):choice?t(choice):value);}}y-=12;
  }
- form=t('reviews');next();for(const review of detail.reviews){field(review.name,`${t('reviewStates.'+review.decision)} · ${review.decided_at??'—'}\n${review.comments}`);ensure(46);page.drawLine({start:{x:M+8,y:y-20},end:{x:M+200,y:y-20},thickness:.6});y-=45;}paragraph(t('signatureHint'),false,9);
+ form=t('reviews');next();for(const review of detail.reviews){field(review.name||t('actorNameUnavailable'),`${t('reviewStates.'+review.decision)} · ${review.decided_at??'—'}\n${review.comments}`);}ensure(150);paragraph(t('jobHolderAcknowledgement'),true,12);y-=16;for(const key of ['acknowledgementName','acknowledgementSignature','acknowledgementDate']){paragraph(t(key),false,9);page.drawLine({start:{x:M+145,y:y+14},end:{x:W-M,y:y+14},thickness:.5});y-=22;}
  const pages=doc.getPages();for(const [index,p]of pages.entries()){page=p;draw(`${job.job_code} · v${r.version}`,M,27,8);draw(`${index+1} / ${pages.length}`,W-M-42,27,8);}
  return doc.save();
 }
