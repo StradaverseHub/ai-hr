@@ -43,10 +43,22 @@ export async function recordedAttendanceGroupPolicyTx(tx:Tx,ctx:SessionContext,p
   const [principal]=await tx.execute(sql`select app.attendance_policy_principal_current() as allowed`) as unknown as {allowed:boolean}[];
   if(!principal?.allowed)throw Error('Current Attendance principal required.');
  };
- await current();
- const [day]=await tx.select({trace:attendance.calcTrace,attestedWorkCorrectionId:attendance.attestedWorkCorrectionId}).from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),
-  eq(attendance.employmentId,p.employmentId),eq(attendance.attendanceDate,p.date))).limit(1);
- if(!day)return {state:'none'};
+ // Check the principal and read the day in the same snapshot. The lateral read
+ // remains under the caller's RLS and is gated by the canonical principal check.
+ const [day]=await tx.execute<{
+  allowed:boolean;dayId:string|null;trace:unknown;attestedWorkCorrectionId:string|null;
+ }>(sql`with principal as materialized (select app.attendance_policy_principal_current() as allowed)
+  select principal.allowed, day."dayId", day.trace, day."attestedWorkCorrectionId"
+  from principal left join lateral (
+   select ${attendance.id} as "dayId", ${attendance.calcTrace} as trace,
+    ${attendance.attestedWorkCorrectionId} as "attestedWorkCorrectionId"
+   from ${attendance}
+   where principal.allowed and ${attendance.tenantId}=${ctx.tenantId}
+    and ${attendance.employmentId}=${p.employmentId} and ${attendance.attendanceDate}=${p.date}
+   limit 1
+  ) day on true`);
+ if(!day?.allowed)throw Error('Current Attendance principal required.');
+ if(!day.dayId)return {state:'none'};
  if(day.attestedWorkCorrectionId){
   const attested=await recordedAttestedPolicyWorkTx(tx,ctx,p);
   await current();

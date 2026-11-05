@@ -16,6 +16,7 @@ import { attendanceClockData } from '../core/attendance-clock-data';
 import { ClockDataChangedError, AttendancePayrollClosedError, lockAttendancePayrollTx, markAttendancePayrollTx, validateClockEntries } from '../core/attendance-punch-change';
 import { createBatch, generatePayslips } from '../packs/payroll/service';
 import { withTenant } from '../db/client';
+import { lockAccessConfigurationReadTx } from '../core/access-configuration-lock';
 import { setCompensation } from '../core/comp';
 import { adminCtx, createAppUser, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 let b: Base;
@@ -76,6 +77,27 @@ describe('approved attendance clock-data corrections', () => {
     const raw = await attendanceClockData(a, employmentId, date);
     expect(raw.rows.filter(r => !r.voidedAt).map(r => r.punchAt)).toEqual(['09:00:00', '18:00:00']);
     expect(raw.rows.filter(r => r.voidedAt)).toHaveLength(2);
+  });
+  it('approves a clock correction with TOIL disabled while an Access reader holds the tenant lock', async () => {
+    const { a, employmentId } = await fixture();
+    const { correctionId } = await requestAttendanceCorrection(a, { employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Gate log' });
+    let approval: ReturnType<typeof decideAttendanceCorrection> | undefined;
+    try {
+      const completed = await withTenant(a, async tx => {
+        await lockAccessConfigurationReadTx(tx, a.tenantId);
+        approval = decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([approval, new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 3000); })]);
+        } finally {
+          clearTimeout(timer);
+        }
+      });
+      expect(completed).toMatchObject({ status: 'approved' });
+    } finally {
+      await approval;
+    }
+    expect((await day(employmentId)).checkInAt).toBe('09:00:00');
   });
   it('rejects stale approval atomically when new clocking arrived after the request', async () => {
     const { a, employmentId } = await fixture();

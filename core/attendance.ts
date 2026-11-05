@@ -1,5 +1,5 @@
 import { withCanonicalAiReadTx } from './ai-read-transaction';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationReadTx, lockAccessConfigurationTx } from './access-configuration-lock';
 import { LeaveDependencyUnavailable, lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
 import {assessGeofence,type GeofenceAssessment} from '../lib/geofence-assessment';
@@ -49,6 +49,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // which is what keeps Leave and the roster working for a tenant without Attendance. See
 // core/module-gate.ts.
 import { assertModuleGate, withAttendanceTenant as withTenant } from './module-gate';
+import { EntitlementError, isModuleEnabled } from './entitlements';
 import { actorOf, appendEvent, appendEvents } from '../db/events';
 import { createHash, randomUUID } from 'node:crypto';
 import { filterDelegationOrgScopeTx, assertAssignedWorkPrincipalTx } from './approvals';
@@ -3988,6 +3989,7 @@ async function attendanceFiguresByIdTx(tx: Tx, attendanceId: string): Promise<Am
 /** Decision/cancellation writers use subject -> correction -> workflow/payroll -> audit order. Discovering
  * the subject does not lock the request: clock-out/import can hold the subject lock while landing OT
  * on this same correction. Re-read after waiting, so status/authority checks never use the first image. */
+const retryAttendanceApprovalExclusively = new Error('Attendance approval requires the exclusive Access path.');
 const retryAttendanceRejectionExclusively = new Error('Attendance rejection requires the exclusive configuration path.');
 const nonOvertimeRejectionKinds: readonly AttendanceRequestKind[] = ['short_hours', 'incomplete_entry', 'absent', 'other'];
 const rejectionShape = {
@@ -4004,9 +4006,12 @@ function isOrdinaryNonOvertimeRejection(row: Pick<typeof attendanceCorrection.$i
     row.plannedStartTime === null && row.plannedEndTime === null && !row.originalClockSnapshot?.unclockedWork;
 }
 
-async function lockAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correctionId: string, rejectionSubject?: string) {
+async function lockAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correctionId: string, rejectionSubject?: string, sharedApproval = false) {
   try {
-    if (rejectionSubject === undefined) {
+    if (sharedApproval) {
+      await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+      await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+    } else if (rejectionSubject === undefined) {
       await lockAttendanceLeaveDependenciesTx(tx, ctx, []);
     } else {
       // This private path writes decision and audit rows only. Configuration writers still
@@ -4029,8 +4034,14 @@ async function lockAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correcti
     if (rejectionSubject !== undefined && (!locked || !isOrdinaryNonOvertimeRejection(locked))) {
       throw retryAttendanceRejectionExclusively;
     }
+    if (sharedApproval && (!locked || locked.adminAmendment || !isOrdinaryNonOvertimeRejection(locked))) {
+      throw retryAttendanceApprovalExclusively;
+    }
     return locked;
   } catch (error) {
+    if (sharedApproval && error instanceof LeaveDependencyUnavailable && error.reason === 'busy') {
+      throw retryAttendanceApprovalExclusively;
+    }
     // No effect has started. Preserve the original serialization/refusal semantics
     // by releasing the shared attempt before trying the original exclusive path.
     if (rejectionSubject !== undefined && error instanceof LeaveDependencyUnavailable && error.reason === 'busy') {
@@ -4071,9 +4082,8 @@ export class MissingAttendanceRejectReasonError extends Error {
   constructor() { super('A rejection explanation of 1–1000 characters is required.'); }
 }
 
-// Native approvals take the exclusive tenant Access lock. Let only one per tenant and process
-// enter the pool at a time, so local waiters do not occupy connections that other requests need.
-// The database lock still orders approval against other processes and configuration writers.
+// Native approvals take the exclusive leave-configuration lock. Let only one per tenant and
+// process enter the pool at a time, so local waiters leave connections available for other requests.
 const attendanceApprovalTails = new Map<string, Promise<void>>();
 
 async function queueNativeAttendanceApproval<T>(tenantId: string, approve: () => Promise<T>): Promise<T> {
@@ -4098,8 +4108,8 @@ export async function decideAttendanceCorrection(
 ) {
   p = structuredClone(p); ctx = captureAttendanceContext(ctx);
   ctx = {...ctx, roles:ctx.roles ?? (ctx.grants ?? []).map(grant=>grant.role)};
-  const decide=async (tx:Tx, rejectionSubject?: string) => {
-    const original = await lockAttendanceApplicationTx(tx, ctx, p.correctionId, rejectionSubject);
+  const decide=async (tx:Tx, rejectionSubject?: string, sharedApproval = false) => {
+    const original = await lockAttendanceApplicationTx(tx, ctx, p.correctionId, rejectionSubject, sharedApproval);
     const cor=original?.adminAmendment?{...original,proposedCheckIn:original.adminAmendment.checkIn,proposedCheckOut:original.adminAmendment.checkOut}:original;
     if (!cor) throw new Error('correction request not found (or not visible)');
     if (cor.status !== 'pending') throw new Error(`correction request is already ${cor.status}`);
@@ -4676,10 +4686,31 @@ export async function decideAttendanceCorrection(
     return { status: p.decision, deferred: deferredApproval };
   };
   if (existingTx) return decide(existingTx);
-  if (p.decision === 'approved') {
-    return queueNativeAttendanceApproval(ctx.tenantId, () => withTenant(ctx, decide));
-  }
   const correctionIdIsCanonical = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(p.correctionId);
+  if (p.decision === 'approved') {
+    return queueNativeAttendanceApproval(ctx.tenantId, async () => {
+      // Only the native ordinary correction path with a positively disabled TOIL gate may share
+      // Access. Keep the existing leave-configuration, subject, Payroll and audit fences.
+      let toilDisabled = false;
+      if (ctx.userId && !ctx.agent && correctionIdIsCanonical && ctx.entitlements) {
+        ctx = {...ctx, entitlements: structuredClone(ctx.entitlements)};
+        try {
+          toilDisabled = !isModuleEnabled(ctx, 'toil');
+        } catch (error) {
+          if (!(error instanceof EntitlementError)) throw error;
+        }
+      }
+      if (toilDisabled) {
+        try {
+          return await withTenant(ctx, tx => decide(tx, undefined, true));
+        } catch (error) {
+          if (error !== retryAttendanceApprovalExclusively) throw error;
+        }
+      }
+      // The shared attempt rolled back before any effect. Acquire exclusive Access in a fresh Tx.
+      return withTenant(ctx, decide);
+    });
+  }
   if (p.decision !== 'rejected' || !ctx.userId || ctx.agent || !correctionIdIsCanonical) return withTenant(ctx, decide);
   try {
     return await withTenant(ctx, async tx => {
