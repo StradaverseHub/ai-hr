@@ -5,6 +5,15 @@ DO $$ BEGIN
 END $$;
 GRANT USAGE ON SCHEMA public,app TO ai_hr_job_profile_reader;
 GRANT SELECT ON employment,assignment,job_architecture_position_revision,job_architecture_jd_publication_history,job_document_revision,job_document TO ai_hr_job_profile_reader;
+-- 0599's owner-only retention queries remain owned by their trusted helpers. A new
+-- restricted reader must not enter their organisation-table retention joins.
+DO $$ DECLARE trusted_owner name; BEGIN
+ SELECT pg_get_userbyid(proowner) INTO trusted_owner FROM pg_proc WHERE oid='app.board3_job_company_in_use(uuid)'::regprocedure;
+ EXECUTE format('ALTER POLICY job_document_company_retention ON public.job_document TO %I',trusted_owner);
+ EXECUTE format('ALTER POLICY job_document_form_company_retention ON public.job_document_form TO %I',trusted_owner);
+ SELECT pg_get_userbyid(proowner) INTO trusted_owner FROM pg_proc WHERE oid='app.board3_source_company_in_use(uuid)'::regprocedure;
+ EXECUTE format('ALTER POLICY job_document_revision_source_retention ON public.job_document_revision TO %I',trusted_owner);
+END $$;
 -- Runtime policies belong to the runtime role. The bounded reader must use only its own
 -- policies, rather than recursively entering document/workforce authorization helpers.
 ALTER POLICY employment_rls ON employment TO ai_hr_app;

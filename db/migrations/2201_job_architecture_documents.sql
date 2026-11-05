@@ -2,6 +2,7 @@
 ALTER TABLE job_document ADD COLUMN job_unit_id uuid;
 ALTER TABLE job_document ADD COLUMN company_variant boolean NOT NULL DEFAULT false;
 ALTER TABLE job_document_revision ADD COLUMN architecture jsonb;
+ALTER TABLE job_document_revision ADD COLUMN contributor_person_ids uuid[] NOT NULL DEFAULT '{}';
 ALTER TABLE job_document_revision ADD CONSTRAINT job_document_architecture_shape CHECK(architecture IS NULL OR jsonb_typeof(architecture)='object');
 ALTER TABLE job_document_revision DROP CONSTRAINT job_document_revision_status_check;
 ALTER TABLE job_document_revision ADD CONSTRAINT job_document_revision_status_check CHECK(status IN('draft','submitted','approved','superseded'));
@@ -25,6 +26,14 @@ GRANT SELECT,INSERT,UPDATE ON job_architecture_jd_publication TO ai_hr_app;
 CREATE OR REPLACE FUNCTION app.job_document_scope(p_tenant uuid,p_job uuid) RETURNS boolean LANGUAGE sql STABLE SET search_path=public,pg_temp AS $$
  SELECT p_tenant=app.current_tenant_id() AND EXISTS(SELECT 1 FROM job_document j WHERE j.tenant_id=p_tenant AND j.id=p_job AND (app.access_workforce_company(j.company_id,'workforce.view') OR app.job_architecture_can(j.company_id,'view')))
 $$;
+-- Only names of actual participants in a document the current viewer may read.
+CREATE FUNCTION app.job_document_actor_label(wanted_job uuid,wanted_actor uuid) RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT nullif(trim(p.full_name),'') FROM public.app_user u JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
+ WHERE u.id=wanted_actor AND u.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.job_document_scope(u.tenant_id,wanted_job)
+ AND EXISTS(SELECT 1 FROM public.job_document_revision r WHERE r.tenant_id=u.tenant_id AND r.job_id=wanted_job AND (wanted_actor IN(r.prepared_by,r.last_edited_by,r.approver_id,r.submitted_by,r.approved_by) OR EXISTS(SELECT 1 FROM public.job_document_review v WHERE v.tenant_id=r.tenant_id AND v.revision_id=r.id AND v.reviewer_id=wanted_actor)))
+$$;
+REVOKE ALL ON FUNCTION app.job_document_actor_label(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.job_document_actor_label(uuid,uuid) TO ai_hr_app;
 CREATE POLICY job_document_architecture_read ON job_document FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.job_architecture_can(company_id,'view'));
 CREATE POLICY job_document_architecture_insert ON job_document FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND app.job_architecture_can(company_id,'propose'));
 CREATE POLICY job_document_architecture_update ON job_document FOR UPDATE USING(tenant_id=app.current_tenant_id() AND (app.job_architecture_can(company_id,'propose') OR app.job_architecture_can(company_id,'check'))) WITH CHECK(tenant_id=app.current_tenant_id() AND (app.job_architecture_can(company_id,'propose') OR app.job_architecture_can(company_id,'check')));
@@ -44,7 +53,7 @@ CREATE UNIQUE INDEX job_architecture_outlier_import_source ON job_architecture_o
 CREATE TABLE job_architecture_suggestion (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),company_id uuid NOT NULL REFERENCES company(id),
  kind text NOT NULL CHECK(kind IN('position','description','outlier')),subject_id uuid NOT NULL,source_digest text NOT NULL CHECK(source_digest~'^[a-f0-9]{64}$'),
- catalogue_revision integer NOT NULL,payload jsonb NOT NULL CHECK(jsonb_typeof(payload)='object'),provider_ref text NOT NULL,
+ catalogue_revision integer NOT NULL,payload jsonb NOT NULL CHECK(jsonb_typeof(payload)='object'),provider_ref text NOT NULL,contract_id text NOT NULL DEFAULT 'job_architecture_advice_v1',prompt_version integer NOT NULL DEFAULT 1 CHECK(prompt_version=1),
  created_by uuid NOT NULL REFERENCES app_user(id),created_at timestamptz NOT NULL DEFAULT now(),
  decision text NOT NULL DEFAULT 'pending' CHECK(decision IN('pending','accepted','edited','rejected')),decided_by uuid REFERENCES app_user(id),decided_at timestamptz,
  proposal_id uuid,FOREIGN KEY(tenant_id,proposal_id) REFERENCES job_architecture_proposal(tenant_id,id),
@@ -91,10 +100,11 @@ BEGIN
  IF TG_OP='INSERT' THEN
   IF NEW.status<>'draft' OR NEW.prepared_by IS DISTINCT FROM app.current_user_id() OR NEW.last_edited_by IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'Create a draft as the authenticated preparer'; END IF;
   NEW.contributor_ids:=ARRAY[app.current_user_id()];
+  NEW.contributor_person_ids:=ARRAY(SELECT person_id FROM app_user WHERE id=app.current_user_id() AND tenant_id=NEW.tenant_id AND person_id IS NOT NULL);
   RETURN NEW;
  END IF;
  IF OLD.status='approved' THEN
-  IF NEW.status='superseded' AND NEW.lock_version=OLD.lock_version+1 AND (to_jsonb(NEW)-ARRAY['status','updated_at','lock_version'])=(to_jsonb(OLD)-ARRAY['status','updated_at','lock_version']) AND EXISTS(SELECT 1 FROM job_document j WHERE j.id=OLD.job_id AND j.tenant_id=OLD.tenant_id AND app.job_architecture_can(CASE WHEN j.company_variant THEN j.company_id ELSE NULL END,'check')) THEN RETURN NEW; END IF;
+  IF NEW.status='superseded' AND NEW.lock_version=OLD.lock_version+1 AND (to_jsonb(NEW)-ARRAY['status','updated_at','lock_version','business_unit_id','department_id','position_id','grade_id','location_id','reports_to_position_id'])=(to_jsonb(OLD)-ARRAY['status','updated_at','lock_version','business_unit_id','department_id','position_id','grade_id','location_id','reports_to_position_id']) AND EXISTS(SELECT 1 FROM job_document j WHERE j.id=OLD.job_id AND j.tenant_id=OLD.tenant_id AND app.job_architecture_can(CASE WHEN j.company_variant THEN j.company_id ELSE NULL END,'check')) THEN RETURN NEW; END IF;
   RAISE EXCEPTION 'Approved revisions are immutable';
  END IF;
  IF OLD.status='superseded' THEN RAISE EXCEPTION 'Superseded revisions are immutable'; END IF;
@@ -103,9 +113,10 @@ BEGIN
  IF OLD.status='submitted' AND (NEW.architecture IS DISTINCT FROM OLD.architecture OR NEW.title<>OLD.title OR NEW.org<>OLD.org OR NEW.org_labels<>OLD.org_labels OR NEW.answers<>OLD.answers OR NEW.document_owner<>OLD.document_owner OR NEW.effective_on IS DISTINCT FROM OLD.effective_on OR NEW.review_on IS DISTINCT FROM OLD.review_on OR NEW.reason<>OLD.reason OR NEW.approver_id IS DISTINCT FROM OLD.approver_id OR NEW.last_edited_by<>OLD.last_edited_by) THEN RAISE EXCEPTION 'Return the document before editing'; END IF;
  IF OLD.status='draft' THEN
   NEW.contributor_ids:=ARRAY(SELECT DISTINCT unnest(OLD.contributor_ids || ARRAY[app.current_user_id()]));
- ELSE NEW.contributor_ids:=OLD.contributor_ids; END IF;
+  NEW.contributor_person_ids:=ARRAY(SELECT DISTINCT unnest(OLD.contributor_person_ids||ARRAY(SELECT person_id FROM app_user WHERE id=app.current_user_id() AND tenant_id=NEW.tenant_id AND person_id IS NOT NULL)));
+ ELSE NEW.contributor_ids:=OLD.contributor_ids;NEW.contributor_person_ids:=OLD.contributor_person_ids; END IF;
  IF NEW.status='approved' THEN
-  IF OLD.status<>'submitted' OR NEW.approver_id IS DISTINCT FROM app.current_user_id() OR NEW.approved_by IS DISTINCT FROM app.current_user_id() OR NEW.approved_by=ANY(OLD.contributor_ids) OR NEW.approved_by=OLD.submitted_by OR NOT EXISTS(SELECT 1 FROM job_document_review WHERE revision_id=OLD.id) OR EXISTS(SELECT 1 FROM job_document_review WHERE revision_id=OLD.id AND decision<>'reviewed') THEN RAISE EXCEPTION 'An independent named approver and completed reviews are required'; END IF;
+  IF EXISTS(SELECT 1 FROM unnest(OLD.contributor_ids) actor WHERE app.same_known_person_as_current_user(actor,NULL)) OR EXISTS(SELECT 1 FROM app_user actor WHERE actor.id=app.current_user_id() AND actor.tenant_id=OLD.tenant_id AND actor.person_id=ANY(OLD.contributor_person_ids)) OR OLD.status<>'submitted' OR NEW.approver_id IS DISTINCT FROM app.current_user_id() OR NEW.approved_by IS DISTINCT FROM app.current_user_id() OR NEW.approved_by=ANY(OLD.contributor_ids) OR NEW.approved_by=OLD.submitted_by OR NOT EXISTS(SELECT 1 FROM job_document_review WHERE revision_id=OLD.id) OR EXISTS(SELECT 1 FROM job_document_review WHERE revision_id=OLD.id AND decision<>'reviewed') THEN RAISE EXCEPTION 'An independent named approver and completed reviews are required'; END IF;
  END IF;
  RETURN NEW;
 END $$;
@@ -129,7 +140,7 @@ GRANT SELECT,INSERT ON job_architecture_jd_publication_history TO ai_hr_app;
 
 CREATE FUNCTION app.guard_architecture_jd_publication() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
 BEGIN
- IF NOT EXISTS(SELECT 1 FROM job_document j JOIN job_document_revision r ON r.job_id=j.id AND r.tenant_id=j.tenant_id WHERE j.tenant_id=NEW.tenant_id AND j.id=NEW.job_id AND r.id=NEW.revision_id AND j.job_unit_id=NEW.job_unit_id AND NEW.variant_company_id IS NOT DISTINCT FROM CASE WHEN j.company_variant THEN j.company_id ELSE NULL END AND NOT j.inactive AND r.status IN('submitted','approved') AND r.architecture->>'jobUnitId'=NEW.job_unit_id::text AND r.approver_id=app.current_user_id() AND NOT app.current_user_id()=ANY(r.contributor_ids) AND r.submitted_by IS DISTINCT FROM app.current_user_id() AND EXISTS(SELECT 1 FROM job_document_review v WHERE v.revision_id=r.id AND v.tenant_id=r.tenant_id) AND NOT EXISTS(SELECT 1 FROM job_document_review v WHERE v.revision_id=r.id AND v.tenant_id=r.tenant_id AND v.decision<>'reviewed')) THEN RAISE EXCEPTION 'Publish only the independently reviewed bound job description'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM job_document j JOIN job_document_revision r ON r.job_id=j.id AND r.tenant_id=j.tenant_id WHERE j.tenant_id=NEW.tenant_id AND j.id=NEW.job_id AND r.id=NEW.revision_id AND j.job_unit_id=NEW.job_unit_id AND NEW.variant_company_id IS NOT DISTINCT FROM CASE WHEN j.company_variant THEN j.company_id ELSE NULL END AND NOT j.inactive AND r.status IN('submitted','approved') AND r.architecture->>'jobUnitId'=NEW.job_unit_id::text AND r.approver_id=app.current_user_id() AND NOT app.current_user_id()=ANY(r.contributor_ids) AND NOT EXISTS(SELECT 1 FROM unnest(r.contributor_ids) contributor WHERE app.same_known_person_as_current_user(contributor,NULL)) AND NOT EXISTS(SELECT 1 FROM app_user actor WHERE actor.id=app.current_user_id() AND actor.tenant_id=r.tenant_id AND actor.person_id=ANY(r.contributor_person_ids)) AND r.submitted_by IS DISTINCT FROM app.current_user_id() AND EXISTS(SELECT 1 FROM job_document_review v WHERE v.revision_id=r.id AND v.tenant_id=r.tenant_id) AND NOT EXISTS(SELECT 1 FROM job_document_review v WHERE v.revision_id=r.id AND v.tenant_id=r.tenant_id AND v.decision<>'reviewed')) THEN RAISE EXCEPTION 'Publish only the independently reviewed bound job description'; END IF;
  RETURN NEW;
 END $$;
 CREATE TRIGGER architecture_jd_publication_binding BEFORE INSERT OR UPDATE ON job_architecture_jd_publication FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_jd_publication();
@@ -144,3 +155,26 @@ BEGIN
 END $$;
 CREATE TRIGGER architecture_outlier_bu BEFORE INSERT OR UPDATE ON job_architecture_outlier FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_outlier_bu();
 REVOKE ALL ON FUNCTION app.guard_architecture_outlier_bu() FROM PUBLIC;
+
+CREATE FUNCTION app.guard_architecture_suggestion_history() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$
+BEGIN
+ IF (to_jsonb(NEW)-ARRAY['decision','decided_by','decided_at','proposal_id','payload']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['decision','decided_by','decided_at','proposal_id','payload']) OR OLD.decision<>'pending' OR NEW.decision='pending' THEN RAISE EXCEPTION 'Suggestion source and decision history are immutable'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER architecture_suggestion_history BEFORE UPDATE ON job_architecture_suggestion FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_suggestion_history();
+REVOKE ALL ON FUNCTION app.guard_architecture_suggestion_history() FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION app.guard_job_children() RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
+DECLARE r job_document_revision;
+BEGIN
+ SELECT * INTO r FROM job_document_revision WHERE id=COALESCE(NEW.revision_id,OLD.revision_id) FOR UPDATE;
+ IF NOT FOUND THEN RETURN COALESCE(NEW,OLD); END IF;
+ IF r.status IN('approved','superseded') THEN RAISE EXCEPTION 'Approved revision history is immutable'; END IF;
+ IF TG_TABLE_NAME='job_document_attachment' AND r.status<>'draft' THEN RAISE EXCEPTION 'Attachments may change only in draft'; END IF;
+ IF TG_TABLE_NAME='job_document_review' THEN
+  IF TG_OP='UPDATE' THEN
+   IF EXISTS(SELECT 1 FROM unnest(r.contributor_ids) actor WHERE app.same_known_person_as_current_user(actor,NULL)) OR EXISTS(SELECT 1 FROM app_user actor WHERE actor.id=app.current_user_id() AND actor.tenant_id=r.tenant_id AND actor.person_id=ANY(r.contributor_person_ids)) OR r.status<>'submitted' OR NEW.reviewer_id<>OLD.reviewer_id OR NEW.revision_id<>OLD.revision_id OR NEW.tenant_id<>OLD.tenant_id OR NEW.reviewer_id<>app.current_user_id() OR NEW.reviewer_id=ANY(r.contributor_ids) OR NEW.reviewer_id=r.submitted_by THEN RAISE EXCEPTION 'Only the named independent reviewer may decide'; END IF;
+  ELSIF r.status<>'draft' THEN RAISE EXCEPTION 'Review assignments may change only in draft'; END IF;
+ END IF;
+ RETURN COALESCE(NEW,OLD);
+END $$;

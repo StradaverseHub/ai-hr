@@ -30531,7 +30531,12 @@
     },
     "subfamily": "Subkeluarga kerja",
     "specialisation": "Pengkhususan peranan",
-    "jobUnit": "Unit kerja"
+    "jobUnit": "Unit kerja",
+    "actorNameUnavailable": "Nama tidak direkodkan",
+    "jobHolderAcknowledgement": "Akuan penerimaan pemegang jawatan",
+    "acknowledgementName": "Nama",
+    "acknowledgementSignature": "Tandatangan",
+    "acknowledgementDate": "Tarikh"
   },
   "rewardsAccess": {
     "title": "Akses Ganjaran",
@@ -35715,7 +35720,9 @@
     "usePositionGrade": "Gunakan gred jawatan",
     "positionMovementHint": "Ini hanya mengisi gred cadangan. Simpan dan luluskan pergerakan bertarikh untuk mengubah gred pekerja.",
     "positionReadonlyHint": "Jenis pergerakan ini tidak boleh mengedit gred. Gunakan pergerakan bertarikh yang dibenarkan untuk mengubahnya.",
-    "positionDraftHint": "Ini hanya mengisi gred draf. Semak draf pekerja sebelum pengaktifan."
+    "positionDraftHint": "Ini hanya mengisi gred draf. Semak draf pekerja sebelum pengaktifan.",
+    "pdfExport": "Eksport PDF",
+    "employeeGradeAccessHint": "Perbandingan gred pekerja memerlukan akses Tenaga Kerja. Semakan jawatan dan katalog masih tersedia."
   },
   "rewardRules": {
     "title": "Peraturan",

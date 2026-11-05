@@ -30531,7 +30531,12 @@
     },
     "subfamily": "Job sub-family",
     "specialisation": "Role specialisation",
-    "jobUnit": "Job unit"
+    "jobUnit": "Job unit",
+    "actorNameUnavailable": "Name not recorded",
+    "jobHolderAcknowledgement": "Job-holder acknowledgement",
+    "acknowledgementName": "Name",
+    "acknowledgementSignature": "Signature",
+    "acknowledgementDate": "Date"
   },
   "rewardsAccess": {
     "title": "Rewards access",
@@ -35715,7 +35720,9 @@
     "usePositionGrade": "Use position grade",
     "positionMovementHint": "This fills the proposed grade only. Save and approve the dated movement to change the employee’s grade.",
     "positionReadonlyHint": "This movement type cannot edit the grade. Use an authorized dated movement to change it.",
-    "positionDraftHint": "This fills the draft grade only. Review the employee draft before activation."
+    "positionDraftHint": "This fills the draft grade only. Review the employee draft before activation.",
+    "pdfExport": "Export PDF",
+    "employeeGradeAccessHint": "Employee grade comparisons require Workforce access. Position and catalogue checks remain available."
   },
   "rewardRules": {
     "title": "Rules",

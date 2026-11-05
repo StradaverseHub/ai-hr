@@ -49,6 +49,7 @@ export type JobRevision = {
     prepared_by: string;
     last_edited_by: string;
     contributor_ids: string[];
+    contributor_person_ids:string[];
     submitted_by: string | null;
     submitted_at: string | null;
     approved_by: string | null;
@@ -96,7 +97,7 @@ function uuid(x: string): string { if (!UUID.test(x))
 function actor(ctx: SessionContext) { if(!ctx.userId||!UUID.test(ctx.userId))throw new JobDocumentError('Job documentation requires an authorized HR user');return ctx.userId; }
 /** Access decisions are read under the same configuration lock used by revocation writers. */
 async function jobTenant<T>(ctx:SessionContext, fn:(tx:Tx)=>Promise<T>):Promise<T>{
- return withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);return fn(tx);});
+ return withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and (app.job_architecture_can(null,'view') or exists(select 1 from role_assignment ra join app_user u on u.id=ra.app_user_id and u.tenant_id=ra.tenant_id where ra.tenant_id=${ctx.tenantId}::uuid and ra.app_user_id=${ctx.userId}::uuid and ra.role::text in('hr_admin','super_admin') and u.archived_at is null and not app.login_blocked(u.id))) as ok`);if(!eligible?.ok)throw new JobDocumentError('Job documentation requires an authorized HR user');return fn(tx);});
 }
 async function rows<T>(tx: Tx, q: ReturnType<typeof sql>): Promise<T[]> { return await tx.execute(q) as unknown as T[]; }
 async function scope(tx: Tx, ctx: SessionContext, companyId: string, operation: 'view'|'maintain'='maintain'): Promise<void> { uuid(companyId); const [r] = await rows<{
@@ -262,8 +263,8 @@ export async function saveJobDraft(ctx: SessionContext, input: JobInput, existin
         return { jobId, revisionId: saved.id };
     });
 }
-export async function readJobDocument(ctx: SessionContext, id: string, revisionId?: string) { actor(ctx); return jobTenant(ctx, async (tx) => { const found = await getTx(tx, ctx, id, revisionId); const history = await rows<JobRevision>(tx, sql `select * from job_document_revision where job_id=${id}::uuid order by version desc,id`); const reviews = await rows<Review>(tx, sql `select r.*,coalesce(p.full_name,u.id::text) as name from job_document_review r join app_user u on u.id=r.reviewer_id left join person p on p.id=u.person_id where r.revision_id=${found.revision.id}::uuid order by r.id`); const attachments = await rows<Attachment>(tx, sql `select id,filename,mime_type,octet_length(content) as size,created_at from job_document_attachment where revision_id=${found.revision.id}::uuid order by created_at,id`); const events = await rows<Audit>(tx, sql `select id,action,actor_id,created_at,before_value,after_value from job_document_audit where job_id=${id}::uuid order by created_at desc,id desc limit 200`); const principals = await rows<{ id: string; name: string }>(tx, sql`select u.id::text as id, coalesce(p.full_name,u.id::text) as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and (u.id in (select prepared_by from job_document_revision where job_id=${id}::uuid union select last_edited_by from job_document_revision where job_id=${id}::uuid union select approver_id from job_document_revision where job_id=${id}::uuid union select submitted_by from job_document_revision where job_id=${id}::uuid union select approved_by from job_document_revision where job_id=${id}::uuid) or u.id in (select reviewer_id from job_document_review where revision_id=${found.revision.id}::uuid)) order by u.id`);
-        return { ...found, history, reviews, attachments, events, principals: Object.fromEntries(principals.map(p => [p.id,p.name])) }; }); }
+export async function readJobDocument(ctx: SessionContext, id: string, revisionId?: string) { actor(ctx); return jobTenant(ctx, async (tx) => { const found = await getTx(tx, ctx, id, revisionId); const history = await rows<JobRevision>(tx, sql `select * from job_document_revision where job_id=${id}::uuid order by version desc,id`); const reviews = await rows<Review>(tx, sql `select r.*,coalesce(app.job_document_actor_label(${id}::uuid,r.reviewer_id),'') as name from job_document_review r where r.revision_id=${found.revision.id}::uuid order by r.id`); const attachments = await rows<Attachment>(tx, sql `select id,filename,mime_type,octet_length(content) as size,created_at from job_document_attachment where revision_id=${found.revision.id}::uuid order by created_at,id`); const events = await rows<Audit>(tx, sql `select id,action,actor_id,created_at,before_value,after_value from job_document_audit where job_id=${id}::uuid order by created_at desc,id desc limit 200`); const principals = await rows<{ id: string; name: string|null }>(tx, sql`select u.id::text as id, app.job_document_actor_label(${id}::uuid,u.id) as name from app_user u where u.tenant_id=${ctx.tenantId}::uuid and (u.id in (select prepared_by from job_document_revision where job_id=${id}::uuid union select last_edited_by from job_document_revision where job_id=${id}::uuid union select approver_id from job_document_revision where job_id=${id}::uuid union select submitted_by from job_document_revision where job_id=${id}::uuid union select approved_by from job_document_revision where job_id=${id}::uuid) or u.id in (select reviewer_id from job_document_review where revision_id=${found.revision.id}::uuid)) order by u.id`);
+        return { ...found, history, reviews, attachments, events, principals: Object.fromEntries(principals.filter((p):p is {id:string;name:string}=>!!p.name).map(p => [p.id,p.name])) }; }); }
 export type JobFilters={q?:string;company?:string;businessUnit?:string;department?:string;grade?:string;family?:string;status?:string;page?:string};
 export type JobSummary=Job&{revision:Pick<JobRevision,'id'|'title'|'version'|'status'|'org'|'org_labels'|'updated_at'>};
 function filtersSql(ctx:SessionContext,f:JobFilters){
@@ -287,6 +288,7 @@ export async function getJobDocumentPage(ctx:SessionContext,filters:JobFilters={
 export async function listJobDocuments(ctx:SessionContext,filters:JobFilters={}){return(await getJobDocumentPage(ctx,filters)).rows;}
 
 function revisionInput(job: Job, r: JobRevision, reviews: Review[]): JobInput { return { jobUnitId:job.job_unit_id??undefined,companyVariant:job.company_variant,companyId: job.company_id, jobCode: job.job_code, title: r.title, owner: r.document_owner, org: r.org, answers: r.answers, effectiveOn: r.effective_on ?? '', reviewOn: r.review_on ?? '', reason: r.reason, approverId: r.approver_id ?? '', reviewerIds: reviews.map(v => v.reviewer_id) }; }
+async function independentJobPerson(tx:Tx,r:JobRevision){const [same]=await tx.execute<{same:boolean}>(sql`select exists(select 1 from unnest(array(select jsonb_array_elements_text(${JSON.stringify(r.contributor_ids)}::jsonb))::uuid[]) actor where app.same_known_person_as_current_user(actor,null)) or exists(select 1 from app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=any(array(select jsonb_array_elements_text(${JSON.stringify(r.contributor_person_ids??[])}::jsonb))::uuid[])) as same`);if(same?.same)throw new JobDocumentError('A different independent person must review or approve this revision.');}
 export async function transitionJob(ctx: SessionContext, p: {
     jobId: string;
     revisionId: string;
@@ -355,6 +357,7 @@ export async function transitionJob(ctx: SessionContext, p: {
             await tx.execute(sql `update job_document_revision set status='submitted',submitted_by=${by}::uuid,submitted_at=now(),updated_at=now(),lock_version=lock_version+1 where id=${r.id}::uuid`);
         }
         else if (p.action === 'review' || p.action === 'return') {
+            await independentJobPerson(tx,r);
             if (r.status !== 'submitted' || !reviews.some(v => v.reviewer_id === by) || [...r.contributor_ids, r.submitted_by].includes(by))
                 throw new JobDocumentError('Only an assigned independent reviewer may review / return this revision');
             if (!p.comments?.trim() || p.comments.length > 4000)
@@ -364,6 +367,7 @@ export async function transitionJob(ctx: SessionContext, p: {
             await tx.execute(sql `update job_document_revision set status=${p.action === 'return' ? 'draft' : 'submitted'},updated_at=now(),lock_version=lock_version+1 where id=${r.id}::uuid`);
         }
         else if (p.action === 'approve') {
+            await independentJobPerson(tx,r);
             if(r.architecture){const [permission]=await tx.execute<{ok:boolean}>(sql`select app.job_architecture_can(${job.company_variant?job.company_id:null}::uuid,'check') as ok`);if(!permission?.ok)throw new JobDocumentError('An authorized Group Rewards or Org Design checker must approve a linked job description.');await validateJobScopeForApproval(tx,ctx,job,r);}
             if (r.status !== 'submitted' || r.approver_id !== by || [...r.contributor_ids, r.submitted_by].includes(by) || !reviews.length || reviews.some(v => v.decision !== 'reviewed'))
                 throw new JobDocumentError('The named independent approver may approve after all reviews are complete');
