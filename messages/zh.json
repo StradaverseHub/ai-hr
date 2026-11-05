@@ -36014,6 +36014,7 @@
     }
   },
   "rewardUploaded": {
+    "literalCells": "上传前请将公式和错误单元格替换为实际值。",
     "adjustmentHistory": "调整历史",
     "acceptedRows": "已接受的行",
     "employee": "员工",

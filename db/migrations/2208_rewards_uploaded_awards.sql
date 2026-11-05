@@ -131,7 +131,7 @@ BEGIN
  IF TG_TABLE_NAME='reward_uploaded_version' THEN
   SELECT person_id INTO NEW.uploaded_by_person FROM app_user WHERE id=app.current_user_id() AND tenant_id=app.current_tenant_id();
   NEW.input_snapshot:=(SELECT coalesce(jsonb_agg(jsonb_build_object('employmentId',e.employment_id,'source',e.source,'facts',e.facts) ORDER BY e.employment_id),'[]'::jsonb) FROM reward_entry e WHERE e.unit_id=NEW.unit_id AND e.tenant_id=NEW.tenant_id AND EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.rows) r WHERE r->>'employmentId'=e.employment_id::text));
-  NEW.digest:=encode(sha256(convert_to(NEW.rows::text||NEW.input_snapshot::text||coalesce(NEW.import_content,'')||coalesce(NEW.evidence_content,''),'UTF8')),'hex');
+  NEW.digest:=encode(sha256(convert_to(jsonb_build_object('rows',NEW.rows,'snapshot',NEW.input_snapshot,'originalFileName',NEW.original_file_name,'import',NEW.import_content,'evidenceName',NEW.evidence_name,'evidenceType',NEW.evidence_mime,'evidence',NEW.evidence_content)::text,'UTF8')),'hex');
   IF NEW.uploaded_by<>app.current_user_id() OR NOT EXISTS(SELECT 1 FROM reward_unit u JOIN reward_uploaded_review r ON r.unit_id=u.id AND r.tenant_id=u.tenant_id WHERE u.id=NEW.unit_id AND u.tenant_id=NEW.tenant_id AND u.status='draft' AND NEW.version=r.current_version+1) THEN RAISE EXCEPTION 'Upload versions are append-only at BU stage';END IF;
  END IF;
  IF TG_TABLE_NAME='reward_uploaded_review' THEN
@@ -251,6 +251,7 @@ CREATE TRIGGER reward_uploaded_digest_changed AFTER INSERT OR UPDATE OR DELETE O
 CREATE FUNCTION app.reward_uploaded_awards_for_post(wanted uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 BEGIN
  IF NOT app.reward_not_viewing_as() OR NOT EXISTS(SELECT 1 FROM reward_unit WHERE id=wanted AND tenant_id=app.current_tenant_id() AND deleted_at IS NULL AND status='approved' AND app.reward_admin(company_id) AND 'payroll'=ANY(ARRAY(SELECT app.reward_roles(id)))) THEN RAISE EXCEPTION 'Approved Payroll handoff authority required';END IF;
+ IF EXISTS(SELECT 1 FROM reward_uploaded_award a JOIN reward_entry e ON e.id=a.entry_id AND e.tenant_id=a.tenant_id AND e.unit_id=a.unit_id JOIN app_user u ON u.id=app.current_user_id() AND u.tenant_id=e.tenant_id AND u.person_id::text=e.source->>'personId' WHERE a.unit_id=wanted AND a.tenant_id=app.current_tenant_id()) THEN RAISE EXCEPTION 'A different authorized Payroll reviewer must post this review' USING ERRCODE='42501';END IF;
  RETURN(SELECT coalesce(jsonb_agg((award-'remarks')||jsonb_build_object('remarks','') ORDER BY entry_id),'[]'::jsonb) FROM reward_uploaded_award WHERE unit_id=wanted AND tenant_id=app.current_tenant_id());
 END $$;
 ALTER FUNCTION app.reward_uploaded_awards_for_post(uuid) OWNER TO ai_hr_reward_upload_reader;
@@ -376,6 +377,7 @@ BEGIN
 END $$;
 CREATE TRIGGER reward_uploaded_source_guard BEFORE INSERT OR UPDATE OF unit_id,tenant_id,employment_id,source ON reward_entry FOR EACH ROW EXECUTE FUNCTION app.reward_uploaded_source_guard();
 
+ALTER TABLE reward_uploaded_version ADD CONSTRAINT reward_uploaded_version_import_size CHECK(import_content IS NULL OR octet_length(import_content)<=5000000);
 ALTER TABLE reward_uploaded_version ADD CONSTRAINT reward_uploaded_version_evidence_format CHECK(
  (evidence_name IS NULL AND evidence_mime IS NULL AND evidence_content IS NULL) OR
  (evidence_name IS NOT NULL AND evidence_mime IS NOT NULL AND evidence_content IS NOT NULL AND length(trim(evidence_name)) BETWEEN 1 AND 200 AND length(evidence_content) BETWEEN 4 AND 6666668 AND evidence_content~'^[A-Za-z0-9+/]+={0,2}$'
