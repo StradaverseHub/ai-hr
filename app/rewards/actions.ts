@@ -25,11 +25,10 @@ async function change(f: FormData, work: (s: Awaited<ReturnType<typeof getSessio
   revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout'); redirect(notice ? `${url}?notice=${notice}` : url);
 }
 
-export async function createRewardAction(f: FormData) {
-  const s = await getSession(); let unitId: string;
-  try { unitId = await createRewardUnit(s, { name: str(f, 'name'), year: number(f, 'year'), companyId: str(f, 'companyId'), businessUnitId: str(f, 'businessUnitId'), cycleId: str(f, 'cycleId') || undefined, snapshotDate: str(f, 'snapshotDate'),sharedPolicyVersionId:str(f,'sharedPolicyVersionId')||undefined }); }
-  catch (e) {if(e instanceof RewardPolicyGroupError)redirect(`/admin/rewards?sharedError=${e.code}`);redirect(`/admin/rewards?error=${encodeURIComponent(errorText(e))}`);}
-  revalidatePath('/rewards'); revalidatePath('/admin/rewards'); redirect(`/admin/rewards/${unitId}`);
+/** Annual review creation is owned by the approved plan preview, including legacy form posts. */
+export async function createRewardAction(_f: FormData) {
+  await getSession();
+  redirect('/admin/rewards/plans');
 }
 /** A role change is stored as a pending request for an independent administrator (changeRewardMember), so the
  *  page says so instead of reloading as if nothing happened. */
