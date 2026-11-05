@@ -1,7 +1,7 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {requireAdmin} from '@/lib/authz';
-import {InformationCorrectionError,previewInformationCorrection,correctInformation,informationCorrectionOptions,informationCorrectionHistory} from '@/core/information-correction';
+import {InformationCorrectionError,readInformationCorrection,previewInformationCorrection,correctInformation,informationCorrectionOptions,informationCorrectionHistory} from '@/core/information-correction';
 import {previewInformationUpload,confirmInformationUpload} from '@/core/information-correction-import';
 import type {InformationChanges} from '@/lib/information-correction';
 async function withCorrectionFeedback<T>(run: () => Promise<T>): Promise<T | { correctionError: string }> {
@@ -16,7 +16,7 @@ async function withCorrectionFeedback<T>(run: () => Promise<T>): Promise<T | { c
 export async function informationContextAction(employmentId: string) {
   const ctx = await requireAdmin();
   return withCorrectionFeedback(async () => {
-    const preview = await previewInformationCorrection(ctx, { employmentId, changes: {}, reason: 'Read current information' });
+    const preview = await readInformationCorrection(ctx, employmentId);
     return { preview, options: await informationCorrectionOptions(ctx), history: await informationCorrectionHistory(ctx, employmentId) };
   });
 }
