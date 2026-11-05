@@ -7,8 +7,9 @@ import { and, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
+import { withRewardsTenant } from '../core/module-gate';
 import { setCompensation } from '../core/comp';
-import { cancelRewardReviewTx, cancelRewardReview, createRewardUnit, decideRewardUnit, emptyRewardCalendar, getRewardUnit, listRewardReviewStatus, listRewardUnits, pendingRewardTasks, rewardApprovalsBoard, saveRewardCalendar, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
+import { cancelRewardReviewTx, cancelRewardReview, createRewardUnit, createRewardUnitTx, decideRewardUnit, emptyRewardCalendar, getRewardUnit, listRewardReviewStatus, listRewardUnits, pendingRewardTasks, rewardApprovalsBoard, saveRewardCalendar, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -174,7 +175,11 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     }
     const first=await createApprovedRewardUnit(admin,{name:'Fictional overview review',year,...targets[0],snapshotDate:today},undefined,targets);
     const versionId=(await getRewardUnit(admin,first)).unit.policyGroupVersionId!;
-    for(const target of targets.slice(1))await createApprovedRewardUnit(admin,{name:'Fictional overview review',year,...target,snapshotDate:today,sharedPolicyVersionId:versionId});
+    await withRewardsTenant(admin, async tx => {
+      for (const target of targets.slice(1)) {
+        await createRewardUnitTx(tx, admin, { ...target, year, snapshotDate: today, approvedPlanVersionId: versionId });
+      }
+    });
     const started=performance.now(),overview=await listRewardReviewStatus(admin,companyIds),elapsed=performance.now()-started;
     expect(overview.rows).toHaveLength(50);expect(new Set(overview.rows.map(row=>row.id)).size).toBe(50);
     console.info(`Rewards review list 50-review fixture: ${elapsed.toFixed(1)} ms`);
