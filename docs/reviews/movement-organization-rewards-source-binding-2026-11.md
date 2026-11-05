@@ -17,3 +17,7 @@ The repository owner approved rebinding the same 28 approvals on 2026-11-05 at 1
 ## Merge with the new staging baseline
 
 The repository owner approved rebinding the same 28 records to `ca568afcf4aab869e35f532d70178635b90b495dc8dcf7cfc9382610d2b0777f` on 2026-11-05 at 17:32 UTC. The assessed merge is `fa788a7b640cf03733fc51f671d4a31a03377aa9`, which combines the approved four-item source and the release now serving staging at `d6800bfc269f23d057f2147c6bcf4018a5e4fb2a`. The registry records match on reviewer, evidence, date and disposition. The source preserves the existing provider contracts, payload fields and transport.
+
+## Combined Re-planned Board binding
+
+The repository owner approved rebinding the same 28 records to `70c66c742506047e79becbb8bfcafa1ac6ef3d7108a28dfe81f766e9f88bc7e6` on 2026-11-05 at 17:35 UTC. The assessed source is `fb9202d3e5a1124e4405ea2e7fc41aad7e556b22`. It incorporates the Job Description rollback `72f2b4f424243094b9a5c7a1cce2cd6e1e487974` and the EPF Top-up changes `410e2b41d5dcfb1e3123df3be19bfaa073449ce9`. The rollback removes retired destinations and action inventory entries. EPF adds saved calculation details for the native payroll explanation and export. The existing provider contracts, transport, original approval provenance and pending dispositions are preserved.
