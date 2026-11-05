@@ -16,6 +16,12 @@ export function attendanceRejectionSubjects(users){
  return subjects;
 }
 
+export function attendanceCorrectionForm(page){
+ return page.locator('main form').filter({
+  has:page.getByRole('button',{name:'Submit correction',exact:true}),
+ }).filter({visible:true});
+}
+
 export async function prepareAttendanceRejection({context,visit,fixture,db,report,save,phase}){
  const {attendanceHistory,components}=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
  const subject=attendanceRejectionSubjects(fixture.users)[phase==='loaded'?1:0];
@@ -57,9 +63,9 @@ export async function prepareAttendanceRejection({context,visit,fixture,db,repor
   const page=await employeeContext.newPage(),path='/attendance/my-records/'+date;
   await visit(page,subject,path,'attendance-rejection-setup');
   await handleWelcomeTour(page);
-  const form=page.locator('main form').filter({has:page.locator('[name="checkIn"]')}).filter({visible:true});
-  await form.locator('[name="checkIn"]').fill('09:15',{timeout});
-  await form.locator('[name="checkOut"]').fill('17:15',{timeout});
+  const form=attendanceCorrectionForm(page);
+  await form.locator('input[type="time"][name="checkIn"]').fill('09:15',{timeout});
+  await form.locator('input[type="time"][name="checkOut"]').fill('17:15',{timeout});
   await form.locator('[name="reason"]').fill(marker,{timeout});
   // The tour dismissal also posts to the current route. Match this form's
   // fictional marker so its earlier response cannot satisfy the correction wait.
