@@ -73,7 +73,10 @@ export async function exercisePersonnelSwitcher({page,user,fixture,report,save,p
    page.off('request',onRequest);
    page.off('response',onResponse);
   }
-  await page.getByText(messages.personnelOrganisationFilters.privateActive,{exact:true}).waitFor({timeout:remaining()});
+  const active=page.locator('main p').filter({hasText:messages.personnelOrganisationFilters.privateActive});
+  const unavailable=page.locator('main p').filter({hasText:messages.personnelOrganisationFilters.privateUnavailable});
+  await active.or(unavailable).first().waitFor({timeout:remaining()});
+  assert.equal(await active.count(),1,'Personnel redirected but the private result is unavailable');
   const table=page.locator('main tbody');
   if(visible)await table.getByText(person.name,{exact:true}).waitFor({timeout:remaining()});
   else{
