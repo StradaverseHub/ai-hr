@@ -33,6 +33,7 @@ import { payslipZakatLine } from '../core/payslip-zakat-line';
 import { payslipDeductionBreakdown, displayComponentLines } from '../core/payslip-imported-lines';
 import {
   earningRowShown,
+  payItemLabel,
   payItemLinesForBuckets,
   payItemLinesForCategory,
   payItemLinesReconcile,
@@ -80,6 +81,7 @@ export type PayslipPdfLogo = { bytes: Uint8Array; mimeType: string };
 export type PayslipPdfData = {
   /** Admin review annotation of a recorded attempt. It changes no saved or issued financial value. */
   reviewNotice?: {heading: string; text: string};
+  adminReview?: boolean;
   employerPeriodTotals?: {mtd:{epf:number|null;socso:number|null;eis:number|null;hrdf:number|null};ytd:{epf:number|null;socso:number|null;eis:number|null;hrdf:number|null}};
   informationRows?: {label: string; value: string}[];
   employee: string;
@@ -1468,7 +1470,7 @@ export function payslipPresentationRows(d:PayslipPdfData,t:PayslipPdfLabels,rate
     // TOTAL DEDUCTIONS printed under it. No stamp, or a residual nothing itemises ⇒ the single row as before.
     ...(d.absence.showResidual
       ? payItemLinesReconcile(d.deductionLines ?? [], d.absence.residual)
-        ? (d.deductionLines ?? []).filter((l) => earningRowShown(l.amount)).map((l) => ({ label: l.name.trim() || l.code || '', quantity: payItemQuantityLabel(l,t), amount: l.amount }))
+        ? (d.deductionLines ?? []).filter((l) => earningRowShown(l.amount)).map((l) => ({ label: payslipPayItemLabel(l,d.adminReview), quantity: payItemQuantityLabel(l,t,d.adminReview), amount: l.amount }))
         : [{ label: t.otherDeductions, amount: d.absence.residual }]
       : []),
   ];
@@ -1476,9 +1478,13 @@ export function payslipPresentationRows(d:PayslipPdfData,t:PayslipPdfLabels,rate
   return {earnings:earnRows,deductions:dedRows};
 }
 
-function payItemQuantityLabel(line: PayslipEarningLine, t: PayslipPdfLabels): string | undefined {
+function payslipPayItemLabel(line: PayslipEarningLine, adminReview?: boolean): string {
+  return adminReview ? line.name.trim() || line.code || '' : payItemLabel(line);
+}
+
+function payItemQuantityLabel(line: PayslipEarningLine, t: PayslipPdfLabels, adminReview?: boolean): string | undefined {
   const q = line.detail ?? line.inputQuantity;
-  if (!q) return '-';
+  if (!q) return adminReview ? '-' : undefined;
   return `${q.qty}${q.unit === 'hours' ? ' ' + (q.qty === 1 ? t.hourUnit : t.hoursUnit) : q.unit === 'days' ? ' ' + (q.qty === 1 ? t.dayUnit : t.daysUnit) : ''}`;
 }
 
@@ -1507,7 +1513,7 @@ function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels, rate: (v: number
         // this changes no document today; it is here because the rule below now depends on it — dropping a
         // 0.00 line cannot move a sum, so the reconciliation that licensed these rows still holds.
         if (!earningRowShown(l.amount)) continue;
-        rows.push({ label: l.otLeg ? t.otLegs[l.otLeg] : l.name.trim() || l.code || '', sub:l.detail?rate(l.detail.rate):null, quantity:payItemQuantityLabel(l,t), amount: l.amount });
+        rows.push({ label: l.otLeg ? t.otLegs[l.otLeg] : payslipPayItemLabel(l,d.adminReview), sub:l.detail?rate(l.detail.rate):null, quantity:payItemQuantityLabel(l,t,d.adminReview), amount: l.amount });
       }
     } else if (earningRowShown(total)) {
       rows.push({ label: grouped, amount: total });

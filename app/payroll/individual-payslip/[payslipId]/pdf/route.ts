@@ -90,6 +90,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
   // `employee` (the payslipDetail convention). Bridged here rather than renaming either, so neither the
   // ESS route nor the History screen has to change for this one.
   const data = buildPayslipPdfData({ ...p, employee: p.employeeName, quantitySources }, strings.borneLabels, {
+    adminReview: true,
     // r392 (23bd49d9) — the payment facts are setting fields now: the translated method (never the raw
     // enum), the FULL account number and the cycle label, exactly as the review screen feeds them.
     informationRows: selectPayslipInformation(payslipInformationData(p, { employee: p.employeeName, employmentType: strings.employmentType,
