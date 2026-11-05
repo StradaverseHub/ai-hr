@@ -21,7 +21,7 @@ export const GROUNDING_READS:ReadonlySet<string>=new Set(['product_guidance','se
  * explainer returns leave_entitlement_explain's breakdown without needing a handle. */
 export const ANSWERED_BY:Readonly<Record<string,readonly string[]>>={setup_readiness:['setup_copilot'],leave_entitlement_explain:['explain_leave_entitlement','explain_why'],
  // Spec v22: main's two page guides are served as product_guidance topics, so that read answers them.
- password_policy_guidance:['product_guidance'],correction_controls_guidance:['product_guidance'],
+ password_policy_guidance:['product_guidance'],correction_controls_guidance:['product_guidance'],organisation_tagging_guidance:['product_guidance'],
  // Spec v23: each folded read is served as a topic of its topic tool (core/semantic-model/topic-tools.ts), so that tool answers it.
  ...Object.fromEntries([...FOLDED_READS].map(([read,{tool}])=>[read,[tool]]))};
 const answered=(read:string,reads:readonly string[])=>reads.includes(read)||(ANSWERED_BY[read]??[]).some(alternative=>reads.includes(alternative));

@@ -1,3 +1,4 @@
+import {restorePreOrgRootReportingLines} from './helpers/pre-org-root-reporting-fixture';
 /**
  * r293 — Redesign Custom Leave Approval Workflow.
  *   PHASE 1: the visual builder over the structure that was already there, plus the chain PREVIEW.
@@ -613,13 +614,13 @@ describe('r293 phase 2 — manager_manager, the second hop up the reporting line
     // (the only way to get the row in), because a cycle can also arrive from a restore, an import or a
     // row that predates the check — and a second hop that resolves to the requester would hand a person
     // their own approval, which is the one outcome this level must never produce.
-    await owner.db.insert(schema.reportingLine).values({
+    await restorePreOrgRootReportingLines([{
       tenantId: b.tenantId,
       subordinateEmploymentId: manager.employmentId,
       managerEmploymentId: subject.employmentId,
       lineType: 'administrative',
       validFrom: '2024-01-01',
-    });
+    }]);
     await setChain(['manager_manager', 'hr_admin']);
 
     const preview = await previewApprovalChain(ctx(), {

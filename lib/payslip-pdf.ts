@@ -33,12 +33,15 @@ import { payslipZakatLine } from '../core/payslip-zakat-line';
 import { deductionLinesFor, displayComponentLines } from '../core/payslip-imported-lines';
 import {
   earningRowShown,
+  payItemLabel,
   payItemLinesForBuckets,
+  payItemLinesForCategory,
   payItemLinesReconcile,
   storedComponentLines,
   storedOvertimeLines,
   type OtLegKind,
   type PayItemRateDetail,
+  type PayItemInputQuantity,
   type StoredComponentLine,
 } from '../core/payslip-earning-lines';
 
@@ -52,6 +55,7 @@ const round2 = (v: number) => Math.round(v * 100) / 100;
  *  .ts). Both absent on every payslip written before that shipped, which is what keeps those documents
  *  printing exactly as they do now. The document DERIVES NEITHER: it prints what it is given, or nothing. */
 export type PayslipEarningLine = {
+  inputQuantity?: PayItemInputQuantity;
   code: string | null;
   name: string;
   amount: number;
@@ -481,7 +485,7 @@ export function buildPayslipPdfData(
     // 6b134681 — the same stamp, read for the two buckets that kept their own totals. `earningsRowsOf`
     // decides whether they may replace the grouped row; deriving them here keeps every "which lines
     // explain which figure" answer in one function.
-    bonusLines: payItemLinesForBuckets(componentLines, ['bonus']),
+    bonusLines: payItemLinesForCategory(componentLines, 'bonus'),
     // a96d320c — AND THE STATUTORY OVERTIME LEGS, when the figure came from attendance rather than from a
     // pay item. The two sources are mutually exclusive by construction: the `ot` bucket is fed by typed
     // pay components, `statutory.otDetail` by `prefillOvertimeFromAttendance` — one run's overtime is one
@@ -491,7 +495,7 @@ export function buildPayslipPdfData(
     // document rather than to a wrong one.
     overtimeLines: overtimeLinesOf(componentLines, p.statutory),
     // b240c0ff — imported payroll history keeps each deduction line; reconciled against the row it replaces.
-    deductionLines: deductionLinesFor(p.statutory, absence.residual),
+    deductionLines: deductionLinesFor(p.statutory, absence.residual, absence),
     detailNotRecorded: componentLines.length === 0,
     nonPayableLines: nonPayableLinesOf(st.recordLines),
     ...extra,
@@ -535,7 +539,7 @@ function nonPayableLinesOf(raw: unknown): PayslipEarningLine[] {
  * strictly more informative than a rule name.
  */
 function overtimeLinesOf(lines: StoredComponentLine[], statutory: unknown): PayslipEarningLine[] {
-  const fromComponents = payItemLinesForBuckets(lines, ['ot']);
+  const fromComponents = payItemLinesForCategory(lines, 'overtime');
   return fromComponents.length > 0 ? fromComponents : storedOvertimeLines(statutory);
 }
 
@@ -557,7 +561,7 @@ function overtimeLinesOf(lines: StoredComponentLine[], statutory: unknown): Pays
  * reporter's "missing" Meal Allowance was a NAMING fault, never an omission.
  */
 function allowanceLinesOf(lines: StoredComponentLine[], otConvert: unknown): PayslipEarningLine[] {
-  const out: PayslipEarningLine[] = payItemLinesForBuckets(lines, ['wage', 'reimburse']);
+  const out: PayslipEarningLine[] = payItemLinesForCategory(lines, 'allowance');
   // f3148da1 Step 4 — the OT excess redirected to a pay item is paid through the allowance column, so it
   // is one of the lines that figure is made of. Omitting it would make the named rows fall short of the
   // total and silently drop the itemisation (the reconciliation guard below would catch it, but the
@@ -1477,12 +1481,18 @@ export function payslipPresentationRows(d:PayslipPdfData,t:PayslipPdfLabels,rate
     // TOTAL DEDUCTIONS printed under it. No stamp, or a residual nothing itemises ⇒ the single row as before.
     ...(d.absence.showResidual
       ? payItemLinesReconcile(d.deductionLines ?? [], d.absence.residual)
-        ? (d.deductionLines ?? []).filter((l) => earningRowShown(l.amount)).map((l) => ({ label: l.name, amount: l.amount }))
+        ? (d.deductionLines ?? []).filter((l) => earningRowShown(l.amount)).map((l) => ({ label: payItemLabel(l), quantity: payItemQuantityLabel(l,t), amount: l.amount }))
         : [{ label: t.otherDeductions, amount: d.absence.residual }]
       : []),
   ];
 
   return {earnings:earnRows,deductions:dedRows};
+}
+
+function payItemQuantityLabel(line: PayslipEarningLine, t: PayslipPdfLabels): string | undefined {
+  const q = line.detail ?? line.inputQuantity;
+  if (!q) return undefined;
+  return `${q.qty}${q.unit === 'hours' ? ' ' + (q.qty === 1 ? t.hourUnit : t.hoursUnit) : q.unit === 'days' ? ' ' + (q.qty === 1 ? t.dayUnit : t.daysUnit) : ''}`;
 }
 
 function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels, rate: (v: number) => string): Row[] {
@@ -1502,21 +1512,15 @@ function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels, rate: (v: number
   const push = (lines: PayslipEarningLine[] | undefined, total: number, grouped: string) => {
     const named = lines ?? [];
     if (payItemLinesReconcile(named, total)) {
-      // a96d320c — site 2 of 2: the pay code is off the EMPLOYEE's payslip (see `nonPayableRows` for the
-      // argument, and for why the `sub` slot itself is kept). `l.code` is still read from the stamp and
-      // still reaches the admin surfaces through `payItemLabel`; it is only this document that stops
-      // printing "Basic salary · BASIC" at somebody who has no use for the second half.
-      //
-      // …and the slot is now carrying the thing the reporter asked FOR. A statutory overtime leg takes
-      // its label from `otLegs` rather than from a stored name, because it is a rule of the Employment
-      // Act rather than a pay item somebody keyed.
+      // Approved 7de6fc4e: the document and Review share CODE · DESCRIPTION plus a separate saved quantity.
+      // A statutory overtime leg has no pay-item identity and keeps its localized leg caption.
       for (const l of named) {
         // a96d320c rev 2 — an item that contributed nothing to this figure is not a row about it. Both
         // producers already drop a zero contribution (`payItemLinesForBuckets`, `storedOvertimeLines`), so
         // this changes no document today; it is here because the rule below now depends on it — dropping a
         // 0.00 line cannot move a sum, so the reconciliation that licensed these rows still holds.
         if (!earningRowShown(l.amount)) continue;
-        rows.push({ label: l.otLeg ? t.otLegs[l.otLeg] : l.name, sub:l.detail?rate(l.detail.rate):null, quantity:l.detail?`${l.detail.qty}${l.detail.unit?' '+(l.detail.unit==='hours'?(l.detail.qty===1?t.hourUnit:t.hoursUnit):(l.detail.qty===1?t.dayUnit:t.daysUnit)):''}`:undefined, amount: l.amount });
+        rows.push({ label: l.otLeg ? t.otLegs[l.otLeg] : payItemLabel(l), sub:l.detail?rate(l.detail.rate):null, quantity:payItemQuantityLabel(l,t), amount: l.amount });
       }
     } else if (earningRowShown(total)) {
       rows.push({ label: grouped, amount: total });

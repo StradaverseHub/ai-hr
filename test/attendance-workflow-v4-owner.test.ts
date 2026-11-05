@@ -278,3 +278,18 @@ describe('CC delivery rechecks canonical eligibility at the private database bou
   expect(await withTenant(f.first.ctx,tx=>tx.execute(sql`select id from attendance_workflow_cc_delivery`))).toEqual([]);
  });
 });
+it('private CC delivery derives its tenant from the validated lease even with absent or unrelated sender session context',async()=>{
+ const f=await deliveryFixture(),{token}=await claimCc(f.root);const internal=(await ccRows()).find(row=>row.recipient_kind==='employee')!;
+ // The purpose-owned mail pool has no human session. Its exact job + lease, not a mutable tenant GUC, admits the read.
+ const absent=await owner.client.begin(async tx=>{await tx`select set_config('app.tenant_id','',true)`;return(await tx`select identity_email.attendance_cc_target(${internal.id}::uuid,${token}::uuid,${ccIssuer}) as target`)[0].target;});
+ expect(absent).toMatchObject({kind:'employee',userId:f.first.ctx.userId,email:f.first.email});
+ const [foreign]=await owner.db.insert(schema.tenant).values({workosOrgId:'fictional-mail-foreign-tenant',name:'Fictional unrelated sender tenant'}).returning();
+ const scoped=await owner.client.begin(async tx=>{await tx`select set_config('app.tenant_id',${foreign.id},true)`;return(await tx`select identity_email.attendance_cc_target(${internal.id}::uuid,${token}::uuid,${ccIssuer}) as target`)[0].target;});
+ expect(scoped).toEqual(absent);
+ expect(await ccTarget(internal.id,randomUUID())).toBeNull();
+ // Explicit-tenant ancestry is an implementation port, never an application enumeration API.
+ await expect(withTenant(f.root,tx=>tx.execute(sql`select app.company_org_descendant_for_tenant(${base.tenantId}::uuid,${base.companyId}::uuid,${base.companyId}::uuid)`))).rejects.toThrow();
+ const [company]=await owner.db.insert(schema.company).values({tenantId:foreign.id,legalName:'Fictional foreign CC company'}).returning();
+ const proofs=await owner.client`select app.company_org_descendant_for_tenant(${base.tenantId}::uuid,${company.id}::uuid,${company.id}::uuid) as wrong_tenant,app.company_org_descendant_for_tenant(${foreign.id}::uuid,${base.companyId}::uuid,${base.companyId}::uuid) as wrong_child`;
+ expect(proofs[0]).toEqual({wrong_tenant:false,wrong_child:false});
+});

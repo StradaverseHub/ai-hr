@@ -15,6 +15,15 @@ export class PayFormulaError extends Error {
  constructor(readonly code:string,message:string,loc:FormulaLocation={line:1,column:1},readonly detail?:FormulaErrorDetail){super(`${message} (line ${loc.line}, column ${loc.column})`);this.name='PayFormulaError';this.line=loc.line;this.column=loc.column;this.reason=message;}
 }
 const start={line:1,column:1};
+/** Reserved unfinished syntax is invalid everywhere in authored source, including strings/comments.
+ * Keep this separate from token interpretation so quoted placeholders cannot become executable literals. */
+export function assertPayFormulaCompleteSource(source:string,base:FormulaLocation=start):void{
+ if(typeof source!=='string')fail('source','Enter a formula',base);
+ const marker=/\{#MISSING(?=[:}\s]|$)/i.exec(source);if(!marker)return;
+ const prefix=source.slice(0,marker.index).split(/\r\n|\r|\n/);
+ fail('unresolved','Complete every reserved MISSING placeholder before validating or using this formula',{line:base.line+prefix.length-1,column:(prefix.length===1?base.column:1)+prefix[prefix.length-1].length});
+}
+
 function fail(code:string,message:string,loc:FormulaLocation=start,detail?:FormulaErrorDetail):never{throw new PayFormulaError(code,message,loc,detail);}
 const Z=BigInt(0),O=BigInt(1),TEN=BigInt(10),SCALE=BigInt('1000000000000'),MAX=BigInt('999999999999999999999999999999');
 const abs=(n:bigint)=>n<Z?-n:n;
@@ -52,7 +61,7 @@ export type FormulaDependency={kind:'calculated'|'unprorated'|'input'|'history'|
 export type FormulaAnalysis={dependencies:FormulaDependency[];calls:FormulaRequest[];functions:string[];registryVersion:string;evaluatorVersion:string};
 type Token={kind:'number'|'identifier'|'string'|'call'|'symbol'|'newline'|'comment'|'eof';text:string;loc:FormulaLocation};
 function tokenize(source:string):Token[]{
- if(typeof source!=='string'||!source.trim())fail('source','Enter a formula');if(source.length>PAY_FORMULA_LIMITS.source)fail('limit','Formula source is too long');
+ if(typeof source!=='string'||!source.trim())fail('source','Enter a formula');if(source.length>PAY_FORMULA_LIMITS.source)fail('limit','Formula source is too long');assertPayFormulaCompleteSource(source);
  const out:Token[]=[];let i=0,line=1,column=1;
  const push=(kind:Token['kind'],text:string,loc:FormulaLocation)=>{out.push({kind,text,loc});if(out.length>PAY_FORMULA_LIMITS.tokens)fail('limit','Formula contains too many tokens',loc);};
  while(i<source.length){const loc={line,column},c=source[i];
@@ -179,7 +188,7 @@ function analyzeProgram(program:unknown,sink?:PayFormulaError[]):FormulaAnalysis
   const loc=location(object(raw)?raw.loc:null);tick(depth,loc);if(!object(raw))fail('expression','A formula expression is required',loc);
   const expression=raw as unknown as FormulaExpression;
   switch(expression.kind){
-   case 'literal':{const v=valueOf(expression.value,loc);if(v.type==='date')fail('date','Use the Date function for a date literal',loc);return v.type;}
+   case 'literal':{const v=valueOf(expression.value,loc);if(v.type==='string')assertPayFormulaCompleteSource(v.value,loc);if(v.type==='date')fail('date','Use the Date function for a date literal',loc);return v.type;}
    case 'name':{const name=validName(expression.name,loc),type=scope.get(name.toLowerCase());if(!type)fail('identifier',`Variable ${name} is not defined in this scope`,loc,{name});return type;}
    case 'unary':{if(!['+','-','Not'].includes(expression.operator))fail('operator','Unknown unary operator',loc);const type=infer(expression.operand,scope,depth+1),expected=expression.operator==='Not'?'boolean':'decimal';if(type!==expected)fail('type',`${expression.operator} needs a ${expected} value`,loc);return expected;}
    case 'binary':{if(!Object.hasOwn(precedence,expression.operator))fail('operator','Unknown binary operator',loc);const left=infer(expression.left,scope,depth+1),right=infer(expression.right,scope,depth+1);
@@ -209,7 +218,7 @@ function analyzeProgram(program:unknown,sink?:PayFormulaError[]):FormulaAnalysis
    if(returned&&statement.kind!=='comment')guard(()=>fail('unreachable','This statement follows an unconditional return',loc),()=>undefined);
    const declared=statement.kind==='declare'&&typeof statement.name==='string'&&['decimal','string','boolean','date'].includes(statement.type)?{name:statement.name.toLowerCase(),type:statement.type}:null;
    guard(()=>{switch(statement.kind){
-    case 'comment':if(typeof statement.text!=='string'||statement.text.length>PAY_FORMULA_LIMITS.string||/[\r\n]/.test(statement.text))fail('comment','A comment must fit on one bounded line',loc);break;
+    case 'comment':if(typeof statement.text!=='string'||statement.text.length>PAY_FORMULA_LIMITS.string||/[\r\n]/.test(statement.text))fail('comment','A comment must fit on one bounded line',loc);assertPayFormulaCompleteSource(statement.text,loc);break;
     case 'declare':{const name=validName(statement.name,loc).toLowerCase();if(scope.has(name))fail('identifier','Variable is already declared in this scope',loc);if(!['decimal','string','boolean','date'].includes(statement.type))fail('type','Unknown declaration type',loc);if(infer(statement.value,scope,depth+1)!==statement.type)fail('type','Declaration value does not match its type',loc);scope.set(name,statement.type);break;}
     case 'assign':{const name=validName(statement.name,loc).toLowerCase(),type=scope.get(name);if(!type)fail('identifier','Assign only to a previously declared variable',loc);if(infer(statement.value,scope,depth+1)!==type)fail('type','Assignment value does not match its declaration',loc);break;}
     case 'explain':infer(statement.value,scope,depth+1);break;

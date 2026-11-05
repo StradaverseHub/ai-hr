@@ -578,6 +578,9 @@ export type PayslipSourceTxnRow = {
   componentCode: string | null;
   componentName: string | null;
   amount: string;
+  /** Original descriptive input; never used to allocate the payslip amount. */
+  quantity?: string | null;
+  unit?: string | null;
   /** How it was entered. NULL in the column MEANS 'manual' — resolved here so no caller re-decides. */
   source: TxnSource;
   notes: string | null;
@@ -606,6 +609,8 @@ export function listPayslipSourceTxns(
         componentCode: payComponent.code,
         componentName: payComponent.name,
         amount: payrollIndividualTxn.amount,
+        quantity: payrollIndividualTxn.quantity,
+        unit: payrollIndividualTxn.unit,
         source: payrollIndividualTxn.source,
         notes: payrollIndividualTxn.notes,
         consumedBatchId: payrollIndividualTxn.consumedBatchId,
@@ -622,7 +627,7 @@ export function listPayslipSourceTxns(
           inArray(payrollIndividualTxn.employmentId, p.employmentIds),
         ),
       )
-      .orderBy(asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.createdAt));
+      .orderBy(asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.createdAt), asc(payrollIndividualTxn.id));
     return rows.map((r) => ({
       ...r,
       source: txnSourceOf(r.source),

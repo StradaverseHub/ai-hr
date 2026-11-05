@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import {brotliDecompressSync} from 'node:zlib';
 import {chromium} from 'playwright';
+import {orgChartConnectorPath,type OrgChartEdge} from '../../lib/org-chart-model';
 let css:Promise<string>|undefined;
 async function applicationCss(){
  css??=(async()=>{
@@ -35,14 +36,14 @@ const FONT_ORIGIN='https://review-fonts.invalid/';
 const scriptFontCss=SCRIPT_FONTS.map(font=>`@font-face{font-family:'${font.family}';src:url(${FONT_ORIGIN}${font.file}) format('${font.format}');font-weight:${font.weight};font-style:normal;font-display:block;}`).join('');
 const fontBytes=new Map<string,Buffer>();
 function scriptFont(file:string):Buffer{let bytes=fontBytes.get(file);if(!bytes){bytes=brotliDecompressSync(readFileSync(join('assets/fonts',file)));fontBytes.set(file,bytes);}return bytes;}
-export async function captureAiReviewScreenshots(html:string,locale:string,section:'overview'|'queue'|'probe'|'scheduled-group'|'scheduled-company'|'runner-controls'|'runner-controls-dark'|'build-list'|'pay-rule'|'security-overview'|'security-create'|'security-invite'|'security-functions'|'security-users'|'security-permissions'|'security-password-policy'|'security-password-policy-enabled'|`security-flyout-${string}`|'formula-generator'|'formula-write'|'formula-conditions'|'feedback-board'|'feedback-capped'|'feedback-unloaded'|'messenger'|'formula-pay-item'|'formula-trace'|'formula-help-examples'|'formula-sample-test'|'formula-checks'|'delegation-replacement'|'inventory-group'|'inventory-company'|'runs-paged'|'followup-features'|'people-configuration-navigation'|'lifecycle-case-onboarding'|'lifecycle-case-offboarding'|`chat-card-${string}`|`ai-centre-${string}`,fixture='real components; fictional data owners; no authenticated server journey',theme:'classic'|'atelier'|'monolith'='classic',colorMode:'light'|'dark'='light'){
+export async function captureAiReviewScreenshots(html:string,locale:string,section:'organisation-tagging'|'derived-organisation-fields'|'personnel-organisation-results'|'personnel-organisation-filters'|'overview'|'queue'|'probe'|'scheduled-group'|'scheduled-company'|'runner-controls'|'runner-controls-dark'|'build-list'|'pay-rule'|'security-overview'|'security-create'|'security-invite'|'security-functions'|'security-users'|'security-permissions'|'security-password-policy'|'security-password-policy-enabled'|`security-flyout-${string}`|'probation-tracker'|'formula-generator'|'formula-write'|'formula-conditions'|'formula-personnel-library'|'formula-personnel-registry'|'feedback-board'|'feedback-capped'|'feedback-unloaded'|'messenger'|'formula-pay-item'|'formula-trace'|'org-chart-controls'|'payroll-history-detail'|'payslip-itemized-preview'|'formula-help-examples'|'formula-sample-test'|'formula-checks'|'delegation-replacement'|'inventory-group'|'inventory-company'|'runs-paged'|'followup-features'|'people-configuration-navigation'|'lifecycle-case-onboarding'|'lifecycle-case-offboarding'|`chat-card-${string}`|`ai-centre-${string}`,fixture='real components; fictional data owners; no authenticated server journey',theme:'classic'|'atelier'|'monolith'='classic',colorMode:'light'|'dark'='light'){
  const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
  if(!evidence)return;
  if(process.env.GITHUB_ACTIONS!=='true')throw Error('Visual capture requires the selected GitHub Actions runner.');
  const executable='/usr/bin/google-chrome';
  if(!existsSync(executable))throw Error('The hosted runner Chrome executable is unavailable; no visual evidence claimed.');
  const out=join(evidence,'ui-screenshots');mkdirSync(out,{recursive:true});
- const styles=(await applicationCss())+(section.startsWith('lifecycle-case-')?'\n'+readFileSync('app/onboarding-workspace.css','utf8')+'\n'+readFileSync('app/lifecycle/v9/workspace.css','utf8'):''),browser=await chromium.launch({executablePath:executable,headless:true});
+ const styles=(await applicationCss())+((section.startsWith('lifecycle-case-')||section==='probation-tracker')?'\n'+readFileSync('app/onboarding-workspace.css','utf8')+'\n'+readFileSync('app/lifecycle/v9/workspace.css','utf8')+(section==='probation-tracker'?'\n'+readFileSync('app/lifecycle/probation/probation.css','utf8'):''):''),browser=await chromium.launch({executablePath:executable,headless:true});
  const rows=[];
  try{for(const [device,width,height] of [['desktop',1440,1000],['mobile',390,844]] as const){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
@@ -57,6 +58,16 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   const unloaded=await page.evaluate(async faces=>{void getComputedStyle(document.documentElement).fontFamily;const lists=await Promise.all(faces.map(face=>document.fonts.load(face)));return faces.filter((_,i)=>!lists[i].length||lists[i].some(face=>face.status!=='loaded'));},SCRIPT_FONTS.map(font=>`${font.weight} 16px "${font.family}"`));
   if(unloaded.length)throw Error('Script fonts did not load before layout: '+unloaded.join(', '));
   await page.evaluate(()=>{document.body.hidden=false;return document.fonts.ready;});
+  let chartGeometry:unknown=null;
+  if(section==='org-chart-controls'){
+   // React's layout effect has already rendered the real edge population in jsdom. Re-measure those
+   // SAME cards after Chromium loads the application fonts, using the live chart's pure path owner.
+   const measured=await page.evaluate(()=>{const tree=document.querySelector<HTMLElement>('[data-org-tree]');if(!tree)throw Error('Actual OrgChart tree is missing');const base=tree.getBoundingClientRect();const scale=Number(tree.style.transform.match(/scale\(([^)]+)\)/)?.[1]??1);const nodes=Array.from(tree.querySelectorAll<HTMLElement>('[data-org-node]')).map(node=>{const rect=node.getBoundingClientRect();return {id:node.dataset.orgNode!,pos:{cx:(rect.left-base.left+rect.width/2)/scale,cy:(rect.top-base.top+rect.height/2)/scale,t:(rect.top-base.top)/scale,b:(rect.bottom-base.top)/scale,l:(rect.left-base.left)/scale,r:(rect.right-base.left)/scale}};});const edges=Array.from(tree.querySelectorAll<SVGPathElement>('path[data-org-manager]')).map((edge,index)=>({index,manager:edge.dataset.orgManager!,subordinate:edge.dataset.orgSubordinate!,type:edge.dataset.orgType!}));return {nodes,edges,width:tree.scrollWidth,height:tree.scrollHeight,horizontal:tree.dataset.orgHorizontal==='true',scale};});
+   const paths=measured.edges.map(edge=>{const manager=measured.nodes.find(node=>node.id===edge.manager),subordinate=measured.nodes.find(node=>node.id===edge.subordinate);if(!manager||!subordinate)throw Error('A rendered chart connector lost its visible card');return {index:edge.index,d:orgChartConnectorPath(manager.pos,subordinate.pos,edge.type as OrgChartEdge['type'],measured.horizontal)};});
+   await page.evaluate(({paths,width,height,scale})=>{const tree=document.querySelector<HTMLElement>('[data-org-tree]')!,svg=tree.querySelector<SVGElement>('[data-org-connectors]')!,wrapper=tree.parentElement!;svg.setAttribute('width',String(width));svg.setAttribute('height',String(height));wrapper.style.width=width*scale+'px';wrapper.style.height=height*scale+'px';const edges=tree.querySelectorAll<SVGPathElement>('path[data-org-manager]');for(const path of paths)edges[path.index].setAttribute('d',path.d);},{paths,width:measured.width,height:measured.height,scale:measured.scale});
+   if(measured.nodes.length<3||paths.length<2||!measured.nodes.every(node=>node.pos.r>node.pos.l&&node.pos.b>node.pos.t))throw Error('Org chart evidence needs nonempty actual card and connector geometry');
+   chartGeometry={cards:measured.nodes.length,connectors:paths.length,width:measured.width,height:measured.height,owner:'orgChartConnectorPath over actual Chromium card bounds'};
+  }
   // Inspect an actual localized text node, not merely an available/loaded font face. This catches
   // computed-value invalidation that silently drops the entire script fallback chain.
   const script=locale==='ta'?'Tamil':locale==='th'?'Thai':locale==='zh'?'CJK':null;
@@ -83,6 +94,12 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
    }finally{await cdp.detach();}
    await page.locator('[data-review-script-font-probe]').evaluate(node=>node.removeAttribute('data-review-script-font-probe'));
   }
+  const trackerGeometry=section==='probation-tracker'&&device==='mobile'?await page.evaluate(()=>{
+   const rows=Array.from(document.querySelectorAll('.probation-list-table tbody tr'));
+   const overlaps=rows.flatMap(row=>Array.from(row.querySelectorAll('td')).map(cell=>cell.getBoundingClientRect())).some((rect,index,rects)=>index>0&&rect.top<rects[index-1].bottom-1);
+   if(overlaps)throw Error('Mobile Probation case fields overlap.');
+   return{caseFieldsDoNotOverlap:true};
+  }):null;
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
   const scrollRegions=await page.locator('[data-function-access-scroll]').evaluateAll(nodes=>nodes.map(node=>({width:node.clientWidth,content:node.scrollWidth,scrollable:getComputedStyle(node).overflowX==='auto'})));
   if(width===390&&scrollRegions.some(region=>!region.scrollable||region.width>=region.content))throw Error('The wide function guide must remain horizontally scrollable on a phone.');
@@ -90,7 +107,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   if(section==='people-configuration-navigation')await page.locator('a[href="/admin/settings/system-labels"]').scrollIntoViewIfNeeded();
   const file=`${locale}-${section}-${device}.png`;await page.screenshot({path:join(out,file),fullPage:true});
   if(section==='security-functions')await page.screenshot({path:join(out,`${locale}-${section}-${device}-viewport.png`),fullPage:false});
-  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
+  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
   if(clippedCalendarCells)throw Error('Calendar before/after value is clipped; inspect the captured evidence.');
   // This existing table intentionally scrolls horizontally on small screens. Capture its action
   // column too, so the mobile evidence shows the real controls rather than only the left-hand labels.

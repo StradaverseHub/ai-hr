@@ -1,6 +1,7 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {z,ZodError} from 'zod';
+import {classifyRewardCompany} from '@/packs/rewards/company-classification';
 import {adminCompanies} from '@/core/read';
 import {getSession} from '@/lib/session';
 import {changeRewardCompanyExclusion,rewardPolicyTaken,listRewardPolicyGroups,saveRewardPolicyGroup,RewardPolicyGroupError,defaultPolicy} from '@/packs/rewards/service';
@@ -37,5 +38,14 @@ export async function changeSharedRewardExclusionAction(form:FormData):Promise<{
  try{
   await changeRewardCompanyExclusion(session,{companyId:form.get('companyId'),year:Number(form.get('year')),reason:form.get('reason'),endId:form.get('endId')||null});
   revalidatePath('/admin/rewards','layout');return {ok:true};
+ }catch{return {ok:false};}
+}
+
+export async function classifySharedRewardCompanyAction(form:FormData):Promise<{ok:boolean}>{
+ const session=await getSession();
+ try{
+  if(form.get('verified')!=='on')return {ok:false};
+  await classifyRewardCompany(session,{companyId:form.get('companyId'),disposition:form.get('disposition'),canonicalCompanyId:form.get('canonicalCompanyId')||null,reason:form.get('reason')});
+  revalidatePath('/admin/rewards/shared');return {ok:true};
  }catch{return {ok:false};}
 }

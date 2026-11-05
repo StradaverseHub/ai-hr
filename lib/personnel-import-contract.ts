@@ -106,6 +106,7 @@ export function personnelImportHeaderCandidates(headings:readonly string[], opti
       if(field){register(personnelFieldLabel(field),column);for(const resolve of options.resolvers??[])register(personnelFieldLabel(field,resolve),column);}
     }
   }
+  if(sheet==='employee'&&options.columns.includes('business_unit')){register('Parent company','parent_company');register('parent_company','parent_company');}
   return headings.map((raw,index)=>{
     const matches=[...(legacyTechnicalFile ? new Set([technicalHeadings[index]]) : aliases.get(normalized(raw)) ?? [])];
     const current=matches.length===1 && !(matches[0] in LEGACY_COMPOUND_COLUMNS) &&

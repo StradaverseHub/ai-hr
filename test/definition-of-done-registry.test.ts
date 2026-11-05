@@ -34,6 +34,7 @@ function compare(gaps:Readonly<Record<string,readonly string[]>>,list:ReadonlyMa
 
 describe('definition of done',()=>{
  const inputs=definitionOfDoneInputs(),gaps=definitionOfDoneGaps(inputs),list=allowed();
+ it('covers organisation review with its literal semantic owner, guide and corpus without a new gap',()=>{expect(inputs.pages.some(page=>page.path==='/admin/organization/organisation-tagging')).toBe(true);expect(gaps['page:/admin/organization/organisation-tagging']).toBeUndefined();});
  it('reads the live registries',()=>{
   expect(inputs.actions.length).toBeGreaterThanOrEqual(71);expect(inputs.pages.length).toBeGreaterThanOrEqual(293);
   expect(inputs.guideBodies.length).toBeGreaterThan(40);expect(inputs.corpus.length).toBeGreaterThan(150);

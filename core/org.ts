@@ -1,3 +1,5 @@
+import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
+import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx,type OrganisationTagTrigger} from './company-organisation';
 import {probationDateAuthorityTx} from './probation-effect-authority';
 import {contractDateAuthorityTx,withAcceptedContractRecordIntentTx,withContractMaternityRecordIntentTx} from './contract-record-authority';
 import {setCompensation} from './comp';
@@ -220,6 +222,8 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [hireCompany]=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,p.companyId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id})`)).for('share');
     if(!hireCompany)throw new CrossCompanyError('employment');
+    const organisation=await deriveCompanyOrganisationTx(tx,ctx,{companyId:p.companyId,asOf:p.hiredOn});
+    p.businessUnitId=organisationBusinessUnit(organisation,await organisationManagedTx(tx),p.businessUnitId)??undefined;
     for(const [table,id,kind] of [[businessUnit,p.businessUnitId,'business_unit'],[department,p.departmentId,'department'],[position,p.positionId,'position'],[costCenter,p.costCenterId,'cost_center']] as const) {
       if(!id)continue;
       const [active]=await tx.select({id:table.id}).from(table).where(and(eq(table.tenantId,ctx.tenantId),eq(table.id,id),isNull(table.archivedAt))).for('share');
@@ -500,6 +504,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
 
     const [taxCompany]=await tx.select({country:company.country}).from(company).where(eq(company.id,p.companyId)).limit(1);
     await packFor(taxCompany?.country)?.statutory.initializeHiredTaxSelectionTx?.(tx,ctx,{employmentId:emp.id,companyId:p.companyId,scheme:p.initialTaxScheme??'resident'});
+    await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:emp.id,companyId:p.companyId,asOf:p.hiredOn,trigger:'hire'});
     return { employmentId: emp.id, personId };
   };
   return outerTx ? run(outerTx) : withTenant(ctx,run);
@@ -614,6 +619,7 @@ export async function transferEmployee(
       await guardLabel('cost_center', costCenter, p.costCenterId, 'cost-center');
     }
 
+    const organisation=await deriveCompanyOrganisationTx(tx,ctx,{companyId:emp!.companyId,asOf:p.effectiveDate});
     // CLOSE current (set valid_to), then INSERT the new version — ranges don't overlap.
     await tx.update(assignment).set({ validTo: p.effectiveDate }).where(eq(assignment.id, cur.id));
     const [next] = await tx
@@ -629,7 +635,7 @@ export async function transferEmployee(
         // it: "Set location" names only a location, "Transfer" only a department, and neither has any
         // reason to expect an unrelated field to be cleared. There is no `p.businessUnitId` because no
         // caller moves a business unit here; the bug was purely the omission of the carry-forward.
-        businessUnitId: cur.businessUnitId,
+        businessUnitId: organisation.status==='legacy'?cur.businessUnitId:organisation.businessUnitId,
         locationId: nextLocationId,
         employmentType: cur.employmentType,
         // 3c88d593 — carried, exactly like the business unit above and for the same reason: a department
@@ -657,6 +663,7 @@ export async function transferEmployee(
         ...(p.movement ? { movement: p.movement } : {}),
       },
     });
+    await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:emp!.companyId,asOf:p.effectiveDate,trigger:p.movement?'movement':'transfer'});
     return { assignmentId: next.id };
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
@@ -839,7 +846,7 @@ export async function reverseTerminationTx(
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
   await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
   const [emp] = await tx
-    .select({ terminatedOn: employment.terminatedOn })
+    .select({ terminatedOn: employment.terminatedOn,companyId:employment.companyId })
     .from(employment)
     .where(eq(employment.id, p.employmentId))
     .for('update');
@@ -920,6 +927,7 @@ export async function reverseTerminationTx(
     category: 'termination',
     from: p.terminationDate,
   });
+  await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:emp.companyId,asOf:p.terminationDate,trigger:'movement'});
   return { reopenedAssignmentId: closed?.id ?? null, reopenedReportingLineIds: reopened };
 }
 
@@ -960,22 +968,22 @@ export async function wouldCreateAdminCycle(
   subordinateId: string,
   managerId: string,
   asOf: string,
+  validTo: string | null = null,
 ): Promise<boolean> {
+  // A future-dated chain must be safe throughout the proposed date range, not merely on day one.
+  // Range intersection carries the dates on which every link in a candidate cycle exists together.
   const res = await tx.execute(sql`
-    WITH RECURSIVE ancestors AS (
-      SELECT manager_employment_id AS mgr
-      FROM reporting_line
-      WHERE subordinate_employment_id = ${managerId}
-        AND line_type = 'administrative' AND superseded_at IS NULL
-        AND valid_from <= ${asOf} AND (valid_to IS NULL OR valid_to > ${asOf})
+    WITH RECURSIVE ancestors(mgr, effective) AS (
+      SELECT manager_employment_id, daterange(valid_from,valid_to,'[)') * daterange(${asOf}::date,${validTo}::date,'[)')
+      FROM reporting_line WHERE subordinate_employment_id=${managerId}
+       AND line_type='administrative' AND superseded_at IS NULL
+       AND daterange(valid_from,valid_to,'[)') && daterange(${asOf}::date,${validTo}::date,'[)')
       UNION
-      SELECT rl.manager_employment_id
-      FROM reporting_line rl
-      JOIN ancestors a ON rl.subordinate_employment_id = a.mgr
-      WHERE rl.line_type = 'administrative' AND rl.superseded_at IS NULL
-        AND rl.valid_from <= ${asOf} AND (rl.valid_to IS NULL OR rl.valid_to > ${asOf})
-    )
-    SELECT 1 FROM ancestors WHERE mgr = ${subordinateId} LIMIT 1
+      SELECT rl.manager_employment_id, a.effective * daterange(rl.valid_from,rl.valid_to,'[)')
+      FROM reporting_line rl JOIN ancestors a ON rl.subordinate_employment_id=a.mgr
+      WHERE rl.line_type='administrative' AND rl.superseded_at IS NULL
+       AND a.effective && daterange(rl.valid_from,rl.valid_to,'[)')
+    ) SELECT 1 FROM ancestors WHERE mgr=${subordinateId} LIMIT 1
   `);
   return res.length > 0;
 }
@@ -2120,7 +2128,7 @@ export async function setEmploymentAssignment(
 
     const nextDepartmentId = p.departmentId ?? cur.departmentId;
     const nextPositionId = p.positionId === undefined ? cur.positionId : p.positionId || null;
-    const nextBusinessUnitId =
+    let nextBusinessUnitId =
       p.businessUnitId === undefined ? cur.businessUnitId : p.businessUnitId || null;
     const nextCostCenterId =
       p.costCenterId === undefined ? cur.costCenterId : p.costCenterId || null;
@@ -2142,6 +2150,9 @@ export async function setEmploymentAssignment(
       )[0]?.companyId ??
       null;
 
+    if(!nextCompanyId)throw new Error('The dated assignment company is unavailable.');
+    const organisation=await deriveCompanyOrganisationTx(tx,ctx,{companyId:nextCompanyId,asOf:p.effectiveDate});
+    nextBusinessUnitId=organisationBusinessUnit(organisation,await organisationManagedTx(tx),nextBusinessUnitId,p.companyId!==undefined&&p.companyId!==cur.companyId?null:cur.businessUnitId);
     // 1001ff61 / 570e3311 — referential integrity + company scope for a newly-selected BU / Department /
     // Position: it must exist, be un-archived, and be a label this employment's company MAY use under the
     // Shared System Labels resolver (origin ∪ shared-in ∪ global, flag-gated — labelUsableByCompany; with
@@ -2161,7 +2172,7 @@ export async function setEmploymentAssignment(
         .from(employment)
         .where(eq(employment.id, p.employmentId))
         .limit(1);
-      if (buChanged) {
+      if (buChanged && nextBusinessUnitId) {
         const [bu] = await tx
           .select({ archivedAt: businessUnit.archivedAt })
           .from(businessUnit)
@@ -2250,7 +2261,7 @@ export async function setEmploymentAssignment(
       // a no-op; the resolved value is still what gets STAMPED whenever some other dimension does move,
       // so history accretes on real changes without inventing one.
       !(p.companyId !== undefined && p.companyId !== cur.companyId);
-    if (unchanged) return { assignmentId: cur.id, changed: false as const };
+    if (unchanged){await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:nextCompanyId,asOf:p.effectiveDate,trigger:p.movement?'movement':'assignment'});return { assignmentId: cur.id, changed: false as const };}
 
     // CLOSE current (set valid_to), then INSERT the new version — ranges don't overlap.
     await tx.update(assignment).set({ validTo: p.effectiveDate }).where(eq(assignment.id, cur.id));
@@ -2302,6 +2313,7 @@ export async function setEmploymentAssignment(
         ...(p.movement ? { movement: p.movement } : {}),
       },
     });
+    await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:nextCompanyId,asOf:p.effectiveDate,trigger:p.movement?'movement':'assignment'});
     return { assignmentId: next.id, changed: true as const };
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
@@ -2656,6 +2668,8 @@ export async function transferEmploymentCompanyTx(
     locationId: after(p.placement.locationId, curAsg?.locationId ?? null),
     managerEmploymentId: after(p.placement.managerEmploymentId, curRl?.managerEmploymentId ?? null),
   };
+  const organisation=await deriveCompanyOrganisationTx(tx,ctx,{companyId:p.newCompanyId,asOf:p.effectiveDate});
+  pl.businessUnitId=organisationBusinessUnit(organisation,await organisationManagedTx(tx),pl.businessUnitId,null);
   const guardLabel = async (
     kind: 'department' | 'position' | 'cost_center' | 'business_unit',
     labelId: string | null,
@@ -3433,6 +3447,7 @@ export async function setEmploymentInfo(
         from: earlierDate(before.hiredOn ?? null, (set.hiredOn as string | null) ?? null),
       });
     }
+    if(set.hiredOn!==undefined){const [source]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,p.employmentId));if(source)await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:source.companyId,asOf:String(set.hiredOn),trigger:'correction'});}
     const after = { ...before, ...set };
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -3696,4 +3711,44 @@ export async function applyAcceptedContractRecordsTx(tx:Tx,ctx:SessionContext,ca
 export async function applyContractMaternityEndTx(tx:Tx,ctx:SessionContext,caseId:string){
  ctx={...ctx,roles:[],grants:[]};await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  return withContractMaternityRecordIntentTx(tx,caseId,async intent=>{await lockLeaveDependenciesTx(tx,ctx.tenantId,[intent.employmentId]);await setEmploymentInfo(ctx,{employmentId:intent.employmentId,contractEndDate:intent.endOn},tx);const [r]=await tx.execute<{data:Record<string,unknown>}>(sql`select app.contract_finish_maternity_records(${caseId}::uuid) as data`);return r.data;});
+}
+
+/** Reviewed mapping publication delegate. The real HR doer calls this inside the publication
+ * transaction, after the version becomes visible. Split only live effective history; frozen
+ * payroll/review memberships and the superseded source row remain unchanged. */
+export async function projectEmploymentOrganisationAssignmentTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;effectiveOn:string;trigger:OrganisationTagTrigger}):Promise<{changed:number;assignmentIds:string[]}>{
+  if(!isCalendarDate(p.effectiveOn))throw new Error('Select a valid organisation reference date.');
+  await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  const [emp]=await tx.select().from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).for('update');
+  if(!emp)throw new Error('Employment is unavailable.');
+  const endedOn=earliestEmploymentDate(emp.resignationDate,emp.lastWorkingDate,emp.terminatedOn);
+  if(emp.voidedAt||emp.hiredOn>p.effectiveOn||(endedOn&&endedOn<=p.effectiveOn)||(emp.blacklistedAt&&todayInKualaLumpur(new Date(emp.blacklistedAt))<=p.effectiveOn))return {changed:0,assignmentIds:[]};
+  const rows=await tx.select().from(assignment).where(and(eq(assignment.employmentId,p.employmentId),eq(assignment.tenantId,ctx.tenantId),isNull(assignment.supersededAt),or(isNull(assignment.validTo),gt(assignment.validTo,p.effectiveOn)))).orderBy(assignment.validFrom).for('update');
+  const assignmentIds:string[]=[];
+  let changed=0;
+  for(const row of rows){
+    const companyId=row.companyId??emp.companyId;
+    await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
+    const [boundary]=await tx.execute<{next:string|null}>(sql`select app.company_organisation_next_change(${companyId}::uuid,${p.effectiveOn}::date)::text as next`);
+    const from=row.validFrom>p.effectiveOn?row.validFrom:p.effectiveOn;
+    const to=boundary?.next&&(!row.validTo||boundary.next<row.validTo)?boundary.next:row.validTo;
+    if(to&&from>=to)continue;
+    const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId,asOf:from});
+    if(tags.status==='legacy'||tags.businessUnitId===row.businessUnitId)continue;
+    const source=await tx.update(assignment).set({supersededAt:new Date()}).where(and(eq(assignment.id,row.id),isNull(assignment.supersededAt))).returning({id:assignment.id});
+    if(source.length!==1)throw new Error('Assignment changed during organisation publication.');
+    const parts:Array<{validFrom:string;validTo:string|null;businessUnitId:string|null}>=[];
+    if(row.validFrom<from)parts.push({validFrom:row.validFrom,validTo:from,businessUnitId:row.businessUnitId});
+    parts.push({validFrom:from,validTo:to,businessUnitId:tags.businessUnitId});
+    if(to&&(!row.validTo||to<row.validTo))parts.push({validFrom:to,validTo:row.validTo,businessUnitId:row.businessUnitId});
+    for(const part of parts){
+      const [next]=await tx.insert(assignment).values({tenantId:row.tenantId,employmentId:row.employmentId,departmentId:row.departmentId,positionId:row.positionId,costCenterId:row.costCenterId,locationId:row.locationId,companyId:row.companyId,employmentType:row.employmentType,...part}).returning({id:assignment.id});
+      assignmentIds.push(next.id);
+    }
+    await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId,asOf:from,trigger:p.trigger});
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'assignment',aggregateId:row.id,eventType:'employment.organisation.projected',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{sourceAssignmentId:row.id,effectiveOn:from,validTo:to,beforeBusinessUnitId:row.businessUnitId,businessUnitId:tags.businessUnitId,mappingVersionId:tags.mappingVersionId,trigger:p.trigger}});
+    changed++;
+  }
+  return {changed,assignmentIds};
 }

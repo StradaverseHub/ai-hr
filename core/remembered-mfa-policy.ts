@@ -41,7 +41,7 @@ export async function saveRememberedMfaPolicy(ctx: SessionContext, value: unknow
     const sealed = encryptRecord({ policy, revision }, key, null);
     await tx.execute(sql`select app.internal_auth_write(${key},NULL::uuid,${sealed},NULL::timestamptz)`);
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'remembered-mfa-policy', aggregateId: ctx.tenantId,
-      eventType: 'remembered-mfa-policy.updated', actor: actorOf(ctx), payload: { ...policy, revision } });
+      eventType: 'remembered-mfa-policy.updated', actor: actorOf(ctx), payload: { ...policy, revision, source: 'security-center-password' } });
     return { revision };
   });
 }

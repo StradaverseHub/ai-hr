@@ -1555,7 +1555,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   // AI v2 Phase 2 P2-6: the linkable address of AI Centre › Insights › AI quality (HR and group administrators); it reads no
   // data and forwards to the section, which checks again.
   { screenKey: 'aiQuality', href: '/ai-quality', labelKey: 'nav.aiQuality', guard: 'requireAdmin', routes: ['/ai-quality'] },
-  { screenKey: 'usersRoles', href: '/admin/users', labelKey: 'nav.usersRoles', guard: 'requireAdmin', routes: ['/admin/users'] },
+  { screenKey: 'usersRoles', href: '/admin/users', labelKey: 'nav.usersRoles', guard: 'requireAdmin', routes: ['/admin/users', '/admin/users/[userId]/account'] },
   {
     // System Analysis & Dependency Explorer (deec1691) — the record-relationship reference, moved from
     // the operator plane to Admin at the reporter's instruction and sold as the `system_explorer`

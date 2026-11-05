@@ -1,3 +1,4 @@
+vi.mock('../components/derived-organisation-fields',()=>({useDerivedOrganisation:()=>({data:{status:'legacy'},loading:false,failed:false}),DerivedOrganisationFields:()=>null}));
 import fs from 'node:fs';
 import path from 'node:path';
 import {afterEach,describe,it,expect,vi} from 'vitest';

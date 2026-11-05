@@ -1,3 +1,4 @@
+import {migrateApprovedUpgrade,retainedUpgradeSnapshot} from './helpers/approved-upgrade';
 /** Ordinary journal upgrade of existing Rewards/letter rows on a disposable CI database.
  * No draft installer, disabled trigger, manufactured migration receipt or production database. */
 import {randomUUID} from 'node:crypto';
@@ -85,8 +86,8 @@ it('preserves populated Rewards history, seats, shared policies and both notific
   });
   const before=await unchangedRows();expect(before.units).toHaveLength(1);expect(before.members).toHaveLength(2);expect(before.decisions).toHaveLength(1);expect(before.audit.length).toBeGreaterThan(1);expect(before.groups).toHaveLength(1);expect(before.versions).toHaveLength(1);expect(before.targets).toHaveLength(1);expect(before.notifications).toHaveLength(2);expect(before.letterJobs).toHaveLength(1);expect(before.letters).toHaveLength(1);
   const [migrationClock]=await storage.client`select (now() at time zone 'Asia/Kuala_Lumpur')::date::text as day`;
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  expect(await unchangedRows()).toEqual(before);
+  const approvedUpgrade=await migrateApprovedUpgrade(storage);
+  expect(retainedUpgradeSnapshot(await unchangedRows(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));
   const seats=await storage.client`select id,valid_from::text,valid_to,covers_user_id,restored_reason,restored_fingerprint from reward_member where unit_id=${ids.unit} order by id`;
   expect(seats.map(row=>row.id).sort()).toEqual([ids.grMember,ids.buMember].sort());
   for(const seat of seats)expect(seat).toMatchObject({valid_from:migrationClock.day,valid_to:null,covers_user_id:null,restored_reason:null,restored_fingerprint:null});
@@ -99,7 +100,7 @@ it('preserves populated Rewards history, seats, shared policies and both notific
   });
   // The old review has no current-transaction bootstrap receipt: even a real administrator must request a change.
   await expect(storage.client.begin(async tx=>{await actor(tx,ids.requester,'super_admin',true);await tx`insert into reward_member(tenant_id,unit_id,user_id,role) values(${ids.tenant},${ids.unit},${ids.checker},'gr')`;})).rejects.toMatchObject({code:'42501'});
-  expect(await unchangedRows()).toEqual(before);
+  expect(retainedUpgradeSnapshot(await unchangedRows(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));
   const changes=[{unitId:ids.unit,revision:2,before:null,after:{userId:ids.employeeUser,role:'pbp'}}];
   const requestId=await storage.client.begin(async tx=>{await actor(tx,ids.requester,'super_admin',true);const [row]=await tx`select app.reward_access_request_create(${JSON.stringify(changes)}::jsonb,'Fictional upgrade follow-up reviewed') as id`;return row.id as string;});
   expect(await storage.client`select id from reward_member where unit_id=${ids.unit} and role='pbp'`).toHaveLength(0);
@@ -110,7 +111,8 @@ it('preserves populated Rewards history, seats, shared policies and both notific
   const [receipt]=await storage.client`select actor_id from domain_event where aggregate_id=${requestId} and event_type='reward-access.approved'`;expect(receipt.actor_id).toBe(ids.checker);
   expect(await storage.client`select * from reward_decision where tenant_id=${ids.tenant}`).toEqual(before.decisions);
   expect(await storage.client`select * from notification where tenant_id=${ids.tenant} order by id`).toEqual(before.notifications);
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  const terminal=await unchangedRows();
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});expect(await unchangedRows()).toEqual(terminal);
   expect(await storage.client`select * from notification where tenant_id=${ids.tenant} order by id`).toEqual(before.notifications);
  }finally{
   await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);await admin.end();rmSync(directory,{recursive:true,force:true});

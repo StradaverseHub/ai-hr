@@ -1,3 +1,4 @@
+import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
@@ -12,6 +13,18 @@ const names=()=>[...document.querySelectorAll('[data-directory-row] th')].map(el
 const select=(label:string,value:string)=>fireEvent.change(screen.getByRole('combobox',{name:label}),{target:{value}});
 afterEach(cleanup);
 describe('user directory filtering, grouping and focused access editing',()=>{
+ it('shows scoped account metadata beside status and filters suspended or expired accounts',()=>{
+  render(<NextIntlClientProvider locale="en" messages={en}><UsersDirectory rows={[user('Aisyah'),user('Arjun')]} accounts={{'user-Aisyah':{username:'ais.login',status:'suspended',activeUntil:'2026-12-31'}}} groupAdmin={true} includeArchived={false} companies={[]} roleOptions={[]} assistantGrantedIds={[]}/></NextIntlClientProvider>);
+  expect(screen.getByRole('columnheader',{name:'Account Active Until'})).toBeTruthy();
+  expect(screen.getByText('2026-12-31')).toBeTruthy();expect(screen.getByText('ais.login')).toBeTruthy();
+  select('Status','suspended');expect(names()).toHaveLength(1);expect(names()[0]).toContain('Aisyah');
+  fireEvent.click(screen.getByRole('button',{name:'Manage'}));
+  expect(screen.getByRole('link',{name:'Manage account'})).toHaveAttribute('href','/admin/users/user-Aisyah/account');
+ });
+ it('captures full-width account status and expiry metadata in the real directory',async()=>{
+  const view=render(<NextIntlClientProvider locale="en" messages={en}><UsersDirectory rows={[user('Fictional Employee A'),user('Fictional Employee B')]} accounts={{'user-Fictional Employee A':{username:'fictional.a',status:'active',activeUntil:'2026-12-31'},'user-Fictional Employee B':{username:'fictional.b',status:'suspended',activeUntil:null}}} groupAdmin={true} includeArchived={false} companies={[]} roleOptions={['employee']} assistantGrantedIds={[]}/></NextIntlClientProvider>);
+  await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en','security-users','real UsersDirectory; fictional accounts with scoped account metadata; no authenticated server journey');
+ },60000);
  it('searches complete names/emails and filters status, role, company scope and employee record',()=>{
   show();expect(document.querySelectorAll('[data-directory-row]')).toHaveLength(4);
   fireEvent.change(screen.getByRole('searchbox',{name:'Search users'}),{target:{value:'AISYAH@EXAMPLE.TEST'}});expect(names()).toHaveLength(1);expect(names()[0]).toContain('Aisyah');

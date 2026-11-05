@@ -64,7 +64,7 @@ describe('an employee name never runs out of its org-chart card', () => {
 
   it('every card keeps its whole content inside its border', () => {
     wrap(<OrgChart employees={PEOPLE} edges={[]} />);
-    const cards = [...document.querySelectorAll<HTMLElement>('a[href^="/personnel/"]')];
+    const cards = [...document.querySelectorAll<HTMLElement>('[data-org-node]')];
     expect(cards).toHaveLength(PEOPLE.length);
     for (const card of cards) {
       const c = rect(card);

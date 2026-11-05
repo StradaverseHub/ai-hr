@@ -2,6 +2,8 @@ import {rewardArchitectureForSourceTx} from './architecture-source';
 import {advisorNeedsOverrideReason,defaultAdvisorSettings,type AdvisorSettings} from './advisor-model';
 import {calculateUploadedRewards} from './uploaded-awards-model';
 import {assertRewardCapabilityTx,assertRewardWritableTx} from './access-policy';
+import {personnelGroupingReadinessTx} from '../../core/personnel-quality';
+import {employedByCompanyDuring} from '../../core/employment-company';
 import {mobileRewardPersonBlock} from './mobile-review-projection';
 import type { Tx as AiReadTx } from '../../db/client';
 import { withCanonicalAiReadTx } from '../../core/ai-read-transaction';
@@ -495,11 +497,17 @@ export async function getRewardConfiguration(ctx: SessionContext, unitId: string
 }
 
 /** The unit's roster as Personnel and Compensation stand on `at`. Read-only; refresh preview and save share it. */
-async function snapshotRoster(tx: Tx, unit: typeof rewardUnit.$inferSelect, at: string) {
+async function snapshotRoster(tx: Tx, ctx:SessionContext, unit: typeof rewardUnit.$inferSelect, at: string) {
   await requireAdmin(tx, unit.companyId);
+  // Check the whole dated company population BEFORE BU filtering. Pending tags must be
+  // named blockers, never invisible omissions from a frozen reward membership.
+  const candidates=await tx.select({employmentId:employment.id,name:person.fullName,employeeCode:employment.employeeCode}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(employedByCompanyDuring(unit.companyId,at,at),lte(employment.hiredOn,at),or(isNull(employment.terminatedOn),gt(employment.terminatedOn,at))));
+  const readiness=await personnelGroupingReadinessTx(tx,ctx,{employmentIds:candidates.map(row=>row.employmentId),asOf:at});
+  const pending=new Map(readiness.filter(row=>!row.ready).map(row=>[row.employmentId,row.reason]));
+  if(pending.size)throw new RewardError('Group structure tagging is pending: '+candidates.filter(row=>pending.has(row.employmentId)).map(row=>`${row.employeeCode??row.employmentId} · ${row.name} (${pending.get(row.employmentId)})`).join('; '));
   const records = await tx.select({ employmentId: employment.id, personId: employment.personId, companyId: employment.companyId, employeeCode: employment.employeeCode, name: person.fullName, grade: jobGrade.code, gradeId: employment.gradeId, hiredOn: employment.hiredOn, confirmedOn: employment.confirmationDate, tenderDate: employment.tenderResignationDate, resignedOn: employment.resignationDate, assignmentId: assignment.id, positionId:assignment.positionId })
     .from(employment).innerJoin(person, eq(person.id, employment.personId)).innerJoin(assignment, eq(assignment.employmentId, employment.id)).leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
-    .where(and(eq(employment.companyId, unit.companyId), eq(assignment.businessUnitId, unit.businessUnitId), lte(employment.hiredOn, at), or(isNull(employment.terminatedOn), gt(employment.terminatedOn, at)), lte(assignment.validFrom, at), or(isNull(assignment.validTo), gt(assignment.validTo, at)), isNull(assignment.supersededAt)))
+    .where(and(employedByCompanyDuring(unit.companyId,at,at), sql`(case when app.employment_organisation_tags(${employment.id},${at}::date)->>'status'='legacy' then ${assignment.businessUnitId} else (app.employment_organisation_tags(${employment.id},${at}::date)->>'businessUnitId')::uuid end) = ${unit.businessUnitId}::uuid`, lte(employment.hiredOn, at), or(isNull(employment.terminatedOn), gt(employment.terminatedOn, at)), lte(assignment.validFrom, at), or(isNull(assignment.validTo), gt(assignment.validTo, at)), isNull(assignment.supersededAt)))
     .orderBy(asc(employment.employeeCode), asc(employment.id));
   const roster = new Map<string, RewardSource>();
   const kinds = new Map((await tx.select({ code: movementEventType.code, behaviourKind: movementEventType.behaviourKind }).from(movementEventType)).map(k => [k.code, k.behaviourKind]));
@@ -540,7 +548,7 @@ async function payChangesTx(tx: Tx, employmentId: string, hiredOn: string, year:
 }
 /** Creation snapshot. A later refresh goes through previewRewardSourceRefresh/saveRewardSourceRefresh. */
 async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.$inferSelect) {
-  const roster = await snapshotRoster(tx, unit, unit.snapshotDate);
+  const roster = await snapshotRoster(tx, ctx, unit, unit.snapshotDate);
   // 6fd08f37: derived confidentiality floor (BG/EC seats assigned later re-derive through the access commit).
   const floors = await deriveConfidentialityTx(tx, unit.id, [...roster.keys()], unit.snapshotDate);
   for (const raw of roster.values()) {
@@ -803,7 +811,7 @@ async function planSourceRefreshTx(tx: Tx, ctx: SessionContext, unit: typeof rew
   const today = todayInKualaLumpur(), asOf = rawAsOf == null || rawAsOf === '' ? today : isoDateSchema.parse(rawAsOf);
   if (asOf > today) throw new RewardError('The snapshot date cannot be in the future.');
   if (asOf < unit.snapshotDate) throw new RewardError('Refresh to a date on or after the current snapshot date.');
-  const roster = await snapshotRoster(tx, unit, asOf);
+  const roster = await snapshotRoster(tx, ctx, unit, asOf);
   const floors = await deriveConfidentialityTx(tx, unit.id, [...roster.keys()], asOf);
   for (const [id, source] of roster) roster.set(id, sourceWithFloor(source, floors.get(id)));
   const changes: RefreshChange[] = [];

@@ -1,4 +1,5 @@
 'use client';
+import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/derived-organisation-fields';
 
 // c063eea9 — client half of "Correct hire details" on the Hired row.
 //
@@ -73,6 +74,8 @@ export function HireCorrectionForm({
   cancelHref: string;
   pageContext?:import('@/lib/personnel-movement-navigation').MovementPageContext;
 }) {
+  const derivedOrganisation=useDerivedOrganisation({employmentId});
+  const editableFields=fields.filter(field=>field.field!=='businessUnitId'||derivedOrganisation.data?.status==='legacy'&&!derivedOrganisation.data.managed);
   const t = useTranslations('people.detail.movement.hireCorrection');
   const tRoot=useTranslations();
   const fieldLabel=(field:keyof typeof HIRE_FORM_IDS)=>personnelFormLabel(hireField(field),(key,fallback)=>tRoot.has(key)?tRoot(key):fallback);
@@ -85,8 +88,8 @@ export function HireCorrectionForm({
   const [reason, setReason] = useState('');
 
   const changed = useMemo(
-    () => fields.filter((f) => (values[f.field] || null) !== f.currentId),
-    [fields, values],
+    () => editableFields.filter((f) => (values[f.field] || null) !== f.currentId),
+    [fields, values,derivedOrganisation.data],
   );
 
   /** Option label for an id, falling back to the field's own current label (an archived / out-of-scope value). */
@@ -127,8 +130,9 @@ export function HireCorrectionForm({
         <div className="font-medium">{t('colCorrected')}</div>
       </div>
 
+      <DerivedOrganisationFields state={derivedOrganisation}/>
       <div className="divide-y divide-border">
-        {fields.map((f) => {
+        {editableFields.map((f) => {
           const isChanged = changed.includes(f);
           const value = values[f.field] ?? '';
           const known = !value || f.options.some((o) => o.id === value);

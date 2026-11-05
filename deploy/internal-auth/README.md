@@ -70,3 +70,12 @@ Acceptance: `nginx -t`, local/private/public path comparison, forged forwarding/
 slow/oversized bodies, parallel users behind a shared NAT, noisy and quiet tenants, correct 429 retry
 behavior, and database-store outage. Use synthetic users and a bounded staging load budget. Retain
 before/after configuration and results privately. Do not stress employee accounts or production.
+
+
+## Reviewed Company organisation account admission
+
+After migration `2128_organisation_account_admission`, the staging release operator provisions the
+purpose-derived native account verifier before accepting the reviewed Company organisation workflow.
+Follow the [organisation admission runbook](organisation-admission-runbook.md). Provisioning uses
+existing protected Auth configuration and schema-owner access; it performs no credential rotation,
+Company mapping publication or employee re-tag.

@@ -1,3 +1,4 @@
+import {OrganisationTaggingWorkspace} from './organisation-tagging-workspace';
 import Link from 'next/link';
 import { AlertTriangle } from 'lucide-react';
 import { companyRegistrationOverview } from '@/core/company-registration-readiness';
@@ -195,6 +196,8 @@ export default async function OrganizationPage({
           </div>
         </details>
       </Card>
+
+      <OrganisationTaggingWorkspace session={s}/>
 
       <Card data-tour="people-org-companies">
         <SectionHeader title={t('companies')} count={rows.length} />

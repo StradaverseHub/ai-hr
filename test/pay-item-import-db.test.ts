@@ -138,6 +138,21 @@ describe('Pay Items create-only atomic import and pending calculation boundaries
     expect((await catalog(base.tenantId))[0].pendingInputKind).toBeNull();
     await expect(setPayrollBatchComponent(ctx, { batchId, employmentId: hired.employmentId, componentId: id, amount: 50 })).resolves.toHaveProperty('id');
   });
+  it('1832f810: explicit manual Fixed Value clears an imported calculation, while a stale blank save does not', async () => {
+    await setModule(base.tenantId, 'typed_pay_components', 'active'); ctx = await entitledCtx(base);
+    const hired = await employee(), pending = input('IMPORTED_FIXED', { pendingInputKind: 'formula' });
+    const { id } = await createPayComponent(ctx, pending);
+    await upsertPayComponent(ctx, { ...pending, pendingInputKind: undefined, rule: null });
+    expect((await catalog(base.tenantId))[0]).toMatchObject({ pendingInputKind: 'formula', rule: null });
+    await upsertPayComponent(ctx, { ...pending, pendingInputKind: undefined, rule: { kind: 'fixed' }, formulaContext: { rate: '9' } });
+    expect((await catalog(base.tenantId))[0]).toMatchObject({ pendingInputKind: null, rule: null, formulaContext: null });
+    expect(await listPayComponents(ctx, { readyOnly: true })).toHaveLength(1);
+    await expect(setEmploymentPayComponent(ctx, { employmentId: hired.employmentId, componentId: id, amount: 73, effectiveFrom: first })).resolves.toHaveProperty('id');
+    const { batchId } = await createBatch(ctx, { companyId: base.companyId, payPeriod: period });
+    await generatePayslips(ctx, { batchId });
+    const [slip] = await owner.db.select().from(s.payslip).where(eq(s.payslip.batchId, batchId));
+    expect((slip.statutory as {componentLines: unknown[]}).componentLines).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'IMPORTED_FIXED', amount: 73 })]));
+  });
   it.each([false, true])('refuses a bypassed pending assignment at process time with typed components enabled=%s', async typed => {
     await setModule(base.tenantId, 'typed_pay_components', typed ? 'active' : null); ctx = await entitledCtx(base);
     const hired = await employee(), { id } = await createPayComponent(ctx, input('PENDING', { pendingInputKind: 'formula' }));

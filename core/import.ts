@@ -1,3 +1,4 @@
+import {organisationImportWarningsTx} from './derived-organisation-display';
 import {readEmployeeImportEvaluationTx,claimEmployeeImportEvaluationTx,completeEmployeeImportEvaluationTx} from './personnel-import-evaluation';
 import type {EmployeeImportEvaluationBinding,EmployeeImportEvaluationReceipt} from '../lib/personnel-import-evaluation';
 import { getPeopleGeneral, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
@@ -493,9 +494,14 @@ async function analyze(
     return active.has(value);
   };
 
+  const derivedOrganisationRows=await read(async tx=>{
+    const rows=new Map<number,Awaited<ReturnType<typeof organisationImportWarningsTx>>>();
+    for(let index=0;index<records.length;index++){const companyId=rowCompanies[index].co?.id,asOf=norm(records[index].hired_on);if(companyId&&isCalendarDate(asOf))rows.set(index,await organisationImportWarningsTx(tx,ctx,{companyId,asOf,businessUnit:norm(records[index].business_unit),parentCompany:norm(records[index].parent_company??records[index]['Parent company'])}));}
+    return rows;
+  });
   records.forEach((rawRecord, idx) => {
     const {record:rec,errors}=normalizePersonnelCatalogRecord(rawRecord,'employee',catalog);
-    const warnings: string[] = [];
+    const warnings: string[] = [...(derivedOrganisationRows.get(idx)?.warnings??[])];
     const operations=personnelOperationalValues(rec);errors.push(...operations.errors);
     if(operations.values.paymentMethod==='bank_transfer' && bankTransferLacksBank({bankName:rec.bank_name,bankAccountNo:rec.bank_account_no}))errors.push('Bank Transfer requires bank_name and bank_account_no.');
     const fullName = norm(rec.full_name);
@@ -573,7 +579,8 @@ async function analyze(
       else if(!id)errors.push(`Unavailable ${column} "${raw}" for ${cctx?.name??'the selected company'}`);
       return id;
     };
-    const businessUnitId=organisationChoice('business_unit',buByName);
+    const tags=derivedOrganisationRows.get(idx)?.tags;
+    const businessUnitId=tags&&(derivedOrganisationRows.get(idx)?.managed||tags.status!=='legacy')?(tags.businessUnitId??undefined):organisationChoice('business_unit',buByName);
     const gradeId=organisationChoice('job_grade',gradeByName);
     const departmentUnit=departmentId?cctx?.departmentBusinessUnits.get(departmentId):undefined;
     if(businessUnitId && departmentUnit && businessUnitId!==departmentUnit)errors.push('department: unavailable under the selected business_unit');

@@ -1,3 +1,4 @@
+import {organisationImportWarningsTx} from './derived-organisation-display';
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {employment} from '../db/schema';
@@ -27,6 +28,7 @@ export async function previewInformationUpload(ctx:SessionContext,input:{name:st
    if(row.values['Join Date'])changes.joinDate=row.values['Join Date'];
    if(row.values['Employment Type'])changes.employmentType=row.values['Employment Type'];
    row.preview=await previewInformationCorrection(ctx,{employmentId:matches[0].id,changes,reason:row.values['Correction Reason']!});
+   row.warnings=(await withTenant(ctx,tx=>organisationImportWarningsTx(tx,ctx,{companyId:row.preview!.after.companyId!,asOf:row.preview!.effectiveOn,...row.ignoredOrganisation}))).warnings;
   }catch(error){row.errors.push(error instanceof InformationCorrectionError?error.message:publicErrorMessage(error));}
  }
  for(const target of targets.values())if(target.length>1)for(const row of rows)if(target.includes(row.row))row.errors.push('Multiple rows resolve to the same employee.');
@@ -63,7 +65,7 @@ export async function confirmInformationUpload(ctx:SessionContext,input:{attempt
     const changes=Object.fromEntries(preview.changed.map(f=>[f,preview.after[f]])) as InformationChanges;
     const saved=await correctInformationTx(tx,ctx,{employmentId:preview.employmentId,changes,reason:preview.reason,fingerprint:preview.fingerprint,method:'excel',batchId:held.id,filename:held.sourceName});
     if(!saved.changed)throw new ImportHistoryError('The employee no longer needs this correction. Review again.');
-    await recordImportItemTx(tx,ctx,{attemptId:held.id,companyId:preview.before.companyId!,employmentId:preview.employmentId,itemKey:String(row.row),label:preview.employeeCode+' · '+preview.name,ordinal:row.row,status:'applied',before:{values:preview.beforeLabels,reason:preview.reason},after:{values:preview.afterLabels,reason:preview.reason}});
+    await recordImportItemTx(tx,ctx,{attemptId:held.id,companyId:preview.before.companyId!,employmentId:preview.employmentId,itemKey:String(row.row),label:preview.employeeCode+' · '+preview.name,ordinal:row.row,status:'applied',before:{values:preview.beforeLabels,reason:preview.reason},after:{values:preview.afterLabels,reason:preview.reason,organisationWarnings:row.warnings??[]}});
    });
    results.push({row:row.row,status:'applied',errors:[]});
   }catch(error){

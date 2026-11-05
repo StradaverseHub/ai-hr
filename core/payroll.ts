@@ -1,3 +1,4 @@
+import {personnelGroupingReadinessTx} from './personnel-quality';
 import {payrollEmploymentPredicate,outstandingPaymentPredicate,payrollCompensationEffectiveOn,payrollEmploymentEnd,payrollRunContextsTx,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 import {PayrollTaxBasisError} from '../lib/payroll-tax-basis';
 import {readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx} from './payroll-formula-inputs';
@@ -3806,7 +3807,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // statutory profile / bank details) do not block here — the operator confirms them explicitly in
     // generateAction. A subset reprocess targets a processed run that already passed this gate.
     if (!subset) {
-      const checks = await preProcessChecksTx(tx, { ...batch, scope: batch.scope }, isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'));
+      const checks = await preProcessChecksTx(tx, { ...batch, scope: batch.scope }, isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'),ctx);
       // BLOCKER: no compensation row effective for the period (the earnings inner-join would silently
       // drop that employee; future rows do not supply a missing salary) OR a zero
       // basic/rate (feedback 64fb5e48 — the Personnel record would pay nothing). The old BASIC-component
@@ -3821,7 +3822,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         checks.missingCompensation.length +
         (checks.zeroBasic?.length ?? 0) +
         (checks.unpayablePayMode?.length ?? 0) +
-        (checks.tp3YearMismatch?.length ?? 0);
+        (checks.tp3YearMismatch?.length ?? 0)+(checks.organisationGrouping?.length??0);
       if (blocked > 0) throw new PreProcessBlockedError(blocked);
     }
 
@@ -3963,9 +3964,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         const addChecks = await preProcessChecksTx(
           tx,
           { ...batch, scope: { employmentIds: postedSubsetIds } },
-          isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'),
+          isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'),ctx,
         );
         const blockedRows = [
+          ...(addChecks.organisationGrouping??[]).map(r=>({...r,gap:'pending Group structure tagging: '+r.reason})),
           ...addChecks.missingCompensation.map((r) => ({ ...r, gap: 'no current salary record' })),
           // r369 — `zeroBasic` is now the daily/hourly-no-rate leg only, so the gap names it. The
           // no-monthly-basic population is NOT a blocker here: whether they can be reprocessed depends on
@@ -5193,6 +5195,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // Read by core/pay-rule.ts's fixed_allowances aggregate, which must NOT total one-offs.
       oneOff?: boolean;
       sourceId?: string;
+      inputQuantity?: { qty: number; unit: string | null };
       eaFormLine?: string | null;
       // 711adcd2 — pay_component.orp_overtime (migration 0456): the tick box that decides whether this item
       // counts towards the fixed_allowances aggregate a tenant's overtime formula reads. It REPLACED the
@@ -5356,6 +5359,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 displayCategory: t.compDisplayCategory ?? null,
                 eaFormLine: t.compEaFormLine ?? null,
                 sourceId: t.id,
+                ...(t.quantity != null ? { inputQuantity: { qty: Number(t.quantity), unit: t.unit } } : {}),
               }
             : t.kind === 'earning'
               ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', oneOff: true, amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, orpOvertime: false, orpUnpaidLeave: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null, displayCategory: null }
@@ -5489,6 +5493,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
        * input a `per_hour` / `per_day` rule consumed.
        */
       detail?: { qty: number; rate: number; unit: 'hours' | 'days' | null };
+      displayCategory?: string | null;
+      inputQuantity?: { qty: number; unit: string | null };
     };
 
     // ── Feedback 3c473773 — the DISPLAY overlay ────────────────────────────────────────────────────────
@@ -5812,7 +5818,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           qr && qrQty > 0 && round2(qrQty * qr.rate) === applied
             ? { qty: qrQty, rate: qr.rate, unit: qr.unit }
             : null;
-        currentLine = { code: c.code, name: c.name, amount: applied, buckets: [], epf: c.epf, socso: c.socso, pcb: c.pcb, hrdf: c.hrdf, ...(rateDetail ? { detail: rateDetail } : {}) };
+        currentLine = { code: c.code, name: c.name, amount: applied, displayCategory: c.displayCategory ?? null, ...(c.inputQuantity ? { inputQuantity: c.inputQuantity } : {}), buckets: [], epf: c.epf, socso: c.socso, pcb: c.pcb, hrdf: c.hrdf, ...(rateDetail ? { detail: rateDetail } : {}) };
         // Feedback 3c473773 — the box THIS item declares, read for the display tally only.
         currentCategory = c.displayCategory ?? null;
         // ── 711adcd2 — "Add to Unpaid Leave ORP Calculation" ──────────────────────────────────────
@@ -10952,6 +10958,7 @@ export type PreProcessAdvisory = {
   //
   // OPTIONAL so pre-existing advisory literals stay valid; absent ⇒ no such employees.
   tp3YearMismatch?: PreProcessCheckRow[];
+  organisationGrouping?: Array<PreProcessCheckRow & {reason:string}>;
 };
 
 /** Shared tx-level core: the same scoped, period-active population as generatePayslips' employee
@@ -10960,16 +10967,10 @@ export type PreProcessAdvisory = {
 async function preProcessChecksTx(
   tx: Tx,
   batch: PayrollEligibilityRun & { scope: unknown },
-  /**
-   * Whether the tenant has the typed-pay-components module (ADR-0077 slice 3).
-   *
-   * Passed as a BOOLEAN rather than threading a SessionContext into a Tx-level helper: this function
-   * is deliberately session-free — it takes a `tx` and plain data — and pulling an entitlement context
-   * into it would invert that layering for one predicate. Every caller has a ctx in scope and computes
-   * it there.
-   */
+  // Financial readiness uses the real caller and canonical company/dated organisation owner.
   typedComponents: boolean,
-  outstandingEnabled=false,
+  outstandingEnabled:boolean,
+  ctx:SessionContext,
 ): Promise<PreProcessAdvisory> {
   const [y, m] = batch.payPeriod.split('-').map(Number);
   const periodStart = `${batch.payPeriod}-01`;
@@ -11117,9 +11118,12 @@ async function preProcessChecksTx(
       .limit(1);
     hrdfUnregistered = (coStat?.hrdfStatus ?? 'not_registered') === 'not_registered';
   }
-  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], nothingPayable: [], staleBasicComponent: [], missingStatutory: [], missingBank: [], currencyMismatch: [], hrdfSubjectUnregistered: [], tp3YearMismatch: [] };
+  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], nothingPayable: [], staleBasicComponent: [], missingStatutory: [], missingBank: [], currencyMismatch: [], hrdfSubjectUnregistered: [], tp3YearMismatch: [], organisationGrouping: [] };
+  const grouping=await personnelGroupingReadinessTx(tx,ctx,{employmentIds:rows.map(row=>row.employmentId),asOf:periodEnd});
+  const pendingGrouping=new Map(grouping.filter(row=>!row.ready).map(row=>[row.employmentId,row.reason]));
   for (const r of rows) {
     const row: PreProcessCheckRow = { employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode };
+    if(pendingGrouping.has(r.employmentId))out.organisationGrouping!.push({...row,reason:pendingGrouping.get(r.employmentId)??'company_not_in_structure'});
     // The period-effective row must exist: both validation and calculation select this same record.
     // A future open revision cannot supply a missing salary or override an applicable historical one.
     const outstandingOnly=outstandingEnabled&&r.endedOn!==null&&r.endedOn<periodStart;
@@ -11186,7 +11190,7 @@ export function preProcessAdvisory(ctx: SessionContext, batchId: string): Promis
       .where(eq(payrollBatch.id, batchId))
       .limit(1);
     if (!batch) return { missingCompensation: [], missingStatutory: [], missingBank: [] };
-    return preProcessChecksTx(tx, batch, isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'));
+    return preProcessChecksTx(tx, batch, isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'),ctx);
   });
 }
 
@@ -11300,7 +11304,7 @@ function listPayslipLessEligibleTx(
     const checks = await preProcessChecksTx(
       tx,
       {...batch,scope:{employmentIds:ids}},
-      isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'),
+      isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'),ctx,
     );
     const flagsOf = (list: PreProcessCheckRow[] | undefined, label: string) =>
       (list ?? []).map((r) => [r.employmentId, label] as const);
@@ -11315,6 +11319,7 @@ function listPayslipLessEligibleTx(
     // Item 1bb09a73 — a declared Form TP3 figure this run would seed as zero blocks the ADD too, for
     // the same reason it blocks the run: the person would be paid with a wrong PCB and nothing would say so.
     push(blockerBy, flagsOf(checks.tp3YearMismatch, 'tp3YearMismatch'));
+    push(blockerBy,flagsOf(checks.organisationGrouping,'organisationGrouping'));
     push(warningBy, flagsOf(checks.missingStatutory, 'missingStatutory'));
     push(warningBy, flagsOf(checks.missingBank, 'missingBank'));
     // r369 (item eb949191) — A DELIBERATE SKIP MUST NOT READ AS "YOU FORGOT THIS PERSON".
@@ -11381,10 +11386,11 @@ export function preProcessAdvisoryForSelection(
       // all-clear for a run the terminal Process action then refuses. Same parity trap the note above
       // records for currencyMismatch.
       tp3YearMismatch: [],
+      organisationGrouping: [],
     };
     const contexts=await payrollRunContextsTx(tx,input.companyIds,input.payPeriod,input.payrollCycleId);
     for (const run of contexts) {
-      const a = await preProcessChecksTx(tx,{...run,scope}, isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'));
+      const a = await preProcessChecksTx(tx,{...run,scope}, isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'),ctx);
       merged.missingCompensation.push(...a.missingCompensation);
       merged.unpayablePayMode!.push(...(a.unpayablePayMode ?? []));
       merged.zeroBasic!.push(...(a.zeroBasic ?? []));
@@ -11395,6 +11401,7 @@ export function preProcessAdvisoryForSelection(
       merged.currencyMismatch!.push(...(a.currencyMismatch ?? []));
       merged.hrdfSubjectUnregistered!.push(...(a.hrdfSubjectUnregistered ?? []));
       merged.tp3YearMismatch!.push(...(a.tp3YearMismatch ?? []));
+      merged.organisationGrouping!.push(...(a.organisationGrouping??[]));
     }
     return merged;
   });

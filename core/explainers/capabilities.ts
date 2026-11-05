@@ -39,7 +39,7 @@ export type TerasCapability=Readonly<{name:string;module:string|null;admin:boole
  worker:'explainers'|null;
  /** Release merge (spec v22): served as this topic of product_guidance (core/product-context/tools.ts GUIDANCE_TOPICS),
   * never bound as a tool of its own, so the offer stays within the provider's tool ceiling. Same runner, same gating. */
- topic?:'password_policy'|'correction_controls';
+ topic?:'password_policy'|'correction_controls'|'organisation_tagging';
  run(ctx:SessionContext,input:Record<string,unknown>,scope:TerasCapabilityScope):Promise<ExplainerOutcome>}>;
 const text=(value:unknown)=>typeof value==='string'?value:undefined;
 
@@ -102,6 +102,15 @@ export async function correctionControlsGuidance(ctx:SessionContext,scope:TerasC
   humanBoundary:'Administrators can review this page; only a group administrator may save the tenant-wide setting. An authorized human separately chooses any payroll correction action on the affected batch after reviewing its consequences and the native action requirements.',
   provenance:provenance('core/explainers/capabilities.ts#correctionControlsGuidance','Not applicable: literal public page guidance, not a payroll setting read.',page,'Page purpose and human authority only. No setting, batch, person, pay value or payroll action is read or changed.')};
 }
+/** Literal public navigation only. Never reads or enumerates a reviewed organisation run. */
+export async function organisationTaggingGuidance(ctx:SessionContext):Promise<ExplainerOutcome>{
+ if(!isAdmin(ctx))return refuse('not_permitted','Organisation tagging guidance is available to administrators only.');
+ const page='/admin/organization/organisation-tagging';
+ return {ok:true,page,purpose:'Review an exact dated Company-to-Business-Unit and parent proposal, or an all-record organisation re-tag preview.',
+  navigation:'Open Organization, then Group structure and organisation tags. Prepare a preview there; an authorised checker opens the exact review link supplied by that native preview. The review page requires that exact run link.',
+  humanBoundary:'The native owner verifies current HR doer authority over the full affected scope and independent HR or eligible Group Rewards checker authority. A different login and Person must approve the exact frozen preview; the original HR doer separately continues staging and publication. A changed source requires a new preview. Guidance cannot choose mappings, read a run, approve, publish, resume, export or re-tag employees. Deployment never executes a re-tag.',
+  provenance:provenance('core/explainers/capabilities.ts#organisationTaggingGuidance','Not applicable: literal public page guidance, not a mapping or workflow read.',page,'Public navigation and human decision boundaries only. No Company identities, run handles, employees, mappings, counts, decisions, account state or source fingerprints are read or changed.')};
+}
 export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'explain_payslip_statutory',module:'payroll',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnPayslipStatutory(ctx,{period:text(input.period),item:text(input.item)})},
  {name:'explain_leave_entitlement',module:'leave',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnLeaveEntitlement(ctx,{leave_type:text(input.leave_type),as_of:text(input.as_of)})},
@@ -109,6 +118,7 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'setup_copilot',module:null,admin:true,worker:null,run:(ctx,_input,scope)=>copilot(ctx,scope)},
  {name:'password_policy_guidance',module:null,admin:true,worker:null,topic:'password_policy',run:ctx=>passwordPolicyGuidance(ctx)},
  {name:'correction_controls_guidance',module:'payroll',admin:true,worker:null,topic:'correction_controls',run:(ctx,_input,scope)=>correctionControlsGuidance(ctx,scope)},
+ {name:'organisation_tagging_guidance',module:null,admin:true,worker:null,topic:'organisation_tagging',run:ctx=>organisationTaggingGuidance(ctx)},
  {name:'pay_aggregates',module:'payroll',admin:false,access:'payroll',worker:null,run:(ctx,input)=>payAggregates(ctx,input)},
  {name:'workforce_metrics',module:null,admin:false,access:'team',worker:null,run:(ctx,input)=>workforceAggregates(ctx,input)},
  // AI v2 W5: "Why?" on the pay difference and the claim limits, under the explainers worker switch like the three above.

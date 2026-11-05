@@ -1,3 +1,4 @@
+import {APPROVED_UPGRADE_TAIL,assertApprovedUpgradeTail,migrateApprovedUpgrade} from './helpers/approved-upgrade';
 /** ADR-0174 populated upgrade through 2100–2102, on an owned disposable localhost database only.
  * A cross-tenant row present at the boundary must stop the whole upgrade with a readable report and leave
  * the ledger untouched; once that row is resolved the upgrade validates every key, rewrites no row and
@@ -23,7 +24,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:Entry[]};
  const boundary=journal.entries.findIndex(row=>row.tag===TAIL[0].tag);
  expect(boundary).toBe(668);
- expect(journal.entries.slice(boundary)).toEqual(TAIL);
+ assertApprovedUpgradeTail(journal.entries);
+ expect(journal.entries.slice(boundary,boundary+TAIL.length)).toEqual(TAIL);
  expect(journal.entries[boundary-1]).toEqual({idx:811,version:'7',when:1793330001411,tag:'2011_payroll_loops_hardening',breakpoints:true});
  const prefix=journal.entries.slice(0,boundary);
  const folder=mkdtempSync(join(tmpdir(),'tenant-company-fk-upgrade-')),database='ai_hr_tenant_fk_upgrade_'+randomUUID().replaceAll('-','');
@@ -91,9 +93,13 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(await storage.client`select has_function_privilege('ai_hr_app','app.company_subtree(uuid)','EXECUTE') as callable`).toEqual([{callable:true}]);
 
   // The owner resolves the defect deliberately; the upgrade itself never rewrites or deletes it.
+  // Complete the original exact 2100-2102 proof before later migrations intentionally add
+  // private tables/functions and change policies. The forward-to-current phase follows below.
+  for(const row of TAIL)copyFileSync('db/migrations/'+row.tag+'.sql',join(folder,row.tag+'.sql'));
+  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,671)}));
   await storage.client`delete from location where id=${defect}`;
   const upgradeNative=await native();
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  await migrate(storage.db,{migrationsFolder:folder});
   const afterLedger=await ledger();
   expect(afterLedger).toHaveLength(671);expect(afterLedger.slice(0,668)).toEqual(beforeLedger);
   expect(afterLedger.slice(668).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(
@@ -115,8 +121,16 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   await expect(storage.client`insert into location(tenant_id,company_id,code,name) values(${tenantA},${foreign},'XB','Fictional misfiled site')`)
    .rejects.toMatchObject({code:'23503',constraint_name:'location_company_tenant_fk'});
 
-  const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:folder});
   expect(await ledger()).toEqual(afterLedger);expect(await native()).toEqual(beforeRerun);
+  await migrateApprovedUpgrade(storage);
+  const complete=await ledger();expect(complete).toHaveLength(681);expect(complete.slice(0,671)).toEqual(afterLedger);
+  expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));
+  expect(await native()).toEqual(beforeRerun);expect(await keys()).toEqual(installed);
+  expect(await asAdmin(tx=>tx`select app.can_admin_employment(${employmentA}::uuid) own,app.can_admin_employment(${employmentB}::uuid) foreign`)).toEqual([{own:true,foreign:false}]);
+  const terminalPrivileges=await privileges();
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  expect(await ledger()).toEqual(complete);expect(await native()).toEqual(beforeRerun);expect(await privileges()).toEqual(terminalPrivileges);
  }finally{
   await application.client.end();await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`);await admin.end();rmSync(folder,{recursive:true,force:true});
  }

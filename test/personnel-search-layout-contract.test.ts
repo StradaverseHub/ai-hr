@@ -33,16 +33,10 @@ describe('c002b3c3 · the module is full width, once, in one place', () => {
   });
 });
 
-describe('c002b3c3 · the switcher is mounted on both screens and stays an RSC-safe island', () => {
-  it('the listing mounts it beside the Filter button, without replacing the filter', () => {
-    const src = read(LISTING);
-    expect(src).toContain('<EmployeeSwitcher');
-    expect(src).toContain("from './employee-switcher'");
-    // The filter panel is a different control answering a different question; both stay.
-    expect(src).toContain('<FilterPanel');
-    expect(src).toContain('dataTour="people-search"');
-    // It searches the whole reachable set, narrowed by the active company context — not the page.
-    expect(src).toContain('listWorkforcePickOptions(session, scopeIds)');
+describe('Personnel list search and profile switcher remain scoped RSC-safe islands', () => {
+  it('the approved listing uses one private list search and retains the scoped organisation filters', () => {
+    const src=read(LISTING);expect(src).not.toContain('<EmployeeSwitcher');expect(src).toContain('<PersonnelPrivateSearch');expect(src).toContain('<PersonnelOrganisationFilters');expect(src).toContain('dataTour="people-search"');expect(src).toContain('personnelFilterChoices(session, scopeIds)');
+    const island=read('app/admin/personnel/organisation-filters.tsx');expect(island).toContain('method="post"');expect(island).toContain('name="term"');expect(island).not.toContain('name="q" type="search"');
   });
 
   it('the profile mounts it and keeps the open tab across the jump', () => {
