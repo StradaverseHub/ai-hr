@@ -3059,6 +3059,8 @@ async function insertLeaveRequest(
       allowanceEligible: v.allowanceEligible ?? null,
     })
     .returning({ id: leaveRequest.id });
+  // Resolve the step snapshot before appending the event takes the tenant audit-chain lock.
+  const approvalSteps = await prepareApprovalSteps(tx, ctx.tenantId, row.id, v.employmentId, v.leaveTypeId, v.days);
   const submittedEventId = await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',
@@ -3158,7 +3160,7 @@ async function insertLeaveRequest(
   if (includeSubmittedEventId && !submittedEventId) throw new Error('leave.submitted_reference_missing');
   // 2B-1/2B-2/ADR-0071: if the company runs a multi-step chain, generate the instance approval steps,
   // resolving the scoped rule matrix against this request's day count (fractional for hourly/partial).
-  await generateApprovalSteps(tx, ctx.tenantId, row.id, v.employmentId, v.leaveTypeId, v.days);
+  if (approvalSteps.length > 0) await tx.insert(leaveApprovalStep).values(approvalSteps);
   return { id: row.id, ...(submittedEventId ? { submittedEventId } : {}) };
 }
 
@@ -4103,7 +4105,7 @@ export async function requestLeave(
     // precisely because rows are only ever created for single-approver requests. EL was already routed above.
     //
     // r79 0322 — "single-step" is no longer a COMPANY flag, it is this request's RESOLVED CHAIN having at
-    // most one level: the same gate generateApprovalSteps uses (isMultiStepChain), resolved from the same
+    // most one level: the same gate prepareApprovalSteps uses (isMultiStepChain), resolved from the same
     // helper with the same day count, so the per-date rows and the step rows can never disagree about the
     // request's shape. An unresolvable employment stays ineligible, exactly as `multi === false` did.
     const canUsePerDateApproval =
@@ -5195,44 +5197,41 @@ export async function previewApprovalChain(
  *  day-equivalent for hourly/partial requests (ADR-0071 1(h)), so an hourly request still participates in
  *  day-range matching. The generated steps are snapshotted here at submission time and NEVER re-resolved
  *  (ADR-0071 1(g)) — editing/archiving a rule later cannot change a pending request's routing. */
-async function generateApprovalSteps(
+async function prepareApprovalSteps(
   tx: Tx,
   tenantId: string,
   leaveRequestId: string,
   employmentId: string,
   leaveTypeId: string,
   days: number,
-) {
+): Promise<(typeof leaveApprovalStep.$inferInsert)[]> {
   const resolved = await resolveRequestApprovalChain(tx, employmentId, leaveTypeId, days);
-  if (!resolved) return;
+  if (!resolved) return [];
   const { chain, attr } = resolved;
   // The gate. Branching on the chain BEFORE the drop rules below is deliberate: a two-step template whose
   // manager step is dropped (no reporting line) has always produced ONE step row, and still does. Only a
   // chain that is one level BY CONFIGURATION collapses to the single-approver path.
-  if (!isMultiStepChain(chain)) return;
+  if (!isMultiStepChain(chain)) return [];
 
   const facts = await resolveChainFacts(tx, employmentId, attr, resolved.decision.resolvedLevels);
   const kept = applyChainDropRules(resolved.decision.resolvedLevels, facts).filter((l) => l.kept);
-  if (kept.length === 0) return;
-  await tx.insert(leaveApprovalStep).values(
-    // r293 phase 3 — the kind and the named approver are written TOGETHER, from one sanitised level.
-    // That pairing is the invariant migration 0467 deliberately does not put in a check constraint, and
-    // this is the single writer it is enforced in.
-    kept.map((level, stepIndex) => ({
-      tenantId,
-      leaveRequestId,
-      subjectEmploymentId: employmentId,
-      stepIndex,
-      approverKind: level.kind,
-      approverEmploymentId: level.employmentId,
-      // r293 phase 4 — NULL, not [], when the level has one approver: "no alternates" and "an empty list
-      // of alternates" must not be two different values in the column, and NULL is what every row written
-      // before this migration holds.
-      approverAlternates: level.alternates.length
-        ? level.alternates.map((a) => (a.employmentId ? { kind: a.kind, employmentId: a.employmentId } : a.kind))
-        : null,
-    })),
-  );
+  // r293 phase 3 — the kind and the named approver are written TOGETHER, from one sanitised level.
+  // That pairing is the invariant migration 0467 deliberately does not put in a check constraint, and
+  // this is the single writer it is enforced in.
+  return kept.map((level, stepIndex) => ({
+    tenantId,
+    leaveRequestId,
+    subjectEmploymentId: employmentId,
+    stepIndex,
+    approverKind: level.kind,
+    approverEmploymentId: level.employmentId,
+    // r293 phase 4 — NULL, not [], when the level has one approver: "no alternates" and "an empty list
+    // of alternates" must not be two different values in the column, and NULL is what every row written
+    // before this migration holds.
+    approverAlternates: level.alternates.length
+      ? level.alternates.map((a) => (a.employmentId ? { kind: a.kind, employmentId: a.employmentId } : a.kind))
+      : null,
+  }));
 }
 
 /** Attach a supporting document to a pending leave request (2A-2). employment_id is denormalized from
@@ -8163,7 +8162,8 @@ export async function editLeaveRequestTx(
     // Regenerate the approval-step chain from scratch — the day count / leave type may now resolve a different
     // scoped chain. Only pending steps existed (the request is pending), so deleting + regenerating is safe.
     await tx.delete(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, req.id));
-    await generateApprovalSteps(tx, ctx.tenantId, req.id, req.employmentId, p.leaveTypeId, days);
+    const approvalSteps = await prepareApprovalSteps(tx, ctx.tenantId, req.id, req.employmentId, p.leaveTypeId, days);
+    if (approvalSteps.length > 0) await tx.insert(leaveApprovalStep).values(approvalSteps);
 
     const after = {
       leaveTypeId: p.leaveTypeId,
