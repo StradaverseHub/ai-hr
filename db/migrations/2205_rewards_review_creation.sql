@@ -110,7 +110,8 @@ CREATE FUNCTION app.reward_architecture_for_source(wanted_unit uuid,wanted_emplo
 DECLARE u reward_unit%ROWTYPE;r job_architecture_position_revision%ROWTYPE;catalogue jsonb;job_unit jsonb;job_class jsonb;at_day date;
 BEGIN
  SELECT * INTO u FROM reward_unit WHERE tenant_id=app.current_tenant_id() AND id=wanted_unit AND deleted_at IS NULL;
- IF u.id IS NULL OR NOT app.reward_access(u.id) OR NOT app.reward_setup_allowed(u.company_id,'manage') THEN RAISE EXCEPTION 'Rewards source metadata is outside your scope' USING ERRCODE='42501';END IF;
+ IF u.id IS NULL OR NOT app.reward_access(u.id) OR NOT EXISTS(SELECT 1 FROM app.reward_roles(u.id) seat WHERE seat='gr') OR NOT app.reward_setup_allowed(u.company_id,'manage') THEN RAISE EXCEPTION 'Rewards source metadata is outside your scope' USING ERRCODE='42501';END IF;
+ IF EXISTS(SELECT 1 FROM employment e JOIN app_user actor ON actor.person_id=e.person_id AND actor.tenant_id=e.tenant_id WHERE e.id=wanted_employment AND e.tenant_id=u.tenant_id AND actor.id=app.current_user_id()) THEN RETURN NULL;END IF;
  at_day:=coalesce(wanted_date,u.snapshot_date);IF at_day>timezone('Asia/Kuala_Lumpur',now())::date THEN RAISE EXCEPTION 'Source metadata date cannot be in the future';END IF;
  IF NOT EXISTS(SELECT 1 FROM employment e JOIN assignment a ON a.employment_id=e.id AND a.tenant_id=e.tenant_id WHERE e.id=wanted_employment AND e.tenant_id=u.tenant_id AND e.company_id=u.company_id AND a.position_id=wanted_position AND a.business_unit_id=u.business_unit_id AND a.superseded_at IS NULL AND a.valid_from<=at_day AND(a.valid_to IS NULL OR a.valid_to>at_day)) THEN RETURN NULL;END IF;
  SELECT * INTO r FROM job_architecture_position_revision x WHERE x.tenant_id=u.tenant_id AND x.company_id=u.company_id AND x.position_id=wanted_position AND x.created_at<((at_day+1)::timestamp AT TIME ZONE 'Asia/Kuala_Lumpur') ORDER BY x.revision DESC LIMIT 1;
@@ -123,3 +124,142 @@ END $$;
 ALTER FUNCTION app.reward_architecture_for_source(uuid,uuid,uuid,date) OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_architecture_for_source(uuid,uuid,uuid,date) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_architecture_for_source(uuid,uuid,uuid,date) TO ai_hr_app;
+--> statement-breakpoint
+-- Private canonical-engine payroll aggregates: no runtime SELECT or employee-source export.
+CREATE TABLE reward_pat_basis(unit_id uuid PRIMARY KEY REFERENCES reward_unit(id),tenant_id uuid NOT NULL REFERENCES tenant(id),fingerprint text NOT NULL,engine_basis text NOT NULL,standard_payroll bigint NOT NULL CHECK(standard_payroll>=0),h_payroll bigint NOT NULL CHECK(h_payroll>=0),updated_at timestamptz NOT NULL DEFAULT now());
+ALTER TABLE reward_pat_basis ENABLE ROW LEVEL SECURITY;ALTER TABLE reward_pat_basis FORCE ROW LEVEL SECURITY;
+GRANT SELECT,INSERT,UPDATE ON reward_pat_basis TO ai_hr_reward_setup_reader;
+GRANT SELECT ON reward_entry,reward_governance,reward_governance_public TO ai_hr_reward_setup_reader;
+GRANT UPDATE ON reward_governance,reward_governance_public,reward_unit TO ai_hr_reward_setup_reader;
+GRANT INSERT ON reward_governance_history TO ai_hr_reward_setup_reader;
+CREATE POLICY reward_pat_basis_owner ON reward_pat_basis FOR ALL TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_pat_basis.tenant_id AND app.reward_setup_allowed(u.company_id,'manage'))) WITH CHECK(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_pat_basis.tenant_id AND app.reward_setup_allowed(u.company_id,'manage')));
+CREATE POLICY reward_pat_basis_entries ON reward_entry FOR SELECT TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_entry.tenant_id AND app.reward_setup_allowed(u.company_id,'manage')));
+CREATE POLICY reward_pat_draft_governance ON reward_governance FOR ALL TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_governance.tenant_id AND u.status='draft' AND app.reward_setup_allowed(u.company_id,'manage'))) WITH CHECK(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_governance.tenant_id AND u.status='draft' AND app.reward_setup_allowed(u.company_id,'manage')));
+CREATE POLICY reward_pat_draft_public ON reward_governance_public FOR ALL TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_governance_public.tenant_id AND u.status='draft' AND app.reward_setup_allowed(u.company_id,'manage'))) WITH CHECK(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_governance_public.tenant_id AND u.status='draft' AND app.reward_setup_allowed(u.company_id,'manage')));
+CREATE POLICY reward_pat_draft_history ON reward_governance_history FOR INSERT TO ai_hr_reward_setup_reader WITH CHECK(tenant_id=app.current_tenant_id() AND actor_id=app.current_user_id() AND kind='company-pat-confirmed' AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_governance_history.tenant_id AND u.status='draft' AND app.reward_setup_allowed(u.company_id,'manage')));
+CREATE POLICY reward_pat_draft_unit ON reward_unit FOR UPDATE TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND status='draft' AND app.reward_setup_allowed(company_id,'manage')) WITH CHECK(tenant_id=app.current_tenant_id() AND status='draft' AND app.reward_setup_allowed(company_id,'manage'));
+CREATE FUNCTION app.reward_pat_basis_fingerprint(wanted_unit uuid) RETURNS text LANGUAGE sql STABLE SET search_path=pg_catalog,public,app AS $$
+ SELECT encode(sha256(convert_to(jsonb_build_object('policy',u.policy-ARRAY['patActual','patTarget','targetMonthsBp','unitGovernanceDigest'],'entries',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',e.id,'source',e.source,'facts',e.facts)ORDER BY e.id),'[]'::jsonb)FROM reward_entry e WHERE e.unit_id=u.id AND e.tenant_id=u.tenant_id),'selection',g.state->'selection')::text,'UTF8')),'hex') FROM reward_unit u JOIN reward_governance g ON g.unit_id=u.id AND g.tenant_id=u.tenant_id WHERE u.id=wanted_unit AND u.tenant_id=app.current_tenant_id()
+$$;
+REVOKE ALL ON FUNCTION app.reward_pat_basis_fingerprint(uuid) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.reward_pat_basis_fingerprint(uuid) TO ai_hr_reward_setup_reader;
+CREATE FUNCTION app.reward_record_pat_basis(wanted_unit uuid,wanted_basis text,p_standard_payroll bigint,p_h_payroll bigint) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE u reward_unit%ROWTYPE;actual text;
+BEGIN
+ SELECT * INTO u FROM reward_unit WHERE id=wanted_unit AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF u.id IS NULL OR NOT EXISTS(SELECT 1 FROM app.reward_roles(u.id)seat WHERE seat='gr') OR NOT app.reward_setup_allowed(u.company_id,'manage') OR p_standard_payroll NOT BETWEEN 0 AND 9007199254740991 OR p_h_payroll NOT BETWEEN 0 AND 9007199254740991 OR wanted_basis !~ '^[0-9a-f]{64}$' THEN RAISE EXCEPTION 'Canonical Rewards basis is unavailable' USING ERRCODE='42501';END IF;
+ actual:=app.reward_pat_basis_fingerprint(u.id);IF actual IS NULL OR NOT EXISTS(SELECT 1 FROM reward_governance_public p WHERE p.unit_id=u.id AND p.tenant_id=u.tenant_id AND p.snapshot->>'basis'=wanted_basis) THEN RAISE EXCEPTION 'Refresh the current unit budget basis';END IF;
+ INSERT INTO reward_pat_basis(unit_id,tenant_id,fingerprint,engine_basis,standard_payroll,h_payroll) VALUES(u.id,u.tenant_id,actual,wanted_basis,p_standard_payroll,p_h_payroll) ON CONFLICT(unit_id)DO UPDATE SET fingerprint=excluded.fingerprint,engine_basis=excluded.engine_basis,standard_payroll=excluded.standard_payroll,h_payroll=excluded.h_payroll,updated_at=now();
+END $$;
+ALTER FUNCTION app.reward_record_pat_basis(uuid,text,bigint,bigint) OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_record_pat_basis(uuid,text,bigint,bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_record_pat_basis(uuid,text,bigint,bigint) TO ai_hr_app;
+CREATE FUNCTION app.reward_pat_affected_units(wanted_company uuid,wanted_year integer) RETURNS TABLE(id uuid,status text) LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF NOT app.reward_setup_allowed(wanted_company,'manage') THEN RAISE EXCEPTION 'Company PAT authority required' USING ERRCODE='42501';END IF;
+ RETURN QUERY SELECT u.id,u.status FROM reward_unit u JOIN reward_cycle c ON c.id=u.cycle_id AND c.tenant_id=u.tenant_id JOIN reward_unit_setup s ON s.unit_id=u.id AND s.tenant_id=u.tenant_id WHERE u.tenant_id=app.current_tenant_id() AND u.company_id=wanted_company AND c.year=wanted_year AND u.deleted_at IS NULL ORDER BY u.id FOR UPDATE OF u;
+END $$;
+ALTER FUNCTION app.reward_pat_affected_units(uuid,integer) OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_pat_affected_units(uuid,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_pat_affected_units(uuid,integer) TO ai_hr_app;
+CREATE FUNCTION app.reward_reprice_draft_pat(wanted_unit uuid,wanted_pat uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE u reward_unit%ROWTYPE;p reward_pat_version%ROWTYPE;b reward_pat_basis%ROWTYPE;before_state jsonb;after_state jsonb;public_state jsonb;old_pools jsonb;new_pools jsonb;pool_status text;numerator numeric;target numeric;months numeric;standard_pool numeric;h_pool numeric;
+BEGIN
+ SELECT * INTO u FROM reward_unit WHERE id=wanted_unit AND tenant_id=app.current_tenant_id() AND deleted_at IS NULL FOR UPDATE;
+ IF u.id IS NULL OR u.status<>'draft' OR NOT app.reward_setup_allowed(u.company_id,'manage') THEN RAISE EXCEPTION 'Only an authorized draft can adopt confirmed PAT';END IF;
+ SELECT * INTO p FROM reward_pat_version WHERE id=wanted_pat AND tenant_id=u.tenant_id AND company_id=u.company_id AND year=(u.policy->>'year')::integer AND state='confirmed';
+ IF p.id IS NULL OR EXISTS(SELECT 1 FROM reward_pat_version newer WHERE newer.tenant_id=p.tenant_id AND newer.company_id=p.company_id AND newer.year=p.year AND newer.state='confirmed' AND newer.revision>p.revision) OR NOT EXISTS(SELECT 1 FROM reward_unit_setup s WHERE s.unit_id=u.id AND s.tenant_id=u.tenant_id) THEN RAISE EXCEPTION 'Use the current confirmed company PAT';END IF;
+ SELECT * INTO b FROM reward_pat_basis WHERE unit_id=u.id AND tenant_id=u.tenant_id FOR UPDATE;
+ SELECT state INTO before_state FROM reward_governance WHERE unit_id=u.id AND tenant_id=u.tenant_id FOR UPDATE;
+ SELECT snapshot INTO public_state FROM reward_governance_public WHERE unit_id=u.id AND tenant_id=u.tenant_id FOR UPDATE;
+ IF b.unit_id IS NULL OR before_state IS NULL OR public_state IS NULL OR b.fingerprint IS DISTINCT FROM app.reward_pat_basis_fingerprint(u.id) OR b.engine_basis IS DISTINCT FROM public_state->>'basis' THEN RAISE EXCEPTION 'An affected draft budget basis is stale or missing. Refresh its unit budget inputs before confirming company PAT.' USING ERRCODE='40001';END IF;
+ numerator:=greatest(0,coalesce(p.inputs->>'actualCents',p.inputs->>'forecastCents')::numeric);target:=(p.inputs->>'targetCents')::numeric;months:=(p.inputs->>'targetMonthsBp')::numeric;
+ pool_status:=CASE WHEN target IS NULL OR coalesce(p.inputs->>'actualCents',p.inputs->>'forecastCents') IS NULL THEN 'not-set' WHEN p.inputs->>'actualCents' IS NOT NULL THEN 'final' ELSE 'provisional' END;
+ -- Exactly engine.ratio(engine.ratio(payroll, PAT, target), months, 10000): two separate floors.
+ standard_pool:=app.reward_pat_pool_from_payroll(b.standard_payroll,p.inputs);
+ h_pool:=app.reward_pat_pool_from_payroll(b.h_payroll,p.inputs);
+ IF standard_pool>9007199254740991 OR h_pool>9007199254740991 THEN RAISE EXCEPTION 'Calculated pool exceeds the supported amount';END IF;
+ old_pools:=public_state->'pools';new_pools:=jsonb_build_object('standard',standard_pool::bigint,'h',h_pool::bigint);
+ after_state:=jsonb_set(jsonb_set(before_state,'{inputs}',p.inputs||jsonb_build_object('multiplierBp',before_state->'inputs'->'multiplierBp','branchRatings',coalesce(before_state->'inputs'->'branchRatings','{}'::jsonb))),'{previousPools}',old_pools);
+ UPDATE reward_governance SET state=after_state,updated_at=now() WHERE unit_id=u.id AND tenant_id=u.tenant_id;
+ UPDATE reward_governance_public SET snapshot=public_state||jsonb_build_object('status',pool_status,'pools',new_pools,'targetMonthsBp',p.inputs->'targetMonthsBp','previousPools',old_pools) WHERE unit_id=u.id AND tenant_id=u.tenant_id;
+ INSERT INTO reward_governance_history(tenant_id,unit_id,actor_id,kind,reason,before_state,after_state)VALUES(u.tenant_id,u.id,app.current_user_id(),'company-pat-confirmed',p.reason,before_state,after_state);
+ UPDATE reward_unit_setup SET previous_pat_version_id=pat_version_id,pat_version_id=p.id,pool_recalculation_required=false,updated_at=now() WHERE unit_id=u.id AND tenant_id=u.tenant_id;
+ UPDATE reward_unit SET policy=jsonb_set(policy,'{unitGovernanceDigest}',to_jsonb(encode(sha256(convert_to(after_state::text,'UTF8')),'hex'))),revision=revision+1,updated_at=now() WHERE id=u.id AND tenant_id=u.tenant_id;
+END $$;
+ALTER FUNCTION app.reward_reprice_draft_pat(uuid,uuid) OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_reprice_draft_pat(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_reprice_draft_pat(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.reward_apply_confirmed_pat(wanted_unit uuid,wanted_pat uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE u reward_unit%ROWTYPE;p reward_pat_version%ROWTYPE;
+BEGIN
+ SELECT * INTO u FROM reward_unit WHERE id=wanted_unit AND tenant_id=app.current_tenant_id() AND deleted_at IS NULL FOR UPDATE;
+ SELECT * INTO p FROM reward_pat_version WHERE id=wanted_pat AND tenant_id=u.tenant_id AND company_id=u.company_id AND year=(u.policy->>'year')::integer AND state='confirmed' AND confirmed_by=app.current_user_id() AND confirmed_at=transaction_timestamp();
+ IF p.id IS NULL OR NOT app.reward_setup_allowed(u.company_id,'manage') OR u.status IN('ec','approved','posted') THEN RAISE EXCEPTION 'Apply the independently confirmed PAT in its confirmation transaction';END IF;
+ IF u.status='draft' THEN PERFORM app.reward_reprice_draft_pat(u.id,p.id);ELSE UPDATE reward_unit_setup SET pool_recalculation_required=true,updated_at=now() WHERE unit_id=u.id AND tenant_id=u.tenant_id AND pat_version_id<>p.id;END IF;
+END $$;
+ALTER FUNCTION app.reward_apply_confirmed_pat(uuid,uuid) OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_apply_confirmed_pat(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_apply_confirmed_pat(uuid,uuid) TO ai_hr_app;
+REVOKE EXECUTE ON FUNCTION app.reward_reprice_draft_pat(uuid,uuid) FROM ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.reward_consumed_library_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF EXISTS(SELECT 1 FROM reward_unit_setup s WHERE s.unit_id=OLD.id AND s.tenant_id=OLD.tenant_id) AND (NEW.policy->'ranges' IS DISTINCT FROM OLD.policy->'ranges' OR NEW.policy->'bonusMatrix' IS DISTINCT FROM OLD.policy->'bonusMatrix' OR NEW.policy->'bonusStructure' IS DISTINCT FROM OLD.policy->'bonusStructure' OR NEW.policy->'branchFactors' IS DISTINCT FROM OLD.policy->'branchFactors') THEN RAISE EXCEPTION 'Consumed salary and bonus libraries are immutable';END IF;RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_consumed_library_immutable() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_consumed_library_immutable() TO ai_hr_app,ai_hr_reward_setup_reader;
+CREATE TRIGGER reward_consumed_library_immutable BEFORE UPDATE OF policy ON reward_unit FOR EACH ROW EXECUTE FUNCTION app.reward_consumed_library_immutable();
+--> statement-breakpoint
+-- Closed fixed-point formula shared by the confirmation owner; two floors match Rewards engine.ratio.
+CREATE FUNCTION app.reward_pat_pool_from_payroll(payroll bigint,inputs jsonb) RETURNS bigint LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path=pg_catalog AS $$
+DECLARE numerator numeric;target numeric;months numeric;result numeric;
+BEGIN
+ IF payroll IS NULL OR payroll NOT BETWEEN 0 AND 9007199254740991 THEN RAISE EXCEPTION 'Invalid eligible payroll';END IF;
+ target:=(inputs->>'targetCents')::numeric;numerator:=coalesce(inputs->>'actualCents',inputs->>'forecastCents')::numeric;months:=(inputs->>'targetMonthsBp')::numeric;
+ IF target IS NULL OR numerator IS NULL THEN RETURN 0;END IF;
+ IF target<=0 OR months IS NULL OR months NOT BETWEEN 0 AND 100000 OR months%100<>0 THEN RAISE EXCEPTION 'Invalid confirmed PAT formula inputs';END IF;
+ result:=trunc(trunc(payroll::numeric*greatest(0,numerator)/target)*months/10000);
+ IF result>9007199254740991 THEN RAISE EXCEPTION 'Calculated pool exceeds the supported amount';END IF;RETURN result::bigint;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_pat_pool_from_payroll(bigint,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_pat_pool_from_payroll(bigint,jsonb) TO ai_hr_app,ai_hr_reward_setup_reader;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.architecture_grade(text) TO ai_hr_reward_setup_reader;
+CREATE FUNCTION app.reward_library_input_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE kind text;k text;r jsonb;m jsonb;prior bigint;n bigint;s jsonb;
+BEGIN
+ IF NEW.tenant_id<>app.current_tenant_id() OR NOT app.reward_setup_allowed(NULL,'manage') THEN RAISE EXCEPTION 'Global Group Rewards library authority required' USING ERRCODE='42501';END IF;
+ SELECT l.kind INTO kind FROM reward_library l WHERE l.id=NEW.library_id AND l.tenant_id=NEW.tenant_id;
+ IF kind IS NULL OR NEW.data->>'kind' IS DISTINCT FROM kind OR jsonb_typeof(NEW.data->'rows')<>'array' OR jsonb_array_length(NEW.data->'rows')<>13 THEN RAISE EXCEPTION 'A library must contain the complete active Grade Ladder';END IF;
+ IF (SELECT count(DISTINCT x->>'grade') FROM jsonb_array_elements(NEW.data->'rows')x)<>13 OR (SELECT count(DISTINCT x->>'gradeId') FROM jsonb_array_elements(NEW.data->'rows')x)<>13 THEN RAISE EXCEPTION 'Include each Grade Ladder identity once';END IF;
+ FOR r IN SELECT value FROM jsonb_array_elements(NEW.data->'rows') LOOP
+  IF app.architecture_grade(r->>'grade') IS DISTINCT FROM r->>'grade' OR NOT EXISTS(SELECT 1 FROM job_grade g WHERE g.id=(r->>'gradeId')::uuid AND g.tenant_id=NEW.tenant_id AND g.archived_at IS NULL AND app.architecture_grade(g.code)=r->>'grade') THEN RAISE EXCEPTION 'Library grade must match its active Grade Ladder identity';END IF;
+  IF kind='salary' THEN
+   IF NOT(r ?& ARRAY['gradeId','grade','minimumCents','midpointCents','maximumCents']) OR r-ARRAY['gradeId','grade','minimumCents','midpointCents','maximumCents']<>'{}'::jsonb THEN RAISE EXCEPTION 'Invalid salary row shape';END IF;
+   IF r->>'grade'='23' THEN IF r->'minimumCents'<>'null'::jsonb OR r->'midpointCents'<>'null'::jsonb OR r->'maximumCents'<>'null'::jsonb THEN RAISE EXCEPTION 'JG23 has no salary range';END IF;
+   ELSE
+    FOREACH k IN ARRAY ARRAY['minimumCents','midpointCents','maximumCents'] LOOP IF jsonb_typeof(r->k) IS DISTINCT FROM 'number' OR coalesce(r->>k,'')!~'^[0-9]+$' OR (r->>k)::numeric NOT BETWEEN 1 AND 100000000000 THEN RAISE EXCEPTION 'Enter supported positive salary cents';END IF;END LOOP;
+    IF (r->>'minimumCents')::bigint>=(r->>'midpointCents')::bigint OR (r->>'midpointCents')::bigint>=(r->>'maximumCents')::bigint THEN RAISE EXCEPTION 'Salary Minimum must be below Midpoint below Maximum';END IF;
+   END IF;
+  ELSE
+   IF NOT(r ?& ARRAY['gradeId','grade','months']) OR r-ARRAY['gradeId','grade','months']<>'{}'::jsonb OR jsonb_typeof(r->'months')<>'array' OR jsonb_array_length(r->'months')<>5 THEN RAISE EXCEPTION 'Invalid bonus row shape';END IF;
+   prior:=0;FOR m IN SELECT value FROM jsonb_array_elements(r->'months') LOOP IF m::text!~'^[0-9]+$' OR m::numeric NOT BETWEEN 0 AND 100000 OR m::numeric%100<>0 OR m::numeric<prior THEN RAISE EXCEPTION 'Bonus months must be ordered with two decimal places';END IF;prior:=m::bigint;END LOOP;
+   IF r->'months'->>0<>'0' THEN RAISE EXCEPTION 'UA bonus months must be zero';END IF;
+  END IF;
+ END LOOP;
+ IF kind='salary' THEN IF NEW.data-ARRAY['kind','rows']<>'{}'::jsonb THEN RAISE EXCEPTION 'Invalid salary library shape';END IF;
+ ELSE
+  IF NOT(NEW.data ?& ARRAY['kind','type','rows','segments']) OR NEW.data-ARRAY['kind','type','rows','segments']<>'{}'::jsonb OR NEW.data->>'type' NOT IN('standard','branch') OR jsonb_typeof(NEW.data->'segments')<>'array' OR jsonb_array_length(NEW.data->'segments')>100 OR (NEW.data->>'type'='branch')<>(jsonb_array_length(NEW.data->'segments')>0) THEN RAISE EXCEPTION 'Branch matrices require segment factors; standard matrices do not';END IF;
+  IF (SELECT count(DISTINCT x->>'name')FROM jsonb_array_elements(NEW.data->'segments')x)<>jsonb_array_length(NEW.data->'segments') THEN RAISE EXCEPTION 'Segment names must be unique';END IF;
+  FOR s IN SELECT value FROM jsonb_array_elements(NEW.data->'segments') LOOP
+   IF NOT(s ?& ARRAY['name','factors']) OR length(trim(coalesce(s->>'name',''))) NOT BETWEEN 1 AND 80 OR s-ARRAY['name','factors']<>'{}'::jsonb OR jsonb_typeof(s->'factors')<>'array' OR jsonb_array_length(s->'factors')<>5 OR s->'factors'->>0<>'0' THEN RAISE EXCEPTION 'Each branch segment requires five factors and UA zero';END IF;
+   FOR m IN SELECT value FROM jsonb_array_elements(s->'factors') LOOP IF m::text!~'^[0-9]+$' OR m::numeric NOT BETWEEN 0 AND 100000 OR m::numeric%100<>0 THEN RAISE EXCEPTION 'Use nonnegative factors with two decimal places';END IF;END LOOP;
+  END LOOP;
+ END IF;RETURN NEW;
+END $$;
+ALTER FUNCTION app.reward_library_input_guard() OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_library_input_guard() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_library_input_guard() TO ai_hr_app;
+CREATE TRIGGER reward_library_input_guard BEFORE INSERT OR UPDATE ON reward_library_version FOR EACH ROW EXECUTE FUNCTION app.reward_library_input_guard();

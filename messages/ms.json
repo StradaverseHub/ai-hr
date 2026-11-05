@@ -35470,6 +35470,22 @@
     "chooseSalary": "Pustaka gaji perlu dipilih",
     "chooseBonus": "Pustaka bonus perlu dipilih",
     "noUncovered": "Setiap syarikat yang layak sudah diliputi oleh pelan bersama.",
-    "createDraftPlans": "Cipta pelan draf yang dicadangkan"
+    "createDraftPlans": "Cipta pelan draf yang dicadangkan",
+    "splitDraft": "Pisahkan draf mengikut kombinasi pustaka",
+    "splitHelp": "Semak kumpulan syarikat di bawah. Pemisahan menggantikan draf semasa dengan draf berasingan; setiap pelan masih memerlukan kelulusan bebas.",
+    "confirmSplit": "Cipta draf berasingan ini",
+    "choiceForAll": "Pilih satu kombinasi untuk semua syarikat",
+    "compareCompanies": "Bandingkan syarikat",
+    "applyAll": "Gunakan pada semua syarikat",
+    "viewLibrary": "Lihat pustaka",
+    "newerVersion": "Versi disahkan yang lebih baharu tersedia. Pelan ini mengekalkan versi pilihannya sehingga anda mengubahnya secara jelas.",
+    "suggestion": {
+      "previous-year": "Dibawa daripada tahun lalu",
+      "business-unit": "Sepadan dengan tag unit perniagaan",
+      "group-default": "Lalai kumpulan",
+      "multiple-matches": "Berbilang padanan; pilih versi",
+      "none": "Tiada cadangan yang jelas; pilih versi"
+    },
+    "libraryReadOnly": "Nilai pustaka gaji dan bonus yang digunakan adalah untuk bacaan sahaja. Luluskan versi pelan baharu bagi semakan akan datang."
   }
 }

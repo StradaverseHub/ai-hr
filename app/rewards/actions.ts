@@ -7,7 +7,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
 import {rewardPolicyFromForm} from './policy-input';
-import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, saveRewardEntry, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump, previewRewardLump, setRewardPayWindowKeep, previewRewardSourceRefresh, saveRewardSourceRefresh } from '@/packs/rewards/service';
+import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, getRewardConfiguration,importRewardFacts, postRewardUnit, saveRewardEntry, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump, previewRewardLump, setRewardPayWindowKeep, previewRewardSourceRefresh, saveRewardSourceRefresh } from '@/packs/rewards/service';
 import { emptyFacts, isSalaryReductionAttempt, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -100,8 +100,8 @@ export async function entryAction(f: FormData) {
 
 export async function policyAction(f: FormData) {
   return change(f, async (s,id,rev)=>{
-    const view=await getRewardUnit(s,id);
-    await saveRewardPolicy(s,id,rev,rewardPolicyFromForm(f,view.unit.policy));
+    const view=await getRewardConfiguration(s,id);
+    await saveRewardPolicy(s,id,rev,rewardPolicyFromForm(f,view.unit.policy,{libraryOwned:view.libraryBound}));
   },true);
 }
 

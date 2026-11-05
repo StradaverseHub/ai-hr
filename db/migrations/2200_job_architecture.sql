@@ -2,7 +2,7 @@
 CREATE TABLE job_architecture_seat (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),
  user_id uuid NOT NULL REFERENCES app_user(id),company_id uuid REFERENCES company(id),
- role text NOT NULL CHECK(role IN('group_rewards','org_design','pbp')),
+ role text NOT NULL CHECK(role IN('group_rewards','org_design','pbp','hod')),
  valid_from date NOT NULL,valid_to date,created_by uuid NOT NULL REFERENCES app_user(id),created_at timestamptz NOT NULL DEFAULT now(),
  CHECK(valid_to IS NULL OR valid_to>=valid_from),UNIQUE(tenant_id,id)
 );
@@ -141,3 +141,10 @@ BEGIN
 END $$;
 CREATE TRIGGER architecture_outlier_closure BEFORE INSERT OR UPDATE ON job_architecture_outlier FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_outlier_closure();
 REVOKE ALL ON FUNCTION app.guard_architecture_outlier_closure() FROM PUBLIC;
+
+-- Shared lexical owner for consumers that validate SQL-authored grade references.
+CREATE FUNCTION app.architecture_grade(raw text) RETURNS text LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE SET search_path=pg_catalog AS $$
+ SELECT CASE WHEN code=ANY(ARRAY['H','12','13','14','15','16','17','18','19','20','21','22','23']) THEN code ELSE NULL END FROM(SELECT regexp_replace(upper(trim(raw)),'^JG\s*','') AS code) normalized
+$$;
+REVOKE ALL ON FUNCTION app.architecture_grade(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.architecture_grade(text) TO ai_hr_app;

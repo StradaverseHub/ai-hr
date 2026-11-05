@@ -35470,6 +35470,22 @@
     "chooseSalary": "请选择薪资资料库",
     "chooseBonus": "请选择奖金资料库",
     "noUncovered": "所有合资格公司均已纳入共享计划。",
-    "createDraftPlans": "创建建议的计划草稿"
+    "createDraftPlans": "创建建议的计划草稿",
+    "splitDraft": "按资料库组合拆分草稿",
+    "splitHelp": "请检查以下公司分组。拆分将用多个独立草稿替代当前草稿；每个新计划仍须经独立审批。",
+    "confirmSplit": "创建这些拆分草稿",
+    "choiceForAll": "为所有公司选择同一组合",
+    "compareCompanies": "比较各公司",
+    "applyAll": "应用至所有公司",
+    "viewLibrary": "查看资料库",
+    "newerVersion": "有更新的已确认版本。您明确更改之前，此计划将保留所选版本。",
+    "suggestion": {
+      "previous-year": "沿用去年的选择",
+      "business-unit": "匹配业务单位标签",
+      "group-default": "集团默认",
+      "multiple-matches": "多个匹配项；请选择版本",
+      "none": "没有明确建议；请选择版本"
+    },
+    "libraryReadOnly": "已使用的薪资和奖金资料库数值仅供查看。请为未来审核批准新计划版本。"
   }
 }

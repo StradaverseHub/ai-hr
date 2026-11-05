@@ -125,7 +125,7 @@ ALTER FUNCTION app.reward_setup_links() OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_setup_links() FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_setup_links() TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.reward_setup_plan_ids() RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
- SELECT v.id FROM reward_policy_group_version v JOIN reward_policy_group g ON g.id=v.group_id AND g.tenant_id=v.tenant_id WHERE v.tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(NULL,'manage') AND v.revision=g.revision ORDER BY g.name,g.id
+ SELECT v.id FROM reward_policy_group_version v JOIN reward_policy_group g ON g.id=v.group_id AND g.tenant_id=v.tenant_id WHERE v.tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(NULL,'manage') AND v.revision=g.revision AND EXISTS(SELECT 1 FROM reward_policy_group_target x WHERE x.tenant_id=v.tenant_id AND x.version_id=v.id) ORDER BY g.name,g.id
 $$;
 ALTER FUNCTION app.reward_setup_plan_ids() OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_setup_plan_ids() FROM PUBLIC;
