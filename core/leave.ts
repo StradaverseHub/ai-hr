@@ -2087,6 +2087,25 @@ export function bindingApplicationLengthLimit(
   return [...breached].sort((a, bb) => slack(a) - slack(bb) || rank(a) - rank(bb))[0];
 }
 
+async function readSharedLeaveGroupLimit(tx: Tx, leaveTypeId: string) {
+  // The group (if any) this leave type belongs to. The unique index on (tenant, leave_type) means there is
+  // at most one, so no ordering or tie-break is needed to make this deterministic.
+  const [group] = await tx
+    .select({
+      id: leaveSharedGroup.id,
+      name: leaveSharedGroup.name,
+      totalLimitDays: leaveSharedGroup.totalLimitDays,
+      maxDaysPerApplication: leaveSharedGroup.maxDaysPerApplication,
+    })
+    .from(leaveSharedGroupMember)
+    .innerJoin(leaveSharedGroup, eq(leaveSharedGroup.id, leaveSharedGroupMember.groupId))
+    .where(eq(leaveSharedGroupMember.leaveTypeId, leaveTypeId))
+    .limit(1);
+  return group;
+}
+
+type SharedLeaveGroupLimit = NonNullable<Awaited<ReturnType<typeof readSharedLeaveGroupLimit>>>;
+
 /**
  * THE ONE PLACE a per-application length cap is compared with an application (c6ffa725 rev 2).
  *
@@ -2110,6 +2129,7 @@ export function bindingApplicationLengthLimit(
  */
 async function enforceApplicationLengthLimit(
   tx: Tx,
+  group: SharedLeaveGroupLimit | undefined,
   p: {
     leaveTypeId: string;
     startDate: string;
@@ -2130,15 +2150,6 @@ async function enforceApplicationLengthLimit(
     .from(leaveType)
     .where(eq(leaveType.id, p.leaveTypeId))
     .limit(1);
-  // The group (if any) this leave type belongs to. The unique index on (tenant, leave_type) means there is
-  // at most one, so no ordering or tie-break is needed to make this deterministic.
-  const [group] = await tx
-    .select({ name: leaveSharedGroup.name, maxDaysPerApplication: leaveSharedGroup.maxDaysPerApplication })
-    .from(leaveSharedGroupMember)
-    .innerJoin(leaveSharedGroup, eq(leaveSharedGroup.id, leaveSharedGroupMember.groupId))
-    .where(eq(leaveSharedGroupMember.leaveTypeId, p.leaveTypeId))
-    .limit(1);
-
   const candidates: ApplicationLengthLimit[] = [];
   if (lt?.maxConsecutiveDays != null) {
     const cap = Number(lt.maxConsecutiveDays);
@@ -2205,28 +2216,15 @@ async function enforceApplicationLengthLimit(
  *  Both call sites (requestLeave, the approval path) are unchanged — this is a re-point, not a rewrite. */
 async function enforceSharedLeaveGroupLimit(
   tx: Tx,
+  group: SharedLeaveGroupLimit | undefined,
   p: {
     employmentId: string;
-    leaveTypeId: string;
     startDate: string;
     requestedDays: number;
     excludeRequestId?: string;
   },
 ): Promise<void> {
   if (p.requestedDays <= 0) return;
-  // The group (if any) this leave type belongs to. The unique index on (tenant, leave_type) means there is
-  // at most one, so no ordering or tie-break is needed to make this deterministic.
-  const [group] = await tx
-    .select({
-      id: leaveSharedGroup.id,
-      name: leaveSharedGroup.name,
-      totalLimitDays: leaveSharedGroup.totalLimitDays,
-      maxDaysPerApplication: leaveSharedGroup.maxDaysPerApplication,
-    })
-    .from(leaveSharedGroupMember)
-    .innerJoin(leaveSharedGroup, eq(leaveSharedGroup.id, leaveSharedGroupMember.groupId))
-    .where(eq(leaveSharedGroupMember.leaveTypeId, p.leaveTypeId))
-    .limit(1);
   if (!group) return;
   // The shared annual total. (The group's per-application cap was checked before this function ran — see
   // enforceApplicationLengthLimit; leaving a copy of it here would recreate the two-places-decide problem
@@ -3981,15 +3979,15 @@ export async function requestLeave(
     // application ALONE — an employee whose whole year is untouched is still refused a too-long
     // application, and telling them "your allowance is spent" would be a lie. Both dates AND the charged
     // days are passed: a calendar-unit cap measures the span, a working-days cap measures what it charges.
-    await enforceApplicationLengthLimit(tx, {
+    const sharedGroup = days > 0 ? await readSharedLeaveGroupLimit(tx, p.leaveTypeId) : undefined;
+    await enforceApplicationLengthLimit(tx, sharedGroup, {
       leaveTypeId: p.leaveTypeId,
       startDate: p.startDate,
       endDate: p.endDate,
       chargedDays: days,
     });
-    await enforceSharedLeaveGroupLimit(tx, {
+    await enforceSharedLeaveGroupLimit(tx, sharedGroup, {
       employmentId: p.employmentId,
-      leaveTypeId: p.leaveTypeId,
       startDate: p.startDate,
       requestedDays: days,
     });
@@ -5727,15 +5725,17 @@ async function finalizeLeaveApproval(
   // the charged days are the request's own `days`, NOT `approvedDays`. Partial approval narrows which dates
   // are granted; it does not turn a 5-day application into a 3-day one, and approving 3 of 5 days must not
   // slip a 5-day application past a 3-day cap.
-  await enforceApplicationLengthLimit(tx, {
+  const chargedDays = Number(req.days);
+  const sharedGroup = chargedDays > 0 || approvedDays > 0
+    ? await readSharedLeaveGroupLimit(tx, req.leaveTypeId) : undefined;
+  await enforceApplicationLengthLimit(tx, sharedGroup, {
     leaveTypeId: req.leaveTypeId,
     startDate: req.startDate,
     endDate: req.endDate,
-    chargedDays: Number(req.days),
+    chargedDays,
   });
-  await enforceSharedLeaveGroupLimit(tx, {
+  await enforceSharedLeaveGroupLimit(tx, sharedGroup, {
     employmentId: req.employmentId,
-    leaveTypeId: req.leaveTypeId,
     startDate: req.startDate,
     requestedDays: approvedDays,
     excludeRequestId: req.id,
