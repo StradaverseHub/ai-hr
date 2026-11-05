@@ -178,6 +178,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
   // Direct table-based select/insert/update/delete retain their own schema and types. Registering
   // every table here eagerly rebuilds unused db.query helpers in every transaction.
   const db = drizzle(client);
+  const configuredPoolMax = client.options.max;
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
   /** Run `fn` in a transaction scoped to the session's tenant/user/roles.
@@ -196,7 +197,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     // Backward-compat: a context with only `roles` becomes group-wide grants (companyId null).
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
-    const timing = globalForPg.__aihrPerfBeginTransaction?.(client.options.max);
+    const timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
     const result = db.transaction(async (tx) => {
       timing?.acquired();
       // The existing sticky fact only moves from unknown to on. An already known chain can

@@ -4071,6 +4071,26 @@ export class MissingAttendanceRejectReasonError extends Error {
   constructor() { super('A rejection explanation of 1–1000 characters is required.'); }
 }
 
+// Native approvals take the exclusive tenant Access lock. Let only one per tenant and process
+// enter the pool at a time, so local waiters do not occupy connections that other requests need.
+// The database lock still orders approval against other processes and configuration writers.
+const attendanceApprovalTails = new Map<string, Promise<void>>();
+
+async function queueNativeAttendanceApproval<T>(tenantId: string, approve: () => Promise<T>): Promise<T> {
+  const key = tenantId.toLowerCase();
+  const previous = attendanceApprovalTails.get(key);
+  let release!: () => void;
+  const current = new Promise<void>(resolve => { release = resolve; });
+  attendanceApprovalTails.set(key, current);
+  try {
+    await previous;
+    return await approve();
+  } finally {
+    if (attendanceApprovalTails.get(key) === current) attendanceApprovalTails.delete(key);
+    release();
+  }
+}
+
 export async function decideAttendanceCorrection(
   ctx: SessionContext,
   p: { correctionId: string; decision: 'approved' | 'rejected'; rejectReason?: string; remarks?: string; expectedStageIndex?: number; expectedParticipantSlot?: string; deciderEmploymentId?: string; today?: string },
@@ -4656,6 +4676,9 @@ export async function decideAttendanceCorrection(
     return { status: p.decision, deferred: deferredApproval };
   };
   if (existingTx) return decide(existingTx);
+  if (p.decision === 'approved') {
+    return queueNativeAttendanceApproval(ctx.tenantId, () => withTenant(ctx, decide));
+  }
   const correctionIdIsCanonical = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(p.correctionId);
   if (p.decision !== 'rejected' || !ctx.userId || ctx.agent || !correctionIdIsCanonical) return withTenant(ctx, decide);
   try {
