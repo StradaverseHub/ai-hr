@@ -4,7 +4,7 @@ import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {appendEvent,actorOf} from '../../db/events';
-import {lockAccessConfigurationTx} from '../../core/access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from '../../core/access-configuration-lock';
 import {labelUsableByCompany,lockLabelCriteriaTx} from '../../core/system-labels';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {cataloguePath,architectureGrade,assertLadderContinuity,ArchitectureError,assertIndependentChecker,validateArchitectureCatalogue,validatePositionMappings,scanArchitectureOutliers,type ArchitectureCatalogue,type ArchitecturePosition,type ArchitectureEmployee,type PositionMapping,outlierTypes} from './model';
@@ -128,7 +128,14 @@ export function decideArchitectureAdvice(ctx:SessionContext,raw:unknown){const p
 export function architectureAdviceForDraft(ctx:SessionContext,id:string){uuid.parse(id);return tenant(ctx,async tx=>{const [s]=await tx.execute<{company_id:string;subject_id:string;payload:Record<string,string>;source_digest:string}>(sql`select company_id,subject_id,payload,source_digest from job_architecture_suggestion where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid and kind='description' and decision in('accepted','edited')`);if(!s)throw new ArchitectureError('missing','Choose an accepted description draft.');await authority(tx,s.company_id,'propose');const w=await workspaceTx(tx,ctx,s.company_id);if(digest((await adviceSourceTx(tx,ctx,{kind:'description',companyId:s.company_id,subjectId:s.subject_id})).source)!==s.source_digest)throw new ArchitectureError('changed','The draft source changed. Request new advice.');return s;});}
 
 /** Navigation courtesy only; every operation rechecks its own authority. */
-export function canViewJobArchitecture(ctx:SessionContext){return tenant(ctx,async tx=>{const [r]=await tx.execute<{ok:boolean}>(sql`select app.job_architecture_can(null,'view') or exists(select 1 from company c where c.tenant_id=${ctx.tenantId}::uuid and app.job_architecture_can(c.id,'view')) as ok`);return !!r?.ok;});}
+export async function canViewJobArchitecture(ctx: SessionContext) {
+ if (!ctx.userId) throw new ArchitectureError('forbidden', 'Sign in to continue.');
+ return withTenant(ctx, async tx => {
+  await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+  const [row] = await tx.execute<{ok: boolean}>(sql`select app.job_architecture_can(null,'view') or exists(select 1 from company c where c.tenant_id=${ctx.tenantId}::uuid and app.job_architecture_can(c.id,'view')) as ok`);
+  return !!row?.ok;
+ });
+}
 
 /** Approved source for Personnel/movement proposals; never writes an employment or assignment. */
 export function approvedPositionArchitecture(ctx:SessionContext,input:{companyId:string;positionId:string}){

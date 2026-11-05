@@ -6,10 +6,11 @@ import * as s from '../db/schema';
 import {hireEmployee,setEmploymentAssignment} from '../core/org';
 import {listEmployeesPage,countEmployeesByStatus,personnelFilterChoices,readPersonnelOverview} from '../core/read';
 import {createPersonnelPrivateSearch,personnelPrivateSearchAvailable,privateSearchHash} from '../core/personnel-private-search';
-import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationTx,tryLockAccessConfigurationReadTx} from '../core/access-configuration-lock';
 import {PersonnelReadBusyError} from '../core/personnel-read-bounds';
-import {workforceCompanies,workforceViewScope} from '../core/workforce-access';
+import {personnelMaintenanceCompanyIds,workforceViewScope} from '../core/workforce-access';
 import {personnelGroupingReadinessTx} from '../core/personnel-quality';
+import {canViewJobArchitecture} from '../packs/job-architecture/owner';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,ctx:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();ctx=adminCtx(b);});
@@ -100,14 +101,14 @@ it('refuses queued Personnel scope, list and export reads while the tenant acces
   const input = { companyIds: [b.companyId], limit: 1, offset: 0 };
   await owner.withTenant(ctx, async tx => {
     await lockAccessConfigurationTx(tx, ctx.tenantId);
-    await expect(workforceCompanies(ctx, 'maintain', { personnelList: true })).rejects.toBeInstanceOf(PersonnelReadBusyError);
     await expect(workforceViewScope(ctx, { personnelList: true })).rejects.toBeInstanceOf(PersonnelReadBusyError);
+    await expect(personnelMaintenanceCompanyIds(ctx)).rejects.toBeInstanceOf(PersonnelReadBusyError);
     await expect(readPersonnelOverview(ctx, input, {})).rejects.toBeInstanceOf(PersonnelReadBusyError);
     await expect(listEmployeesPage(ctx, input, 'workforce')).rejects.toBeInstanceOf(PersonnelReadBusyError);
   });
   await owner.withTenant(ctx, async tx => {
     await lockAccessConfigurationReadTx(tx, ctx.tenantId);
-    await expect(workforceCompanies(ctx, 'maintain', { personnelList: true })).resolves.toContain(b.companyId);
+    await expect(personnelMaintenanceCompanyIds(ctx)).resolves.toContain(b.companyId);
     await expect(workforceViewScope(ctx, { personnelList: true })).resolves.toHaveProperty('companyIds');
     await expect(readPersonnelOverview(ctx, input, {})).resolves.toHaveProperty('employees.rows');
     await expect(listEmployeesPage(ctx, input, 'workforce')).resolves.toHaveProperty('rows');
@@ -137,6 +138,19 @@ it('recovers a standalone Personnel read when a brief Access writer releases its
     await new Promise(resolve => setTimeout(resolve, 80));
   });
   await expect(read).resolves.toMatchObject({ companyIds: [b.companyId] });
+});
+
+it('opens Personnel scope, maintenance choices and the list while another authorised reader holds the same tenant lock', async () => {
+  const employee = await hire('Fictional Concurrent Personnel Employee');
+  const input = { companyIds: [b.companyId], limit: 1, offset: 0 };
+  await owner.withTenant(ctx, async tx => {
+    expect(await tryLockAccessConfigurationReadTx(tx, ctx.tenantId)).toBe(true);
+    expect(await canViewJobArchitecture(ctx)).toBe(true);
+    expect((await workforceViewScope(ctx, { personnelList: true })).companyIds).toContain(b.companyId);
+    expect(await personnelMaintenanceCompanyIds(ctx)).toContain(b.companyId);
+    const overview = await readPersonnelOverview(ctx, input, {});
+    expect(overview.employees.rows.map(row => row.employmentId)).toEqual([employee.employmentId]);
+  });
 });
 
 it('retains unpaginated totals, status counts and company choices past the last Personnel row', async () => {

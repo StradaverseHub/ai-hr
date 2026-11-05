@@ -31,21 +31,23 @@ export async function assertWorkforcePersonTx(tx:Tx,ctx:SessionContext,personId:
  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_person(${personId}::uuid,${'workforce.'+operation}) as allowed`);
  if(!row?.allowed)throw new WorkforceAccessError();
 }
+async function readWorkforceCompanyIds(tx:Tx,operation:WorkforceOperation){
+ const allowed=operation==='view'?sql`app.access_workforce_projection_company(id)`:sql`app.access_workforce_company(id,'workforce.maintain')`;
+ const rows=await tx.execute<{id:string}>(sql`select id from company where tenant_id=app.current_tenant_id() and ${allowed} order by id`);
+ return rows.map(row=>row.id);
+}
+
 /** Scope metadata only. Actual reads/writes repeat their check under the same access lock. */
-export function workforceCompanies(
- ctx:SessionContext, operation:WorkforceOperation='view', carrier?:Tx|{personnelList:true},
-){
- const read=async (tx:Tx)=>{
-  const allowed=operation==='view'?sql`app.access_workforce_projection_company(id)`:sql`app.access_workforce_company(id,'workforce.maintain')`;
-  const rows=await tx.execute<{id:string}>(sql`select id from company where tenant_id=app.current_tenant_id() and ${allowed} order by id`);
-  return rows.map(row=>row.id);
+export function workforceCompanies(ctx:SessionContext,operation:WorkforceOperation='view',outerTx?:Tx){
+ const run=async (tx:Tx)=>{
+  await (outerTx?lockAccessConfigurationTx:lockAccessConfigurationReadTx)(tx,ctx.tenantId);
+  return readWorkforceCompanyIds(tx,operation);
  };
- if(carrier&&'personnelList' in carrier)return withPersonnelRead(ctx,read,{sharedAccessLock:true});
- if(carrier)return lockAccessConfigurationTx(carrier,ctx.tenantId).then(()=>read(carrier));
- return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
-  return read(tx);
- });
+ return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+export function personnelMaintenanceCompanyIds(ctx:SessionContext){
+ return withPersonnelRead(ctx,tx=>readWorkforceCompanyIds(tx,'maintain'),{sharedAccessLock:true});
 }
 
 export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string,operation:WorkforceOperation){

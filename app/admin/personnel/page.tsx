@@ -1,7 +1,7 @@
 import {personnelPrivateSearchAvailable} from '@/core/personnel-private-search';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import {PersonnelReadBusyError} from '@/core/personnel-read-bounds';
-import {workforceCompanies} from '@/core/workforce-access';
+import {personnelMaintenanceCompanyIds} from '@/core/workforce-access';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fields';
@@ -139,7 +139,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   const workforceIds=new Set(companyIds);
   const today = todayInKualaLumpur();
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
-  const maintainIds = new Set(isAdmin ? await workforceCompanies(session, 'maintain', { personnelList: true }) : []);
+  const maintainIds = new Set(isAdmin ? await personnelMaintenanceCompanyIds(session) : []);
   const canCreate = maintainIds.size > 0;
   const { error } = sp;
   const pq = parsePageQuery(sp);
