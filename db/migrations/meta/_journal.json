@@ -4707,6 +4707,20 @@
       "breakpoints": true
     },
     {
+      "idx": 1401,
+      "version": "7",
+      "when": 1793330001601,
+      "tag": "2201_job_architecture_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 1402,
+      "version": "7",
+      "when": 1793330001602,
+      "tag": "2202_job_architecture_profile",
+      "breakpoints": true
+    },
+    {
       "idx": 1403,
       "version": "7",
       "when": 1793330001603,

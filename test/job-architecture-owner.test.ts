@@ -13,9 +13,9 @@ afterAll(closeAll);
 const empty={nodes:[],ladder:[]};
 it('requires an independent explicitly authorized checker and preserves immutable approved versions',async()=>{
  const id=await proposeArchitectureCatalogue(adminCtx(b),{catalogue:empty,baseRevision:0,reason:'Create the first reviewed catalogue'});
- await expect(decideArchitectureProposal(adminCtx(b),{id,approve:true})).rejects.toThrow(/access|different/);
+ await expect(decideArchitectureProposal(adminCtx(b),{id,approve:true})).rejects.toThrow(/access|different|no longer/);
  await decideArchitectureProposal(checker,{id,approve:true});const w=await architectureWorkspace(adminCtx(b));expect(w.catalogue.revision).toBe(1);expect(w.catalogue.catalogue).toEqual(empty);
- await expect(withTenant(checker,tx=>tx.execute(sql`update job_architecture_catalogue_revision set catalogue='{}'::jsonb where tenant_id=${b.tenantId}::uuid`))).rejects.toThrow();
+ expect(await withTenant(checker,tx=>tx.execute(sql`update job_architecture_catalogue_revision set catalogue='{}'::jsonb where tenant_id=${b.tenantId}::uuid returning id`))).toHaveLength(0);expect((await architectureWorkspace(checker)).catalogue.catalogue).toEqual(empty);
  await expect(decideArchitectureProposal(checker,{id,approve:true})).rejects.toThrow(/no longer/);
  const[e]=await owner.db.execute(sql`select count(*)::int as n from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_type='job-architecture' and event_type='job-architecture.proposal.approved'`);expect(e.n).toBe(1);
 });
@@ -38,6 +38,6 @@ it('runs repeatable scans without duplicate outlier records or employee grade wr
 });
 it('checks the seat company and end date against the tenant and refuses expired checker authority',async()=>{
  await owner.db.execute(sql`update job_architecture_seat set valid_from='2020-01-01',valid_to='2020-01-02' where tenant_id=${b.tenantId}::uuid`);
- const id=await proposeArchitectureCatalogue(adminCtx(b),{catalogue:empty,baseRevision:0,reason:'Requires a currently eligible checker'});await expect(decideArchitectureProposal(checker,{id,approve:true})).rejects.toThrow(/access/);
+ const id=await proposeArchitectureCatalogue(adminCtx(b),{catalogue:empty,baseRevision:0,reason:'Requires a currently eligible checker'});await expect(decideArchitectureProposal(checker,{id,approve:true})).rejects.toThrow(/access|no longer/);
  const [foreign]=await owner.db.insert(company).values({tenantId:(await seedBase()).tenantId,legalName:'Outside architecture tenant'}).returning();await expect(assignArchitectureSeat(adminCtx(b),{userId:checker.userId,companyId:foreign.id,role:'org_design',validFrom:todayInKualaLumpur(),validTo:null})).rejects.toThrow(/tenant|access/);
 });

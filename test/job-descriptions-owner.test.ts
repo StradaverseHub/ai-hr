@@ -1,8 +1,9 @@
+import {assignArchitectureSeat,proposeArchitectureCatalogue,decideArchitectureProposal} from '../packs/job-architecture/service';
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { beforeAll, beforeEach, afterAll, describe, expect, it } from 'vitest';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
-import { appUser, company, department, person, position, profileOption, roleAssignment } from '../db/schema';
+import { appUser, company, department, person, position, profileOption, roleAssignment,jobGrade } from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { DEFAULT_FORM, saveJobDraft, readJobDocument, listJobDocuments, transitionJob, configureJobForm, getJobForm, getJobMasters, attachJobDocument, downloadJobAttachment, removeJobAttachment, type JobInput } from '../packs/job-descriptions/service';
@@ -86,4 +87,20 @@ it('records optional reported receipt as its own attributable event without modi
 });
 it('offers named reviewers through actual descendant company scope, excluding disabled or denied principals',async()=>{
  const[child]=await owner.db.insert(company).values({tenantId:b.tenantId,legalName:'Child company',parentCompanyId:b.companyId}).returning();const scoped=await principal('Parent-company reviewer',b.companyId);const masters=await getJobMasters(adminCtx(b));expect(masters.people.find(v=>v.value===scoped.userId)?.companyIds).toContain(child.id);await owner.db.update(appUser).set({archivedAt:new Date()}).where(eq(appUser.id,scoped.userId!));expect((await getJobMasters(adminCtx(b))).people.some(v=>v.value===scoped.userId)).toBe(false);
+});
+
+it('binds canonical unit scope, flags grade disagreement and preserves one current JD with immutable publication history',async()=>{
+ const [grade]=await owner.db.insert(jobGrade).values({tenantId:b.tenantId,code:'13',name:'Architecture13'}).returning();
+ await assignArchitectureSeat(adminCtx(b),{userId:approver.userId,companyId:null,role:'group_rewards',validFrom:todayInKualaLumpur(),validTo:null});
+ const ids=[randomUUID(),randomUUID(),randomUUID(),randomUUID()];const nodes=ids.map((id,i)=>({id,kind:(['family','subfamily','specialisation','unit'] as const)[i],code:'ARCH'+i,title:i===3?'Finance Analyst':'Classification'+i,parentId:i?ids[i-1]:null,minGrade:i===3?'12':null,maxGrade:i===3?'19':null,statutory:false,sme:false,description:''}));
+ const proposal=await proposeArchitectureCatalogue(adminCtx(b),{catalogue:{nodes,ladder:[]},baseRevision:0,reason:'Approved canonical financial work'});await decideArchitectureProposal(approver,{id:proposal,approve:true});
+ const linked=input({jobUnitId:ids[3],org:{grade:grade.id}});await expect(saveJobDraft(adminCtx(b),{...linked,title:'Invented title'})).rejects.toThrow(/title/);
+ const first=await saveJobDraft(adminCtx(b),linked);await command(adminCtx(b),first.jobId,'submit');await command(reviewer,first.jobId,'review');
+ let detail=await readJobDocument(approver,first.jobId);const flagged=await transitionJob(approver,{jobId:first.jobId,revisionId:detail.revision.id,lockVersion:detail.revision.lock_version,action:'approve',scopeGrade:'14'});expect(flagged).toEqual({outlier:true});expect((await readJobDocument(approver,first.jobId)).revision.status).toBe('submitted');
+ await command(approver,first.jobId,'approve');const prior=(await readJobDocument(approver,first.jobId)).revision;
+ const second=await saveJobDraft(adminCtx(b),{...linked,jobCode:'FIN-SECOND'});await command(adminCtx(b),second.jobId,'submit');await command(reviewer,second.jobId,'review');await command(approver,second.jobId,'approve');
+ const [current]=await owner.db.execute(sql`select revision_id from job_architecture_jd_publication where tenant_id=${b.tenantId}::uuid`);expect(current.revision_id).toBe(second.revisionId);
+ const historic=(await readJobDocument(approver,first.jobId,prior.id)).revision;expect(historic.status).toBe('superseded');expect(historic.answers).toEqual(prior.answers);expect(historic.architecture).toEqual(prior.architecture);
+ const [history]=await owner.db.execute(sql`select count(*)::int as n from job_architecture_jd_publication_history where tenant_id=${b.tenantId}::uuid`);expect(history.n).toBe(2);
+ await expect(withTenant(approver,tx=>tx.execute(sql`update job_document_revision set title='Changed history',lock_version=lock_version+1 where id=${prior.id}::uuid`))).rejects.toThrow();
 });
