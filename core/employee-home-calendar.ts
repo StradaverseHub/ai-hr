@@ -2,7 +2,7 @@
  * pricing, private leave reasons or payroll amounts are fetched. Every fact retains its owner. */
 import {withTenant,type SessionContext} from '../db/client';
 import {requireOwnHomeSubject} from './employee-home';
-import {listEligibleLeaveTypesFor,myOwnEmploymentSubjectsTx} from './read';
+import {isOwnProfileEditEmploymentTx,listEligibleLeaveTypesFor} from './read';
 import {getEmployeeHomeDisplayPreferences} from './dashboard-prefs';
 import {homeDisplayClock} from '../lib/employee-home';
 import {homeCalendarGrid,type EmployeeHomeCalendar,type HomeCalendarEntry} from '../lib/employee-home-calendar';
@@ -29,14 +29,14 @@ export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:s
     replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subject.employmentId],startDate:from,endDate:to}),
     provenCompanyDatesTx(tx,dates.map(date=>({employmentId:subject.employmentId,date}))),
     listEligibleLeaveTypesFor(ctx,subject.employmentId,undefined,tx),
-    myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true}),
+    isOwnProfileEditEmploymentTx(tx,ctx,subject.employmentId),
    ]);
    return {leave,holidays,replacements,coverage,eligible,active};
   }),
   payrollEnabled?readOwnPayrollCalendarPayments(ctx,subject.employmentId,from,to):Promise.resolve([]),
   readHomeTeamCalendar(ctx,subject.employmentId,from,to),
  ]);
- const canApply=facts.active.some(row=>row.employmentId===subject.employmentId)&&facts.eligible.length>0;
+ const canApply=facts.active&&facts.eligible.length>0;
  const payments=new Set(paymentDates);
  return {version:1,employmentId:subject.employmentId,month,today:display.date,weekStartsOn:preferences.weekStartsOn,payrollEnabled,team,
   days:dates.map(date=>{

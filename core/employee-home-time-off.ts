@@ -3,7 +3,7 @@
 import {sql} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
 import {withTenant} from '../db/client';
-import {myOwnEmploymentSubjectsTx,listEligibleLeaveTypesFor} from './read';
+import {isOwnProfileEditEmploymentTx,listEligibleLeaveTypesFor} from './read';
 import {requireOwnHomeSubjectTx,HomeAccessError} from './employee-home';
 import {myCurrentLeaveCards,nextApprovedLeavePresenceTx} from '../packs/leave/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -14,8 +14,7 @@ export async function readEmployeeHomeTimeOff(ctx:SessionContext,employmentId?:s
   await tx.execute(sql`set transaction read only`);
   const subject=await requireOwnHomeSubjectTx(tx,ctx,employmentId);
   // A prior selected card cannot survive a blocked/archived login or a now-ended employment.
-  const active=await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true});
-  if(!active.some(row=>row.employmentId===subject.employmentId))throw new HomeAccessError('employmentUnavailable');
+  if(!await isOwnProfileEditEmploymentTx(tx,ctx,subject.employmentId))throw new HomeAccessError('employmentUnavailable');
   const today=todayInKualaLumpur();
   const [cards,nextApproved,eligible]=await Promise.all([
    myCurrentLeaveCards(ctx,subject.employmentId,{today,locale},tx),

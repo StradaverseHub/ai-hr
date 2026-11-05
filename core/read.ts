@@ -6463,6 +6463,19 @@ export async function myEmploymentsTx(tx:Tx,ctx:SessionContext,opts:{profileEdit
       .orderBy(employment.hiredOn,employment.id);
 }
 
+function ownEmploymentSubjectPredicate(ctx:SessionContext,personId:string){
+ return and(ownPersonPredicate(ctx),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,personId));
+}
+
+/** Selected own subject eligibility, without projecting an inventory or resolving its dated companies. */
+export async function isOwnProfileEditEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ if(!ctx.personId)return false;
+ const [row]=await tx.select({id:employment.id}).from(employment)
+  .innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+  .where(and(ownEmploymentSubjectPredicate(ctx,ctx.personId),eq(employment.id,employmentId),profileEditEmploymentPredicate(ctx))).limit(1);
+ return row!==undefined;
+}
+
 /** Salary-free own-subject inventory. A caller must explicitly select an ID from this set.
  * Dated company proof is strict: a missing assignment is Unknown, never today's company fallback. */
 export async function myOwnEmploymentSubjectsTx(tx:Tx,ctx:SessionContext,opts:{profileEdit?:boolean}={}){
@@ -6472,7 +6485,7 @@ export async function myOwnEmploymentSubjectsTx(tx:Tx,ctx:SessionContext,opts:{p
   currentCompanyId:employment.companyId,company:company.legalName,country:company.country,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,
   resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt,status:employmentStatusSql()})
   .from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
-  .where(and(ownPersonPredicate(ctx),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),opts.profileEdit?profileEditEmploymentPredicate(ctx):undefined))
+  .where(and(ownEmploymentSubjectPredicate(ctx,ctx.personId),opts.profileEdit?profileEditEmploymentPredicate(ctx):undefined))
   .orderBy(employment.hiredOn,employment.id);
  const {provenCompanyDatesTx}=await import('./employment-company');
  const proofs=await provenCompanyDatesTx(tx,rows.map(row=>({employmentId:row.employmentId,date})));
