@@ -90,6 +90,11 @@ function shimRepo(envProduction: string): { dir: string; trace: string } {
     fs.writeFileSync(p, `#!/bin/sh\nprintf '%s\\n' "${cmd} $*" >> "$DEPLOY_TRACE"\nexit 0\n`);
     fs.chmodSync(p, 0o755);
   }
+  fs.writeFileSync(path.join(dir, 'bin/psql'), `#!/bin/sh
+printf '%s\\n' "psql $*" >> "$DEPLOY_TRACE"
+case "$*" in *reward_setup_allowed*) printf '%s\\n' "\${TEST_REWARDS_GRANT-t}" ;; esac
+exit 0
+`);
   // Observe the actual ordinary build environment; unset alone would permit Next to reload stale
   // values from the private env file later. No secret field is logged by this fixture.
   fs.writeFileSync(path.join(dir, 'bin/pnpm'), `#!/bin/sh
@@ -207,7 +212,7 @@ describe('the customer deploy path cannot reach the demo seeder', () => {
     // is what proves the whole branch was skipped rather than merely taking its else.
     const r = runDeploy('deploy-customer.sh', [], CUSTOMER_ENV);
     expect(r.status).toBe(0);
-    expect(r.trace).not.toContain('psql');
+    expect(r.trace).not.toContain('SELECT 1 FROM tenant');
   });
 
   it('a customer .env.production needs no DEV_TENANT_ID (it was hard-required before r290)', () => {
@@ -215,6 +220,14 @@ describe('the customer deploy path cannot reach the demo seeder', () => {
     const r = runDeploy('deploy-customer.sh', [], CUSTOMER_ENV);
     expect(r.status).toBe(0);
     expect(r.stderr).not.toContain('DEV_TENANT_ID');
+  });
+
+  it('stops before restarting when the Rewards migration owner lacks the grant', () => {
+    const r = runDeploy('deploy-customer.sh', [], CUSTOMER_ENV + '\nTEST_REWARDS_GRANT=f\n');
+    expect(r.status).not.toBe(0);
+    expect(r.trace).toContain('pnpm db:migrate');
+    expect(r.stderr).toContain('Missing Rewards database prerequisite');
+    expect(r.trace).not.toContain('systemctl restart');
   });
 
   it('--migrate-only still works on the customer path', () => {
