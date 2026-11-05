@@ -76,7 +76,7 @@ export function rewardNavigation(ctx: SessionContext, isPlatformAdmin: boolean) 
   return withRewardsTenant(ctx, async tx => {
     const [pages] = await tx.execute<{
       review: boolean; analytics: boolean; approvals: boolean; rules: boolean;
-      manage: boolean; libraries: boolean; access: boolean; bootstrap: boolean;
+      manage: boolean; libraries: boolean; access: boolean; bootstrap: boolean; wholeGroupManage: boolean;
     }>(sql`
       with visible_units as (
         select id from reward_unit
@@ -88,6 +88,7 @@ export function rewardNavigation(ctx: SessionContext, isPlatformAdmin: boolean) 
         exists(select 1 from visible_units u where app.reward_capability(u.id, 'approvals.view')) as approvals,
         exists(select 1 from visible_units u where app.reward_capability(u.id, 'rules.view')) as rules,
         app.reward_setup_allowed(null, 'manage') as manage,
+        exists(select 1 from app.reward_current_group_roles() role where role='gr') as "wholeGroupManage",
         app.reward_setup_allowed(null, 'library_view') as libraries,
         app.is_group_admin() as bootstrap,
         exists(select 1 from visible_units u where 'gr' = any(array(select app.reward_roles(u.id)))) as access
@@ -98,7 +99,7 @@ export function rewardNavigation(ctx: SessionContext, isPlatformAdmin: boolean) 
       ...(pages.analytics ? ['/rewards/analytics'] : []),
       ...(pages.approvals ? ['/rewards/approvals'] : []),
       ...(pages.rules ? ['/rewards/rules'] : []),
-      ...(pages.manage && isPlatformAdmin ? ['/admin/rewards', '/admin/rewards/shared'] : []),
+      ...(pages.manage && (isPlatformAdmin || pages.wholeGroupManage) ? ['/admin/rewards', '/admin/rewards/shared'] : []),
       ...(pages.libraries ? ['/admin/rewards/salary-structures', '/admin/rewards/bonus-matrices'] : []),
       ...(pages.manage ? ['/admin/rewards/pat-inputs'] : []),
       ...(pages.access || pages.bootstrap ? ['/admin/rewards/access'] : []),

@@ -7,10 +7,11 @@ import {filterRewardReviews,rewardReviewHref,rewardReviewUpcoming,type RewardRev
 import {Button,inputCls,tableWrapCls,theadCls,thCls,tbodyCls} from '@/components/ui';
 import {RewardStageLabel} from './returned-status';
 
-type Props={rows:RewardReviewListRow[];filters:RewardReviewFilters;emptyReason:'noScope'|'noCycle'|'noRole'|'otherScope'|null;year:number;canConfigure:boolean};
-export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure}:Props){
- const t=useTranslations('rewards'),u=useTranslations('rewardUploaded'),locale=useLocale(),rows=filterRewardReviews(all,filters),waiting=all.filter(row=>row.waiting).length;
+type Props={rows:RewardReviewListRow[];filters:RewardReviewFilters;emptyReason:'noScope'|'noCycle'|'noRole'|'otherScope'|null;year:number;canConfigure:boolean;companyGroups?:Readonly<Record<string,{groupId:string;groupName:string}>>};
+export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure,companyGroups={}}:Props){
+ const t=useTranslations('rewards'),u=useTranslations('rewardUploaded'),locale=useLocale(),rows=filterRewardReviews(all,filters,companyGroups),waiting=all.filter(row=>row.waiting).length;
  const choices=(key:'cycleId'|'companyId'|'businessUnitId',label:'cycle'|'company'|'unit')=>[...new Map(all.map(row=>[row[key],row[label]])).entries()].sort((a,b)=>a[1].localeCompare(b[1]));
+ const groupOptions=[...new Map(Object.values(companyGroups).map(group=>[group.groupId,group.groupName])).entries()];
  const percent=(bp:number|null|undefined)=>bp==null?'—':new Intl.NumberFormat(locale,{style:'percent',minimumFractionDigits:1,maximumFractionDigits:1}).format(bp/10000);
  const date=(iso:string)=>new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeZone:'UTC'}).format(new Date(`${iso}T00:00:00Z`));
  const relative=(days:number)=>{const phrase=rewardDueWording(days);return t(`board.${phrase.key}`,{days:phrase.days});};
@@ -19,6 +20,12 @@ export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure
   {rewardReviewUpcoming(all).map(({seat,count})=><p key={seat} className="text-sm text-muted-foreground">{t('reviewList.upcoming',{count,stage:t(`board.seat.${seat}`)})}</p>)}
   {all.length>0&&<form method="get" className="flex flex-wrap items-end gap-3" aria-label={t('reviewList.filters')}>
    {([['cycle',choices('cycleId','cycle')],['company',choices('companyId','company')],['unit',choices('businessUnitId','unit')]] as const).map(([key,options])=><label key={key} className="space-y-1 text-sm"><span className="block">{t(key)}</span><select name={key} defaultValue={filters[key]??''} className={inputCls}><option value="">{t('reviewList.all')}</option>{options.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>)}
+   {groupOptions.length>0&&<label className="space-y-1 text-sm">
+     <span className="block">{t('reviewList.businessGroup')}</span>
+     <select name="businessGroup" defaultValue={filters.businessGroup??''} className={inputCls}>
+       <option value="">{t('reviewList.all')}</option>{groupOptions.map(([id,name])=><option key={id} value={id}>{name}</option>)}
+     </select>
+   </label>}
    <label className="space-y-1 text-sm"><span className="block">{t('stage')}</span><select name="stage" defaultValue={filters.stage??''} className={inputCls}><option value="">{t('reviewList.all')}</option>{rewardStages.map(stage=><option key={stage} value={stage}>{t(`stages.${stage}`)}</option>)}<option value="returned">{t('reviewList.returned')}</option></select></label>
    <label className="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" name="waiting" value="1" defaultChecked={filters.waiting==='1'}/>{t('reviewList.waitingOnly')}</label>
    <Button type="submit">{t('reviewList.apply')}</Button><Link href="/rewards" className="py-2 text-sm text-primary hover:underline">{t('reviewList.clear')}</Link>

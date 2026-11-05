@@ -24001,6 +24001,7 @@
       "empty": "Chưa cấu hình hệ số chi nhánh."
     },
     "reviewList": {
+      "businessGroup": "Nhóm kinh doanh",
       "waiting": "Đang chờ tôi xử lý: {count}",
       "upcoming": "{count} đợt xét duyệt đang diễn ra và sẽ đến lượt bạn ở bước {stage}.",
       "filters": "Lọc đợt xét duyệt",

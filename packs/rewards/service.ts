@@ -1548,6 +1548,7 @@ type ReviewProjection = Awaited<ReturnType<typeof reviewProjectionTx>>;
 export type RewardBoardAction = 'submit' | 'approve' | 'post';
 export type RewardBoardRow = {
   id: string; kind: 'annual' | 'adhoc' | 'midyear'; name: string; cycle: string; companyId: string; company: string;
+  cycleId?: string; businessUnitId?: string;
   status: typeof BOARD_STAGES[number]; revision: number; returnedTo: 'bu' | 'bg' | null;
   seat: RewardRole | null; step: { step: number; steps: number } | null;
   /** Every step of the route with its state (rewardRouteProgress); null once the review has left the route. */
@@ -1593,7 +1594,7 @@ function boardRow(v: ReviewProjection, meta: { cycle: string; company: string },
   const bonusOf = (plan: 'standard' | 'h') => pooled.filter(r => r.plan === plan).reduce((n, r) => n + r.bonusCents + r.lumpCents, 0);
   const totalCents = v.uploaded?pooled.reduce((sum,row)=>sum+row.bonusCents+row.lumpCents,0):plans.reduce((n, p) => n + bonusOf(p), 0), budgetCents = plans.reduce((n, p) => n + v.budgets[p].bonusPoolCents, 0);
   return {
-    id: unit.id, kind: unit.kind, name: v.name, cycle: meta.cycle, companyId: unit.companyId, company: meta.company,
+    id: unit.id, kind: unit.kind, name: v.name, cycle: meta.cycle, cycleId: unit.cycleId, businessUnitId: unit.businessUnitId, companyId: unit.companyId, company: meta.company,
     status, revision: unit.revision, returnedTo: v.returned?.toSeat ?? null, seat, step,
     progress: rewardRouteProgress(unit.status, v.route, v.decisions), nextSeat: rewardNextSeat(unit.status, v.route),
     due: v.due, daysUntilDue: v.due ? rewardDaysUntil(v.due, today) : null, payrollDue: v.payrollDue,

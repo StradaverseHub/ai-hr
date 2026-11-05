@@ -24001,6 +24001,7 @@
       "empty": "No branch factors are configured yet."
     },
     "reviewList": {
+      "businessGroup": "Business group",
       "waiting": "Waiting for my action: {count}",
       "upcoming": "{count, plural, one {# review is} other {# reviews are}} in progress and will reach you at the {stage} stage.",
       "filters": "Filter reviews",

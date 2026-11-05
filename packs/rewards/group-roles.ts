@@ -1,6 +1,8 @@
 import 'server-only';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { companyTree } from '../../core/read';
+import { rewardCompanyBusinessGroup } from './company-picker';
 import { withRewardsTenant } from '../../core/module-gate';
 import type { SessionContext } from '../../db/client';
 
@@ -48,5 +50,23 @@ export function rewardWholeGroupPlans(session: SessionContext) {
   }>(sql`
     select plan_id as id, cycle_name as cycle, year, snapshot_date::text as snapshot, state, companies
     from app.reward_whole_group_plan_catalogue()
+  `));
+}
+
+export async function rewardReviewCompanyGroups(session: SessionContext, companyIds: readonly string[]): Promise<Record<string, { groupId: string; groupName: string }>> {
+  if (!companyIds.length) return {};
+  const tree = await companyTree(session);
+  return Object.fromEntries(companyIds.flatMap(companyId => {
+    const group = rewardCompanyBusinessGroup(companyId, tree);
+    return group ? [[companyId, group] as const] : [];
+  }));
+}
+
+export function rewardWholeGroupSetupCompanies(session: SessionContext) {
+  return withRewardsTenant(session, tx => tx.execute<{ id: string; name: string }>(sql`
+    select c.id, c.legal_name as name from company c
+    where c.tenant_id=app.current_tenant_id()
+      and exists(select 1 from app.reward_current_group_roles() role where role='gr')
+    order by c.legal_name, c.id
   `));
 }

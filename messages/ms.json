@@ -24001,6 +24001,7 @@
       "empty": "Belum ada faktor cawangan dikonfigurasikan."
     },
     "reviewList": {
+      "businessGroup": "Kumpulan perniagaan",
       "waiting": "Menunggu tindakan saya: {count}",
       "upcoming": "{count} semakan sedang berjalan dan akan sampai kepada anda pada peringkat {stage}.",
       "filters": "Tapis semakan",

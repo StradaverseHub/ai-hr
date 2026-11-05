@@ -1,3 +1,5 @@
+import { rewardWholeGroupSetupCompanies } from '@/packs/rewards/group-roles';
+import { getSession } from '@/lib/session';
 import {rewardPolicyMemberships} from '@/packs/rewards/service';
 import {RewardReviewActions} from './review-actions';
 import {RewardReviewCreateForm} from './create-review-form';
@@ -16,7 +18,9 @@ const day = (locale: string, iso: string) => new Intl.DateTimeFormat(locale, { d
 
 
 export default async function RewardsConfigurationPage({ searchParams }: { searchParams: Promise<{ error?: string;sharedError?:string; deleted?:string; deletionError?:string; cancelled?: string } & Filters> }) {
-  await requireModule('rewards'); const { s, scopeIds } = await scopedAdmin();
+  await requireModule('rewards');
+  const session=await getSession(),wholeGroup=await rewardWholeGroupSetupCompanies(session);
+  const { s, scopeIds } = wholeGroup.length ? {s:session,scopeIds:wholeGroup.map(row=>row.id)} : await scopedAdmin();
   const t = await getTranslations('rewards'); const { error,sharedError,deleted,deletionError,cancelled,...filter } = await searchParams;
   const td=await getTranslations('rewardsDeletion'),tc=await getTranslations('rewardsConfig'),locale=await getLocale();
   const choices = await rewardSetupChoices(s, scopeIds);

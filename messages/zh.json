@@ -24001,6 +24001,7 @@
       "empty": "尚未配置分行系数。"
     },
     "reviewList": {
+      "businessGroup": "业务集团",
       "waiting": "等待我处理：{count}",
       "upcoming": "{count} 项审核正在进行，将在{stage}阶段交由您处理。",
       "filters": "筛选审核",

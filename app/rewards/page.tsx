@@ -1,4 +1,4 @@
-import {rewardWholeGroupPlans} from '@/packs/rewards/group-roles';
+import {rewardReviewCompanyGroups,rewardWholeGroupPlans} from '@/packs/rewards/group-roles';
 import {rewardNavigation,rewardVisibleCompanies} from '@/packs/rewards/access-policy';
 import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
@@ -13,8 +13,8 @@ export default async function RewardsPage({searchParams}:{searchParams:Promise<R
  const {s}=await scopedSession();
  const companies=await rewardVisibleCompanies(s),allowedIds=companies.map(c=>c.id),scopeIds=companies.some(c=>c.wholeGroup)?allowedIds:await getScopeIds(allowedIds);
  const t=await getTranslations('rewards'), nav=await getTranslations('nav'), sp=await searchParams;
- const [list,choices,destinations,plans]=await Promise.all([
-   listRewardReviewStatus(s,scopeIds),rewardSetupChoices(s,scopeIds),rewardNavigation(s,isAdmin(s)),rewardWholeGroupPlans(s),
+ const [list,choices,destinations,plans,companyGroups]=await Promise.all([
+   listRewardReviewStatus(s,scopeIds),rewardSetupChoices(s,scopeIds),rewardNavigation(s,isAdmin(s)),rewardWholeGroupPlans(s),rewardReviewCompanyGroups(s,scopeIds),
  ]);
  const setup=await getTranslations('rewardSetup');
  return <div className="w-full space-y-6"><PageHeader title={nav('rewardsReviewing')} description={t('description')} actions={<>
@@ -32,5 +32,5 @@ export default async function RewardsPage({searchParams}:{searchParams:Promise<R
       </li>)}
     </ul>
   </details>}
-  <RewardReviewList {...list} filters={sp} canConfigure={choices.companies.length>0}/></div>;
+  <RewardReviewList {...list} companyGroups={companyGroups} filters={sp} canConfigure={choices.companies.length>0}/></div>;
 }
