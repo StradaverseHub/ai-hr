@@ -1,6 +1,6 @@
-/** The spec as it stood at v23 and at v22, rebuilt from the current spec by reverting exactly v24's changes, then v23's
- * (core/harness/spec.ts version 24). Shared by the spec tests so each earlier version is still proved from today's object:
- * the v23-shaped spec must hash to v23's recorded digest and the v22-shaped spec to v22's. Not a test itself; pure. */
+/** The spec as it stood at v24, v23 and v22, rebuilt from the current spec by reverting exactly v25's change, then v24's,
+ * then v23's (core/harness/spec.ts version 25). Shared by the spec tests so each earlier version is still proved from
+ * today's object: each shaped spec must hash to its version's recorded digest. Not a test itself; pure. */
 import {HARNESS_SPEC} from '../core/harness/spec';
 
 /** v23's replacement lines, each with the v22 line it replaced, word for word. */
@@ -52,10 +52,22 @@ export const V24_ADDED:readonly string[]=[
 ];
 /** v24's one topic, appended to operations_status. */
 export const V24_TOPIC='payroll_learning';
-/** The current spec with v24's changes reverted and the version set to 23. */
+/** The v24-shaped spec with v24's changes reverted and the version set to 23. */
 export function v23ShapedSpec(){
+ const v24=v24ShapedSpec();
  const back=new Map(V24_REPLACED.map(([v23,v24])=>[v24,v23] as const));
- const topicTools={...HARNESS_SPEC.offer.topicTools,operations_status:HARNESS_SPEC.offer.topicTools.operations_status.filter(topic=>topic!==V24_TOPIC)};
- return{...HARNESS_SPEC,version:23,offer:{...HARNESS_SPEC.offer,topicTools},
-  instructions:(HARNESS_SPEC.instructions as readonly string[]).filter(line=>!V24_ADDED.includes(line)).map(line=>back.get(line)??line)};
+ const topicTools={...v24.offer.topicTools,operations_status:v24.offer.topicTools.operations_status.filter(topic=>topic!==V24_TOPIC)};
+ return{...v24,version:23,offer:{...v24.offer,topicTools},
+  instructions:v24.instructions.filter(line=>!V24_ADDED.includes(line)).map(line=>back.get(line)??line)};
+}
+
+/** v25's one replacement line (dates from the HR date owner), with the v24 line it replaced, word for word. */
+export const V25_REPLACED:readonly (readonly [v24:string,v25:string])[]=[
+ [V24_REPLACED[0][1],
+  'To help with a change, start with "Yes, I can …" and call suggest_action with the action from its list (an action\'s id, or an import\'s action), so its card comes with your reply; never open with "I can\'t" when an action is listed, and do not link that page in your text. If suggest_action reports missing details, ask for them in one short question, numbering any options it lists as given; never guess them. Only when its result says a review item is ready or a form is filled in, say it is ready for them to review and confirm (for a decision: "a decision card is ready for you to review and confirm"); never write "I\'ve prepared …". Never say anything is submitted, approved, closed or done: the person confirms every change themselves. Fill details only with what the person said, times as 24-hour HH:MM; a day they name for leave or attendance (such as "next Friday" or "esok") goes in as their words, which the system works out, any other date as YYYY-MM-DD from today. State the exact date the result gives, with its weekday, so they can correct it.'],
+];
+/** The current spec with v25's change reverted and the version set to 24. */
+export function v24ShapedSpec(){
+ const back=new Map(V25_REPLACED.map(([v24,v25])=>[v25,v24] as const));
+ return{...HARNESS_SPEC,version:24,instructions:(HARNESS_SPEC.instructions as readonly string[]).map(line=>back.get(line)??line)};
 }

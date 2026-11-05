@@ -66,6 +66,9 @@ export const ProposalFacts=z.object({
  /** An own letter request (letters.request.submit): the letter type, the published template name its company opened for
   * employee requests. Never letter content. */
  letterType:z.string().min(1).max(64),
+ /** Owner, 5 November 2026 ("Fix dates first"): other days the person's words for the day may mean, by the HR date
+  * owner's rule (lib/hr-date-phrase.ts), which the card offers to switch to. The card's own dates are the chosen ones. */
+ otherDates:z.array(calendarDate).min(1).max(2),
 }).partial().strict();
 export type ProposalFacts=z.infer<typeof ProposalFacts>;
 /** Step 5 (§3.5): the approver recommendation from native checks, when the recommender worker ran. Two verdicts

@@ -16,31 +16,33 @@ import {terasEntity} from '../core/semantic-model/generate';
 import {TERAS_CAPABILITIES} from '../core/explainers/capabilities';
 import {KIT_CAPABILITIES} from '../core/improvement/kit-registry';
 import {LINKABLE_PAGES} from '../lib/product-context/destinations';
-import {V24_ADDED,V24_REPLACED,V24_TOPIC,v23ShapedSpec} from './harness-spec-shapes';
+import {V24_ADDED,V24_REPLACED,V24_TOPIC,v23ShapedSpec,v24ShapedSpec} from './harness-spec-shapes';
 
-const instructions=HARNESS_SPEC.instructions as readonly string[];
+// v25 (test/harness-spec-v25.test.ts) replaces one line; this file reads the v24-shaped spec.
+const v24=v24ShapedSpec(),instructions=v24.instructions as readonly string[];
 const line=(start:string)=>{const found=instructions.filter(row=>row.startsWith(start));expect(found,start).toHaveLength(1);return found[0];};
 const audience=(path:string)=>LINKABLE_PAGES.find(([page])=>page===path)?.[1];
 
 describe('spec v24',()=>{
- it('is version 24 with its digest recorded, and every earlier digest is kept',()=>{
-  expect(HARNESS_SPEC.version).toBe(24);expect(HARNESS_SPEC_DIGESTS[24]).toBe(harnessSpecDigest());
+ it('keeps its digest recorded after v23, before v25: the v24-shaped spec hashes to it, and every earlier digest is kept',()=>{
+  expect(HARNESS_SPEC.version).toBeGreaterThan(24);expect(HARNESS_SPEC_DIGESTS[24]).toBe(harnessSpecDigest(v24));
   expect(HARNESS_SPEC_DIGESTS[24]).toBe('ce0ac9b4b80db7aacf2e4d1939819e69099a8416ef64c9cc4d8b38acced1029e');
+  expect(harnessSpecDigest({...HARNESS_SPEC,version:24})).not.toBe(HARNESS_SPEC_DIGESTS[24]);
   expect(HARNESS_SPEC_DIGESTS[23]).toBe('0052cefe8d066154db37c62bc213dfb26eabcbe0cc861577103212d6e4e5f0c5');
-  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual(Array.from({length:24},(_,index)=>index+1));
+  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number).slice(0,24)).toEqual(Array.from({length:24},(_,index)=>index+1));
  });
  it('is v23 with only its own changes: the v23-shaped spec hashes to v23\'s recorded digest',()=>{
   const v23=v23ShapedSpec();
   expect(harnessSpecDigest(v23)).toBe(HARNESS_SPEC_DIGESTS[23]);
-  expect(harnessSpecDigest({...HARNESS_SPEC,version:23})).not.toBe(HARNESS_SPEC_DIGESTS[23]);
+  expect(harnessSpecDigest({...v24,version:23})).not.toBe(HARNESS_SPEC_DIGESTS[23]);
   // v24 replaces three lines, adds two and appends one topic; v23 had 30 lines.
   expect(V24_REPLACED).toHaveLength(3);expect(V24_ADDED).toHaveLength(2);
   expect(v23.instructions).toHaveLength(30);expect(instructions).toHaveLength(32);
   expect(v23.offer.topicTools.operations_status).toEqual(['loops','payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit','ai_quality']);
-  expect(HARNESS_SPEC.offer.topicTools.operations_status).toEqual([...v23.offer.topicTools.operations_status,V24_TOPIC]);
-  expect(HARNESS_SPEC.offer.topicTools.explain_why).toEqual(v23.offer.topicTools.explain_why);
+  expect(v24.offer.topicTools.operations_status).toEqual([...v23.offer.topicTools.operations_status,V24_TOPIC]);
+  expect(v24.offer.topicTools.explain_why).toEqual(v23.offer.topicTools.explain_why);
   // Nothing outside the instructions and the one topic list differs.
-  const {instructions:_now,offer:{topicTools:_nowTopics,...nowOffer},version:_nowVersion,...nowRest}=HARNESS_SPEC;
+  const {instructions:_now,offer:{topicTools:_nowTopics,...nowOffer},version:_nowVersion,...nowRest}=v24;
   const {instructions:_then,offer:{topicTools:_thenTopics,...thenOffer},version:_thenVersion,...thenRest}=v23;
   expect(nowOffer).toEqual(thenOffer);expect(nowRest).toEqual(thenRest);
  });

@@ -99,15 +99,54 @@ afterEach(()=>vi.unstubAllEnvs());
 describe('a correction from chat: one question when something is missing, the day on record otherwise',()=>{
  const yesterday=()=>{const value=new Date(todayInKualaLumpur()+'T00:00:00Z');value.setUTCDate(value.getUTCDate()-1);return value.toISOString().slice(0,10);};
  it('asks for the time, the reason or a real date, and prepares nothing',async()=>{
-  state.rows.mockResolvedValue(recordedDay(yesterday(),'08:00:00',null));
+  state.rows.mockResolvedValue(recordedDay(yesterday(),null,null));
   const words='I forgot to clock out yesterday at 6:10pm';
-  expect(await prepareChatAttendanceCorrectionProposal(caller,{date:yesterday(),reason:'forgot to clock out'},words)).toEqual({kind:'ask',missing:['time'],options:[]});
-  expect(await prepareChatAttendanceCorrectionProposal(caller,{date:yesterday(),checkOut:'18:10'},words)).toEqual({kind:'ask',missing:['reason'],options:[]});
+  // The person said "yesterday": the HR date owner's day goes back with the question, whatever date the model passed.
+  const said={startDate:yesterday(),endDate:yesterday(),others:[],phrase:'yesterday'};
+  // Nothing on record that day: the person says which time.
+  expect(await prepareChatAttendanceCorrectionProposal(caller,{date:yesterday(),reason:'forgot to clock out'},words)).toEqual({kind:'ask',missing:['time'],options:[],dates:said});
+  state.rows.mockResolvedValue(recordedDay(yesterday(),'08:00:00',null));
+  expect(await prepareChatAttendanceCorrectionProposal(caller,{date:yesterday(),checkOut:'18:10'},words)).toEqual({kind:'ask',missing:['reason'],options:[],dates:said,recorded:{checkIn:'08:00'}});
   // A reason the person did not say is not theirs.
-  expect(await prepareChatAttendanceCorrectionProposal(caller,{date:yesterday(),checkOut:'18:10',reason:'stuck in a client meeting'},words)).toEqual({kind:'ask',missing:['reason'],options:[]});
+  expect(await prepareChatAttendanceCorrectionProposal(caller,{date:yesterday(),checkOut:'18:10',reason:'stuck in a client meeting'},words)).toEqual({kind:'ask',missing:['reason'],options:[],dates:said,recorded:{checkIn:'08:00'}});
   expect(await prepareChatAttendanceCorrectionProposal(caller,{date:'2026-02-30',checkOut:'18:10',reason:'forgot to clock out'},words)).toEqual({kind:'ask',missing:['date'],options:[]});
   expect(await prepareChatAttendanceCorrectionProposal(caller,{checkOut:'6:10pm',reason:'forgot to clock out'},words)).toEqual({kind:'ask',missing:['date','time'],options:[]});
   expect(state.prepareCorrection).not.toHaveBeenCalled();
+ });
+ it('asks only for the clock-out when the clock-in is on record, and gives the model the clock-in as a fact (eval 41843568709, emp-clockout-1)',async()=>{
+  state.rows.mockResolvedValue(recordedDay(yesterday(),'08:00:00',null));
+  // "I forgot to clock out yesterday": the model passes the person's words for the day; the HR date owner works it out.
+  expect(await prepareChatAttendanceCorrectionProposal(caller,{date:'yesterday',reason:'forgot to clock out'},'I forgot to clock out yesterday'))
+   .toEqual({kind:'ask',missing:['checkOut'],options:[],dates:{startDate:yesterday(),endDate:yesterday(),others:[],phrase:'yesterday'},recorded:{checkIn:'08:00'}});
+  // Without the person's reason the service needs one (ADR-0069), so that is the one other thing asked for.
+  expect(await prepareChatAttendanceCorrectionProposal(caller,{date:'yesterday'},'Please fix yesterday'))
+   .toEqual({kind:'ask',missing:['checkOut','reason'],options:[],dates:{startDate:yesterday(),endDate:yesterday(),others:[],phrase:'yesterday'},recorded:{checkIn:'08:00'}});
+  expect(state.rows).toHaveBeenCalledWith(expect.objectContaining({userId,personId}),employmentId,yesterday(),yesterday());
+  // A clock-out on record and no clock-in: only the clock-in is asked for.
+  state.rows.mockResolvedValue(recordedDay(yesterday(),null,'17:30:00'));
+  expect(await prepareChatAttendanceCorrectionProposal(caller,{date:yesterday(),reason:'forgot to clock in'},'I forgot to clock in that day'))
+   .toEqual({kind:'ask',missing:['checkIn'],options:[],recorded:{checkOut:'17:30'}});
+  expect(state.prepareCorrection).not.toHaveBeenCalled();
+ });
+ it('works the day out from the person's words, never the model's own date, and refuses a day still to come',async()=>{
+  // Wednesday 4 November 2026, noon in Kuala Lumpur.
+  const now=new Date('2026-11-04T04:00:00.000Z');
+  state.rows.mockResolvedValue(recordedDay('2026-11-03','08:00:00',null));
+  // The model worked out the wrong day; the person said "yesterday", which is Tuesday 3 November.
+  const outcome=await prepareChatAttendanceCorrectionProposal(caller,{date:'2026-11-02',checkOut:'18:10',reason:'forgot to clock out'},'I forgot to clock out yesterday at 6:10pm',now);
+  if(outcome?.kind!=='proposal')throw Error('Fictional correction was not prepared: '+JSON.stringify(outcome));
+  expect(state.rows).toHaveBeenLastCalledWith(expect.anything(),employmentId,'2026-11-03','2026-11-03');
+  expect(outcome.proposal.body).toMatchObject({what:{selectors:{date:'2026-11-03',corrects:'check_out',checkOut:'18:10'}},facts:{startDate:'2026-11-03',checkIn:'08:00',checkOut:'18:10'}});
+  expect(outcome.proposal.body.facts).not.toHaveProperty('otherDates');
+  expect(outcome.dates).toEqual({startDate:'2026-11-03',endDate:'2026-11-03',others:[],phrase:'yesterday'});
+  // "last Monday" on a Wednesday is 2 November, or 26 October: the card carries the other day; both are days worked.
+  state.rows.mockResolvedValue(recordedDay('2026-11-02','08:00:00',null));
+  const last=await prepareChatAttendanceCorrectionProposal(caller,{date:'last monday',checkOut:'18:10',reason:'forgot to clock out'},'I forgot to clock out last monday',now);
+  if(last?.kind!=='proposal')throw Error('Fictional correction was not prepared: '+JSON.stringify(last));
+  expect(last.proposal.body.facts).toMatchObject({startDate:'2026-11-02',otherDates:['2026-10-26']});
+  // Tomorrow, or next Friday, is not a day worked yet: the person is asked for the date.
+  for(const date of ['tomorrow','next friday'])
+   expect(await prepareChatAttendanceCorrectionProposal(caller,{date,checkOut:'18:10',reason:'forgot to clock out'},'forgot to clock out',now)).toEqual({kind:'ask',missing:['date'],options:[]});
  });
  it('asks for the clock-in when the day has none on record, instead of taking one from the roster',async()=>{
   state.rows.mockResolvedValue(recordedDay(yesterday(),null,null));
@@ -151,6 +190,16 @@ describe('a correction from chat: one question when something is missing, the da
 });
 
 describe('an overtime request from chat',()=>{
+ it('works out "this Saturday" from today in Kuala Lumpur, whatever date the model chose',async()=>{
+  // Thursday 5 November 2026: this Saturday is 7 November.
+  const now=new Date('2026-11-05T04:00:00.000Z'),words='plan overtime for me this Saturday from 9am to 1pm for the stock take';
+  for(const date of ['this saturday','2026-11-14']){
+   const outcome=await prepareChatOvertimeRequestProposal(caller,{date,plannedStartTime:'09:00',plannedEndTime:'13:00',reason:'stock take'},words,now);
+   if(outcome?.kind!=='proposal')throw Error('Fictional overtime was not prepared: '+JSON.stringify(outcome));
+   expect(state.prepareOt).toHaveBeenLastCalledWith(expect.anything(),expect.objectContaining({date:'2026-11-07'}));
+   expect(outcome.proposal.body.facts).toMatchObject({startDate:'2026-11-07'});
+  }
+ });
  it('asks for what is missing, then shows the service\'s own minutes and nothing about pay',async()=>{
   const words='plan OT for me on 2026-11-07 from 9am to 1pm for the stock take';
   expect(await prepareChatOvertimeRequestProposal(caller,{date:'2026-11-07',plannedStartTime:'09:00',reason:'stock take'},words)).toEqual({kind:'ask',missing:['plannedEndTime'],options:[]});

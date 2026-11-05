@@ -10,6 +10,7 @@
  * Counts are `minimum` (the person may read every row behind them) except where they describe a group of
  * other people, which are `bands`. Rule-version labels carry internal ids, so they are `never`. */
 import type {DisclosureClass,FieldType,SemanticEntity,SemanticField} from './types';
+import {WEEKDAYS} from '../../lib/hr-date-phrase';
 
 const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'|'screen'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
@@ -101,6 +102,15 @@ export const RECOMMEND_ENTITIES:readonly SemanticEntity[]=freeze([
     // The caller's own pending claim, so its date may be named back as incurredOn to choose it.
     f('incurredOn','date','full','Date one of the caller\'s own pending claims was incurred.'),f('amount','number','bands','Amount of a pending claim, as stored.')]}),
    f('notListed','integer','full','Further pending requests left to the review page.'),
+   // Owner, 5 November 2026 ("Fix dates first"): the caller's own request dates, worked out by the HR date owner from the
+   // person's words (core/proposals/request-dates.ts), and what the caller's own attendance day holds now.
+   f('dates','object','full','The dates of the caller\'s own request, worked out from the person\'s words, each with its weekday.',{of:[
+    f('startDate','date','full','First day.'),f('startDay','enum','full','Weekday of the first day.',{values:WEEKDAYS}),
+    f('endDate','date','full','Last day.'),f('endDay','enum','full','Weekday of the last day.',{values:WEEKDAYS}),
+    f('others','list','full','Another day the person\'s words may mean; the card offers to switch to it.',{of:[
+     f('date','date','full','The other day.'),f('day','enum','full','Its weekday.',{values:WEEKDAYS})]})]}),
+   f('recorded','object','full','What the caller\'s own attendance day holds now; never asked for again.',{of:[
+    f('checkIn','time','full','Clock-in on record; the request uses it.'),f('checkOut','time','full','Clock-out on record.')]}),
    f('pending','list','full','Pending leave requests the approver chooses between, in a fixed order.',{of:[
     f('request','integer','full','The request\'s number in this list; the approver chooses by it.'),
     f('applicant','name','minimum','Who applied.'),f('leaveType','label','full','Leave type name.',{screen:'sensitive_label'}),
