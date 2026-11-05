@@ -148,9 +148,17 @@ export async function onboardingUnavailableTx(tx: Tx, dates: readonly string[]) 
         result.push(...rows<{ user_id: string; on_date: string }>(await tx.execute(sql`select user_id,on_date::text from app.onboarding_unavailable(array[${sql.join(dateList.slice(offset, offset + 300).map(date => sql`${date}::date`), sql`, `)}])`)));
     return result;
 }
+async function onboardingContextTx(tx: Tx, ctx: SessionContext) {
+    const { config, revision } = await configTx(tx, ctx);
+    return { config, revision, actor: await actorTx(tx, ctx, config) };
+}
+/** The joiner register needs the same live actor/config, without the settings and assignment environment. */
+export function onboardingRegisterContext(ctx: SessionContext) {
+    return withTenant(ctx, tx => onboardingContextTx(tx, ctx));
+}
 export async function onboardingContext(ctx: SessionContext) {
     return withTenant(ctx, async (tx) => {
-        const { config, revision } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
+        const { config, revision, actor } = await onboardingContextTx(tx, ctx);
         const all = (await tx.select({ data: cases.data }).from(cases).orderBy(asc(cases.id))).map(r => r.data);
         const environment = await environmentTx(tx, ctx, config, all);
         const current = all.filter(c => c.state !== 'cancelled');
@@ -176,25 +184,47 @@ export async function onboardingSetupTx(ctx: SessionContext, tx: Tx) {
         for (const d of drafts)
             await onboardingSyncDraftTx(ctx, tx, d.id, 'save');
 }
+const onboardingChoiceLabels = <T extends { id: string; name: string }>(options: T[]) =>
+    organisationChoiceLabels(options).map(row => ({ id: row.id, name: row.displayLabel }));
+
+async function requireOnboardingOptionsActor(tx: Tx, ctx: SessionContext) {
+    const { actor } = await onboardingContextTx(tx, ctx);
+    if (!actor.page && !actor.records && !actor.master)
+        M.fail('Onboarding access is required.', 'forbidden');
+}
+
+async function onboardingRegisterLabelsTx(tx: Tx, ids: string[]) {
+    const [units, titles] = await Promise.all([
+        tx.select({ id: businessUnit.id, name: businessUnit.name, code: businessUnit.code, label: businessUnit.label }).from(businessUnit).where(visibleLabelIdsCondition(businessUnit, 'business_unit', ids)).orderBy(asc(businessUnit.name)),
+        tx.select({ id: position.id, name: position.title, code: position.title, label: position.label, description: position.description }).from(position).where(visibleLabelIdsCondition(position, 'position', ids)).orderBy(asc(position.title)),
+    ]);
+    return { businessGroup: onboardingChoiceLabels(units), title: onboardingChoiceLabels(titles) };
+}
+
+/** Only the two authorized label catalogues consumed by the joiner register. */
+export function onboardingRegisterOptions(ctx: SessionContext) {
+    return withTenant(ctx, async tx => {
+        await requireOnboardingOptionsActor(tx, ctx);
+        const companies = await tx.select({ id: company.id }).from(company).orderBy(asc(company.legalName));
+        return onboardingRegisterLabelsTx(tx, companies.map(c => c.id));
+    });
+}
+
 export async function onboardingOptions(ctx: SessionContext) {
     return withTenant(ctx, async (tx) => {
-        const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
-        if (!actor.page && !actor.records && !actor.master)
-            M.fail('Onboarding access is required.', 'forbidden');
+        await requireOnboardingOptionsActor(tx, ctx);
         const companies = await tx.select({ id: company.id, name: company.legalName }).from(company).orderBy(asc(company.legalName));
         const ids = companies.map(c => c.id);
-        const [departments, units, titles, grades] = await Promise.all([
+        const [departments, registerLabels, grades] = await Promise.all([
             tx.select({ id: department.id, name: department.name, code: department.name, label: department.label, description: department.description }).from(department).where(visibleLabelIdsCondition(department, 'department', ids)).orderBy(asc(department.name)),
-            tx.select({ id: businessUnit.id, name: businessUnit.name, code: businessUnit.code, label: businessUnit.label }).from(businessUnit).where(visibleLabelIdsCondition(businessUnit, 'business_unit', ids)).orderBy(asc(businessUnit.name)),
-            tx.select({ id: position.id, name: position.title, code: position.title, label: position.label, description: position.description }).from(position).where(visibleLabelIdsCondition(position, 'position', ids)).orderBy(asc(position.title)),
+            onboardingRegisterLabelsTx(tx, ids),
             tx.select({ id: jobGrade.id, name: jobGrade.name, label: jobGrade.name, code: jobGrade.code }).from(jobGrade).orderBy(asc(jobGrade.name)),
         ]);
         const supervisors = rows<{
             id: string;
             name: string;
         }>(await tx.execute(sql `select * from app.onboarding_supervisors()`));
-        const choices = <T extends { id: string; name: string }>(rows: T[]) => organisationChoiceLabels(rows).map(row => ({ id: row.id, name: row.displayLabel }));
-        return { supervisor: supervisors, company: companies, department: choices(departments), businessGroup: choices(units), title: choices(titles), grade: choices(grades), employmentType: employmentTypeEnum.enumValues.map(id => ({ id, name: id.replaceAll('_', ' ') })) };
+        return { supervisor: supervisors, company: companies, department: onboardingChoiceLabels(departments), ...registerLabels, grade: onboardingChoiceLabels(grades), employmentType: employmentTypeEnum.enumValues.map(id => ({ id, name: id.replaceAll('_', ' ') })) };
     });
 }
 export async function onboardingList(ctx: SessionContext, companyIds?: string[]) {
