@@ -27499,7 +27499,8 @@
           "coarse_aggregate_bands": "粗粒度汇总区间（不保证匿名）",
           "pseudonymous_person_bands": "带随机别名的个人区间（并非匿名）",
           "authored_formula_request": "用户编写的公式要求",
-          "authored_policy_text": "由人力资源管理员撰写的政策文本（含个人身份信息时拒绝发送）"
+          "authored_policy_text": "由人力资源管理员撰写的政策文本（含个人身份信息时拒绝发送）",
+          "authored_job_architecture": "由获授权人员提供的岗位架构详情"
         },
         "redaction": {
           "pii_masked": "已遮盖",

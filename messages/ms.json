@@ -27499,7 +27499,8 @@
           "coarse_aggregate_bands": "Julat agregat kasar (bukan jaminan tanpa nama)",
           "pseudonymous_person_bands": "Julat setiap orang dengan alias rawak (bukan tanpa nama)",
           "authored_formula_request": "Keperluan formula yang ditulis pengguna",
-          "authored_policy_text": "Teks polisi yang ditulis oleh pentadbir HR (ditolak jika ada pengecam peribadi)"
+          "authored_policy_text": "Teks polisi yang ditulis oleh pentadbir HR (ditolak jika ada pengecam peribadi)",
+          "authored_job_architecture": "Butiran seni bina jawatan yang diberikan oleh kakitangan yang diberi kuasa"
         },
         "redaction": {
           "pii_masked": "Disembunyikan",

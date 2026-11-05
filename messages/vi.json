@@ -27499,7 +27499,8 @@
           "coarse_aggregate_bands": "Khoảng tổng hợp thô (không bảo đảm ẩn danh)",
           "pseudonymous_person_bands": "Khoảng theo người với bí danh ngẫu nhiên (không ẩn danh)",
           "authored_formula_request": "Yêu cầu công thức do người dùng viết",
-          "authored_policy_text": "Văn bản chính sách do quản trị viên nhân sự viết (bị từ chối nếu chứa thông tin định danh cá nhân)"
+          "authored_policy_text": "Văn bản chính sách do quản trị viên nhân sự viết (bị từ chối nếu chứa thông tin định danh cá nhân)",
+          "authored_job_architecture": "Thông tin về kiến trúc công việc do nhân viên được ủy quyền cung cấp"
         },
         "redaction": {
           "pii_masked": "Đã che",

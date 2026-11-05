@@ -27499,7 +27499,8 @@
           "coarse_aggregate_bands": "Coarse aggregate bands (not an anonymity guarantee)",
           "pseudonymous_person_bands": "Per-person bands with random aliases (not anonymous)",
           "authored_formula_request": "User-authored formula requirement",
-          "authored_policy_text": "Policy text written by HR administrators (refused if it holds a personal identifier)"
+          "authored_policy_text": "Policy text written by HR administrators (refused if it holds a personal identifier)",
+          "authored_job_architecture": "Job architecture details provided by authorized staff"
         },
         "redaction": {
           "pii_masked": "Masked",
