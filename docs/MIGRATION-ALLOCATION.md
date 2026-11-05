@@ -8,7 +8,8 @@ owning release gate.
 ## Rewards whole-group grant foundation — 5 November 2026 (unapplied)
 
 Branch codex/movement-organization-feedback-20261105 provisionally reserves
-2250_rewards_whole_group_grants, journal idx1450 and when1793330001650.
+2250_rewards_whole_group_grants and 2251_company_display_group, journal
+idx1450–1451 and when1793330001650–1793330001651.
 The fetched main journal ends at 2211, and readable worktree journals include
 peer claims through 2242 / idx1442 / when1793330001642. Recheck peer journals,
 current integration refs and the installed watermark before integration.

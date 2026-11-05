@@ -9931,6 +9931,26 @@
       "saveDetails": "Save details",
       "groupParent": "Group parent",
       "parentCompany": "Parent company",
+      "displayGrouping": {
+        "method": "Grouping method",
+        "byField": "By Employment Field",
+        "field": "Employment Field",
+        "value": "Code – Label",
+        "unavailable": "Unavailable value",
+        "column": "Display group",
+        "fields": {
+          "business_unit": "Business Unit",
+          "department": "Department",
+          "division": "Division",
+          "branch": "Branch",
+          "region": "Region",
+          "line": "Line",
+          "section": "Section",
+          "team": "Team",
+          "base": "Base",
+          "category": "Employment Category"
+        }
+      },
       "noneGroupRoot": "— none (group root) —",
       "setParent": "Set parent",
       "unarchive": "Unarchive",
@@ -30579,6 +30599,19 @@
     "acknowledgementDate": "Date"
   },
   "rewardsAccess": {
+    "wholeGroup": {
+      "title": "Whole-group roles",
+      "description": "Grant access for the whole group to eligible oversight role holders.",
+      "person": "Person",
+      "role": "Role",
+      "reason": "Reason",
+      "grant": "Grant",
+      "revoke": "Revoke",
+      "scope": "Whole group",
+      "active": "Active",
+      "suspended": "Suspended",
+      "inactive": "Revoked"
+    },
     "title": "Rewards access",
     "description": "Manage named Rewards users within exact company, business-unit and review-cycle scopes.",
     "configuration": "Rewards configuration",

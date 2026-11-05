@@ -4866,6 +4866,13 @@
       "when": 1793330001650,
       "tag": "2250_rewards_whole_group_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 1451,
+      "version": "7",
+      "when": 1793330001651,
+      "tag": "2251_company_display_group",
+      "breakpoints": true
     }
   ]
 }

@@ -9931,6 +9931,26 @@
       "saveDetails": "Simpan butiran",
       "groupParent": "Induk kumpulan",
       "parentCompany": "Syarikat induk",
+      "displayGrouping": {
+        "method": "Kaedah pengelompokan",
+        "byField": "Mengikut medan pekerjaan",
+        "field": "Medan pekerjaan",
+        "value": "Kod – Label",
+        "unavailable": "Nilai tidak tersedia",
+        "column": "Kumpulan paparan",
+        "fields": {
+          "business_unit": "Unit perniagaan",
+          "department": "Jabatan",
+          "division": "Bahagian",
+          "branch": "Cawangan",
+          "region": "Wilayah",
+          "line": "Barisan",
+          "section": "Seksyen",
+          "team": "Pasukan",
+          "base": "Pangkalan",
+          "category": "Kategori pekerjaan"
+        }
+      },
       "noneGroupRoot": "— tiada (akar kumpulan) —",
       "setParent": "Tetapkan induk",
       "unarchive": "Nyaharkib",
@@ -30579,6 +30599,19 @@
     "acknowledgementDate": "Tarikh"
   },
   "rewardsAccess": {
+    "wholeGroup": {
+      "title": "Peranan seluruh kumpulan",
+      "description": "Berikan akses seluruh kumpulan kepada pemegang peranan penyeliaan yang layak.",
+      "person": "Individu",
+      "role": "Peranan",
+      "reason": "Sebab",
+      "grant": "Berikan",
+      "revoke": "Tarik balik",
+      "scope": "Seluruh kumpulan",
+      "active": "Aktif",
+      "suspended": "Digantung",
+      "inactive": "Ditarik balik"
+    },
     "title": "Akses Ganjaran",
     "description": "Urus pengguna Ganjaran mengikut syarikat, unit perniagaan dan kitaran semakan yang tepat.",
     "configuration": "Konfigurasi Ganjaran",

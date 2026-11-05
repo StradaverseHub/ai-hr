@@ -9931,6 +9931,26 @@
       "saveDetails": "保存详情",
       "groupParent": "集团母公司",
       "parentCompany": "母公司",
+      "displayGrouping": {
+        "method": "分组方式",
+        "byField": "按雇佣字段",
+        "field": "雇佣字段",
+        "value": "代码 – 标签",
+        "unavailable": "值不可用",
+        "column": "显示分组",
+        "fields": {
+          "business_unit": "业务单元",
+          "department": "部门",
+          "division": "事业部",
+          "branch": "分支",
+          "region": "区域",
+          "line": "产线",
+          "section": "科室",
+          "team": "团队",
+          "base": "基地",
+          "category": "雇佣类别"
+        }
+      },
       "noneGroupRoot": "— 无（集团根节点）—",
       "setParent": "设置母公司",
       "unarchive": "取消归档",
@@ -30579,6 +30599,19 @@
     "acknowledgementDate": "日期"
   },
   "rewardsAccess": {
+    "wholeGroup": {
+      "title": "全集团角色",
+      "description": "为符合资格的监督角色持有人授予全集团访问权限。",
+      "person": "人员",
+      "role": "角色",
+      "reason": "原因",
+      "grant": "授予",
+      "revoke": "撤销",
+      "scope": "全集团",
+      "active": "有效",
+      "suspended": "已暂停",
+      "inactive": "已撤销"
+    },
     "title": "奖励访问权限",
     "description": "按明确的公司、业务单位和评审周期管理奖励用户。",
     "configuration": "奖励配置",

@@ -1,3 +1,4 @@
+import { saveCompanyDisplayGroupTx } from './company-display-group';
 import {deriveCompanyOrganisationTx} from './company-organisation';
 import { tenantMutation } from '../db/tenant-mutation';
 /**
@@ -397,6 +398,7 @@ function resolveDefaultCycleName(v: string | undefined): string {
 export async function createCompany(
   ctx: SessionContext,
   p: {
+    displayGroup?: { field: string; id: string };
     legalName: string;
     country?: string;
     currency?: string;
@@ -465,6 +467,7 @@ export async function createCompany(
         defaultPayrollCycle,
       })
       .returning({ id: company.id });
+    if (p.displayGroup) await saveCompanyDisplayGroupTx(tx, ctx, row.id, p.displayGroup);
     // Organization Module (361e3b15) — the actual pain fix: seed the six standard payroll cycles inside THIS
     // transaction (tx-injection, the provisionTenant/seedCompanyCatalogs precedent) so a company added via the
     // admin form is payroll-ready immediately, exactly like the account-setup / provisioning paths already are.
@@ -565,12 +568,14 @@ export async function setCompanyDefaultPayrollCycle(
 /** Set (or clear) a company's parent in the group tree. Cycles are rejected by a DB trigger. */
 export async function setCompanyParent(
   ctx: SessionContext,
-  p: { companyId: string; parentCompanyId: string | null },
+  p: { companyId: string; parentCompanyId?: string | null; displayGroup?: { field: string; id: string } | null },
 ) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    if (p.displayGroup !== undefined) await saveCompanyDisplayGroupTx(tx, ctx, p.companyId, p.displayGroup);
+    if (p.parentCompanyId === undefined) return { id: p.companyId };
     const [current]=await tx.select({parentCompanyId:company.parentCompanyId}).from(company).where(eq(company.id,p.companyId)).for('update');
     if(!current)throw new Error('Company is unavailable.');
     const [managed]=await tx.execute<{managed:boolean}>(sql`select app.company_organisation_managed() as managed`);

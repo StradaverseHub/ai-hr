@@ -317,11 +317,12 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
   await withRewardsTenant(ctx,tx=>tx.execute(sql`select app.reward_access_observe(${unitId}::uuid)`));
   return withRewardsTenant(ctx, tx => reviewProjectionTx(tx, ctx, unitId));
 }
-export function exportRewardReview(ctx:SessionContext,unitId:string){
+export function exportRewardReview(ctx:SessionContext,unitId:string,format:'review'|'template'|'excluded'='review'){
   return withRewardsTenant(ctx,async tx=>{
     await assertRewardWritableTx(tx);
     const projection=await reviewProjectionTx(tx,ctx,unitId);
     if(!projection.roles.includes('gr'))throw new RewardError('Group Rewards access is required.');
+    await stamp(tx,ctx,unitId,'review-exported',{format});
     return projection;
   });
 }

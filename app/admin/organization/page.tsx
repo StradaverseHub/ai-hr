@@ -1,3 +1,4 @@
+import { companyDisplayGroups } from '@/core/company-display-group';
 import Link from 'next/link';
 import { companyRegistrationOverview } from '@/core/company-registration-readiness';
 import type { CompanyRegistrationStatus } from '@/lib/company-registration-readiness';
@@ -79,12 +80,13 @@ export default async function OrganizationPage({
   const { error, q, status, sort } = sp;
   const t = await getTranslations('admin.organization');
 
-  // Both reads are RLS-scoped. The per-company panel data (bank profiles, statutory authorities,
+  // All reads are scoped to the companies this administrator can manage. The per-company panel data (bank profiles, statutory authorities,
   // signatories, profile options, payroll cycles) moved to the maintenance page with the panel it
   // feeds — a browse screen has no business running an N+1 over payroll cycles.
-  const [statutory, tree] = await Promise.all([
+  const [statutory, tree, groups] = await Promise.all([
     companyRegistrationOverview(s),
     companyTree(s),
+    companyDisplayGroups(s),
   ]);
   const companies=statutory.map(row=>row.company);
   const statBy = new Map(statutory.map((r) => [r.id, r]));
@@ -95,10 +97,24 @@ export default async function OrganizationPage({
 
   const { parentBy } = resolveGroupTree(companies, tree);
 
+  const groupByCompany = new Map(groups.map(group => {
+    const field = t(`displayGrouping.fields.${group.field}`);
+    const value = group.label && group.code && group.label !== group.code
+      ? `${group.code} – ${group.label}`
+      : group.label ?? t('displayGrouping.unavailable');
+    return [group.companyId, `${field} · ${value}`] as const;
+  }));
   const rows = selectCompanyRows(companies, parentBy, { q, status, sort })
-    .map(row=>({...row,statutoryStatus:(statBy.get(row.id)?.status??'missing') as CompanyRegistrationStatus,activeEmployees:statBy.get(row.id)?.activeEmployees??0,registrationCounted:statBy.get(row.id)?.counted??false}))
+    .map(row=>({...row,displayGroup:groupByCompany.get(row.id),statutoryStatus:(statBy.get(row.id)?.status??'missing') as CompanyRegistrationStatus,activeEmployees:statBy.get(row.id)?.activeEmployees??0,registrationCounted:statBy.get(row.id)?.counted??false}))
     .filter(row=>!['complete','missing','not_required'].includes(sp.statutory??'')||(row.statutoryStatus===sp.statutory&&(sp.statutory!=='missing'||row.registrationCounted)));
-  rows.sort((a,b)=>Number(b.activeEmployees>0)-Number(a.activeEmployees>0));
+  rows.sort((a, b) => {
+    if (groups.length) {
+      const byGroup = Number(!a.displayGroup) - Number(!b.displayGroup) ||
+        (a.displayGroup ?? '').localeCompare(b.displayGroup ?? '');
+      if (byGroup) return byGroup;
+    }
+    return Number(b.activeEmployees > 0) - Number(a.activeEmployees > 0);
+  });
   const pq = parsePageQuery(sp);
   const { rows: pageRows } = paginateRows(rows, pq);
   const pgState = pageState(pq, rows.length, pageRows.length);
@@ -205,6 +221,7 @@ export default async function OrganizationPage({
                   <Link href={sortHref('regNo')}>{t('regNo')}</Link>
                 </th>
                 <th className={thCls}>{t('registration.column')}</th>
+                {groups.length > 0 && <th className={thCls}>{t('displayGrouping.column')}</th>}
                 <th className={thCls}>
                   <Link href={sortHref('parent')}>{t('parentCompany')}</Link>
                 </th>
@@ -220,6 +237,7 @@ export default async function OrganizationPage({
                   new was added to core for it. */}
               <CompanyRows
                 rows={pageRows}
+                showDisplayGroup={groups.length > 0}
                 labels={{
                   active: t('statusActive'),
                   archived: t('statusArchived'),

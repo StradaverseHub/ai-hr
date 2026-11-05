@@ -106,3 +106,19 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.reward_save_group_role(uuid, text, boolean, integer, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_save_group_role(uuid, text, boolean, integer, text) TO ai_hr_app;
+--> statement-breakpoint
+
+CREATE FUNCTION app.reward_group_role_directory()
+RETURNS TABLE(user_id uuid, name text, role text, active boolean, eligible boolean, revision integer)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+  SELECT g.user_id, p.full_name, g.role, g.active,
+         app.reward_group_person_eligible(g.user_id), g.revision
+  FROM public.reward_group_role_grant g
+  JOIN public.app_user u ON u.id = g.user_id AND u.tenant_id = g.tenant_id
+  JOIN public.person p ON p.id = u.person_id AND p.tenant_id = g.tenant_id
+  WHERE g.tenant_id = app.current_tenant_id()
+    AND app.principal_snapshot_current() AND app.is_group_admin() AND app.reward_not_viewing_as()
+  ORDER BY p.full_name, g.user_id, g.role;
+$$;
+REVOKE ALL ON FUNCTION app.reward_group_role_directory() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_group_role_directory() TO ai_hr_app;

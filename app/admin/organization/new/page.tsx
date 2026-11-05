@@ -1,3 +1,5 @@
+import { companyDisplayGroupOptions } from '@/core/company-display-group';
+import { CompanyDisplayGroupFields } from '@/components/company-display-group-fields';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { DEFAULT_PAYROLL_CYCLES } from '@/packs/payroll/service';
@@ -68,6 +70,8 @@ export default async function NewCompanyPage({
    */
   const codesInUse = companyCodeHolders(await listCompanies(s, { adminOnly: true }));
 
+  const groupOptions = await companyDisplayGroupOptions(s);
+
   return (
     <div className={pageWideCls}>
       <PageHeader
@@ -131,6 +135,7 @@ export default async function NewCompanyPage({
               ))}
             </select>
           </Field>
+          <CompanyDisplayGroupFields options={groupOptions} />
           <div className="flex items-center gap-2 pt-1">
             <button type="submit" className={btnPrimary}>
               {t('addCompany')}
