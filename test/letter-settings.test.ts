@@ -3,12 +3,13 @@ import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
-import {saveLetterPolicy,getLetterPolicy,listLetterPolicies,saveLetterPermission,readLetterPermissions,addLetterAsset,listLetterSignatories,letterCompanyAccess,listLetterSettingAssets,readLetterAsset} from '../core/letters';
+import {saveLetterPolicy,getLetterPolicy,listLetterPolicies,saveLetterPermission,readLetterPermissions,addLetterAsset,listLetterSignatories,letterCompanyAccess,listLetterEmployeeChoices,listLetterSettingAssets,readLetterAsset} from '../core/letters';
 import type {LetterPolicy} from '../lib/letter-workflow';
 import type {NotificationEmailTransport} from '../core/notification-email-delivery';
 import {letterNavigation} from '../core/letter-navigation';
 import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from '../core/access-configuration-lock';
-import {companyDeleteStatus} from '../core/read';
+import {companyDeleteStatus,listReadOnlyWorkforcePickPageTx} from '../core/read';
+import {hireEmployee} from '../core/org';
 import {createCompany,deleteCompany} from '../core/admin';
 import {visibleModuleCodes} from '../lib/nav-entitlements';
 import type {NotificationEmailStatus} from '../lib/notification-email-model';
@@ -82,9 +83,14 @@ it('refuses activation of a reference format whose company code is unavailable w
 });
 
 
-it('shares the company permission read lock and still waits for Access writers',async()=>{
- const expected=await letterCompanyAccess(ctx);
- expect(expected).toContainEqual(expect.objectContaining({id:b.companyId,read:true,settings:true}));
+it.each(['company permissions','employee picker'] as const)('shares the %s read lock and still waits for Access writers',async kind=>{
+ const input={companyId:b.companyId,limit:1,search:'Fictional letter picker employee'};
+ const hired=kind==='employee picker'?await hireEmployee(ctx,{person:{fullName:input.search,primaryEmail:'letter-picker@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'}):null;
+ const readSelection=()=>kind==='employee picker'?listLetterEmployeeChoices(ctx,input):letterCompanyAccess(ctx);
+ const expected=await readSelection();
+ if(hired)expect(expected).toMatchObject({rows:[{employmentId:hired.employmentId}],nextCursor:null});
+ else expect(expected).toContainEqual(expect.objectContaining({id:b.companyId,read:true,settings:true}));
+ if(hired)await expect(withTenant(ctx,tx=>listReadOnlyWorkforcePickPageTx(ctx,tx,{companyIds:[b.companyId],limit:1}))).rejects.toThrow('read-only transaction');
  const barrier=()=>{let release!:()=>void;const reached=new Promise<void>(resolve=>{release=resolve;});return {reached,release};};
  const deadline=async<T>(promise:Promise<T>)=>{
   let timer:ReturnType<typeof setTimeout>|undefined;
@@ -93,7 +99,7 @@ it('shares the company permission read lock and still waits for Access writers',
  };
  for(const lock of [lockAccessConfigurationReadTx,lockAccessConfigurationTx]){
   const entered=barrier(),release=barrier();
-  let pid=0,read:ReturnType<typeof letterCompanyAccess>|undefined;
+  let pid=0,read:ReturnType<typeof readSelection>|undefined;
   const held=withTenant(ctx,async tx=>{
    await lock(tx,b.tenantId);
    const [row]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);pid=row.pid;
@@ -101,7 +107,7 @@ it('shares the company permission read lock and still waits for Access writers',
   });
   try{
    await deadline(entered.reached);
-   read=letterCompanyAccess(ctx);
+   read=readSelection();
    if(lock===lockAccessConfigurationReadTx)expect(await deadline(read)).toEqual(expected);
    else{
     const until=Date.now()+4000;

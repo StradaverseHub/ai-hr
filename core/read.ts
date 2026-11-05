@@ -464,12 +464,24 @@ export async function readWorkforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:strin
  const source=sql`app.access_workforce_list_rows_for_ids(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) as workforce_row(value)`;
  return tx.select(columns).from(source).orderBy(columns.employmentId);
 }
-/** Bounded picker over the same purpose projection, reusable inside a caller's authorization transaction.
- * Resolve a cursor only inside this exact authorized search; equal names are ordered by employment ID. */
-export async function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:{companyIds:string[];q?:string;after?:string;limit:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string}){
+type WorkforcePickPageInput={companyIds:string[];q?:string;after?:string;limit:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string};
+/** A caller-owned transaction can write, so keep its exclusive barrier. */
+export function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput){
+ return workforcePickPageTx(ctx,tx,input,lockAccessConfigurationTx);
+}
+
+/** The database must enforce read-only before this shared-barrier picker can run. */
+export async function listReadOnlyWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput){
+ const [state]=await tx.execute<{read_only:boolean}>(sql`select current_setting('transaction_read_only')='on' as read_only`);
+ if(state?.read_only!==true)throw Error('Workforce picker requires a read-only transaction.');
+ return workforcePickPageTx(ctx,tx,input,lockAccessConfigurationReadTx);
+}
+
+/** Resolve a cursor only inside this exact authorized search. Equal names are ordered by employment ID. */
+async function workforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput,lock:typeof lockAccessConfigurationTx){
   if(!Number.isInteger(input.limit)||input.limit<1||input.limit>100||(input.q?.length??0)>200||input.after&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.after))throw new RangeError('Invalid workforce picker');
   if((input.departmentSearch?.length??0)>200||(input.branch?.length??0)>200||input.departmentId&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.departmentId)||input.hiredFrom&&!isCalendarDate(input.hiredFrom)||input.hiredTo&&!isCalendarDate(input.hiredTo)||input.hiredFrom&&input.hiredTo&&input.hiredFrom>input.hiredTo)throw new RangeError('Invalid workforce picker filters');
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lock(tx,ctx.tenantId);
   const source=sql`app.access_workforce_picker_rows(${input.branch?.trim()||null},${input.hiredFrom??null}::date,${input.hiredTo??null}::date) as workforce_row(value)`;
   const departmentSearch=input.departmentSearch?.trim(),needle=departmentSearch?'%'+departmentSearch.replace(/[\\%_]/g,'\\$&')+'%':undefined;
   const where=and(workforceListWhere({companyIds:input.companyIds,q:input.q,departmentId:input.departmentId},workforceListColumns()),needle?sql`${workforceListValue('department')} ilike ${needle}`:undefined),columns=workforcePickerColumns();
