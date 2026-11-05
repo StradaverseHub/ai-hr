@@ -10654,6 +10654,7 @@ export function listBatches(
   ctx: SessionContext,
   companyIds?: string[],
   payPeriod?: string | readonly string[],
+  statuses?: readonly (typeof payrollBatch.$inferSelect.status)[],
 ) {
   const periodFilter = Array.isArray(payPeriod)
     ? inArray(payrollBatch.payPeriod, payPeriod as string[])
@@ -10718,6 +10719,7 @@ export function listBatches(
         and(
           companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
           periodFilter,
+          statuses ? inArray(payrollBatch.status, statuses) : undefined,
           or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0)),
         ),
       )

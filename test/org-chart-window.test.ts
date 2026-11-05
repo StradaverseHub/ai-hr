@@ -5,7 +5,7 @@ import {afterAll,beforeAll,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {orgChartData} from '../core/read';
 import {orgChartEntry,orgChartWindow,OrgWindowUnavailableError,type OrgWindowRequest} from '../core/org-chart-window';
-import {type SessionContext} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -48,10 +48,18 @@ it('preserves the complete authorized graph through bounded roots, branches, lit
   expect(rows).toHaveLength(totalItems);expect(new Set(rows.map(row=>row.key)).size).toBe(rows.length);
   return {rows,totalItems,totalPeople};
  };
+ const originalEdges=(actor:SessionContext)=>withTenant(actor,tx=>tx.execute<{manager:string;subordinate:string;type:string}>(sql`
+  select r.manager_employment_id as manager,r.subordinate_employment_id as subordinate,r.line_type::text as type
+  from reporting_line r where r.valid_to is null and r.superseded_at is null and r.line_type<>'delegate'
+   and app.can_see_employment(r.manager_employment_id) and app.can_see_employment(r.subordinate_employment_id)
+   and exists(select 1 from employment e where e.id=r.manager_employment_id and e.terminated_on is null)
+   and exists(select 1 from employment e where e.id=r.subordinate_employment_id and e.terminated_on is null)`));
  const cases=[{name:'group',actor:ctx,scope:undefined},{name:'company filter',actor:ctx,scope:[b.companyId]},
   {name:'company HR',actor:companyHR,scope:undefined},{name:'manager',actor:manager,scope:undefined},{name:'employee',actor:employee,scope:undefined}];
  for(const value of cases){
   const legacy=await orgChartData(value.actor,value.scope),byId=new Map(legacy.employees.map(node=>[node.employmentId,node]));
+  const edgeKeys=(rows:readonly {manager:string;subordinate:string;type:string}[])=>sorted(rows.map(row=>[row.manager,row.subordinate,row.type].join(':')));
+  expect(edgeKeys(legacy.edges),value.name).toEqual(edgeKeys(await originalEdges(value.actor)));
   const parented=new Set(legacy.edges.filter(edge=>edge.type==='administrative'&&byId.has(edge.manager)&&byId.has(edge.subordinate)).map(edge=>edge.subordinate));
   const roots=await collected(value.actor,value.scope,{view:'roots'});
   expect(roots.totalPeople).toBe(byId.size);expect(sorted(roots.rows.map(row=>row.node!.employmentId))).toEqual(sorted([...byId.keys()].filter(id=>!parented.has(id))));

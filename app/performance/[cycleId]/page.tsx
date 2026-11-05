@@ -62,9 +62,8 @@ export default async function CyclePage({
 
   const pendingComp = roster.filter((r) => r.compActionStatus === 'recommended');
   // Only bonus enactment needs a draft payroll batch. Performance can also run without Payroll.
-  const batches = cycle.status !== 'draft' && pendingComp.some((r) => r.recommendedBonus != null)
-    && isModuleEnabledOrFalse(s, 'payroll') ? await listBatches(s) : [];
-  const draftBatches = batches.filter((b) => b.status === 'draft');
+  const draftBatches = cycle.status !== 'draft' && pendingComp.some((r) => r.recommendedBonus != null)
+    && isModuleEnabledOrFalse(s, 'payroll') ? await listBatches(s, undefined, undefined, ['draft']) : [];
   const maxDist = Math.max(1, ...distribution.map((d) => d.count));
 
   return (

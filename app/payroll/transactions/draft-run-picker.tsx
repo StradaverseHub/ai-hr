@@ -24,8 +24,7 @@ import { scopedAdmin } from '@/lib/scope';
  */
 export async function draftRunsInScope() {
   const { s, scopeIds } = await scopedAdmin();
-  const batches = await listBatches(s, scopeIds);
-  return batches.filter((b) => b.status === 'draft');
+  return listBatches(s, scopeIds, undefined, ['draft']);
 }
 
 export type DraftRunRow = Awaited<ReturnType<typeof draftRunsInScope>>[number];

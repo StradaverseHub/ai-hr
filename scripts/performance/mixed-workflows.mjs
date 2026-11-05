@@ -2,12 +2,13 @@
 import assert from 'node:assert/strict';
 import {setTimeout as pause} from 'node:timers/promises';
 import {performanceFixtureCalendar,clockingFixtureText} from './fixture-workload.mjs';
+import {attendanceCorrectionForm} from './attendance-rejection-browser.mjs';
 import {exerciseConcurrentPayrollClose} from './payroll-close-concurrency.mjs';
 export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs}){
  const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0,clockingImport:0},failures:[],capturedTransport:[],captureProtocol:'new click request and response headers; UI and persisted outcomes checked separately'};
  async function capture(page,click,kind){
   report.mixedWorkflows.currentStage=kind;save();
-  const marker={leaveCreate:'PERF_LEAVE_BROWSER',leaveEdit:'PERF_LEAVE_BROWSER_EDITED',personnelCreate:'PERF_PERSONNEL_BROWSER',personnelEdit:'PERF_PERSONNEL_BROWSER_EDITED'}[kind];
+  const marker={attendanceCreate:'PERF_ATTENDANCE_BROWSER',leaveCreate:'PERF_LEAVE_BROWSER',leaveEdit:'PERF_LEAVE_BROWSER_EDITED',personnelCreate:'PERF_PERSONNEL_BROWSER',personnelEdit:'PERF_PERSONNEL_BROWSER_EDITED'}[kind];
   // Bind to a request initiated after arming this click, never an advisory response already in flight.
   // Capture needs transport metadata only. Redirect/toast navigation can cancel the original stream;
   // the surrounding workflow still verifies UI readiness and independent committed native state.
@@ -141,8 +142,12 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   const ctx=await context(employee),page=await ctx.newPage();let correction;
   try{
    await visit(page,employee,'/attendance/my-records/'+fixture.today);
-   await page.locator('[name="checkIn"]').fill('09:15');await page.locator('[name="checkOut"]').fill('18:15');await page.locator('[name="reason"]').fill('PERF_ATTENDANCE_BROWSER');
-   await capture(page,()=>page.locator('form').filter({has:page.locator('[name="checkIn"]')}).locator('button[type="submit"]').click(),'attendanceCreate');await page.waitForLoadState('networkidle');
+   const form=attendanceCorrectionForm(page);
+   await form.locator('input[type="time"][name="checkIn"]').fill('09:15');
+   await form.locator('input[type="time"][name="checkOut"]').fill('18:15');
+   await form.locator('input[name="reason"]').fill('PERF_ATTENDANCE_BROWSER');
+   await capture(page,()=>form.getByRole('button',{name:'Submit correction',exact:true}).click(),'attendanceCreate');
+   await page.waitForLoadState('networkidle');
    [correction]=await db`select id,status from attendance_correction where employment_id=${employee.employmentId}::uuid and reason='PERF_ATTENDANCE_BROWSER'`;
    assert(correction&&correction.status==='pending');
   }finally{await ctx.close();}
