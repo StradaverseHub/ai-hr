@@ -21,15 +21,17 @@
  * which counts only /approvals links, is unchanged by them.
  */
 import {assignedApprovalHref,type AssignedApprovalKind} from '../lib/assigned-approval-focus';
-import type {SessionContext} from '../db/client';
+import {sql} from 'drizzle-orm';
+import {withTenant,type SessionContext} from '../db/client';
+import {assertAssignedWorkPrincipalTx} from './approvals';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
-import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata,listPendingReplacementLeaveTasks} from '../packs/leave/service';
+import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata,pendingLeaveCancellationCandidatesExistSql,listPendingReplacementLeaveTasks} from '../packs/leave/service';
 import {pendingClaimTaskMetadata,pendingClaimTaskSummary} from '../packs/claims/service';
 import {pendingAttendanceTaskMetadata} from '../packs/attendance/service';
 import {pendingProfileTaskMetadata} from './profile';
-import {pendingResignationTaskMetadata} from './offboarding';
+import {pendingResignationCandidatesExistSql,pendingResignationTaskMetadata} from './offboarding';
 import {pendingNoticeAcknowledgementTasks} from './notice';
-import {pendingReviewTaskMetadata} from './employment-review';
+import {pendingReviewCandidatesExistSql,pendingReviewTaskMetadata} from './employment-review';
 import {pendingPerformanceTasks} from '../packs/performance/service';
 import {pendingRewardTasks} from '../packs/rewards/service';
 import type {PackTaskItem,PackTaskKind,PackTaskProvider} from '../lib/assigned-work';
@@ -114,20 +116,45 @@ export async function listPendingTasks(
 }
 
 export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:{noticeAcknowledgements?:boolean}={}){
-  return loadPendingTasks(ctx,scopeIds,modules,{...options,claimLimit:25});
+  return loadPendingTasks(ctx,scopeIds,modules,{...options,preview:true});
+}
+
+async function loadDecisionHeaders(ctx:SessionContext,scopeIds:string[]|undefined,preview?:true){
+  if(preview){
+    const candidates=await withTenant(ctx,async tx=>{
+      await assertAssignedWorkPrincipalTx(tx,ctx);
+      const [row]=await tx.execute<{has_candidates:boolean}>(sql`
+        select (
+          ${pendingLeaveCancellationCandidatesExistSql(tx,ctx,scopeIds)}
+          or ${pendingResignationCandidatesExistSql(tx,ctx,scopeIds)}
+          or ${pendingReviewCandidatesExistSql(tx,ctx,'manager',scopeIds)}
+          or ${pendingReviewCandidatesExistSql(tx,ctx,'hr',scopeIds)}
+        ) as has_candidates
+      `);
+      return row?.has_candidates;
+    });
+    // An empty candidate set needs no per-owner decision checks. A possible
+    // match still goes through each owner's fresh authorization.
+    if(candidates===false)return [[],[],[],[]] as const;
+  }
+  return Promise.all([
+    pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
+    pendingResignationTaskMetadata(ctx,scopeIds),
+    pendingReviewTaskMetadata(ctx,'manager',scopeIds),
+    pendingReviewTaskMetadata(ctx,'hr',scopeIds),
+  ]);
 }
 
 async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
-  options:{noticeAcknowledgements?:boolean;claimLimit?:number}){
+  options:{noticeAcknowledgements?:boolean;preview?:true}){
   // Each owner proves actual current assignment without selecting its private decision workspace.
   // A platform role or broad read permission alone is not an actionable task assignment.
-  const [leave,cancellations,replacement,attendance,profile,claimResult,resignations,managerReviews,hrReviews,noticeAcknowledgements,packTaskLists]=await Promise.all([
-    pendingLeaveTaskMetadata(ctx,scopeIds),pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
+  const [leave,[cancellations,resignations,managerReviews,hrReviews],replacement,attendance,profile,claimResult,noticeAcknowledgements,packTaskLists]=await Promise.all([
+    pendingLeaveTaskMetadata(ctx,scopeIds),loadDecisionHeaders(ctx,scopeIds,options.preview),
     listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds}),
     modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([]),
     pendingProfileTaskMetadata(ctx,scopeIds),
-    modules.claims?(options.claimLimit?pendingClaimTaskSummary(ctx,scopeIds,options.claimLimit):pendingClaimTaskMetadata(ctx,scopeIds).then(items=>({items,total:items.length}))):Promise.resolve({items:[],total:0}),
-    pendingResignationTaskMetadata(ctx,scopeIds),pendingReviewTaskMetadata(ctx,'manager',scopeIds),pendingReviewTaskMetadata(ctx,'hr',scopeIds),
+    modules.claims?(options.preview?pendingClaimTaskSummary(ctx,scopeIds,25):pendingClaimTaskMetadata(ctx,scopeIds).then(items=>({items,total:items.length}))):Promise.resolve({items:[],total:0}),
     options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
     Promise.all(PACK_TASK_SOURCES.map(source=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([]))),
   ]);

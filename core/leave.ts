@@ -12319,15 +12319,23 @@ export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]
 }
 
 
-export async function pendingLeaveCancellationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
- const candidates=await withTenant(ctx,async tx=>{
-  await assertAssignedWorkPrincipalTx(tx,ctx);
+function pendingLeaveCancellationHeadersQuery(tx:Tx,ctx:SessionContext,companyIds?:string[]){
   return tx.select({id:leaveCancellationRequest.id,employmentId:leaveCancellationRequest.employmentId,personId:sql<string>`approval_subject.person_id`,
    employee:sql<string>`approval_subject.employee`,createdAt:leaveCancellationRequest.createdAt}).from(leaveCancellationRequest)
    .innerJoin(sql`LATERAL app.delegated_approval_subject(${leaveCancellationRequest.employmentId},'leave','leave.cancellation') AS approval_subject`,sql`true`)
    .where(and(eq(leaveCancellationRequest.tenantId,ctx.tenantId),eq(leaveCancellationRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
     companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
    .orderBy(desc(leaveCancellationRequest.createdAt),asc(leaveCancellationRequest.id));
+}
+
+export function pendingLeaveCancellationCandidatesExistSql(tx:Tx,ctx:SessionContext,companyIds?:string[]){
+  return sql<boolean>`exists (${pendingLeaveCancellationHeadersQuery(tx,ctx,companyIds).getSQL()})`;
+}
+
+export async function pendingLeaveCancellationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+ const candidates=await withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  return pendingLeaveCancellationHeadersQuery(tx,ctx,companyIds);
  });
  const allowed=new Set(await actionableLeaveCancellationIds(ctx,candidates.map(row=>row.id)));
  return candidates.filter(row=>allowed.has(row.id));
