@@ -11,6 +11,7 @@ import {exerciseLetterDraft} from './letter-draft-browser.mjs';
 import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
 import {exerciseSavedReport} from './reports-browser.mjs';
 import {exercisePayrollBrowser} from './payroll-browser.mjs';
+import {exercisePayrollRegister,verifyPayrollRegisterBoundary} from './payroll-register-browser.mjs';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
 import {exerciseLivePersonnelProfile} from './personnel-live-profile-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
@@ -442,7 +443,17 @@ try{
  }
  if(suite==='whole-system'||suite==='workflow-preflight'){
   const ctx=await context(group),page=await ctx.newPage();
-  try{await exerciseSavedReport({page,user:group,fixture,db,base,phase:'baseline',thinkTimeMs,report,save});}finally{await ctx.close();}
+  try{
+   await exercisePayrollRegister({base,page,user:group,fixture,db,request,report,save});
+   await exerciseSavedReport({page,user:group,fixture,db,base,phase:'baseline',thinkTimeMs,report,save});
+  }finally{await ctx.close();}
+  const foreignGroup=fixture.users.find(user=>user.role==='groupHR'&&user.tenant!==group.tenant);
+  assert(foreignGroup,'Payroll register needs a foreign group HR boundary actor');
+  for(const actor of [hr,foreignGroup]){
+   const boundaryContext=await context(actor),boundaryPage=await boundaryContext.newPage();
+   try{await verifyPayrollRegisterBoundary({base,page:boundaryPage,actor,owner:group,fixture,report,save});}
+   finally{await boundaryContext.close();}
+  }
  }
  // Tenant-wide AI spend and provider configuration keep their group-administrator guards.
  {
