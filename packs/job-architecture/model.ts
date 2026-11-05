@@ -64,11 +64,15 @@ export function validatePositionMappings(raw:unknown,nodes:readonly CatalogueNod
 }
 export type ArchitecturePosition={id:string;title:string;companyId:string;mapping:PositionMapping|null};
 export type ArchitectureEmployee={id:string;companyId:string;positionId:string|null;grade:ArchitectureGrade|null};
+export function employeeGradeMismatches(positions:readonly ArchitecturePosition[],employees:readonly ArchitectureEmployee[]){
+ const byPosition=new Map(positions.map(p=>[p.companyId+':'+p.id,p]));
+ return employees.flatMap(e=>{const p=e.positionId?byPosition.get(e.companyId+':'+e.positionId):null;return p?.mapping&&e.grade!==p.mapping.grade?[{employeeId:e.id,positionId:p.id,companyId:e.companyId}]:[];});
+}
 export const outlierTypes=['title_grade_spread','employee_grade','unit_grade','statutory_h','sme_grade','classification_gap','empty_branch','duplicate_unit_title','unused_unit','unmapped_position'] as const;
 export type ArchitectureOutlier={fingerprint:string;type:typeof outlierTypes[number];companyIds:string[];recordIds:string[];migrationOnly:boolean};
 /** Input must already be authorized. Names or grades outside the caller's scope never enter aggregates. */
 export function scanArchitectureOutliers(nodes:readonly CatalogueNode[],positions:readonly ArchitecturePosition[],employees:readonly ArchitectureEmployee[]):ArchitectureOutlier[]{
- const result:ArchitectureOutlier[]=[],byNode=new Map(nodes.map(n=>[n.id,n])),byPosition=new Map(positions.map(p=>[p.companyId+':'+p.id,p]));
+ const result:ArchitectureOutlier[]=[],byNode=new Map(nodes.map(n=>[n.id,n]));
  const add=(type:ArchitectureOutlier['type'],ids:string[],companies:string[],migrationOnly=false)=>{const recordIds=[...new Set(ids)].sort();result.push({type,recordIds,companyIds:[...new Set(companies)].sort(),migrationOnly,fingerprint:type+':'+[...new Set(companies)].sort().join(',')+':'+recordIds.join(':')});};
  const titles=new Map<string,ArchitecturePosition[]>();
  for(const p of positions){const same=titles.get(p.title)??[];same.push(p);titles.set(p.title,same);const m=p.mapping,u=m?byNode.get(m.jobUnitId):null;
@@ -79,7 +83,7 @@ export function scanArchitectureOutliers(nodes:readonly CatalogueNode[],position
   if(u.sme&&ARCHITECTURE_GRADES.indexOf(m.grade)>ARCHITECTURE_GRADES.indexOf('19'))add('sme_grade',[p.id,u.id],[p.companyId]);
  }
  for(const group of titles.values())if(new Set(group.flatMap(p=>p.mapping?[p.mapping.grade]:[])).size>1)add('title_grade_spread',group.map(p=>p.id),group.map(p=>p.companyId));
- for(const e of employees){const p=e.positionId?byPosition.get(e.companyId+':'+e.positionId):null;if(p?.mapping&&e.grade!==p.mapping.grade)add('employee_grade',[e.id,p.id],[e.companyId]);}
+ for(const mismatch of employeeGradeMismatches(positions,employees))add('employee_grade',[mismatch.employeeId,mismatch.positionId],[mismatch.companyId]);
  const unitTitles=new Map<string,CatalogueNode[]>();
  for(const n of nodes){const level=nodeKinds.indexOf(n.kind),parent=n.parentId?byNode.get(n.parentId):null;
   if(level>0&&(!parent||nodeKinds.indexOf(parent.kind)!==level-1))add('classification_gap',[n.id],[]);
