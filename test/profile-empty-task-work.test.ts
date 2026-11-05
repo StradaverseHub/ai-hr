@@ -53,7 +53,11 @@ it('keeps empty profile task scope while avoiding unnecessary workforce projecti
  }
  const foreign=await seedBase();expect(await pendingProfileTaskMetadata(adminCtx(foreign),[b.companyId])).toEqual([]);
  await expect(pendingProfileTaskMetadata({...ctx,userId:randomUUID()},[b.companyId])).rejects.toThrow();
+ await expect(pendingProfileTaskMetadata(ctx,['not-a-company-uuid'])).rejects.toThrow();
+ await owner.client.unsafe('revoke select on public.profile_change_request from ai_hr_app');
+ try{await expect(pendingProfileTaskMetadata(ctx,[b.companyId])).rejects.toThrow();}
+ finally{await owner.client.unsafe('grant select on public.profile_change_request to ai_hr_app');}
  const control=Math.min(measurements[0].elapsedMs,measurements[3].elapsedMs),candidate=Math.max(measurements[1].elapsedMs,measurements[2].elapsedMs);
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'profile-empty-task-work.json'),JSON.stringify({kind:'NATIVE_EMPTY_PROFILE_QUEUE_COMPONENT_ONLY',releaseEligible:false,fixtureEmployees:count,nativeTriggers:'unchanged',measurements,foreignEmptyAndForgedRefusal:true,improvementRatio:candidate/control,limitations:'emptyqueuecomponentonly; populated211-task/routing/private-fieldchecksand500HTTP/browserstillrequired'},null,2));
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'profile-empty-task-work.json'),JSON.stringify({kind:'NATIVE_EMPTY_PROFILE_QUEUE_COMPONENT_ONLY',releaseEligible:false,fixtureEmployees:count,nativeTriggers:'unchanged',measurements,foreignEmptyAndForgedRefusal:true,invalidScopeAndDatabaseFailuresPropagate:true,improvementRatio:candidate/control,limitations:'emptyqueuecomponentonly; populated211-task/routing/private-fieldchecksand500HTTP/browserstillrequired'},null,2));
  expect(candidate,'Both empty-queue phases must improve at least20% over the faster native control').toBeLessThan(control*.8);
 },600000);
