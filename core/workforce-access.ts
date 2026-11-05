@@ -81,8 +81,13 @@ export function canOpenWorkforce(ctx:SessionContext){
 export function workforceViewScope(ctx: SessionContext) {
  return withTenant(ctx,async tx=>{
   await lockAccessConfigurationReadTx(tx,ctx.tenantId);
-  const companies=await tx.execute<{id:string}>(sql`select id from company where tenant_id=app.current_tenant_id() and app.access_workforce_projection_company(id) order by id`);
-  const [unassigned]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_unassigned('workforce.view') as allowed`);
-  return {companyIds:companies.map(row=>row.id),canOpen:companies.length>0||unassigned?.allowed===true};
+  const [scope] = await tx.execute<{company_ids: string[]; unassigned: boolean}>(sql`
+    select coalesce(jsonb_agg(id order by id), '[]'::jsonb) as company_ids,
+      app.access_workforce_unassigned('workforce.view') as unassigned
+    from company
+    where tenant_id = app.current_tenant_id() and app.access_workforce_projection_company(id)
+  `);
+  const companyIds = scope?.company_ids ?? [];
+  return {companyIds, canOpen: companyIds.length > 0 || scope?.unassigned === true};
  });
 }
