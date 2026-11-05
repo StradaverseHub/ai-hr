@@ -3023,6 +3023,7 @@ async function insertLeaveRequest(
     // from one filed directly as Emergency Leave, and from an HR-side advance-notice override. null/absent
     // ⇒ nothing extra on the payload, so every existing assertion stays green.
     overrideAudit?: LeaveOverrideAudit | null;
+    resolvedApprovalChain?: Awaited<ReturnType<typeof resolveRequestApprovalChain>>;
   },
   includeSubmittedEventId = false,
 ): Promise<{ id: string; submittedEventId?: string }> {
@@ -3053,7 +3054,9 @@ async function insertLeaveRequest(
     })
     .returning({ id: leaveRequest.id });
   // Resolve the step snapshot before appending the event takes the tenant audit-chain lock.
-  const approvalSteps = await prepareApprovalSteps(tx, ctx.tenantId, row.id, v.employmentId, v.leaveTypeId, v.days);
+  const approvalSteps = await prepareApprovalSteps(
+    tx, ctx.tenantId, row.id, v.employmentId, v.leaveTypeId, v.days, v.resolvedApprovalChain,
+  );
   const submittedEventId = await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',
@@ -4124,8 +4127,8 @@ export async function requestLeave(
       unpaidDays === 0;
     const resolvedChain = canUsePerDateApproval
       ? await resolveRequestApprovalChain(tx, p.employmentId, p.leaveTypeId, days)
-      : null;
-    const perDateEligible = resolvedChain !== null && !isMultiStepChain(resolvedChain.chain);
+      : undefined;
+    const perDateEligible = resolvedChain != null && !isMultiStepChain(resolvedChain.chain);
 
     if (reviewedOwnLeave) {
       // Reuse THIS execution's calculations, not a second preview. This adds no lock or retry:
@@ -4195,6 +4198,7 @@ export async function requestLeave(
       // Override Leave Application (56910869): null on every application no rule changed, which is every
       // application until HR enables a rule — so the ordinary payload is byte-identical to before.
       overrideAudit,
+      resolvedApprovalChain: resolvedChain,
     }, reviewedOwnLeave !== undefined);
 
     // Replacement Leave deliberately has no per-date approval rows. Retain the canonical weights
@@ -5209,8 +5213,11 @@ async function prepareApprovalSteps(
   employmentId: string,
   leaveTypeId: string,
   days: number,
+  preResolved?: Awaited<ReturnType<typeof resolveRequestApprovalChain>>,
 ): Promise<(typeof leaveApprovalStep.$inferInsert)[]> {
-  const resolved = await resolveRequestApprovalChain(tx, employmentId, leaveTypeId, days);
+  const resolved = preResolved === undefined
+    ? await resolveRequestApprovalChain(tx, employmentId, leaveTypeId, days)
+    : preResolved;
   if (!resolved) return [];
   const { chain, attr } = resolved;
   // The gate. Branching on the chain BEFORE the drop rules below is deliberate: a two-step template whose
