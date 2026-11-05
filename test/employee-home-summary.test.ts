@@ -2,9 +2,8 @@ import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
 import {homeQuickActionHref,homeSummaryHref,validateEmployeeHomeSummary} from '../lib/employee-home-summary';
 import {todayInKualaLumpur} from '../lib/hr-date';
-const state=vi.hoisted(()=>({subject:vi.fn(),config:vi.fn(),tasks:vi.fn(),enabled:vi.fn(),leave:vi.fn(),holidays:vi.fn(),replacement:vi.fn(),payroll:vi.fn(),types:vi.fn(),claims:vi.fn(),profile:vi.fn()}));
+const state=vi.hoisted(()=>({config:vi.fn(),tasks:vi.fn(),enabled:vi.fn(),leave:vi.fn(),holidays:vi.fn(),replacement:vi.fn(),payroll:vi.fn(),types:vi.fn(),claims:vi.fn(),profile:vi.fn()}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,read:(tx:unknown)=>unknown)=>read({})}));
-vi.mock('../core/employee-home',()=>({requireOwnHomeSubject:state.subject}));
 vi.mock('../core/employee-home-configuration',()=>({readOwnEmployeeHomeConfiguration:state.config}));
 vi.mock('../core/employee-home-tasks',()=>({countEmployeeHomeTasks:state.tasks}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:state.enabled}));
@@ -20,7 +19,7 @@ const ctx={tenantId:'tenant',userId:'login',personId:'person',roles:['employee']
 const today=todayInKualaLumpur(),offset=(days:number)=>new Date(Date.parse(today+'T00:00:00Z')+days*86400000).toISOString().slice(0,10);
 const read=()=>readEmployeeHomeSummary(ctx,'own','en','Replacement holiday');
 beforeEach(()=>{
- vi.clearAllMocks();state.subject.mockResolvedValue({employmentId:'own'});state.config.mockResolvedValue({configuration:defaultEmployeeHomeConfiguration()});state.enabled.mockReturnValue(true);
+ vi.clearAllMocks();state.config.mockResolvedValue({employmentId:'own',configuration:defaultEmployeeHomeConfiguration()});state.enabled.mockReturnValue(true);
  state.tasks.mockResolvedValue(0);state.leave.mockResolvedValue(null);state.holidays.mockResolvedValue([]);state.replacement.mockResolvedValue([]);
  state.payroll.mockResolvedValue({payslips:[],nextPayment:null});state.types.mockResolvedValue([]);state.claims.mockResolvedValue(false);state.profile.mockResolvedValue({editable:new Set()});
 });
@@ -58,7 +57,7 @@ describe('Own Home deterministic summary and current action capability',()=>{
   state.tasks.mockRejectedValue(Error('owner offline'));await expect(read()).rejects.toThrow('owner offline');
  });
  it('stops before domain reads for an unavailable identity or inactive configuration context',async()=>{
-  state.subject.mockRejectedValueOnce(Error('foreign'));await expect(read()).rejects.toThrow('foreign');expect(state.tasks).not.toHaveBeenCalled();
+  state.config.mockRejectedValueOnce(Error('foreign'));await expect(read()).rejects.toThrow('foreign');expect(state.tasks).not.toHaveBeenCalled();
   state.config.mockRejectedValueOnce(Error('inactive'));await expect(read()).rejects.toThrow('inactive');expect(state.payroll).not.toHaveBeenCalled();
  });
  it('never reads disabled module owners or advertises their configured action as available',async()=>{
