@@ -571,7 +571,10 @@ export default async function EmployeePage({
   // Movement tab redesign (78853b97): Employment History is a read-model projection over the
   // domain_event ledger — Hired-first, date-ascending, no second record-keeping system. The detail view
   // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
-  const movements = admin ? await movementHistory(s, employmentId) : [];
+  // Only the history table, the pending banner, and the edit lookup need the full projection.
+  const movements = admin && (!movementPage || movementPage === 'edit')
+    ? await movementHistory(s, employmentId)
+    : [];
   // 95d17761 — the DEFAULT view drops the correction artefacts (rolled back / corrected / cancelled /
   // superseded) so the tab reads as a career rather than a list of mistakes. Nothing is deleted and the
   // projection above is untouched: `movements` stays the complete history and is what the Edit lookup,
