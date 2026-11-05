@@ -129,6 +129,8 @@ export async function migrateApprovedUpgrade(db:Database):Promise<ApprovedUpgrad
   });
   expect(await table(db,'public.access_group')).toEqual(groups);expect(await table(db,'public.app_user')).toEqual(users);
   await migrate(db.db,{migrationsFolder:'db/migrations'});
+  expect(await db.client`select id from public.company where display_group_field is not null or display_group_option_id is not null`).toEqual([]);
+  expect(await db.client`select user_id from public.reward_group_role_grant`).toEqual([]);
   expect(await table(db,'public.domain_event')).toEqual(eventsAfter);
   expect(await table(db,'public.access_group_grant')).toEqual(groupAfter);expect(await table(db,'public.access_user_override')).toEqual(overrideAfter);
   expect(await table(db,'public.access_configuration')).toEqual(configsAfter);expect(await table(db,'app.access_profile_write_generation')).toEqual(generationsAfter);
