@@ -30,6 +30,7 @@ BEGIN
  IF NOT app.reward_setup_allowed(wanted_company,'manage') THEN RAISE EXCEPTION 'Group Rewards plan creation authority required' USING ERRCODE='42501';END IF;
  SELECT * INTO p FROM reward_plan_setup WHERE tenant_id=t AND version_id=wanted_version AND state='approved';
  IF p.version_id IS NULL OR NOT app.reward_setup_company_eligible(wanted_company,p.year) OR p.snapshot_date>timezone('Asia/Kuala_Lumpur',now())::date THEN RAISE EXCEPTION 'Current approved plan and available legal employer required';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(t::text||':pat:'||wanted_company::text||':'||p.year::text,2203));
  company_tags:=app.reward_company_structure(wanted_company,p.snapshot_date);IF company_tags->>'status' IS DISTINCT FROM 'ready' OR nullif(company_tags->>'businessUnitId','')::uuid IS DISTINCT FROM wanted_business_unit THEN RAISE EXCEPTION 'Confirmed dated company Business unit required at the approved plan snapshot' USING ERRCODE='22023';END IF;
  SELECT value INTO b FROM jsonb_array_elements(p.bindings) WHERE value->>'companyId'=wanted_company::text AND value->>'businessUnitId'=wanted_business_unit::text;
  IF b IS NULL OR NOT EXISTS(SELECT 1 FROM reward_plan_company c WHERE c.tenant_id=t AND c.company_id=wanted_company AND c.year=p.year AND c.plan_version_id=wanted_version) THEN RAISE EXCEPTION 'Company is not assigned to this approved plan';END IF;
@@ -57,7 +58,7 @@ BEGIN
  LEFT JOIN LATERAL(SELECT r.id,r.overall_rating FROM performance_review r JOIN review_cycle c ON c.id=r.cycle_id AND c.tenant_id=r.tenant_id WHERE r.employment_id=e.id AND r.tenant_id=e.tenant_id AND r.closed_at IS NOT NULL AND c.period_start<=make_date(p.year,12,31) AND c.period_end>=make_date(p.year,1,1) ORDER BY r.closed_at DESC,r.id DESC LIMIT 1)pr ON true
  WHERE e.tenant_id=t AND app.reward_source_org_tags(e.id,p.snapshot_date)->>'companyId'=wanted_company::text AND e.hired_on<=p.snapshot_date AND(e.terminated_on IS NULL OR e.terminated_on>p.snapshot_date) AND (CASE WHEN app.reward_source_org_tags(e.id,p.snapshot_date)->>'status'='legacy' THEN a.business_unit_id ELSE nullif(app.reward_source_org_tags(e.id,p.snapshot_date)->>'businessUnitId','')::uuid END)=wanted_business_unit AND a.valid_from<=p.snapshot_date AND(a.valid_to IS NULL OR a.valid_to>p.snapshot_date) AND a.superseded_at IS NULL
  LOOP
- INSERT INTO reward_entry(tenant_id,unit_id,employment_id,source,facts,recommendation) VALUES(t,unit,row.id,jsonb_build_object('employmentId',row.id,'assignmentId',row.assignment_id,'positionId',row.assignment_position_id,'personId',row.person_id,'compensationId',row.compensation_id,'employeeCode',coalesce(row.employee_code,row.id::text),'name',row.full_name,'grade',regexp_replace(coalesce(row.grade_code,''),'^JG[[:space:]]*','','i'),'gradeId',row.grade_id,'basicCents',coalesce(round(row.basic_salary*100),0),'currency',coalesce(row.comp_currency,'MYR'),'payMode',coalesce(row.pay_mode,'monthly'),'hiredOn',row.hired_on,'confirmedOn',row.confirmation_date,'notice',(row.tender_resignation_date IS NOT NULL AND row.tender_resignation_date<=p.snapshot_date) OR(row.resignation_date IS NOT NULL AND row.resignation_date<=p.snapshot_date),'lastPayChange',CASE WHEN row.pay_from>row.hired_on THEN row.pay_from ELSE NULL END,'confirmationPayChange',coalesce(row.pay_from=row.confirmation_date AND row.pay_from>row.hired_on,false),'performanceReviewId',row.review_id,'performanceRating',row.overall_rating,'architecture',app.reward_architecture_for_source(unit,row.id,row.assignment_position_id,p.snapshot_date),'payChanges',coalesce((SELECT jsonb_agg(jsonb_build_object('on',x.valid_from,'basicCents',round(x.basic_salary*100),'kind',NULL) ORDER BY x.valid_from,x.id) FROM(SELECT c.*,lag(c.basic_salary)over(ORDER BY c.valid_from,c.id) AS prior_basic FROM compensation c WHERE c.employment_id=row.id AND c.tenant_id=t AND c.superseded_at IS NULL)x WHERE x.prior_basic IS NOT NULL AND x.basic_salary<>x.prior_basic AND x.valid_from>row.hired_on AND x.valid_from BETWEEN make_date(p.year,1,1) AND make_date(p.year+1,12,31)),'[]'::jsonb)),
+ INSERT INTO reward_entry(tenant_id,unit_id,employment_id,source,facts,recommendation) VALUES(t,unit,row.id,jsonb_build_object('employmentId',row.id,'assignmentId',row.assignment_id,'positionId',row.assignment_position_id,'personId',row.person_id,'compensationId',row.compensation_id,'employeeCode',coalesce(row.employee_code,row.id::text),'name',row.full_name,'grade',regexp_replace(coalesce(row.grade_code,''),'^JG[[:space:]]*','','i'),'gradeId',row.grade_id,'basicCents',coalesce(round(row.basic_salary*100),0),'currency',coalesce(row.comp_currency,'MYR'),'payMode',coalesce(row.pay_mode,'monthly'),'hiredOn',row.hired_on,'confirmedOn',row.confirmation_date,'notice',(row.tender_resignation_date IS NOT NULL AND row.tender_resignation_date<=p.snapshot_date) OR(row.resignation_date IS NOT NULL AND row.resignation_date<=p.snapshot_date),'lastPayChange',CASE WHEN row.pay_from>row.hired_on THEN row.pay_from ELSE NULL END,'confirmationPayChange',coalesce(row.pay_from=row.confirmation_date AND row.pay_from>row.hired_on,false),'performanceReviewId',row.review_id,'performanceRating',row.overall_rating,'architecture',app.reward_architecture_for_source(unit,row.id,row.assignment_position_id,p.snapshot_date),'payChanges',coalesce((SELECT jsonb_agg(jsonb_build_object('on',x.valid_from,'basicCents',round(x.basic_salary*100),'kind',app.reward_snapshot_pay_change_kind(x.id)) ORDER BY x.valid_from,x.id) FROM(SELECT c.*,lag(c.basic_salary)over(ORDER BY c.valid_from,c.id) AS prior_basic FROM compensation c WHERE c.employment_id=row.id AND c.tenant_id=t AND c.superseded_at IS NULL)x WHERE x.prior_basic IS NOT NULL AND x.basic_salary<>x.prior_basic AND x.valid_from>row.hired_on AND x.valid_from BETWEEN make_date(p.year,1,1) AND make_date(p.year+1,12,31)),'[]'::jsonb)),
  '{"talent":null,"performance":null,"confidentiality":"standard","seniorPlan":false,"erCase":false,"pipCase":false,"erDecision":"pending","pipDecision":"pending","caseReason":"","segment":"","branch":"","reviewed":false}'::jsonb,
  '{"meritBp":null,"promotionGrade":null,"promotionBp":null,"specialBp":null,"multiplierBp":null,"bonusCents":null,"lumpCents":null,"reason":"","currentRoleSummary":"","proposedRoleSummary":""}'::jsonb);
  END LOOP;
@@ -73,11 +74,11 @@ GRANT EXECUTE ON FUNCTION app.reward_create_planned_unit(uuid,uuid,uuid) TO ai_h
 CREATE POLICY reward_annual_admission_only ON reward_unit AS RESTRICTIVE FOR INSERT TO ai_hr_app WITH CHECK(kind<>'annual');
 --> statement-breakpoint
 -- Private PAT audit labels reveal only people who acted on an authorized company PAT version.
-CREATE POLICY reward_setup_pat_actor_person ON person FOR SELECT TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM app_user u JOIN reward_pat_version v ON v.tenant_id=u.tenant_id AND(u.id=v.created_by OR u.id=v.confirmed_by) WHERE u.tenant_id=person.tenant_id AND u.person_id=person.id AND app.reward_setup_allowed(v.company_id,'manage')));
+CREATE POLICY reward_setup_pat_actor_person ON person FOR SELECT TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_pat_version v WHERE v.tenant_id=person.tenant_id AND person.id IN(v.created_by_person_id,v.confirmed_by_person_id) AND app.reward_setup_allowed(v.company_id,'manage')));
 CREATE FUNCTION app.reward_private_pat_history(wanted_company uuid,wanted_year integer) RETURNS SETOF jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 BEGIN
  IF NOT app.reward_setup_allowed(wanted_company,'manage') THEN RAISE EXCEPTION 'Company PAT is private to Group Rewards' USING ERRCODE='42501';END IF;
- RETURN QUERY SELECT jsonb_build_object('id',v.id,'companyId',v.company_id,'year',v.year,'revision',v.revision,'inputs',v.inputs,'state',v.state,'createdBy',v.created_by,'createdByPersonId',v.created_by_person_id,'confirmedBy',v.confirmed_by,'confirmedAt',v.confirmed_at,'reason',v.reason,'createdByName',maker.full_name,'confirmedByName',checker.full_name) FROM reward_pat_version v LEFT JOIN app_user mu ON mu.id=v.created_by AND mu.tenant_id=v.tenant_id LEFT JOIN person maker ON maker.id=mu.person_id AND maker.tenant_id=mu.tenant_id LEFT JOIN app_user cu ON cu.id=v.confirmed_by AND cu.tenant_id=v.tenant_id LEFT JOIN person checker ON checker.id=cu.person_id AND checker.tenant_id=cu.tenant_id WHERE v.tenant_id=app.current_tenant_id() AND v.company_id=wanted_company AND v.year=wanted_year ORDER BY v.revision DESC;
+ RETURN QUERY SELECT jsonb_build_object('id',v.id,'companyId',v.company_id,'year',v.year,'revision',v.revision,'inputs',v.inputs,'state',v.state,'createdBy',v.created_by,'createdByPersonId',v.created_by_person_id,'confirmedBy',v.confirmed_by,'confirmedAt',v.confirmed_at,'reason',v.reason,'createdByName',maker.full_name,'confirmedByName',checker.full_name) FROM reward_pat_version v LEFT JOIN person maker ON maker.id=v.created_by_person_id AND maker.tenant_id=v.tenant_id LEFT JOIN person checker ON checker.id=v.confirmed_by_person_id AND checker.tenant_id=v.tenant_id WHERE v.tenant_id=app.current_tenant_id() AND v.company_id=wanted_company AND v.year=wanted_year ORDER BY v.revision DESC;
 END $$;
 ALTER FUNCTION app.reward_private_pat_history(uuid,integer) OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_private_pat_history(uuid,integer) FROM PUBLIC;
@@ -507,3 +508,45 @@ BEGIN
  RETURN NEW;
 END;
 $$;
+
+--> statement-breakpoint
+-- Preserve the compensation owner's movement classification without making event payloads public.
+GRANT SELECT(tenant_id,aggregate_type,aggregate_id,event_type,payload,sequence) ON domain_event TO ai_hr_reward_setup_reader;
+GRANT SELECT(tenant_id,code,behaviour_kind) ON movement_event_type TO ai_hr_reward_setup_reader;
+CREATE POLICY reward_snapshot_pay_change_event ON domain_event FOR SELECT TO ai_hr_reward_setup_reader USING(
+ tenant_id=app.current_tenant_id() AND aggregate_type='compensation' AND event_type='compensation.set'
+ AND EXISTS(SELECT 1 FROM compensation c WHERE c.tenant_id=domain_event.tenant_id AND c.id=domain_event.aggregate_id)
+);
+CREATE POLICY reward_snapshot_pay_change_event_bound ON domain_event AS RESTRICTIVE FOR SELECT TO ai_hr_reward_setup_reader USING(
+ tenant_id=app.current_tenant_id() AND aggregate_type='compensation' AND event_type='compensation.set'
+ AND EXISTS(SELECT 1 FROM compensation c WHERE c.tenant_id=domain_event.tenant_id AND c.id=domain_event.aggregate_id)
+);
+CREATE POLICY reward_snapshot_pay_change_type ON movement_event_type FOR SELECT TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id());
+CREATE FUNCTION app.reward_snapshot_pay_change_kind(wanted_compensation uuid) RETURNS text
+LANGUAGE sql STABLE SET search_path=pg_catalog,public,app AS $$
+ SELECT coalesce(kind.behaviour_kind,event.payload->'movement'->>'type')
+ FROM domain_event event LEFT JOIN movement_event_type kind ON kind.tenant_id=event.tenant_id AND kind.code=event.payload->'movement'->>'type'
+ WHERE event.tenant_id=app.current_tenant_id() AND event.aggregate_type='compensation' AND event.event_type='compensation.set'
+ AND event.aggregate_id=wanted_compensation AND event.payload->'movement'->>'type' IS NOT NULL ORDER BY event.sequence DESC LIMIT 1
+$$;
+ALTER FUNCTION app.reward_snapshot_pay_change_kind(uuid) OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_snapshot_pay_change_kind(uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.reward_policy_unit_origin(p_unit uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('versionId',v.id,'revision',v.revision,'name',v.name,'changed',
+ (r.policy-ignored.keys) IS DISTINCT FROM (v.policy-ignored.keys))
+ FROM public.reward_unit r
+ JOIN public.reward_policy_group_version v ON v.id=r.policy_group_version_id AND v.tenant_id=r.tenant_id
+ LEFT JOIN public.reward_unit_setup setup ON setup.unit_id=r.id AND setup.tenant_id=r.tenant_id
+ CROSS JOIN LATERAL (SELECT ARRAY['patActual','patTarget','targetMonthsBp','multiplierBp','branchRatings','exemptReason','lumpUnitCents','lumpReason','payWindowKeep','unitGovernanceDigest','seniorMembershipMode','seniorGrades'] ||
+ CASE WHEN setup.unit_id IS NOT NULL THEN ARRAY['ranges','bonusMatrix','bonusStructure','branchFactors'] ELSE ARRAY[]::text[] END AS keys) ignored
+ WHERE r.id=p_unit AND r.tenant_id=app.current_tenant_id() AND app.reward_access(r.id);
+$$;
+
+--> statement-breakpoint
+-- Existing Performance RLS references these cycle identity fields and predicates even when
+-- the dedicated source policy supplies the authorized row. No Performance write authority.
+GRANT SELECT(tenant_id,cycle_id) ON performance_onehr_cycle TO ai_hr_reward_setup_reader;
+GRANT EXECUTE ON FUNCTION app.onehr_partner_company_ids(),app.onehr_partner_for(uuid),app.onehr_employment_facts(),app.visible_employment_ids(),app.can_admin_perfcomp_employment(uuid) TO ai_hr_reward_setup_reader;

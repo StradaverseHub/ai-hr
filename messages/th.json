@@ -35410,6 +35410,7 @@
     "noRange": "ไม่มีช่วง",
     "segments": "กลุ่มสาขา",
     "segment": "กลุ่ม",
+    "removeSegment": "นำกลุ่มออก",
     "addSegment": "เพิ่มกลุ่ม",
     "reason": "เหตุผล",
     "saveDraft": "บันทึกฉบับร่าง",
