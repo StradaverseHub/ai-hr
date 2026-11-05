@@ -6,7 +6,8 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 
 const timeout=90000;
-export const attendanceRejectionProbeEnabled=process.env.PERF_ATTENDANCE_REJECTION_BROWSER==='1';
+export const attendanceRejectionProbeEnabled=process.env.PERF_ATTENDANCE_REJECTION_BROWSER==='1'||
+ process.env.PERF_HTTP_SUITE==='workflow-preflight';
 
 export function attendanceRejectionSubjects(users){
  const subjects=users.filter(user=>user.tenant===0&&user.company===0&&user.role==='employee'&&user.index%2===0&&user.index>=6)
