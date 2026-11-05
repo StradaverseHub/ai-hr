@@ -741,7 +741,6 @@ try{
   }
   if(suite==='whole-system'&&(user.index===group.index||user.index===hr.index))await visit(page,user,'/lifecycle','loaded');
   if(suite==='whole-system'&&user.index===group.index)await exerciseOrgExplorer({page,user,fixture,report,save,phase:'loaded'});
-  if(suite==='whole-system'&&user.index===group.index)await exerciseSavedReport({page,user,fixture,db,base,phase:'loaded',thinkTimeMs,report,save,activeHttpUsers:()=>progress.active});
   if(fixture.assistantHistory?.[user.index]||user.index===employee.index||user.index===hr.index)await aiCentreJourney(page,user,'loaded');
   if(user.role==='employee')await browserClaimJourney(page,user,'PERF_BROWSER_LOADED_'+user.index,'loaded');
   if(suite==='whole-system'&&user.index===group.index){
@@ -762,6 +761,14 @@ try{
    const page=await ctx.newPage();
    await waitForSteadyUsers();
    await exerciseMovement({base,page,actor:group,subject:employee,fixture,db,report,save,phase:'loaded',recordEvent:true,loadState});
+  }finally{await ctx.close();}
+ })()]):null;
+ const savedReportsLoad=suite==='whole-system'?Promise.allSettled([(async()=>{
+  const ctx=await context(group);
+  try{
+   const page=await ctx.newPage();
+   await exerciseSavedReport({page,user:group,fixture,db,base,phase:'loaded',thinkTimeMs,report,save,
+    loadState,waitForFirstWrite:waitForSteadyUsers});
   }finally{await ctx.close();}
  })()]):null;
  const results=await Promise.allSettled(fixture.users.map(async(user,i)=>{
@@ -802,6 +809,7 @@ try{
  const browserResults=await browserLoad;
  const rejectionResults=await attendanceRejectionLoad;
  const movementResults=await movementLoad;
+ const savedReportResults=await savedReportsLoad;
  if(movementResults){
   const [result]=movementResults;
   report.movementLoad=result.status==='fulfilled'?{status:'completed'}:{status:'failed',error:String(result.reason.message).slice(0,180)};
@@ -844,7 +852,15 @@ try{
    return evidence?.status==='passed'&&evidence.startedWith?.active===500&&evidence.startedWith.inSteadyWindow;
   }),'Movement history, New Event and audited save must start during steady 500-user load');
  }
- if(suite==='whole-system')assert(['baseline','loaded'].every(phase=>report.browserSavedReportJourneys?.some(row=>row.phase===phase&&row.status==='passed')),'saved Reports browser journeys did not finish');
+ if(savedReportResults?.[0].status==='rejected')throw savedReportResults[0].reason;
+ if(suite==='whole-system'){
+  const savedReports=report.browserSavedReportJourneys;
+  assert(savedReports?.some(row=>row.phase==='baseline'&&row.status==='passed'),'baseline saved Reports browser journey did not finish');
+  const loadedReport=savedReports?.find(row=>row.phase==='loaded'&&row.status==='passed');
+  assert(loadedReport&&['create','edit','delete'].every(operation=>loadedReport.timings.some(step=>
+   step.operation===operation&&step.startedWith?.active===500&&step.startedWith.inSteadyWindow
+  )),'saved Reports create, edit and delete must start during steady 500-user load');
+ }
  if(suite==='whole-system')assert(report.concurrentHomeApiCoverage.length>0&&report.concurrentHomeApiCoverage.every(row=>row.requests>0),'observed Home fetches missing from concurrent traffic');if(runMixedWorkflow)assert(Object.values(report.mixedWorkflows.completed).every(count=>count>0),'a required mixed mutation/processing scenario did not complete');if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure during baseline or load');assert(report.loadedBrowserSignIn?.homeCards>0,'real loaded browser sign-in did not finish');
  assert.equal(report.aiBaselineFailures.length,0,'AI Centre baseline browser journeys failed');
  assert(['employee','manager','companyHR','groupHR'].every(role=>report.loadedBrowserSignIns?.some(row=>

@@ -8,7 +8,7 @@ const newBuilder = '/reports/builder/new?dataset=attendance_ot';
 const hub = '/reports?cat=attendance';
 const builderPath = /^\/reports\/builder\/([0-9a-f-]{36})$/;
 
-export async function exerciseSavedReport({ page, user, fixture, db, base, phase, thinkTimeMs, report, save, activeHttpUsers }) {
+export async function exerciseSavedReport({ page, user, fixture, db, base, phase, thinkTimeMs, report, save, loadState, waitForFirstWrite }) {
   assert.equal(base, 'https://localhost:3443');
   assert.equal(user.role, 'groupHR');
   assert.equal(fixture.users[user.index]?.userId, user.userId);
@@ -53,9 +53,9 @@ export async function exerciseSavedReport({ page, user, fixture, db, base, phase
 
   async function record(operation, action) {
     const startedMs = performance.now();
-    const activeAtStart = activeHttpUsers?.();
+    const startedWith = loadState?.();
     await action();
-    timings.push({ operation, startedMs, visibleByMs: performance.now() - startedMs, activeHttpUsersAtStart: activeAtStart, activeHttpUsersAtEnd: activeHttpUsers?.() });
+    timings.push({ operation, startedMs, visibleByMs: performance.now() - startedMs, startedWith, completedWith: loadState?.() });
   }
 
   async function remove(id, measured) {
@@ -91,6 +91,7 @@ export async function exerciseSavedReport({ page, user, fixture, db, base, phase
     await page.getByRole('heading', { name: 'New custom report', exact: true }).waitFor({ state: 'visible', timeout });
     await fillName(name);
     step = 'create';
+    await waitForFirstWrite?.();
     await record('create', async () => {
       await Promise.all([
         page.waitForURL(url => builderPath.test(url.pathname) && url.searchParams.get('toast') === 'Report created', { timeout }),
