@@ -4,14 +4,15 @@
  * in the company's time zone (Asia/Kuala_Lumpur), worked out from a supplied "now", never from the host's clock or the
  * model. Pure and dependency-free.
  *
- * THE RULES (weeks run Monday to Sunday):
+ * THE RULES (weeks run Monday to Sunday, in Kuala Lumpur):
  *  - today, tomorrow, yesterday (also "the day after tomorrow", "the day before yesterday"): that many days from today.
- *  - next <weekday>: the first such weekday strictly after today. When that day falls in the current week, the same
- *    weekday of next week is returned as the other date the person may have meant (on Wednesday 4 November 2026, "next
- *    Friday" is Friday 6 November, or Friday 13 November).
+ *  - next <weekday> (owner decision, 5 November 2026: "Next week's Friday"): that weekday in the FOLLOWING week, the
+ *    Monday-to-Sunday week after the current one. When the current week's one is still to come, it is the other date the
+ *    person may have meant (on Thursday 5 November 2026, "next Friday" is Friday 13 November, or Friday 6 November).
+ *  - this <weekday> (same decision): that weekday in the current week when it is today or later. When it has already
+ *    passed this week, the next one (next week's), with the current week's as the other date (on Saturday 7 November,
+ *    "this Friday" is Friday 13 November, or Friday 6 November).
  *  - this coming <weekday>: the first such weekday strictly after today, with no other date.
- *  - this <weekday>: that weekday in the current week. When it is already past, the same weekday of next week is the
- *    other date.
  *  - last <weekday>: the last such weekday strictly before today. When that day falls in the current week, the same
  *    weekday of last week is the other date.
  *  - <weekday> next week, <weekday> this week, <weekday> last week (and 下周五, Jumaat minggu depan): that weekday of
@@ -22,8 +23,10 @@
  *  - With `notAfterToday` (a correction of a day already worked), only days up to today count: a day-of-month phrase is
  *    the last such day up to today, and a phrase whose days are all after today names no date.
  * Malay (hari ini, esok, lusa, semalam, Jumaat depan/ini/lepas, minggu depan, 13hb) and Chinese (今天, 明天, 后天, 昨天,
- * 前天, 这周五, 下周五, 上周五, 下周, 13号) say the same things; a bare weekday, or a day with a month ("13 November"), is not
- * a relative phrase and is left to the person's own date.
+ * 前天, 这周五, 下周五, 上周五, 下周, 13号) say the same things under the same rules: "Jumaat depan" is next Friday and
+ * "Jumaat ini" this Friday; 这周五 and 本周五 are this Friday, 下周五 is the following week's Friday (it names the week, so it
+ * has no other date). A bare weekday, or a day with a month ("13 November"), is not a relative phrase and is left to the
+ * person's own date.
  */
 import {todayInKualaLumpur} from './hr-date';
 
@@ -73,6 +76,8 @@ const fixed=(rule:DayPhraseRule)=>()=>({rule});
 const weekRule=(which:string)=>{const r=relation(which);return r==='next'||r==='coming'?'next_week' as const:r==='last'?'last_week' as const:'this_week' as const;};
 const weekdayOfWeek=(which:string,day:string)=>{const r=relation(which);
  return{rule:r==='next'||r==='coming'?'weekday_next_week' as const:r==='last'?'weekday_last_week' as const:'weekday_this_week' as const,weekday:weekdayIndex(day)};};
+/** 这周五 and 本周五 say "this Friday": the owner's this-<weekday> rule (5 November 2026), not the literal week's day. */
+const zhWeekday=(which:string,day:string)=>relation(which)==='this'?{rule:'this_weekday' as const,weekday:weekdayIndex(day)}:weekdayOfWeek(which,day);
 const weekdayRelative=(which:string,day:string)=>{const r=relation(which);
  return{rule:r==='coming'?'coming_weekday' as const:r==='next'?'next_weekday' as const:r==='last'?'last_weekday' as const:'this_weekday' as const,weekday:weekdayIndex(day)};};
 const monthDay=(value:string)=>{const n=Number(value);return Number.isInteger(n)&&n>=1&&n<=31?{rule:'day_of_month' as const,dayOfMonth:n}:null;};
@@ -106,7 +111,7 @@ const MATCHERS:readonly Matcher[]=[
  {pattern:/(?<!大)(?:后天|後天)/g,read:fixed('day_after_tomorrow')},
  {pattern:/(?:昨天|昨日)/g,read:fixed('yesterday')},
  {pattern:/(?<!大)前天/g,read:fixed('day_before_yesterday')},
- {pattern:new RegExp(`(这个|這個|这|這|本|下个|下個|下|上个|上個|上)${ZH_UNIT}${ZH_DAY}`,'g'),read:m=>weekdayOfWeek(m[1],m[2])},
+ {pattern:new RegExp(`(这个|這個|这|這|本|下个|下個|下|上个|上個|上)${ZH_UNIT}${ZH_DAY}`,'g'),read:m=>zhWeekday(m[1],m[2])},
  {pattern:new RegExp(`(这个|這個|这|這|本|下个|下個|下|上个|上個|上)${ZH_UNIT}(?![一二三四五六日天末])`,'g'),read:m=>({rule:weekRule(m[1])})},
  {pattern:/(?<![\d月]\s*)(?<!\d)(\d{1,2})\s*(?:号|號|日)(?!\d)/g,read:m=>monthDay(m[1])},
 ];
@@ -147,9 +152,11 @@ export function resolveDayPhrase(phrase:DayPhrase,options:DayPhraseOptions={}):D
   case 'day_after_tomorrow':chosen=span(today+2);break;
   case 'yesterday':chosen=span(today-1);break;
   case 'day_before_yesterday':chosen=span(today-2);break;
-  case 'this_weekday':{const day=monday+target;chosen=span(day);if(day<today)others=[span(day+7)];break;}
-  case 'next_weekday':case 'coming_weekday':{const day=today+(((target-weekday+7)%7)||7);chosen=span(day);
-   if(phrase.rule==='next_weekday'&&day<monday+7)others=[span(day+7)];break;}
+  // Owner decision, 5 November 2026 ("Next week's Friday"): this <weekday> is the current week's when it is today or
+  // later, else the next one; next <weekday> is the following week's. The other plausible day goes on the card.
+  case 'this_weekday':{const day=monday+target;if(day>=today)chosen=span(day);else{chosen=span(day+7);others=[span(day)];}break;}
+  case 'next_weekday':{const day=monday+7+target;chosen=span(day);if(monday+target>today)others=[span(monday+target)];break;}
+  case 'coming_weekday':chosen=span(today+(((target-weekday+7)%7)||7));break;
   case 'last_weekday':{const day=today-(((weekday-target+7)%7)||7);chosen=span(day);if(day>=monday)others=[span(day-7)];break;}
   case 'weekday_this_week':chosen=span(monday+target);break;
   case 'weekday_next_week':chosen=span(monday+7+target);break;

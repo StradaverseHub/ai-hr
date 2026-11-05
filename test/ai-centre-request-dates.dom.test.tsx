@@ -48,9 +48,10 @@ function proposal(action: string, entity: string, route: string, selectors: Reco
     review: { route, href: route + '?review=' + reference, reference }, facts,
     createdAt: created.toISOString(), expiresAt: new Date(created.getTime() + 600_000).toISOString() });
 }
-/** Friday 6 November 2026, chosen from "next friday" on Wednesday 4 November; Friday 13 November is the other date. */
-const leave = (otherDates?: string[]) => proposal('leave.apply', 'leave_request', '/assistant/leave', { date: '2026-11-06', durationType: 'full_day', leaveTypeId: randomUUID() },
-  { leaveType: 'Annual Leave', startDate: '2026-11-06', endDate: '2026-11-06', days: 1, outcome: 'submitted_not_approved', ...(otherDates ? { otherDates } : {}) });
+/** Friday 13 November 2026, chosen from "next friday" on Thursday 5 November by the owner's rule (5 November 2026: the
+ * following week's Friday); Friday 6 November, this week's, is the other date. */
+const leave = (otherDates?: string[]) => proposal('leave.apply', 'leave_request', '/assistant/leave', { date: '2026-11-13', durationType: 'full_day', leaveTypeId: randomUUID() },
+  { leaveType: 'Annual Leave', startDate: '2026-11-13', endDate: '2026-11-13', days: 1, outcome: 'submitted_not_approved', ...(otherDates ? { otherDates } : {}) });
 /** Monday 2 November 2026, chosen from "last monday" on Wednesday 4 November; Monday 26 October is the other date. */
 const correction = () => proposal('attendance.correction.request', 'attendance_request', '/assistant/attendance', { date: '2026-11-02', corrects: 'check_out', checkOut: '18:10' },
   { startDate: '2026-11-02', endDate: '2026-11-02', checkIn: '08:00', checkOut: '18:10', recordedCheckIn: '08:00', outcome: 'submitted_not_approved', otherDates: ['2026-10-26'] });
@@ -70,31 +71,31 @@ beforeEach(() => { vi.stubEnv('TERAS_PROPOSAL_SECRET', 'fictional-proposal-signi
 afterEach(() => { cleanup(); vi.unstubAllEnvs(); });
 
 describe('the employee\'s own leave card names the chosen day with its weekday and offers the other one',() => {
-  it('shows "Annual Leave, Fri, Nov 6 (1 day)" and a switch to Friday 13 November that only fills the message', async () => {
-    const card = await show(leave(['2026-11-13']));
-    expect(within(card).getByText('Annual Leave, Fri, Nov 6 (1 day)')).toBeTruthy();
+  it('shows "Annual Leave, Fri, Nov 13 (1 day)" and a switch to Friday 6 November that only fills the message', async () => {
+    const card = await show(leave(['2026-11-06']));
+    expect(within(card).getByText('Annual Leave, Fri, Nov 13 (1 day)')).toBeTruthy();
     const group = screen.getByLabelText('Another date you may have meant');
-    const use = within(group).getByRole('button', { name: 'Use Fri, Nov 13 instead' });
+    const use = within(group).getByRole('button', { name: 'Use Fri, Nov 6 instead' });
     expect(card.contains(use)).toBe(false);
     fireEvent.click(use);
-    expect(setQuestionDraft).toHaveBeenCalledExactlyOnceWith('Make it Friday, November 13, 2026 instead.');
+    expect(setQuestionDraft).toHaveBeenCalledExactlyOnceWith('Make it Friday, November 6, 2026 instead.');
     // Choosing the other date sends nothing to any owner: the person reads and sends the message themselves.
     expect(posts.confirm).not.toHaveBeenCalled(); expect(posts.edit).not.toHaveBeenCalled();
   });
   it('offers no switch when the person\'s words named one day only', async () => {
     const card = await show(leave());
-    expect(within(card).getByText('Annual Leave, Fri, Nov 6 (1 day)')).toBeTruthy();
+    expect(within(card).getByText('Annual Leave, Fri, Nov 13 (1 day)')).toBeTruthy();
     expect(screen.queryByLabelText('Another date you may have meant')).toBeNull();
     expect(screen.queryByRole('button', { name: /instead$/ })).toBeNull();
   });
   it('names the weekday and writes the other date out in Chinese', async () => {
-    const card = await show(leave(['2026-11-13']), 'zh');
+    const card = await show(leave(['2026-11-06']), 'zh');
     const day = (iso: string) => new Intl.DateTimeFormat('zh', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(iso + 'T00:00:00.000Z'));
-    expect(day('2026-11-06')).toMatch(/周五/);
-    expect(card.textContent).toContain(day('2026-11-06'));
+    expect(day('2026-11-13')).toMatch(/周五/);
+    expect(card.textContent).toContain(day('2026-11-13'));
     const words = conversation('zh');
-    fireEvent.click(within(screen.getByLabelText(words.otherDatesLabel)).getByRole('button', { name: words.otherDate.replace('{date}', day('2026-11-13')) }));
-    const long = new Intl.DateTimeFormat('zh', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date('2026-11-13T00:00:00.000Z'));
+    fireEvent.click(within(screen.getByLabelText(words.otherDatesLabel)).getByRole('button', { name: words.otherDate.replace('{date}', day('2026-11-06')) }));
+    const long = new Intl.DateTimeFormat('zh', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date('2026-11-06T00:00:00.000Z'));
     expect(long).toContain('2026');
     expect(setQuestionDraft).toHaveBeenCalledExactlyOnceWith(words.otherDatePrompt.replace('{date}', long));
   });

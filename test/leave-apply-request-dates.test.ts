@@ -2,8 +2,9 @@
  * (lib/hr-date-phrase.ts through core/proposals/request-dates.ts), never from the model.
  *
  * Eval 41843568709 (emp-apply-2, "annual leave next friday" on Wednesday 4 November 2026) took 6 November on one pass and
- * 13 November on the other. Here the same words give 6 November whichever date the model passed, the card carries 13
- * November as the other date the person may have meant, a week phrase becomes a Monday-to-Sunday range for the leave
+ * 13 November on the other. By the owner's rule (5 November 2026, "Next week's Friday": next <weekday> is that weekday of
+ * the following Monday-to-Sunday week) the same words give 13 November whichever date the model passed, the card carries 6
+ * November (this week's Friday, still to come) as the other date the person may have meant, a week phrase becomes a Monday-to-Sunday range for the leave
  * service to count, and a date the person wrote out stays theirs. The leave owners (the apply menu, the review store, the
  * form preview) are seams whose real behaviour is test/proposal-leave-apply-chat.test.ts; the leave service's own date
  * checks are not touched. Every expected date is written out by hand. Fictional values only; no database. */
@@ -37,20 +38,20 @@ afterEach(()=>vi.unstubAllEnvs());
 const nominated=()=>state.review.mock.calls.map(call=>(call[2] as {date:string}).date);
 
 describe('"annual leave next friday" on Wednesday 4 November 2026',()=>{
- it('is Friday 6 November whether the model passed the words or either date it chose, with 13 November on the card',async()=>{
+ it('is Friday 13 November whether the model passed the words or either date it chose, with 6 November on the card',async()=>{
   for(const startDate of ['next friday','2026-11-06','2026-11-13']){
    const outcome=await prepareChatLeaveApplyProposal(caller,{leaveType:'annual',startDate},'annual leave next friday','en',now);
    if(outcome?.kind!=='proposal')throw Error('Fictional application was not prepared: '+JSON.stringify(outcome));
-   expect(outcome.proposal.body.what.selectors).toMatchObject({date:'2026-11-06',durationType:'full_day',leaveTypeId:annualId});
-   expect(outcome.proposal.body.facts).toMatchObject({leaveType:'Annual Leave',startDate:'2026-11-06',endDate:'2026-11-06',otherDates:['2026-11-13']});
-   expect(outcome.dates).toEqual({startDate:'2026-11-06',endDate:'2026-11-06',others:['2026-11-13'],phrase:'next friday'});
+   expect(outcome.proposal.body.what.selectors).toMatchObject({date:'2026-11-13',durationType:'full_day',leaveTypeId:annualId});
+   expect(outcome.proposal.body.facts).toMatchObject({leaveType:'Annual Leave',startDate:'2026-11-13',endDate:'2026-11-13',otherDates:['2026-11-06']});
+   expect(outcome.dates).toEqual({startDate:'2026-11-13',endDate:'2026-11-13',others:['2026-11-06'],phrase:'next friday'});
   }
-  // The leave service was asked about 6 November every time, never 13 November.
-  expect(nominated()).toEqual(['2026-11-06','2026-11-06','2026-11-06']);
+  // The leave service was asked about 13 November every time, never 6 November.
+  expect(nominated()).toEqual(['2026-11-13','2026-11-13','2026-11-13']);
  });
  it('names the worked-out date in the one question when the leave type is still to choose',async()=>{
   expect(await prepareChatLeaveApplyProposal(caller,{startDate:'next friday'},'leave next friday','en',now)).toEqual({kind:'ask',missing:['leaveType'],
-   options:[{option:1,leaveType:'Annual Leave'},{option:2,leaveType:'Medical Leave'}],dates:{startDate:'2026-11-06',endDate:'2026-11-06',others:['2026-11-13'],phrase:'next friday'}});
+   options:[{option:1,leaveType:'Annual Leave'},{option:2,leaveType:'Medical Leave'}],dates:{startDate:'2026-11-13',endDate:'2026-11-13',others:['2026-11-06'],phrase:'next friday'}});
   expect(state.review).not.toHaveBeenCalled();
  });
 });
@@ -71,7 +72,7 @@ describe('other phrases and dates',()=>{
   expect(outcome.proposal.body.facts).not.toHaveProperty('otherDates');
  });
  it('reads Malay and Chinese days the same way',async()=>{
-  for(const [startDate,words,expected] of [['明天','帮我请明天的病假','2026-11-05'],['esok','cuti sakit esok','2026-11-05'],['Jumaat depan','cuti Jumaat depan','2026-11-06'],['下周五','下周五请病假','2026-11-13']]){
+  for(const [startDate,words,expected] of [['明天','帮我请明天的病假','2026-11-05'],['esok','cuti sakit esok','2026-11-05'],['Jumaat depan','cuti Jumaat depan','2026-11-13'],['Jumaat ini','cuti Jumaat ini','2026-11-06'],['下周五','下周五请病假','2026-11-13']]){
    const outcome=await prepareChatLeaveApplyProposal(caller,{leaveType:'Medical Leave',startDate},words,'zh',now);
    if(outcome?.kind!=='proposal')throw Error('not prepared: '+startDate);
    expect(outcome.proposal.body.facts?.startDate,startDate).toBe(expected);

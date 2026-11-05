@@ -1,7 +1,7 @@
-/** The dates a request prepared in chat is for (owner, 5 November 2026: "Fix dates first"). The model passes the person's
- * own words for a day ("next friday", "yesterday", "esok", "明天") or a date (YYYY-MM-DD); the HR date owner's rule
- * (lib/hr-date-phrase.ts) turns the words into dates in Kuala Lumpur, so the same words give the same dates on every
- * pass. When the model passed dates it worked out itself but the person's own words this turn name exactly one relative
+/** The dates a request prepared in chat is for (owner, 5 November 2026: "Fix dates first", and "Next week's Friday" for
+ * the rule itself). The model passes the person's own words for a day ("next friday", "yesterday", "esok", "明天") or a
+ * date (YYYY-MM-DD); the HR date owner's rule (lib/hr-date-phrase.ts) turns the words into dates in Kuala Lumpur, so the
+ * same words give the same dates on every pass. When the model passed dates it worked out itself but the person's own words this turn name exactly one relative
  * day and no explicit date, the person's words decide (eval 41843568709, emp-apply-2: "next friday" was 6 November on one
  * pass and 13 November on the other). A phrase the rule finds ambiguous keeps its other dates, so the card can offer
  * them. Nothing here checks a leave or attendance rule: the owning services still decide. Pure. */
