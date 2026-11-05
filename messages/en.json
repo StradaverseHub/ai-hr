@@ -35243,6 +35243,13 @@
     "companyPatOwner": "PAT inputs are owned by the company-year PAT Inputs screen.",
     "adoptPat": "Adopt confirmed company PAT",
     "patChanged": "Company PAT has changed. Adopt the confirmed version in draft before submitting.",
-    "patHistory": "Prior confirmed versions remain in the audit history."
+    "patHistory": "Prior confirmed versions remain in the audit history.",
+    "uncoveredPlans": "Uncovered companies",
+    "previewUncovered": "Preview draft plans",
+    "uncoveredHelp": "Companies are grouped by their explicit Business unit and matching confirmed libraries. Missing or ambiguous choices are skipped. Every resulting plan remains a draft and needs independent approval.",
+    "chooseSalary": "Salary library needs a choice",
+    "chooseBonus": "Bonus library needs a choice",
+    "noUncovered": "Every eligible company is already covered by a shared plan.",
+    "createDraftPlans": "Create suggested draft plans"
   }
 }

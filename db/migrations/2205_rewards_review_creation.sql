@@ -63,3 +63,7 @@ END $$;
 ALTER FUNCTION app.reward_create_planned_unit(uuid,uuid,uuid) OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_create_planned_unit(uuid,uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_create_planned_unit(uuid,uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Annual admission is exclusively through reviewed planned/uploaded purpose-owned creators.
+-- Retain the existing native off-cycle insert route for ordinary runtime sessions.
+CREATE POLICY reward_annual_admission_only ON reward_unit AS RESTRICTIVE FOR INSERT TO ai_hr_app WITH CHECK(kind<>'annual');
