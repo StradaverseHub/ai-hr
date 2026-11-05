@@ -19,7 +19,7 @@ import {setPersonPhoto} from '../core/person-photo';
 import {listEmployees,listWorkforcePickOptions,listWorkforcePickPageTx,searchWorkforceEmployeesTx,readWorkforcePickRowsTx,listEmployeesPage,countEmployeesByStatus,employeeDetail,type EmployeeListFilters} from '../core/read';
 import {workforceRecord} from '../core/workforce-record';
 import {WORKFORCE_PROFILE_FIELDS} from '../lib/workforce-record-fields';
-import {workforceCompanies,workforceViewScope,workforceCommandAccess,WorkforceAccessError} from '../core/workforce-access';
+import {canOpenWorkforce,workforceCompanies,workforceViewScope,workforceCommandAccess,WorkforceAccessError} from '../core/workforce-access';
 import {WorkforceRecordChangedError} from '../core/workforce-code';
 import {maintainWorkforceRecord,workforceEditor,WorkforceMaintenanceValidationError} from '../core/workforce-maintenance';
 import {accessConfigurationStore} from '../core/access-configuration-store';
@@ -389,10 +389,12 @@ describe('fresh Workforce-purpose record consumers',()=>{
   const ctx={...admin(),userId,personId:self.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;
   await activate();expect((await page(ctx)).total).toBe(0);
   expect(await workforceViewScope(ctx)).toEqual({companyIds:[],canOpen:false});
+  expect(await canOpenWorkforce(ctx)).toBe(false);
   await override(userId,'workforce.view',b.companyId,'allow');
   expect((await page(ctx)).rows.map(row=>row.employmentId).sort()).toEqual([self.employmentId,colleague.employmentId].sort());
   expect((await countEmployeesByStatus(ctx,{companyIds:[b.companyId]},'workforce')).total).toBe(2);
   expect(await workforceViewScope(ctx)).toEqual({companyIds:[b.companyId],canOpen:true});
+  expect(await canOpenWorkforce(ctx)).toBe(true);
   const detail=await workforceRecord(ctx,colleague.employmentId);expect(detail?.employment.employmentId).toBe(colleague.employmentId);
   expect(detail?.profile.fullName).toBe('Fictional projected colleague');
   expect(Object.keys(detail!).sort()).toEqual(['employment','profile']);
@@ -405,6 +407,7 @@ describe('fresh Workforce-purpose record consumers',()=>{
   expect(await withTenant(ctx,tx=>tx.execute(sql`select * from compensation where employment_id=${colleague.employmentId}::uuid`))).toEqual([]);
   await override(userId,'workforce.view',b.companyId,'deny');expect((await page(ctx)).total).toBe(0);
   expect(await workforceRecord(ctx,colleague.employmentId)).toBeNull();expect(await workforceViewScope(ctx)).toEqual({companyIds:[],canOpen:false});
+  expect(await canOpenWorkforce(ctx)).toBe(false);
   // The person's existing own-record source remains separate from the revoked Workforce grant.
   expect(await withTenant(ctx,tx=>tx.select({id:employment.id}).from(employment).where(eq(employment.id,self.employmentId)))).toEqual([{id:self.employmentId}]);
  });

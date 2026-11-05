@@ -53,7 +53,7 @@ import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import { allowedCompanies } from '@/core/read';
 import {canConfigureAccess} from '@/core/access-configuration-editor';
-import {workforceViewScope} from '@/core/workforce-access';
+import {canOpenWorkforce} from '@/core/workforce-access';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
@@ -184,7 +184,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
   const [viewer,accessConfigurationAvailable,workforceAvailable]=await Promise.all([
     viewerIdentity(session),canConfigureAccess(session),
-    isAdmin(session)?Promise.resolve(false):workforceViewScope(session).then(scope=>scope.canOpen),
+    isAdmin(session)?Promise.resolve(false):canOpenWorkforce(session),
   ]);
   const [letterDestinations,onboarded]=await Promise.all([
     isModuleEnabledOrFalse(session,'employees')?letterNavigation(session,scopeIds):Promise.resolve([]),

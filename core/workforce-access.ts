@@ -58,6 +58,18 @@ export function workforceCommandAccess(ctx:SessionContext,employmentId:string){
  });
 }
 
+/** The shared navigation only needs to know whether any Workforce scope is visible. */
+export function canOpenWorkforce(ctx:SessionContext){
+ return withTenant(ctx,async tx=>{
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+  const [row]=await tx.execute<{allowed:boolean}>(sql`select (
+   exists(select 1 from company where tenant_id=app.current_tenant_id() and app.access_workforce_projection_company(id))
+   or app.access_workforce_unassigned('workforce.view')
+  ) as allowed`);
+  return row?.allowed===true;
+ });
+}
+
 /** Page-scope metadata only. This does not widen the shared company switcher or other modules' scope. */
 export function workforceViewScope(ctx: SessionContext) {
  return withTenant(ctx,async tx=>{
