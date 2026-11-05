@@ -348,6 +348,47 @@ export function payItemLinesForCategory(lines: StoredComponentLine[], category: 
   });
 }
 
+/** Group saved results by code within one payslip. A quantity is usable only when
+ * every contributing result recorded the same unit. Keep a rate only if it still
+ * explains the grouped amount. */
+export function groupNamedPayItemLines(lines: NamedPayItemLine[], onlyCode?: string): NamedPayItemLine[] {
+  const byCode = new Map<string, NamedPayItemLine[]>();
+  for (const line of lines) {
+    if (!line.code || (onlyCode && line.code !== onlyCode)) continue;
+    const group = byCode.get(line.code) ?? [];
+    group.push(line);
+    byCode.set(line.code, group);
+  }
+
+  return lines.flatMap(line => {
+    const group = line.code ? byCode.get(line.code) : undefined;
+    if (!group || group.length === 1) return [line];
+    if (group.length === 0) return [];
+    if (group[0] !== line) return [];
+    byCode.set(line.code!, []);
+
+    const amount = group.reduce((sum, entry) => sum + Math.round(entry.amount * 100), 0) / 100;
+    const combined: NamedPayItemLine = { code: line.code, name: line.name, amount };
+    const quantities = group.map(entry => entry.detail ?? entry.inputQuantity);
+    const first = quantities[0];
+    if (!first || quantities.some(entry => !entry || entry.unit !== first.unit)) return [combined];
+
+    const qty = Number(quantities.reduce((sum, entry) => sum + (entry?.qty ?? 0), 0).toPrecision(15));
+    const rate = line.detail?.rate;
+    if (rate != null && group.every(entry => entry.detail?.rate === rate) && round2(qty * rate) === amount) {
+      combined.detail = { ...line.detail!, qty };
+    } else {
+      combined.inputQuantity = { qty, unit: first.unit };
+    }
+    return [combined];
+  });
+}
+
+export function payslipOvertimeLines(lines: StoredComponentLine[], statutory: unknown): NamedPayItemLine[] {
+  const recorded = payItemLinesForCategory(lines, 'overtime');
+  return recorded.length ? groupNamedPayItemLines(recorded) : storedOvertimeLines(statutory);
+}
+
 /** Descriptive transaction quantity, not a rate or a calculated paid allocation. Only a whole saved
  * contribution may carry it; never repeat a whole input beside a partial bucket amount. */
 function storedInputQuantity(line: StoredComponentLine, amount: number): PayItemInputQuantity | null {

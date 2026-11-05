@@ -2120,7 +2120,7 @@ describe('r389 (23bd49d9) — the Employment Info block follows the SAVED order,
  });
 });
 
-it('7de6fc4e: PDF rows keep pay codes and saved quantities separately, without a leading count in ABSENT', async()=>{
+it('7de6fc4e: PDF rows show descriptions and saved quantities, without a leading count in ABSENT', async()=>{
  const d=buildPayslipPdfData({employee:'Fictional',employeeCode:null,company:'Fictional',companyReg:null,payPeriod:'2026-08',basic:3000,allowance:0,overtime:0,bonus:120,gross:3120,otherDeductions:40,totalDeductions:40,net:3080,employerCost:3120,daysWorked:26,statutory:{
   displayEarnings:{basic:3000,allowance:0,overtime:120,bonus:0,claim:0},componentLines:[
    {code:'OT1_5',name:'Overtime 1.5',amount:120,displayCategory:'overtime',buckets:[{bucket:'bonus',amount:120}],inputQuantity:{qty:4,unit:'hours'}},
@@ -2129,8 +2129,8 @@ it('7de6fc4e: PDF rows keep pay codes and saved quantities separately, without a
  }},{epf:'EPF',socso:'SOCSO',skbbk:'SKBBK',eis:'EIS',tax:'PCB'});
  const presentationLabels={...labels,periodLabel:'August 2026',paymentDate:'31 Aug 2026'};
  const rows=payslipPresentationRows(d,presentationLabels,String);
- expect(rows.earnings).toContainEqual(expect.objectContaining({label:'OT1_5 · Overtime 1.5',quantity:'4 hours',amount:120}));
- expect(rows.deductions).toContainEqual(expect.objectContaining({label:'ABSENT · ABSENT',quantity:'2 days',amount:40}));
+ expect(rows.earnings).toContainEqual(expect.objectContaining({label:'Overtime 1.5',quantity:'4 hours',amount:120}));
+ expect(rows.deductions).toContainEqual(expect.objectContaining({label:'ABSENT',quantity:'2 days',amount:40}));
  const bytes=await renderPayslipPdf(d,presentationLabels);
  const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
  if(evidence){
@@ -2141,5 +2141,5 @@ it('7de6fc4e: PDF rows keep pay codes and saved quantities separately, without a
   fs.writeFileSync(base+'.json',JSON.stringify({candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,fixture:'Actual renderPayslipPdf/buildPayslipPdfData; fictional employee/company and saved OT/ABSENT lines only; no live data, authenticated journey, or installed acceptance.',pdf:base+'.pdf',renderedPreview,renderer:renderedPreview?'pdftoppm first page':'PDF artifact; runner rasterizer unavailable'},null,2)+'\n');
  }
  const text=drawnText(bytes);
- expect(text).toContain('OT1_5');expect(text).toContain('ABSENT');expect(text).not.toContain('2 ABSENT');
+ expect(text).not.toContain('OT1_5');expect(text).toContain('ABSENT');expect(text).not.toContain('2 ABSENT');
 });

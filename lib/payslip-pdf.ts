@@ -23,22 +23,21 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFP
 import { bestFaceFor, embedPayslipFaces, measurePayslipTextBounds, payslipFaceScripts, type PayslipFace } from './payslip-pdf-fonts';
 import { formatMoney, formatRate } from './money';
 import { payslipDisplayEarnings } from '../core/pay-display-category';
-import { absenceDaysLabel, payslipAbsenceLines, type PayslipAbsenceLines } from '../core/payslip-absence-lines';
+import { absenceDaysLabel, type PayslipAbsenceLines } from '../core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '../core/payslip-employer-borne';
 import { payslipSkbbkLineShown, payslipSkbbkSubject } from '../core/payslip-skbbk-line';
 import { payslipZakatLine } from '../core/payslip-zakat-line';
 // 6b134681 / 417d4937 — the ONE derivation of "which named pay items explain this figure, and how is a
 // line labelled". Shared with the ESS payslip screen and Transaction View → History so the printed
 // document cannot itemise a total differently from the screen it was printed from.
-import { deductionLinesFor, displayComponentLines } from '../core/payslip-imported-lines';
+import { payslipDeductionBreakdown, displayComponentLines } from '../core/payslip-imported-lines';
 import {
   earningRowShown,
-  payItemLabel,
   payItemLinesForBuckets,
   payItemLinesForCategory,
   payItemLinesReconcile,
   storedComponentLines,
-  storedOvertimeLines,
+  payslipOvertimeLines,
   type OtLegKind,
   type PayItemRateDetail,
   type PayItemInputQuantity,
@@ -435,7 +434,7 @@ export function buildPayslipPdfData(
   // 970e4143 — hoisted, because `cp38` below is read OUT of it. The carve decision (which of the three
   // claims on `other_deductions` fit inside it, and therefore which rows may print) is made once, in
   // core/payslip-absence-lines.ts, and this document reads the answer rather than deciding for itself.
-  const absence = payslipAbsenceLines(p.statutory, p.otherDeductions);
+  const { absence, deductionLines } = payslipDeductionBreakdown(p.statutory, p.otherDeductions);
   return {
     employee: p.employee,
     employeeCode: p.employeeCode,
@@ -493,9 +492,9 @@ export function buildPayslipPdfData(
     // name and the statutory legs do not; and `earningsRowsOf`'s reconciliation guard is what actually
     // decides whether either may replace the grouped row, so a wrong guess here degrades to today's
     // document rather than to a wrong one.
-    overtimeLines: overtimeLinesOf(componentLines, p.statutory),
+    overtimeLines: payslipOvertimeLines(componentLines, p.statutory),
     // b240c0ff — imported payroll history keeps each deduction line; reconciled against the row it replaces.
-    deductionLines: deductionLinesFor(p.statutory, absence.residual, absence),
+    deductionLines,
     detailNotRecorded: componentLines.length === 0,
     nonPayableLines: nonPayableLinesOf(st.recordLines),
     ...extra,
@@ -527,20 +526,6 @@ function nonPayableLinesOf(raw: unknown): PayslipEarningLine[] {
     // 5a5309d5 — the filter now has one owner, shared with Transaction View → History.
     .filter((l) => isNonPayableRecordLine(l))
     .map((l) => ({ code: l.code ?? null, name: l.name ?? '', amount: round2(n(l.amount)) }));
-}
-
-/**
- * a96d320c — WHICH LINES EXPLAIN THE OVERTIME FIGURE, from whichever of the two places recorded them.
- *
- * `statutory.componentLines` explains an OT figure built out of typed pay items. `statutory.otDetail`
- * explains one the attendance engine monetised under the EA — the case the board item is actually about,
- * and the one that had nothing stored at all. A run produces one or the other, never both; the component
- * lines are preferred when both are present because they carry the pay item's own description, which is
- * strictly more informative than a rule name.
- */
-function overtimeLinesOf(lines: StoredComponentLine[], statutory: unknown): PayslipEarningLine[] {
-  const fromComponents = payItemLinesForCategory(lines, 'overtime');
-  return fromComponents.length > 0 ? fromComponents : storedOvertimeLines(statutory);
 }
 
 /**
@@ -1481,7 +1466,7 @@ export function payslipPresentationRows(d:PayslipPdfData,t:PayslipPdfLabels,rate
     // TOTAL DEDUCTIONS printed under it. No stamp, or a residual nothing itemises ⇒ the single row as before.
     ...(d.absence.showResidual
       ? payItemLinesReconcile(d.deductionLines ?? [], d.absence.residual)
-        ? (d.deductionLines ?? []).filter((l) => earningRowShown(l.amount)).map((l) => ({ label: payItemLabel(l), quantity: payItemQuantityLabel(l,t), amount: l.amount }))
+        ? (d.deductionLines ?? []).filter((l) => earningRowShown(l.amount)).map((l) => ({ label: l.name.trim() || l.code || '', quantity: payItemQuantityLabel(l,t), amount: l.amount }))
         : [{ label: t.otherDeductions, amount: d.absence.residual }]
       : []),
   ];
@@ -1491,7 +1476,7 @@ export function payslipPresentationRows(d:PayslipPdfData,t:PayslipPdfLabels,rate
 
 function payItemQuantityLabel(line: PayslipEarningLine, t: PayslipPdfLabels): string | undefined {
   const q = line.detail ?? line.inputQuantity;
-  if (!q) return undefined;
+  if (!q) return '-';
   return `${q.qty}${q.unit === 'hours' ? ' ' + (q.qty === 1 ? t.hourUnit : t.hoursUnit) : q.unit === 'days' ? ' ' + (q.qty === 1 ? t.dayUnit : t.daysUnit) : ''}`;
 }
 
@@ -1520,7 +1505,7 @@ function earningsRowsOf(d: PayslipPdfData, t: PayslipPdfLabels, rate: (v: number
         // this changes no document today; it is here because the rule below now depends on it — dropping a
         // 0.00 line cannot move a sum, so the reconciliation that licensed these rows still holds.
         if (!earningRowShown(l.amount)) continue;
-        rows.push({ label: l.otLeg ? t.otLegs[l.otLeg] : payItemLabel(l), sub:l.detail?rate(l.detail.rate):null, quantity:payItemQuantityLabel(l,t), amount: l.amount });
+        rows.push({ label: l.otLeg ? t.otLegs[l.otLeg] : l.name.trim() || l.code || '', sub:l.detail?rate(l.detail.rate):null, quantity:payItemQuantityLabel(l,t), amount: l.amount });
       }
     } else if (earningRowShown(total)) {
       rows.push({ label: grouped, amount: total });

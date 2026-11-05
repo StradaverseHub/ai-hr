@@ -1,4 +1,4 @@
-import { deductionLinesFor } from '@/core/payslip-imported-lines';
+import { payslipDeductionBreakdown } from '@/core/payslip-imported-lines';
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
 // 6b134681 — the ONE answer to "may these named rows replace the figure they sit under?", shared with the
@@ -7,12 +7,11 @@ import {
   payItemLinesForBuckets,
   payItemLinesForCategory,
   payItemLinesReconcile,
-  storedOvertimeLines,
+  payslipOvertimeLines,
   type NamedPayItemLine,
   type OtLegKind,
   type PayItemRateDetail,
   type PayItemInputQuantity,
-  type StoredComponentLine,
 } from '@/core/payslip-earning-lines';
 // 5a5309d5 — the ONE answer to "is this record line a non-payable amount?", shared with the printed document.
 import { isNonPayableRecordLine } from '@/core/payslip-configured-contributions';
@@ -21,7 +20,7 @@ import { payslipStatutoryBases, type StatutoryBases } from '@/core/payslip-recom
 // 970e4143 — the one decider for how "Other deductions" is split into its named parts and what the CP38
 // row may say. Shared with the printed document and both payslip screens, so the four surfaces that render
 // a deductions block cannot disagree about one slip.
-import { payslipAbsenceLines, type PayslipAbsenceLines } from '@/core/payslip-absence-lines';
+import type { PayslipAbsenceLines } from '@/core/payslip-absence-lines';
 import { payslipCp38Carve } from '@/core/payslip-cp38-line';
 
 /**
@@ -277,17 +276,6 @@ function asSubLine(l: NamedPayItemLine): BreakdownSubLine {
   };
 }
 
-/**
- * 5a5309d5 — WHICH LINES EXPLAIN THE OVERTIME FIGURE: the pay items in the `ot` bucket when the run had
- * any, otherwise the statutory legs the attendance engine recorded in `statutory.otDetail`. The SAME
- * preference lib/payslip-pdf.ts `overtimeLinesOf` applies, through the same two readers, so the printed
- * payslip and this panel cannot itemise one slip's overtime differently. Reconciled by the caller.
- */
-function overtimeSourceLines(componentLines: ComponentLine[], statutory: unknown): BreakdownSubLine[] {
-  const fromComponents = payItemLinesForCategory(componentLines as StoredComponentLine[], 'overtime');
-  return (fromComponents.length > 0 ? fromComponents : storedOvertimeLines(statutory)).map(asSubLine);
-}
-
 export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBreakdown {
   const st = (row.statutory ?? {}) as BreakdownStat;
   const otConvertAmount = num(st.otConvert?.amount);
@@ -313,7 +301,7 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
   // Hoisted so the reconciliation gate below can compare against the SAME expression the field carries —
   // computing it twice is how the figure and the guard on the figure start to disagree.
   const allowanceNet = disp.allowance - otConvertAmount;
-  const absence = payslipAbsenceLines(row.statutory, row.otherDeductions);
+  const { absence, deductionLines } = payslipDeductionBreakdown(row.statutory, row.otherDeductions);
   const recordLines = st.recordLines ?? [];
   // 5a5309d5 — one pass, so a line is in exactly one of the two sections and none is lost or repeated.
   const nonPayableLines = recordLines.filter(isNonPayableRecordLine);
@@ -363,11 +351,11 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     //
     // 5a5309d5 — and, when the run's overtime came from ATTENDANCE rather than from a pay item, the
     // statutory legs it recorded (rate, hours, amount), through the same gate against the same figure.
-    overtimeLines: reconciled(overtimeSourceLines(componentLines, row.statutory), disp.overtime),
+    overtimeLines: reconciled(payslipOvertimeLines(componentLines, row.statutory).map(asSubLine), disp.overtime),
     bonusLines: reconciled(payItemLinesForCategory(componentLines, 'bonus').map(asSubLine), disp.bonus),
     // 5a5309d5 — the kernel's deduct stamp AND imported history's lines (both are in `byBucket`), for this
     // panel only; the payslip and the PDF keep reading imported lines alone (core/payslip-imported-lines.ts).
-    deductionLines: deductionLinesFor(row.statutory, absence.residual, absence).map(asSubLine),
+    deductionLines: deductionLines.map(asSubLine),
     detailNotRecorded: componentLines.length === 0,
     // 0253dc7c — read through the kernel's own accessor so "absent" means the same thing here as it
     // does in the payslip-version diff. It returns null (never zeroes) for a slip with no stamp.
