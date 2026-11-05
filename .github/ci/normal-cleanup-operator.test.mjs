@@ -77,3 +77,26 @@ test('actual audit adapter retains original bytes and refuses partial/corrupt au
  writeFileSync(join(packet,'bytes/build-bundle-files.json'),'fictional-manifest');retainNormalCleanupAudit(p,activated);assert.equal(readFileSync(join(directory,'audit/system-testing.json'),'utf8'),'fictional-system-testing.json');
  writeFileSync(join(directory,'audit/system-testing.json'),'changed');assert.throws(()=>retainNormalCleanupAudit(p,activated));assert.ok(!existsSync(join(directory,'cleanup-authorized.json')));
 });
+
+
+test('EOF after COMMIT records phase and observation without claiming remote deletion',async()=>{
+ const {grant}=installationFixture(),ready={format:1,kind:READY_KIND,selection:selection(grant),nonce:'c'.repeat(64),fencesSha256:'d'.repeat(64),readyAt:new Date().toISOString()},records=new Map(),writes=[];let reads=0;
+ const channel={frames:{next:async()=>{if(++reads===1)return ready;throw Error('Cleanup channel EOF');}},stdin:{end:v=>writes.push(v)},success:async()=>assert.fail('EOF cannot succeed'),terminal:()=>({closed:false,exitCode:null,signal:null,spawnErrorCode:null,timedOut:false}),stderr:()=>({bytes:17,capturedSha256:'a'.repeat(64)})};
+ const arrival={...selection(grant),healthStatus:200};
+ await assert.rejects(driveNormalCleanup({channel,grant,arrival,checksum:async()=>'',frozen:()=>{},save:(n,v)=>records.set(n,v)}),/Cleanup channel EOF/);
+ const failed=records.get('cleanup-session-incomplete.json');assert.equal(failed.phase,'awaiting-result');assert.equal(failed.commitSent,true);assert.equal(failed.resultReceived,false);assert.equal(failed.terminal.closed,false);assert.equal(failed.grantExpiresAt,grant.expiresAt);assert.equal(failed.grantExpiredAtObservation,false);assert.equal(failed.retainLease,true);assert.equal(failed.reconcileRemoteBeforeRetry,true);assert.equal(failed.stderr.bytes,17);assert.equal(writes.filter(Boolean).length,1);assert.ok(!Object.hasOwn(failed,'cleanupVerified'));
+});
+
+test('checksum refusal records no COMMIT and no raw transport stderr',async()=>{
+ const {grant}=installationFixture(),ready={format:1,kind:READY_KIND,selection:selection(grant),nonce:'c'.repeat(64),fencesSha256:'d'.repeat(64),readyAt:new Date().toISOString()},records=new Map(),writes=[];
+ const channel={frames:{next:async()=>ready},stdin:{end:v=>writes.push(v)},success:async()=>assert.fail('Dirty source cannot succeed')};
+ await assert.rejects(driveNormalCleanup({channel,grant,arrival:{},checksum:async()=>'>f dirty source',frozen:()=>{},save:(n,v)=>records.set(n,v)}));
+ const failed=records.get('cleanup-session-incomplete.json');assert.equal(failed.phase,'preparing-commit');assert.equal(failed.commitSent,false);assert.equal(failed.resultReceived,false);assert.equal(failed.terminal,null);assert.equal(failed.stderr,null);assert.deepEqual(writes,[undefined]);
+});
+
+test('actual failed child retains bounded stderr metadata and terminal status without replay',async()=>{
+ const {grant}=installationFixture(),records=new Map(),secret='fictional-private-stderr-never-copy';let launches=0;
+ const channel=openNormalCleanupChannel([],{launch:()=>{launches++;return spawn(process.execPath,['-e',`process.stderr.write(${JSON.stringify(secret)});process.exit(17)`],{stdio:['pipe','pipe','pipe']});}});
+ await assert.rejects(driveNormalCleanup({channel,grant,arrival:{},checksum:async()=>assert.fail('No READY'),frozen:()=>{},save:(n,v)=>records.set(n,v)}),/EOF/);await assert.rejects(channel.success());
+ const failed=records.get('cleanup-session-incomplete.json');assert.equal(failed.phase,'awaiting-ready');assert.equal(failed.commitSent,false);assert.equal(failed.resultReceived,false);assert.equal(channel.terminal().closed,true);assert.equal(channel.terminal().exitCode,17);assert.equal(channel.stderr().bytes,Buffer.byteLength(secret));assert.equal(JSON.stringify([...records]).includes(secret),false);assert.equal(launches,1);
+});
