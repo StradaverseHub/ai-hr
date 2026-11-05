@@ -48,6 +48,12 @@ it.each(['small','sparse','dense'] as const)('compares claim-input plans without
  and c.employment_id in(select s.employment_id from public.payslip s where s.batch_id=${batchId}::uuid)
  and c.incurred_on between ${'2026-01-01'}::date and ${'2026-01-31'}::date
  )x group by x.employment_id order by x.employment_id`;
+ // Statement-local native array, not an application/session permission or result cache.
+ const arrayQuery=sql`select x.employment_id::text as e,count(*)::int as n,app.payroll_audit_hash(jsonb_agg(to_jsonb(x) order by x.id)::text) as h from (
+ select c.* from public.claim_request c where c.payroll_batch_id=${batchId}::uuid or
+ (c.employment_id=any(array(select s.employment_id from public.payslip s where s.batch_id=${batchId}::uuid)::uuid[])
+ and c.incurred_on between ${'2026-01-01'}::date and ${'2026-01-31'}::date)
+ )x group by x.employment_id order by x.employment_id`;
  const indexCatalog=()=>owner.db.execute(sql`select indexname,indexdef from pg_indexes where schemaname='public' and tablename='claim_request' order by indexname`);
  const before=Array.from(await indexCatalog()),receipts:unknown[]=[],indexBuilds:unknown[]=[],created:string[]=[];
  const probe=async(phase:string,query:typeof originalQuery)=>{for(const [actor,ctx,expectedRows]of [['admin',root,6],['ownEmployee',worker,5],['foreignTenant',foreign,0]]as const){await withPayrollTenant(ctx,async tx=>{
@@ -61,11 +67,11 @@ it.each(['small','sparse','dense'] as const)('compares claim-input plans without
  });}};
  const build=async(name:string,statement:string)=>{const start=performance.now();await owner.client.unsafe(statement);created.push(name);const [row]=await owner.client`select pg_relation_size(${name}::regclass)::text as bytes`;indexBuilds.push({name,elapsedMs:performance.now()-start,bytes:row.bytes});await owner.client.unsafe('analyze public.claim_request');};
  try{
-  await probe('original',originalQuery);await probe('union-no-index',unionQuery);
+  await probe('original',originalQuery);await probe('union-no-index',unionQuery);await probe('array-no-index',arrayQuery);
   await build('_perf_audit_claim_batch_probe','create index _perf_audit_claim_batch_probe on public.claim_request(tenant_id,payroll_batch_id) where payroll_batch_id is not null');
-  await probe('batch-original',originalQuery);await probe('batch-union',unionQuery);await probe('batch-union-warm',unionQuery);
+  await probe('batch-original',originalQuery);await probe('batch-union',unionQuery);await probe('batch-union-warm',unionQuery);await probe('batch-array',arrayQuery);await probe('batch-array-warm',arrayQuery);
   await build('_perf_audit_claim_date_probe','create index _perf_audit_claim_date_probe on public.claim_request(tenant_id,incurred_on,employment_id)');
-  await probe('batch-date-original',originalQuery);await probe('batch-date-union',unionQuery);await probe('batch-date-union-warm',unionQuery);
+  await probe('batch-date-original',originalQuery);await probe('batch-date-union',unionQuery);await probe('batch-date-union-warm',unionQuery);await probe('batch-date-array',arrayQuery);await probe('batch-date-array-warm',arrayQuery);
  }finally{for(const name of created.reverse())await owner.client.unsafe('drop index public.'+name);await owner.client.unsafe('analyze public.claim_request');}
  await probe('restored-original',originalQuery);const after=Array.from(await indexCatalog());expect(after).toEqual(before);
  const policies=await owner.db.execute(sql`select polname,pg_get_expr(polqual,polrelid) as using_expression from pg_policy where polrelid='public.claim_request'::regclass order by polname`);
