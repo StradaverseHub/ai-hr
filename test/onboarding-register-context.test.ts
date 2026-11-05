@@ -79,7 +79,7 @@ it('keeps register setup/label authority exact without loading case history or t
   expect(compact).toEqual(pick(full));
   expect(options).toEqual(pickOptions(fullOptions));
   expect(options.businessGroup).toEqual([
-    { id: buA.id, name: 'Fictional shared group (Group A)' }, { id: buB.id, name: 'Fictional shared group (Group B)' },
+    { id: buA.id, name: 'Fictional shared group (BU-A)' }, { id: buB.id, name: 'Fictional shared group (BU-B)' },
   ]);
   expect(options.title).toContainEqual({ id: title.id, name: 'Fictional description fallback' });
   expect(full.totalJoiners).toBe(1);

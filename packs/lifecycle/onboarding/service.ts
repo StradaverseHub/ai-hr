@@ -194,7 +194,7 @@ async function requireOnboardingOptionsActor(tx: Tx, ctx: SessionContext) {
 
 async function onboardingRegisterLabelsTx(tx: Tx, ids: string[]) {
     const [units, titles] = await Promise.all([
-        tx.select({ id: businessUnit.id, name: businessUnit.name, code: businessUnit.name, label: businessUnit.label }).from(businessUnit).where(visibleLabelIdsCondition(businessUnit, 'business_unit', ids)).orderBy(asc(businessUnit.name)),
+        tx.select({ id: businessUnit.id, name: businessUnit.name, code: businessUnit.code, label: businessUnit.label }).from(businessUnit).where(visibleLabelIdsCondition(businessUnit, 'business_unit', ids)).orderBy(asc(businessUnit.name)),
         tx.select({ id: position.id, name: position.title, code: position.title, label: position.label, description: position.description }).from(position).where(visibleLabelIdsCondition(position, 'position', ids)).orderBy(asc(position.title)),
     ]);
     return { businessGroup: onboardingChoiceLabels(units), title: onboardingChoiceLabels(titles) };
