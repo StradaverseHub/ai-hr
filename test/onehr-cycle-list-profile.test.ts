@@ -29,6 +29,10 @@ it('profiles many OneHR cycles after native purpose authorization with descendan
  const ordinary:SessionContext={...admin,userId:ordinaryId,personId:subject.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
  const partner:SessionContext={...ordinary,userId:partnerId,personId:partnerPerson.personId,roles:['employee','performance_partner'],grants:[{role:'employee',companyId:null},{role:'performance_partner',companyId:b.companyId}]};
  const group:SessionContext={...ordinary,userId:groupId,personId:manager.personId,roles:['employee','performance_partner'],grants:[{role:'employee',companyId:null},{role:'performance_partner',companyId:null}]};
+ const compId=await createAppUser(b.tenantId,otherPerson.personId,'employee'),hrId=await createAppUser(b.tenantId,childPerson.personId,'employee');
+ await assignRole(admin,{appUserId:compId,role:'performance_comp_partner',companyId:b.companyId});await assignRole(admin,{appUserId:hrId,role:'hr_admin',companyId:b.companyId});
+ const comp:SessionContext={...ordinary,userId:compId,personId:otherPerson.personId,roles:['employee','performance_comp_partner'],grants:[{role:'employee',companyId:null},{role:'performance_comp_partner',companyId:b.companyId}]};
+ const scopedHr:SessionContext={...ordinary,userId:hrId,personId:childPerson.personId,roles:['employee','hr_admin'],grants:[{role:'employee',companyId:null},{role:'hr_admin',companyId:b.companyId}]};
  const {cycleId:active}=await perf.createCycle(admin,{name:'Fictional active own-assignment cycle',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`,eligibilityRules:{companyIds:[b.companyId]}});
  await perf.configureOnehrCycle(admin,active,null,defaultPolicy(framework));await perf.openCycle(admin,{cycleId:active});
  expect((await perf.onehrAssignments(ordinary)).reviews.some(review=>review.cycle=== 'Fictional active own-assignment cycle')).toBe(true);
@@ -53,25 +57,32 @@ it('profiles many OneHR cycles after native purpose authorization with descendan
  expect(new Set(reference.map(row=>row.id))).toEqual(new Set([active,...permitted]));expect(reference).toHaveLength(257);
  for(const row of reference){expect({total:row.total,submitted:row.submitted,acknowledged:row.acknowledged}).toEqual(expected.get(row.id));expect('pendingComp'in row).toBe(false);expect('meritBudget'in row).toBe(false);}
  expect(reference.some(row=>hidden.includes(row.id))).toBe(false);
- const nativeBegin=client.begin.bind(client);let activeTrace=false,roundTrips=0,metadataReads=0,purposeClause=true,unusedConfig=false,payProgressRead=false;const aggregateWidths:number[]=[];
+ const nativeBegin=client.begin.bind(client);let activeTrace=false,roundTrips=0,metadataReads=0,purposeClause=true,unusedConfig=false,payProgressRead=false,boundedMetadata=true,windowCount=false;const aggregateWidths:number[]=[];
  vi.spyOn(client,'begin').mockImplementation(((...args:unknown[])=>{
   const index=args.findIndex(arg=>typeof arg==='function'),callback=args[index]as(native:typeof client)=>unknown;
   args[index]=(native:typeof client)=>callback(new Proxy(native,{get(target,key,receiver){if(key==='unsafe')return(...query:unknown[])=>{
    if(activeTrace&&typeof query[0]==='string'){
     const text=query[0];roundTrips++;payProgressRead||=text.includes('"comp_action_status"');
-    if(text.includes('from "review_cycle"')&&text.includes('join "performance_onehr_cycle"')){metadataReads++;purposeClause&&=text.includes('app.onehr_cycle_admin(');unusedConfig||=text.includes('"merit_budget"')||text.includes('"rating_scale"')||text.includes('"stages"');}
+    if(text.includes('from "review_cycle"')&&text.includes('join "performance_onehr_cycle"')){metadataReads++;purposeClause&&=text.includes('app.onehr_cycle_admin(');unusedConfig||=text.includes('"merit_budget"')||text.includes('"rating_scale"')||text.includes('"stages"')||text.includes('"eligibility_rules"');boundedMetadata&&=text.includes(' limit ');windowCount||=text.includes('count(*) over ()');}
     if(text.includes('from "performance_review"')&&text.includes('group by'))aggregateWidths.push(Array.isArray(query[1])?query[1].length:0);
    }
    return Reflect.apply(target.unsafe,target,query);
   };return Reflect.get(target,key,receiver);}}));return Reflect.apply(nativeBegin,client,args);
  })as typeof client.begin);
- activeTrace=true;const began=performance.now(),page=paginateRows(await perf.listOnehrAdminCycles(partner),parsePageQuery()),elapsedMs=performance.now()-began;activeTrace=false;
- expect(page.rows).toEqual(reference.slice(0,25));expect(page.state.total).toBe(257);expect(purposeClause).toBe(true);expect(payProgressRead).toBe(false);
- expect((await perf.listOnehrAdminCycles(group)).map(row=>row.id).sort()).toEqual([active,...allFamily].sort());
- expect(await perf.listOnehrAdminCycles(ordinary)).toEqual([]);
+ activeTrace=true;const began=performance.now(),page=await perf.listOnehrAdminCyclePage(partner),elapsedMs=performance.now()-began;activeTrace=false;
+ expect(page).toEqual(paginateRows(reference,parsePageQuery()));expect(page.state.total).toBe(257);
+ expect(metadataReads).toBe(1);expect(purposeClause&&windowCount&&boundedMetadata).toBe(true);expect(unusedConfig||payProgressRead).toBe(false);expect(aggregateWidths).toEqual([25]);
+ const pageTrace={applicationRoundTrips:roundTrips,metadataReads,nativePerCyclePurposeClause:purposeClause,admittedWindowCount:windowCount,nativeBoundedMetadata:boundedMetadata,unusedConfigurationColumnsRead:unusedConfig,aggregateCycleParameterWidths:[...aggregateWidths],compensationProgressColumnRead:payProgressRead};
+ activeTrace=true;const legacy=await perf.listOnehrAdminCycles(partner);activeTrace=false;
+ expect(legacy).toEqual(reference);expect(unusedConfig||payProgressRead).toBe(false);expect(aggregateWidths.at(-1)).toBe(257);
+ for(const query of [{page:'1'},{page:'2',size:'50'},{size:'all'},{page:'9999'},{page:'-1',size:'invalid'}])expect(await perf.listOnehrAdminCyclePage(partner,query)).toEqual(paginateRows(reference,parsePageQuery(query)));
+ const groupFull=await perf.listOnehrAdminCycles(group);expect(groupFull.map(row=>row.id).sort()).toEqual([active,...allFamily].sort());expect(await perf.listOnehrAdminCyclePage(group)).toEqual(paginateRows(groupFull,parsePageQuery()));
+ const compFull=await perf.listOnehrAdminCycles(comp);expect(compFull).toHaveLength(161);expect(compFull.every(row=>row.companyId===b.companyId)).toBe(true);expect(await perf.listOnehrAdminCyclePage(comp)).toEqual(paginateRows(compFull,parsePageQuery()));
+ const hrFull=await perf.listOnehrAdminCycles(scopedHr);expect(new Set(hrFull.map(row=>row.id))).toEqual(new Set([active,...permitted]));expect(await perf.listOnehrAdminCyclePage(scopedHr)).toEqual(paginateRows(hrFull,parsePageQuery()));
+ const empty=paginateRows([],parsePageQuery());expect(await perf.listOnehrAdminCycles(ordinary)).toEqual([]);expect(await perf.listOnehrAdminCyclePage(ordinary)).toEqual(empty);
  expect((await withTenant(ordinary,tx=>tx.select({id:s.performanceReview.id}).from(s.performanceReview).where(eq(s.performanceReview.cycleId,active)))).length).toBeGreaterThan(0);
- const foreign=await seedBase();await setModule(foreign.tenantId,'performance','active');expect(await perf.listOnehrAdminCycles(await entitledCtx(foreign))).toEqual([]);
- await revokeRole(admin,{roleAssignmentId:grant.id});expect(await perf.listOnehrAdminCycles(partner)).toEqual([]);
- const evidence={kind:'NATIVE_ONEHR_CYCLE_LIST_PROFILE_ONLY',releaseEligible:false,retainedMetadataCycles:368,onehrFamilyCycles:336,authorizedPartnerCycles:257,authorizedDescendantCycles:96,groupAuthorizedCycles:337,firstPageRows:25,fullMs,pageCallerMs:elapsedMs,applicationRoundTrips:roundTrips,metadataReads,nativePerCyclePurposeClause:purposeClause,unusedConfigurationColumnsRead:unusedConfig,aggregateCycleParameterWidths:aggregateWidths,compensationProgressColumnRead:payProgressRead,independentProgressCounts:true,ownAssignmentsRetainedWithoutAdminList:true,genericOtherCompanyAndGroupCycleWithheld:true,foreignTenantRefused:true,staleRevokedGrantWithheld:true,providerCalls:0,limitations:'Native full-list/page-caller component only; no browser or500-user acceptance. Retained metadata/progress fixtures are not a full historical-cycle processing fixture.'};
+ const foreign=await seedBase();await setModule(foreign.tenantId,'performance','active');const foreignCtx=await entitledCtx(foreign);expect(await perf.listOnehrAdminCycles(foreignCtx)).toEqual([]);expect(await perf.listOnehrAdminCyclePage(foreignCtx)).toEqual(empty);
+ await revokeRole(admin,{roleAssignmentId:grant.id});expect(await perf.listOnehrAdminCycles(partner)).toEqual([]);expect(await perf.listOnehrAdminCyclePage(partner)).toEqual(empty);
+ const evidence={kind:'NATIVE_ONEHR_CYCLE_PAGE_COMPONENT_ONLY',releaseEligible:false,retainedMetadataCycles:368,onehrFamilyCycles:336,authorizedPartnerCycles:257,authorizedDescendantCycles:96,groupAuthorizedCycles:337,exactCompanyPerfCompCycles:161,scopedHrAuthorizedCycles:257,firstPageRows:25,fullMs,pageCallerMs:elapsedMs,...pageTrace,legacyFullReaderRetained:true,legacyFullMetadataNoConfigOrPay:true,independentProgressCounts:true,ownAssignmentsRetainedWithoutAdminList:true,genericOtherCompanyAndGroupCycleWithheld:true,foreignTenantRefused:true,staleRevokedGrantWithheld:true,providerCalls:0,limitations:'Native component only; no browser or500-user acceptance. Retained metadata/progress fixtures are not a full historical-cycle processing fixture.'};
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'onehr-cycle-list-profile.json'),JSON.stringify(evidence,null,2));
 },300000);

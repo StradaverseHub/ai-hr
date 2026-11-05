@@ -1479,6 +1479,42 @@ export function listCyclePage(ctx: SessionContext, query: { page?: string; size?
 /** ADR-0142 — a OneHR-native cycle row for the performance-administration list, with NO pay figure. */
 export type OnehrAdminCycleSummary = Omit<CycleSummary, 'pendingComp'>;
 
+/** No-pay progress counts for already-admitted OneHR cycle metadata. */
+async function summarizeOnehrCyclesTx(tx: Tx, cycles: CycleListMetadata[]): Promise<OnehrAdminCycleSummary[]> {
+  if (cycles.length === 0) return [];
+  const counts = await tx
+    .select({
+      cycleId: performanceReview.cycleId,
+      total: sql<number>`count(*)::int`,
+      submitted: sql<number>`count(*) filter (where ${performanceReview.status} in ('submitted','acknowledged'))::int`,
+      acknowledged: sql<number>`count(*) filter (where ${performanceReview.status} = 'acknowledged')::int`,
+    })
+    .from(performanceReview)
+    .where(
+      inArray(
+        performanceReview.cycleId,
+        cycles.map((c) => c.id),
+      ),
+    )
+    .groupBy(performanceReview.cycleId);
+  const byId = new Map(counts.map((c) => [c.cycleId, c]));
+  return cycles.map((c) => {
+    const k = byId.get(c.id);
+    return {
+      id: c.id,
+      name: c.name,
+      companyId: c.companyId,
+      periodStart: c.periodStart,
+      periodEnd: c.periodEnd,
+      status: c.status,
+      releasedAt: c.releasedAt,
+      total: k?.total ?? 0,
+      submitted: k?.submitted ?? 0,
+      acknowledged: k?.acknowledged ?? 0,
+    };
+  });
+}
+
 /**
  * ADR-0142 — the OneHR-native cycles this session administers (the performance partner's landing list).
  * Generic cycles never appear, and no compensation-derived count (pendingComp) is computed: the partner's
@@ -1487,48 +1523,44 @@ export type OnehrAdminCycleSummary = Omit<CycleSummary, 'pendingComp'>;
  */
 export function listOnehrAdminCycles(ctx: SessionContext): Promise<OnehrAdminCycleSummary[]> {
   return withTenant(ctx, async (tx) => {
-    const cycles = (
-      await tx
-        .select({ cycle: reviewCycle })
-        .from(reviewCycle)
-        .innerJoin(onehrCycle, eq(onehrCycle.cycleId, reviewCycle.id))
-        .where(sql`app.onehr_cycle_admin(${reviewCycle.id})`)
-        .orderBy(desc(reviewCycle.periodStart), reviewCycle.id)
-    )
-      .map((r) => r.cycle)
-      .filter((c) => canAdminOnehrCtx(ctx, c.companyId));
-    if (cycles.length === 0) return [];
-    const counts = await tx
-      .select({
-        cycleId: performanceReview.cycleId,
-        total: sql<number>`count(*)::int`,
-        submitted: sql<number>`count(*) filter (where ${performanceReview.status} in ('submitted','acknowledged'))::int`,
-        acknowledged: sql<number>`count(*) filter (where ${performanceReview.status} = 'acknowledged')::int`,
-      })
-      .from(performanceReview)
-      .where(
-        inArray(
-          performanceReview.cycleId,
-          cycles.map((c) => c.id),
-        ),
-      )
-      .groupBy(performanceReview.cycleId);
-    const byId = new Map(counts.map((c) => [c.cycleId, c]));
-    return cycles.map((c) => {
-      const k = byId.get(c.id);
-      return {
-        id: c.id,
-        name: c.name,
-        companyId: c.companyId,
-        periodStart: c.periodStart,
-        periodEnd: c.periodEnd,
-        status: c.status,
-        releasedAt: c.releasedAt,
-        total: k?.total ?? 0,
-        submitted: k?.submitted ?? 0,
-        acknowledged: k?.acknowledged ?? 0,
-      };
-    });
+    const cycles = (await tx.select(cycleListColumns).from(reviewCycle)
+      .innerJoin(onehrCycle, eq(onehrCycle.cycleId, reviewCycle.id))
+      .where(sql`app.onehr_cycle_admin(${reviewCycle.id})`)
+      .orderBy(desc(reviewCycle.periodStart), reviewCycle.id))
+      .filter(cycle => canAdminOnehrCtx(ctx, cycle.companyId));
+    return summarizeOnehrCyclesTx(tx, cycles);
+  });
+}
+
+/** Exact SQL form of the existing UX mirror, never the native admission authority.
+ * A mirror true for a null company accepts every row that the native authority admits. Otherwise the
+ * mirror can only match exact company IDs from its grants; ask that same owner for each candidate ID.
+ * Text comparison preserves the existing exact company-ID equality. */
+function onehrCycleMirrorSql(ctx: SessionContext) {
+  if (canAdminOnehrCtx(ctx, null)) return sql`true`;
+  const companies = [...new Set((ctx.grants ?? []).map(grant => grant.companyId)
+    .filter((id): id is string => typeof id === 'string' && canAdminOnehrCtx(ctx, id)))];
+  return companies.length ? inArray(sql<string>`${reviewCycle.companyId}::text`, companies) : sql`false`;
+}
+
+/** OneHR-native metadata page. Both purpose and UX scope are applied before counting/limiting.
+ * The window count shares the admitted statement; an out-of-range page repeats the same gates for
+ * its exact total. An empty first page already establishes a zero total. Progress is then read only for that page, using the separate no-pay owner. */
+export function listOnehrAdminCyclePage(ctx: SessionContext, query: { page?: string; size?: string } = {}): Promise<{ rows: OnehrAdminCycleSummary[]; state: PageState }> {
+  const page = parsePageQuery(query);
+  return withTenant(ctx, async tx => {
+    const admitted = and(sql`app.onehr_cycle_admin(${reviewCycle.id})`, onehrCycleMirrorSql(ctx));
+    const selected = await tx.select({ ...cycleListColumns, matchedTotal: sql<number>`(count(*) over ())::int` })
+      .from(reviewCycle).innerJoin(onehrCycle, eq(onehrCycle.cycleId, reviewCycle.id))
+      .where(admitted).orderBy(desc(reviewCycle.periodStart), reviewCycle.id).limit(page.limit).offset(page.offset);
+    let total = selected[0]?.matchedTotal ?? 0;
+    if (!selected.length && page.offset > 0) {
+      const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(reviewCycle)
+        .innerJoin(onehrCycle, eq(onehrCycle.cycleId, reviewCycle.id)).where(admitted);
+      total = count.total;
+    }
+    const rows = await summarizeOnehrCyclesTx(tx, selected.map(({ matchedTotal: _total, ...cycle }) => cycle));
+    return { rows, state: pageState(page, total, rows.length) };
   });
 }
 
