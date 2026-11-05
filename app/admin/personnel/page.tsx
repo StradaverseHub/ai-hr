@@ -1,6 +1,6 @@
 import {personnelPrivateSearchAvailable} from '@/core/personnel-private-search';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
-import {PersonnelReadBusyError, withPersonnelRead} from '@/core/personnel-read-bounds';
+import {PersonnelReadBusyError} from '@/core/personnel-read-bounds';
 import {workforceCompanies} from '@/core/workforce-access';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -137,10 +137,10 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   // Employee Status redesign (R43 c26c3ce5): the People list shows the SYSTEM-DERIVED status (from each
   // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
   const workforceIds=new Set(companyIds);
-  const maintainIds=new Set(await withPersonnelRead(session, tx => workforceCompanies(session, 'maintain', tx)));
   const today = todayInKualaLumpur();
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
-  const canCreate=isAdmin&&maintainIds.size>0;
+  const maintainIds = new Set(isAdmin ? await workforceCompanies(session, 'maintain', { personnelList: true }) : []);
+  const canCreate = maintainIds.size > 0;
   const { error } = sp;
   const pq = parsePageQuery(sp);
   // 579255c3 — ONE parse of the query string, shared with the Excel export so the file and the table

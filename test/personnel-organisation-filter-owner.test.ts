@@ -8,7 +8,7 @@ import {listEmployeesPage,countEmployeesByStatus,personnelFilterChoices,readPers
 import {createPersonnelPrivateSearch,personnelPrivateSearchAvailable,privateSearchHash} from '../core/personnel-private-search';
 import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {PersonnelReadBusyError} from '../core/personnel-read-bounds';
-import {workforceViewScope} from '../core/workforce-access';
+import {workforceCompanies,workforceViewScope} from '../core/workforce-access';
 import {personnelGroupingReadinessTx} from '../core/personnel-quality';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,ctx:SessionContext;
@@ -100,12 +100,14 @@ it('refuses queued Personnel scope, list and export reads while the tenant acces
   const input = { companyIds: [b.companyId], limit: 1, offset: 0 };
   await owner.withTenant(ctx, async tx => {
     await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await expect(workforceCompanies(ctx, 'maintain', { personnelList: true })).rejects.toBeInstanceOf(PersonnelReadBusyError);
     await expect(workforceViewScope(ctx, { personnelList: true })).rejects.toBeInstanceOf(PersonnelReadBusyError);
     await expect(readPersonnelOverview(ctx, input, {})).rejects.toBeInstanceOf(PersonnelReadBusyError);
     await expect(listEmployeesPage(ctx, input, 'workforce')).rejects.toBeInstanceOf(PersonnelReadBusyError);
   });
   await owner.withTenant(ctx, async tx => {
     await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+    await expect(workforceCompanies(ctx, 'maintain', { personnelList: true })).resolves.toContain(b.companyId);
     await expect(workforceViewScope(ctx, { personnelList: true })).resolves.toHaveProperty('companyIds');
     await expect(readPersonnelOverview(ctx, input, {})).resolves.toHaveProperty('employees.rows');
     await expect(listEmployeesPage(ctx, input, 'workforce')).resolves.toHaveProperty('rows');
