@@ -7836,11 +7836,16 @@ export async function editLeaveRequestTx(
 ): Promise<{ leaveRequestId: string; days: number; eventId: string }> {
   {
     await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
-    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
-    if (!req) throw new Error('leave request not found (or not visible)');
+    const [row] = await tx
+      .select({ request: leaveRequest, subjectPersonId: employment.personId })
+      .from(leaveRequest)
+      .leftJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .where(eq(leaveRequest.id, p.leaveRequestId))
+      .limit(1);
+    if (!row) throw new Error('leave request not found (or not visible)');
 
-    // Subject-only: RLS is symmetric so the creator-only rule is enforced here (mirrors requestLeaveCancellation).
-    const subjectPersonId = await personIdForEmployment(tx, req.employmentId);
+    // A visible request with a hidden or different subject still fails the creator-only rule.
+    const { request: req, subjectPersonId } = row;
     if (!ctx.personId || ctx.personId !== subjectPersonId) {
       throw new LeaveEditNotAllowedError('only the employee who applied can edit their leave');
     }
