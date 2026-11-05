@@ -15,7 +15,7 @@ export function possibleOnboardingMention(userId: string) {
   return sql`(jsonb_typeof(${mentions}) is distinct from 'array' or ${mentions} ? ${userId})`;
 }
 
-export function possibleOnboardingTaskCase(userId: string, module: boolean) {
+export function possibleOnboardingTaskCase(tenantId: string, userId: string, module: boolean) {
   const data = cases.data;
   const tasks = sql`${data}->'tasks'`;
   const reqs = sql`${data}->'requisitions'`;
@@ -31,7 +31,7 @@ export function possibleOnboardingTaskCase(userId: string, module: boolean) {
     -- Any eligible requisition is a conservative candidate. The existing interpreter still owns
     -- first-active selection, role/step/group tests, locks, deadlines and exact emitted tasks.
     when ${data}->>'id' is distinct from ${cases.id}::text then true
-    else exists (select 1 from ${notes}
-      where ${notes.tenantId} = ${cases.tenantId} and ${notes.caseId} = ${cases.id}
-        and ${possibleOnboardingMention(userId)}) end`;
+    -- Build one current-actor mention set; do not rescan note RLS for every historical case.
+    else ${cases.id} in (select ${notes.caseId} from ${notes}
+      where ${notes.tenantId} = ${tenantId}::uuid and ${possibleOnboardingMention(userId)}) end`;
 }

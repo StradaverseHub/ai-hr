@@ -928,13 +928,13 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
     return withTenant(ctx, async (tx) => {
         const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config), today = todayInKualaLumpur();
         const list = await tx.select({ revision: cases.revision, data: cases.data }).from(cases)
-            .where(possibleOnboardingTaskCase(actor.id, actor.module)).orderBy(asc(cases.id));
+            .where(and(eq(cases.tenantId, ctx.tenantId), possibleOnboardingTaskCase(ctx.tenantId, actor.id, actor.module))).orderBy(asc(cases.id));
         const out: OnboardingTask[] = [];
         // A task/mention always belongs to a visible case. Keep the fresh actor check above,
         // then avoid the tenant-wide directory and notes scans for an empty authorized queue.
         if (!list.length) return out;
         const mentionNotes = await tx.select({ caseId: notes.caseId, data: notes.data }).from(notes)
-            .where(possibleOnboardingMention(actor.id)).orderBy(asc(notes.createdAt), asc(notes.id));
+            .where(and(eq(notes.tenantId, ctx.tenantId), possibleOnboardingMention(actor.id))).orderBy(asc(notes.createdAt), asc(notes.id));
         const notesByCase = new Map<string, M.Note[]>();
         for (const note of mentionNotes) {
             const matching = notesByCase.get(note.caseId);

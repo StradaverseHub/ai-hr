@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeEach, describe, it, expect, vi } from 'vitest';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { client, withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { saveEmployeeDraft, discardEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
@@ -190,11 +190,40 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(noteRead).toContain('jsonb_typeof(');
         const nativeCandidates = await withTenant(admin, async tx => ({
             cases: await tx.select({ id: schema.lcOnboardingCase.id }).from(schema.lcOnboardingCase)
-                .where(possibleOnboardingTaskCase(admin.userId!, true)),
+                .where(possibleOnboardingTaskCase(b.tenantId, admin.userId!, true)),
             notes: await tx.select({ id: schema.lcOnboardingNote.id }).from(schema.lcOnboardingNote)
                 .where(possibleOnboardingMention(admin.userId!)),
         }));
         expect(nativeCandidates).toEqual({ cases: [{ id: active.case.id }], notes: [] });
+        const compare = async (principal: SessionContext, module: boolean) => {
+            const baseline = () => withTenant(principal, async tx => {
+                const cases = await tx.select().from(schema.lcOnboardingCase).orderBy(schema.lcOnboardingCase.id);
+                const notes = cases.length ? await tx.select().from(schema.lcOnboardingNote).orderBy(schema.lcOnboardingNote.createdAt, schema.lcOnboardingNote.id) : [];
+                return [cases.length, notes.length];
+            });
+            const compact = () => withTenant(principal, async tx => {
+                const cases = await tx.select({ revision: schema.lcOnboardingCase.revision, data: schema.lcOnboardingCase.data })
+                    .from(schema.lcOnboardingCase).where(and(eq(schema.lcOnboardingCase.tenantId, principal.tenantId),
+                        possibleOnboardingTaskCase(principal.tenantId, principal.userId!, module))).orderBy(schema.lcOnboardingCase.id);
+                const notes = cases.length ? await tx.select({ caseId: schema.lcOnboardingNote.caseId, data: schema.lcOnboardingNote.data })
+                    .from(schema.lcOnboardingNote).where(and(eq(schema.lcOnboardingNote.tenantId, principal.tenantId), possibleOnboardingMention(principal.userId!)))
+                    .orderBy(schema.lcOnboardingNote.createdAt, schema.lcOnboardingNote.id) : [];
+                return [cases.length, notes.length];
+            });
+            const timed = async (read: () => Promise<number[]>) => {
+                const started = performance.now(), rows = await read();
+                return { rows, ms: performance.now() - started };
+            };
+            const old = [], next = [];
+            for (let i = 0; i < 3; i++) {
+                if (i % 2) { next.push(await timed(compact)); old.push(await timed(baseline)); }
+                else { old.push(await timed(baseline)); next.push(await timed(compact)); }
+            }
+            return { old, next };
+        };
+        const sameRunReadProfile = { admin: await compare(admin, true), assignedActor: await compare(tech, false) };
+        expect(sameRunReadProfile.admin.old.every(sample => sample.rows[0] === 1201 && sample.rows[1] === 1201)).toBe(true);
+        expect(sameRunReadProfile.admin.next.every(sample => sample.rows[0] === 1 && sample.rows[1] === 0)).toBe(true);
         // The interpreter must see a newly posted mention even when the case has no open task or equipment.
         const mentionOnly = retained[3]!;
         await onboardingNote(admin, mentionOnly.id, { context: 'requisition', body: 'Fictional mention on completed work', mentions: [tech.userId!] });
@@ -218,7 +247,7 @@ describe('V3.1 onboarding database and authorization', () => {
             nativeAdminCandidateCases: nativeCandidates.cases.length, nativeAdminMentionNotes: nativeCandidates.notes.length,
             mentionOnlyCaseAndReplyPreserved: true, malformedHistoryNotSilentlyIgnored: true,
             adminQueueSize: afterAdmin.length, actorQueueSize: beforeTech.length, applicationRoundTrips: reads.length,
-            elapsedMs, providerCalls: 0, limitations: 'Native component only; no browser or 500-user claim.',
+            elapsedMs, sameRunReadProfile, providerCalls: 0, limitations: 'Native component only; no browser or 500-user claim.',
         }, null, 2));
     }, 300000);
     it('counts the same visible joiners and checklists as the authorized module without leaking counts to task-only users', async()=>{
