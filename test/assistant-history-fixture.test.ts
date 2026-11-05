@@ -13,6 +13,7 @@ import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {loadOwnAssistantChat,listOwnAssistantChats} from '../core/assistant-threads';
 import {resolveWorkosPrincipal,withEntitlements} from '../lib/session';
 import {internalIssuer} from '../lib/internal-auth/config';
+import {assertSavedHistoryBrowserFixture} from '../scripts/performance/assistant-history-browser.mjs';
 import {seedAssistantHistoryFixture,type AssistantHistoryActor,type AssistantHistoryFixture} from '../scripts/performance/assistant-history-fixture';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
@@ -49,7 +50,8 @@ it('seeds four real identity-bound principals with twenty retained authenticated
   }
   expect(child.status).toBe(0);
   const result=JSON.parse(readFileSync(path,'utf8')).assistantHistory as Record<number,AssistantHistoryFixture>;
-  fixtures.push(...actors.map(actor=>result[actor.index]));expect(fixtures.every(value=>value?.rowsVerified===true)).toBe(true);
+  fixtures.push(...actors.map(actor=>result[actor.index]));
+  for(const fixture of fixtures)assertSavedHistoryBrowserFixture(fixture);
  }finally{rmSync(directory,{recursive:true,force:true});}
  for(const actor of actors){
   const fixture=fixtures[actor.index],context=await current(actor);

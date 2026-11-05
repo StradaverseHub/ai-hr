@@ -1,13 +1,17 @@
 /** Actual saved-history navigation for the disposable CI server. No prompt or mutation is submitted. */
 import assert from 'node:assert/strict';
 
+export function assertSavedHistoryBrowserFixture(history){
+ assert.equal(history.version,1);assert.equal(history.rowsVerified,true);assert.equal(history.defaultCompanyScopeOnly,true);
+ assert.equal(history.rootTitles.length,20);assert.equal(history.leafIds.length,20);assert.equal(history.selectedQuestions.length,2);
+}
+
 /** Root driver owns visit(), timeouts, phase labels, persistence and acceptance budgets.
  * Persist only onMeasurement rows; history is a PRIVATE fixture object containing fictional transcript expectations. */
 export async function verifyAssistantHistoryBrowser({page,history,visitAsk,timeout,onMeasurement}){
  assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.AUTH_PROVIDER,'internal');
  assert.equal(process.env.AUTH_PUBLIC_ORIGIN,'https://localhost:3443');
- assert.equal(history.version,1);assert.equal(history.nativeVerified,true);assert.equal(history.defaultCompanyScopeOnly,true);
- assert.equal(history.rootTitles.length,20);assert.equal(history.leafIds.length,20);assert.equal(history.selectedQuestions.length,2);
+ assertSavedHistoryBrowserFixture(history);
  assert.equal((await page.context().cookies()).some(cookie=>cookie.name==='company_scope'),false,'Saved-history fixture requires the default company selection.');
  const start=performance.now();await visitAsk();assert.equal(new URL(page.url()).origin,'https://localhost:3443');
  const waitStart=performance.now(),navigation=page.locator('nav[data-ai-saved-chats-ready="true"]:visible');
