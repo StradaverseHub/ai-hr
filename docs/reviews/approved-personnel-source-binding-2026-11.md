@@ -102,3 +102,13 @@ The existing 28 approved records receive a digest-only renewal under the same-pu
 The agent manifest was generated last and has 465 files at
 `a868ad15cf2dbb567bbcbf7bc6505eccb75b3000dde848e4225130f30f6726c0`.
 Hosted release qualification and live performance verification are separate checks.
+
+### Combined staging integration
+
+The merged source retains the same existing approved provider purposes, transports, and
+review metadata. The new Job Architecture and Rewards Advisor workload IDs have no
+provider approval records and remain fail-closed. The EPF change calculates and saves
+workings in the native payroll path. It adds no provider contract or input transform.
+The 28 existing approved records receive only the technical digest renewal
+`c67ab4ae5c0d2b7d0706e47fc7e878561517553cd9277a01fc0d900e2b1961f1` under their existing same-purpose authority. This does not
+record a new human review, activate any configuration, or authorize the new workload IDs.

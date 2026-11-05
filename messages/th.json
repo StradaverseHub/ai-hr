@@ -8380,6 +8380,8 @@
       "epfBandUpTo": "ขอบบนของช่วง",
       "epfScheduleEffective": "ตารางมีผลตั้งแต่",
       "epfCalculatedEmployer": "เงินสมทบนายจ้างที่คำนวณได้",
+      "epfEmployeeEarlierRuns": "เงินสมทบลูกจ้างที่จ่ายแล้วในรอบก่อนหน้า",
+      "epfEmployerEarlierRuns": "เงินสมทบนายจ้างที่จ่ายแล้วในรอบก่อนหน้า",
       "epfEmployeeThisRun": "เงินสมทบลูกจ้างรอบนี้ก่อนปรับ",
       "epfEmployerThisRun": "เงินสมทบนายจ้างรอบนี้ก่อนปรับ",
       "epfFinalEmployee": "เงินสมทบลูกจ้างสุดท้ายในสลิปเงินเดือน",

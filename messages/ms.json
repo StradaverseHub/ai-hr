@@ -8380,6 +8380,8 @@
       "epfBandUpTo": "Had atas jalur",
       "epfScheduleEffective": "Jadual berkuat kuasa mulai",
       "epfCalculatedEmployer": "Caruman majikan yang dikira",
+      "epfEmployeeEarlierRuns": "Caruman pekerja yang sudah dibayar dalam larian terdahulu",
+      "epfEmployerEarlierRuns": "Caruman majikan yang sudah dibayar dalam larian terdahulu",
       "epfEmployeeThisRun": "Caruman pekerja bagi larian ini sebelum pelarasan",
       "epfEmployerThisRun": "Caruman majikan bagi larian ini sebelum pelarasan",
       "epfFinalEmployee": "Caruman pekerja akhir pada slip gaji",
