@@ -99,7 +99,7 @@ import {
 } from './actions';
 // Movement tab redesign (78853b97): Employment History projection + New Event dispatcher.
 import {
-  movementHistory,
+  movementHistoryWithTypes,
   movementDetail,
   movementAttachments,
   movementPendingEditInput,
@@ -556,7 +556,7 @@ export default async function EmployeePage({
   // one relationship every downstream consumer — approvals, visibility, calendars — actually follows).
   // The closed lines feed the read-only history disclosure; the storage stays effective-dated underneath.
   const currentSuperior = reporting.managers.find((m) => m.lineType === 'administrative') ?? null;
-  const superiorHistory = admin ? await directSuperiorHistoryFor(s, employmentId) : [];
+  const superiorHistory = readProfileCards ? await directSuperiorHistoryFor(s, employmentId) : [];
   // "EMP-0008 – John Tan" labels: the Combobox filters on the label, so one picker searches Employee ID
   // and name alike. Active employees only (`others` already excludes self + terminated); the current
   // superior is prepended if no longer in that set (e.g. terminated) so the field never shows a raw id.
@@ -572,9 +572,10 @@ export default async function EmployeePage({
   // domain_event ledger — Hired-first, date-ascending, no second record-keeping system. The detail view
   // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
   // Only the history table, the pending banner, and the edit lookup need the full projection.
-  const movements = admin && (!movementPage || movementPage === 'edit')
-    ? await movementHistory(s, employmentId)
-    : [];
+  const movementProjection = admin && (!movementPage || movementPage === 'edit')
+    ? await movementHistoryWithTypes(s, employmentId)
+    : null;
+  const movements = movementProjection?.movements ?? [];
   // 95d17761 — the DEFAULT view drops the correction artefacts (rolled back / corrected / cancelled /
   // superseded) so the tab reads as a career rather than a list of mistakes. Nothing is deleted and the
   // projection above is untouched: `movements` stays the complete history and is what the Edit lookup,
@@ -599,7 +600,7 @@ export default async function EmployeePage({
   // 476f23ed — the tenant's movement event-type catalogue. Read UNFILTERED, because Employment History has
   // to label a movement recorded under a type that has since been switched off; the New Event form filters
   // to the active ones below. A tenant that has configured nothing gets the built-in list unchanged.
-  const movementTypes = admin ? await listMovementEventTypes(s, { includeUsage: false }) : [];
+  const movementTypes = movementProjection?.movementTypes ?? (admin ? await listMovementEventTypes(s, { includeUsage: false }) : []);
   const movementTypeByCode = new Map(movementTypes.map((r) => [r.code, r]));
   const movementDetailData = admin && spMovement ? await movementDetail(s, employmentId, spMovement) : null;
   // 1d58019a Step 2 — the movement's supporting documents; the service applies history visibility and the

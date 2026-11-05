@@ -71,7 +71,7 @@ import {
   type ComparisonKind,
   type MovementKind,
 } from './movement-kinds';
-import { lockMovementTypeCatalogueTx, resolveMovementEventTypeTx, resolveMovementEventTypeRows } from './movement-type';
+import { lockMovementTypeCatalogueTx, resolveMovementEventTypeTx, resolveMovementEventTypeRows, movementEventTypeChoices } from './movement-type';
 // 1d58019a Step 2 (ADR-0166) — the per-type controls the writer enforces (offered reasons, Field Controls)
 // and the movement's supporting documents. Both modules are leaves: neither imports this one.
 import { assertTerminationReasonOfferedForTypeTx, movementFieldRulesTx } from './movement-type-controls';
@@ -669,7 +669,8 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
    *
    * A tenant with no configured types gets an empty set and the built-in list, i.e. today's behaviour.
    */
-  const catalogue = input?.catalogue ?? await tx.select().from(movementEventType).where(eq(movementEventType.tenantId, tenantId));
+  const catalogue = input?.catalogue ?? await tx.select().from(movementEventType).where(eq(movementEventType.tenantId, tenantId))
+    .orderBy(asc(movementEventType.sortOrder),asc(movementEventType.code));
   const tenantCodes = new Set(catalogue.map(r=>r.code));
   // Keep recorded codes for identity/projection, and resolve behavior separately for correction.
   // Reuse this existing catalogue read; inactive/custom history must not cause per-row queries.
@@ -1036,7 +1037,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
 
   const superseded = supersededScheduledIds(rows, today);
   const statusOf = (r: ProjectedRow): MovementStatus => statusOfRow(r, superseded);
-  return { emp, events, rows, statusOf, today, resolvedTypes };
+  return { emp, events, rows, statusOf, today, resolvedTypes, catalogue };
 }
 
 /** Batched canonical lifecycle projection for an already-authorized report snapshot. All database
@@ -1506,7 +1507,16 @@ async function personnelCorrectionViewTx(tx:Tx,events:RawEvent[],rows:ProjectedR
 }
 
 /** The Employment History list — a Hired-first, date-ascending projection over the event ledger. */
-export function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
+export async function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
+  return (await readWorkforceMovementHistory(ctx,employmentId)).movements;
+}
+
+export async function movementHistoryWithTypes(ctx:SessionContext,employmentId:string){
+  const {movements,catalogue}=await readWorkforceMovementHistory(ctx,employmentId);
+  return {movements,movementTypes:movementEventTypeChoices(catalogue)};
+}
+
+function readWorkforceMovementHistory(ctx:SessionContext,employmentId:string){
   return withTenant(ctx, async tx => {
     // This entry point owns a read-only operation. Caller-owned transactions
     // continue through movementHistoryTx and its exclusive barrier.
@@ -1533,17 +1543,17 @@ export function ownMovementHistory(ctx:SessionContext,employmentId:string):Promi
 
 export async function ownMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string):Promise<MovementHistoryRow[]>{
   await assertOwnMovementEmploymentTx(tx,ctx,employmentId);
-  return projectMovementHistoryTx(tx,ctx,employmentId);
+  return (await projectMovementHistoryTx(tx,ctx,employmentId)).movements;
 }
 
 /** Explicit owner read seam for a caller-held scoped report snapshot. */
 export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
   await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
-  return projectMovementHistoryTx(tx,ctx,employmentId);
+  return (await projectMovementHistoryTx(tx,ctx,employmentId)).movements;
 }
 
-async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string):Promise<MovementHistoryRow[]>{
-    const { emp, events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, employmentId);
+async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string){
+    const { emp, events, rows, statusOf, resolvedTypes, catalogue } = await projectRows(tx, ctx.tenantId, employmentId);
     // 66a63bd6 — the two payroll period sets come from core/comp.ts, so the per-row affordance runs the
     // SAME rule the service refuses on (the Basic Salary card's precedent).
     const { closed, processed } = await movementPayrollPeriodsTx(tx, employmentId);
@@ -1564,7 +1574,7 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
       if (group) group.push(event);
       else eventsByGroup.set(groupId, [event]);
     }
-    return rows.map((r) => {
+    const movements: MovementHistoryRow[] = rows.map((r) => {
       const primaryEvent = eventsById.get(r.id);
       const g = r.groupId ? eventsByGroup.get(r.groupId) ?? [] : primaryEvent ? [primaryEvent] : [];
       const spanEnd = g.length ? Math.max(...g.map((e) => e.sequence)) : -1;
@@ -1613,6 +1623,7 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
         recordedResignation:primaryEvent?movementRecordedResignationOf(primaryEvent):null,
       };
     });
+    return {movements,catalogue};
   }
 
 /** The grade in force just before/at an event, replayed from employment.grade.changed events (gradeId is
