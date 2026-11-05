@@ -66,7 +66,7 @@ describe('Rewards administration and review destinations', () => {
     expect(ports.scopedSession).toHaveBeenCalledOnce();
     expect(ports.reviewStatus).toHaveBeenCalledWith(session, ['company']);
     expect(ports.accessCompanies).toHaveBeenCalledWith(session);
-    expect(ports.choices).toHaveBeenCalledWith(session, ['company']);
+    expect(ports.choices).toHaveBeenCalledWith(session, ['company'], { fields: [] });
     expect(ports.list).not.toHaveBeenCalled();
   });
   it('renders View with disabled policy fields and no mutation forms, even for an authorised owner',async()=>{
