@@ -10,7 +10,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {owner,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,closeAll,type Base} from './harness';
-import {getRewardUnit,saveRewardEntry,decideRewardUnit,postRewardUnit,exportRewardReview,readOnlyRewardProjection,refreshRewardPatBasis} from '../packs/rewards/service';
+import {getRewardUnit,saveRewardEntry,decideRewardUnit,postRewardUnit,exportRewardReview,readOnlyRewardProjection,refreshRewardPatBasis,rewardApprovalsBoard,rewardsAnalysisSourceTx} from '../packs/rewards/service';
 import {beginRewardViewAs,endRewardViewAs,changeRewardPermission,saveRewardSetupGrant,rewardPermissions,rewardViewAsState,saveRewardPersonalPage} from '../packs/rewards/access-policy';
 import {createUploadedRewards,uploadedRewards,saveUploadedRewards,confirmUploadedRewards,adjustUploadedAward,refreshUploadedRewardSources} from '../packs/rewards/uploaded-awards';
 import {emptyFacts,emptyRecommendation} from '../packs/rewards/model';
@@ -61,6 +61,7 @@ describe('approved Rewards review SQL custody',()=>{
  it('applies a dated personal page grant only inside an existing seat and company scope',async()=>{
   await changeRewardPermission(gr,{role:'gr',capability:'review.view',allowed:false,reason:'Test the configured review page restriction'});
   await expect(getRewardUnit(checker,unitId)).rejects.toThrow(/does not permit/);
+  expect((await rewardApprovalsBoard(checker,[b.companyId])).map(row=>row.id)).toContain(unitId);
   const grant={userId:checker.userId!,companyId:b.companyId,capability:'review.view',validFrom:today,validTo:today,active:true,reason:'Allow the existing reviewer to view this company review'};
   await saveRewardPersonalPage(gr,grant);
   expect((await getRewardUnit(checker,unitId)).roles).toContain('gr');
@@ -160,5 +161,6 @@ describe('approved Rewards review SQL custody',()=>{
   const sources=await rewardPayrollProvenance(actors.payroll!,batchId);expect(sources.flatMap(r=>r.sources).filter(r=>r.unitId===uploadedId)).toHaveLength(1);
  });
  it('private advisor row visibility always removes the signed-in person',async()=>{await owner.db.update(schema.rewardEntry).set({source:{...(await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.id,entryId)))[0].source,personId:checker.personId!}}).where(eq(schema.rewardEntry.id,entryId));const [row]=await withTenant(checker,tx=>tx.execute<{allowed:boolean}>(sql`select app.reward_private_entry_visible(${unitId}::uuid,${entryId}::uuid) as allowed`));expect(row.allowed).toBe(false);
+ await expect(withTenant(checker,tx=>rewardsAnalysisSourceTx(tx,checker,[b.companyId],unitId))).rejects.toThrow(/complete authorized/);
  await uploadFixtureMetadata();const award={employmentId,incrementType:'merit',incrementBp:1000,newBasicCents:550000,newGrade:null,bonusCents:10000,lumpCents:0,remarks:'Fictional private award'};await withTenant(gr,async tx=>{await tx.execute(sql`insert into reward_uploaded_version(tenant_id,unit_id,version,rows,digest,uploaded_by,reason) values(${b.tenantId}::uuid,${unitId}::uuid,1,${JSON.stringify([award])}::jsonb,${'b'.repeat(64)},${gr.userId}::uuid,'Fictional private own-line probe')`);await tx.execute(sql`insert into reward_uploaded_award(entry_id,tenant_id,unit_id,award,source_version,updated_by) values(${entryId}::uuid,${b.tenantId}::uuid,${unitId}::uuid,${JSON.stringify(award)}::jsonb,1,${gr.userId}::uuid)`);await tx.execute(sql`update reward_uploaded_review set current_version=1 where unit_id=${unitId}::uuid`);});expect(await withTenant(checker,tx=>tx.execute(sql`select award from reward_uploaded_award where unit_id=${unitId}::uuid`))).toHaveLength(0);expect(await withTenant(gr,tx=>tx.execute(sql`select award from reward_uploaded_award where unit_id=${unitId}::uuid`))).toHaveLength(1);});
 });

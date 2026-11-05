@@ -103,12 +103,24 @@ REVOKE ALL ON FUNCTION app.reward_create_uploaded_unit(uuid,uuid,uuid,integer,da
 GRANT SELECT,UPDATE ON reward_company_exclusion TO ai_hr_reward_setup_reader;
 GRANT EXECUTE ON FUNCTION app.reward_company_exclusion_change(uuid,integer,text,uuid) TO ai_hr_reward_setup_reader;
 CREATE POLICY reward_upload_exclusion_update ON reward_company_exclusion FOR UPDATE TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(company_id,'manage')) WITH CHECK(tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(company_id,'manage'));
+GRANT EXECUTE ON FUNCTION app.access_workforce_write_lock() TO ai_hr_reward_setup_reader;
+CREATE OR REPLACE FUNCTION app.reward_company_exclusion_audit_owner() RETURNS trigger
+LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF (NEW.aggregate_type='reward-company-exclusion' OR NEW.event_type IN ('reward.company-excluded','reward.company-exclusion-ended')) AND NOT
+  (current_user='ai_hr_reward_setup_reader' AND NEW.aggregate_type='reward-company-exclusion' AND NEW.event_type='reward.company-uploaded-participation' AND NEW.tenant_id=app.current_tenant_id() AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id()
+   AND EXISTS(SELECT 1 FROM reward_company_exclusion e WHERE e.id=NEW.aggregate_id AND e.tenant_id=NEW.tenant_id AND e.company_id::text=NEW.payload->>'companyId' AND e.year::text=NEW.payload->>'year' AND e.award_type='uploaded' AND e.ended_at IS NULL AND e.xmin=pg_current_xact_id()::text::xid))
+  AND NOT app.acting_as_owner() THEN RAISE EXCEPTION 'Reward exclusion audit requires its native writer' USING ERRCODE='42501'; END IF;
+ RETURN NEW;
+END $$;
 CREATE FUNCTION app.reward_uploaded_participation(wanted_company uuid,reward_year integer,why text) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 DECLARE result uuid;previous reward_company_exclusion%ROWTYPE;t uuid:=app.current_tenant_id();actor uuid:=app.current_user_id();
 BEGIN
  PERFORM app.access_workforce_write_lock();
  IF NOT app.reward_setup_allowed(wanted_company,'manage') OR NOT app.reward_not_viewing_as() THEN RAISE EXCEPTION 'Group Rewards authority required';END IF;
- IF reward_year NOT BETWEEN 2000 AND 2200 OR length(trim(why)) NOT BETWEEN 10 AND 2000 OR NOT EXISTS(SELECT 1 FROM company WHERE id=wanted_company AND tenant_id=t AND archived_at IS NULL) THEN RAISE EXCEPTION 'Current company, year and a reason are required';END IF;
+ IF reward_year IS NULL OR reward_year NOT BETWEEN 2000 AND 2200 OR length(trim(coalesce(why,''))) NOT BETWEEN 10 AND 2000 OR NOT EXISTS(SELECT 1 FROM company WHERE id=wanted_company AND tenant_id=t AND archived_at IS NULL) THEN RAISE EXCEPTION 'Current company, year and a reason are required';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(t::text||':company-year:'||wanted_company::text||':'||reward_year::text,2203));
+ IF EXISTS(SELECT 1 FROM reward_unit u JOIN reward_cycle c ON c.id=u.cycle_id AND c.tenant_id=u.tenant_id WHERE u.tenant_id=t AND u.company_id=wanted_company AND c.year=reward_year AND u.kind='annual' AND u.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM reward_uploaded_review r WHERE r.unit_id=u.id AND r.tenant_id=u.tenant_id)) THEN RAISE EXCEPTION 'This company already has a planned annual review for the year';END IF;
  SELECT * INTO previous FROM reward_company_exclusion WHERE tenant_id=t AND company_id=wanted_company AND year=reward_year AND ended_at IS NULL FOR UPDATE;
  IF previous.id IS NOT NULL AND previous.award_type='uploaded' THEN RETURN previous.id;END IF;
  IF previous.id IS NOT NULL THEN UPDATE reward_company_exclusion SET ended_at=now(),ended_by=actor,end_reason=trim(why) WHERE id=previous.id;END IF;
