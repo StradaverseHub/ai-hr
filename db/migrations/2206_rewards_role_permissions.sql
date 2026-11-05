@@ -51,7 +51,7 @@ CREATE UNIQUE INDEX reward_access_one_view_session ON reward_access_view_session
 ALTER TABLE reward_access_view_session ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reward_access_view_session FORCE ROW LEVEL SECURITY;
 CREATE POLICY reward_access_view_session_read ON reward_access_view_session FOR SELECT USING(tenant_id=app.current_tenant_id() AND viewer_id=app.current_user_id());
-CREATE POLICY reward_access_view_session_insert ON reward_access_view_session FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND viewer_id=app.current_user_id() AND app.reward_setup_allowed(null,'manage'));
+CREATE POLICY reward_access_view_session_insert ON reward_access_view_session FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND viewer_id=app.current_user_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.tenant_id=reward_access_view_session.tenant_id AND u.deleted_at IS NULL AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(u.id)))));
 CREATE POLICY reward_access_view_session_end ON reward_access_view_session FOR UPDATE USING(tenant_id=app.current_tenant_id() AND viewer_id=app.current_user_id()) WITH CHECK(tenant_id=app.current_tenant_id() AND viewer_id=app.current_user_id());
 GRANT SELECT,INSERT,UPDATE ON reward_access_view_session TO ai_hr_app;
 DO $$ BEGIN
@@ -88,8 +88,10 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM app_user WHERE id=NEW.user_id AND tenant_id=NEW.tenant_id AND archived_at IS NULL)
    OR NOT EXISTS(SELECT 1 FROM company WHERE id=NEW.company_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Page access must remain in its tenant'; END IF;
  ELSE
-  IF NOT EXISTS(SELECT 1 FROM app_user WHERE id=NEW.target_id AND tenant_id=NEW.tenant_id AND archived_at IS NULL AND NOT app.login_blocked(id)) THEN RAISE EXCEPTION 'View as target is unavailable'; END IF;
-  IF TG_OP='UPDATE' AND (NEW.viewer_id<>OLD.viewer_id OR NEW.target_id<>OLD.target_id OR NEW.tenant_id<>OLD.tenant_id OR NEW.started_at<>OLD.started_at OR NEW.expires_at<>OLD.expires_at) THEN RAISE EXCEPTION 'View as identity is immutable'; END IF;
+  IF TG_OP='INSERT' THEN
+   IF NEW.ended_at IS NOT NULL THEN RAISE EXCEPTION 'New View as sessions must start open'; END IF;
+   PERFORM app.reward_view_as_principal(NEW.target_id);
+  ELSIF NEW.viewer_id<>OLD.viewer_id OR NEW.target_id<>OLD.target_id OR NEW.tenant_id<>OLD.tenant_id OR NEW.started_at<>OLD.started_at OR NEW.expires_at<>OLD.expires_at OR OLD.ended_at IS NOT NULL OR NEW.ended_at IS NULL THEN RAISE EXCEPTION 'View as identity and closed sessions are immutable'; END IF;
  END IF;RETURN NEW;
 END $$;
 CREATE TRIGGER reward_role_permission_shape BEFORE INSERT OR UPDATE ON reward_role_permission FOR EACH ROW EXECUTE FUNCTION app.reward_access_policy_shape();
@@ -101,16 +103,22 @@ REVOKE ALL ON FUNCTION app.reward_access_policy_shape() FROM PUBLIC;GRANT EXECUT
 CREATE FUNCTION app.reward_view_as_principal(wanted_user uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 DECLARE result jsonb;
 BEGIN
- IF NOT app.reward_setup_allowed(NULL,'manage') OR wanted_user=app.current_user_id() THEN RAISE EXCEPTION 'Group Rewards View as authority required' USING ERRCODE='42501'; END IF;
+ IF wanted_user IS NULL OR wanted_user=app.current_user_id() THEN RAISE EXCEPTION 'Group Rewards View as requires a different current principal' USING ERRCODE='42501'; END IF;
  IF NOT EXISTS(SELECT 1 FROM reward_member m JOIN reward_unit u ON u.id=m.unit_id AND u.tenant_id=m.tenant_id WHERE m.user_id=wanted_user AND m.tenant_id=app.current_tenant_id() AND app.reward_member_eligible(m.id) AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(u.id)))) THEN RAISE EXCEPTION 'Target is outside managed Rewards scope' USING ERRCODE='42501'; END IF;
- SELECT jsonb_build_object('tenantId',u.tenant_id,'userId',u.id,'personId',u.person_id,'roles',(SELECT coalesce(jsonb_agg(DISTINCT r.role::text),'[]'::jsonb) FROM role_assignment r WHERE r.tenant_id=u.tenant_id AND r.app_user_id=u.id),'grants',(SELECT coalesce(jsonb_agg(jsonb_build_object('role',r.role::text,'companyId',r.company_id)),'[]'::jsonb) FROM role_assignment r WHERE r.tenant_id=u.tenant_id AND r.app_user_id=u.id)) INTO result
+ WITH shared_companies AS (
+  SELECT DISTINCT u.company_id FROM reward_member m JOIN reward_unit u ON u.id=m.unit_id AND u.tenant_id=m.tenant_id
+  WHERE m.user_id=wanted_user AND m.tenant_id=app.current_tenant_id() AND u.deleted_at IS NULL AND app.reward_member_eligible(m.id) AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(u.id)))
+ ), scoped_grants AS (
+  SELECT DISTINCT grant_row.value AS g FROM app.principal(wanted_user) p CROSS JOIN LATERAL jsonb_array_elements(p.grants) grant_row(value)
+  WHERE p.tenant_id=app.current_tenant_id() AND (grant_row.value->>'companyId' IS NULL OR EXISTS(SELECT 1 FROM shared_companies c WHERE c.company_id=(grant_row.value->>'companyId')::uuid OR app.is_company_descendant(c.company_id,(grant_row.value->>'companyId')::uuid)))
+ )
+ SELECT jsonb_build_object('tenantId',u.tenant_id,'userId',u.id,'personId',u.person_id,'roles',(SELECT coalesce(jsonb_agg(DISTINCT g->>'role'),'[]'::jsonb) FROM scoped_grants),'grants',(SELECT coalesce(jsonb_agg(g),'[]'::jsonb) FROM scoped_grants)) INTO result
  FROM app_user u WHERE u.id=wanted_user AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
  IF result IS NULL THEN RAISE EXCEPTION 'View as principal unavailable' USING ERRCODE='42501'; END IF;RETURN result;
 END $$;
 -- Existing constrained Rewards reader is nonlogin/nobypass and already reads these identities under its purpose policies.
-GRANT SELECT ON role_assignment,app_user,reward_member,reward_unit,reward_setup_grant TO ai_hr_rewards_post_reader;
-GRANT EXECUTE ON FUNCTION app.reward_setup_allowed(uuid,text),app.reward_member_eligible(uuid) TO ai_hr_rewards_post_reader;
-CREATE POLICY reward_view_principal_assignments ON role_assignment FOR SELECT TO ai_hr_rewards_post_reader USING(tenant_id=app.current_tenant_id());
+GRANT SELECT ON app_user,reward_member,reward_unit TO ai_hr_rewards_post_reader;
+GRANT EXECUTE ON FUNCTION app.principal(uuid),app.is_company_descendant(uuid,uuid),app.reward_member_eligible(uuid) TO ai_hr_rewards_post_reader;
 ALTER FUNCTION app.reward_view_as_principal(uuid) OWNER TO ai_hr_rewards_post_reader;
 REVOKE ALL ON FUNCTION app.reward_view_as_principal(uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_view_as_principal(uuid) TO ai_hr_app;
 --> statement-breakpoint

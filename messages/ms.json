@@ -35785,6 +35785,7 @@
     }
   },
   "rewardAccessPolicy": {
+    "scrollRoles": "Tatal ke sisi untuk melihat lebih banyak peranan.",
     "intro": "Siapa boleh melihat dan bertindak pada setiap langkah, serta pemegang peranan.",
     "tabs": "Tab akses ganjaran",
     "rolePermissions": "Kebenaran peranan",

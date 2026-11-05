@@ -35785,6 +35785,7 @@
     }
   },
   "rewardAccessPolicy": {
+    "scrollRoles": "Cuộn ngang để xem thêm vai trò.",
     "intro": "Ai được xem và thao tác ở mỗi bước, và ai giữ từng vai trò.",
     "tabs": "Thẻ truy cập thưởng",
     "rolePermissions": "Quyền vai trò",

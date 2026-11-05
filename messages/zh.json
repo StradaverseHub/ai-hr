@@ -35785,6 +35785,7 @@
     }
   },
   "rewardAccessPolicy": {
+    "scrollRoles": "横向滚动以查看更多角色。",
     "intro": "每个阶段谁可以查看及操作，以及谁担任各角色。",
     "tabs": "奖励权限标签",
     "rolePermissions": "角色权限",

@@ -35785,6 +35785,7 @@
     }
   },
   "rewardAccessPolicy": {
+    "scrollRoles": "Scroll sideways to see more roles.",
     "intro": "Who can see and do what at each step, and who holds each role.",
     "tabs": "Rewards access tabs",
     "rolePermissions": "Role permissions",
@@ -35793,7 +35794,7 @@
     "groupOnly": "Visible to Group Rewards only",
     "editable": "Editable",
     "fixedHelp": "Scope, route and confidentiality cannot be changed here.",
-    "changed": "{count} roles changed from default. Every change is recorded.",
+    "changed": "{count, plural, one {# role changed from default.} other {# roles changed from default.}} Every change is recorded.",
     "reset": "Reset role defaults",
     "confirmChange": "Confirm permission change",
     "reason": "Reason for change",
