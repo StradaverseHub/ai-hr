@@ -510,8 +510,20 @@ export async function readOvertimeCashDefinitionTx(tx:Tx,ctx:SessionContext,p:{v
 /** Cheap canonical OT-stage detection. No salary/currency reader and no source creation.
  * Unknown dated company is not proof of absence when visible formula candidates exist. */
 export async function hasOvertimePatternForDayTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<boolean>{
- uuid(p.employmentId);date(p.date);const [recorded]=await tx.select({id:s.attendanceOvertimeSource.id}).from(s.attendanceOvertimeSource).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),eq(s.attendanceOvertimeSource.employmentId,p.employmentId),eq(s.attendanceOvertimeSource.attendanceDate,p.date),sql`${s.attendanceOvertimeSource.currentCalculationId} is not null`)).limit(1);if(recorded)return true;
- const [marker]=await tx.select({id:s.attendance.id}).from(s.attendance).where(and(eq(s.attendance.tenantId,ctx.tenantId),eq(s.attendance.employmentId,p.employmentId),eq(s.attendance.attendanceDate,p.date),sql`${s.attendance.calcTrace}->'overtimePattern'->>'status'='refused' and ${s.attendance.calcTrace}->'overtimePattern'->>'reason'='sourceUnavailable'`)).limit(1);if(marker)return true;
+ uuid(p.employmentId);date(p.date);
+ const source = s.attendanceOvertimeSource, day = s.attendance;
+ const recorded = tx.select({id:source.id}).from(source).where(and(
+  eq(source.tenantId,ctx.tenantId),eq(source.employmentId,p.employmentId),
+  eq(source.attendanceDate,p.date),sql`${source.currentCalculationId} is not null`,
+ ));
+ const refused = tx.select({id:day.id}).from(day).where(and(
+  eq(day.tenantId,ctx.tenantId),eq(day.employmentId,p.employmentId),eq(day.attendanceDate,p.date),
+  sql`${day.calcTrace}->'overtimePattern'->>'status'='refused' and ${day.calcTrace}->'overtimePattern'->>'reason'='sourceUnavailable'`,
+ ));
+ const [retained] = await tx.execute<{present:boolean}>(sql`
+  select case when exists (${recorded}) then true else exists (${refused}) end as present
+ `);
+ if(retained?.present)return true;
  if(await hasRecordedAttendanceGroupPolicyTx(tx,ctx,p))return true;
  // Company proof can only narrow the formula candidates. A canonical input with
  // no possible candidate needs no dated assignment read. The invoker proof still
