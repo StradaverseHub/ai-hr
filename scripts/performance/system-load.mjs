@@ -444,6 +444,32 @@ try{
  if(suite==='whole-system'||suite==='workflow-preflight'){
   const ctx=await context(group),page=await ctx.newPage();
   try{
+   const movementPath='/admin/personnel/'+employee.employmentId;
+   const history=page.locator('#section-assignment-history');
+   const tour=page.getByRole('dialog',{name:'Product tour',exact:true});
+   const dismissTour=async()=>{
+    await tour.getByRole('button',{name:'Skip',exact:true}).click({timeout:90000});
+    report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;
+   };
+   await page.addLocatorHandler(tour,dismissTour);
+   try{
+    const historyStart=performance.now();
+    const response=await page.goto(base+movementPath+'?tab=careerMovement',{waitUntil:'domcontentloaded',timeout:90000});
+    assert.equal(response?.status(),200,'Movement history navigation failed');
+    await history.getByRole('cell',{name:'Hired',exact:true}).waitFor({state:'visible',timeout:90000});
+    const newEvent=history.getByRole('link',{name:'New Event',exact:true});
+    await newEvent.waitFor({state:'visible',timeout:90000});
+    report.browserMovement={role:group.role,phase:'baseline',historyUsableMs:performance.now()-historyStart};
+    save();
+    const formStart=performance.now();
+    await newEvent.click({timeout:90000});
+    await page.waitForURL(url=>url.pathname===movementPath+'/movement/new',{timeout:90000});
+    await page.locator('#section-movement-new-event form select').first().waitFor({state:'visible',timeout:90000});
+    report.browserMovement.newEventFormUsableMs=performance.now()-formStart;
+    save();
+   }finally{
+    await page.removeLocatorHandler(tour);
+   }
    await exercisePayrollRegister({base,page,user:group,fixture,db,request,report,save});
    await exerciseSavedReport({page,user:group,fixture,db,base,phase:'baseline',thinkTimeMs,report,save});
   }finally{await ctx.close();}
