@@ -8,7 +8,7 @@ import {client,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {cancelRewardReview,createRewardUnit,decideRewardUnit,getRewardUnit,listRewardReviewStatus,saveRewardEntry} from '../packs/rewards/service';
+import {cancelRewardReview,createRewardUnit,decideRewardUnit,getRewardUnit,listRewardReviewStatus,postRewardUnit,saveRewardEntry} from '../packs/rewards/service';
 import {emptyFacts,emptyRecommendation} from '../packs/rewards/model';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {setRewardMember} from './rewards-access-fixture';
@@ -99,6 +99,13 @@ it('profiles active and retained seated units with independent financial and pri
  expect(find(pbpRead.value.rows)).toMatchObject({waiting:false,salary:null,bonus:null});
  for(const row of metadata.value.rows)expect(row).toMatchObject({roles:[],people:null,verified:null,waiting:false,salary:null,bonus:null,blocking:null,exceptions:null,laterSeats:[]});
  expect(metadata.counts.fullRosterReads??0).toBe(0);
+ for(const measured of [gr,pbpRead]){
+  for(const query of ['detailCycleReads','detailBusinessUnitReads','detailCompanyReads','detailMemberReads','detailDecisionReads'])expect(measured.counts[query]??0,query).toBe(0);
+  expect(measured.counts.calendarReads).toBe(1); // the existing authorized list's bulk calendar owner
+  expect(measured.counts.fullRosterReads).toBe(8); // complete unit arithmetic is retained, never clipped
+  expect(measured.counts.explicitRoleReads).toBe(16); // both existing fresh role-owner checks remain
+  expect(measured.counts.privateGovernanceReads).toBe(16);expect(measured.counts.publicGovernanceReads).toBe(16);
+ }
  let fullDetailDtoBytes=0,fullDetailVisibleRows=0;
  for(const id of units){const row=await getRewardUnit(admin,id);fullDetailDtoBytes+=Buffer.byteLength(JSON.stringify(row));fullDetailVisibleRows+=row.rows.length;}
  expect(fullDetailVisibleRows).toBe(115);
@@ -111,6 +118,8 @@ it('profiles active and retained seated units with independent financial and pri
   expect(find((await listRewardReviewStatus(waiting,[b.companyId])).rows)).toMatchObject({status:next,waiting:true});
  }
  expect(find((await listRewardReviewStatus(actors.payroll,[b.companyId])).rows).waiting).toBe(false);
+ await expect(postRewardUnit(actors.payroll,special,await revision(special))).rejects.toThrow('Company administrator access is required');
+ expect((await getRewardUnit(admin,special)).unit.status).toBe('approved');
  const foreign=await seedBase();await setModule(foreign.tenantId,'rewards','active');expect((await listRewardReviewStatus(await entitledCtx(foreign),[b.companyId])).rows).toEqual([]);
  expect(await listRewardReviewStatus(admin,[])).toMatchObject({rows:[],emptyReason:'noScope'});
  const evidence={kind:'NATIVE_REWARDS_SEATED_LIST_PROFILE_ONLY',releaseEligible:false,units:8,retainedCancelledUnits:4,activeUnits:4,snappedEmployees:115,independentSpecialIncreaseCents:{bu:25000,bg:60000,gr:60000,pbp:null},zeroBonusBudgetAndAward:true,stageRouteVerified:true,noSeatMetadataOnly:true,crossTenantRefused:true,emptyScopeRefused:true,gr:{elapsedMs:gr.elapsedMs,queryCounts:gr.counts,summaryDtoBytes:gr.dtoBytes},pbp:{elapsedMs:pbpRead.elapsedMs,queryCounts:pbpRead.counts,summaryDtoBytes:pbpRead.dtoBytes},seatless:{elapsedMs:metadata.elapsedMs,queryCounts:metadata.counts,summaryDtoBytes:metadata.dtoBytes},fullDetailReference:{visibleRows:fullDetailVisibleRows,dtoBytes:fullDetailDtoBytes,scope:'separate canonical detail reads, not measured allocation bytes inside list'},providerCalls:0,limitations:'Native component only; not browser, whole-module or500-user acceptance.'};
