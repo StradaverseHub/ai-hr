@@ -14,6 +14,8 @@ import {getRewardUnit,saveRewardEntry,decideRewardUnit,postRewardUnit} from '../
 import {beginRewardViewAs,endRewardViewAs,changeRewardPermission,saveRewardSetupGrant} from '../packs/rewards/access-policy';
 import {createUploadedRewards,uploadedRewards,saveUploadedRewards,confirmUploadedRewards,adjustUploadedAward,refreshUploadedRewardSources} from '../packs/rewards/uploaded-awards';
 import {emptyFacts,emptyRecommendation} from '../packs/rewards/model';
+import {generateRewardAdvisor,saveRewardAdvisorSettings} from '../packs/rewards/advisor';
+import {defaultAdvisorSettings} from '../packs/rewards/advisor-model';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
 async function denied(promise:Promise<unknown>){const error=await promise.then(()=>null,error=>error);expect(error).not.toBeNull();expect(pgSqlState(error)).toBe('42501');}
@@ -37,6 +39,19 @@ describe('approved Rewards review SQL custody',()=>{
  });
  it('read-only View as blocks native writers, direct writes and legacy SECURITY DEFINER helpers until ended',async()=>{await beginRewardViewAs(gr,checker.userId!);await expect(saveRewardEntry(gr,unitId,1,entryId,emptyRecommendation())).rejects.toThrow(/read-only|View as/);await denied(withTenant(gr,tx=>tx.update(schema.rewardEntry).set({recommendation:emptyRecommendation()}).where(eq(schema.rewardEntry.id,entryId))));await denied(withTenant(gr,tx=>tx.execute(sql`select app.reward_company_exclusion_change(${b.companyId}::uuid,${year},'Fictional attempted mutation during view',NULL)`)));await endRewardViewAs(gr);expect((await getRewardUnit(gr,unitId)).rows).toHaveLength(1);});
  it('permission overrides narrow the native read owner and fixed own-line protection cannot be changed',async()=>{await expect(changeRewardPermission(gr,{role:'gr',capability:'own.never',allowed:true,reason:'Attempt to weaken own-line confidentiality'})).rejects.toThrow(/fixed/);await changeRewardPermission(gr,{role:'gr',capability:'review.view',allowed:false,reason:'Temporarily suspend this native page capability'});await expect(getRewardUnit(gr,unitId)).rejects.toThrow(/does not permit/);});
+ it('audits an unavailable advisor without adding suggestions or changing any review money',async()=>{
+  const [entry]=await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.id,entryId));
+  const onehr={id:randomUUID(),reviewId:randomUUID(),cycleId:randomUUID(),digest:'a'.repeat(64),frozenAt:new Date().toISOString(),performance:'ME',potential:'Mid',talent:'Solid Core',pip:false,promotion:false,specialReward:false,policyDigest:'b'.repeat(64)} as const;
+  await owner.db.update(schema.rewardEntry).set({source:{...entry.source,grade:'12',notice:false,payChanges:[],onehr},facts:{...emptyFacts(),reviewed:true,talent:'SCORE',performance:'ME'}}).where(eq(schema.rewardEntry.id,entryId));
+  await saveRewardAdvisorSettings(gr,unitId,{...defaultAdvisorSettings,enabled:true},'cycle');
+  await expect(generateRewardAdvisor(gr,unitId,entryId)).rejects.toThrow(/provider is unavailable/);
+  const [after]=await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.id,entryId));
+  expect(after.recommendation).toEqual(entry.recommendation);
+  expect(await owner.db.execute(sql`select id from reward_advisor_suggestion where unit_id=${unitId}::uuid`)).toHaveLength(0);
+  const failed=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'reward-unit.advisor-suggestion-failed'));
+  expect(failed).toHaveLength(1);
+  expect(failed[0].payload).toEqual({entryId,outcome:'provider-unavailable'});
+ });
  it('whole upload versions stay immutable and a doer cannot check their own upload',async()=>{await owner.db.execute(sql`insert into reward_uploaded_review(unit_id,tenant_id) values(${unitId}::uuid,${b.tenantId}::uuid)`);const raw={employmentId,incrementType:'merit',incrementBp:1000,newBasicCents:null,newGrade:null,bonusCents:10000,lumpCents:0,remarks:'Fictional external basis'};
  // A real Payroll change makes this snapshot stale; saving must fail atomically.
  await owner.db.update(schema.compensation).set({basicSalary:'5100.00'}).where(eq(schema.compensation.employmentId,employmentId));

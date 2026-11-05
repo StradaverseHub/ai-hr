@@ -36005,6 +36005,9 @@
     }
   },
   "rewardUploaded": {
+    "adjustmentHistory": "调整历史",
+    "acceptedRows": "已接受的行",
+    "employee": "员工",
     "refreshSources": "刷新薪资来源",
     "refreshHelp": "旧文件将保留在历史记录中。请下载新模板、替换文件，并请另一位集团薪酬审核人员复核。",
     "newUploadRequired": "需要重新上传",

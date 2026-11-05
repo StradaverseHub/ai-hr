@@ -36005,6 +36005,9 @@
     }
   },
   "rewardUploaded": {
+    "adjustmentHistory": "Adjustment history",
+    "acceptedRows": "Accepted rows",
+    "employee": "Employee",
     "refreshSources": "Refresh Payroll sources",
     "refreshHelp": "Refreshing keeps the old file in history. Download a new template, replace the file and ask another Group Rewards reviewer to check it.",
     "newUploadRequired": "New upload required",

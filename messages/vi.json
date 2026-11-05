@@ -36005,6 +36005,9 @@
     }
   },
   "rewardUploaded": {
+    "adjustmentHistory": "Lịch sử điều chỉnh",
+    "acceptedRows": "Các dòng đã chấp nhận",
+    "employee": "Nhân viên",
     "refreshSources": "Làm mới dữ liệu bảng lương",
     "refreshHelp": "Tệp cũ được giữ trong lịch sử. Hãy tải mẫu mới, thay thế tệp và nhờ một người khác thuộc bộ phận Lương thưởng Tập đoàn kiểm tra.",
     "newUploadRequired": "Cần tải lên tệp mới",

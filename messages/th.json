@@ -36005,6 +36005,9 @@
     }
   },
   "rewardUploaded": {
+    "adjustmentHistory": "ประวัติการปรับ",
+    "acceptedRows": "แถวที่ยอมรับ",
+    "employee": "พนักงาน",
     "refreshSources": "รีเฟรชข้อมูลจากฝ่ายเงินเดือน",
     "refreshHelp": "ไฟล์เดิมจะยังอยู่ในประวัติ ดาวน์โหลดแม่แบบใหม่ แทนที่ไฟล์ และให้ผู้ตรวจสอบ Group Rewards คนอื่นตรวจสอบ",
     "newUploadRequired": "ต้องอัปโหลดไฟล์ใหม่",
