@@ -11,6 +11,7 @@ import {personnelListPage,personnelListPageSql} from '../../core/read';
 import {withTenant,type SessionContext} from '../../db/client';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from '../harness';
+import {installDisposableRangeWriter,lifecycleDates,type NativeWriterTx} from './personnel-range-writer-proof';
 
 const file='test/performance/personnel-exact-order-proof.test.ts';
 const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
