@@ -17,7 +17,7 @@ export default async function SharedRewardPolicyPage({searchParams}:{searchParam
  await requireModule('rewards');const {s}=await scopedAdmin(),t=await getTranslations('rewards.sharedPolicy'),params=await searchParams,{group:groupId}=params;
  const groups=await listRewardPolicyGroups(s),selected=groupId?groups.find(row=>row.groupId===groupId):null;if(groupId&&!selected)notFound();
  // Deliberately all permitted companies for multi-company setup, rather than the current header filter.
- const companies=await adminCompanies(s),choices=await rewardSetupChoices(s,companies.map(company=>company.id),{includeArchived:true,sharedPolicy:true});
+ const companies=await adminCompanies(s),choices=await rewardSetupChoices(s,companies.map(company=>company.id),{includeArchived:true,sharedPolicy:true,fields:['units']});
  const policy=selected?.policy??defaultPolicy(Number(todayInKualaLumpur().slice(0,4)));
  const tree=await companyTree(s),nodes=new Map(tree.map(node=>[node.id,node]));
  const groupedCompanies=choices.companies.map(company=>{

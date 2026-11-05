@@ -19,7 +19,7 @@ export default async function RewardsConfigurationPage({ searchParams }: { searc
   await requireModule('rewards'); const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('rewards'); const { error,sharedError,deleted,deletionError,cancelled,...filter } = await searchParams;
   const td=await getTranslations('rewardsDeletion'),tc=await getTranslations('rewardsConfig'),locale=await getLocale();
-  const choices = await rewardSetupChoices(s, scopeIds);
+  const choices = await rewardSetupChoices(s, scopeIds, { fields: ['units', 'cycles'] });
   const memberships=await rewardPolicyMemberships(s,choices.companies.map(c=>c.id));
   const all = await listRewardUnits(s, choices.companies.map(c => c.id));
   // Filters narrow the server-rendered list; options come from the reviews the viewer can already see.
