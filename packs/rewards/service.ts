@@ -590,7 +590,14 @@ export async function createRewardUnitTx(tx:Tx,ctx:SessionContext,raw:PlannedRew
  const [unit]=await tx.select().from(rewardUnit).where(eq(rewardUnit.id,created.id));if(!unit)throw new RewardError('The approved review could not be loaded.');
  const entries=await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId,unit.id));
  const floors=await deriveConfidentialityTx(tx,unit.id,entries.map(e=>e.employmentId),unit.snapshotDate);
- for(const entry of entries){const onehr=await onehrRewardResultTx(tx,entry.employmentId,unit.policy.year,unit.id);const source=sourceWithFloor({...entry.source,onehr},floors.get(entry.employmentId));await tx.update(rewardEntry).set({source,facts:{...entry.facts,confidentiality:source.confidentialityFloor??'standard'}}).where(eq(rewardEntry.id,entry.id));}
+ for(const entry of entries){
+  const [onehr,architecture]=await Promise.all([
+   onehrRewardResultTx(tx,entry.employmentId,unit.policy.year,unit.id),
+   rewardArchitectureForSourceTx(tx,unit.id,entry.employmentId,entry.source.positionId??null,unit.snapshotDate),
+  ]);
+  const source=sourceWithFloor({...entry.source,onehr,architecture},floors.get(entry.employmentId));
+  await tx.update(rewardEntry).set({source,facts:{...entry.facts,confidentiality:source.confidentialityFloor??'standard'}}).where(eq(rewardEntry.id,entry.id));
+ }
  const inputs=resolved.pat.inputs,state:RewardGovernance={...emptyGovernance(),inputs:{...inputs,multiplierBp:unit.policy.bonusStructure==='branch'?10000:null,branchRatings:{}},selection:{employmentIds:[],proposedBy:idSchema.parse(ctx.userId),confirmedBy:null,confirmedAt:null}};
  await tx.insert(rewardGovernance).values({tenantId:ctx.tenantId,unitId:unit.id,state});
  await tx.update(rewardUnit).set({policy:{...unit.policy,unitGovernanceDigest:createHash('sha256').update(JSON.stringify(state)).digest('hex')}}).where(eq(rewardUnit.id,unit.id));
