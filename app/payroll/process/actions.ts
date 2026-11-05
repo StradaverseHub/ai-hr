@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
 import { scopedAdmin } from '@/lib/scope';
-import { batchDetail, createAdditionalRun, createBatch, generatePayslips, preProcessAdvisoryForSelection, updateBatchScope, type PreProcessAdvisory } from '@/core/payroll';
+import { batchHeader, createAdditionalRun, createBatch, generatePayslips, preProcessAdvisoryForSelection, updateBatchScope, type PreProcessAdvisory } from '@/core/payroll';
 import { getActivePayrollCycle } from '@/core/payroll-cycle';
 import { allowedCompanies, listEmployees, listEmployeesForPayrollRun, type PayrollRunEmployeeRow } from '@/core/read';
 import {
@@ -254,7 +254,7 @@ export async function resumeRunAction(formData: FormData) {
   // Re-read the batch AFTER the scope write: the persisted scope is the authority on who this run covers
   // (updateBatchScope intersects out cross-company ids and normalises an empty selection back to
   // whole-company), so the "selected" count on the result page is the run's own figure, never the client's.
-  const data = await batchDetail(s, batchId);
+  const data = await batchHeader(s, batchId);
   if (!data) {
     redirect(`/payroll/process?error=${encodeURIComponent('That payroll run is no longer available.')}`);
   }
