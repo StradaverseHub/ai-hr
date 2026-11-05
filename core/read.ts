@@ -5741,8 +5741,8 @@ export function eligibleDelegates(ctx: SessionContext, delegatorEmploymentId: st
 }
 
 /** Active employees + current administrative reporting edges, for the org chart. */
-export function orgChartData(ctx: SessionContext, companyIds?: string[]) {
-  return withTenant(ctx, async (tx) => {
+export function orgChartData(ctx: SessionContext, companyIds?: string[],existingTx?:Tx) {
+  return withReadTx(ctx,existingTx, async (tx) => {
     const employees = await tx
       .select({
         employmentId: employment.id,

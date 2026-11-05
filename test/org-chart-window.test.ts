@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {orgChartData} from '../core/read';
-import {orgChartWindow,OrgWindowUnavailableError,type OrgWindowRequest,type OrgWindowNode} from '../core/org-chart-window';
+import {orgChartEntry,orgChartWindow,OrgWindowUnavailableError,type OrgWindowRequest} from '../core/org-chart-window';
 import {type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
@@ -79,6 +79,11 @@ it('preserves the complete authorized graph through bounded roots, branches, lit
  const scopedConnections=await collected(ctx,[b.companyId],{view:'connections',focusId:people[0].id});
  expect(scopedConnections.rows.some(row=>row.otherEmploymentId===people[250].id&&row.node===null&&row.inSelectedScope===false)).toBe(true);
  expect(new Set(scopedConnections.rows.map(row=>row.type))).toEqual(new Set(['administrative','functional','project','dotted']));
+ const [smallCompany]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Single selected chart company'}).returning();
+ const [smallPerson]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Single selected person',primaryEmail:randomUUID()+'@example.invalid'}).returning();
+ await owner.db.insert(s.employment).values({tenantId:b.tenantId,personId:smallPerson.id,companyId:smallCompany.id,hiredOn:'2020-01-01'});
+ const smallSelection=await orgChartEntry(ctx,[smallCompany.id]);expect(smallSelection.mode).toBe('explorer');
+ if(smallSelection.mode==='explorer')expect(smallSelection.initial.totalPeople).toBe(1);
  // An authorized but foreign-company node must not become a selectable focus outside the people scope.
  await expect(orgChartWindow(ctx,[b.companyId],{view:'children',focusId:people[250].id})).rejects.toMatchObject({reason:'focus'});
  await expect(orgChartWindow(ctx,undefined,{view:'roots',after:randomUUID()})).rejects.toMatchObject({reason:'cursor'});
@@ -93,6 +98,15 @@ it('preserves the complete authorized graph through bounded roots, branches, lit
  expect(branch.rows.some(row=>row.node!.employmentId===people[200].id)).toBe(false);
  expect(sorted(branch.rows.map(row=>row.node!.employmentId))).toEqual(sorted(legacy.edges.filter(edge=>edge.type==='administrative'&&edge.manager===people[0].id).map(edge=>edge.subordinate)));
 },600000);
+
+it('keeps a small authorized graph exactly on the legacy full-tree path',async()=>{
+ await resetDb();const b=await seedBase(),ctx=adminCtx(b),people=Array.from({length:6},(_,index)=>({id:randomUUID(),personId:randomUUID(),name:'Small chart '+index}));
+ await owner.db.insert(s.person).values(people.map(p=>({id:p.personId,tenantId:b.tenantId,fullName:p.name,primaryEmail:p.personId+'@example.invalid'})));
+ await owner.db.insert(s.employment).values(people.map(p=>({id:p.id,tenantId:b.tenantId,personId:p.personId,companyId:b.companyId,hiredOn:'2020-01-01'})));
+ await owner.db.insert(s.reportingLine).values(people.slice(1).map(p=>({tenantId:b.tenantId,managerEmploymentId:people[0].id,subordinateEmploymentId:p.id,lineType:'administrative' as const,validFrom:'2020-01-01'})));
+ expect(await orgChartEntry(ctx,[b.companyId])).toEqual({mode:'full',...await orgChartData(ctx,[b.companyId])});
+ await expect(orgChartEntry({...ctx,userId:randomUUID()},[b.companyId])).rejects.toMatchObject({reason:'principal'});
+});
 
 it('keeps the response bounded while all five thousand direct reports remain reachable',async()=>{
  await resetDb();const b=await seedBase(),ctx=adminCtx(b),count=5000,personPrefix=randomUUID().slice(0,24),employmentPrefix=randomUUID().slice(0,24);
