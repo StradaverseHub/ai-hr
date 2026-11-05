@@ -13,6 +13,7 @@ import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUs
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { dayDate } from '../lib/onboarding-model';
 import { onboardingConfigSchema } from '../lib/onboarding-validation';
+import { possibleOnboardingMention, possibleOnboardingTaskCase } from '../packs/lifecycle/onboarding/task-queue-read';
 describe('V3.1 onboarding database and authorization', () => {
     let b: Base, admin: SessionContext, tech: SessionContext, other: SessionContext;
     beforeEach(async () => {
@@ -183,16 +184,39 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(metadata.find(task => task.id === beforeTech.find(task => task.kind === 'mention')?.id)).not.toHaveProperty('dueDate');
         const [caseRead] = reads.filter(text => text.includes('from "lc_onboarding_case"'));
         const [noteRead] = reads.filter(text => text.includes('from "lc_onboarding_note"'));
-        expect(caseRead).toContain('select "id", "tenant_id"');
-        expect(noteRead).toContain('select "id", "tenant_id"');
-        expect(caseRead).not.toContain(' where ');
-        expect(noteRead).not.toContain(' where ');
+        expect(caseRead).toContain('select "revision", "data"');
+        expect(noteRead).toContain('select "case_id", "data"');
+        expect(caseRead).toContain('jsonb_array_elements(');
+        expect(noteRead).toContain('jsonb_typeof(');
+        const nativeCandidates = await withTenant(admin, async tx => ({
+            cases: await tx.select({ id: schema.lcOnboardingCase.id }).from(schema.lcOnboardingCase)
+                .where(possibleOnboardingTaskCase(admin.userId!, true)),
+            notes: await tx.select({ id: schema.lcOnboardingNote.id }).from(schema.lcOnboardingNote)
+                .where(possibleOnboardingMention(admin.userId!)),
+        }));
+        expect(nativeCandidates).toEqual({ cases: [{ id: active.case.id }], notes: [] });
+        // The interpreter must see a newly posted mention even when the case has no open task or equipment.
+        const mentionOnly = retained[3]!;
+        await onboardingNote(admin, mentionOnly.id, { context: 'requisition', body: 'Fictional mention on completed work', mentions: [tech.userId!] });
+        const visibleMention = (await onboardingTasks(tech)).filter(task => task.caseId === mentionOnly.id);
+        expect(visibleMention).toHaveLength(1);
+        expect(visibleMention[0]).toMatchObject({ kind: 'mention', tagged: true, assigned: true });
+        expect(await onboardingTasks(other)).toEqual([]);
+        await onboardingNote(tech, mentionOnly.id, { context: 'requisition', body: 'Fictional reply resolving the mention', mentions: [] });
+        expect((await onboardingTasks(tech)).some(task => task.caseId === mentionOnly.id)).toBe(false);
+        // Do not turn an unsupported persisted case shape into a silently clean queue.
+        const malformedId = randomUUID();
+        await owner.db.insert(schema.lcOnboardingCase).values({ ...retained[0]!, id: malformedId,
+            data: { ...retained[0]!.data, id: malformedId, requisitions: null as unknown as typeof active.case.requisitions } });
+        await expect(onboardingTasks(admin)).rejects.toThrow();
         if (process.env.AIHR_FOCUSED_EVIDENCE_DIR) writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR, 'onboarding-task-queue-profile.json'), JSON.stringify({
-            kind: 'NATIVE_SHARED_ONBOARDING_QUEUE_BASELINE_ONLY', releaseEligible: false,
+            kind: 'NATIVE_SHARED_ONBOARDING_QUEUE_COMPONENT_ONLY', releaseEligible: false,
             retainedCases: retained.length, retainedNotes: retainedNotes.length,
             rawFixtureCaseJsonBytes: Buffer.byteLength(JSON.stringify(retained.map(row => row.data))),
             rawFixtureNoteJsonBytes: Buffer.byteLength(JSON.stringify(retainedNotes.map(row => row.data))),
             retainedHistoryAddsNoTasks: true, nativeActualAssignmentsAndMentions: true,
+            nativeAdminCandidateCases: nativeCandidates.cases.length, nativeAdminMentionNotes: nativeCandidates.notes.length,
+            mentionOnlyCaseAndReplyPreserved: true, malformedHistoryNotSilentlyIgnored: true,
             adminQueueSize: afterAdmin.length, actorQueueSize: beforeTech.length, applicationRoundTrips: reads.length,
             elapsedMs, providerCalls: 0, limitations: 'Native component only; no browser or 500-user claim.',
         }, null, 2));
