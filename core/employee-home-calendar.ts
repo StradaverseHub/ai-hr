@@ -1,8 +1,8 @@
 /** Own calendar metadata plus the separate, purpose-bound shared-team projection. No attendance
  * pricing, private leave reasons or payroll amounts are fetched. Every fact retains its owner. */
 import {withTenant,type SessionContext} from '../db/client';
-import {requireSelectedOwnHomeEmploymentId} from './employee-home';
-import {isOwnProfileEditEmploymentTx,hasEligibleLeaveTypeForTx} from './read';
+import {HomeAccessError} from './employee-home';
+import {isCurrentOwnHomeEmploymentTx,isOwnProfileEditEmploymentTx,hasEligibleLeaveTypeForTx} from './read';
 import {getEmployeeHomeDisplayPreferences} from './dashboard-prefs';
 import {homeDisplayClock} from '../lib/employee-home';
 import {homeCalendarGrid,type EmployeeHomeCalendar,type HomeCalendarEntry} from '../lib/employee-home-calendar';
@@ -15,8 +15,12 @@ import {provenCompanyDatesTx} from './employment-company';
 import {readHomeTeamCalendar} from './employee-home-sharing';
 
 export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:string,requestedMonth?:string,now=new Date()):Promise<EmployeeHomeCalendar>{
- const subjectId=await requireSelectedOwnHomeEmploymentId(ctx,employmentId);
- const preferences=await getEmployeeHomeDisplayPreferences(ctx);
+ if (!ctx.userId) throw new HomeAccessError('authentication');
+ const subjectId = employmentId;
+ const preferences = await withTenant(ctx, async tx => {
+  if (!await isCurrentOwnHomeEmploymentTx(tx, ctx, subjectId)) throw new HomeAccessError('employmentUnavailable');
+  return getEmployeeHomeDisplayPreferences(ctx, tx);
+ }, {readOnlySnapshot: true});
  const display=homeDisplayClock(now,preferences.timeZone??'Asia/Kuala_Lumpur');
  const month=requestedMonth??display.date.slice(0,7),dates=homeCalendarGrid(month,preferences.weekStartsOn);
  const from=dates[0],to=dates[dates.length-1];

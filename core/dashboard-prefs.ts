@@ -118,9 +118,10 @@ function homeDisplayPreferences(raw: unknown) {
 }
 
 /** Calendar and greeting use the same saved display metadata without loading the card catalogue. */
-export function getEmployeeHomeDisplayPreferences(ctx: SessionContext): Promise<Pick<EmployeeHomePreferences,'timeZone'|'weekStartsOn'>> {
-  if(!ctx.userId)return Promise.resolve(homeDisplayPreferences(null));
-  return withTenant(ctx,async tx=>homeDisplayPreferences(await readRawLayout(tx)));
+export function getEmployeeHomeDisplayPreferences(ctx: SessionContext, outerTx?: Tx): Promise<Pick<EmployeeHomePreferences,'timeZone'|'weekStartsOn'>> {
+  if (!ctx.userId) return Promise.resolve(homeDisplayPreferences(null));
+  const read = async (tx: Tx) => homeDisplayPreferences(await readRawLayout(tx));
+  return outerTx ? read(outerTx) : withTenant(ctx, read);
 }
 
 /** Home reads card selection/order from the SAME employee-role layout as the existing dashboard.
