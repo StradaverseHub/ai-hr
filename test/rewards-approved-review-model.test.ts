@@ -1,4 +1,5 @@
 import {describe,it,expect} from 'vitest';
+import {parseCsvWithLineNumbers,toCsv} from '../lib/csv';
 import {defaultPolicy,emptyFacts,emptyRecommendation,type RewardEntry} from '../packs/rewards/model';
 import {validateUploadedAwards,calculateUploadedRewards,uploadedDecimal,uploadedAwardsFromCells,uploadedAwardHeaders} from '../packs/rewards/uploaded-awards-model';
 import {buildRewardAdvisorCandidates,validatedAdvisorReasonOrder,validateAdvisorDecision,defaultAdvisorSettings} from '../packs/rewards/advisor-model';
@@ -27,3 +28,13 @@ describe('advisor fairness is a separate retrospective calculation',()=>{
 it('produces deterministic affordable suggestions from verified calibrated inputs',()=>{const e:RewardEntry={...entry,source:{...entry.source,payChanges:[],onehr:{id,reviewId:id,cycleId:id,digest:'a'.repeat(64),frozenAt:'2026-10-01T00:00:00Z',performance:'ME',potential:'Mid',talent:'Solid Core',pip:false,promotion:false,specialReward:false,policyDigest:'b'.repeat(64)}}};const r=buildRewardAdvisorCandidates([e],policy,{poolStatus:'final'});expect(r.candidates[0].recommendation).not.toBeNull();expect(r.candidates[0].newBasicCents).toBeGreaterThanOrEqual(e.source.basicCents);expect(r.poolUse.standard.salaryBp).toBeLessThanOrEqual(10000);expect(r.poolUse.standard.bonusBp).toBeLessThanOrEqual(10000);});
 it('refuses unknown or malformed advisor pool states rather than treating them as legacy',async()=>{const{advisorPoolStatus}=await import('../packs/rewards/advisor-model');for(const value of [undefined,null,'approved','Final',{},0])expect(()=>advisorPoolStatus(value)).toThrow();expect(advisorPoolStatus('final')).toBe('final');expect(advisorPoolStatus('legacy')).toBe('legacy');});
 it('previews mixed numeric and identity errors by their actual CSV row while retaining valid awards',()=>{const cells=[uploadedAwardHeaders,[id,'A1','Fictional','12','5000','','merit','10','','','100','0','Basis'],[],[id,'A1','Fictional','12','5000','','merit','=1+1','','','100','0','Bad numeric'],['not-an-id','A2','Fictional','12','5000','','merit','10','','','100','0','Bad identity']];const parsed=uploadedAwardsFromCells(cells),result=validateUploadedAwards(parsed.rows,[entry],['12'],2026,parsed.rowNumbers);expect(result.accepted).toHaveLength(1);expect(result.rejected.map(r=>r.row)).toEqual([4,5]);});
+
+it('preserves physical CSV lines after blank lines and multiline remarks, and rejects malformed quotes',()=>{
+ const good=[id,'A1','Employee','12','5000','','merit','10','5500','','100','0','First line\nSecond line'];
+ const wrong=[id,'A1','Employee','12','5000','','merit','=10','5500','','100','0',''];
+ const csv='\uFEFF'+toCsv([uploadedAwardHeaders,good])+'\r\n'+toCsv([wrong]);
+ const source=parseCsvWithLineNumbers(csv,true),prepared=uploadedAwardsFromCells(source.map(r=>r.cells),source.map(r=>r.line));
+ expect(prepared.rowNumbers).toEqual([2,5]);
+ expect(validateUploadedAwards(prepared.rows,[entry],['12'],2026,prepared.rowNumbers).rejected[0].row).toBe(5);
+ expect(()=>parseCsvWithLineNumbers('a,b\n"unfinished',true)).toThrow(/not closed/);
+});

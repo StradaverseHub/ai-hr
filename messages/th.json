@@ -36014,6 +36014,7 @@
     }
   },
   "rewardUploaded": {
+    "literalCells": "แทนที่สูตรและเซลล์ที่มีข้อผิดพลาดด้วยค่าจริงก่อนอัปโหลด",
     "adjustmentHistory": "ประวัติการปรับ",
     "acceptedRows": "แถวที่ยอมรับ",
     "employee": "พนักงาน",

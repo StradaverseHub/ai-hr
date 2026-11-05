@@ -1,58 +1,36 @@
-/** Minimal, dependency-free CSV reader (RFC 4180): quoted fields, escaped quotes (""),
- *  and embedded commas / newlines. Used by the employee importer. */
-export function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = '';
-  let inQuotes = false;
-  const s = text.replace(/\r\n?/g, '\n'); // normalise CRLF / CR to LF
-  let i = 0;
-  while (i < s.length) {
-    const c = s[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (s[i + 1] === '"') {
-          field += '"';
-          i += 2;
-          continue;
-        }
-        inQuotes = false;
-        i++;
-        continue;
+/** Minimal RFC 4180 reader shared by imports. The strict path retains source line numbers for diagnostics. */
+export function parseCsvWithLineNumbers(text:string,strict=false):{cells:string[];line:number}[]{
+  const rows:{cells:string[];line:number}[]=[];
+  let row:string[]=[],field='',inQuotes=false,afterQuote=false,line=1,rowLine=1;
+  const s=(strict?text.replace(/^\uFEFF/,''):text).replace(/\r\n?/g,'\n');
+  for(let i=0;i<s.length;i++){
+    const c=s[i];
+    if(inQuotes){
+      if(c==='"'){
+        if(s[i+1]==='"'){field+='"';i++;continue;}
+        inQuotes=false;afterQuote=true;continue;
       }
-      field += c;
-      i++;
+      if(c==='\n')line++;
+      field+=c;continue;
+    }
+    if(c==='"'){
+      if(strict&&(field.length||afterQuote))throw Error('Malformed quotes in the CSV file.');
+      inQuotes=true;continue;
+    }
+    if(c===','||c==='\n'){
+      row.push(field);field='';afterQuote=false;
+      if(c==='\n'){rows.push({cells:row,line:rowLine});row=[];rowLine=++line;}
       continue;
     }
-    if (c === '"') {
-      inQuotes = true;
-      i++;
-      continue;
-    }
-    if (c === ',') {
-      row.push(field);
-      field = '';
-      i++;
-      continue;
-    }
-    if (c === '\n') {
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = '';
-      i++;
-      continue;
-    }
-    field += c;
-    i++;
+    if(strict&&afterQuote)throw Error('Malformed quotes in the CSV file.');
+    field+=c;
   }
-  // flush the final field/row (file may not end in a newline)
-  if (field.length > 0 || row.length > 0) {
-    row.push(field);
-    rows.push(row);
-  }
-  // drop blank lines (a row that's a single empty cell)
-  return rows.filter((r) => !(r.length === 1 && r[0].trim() === ''));
+  if(strict&&inQuotes)throw Error('A quoted CSV field is not closed.');
+  if(field.length>0||row.length>0){row.push(field);rows.push({cells:row,line:rowLine});}
+  return rows.filter(({cells})=>!(cells.length===1&&cells[0].trim()===''));
+}
+export function parseCsv(text:string):string[][]{
+  return parseCsvWithLineNumbers(text).map(row=>row.cells);
 }
 
 /** CSV formula-injection guard. A cell beginning with `= + - @ TAB CR` is interpreted as a formula by

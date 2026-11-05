@@ -140,3 +140,53 @@ CREATE OR REPLACE FUNCTION app.reward_capability(wanted_unit uuid,wanted_capabil
  AND (coalesce((SELECT allowed FROM reward_role_permission p WHERE p.tenant_id=u.tenant_id AND p.role=CASE WHEN assigned.role='bg' AND EXISTS(SELECT 1 FROM reward_member m WHERE m.unit_id=u.id AND m.tenant_id=u.tenant_id AND m.user_id=app.current_user_id() AND m.role='bg' AND m.covers_user_id IS NOT NULL AND app.reward_member_eligible(m.id)) THEN 'proxy_bg' ELSE assigned.role END AND p.capability=wanted_capability),true)
  OR (wanted_capability IN('review.view','analytics.view','approvals.view','rules.view') AND EXISTS(SELECT 1 FROM reward_page_grant g WHERE g.tenant_id=u.tenant_id AND g.company_id=u.company_id AND g.user_id=app.current_user_id() AND g.capability=wanted_capability AND g.active AND g.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND(g.valid_to IS NULL OR g.valid_to>=timezone('Asia/Kuala_Lumpur',now())::date))))))
 $$;
+
+-- The legacy access ledger remains sealed. Only the exact new policy events can be appended by their bounded owner.
+CREATE OR REPLACE FUNCTION app.reward_access_audit_owner() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF (NEW.aggregate_type='reward-access-request' OR NEW.event_type LIKE 'reward-access.%' OR NEW.event_type='reward-unit.access-changed') AND NOT
+   (current_user='ai_hr_reward_setup_reader' AND NEW.aggregate_type='reward-access' AND NEW.tenant_id=app.current_tenant_id() AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id()
+    AND NEW.event_type IN('reward-access.permission.changed','reward-access.permissions.reset','reward-access.personal-page.changed','reward-access.setup-authority.changed','reward-access.view-as.started','reward-access.view-as.used','reward-access.view-as.ended'))
+   AND NOT app.acting_as_owner() THEN RAISE EXCEPTION 'native Rewards access audit owner required' USING ERRCODE='42501'; END IF;
+ RETURN NEW;
+END $$;
+GRANT EXECUTE ON FUNCTION app.acting_as_owner(),app.is_group_admin(),app.reward_view_as_principal(uuid) TO ai_hr_reward_setup_reader;
+GRANT EXECUTE ON FUNCTION app.reward_access(uuid) TO ai_hr_rewards_post_reader,ai_hr_reward_setup_reader;
+GRANT SELECT ON reward_access_view_session,reward_role_permission,reward_page_grant TO ai_hr_reward_setup_reader;
+CREATE FUNCTION app.reward_access_policy_event(event_name text,record_id uuid,details jsonb) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE actor uuid:=app.current_user_id();t uuid:=app.current_tenant_id();expected_target uuid;expected_company uuid;
+BEGIN
+ IF actor IS NULL OR t IS NULL OR record_id IS NULL OR jsonb_typeof(details) IS DISTINCT FROM 'object' OR octet_length(details::text)>40000 THEN RAISE EXCEPTION 'Rewards access event identity is invalid' USING ERRCODE='42501';END IF;
+ CASE event_name
+ WHEN 'permission.changed','permissions.reset' THEN
+   IF record_id<>actor OR NOT app.reward_setup_allowed(NULL,'manage') OR NOT app.reward_not_viewing_as() THEN RAISE EXCEPTION 'Group Rewards access policy owner required' USING ERRCODE='42501';END IF;
+ WHEN 'setup-authority.changed' THEN
+   IF NOT app.is_group_admin() OR NOT app.reward_not_viewing_as() OR NOT EXISTS(SELECT 1 FROM reward_setup_grant r WHERE r.id=record_id AND r.tenant_id=t AND r.xmin=pg_current_xact_id()::text::xid) THEN RAISE EXCEPTION 'Current setup grant change required' USING ERRCODE='42501';END IF;
+ WHEN 'personal-page.changed' THEN
+   expected_company:=(details->'after'->>'companyId')::uuid;
+   IF expected_company IS NULL OR NOT app.reward_setup_allowed(expected_company,'manage') OR NOT app.reward_not_viewing_as() OR NOT EXISTS(SELECT 1 FROM reward_page_grant r WHERE r.tenant_id=t AND r.user_id=record_id AND r.company_id=expected_company AND r.capability=details->'after'->>'capability' AND r.xmin=pg_current_xact_id()::text::xid) THEN RAISE EXCEPTION 'Current personal-page change required' USING ERRCODE='42501';END IF;
+ WHEN 'view-as.started','view-as.used','view-as.ended' THEN
+   SELECT r.target_id INTO expected_target FROM reward_access_view_session r WHERE r.tenant_id=t AND r.id=record_id AND r.viewer_id=actor
+    AND (event_name='view-as.ended' AND r.ended_at IS NOT NULL AND r.xmin=pg_current_xact_id()::text::xid OR event_name='view-as.started' AND r.ended_at IS NULL AND r.xmin=pg_current_xact_id()::text::xid OR event_name='view-as.used' AND r.ended_at IS NULL AND r.expires_at>now());
+   IF expected_target IS NULL THEN RAISE EXCEPTION 'Current Rewards view session required' USING ERRCODE='42501';END IF;
+   IF event_name='view-as.used' THEN PERFORM app.reward_view_as_principal(expected_target);END IF;
+   details:=jsonb_build_object('targetUserId',expected_target);
+ ELSE RAISE EXCEPTION 'Unknown Rewards policy event' USING ERRCODE='42501';
+ END CASE;
+ INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(t,'reward-access',record_id,'reward-access.'||event_name,'user',actor,details);
+END $$;
+ALTER FUNCTION app.reward_access_policy_event(text,uuid,jsonb) OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_access_policy_event(text,uuid,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_access_policy_event(text,uuid,jsonb) TO ai_hr_app;
+
+CREATE FUNCTION app.reward_rule_policy_reference(wanted uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT jsonb_build_object('name',p.name,'version',p.revision,'current',g.current_version_id=p.id)
+ FROM reward_unit u JOIN reward_policy_group_version p ON p.id=u.policy_group_version_id AND p.tenant_id=u.tenant_id
+ JOIN reward_policy_group g ON g.id=p.group_id AND g.tenant_id=p.tenant_id
+ WHERE u.id=wanted AND u.tenant_id=app.current_tenant_id() AND u.deleted_at IS NULL AND EXISTS(SELECT 1 FROM app.reward_roles(wanted))
+$$;
+ALTER FUNCTION app.reward_rule_policy_reference(uuid) OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_rule_policy_reference(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_rule_policy_reference(uuid) TO ai_hr_app;

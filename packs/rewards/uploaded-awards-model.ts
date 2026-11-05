@@ -22,10 +22,10 @@ export function calculateUploadedRewards(entries:RewardEntry[],policy:RewardPoli
 }
 export const uploadedAwardHeaders=['Employment ID','Employee ID','Name','JG','Current basic (MYR)','Eligibility flags','Increment type','Increment %','New basic (MYR)','New JG','Bonus (MYR)','Lump sum (MYR)','Remarks'];
 export function uploadedDecimal(value:string,scale=100){if(!/^\d+(\.\d{1,2})?$/.test(value.trim()))throw Error('Use a nonnegative number with up to two decimals.');const [whole,fraction='']=value.trim().split('.'),result=Number(BigInt(whole)*BigInt(scale)+BigInt(fraction.padEnd(2,'0')));if(!Number.isSafeInteger(result))throw Error('Amount exceeds the supported size.');return result;}
-export function uploadedAwardsFromCells(cells:string[][]):{rows:unknown[];rowNumbers:number[]}{
+export function uploadedAwardsFromCells(cells:string[][],sourceLines?:readonly number[]):{rows:unknown[];rowNumbers:number[]}{
  if(!cells.length||cells[0].length!==uploadedAwardHeaders.length||uploadedAwardHeaders.some((h,i)=>cells[0][i]?.trim()!==h))throw Error('Use the downloaded template without changing its column headings.');
  const rows:unknown[]=[],rowNumbers:number[]=[];
  const decimal=(value:string|undefined,blank:number|null)=>{if(!value?.trim())return blank;try{return uploadedDecimal(value);}catch{return value;}};
- for(const [index,r]of cells.slice(1).entries()){if(!r.some(v=>v.trim()))continue;rowNumbers.push(index+2);rows.push({employmentId:r[0]?.trim(),incrementType:r[6]?.trim().toLowerCase(),incrementBp:decimal(r[7],null),newBasicCents:decimal(r[8],null),newGrade:r[9]?.trim()||null,bonusCents:decimal(r[10],0),lumpCents:decimal(r[11],0),remarks:r[12]?.trim()??''});}
+ for(const [index,r]of cells.slice(1).entries()){if(!r.some(v=>v.trim()))continue;rowNumbers.push(sourceLines?.[index+1]??index+2);if(r.length>uploadedAwardHeaders.length){rows.push(null);continue;}rows.push({employmentId:r[0]?.trim(),incrementType:r[6]?.trim().toLowerCase(),incrementBp:decimal(r[7],null),newBasicCents:decimal(r[8],null),newGrade:r[9]?.trim()||null,bonusCents:decimal(r[10],0),lumpCents:decimal(r[11],0),remarks:r[12]?.trim()??''});}
  return{rows,rowNumbers};
 }

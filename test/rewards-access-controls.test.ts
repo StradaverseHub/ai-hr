@@ -172,7 +172,7 @@ describe('Rewards two-person access and live People eligibility',()=>{
   await confirmBuOpening();
   let pending=await request({userId:target.userId!,role:'bu'});await decideRewardAccessRequest(checker,pending.requestId,true);
   const hire=await hireEmployee(admin,{person:{fullName:'Fictional temporary proxy',primaryEmail:randomUUID()+'@access.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year-1}-01-01`});
-  const [employee]=await owner.db.select().from(s.employment).where(eq(s.employment.id,hire.employmentId));await owner.db.update(s.assignment).set({businessUnitId:bu}).where(eq(s.assignment.employmentId,hire.employmentId));
+  const [employee]=await owner.db.select().from(s.employment).where(eq(s.employment.id,hire.employmentId));await withTenant(admin,tx=>tx.update(s.assignment).set({businessUnitId:bu}).where(eq(s.assignment.employmentId,hire.employmentId)));
   const proxyId=await createAppUser(b.tenantId,employee.personId,'employee'),proxy={...target,userId:proxyId,personId:employee.personId};
   await expect(request({userId:proxyId,role:'bu',validFrom:today,validTo:today,coversUserId:checker.userId})).rejects.toMatchObject({code:'proxy'});
   pending=await request({userId:proxyId,role:'bu',validFrom:today,validTo:today,coversUserId:target.userId});await decideRewardAccessRequest(checker,pending.requestId,true);
@@ -187,7 +187,7 @@ describe('Rewards two-person access and live People eligibility',()=>{
   let pending=await request({userId:target.userId!,role:'bu'});await decideRewardAccessRequest(checker,pending.requestId,true);
   pending=await request({userId:target.userId!,role:'bg'});await decideRewardAccessRequest(checker,pending.requestId,true);
   const [other]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'OTHER',name:'Fictional other unit'}).returning();
-  await owner.db.update(s.assignment).set({businessUnitId:other.id}).where(eq(s.assignment.employmentId,employmentId));
+  await withTenant(admin,tx=>tx.update(s.assignment).set({businessUnitId:other.id}).where(eq(s.assignment.employmentId,employmentId)));
   expect((await getRewardUnit(target,unitId)).roles).toEqual(['bg']);
   pending=await request({userId:target.userId!,role:'bu',restoreReason:'Approved temporary continuity exception'},{userId:target.userId!,role:'bu'},admin);
   expect(pending.pending).toBe(false);
