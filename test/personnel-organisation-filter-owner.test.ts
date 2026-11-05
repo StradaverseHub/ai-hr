@@ -10,6 +10,7 @@ import {lockAccessConfigurationTx,tryLockAccessConfigurationReadTx} from '../cor
 import {PersonnelReadBusyError} from '../core/personnel-read-bounds';
 import {personnelMaintenanceCompanyIds,workforceViewScope} from '../core/workforce-access';
 import {personnelGroupingReadinessTx} from '../core/personnel-quality';
+import {canViewJobArchitecture} from '../packs/job-architecture/owner';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,ctx:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();ctx=adminCtx(b);});
@@ -114,6 +115,7 @@ it('opens Personnel scope, maintenance choices and the list while another author
   const input = { companyIds: [b.companyId], limit: 1, offset: 0 };
   await owner.withTenant(ctx, async tx => {
     expect(await tryLockAccessConfigurationReadTx(tx, ctx.tenantId)).toBe(true);
+    expect(await canViewJobArchitecture(ctx)).toBe(true);
     expect((await workforceViewScope(ctx, { personnelList: true })).companyIds).toContain(b.companyId);
     expect(await personnelMaintenanceCompanyIds(ctx)).toContain(b.companyId);
     const overview = await readPersonnelOverview(ctx, input, {});

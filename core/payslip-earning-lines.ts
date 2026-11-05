@@ -428,7 +428,23 @@ export function groupNamedPayItemLines(lines: NamedPayItemLine[], onlyCode?: str
 
 export function payslipOvertimeLines(lines: StoredComponentLine[], statutory: unknown, sources: readonly PayslipQuantitySource[] = []): NamedPayItemLine[] {
   const recorded = payItemLinesForCategory(lines, 'overtime');
-  return recorded.length ? groupNamedPayItemLines(restorePayItemQuantities(recorded, sources, 'earning')) : storedOvertimeLines(statutory);
+  const display = (statutory as { displayEarnings?: { overtime?: unknown; bonus?: unknown } } | null)?.displayEarnings;
+  let overtime = recorded;
+  if (display && !payItemLinesReconcile(recorded, display.overtime)) {
+    // Migration 0393 moved OT1_5 into the overtime display total. Some saved slips
+    // have that overlay but still lack a category on the historical component lines.
+    const legacyLines = lines.filter(line => line.displayCategory == null &&
+      line.code?.trim().toUpperCase() === 'OT1_5' &&
+      line.buckets?.length === 1 && line.buckets[0].bucket === 'bonus');
+    const recovered = payItemLinesForBuckets(legacyLines, ['bonus']);
+    const candidate = [...recorded, ...recovered];
+    const bonus = payItemLinesForCategory(lines, 'bonus');
+    const remainingBonus = round2(bonus.reduce((sum, line) => sum + line.amount, 0) -
+      recovered.reduce((sum, line) => sum + line.amount, 0));
+    if (recovered.length && display.bonus != null && remainingBonus === round2(n(display.bonus)) &&
+      payItemLinesReconcile(candidate, display.overtime)) overtime = candidate;
+  }
+  return overtime.length ? groupNamedPayItemLines(restorePayItemQuantities(overtime, sources, 'earning')) : storedOvertimeLines(statutory);
 }
 
 /** Descriptive transaction quantity, not a rate or a calculated paid allocation. Only a whole saved
