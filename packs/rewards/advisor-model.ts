@@ -10,7 +10,7 @@ export type AdvisorReasonRef=typeof advisorReasonRefs[number];
 export type AdvisorCandidate={entryId:string;recommendation:Recommendation|null;confidence:'high'|'medium'|'low';reasons:AdvisorReasonRef[];missing:string[];newBasicCents:number;bonusCents:number;plan:'standard'|'h'|'ec'};
 type Controls=Parameters<typeof calculateRewards>[2];
 /** Native deterministic candidates. A provider can order explanation refs, never supply an amount. */
-export function buildRewardAdvisorCandidates(entries:readonly RewardEntry[],policy:RewardPolicy,controls:Controls={}):{candidates:AdvisorCandidate[];poolUse:{standard:{salaryBp:number|null;bonusBp:number|null};h:{salaryBp:number|null;bonusBp:number|null}}}{
+export function buildRewardAdvisorCandidates(entries:readonly RewardEntry[],policy:RewardPolicy,controls:Controls={},longWithoutIncreaseYears=defaultAdvisorSettings.longWithoutIncreaseYears):{candidates:AdvisorCandidate[];poolUse:{standard:{salaryBp:number|null;bonusBp:number|null};h:{salaryBp:number|null;bonusBp:number|null}}}{
  const personCount=new Map<string,number>();for(const e of entries)personCount.set(e.source.personId,(personCount.get(e.source.personId)??0)+1);
  const suggestions=entries.map(e=>({...e,recommendation:{...emptyRecommendation(),promotionGrade:e.recommendation.promotionGrade,promotionBp:e.recommendation.promotionGrade?1000:null,reason:e.recommendation.promotionGrade?e.recommendation.reason:''}}));
  const calculation=calculateRewards(suggestions,policy,controls);
@@ -25,6 +25,7 @@ export function buildRewardAdvisorCandidates(entries:readonly RewardEntry[],poli
   if(controls.poolStatus==='not-set'||controls.poolStatus==='provisional')missing.push('final_pool');
   const range=policy.ranges[e.source.grade],reasons:AdvisorReasonRef[]=['matrix','separate_pools'];
   if(range&&e.source.basicCents*10000<range[1]*9000)reasons.unshift('below_midpoint');else if(range&&e.source.basicCents>range[2])reasons.unshift('above_range');
+  const lastRaise=e.source.lastPayChange??e.source.hiredOn;if(Number(lastRaise.slice(0,4))+longWithoutIncreaseYears<=policy.year)reasons.unshift('long_without_increase');
   if(e.recommendation.promotionGrade)reasons.unshift('promotion_nomination');if(e.bonusEligible)reasons.push('bonus_matrix');
   const recommendation:Recommendation|null=missing.length?null:{...e.recommendation,meritBp:e.meritBp,promotionBp:e.recommendation.promotionGrade?e.promotionBp:null,specialBp:null,multiplierBp:null,bonusCents:null,lumpCents:null,reason:e.recommendation.promotionGrade?e.recommendation.reason:''};
   return{entryId:e.id,recommendation,confidence:e.source.onehr&&e.source.payChanges?'high' as const:'medium' as const,reasons:reasons.slice(0,3),missing:[...new Set(missing)],newBasicCents:e.newBasicCents,bonusCents:e.bonusCents,plan:e.plan};

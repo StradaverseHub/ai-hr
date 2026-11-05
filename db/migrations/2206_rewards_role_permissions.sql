@@ -190,3 +190,16 @@ $$;
 ALTER FUNCTION app.reward_rule_policy_reference(uuid) OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_rule_policy_reference(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_rule_policy_reference(uuid) TO ai_hr_app;
+
+-- New seats must name a Personnel identity; existing historical group assignments are unchanged.
+CREATE OR REPLACE FUNCTION app.reward_access_candidate_eligible(wanted_unit uuid,wanted_user uuid,wanted_role text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.reward_unit r JOIN public.app_user u ON u.tenant_id=r.tenant_id
+ WHERE r.id=wanted_unit AND r.tenant_id=app.current_tenant_id() AND u.id=wanted_user AND u.person_id IS NOT NULL AND u.archived_at IS NULL AND NOT app.login_blocked_on(u.id,(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+ AND app.reward_admin(r.company_id)
+ AND NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=u.person_id AND e.tenant_id=u.tenant_id AND e.tender_resignation_date<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (least(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date<=least(e.resignation_date,e.last_working_date,e.terminated_on)))
+ AND (wanted_role<>'bu' OR EXISTS(SELECT 1 FROM public.employment e JOIN public.assignment a ON a.employment_id=e.id AND a.tenant_id=e.tenant_id
+ WHERE e.person_id=u.person_id AND e.tenant_id=u.tenant_id AND e.company_id=r.company_id AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+ AND e.blacklisted_at IS NULL AND (least(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date<=least(e.resignation_date,e.last_working_date,e.terminated_on))
+ AND a.business_unit_id=r.business_unit_id AND a.superseded_at IS NULL AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (a.valid_to IS NULL OR (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date<a.valid_to))));
+$$;
