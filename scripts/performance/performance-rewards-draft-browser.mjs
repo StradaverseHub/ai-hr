@@ -131,9 +131,22 @@ export async function exercisePerformanceRewardsDrafts({base,context,fixture,db,
   const boundaryContext=await context(actor);
   try{
    const page=await boundaryContext.newPage();
-   await page.goto(base+'/performance/'+performanceDraft.id,{waitUntil:'domcontentloaded',timeout:budgetMs});
-   await page.getByRole('heading',{name:'404',exact:true}).waitFor({state:'visible',timeout:budgetMs});
-   assert.equal(await page.locator('main').getByText(performanceDraft.name,{exact:true}).count(),0);
+   const detailPath='/performance/'+performanceDraft.id;
+   if(scope==='other-company'){
+    // Standard cycle metadata is tenant-readable. The lifecycle action must still refuse a company outside the grant.
+    await open(page,base,detailPath);
+    await page.getByRole('heading',{name:performanceDraft.name,level:1,exact:true}).waitFor({state:'visible',timeout:budgetMs});
+    await page.getByRole('button',{name:english.performance.cycle.openCycle,exact:true}).click({timeout:budgetMs});
+    await page.waitForURL(url=>url.pathname===detailPath&&url.searchParams.has('error'),{timeout:budgetMs});
+    assert.equal(new URL(page.url()).searchParams.get('error'),'Only an admin or performance & comp partner can open a review cycle');
+    const [cycle]=await db`select status,(select count(*)::integer from performance_review where cycle_id=review_cycle.id) as review_count
+     from review_cycle where tenant_id=${tenant.tenantId}::uuid and id=${performanceDraft.id}::uuid`;
+    assert(cycle?.status==='draft'&&cycle.review_count===0,'out-of-company attempt changed the Performance draft');
+   }else{
+    await page.goto(base+detailPath,{waitUntil:'domcontentloaded',timeout:budgetMs});
+    await page.getByRole('heading',{name:'404',exact:true}).waitFor({state:'visible',timeout:budgetMs});
+    assert.equal(await page.locator('main').getByText(performanceDraft.name,{exact:true}).count(),0);
+   }
    await open(page,base,'/admin/rewards');
    await page.getByRole('heading',{name:rewardsCopy.adminTitle,exact:true}).waitFor({state:'visible',timeout:budgetMs});
    const table=page.locator('main [data-tour="rewards-admin-units"]');
@@ -141,7 +154,7 @@ export async function exercisePerformanceRewardsDrafts({base,context,fixture,db,
    assert.equal(await table.getByText(rewardsDraft.name,{exact:true}).count(),0,'out-of-scope Rewards draft is listed');
    assert.equal(await formWith(page,'input[name="snapshotDate"]').locator('select[name="companyId"] option[value="'+target.companyId+'"]').count(),0,
     'out-of-scope Rewards company is offered for draft creation');
-   (report.browserDraftWriteBoundaries??=[]).push({scope,performanceDetailDenied:true,rewardsListHidden:true,rewardsCompanyOptionDenied:true});
+   (report.browserDraftWriteBoundaries??=[]).push({scope,performanceBoundary:scope==='other-company'?'lifecycle-write-denied':'detail-denied',rewardsListHidden:true,rewardsCompanyOptionDenied:true});
    save();
   }finally{await boundaryContext.close();}
  }
