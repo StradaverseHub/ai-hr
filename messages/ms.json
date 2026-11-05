@@ -4694,7 +4694,7 @@
       "connections": "Semua hubungan",
       "history": "Orang yang dilawati",
       "loading": "Memuatkan organisasi…",
-      "loaded": "Memaparkan {start}–{end} daripada {total} hasil · {people} orang dalam syarikat pilihan anda",
+      "loaded": "{loaded} dimuatkan pada halaman ini · {total} hasil sepadan · {people} orang dalam syarikat pilihan anda",
       "accessChanged": "Akses anda telah berubah. Muat semula untuk meneruskan.",
       "changed": "Organisasi telah berubah. Muat semula bahagian ini untuk meneruskan.",
       "failed": "Bahagian ini tidak dapat dimuatkan. Sila cuba lagi.",

@@ -4694,7 +4694,7 @@
       "connections": "所有关系",
       "history": "已浏览人员",
       "loading": "正在加载组织…",
-      "loaded": "显示 {total} 项结果中的第 {start}–{end} 项 · 所选公司共 {people} 人",
+      "loaded": "本页已加载 {loaded} 项 · 共 {total} 项匹配结果 · 所选公司共 {people} 人",
       "accessChanged": "您的访问权限已更改。请重新加载以继续。",
       "changed": "组织已更改。请刷新此部分以继续。",
       "failed": "无法加载此部分。请重试。",

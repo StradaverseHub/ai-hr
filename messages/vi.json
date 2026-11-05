@@ -4694,7 +4694,7 @@
       "connections": "Tất cả quan hệ",
       "history": "Người đã xem",
       "loading": "Đang tải tổ chức…",
-      "loaded": "Hiển thị {start}–{end} trong {total} kết quả · {people} người trong các công ty đã chọn",
+      "loaded": "Đã tải {loaded} trên trang này · {total} kết quả phù hợp · {people} người trong các công ty đã chọn",
       "accessChanged": "Quyền truy cập đã thay đổi. Tải lại để tiếp tục.",
       "changed": "Tổ chức đã thay đổi. Làm mới phần này để tiếp tục.",
       "failed": "Không thể tải phần này. Vui lòng thử lại.",
