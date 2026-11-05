@@ -40,6 +40,20 @@ export async function exerciseMovement({base,page,actor,subject,fixture,db,repor
    const marker='Fictional performance Movement save '+phase;
    await form.locator('select').first().selectOption('secondment',{timeout});
    await form.getByRole('textbox',{name:'Remarks',exact:true}).fill(marker,{timeout});
+   async function observeAudit(){
+    try {
+     const rows=await db`select id, actor_id from domain_event where tenant_id=${fixture.tenants[actor.tenant].tenantId}::uuid
+       and subject_employment_id=${subject.employmentId}::uuid and event_type='employment.movement.recorded'
+       and payload->>'type'='secondment' and payload->>'remarks'=${marker}`;
+     evidence.auditObservation={rows:rows.length,expectedActor:rows.length===1&&rows[0].actor_id===actor.userId};
+     return rows.length===1 ? rows[0].id : null;
+    } catch {
+     evidence.auditObservation={unavailable:true};
+     return null;
+    } finally {
+     save();
+    }
+   }
    try {
     await measure('save',async()=>{
      await form.getByRole('button',{name:'Save Event',exact:true}).click({timeout});
@@ -48,22 +62,16 @@ export async function exerciseMovement({base,page,actor,subject,fixture,db,repor
      await page.waitForURL(url=>url.pathname===path&&url.searchParams.get('tab')==='careerMovement',{timeout});
      evidence.steps.save.returnedToHistory=true;
      save();
-     await history.getByRole('cell',{name:'Secondment',exact:true}).waitFor({state:'visible',timeout});
+     const eventId=await observeAudit();
+     assert(eventId&&evidence.auditObservation.expectedActor,'Movement save did not produce one audited event for the expected actor');
+     // Identify the actual saved event, even when a status badge adds text to its cell.
+     const savedRow=history.locator(`tr[data-movement-id="${eventId}"]`);
+     await savedRow.getByText('Secondment',{exact:true}).waitFor({state:'visible',timeout});
     });
    } finally {
-    // Record persistence even if the page failed to return or show the row. A database observation
-    // failure must not replace the original browser failure or turn it into a passing journey.
-    try {
-     const rows=await db`select actor_id from domain_event where tenant_id=${fixture.tenants[actor.tenant].tenantId}::uuid
-       and subject_employment_id=${subject.employmentId}::uuid and event_type='employment.movement.recorded'
-       and payload->>'type'='secondment' and payload->>'remarks'=${marker}`;
-     evidence.auditObservation={rows:rows.length,expectedActor:rows.length===1&&rows[0].actor_id===actor.userId};
-    } catch {
-     evidence.auditObservation={unavailable:true};
-    }
-    save();
+    // Capture persistence independently when the click or navigation did not finish.
+    if(!evidence.auditObservation)await observeAudit();
    }
-   assert.equal(evidence.auditObservation.expectedActor,true,'Movement save did not produce one audited event for the expected actor');
    evidence.auditVerified=true;
    save();
   }

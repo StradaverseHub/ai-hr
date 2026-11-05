@@ -3193,6 +3193,7 @@ export default async function EmployeePage({
             // never removed: the history is the evidence payroll and statutory reporting lean on.
             <tr
               key={m.id}
+              data-movement-id={m.id}
               className={m.reversed || m.status === 'superseded' ? 'text-muted-foreground' : undefined}
             >
               <td className="px-4 py-2.5 font-medium text-foreground">
