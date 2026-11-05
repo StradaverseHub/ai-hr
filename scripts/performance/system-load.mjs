@@ -234,9 +234,10 @@ try{
   assert(session&&session.value!==user.token,'browser sign-in did not establish a new session');
   return {passwordSubmittedAt,mfaSubmittedAt,homeUrlSettledAt};
  }
- async function visit(page,user,path,phase='baseline',signIn=false){
+ async function visit(page,user,path,phase='baseline',signIn=false,loadState){
   lastPage=page;const stopHomeTracking=homeHttp.track(page,user,path);
   const start=performance.now();let response,signInTiming,visitStage=signIn?'sign-in':'navigation';
+  const signInStartedWith=signIn ? loadState?.() : undefined;
   try{
    if(signIn)signInTiming=await signInToHome(page,user);
    // Readiness is proved below. Network-idle adds an unrelated500ms quiet window.
@@ -305,6 +306,7 @@ try{
   if(signIn){
    const cardsCheckedAt=performance.now();
    const result={phase,role:user.role,homeCards,homeCardIds,todaySectionIds,elapsedMs:cardsCheckedAt-start,
+    startedWith:signInStartedWith,allCardsReadyWith:loadState?.(),
     passwordSubmitToAllCardsMs:cardsCheckedAt-signInTiming.passwordSubmittedAt,
     mfaSubmitToHomeUrlMs:signInTiming.homeUrlSettledAt-signInTiming.mfaSubmittedAt,
     mfaSubmitToAllCardsMs:cardsCheckedAt-signInTiming.mfaSubmittedAt,
@@ -317,7 +319,7 @@ try{
   }
   report.browser.push({phase,role:user.role,path,heading,homeCards,homeCardIds,todaySectionIds,elapsedMs:performance.now()-start,...timing});save();
   }catch(error){
-   const detail={phase,role:user.role,user:user.index,path,errorType:error.name,visitStage,...browserFailureLocation(error),elapsedMs:performance.now()-start,
+   const detail={phase,role:user.role,user:user.index,path,errorType:error.name,visitStage,signInStartedWith,...browserFailureLocation(error),elapsedMs:performance.now()-start,
     pdfRequests:browserPdfRequests.get(page)??[],
     frames:page.frames().map(frame=>{try{const url=new URL(frame.url());return {sameOrigin:url.origin===base,path:url.origin===base?url.pathname:'<other>'};}catch{return {path:'<unavailable>'};}}),dom:null};
    // Promise.all shutdown can make other pages fail later. Preserve the actual first visit.
@@ -717,13 +719,19 @@ try{
    appMemory:{processes:appMemory(),peakIncludesStartupAndBaseline:true}};
   save();writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
  },5000);
+ const loadState=()=>{
+  const now=performance.now();
+  return {active:progress.active,launched:progress.launched,inSteadyWindow:now>=steadyStart&&now<steadyUntil};
+ };
+ async function waitForSteadyUsers(){
+  while(performance.now()<steadyUntil&&(performance.now()<steadyStart||progress.active<500))await pause(25);
+ }
  // Representative hydrated browsers share the load interval with all 500 HTTP principals.
  const browserLoad=Promise.allSettled([employee,manager,hr,group,fixture.users[254],fixture.users[251]].map(async user=>{
-  await pause(10000);
   const signIn=[employee,manager,hr,group].some(actor=>actor.index===user.index);
   const ctx=await context(user,'en',signIn),page=await ctx.newPage();
-  try{for(const route of user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/claims','/performance/home']:['/','/admin/personnel','/payroll','/claims']){
-   await visit(page,user,route,'loaded',signIn&&route==='/');
+  try{await waitForSteadyUsers();for(const route of user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/claims','/performance/home']:['/','/admin/personnel','/payroll','/claims']){
+   await visit(page,user,route,'loaded',signIn&&route==='/',loadState);
    if((user.role==='employee'&&route==='/claims')||route==='/admin/personnel')await languageJourney(page,user,route,'loaded');
    await pause(thinkTimeMs);
   }
@@ -748,11 +756,7 @@ try{
   const ctx=await context(group);
   try{
    const page=await ctx.newPage();
-   const loadState=()=>{
-    const now=performance.now();
-    return {active:progress.active,launched:progress.launched,inSteadyWindow:now>=steadyStart&&now<steadyUntil};
-   };
-   while(performance.now()<steadyUntil&&(performance.now()<steadyStart||progress.active<500))await pause(25);
+   await waitForSteadyUsers();
    await exerciseMovement({base,page,actor:group,subject:employee,fixture,db,report,save,phase:'loaded',recordEvent:true,loadState});
   }finally{await ctx.close();}
  })()]):null;
@@ -837,7 +841,12 @@ try{
   }),'Movement history, New Event and audited save must start during steady 500-user load');
  }
  if(suite==='whole-system')assert(['baseline','loaded'].every(phase=>report.browserSavedReportJourneys?.some(row=>row.phase===phase&&row.status==='passed')),'saved Reports browser journeys did not finish');
- if(suite==='whole-system')assert(report.concurrentHomeApiCoverage.length>0&&report.concurrentHomeApiCoverage.every(row=>row.requests>0),'observed Home fetches missing from concurrent traffic');if(runMixedWorkflow)assert(Object.values(report.mixedWorkflows.completed).every(count=>count>0),'a required mixed mutation/processing scenario did not complete');if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure during baseline or load');assert(report.loadedBrowserSignIn?.homeCards>0,'real loaded browser sign-in did not finish');assert(['employee','manager','companyHR','groupHR'].every(role=>report.loadedBrowserSignIns?.some(row=>row.role===role&&row.homeCards>0&&row.todaySectionIds.length>0&&row.cardFailures===0)),'all four role dashboards must load after real sign-in');if(suite==='whole-system')assert(['/claims','/admin/personnel'].every(path=>report.browserLanguageSwitches?.some(row=>row.phase==='loaded'&&row.path===path&&row.usable)),'loaded language switching did not finish on Claims and Personnel');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');if(suite==='whole-system')assert(['baseline','loaded'].every(phase=>report.orgExplorerJourneys?.some(row=>row.phase===phase&&row.status==='passed')),'Org browser scope and language journeys did not finish');if(fixture.assistantHistory)assert(aiBrowserActors.every(user=>['saved-history-list','saved-history-open','saved-history-return'].every(step=>report.browserAssistantHistory?.some(row=>row.phase==='loaded'&&row.userIndex===user.index&&row.step===step&&row.targetMet))),'populated saved-history browser navigation incomplete or above1s target');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
+ if(suite==='whole-system')assert(report.concurrentHomeApiCoverage.length>0&&report.concurrentHomeApiCoverage.every(row=>row.requests>0),'observed Home fetches missing from concurrent traffic');if(runMixedWorkflow)assert(Object.values(report.mixedWorkflows.completed).every(count=>count>0),'a required mixed mutation/processing scenario did not complete');if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure during baseline or load');assert(report.loadedBrowserSignIn?.homeCards>0,'real loaded browser sign-in did not finish');
+ assert(['employee','manager','companyHR','groupHR'].every(role=>report.loadedBrowserSignIns?.some(row=>
+  row.role===role&&row.homeCards>0&&row.todaySectionIds.length>0&&row.cardFailures===0
+  &&row.startedWith?.active===500&&row.startedWith.inSteadyWindow
+ )),'all four role dashboards must load after real sign-in started during steady 500-user load');
+ if(suite==='whole-system')assert(['/claims','/admin/personnel'].every(path=>report.browserLanguageSwitches?.some(row=>row.phase==='loaded'&&row.path===path&&row.usable)),'loaded language switching did not finish on Claims and Personnel');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');if(suite==='whole-system')assert(['baseline','loaded'].every(phase=>report.orgExplorerJourneys?.some(row=>row.phase===phase&&row.status==='passed')),'Org browser scope and language journeys did not finish');if(fixture.assistantHistory)assert(aiBrowserActors.every(user=>['saved-history-list','saved-history-open','saved-history-return'].every(step=>report.browserAssistantHistory?.some(row=>row.phase==='loaded'&&row.userIndex===user.index&&row.step===step&&row.targetMet))),'populated saved-history browser navigation incomplete or above1s target');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
 }catch(error){report.browserPendingRequests??=[...(pendingBrowserRequests.get(lastPage)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
 finally{
  if(sqlSnapshotTimer)clearInterval(sqlSnapshotTimer);if(browserDiagnosticTimer)clearInterval(browserDiagnosticTimer);if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);
