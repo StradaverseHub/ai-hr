@@ -505,7 +505,7 @@ it('consolidates recorded overtime and absence within one payslip', () => {
         { code: 'OT1_5', name: 'Overtime 1.5', amount: 30, buckets: [{ bucket: 'ot', amount: 30 }], detail: { qty: 2, rate: 15, unit: 'hours' } },
         { code: 'OT1_5', name: 'Overtime 1.5', amount: 75, buckets: [{ bucket: 'ot', amount: 75 }], detail: { qty: 3, rate: 25, unit: 'hours' } },
         { code: 'OT2', name: 'Overtime 2.0', amount: 40, buckets: [{ bucket: 'ot', amount: 40 }] },
-        { code: 'ABSENT', name: 'Absent', amount: 30, buckets: [{ bucket: 'deduct', amount: 30 }], inputQuantity: { qty: 1, unit: 'days' } },
+        { code: 'ABSENT', name: 'Absent', amount: 30, buckets: [{ bucket: 'deduct', amount: 30 }], inputQuantity: { qty: 1, unit: null } },
         { code: 'ABSENT', name: 'Absent', amount: 30, buckets: [{ bucket: 'deduct', amount: 30 }], inputQuantity: { qty: 1, unit: 'days' } },
       ],
     },
