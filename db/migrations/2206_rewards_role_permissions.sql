@@ -191,15 +191,65 @@ ALTER FUNCTION app.reward_rule_policy_reference(uuid) OWNER TO ai_hr_reward_setu
 REVOKE ALL ON FUNCTION app.reward_rule_policy_reference(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_rule_policy_reference(uuid) TO ai_hr_app;
 
--- New seats must name a Personnel identity; existing historical group assignments are unchanged.
+-- BU seats follow the same effective company and approved BU as Personnel. The source owner
+-- provides a deliberate legacy fallback; missing or pending managed grouping cannot admit a new seat.
+CREATE FUNCTION app.reward_access_current_bu(wanted_person uuid,wanted_company uuid,wanted_bu uuid,wanted_tenant uuid,wanted_day date) RETURNS boolean
+LANGUAGE sql STABLE SET search_path=pg_catalog,public,app AS $$
+ SELECT EXISTS(SELECT 1 FROM employment e
+ CROSS JOIN LATERAL app.company_org_employment_unchecked(e.id,wanted_day) tags(tag)
+ WHERE e.tenant_id=app.current_tenant_id() AND e.tenant_id=wanted_tenant AND e.person_id=wanted_person
+ AND e.hired_on<=wanted_day AND e.blacklisted_at IS NULL
+ AND(least(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR wanted_day<=least(e.resignation_date,e.last_working_date,e.terminated_on))
+ AND EXISTS(SELECT 1 FROM assignment a WHERE a.tenant_id=e.tenant_id AND a.employment_id=e.id AND a.superseded_at IS NULL AND a.valid_from<=wanted_day AND(a.valid_to IS NULL OR a.valid_to>wanted_day))
+ AND tag->>'status' IN('ready','legacy') AND tag->>'companyId'=wanted_company::text AND tag->>'businessUnitId'=wanted_bu::text)
+$$;
+REVOKE ALL ON FUNCTION app.reward_access_current_bu(uuid,uuid,uuid,uuid,date) FROM PUBLIC,ai_hr_app;
 CREATE OR REPLACE FUNCTION app.reward_access_candidate_eligible(wanted_unit uuid,wanted_user uuid,wanted_role text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.reward_unit r JOIN public.app_user u ON u.tenant_id=r.tenant_id
  WHERE r.id=wanted_unit AND r.tenant_id=app.current_tenant_id() AND u.id=wanted_user AND u.person_id IS NOT NULL AND u.archived_at IS NULL AND NOT app.login_blocked_on(u.id,(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
- AND app.reward_admin(r.company_id)
+ AND app.reward_access_scope(r.id) AND app.reward_access_candidate_visible(r.id,u.id)
  AND NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=u.person_id AND e.tenant_id=u.tenant_id AND e.tender_resignation_date<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (least(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date<=least(e.resignation_date,e.last_working_date,e.terminated_on)))
- AND (wanted_role<>'bu' OR EXISTS(SELECT 1 FROM public.employment e JOIN public.assignment a ON a.employment_id=e.id AND a.tenant_id=e.tenant_id
- WHERE e.person_id=u.person_id AND e.tenant_id=u.tenant_id AND e.company_id=r.company_id AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
- AND e.blacklisted_at IS NULL AND (least(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date<=least(e.resignation_date,e.last_working_date,e.terminated_on))
- AND a.business_unit_id=r.business_unit_id AND a.superseded_at IS NULL AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (a.valid_to IS NULL OR (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date<a.valid_to))));
+ AND (wanted_role<>'bu' OR app.reward_access_current_bu(u.person_id,r.company_id,r.business_unit_id,r.tenant_id,timezone('Asia/Kuala_Lumpur',now())::date)));
+$$;
+CREATE OR REPLACE FUNCTION app.reward_member_state(wanted_member uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE m public.reward_member;u public.app_user;r public.reward_unit;day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;changed date;
+BEGIN
+ SELECT * INTO m FROM public.reward_member WHERE id=wanted_member AND tenant_id=app.current_tenant_id();
+ IF m.id IS NULL THEN RETURN jsonb_build_object('reason','unavailable','on',day); END IF;
+ SELECT * INTO u FROM public.app_user WHERE id=m.user_id AND tenant_id=m.tenant_id;
+ SELECT * INTO r FROM public.reward_unit WHERE id=m.unit_id AND tenant_id=m.tenant_id;
+ IF u.id IS NULL OR u.archived_at IS NOT NULL OR app.login_blocked_on(u.id,(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) THEN
+ SELECT least(min((e.blacklisted_at AT TIME ZONE 'Asia/Kuala_Lumpur')::date),min(least(e.resignation_date,e.last_working_date,e.terminated_on))) INTO changed FROM public.employment e WHERE e.tenant_id=m.tenant_id AND e.person_id=u.person_id;
+ RETURN jsonb_build_object('reason','login','on',COALESCE((u.archived_at AT TIME ZONE 'Asia/Kuala_Lumpur')::date,changed,m.valid_from)); END IF;
+ IF m.valid_from>day THEN RETURN jsonb_build_object('reason','future','on',m.valid_from); END IF;
+ IF m.valid_to<day THEN RETURN jsonb_build_object('reason','expired','on',m.valid_to); END IF;
+ -- A restore never overrides a disabled login or an access window. It expires on any People change.
+ IF m.restored_fingerprint=app.reward_member_people_fingerprint(m.user_id,m.unit_id) THEN RETURN NULL; END IF;
+ SELECT min(e.tender_resignation_date) INTO changed FROM public.employment e WHERE e.tenant_id=m.tenant_id AND e.person_id=u.person_id AND e.tender_resignation_date<=day
+ AND (least(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR day<=least(e.resignation_date,e.last_working_date,e.terminated_on));
+ IF changed IS NOT NULL THEN RETURN jsonb_build_object('reason','notice','on',changed); END IF;
+ -- BU authority follows the current employment and effective assignment. Group seats are not BU-bound.
+ IF m.role='bu' AND NOT app.reward_access_current_bu(u.person_id,r.company_id,r.business_unit_id,m.tenant_id,day) THEN
+ SELECT max(a.valid_from) INTO changed FROM public.employment e JOIN public.assignment a ON a.employment_id=e.id AND a.tenant_id=e.tenant_id
+ WHERE e.tenant_id=m.tenant_id AND e.person_id=u.person_id AND a.superseded_at IS NULL AND a.valid_from<=day;
+ RETURN jsonb_build_object('reason','assignment','on',COALESCE(changed,m.valid_from)); END IF;
+ RETURN NULL;
+END $$;
+CREATE OR REPLACE FUNCTION app.reward_member_people_fingerprint(wanted_user uuid,wanted_unit uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT encode(sha256(convert_to((jsonb_build_object('user',jsonb_build_array(u.id,u.person_id,u.archived_at),'scope',jsonb_build_array(r.company_id,r.business_unit_id),
+ 'generation',jsonb_build_array(COALESCE((SELECT generation FROM public.reward_access_source_epoch g WHERE g.tenant_id=u.tenant_id AND g.source_kind='user' AND g.source_id=u.id),0),COALESCE((SELECT generation FROM public.reward_access_source_epoch g WHERE g.tenant_id=u.tenant_id AND g.source_kind='person' AND g.source_id=u.person_id),0)),
+ 'employment',COALESCE((SELECT jsonb_agg(jsonb_build_array(e.id,e.hired_on,e.company_id,e.tender_resignation_date,e.resignation_date,e.last_working_date,e.terminated_on,e.blacklisted_at,
+ COALESCE((SELECT jsonb_agg(jsonb_build_array(a.id,a.business_unit_id,a.valid_from,a.valid_to,a.superseded_at) ORDER BY a.id) FROM public.assignment a WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id),'[]'::jsonb)) ORDER BY e.id)
+ FROM public.employment e WHERE e.person_id=u.person_id AND e.tenant_id=u.tenant_id),'[]'::jsonb)) || coalesce((
+ SELECT jsonb_build_object('managedOrganisation',jsonb_agg(jsonb_build_array(e.id,tag->>'companyId',tag->>'businessUnitId',tag->>'status') ORDER BY e.id))
+ FROM public.employment e CROSS JOIN LATERAL app.company_org_employment_unchecked(e.id,timezone('Asia/Kuala_Lumpur',now())::date) tags(tag)
+ LEFT JOIN LATERAL (SELECT a.business_unit_id,a.company_id FROM public.assignment a WHERE a.tenant_id=e.tenant_id AND a.employment_id=e.id AND a.superseded_at IS NULL AND a.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND(a.valid_to IS NULL OR a.valid_to>timezone('Asia/Kuala_Lumpur',now())::date) ORDER BY a.valid_from DESC,a.id LIMIT 1) current_assignment ON true
+ WHERE e.tenant_id=u.tenant_id AND e.person_id=u.person_id AND tag->>'status'<>'legacy'
+ AND (tag->>'status'<>'ready' OR tag->>'companyId' IS DISTINCT FROM coalesce(current_assignment.company_id,e.company_id)::text OR tag->>'businessUnitId' IS DISTINCT FROM current_assignment.business_unit_id::text)
+ HAVING count(*)>0),'{}'::jsonb))::text,'UTF8')),'hex')
+ FROM public.app_user u JOIN public.reward_unit r ON r.tenant_id=u.tenant_id
+ WHERE u.id=wanted_user AND r.id=wanted_unit AND u.tenant_id=app.current_tenant_id();
 $$;
