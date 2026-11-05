@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {sql} from 'drizzle-orm';
+import {sql,type SQL} from 'drizzle-orm';
 import {personnelListPage,personnelListPageSql} from '../../core/read';
 import {lockAccessConfigurationReadTx} from '../../core/access-configuration-lock';
 import {withTenant,type SessionContext} from '../../db/client';
@@ -49,10 +49,10 @@ it.skipIf(!requested)('compares reverse tail selection with exact native counts,
   expect(counts).toEqual({employees:count,assignments:count});report.retainedCounts=counts;report.fixturePreparationMs=performance.now()-started;
   const [identity]=await withTenant(ctx,tx=>tx.execute<{role:string}>(sql`select current_user as role`));expect(identity.role).toBe('ai_hr_app');
   type Page=Parameters<typeof personnelListPage>[1];type Facets=Parameters<typeof personnelListPage>[2];
-  const read=(actor:SessionContext,page:Page,facets:Facets,candidate:boolean)=>withTenant(actor,async tx=>{
+  const read=(actor:SessionContext,page:Page,facets:Facets,candidate:boolean,source:SQL=sql`app.access_workforce_list_facts()`)=>withTenant(actor,async tx=>{
    await lockAccessConfigurationReadTx(tx,actor.tenantId);
    const [row]=await tx.execute<{rows:Awaited<ReturnType<typeof personnelListPage>>['rows'];total:number;status_counts:{status:string;count:number}[]}>(
-    candidate?personnelReverseTailPrototype(page,facets):personnelListPageSql(page,facets,{source:sql`app.access_workforce_list_facts()`,materialized:true,projectPageFacts:true}));
+    candidate?personnelReverseTailPrototype(page,facets,source):personnelListPageSql(page,facets,{source,materialized:true,projectPageFacts:true}));
    const byStatus=Object.fromEntries(row.status_counts.map(bucket=>[bucket.status,Number(bucket.count)]));
    return {rows:row.rows,total:Number(row.total),headcount:{total:row.status_counts.reduce((sum,bucket)=>sum+Number(bucket.count),0),byStatus}};
   });
@@ -85,16 +85,20 @@ it.skipIf(!requested)('compares reverse tail selection with exact native counts,
    }
   }
   report.measurements=timings;save();
-  // A duplicate current assignment changes raw page cardinality, never the DISTINCT employment total.
-  await owner.client`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from)
-   values(${b.tenantId}::uuid,${allIds[count-5]}::uuid,${b.companyId}::uuid,${b.deptB}::uuid,'part_time','2021-01-01')`;
+  // Explicit synthetic relational fanout only. Native assignment_no_overlap remains enforced.
+  // Both queries consume the SAME authorized source; this is not actual Personnel or permission evidence.
+  const fanout=sql`(select * from app.access_workforce_list_facts()
+    union all select employment_id,name,email,employee_code,company,company_id,${b.deptB}::uuid as department_id,
+      employment_type,terminated_on,final_confirmation_date,confirmation_date,probation_end_date,provisional_end_on,
+      resignation_date,last_working_date,blacklisted_at from app.access_workforce_list_facts()
+      where employment_id=${allIds[count-5]}::uuid)`;
   for(const offset of [count-25,count-7,count-1,count,count+1]){
-   const page={...base,limit:25,offset},expected=await personnelListPage(ctx,page,base);
-   expect(expected.total).toBe(count);expect(await read(ctx,page,base,true)).toEqual(expected);
+   const page={...base,limit:25,offset},expected=await read(ctx,page,base,false,fanout);
+   expect(expected.total).toBe(count);expect(await read(ctx,page,base,true,fanout)).toEqual(expected);
   }
   const independentPage={...base,departmentIds:[b.deptB],limit:25,offset:0},independentFacets={...base,departmentIds:[b.deptA]};
-  expect(await read(ctx,independentPage,independentFacets,true)).toEqual(await personnelListPage(ctx,independentPage,independentFacets));
-  report.assignmentFanoutAndIndependentFilters=true;
+  expect(await read(ctx,independentPage,independentFacets,true,fanout)).toEqual(await read(ctx,independentPage,independentFacets,false,fanout));
+  report.syntheticAuthorizedFactFanoutAndIndependentFilters=true;
   const deep=cases.find(value=>value.name==='deep-page')!;
   await owner.client`update app_user set archived_at=now()where id=${b.adminUserId}::uuid`;
   try{expect(await read(ctx,deep.page,deep.facets,true)).toEqual(await personnelListPage(ctx,deep.page,deep.facets));}
