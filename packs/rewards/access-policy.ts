@@ -19,9 +19,10 @@ export async function assertRewardWritableTx(tx:Tx){
  if(r?.viewing)throw new Error('End the read-only View as session before changing Rewards.');
 }
 export async function rewardPermissions(ctx:SessionContext){return withRewardsTenant(ctx,async tx=>{
- await rewardSetupAuthorityTx(tx,ctx,null,'manage');
+ const [authority]=await tx.execute<{groupwide:boolean;scoped:boolean}>(sql`select app.reward_setup_allowed(NULL,'manage') and app.reward_not_viewing_as() as groupwide,exists(select 1 from reward_unit u where u.tenant_id=app.current_tenant_id() and u.deleted_at is null and 'gr'=any(array(select app.reward_roles(u.id)))) as scoped`);
+ if(!authority?.scoped)throw Error('Group Rewards access-page authority is required.');
  const values=await tx.execute<{role:RewardAccessRole;capability:RewardCapability;allowed:boolean}>(sql`select role,capability,allowed from reward_role_permission where tenant_id=app.current_tenant_id() order by role,capability`);
- return{rows:permissionRows,values,roles:rewardRoles,defaults:Object.fromEntries(rewardRoles.map(role=>[role,Object.fromEntries(permissionRows.map(row=>[row.id,rolePermission(role,row.id)]))]))};
+ return{rows:permissionRows,values,canChange:authority.groupwide,roles:rewardRoles,defaults:Object.fromEntries(rewardRoles.map(role=>[role,Object.fromEntries(permissionRows.map(row=>[row.id,rolePermission(role,row.id)]))]))};
 });}
 export async function changeRewardPermission(ctx:SessionContext,raw:unknown){
  const p=z.object({role:z.enum(['bu','bg','proxy_bg','gr','ctro','ec','pbp','hr_admin','payroll']),capability:z.string(),allowed:z.boolean(),reason:z.string().trim().min(10).max(2000),reset:z.boolean().default(false)}).strict().parse(raw);
@@ -34,15 +35,17 @@ export async function changeRewardPermission(ctx:SessionContext,raw:unknown){
  });
 }
 export function beginRewardViewAs(ctx:SessionContext,userId:string){z.uuid().parse(userId);return withRewardsTenant(ctx,async tx=>{
- await rewardSetupAuthorityTx(tx,ctx,null,'manage');await tx.execute(sql`select app.reward_view_as_principal(${userId}::uuid)`);
- await tx.execute(sql`update reward_access_view_session set ended_at=now() where tenant_id=app.current_tenant_id() and viewer_id=app.current_user_id() and ended_at is null`);
+ await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await tx.execute(sql`select app.reward_view_as_principal(${userId}::uuid)`);
+ const ended=await tx.execute<{id:string}>(sql`update reward_access_view_session set ended_at=now() where tenant_id=app.current_tenant_id() and viewer_id=app.current_user_id() and ended_at is null returning id`);
+ for(const row of ended)await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'reward-access',aggregateId:row.id,eventType:'reward-access.view-as.ended',actor:actorOf(ctx)});
  const [session]=await tx.execute<{id:string}>(sql`insert into reward_access_view_session(tenant_id,viewer_id,target_id) values(app.current_tenant_id(),app.current_user_id(),${userId}::uuid) returning id`);
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'reward-access',aggregateId:session.id,eventType:'reward-access.view-as.started',actor:actorOf(ctx),payload:{targetUserId:userId}});return session.id;
 });}
 export function endRewardViewAs(ctx:SessionContext){return withRewardsTenant(ctx,async tx=>{const rows=await tx.execute<{id:string}>(sql`update reward_access_view_session set ended_at=now() where tenant_id=app.current_tenant_id() and viewer_id=app.current_user_id() and ended_at is null returning id`);for(const row of rows)await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'reward-access',aggregateId:row.id,eventType:'reward-access.view-as.ended',actor:actorOf(ctx)});});}
 export async function rewardViewAsState(ctx:SessionContext){return withRewardsTenant(ctx,async tx=>{
  const [session]=await tx.execute<{id:string;targetId:string}>(sql`select id,target_id as "targetId" from reward_access_view_session where tenant_id=app.current_tenant_id() and viewer_id=app.current_user_id() and ended_at is null and expires_at>now()`);if(!session)return null;
- await rewardSetupAuthorityTx(tx,ctx,null,'manage');const [principal]=await tx.execute<{value:SessionContext}>(sql`select app.reward_view_as_principal(${session.targetId}::uuid) as value`);
+ const [principal]=await tx.execute<{value:SessionContext}>(sql`select app.reward_view_as_principal(${session.targetId}::uuid) as value`);
  const [target]=await tx.execute<{name:string}>(sql`select p.full_name as name from app_user u join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.id=${session.targetId}::uuid and u.tenant_id=app.current_tenant_id() and app.access_workforce_person(p.id,'workforce.view')`);
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'reward-access',aggregateId:session.id,eventType:'reward-access.view-as.used',actor:actorOf(ctx),payload:{targetUserId:session.targetId}});
  const units=await tx.execute<{id:string;company:string;cycle:string}>(sql`select u.id,c.legal_name as company,y.name as cycle from reward_unit u join company c on c.id=u.company_id and c.tenant_id=u.tenant_id join reward_cycle y on y.id=u.cycle_id and y.tenant_id=u.tenant_id where u.tenant_id=app.current_tenant_id() and u.deleted_at is null and 'gr'=any(array(select app.reward_roles(u.id))) and exists(select 1 from reward_member m where m.unit_id=u.id and m.tenant_id=u.tenant_id and m.user_id=${session.targetId}::uuid and app.reward_member_eligible(m.id)) order by c.legal_name,y.year,u.id`);

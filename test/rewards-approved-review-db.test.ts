@@ -10,8 +10,8 @@ import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {owner,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,closeAll,type Base} from './harness';
-import {getRewardUnit,saveRewardEntry,decideRewardUnit,postRewardUnit} from '../packs/rewards/service';
-import {beginRewardViewAs,endRewardViewAs,changeRewardPermission,saveRewardSetupGrant} from '../packs/rewards/access-policy';
+import {getRewardUnit,saveRewardEntry,decideRewardUnit,postRewardUnit,exportRewardReview,readOnlyRewardProjection} from '../packs/rewards/service';
+import {beginRewardViewAs,endRewardViewAs,changeRewardPermission,saveRewardSetupGrant,rewardPermissions,rewardViewAsState} from '../packs/rewards/access-policy';
 import {createUploadedRewards,uploadedRewards,saveUploadedRewards,confirmUploadedRewards,adjustUploadedAward,refreshUploadedRewardSources} from '../packs/rewards/uploaded-awards';
 import {emptyFacts,emptyRecommendation} from '../packs/rewards/model';
 import {generateRewardAdvisor,saveRewardAdvisorSettings} from '../packs/rewards/advisor';
@@ -38,6 +38,18 @@ describe('approved Rewards review SQL custody',()=>{
  await owner.db.insert(schema.rewardMember).values({tenantId:b.tenantId,unitId,userId,role:'gr'});
  });
  it('read-only View as blocks native writers, direct writes and legacy SECURITY DEFINER helpers until ended',async()=>{await beginRewardViewAs(gr,checker.userId!);await expect(saveRewardEntry(gr,unitId,1,entryId,emptyRecommendation())).rejects.toThrow(/read-only|View as/);await denied(withTenant(gr,tx=>tx.update(schema.rewardEntry).set({recommendation:emptyRecommendation()}).where(eq(schema.rewardEntry.id,entryId))));await denied(withTenant(gr,tx=>tx.execute(sql`select app.reward_company_exclusion_change(${b.companyId}::uuid,${year},'Fictional attempted mutation during view',NULL)`)));await endRewardViewAs(gr);expect((await getRewardUnit(gr,unitId)).rows).toHaveLength(1);});
+ it('limits scoped Group Rewards to shared View as principals and denies exports from the viewer session',async()=>{
+  expect((await rewardPermissions(checker)).canChange).toBe(false);
+  const [outsider]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional out of scope viewer',primaryEmail:randomUUID()+'@fixture.test'}).returning();
+  const outsiderId=await createAppUser(b.tenantId,outsider.id,'employee');
+  await denied(withTenant(checker,tx=>tx.execute(sql`select app.reward_view_as_principal(${outsiderId}::uuid)`)));
+  await beginRewardViewAs(checker,gr.userId!);
+  const state=await rewardViewAsState(checker);
+  expect(state?.units.map(unit=>unit.id)).toEqual([unitId]);
+  expect((await readOnlyRewardProjection(state!.principal,unitId)).rows).toHaveLength(1);
+  await expect(exportRewardReview(checker,unitId)).rejects.toThrow(/read-only/);
+  await endRewardViewAs(checker);
+ });
  it('permission overrides narrow the native read owner and fixed own-line protection cannot be changed',async()=>{await expect(changeRewardPermission(gr,{role:'gr',capability:'own.never',allowed:true,reason:'Attempt to weaken own-line confidentiality'})).rejects.toThrow(/fixed/);await changeRewardPermission(gr,{role:'gr',capability:'review.view',allowed:false,reason:'Temporarily suspend this native page capability'});await expect(getRewardUnit(gr,unitId)).rejects.toThrow(/does not permit/);});
  it('audits an unavailable advisor without adding suggestions or changing any review money',async()=>{
   const [entry]=await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.id,entryId));
