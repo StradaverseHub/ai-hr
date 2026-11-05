@@ -3604,7 +3604,7 @@ function normalizeAttendanceCorrectionRequest(input:AttendanceCorrectionRequestI
 }
 const retryAttendanceSubmissionExclusively = new Error('Attendance submission requires the exclusive configuration path.');
 
-async function prepareAttendanceCorrectionRequest(
+async function prepareAttendanceCorrectionInputTx(
  tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput,sharedAccess=false,
 ){
  ctx=captureAttendanceContext(ctx);assertModuleGate(ctx,'attendance');
@@ -3746,20 +3746,29 @@ async function prepareAttendanceCorrectionRequest(
       }
     }
  const pending=await tx.select({id:attendanceCorrection.id}).from(attendanceCorrection).where(and(eq(attendanceCorrection.employmentId,p.employmentId),eq(attendanceCorrection.attendanceDate,p.date),eq(attendanceCorrection.status,'pending'))).limit(1);if(pending.length)throw new AttendanceCorrectionPendingError();
- const data={employmentId:p.employmentId,date:p.date,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork};
- const source=await prepareAttendanceCorrectionInsertSourceTx(tx,ctx,data);
- const workflow=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,p.employmentId,attendanceApplicationType({requestKind,proposedCheckIn:checkIn,proposedCheckOut:checkOut,clockChanges,requestedOtMinutes}));
- return {data,source,workflow,asOf:todayInKualaLumpur()};
+ return {employmentId:p.employmentId,date:p.date,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork};
 }
 /** Canonical preflight for supplied transactions and reviewed work always takes exclusive Access. */
 export async function prepareAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput){
- return prepareAttendanceCorrectionRequest(tx,ctx,input);
+ const current=captureAttendanceContext(ctx);
+ const data=await prepareAttendanceCorrectionInputTx(tx,current,input);
+ const source=await prepareAttendanceCorrectionInsertSourceTx(tx,current,data);
+ const workflow=await prepareAttendanceWorkflowSnapshotTx(tx,current,data.employmentId,attendanceApplicationType({
+  requestKind:data.requestKind,proposedCheckIn:data.checkIn,proposedCheckOut:data.checkOut,
+  clockChanges:data.clockChanges,requestedOtMinutes:data.requestedOtMinutes,
+ }));
+ return {data,source,workflow,asOf:todayInKualaLumpur()};
 }
 export function attendanceCorrectionPreparedDigest(ctx:SessionContext,prepared:Awaited<ReturnType<typeof prepareAttendanceCorrectionRequestTx>>){return createHash('sha256').update(JSON.stringify({version:1,tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId,prepared})).digest('hex');}
 /** Reviewed digest is refusal-only, never a source of policy, clocks, routing, actor or approval. */
 export async function requestAttendanceCorrectionTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput,reviewed?:{expectedDigest:string}){
- const current=captureAttendanceContext(ctx),captured=structuredClone(input),expected=reviewed?.expectedDigest,prepared=await prepareAttendanceCorrectionRequestTx(tx,current,captured);
- if(reviewed&&(typeof expected!=='string'||attendanceCorrectionPreparedDigest(current,prepared)!==expected))throw Error('Attendance source changed; review it again.');
+ const current=captureAttendanceContext(ctx),captured=structuredClone(input),expected=reviewed?.expectedDigest;
+ if(!reviewed){
+  const data=await prepareAttendanceCorrectionInputTx(tx,current,captured);
+  return insertAttendanceCorrectionRequestTx(tx,current,data,{returnEventId:true});
+ }
+ const prepared=await prepareAttendanceCorrectionRequestTx(tx,current,captured);
+ if(typeof expected!=='string'||attendanceCorrectionPreparedDigest(current,prepared)!==expected)throw Error('Attendance source changed; review it again.');
  return insertAttendanceCorrectionRequestTx(tx,current,prepared.data,{returnEventId:true});
 }
 function attendanceCorrectionSubmissionFailure(error:unknown):never{
@@ -3781,8 +3790,8 @@ export async function requestAttendanceCorrection(ctx:SessionContext,p:Attendanc
  const current=captureAttendanceContext(ctx),captured=structuredClone(p);
  const normalized=normalizeAttendanceCorrectionRequest(captured);
  const run=async(tx:Tx)=>{
-  const result=await requestAttendanceCorrectionTx(tx,current,captured);
-  return {correctionId:result.correctionId};
+  const data=await prepareAttendanceCorrectionInputTx(tx,current,captured);
+  return insertAttendanceCorrectionRequestTx(tx,current,data);
  };
  if(existingTx)return run(existingTx).catch(attendanceCorrectionSubmissionFailure);
  const sharedCandidate=current.userId&&current.personId&&!current.agent&&isCalendarDate(captured.date)&&
@@ -3793,8 +3802,8 @@ export async function requestAttendanceCorrection(ctx:SessionContext,p:Attendanc
  if(sharedCandidate){
   try{
    return await withTenant(current,async tx=>{
-    const prepared=await prepareAttendanceCorrectionRequest(tx,current,captured,true);
-    const {correctionId}=await insertAttendanceCorrectionRequestTx(tx,current,prepared.data,{returnEventId:true});
+    const data=await prepareAttendanceCorrectionInputTx(tx,current,captured,true);
+    const {correctionId}=await insertAttendanceCorrectionRequestTx(tx,current,data);
     return {correctionId};
    });
   }catch(error){

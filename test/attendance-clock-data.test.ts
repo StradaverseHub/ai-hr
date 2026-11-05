@@ -6,7 +6,7 @@ import { commitClockingImport, getClockingImportRun } from '../core/attendance-c
 import { BUILTIN_MAPPING_ID } from '../lib/clocking-file';
 import { setAttendancePhotoSetting } from '../core/clocking-location';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine, transferEmploymentCompanyTx } from '../core/org';
@@ -15,7 +15,7 @@ import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrect
 import { attendanceClockData } from '../core/attendance-clock-data';
 import { ClockDataChangedError, AttendancePayrollClosedError, lockAttendancePayrollTx, markAttendancePayrollTx, validateClockEntries } from '../core/attendance-punch-change';
 import { createBatch, generatePayslips } from '../packs/payroll/service';
-import { withTenant } from '../db/client';
+import { client, withTenant } from '../db/client';
 import { lockAccessConfigurationReadTx } from '../core/access-configuration-lock';
 import { setCompensation } from '../core/comp';
 import { adminCtx, createAppUser, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -162,6 +162,32 @@ describe('approved attendance clock-data corrections', () => {
       eq(schema.domainEvent.eventType, 'attendance-correction.approved'),
     ));
     expect(events).toHaveLength(1);
+  });
+  it('reads the original clock and workflow setting once per ordinary submission', async () => {
+    const { a, employmentId } = await fixture();
+    const statements: string[] = [];
+    const nativeBegin = client.begin;
+    const begin = vi.spyOn(client, 'begin').mockImplementation(((...args: unknown[]) => {
+      const callbackIndex = args.findIndex(arg => typeof arg === 'function');
+      const callback = args[callbackIndex] as (native: typeof client) => unknown;
+      args[callbackIndex] = (native: typeof client) => callback(new Proxy(native, {
+        get(target, key, receiver) {
+          if (key !== 'unsafe') return Reflect.get(target, key, receiver);
+          return (query: string, ...values: unknown[]) => {
+            statements.push(query);
+            return Reflect.apply(target.unsafe, target, [query, ...values]);
+          };
+        },
+      }));
+      return Reflect.apply(nativeBegin, client, args);
+    }) as typeof client.begin);
+    try {
+      await requestAttendanceCorrection(a, { employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Verified gate log' });
+    } finally {
+      begin.mockRestore();
+    }
+    expect(statements.filter(query => query.includes('xmin::text') && query.includes('from "attendance"'))).toHaveLength(1);
+    expect(statements.filter(query => query.includes('from "attendance_workflow_setting"'))).toHaveLength(1);
   });
   it('rejects stale approval atomically when new clocking arrived after the request', async () => {
     const { a, employmentId } = await fixture();
