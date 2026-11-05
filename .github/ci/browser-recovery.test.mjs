@@ -10,20 +10,20 @@ import {operatorRelease} from './operator-release.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 const branch='codex/recovery',candidateBranch='codex/source',controller='e'.repeat(40),lock='f'.repeat(64);
-function metadata(){
+function metadata(engine="firefox"){
  const f=fixture(),run={...f.run,id:200,head_sha:controller,head_branch:branch,workflow_id:BROWSER_WORKFLOW_ID,path:'.github/workflows/alpha-staging-browser-checks.yml',display_title:`Tooling transport only · ${candidateBranch}`,conclusion:'success',created_at:time(4.5),updated_at:time(.5)};
- const jobs=['resolve','tooling','operator-transport','browser-image (firefox)'].map((name,i)=>({id:300+i,name,run_id:200,run_attempt:1,head_sha:controller,head_branch:branch,status:'completed',conclusion:i===0||i===3?'success':'skipped',started_at:time(4),completed_at:time(1),steps:[{name:'Complete original browser unit in pinned image',conclusion:'success'}]}));
- const artifacts=['browser-recovery-runtime-firefox','diagnostic-complete-image-browser-firefox'].map((name,i)=>({id:400+i,name,size_in_bytes:100,digest:'sha256:'+'f'.repeat(64),expired:false,created_at:time(2),expires_at:time(-60),workflow_run:{id:200,repository_id:1333414856,head_repository_id:1333414856,head_sha:controller,head_branch:branch}}));
- return {run,jobs,artifacts,expected:{runId:200,controller,branch,candidateBranch,after:time(5)},now};
+ const jobs=['resolve','tooling','operator-transport',`browser-image (${engine})`].map((name,i)=>({id:300+i,name,run_id:200,run_attempt:1,head_sha:controller,head_branch:branch,status:'completed',conclusion:i===0||i===3?'success':'skipped',started_at:time(4),completed_at:time(1),steps:[{name:'Complete original browser unit in pinned image',conclusion:'success'}]}));
+ const artifacts=[`browser-recovery-runtime-${engine}`,`diagnostic-complete-image-browser-${engine}`].map((name,i)=>({id:400+i,name,size_in_bytes:100,digest:'sha256:'+'f'.repeat(64),expired:false,created_at:time(2),expires_at:time(-60),workflow_run:{id:200,repository_id:1333414856,head_repository_id:1333414856,head_sha:controller,head_branch:branch}}));
+ return {run,jobs,artifacts,expected:{runId:200,controller,branch,candidateBranch,after:time(5),engine},now};
 }
-function input(){
- const f=fixture(),plan=f.expectedPlan,{fingerprint,...body}={...plan,controller},freshPlan={...body,fingerprint:hash(body)},report=structuredClone(f.reports.find(r=>r.id==='browser-firefox'));
+function input(engine='firefox'){
+ const f=fixture(),plan=f.expectedPlan,{fingerprint,...body}={...plan,controller},freshPlan={...body,fingerprint:hash(body)},report=structuredClone(f.reports.find(r=>r.id===`browser-${engine}`));
  report.fingerprint=freshPlan.fingerprint;report.healthBefore={platform:'linux',ok:true,availableDiskBytes:25*1024**3,reasons:[],at:time(3)};report.healthAfter={...report.healthBefore,at:time(2.5)};
- const failed=f.reports.find(r=>r.id==='browser-firefox');Object.assign(failed,{exitCode:1,batches:[],healthBefore:{ok:false,availableDiskBytes:8*1024**3,reasons:['Less than 20 GiB available on the worktree volume']},error:'Error: Runner disk headroom too low: diagnostic'});
- f.jobs.find(j=>j.name==='browser (firefox)').conclusion='failure';
- const assessment={...assessResumeCoverage({expectedPlan:plan,reports:f.reports,expected:f.expected}),sourceRun:{id:100},observations:[{id:'browser-firefox',conclusion:'failure'}]};for(const r of assessment.reusable)r.source={runId:100,jobId:123,artifactId:456,digest:'sha256:'+'a'.repeat(64)};
- const m=metadata(),fresh={...m,report,producer:m.jobs[3],binding:{kind:'PINNED_OFFICIAL_IMAGE_TOOLING_NOT_TEST_OR_RELEASE_PASS',releaseAuthorized:false,image:BROWSER_IMAGE,playwrightVersion:'1.62.1',nodeVersion:'22.23.3',candidate:plan.sha,controller,baseline:plan.migrationBase,engine:'firefox',runId:'200',attempt:'1',runtime:plan.runtime,lang:'en_US.UTF-8',tz:'Asia/Kuala_Lumpur',browsersPath:'/ms-playwright',lockSha256:lock}};
- return {plan,freshPlan,assessment,run:f.run,jobs:f.jobs,reports:f.reports,fresh,verificationController:controller,verificationDiagnostic:{runId:500,controller},producerDiagnostic:{runId:501,controller},lockSha256:lock};
+ const failed=f.reports.find(r=>r.id===`browser-${engine}`);Object.assign(failed,{exitCode:1,batches:[],healthBefore:{ok:false,availableDiskBytes:8*1024**3,reasons:['Less than 20 GiB available on the worktree volume']},error:'Error: Runner disk headroom too low: diagnostic'});
+ f.jobs.find(j=>j.name===`browser (${engine})`).conclusion='failure';
+ const assessment={...assessResumeCoverage({expectedPlan:plan,reports:f.reports,expected:f.expected}),sourceRun:{id:100},observations:[{id:`browser-${engine}`,conclusion:'failure'}]};for(const r of assessment.reusable)r.source={runId:100,jobId:123,artifactId:456,digest:'sha256:'+'a'.repeat(64)};
+ const m=metadata(engine),fresh={...m,report,producer:m.jobs[3],binding:{kind:'PINNED_OFFICIAL_IMAGE_TOOLING_NOT_TEST_OR_RELEASE_PASS',releaseAuthorized:false,image:BROWSER_IMAGE,playwrightVersion:'1.62.1',nodeVersion:'22.23.3',candidate:plan.sha,controller,baseline:plan.migrationBase,engine,runId:'200',attempt:'1',runtime:plan.runtime,lang:'en_US.UTF-8',tz:'Asia/Kuala_Lumpur',browsersPath:'/ms-playwright',lockSha256:lock}};
+ return {engine,plan,freshPlan,assessment,run:f.run,jobs:f.jobs,reports:f.reports,fresh,verificationController:controller,verificationDiagnostic:{runId:500,controller},producerDiagnostic:{runId:501,controller},lockSha256:lock};
 }
 test('Complete Firefox replacement preserves original failure, all retained sources and both plan fingerprints',()=>{const f=input(),before=structuredClone(f),c=verifyBrowserRecovery(f);assert.deepEqual(f,before);assert.equal(c.originalConclusion,'failure');assert.equal(c.tests,5);assert.equal(c.units.length,f.plan.units.length);assert.equal(c.units.filter(u=>u.kind==='browser-capacity-recovery').length,1);assert.notEqual(c.sourceFingerprint,c.replacementFingerprint);});
 for(const [name,mutate] of [
@@ -62,4 +62,14 @@ test('Pending source verification, mutated build and wrong reviewed operator can
  assert.throws(()=>createInstallGrant({...g,evidence:e,run,producer}));
  requireReviewedBrowserController({execute:false,controller});assert.throws(()=>requireReviewedBrowserController({execute:true,controller}));assert.throws(()=>requireReviewedBrowserController({execute:true,controller,reviewedController:'d'.repeat(40)}));assert.doesNotThrow(()=>requireReviewedBrowserController({execute:true,controller,reviewedController:controller}));
  f.reviewedController=controller;const c2=verifyBrowserRecovery(f),e2={...e,...c2,recovery:c2,fingerprint:hash(c2),build:{...e.build,source:'d'.repeat(40)}};assert.throws(()=>createInstallGrant({...g,evidence:e2,run,producer}));
+});
+
+test('Chromium capacity recovery retains other engines and refuses cross-engine evidence',()=>{
+ const f=input('chromium'), c=verifyBrowserRecovery(f), m=metadata('chromium');
+ assert.equal(c.recoveryPolicy,'aihr-browser-capacity-recovery/v3');
+ assert.equal(c.units.find(u=>u.kind==='browser-capacity-recovery').id,'browser-chromium');
+ assert.equal(validateBrowserMetadata(m).name,'browser-image (chromium)');
+ assert.throws(()=>validateBrowserMetadata({...m,expected:{...m.expected,engine:'firefox'}}));
+ assert.throws(()=>verifyBrowserRecovery({...f,engine:'firefox'}));
+ assert.throws(()=>verifyBrowserRecovery({...f,engine:'webkit'}));
 });

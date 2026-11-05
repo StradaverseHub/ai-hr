@@ -11,7 +11,7 @@ import {REPOSITORY,WORKFLOW_ID} from './release-policy.mjs';
 import {collectRecoveryEvidence} from './focused-recovery.mjs';
 import {assessResumeSource} from './resume-source.mjs';
 import {validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
-import {validateBrowserMetadata,verifyBrowserRecovery,BROWSER_WORKFLOW_ID} from './browser-recovery-policy.mjs';
+import {validateBrowserMetadata,verifyBrowserRecovery,browserRecoveryEngine,BROWSER_WORKFLOW_ID} from './browser-recovery-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let p=1;p<=10;p++){const r=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${p}`);assert(Array.isArray(r[key]),'Missing API inventory');rows.push(...r[key]);if(r[key].length<100)return rows;}throw Error('API inventory exceeds bounded recovery');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2,timeout:60000}).trim();
@@ -44,7 +44,8 @@ function planAt(candidatePath,controller,baseline){
  try{const local=createPlan(candidatePath),{fingerprint,...body}={...local,controller,migrationBase:baseline,runtime:{node:'22.23.3',platform:'linux',arch:'x64'}};return {...body,fingerprint:hash(body)};}
  finally{if(previous===undefined)delete process.env.AIHR_CI_CLASSIFIER_RUNTIME;else process.env.AIHR_CI_CLASSIFIER_RUNTIME=previous;}
 }
-export async function verifyBrowserRecoveredCi({candidatePath,runId,baseline,browserRunId,candidateBranch,controllerBranch,browserProducerController,browserProducerBranch,producerDiagnosticRunId,auxiliaryRunIds=[],evidenceDirectory,reuse=false}){
+export async function verifyBrowserRecoveredCi({candidatePath,runId,baseline,browserRunId,candidateBranch,controllerBranch,browserProducerController,browserProducerBranch,producerDiagnosticRunId,auxiliaryRunIds=[],evidenceDirectory,reuse=false,engine:requestedEngine}){
+ const engine=browserRecoveryEngine(requestedEngine);
  candidatePath=resolve(candidatePath);runId=Number(runId);browserRunId=Number(browserRunId);
  assert(positiveId(runId)&&positiveId(browserRunId)&&runId!==browserRunId&&/^[a-f0-9]{40}$/.test(baseline??''),'Exact original/browser/baseline required');
  for(const branch of [candidateBranch,controllerBranch,browserProducerBranch])assert(/^codex\/[A-Za-z0-9._/-]+$/.test(branch??'')&&!branch.includes('..'),'Exact owned source/controller branches required');
@@ -69,29 +70,31 @@ export async function verifyBrowserRecoveredCi({candidatePath,runId,baseline,bro
  const verificationDiagnostic=validateRecoveryControllerDiagnostic({...metadata(diagnosticId),controller:verificationController});
  const producerDiagnostic=validateRecoveryControllerDiagnostic({...metadata(producerDiagnosticRunId),controller:browserProducerController});
  const workflow=api('actions/workflows/alpha-staging-browser-checks.yml');assert(workflow.id===BROWSER_WORKFLOW_ID&&workflow.path==='.github/workflows/alpha-staging-browser-checks.yml'&&workflow.state==='active','Browser workflow registry differs');
- const browserMetadata=metadata(browserRunId),producer=validateBrowserMetadata({...browserMetadata,expected:{runId:browserRunId,controller:browserProducerController,branch:browserProducerBranch,candidateBranch,after:originalMetadata.run.updated_at}});
+ const browserMetadata=metadata(browserRunId),producer=validateBrowserMetadata({...browserMetadata,expected:{runId:browserRunId,controller:browserProducerController,branch:browserProducerBranch,candidateBranch,engine,after:originalMetadata.run.updated_at}});
  const dir=evidenceDirectory??join(controllerRoot,'scratchpad',`validated-browser-recovery-${runId}-${randomUUID()}`);
  const source=await collectRecoveryEvidence(runId,dir,{reuse,prefetchDirectory:process.env.AIHR_CI_PREFETCH_DIR||undefined});
  assert(isDeepStrictEqual(originalMetadata,facts(source)),'Original metadata changed during collection');
  const plan=planAt(candidatePath,controller,baseline),freshPlan=planAt(candidatePath,browserProducerController,baseline);
  const assessment=assessResumeSource({...source,expectedPlan:plan,expected:{candidate,controller,baseline,runId}});
  const fresh=await collectRecoveryEvidence(browserRunId,join(dir,'browser-'+browserRunId),{reuse});assert(isDeepStrictEqual(browserMetadata,facts(fresh)),'Browser metadata changed during collection');
- const packet=fresh.parsed.get('diagnostic-complete-image-browser-firefox'),binding=fresh.parsed.get('browser-recovery-runtime-firefox');
+ const packet=fresh.parsed.get(`diagnostic-complete-image-browser-${engine}`),binding=fresh.parsed.get(`browser-recovery-runtime-${engine}`);
  assert(binding?.size===1&&binding.has('image-binding.json'),'Exact runtime binding packet required');
- assert(packet?.has('unit-browser-firefox.json')&&[...packet.keys()].every(n=>/^(unit-browser-firefox|health-before-browser-firefox|browser-firefox-batch-\d+)\.json$/.test(n)),'Unexpected Firefox packet member');
- const recovery=verifyBrowserRecovery({plan,freshPlan,assessment,run:source.run,jobs:source.jobs,reports:plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`)),fresh:{...fresh,producer,binding:binding.get('image-binding.json'),report:packet.get('unit-browser-firefox.json')},verificationController,verificationDiagnostic,producerDiagnostic,reviewedController,lockSha256:createHash('sha256').update(readFileSync(join(candidatePath,'pnpm-lock.yaml'))).digest('hex')});
+ const reportName=`unit-browser-${engine}.json`;
+ const packetMember=new RegExp(`^(unit-browser-${engine}|health-before-browser-${engine}|browser-${engine}-batch-\\d+)\\.json$`);
+ assert(packet?.has(reportName)&&[...packet.keys()].every(n=>packetMember.test(n)),'Unexpected browser packet member');
+ const recovery=verifyBrowserRecovery({plan,freshPlan,assessment,run:source.run,jobs:source.jobs,reports:plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`)),fresh:{...fresh,producer,binding:binding.get('image-binding.json'),report:packet.get(reportName)},verificationController,verificationDiagnostic,producerDiagnostic,reviewedController,engine,lockSha256:createHash('sha256').update(readFileSync(join(candidatePath,'pnpm-lock.yaml'))).digest('hex')});
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),rows=pages('actions/runs?created='+encodeURIComponent('>='+since),'workflow_runs').filter(r=>[WORKFLOW_ID,BROWSER_WORKFLOW_ID].includes(r.workflow_id)||r.path==='.github/workflows/alpha-focused-checks.yml');
  for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages('actions/runs?status='+status,'workflow_runs'));
  recovery.history=validateBrowserHistory({source,rows,candidateBranch,browserRunId,auxiliaryRunIds});
  const build=await sourceBoundBuild({candidatePath,dir,p:{candidate,controller,baseline,runId,controllerBranch:source.run.head_branch},jobs:source.jobs});
  assert(isDeepStrictEqual(originalMetadata,metadata(runId))&&isDeepStrictEqual(browserMetadata,metadata(browserRunId)),'Recovery API evidence changed before admission');
  assert(cleanHead(candidatePath)===candidate&&cleanHead(controllerRoot)===verificationController,'Recovery source/controller changed');checkRefs();
- const result={...recovery,tier:'ci',result:'PASS',recovery,fingerprint:hash(recovery),build,candidatePath,controllerBranch:source.run.head_branch,browserControllerBranch:controllerBranch,browserProducerController,browserProducerBranch,producerDiagnosticRunId,candidateBranch,auxiliaryRunIds,browserRunId,verifiedAt:new Date().toISOString(),url:source.run.html_url,evidenceDirectory:dir,artifacts:source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest})),installationAuthorized:false};
+ const result={...recovery,tier:'ci',result:'PASS',recovery,fingerprint:hash(recovery),build,candidatePath,controllerBranch:source.run.head_branch,browserControllerBranch:controllerBranch,browserProducerController,browserProducerBranch,producerDiagnosticRunId,candidateBranch,auxiliaryRunIds,browserRunId,engine,verifiedAt:new Date().toISOString(),url:source.run.html_url,evidenceDirectory:dir,artifacts:source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest})),installationAuthorized:false};
  save(dir,reuse?`revalidation-${randomUUID()}.json`:'verification.json',result);return result;
 }
 
 export async function revalidateBrowserRecoveredCi(evidence){
  assert(evidence.verificationController===cleanHead(controllerRoot),'Browser recovery verification controller changed');
- const current=await verifyBrowserRecoveredCi({candidatePath:evidence.candidatePath,runId:evidence.runId,baseline:evidence.baseline,browserRunId:evidence.browserRunId,candidateBranch:evidence.candidateBranch,controllerBranch:evidence.browserControllerBranch,browserProducerController:evidence.browserProducerController,browserProducerBranch:evidence.browserProducerBranch,producerDiagnosticRunId:evidence.producerDiagnosticRunId,auxiliaryRunIds:evidence.auxiliaryRunIds,evidenceDirectory:evidence.evidenceDirectory,reuse:true});
+ const current=await verifyBrowserRecoveredCi({candidatePath:evidence.candidatePath,runId:evidence.runId,baseline:evidence.baseline,browserRunId:evidence.browserRunId,candidateBranch:evidence.candidateBranch,controllerBranch:evidence.browserControllerBranch,browserProducerController:evidence.browserProducerController,browserProducerBranch:evidence.browserProducerBranch,producerDiagnosticRunId:evidence.producerDiagnosticRunId,auxiliaryRunIds:evidence.auxiliaryRunIds,engine:evidence.engine,evidenceDirectory:evidence.evidenceDirectory,reuse:true});
  assert(isDeepStrictEqual(current.recovery,evidence.recovery)&&isDeepStrictEqual(current.build,evidence.build)&&isDeepStrictEqual(current.artifacts,evidence.artifacts),'Browser recovery changed before installation');return true;
 }
