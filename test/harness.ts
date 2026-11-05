@@ -21,7 +21,7 @@ const ALL_TABLES = [
   'reward_uploaded_version','reward_uploaded_review','reward_advisor_suggestion','reward_advisor_setting',
   'reward_access_view_session','reward_page_grant','reward_role_permission',
   'reward_setup_cycle','reward_unit_setup','reward_company_year_review','reward_plan_company','reward_plan_setup',
-  'reward_pat_version','reward_library_revision_audit','reward_library_version','reward_library','reward_setup_grant',
+  'reward_snapshot_comp_movement','reward_pat_version','reward_library_revision_audit','reward_library_version','reward_library','reward_setup_grant',
   'job_architecture_import_preview', 'job_architecture_suggestion', 'job_architecture_jd_publication_history', 'job_architecture_jd_publication', 'job_architecture_position_revision', 'job_architecture_catalogue_revision', 'job_architecture_outlier',
   'job_architecture_proposal', 'job_architecture_seat',
   'company_registration_classification',
