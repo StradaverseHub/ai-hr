@@ -180,6 +180,7 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
     await unlockRows.promise;
   });
   const decisions:Promise<unknown>[]=[];
+  let duplicate:Promise<unknown>|undefined;
   try{
     await within(Promise.race([rowsLocked.promise,rowLocker]));
     for(const request of [first,second]){
@@ -201,11 +202,31 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
       }
       throw new Error('Both public rejection commands must reach their correction-row wait holding shared Access');
     })()]));
+    duplicate=decideAttendanceCorrection(admin,{correctionId:first.correctionId,decision:'rejected',
+      rejectReason:'Fictional duplicate rejection'}).then(
+      () => { throw new Error('Duplicate rejection unexpectedly succeeded'); },
+      error => error,
+    );
+    const duplicateFinishedBeforeLockWitness=duplicate.then(error=>{throw error;});
+    await within(Promise.race([duplicateFinishedBeforeLockWitness,(async()=>{
+      for(let attempt=0;attempt<100;attempt++){
+        const [result]=await owner.client`with key as (select hashtextextended(${'access-configuration:'+base.tenantId},0) as value)
+          select exists(select 1 from pg_locks l cross join key k
+            where l.locktype='advisory' and l.mode='ExclusiveLock' and not l.granted and l.objsubid=1
+              and l.classid::bigint=((k.value>>32)&4294967295) and l.objid::bigint=(k.value&4294967295)
+              and not exists(select 1 from pg_locks s where s.pid=l.pid and s.locktype=l.locktype
+                and s.classid=l.classid and s.objid=l.objid and s.objsubid=l.objsubid and s.granted)) as waiting`;
+        if(result.waiting)return;
+        await new Promise(resolve=>setTimeout(resolve,25));
+      }
+      throw new Error('Same-subject rejection must roll back its shared attempt before waiting for exclusive Access');
+    })()]));
   }finally{
     unlockRows.resolve();
     await rowLocker;
-    await Promise.all(decisions);
+    await Promise.all([...decisions,duplicate]);
   }
+  expect(await duplicate).toMatchObject({message:'correction request is already rejected'});
   expect(await Promise.all(decisions)).toEqual([
     {status:'rejected',deferred:false},{status:'rejected',deferred:false},
   ]);

@@ -1,6 +1,6 @@
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
-import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
+import { LeaveDependencyUnavailable, lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
 import {assessGeofence,type GeofenceAssessment} from '../lib/geofence-assessment';
 import {attendancePolicyUnclockedWorkDates,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
@@ -3964,27 +3964,39 @@ function isOrdinaryNonOvertimeRejection(row: Pick<typeof attendanceCorrection.$i
 }
 
 async function lockAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correctionId: string, rejectionSubject?: string) {
-  if (rejectionSubject === undefined) {
-    await lockAttendanceLeaveDependenciesTx(tx, ctx, []);
-  } else {
-    // This private path writes decision and audit rows only. Configuration writers still
-    // conflict on the same keys. Keep both subject locks and the correction row fence.
-    await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + ctx.tenantId},0))`);
-    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+  try {
+    if (rejectionSubject === undefined) {
+      await lockAttendanceLeaveDependenciesTx(tx, ctx, []);
+    } else {
+      // This private path writes decision and audit rows only. Configuration writers still
+      // conflict on the same keys. Keep both subject locks and the correction row fence.
+      await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + ctx.tenantId},0))`);
+      await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+    }
+    const [visible] = await tx.select({ employmentId: attendanceCorrection.employmentId })
+      .from(attendanceCorrection).where(and(eq(attendanceCorrection.id, correctionId),
+        rejectionSubject === undefined ? undefined :
+          sql`app.principal_snapshot_current() AND (${ctx.personId ?? null}::uuid IS NULL OR app.is_self_person(${ctx.personId ?? null}::uuid))`))
+      .limit(1);
+    if (rejectionSubject !== undefined && visible?.employmentId !== rejectionSubject) throw retryAttendanceRejectionExclusively;
+    if (!visible) return undefined;
+    await lockLeaveDependenciesTx(tx, ctx.tenantId, [visible.employmentId]);
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + visible.employmentId}, 0))`);
+    const [locked] = await tx.select().from(attendanceCorrection)
+      .where(and(eq(attendanceCorrection.id, correctionId), eq(attendanceCorrection.employmentId, visible.employmentId)))
+      .limit(1).for('update');
+    if (rejectionSubject !== undefined && (!locked || !isOrdinaryNonOvertimeRejection(locked))) {
+      throw retryAttendanceRejectionExclusively;
+    }
+    return locked;
+  } catch (error) {
+    // No effect has started. Preserve the original serialization/refusal semantics
+    // by releasing the shared attempt before trying the original exclusive path.
+    if (rejectionSubject !== undefined && error instanceof LeaveDependencyUnavailable && error.reason === 'busy') {
+      throw retryAttendanceRejectionExclusively;
+    }
+    throw error;
   }
-  const [visible] = await tx.select({ employmentId: attendanceCorrection.employmentId })
-    .from(attendanceCorrection).where(eq(attendanceCorrection.id, correctionId)).limit(1);
-  if (rejectionSubject !== undefined && visible?.employmentId !== rejectionSubject) throw retryAttendanceRejectionExclusively;
-  if (!visible) return undefined;
-  await lockLeaveDependenciesTx(tx, ctx.tenantId, [visible.employmentId]);
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + visible.employmentId}, 0))`);
-  const [locked] = await tx.select().from(attendanceCorrection)
-    .where(and(eq(attendanceCorrection.id, correctionId), eq(attendanceCorrection.employmentId, visible.employmentId)))
-    .limit(1).for('update');
-  if (rejectionSubject !== undefined && (!locked || !isOrdinaryNonOvertimeRejection(locked))) {
-    throw retryAttendanceRejectionExclusively;
-  }
-  return locked;
 }
 
 /** NULL appliedAt predates deferred OT and cannot prove that an old approval never reached attendance.
