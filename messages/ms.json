@@ -35496,5 +35496,319 @@
       "independent": "Orang lain yang diberi kuasa mesti mengesahkan perubahan ini.",
       "missing": "Rekod dipilih atau konfigurasi diluluskan tidak tersedia."
     }
+  },
+  "rewardRules": {
+    "title": "Peraturan",
+    "intro": "Peraturan kitaran ini. Ditetapkan oleh Group Rewards.",
+    "legend": "Had tegas menghalang penghantaran · had lembut dibawa sebagai pengecualian",
+    "rule": "Peraturan",
+    "description": "Fungsi",
+    "control": "Had / kawalan",
+    "reference": "Rujukan",
+    "hard": "Had tegas",
+    "soft": "Had lembut",
+    "notification": "Pemberitahuan sahaja",
+    "ruleControl": "Peraturan",
+    "pools": "Dana kenaikan gaji",
+    "individual": "Had kenaikan gaji",
+    "bonus": "Bonus",
+    "eligibility": "Kelayakan",
+    "access": "Kelulusan dan akses",
+    "print": "Cetak / PDF",
+    "versions": "Versi digunakan",
+    "legacy": "Asas semakan tersimpan",
+    "newer": "Tetapan lebih baharu tersedia; halaman ini menerangkan versi yang digunakan oleh semakan ini.",
+    "uploaded": "Anugerah dimuat naik – peraturan pelan umum tidak terpakai; laluan kelulusan standard terpakai.",
+    "descriptions": {
+      "POOL-01": "Merit mengikut matriks bakat dan julat gaji, dalam {percent}% gaji yang layak.",
+      "PRO-01": "Kenaikan pangkat standard {percent}%; satu hingga {grades} gred, maksimum JG {maximum}. Kumpulan dana berasingan {pool}%.",
+      "PRO-02": "Kenaikan pangkat di luar kalibrasi memerlukan alasan perniagaan.",
+      "POOL-04": "STAR/SSTAR di bawah CR {cr} boleh menerima pelarasan sehingga minimum julat, dalam dana {percent}%.",
+      "POOL-03": "Setiap syarikat dan dana kekal berasingan. Lebihan menghalang penghantaran.",
+      "POOL-10": "JG H mempunyai dana merit {merit}%, kenaikan pangkat {promotion}% dan pelarasan khas {special}% sendiri.",
+      "POOL-09": "Laporan langsung EC menggunakan pelan budi bicara berasingan; matriks sebagai panduan.",
+      "SNR-01": "Ahli pelan Senior yang dipilih menerima anugerah luar talian yang disemak, di luar dana umum.",
+      "SAL-02": "Tanpa kenaikan pangkat, kenaikan melebihi {limit}% memerlukan semakan.",
+      "SAL-03": "Dengan kenaikan pangkat, kenaikan {limit}% atau lebih memerlukan semakan.",
+      "SAL-01": "Gaji asas baharu tidak boleh kurang daripada gaji asas semasa.",
+      "SAL-04": "Gaji melebihi maksimum atau masih di bawah minimum ditunjukkan untuk semakan.",
+      "BUD-01": "Bonus ialah pencapaian PAT × {targetMonths} bulan sasaran × gaji layak; melebihi 100% menghalang dan di bawah {minimum}% memberi amaran.",
+      "BUD-02": "Bonus mengikut gred × prestasi × pengganda unit × prorata. Perubahan individu ialah pengecualian.",
+      "BUD-03": "Bayaran dibundarkan ke bawah; bonus melebihi {months} bulan ialah pengecualian.",
+      "BUD-05": "Bayaran sekali gus menggunakan {share}% baki, dibundarkan ke bawah kepada MYR {step}; had {cap}. MYR 0 ditahan.",
+      "MTX-04": "Gunakan matriks Standard atau Faktor cawangan yang digunakan. Faktor cawangan menggantikan pengganda unit.",
+      "ELIG-03": "Kenaikan memerlukan tarikh masuk sebelum {joinedBefore}, pengesahan pada {confirmedBy} dan aktif pada {activeAsOf}. IMPRO/PIP dikecualikan.",
+      "ELIG-04": "Perubahan gaji {from} hingga {to} menggugurkan kelayakan kenaikan dan asas dana; bonus menggunakan gaji terlaras.",
+      "ELIG-05": "Penilaian bonus minimum: {rating}. Dalam notis dikecualikan: {excludeNotice}; kes ER dikecualikan: {excludeEr}.",
+      "ELIG-02": "Kes PIP/ER belum diputuskan menghalang penghantaran. BU CEO dan PBP merekod keputusan dan alasan.",
+      "ACC-02": "Laluan kelulusan: BU CEO → BG CEO → Group Rewards → CTRO → Executive Chairman → Payroll.",
+      "ACC-01": "Tiada siapa melihat baris sendiri. Skop dan kerahsiaan mengehadkan setiap peranan.",
+      "ACC-03": "BU CEO tidak boleh melihat laporan langsung BG CEO. Laporan langsung EC dan anugerah Senior adalah terhad.",
+      "ACC-05": "Anugerah diluluskan EC dikunci. Perubahan memerlukan laluan pemulangan yang dibenarkan.",
+      "OC-01": "Perubahan luar kitaran dihalang dari {from} hingga {to}.",
+      "UPL-01": "Anugerah dimuat naik mesti mempunyai pekerja syarikat sah, gred aktif, amaun tidak negatif dan tiada pengurangan gaji.",
+      "UPL-02": "Kelayakan umum hanya memberi amaran untuk anugerah dimuat naik, termasuk had masuk {cutoff} dan perubahan gaji {from} hingga {to}."
+    }
+  },
+  "rewardAccessPolicy": {
+    "intro": "Siapa boleh melihat dan bertindak pada setiap langkah, serta pemegang peranan.",
+    "tabs": "Tab akses ganjaran",
+    "rolePermissions": "Kebenaran peranan",
+    "users": "Pengguna ({count} aktif)",
+    "permission": "Kebenaran",
+    "groupOnly": "Group Rewards sahaja",
+    "editable": "Boleh diubah",
+    "fixedHelp": "Skop, laluan dan kerahsiaan tidak boleh diubah di sini.",
+    "changed": "{count} peranan berubah daripada lalai. Setiap perubahan direkod.",
+    "reset": "Set semula lalai peranan",
+    "confirmChange": "Sahkan perubahan kebenaran",
+    "reason": "Alasan perubahan",
+    "cancel": "Batal",
+    "saving": "Menyimpan…",
+    "save": "Simpan",
+    "error": "Perubahan gagal disimpan. Muat semula dan semak akses.",
+    "stepHelp": "Pada langkah sendiri: BU CEO (draf/dikembalikan) → BG CEO → Group Rewards → CTRO → Executive Chairman → Payroll.",
+    "enable": "Aktifkan",
+    "disable": "Nyahaktifkan",
+    "viewAs": "Lihat sebagai",
+    "viewingAs": "Melihat sebagai {name} – baca sahaja",
+    "readOnlyHelp": "Menunjukkan baris yang dibenarkan untuk pengguna sasaran dan mengecualikan baris anda. Tamatkan sesi sebelum mengubah ganjaran.",
+    "endView": "Tamatkan Lihat sebagai",
+    "noSession": "Tiada sesi Lihat sebagai aktif.",
+    "levels": {
+      "full": "Penuh",
+      "step": "Pada langkah sendiri",
+      "view": "Lihat sahaja",
+      "none": "—",
+      "never": "Tidak pernah",
+      "always": "Ya",
+      "fixed": "Tetap"
+    },
+    "categories": {
+      "pages": "Halaman dilihat",
+      "annual": "Kitaran tahunan",
+      "offcycle": "Semakan luar kitaran",
+      "data": "Data",
+      "governance": "Tadbir urus"
+    },
+    "roles": {
+      "bu": "BU CEO",
+      "bg": "BG CEO / authorised proxy",
+      "gr": "Group Rewards",
+      "ctro": "CTRO",
+      "ec": "Executive Chairman",
+      "pbp": "PBP (read only)",
+      "payroll": "Payroll handoff",
+      "proxy_bg": "Proksi BG CEO",
+      "hr_admin": "Administrator account"
+    },
+    "permissions": {
+      "review": {
+        "view": "Semakan pampasan",
+        "decide": "Hantar atau lulus",
+        "batch": "Lulus beberapa semakan"
+      },
+      "analytics": {
+        "view": "Analitik ganjaran"
+      },
+      "approvals": {
+        "view": "Papan kelulusan"
+      },
+      "rules": {
+        "view": "Peraturan"
+      },
+      "cycles": {
+        "view": "Kitaran semakan"
+      },
+      "plans": {
+        "manage": "Tetapan ganjaran bersama"
+      },
+      "salary": {
+        "view": "Struktur gaji"
+      },
+      "bonus": {
+        "view": "Matriks bonus"
+      },
+      "pat": {
+        "manage": "Input PAT"
+      },
+      "access": {
+        "manage": "Akses ganjaran"
+      },
+      "figures": {
+        "edit": "Ubah angka pada langkah sendiri"
+      },
+      "cases": {
+        "decide": "Putuskan kes PIP / ER"
+      },
+      "notes": {
+        "add": "Nota untuk pelulus seterusnya"
+      },
+      "senior": {
+        "manage": "Amaun pelan Senior"
+      },
+      "restricted": {
+        "view": "Laporan langsung terhad"
+      },
+      "offcycle": {
+        "raise": "Buka permohonan luar kitaran",
+        "decide": "Lulus permohonan luar kitaran"
+      },
+      "data": {
+        "check": "Semakan data sebelum mula"
+      },
+      "snapshot": {
+        "refresh": "Muat semula gambaran pekerja"
+      },
+      "scope": "Unit dalam skop",
+      "route": "Laluan kelulusan",
+      "own": {
+        "never": "Lihat atau tetapkan ganjaran sendiri"
+      },
+      "audit": {
+        "always": "Setiap perubahan diaudit"
+      }
+    },
+    "restrictedName": "Nama terhad",
+    "personalPages": "Akses halaman tambahan",
+    "personalPagesHelp": "Pulihkan halaman untuk individu yang mempunyai kerusi semakan yang layak dalam syarikat ini. Skop, rekod sulit, peranan kelulusan dan hak suntingan mengekalkan had biasa.",
+    "person": "Individu",
+    "company": "Syarikat",
+    "page": "Halaman",
+    "validFrom": "Tarikh mula",
+    "validTo": "Tarikh tamat (pilihan)",
+    "active": "Aktif",
+    "inactive": "Tidak aktif"
+  },
+  "rewardAdvisor": {
+    "title": "Penasihat cadangan",
+    "back": "Semakan imbuhan",
+    "advisory": "Untuk nasihat sahaja. Peraturan deterministik mengira setiap angka. Manusia membuat keputusan dan kelulusan biasa tetap diperlukan.",
+    "enabled": "Aktifkan penasihat untuk semakan ini",
+    "overrideThresholdBp": "Ambang alasan mengatasi cadangan (mata asas)",
+    "longWithoutIncreaseYears": "Tahun tanpa kenaikan",
+    "equityGapBp": "Ambang jurang kesaksamaan dalaman (mata asas)",
+    "fairnessGapBp": "Ambang amaran keadilan (mata asas)",
+    "save": "Simpan tetapan",
+    "ready": "Minta cadangan yang disahkan untuk pekerja. Angka tidak berubah sehingga anda menerima atau melaraskannya.",
+    "disabled": "Penasihat dimatikan. Group Rewards boleh mengaktifkannya untuk semakan ini.",
+    "insights": "Dapatan semakan",
+    "insightCounts": "{below} pekerja berbakat tinggi masih di bawah sasaran; {long} pekerja tidak menerima kenaikan sepanjang tempoh yang ditetapkan.",
+    "rangeChange": "Dalam julat: {before} sebelum → {after} selepas cadangan semasa.",
+    "standard": "Pelan standard",
+    "h": "JG H",
+    "poolUse": "Cadangan penggunaan kumpulan gaji: {salary}; penggunaan kumpulan bonus: {bonus}.",
+    "empty": "Tiada baris pekerja tersedia dalam skop anda.",
+    "figures": "Gaji pokok dicadangkan: {salary} · Bonus: {bonus}",
+    "confidence": "Keyakinan",
+    "high": "Tinggi",
+    "medium": "Sederhana",
+    "low": "Rendah",
+    "withheld": "Cadangan ditahan:",
+    "reason": "Alasan keputusan",
+    "accept": "Terima cadangan",
+    "ignore": "Abaikan cadangan",
+    "adjust": "Laras cadangan",
+    "generate": "Jana cadangan",
+    "reasons": {
+      "matrix": "Menggunakan matriks bakat dan prestasi yang dibekukan untuk semakan ini.",
+      "below_midpoint": "Gaji semasa di bawah sasaran titik tengah semakan.",
+      "above_range": "Gaji semasa melebihi julat gaji yang digunakan.",
+      "promotion_nomination": "Mengekalkan pencalonan kenaikan pangkat oleh manusia untuk semakan.",
+      "separate_pools": "Gaji dan bonus kekal dalam kumpulan pelan masing-masing yang diluluskan.",
+      "bonus_matrix": "Bonus menggunakan matriks gred dan prestasi yang digunakan.",
+      "long_without_increase": "Sejarah gaji memenuhi tempoh tanpa kenaikan yang ditetapkan."
+    },
+    "missing": {
+      "talent": "penarafan bakat",
+      "performance": "penarafan prestasi",
+      "grade": "gred yang disokong",
+      "salary_range": "julat gaji",
+      "salary": "gaji MYR yang disahkan",
+      "duplicate": "identiti pendua",
+      "unverified": "input pekerja yang disahkan",
+      "separate_plan": "keputusan Senior atau EC yang berasingan",
+      "ineligible": "kelayakan pelan am",
+      "rules": "semakan yang menghalang",
+      "budget": "kapasiti kumpulan dana",
+      "final_pool": "kumpulan dana akhir"
+    },
+    "fairnessReport": "Laporan keadilan",
+    "acceptAll": "Terima semua dalam belanjawan",
+    "fairnessHelp": "Untuk semakan Group Rewards sahaja. Atribut hanya digunakan dalam laporan retrospektif ini, bukan dalam cadangan. Kumpulan kurang daripada lima orang dan kumpulan pelengkapnya disembunyikan. Jurang melebihi {threshold} mata peratusan ditandakan. Kumpulan tanpa sumber kekal tidak tersedia.",
+    "reviewGap": "Semak jurang",
+    "suppressed": "Data tidak mencukupi untuk perbandingan yang selamat",
+    "noGap": "Tiada jurang melebihi ambang",
+    "group": "Kumpulan",
+    "people": "Orang",
+    "suggestedIncrease": "Purata kenaikan dicadangkan",
+    "finalIncrease": "Purata kenaikan akhir",
+    "dimensions": {
+      "gender": "Jantina",
+      "race": "Kaum",
+      "religion": "Agama",
+      "age": "Kumpulan umur",
+      "nationality": "Kewarganegaraan",
+      "disability": "Ketidakupayaan",
+      "maritalStatus": "Status perkahwinan"
+    },
+    "equityGaps": "{count} kumpulan jabatan dengan gred sama mempunyai jurang gaji melebihi ambang yang ditetapkan.",
+    "decisionSummary": "Diterima: {accepted} · Dilaras: {adjusted} · Diabaikan: {ignored}",
+    "analytics": "Analitik Ganjaran",
+    "analyticsHelp": "Hanya baris pekerja yang boleh dilihat. Ganjaran dimuat naik dipaparkan berasingan dan boleh disertakan atau dikecualikan.",
+    "uploadedFilter": {
+      "include": "Sertakan ganjaran dimuat naik",
+      "exclude": "Kecualikan ganjaran dimuat naik",
+      "only": "Ganjaran dimuat naik sahaja"
+    }
+  },
+  "rewardUploaded": {
+    "title": "Ganjaran dimuat naik",
+    "back": "Semakan imbuhan",
+    "configuration": "Konfigurasi Ganjaran",
+    "description": "Ganjaran yang disediakan di luar pelan am menggunakan laluan kelulusan standard. Amaran kelayakan pelan am tidak membuang amaun yang dimuat naik.",
+    "chooseFile": "Muat naik templat lengkap (CSV atau Excel)",
+    "fileError": "Gunakan fail yang disokong sehingga 5 MB.",
+    "error": "Muat naik tidak dapat diproses.",
+    "preview": "Diterima: {accepted} · Ditolak: {rejected} · Amaran: {warnings}",
+    "totals": "Kenaikan: MYR {increment} ({percent}% daripada gaji) · Bonus: MYR {bonus}",
+    "supportingDocument": "Dokumen sokongan (PDF, PNG atau JPEG pilihan)",
+    "reason": "Alasan (sekurang-kurangnya 10 aksara)",
+    "saving": "Menyimpan…",
+    "save": "Simpan versi muat naik baharu",
+    "version": "Versi {version}",
+    "checked": "Disemak secara bebas",
+    "awaitingCheck": "Menunggu penyemak Group Rewards kedua",
+    "downloadTemplate": "Muat turun templat pekerja",
+    "confirm": "Sahkan muat naik semasa",
+    "incrementType": "Jenis kenaikan",
+    "newBasic": "Gaji pokok baharu (MYR)",
+    "newGrade": "Gred kerja baharu",
+    "bonus": "Bonus (MYR)",
+    "lump": "Bayaran sekali gus (MYR)",
+    "merit": "Merit",
+    "promotion": "Kenaikan pangkat",
+    "special": "Pelarasan khas",
+    "adjust": "Simpan pelarasan",
+    "readOnly": "Baris ini baca sahaja pada peringkat semasa.",
+    "history": "Sejarah muat naik",
+    "createTitle": "Cipta semakan ganjaran dimuat naik",
+    "create": "Cipta semakan dimuat naik",
+    "company": "Syarikat",
+    "unit": "Unit perniagaan",
+    "cycle": "Kitaran semakan",
+    "year": "Tahun ganjaran",
+    "snapshotDate": "Tarikh petikan",
+    "summary": "Ganjaran dimuat naik (di luar pelan): {people} orang, kenaikan MYR {increment}, bonus MYR {bonus}",
+    "open": "Urus ganjaran dimuat naik",
+    "label": "Dimuat naik",
+    "warnings": {
+      "notice": "Dalam tempoh notis: amaran kelayakan pelan am.",
+      "er": "Kes ER: amaran kelayakan pelan am.",
+      "joined": "Menyertai pada atau selepas 1 Oktober.",
+      "pay_change": "Gaji dilaras antara 1 Oktober hingga 31 Disember.",
+      "increase": "Kenaikan melebihi ambang amaran biasa.",
+      "bonus": "Bonus melebihi sembilan bulan gaji pokok semasa."
+    }
   }
 }

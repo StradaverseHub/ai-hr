@@ -7001,7 +7001,7 @@ export const payrollInput = pgTable(
     // PCB inputs (LHDN spec): TP1 optional deductions claimed this month (LP₁) and zakat paid
     // via salary deduction — zakat offsets the month's MTD per §E.5 and accumulates into Z.
     /** Historical source references only; manual edits never make these a current amount owner. */
-    rewardProvenance:jsonb('reward_provenance').$type<{unitId:string;entryId:string;revision:number;plan:'Senior plan';confirmedBy:string;confirmedAt:string;historicalOnly:true}[]>().notNull().default([]),
+    rewardProvenance:jsonb('reward_provenance').$type<{unitId:string;entryId:string;revision:number;plan:'Senior plan'|'Uploaded award';confirmedBy:string;confirmedAt:string;historicalOnly:true}[]>().notNull().default([]),
     tp1Deduction: numeric('tp1_deduction', { precision: 12, scale: 2 }).notNull().default('0'),
     // ADR-0050 §0.4 provenance: who last set tp1_deduction. 'tp1_self' = a TP1 self-relief prefill set it
     // (refreshable by a later prefill); null (default) = an admin keyed it / never prefilled (sticky — a
@@ -10567,6 +10567,7 @@ export const rewardAccessSourceEpoch=pgTable('reward_access_source_epoch',{
  tenantId:tenantId(),sourceKind:text('source_kind').$type<'person'|'user'>().notNull(),sourceId:uuid('source_id').notNull(),generation:bigint('generation',{mode:'bigint'}).notNull().default(sql`1`),
 },table=>[primaryKey({columns:[table.tenantId,table.sourceKind,table.sourceId]})]);
 export const rewardEntry = pgTable('reward_entry', {
+  uploadedAward:jsonb('uploaded_award').$type<import('../packs/rewards/uploaded-awards-model').UploadedAward>(),
   id: id(), tenantId: tenantId(), unitId: uuid('unit_id').notNull().references(() => rewardUnit.id),
   employmentId: uuid('employment_id').notNull().references(() => employment.id),
   source: jsonb('source').$type<import('../packs/rewards/model').RewardSource>().notNull(),

@@ -4742,6 +4742,27 @@
       "breakpoints": true
     },
     {
+      "idx": 1406,
+      "version": "7",
+      "when": 1793330001606,
+      "tag": "2206_rewards_role_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 1407,
+      "version": "7",
+      "when": 1793330001607,
+      "tag": "2207_reward_advisor",
+      "breakpoints": true
+    },
+    {
+      "idx": 1408,
+      "version": "7",
+      "when": 1793330001608,
+      "tag": "2208_rewards_uploaded_awards",
+      "breakpoints": true
+    },
+    {
       "idx": 1409,
       "version": "7",
       "when": 1793330001609,

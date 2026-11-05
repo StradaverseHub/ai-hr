@@ -35496,5 +35496,319 @@
       "independent": "Một người có thẩm quyền khác phải xác nhận thay đổi này.",
       "missing": "Không có hồ sơ đã chọn hoặc cấu hình đã duyệt."
     }
+  },
+  "rewardRules": {
+    "title": "Quy tắc",
+    "intro": "Quy tắc hệ thống áp dụng trong kỳ này. Do Group Rewards thiết lập.",
+    "legend": "Giới hạn cứng chặn gửi · giới hạn mềm đi cùng ngoại lệ",
+    "rule": "Quy tắc",
+    "description": "Chức năng",
+    "control": "Giới hạn / kiểm soát",
+    "reference": "Tham chiếu",
+    "hard": "Giới hạn cứng",
+    "soft": "Giới hạn mềm",
+    "notification": "Chỉ thông báo",
+    "ruleControl": "Quy tắc",
+    "pools": "Quỹ tăng lương",
+    "individual": "Giới hạn tăng lương",
+    "bonus": "Thưởng",
+    "eligibility": "Điều kiện",
+    "access": "Duyệt và truy cập",
+    "print": "In / PDF",
+    "versions": "Phiên bản áp dụng",
+    "legacy": "Cơ sở đánh giá đã lưu",
+    "newer": "Có cấu hình mới hơn; trang giải thích phiên bản được áp dụng cho đánh giá này.",
+    "uploaded": "Thưởng tải lên – không áp dụng quy tắc kế hoạch chung; vẫn theo luồng duyệt chuẩn.",
+    "descriptions": {
+      "POOL-01": "Tăng lương theo ma trận nhân tài và vị trí trong dải lương, tối đa {percent}% quỹ lương hợp lệ.",
+      "PRO-01": "Thăng chức tiêu chuẩn {percent}%; tăng từ một đến {grades} bậc, tối đa JG {maximum}. Quỹ riêng {pool}%.",
+      "PRO-02": "Thăng chức ngoài hiệu chỉnh cần lý do kinh doanh.",
+      "POOL-04": "STAR/SSTAR có CR dưới {cr} có thể được bù và nâng tới mức tối thiểu, trong quỹ {percent}%.",
+      "POOL-03": "Quỹ của từng công ty và từng loại luôn riêng biệt. Vượt quỹ sẽ chặn gửi.",
+      "POOL-10": "JG H có quỹ thành tích {merit}%, thăng chức {promotion}% và điều chỉnh đặc biệt {special}% riêng.",
+      "POOL-09": "Nhân viên báo cáo trực tiếp EC dùng kế hoạch riêng; ma trận chỉ tham khảo.",
+      "SNR-01": "Thành viên Senior được chọn dùng khoản thưởng ngoại tuyến đã kiểm tra, ngoài quỹ chung.",
+      "SAL-02": "Không thăng chức: tăng trên {limit}% cần xem xét.",
+      "SAL-03": "Có thăng chức: tăng từ {limit}% trở lên cần xem xét.",
+      "SAL-01": "Lương cơ bản mới không được thấp hơn lương hiện tại.",
+      "SAL-04": "Lương trên tối đa hoặc vẫn dưới tối thiểu được đánh dấu để xem xét.",
+      "BUD-01": "Quỹ thưởng = tỷ lệ PAT × {targetMonths} tháng mục tiêu × quỹ lương hợp lệ; trên 100% bị chặn, dưới {minimum}% cảnh báo.",
+      "BUD-02": "Thưởng theo bậc × hiệu suất × hệ số đơn vị × tỷ lệ thời gian. Điều chỉnh cá nhân là ngoại lệ.",
+      "BUD-03": "Làm tròn tiền thưởng xuống; trên {months} tháng là ngoại lệ.",
+      "BUD-05": "Khoản một lần dùng {share}% số dư, làm tròn xuống MYR {step}; trần {cap}. MYR 0 là không chi.",
+      "MTX-04": "Dùng ma trận Tiêu chuẩn hoặc Hệ số chi nhánh đã áp dụng. Hệ số chi nhánh thay hệ số đơn vị.",
+      "ELIG-03": "Tăng lương cần vào trước {joinedBefore}, xác nhận trước {confirmedBy} và đang làm tại {activeAsOf}. Loại IMPRO/PIP.",
+      "ELIG-04": "Đổi lương từ {from} đến {to} loại khỏi tăng lương và cơ sở quỹ; thưởng dùng lương đã điều chỉnh.",
+      "ELIG-05": "Xếp hạng thưởng tối thiểu: {rating}. Loại người đang báo nghỉ: {excludeNotice}; loại hồ sơ ER: {excludeEr}.",
+      "ELIG-02": "PIP/ER chưa quyết định sẽ chặn gửi. BU CEO và PBP ghi quyết định cùng lý do.",
+      "ACC-02": "Luồng duyệt: BU CEO → BG CEO → Group Rewards → CTRO → Executive Chairman → Payroll.",
+      "ACC-01": "Không ai xem được dòng của mình. Mọi vai trò vẫn chịu phạm vi và bảo mật.",
+      "ACC-03": "BU CEO không thấy nhân viên trực thuộc BG CEO. Nhân viên EC và thưởng Senior bị hạn chế.",
+      "ACC-05": "Thưởng đã được EC duyệt bị khóa. Muốn đổi phải trả lại theo luồng được phép.",
+      "OC-01": "Chặn thay đổi ngoài kỳ từ {from} đến {to}.",
+      "UPL-01": "Thưởng tải lên cần nhân viên đúng công ty, bậc đang dùng, số tiền không âm và không giảm lương.",
+      "UPL-02": "Điều kiện chung chỉ cảnh báo cho thưởng tải lên, gồm ngày vào {cutoff} và đổi lương {from} đến {to}."
+    }
+  },
+  "rewardAccessPolicy": {
+    "intro": "Ai được xem và thao tác ở mỗi bước, và ai giữ từng vai trò.",
+    "tabs": "Thẻ truy cập thưởng",
+    "rolePermissions": "Quyền vai trò",
+    "users": "Người dùng ({count} hoạt động)",
+    "permission": "Quyền",
+    "groupOnly": "Chỉ Group Rewards được xem",
+    "editable": "Có thể sửa",
+    "fixedHelp": "Không thể đổi phạm vi, luồng và bảo mật tại đây.",
+    "changed": "{count} vai trò khác mặc định. Mọi thay đổi được ghi lại.",
+    "reset": "Đặt lại quyền mặc định",
+    "confirmChange": "Xác nhận đổi quyền",
+    "reason": "Lý do thay đổi",
+    "cancel": "Hủy",
+    "saving": "Đang lưu…",
+    "save": "Lưu",
+    "error": "Không lưu được. Tải lại và kiểm tra quyền.",
+    "stepHelp": "Tại bước của mình: BU CEO (nháp/trả lại) → BG CEO → Group Rewards → CTRO → Executive Chairman → Payroll.",
+    "enable": "Bật",
+    "disable": "Tắt",
+    "viewAs": "Xem dưới vai trò",
+    "viewingAs": "Đang xem như {name} – chỉ đọc",
+    "readOnlyHelp": "Hiện các dòng người dùng đích được phép xem và loại dòng của bạn. Không thể sửa thưởng trước khi kết thúc phiên.",
+    "endView": "Kết thúc xem như",
+    "noSession": "Không có phiên xem như đang hoạt động.",
+    "levels": {
+      "full": "Đầy đủ",
+      "step": "Tại bước của mình",
+      "view": "Chỉ xem",
+      "none": "—",
+      "never": "Không bao giờ",
+      "always": "Có",
+      "fixed": "Cố định"
+    },
+    "categories": {
+      "pages": "Trang được xem",
+      "annual": "Chu kỳ năm",
+      "offcycle": "Đánh giá ngoài kỳ",
+      "data": "Dữ liệu",
+      "governance": "Quản trị"
+    },
+    "roles": {
+      "bu": "BU CEO",
+      "bg": "BG CEO / authorised proxy",
+      "gr": "Group Rewards",
+      "ctro": "CTRO",
+      "ec": "Executive Chairman",
+      "pbp": "PBP (read only)",
+      "payroll": "Payroll handoff",
+      "proxy_bg": "BG CEO ủy quyền",
+      "hr_admin": "Administrator account"
+    },
+    "permissions": {
+      "review": {
+        "view": "Đánh giá đãi ngộ",
+        "decide": "Gửi hoặc duyệt",
+        "batch": "Duyệt nhiều đánh giá"
+      },
+      "analytics": {
+        "view": "Phân tích thưởng"
+      },
+      "approvals": {
+        "view": "Bảng phê duyệt"
+      },
+      "rules": {
+        "view": "Quy tắc"
+      },
+      "cycles": {
+        "view": "Chu kỳ đánh giá"
+      },
+      "plans": {
+        "manage": "Cấu hình thưởng chung"
+      },
+      "salary": {
+        "view": "Cấu trúc lương"
+      },
+      "bonus": {
+        "view": "Ma trận thưởng"
+      },
+      "pat": {
+        "manage": "Dữ liệu PAT"
+      },
+      "access": {
+        "manage": "Truy cập thưởng"
+      },
+      "figures": {
+        "edit": "Sửa số liệu tại bước của mình"
+      },
+      "cases": {
+        "decide": "Quyết định PIP / ER"
+      },
+      "notes": {
+        "add": "Ghi chú cho người duyệt tiếp"
+      },
+      "senior": {
+        "manage": "Số tiền kế hoạch Senior"
+      },
+      "restricted": {
+        "view": "Nhân viên trực thuộc hạn chế"
+      },
+      "offcycle": {
+        "raise": "Tạo yêu cầu ngoài kỳ",
+        "decide": "Duyệt yêu cầu ngoài kỳ"
+      },
+      "data": {
+        "check": "Kiểm tra trước khởi động"
+      },
+      "snapshot": {
+        "refresh": "Làm mới ảnh chụp nhân viên"
+      },
+      "scope": "Đơn vị trong phạm vi",
+      "route": "Luồng phê duyệt",
+      "own": {
+        "never": "Xem hoặc đặt thưởng của mình"
+      },
+      "audit": {
+        "always": "Ghi nhật ký mọi thay đổi"
+      }
+    },
+    "restrictedName": "Tên bị hạn chế",
+    "personalPages": "Quyền truy cập trang bổ sung",
+    "personalPagesHelp": "Khôi phục trang cho cá nhân có vai trò rà soát hợp lệ trong công ty này. Phạm vi, hồ sơ mật, vai trò phê duyệt và quyền chỉnh sửa vẫn theo giới hạn thông thường.",
+    "person": "Cá nhân",
+    "company": "Công ty",
+    "page": "Trang",
+    "validFrom": "Ngày bắt đầu",
+    "validTo": "Ngày kết thúc (không bắt buộc)",
+    "active": "Đang hoạt động",
+    "inactive": "Ngừng hoạt động"
+  },
+  "rewardAdvisor": {
+    "title": "Trợ lý đề xuất",
+    "back": "Rà soát đãi ngộ",
+    "advisory": "Chỉ để tham khảo. Quy tắc xác định tính mọi số liệu. Con người quyết định và quy trình phê duyệt thông thường vẫn áp dụng.",
+    "enabled": "Bật trợ lý cho đợt rà soát này",
+    "overrideThresholdBp": "Ngưỡng yêu cầu lý do thay đổi (điểm cơ bản)",
+    "longWithoutIncreaseYears": "Số năm không được tăng lương",
+    "equityGapBp": "Ngưỡng chênh lệch công bằng nội bộ (điểm cơ bản)",
+    "fairnessGapBp": "Ngưỡng cảnh báo công bằng (điểm cơ bản)",
+    "save": "Lưu thiết lập",
+    "ready": "Yêu cầu đề xuất đã được kiểm tra cho nhân viên. Số liệu chỉ thay đổi khi bạn chấp nhận hoặc điều chỉnh.",
+    "disabled": "Trợ lý đang tắt. Bộ phận Đãi ngộ Tập đoàn có thể bật cho đợt rà soát này.",
+    "insights": "Thông tin phân tích",
+    "insightCounts": "{below} nhân viên có năng lực cao vẫn dưới mục tiêu; {long} nhân viên chưa được tăng lương trong khoảng thời gian đã thiết lập.",
+    "rangeChange": "Trong dải lương: {before} trước → {after} sau các đề xuất hiện tại.",
+    "standard": "Chương trình tiêu chuẩn",
+    "h": "JG H",
+    "poolUse": "Sử dụng quỹ tăng lương theo đề xuất: {salary}; quỹ thưởng: {bonus}.",
+    "empty": "Không có dòng nhân viên nào trong phạm vi của bạn.",
+    "figures": "Lương cơ bản đề xuất: {salary} · Thưởng: {bonus}",
+    "confidence": "Độ tin cậy",
+    "high": "Cao",
+    "medium": "Trung bình",
+    "low": "Thấp",
+    "withheld": "Chưa đưa ra đề xuất:",
+    "reason": "Lý do quyết định",
+    "accept": "Chấp nhận đề xuất",
+    "ignore": "Bỏ qua đề xuất",
+    "adjust": "Điều chỉnh đề xuất",
+    "generate": "Tạo đề xuất",
+    "reasons": {
+      "matrix": "Sử dụng ma trận năng lực và hiệu suất đã chốt của đợt rà soát.",
+      "below_midpoint": "Lương hiện tại thấp hơn mục tiêu trung điểm của đợt rà soát.",
+      "above_range": "Lương hiện tại cao hơn dải lương đang áp dụng.",
+      "promotion_nomination": "Giữ nguyên đề cử thăng chức của người phụ trách để xem xét.",
+      "separate_pools": "Lương và thưởng vẫn thuộc các quỹ riêng đã được phê duyệt.",
+      "bonus_matrix": "Thưởng sử dụng ma trận cấp bậc và hiệu suất đang áp dụng.",
+      "long_without_increase": "Lịch sử lương đáp ứng khoảng thời gian không tăng lương đã thiết lập."
+    },
+    "missing": {
+      "talent": "xếp loại năng lực",
+      "performance": "xếp loại hiệu suất",
+      "grade": "cấp bậc được hỗ trợ",
+      "salary_range": "dải lương",
+      "salary": "lương MYR đã xác minh",
+      "duplicate": "danh tính trùng lặp",
+      "unverified": "dữ liệu nhân viên đã xác minh",
+      "separate_plan": "quyết định riêng cho lãnh đạo cấp cao hoặc EC",
+      "ineligible": "điều kiện của chương trình chung",
+      "rules": "kiểm tra chặn",
+      "budget": "hạn mức quỹ",
+      "final_pool": "quỹ cuối cùng"
+    },
+    "fairnessReport": "Báo cáo công bằng",
+    "acceptAll": "Chấp nhận tất cả trong ngân sách",
+    "fairnessHelp": "Chỉ Bộ phận Đãi ngộ Tập đoàn xem xét. Các thuộc tính chỉ dùng trong báo cáo hồi cứu này, không dùng để đề xuất. Nhóm dưới năm người và nhóm còn lại được ẩn. Chênh lệch trên {threshold} điểm phần trăm được đánh dấu. Nhóm thiếu dữ liệu nguồn không được hiển thị.",
+    "reviewGap": "Xem xét chênh lệch",
+    "suppressed": "Chưa đủ dữ liệu để so sánh an toàn",
+    "noGap": "Không có chênh lệch vượt ngưỡng",
+    "group": "Nhóm",
+    "people": "Nhân viên",
+    "suggestedIncrease": "Mức tăng đề xuất trung bình",
+    "finalIncrease": "Mức tăng cuối cùng trung bình",
+    "dimensions": {
+      "gender": "Giới tính",
+      "race": "Chủng tộc",
+      "religion": "Tôn giáo",
+      "age": "Nhóm tuổi",
+      "nationality": "Quốc tịch",
+      "disability": "Khuyết tật",
+      "maritalStatus": "Tình trạng hôn nhân"
+    },
+    "equityGaps": "{count} nhóm cùng cấp bậc trong phòng ban có chênh lệch lương vượt ngưỡng đã thiết lập.",
+    "decisionSummary": "Đã chấp nhận: {accepted} · Đã điều chỉnh: {adjusted} · Đã bỏ qua: {ignored}",
+    "analytics": "Phân tích đãi ngộ",
+    "analyticsHelp": "Chỉ các dòng nhân viên được phép xem. Khoản đãi ngộ tải lên được nhóm riêng và có thể đưa vào hoặc loại trừ.",
+    "uploadedFilter": {
+      "include": "Bao gồm khoản tải lên",
+      "exclude": "Loại trừ khoản tải lên",
+      "only": "Chỉ khoản tải lên"
+    }
+  },
+  "rewardUploaded": {
+    "title": "Khoản thưởng tải lên",
+    "back": "Rà soát đãi ngộ",
+    "configuration": "Cấu hình đãi ngộ",
+    "description": "Khoản đãi ngộ chuẩn bị ngoài chương trình chung đi theo quy trình phê duyệt tiêu chuẩn. Cảnh báo điều kiện của chương trình chung không loại bỏ số tiền đã tải lên.",
+    "chooseFile": "Tải lên mẫu đã điền (CSV hoặc Excel)",
+    "fileError": "Sử dụng tệp được hỗ trợ tối đa 5 MB.",
+    "error": "Không thể xử lý tệp tải lên.",
+    "preview": "Được chấp nhận: {accepted} · Bị từ chối: {rejected} · Cảnh báo: {warnings}",
+    "totals": "Tăng lương: MYR {increment} ({percent}% quỹ lương) · Thưởng: MYR {bonus}",
+    "supportingDocument": "Tài liệu hỗ trợ (PDF, PNG hoặc JPEG, không bắt buộc)",
+    "reason": "Lý do (ít nhất 10 ký tự)",
+    "saving": "Đang lưu…",
+    "save": "Lưu phiên bản tải lên mới",
+    "version": "Phiên bản {version}",
+    "checked": "Đã kiểm tra độc lập",
+    "awaitingCheck": "Đang chờ người kiểm tra thứ hai của Bộ phận Đãi ngộ Tập đoàn",
+    "downloadTemplate": "Tải mẫu nhân viên",
+    "confirm": "Xác nhận bản tải lên hiện tại",
+    "incrementType": "Loại tăng lương",
+    "newBasic": "Lương cơ bản mới (MYR)",
+    "newGrade": "Cấp bậc công việc mới",
+    "bonus": "Thưởng (MYR)",
+    "lump": "Khoản trả một lần (MYR)",
+    "merit": "Theo thành tích",
+    "promotion": "Thăng chức",
+    "special": "Điều chỉnh đặc biệt",
+    "adjust": "Lưu điều chỉnh",
+    "readOnly": "Dòng này chỉ được xem ở bước hiện tại.",
+    "history": "Lịch sử tải lên",
+    "createTitle": "Tạo đợt rà soát khoản đãi ngộ tải lên",
+    "create": "Tạo đợt rà soát tải lên",
+    "company": "Công ty",
+    "unit": "Đơn vị kinh doanh",
+    "cycle": "Chu kỳ rà soát",
+    "year": "Năm đãi ngộ",
+    "snapshotDate": "Ngày chụp dữ liệu",
+    "summary": "Khoản đãi ngộ tải lên (ngoài chương trình): {people} người, tăng lương MYR {increment}, thưởng MYR {bonus}",
+    "open": "Quản lý khoản đãi ngộ tải lên",
+    "label": "Đã tải lên",
+    "warnings": {
+      "notice": "Đang trong thời gian báo nghỉ: cảnh báo điều kiện chương trình chung.",
+      "er": "Vụ việc quan hệ lao động: cảnh báo điều kiện chương trình chung.",
+      "joined": "Gia nhập từ ngày 1 tháng 10 trở đi.",
+      "pay_change": "Lương điều chỉnh từ ngày 1 tháng 10 đến ngày 31 tháng 12.",
+      "increase": "Mức tăng vượt ngưỡng cảnh báo thông thường.",
+      "bonus": "Thưởng vượt chín tháng lương cơ bản hiện tại."
+    }
   }
 }
