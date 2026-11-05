@@ -75,6 +75,7 @@ export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage'
 // Reuse pools across hot-reloads (dev) so HMR doesn't leak Postgres connections.
 const globalForPg = globalThis as unknown as {
   __aihrPgPools?: Map<string, ReturnType<typeof postgres>>;
+  __aihrPerfBeginTransaction?: () => { acquired: () => void; finished: () => void };
 };
 const pgPools = (globalForPg.__aihrPgPools ??= new Map<string, ReturnType<typeof postgres>>());
 
@@ -195,7 +196,9 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     // Backward-compat: a context with only `roles` becomes group-wide grants (companyId null).
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
-    return db.transaction(async (tx) => {
+    const timing = globalForPg.__aihrPerfBeginTransaction?.();
+    const result = db.transaction(async (tx) => {
+      timing?.acquired();
       // The existing sticky fact only moves from unknown to on. An already known chain can
       // share the identity bootstrap statement; first activation still decides after this await.
       const auditAlreadyArmed = tenantHasChainedHistory(ctx.tenantId);
@@ -274,6 +277,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       }
       return fn(tx);
     }, options?.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
+    return timing ? result.finally(timing.finished) : result;
   }
 
   return { db, client, withTenant };
