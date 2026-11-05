@@ -30,10 +30,16 @@ export async function createApprovedRewardUnit(ctx:SessionContext,raw:PlannedRew
  const existing=raw.sharedPolicyVersionId?await rewardSetupPlan(ctx,raw.sharedPolicyVersionId):null;
  if(existing?.setup?.state==='approved')return createRewardUnit(ctx,{...raw,name:existing.setup.cycleName,cycleId:undefined,approvedPlanVersionId:existing.source.versionId});
  const checker=await setupChecker(ctx),grades=await setupGrades(ctx),why='Reviewed fixture configuration';
- const policy=fixturePolicy??existing?.source.policy??defaultPolicy(raw.year);
+ const basePolicy=fixturePolicy??existing?.source.policy??defaultPolicy(raw.year);
+ const policy:RewardPolicy={...basePolicy,ranges:{...basePolicy.ranges},bonusMatrix:{...basePolicy.bonusMatrix}};
+ for(const {grade} of grades){
+  if(grade==='23')delete policy.ranges[grade];
+  else policy.ranges[grade]??=grade==='12'?[300000,500000,700000]:[100000,500000,1000000];
+  policy.bonusMatrix[grade]??=[0,10000,20000,25000,30000];
+ }
  const name=raw.name||'Approved fixture '+randomUUID().slice(0,8);
  const targets=existing?.source.targets??fixtureTargets??[{companyId:raw.companyId,businessUnitId:raw.businessUnitId}];
- const salary=await saveRewardLibrary(ctx,{libraryId:null,versionId:null,expectedLock:0,name:'Fixture Salary '+randomUUID(),year:raw.year,tags:[],groupDefault:false,previousLibraryId:null,data:{kind:'salary',rows:grades.map(g=>{const band=policy.ranges[g.grade]??[100000,300000,1000000];return {...g,minimumCents:g.grade==='23'?null:band[0],midpointCents:g.grade==='23'?null:band[1],maximumCents:g.grade==='23'?null:band[2]};})},reason:why});
+ const salary=await saveRewardLibrary(ctx,{libraryId:null,versionId:null,expectedLock:0,name:'Fixture Salary '+randomUUID(),year:raw.year,tags:[],groupDefault:false,previousLibraryId:null,data:{kind:'salary',rows:grades.map(g=>{const band=policy.ranges[g.grade]??[100000,500000,1000000];return {...g,minimumCents:g.grade==='23'?null:band[0],midpointCents:g.grade==='23'?null:band[1],maximumCents:g.grade==='23'?null:band[2]};})},reason:why});
  await submitRewardLibrary(ctx,salary,1);await confirmRewardLibrary(checker,salary,2);
  const bonus=await saveRewardLibrary(ctx,{libraryId:null,versionId:null,expectedLock:0,name:'Fixture Bonus '+randomUUID(),year:raw.year,tags:[],groupDefault:false,previousLibraryId:null,data:{kind:'bonus',type:policy.bonusStructure,rows:grades.map(g=>({...g,months:policy.bonusMatrix[g.grade]??[0,10000,20000,25000,30000]})),segments:Object.entries(policy.branchFactors).map(([name,factors])=>({name,factors}))},reason:why});
  await submitRewardLibrary(ctx,bonus,1);await confirmRewardLibrary(checker,bonus,2);
