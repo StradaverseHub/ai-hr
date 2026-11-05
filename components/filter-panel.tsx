@@ -16,11 +16,12 @@
  * Assignment bulk opts into the modal portal so the sidebar and table cannot clip its controls.
  */
 
-import { useEffect, useState, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import Link from 'next/link';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Filter, X } from 'lucide-react';
 import { Button, inputCls } from '@/components/ui';
+import { useFitToView } from '@/components/ui/fit-to-view';
 
 export type FilterOption = { value: string; label: string };
 
@@ -120,6 +121,9 @@ const baseHref = (action: string, hidden: FilterPanelProps['hidden']) => {
 
 export function FilterPanel({ action, fields, values, labels, hidden, dataTour, dialog }: FilterPanelProps) {
   const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Opened near the bottom of the window, the panel opens upwards or shrinks to fit (components/ui/fit-to-view.ts).
+  useFitToView(open && !dialog, panelRef);
   const active = countActive(fields, values);
   const bulk = labels.selectAll && labels.deselectAll;
 
@@ -281,11 +285,12 @@ export function FilterPanel({ action, fields, values, labels, hidden, dataTour, 
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div
+            ref={panelRef}
             role="dialog"
             aria-label={labels.filter}
-            className="absolute right-0 z-50 mt-1 w-[min(22rem,90vw)] origin-top-right scale-100 rounded-lg border border-border bg-popover p-4 text-popover-foreground opacity-100 shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
+            className="absolute right-0 z-50 mt-1 flex w-[min(22rem,90vw)] flex-col origin-top-right scale-100 rounded-lg border border-border bg-popover p-4 text-popover-foreground opacity-100 shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
           >
-            <div className="max-h-[60vh] overflow-y-auto">{form}</div>
+            <div className="max-h-[60vh] min-h-0 overflow-y-auto">{form}</div>
           </div>
         </>
       )}

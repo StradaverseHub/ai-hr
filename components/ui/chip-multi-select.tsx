@@ -86,6 +86,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { inputCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { useFitToView } from '@/components/ui/fit-to-view';
 
 export function ChipMultiSelect({
   name,
@@ -157,6 +158,7 @@ export function ChipMultiSelect({
   const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const captionId = useId();
   const labelOf = new Map(options.map((o) => [o.value, o.label]));
   // The rows the popover currently shows. No search box ⇒ every option, so nothing about the unfiltered
@@ -165,6 +167,9 @@ export function ChipMultiSelect({
     searchPlaceholder == null || query.trim() === ''
       ? options
       : options.filter((o) => o.label.toLowerCase().includes(query.trim().toLowerCase()));
+  // Opened near the bottom of the window or inside a dialog, the panel opens upwards or shrinks to fit;
+  // the option list is the part that gives up height (min-h-0).
+  useFitToView(open, panelRef, visible.length);
 
   // Close on outside click — document mousedown against the root ref (combobox.tsx idiom). No backdrop
   // element exists, so no <label> wrapper can ever re-activate the trigger and undo the close.
@@ -257,7 +262,7 @@ export function ChipMultiSelect({
           />
         </button>
         {open && (
-          <div className="absolute left-0 z-50 mt-1 w-56 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
+          <div ref={panelRef} className="absolute left-0 z-50 mt-1 flex w-56 flex-col rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
             {(selectAllLabel != null || clearAllLabel != null) && (
               <div className="mb-1 flex items-center gap-3 border-b border-border px-1.5 pb-1.5 pt-0.5 text-xs">
                 {selectAllLabel != null && (
@@ -302,7 +307,7 @@ export function ChipMultiSelect({
                 className="mb-1 w-full rounded-md border border-input bg-card px-2 py-1 text-xs outline-none focus:border-primary"
               />
             )}
-            <div className="max-h-56 overflow-y-auto">
+            <div className="max-h-56 min-h-0 overflow-y-auto">
               {visible.map((o) => (
                 <button
                   key={o.value}

@@ -52,6 +52,7 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { ArrowUpRight, GripVertical, Pin, Plus, X } from 'lucide-react';
 import { Button, Card } from '@/components/ui';
+import { useFitToView } from '@/components/ui/fit-to-view';
 import { SectionOrdinalProvider } from '@/components/monolith/section-ordinal';
 import {
   MAX_SHORTCUTS,
@@ -289,6 +290,9 @@ export function DashboardCustomizer({
   // out — a silently vanishing menu entry reads as a bug.
   const shortcutLimitReached = shortcutRowKeys.length >= MAX_SHORTCUTS;
   const addable = cards.filter((c) => c.employeeSelectable && !visible.includes(c.key));
+  const addMenuRef = useRef<HTMLDivElement>(null);
+  // Opened near the bottom of the window, the menu opens upwards or shrinks to fit (components/ui/fit-to-view.ts).
+  useFitToView(addOpen && addable.length > 0, addMenuRef, addable.length);
 
   /**
    * Move `activeId` to `overId`'s slot WITHIN its own group (the Shortcuts row, or the top row + third
@@ -451,6 +455,7 @@ export function DashboardCustomizer({
                 </Button>
                 {addOpen && addable.length > 0 && (
                   <div
+                    ref={addMenuRef}
                     role="menu"
                     className="absolute right-0 z-30 mt-1 max-h-72 w-64 overflow-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg monolith:rounded-none monolith:border-ink"
                   >
@@ -498,7 +503,7 @@ export function DashboardCustomizer({
                 </AlertDialog.Trigger>
                 <AlertDialog.Portal>
                   <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-                  <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
+                  <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] overflow-y-auto w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
                     <AlertDialog.Title className="text-base font-semibold">
                       {t('saveConfirmTitle')}
                     </AlertDialog.Title>
@@ -672,7 +677,7 @@ export function DashboardCustomizer({
       >
         <AlertDialog.Portal>
           <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] overflow-y-auto w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
             <AlertDialog.Title className="text-base font-semibold">
               {t('removeConfirmTitle')}
             </AlertDialog.Title>
