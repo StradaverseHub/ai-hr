@@ -11,7 +11,7 @@ import {createCompany} from '../core/admin';
 import {readOvertimeStarterSeed,prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import type {OvertimePattern} from '../lib/overtime-pattern-model';
 import {activateOvertimePattern,archiveOvertimePattern,ensureOvertimePatternStarters,captureOvertimePersonnelContextTx,createOvertimeCalculationOwner,forkOvertimePatternDraft,getOvertimePattern,listOvertimePatterns,readOvertimeCalculationTx,readOvertimeDurationsTx,listCoveredOvertimeDaysTx,readOvertimePersonnelContextTx,readOvertimeSettlementForDayTx,releaseOvertimeSettlementsForDraftTeardownTx,releaseOvertimeSettlementTx,reserveOvertimeSettlementTx,saveOvertimePatternAssignment,saveOvertimePatternDraft,stopOvertimePatternVersion,validateOvertimePatternActivation,type CanonicalOvertimeSnapshot} from '../packs/attendance/overtime-patterns';
-import {requestAttendanceCorrection,decideAttendanceCorrection,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../packs/attendance/service';
+import {requestAttendanceCorrection,decideAttendanceCorrection,refreshOvertimePatternDayTx,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../packs/attendance/service';
 let b:Base,employmentId:string,attendanceId:string,earningId:string;const day=()=>todayInKualaLumpur();
 const plus=(n:number)=>{const d=new Date(day()+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
 const yes=(id:string)=>({id,type:'constant' as const,value:true});
@@ -194,6 +194,26 @@ describe('Retained settlement lifecycle and DDL authority',()=>{
 });
 
 describe('Serialization and legacy owner continuity',()=>{
+ it('clears obsolete overtime markers without rewriting a clean legacy day',async()=>{
+  const ctx=adminCtx(b);
+  const refresh=()=>withTenant(ctx,tx=>refreshOvertimePatternDayTx(tx,ctx,{employmentId,date:day(),reason:'Legacy refresh'}));
+  const snapshot=async()=> (await owner.db.select({version:sql<string>`xmin::text`,trace:s.attendance.calcTrace})
+   .from(s.attendance).where(eq(s.attendance.id,attendanceId)))[0];
+  const setTrace=(trace:unknown)=>owner.db.update(s.attendance)
+   .set({calcTrace:trace===null?null:sql`${JSON.stringify(trace)}::jsonb`}).where(eq(s.attendance.id,attendanceId));
+
+  for(const trace of [null,{legacy:'preserved'}]){
+   await setTrace(trace);
+   const before=await snapshot();
+   expect(await refresh()).toBeNull();
+   expect(await snapshot()).toEqual(before);
+  }
+
+  await setTrace({legacy:'preserved',overtimePattern:{status:'recorded'}});
+  expect(await refresh()).toBeNull();
+  expect((await snapshot()).trace).toEqual({legacy:'preserved'});
+ });
+
  it('refuses an overtime configuration save as busy while a leave-dependency command holds the leave lock, saving nothing',async()=>{
   const ctx=adminCtx(b);let holding!:()=>void,release!:()=>void;const held=new Promise<void>(resolve=>holding=resolve),done=new Promise<void>(resolve=>release=resolve);
   const leave=withTenant(ctx,async tx=>{await lockLeaveDependenciesTx(tx,ctx.tenantId,[employmentId]);holding();await done;});

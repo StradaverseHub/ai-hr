@@ -31,9 +31,17 @@ export async function reconcileOvertimePatternDayTx(tx: Tx, ctx: SessionContext,
   await storeResultMarkerTx(tx,day.id,result);
   return result;
 }
+async function clearOvertimePatternMarkerTx(tx: Tx, dayId: string) {
+  // Preserve the existing PostgreSQL behavior for historical non-object traces.
+  await tx.update(attendance).set({calcTrace:sql`${attendance.calcTrace} - 'overtimePattern'`}).where(and(
+    eq(attendance.id,dayId),
+    sql`(jsonb_typeof(${attendance.calcTrace}) <> 'object' or ${attendance.calcTrace} ? 'overtimePattern')`,
+  ));
+}
+
 async function storeResultMarkerTx(tx:Tx,dayId:string,result:OvertimeRecordOutcome) {
   if (result.status === 'legacy') {
-    await tx.update(attendance).set({calcTrace:sql`${attendance.calcTrace} - 'overtimePattern'`}).where(eq(attendance.id,dayId));
+    await clearOvertimePatternMarkerTx(tx,dayId);
     return;
   }
   // A selected policy alone cannot establish coverage. Complete independently replayed duration
@@ -48,7 +56,7 @@ export async function refreshOvertimePatternDayTx(tx: Tx, ctx: SessionContext, p
   const [day] = await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),eq(attendance.employmentId,p.employmentId),eq(attendance.attendanceDate,p.date))).limit(1);
   if (!day) return null;
   if (!await hasOvertimePatternForDayTx(tx,ctx,p)) {
-    await tx.update(attendance).set({calcTrace:sql`${attendance.calcTrace} - 'overtimePattern'`}).where(eq(attendance.id,day.id));
+    await clearOvertimePatternMarkerTx(tx,day.id);
     return null;
   }
   let result;
