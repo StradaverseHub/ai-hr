@@ -3,7 +3,8 @@ import {withProbationPersonnelIntentTx,withProbationDateShiftIntentTx,probationM
 import { withExitDateAuthorityTx } from './exit-date-authority';
 import { isDatabaseError } from '../lib/db-error';
 import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
-import {assertWorkforceEmploymentTx,WorkforceAccessError} from './workforce-access';
+import {assertWorkforceEmploymentTx,workforceEmploymentPredicate,WorkforceAccessError} from './workforce-access';
+import {lockAccessConfigurationReadTx} from './access-configuration-lock';
 import {ownPersonPredicate} from './own-person';
 /**
  * Employment History — Movement tab redesign (78853b97).
@@ -1504,7 +1505,16 @@ async function personnelCorrectionViewTx(tx:Tx,events:RawEvent[],rows:ProjectedR
 
 /** The Employment History list — a Hired-first, date-ascending projection over the event ledger. */
 export function movementHistory(ctx: SessionContext, employmentId: string): Promise<MovementHistoryRow[]> {
-  return withTenant(ctx, tx => movementHistoryTx(tx, ctx, employmentId));
+  return withTenant(ctx, async tx => {
+    // This entry point owns a read-only operation. Caller-owned transactions
+    // continue through movementHistoryTx and its exclusive barrier.
+    await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+    const [row] = await tx.execute<{ allowed: boolean }>(
+      sql`select ${workforceEmploymentPredicate(sql`${employmentId}::uuid`)} as allowed`,
+    );
+    if (!row?.allowed) throw new WorkforceAccessError();
+    return projectMovementHistoryTx(tx, ctx, employmentId);
+  });
 }
 
 async function assertOwnMovementEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
