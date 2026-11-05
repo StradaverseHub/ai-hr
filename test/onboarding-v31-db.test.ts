@@ -112,6 +112,25 @@ describe('V3.1 onboarding database and authorization', () => {
         }
         expect((await withTenant(admin,tx=>tx.execute(sql`select * from app.onboarding_directory()`))).length).toBeGreaterThan(0);
     });
+    it('saves a pending case without the assignment directory and still requires it for submission', async () => {
+        await draft();
+        const [row] = await onboardingList(admin);
+        expect(row.case.state).toBe('pending');
+        await owner.client.unsafe('REVOKE EXECUTE ON FUNCTION app.onboarding_directory() FROM ai_hr_app');
+        try {
+            const saved = await onboardingCommand(admin, row.case.id, row.revision, {
+                type: 'save', patch: { floor: 'Fictional pending case floor' },
+            });
+            expect(saved.revision).toBe(row.revision + 1);
+            await expect(onboardingCommand(admin, row.case.id, saved.revision, { type: 'submit' }))
+                .rejects.toMatchObject({ cause: { code: '42501' } });
+        } finally {
+            await owner.client.unsafe('GRANT EXECUTE ON FUNCTION app.onboarding_directory() TO ai_hr_app');
+        }
+        const after = await onboardingDetail(admin, row.case.id);
+        expect(after).toMatchObject({ revision: row.revision + 1, case: { state: 'pending', floor: 'Fictional pending case floor' } });
+        expect(after.case.history.at(-1)).toMatchObject({ action: 'case.saved', by: admin.userId });
+    });
     it('loads directory names only when a projected team task actually has a claimant', async()=>{
         const row=await prepared(),before=await onboardingTasks(tech);
         expect(before.length).toBeGreaterThan(0);

@@ -63,10 +63,16 @@ async function directoryTx(tx: Tx) {
         name: string;
     }>(await tx.execute(sql `select * from app.onboarding_directory()`));
 }
+function baseEnvironment(): M.Environment {
+    return {
+        ...clock(), id: randomUUID, nextNumber: () => M.fail('A requisition number was not reserved.'),
+        leave: {}, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: [],
+    };
+}
 async function environmentTx(tx: Tx, ctx: SessionContext, config: M.Config, all: M.Case[]): Promise<M.Environment> {
-    const { now, today } = clock(), dates = new Set([today]);
+    const env = baseEnvironment(), dates = new Set([env.today]);
     for (let n = 2; n <= 31; n++)
-        dates.add(M.dayDate(today, n));
+        dates.add(M.dayDate(env.today, n));
     for (const c of all) {
         for (const t of c.tasks)
             dates.add(t.dueOn);
@@ -78,11 +84,11 @@ async function environmentTx(tx: Tx, ctx: SessionContext, config: M.Config, all:
                     dates.add(M.dayDate(f.joinDate, t.due));
     }
     const unavailable = await onboardingUnavailableTx(tx, [...dates]);
-    const leave: Record<string, string[]> = {};
     for (const x of unavailable)
-        (leave[x.user_id] ??= []).push(x.on_date);
+        (env.leave[x.user_id] ??= []).push(x.on_date);
     const directory = await directoryTx(tx);
-    const env: M.Environment = { now, today, userNames: Object.fromEntries(directory.map(u => [u.id, u.name])), id: randomUUID, nextNumber: () => M.fail('A requisition number was not reserved.'), leave, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: directory.map(u => u.id) };
+    env.userNames = Object.fromEntries(directory.map(u => [u.id, u.name]));
+    env.users = directory.map(u => u.id);
     const loads = await onboardingAssignmentLoadsTx(tx);
     for (const load of loads) {
         env.taskLoads[load.user_id] = Number(load.task_load);
@@ -442,8 +448,11 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
                 return { revision: row.revision };
             M.fail('This case changed. Reload it before trying again.', 'conflict');
         }
-        const all = await tx.select({ data: cases.data }).from(cases).orderBy(asc(cases.id));
-        const env = await environmentTx(tx, ctx, config, all.map(x => x.data));
+        // Pending Save only validates and records the case patch. Submitted saves and
+        // submission still need the full allocation environment for reconciliation.
+        const env = command.type === 'save' && c.state === 'pending'
+            ? baseEnvironment()
+            : await environmentTx(tx, ctx, config, (await tx.select({ data: cases.data }).from(cases).orderBy(asc(cases.id))).map(x => x.data));
         if ((command.type === 'submit' || command.type === 'saveSubmit') && c.state === 'pending') {
             const [seq] = rows<{
                 n: number;
