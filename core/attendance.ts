@@ -1,6 +1,6 @@
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
-import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
+import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
 import {assessGeofence,type GeofenceAssessment} from '../lib/geofence-assessment';
 import {attendancePolicyUnclockedWorkDates,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
@@ -3947,16 +3947,43 @@ async function attendanceFiguresByIdTx(tx: Tx, attendanceId: string): Promise<Am
 /** Decision/cancellation writers use subject -> correction -> workflow/payroll -> audit order. Discovering
  * the subject does not lock the request: clock-out/import can hold the subject lock while landing OT
  * on this same correction. Re-read after waiting, so status/authority checks never use the first image. */
-async function lockAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correctionId: string) {
-  await lockAttendanceLeaveDependenciesTx(tx, ctx, []);
+const retryAttendanceRejectionExclusively = new Error('Attendance rejection requires the exclusive configuration path.');
+const nonOvertimeRejectionKinds: readonly AttendanceRequestKind[] = ['short_hours', 'incomplete_entry', 'absent', 'other'];
+const rejectionShape = {
+  requestKind: attendanceCorrection.requestKind,
+  requestedOtMinutes: attendanceCorrection.requestedOtMinutes,
+  approvedOtMinutes: attendanceCorrection.approvedOtMinutes,
+  plannedStartTime: attendanceCorrection.plannedStartTime,
+  plannedEndTime: attendanceCorrection.plannedEndTime,
+  originalClockSnapshot: attendanceCorrection.originalClockSnapshot,
+};
+function isOrdinaryNonOvertimeRejection(row: Pick<typeof attendanceCorrection.$inferSelect, keyof typeof rejectionShape>) {
+  return row.requestKind !== null && nonOvertimeRejectionKinds.includes(row.requestKind) &&
+    row.requestedOtMinutes === null && row.approvedOtMinutes === null &&
+    row.plannedStartTime === null && row.plannedEndTime === null && !row.originalClockSnapshot?.unclockedWork;
+}
+
+async function lockAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correctionId: string, rejectionSubject?: string) {
+  if (rejectionSubject === undefined) {
+    await lockAttendanceLeaveDependenciesTx(tx, ctx, []);
+  } else {
+    // This private path writes decision and audit rows only. Configuration writers still
+    // conflict on the same keys. Keep both subject locks and the correction row fence.
+    await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + ctx.tenantId},0))`);
+    await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+  }
   const [visible] = await tx.select({ employmentId: attendanceCorrection.employmentId })
     .from(attendanceCorrection).where(eq(attendanceCorrection.id, correctionId)).limit(1);
+  if (rejectionSubject !== undefined && visible?.employmentId !== rejectionSubject) throw retryAttendanceRejectionExclusively;
   if (!visible) return undefined;
   await lockLeaveDependenciesTx(tx, ctx.tenantId, [visible.employmentId]);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':' + visible.employmentId}, 0))`);
   const [locked] = await tx.select().from(attendanceCorrection)
     .where(and(eq(attendanceCorrection.id, correctionId), eq(attendanceCorrection.employmentId, visible.employmentId)))
     .limit(1).for('update');
+  if (rejectionSubject !== undefined && (!locked || !isOrdinaryNonOvertimeRejection(locked))) {
+    throw retryAttendanceRejectionExclusively;
+  }
   return locked;
 }
 
@@ -3998,8 +4025,8 @@ export async function decideAttendanceCorrection(
 ) {
   p = structuredClone(p); ctx = captureAttendanceContext(ctx);
   ctx = {...ctx, roles:ctx.roles ?? (ctx.grants ?? []).map(grant=>grant.role)};
-  const decide=async (tx:Tx) => {
-    const original = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
+  const decide=async (tx:Tx, rejectionSubject?: string) => {
+    const original = await lockAttendanceApplicationTx(tx, ctx, p.correctionId, rejectionSubject);
     const cor=original?.adminAmendment?{...original,proposedCheckIn:original.adminAmendment.checkIn,proposedCheckOut:original.adminAmendment.checkOut}:original;
     if (!cor) throw new Error('correction request not found (or not visible)');
     if (cor.status !== 'pending') throw new Error(`correction request is already ${cor.status}`);
@@ -4013,6 +4040,9 @@ export async function decideAttendanceCorrection(
     const [actualDecider] = ctx.personId ? await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId)).orderBy(asc(employment.id)).limit(1) : [];
     let actualDeciderEmploymentId:string|null = actualDecider?.id ?? null;
     const workflowStage = await decideAttendanceWorkflowStageTx(tx, ctx, { correctionId: cor.id, employmentId: cor.employmentId, decision: p.decision, remarks: p.decision === 'rejected' ? rejectReason ?? undefined : p.remarks, expectedStageIndex: p.expectedStageIndex, expectedParticipantSlot: p.expectedParticipantSlot });
+    if (rejectionSubject !== undefined && (workflowStage.versionedFinalEffect || workflowStage.delegatedFinalStageIndex != null)) {
+      throw retryAttendanceRejectionExclusively;
+    }
     if (workflowStage.actualDeciderEmploymentId !== undefined) actualDeciderEmploymentId = workflowStage.actualDeciderEmploymentId;
     if (!workflowStage.final) return { status: 'pending' as const, deferred: false };
 
@@ -4559,7 +4589,23 @@ export async function decideAttendanceCorrection(
     });
     return { status: p.decision, deferred: deferredApproval };
   };
-  return existingTx?decide(existingTx):withTenant(ctx,decide);
+  if (existingTx) return decide(existingTx);
+  const correctionIdIsCanonical = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(p.correctionId);
+  if (p.decision !== 'rejected' || !ctx.userId || ctx.agent || !correctionIdIsCanonical) return withTenant(ctx, decide);
+  try {
+    return await withTenant(ctx, async tx => {
+      // Use only a positively visible pending correction. Workflow visibility is not a
+      // classifier. Every version and delegation still goes through its original owner.
+      const [candidate] = await tx.select({employmentId:attendanceCorrection.employmentId,...rejectionShape})
+        .from(attendanceCorrection).where(and(eq(attendanceCorrection.tenantId, ctx.tenantId),
+          eq(attendanceCorrection.id, p.correctionId), eq(attendanceCorrection.status, 'pending'))).limit(1);
+      return decide(tx, candidate && isOrdinaryNonOvertimeRejection(candidate) ? candidate.employmentId : undefined);
+    });
+  } catch (error) {
+    if (error !== retryAttendanceRejectionExclusively) throw error;
+    // The owned transaction has rolled back. Never upgrade a held shared lock.
+    return withTenant(ctx, decide);
+  }
 }
 
 /** Correction inbox — RLS trims to what the viewer may see (admin all in scope, manager

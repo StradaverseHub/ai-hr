@@ -5,7 +5,7 @@ import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import type {SessionContext,Tx} from '../db/client';
 import {attendance,attendanceCorrection,attendancePunch,attendanceWorkflowRequest,attendanceWorkflowDecision,attendanceWorkflowParticipantDecision,domainEvent} from '../db/schema';
-import {decideAttendanceCorrection,requestAttendanceCorrection} from '../core/attendance';
+import {decideAttendanceCorrection,MissingAttendanceRejectReasonError,requestAttendanceCorrection} from '../core/attendance';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 import {withAttendanceTenant} from '../core/module-gate';
 import {endReportingLine,hireEmployee,setReportingLine} from '../core/org';
@@ -89,13 +89,13 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
   const base=await seedBase();
   const admin=adminCtx(base);
   await setModule(base.tenantId,'attendance','active');
-  const makeRequest=async(name:string)=>{
+  const makeRequest=async(name:string,requestedOtMinutes?:number)=>{
     const subject=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},
       companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
     const employee:SessionContext={...admin,userId:await createAppUser(base.tenantId,subject.personId,'employee'),
       personId:subject.personId,roles:['employee'],grants:[{role:'employee',companyId:base.companyId}]};
     const {correctionId}=await requestAttendanceCorrection(employee,{employmentId:subject.employmentId,date:todayInKualaLumpur(),
-      checkIn:'09:00',checkOut:'18:00',reason:'Fictional legacy non-overtime request'});
+      checkIn:'09:00',checkOut:'18:00',requestedOtMinutes,reason:'Fictional legacy request'});
     return {correctionId,employmentId:subject.employmentId};
   };
   const first=await makeRequest('Fictional rejection subject A');
@@ -167,6 +167,78 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
   expect(retained.every(row=>row.status==='pending')).toBe(true);
   expect(await owner.db.select({id:domainEvent.id}).from(domainEvent)
     .where(and(eq(domainEvent.tenantId,base.tenantId),eq(domainEvent.eventType,'attendance-correction.rejected')))).toEqual([]);
+  await expect(decideAttendanceCorrection(admin,{correctionId:first.correctionId,decision:'rejected'}))
+    .rejects.toBeInstanceOf(MissingAttendanceRejectReasonError);
+  const rowsLocked=barrier(),unlockRows=barrier();
+  let rowLockerPid=0;
+  const rowLocker=owner.client.begin(async tx=>{
+    const [connection]=await tx`select pg_backend_pid() as pid`;
+    rowLockerPid=connection.pid;
+    await tx`select id from attendance_correction where id in (${first.correctionId}::uuid,${second.correctionId}::uuid)
+      order by id for update`;
+    rowsLocked.resolve();
+    await unlockRows.promise;
+  });
+  const decisions:Promise<unknown>[]=[];
+  try{
+    await within(Promise.race([rowsLocked.promise,rowLocker]));
+    for(const request of [first,second]){
+      decisions.push(decideAttendanceCorrection(admin,{correctionId:request.correctionId,decision:'rejected',
+        rejectReason:'Fictional direct concurrent rejection'}));
+    }
+    await within(Promise.race([Promise.all(decisions), (async()=>{
+      for(let attempt=0;attempt<100;attempt++){
+        const [result]=await owner.client`with key as (select hashtextextended(${'access-configuration:'+base.tenantId},0) as value)
+          select count(distinct l.pid)::integer as readers from pg_locks l cross join key k
+          where l.locktype='advisory' and l.mode='ShareLock' and l.granted and l.objsubid=1
+            and l.classid::bigint=((k.value>>32)&4294967295) and l.objid::bigint=(k.value&4294967295)
+            and ${rowLockerPid}::integer=any(pg_blocking_pids(l.pid))`;
+        if(result.readers===2)return;
+        await new Promise(resolve=>setTimeout(resolve,25));
+      }
+      throw new Error('Both public rejection commands must reach their correction-row wait holding shared Access');
+    })()]));
+  }finally{
+    unlockRows.resolve();
+    await rowLocker;
+    await Promise.all(decisions);
+  }
+  expect(await Promise.all(decisions)).toEqual([
+    {status:'rejected',deferred:false},{status:'rejected',deferred:false},
+  ]);
+  expect(await owner.db.select({id:domainEvent.id}).from(domainEvent)
+    .where(and(eq(domainEvent.tenantId,base.tenantId),eq(domainEvent.eventType,'attendance-correction.rejected')))).toHaveLength(2);
+
+  const overtime=await makeRequest('Fictional overtime rejection subject',60);
+  const holdingAccess=barrier(),releaseAccess=barrier();
+  let accessHolderPid=0;
+  const accessHolder=owner.client.begin(async tx=>{
+    const [connection]=await tx`select pg_backend_pid() as pid`;
+    accessHolderPid=connection.pid;
+    await tx`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+base.tenantId},0))`;
+    holdingAccess.resolve();
+    await releaseAccess.promise;
+  });
+  let overtimeDecision:ReturnType<typeof decideAttendanceCorrection>|undefined;
+  try{
+    await within(Promise.race([holdingAccess.promise,accessHolder]));
+    overtimeDecision=decideAttendanceCorrection(admin,{correctionId:overtime.correctionId,decision:'rejected',
+      rejectReason:'Fictional overtime rejection retains exclusive configuration'});
+    await within(Promise.race([overtimeDecision,(async()=>{
+      for(let attempt=0;attempt<100;attempt++){
+        const [result]=await owner.client`select exists(select 1 from pg_locks l where l.locktype='advisory'
+          and l.mode='ExclusiveLock' and not l.granted and ${accessHolderPid}::integer=any(pg_blocking_pids(l.pid))) as waiting`;
+        if(result.waiting)return;
+        await new Promise(resolve=>setTimeout(resolve,25));
+      }
+      throw new Error('Overtime-bearing rejection must wait for exclusive Access');
+    })()]));
+  }finally{
+    releaseAccess.resolve();
+    await accessHolder;
+    await overtimeDecision;
+  }
+  expect(await overtimeDecision).toEqual({status:'rejected',deferred:false});
 },30000);
 
 it.each([1,2,3,4,'delegated-v2'] as const)('keeps versioned non-OT rejection and audit under shared configuration: %s',async route=>{
@@ -256,6 +328,23 @@ it.each([1,2,3,4,'delegated-v2'] as const)('keeps versioned non-OT rejection and
     return snapshot;
   }
   expect(await reject(true)).toEqual(await reject(false));
+  if(route===4){
+    await owner.client`alter table domain_event add constraint attendance_rejection_witness_late_failure
+      check (event_type <> 'attendance-correction.rejected') not valid`;
+    try{
+      await expect(decideAttendanceCorrection(reviewer.ctx,input)).rejects.toMatchObject({
+        cause:{constraint_name:'attendance_rejection_witness_late_failure'},
+      });
+      const [flow]=await owner.db.select().from(attendanceWorkflowRequest).where(eq(attendanceWorkflowRequest.correctionId,correctionId));
+      expect(flow.currentStage).toBe(0);
+      expect(await owner.db.select().from(attendanceWorkflowDecision).where(eq(attendanceWorkflowDecision.requestId,flow.id))).toEqual([]);
+      expect(await owner.db.select().from(attendanceWorkflowParticipantDecision).where(eq(attendanceWorkflowParticipantDecision.requestId,flow.id))).toEqual([]);
+      expect(await owner.db.select({id:domainEvent.id}).from(domainEvent).where(and(eq(domainEvent.aggregateId,correctionId),
+        eq(domainEvent.eventType,'attendance-workflow.stage.decided')))).toEqual([]);
+    }finally{
+      await owner.client`alter table domain_event drop constraint attendance_rejection_witness_late_failure`;
+    }
+  }
   if(delegationId){
     const entered=barrier(),release=barrier();
     let pid=0;
