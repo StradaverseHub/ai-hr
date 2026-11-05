@@ -221,7 +221,9 @@ export async function annualRewardCalculationTx(tx:Tx,unit:typeof rewardUnit.$in
 }
 async function calculateUnit(tx: Tx, unit: typeof rewardUnit.$inferSelect, entries: RewardEntry[],posting=false) {
   const [upload]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from reward_uploaded_review where unit_id=${unit.id}::uuid and tenant_id=app.current_tenant_id()) as present`);
-  if(upload?.present){const awards=posting?(await tx.execute<{value:import('./uploaded-awards-model').UploadedAward[]}>(sql`select app.reward_uploaded_awards_for_post(${unit.id}::uuid) as value`))[0]?.value??[]:(await tx.execute<{award:import('./uploaded-awards-model').UploadedAward}>(sql`select award from reward_uploaded_award where unit_id=${unit.id}::uuid and tenant_id=app.current_tenant_id()`)).map(r=>r.award);const grades=await tx.execute<{code:string}>(sql`select app.architecture_grade(code) as code from job_grade where tenant_id=app.current_tenant_id() and app.architecture_grade_assignable(id) and app.architecture_grade(code) is not null group by app.architecture_grade(code) having count(*)=1`);const result=calculateUploadedRewards(entries,unit.policy,awards,grades.map(g=>g.code));const [validation]=await tx.execute<{value:{valid:boolean;warnings:boolean}}>(sql`select app.reward_uploaded_validation(${unit.id}::uuid) as value`);if(validation?.value.valid)result.flags=result.flags.filter(f=>f.code!=='UPL-01'||!f.message.startsWith('Upload and independently'));else if(!result.flags.some(f=>f.severity==='block'))result.flags.push({severity:'block',code:'UPL-01',message:'An uploaded record needs correction by its authorized reviewer.'});if(validation?.value.warnings&&!result.flags.some(f=>f.code==='UPL-02'))result.flags.push({severity:'warning',code:'UPL-02',message:'restricted'});if(posting){const authorizedIds=new Set(awards.map(a=>a.employmentId));result.rows=result.rows.filter(row=>authorizedIds.has(row.source.employmentId));}return result;}
+  if(upload?.present){const awards=posting?(await tx.execute<{value:import('./uploaded-awards-model').UploadedAward[]}>(sql`select app.reward_uploaded_awards_for_post(${unit.id}::uuid) as value`))[0]?.value??[]:(await tx.execute<{award:import('./uploaded-awards-model').UploadedAward}>(sql`select award from reward_uploaded_award where unit_id=${unit.id}::uuid and tenant_id=app.current_tenant_id()`)).map(r=>r.award);const grades=await tx.execute<{code:string}>(sql`select app.architecture_grade(code) as code from job_grade where tenant_id=app.current_tenant_id() and app.architecture_grade_assignable(id) and app.architecture_grade(code) is not null group by app.architecture_grade(code) having count(*)=1`);const appliedGrades=unit.status==='posted'?[...new Set(awards.flatMap(award=>award.newGrade?[award.newGrade]:[]))]:grades.map(g=>g.code);const result=calculateUploadedRewards(entries,unit.policy,awards,appliedGrades);
+  if(unit.status==='posted'){result.flags=result.flags.filter(flag=>flag.code!=='UPL-01');return result;}
+  const [validation]=await tx.execute<{value:{valid:boolean;warnings:boolean}}>(sql`select app.reward_uploaded_validation(${unit.id}::uuid) as value`);if(validation?.value.valid)result.flags=result.flags.filter(f=>f.code!=='UPL-01'||!f.message.startsWith('Upload and independently'));else if(!result.flags.some(f=>f.severity==='block'))result.flags.push({severity:'block',code:'UPL-01',message:'An uploaded record needs correction by its authorized reviewer.'});if(validation?.value.warnings&&!result.flags.some(f=>f.code==='UPL-02'))result.flags.push({severity:'warning',code:'UPL-02',message:'restricted'});if(posting){const authorizedIds=new Set(awards.map(a=>a.employmentId));result.rows=result.rows.filter(row=>authorizedIds.has(row.source.employmentId));}return result;}
 
   if (unit.kind === 'annual') {
     const {policy,controls,publicState}=await annualRewardCalculationTx(tx,unit,entries,posting);
@@ -1575,7 +1577,7 @@ function boardRow(v: ReviewProjection, meta: { cycle: string; company: string },
   const needsReason = v.flags.some(f => f.severity === 'exception' || f.severity === 'warning');
   // An off-cycle promotion needs the approver's explicit role-summary acknowledgement on the review page.
   const needsAcknowledgement = unit.kind !== 'annual' && v.rows.some(r => r.recommendation.promotionGrade);
-  const pooled = v.rows.filter(r => r.plan === 'standard' || r.plan === 'h');
+  const pooled = v.uploaded?v.rows:v.rows.filter(r => r.plan === 'standard' || r.plan === 'h');
   const plans = ['standard', 'h'] as const;
   const seen = v.rows.length > 0;
   const usedBy = (plan: 'standard' | 'h') => { const g = pooled.filter(r => r.plan === plan); return [g.reduce((n, r) => n + r.meritCents, 0), g.reduce((n, r) => n + r.promotionCents, 0), g.reduce((n, r) => n + r.specialCents, 0)]; };
@@ -1584,7 +1586,7 @@ function boardRow(v: ReviewProjection, meta: { cycle: string; company: string },
   const salaryOver = plans.some(p => usedBy(p).some((used, i) => used > v.budgets[p].pools[i]));
   const annual = unit.kind === 'annual';
   const bonusOf = (plan: 'standard' | 'h') => pooled.filter(r => r.plan === plan).reduce((n, r) => n + r.bonusCents + r.lumpCents, 0);
-  const totalCents = plans.reduce((n, p) => n + bonusOf(p), 0), budgetCents = plans.reduce((n, p) => n + v.budgets[p].bonusPoolCents, 0);
+  const totalCents = v.uploaded?pooled.reduce((sum,row)=>sum+row.bonusCents+row.lumpCents,0):plans.reduce((n, p) => n + bonusOf(p), 0), budgetCents = plans.reduce((n, p) => n + v.budgets[p].bonusPoolCents, 0);
   return {
     id: unit.id, kind: unit.kind, name: v.name, cycle: meta.cycle, companyId: unit.companyId, company: meta.company,
     status, revision: unit.revision, returnedTo: v.returned?.toSeat ?? null, seat, step,
