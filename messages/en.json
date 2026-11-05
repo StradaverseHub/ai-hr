@@ -35441,6 +35441,8 @@
     "groupingHint": "Review and publish the company mapping before Rewards or payroll grouping. Employment details can still be saved."
   },
   "personnelOrganisationFilters": {
+    "readBusy": "Personnel is busy. Wait a moment and try again.",
+    "retryRead": "Try again",
     "businessUnit": "Business unit",
     "parentCompany": "Parent company",
     "businessGroup": "Business group",

@@ -35441,6 +35441,8 @@
     "groupingHint": "Xét duyệt và công bố ánh xạ công ty trước khi nhóm Lương thưởng hoặc bảng lương. Vẫn có thể lưu thông tin việc làm."
   },
   "personnelOrganisationFilters": {
+    "readBusy": "Hệ thống Nhân sự đang bận. Vui lòng đợi một lát rồi thử lại.",
+    "retryRead": "Thử lại",
     "businessUnit": "Đơn vị kinh doanh",
     "parentCompany": "Công ty mẹ",
     "businessGroup": "Nhóm kinh doanh",

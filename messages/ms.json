@@ -35441,6 +35441,8 @@
     "groupingHint": "Semak dan terbitkan pemetaan syarikat sebelum pengelompokan Ganjaran atau gaji. Butiran pekerjaan masih boleh disimpan."
   },
   "personnelOrganisationFilters": {
+    "readBusy": "Personel sedang sibuk. Tunggu sebentar dan cuba lagi.",
+    "retryRead": "Cuba lagi",
     "businessUnit": "Unit perniagaan",
     "parentCompany": "Syarikat induk",
     "businessGroup": "Kumpulan perniagaan",

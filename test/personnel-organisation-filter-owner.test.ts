@@ -4,8 +4,11 @@ import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee,setEmploymentAssignment} from '../core/org';
-import {listEmployeesPage,countEmployeesByStatus,personnelFilterChoices} from '../core/read';
+import {listEmployeesPage,countEmployeesByStatus,personnelFilterChoices,readPersonnelOverview} from '../core/read';
 import {createPersonnelPrivateSearch,personnelPrivateSearchAvailable,privateSearchHash} from '../core/personnel-private-search';
+import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {PersonnelReadBusyError} from '../core/personnel-read-bounds';
+import {workforceViewScope} from '../core/workforce-access';
 import {personnelGroupingReadinessTx} from '../core/personnel-quality';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,ctx:SessionContext;
@@ -91,4 +94,29 @@ it('scoped company options and duplicate evidence cannot expose another company 
  const choices=await personnelFilterChoices(scoped,[b.companyId,company.id]);expect(choices.companies.map(c=>c.id)).toEqual([b.companyId]);expect(JSON.stringify(choices)).not.toContain('Private other company');
  const rows=await listEmployeesPage(scoped,{companyIds:[b.companyId,company.id],qualityFlags:['suspected_duplicate'],limit:100,offset:0},'workforce');expect(rows.total).toBe(0);
  expect((await listEmployeesPage(scoped,{companyIds:[b.companyId,company.id],limit:100,offset:0},'workforce')).rows.map(row=>row.employmentId)).toEqual([mine.employmentId]);expect(rows.rows.map(row=>row.employmentId)).not.toContain(theirs.employmentId);
+});
+
+it('refuses queued Personnel scope, list and export reads while the tenant access lock is held', async () => {
+  const input = { companyIds: [b.companyId], limit: 1, offset: 0 };
+  await owner.withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await expect(workforceViewScope(ctx, { personnelList: true })).rejects.toBeInstanceOf(PersonnelReadBusyError);
+    await expect(readPersonnelOverview(ctx, input, {})).rejects.toBeInstanceOf(PersonnelReadBusyError);
+    await expect(listEmployeesPage(ctx, input, 'workforce')).rejects.toBeInstanceOf(PersonnelReadBusyError);
+  });
+  expect((await workforceViewScope(ctx, { personnelList: true })).companyIds).toContain(b.companyId);
+  await expect(readPersonnelOverview(ctx, input, {})).resolves.toHaveProperty('employees.rows');
+});
+
+it('retains unpaginated totals, status counts and company choices past the last Personnel row', async () => {
+  const employee = await hire('Fictional Overview Employee');
+  const companyIds = [b.companyId];
+  const filter = { q: 'Fictional Overview Employee' };
+  const first = await readPersonnelOverview(ctx, { companyIds, ...filter, limit: 1, offset: 0 }, filter);
+  const pastEnd = await readPersonnelOverview(ctx, { companyIds, ...filter, limit: 1, offset: 10 }, filter);
+  expect(first.employees.rows.map(row => row.employmentId)).toEqual([employee.employmentId]);
+  expect(pastEnd.employees).toEqual({ rows: [], total: 1 });
+  expect(pastEnd.headcount).toEqual(await countEmployeesByStatus(ctx, { companyIds, ...filter }, 'workforce'));
+  expect(pastEnd.headcount.total).toBe(1);
+  expect(pastEnd.organisationChoices.companies.map(company => company.id)).toContain(b.companyId);
 });

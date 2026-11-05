@@ -22,6 +22,7 @@ import { getTranslations } from 'next-intl/server';
 import {getScopeIds} from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listEmployeesPage } from '@/core/read';
+import { PersonnelReadBusyError } from '@/core/personnel-read-bounds';
 import { getEmployeeListColumns } from '@/core/employee-list-prefs';
 import { listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
@@ -62,8 +63,21 @@ const EMPLOYMENT_TYPE_KEY: Record<string, string> = {
 const ROW_CAP = 10_000;
 
 export async function GET(req: Request) {
+  try {
+    return await exportPersonnel(req);
+  } catch (error) {
+    if (!(error instanceof PersonnelReadBusyError)) throw error;
+    const messages = await getTranslations('personnelOrganisationFilters');
+    return new Response(messages('readBusy'), {
+      status: 503,
+      headers: { 'Retry-After': '5', 'Cache-Control': 'private, no-store', Vary: 'Cookie' },
+    });
+  }
+}
+
+async function exportPersonnel(req: Request) {
   const session=await getSession();
-  const allowed=await workforceViewScope(session);
+  const allowed=await workforceViewScope(session, { personnelList: true });
   if(!allowed.canOpen||allowed.companyIds.length===0)return new Response('Forbidden',{status:403});
   const scopeIds=await getScopeIds(allowed.companyIds),allowedCount=allowed.companyIds.length;
 
@@ -86,13 +100,13 @@ export async function GET(req: Request) {
   // the drafts under it keeps "what is on screen" literally true for the one selection where the rows
   // come from a different table.
   const { rows, total } = query.draftOnly
-    ? { rows: [], total:0 }
+    ? { rows: [], total: 0 }
     : await listEmployeesPage(session, {
         companyIds: scopeIds,
         ...query.filters,
         limit: ROW_CAP,
         offset: 0,
-      },'workforce');
+      }, 'workforce');
   if(total>ROW_CAP)return new Response('Too many matching employees. Narrow the filters before exporting.',{status:413,headers:{'Cache-Control':'private, no-store','Vary':'Cookie'}});
   // b1b1879d — the SAME top-bar scope the employees above are read under, built by the same function the
   // screen uses. Without it a file exported while viewing one company carried every company's drafts.

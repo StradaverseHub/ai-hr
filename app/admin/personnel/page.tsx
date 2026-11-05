@@ -1,16 +1,15 @@
 import {personnelPrivateSearchAvailable} from '@/core/personnel-private-search';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
+import {PersonnelReadBusyError, withPersonnelRead} from '@/core/personnel-read-bounds';
 import {workforceCompanies} from '@/core/workforce-access';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fields';
 import {requireWorkforceAccess} from '@/lib/workforce-authz';
 import {
-  countEmployeesByStatus,
   listCompanies,
   listDepartments,
-  personnelFilterChoices,
-  listEmployeesPage,
+  readPersonnelOverview,
 } from '@/core/read';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
@@ -102,7 +101,31 @@ export default async function PeoplePage({
 }: {
   searchParams: Promise<PersonnelSearchParams>;
 }) {
-  const {s:session,scopeIds,companyIds,allowedCount}=await requireWorkforceAccess();
+  const sp = await searchParams;
+  try {
+    return await renderPersonnelPage(sp);
+  } catch (error) {
+    if (!(error instanceof PersonnelReadBusyError)) throw error;
+    const t = await getTranslations('people.list');
+    const to = await getTranslations('personnelOrganisationFilters');
+    const pq = parsePageQuery(sp);
+    const params = personnelQueryParams(sp);
+    params.set('size', String(pq.size));
+    params.set('page', String(pq.page));
+    return (
+      <div className="mx-auto max-w-[100rem] space-y-4">
+        <PageHeader title={t('adminTitle')} />
+        <div role="alert" className="space-y-2 rounded-md border p-4">
+          <p>{to('readBusy')}</p>
+          <a className="text-primary underline" href={`/admin/personnel?${params}`}>{to('retryRead')}</a>
+        </div>
+      </div>
+    );
+  }
+}
+
+async function renderPersonnelPage(sp: PersonnelSearchParams) {
+  const {s:session,scopeIds,companyIds,allowedCount}=await requireWorkforceAccess({ personnelList: true });
   const t = await getTranslations('people.list');
   const tStatus = await getTranslations('people.employeeStatus');
   const to = await getTranslations('personnelOrganisationFilters');
@@ -115,11 +138,10 @@ export default async function PeoplePage({
   // Employee Status redesign (R43 c26c3ce5): the People list shows the SYSTEM-DERIVED status (from each
   // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
   const workforceIds=new Set(companyIds);
-  const maintainIds=new Set(await workforceCompanies(session,'maintain'));
+  const maintainIds=new Set(await withPersonnelRead(session, tx => workforceCompanies(session, 'maintain', tx)));
   const today = todayInKualaLumpur();
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
   const canCreate=isAdmin&&maintainIds.size>0;
-  const sp = await searchParams;
   const { error } = sp;
   const pq = parsePageQuery(sp);
   // 579255c3 — ONE parse of the query string, shared with the Excel export so the file and the table
@@ -129,34 +151,19 @@ export default async function PeoplePage({
   const { q, company, dept, type, draftOnly, hasFilters } = query;
   const searchAvailable=query.filters.privateSearch?await personnelPrivateSearchAvailable(session,query.filters.privateSearch,scopeIds):false;
 
-  const [
-    { rows: employeeRows, total: employeeTotal },
-    headcount,
-    companies,
-    departments,
-    allDrafts,
-    organisationChoices,
-    savedColumns,
-    idConfigs,
-  ] = await Promise.all([
-    listEmployeesPage(session, {
-      companyIds: scopeIds,
-      ...query.filters,
-      limit: pq.limit,
-      offset: pq.offset,
-    },'workforce'),
-    // Point 5 — the five headcount cards. Counted in SQL over the WHOLE filtered set, never over the
-    // page: "40 employees" must keep meaning forty people, not twenty-five rows. The bucket narrowing is
-    // stripped (headcountFilters) so the cards stay a facet of the current view — clicking one cannot
-    // make the other four read zero.
-    countEmployeesByStatus(session,{companyIds:scopeIds,...headcountFilters(query)},'workforce'),
+  const overview = await readPersonnelOverview(session, {
+    companyIds: scopeIds,
+    ...query.filters,
+    limit: pq.limit,
+    offset: pq.offset,
+  }, headcountFilters(query));
+  const { employees: { rows: employeeRows, total: employeeTotal }, headcount, organisationChoices } = overview;
+  const [companies, departments, allDrafts, savedColumns, idConfigs] = await Promise.all([
     listCompanies(session).then(rows=>rows.filter(row=>workforceIds.has(row.id))),
     scopeIds.length?listDepartments(session,{companyIds:scopeIds}):Promise.resolve([]),
     // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees above do. They used to
     // be read with no scope at all, so choosing one company still listed every company's drafts.
     isAdmin ? listEmployeeDrafts(session, draftListScope(scopeIds, allowedCount)) : Promise.resolve([]),
-    // Stable organisation options come from the whole authorized scope, before list pagination.
-    personnelFilterChoices(session, scopeIds),
     // 579255c3 — this reader's own columns and their order. Per user (app_user.list_preferences through
     // the own-row seam), so one person's arrangement never changes what anybody else sees.
     getEmployeeListColumns(session),

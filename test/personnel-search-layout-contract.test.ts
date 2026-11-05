@@ -35,7 +35,7 @@ describe('c002b3c3 · the module is full width, once, in one place', () => {
 
 describe('Personnel list search and profile switcher remain scoped RSC-safe islands', () => {
   it('the approved listing uses one private list search and retains the scoped organisation filters', () => {
-    const src=read(LISTING);expect(src).not.toContain('<EmployeeSwitcher');expect(src).toContain('<PersonnelPrivateSearch');expect(src).toContain('<PersonnelOrganisationFilters');expect(src).toContain('dataTour="people-search"');expect(src).toContain('personnelFilterChoices(session, scopeIds)');
+    const src=read(LISTING);expect(src).not.toContain('<EmployeeSwitcher');expect(src).toContain('<PersonnelPrivateSearch');expect(src).toContain('<PersonnelOrganisationFilters');expect(src).toContain('dataTour="people-search"');expect(src).toContain('readPersonnelOverview(session,');
     const island=read('app/admin/personnel/organisation-filters.tsx');expect(island).toContain('method="post"');expect(island).toContain('name="term"');expect(island).not.toContain('name="q" type="search"');
   });
 

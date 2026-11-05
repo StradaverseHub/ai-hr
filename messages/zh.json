@@ -35441,6 +35441,8 @@
     "groupingHint": "请先审核并发布公司映射，再进行薪酬或工资分组。仍可保存雇佣信息。"
   },
   "personnelOrganisationFilters": {
+    "readBusy": "人事系统正忙。请稍候再试。",
+    "retryRead": "重试",
     "businessUnit": "业务单位",
     "parentCompany": "母公司",
     "businessGroup": "业务组",

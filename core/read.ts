@@ -8,6 +8,7 @@ import {isCalendarDate} from '../lib/calendar-date';
 import {lockPayrollHistoryReadTx,tryLockPayrollHistoryReadTx} from './payroll-history-lock';
 import {ownPersonPredicate} from './own-person';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {withPersonnelRead} from './personnel-read-bounds';
 import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
 import {formulaOvertimeForRowsTx} from '../packs/attendance/service';
 import {payrollPublicationState} from '../lib/payroll-publication';
@@ -457,15 +458,102 @@ const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns
    p.qualityFlags?.length?or(...p.qualityFlags.map(flag=>flag==='suspected_duplicate'?(duplicateIds.length?inArray(workforceListUuid('employmentId'),[...duplicateIds]):sql`false`):sql`(workforce_row.value->'quality'->>${flag})::boolean is true`)):undefined,
    p.privateSearch?sql`app.personnel_private_search_matches(${privateSearchHash(p.privateSearch)??''},${workforceListUuid('employmentId')},${columns.companyId},${p.companyIds?sql`ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`})`:undefined);
 
-export type PersonnelCompanyChoice={id:string;name:string;parentCompanyId:string|null;parentCompany:string|null;businessGroupId:string|null;businessGroup:string|null;businessUnitId:string|null;businessUnit:string|null};
+export type PersonnelCompanyChoice = {
+  id: string; name: string; parentCompanyId: string | null; parentCompany: string | null;
+  businessGroupId: string | null; businessGroup: string | null; businessUnitId: string | null; businessUnit: string | null;
+};
+type PersonnelListInput = EmployeeListFilters & { sort?: 'name' | 'company'; limit: number; offset: number };
+type PersonnelChoiceRow = { businessUnitId: string | null; businessUnit: string | null; positionId: string | null; position: string | null };
+
+async function personnelCompanyChoicesTx(tx: Tx, companyIds: string[], asOf: string) {
+  const companies = await tx.execute<PersonnelCompanyChoice>(sql`select * from app.personnel_filter_companies(
+    ARRAY[${sql.join(companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[], ${asOf}::date)`);
+  const [duplicateAuthority] = await tx.execute<{ allowed: boolean }>(sql`select coalesce(
+    bool_or(app.is_admin_for(id) and app.personnel_identity_search_permitted(id)), false) as allowed
+    from unnest(ARRAY[${sql.join(companies.map(company => sql`${company.id}::uuid`), sql`, `)}]::uuid[]) id`);
+  return { companies: [...companies], canInspectDuplicates: duplicateAuthority.allowed };
+}
+
+function personnelAssignmentChoices(source: SQL, companyIds: string[], asOf: string) {
+  return sql`select distinct ${workforceListUuid('businessUnitId')} as "businessUnitId",
+    ${workforceListValue('businessUnit')} as "businessUnit", ${workforceListUuid('positionId')} as "positionId",
+    ${workforceListValue('position')} as "position" from ${source}
+    where ${workforceListWhere({ companyIds }, workforceListColumns(asOf))}`;
+}
+
 /** Options are resolved before pagination through the current Workforce purpose scope. */
-export function personnelFilterChoices(ctx:SessionContext,companyIds:string[]){return withTenant(ctx,async tx=>{
- await lockAccessConfigurationTx(tx,ctx.tenantId);const asOf=todayInKualaLumpur();
- const companies=await tx.execute<PersonnelCompanyChoice>(sql`select * from app.personnel_filter_companies(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${asOf}::date)`);
- const rows=await tx.selectDistinct({businessUnitId:workforceListUuid('businessUnitId'),businessUnit:workforceListValue<string|null>('businessUnit'),positionId:workforceListUuid('positionId'),position:workforceListValue<string|null>('position')}).from(personnelListSource(companies.map(company=>company.id),asOf)).where(workforceListWhere({companyIds:companies.map(company=>company.id)},workforceListColumns(asOf)));
- const [duplicateAuthority]=await tx.execute<{allowed:boolean}>(sql`select coalesce(bool_or(app.is_admin_for(id) and app.personnel_identity_search_permitted(id)),false) as allowed from unnest(ARRAY[${sql.join(companies.map(company=>sql`${company.id}::uuid`),sql`, `)}]::uuid[]) id`);
- return {companies:[...companies],rows,canInspectDuplicates:duplicateAuthority?.allowed===true};
-});}
+export function personnelFilterChoices(ctx: SessionContext, companyIds: string[]) {
+  return withPersonnelRead(ctx, async tx => {
+    const asOf = todayInKualaLumpur();
+    const choices = await personnelCompanyChoicesTx(tx, companyIds, asOf);
+    const ids = choices.companies.map(company => company.id);
+    const rows = await tx.execute<PersonnelChoiceRow>(personnelAssignmentChoices(personnelListSource(ids, asOf), ids, asOf));
+    return { ...choices, rows: [...rows] };
+  });
+}
+
+async function workforcePersonnelPageTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelListInput, asOf: string,
+  facets?: { headcount: EmployeeListFilters; choiceIds: string[] },
+) {
+  const columns = workforceListColumns(asOf);
+  const duplicateIds = (input.qualityFlags?.includes('suspected_duplicate') ||
+    facets?.headcount.qualityFlags?.includes('suspected_duplicate'))
+    ? await personnelDuplicateIdsTx(tx, ctx, { companyIds: input.companyIds, asOf })
+    : [];
+  const filters = workforceListWhere(input, columns, duplicateIds);
+  const sort = input.sort === 'company'
+    ? [sql`lower(${workforceListValue('company')})`, sql`lower(${columns.name})`]
+    : [columns.name];
+  const order = sql.join([...sort, workforceListUuid('employmentId')], sql`, `);
+  // The projection evaluates dated organisation and access policy for every admitted employee.
+  // Evaluate it once even when the requested page is empty. The count is independent of pagination.
+  const source = sql`personnel_source as workforce_row`;
+  const choiceIds = facets?.choiceIds ?? [];
+  const sameScope = input.companyIds !== undefined && input.companyIds.length === choiceIds.length &&
+    input.companyIds.every(id => choiceIds.includes(id));
+  const choiceSource = sameScope ? source : personnelListSource(choiceIds, asOf);
+  const [result] = await tx.execute<{
+    rows: EmployeeListRow[]; total: number; byStatus: Partial<Record<EmploymentStatus, number>>; choices: PersonnelChoiceRow[];
+  }>(sql`
+    with personnel_source as materialized (select value from ${personnelListSource(input.companyIds, asOf)}),
+    matching as materialized (select value from ${source} where ${filters ?? sql`true`}),
+    page as (select value from matching as workforce_row order by ${order} limit ${input.limit} offset ${input.offset})
+    select
+      (select coalesce(jsonb_agg(value order by ${order}), '[]'::jsonb) from page as workforce_row) as rows,
+      (select count(distinct ${workforceListUuid('employmentId')})::int from matching as workforce_row) as total
+      ${facets ? sql`,
+        (select coalesce(jsonb_object_agg(status, count), '{}'::jsonb) from (
+          select ${columns.status} as status, count(distinct ${workforceListUuid('employmentId')})::int as count
+          from ${source} where ${workforceListWhere(facets.headcount, columns, duplicateIds) ?? sql`true`} group by 1
+        ) as counts) as "byStatus",
+        (select coalesce(jsonb_agg(to_jsonb(choice)), '[]'::jsonb) from (
+          ${personnelAssignmentChoices(choiceSource, choiceIds, asOf)}
+        ) as choice) as choices` : sql``}
+  `);
+  return result;
+}
+
+/** List, headcount and filter choices share one admission lock and one authorised page projection. */
+export function readPersonnelOverview(
+  ctx: SessionContext,
+  input: PersonnelListInput & { companyIds: string[] },
+  headcount: Omit<EmployeeListFilters, 'companyIds'>,
+) {
+  return withPersonnelRead(ctx, async tx => {
+    const asOf = todayInKualaLumpur();
+    const choices = await personnelCompanyChoicesTx(tx, input.companyIds, asOf);
+    const result = await workforcePersonnelPageTx(tx, ctx, input, asOf, {
+      headcount: { ...headcount, companyIds: input.companyIds },
+      choiceIds: choices.companies.map(company => company.id),
+    });
+    return {
+      employees: { rows: result.rows, total: result.total },
+      headcount: { total: Object.values(result.byStatus).reduce((sum, count) => sum + count, 0), byStatus: result.byStatus },
+      organisationChoices: { ...choices, rows: result.choices },
+    };
+  });
+}
 
 
 /** Whole authorized Workforce picker population. Do not repurpose the independent payroll/clocking
@@ -524,9 +612,7 @@ export function countEmployeesByStatus(
   p: EmployeeListFilters,
   purpose?:'workforce',
 ): Promise<{ total: number; byStatus: Partial<Record<EmploymentStatus, number>> }> {
-  return withTenant(ctx, async (tx) => {
-    if (purpose) {
-      await lockAccessConfigurationTx(tx, ctx.tenantId);
+  if (purpose) return withPersonnelRead(ctx, async tx => {
       const asOf=todayInKualaLumpur(),columns = workforceListColumns(asOf);
       const duplicateIds=p.qualityFlags?.includes('suspected_duplicate')?await personnelDuplicateIdsTx(tx,ctx,{companyIds:p.companyIds,asOf}):[];
       const rows = await tx.select({ status: columns.status, count: sql<number>`count(distinct ${workforceListUuid('employmentId')})::int` })
@@ -535,7 +621,8 @@ export function countEmployeesByStatus(
       let total = 0;
       for (const row of rows) { const count = Number(row.count); byStatus[row.status] = count; total += count; }
       return { total, byStatus };
-    }
+  });
+  return withTenant(ctx, async tx => {
     const rows = (await tx
       .select({
         status: employmentStatusSql(),
@@ -579,20 +666,11 @@ export function listEmployeesPage(
   purpose?:'workforce',
   existingTx?: Tx,
 ): Promise<{ rows: EmployeeListRow[]; total: number }> {
+  if (purpose) return withPersonnelRead(ctx, async tx => {
+    const { rows, total } = await workforcePersonnelPageTx(tx, ctx, p, todayInKualaLumpur());
+    return { rows, total };
+  }, existingTx);
   const read = async (tx: Tx) => {
-    if (purpose) {
-      await lockAccessConfigurationTx(tx, ctx.tenantId);
-      const asOf=todayInKualaLumpur(),columns = workforceListColumns(asOf);
-      const duplicateIds=p.qualityFlags?.includes('suspected_duplicate')?await personnelDuplicateIdsTx(tx,ctx,{companyIds:p.companyIds,asOf}):[];
-      const where = workforceListWhere(p, columns,duplicateIds);
-      const rows = await tx.select({ row: sql<EmployeeListRow>`workforce_row.value` })
-        .from(personnelListSource(p.companyIds,asOf)).where(where)
-        .orderBy(...(p.sort === 'company' ? [sql`lower(${workforceListValue('company')})`, sql`lower(${columns.name})`] : [columns.name]))
-        .limit(p.limit).offset(p.offset);
-      const [count] = await tx.select({ count: sql<number>`count(distinct ${workforceListUuid('employmentId')})::int` })
-        .from(personnelListSource(p.companyIds,asOf)).where(where);
-      return { rows: rows.map(({ row }) => row), total: Number(count.count) };
-    }
     const currentAssignment = currentAssignmentJoin();
     const where = employeeListWhere(p);
     const rows = (await tx

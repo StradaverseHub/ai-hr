@@ -4,9 +4,9 @@ import {getScopeIds} from './scope';
 import {workforceViewScope} from '../core/workforce-access';
 
 /** Purpose-bound page scope. A role name or the ordinary directory scope cannot mint this grant. */
-export async function requireWorkforceAccess() {
+export async function requireWorkforceAccess(options?: { personnelList: true }) {
  const s=await getSession();
- const allowed=await workforceViewScope(s);
+ const allowed=await workforceViewScope(s, options);
  if(!allowed.canOpen)redirect('/');
  return {s,scopeIds:await getScopeIds(allowed.companyIds),allowedCount:allowed.companyIds.length,companyIds:allowed.companyIds};
 }
