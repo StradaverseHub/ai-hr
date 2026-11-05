@@ -21,10 +21,11 @@
  * follows them are rebuilt from the saved value, not guessed at on the client.
  */
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Columns3, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui';
+import { useFitToView } from '@/components/ui/fit-to-view';
 
 export type EmployeeColumnChoice = {
   key: string;
@@ -62,6 +63,9 @@ export function ColumnPicker({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Opened near the bottom of the window, the panel opens upwards or shrinks to fit (components/ui/fit-to-view.ts).
+  useFitToView(open, panelRef);
   const [pending, startTransition] = useTransition();
   const [order, setOrder] = useState<EmployeeColumnChoice[]>(columns);
   const [on, setOn] = useState<string[]>(selected);
@@ -134,12 +138,13 @@ export function ColumnPicker({
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div
+            ref={panelRef}
             role="dialog"
             aria-label={labels.title}
-            className="absolute right-0 z-50 mt-1 w-[min(20rem,90vw)] origin-top-right rounded-lg border border-border bg-popover text-popover-foreground shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
+            className="absolute right-0 z-50 mt-1 flex w-[min(20rem,90vw)] flex-col origin-top-right rounded-lg border border-border bg-popover text-popover-foreground shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
           >
             <p className="border-b border-border px-4 py-2.5 text-xs text-muted-foreground">{labels.hint}</p>
-            <ul className="max-h-[50vh] overflow-y-auto py-1">
+            <ul className="max-h-[50vh] min-h-0 overflow-y-auto py-1">
               {order.map((c, i) => (
                 <li
                   key={c.key}

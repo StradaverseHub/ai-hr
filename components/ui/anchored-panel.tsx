@@ -37,8 +37,12 @@ import { cn } from '@/lib/utils';
  * dismissal only; it never decides which of the two a caller should render.
  */
 
-/** Where the panel goes, in viewport coordinates. `flip` ⇒ it opens UPWARDS from `top`. */
-export type AnchoredPlacement = { top: number; left: number; flip: boolean };
+/**
+ * Where the panel goes, in viewport coordinates. `flip` ⇒ it opens UPWARDS from `top`. `maxHeight` is the room
+ * left between the anchor and the window edge it opens towards: a panel taller than that scrolls inside itself
+ * instead of running off the screen, where a fixed box can never be scrolled into view.
+ */
+export type AnchoredPlacement = { top: number; left: number; flip: boolean; maxHeight?: number };
 
 /** The panel's width in px. 360 = the `w-[22.5rem]` the attendance panel has always rendered at. */
 export const ANCHORED_PANEL_WIDTH = 360;
@@ -93,6 +97,7 @@ export function useAnchoredPanel({
         top: flip ? r.top - gap : r.bottom + gap,
         left: Math.min(Math.max(8, r.right - width), window.innerWidth - width - 8),
         flip,
+        maxHeight: Math.max(160, (flip ? r.top : window.innerHeight - r.bottom) - gap - 8),
       });
     },
     [width, flipHeight, gap],
@@ -138,7 +143,7 @@ export function useAnchoredPanel({
 
 /** The attendance panel's own chrome, kept here so the two callers cannot drift apart visually either. */
 const PANEL_CLS =
-  'fixed z-50 w-[22.5rem] max-w-[calc(100vw-1rem)] rounded-lg border border-border bg-popover p-3 text-left shadow-lg';
+  'fixed z-50 w-[22.5rem] max-w-[calc(100vw-1rem)] overflow-y-auto overscroll-contain rounded-lg border border-border bg-popover p-3 text-left shadow-lg';
 
 /**
  * The positioned box. Renders nothing until `at` is known, so a panel never paints at 0,0 for one frame
@@ -164,7 +169,7 @@ export function AnchoredPanel({
       id={id}
       role={role}
       className={cn(PANEL_CLS, className)}
-      style={{ top: at.top, left: at.left, transform: at.flip ? 'translateY(-100%)' : undefined }}
+      style={{ top: at.top, left: at.left, maxHeight: at.maxHeight, transform: at.flip ? 'translateY(-100%)' : undefined }}
       {...rest}
     >
       {children}
