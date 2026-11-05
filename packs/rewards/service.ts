@@ -16,6 +16,9 @@ import { setPayrollInput } from '../payroll/service';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import type { PackTaskItem } from '../../lib/assigned-work';
 import { calculateRewards, ratio, increase, type RewardMultiplierSuggestion } from './engine';
+import {approvedPlanPolicyTx} from './plan-configuration';
+import {latestConfirmedPatTx} from './pat-inputs';
+import {setupAuthority} from './setup-data';
 import { emptyGovernance, effectiveRewardPolicy, poolStatus, unitInputSchema, confirmedSeniorAwards, seniorGrade, maySeeSeniorAmounts, redactPatPolicy, seniorAwardSchema, governanceBasis,governanceHistoryProjection,seniorSourceFingerprint,type RewardPublicGovernance,type RewardGovernance, type SeniorAward } from './governance-model';
 import { assertRewardPolicyGrids } from './policy-grid-validation';
 import { onehrRewardResultTx } from '../performance/service';
@@ -123,6 +126,8 @@ export async function saveRewardUnitInputs(ctx:SessionContext,unitId:string,revi
  const inputs=unitInputSchema.parse(raw),why=reasonForGovernance(reason);
  return withRewardsTenant(ctx,async tx=>{
   const {unit,roles,entries}=await load(tx,unitId,true);governanceAuthority(unit,roles,revision);
+  const [binding]=await tx.execute<{pat_version_id:string}>(sql`select pat_version_id from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+  if(binding){const current=await governanceStateTx(tx,unitId);if(!current?.inputs||(['targetCents','forecastCents','actualCents','targetMonthsBp'] as const).some(key=>inputs[key]!==current.inputs![key]))throw new RewardError('Company PAT figures are read-only here. Update them in PAT Inputs.');}
   if(unit.policy.bonusStructure==='branch'&&inputs.multiplierBp!==10000)throw new RewardError('PPCH unit multiplier must be fixed at 1.00.');
   const before=await governanceStateTx(tx,unitId),prior=before??emptyGovernance(),oldPublic=await governancePublicTx(tx,unitId),old=calculateRewards(entries,effectiveRewardPolicy(unit.policy,before));
   const after:RewardGovernance={...prior,inputs,previousPools:{standard:old.budgets.standard.bonusPoolCents,h:old.budgets.h.bonusPoolCents}};
@@ -531,35 +536,25 @@ async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewar
   return new Set(roster.keys());
 }
 
-export async function createRewardUnit(ctx: SessionContext, raw: { name?: string; year: number; companyId: string; businessUnitId: string; cycleId?: string; snapshotDate: string;sharedPolicyVersionId?:string }) {
-  // The cycle name is asked for only when a new cycle is created; an existing cycle keeps its own name.
-  const p = z.object({ name: z.string().trim().max(160).default(''), year: z.number().int().min(2000).max(2200), companyId: idSchema, businessUnitId: idSchema, cycleId: idSchema.optional(), snapshotDate: isoDateSchema,sharedPolicyVersionId:idSchema.optional() }).parse(raw);
-  if (p.snapshotDate > todayInKualaLumpur()) throw new RewardError('The snapshot date cannot be in the future.');
-  return withRewardsTenant(ctx, async tx => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await requireAdmin(tx, p.companyId);
-    const [available]=await tx.execute<{ok:boolean}>(sql`select app.reward_company_admin_available(${p.companyId}::uuid,${p.year}) as ok`);
-    if(!available?.ok)throw new RewardError('This company is archived or excluded from rewards for the selected year.');
-    const shared=await rewardPolicyForReviewTx(tx,p.sharedPolicyVersionId,p.companyId,p.businessUnitId,p.year);
-    if(shared&&shared.policy.year!==p.year)throw new RewardError('The shared configuration belongs to a different reward year.');
-    let cycleId = p.cycleId;
-    if (cycleId) { const [cycle] = await tx.select().from(rewardCycle).where(eq(rewardCycle.id, cycleId)); if (!cycle || cycle.year !== p.year) throw new RewardError('Select a cycle in the same reward year.'); }
-    else { if (!p.name) throw new RewardError('Name the new review cycle.'); const [cycle] = await tx.insert(rewardCycle).values({ tenantId: ctx.tenantId, name: p.name, year: p.year, createdBy: ctx.userId! }).returning(); cycleId = cycle.id; }
-    const [unit] = await tx.insert(rewardUnit).values({ tenantId: ctx.tenantId, createdBy: ctx.userId!, cycleId, companyId: p.companyId, businessUnitId: p.businessUnitId, policy: shared?.policy??defaultPolicy(p.year),policyGroupVersionId:shared?.versionId??null, snapshotDate: p.snapshotDate }).returning();
-    await tx.insert(rewardMember).values({ tenantId: ctx.tenantId, unitId: unit.id, userId: ctx.userId!, role: 'gr' });
-    const employees = await snapshotEmployees(tx, ctx, unit);
-    const [governanceReady]=await tx.execute<{ready:boolean}>(sql`select to_regclass('public.reward_governance') is not null as ready`);
-    if(governanceReady?.ready){
-      // Only newly-created reviews adopt the unit-owned workflow automatically. Existing reviews
-      // retain their exact saved budget basis until Group Rewards explicitly adopts new inputs.
-      const state:RewardGovernance={...emptyGovernance(),inputs:{forecastCents:null,actualCents:null,targetCents:null,targetMonthsBp:0,multiplierBp:unit.policy.bonusStructure==='branch'?10000:null,branchRatings:{}},selection:{employmentIds:[],proposedBy:idSchema.parse(ctx.userId),confirmedBy:null,confirmedAt:null}};
-      await tx.insert(rewardGovernance).values({tenantId:ctx.tenantId,unitId:unit.id,state});
-      await tx.update(rewardUnit).set({policy:{...unit.policy,unitGovernanceDigest:createHash('sha256').update(JSON.stringify(state)).digest('hex')}}).where(eq(rewardUnit.id,unit.id));
-      await projectGovernanceTx(tx,ctx,unit.id,state);
-    }
-    await stamp(tx, ctx, unit.id, 'created', { cycleId, employeeCount: employees.size,...(shared?{sharedPolicyGroupId:shared.groupId,sharedPolicyVersionId:shared.versionId,sharedPolicyRevision:shared.revision}:{}) });
-    return unit.id;
-  });
+export type PlannedRewardUnitInput={name?:string;year:number;companyId:string;businessUnitId:string;cycleId?:string;snapshotDate:string;sharedPolicyVersionId?:string;approvedPlanVersionId?:string};
+export async function createRewardUnit(ctx:SessionContext,raw:PlannedRewardUnitInput){
+ if(!raw.approvedPlanVersionId)throw new RewardError('Create unit reviews from an independently approved Shared Rewards Configuration.');
+ return withRewardsTenant(ctx,tx=>createRewardUnitTx(tx,ctx,raw));
+}
+/** Internal transaction seam used by approved bulk creation; SQL rechecks all authority and frozen bindings. */
+export async function createRewardUnitTx(tx:Tx,ctx:SessionContext,raw:PlannedRewardUnitInput){
+ const version=idSchema.parse(raw.approvedPlanVersionId),resolved=await approvedPlanPolicyTx(tx,ctx,version,idSchema.parse(raw.companyId),idSchema.parse(raw.businessUnitId));
+ if(raw.year!==resolved.setup.year||raw.snapshotDate!==resolved.setup.snapshotDate||raw.name&&raw.name!==resolved.setup.cycleName||raw.cycleId)throw new RewardError('Use the frozen approved plan cycle, year and snapshot date.');
+ const [created]=await tx.execute<{id:string}>(sql`select app.reward_create_planned_unit(${version}::uuid,${raw.companyId}::uuid,${raw.businessUnitId}::uuid) as id`);
+ const [unit]=await tx.select().from(rewardUnit).where(eq(rewardUnit.id,created.id));if(!unit)throw new RewardError('The approved review could not be loaded.');
+ const entries=await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId,unit.id));
+ const floors=await deriveConfidentialityTx(tx,unit.id,entries.map(e=>e.employmentId),unit.snapshotDate);
+ for(const entry of entries){const onehr=await onehrRewardResultTx(tx,entry.employmentId,unit.policy.year,unit.id);const source=sourceWithFloor({...entry.source,onehr},floors.get(entry.employmentId));await tx.update(rewardEntry).set({source,facts:{...entry.facts,confidentiality:source.confidentialityFloor??'standard'}}).where(eq(rewardEntry.id,entry.id));}
+ const inputs=resolved.pat.inputs,state:RewardGovernance={...emptyGovernance(),inputs:{...inputs,multiplierBp:unit.policy.bonusStructure==='branch'?10000:null,branchRatings:{}},selection:{employmentIds:[],proposedBy:idSchema.parse(ctx.userId),confirmedBy:null,confirmedAt:null}};
+ await tx.insert(rewardGovernance).values({tenantId:ctx.tenantId,unitId:unit.id,state});
+ await tx.update(rewardUnit).set({policy:{...unit.policy,unitGovernanceDigest:createHash('sha256').update(JSON.stringify(state)).digest('hex')}}).where(eq(rewardUnit.id,unit.id));
+ await projectGovernanceTx(tx,ctx,unit.id,state);
+ await stamp(tx,ctx,unit.id,'created',{cycleId:unit.cycleId,employeeCount:entries.length,sharedPolicyVersionId:version,salaryVersionId:resolved.binding.salaryVersionId,bonusVersionId:resolved.binding.bonusVersionId,patVersionId:resolved.pat.id});return unit.id;
 }
 
 export async function saveRewardPolicy(ctx: SessionContext, unitId: string, revision: number, raw: unknown) {
@@ -960,6 +955,8 @@ export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: st
     if (['return', 'reject', 'withdraw'].includes(action) && reason.length < 10) throw new RewardError('Explain why the unit is being returned (at least 10 characters).');
     const hash = digest(unit, entries), calculated = await calculateUnit(tx, unit, entries);
     if (action === 'submit' || action === 'approve') {
+      const [setup]=await tx.execute<{pool_recalculation_required:boolean}>(sql`select pool_recalculation_required from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+      if(setup?.pool_recalculation_required)throw new RewardError('Company PAT changed. Return to draft and adopt the confirmed pool before submitting again.');
       if (!entries.length) throw new RewardError('A review needs at least one employee.');
       if(governance){
         if(entries.some(entry=>isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade)&&!seniorGrade(entry.source.grade)))throw new RewardError('Senior plan membership is limited to JG 21–23. Correct selection before submission.');
@@ -1657,4 +1654,15 @@ export async function prepareMobileRewardReview(ctx:SessionContext,unitId:string
  return {people:v.rows.map(r=>({id:r.id,name:r.source.name})),view:{title:`${v.companyName} · ${v.name}`,revision:u.revision,blocks,documents:[],actions},run:async(tx,a,values)=>{
   await decideRewardUnitTx(tx,ctx,unitId,u.revision,z.enum(['submit','approve','return','reject','withdraw']).parse(a),String(values.reason??''),values.acknowledged===true);return 'recorded';
  }};
+}
+
+/** Company PAT adoption preserves old pools and invalidates the review revision under its existing lock. */
+export async function adoptConfirmedCompanyPat(ctx:SessionContext,unitId:string,revision:number,reason:string){
+ const why=reasonForGovernance(reason);return withRewardsTenant(ctx,async tx=>{const {unit,roles,entries}=await load(tx,unitId,true);governanceAuthority(unit,roles,revision);await setupAuthority(tx,unit.companyId,'manage');
+ const [binding]=await tx.execute<{pat_version_id:string}>(sql`select pat_version_id from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid for update`);if(!binding)throw new RewardError('This historical review keeps its own recorded PAT inputs.');
+ const latest=await latestConfirmedPatTx(tx,ctx,unit.companyId,unit.policy.year);if(!latest)throw new RewardError('Confirm the company PAT inputs first.');
+ const before=await governanceStateTx(tx,unitId),prior=before??emptyGovernance(),old=await calculateUnit(tx,unit,entries);
+ const after:RewardGovernance={...prior,inputs:{...latest.inputs,multiplierBp:unit.policy.bonusStructure==='branch'?10000:prior.inputs?.multiplierBp??null,branchRatings:prior.inputs?.branchRatings??{}},previousPools:{standard:old.budgets.standard.bonusPoolCents,h:old.budgets.h.bonusPoolCents}};
+ await saveGovernanceTx(tx,ctx,unitId,before,after,'company-pat-adopted',why);await tx.execute(sql`update reward_unit_setup set previous_pat_version_id=pat_version_id,pat_version_id=${latest.id}::uuid,pool_recalculation_required=false,updated_at=now() where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);return latest.id;
+ });
 }
