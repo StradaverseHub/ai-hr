@@ -11,6 +11,7 @@ import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
 import {exerciseSavedReport} from './reports-browser.mjs';
 import {exercisePayrollBrowser} from './payroll-browser.mjs';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
+import {exerciseLivePersonnelProfile} from './personnel-live-profile-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {actionFormData} from './action-form.ts';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
@@ -36,7 +37,7 @@ const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000
 const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
 const report={suite,kind:suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
  assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',navigationScheduling:'disjoint role lanes; groupHR6reads per complete mutation cycle, other roles3; same activity pauses',driverMaxSockets:4000,preflightHttpActorLanes:4,browserVisitReadiness:'domcontentloaded followed by unchanged heading, fixture data and complete Home card assertions',tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,preflightBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
- workloadManifest:{readRoutes:wholeSystemRouteCount,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],browserMutations:suite==='claims-heavy'?[]:['Generic Reports saved-definition create/edit/delete (group HR, baseline'+(suite==='whole-system'?' and loaded':'')+')'],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['concurrent Payroll close/publish','Lifecycle mutations','Performance mutations','Rewards mutations','large Personnel imports',...(suite==='claims-heavy'?['report-definition CRUD']:['Employee Master and Payroll Comparison definition CRUD','500-principal Reports write mix']),'long-running document jobs','external email delivery'],productionEquivalent:false},
+ workloadManifest:{readRoutes:wholeSystemRouteCount,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],browserMutations:suite==='claims-heavy'?[]:['Generic Reports saved-definition create/edit/delete (group HR, baseline'+(suite==='whole-system'?' and loaded':'')+')'],preflightOnly:suite==='workflow-preflight'?['Active Personnel contact edit/restore','E-Letter draft create/edit/withdraw','Concurrent Payroll close/publish']:[],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:[...(suite==='workflow-preflight'?[]:['concurrent Payroll close/publish','active Personnel contact edit/restore','E-Letter draft mutations']),'Lifecycle mutations','Performance mutations','Rewards mutations','large Personnel imports',...(suite==='claims-heavy'?['report-definition CRUD']:['Employee Master and Payroll Comparison definition CRUD','500-principal Reports write mix']),'long-running document jobs','external email delivery'],productionEquivalent:false},
  coverage:[],boundaries:[],browser:[],homeCardFailures:[],browserHomeRequests:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
 function processCpu(ids){
@@ -578,6 +579,10 @@ try{
    }
    report.payslipDocument={nativeDownload:true,automaticPdfRequests,bytes,pages,ownIdentity:true,foreignBoundaries:2};save();
   }finally{await ctx.close();}
+ }
+ if(suite==='workflow-preflight'){
+  const ctx=await context(hr),page=await ctx.newPage();
+  try{await exerciseLivePersonnelProfile({page,user:hr,fixture,db,request,report,save,phase:'baseline'});}finally{await ctx.close();}
  }
  assert.equal(report.browserErrors.length,0,'mutation/processing browser runtime errors');
  await homeHttp.read(fixture.users[5],false);await homeHttp.read(fixture.users[3],false);
