@@ -101,9 +101,14 @@ ALTER FUNCTION app.reward_applied_public_references(uuid) OWNER TO ai_hr_reward_
 DROP POLICY reward_plan_setup_write ON reward_plan_setup;
 CREATE POLICY reward_plan_setup_insert ON reward_plan_setup FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND state='draft' AND created_by=app.current_user_id() AND app.current_user_id()=ANY(contributor_ids) AND NOT EXISTS(SELECT 1 FROM unnest(company_ids)c WHERE NOT app.reward_setup_allowed(c,'manage')));
 CREATE POLICY reward_plan_setup_update ON reward_plan_setup FOR UPDATE USING(tenant_id=app.current_tenant_id() AND state<>'approved' AND NOT EXISTS(SELECT 1 FROM unnest(company_ids)c WHERE NOT app.reward_setup_allowed(c,'manage'))) WITH CHECK(tenant_id=app.current_tenant_id() AND NOT EXISTS(SELECT 1 FROM unnest(company_ids)c WHERE NOT app.reward_setup_allowed(c,'manage')));
-CREATE FUNCTION app.reward_setup_links() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
+CREATE FUNCTION app.reward_setup_links() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 BEGIN
- IF TG_TABLE_NAME='reward_plan_company' THEN
+ IF TG_TABLE_NAME='reward_plan_setup' THEN
+  IF NOT EXISTS(SELECT 1 FROM reward_policy_group_version v WHERE v.id=NEW.version_id AND v.tenant_id=NEW.tenant_id AND v.group_id=NEW.group_id AND (v.policy->>'year')::integer=NEW.year AND v.created_by=ANY(NEW.contributor_ids)) THEN RAISE EXCEPTION 'Plan must retain its exact source and all source contributors';END IF;
+  IF (SELECT array_agg(DISTINCT x ORDER BY x) FROM unnest(NEW.company_ids)x) IS DISTINCT FROM (SELECT array_agg(DISTINCT x.company_id ORDER BY x.company_id) FROM reward_policy_group_target x WHERE x.version_id=NEW.version_id AND x.tenant_id=NEW.tenant_id) OR jsonb_array_length(NEW.bindings)<>cardinality(NEW.company_ids) THEN RAISE EXCEPTION 'Plan company set must match its shared source';END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.bindings)b WHERE NOT EXISTS(SELECT 1 FROM reward_policy_group_target x WHERE x.tenant_id=NEW.tenant_id AND x.version_id=NEW.version_id AND x.company_id=(b->>'companyId')::uuid AND x.business_unit_id=(b->>'businessUnitId')::uuid) OR NOT EXISTS(SELECT 1 FROM reward_library_version v JOIN reward_library l ON l.id=v.library_id AND l.tenant_id=v.tenant_id WHERE v.id=(b->>'salaryVersionId')::uuid AND v.tenant_id=NEW.tenant_id AND v.state='confirmed' AND l.kind='salary' AND l.year=NEW.year) OR NOT EXISTS(SELECT 1 FROM reward_library_version v JOIN reward_library l ON l.id=v.library_id AND l.tenant_id=v.tenant_id WHERE v.id=(b->>'bonusVersionId')::uuid AND v.tenant_id=NEW.tenant_id AND v.state='confirmed' AND l.kind='bonus' AND l.year=NEW.year AND(v.data->>'type'<>'branch' OR b->>'branchAcknowledged'='true'))) THEN RAISE EXCEPTION 'Plan requires exact shared targets and confirmed matching libraries';END IF;
+  IF (SELECT count(DISTINCT b->>'companyId') FROM jsonb_array_elements(NEW.bindings)b)<>cardinality(NEW.company_ids) THEN RAISE EXCEPTION 'Each plan company has one binding';END IF;
+ ELSIF TG_TABLE_NAME='reward_plan_company' THEN
   IF NOT EXISTS(SELECT 1 FROM reward_plan_setup p WHERE p.tenant_id=NEW.tenant_id AND p.version_id=NEW.plan_version_id AND p.state='approved' AND p.year=NEW.year AND NEW.company_id=ANY(p.company_ids) AND EXISTS(SELECT 1 FROM jsonb_array_elements(p.bindings)b WHERE b->>'companyId'=NEW.company_id::text AND b->>'salaryVersionId'=NEW.salary_version_id::text AND b->>'bonusVersionId'=NEW.bonus_version_id::text)) THEN RAISE EXCEPTION 'Company assignment must match an independently approved plan';END IF;
  ELSIF TG_TABLE_NAME='reward_company_year_review' THEN
   IF NOT EXISTS(SELECT 1 FROM reward_unit u JOIN reward_cycle c ON c.id=u.cycle_id AND c.tenant_id=u.tenant_id WHERE u.id=NEW.unit_id AND u.tenant_id=NEW.tenant_id AND u.company_id=NEW.company_id AND c.year=NEW.year AND u.kind='annual') THEN RAISE EXCEPTION 'Review admission must match actual company and reward year';END IF;
@@ -112,7 +117,92 @@ BEGIN
   IF TG_OP='UPDATE' AND(NEW.unit_id<>OLD.unit_id OR NEW.tenant_id<>OLD.tenant_id OR NEW.plan_version_id<>OLD.plan_version_id OR NEW.salary_version_id<>OLD.salary_version_id OR NEW.bonus_version_id<>OLD.bonus_version_id) THEN RAISE EXCEPTION 'Consumed plan and library versions are immutable';END IF;
  END IF;RETURN NEW;
 END $$;
+CREATE TRIGGER reward_plan_setup_links BEFORE INSERT OR UPDATE ON reward_plan_setup FOR EACH ROW EXECUTE FUNCTION app.reward_setup_links();
 CREATE TRIGGER reward_plan_company_links BEFORE INSERT OR UPDATE ON reward_plan_company FOR EACH ROW EXECUTE FUNCTION app.reward_setup_links();
 CREATE TRIGGER reward_company_year_links BEFORE INSERT ON reward_company_year_review FOR EACH ROW EXECUTE FUNCTION app.reward_setup_links();
 CREATE TRIGGER reward_unit_setup_links BEFORE INSERT OR UPDATE ON reward_unit_setup FOR EACH ROW EXECUTE FUNCTION app.reward_setup_links();
+ALTER FUNCTION app.reward_setup_links() OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_setup_links() FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_setup_links() TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.reward_setup_plan_ids() RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT v.id FROM reward_policy_group_version v JOIN reward_policy_group g ON g.id=v.group_id AND g.tenant_id=v.tenant_id WHERE v.tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(NULL,'manage') AND v.revision=g.revision ORDER BY g.name,g.id
+$$;
+ALTER FUNCTION app.reward_setup_plan_ids() OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_setup_plan_ids() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_setup_plan_ids() TO ai_hr_app;
+--> statement-breakpoint
+-- Narrow public provenance projection can read only versions consumed by a review the caller may see.
+CREATE POLICY reward_setup_reference_salary_bonus ON reward_library_version FOR SELECT TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit_setup s WHERE s.tenant_id=reward_library_version.tenant_id AND(s.salary_version_id=reward_library_version.id OR s.bonus_version_id=reward_library_version.id) AND app.reward_access(s.unit_id)));
+CREATE POLICY reward_setup_reference_library ON reward_library FOR SELECT TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_library_version v JOIN reward_unit_setup s ON s.tenant_id=v.tenant_id AND(s.salary_version_id=v.id OR s.bonus_version_id=v.id) WHERE v.library_id=reward_library.id AND v.tenant_id=reward_library.tenant_id AND app.reward_access(s.unit_id)));
+CREATE POLICY reward_setup_reference_pat ON reward_pat_version FOR SELECT TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit_setup s WHERE s.tenant_id=reward_pat_version.tenant_id AND s.pat_version_id=reward_pat_version.id AND app.reward_access(s.unit_id)));
+
+--> statement-breakpoint
+CREATE FUNCTION app.reward_setup_policy_commit(p_group uuid,p_expected integer,p_name text,p_policy jsonb,p_targets jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE t uuid:=app.current_tenant_id();actor uuid:=app.current_user_id();g public.reward_policy_group%ROWTYPE;
+ version_id uuid:=gen_random_uuid();next_revision integer;target jsonb;c uuid;b uuid;group_id uuid;
+BEGIN
+ IF NOT app.reward_setup_allowed(NULL,'manage') THEN RAISE EXCEPTION 'Global Group Rewards authority required' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ IF actor IS NULL OR p_expected IS NULL OR p_expected<0 OR p_name IS NULL OR p_name<>btrim(p_name) OR length(p_name) NOT BETWEEN 1 AND 100
+  OR p_policy IS NULL OR jsonb_typeof(p_policy)<>'object' OR octet_length(p_policy::text)>100000
+  OR COALESCE(p_policy->>'year','') !~ '^(20[0-9]{2}|21[0-9]{2}|2200)$'
+  OR p_policy->>'seniorMembershipMode' IS DISTINCT FROM 'named-members' OR p_policy->'seniorGrades' IS DISTINCT FROM '[]'::jsonb
+  OR p_policy->'lumpUnitCents' IS DISTINCT FROM 'null'::jsonb
+  OR p_targets IS NULL OR jsonb_typeof(p_targets)<>'array' OR jsonb_array_length(p_targets)>500 OR (p_group IS NULL AND jsonb_array_length(p_targets)=0) THEN
+  RAISE EXCEPTION 'reward policy group invalid' USING ERRCODE='23514'; END IF;
+ IF p_group IS NULL THEN
+  IF p_expected<>0 THEN RAISE EXCEPTION 'reward policy group changed' USING ERRCODE='40001'; END IF;
+  group_id:=gen_random_uuid();next_revision:=1;
+ ELSE
+  SELECT * INTO g FROM public.reward_policy_group x WHERE x.id=p_group AND x.tenant_id=t FOR UPDATE;
+  IF NOT FOUND OR g.revision<>p_expected THEN RAISE EXCEPTION 'reward policy group changed' USING ERRCODE='40001'; END IF;
+  IF EXISTS(SELECT 1 FROM reward_policy_group_target x WHERE x.tenant_id=t AND x.version_id=g.current_version_id AND NOT app.reward_setup_allowed(x.company_id,'manage')) THEN
+   RAISE EXCEPTION 'reward policy group scope' USING ERRCODE='42501'; END IF;
+  group_id:=g.id;next_revision:=g.revision+1;
+ END IF;
+ FOR target IN SELECT value FROM jsonb_array_elements(p_targets) LOOP
+  IF jsonb_typeof(target)<>'object' OR NOT (target ?& ARRAY['companyId','businessUnitId']) OR (target-ARRAY['companyId','businessUnitId'])<>'{}'::jsonb THEN
+   RAISE EXCEPTION 'reward policy group invalid' USING ERRCODE='23514'; END IF;
+  c:=(target->>'companyId')::uuid;b:=(target->>'businessUnitId')::uuid;
+  IF c IS NULL OR b IS NULL OR NOT app.reward_policy_pair_valid(t,c,b) OR NOT app.reward_setup_allowed(c,'manage') OR NOT app.reward_setup_company_eligible(c,(p_policy->>'year')::integer) THEN
+   RAISE EXCEPTION 'reward policy group scope' USING ERRCODE='42501'; END IF;
+  IF EXISTS(SELECT 1 FROM public.reward_policy_group other_group
+   JOIN public.reward_policy_group_version other_version ON other_version.id=other_group.current_version_id AND other_version.tenant_id=other_group.tenant_id
+   JOIN public.reward_policy_group_target other_target ON other_target.version_id=other_version.id AND other_target.tenant_id=other_version.tenant_id
+   WHERE other_group.tenant_id=t AND other_group.id IS DISTINCT FROM p_group AND other_target.company_id=c 
+    AND other_version.policy->>'year'=p_policy->>'year') THEN
+   RAISE EXCEPTION 'reward policy group overlaps another current configuration' USING ERRCODE='23514'; END IF;
+ END LOOP;
+ IF (SELECT count(*) FROM jsonb_array_elements(p_targets))<>(SELECT count(DISTINCT jsonb_build_array(value->>'companyId',value->>'businessUnitId')) FROM jsonb_array_elements(p_targets)) THEN
+  RAISE EXCEPTION 'reward policy group invalid' USING ERRCODE='23514'; END IF;
+ IF p_group IS NULL THEN
+  INSERT INTO public.reward_policy_group(id,tenant_id,name,revision,current_version_id,created_by) VALUES(group_id,t,p_name,next_revision,version_id,actor);
+ END IF;
+ INSERT INTO public.reward_policy_group_version(id,tenant_id,group_id,revision,name,policy,policy_digest,created_by)
+  VALUES(version_id,t,group_id,next_revision,p_name,p_policy,encode(sha256(convert_to(p_policy::text,'UTF8')),'hex'),actor);
+ INSERT INTO public.reward_policy_group_target(tenant_id,version_id,company_id,business_unit_id)
+  SELECT t,version_id,(value->>'companyId')::uuid,(value->>'businessUnitId')::uuid FROM jsonb_array_elements(p_targets);
+ IF p_group IS NOT NULL THEN UPDATE public.reward_policy_group SET name=p_name,revision=next_revision,current_version_id=version_id WHERE id=group_id AND tenant_id=t; END IF;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+  VALUES(t,'reward-policy-group',group_id,'reward-policy-group.setup-version-saved','user',actor,
+   jsonb_build_object('beforeRevision',p_expected,'revision',next_revision,'versionId',version_id,'targets',p_targets,
+    'policyDigest',encode(sha256(convert_to(p_policy::text,'UTF8')),'hex')));
+ RETURN app.reward_policy_group_version_json(version_id);
+END;
+$$;
+
+ALTER FUNCTION app.reward_setup_policy_commit(uuid,integer,text,jsonb,jsonb) OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_setup_policy_commit(uuid,integer,text,jsonb,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_setup_policy_commit(uuid,integer,text,jsonb,jsonb) TO ai_hr_app;
+GRANT INSERT ON reward_policy_group,reward_policy_group_version,reward_policy_group_target,domain_event TO ai_hr_reward_setup_reader;
+GRANT UPDATE ON reward_policy_group TO ai_hr_reward_setup_reader;
+GRANT EXECUTE ON FUNCTION app.reward_policy_pair_valid(uuid,uuid,uuid,boolean) TO ai_hr_reward_setup_reader;
+CREATE POLICY reward_setup_policy_group_insert ON reward_policy_group FOR INSERT TO ai_hr_reward_setup_reader WITH CHECK(tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND app.reward_setup_allowed(NULL,'manage'));
+CREATE POLICY reward_setup_policy_group_update ON reward_policy_group FOR UPDATE TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(NULL,'manage')) WITH CHECK(tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(NULL,'manage'));
+CREATE POLICY reward_setup_policy_version_insert ON reward_policy_group_version FOR INSERT TO ai_hr_reward_setup_reader WITH CHECK(tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND app.reward_setup_allowed(NULL,'manage'));
+CREATE POLICY reward_setup_policy_target_insert ON reward_policy_group_target FOR INSERT TO ai_hr_reward_setup_reader WITH CHECK(tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(company_id,'manage'));
+CREATE POLICY reward_setup_policy_event_insert ON domain_event FOR INSERT TO ai_hr_reward_setup_reader WITH CHECK(tenant_id=app.current_tenant_id() AND actor_id=app.current_user_id() AND event_type='reward-policy-group.setup-version-saved' AND app.reward_setup_allowed(NULL,'manage'));
+--> statement-breakpoint
+-- Existing permissive policies still parse their bounded authorization helpers for this purpose role.
+GRANT EXECUTE ON FUNCTION app.reward_admin(uuid),app.is_admin(),app.is_group_admin(),app.acting_as_owner() TO ai_hr_reward_setup_reader;

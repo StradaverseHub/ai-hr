@@ -3,10 +3,11 @@ import { z } from 'zod';
 import type { RewardEntry, RewardPolicy, RewardRole } from './model';
 
 const money = z.number().int().min(0).max(100_000_000_000);
+const signedPat = z.number().int().min(-100_000_000_000).max(100_000_000_000);
 const bp = z.number().int().min(0).max(100_000);
 const identity = z.uuid();
 export const unitInputSchema = z.object({
-  forecastCents: money.nullable(), actualCents: money.nullable(), targetCents: money.nullable(),
+  forecastCents: signedPat.nullable(), actualCents: signedPat.nullable(), targetCents: money.nullable(),
   targetMonthsBp: bp, multiplierBp: bp.nullable(),
   branchRatings: z.record(z.string().trim().min(1).max(100), z.enum(['UA','BE','ME','AE','OU'])),
 }).strict();
@@ -28,13 +29,13 @@ export const poolStatus = (state:RewardGovernance|null):RewardPoolStatus => {
   if(!state?.inputs)return 'legacy';
   const input=state.inputs;
   if(input.targetCents===null||input.targetCents<=0)return 'not-set';
-  if(input.actualCents!==null)return input.actualCents>0?'final':'not-set';
-  return input.forecastCents!==null&&input.forecastCents>0?'provisional':'not-set';
+  if(input.actualCents!==null)return 'final';
+  return input.forecastCents!==null?'provisional':'not-set';
 };
 export function effectiveRewardPolicy(policy:RewardPolicy,state:RewardGovernance|null):RewardPolicy {
   if(!state?.inputs)return policy;
   const status=poolStatus(state),input=state.inputs;
-  return {...policy,patActual:status==='not-set'?0:input.actualCents??input.forecastCents??0,patTarget:status==='not-set'?100:input.targetCents!,targetMonthsBp:input.targetMonthsBp,
+  return {...policy,patActual:status==='not-set'?0:Math.max(0,input.actualCents??input.forecastCents??0),patTarget:status==='not-set'?100:input.targetCents!,targetMonthsBp:input.targetMonthsBp,
     multiplierBp:policy.bonusStructure==='branch'?10000:input.multiplierBp,branchRatings:input.branchRatings,
     exemptReason:state.exemption?.confirmedBy?state.exemption.reason:''};
 }

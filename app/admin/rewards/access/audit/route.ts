@@ -1,9 +1,10 @@
+import {rewardAccessPageCompanies} from '@/packs/rewards/access-policy';
 import {getSession} from '@/lib/session';
 import {getScopeIds} from '@/lib/scope';
 import {rewardAccessCompanies,rewardAccessAdministration,rewardAccessRequests} from '@/packs/rewards/service';
 import {toCsv} from '@/lib/csv';
 export async function GET(){
- const session=await getSession(),scope=await getScopeIds((await rewardAccessCompanies(session)).map(c=>c.id));
+ const session=await getSession(),scope=await getScopeIds((await rewardAccessPageCompanies(session,true)).map(c=>c.id));
  const value=await rewardAccessAdministration(session,scope),allowed=new Set(value.reviews.map(r=>r.id));
  const requests=(await rewardAccessRequests(session,{audit:true})).filter(q=>q.changes.every(c=>allowed.has(c.unitId)));
  const rows=requests.flatMap(q=>q.changes.flatMap(c=>{

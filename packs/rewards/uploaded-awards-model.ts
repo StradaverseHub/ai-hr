@@ -1,3 +1,4 @@
+import {rewardArchitectureFlags} from './architecture-parity';
 import {z} from 'zod';
 import {calculateRewards,blankBudget,ratio,sum,type CalculatedEntry} from './engine';
 import type {RewardEntry,RewardFlag,RewardPolicy} from './model';
@@ -14,6 +15,7 @@ export function calculateUploadedRewards(entries:RewardEntry[],policy:RewardPoli
  const checked=validateUploadedAwards(raw,entries,activeGrades,policy.year),baseline=calculateRewards(entries,policy),flags:RewardFlag[]=checked.rejected.map(r=>({severity:'block',code:'UPL-01',message:`Row ${r.row}: ${r.reason}`}));
  if(!checked.accepted.length)flags.push({severity:'block',code:'UPL-01',message:'Upload and independently check at least one employee award.'});
  const rows:CalculatedEntry[]=baseline.rows.map(e=>{const award=checked.accepted.find(r=>r.employmentId===e.source.employmentId);if(!award)return{...e,meritCents:0,promotionCents:0,specialCents:0,newBasicCents:e.source.basicCents,bonusCents:0,lumpCents:0,standardBonusCents:0};for(const warning of award.warnings)flags.push({severity:'warning',code:'UPL-02',entryId:e.id,message:warning});return{...e,recommendation:{...e.recommendation,promotionGrade:award.newGrade,reason:award.remarks},incrementEligible:true,bonusEligible:true,incrementReason:'',bonusReason:'',meritCents:award.incrementType==='merit'?award.incrementCents:0,promotionCents:award.incrementType==='promotion'?award.incrementCents:0,specialCents:award.incrementType==='special'?award.incrementCents:0,meritBp:award.incrementType==='merit'?ratio(award.incrementCents,10000,e.source.basicCents):0,promotionBp:award.incrementType==='promotion'?ratio(award.incrementCents,10000,e.source.basicCents):0,specialBp:award.incrementType==='special'?ratio(award.incrementCents,10000,e.source.basicCents):0,newBasicCents:award.newBasicCents,bonusCents:award.bonusCents,standardBonusCents:award.bonusCents,lumpCents:award.lumpCents};});
+ flags.push(...entries.flatMap(e=>rewardArchitectureFlags(e.id,e.source)));
  const budgets={standard:blankBudget(),h:blankBudget(),ec:blankBudget()};for(const row of rows){const b=budgets[row.plan];b.payrollCents+=row.source.basicCents;b.increasesCents+=row.newBasicCents-row.source.basicCents;b.bonusUsedCents+=row.bonusCents;b.lumpCents+=row.lumpCents;}
  return{...baseline,rows,budgets,flags,poolStatus:'final' as const,uploadedSummary:checked.totals};
 }

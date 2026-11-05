@@ -45,15 +45,15 @@ export type PatInput=z.infer<typeof patInputSchema>;
 export type PatStatus='not-set'|'provisional'|'final';
 export function patProjection(p:PatInput){
  const numerator=p.actualCents??p.forecastCents,status:PatStatus=p.targetCents===null||numerator===null?'not-set':p.actualCents!==null?'final':'provisional';
- const achievementBp=status==='not-set'?null:Number(BigInt(numerator!)*10000n/BigInt(p.targetCents!));
+ const achievementBp=status==='not-set'?null:Number(BigInt(numerator!)*BigInt(10000)/BigInt(p.targetCents!));
  return{status,achievementBp,targetMonthsBp:p.targetMonthsBp};
 }
 export function patPoolCents(p:PatInput,eligibleMonthlyPayrollCents:number):number{
  const value=patInputSchema.parse(p);cents.parse(eligibleMonthlyPayrollCents);const basis=value.actualCents??value.forecastCents;
  if(value.targetCents===null||basis===null)return 0;
- return Number(BigInt(Math.max(0,basis))*BigInt(value.targetMonthsBp)*BigInt(eligibleMonthlyPayrollCents)/(BigInt(value.targetCents)*10000n));
+ return Number(BigInt(Math.max(0,basis))*BigInt(value.targetMonthsBp)*BigInt(eligibleMonthlyPayrollCents)/(BigInt(value.targetCents)*BigInt(10000)));
 }
-export function patSubtotal(rows:readonly PatInput[]){const sum=(key:'targetCents'|'actualCents'|'forecastCents')=>rows.every(r=>r[key]===null)?null:rows.reduce((n,r)=>n+(r[key]??0),0);const targetCents=sum('targetCents'),actualCents=sum('actualCents'),forecastCents=sum('forecastCents');return{targetCents,actualCents,forecastCents,achievementBp:targetCents&&targetCents>0?Number(BigInt(actualCents??forecastCents??0)*10000n/BigInt(targetCents)):null};}
+export function patSubtotal(rows:readonly PatInput[]){const sum=(key:'targetCents'|'actualCents'|'forecastCents')=>!rows.length||rows.some(r=>r[key]===null)?null:rows.reduce((n,r)=>n+(r[key]??0),0);const targetCents=sum('targetCents'),actualCents=sum('actualCents'),forecastCents=sum('forecastCents');return{targetCents,actualCents,forecastCents,achievementBp:targetCents&&targetCents>0?Number(BigInt(actualCents??forecastCents??0)*BigInt(10000)/BigInt(targetCents)):null};}
 export function decimalToCents(raw:string,allowNegative=false):number|null{
  const s=raw.trim();if(!s)return null;const pattern=allowNegative?/^-?\d{1,10}(?:\.\d{1,2})?$/:/^\d{1,10}(?:\.\d{1,2})?$/;
  if(!pattern.test(s))throw new RewardSetupError('invalid','Enter a valid amount with no more than two decimal places.');

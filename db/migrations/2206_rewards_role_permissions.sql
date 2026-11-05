@@ -112,3 +112,22 @@ GRANT EXECUTE ON FUNCTION app.reward_setup_allowed(uuid,text),app.reward_member_
 CREATE POLICY reward_view_principal_assignments ON role_assignment FOR SELECT TO ai_hr_rewards_post_reader USING(tenant_id=app.current_tenant_id());
 ALTER FUNCTION app.reward_view_as_principal(uuid) OWNER TO ai_hr_rewards_post_reader;
 REVOKE ALL ON FUNCTION app.reward_view_as_principal(uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_view_as_principal(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Triggers also cover legacy SECURITY DEFINER writers whose retained owner bypasses RLS.
+CREATE FUNCTION app.reward_view_as_write_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
+BEGIN IF NOT app.reward_not_viewing_as() THEN RAISE EXCEPTION 'End read-only View as before changing Rewards' USING ERRCODE='42501';END IF;RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;END $$;
+REVOKE ALL ON FUNCTION app.reward_view_as_write_guard() FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_view_as_write_guard() TO PUBLIC;
+DO $$ DECLARE t text; BEGIN
+ FOREACH t IN ARRAY ARRAY['reward_unit','reward_entry','reward_member','reward_decision','reward_policy_group','reward_policy_group_version','reward_policy_group_target','reward_governance','reward_governance_history','reward_senior_evidence','reward_governance_public','reward_senior_award','reward_company_exclusion','reward_calendar','reward_access_request','reward_role_permission','reward_page_grant','reward_setup_grant','reward_library','reward_library_version','reward_pat_version','reward_plan_setup','reward_plan_company','reward_company_year_review','reward_unit_setup','reward_setup_cycle'] LOOP
+  IF to_regclass('public.'||t) IS NOT NULL THEN EXECUTE format('CREATE TRIGGER reward_view_as_write_guard BEFORE INSERT OR UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION app.reward_view_as_write_guard()',t);END IF;
+ END LOOP;
+END $$;
+--> statement-breakpoint
+-- Personal page exceptions restore a narrowed page only inside a still-eligible native review seat.
+-- They never mint an approval role, company scope, confidential category or mutation capability.
+CREATE OR REPLACE FUNCTION app.reward_capability(wanted_unit uuid,wanted_capability text) RETURNS boolean LANGUAGE sql STABLE SET search_path=pg_catalog,public,app AS $$
+ SELECT EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=wanted_unit AND u.tenant_id=app.current_tenant_id() AND u.deleted_at IS NULL
+ AND EXISTS(SELECT 1 FROM app.reward_roles(u.id) AS assigned(role) WHERE app.reward_role_native_capability(assigned.role,wanted_capability)
+ AND (coalesce((SELECT allowed FROM reward_role_permission p WHERE p.tenant_id=u.tenant_id AND p.role=CASE WHEN assigned.role='bg' AND EXISTS(SELECT 1 FROM reward_member m WHERE m.unit_id=u.id AND m.tenant_id=u.tenant_id AND m.user_id=app.current_user_id() AND m.role='bg' AND m.covers_user_id IS NOT NULL AND app.reward_member_eligible(m.id)) THEN 'proxy_bg' ELSE assigned.role END AND p.capability=wanted_capability),true)
+ OR (wanted_capability IN('review.view','analytics.view','approvals.view','rules.view') AND EXISTS(SELECT 1 FROM reward_page_grant g WHERE g.tenant_id=u.tenant_id AND g.company_id=u.company_id AND g.user_id=app.current_user_id() AND g.capability=wanted_capability AND g.active AND g.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND(g.valid_to IS NULL OR g.valid_to>=timezone('Asia/Kuala_Lumpur',now())::date))))))
+$$;

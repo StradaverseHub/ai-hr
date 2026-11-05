@@ -35316,7 +35316,17 @@
       "audit": {
         "always": "Every change audited"
       }
-    }
+    },
+    "restrictedName": "Restricted name",
+    "personalPages": "Extra page access",
+    "personalPagesHelp": "Restore a page for an individual with an eligible review seat in this company. Scope, confidential records, approval roles and edit rights keep their normal limits.",
+    "person": "Person",
+    "company": "Company",
+    "page": "Page",
+    "validFrom": "Start date",
+    "validTo": "End date (optional)",
+    "active": "Active",
+    "inactive": "Inactive"
   },
   "rewardAdvisor": {
     "title": "Recommendation advisor",
@@ -35370,6 +35380,34 @@
       "rules": "blocking checks",
       "budget": "pool capacity",
       "final_pool": "final pool"
+    },
+    "fairnessReport": "Fairness report",
+    "acceptAll": "Accept all within budget",
+    "fairnessHelp": "Group Rewards review only. Attributes are used solely in this retrospective report, never in suggestions. Groups smaller than five and their complements are suppressed. A gap above {threshold} percentage points is flagged. Missing source groups remain unavailable.",
+    "reviewGap": "Review gap",
+    "suppressed": "Insufficient data for a safe comparison",
+    "noGap": "No gap above threshold",
+    "group": "Group",
+    "people": "People",
+    "suggestedIncrease": "Average suggested increase",
+    "finalIncrease": "Average final increase",
+    "dimensions": {
+      "gender": "Gender",
+      "race": "Race",
+      "religion": "Religion",
+      "age": "Age band",
+      "nationality": "Nationality",
+      "disability": "Disability",
+      "maritalStatus": "Marital status"
+    },
+    "equityGaps": "{count} same-grade department groups have a pay gap above the configured threshold.",
+    "decisionSummary": "Accepted: {accepted} · Adjusted: {adjusted} · Ignored: {ignored}",
+    "analytics": "Rewards Analytics",
+    "analyticsHelp": "Visible employee lines only. Uploaded awards are shown separately and can be included or excluded.",
+    "uploadedFilter": {
+      "include": "Include uploaded awards",
+      "exclude": "Exclude uploaded awards",
+      "only": "Uploaded awards only"
     }
   },
   "rewardUploaded": {

@@ -17,8 +17,8 @@ CREATE FUNCTION app.reward_setup_allowed(wanted_company uuid,wanted_operation te
  AND (wanted_company IS NULL OR EXISTS(SELECT 1 FROM company c WHERE c.id=wanted_company AND c.tenant_id=app.current_tenant_id()))
  AND (EXISTS(SELECT 1 FROM reward_setup_grant g WHERE g.tenant_id=app.current_tenant_id() AND g.user_id=app.current_user_id() AND g.active
   AND g.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND(g.valid_to IS NULL OR g.valid_to>=timezone('Asia/Kuala_Lumpur',now())::date)
-  AND(wanted_company IS NULL OR g.company_id IS NULL OR g.company_id=wanted_company) AND(g.role='gr' OR wanted_operation='library_view' AND g.role='ctro'))
- OR EXISTS(SELECT 1 FROM reward_unit u WHERE u.tenant_id=app.current_tenant_id() AND u.deleted_at IS NULL AND(wanted_company IS NULL OR u.company_id=wanted_company)
+  AND((wanted_company IS NULL AND g.company_id IS NULL) OR (wanted_company IS NOT NULL AND(g.company_id IS NULL OR g.company_id=wanted_company))) AND(g.role='gr' OR wanted_operation='library_view' AND g.role='ctro'))
+ OR EXISTS(SELECT 1 FROM reward_unit u WHERE u.tenant_id=app.current_tenant_id() AND u.deleted_at IS NULL AND wanted_company IS NOT NULL AND u.company_id=wanted_company
   AND EXISTS(SELECT 1 FROM app.reward_roles(u.id) r WHERE r='gr' OR wanted_operation='library_view' AND r='ctro')))
 $$;
 REVOKE ALL ON FUNCTION app.reward_setup_allowed(uuid,text) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_setup_allowed(uuid,text) TO ai_hr_app;

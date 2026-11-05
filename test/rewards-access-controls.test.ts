@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit as createRewardUnit} from './rewards-setup-fixture';
 import {setRewardMember as grantCheckedFixtureSeat} from './rewards-access-fixture';
 import {migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {randomUUID} from 'node:crypto';
@@ -10,7 +11,7 @@ import {agentContext,ensureAgentPrincipal} from '../core/agent-principal';
 import {resolveEntitlementsTx} from '../core/entitlements';
 import {pgSqlState} from '../lib/db-error';
 import {hireEmployee} from '../core/org';
-import {createRewardUnit,getRewardConfiguration,getRewardUnit,previewRewardAccessChange,saveRewardAccessChange,decideRewardAccessRequest,rewardAccessRequests,rewardAccessAdministration,rewardAccessSuspensionRecipients,setRewardMember,confirmRewardGovernance} from '../packs/rewards/service';
+import {getRewardConfiguration,getRewardUnit,previewRewardAccessChange,saveRewardAccessChange,decideRewardAccessRequest,rewardAccessRequests,rewardAccessAdministration,rewardAccessSuspensionRecipients,setRewardMember,confirmRewardGovernance} from '../packs/rewards/service';
 import {migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,closeAll,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 let b:Base,admin:SessionContext,requester:SessionContext,checker:SessionContext,target:SessionContext,unitId:string,bu:string,employmentId:string;
@@ -72,7 +73,7 @@ describe('Rewards two-person access and live People eligibility',()=>{
  it('scopes the request read policy to the application role so owner-run checks never re-enter it',async()=>{
   // 0875: a policy with no role also applies to the (non-superuser) owner inside SECURITY DEFINER
   // reward_access_request_authorised, which reads this FORCE RLS table — infinite recursion on staging.
-  const rows=await owner.client`select policyname,roles::text[] as roles,cmd from pg_policies where schemaname='public' and tablename='reward_access_request' order by policyname`;
+  const rows=await owner.client`select policyname,roles::text[] as roles,cmd from pg_policies where schemaname='public' and tablename='reward_access_request' and permissive='PERMISSIVE' order by policyname`;
   expect(rows.map(r=>({policyname:r.policyname,roles:r.roles,cmd:r.cmd}))).toEqual([
    {policyname:'reward_access_request_owner',roles:['public'],cmd:'ALL'},
    {policyname:'reward_access_request_read',roles:['ai_hr_app'],cmd:'SELECT'},

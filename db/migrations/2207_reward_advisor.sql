@@ -40,3 +40,5 @@ END $$;
 CREATE TRIGGER reward_advisor_setting_binding BEFORE INSERT OR UPDATE ON reward_advisor_setting FOR EACH ROW EXECUTE FUNCTION app.reward_advisor_binding();
 CREATE TRIGGER reward_advisor_suggestion_binding BEFORE INSERT OR UPDATE ON reward_advisor_suggestion FOR EACH ROW EXECUTE FUNCTION app.reward_advisor_binding();
 REVOKE ALL ON FUNCTION app.reward_advisor_binding() FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_advisor_binding() TO ai_hr_app;
+CREATE TRIGGER reward_advisor_setting_readonly BEFORE INSERT OR UPDATE OR DELETE ON reward_advisor_setting FOR EACH ROW EXECUTE FUNCTION app.reward_view_as_write_guard();
+CREATE TRIGGER reward_advisor_suggestion_readonly BEFORE INSERT OR UPDATE OR DELETE ON reward_advisor_suggestion FOR EACH ROW EXECUTE FUNCTION app.reward_view_as_write_guard();

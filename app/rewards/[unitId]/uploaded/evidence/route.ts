@@ -1,0 +1,4 @@
+import {sql} from 'drizzle-orm';
+import {getSession} from '@/lib/session';
+import {withRewardsTenant} from '@/core/module-gate';
+export async function GET(request:Request,{params}:{params:Promise<{unitId:string}>}){const {unitId}=await params,version=Number(new URL(request.url).searchParams.get('version'));if(!Number.isSafeInteger(version)||version<1)return new Response('Unavailable',{status:404});const [row]=await withRewardsTenant(await getSession(),tx=>tx.execute<{value:{name:string;mime:string;content:string}|null}>(sql`select app.reward_uploaded_evidence(${unitId}::uuid,${version}) as value`));if(!row?.value)return new Response('Unavailable',{status:404});return new Response(Buffer.from(row.value.content,'base64'),{headers:{'Content-Type':row.value.mime,'Content-Disposition':`attachment; filename="${row.value.name.replace(/[^a-zA-Z0-9_.-]/g,'_')}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});}
