@@ -4698,6 +4698,13 @@
       "when": 1793330001502,
       "tag": "2102_company_tenant_fk_validate",
       "breakpoints": true
+    },
+    {
+      "idx": 1400,
+      "version": "7",
+      "when": 1793330001600,
+      "tag": "2200_job_architecture",
+      "breakpoints": true
     }
   ]
 }
