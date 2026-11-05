@@ -223,11 +223,21 @@ describe('0253dc7c — the statutory subject columns', () => {
 });
 
 describe('0253dc7c — the lump-sum rows give way to the named items', () => {
-  it('Allowances and Other deductions disappear once the items account for them', () => {
+  it('keeps Allowances in Summary and itemized earnings/deductions without duplicate lump rows', () => {
     // A0006 January: ALLOW 100 = HANDPHONE ALLOWANCE 100, and the residual 322.58 = UNPAID LEAVE
     // 322.58. Both lump rows have nothing left to say, and the named items say it instead.
     renderGrid([A0006_JANUARY], [1]);
-    expect(screen.queryByText('Allowances')).toBeNull();
+    const groupFor=(element:HTMLElement)=>{
+      let row=element.closest('tr')!.previousElementSibling;
+      while(row&&!row.querySelector('td[colspan]'))row=row.previousElementSibling;
+      expect(row).toBeTruthy();
+      return row!.textContent;
+    };
+    const allowance=screen.getByText('Allowances');
+    expect(groupFor(allowance)).toContain('Summary');
+    expect(groupFor(screen.getByText('HANDPHONE ALLOWANCE'))).toContain('Earnings');
+    expect(groupFor(screen.getByText('UNPAID LEAVE'))).toContain('Deductions');
+    expect(within(allowance.closest('tr')!).getAllByRole('cell').at(-1)?.textContent).toContain('100.00');
     expect(screen.queryByText('Other deductions')).toBeNull();
     expect(screen.getByText('HANDPHONE ALLOWANCE')).toBeTruthy();
     expect(screen.getByText('UNPAID LEAVE')).toBeTruthy();

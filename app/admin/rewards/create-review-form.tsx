@@ -9,6 +9,7 @@ import Link from 'next/link';
 import {rewardEligibilitySummary} from '@/packs/rewards/policy-eligibility';
 import type {RewardEligibilitySummary} from '@/packs/rewards/policy-eligibility';
 import type {RewardPolicyTarget} from '@/packs/rewards/policy-group-model';
+import {rewardReviewInputIssues} from '@/packs/rewards/review-creation';
 import {defaultPolicy} from '@/packs/rewards/model';
 import {RewardPolicySummaryDialog} from './policy-summary';
 type Props={actorUserId:string;today:string;companies:readonly{id:string;name:string;excludedYears?:number[]}[];units:readonly{id:string;companyId:string;name:string;global:boolean}[];cycles:readonly{id:string;name:string;year:number}[];shared:readonly RewardSharedChoice[];memberships?:readonly RewardPolicyTarget[]};
@@ -22,7 +23,7 @@ export function RewardReviewCreateForm(props:Props){return <RewardReviewCreateDr
 function RewardReviewCreateDraft({today,companies,units,cycles,shared,memberships=[]}:Props){
  const t=useTranslations('rewards'),tc=useTranslations('rewardsConfig');
  // The suggested cycle name follows the reward year until the creator types their own (7a8102a7).
- const [name,setName]=useState<string|null>(null);
+ const [name,setName]=useState<string|null>(null),[snapshotDate,setSnapshotDate]=useState('');
  const [companyId,setCompany]=useState(companies[0]?.id??''),[year,setYear]=useState(Number(today.slice(0,4))),[cycleId,setCycle]=useState('');
  const compatibleWith=(company:string,unit:string)=>memberships.some(pair=>pair.companyId===company&&pair.businessUnitId===unit);
  const [unitId,setUnit]=useState(units.find(u=>compatibleWith(companyId,u.id))?.id??'');
@@ -34,6 +35,8 @@ function RewardReviewCreateDraft({today,companies,units,cycles,shared,membership
  const versionId=versions.length===1?versions[0].versionId:'';
  const settings=versions.length===1?versions[0].policy:versions.length||!validYear?null:{...defaultPolicy(year),eligibility:rewardEligibilitySummary(defaultPolicy(year))};
  const effectiveFrom=settings?.effectiveFrom;
+ const inputIssues=rewardReviewInputIssues({year,snapshotDate,today,cycleId,name:name??tc('create.defaultName',{year})});
+ const blocked=[...inputIssues,...(!selectedCompany?['company' as const]:[]),...(selectedCompany&&!selectedUnit?['businessUnit' as const]:[]),...(versions.length>1?['conflict' as const]:[]),...(versions.length===1&&!settings?['policyUnavailable' as const]:[])];
  const versionTitle=versions.length===1?`${versions[0].name} · ${t('sharedPolicy.version',{version:versions[0].revision})}`:null;
  return <form action={createRewardAction} className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
   <Field label={t('existingCycle')}><select name="cycleId" className={inputCls} value={cycleId} onChange={event=>setCycle(event.target.value)}><option value="">{t('newCycle')}</option>{cycles.filter(c=>c.year===year).map(c=><option key={c.id} value={c.id}>{c.name} ({c.year})</option>)}</select></Field>
@@ -42,11 +45,12 @@ function RewardReviewCreateDraft({today,companies,units,cycles,shared,membership
   <Field label={t('effectiveFrom')}><input type="date" readOnly aria-readonly value={effectiveFrom??''} className={`${inputCls} bg-muted`}/></Field>
   <Field label={t('company')}><select name="companyId" required className={inputCls} value={selectedCompany} onChange={event=>{const id=event.target.value;setCompany(id);setUnit(units.find(u=>compatibleWith(id,u.id))?.id??'');}}>{availableCompanies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
   <Field label={t('unit')}><select name="businessUnitId" required className={inputCls} value={selectedUnit} onChange={event=>{setUnit(event.target.value);}}>{compatible.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
-  <Field label={t('snapshotDate')}><input name="snapshotDate" type="date" max={today} required className={inputCls}/></Field>
+  <Field label={t('snapshotDate')}><input name="snapshotDate" type="date" max={today} required value={snapshotDate} onChange={event=>setSnapshotDate(event.target.value)} className={inputCls}/></Field>
   <EligibilityDates policy={versions.length===1?(versions[0].policy?.eligibility??null):versions.length||!validYear?null:rewardEligibilitySummary(defaultPolicy(year))} title={versionTitle}/>
-  <Field label={t('sharedPolicy.title')} className="sm:col-span-2"><input type="hidden" name="sharedPolicyVersionId" value={versionId}/>{versions.length===1?<p className="rounded-md border px-3 py-2 text-sm">{versionTitle}</p>:<p className="rounded-md border px-3 py-2 text-sm">{versions.length?t('sharedPolicy.individualDefaults'):<>{tc('shared.noneForPair')} <Link href="/admin/rewards/shared" className="text-primary hover:underline">{tc('shared.createOne')}</Link></>}</p>}</Field>
+  <Field label={t('sharedPolicy.title')} className="sm:col-span-2"><input type="hidden" name="sharedPolicyVersionId" value={versionId}/>{versions.length===1?<p className="rounded-md border px-3 py-2 text-sm">{versionTitle}</p>:<p className="rounded-md border px-3 py-2 text-sm">{versions.length?tc('create.blocked.conflict'):<>{tc('shared.noneForPair')} <Link href="/admin/rewards/shared" className="text-primary hover:underline">{tc('shared.createOne')}</Link></>}</p>}</Field>
   {settings&&<div className="flex items-end pb-2"><RewardPolicySummaryDialog title={versionTitle??tc('summary.defaultsTitle',{year})} policy={settings}/></div>}
   <p className="max-w-3xl text-sm text-muted-foreground sm:col-span-2 lg:col-span-3">{tc('create.effectiveHelp')} {versionId?t('sharedPolicy.reviewSnapshotHelp'):t('createHelp')}</p>
-  <RewardSubmit type="submit" className="w-fit" disabled={!selectedCompany||!selectedUnit||versions.length>1||!validYear||versions.length===1&&!settings}>{t('createUnit')}</RewardSubmit>
+  {blocked.length>0&&<div id="reward-create-blocked" role="status" className="space-y-2 rounded-md border border-border bg-muted/30 p-3 text-sm sm:col-span-2 lg:col-span-3"><p className="font-medium">{tc('create.completeBeforeCreate')}</p><ul className="list-inside list-disc">{blocked.map(reason=><li key={reason}>{tc(`create.blocked.${reason}`)}{reason==='businessUnit'&&<> <Link href="/admin/personnel" className="text-primary hover:underline">{t('sharedPolicy.manageUnits')}</Link></>}</li>)}</ul></div>}
+  <RewardSubmit type="submit" className="w-fit" aria-describedby={blocked.length?'reward-create-blocked':undefined} disabled={blocked.length>0}>{t('createUnit')}</RewardSubmit>
  </form>;
 }

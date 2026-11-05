@@ -220,10 +220,10 @@ async function renderPersonnel(sp: Record<string, string> = {}) {
   const card = html.match(/data-headcount="draft"[^>]*>[\s\S]*?tabular-nums">(\d+)</);
   expect(card, 'the Draft card rendered').not.toBeNull();
   const draftRows = [...html.matchAll(/data-draft-id="([0-9a-f-]{36})"/g)].map((m) => m[1]);
-  const companyField = (findByProp(tree, 'fields')[0]?.fields as { name: string; options?: { value: string }[] }[] | undefined)?.find(
-    (f) => f.name === 'company',
-  );
-  return { html, draftCard: Number(card![1]), draftRows, companyOptions: (companyField?.options ?? []).map((o) => o.value) };
+  // The hierarchy selector receives only native-admitted companies, including empty companies.
+  const hierarchy=findByProp(tree,'companySearchLabel')[0];
+  const companyOptions=(hierarchy?.companies as {id:string}[]|undefined)?.map(company=>company.id)??[];
+  return { html, draftCard: Number(card![1]), draftRows, companyOptions };
 }
 
 describe('§2 the Personnel screen: list, Draft card and Filter options follow the top-bar company', () => {

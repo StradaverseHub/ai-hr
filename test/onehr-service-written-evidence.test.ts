@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import type { NotificationEmailRequest } from '../lib/notification-email-model';
 import {leadershipPrinciples} from '../packs/performance/onehr/framework-model';
@@ -506,7 +507,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'INTERIM',name:'Interim source test'}).returning();
     await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,subject.employmentId));
     await setCompensation(a,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
-    const unitId=await createRewardUnit(a,{name:'No interim import',year,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});
+    const unitId=await createApprovedRewardUnit(a,{name:'No interim import',year,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});
     const reward=await getRewardUnit(a,unitId);expect(reward.rows).toHaveLength(1);expect(reward.rows[0].source.onehr).toBeNull();
     await expect(importOnehrRewardResults(a,unitId,reward.unit.revision)).rejects.toThrow(/No finalized assessment/);
     await perf.releaseOnehrResult(a,reviewId,'potential',true);

@@ -1,3 +1,4 @@
+import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx} from './company-organisation';
 /** Approved 8550b282: one transactional owner for manual and Excel information-only correction. */
 import {createHash} from 'node:crypto';
 import {alias} from 'drizzle-orm/pg-core';
@@ -72,7 +73,8 @@ async function validateTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof s
  if(source.country!==destination.country)fail('A cross-country company change requires the operational transfer workflow.');
  if(after.gradeId&&after.gradeId!==before.gradeId){const [grade]=await tx.select({id:jobGrade.id}).from(jobGrade).where(and(eq(jobGrade.id,after.gradeId),eq(jobGrade.tenantId,ctx.tenantId),isNull(jobGrade.archivedAt)));if(!grade)fail('Job Grade is not an active system code.');}
  if(after.companyId!==before.companyId){
-  for(const [kind,id] of [['department',s.current.departmentId],['position',s.current.positionId],['business_unit',s.current.businessUnitId],['cost_center',s.current.costCenterId]] as const)if(id&&!await labelUsableByCompany(tx,ctx.tenantId,kind,id,after.companyId!))fail('Existing organisation details are not usable by the corrected company. Use Employment Movement.');
+  const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId:after.companyId!,asOf:todayInKualaLumpur()});
+  for(const [kind,id] of [['department',s.current.departmentId],['position',s.current.positionId],['business_unit',tags.status==='legacy'?s.current.businessUnitId:tags.businessUnitId],['cost_center',s.current.costCenterId]] as const)if(id&&!await labelUsableByCompany(tx,ctx.tenantId,kind,id,after.companyId!))fail('Existing organisation details are not usable by the corrected company. Use Employment Movement.');
   if(s.current.locationId) {const [loc]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from location where id=${s.current.locationId}::uuid and company_id=${after.companyId}::uuid and archived_at is null) as ok`);if(!loc?.ok)fail('The current work location belongs to another company. Use Employment Movement.');}
   const duplicate=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.companyId,after.companyId!),eq(employment.employeeCode,s.emp.employeeCode??'')));
   if(duplicate.some(e=>e.id!==s.emp.id))fail('Employee ID is already used in the destination company.');
@@ -89,7 +91,8 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;cha
  const gradeIds=[...new Set([v.before.gradeId,v.after.gradeId].filter((id):id is string=>!!id))];
  const gradeRefs=gradeIds.length?await tx.select({id:jobGrade.id,code:jobGrade.code,name:jobGrade.name,archivedAt:jobGrade.archivedAt}).from(jobGrade).where(inArray(jobGrade.id,gradeIds)).orderBy(asc(jobGrade.id)).for('share'):[];
  const effectiveOn=todayInKualaLumpur();
- const fingerprint=hash({state:state.fingerprint,companies:companyRefs,grades:gradeRefs,effectiveOn});
+ const organisation=await deriveCompanyOrganisationTx(tx,ctx,{companyId:v.after.companyId!,asOf:effectiveOn});
+ const fingerprint=hash({state:state.fingerprint,companies:companyRefs,grades:gradeRefs,effectiveOn,...(organisation.status==='legacy'?{}:{organisation})});
  const preview:InformationPreview={effectiveOn,employmentId:state.emp.id,employeeCode:state.emp.employeeCode??'',name:state.name,fingerprint,...v,beforeLabels:await labelsTx(tx,v.before),afterLabels:await labelsTx(tx,v.after),reason,changed:INFORMATION_FIELDS.filter(f=>v.before[f]!==v.after[f])};
  return {state,preview};
 }
@@ -108,11 +111,13 @@ export async function correctInformationTx(tx:Tx,ctx:SessionContext,input:{emplo
   const {id:_id,createdAt:_created,recordedAt:_recorded,supersededAt:_superseded,...prior}=s.current;
   if(s.current.validFrom===effectiveOn)await tx.update(assignment).set({supersededAt:new Date()}).where(eq(assignment.id,s.current.id));
   else await tx.update(assignment).set({validTo:effectiveOn}).where(eq(assignment.id,s.current.id));
-  const [version]=await tx.insert(assignment).values({...prior,validFrom:effectiveOn,validTo:null,companyId:p.after.companyId,employmentType:p.after.employmentType as typeof s.current.employmentType}).returning({id:assignment.id});
+  const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId:p.after.companyId!,asOf:effectiveOn});
+  const [version]=await tx.insert(assignment).values({...prior,...(tags.status==='legacy'?{}:{businessUnitId:tags.businessUnitId}),validFrom:effectiveOn,validTo:null,companyId:p.after.companyId,employmentType:p.after.employmentType as typeof s.current.employmentType}).returning({id:assignment.id});
   assignmentVersionId=version.id;
  }
  await tx.update(employment).set({companyId:p.after.companyId!,hiredOn:p.after.hiredOn!,joinDate:p.after.joinDate,gradeId:p.after.gradeId}).where(eq(employment.id,s.emp.id));
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:s.emp.id,eventType:INFORMATION_CORRECTED_EVENT,actor:actorOf(ctx),subjectEmploymentId:s.emp.id,payload:{employeeCode:p.employeeCode,before:p.before,after:p.after,beforeLabels:p.beforeLabels,afterLabels:p.afterLabels,fields:p.changed,reason:p.reason,effectiveOn,method:input.method,batchId:input.batchId??null,filename:input.filename??null,snapshotCount:preserved.count,assignmentVersionId,previousAssignmentId:s.current.id}});
+ await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:s.emp.id,companyId:p.after.companyId!,asOf:effectiveOn,trigger:'correction'});
  return {preview:p,changed:true};
 }
 export function correctInformation(ctx:SessionContext,input:Parameters<typeof correctInformationTx>[2]){return withTenant(ctx,tx=>correctInformationTx(tx,ctx,input));}

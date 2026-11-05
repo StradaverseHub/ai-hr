@@ -1,3 +1,4 @@
+vi.mock('../components/derived-organisation-fields',()=>({useDerivedOrganisation:()=>({data:{status:'legacy'},loading:false,failed:false}),DerivedOrganisationFields:()=>null}));
 import { personnelCaption } from './helpers/personnel-markup';
 /**
  * THE DRAFT RECORD, RENDERED — item 759dfc7d, work item 2.

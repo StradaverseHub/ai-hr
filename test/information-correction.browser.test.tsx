@@ -1,3 +1,4 @@
+vi.mock('../components/derived-organisation-fields',()=>({useDerivedOrganisation:()=>({data:{status:'legacy'},loading:false,failed:false}),DerivedOrganisationFields:()=>null}));
 /** Actual components and CSS; command authorization and database integrity live in the native companion suite. */
 import {afterEach,describe,it,expect,vi} from 'vitest';
 import {cleanup,render,screen,fireEvent,waitFor} from '@testing-library/react';

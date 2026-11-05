@@ -104,7 +104,7 @@ import { EmployeeSearchField } from '../components/employee-search-field';
 import { __resetUnsavedGuards } from '../lib/unsaved-changes';
 import type { TabSaveResult } from '../lib/tab-save-sections';
 
-const org = messages.admin.organization as Record<string, string>;
+const org = messages.admin.organization;
 const noop = () => undefined;
 const BACK_HREF = '/admin/organization/c1?tab=statutory';
 // These complete eight-card userEvent journeys exceeded the default 5s budget in full CI.

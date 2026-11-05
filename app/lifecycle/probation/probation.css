@@ -21,3 +21,21 @@
 @media(max-width:1000px){.probation .probation-facts,.probation .probation-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.probation main{gap:20px}.probation .probation-facts,.probation .probation-comparison,.probation .probation-filter-grid{grid-template-columns:minmax(0,1fr)}.probation .probation-list-table{overflow:visible}.probation table,.probation tbody,.probation tr,.probation td{display:block}.probation thead{display:none}.probation tr{padding-block:12px;border-block-end:1px solid var(--border)}.probation td,.probation td:first-child{padding:6px 12px;border:0}.probation td[data-label]::before{content:attr(data-label);display:block;color:var(--muted-foreground);font-size:12px;margin-bottom:4px}.probation .probation-savebar{bottom:8px;position:static}.probation-ratings label{flex:1 1 44%;align-items:flex-start}.probation .probation-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.probation-stats button,.probation-stats a{display:flex;justify-content:space-between;gap:8px;font-size:12px}}
 .probation .probation-intake-row{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px 20px;width:100%;text-align:start;white-space:normal}.probation-intake-row>span{min-width:0;overflow-wrap:anywhere}.probation .probation-intake-row[aria-current=page]{border-color:var(--v9-accent);background:var(--accent);color:var(--accent-foreground)}
+
+.probation .probation-filter-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+.probation-filter-grid>label{min-width:0}
+.probation .probation-filter-grid input,.probation .probation-filter-grid select{width:100%;min-height:44px;background:var(--card);color:var(--foreground);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px}
+.probation-stats a[data-flag]{border-inline-start-width:4px}
+.probation-stats a[data-flag=overdue],.probation-stats a[data-flag=end_passed],.probation-stats a[data-flag=low_result]{border-inline-start-color:var(--destructive)}
+.probation-stats a[data-flag=ending14]{border-inline-start-color:var(--chart-4,var(--primary))}
+.probation-stats a[data-flag=kpi_submit],.probation-stats a[data-flag=kpi_ack]{border-inline-start-color:var(--primary)}
+@media(max-width:1000px){.probation .probation-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.probation .probation-filter-grid{grid-template-columns:minmax(0,1fr)}}
+
+.v9-workspace.probation{font-family:var(--font-sans);min-width:0}
+.probation .probation-stats a{white-space:normal;min-width:0;overflow-wrap:anywhere}
+.probation .probation-stats strong{flex:none}
+@media(max-width:640px){
+ .v9-workspace.probation .probation-list-table table tbody td{height:auto;min-height:0;overflow-wrap:anywhere}
+ .probation .probation-list-table .v9-badge{white-space:normal;max-width:100%}
+}

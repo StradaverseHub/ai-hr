@@ -1,7 +1,9 @@
-import {approvedPlanPolicyTx} from './plan-configuration';
+import {rewardArchitectureForSourceTx} from './architecture-source';
 import {advisorNeedsOverrideReason,defaultAdvisorSettings,type AdvisorSettings} from './advisor-model';
 import {calculateUploadedRewards} from './uploaded-awards-model';
 import {assertRewardCapabilityTx,assertRewardWritableTx} from './access-policy';
+import {personnelGroupingReadinessTx} from '../../core/personnel-quality';
+import {employedByCompanyDuring} from '../../core/employment-company';
 import {mobileRewardPersonBlock} from './mobile-review-projection';
 import type { Tx as AiReadTx } from '../../db/client';
 import { withCanonicalAiReadTx } from '../../core/ai-read-transaction';
@@ -20,6 +22,9 @@ import { setPayrollInput } from '../payroll/service';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import type { PackTaskItem } from '../../lib/assigned-work';
 import { calculateRewards, ratio, increase, type RewardMultiplierSuggestion } from './engine';
+import {approvedPlanPolicyTx} from './plan-configuration';
+import {latestConfirmedPatTx} from './pat-inputs';
+import {setupAuthority} from './setup-data';
 import { emptyGovernance, effectiveRewardPolicy, poolStatus, unitInputSchema, confirmedSeniorAwards, seniorGrade, maySeeSeniorAmounts, redactPatPolicy, seniorAwardSchema, governanceBasis,governanceHistoryProjection,seniorSourceFingerprint,type RewardPublicGovernance,type RewardGovernance, type SeniorAward } from './governance-model';
 import { assertRewardPolicyGrids } from './policy-grid-validation';
 import { onehrRewardResultTx } from '../performance/service';
@@ -86,6 +91,7 @@ async function projectGovernanceTx(tx:Tx,ctx:SessionContext,unitId:string,state:
  // Derived amount projection has stricter SELECT custody than the public budget snapshot.
  await tx.delete(rewardSeniorAward).where(eq(rewardSeniorAward.unitId,unitId));
  for(const [entryId,award]of Object.entries(state.awards))await tx.insert(rewardSeniorAward).values({tenantId:ctx.tenantId,unitId,entryId,award});
+ await tx.execute(sql`select app.reward_record_pat_basis(${unitId}::uuid,${snapshot.basis},${result.budgets.standard.bonusPayrollCents}::bigint,${result.budgets.h.bonusPayrollCents}::bigint)`);
 }
 async function saveGovernanceTx(tx:Tx,ctx:SessionContext,unitId:string,before:RewardGovernance|null,after:RewardGovernance,kind:string,reason:string){
  const actor=idSchema.parse(ctx.userId);
@@ -110,7 +116,8 @@ export async function getRewardUnitGovernance(ctx:SessionContext,unitId:string){
   const visible=entries.filter(entry=>visibleEntry(entry,roles,ctx.personId)),senior=visible.filter(entry=>isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade));
   const canAmounts=maySeeSeniorAmounts(roles),isGr=roles.includes('gr');
   const [ready]=await tx.execute<{ready:boolean}>(sql`select to_regclass('public.reward_governance') is not null as ready`);
-  return {unitId,revision:unit.revision,canEdit:isGr&&unit.status==='draft'&&unit.kind==='annual',isGr,canAmounts,managed:!!publicState,
+  const [setupPat]=await tx.execute<{pool_recalculation_required:boolean}>(sql`select pool_recalculation_required from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+  return {unitId,revision:unit.revision,companyPatBound:!!setupPat,patRecalculationRequired:isGr&&!!setupPat?.pool_recalculation_required,canEdit:isGr&&unit.status==='draft'&&unit.kind==='annual',isGr,canAmounts,managed:!!publicState,
    available:ready?.ready===true,legacyInputs:isGr?{forecastCents:null,actualCents:unit.policy.patActual,targetCents:unit.policy.patTarget,targetMonthsBp:unit.policy.targetMonthsBp,multiplierBp:unit.policy.bonusStructure==='branch'?10000:unit.policy.multiplierBp,branchRatings:unit.policy.branchRatings}:null,
    poolStatus:publicState?.status??'legacy',inputs:isGr?(state?.inputs??null):null,selection:isGr?state?.selection??null:null,
    exemption:isGr?state?.exemption??null:null,previousPools:publicState?.previousPools??null,
@@ -128,6 +135,8 @@ export async function saveRewardUnitInputs(ctx:SessionContext,unitId:string,revi
  const inputs=unitInputSchema.parse(raw),why=reasonForGovernance(reason);
  return withRewardsTenant(ctx,async tx=>{
   const {unit,roles,entries}=await load(tx,unitId,true);governanceAuthority(unit,roles,revision);
+  const [binding]=await tx.execute<{pat_version_id:string}>(sql`select pat_version_id from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+  if(binding){const current=await governanceStateTx(tx,unitId);if(!current?.inputs||(['targetCents','forecastCents','actualCents','targetMonthsBp'] as const).some(key=>inputs[key]!==current.inputs![key]))throw new RewardError('Company PAT figures are read-only here. Update them in PAT Inputs.');}
   if(unit.policy.bonusStructure==='branch'&&inputs.multiplierBp!==10000)throw new RewardError('PPCH unit multiplier must be fixed at 1.00.');
   const before=await governanceStateTx(tx,unitId),prior=before??emptyGovernance(),oldPublic=await governancePublicTx(tx,unitId),old=calculateRewards(entries,effectiveRewardPolicy(unit.policy,before));
   const after:RewardGovernance={...prior,inputs,previousPools:{standard:old.budgets.standard.bonusPoolCents,h:old.budgets.h.bonusPoolCents}};
@@ -354,7 +363,8 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
     const [lumpDecision] = unit.policy.lumpUnitCents === 0 ? await tx.select({ at: domainEvent.occurredAt, actorName: person.fullName }).from(domainEvent)
       .leftJoin(appUser, eq(appUser.id, domainEvent.actorId)).leftJoin(person, and(eq(person.id, appUser.personId), visibleSeatHolder))
       .where(and(eq(domainEvent.aggregateType, 'reward-unit'), eq(domainEvent.aggregateId, unitId), eq(domainEvent.eventType, 'reward-unit.lump-updated'))).orderBy(desc(domainEvent.occurredAt)).limit(1) : [];
-    return { ...(caps?{capabilities:caps.value}:{}),uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
+    const [libraryBinding]=await tx.execute<{bound:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as bound`);
+    return { libraryBound:libraryBinding?.bound??false,...(caps?{capabilities:caps.value}:{}),uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
       rows: visible.map(e=>{const {uploadedAward:_award,...safe}=e as typeof e&{uploadedAward?:unknown};return safe;}), flags, hiddenCount: entries.length - visible.length,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
       bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
@@ -492,11 +502,17 @@ export async function getRewardConfiguration(ctx: SessionContext, unitId: string
 }
 
 /** The unit's roster as Personnel and Compensation stand on `at`. Read-only; refresh preview and save share it. */
-async function snapshotRoster(tx: Tx, unit: typeof rewardUnit.$inferSelect, at: string) {
+async function snapshotRoster(tx: Tx, ctx:SessionContext, unit: typeof rewardUnit.$inferSelect, at: string) {
   await requireAdmin(tx, unit.companyId);
-  const records = await tx.select({ employmentId: employment.id, personId: employment.personId, companyId: employment.companyId, employeeCode: employment.employeeCode, name: person.fullName, grade: jobGrade.code, gradeId: employment.gradeId, hiredOn: employment.hiredOn, confirmedOn: employment.confirmationDate, tenderDate: employment.tenderResignationDate, resignedOn: employment.resignationDate, assignmentId: assignment.id })
+  // Check the whole dated company population BEFORE BU filtering. Pending tags must be
+  // named blockers, never invisible omissions from a frozen reward membership.
+  const candidates=await tx.select({employmentId:employment.id,name:person.fullName,employeeCode:employment.employeeCode}).from(employment).innerJoin(person,eq(person.id,employment.personId)).where(and(employedByCompanyDuring(unit.companyId,at,at),lte(employment.hiredOn,at),or(isNull(employment.terminatedOn),gt(employment.terminatedOn,at))));
+  const readiness=await personnelGroupingReadinessTx(tx,ctx,{employmentIds:candidates.map(row=>row.employmentId),asOf:at});
+  const pending=new Map(readiness.filter(row=>!row.ready).map(row=>[row.employmentId,row.reason]));
+  if(pending.size)throw new RewardError('Group structure tagging is pending: '+candidates.filter(row=>pending.has(row.employmentId)).map(row=>`${row.employeeCode??row.employmentId} · ${row.name} (${pending.get(row.employmentId)})`).join('; '));
+  const records = await tx.select({ employmentId: employment.id, personId: employment.personId, companyId: employment.companyId, employeeCode: employment.employeeCode, name: person.fullName, grade: jobGrade.code, gradeId: employment.gradeId, hiredOn: employment.hiredOn, confirmedOn: employment.confirmationDate, tenderDate: employment.tenderResignationDate, resignedOn: employment.resignationDate, assignmentId: assignment.id, positionId:assignment.positionId })
     .from(employment).innerJoin(person, eq(person.id, employment.personId)).innerJoin(assignment, eq(assignment.employmentId, employment.id)).leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
-    .where(and(eq(employment.companyId, unit.companyId), eq(assignment.businessUnitId, unit.businessUnitId), lte(employment.hiredOn, at), or(isNull(employment.terminatedOn), gt(employment.terminatedOn, at)), lte(assignment.validFrom, at), or(isNull(assignment.validTo), gt(assignment.validTo, at)), isNull(assignment.supersededAt)))
+    .where(and(employedByCompanyDuring(unit.companyId,at,at), sql`(case when app.employment_organisation_tags(${employment.id},${at}::date)->>'status'='legacy' then ${assignment.businessUnitId} else (app.employment_organisation_tags(${employment.id},${at}::date)->>'businessUnitId')::uuid end) = ${unit.businessUnitId}::uuid`, lte(employment.hiredOn, at), or(isNull(employment.terminatedOn), gt(employment.terminatedOn, at)), lte(assignment.validFrom, at), or(isNull(assignment.validTo), gt(assignment.validTo, at)), isNull(assignment.supersededAt)))
     .orderBy(asc(employment.employeeCode), asc(employment.id));
   const roster = new Map<string, RewardSource>();
   const kinds = new Map((await tx.select({ code: movementEventType.code, behaviourKind: movementEventType.behaviourKind }).from(movementEventType)).map(k => [k.code, k.behaviourKind]));
@@ -506,6 +522,7 @@ async function snapshotRoster(tx: Tx, unit: typeof rewardUnit.$inferSelect, at: 
     const [review] = await tx.select({ id: performanceReview.id, rating: performanceReview.overallRating }).from(performanceReview).innerJoin(reviewCycle, eq(reviewCycle.id, performanceReview.cycleId)).where(and(eq(performanceReview.employmentId, e.employmentId), lte(reviewCycle.periodStart, `${unit.policy.year}-12-31`), sql`${reviewCycle.periodEnd} >= ${`${unit.policy.year}-01-01`}`, sql`${performanceReview.closedAt} is not null`)).orderBy(desc(performanceReview.closedAt), desc(performanceReview.id)).limit(1);
     roster.set(e.employmentId, {
       employmentId: e.employmentId, personId: e.personId, compensationId: comp?.id ?? null,
+      assignmentId:e.assignmentId,positionId:e.positionId,architecture:await rewardArchitectureForSourceTx(tx,unit.id,e.employmentId,e.positionId,at),
       employeeCode: e.employeeCode ?? e.employmentId, name: e.name, grade: (e.grade ?? '').replace(/^JG\s*/i, ''), gradeId: e.gradeId,
       basicCents: comp ? moneyToCents(comp.basicSalary) : 0, currency: comp?.currency ?? 'MYR', payMode: comp?.payMode ?? 'monthly',
       hiredOn: e.hiredOn, confirmedOn: e.confirmedOn, notice: !!((e.tenderDate && e.tenderDate <= at) || (e.resignedOn && e.resignedOn <= at)),
@@ -536,7 +553,7 @@ async function payChangesTx(tx: Tx, employmentId: string, hiredOn: string, year:
 }
 /** Creation snapshot. A later refresh goes through previewRewardSourceRefresh/saveRewardSourceRefresh. */
 async function snapshotEmployees(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.$inferSelect) {
-  const roster = await snapshotRoster(tx, unit, unit.snapshotDate);
+  const roster = await snapshotRoster(tx, ctx, unit, unit.snapshotDate);
   // 6fd08f37: derived confidentiality floor (BG/EC seats assigned later re-derive through the access commit).
   const floors = await deriveConfidentialityTx(tx, unit.id, [...roster.keys()], unit.snapshotDate);
   for (const raw of roster.values()) {
@@ -577,6 +594,7 @@ export async function saveRewardPolicy(ctx: SessionContext, unitId: string, revi
     const policy: RewardPolicy = { ...settings, multiplierBp: unit.policy.multiplierBp, ...(unit.policy.unitGovernanceDigest?{unitGovernanceDigest:unit.policy.unitGovernanceDigest}:{}),
       ...(unit.policy.lumpReason ? { lumpReason: unit.policy.lumpReason } : {}), ...(unit.policy.payWindowKeep ? { payWindowKeep: unit.policy.payWindowKeep } : {}) };
     if (!roles.includes('gr')) throw new RewardError('Only Group Rewards may change policy.');
+    const [libraryBinding]=await tx.execute<{bound:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as bound`);if(libraryBinding?.bound&&(['ranges','bonusMatrix','bonusStructure','branchFactors']as const).some(key=>!isDeepStrictEqual(policy[key],unit.policy[key])))throw new RewardError('Consumed salary and bonus libraries are read-only. Approve a new plan version for future reviews.');
     assertRewardPolicyGrids(policy);
     const governance=await governanceStateTx(tx,unitId);
     for(const key of ['patActual','patTarget','targetMonthsBp','multiplierBp','branchRatings','exemptReason'] as const)Object.assign(policy,{[key]:unit.policy[key]});
@@ -801,7 +819,7 @@ async function planSourceRefreshTx(tx: Tx, ctx: SessionContext, unit: typeof rew
   const today = todayInKualaLumpur(), asOf = rawAsOf == null || rawAsOf === '' ? today : isoDateSchema.parse(rawAsOf);
   if (asOf > today) throw new RewardError('The snapshot date cannot be in the future.');
   if (asOf < unit.snapshotDate) throw new RewardError('Refresh to a date on or after the current snapshot date.');
-  const roster = await snapshotRoster(tx, unit, asOf);
+  const roster = await snapshotRoster(tx, ctx, unit, asOf);
   const floors = await deriveConfidentialityTx(tx, unit.id, [...roster.keys()], asOf);
   for (const [id, source] of roster) roster.set(id, sourceWithFloor(source, floors.get(id)));
   const changes: RefreshChange[] = [];
@@ -974,6 +992,8 @@ export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: st
     if (['return', 'reject', 'withdraw'].includes(action) && reason.length < 10) throw new RewardError('Explain why the unit is being returned (at least 10 characters).');
     const hash = digest(unit, entries), calculated = await calculateUnit(tx, unit, entries);
     if (action === 'submit' || action === 'approve') {
+      const [setup]=await tx.execute<{pool_recalculation_required:boolean}>(sql`select pool_recalculation_required from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+      if(setup?.pool_recalculation_required)throw new RewardError('Company PAT changed. Return to draft and adopt the confirmed pool before submitting again.');
       if (!entries.length) throw new RewardError('A review needs at least one employee.');
       if(uploaded){for(const entry of entries.filter(e=>e.uploadedAward)){const [source]=await tx.execute<{current:boolean}>(sql`select app.reward_uploaded_source_current(${unitId}::uuid,${entry.employmentId}::uuid) as current`);if(!source?.current)throw new RewardError('An uploaded employee or Payroll salary source changed. Return the review for a refreshed upload.');}}
       if(governance){
@@ -1679,6 +1699,16 @@ export async function prepareMobileRewardReview(ctx:SessionContext,unitId:string
  }};
 }
 
+/** Company PAT adoption preserves old pools and invalidates the review revision under its existing lock. */
+export async function adoptConfirmedCompanyPat(ctx:SessionContext,unitId:string,revision:number,reason:string){
+ const why=reasonForGovernance(reason);return withRewardsTenant(ctx,async tx=>{const {unit,roles,entries}=await load(tx,unitId,true);governanceAuthority(unit,roles,revision);await setupAuthority(tx,unit.companyId,'manage');
+ const [binding]=await tx.execute<{pat_version_id:string}>(sql`select pat_version_id from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid for update`);if(!binding)throw new RewardError('This historical review keeps its own recorded PAT inputs.');
+ const latest=await latestConfirmedPatTx(tx,ctx,unit.companyId,unit.policy.year);if(!latest)throw new RewardError('Confirm the company PAT inputs first.');
+ const before=await governanceStateTx(tx,unitId),prior=before??emptyGovernance(),old=await calculateUnit(tx,unit,entries);
+ const after:RewardGovernance={...prior,inputs:{...latest.inputs,multiplierBp:unit.policy.bonusStructure==='branch'?10000:prior.inputs?.multiplierBp??null,branchRatings:prior.inputs?.branchRatings??{}},previousPools:{standard:old.budgets.standard.bonusPoolCents,h:old.budgets.h.bonusPoolCents}};
+ await tx.execute(sql`update reward_unit_setup set previous_pat_version_id=pat_version_id,pat_version_id=${latest.id}::uuid,pool_recalculation_required=false,updated_at=now() where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);await saveGovernanceTx(tx,ctx,unitId,before,after,'company-pat-adopted',why);return latest.id;
+ });
+}
 /** Internal extension seam: scoped read or locked mutation with native state/calculation ownership. */
 export async function withRewardReviewExtension<T>(ctx:SessionContext,unitId:string,mutating:boolean,fn:(tx:Tx,state:Awaited<ReturnType<typeof load>>,calculated:Awaited<ReturnType<typeof calculateUnit>>,commands:{touch:()=>Promise<void>;stamp:(action:string,payload:Record<string,unknown>)=>Promise<unknown>})=>Promise<T>):Promise<T>{
  return withRewardsTenant(ctx,async tx=>{const state=await load(tx,unitId,mutating);const calculated=await calculateUnit(tx,state.unit,state.entries);return fn(tx,state,calculated,{touch:()=>touch(tx,unitId),stamp:(action,payload)=>stamp(tx,ctx,unitId,action,payload)});});

@@ -51,9 +51,9 @@ export function patProjection(p:PatInput){
 export function patPoolCents(p:PatInput,eligibleMonthlyPayrollCents:number):number{
  const value=patInputSchema.parse(p);cents.parse(eligibleMonthlyPayrollCents);const basis=value.actualCents??value.forecastCents;
  if(value.targetCents===null||basis===null)return 0;
- return Number(BigInt(Math.max(0,basis))*BigInt(value.targetMonthsBp)*BigInt(eligibleMonthlyPayrollCents)/(BigInt(value.targetCents)*BigInt(10000)));
+ const result=Number((BigInt(eligibleMonthlyPayrollCents)*BigInt(Math.max(0,basis))/BigInt(value.targetCents))*BigInt(value.targetMonthsBp)/BigInt(10000));if(!Number.isSafeInteger(result))throw new RewardSetupError('invalid','The calculated pool exceeds the supported amount.');return result;
 }
-export function patSubtotal(rows:readonly PatInput[]){const sum=(key:'targetCents'|'actualCents'|'forecastCents')=>!rows.length||rows.some(r=>r[key]===null)?null:rows.reduce((n,r)=>n+(r[key]??0),0);const targetCents=sum('targetCents'),actualCents=sum('actualCents'),forecastCents=sum('forecastCents');return{targetCents,actualCents,forecastCents,achievementBp:targetCents&&targetCents>0?Number(BigInt(actualCents??forecastCents??0)*BigInt(10000)/BigInt(targetCents)):null};}
+export function patSubtotal(rows:readonly PatInput[]){const sum=(key:'targetCents'|'actualCents'|'forecastCents')=>!rows.length||rows.some(r=>r[key]===null)?null:rows.reduce((n,r)=>n+(r[key]??0),0);const targetCents=sum('targetCents'),actualCents=sum('actualCents'),forecastCents=sum('forecastCents');return{targetCents,actualCents,forecastCents,achievementBp:targetCents&&targetCents>0&&(actualCents!==null||forecastCents!==null)?Number(BigInt(actualCents??forecastCents!)*BigInt(10000)/BigInt(targetCents)):null};}
 export function decimalToCents(raw:string,allowNegative=false):number|null{
  const s=raw.trim();if(!s)return null;const pattern=allowNegative?/^-?\d{1,10}(?:\.\d{1,2})?$/:/^\d{1,10}(?:\.\d{1,2})?$/;
  if(!pattern.test(s))throw new RewardSetupError('invalid','Enter a valid amount with no more than two decimal places.');

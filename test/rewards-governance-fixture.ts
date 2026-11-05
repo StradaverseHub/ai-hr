@@ -3,10 +3,11 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
 import * as schema from '../db/schema';
-import {getRewardUnit,getRewardUnitGovernance,saveRewardPolicy,saveRewardUnitInputs,confirmRewardGovernance,proposeRewardExemption,getRewardSeniorMembership,previewRewardSeniorMembership,saveRewardSeniorMembership} from '../packs/rewards/service';
+import {getRewardUnit,adoptConfirmedCompanyPat,getRewardUnitGovernance,saveRewardPolicy,saveRewardUnitInputs,confirmRewardGovernance,proposeRewardExemption,getRewardSeniorMembership,previewRewardSeniorMembership,saveRewardSeniorMembership} from '../packs/rewards/service';
 import {defaultPolicy,type RewardPolicy} from '../packs/rewards/model';
 import {owner,createAppUser} from './harness';
 import {setRewardMember} from './rewards-access-fixture';
+import {confirmFixturePat} from './rewards-setup-fixture';
 const checkers=new Map<string,SessionContext>();
 export async function ensureRewardGovernanceFixtureSchema(){
  const [ready]=await owner.db.execute<{ready:boolean}>(sql`select to_regclass('public.reward_governance') is not null as ready`);
@@ -35,9 +36,18 @@ export function completeRewardFixturePolicy(raw:RewardPolicy):RewardPolicy{
  }
  return {...raw,ranges,bonusMatrix};
 }
+async function refreshCompanyPatFixture(ctx:SessionContext,unitId:string,inputs:{targetCents:number|null;forecastCents:number|null;actualCents:number|null;targetMonthsBp:number}){
+ const [binding]=await owner.db.execute<{present:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as present`);
+ if(!binding.present)return;
+ const v=await getRewardUnit(ctx,unitId),g=await getRewardUnitGovernance(ctx,unitId),current=g.inputs;
+ if(current&&(['targetCents','forecastCents','actualCents','targetMonthsBp'] as const).every(key=>current[key]===inputs[key]))return;
+ await confirmFixturePat(ctx,v.unit.companyId,v.unit.policy.year,inputs);
+ await adoptConfirmedCompanyPat(ctx,unitId,(await getRewardUnit(ctx,unitId)).unit.revision,'Adopt independently checked fictional company PAT');
+}
 export async function configureRewardFixture(ctx:SessionContext,unitId:string,_revision:number,raw:RewardPolicy){
  const checker=await initializeRewardGovernanceFixture(ctx,unitId),policy=completeRewardFixturePolicy(raw);
  await saveRewardPolicy(ctx,unitId,(await getRewardUnit(ctx,unitId)).unit.revision,policy);
+ await refreshCompanyPatFixture(ctx,unitId,{forecastCents:null,actualCents:raw.patActual,targetCents:raw.patTarget,targetMonthsBp:raw.targetMonthsBp});
  await saveRewardUnitInputs(ctx,unitId,(await getRewardUnit(ctx,unitId)).unit.revision,{forecastCents:null,actualCents:raw.patActual,targetCents:raw.patTarget,targetMonthsBp:raw.targetMonthsBp,multiplierBp:raw.bonusStructure==='branch'?10000:raw.multiplierBp,branchRatings:raw.branchRatings},'Fictional approved unit budget basis');
  if(raw.exemptReason){
   await proposeRewardExemption(ctx,unitId,(await getRewardUnit(ctx,unitId)).unit.revision,raw.exemptReason);
@@ -50,6 +60,7 @@ export async function refreshRewardFixtureBudget(ctx:SessionContext,unitId:strin
 }
 export async function changeRewardFixtureInputs(ctx:SessionContext,unitId:string,values:Partial<{patActual:number;patTarget:number;targetMonthsBp:number;multiplierBp:number|null;branchRatings:RewardPolicy['branchRatings'];exemptReason:string}>){
  const checker=await initializeRewardGovernanceFixture(ctx,unitId),value=await getRewardUnitGovernance(ctx,unitId),existing=value.inputs??value.legacyInputs!;
- await saveRewardUnitInputs(ctx,unitId,value.revision,{...existing,...(values.patActual===undefined?{}:{actualCents:values.patActual}),...(values.patTarget===undefined?{}:{targetCents:values.patTarget}),...(values.targetMonthsBp===undefined?{}:{targetMonthsBp:values.targetMonthsBp}),...(values.multiplierBp===undefined?{}:{multiplierBp:values.multiplierBp}),...(values.branchRatings===undefined?{}:{branchRatings:values.branchRatings})},'Fictional independently reviewed budget input change');
+ await refreshCompanyPatFixture(ctx,unitId,{targetCents:values.patTarget??existing.targetCents,forecastCents:existing.forecastCents,actualCents:values.patActual??existing.actualCents,targetMonthsBp:values.targetMonthsBp??existing.targetMonthsBp});
+ await saveRewardUnitInputs(ctx,unitId,(await getRewardUnit(ctx,unitId)).unit.revision,{...existing,...(values.patActual===undefined?{}:{actualCents:values.patActual}),...(values.patTarget===undefined?{}:{targetCents:values.patTarget}),...(values.targetMonthsBp===undefined?{}:{targetMonthsBp:values.targetMonthsBp}),...(values.multiplierBp===undefined?{}:{multiplierBp:values.multiplierBp}),...(values.branchRatings===undefined?{}:{branchRatings:values.branchRatings})},'Fictional independently reviewed budget input change');
  if(values.exemptReason){await proposeRewardExemption(ctx,unitId,(await getRewardUnit(ctx,unitId)).unit.revision,values.exemptReason);await confirmRewardGovernance(checker,unitId,(await getRewardUnit(ctx,unitId)).unit.revision,'exemption');}
 }

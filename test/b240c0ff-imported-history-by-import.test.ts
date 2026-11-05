@@ -221,12 +221,12 @@ describe('b240c0ff — imported payroll history keeps its lines and its Pay Cycl
     );
     const { deductions, earnings } = payslipPresentationRows(data, labels, String);
     expect(deductions.map((r) => [r.label, r.amount])).toEqual([
-      ['EPF', 583], ['SOCSO', 24.75], ['EIS', 9.9], ['PCB', 150], ['Unpaid leave', 250], ['Staff welfare fund', 100],
+      ['EPF', 583], ['SOCSO', 24.75], ['EIS', 9.9], ['PCB', 150], ['UPL · Unpaid leave', 250], ['D002 · Staff welfare fund', 100],
     ]);
     expect(deductions.map((r) => r.label)).not.toContain(labels.otherDeductions);
     // The rows still add up to TOTAL DEDUCTIONS, computed independently of the renderer.
     expect(Math.round(deductions.reduce((s, r) => s + (r.amount ?? 0), 0) * 100) / 100).toBe(250 + 100 + 583 + 24.75 + 9.9 + 150);
-    expect(earnings.map((r) => [r.label, r.amount])).toEqual([[labels.basicSalary, 5000], ['Meal allowance', 300]]);
+    expect(earnings.map((r) => [r.label, r.amount])).toEqual([[labels.basicSalary, 5000], ['A010 · Meal allowance', 300]]);
   });
 
   it('an overwrite shows the Pay Cycle of the latest file', async () => {

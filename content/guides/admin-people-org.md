@@ -42,3 +42,16 @@ Group administrators open [Users](/admin/users). Eligible employees without an e
 - Missing approver: review the reporting relationship and the workflow's own approval configuration.
 - Duplicate person: investigate using [Duplicate records](/admin/personnel/duplicates) before creating another login.
 - Blocked deletion: use the supported archive or correction action; referenced history is retained.
+
+
+## Review dated Group structure and re-tagging
+
+Open [Organization](/admin/organization#organisation-tagging) and **Group structure and organisation tags**. An authorised HR doer selects explicit Company, independent Business Unit and parent Company identities and an effective date, then prepares a frozen preview. An empty parent is a valid standalone root. The first reviewed mapping activates the feature; deployment does not choose mappings or change employees. Before that publication, legacy stored Business Units remain in use.
+
+The [organisation review page](/admin/organization/organisation-tagging) requires the exact run link issued by the native preview. Share that link with a different authorised HR or eligible Group Rewards checker. Opening a general page address or receiving a link does not grant access. The native owner checks both login and Person independence, current account availability, and the complete affected scope. Check the Company identities, effective date, frozen before/after tags and all report outcomes before approving or rejecting with a reason.
+
+Approval does not execute the run. The original authorised HR doer separately continues the approved staging checkpoints. Publication and native assignment projection commit together only after every frozen row reconciles. A changed source or revoked authority requires a fresh preview; retrying a published run does not apply it twice. Future and backdated changes retain their dated boundaries. Already-entered future assignments are shown with their proven projection date.
+
+**Re-tag all employment records** prepares a run-date report including active, inactive, blacklisted, future and voided records. Inactive classifications do not invent an active assignment interval. Review changed, unchanged, skipped and failed outcomes, and download the complete report from the authorised run. Missing mappings remain explicitly pending; resolve them before affected Rewards or payroll grouping can proceed.
+
+AI guidance explains this process only. It does not inspect private runs, infer Company-to-Business-Unit mappings, decide an approval, continue a run, publish, export employee records or perform a re-tag. Keep those decisions and actions on the native screens. No re-tag is executed by installing or releasing the software.

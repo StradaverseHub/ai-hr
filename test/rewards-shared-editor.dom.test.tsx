@@ -4,6 +4,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
+import {RewardCompanyClassificationPanel} from '../app/admin/rewards/shared/classification';
 import {SharedRewardEditor} from '../app/admin/rewards/shared/editor';
 import {RewardReviewCreateForm} from '../app/admin/rewards/create-review-form';
 import {defaultPolicy} from '../packs/rewards/model';
@@ -38,6 +39,27 @@ describe('shared configuration pair picker',()=>{
   const targets=()=>JSON.parse(document.querySelector<HTMLInputElement>('input[name="targets"]')!.value);
   expect(targets()).toEqual([{companyId:id(1),businessUnitId:id(3)},{companyId:id(1),businessUnitId:id(5)}]);
   expect(screen.getByText('Selected: 1 companies, 2 units')).toBeTruthy();
+ });
+ it('shows a multi-unit legal entity once, hides explicit test/alias identities and keeps one unassigned section',()=>{
+  render(wrap(<SharedRewardEditor actorUserId={id(9)} groupId={null} revision={0} name="Fictional" year={year} targets={[]} companies={[{...companies[0],groupId:id(20),groupName:'Group One'},{...companies[1],disposition:'test_demo'},{id:id(30),name:'Alias company',disposition:'alias'},{id:id(31),name:'Unassigned A',groupId:id(20),groupName:'Group One'},{id:id(32),name:'Unassigned B',groupId:id(21),groupName:'Group Two'}]} units={units} memberships={[...memberships,{companyId:id(1),businessUnitId:id(5)}]} policyFields={null} saveAction={vi.fn()}/>));
+  expect(screen.getAllByRole('heading',{name:'Fictional Company A'})).toHaveLength(1);
+  expect(screen.getByRole('checkbox',{name:'Fictional Company A · Unit A'})).toBeTruthy();expect(screen.getByRole('checkbox',{name:'Fictional Company A · Shared global'})).toBeTruthy();
+  expect(screen.queryByRole('checkbox',{name:/Fictional Company B|Alias company/})).toBeNull();
+  const unassigned=screen.getByRole('region',{name:en.rewards.companyPicker.unassigned});expect(within(unassigned).getByText('Unassigned A')).toBeVisible();expect(within(unassigned).getByText('Unassigned B')).toBeVisible();
+ });
+ it('requires explicit identity review, a canonical company and supporting reason before an alias designation can submit',()=>{
+  render(wrap(<RewardCompanyClassificationPanel companies={companies} rows={[]} saveAction={vi.fn()}/>));
+  expect(screen.getByText(en.rewards.companyPicker.noneDesignated)).toBeVisible();fireEvent.click(screen.getByRole('button',{name:en.rewards.companyPicker.reviewDesignation}));
+  fireEvent.change(screen.getByLabelText(en.rewards.companyPicker.designation),{target:{value:'alias'}});
+  const canonical=screen.getByLabelText<HTMLSelectElement>(en.rewards.companyPicker.canonicalCompany);expect(canonical.required).toBe(true);expect(canonical.checkValidity()).toBe(false);
+  expect(within(canonical).queryByRole('option',{name:new RegExp(companies[0].name)})).toBeNull();
+  fireEvent.change(canonical,{target:{value:companies[1].id}});fireEvent.change(screen.getByLabelText(en.rewards.companyPicker.reason),{target:{value:'Verified against legal registration records'}});
+  const confirm=screen.getByRole<HTMLInputElement>('checkbox',{name:en.rewards.companyPicker.verification});expect(confirm.required).toBe(true);expect(confirm.form!.checkValidity()).toBe(false);fireEvent.click(confirm);expect(confirm.form!.checkValidity()).toBe(true);
+ });
+ it('retains saved alias coverage without offering it for new group selection',()=>{
+  render(wrap(<SharedRewardEditor actorUserId={id(9)} groupId={id(6)} revision={1} name="Saved" year={year} targets={[memberships[0]]} companies={[{...companies[0],disposition:'alias'}]} units={units} memberships={[memberships[0]]} policyFields={null} saveAction={vi.fn()}/>));
+  expect(screen.getByRole<HTMLInputElement>('checkbox',{name:'Fictional Company A · Unit A'}).checked).toBe(true);expect(screen.getByText(en.rewards.companyPicker.preserved)).toBeVisible();
+  expect(JSON.parse(document.querySelector<HTMLInputElement>('input[name="targets"]')!.value)).toEqual([memberships[0]]);
  });
  it('explains a company with no units and only offers its setup link when permitted',()=>{
   const props={actorUserId:id(9),groupId:null,revision:0,name:'Fictional',year,targets:[],companies:[companies[0]],units:[],policyFields:null,saveAction:vi.fn()};
@@ -105,6 +127,16 @@ describe('shared configuration pair picker',()=>{
   fireEvent.change(screen.getByRole('combobox',{name:en.rewards.company}),{target:{value:id(2)}});
   expect(document.querySelector<HTMLInputElement>('input[name="sharedPolicyVersionId"]')!.value).toBe('');
   expect(screen.queryByRole('option',{name:'Fictional Company A · Unit A'})).toBeNull();expect(screen.getByRole('option',{name:'Unit B'})).toBeTruthy();
+ });
+ it('explains all create blockers and permits the authoritative manual-default path once complete',()=>{
+  const props={actorUserId:id(9),today,companies,units,memberships,cycles:[],shared:[]};
+  const view=render(wrap(<RewardReviewCreateForm {...props}/>));
+  const create=()=>screen.getByRole<HTMLButtonElement>('button',{name:en.rewards.createUnit});
+  expect(create().disabled).toBe(true);expect(screen.getByText(en.rewardsConfig.create.blocked.snapshotMissing)).toBeVisible();
+  fireEvent.change(screen.getByLabelText(en.rewards.snapshotDate),{target:{value:today}});expect(create().disabled).toBe(false);
+  fireEvent.change(screen.getByLabelText(en.rewards.cycle),{target:{value:'   '}});expect(create().disabled).toBe(true);expect(screen.getByText(en.rewardsConfig.create.blocked.cycleName)).toBeVisible();
+  view.rerender(wrap(<RewardReviewCreateForm {...props} memberships={[]}/>));
+  expect(screen.getByText(en.rewardsConfig.create.blocked.businessUnit)).toBeVisible();expect(screen.getByRole('link',{name:en.rewards.sharedPolicy.manageUnits})).toHaveAttribute('href','/admin/personnel');
  });
  it('shows the selected saved version eligibility and refreshes it on unit changes without PAT',()=>{
   const makePolicy=(day:string,rating:'BE'|'ME')=>{const p=defaultPolicy(year);return {effectiveFrom:p.effectiveFrom,meritMatrix:p.meritMatrix,standardPools:p.standardPools,hPools:p.hPools,targetMonthsBp:p.targetMonthsBp,bonusMatrix:p.bonusMatrix,exemptReason:'',eligibility:{...rewardEligibilitySummary(p),activeAsOf:day,minimumBonusRating:rating,legacyDefaults:false}};};

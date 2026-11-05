@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {configureRewardFixture as saveRewardPolicy,refreshRewardFixtureBudget} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 /**
@@ -74,7 +75,7 @@ describe('(a) a returned Rewards review in the shared task list', () => {
     await owner.db.update(schema.assignment).set({ businessUnitId: bu.id }).where(eq(schema.assignment.employmentId, employee.employmentId));
     await owner.db.update(schema.employment).set({ gradeId: grade.id, confirmationDate: `${year - 2}-04-01` }).where(eq(schema.employment.id, employee.employmentId));
     await setCompensation(a, { employmentId: employee.employmentId, basicSalary: 5000, effectiveFrom: `${year - 2}-01-01` });
-    const unitId = await createRewardUnit(a, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
+    const unitId = await createApprovedRewardUnit(a, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
     const view = () => getRewardUnit(a, unitId);
     const actors: Record<string, SessionContext> = {};
     for (const role of ['bu', 'bg', 'gr', 'ctro', 'ec', 'pbp'] as const) {

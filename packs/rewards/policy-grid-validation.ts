@@ -24,7 +24,8 @@ export function policyGridIssues(kind:RewardPolicyGridKind,rows:readonly (readon
   values.forEach((value,i)=>{if(value!==null&&value>(kind==='ranges'?100_000_000_000:kind==='bonusMatrix'?1000:100000))issues.push({row:grade,column:i+1,code:'number'});if(value===null)issues.push({row:grade,column:i+1,code:(row[i+1]??'').trim()===''?'missing':'precision'});});
   if(values.some(v=>v===null))continue;
   if(kind==='ranges'){
-   if(!(values[0]!>0&&values[0]!<values[1]!&&values[1]!<values[2]!))for(let i=1;i<=width;i++)issues.push({row:grade,column:i,code:'order'});
+   if(values[0]!<=0)issues.push({row:grade,column:1,code:'order'});
+   for(let i=1;i<values.length;i++)if(values[i]!<=values[i-1]!)issues.push({row:grade,column:i+1,code:'order'});
   }else{
    if(values[0]!==0)issues.push({row:grade,column:1,code:'zero'});
    if(kind==='bonusMatrix')for(let i=1;i<values.length;i++)if(values[i]!<=values[i-1]!)issues.push({row:grade,column:i+1,code:'order'});

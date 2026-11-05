@@ -29,7 +29,7 @@ export function FormulaGenerator({ source, disabled, apply }: {
     setResult(null); setError(''); setReplace(false); setAccepted(false);
   }
   function insert() {
-    if (disabled || !result?.valid || !result.source) return;
+    if (disabled || !(result?.valid || result?.unresolved) || !result.source) return;
     apply(result.source); setReplace(false);
   }
   return <section className="min-w-0 space-y-4 rounded-xl border border-border bg-card p-5" aria-labelledby="formula-generator-title">
@@ -47,16 +47,19 @@ export function FormulaGenerator({ source, disabled, apply }: {
     </div>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {result && <div className="space-y-3" role="status">
-      <p className="text-sm">{result.explanation}</p>
+      <div><h3 className="text-sm font-medium">{t('issue')}</h3><p className="text-sm">{result.explanation}</p></div>
+      <h3 className="text-sm font-medium">{t('suggestedFormula')}</h3>
+      {result.source && <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 font-mono text-xs">{result.source}</pre>}
+      <div><h3 className="text-sm font-medium">{t('assumptions')}</h3>{result.assumptions?.length ? <ul className="list-disc space-y-1 pl-5 text-sm">{result.assumptions.map((value,index)=><li key={index}>{value}</li>)}</ul> : <p className="text-sm text-muted-foreground">{t('noAssumptions')}</p>}</div>
+      <h3 className="text-sm font-medium">{t('nextStep')}</h3>
       {result.questions.map((question,index)=><p key={'q'+index} className="text-sm">{question}</p>)}
       {result.unsupported.map((issue,index)=><p key={'u'+index} className="text-sm text-destructive">{issue}</p>)}
-      {result.source && <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 font-mono text-xs">{result.source}</pre>}
       {result.conditions.length>0 && <div className="space-y-1 text-sm"><p className="font-medium">{t('conditions')}</p>{result.conditions.map((condition,index)=><p className="break-words font-mono text-xs" key={index}>{condition}</p>)}</div>}
       {result.variables.length>0 && <p className="text-sm text-muted-foreground">{t('variables')}: {result.variables.join(', ')}</p>}
       <p className="text-sm">{t(result.valid ? 'valid' : 'needsClarification')}</p>
       {replace ? <div role="alertdialog" aria-label={t('replaceTitle')} className="space-y-3 rounded-lg border border-border p-3">
         <p className="text-sm">{t('replaceHelp')}</p><div className="flex flex-wrap gap-2"><button className={formulaPrimary} type="button" disabled={disabled} onClick={insert}>{t('replace')}</button><button className={formulaButton} type="button" onClick={()=>setReplace(false)}>{t('cancel')}</button></div>
-      </div> : <button type="button" className={formulaButton} disabled={disabled || !result.valid} onClick={()=>source.trim()?setReplace(true):insert()}>{t('apply')}</button>}
+      </div> : <button type="button" className={formulaButton} disabled={disabled || !(result.valid || result.unresolved)} onClick={()=>source.trim()?setReplace(true):insert()}>{t('apply')}</button>}
     </div>}
     <p className="text-xs text-muted-foreground">{t('draftOnly')}</p>
   </section>;

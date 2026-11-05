@@ -16,6 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import {personnelFormulaFieldDescriptor} from '../lib/pay-formula-personnel';
 import {PAY_FORMULA_FUNCTIONS,PAY_FORMULA_FIELD_TYPES} from '../lib/pay-formula-registry';
 
 const MESSAGES = path.resolve(__dirname, '../messages');
@@ -176,7 +177,7 @@ describe('i18n coverage', () => {
       ...['decimal','string','boolean','date'].map(type=>`types.${type}`),
       ...['decimal','string','boolean','name','call','unary','binary'].map(kind=>`expression.${kind}`),
       ...['declare','assign','if','explain','return','comment'].map(kind=>`statement.${kind}`),
-      ...Object.values(PAY_FORMULA_FIELD_TYPES).flatMap(fields=>Object.keys(fields).map(field=>`fields.${field}`)),
+      ...Object.values(PAY_FORMULA_FIELD_TYPES).flatMap(fields=>Object.keys(fields).filter(field=>getPath(en,`payFormula.fields.${field}`)!==undefined).map(field=>`fields.${field}`)),
       ...PAY_FORMULA_FUNCTIONS.flatMap(fn=>[
         `functions.${fn.code}`,`functionHelp.${fn.code}`,
         ...fn.parameters.map(parameter=>{
@@ -191,6 +192,16 @@ describe('i18n coverage', () => {
         })),
       ]),
     ]);
+    for(const [code,fields]of Object.entries(PAY_FORMULA_FIELD_TYPES))for(const field of Object.keys(fields)){
+      if(getPath(en,`payFormula.fields.${field}`)!==undefined)continue;
+      const descriptor=personnelFormulaFieldDescriptor(code==='profile'?'EmployeeProfile':'EmployeeInformation',field);
+      expect(descriptor,`${code}:${field}`).toBeTruthy();
+      for(const locale of ['en',...LOCALES]){
+        const value=getPath(load(locale),descriptor!.labelKey);
+        expect(typeof value,`${locale}:${descriptor!.labelKey}`).toBe('string');
+        expect((value as string).trim()).not.toBe('');
+      }
+    }
     expect(PAY_FORMULA_FUNCTIONS.length).toBeGreaterThan(20);
     for(const locale of ['en',...LOCALES])for(const key of keys){
       const value=getPath(load(locale),`payFormula.${key}`);

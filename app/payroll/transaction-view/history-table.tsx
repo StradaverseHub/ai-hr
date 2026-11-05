@@ -31,7 +31,7 @@ import { absenceDaysLabel } from '@/core/payslip-absence-lines';
 // 417d4937 request 10 — the one-off transactions behind this run's recorded items, listed BESIDE them
 // (never matched to them: see the component's own note on why a (code, amount) join would be worse).
 import type { PayslipSourceTxnRow } from '@/core/payroll-view';
-import { SourceTxnBlock } from './source-txn-block';
+import { SourceTxnBlock, SourceTxnLink } from './source-txn-block';
 // b240c0ff — imported payroll history reads "Monthly - By Import", never the stored "Adjustment".
 import { payrollRunLabel } from '@/core/payslip-cycle-label';
 
@@ -68,20 +68,22 @@ function SubLines({
   fmt,
   legLabel,
   qtyLabel,
+  sourceRows = [],
 }: {
   lines: BreakdownSubLine[];
+  sourceRows?: PayslipSourceTxnRow[];
   fmt: (n: number) => string;
   legLabel?: (k: OtLegKind) => string;
-  qtyLabel?: (d: PayItemRateDetail) => string;
+  qtyLabel?: (d: {qty:number;unit:string|null}) => string;
 }) {
   if (lines.length === 0) return null;
   return (
     <ul className="mb-1 ms-3 border-s border-border/60 ps-3">
       {lines.map((l, i) => (
         <li key={`${l.code}-${i}`} className="flex items-baseline justify-between gap-4 py-0.5 text-xs text-muted-foreground">
-          <span>{l.otLeg && legLabel ? legLabel(l.otLeg) : payItemLabel(l)}</span>
+          <span><SourceTxnLink code={l.code} rows={sourceRows}>{l.otLeg && legLabel ? legLabel(l.otLeg) : payItemLabel(l)}</SourceTxnLink></span>
           <span className="flex items-baseline gap-4">
-            {l.detail && qtyLabel && <span className="tabular-nums">{qtyLabel(l.detail)}</span>}
+            {l.detail && qtyLabel ? <span className="tabular-nums">{qtyLabel(l.detail)}</span> : l.inputQuantity && <span className="tabular-nums">{qtyLabel ? qtyLabel(l.inputQuantity) : l.inputQuantity.qty}</span>}
             <span className="tabular-nums">{fmt(l.amount)}</span>
           </span>
         </li>
@@ -150,7 +152,7 @@ export function HistoryTable({
   const tIp = useTranslations('payroll.individualPayslip');
   // 5a5309d5 — "4 hours" beside an overtime line: the composition the payslip screens already print.
   const otLegLabel = (k: OtLegKind) => tSlip(OT_LEG_LABEL[k]);
-  const qtyLabel = (d: PayItemRateDetail) =>
+  const qtyLabel = (d: {qty:number;unit:string|null}) =>
     d.unit === 'hours'
       ? `${d.qty} ${tSlip(d.qty === 1 ? 'hourUnit' : 'hoursUnit')}`
       : d.unit === 'days'
@@ -299,7 +301,7 @@ export function HistoryTable({
                               and is inside this very figure; itemising `wage` alone made it the one
                               allowance that appeared to have no name here while Transaction Detail
                               showed it correctly. */}
-                          <SubLines lines={b.allowanceLines} fmt={rm} />
+                          <SubLines sourceRows={sourceTxnsByPayslip?.[`${r.batchId}:${r.employmentId}`] ?? []} lines={b.allowanceLines} fmt={rm} qtyLabel={qtyLabel} />
                           {b.detailNotRecorded && b.allowanceNet > 0 && (
                             <p className="pb-1 text-[11px] text-muted-foreground">{t('view.history.detailNotRecorded')}</p>
                           )}
@@ -314,12 +316,12 @@ export function HistoryTable({
                               result surfaces read one payslip the same way. */}
                           {/* 5a5309d5 — and overtime the ATTENDANCE engine paid (1.5 / 2.0 / 3.0 legs), with
                               the hours each leg recorded, through the same reconciliation gate. */}
-                          <SubLines lines={b.overtimeLines} fmt={rm} legLabel={otLegLabel} qtyLabel={qtyLabel} />
+                          <SubLines sourceRows={sourceTxnsByPayslip?.[`${r.batchId}:${r.employmentId}`] ?? []} lines={b.overtimeLines} fmt={rm} legLabel={otLegLabel} qtyLabel={qtyLabel} />
                           {b.otConvertAmount > 0 && (
                             <Row label={tSlip('otConverted', { item: st.otConvert!.name })} value={rm(b.otConvertAmount)} />
                           )}
                           <Row label={tSlip('bonus')} value={rm(b.bonus)} />
-                          <SubLines lines={b.bonusLines} fmt={rm} />
+                          <SubLines sourceRows={sourceTxnsByPayslip?.[`${r.batchId}:${r.employmentId}`] ?? []} lines={b.bonusLines} fmt={rm} qtyLabel={qtyLabel} />
                           {/* 3c473773 — the Claim box. Present ONLY when a pay item was deliberately
                               categorised into it; the 0393 backfill never produces one, so no existing
                               payslip grows a line and nothing moves off Allowances on release day. */}
@@ -425,7 +427,7 @@ export function HistoryTable({
                           {/* b240c0ff — the named deduction items behind "Other deductions" (imported payroll
                               history keeps each line), only when they add up to it.
                               5a5309d5 — and a payroll run's own deduction pay items (Monthly Parking). */}
-                          <SubLines lines={b.deductionLines} fmt={rm} />
+                          <SubLines sourceRows={sourceTxnsByPayslip?.[`${r.batchId}:${r.employmentId}`] ?? []} lines={b.deductionLines} fmt={rm} qtyLabel={qtyLabel} />
                           {/* 6b4ca488 — no minus prefix; see the note on the same line in
                               app/payroll/individual-payslip/page.tsx. `b.totalDeductions` is a positive
                               magnitude, and this detail panel is the Transaction View half of the same

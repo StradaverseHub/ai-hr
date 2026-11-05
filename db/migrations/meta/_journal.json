@@ -4700,10 +4700,94 @@
       "breakpoints": true
     },
     {
+      "idx": 1353,
+      "version": "7",
+      "when": 1793330001506,
+      "tag": "2106_account_management_subject",
+      "breakpoints": true
+    },
+    {
+      "idx": 1354,
+      "version": "7",
+      "when": 1793330001507,
+      "tag": "2107_probation_module_permission",
+      "breakpoints": true
+    },
+    {
+      "idx": 1355,
+      "version": "7",
+      "when": 1793330001508,
+      "tag": "2108_rewards_entity_classification",
+      "breakpoints": true
+    },
+    {
+      "idx": 1356,
+      "version": "7",
+      "when": 1793330001509,
+      "tag": "2109_org_chart_roots",
+      "breakpoints": true
+    },
+    {
+      "idx": 1357,
+      "version": "7",
+      "when": 1793330001510,
+      "tag": "2110_pay_formula_personnel_registry",
+      "breakpoints": true
+    },
+    {
+      "idx": 1358,
+      "version": "7",
+      "when": 1793330001511,
+      "tag": "2111_probation_personnel_mapping",
+      "breakpoints": true
+    },
+    {
+      "idx": 1380,
+      "version": "7",
+      "when": 1793330001526,
+      "tag": "2126_company_organisation_tagging",
+      "breakpoints": true
+    },
+    {
+      "idx": 1381,
+      "version": "7",
+      "when": 1793330001527,
+      "tag": "2127_personnel_filter_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 1382,
+      "version": "7",
+      "when": 1793330001528,
+      "tag": "2128_organisation_account_admission",
+      "breakpoints": true
+    },
+    {
+      "idx": 1383,
+      "version": "7",
+      "when": 1793330001530,
+      "tag": "2130_approved_company_retention",
+      "breakpoints": true
+    },
+    {
       "idx": 1400,
       "version": "7",
       "when": 1793330001600,
       "tag": "2200_job_architecture",
+      "breakpoints": true
+    },
+    {
+      "idx": 1401,
+      "version": "7",
+      "when": 1793330001601,
+      "tag": "2201_job_architecture_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 1402,
+      "version": "7",
+      "when": 1793330001602,
+      "tag": "2202_job_architecture_profile",
       "breakpoints": true
     },
     {
@@ -4746,6 +4830,13 @@
       "version": "7",
       "when": 1793330001608,
       "tag": "2208_rewards_uploaded_awards",
+      "breakpoints": true
+    },
+    {
+      "idx": 1409,
+      "version": "7",
+      "when": 1793330001609,
+      "tag": "2209_company_registration_classification",
       "breakpoints": true
     }
   ]

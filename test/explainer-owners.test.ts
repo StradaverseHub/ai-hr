@@ -183,8 +183,8 @@ describe('setup co-pilot',()=>{
 describe('public administrative page guidance',()=>{
  it('uses literal native owners, refuses direct employee calls and repeats the Payroll gate',async()=>{
   const {hr,employee}=await people(),scope={companyId:base.companyId};
-  const password=TERAS_CAPABILITIES.find(row=>row.name==='password_policy_guidance')!,corrections=TERAS_CAPABILITIES.find(row=>row.name==='correction_controls_guidance')!;
-  for(const capability of [password,corrections]){
+  const password=TERAS_CAPABILITIES.find(row=>row.name==='password_policy_guidance')!,corrections=TERAS_CAPABILITIES.find(row=>row.name==='correction_controls_guidance')!,organisation=TERAS_CAPABILITIES.find(row=>row.name==='organisation_tagging_guidance')!;
+  for(const capability of [password,corrections,organisation]){
    expect(await capability.run(employee,{},scope)).toMatchObject({ok:false,refusal:'not_permitted'});
    const value=await capability.run(hr,{password:'FICTIONAL_PRIVATE_PASSWORD',setting:'FICTIONAL_TENANT_SETTING',payrollAmount:987654321},scope);
    expect(value.ok).toBe(true);expect(Object.keys(value).sort()).toEqual(['humanBoundary','navigation','ok','page','provenance','purpose']);
@@ -194,6 +194,8 @@ describe('public administrative page guidance',()=>{
   expect((await password.run(hr,{},scope)).humanBoundary).toContain('internal embedded HR login');
   expect(await corrections.run(hr,{},scope)).toMatchObject({page:'/payroll/setup/correction-controls',humanBoundary:expect.stringContaining('only a group administrator'),provenance:{owner:'core/explainers/capabilities.ts#correctionControlsGuidance'}});
   expect((await corrections.run(hr,{},scope)).humanBoundary).toContain('separately chooses');
+  expect(await organisation.run(hr,{runId:'FICTIONAL_PRIVATE_RUN',digest:'FICTIONAL_SOURCE_HASH',employee:'FICTIONAL_EMPLOYEE'},scope)).toMatchObject({page:'/admin/organization/organisation-tagging',humanBoundary:expect.stringContaining('different login and Person'),provenance:{owner:'core/explainers/capabilities.ts#organisationTaggingGuidance'}});
+  expect(JSON.stringify(await organisation.run(hr,{runId:'FICTIONAL_PRIVATE_RUN'},scope))).not.toContain('FICTIONAL_PRIVATE_RUN');
   await setModule(base.tenantId,'payroll','disabled');
   const disabled={...hr,entitlements:(await entitledCtx(base,['hr_admin'])).entitlements};
   expect(await corrections.run(disabled,{},scope)).toMatchObject({ok:false,refusal:'not_permitted'});
@@ -209,11 +211,12 @@ describe('public administrative page guidance',()=>{
   const admin=await nativeToolProvider(hr,scope,true),names=admin.bindings.map(binding=>binding.name);
   // Release merge: main's two guides are product_guidance topics, so they add no binding against the provider's tool
   // ceiling (test/harness-tool-ceiling.test.ts computes the worst case per role).
-  expect(names).not.toContain('password_policy_guidance');expect(names).not.toContain('correction_controls_guidance');
+  expect(names).not.toContain('password_policy_guidance');expect(names).not.toContain('correction_controls_guidance');expect(names).not.toContain('organisation_tagging_guidance');
   expect(names).toContain('product_guidance');expect(new Set(names).size).toBe(names.length);
   const guidance=admin.bindings.find(binding=>binding.name==='product_guidance')!;
+  expect(await guidance.run({query:'How is an organisation proposal reviewed?',topic:'organisation_tagging'})).toMatchObject({ok:true,content:{page:'/admin/organization/organisation-tagging',humanBoundary:expect.stringContaining('Guidance cannot choose mappings')}});
   expect(guidance).toMatchObject({kind:'context',entity:null});
-  expect(guidance.spec.inputSchema).toMatchObject({properties:{topic:{type:'string',enum:['password_policy','correction_controls']}},required:['query']});
+  expect(guidance.spec.inputSchema).toMatchObject({properties:{topic:{type:'string',enum:['password_policy','correction_controls','organisation_tagging']}},required:['query']});
   const gate=gateTurn('Where are Password Policy and Correction Controls, and who confirms changes?',{sensitive:HARNESS_SPEC.sensitive.topics});
   expect(gate).toEqual({privateReads:false,actions:true,reason:'other_person'});
   const offered=offerFor(admin.bindings,gate),offeredNames=offered.map(binding=>binding.name);
@@ -227,7 +230,7 @@ describe('public administrative page guidance',()=>{
   expect(offeredNames).not.toContain('setup_readiness');expect(offeredNames).not.toContain('company_setup');
   // An employee still reaches neither guide: the topic is refused before the owner returns anything.
   const ordinary=await nativeToolProvider(employee,scope,true),ordinaryGuidance=ordinary.bindings.find(binding=>binding.name==='product_guidance')!;
-  for(const topic of ['password_policy','correction_controls'])
+  for(const topic of ['password_policy','correction_controls','organisation_tagging'])
    expect(await ordinaryGuidance.run({query:'Where is it?',topic})).toMatchObject({ok:false,refusal:'not_permitted'});
   expect(await guidance.run({query:'Where is it?',topic:'unlisted_topic'})).toMatchObject({ok:false,refusal:'invalid_input'});
   const {result,model}=await turn(hr,'Where are Password Policy and Correction Controls, and who confirms changes?',[
