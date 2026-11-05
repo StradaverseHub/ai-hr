@@ -31,6 +31,8 @@ import { payrollHistoryEffectiveBatch } from '../db/schema';
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
+import type { SelectedFields } from 'drizzle-orm/pg-core';
+import { pageState, type PageQuery } from '../lib/pagination';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withPayrollTenant` — all 38 exported entry
 // points, THE ENGINE included, refuse a tenant without the Payroll module. The `tx`-taking helpers
@@ -11429,35 +11431,69 @@ export function batchHeader(ctx: SessionContext, batchId: string) {
   });
 }
 
+const batchRegisterSlipColumns = {
+  id: payslip.id,
+  employmentId: payslip.employmentId,
+  name: person.fullName,
+  employeeCode: employment.employeeCode,
+  basic: payslip.basicSalary,
+  bonus: payslip.bonus,
+  daysWorked: payslip.daysWorked,
+  gross: payslip.grossPay,
+  statutory: payslip.statutory,
+  net: payslip.netPay,
+  version: payslip.version,
+};
+
+function batchPayslipRead<T extends SelectedFields>(tx: Tx, batchId: string, columns: T, employmentIds?: readonly string[]) {
+  return tx.select(columns)
+    .from(payslip)
+    .innerJoin(employment, eq(employment.id, payslip.employmentId))
+    .innerJoin(person, eq(person.id, employment.personId))
+    .where(and(eq(payslip.batchId, batchId), employmentIds && inArray(payslip.employmentId, employmentIds)));
+}
+
 export function batchDetail(ctx: SessionContext, batchId: string) {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, async tx => {
     const batch = await readBatchHeaderTx(tx, batchId);
     if (!batch) return null;
-    const slips = await tx
-      .select({
-        id: payslip.id,
-        employmentId: payslip.employmentId,
-        name: person.fullName,
-        employeeCode: employment.employeeCode,
-        basic: payslip.basicSalary,
-        bonus: payslip.bonus,
-        daysWorked: payslip.daysWorked,
-        gross: payslip.grossPay,
-        statutory: payslip.statutory,
-        totalDeductions: payslip.totalDeductions,
-        net: payslip.netPay,
-        employerCost: payslip.employerCost,
-        // 97a9b0ab — the revision counter (1 = as first generated, >1 = selectively reprocessed).
-        // It has always been stored and never shown, which is why a moved figure looked unexplainable.
-        // The RULESET version rides `statutory.version` (already selected above) — no column, no DDL.
-        version: payslip.version,
-      })
-      .from(payslip)
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payslip.batchId, batchId))
-      .orderBy(person.fullName);
+    const { net, version, ...columns } = batchRegisterSlipColumns;
+    const slips = await batchPayslipRead(tx, batchId, {
+      ...columns,
+      totalDeductions: payslip.totalDeductions,
+      net,
+      employerCost: payslip.employerCost,
+      version,
+    }).orderBy(person.fullName);
     return { batch, slips };
+  });
+}
+
+/** Count and page the exact joined register in one read-only snapshot. Stored batch totals are unchanged. */
+export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, page: PageQuery) {
+  return withTenant(ctx, async tx => {
+    const batch = await readBatchHeaderTx(tx, batchId);
+    if (!batch) return null;
+    const [count] = await batchPayslipRead(tx, batchId, { total: sql<number>`count(*)`.mapWith(Number) });
+    const total = count.total;
+    // An address past the end still has the exact total and an empty page.
+    const rows = page.offset >= total ? [] : await batchPayslipRead(tx, batchId, batchRegisterSlipColumns)
+      .orderBy(asc(person.fullName), asc(payslip.id)).limit(page.limit).offset(page.offset);
+    return { batch, slipPage: { rows, state: pageState(page, total, rows.length) } };
+  }, { readOnlySnapshot: true });
+}
+
+/** Run-wide stale banner identities, including people outside the visible register page. */
+export function listBatchRecalcPayslipIdentities(ctx: SessionContext, batchId: string, employmentIds: readonly string[]) {
+  if (employmentIds.length === 0) return Promise.resolve([]);
+  return withTenant(ctx, async tx => {
+    const batch = await readBatchHeaderTx(tx, batchId);
+    if (!batch) return [];
+    return batchPayslipRead(tx, batchId, {
+      employmentId: payslip.employmentId,
+      name: person.fullName,
+      employeeCode: employment.employeeCode,
+    }, employmentIds).orderBy(asc(person.fullName), asc(payslip.id));
   });
 }
 

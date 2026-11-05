@@ -6,11 +6,12 @@ import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {withPayrollTenant} from '../core/module-gate';
-import {batchDetail,batchHeader,createBatch,generatePayslips} from '../core/payroll';
+import {batchDetail,batchHeader,createBatch,generatePayslips,listBatchRecalcPayslipIdentities,payrollRunRegisterPage} from '../core/payroll';
 import {GET as exportRun} from '../app/payroll/[batchId]/export/route';
 import {rowsForRun,transactionDetailReport} from '../app/payroll/[batchId]/transaction-detail-report';
 import {listPayrollRegisterAcross} from '../core/payroll-view';
 import {serializeReport} from '../lib/report-export';
+import {paginateRows,parsePageQuery} from '../lib/pagination';
 import {PAYROLL_ACCESS_EVENT} from '../core/payroll-audit/types';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
@@ -49,6 +50,7 @@ it('reads the exact effective header and visible slip count without exporting di
   await owner.db.insert(s.employment).values(members.map(({personId,employmentId})=>({id:employmentId,tenantId:b.tenantId,personId,companyId:b.companyId,hiredOn:'2020-01-01'})));
   await owner.db.insert(s.payslip).values(members.map(({employmentId})=>({...actual,id:randomUUID(),employmentId})));
  }
+ await owner.db.update(s.person).set({fullName:'Fictional duplicate payee'}).where(sql`${s.person.id} in (${extra[1].personId}::uuid,${extra[2].personId}::uuid)`);
  // Synthetic owner fixture for the retained historical join: normal void does not accept an existing
  // payslip. Fill the complete void bundle without disabling the database guard or constraint.
  await owner.db.update(s.employment).set({voidedAt:new Date(),voidedBy:b.adminUserId,voidReason:'Fictional retained join fixture',voidedImportAttemptId:randomUUID()}).where(eq(s.employment.id,extra[0].employmentId));
@@ -62,11 +64,34 @@ it('reads the exact effective header and visible slip count without exporting di
   const old=await batchDetail(ctx,id);
   expect(await batchHeader(ctx,id)).toEqual(old?{batch:old.batch}:null);
   expect(await countProbe(ctx,id)).toEqual(old?{batch:old.batch,slipCount:old.slips.length}:null);
+  const page=parsePageQuery();
+  expect(await payrollRunRegisterPage(ctx,id,page)).toEqual(old?{batch:old.batch,slipPage:paginateRows(old.slips.map(({totalDeductions:_d,employerCost:_c,...row})=>row),page)}:null);
  }
  const exact=await batchDetail(root,batchId);expect(exact?.slips.length).toBe(1000);expect(exact).not.toBeNull();
+ const list=exact!.slips;
+ const groupByName=new Map<string,typeof list>();
+ for(const row of list){
+  const group=groupByName.get(row.name);
+  if(group)group.push(row);else groupByName.set(row.name,[row]);
+ }
+ const ordered=[...groupByName.values()].flatMap(group=>group.sort((a,b)=>a.id.localeCompare(b.id)));
+ const registerRows=ordered.map(({totalDeductions:_deductions,employerCost:_cost,...row})=>row);
+ const tied=registerRows.filter(row=>row.name==='Fictional duplicate payee');
+ expect(tied).toHaveLength(2);
+ for(const raw of [{},{page:'1',size:'50'},{page:'200',size:'200'},{size:'all'}]){
+  const page=parsePageQuery(raw);
+  expect(await payrollRunRegisterPage(root,batchId,page)).toEqual({batch:exact!.batch,slipPage:paginateRows(registerRows,page)});
+ }
+ const firstPage=registerRows.slice(0,25),offPage=registerRows.at(-1)!;
+ expect(firstPage.some(row=>row.employmentId===offPage.employmentId)).toBe(false);
+ const bannerIds=[offPage.employmentId,extra[0].employmentId];
+ expect(await listBatchRecalcPayslipIdentities(root,batchId,bannerIds)).toEqual([{
+  employmentId:offPage.employmentId,name:offPage.name,employeeCode:offPage.employeeCode,
+ }]);
+ expect(await listBatchRecalcPayslipIdentities(foreign,batchId,bannerIds)).toEqual([]);
  const phases=[];
  for(const [name,read,statements]of [
-  ['original',()=>batchDetail(root,batchId),2],['header',()=>batchHeader(root,batchId),1],
+  ['original',()=>batchDetail(root,batchId),2],['register-page',()=>payrollRunRegisterPage(root,batchId,parsePageQuery()),3],['header',()=>batchHeader(root,batchId),1],
   ['header-warm',()=>batchHeader(root,batchId),1],['count',()=>countProbe(root,batchId),2],
   ['count-warm',()=>countProbe(root,batchId),2],['restored-original',()=>batchDetail(root,batchId),2],
  ] as const){
@@ -76,6 +101,7 @@ it('reads the exact effective header and visible slip count without exporting di
    expect(result?.batch).toEqual(exact?.batch);
    if(result&&'slips'in result)expect(result.slips).toEqual(exact?.slips);
    if(result&&'slipCount'in result)expect(result.slipCount).toBe(exact?.slips.length);
+   if(result&&'slipPage'in result)expect(result.slipPage).toEqual(paginateRows(registerRows,parsePageQuery()));
   }
   phases.push({name,elapsedMs,bytes,bodyQueriesPerRead:statements});
  }
