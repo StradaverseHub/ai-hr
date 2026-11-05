@@ -12,11 +12,17 @@ import {defaultPolicy,type RewardPolicy} from '../../packs/rewards/model';
 import {saveRewardSetupPlan,submitRewardSetupPlan,approveRewardSetupPlan,rewardSetupPlan,saveRewardPlanConfiguration} from '../../packs/rewards/plan-configuration';
 import {createRewardUnit,type PlannedRewardUnitInput} from '../../packs/rewards/service';
 export function approvedRewardFixtures(owner:{db:Db}) {
+async function ensureFixtureSetupGrant(ctx:SessionContext,createdBy=ctx.userId){
+ if(!ctx.userId||!createdBy)throw new Error('A real fixture setup actor is required.');
+ await owner.db.execute(sql`insert into reward_setup_grant(tenant_id,user_id,company_id,role,valid_from,created_by,reason)
+  select ${ctx.tenantId}::uuid,${ctx.userId}::uuid,null,'gr','2000-01-01',${createdBy}::uuid,'Explicit fictional setup authority'
+  where not exists(select 1 from reward_setup_grant where tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid and company_id is null and role='gr' and active and valid_from<='2000-01-01' and valid_to is null)`);
+}
 async function setupChecker(ctx:SessionContext){
  const [maker]=await owner.db.select({personId:appUser.personId}).from(appUser).where(eq(appUser.id,ctx.userId!));
  if(!maker)throw new Error('A real fixture maker account is required.');
  if(!maker.personId){const [p]=await owner.db.insert(person).values({tenantId:ctx.tenantId,fullName:'Fictional Rewards setup maker',primaryEmail:randomUUID()+'@reward-setup.test'}).returning();await owner.db.update(appUser).set({personId:p.id}).where(eq(appUser.id,ctx.userId!));}
-const[p]=await owner.db.insert(person).values({tenantId:ctx.tenantId,fullName:'Independent Rewards setup checker',primaryEmail:randomUUID()+'@reward-setup.test'}).returning();const[u]=await owner.db.insert(appUser).values({tenantId:ctx.tenantId,personId:p.id,workosUserId:randomUUID()}).returning();await owner.db.insert(roleAssignment).values({tenantId:ctx.tenantId,appUserId:u.id,role:'hr_admin',companyId:null});const checker={...ctx,userId:u.id,personId:p.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};for(const who of [ctx,checker])await owner.db.execute(sql`insert into reward_setup_grant(tenant_id,user_id,company_id,role,valid_from,created_by,reason) values(${ctx.tenantId}::uuid,${who.userId}::uuid,null,'gr','2000-01-01',${ctx.userId}::uuid,'Explicit test setup authority')`);return checker;}
+const[p]=await owner.db.insert(person).values({tenantId:ctx.tenantId,fullName:'Independent Rewards setup checker',primaryEmail:randomUUID()+'@reward-setup.test'}).returning();const[u]=await owner.db.insert(appUser).values({tenantId:ctx.tenantId,personId:p.id,workosUserId:randomUUID()}).returning();await owner.db.insert(roleAssignment).values({tenantId:ctx.tenantId,appUserId:u.id,role:'hr_admin',companyId:null});const checker={...ctx,userId:u.id,personId:p.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};await ensureFixtureSetupGrant(ctx);await ensureFixtureSetupGrant(checker,ctx.userId);return checker;}
 async function setupGrades(ctx:SessionContext){const current=await owner.db.select().from(jobGrade).where(eq(jobGrade.tenantId,ctx.tenantId));const rows=[];for(const grade of ARCHITECTURE_GRADES){let row=current.find(g=>architectureGrade(g.code)===grade&&!g.archivedAt);if(!row)[row]=await owner.db.insert(jobGrade).values({tenantId:ctx.tenantId,code:grade,name:'Setup grade '+grade,rank:grade==='H'?0:Number(grade)}).returning();rows.push({gradeId:row.id,grade});}return rows;}
 /** Publish real independently checked company tags before constructing any approved Rewards plan.
  * Tests that deliberately remove Workforce authority call this during their authorized setup phase. */
@@ -66,6 +72,7 @@ async function setupRewardLibrariesFixture(ctx:SessionContext,year:number,basePo
 }
 /** Existing versions are retained exactly; no replacement policy is invented for provenance tests. */
 async function createApprovedRewardUnit(ctx:SessionContext,raw:PlannedRewardUnitInput,fixturePolicy?:RewardPolicy,fixtureTargets?:{companyId:string;businessUnitId:string}[]){
+ await ensureFixtureSetupGrant(ctx);
  const existing=raw.sharedPolicyVersionId?await rewardSetupPlan(ctx,raw.sharedPolicyVersionId):null;
  if(existing?.setup?.state==='approved')return createRewardUnit(ctx,{...raw,name:existing.setup.cycleName,cycleId:undefined,approvedPlanVersionId:existing.source.versionId});
  const checker=await setupChecker(ctx),why='Reviewed fixture configuration';
@@ -73,7 +80,8 @@ async function createApprovedRewardUnit(ctx:SessionContext,raw:PlannedRewardUnit
  const targets=existing?.source.targets??fixtureTargets??[{companyId:raw.companyId,businessUnitId:raw.businessUnitId}];
  await setupCompanyStructureFixture(ctx,targets,raw.snapshotDate,checker);
  const {policy,salary,bonus}=await setupRewardLibrariesFixture(ctx,raw.year,fixturePolicy??existing?.source.policy??defaultPolicy(raw.year),checker);
- for(const target of targets)await confirmFixturePat(ctx,target.companyId,raw.year,{targetCents:policy.patTarget,forecastCents:null,actualCents:policy.patActual,targetMonthsBp:policy.targetMonthsBp},checker);
+ const fixturePat=fixturePolicy??defaultPolicy(raw.year);
+ for(const target of targets)await confirmFixturePat(ctx,target.companyId,raw.year,{targetCents:fixturePat.patTarget,forecastCents:null,actualCents:fixturePat.patActual,targetMonthsBp:fixturePat.targetMonthsBp},checker);
  const version=existing?.source??await saveRewardPlanConfiguration(ctx,{groupId:null,expectedRevision:0,name,policy,targets});
  const revision=await saveRewardSetupPlan(ctx,{versionId:version.versionId,expectedRevision:existing?.setup?.revision??0,cycleName:name,snapshotDate:raw.snapshotDate,bindings:targets.map(t=>({...t,salaryVersionId:salary,bonusVersionId:bonus,branchAcknowledged:policy.bonusStructure==='branch'})),reason:why});
  await submitRewardSetupPlan(ctx,version.versionId,revision);await approveRewardSetupPlan(checker,version.versionId,revision+1);

@@ -32,7 +32,7 @@ export async function transitionAction(fd: FormData) { const {s} = await scopedS
     if (action === 'delete' && text(fd, 'confirm') !== 'yes')
         throw new Error('Confirm draft deletion');
     const result=await transitionJob(s, { jobId: id, revisionId: text(fd, 'revisionId'), lockVersion: Number(text(fd, 'lockVersion')), action: action as Parameters<typeof transitionJob>[1]['action'], comments: text(fd, 'comments'), receiptOn:text(fd,'receiptOn'),scopeGrade:text(fd,'scopeGrade') });
-    if(result?.outlier)error=(await getTranslations('jobArchitecture'))('scopeFlagged'); 
+    if(result?.outlier)error=(await getTranslations('jobArchitecture'))('scopeFlagged');
 }
 catch (e) {
     error = await failure(e);

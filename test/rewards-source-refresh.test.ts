@@ -21,7 +21,7 @@ describe('Rewards source refresh preview and confirm', () => {
   const view = () => getRewardUnit(admin, unitId);
   async function hire(key: string, confirmed = true) {
     const h = await hireEmployee(admin, { person: { fullName: `Refresh ${key}`, primaryEmail: `${key}@refresh.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
-    await owner.db.update(schema.assignment).set({ businessUnitId: buId }).where(eq(schema.assignment.employmentId, h.employmentId));
+    await owner.withTenant(admin,tx=>tx.update(schema.assignment).set({ businessUnitId: buId }).where(eq(schema.assignment.employmentId, h.employmentId)));
     await owner.db.update(schema.employment).set({ gradeId, confirmationDate: confirmed ? `${year - 2}-04-01` : null }).where(eq(schema.employment.id, h.employmentId));
     await setCompensation(admin, { employmentId: h.employmentId, basicSalary: 5000, effectiveFrom: `${year - 2}-01-01` });
     ids[key] = h.employmentId;
@@ -53,7 +53,7 @@ describe('Rewards source refresh preview and confirm', () => {
     await owner.db.update(schema.employment).set({ gradeId: g13.id }).where(eq(schema.employment.id, ids.grade));
     await setCompensation(admin, { employmentId: ids.salary, basicSalary: 6000, effectiveFrom: today });
     await owner.db.update(schema.employment).set({ terminatedOn: today }).where(eq(schema.employment.id, ids.terminated));
-    await owner.db.update(schema.assignment).set({ validTo: today }).where(eq(schema.assignment.employmentId, ids.moved));
+    await owner.withTenant(admin,tx=>tx.update(schema.assignment).set({ validTo: today }).where(eq(schema.assignment.employmentId, ids.moved)));
     await hire('joined');
   });
   afterAll(closeAll);

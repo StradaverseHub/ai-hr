@@ -30,7 +30,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const [grade] = await owner.db.insert(schema.jobGrade).values({ tenantId: b.tenantId, code: '12', name: 'Grade 12' }).returning();
     const hire = await hireEmployee(admin, { person: { fullName: 'Reward Employee', primaryEmail: 'employee@rewards.test' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
     employmentId = hire.employmentId;
-    await owner.db.update(schema.assignment).set({ businessUnitId: bu.id }).where(eq(schema.assignment.employmentId, employmentId));
+    await owner.withTenant(admin,tx=>tx.update(schema.assignment).set({ businessUnitId: bu.id }).where(eq(schema.assignment.employmentId, employmentId)));
     await owner.db.update(schema.employment).set({ gradeId: grade.id, confirmationDate: `${year - 2}-04-01` }).where(eq(schema.employment.id, employmentId));
     await setCompensation(admin, { employmentId, basicSalary: 5000, effectiveFrom: `${year - 2}-01-01` });
     unitId = await createApprovedRewardUnit(admin, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
@@ -356,7 +356,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const giveEmployment = async (role: RewardRole, name: string) => {
       const hire = await hireEmployee(admin, { person: { fullName: name, primaryEmail: `${role}.employment@rewards.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
       const currentReview = await getRewardUnit(admin, unitId);
-      await owner.db.update(schema.assignment).set({ businessUnitId: currentReview.unit.businessUnitId }).where(eq(schema.assignment.employmentId, hire.employmentId));
+      await owner.withTenant(admin,tx=>tx.update(schema.assignment).set({ businessUnitId: currentReview.unit.businessUnitId }).where(eq(schema.assignment.employmentId, hire.employmentId)));
       await owner.db.update(schema.appUser).set({ personId: hire.personId }).where(eq(schema.appUser.id, actors[role]!.userId!));
       actors[role] = { ...actors[role]!, personId: hire.personId };
       return hire;

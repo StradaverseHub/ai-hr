@@ -179,7 +179,7 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         const hire = async (fullName: string) => hireEmployee(admin, { person: { fullName, primaryEmail: `${randomUUID()}@rewards.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 1}-01-01` });
         const linked = await hire('Facts Reviewer');
         await owner.db.update(s.employment).set({ employeeCode: 'RW-0042' }).where(eq(s.employment.id, linked.employmentId));
-        await owner.db.update(s.assignment).set({ businessUnitId: bu, positionId: title.id }).where(eq(s.assignment.employmentId, linked.employmentId));
+        await owner.withTenant(admin,tx=>tx.update(s.assignment).set({ businessUnitId: bu, positionId: title.id }).where(eq(s.assignment.employmentId, linked.employmentId)));
         const login = await createAppUser(b.tenantId, linked.personId, 'employee');
         const unlinked = await hire('Unlinked Employee');
         const departed = await hire('Departed Employee'), departedUnlinked = await hire('Departed Unlinked');

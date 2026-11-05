@@ -21,7 +21,7 @@ describe('Rewards derived confidentiality', () => {
   const row = async (key: string, ctx = admin) => (await view(ctx)).rows.find(r => r.source.employmentId === emp[key].employmentId);
   async function hire(key: string, inUnit: boolean) {
     const h = await hireEmployee(admin, { person: { fullName: `Confidential ${key}`, primaryEmail: `${key}@confidential.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
-    if (inUnit) await owner.db.update(schema.assignment).set({ businessUnitId: buId }).where(eq(schema.assignment.employmentId, h.employmentId));
+    if (inUnit) await owner.withTenant(admin,tx=>tx.update(schema.assignment).set({ businessUnitId: buId }).where(eq(schema.assignment.employmentId, h.employmentId)));
     await owner.db.update(schema.employment).set({ gradeId, confirmationDate: `${year - 2}-04-01` }).where(eq(schema.employment.id, h.employmentId));
     await setCompensation(admin, { employmentId: h.employmentId, basicSalary: 5000, effectiveFrom: `${year - 2}-01-01` });
     const [e] = await owner.db.select({ personId: schema.employment.personId }).from(schema.employment).where(eq(schema.employment.id, h.employmentId));

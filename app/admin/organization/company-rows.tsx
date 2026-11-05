@@ -181,14 +181,20 @@ export function CompanyRows({
     <>
       {rows.map((r) => (
         <tr key={r.id} className={r.archived ? 'opacity-60 hover:bg-muted/40' : 'hover:bg-muted/40'}>
-          <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{r.code ?? '—'}</td>
+          <td className="hidden px-3 py-2 font-mono text-xs text-muted-foreground sm:table-cell">{r.code ?? '—'}</td>
           <td className="px-3 py-2">
             <Link href={`${basePath}/${r.id}/view`} className="font-medium text-foreground hover:text-primary">
               {r.name}
             </Link>
+            {r.code && <span className="mt-1 block whitespace-nowrap font-mono text-xs text-muted-foreground sm:hidden">{r.code}</span>}
           </td>
           <td className="px-3 py-2 text-muted-foreground">{r.registrationNo ?? '—'}</td>
-          {labels.registration && <td className="px-3 py-2"><Badge variant={r.statutoryStatus==='complete'?'success':r.statutoryStatus==='missing'?'danger':'default'}>{labels.registration[r.statutoryStatus??'missing']}</Badge></td>}
+          {labels.registration && <td className="whitespace-nowrap px-3 py-2">
+            <div className="flex flex-col items-start sm:flex-row sm:items-center sm:gap-2">
+              <Badge variant={r.statutoryStatus==='complete'?'success':r.statutoryStatus==='missing'?'danger':'default'}>{labels.registration[r.statutoryStatus??'missing']}</Badge>
+              {r.statutoryStatus==='missing' && <Link href={`${basePath}/${r.id}?tab=statutory`} className="inline-flex min-h-11 items-center text-xs text-primary underline underline-offset-2 sm:min-h-7">{labels.registration.completeAction}</Link>}
+            </div>
+          </td>}
           <td className="px-3 py-2 text-muted-foreground">{r.parentName ?? '—'}</td>
           <td className="px-3 py-2">
             <span
@@ -215,7 +221,6 @@ export function CompanyRows({
               <Link href={`${basePath}/${r.id}`} className="text-primary underline underline-offset-2">
                 {labels.edit}
               </Link>
-              {labels.registration && r.statutoryStatus==='missing' && <Link href={`${basePath}/${r.id}?tab=statutory`} className="inline-flex min-h-11 items-center text-primary underline underline-offset-2">{labels.registration.completeAction}</Link>}
               <span aria-hidden className="text-border">|</span>
               <form action={archiveAction} className="inline">
                 <input type="hidden" name="id" value={r.id} />

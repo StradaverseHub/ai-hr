@@ -15,7 +15,7 @@ import {createClaimType,saveClaimDraft,submitClaim} from '../../packs/claims/ser
 import * as performance from '../../packs/performance/service';
 import {defaultPolicy} from '../../packs/performance/onehr/model';
 import framework from '../../packs/performance/onehr/framework.json';
-import {getRewardUnit,saveRewardEntry,previewRewardAccessChange,saveRewardAccessChange,decideRewardUnit,getRewardUnitGovernance,previewRewardSeniorMembership,saveRewardSeniorMembership,confirmRewardGovernance} from '../../packs/rewards/service';
+import {getRewardUnit,saveRewardEntry,previewRewardAccessChange,saveRewardAccessChange,decideRewardUnit,getRewardUnitGovernance,previewRewardSeniorMembership,saveRewardSeniorMembership,confirmRewardGovernance,refreshRewardPatBasis} from '../../packs/rewards/service';
 import {REWARD_POLICY_GRADES} from '../../packs/rewards/policy-grid-validation';
 import {approvedRewardFixtures} from './reward-approved';
 import {defaultPolicy as defaultRewardPolicy,emptyFacts,type RewardRole} from '../../packs/rewards/model';
@@ -97,6 +97,8 @@ export async function populateAiDeliveryFinancial(c:AiDeliveryFixtureContext):Pr
  if(operatorReview.rows.some(row=>row.source.personId===c.actors.operator.personId))return refuse();
  let reward=await getRewardUnit(admin,rewardId);if(!reward.rows.length)return refuse();
  for(const row of reward.rows)await saveRewardEntry(admin,rewardId,(await getRewardUnit(admin,rewardId)).unit.revision,row.id,row.recommendation,{...emptyFacts(),reviewed:true,talent:'SCORE',performance:'ME'});
+ const preparedPool=await getRewardUnitGovernance(admin,rewardId);
+ if(preparedPool.patBasisStale)await refreshRewardPatBasis(admin,rewardId,preparedPool.revision,'Fictional employee inputs reviewed before route submission');
  reward=await getRewardUnit(admin,rewardId);const revision=reward.unit.revision;await decideRewardUnit(c.actors.operator.ctx,rewardId,revision,'submit','Fictional human fixture recommendations');
  const actorFor:Partial<Record<RewardRole,typeof c.actors.operator>>={bg:c.actors.reviewers[0],gr:{...c.actors.operator,ctx:admin},ctro:c.actors.reviewers[1],ec:c.actors.peer};
  for(const role of reward.route.slice(1)){const actor=actorFor[role];if(!actor)return refuse();await decideRewardUnit(actor.ctx,rewardId,revision,'approve','Fictional human fixture review');}
