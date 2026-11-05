@@ -6,6 +6,7 @@ import {browserFailureLocation} from './browser-failure.ts';
 import {routeLatency} from './route-latency.mjs';
 import {navigationRoutesForIteration} from './route-scheduling.mjs';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
+import {attendanceRejectionProbeEnabled,prepareAttendanceRejection} from './attendance-rejection-browser.mjs';
 import {exerciseLetterDraft} from './letter-draft-browser.mjs';
 import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
 import {exerciseSavedReport} from './reports-browser.mjs';
@@ -554,6 +555,12 @@ try{
   assert.equal((await db`select id from claim_request where id=${protectedDraft.id}::uuid`).length,0);
  }
  if(suite!=='claims-heavy')runMixedWorkflow=await prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs});
+ let loadedAttendanceRejection;
+ if(attendanceRejectionProbeEnabled&&suite!=='claims-heavy'){
+  const baseline=await prepareAttendanceRejection({context,visit,fixture,db,report,save,phase:'baseline'});
+  await baseline.run();
+  if(suite==='whole-system')loadedAttendanceRejection=await prepareAttendanceRejection({context,visit,fixture,db,report,save,phase:'loaded'});
+ }
  if(suite!=='claims-heavy'){
   const ctx=await context(employee),page=await ctx.newPage();let automaticPdfRequests=0;
   const observe=req=>{if(req.method()==='GET'&&/^\/me\/payslip\/[^/]+\/pdf$/.test(new URL(req.url()).pathname))automaticPdfRequests++;};
@@ -702,6 +709,9 @@ try{
    (report.browserJourneyFailures??=[]).push({role:user.role,user:user.index,phase:'loaded',errorType:error.name,...browserFailureLocation(error),timeout:error.name==='TimeoutError'});save();throw error;
   }finally{await ctx.close();}
  }));
+ const attendanceRejectionLoad=loadedAttendanceRejection
+  ?Promise.allSettled([loadedAttendanceRejection.run({loadState:()=>({active:progress.active,launched:progress.launched}),steadyUntil})])
+  :null;
  const results=await Promise.allSettled(fixture.users.map(async(user,i)=>{
   await pause(i*20);progress.launched++;progress.active++;progress.peakActive=Math.max(progress.peakActive,progress.active);
   let iteration=0;
@@ -734,7 +744,9 @@ try{
   progress.completed++;
   }catch(error){progress.failed++;throw error;}finally{progress.active--;}
  }));
- const browserResults=await browserLoad;report.trafficSettled=true;
+ const browserResults=await browserLoad;
+ const rejectionResults=await attendanceRejectionLoad;
+ report.trafficSettled=true;
  report.browserLoad={contexts:browserResults.length,completed:browserResults.filter(v=>v.status==='fulfilled').length,errors:browserResults.flatMap((v,index)=>v.status==='rejected'?[{index,error:String(v.reason.message).slice(0,180)}]:[])};
  clearInterval(sampling);sampling=null;clearInterval(progressTimer);progressTimer=null;if(sqlSnapshotTimer)clearInterval(sqlSnapshotTimer);sqlSnapshotTimer=null;report.progress={...progress,elapsedMs:performance.now()-started};
  report.functionalErrors=results.flatMap((value,index)=>value.status==='rejected'?[{user:index,error:String(value.reason.message).slice(0,180)}]:[]);report.functionalAccountingComplete=true;
@@ -763,6 +775,7 @@ try{
  writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
  report.concurrentHomeApiCoverage=report.homeApiTraffic.templates.flatMap(({role,requests})=>requests.map(({path})=>({role,path,requests:loaded.filter(sample=>sample.role===role&&sample.method==='GET'&&sample.route===path).length})));
  await databaseSnapshot('loaded');await verifyAudit();save();
+ if(rejectionResults?.[0].status==='rejected')throw rejectionResults[0].reason;
  if(suite==='whole-system')assert(['baseline','loaded'].every(phase=>report.browserSavedReportJourneys?.some(row=>row.phase===phase&&row.status==='passed')),'saved Reports browser journeys did not finish');
  if(suite==='whole-system')assert(report.concurrentHomeApiCoverage.length>0&&report.concurrentHomeApiCoverage.every(row=>row.requests>0),'observed Home fetches missing from concurrent traffic');if(runMixedWorkflow)assert(Object.values(report.mixedWorkflows.completed).every(count=>count>0),'a required mixed mutation/processing scenario did not complete');if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure during baseline or load');assert(report.loadedBrowserSignIn?.homeCards>0,'real loaded browser sign-in did not finish');assert(['employee','manager','companyHR','groupHR'].every(role=>report.loadedBrowserSignIns?.some(row=>row.role===role&&row.homeCards>0&&row.todaySectionIds.length>0&&row.cardFailures===0)),'all four role dashboards must load after real sign-in');if(suite==='whole-system')assert(['/claims','/admin/personnel'].every(path=>report.browserLanguageSwitches?.some(row=>row.phase==='loaded'&&row.path===path&&row.usable)),'loaded language switching did not finish on Claims and Personnel');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');if(suite==='whole-system')assert(['baseline','loaded'].every(phase=>report.orgExplorerJourneys?.some(row=>row.phase===phase&&row.status==='passed')),'Org browser scope and language journeys did not finish');if(fixture.assistantHistory)assert(aiBrowserActors.every(user=>['saved-history-list','saved-history-open','saved-history-return'].every(step=>report.browserAssistantHistory?.some(row=>row.phase==='loaded'&&row.userIndex===user.index&&row.step===step&&row.targetMet))),'populated saved-history browser navigation incomplete or above1s target');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
 }catch(error){report.browserPendingRequests??=[...(pendingBrowserRequests.get(lastPage)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}

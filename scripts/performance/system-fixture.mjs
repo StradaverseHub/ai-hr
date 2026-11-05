@@ -6,6 +6,7 @@ import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
 import {fixtureAuditCounts,assertFixtureAudit} from './fixture-audit.ts';
 import {performanceFixtureCalendar,clockingFixtureText} from './fixture-workload.mjs';
+import {attendanceRejectionProbeEnabled,attendanceRejectionSubjects} from './attendance-rejection-browser.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.AUTH_PROVIDER,'internal');
 for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
  const url=new URL(process.env[key]);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'5433');assert.equal(url.pathname,'/ai_hr_dev');
@@ -150,6 +151,16 @@ try{
     select ${b.tenantId}::uuid,e.id,${today}::date-n,'09:00'::time,'17:00'::time,'present',480,0
     from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(0,${attendanceDays-1}::integer)n
     order by e.id,n desc`);
+  if(attendanceRejectionProbeEnabled&&t===0){
+   const reserved=attendanceRejectionSubjects(cohort).map(user=>user.employmentId);
+   const rejectionDay=importDate(1);
+   const punches=await owner.client`insert into attendance_punch(tenant_id,attendance_id,employment_id,attendance_date,punch_at,direction,method)
+     select a.tenant_id,a.id,a.employment_id,a.attendance_date,p.punch_at,p.direction,'import'::clock_method
+     from attendance a cross join lateral(values(a.check_in_at,'in'::attendance_punch_direction),(a.check_out_at,'out'::attendance_punch_direction)) p(punch_at,direction)
+     where a.tenant_id=${b.tenantId}::uuid and a.attendance_date=${rejectionDay}::date and a.employment_id=any(${reserved}::uuid[])
+     returning id`;
+   assert.equal(punches.length,4,'Attendance rejection probe requires exactly two historical punches per reserved subject');
+  }
   await owner.db.insert(s.compensation).values(cohort.map(u=>({tenantId:b.tenantId,employmentId:u.employmentId,basicSalary:'5000',validFrom:hiredOn})));
   operationTimings.historyAndCompensationSeed.push(performance.now()-historyStarted);
   // Retained published slips belong to a real completed historical run. Processing drafts stay empty.
