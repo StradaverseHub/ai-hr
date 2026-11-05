@@ -1543,10 +1543,19 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
       events.filter((e) => e.eventType === HIRE_CORRECTED_EVENT),
     );
     const correctionView=await personnelCorrectionViewTx(tx,events,rows);
-    const eventsById = new Map(events.map(event => [event.id, event]));
+    const eventsById = new Map<string, RawEvent>();
+    const eventsByGroup = new Map<string, RawEvent[]>();
+    for (const event of events) {
+      eventsById.set(event.id, event);
+      const groupId = tagOf(event)?.groupId;
+      if (!groupId) continue;
+      const group = eventsByGroup.get(groupId);
+      if (group) group.push(event);
+      else eventsByGroup.set(groupId, [event]);
+    }
     return rows.map((r) => {
       const primaryEvent = eventsById.get(r.id);
-      const g = groupEventsOf(events, r);
+      const g = r.groupId ? eventsByGroup.get(r.groupId) ?? [] : primaryEvent ? [primaryEvent] : [];
       const spanEnd = g.length ? Math.max(...g.map((e) => e.sequence)) : -1;
       const status = statusOf(r);
       // 646355e5 — older events are editable too: the correction steps back over the later movements and

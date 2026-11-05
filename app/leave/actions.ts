@@ -376,9 +376,6 @@ export async function editLeaveAction(formData: FormData) {
   const durationType = String(formData.get('durationType') || 'full_day') as LeaveDurationType;
   const fromTime = String(formData.get('fromTime') ?? '').trim();
   const toTime = String(formData.get('toTime') ?? '').trim();
-  const locale = await getLocale();
-  const types = await listLeaveTypes(session, { locale });
-  const selected = types.find((t) => t.id === leaveTypeId);
   try {
     await editLeaveRequest(session, {
       leaveRequestId: String(formData.get('leaveRequestId')),
@@ -393,6 +390,9 @@ export async function editLeaveAction(formData: FormData) {
       today: todayInKualaLumpur(),
     });
   } catch (e) {
+    const locale = await getLocale();
+    const types = await listLeaveTypes(session, { locale });
+    const selected = types.find((t) => t.id === leaveTypeId);
     redirect(leaveSelfReturnUrl(formData, 'error', await localizeLeaveError(e, selected?.name)));
   }
   revalidatePath('/leave');

@@ -319,7 +319,8 @@ async function decideAttendanceParticipantTx(tx: Tx, ctx: SessionContext, flow: 
     correctionId: string; employmentId: string; decision: 'approved' | 'rejected'; remarks?: string; expectedParticipantSlot?: string;
 }): Promise<AttendanceStageResult> {
     const [authority] = await tx.execute(sql`select app.attendance_workflow_v3_decision_slot(${p.correctionId}::uuid) as actor`) as unknown as { actor: { slot: string; assigned: AttendanceResolvedApprover; actingMode: 'assigned' | 'delegate' } | null }[];
-    if (!authority?.actor || authority.actor.slot !== p.expectedParticipantSlot) throw new AttendanceWorkflowError('stale', 'The pending participant changed. Reload before deciding this application.');
+    if (!authority?.actor) throw new AttendanceWorkflowError('notApprover', 'Only the next distinct authorized participant may decide this frozen attendance request.');
+    if (authority.actor.slot !== p.expectedParticipantSlot) throw new AttendanceWorkflowError('stale', 'The pending participant changed. Reload before deciding this application.');
     if (!ctx.userId || !ctx.personId) throw new AttendanceWorkflowError('notApprover', 'A linked live participant identity is required.');
     const assigned = authority.actor.assigned;
     const actualEmploymentId = authority.actor.actingMode === 'assigned' ? assigned.employmentId : null;
@@ -373,8 +374,12 @@ export async function decideAttendanceWorkflowStageTx(tx: Tx, ctx: SessionContex
         return { routed: false, final: true };
     if (p.expectedStageIndex !== flow.currentStage)
         throw new AttendanceWorkflowError('stale', 'The pending approval stage changed. Reload the application before deciding it.');
+    if (flow.routingVersion === 3 || flow.routingVersion === 4) {
+        if (flow.employmentId !== p.employmentId) throw new AttendanceWorkflowError('scope', 'The application subject does not match its frozen workflow.');
+        // The participant writer resolves the live slot for this locked request.
+        return decideAttendanceParticipantTx(tx, ctx, flow, p);
+    }
     await assertCanDecideAttendanceApplicationTx(tx, ctx, p.correctionId, p.employmentId);
-    if ((flow.routingVersion === 3 || flow.routingVersion === 4)) return decideAttendanceParticipantTx(tx, ctx, flow, p);
     const stage = await effectiveStageTx(tx, flow, flow.currentStage);
     if (!stage)
         throw new AttendanceWorkflowError('stale', 'This workflow has already completed.');
