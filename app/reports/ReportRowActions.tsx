@@ -6,7 +6,8 @@
  * open/close state and the delete confirm live client-side; the mutating actions are server actions
  * invoked via <form action={...}> so no client fetch/handler crosses the RSC boundary.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { useFitToView } from '@/components/ui/fit-to-view';
 import {
   toggleFavouriteAction,
   setSharedAction,
@@ -42,6 +43,9 @@ export function ReportRowActions({
   periodComparison?:boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Opened from a report near the bottom of the list, the menu opens upwards (components/ui/fit-to-view.ts).
+  useFitToView(open, panelRef);
   const item = 'block w-full px-3 py-1.5 text-left text-sm hover:bg-accent/60';
   const exportHref = (fmt: string) => `${periodComparison?'/reports/payroll-comparison/export':'/reports/export'}?id=${encodeURIComponent(id)}&format=${fmt}`;
 
@@ -58,7 +62,7 @@ export function ReportRowActions({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} aria-hidden />
-          <div className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
+          <div ref={panelRef} className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
             <form action={toggleFavouriteAction}>
               <input type="hidden" name="id" value={id} />
               <input type="hidden" name="next" value={String(!isFavourite)} />
