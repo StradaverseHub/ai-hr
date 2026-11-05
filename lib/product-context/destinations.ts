@@ -134,7 +134,8 @@ const NAV_GATED:ReadonlySet<string>=new Set(MODULE_CODES_WITH_NAV);
  * visibility (lib/nav-entitlements); it filters only modules the sidebar gates. Advisory: the page guard decides. */
 export function destinationsFor(ctx:SessionContext,visibleModules?:readonly string[]):readonly ProductDestination[]{
  const admin=isAdmin(ctx),manager=admin||hasTeamAccess(ctx);
- return productDestinations().filter(row=>(row.audience==='everyone'||(row.audience==='manager'&&manager)||(row.audience==='admin'&&admin))
+ return productDestinations().filter(row=>!NATIVE_SCOPE_ONLY_PAGES.has(row.href.split(/[?#]/)[0])
+  &&(row.audience==='everyone'||(row.audience==='manager'&&manager)||(row.audience==='admin'&&admin))
   &&(row.module===null||visibleModules===undefined||!NAV_GATED.has(row.module)||visibleModules.includes(row.module)));
 }
 

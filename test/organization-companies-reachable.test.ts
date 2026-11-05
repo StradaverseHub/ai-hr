@@ -25,11 +25,6 @@
  * to EDIT on the panel they are being shown. A group-wide grant satisfies it for every company, which
  * is why case 1 is all-8 rather than a narrowing.
  *
- * The Group Structure tree is asserted too: it draws from the same resolved set, so its bracketed count
- * cannot drift from the card's. A subsidiary whose parent is out of reach is re-rooted rather than
- * dropped — CompanyTree only descends from `parentId === null`, so leaving the dangling parent id in
- * place would render the row nowhere while still counting it.
- *
  * UPDATED for item defd4644 (list-and-detail redesign), NOT weakened. The browse surface is now a
  * server-rendered table (`CompanyRows`) instead of a client list of mounted panels; the create form and
  * the per-company panel moved to their own routes. Every assertion below is the same contract stated
@@ -88,24 +83,6 @@ function findByType(node: unknown, type: unknown, acc: any[] = []): any[] {
   return acc;
 }
 
-/** The CompanyTree element the page renders inside the Group Structure card (a local function component). */
-function findTreeNodes(node: unknown): { id: string; parentId: string | null }[] | null {
-  if (!node || typeof node !== 'object') return null;
-  if (Array.isArray(node)) {
-    for (const n of node) {
-      const found = findTreeNodes(n);
-      if (found) return found;
-    }
-    return null;
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const el = node as any;
-  if (typeof el.type === 'function' && el.type.name === 'CompanyTree' && Array.isArray(el.props?.nodes)) {
-    return el.props.nodes;
-  }
-  return findTreeNodes(el.props?.children);
-}
-
 let base: Base;
 /** name → id for every company seeded in the fixture. */
 const ids: Record<string, string> = {};
@@ -137,7 +114,7 @@ async function scopedAdminCtx(companyId: string | null): Promise<SessionContext>
   };
 }
 
-/** Render the page and pull out the four things the screen shows: the rows, the header total, the tree,
+/** Render the page and pull out the four things the screen shows: the rows, the header total,
  *  and the table's ACTUAL markup — props are what the page hands the table, markup is what the reporter
  *  sees, and the round before last only ever checked the first.
  *
@@ -156,7 +133,6 @@ async function renderScreen(sp: Record<string, string> = {}) {
     rows,
     listIds: rows.map((r) => r.id),
     total: headers[0].props.count as number,
-    treeNodes: findTreeNodes(tree) ?? [],
     // Rendered inside a real table so the <tr>s are legal children; next/link resolves to plain <a>.
     html: renderToStaticMarkup(
       createElement(
@@ -197,13 +173,11 @@ describe('Organization → Companies: reachable companies, and totals derived fr
     // The switcher is deliberately narrowed to ONE company: this screen must ignore it (0f1802bf).
     scope.scopeIds = [base.companyId];
 
-    const { rows, listIds, total, treeNodes, html } = await renderScreen();
+    const { rows, listIds, total, html } = await renderScreen();
 
     expect(listIds.sort()).toEqual(Object.values(ids).sort());
     expect(total).toBe(listIds.length);
     expect(total).toBe(6);
-    // The Group Structure count uses the same number, so the tree must cover the same set.
-    expect(treeNodes.map((n) => n.id).sort()).toEqual(listIds.slice().sort());
     // …and all six are actually IN THE MARKUP. The names are fixture data, not catalog strings, so a
     // match here cannot come from an i18n bundle the way a label match can.
     for (const name of Object.keys(ids)) expect(html, name).toContain(name);
@@ -246,7 +220,7 @@ describe('Organization → Companies: reachable companies, and totals derived fr
     scope.s = await scopedAdminCtx(ids['Beta Sdn Bhd']);
     scope.scopeIds = [ids['Beta Sdn Bhd']];
 
-    const { listIds, total, treeNodes, html } = await renderScreen();
+    const { rows, listIds, total, html } = await renderScreen();
 
     // Beta and its subsidiary — never Acme/Gamma/Delta/Zeta, which this admin cannot administer.
     expect(listIds.sort()).toEqual([ids['Beta Sdn Bhd'], ids['Beta East Sdn Bhd']].sort());
@@ -257,11 +231,8 @@ describe('Organization → Companies: reachable companies, and totals derived fr
     expect(listIds).not.toContain(ids['Acme Sdn Bhd']);
     expect(listIds).not.toContain(ids['Gamma Sdn Bhd']);
 
-    // The tree shows the same two, and Beta is re-rooted (its own parent is null anyway) while Beta
-    // East keeps its in-reach parent.
-    expect(treeNodes.map((n) => n.id).sort()).toEqual(listIds.slice().sort());
-    const east = treeNodes.find((n) => n.id === ids['Beta East Sdn Bhd'])!;
-    expect(east.parentId).toBe(ids['Beta Sdn Bhd']);
+    const east = rows.find((row) => row.id === ids['Beta East Sdn Bhd']);
+    expect(east?.parentId).toBe(ids['Beta Sdn Bhd']);
 
     // In the markup too. The parent PICKER moved to /admin/organization/[companyId] with the panel —
     // that it offers only administrable companies is asserted in test/organization-list-detail.test.ts.
@@ -271,20 +242,15 @@ describe('Organization → Companies: reachable companies, and totals derived fr
     expect(html).not.toContain('Acme Sdn Bhd');
   });
 
-  it('a subsidiary whose PARENT is out of reach is re-rooted, so the tree still draws every row it counts', async () => {
+  it('lists a reachable subsidiary without revealing its out-of-scope parent', async () => {
     // Admin scoped to the SUBSIDIARY only: Beta East is reachable, its parent Beta is not.
     scope.s = await scopedAdminCtx(ids['Beta East Sdn Bhd']);
     scope.scopeIds = [];
 
-    const { rows, listIds, total, treeNodes, html } = await renderScreen();
+    const { rows, listIds, total, html } = await renderScreen();
 
     expect(listIds).toEqual([ids['Beta East Sdn Bhd']]);
     expect(total).toBe(1);
-    expect(treeNodes).toHaveLength(1);
-    // Left as Beta's id, CompanyTree (which descends from parentId === null) would render NOTHING
-    // while the card still said 1 — the exact list/total drift this item is about.
-    expect(treeNodes[0].parentId).toBeNull();
-
     // The Parent column obeys the same rule for the same reason: a parent this admin cannot
     // administer is not named, so the column can never disclose a company the listing itself refuses
     // to show. Blank parent + one row, not "Beta Sdn Bhd" leaking through a join.

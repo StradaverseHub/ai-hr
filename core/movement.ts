@@ -3085,7 +3085,7 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
   if (!probationMovementAuthorityTx(tx, rawInput) && isCalendarDate(rawInput.effectiveDate) && rawInput.effectiveDate < todayInKualaLumpur()) {
     const input = await resolveInputTypeTx(tx, ctx, rawInput, 'record');
     if (isComparisonKind(input.kind)) {
-      return recordComparisonInEffectiveOrderTx(tx, ctx, rawInput);
+      return recordComparisonInEffectiveOrderTx(tx, ctx, rawInput, input.kind);
     }
   }
   return dispatchMovementEventTx(tx,ctx,rawInput);
@@ -3698,11 +3698,12 @@ async function laterReplayPlanTx(
 }
 
 /** Insert before later movements without letting the most recently written row win. */
-async function recordComparisonInEffectiveOrderTx(tx: Tx, ctx: SessionContext, input: CreateMovementInput) {
+async function recordComparisonInEffectiveOrderTx(tx: Tx, ctx: SessionContext, input: CreateMovementInput, behaviour: string) {
   assertMovementAdmin(ctx, 'record a backdated movement');
   await lockEmploymentStatutoryOwnerTx(tx, input.employmentId);
   const { emp, events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, input.employmentId);
   if (input.effectiveDate < emp.hiredOn) {
+    if (behaviour === 'confirmation') return dispatchMovementEventTx(tx, ctx, input);
     throw new Error('Use Historical Hire to record dates before the current Group Join Date.');
   }
   const later = await laterReplayPlanTx(tx, events, rows, statusOf, resolvedTypes, null, -1, input.effectiveDate);
