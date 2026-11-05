@@ -1,5 +1,6 @@
 'use client';
 
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { Fragment, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { SUBJECT_COLUMNS, filterGridRows, type GridRowGroup, type HistoryGridRow } from './history-pivot';
@@ -177,12 +178,12 @@ export function HistoryGrid({
             {t('view.grid.showSubject')}
           </label>
         </div>
-        <a
+        <ExportDownloadLink
           href={exportHref}
           className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
         >
           {t('view.grid.export')}
-        </a>
+        </ExportDownloadLink>
       </div>
 
       <p className="text-xs text-muted-foreground">

@@ -2,6 +2,7 @@
  * Reusable Import History views (ADR-0155) for every personnel import kind. Server components; data
  * arrives already RLS-scoped from core/import-history (attempts by listed company, items by own company).
  */
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import {getTranslations,getFormatter} from 'next-intl/server';
 import {IMPORT_KINDS,importAttemptCounts,importAttemptStatus,type ImportKind} from '@/lib/import-history';
@@ -39,7 +40,7 @@ export async function ImportAttemptSummary({item}:{item:ImportAttemptDetail}){
   <div><dt className="text-muted-foreground">{t('companies')}</dt><dd>{item.companies.join(', ')||'—'}</dd></div>
   <div><dt className="text-muted-foreground">{t('records')}</dt><dd>{t('counts',counts)}</dd></div>
   <div className="sm:col-span-2"><dt className="text-muted-foreground">{t('fingerprint')}</dt><dd className="break-all font-mono text-xs">{item.sourceHash}</dd></div>
- </dl>{item.canDownloadSource?<Link className="inline-flex rounded-lg border px-4 py-2 text-sm font-medium" href={`${IMPORT_HISTORY_PATH}/${item.id}/source`}>{t('downloadSource')}</Link>:<p className="text-xs text-muted-foreground">{t('sourceRestricted')}</p>}
+ </dl>{item.canDownloadSource?<ExportDownloadLink className="inline-flex rounded-lg border px-4 py-2 text-sm font-medium" href={`${IMPORT_HISTORY_PATH}/${item.id}/source`}>{t('downloadSource')}</ExportDownloadLink>:<p className="text-xs text-muted-foreground">{t('sourceRestricted')}</p>}
  {item.plan.issues?.length>0&&<div role="alert" className="space-y-1 text-sm"><p className="font-medium">{t('fileIssues')}</p><ul className="list-disc pl-5 text-destructive">{item.plan.issues.map((issue,i)=><li key={i}>{issue.reason}</li>)}</ul></div>}
  </section>;
 }

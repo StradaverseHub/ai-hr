@@ -131,9 +131,9 @@ export function BankDownloadDialog(p: Props) {
         {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
         {generated && <p role="status" className="mt-3 text-sm">{t('bankGenerated')}</p>}
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <Dialog.Close asChild><button type="button" disabled={busy} className={btnGhost}>{t('cancel')}</button></Dialog.Close>
-          <button type="button" className={btnGhost} disabled={!ready || busy} onClick={validate}>{t('bankPreview')}</button>
-          <button type="button" className={btnPrimary} disabled={busy || !preview || preview.signature !== signature} onClick={download}>{t('download')}</button>
+          <Dialog.Close asChild><button aria-busy={busy} type="button" disabled={busy} className={btnGhost}>{t('cancel')}</button></Dialog.Close>
+          <button aria-busy={busy} type="button" className={btnGhost} disabled={!ready || busy} onClick={validate}>{t('bankPreview')}</button>
+          <button aria-busy={busy} type="button" className={btnPrimary} disabled={busy || !preview || preview.signature !== signature} onClick={download}>{t('download')}</button>
         </div>
       </Dialog.Content>
     </Dialog.Portal>

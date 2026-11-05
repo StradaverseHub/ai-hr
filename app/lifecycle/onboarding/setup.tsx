@@ -9,7 +9,7 @@ export function OnboardingSetup({ master, initialized }: {
 }) {
     const copy = useOnboardingCopy();
     const [error, setError] = useState(''), [pending, start] = useTransition();
-    return <Card className="mx-auto max-w-xl space-y-4 p-6"><h1 className="text-xl font-semibold">{copy("Onboarding")}</h1><p>{initialized ? copy("Ask the Master Admin for Onboarding access. Assigned work remains available in My tasks.") : copy("Set up checklists, equipment and assignment groups before new hires enter onboarding. Existing cases and history are preserved.")}</p>{error && <p role="alert" className="text-destructive">{error}</p>}{master && !initialized && <Button disabled={pending} onClick={() => start(async () => {
+    return <Card className="mx-auto max-w-xl space-y-4 p-6"><h1 className="text-xl font-semibold">{copy("Onboarding")}</h1><p>{initialized ? copy("Ask the Master Admin for Onboarding access. Assigned work remains available in My tasks.") : copy("Set up checklists, equipment and assignment groups before new hires enter onboarding. Existing cases and history are preserved.")}</p>{error && <p role="alert" className="text-destructive">{error}</p>}{master && !initialized && <Button aria-busy={pending} disabled={pending} onClick={() => start(async () => {
                 const r = await setupOnboarding();
                 if (r.error)
                     setError(r.error);

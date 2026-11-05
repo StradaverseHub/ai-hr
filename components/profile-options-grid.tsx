@@ -375,10 +375,10 @@ export function ProfileOptionsGrid({
             <Button type="button" variant="outline" size="sm" onClick={addRow}>
               {t('addRow')}
             </Button>
-            <Button type="button" size="sm" onClick={save} disabled={!hasChanges || pending}>
+            <Button aria-busy={pending} type="button" size="sm" onClick={save} disabled={!hasChanges || pending}>
               {t('saveAll')}
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={discard} disabled={!hasChanges || pending}>
+            <Button aria-busy={pending} type="button" variant="outline" size="sm" onClick={discard} disabled={!hasChanges || pending}>
               {t('discard')}
             </Button>
           </div>

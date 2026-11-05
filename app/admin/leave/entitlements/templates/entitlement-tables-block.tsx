@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -1435,9 +1436,9 @@ export async function EntitlementTablesBlock({
                   ))}
                 </select>
               </Field>
-              <button type="submit" className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
+              <ActionButton type="submit" className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
                 {t('defaultTableSave')}
-              </button>
+              </ActionButton>
             </form>
             {/* Only the IN-FORCE tables are offered: a default pointing at a stopped table applies to
                 nobody, which would be a setting that reads as configured and does nothing. */}

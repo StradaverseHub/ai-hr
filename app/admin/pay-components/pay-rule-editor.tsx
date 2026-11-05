@@ -774,7 +774,7 @@ export function PayRuleEditor({
                   {t('assistCancel')}
                 </Button>
               </AlertDialog.Cancel>
-              <Button type="button" size="sm" onClick={onAssist} disabled={pending || description.trim() === ''}>
+              <Button aria-busy={pending} type="button" size="sm" onClick={onAssist} disabled={pending || description.trim() === ''}>
                 {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
                 {t('assistSubmit')}
               </Button>

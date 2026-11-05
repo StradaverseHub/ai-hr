@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getFormatter, getTranslations } from 'next-intl/server';
@@ -99,7 +100,7 @@ export default async function PromoteLoopPage({ params, searchParams }: { params
         <input type="hidden" name="expectedVersion" value={view.version} />
         {limitFields(view.limits.maxActionsPerNight, UNDO_WINDOW_DAYS.filter(days => days >= view.limits.undoDays))}
         <p className="text-xs text-muted-foreground">{t('promote.changeLimitsNote')}</p>
-        <button type="submit" className={cn(btnGhost, TARGET)}>{t('promote.saveLimits')}</button>
+        <ActionButton type="submit" className={cn(btnGhost, TARGET)}>{t('promote.saveLimits')}</ActionButton>
       </form>
     ) : readOnlyLimits}
   </div>;
@@ -194,7 +195,7 @@ export default async function PromoteLoopPage({ params, searchParams }: { params
           <form action={setLoopLevelAction}>
             <input type="hidden" name="loop" value={id} /><input type="hidden" name="company" value={view.companyId} />
             <input type="hidden" name="toLevel" value={target} /><input type="hidden" name="expectedLevel" value={level} />
-            <button type="submit" className={cn(btnPrimary, TARGET)}>{t('promote.submit', { n: target, company: view.companyName })}</button>
+            <ActionButton type="submit" className={cn(btnPrimary, TARGET)}>{t('promote.submit', { n: target, company: view.companyName })}</ActionButton>
           </form>
         ) : (
           <button type="submit" form="autonomy-promote" disabled={!cert?.met} aria-describedby={cert?.met ? undefined : 'autonomy-not-met'}
@@ -205,7 +206,7 @@ export default async function PromoteLoopPage({ params, searchParams }: { params
           <form action={setLoopLevelAction}>
             <input type="hidden" name="loop" value={id} /><input type="hidden" name="company" value={view.companyId} />
             <input type="hidden" name="toLevel" value={moveTo} /><input type="hidden" name="expectedLevel" value={level} />
-            <button type="submit" className={cn(btnGhost, TARGET)}>{t('promote.moveDown', { level: levelName(moveTo) })}</button>
+            <ActionButton type="submit" className={cn(btnGhost, TARGET)}>{t('promote.moveDown', { level: levelName(moveTo) })}</ActionButton>
           </form>
         )}
         <span className="text-xs text-muted-foreground">{view.canChange ? t('promote.groupOnly') : t('promote.readOnly')}</span>

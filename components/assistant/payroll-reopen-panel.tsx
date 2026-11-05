@@ -38,12 +38,12 @@ export function PayrollReopenPanel({resumeActionId}:{resumeActionId?:string}){
  return <section className="space-y-4" aria-label={t('title')}>
   <p ref={status} tabIndex={-1} role="status" className="text-sm">{t(state.kind)}</p>{error&&<p role="alert">{t('unavailable')}</p>}
   {state.kind==='draft'&&<form onSubmit={prepare} className="space-y-4">
-   <Button type="button" variant="outline" disabled={busy} onClick={()=>void dispatch({action:C.action,operation:'choices'})}>{t('load')}</Button>
+   <Button aria-busy={busy} type="button" variant="outline" disabled={busy} onClick={()=>void dispatch({action:C.action,operation:'choices'})}>{t('load')}</Button>
    {choices?.kind==='choices'&&<label className="block space-y-1"><span>{t('run')}</span><select className={inputCls} value={batchId} onChange={e=>setBatchId(e.target.value)} required disabled={busy}><option value="">{t('select')}</option>{choices.batches.map(row=><option key={row.batchId} value={row.batchId}>{row.companyName} · {row.payPeriod}{row.cycleName?` · ${row.cycleName}`:''}</option>)}</select></label>}
    {choices?.kind==='unavailable'&&<p>{t('unavailable')}</p>}
    <label className="block space-y-1"><span>{t('reason')}</span><textarea className={inputCls} maxLength={4000} required value={reason} disabled={busy} onChange={e=>setReason(e.target.value)}/></label>
    <label className="flex gap-2"><input type="checkbox" checked={authored} disabled={busy} onChange={e=>setAuthored(e.target.checked)}/><span>{t('authored')}</span></label>
-   <Button type="submit" disabled={busy||!authored||!batchId||!reason.trim()}>{t('prepare')}</Button>
+   <Button aria-busy={busy} type="submit" disabled={busy||!authored||!batchId||!reason.trim()}>{t('prepare')}</Button>
   </form>}
   {review&&<div className="space-y-3 rounded-md border border-border p-4">
    <p>{review.review.companyName} · {review.review.payPeriod} · {review.review.runType} #{review.review.runSeq}{review.review.cycleName?` · ${review.review.cycleName}`:''}</p>
@@ -51,14 +51,14 @@ export function PayrollReopenPanel({resumeActionId}:{resumeActionId?:string}){
    <p>{t('exportWarning')}: {t(review.review.warnings.paymentDisbursed?'yes':'no')}</p><p>{t('statutoryWarning')}: {review.review.warnings.statutoryFiledCount} / {review.review.warnings.statutoryReportCount}</p>
    <p className="whitespace-pre-wrap">{t('reason')}: {review.content.reason}</p>
    {expired?<p>{t('expired')}</p>:<label className="flex gap-2"><input type="checkbox" checked={confirmed} disabled={busy} onChange={e=>setConfirmed(e.target.checked)}/><span>{t('confirmConsent')}</span></label>}
-   <Button disabled={busy||expired||!confirmed} onClick={()=>void dispatch({action:C.action,operation:'confirm',confirmation:{action:C.action,contractVersion:1,actionId:review.actionId,reviewedDigest:review.reviewedDigest}})}>{t('confirm')}</Button>
-   <Button variant="outline" disabled={busy} onClick={()=>void send('discard',review.actionId)}>{t('discard')}</Button>
+   <Button aria-busy={busy} disabled={busy||expired||!confirmed} onClick={()=>void dispatch({action:C.action,operation:'confirm',confirmation:{action:C.action,contractVersion:1,actionId:review.actionId,reviewedDigest:review.reviewedDigest}})}>{t('confirm')}</Button>
+   <Button aria-busy={busy} variant="outline" disabled={busy} onClick={()=>void send('discard',review.actionId)}>{t('discard')}</Button>
   </div>}
-  {state.kind==='done'&&<div className="space-y-2"><p>{t('receipt')}</p><p>{t('current')}: {statusText(`statuses.${state.receipt.receipt.currentStatus}`)} / {statusText(`periodStates.${state.receipt.receipt.currentPeriodStatus}`)}</p><Link href={'/payroll/'+state.receipt.receipt.batchId} className="inline-flex min-h-11 items-center underline">{t('native')}</Link><Button disabled={busy} onClick={()=>void send('reopen',state.receipt.actionId)}>{t('recover')}</Button></div>}
-  {state.kind==='uncertain'&&state.actionId&&<Button disabled={busy} onClick={()=>void send('reopen',state.actionId!)}>{t('recover')}</Button>}
-  <Button variant="outline" disabled={busy} onClick={()=>void dispatch({action:C.action,operation:'list'})}>{t('find')}</Button>
-  {index&&<ul>{index.reviews.map(row=><li key={row.actionId} className="space-x-2 py-2"><span>{statusText(`states.${row.state}`)}</span><Button disabled={busy||!!known&&state.kind==='uncertain'&&known!==row.actionId} onClick={()=>void send('reopen',row.actionId)}>{t('recover')}</Button>{row.state!=='completed'&&<Button variant="outline" disabled={busy||!!known&&state.kind==='uncertain'&&known!==row.actionId} onClick={()=>void send('discard',row.actionId)}>{t('discard')}</Button>}</li>)}</ul>}
-  {(state.kind==='done'||state.kind==='retired')&&<Button variant="outline" disabled={busy} onClick={()=>{clear();setState({kind:'draft'});}}>{t('new')}</Button>}
+  {state.kind==='done'&&<div className="space-y-2"><p>{t('receipt')}</p><p>{t('current')}: {statusText(`statuses.${state.receipt.receipt.currentStatus}`)} / {statusText(`periodStates.${state.receipt.receipt.currentPeriodStatus}`)}</p><Link href={'/payroll/'+state.receipt.receipt.batchId} className="inline-flex min-h-11 items-center underline">{t('native')}</Link><Button aria-busy={busy} disabled={busy} onClick={()=>void send('reopen',state.receipt.actionId)}>{t('recover')}</Button></div>}
+  {state.kind==='uncertain'&&state.actionId&&<Button aria-busy={busy} disabled={busy} onClick={()=>void send('reopen',state.actionId!)}>{t('recover')}</Button>}
+  <Button aria-busy={busy} variant="outline" disabled={busy} onClick={()=>void dispatch({action:C.action,operation:'list'})}>{t('find')}</Button>
+  {index&&<ul>{index.reviews.map(row=><li key={row.actionId} className="space-x-2 py-2"><span>{statusText(`states.${row.state}`)}</span><Button aria-busy={busy} disabled={busy||!!known&&state.kind==='uncertain'&&known!==row.actionId} onClick={()=>void send('reopen',row.actionId)}>{t('recover')}</Button>{row.state!=='completed'&&<Button aria-busy={busy} variant="outline" disabled={busy||!!known&&state.kind==='uncertain'&&known!==row.actionId} onClick={()=>void send('discard',row.actionId)}>{t('discard')}</Button>}</li>)}</ul>}
+  {(state.kind==='done'||state.kind==='retired')&&<Button aria-busy={busy} variant="outline" disabled={busy} onClick={()=>{clear();setState({kind:'draft'});}}>{t('new')}</Button>}
   <Link href="/payroll" className="inline-flex min-h-11 items-center underline">{t('native')}</Link>
  </section>;
 }

@@ -368,7 +368,7 @@ export function ClaimForm({
         <Button type="submit" disabled={isPending} aria-busy={isPending}>
           {isPending ? t('submitting') : draft ? t('submitDraft') : t('submit')}
         </Button>
-        <Button type="submit" name="intent" value="draft" variant="secondary" disabled={isPending}>
+        <Button aria-busy={isPending} type="submit" name="intent" value="draft" variant="secondary" disabled={isPending}>
           {draft ? t('updateDraft') : t('saveDraft')}
         </Button>
         <span className="text-xs text-muted-foreground">{t('draftHint')}</span>

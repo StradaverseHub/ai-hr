@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { isGroupAdmin } from '@/lib/authz-model';
@@ -59,7 +60,7 @@ export default async function PayrollLoopSettingsPage({ searchParams }: { search
                 <select id={`interval-${c.companyId}`} name="interval" defaultValue={c.setting.interval} className={cn(inputCls, 'w-auto pointer-coarse:min-h-11')}>
                   {CHECK_INTERVALS.map(value => <option key={value} value={value}>{t(`interval.${value}`)}</option>)}
                 </select>
-                <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('settings.save')} · ${t('settings.interval')} · ${c.companyName}`}>{t('settings.save')}</button>
+                <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('settings.save')} · ${t('settings.interval')} · ${c.companyName}`}>{t('settings.save')}</ActionButton>
               </div>
               <p className="text-xs text-muted-foreground">{t('settings.intervalHelp')}</p>
             </form>
@@ -70,7 +71,7 @@ export default async function PayrollLoopSettingsPage({ searchParams }: { search
                 <input id={`threshold-${c.companyId}`} name="threshold" type="number" inputMode="decimal" min={1} max={MAX_THRESHOLD_BP / 100} step={0.5}
                   defaultValue={c.setting.thresholdBp / 100} className={cn(inputCls, 'w-28 pointer-coarse:min-h-11')} />
                 <span className="text-sm text-muted-foreground">%</span>
-                <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('settings.save')} · ${t('settings.threshold')} · ${c.companyName}`}>{t('settings.save')}</button>
+                <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('settings.save')} · ${t('settings.threshold')} · ${c.companyName}`}>{t('settings.save')}</ActionButton>
               </div>
               <p className="text-xs text-muted-foreground">{t('settings.thresholdHelp')}</p>
             </form>
@@ -80,8 +81,8 @@ export default async function PayrollLoopSettingsPage({ searchParams }: { search
               <p className="text-sm font-medium">{t('settings.reminders')}</p>
               <div className="flex flex-wrap items-center gap-2">
                 <span data-reminders={c.setting.remindersEnabled ? 'on' : 'off'} className="text-sm">{c.setting.remindersEnabled ? t('settings.remindersOn') : t('settings.remindersOff')}</span>
-                <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t(c.setting.remindersEnabled ? 'settings.remindersTurnOff' : 'settings.remindersTurnOn')} · ${c.companyName}`}>
-                  {t(c.setting.remindersEnabled ? 'settings.remindersTurnOff' : 'settings.remindersTurnOn')}</button>
+                <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t(c.setting.remindersEnabled ? 'settings.remindersTurnOff' : 'settings.remindersTurnOn')} · ${c.companyName}`}>
+                  {t(c.setting.remindersEnabled ? 'settings.remindersTurnOff' : 'settings.remindersTurnOn')}</ActionButton>
               </div>
               <p className="text-xs text-muted-foreground">{t('settings.remindersHelp')}</p>
             </form>
@@ -95,7 +96,7 @@ export default async function PayrollLoopSettingsPage({ searchParams }: { search
                     <span>{pattern(value)}</span>
                     <form action={setPayrollLoopSettingAction}>
                       <input type="hidden" name="company" value={c.companyId} /><input type="hidden" name="removeExclusion" value={value} />
-                      <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('settings.remove')} · ${pattern(value)} · ${c.companyName}`}>{t('settings.remove')}</button>
+                      <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('settings.remove')} · ${pattern(value)} · ${c.companyName}`}>{t('settings.remove')}</ActionButton>
                     </form>
                   </li>
                 ))}
@@ -120,8 +121,8 @@ export default async function PayrollLoopSettingsPage({ searchParams }: { search
                         {(canApprove ? ['approved', 'rejected'] as const : ['rejected'] as const).map(decision => (
                           <form key={decision} action={decideThresholdProposalAction}>
                             <input type="hidden" name="company" value={c.companyId} /><input type="hidden" name="proposal" value={p.key} /><input type="hidden" name="decision" value={decision} />
-                            <button type="submit" className={cn(decision === 'approved' ? btnPrimary : btnGhost, 'pointer-coarse:min-h-11')}
-                              aria-label={`${t(`proposals.${decision}`)} · ${what}`}>{t(`proposals.${decision}`)}</button>
+                            <ActionButton type="submit" className={cn(decision === 'approved' ? btnPrimary : btnGhost, 'pointer-coarse:min-h-11')}
+                              aria-label={`${t(`proposals.${decision}`)} · ${what}`}>{t(`proposals.${decision}`)}</ActionButton>
                           </form>
                         ))}
                       </div>
@@ -146,7 +147,7 @@ export default async function PayrollLoopSettingsPage({ searchParams }: { search
                     </span>
                     <form action={revokeAcknowledgementAction}>
                       <input type="hidden" name="acknowledgement" value={ack.id} />
-                      <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('acknowledgements.revoke')} · ${checkName(ack.checkId)}`}>{t('acknowledgements.revoke')}</button>
+                      <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t('acknowledgements.revoke')} · ${checkName(ack.checkId)}`}>{t('acknowledgements.revoke')}</ActionButton>
                     </form>
                   </li>
                 ))}
@@ -165,8 +166,8 @@ export default async function PayrollLoopSettingsPage({ searchParams }: { search
                       {(canApprove ? ['approved', 'rejected'] as const : ['rejected'] as const).map(decision => (
                         <form key={decision} action={decideRuleProposalAction}>
                           <input type="hidden" name="target" value={c.companyId} /><input type="hidden" name="proposal" value={rule.key} /><input type="hidden" name="decision" value={decision} />
-                          <button type="submit" className={cn(decision === 'approved' ? btnPrimary : btnGhost, 'pointer-coarse:min-h-11')}
-                            aria-label={`${t(`proposals.${decision}`)} · ${checkName(rule.checkId)} · ${rule.personName ?? t('flags.unnamed')}`}>{t(`proposals.${decision}`)}</button>
+                          <ActionButton type="submit" className={cn(decision === 'approved' ? btnPrimary : btnGhost, 'pointer-coarse:min-h-11')}
+                            aria-label={`${t(`proposals.${decision}`)} · ${checkName(rule.checkId)} · ${rule.personName ?? t('flags.unnamed')}`}>{t(`proposals.${decision}`)}</ActionButton>
                         </form>
                       ))}
                     </div>
@@ -212,12 +213,12 @@ function LearningSection({ settings, companyName, canSwitchOn, tn, unnamed, when
         {on ? (
           <form action={setPayrollLearningModeAction}>
             <input type="hidden" name="company" value={settings.companyId} /><input type="hidden" name="mode" value="off" />
-            <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${tn('settings.switchOff')} · ${companyName}`}>{tn('settings.switchOff')}</button>
+            <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${tn('settings.switchOff')} · ${companyName}`}>{tn('settings.switchOff')}</ActionButton>
           </form>
         ) : canSwitchOn ? (
           <form action={setPayrollLearningModeAction}>
             <input type="hidden" name="company" value={settings.companyId} /><input type="hidden" name="mode" value="evidence" />
-            <button type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${tn('settings.switchOn')} · ${companyName}`}>{tn('settings.switchOn')}</button>
+            <ActionButton type="submit" className={cn(btnPrimary, 'pointer-coarse:min-h-11')} aria-label={`${tn('settings.switchOn')} · ${companyName}`}>{tn('settings.switchOn')}</ActionButton>
           </form>
         ) : null}
       </div>

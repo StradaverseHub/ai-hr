@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
 import {formatPayPeriodMonth} from '@/lib/hr-date';
@@ -48,8 +49,8 @@ function QuestionRow({t,locale,row,action}:{t:T;locale:string;row:PayrollItem;ac
   <form action={answerTp3PreviousEmployerAction} aria-label={prompt} data-tp3-question className="flex flex-none flex-wrap gap-2">
    <input type="hidden" name="employment" value={action.employmentId}/>
    <input type="hidden" name="year" value={String(action.year)}/>
-   {(['no','yes'] as const).map(answer=><button key={answer} type="submit" name="answer" value={answer} data-tp3-answer={answer}
-    className={cn(LINK,'border border-input bg-card hover:bg-accent')}>{t(`tp3Question.${answer}`)}<span className="sr-only"> · {prompt}</span></button>)}
+   {(['no','yes'] as const).map(answer=><ActionButton key={answer} type="submit" name="answer" value={answer} data-tp3-answer={answer}
+    className={cn(LINK,'border border-input bg-card hover:bg-accent')}>{t(`tp3Question.${answer}`)}<span className="sr-only"> · {prompt}</span></ActionButton>)}
   </form>
  </li>;
 }

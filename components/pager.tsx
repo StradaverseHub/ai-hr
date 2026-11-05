@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import {
@@ -98,7 +99,7 @@ export async function Pager({
         {state.truncated && (
           <p className="atelier-pager-note">
             {t('truncated', { shown: ALL_ROW_CEILING, total: state.total })}{' '}
-            {exportHref ? <Link href={exportHref}>{t('truncatedExport')}</Link> : (truncatedHint ?? t('truncatedHint'))}
+            {exportHref ? <ExportDownloadLink href={exportHref}>{t('truncatedExport')}</ExportDownloadLink> : (truncatedHint ?? t('truncatedHint'))}
           </p>
         )}
         <PageSizeSelect label={t('rowsPerPage')} value={String(state.size)} options={sizeOptions} />
@@ -128,9 +129,9 @@ export async function Pager({
         <p className="border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
           {t('truncated', { shown: ALL_ROW_CEILING, total: state.total })}{' '}
           {exportHref ? (
-            <Link href={exportHref} className="text-primary hover:underline">
+            <ExportDownloadLink href={exportHref} className="text-primary hover:underline">
               {t('truncatedExport')}
-            </Link>
+            </ExportDownloadLink>
           ) : (
             truncatedHint ?? t('truncatedHint')
           )}

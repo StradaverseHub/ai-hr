@@ -27,7 +27,7 @@ export function RunnerControls({runner,frequency}:{runner:RunnerStatus;frequency
    </>}
    <p className="max-w-prose text-sm text-muted-foreground">{t('effectNote')}</p>
    <label className="flex min-h-11 items-start gap-2 text-sm"><input type="checkbox" required className="mt-1"/>{t('confirm')}</label>
-   <Button type="submit" size="sm" disabled={pending}>{pending?t('saving'):t('save')}</Button>
+   <Button aria-busy={pending} type="submit" size="sm" disabled={pending}>{pending?t('saving'):t('save')}</Button>
    <p aria-live="polite" role="status" className="text-sm">{state.error?t('saveFailed'):state.ok?t('saved'):''}</p>
   </form>
  </details>;

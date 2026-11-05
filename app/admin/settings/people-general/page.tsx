@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
@@ -53,7 +54,7 @@ export default async function PeopleGeneralPage({ searchParams }: {
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
           <p className="text-xs text-muted-foreground">{t('saveHint')}</p>
           <div className="flex gap-2"><button type="reset" className={btnGhost}>{t('cancel')}</button>
-            <button type="submit" className={btnPrimary}>{t('save')}</button></div>
+            <ActionButton type="submit" className={btnPrimary}>{t('save')}</ActionButton></div>
         </div>
       </form>
     </Card>

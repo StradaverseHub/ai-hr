@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import {personnelReviewTitleKey} from '../../lib/ai/personnel-review-labels';
 import {assistantReadableModules} from '../../core/assistant-readable-modules';
 import {todayInKualaLumpur} from '../../lib/hr-date';
@@ -211,7 +212,7 @@ export async function GovernedModuleJobComposer({modules}:{modules:readonly Agen
     <select name="module" required={index===0} defaultValue="" className="mt-1 min-h-11 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
      <option value="">{t(index===0?'choose':'optional')}</option>{MODULE_JOBS.filter(([module])=>modules.includes(module)).map(([module])=><option key={module} value={module}>{jobs(`module_${module}`)}</option>)}
     </select></label>)}</div>
-   <button type="submit" className="min-h-11 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('run')}</button>
+   <ActionButton type="submit" className="min-h-11 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('run')}</ActionButton>
   </form></Card>;
 }
 export async function GovernedWorkspaceJob({view,ctx}:{view:GovernedWorkspaceJobView;ctx:SessionContext}){
@@ -223,8 +224,8 @@ export async function GovernedWorkspaceJob({view,ctx}:{view:GovernedWorkspaceJob
   {view.feedbackOutcome&&<p role="status" className="text-xs text-muted-foreground">{t('signalSaved',{rating:t(`signal_${view.feedbackOutcome}`)})}</p>}
   {!view.changedSinceRun?<form action={saveGovernedJobFeedbackAction} className="space-y-3 rounded-lg border p-4"><input type="hidden" name="jobId" value={view.jobId}/>
    <label className="flex items-start gap-2 text-xs"><input type="checkbox" name="consented" value="yes" required className="mt-0.5"/><span>{t('signalConsent')}</span></label>
-   <div className="flex flex-wrap gap-2">{(['helpful','needs_correction','incorrect'] as const).map(outcome=><button key={outcome} type="submit" name="outcome" value={outcome}
-    className="min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t(`signal_${outcome}`)}</button>)}</div>
+   <div className="flex flex-wrap gap-2">{(['helpful','needs_correction','incorrect'] as const).map(outcome=><ActionButton key={outcome} type="submit" name="outcome" value={outcome}
+    className="min-h-11 rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t(`signal_${outcome}`)}</ActionButton>)}</div>
   </form>:<p className="text-xs text-muted-foreground">{t('signalChanged')}</p>}
   <OwnClearForm kind="ratings" action={eraseGovernedJobFeedbackAction} label={t('eraseSignals')}/>
  </section>;

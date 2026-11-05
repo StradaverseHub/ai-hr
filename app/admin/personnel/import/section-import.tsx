@@ -288,7 +288,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
 
   return (
     <div className="space-y-6">
-      {isPersonnelRegisterKind(section) && <Card className="space-y-3 p-5"><p className="text-sm">{t('registerInstructions')}</p><p className="text-xs text-muted-foreground">{t('registerLimit')}</p><div className="flex flex-wrap items-end gap-2"><Field label={t('registerExistingEmployeeId')}><input className={inputCls} value={existingEmployeeCode} onChange={event=>setExistingEmployeeCode(event.target.value)} maxLength={30}/></Field><Button type="button" variant="secondary" disabled={pending||!existingEmployeeCode.trim()} onClick={downloadExistingRegister}>{t('registerDownloadExisting')}</Button></div></Card>}
+      {isPersonnelRegisterKind(section) && <Card className="space-y-3 p-5"><p className="text-sm">{t('registerInstructions')}</p><p className="text-xs text-muted-foreground">{t('registerLimit')}</p><div className="flex flex-wrap items-end gap-2"><Field label={t('registerExistingEmployeeId')}><input className={inputCls} value={existingEmployeeCode} onChange={event=>setExistingEmployeeCode(event.target.value)} maxLength={30}/></Field><Button aria-busy={pending} type="button" variant="secondary" disabled={pending||!existingEmployeeCode.trim()} onClick={downloadExistingRegister}>{t('registerDownloadExisting')}</Button></div></Card>}
       <Card className="space-y-4 p-5">
         <fieldset disabled={committing} className="min-w-0 space-y-4">
         <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
@@ -395,7 +395,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
 
         <StepHeading num={4} label={t('sectionStep4')} />
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => runValidate(csv)} disabled={pending || reading || !csv.trim()}>
+          <Button aria-busy={pending} onClick={() => runValidate(csv)} disabled={pending || reading || !csv.trim()}>
             {pending && !result ? t('validating') : t('validate')}
           </Button>
           <span className="ml-auto text-xs text-muted-foreground">{t('step4Hint')}</span>

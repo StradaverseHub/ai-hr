@@ -29,14 +29,14 @@ export function NoticeAttachmentEditor({noticeId,contentVersion,items,onUploaded
    <p className="max-w-prose text-sm text-muted-foreground">{labels.help}</p>
    {items.length>0&&<ul className="divide-y divide-border">{items.map(item=><li key={item.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
     <span className="min-w-0 flex-1 break-words text-sm">{item.fileName}<span className="ml-2 text-xs text-muted-foreground">{new Intl.NumberFormat(locale,{style:'unit',unit:'kilobyte',unitDisplay:'short',maximumFractionDigits:0}).format(item.byteLength/1024)}</span></span>
-    <Button type="button" variant="ghost" className="min-h-11" disabled={pending} onClick={()=>onRemove(item.id)} aria-label={labels.remove+': '+item.fileName}>{labels.remove}</Button>
+    <Button aria-busy={pending} type="button" variant="ghost" className="min-h-11" disabled={pending} onClick={()=>onRemove(item.id)} aria-label={labels.remove+': '+item.fileName}>{labels.remove}</Button>
    </li>)}</ul>}
    {items.length<5&&<div className="space-y-2">
     <label htmlFor={inputId} className="block text-sm">{labels.choose}</label>
     {/* No name: file bytes must not be included in the parent server-action submission. */}
     <input ref={input} id={inputId} type="file" accept=".pdf,.png,.jpg,.jpeg,.txt,.docx,.xlsx,.pptx" disabled={pending} className={inputCls+' min-h-11 w-full'} onChange={event=>{const chosen=event.target.files?.[0]??null;setFile(chosen);setIntent(chosen?crypto.randomUUID():null);setError(null);setReady(false);onBusyChange(chosen!==null);}}/>
-    <div className="flex flex-wrap gap-2"><Button type="button" className="min-h-11" disabled={!file||pending} onClick={upload}>{pending?labels.pending:labels.add}</Button>
-     {file&&<Button type="button" variant="ghost" className="min-h-11" disabled={pending} onClick={()=>{setFile(null);setIntent(null);if(input.current)input.current.value='';setError(null);onBusyChange(false);}}>{labels.remove}</Button>}
+    <div className="flex flex-wrap gap-2"><Button aria-busy={pending} type="button" className="min-h-11" disabled={!file||pending} onClick={upload}>{pending?labels.pending:labels.add}</Button>
+     {file&&<Button aria-busy={pending} type="button" variant="ghost" className="min-h-11" disabled={pending} onClick={()=>{setFile(null);setIntent(null);if(input.current)input.current.value='';setError(null);onBusyChange(false);}}>{labels.remove}</Button>}
     </div>
    </div>}
    {error&&<p role="alert" className="max-w-prose text-sm text-destructive">{labels[error]}</p>}

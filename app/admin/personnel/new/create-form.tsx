@@ -313,11 +313,11 @@ export function CreateEmployeeFields({
       {framed ? <Card className="space-y-4 p-5">{fields}</Card> : <div className="space-y-4">{fields}</div>}
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button onClick={create} disabled={pending || outstanding.length > 0}>
+        <Button aria-busy={pending} onClick={create} disabled={pending || outstanding.length > 0}>
           {pending ? t('creating') : t('createDraft')}
         </Button>
         {onCancel && (
-          <Button type="button" variant="outline" onClick={onCancel} disabled={pending}>
+          <Button aria-busy={pending} type="button" variant="outline" onClick={onCancel} disabled={pending}>
             {t('cancel')}
           </Button>
         )}

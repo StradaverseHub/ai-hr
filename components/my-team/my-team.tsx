@@ -1,5 +1,6 @@
 'use client';
 
+import { ExportDownloadLink } from '@/components/export-download-link';
 import {useEffect,useRef,useState} from 'react';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui/button';
@@ -52,7 +53,7 @@ export function MyTeam(props:MyTeamProps){
  const exportDisabled=!fresh;
  return <div className="space-y-5">
   <header className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-semibold tracking-tight">{t('title')}</h1><p className="mt-1 text-xs leading-5 text-muted-foreground">{t('subtitle')}</p></div><div className="flex flex-wrap gap-2">
-  {(['csv','xlsx'] as const).map(format=>exportDisabled?<Button key={format} size="sm" variant="outline" disabled>{t(format==='csv'?'exportCsv':'exportExcel')}</Button>:<Button key={format} asChild size="sm" variant="outline"><a href={linkWithQuery(props.exportHref,query,format)}>{t(format==='csv'?'exportCsv':'exportExcel')}</a></Button>)}
+  {(['csv','xlsx'] as const).map(format=>exportDisabled?<Button key={format} size="sm" variant="outline" disabled>{t(format==='csv'?'exportCsv':'exportExcel')}</Button>:<Button key={format} asChild size="sm" variant="outline"><ExportDownloadLink href={linkWithQuery(props.exportHref,query,format)}>{t(format==='csv'?'exportCsv':'exportExcel')}</ExportDownloadLink></Button>)}
   {fresh&&navigation.roster.href?<Button asChild size="sm" variant="outline"><a href={navigation.roster.href}>{t(navigation.roster.label==='edit'?'editRoster':'viewRoster')}</a></Button>:<Button size="sm" variant="outline" disabled>{t(navigation.roster.label==='edit'?'editRoster':'viewRoster')}</Button>}
   </div></header>
   <div className="flex flex-wrap items-center gap-3 text-xs"><label className="flex items-center gap-2">{t('scope')}<select value={query.scope} onChange={event=>update({scope:event.target.value as MyTeamQuery['scope'],departmentId:undefined})} className="h-8 rounded-md border border-input bg-background px-2"><option value="direct">{t('direct')}</option><option value="all">{t('all')}</option>{snapshot.scope.canChooseDepartment&&<option value="department">{t('department')}</option>}</select></label>

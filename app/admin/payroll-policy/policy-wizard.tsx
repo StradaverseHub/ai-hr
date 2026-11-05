@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -590,13 +591,13 @@ export function PolicyWizard({
           </div>
           <div className="flex items-center gap-2">
             {/* Save Draft available on every step (forces status=draft); needs at least a name. */}
-            <button type="submit" name="intent" value="draft" disabled={!nameOk} className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground disabled:opacity-40 hover:bg-muted/50">
+            <ActionButton type="submit" name="intent" value="draft" disabled={!nameOk} className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground disabled:opacity-40 hover:bg-muted/50">
               {t('wizard.saveDraft')}
-            </button>
+            </ActionButton>
             {step < REVIEW ? (
               <button type="button" onClick={goNext} className={btnPrimary}>{t('wizard.next')}</button>
             ) : (
-              <button type="submit" name="intent" value="save" disabled={!canSave} className={`${btnPrimary} disabled:opacity-40`}>{t('wizard.save')}</button>
+              <ActionButton type="submit" name="intent" value="save" disabled={!canSave} className={`${btnPrimary} disabled:opacity-40`}>{t('wizard.save')}</ActionButton>
             )}
           </div>
         </div>

@@ -159,7 +159,7 @@ export function NewCycleForm({
 
       <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
         <Button type="submit">{t('createCycle')}</Button>
-        <Button type="button" variant="secondary" onClick={onPreview} disabled={pending}>
+        <Button aria-busy={pending} type="button" variant="secondary" onClick={onPreview} disabled={pending}>
           {te('previewButtonLabel')}
         </Button>
         {preview?.error && <span className="text-sm text-destructive">{preview.error}</span>}

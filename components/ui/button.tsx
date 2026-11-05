@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useFormStatus } from 'react-dom';
+import { ActionButton } from './action-button';
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
@@ -69,17 +69,9 @@ export interface ButtonProps
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, pendingLabel, ...props }, ref) => {
-    const form = useFormStatus();
-    const Comp = asChild ? Slot : 'button';
     const classes = cn(buttonVariants({ variant, size, className }));
-    if (asChild) return <Comp ref={ref} className={classes} {...props} />;
-    const { children, disabled, 'aria-busy': explicitBusy, ...button } = props;
-    const formPending = button.type !== 'button' && button.type !== 'reset' && form.pending;
-    const pending = formPending || explicitBusy === true || explicitBusy === 'true';
-    return <button {...button} ref={ref} className={classes} disabled={disabled || formPending}
-      aria-busy={pending || explicitBusy} data-action-pending={pending || undefined}>
-      {pending && pendingLabel ? pendingLabel : children}
-    </button>;
+    if (asChild) return <Slot ref={ref} className={classes} {...props} />;
+    return <ActionButton {...props} ref={ref} className={classes} pendingLabel={pendingLabel} />;
   },
 );
 Button.displayName = 'Button';

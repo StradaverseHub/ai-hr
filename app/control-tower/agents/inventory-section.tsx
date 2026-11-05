@@ -1,6 +1,7 @@
 /** WP12 (R8, R21): the one AI inventory, grouped by component kind, and the provider data register.
  * Desktop: one table per group. Mobile: each row stacks into a card. A company HR administrator gets the read-only
  * registry/tier columns only (core/ai-inventory.ts already withheld everything else). */
+import { ActionButton } from '@/components/ui/action-button';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { Badge, Card, SectionHeader, btnGhost } from '@/components/ui';
 import { AI_COMPONENT_KINDS, type AiComponentKind } from '@/lib/ai/ai-inventory';
@@ -31,7 +32,7 @@ export async function AiInventorySection({inventory,mayPause}:{inventory:AiInven
   const pausedState = (r:Row) => r.kind==='action' ? (isPaused(r) ? <Badge className="whitespace-nowrap" variant="danger">{t('inv.actionPaused')}</Badge> : <span className="text-xs text-emerald-700 dark:text-emerald-300">{t('inv.actionActive')}</span>) : null;
   const pauseControl = (r:Row) => mayPause && full && r.kind==='action' ? <form action={setAgentActionPauseAction}>
     <input type="hidden" name="action" value={r.id}/><input type="hidden" name="paused" value={String(!isPaused(r))}/>
-    <button type="submit" className={btnGhost} aria-label={`${t(isPaused(r)?'inv.resumeAction':'inv.pauseAction')} · ${r.id}`}>{t(isPaused(r)?'inv.resumeAction':'inv.pauseAction')}</button>
+    <ActionButton type="submit" className={btnGhost} aria-label={`${t(isPaused(r)?'inv.resumeAction':'inv.pauseAction')} · ${r.id}`}>{t(isPaused(r)?'inv.resumeAction':'inv.pauseAction')}</ActionButton>
   </form> : null;
   const sw = (rt:AiInventoryRuntime, r:Row) => r.outOfBand ? t('inv.outOfBand') : rt.switch.kind==='none' ? '—'
     : `${t(`inv.switchKinds.${rt.switch.kind}`)} · ${rt.switch.on===null?'—':t(rt.switch.on?'inv.on':'inv.off')}${rt.switch.state&&t.has(`states.${rt.switch.state}`)?` · ${t(`states.${rt.switch.state}`)}`:''}`;

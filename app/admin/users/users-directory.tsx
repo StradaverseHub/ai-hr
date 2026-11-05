@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { Fragment, useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { ChevronDown, ChevronRight, Search, X } from 'lucide-react';
@@ -69,7 +70,7 @@ export function UsersDirectory({ rows, groupAdmin, includeArchived, companies, r
     {groupAdmin&&u.status==='invited'&&u.invitationId&&<form action={revokeInvitationAction}><input type="hidden" name="invitationId" value={u.invitationId}/><ManualSubmit variant="outline">{t('revokeInvitation')}</ManualSubmit></form>}
     {!!u.roles.length&&<section className="space-y-2"><h4 className="text-xs font-medium text-muted-foreground">{d('assignedRoles')}</h4>
       <ul className="space-y-2">{u.roles.map(g=><li key={g.id} className="flex flex-wrap items-center gap-2 text-sm"><RoleTag role={g.role} label={t(`role.${g.role}`)}/><span>{companyName(g.companyId)}</span>
-        {u.status==='active'&&(groupAdmin||(g.role==='hr_admin'&&g.companyId))&&<form action={revokeRoleAction} className="ml-auto"><input type="hidden" name="roleAssignmentId" value={g.id}/><button type="submit" className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-sm text-destructive hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring" aria-label={d('removeRole',{role:t(`role.${g.role}`),scope:companyName(g.companyId)})}><X aria-hidden="true" className="size-4"/>{d('remove')}</button></form>}
+        {u.status==='active'&&(groupAdmin||(g.role==='hr_admin'&&g.companyId))&&<form action={revokeRoleAction} className="ml-auto"><input type="hidden" name="roleAssignmentId" value={g.id}/><ActionButton type="submit" className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-sm text-destructive hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring" aria-label={d('removeRole',{role:t(`role.${g.role}`),scope:companyName(g.companyId)})}><X aria-hidden="true" className="size-4"/>{d('remove')}</ActionButton></form>}
       </li>)}</ul>
     </section>}
     {u.status==='active'&&u.appUserId&&<form data-tour="admin-assign" action={assignRoleAction} className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">

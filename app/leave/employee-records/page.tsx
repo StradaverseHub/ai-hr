@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -399,13 +400,13 @@ export default async function EmployeeLeaveRecordPage({
             {(
               <div className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs">
                 <span className="text-muted-foreground">{t('filters.export')}:</span>
-                <a href={exportHref('csv')} download className="font-medium text-primary hover:underline">
+                <ExportDownloadLink href={exportHref('csv')} download className="font-medium text-primary hover:underline">
                   {t('filters.exportCsv')}
-                </a>
+                </ExportDownloadLink>
                 <span className="text-muted-foreground">·</span>
-                <a href={exportHref('xlsx')} download className="font-medium text-primary hover:underline">
+                <ExportDownloadLink href={exportHref('xlsx')} download className="font-medium text-primary hover:underline">
                   {t('filters.exportExcel')}
-                </a>
+                </ExportDownloadLink>
               </div>
             )}
           </div>

@@ -1,3 +1,5 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { getFormatter, getTranslations } from 'next-intl/server';
@@ -111,7 +113,7 @@ export async function AiQualitySection({ session, query, accuracy }: { session: 
           <span>{t(`saved.${saved}`)}</span>
           {saved === 'dismissed' && UUID.test(query.qsignal ?? '') && (
             <form action={reopenSignalAction}>{hidden}<input type="hidden" name="signalId" value={query.qsignal} />
-              <button type="submit" className={cn('inline-flex min-h-9 items-center font-medium text-primary hover:underline', target)}>{t('undoDismiss')}</button>
+              <ActionButton type="submit" className={cn('inline-flex min-h-9 items-center font-medium text-primary hover:underline', target)}>{t('undoDismiss')}</ActionButton>
             </form>
           )}
         </div>
@@ -220,7 +222,7 @@ function GapsTable({ view, t, f, hidden }: { view: QualityView; t: T; f: F; hidd
                       </select>
                     </label>
                   )}
-                  <button type="submit" className={cn(btnGhost, target)} aria-label={`${t('gaps.save')} · ${intentLabel(t, row.intentKey)}`}>{t('gaps.save')}</button>
+                  <ActionButton type="submit" className={cn(btnGhost, target)} aria-label={`${t('gaps.save')} · ${intentLabel(t, row.intentKey)}`}>{t('gaps.save')}</ActionButton>
                 </form>
               </td>
             </tr>
@@ -278,7 +280,7 @@ function CorrectionsTable({ view, t, tf, day, hidden, keep, promote }: { view: Q
                   <div className="flex flex-wrap gap-2">
                     <Link href={href({ ...keep, qpromote: row.id }, 'ai-quality-promote')} className={cn(btnPrimary, target)}>{t('corrections.promote')}<span className="sr-only"> · {signalLabel(t, row)}</span></Link>
                     <form action={dismissSignalAction}>{hidden}<input type="hidden" name="signalId" value={row.id} />
-                      <button type="submit" className={cn(btnGhost, target)}>{t('corrections.dismiss')}<span className="sr-only"> · {signalLabel(t, row)}</span></button>
+                      <ActionButton type="submit" className={cn(btnGhost, target)}>{t('corrections.dismiss')}<span className="sr-only"> · {signalLabel(t, row)}</span></ActionButton>
                     </form>
                   </div>
                 </td>
@@ -294,7 +296,7 @@ function CorrectionsTable({ view, t, tf, day, hidden, keep, promote }: { view: Q
             {hidden}<input type="hidden" name="signalId" value={promote.id} />
             <CandidateFields t={t} defaults={{ question: '', ...candidateDefaults(promote.kind) }} />
             <div className="flex flex-wrap gap-2">
-              <button type="submit" className={cn(btnPrimary, target)}>{t('candidate.saveDraft')}</button>
+              <ActionButton type="submit" className={cn(btnPrimary, target)}>{t('candidate.saveDraft')}</ActionButton>
               <Link href={href(keep, 'ai-quality-corrections')} className={cn(btnGhost, target)}>{t('candidate.cancel')}</Link>
             </div>
           </form>
@@ -325,17 +327,17 @@ function CandidatesTable({ view, t, day, hidden, keep, open }: { view: QualityVi
                   <div className="flex flex-wrap gap-2">
                     {row.state === 'draft' && <>
                       <Link href={href({ ...keep, qcandidate: row.id }, 'ai-quality-candidate-edit')} className={cn(btnGhost, target)}>{t('candidates.edit')}</Link>
-                      <form action={approveCandidateAction}>{hidden}{versioned(row)}<button type="submit" className={cn(btnPrimary, target)}>{t('candidates.approve')}</button></form>
+                      <form action={approveCandidateAction}>{hidden}{versioned(row)}<ActionButton type="submit" className={cn(btnPrimary, target)}>{t('candidates.approve')}</ActionButton></form>
                     </>}
                     {row.state === 'approved' && <>
-                      <form action={exportCandidateAction}>{hidden}<input type="hidden" name="candidateId" value={row.id} /><button type="submit" className={cn(btnPrimary, target)}>{t('candidates.export')}</button></form>
-                      <form action={reopenCandidateAction}>{hidden}{versioned(row)}<button type="submit" className={cn(btnGhost, target)}>{t('candidates.reopen')}</button></form>
+                      <form action={exportCandidateAction}>{hidden}<input type="hidden" name="candidateId" value={row.id} /><ActionButton type="submit" className={cn(btnPrimary, target)}>{t('candidates.export')}</ActionButton></form>
+                      <form action={reopenCandidateAction}>{hidden}{versioned(row)}<ActionButton type="submit" className={cn(btnGhost, target)}>{t('candidates.reopen')}</ActionButton></form>
                     </>}
                     {row.state === 'exported' && (
-                      <a href={`/assistant/learning/export?candidate=${row.id}`} className={cn(btnGhost, target)} download>{t('candidates.download')}</a>
+                      <ExportDownloadLink href={`/assistant/learning/export?candidate=${row.id}`} className={cn(btnGhost, target)} download>{t('candidates.download')}</ExportDownloadLink>
                     )}
                     {(row.state === 'draft' || row.state === 'approved') && (
-                      <form action={withdrawCandidateAction}>{hidden}{versioned(row)}<button type="submit" className={cn(btnGhost, 'text-muted-foreground', target)}>{t('candidates.withdraw')}</button></form>
+                      <form action={withdrawCandidateAction}>{hidden}{versioned(row)}<ActionButton type="submit" className={cn(btnGhost, 'text-muted-foreground', target)}>{t('candidates.withdraw')}</ActionButton></form>
                     )}
                   </div>
                 </td>
@@ -350,7 +352,7 @@ function CandidatesTable({ view, t, day, hidden, keep, open }: { view: QualityVi
             {hidden}{versioned(open)}
             <CandidateFields t={t} defaults={open} />
             <div className="flex flex-wrap gap-2">
-              <button type="submit" className={cn(btnPrimary, target)}>{t('candidate.saveDraft')}</button>
+              <ActionButton type="submit" className={cn(btnPrimary, target)}>{t('candidate.saveDraft')}</ActionButton>
               <Link href={href(keep, 'ai-quality-candidates')} className={cn(btnGhost, target)}>{t('candidate.cancel')}</Link>
             </div>
           </form>

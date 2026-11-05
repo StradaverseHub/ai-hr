@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { notFound } from 'next/navigation';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -64,7 +65,7 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
           <span data-loop-switch={row.on ? 'on' : 'off'} className="text-sm">{row.stopped ? t('stopped') : row.on ? t('on') : t('off')}</span>
           {detail.canSwitch && <form action={setLoopSwitchAction}>
             <input type="hidden" name="loop" value={id} /><input type="hidden" name="from" value="detail" /><input type="hidden" name="enabled" value={String(!row.on)} />
-            <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t(row.on ? 'turnOff' : 'turnOn')} · ${name}`}>{t(row.on ? 'turnOff' : 'turnOn')}</button>
+            <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t(row.on ? 'turnOff' : 'turnOn')} · ${name}`}>{t(row.on ? 'turnOff' : 'turnOn')}</ActionButton>
           </form>}
         </div>} />
       {error && <ErrorBanner message={t(`errors.${error}`)} />}
@@ -105,7 +106,7 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
                   <form action={setLoopPauseAction}>
                     <input type="hidden" name="loop" value={id} /><input type="hidden" name="from" value="detail" />
                     <input type="hidden" name="company" value={item.companyId} /><input type="hidden" name="paused" value={String(!item.paused)} />
-                    <button type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t(item.paused ? 'pause.resume' : 'pause.pause')} · ${item.companyName}`}>{t(item.paused ? 'pause.resume' : 'pause.pause')}</button>
+                    <ActionButton type="submit" className={cn(btnGhost, 'pointer-coarse:min-h-11')} aria-label={`${t(item.paused ? 'pause.resume' : 'pause.pause')} · ${item.companyName}`}>{t(item.paused ? 'pause.resume' : 'pause.pause')}</ActionButton>
                   </form>
                 </span>
               </li>

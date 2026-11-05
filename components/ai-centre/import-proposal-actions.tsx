@@ -58,9 +58,9 @@ export function ImportProposalActions({proposal,turnId}:{proposal:Proposal;turnI
    {summary.confirmable&&summary.ready>0&&<Button type="button" onClick={()=>void confirm()} disabled={busy} aria-busy={busy} data-chat-import-confirm className="pointer-coarse:min-h-11">
     {busy?t('confirming'):t('confirm',{count:summary.ready})}</Button>}
    {summary.attention>0
-    ?<Button type="button" variant="outline" onClick={fix} disabled={busy} data-chat-import-fix className="pointer-coarse:min-h-11">{t('fix',{count:summary.attention})}</Button>
-    :<Button type="button" variant="outline" onClick={()=>{learn('card_edited');router.push(page);}} disabled={busy} className="pointer-coarse:min-h-11">{t('openPage')}</Button>}
-   <Button type="button" variant="ghost" onClick={()=>{learn('card_discarded');setDiscarded(true);}} disabled={busy} data-chat-import-discard className="text-muted-foreground pointer-coarse:min-h-11">{t('discard')}</Button>
+    ?<Button aria-busy={busy} type="button" variant="outline" onClick={fix} disabled={busy} data-chat-import-fix className="pointer-coarse:min-h-11">{t('fix',{count:summary.attention})}</Button>
+    :<Button aria-busy={busy} type="button" variant="outline" onClick={()=>{learn('card_edited');router.push(page);}} disabled={busy} className="pointer-coarse:min-h-11">{t('openPage')}</Button>}
+   <Button aria-busy={busy} type="button" variant="ghost" onClick={()=>{learn('card_discarded');setDiscarded(true);}} disabled={busy} data-chat-import-discard className="text-muted-foreground pointer-coarse:min-h-11">{t('discard')}</Button>
   </div>
   {refusal&&<p role="alert" className="text-sm text-destructive">{t('refused.'+refusal)}</p>}
  </div>;

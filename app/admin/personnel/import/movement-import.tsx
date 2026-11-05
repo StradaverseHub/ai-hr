@@ -57,10 +57,10 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
  return <section aria-label={t('title')} className="space-y-5" aria-busy={busy}>
   <Card className="space-y-4 p-5"><h2 className="font-medium">{t('title')}</h2>
    <p className="text-sm text-muted-foreground">{word('screenHint','One template for every movement type and company. Enter one row per field that changes; rows with the same company, employee, date and event type are one movement.')}</p>
-   <div className="flex flex-wrap items-center gap-2"><Button type="button" disabled={busy} onClick={()=>void run('download')}>{word('downloadTemplate','Download template')}</Button><Link className="text-sm text-primary underline" href={`${HISTORY}?kind=movement`}>{word('history','Import history')}</Link></div>
+   <div className="flex flex-wrap items-center gap-2"><Button aria-busy={busy} type="button" disabled={busy} onClick={()=>void run('download')}>{word('downloadTemplate','Download template')}</Button><Link className="text-sm text-primary underline" href={`${HISTORY}?kind=movement`}>{word('history','Import history')}</Link></div>
    <Field label={t('file')}><input ref={input} type="file" accept=".xlsx,.csv" disabled={busy||!!result} className={inputCls} onChange={e=>{reset();setFile(e.target.files?.[0]??null);}}/></Field>
    {file&&<p className="text-xs text-muted-foreground">{file.name}</p>}
-   <Button type="button" disabled={busy||!file||!!result} onClick={()=>void run('preview')}>{busy?t('working'):t('check')}</Button>
+   <Button aria-busy={busy} type="button" disabled={busy||!file||!!result} onClick={()=>void run('preview')}>{busy?t('working'):t('check')}</Button>
   </Card>
   {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
   {!!preview?.fileErrors.length&&<div role="alert" className="rounded-lg border border-destructive p-4"><p>{t('fileRefused')}</p><ul>{preview.fileErrors.map((issue,i)=><li key={i} className="text-sm">{issueText(issue)}</li>)}</ul></div>}
@@ -79,9 +79,9 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
     {excludedEmployees>0&&<label className="flex items-start gap-2 text-sm"><input className="mt-1" type="checkbox" disabled={busy} checked={acknowledge} onChange={e=>setAcknowledge(e.target.checked)}/>{t('excludeConfirmation',{count:preview!.employees.filter(e=>!selected.includes(movementEmployeeKey(e))).reduce((n,e)=>n+e.rows.length,0)})}</label>}
     {closedPeriods.length>0&&<div className="space-y-1 rounded-lg border border-amber-500/60 p-3 text-sm"><p className="font-medium">{t('sheet.closedPayrollTitle',{periods:closedPeriods.join(', ')})}</p><p className="text-muted-foreground">{t('sheet.closedPayrollBody')}</p>
      <label className="flex items-start gap-2"><input className="mt-1" type="checkbox" name="acknowledgeClosedPayroll" disabled={busy} checked={closedPayroll} onChange={e=>setClosedPayroll(e.target.checked)}/>{t('sheet.closedPayrollAcknowledge')}</label></div>}
-    <Button type="button" disabled={busy||!canCommit} onClick={()=>void run('apply')}>{busy?t('working'):t('confirm')}</Button>
+    <Button aria-busy={busy} type="button" disabled={busy||!canCommit} onClick={()=>void run('apply')}>{busy?t('working'):t('confirm')}</Button>
    </>}
-   {employees.some(e=>e.rows.some(r=>r.errors.length))&&<Button type="button" variant="secondary" disabled={busy} onClick={errorsCsv}>{t('downloadErrors')}</Button>}
+   {employees.some(e=>e.rows.some(r=>r.errors.length))&&<Button aria-busy={busy} type="button" variant="secondary" disabled={busy} onClick={errorsCsv}>{t('downloadErrors')}</Button>}
   </Card>}
  </section>;
 }

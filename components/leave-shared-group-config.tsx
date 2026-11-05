@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
@@ -162,9 +163,9 @@ export function LeaveSharedGroupConfig({
                         contract. The action reads formData.getAll('leaveTypeIds'). */}
                     <ChipMultiSelect name="leaveTypeIds" defaultSelected={g.leaveTypeIds} {...chipCopy} />
                     <div className="flex items-center justify-end gap-2">
-                      <button type="submit" className={btnPrimary}>
+                      <ActionButton type="submit" className={btnPrimary}>
                         {t('save')}
-                      </button>
+                      </ActionButton>
                     </div>
                   </form>
                   {/* Delete is its own form: a <form> may not nest inside another. */}
@@ -233,9 +234,9 @@ export function LeaveSharedGroupConfig({
               <ChipMultiSelect name="leaveTypeIds" {...chipCopy} />
               <p className="text-xs text-muted-foreground">{t('createHint')}</p>
               <div className="flex justify-end">
-                <button type="submit" className={btnPrimary}>
+                <ActionButton type="submit" className={btnPrimary}>
                   {t('create')}
-                </button>
+                </ActionButton>
               </div>
             </form>
           </Dialog.Content>

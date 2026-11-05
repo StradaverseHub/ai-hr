@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import {TaxBasisCorrectionNotice} from '@/components/payroll-tax-basis-notice';
 import {taxBasisNoticeStrings} from '@/lib/payroll-tax-basis-notice-labels';
 import {taxBasisNoticesForPayslip} from '@/packs/payroll/service';
@@ -165,12 +166,12 @@ export default async function PcbDetailPage({
         // the two languages the agency itself issues and Helvetica can actually print, so a Tamil, Thai,
         // Vietnamese or Chinese UI still yields the English document rather than pages of '?'.
         <div className="flex justify-end">
-          <a
+          <ExportDownloadLink
             href={`/payroll/pcb-detail/download?${new URLSearchParams({ payslipId: row.id, lang: locale }).toString()}`}
             className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
           >
             {t('slipDownload')}
-          </a>
+          </ExportDownloadLink>
         </div>
       )}
 

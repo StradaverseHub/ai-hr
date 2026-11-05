@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { recordPayrollAccess } from '@/core/payroll-audit/access-log';
 import Link from 'next/link';
 import { payrollCloseCycleLabel, payrollRunLabel } from '@/core/payslip-cycle-label';
@@ -408,13 +409,13 @@ export default async function BatchPage({
                 form: the route is a GET download and this keeps the header a server component.
                 Processed/closed only — a draft has no payslips to reconcile. */}
             {batch.status !== 'draft' && (
-              <a
+              <ExportDownloadLink
                 href={`/payroll/${batch.id}/export?format=xlsx`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
                 title={t('transactionDetailTitle')}
               >
                 ⬇ {t('transactionDetail')}
-              </a>
+              </ExportDownloadLink>
             )}
             {batch.status === 'draft' && (
               <form action={generateAction}>

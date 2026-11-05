@@ -36,7 +36,7 @@ function PolicyMatrixGridDraft({kind,matrix,year,onRowsChange}:GridProps){
  const update=(index:number,column:number,value:string)=>changeRows(rows.map((row,i)=>i===index?row.map((cell,c)=>c===column?value:cell):row));
  const proposalIssues=proposal?policyGridIssues(kind,proposal):[];
  return <section className="space-y-3" aria-label={t(kind)}>
-  <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-medium">{t(kind)}</h3><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" disabled={busy} onClick={()=>file.current?.click()}>{t('import')}</Button><Button type="button" variant="outline" disabled={busy||year<=2000} onClick={()=>{void copy();}}>{t('copy')}</Button></div></div>
+  <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-medium">{t(kind)}</h3><div className="flex flex-wrap gap-2"><Button aria-busy={busy} type="button" variant="outline" disabled={busy} onClick={()=>file.current?.click()}>{t('import')}</Button><Button aria-busy={busy} type="button" variant="outline" disabled={busy||year<=2000} onClick={()=>{void copy();}}>{t('copy')}</Button></div></div>
   <input ref={file} type="file" accept=".xlsx" className="sr-only" aria-label={t('import')} onChange={event=>{if(event.target.files?.[0])void upload(event.target.files[0]);}}/>
   <p className="text-xs text-muted-foreground">{t('columns',{columns:columns.join(', ')})}</p>
   {error&&<p role="alert" className="text-sm text-destructive">{t('fileError')}</p>}

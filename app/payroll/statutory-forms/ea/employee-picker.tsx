@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useMemo, useState } from 'react';
 import { Field, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { filterEaRows } from './filter';
@@ -270,14 +271,14 @@ export function EaEmployeePicker({
               this picker do from r331 (2a1a6f42), each naming its OWN route — and refused in exactly the
               same two states as the download beside it. */}
           {previewAction && strings.preview && (
-            <button
+            <ActionButton
               type="submit"
               formAction={previewAction}
               disabled={selected.length === 0 || overLimit}
               className="h-9 rounded-md border border-border px-3 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
             >
               {strings.preview}
-            </button>
+            </ActionButton>
           )}
           {/* Nothing selected is nothing to produce, so the button cannot be pressed — an empty EA download
               is not a useful answer and the route refuses it a second time. Too many is the same story at the

@@ -1,4 +1,5 @@
 'use client';
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { useState } from 'react';
 import { useLocale,useTranslations } from 'next-intl';
 import type { getAssessmentProgress,getAssessmentAssessorProgress } from '@/packs/performance/service';
@@ -13,7 +14,7 @@ export function ProgressTable({assessment,assessors,initial,fixed=false}:{fixed?
  const rows=filtered.filter(r=>rowState(r)&&(state==='all'||rowState(r)===state)),pages=Math.max(1,Math.ceil(rows.length/50)),current=Math.min(page,pages-1);
  const params=new URLSearchParams({kind,module,state,q,company,department,businessGroup:group});if(kind==='assessments'&&company){const selected=assessment.rows.find(r=>r.company===company);if(selected)params.set('companyId',selected.companyId);}
  const exportHref=`/performance/${assessment.cycle.id}/progress/export?${params}`;
- return <Card className="space-y-4 p-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">{t('progressAdmin.title')}</h2><a className="text-sm text-primary underline" href={exportHref}>{t('progressAdmin.export')}</a></div>
+ return <Card className="space-y-4 p-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">{t('progressAdmin.title')}</h2><ExportDownloadLink className="text-sm text-primary underline" href={exportHref}>{t('progressAdmin.export')}</ExportDownloadLink></div>
   <p className="max-w-3xl text-sm text-muted-foreground">{t('progressAdmin.help')}</p>
   {!fixed&&<div className="flex flex-wrap gap-2" role="group" aria-label={t('progressAdmin.title')}>{(['assessments','assessors'] as const).map(k=><Button key={k} type="button" variant="secondary" aria-pressed={kind===k} onClick={()=>{setKind(k);setPage(0);}}>{t(`progressAdmin.${k}`)}</Button>)}</div>}
   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

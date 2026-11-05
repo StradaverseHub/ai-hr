@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -138,16 +139,16 @@ export default async function FileMappingsPage({
                     </Link>
                     <form action={duplicateClockingMappingAction}>
                       <input type="hidden" name="mappingId" value={m.id} />
-                      <button type="submit" className={link}>
+                      <ActionButton type="submit" className={link}>
                         {t('list.duplicate')}
-                      </button>
+                      </ActionButton>
                     </form>
                     <form action={setClockingMappingActiveAction}>
                       <input type="hidden" name="mappingId" value={m.id} />
                       <input type="hidden" name="active" value={m.active ? 'false' : 'true'} />
-                      <button type="submit" className={link}>
+                      <ActionButton type="submit" className={link}>
                         {m.active ? t('list.deactivate') : t('list.activate')}
-                      </button>
+                      </ActionButton>
                     </form>
                     {!m.lastUsedAt && (
                       <form action={deleteClockingMappingAction}>

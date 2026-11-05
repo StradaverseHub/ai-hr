@@ -380,7 +380,7 @@ export function RecomputeClient({
           <Field label={t('dateTo')} className="w-40">
             <input type="date" className={inputCls} value={to} onChange={(e) => onScopeChange(setTo)(e.target.value)} />
           </Field>
-          <Button onClick={runPreview} disabled={pending || !canPreview}>
+          <Button aria-busy={pending} onClick={runPreview} disabled={pending || !canPreview}>
             {pending && phase !== 'done' ? t('previewing') : t('preview')}
           </Button>
         </div>
@@ -419,10 +419,10 @@ export function RecomputeClient({
           <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
             <p className="text-xs text-muted-foreground">{t('clockNote')}</p>
             <div className="ml-auto flex gap-2">
-              <Button variant="outline" onClick={reset} disabled={pending}>
+              <Button aria-busy={pending} variant="outline" onClick={reset} disabled={pending}>
                 {t('cancel')}
               </Button>
-              <Button onClick={runApply} disabled={pending || preview.updated === 0}>
+              <Button aria-busy={pending} onClick={runApply} disabled={pending || preview.updated === 0}>
                 {pending ? t('applying') : t('apply', { count: preview.updated })}
               </Button>
             </div>

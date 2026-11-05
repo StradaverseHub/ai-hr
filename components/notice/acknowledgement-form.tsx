@@ -15,7 +15,7 @@ export function NoticeAcknowledgementForm({noticeId,employmentId,contentVersion,
   {timestamp?<p role="status" className="text-sm"><time dateTime={timestamp}>{labels.acknowledgedOn.replace('{date}',new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(timestamp)))}</time></p>:<form action={submit} className="space-y-3">
    <input type="hidden" name="noticeId" value={noticeId}/><input type="hidden" name="employmentId" value={employmentId}/><input type="hidden" name="contentVersion" value={contentVersion}/>
    {state.error&&<p role="alert" className="max-w-prose text-sm text-destructive">{labels[state.error]}</p>}
-   <Button type="submit" disabled={pending} className="min-h-11">{pending?labels.pending:labels.acknowledge}</Button>
+   <Button aria-busy={pending} type="submit" disabled={pending} className="min-h-11">{pending?labels.pending:labels.acknowledge}</Button>
   </form>}
  </div>;
 }

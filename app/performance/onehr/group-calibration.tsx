@@ -39,7 +39,7 @@ export function GroupCalibration({rows,sessionId,revision,returnTo,mode}:{rows:G
     <label className="block space-y-1 text-sm"><span>{tm('reason')}</span><textarea aria-label={tm('reason')} maxLength={4000} rows={3} value={reason} onChange={event=>setReason(event.target.value)} className={`${inputCls} min-h-20`}/></label>
    </fieldset>
    {changeError&&<p role="alert" className="mt-3 text-sm text-destructive">{changeError}</p>}
-   <div className="mt-4 flex justify-end gap-2"><Button type="button" variant="secondary" disabled={pending} onClick={()=>closeChange(false)}>{tm('cancel')}</Button><Button type="button" disabled={pending} onClick={change}>{pending?tm('saving'):t('groupCalibration.saveCall')}</Button></div></>}
+   <div className="mt-4 flex justify-end gap-2"><Button aria-busy={pending} type="button" variant="secondary" disabled={pending} onClick={()=>closeChange(false)}>{tm('cancel')}</Button><Button aria-busy={pending} type="button" disabled={pending} onClick={change}>{pending?tm('saving'):t('groupCalibration.saveCall')}</Button></div></>}
   </Dialog.Content></Dialog.Portal></Dialog.Root>
   <footer className="flex flex-wrap justify-end gap-3">{lockForm(selected,t('groupCalibration.lockSelected',{count:selected.length}))}{bu&&(dept||new Set(inBu.map(r=>r.department)).size===1)&&available.length>0&&lockForm(available.map(r=>r.id),t('groupCalibration.lockDepartment',{count:available.length}))}</footer>
  </section>;

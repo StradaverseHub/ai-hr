@@ -52,7 +52,7 @@ export function ActivationLink({ requestId, labels }: { requestId: string; label
   if (!claimed) {
     return (
       <div className="space-y-2">
-        <button type="button" className={btnPrimary} onClick={reveal} disabled={pending}>
+        <button aria-busy={pending} type="button" className={btnPrimary} onClick={reveal} disabled={pending}>
           {labels.reveal}
         </button>
         <p className="text-xs text-muted-foreground">{labels.revealWarning}</p>

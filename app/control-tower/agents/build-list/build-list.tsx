@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import type { agentBuildList } from '@/core/agent-build-list';
 import { Card, SectionHeader, btnGhost } from '@/components/ui';
@@ -17,7 +18,7 @@ export async function RankedBuildList({view,page=1}:{view:Awaited<ReturnType<typ
     <div className="space-y-3 p-5">
       <SectionHeader title={t('title')} subtitle={t('subtitle')}/>
       <p className="max-w-4xl text-sm text-muted-foreground">{t('proxy')}</p>
-      <a className={btnGhost} href={`/control-tower/agents/build-list/export?days=${view.window}`}>{t('export')}</a>
+      <ExportDownloadLink className={btnGhost} href={`/control-tower/agents/build-list/export?days=${view.window}`}>{t('export')}</ExportDownloadLink>
     </div>
     <div className="overflow-x-auto"><table className="w-full min-w-[780px] text-left text-sm">
       <caption className="sr-only">{t('title')}</caption>

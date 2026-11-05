@@ -99,7 +99,7 @@ function SharedRewardEditorDraft({groupId,revision,name:initialName,year:initial
    </Card>
    <Card className="space-y-5 p-4 sm:p-6"><h2 className="font-semibold">{t('policy')}</h2><RewardPolicyYearContext.Provider value={year}>{policyFields}</RewardPolicyYearContext.Provider></Card>
    {reviewed&&<Card className="space-y-3 p-4 sm:p-6"><h2 className="font-semibold">{t('review')}</h2><p className="text-sm">{name} · {t('version',{version:revision+1})}</p><p className="text-sm text-muted-foreground">{t('futureOnly')}</p><ul className="list-inside list-disc text-sm">{targets.map(pair=><li key={rewardTargetKey(pair)}>{label(pair)}</li>)}</ul></Card>}
-   <div className="flex flex-wrap gap-3"><Button type="submit" disabled={!complete||pending||saved}>{pending?t('saving'):reviewed?(targets.length?t('confirm'):t('archive')):t('preview')}</Button>{reviewed&&<Button type="button" variant="outline" onClick={()=>setReviewed(false)}>{t('back')}</Button>}</div>
+   <div className="flex flex-wrap gap-3"><Button aria-busy={pending} type="submit" disabled={!complete||pending||saved}>{pending?t('saving'):reviewed?(targets.length?t('confirm'):t('archive')):t('preview')}</Button>{reviewed&&<Button type="button" variant="outline" onClick={()=>setReviewed(false)}>{t('back')}</Button>}</div>
   </fieldset>
  </form>{exclusionAction&&Number.isInteger(year)&&year>=2000&&year<=2200&&<RewardCompanyExclusionsPanel key={year} year={year} companies={companies} rows={exclusions} saveAction={exclusionAction}/>}</>;
 }

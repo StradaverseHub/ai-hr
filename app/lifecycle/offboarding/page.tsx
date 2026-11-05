@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { Button, Card, ErrorBanner, PageHeader, tableWrapCls, tbodyCls, theadCls, thCls } from '@/components/ui';
@@ -19,7 +20,7 @@ export default async function OffboardingList({ searchParams }: { searchParams: 
       <div className="flex items-center gap-4 text-sm">
         <Link href="/lifecycle/offboarding" className={!history ? 'font-medium' : 'text-muted-foreground hover:text-foreground'}>{t('common.active')}</Link>
         {level >= LEVEL.manager && <Link href="/lifecycle/offboarding?view=history" className={history ? 'font-medium' : 'text-muted-foreground hover:text-foreground'}>{t('common.historyList')}</Link>}
-        {level >= LEVEL.manager && <a className="ml-auto text-primary underline-offset-2 hover:underline" href="/lifecycle/export/offboarding">{t('common.exportCsv')}</a>}
+        {level >= LEVEL.manager && <ExportDownloadLink className="ml-auto text-primary underline-offset-2 hover:underline" href="/lifecycle/export/offboarding">{t('common.exportCsv')}</ExportDownloadLink>}
       </div>
       <Card className={tableWrapCls}>
         <table className="w-full text-sm">

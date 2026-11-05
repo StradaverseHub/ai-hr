@@ -1,3 +1,5 @@
+import { ActionButton } from '@/components/ui/action-button';
+import { ExportDownloadLink } from '@/components/export-download-link';
 import {latestPersonnelHistory} from '@/lib/personnel-history';
 import {movementHistoryHref,movementPageHref} from '@/lib/personnel-movement-navigation';
 import {MovementActionShell} from './movement-action-shell';
@@ -3141,13 +3143,13 @@ export default async function EmployeePage({
             downloads a workbook and leaves the reader exactly where they were, so intercepting it would
             raise an "Unsaved changes" dialog for an action that loses nothing and then router.push at a
             route handler that has no page to render. See UNSAVED_GUARD_ATTR in lib/unsaved-changes.ts. */}
-        <a
+        <ExportDownloadLink
           href={`/admin/personnel/${employmentId}/movement-export`}
           data-unsaved-guard="ignore"
           className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
         >
           {t('movement.exportExcel')}
-        </a>
+        </ExportDownloadLink>
         {canCreateMovement && (
           <Link
             href={movementPageHref(employmentId,'new',undefined,movementContext)}
@@ -4335,9 +4337,9 @@ export default async function EmployeePage({
                     <input type="hidden" name="employmentId" value={emp.employmentId} />
                     <input type="hidden" name="reportingLineId" value={d.id} />
                     <input {...personnelWorkflowCarry('employment.approval_delegations.validto','delegationEnd')} value={today} />
-                    <button type="submit" title={t('delegationEnd')} className="text-muted-foreground transition-colors hover:text-red-500">
+                    <ActionButton type="submit" title={t('delegationEnd')} className="text-muted-foreground transition-colors hover:text-red-500">
                       ×
-                    </button>
+                    </ActionButton>
                   </form>
                 </li>
               ))}

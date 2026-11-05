@@ -106,7 +106,7 @@ export function FormulaSampleTest({text}:{text:string}){
   <p className="text-sm text-muted-foreground">{t('testArea.sampleHelp')}</p>
   <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">{visible.map((name:PayFormulaSampleVariable)=><label key={name} className="text-sm">{t('testArea.fields.'+name)}<input className={formulaInput} inputMode="decimal" value={values[name]??''} onChange={event=>setValues({...values,[name]:event.target.value})}/></label>)}</fieldset>
   {fields.length>0&&<fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">{fields.map(field=><label key={field.key} className="text-sm">{t('generator.fields.'+field.field)}<input className={formulaInput} type={field.type==='date'?'date':'text'} maxLength={500} value={values.fields?.[field.key]??''} onChange={event=>setValues({...values,fields:{...values.fields,[field.key]:event.target.value}})}/></label>)}</fieldset>}
-  <button type="button" className={formulaPrimary} disabled={pending||!text.trim()} onClick={run}>{pending?t('working'):t('testArea.run')}</button>
+  <button aria-busy={pending} type="button" className={formulaPrimary} disabled={pending||!text.trim()} onClick={run}>{pending?t('working'):t('testArea.run')}</button>
   {error&&resultKey===inputKey&&<p className="text-sm text-destructive">{error}</p>}
   {shownResult&&<div role="status" className="space-y-3">
    <span className={'inline-block rounded-full px-3 py-1 text-sm '+(shownResult.passed?'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200':'bg-destructive/10 text-destructive')}>{t(shownResult.passed?'testArea.passed':'testArea.failed')}</span>

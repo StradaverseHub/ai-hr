@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
@@ -210,12 +211,12 @@ export default async function LeaveConfigGeneratePage({
                   that a refresh can repeat. THE ADDRESS IS THE OLD ONE ON PURPOSE — the `/export` route
                   handler moves with the screen in Round 5 (IA §3.2), and this round adds and removes
                   nothing, so pointing at a handler that does not exist yet would break the download. */}
-              <a
+              <ExportDownloadLink
                 href={`/admin/leave/generate/export?run=${run.id}`}
                 className="shrink-0 text-xs font-medium text-primary underline underline-offset-2"
               >
                 {t('generateRunsDownload')}
-              </a>
+              </ExportDownloadLink>
             </li>
           ))}
         </ul>

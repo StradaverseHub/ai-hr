@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import {getLocale,getTranslations} from 'next-intl/server';
 import {requireGroupAdministration} from '@/lib/security-center-authz';
 import {Card,ErrorBanner,SectionHeader,btnPrimary,inputCls} from '@/components/ui';
@@ -22,9 +23,9 @@ export default async function InviteUserPage({searchParams}:{searchParams:Promis
               </label>
               <label className="flex min-w-56 flex-1 flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{tAll('emailDesign.language')}</span><select name="emailLocale" defaultValue={locale} className={inputCls}>{['en','ms','zh','vi','ta','th'].map(language=><option key={language} value={language}>{tAll(`emailDesign.languages.${language}`)}</option>)}</select></label>
               </AccountTargetFields>
-              <button type="submit" className={`${btnPrimary} w-fit`}>
+              <ActionButton type="submit" className={`${btnPrimary} w-fit`}>
                 {t('inviteSubmit')}
-              </button>
+              </ActionButton>
             </form>
           </div>
         </Card>

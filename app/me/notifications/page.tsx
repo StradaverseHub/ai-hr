@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { createHash } from 'node:crypto';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
@@ -25,7 +26,7 @@ export default async function MyEmailNotificationsPage({searchParams}:{searchPar
     <Card className="space-y-4 p-5"><SectionHeader title={t('letterAccountTitle')}/><p className="text-sm text-muted-foreground">{t('letterAccountHelp')}</p>
       <form action={saveMyLetterEmailPreferences} className="space-y-4"><label className="flex min-h-11 items-start gap-2 py-2 text-sm"><input type="checkbox" name="enabled" value="true" defaultChecked={checked} disabled={!verified&&!checked} className="mt-1"/><span>{t('letterAccountConsent')}{!account.enabledByPolicy&&<span className="block text-xs text-muted-foreground">{t('notAllowed')}</span>}</span></label>
         <Field label={t('letterAccountLanguage')}><select name="locale" defaultValue={notificationEmailLocales.includes(accountLocale as never)?accountLocale:'en'} className={`${inputCls} min-h-11`}>{notificationEmailLocales.map(language=><option key={language} value={language}>{languageNames[language]}</option>)}</select></Field>
-        <button type="submit" className={`${btnPrimary} min-h-11`}>{t('letterAccountSave')}</button>
+        <ActionButton type="submit" className={`${btnPrimary} min-h-11`}>{t('letterAccountSave')}</ActionButton>
       </form></Card>
     {global&&!view.employments.length&&<Card className="p-5"><p>{t('noEmployment')}</p></Card>}
     {view.employments.map(e=>{
@@ -38,7 +39,7 @@ export default async function MyEmailNotificationsPage({searchParams}:{searchPar
           })}
         </fieldset>
         <Field label={t('language')}><select name="locale" defaultValue={notificationEmailLocales.includes(emailLocale as never)?emailLocale:'en'} className={inputCls}>{notificationEmailLocales.map(l=><option key={l} value={l}>{languageNames[l]}</option>)}</select></Field>
-        <button type="submit" className={btnPrimary}>{t('save')}</button>
+        <ActionButton type="submit" className={btnPrimary}>{t('save')}</ActionButton>
       </form></Card>;
     })}
   </div>;

@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
@@ -262,7 +263,7 @@ function BaselineSetupForm({ setup, period, company, t, itemName, day, one }: {
         </div>
         <p className="text-xs text-muted-foreground">{t('setup.blankHelp', { max: MAX_ITEM_MINUTES })}</p>
         <div className="flex flex-wrap gap-2">
-          <button type="submit" className={cn(btnPrimary, target)}>{t('setup.save')}</button>
+          <ActionButton type="submit" className={cn(btnPrimary, target)}>{t('setup.save')}</ActionButton>
           <Link href={href({ period, company })} className={cn(btnGhost, target)}>{t('setup.cancel')}</Link>
         </div>
       </form>

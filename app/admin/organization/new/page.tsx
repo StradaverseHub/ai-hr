@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { DEFAULT_PAYROLL_CYCLES } from '@/packs/payroll/service';
@@ -132,9 +133,9 @@ export default async function NewCompanyPage({
             </select>
           </Field>
           <div className="flex items-center gap-2 pt-1">
-            <button type="submit" className={btnPrimary}>
+            <ActionButton type="submit" className={btnPrimary}>
               {t('addCompany')}
-            </button>
+            </ActionButton>
             <Link href="/admin/organization" className={btnGhost}>
               {t('backToCompanies')}
             </Link>

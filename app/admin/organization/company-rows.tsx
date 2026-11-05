@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 
 /**
@@ -215,9 +216,9 @@ export function CompanyRows({
               <form action={archiveAction} className="inline">
                 <input type="hidden" name="id" value={r.id} />
                 <input type="hidden" name="archived" value={r.archived ? 'false' : 'true'} />
-                <button type="submit" className="text-primary underline underline-offset-2">
+                <ActionButton type="submit" className="text-primary underline underline-offset-2">
                   {r.archived ? labels.unarchive : labels.archive}
-                </button>
+                </ActionButton>
               </form>
             </div>
           </td>

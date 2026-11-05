@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useActionState, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -277,7 +278,7 @@ function DelegationEditForm({
           <DelegationScopePicker defaultReason={r.reason ?? ''} defaultScopes={r.scopes} />
         </div>
         <div className="sm:col-span-2">
-          <button className={btnPrimary} disabled={isPending}>
+          <button aria-busy={isPending} className={btnPrimary} disabled={isPending}>
             {t('save')}
           </button>
         </div>
@@ -309,13 +310,13 @@ function DelegationRevokeForm({
   return (
     <form action={formAction} className="flex flex-col items-end gap-1">
       <input type="hidden" name="reportingLineId" value={reportingLineId} />
-      <button
+      <ActionButton aria-busy={isPending}
         type="submit"
         disabled={isPending}
         className="text-xs text-muted-foreground transition-colors hover:text-red-500 disabled:opacity-50"
       >
         {t('revoke')}
-      </button>
+      </ActionButton>
       {state && !state.ok ? <span className="max-w-56 text-right text-xs text-red-500">{state.error}</span> : null}
     </form>
   );

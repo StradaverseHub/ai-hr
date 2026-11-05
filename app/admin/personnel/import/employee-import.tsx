@@ -636,7 +636,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
           </div>
         </details>
 
-        <Button type="button" variant="outline" disabled={baseline||pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={beginTextPreparation}>{t('headerAssistance.workbook.prepareText')}</Button>
+        <Button aria-busy={pending} type="button" variant="outline" disabled={baseline||pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={beginTextPreparation}>{t('headerAssistance.workbook.prepareText')}</Button>
         {!baseline&&workbookReview&&<PersonnelImportWorkbookReview key={workbookReview.revisionId} workbook={workbookReview.workbook} revisionId={workbookReview.revisionId}
           knownRoles={Object.fromEntries(workbookReview.workbook.sheets.map(sheet=>{
             const key=sheet.sheetName.trim().toLowerCase(),roles:Record<string,PersonnelSheetRole>={[EMPLOYEE_XLSX_SHEETS.family.trim().toLowerCase()]:'family',[ALLOCATION_SHEET.trim().toLowerCase()]:'allocations',[PERSONNEL_REGISTER_SHEETS.qualification.trim().toLowerCase()]:'qualification',[PERSONNEL_REGISTER_SHEETS.emergency.trim().toLowerCase()]:'emergency'};
@@ -671,10 +671,10 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
             const capturedRevision=inputRevision.current;void personnelImportLocalDigest(applied.text).then(revision=>{if(capturedRevision===inputRevision.current)void evaluation.current?.record({kind:'preparation',revision,normalizations:null,corrections:null,unresolved:0,conflicts:null,duplicates:null,missingSourceEvidence:null});}).catch(()=>setHeaderNotice(t('measurement.observationUnavailable')));headerAssistanceAnnotation.current=null;
             setDependentsCsv(companions.family);setAllocationsCsv(companions.allocations);setRegisterTexts(companions.registers);setFileName(preparationReview.fileName);setPreparationReview(null);setHeaderNotice(headerMessages.acceptedRevision);
           }catch{setHeaderNotice(headerMessages.invalidSource);}
-        }}/><Button type="button" variant="outline" disabled={pending||reading||committing} onClick={()=>{if(preparationReview.pendingSource){setSourceEpoch(value=>value+1);setGuidedUsed(preparationReview.pendingSource.priorGuidedUsed);}setPreparationReview(null);}}>{workbookMessages.cancel}</Button></div>}
+        }}/><Button aria-busy={pending} type="button" variant="outline" disabled={pending||reading||committing} onClick={()=>{if(preparationReview.pendingSource){setSourceEpoch(value=>value+1);setGuidedUsed(preparationReview.pendingSource.priorGuidedUsed);}setPreparationReview(null);}}>{workbookMessages.cancel}</Button></div>}
 
         <div className="space-y-3">
-          <Button type="button" variant="outline" disabled={baseline||pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={()=>{
+          <Button aria-busy={pending} type="button" variant="outline" disabled={baseline||pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={()=>{
             if(commitPending.current||baseline)return;setGuidedUsed(true);
             try{const source=importSource?.currentText===csv?importSource:capturePersonnelImportSource({text:csv,format:'paste'},crypto.randomUUID());setImportSource(source);headerReviewInputRevision.current=inputRevision.current;setReviewHeaders(true);setHeaderNotice(null);}
             catch{setHeaderNotice(headerMessages.invalidSource);setReviewHeaders(false);}
@@ -696,10 +696,10 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         <PersonnelImportEvidenceReview entries={localEvidence} currentText={csv}/>
         <StepHeading num={4} label={t('step4')} />
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={validate} disabled={pending || reading || !!workbookReview || !!preparationReview || !csv.trim()}>
+          <Button aria-busy={pending} onClick={validate} disabled={pending || reading || !!workbookReview || !!preparationReview || !csv.trim()}>
             {pending && phase !== 'done' ? t('validating') : t('validate')}
           </Button>
-          <Button
+          <Button aria-busy={pending}
             variant="outline"
             onClick={() => {
               if (commitPending.current) return;

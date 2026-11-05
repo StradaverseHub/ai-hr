@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import {workforceCompanies} from '@/core/workforce-access';
 import Link from 'next/link';
@@ -486,13 +487,13 @@ export default async function PeoplePage({
             />
             {/* Points 9 & 10 — a plain link, so the download is a GET the browser owns and the file is
                 whatever this screen is currently showing. */}
-            <a
+            <ExportDownloadLink
               href={exportHref}
               aria-label={t('exportAria')}
               className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
             >
               {t('exportXlsx')}
-            </a>
+            </ExportDownloadLink>
             {/* 6d671f44 — Create New Employee became its own step-by-step screen with Save as Draft,
                 because that reporter's requirement was literal: "The current employee list screen shall
                 not be used for data entry". The inline hire form that used to expand below this header is

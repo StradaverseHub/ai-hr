@@ -593,7 +593,7 @@ export function RosterTemplateButton({
     }
   };
   return (
-    <button
+    <button aria-busy={busy}
       type="button"
       disabled={busy}
       onClick={() => void download()}

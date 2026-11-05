@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { Button, Card, ErrorBanner, PageHeader, tableWrapCls, tbodyCls, theadCls, thCls } from '@/components/ui';
@@ -15,7 +16,7 @@ export default async function AssetRequestsPage({ searchParams }: { searchParams
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('requests.title')} description={approver ? t('requests.subtitleAll') : t('requests.subtitleMine')}
-        actions={<><Link href="/lifecycle/asset-requests/new"><Button size="sm">{t('hub.requestEquipment')}</Button></Link>{approver && <a className="text-sm text-primary underline-offset-2 hover:underline" href="/lifecycle/export/asset-requests">{t('common.exportCsv')}</a>}</>} />
+        actions={<><Link href="/lifecycle/asset-requests/new"><Button size="sm">{t('hub.requestEquipment')}</Button></Link>{approver && <ExportDownloadLink className="text-sm text-primary underline-offset-2 hover:underline" href="/lifecycle/export/asset-requests">{t('common.exportCsv')}</ExportDownloadLink>}</>} />
       <ErrorBanner message={sp.error} />
       <LifecycleTabs level={level} active="assetRequests" />
       <form className="flex flex-wrap items-center gap-2 text-sm">

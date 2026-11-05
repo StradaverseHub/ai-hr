@@ -6,6 +6,7 @@
  * open/close state and the delete confirm live client-side; the mutating actions are server actions
  * invoked via <form action={...}> so no client fetch/handler crosses the RSC boundary.
  */
+import { ActionButton } from '@/components/ui/action-button';
 import { ExportDownloadLink } from '@/components/export-download-link';
 import { useRef, useState } from 'react';
 import { useFitToView } from '@/components/ui/fit-to-view';
@@ -67,22 +68,22 @@ export function ReportRowActions({
             <form action={toggleFavouriteAction}>
               <input type="hidden" name="id" value={id} />
               <input type="hidden" name="next" value={String(!isFavourite)} />
-              <button type="submit" className={item}>
+              <ActionButton type="submit" className={item}>
                 {isFavourite ? labels.unfavourite : labels.favourite}
-              </button>
+              </ActionButton>
             </form>
             <form action={setSharedAction}>
               <input type="hidden" name="id" value={id} />
               <input type="hidden" name="next" value={String(!shared)} />
-              <button type="submit" className={item}>
+              <ActionButton type="submit" className={item}>
                 {shared ? labels.unshare : labels.share}
-              </button>
+              </ActionButton>
             </form>
             <form action={duplicateReportAction}>
               <input type="hidden" name="id" value={id} />
-              <button type="submit" className={item}>
+              <ActionButton type="submit" className={item}>
                 {labels.duplicate}
-              </button>
+              </ActionButton>
             </form>
             <div className="border-t border-border" />
             {!periodComparison&&<ExportDownloadLink className={item} href={exportHref('csv')}>{labels.exportCsv}</ExportDownloadLink>}
@@ -97,9 +98,9 @@ export function ReportRowActions({
               }}
             >
               <input type="hidden" name="id" value={id} />
-              <button type="submit" className={`${item} text-red-600 dark:text-red-400`}>
+              <ActionButton type="submit" className={`${item} text-red-600 dark:text-red-400`}>
                 {labels.delete}
-              </button>
+              </ActionButton>
             </form>
           </div>
         </>

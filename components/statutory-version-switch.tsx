@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { MONO_UNDERLINE_FIELD as MONO_FIELD } from '@/components/monolith/classes';
 import { inputCls } from '@/components/ui';
 
@@ -55,9 +56,9 @@ export function StatutoryVersionSwitch({
           ))}
         </select>
       </label>
-      <button type="submit" className="sr-only focus:not-sr-only">
+      <ActionButton type="submit" className="sr-only focus:not-sr-only">
         {submitLabel}
-      </button>
+      </ActionButton>
     </form>
   );
 }

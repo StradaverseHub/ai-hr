@@ -384,7 +384,7 @@ export function TxnImportButtons({
               {/* Only the VALID rows are written, and only when this is pressed. Disabled while there is
                   nothing to write, so the button can never be a no-op that looks like a success. */}
               {!result && (
-                <Button
+                <Button aria-busy={pending}
                   type="button"
                   size="sm"
                   disabled={pending || !preview || !!preview.fileError || preview.valid === 0}

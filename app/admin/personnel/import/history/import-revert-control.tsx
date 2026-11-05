@@ -35,9 +35,9 @@ export function ImportRevertControl({attemptId}:{attemptId:string}){
    <ul className="divide-y rounded-lg border text-sm">{preview.items.map(item=><li key={item.itemId} className="space-y-1 p-3"><p className="font-medium">{item.label}</p><RestoreSummary restore={item.restore}/></li>)}</ul>
    <label className="block space-y-1 text-sm"><span className="font-medium">{t('revert.reason')}</span><textarea className={`${inputCls} h-auto py-2`} rows={3} maxLength={IMPORT_REVERT_REASON_MAX} value={reason} disabled={busy} onChange={e=>setReason(e.target.value)}/><span className="block text-xs text-muted-foreground">{t('revert.reasonHint')}</span></label>
    <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1" checked={acknowledged} disabled={busy} onChange={e=>setAcknowledged(e.target.checked)}/><span>{t('revert.acknowledge')}</span></label>
-   <div className="flex gap-3"><button type="button" className="min-h-11 rounded-lg border border-destructive px-4 py-2 text-sm font-medium text-destructive disabled:opacity-40" disabled={busy||!acknowledged||!validReason} onClick={revert}>{busy?t('revert.working'):t('revert.confirm')}</button><button type="button" className="min-h-11 rounded-lg border px-4 py-2 text-sm" disabled={busy} onClick={close}>{t('revert.cancel')}</button></div>
+   <div className="flex gap-3"><button aria-busy={busy} type="button" className="min-h-11 rounded-lg border border-destructive px-4 py-2 text-sm font-medium text-destructive disabled:opacity-40" disabled={busy||!acknowledged||!validReason} onClick={revert}>{busy?t('revert.working'):t('revert.confirm')}</button><button aria-busy={busy} type="button" className="min-h-11 rounded-lg border px-4 py-2 text-sm" disabled={busy} onClick={close}>{t('revert.cancel')}</button></div>
   </div>}
-  {preview&&!preview.eligible&&<button type="button" className="min-h-11 rounded-lg border px-4 py-2 text-sm" disabled={busy} onClick={()=>{close();setBlockers([]);}}>{t('revert.cancel')}</button>}
+  {preview&&!preview.eligible&&<button aria-busy={busy} type="button" className="min-h-11 rounded-lg border px-4 py-2 text-sm" disabled={busy} onClick={()=>{close();setBlockers([]);}}>{t('revert.cancel')}</button>}
   {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
  </section>;
 }

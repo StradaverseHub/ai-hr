@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listReimbursementsDue } from '@/core/claims';
@@ -34,13 +35,13 @@ export default async function ReimbursementsPage({
         description={t('subtitle')}
         actions={
           due.length > 0 ? (
-            <a
+            <ExportDownloadLink
               href="/admin/claims/reimbursements/export"
               className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
               title={t('exportTitle')}
             >
               ⬇ {t('export')}
-            </a>
+            </ExportDownloadLink>
           ) : undefined
         }
       />

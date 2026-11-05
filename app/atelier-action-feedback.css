@@ -1,5 +1,5 @@
 /* Atelier only. State comes from the form, router or confirmed server response. */
-[data-ui-theme='atelier'] :is(button, a)[data-action-pending='true'] {
+[data-ui-theme='atelier'] :is(button[aria-busy='true'], :is(button, a)[data-action-pending='true']) {
   cursor: progress;
   animation: atelier-action-pulse 900ms ease-in-out infinite alternate;
 }
@@ -104,9 +104,9 @@
   to { opacity: 0; transform: scale(1.3); }
 }
 @media (prefers-reduced-motion: reduce) {
-  [data-ui-theme='atelier'] :is(.atelier-approval-seal, [data-action-pending='true']),
+  [data-ui-theme='atelier'] :is(.atelier-approval-seal, button[aria-busy='true'], [data-action-pending='true']),
   [data-ui-theme='atelier'] :is(.atelier-navigation-feedback, .atelier-filter-feedback)::after { animation: none !important; }
-  [data-ui-theme='atelier'] [data-action-pending='true'] { box-shadow: inset 0 -2px 0 currentColor; }
+  [data-ui-theme='atelier'] :is(button[aria-busy='true'], [data-action-pending='true']) { box-shadow: inset 0 -2px 0 currentColor; }
   [data-ui-theme='atelier'] .atelier-approval-seal::after { display: none; }
   [data-ui-theme='atelier'] [data-approval-surface]::after { transition: none; transform: none; }
 }

@@ -148,7 +148,7 @@ export function EmployeeSwitcher({
             results.map((e, i) => {
               const isCurrent = e.employmentId === currentEmploymentId;
               return (
-                <button
+                <button aria-busy={isPending}
                   key={e.employmentId}
                   type="button"
                   role="option"

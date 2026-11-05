@@ -460,7 +460,7 @@ export function EmployeeScopePanel({
             box: a reader who has typed a name and changed their mind must not have to clear the search to
             find their way back to the whole list. */}
         {allowAll && (
-          <button
+          <button aria-busy={isPending}
             type="button"
             aria-current={selectedId == null ? 'true' : undefined}
             onClick={clearSelection}
@@ -484,7 +484,7 @@ export function EmployeeScopePanel({
         {results.map((e) => {
           const active = e.employmentId === selectedId;
           return (
-            <button
+            <button aria-busy={isPending}
               key={e.employmentId}
               type="button"
               aria-current={active ? 'true' : undefined}

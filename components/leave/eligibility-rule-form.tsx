@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 
@@ -450,7 +451,7 @@ export function EligibilityRuleForm({
       ))}
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" variant="outline" onClick={check} disabled={pending}>
+        <Button aria-busy={pending} type="button" variant="outline" onClick={check} disabled={pending}>
           {t('ruleCheckAudience')}
         </Button>
         {count != null ? (
@@ -459,9 +460,9 @@ export function EligibilityRuleForm({
           <span className="text-xs text-muted-foreground">{t('ruleCheckHint')}</span>
         )}
         {unrestricted ? <span className="text-sm font-medium">{t('ruleEveryoneWarning')}</span> : null}
-        <button type="submit" className={btnPrimary}>
+        <ActionButton type="submit" className={btnPrimary}>
           {save.label}
-        </button>
+        </ActionButton>
       </div>
 
       {/* r224 — THE NOTE THIS EDITOR HAS NEVER HAD. The table form next door has said which of the two

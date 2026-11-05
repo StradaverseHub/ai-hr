@@ -28,14 +28,14 @@ export function TaxBasisProgress({batchId,recoverable,canRecalculate}:{batchId:s
     <div className="flex flex-wrap items-center justify-between gap-4">
       <p className="max-w-3xl text-sm text-muted-foreground">{t(recoverable?'interruptedHint':'continueHint')}</p>
       <div className="flex flex-wrap gap-3">
-        <button type="button" className={button} onClick={()=>router.refresh()} disabled={busy}>{t('refresh')}</button>
-        {!recoverable&&canRecalculate&&<button type="button" className={primary} onClick={()=>proceed('continue')} disabled={busy}>{t(busy?'processing':'continueAction')}</button>}
+        <button aria-busy={busy} type="button" className={button} onClick={()=>router.refresh()} disabled={busy}>{t('refresh')}</button>
+        {!recoverable&&canRecalculate&&<button aria-busy={busy} type="button" className={primary} onClick={()=>proceed('continue')} disabled={busy}>{t(busy?'processing':'continueAction')}</button>}
         {recoverable&&canRecalculate&&<AlertDialog.Root open={open} onOpenChange={value=>{if(!busy)setOpen(value);}}>
-          <AlertDialog.Trigger asChild><button type="button" className={button} disabled={busy}>{t('reviewUnfinished')}</button></AlertDialog.Trigger>
+          <AlertDialog.Trigger asChild><button aria-busy={busy} type="button" className={button} disabled={busy}>{t('reviewUnfinished')}</button></AlertDialog.Trigger>
           <AlertDialog.Portal><AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/45"/><AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] overflow-y-auto w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-popover p-6 text-popover-foreground shadow-xl">
             <AlertDialog.Title className="text-lg font-semibold">{t('recoverTitle')}</AlertDialog.Title>
             <AlertDialog.Description className="mt-3 text-sm text-muted-foreground">{t('recoverDescription')}</AlertDialog.Description>
-            <div className="mt-6 flex flex-wrap justify-end gap-3"><AlertDialog.Cancel asChild><button type="button" className={button} disabled={busy}>{t('cancel')}</button></AlertDialog.Cancel><button type="button" className={primary} disabled={busy} onClick={()=>proceed('recover')}>{t(busy?'processing':'recoverAction')}</button></div>
+            <div className="mt-6 flex flex-wrap justify-end gap-3"><AlertDialog.Cancel asChild><button aria-busy={busy} type="button" className={button} disabled={busy}>{t('cancel')}</button></AlertDialog.Cancel><button aria-busy={busy} type="button" className={primary} disabled={busy} onClick={()=>proceed('recover')}>{t(busy?'processing':'recoverAction')}</button></div>
           </AlertDialog.Content></AlertDialog.Portal>
         </AlertDialog.Root>}
       </div>

@@ -94,10 +94,10 @@ export function SettingsForm({companyId, companyName, fields, otherCompanies}: {
             {/* Phone width: the Move buttons take their own line under the name and switch (order-last + full
                 basis), so a row is two lines rather than three; from `sm` up everything sits on one line. */}
             <span className="order-last flex shrink-0 basis-full items-center gap-2 pl-[3.25rem] sm:order-none sm:basis-auto sm:pl-0">
-              <button type="button" className={moveCls} aria-label={`${t('moveUp')}: ${label(k)}`} disabled={pending || i === 0} onClick={() => moveTo(i, i - 1)}>
+              <button aria-busy={pending} type="button" className={moveCls} aria-label={`${t('moveUp')}: ${label(k)}`} disabled={pending || i === 0} onClick={() => moveTo(i, i - 1)}>
                 <ArrowUp className="size-3.5" aria-hidden/>{t('moveUp')}
               </button>
-              <button type="button" className={moveCls} aria-label={`${t('moveDown')}: ${label(k)}`} disabled={pending || i === shown.length - 1} onClick={() => moveTo(i, i + 1)}>
+              <button aria-busy={pending} type="button" className={moveCls} aria-label={`${t('moveDown')}: ${label(k)}`} disabled={pending || i === shown.length - 1} onClick={() => moveTo(i, i + 1)}>
                 <ArrowDown className="size-3.5" aria-hidden/>{t('moveDown')}
               </button>
             </span>
@@ -124,7 +124,7 @@ export function SettingsForm({companyId, companyName, fields, otherCompanies}: {
         : <span/>}
       <div className="ml-auto flex gap-3">
         <Button asChild variant="outline"><Link href="/payroll/setup">{t('cancel')}</Link></Button>
-        <Button type="submit" form={saveFormId} disabled={pending}>{pending ? t('saving') : t('save')}</Button>
+        <Button aria-busy={pending} type="submit" form={saveFormId} disabled={pending}>{pending ? t('saving') : t('save')}</Button>
       </div>
     </div>
   </Card>;
@@ -155,7 +155,7 @@ function CopyToCompanies({companyId, companyName, companies, dirty}: {companyId:
   return <div className="flex max-w-xl flex-col items-start gap-2">
     <AlertDialog.Root open={open} onOpenChange={o => { if (o) setSelected(new Set()); setOpen(o); }}>
       <AlertDialog.Trigger asChild>
-        <Button type="button" variant="outline" disabled={pending}>{t('copyButton')}</Button>
+        <Button aria-busy={pending} type="button" variant="outline" disabled={pending}>{t('copyButton')}</Button>
       </AlertDialog.Trigger>
       <AlertDialog.Portal>
         <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50"/>
@@ -179,7 +179,7 @@ function CopyToCompanies({companyId, companyName, companies, dirty}: {companyId:
             {dirty && <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{t('copyUnsaved')}</p>}
             <div className="mt-5 flex justify-end gap-2">
               <AlertDialog.Cancel asChild><Button type="button" variant="outline" size="sm">{t('cancel')}</Button></AlertDialog.Cancel>
-              <Button type="submit" size="sm" disabled={selected.size === 0 || pending}>{t('copyConfirm')}</Button>
+              <Button aria-busy={pending} type="submit" size="sm" disabled={selected.size === 0 || pending}>{t('copyConfirm')}</Button>
             </div>
           </form>
         </AlertDialog.Content>

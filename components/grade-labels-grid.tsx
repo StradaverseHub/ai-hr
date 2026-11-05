@@ -417,10 +417,10 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
           <Button type="button" variant="outline" size="sm" onClick={addRow}>
             {t('addRow')}
           </Button>
-          <Button type="button" size="sm" onClick={save} disabled={!hasChanges || pending}>
+          <Button aria-busy={pending} type="button" size="sm" onClick={save} disabled={!hasChanges || pending}>
             {t('saveAll')}
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={discard} disabled={!hasChanges || pending}>
+          <Button aria-busy={pending} type="button" variant="outline" size="sm" onClick={discard} disabled={!hasChanges || pending}>
             {t('discard')}
           </Button>
         </div>
@@ -642,7 +642,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                     <td colSpan={7} className="px-3 pb-2">
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span className="text-destructive">{restoreOffer.message}</span>
-                        <button
+                        <button aria-busy={pending}
                           type="button"
                           disabled={pending}
                           onClick={() => restoreArchived(r.key, restoreOffer.id)}

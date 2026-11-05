@@ -233,7 +233,7 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
         </FormRow>
         {!preview && (
           <div className="flex justify-end pt-4">
-            <Button onClick={validate} disabled={pending || !bytes || !mappingId}>
+            <Button aria-busy={pending} onClick={validate} disabled={pending || !bytes || !mappingId}>
               {pending ? t('import.validating') : t('import.validate')}
             </Button>
           </div>
@@ -347,7 +347,7 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
           </SectionCard>
           <p className={noteCls}>{t.rich('import.errorsNotImported', { b: (x) => <strong>{x}</strong> })}</p>
           <div className="flex flex-wrap justify-end gap-2">
-            <Button
+            <Button aria-busy={pending}
               variant="outline"
               disabled={pending}
               onClick={() => {
@@ -358,7 +358,7 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
             >
               {t('import.startAgain')}
             </Button>
-            <Button onClick={commit} disabled={pending}>
+            <Button aria-busy={pending} onClick={commit} disabled={pending}>
               {pending ? t('import.importing') : t('import.importValid', { count: c.valid })}
             </Button>
           </div>

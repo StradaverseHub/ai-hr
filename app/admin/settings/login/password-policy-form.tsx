@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import { useActionState, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { inputCls, btnPrimary } from '@/components/ui';
@@ -31,7 +32,7 @@ export function PasswordPolicyForm({ policy, revision }: PasswordPolicyState) {
     <p className="text-sm leading-relaxed text-muted-foreground">{t('reuse')}</p>
     {enabled && <p className="text-sm leading-relaxed text-muted-foreground">{t('effect')}</p>}
     <div className="flex flex-wrap items-center gap-4">
-      <button type="submit" disabled={pending} className={`${btnPrimary} min-h-11`}>{t(pending ? 'saving' : 'save')}</button>
+      <ActionButton aria-busy={pending} type="submit" disabled={pending} className={`${btnPrimary} min-h-11`}>{t(pending ? 'saving' : 'save')}</ActionButton>
       {state.status !== 'idle' && <p role={state.status === 'saved' ? 'status' : 'alert'} className={`text-sm ${state.status === 'saved' ? 'text-foreground' : 'text-destructive'}`}>{t(`result.${state.status}`)}</p>}
     </div>
   </form>;

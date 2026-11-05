@@ -1,5 +1,6 @@
 'use client';
 
+import { ExportDownloadLink } from '@/components/export-download-link';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -50,18 +51,18 @@ export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];s
   });
   return <section className="space-y-3" data-label-import>
     <div className="flex flex-wrap justify-end gap-2">
-      <a href="/admin/settings/system-labels/template" className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium">{tx('template')}</a>
+      <ExportDownloadLink href="/admin/settings/system-labels/template" className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium">{tx('template')}</ExportDownloadLink>
       <Button ref={importTrigger} type="button" onClick={()=>{if(summary){setSummary(null);setPreview(null);setFile(null);setError('');}setOpen(true);}}>{t('import')}</Button>
     </div>
     <Dialog.Root open={open} onOpenChange={value=>{if(!pending)setOpen(value);}}><Dialog.Portal>
       <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40"/>
       <Dialog.Content onCloseAutoFocus={event=>{event.preventDefault();importTrigger.current?.focus();}} className="fixed left-1/2 top-1/2 z-50 flex max-h-[92dvh] w-[96vw] max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xl">
-        <header className="flex items-start justify-between gap-4 p-5"><div><Dialog.Title className="text-lg font-semibold">{w('title')}</Dialog.Title><Dialog.Description className="mt-1 text-sm text-muted-foreground">{w('description')}</Dialog.Description></div><Dialog.Close asChild><Button type="button" variant="ghost" disabled={pending} aria-label={w('close')}>×</Button></Dialog.Close></header>
+        <header className="flex items-start justify-between gap-4 p-5"><div><Dialog.Title className="text-lg font-semibold">{w('title')}</Dialog.Title><Dialog.Description className="mt-1 text-sm text-muted-foreground">{w('description')}</Dialog.Description></div><Dialog.Close asChild><Button aria-busy={pending} type="button" variant="ghost" disabled={pending} aria-label={w('close')}>×</Button></Dialog.Close></header>
         <ol aria-label={w('steps')} className="grid grid-cols-3 gap-2 border-y border-border bg-muted/30 px-4 py-3 text-xs sm:text-sm">{[1,2,3].map(number=><li key={number} aria-current={step===number?'step':undefined} className={`flex items-center gap-2 ${step===number?'font-semibold text-primary':'text-muted-foreground'}`}><span aria-hidden className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-current">{number}</span>{w(`step${number}`)}</li>)}</ol>
         <div className="space-y-4 overflow-y-auto p-5" aria-busy={pending}>
           <div role={error?'alert':undefined}><ErrorBanner message={error}/></div>
           {step===1&&<div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-5"><section><h3 className="font-semibold">1. {w('template')}</h3><a href="/admin/settings/system-labels/template" className="mt-2 inline-flex min-h-9 items-center rounded-md border border-border px-3 text-sm font-medium">{tx('template')}</a></section><section><h3 className="font-semibold">2. {w('newOnly')}</h3><p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{w('warning')}</p></section></div>
+            <div className="space-y-5"><section><h3 className="font-semibold">1. {w('template')}</h3><ExportDownloadLink href="/admin/settings/system-labels/template" className="mt-2 inline-flex min-h-9 items-center rounded-md border border-border px-3 text-sm font-medium">{tx('template')}</ExportDownloadLink></section><section><h3 className="font-semibold">2. {w('newOnly')}</h3><p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{w('warning')}</p></section></div>
             <section><h3 className="font-semibold">3. {w('upload')}</h3><label className={`relative mt-2 flex min-h-48 cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-primary/40 bg-muted/20 p-5 text-center focus-within:ring-2 focus-within:ring-primary ${pending?'pointer-events-none opacity-60':''}`} onDragOver={event=>{event.preventDefault();}} onDrop={event=>{event.preventDefault();if(!pending)choose(event.dataTransfer.files[0]??null);}}>
               <svg aria-hidden="true" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="text-primary"><path d="M7 18H5a4 4 0 0 1-.7-7.94 7 7 0 0 1 13.43-1.48A4.5 4.5 0 0 1 19 17.9h-2M12 21V10m-4 4 4-4 4 4"/></svg>
               <span className="font-medium">{w('drop')}</span><span className="text-xs text-muted-foreground">{w('accepts')}</span><span className="text-xs text-muted-foreground">{w('maximum')}</span>
@@ -77,11 +78,11 @@ export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];s
           {step===3&&summary&&<><h3 ref={stepHeading} tabIndex={-1} className="font-semibold outline-none">{w('step3')}</h3><p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">{w('summary',{created:summary.imported,skipped:summary.skipped})}</p><p className="text-sm text-muted-foreground">{w('doneHelp')}</p></>}
         </div>
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4"><p className="text-xs text-muted-foreground">{step===1?w('recognised'):step===2?w('onlyNew',{count:ready}):w('unchanged')}</p><div className="flex flex-wrap justify-end gap-2">
-          {step===2&&<Button type="button" variant="secondary" disabled={pending} onClick={()=>{setPreview(null);setError('');setRetry(false);}}>{w('back')}</Button>}
-          {(step===2&&blocked>0||step===3&&summary&&summary.skipped>0)&&<Button type="button" variant="outline" disabled={pending} onClick={errors}>{w('errorReport')}</Button>}
-          {step===1&&<><Dialog.Close asChild><Button type="button" variant="secondary" disabled={pending}>{tc('cancel')}</Button></Dialog.Close><Button type="button" disabled={!file||pending} onClick={analyse}>{pending?t('working'):w('check')}</Button></>}
-          {step===2&&(retry?<Button type="button" disabled={pending} onClick={analyse}>{pending?t('working'):w('checkAgain')}</Button>:<Button type="button" disabled={pending||!preview?.valid||!ready} onClick={apply}>{pending?w('importing'):w('importCount',{count:ready})}</Button>)}
-          {step===3&&<Dialog.Close asChild><Button type="button" disabled={pending}>{w('step3')}</Button></Dialog.Close>}
+          {step===2&&<Button aria-busy={pending} type="button" variant="secondary" disabled={pending} onClick={()=>{setPreview(null);setError('');setRetry(false);}}>{w('back')}</Button>}
+          {(step===2&&blocked>0||step===3&&summary&&summary.skipped>0)&&<Button aria-busy={pending} type="button" variant="outline" disabled={pending} onClick={errors}>{w('errorReport')}</Button>}
+          {step===1&&<><Dialog.Close asChild><Button aria-busy={pending} type="button" variant="secondary" disabled={pending}>{tc('cancel')}</Button></Dialog.Close><Button aria-busy={pending} type="button" disabled={!file||pending} onClick={analyse}>{pending?t('working'):w('check')}</Button></>}
+          {step===2&&(retry?<Button aria-busy={pending} type="button" disabled={pending} onClick={analyse}>{pending?t('working'):w('checkAgain')}</Button>:<Button aria-busy={pending} type="button" disabled={pending||!preview?.valid||!ready} onClick={apply}>{pending?w('importing'):w('importCount',{count:ready})}</Button>)}
+          {step===3&&<Dialog.Close asChild><Button aria-busy={pending} type="button" disabled={pending}>{w('step3')}</Button></Dialog.Close>}
         </div></footer>
       </Dialog.Content>
     </Dialog.Portal></Dialog.Root>

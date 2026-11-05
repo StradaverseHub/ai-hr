@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import {SpecialistCandidateChoices} from './specialist-candidate-choices';
 import {SpecialistPromotionChoices} from './specialist-promotion-choices';
 import {randomUUID} from 'node:crypto';
@@ -17,7 +18,7 @@ export async function SpecialistJobComposer({modules}:{modules:readonly AgentMod
    <label className="block text-sm">{t('module')}<select name="module" required defaultValue="" className={`${inputCls} mt-1 min-h-11 w-full`}>
     <option value="" disabled>{t('chooseModule')}</option>{modules.map(module=><option key={module} value={module}>{jobs(`module_${module}`)}</option>)}
    </select></label>
-   <button type="submit" disabled={!modules.length} className={`${btnPrimary} min-h-11`}>{t('run')}</button>
+   <ActionButton type="submit" disabled={!modules.length} className={`${btnPrimary} min-h-11`}>{t('run')}</ActionButton>
   </form>
  </Card>;
 }
@@ -37,7 +38,7 @@ export async function ModuleSpecialistReview({view}:{view:View}){
     </fieldset>}
     {view.signalChoicesTruncated&&<p className="text-xs text-muted-foreground">{t('signalsTruncated')}</p>}
     {view.nativeSignalChoicesTruncated&&<p className="text-xs text-muted-foreground">{t('signalsTruncated')}</p>}
-    <button type="submit" disabled={!view.modules.length} className={`${btnPrimary} min-h-11`}>{t('create')}</button>
+    <ActionButton type="submit" disabled={!view.modules.length} className={`${btnPrimary} min-h-11`}>{t('create')}</ActionButton>
    </form>
    {view.candidates.length?<ul className="space-y-3">{view.candidates.map(row=><li key={row.id} className="rounded-lg border p-3 text-sm">
     <p className="font-medium">{record(row)}{row.playbook&&<> · {t(row.playbook==='canonical_followup_v1'?'strategyDiagnostic':'strategySummary')}</>}</p><p className="mt-1 text-xs text-muted-foreground">{row.evaluations===null||row.passingEvaluators===null||row.incompleteEvaluators===null?t('evaluationsUnknown'):<>{t('evaluations',{count:row.evaluations})} · {t('passing',{count:row.passingEvaluators})} · {t('incomplete',{count:row.incompleteEvaluators})}</>}</p>
@@ -45,17 +46,17 @@ export async function ModuleSpecialistReview({view}:{view:View}){
    {reviewable.length>0&&<form action={evaluateSpecialistCandidateAction} className="space-y-3">
     <label className="block text-sm">{t('chooseCandidate')}<select name="candidateId" required className={`${inputCls} mt-1 min-h-11 w-full`}>{reviewable.map(row=><option key={row.id} value={row.id}>{record(row)}</option>)}</select></label>
     <label className="flex min-h-11 items-start gap-2 text-xs"><input type="checkbox" name="consented" value="yes" required className="mt-0.5"/><span>{t('evaluateConsent')}</span></label>
-    <button type="submit" className={`${btnPrimary} min-h-11`}>{t('evaluate')}</button>
+    <ActionButton type="submit" className={`${btnPrimary} min-h-11`}>{t('evaluate')}</ActionButton>
    </form>}
    {promotable.length>0&&<form action={promoteSpecialistCandidateAction} className="space-y-3">
     <SpecialistPromotionChoices candidates={promotable.map(row=>({value:row.id,label:record(row),personalSignals:row.personalSignals}))} companies={view.companies}
      messages={{chooseCandidate:t('chooseCandidate'),scopeLegend:t('scopeLegend'),scopeUser:t('scopeUser'),scopeCompany:t('scopeCompany'),scopeTenant:t('scopeTenant'),company:t('scopeCompanyChoice'),scopeHint:t('scopeHint'),scopeSignalsOnly:t('scopeSignalsOnly')}}/>
     <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">{t('maxJobs')}<input name="maxJobs" type="number" min={1} max={100} defaultValue={5} required className={`${inputCls} mt-1 min-h-11 w-full`}/></label>
      <label className="text-sm">{t('hours')}<input name="hours" type="number" min={1} max={24} defaultValue={1} required className={`${inputCls} mt-1 min-h-11 w-full`}/></label></div>
-    <p className="text-xs text-muted-foreground">{t('promotionScope')}</p><button type="submit" className={`${btnPrimary} min-h-11`}>{t('promote')}</button>
+    <p className="text-xs text-muted-foreground">{t('promotionScope')}</p><ActionButton type="submit" className={`${btnPrimary} min-h-11`}>{t('promote')}</ActionButton>
    </form>}
    {active.length>0&&<form action={rollbackSpecialistCandidateAction} className="space-y-3"><label className="block text-sm">{t('rollback')}<select name="promotionId" className={`${inputCls} mt-1 min-h-11 w-full`}>{active.map(row=><option key={row.id} value={row.id}>{record(row)} · {row.used}/{row.maximum}</option>)}</select></label>
-    <button type="submit" className="min-h-11 rounded-md border px-3 text-sm">{t('rollback')}</button>
+    <ActionButton type="submit" className="min-h-11 rounded-md border px-3 text-sm">{t('rollback')}</ActionButton>
    </form>}
   </div>
  </details></Card>;

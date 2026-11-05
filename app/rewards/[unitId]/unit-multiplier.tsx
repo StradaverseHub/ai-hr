@@ -43,7 +43,7 @@ export function UnitMultiplier({ value: v }: { value: UnitMultiplierValue }) {
       <div className="flex flex-wrap items-end gap-3">
         <Field label={t('multiplierAuto')}><input type="number" min="0" step="0.01" name="multiplier" value={input} onChange={e => edit(e.target.value)} placeholder={t('automatic')} className={inputCls} /></Field>
         <Field label={t('unitBonus.reason')}><input name="reason" required minLength={10} maxLength={2000} value={reason} onChange={e => { setReason(e.target.value); setSaved(false); }} className={`${inputCls} min-w-72`} /></Field>
-        <Button type="button" variant="outline" disabled={busy || invalid} onClick={() => start(async () => {
+        <Button aria-busy={busy} type="button" variant="outline" disabled={busy || invalid} onClick={() => start(async () => {
           setError(''); setSaved(false);
           const result = await previewRewardMultiplierAction(v.unitId, v.revision, candidate);
           if (result.ok) setPreview(result.preview); else { setPreview(null); setError(result.error); }
@@ -59,7 +59,7 @@ export function UnitMultiplier({ value: v }: { value: UnitMultiplierValue }) {
         {!current.blocked && current.plans.some(p => p.over) && <p className="text-sm">{t('unitBonus.overExempt')}</p>}
       </div>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <Button type="button" disabled={busy || !current || current.blocked || reasonShort} onClick={() => start(async () => {
+      <Button aria-busy={busy} type="button" disabled={busy || !current || current.blocked || reasonShort} onClick={() => start(async () => {
         if (!current) return; setError('');
         const result = await saveRewardMultiplierAction(v.unitId, v.revision, candidate, reason, current.digest);
         if (result.ok) { setPreview(null); setReason(''); setSaved(true); router.refresh(); } else { setPreview(null); setError(result.error); }

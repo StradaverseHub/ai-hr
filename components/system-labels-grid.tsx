@@ -798,7 +798,7 @@ export function SystemLabelsGrid({
             {showFilters ? <ChevronUp className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
           </button>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={addRow} disabled={!newRowCompany || pending}>
+            <Button aria-busy={pending} type="button" variant="outline" size="sm" onClick={addRow} disabled={!newRowCompany || pending}>
               {t('addRow')}
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={() => setCopyOpen((v) => !v)} disabled={selected.size === 0}>
@@ -807,10 +807,10 @@ export function SystemLabelsGrid({
             <Button type="button" variant="outline" size="sm" onClick={exportCsv}>
               {t('exportCsv')}
             </Button>
-            <Button type="button" size="sm" onClick={save} disabled={!hasChanges || pending}>
+            <Button aria-busy={pending} type="button" size="sm" onClick={save} disabled={!hasChanges || pending}>
               {t('saveAll')}
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={discard} disabled={!hasChanges || pending}>
+            <Button aria-busy={pending} type="button" variant="outline" size="sm" onClick={discard} disabled={!hasChanges || pending}>
               {t('discard')}
             </Button>
           </div>

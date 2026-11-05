@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import {listEmployees} from '@/core/read';
 import {profileRuleApprovers} from '@/lib/profile-routing-policy';
@@ -99,7 +100,7 @@ export default async function ProfileRequestSettingsPage({
 
       {!mayWrite && <Card className="p-4 text-sm text-muted-foreground">{t('readOnlyNotice')}</Card>}
 
-      <Card className="p-5"><SectionHeader title={te('approvalRules')}/><p className="mt-2 text-sm text-muted-foreground">{te('photoEditHelp')}</p><form action={saveOwnPhotoSettingAction} className="mt-4 space-y-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" defaultChecked={getSetting(s,'ess.profile_photo_edit')===true} disabled={!mayWrite}/>{te('allowOwnPhoto')}</label>{mayWrite&&<button type="submit" className={btnPrimary}>{te('savePhotoPermission')}</button>}</form>
+      <Card className="p-5"><SectionHeader title={te('approvalRules')}/><p className="mt-2 text-sm text-muted-foreground">{te('photoEditHelp')}</p><form action={saveOwnPhotoSettingAction} className="mt-4 space-y-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" defaultChecked={getSetting(s,'ess.profile_photo_edit')===true} disabled={!mayWrite}/>{te('allowOwnPhoto')}</label>{mayWrite&&<ActionButton type="submit" className={btnPrimary}>{te('savePhotoPermission')}</ActionButton>}</form>
 
       <div className="mt-5 space-y-3 border-t border-border pt-5"><SectionHeader title={te('namedRouting')}/><p className="text-sm text-muted-foreground">{te('anyApprover')}</p><ul className="list-inside list-disc text-sm">{routing.rules.map(rule=><li key={rule.id}>{rule.name}: {profileRuleApprovers(rule).map(id=>approverNames.get(id)??te('unavailableSelection')).join(', ')}</li>)}</ul><Link href="/admin/settings/profile-requests/rules" className={btnPrimary}>{te('manageApprovalRules')}</Link></div>
 
@@ -117,9 +118,9 @@ export default async function ProfileRequestSettingsPage({
         <form action={saveProfileRequestFieldsAction} className="mt-4 space-y-5"><input type="hidden" name="policyFingerprint" value={profileVisibilityFingerprint(raw)}/>
           <PermissionMatrix disabled={!mayWrite} groups={isProfileVisibilityPolicyValue(raw)&&raw.version!==3?{...raw.groups}:{}} rows={essVisibleFields().map(field=>({linked:linkedEssFieldIds(field.id),id:field.id,tab:field.tab,section:field.section,tabLabel:tp(`tabs.${tabKeys[ESS_PROFILE_TABS.indexOf(field.tab as typeof ESS_PROFILE_TABS[number])]}`),label:personnelFieldLabel(field,(key,fallback)=>labels.has(key)?labels(key):fallback),group:`${tp(`tabs.${tabKeys[ESS_PROFILE_TABS.indexOf(field.tab as typeof ESS_PROFILE_TABS[number])]}`)} · ${PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]?tp(PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]):field.section}`,approval:profileFieldApproval(raw,field),canEdit:Boolean(field.ess.binding&&['immediate','approval'].includes(field.ess.edit)),permission:isProfileVisibilityPolicyValue(raw)?raw.fields[field.id]??'hide':!visible.has(field.id)?'hide':allowed.has(field.id)?'editable':'viewOnly',primaryOnly:isProfileVisibilityPolicyValue(raw)?raw.primaryOnly.includes(field.id):primaryAllowed.has(field.id),waiting:(pendingByKey.get(field.id)??0)+(field.ess.binding?.legacyKey?pendingByKey.get(field.ess.binding.legacyKey)??0:0)}))} labels={{matrixRegion:te('permissionMatrixRegion'),matrixScrollHelp:te('permissionMatrixScrollHelp'),editable:te('editable'),viewOnly:te('viewOnly'),hide:te('hide'),field:te('field'),all:te('selectAll'),primaryOnly:te('primaryOnly'),primaryApprovalRequiresEditable:te('primaryApprovalRequiresEditable'),waiting:te('waiting'),groupHelp:te('groupPermissionHelp'),tabPermission:te('tabPermission'),sectionPermission:te('sectionPermission'),approvalRequired:te('approvalRequired'),attachment:te('attachmentRequirement'),attachmentRequired:te('requiredAttachedFile'),attachmentOptional:te('notRequiredAttachedFile')}}/>
           {mayWrite ? (
-            <button type="submit" className={btnPrimary}>
+            <ActionButton type="submit" className={btnPrimary}>
               {t('saveFields')}
-            </button>
+            </ActionButton>
           ) : null}
         </form>
       </Card>
