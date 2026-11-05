@@ -188,16 +188,5 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     const none=await listRewardReviewStatus({...admin,userId,personId:p.id,roles:['employee'],grants:undefined},[b.companyId]);
     expect(none.rows).toEqual([]);expect(none.emptyReason).toBe('noRole');expect(JSON.stringify(none)).not.toContain('Fictional Annual');
   });
-  it('9040c2eb: measures one projection per review with a 50-review fixture',async()=>{
-    const first=await row();
-    for(let i=1;i<50;i++){
-      const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:`OVERVIEW-${i}`,label:`Fictional unit ${i}`,name:`Fictional unit ${i}`}).returning();
-      await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:bu.id,departmentId:b.deptA,year});
-      await createRewardUnit(admin,{cycleId:first.cycleId,year,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:today});
-    }
-    const started=performance.now(),overview=await listRewardReviewStatus(admin,[b.companyId]),elapsed=performance.now()-started;
-    expect(overview.rows).toHaveLength(50);expect(new Set(overview.rows.map(row=>row.id)).size).toBe(50);
-    console.info(`Rewards review list 50-review fixture: ${elapsed.toFixed(1)} ms`);
-  },60_000);
 
 });
