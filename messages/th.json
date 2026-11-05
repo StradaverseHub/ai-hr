@@ -35923,6 +35923,7 @@
     "inactive": "ไม่ใช้งาน"
   },
   "rewardAdvisor": {
+    "figureBreakdown": "ปรับตามผลงาน: {merit} · เลื่อนตำแหน่ง: {promotion} · ปรับพิเศษ: {special}",
     "saveCycle": "บันทึกเป็นค่าเริ่มต้นของรอบ",
     "title": "ผู้ช่วยเสนอแนะ",
     "back": "การทบทวนค่าตอบแทน",

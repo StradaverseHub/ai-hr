@@ -10,12 +10,13 @@ import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {owner,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,closeAll,type Base} from './harness';
-import {getRewardUnit,saveRewardEntry,decideRewardUnit,postRewardUnit,exportRewardReview,readOnlyRewardProjection} from '../packs/rewards/service';
+import {getRewardUnit,saveRewardEntry,decideRewardUnit,postRewardUnit,exportRewardReview,readOnlyRewardProjection,refreshRewardPatBasis} from '../packs/rewards/service';
 import {beginRewardViewAs,endRewardViewAs,changeRewardPermission,saveRewardSetupGrant,rewardPermissions,rewardViewAsState} from '../packs/rewards/access-policy';
 import {createUploadedRewards,uploadedRewards,saveUploadedRewards,confirmUploadedRewards,adjustUploadedAward,refreshUploadedRewardSources} from '../packs/rewards/uploaded-awards';
 import {emptyFacts,emptyRecommendation} from '../packs/rewards/model';
 import {generateRewardAdvisor,saveRewardAdvisorSettings} from '../packs/rewards/advisor';
 import {defaultAdvisorSettings} from '../packs/rewards/advisor-model';
+import {rewardRulesForReview} from '../packs/rewards/applied-rules';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
 async function denied(promise:Promise<unknown>){const error=await promise.then(()=>null,error=>error);expect(error).not.toBeNull();expect(pgSqlState(error)).toBe('42501');}
@@ -51,10 +52,16 @@ describe('approved Rewards review SQL custody',()=>{
   await endRewardViewAs(checker);
  });
  it('permission overrides narrow the native read owner and fixed own-line protection cannot be changed',async()=>{await expect(changeRewardPermission(gr,{role:'gr',capability:'own.never',allowed:true,reason:'Attempt to weaken own-line confidentiality'})).rejects.toThrow(/fixed/);await changeRewardPermission(gr,{role:'gr',capability:'review.view',allowed:false,reason:'Temporarily suspend this native page capability'});await expect(getRewardUnit(gr,unitId)).rejects.toThrow(/does not permit/);});
+ it('shows only the exact applied setup versions through the scoped Rules read',async()=>{
+  const applied=await rewardRulesForReview(checker,unitId);
+  expect(applied.versions).toMatchObject({plan:{name:'Uploaded fixture',version:1},salary:{version:1},bonus:{version:1},pat:{version:1,status:'final'}});
+  expect(JSON.stringify(applied)).not.toMatch(/patActual|targetCents|forecastCents|minimumCents|"ranges":/);
+ });
  it('audits an unavailable advisor without adding suggestions or changing any review money',async()=>{
   const [entry]=await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.id,entryId));
   const onehr={id:randomUUID(),reviewId:randomUUID(),cycleId:randomUUID(),digest:'a'.repeat(64),frozenAt:new Date().toISOString(),performance:'ME',potential:'Mid',talent:'Solid Core',pip:false,promotion:false,specialReward:false,policyDigest:'b'.repeat(64)} as const;
   await owner.db.update(schema.rewardEntry).set({source:{...entry.source,grade:'12',notice:false,payChanges:[],onehr},facts:{...emptyFacts(),reviewed:true,talent:'SCORE',performance:'ME'}}).where(eq(schema.rewardEntry.id,entryId));
+  await refreshRewardPatBasis(gr,unitId,1,'Validate current fictional advisor basis');
   await saveRewardAdvisorSettings(gr,unitId,{...defaultAdvisorSettings,enabled:true},'cycle');
   await expect(generateRewardAdvisor(gr,unitId,entryId)).rejects.toThrow(/provider is unavailable/);
   const [after]=await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.id,entryId));
@@ -112,6 +119,10 @@ describe('approved Rewards review SQL custody',()=>{
   await decideRewardUnit(buCtx,uploadedId,4,'submit','External company amounts reviewed and accepted');
   const line=(await uploadedRewards(actors.bg!,uploadedId))!.rows.find(r=>r.source.employmentId===subject.employmentId)!;
   await adjustUploadedAward(actors.bg!,uploadedId,line.id,4,{...award,incrementBp:null,newBasicCents:560000},'BG adjusted the external award after review');
+  const bgRead=(await uploadedRewards(actors.bg!,uploadedId))!;
+  expect(bgRead.adjustments).toContainEqual(expect.objectContaining({entryId:line.id,before:expect.objectContaining({newBasicCents:550000}),after:expect.objectContaining({newBasicCents:560000})}));
+  const eventRows=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'reward-unit.uploaded-award-adjusted'));
+  expect(eventRows).toHaveLength(1);expect(eventRows[0].payload).not.toHaveProperty('before');expect(eventRows[0].payload).not.toHaveProperty('after');
   const adjusted=await getRewardUnit(actors.bg!,uploadedId);expect(adjusted.flags).toContainEqual(expect.objectContaining({code:'UPL-02',severity:'warning'}));expect(adjusted.flags.some(f=>f.code.startsWith('BUD'))).toBe(false);
   for(const actor of [actors.bg!,doer,actors.ctro!,actors.ec!])await decideRewardUnit(actor,uploadedId,5,'approve','External award warning reviewed and accepted');
   const {batchId}=await createBatch(actors.payroll!,{companyId:co.id,payPeriod:`${year+1}-01`});

@@ -35923,6 +35923,7 @@
     "inactive": "Ngừng hoạt động"
   },
   "rewardAdvisor": {
+    "figureBreakdown": "Tăng theo thành tích: {merit} · Thăng chức: {promotion} · Điều chỉnh đặc biệt: {special}",
     "saveCycle": "Lưu làm mặc định cho chu kỳ",
     "title": "Trợ lý đề xuất",
     "back": "Rà soát đãi ngộ",
