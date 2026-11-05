@@ -228,16 +228,46 @@ export async function onboardingOptions(ctx: SessionContext) {
         return { supervisor: supervisors, company: companies, department: onboardingChoiceLabels(departments), ...registerLabels, grade: onboardingChoiceLabels(grades), employmentType: employmentTypeEnum.enumValues.map(id => ({ id, name: id.replaceAll('_', ' ') })) };
     });
 }
+function requireOnboardingListActor(actor: M.Actor) {
+    if (!actor.page && !actor.records) M.fail('Onboarding access is required.', 'forbidden');
+}
+
+function projectOnboardingListCase(data: M.Case, config: M.Config, actor: M.Actor) {
+    return projectJoinerPage(data, config, actor.page ? actor : { ...actor, sections: { ...JOINER_SECTION_PRESETS.approver, history: 'equip' }, hr: false });
+}
+
 export async function onboardingList(ctx: SessionContext, companyIds?: string[]) {
     return withTenant(ctx, async (tx) => {
         const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
-        if (!actor.page&&!actor.records)
-            M.fail('Onboarding access is required.', 'forbidden');
+        requireOnboardingListActor(actor);
         const list = await tx.select().from(cases).where(companyIds ? inArray(cases.companyId, companyIds) : undefined).orderBy(asc(cases.createdAt), asc(cases.id));
         const reads = await tx.select({ caseId: seen.caseId }).from(seen).where(eq(seen.userId, uid(ctx))), opened = new Set(reads.map(x => x.caseId));
-        return list.map(r => ({ case: projectJoinerPage(r.data,config,actor.page?actor:{...actor,sections:{...JOINER_SECTION_PRESETS.approver,history:'equip'},hr:false}), revision: r.revision, isNew: !opened.has(r.id), progress: M.progress(config, r.data) }));
+        return list.map(r => ({ case: projectOnboardingListCase(r.data, config, actor), revision: r.revision, isNew: !opened.has(r.id), progress: M.progress(config, r.data) }));
     });
 }
+/** Standalone register display only. Apply the canonical row privacy projection before deciding
+ * visibility, and preserve latest sync across all authorized history even when that row is hidden. */
+export function onboardingRegisterRows(ctx: SessionContext, display: Pick<M.Config, 'recentActiveDays'> & { today: string }) {
+    return withTenant(ctx, async tx => {
+        const { config, actor } = await onboardingContextTx(tx, ctx);
+        requireOnboardingListActor(actor);
+        const rows = await tx.select({ id: cases.id, data: cases.data }).from(cases).orderBy(asc(cases.createdAt), asc(cases.id));
+        let latestSync = '';
+        const recent: { id: string; case: M.Case }[] = [];
+        for (const row of rows) {
+            const projected = projectOnboardingListCase(row.data, config, actor);
+            if (projected.syncedAt > latestSync) latestSync = projected.syncedAt;
+            if (M.visibleRecentJoiner(display, projected, display.today)) recent.push({ id: row.id, case: projected });
+        }
+        const ids = '{' + recent.map(row => row.id).join(',') + '}';
+        const reads = recent.length ? await tx.select({ caseId: seen.caseId }).from(seen).where(and(
+            eq(seen.userId, uid(ctx)), sql`${seen.caseId} = any(${ids}::uuid[])`,
+        )) : [];
+        const opened = new Set(reads.map(row => row.caseId));
+        return { today: display.today, latestSync, rows: recent.map(row => ({ case: row.case, isNew: !opened.has(row.id) })) };
+    });
+}
+
 async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false) {
     const q = tx.select().from(cases).where(eq(cases.id, id)).limit(1), [row] = lock ? await q.for('update') : await q;
     if (!row)
