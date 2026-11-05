@@ -64,7 +64,7 @@ import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/s
 import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
-import { dispatchNotifications, listNotifications, unreadNotificationCount } from '@/core/notifications';
+import { dispatchNotifications, notificationBellSummary } from '@/core/notifications';
 import { listApprovalHistory } from '@/core/read';
 import { shapeApprovalHistoryItems } from '@/lib/approval-history';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
@@ -244,13 +244,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const lifecycleInbox=await lifecycleModuleInbox(session,scopedLifecycleNavigation);
   const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];
   const pendingTaskCount=approvalSummary.total+onboardingQueue.length+lifecycleInbox.count;
-  const [notifUnread,taskNotifCount,notifItems,taskNotifs,readNotifs]=await Promise.all([
-    bellNotificationsEnabled?unreadNotificationCount(session, undefined, {...notificationScope, action: false }):Promise.resolve(0),
-    bellNotificationsEnabled?unreadNotificationCount(session, undefined, {...notificationScope, action: true }):Promise.resolve(0),
-    bellNotificationsEnabled?listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: false }):Promise.resolve([]),
-    bellNotificationsEnabled?listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: true }):Promise.resolve([]),
-    bellNotificationsEnabled?listNotifications(session, undefined, {...notificationScope, limit: 12, read: true }):Promise.resolve([]),
-  ]);
+  const { unread: notifUnread, taskCount: taskNotifCount, items: notifItems, tasks: taskNotifs, read: readNotifs } =
+    bellNotificationsEnabled
+      ? await notificationBellSummary(session, notificationScope)
+      : { unread: 0, taskCount: 0, items: [], tasks: [], read: [] };
   // Approval history (44a89810): recent team decisions for the bell's History tab — canApprove only,
   // no dead query for regular employees.
   const approvalHistory = canApprove

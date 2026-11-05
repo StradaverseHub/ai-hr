@@ -1358,12 +1358,39 @@ export function listNotifications(
 
   return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, async (tx) => {
     const recipients=await notificationRecipientCandidatesTx(tx,ctx);
-    return tx
-      .select(notificationColumns)
-      .from(notification)
-      .where(and(recipients,notificationWhere(ctx, employmentId, opts)))
-      .orderBy(desc(notification.createdAt), desc(notification.id))
-      .limit(Math.min(Math.max(opts.limit ?? 20, 1), 100));
+    return notificationRowsTx(tx, recipients, ctx, employmentId, opts);
+  });
+}
+
+function notificationRowsTx(
+  tx: Tx,
+  recipients: Awaited<ReturnType<typeof notificationRecipientCandidatesTx>>,
+  ctx: SessionContext,
+  employmentId: string | undefined,
+  opts: NotificationFilter & { limit?: number },
+) {
+  return tx
+    .select(notificationColumns)
+    .from(notification)
+    .where(and(recipients, notificationWhere(ctx, employmentId, opts)))
+    .orderBy(desc(notification.createdAt), desc(notification.id))
+    .limit(Math.min(Math.max(opts.limit ?? 20, 1), 100));
+}
+
+/** The bell's three lists and two badges share one tenant connection and recipient lookup. */
+export function notificationBellSummary(ctx: SessionContext, scope: { letterCompanyIds?: string[] } = {}) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  scope = { letterCompanyIds: scope.letterCompanyIds?.slice() };
+  return withTenant(ctx, async tx => {
+    const recipients = await notificationRecipientCandidatesTx(tx, ctx);
+    const [counts] = await tx.select({
+      unread: sql<number>`count(*) filter (where ${notification.severity} <> 'action')::int`,
+      taskCount: sql<number>`count(*) filter (where ${notification.severity} = 'action')::int`,
+    }).from(notification).where(and(recipients, notificationWhere(ctx, undefined, { ...scope, read: false })));
+    const items = await notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: false, action: false });
+    const tasks = await notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: false, action: true });
+    const read = await notificationRowsTx(tx, recipients, ctx, undefined, { ...scope, limit: 12, read: true });
+    return { unread: counts?.unread ?? 0, taskCount: counts?.taskCount ?? 0, items, tasks, read };
   });
 }
 
