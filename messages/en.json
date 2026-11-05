@@ -35486,6 +35486,7 @@
       "multiple-matches": "Multiple matches; choose a version",
       "none": "No unambiguous suggestion; choose a version"
     },
-    "libraryReadOnly": "Consumed salary and bonus library values are read only. Approve a new plan version for future reviews."
+    "libraryReadOnly": "Consumed salary and bonus library values are read only. Approve a new plan version for future reviews.",
+    "businessUnit": "Business unit"
   }
 }
