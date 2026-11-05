@@ -7,6 +7,7 @@ import {routeLatency} from './route-latency.mjs';
 import {navigationRoutesForIteration} from './route-scheduling.mjs';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
 import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
+import {exercisePayrollBrowser} from './payroll-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {actionFormData} from './action-form.ts';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
@@ -351,6 +352,7 @@ try{
   try{
   for(const route of suite==='whole-system'?routePool(user):user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/','/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});
+  if(suite!=='claims-heavy'&&[hr.index,group.index].includes(user.index))await exercisePayrollBrowser({base,page,user,fixture,report,save,phase:'baseline'});
   }finally{await ctx.close();}
  }));
  // Additional concrete pages have explicit rendered checks, separate from HTTP route counts.
@@ -653,7 +655,10 @@ try{
    await pause(thinkTimeMs);
   }
   if(suite==='whole-system'&&(user.index===group.index||user.index===hr.index))await visit(page,user,'/lifecycle','loaded');
-  if(suite==='whole-system'&&user.index===group.index)await exerciseOrgExplorer({page,user,fixture,report,save,phase:'loaded'});
+  if(suite==='whole-system'&&user.index===group.index){
+   await exerciseOrgExplorer({page,user,fixture,report,save,phase:'loaded'});
+   await exercisePayrollBrowser({base,page,user,fixture,report,save,phase:'loaded',loadState:()=>({active:progress.active,launched:progress.launched})});
+  }
   if(fixture.assistantHistory?.[user.index]||user.index===employee.index||user.index===hr.index)await aiCentreJourney(page,user,'loaded');
   if(user.role==='employee')await browserClaimJourney(page,user,'PERF_BROWSER_LOADED_'+user.index,'loaded');
   }catch(error){
