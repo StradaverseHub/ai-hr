@@ -153,7 +153,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const userId = await createAppUser(b.tenantId, adminPerson.id, 'hr_admin');
     const otherAdmin = { ...admin, userId, personId: adminPerson.id, roles: ['hr_admin'] as SessionContext['roles'], grants: undefined };
     await expect(getRewardUnit(otherAdmin, unitId)).rejects.toThrow(/Rewards role does not permit/);
-    await expect(getRewardSeniorMembership(otherAdmin, unitId)).rejects.toThrow(/assign your/);
+    await expect(getRewardSeniorMembership(otherAdmin, unitId)).rejects.toThrow(/Rewards role does not permit/);
     const config = await getRewardConfiguration(otherAdmin, unitId);
     expect(config.canManageMembers).toBe(true);
     expect(config.canConfigure).toBe(false);
