@@ -8378,6 +8378,11 @@
       }
     },
     "statutoryDetail": {
+      "epfCategory": "EPF வகை",
+      "epfTopupCategory": "கூடுதல் பங்களிப்பு (ஏற்கெனவே தேர்ந்தெடுத்த சதவீதம்)",
+      "epfSavedTopupRate": "சேமித்த கூடுதல் பங்களிப்பு விகிதம்",
+      "epfStatutoryAmount": "சட்டப்பூர்வ பங்களிப்பு",
+      "epfTopupFormula": "கூடுதல் பங்களிப்பு கணக்கீடு (அடுத்த முழு ரிங்கிட் வரை மேல்நோக்கி முழுமையாக்கம்)",
       "epfWorkingTitle": "பதிவான EPF கணக்கீடு",
       "epfActualWage": "உண்மையான EPF ஊதியம்",
       "epfRoundingIncrement": "ஊதிய முழுமையாக்கப் படி",

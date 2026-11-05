@@ -5,7 +5,7 @@
  * 13% employer at or below RM5,000, 12% above; Part E employer 4%; non-citizen flat 2%/2%).
  */
 import {describe,expect,it} from 'vitest';
-import {epf,epfContribution,resolveEpfRates,type EpfElection} from '../localization/my/payroll';
+import {epf,epfContribution,resolveEpfRates,statutory,type EpfElection} from '../localization/my/payroll';
 import {epfRateInputBounds,InvalidEpfElectionError,resolveEpfElection} from '../localization/my/epf-election';
 import {epfUiModeFrom,isLegacyTotalTopup,mapEpfUiMode,retainLegacyTotalTopup} from '../lib/epf-mode-map';
 import {bankStatutoryBeforeState,bankStatutoryStateFrom,bankStatutoryTopupBasis} from '../lib/bank-statutory-import';
@@ -16,6 +16,37 @@ const topup=(employeeRate:number|null,employerRate:number|null):EpfElection=>({m
 const NO_AMOUNT={epfEmployeeAmount:null,epfEmployerAmount:null,epfManualReason:null};
 
 describe('b6dbadc5 additive Top-up — calculator',()=>{
+ // KWSP i-Topup member guide, RM6,250 elected-share examples. The unelected
+ // employer share uses the mandatory Part A band (RM756), not the guide
+ // illustration of 12% × RM6,250.
+ it.each([
+  [30, .05, null, 1000, 756],
+  [30, null, .05, 693, 1063],
+  [65, .05, null, 313, 252],
+  [65, null, .05, 0, 563],
+ ] as const)('applies an election to actual wages for age %s with rates %s and %s', (age, ee, er, employee, employer) => {
+  const slip = statutory(6250, undefined, 0, 0, undefined, {
+   epfElection: topup(ee, er), epfAge: age, epfCitizenship: 'citizen', epfWageMonth: '2026-01',
+  });
+  expect(slip).toMatchObject({
+   epfEmployee: employee, epfEmployer: employer,
+   epfWorking: {
+    category: 'topup_percentage', actualWage: 6250, schedulePart: age < 60 ? 'A' : 'E',
+    scheduleEffectiveFrom: '2025-10-01',
+    employee: { savedRate: ee, amount: employee }, employer: { savedRate: er, amount: employer },
+   },
+  });
+  expect(slip.epfWorking).not.toHaveProperty('roundedWage');
+ });
+
+ it('records a blank and zero election distinctly at the statutory floor', () => {
+  const slip = statutory(6250, undefined, 0, 0, undefined, { epfElection: topup(0, null) });
+  expect(slip.epfWorking).toMatchObject({
+   employee: { savedRate: 0, statutoryAmount: 693, amount: 693 },
+   employer: { savedRate: null, statutoryAmount: 756, amount: 756 },
+  });
+ });
+
  it('adds the top-up to the normal rate on each side (the reporter example: 11%+1% and 12%+1%)',()=>{
   expect(resolveEpfRates(6000,undefined,topup(.01,.01))).toEqual({employeeRate:.12,employerRate:.13});
   // At or below RM5,000 the normal employer rate is 13%, so +1% is 14%.
@@ -38,15 +69,24 @@ describe('b6dbadc5 additive Top-up — calculator',()=>{
   expect(epfContribution(6000,2000,undefined,topup(.01,.01),{age:30,citizenship:'citizen'})).toEqual({employee:960,employer:1040,employeeOnBonus:240});
   expect(epfContribution(6000,2000,undefined,undefined,{age:30,citizenship:'citizen'})).toEqual({employee:880,employer:960,employeeOnBonus:220});
  });
- it('applies on the non-citizen / PR 60+ flat 2% rate',()=>{
+ it('applies Part F for non-citizens and Part C for permanent residents aged 60 and over',()=>{
   expect(epfContribution(3000,0,undefined,undefined,{age:30,citizenship:'non_citizen'})).toEqual({employee:60,employer:60,employeeOnBonus:0});
   expect(epfContribution(3000,0,undefined,topup(.01,.01),{age:30,citizenship:'non_citizen'})).toEqual({employee:90,employer:90,employeeOnBonus:0});
-  expect(epfContribution(3000,0,undefined,topup(.01,.01),{age:65,citizenship:'pr'})).toEqual({employee:90,employer:90,employeeOnBonus:0});
+  expect(epfContribution(3000,0,undefined,topup(.01,.01),{age:65,citizenship:'pr'})).toEqual({employee:195,employer:225,employeeOnBonus:0});
  });
  it('applies on Part E (citizen 60 to under 75): employee 0% + top-up, employer 4% + top-up',()=>{
   expect(epfContribution(3000,0,undefined,undefined,{age:65,citizenship:'citizen'})).toEqual({employee:0,employer:120,employeeOnBonus:0});
   expect(epfContribution(3000,0,undefined,topup(.01,.01),{age:65,citizenship:'citizen'})).toEqual({employee:30,employer:150,employeeOnBonus:0});
   expect(epfContribution(3000,0,undefined,topup(null,null),{age:65,citizenship:'citizen'})).toEqual({employee:0,employer:120,employeeOnBonus:0});
+ });
+ it('uses the combined monthly Part F wage before rounding the elected contribution', () => {
+  const slip = statutory(1001, undefined, 1, 0, undefined, {
+   epfElection: topup(.01, null), epfAge: 35, epfCitizenship: 'non_citizen', epfWageMonth: '2026-01',
+  });
+  expect(slip).toMatchObject({
+   epfEmployee: 31, epfEmployer: 21,
+   epfWorking: { schedulePart: 'F', actualWage: 1002, employee: { rate: .03, amount: 31 } },
+  });
  });
  it('adds nothing from 75, where there is no contribution',()=>{
   expect(epfContribution(3000,0,undefined,topup(.05,.05),{age:78,citizenship:'citizen'})).toEqual({employee:0,employer:0,employeeOnBonus:0});

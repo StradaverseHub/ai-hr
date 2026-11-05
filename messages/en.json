@@ -8378,6 +8378,11 @@
       }
     },
     "statutoryDetail": {
+      "epfCategory": "EPF category",
+      "epfTopupCategory": "Top-up (existing percentage election)",
+      "epfSavedTopupRate": "Saved Top-up rate",
+      "epfStatutoryAmount": "Statutory contribution",
+      "epfTopupFormula": "Top-up calculation (contribution rounded up to the next ringgit)",
       "epfWorkingTitle": "Recorded EPF calculation",
       "epfActualWage": "Actual EPF wages",
       "epfRoundingIncrement": "Wage rounding increment",

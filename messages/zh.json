@@ -8378,6 +8378,11 @@
       }
     },
     "statutoryDetail": {
+      "epfCategory": "公积金类别",
+      "epfTopupCategory": "额外缴纳（现有百分比选项）",
+      "epfSavedTopupRate": "已保存的额外缴纳费率",
+      "epfStatutoryAmount": "法定缴款",
+      "epfTopupFormula": "额外缴纳计算（缴款向上取整至整令吉）",
       "epfWorkingTitle": "已记录的公积金计算",
       "epfActualWage": "公积金实际计缴工资",
       "epfRoundingIncrement": "工资取整步长",
