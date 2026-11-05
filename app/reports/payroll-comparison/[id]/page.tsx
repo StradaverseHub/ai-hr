@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import {notFound} from 'next/navigation';
 import {getTranslations} from 'next-intl/server';
@@ -33,7 +34,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
   return <div className="space-y-5">
     <nav aria-label={t('breadcrumb')} className="text-sm text-muted-foreground"><Link href="/reports">{t('reports')}</Link> › <Link href="/reports?cat=payroll">{t('payroll')}</Link> › {t('customReports')}</nav>
     <PageHeader title={run.name} description={run.description||t('reportHelp')}/>
-    <div className="flex flex-wrap items-center justify-between gap-3"><span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{t('customTag')}</span><div className="flex gap-3 text-sm">{run.canEdit&&<Link className="rounded-lg border border-border px-3 py-2" href={'/reports/payroll-comparison/'+id+'?edit=1'}>{t('editReport')}</Link>}{run.canExport&&(['pdf','xlsx']as const).map(format=><a key={format} className="rounded-lg bg-primary px-3 py-2 text-primary-foreground" href={'/reports/payroll-comparison/export?id='+id+'&format='+format+'&'+query()}>{t(format==='pdf'?'exportPdf':'exportExcel')}</a>)}</div></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{t('customTag')}</span><div className="flex gap-3 text-sm">{run.canEdit&&<Link className="rounded-lg border border-border px-3 py-2" href={'/reports/payroll-comparison/'+id+'?edit=1'}>{t('editReport')}</Link>}{run.canExport&&(['pdf','xlsx']as const).map(format=><ExportDownloadLink key={format} className="rounded-lg bg-primary px-3 py-2 text-primary-foreground" href={'/reports/payroll-comparison/export?id='+id+'&format='+format+'&'+query()}>{t(format==='pdf'?'exportPdf':'exportExcel')}</ExportDownloadLink>)}</div></div>
     {result.provisional&&<div role="status" className="rounded-xl border border-border bg-muted/50 p-4 text-sm text-foreground">{t('provisional')}</div>}
     {!result.available&&<div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"><p className="font-semibold">{t('unavailable')}</p><ul className="mt-2 list-inside list-disc">{result.issues.map((issue,index)=><li key={index}>{t(`issues.${issue.code}`)} · {issue.period} · {options.companies.find(company=>company.id===issue.companyId)?.name??issue.companyId}</li>)}</ul></div>}
     {run.contextUnavailable&&<p role="status" className="rounded-lg border border-border p-3 text-sm text-muted-foreground">{t('contextUnavailable')}</p>}

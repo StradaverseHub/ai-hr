@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { organisationChoiceLabels, organisationFilterChoices } from '@/lib/organisation-choice-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -324,9 +325,9 @@ export default async function RosterPage({
           <Link href={`/roster/exceptions?${qs({})}`} className={navBtn}>
             {t('exceptionsButton', { count: exceptionCount })}
           </Link>
-          <Link href={`/roster/export?${qs({ format: 'xlsx' })}`}  className={navBtn} prefetch={false}>
+          <ExportDownloadLink href={`/roster/export?${qs({ format: 'xlsx' })}`}  className={navBtn}>
             {t('exportLabel')}
-          </Link>
+          </ExportDownloadLink>
         </div>
       </div>
 

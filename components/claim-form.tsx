@@ -365,7 +365,7 @@ export function ClaimForm({
       {/* Two submitters on one form. The draft button carries name/value so the server action can tell
           which was pressed; the primary button carries none, so `intent` is absent on a real submit. */}
       <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
-        <Button type="submit" disabled={isPending}>
+        <Button type="submit" disabled={isPending} aria-busy={isPending}>
           {isPending ? t('submitting') : draft ? t('submitDraft') : t('submit')}
         </Button>
         <Button type="submit" name="intent" value="draft" variant="secondary" disabled={isPending}>

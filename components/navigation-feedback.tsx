@@ -7,7 +7,7 @@ import { NAVIGATION_START, navigationKind } from '@/lib/navigation-feedback';
 
 export function NavigationFeedback() {
   const pathname = usePathname();
-  const query = useSearchParams().toString();
+  const query = useSearchParams()?.toString() ?? '';
   const t = useTranslations('common');
   const [pending, setPending] = useState<ReturnType<typeof navigationKind>>(null);
   const clear = useRef<() => void>(() => {});

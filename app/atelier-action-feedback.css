@@ -21,17 +21,17 @@
   content: '';
   display: block;
   width: 34%;
-  height: 100%;
+  height: 2px;
   background: linear-gradient(90deg, transparent, var(--primary));
   animation: atelier-action-travel 1.15s linear infinite;
 }
 
 [data-ui-theme='atelier']:has(.atelier-navigation-feedback[data-pending='filter']) .atelier-filter-feedback {
   display: block;
-  position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  overflow: hidden;
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  height: 0;
   pointer-events: none;
 }
 
