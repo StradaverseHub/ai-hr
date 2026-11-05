@@ -108,7 +108,7 @@ it.each(['company permissions','employee picker'] as const)('shares the %s read 
   try{
    await deadline(entered.reached);
    read=readSelection();
-   if(lock===lockAccessConfigurationReadTx)expect(await deadline(read)).toEqual(expected);
+   if(lock===lockAccessConfigurationReadTx)expect(await deadline<Awaited<ReturnType<typeof readSelection>>>(read)).toEqual(expected);
    else{
     const until=Date.now()+4000;
     let waiting=false;
@@ -122,7 +122,7 @@ it.each(['company permissions','employee picker'] as const)('shares the %s read 
      if(!waiting)await new Promise(resolve=>setTimeout(resolve,20));
     }
     expect(waiting).toBe(true);
-    release.release();await held;expect(await deadline(read)).toEqual(expected);
+    release.release();await held;expect(await deadline<Awaited<ReturnType<typeof readSelection>>>(read)).toEqual(expected);
    }
   }finally{release.release();await Promise.allSettled([held,...(read?[read]:[])]);}
  }

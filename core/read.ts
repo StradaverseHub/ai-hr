@@ -268,7 +268,7 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforc
 
 function employeeListRowsTx<T extends SelectedFields>(tx:Tx,selection:T) {
   return tx.select(selection)
-      .from(employment)
+      .from(employment).$dynamic()
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
       .leftJoin(
