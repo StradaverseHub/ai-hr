@@ -20,9 +20,11 @@ export async function readEmployeeHomeToday(ctx:SessionContext,employmentId:stri
  let dayKind:EmployeeHomeToday['dayKind']=null,leavePresence:EmployeeHomeToday['leavePresence']=null;
  let workLocations:EmployeeHomeToday['workLocations']={total:0,names:[]};
  if(clock){
-  const [kind,presence,locations]=await Promise.all([
-   withTenant(ctx,tx=>workedDayKindForTx(tx,subject.employmentId,businessDate)),
-   withTenant(ctx,tx=>approvedLeavePresenceByEmploymentTx(tx,[subject.employmentId],businessDate,businessDate)),
+  const [[kind,presence],locations]=await Promise.all([
+   withTenant(ctx,tx=>Promise.all([
+    workedDayKindForTx(tx,subject.employmentId,businessDate),
+    approvedLeavePresenceByEmploymentTx(tx,[subject.employmentId],businessDate,businessDate),
+   ])),
    employeeClockingLocationLabels(ctx,subject.employmentId),
   ]);
   dayKind=kind;leavePresence=presence.get(subject.employmentId)?.get(businessDate)??null;workLocations=locations;

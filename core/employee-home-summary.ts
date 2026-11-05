@@ -26,11 +26,13 @@ export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:st
  const now=new Date(),today=todayInKualaLumpur(now),through=new Date(Date.parse(today+'T00:00:00Z')+HOME_SUMMARY_LOOKAHEAD_DAYS*86400000).toISOString().slice(0,10);
  const leaveOn=isModuleEnabled(ctx,'leave'),payrollOn=isModuleEnabled(ctx,'payroll'),claimsOn=isModuleEnabled(ctx,'claims');
  const configured=new Set(configuration.quickActions);
- const [taskCount,leave,holidays,replacements,payroll,leaveTypes,claimAvailable,profile]=await Promise.all([
+ const [taskCount,[leave,holidays,replacements],payroll,leaveTypes,claimAvailable,profile]=await Promise.all([
   countEmployeeHomeTasks(ctx),
-  leaveOn?withTenant(ctx,tx=>nextApprovedLeavePresenceTx(tx,subject.employmentId,today)):Promise.resolve(null),
-  withTenant(ctx,tx=>originalHolidayCalendarFor(tx,{employmentId:subject.employmentId,startDate:today,endDate:through})),
-  withTenant(ctx,tx=>replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subject.employmentId],startDate:today,endDate:through})),
+  withTenant(ctx,tx=>Promise.all([
+   leaveOn?nextApprovedLeavePresenceTx(tx,subject.employmentId,today):null,
+   originalHolidayCalendarFor(tx,{employmentId:subject.employmentId,startDate:today,endDate:through}),
+   replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subject.employmentId],startDate:today,endDate:through}),
+  ])),
   payrollOn?readOwnPayrollHomeMetadata(ctx,subject.employmentId):Promise.resolve(null),
   leaveOn&&configured.has('leave')?listEligibleLeaveTypesFor(ctx,subject.employmentId,locale):Promise.resolve([]),
   claimsOn&&configured.has('claim')?ownClaimFormAvailable(ctx,subject.employmentId):Promise.resolve(false),

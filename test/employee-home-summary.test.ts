@@ -27,6 +27,8 @@ beforeEach(()=>{
 describe('Own Home deterministic summary and current action capability',()=>{
  it('only renders a calm sentence after all actual owners succeed, with honest disabled actions',async()=>{
   const result=await read();expect(validateEmployeeHomeSummary(result,'own')).toEqual(result);expect(result.items).toEqual([]);expect(result.calm).toBe('Nothing needs your attention today.');
+  expect(state.holidays.mock.calls[0][0]).toBe(state.leave.mock.calls[0][0]);
+  expect(state.replacement.mock.calls[0][0]).toBe(state.leave.mock.calls[0][0]);
   expect(result.quickActions).toEqual([{key:'leave',reason:'notConfigured'},{key:'claim',reason:'notConfigured'},{key:'payslip',reason:'noPayslip'},{key:'profile',reason:'detailsLocked'}]);
  });
  it('orders actual urgent work before reminders/good news, caps four and excludes private owner context',async()=>{

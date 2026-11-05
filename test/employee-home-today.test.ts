@@ -16,6 +16,7 @@ beforeEach(()=>{vi.clearAllMocks();state.subject.mockResolvedValue({employmentId
 describe('Your Day independent own metadata',()=>{
  it('uses canonical owners and sends only the small clock and recorded payment facts',async()=>{
   const value=await readEmployeeHomeToday(ctx,'own');expect(validateEmployeeHomeToday(value,'own')).toEqual(todayData());
+  expect(state.leave.mock.calls[0][0]).toBe(state.kind.mock.calls[0][0]);
   expect(state.subject).toHaveBeenCalledWith(ctx,'own');expect(state.clock).toHaveBeenCalledWith(ctx,'own');expect(state.payroll).toHaveBeenCalledWith(ctx,'own');
   expect(JSON.stringify(value)).not.toMatch(/private|amount|captureGPS/);
  });
