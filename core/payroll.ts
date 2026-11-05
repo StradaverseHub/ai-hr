@@ -10610,21 +10610,9 @@ export async function removeEmployeePayrollTx(
   };
 }
 
-// Read-only list (no events.append per the CLAUDE.md skip rule). `payPeriod` is an OPTIONAL
-// additive filter: when a non-empty string is passed it is AND-ed onto the existing tenant-RLS +
-// companyIds guard, so it can only NARROW the result (Build #10). Omitting it (or passing '')
-// reproduces the prior behaviour byte-identically — the three existing callers pass ≤2 args.
-//
-// 7f6ca478 — it now also accepts a SET of periods. The Payroll Process dashboard shows a whole YEAR
-// at once (twelve month cells, each carrying its own run count), so it asks for twelve periods in one
-// round trip rather than filtering an unbounded "every batch this tenant ever ran" fetch in JS, which
-// is what the single-period signature forced the old list to do. A string still means exactly one
-// period; an EMPTY array means "no period can match" and is honoured as such (`inArray(…, [])` ⇒ no
-// rows) rather than being quietly widened to "all" — a caller that computed an empty set wants an
-// empty result, and silently returning everything is how a filter becomes a data leak.
 /** All-time dashboard warning/empty-state counts without materialising payroll money and run DTOs.
  * Same effective-history source, company visibility and empty company-filter semantics as listBatches.
- * Publication follows payrollPublicationState: imported history, drafts and closed runs are excluded. */
+ * The unpublished count follows payrollPublicationState, excluding imported history, drafts and closed runs. */
 export function payrollDashboardCounts(ctx:SessionContext,companyIds?:string[]){
  return withTenant(ctx,async tx=>{
   const [row]=await tx.select({
@@ -10638,6 +10626,18 @@ export function payrollDashboardCounts(ctx:SessionContext,companyIds?:string[]){
  });
 }
 
+// Read-only list (no events.append per the CLAUDE.md skip rule). `payPeriod` is an OPTIONAL
+// additive filter: when a non-empty string is passed it is AND-ed onto the existing tenant-RLS +
+// companyIds guard, so it can only NARROW the result (Build #10). Omitting it (or passing '')
+// reproduces the prior behaviour byte-identically — the three existing callers pass ≤2 args.
+//
+// 7f6ca478 — it now also accepts a SET of periods. The Payroll Process dashboard shows a whole YEAR
+// at once (twelve month cells, each carrying its own run count), so it asks for twelve periods in one
+// round trip rather than filtering an unbounded "every batch this tenant ever ran" fetch in JS, which
+// is what the single-period signature forced the old list to do. A string still means exactly one
+// period; an EMPTY array means "no period can match" and is honoured as such (`inArray(…, [])` ⇒ no
+// rows) rather than being quietly widened to "all" — a caller that computed an empty set wants an
+// empty result, and silently returning everything is how a filter becomes a data leak.
 export function listBatches(
   ctx: SessionContext,
   companyIds?: string[],
