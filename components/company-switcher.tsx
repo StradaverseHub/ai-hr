@@ -88,6 +88,7 @@ export function CompanySwitcher({
     // min-w-0 the switcher was the child crushed to 0px on a phone, so it could not be tapped. It keeps
     // room for its ▾ and a few letters; the label still truncates, the route path gives way first.
     <div className="relative min-w-0 monolith:min-w-[5.5rem]">
+      {/* Keep the open trigger clickable above its own dismiss layer. */}
       <button
         data-company-switcher
         type="button"
@@ -98,7 +99,10 @@ export function CompanySwitcher({
           setOpen(!open);
         }}
         aria-expanded={open}
-        className="flex min-w-0 max-w-full items-center min-h-11 gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98] monolith:gap-1.5 monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:font-mono monolith:text-[11px] monolith:font-normal monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink monolith:active:scale-100"
+        className={cn(
+          'flex min-w-0 max-w-full items-center min-h-11 gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98] monolith:gap-1.5 monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:font-mono monolith:text-[11px] monolith:font-normal monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink monolith:active:scale-100',
+          open && 'relative z-50',
+        )}
       >
         <span className="size-2 shrink-0 rounded-full bg-primary monolith:hidden" />
         <span className="min-w-0 max-w-[14rem] truncate">{label}</span>
