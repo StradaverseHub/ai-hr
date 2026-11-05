@@ -21,3 +21,7 @@ The repository owner approved rebinding the same 28 records to `ca568afcf4aab869
 ## Combined Re-planned Board binding
 
 The repository owner approved rebinding the same 28 records to `70c66c742506047e79becbb8bfcafa1ac6ef3d7108a28dfe81f766e9f88bc7e6` on 2026-11-05 at 17:35 UTC. The assessed source is `fb9202d3e5a1124e4405ea2e7fc41aad7e556b22`. It incorporates the Job Description rollback `72f2b4f424243094b9a5c7a1cce2cd6e1e487974` and the EPF Top-up changes `410e2b41d5dcfb1e3123df3be19bfaa073449ce9`. The rollback removes retired destinations and action inventory entries. EPF adds saved calculation details for the native payroll explanation and export. The existing provider contracts, transport, original approval provenance and pending dispositions are preserved.
+
+## EPF conversion repair binding
+
+The repository owner approved rebinding the same 28 records to `5fe92a9d398e52077d790046673b96ca77bbb0d5cbc4af0a09669e66bed23952` on 2026-11-05 at 18:05 UTC. Commit `c05ea00414a742482b49dfff7e2b60f10e8444b6` reuses the Part C rates in the legacy Top-up conversion. The approved payroll path continues to use exact whole-ringgit rounding. Existing saved elections, payroll history, provider contracts, payload fields, transport, prior approval provenance and pending dispositions are preserved. Hosted focused run `42079564370` passed.
