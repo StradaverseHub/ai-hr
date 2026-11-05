@@ -81,8 +81,8 @@ test('durable authority publication is owned, exact and refuses overwrite',t=>{
 });
 test('hosted diagnostic must be the exact reviewed controller with successful actual refusal steps',()=>{
  const controller='f'.repeat(40),run={id:123,repository:{id:1333414856},head_repository:{id:1333414856},head_sha:controller,event:'workflow_dispatch',run_attempt:1,status:'completed',conclusion:'success',path:'.github/workflows/alpha-staging.yml',created_at:new Date().toISOString()};
- const jobs=[{name:'resolve',head_sha:controller,run_id:123,run_attempt:1,conclusion:'success',steps:['CI integrity regression checks','Post-arrival reconciliation refusal checks'].map(name=>({name,conclusion:'success'}))},{name:'build',conclusion:'skipped'}];assert.equal(validateReconciliationDiagnostics(run,jobs,controller),true);
- for(const mutate of [(r,j)=>r.head_sha='0'.repeat(40),(r,j)=>r.run_attempt++,(r,j)=>j[0].steps.pop(),(r,j)=>j[0].steps[1].conclusion='failure',(r,j)=>j[1].conclusion='success']){const r=structuredClone(run),j=structuredClone(jobs);mutate(r,j);assert.throws(()=>validateReconciliationDiagnostics(r,j,controller));}
+ const jobs=[{name:'resolve',head_sha:controller,run_id:123,run_attempt:1,conclusion:'success',steps:['CI integrity regression checks','Post-arrival reconciliation refusal checks'].map(name=>({name,conclusion:'success'}))},{name:'build',conclusion:'skipped'},{name:'deployment-hold',head_sha:controller,run_id:123,run_attempt:1,conclusion:'success',steps:[{name:'Deployment remains disabled',conclusion:'success'}]}];assert.equal(validateReconciliationDiagnostics(run,jobs,controller),true);
+ for(const mutate of [(r,j)=>r.head_sha='0'.repeat(40),(r,j)=>r.run_attempt++,(r,j)=>j[0].steps.pop(),(r,j)=>j[0].steps[1].conclusion='failure',(r,j)=>j[1].conclusion='success',(r,j)=>j.pop(),(r,j)=>j[2].steps[0].conclusion='failure',(r,j)=>j[2].run_id++,(r,j)=>j.push(j[2])]){const r=structuredClone(run),j=structuredClone(jobs);mutate(r,j);assert.throws(()=>validateReconciliationDiagnostics(r,j,controller));}
 });
 
 test('trusted inline launch inventory check prevents loading mutated or linked private helpers',t=>{

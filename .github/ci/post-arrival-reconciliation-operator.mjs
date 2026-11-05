@@ -24,7 +24,9 @@ export function validateReconciliationDiagnostics(run,jobs,controller){
  assert(Date.now()-Date.parse(run.created_at)<=86400000,'Fresh reconciliation diagnostics required');
  const resolve=jobs.filter(j=>j.name==='resolve');assert(resolve.length===1&&resolve[0].head_sha===controller&&resolve[0].run_id===run.id&&resolve[0].run_attempt===1&&resolve[0].conclusion==='success','Actual hosted controller resolve job required');
  assert(resolve[0].steps?.some(s=>s.name==='Post-arrival reconciliation refusal checks'&&s.conclusion==='success')&&resolve[0].steps.some(s=>s.name==='CI integrity regression checks'&&s.conclusion==='success'),'Actual reconciliation and unchanged controller refusal regressions required');
- assert(jobs.every(j=>j.name==='resolve'||j.conclusion==='skipped'),'Controller-only diagnostic must not masquerade as an application witness');return true;
+ const hold=jobs.filter(j=>j.name==='deployment-hold');
+ assert(hold.length===1&&hold[0].head_sha===controller&&hold[0].run_id===run.id&&hold[0].run_attempt===1&&hold[0].conclusion==='success'&&hold[0].steps?.some(s=>s.name==='Deployment remains disabled'&&s.conclusion==='success'),'Hosted deployment hold must confirm disabled switches');
+ assert(jobs.every(j=>j.name==='resolve'||j.name==='deployment-hold'||j.conclusion==='skipped'),'Controller-only diagnostic must not masquerade as an application witness');return true;
 }
 export async function reconcilePostArrival({candidatePath,trustedControllerPath,runId,diagnosticsRunId,originalGrantPath,initializationPath}){
  try{return await reconcile({candidatePath:resolve(candidatePath),trustedControllerPath:resolve(trustedControllerPath),runId:Number(runId),diagnosticsRunId:Number(diagnosticsRunId),originalGrantPath,initializationPath});}catch(error){throw redactLeaseError(error);}
