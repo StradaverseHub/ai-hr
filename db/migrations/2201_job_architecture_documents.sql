@@ -115,15 +115,23 @@ END $$;
 CREATE TABLE job_architecture_jd_publication_history (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES tenant(id),
  job_unit_id uuid NOT NULL,variant_company_id uuid,job_id uuid NOT NULL,revision_id uuid NOT NULL,
- published_by uuid NOT NULL,published_at timestamptz NOT NULL DEFAULT now(),
+ published_by uuid NOT NULL REFERENCES app_user(id),published_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(tenant_id,revision_id),
  FOREIGN KEY(tenant_id,job_id) REFERENCES job_document(tenant_id,id),
  FOREIGN KEY(tenant_id,revision_id) REFERENCES job_document_revision(tenant_id,id),
- FOREIGN KEY(tenant_id,variant_company_id) REFERENCES company(tenant_id,id),
- FOREIGN KEY(tenant_id,published_by) REFERENCES app_user(tenant_id,id)
+ FOREIGN KEY(tenant_id,variant_company_id) REFERENCES company(tenant_id,id)
 );
 ALTER TABLE job_architecture_jd_publication_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE job_architecture_jd_publication_history FORCE ROW LEVEL SECURITY;
 CREATE POLICY architecture_jd_history_read ON job_architecture_jd_publication_history FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.job_document_scope(tenant_id,job_id));
 CREATE POLICY architecture_jd_history_insert ON job_architecture_jd_publication_history FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND published_by=app.current_user_id() AND app.job_architecture_can(variant_company_id,'check'));
 GRANT SELECT,INSERT ON job_architecture_jd_publication_history TO ai_hr_app;
+
+CREATE FUNCTION app.guard_architecture_jd_publication() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM job_document j JOIN job_document_revision r ON r.job_id=j.id AND r.tenant_id=j.tenant_id WHERE j.tenant_id=NEW.tenant_id AND j.id=NEW.job_id AND r.id=NEW.revision_id AND j.job_unit_id=NEW.job_unit_id AND NEW.variant_company_id IS NOT DISTINCT FROM CASE WHEN j.company_variant THEN j.company_id ELSE NULL END AND NOT j.inactive AND r.status IN('submitted','approved') AND r.architecture->>'jobUnitId'=NEW.job_unit_id::text AND r.approver_id=app.current_user_id() AND NOT app.current_user_id()=ANY(r.contributor_ids) AND r.submitted_by IS DISTINCT FROM app.current_user_id() AND EXISTS(SELECT 1 FROM job_document_review v WHERE v.revision_id=r.id AND v.tenant_id=r.tenant_id) AND NOT EXISTS(SELECT 1 FROM job_document_review v WHERE v.revision_id=r.id AND v.tenant_id=r.tenant_id AND v.decision<>'reviewed')) THEN RAISE EXCEPTION 'Publish only the independently reviewed bound job description'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER architecture_jd_publication_binding BEFORE INSERT OR UPDATE ON job_architecture_jd_publication FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_jd_publication();
+CREATE TRIGGER architecture_jd_history_binding BEFORE INSERT ON job_architecture_jd_publication_history FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_jd_publication();
+REVOKE ALL ON FUNCTION app.guard_architecture_jd_publication() FROM PUBLIC;

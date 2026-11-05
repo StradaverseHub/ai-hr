@@ -435,6 +435,7 @@ async function jobArchitectureBinding(tx:Tx,ctx:SessionContext,input:JobInput,la
 }
 async function validateJobScopeForApproval(tx:Tx,ctx:SessionContext,job:Job,r:JobRevision){
  const binding=r.architecture;if(!binding)return;
+ const [unresolved]=await tx.execute(sql`select id from job_architecture_outlier where tenant_id=${ctx.tenantId}::uuid and fingerprint=${'jd_scope:'+r.id} and state<>'resolved' limit 1`);if(unresolved)throw new JobDocumentError('Resolve the linked scope Outlier before approval.');
  const unit=binding.path.find(n=>n.kind==='unit');const [g]=await tx.execute<{code:string}>(sql`select code from job_grade where id=${r.org.grade??null}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null`);
  const code=g&&architectureGrade(g.code);if(!unit?.minGrade||!unit.maxGrade||!code||!gradeInRange(code,unit.minGrade,unit.maxGrade)||code!==binding.grade)throw new JobDocumentError('The grade differs from the reviewed job-unit scope. Resolve the linked Outlier before approval.');
 }

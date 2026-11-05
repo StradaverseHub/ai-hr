@@ -131,3 +131,13 @@ END $$;
 ALTER FUNCTION app.guard_employment_architecture_grade() OWNER TO ai_hr_architecture_grade_guard;
 REVOKE ALL ON FUNCTION app.guard_employment_architecture_grade() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER employment_architecture_grade BEFORE INSERT OR UPDATE OF grade_id,tenant_id ON employment FOR EACH ROW EXECUTE FUNCTION app.guard_employment_architecture_grade();
+
+CREATE FUNCTION app.guard_architecture_outlier_closure() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF NEW.state='resolved' AND (TG_OP='INSERT' OR OLD.state IS DISTINCT FROM NEW.state) THEN
+  IF NEW.checked_by IS DISTINCT FROM app.current_user_id() OR NEW.resolved_by IS NULL OR NEW.checked_by=NEW.resolved_by OR NOT EXISTS(SELECT 1 FROM job_architecture_proposal p WHERE p.tenant_id=NEW.tenant_id AND p.kind='outlier_resolution' AND p.status='approved' AND p.payload->>'outlierId'=NEW.id::text AND p.created_by=NEW.resolved_by AND p.checked_by=NEW.checked_by AND p.base_revision=NEW.revision-1) THEN RAISE EXCEPTION 'An independently approved resolution is required'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER architecture_outlier_closure BEFORE INSERT OR UPDATE ON job_architecture_outlier FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_outlier_closure();
+REVOKE ALL ON FUNCTION app.guard_architecture_outlier_closure() FROM PUBLIC;

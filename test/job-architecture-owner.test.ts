@@ -46,12 +46,12 @@ it('guards every employment writer while preserving unchanged historical grades 
  const [p]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Grade guard employee'}).returning();
  const [legacy]=await owner.db.insert(jobGrade).values({tenantId:b.tenantId,code:'CUSTOM',name:'Legacy custom'}).returning();const [future]=await owner.db.insert(jobGrade).values({tenantId:b.tenantId,code:'jg t3',name:'Future inactive'}).returning();
  const [e]=await owner.db.insert(employment).values({tenantId:b.tenantId,companyId:b.companyId,personId:p.id,hiredOn:todayInKualaLumpur(),gradeId:legacy.id}).returning();
- await expect(owner.db.execute(sql`update employment set grade_id=${future.id}::uuid where id=${e.id}::uuid`)).rejects.toThrow(/Future architecture grades/);
+ await expect(owner.db.execute(sql`update employment set grade_id=${future.id}::uuid where id=${e.id}::uuid`)).rejects.toMatchObject({cause:expect.objectContaining({message:'Future architecture grades are not in use',code:'23514'})});
  const codes=['H','12','13','14','15','16','17','18','19','20','21','22','23'];const grades=await owner.db.insert(jobGrade).values(codes.map(code=>({tenantId:b.tenantId,code,name:'Active '+code}))).returning();const ladder=grades.map(g=>({gradeId:g.id,code:g.code,name:g.name,complexity:'Scope',authority:'Authority',people:'People',impact:'Impact',qualifications:'Qualifications'}));
  const proposal=await proposeArchitectureCatalogue(adminCtx(b),{catalogue:{nodes:[],ladder},baseRevision:0,reason:'Official complete active grade ladder'});await decideArchitectureProposal(checker,{id:proposal,approve:true});
  await owner.db.execute(sql`update employment set grade_id=grade_id where id=${e.id}::uuid`);
  await owner.db.execute(sql`update employment set grade_id=${grades[0].id}::uuid where id=${e.id}::uuid`);
- await expect(owner.db.execute(sql`update employment set grade_id=${legacy.id}::uuid where id=${e.id}::uuid`)).rejects.toThrow(/approved active/);
+ await expect(owner.db.execute(sql`update employment set grade_id=${legacy.id}::uuid where id=${e.id}::uuid`)).rejects.toMatchObject({cause:expect.objectContaining({message:'Choose an approved active architecture grade',code:'23514'})});
  await owner.db.execute(sql`update employment set grade_id=null where id=${e.id}::uuid`);
  await expect(proposeArchitectureCatalogue(adminCtx(b),{catalogue:empty,baseRevision:1,reason:'Must not silently remove official ladder'})).rejects.toThrow(/retain/);
 });

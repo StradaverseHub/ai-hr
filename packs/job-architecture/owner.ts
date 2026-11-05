@@ -40,7 +40,7 @@ async function workspaceTx(tx:Tx,ctx:SessionContext,companyFilter?:string){
  const employees=await tx.execute<{id:string;companyId:string;positionId:string|null;gradeCode:string|null}>(sql`
   select e.id,e.company_id as "companyId",a.position_id as "positionId",g.code as "gradeCode" from employment e
   left join job_grade g on g.id=e.grade_id and g.tenant_id=e.tenant_id
-  left join lateral(select a.position_id from assignment a where a.employment_id=e.id and a.tenant_id=e.tenant_id and a.valid_from<=${today}::date and (a.valid_to is null or a.valid_to>=${today}::date) order by a.valid_from desc,a.id desc limit 1)a on true
+  left join lateral(select a.position_id from assignment a where a.employment_id=e.id and a.tenant_id=e.tenant_id and a.superseded_at is null and a.valid_from<=${today}::date and (a.valid_to is null or a.valid_to>=${today}::date) order by a.valid_from desc,a.id desc limit 1)a on true
   where e.tenant_id=${ctx.tenantId}::uuid and e.company_id in (${idList}) and app.access_workforce_employment(e.id,'workforce.view')`);
  const checkedEmployees:ArchitectureEmployee[]=employees.map(e=>({...e,grade:e.gradeCode?architectureGrade(e.gradeCode):null}));
  const proposals=await tx.execute<Proposal>(sql`select id,company_id,kind,base_revision,payload,reason,created_by,created_at::text,status,checked_by from job_architecture_proposal where tenant_id=${ctx.tenantId}::uuid and status='pending' ${companyFilter?sql`and (company_id=${companyFilter}::uuid or company_id is null)`:sql``} order by created_at,id limit 200`);
