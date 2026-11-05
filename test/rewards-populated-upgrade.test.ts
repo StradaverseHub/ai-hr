@@ -29,7 +29,10 @@ it('preserves populated Rewards history, seats, shared policies and both notific
  }
  async function unchangedRows(){
   return {
-   units:await storage.client`select * from reward_unit where tenant_id=${ids.tenant} order by id`,
+   units:(await storage.client`select * from reward_unit where tenant_id=${ids.tenant} order by id`).map(({uploaded_award_digest,...legacy})=>{
+    if(uploaded_award_digest!==undefined)expect(uploaded_award_digest).toBeNull();
+    return legacy;
+   }),
    members:await storage.client.unsafe(`select ${legacyMemberColumns} from reward_member where tenant_id=$1 order by id`,[ids.tenant]),
    decisions:await storage.client`select * from reward_decision where tenant_id=${ids.tenant} order by id`,
    audit:await storage.client`select * from domain_event where tenant_id=${ids.tenant} order by sequence`,
@@ -87,6 +90,7 @@ it('preserves populated Rewards history, seats, shared policies and both notific
   const before=await unchangedRows();expect(before.units).toHaveLength(1);expect(before.members).toHaveLength(2);expect(before.decisions).toHaveLength(1);expect(before.audit.length).toBeGreaterThan(1);expect(before.groups).toHaveLength(1);expect(before.versions).toHaveLength(1);expect(before.targets).toHaveLength(1);expect(before.notifications).toHaveLength(2);expect(before.letterJobs).toHaveLength(1);expect(before.letters).toHaveLength(1);
   const [migrationClock]=await storage.client`select (now() at time zone 'Asia/Kuala_Lumpur')::date::text as day`;
   const approvedUpgrade=await migrateApprovedUpgrade(storage);
+  expect(await storage.client`select uploaded_award_digest from reward_unit where id=${ids.unit}`).toEqual([{uploaded_award_digest:null}]);
   expect(retainedUpgradeSnapshot(await unchangedRows(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));
   const seats=await storage.client`select id,valid_from::text,valid_to,covers_user_id,restored_reason,restored_fingerprint from reward_member where unit_id=${ids.unit} order by id`;
   expect(seats.map(row=>row.id).sort()).toEqual([ids.grMember,ids.buMember].sort());

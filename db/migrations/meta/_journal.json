@@ -4852,6 +4852,13 @@
       "when": 1793330001621,
       "tag": "2209_company_registration_classification",
       "breakpoints": true
+    },
+    {
+      "idx": 1422,
+      "version": "7",
+      "when": 1793330001622,
+      "tag": "2211_company_retention_approved_expansion",
+      "breakpoints": true
     }
   ]
 }

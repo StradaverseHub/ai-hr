@@ -80,6 +80,8 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/admin/personnel/import/information-correction-template/route.ts':'information_correction',
  'app/admin/personnel/import/movement/route.ts':'employee_movement',
  'app/admin/personnel/import/page.tsx':PERSONNEL_PAGE,
+ 'app/admin/rewards/libraries/actions.ts':support('Previews a workbook for a Rewards setup manager. Saving and independent confirmation use the native library owner.'),
+ 'app/admin/rewards/pat-inputs/actions.ts':support('Company-scoped PAT uploads propose drafts through the native owner. A separate checker confirms them.'),
  'app/admin/settings/system-labels/import-actions.ts':'system_labels',
  'app/admin/settings/system-labels/import/route.ts':'system_labels',
  'app/assistant/file-import-actions.ts':support('AI Centre file preparation (core/assistant-import.ts); it imports nothing.'),

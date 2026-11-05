@@ -508,7 +508,9 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,subject.employmentId));
     await setCompensation(a,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
     const unitId=await createApprovedRewardUnit(a,{name:'No interim import',year,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});
-    const reward=await getRewardUnit(a,unitId);expect(reward.rows).toHaveLength(1);expect(reward.rows[0].source.onehr).toBeNull();
+    const reward=await getRewardUnit(a,unitId);
+    const rewardSubject=reward.rows.find(row=>row.source.employmentId===subject.employmentId);
+    expect(rewardSubject?.source.onehr).toBeNull();
     await expect(importOnehrRewardResults(a,unitId,reward.unit.revision)).rejects.toThrow(/No finalized assessment/);
     await perf.releaseOnehrResult(a,reviewId,'potential',true);
     expect((await view(self)).result?.potential).toBe('Mid');

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-/** 086915a8 — one tab row across the three Rewards admin pages; the current page carries aria-current. */
+/** 086915a8 — one tab row across the Rewards admin pages; the current page carries aria-current. */
 const tabs = [['configuration', '/admin/rewards'], ['shared', '/admin/rewards/plans'], ['salary', '/admin/rewards/salary-structures'], ['bonus', '/admin/rewards/bonus-matrices'], ['pat', '/admin/rewards/pat-inputs'], ['access', '/admin/rewards/access']] as const;
 export type RewardsAdminTab = typeof tabs[number][0];
 export function RewardsAdminTabs({ current, librariesOnly=false }: { current: RewardsAdminTab; librariesOnly?:boolean }) {

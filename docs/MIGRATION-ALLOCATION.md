@@ -1712,3 +1712,8 @@ Reassign their journal positions above that watermark: `2013_payroll_learned_bas
 at idx 1411 / 1793330001611, then `2200`–`2209` at idx 1412–1421 /
 1793330001612–1793330001621 in dependency order. Verify the installed ledger again at
 admission. Production requires a separate exact-ledger check and release decision.
+
+The release gate found additional company retention references from the approved expansion.
+Append `2211_company_retention_approved_expansion` at idx 1422 / timestamp 1793330001622.
+SHA256 `8d2362cd2aa1ae1f34f7886ca5417d2e2c7b74ad9cdd86a67ca91add0066fcb8`. The migration adds scoped retention checks for the new owners.
+It preserves earlier SQL and the original staging ledger.

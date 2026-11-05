@@ -47,6 +47,7 @@ export type RegisteredAgentActionPolicies={[K in AgentActionId]:AgentActionOf<K>
 
 export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<string,AgentCapabilityClass>>>>=Object.freeze({
  "app/admin/organization/organisation-tagging-actions.ts":{"prepareOrganisationAction":"backlog:approve","decideOrganisationAction":"backlog:approve","processOrganisationAction":"backlog:approve"},
+ "app/admin/personnel/approved-position-architecture-action.ts":{"readApprovedPositionArchitecture":"backlog:automatic"},
  "app/admin/personnel/derived-organisation-actions.ts":{"derivedOrganisationAction":"internal:session_and_presentation"},
  "app/admin/personnel/search/route.ts#route":{"POST":"internal:session_and_presentation"},
  "app/admin/users/[userId]/account/actions.ts":{"accountAction":"handoff:access_and_authentication"},
@@ -91,6 +92,8 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/claims/mileage/actions.ts":{"setMileageRateTableAction":"backlog:confirm"},
  "app/admin/claims/reimbursements/actions.ts":{"markReimbursementsPaidAction":"backlog:approve"},
  "app/admin/holidays/replacements/actions.ts":{"adjustReplacementAction":"backlog:confirm","saveReplacementPolicyAction":"backlog:confirm"},
+ // The native multiplexer includes seat grants and independent checker decisions.
+ "app/admin/job-architecture/actions.ts":{"architectureAction":"handoff:access_and_authentication"},
  "app/admin/job-descriptions/actions.ts":{"configureAction":"backlog:confirm","removeAttachmentAction":"backlog:confirm","saveDraftAction":"backlog:confirm","transitionAction":"backlog:confirm","uploadAction":"backlog:confirm"},
  "app/admin/leave-approval/actions.ts":{"assignApprovalTemplateAction":"backlog:approve","deleteApprovalTemplateAction":"backlog:approve","duplicateApprovalTemplateAction":"backlog:approve","saveApprovalTemplateAction":"backlog:approve","saveLeaveEscalationPolicyAction":"backlog:approve","setApprovalTemplateActiveAction":"backlog:approve","setTenantDefaultTemplateAction":"backlog:approve","unassignApprovalTemplateAction":"backlog:approve"},
  "app/admin/leave-config/bf-import/actions.ts":{"commitLeaveBfImportAction":"backlog:approve","reverseLeaveBfImportAction":"backlog:approve","validateLeaveBfImportAction":"backlog:automatic"},
@@ -105,6 +108,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/loans/actions.ts":{"amendLoanAction":"backlog:approve","cancelLoanAction":"backlog:approve","createLoanAction":"backlog:approve","resumeLoanAction":"backlog:approve","settleLoanAction":"backlog:approve","suspendLoanAction":"backlog:approve"},
  "app/admin/notice-board/[id]/attachments/route.ts#route":{"POST":"backlog:confirm"},
  "app/admin/notice-board/actions.ts":{"archiveNoticeAction":"backlog:confirm","createNoticeAction":"backlog:confirm","deleteNoticeAction":"backlog:confirm","duplicateNoticeAction":"backlog:confirm","publishNoticeAction":"backlog:confirm","restoreNoticeAction":"backlog:confirm","updateNoticeAction":"backlog:confirm"},
+ "app/admin/organization/registration-actions.ts":{"saveRegistrationClassification":"backlog:approve"},
  "app/admin/organization/statutory-tab-actions.ts":{"saveCompanyStatutoryTabAction":"backlog:confirm"},
  "app/admin/pay-components/actions.ts":{"archiveComponentAction":"backlog:confirm","createComponentAction":"registered:typed_pay_components.create","deleteComponentAction":"backlog:confirm","draftPayRuleAction":"backlog:confirm","previewPayRuleAction":"backlog:automatic","searchPreviewEmployeesAction":"backlog:automatic","seedCatalogAction":"backlog:confirm","updateComponentAction":"backlog:confirm"},
  "app/admin/pay-components/import/route.ts#route":{"POST":"backlog:confirm"},
@@ -146,8 +150,26 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/privacy/actions.ts":{"erasePersonPiiAction":"handoff:privacy_erasure"},
  "app/admin/privacy/case-handlers/actions.ts":{"designateCaseHandlerAction":"handoff:access_and_authentication","revokeCaseHandlerAction":"handoff:access_and_authentication"},
  "app/admin/rewards/access/actions.ts":{"decideRewardAccessRequestAction":"handoff:access_and_authentication","previewRewardAccessBatchAction":"backlog:automatic","previewRewardAccessCopyAction":"backlog:automatic","saveRewardAccessBatchAction":"handoff:access_and_authentication"},
+ "app/admin/rewards/access/policy-actions.ts":{
+  "beginRewardViewAsAction":"handoff:access_and_authentication","endRewardViewAsAction":"handoff:access_and_authentication",
+  "resetRewardPermissionsAction":"handoff:access_and_authentication","rewardPermissionAction":"handoff:access_and_authentication",
+  "saveRewardPersonalPageAction":"handoff:access_and_authentication",
+ },
  "app/admin/rewards/actions.ts":{"cancelRewardAction":"registered:rewards.cancel_review"},
+ "app/admin/rewards/libraries/actions.ts":{
+  "decideLibraryAction":"backlog:approve","importLibraryAction":"internal:session_and_presentation","saveLibraryAction":"backlog:approve",
+ },
+ "app/admin/rewards/pat-inputs/actions.ts":{
+  "commitPatImportAction":"backlog:approve","confirmPatAction":"backlog:approve",
+  "previewPatImportAction":"internal:session_and_presentation","savePatAction":"backlog:approve",
+ },
+ "app/admin/rewards/plans/actions.ts":{
+  "createManualPlanAction":"backlog:approve","planAction":"backlog:approve","planSettingsAction":"backlog:approve",
+  "previewManualPlanAction":"backlog:automatic","uncoveredPlanAction":"backlog:approve","uniformPlanAction":"backlog:approve",
+ },
+ "app/admin/rewards/setup-access/actions.ts":{"setupGrantAction":"handoff:access_and_authentication"},
  "app/admin/rewards/shared/actions.ts":{"classifySharedRewardCompanyAction":"backlog:approve","changeSharedRewardExclusionAction":"backlog:confirm","loadSharedRewardTakenAction":"backlog:automatic","saveSharedRewardPolicyAction":"backlog:confirm"},
+ "app/admin/rewards/uploaded/actions.ts":{"createUploadedAction":"backlog:approve"},
  "app/admin/settings/actions.ts":{"archiveBusinessUnitAction":"backlog:confirm","archiveCostCenterAction":"backlog:confirm","archiveDepartmentAction":"backlog:confirm","archivePositionAction":"backlog:confirm","assignLabelCompaniesAction":"backlog:confirm","copyLabelsToCompaniesAction":"backlog:confirm","createBusinessUnitAction":"backlog:confirm","createCostCenterAction":"backlog:confirm","createDepartmentAction":"backlog:confirm","createPositionAction":"backlog:confirm","deleteCostCenterAction":"backlog:confirm","deleteDepartmentAction":"backlog:confirm","deletePositionAction":"backlog:confirm","removeJobGradeGridAction":"backlog:confirm","restoreJobGradeGridAction":"backlog:confirm","saveJobGradesGridAction":"backlog:confirm","saveLabelsGridAction":"backlog:confirm","setCompanySharedLabelsAction":"backlog:confirm","setLabelCriteriaAction":"backlog:confirm","setLabelGlobalAction":"backlog:confirm","unassignLabelCompaniesAction":"backlog:confirm","updateBusinessUnitAction":"backlog:confirm","updateCostCenterAction":"backlog:confirm","updateDepartmentAction":"backlog:confirm","updatePositionAction":"backlog:confirm"},
  "app/admin/settings/dashboard/actions.ts":{"createCardAction":"backlog:confirm","deleteCardAction":"backlog:confirm","setStatusAction":"backlog:confirm","updateCardAction":"backlog:confirm"},
  "app/admin/settings/dashboard/home-actions.ts":{"saveHomeConfigurationAction":"backlog:confirm"},
@@ -323,6 +345,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/payroll/formula-builder/actions.ts":{"draftFormulaAction":"backlog:confirm","saveFormulaAction":"backlog:approve","testFormulaAction":"backlog:approve","sampleFormulaAction":"backlog:approve","formulaStateAction":"backlog:approve","deleteFormulaAction":"backlog:approve","saveAccumulationAction":"backlog:approve","searchFormulaEmployeesAction":"backlog:automatic","listFormulaBatchesAction":"backlog:automatic","registerPersonnelFormulaFieldAction":"backlog:approve"},
  "app/payroll/payslip-information/actions.ts":{"copyPayslipInformation":"backlog:approve","savePayslipInformation":"backlog:approve"},
  "app/payroll/pcb-payment-actions.ts":{"recordPcbPaymentAction":"backlog:approve"},
+ "app/payroll/process/registration-warning-action.ts":{"checkRegistrationReadiness":"backlog:automatic"},
  "app/payroll/process/actions.ts":{"checkPayrollCycleReadiness":"backlog:automatic","checkUnattachedForSelection":"backlog:automatic","createRunAction":"registered:multi_cycle_payroll.create_run","fetchPayrollRunEmployees":"backlog:automatic","resumeRunAction":"backlog:approve","runMultiCompanyAction":"backlog:approve","savePayrollDraftsAction":"backlog:approve","validatePayrollSelection":"backlog:automatic"},
  "app/payroll/reports/actions.ts":{"markFiledAction":"backlog:approve","recordReportAction":"backlog:approve","reverseFilingAction":"handoff:payroll_reversal"},
  "app/payroll/reports/ea/[employmentId]/actions.ts":{"amendEaFieldAction":"backlog:approve","clearEaFieldAction":"backlog:approve"},
@@ -346,7 +369,12 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/reports/employee-master/export/route.ts#route":{"POST":"backlog:confirm"},
  "app/reports/export/route.ts#route":{"POST":"backlog:confirm"},
  "app/reports/payroll-comparison/actions.ts":{"createPayrollComparisonSampleAction":"backlog:confirm","savePayrollComparisonAction":"backlog:confirm"},
- "app/rewards/governance-actions.ts":{"unitInputsAction":"backlog:approve","exemptionAction":"backlog:approve","confirmGovernanceAction":"backlog:approve","seniorAwardAction":"backlog:approve"},
+ // The advisor action includes generation, review decisions and settings changes.
+ "app/rewards/[unitId]/advisor/actions.ts":{"advisorAction":"handoff:ai_governance"},
+ "app/rewards/[unitId]/uploaded/actions.ts":{
+  "previewUploadedAction":"internal:session_and_presentation","saveUploadedAction":"backlog:approve","uploadedDecisionAction":"backlog:approve",
+ },
+ "app/rewards/governance-actions.ts":{"adoptCompanyPatAction":"backlog:approve","refreshCompanyPatBasisAction":"backlog:approve","unitInputsAction":"backlog:approve","exemptionAction":"backlog:approve","confirmGovernanceAction":"backlog:approve","seniorAwardAction":"backlog:approve"},
  "app/rewards/policy-grid-actions.ts":{"loadPreviousRewardPolicyMatrices":"backlog:automatic"},
  "app/rewards/actions.ts":{"calendarAction":"registered:rewards.calendar.update","createRewardAction":"backlog:approve","decideAction":"backlog:approve","deleteRewardAction":"backlog:approve","entryAction":"backlog:approve","importFactsAction":"backlog:approve","importOnehrAction":"backlog:approve","lumpAction":"backlog:approve","memberAction":"backlog:approve","offcycleAction":"backlog:approve","payWindowKeepAction":"backlog:approve","policyAction":"backlog:approve","postAction":"registered:rewards.post","previewRewardAccessAction":"backlog:automatic","previewRewardLumpAction":"backlog:automatic","previewRewardMultiplierAction":"backlog:automatic","previewSeniorMembershipAction":"backlog:automatic","previewSourceRefreshAction":"backlog:automatic","saveRewardAccessAction":"backlog:approve","saveRewardMultiplierAction":"backlog:approve","saveSeniorMembershipAction":"backlog:approve","saveSourceRefreshAction":"backlog:approve"},
  "app/rewards/approvals/actions.ts":{"boardDecideAction":"backlog:approve","sendReadyAction":"backlog:approve"},

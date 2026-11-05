@@ -33,7 +33,7 @@
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { renderToReadableStream, renderToStaticMarkup } from 'react-dom/server';
 import type { SessionContext } from '../db/client';
 
 let ADMIN: SessionContext;
@@ -197,7 +197,9 @@ describe('3783fd87 — one column, three screens: create, listing, detail', () =
       params: Promise.resolve({ companyId: created.id }),
       searchParams: Promise.resolve({}),
     });
-    const html = renderToStaticMarkup(tree as never);
+    const stream = await renderToReadableStream(tree);
+    await stream.allReady;
+    const html = await new Response(stream).text();
     expect(html).toContain('name="companyLabel"');
     expect(html, 'the detail screen shows the code the create form stored').toContain('value="TW-01"');
 

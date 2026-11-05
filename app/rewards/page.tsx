@@ -3,7 +3,7 @@ import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
 import {scopedSession,getScopeIds} from '@/lib/scope';
 import {requireModule} from '@/lib/authz';
-import {rewardAccessCompanies,listRewardReviewStatus,rewardSetupChoices} from '@/packs/rewards/service';
+import {listRewardReviewStatus,rewardSetupChoices} from '@/packs/rewards/service';
 import {ErrorBanner,PageHeader} from '@/components/ui';
 import type {RewardReviewFilters} from '@/packs/rewards/review-list-model';
 import {RewardReviewList} from './review-list';

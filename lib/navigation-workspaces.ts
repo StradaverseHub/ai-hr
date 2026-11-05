@@ -58,7 +58,7 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(path.startsWith('/letters/settings'))return modulePlacement('eLetter','config');
   if(path.startsWith('/letters'))return modulePlacement('eLetter','hr');
   if(path==='/manage/my-team')return modulePlacement('people','team');
-  if(path.startsWith('/admin/personnel')||path.startsWith('/admin/job-descriptions')||path==='/admin/notice-board')return modulePlacement('people','hr');
+  if(path.startsWith('/admin/personnel')||path.startsWith('/admin/job-descriptions')||path==='/admin/job-architecture'||path==='/admin/notice-board')return modulePlacement('people','hr');
   // Issue 17: every /control-tower page (Operations, and Administration under /control-tower/agents) renders inside
   // AI Centre, so it is placed with the shared AI Centre row, which owns these addresses in the sidebar.
   if(path==='/control-tower'||path.startsWith('/control-tower/'))return {area:'shared'};

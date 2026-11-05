@@ -67,7 +67,7 @@ vi.mock('next-intl/server', async () => {
 });
 
 import * as schema from '../db/schema';
-import { defaultPolicy } from '../packs/rewards/service';
+import { createApprovedRewardUnit } from './rewards-setup-fixture';
 import {classifyRewardCompany} from '../packs/rewards/company-classification';
 import {prepareCompanyOrganisationRun,companyOrganisationRunReport,decideCompanyOrganisationRun} from '../core/company-organisation';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -379,12 +379,21 @@ const CASES: Case[] = [
       const [department]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:id,name:'Review prerequisite'}).returning();
       const [member]=await owner.db.insert(schema.employment).values({tenantId:b.tenantId,companyId:id,personId:await newPerson(),hiredOn:'2020-01-01'}).returning();
       await owner.db.insert(schema.assignment).values({tenantId:b.tenantId,employmentId:member.id,companyId:id,departmentId:department.id,businessUnitId:bu.id,employmentType:'full_time',validFrom:'2020-01-01'});
-      const [cycle] = await owner.db.insert(schema.rewardCycle).values({ tenantId: b.tenantId, name: 'Annual rewards', year, createdBy: b.adminUserId }).returning();
-      await withTenant(ADMIN(),tx=>tx.insert(schema.rewardUnit).values({ tenantId: b.tenantId, createdBy: b.adminUserId, cycleId: cycle.id, companyId: id, businessUnitId: bu.id, policy: defaultPolicy(year), snapshotDate: today }));
-      // Retained review after the fictional subject moves away: isolate the financial retention
-      // guard without an employment/assignment still pointing at the old company. No guard is disabled.
-      await owner.db.update(schema.employment).set({companyId:b.companyId}).where(eq(schema.employment.id,member.id));
-      await owner.db.update(schema.assignment).set({companyId:b.companyId,departmentId:b.deptA,businessUnitId:null}).where(eq(schema.assignment.employmentId,member.id));
+      await setModule(b.tenantId, 'rewards', 'active');
+      const makerPersonId = await newPerson();
+      await owner.db.update(schema.appUser).set({ personId: makerPersonId }).where(eq(schema.appUser.id, b.adminUserId));
+      const maker = { ...await entitledCtx(b), personId: makerPersonId };
+      const unitId = await createApprovedRewardUnit(maker, {
+        name: 'Annual rewards', year, companyId: id, businessUnitId: bu.id, snapshotDate: today,
+      });
+      const [entry] = await owner.db.select({ id: schema.rewardEntry.id }).from(schema.rewardEntry)
+        .where(and(eq(schema.rewardEntry.unitId, unitId), eq(schema.rewardEntry.employmentId, member.id)));
+      expect(entry).toBeDefined();
+      // Move the fictional live source references out of the way so the retained financial review decides the refusal.
+      await owner.withTenant(maker, async tx => {
+        await tx.update(schema.employment).set({companyId:b.companyId}).where(eq(schema.employment.id,member.id));
+        await tx.update(schema.assignment).set({companyId:b.companyId,departmentId:b.deptA,businessUnitId:null}).where(eq(schema.assignment.employmentId,member.id));
+      });
     },
   },
   {
@@ -1358,6 +1367,42 @@ expect(before).toMatchObject({promotion:{used_jobs:0},candidate:{id:p.candidate}
   expect(await retentionCatalog(owner.db)).toEqual(before);
  });
 
+});
+
+
+describe('approved expansion company retention', () => {
+  const retained = (ctx: SessionContext, id: string) => withTenant(ctx, async tx => {
+    const [row] = await tx.execute<{ used: boolean }>(sql`select app.expansion_other_company_in_use(${id}::uuid) as used`);
+    return row.used;
+  });
+
+  it('blocks deletion for a private workbook preview without exposing it to the company administrator', async () => {
+    const id = await bare();
+    const author = await createAppUser(b.tenantId, null, 'employee');
+    const [preview] = await owner.client`insert into job_architecture_import_preview
+      (tenant_id, created_by, kind, company_id, source_digest, file_digest, preview)
+      values (${b.tenantId}, ${author}, 'positions', ${id}, ${'a'.repeat(64)}, ${'b'.repeat(64)}, '{}'::jsonb) returning id`;
+    const admin = scopedAdmin(id);
+    expect(await withTenant(admin, tx => tx.execute(sql`select id from job_architecture_import_preview where id=${preview.id}::uuid`))).toHaveLength(0);
+    expect(await retained(admin, id)).toBe(true);
+    expect(await retained(scopedAdmin(b.companyId), id)).toBe(false);
+    expect(await retained(member(), id)).toBe(false);
+    expect(await retained(adminCtx(await seedBase()), id)).toBe(false);
+    expect(await companyDeleteStatus(admin, id)).toEqual({ canDelete: true, blockedBy: 'other' });
+    expect(await attempt(admin, id)).toBe('other');
+    expect(await exists(id)).toBe(true);
+  });
+
+  it('retains the company named only in the outlier investigation scope', async () => {
+    const id = await bare();
+    expect(await retained(ADMIN(), id)).toBe(false);
+    await owner.client`insert into job_architecture_outlier (tenant_id, fingerprint, company_ids, detail)
+      values (${b.tenantId}, ${randomUUID()}, ${[id]}::uuid[], '{}'::jsonb)`;
+    expect(await retained(ADMIN(), id)).toBe(true);
+    expect(await companyDeleteStatus(ADMIN(), id)).toEqual({ canDelete: true, blockedBy: 'other' });
+    expect(await attempt(ADMIN(), id)).toBe('other');
+    expect(await exists(id)).toBe(true);
+  });
 });
 
 
