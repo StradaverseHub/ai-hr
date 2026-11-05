@@ -15,10 +15,11 @@ const {InformationCorrectionImport}=await import('../app/admin/personnel/import/
 const values={companyId:'co-a',hiredOn:'2025-01-15',joinDate:'2025-01-15',gradeId:null,employmentType:'full_time'};
 const preview:InformationPreview={effectiveOn:'2026-10-30',employmentId:'synthetic-employee',employeeCode:'EMP-001',name:'Aisha Fixture',fingerprint:'review-fingerprint',before:values,after:{...values,hiredOn:'2025-01-01'},beforeLabels:{...values,companyId:'DEMO · Demo Company'},afterLabels:{...values,companyId:'DEMO · Demo Company',hiredOn:'2025-01-01'},reason:'Correct signed employment record',changed:['hiredOn']};
 const context=()=>({preview:{...preview,changed:[],after:values},options:{companies:[{id:'co-a',code:'DEMO',name:'Demo Company'}],grades:[],employmentTypes:['full_time','part_time']},history:[]});
+const ok=<T,>(value:T)=>({ok:true as const,value});
 afterEach(()=>{cleanup();vi.clearAllMocks();document.documentElement.removeAttribute('data-ui-theme');document.documentElement.classList.remove('dark');});
 it('requires a reason and an explicit before/after confirmation before saving the manual correction',async()=>{
  await page.viewport(1280,900);
- actions.context.mockResolvedValue(context());actions.preview.mockResolvedValue(preview);actions.save.mockImplementation(async()=>{actions.context.mockResolvedValue({...context(),preview:{...context().preview,before:preview.after}});return{changed:true};});
+ actions.context.mockResolvedValue(ok(context()));actions.preview.mockResolvedValue(ok(preview));actions.save.mockImplementation(async()=>{actions.context.mockResolvedValue(ok({...context(),preview:{...context().preview,before:preview.after}}));return ok({changed:true});});
  render(<NextIntlClientProvider locale="en" messages={en}><HireCorrectionModes employmentId={preview.employmentId}><p>Existing correction form</p></HireCorrectionModes></NextIntlClientProvider>);
  fireEvent.click(screen.getByRole('radio',{name:en.people.informationCorrection.title}));
  const field=await screen.findByLabelText('Group Join Date');fireEvent.change(field,{target:{value:'2025-01-01'}});
@@ -31,9 +32,18 @@ it('requires a reason and an explicit before/after confirmation before saving th
  await waitFor(()=>expect(actions.save).toHaveBeenCalledWith({employmentId:preview.employmentId,changes:{hiredOn:'2025-01-01'},reason:preview.reason,fingerprint:preview.fingerprint}));
  expect(await screen.findByText(en.people.informationCorrection.saved)).toBeVisible();
 });
+it('shows the server refusal in words when the current record cannot be corrected',async()=>{
+ // Production masks a thrown server-action error as "Minified React error #441"; the refusal must arrive as data.
+ const refusal='A unique current assignment is required. Review Employment Movement.';
+ actions.context.mockResolvedValue({ok:false,error:refusal});
+ render(<NextIntlClientProvider locale="en" messages={en}><HireCorrectionModes employmentId={preview.employmentId}><p>Existing correction form</p></HireCorrectionModes></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('radio',{name:en.people.informationCorrection.title}));
+ expect(await screen.findByRole('alert')).toHaveTextContent(refusal);
+ expect(screen.queryByText(en.people.informationCorrection.loading)).toBeNull();expect(screen.queryByLabelText('Group Join Date')).toBeNull();
+});
 it('shows Excel row errors before confirmation and displays durable batch results',async()=>{
- actions.upload.mockResolvedValue({attemptId:'attempt-fixture',plan:{version:1,previewHash:'checked',counts:{total:2,valid:1,invalid:1},issues:[],rows:[{row:2,companyCode:'DEMO',employeeCode:'EMP-001',values:{},errors:[],preview},{row:3,companyCode:'DEMO',employeeCode:'MISSING',values:{},errors:['Employee ID is unavailable.']}]}});
- actions.confirm.mockResolvedValue({attemptId:'attempt-fixture',succeeded:1,failed:1,unchanged:0,rows:[{row:2,status:'applied',errors:[]},{row:3,status:'failed',errors:['Employee ID is unavailable.']}]});
+ actions.upload.mockResolvedValue(ok({attemptId:'attempt-fixture',plan:{version:1,previewHash:'checked',counts:{total:2,valid:1,invalid:1},issues:[],rows:[{row:2,companyCode:'DEMO',employeeCode:'EMP-001',values:{},errors:[],preview},{row:3,companyCode:'DEMO',employeeCode:'MISSING',values:{},errors:['Employee ID is unavailable.']}]}}));
+ actions.confirm.mockResolvedValue(ok({attemptId:'attempt-fixture',succeeded:1,failed:1,unchanged:0,rows:[{row:2,status:'applied',errors:[]},{row:3,status:'failed',errors:['Employee ID is unavailable.']}]}));
  render(<NextIntlClientProvider locale="en" messages={en}><InformationCorrectionImport onCommitPendingChange={()=>{}}/></NextIntlClientProvider>);
  const file=new File(['fixture'],'corrections.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
  fireEvent.change(screen.getByLabelText(en.people.informationCorrection.file),{target:{files:[file]}});

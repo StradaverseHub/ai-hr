@@ -90,6 +90,21 @@ describe('8550b282 information-only corrections',()=>{
   await expect(apply(id,{employmentType:'contract',hiredOn:'2025-01-01'})).rejects.toThrow('contract start and end');
   expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0].hiredOn).toBe('2025-01-15');expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(0);
  });
+ it('opens and corrects an existing contract that has no end date, refusing only a change into Contract',async()=>{
+  // The production shape behind React #441: a contract hired with a start date and no end date.
+  const hired=await hireEmployee(ctx(),{person:{fullName:'Contract Fixture',primaryEmail:randomUUID()+'@example.test'},companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'contract',hiredOn:'2025-01-15'});
+  const id=hired.employmentId;
+  expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0]).toMatchObject({contractStartDate:'2025-01-15',contractEndDate:null});
+  const opened=await previewInformationCorrection(ctx(),{employmentId:id,changes:{},reason:'Read current information'});
+  expect(opened).toMatchObject({changed:[],before:{employmentType:'contract',hiredOn:'2025-01-15'}});
+  const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'G03',name:'Senior'}).returning();
+  expect((await apply(id,{gradeId:grade.id})).changed).toBe(true);
+  expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0].gradeId).toBe(grade.id);
+  await expect(apply(id,{employmentType:'intern'})).rejects.toThrow('internship end date');
+  const permanent=await fixture('EMP-002');
+  await expect(apply(permanent,{employmentType:'contract'})).rejects.toThrow('contract start and end');
+  expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(1);expect(await informationCorrectionHistory(ctx(),permanent)).toHaveLength(0);
+ });
  it('stops when historical original metadata cannot be verified after a later change',async()=>{
   const id=await fixture();await closedSlip(id);
   const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'G02',name:'Changed later'}).returning();

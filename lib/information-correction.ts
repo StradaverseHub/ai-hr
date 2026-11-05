@@ -10,3 +10,5 @@ export const INFORMATION_HEADERS=['Company Code','Employee ID','Employee Name','
 export type InformationImportRow={row:number;companyCode:string;employeeCode:string;values:Partial<Record<typeof INFORMATION_HEADERS[number],string>>;errors:string[];preview?:InformationPreview};
 export type InformationImportPlan={version:1;previewHash:string;counts:{total:number;valid:number;invalid:number};issues:{rowNum:number;reason:string}[];rows:InformationImportRow[]};
 export type InformationImportResult={attemptId:string;succeeded:number;failed:number;unchanged:number;rows:{row:number;status:'applied'|'failed'|'unchanged';errors:string[]}[]};
+/** What every information-correction server action returns; a refusal carries the sentence to show, never a thrown error. */
+export type InformationActionResult<T>={ok:true;value:T}|{ok:false;error:string};
