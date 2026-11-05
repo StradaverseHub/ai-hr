@@ -14,7 +14,9 @@ import {collectMigrationLedger} from './staging-migration-ledger.mjs';
 import {fingerprintStagingEnvironment} from './staging-environment.mjs';
 import {assertControllerInventory} from './reconciliation-controller-inventory.mjs';
 import {guardServerCli} from '../../scripts/staging/lease.mjs';
-const ROOT='/opt/ai-hr',controllerRoot=fileURLToPath(new URL('../../',import.meta.url));
+const ROOT='/opt/ai-hr';
+// A directory URL includes a trailing slash. Inventory validation still checks the real path.
+const controllerRoot=resolve(fileURLToPath(new URL('../../',import.meta.url)));
 function record(path,bound=1024**2){
  const s=lstatSync(path);assert(s.isFile()&&!s.isSymbolicLink()&&s.nlink===1&&s.uid===process.getuid()&&s.size>0&&s.size<=bound,'Bounded owned reconciliation record required');return JSON.parse(readFileSync(path));
 }
