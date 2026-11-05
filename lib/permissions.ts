@@ -97,6 +97,8 @@ export interface ScreenEntry {
    * an explicit flag so the grid renders the note only where one is authored.
    */
   hasScopeNote?: boolean;
+  /** An authenticated route still requires a native assignment or capability for access. */
+  conditionalAccess?: boolean;
 }
 
 /**
@@ -110,7 +112,8 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'aiCentrePolicies',href:'/policies',labelKey:'nav.policies',guard:'scopedSession',routes:['/policies'],hasScopeNote:true},
   {screenKey:'assistantWorkspace',href:'/assistant',labelKey:'nav.assistant',guard:'assistantSession',routes:['/assistant','/assistant/leave','/assistant/notifications','/assistant/profile','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil','/assistant/approvals','/assistant/hr','/assistant/attendance','/assistant/pay-codes','/assistant/rewards','/assistant/payroll-close','/assistant/statutory','/assistant/payroll-runs','/assistant/bank','/assistant/compensation','/assistant/cost-allocation','/assistant/day-schedule','/assistant/document-details','/assistant/emergency-contacts','/assistant/employee-code','/assistant/employee-draft-discard','/assistant/employee-drafts','/assistant/family','/assistant/fixed-item-archive','/assistant/offboarding-case-cancel','/assistant/offboarding-step','/assistant/offboarding-step-undo','/assistant/org-departments','/assistant/org-employee-id','/assistant/org-people-general','/assistant/org-positions','/assistant/passport','/assistant/payment-method','/assistant/payroll-reopen','/assistant/payroll-reset','/assistant/performance/checkins','/assistant/performance/checkins/complete','/assistant/performance/checkins/schedule','/assistant/performance/goals','/assistant/profile-request-rejection','/assistant/qualifications','/assistant/rewards/calendar','/assistant/rewards/cancel','/assistant/rewards/return','/assistant/schedule-group','/assistant/tp3-opening','/assistant/workforce-profile'],hasScopeNote:true},
   {screenKey:'jobDescriptions',href:'/admin/job-descriptions',labelKey:'nav.jobDescriptions',guard:'requireAdmin',routes:['/admin/job-descriptions','/admin/job-descriptions/new','/admin/job-descriptions/configuration','/admin/job-descriptions/[id]','/admin/job-descriptions/[id]/print']},
-  {screenKey:'rewardsAccess',href:'/admin/rewards/access',labelKey:'rewardsAccess.title',guard:'scopedSession',hasScopeNote:true,routes:['/admin/rewards/access']},
+  {screenKey:'jobArchitecture',href:'/admin/job-architecture',labelKey:'jobArchitecture.title',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:['/admin/job-architecture']},
+  {screenKey:'rewardsAccess',href:'/admin/rewards/access',labelKey:'rewardsAccess.title',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:['/admin/rewards/access','/admin/rewards/access/view-as','/admin/rewards/uploaded']},
   {screenKey:'peopleGeneral',href:'/admin/settings/people-general',labelKey:'nav.peopleGeneral',guard:'requireAdmin',routes:['/admin/settings/people-general']},
   {screenKey:'myTp3',href:'/me/tp3',labelKey:'nav.myTp3',guard:'scopedSession',routes:['/me/tp3'],hasScopeNote:true},
   {screenKey:'myEa',href:'/me/ea',labelKey:'nav.myEa',guard:'scopedSession',routes:['/me/ea'],hasScopeNote:true},
@@ -158,7 +161,10 @@ export const SCREENS: readonly ScreenEntry[] = [
   { screenKey: 'loginPresentation', href: '/admin/settings/login', labelKey: 'nav.loginPresentation', guard: 'scopedAdmin', routes: ['/admin/settings/login'], hasScopeNote: true },
   {screenKey:'emailTemplates',href:'/admin/settings/email-templates',labelKey:'nav.emailTemplates',guard:'scopedAdmin',routes:['/admin/settings/email-templates'],hasScopeNote:true},
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },
-  { screenKey: 'rewards', href: '/rewards', labelKey: 'nav.rewards', guard: 'scopedSession', routes: ['/rewards', '/rewards/[unitId]', '/rewards/[unitId]/people/[entryId]'] },
+  {screenKey:'rewards',href:'/rewards',labelKey:'nav.rewards',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:[
+    '/rewards','/rewards/[unitId]','/rewards/[unitId]/people/[entryId]','/rewards/[unitId]/advisor',
+    '/rewards/[unitId]/advisor/fairness','/rewards/[unitId]/uploaded','/rewards/analytics','/rewards/rules',
+  ]},
   { screenKey: 'rewardsApprovals', href: '/rewards/approvals', labelKey: 'rewards.board.title', guard: 'scopedSession', routes: ['/rewards/approvals'] },
   { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards','/admin/rewards/shared'] },
   { screenKey: 'rewardsPolicy', href: '/admin/rewards/[unitId]', labelKey: 'rewards.configuration', guard: 'scopedSession', routes: ['/admin/rewards/[unitId]'] },

@@ -15,7 +15,7 @@ import {seedPayComponentCatalog,listPayComponents,setEmploymentPayComponent,upse
 import {createBatch,generatePayslips,closeBatch} from '../packs/payroll/service';
 import {requirePackFor} from '../localization/registry';
 import {createClaimType,submitClaim,decideClaim} from '../packs/claims/service';
-import {createRewardUnit,getRewardUnit} from '../packs/rewards/service';
+import {getRewardUnit} from '../packs/rewards/service';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {withAssistantRead} from '../core/assistant-read-session';
 import {executeSpecialistHoldout} from '../core/module-specialist-harness';
@@ -97,8 +97,13 @@ describe('real canonical financial and statutory specialist evidence',()=>{
   const f=await fixture();await setCompensation(f.admin,{employmentId:f.mine.employmentId,basicSalary:7319,monthlyAllowance:0,effectiveFrom});await grantAssistant(f.admin,{appUserId:f.admin.userId!});
   const id=await createApprovedRewardUnit(f.admin,{name:'Fictional native reward cycle',year:Number(today.slice(0,4)),companyId:b.companyId,businessUnitId:f.businessUnitId,snapshotDate:today});const native=await getRewardUnit(f.admin,id);expect(native.rows.length).toBeGreaterThan(0);
   const foreign=await seedBase();await setModule(foreign.tenantId,'rewards','active');const foreignAdmin=await entitledCtx(foreign),foreignUnit=await createBusinessUnit(foreignAdmin,{companyId:foreign.companyId,code:'FOREIGN',name:'PRIVATE_FOREIGN_SPECIALIST_UNIT'});await establishRewardMembership(foreignAdmin,{tenantId:foreign.tenantId,companyId:foreign.companyId,businessUnitId:foreignUnit.id,year:Number(today.slice(0,4))});await createApprovedRewardUnit(foreignAdmin,{name:'PRIVATE_FOREIGN_SPECIALIST_REWARDS',year:Number(today.slice(0,4)),companyId:foreign.companyId,businessUnitId:foreignUnit.id,snapshotDate:today});
-  const result=(await assess(f.admin,'rewards')).assessment;expect(result.findings).toContain('reward_draft_not_awarded');expect(result.findings).not.toContain('reward_posted_not_processed_or_paid');expect(result.presentation.cards).toHaveLength(1);expect(value(result.presentation.cards[0],'status')).toBe('draft');expect(value(result.presentation.cards[0],'rewardUnit')).toBe(native.name);
+  // Approved setup links the maker to a Person. Reopen the fixture session with that current identity.
+  const [maker]=await owner.db.select({personId:s.appUser.personId}).from(s.appUser)
+   .where(and(eq(s.appUser.id,f.admin.userId!),eq(s.appUser.tenantId,b.tenantId)));
+  expect(maker.personId).toBeTruthy();
+  const currentAdmin:SessionContext={...f.admin,personId:maker.personId};
+  const result=(await assess(currentAdmin,'rewards')).assessment;expect(result.findings).toContain('reward_draft_not_awarded');expect(result.findings).not.toContain('reward_posted_not_processed_or_paid');expect(result.presentation.cards).toHaveLength(1);expect(value(result.presentation.cards[0],'status')).toBe('draft');expect(value(result.presentation.cards[0],'rewardUnit')).toBe(native.name);
   for(const marker of ['PRIVATE_FOREIGN_SPECIALIST_REWARDS','PRIVATE_FOREIGN_SPECIALIST_UNIT','7319',f.mine.personId])expect(JSON.stringify(result)).not.toContain(marker);
-  await revoke(f.admin,f.admin,['rewards']);
+  await revoke(currentAdmin,currentAdmin,['rewards']);
  });
 });

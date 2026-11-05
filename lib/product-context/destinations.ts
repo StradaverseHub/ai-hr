@@ -151,8 +151,21 @@ const under=(route:string,area:string)=>route===area||route.startsWith(area+'/')
  * its guard and forwards to the page that owns the fact now, so it is not a link target; a reply links the owner. */
 export const FORWARD_STUBS:ReadonlySet<string>=new Set(['/control-tower','/control-tower/actions','/control-tower/opportunities',
  '/control-tower/agents/inventory','/control-tower/agents/orchestrator']);
+/** Native workflow grants and an active View As session cannot be inferred from a coarse role or module. */
+export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
+ '/admin/job-architecture',
+ '/admin/rewards/access/view-as',
+ '/admin/rewards/bonus-matrices',
+ '/admin/rewards/pat-inputs',
+ '/admin/rewards/plans',
+ '/admin/rewards/salary-structures',
+ '/admin/rewards/setup-access',
+ '/admin/rewards/uploaded',
+ '/rewards/analytics',
+ '/rewards/rules',
+]);
 export function classifyPage(route:string,source:string):Readonly<{audience:DestinationAudience;module:string|null}>|null{
- if(NOT_LINKABLE.some(area=>under(route,area))||FORWARD_STUBS.has(route))return null;
+ if(NOT_LINKABLE.some(area=>under(route,area))||FORWARD_STUBS.has(route)||NATIVE_SCOPE_ONLY_PAGES.has(route))return null;
  const area=Object.keys(AREA_MODULE).find(prefix=>under(route,prefix)),module=source.match(/requireModule\(\s*'([a-z_-]+)'/)?.[1]??(area?AREA_MODULE[area]:null);
  if(ADMIN_AREAS.some(prefix=>under(route,prefix))||ADMIN_GUARD.test(source)||(/\bisAdmin\(/.test(source)&&/\b(redirect|notFound|forbidden)\(/.test(source)))return{audience:'admin',module};
  if(/\brequireTeamAccess\(/.test(source))return{audience:'manager',module};
@@ -236,7 +249,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/lifecycle','everyone','lifecycle'],['/lifecycle/acknowledgement','everyone','lifecycle'],['/lifecycle/onboarding','everyone','lifecycle'],
  ['/lifecycle/onboarding/checklists','everyone','lifecycle'],['/lifecycle/requisitions/onboarding','everyone','lifecycle'],
  ['/lifecycle/v9','everyone','lifecycle'],['/manage/my-team','manager',null],['/me','everyone',null],['/me/calendar','everyone',null],['/me/cases','everyone',null],['/me/cases/new','everyone',null],
- ['/me/ea','everyone','payroll'],['/me/home','everyone',null],['/me/letters','everyone','employees'],['/me/lifecycle','everyone','lifecycle'],
+ ['/me/ea','everyone','payroll'],['/me/home','everyone',null],['/me/job-description','everyone',null],['/me/letters','everyone','employees'],['/me/lifecycle','everyone','lifecycle'],
  ['/me/notifications','everyone','notifications'],['/me/payroll-readiness','everyone',null],['/me/payslip','everyone','payroll'],['/me/performance','everyone',null],
  ['/me/tax-relief','everyone','payroll'],['/me/tp3','everyone','payroll'],['/notices','everyone',null],['/org','everyone',null],
  ['/payroll','admin','payroll'],['/payroll/back-pay','admin','payroll'],['/payroll/borang-8a/preview','admin','payroll'],

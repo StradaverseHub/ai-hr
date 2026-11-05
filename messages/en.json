@@ -11375,6 +11375,8 @@
         "createLogin": "Group-wide administrators only. Manual setup also requires a supported login provider and a verified administrator session.",
         "inviteUser": "Group-wide administrators only.",
         "entra": "Group administrators only. Configure Microsoft sign-in and employee provisioning for their own organization. Linking existing identities requires explicit confirmation.",
+        "rewards": "Rewards must be enabled. Your effective review assignment and company scope determine which reviews, advice, uploaded awards and results you can open.",
+        "jobArchitecture": "Job Architecture access depends on your current Architecture assignment and company scope.",
         "rewardsAccess": "Effective Rewards assignments and scoped HR administrator authority determine access; a platform role alone does not grant every action.",
         "myPrivateCases": "Only the signed-in person’s own private cases. Privileged roles do not widen it; administrators cannot read others’ cases here.",
         "privateCaseHandling": "Reachable by everyone, but shows cases only to the designated case handlers of the case’s company (or the group administrator when no eligible handler remains), never to the author or anyone the author left out. A role grants nothing here."

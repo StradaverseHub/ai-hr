@@ -1715,5 +1715,5 @@ admission. Production requires a separate exact-ledger check and release decisio
 
 The release gate found additional company retention references from the approved expansion.
 Append `2211_company_retention_approved_expansion` at idx 1422 / timestamp 1793330001622.
-SHA256 `8d2362cd2aa1ae1f34f7886ca5417d2e2c7b74ad9cdd86a67ca91add0066fcb8`. The migration adds scoped retention checks for the new owners.
+SHA256 `5e336a948b9490d9355eba65d6f341618334a031c7bdc66562ed9139b7c5f0c4`. The migration adds scoped retention checks and validated tenant keys for the new owners.
 It preserves earlier SQL and the original staging ledger.

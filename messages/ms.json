@@ -11375,6 +11375,8 @@
         "createLogin": "Pentadbir seluruh kumpulan sahaja. Persediaan manual juga memerlukan penyedia log masuk yang disokong dan sesi pentadbir yang disahkan.",
         "inviteUser": "Pentadbir seluruh kumpulan sahaja.",
         "entra": "Pentadbir kumpulan sahaja. Konfigurasikan log masuk Microsoft dan penyediaan akaun pekerja untuk organisasi sendiri. Pautan identiti sedia ada memerlukan pengesahan jelas.",
+        "rewards": "Rewards mesti didayakan. Penugasan semakan yang berkuat kuasa dan skop syarikat anda menentukan semakan, cadangan, anugerah yang dimuat naik dan keputusan yang boleh dibuka.",
+        "jobArchitecture": "Akses Seni Bina Jawatan bergantung pada penugasan Seni Bina Jawatan dan skop syarikat semasa anda.",
         "rewardsAccess": "Penugasan Rewards berkuat kuasa dan kuasa pentadbir HR mengikut skop menentukan akses; peranan sistem sahaja tidak memberikan semua tindakan.",
         "myPrivateCases": "Hanya kes peribadi milik orang yang log masuk. Peranan berkeistimewaan tidak meluaskannya; pentadbir tidak boleh membaca kes orang lain di sini.",
         "privateCaseHandling": "Boleh dicapai oleh semua orang, tetapi menunjukkan kes hanya kepada pengendali kes yang dilantik bagi syarikat kes itu (atau pentadbir kumpulan apabila tiada pengendali yang layak), tidak sekali-kali kepada penulisnya atau sesiapa yang dikecualikan oleh penulis. Peranan tidak memberi apa-apa di sini."

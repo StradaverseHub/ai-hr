@@ -11375,6 +11375,8 @@
         "createLogin": "Chỉ dành cho quản trị viên toàn nhóm. Thiết lập thủ công cũng yêu cầu nhà cung cấp đăng nhập được hỗ trợ và phiên quản trị viên đã xác minh.",
         "inviteUser": "Chỉ dành cho quản trị viên toàn nhóm.",
         "entra": "Chỉ quản trị viên cấp tập đoàn. Cấu hình đăng nhập Microsoft và cấp tài khoản nhân viên cho tổ chức của mình. Liên kết danh tính hiện có cần được xác nhận rõ ràng.",
+        "rewards": "Cần bật Rewards. Phân công xét duyệt có hiệu lực và phạm vi công ty quyết định bạn có thể mở kỳ xét duyệt, đề xuất, khoản thưởng đã tải lên và kết quả nào.",
+        "jobArchitecture": "Quyền truy cập Kiến trúc công việc phụ thuộc vào phân công Kiến trúc công việc hiện tại và phạm vi công ty của bạn.",
         "rewardsAccess": "Phân công Rewards đang có hiệu lực và quyền quản trị HR theo phạm vi quyết định quyền truy cập; chỉ có vai trò hệ thống không cho phép mọi hành động.",
         "myPrivateCases": "Chỉ các hồ sơ riêng tư của chính người đăng nhập. Vai trò đặc quyền không mở rộng phạm vi; quản trị viên không thể đọc hồ sơ của người khác tại đây.",
         "privateCaseHandling": "Mọi người đều truy cập được, nhưng chỉ hiển thị hồ sơ cho người xử lý được chỉ định của công ty liên quan (hoặc quản trị viên tập đoàn khi không còn người xử lý phù hợp), không bao giờ cho người gửi hoặc người bị người gửi loại trừ. Vai trò không cấp quyền gì tại đây."

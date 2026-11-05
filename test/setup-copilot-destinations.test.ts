@@ -4,7 +4,7 @@
 import {existsSync,readFileSync,readdirSync} from 'node:fs';
 import {dirname,join,relative} from 'node:path';
 import {describe,expect,it} from 'vitest';
-import {classifyPage,destinationsFor,LINKABLE_PAGES,linkablePathsFor} from '@/lib/product-context/destinations';
+import {classifyPage,destinationsFor,LINKABLE_PAGES,linkablePathsFor,NATIVE_SCOPE_ONLY_PAGES} from '@/lib/product-context/destinations';
 import {STAGE_PAGES} from '@/core/setup-copilot/copilot';
 import {PAGES} from '@/core/product-context/coverage-readiness';
 import {EXPLAIN_ENTITIES} from '@/core/semantic-model/entities-explain';
@@ -43,6 +43,16 @@ describe('linkable pages',()=>{
    expect(linkablePathsFor(as(roles))).toEqual(expect.arrayContaining(destinationsFor(as(roles)).map(row=>row.href.split(/[?#]/)[0]||'/')));
   const leaveOnly=linkablePathsFor(as(['hr_admin']),['leave']);
   expect(leaveOnly).not.toContain('/payroll/process');expect(leaveOnly).toContain('/admin/leave-config/generate');
+ });
+ it('links the caller’s own job description while leaving seat-based workflows in native navigation',()=>{
+  const admin=linkablePathsFor(as(['hr_admin']),['rewards']);
+  const employee=linkablePathsFor(as(['employee']),['rewards']);
+  expect(employee).toContain('/me/job-description');
+  for(const path of NATIVE_SCOPE_ONLY_PAGES){
+   expect(staticPages().some(([route])=>route===path),path).toBe(true);
+   expect(admin,path).not.toContain(path);
+   expect(employee,path).not.toContain(path);
+  }
  });
  it('makes every page the co-pilot and the explainers point to linkable for the caller they serve',()=>{
   const admin=linkablePathsFor(as(['hr_admin'])),employee=linkablePathsFor(as(['employee']));

@@ -166,7 +166,6 @@ import {ONBOARDING_STEPS} from '../../core/lifecycle-defaults';
 import * as testing from '../../core/system-testing-workspace';
 import type {InstructionDefinition} from '../../lib/system-testing/model';
 import * as rewards from '../../packs/rewards/service';
-import {emptyFacts as emptyRewardFacts} from '../../packs/rewards/model';
 import {setRewardMember} from '../rewards-access-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget} from '../rewards-governance-fixture';
 
@@ -303,6 +302,24 @@ async function notificationIdentity(who:SessionContext){
  const identity={issuer:'https://fictional.parity.test',subject:who.userId!,email:person.email!,emailVerified:true};
  await owner.db.insert(schema.appExternalIdentity).values({issuer:identity.issuer,subject:identity.subject,appUserId:who.userId!}).onConflictDoNothing();provider.current.mockResolvedValue(identity);return identity;
 }
+async function submitParityRewardReview(w:World,h:Home,returnAtBg:boolean){
+ const root=groupOf(h.base),year=Number(todayInKualaLumpur().slice(0,4)),[bu]=await owner.db.insert(schema.businessUnit).values({tenantId:h.base.tenantId,companyId:h.companyId,code:'FIC-BU',name:'Fictional Unit'}).returning(),[grade]=await owner.db.insert(schema.jobGrade).values({tenantId:h.base.tenantId,code:'12',name:'Fictional Grade12'}).returning();await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,h.person.employmentId));await owner.db.update(schema.employment).set({gradeId:grade.id,confirmationDate:hiredOn()}).where(eq(schema.employment.id,h.person.employmentId));
+   // Canonical Group structure puts the whole company in its published Business unit.
+   const companyEmployees=await owner.db.select({id:schema.employment.id}).from(schema.employment)
+    .where(and(eq(schema.employment.tenantId,h.base.tenantId),eq(schema.employment.companyId,h.companyId)));
+   for(const employee of companyEmployees)if(employee.id!==h.person.employmentId){
+    await setCompensation(root,{employmentId:employee.id,basicSalary:5000,monthlyAllowance:0,effectiveFrom:hiredOn()});
+   }
+   const unitId=await createApprovedRewardUnit(root,{name:'Fictional approved Rewards',year,companyId:h.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});const actors:Record<string,SessionContext>={gr:root,bu:await h.session()};for(const seat of ['bg','ctro','ec'] as const){const person=await hire(h.base,'Fictional '+seat+' reviewer',h.companyId,h.base.deptB);actors[seat]=(await w.login(h.base,person,'employee',null)).ctx;}for(const seat of ['bu','bg','ctro','ec'] as const)await setRewardMember(root,unitId,(await rewards.getRewardUnit(root,unitId)).unit.revision,(seat==='bg'&&returnAtBg?await w.as('assigned_approver'):actors[seat]).userId!,seat);for(const role of ['company_hr','group_hr','super_admin','payroll_partner'] as const)await setRewardMember(root,unitId,(await rewards.getRewardUnit(root,unitId)).unit.revision,(await w.as(role)).userId!,'payroll');let view=await rewards.getRewardUnit(root,unitId);await configureRewardFixture(root,unitId,view.unit.revision,{...view.unit.policy,effectiveFrom:todayInKualaLumpur(),patActual:100,patTarget:100,ranges:{'12':[300000,500000,700000]}});
+   view=await rewards.getRewardUnit(root,unitId);
+   expect(view.rows.some(row=>row.source.employmentId===h.person.employmentId)).toBe(true);
+   await rewards.importRewardFacts(root,unitId,view.unit.revision,view.rows.map(row=>({
+    employmentId:row.source.employmentId,
+    facts:{...row.facts,reviewed:true,...(row.source.employmentId===h.person.employmentId?{talent:'SCORE' as const,performance:'ME' as const}:{})},
+   })));
+   await refreshRewardFixtureBudget(root,unitId);view=await rewards.getRewardUnit(root,unitId);await rewards.decideRewardUnit(actors.bu,unitId,view.unit.revision,'submit','Fictional human recommendation');return {root,unitId,view,actors};
+}
+
 const ADAPTERS:Record<ProbedActionId,Adapter>={
  'org.people_general.change':{family:'tenant_policy',store:packetStore('org.people_general.change',peopleGeneralPolicyReviews.prepare,peopleGeneralPolicyReviews.confirm),
   screenAdmits:who=>canConfigurePeopleGeneral(who),create:async(_w,h)=>itemOf(h,h.base.tenantId),
@@ -400,26 +417,20 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   offered:async(who,item)=>listed(await readRewardsCalendarChoices(who),'units','unitId',item.subjectId),
   screen:(tx,who,item)=>rewards.saveRewardCalendarTx(tx,who,item.subjectId,item.revision!,{...rewards.emptyRewardCalendar(),caseDue:todayInKualaLumpur()})},
  'rewards.annual_review.return':{family:'hr_on_employment',store:packetStore('rewards.annual_review.return',prepareRewardsReturnReview,confirmRewardsReturnReview),
-  async create(w,h){const root=groupOf(h.base),year=Number(todayInKualaLumpur().slice(0,4)),[bu]=await owner.db.insert(schema.businessUnit).values({tenantId:h.base.tenantId,companyId:h.companyId,code:'FIC-BU',name:'Fictional Unit'}).returning(),[grade]=await owner.db.insert(schema.jobGrade).values({tenantId:h.base.tenantId,code:'12',name:'Fictional Grade12'}).returning();await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,h.person.employmentId));await owner.db.update(schema.employment).set({gradeId:grade.id,confirmationDate:hiredOn()}).where(eq(schema.employment.id,h.person.employmentId));
-   // Canonical Group structure puts the whole company in its published Business unit.
-   const companyEmployees=await owner.db.select({id:schema.employment.id}).from(schema.employment)
-    .where(and(eq(schema.employment.tenantId,h.base.tenantId),eq(schema.employment.companyId,h.companyId)));
-   for(const employee of companyEmployees)if(employee.id!==h.person.employmentId){
-    await setCompensation(root,{employmentId:employee.id,basicSalary:5000,monthlyAllowance:0,effectiveFrom:hiredOn()});
-   }
-   const unitId=await createApprovedRewardUnit(root,{name:'Fictional approved Rewards',year,companyId:h.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});const actors:Record<string,SessionContext>={gr:root,bu:await h.session()};for(const seat of ['bg','ctro','ec'] as const){const person=await hire(h.base,'Fictional '+seat+' reviewer',h.companyId,h.base.deptB);actors[seat]=(await w.login(h.base,person,'employee',null)).ctx;}for(const seat of ['bu','bg','ctro','ec'] as const)await setRewardMember(root,unitId,(await rewards.getRewardUnit(root,unitId)).unit.revision,(seat==='bg'?await w.as('assigned_approver'):actors[seat]).userId!,seat);for(const role of ['company_hr','group_hr','super_admin','payroll_partner'] as const)await setRewardMember(root,unitId,(await rewards.getRewardUnit(root,unitId)).unit.revision,(await w.as(role)).userId!,'payroll');let view=await rewards.getRewardUnit(root,unitId);await configureRewardFixture(root,unitId,view.unit.revision,{...view.unit.policy,effectiveFrom:todayInKualaLumpur(),patActual:100,patTarget:100,ranges:{'12':[300000,500000,700000]}});
-   view=await rewards.getRewardUnit(root,unitId);
-   expect(view.rows.some(row=>row.source.employmentId===h.person.employmentId)).toBe(true);
-   await rewards.importRewardFacts(root,unitId,view.unit.revision,view.rows.map(row=>({
-    employmentId:row.source.employmentId,
-    facts:{...row.facts,reviewed:true,...(row.source.employmentId===h.person.employmentId?{talent:'SCORE' as const,performance:'ME' as const}:{})},
-   })));
-   await refreshRewardFixtureBudget(root,unitId);view=await rewards.getRewardUnit(root,unitId);await rewards.decideRewardUnit(actors.bu,unitId,view.unit.revision,'submit','Fictional human recommendation');return itemOf(h,unitId,{revision:view.unit.revision});},
+  async create(w,h){
+   const {unitId,view}=await submitParityRewardReview(w,h,true);
+   return itemOf(h,unitId,{revision:view.unit.revision});
+  },
   human:item=>({action:'rewards.annual_review.return',contractVersion:1,unitId:item.subjectId,revision:item.revision,reason:'Fictional return for another BU review',confirmWholeAnnualReview:true}),
   offered:async(who,item)=>listed(await readRewardsReturnChoices(who),'units','unitId',item.subjectId),
   screen:(tx,who,item)=>rewards.returnAnnualRewardReviewTx(tx,who,item.subjectId,item.revision!,'Fictional return for another BU review')},
  'rewards.post':{family:'hr_on_employment',independentScreen:true,store:packetStore('rewards.post',prepareRewardsPostReview,confirmRewardsPostReview),
-  async create(w,h){const root=groupOf(h.base),year=Number(todayInKualaLumpur().slice(0,4)),[bu]=await owner.db.insert(schema.businessUnit).values({tenantId:h.base.tenantId,companyId:h.companyId,code:'FIC-BU',name:'Fictional Unit'}).returning(),[grade]=await owner.db.insert(schema.jobGrade).values({tenantId:h.base.tenantId,code:'12',name:'Fictional Grade12'}).returning();await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,h.person.employmentId));await owner.db.update(schema.employment).set({gradeId:grade.id,confirmationDate:hiredOn()}).where(eq(schema.employment.id,h.person.employmentId));const unitId=await createApprovedRewardUnit(root,{name:'Fictional approved Rewards',year,companyId:h.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});const actors:Record<string,SessionContext>={gr:root,bu:await h.session()};for(const seat of ['bg','ctro','ec'] as const){const person=await hire(h.base,'Fictional '+seat+' reviewer',h.companyId,h.base.deptB);actors[seat]=(await w.login(h.base,person,'employee',null)).ctx;}for(const seat of ['bu','bg','ctro','ec'] as const)await setRewardMember(root,unitId,(await rewards.getRewardUnit(root,unitId)).unit.revision,actors[seat].userId!,seat);for(const role of ['company_hr','group_hr','super_admin','payroll_partner'] as const)await setRewardMember(root,unitId,(await rewards.getRewardUnit(root,unitId)).unit.revision,(await w.as(role)).userId!,'payroll');let view=await rewards.getRewardUnit(root,unitId);await configureRewardFixture(root,unitId,view.unit.revision,{...view.unit.policy,effectiveFrom:todayInKualaLumpur(),patActual:100,patTarget:100,ranges:{'12':[300000,500000,700000]}});view=await rewards.getRewardUnit(root,unitId);await rewards.saveRewardEntry(root,unitId,view.unit.revision,view.rows[0].id,view.rows[0].recommendation,{...emptyRewardFacts(),reviewed:true,talent:'SCORE',performance:'ME'});await refreshRewardFixtureBudget(root,unitId);view=await rewards.getRewardUnit(root,unitId);await rewards.decideRewardUnit(actors.bu,unitId,view.unit.revision,'submit','Fictional human recommendation');for(const role of view.route.slice(1))await rewards.decideRewardUnit(actors[role],unitId,view.unit.revision,'approve','Fictional human recommendation');const {batchId}=await createBatch(root,{companyId:h.companyId,payPeriod:todayInKualaLumpur().slice(0,7),scope:{employmentIds:[h.person.employmentId]}});return itemOf(h,unitId,{batchId,revision:view.unit.revision});},human:item=>({action:'rewards.post',contractVersion:1,unitId:item.subjectId,revision:item.revision,batchId:item.batchId,confirmWholeApprovedUnit:true}),offered:async(who,item)=>listed(await readRewardsPostModuleActionChoices(who),'units','unitId',item.subjectId),screen:(_tx,who,item)=>rewards.postRewardUnit(who,item.subjectId,item.revision!,item.batchId)},
+  async create(w,h){
+   const {root,unitId,view,actors}=await submitParityRewardReview(w,h,false);
+   for(const role of view.route.slice(1))await rewards.decideRewardUnit(actors[role],unitId,view.unit.revision,'approve','Fictional human recommendation');
+   const {batchId}=await createBatch(root,{companyId:h.companyId,payPeriod:todayInKualaLumpur().slice(0,7),scope:{employmentIds:view.rows.map(row=>row.source.employmentId)}});
+   return itemOf(h,unitId,{batchId,revision:view.unit.revision});
+  },human:item=>({action:'rewards.post',contractVersion:1,unitId:item.subjectId,revision:item.revision,batchId:item.batchId,confirmWholeApprovedUnit:true}),offered:async(who,item)=>listed(await readRewardsPostModuleActionChoices(who),'units','unitId',item.subjectId),screen:(_tx,who,item)=>rewards.postRewardUnit(who,item.subjectId,item.revision!,item.batchId)},
  'leave.apply':{family:'own',screenAdmits:ownEmploymentScreen,
   store:{prepare:async(who,input)=>{const h=input as ReturnType<typeof leaveNomination>;const r=await withTenant(who,tx=>prepareOwnLeaveReviewTx(tx,who,h,{employmentId:h.employmentId,leaveTypeId:h.leaveTypeId},{reason:'Fictional parity leave reason'},'en'));if(r.kind!=='prepared')throw Error('No native leave candidate');return r;},confirm:(who,p)=>confirmOwnLeaveReview(who,{contractVersion:1,...p},'en')},
   async create(_w,h){await owner.db.insert(schema.leaveLedger).values({tenantId:h.base.tenantId,employmentId:h.person.employmentId,leaveTypeId:h.base.annualLeaveTypeId,entryType:'accrual',days:'10',effectiveOn:todayInKualaLumpur()});return itemOf(h,h.person.employmentId,{date:weekdays(1)[0]});},human:leaveNomination,

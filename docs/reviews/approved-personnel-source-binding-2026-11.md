@@ -110,7 +110,7 @@ review metadata. The new Job Architecture and Rewards Advisor workload IDs have 
 provider approval records and remain fail-closed. The EPF change calculates and saves
 workings in the native payroll path. It adds no provider contract or input transform.
 The 28 existing approved records receive only the technical digest renewal
-`79d5c5aae9e69cdfa2194f3c9340a579132ab81df373dcc7145389390e353fee` under their existing same-purpose authority. This does not
+`8189176ee7315e64c7885c3dc93eda4a02312ee6afe3aa06b05e5e32b3ec27eb` under their existing same-purpose authority. This does not
 record a new human review, activate any configuration, or authorize the new workload IDs.
 
 The gate repairs classify the native actions and import owners, protect public errors, and keep

@@ -66,3 +66,28 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.expansion_other_company_in_use(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.expansion_other_company_in_use(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Preserve each single-column key's NO ACTION behavior and add the tenant match beside it.
+-- These expansion tables are new to this release. Validation refuses any inconsistent rows without rewriting them.
+DO $$
+DECLARE relation text;
+BEGIN
+  FOREACH relation IN ARRAY ARRAY[
+    'company_registration_classification', 'job_architecture_import_preview',
+    'job_architecture_position_revision', 'job_architecture_proposal', 'job_architecture_seat',
+    'job_architecture_suggestion', 'reward_company_year_review', 'reward_page_grant',
+    'reward_pat_version', 'reward_plan_company', 'reward_setup_grant'
+  ] LOOP
+    EXECUTE format(
+      'ALTER TABLE public.%I ADD CONSTRAINT %I FOREIGN KEY (company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID',
+      relation, relation || '_company_tenant_fk'
+    );
+    EXECUTE format('ALTER TABLE public.%I VALIDATE CONSTRAINT %I', relation, relation || '_company_tenant_fk');
+  END LOOP;
+END $$;
+--> statement-breakpoint
+ALTER TABLE public.job_architecture_jd_publication
+  ADD CONSTRAINT job_architecture_jd_publication_company_tenant_fk
+  FOREIGN KEY (variant_company_id, tenant_id) REFERENCES public.company (id, tenant_id) ON DELETE NO ACTION NOT VALID;
+ALTER TABLE public.job_architecture_jd_publication
+  VALIDATE CONSTRAINT job_architecture_jd_publication_company_tenant_fk;

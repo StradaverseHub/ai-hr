@@ -54,8 +54,9 @@ it.each([562,563])('upgrades populated payroll and Rewards from %i through the c
  async function historicalRows(){
   const result:Record<string,unknown>={};
   for(const table of oldTables){
-   // Literal inventory only; subtract the one additive default when comparing old input columns.
-   const expression=table==='payroll_input'?"to_jsonb(t)-'reward_provenance'":'to_jsonb(t)';
+   // Compare the historical columns. The two new defaults are asserted independently below.
+   const expression=table==='payroll_input'?"to_jsonb(t)-'reward_provenance'"
+    :table==='reward_unit'?"to_jsonb(t)-'uploaded_award_digest'":'to_jsonb(t)';
    result[table]=await storage.client.unsafe(`select ${expression} as row from public.${table} t where tenant_id=ANY($1::uuid[]) order by (${expression})::text`,[fixtures.map(f=>f.tenant)]);
   }
   return result;
@@ -108,6 +109,7 @@ it.each([562,563])('upgrades populated payroll and Rewards from %i through the c
   expect(upgraded.map(row=>({hash:row.hash,when:Number(row.created_at)}))).toEqual(orderedManifest.map(m=>({hash:m.hash,when:m.folderMillis})));
   expect(await storage.client`select id from payroll_txn_import_attempt`).toHaveLength(0); // Never invent ownership of old imports.
   expect(await storage.client`select reward_provenance from payroll_input`).toEqual([{reward_provenance:[]},{reward_provenance:[]}]);
+  expect(await storage.client`select uploaded_award_digest from reward_unit where tenant_id=ANY(${fixtures.map(f=>f.tenant)}::uuid[])`).toEqual([{uploaded_award_digest:null},{uploaded_award_digest:null}]);
   const newTables=['payroll_txn_import_attempt','reward_governance','reward_governance_history','reward_senior_evidence','reward_governance_public','reward_senior_award'];
   const rls=await storage.client`select relname,relrowsecurity,relforcerowsecurity from pg_class where relnamespace='public'::regnamespace and relname=ANY(${newTables}::text[])`;
   expect(rls).toHaveLength(newTables.length);for(const row of rls)expect(row).toMatchObject({relrowsecurity:true,relforcerowsecurity:true});

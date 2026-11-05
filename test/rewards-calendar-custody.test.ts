@@ -1,4 +1,4 @@
-import {historicalEmptyRewardUnit} from './rewards-historical-fixture';
+import {historicalEmptyRewardUnit,historicalRewardDraft} from './rewards-historical-fixture';
 import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {pgSqlState} from '../lib/db-error';
 import * as vault from '../lib/pii/vault';
@@ -22,7 +22,7 @@ beforeAll(migrateRewardMembershipFixture);
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
 const addDays = (iso: string, days: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 describe('Rewards shared cycle/company calendar custody and exact proof', () => {
-  let b: Base, admin: SessionContext, unitId: string, legacyBusinessUnitId: string;
+  let b: Base, admin: SessionContext, unitId: string;
   const actors: Partial<Record<RewardRole, SessionContext>> = {};
   const view = () => getRewardUnit(admin, unitId);
   const row = async (who = admin) => (await listRewardUnits(who, [b.companyId])).find(r => r.id === unitId)!;
@@ -31,6 +31,8 @@ describe('Rewards shared cycle/company calendar custody and exact proof', () => 
     const [adminPerson] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: 'Fictional Rewards administrator', primaryEmail: 'administrator@rewards-config.test' }).returning();
     await owner.db.update(schema.appUser).set({ personId: adminPerson.id }).where(eq(schema.appUser.id, admin.userId!));
     admin = { ...admin, personId: adminPerson.id };
+  });
+  async function plannedFixture(){
     const [bu] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'HQ', name: 'Headquarters' }).returning();
     const [grade] = await owner.db.insert(schema.jobGrade).values({ tenantId: b.tenantId, code: '12', name: 'Grade 12' }).returning();
     for (const n of [1, 2]) {
@@ -38,10 +40,6 @@ describe('Rewards shared cycle/company calendar custody and exact proof', () => 
       await owner.db.update(schema.employment).set({ gradeId: grade.id, confirmationDate: `${year - 2}-04-01` }).where(eq(schema.employment.id, hire.employmentId));
       await setCompensation(admin, { employmentId: hire.employmentId, basicSalary: 5000, effectiveFrom: `${year - 2}-01-01` });
     }
-    // Preserve a source assignment from before the canonical Group structure was published.
-    const [legacyBranch] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'BR', name: 'Fictional branch' }).returning();
-    legacyBusinessUnitId = legacyBranch.id;
-    await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:legacyBusinessUnitId,departmentId:b.deptA,year});
     unitId = await createApprovedRewardUnit(admin, { name: 'Fictional Annual Compensation Review', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
     for (const role of ['bu', 'bg', 'ctro', 'ec'] as const) {
       const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: `Fictional ${role} reviewer`, primaryEmail: `${role}@rewards-config.test` }).returning();
@@ -51,7 +49,7 @@ describe('Rewards shared cycle/company calendar custody and exact proof', () => 
     }
     actors.gr = admin;
     await setRewardMember(admin, unitId, (await view()).unit.revision, admin.userId!, 'payroll');
-  });
+  }
   afterAll(closeAll);
   afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks();});
   const values=()=>({...emptyRewardCalendar(),caseDue:today,offcycleDays:{...emptyRewardCalendar().offcycleDays,bg:7}});
@@ -62,6 +60,8 @@ describe('Rewards shared cycle/company calendar custody and exact proof', () => 
   const retirement=(r:{actionId:string})=>({action,contractVersion:1,actionId:r.actionId});
   async function events(){return owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'reward-calendar.updated'));}
   async function custody(id:string){const [r]=await owner.db.execute(sql`select r.state,r.intent_digest,r.reviewed_digest,(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies from app.assistant_own_leave_review r where r.id=${id}::uuid`);return r;}
+  describe('approved annual review',()=>{
+  beforeEach(plannedFixture);
   it('prepares without effect, binds real cycle/company and completes/replays one native calendar event',async()=>{
     const r=await prepare();expect(r.review).toMatchObject({companyId:b.companyId,companyName:'Acme Sdn Bhd',revision:0,before:emptyRewardCalendar(),after:values(),consequence:'all_reviews_in_cycle_and_company_display_deadlines_only'});expect(JSON.stringify(r)).not.toMatch(/Fictional Reward Employee|basicSalary|5000/);expect(await events()).toHaveLength(0);
     const done=await confirmRewardsCalendarReview(admin,confirmation(r));if(done.kind!=='completed')throw Error();const [event]=await events();expect(done.receipt.receipt).toMatchObject({unitId,cycleId:r.content.cycleId,companyId:b.companyId,eventId:event.id,savedRevision:1,currentRevision:1});expect(event.payload).toMatchObject({before:null,after:values()});expect(await custody(r.actionId)).toMatchObject({state:'completed',bodies:0,intent_digest:null,reviewed_digest:null});expect(await confirmRewardsCalendarReview(admin,confirmation(r))).toEqual(done);expect(await reopenRewardsCalendarReview(admin,r.actionId)).toEqual(done);expect(await events()).toHaveLength(1);await expect(discardRewardsCalendarReview(admin,retirement(r))).rejects.toThrow();
@@ -77,6 +77,25 @@ describe('Rewards shared cycle/company calendar custody and exact proof', () => 
   it('refuses savepoint proof and rolls back its native row and event',async()=>{const r=await prepare();await expect(withTenant(admin,async tx=>{const done=await tx.transaction(inner=>saveRewardCalendarTx(inner,admin,unitId,0,values()));await tx.execute(sql`select app.assistant_rewards_calendar_review_complete(${r.actionId}::uuid,${r.reviewedDigest},${done.eventId}::uuid,${done.revision},${done.calendarId}::uuid)`);})).rejects.toThrow();expect(await events()).toHaveLength(0);expect((await getRewardCalendar(admin,unitId)).revision).toBe(0);expect((await confirmRewardsCalendarReview(admin,confirmation(r))).kind).toBe('completed');});
   it('refuses every unrelated physical family column with typed CHECK23514',async()=>{const r=await prepare(),allowed=['action_kind','id','tenant_id','user_id','person_id','company_id','intent_digest','reviewed_digest','state','created_at','expires_at','rewards_calendar_unit_id','rewards_calendar_cycle_id','rewards_calendar_id','rewards_calendar_event_id','rewards_calendar_revision'],columns=await owner.db.execute<{name:string;type:string}>(sql`select attname as name,format_type(atttypid,atttypmod) as type from pg_attribute where attrelid='app.assistant_own_leave_review'::regclass and attnum>0 and not attisdropped order by attnum`),hybrids=Array.from(columns).filter(c=>!allowed.includes(c.name));expect(hybrids.length).toBeGreaterThan(50);for(const c of hybrids){let value;if(c.type==='uuid')value=sql`${b.companyId}::uuid`;else if(c.type==='uuid[]')value=sql`array[${b.companyId}::uuid]::uuid[]`;else if(c.type==='text')value=sql`${c.name==='multi_cycle_pay_period'?'2026-10':c.name==='multi_cycle_run_type'?'bonus':'fictional'}`;else if(c.type==='date')value=sql`'2026-10-30'::date`;else if(c.type==='integer')value=sql`1::integer`;else if(c.type==='boolean')value=sql`true::boolean`;else if(c.type==='jsonb')value=sql`'{"fictional":true}'::jsonb`;else if(c.type==='xid8')value=sql`'1'::xid8`;else if(c.type==='tid')value=sql`'(0,1)'::tid`;else throw Error('Unknown hybrid type '+c.type);let caught:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set ${sql.identifier(c.name)}=${value} where id=${r.actionId}::uuid`);}catch(error){caught=error;}expect(pgSqlState(caught),c.name).toBe('23514');}console.info('[rewards-calendar-typed-hybrids]',hybrids.length);});
 
-  it('edits the calendar shared with a preserved historical review and recovers the historical event after a later native edit',async()=>{const second=await historicalEmptyRewardUnit(admin,unitId,legacyBusinessUnitId),r=await prepare();const done=await confirmRewardsCalendarReview(admin,confirmation(r));expect((await getRewardCalendar(admin,second)).values).toEqual(values());expect((await readRewardsCalendarChoices(admin)).units).toHaveLength(1);await saveRewardCalendar(admin,second,1,emptyRewardCalendar());const replay=await reopenRewardsCalendarReview(admin,r.actionId);if(done.kind!=='completed'||replay.kind!=='completed')throw Error();expect(replay.receipt.receipt).toMatchObject({eventId:done.receipt.receipt.eventId,savedRevision:1,currentRevision:2});expect(await events()).toHaveLength(2);});
+  });
 
+  it('edits the calendar shared by preserved historical reviews and recovers the historical event after a later native edit',async()=>{
+    const [headquarters,branch]=await owner.db.insert(schema.businessUnit).values([
+      {tenantId:b.tenantId,companyId:b.companyId,code:'HQ',name:'Fictional headquarters'},
+      {tenantId:b.tenantId,companyId:b.companyId,code:'BR',name:'Fictional branch'},
+    ]).returning();
+    const member=await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:headquarters.id,departmentId:b.deptA,year});
+    await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:branch.id,departmentId:b.deptA,year});
+    unitId=await historicalRewardDraft(admin,{name:'Fictional historical cycle',year,companyId:b.companyId,businessUnitId:headquarters.id,snapshotDate:today,employmentId:member.employmentId});
+    const second=await historicalEmptyRewardUnit(admin,unitId,branch.id);
+    const r=await prepare();
+    const done=await confirmRewardsCalendarReview(admin,confirmation(r));
+    expect((await getRewardCalendar(admin,second)).values).toEqual(values());
+    expect((await readRewardsCalendarChoices(admin)).units).toHaveLength(1);
+    await saveRewardCalendar(admin,second,1,emptyRewardCalendar());
+    const replay=await reopenRewardsCalendarReview(admin,r.actionId);
+    if(done.kind!=='completed'||replay.kind!=='completed')throw Error();
+    expect(replay.receipt.receipt).toMatchObject({eventId:done.receipt.receipt.eventId,savedRevision:1,currentRevision:2});
+    expect(await events()).toHaveLength(2);
+  });
 });

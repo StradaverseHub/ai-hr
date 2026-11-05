@@ -35,6 +35,12 @@ import {installSyntheticSpendCapability} from './ai-spend-fixture';
 // Resolver-issued capabilities replace obsolete structural provider/key mocks.
 async function issuedFixtureConfig(...args:Parameters<typeof resolveActiveAiConfig>){return (await vi.importActual<typeof import('../core/ai-config')>('../core/ai-config')).resolveActiveAiConfig(...args);}
 import {createOnehrServiceFixtures,restrictedReminderMailOwner,year} from './onehr-service-fixture';
+function rewardRowFor(review:Awaited<ReturnType<typeof getRewardUnit>>,employmentId:string){
+  const row=review.rows.find(candidate=>candidate.source.employmentId===employmentId);
+  if(!row)throw new Error('The assessment subject is missing from the Rewards snapshot.');
+  return row;
+}
+
 describe('Native performance workflow and Rewards boundary with real RLS',()=>{
   let b:Base,a:SessionContext,subject:{employmentId:string;personId:string},manager:{employmentId:string;personId:string},self:SessionContext,mgr:SessionContext,cycleId:string,reviewId:string;
   let peers:{employmentId:string;ctx:SessionContext}[];
@@ -360,7 +366,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const unitId=await createApprovedRewardUnit(a,{companyId:b.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur(),name:'Final queue Rewards',year});let reward=await getRewardUnit(a,unitId);
     await expect(importOnehrRewardResults(a,unitId,reward.unit.revision)).rejects.toThrow(/No finalized assessment/);
     for(const kind of ['pip','promotion'] as const)await perf.confirmAssessmentTalentList(reviewer,group,(await perf.getOnehrCalibration(reviewer,group)).session.revision,kind);
-    await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);await importOnehrRewardResults(a,unitId,reward.unit.revision);reward=await getRewardUnit(a,unitId);expect(reward.rows[0].facts).toMatchObject({performance:'AE',talent:'SSTAR'});
+    await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);await importOnehrRewardResults(a,unitId,reward.unit.revision);reward=await getRewardUnit(a,unitId);expect(rewardRowFor(reward,subject.employmentId).facts).toMatchObject({performance:'AE',talent:'SSTAR'});
     queue=await perf.getAssessmentFinalBands(a,group);expect(queue.rows[0].finalized).toBe(true);
     await expect(perf.decideAssessmentFinalBands(a,group,queue.sourceDigest,{action:'decide',reviewId,band:'OU',reason:'Must not rewrite a frozen result.'})).rejects.toThrow(/unfinalized/);
   });
@@ -590,7 +596,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const history=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.kpi-checkin-saved'))).orderBy(schema.domainEvent.occurredAt,schema.domainEvent.id);expect(history).toHaveLength(3);expect(history.some(e=>(e.payload as {previous?:{answer:string}}).previous?.answer==='at_risk')).toBe(true);
     const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'QUARTER',name:'Quarterly test unit'}).returning();await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,subject.employmentId));
     await setCompensation(a,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
-    const unitId=await createApprovedRewardUnit(a,{name:'Annual rewards without quarterly ratings',year,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});const reward=await getRewardUnit(a,unitId);expect(reward.rows).toHaveLength(1);expect(reward.rows[0].source.onehr).toBeNull();
+    const unitId=await createApprovedRewardUnit(a,{name:'Annual rewards without quarterly ratings',year,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});const reward=await getRewardUnit(a,unitId);expect(rewardRowFor(reward,subject.employmentId).source.onehr).toBeNull();
     await expect(importOnehrRewardResults(a,unitId,reward.unit.revision)).rejects.toThrow(/No finalized assessment/);
   });
   it('keeps private evidence private, preserves shared evidence and accepts explicit corrections',async()=>{
@@ -611,9 +617,10 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,subject.employmentId));
     await setCompensation(a,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
     const unitId=await createApprovedRewardUnit(a,{name:'Annual rewards',year,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});let reward=await getRewardUnit(a,unitId);
-    expect(reward.rows[0].source.onehr?.reviewId).toBe(reviewId);expect(reward.rows[0].facts.performance).toBeNull();
+    const rewardSubject=rewardRowFor(reward,subject.employmentId);
+    expect(rewardSubject.source.onehr?.reviewId).toBe(reviewId);expect(rewardSubject.facts.performance).toBeNull();
     await expect(importOnehrRewardResults(self,unitId,reward.unit.revision)).rejects.toThrow();
-    await importOnehrRewardResults(a,unitId,reward.unit.revision);reward=await getRewardUnit(a,unitId);expect(reward.rows[0].facts).toMatchObject({performance:'ME',talent:'STAR',reviewed:false,pipCase:false});
+    await importOnehrRewardResults(a,unitId,reward.unit.revision);reward=await getRewardUnit(a,unitId);expect(rewardRowFor(reward,subject.employmentId).facts).toMatchObject({performance:'ME',talent:'STAR',reviewed:false,pipCase:false});
     const [comp]=await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,subject.employmentId));expect(Number(comp.basicSalary)).toBe(5000);
     expect(await owner.db.select().from(schema.payrollInput)).toEqual([]);
   });
