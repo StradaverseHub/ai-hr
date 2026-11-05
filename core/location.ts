@@ -374,8 +374,9 @@ export function listLocations(
   ctx: SessionContext,
   companyIds: string[],
   opts: { includeArchived?: boolean } = {},
+  outerTx?: Tx,
 ): Promise<LocationRow[]> {
-  return withTenant(ctx, (tx) => {
+  const run = (tx: Tx) => {
     const conds = [];
     if (companyIds.length) conds.push(inArray(location.companyId, companyIds));
     if (!opts.includeArchived) conds.push(isNull(location.archivedAt));
@@ -400,7 +401,8 @@ export function listLocations(
       .innerJoin(company, eq(company.id, location.companyId))
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(asc(company.legalName), asc(location.code));
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 /** A location's company id (for the cross-company coherence check in transferEmployee). Null if absent. */

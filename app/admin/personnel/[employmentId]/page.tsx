@@ -115,6 +115,7 @@ import { movementKindLabel as movementKindLabelOf } from '@/lib/movement-kind-la
 // 476f23ed — the tenant's configurable movement event-type catalogue.
 import { listMovementEventTypes } from '@/core/movement-type';
 import { readPersonnelMovementFormData } from './movement-form-data';
+import { withTenant } from '@/db/client';
 import { MovementNewEvent } from './movement-new-event';
 // c063eea9 — "Correct hire details" on the Hired row: the read behind the form, and its client island.
 import { HireCorrectionError, hireCorrectionView, type HireCorrectionField } from '@/core/hire-correction';
@@ -643,7 +644,10 @@ export default async function EmployeePage({
     : null;
   // New and Edit use the same current values, configured controls and full reason catalogue.
   // Read them together only for those forms; the History tab still uses the type labels above.
-  const movementFormData = await readPersonnelMovementFormData(s, employmentId, movementTypes, !!(admin && (spNewEvent || spEditMovement)));
+  const { canCreateMovement, canCorrectMovement } = movementScreenAccess({ admin, canMaintainWorkforce, terminatedOn: emp.terminatedOn });
+  const movementEditRow = spEditMovement ? movements.find((row) => row.id === spEditMovement && row.canEdit) : undefined;
+  const movementFormOpen = Boolean((canCreateMovement && spNewEvent) || (canCorrectMovement && movementEditRow));
+  const movementFormData = await readPersonnelMovementFormData(s, employmentId, movementTypes, movementFormOpen);
   const movementCurrent = movementFormData?.current ?? null;
   const typeControls = (code: string) => {
     const c = movementFormData?.controls.get(code);
@@ -682,12 +686,12 @@ export default async function EmployeePage({
       : [];
   const movementOrgByCompany = Object.fromEntries(
     await Promise.all(
-      movementCompanies.map(async (c) => {
+      movementCompanies.map((c) => withTenant(s, async (tx) => {
         const [deps, poss, bus, locs] = await Promise.all([
-          listDepartments(s, { companyIds: [c.id] }),
-          listPositions(s, { companyIds: [c.id] }),
-          listBusinessUnits(s, { companyIds: [c.id] }),
-          listLocations(s, [c.id]),
+          listDepartments(s, { companyIds: [c.id] }, tx),
+          listPositions(s, { companyIds: [c.id] }, tx),
+          listBusinessUnits(s, { companyIds: [c.id] }, tx),
+          listLocations(s, [c.id], {}, tx),
         ]);
         return [
           c.id,
@@ -698,7 +702,7 @@ export default async function EmployeePage({
             locations: locs.map((l) => ({ id: l.id, name: `${l.name} (${l.code})` })),
           },
         ] as const;
-      }),
+      })),
     ),
   );
   // 7d309da7 — configurable profile-field dropdown catalogs (religion / race / nationality / state /
@@ -3091,9 +3095,6 @@ export default async function EmployeePage({
   const movementEmpTypeLabel = (v: string | null): string | null =>
     v ? t(`employmentInfo.employmentType_${v}` as 'employmentInfo.employmentType_full_time') : null;
 
-  // New Event is hidden once terminated (the same gate that hid the old Transfer form); the history
-  // itself stays viewable. Rehire is a future, separate piece.
-  const {canCreateMovement, canCorrectMovement} = movementScreenAccess({admin, canMaintainWorkforce, terminatedOn: emp.terminatedOn});
   /** c063eea9 — the caption of a hire-correction field, shared by the history row and the detail view. */
   const hireFieldIds = {
   "businessUnitId": "employment.organisation_assignment.businessunitname",
@@ -3564,9 +3565,8 @@ export default async function EmployeePage({
   // 66a63bd6 — Edit (?editMovement=<id>): the SAME comparison form, pre-filled from the movement being
   // corrected. `canEdit` comes from the service, so a row the service would refuse never renders a form.
   // Include the edited code's metadata even if inactive; the client needs its resolved behavior.
-  const movementEditRow = spEditMovement ? movements.find((m) => m.id === spEditMovement && m.canEdit) : undefined;
   // 1d58019a Step 2 — termination is decided by the catalogue, so a tenant's own Termination type pre-fills too.
-  const movementEditInput = movementEditRow
+  const movementEditInput = canCorrectMovement && movementEditRow
     ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
   const editEventCard = canCorrectMovement && movementEditRow && movementFormProps ? (
     <Card id="section-movement-edit-event" className="overflow-hidden">
