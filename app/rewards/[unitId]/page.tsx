@@ -50,11 +50,11 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   const editable = unit.status === 'draft' && v.canEdit;
   const annual = unit.kind === 'annual';
   const locale=await getLocale();
-  const canSubmit = editable && v.roles.includes(v.route[0]);
+  const canSubmit = unit.status==='draft' &&v.capabilities?.reviewDecide!==false&& v.roles.includes(v.route[0]);
   // c28db2f0: the lump-sum card links here with check=BUD-05 to list only the individual lump-sum amendments.
   const checks = sp.check ? v.flags.filter(f => f.code === sp.check && f.severity === 'exception') : v.flags;
   const scope = t('unitBonus.appliesOnlyTo', { company: v.companyName, unit: v.name });
-  const canApprove = ['bg', 'gr', 'ctro', 'ec'].some(role => role === unit.status && v.roles.includes(role as 'bg' | 'gr' | 'ctro' | 'ec'));
+  const canApprove = v.capabilities?.reviewDecide!==false&&['bg', 'gr', 'ctro', 'ec'].some(role => role === unit.status && v.roles.includes(role as 'bg' | 'gr' | 'ctro' | 'ec'));
   // 5d34d00d Step 2: per-person flags, the open person (side panel) and the stage each decision moves to.
   const rowFlags = (id: string) => v.flags.filter(f => f.entryId === id);
   const hidden = (r: typeof v.rows[number]) => isSeniorPlanMember(unit.policy, r.facts, r.source.grade) && !v.seniorAmountsVisible;
@@ -119,7 +119,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     {(annual||tab === 'data') && v.roles.includes('gr') && <section id="data" className="max-w-3xl space-y-5"><h2 className="font-semibold">{t('data')}</h2><p className="text-sm text-muted-foreground">{t('dataHelp')}</p><Link href={`/rewards/${unitId}/export?template=1`} className="inline-block text-sm font-medium text-primary hover:underline">{t('downloadTemplate')}</Link>{unit.status === 'draft' && annual && <><form action={importOnehrAction} className="space-y-3">{fields}<p className="text-sm text-muted-foreground">{onehrText('rewardImportHelp')}</p><RewardSubmit type="submit" variant="secondary">{onehrText('rewardImport')}</RewardSubmit></form><form action={importFactsAction} className="space-y-3">{fields}<Field label={t('completedTemplate')}><input type="file" name="file" accept=".csv" required className="text-sm" /></Field><RewardSubmit type="submit">{t('import')}</RewardSubmit></form><SourceRefresh unitId={unitId} revision={unit.revision} snapshotDate={unit.snapshotDate} today={todayInKualaLumpur()} /></>}<Link className="inline-block text-sm text-primary hover:underline" href={`/rewards/${unitId}/export`}>{t('export')}</Link></section>}
     {annual && v.roles.includes('gr') && <section id="excluded" className="scroll-mt-6"><PayWindowExcluded unitId={unitId} revision={unit.revision} canEdit={v.canConfigure} window={{ from: unit.policy.blockedFrom, to: unit.policy.blockedTo }} rows={v.rows} kept={unit.policy.payWindowKeep ?? {}} /></section>}
     {(annual||tab === 'rules') && <section id="rules" className="max-w-3xl space-y-4"><h2 className="font-semibold">{t('rules')}</h2>{['rulePools', 'ruleBonus', 'ruleEC', 'ruleExemption', 'ruleLump', 'rulePrivacy', 'ruleApproval', 'rulePosting'].map(k => <p key={k} className="text-sm leading-6">{t(k)}</p>)}</section>}
-    </div>{annual&&<FlagsPanel unitId={unitId} flags={checks} filtered={!!sp.check}/>}</div>
+    </div>{annual&&<FlagsPanel promotionEntryIds={v.rows.filter(r=>r.recommendation.promotionGrade).map(r=>r.id)} unitId={unitId} flags={checks} filtered={!!sp.check}/>}</div>
     {open && <PersonDrawer title={open.source.name} description={`${open.source.employeeCode} · ${t('grade')} ${open.source.grade} · ${t(open.plan === 'ec' ? 'ecPlan' : open.plan)}`} prevId={rows[openIndex - 1]?.id ?? null} nextId={rows[openIndex + 1]?.id ?? null} position={{ index: openIndex + 1, total: rows.length }} editHref={`/rewards/${unitId}/people/${open.id}`}>
       <PersonCalculation row={open} hidden={hidden(open)} flags={rowFlags(open.id)} t={t} rm={rm} pct={pct} />
     </PersonDrawer>}

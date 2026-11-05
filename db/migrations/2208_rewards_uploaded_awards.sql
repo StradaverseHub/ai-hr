@@ -15,10 +15,20 @@ BEGIN
  RETURN NEW;
 END $$;
 
-ALTER TABLE reward_entry ADD COLUMN uploaded_award jsonb CHECK(uploaded_award IS NULL OR jsonb_typeof(uploaded_award)='object');
+ALTER TABLE reward_unit ADD COLUMN uploaded_award_digest text CHECK(uploaded_award_digest IS NULL OR uploaded_award_digest~'^[a-f0-9]{64}$');
 ALTER TABLE reward_company_exclusion ADD COLUMN award_type text NOT NULL DEFAULT 'no_awards' CHECK(award_type IN('no_awards','uploaded'));
 CREATE TABLE reward_uploaded_review(unit_id uuid PRIMARY KEY REFERENCES reward_unit(id),tenant_id uuid NOT NULL REFERENCES tenant(id),current_version integer NOT NULL DEFAULT 0,checked_version integer,checked_by uuid REFERENCES app_user(id),checked_at timestamptz);
-CREATE TABLE reward_uploaded_version(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),unit_id uuid NOT NULL REFERENCES reward_unit(id),version integer NOT NULL,rows jsonb NOT NULL CHECK(jsonb_typeof(rows)='array'),digest text NOT NULL,uploaded_by uuid NOT NULL REFERENCES app_user(id),reason text NOT NULL CHECK(length(trim(reason))>=10),evidence_name text,evidence_mime text,evidence_content text,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(tenant_id,unit_id,version));
+CREATE TABLE reward_uploaded_version(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),unit_id uuid NOT NULL REFERENCES reward_unit(id),version integer NOT NULL,rows jsonb NOT NULL CHECK(jsonb_typeof(rows)='array'),digest text NOT NULL CHECK(digest~'^[a-f0-9]{64}$'),input_snapshot jsonb NOT NULL DEFAULT '[]'::jsonb,import_content text,original_file_name text,uploaded_by uuid NOT NULL REFERENCES app_user(id),reason text NOT NULL CHECK(length(trim(reason))>=10),evidence_name text,evidence_mime text,evidence_content text,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(tenant_id,unit_id,version));
+CREATE TABLE reward_uploaded_award(entry_id uuid PRIMARY KEY REFERENCES reward_entry(id),tenant_id uuid NOT NULL REFERENCES tenant(id),unit_id uuid NOT NULL REFERENCES reward_unit(id),award jsonb NOT NULL CHECK(jsonb_typeof(award)='object'),source_version integer NOT NULL,updated_by uuid NOT NULL REFERENCES app_user(id),updated_at timestamptz NOT NULL DEFAULT now(),FOREIGN KEY(tenant_id,unit_id,source_version) REFERENCES reward_uploaded_version(tenant_id,unit_id,version));
+ALTER TABLE reward_uploaded_award ENABLE ROW LEVEL SECURITY;ALTER TABLE reward_uploaded_award FORCE ROW LEVEL SECURITY;
+CREATE POLICY reward_uploaded_award_read ON reward_uploaded_award FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND app.reward_private_entry_visible(unit_id,entry_id) AND ('gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id))) OR EXISTS(SELECT 1 FROM reward_uploaded_review r WHERE r.unit_id=reward_uploaded_award.unit_id AND r.tenant_id=reward_uploaded_award.tenant_id AND r.current_version>0 AND r.checked_version=r.current_version)));
+CREATE POLICY reward_uploaded_award_insert ON reward_uploaded_award FOR INSERT TO ai_hr_app WITH CHECK(tenant_id=app.current_tenant_id() AND app.reward_private_entry_visible(unit_id,entry_id) AND ('gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id))) OR EXISTS(SELECT 1 FROM reward_uploaded_review r WHERE r.unit_id=reward_uploaded_award.unit_id AND r.tenant_id=reward_uploaded_award.tenant_id AND r.current_version>0 AND r.checked_version=r.current_version)) AND app.reward_capability(unit_id,'figures.edit') AND app.reward_not_viewing_as() AND updated_by=app.current_user_id());
+CREATE POLICY reward_uploaded_award_update ON reward_uploaded_award FOR UPDATE TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND app.reward_private_entry_visible(unit_id,entry_id) AND ('gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id))) OR EXISTS(SELECT 1 FROM reward_uploaded_review r WHERE r.unit_id=reward_uploaded_award.unit_id AND r.tenant_id=reward_uploaded_award.tenant_id AND r.current_version>0 AND r.checked_version=r.current_version)) AND app.reward_capability(unit_id,'figures.edit') AND app.reward_not_viewing_as()) WITH CHECK(tenant_id=app.current_tenant_id() AND app.reward_private_entry_visible(unit_id,entry_id) AND ('gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id))) OR EXISTS(SELECT 1 FROM reward_uploaded_review r WHERE r.unit_id=reward_uploaded_award.unit_id AND r.tenant_id=reward_uploaded_award.tenant_id AND r.current_version>0 AND r.checked_version=r.current_version)) AND app.reward_capability(unit_id,'figures.edit') AND app.reward_not_viewing_as() AND updated_by=app.current_user_id());
+CREATE POLICY reward_uploaded_award_delete ON reward_uploaded_award FOR DELETE TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND app.reward_private_entry_visible(unit_id,entry_id) AND ('gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id))) OR EXISTS(SELECT 1 FROM reward_uploaded_review r WHERE r.unit_id=reward_uploaded_award.unit_id AND r.tenant_id=reward_uploaded_award.tenant_id AND r.current_version>0 AND r.checked_version=r.current_version)) AND app.reward_capability(unit_id,'figures.edit') AND app.reward_not_viewing_as());
+GRANT SELECT,INSERT,UPDATE,DELETE ON reward_uploaded_award TO ai_hr_app;
+GRANT SELECT ON reward_uploaded_award TO ai_hr_reward_setup_reader;
+CREATE POLICY reward_uploaded_award_check_owner ON reward_uploaded_award FOR SELECT TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id() AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id))));
+
 ALTER TABLE reward_uploaded_review ENABLE ROW LEVEL SECURITY;ALTER TABLE reward_uploaded_review FORCE ROW LEVEL SECURITY;
 ALTER TABLE reward_uploaded_version ENABLE ROW LEVEL SECURITY;ALTER TABLE reward_uploaded_version FORCE ROW LEVEL SECURITY;
 CREATE POLICY reward_uploaded_review_read ON reward_uploaded_review FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.reward_access(unit_id));
@@ -81,13 +91,17 @@ BEGIN
   IF NEW.unit_id<>OLD.unit_id OR NEW.tenant_id<>OLD.tenant_id THEN RAISE EXCEPTION 'Upload identity is immutable';END IF;
   IF NEW.current_version<>OLD.current_version THEN
    IF NEW.current_version<>OLD.current_version+1 OR NEW.checked_by IS NOT NULL OR NEW.checked_version IS NOT NULL OR NEW.checked_at IS NOT NULL OR NOT EXISTS(SELECT 1 FROM reward_uploaded_version v WHERE v.tenant_id=NEW.tenant_id AND v.unit_id=NEW.unit_id AND v.version=NEW.current_version AND v.uploaded_by=app.current_user_id()) THEN RAISE EXCEPTION 'Replacement must append the doer current version and reset confirmation';END IF;
-  ELSIF NEW.checked_by IS NOT NULL AND (OLD.checked_by IS NOT NULL OR NEW.checked_at IS NULL OR NOT EXISTS(SELECT 1 FROM reward_uploaded_version v WHERE v.unit_id=NEW.unit_id AND v.tenant_id=NEW.tenant_id AND v.version=NEW.current_version AND (SELECT coalesce(jsonb_agg(x.value-ARRAY['incrementCents','warnings'] ORDER BY x.value->>'employmentId'),'[]'::jsonb) FROM jsonb_array_elements(v.rows)x)=(SELECT coalesce(jsonb_agg(e.uploaded_award ORDER BY e.employment_id::text),'[]'::jsonb) FROM reward_entry e WHERE e.unit_id=NEW.unit_id AND e.tenant_id=NEW.tenant_id AND e.uploaded_award IS NOT NULL))) THEN RAISE EXCEPTION 'Checker must confirm the unchanged current upload';END IF;
+  ELSIF NEW.checked_by IS NOT NULL AND (OLD.checked_by IS NOT NULL OR NEW.checked_at IS NULL OR NOT EXISTS(SELECT 1 FROM reward_uploaded_version v WHERE v.unit_id=NEW.unit_id AND v.tenant_id=NEW.tenant_id AND v.version=NEW.current_version AND (SELECT coalesce(jsonb_agg(x.value-ARRAY['incrementCents','warnings'] ORDER BY x.value->>'employmentId'),'[]'::jsonb) FROM jsonb_array_elements(v.rows)x)=(SELECT coalesce(jsonb_agg(a.award ORDER BY e.employment_id::text),'[]'::jsonb) FROM reward_uploaded_award a JOIN reward_entry e ON e.id=a.entry_id AND e.unit_id=a.unit_id AND e.tenant_id=a.tenant_id WHERE a.unit_id=NEW.unit_id AND a.tenant_id=NEW.tenant_id))) THEN RAISE EXCEPTION 'Checker must confirm the unchanged current upload';END IF;
  END IF;
  IF TG_TABLE_NAME='reward_uploaded_version' THEN
+  NEW.input_snapshot:=(SELECT coalesce(jsonb_agg(jsonb_build_object('employmentId',e.employment_id,'source',e.source,'facts',e.facts) ORDER BY e.employment_id),'[]'::jsonb) FROM reward_entry e WHERE e.unit_id=NEW.unit_id AND e.tenant_id=NEW.tenant_id AND EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.rows) r WHERE r->>'employmentId'=e.employment_id::text));
+  NEW.digest:=encode(sha256(convert_to(NEW.rows::text||NEW.input_snapshot::text||coalesce(NEW.import_content,'')||coalesce(NEW.evidence_content,''),'UTF8')),'hex');
   IF NEW.uploaded_by<>app.current_user_id() OR NOT EXISTS(SELECT 1 FROM reward_unit u JOIN reward_uploaded_review r ON r.unit_id=u.id AND r.tenant_id=u.tenant_id WHERE u.id=NEW.unit_id AND u.tenant_id=NEW.tenant_id AND u.status='draft' AND NEW.version=r.current_version+1) THEN RAISE EXCEPTION 'Upload versions are append-only at BU stage';END IF;
  END IF;
- IF TG_TABLE_NAME='reward_uploaded_review' AND NEW.checked_by IS NOT NULL AND (NEW.checked_by<>app.current_user_id() OR NEW.checked_version<>NEW.current_version OR NOT EXISTS(SELECT 1 FROM reward_uploaded_version v WHERE v.unit_id=NEW.unit_id AND v.tenant_id=NEW.tenant_id AND v.version=NEW.current_version AND v.uploaded_by<>NEW.checked_by)) THEN RAISE EXCEPTION 'A different Group Rewards checker must confirm the current version';END IF;
- RETURN NEW;
+ IF TG_TABLE_NAME='reward_uploaded_review' THEN
+ IF NEW.checked_by IS NOT NULL AND (NOT app.reward_uploaded_awards_editable(NEW.unit_id) OR coalesce((app.reward_uploaded_validation(NEW.unit_id)->>'valid')::boolean,false)=false) THEN RAISE EXCEPTION 'Another authorized checker must verify current valid uploaded awards';END IF;
+ IF NEW.checked_by IS NOT NULL AND (NEW.checked_by<>app.current_user_id() OR NEW.checked_version<>NEW.current_version OR NOT EXISTS(SELECT 1 FROM reward_uploaded_version v WHERE v.unit_id=NEW.unit_id AND v.tenant_id=NEW.tenant_id AND v.version=NEW.current_version AND v.uploaded_by<>NEW.checked_by)) THEN RAISE EXCEPTION 'A different Group Rewards checker must confirm the current version';END IF;
+ END IF;RETURN NEW;
 END $$;
 CREATE TRIGGER reward_uploaded_binding BEFORE INSERT OR UPDATE ON reward_uploaded_review FOR EACH ROW EXECUTE FUNCTION app.reward_uploaded_binding();
 CREATE TRIGGER reward_uploaded_version_binding BEFORE INSERT ON reward_uploaded_version FOR EACH ROW EXECUTE FUNCTION app.reward_uploaded_binding();
@@ -95,24 +109,6 @@ REVOKE ALL ON FUNCTION app.reward_uploaded_binding() FROM PUBLIC;GRANT EXECUTE O
 CREATE TRIGGER reward_uploaded_review_readonly BEFORE INSERT OR UPDATE OR DELETE ON reward_uploaded_review FOR EACH ROW EXECUTE FUNCTION app.reward_view_as_write_guard();
 CREATE TRIGGER reward_uploaded_version_readonly BEFORE INSERT OR UPDATE OR DELETE ON reward_uploaded_version FOR EACH ROW EXECUTE FUNCTION app.reward_view_as_write_guard();
 
-CREATE FUNCTION app.reward_uploaded_entry_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
-DECLARE stage text;actor_roles text[];min_salary bigint;new_salary bigint;
-BEGIN
- IF NEW.uploaded_award IS NOT DISTINCT FROM OLD.uploaded_award THEN RETURN NEW;END IF;
- IF NOT EXISTS(SELECT 1 FROM reward_uploaded_review WHERE unit_id=NEW.unit_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Uploaded money requires an uploaded review';END IF;
- SELECT status INTO stage FROM reward_unit WHERE id=NEW.unit_id AND tenant_id=NEW.tenant_id;SELECT ARRAY(SELECT app.reward_roles(NEW.unit_id)) INTO actor_roles;
- IF stage IN('approved','posted','withdrawn','rejected') OR NOT(stage='draft' AND actor_roles && ARRAY['bu','gr'] OR stage=ANY(actor_roles)) THEN RAISE EXCEPTION 'Only the current approver may adjust uploaded awards';END IF;
- IF NEW.uploaded_award IS NOT NULL THEN
-  IF NOT app.reward_private_entry_visible(NEW.unit_id,NEW.id) THEN RAISE EXCEPTION 'Restricted uploaded line';END IF;
-  IF NEW.uploaded_award->>'employmentId'<>NEW.employment_id::text OR NEW.uploaded_award->>'incrementType' NOT IN('merit','promotion','special') THEN RAISE EXCEPTION 'Invalid uploaded identity or increment type';END IF;
-  min_salary:=(NEW.source->>'basicCents')::bigint;new_salary:=(NEW.uploaded_award->>'newBasicCents')::bigint;
-  IF new_salary IS NULL OR new_salary<min_salary OR (NEW.uploaded_award->>'bonusCents')::bigint<0 OR (NEW.uploaded_award->>'lumpCents')::bigint<0 THEN RAISE EXCEPTION 'Invalid uploaded amounts or salary reduction';END IF;
-  IF NEW.uploaded_award->>'incrementType'='promotion' AND NOT EXISTS(SELECT 1 FROM job_grade g WHERE g.tenant_id=NEW.tenant_id AND g.archived_at IS NULL AND regexp_replace(g.code,'^JG\s*','','i')=NEW.uploaded_award->>'newGrade') THEN RAISE EXCEPTION 'Promotion grade must be active';END IF;
- END IF;
- RETURN NEW;
-END $$;
-REVOKE ALL ON FUNCTION app.reward_uploaded_entry_guard() FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_uploaded_entry_guard() TO ai_hr_app;
-CREATE TRIGGER reward_uploaded_entry_guard BEFORE UPDATE OF uploaded_award ON reward_entry FOR EACH ROW EXECUTE FUNCTION app.reward_uploaded_entry_guard();
 -- Whole-file payloads are never a directly readable application column. Native rows retain own-line filtering.
 REVOKE SELECT ON reward_uploaded_version FROM ai_hr_app;
 GRANT SELECT(id,tenant_id,unit_id,version,digest,uploaded_by,reason,evidence_name,evidence_mime,created_at) ON reward_uploaded_version TO ai_hr_app;
@@ -150,3 +146,113 @@ REVOKE ALL ON FUNCTION app.reward_uploaded_cycle_ready(uuid) FROM PUBLIC;GRANT E
 GRANT INSERT ON reward_company_exclusion,domain_event TO ai_hr_reward_setup_reader;
 GRANT EXECUTE ON FUNCTION app.reward_exclusion_reason_trim(text) TO ai_hr_reward_setup_reader;
 CREATE POLICY reward_upload_exclusion_insert ON reward_company_exclusion FOR INSERT TO ai_hr_reward_setup_reader WITH CHECK(tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(company_id,'manage') AND created_by=app.current_user_id());
+GRANT SELECT ON reward_member,app_user,employment TO ai_hr_reward_upload_reader;
+GRANT SELECT(uploaded_by,tenant_id,unit_id,version) ON reward_uploaded_version TO ai_hr_reward_upload_reader;
+GRANT EXECUTE ON FUNCTION app.reward_member_eligible_internal(uuid),app.is_admin(),app.reward_admin(uuid) TO ai_hr_reward_upload_reader;
+CREATE POLICY reward_upload_notice_member ON reward_member FOR SELECT TO ai_hr_reward_upload_reader USING(tenant_id=app.current_tenant_id());
+CREATE POLICY reward_upload_notice_user ON app_user FOR SELECT TO ai_hr_reward_upload_reader USING(tenant_id=app.current_tenant_id());
+CREATE POLICY reward_upload_notice_employment ON employment FOR SELECT TO ai_hr_reward_upload_reader USING(tenant_id=app.current_tenant_id());
+CREATE POLICY reward_upload_notice_version ON reward_uploaded_version FOR SELECT TO ai_hr_reward_upload_reader USING(tenant_id=app.current_tenant_id());
+CREATE FUNCTION app.reward_upload_checker_recipients(wanted_unit uuid) RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT DISTINCT e.id FROM reward_unit r JOIN reward_uploaded_review s ON s.unit_id=r.id AND s.tenant_id=r.tenant_id JOIN reward_uploaded_version v ON v.unit_id=r.id AND v.tenant_id=r.tenant_id AND v.version=s.current_version JOIN reward_member m ON m.unit_id=r.id AND m.tenant_id=r.tenant_id JOIN app_user u ON u.id=m.user_id AND u.tenant_id=r.tenant_id JOIN employment e ON e.person_id=u.person_id AND e.tenant_id=r.tenant_id
+ WHERE r.id=wanted_unit AND r.tenant_id=app.current_tenant_id() AND r.deleted_at IS NULL AND r.status='draft' AND s.current_version>0 AND s.checked_version IS DISTINCT FROM s.current_version AND m.role='gr' AND m.user_id<>v.uploaded_by AND app.reward_member_eligible_internal(m.id) AND e.hired_on<=timezone('Asia/Kuala_Lumpur',now())::date AND e.terminated_on IS NULL AND app.is_admin() AND(app.current_user_id() IS NULL OR app.reward_admin(r.company_id))
+$$;
+ALTER FUNCTION app.reward_upload_checker_recipients(uuid) OWNER TO ai_hr_reward_upload_reader;
+REVOKE ALL ON FUNCTION app.reward_upload_checker_recipients(uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_upload_checker_recipients(uuid) TO ai_hr_app;
+GRANT SELECT ON reward_entry,compensation TO ai_hr_reward_upload_reader;
+CREATE POLICY reward_upload_source_entry ON reward_entry FOR SELECT TO ai_hr_reward_upload_reader USING(tenant_id=app.current_tenant_id());
+CREATE POLICY reward_upload_source_comp ON compensation FOR SELECT TO ai_hr_reward_upload_reader USING(tenant_id=app.current_tenant_id());
+CREATE FUNCTION app.reward_uploaded_source_current(wanted_unit uuid,wanted_employment uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT EXISTS(SELECT 1 FROM reward_unit u JOIN reward_entry r ON r.unit_id=u.id AND r.tenant_id=u.tenant_id JOIN employment e ON e.id=r.employment_id AND e.tenant_id=u.tenant_id AND e.company_id=u.company_id
+ JOIN LATERAL(SELECT c.id,c.basic_salary,c.currency,c.pay_mode FROM compensation c WHERE c.tenant_id=e.tenant_id AND c.employment_id=e.id AND c.superseded_at IS NULL AND c.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND(c.valid_to IS NULL OR c.valid_to>timezone('Asia/Kuala_Lumpur',now())::date) ORDER BY c.valid_from DESC,c.id DESC LIMIT 1)c ON true
+ WHERE u.id=wanted_unit AND u.tenant_id=app.current_tenant_id() AND u.deleted_at IS NULL AND r.employment_id=wanted_employment AND(e.terminated_on IS NULL OR e.terminated_on>timezone('Asia/Kuala_Lumpur',now())::date) AND e.grade_id::text IS NOT DISTINCT FROM r.source->>'gradeId' AND c.id::text=r.source->>'compensationId' AND round(c.basic_salary*100)=(r.source->>'basicCents')::bigint AND c.currency=r.source->>'currency' AND c.pay_mode::text=r.source->>'payMode' AND EXISTS(SELECT 1 FROM app.reward_roles(u.id)))
+$$;
+ALTER FUNCTION app.reward_uploaded_source_current(uuid,uuid) OWNER TO ai_hr_reward_upload_reader;
+REVOKE ALL ON FUNCTION app.reward_uploaded_source_current(uuid,uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_uploaded_source_current(uuid,uuid) TO ai_hr_app;
+
+GRANT SELECT ON reward_uploaded_award TO ai_hr_reward_upload_reader;
+GRANT UPDATE(uploaded_award_digest) ON reward_unit TO ai_hr_reward_upload_reader;
+CREATE POLICY reward_upload_digest_write ON reward_unit FOR UPDATE TO ai_hr_reward_upload_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM app.reward_roles(id))) WITH CHECK(tenant_id=app.current_tenant_id());
+CREATE POLICY reward_upload_private_owner ON reward_uploaded_award FOR SELECT TO ai_hr_reward_upload_reader USING(tenant_id=app.current_tenant_id());
+CREATE FUNCTION app.reward_uploaded_award_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
+DECLARE r reward_entry%ROWTYPE;u reward_unit%ROWTYPE;a jsonb;wanted uuid;target uuid;version integer;roles text[];
+BEGIN
+ wanted:=CASE WHEN TG_OP='DELETE' THEN OLD.unit_id ELSE NEW.unit_id END;target:=CASE WHEN TG_OP='DELETE' THEN OLD.entry_id ELSE NEW.entry_id END;
+ SELECT * INTO u FROM reward_unit WHERE id=wanted AND tenant_id=app.current_tenant_id();SELECT * INTO r FROM reward_entry WHERE id=target AND unit_id=wanted AND tenant_id=app.current_tenant_id();
+ SELECT ARRAY(SELECT app.reward_roles(wanted)) INTO roles;
+ IF NOT 'gr'=ANY(roles) AND NOT EXISTS(SELECT 1 FROM reward_uploaded_review WHERE unit_id=wanted AND tenant_id=app.current_tenant_id() AND current_version>0 AND checked_version=current_version) THEN RAISE EXCEPTION 'Independent upload confirmation required before approver edits';END IF;
+ IF r.id IS NULL OR u.deleted_at IS NOT NULL OR u.status IN('approved','posted','withdrawn','rejected') OR NOT(u.status='draft' AND roles && ARRAY['bu','gr'] OR u.status=ANY(roles)) OR NOT app.reward_not_viewing_as() THEN RAISE EXCEPTION 'Only the current approver may change uploaded awards';END IF;
+ IF TG_OP='DELETE' AND NOT(u.status='draft' AND 'gr'=ANY(roles) AND EXISTS(SELECT 1 FROM reward_uploaded_review r JOIN reward_uploaded_version v ON v.unit_id=r.unit_id AND v.tenant_id=r.tenant_id AND v.version=r.current_version+1 WHERE r.unit_id=wanted AND r.tenant_id=app.current_tenant_id() AND v.uploaded_by=app.current_user_id())) THEN RAISE EXCEPTION 'Whole-file removal requires a new Group Rewards upload version';END IF;
+ IF TG_OP<>'DELETE' THEN
+  IF NEW.tenant_id<>r.tenant_id OR TG_OP='UPDATE' AND(NEW.unit_id<>OLD.unit_id OR NEW.entry_id<>OLD.entry_id OR NEW.tenant_id<>OLD.tenant_id) THEN RAISE EXCEPTION 'Private uploaded award identity is immutable';END IF;
+  SELECT current_version INTO version FROM reward_uploaded_review WHERE unit_id=wanted AND tenant_id=r.tenant_id;
+  IF NEW.source_version=version THEN
+   IF (u.status='draft' AND NOT 'bu'=ANY(roles)) OR NOT EXISTS(SELECT 1 FROM reward_uploaded_review WHERE unit_id=wanted AND tenant_id=r.tenant_id AND checked_version=current_version AND current_version>0) OR length(trim(coalesce(NEW.award->>'remarks','')))<10 THEN RAISE EXCEPTION 'Only the current approver may adjust a checked award with a reason';END IF;
+  END IF;
+  IF version IS NULL OR NOT(NEW.source_version=version OR u.status='draft' AND 'gr'=ANY(roles) AND NEW.source_version=version+1 AND EXISTS(SELECT 1 FROM reward_uploaded_version WHERE unit_id=wanted AND tenant_id=r.tenant_id AND version=NEW.source_version AND uploaded_by=app.current_user_id())) THEN RAISE EXCEPTION 'Uploaded award version is stale';END IF;
+  a:=NEW.award;IF jsonb_typeof(a->'newBasicCents') IS DISTINCT FROM 'number' OR jsonb_typeof(a->'bonusCents') IS DISTINCT FROM 'number' OR jsonb_typeof(a->'lumpCents') IS DISTINCT FROM 'number' THEN RAISE EXCEPTION 'Uploaded amounts must be nonnegative integer minor units';END IF;
+  IF a->>'employmentId' IS DISTINCT FROM r.employment_id::text OR a->>'incrementType' IS NULL OR a->>'incrementType' NOT IN('merit','promotion','special') OR(a->>'newBasicCents')::numeric IS NULL OR(a->>'newBasicCents')::numeric<(r.source->>'basicCents')::numeric OR(a->>'newBasicCents')::numeric<>trunc((a->>'newBasicCents')::numeric) OR(a->>'bonusCents')::numeric<0 OR(a->>'lumpCents')::numeric<0 OR(a->>'bonusCents')::numeric<>trunc((a->>'bonusCents')::numeric) OR(a->>'lumpCents')::numeric<>trunc((a->>'lumpCents')::numeric) THEN RAISE EXCEPTION 'Invalid uploaded amounts or identity';END IF;
+  IF a->>'incrementType'='promotion' AND NOT EXISTS(SELECT 1 FROM job_grade g WHERE g.tenant_id=r.tenant_id AND g.archived_at IS NULL AND regexp_replace(g.code,'^JG\s*','','i')=a->>'newGrade') THEN RAISE EXCEPTION 'Promotion grade must be active';END IF;
+ END IF;
+ RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_uploaded_award_guard() FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_uploaded_award_guard() TO ai_hr_app;
+CREATE TRIGGER reward_uploaded_award_guard BEFORE INSERT OR UPDATE OR DELETE ON reward_uploaded_award FOR EACH ROW EXECUTE FUNCTION app.reward_uploaded_award_guard();
+CREATE TRIGGER reward_uploaded_award_readonly BEFORE INSERT OR UPDATE OR DELETE ON reward_uploaded_award FOR EACH ROW EXECUTE FUNCTION app.reward_view_as_write_guard();
+CREATE FUNCTION app.reward_uploaded_digest_changed() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE wanted uuid:=CASE WHEN TG_OP='DELETE' THEN OLD.unit_id ELSE NEW.unit_id END;
+BEGIN
+ UPDATE reward_unit SET uploaded_award_digest=(SELECT encode(sha256(convert_to(coalesce(jsonb_agg(jsonb_build_array(entry_id,award,source_version) ORDER BY entry_id)::text,'[]'),'UTF8')),'hex') FROM reward_uploaded_award WHERE unit_id=wanted AND tenant_id=app.current_tenant_id()) WHERE id=wanted AND tenant_id=app.current_tenant_id();RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
+END $$;
+ALTER FUNCTION app.reward_uploaded_digest_changed() OWNER TO ai_hr_reward_upload_reader;
+CREATE TRIGGER reward_uploaded_digest_changed AFTER INSERT OR UPDATE OR DELETE ON reward_uploaded_award FOR EACH ROW EXECUTE FUNCTION app.reward_uploaded_digest_changed();
+CREATE FUNCTION app.reward_uploaded_awards_for_post(wanted uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF NOT app.reward_not_viewing_as() OR NOT EXISTS(SELECT 1 FROM reward_unit WHERE id=wanted AND tenant_id=app.current_tenant_id() AND deleted_at IS NULL AND status='approved' AND app.reward_admin(company_id) AND 'payroll'=ANY(ARRAY(SELECT app.reward_roles(id)))) THEN RAISE EXCEPTION 'Approved Payroll handoff authority required';END IF;
+ RETURN(SELECT coalesce(jsonb_agg((award-'remarks')||jsonb_build_object('remarks','') ORDER BY entry_id),'[]'::jsonb) FROM reward_uploaded_award WHERE unit_id=wanted AND tenant_id=app.current_tenant_id());
+END $$;
+ALTER FUNCTION app.reward_uploaded_awards_for_post(uuid) OWNER TO ai_hr_reward_upload_reader;
+REVOKE ALL ON FUNCTION app.reward_uploaded_awards_for_post(uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_uploaded_awards_for_post(uuid) TO ai_hr_app;
+CREATE FUNCTION app.reward_uploaded_awards_editable(wanted uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT 'gr'=ANY(ARRAY(SELECT app.reward_roles(wanted))) AND NOT EXISTS(SELECT 1 FROM reward_uploaded_award a WHERE a.unit_id=wanted AND a.tenant_id=app.current_tenant_id() AND NOT app.reward_private_entry_visible(a.unit_id,a.entry_id))
+$$;
+ALTER FUNCTION app.reward_uploaded_awards_editable(uuid) OWNER TO ai_hr_reward_upload_reader;
+GRANT EXECUTE ON FUNCTION app.reward_private_entry_visible(uuid,uuid) TO ai_hr_reward_upload_reader;
+REVOKE ALL ON FUNCTION app.reward_uploaded_awards_editable(uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_uploaded_awards_editable(uuid) TO ai_hr_app;
+CREATE FUNCTION app.reward_uploaded_validation(wanted uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE row record;a jsonb;basic numeric;next_basic numeric;bonus numeric;lump numeric;bp numeric;warning boolean:=false;seen integer:=0;yr integer;
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM app.reward_roles(wanted)) THEN RAISE EXCEPTION 'Review seat required';END IF;
+ SELECT(policy->>'year')::integer INTO yr FROM reward_unit WHERE id=wanted AND tenant_id=app.current_tenant_id() AND deleted_at IS NULL;
+ FOR row IN SELECT x.award,e.source,e.facts,e.employment_id FROM reward_uploaded_award x JOIN reward_entry e ON e.id=x.entry_id AND e.unit_id=x.unit_id AND e.tenant_id=x.tenant_id WHERE x.unit_id=wanted AND x.tenant_id=app.current_tenant_id() LOOP
+  seen:=seen+1;a:=row.award;basic:=(row.source->>'basicCents')::numeric;
+  IF EXISTS(SELECT 1 FROM jsonb_object_keys(a) k WHERE k NOT IN('employmentId','incrementType','incrementBp','newBasicCents','newGrade','bonusCents','lumpCents','remarks')) OR a->>'employmentId' IS DISTINCT FROM row.employment_id::text OR a->>'incrementType' IS NULL OR a->>'incrementType' NOT IN('merit','promotion','special') OR basic<=0 OR row.source->>'currency'<>'MYR' OR row.source->>'leftOn' IS NOT NULL OR NOT app.reward_uploaded_source_current(wanted,row.employment_id) THEN RETURN jsonb_build_object('valid',false,'warnings',warning);END IF;
+  IF jsonb_typeof(a->'newBasicCents')<>'number' OR jsonb_typeof(a->'bonusCents')<>'number' OR jsonb_typeof(a->'lumpCents')<>'number' THEN RETURN jsonb_build_object('valid',false,'warnings',warning);END IF;
+  next_basic:=(a->>'newBasicCents')::numeric;bonus:=(a->>'bonusCents')::numeric;lump:=(a->>'lumpCents')::numeric;
+  IF next_basic IS NULL OR bonus IS NULL OR lump IS NULL OR next_basic<basic OR bonus<0 OR lump<0 OR greatest(next_basic,bonus,lump)>9007199254740991 OR next_basic<>trunc(next_basic) OR bonus<>trunc(bonus) OR lump<>trunc(lump) THEN RETURN jsonb_build_object('valid',false,'warnings',warning);END IF;
+  IF a->>'incrementBp' IS NOT NULL THEN bp:=(a->>'incrementBp')::numeric;IF bp<0 OR bp>1000000 OR bp<>trunc(bp) OR next_basic<>basic+floor(basic*bp/10000+0.5) THEN RETURN jsonb_build_object('valid',false,'warnings',warning);END IF;END IF;
+  IF a->>'incrementType'='promotion' THEN IF NOT EXISTS(SELECT 1 FROM job_grade g WHERE g.tenant_id=app.current_tenant_id() AND g.archived_at IS NULL AND regexp_replace(g.code,'^JG\s*','','i')=a->>'newGrade') THEN RETURN jsonb_build_object('valid',false,'warnings',warning);END IF;
+  ELSIF a->>'newGrade' IS NOT NULL THEN RETURN jsonb_build_object('valid',false,'warnings',warning);END IF;
+  bp:=floor((next_basic-basic)*10000/basic);
+  warning:=warning OR coalesce((row.source->>'notice')::boolean,false) OR coalesce((row.facts->>'erCase')::boolean,false) OR row.source->>'hiredOn'>=make_date(yr,10,1)::text OR(row.source->>'lastPayChange' BETWEEN make_date(yr,10,1)::text AND make_date(yr,12,31)::text) OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(row.source->'payChanges','[]'::jsonb)) p WHERE p->>'on' BETWEEN make_date(yr,10,1)::text AND make_date(yr,12,31)::text) OR(a->>'incrementType'='promotion' AND bp>=3000) OR(a->>'incrementType'<>'promotion' AND bp>1000) OR bonus>basic*9;
+ END LOOP;
+ RETURN jsonb_build_object('valid',seen>0,'warnings',coalesce(warning,false));
+EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range OR division_by_zero THEN RETURN jsonb_build_object('valid',false,'warnings',false);
+END $$;
+GRANT SELECT ON job_grade TO ai_hr_reward_upload_reader;
+CREATE POLICY reward_upload_grade_read ON job_grade FOR SELECT TO ai_hr_reward_upload_reader USING(tenant_id=app.current_tenant_id());
+ALTER FUNCTION app.reward_uploaded_validation(uuid) OWNER TO ai_hr_reward_upload_reader;
+REVOKE ALL ON FUNCTION app.reward_uploaded_validation(uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_uploaded_validation(uuid) TO ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.reward_uploaded_awards_editable(uuid),app.reward_uploaded_validation(uuid) TO ai_hr_reward_setup_reader;
+CREATE POLICY reward_upload_participation_read ON reward_company_exclusion FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(company_id,'manage'));
+
+CREATE FUNCTION app.reward_uploaded_atomic_version() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE wanted uuid:=CASE WHEN TG_OP='DELETE' THEN OLD.unit_id ELSE NEW.unit_id END;
+BEGIN
+ IF EXISTS(SELECT 1 FROM reward_uploaded_review r WHERE r.unit_id=wanted AND r.tenant_id=app.current_tenant_id() AND(r.current_version<>(SELECT coalesce(max(v.version),0) FROM reward_uploaded_version v WHERE v.unit_id=r.unit_id AND v.tenant_id=r.tenant_id) OR EXISTS(SELECT 1 FROM reward_uploaded_award a WHERE a.unit_id=r.unit_id AND a.tenant_id=r.tenant_id AND a.source_version<>r.current_version))) THEN RAISE EXCEPTION 'Upload version and all private awards must commit together';END IF;
+ RETURN NULL;
+END $$;
+ALTER FUNCTION app.reward_uploaded_atomic_version() OWNER TO ai_hr_reward_upload_reader;
+CREATE CONSTRAINT TRIGGER reward_uploaded_version_atomic AFTER INSERT ON reward_uploaded_version DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.reward_uploaded_atomic_version();
+CREATE CONSTRAINT TRIGGER reward_uploaded_review_atomic AFTER INSERT OR UPDATE ON reward_uploaded_review DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.reward_uploaded_atomic_version();
+CREATE CONSTRAINT TRIGGER reward_uploaded_award_atomic AFTER INSERT OR UPDATE OR DELETE ON reward_uploaded_award DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.reward_uploaded_atomic_version();

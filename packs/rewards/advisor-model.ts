@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import {calculateRewards,ratio,type CalculatedEntry} from './engine';
-import {emptyRecommendation,isSeniorPlanMember,recommendationSchema,type RewardEntry,type RewardPolicy,type Recommendation} from './model';
+import {emptyRecommendation,isSeniorPlanMember,factsFromOnehr,recommendationSchema,type RewardEntry,type RewardPolicy,type Recommendation} from './model';
+export const advisorPoolStatus=(value:unknown)=>z.enum(['legacy','final','not-set','provisional']).parse(value);
 export const advisorSettingsSchema=z.object({enabled:z.boolean(),overrideThresholdBp:z.number().int().min(0).max(10000),longWithoutIncreaseYears:z.number().int().min(1).max(20),equityGapBp:z.number().int().min(0).max(10000),fairnessGapBp:z.number().int().min(0).max(10000)}).strict();
 export type AdvisorSettings=z.infer<typeof advisorSettingsSchema>;
 export const defaultAdvisorSettings:AdvisorSettings={enabled:false,overrideThresholdBp:200,longWithoutIncreaseYears:3,equityGapBp:1500,fairnessGapBp:1000};
@@ -16,7 +17,7 @@ export function buildRewardAdvisorCandidates(entries:readonly RewardEntry[],poli
  const over=Object.values(calculation.budgets).some((b,i)=>i<2&&(b.used.some((used,n)=>used>b.pools[n])||b.bonusUsedCents>b.bonusPoolCents));
  const candidates=calculation.rows.map(e=>{
   const missing:string[]=[];
-  if(!e.facts.talent)missing.push('talent');if(!e.facts.performance)missing.push('performance');if(!/^(H|1[2-9]|2[0-3])$/.test(e.source.grade))missing.push('grade');
+  if(!e.source.onehr||e.source.onehr.performance!==e.facts.performance||factsFromOnehr(e.source.onehr,e.facts).talent!==e.facts.talent)missing.push('calibrated');if(!e.facts.talent)missing.push('talent');if(!e.facts.performance)missing.push('performance');if(!/^(H|1[2-9]|2[0-3])$/.test(e.source.grade))missing.push('grade');
   if(!policy.ranges[e.source.grade])missing.push('salary_range');if(!e.source.compensationId||e.source.basicCents<=0||e.source.currency!=='MYR')missing.push('salary');
   if((personCount.get(e.source.personId)??0)>1)missing.push('duplicate');if(!e.facts.reviewed)missing.push('unverified');
   if(isSeniorPlanMember(policy,e.facts,e.source.grade)||e.plan==='ec')missing.push('separate_plan');if(!e.incrementEligible||!e.bonusEligible||e.source.notice||e.facts.erCase)missing.push('ineligible');
@@ -26,7 +27,7 @@ export function buildRewardAdvisorCandidates(entries:readonly RewardEntry[],poli
   if(range&&e.source.basicCents*10000<range[1]*9000)reasons.unshift('below_midpoint');else if(range&&e.source.basicCents>range[2])reasons.unshift('above_range');
   if(e.recommendation.promotionGrade)reasons.unshift('promotion_nomination');if(e.bonusEligible)reasons.push('bonus_matrix');
   const recommendation:Recommendation|null=missing.length?null:{...e.recommendation,meritBp:e.meritBp,promotionBp:e.recommendation.promotionGrade?e.promotionBp:null,specialBp:e.specialBp,multiplierBp:e.bonusMultiplierBp,bonusCents:null,lumpCents:e.lumpCents,reason:''};
-  return{entryId:e.id,recommendation,confidence:e.source.onehr?'high' as const:'medium' as const,reasons:reasons.slice(0,3),missing:[...new Set(missing)],newBasicCents:e.newBasicCents,bonusCents:e.bonusCents,plan:e.plan};
+  return{entryId:e.id,recommendation,confidence:e.source.onehr&&e.source.payChanges?'high' as const:'medium' as const,reasons:reasons.slice(0,3),missing:[...new Set(missing)],newBasicCents:e.newBasicCents,bonusCents:e.bonusCents,plan:e.plan};
  });
  const use=(plan:'standard'|'h')=>{const b=calculation.budgets[plan],salaryPool=b.pools.reduce((n,v)=>n+v,0),salaryUsed=calculation.rows.filter(r=>r.plan===plan&&candidates.find(c=>c.entryId===r.id)?.recommendation).reduce((n,r)=>n+r.meritCents+r.promotionCents+r.specialCents,0);return{salaryBp:salaryPool?ratio(salaryUsed,10000,salaryPool):null,bonusBp:b.bonusPoolCents?ratio(calculation.rows.filter(r=>r.plan===plan&&candidates.find(c=>c.entryId===r.id)?.recommendation).reduce((n,r)=>n+r.bonusCents,0),10000,b.bonusPoolCents):null};};
  return{candidates,poolUse:{standard:use('standard'),h:use('h')}};

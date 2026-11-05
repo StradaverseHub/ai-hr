@@ -29,7 +29,8 @@ CREATE FUNCTION app.reward_role_native_capability(wanted_role text,wanted_capabi
  WHEN wanted_capability='restricted.view' THEN wanted_role IN('gr','ctro','ec')
  WHEN wanted_capability IN('review.view','analytics.view','approvals.view','rules.view') THEN wanted_role IN('bu','bg','gr','ctro','ec','pbp','payroll')
  WHEN wanted_capability='cases.decide' THEN wanted_role IN('bu','gr')
- WHEN wanted_capability IN('figures.edit','notes.add','review.decide','review.batch','offcycle.decide') THEN wanted_role IN('bu','bg','gr','ctro','ec')
+ WHEN wanted_capability IN('figures.edit','notes.add','review.decide','review.batch') THEN wanted_role IN('bu','bg','gr','ctro','ec')
+ WHEN wanted_capability='offcycle.decide' THEN wanted_role IN('bg','gr','ctro','ec')
  WHEN wanted_capability='offcycle.raise' THEN wanted_role IN('bu','bg','gr')
  ELSE false END
 $$;
@@ -68,7 +69,7 @@ ALTER FUNCTION app.reward_not_viewing_as() OWNER TO ai_hr_reward_view_reader;
 GRANT EXECUTE ON FUNCTION app.reward_not_viewing_as() TO PUBLIC;
 -- Restrictive write policies defend every current service, assistant, import and export mutation path.
 DO $$ DECLARE t text; BEGIN
- FOREACH t IN ARRAY ARRAY['reward_unit','reward_entry','reward_member','reward_decision','reward_policy_group','reward_policy_group_version','reward_policy_group_target','reward_governance','reward_governance_history','reward_senior_evidence','reward_governance_public','reward_senior_award','reward_company_exclusion','reward_calendar','reward_access_request','reward_role_permission','reward_page_grant','reward_setup_grant','reward_library','reward_library_version','reward_pat_version','reward_plan_setup','reward_plan_company','reward_company_year_review','reward_unit_setup','reward_setup_cycle'] LOOP
+ FOREACH t IN ARRAY ARRAY['reward_unit','reward_entry','reward_member','reward_decision','reward_policy_group','reward_policy_group_version','reward_policy_group_target','reward_governance','reward_governance_history','reward_senior_evidence','reward_governance_public','reward_senior_award','reward_company_exclusion','reward_calendar','reward_access_request','reward_role_permission','reward_page_grant','reward_setup_grant','reward_library','reward_library_version','reward_pat_version','reward_plan_setup','reward_plan_company','reward_company_year_review','reward_unit_setup','reward_setup_cycle','reward_pat_basis'] LOOP
   IF to_regclass('public.'||t) IS NOT NULL THEN
    EXECUTE format('CREATE POLICY reward_view_as_insert ON %I AS RESTRICTIVE FOR INSERT TO PUBLIC WITH CHECK(app.reward_not_viewing_as())',t);
    EXECUTE format('CREATE POLICY reward_view_as_update ON %I AS RESTRICTIVE FOR UPDATE TO PUBLIC USING(app.reward_not_viewing_as()) WITH CHECK(app.reward_not_viewing_as())',t);
@@ -118,7 +119,7 @@ CREATE FUNCTION app.reward_view_as_write_guard() RETURNS trigger LANGUAGE plpgsq
 BEGIN IF NOT app.reward_not_viewing_as() THEN RAISE EXCEPTION 'End read-only View as before changing Rewards' USING ERRCODE='42501';END IF;RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;END $$;
 REVOKE ALL ON FUNCTION app.reward_view_as_write_guard() FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_view_as_write_guard() TO PUBLIC;
 DO $$ DECLARE t text; BEGIN
- FOREACH t IN ARRAY ARRAY['reward_unit','reward_entry','reward_member','reward_decision','reward_policy_group','reward_policy_group_version','reward_policy_group_target','reward_governance','reward_governance_history','reward_senior_evidence','reward_governance_public','reward_senior_award','reward_company_exclusion','reward_calendar','reward_access_request','reward_role_permission','reward_page_grant','reward_setup_grant','reward_library','reward_library_version','reward_pat_version','reward_plan_setup','reward_plan_company','reward_company_year_review','reward_unit_setup','reward_setup_cycle'] LOOP
+ FOREACH t IN ARRAY ARRAY['reward_unit','reward_entry','reward_member','reward_decision','reward_policy_group','reward_policy_group_version','reward_policy_group_target','reward_governance','reward_governance_history','reward_senior_evidence','reward_governance_public','reward_senior_award','reward_company_exclusion','reward_calendar','reward_access_request','reward_role_permission','reward_page_grant','reward_setup_grant','reward_library','reward_library_version','reward_pat_version','reward_plan_setup','reward_plan_company','reward_company_year_review','reward_unit_setup','reward_setup_cycle','reward_pat_basis'] LOOP
   IF to_regclass('public.'||t) IS NOT NULL THEN EXECUTE format('CREATE TRIGGER reward_view_as_write_guard BEFORE INSERT OR UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION app.reward_view_as_write_guard()',t);END IF;
  END LOOP;
 END $$;

@@ -35762,7 +35762,8 @@
       "ACC-05": "EC 已批准的奖励会锁定。更改须走授权退回流程。",
       "OC-01": "{from} 至 {to} 禁止周期外调整。",
       "UPL-01": "上传奖励须使用有效公司员工、在用职级及非负金额，不可减薪。",
-      "UPL-02": "上传奖励的一般资格仅作警告，包括入职截止日 {cutoff} 及 {from} 至 {to} 的薪资调整。"
+      "UPL-02": "上传奖励的一般资格仅作警告，包括入职截止日 {cutoff} 及 {from} 至 {to} 的薪资调整。",
+      "ARCH-01": "员工职级与已批准的岗位职级不同。请审查映射或提出有生效日期的职级变动；已记录的员工职级保持不变。"
     }
   },
   "rewardAccessPolicy": {
@@ -35946,7 +35947,8 @@
       "ineligible": "一般计划资格",
       "rules": "阻止继续的检查",
       "budget": "资金池额度",
-      "final_pool": "最终资金池"
+      "final_pool": "最终资金池",
+      "calibrated": "最终校准评级"
     },
     "fairnessReport": "公平性报告",
     "acceptAll": "接受预算内全部建议",
@@ -35975,6 +35977,12 @@
       "include": "纳入上传奖励",
       "exclude": "排除上传奖励",
       "only": "仅上传奖励"
+    },
+    "decisionHistory": "决定历史",
+    "decisionStatus": {
+      "accepted": "已接受",
+      "adjusted": "已调整",
+      "ignored": "已忽略"
     }
   },
   "rewardUploaded": {
@@ -36023,8 +36031,16 @@
       "joined": "在 10 月 1 日或之后入职。",
       "pay_change": "在 10 月 1 日至 12 月 31 日之间调整薪资。",
       "increase": "加薪超过常规警告阈值。",
-      "bonus": "奖金超过当前基本工资的九个月。"
-    }
+      "bonus": "奖金超过当前基本工资的九个月。",
+      "restricted": "受限上传记录存在需由获授权审核人处理的警告。"
+    },
+    "checkNotificationTitle": "上传奖励待核查",
+    "checkNotificationBody": "业务单位审核开始前，须由另一位集团薪酬用户核查当前上传。",
+    "readyNotificationTitle": "上传奖励可供审核",
+    "readyNotificationBody": "集团薪酬已独立核查此上传。请打开审核评估奖励。",
+    "participation": "参与方式",
+    "excludedNoAwards": "已排除 — 本年不发放奖励",
+    "excludedUploaded": "已排除 — 奖励通过上传"
   },
   "accountManagement": {
     "title": "管理账户",

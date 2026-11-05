@@ -35762,7 +35762,8 @@
       "ACC-05": "Thưởng đã được EC duyệt bị khóa. Muốn đổi phải trả lại theo luồng được phép.",
       "OC-01": "Chặn thay đổi ngoài kỳ từ {from} đến {to}.",
       "UPL-01": "Thưởng tải lên cần nhân viên đúng công ty, bậc đang dùng, số tiền không âm và không giảm lương.",
-      "UPL-02": "Điều kiện chung chỉ cảnh báo cho thưởng tải lên, gồm ngày vào {cutoff} và đổi lương {from} đến {to}."
+      "UPL-02": "Điều kiện chung chỉ cảnh báo cho thưởng tải lên, gồm ngày vào {cutoff} và đổi lương {from} đến {to}.",
+      "ARCH-01": "Bậc nhân viên khác bậc vị trí đã duyệt. Xem xét ánh xạ hoặc đề xuất biến động bậc có ngày hiệu lực; bậc nhân viên đã ghi vẫn giữ nguyên."
     }
   },
   "rewardAccessPolicy": {
@@ -35946,7 +35947,8 @@
       "ineligible": "điều kiện của chương trình chung",
       "rules": "kiểm tra chặn",
       "budget": "hạn mức quỹ",
-      "final_pool": "quỹ cuối cùng"
+      "final_pool": "quỹ cuối cùng",
+      "calibrated": "xếp loại hiệu chỉnh cuối cùng"
     },
     "fairnessReport": "Báo cáo công bằng",
     "acceptAll": "Chấp nhận tất cả trong ngân sách",
@@ -35975,6 +35977,12 @@
       "include": "Bao gồm khoản tải lên",
       "exclude": "Loại trừ khoản tải lên",
       "only": "Chỉ khoản tải lên"
+    },
+    "decisionHistory": "Lịch sử quyết định",
+    "decisionStatus": {
+      "accepted": "Đã chấp nhận",
+      "adjusted": "Đã điều chỉnh",
+      "ignored": "Đã bỏ qua"
     }
   },
   "rewardUploaded": {
@@ -36023,8 +36031,16 @@
       "joined": "Gia nhập từ ngày 1 tháng 10 trở đi.",
       "pay_change": "Lương điều chỉnh từ ngày 1 tháng 10 đến ngày 31 tháng 12.",
       "increase": "Mức tăng vượt ngưỡng cảnh báo thông thường.",
-      "bonus": "Thưởng vượt chín tháng lương cơ bản hiện tại."
-    }
+      "bonus": "Thưởng vượt chín tháng lương cơ bản hiện tại.",
+      "restricted": "Dòng tải lên bị hạn chế có cảnh báo dành cho người được phép rà soát."
+    },
+    "checkNotificationTitle": "Khoản tải lên cần kiểm tra",
+    "checkNotificationBody": "Một người khác thuộc Bộ phận Đãi ngộ Tập đoàn phải kiểm tra trước khi mở rà soát BU.",
+    "readyNotificationTitle": "Khoản tải lên sẵn sàng rà soát",
+    "readyNotificationBody": "Bộ phận Đãi ngộ Tập đoàn đã kiểm tra độc lập. Mở đợt rà soát để đánh giá khoản đãi ngộ.",
+    "participation": "Hình thức tham gia",
+    "excludedNoAwards": "Loại trừ – không có đãi ngộ năm nay",
+    "excludedUploaded": "Loại trừ – khoản đãi ngộ tải lên"
   },
   "accountManagement": {
     "title": "Quản lý tài khoản",

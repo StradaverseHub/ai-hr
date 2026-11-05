@@ -10503,6 +10503,7 @@ export const rewardPolicyGroupTarget = pgTable('reward_policy_group_target', {
  companyId:uuid('company_id').notNull().references(()=>company.id),businessUnitId:uuid('business_unit_id').notNull().references(()=>businessUnit.id),
 },t=>[primaryKey({columns:[t.versionId,t.companyId,t.businessUnitId]})]);
 export const rewardUnit = pgTable('reward_unit', {
+  uploadedAwardDigest:text('uploaded_award_digest'),
   deletedAt: timestamp('deleted_at', { withTimezone: true }), deletedBy: uuid('deleted_by').references(() => appUser.id),
   kind: text('kind').$type<import('../packs/rewards/offcycle').RewardKind>().notNull().default('annual'),
   parentUnitId: uuid('parent_unit_id'), createdBy: uuid('created_by').notNull(),
@@ -10567,7 +10568,6 @@ export const rewardAccessSourceEpoch=pgTable('reward_access_source_epoch',{
  tenantId:tenantId(),sourceKind:text('source_kind').$type<'person'|'user'>().notNull(),sourceId:uuid('source_id').notNull(),generation:bigint('generation',{mode:'bigint'}).notNull().default(sql`1`),
 },table=>[primaryKey({columns:[table.tenantId,table.sourceKind,table.sourceId]})]);
 export const rewardEntry = pgTable('reward_entry', {
-  uploadedAward:jsonb('uploaded_award').$type<import('../packs/rewards/uploaded-awards-model').UploadedAward>(),
   id: id(), tenantId: tenantId(), unitId: uuid('unit_id').notNull().references(() => rewardUnit.id),
   employmentId: uuid('employment_id').notNull().references(() => employment.id),
   source: jsonb('source').$type<import('../packs/rewards/model').RewardSource>().notNull(),
