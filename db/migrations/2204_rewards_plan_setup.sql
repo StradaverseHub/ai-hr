@@ -116,3 +116,10 @@ CREATE TRIGGER reward_plan_company_links BEFORE INSERT OR UPDATE ON reward_plan_
 CREATE TRIGGER reward_company_year_links BEFORE INSERT ON reward_company_year_review FOR EACH ROW EXECUTE FUNCTION app.reward_setup_links();
 CREATE TRIGGER reward_unit_setup_links BEFORE INSERT OR UPDATE ON reward_unit_setup FOR EACH ROW EXECUTE FUNCTION app.reward_setup_links();
 REVOKE ALL ON FUNCTION app.reward_setup_links() FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_setup_links() TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.reward_setup_plan_ids() RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT v.id FROM reward_policy_group_version v JOIN reward_policy_group g ON g.id=v.group_id AND g.tenant_id=v.tenant_id WHERE v.tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(NULL,'manage') AND v.revision=g.revision ORDER BY g.name,g.id
+$$;
+ALTER FUNCTION app.reward_setup_plan_ids() OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_setup_plan_ids() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_setup_plan_ids() TO ai_hr_app;

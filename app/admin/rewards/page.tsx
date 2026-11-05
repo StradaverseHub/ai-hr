@@ -29,7 +29,7 @@ export default async function RewardsConfigurationPage({ searchParams }: { searc
   // cd72f915 — open reviews only: a finished review needs no further seat holders.
   const coverage = new Map((await rewardCoverageForUnits(s, units.filter(u => !['posted', 'withdrawn', 'rejected'].includes(u.status)).map(u => u.id))).map(c => [c.unitId, c.missing.length]));
   const ta = await getTranslations('rewardsAccess');
-  const today = todayInKualaLumpur();
+  const today = todayInKualaLumpur(); const ts=await getTranslations('rewardSetup');
   const shared=await rewardSharedPolicyChoices(s,choices.companies.map(c=>c.id));
   return <div className="w-full space-y-6">
     <div data-tour="rewards-configuration"><PageHeader title={t('adminTitle')} description={t('adminDescription')} /></div>
@@ -54,6 +54,6 @@ export default async function RewardsConfigurationPage({ searchParams }: { searc
         <td className="px-3 py-3">{u.people == null || u.verified == null ? tc('notAvailable') : u.people === 0 ? <span className="text-muted-foreground">{tc('noPeople')}</span> : u.verified === u.people ? <Badge variant="success" className="normal-case">{tc('allVerified')}</Badge> : <Badge variant="warning" className="normal-case">{tc('verifiedOf', { verified: u.verified, total: u.people })}</Badge>}</td>
         <td className="px-3 py-3"><RewardReviewActions review={u}/></td></tr>)}</tbody>
     </table>{!all.length ? <p className="max-w-2xl px-5 py-10 text-sm text-muted-foreground">{t('adminEmpty')}</p> : !units.length && <p className="max-w-2xl px-5 py-10 text-sm text-muted-foreground">{tc('filters.empty')}</p>}</div>
-    {choices.companies.length>0&&<Card><SectionHeader title={t('createUnit')}/><RewardReviewCreateForm actorUserId={s.userId??''} today={today} companies={choices.companies} units={choices.units} memberships={memberships} cycles={choices.cycles} shared={shared}/></Card>}
+    <Card className="p-5"><Button asChild><Link href="/admin/rewards/plans">{ts('useApprovedPlan')}</Link></Button></Card>
   </div>;
 }
