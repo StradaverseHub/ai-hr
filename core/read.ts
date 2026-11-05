@@ -557,7 +557,7 @@ export function personnelFilterChoices(ctx: SessionContext, companyIds: string[]
     const ids = choices.companies.map(company => company.id);
     const rows = await tx.execute<PersonnelChoiceRow>(personnelAssignmentChoices(personnelListSource(ids, asOf), ids, asOf));
     return { ...choices, rows: [...rows] };
-  });
+  }, { sharedAccessLock: true });
 }
 
 async function workforcePersonnelPageTx(
@@ -620,7 +620,7 @@ export function readPersonnelOverview(
       headcount: { total: Object.values(result.byStatus).reduce((sum, count) => sum + count, 0), byStatus: result.byStatus },
       organisationChoices: { ...choices, rows: result.choices },
     };
-  });
+  }, { sharedAccessLock: true });
 }
 
 
@@ -753,7 +753,7 @@ export function countEmployeesByStatus(
       let total = 0;
       for (const row of rows) { const count = Number(row.count); byStatus[row.status] = count; total += count; }
       return { total, byStatus };
-  });
+  }, { sharedAccessLock: true });
   return withTenant(ctx, async tx => {
     const rows = (await tx
       .select({
@@ -900,7 +900,7 @@ export function listEmployeesPage(
   if (purpose) return withPersonnelRead(ctx, async tx => {
     const { rows, total } = await workforcePersonnelPageTx(tx, ctx, p, todayInKualaLumpur());
     return { rows, total };
-  }, existingTx);
+  }, existingTx ? { existingTx } : { sharedAccessLock: true });
   const read = async (tx: Tx) => {
     const currentAssignment = currentAssignmentJoin();
     const where = employeeListWhere(p);

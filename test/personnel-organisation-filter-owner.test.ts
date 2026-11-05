@@ -6,7 +6,7 @@ import * as s from '../db/schema';
 import {hireEmployee,setEmploymentAssignment} from '../core/org';
 import {listEmployeesPage,countEmployeesByStatus,personnelFilterChoices,readPersonnelOverview} from '../core/read';
 import {createPersonnelPrivateSearch,personnelPrivateSearchAvailable,privateSearchHash} from '../core/personnel-private-search';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {PersonnelReadBusyError} from '../core/personnel-read-bounds';
 import {workforceViewScope} from '../core/workforce-access';
 import {personnelGroupingReadinessTx} from '../core/personnel-quality';
@@ -103,6 +103,12 @@ it('refuses queued Personnel scope, list and export reads while the tenant acces
     await expect(workforceViewScope(ctx, { personnelList: true })).rejects.toBeInstanceOf(PersonnelReadBusyError);
     await expect(readPersonnelOverview(ctx, input, {})).rejects.toBeInstanceOf(PersonnelReadBusyError);
     await expect(listEmployeesPage(ctx, input, 'workforce')).rejects.toBeInstanceOf(PersonnelReadBusyError);
+  });
+  await owner.withTenant(ctx, async tx => {
+    await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+    await expect(workforceViewScope(ctx, { personnelList: true })).resolves.toHaveProperty('companyIds');
+    await expect(readPersonnelOverview(ctx, input, {})).resolves.toHaveProperty('employees.rows');
+    await expect(listEmployeesPage(ctx, input, 'workforce')).resolves.toHaveProperty('rows');
   });
   expect((await workforceViewScope(ctx, { personnelList: true })).companyIds).toContain(b.companyId);
   await expect(readPersonnelOverview(ctx, input, {})).resolves.toHaveProperty('employees.rows');

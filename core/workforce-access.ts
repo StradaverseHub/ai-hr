@@ -90,7 +90,7 @@ export function workforceViewScope(ctx: SessionContext, options?: { personnelLis
   const companyIds = scope?.company_ids ?? [];
   return {companyIds, canOpen: companyIds.length > 0 || scope?.unassigned === true};
  };
- return options?.personnelList ? withPersonnelRead(ctx, read) : withTenant(ctx,async tx=>{
+ return options?.personnelList ? withPersonnelRead(ctx, read, { sharedAccessLock: true }) : withTenant(ctx,async tx=>{
   await lockAccessConfigurationReadTx(tx,ctx.tenantId);
   return read(tx);
  });
