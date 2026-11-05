@@ -128,7 +128,7 @@ function DecideButtons({
     return <span className="text-xs text-muted-foreground">{labels.yourRequest}</span>;
   }
   return (
-    <div className="flex items-center justify-end gap-2">
+    <div data-approval-surface className="flex items-center justify-end gap-2">
       <form action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
@@ -136,7 +136,7 @@ function DecideButtons({
         <input type="hidden" name="decision" value="approved" />
         <NavFields nav={nav} />
         {remarksLabel && <label className="block text-xs">{remarksLabel}<textarea name="remarks" maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
-        <Button type="submit" size="sm">
+        <Button type="submit" size="sm" data-action-approval>
           {labels.approve}
         </Button>
       </form>

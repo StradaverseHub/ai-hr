@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import {ProtectedAnalysis} from '@/components/assistant/protected-analysis';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
@@ -91,12 +92,12 @@ export default async function AnalyticsPage({
     `/analytics/export?report=carry-forward&format=${format}${carryForwardQs}`;
 
   const ExportLink = ({ href, label }: { href: string; label: string }) => (
-    <a
+    <ExportDownloadLink
       href={href}
       className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
     >
       ↓ {label}
-    </a>
+    </ExportDownloadLink>
   );
 
   // CSV / XLSX / PDF button group for a report (+ optional extra query, e.g. &comp=1).

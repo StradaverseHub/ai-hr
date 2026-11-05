@@ -45,13 +45,13 @@ export function LeaveDecideControls({
     </>
   );
   return (
-    <div className="flex flex-col items-end gap-2">
+    <div data-approval-surface className="flex flex-col items-end gap-2">
       <div className="flex items-center justify-end gap-2">
         <form action={approveLeaveAction}>
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="decision" value="approved" />
           {navFields}
-          <Button type="submit" size="sm">
+          <Button type="submit" size="sm" data-action-approval>
             {labels.approve}
           </Button>
         </form>

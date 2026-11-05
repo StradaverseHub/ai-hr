@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useFormStatus } from 'react-dom';
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
@@ -63,12 +64,22 @@ export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
+  pendingLabel?: string;
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, pendingLabel, ...props }, ref) => {
+    const form = useFormStatus();
     const Comp = asChild ? Slot : 'button';
-    return <Comp ref={ref} className={cn(buttonVariants({ variant, size, className }))} {...props} />;
+    const classes = cn(buttonVariants({ variant, size, className }));
+    if (asChild) return <Comp ref={ref} className={classes} {...props} />;
+    const { children, disabled, 'aria-busy': explicitBusy, ...button } = props;
+    const formPending = button.type !== 'button' && button.type !== 'reset' && form.pending;
+    const pending = formPending || explicitBusy === true || explicitBusy === 'true';
+    return <button {...button} ref={ref} className={classes} disabled={disabled || formPending}
+      aria-busy={pending || explicitBusy} data-action-pending={pending || undefined}>
+      {pending && pendingLabel ? pendingLabel : children}
+    </button>;
   },
 );
 Button.displayName = 'Button';

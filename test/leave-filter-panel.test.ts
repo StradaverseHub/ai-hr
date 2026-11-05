@@ -279,7 +279,7 @@ describe('leave filter panel: component supports multi-select additively', () =>
     expect(src.startsWith("'use client'")).toBe(true);
     expect(src.includes("kind: 'multi'")).toBe(true);
     expect(src.includes('type="checkbox"')).toBe(true);
-    expect(src.includes('method="get"')).toBe(true);
+    expect(src).toContain("import Form from 'next/form'");
     expect(src).toMatch(/action=\{action\}/);
     // Clear-all links back to the page's own base path. Feedback 650b6eb8 made that base carry the FOREIGN
     // params of a second listing on the same page (`hidden`), so the assertion follows the helper rather

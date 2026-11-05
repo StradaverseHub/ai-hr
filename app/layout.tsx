@@ -14,6 +14,7 @@ import './onboarding-workspace.css';
 // 2026-10-20); a module import is an explicit edge the cache cannot miss. All its rules are scoped to
 // :root[data-ui-theme='atelier'], so loading it for every theme changes nothing for the others.
 import './atelier.css';
+import './atelier-action-feedback.css';
 // The Performance & Talent area theme (D-P1-32 D3): every rule is scoped to [data-area-theme='performance']
 // (app/performance/layout.tsx). Imported after atelier.css so its layer is declared after Tailwind's, as an explicit
 // module edge for the same cache reason as above.
@@ -490,7 +491,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   still allows PROGRAMMATIC scrolling — so any focus/scrollIntoView deep in a long
                   page shifted the whole canvas (header + sidebar off-screen) with no wheel recovery.
                   Making main the containing block keeps that overflow inside the scroller. */}
-              <main className="relative min-w-0 flex-1 overflow-y-auto pb-1"><Suspense fallback={null}><BackToInbox /></Suspense><AssistantImportHandoffProvider key={personnelImportBrowserKey(session,scopeIds??allowed.map(company=>company.id))}>{children}</AssistantImportHandoffProvider></main>
+              <main className="relative min-w-0 flex-1 overflow-y-auto pb-1"><div className="atelier-filter-feedback" aria-hidden="true" /><Suspense fallback={null}><BackToInbox /></Suspense><AssistantImportHandoffProvider key={personnelImportBrowserKey(session,scopeIds??allowed.map(company=>company.id))}>{children}</AssistantImportHandoffProvider></main>
               <ShellStatusLine companies={allowed} selected={scopeIds} />
             </div>
           </div>

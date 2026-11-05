@@ -6,6 +6,7 @@
  * open/close state and the delete confirm live client-side; the mutating actions are server actions
  * invoked via <form action={...}> so no client fetch/handler crosses the RSC boundary.
  */
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { useRef, useState } from 'react';
 import { useFitToView } from '@/components/ui/fit-to-view';
 import {
@@ -84,10 +85,10 @@ export function ReportRowActions({
               </button>
             </form>
             <div className="border-t border-border" />
-            {!periodComparison&&<a className={item} href={exportHref('csv')}>{labels.exportCsv}</a>}
-            <a className={item} href={exportHref('xlsx')}>{labels.exportXlsx}</a>
-            <a className={item} href={exportHref('pdf')}>{labels.exportPdf}</a>
-            {!periodComparison&&<a className={item} href={exportHref('docx')}>{labels.exportDocx}</a>}
+            {!periodComparison&&<ExportDownloadLink className={item} href={exportHref('csv')}>{labels.exportCsv}</ExportDownloadLink>}
+            <ExportDownloadLink className={item} href={exportHref('xlsx')}>{labels.exportXlsx}</ExportDownloadLink>
+            <ExportDownloadLink className={item} href={exportHref('pdf')}>{labels.exportPdf}</ExportDownloadLink>
+            {!periodComparison&&<ExportDownloadLink className={item} href={exportHref('docx')}>{labels.exportDocx}</ExportDownloadLink>}
             <div className="border-t border-border" />
             <form
               action={deleteReportAction}
