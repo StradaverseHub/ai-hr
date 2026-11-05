@@ -212,3 +212,93 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_te
 $$;
 REVOKE ALL ON FUNCTION app.reward_whole_group_plan_catalogue() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_whole_group_plan_catalogue() TO ai_hr_app;
+
+--> statement-breakpoint
+
+-- An eligible group grant can keep a required role covered when a scoped seat is removed.
+CREATE OR REPLACE FUNCTION app.reward_access_request_apply(wanted_request uuid,p_approve boolean,p_reason text,p_immediate boolean) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE q public.reward_access_request;t uuid:=app.current_tenant_id();actor uuid:=app.current_user_id();u public.reward_unit;c jsonb;target jsonb;k uuid;member_id uuid;before_coverage jsonb:='{}';exemptions jsonb;outcome text;day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO q FROM public.reward_access_request WHERE id=wanted_request AND tenant_id=t;
+ IF q.id IS NULL OR NOT app.reward_access_request_authorised(q.id) THEN RAISE EXCEPTION 'access request scope' USING ERRCODE='42501'; END IF;
+ IF q.status<>'pending' THEN RAISE EXCEPTION 'access request already decided' USING ERRCODE='40001'; END IF;
+ -- Identity/archival writers join this canonical access barrier (0579); tuple locks here
+ -- would reverse their tuple-before-trigger ordering and deadlock an in-flight archive.
+ IF NOT p_immediate AND NOT app.reward_access_request_independent(q.id,actor) THEN RAISE EXCEPTION 'independent Group Rewards checker required' USING ERRCODE='42501'; END IF;
+ IF p_immediate THEN
+ SELECT jsonb_object_agg(k.key,app.reward_access_exemption(k.key::uuid)) INTO exemptions FROM jsonb_each(q.unit_revisions) k;
+ IF actor IS DISTINCT FROM q.requested_by OR EXISTS(SELECT 1 FROM jsonb_each(q.unit_revisions) k WHERE app.reward_access_exemption(k.key::uuid) IS NULL) THEN RAISE EXCEPTION 'immediate access authority changed' USING ERRCODE='42501'; END IF;
+ ELSIF NOT app.reward_access_request_can_decide(q.id) THEN RAISE EXCEPTION 'independent Group Rewards checker required' USING ERRCODE='42501'; END IF;
+ p_reason:=app.reward_access_reason_trim(p_reason);
+ IF p_approve IS NULL OR COALESCE(length(p_reason),0)>2000 THEN RAISE EXCEPTION 'invalid access decision' USING ERRCODE='23514'; END IF;
+ outcome:=CASE WHEN p_immediate THEN 'applied_no_second_approval' WHEN p_approve THEN 'approved' ELSE 'rejected' END;
+ IF NOT p_approve AND COALESCE(length(app.reward_access_reason_trim(p_reason)),0)<10 THEN RAISE EXCEPTION 'rejection reason required' USING ERRCODE='23514'; END IF;
+ FOR k IN SELECT key::uuid FROM jsonb_each(q.unit_revisions) ORDER BY 1 LOOP
+ SELECT * INTO u FROM public.reward_unit WHERE id=k AND tenant_id=t FOR UPDATE;
+ IF u.id IS NULL OR u.deleted_at IS NOT NULL OR u.status<>'draft' OR u.revision IS DISTINCT FROM (q.unit_revisions->>k::text)::int OR app.reward_access_members_snapshot(k) IS DISTINCT FROM q.before_members->k::text THEN outcome:='lapsed'; END IF;
+ before_coverage:=before_coverage||jsonb_build_object(k::text,COALESCE((SELECT jsonb_agg(DISTINCT m.role) FROM public.reward_member m WHERE m.unit_id=k AND m.tenant_id=t AND app.reward_member_eligible_internal(m.id) AND (m.role='gr' OR m.role=ANY(app.reward_required_access_roles(k)))),'[]'::jsonb));
+ END LOOP;
+ SELECT * INTO q FROM public.reward_access_request WHERE id=wanted_request AND tenant_id=t FOR UPDATE;
+ IF q.status<>'pending' THEN RAISE EXCEPTION 'access request already decided' USING ERRCODE='40001'; END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_each_text(q.people_fingerprints) p WHERE p.value IS DISTINCT FROM app.reward_member_people_fingerprint(split_part(p.key,':',2)::uuid,split_part(p.key,':',1)::uuid)) THEN outcome:='lapsed'; END IF;
+ IF app.reward_access_requester_stale(q.id) THEN outcome:='lapsed'; END IF;
+ IF outcome IN('approved','applied_no_second_approval') THEN
+ -- Add replacements before removing the previous holders, preserving existing coverage guards.
+ FOR c IN SELECT value FROM jsonb_array_elements(q.changes) LOOP
+ target:=c->'after';
+ IF target IS NOT NULL AND target<>'null'::jsonb THEN
+ IF NOT EXISTS(SELECT 1 FROM public.app_user x WHERE x.id=(target->>'userId')::uuid AND x.tenant_id=t AND x.archived_at IS NULL AND NOT app.login_blocked(x.id)) THEN RAISE EXCEPTION 'access account unavailable' USING ERRCODE='42501'; END IF;
+ IF (target->>'restoreReason') IS NOT NULL AND (length(app.reward_access_reason_trim(target->>'restoreReason'))<10 OR target->>'restoreFingerprint' IS DISTINCT FROM app.reward_member_people_fingerprint((target->>'userId')::uuid,(c->>'unitId')::uuid)) THEN RAISE EXCEPTION 'Group Rewards restore required' USING ERRCODE='42501'; END IF;
+ INSERT INTO public.reward_member(tenant_id,unit_id,user_id,role,valid_from,valid_to,covers_user_id,restored_reason,restored_fingerprint)
+ VALUES(t,(c->>'unitId')::uuid,(target->>'userId')::uuid,target->>'role',COALESCE((target->>'validFrom')::date,day),(target->>'validTo')::date,(target->>'coversUserId')::uuid,target->>'restoreReason',CASE WHEN target->>'restoreReason' IS NOT NULL THEN app.reward_member_people_fingerprint((target->>'userId')::uuid,(c->>'unitId')::uuid) END)
+ ON CONFLICT(unit_id,user_id,role) DO UPDATE SET valid_from=EXCLUDED.valid_from,valid_to=EXCLUDED.valid_to,covers_user_id=EXCLUDED.covers_user_id,restored_reason=COALESCE(EXCLUDED.restored_reason,reward_member.restored_reason),restored_fingerprint=COALESCE(EXCLUDED.restored_fingerprint,reward_member.restored_fingerprint);
+ END IF;
+ END LOOP;
+ FOR c IN SELECT value FROM jsonb_array_elements(q.changes) LOOP
+ IF c->'before'<>'null'::jsonb AND (c->'after'='null'::jsonb OR c->'before'->>'userId' IS DISTINCT FROM c->'after'->>'userId' OR c->'before'->>'role' IS DISTINCT FROM c->'after'->>'role') THEN
+ DELETE FROM public.reward_member WHERE tenant_id=t AND unit_id=(c->>'unitId')::uuid AND user_id=(c->'before'->>'userId')::uuid AND role=c->'before'->>'role';
+ END IF;
+ END LOOP;
+ FOR k IN SELECT key::uuid FROM jsonb_each(q.unit_revisions) ORDER BY 1 LOOP
+ IF (NOT EXISTS(SELECT 1 FROM public.reward_member m WHERE m.unit_id=k AND m.tenant_id=t AND m.role='gr' AND app.reward_member_eligible_internal(m.id))
+     AND NOT EXISTS(SELECT 1 FROM app.reward_group_coverage_roles(k) role WHERE role='gr')) OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(before_coverage->k::text) old_role(role) WHERE NOT EXISTS(SELECT 1 FROM public.reward_member m WHERE m.unit_id=k AND m.tenant_id=t AND m.role=old_role.role AND app.reward_member_eligible_internal(m.id))
+     AND NOT EXISTS(SELECT 1 FROM app.reward_group_coverage_roles(k) role WHERE role=old_role.role)) THEN RAISE EXCEPTION 'required Rewards role must remain covered' USING ERRCODE='23514'; END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(q.changes) change WHERE change->>'unitId'=k::text AND (change->'before'->>'role' IN('bg','ec') OR change->'after'->>'role' IN('bg','ec'))) THEN PERFORM app.reward_access_refresh_confidentiality(k); END IF;
+ PERFORM set_config('app.reward_approving_request',q.id::text,true);
+ UPDATE public.reward_unit SET revision=revision+1,approved_digest=NULL,updated_at=now() WHERE id=k AND tenant_id=t;
+ FOR c IN SELECT value FROM jsonb_array_elements(q.changes) WHERE value->>'unitId'=k::text LOOP
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(t,'reward-unit',k,'reward-unit.access-changed','user',actor,jsonb_build_object('before',c->'before','after',c->'after','revision',(q.unit_revisions->>k::text)::int+1,'batchId',q.id,'requestId',q.id,'requestedBy',q.requested_by,'reason',q.request_reason,'disposition',outcome));
+ END LOOP;
+ END LOOP;
+ END IF;
+ UPDATE public.reward_access_request SET status=outcome,decided_by=CASE WHEN p_immediate THEN NULL ELSE actor END,decided_at=now(),exemption_basis=CASE WHEN p_immediate THEN exemptions ELSE NULL END,reason=nullif(btrim(p_reason),'') WHERE id=q.id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(t,'reward-access-request',q.id,'reward-access.'||outcome,'user',actor,jsonb_build_object('requestedBy',q.requested_by,'changes',q.changes,'reason',nullif(btrim(p_reason),''),'exemptionBasis',CASE WHEN p_immediate THEN exemptions ELSE NULL END));
+ RETURN outcome;
+END $$;
+--> statement-breakpoint
+
+-- The group grant does not let the caller fabricate a decision at another step.
+CREATE FUNCTION app.reward_group_decision_stage_allowed(wanted_unit uuid, from_step text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.reward_unit r
+    WHERE r.id = wanted_unit AND r.tenant_id = app.current_tenant_id() AND r.deleted_at IS NULL
+      AND r.status = from_step
+      AND (
+        EXISTS (
+          SELECT 1 FROM public.reward_member m
+          WHERE m.tenant_id = r.tenant_id AND m.unit_id = r.id AND m.user_id = app.current_user_id()
+            AND m.role <> 'pbp' AND app.reward_member_eligible_internal(m.id)
+        )
+        OR r.status IN ('gr', 'ctro', 'ec') AND r.status IN (SELECT app.reward_current_group_roles())
+      )
+  );
+$$;
+REVOKE ALL ON FUNCTION app.reward_group_decision_stage_allowed(uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_group_decision_stage_allowed(uuid, text) TO ai_hr_app;
+
+CREATE POLICY reward_decision_group_stage_insert ON public.reward_decision AS RESTRICTIVE FOR INSERT TO ai_hr_app
+WITH CHECK (NOT EXISTS (SELECT 1 FROM app.reward_current_group_roles())
+  OR app.reward_group_decision_stage_allowed(unit_id, from_stage));
