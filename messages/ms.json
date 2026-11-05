@@ -7967,7 +7967,10 @@
       "draftResultSubtitle": "Semak hasil bagi setiap syarikat. Draf yang disimpan belum mempunyai slip gaji yang dikira; buka proses yang disimpan untuk menyemak transaksi sebelum pemprosesan.",
       "draftCompanySaved": "Draf disimpan",
       "draftSaving": "Menyimpan draf…",
-      "outstandingOnly": "Bayaran tertunggak sahaja · tamat {date}"
+      "outstandingOnly": "Bayaran tertunggak sahaja · tamat {date}",
+      "registrationWarning": "{count} pekerja berada di syarikat dengan pendaftaran berkanun tidak lengkap dan tiada kadar pendaftaran HRD Corp. Levi tidak akan dikenakan untuk mereka.",
+      "registrationOpenCompanies": "Semak syarikat",
+      "registrationCheckFailed": "Kesediaan pendaftaran syarikat tidak dapat disemak. Cuba lagi sebelum memproses gaji."
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",
@@ -10045,7 +10048,29 @@
       "viewNoParent": "Tiada (induk kumpulan)",
       "viewNoStatutoryPack": "Tiada pek berkanun dipasang untuk {country}, jadi tiada pengenal berkanun untuk dipaparkan.",
       "viewCycleInactive": "\"{name}\" bukan lagi kitaran yang aktif.",
-      "viewReadOnlyNote": "Baca sahaja. Tekan Sunting untuk menukar butiran ini."
+      "viewReadOnlyNote": "Baca sahaja. Tekan Sunting untuk menukar butiran ini.",
+      "registration": {
+        "column": "Berkanun",
+        "complete": "Lengkap",
+        "missing": "Tidak lengkap",
+        "not_required": "Tidak diperlukan",
+        "all": "Semua status berkanun",
+        "topAlert": "{missing} daripada {total} majikan sah mempunyai butiran pendaftaran berkanun yang tidak lengkap.",
+        "levyHint": "Syarikat tanpa kadar pendaftaran HRD Corp tidak akan dikenakan levi.",
+        "showInTable": "Tunjukkan dalam jadual",
+        "showIssuesOnly": "Tunjukkan isu sahaja",
+        "showAllBranches": "Tunjukkan semua cabang",
+        "missingCount": "{count} tidak lengkap",
+        "completeAction": "Lengkapkan",
+        "entityType": "Jenis entiti",
+        "legalEntity": "Entiti sah",
+        "groupingNode": "Nod kumpulan",
+        "testEntity": "Entiti ujian",
+        "saveClassification": "Simpan pengelasan",
+        "classificationHint": "Nod kumpulan, rekod yang diarkibkan dan entiti yang ditandakan sebagai ujian dikecualikan daripada jumlah kesediaan.",
+        "saveFailed": "Pengelasan tidak dapat disimpan. Buka semula syarikat dan cuba lagi.",
+        "saved": "Pengelasan syarikat disimpan."
+      }
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",

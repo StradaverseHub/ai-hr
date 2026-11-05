@@ -4705,6 +4705,13 @@
       "when": 1793330001600,
       "tag": "2200_job_architecture",
       "breakpoints": true
+    },
+    {
+      "idx": 1409,
+      "version": "7",
+      "when": 1793330001609,
+      "tag": "2209_company_registration_classification",
+      "breakpoints": true
     }
   ]
 }

@@ -7967,7 +7967,10 @@
       "draftResultSubtitle": "请查看各公司的处理结果。已保存的草稿尚未计算工资单；处理前请打开已保存批次，检查交易。",
       "draftCompanySaved": "草稿已保存",
       "draftSaving": "正在保存草稿…",
-      "outstandingOnly": "仅支付未付款项 · 离职日期 {date}"
+      "outstandingOnly": "仅支付未付款项 · 离职日期 {date}",
+      "registrationWarning": "{count} 名员工所属公司的法定登记不完整，且没有 HRD Corp 登记费率，因此不会计收相关征费。",
+      "registrationOpenCompanies": "查看公司",
+      "registrationCheckFailed": "无法检查公司登记完整性。处理薪资前请重试。"
     },
     "guide": {
       "title": "薪资工作流程指南",
@@ -10045,7 +10048,29 @@
       "viewNoParent": "无（集团根公司）",
       "viewNoStatutoryPack": "{country} 未安装法定组件，因此没有可显示的法定识别号。",
       "viewCycleInactive": "“{name}”已不再是有效的周期。",
-      "viewReadOnlyNote": "只读。如需更改这些信息，请点击“编辑”。"
+      "viewReadOnlyNote": "只读。如需更改这些信息，请点击“编辑”。",
+      "registration": {
+        "column": "法定登记",
+        "complete": "完整",
+        "missing": "缺失",
+        "not_required": "无需登记",
+        "all": "所有法定登记状态",
+        "topAlert": "{total} 家法律雇主中有 {missing} 家的法定登记资料不完整。",
+        "levyHint": "未设置 HRD Corp 登记费率的公司不会被计收征费。",
+        "showInTable": "在表格中显示",
+        "showIssuesOnly": "仅显示问题",
+        "showAllBranches": "显示所有分支",
+        "missingCount": "{count} 家缺失",
+        "completeAction": "补全",
+        "entityType": "实体类型",
+        "legalEntity": "法律实体",
+        "groupingNode": "分组节点",
+        "testEntity": "测试实体",
+        "saveClassification": "保存分类",
+        "classificationHint": "分组节点、已归档记录及明确标记的测试实体不计入完整性统计。",
+        "saveFailed": "无法保存分类。请重新打开公司后重试。",
+        "saved": "公司分类已保存。"
+      }
     },
     "systemLabels": {
       "pageTitle": "系统标签",

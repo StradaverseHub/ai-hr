@@ -1,5 +1,6 @@
 'use client';
 
+import { CompanyRegistrationWarning } from '../registration-warning';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { checkPayrollCycleReadiness, checkUnattachedForSelection, validatePayrollSelection } from '../actions';
@@ -252,6 +253,7 @@ export function StepValidation({
   if (blockers + warnings === 0) {
     return (
       <div className="space-y-4">
+        <CompanyRegistrationWarning companyIds={companyIds} payPeriod={payPeriod} employmentIds={employmentIds} payrollCycleId={payrollCycleId}/>
         {missingCycleBanner}
         {unattachedBanner}
         {badgeLegend}
@@ -282,6 +284,7 @@ export function StepValidation({
 
   return (
     <div className="space-y-4">
+        <CompanyRegistrationWarning companyIds={companyIds} payPeriod={payPeriod} employmentIds={employmentIds} payrollCycleId={payrollCycleId}/>
       {missingCycleBanner}
       {unattachedBanner}
       {badgeLegend}

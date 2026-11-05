@@ -7967,7 +7967,10 @@
       "draftResultSubtitle": "Review the outcome for each company. Saved drafts have no calculated payslips; open a saved run to review transactions before processing.",
       "draftCompanySaved": "Draft saved",
       "draftSaving": "Saving drafts…",
-      "outstandingOnly": "Outstanding payments only · left {date}"
+      "outstandingOnly": "Outstanding payments only · left {date}",
+      "registrationWarning": "{count} employees are in companies with missing statutory registration and no HRD Corp registration rate. The levy will not be charged for them.",
+      "registrationOpenCompanies": "Review companies",
+      "registrationCheckFailed": "Company registration readiness could not be checked. Retry before processing payroll."
     },
     "guide": {
       "title": "Payroll Workflow Guide",
@@ -10045,7 +10048,29 @@
       "viewNoParent": "None (group root)",
       "viewNoStatutoryPack": "No statutory pack is installed for {country}, so there are no statutory identifiers to show.",
       "viewCycleInactive": "\"{name}\" is no longer an active cycle.",
-      "viewReadOnlyNote": "Read-only. Press Edit to change these details."
+      "viewReadOnlyNote": "Read-only. Press Edit to change these details.",
+      "registration": {
+        "column": "Statutory",
+        "complete": "Complete",
+        "missing": "Missing",
+        "not_required": "Not required",
+        "all": "All statutory statuses",
+        "topAlert": "{missing} of {total} legal employers have missing statutory registration details.",
+        "levyHint": "Companies without an HRD Corp registration rate will not be charged the levy.",
+        "showInTable": "Show in table",
+        "showIssuesOnly": "Show issues only",
+        "showAllBranches": "Show all branches",
+        "missingCount": "{count} missing",
+        "completeAction": "Complete",
+        "entityType": "Entity type",
+        "legalEntity": "Legal entity",
+        "groupingNode": "Grouping node",
+        "testEntity": "Test entity",
+        "saveClassification": "Save classification",
+        "classificationHint": "Grouping nodes, archived records and explicitly marked test entities are excluded from readiness totals.",
+        "saveFailed": "Unable to save the classification. Reopen the company and try again.",
+        "saved": "Company classification saved."
+      }
     },
     "systemLabels": {
       "pageTitle": "System Labels",

@@ -7967,7 +7967,10 @@
       "draftResultSubtitle": "Kiểm tra kết quả của từng công ty. Các bản nháp đã lưu chưa có phiếu lương được tính; mở đợt đã lưu để kiểm tra giao dịch trước khi xử lý.",
       "draftCompanySaved": "Đã lưu bản nháp",
       "draftSaving": "Đang lưu bản nháp…",
-      "outstandingOnly": "Chỉ thanh toán còn nợ · nghỉ ngày {date}"
+      "outstandingOnly": "Chỉ thanh toán còn nợ · nghỉ ngày {date}",
+      "registrationWarning": "{count} nhân viên thuộc các công ty còn thiếu đăng ký theo luật và chưa có mức đăng ký HRD Corp. Khoản đóng góp này sẽ không được tính cho họ.",
+      "registrationOpenCompanies": "Kiểm tra công ty",
+      "registrationCheckFailed": "Không thể kiểm tra đăng ký công ty. Hãy thử lại trước khi xử lý lương."
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",
@@ -10045,7 +10048,29 @@
       "viewNoParent": "Không có (công ty gốc của tập đoàn)",
       "viewNoStatutoryPack": "Chưa cài gói pháp định cho {country}, nên không có mã số pháp định nào để hiển thị.",
       "viewCycleInactive": "\"{name}\" không còn là chu kỳ đang hoạt động.",
-      "viewReadOnlyNote": "Chỉ xem. Nhấn Sửa để thay đổi các thông tin này."
+      "viewReadOnlyNote": "Chỉ xem. Nhấn Sửa để thay đổi các thông tin này.",
+      "registration": {
+        "column": "Đăng ký theo luật",
+        "complete": "Đầy đủ",
+        "missing": "Còn thiếu",
+        "not_required": "Không yêu cầu",
+        "all": "Mọi trạng thái đăng ký",
+        "topAlert": "{missing} trong {total} pháp nhân sử dụng lao động còn thiếu thông tin đăng ký theo luật.",
+        "levyHint": "Công ty chưa có mức đăng ký HRD Corp sẽ không bị tính khoản đóng góp này.",
+        "showInTable": "Hiển thị trong bảng",
+        "showIssuesOnly": "Chỉ hiện vấn đề",
+        "showAllBranches": "Hiện mọi nhánh",
+        "missingCount": "Còn thiếu {count}",
+        "completeAction": "Bổ sung",
+        "entityType": "Loại đơn vị",
+        "legalEntity": "Pháp nhân",
+        "groupingNode": "Nút nhóm",
+        "testEntity": "Đơn vị thử nghiệm",
+        "saveClassification": "Lưu phân loại",
+        "classificationHint": "Nút nhóm, hồ sơ lưu trữ và đơn vị được đánh dấu thử nghiệm không được tính vào tổng mức sẵn sàng.",
+        "saveFailed": "Không thể lưu phân loại. Hãy mở lại công ty và thử lại.",
+        "saved": "Đã lưu phân loại công ty."
+      }
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",
