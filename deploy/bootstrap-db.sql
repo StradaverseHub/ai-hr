@@ -93,4 +93,11 @@ ALTER DEFAULT PRIVILEGES FOR ROLE ai_hr_owner IN SCHEMA public
 ALTER DEFAULT PRIVILEGES FOR ROLE ai_hr_owner IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO ai_hr_app;
 
+-- The sweeps connect as ai_hr_owner and switch DOWN to ai_hr_app (SET LOCAL ROLE) before projecting
+-- notifications. PostgreSQL 16 checks that switch against the login, so the owner needs SET without
+-- INHERIT: it gains none of the app's privileges, and the app never becomes a member of the owner.
+-- Only this bootstrap (or deploy/runner-control/notification-role-prerequisite.sql on an existing
+-- install) can grant it; the owner holds no ADMIN on ai_hr_app, so no migration can.
+GRANT ai_hr_app TO ai_hr_owner WITH INHERIT FALSE, SET TRUE, ADMIN FALSE;
+
 \echo '✅ ai_hr database + 3 roles ready. Now run migrations as ai_hr_owner (see deploy/DEPLOY.md).'
