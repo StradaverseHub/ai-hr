@@ -36,7 +36,7 @@ it('reuses the unchanged native principal expression plan while re-evaluating ev
   try{expect(await read(hr.ctx),'revoked actual grant').toBe(false);}finally{await owner.db.update(s.roleAssignment).set({role:'hr_admin'}).where(eq(s.roleAssignment.appUserId,hr.userId));}
   await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,employee.userId));
   try{expect(await read(employee.ctx),'archived actual login').toBe(false);}finally{await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,employee.userId));}
-  await owner.db.update(s.employment).set({blacklistedAt:new Date()}).where(eq(s.employment.id,employee.employmentId));
+  await owner.db.update(s.employment).set({blacklistedAt:new Date().toISOString()}).where(eq(s.employment.id,employee.employmentId));
   try{expect(await read(employee.ctx),'actual blocked employment').toBe(false);}finally{await owner.db.update(s.employment).set({blacklistedAt:null}).where(eq(s.employment.id,employee.employmentId));}
   expect(await read(employee.ctx)).toBe(true);expect(await read(hr.ctx)).toBe(true);
  };
