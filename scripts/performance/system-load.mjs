@@ -302,10 +302,16 @@ try{
    save();throw error;
   }finally{stopHomeTracking();}
  }
+ function claimDraftForm(page){
+  // Scope interactions to the active composer, excluding retained/overlay form copies.
+  // Keep strict matching: two active composers must still fail rather than choose arbitrarily.
+  return page.locator('main [data-tour="claims-compose"]:visible form:visible')
+   .filter({has:page.locator('button[name="intent"][value="draft"]:visible')});
+ }
  async function languageJourney(page,user,path,phase){
   const catalog=locale=>JSON.parse(readFileSync(new URL('../../messages/'+locale+'.json',import.meta.url),'utf8'));
   const names={zh:'简体中文',en:'English'};
-  const draft=path==='/claims'?page.locator('textarea[name="description"]'):null;
+  const draft=path==='/claims'?claimDraftForm(page).locator('textarea[name="description"]:visible'):null;
   if(draft)await draft.fill('PERF_UNSUBMITTED_LANGUAGE_DRAFT');
   for(const locale of ['zh','en']){
    await page.getByRole('button',{name:'Change language',exact:true}).click();
@@ -414,7 +420,7 @@ try{
   const ctx=await context(employee),page=await ctx.newPage();await visit(page,employee,'/leave');
   const documents=[];page.on('request',request=>{if(request.resourceType()==='document')documents.push(request.url());});
   await Promise.all([page.waitForURL(url=>url.pathname==='/claims',{timeout:90000}),page.locator('a[href="/claims"]:visible').first().click()]);
-  await page.locator('textarea[name="description"]').waitFor();assert.equal(documents.length,0,'client link unexpectedly reloaded the document');
+  await claimDraftForm(page).locator('textarea[name="description"]:visible').waitFor();assert.equal(documents.length,0,'client link unexpectedly reloaded the document');
   assert.equal((await page.locator('h1').innerText()).trim(),'Claims');assert(await page.locator('main tbody tr').count()>0);
   const catalog=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
   assert((await page.locator('main').innerText()).includes(catalog.claims.typeLabel),'client form lost route translations');
@@ -439,20 +445,20 @@ try{
   return {fields,fieldOrder,prefix,headers,status:response.status()};
  }
  async function browserClaimJourney(page,user,description,phase){
-  await visit(page,user,'/claims',phase);const timings=[];
+  await visit(page,user,'/claims',phase);const timings=[],form=claimDraftForm(page);
   const browserAction=()=>page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/claims',{timeout:90000});
-  await page.locator('[name="claimTypeId"]').selectOption(user.claimTypeId);await page.locator('[name="amount"]').fill('1');await page.locator('[name="incurredOn"]').fill(fixture.today);
-  await page.locator('textarea[name="description"]').fill(description);
+  await form.locator('[name="claimTypeId"]:visible').selectOption(user.claimTypeId);await form.locator('[name="amount"]:visible').fill('1');await form.locator('[name="incurredOn"]:visible').fill(fixture.today);
+  await form.locator('textarea[name="description"]:visible').fill(description);
   let started=performance.now();
-  const [createResponse]=await Promise.all([browserAction(),page.locator('button[name="intent"][value="draft"]').click()]);const createTemplate=await capturedAction(createResponse);
+  const [createResponse]=await Promise.all([browserAction(),form.locator('button[name="intent"][value="draft"]:visible').click()]);const createTemplate=await capturedAction(createResponse);
   await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'create',visibleByMs:performance.now()-started});
   const [draft]=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft' and description=${description}`;assert(draft,'browser create did not persist');
   if(phase==='loaded')await pause(thinkTimeMs);
-  await page.goto(base+'/claims?draft='+draft.id,{waitUntil:'networkidle'});await page.locator('[name="amount"]').fill('2');started=performance.now();
-  await page.locator('button[name="intent"][value="draft"]').click();await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'edit',visibleByMs:performance.now()-started});
+  await page.goto(base+'/claims?draft='+draft.id,{waitUntil:'networkidle'});await form.locator('[name="amount"]:visible').fill('2');started=performance.now();
+  await form.locator('button[name="intent"][value="draft"]:visible').click();await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'edit',visibleByMs:performance.now()-started});
   const [edited]=await db`select amount from claim_request where id=${draft.id}::uuid`;assert.equal(Number(edited.amount),2);
   if(phase==='loaded')await pause(thinkTimeMs);
-  await page.locator('form').filter({has:page.locator(`input[name="id"][value="${draft.id}"]`)}).first().getByRole('button').click();started=performance.now();
+  await page.locator('main form:visible').filter({has:page.locator(`input[name="id"][value="${draft.id}"]`)}).getByRole('button').click();started=performance.now();
   const [deleteResponse]=await Promise.all([browserAction(),page.getByRole('button',{name:'Delete draft',exact:true}).click()]);const deleteTemplate=await capturedAction(deleteResponse);
   await page.waitForURL(url=>url.searchParams.get('toast')==='Draft deleted',{timeout:90000});timings.push({operation:'delete',visibleByMs:performance.now()-started});
   assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
