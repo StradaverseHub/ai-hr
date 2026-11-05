@@ -9,9 +9,9 @@ import { useLocale } from 'next-intl';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Button, Field, PageHeader, inputCls } from '@/components/ui';
-import { type OnboardingConfig, type onboardingList, type onboardingOptions } from '@/packs/lifecycle/service';
+import { type OnboardingConfig, type onboardingList, type onboardingRegisterOptions } from '@/packs/lifecycle/service';
 import { effectiveFacts, matchChecklist, dayDate, currentReq, validDate, requisitionStatus, visibleRecentJoiner, missingCaseFields } from '@/lib/onboarding-model';
-type Options = Awaited<ReturnType<typeof onboardingOptions>>;
+type Options = Awaited<ReturnType<typeof onboardingRegisterOptions>>;
 export function Joiners({ rows, config, options, embedded = false, caseBasePath = '/lifecycle/onboarding/cases/' }: {
     rows: Awaited<ReturnType<typeof onboardingList>>;
     config: OnboardingConfig;
