@@ -34,21 +34,29 @@ const cnStrings = (src: string) =>
 
 // The original right-aligned absolute panel clipped outside the 390px viewport. The bounded fixed
 // mobile panel and desktop absolute anchor were verified at 390px and 1280px on candidate fc3f41d7.
+// The panel is also capped to the window as a column (flex, flex-col, max-h) so its list shrinks and scrolls on a
+// short screen instead of running past the bottom of the overflow-hidden body.
 // This is one exact replacement, not permission to change other Classic shell styling.
 const CLASSIC_NOTIFICATION_PANEL = 'absolute right-0 z-50 mt-2 w-[22rem] overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)]';
-const RESPONSIVE_NOTIFICATION_PANEL = 'fixed right-3 z-50 mt-2 w-[22rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)] lg:absolute lg:right-0';
+const RESPONSIVE_NOTIFICATION_PANEL = 'fixed right-3 z-50 mt-2 flex max-h-[calc(100dvh-6rem)] w-[22rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)] lg:absolute lg:right-0';
 // The Kingdee mark was removed and the app is branded "AIHR" alone (owner decision 2026-10-20): the sidebar
 // badge goes back to a plain primary lettered tile. An approved Classic change, mapped like the notification
 // panel above. Same mapping as the branding branch (claude/app-branding-ai-hr-802edd), which spelled it "AI HR".
 // Phone controls retain the verified 44px targets; every other Classic class remains pinned.
 // ea0fba3de also permits the phone content column to shrink into its main scroller.
 // This exact old-to-new mapping adds only max-sm:min-h-0; desktop classes stay identical.
+// The company picker's panel is capped to the window and lays out as a column so its list can scroll inside
+// it (a long company list ran off the screen, where the overflow-hidden body can never scroll to it). It adds
+// only flex, flex-col and the max-h cap; every other panel class is unchanged. Each company's checkbox gains
+// shrink-0 so a long, truncated name no longer squeezes it smaller than its neighbours.
 const CLASSIC_APPROVED_MOBILE_REPAIRS:Record<string,Record<string,string>> = {
   "app/layout.tsx": {
     "flex min-w-0 flex-1 flex-col gap-3 lg:gap-4": "flex min-w-0 max-sm:min-h-0 flex-1 flex-col gap-3 lg:gap-4"
   },
   "components/company-switcher.tsx": {
-    "flex min-w-0 max-w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]": "flex min-w-0 max-w-full items-center min-h-11 gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]"
+    "flex min-w-0 max-w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]": "flex min-w-0 max-w-full items-center min-h-11 gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]",
+    "absolute right-0 z-50 mt-1 w-64 origin-top-right scale-100 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground opacity-100 shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0": "absolute right-0 z-50 mt-1 flex max-h-[calc(100dvh-6rem)] w-64 origin-top-right scale-100 flex-col rounded-lg border border-border bg-popover p-1.5 text-popover-foreground opacity-100 shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0",
+    "size-4 accent-[var(--color-primary)]": "size-4 shrink-0 accent-[var(--color-primary)]"
   },
   "components/notification-center.tsx": {
     "relative inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground": "relative inline-flex size-9 items-center justify-center min-h-11 max-sm:min-w-11 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"

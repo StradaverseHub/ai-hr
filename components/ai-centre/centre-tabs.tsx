@@ -2,15 +2,15 @@
 // so a tab switch renders from the client cache instead of the loading shell (AI v2 W9).
 import Link from '@/components/intent-link';
 import { useTranslations } from 'next-intl';
-import { BookOpen, ChartNoAxesCombined, ChevronDown, Gauge, MessageSquareText, ScrollText, Settings2, UserCheck } from 'lucide-react';
+import { BookOpen, ChartNoAxesCombined, ChevronDown, Gauge, MessageSquareText, ScrollText, Settings2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { aiCentreName } from '@/lib/ai-centre/brand';
-import { ADMIN_GROUPS, centreSectionsFor, centreTabsFor, type AdminSection, type AdministrationSection, type CentreGroup, type CentreSection, type CentreTabKey } from '@/lib/ai-centre/centre-nav';
+import { ADMIN_GROUPS, PAYROLL_CYCLE_PAGES, centreSectionsFor, centreTabsFor, type AdminSection, type AdministrationSection, type CentreGroup, type CentreSection, type CentreTabKey, type PayrollCyclePage } from '@/lib/ai-centre/centre-nav';
 import { cn } from '@/lib/utils';
 import { ScrollCurrentTabIntoView } from './centre-tabs-scroll';
 
 const ICONS: Readonly<Record<CentreTabKey, LucideIcon>> = {
-  ask: MessageSquareText, jobs: UserCheck, operations: Gauge, administration: Settings2, how: BookOpen,
+  ask: MessageSquareText, operations: Gauge, administration: Settings2, how: BookOpen,
   insights: ChartNoAxesCombined,
   policies: ScrollText,
 };
@@ -52,16 +52,17 @@ export function AiCentreTabs({ active, isAdmin }: { active: CentreTabKey | null;
 }
 
 /** The second tab row of Operations or Administration (approved mock-up, Operations.dc.html "Operations sections").
- * Links only, like the first row: every page keeps its own requireAdmin guard, and a payroll queue is offered only
- * while the tenant holds payroll, as its former sidebar row was. */
-export function AiCentreSectionTabs({ group, active, payroll }: { group: CentreGroup; active: CentreSection; payroll: boolean }) {
+ * Links only, like the first row: every page keeps its own requireAdmin guard, a payroll queue is offered only while
+ * the tenant holds payroll, as its former sidebar row was, and a page only a group administrator may open (the Build
+ * list) is offered only to them. */
+export function AiCentreSectionTabs({ group, active, payroll, groupAdmin = false }: { group: CentreGroup; active: CentreSection; payroll: boolean; groupAdmin?: boolean }) {
   const t = useTranslations('aiCentre');
   const navId = `ai-centre-sections-${group}`;
   return (
     <nav id={navId} aria-label={t('sectionsLabel', { tab: t(`tabs.${group}`) })} data-ai-centre-sections={group} className="-mx-1 overflow-x-auto border-b border-border sm:overflow-x-visible">
       <ScrollCurrentTabIntoView navId={navId} />
       <ul className="flex min-w-max items-end gap-1 px-1 sm:min-w-0 sm:flex-wrap">
-        {centreSectionsFor(group, { payroll }).map(section => (
+        {centreSectionsFor(group, { payroll, groupAdmin }).map(section => (
           <li key={section.key} className="flex">
             <Link href={section.href} aria-current={section.key === active ? 'page' : undefined}
               className={cn('-mb-px inline-flex min-h-11 items-center border-b-2 px-3 text-[0.8125rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
@@ -77,11 +78,11 @@ export function AiCentreSectionTabs({ group, active, payroll }: { group: CentreG
 
 /** Both tab rows of an Operations or Administration page, kept together so the page's own spacing never opens a
  * gap between them. Rendered only on pages behind requireAdmin, so the administrator tabs are shown. */
-export function AiCentreGroupTabs({ group, active, payroll }: { group: CentreGroup; active: CentreSection; payroll: boolean }) {
+export function AiCentreGroupTabs({ group, active, payroll, groupAdmin = false }: { group: CentreGroup; active: CentreSection; payroll: boolean; groupAdmin?: boolean }) {
   return (
     <div data-ai-centre-group={group} className="space-y-1">
       <AiCentreTabs active={group} isAdmin />
-      <AiCentreSectionTabs group={group} active={active} payroll={payroll} />
+      <AiCentreSectionTabs group={group} active={active} payroll={payroll} groupAdmin={groupAdmin} />
     </div>
   );
 }
@@ -90,7 +91,7 @@ export function AiCentreGroupTabs({ group, active, payroll }: { group: CentreGro
  * from the screen's own section filter (spending only with a spend policy, provider only for a group
  * administrator), so a link never leads to a section the page would refuse. */
 export function AiCentreSubnav({ group, active, available, hrefOf }: {
-  group: AdministrationSection; active: AdminSection; available: readonly string[]; hrefOf: (section: AdminSection) => string;
+  group: Exclude<AdministrationSection, 'buildList'>; active: AdminSection; available: readonly string[]; hrefOf: (section: AdminSection) => string;
 }) {
   const t = useTranslations('aiCentre');
   const items = ADMIN_GROUPS[group].filter(item => available.includes(item.section));
@@ -102,6 +103,23 @@ export function AiCentreSubnav({ group, active, available, hrefOf }: {
           className={cn('inline-flex min-h-9 items-center rounded-md px-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             item.section === active ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
           {t(`subnav.${item.label}`)}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+/** Operations › Payroll cycle's in-section row: the payroll loops' pages in order (Pre-salary, Salary payroll, its
+ * Settings, Audit), the Administration sections' pattern. Links only: each page keeps its own requireAdmin guard. */
+export function PayrollCycleSubnav({ active }: { active: PayrollCyclePage }) {
+  const t = useTranslations('aiCentre');
+  return (
+    <nav aria-label={t('payrollCycleSubnavLabel')} data-payroll-cycle-subnav className="flex flex-wrap gap-1 rounded-lg bg-muted p-1 text-sm">
+      {PAYROLL_CYCLE_PAGES.map(item => (
+        <Link key={item.page} href={item.href} aria-current={item.page === active ? 'page' : undefined}
+          className={cn('inline-flex min-h-9 items-center rounded-md px-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11',
+            item.page === active ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+          {t(`payrollCyclePages.${item.page}`)}
         </Link>
       ))}
     </nav>

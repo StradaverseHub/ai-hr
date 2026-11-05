@@ -105,6 +105,10 @@ export async function erasePersonPiiTx(tx:Tx,ctx:SessionContext,p:ErasePersonPii
     // survives its chat (TERAS_CHAT_SURVIVING_RECORDS on the Phase 2 letters branch). The function reads no text.
     const [letters]=await tx.execute<{cleared:number}>(sql`select app.letter_requests_redact(${p.subjectEmploymentId}::uuid) as cleared`);
     if(!letters||!Number.isSafeInteger(letters.cleared)||letters.cleared<0)throw new Error('Letter request erasure unavailable.');
+    // Payroll history learning (migration 2012) joins the same admitted erasure: every learned pay baseline of the person
+    // (all their employments) is deleted. Payslips, the payroll record itself, are never touched here.
+    const [learned]=await tx.execute<{cleared:number}>(sql`select app.payroll_learned_baseline_redact(${p.subjectEmploymentId}::uuid) as cleared`);
+    if(!learned||!Number.isSafeInteger(learned.cleared)||learned.cleared<0)throw new Error('Learned baseline erasure unavailable.');
     const [conversation]=await tx.execute<{cleared:number}>(sql`select app.assistant_conversation_metadata_redact(${p.subjectEmploymentId}::uuid) as cleared`);
     if(!conversation||!Number.isSafeInteger(conversation.cleared)||conversation.cleared<0)throw new Error('Conversation metadata erasure unavailable.');
     if(!outcomes||!Number.isSafeInteger(outcomes.cleared)||outcomes.cleared<0)throw new Error('Assistant outcome erasure unavailable.');
@@ -117,6 +121,7 @@ export async function erasePersonPiiTx(tx:Tx,ctx:SessionContext,p:ErasePersonPii
     if(conversation.cleared>0)erased.push('assistantConversationLearning');
     if(transcript>0||chats.cleared>0)erased.push('assistantChatContent');
     if(letters.cleared>0)erased.push('letterRequestText');
+    if(learned.cleared>0)erased.push('payrollLearnedBaselines');
     const withheld: { field: string; reason: string }[] = [];
     for (const f of PII_FIELDS) {
       if (!inScope(f, p.scope)) continue;

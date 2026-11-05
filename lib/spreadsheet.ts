@@ -97,7 +97,7 @@ export async function workbookToCsvTexts(
   allowedSheetNames?:readonly string[],
   captureSource=false,
   preparePersonnel=false,
-  bounds?:{maxRows:number;maxCells:number},
+  bounds?:{maxRows:number;maxCells:number;literalCells?:boolean},
 ): Promise<{ first: string; extra: Record<string, string>; source?:PersonnelWorksheetSource;preparation?:PersonnelWorkbookSource }> {
   const XLSX = await import('xlsx');
   // Normalise to a Uint8Array view: SheetJS accepts either, but being explicit keeps us robust to
@@ -110,6 +110,7 @@ export async function workbookToCsvTexts(
     let cells=0;if(wb.SheetNames.length>32)throw Error('FILE_TOO_LARGE');
     for(const name of wb.SheetNames){const ws=wb.Sheets[name],ref=ws?.['!fullref']??ws?.['!ref'];if(!ref)continue;
       const range=XLSX.utils.decode_range(ref),height=range.e.r-range.s.r+1,width=range.e.c-range.s.c+1;
+      if(bounds.literalCells&&Object.entries(ws).some(([key,cell])=>!key.startsWith('!')&&(cell?.f||cell?.t==='e')))throw Error('NON_LITERAL_CELL');
       cells+=height*width;if(height>bounds.maxRows||width>256||cells>bounds.maxCells)throw Error('FILE_TOO_LARGE');
     }
   }

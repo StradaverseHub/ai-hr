@@ -67,7 +67,9 @@ vi.mock('next-intl/server', async () => {
 });
 
 import * as schema from '../db/schema';
-import { defaultPolicy } from '../packs/rewards/service';
+import { createApprovedRewardUnit } from './rewards-setup-fixture';
+import {classifyRewardCompany} from '../packs/rewards/company-classification';
+import {prepareCompanyOrganisationRun,companyOrganisationRunReport,decideCompanyOrganisationRun} from '../core/company-organisation';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant } from '../db/client';
 import { hireEmployee,transferEmploymentCompanyTx } from '../core/org';
@@ -80,7 +82,7 @@ import {savePayFormula,testPayFormula,setPayFormulaActive,loadActiveFormulaProgr
 import {seedPayComponentCatalog,createBatch,deleteDraftBatch} from '../packs/payroll/service';
 import { saveReplacementHolidayPolicy } from '../core/holiday-replacements';
 import { saveOvertimePatternDraft } from '../packs/attendance/service';
-import { adminCtx, entitledCtx, setModule, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, entitledCtx, createAppUser, setModule, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import {
   COMPANY_CONFIG_DEPENDENTS,
   COMPANY_REFERRERS,
@@ -377,12 +379,21 @@ const CASES: Case[] = [
       const [department]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:id,name:'Review prerequisite'}).returning();
       const [member]=await owner.db.insert(schema.employment).values({tenantId:b.tenantId,companyId:id,personId:await newPerson(),hiredOn:'2020-01-01'}).returning();
       await owner.db.insert(schema.assignment).values({tenantId:b.tenantId,employmentId:member.id,companyId:id,departmentId:department.id,businessUnitId:bu.id,employmentType:'full_time',validFrom:'2020-01-01'});
-      const [cycle] = await owner.db.insert(schema.rewardCycle).values({ tenantId: b.tenantId, name: 'Annual rewards', year, createdBy: b.adminUserId }).returning();
-      await withTenant(ADMIN(),tx=>tx.insert(schema.rewardUnit).values({ tenantId: b.tenantId, createdBy: b.adminUserId, cycleId: cycle.id, companyId: id, businessUnitId: bu.id, policy: defaultPolicy(year), snapshotDate: today }));
-      // Retained review after the fictional subject moves away: isolate the financial retention
-      // guard without an employment/assignment still pointing at the old company. No guard is disabled.
-      await owner.db.update(schema.employment).set({companyId:b.companyId}).where(eq(schema.employment.id,member.id));
-      await owner.db.update(schema.assignment).set({companyId:b.companyId,departmentId:b.deptA,businessUnitId:null}).where(eq(schema.assignment.employmentId,member.id));
+      await setModule(b.tenantId, 'rewards', 'active');
+      const makerPersonId = await newPerson();
+      await owner.db.update(schema.appUser).set({ personId: makerPersonId }).where(eq(schema.appUser.id, b.adminUserId));
+      const maker = { ...await entitledCtx(b), personId: makerPersonId };
+      const unitId = await createApprovedRewardUnit(maker, {
+        name: 'Annual rewards', year, companyId: id, businessUnitId: bu.id, snapshotDate: today,
+      });
+      const [entry] = await owner.db.select({ id: schema.rewardEntry.id }).from(schema.rewardEntry)
+        .where(and(eq(schema.rewardEntry.unitId, unitId), eq(schema.rewardEntry.employmentId, member.id)));
+      expect(entry).toBeDefined();
+      // Move the fictional live source references out of the way so the retained financial review decides the refusal.
+      await owner.withTenant(maker, async tx => {
+        await tx.update(schema.employment).set({companyId:b.companyId}).where(eq(schema.employment.id,member.id));
+        await tx.update(schema.assignment).set({companyId:b.companyId,departmentId:b.deptA,businessUnitId:null}).where(eq(schema.assignment.employmentId,member.id));
+      });
     },
   },
   {
@@ -1356,4 +1367,110 @@ expect(before).toMatchObject({promotion:{used_jobs:0},candidate:{id:p.candidate}
   expect(await retentionCatalog(owner.db)).toEqual(before);
  });
 
+});
+
+
+describe('approved expansion company retention', () => {
+  const retained = (ctx: SessionContext, id: string) => withTenant(ctx, async tx => {
+    const [row] = await tx.execute<{ used: boolean }>(sql`select app.expansion_other_company_in_use(${id}::uuid) as used`);
+    return row.used;
+  });
+
+  it('blocks deletion for a private workbook preview without exposing it to the company administrator', async () => {
+    const id = await bare();
+    const author = await createAppUser(b.tenantId, null, 'employee');
+    const [preview] = await owner.client`insert into job_architecture_import_preview
+      (tenant_id, created_by, kind, company_id, source_digest, file_digest, preview)
+      values (${b.tenantId}, ${author}, 'positions', ${id}, ${'a'.repeat(64)}, ${'b'.repeat(64)}, '{}'::jsonb) returning id`;
+    const admin = scopedAdmin(id);
+    expect(await withTenant(admin, tx => tx.execute(sql`select id from job_architecture_import_preview where id=${preview.id}::uuid`))).toHaveLength(0);
+    expect(await retained(admin, id)).toBe(true);
+    expect(await retained(scopedAdmin(b.companyId), id)).toBe(false);
+    expect(await retained(member(), id)).toBe(false);
+    expect(await retained(adminCtx(await seedBase()), id)).toBe(false);
+    expect(await companyDeleteStatus(admin, id)).toEqual({ canDelete: true, blockedBy: 'other' });
+    expect(await attempt(admin, id)).toBe('other');
+    expect(await exists(id)).toBe(true);
+  });
+
+  it('retains the company named only in the outlier investigation scope', async () => {
+    const id = await bare();
+    expect(await retained(ADMIN(), id)).toBe(false);
+    await owner.client`insert into job_architecture_outlier (tenant_id, fingerprint, company_ids, detail)
+      values (${b.tenantId}, ${randomUUID()}, ${[id]}::uuid[], '{}'::jsonb)`;
+    expect(await retained(ADMIN(), id)).toBe(true);
+    expect(await companyDeleteStatus(ADMIN(), id)).toEqual({ canDelete: true, blockedBy: 'other' });
+    expect(await attempt(ADMIN(), id)).toBe('other');
+    expect(await exists(id)).toBe(true);
+  });
+});
+
+
+// Approved reviews retain their company identities even when no current employee or ordinary FK
+// names the company. Exercise the same public panel/deletion services used by the Company screen.
+describe('approved organisation and Rewards company retention',()=>{
+ const retained=(ctx:SessionContext,id:string)=>withTenant(ctx,async tx=>{const [row]=await tx.execute<{used:boolean}>(sql`select app.approved_feedback_company_in_use(${id}::uuid) used`);return row.used;});
+ async function refusal(id:string){
+  expect(await companyDeleteStatus(ADMIN(),id)).toEqual({canDelete:true,blockedBy:'other'});
+  expect(await attempt(ADMIN(),id)).toBe('other');expect(await exists(id)).toBe(true);
+ }
+ async function fixtureRun(){
+  const checker=await createAppUser(b.tenantId,null,'hr_admin');
+  const [row]=await owner.client`insert into company_organisation_run(tenant_id,kind,effective_on,state,company_ids,authority_company_ids,mapping,source_epoch,digest,requested_by,checked_by)
+   values(${b.tenantId},'mapping',${todayInKualaLumpur()},'published',${[b.companyId]}::uuid[],${[b.companyId]}::uuid[],'{}',0,'fictional-retained-mapping',${b.adminUserId},${checker}) returning id`;
+  return row.id as string;
+ }
+ it('retains an actual prepared and rejected review scope without publishing or changing classifications',async()=>{
+  const id=await bare();expect(await verdict(ADMIN(),id)).toBeNull();
+  const [unit]=await owner.withTenant(ADMIN(),tx=>tx.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'RETAIN-REVIEW',name:'Fictional reviewed unit',isGlobal:true}).returning());
+  const runId=await prepareCompanyOrganisationRun(ADMIN(),{kind:'mapping',companyIds:[id],effectiveOn:todayInKualaLumpur(),changes:[{companyId:id,businessUnitId:unit.id,parentCompanyId:null}]});
+  await refusal(id);
+  const checker={...ADMIN(),userId:await createAppUser(b.tenantId,null,'hr_admin')};
+  // Creating the checker after preview changes the source epoch, so prepare the actual decided preview
+  // after its principal exists. Both retained scopes must continue to refuse deletion.
+  const reviewed=await prepareCompanyOrganisationRun(ADMIN(),{kind:'mapping',companyIds:[id],effectiveOn:todayInKualaLumpur(),changes:[{companyId:id,businessUnitId:unit.id,parentCompanyId:null}]});
+  const {run}=await companyOrganisationRunReport(checker,reviewed);
+  await decideCompanyOrganisationRun(checker,{id:reviewed,digest:run.digest,approve:false,reason:'Retain reviewed proposal; no publication requested'});
+  expect((await companyOrganisationRunReport(ADMIN(),reviewed)).run.state).toBe('rejected');
+  const [before]=await owner.client`select jsonb_agg(to_jsonb(r)||jsonb_build_object('_xmin',r.xmin::text) order by r.id) rows from company_organisation_run r where r.id in(${runId},${reviewed})`;
+  await refusal(id);
+  const [after]=await owner.client`select jsonb_agg(to_jsonb(r)||jsonb_build_object('_xmin',r.xmin::text) order by r.id) rows from company_organisation_run r where r.id in(${runId},${reviewed})`;
+  expect(after.rows).toEqual(before.rows);
+  const [published]=await owner.client`select count(*)::int count from company_organisation_mapping where tenant_id=${b.tenantId}`;expect(published.count).toBe(0);
+ });
+ it.each(['company','parent','group','business-unit-origin'] as const)('retains an isolated reviewed mapping %s identity and its exact evidence',async kind=>{
+  const id=await bare(),run=await fixtureRun();
+  expect(await verdict(ADMIN(),id)).toBeNull();
+  let unit:string|null=null;
+  if(kind==='business-unit-origin'){
+   const [row]=await owner.withTenant(ADMIN(),tx=>tx.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:id,code:'RETAIN-SHARED',name:'Fictional shared reviewed unit',isGlobal:true}).returning());unit=row.id;
+  }
+  // Owner fixtures isolate each retained FK independently of the run's scope arrays, current
+  // company parent and employee links. The public deletion path must retain the historical row.
+  await owner.client`insert into company_organisation_mapping(run_id,tenant_id,company_id,business_unit_id,parent_company_id,business_group_id)
+   values(${run},${b.tenantId},${kind==='company'?id:b.companyId},${unit},${kind==='parent'?id:null},${kind==='group'?id:null})`;
+  const evidence=async()=>{const [row]=await owner.client`select to_jsonb(m)||jsonb_build_object('_xmin',m.xmin::text) value from company_organisation_mapping m where m.run_id=${run}`;return row.value;};
+  const before=await evidence();await refusal(id);expect(await evidence()).toEqual(before);
+  expect(await retained(scopedAdmin(id),id)).toBe(true);
+  expect(await retained(scopedAdmin(b.companyId),id)).toBe(false);
+  expect(await retained(member(),id)).toBe(false);
+  const foreign=await seedBase();expect(await retained(adminCtx(foreign),id)).toBe(false);
+  expect(await companyDeleteStatus(adminCtx(foreign),id)).toBeNull();
+  await expect(deleteCompany(adminCtx(foreign),{id})).rejects.toMatchObject({name:'CompanyNotFoundError'});
+  expect(await evidence()).toEqual(before);
+  expect(await sqlStateOf(withTenant(ADMIN(),tx=>tx.execute(sql`select * from company_organisation_mapping`)))).toBe('42501');
+ });
+ it.each(['test_demo','alias'] as const)('retains native Rewards %s classification and canonical company without changing evidence',async disposition=>{
+  await setModule(b.tenantId,'rewards','active');
+  const id=await bare(),canonical=disposition==='alias'?await bare():null;
+  expect(await verdict(ADMIN(),id)).toBeNull();
+  await classifyRewardCompany(ADMIN(),{companyId:id,disposition,canonicalCompanyId:canonical,reason:'Fictional verified designation retained for company deletion review'});
+  const evidence=async()=>{const [row]=await owner.client`select to_jsonb(c)||jsonb_build_object('_xmin',c.xmin::text) value from reward_company_classification c where c.company_id=${id}`;return row.value;};
+  const before=await evidence();await refusal(id);if(canonical)await refusal(canonical);expect(await evidence()).toEqual(before);
+  const foreign=await seedBase();expect(await retained(adminCtx(foreign),id)).toBe(false);
+  expect(await companyDeleteStatus(adminCtx(foreign),id)).toBeNull();
+  expect(await retained(member(),id)).toBe(false);
+  await expect(withTenant(ADMIN(),tx=>tx.execute(sql`delete from reward_company_classification where company_id=${id}::uuid`))).rejects.toBeDefined();
+  expect(await evidence()).toEqual(before);
+ });
 });

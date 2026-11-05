@@ -16,8 +16,8 @@
  *  7. Standing acknowledgements: a warning leaves the counts and stays listed, in the loop and the pack; a block is never
  *     suppressed and its resolve is pre-filled; nobody acknowledges their own; revocable; learned standing rules are
  *     approved only by a group administrator who did not make the dispositions (B4).
- *  8. Grouped dispositions: one tap for a pattern, each still a person's disposition, and the same people's net-swing-only
- *     anomaly verdicts resolved with it (B5).
+ *  8. Grouped dispositions: one tap for a pattern, each still a person's disposition; it resolves no anomaly verdict, not even
+ *     a net-swing-only one (owner decision 28: exceptions are resolved on Exceptions only) (B5).
  *  9. Automatic cut-off reminders: only people with something pending, counts only and no pay figure, once per cut-off and
  *     lead, switchable per company (B6).
  * 10. Freshness: the payroll tick refreshes only companies whose payroll changed; one company's failing read fails only that
@@ -56,7 +56,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {createAdditionalRun,createBatch} from '../packs/payroll/service';
-import {evaluateCircuitBreakerWithSourceTx} from '../core/payroll-anomaly';
+import {evaluateCircuitBreakerWithSourceTx,resolveAnomalyVerdict} from '../core/payroll-anomaly';
 import {agentContext,ensureAgentPrincipal} from '../core/agent-principal';
 import {setWorkerSwitch} from '../core/agent-registry/controls';
 import {runLoop} from '../core/loops/run';
@@ -360,7 +360,7 @@ describe('B4: standing acknowledgements',()=>{
 });
 
 describe('B5: grouped dispositions',()=>{
- it('disposes of every open flag of a pattern in one tap, each as the person\'s own, and resolves the same people\'s net-swing-only verdicts',async()=>{
+ it('disposes of every open flag of a pattern in one tap, each as the person\'s own, and resolves none of the same people\'s verdicts',async()=>{
   const group=await groupAdministrator();
   const [p1,p2,p3]=[await hire('Fictional Raise One'),await hire('Fictional Raise Two'),await hire('Fictional Other Pattern')];
   const {batchId}=await createBatch(await entitledCtx(b),{companyId:b.companyId,payPeriod:PERIOD});
@@ -371,16 +371,22 @@ describe('B5: grouped dispositions',()=>{
   const verdict=async(employmentId:string,detectors:string[])=>{const [row]=await owner.db.insert(schema.payrollAnomalyVerdict).values({tenantId:b.tenantId,batchId,employmentId,disposition:'review'} as never).returning();
    for(const detectorId of detectors)await owner.db.insert(schema.payrollAnomalyFinding).values({tenantId:b.tenantId,verdictId:row.id,detectorId,severity:'review',facts:{},suggestedAction:'anomaly.action.fixture'} as never);return row.id;};
   const onlySwing=await verdict(p1.employmentId,['net-swing']),mixed=await verdict(p2.employmentId,['net-swing','proration-mismatch']);
-  expect(await disposeSwingGroup(group,{companyId:b.companyId,payPeriod:PERIOD,pattern:'cause:salary_change',disposition:'expected'})).toEqual({disposed:2,skipped:0,verdictsResolved:1});
+  expect(await disposeSwingGroup(group,{companyId:b.companyId,payPeriod:PERIOD,pattern:'cause:salary_change',disposition:'expected'})).toEqual({disposed:2,skipped:0});
   const dispositions=await withTenant(group,tx=>tx.select().from(terasPayrollSwingDisposition));
   expect(dispositions.map(row=>[row.employmentId,row.disposition,row.decidedByUserId]).sort()).toEqual([[p1.employmentId,'expected',group.userId],[p2.employmentId,'expected',group.userId]].sort());
-  const resolved=async(id:string)=>(await owner.db.select({at:schema.payrollAnomalyVerdict.resolvedAt}).from(schema.payrollAnomalyVerdict).where(eq(schema.payrollAnomalyVerdict.id,id)))[0].at!==null;
-  // The net-swing-only verdict is the same decision; the one with another finding waits for its own review.
-  expect([await resolved(onlySwing),await resolved(mixed)]).toEqual([true,false]);
+  const resolved=async(id:string)=>(await owner.db.select({at:schema.payrollAnomalyVerdict.resolvedAt,by:schema.payrollAnomalyVerdict.resolvedByUserId,
+   resolution:schema.payrollAnomalyVerdict.resolution}).from(schema.payrollAnomalyVerdict).where(eq(schema.payrollAnomalyVerdict.id,id)))[0];
+  // Owner decision 28: both verdicts, the net-swing-only one too, stay open for Exceptions; the tap recorded the swings only.
+  expect([await resolved(onlySwing),await resolved(mixed)]).toEqual([{at:null,by:null,resolution:null},{at:null,by:null,resolution:null}]);
   // The other pattern is untouched; the group is gone; a real problem resolves nothing.
   expect((await owner.db.select().from(terasPayrollSwingDisposition).where(eq(terasPayrollSwingDisposition.caseId,other.id)))).toEqual([]);
   await expect(disposeSwingGroup(group,{companyId:b.companyId,payPeriod:PERIOD,pattern:'cause:salary_change',disposition:'expected'})).rejects.toMatchObject({reason:'changed'});
-  expect(await disposeSwingGroup(group,{companyId:b.companyId,payPeriod:PERIOD,pattern:'cause:overtime_hours',disposition:'problem'})).toEqual({disposed:1,skipped:0,verdictsResolved:0});
+  expect(await disposeSwingGroup(group,{companyId:b.companyId,payPeriod:PERIOD,pattern:'cause:overtime_hours',disposition:'problem'})).toEqual({disposed:1,skipped:0});
+  expect([await resolved(onlySwing),await resolved(mixed)]).toEqual([{at:null,by:null,resolution:null},{at:null,by:null,resolution:null}]);
+  // The same verdicts are resolved on Exceptions, through the anomaly owner, by a person (the resolve the Exceptions page posts).
+  await resolveAnomalyVerdict(group,{verdictId:onlySwing,resolution:'accepted',note:'Expected: decided on Exceptions.'});
+  expect(await resolved(onlySwing)).toMatchObject({by:group.userId,resolution:'accepted'});expect((await resolved(onlySwing)).at).not.toBeNull();
+  expect(await resolved(mixed)).toEqual({at:null,by:null,resolution:null});
   // An employee cannot.
   await expect(disposeSwingGroup(await employeeLogin(),{companyId:b.companyId,payPeriod:PERIOD,pattern:'cause:overtime_hours',disposition:'expected'})).rejects.toMatchObject({reason:'not_administrator'});
  });
@@ -409,7 +415,8 @@ describe('B6: automatic cut-off reminders',()=>{
   const notices=await owner.db.select().from(schema.notification).where(eq(schema.notification.kind,'teras-loop.cut-off-reminder'));
   expect(notices.map(row=>row.recipientEmploymentId).sort()).toEqual([drafting.employmentId,manager.employmentId].sort());
   for(const notice of notices){
-   expect(JSON.stringify(notice)).not.toMatch(/987|123\.45|3000/);
+   const {kind,title,body,linkPath,severity}=notice;
+   expect(JSON.stringify({kind,title,body,linkPath,severity})).not.toMatch(/987|123\.45|3000/);
    expect(notice.linkPath).toBe('/');
   }
   // Stored as message keys, rendered in the reader's own language by the bell (test/payroll-cut-off-reminder-notification.dom.test.tsx).

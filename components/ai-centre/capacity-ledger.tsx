@@ -11,6 +11,7 @@ import { MAX_ITEM_MINUTES, MAX_MINUTES_PER_STAFF_ACTION, measurable } from '@/co
 import { BASELINE_DAYS, CAPACITY_ITEMS, CAPACITY_PERIODS, MEASURED_BY, type CapacityItem, type CapacityPeriod } from '@/core/capacity/types';
 import { setCapacityBaselineAction } from '@/app/assistant/capacity-actions';
 import { cn } from '@/lib/utils';
+import { CapacityProcesses, readCapacityProcesses } from './capacity-processes';
 
 /** AI v2 Phase 2, P2-4 — AI Centre › Insights › HR capacity (approved mock-up Ledger.dc.html, revised).
  *
@@ -18,8 +19,12 @@ import { cn } from '@/lib/utils';
  * answered), HR time freed by month drawn to scale with the shared chart, where the time came from, and the method.
  * Every figure is the company's own: work done against its own baseline, never an industry average. Hours are shown,
  * never a ratio of HR staff to employees (owner rule). Rendered only for an administrator (the Insights view checks
- * isAdmin, and core/capacity/ledger.ts checks it again); each figure is read under their row-level security. */
-export type CapacityQuery = { period?: string; company?: string; setup?: string; days?: string; saved?: string; error?: string };
+ * isAdmin, and core/capacity/ledger.ts checks it again); each figure is read under their row-level security.
+ *
+ * AI Centre restructure (owner decision 29, 4 November 2026): the measured part of the former Opportunities page is its
+ * last part, "Where the work is" (./capacity-processes.tsx), with the stored baseline as its only minutes input; the
+ * section is the target of /control-tower/opportunities (#hr-capacity). */
+export type CapacityQuery = { period?: string; company?: string; setup?: string; days?: string; saved?: string; error?: string; pdays?: string };
 const ERRORS = ['invalid', 'empty', 'not_administrator', 'conflict', 'failed'] as const;
 const target = 'pointer-coarse:min-h-11';
 
@@ -31,6 +36,8 @@ function href(query: Readonly<Record<string, string | null | undefined>>) {
 
 export async function CapacityLedgerSection({ session, query }: { session: SessionContext; query: CapacityQuery }) {
   const [t, tl, f] = await Promise.all([getTranslations('aiCentre.capacity'), getTranslations('aiCentre.loops'), getFormatter()]);
+  // The processes' two readers start with the ledger's read; each checks the administrator again.
+  const processes = readCapacityProcesses(session, { pdays: query.pdays });
   const view = await capacityLedger(session, { period: query.period, companyId: query.company });
   const setupCompany = view.companies.find(row => row.id === query.setup);
   const setup = setupCompany ? await baselineSetup(session, { companyId: setupCompany.id, days: query.days }) : null;
@@ -54,7 +61,7 @@ export async function CapacityLedgerSection({ session, query }: { session: Sessi
   const changedRate = ledger.loopActions.done ? ledger.loopActions.changed / ledger.loopActions.done : null;
 
   return (
-    <section data-capacity-ledger aria-labelledby="capacity-title" className="space-y-6">
+    <section id="hr-capacity" data-capacity-ledger aria-labelledby="capacity-title" className="scroll-mt-4 space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h2 id="capacity-title" className="text-xl font-semibold tracking-tight">{t('title')}</h2>
@@ -174,6 +181,8 @@ export async function CapacityLedgerSection({ session, query }: { session: Sessi
             </div>
           </details>
         </section>
+
+        {await CapacityProcesses({ reads: await processes, query: { pdays: query.pdays }, companies: view.companies, baselines: view.baselines, keep: { period: view.period, company } })}
       </>}
     </section>
   );

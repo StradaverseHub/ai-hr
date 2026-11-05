@@ -267,7 +267,9 @@ export function NotificationCenter({
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
-          <div className="fixed right-3 z-50 mt-2 w-[22rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)] lg:absolute lg:right-0">
+          {/* Capped to the window and laid out as a column: on a short screen the list shrinks and scrolls instead of
+              running past the bottom, where the overflow-hidden body can never scroll to it. */}
+          <div className="fixed right-3 z-50 mt-2 flex max-h-[calc(100dvh-6rem)] w-[22rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)] lg:absolute lg:right-0">
             {/* Segmented tab bar — one style for every role; only the data behind each tab differs. */}
             <div className="border-b border-border px-3 pb-2 pt-2.5">
               <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted/60 p-1">

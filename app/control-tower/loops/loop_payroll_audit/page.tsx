@@ -11,6 +11,7 @@ import { Card, ErrorBanner, PageHeader, SectionHeader, btnGhost, btnPrimary, inp
 import { AuditLoopColumn, auditPackHref } from '@/components/payroll-audit/audit-loop-column';
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../operations-tabs';
+import { PayrollCycleSubnav } from '@/components/ai-centre/centre-tabs';
 import { setLoopPauseAction, setLoopSwitchAction } from '../actions';
 import { acknowledgeFindingAction, captureAuditNowAction, disposeAuditFindingAction, grantAuditReaderAction, recordCorrectionCauseAction, revokeAuditReaderAction,
   setAuditSettingsAction } from './actions';
@@ -82,7 +83,8 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
   const findingCompany = (item: AuditFindingView) => item.companyId ?? companyId;
   return (
     <div className={pageWideCls}>
-      {!auditor && <OperationsTabs session={s} active="loops" />}
+      {/* Operations › Payroll cycle › Audit; an auditor sees this page alone, without the administrators' tab rows. */}
+      {!auditor && <><OperationsTabs session={s} active="payrollCycle" /><PayrollCycleSubnav active="audit" /></>}
       <PageHeader back={auditor ? undefined : { href: '/control-tower/loops', label: tl('back') }} title={name} description={t('column.doneMeans')}
         actions={<div className="flex flex-wrap items-center gap-3">
           <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium">{tl('level.prepare')}</span>

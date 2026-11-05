@@ -1,14 +1,16 @@
+import {historicalRewardDraft} from './rewards-historical-fixture';
+import {confirmFixturePat,createApprovedRewardUnit} from './rewards-setup-fixture';
 import {ensureAgentPrincipal,agentContext} from '../core/agent-principal';
 import {resolveEntitlementsTx} from '../core/entitlements';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {and,eq,sql} from 'drizzle-orm';
+import {and,desc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {updateJobGrade} from '../core/admin';
 import {dispatchNotificationsFromSweep} from '../core/notifications';
-import {getRewardUnit,createRewardUnit,getRewardUnitGovernance,saveRewardUnitInputs,confirmRewardGovernance,proposeRewardExemption,previewRewardSeniorMembership,saveRewardSeniorMembership,saveRewardSeniorAward,saveRewardEntry,postRewardUnit,decideRewardUnit} from '../packs/rewards/service';
+import {getRewardUnit,getRewardUnitGovernance,saveRewardUnitInputs,confirmRewardGovernance,proposeRewardExemption,previewRewardSeniorMembership,saveRewardSeniorMembership,saveRewardSeniorAward,saveRewardEntry,postRewardUnit,decideRewardUnit} from '../packs/rewards/service';
 import {configureRewardFixture,refreshRewardFixtureBudget,ensureRewardGovernanceFixtureSchema} from './rewards-governance-fixture';
 import {createBatch,setPayrollInput,rewardPayrollProvenance} from '../packs/payroll/service';
 import {emptyFacts} from '../packs/rewards/model';
@@ -17,7 +19,7 @@ import {setRewardMember} from './rewards-access-fixture';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
 describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
- let b:Base,gr:SessionContext,checker:SessionContext,bu:SessionContext,ctro:SessionContext,payroll:SessionContext,unitId:string,employeeId:string,entryId:string;
+ let b:Base,gr:SessionContext,checker:SessionContext,bu:SessionContext,ctro:SessionContext,payroll:SessionContext,unitId:string,businessUnitId:string,employeeId:string,entryId:string;
  const view=()=>getRewardUnit(gr,unitId);
  beforeAll(async()=>{
   // The ordinary harness installs the journal in its owned disposable worker database.
@@ -28,12 +30,13 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   const [adminPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional GR doer',primaryEmail:'grdoer@fixture.test'}).returning();
   await owner.db.update(schema.appUser).set({personId:adminPerson.id}).where(eq(schema.appUser.id,gr.userId!));gr={...gr,personId:adminPerson.id};
   const [buRow]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'GOV',name:'Governance fixture'}).returning();
+  businessUnitId=buRow.id;
   const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'21',name:'Grade21'}).returning();
   const hired=await hireEmployee(gr,{person:{fullName:'Fictional Senior employee',primaryEmail:'senior@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year-2}-01-01`});employeeId=hired.employmentId;
-  await owner.db.update(schema.assignment).set({businessUnitId:buRow.id}).where(eq(schema.assignment.employmentId,employeeId));
+  await owner.withTenant(gr,tx=>tx.update(schema.assignment).set({businessUnitId:buRow.id}).where(eq(schema.assignment.employmentId,employeeId)));
   await owner.db.update(schema.employment).set({gradeId:grade.id,confirmationDate:`${year-2}-04-01`}).where(eq(schema.employment.id,employeeId));
   await setCompensation(gr,{employmentId:employeeId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
-  unitId=await createRewardUnit(gr,{name:'Unit governance fixture',year,companyId:b.companyId,businessUnitId:buRow.id,snapshotDate:today});
+  unitId=await createApprovedRewardUnit(gr,{name:'Unit governance fixture',year,companyId:b.companyId,businessUnitId:buRow.id,snapshotDate:today});
   async function actor(name:string,role:'gr'|'bu'|'ctro'|'payroll'){
    const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:name,primaryEmail:name+'@fixture.test'}).returning();
    const userId=await createAppUser(b.tenantId,person.id,'employee');
@@ -46,15 +49,17 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
  });
  afterAll(closeAll);
  const inputs={forecastCents:900000,actualCents:null,targetCents:1000000,targetMonthsBp:20000,multiplierBp:10000,branchRatings:{}};
- async function saveInputs(){await saveRewardUnitInputs(gr,unitId,(await view()).unit.revision,inputs,'Reviewed the current unit PAT evidence');}
+ const companyPat={forecastCents:inputs.forecastCents,actualCents:inputs.actualCents,targetCents:inputs.targetCents,targetMonthsBp:inputs.targetMonthsBp};
+ async function saveInputs(){await confirmFixturePat(gr,b.companyId,year,companyPat);}
  it('preserves an existing RM1 target and explicit zero Actual for the authorized legacy edit projection',async()=>{
-  const before=await view();
+  const historical=await historicalRewardDraft(gr,{name:'Preserved unit PAT',year:year-1,companyId:b.companyId,businessUnitId,snapshotDate:today,employmentId:employeeId});
+  const before=await getRewardUnit(gr,historical);
   const legacy={...before.unit.policy,patActual:200,patTarget:100};
-  await owner.db.update(schema.rewardUnit).set({policy:legacy}).where(eq(schema.rewardUnit.id,unitId));
-  expect((await getRewardUnitGovernance(gr,unitId)).legacyInputs).toMatchObject({actualCents:200,targetCents:100});
-  await owner.db.update(schema.rewardUnit).set({policy:{...legacy,patActual:0}}).where(eq(schema.rewardUnit.id,unitId));
-  expect((await getRewardUnitGovernance(gr,unitId)).legacyInputs).toMatchObject({actualCents:0,targetCents:100});
-  const [stored]=await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id,unitId));
+  await owner.db.update(schema.rewardUnit).set({policy:legacy}).where(eq(schema.rewardUnit.id,historical));
+  expect((await getRewardUnitGovernance(gr,historical)).legacyInputs).toMatchObject({actualCents:200,targetCents:100});
+  await owner.db.update(schema.rewardUnit).set({policy:{...legacy,patActual:0}}).where(eq(schema.rewardUnit.id,historical));
+  expect((await getRewardUnitGovernance(gr,historical)).legacyInputs).toMatchObject({actualCents:0,targetCents:100});
+  const [stored]=await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id,historical));
   expect(stored.policy.patTarget).toBe(100);expect(stored.policy.patActual).toBe(0);
  });
  it('keeps raw PAT under GR SQL custody and gives approvers only exact pool snapshots',async()=>{
@@ -69,8 +74,12 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   }
  });
  it('refuses same-user confirmation and serializes competing stale saves with one winner',async()=>{
-  const rev=(await view()).unit.revision;
-  const attempts=await Promise.allSettled([saveRewardUnitInputs(gr,unitId,rev,inputs,'First concurrent budget update'),saveRewardUnitInputs(gr,unitId,rev,{...inputs,forecastCents:800000},'Second concurrent budget update')]);
+  const governance=await getRewardUnitGovernance(gr,unitId);
+  await expect(saveRewardUnitInputs(gr,unitId,governance.revision,inputs,'Try replacing independently checked company PAT')).rejects.toThrow(/read-only/);
+  const attempts=await Promise.allSettled([
+   saveRewardUnitInputs(gr,unitId,governance.revision,{...governance.inputs!,multiplierBp:9000},'First concurrent budget update'),
+   saveRewardUnitInputs(gr,unitId,governance.revision,{...governance.inputs!,multiplierBp:8000},'Second concurrent budget update'),
+  ]);
   expect(attempts.filter(x=>x.status==='fulfilled')).toHaveLength(1);expect(attempts.filter(x=>x.status==='rejected')).toHaveLength(1);
   await proposeRewardExemption(gr,unitId,(await view()).unit.revision,'Signed reason for the budget exemption');
   await expect(confirmRewardGovernance(gr,unitId,(await view()).unit.revision,'exemption')).rejects.toThrow(/different/);
@@ -110,18 +119,19 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   expect(hq.id).not.toBe(b.companyId);
   const other=await seedBase(),otherAdmin=await entitledCtx(other);
   const foreignRecipients=await withTenant(otherAdmin,tx=>tx.execute(sql`select app.reward_pool_notification_recipients(${unitId}::uuid)`));expect(foreignRecipients).toEqual([]);
-  await saveRewardUnitInputs(gr,unitId,(await view()).unit.revision,{...inputs,actualCents:1000000},'Reviewed final fictional PAT evidence');
+  await confirmFixturePat(gr,b.companyId,year,{...companyPat,actualCents:1000000});
   const enabled=await entitledCtx(b),system:SessionContext={tenantId:b.tenantId,roles:['hr_admin'],entitlements:enabled.entitlements};
   await dispatchNotificationsFromSweep(system,owner);
-  await saveRewardUnitInputs(gr,unitId,(await view()).unit.revision,{...inputs,actualCents:0},'Final Actual invalidated by current evidence');
+  await confirmFixturePat(gr,b.companyId,year,{...companyPat,targetCents:null,forecastCents:null,actualCents:null});
   expect((await getRewardUnitGovernance(gr,unitId)).poolStatus).toBe('not-set');
-  const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,unitId),eq(schema.domainEvent.eventType,'reward-unit.final-pool-changed')));
-  const revision=(await view()).unit.revision;const event=events.find(row=>(row.payload as {revision:number}).revision===revision)!;
+  const [event]=await owner.db.select().from(schema.domainEvent)
+   .where(and(eq(schema.domainEvent.aggregateId,unitId),eq(schema.domainEvent.eventType,'reward-unit.final-pool-changed')))
+   .orderBy(desc(schema.domainEvent.sequence)).limit(1);
   await dispatchNotificationsFromSweep(system,owner);
   const notices=await owner.db.select().from(schema.notification).where(and(eq(schema.notification.sourceEventId,event.id),eq(schema.notification.recipientEmploymentId,recipient.employmentId)));
   expect(notices).toHaveLength(1);expect(notices[0]).toMatchObject({kind:'rewards.final-pool-changed',title:'Rewards pool updated',linkPath:`/rewards/${unitId}#unit-governance`});
   expect(notices[0].body).toContain('pool or its status');expect(notices[0].body).not.toMatch(/final|900000|1000000/i);
-  expect(Object.keys(event.payload as object)).toEqual(['revision']);
+  expect(event.payload).toEqual({recalculationRequired:true,privateHistory:true});
   expect((await dispatchNotificationsFromSweep(system,owner)).created).toBe(0);
   await owner.db.update(schema.employment).set({terminatedOn:today}).where(eq(schema.employment.id,recipient.employmentId));
   const remaining=await withTenant(gr,tx=>tx.execute<{id:string}>(sql`select app.reward_pool_notification_recipients(${unitId}::uuid) as id`));

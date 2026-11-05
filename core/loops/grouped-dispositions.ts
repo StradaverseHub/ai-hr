@@ -5,18 +5,17 @@
  * as a ratio, its direction and its causes (`swingFlagGroups`, pure). The tap is still a person's decision, recorded per
  * flag through the owner of dispositions (core/loops/salary-swing-service.ts recordSwingDisposition: attributed to them,
  * audited, refused to anyone who may not dispose of that flag); nothing is decided for them.
- * ONE ITEM, NOT TWO. The payroll anomaly layer's own `net-swing` detector looks at the same change as the loop's flag. When
- * a group is disposed of as expected, each person's anomaly verdict whose only open findings are `net-swing` is resolved
- * as accepted in the same tap, through the anomaly owner (core/payroll-anomaly.ts resolveAnomalyVerdict), so HR decides
- * the swing once. A verdict with any other finding is left for its own review. "A real problem" resolves nothing: the
- * exception stays open until it is fixed upstream.
+ * SWING DISPOSITIONS ONLY (AI Centre restructure, owner decision 28). A group's tap records the loop's own swing
+ * dispositions and nothing else. The payroll anomaly layer's verdicts, its `net-swing` detector's among them, are
+ * exceptions, and an exception is resolved on Operations › Exceptions only: no tap here, "expected" or "a real problem",
+ * resolves a verdict. The Salary payroll page links to Exceptions for them.
  * PRE-FILLED. A blocking exception covered by a standing acknowledgement (core/loops/acknowledgements.ts) is never
- * suppressed: the page lists it with a one-tap resolve already filled in with the acknowledgement's reason, and a person
- * presses it (`resolveAcknowledgedBlock`, re-checked against the acknowledgements in force when pressed).
+ * suppressed: Exceptions lists it with a one-tap resolve already filled in with the acknowledgement's reason, and a person
+ * presses it there (`resolveAcknowledgedBlock`, re-checked against the acknowledgements in force when pressed); the Salary
+ * payroll page only counts them and links there.
  * No figure is computed; no model is called. */
-import {and,eq,inArray,isNull,sql} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
-import {payrollAnomalyFinding,payrollAnomalyVerdict,payrollBatch} from '../../db/schema';
 import {terasLoopCase} from '../../db/teras-schema';
 import {canManagePayroll} from '../../lib/authz-model';
 import {resolveAnomalyVerdict} from '../payroll-anomaly';
@@ -45,10 +44,10 @@ export function swingFlagGroups(flags:readonly Readonly<{caseId:string;companyId
   .sort((a,b)=>b.members.length-a.members.length||a.pattern.localeCompare(b.pattern)));
 }
 
-export type GroupDispositionResult=Readonly<{disposed:number;skipped:number;verdictsResolved:number}>;
+export type GroupDispositionResult=Readonly<{disposed:number;skipped:number}>;
 
 /** Disposes of every open flag of one company, month and pattern, as the caller, flag by flag through the dispositions'
- * owner; for "expected", also resolves each person's net-swing-only anomaly verdict of that month as accepted. */
+ * owner. It resolves no anomaly verdict (owner decision 28: those are resolved on Exceptions only). */
 export async function disposeSwingGroup(supplied:SessionContext,input:Readonly<{companyId:unknown;payPeriod:unknown;pattern:unknown;disposition:unknown}>):Promise<GroupDispositionResult>{
  const ctx:SessionContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  if(!ctx.userId||ctx.agent||!canManagePayroll(ctx))throw new PayrollLoopRefused('not_administrator');
@@ -57,33 +56,18 @@ export async function disposeSwingGroup(supplied:SessionContext,input:Readonly<{
   ||!isSwingPattern(pattern)||(disposition!=='expected'&&disposition!=='problem'))throw new PayrollLoopRefused('invalid');
  // The open flags of the group not yet disposed of, as the caller may read them (a disposed flag stays open until the
  // loop's next run closes it).
- const cases=await withTenant(ctx,tx=>tx.select({id:terasLoopCase.id,employmentId:terasLoopCase.employmentId}).from(terasLoopCase)
+ const cases=await withTenant(ctx,tx=>tx.select({id:terasLoopCase.id}).from(terasLoopCase)
   .where(and(eq(terasLoopCase.tenantId,ctx.tenantId),eq(terasLoopCase.workerId,'loop_salary_payroll'),eq(terasLoopCase.companyId,companyId),
    eq(terasLoopCase.state,'open'),sql`${terasLoopCase.subjectKey} like 'swing:%'`,sql`${terasLoopCase.facts}->>'payPeriod'=${payPeriod}`,
    sql`${terasLoopCase.facts}->>'pattern'=${pattern}`,
    sql`not exists (select 1 from public.teras_payroll_swing_disposition d where d.tenant_id=${terasLoopCase.tenantId} and d.case_id=${terasLoopCase.id})`)));
  if(!cases.length)throw new PayrollLoopRefused('changed');
- let disposed=0,skipped=0,verdictsResolved=0;
- const done:string[]=[];
+ let disposed=0,skipped=0;
  for(const item of cases){
-  try{await recordSwingDisposition(ctx,{caseId:item.id,disposition});disposed++;if(item.employmentId)done.push(item.employmentId);}
+  try{await recordSwingDisposition(ctx,{caseId:item.id,disposition});disposed++;}
   catch(error){if(error instanceof PayrollLoopRefused&&(error.reason==='already'||error.reason==='not_found'))skipped++;else throw error;}
  }
- if(disposition==='expected'&&done.length){
-  // The anomaly layer's own net-swing finding for the same people and month: one decision, not two.
-  const verdicts=await withTenant(ctx,tx=>tx.select({id:payrollAnomalyVerdict.id,detectors:sql<string[]>`array_agg(distinct ${payrollAnomalyFinding.detectorId})`})
-   .from(payrollAnomalyVerdict).innerJoin(payrollBatch,eq(payrollBatch.id,payrollAnomalyVerdict.batchId))
-   .innerJoin(payrollAnomalyFinding,eq(payrollAnomalyFinding.verdictId,payrollAnomalyVerdict.id))
-   .where(and(eq(payrollBatch.companyId,companyId),eq(payrollBatch.payPeriod,payPeriod),inArray(payrollAnomalyVerdict.employmentId,done),
-    isNull(payrollAnomalyVerdict.supersededAt),isNull(payrollAnomalyVerdict.resolvedAt)))
-   .groupBy(payrollAnomalyVerdict.id));
-  for(const verdict of verdicts){
-   if(!(verdict.detectors??[]).every(id=>id==='net-swing'))continue;
-   await resolveAnomalyVerdict(ctx,{verdictId:verdict.id,resolution:'accepted',note:'Expected: the net-swing flag was disposed of as expected on the Salary payroll loop.'});
-   verdictsResolved++;
-  }
- }
- return Object.freeze({disposed,skipped,verdictsResolved});
+ return Object.freeze({disposed,skipped});
 }
 
 export type AcknowledgedBlock=Readonly<{verdictId:string;batchId:string;companyId:string;employmentId:string;personName:string|null;detectors:readonly string[];

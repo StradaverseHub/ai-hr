@@ -30,10 +30,12 @@ describe('Reward Desk step 1',()=>{
   expect(screen.getAllByRole('link',{name:'Go to section'}).map(a=>a.getAttribute('href'))).toEqual(['#salary-increase','#bonus']);
   expect(screen.getByRole('link',{name:'Approval history'}).getAttribute('href')).toBe('#approvals');
  });
- it('makes the whole plain-language flag a link to its person or budget section without internal codes',()=>{
+ it('links each plain-language flag to its person or budget and to its applied rule',()=>{
   render(wrap(<FlagsPanel unitId="unit" filtered={false} flags={[{severity:'block',code:'SAL-01',message:'Fictional person needs a salary correction.',entryId:'entry'},{severity:'warning',code:'BUD-01',message:'Bonus exceeds its pool.'}]}/>));
   expect(screen.getByRole('link',{name:/Fictional person/}).getAttribute('href')).toBe('/rewards/unit/people/entry');
-  expect(screen.getByRole('link',{name:/Bonus exceeds/}).getAttribute('href')).toBe('#bonus');expect(screen.queryByText('SAL-01')).toBeNull();
+  expect(screen.getByRole('link',{name:/Bonus exceeds/}).getAttribute('href')).toBe('#bonus');
+  expect(screen.getByRole('link',{name:'SAL-01'}).getAttribute('href')).toBe('/rewards/rules?unit=unit#SAL-01');
+  expect(screen.getByRole('link',{name:'BUD-01'}).getAttribute('href')).toBe('/rewards/rules?unit=unit#BUD-01');
  });
  it('links exempted pool warnings to the actual salary or bonus section',()=>{
   render(wrap(<FlagsPanel unitId="unit" filtered={false} flags={[{severity:'review',code:'CFG-01',message:'Standard merit exceeds its separate pool.'},{severity:'review',code:'CFG-01',message:'JG H bonus exceeds the 100% budget cap.'}]}/>));

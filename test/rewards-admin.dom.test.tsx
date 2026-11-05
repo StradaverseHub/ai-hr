@@ -4,12 +4,13 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 
-const ports = vi.hoisted(() => ({ scopedAdmin: vi.fn(), scopedSession: vi.fn(), requireModule: vi.fn(), list: vi.fn(), reviewStatus: vi.fn(), choices: vi.fn(), configuration: vi.fn(), shared: vi.fn(), memberships: vi.fn(), requests: vi.fn(), accessCompanies: vi.fn() }));
+const ports = vi.hoisted(() => ({ scopedAdmin: vi.fn(), scopedSession: vi.fn(), scope: vi.fn(), visibleCompanies: vi.fn(), setupEntry: vi.fn(), requireModule: vi.fn(), list: vi.fn(), reviewStatus: vi.fn(), choices: vi.fn(), configuration: vi.fn(), shared: vi.fn(), memberships: vi.fn(), requests: vi.fn(), accessCompanies: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async (namespace: keyof typeof en = 'rewards') => (key: string) => key.split('.').reduce((v: any, k) => v[k], en[namespace]) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
-vi.mock('../lib/scope', () => ({ scopedAdmin: ports.scopedAdmin, scopedSession: ports.scopedSession }));
+vi.mock('../lib/scope', () => ({ scopedAdmin: ports.scopedAdmin, scopedSession: ports.scopedSession, getScopeIds: ports.scope }));
+vi.mock('../packs/rewards/access-policy', () => ({ rewardVisibleCompanies: ports.visibleCompanies, rewardSetupEntry: ports.setupEntry, rewardAccessPageCompanies: ports.accessCompanies }));
 vi.mock('../lib/authz', () => ({ requireModule: ports.requireModule }));
-vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, listRewardReviewStatus: ports.reviewStatus, rewardCoverageForUnits: async () => [], rewardSetupChoices: ports.choices, getRewardConfiguration: ports.configuration, getRewardSeniorMembership: vi.fn(), rewardSharedPolicyChoices: ports.shared, rewardPolicyMemberships: ports.memberships, getRewardCalendar: async () => ({ revision: 1, canEdit: true, values: { due: { bu: '2026-12-11' }, caseDue: null, offcycleDays: {} } }), rewardAccessRequests: ports.requests, rewardAccessCompanies: ports.accessCompanies, rewardCalendarStages: ['bu'], rewardOffcycleSlaStages: ['bg'] }));
+vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, listRewardReviewStatus: ports.reviewStatus, rewardCoverageForUnits: async () => [], rewardSetupChoices: ports.choices, getRewardConfiguration: ports.configuration, getRewardSeniorMembership: vi.fn(), rewardSharedPolicyChoices: ports.shared, rewardPolicyMemberships: ports.memberships, getRewardCalendar: async () => ({ revision: 1, canEdit: true, values: { due: { bu: '2026-12-11' }, caseDue: null, offcycleDays: {} } }), rewardAccessRequests: ports.requests, rewardCalendarStages: ['bu'], rewardOffcycleSlaStages: ['bg'] }));
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), memberAction: vi.fn(), policyAction: vi.fn(), deleteRewardAction: vi.fn(), calendarAction: vi.fn() }));
 vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
 import AdminPage from '../app/admin/rewards/page';
@@ -40,18 +41,22 @@ beforeEach(() => {
   ports.memberships.mockResolvedValue([{ companyId: 'company', businessUnitId: 'bu' }]);
   ports.requests.mockResolvedValue([]);
   ports.accessCompanies.mockResolvedValue([]);
+  ports.visibleCompanies.mockResolvedValue([{ id: 'company' }]);
+  ports.scope.mockResolvedValue(['company']);
+  ports.setupEntry.mockResolvedValue({ manage: true, libraries: false, bootstrap: false });
 });
 afterEach(cleanup);
 
 describe('Rewards administration and review destinations', () => {
-  it('puts cycle creation and configuration links in the admin hub, scoped to administrative companies', async () => {
+  it('links the admin hub to approved plan creation and scopes existing reviews to administrative companies', async () => {
     show(await resolvePolicyFields(await AdminPage({ searchParams: Promise.resolve({}) })));
     expect(screen.getByRole('heading', { name: 'Rewards configuration' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'View' }).getAttribute('href')).toBe('/admin/rewards/review?mode=view');
     expect(screen.getByRole('link', { name: 'Edit' }).getAttribute('href')).toBe('/admin/rewards/review');
     expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Create unit review' })).toBeTruthy();
-    expect(screen.getByLabelText('Snapshot date').getAttribute('max')).toBe(todayInKualaLumpur());
+    expect(screen.getByRole('link', { name: 'Create annual reviews from an approved Rewards plan' }).getAttribute('href')).toBe('/admin/rewards/plans');
+    expect(screen.queryByRole('button', { name: 'Create unit review' })).toBeNull();
+    expect(screen.queryByLabelText('Snapshot date')).toBeNull();
     expect(ports.scopedAdmin).toHaveBeenCalledOnce();
     expect(ports.requireModule).toHaveBeenCalledWith('rewards');
     expect(ports.list).toHaveBeenCalledWith(session, ['company']);
@@ -61,9 +66,12 @@ describe('Rewards administration and review destinations', () => {
   it('keeps review links in Manage and directs setup to Administration', async () => {
     show(await ReviewsPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByRole('link', { name: 'Open review' }).getAttribute('href')).toBe('/rewards/review');
-    expect(screen.getByRole('link', { name: 'Rewards configuration' }).getAttribute('href')).toBe('/admin/rewards');
+    expect(screen.getByRole('link', { name: 'Rewards configuration' }).getAttribute('href')).toBe('/admin/rewards/plans');
     expect(screen.queryByRole('button', { name: 'Create unit review' })).toBeNull();
     expect(ports.scopedSession).toHaveBeenCalledOnce();
+    expect(ports.visibleCompanies).toHaveBeenCalledWith(session);
+    expect(ports.scope).toHaveBeenCalledWith(['company']);
+    expect(ports.setupEntry).toHaveBeenCalledWith(session);
     expect(ports.reviewStatus).toHaveBeenCalledWith(session, ['company']);
     expect(ports.accessCompanies).toHaveBeenCalledWith(session);
     expect(ports.choices).toHaveBeenCalledWith(session, ['company']);

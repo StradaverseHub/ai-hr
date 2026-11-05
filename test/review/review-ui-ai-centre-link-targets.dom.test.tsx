@@ -18,8 +18,11 @@ vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...p
 import { AiCentreTabs } from '../../components/ai-centre/centre-tabs';
 
 const pageFor = (href: string) => join(process.cwd(), 'app', href.split(/[?#]/)[0], 'page.tsx');
-const FIXED = ['/control-tower/exceptions', '/control-tower/actions', '/control-tower/readiness', '/approvals', '/payroll/statutory-forms',
-  '/delegations', '/control-tower/how-it-works', '/admin/scheduled-actions', '/control-tower/agents/allowances'];
+// AI Centre restructure: the setup finding opens /payroll/setup (Today fix c), prepared fixes open Exceptions, Settings is
+// where threshold proposals are decided, and a person's own readiness is its own page.
+const FIXED = ['/control-tower/exceptions', '/control-tower/readiness', '/approvals', '/payroll/statutory-forms', '/payroll/setup',
+  '/delegations', '/control-tower/how-it-works', '/admin/scheduled-actions', '/control-tower/agents/allowances', '/control-tower/loops/payroll-cycle/settings',
+  '/me/payroll-readiness', '/control-tower/agents/build-list'];
 
 describe('AI centre link targets', () => {
   it('REVIEW pass: every tab, subnav and fixed link has a page', () => {
@@ -27,9 +30,9 @@ describe('AI centre link targets', () => {
     expect(hrefs.filter(href => !existsSync(pageFor(href === '/assistant' || href.startsWith('/assistant?') ? '/assistant' : href)))).toEqual([]);
   });
 
-  it('REVIEW pass: a non-administrator sees Ask, Delegated jobs, Policies, Insights and How it works only (the Inbox tab is retired for Today)', () => {
-    render(<NextIntlClientProvider locale="en" messages={enWithAiCentre as never}><AiCentreTabs active="jobs" isAdmin={false} /></NextIntlClientProvider>);
-    expect(screen.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/assistant?view=jobs', '/policies', '/assistant?view=insights', '/assistant?view=how']);
-    expect(screen.getByRole('link', { current: 'page' })).toHaveAttribute('href', '/assistant?view=jobs');
+  it('REVIEW pass: a non-administrator sees Ask, Policies and How it works only (Insights is for administrators, Delegated jobs hidden)', () => {
+    render(<NextIntlClientProvider locale="en" messages={enWithAiCentre as never}><AiCentreTabs active="how" isAdmin={false} /></NextIntlClientProvider>);
+    expect(screen.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/policies', '/assistant?view=how']);
+    expect(screen.getByRole('link', { current: 'page' })).toHaveAttribute('href', '/assistant?view=how');
   });
 });

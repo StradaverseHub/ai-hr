@@ -60,6 +60,8 @@ describe('Home other assigned-decision metadata owners',()=>{
   expect(await pendingResignationTaskMetadata(ctx)).toHaveLength(210);
   const [employment]=await owner.db.select({terminatedOn:s.employment.terminatedOn}).from(s.employment).where(eq(s.employment.id,e.employmentId));expect(employment.terminatedOn).toBeNull();
  });
+ // Creating 211 constrained employments and exercising both review transitions exceeded
+ // the default 30-second test budget in the hosted PostgreSQL fixture.
  it('uses the stored actual manager assignment with Employee role, stage transitions and recorded deadlines',async()=>{
   const e=await hire(),m=await hire('Fictional assigned manager'),x=await hire('Fictional unassigned colleague');
   await setReportingLine(adminCtx(b),{subordinateEmploymentId:e.employmentId,managerEmploymentId:m.employmentId,lineType:'administrative',validFrom:todayInKualaLumpur()});
@@ -88,5 +90,5 @@ describe('Home other assigned-decision metadata owners',()=>{
   expect(await pendingReviewTaskMetadata(ctx,'hr')).toEqual([]);
   await decideReview(adminCtx(b),{reviewId:heads[0].id,decision:'confirm'});
   expect(await pendingReviewTaskMetadata(adminCtx(b),'hr')).toEqual([]);
- });
+ },60_000);
 });

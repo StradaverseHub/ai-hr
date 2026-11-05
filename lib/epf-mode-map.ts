@@ -102,8 +102,7 @@ export function mapEpfUiMode(
     case 'manual_percentage':
       return { epfMode: 'manual_percentage', epfEmployeeRate: pct(rawEmployeeRate), epfEmployerRate: pct(rawEmployerRate), ...NO_AMOUNT };
     // b6dbadc5 — the two boxes are per-side INCREMENTS on top of the statutory rate (blank = nothing added),
-    // persisted as their own mode. NOT voluntary_excess: Semi-Auto keeps that mode's total-rate meaning, and
-    // sharing it would make the two categories indistinguishable on a stored row.
+    // persisted as their own mode. Semi-Auto uses the stored employee-only election.
     case 'voluntary_percentage':
       return { epfMode: 'topup_percentage', epfEmployeeRate: pct(rawEmployeeRate), epfEmployerRate: pct(rawEmployerRate), ...NO_AMOUNT };
     case 'semi_auto':

@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import type { Credential } from './credential';
 import { readRecord, writeRecord, type AuthSql } from './record-store';
 import { passwordHash, passwordMatches, passwordHistoryFingerprint, validatePassword } from './crypto';
@@ -13,6 +13,27 @@ export async function passwordChangeRequired(tx: AuthSql, c: Credential) {
 export async function effectivePasswordPolicy(tx:AuthSql,tenantId:string):Promise<PasswordPolicy> {
  const state=await readRecord<PasswordPolicyState>(tx,passwordPolicyKey(tenantId));
  return state?validatePasswordPolicy(state.policy):DEFAULT_PASSWORD_POLICY;
+}
+/** Cryptographic candidates obey the same configured bounds/classes as manually entered passwords.
+ * Bounded retries cover identifier exclusions; impossible class/length combinations fail closed. */
+export function temporaryPasswordForPolicy(policy:PasswordPolicy,username:string,email:string):string {
+ const r=policy.requirements;
+ const classes=[...(r?.uppercase?['ABCDEFGHIJKLMNOPQRSTUVWXYZ']:[]),...(r?.lowercase?['abcdefghijklmnopqrstuvwxyz']:[]),...(r?.numbers?['0123456789']:[]),...(r?.special?['!@#$%&*+-=?']:[])];
+ const max=r?.maxLength??128,min=r?.minLength??14;
+ if(classes.length>max)throw new InternalAuthError('passwordPolicy');
+ const length=Math.max(min,classes.length,Math.min(32,max)),alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*+-=?';
+ for(let attempt=0;attempt<8;attempt++){
+  const chars=classes.map(characters=>characters[randomInt(characters.length)]);
+  while(chars.length<length)chars.push(alphabet[randomInt(alphabet.length)]);
+  for(let index=chars.length-1;index>0;index--){const other=randomInt(index+1);[chars[index],chars[other]]=[chars[other],chars[index]];}
+  const password=chars.join('');
+  if(r){if(passwordMeetsRequirements(password,r,username,email))return password;}
+  else{try{validatePassword(password,username,email);return password;}catch{/* Retry an excluded identifier. */}}
+ }
+ throw new InternalAuthError('passwordPolicy');
+}
+export async function generateTemporaryPassword(tx:AuthSql,c:Pick<Credential,'tenantId'|'username'|'email'>){
+ return temporaryPasswordForPolicy(await effectivePasswordPolicy(tx,c.tenantId),c.username,c.email);
 }
 export async function validateTenantPassword(tx:AuthSql,c:Pick<Credential,'tenantId'|'username'|'email'>,password:string) {
  const policy=await effectivePasswordPolicy(tx,c.tenantId);

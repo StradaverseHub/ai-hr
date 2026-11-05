@@ -26,7 +26,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-const ORG = en.admin.organization as Record<string, string>;
+const ORG = en.admin.organization;
 
 const company = (over: Partial<PanelCompany>): PanelCompany => ({
   id: 'c1',

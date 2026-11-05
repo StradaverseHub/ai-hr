@@ -149,22 +149,19 @@ describe('(b) payroll surfaces — "not registered" is said, not implied by a bl
 describe('(c) Organization — the companies with no statutory record are listed', () => {
   const PAGE = read('app/admin/organization/page.tsx');
 
-  it('lists active Malaysian companies missing a statutory row, from the data already fetched', () => {
-    expect(PAGE).toContain('const missingStatutory = companies.filter(');
-    // Archived companies run no payroll and non-MY companies have no MY statutory row by design —
-    // listing either would be a false alarm that trains the operator to ignore the card.
-    expect(PAGE).toContain("(c) => !c.archivedAt && c.country === 'MY' && !statBy.has(c.id)");
-    expect(PAGE).toContain("{t('statutoryMissingTitle')}");
-    expect(PAGE).toContain("{t('statutoryMissingHint')}");
+  it('lists the scoped employers with missing registration using the shared readiness owner', () => {
+    expect(PAGE).toContain('companyRegistrationOverview(s)');
+    expect(PAGE).toMatch(/const missingStatutory = statutory\.filter\(row\s*=>\s*row\.counted\s*&&\s*row\.status\s*===\s*'missing'\)/);
+    expect(PAGE).toContain("t('registration.topAlert'");
+    expect(PAGE).toContain("t('registration.levyHint')");
   });
 
-  it('is read-only — it names the gaps, it does not pick a rate on the operator\'s behalf', () => {
-    const cardStart = PAGE.indexOf('{missingStatutory.length > 0 && (');
-    expect(cardStart).toBeGreaterThan(-1);
-    const cardEnd = PAGE.indexOf('<Card data-tour="people-org-companies">', cardStart);
-    const cardMarkup = PAGE.slice(cardStart, cardEnd);
-    expect(cardMarkup).not.toContain('<form');
-    expect(cardMarkup).not.toContain('Action');
+  it('shows a read-only alert linked to the missing-registration filter', () => {
+    const card = PAGE.match(/\{missingStatutory\.length\s*>\s*0\s*&&\s*(<div role="status"[\s\S]*?<\/div>)\}/)?.[1];
+    expect(card).toBeDefined();
+    expect(card).toContain('href="/admin/organization?statutory=missing"');
+    expect(card).not.toContain('<form');
+    expect(card).not.toContain('Action');
   });
 });
 

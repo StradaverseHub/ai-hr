@@ -97,6 +97,8 @@ export interface ScreenEntry {
    * an explicit flag so the grid renders the note only where one is authored.
    */
   hasScopeNote?: boolean;
+  /** An authenticated route still requires a native assignment or capability for access. */
+  conditionalAccess?: boolean;
 }
 
 /**
@@ -110,7 +112,8 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'aiCentrePolicies',href:'/policies',labelKey:'nav.policies',guard:'scopedSession',routes:['/policies'],hasScopeNote:true},
   {screenKey:'assistantWorkspace',href:'/assistant',labelKey:'nav.assistant',guard:'assistantSession',routes:['/assistant','/assistant/leave','/assistant/notifications','/assistant/profile','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil','/assistant/approvals','/assistant/hr','/assistant/attendance','/assistant/pay-codes','/assistant/rewards','/assistant/payroll-close','/assistant/statutory','/assistant/payroll-runs','/assistant/bank','/assistant/compensation','/assistant/cost-allocation','/assistant/day-schedule','/assistant/document-details','/assistant/emergency-contacts','/assistant/employee-code','/assistant/employee-draft-discard','/assistant/employee-drafts','/assistant/family','/assistant/fixed-item-archive','/assistant/offboarding-case-cancel','/assistant/offboarding-step','/assistant/offboarding-step-undo','/assistant/org-departments','/assistant/org-employee-id','/assistant/org-people-general','/assistant/org-positions','/assistant/passport','/assistant/payment-method','/assistant/payroll-reopen','/assistant/payroll-reset','/assistant/performance/checkins','/assistant/performance/checkins/complete','/assistant/performance/checkins/schedule','/assistant/performance/goals','/assistant/profile-request-rejection','/assistant/qualifications','/assistant/rewards/calendar','/assistant/rewards/cancel','/assistant/rewards/return','/assistant/schedule-group','/assistant/tp3-opening','/assistant/workforce-profile'],hasScopeNote:true},
   {screenKey:'jobDescriptions',href:'/admin/job-descriptions',labelKey:'nav.jobDescriptions',guard:'requireAdmin',routes:['/admin/job-descriptions','/admin/job-descriptions/new','/admin/job-descriptions/configuration','/admin/job-descriptions/[id]','/admin/job-descriptions/[id]/print']},
-  {screenKey:'rewardsAccess',href:'/admin/rewards/access',labelKey:'rewardsAccess.title',guard:'scopedSession',hasScopeNote:true,routes:['/admin/rewards/access']},
+  {screenKey:'jobArchitecture',href:'/admin/job-architecture',labelKey:'jobArchitecture.title',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:['/admin/job-architecture']},
+  {screenKey:'rewardsAccess',href:'/admin/rewards/access',labelKey:'rewardsAccess.title',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:['/admin/rewards/access','/admin/rewards/access/view-as','/admin/rewards/uploaded']},
   {screenKey:'peopleGeneral',href:'/admin/settings/people-general',labelKey:'nav.peopleGeneral',guard:'requireAdmin',routes:['/admin/settings/people-general']},
   {screenKey:'myTp3',href:'/me/tp3',labelKey:'nav.myTp3',guard:'scopedSession',routes:['/me/tp3'],hasScopeNote:true},
   {screenKey:'myEa',href:'/me/ea',labelKey:'nav.myEa',guard:'scopedSession',routes:['/me/ea'],hasScopeNote:true},
@@ -151,11 +154,17 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'myHomePreferences',href:'/me/home',labelKey:'employeeHome.preferences.title',guard:'scopedSession',routes:['/me/home']},
   {screenKey:'myHomeGreetings',href:'/me/greetings/[id]',labelKey:'employeeHome.greetingDetail.title',guard:'scopedSession',routes:['/me/greetings/[id]']},
   {screenKey:'myCalendar',href:'/me/calendar',labelKey:'employeeHome.calendar.title',guard:'scopedSession',routes:['/me/calendar'],hasScopeNote:true},
+  // AI Centre restructure (owner decision 27, 4 Nov 2026): "My payroll readiness", every signed-in person's own page (their
+  // own items, read as them; the approvals owner's own list of decisions waiting on them).
+  {screenKey:'myPayrollReadiness',href:'/me/payroll-readiness',labelKey:'nav.myPayrollReadiness',guard:'scopedSession',routes:['/me/payroll-readiness']},
   { screenKey: 'entra', href: '/admin/settings/entra', labelKey: 'nav.entra', guard: 'scopedAdmin', routes: ['/admin/settings/entra'], hasScopeNote: true },
   { screenKey: 'loginPresentation', href: '/admin/settings/login', labelKey: 'nav.loginPresentation', guard: 'scopedAdmin', routes: ['/admin/settings/login'], hasScopeNote: true },
   {screenKey:'emailTemplates',href:'/admin/settings/email-templates',labelKey:'nav.emailTemplates',guard:'scopedAdmin',routes:['/admin/settings/email-templates'],hasScopeNote:true},
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },
-  { screenKey: 'rewards', href: '/rewards', labelKey: 'nav.rewards', guard: 'scopedSession', routes: ['/rewards', '/rewards/[unitId]', '/rewards/[unitId]/people/[entryId]'] },
+  {screenKey:'rewards',href:'/rewards',labelKey:'nav.rewards',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:[
+    '/rewards','/rewards/[unitId]','/rewards/[unitId]/people/[entryId]','/rewards/[unitId]/advisor',
+    '/rewards/[unitId]/advisor/fairness','/rewards/[unitId]/uploaded','/rewards/analytics','/rewards/rules',
+  ]},
   { screenKey: 'rewardsApprovals', href: '/rewards/approvals', labelKey: 'rewards.board.title', guard: 'scopedSession', routes: ['/rewards/approvals'] },
   { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards','/admin/rewards/shared'] },
   { screenKey: 'rewardsPolicy', href: '/admin/rewards/[unitId]', labelKey: 'rewards.configuration', guard: 'scopedSession', routes: ['/admin/rewards/[unitId]'] },
@@ -1186,6 +1195,9 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/control-tower/agents/spending',
       '/control-tower/agents/orchestrator',
       '/control-tower/agents/runs',
+      // AI Centre restructure (4 Nov 2026): Administration › Build list, from the former Opportunities page. Same requireAdmin
+      // guard as its siblings; the page sends anyone but a group administrator to Workers, and its read owner refuses them.
+      '/control-tower/agents/build-list',
       // ADR-0074 r245 — the cross-run exceptions queue. Same requireAdmin guard as its siblings and the
       // per-run queue it complements, so it needs a column here or test/function-access.test.ts fails.
       '/control-tower/exceptions',
@@ -1555,7 +1567,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   // AI v2 Phase 2 P2-6: the linkable address of AI Centre › Insights › AI quality (HR and group administrators); it reads no
   // data and forwards to the section, which checks again.
   { screenKey: 'aiQuality', href: '/ai-quality', labelKey: 'nav.aiQuality', guard: 'requireAdmin', routes: ['/ai-quality'] },
-  { screenKey: 'usersRoles', href: '/admin/users', labelKey: 'nav.usersRoles', guard: 'requireAdmin', routes: ['/admin/users'] },
+  { screenKey: 'usersRoles', href: '/admin/users', labelKey: 'nav.usersRoles', guard: 'requireAdmin', routes: ['/admin/users', '/admin/users/[userId]/account'] },
   {
     // System Analysis & Dependency Explorer (deec1691) — the record-relationship reference, moved from
     // the operator plane to Admin at the reporter's instruction and sold as the `system_explorer`

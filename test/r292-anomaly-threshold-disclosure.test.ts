@@ -72,7 +72,9 @@ vi.mock('next-intl/server', async () => {
   const { createTranslator: make } = await import('next-intl');
   const { readFileSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
-  const messages = JSON.parse(readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'));
+  // The AI Centre catalogue is merged over the main one, as i18n/request.ts does (the run page links Exceptions with it).
+  const { withAiCentre } = await import('./helpers/ai-centre-messages');
+  const messages = withAiCentre('en', JSON.parse(readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8')));
   return {
     getLocale: async () => 'en',
     getTranslations: async (ns: string | { namespace?: string }) =>

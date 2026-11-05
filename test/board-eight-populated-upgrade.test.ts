@@ -1,3 +1,4 @@
+import {migrateApprovedUpgrade,retainedUpgradeRows} from './helpers/approved-upgrade';
 import {expect,it} from 'vitest';
 import {randomUUID,createHash} from 'node:crypto';
 import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,copyFileSync,rmSync} from 'node:fs';
@@ -99,21 +100,23 @@ it('upgrades a populated pre-board baseline through every later journaled migrat
   const ledger=()=>storage.client<{id:number;hash:string;created_at:string}[]>`select id,hash,created_at::text as created_at from drizzle.__drizzle_migrations order by created_at,id`;
   const previous=await ledger();expect(previous).toHaveLength(start);
   expect(previous.map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(journal.entries.slice(0,start).sort((a:{idx:number;when:number},b:{idx:number;when:number})=>a.when-b.when||a.idx-b.idx).map((entry:{tag:string;when:number})=>({hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex'),created_at:String(entry.when)})));
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  const approvedUpgrade=await migrateApprovedUpgrade(storage);
   const upgraded=await ledger();expect(upgraded.slice(0,start)).toEqual(previous);expect(upgraded).toHaveLength(journal.entries.length);
   expect(upgraded.slice(start).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(journal.entries.slice(start).map((entry:{tag:string;when:number})=>({hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex'),created_at:String(entry.when)})));
   expect(await applicationWitness()).toEqual(actualGrantsBefore);
   for(const subject of subjects){const options=await application.withTenant({tenantId:subject.tenantId,userId:subject.employeeUserId,personId:subject.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]},tx=>tx.execute(sql`select provider_options from public.ai_provider_config where id=${subject.providerId}::uuid`));expect(options).toEqual([{provider_options:{}}]);}
-  for(const table of tables)if(before.has(table.schema+'.'+table.name))expect(await rows(table),table.schema+'.'+table.name).toEqual(before.get(table.schema+'.'+table.name));
+  for(const table of tables)if(before.has(table.schema+'.'+table.name))expect(retainedUpgradeRows(table.schema+'.'+table.name,await rows(table),approvedUpgrade),table.schema+'.'+table.name).toEqual(retainedUpgradeRows(table.schema+'.'+table.name,before.get(table.schema+'.'+table.name)!));
   for(let index=0;index<2;index++){
    const ctx={tenantId:tenantIds[index],userId:users[index],roles:['hr_admin']};
    expect(await application.withTenant(ctx,tx=>tx.select({id:payslip.id,gross:payslip.grossPay,net:payslip.netPay}).from(payslip))).toEqual([{id:slips[index],gross:'5000.00',net:'4500.00'}]);
    expect(await application.withTenant(ctx,tx=>tx.select({id:payslip.id}).from(payslip).where(eq(payslip.id,slips[1-index])))).toEqual([]);
   }
   await expect(storage.client`update payslip set gross_pay=1 where id=${slips[0]}`).rejects.toMatchObject({code:'23514'});
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});expect(await ledger()).toEqual(upgraded);expect(await applicationWitness()).toEqual(actualGrantsBefore);
-  for(const table of tables)if(before.has(table.schema+'.'+table.name))expect(await rows(table),table.schema+'.'+table.name).toEqual(before.get(table.schema+'.'+table.name));
-  console.info(JSON.stringify({kind:'COMBINED_POPULATED_UPGRADE',physicalWitnessNotCommandProvenance:true,scopedPrincipalWitnesses:subjects.length*3,providerActivated:false,baselineMigrations:start,appliedMigrations:upgraded.length-start,populatedTables:before.size,comparedRows:[...before.values()].reduce((count,rows)=>count+rows.length,0),tenants:tenantIds.length,physicalRowsUnchanged:true,appRoleIsolation:true,closedPayrollImmutable:true,idempotentMigration:true}));
+  const terminal=new Map<string,string[]>();for(const table of tables)terminal.set(table.schema+'.'+table.name,await rows(table));
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});expect(await ledger()).toEqual(upgraded);
+  for(const table of tables)expect(await rows(table),table.schema+'.'+table.name+' terminal replay').toEqual(terminal.get(table.schema+'.'+table.name));expect(await applicationWitness()).toEqual(actualGrantsBefore);
+  for(const table of tables)if(before.has(table.schema+'.'+table.name))expect(retainedUpgradeRows(table.schema+'.'+table.name,await rows(table),approvedUpgrade),table.schema+'.'+table.name).toEqual(retainedUpgradeRows(table.schema+'.'+table.name,before.get(table.schema+'.'+table.name)!));
+  console.info(JSON.stringify({kind:'COMBINED_POPULATED_UPGRADE',physicalWitnessNotCommandProvenance:true,scopedPrincipalWitnesses:subjects.length*3,providerActivated:false,baselineMigrations:start,appliedMigrations:upgraded.length-start,populatedTables:before.size,comparedRows:[...before.values()].reduce((count,rows)=>count+rows.length,0),tenants:tenantIds.length,physicalRowsUnchangedExceptVerifiedPermissionTransition:true,appRoleIsolation:true,closedPayrollImmutable:true,idempotentMigration:true}));
  }finally{
   await application.client.end();await storage.client.end();
   if(created)await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);

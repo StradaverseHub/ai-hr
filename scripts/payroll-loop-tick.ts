@@ -25,7 +25,7 @@ async function main() {
   const owner = createDb(ownerUrl);
   const scope = await loadSweepScope(owner.db);
   for (const line of describeSkips(scope)) console.log(line);
-  let ran = 0, busy = 0, notRun = 0, failed = 0, companies = 0, opened = 0, closed = 0, refreshed = 0;
+  let ran = 0, busy = 0, notRun = 0, failed = 0, companies = 0, opened = 0, closed = 0, refreshed = 0, learned = 0;
   for (const t of scope.run) {
     try {
       const entitlements = await owner.db.transaction((tx) => resolveEntitlementsTx(tx, t.id));
@@ -39,13 +39,20 @@ async function main() {
       if (tick.salary.status === 'ran') refreshed += tick.salary.companies;
       else if (tick.salary.status === 'failed' || tick.salary.status === 'sponsor_lost') { failed++; console.error(`  ⚠ the Salary payroll loop did not finish (tenant ${t.id}).`); }
       if (tick.audit?.status === 'ran') refreshed += tick.audit.companies;
+      // Payroll history learning (P1): the companies whose history changed since their last learning run.
+      if (tick.learning) {
+        learned += tick.learning.companies.filter(c => c.status === 'ran').length;
+        for (const c of tick.learning.companies) if (c.status === 'failed' || c.status === 'sponsor_lost')
+          console.error(`  ⚠ payroll history learning ${c.status === 'sponsor_lost' ? 'stopped: its sponsor no longer administers this company\'s payroll' : 'did not finish'} (tenant ${t.id}).`);
+        if (tick.learning.companies.some(c => c.status === 'failed')) failed++;
+      } else { failed++; console.error(`  ⚠ payroll history learning did not run (tenant ${t.id}).`); }
     } catch (e) {
       failed++;
       console.error(`  ⚠ tenant ${t.id}: ${(e as Error).message}`);
     }
   }
   console.log(`payroll-loop-tick — ${scope.run.length} tenant(s), today ${today}: ${ran} ran (${companies} company check(s), ${opened} card(s) opened, ` +
-    `${closed} closed), ${refreshed} payroll or audit refresh(es) after a change, ${notRun} off, ${busy} still running from the previous tick, ${failed} failed`);
+    `${closed} closed), ${refreshed} payroll or audit refresh(es) after a change, ${learned} learning update(s), ${notRun} off, ${busy} still running from the previous tick, ${failed} failed`);
   await owner.client.end();
   process.exit(failed > 0 ? 1 : 0);
 }

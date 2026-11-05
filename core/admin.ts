@@ -1,3 +1,4 @@
+import {deriveCompanyOrganisationTx} from './company-organisation';
 import { tenantMutation } from '../db/tenant-mutation';
 /**
  * Admin / setup services — org structure, leave config, and role management.
@@ -570,6 +571,12 @@ export async function setCompanyParent(
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    const [current]=await tx.select({parentCompanyId:company.parentCompanyId}).from(company).where(eq(company.id,p.companyId)).for('update');
+    if(!current)throw new Error('Company is unavailable.');
+    const [managed]=await tx.execute<{managed:boolean}>(sql`select app.company_organisation_managed() as managed`);
+    const canonicalParent=managed?.managed?(await deriveCompanyOrganisationTx(tx,ctx,{companyId:p.companyId,asOf:todayInKualaLumpur()})).parentCompanyId:current.parentCompanyId;
+    if(managed?.managed&&canonicalParent!==p.parentCompanyId)throw new Error('Group structure is managed through reviewed dated changes. Create a reviewed Group structure proposal instead.');
+    if(managed?.managed||canonicalParent===p.parentCompanyId)return {id:p.companyId};
     await tx
       .update(company)
       .set({ parentCompanyId: p.parentCompanyId })
@@ -5353,7 +5360,7 @@ export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
     const rows = (await tx.execute(sql`
       select company.legal_name as "legalName", company.company_label as "code",
              company.registration_no as "registrationNo",
-             app.is_admin_for(coalesce(company.parent_company_id, company.id)) as "canDelete"
+             CASE WHEN app.principal_snapshot_current() AND app.is_admin() THEN app.is_admin_for(coalesce(app.company_organisation_current_parent(company.id), company.id)) ELSE false END as "canDelete"
         from company where company.id = ${p.id}::uuid for update`)) as unknown as {
       legalName: string;
       code: string | null;

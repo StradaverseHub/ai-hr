@@ -32,7 +32,7 @@ export function LanguageSwitcher() {
       <form
         action={setLocale}
         className={cn(
-          'absolute right-0 z-50 mt-1 w-48 origin-top-right rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg',
+          'absolute right-0 z-50 mt-1 max-h-[calc(100dvh-6rem)] w-48 origin-top-right overflow-y-auto overscroll-contain rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg',
           !open && 'hidden',
         )}
       >

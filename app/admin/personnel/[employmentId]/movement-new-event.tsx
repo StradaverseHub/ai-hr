@@ -1,4 +1,5 @@
 'use client';
+import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/derived-organisation-fields';
 
 // Movement tab redesign (78853b97), comparison redesign (08913328) — client half of "New Event".
 //
@@ -14,6 +15,7 @@
 //
 // Every option list is pre-loaded and pre-translated by the server page; this island owns only the form
 // state. The tab shell injects the hidden `tab` field on submit, so the save lands back on the Movement tab.
+import {ApprovedPositionArchitecture} from '@/components/approved-position-architecture';
 import { startTransition, useRef, useState, useActionState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
@@ -240,6 +242,7 @@ export function MovementNewEvent({
   const after = {...current,...saved};
   const initialFields=useRef<Map<string,string>|null>(null);
   const touched=useRef(new Set<string>());
+  const movementForm=useRef<HTMLFormElement|null>(null);
   const [pageError,pageAction,pagePending]=useActionState(async(previous:string|null,data:FormData)=>{
     if(saved)for(const key of MOVEMENT_PENDING_INPUT_FIELDS){
       if(Object.prototype.hasOwnProperty.call(saved,key)||touched.current.has(key))continue;
@@ -299,7 +302,9 @@ export function MovementNewEvent({
   const isEntityTransfer = behaviour === 'entityTransfer';
   const [destCompanyId, setDestCompanyId] = useState<string>(saved?.companyId ?? current.companyId);
   const scopeCompanyId = isEntityTransfer ? destCompanyId : current.companyId;
+  const derivedOrganisation=useDerivedOrganisation({companyId:scopeCompanyId,asOf:correctionDate});
   const scopeChanged = scopeCompanyId !== current.companyId;
+  const [previewPosition,setPreviewPosition]=useState({companyId:scopeCompanyId,positionId:after.positionId});
   const scoped: MovementOrgScope = orgByCompany?.[scopeCompanyId] ?? {
     departments,
     positions,
@@ -475,8 +480,8 @@ export function MovementNewEvent({
         <span className="text-sm text-muted-foreground">{t('form.companyReadOnly')}</span>
       ),
     ),
-    row('businessUnitId', 'businessUnit', label(movementField('businessUnitId')), nameOf(businessUnits, current.businessUnitId),
-      select('businessUnitId', after.businessUnitId, scoped.businessUnits, t('form.none'))),
+    derivedOrganisation.data?.status==='legacy'&&!derivedOrganisation.data.managed?row('businessUnitId', 'businessUnit', label(movementField('businessUnitId')), nameOf(businessUnits, current.businessUnitId),
+      select('businessUnitId', after.businessUnitId, scoped.businessUnits, t('form.none'))):null,
     row('orgDivision', 'orgDivision', label(movementField('orgDivision')), current.orgDivision, text('orgDivision', after.orgDivision)),
     row('departmentId', 'department', label(movementField('departmentId')), nameOf(departments, current.departmentId),
       select('departmentId', after.departmentId, scoped.departments, null)),
@@ -555,7 +560,7 @@ export function MovementNewEvent({
     // today's date beside an error about the 2024 date they had typed). onSubmit below hands the data to
     // pageAction itself, which keeps what the user entered on screen next to the explanation.
     <form aria-busy={pagePending} action={pageContext ? undefined : saved ? submitPendingCorrection : edit ? editMovementEventAction : createMovementEventAction}
-      ref={form=>{if(saved&&form&&!initialFields.current)initialFields.current=new Map(Array.from(new FormData(form).entries()).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));}}
+      ref={form=>{movementForm.current=form;if(saved&&form&&!initialFields.current)initialFields.current=new Map(Array.from(new FormData(form).entries()).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));}}
       onSubmit={event=>{
         if(pagePending){event.preventDefault();return;}
         const submitPage=()=>{
@@ -568,7 +573,7 @@ export function MovementNewEvent({
         if (!typeRules) {submitPage();return;}
         const data = new FormData(event.currentTarget);
         const unchanged = typeRules.find((r) => {
-          if (!r.mustChange) return false;
+          if (!r.mustChange||(r.field==='businessUnitId'&&(derivedOrganisation.data?.managed||derivedOrganisation.data?.status!=='legacy'))) return false;
           const posted = data.get(r.field);
           if (posted == null) return true;
           const before = r.field === 'companyId' ? current.companyId : (current as Record<string, string | null>)[r.field] ?? '';
@@ -585,6 +590,7 @@ export function MovementNewEvent({
         }
       }}
       onChangeCapture={event=>{
+        if(event.target instanceof HTMLSelectElement&&event.target.name==='positionId')setPreviewPosition({companyId:scopeCompanyId,positionId:event.target.value||null});
         if (!saved) return;
         const target: EventTarget = event.target;
         if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
@@ -594,6 +600,7 @@ export function MovementNewEvent({
       {pageContext&&<><input type="hidden" name="movementPage" value={edit?'edit':'new'}/><input type="hidden" name="showCorrected" value={pageContext.showCorrected??''}/><input type="hidden" name="from" value={pageContext.from??''}/></>}
       {pageError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive"><DatabaseErrorText message={pageError}/></p>}
       <input type="hidden" name="employmentId" value={employmentId} />
+      <DerivedOrganisationFields state={derivedOrganisation}/>
       {edit && <input type="hidden" name="movementId" value={edit.movementId} />}
       {ruleError && (
         <p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -784,6 +791,7 @@ export function MovementNewEvent({
             <div className="font-medium">{t('form.afterInformation')}</div>
           </div>
           {comparisonRows}
+          {ruleFor('positionId').included&&<div className="px-4 py-3"><ApprovedPositionArchitecture companyId={scopeCompanyId} positionId={previewPosition.companyId===scopeCompanyId?previewPosition.positionId:scoped.positions.some(p=>p.id===after.positionId)?after.positionId:null} gradeIds={grades.map(g=>g.id)} movement onUseGrade={ruleFor('gradeId').included&&ruleFor('gradeId').editable?gradeId=>{const field=movementForm.current?.elements.namedItem('gradeId');if(field instanceof HTMLSelectElement&&Array.from(field.options).some(o=>o.value===gradeId)){field.value=gradeId;touched.current.add('gradeId');field.dispatchEvent(new Event('change',{bubbles:true}));}}:undefined}/></div>}
           <p className="px-4 py-3 text-xs text-muted-foreground">
             {/* b7b22514 — an Entity Transfer needs to say what the other kinds do not: that the org
                 choices above it now belong to the DESTINATION company, and that group service is not

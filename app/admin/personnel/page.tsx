@@ -1,15 +1,15 @@
+import {personnelPrivateSearchAvailable} from '@/core/personnel-private-search';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
+import {PersonnelReadBusyError, withPersonnelRead} from '@/core/personnel-read-bounds';
 import {workforceCompanies} from '@/core/workforce-access';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fields';
 import {requireWorkforceAccess} from '@/lib/workforce-authz';
 import {
-  countEmployeesByStatus,
   listCompanies,
   listDepartments,
-  listWorkforcePickOptions,
-  listEmployeesPage,
+  readPersonnelOverview,
 } from '@/core/read';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
@@ -18,7 +18,7 @@ import { listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { getEmployeeListColumns } from '@/core/employee-list-prefs';
 import { Card, PageHeader } from '@/components/ui';
-import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
+import { FilterChips, type FilterField } from '@/components/filter-panel';
 import { Pager } from '@/components/pager';
 import { pageState, parsePageQuery } from '@/lib/pagination';
 import {
@@ -44,10 +44,11 @@ import {
   draftMatchesQuery,
   headcountFilters,
   parsePersonnelListQuery,
+  personnelQueryParams,
   type PersonnelSearchParams,
 } from './list-query';
-// c002b3c3 — "Search Employee": jump straight to a profile without a round trip through this list.
-import { EmployeeSwitcher } from './employee-switcher';
+// Approved9c6b06d4: one private list search and hierarchy-aware filters; profile switchers stay on profiles.
+import {PersonnelOrganisationFilters,PersonnelPrivateSearch} from './organisation-filters';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -100,9 +101,34 @@ export default async function PeoplePage({
 }: {
   searchParams: Promise<PersonnelSearchParams>;
 }) {
-  const {s:session,scopeIds,companyIds,allowedCount}=await requireWorkforceAccess();
+  const sp = await searchParams;
+  try {
+    return await renderPersonnelPage(sp);
+  } catch (error) {
+    if (!(error instanceof PersonnelReadBusyError)) throw error;
+    const t = await getTranslations('people.list');
+    const to = await getTranslations('personnelOrganisationFilters');
+    const pq = parsePageQuery(sp);
+    const params = personnelQueryParams(sp);
+    params.set('size', String(pq.size));
+    params.set('page', String(pq.page));
+    return (
+      <div className="mx-auto max-w-[100rem] space-y-4">
+        <PageHeader title={t('adminTitle')} />
+        <div role="alert" className="space-y-2 rounded-md border p-4">
+          <p>{to('readBusy')}</p>
+          <a className="text-primary underline" href={`/admin/personnel?${params}`}>{to('retryRead')}</a>
+        </div>
+      </div>
+    );
+  }
+}
+
+async function renderPersonnelPage(sp: PersonnelSearchParams) {
+  const {s:session,scopeIds,companyIds,allowedCount}=await requireWorkforceAccess({ personnelList: true });
   const t = await getTranslations('people.list');
   const tStatus = await getTranslations('people.employeeStatus');
+  const to = await getTranslations('personnelOrganisationFilters');
   // r260 — Personnel Management's own field labels, so a proposed profile change is named in this
   // queue exactly as the employee reads it on their record and HR reads it on the Personnel card.
   const tPeopleDetail = await getTranslations('people.detail');
@@ -112,11 +138,10 @@ export default async function PeoplePage({
   // Employee Status redesign (R43 c26c3ce5): the People list shows the SYSTEM-DERIVED status (from each
   // employee's lifecycle dates + blacklist override), not the legacy stored assignment.status.
   const workforceIds=new Set(companyIds);
-  const maintainIds=new Set(await workforceCompanies(session,'maintain'));
+  const maintainIds=new Set(await withPersonnelRead(session, tx => workforceCompanies(session, 'maintain', tx)));
   const today = todayInKualaLumpur();
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
   const canCreate=isAdmin&&maintainIds.size>0;
-  const sp = await searchParams;
   const { error } = sp;
   const pq = parsePageQuery(sp);
   // 579255c3 — ONE parse of the query string, shared with the Excel export so the file and the table
@@ -124,39 +149,21 @@ export default async function PeoplePage({
   // overloading `status`.
   const query = parsePersonnelListQuery(sp);
   const { q, company, dept, type, draftOnly, hasFilters } = query;
+  const searchAvailable=query.filters.privateSearch?await personnelPrivateSearchAvailable(session,query.filters.privateSearch,scopeIds):false;
 
-  const [
-    { rows: employeeRows, total: employeeTotal },
-    headcount,
-    companies,
-    departments,
-    allDrafts,
-    allEmployees,
-    savedColumns,
-    idConfigs,
-  ] = await Promise.all([
-    listEmployeesPage(session, {
-      companyIds: scopeIds,
-      ...query.filters,
-      limit: pq.limit,
-      offset: pq.offset,
-    },'workforce'),
-    // Point 5 — the five headcount cards. Counted in SQL over the WHOLE filtered set, never over the
-    // page: "40 employees" must keep meaning forty people, not twenty-five rows. The bucket narrowing is
-    // stripped (headcountFilters) so the cards stay a facet of the current view — clicking one cannot
-    // make the other four read zero.
-    countEmployeesByStatus(session,{companyIds:scopeIds,...headcountFilters(query)},'workforce'),
+  const overview = await readPersonnelOverview(session, {
+    companyIds: scopeIds,
+    ...query.filters,
+    limit: pq.limit,
+    offset: pq.offset,
+  }, headcountFilters(query));
+  const { employees: { rows: employeeRows, total: employeeTotal }, headcount, organisationChoices } = overview;
+  const [companies, departments, allDrafts, savedColumns, idConfigs] = await Promise.all([
     listCompanies(session).then(rows=>rows.filter(row=>workforceIds.has(row.id))),
     scopeIds.length?listDepartments(session,{companyIds:scopeIds}):Promise.resolve([]),
     // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees above do. They used to
     // be read with no scope at all, so choosing one company still listed every company's drafts.
     isAdmin ? listEmployeeDrafts(session, draftListScope(scopeIds, allowedCount)) : Promise.resolve([]),
-    // c002b3c3 — the switcher needs the WHOLE reachable set, not the page being displayed: searching for
-    // someone on page 7 of the list is the entire point. `listEmployees` is the same scoped read the
-    // profile route already uses for its own pickers, narrowed here by the active company context
-    // (`scopeIds`) so the box searches exactly what this screen is showing. It can only ever be NARROWER
-    // than RLS — the profile route re-resolves whatever is picked and 404s on anything out of scope.
-    listWorkforcePickOptions(session, scopeIds),
     // 579255c3 — this reader's own columns and their order. Per user (app_user.list_preferences through
     // the own-row seam), so one person's arrangement never changes what anybody else sees.
     getEmployeeListColumns(session),
@@ -234,29 +241,7 @@ export default async function PeoplePage({
   // active/terminated query on `status`. The old param is still honoured for existing links; nothing
   // writes it any more. See ./list-query.ts.
   const filterFields: FilterField[] = [
-    {
-      kind: 'search',
-      name: 'q',
-      label: t('search'),
-      placeholder: t('searchPlaceholder'),
-      ariaLabel: t('searchAriaLabel'),
-      removeAriaLabel: t('removeFilter', { label: t('search') }),
-    },
-    {
-      kind: 'select',
-      name: 'company',
-      label: t('company'),
-      ariaLabel: t('filterCompany'),
-      allLabel: t('allCompanies'),
-      // b1b1879d — only the companies being viewed. `listCompanies` is tenant-wide, so this offered every
-      // company while the list was scoped to one: picking another produced its drafts beside zero
-      // employees. The top-bar scope stays the OUTER bound and this picks from inside it, the same rule
-      // lib/company-filter.ts states for page-level company selection.
-      options: companies
-        .filter((c) => scopeIds.includes(c.id))
-        .map((c) => ({ value: c.id, label: c.name })),
-      removeAriaLabel: t('removeFilter', { label: t('company') }),
-    },
+    {kind:'multi',name:'companies',label:t('company'),ariaLabel:t('filterCompany'),options:organisationChoices.companies.map(c=>({value:c.id,label:c.name})),removeAriaLabel:t('removeFilter',{label:t('company')})},
     {
       kind: 'select',
       name: 'dept',
@@ -290,29 +275,32 @@ export default async function PeoplePage({
       removeAriaLabel: t('removeFilter', { label: t('employmentType') }),
     },
   ];
-  const filterValues = { q, company, dept, bucket: sp.bucket, type };
-  const activeFilterCount = [q, company, dept, sp.bucket, type].filter(Boolean).length;
-  const filterLabels = {
-    filter: t('filter'),
-    apply: t('applyFilters'),
-    clearAll: t('clearAllFilters'),
-    activeCount: t('activeFilters', { count: activeFilterCount }),
-  };
+  const uniqueOptions=(items:{value:string|null|undefined;label:string|null|undefined}[])=>{const unique=[...new Map(items.filter((item):item is {value:string;label:string}=>!!item.value&&!!item.label).map(item=>[item.value,item])).values()];return unique.map(item=>({...item,label:unique.some(other=>other.value!==item.value&&other.label===item.label)?item.label+' · '+item.value.slice(0,8):item.label})).sort((a,b)=>a.label.localeCompare(b.label));};
+  const multi=(name:string,label:string,options:{value:string;label:string}[]):FilterField=>({kind:'multi',name,label,ariaLabel:label,options,removeAriaLabel:t('removeFilter',{label})});
+  filterFields.push(
+   multi('bu',to('businessUnit'),uniqueOptions([...organisationChoices.companies.map(c=>({value:c.businessUnitId,label:c.businessUnit})),...organisationChoices.rows.map(row=>({value:row.businessUnitId,label:row.businessUnit}))])),
+   multi('parent',to('parentCompany'),uniqueOptions(organisationChoices.companies.map(c=>({value:c.parentCompanyId,label:c.parentCompany})))),
+   multi('group',to('businessGroup'),uniqueOptions(organisationChoices.companies.map(c=>({value:c.businessGroupId,label:c.businessGroup})))),
+   multi('grade',to('jobGrade'),['H',...Array.from({length:12},(_,i)=>String(i+12))].map(value=>({value,label:value}))),
+   multi('position',to('position'),uniqueOptions(organisationChoices.rows.map(row=>({value:row.positionId,label:row.position})))),
+   {kind:'select',name:'confirmation',label:to('confirmation'),ariaLabel:to('confirmation'),allLabel:to('all'),options:[{value:'confirmed',label:to('confirmed')},{value:'unconfirmed',label:to('unconfirmed')}],removeAriaLabel:t('removeFilter',{label:to('confirmation')})},
+   ...(['joinedFrom','joinedTo','probationFrom','probationTo'] as const).map(name=>({kind:'date' as const,name,label:to(name),ariaLabel:to(name),removeAriaLabel:t('removeFilter',{label:to(name)})})),
+   multi('quality',to('quality'),(['missing_business_unit','missing_job_grade','missing_direct_superior','company_not_in_structure','suspected_duplicate'] as const).map(value=>({value,label:to(value)}))),
+  );
+  const params=personnelQueryParams(sp),filterValues:Record<string,string|string[]|undefined>={};
+  for(const [key,value] of params)filterValues[key]=['companies','bu','parent','group','grade','position','quality'].includes(key)?value.split(','):value;
+  if(query.legacyStatus)filterFields.push({kind:'select',name:'status',label:t('colStatus'),ariaLabel:t('filterStatus'),allLabel:t('allStatuses'),options:[{value:'active',label:to('notTerminated')},{value:'terminated',label:to('terminated')}],removeAriaLabel:t('removeFilter',{label:t('colStatus')})});
+  if(company)filterFields.push({kind:'select',name:'company',label:t('company'),ariaLabel:t('filterCompany'),allLabel:t('allCompanies'),options:companies.map(c=>({value:c.id,label:c.name})),removeAriaLabel:t('removeFilter',{label:t('company')})});
+  if(query.filters.privateSearch)filterFields.push({kind:'select',name:'search',label:to('privateSearch'),ariaLabel:to('privateSearch'),allLabel:to('all'),options:[{value:query.filters.privateSearch,label:to('privateSearch')}],removeAriaLabel:t('removeFilter',{label:to('privateSearch')})});
+  if(q)filterFields.push({kind:'search',name:'q',label:t('search'),placeholder:t('searchPlaceholder'),ariaLabel:t('searchAriaLabel'),removeAriaLabel:t('removeFilter',{label:t('search')})});
+  const activeFilterCount=Object.keys(filterValues).length;
+  const filterLabels = {filter:t('filter'),apply:t('applyFilters'),clearAll:t('clearAllFilters'),activeCount:t('activeFilters',{count:activeFilterCount}),selectAll:to('selectAll'),deselectAll:to('deselectAll')};
 
   // ── Headcount cards (point 5) + card-as-quick-filter (point 6) ────────────────────────────────────
   // Each card is a plain <Link> carrying the CURRENT filters plus its own bucket, so a card click
   // narrows rather than replaces, works without JavaScript, and appears as a removable chip like every
   // other filter. `page` is deliberately dropped: a new narrowing starts at page one.
-  const cardHref = (bucket: string | null) => {
-    const params = new URLSearchParams();
-    if (q) params.set('q', q);
-    if (company) params.set('company', company);
-    if (dept) params.set('dept', dept);
-    if (type) params.set('type', type);
-    if (bucket) params.set('bucket', bucket);
-    const s = params.toString();
-    return s ? `/admin/personnel?${s}` : '/admin/personnel';
-  };
+  const cardHref = (bucket: string | null) => {const next=personnelQueryParams(sp);next.delete('bucket');if(bucket)next.set('bucket',bucket);return '/admin/personnel'+(next.size?'?'+next.toString():'');};
   const n = (k: keyof typeof headcount.byStatus) => headcount.byStatus[k] ?? 0;
   const cards = [
     // Total = every employment in the filtered scope. active_serving_notice and blacklisted fold in
@@ -342,17 +330,7 @@ export default async function PeoplePage({
 
   // The Export link carries the SCREEN's resolved columns, not just the filters, so the file cannot
   // disagree with the table even if the preference changes in another tab between the two requests.
-  const exportHref = (() => {
-    const params = new URLSearchParams();
-    if (q) params.set('q', q);
-    if (company) params.set('company', company);
-    if (dept) params.set('dept', dept);
-    if (type) params.set('type', type);
-    if (sp.bucket) params.set('bucket', sp.bucket);
-    if (sp.status) params.set('status', sp.status);
-    params.set('cols', columns.join(','));
-    return `/admin/personnel/export?${params.toString()}`;
-  })();
+  const exportHref = (()=>{const next=personnelQueryParams(sp);next.set('cols',columns.join(','));return '/admin/personnel/export?'+next.toString();})();
 
   /** The plain-text cell for a column, from the SAME projection the export prints. */
   const textCell = (e: (typeof employees)[number], key: EmployeeColumnKey) =>
@@ -361,11 +339,7 @@ export default async function PeoplePage({
       employmentType: e.employmentType ? t(EMPLOYMENT_TYPE_KEY[e.employmentType] ?? 'employmentType') : null,
     });
 
-  const pager = <Pager
-          basePath="/admin/personnel"
-          params={{ q, company, dept, status: sp.status, type, bucket: sp.bucket }}
-          state={pgState}
-        />;
+  const pager = <Pager hrefFor={over=>{const next=personnelQueryParams(sp);next.set('page',String(over.page));if(over.size)next.set('size',String(over.size));else if(sp.size)next.set('size',sp.size);return '/admin/personnel?'+next.toString();}} state={pgState}/>;
 
   return (
     // c002b3c3 — the Personnel module goes FULL WIDTH. `max-w-[100rem]` is not a new number: it is the
@@ -449,26 +423,8 @@ export default async function PeoplePage({
                 components/child-relief-review-table.tsx, their tests, the SCREENS column and the message
                 keys in all six locales — and r336's two kernel pins (core/payroll.ts and
                 core/payroll-view.ts both read child_relief_mode) would have to be rehomed first. */}
-            {/* c002b3c3 — Search Employee, beside the Filter button. It is NOT a second copy of the
-                filter's `q` box and does not narrow this table: it JUMPS to a profile. Both controls
-                are here because they answer different questions — "show me these people" and "take me
-                to this person" — and the second one previously had no answer at all. */}
-            <EmployeeSwitcher
-              employees={allEmployees.map((e) => ({
-                employmentId: e.employmentId,
-                name: e.name,
-                employeeCode: e.employeeCode,
-                company: e.company,
-                department: e.department,
-              }))}
-            />
-            <FilterPanel
-              action="/admin/personnel"
-              fields={filterFields}
-              values={filterValues}
-              labels={filterLabels}
-              dataTour="people-search"
-            />
+            {/* One list search below; the filter panel holds only ordinary shareable selections. */}
+            <PersonnelOrganisationFilters key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} fields={filterFields} values={filterValues} companies={organisationChoices.companies} labels={filterLabels} companySearchLabel={to('companySearch')} canInspectDuplicates={organisationChoices.canInspectDuplicates} duplicateHint={to('duplicateHint')} dataTour="people-search"/>
             <ColumnPicker
               columns={pickerColumns}
               selected={columns}
@@ -547,6 +503,8 @@ export default async function PeoplePage({
         })}
       </div>
 
+      <PersonnelPrivateSearch key={scopeIds.slice().sort().join(',')+'?'+personnelQueryParams(sp).toString()} parameters={[...personnelQueryParams(sp)]} active={!!query.filters.privateSearch} labels={{label:to('search'),placeholder:to('searchPlaceholder'),submit:to('searchButton'),privateHint:to('privateHint'),active:to(searchAvailable?'privateActive':'privateUnavailable'),clear:to('clearSearch'),share:to('shareView')}}/>
+      {!organisationChoices.canInspectDuplicates&&query.filters.qualityFlags?.includes('suspected_duplicate')&&<p role="status" className="text-sm text-muted-foreground">{to('duplicateUnavailable')}</p>}
       <FilterChips
         action="/admin/personnel"
         fields={filterFields}

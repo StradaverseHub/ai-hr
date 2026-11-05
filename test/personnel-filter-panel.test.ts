@@ -28,8 +28,8 @@ describe('Personnel filter panel: both pages use the consolidated component', ()
   for (const { file, action } of PAGES) {
     const src = read(file);
 
-    it(`${file} imports FilterPanel + FilterChips from @/components/filter-panel`, () => {
-      expect(src).toMatch(/import\s*\{[^}]*FilterPanel[^}]*\}\s*from\s*'@\/components\/filter-panel'/);
+    it(`${file} retains consolidated filters and removable chips`, () => {
+      if(file.startsWith('app/admin/'))expect(src).toContain('<PersonnelOrganisationFilters');else expect(src).toContain('<FilterPanel');
       expect(src).toMatch(/FilterChips/);
       // Mounted with the page's own base path so Apply/Clear/chips stay on the right route.
       expect(src.includes(`action="${action}"`)).toBe(true);

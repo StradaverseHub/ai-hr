@@ -1,3 +1,4 @@
+import {restorePreOrgRootReportingLines} from './helpers/pre-org-root-reporting-fixture';
 import {listPendingTasks} from '../core/approvals-inbox';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -162,7 +163,8 @@ describe('Attendance approval routing and exactly-once effects', () => {
         await expect(saveAttendanceWorkflow(a, input())).rejects.toMatchObject({ code: 'unresolved' });
         await owner.db.update(schema.employment).set({ terminatedOn: null }).where(eq(schema.employment.id, manager.employmentId));
         // Inject a graph cycle as owner: the ordinary org writer correctly refuses cycles itself.
-        await owner.db.insert(schema.reportingLine).values({ tenantId: b.tenantId, subordinateEmploymentId: manager.employmentId, managerEmploymentId: worker.employmentId, lineType: 'administrative', validFrom: '2020-01-01' });
+        await expect(owner.db.insert(schema.reportingLine).values({ tenantId: b.tenantId, subordinateEmploymentId: manager.employmentId, managerEmploymentId: worker.employmentId, lineType: 'administrative', validFrom: '2020-01-01' })).rejects.toMatchObject({cause:{code:'P0001',message:'Direct Superior would create a reporting loop'}});
+        await restorePreOrgRootReportingLines([{ tenantId: b.tenantId, subordinateEmploymentId: manager.employmentId, managerEmploymentId: worker.employmentId, lineType: 'administrative', validFrom: '2020-01-01' }]);
         await expect(saveAttendanceWorkflow(a, input())).rejects.toMatchObject({ code: 'unresolved' });
     });
     it('permits any one alternative, records HR acting on behalf, and bans self approval', async () => {

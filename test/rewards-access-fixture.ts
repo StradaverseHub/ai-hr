@@ -16,8 +16,11 @@ async function fixturePeople(ctx:SessionContext,change:RewardAccessChange){
  if(exists.length)return;
  const [dept]=await owner.db.select().from(s.department).where(and(eq(s.department.companyId,unit.companyId),eq(s.department.tenantId,ctx.tenantId))).limit(1);
  if(!dept)return;
- const [employment]=await owner.db.insert(s.employment).values({tenantId:ctx.tenantId,personId:user.personId,companyId:unit.companyId,hiredOn:todayInKualaLumpur(),employeeCode:'REVIEWER-'+randomUUID().slice(0,8)}).returning();
- await owner.db.insert(s.assignment).values({tenantId:ctx.tenantId,employmentId:employment.id,departmentId:dept.id,businessUnitId:unit.businessUnitId,companyId:unit.companyId,employmentType:'full_time',validFrom:todayInKualaLumpur()});
+ // Use the tenant-bound owner transaction so the real assignment guard derives the published BU.
+ await owner.withTenant(ctx,async tx=>{
+  const [employment]=await tx.insert(s.employment).values({tenantId:ctx.tenantId,personId:user.personId!,companyId:unit.companyId,hiredOn:todayInKualaLumpur(),employeeCode:'REVIEWER-'+randomUUID().slice(0,8)}).returning();
+  await tx.insert(s.assignment).values({tenantId:ctx.tenantId,employmentId:employment.id,departmentId:dept.id,businessUnitId:unit.businessUnitId,companyId:unit.companyId,employmentType:'full_time',validFrom:todayInKualaLumpur()});
+ });
 }
 async function independentChecker(ctx:SessionContext,changes:RewardAccessChange[]){
  const excluded=new Set([ctx.userId,...changes.flatMap(c=>[c.before?.userId,c.after?.userId])]);

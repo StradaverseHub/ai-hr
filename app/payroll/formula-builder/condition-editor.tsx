@@ -1,6 +1,7 @@
 'use client';
 import {useTranslations} from 'next-intl';
 import type {FormulaExpression,FormulaStatement,FormulaProgram,FormulaType} from '@/lib/pay-formula-language';
+import {PAY_FORMULA_LEGACY_PERSONNEL_FIELDS,PAY_FORMULA_PERSONNEL_ADAPTERS,personnelFormulaFieldDescriptor} from '@/lib/pay-formula-personnel';
 import {PAY_FORMULA_FUNCTIONS,payFormulaFunction,type FormulaParameter} from '@/lib/pay-formula-registry';
 import {todayInKualaLumpur} from '@/lib/hr-date';
 import {formulaButton,formulaInput,type FormulaBuilderOptions} from './ui-types';
@@ -16,7 +17,7 @@ function defaultExpression(kind:string,options:FormulaBuilderOptions):FormulaExp
 }
 const parameterKeys:Record<string,string>={'Pay Item Code':'payItem','Field':'field','Period':'period','Cycle':'cycle','Result reference':'run','Value':'value','Decimal places':'places','Unit':'unit','Basis':'basis','Group code':'group','ISO date':'date'};
 export function FormulaExpressionEditor({value,onChange,options,names,disabled=false,label,path='expression',depth=0}:{value:FormulaExpression;onChange:(value:FormulaExpression)=>void;options:FormulaBuilderOptions;names:{name:string;type:FormulaType}[];disabled?:boolean;label:string;path?:string;depth?:number}){
- const t=useTranslations('payFormula');const kind=value.kind==='literal'?value.value.type:value.kind;
+ const t=useTranslations('payFormula'),labels=useTranslations();const kind=value.kind==='literal'?value.value.type:value.kind;
  if(depth>28)return <p className="text-sm text-destructive">{t('nestingLimit')}</p>;
  const recursive=(child:FormulaExpression,change:(next:FormulaExpression)=>void,childLabel:string,key:string)=><FormulaExpressionEditor value={child} onChange={change} options={options} names={names} disabled={disabled} label={childLabel} path={path+'-'+key} depth={depth+1}/>;
  function parameterControl(fnCode:string,parameter:FormulaParameter,index:number,args:FormulaExpression[]){
@@ -25,7 +26,7 @@ export function FormulaExpressionEditor({value,onChange,options,names,disabled=f
   const update=(next:FormulaExpression)=>onChange({kind:'call',code:fnCode,args:args.map((arg,i)=>i===index?next:arg),loc:value.loc});
   const plain=expression.kind==='literal'?String(expression.value.value):'';
   let choices:{value:string;label:string}[]|null=null;
-  if(parameter.choices)choices=parameter.choices.map(choice=>({value:choice,label:t.has('fields.'+choice)?t('fields.'+choice):t.has('choices.'+choice)?t('choices.'+choice):choice}));
+  if(parameter.choices)choices=parameter.choices.filter(choice=>!options.personnelFields||parameter.name!=='Field'||options.personnelFields.some(field=>field.enabled&&(field.key===choice||(PAY_FORMULA_LEGACY_PERSONNEL_FIELDS[fnCode==='EmployeeProfile'?'profile':'employee'] as Record<string,string>)[choice]===field.fieldId||PAY_FORMULA_PERSONNEL_ADAPTERS.some(adapter=>adapter.key===choice&&adapter.fieldId===field.fieldId)))).map(choice=>({value:choice,label:t.has('fields.'+choice)?t('fields.'+choice):t.has('choices.'+choice)?t('choices.'+choice):(()=>{const descriptor=personnelFormulaFieldDescriptor(fnCode,choice);return descriptor&&labels.has(descriptor.labelKey)?labels(descriptor.labelKey):descriptor?.label??choice;})()}));
   else if(parameter.name==='Pay Item Code')choices=options.payItems.map(item=>({value:item.code,label:item.code+' · '+item.name}));
   else if(parameter.name==='Cycle')choices=[...new Map(options.cycles.map(cycle=>[cycle.code,{value:cycle.code,label:cycle.code+' · '+cycle.label}])).values()];
   else if(parameter.name==='Group code')choices=options.accumulations.map(group=>({value:group.code,label:group.code}));

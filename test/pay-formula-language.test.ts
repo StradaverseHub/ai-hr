@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {PAY_FORMULA_VARIABLE_CATEGORIES,type FormulaValue} from '../lib/pay-formula-registry';
-import {analyzePayFormula,applyFormulaAmount,divideFormulaDecimal,evaluatePayFormula,formulaDependencies,multiplyFormulaDecimal,normalizeFormulaDecimal,parsePayFormula,PayFormulaError,printPayFormula,roundFormulaDecimal,type FormulaProgram,type FormulaRequest} from '../lib/pay-formula-language';
+import {analyzePayFormula,applyFormulaAmount,divideFormulaDecimal,evaluatePayFormula,formulaDependencies,inspectPayFormula,multiplyFormulaDecimal,normalizeFormulaDecimal,parsePayFormula,PayFormulaError,printPayFormula,roundFormulaDecimal,type FormulaProgram,type FormulaRequest} from '../lib/pay-formula-language';
 const decimal=(value:string):FormulaValue=>({type:'decimal',value});
 const text=(value:string):FormulaValue=>({type:'string',value});
 const facts:Record<string,FormulaValue>={Basic:decimal('3000'),Accumulation:decimal('500'),Payrate:text('Monthly'),OrdinaryRate:decimal('26'),HoursPerDay:decimal('8'),Rate:decimal('1.5'),Input:decimal('10')};
@@ -116,5 +116,24 @@ Return a + {#History}("H001", "2026-01", "ME", "2") + {#Accumulation}("OT_GROSS"
   expect(()=>evaluatePayFormula(parsePayFormula(Array.from({length:65},()=>'{#Explain}("x")').join('\n')+'\nReturn 1'),{resolve})).toThrow(/explanation output/);
   const malicious={version:1,statements:[{kind:'return',value:{kind:'binary',operator:'**',left:{kind:'literal',value:decimal('1')},right:{kind:'literal',value:decimal('2')}}}]} as unknown as FormulaProgram;
   expect(()=>evaluatePayFormula(malicious,{resolve})).toThrow(/Unknown binary operator/);
+ });
+});
+
+
+describe('reserved unresolved authoring markers',()=>{
+ const quoted='If {#EmployeeProfile}("companyId") = "{#MISSING:Company}" Then\nReturn 9\nElse\nReturn 0\nEnd If';
+ it.each([quoted, "' {#MISSING:Company}\nReturn 1", 'Return 1 \' {#missing:Company}', 'Dim Value As String = "{#MiSsInG:Company}"\nReturn 1', 'Return 1\n\' {#MISSING:Decimal:Rate}', 'Return 1\n\' {#MISSING:'])('refuses reserved syntax anywhere in raw source: %s',source=>{
+  expect(()=>parsePayFormula(source)).toThrow(/Complete every reserved MISSING/);expect(inspectPayFormula(source)).toMatchObject({program:null,problems:[{code:'unresolved'}]});
+ });
+ it('refuses direct visual AST string/comment markers before analysis, printing or retained execution',()=>{
+  const complete=parsePayFormula('Dim Company As String = "Selected company"\nReturn 9');
+  const incomplete:FormulaProgram={...complete,statements:complete.statements.map(statement=>statement.kind==='declare'?{...statement,value:{kind:'literal',value:{type:'string',value:'{#MiSsInG:Company}'},loc:statement.loc}}:statement)};
+  const comment:FormulaProgram={version:1,statements:[{kind:'comment',text:'Unfinished {#MISSING:Company}',loc:{line:1,column:1}},...parsePayFormula('Return 9').statements]};
+  for(const program of [incomplete,comment]){expect(()=>analyzePayFormula(program)).toThrow(/Complete every reserved MISSING/);expect(()=>printPayFormula(program)).toThrow(/Complete every reserved MISSING/);expect(()=>evaluatePayFormula(program,{resolve})).toThrow(/Complete every reserved MISSING/);}
+ });
+ it('preserves ordinary MISSING words and reports the original marker position without changing source',()=>{
+  const source="' Ordinary MISSING text\nDim Value As String = \"{#MISSING:Company}\"\nReturn 1";
+  try{parsePayFormula(source);throw Error('Expected unresolved syntax rejection');}catch(error){expect(error).toBeInstanceOf(PayFormulaError);expect(error).toMatchObject({code:'unresolved',line:2,column:24});}
+  const completed='Dim Value As String = "MISSING company data"\n\' MISSING is an ordinary word\nReturn 9';expect(evaluatePayFormula(parsePayFormula(completed),{resolve}).amount).toBe('9');expect(printPayFormula(parsePayFormula(completed))).toContain('MISSING company data');
  });
 });

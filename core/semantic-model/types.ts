@@ -50,7 +50,7 @@ export type OwnerAnchor=`${string}#${string}`;
 export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public_holiday'|'absence'|'team_leave_balance'
  |'employment_profile'|'reporting_line'|'payslip'|'pay_change'|'claim_status'|'module_work'|'leave_approval_step'
  /** Step 4 explainers and setup co-pilot (./entities-explain.ts, ./entities-setup.ts). */
- |'statutory_explanation'|'entitlement_explanation'|'attendance_day_explanation'|'setup_copilot'|'password_policy_guidance'|'correction_controls_guidance'
+ |'statutory_explanation'|'entitlement_explanation'|'attendance_day_explanation'|'setup_copilot'|'password_policy_guidance'|'correction_controls_guidance'|'organisation_tagging_guidance'
  /** Step 5 recommendations, digest, agent registry and existing worker inputs (./entities-recommend.ts). */
  |'leave_decision_recommendation'|'daily_digest'|'agent_worker'|'payroll_anomaly'|'readiness_gap'|'pending_approval'|'followup_item'
  /** The harness's suggest_action result, including the pending leave requests an approver chooses between. */
@@ -86,7 +86,9 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  /** AI v2 Phase 2 P2-5: the approved company policies in force for the caller (./entities-handbook.ts). */
  |'policy_handbook'
  /** AI v2 Phase 2 P2-6: the AI quality page's figures, for administrators (./entities-quality.ts). */
- |'ai_quality';
+ |'ai_quality'
+ /** Payroll history learning (P2): "Learned this cycle", counts only, for payroll administrators (./entities-payroll-learning.ts). */
+ |'payroll_learning';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;

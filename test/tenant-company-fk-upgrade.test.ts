@@ -1,3 +1,4 @@
+import {APPROVED_UPGRADE_TAIL,assertApprovedUpgradeTail,migrateApprovedUpgrade} from './helpers/approved-upgrade';
 /** ADR-0174 populated upgrade through 2100–2102, on an owned disposable localhost database only.
  * A cross-tenant row present at the boundary must stop the whole upgrade with a readable report and leave
  * the ledger untouched; once that row is resolved the upgrade validates every key, rewrites no row and
@@ -23,7 +24,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:Entry[]};
  const boundary=journal.entries.findIndex(row=>row.tag===TAIL[0].tag);
  expect(boundary).toBe(668);
- expect(journal.entries.slice(boundary)).toEqual(TAIL);
+ assertApprovedUpgradeTail(journal.entries);
+ expect(journal.entries.slice(boundary,boundary+TAIL.length)).toEqual(TAIL);
  expect(journal.entries[boundary-1]).toEqual({idx:811,version:'7',when:1793330001411,tag:'2011_payroll_loops_hardening',breakpoints:true});
  const prefix=journal.entries.slice(0,boundary);
  const folder=mkdtempSync(join(tmpdir(),'tenant-company-fk-upgrade-')),database='ai_hr_tenant_fk_upgrade_'+randomUUID().replaceAll('-','');
@@ -79,8 +81,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
 
   // The defect the old plain FK accepted: tenant A's row naming tenant B's company.
   await storage.client`insert into location(id,tenant_id,company_id,code,name) values(${defect},${tenantA},${foreign},'XB','Fictional misfiled site')`;
+  for(const row of TAIL)copyFileSync('db/migrations/'+row.tag+'.sql',join(folder,row.tag+'.sql'));
+  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:[...prefix,...TAIL]}));
   const withDefect=await native(),beforePrivileges=await privileges();
-  const refused=await migrate(storage.db,{migrationsFolder:'db/migrations'}).then(()=>null,(e:unknown)=>e);
+  const refused=await migrate(storage.db,{migrationsFolder:folder}).then(()=>null,(e:unknown)=>e);
   const chain:{message?:string;detail?:string;code?:string}[]=[];
   for(let cur=refused as {message?:string;detail?:string;code?:string;cause?:unknown}|null,i=0;cur&&i<4;cur=cur.cause as typeof cur,i++)chain.push(cur);
   const report=chain.find(link=>link.code==='23503');
@@ -91,9 +95,11 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(await storage.client`select has_function_privilege('ai_hr_app','app.company_subtree(uuid)','EXECUTE') as callable`).toEqual([{callable:true}]);
 
   // The owner resolves the defect deliberately; the upgrade itself never rewrites or deletes it.
+  // Complete the original exact 2100-2102 proof before later migrations intentionally add
+  // private tables/functions and change policies. The forward-to-current phase follows below.
   await storage.client`delete from location where id=${defect}`;
   const upgradeNative=await native();
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  await migrate(storage.db,{migrationsFolder:folder});
   const afterLedger=await ledger();
   expect(afterLedger).toHaveLength(671);expect(afterLedger.slice(0,668)).toEqual(beforeLedger);
   expect(afterLedger.slice(668).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(
@@ -115,8 +121,29 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   await expect(storage.client`insert into location(tenant_id,company_id,code,name) values(${tenantA},${foreign},'XB','Fictional misfiled site')`)
    .rejects.toMatchObject({code:'23503',constraint_name:'location_company_tenant_fk'});
 
-  const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:folder});
   expect(await ledger()).toEqual(afterLedger);expect(await native()).toEqual(beforeRerun);
+  await migrateApprovedUpgrade(storage);
+  const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
+  expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));
+  expect(await native()).toEqual(beforeRerun);
+  // The final 2211 expansion adds validated tenant matches beside the original NO ACTION keys.
+  const expansionRelations = [
+   'company_registration_classification', 'job_architecture_import_preview', 'job_architecture_jd_publication',
+   'job_architecture_position_revision', 'job_architecture_proposal', 'job_architecture_seat',
+   'job_architecture_suggestion', 'reward_company_year_review', 'reward_page_grant',
+   'reward_pat_version', 'reward_plan_company', 'reward_setup_grant',
+  ];
+  const expansionNames = new Set(expansionRelations.map(rel => rel + '_company_tenant_fk'));
+  const completeKeys = await keys();
+  expect(completeKeys.filter(row => !expansionNames.has(row.conname))).toEqual(installed);
+  expect(completeKeys.filter(row => expansionNames.has(row.conname))).toEqual(expansionRelations.map(rel => ({
+   rel, conname: rel + '_company_tenant_fk', convalidated: true, action: 'a',
+  })));
+  expect(await asAdmin(tx=>tx`select app.can_admin_employment(${employmentA}::uuid) own,app.can_admin_employment(${employmentB}::uuid) foreign`)).toEqual([{own:true,foreign:false}]);
+  const terminalPrivileges=await privileges();
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  expect(await ledger()).toEqual(complete);expect(await native()).toEqual(beforeRerun);expect(await privileges()).toEqual(terminalPrivileges);expect(await keys()).toEqual(completeKeys);
  }finally{
   await application.client.end();await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`);await admin.end();rmSync(folder,{recursive:true,force:true});
  }

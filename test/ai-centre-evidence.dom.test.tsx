@@ -76,8 +76,8 @@ describe('AI centre screens', () => {
     state.locale = locale;
     const view = wrap(locale, <div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="ask" isAdmin /></div>);
     const nav = view.container.querySelector('nav[data-ai-centre-tabs]') as HTMLElement;
-    // AI v2 Phase 2: Policies (P2-5, its own page) and Insights, for every role, between Operations and Administration.
-    expect(within(nav).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/assistant?view=jobs', '/control-tower', '/policies', '/assistant?view=insights', '/control-tower/agents/features', '/assistant?view=how']);
+    // AI Centre restructure (owner decisions 27 and 29): Ask · Operations ▾ · Insights · Policies · Administration ▾ · How it works.
+    expect(within(nav).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/control-tower/loops', '/assistant?view=insights', '/policies', '/control-tower/agents/features', '/assistant?view=how']);
     expect(within(nav).queryByRole('link', { name: new RegExp(messagesFor(locale).aiCentre.tabs.inbox) })).toBeNull();
     expect(within(nav).getByRole('link', { current: 'page' })).toHaveAttribute('href', '/assistant');
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), locale, 'ai-centre-tabs-without-inbox', FICTION, 'atelier');
@@ -89,9 +89,9 @@ describe('AI centre screens', () => {
     const view = wrap('en', tabs);
     expect(screen.queryByRole('link', { name: messagesFor('en').aiCentre.tabs.operations })).toBeNull();
     expect(screen.queryByRole('link', { name: messagesFor('en').aiCentre.tabs.administration })).toBeNull();
-    // AI v2 Phase 2: employees see Policies (their own company's approved policies, P2-5) and Insights too (their own payroll
-    // readiness; the HR capacity ledger stays administrators').
-    expect(screen.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/assistant?view=jobs', '/policies', '/assistant?view=insights', '/assistant?view=how']);
+    // Employees see Policies (their own company's approved policies, P2-5); Insights is for administrators (owner decision
+    // 27: their own payroll readiness is its own page), and Delegated jobs is hidden until it works.
+    expect(screen.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/policies', '/assistant?view=how']);
     view.unmount();
   });
 
@@ -110,9 +110,10 @@ describe('AI centre screens', () => {
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-workers', FICTION, 'atelier');
   }, 120000);
 
-  it('Delegated jobs says nothing is delegated and lists what never can be', async () => {
+  // Hidden until it works (AI Centre restructure): no tab, and its view forwards to Ask; the screen itself is kept.
+  it('Delegated jobs (hidden, kept for when it works) says nothing is delegated and lists what never can be', async () => {
     state.locale = 'en';
-    const view = wrap('en', <div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="jobs" isAdmin={false} />{await AiCentreDelegatedJobs()}</div>);
+    const view = wrap('en', <div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active={null} isAdmin={false} />{await AiCentreDelegatedJobs()}</div>);
     expect(screen.getByText(messagesFor('en').aiCentre.jobs.leadStrong)).toBeInTheDocument();
     expect(view.container.querySelector('a[href="/delegations"]')).not.toBeNull();
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-jobs', FICTION, 'atelier');

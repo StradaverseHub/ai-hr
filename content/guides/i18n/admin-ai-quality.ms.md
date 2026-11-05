@@ -17,6 +17,6 @@ Setiap angka ialah peratusan bersama kiraannya. Carta menunjukkan bahagian yang 
 
 ## Cadangan
 
-**Cadangan** menyenaraikan apa yang dicadangkan oleh gelung daripada keputusan anda sendiri. Sesuatu cadangan hanya digunakan apabila pentadbir meluluskannya, mulai larian seterusnya, dan **Kembalikan** memulihkan tetapan terdahulu sebagai versi baharu. Pembetulan setiap gelung mengikut bulan ditunjukkan di sebelahnya; tahap sesuatu gelung hanya berubah di halamannya sendiri.
+**Cadangan** menyenaraikan apa yang dicadangkan oleh gelung daripada keputusan anda sendiri, untuk dibaca sahaja di sini. Setiap satu diputuskan di [Tetapan kitaran gaji](/control-tower/loops/payroll-cycle/settings): sesuatu cadangan hanya digunakan apabila pentadbir meluluskannya di situ, mulai larian seterusnya, dan cadangan yang telah digunakan diubah semula di situ sebagai versi baharu. Pembetulan setiap gelung mengikut bulan ditunjukkan di sebelahnya; tahap sesuatu gelung hanya berubah di halamannya sendiri.
 
 Pembelajaran tidak pernah mengubah pengiraan, kebenaran atau apa yang boleh ditunjukkan oleh AI Centre.

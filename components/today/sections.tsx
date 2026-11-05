@@ -118,8 +118,6 @@ export async function WatchingSection(p:Common){
  }
  if(data.exceptions)notes.push({kind:'exceptions',label:t('watch.exceptionsLabel'),title:t('watch.exceptionsTitle',{count:data.exceptions.total}),
   body:t('watch.exceptionsBlocking',{count:data.exceptions.blocking}),href:'/control-tower/exceptions',cta:t('watch.exceptionsCta')});
- if(data.passports)notes.push({kind:'passports',label:t('watch.expiryLabel'),title:t('watch.passportTitle',{count:data.passports.count}),
-  body:t('watch.passportBody',{date:hrDay(p.locale,data.passports.first)}),href:'/personnel',cta:t('watch.passportCta')});
  return <TodaySection id="today-watching" title={t('watching')} count={notes.length} empty={notes.length===0} emptyText={t('watchingEmpty')}
   unavailable={data.failed?t('unavailable'):null}>
   {notes.map(note=><TodayNote key={note.kind} {...note}/>)}

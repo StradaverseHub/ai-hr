@@ -1,13 +1,14 @@
 /** Canonical credential/principal check. No connection, session or record lookup is implicit. */
+import {accountAvailable} from './account-state';
 import { z } from 'zod';
 import type { AuthSql } from './record-store';
 import { InternalAuthError } from './errors';
 import { passwordChangeRequired } from './password-policy';
 export type Credential = { subject: string; tenantId: string; issuer: string; organization: string; username: string; email: string;
   emailVerified: boolean; enabled: boolean; password: string | null; mustChange: boolean; version: string;
-  totpSecret: string | null; lastStep: number; recoveryHashes: string[]; enrollmentId?: string; passwordChangedAt?: number };
+  totpSecret: string | null; lastStep: number; recoveryHashes: string[]; enrollmentId?: string; passwordChangedAt?: number; accountExpiryObservedUntil?:string;suspended?:boolean; accountActiveUntil?:string|null; temporaryPasswordExpiresAt?:number;temporaryPasswordUsed?:boolean };
 export async function assertActiveCredential(tx: AuthSql, c: Credential) {
-  if (!c.enabled || !c.password || c.mustChange || !c.totpSecret || !c.emailVerified) throw new InternalAuthError('invalidLogin');
+  if (!accountAvailable(c) || !c.password || c.mustChange || !c.totpSecret || !c.emailVerified) throw new InternalAuthError('invalidLogin');
   const rows = await tx.unsafe('select app_user_id,tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
   const principal = rows[0];
   if (!principal || typeof principal.app_user_id !== 'string' || principal.tenant_id !== c.tenantId) throw new InternalAuthError('invalidLogin');
@@ -20,12 +21,15 @@ export async function assertActiveCredential(tx: AuthSql, c: Credential) {
  * They bound decrypted input; they add no password, entitlement, MFA or eligibility policy and do
  * not change existing Auth readers. Active state remains assertActiveCredential's authority. */
 const credentialProjection=z.object({
- subject:z.uuid(),tenantId:z.uuid(),issuer:z.string().url().max(500),
+ // Tenant IDs are existing PostgreSQL identifiers; Auth subjects/versions are server-minted RFC UUIDs.
+ subject:z.uuid(),tenantId:z.guid(),issuer:z.string().url().max(500),
  organization:z.string().max(64),username:z.string().max(64),email:z.string().max(320),
  emailVerified:z.boolean(),enabled:z.boolean(),password:z.string().max(1024).nullable(),
  mustChange:z.boolean(),version:z.uuid(),totpSecret:z.string().max(1024).nullable(),
  lastStep:z.number().int().safe().min(-1),recoveryHashes:z.array(z.string().max(128)).max(1000),
  passwordChangedAt:z.number().int().safe().positive().optional(),
+ accountExpiryObservedUntil:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),suspended:z.boolean().optional(),accountActiveUntil:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+ temporaryPasswordUsed:z.boolean().optional(),temporaryPasswordExpiresAt:z.number().int().safe().positive().optional(),
  enrollmentId:z.string().max(500).optional(),
 }).strict();
 export function parseCredential(raw:unknown):Credential|null {

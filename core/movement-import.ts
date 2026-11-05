@@ -1,3 +1,6 @@
+import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
+import {deriveCompanyOrganisationTx} from './company-organisation';
+import {organisationImportWarningsTx} from './derived-organisation-display';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
 /** Bounded canonical Movement rehearsals and per-employee atomic application.
@@ -92,7 +95,9 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
  const submitted=record.cells.kind??'';const code=lookup(submitted,source.types.map(type=>({value:type.code,label:type.label??type.code})),'event_type');
  const resolved=await resolveMovementEventTypeTx(tx,ctx.tenantId,code);
  if(!resolved?.active)throw new Error('unknown_or_inactive_event_type');
- const issues=movementImportCellIssues(record,resolved.behaviourKind);if(issues.length)throw new Error(issues.join('; '));
+ const managed=await organisationManagedTx(tx);
+ const checked=managed?{...record,cells:{...record.cells,businessUnitId:undefined}}:record;
+ const issues=movementImportCellIssues(checked,resolved.behaviourKind);if(!managed&&record.ignoredOrganisation?.businessUnit)issues.push('not_applicable:businessUnitId');if(issues.length)throw new Error(issues.join('; '));
  const effectiveDate=record.importVersion===2&&resolved.behaviourKind==='blacklist'?todayInKualaLumpur():movementImportDate(record.cells.effectiveDate!)!;
  const [dates]=await tx.select({hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,lastWorkingDate:employment.lastWorkingDate,resignationDate:employment.resignationDate}).from(employment).where(eq(employment.id,employmentId)).limit(1);
  if(!dates)throw new Error('employee_not_available');
@@ -102,9 +107,11 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
  if(resolved.behaviourKind==='blacklist'&&effectiveDate!==todayInKualaLumpur())throw new Error('blacklist_date_must_be_today');
  const targetCompanyId=record.cells.companyId?lookup(record.cells.companyId,source.companies,'companyId'):currentCompanyId;
  const catalog=targetCompanyId===currentCompanyId?source:await catalogTx(tx,ctx,targetCompanyId);
+ const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId:resolved.behaviourKind==='entityTransfer'?targetCompanyId:currentCompanyId,asOf:effectiveDate});
  const input:CreateMovementInput={employmentId,kind:resolved.code,effectiveDate};
  for(const [key,raw] of Object.entries(record.cells)){
   const field=key as MovementFormField;if(field==='kind'||field==='effectiveDate'||raw==null)continue;
+  if(field==='businessUnitId'&&(managed||tags.status!=='legacy'))continue;
   if(field==='companyId')input.companyId=targetCompanyId;
   else if(field==='departmentId'||field==='positionId'||field==='businessUnitId'||field==='locationId'||field==='gradeId'||field==='managerEmploymentId')input[field]=lookup(raw,(catalog.fields[field]??[]).map(option=>({...option,aliases:[...(option.aliases??[]),...(source.companies.find(c=>c.value===targetCompanyId)?[option.label,...option.codes??[],...option.aliases??[]].map(alias=>source.companies.find(c=>c.value===targetCompanyId)!.label+' · '+alias):[])]})),field);
   else if(field==='endDate'||field==='resignationDate'||field==='tenderResignationDate'||field==='resignationEffectiveDate')input[field]=movementImportDate(raw)!;
@@ -120,6 +127,7 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
    const options=catalog.fields[field]??[];input[field as keyof typeof fieldKinds]=options.length?lookup(raw,options,field):raw;
   }else if(field==='remarks'||field==='currency'||field==='payMode'||field==='paymentTerm'||field==='terminationReasonCode')input[field]=raw;
  }
+ if(managed||tags.status!=='legacy'){const state=await movementCurrentStateTx(tx,employmentId);input.businessUnitId=organisationBusinessUnit(tags,managed,input.businessUnitId,resolved.behaviourKind==='entityTransfer'&&targetCompanyId!==currentCompanyId?null:state.businessUnitId);}
  return {input,source,catalog,behaviour:resolved.behaviourKind};
 }
 async function subjectTx(tx:Tx,ctx:SessionContext,companyId:string,code:string){
@@ -150,7 +158,8 @@ async function fingerprintTx(tx:Tx,ctx:SessionContext,id:string,companyId:string
  const source=await catalogTx(tx,ctx,companyId);const destinations=new Set([companyId]);
  for(const record of records)if(record.cells.companyId){try{destinations.add(lookup(record.cells.companyId,source.companies,'companyId'));}catch{/* The row validator reports an invalid reference without discarding other rows. */}}
  const catalogs=[];for(const destination of [...destinations].sort()){budget(deadline);const catalogue=destination===companyId?source:await catalogTx(tx,ctx,destination);const stable={...catalogue,fields:{...catalogue.fields,managerEmploymentId:catalogue.fields.managerEmploymentId?.map(({isTestRecord:_classification,...facts})=>facts)}};catalogs.push([destination,digest(stable)]);}
- return digest({tenant:ctx.tenantId,user:ctx.userId??null,inputHash,selection:employeeSelection,emp,assignments,salaries,lines,events,catalogs,references,blacklistDay:records.some(row=>row.importVersion===2&&source.types.find(t=>t.code===row.cells.kind)?.behaviour==='blacklist')?todayInKualaLumpur():null});
+ const organisation=[];for(const record of records){const asOf=recordDay(record);if(/^\d{4}-\d{2}-\d{2}$/.test(asOf))for(const destination of [...destinations].sort())organisation.push(await deriveCompanyOrganisationTx(tx,ctx,{companyId:destination,asOf}));}
+ return digest({organisation:organisation.filter(tags=>tags.status!=='legacy'),tenant:ctx.tenantId,user:ctx.userId??null,inputHash,selection:employeeSelection,emp,assignments,salaries,lines,events,catalogs,references,blacklistDay:records.some(row=>row.importVersion===2&&source.types.find(t=>t.code===row.cells.kind)?.behaviour==='blacklist')?todayInKualaLumpur():null});
 }
 function message(error:unknown){
  // Drizzle wraps driver errors; its outer message contains SQL and bound values even when only
@@ -258,7 +267,8 @@ async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,i
  const afterValues:Record<string,string|null>=after;
  const changedFields=Object.entries(before).filter(([key,value])=>afterValues[key]!==value).map(([key])=>key);
  const extra=Object.fromEntries(Object.entries(input).filter(([key])=>!['employmentId','kind','effectiveDate','typeCode'].includes(key)&&!(key in after)).map(([key,value])=>[key,value==null?null:String(value)]));
- const view:MovementImportRow={...rowView(record),...(record.sourceRows?{sourceRows:record.sourceRows}:{}),...(record.companyCode!==undefined?{companyCode:record.companyCode}:{}),eventType:input.kind,effectiveDate:input.effectiveDate,status:'valid',errors:[],warnings:adapted.warnings,baselineDate:adapted.baselineDate,before:readable(before,catalogBefore),proposed:{...readable(after,catalogAfter),...extra},scheduled,payrollFlaggedPeriods:'payrollFlaggedPeriods' in result&&Array.isArray(result.payrollFlaggedPeriods)?result.payrollFlaggedPeriods:[]};
+ const organisation=await organisationImportWarningsTx(tx,ctx,{companyId:resolved.companyId||before.companyId,asOf:resolved.effectiveDate,businessUnit:record.cells.businessUnitId??record.ignoredOrganisation?.businessUnit,parentCompany:record.ignoredOrganisation?.parentCompany});
+ const view:MovementImportRow={...rowView(record),...(record.sourceRows?{sourceRows:record.sourceRows}:{}),...(record.companyCode!==undefined?{companyCode:record.companyCode}:{}),eventType:input.kind,effectiveDate:input.effectiveDate,status:'valid',errors:[],warnings:[...adapted.warnings,...organisation.warnings],baselineDate:adapted.baselineDate,before:readable(before,catalogBefore),proposed:{...readable(after,catalogAfter),...extra},scheduled,payrollFlaggedPeriods:'payrollFlaggedPeriods' in result&&Array.isArray(result.payrollFlaggedPeriods)?result.payrollFlaggedPeriods:[]};
  return {view,input,changedFields,references:adapted.references,rawAfter:afterValues};
 }
 async function rehearseSequenceTx(tx:Tx,ctx:SessionContext,records:MovementImportRecord[],id:string,deadline:number){
@@ -342,7 +352,8 @@ async function applyCorrectionTx(tx:Tx,ctx:SessionContext,record:MovementImportR
  const afterValues:Record<string,string|null>=after;
  const changedFields=Object.entries(before).filter(([field,value])=>afterValues[field]!==value).map(([field])=>field);
  const catalogAfter=after.companyId!==before.companyId?await catalogTx(tx,ctx,after.companyId):catalog;
- const view:MovementImportRow={...rowView(record),eventType:kind,effectiveDate,status:'valid',errors:[],before:readable(before,catalog),proposed:readable(after,catalogAfter),...(closedPayrollPeriods.length?{closedPayrollPeriods}:{})};
+ const organisation=await organisationImportWarningsTx(tx,ctx,{companyId:after.companyId,asOf:effectiveDate,businessUnit:record.cells.businessUnitId??record.ignoredOrganisation?.businessUnit,parentCompany:record.ignoredOrganisation?.parentCompany});
+ const view:MovementImportRow={...rowView(record),eventType:kind,effectiveDate,status:'valid',errors:[],warnings:organisation.warnings,before:readable(before,catalog),proposed:readable(after,catalogAfter),...(closedPayrollPeriods.length?{closedPayrollPeriods}:{})};
  return {view,references,changedFields,rawAfter:afterValues,action,originalId:movementId,originalKind:base.kind,originalDate:base.effectiveDate,original:base.input??base.recorded,replacementId,closedPayrollPeriods};
 }
 class PreviewRollback extends Error{constructor(readonly employee:MovementImportEmployee){super('movement_preview_rollback');}}
@@ -447,14 +458,14 @@ export async function commitMovementImport(ctx:SessionContext,p:{companyId?:stri
       const common={employeeCode:code,sourceRows:record.sourceRows??[record.source?.row??record.row],action:row.action,reason:record.reason?.trim()??'',originalMovementId:row.originalId};
       await recordImportItemTx(tx,ctx,{attemptId:p.history.attemptId,companyId,employmentId:subject.id,itemKey:`${record.row}|${row.action}|${row.originalId}`,label:`${code} · ${subject.name} · ${label(row.originalKind)} · ${row.originalDate}`,ordinal:record.row,status:'applied',
        before:{...common,eventType:row.originalKind,eventLabel:label(row.originalKind),effectiveDate:row.originalDate,movementId:row.originalId,values:pick(row.view.before,shown),original:{...row.original}} satisfies MovementImportItemState,
-       after:{...common,eventType:row.view.eventType,eventLabel:label(row.view.eventType),effectiveDate:row.view.effectiveDate,movementId:row.action==='update'?row.replacementId:null,sequence,values:pick(row.view.proposed,shown),raw:pick(row.rawAfter,row.changedFields),...(row.closedPayrollPeriods.length?{closedPayrollPeriods:row.closedPayrollPeriods}:{})} satisfies MovementImportItemState});
+       after:{...common,organisationWarnings:row.view.warnings??[],eventType:row.view.eventType,eventLabel:label(row.view.eventType),effectiveDate:row.view.effectiveDate,movementId:row.action==='update'?row.replacementId:null,sequence,values:pick(row.view.proposed,shown),raw:pick(row.rawAfter,row.changedFields),...(row.closedPayrollPeriods.length?{closedPayrollPeriods:row.closedPayrollPeriods}:{})} satisfies MovementImportItemState});
      }
      for(const [index,{record,plan,row,movementIds}]of applied.entries()){const sequence=corrected.length+index;
       const shown=[...new Set([...Object.keys(plan.view.before??{}),...Object.keys(plan.view.proposed??{})])].filter(field=>field!=='companyName'&&plan.view.before?.[field]!==plan.view.proposed?.[field]);
       const base={employeeCode:code,eventType:plan.input.kind,eventLabel:labels.get(plan.input.kind)??plan.input.kind,effectiveDate:plan.input.effectiveDate,sourceRows:record.sourceRows??[record.source?.row??record.row]};
       for(const movementId of movementIds.length?movementIds:[null])await recordImportItemTx(tx,ctx,{attemptId:p.history.attemptId,companyId,employmentId:subject.id,itemKey:`${record.row}|${movementId??'none'}`,label:`${code} · ${subject.name} · ${base.eventLabel} · ${base.effectiveDate}`,ordinal:record.row,status:'applied',
        before:{...base,movementId,values:pick(plan.view.before,shown)} satisfies MovementImportItemState,
-       after:{...base,movementId,sequence,scheduled:row.view.scheduled===true,values:pick(plan.view.proposed,shown),raw:pick(row.rawAfter,row.changedFields)} satisfies MovementImportItemState});
+       after:{...base,organisationWarnings:row.view.warnings??[],movementId,sequence,scheduled:row.view.scheduled===true,values:pick(plan.view.proposed,shown),raw:pick(row.rawAfter,row.changedFields)} satisfies MovementImportItemState});
      }
     }
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'movement-import',aggregateId:result.batchId!,eventType:'movement-import.employee.applied',actor:actorOf(ctx),subjectEmploymentId:subject.id,payload:{companyId,eventCount:chosen.length,sourceRows:chosen.map(row=>({key:row.row,sheet:row.source?.sheet??'CSV',row:row.source?.row??row.row})),eventTypes:[...new Set(chosen.map(row=>row.cells.kind).filter(Boolean))],
@@ -471,7 +482,7 @@ export async function commitMovementImport(ctx:SessionContext,p:{companyId?:stri
 }
 /** What an applied movement item stores (before/after). `raw` holds the state values the movement left for
  * the fields it changed; a revert is blocked while any of them has since been changed again. */
-export type MovementImportItemState={employeeCode:string;eventType:string;eventLabel:string;effectiveDate:string;sourceRows:number[];movementId:string|null;values:Record<string,string|null>;sequence?:number;scheduled?:boolean;raw?:Record<string,string|null>;
+export type MovementImportItemState={employeeCode:string;eventType:string;eventLabel:string;effectiveDate:string;sourceRows:number[];movementId:string|null;values:Record<string,string|null>;organisationWarnings?:string[];sequence?:number;scheduled?:boolean;raw?:Record<string,string|null>;
  /** 646355e5 slice C — present on Update and Delete items only. `movementId` is then the original movement
   * (before) and the movement the Update left (after; null for a Delete). `original` is the recorded input. */
  action?:'update'|'delete';reason?:string;originalMovementId?:string;original?:Record<string,unknown>;closedPayrollPeriods?:string[]};

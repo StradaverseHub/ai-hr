@@ -1,3 +1,4 @@
+import {restorePreOrgRootReportingLines} from './helpers/pre-org-root-reporting-fixture';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
@@ -136,7 +137,8 @@ describe('797ba70b: explicit hierarchy routing and frozen accountable actors', (
     await owner.db.update(schema.appUser).set({ archivedAt: null }).where(eq(schema.appUser.id, f.actors[1].userId!));
     const extra = await createAppUser(b.tenantId, f.second.personId, 'manager'); await assertUnresolved();
     await owner.db.update(schema.appUser).set({ archivedAt: new Date() }).where(eq(schema.appUser.id, extra));
-    await owner.db.insert(schema.reportingLine).values({ tenantId: b.tenantId, subordinateEmploymentId: f.third.employmentId, managerEmploymentId: f.d.employmentId, lineType: 'administrative', validFrom: '2020-01-01' });
+    await expect(owner.db.insert(schema.reportingLine).values({ tenantId: b.tenantId, subordinateEmploymentId: f.third.employmentId, managerEmploymentId: f.d.employmentId, lineType: 'administrative', validFrom: '2020-01-01' })).rejects.toMatchObject({cause:{code:'P0001',message:'Direct Superior would create a reporting loop'}});
+    await restorePreOrgRootReportingLines([{ tenantId: b.tenantId, subordinateEmploymentId: f.third.employmentId, managerEmploymentId: f.d.employmentId, lineType: 'administrative', validFrom: '2020-01-01' }]);
     await assertUnresolved();
     const fallback = input(); fallback.stages.forEach(s => { s.level.alternates = [{ kind: 'hr_admin', employmentId: null }]; });
     await enable(f.a, fallback);

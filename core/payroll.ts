@@ -1,3 +1,4 @@
+import {personnelGroupingReadinessTx} from './personnel-quality';
 import {payrollEmploymentPredicate,outstandingPaymentPredicate,payrollCompensationEffectiveOn,payrollEmploymentEnd,payrollRunContextsTx,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 import {PayrollTaxBasisError} from '../lib/payroll-tax-basis';
 import {readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx} from './payroll-formula-inputs';
@@ -3806,7 +3807,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // statutory profile / bank details) do not block here — the operator confirms them explicitly in
     // generateAction. A subset reprocess targets a processed run that already passed this gate.
     if (!subset) {
-      const checks = await preProcessChecksTx(tx, { ...batch, scope: batch.scope }, isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'));
+      const checks = await preProcessChecksTx(tx, { ...batch, scope: batch.scope }, isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'),ctx);
       // BLOCKER: no compensation row effective for the period (the earnings inner-join would silently
       // drop that employee; future rows do not supply a missing salary) OR a zero
       // basic/rate (feedback 64fb5e48 — the Personnel record would pay nothing). The old BASIC-component
@@ -3821,7 +3822,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         checks.missingCompensation.length +
         (checks.zeroBasic?.length ?? 0) +
         (checks.unpayablePayMode?.length ?? 0) +
-        (checks.tp3YearMismatch?.length ?? 0);
+        (checks.tp3YearMismatch?.length ?? 0)+(checks.organisationGrouping?.length??0);
       if (blocked > 0) throw new PreProcessBlockedError(blocked);
     }
 
@@ -3963,9 +3964,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         const addChecks = await preProcessChecksTx(
           tx,
           { ...batch, scope: { employmentIds: postedSubsetIds } },
-          isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'),
+          isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'),ctx,
         );
         const blockedRows = [
+          ...(addChecks.organisationGrouping??[]).map(r=>({...r,gap:'pending Group structure tagging: '+r.reason})),
           ...addChecks.missingCompensation.map((r) => ({ ...r, gap: 'no current salary record' })),
           // r369 — `zeroBasic` is now the daily/hourly-no-rate leg only, so the gap names it. The
           // no-monthly-basic population is NOT a blocker here: whether they can be reprocessed depends on
@@ -4974,6 +4976,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     type PostInputs={wages:number;additional:number;overtime:number;lp:number;zakat:number;options:Record<string,number>};
     const postEarlierByEmp=new Map<string,{inputs:PostInputs;paid:Record<string,number>}>();
     const earlierRunByEmp = new Map<string, { additional: number; overtime: number }>();
+    const earlierEpfByEmp = new Map<string, { employee: number | null; employer: number | null }>();
     const earlierTaxBasisByEmp = new Map<string,{additionalDelta:number;normal:number|undefined;paidPcb:number;paidBonus:number;corrected:boolean}>();
     const earlierNonCashByEmp = new Map<string,{ownedEntries:NonCashEntry[];regularEntries:NonCashEntry[]|null;ownedEaEntries:NonCashEaEntry[];regularEaEntries:NonCashEaEntry[]|null;legacyRegular:boolean}>();
     const accumulatedNonCashByEmp = new Map<string,{bik:number;vola:number;complete:boolean}>();
@@ -4999,6 +5002,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         .where(and(eq(payrollBatch.companyId,batch.companyId),eq(payrollBatch.payPeriodId, batch.payPeriodId), lt(payrollBatch.runSeq, batch.runSeq)));
       const correctedEarlier = await readEffectiveTaxBasesTx(tx, ctx, earlier.map(s => s.id));
       for (const r of earlier) {
+        // Read what the original payslip charged before applying any tax-input correction.
+        const savedEpf = r.statutory as { epfEmployee?: unknown; epfEmployer?: unknown } | null;
+        const accumulated = earlierEpfByEmp.get(r.employmentId) ?? { employee: 0, employer: 0 };
+        const addSaved = (total: number | null, value: unknown) =>
+          total !== null && typeof value === 'number' && Number.isFinite(value) ? round2(total + value) : null;
+        earlierEpfByEmp.set(r.employmentId, {
+          employee: addSaved(accumulated.employee, savedEpf?.epfEmployee),
+          employer: addSaved(accumulated.employer, savedEpf?.epfEmployer),
+        });
         const correction = correctedEarlier.get(r.id);
         if (correction) {
           r.statutory = correction.statutory;
@@ -5193,6 +5205,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // Read by core/pay-rule.ts's fixed_allowances aggregate, which must NOT total one-offs.
       oneOff?: boolean;
       sourceId?: string;
+      inputQuantity?: { qty: number; unit: string | null };
       eaFormLine?: string | null;
       // 711adcd2 — pay_component.orp_overtime (migration 0456): the tick box that decides whether this item
       // counts towards the fixed_allowances aggregate a tenant's overtime formula reads. It REPLACED the
@@ -5356,6 +5369,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 displayCategory: t.compDisplayCategory ?? null,
                 eaFormLine: t.compEaFormLine ?? null,
                 sourceId: t.id,
+                ...(t.quantity != null ? { inputQuantity: { qty: Number(t.quantity), unit: t.unit } } : {}),
               }
             : t.kind === 'earning'
               ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', oneOff: true, amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, orpOvertime: false, orpUnpaidLeave: false, prorates: false, prorateOverride: null, rule: null, resolutionOrder: 0, epfBonus2012: false, pcbRemunerationType: null, pcbExemptionCode: null, displayCategory: null }
@@ -5489,6 +5503,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
        * input a `per_hour` / `per_day` rule consumed.
        */
       detail?: { qty: number; rate: number; unit: 'hours' | 'days' | null };
+      displayCategory?: string | null;
+      inputQuantity?: { qty: number; unit: string | null };
     };
 
     // ── Feedback 3c473773 — the DISPLAY overlay ────────────────────────────────────────────────────────
@@ -5559,6 +5575,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // byte-identical to today (MONTHLY PARKING is that case on production and must stay that way).
       /** Deduction money ticked "subject to EPF" — leaves the EPF wage base. */
       epfWageDeduction: number;
+      epfDeductionItems: { label: string; amount: number }[];
       /** Deduction money ticked "subject to SOCSO/EIS" — leaves the SOCSO/EIS/SKBBK base. */
       socsoWageDeduction: number;
       /** Deduction money ticked "subject to PCB" — leaves the taxable remuneration base. */
@@ -5608,6 +5625,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           // 2333b7fb — likewise: with typed components off there are no deduction pay items at all (the
           // legacy path has no deduct bucket — `deduct: 0` above), so there is nothing to carve.
           epfWageDeduction: 0,
+          epfDeductionItems: [],
           socsoWageDeduction: 0,
           pcbWageDeduction: 0,
           hrdfWageDeduction: 0,
@@ -5634,6 +5652,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // 017d9c25 — the four base carve-outs, accumulated beside the buckets they carve (see the return type).
       let epfWageExcluded = 0, epfAdditionalExcluded = 0, socsoWageExcluded = 0, socsoWageExtra = 0;
       // 2333b7fb — and the four deduction-side reductions, accumulated in the `kind === 'deduction'` branch.
+      const epfDeductionItems: { label: string; amount: number }[] = [];
       let epfWageDeduction = 0, socsoWageDeduction = 0, pcbWageDeduction = 0, hrdfWageDeduction = 0;
       // 711adcd2 — the unpaid-leave ORP base's pay-item half. See the return type.
       let orpUnpaidLeaveExtra = 0;
@@ -5812,7 +5831,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           qr && qrQty > 0 && round2(qrQty * qr.rate) === applied
             ? { qty: qrQty, rate: qr.rate, unit: qr.unit }
             : null;
-        currentLine = { code: c.code, name: c.name, amount: applied, buckets: [], epf: c.epf, socso: c.socso, pcb: c.pcb, hrdf: c.hrdf, ...(rateDetail ? { detail: rateDetail } : {}) };
+        currentLine = { code: c.code, name: c.name, amount: applied, displayCategory: c.displayCategory ?? null, ...(c.inputQuantity ? { inputQuantity: c.inputQuantity } : {}), buckets: [], epf: c.epf, socso: c.socso, pcb: c.pcb, hrdf: c.hrdf, ...(rateDetail ? { detail: rateDetail } : {}) };
         // Feedback 3c473773 — the box THIS item declares, read for the display tally only.
         currentCategory = c.displayCategory ?? null;
         // ── 711adcd2 — "Add to Unpaid Leave ORP Calculation" ──────────────────────────────────────
@@ -5902,7 +5921,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         if (c.kind === 'deduction') {
           deduct = round2(deduct + applied);
           contributes('deduct', applied);
-          if (c.epf) epfWageDeduction = round2(epfWageDeduction + applied);
+          if (c.epf) {
+            epfWageDeduction = round2(epfWageDeduction + applied);
+            epfDeductionItems.push({ label: c.name, amount: -applied });
+          }
           if (c.socso) socsoWageDeduction = round2(socsoWageDeduction + applied);
           if (c.pcb) pcbWageDeduction = round2(pcbWageDeduction + applied);
           if (c.hrdf) hrdfWageDeduction = round2(hrdfWageDeduction + applied);
@@ -5998,7 +6020,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         else { reimburse = round2(reimburse + applied); contributes('reimburse', applied); } // all-false earning: paid but untaxed
       }
       for(const row of exemptionInformation.values())row.thisMonth=row.table==='lp' && isAdditionalRun ? 0 : round2((exemptionUsed[row.code]??0)+(reusedExemption.get(row.code)??0));
-      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, recordLines, componentLines, lpDeclared, exemptionUsed, exemptionInformation:[...exemptionInformation.values()].sort((a,b)=>a.code.localeCompare(b.code)), nonCashEntries, nonCashEaEntries, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, epfDeductionItems, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, recordLines, componentLines, lpDeclared, exemptionUsed, exemptionInformation:[...exemptionInformation.values()].sort((a,b)=>a.code.localeCompare(b.code)), nonCashEntries, nonCashEaEntries, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
     };
 
     /**
@@ -6865,6 +6887,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         taxSelectionSource:resolvedTaxScheme.selectionSource,
         taxCircumstance:resolvedTaxSchemes.get(e.employmentId)?.taxCircumstance,
         // EPF rule selection (#95): age + citizenship pick Part A / Part E senior / non-citizen 2%/2%.
+        epfWageMonth: payPeriod,
         epfAge: age,
         epfCitizenship: e.epfCitizenship ?? 'citizen',
         // EPF contribution mode (Wave 2B): i-Topup excess / exempt. Rates are decimals; null = statutory.
@@ -7255,6 +7278,62 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // statDeductions, so an employer-side override cannot reduce anyone's net pay.
       const st = applyStatutoryAdjustment(stComputed, statutoryAdjustmentByEmp.get(e.employmentId) ?? null);
 
+      // The method explains the cumulative wage calculation. Keep the final amounts on this
+      // payslip separate because prior runs and statutory adjustments can change what it charges.
+      const epfWorking = stCore.epfWorking;
+      const savedEpfWorking = epfWorking ? (() => {
+        const items: { label: string; amount: number }[] = [];
+        const add = (label: string, value: number) => {
+          const amount = round2(value);
+          if (amount !== 0) items.push({ label, amount });
+        };
+        add('Basic salary', basic);
+
+        let namedAllowance = 0;
+        let namedBonus = 0;
+        for (const line of en.componentLines) {
+          if (!line.epf) continue;
+          for (const { bucket, amount } of line.buckets) {
+            if (bucket === 'wage') {
+              namedAllowance += amount;
+              add(line.name, amount);
+            } else if (bucket === 'bonus') {
+              namedBonus += amount;
+              add(line.name, amount);
+            }
+          }
+        }
+        add('Allowance', en.allowanceApplied - en.epfWageExcluded - namedAllowance);
+        add('Bonus', bonus - en.epfAdditionalExcluded - namedBonus);
+        add('Unpaid leave and absence', -unpaidDeduction);
+        for (const item of en.epfDeductionItems) add(item.label, item.amount);
+
+        const priorPost = postEmployment ? postEarlierByEmp.get(e.employmentId)?.inputs : undefined;
+        if (priorPost) {
+          add('Earlier runs in the wage month', priorPost.wages + priorPost.additional
+            - priorPost.options.epfWageExcluded - priorPost.options.epfWageDeduction - priorPost.options.epfAdditionalExcluded);
+        } else if (isAdditionalRun || restatesMonth) {
+          add('Earlier additional pay in the wage month', earlierRun.additional);
+        }
+        // The pack clamps the normal and additional wage streams separately. Disclose the
+        // difference when a deduction exceeds its stream rather than overstating eligible pay.
+        add('EPF wage adjustment', epfWorking.actualWage - items.reduce((sum, item) => sum + item.amount, 0));
+
+        const usesSchedule = epfWorking.employer.method === 'schedule_row' || epfWorking.employer.method === 'schedule_formula';
+        const scheduleEffectiveFrom = usesSchedule
+          ? resolved.components.epf.effectiveFrom ?? epfWorking.scheduleEffectiveFrom : undefined;
+        const earlierEpf = earlierEpfByEmp.get(e.employmentId);
+        return {
+          ...epfWorking,
+          ...(scheduleEffectiveFrom ? { scheduleEffectiveFrom } : {}),
+          items,
+          employeeThisRun: stComputed.epfEmployee,
+          employerThisRun: stComputed.epfEmployer,
+          ...(earlierEpf?.employee != null ? { employeeEarlierRuns: earlierEpf.employee } : {}),
+          ...(earlierEpf?.employer != null ? { employerEarlierRuns: earlierEpf.employer } : {}),
+        };
+      })() : null;
+
       // Item 5a461b99 — "Employer bears" reassignment. The contribution is still computed AND reported in
       // full (st.socsoEmployee / st.eisEmployee / st.socsoSkbbk are untouched, so SOCSO/EIS reports + the
       // submitted PERKESO file are unchanged). What changes is WHO funds the employee's share: when a flag is
@@ -7558,6 +7637,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // zero-OT slip / additional run, which sets slipOvertime to 0).
         statutory: {
           ...st,
+          ...(savedEpfWorking ? { epfWorking: savedEpfWorking } : {}),
           ...(formulaRefsByEmp.has(e.employmentId)?{formulaEvaluations:formulaRefsByEmp.get(e.employmentId)!.filter(ref=>stampComponentLines.some(line=>line.code===ref.componentCode))}:{}),
           ...statutoryProvenance,
           // Saved selection input, before existing proration. Back-pay reads this new contract rather
@@ -10952,6 +11032,7 @@ export type PreProcessAdvisory = {
   //
   // OPTIONAL so pre-existing advisory literals stay valid; absent ⇒ no such employees.
   tp3YearMismatch?: PreProcessCheckRow[];
+  organisationGrouping?: Array<PreProcessCheckRow & {reason:string}>;
 };
 
 /** Shared tx-level core: the same scoped, period-active population as generatePayslips' employee
@@ -10960,16 +11041,10 @@ export type PreProcessAdvisory = {
 async function preProcessChecksTx(
   tx: Tx,
   batch: PayrollEligibilityRun & { scope: unknown },
-  /**
-   * Whether the tenant has the typed-pay-components module (ADR-0077 slice 3).
-   *
-   * Passed as a BOOLEAN rather than threading a SessionContext into a Tx-level helper: this function
-   * is deliberately session-free — it takes a `tx` and plain data — and pulling an entitlement context
-   * into it would invert that layering for one predicate. Every caller has a ctx in scope and computes
-   * it there.
-   */
+  // Financial readiness uses the real caller and canonical company/dated organisation owner.
   typedComponents: boolean,
-  outstandingEnabled=false,
+  outstandingEnabled:boolean,
+  ctx:SessionContext,
 ): Promise<PreProcessAdvisory> {
   const [y, m] = batch.payPeriod.split('-').map(Number);
   const periodStart = `${batch.payPeriod}-01`;
@@ -11117,9 +11192,12 @@ async function preProcessChecksTx(
       .limit(1);
     hrdfUnregistered = (coStat?.hrdfStatus ?? 'not_registered') === 'not_registered';
   }
-  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], nothingPayable: [], staleBasicComponent: [], missingStatutory: [], missingBank: [], currencyMismatch: [], hrdfSubjectUnregistered: [], tp3YearMismatch: [] };
+  const out: PreProcessAdvisory = { missingCompensation: [], unpayablePayMode: [], zeroBasic: [], nothingPayable: [], staleBasicComponent: [], missingStatutory: [], missingBank: [], currencyMismatch: [], hrdfSubjectUnregistered: [], tp3YearMismatch: [], organisationGrouping: [] };
+  const grouping=await personnelGroupingReadinessTx(tx,ctx,{employmentIds:rows.map(row=>row.employmentId),asOf:periodEnd});
+  const pendingGrouping=new Map(grouping.filter(row=>!row.ready).map(row=>[row.employmentId,row.reason]));
   for (const r of rows) {
     const row: PreProcessCheckRow = { employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode };
+    if(pendingGrouping.has(r.employmentId))out.organisationGrouping!.push({...row,reason:pendingGrouping.get(r.employmentId)??'company_not_in_structure'});
     // The period-effective row must exist: both validation and calculation select this same record.
     // A future open revision cannot supply a missing salary or override an applicable historical one.
     const outstandingOnly=outstandingEnabled&&r.endedOn!==null&&r.endedOn<periodStart;
@@ -11186,7 +11264,7 @@ export function preProcessAdvisory(ctx: SessionContext, batchId: string): Promis
       .where(eq(payrollBatch.id, batchId))
       .limit(1);
     if (!batch) return { missingCompensation: [], missingStatutory: [], missingBank: [] };
-    return preProcessChecksTx(tx, batch, isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'));
+    return preProcessChecksTx(tx, batch, isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'),ctx);
   });
 }
 
@@ -11300,7 +11378,7 @@ function listPayslipLessEligibleTx(
     const checks = await preProcessChecksTx(
       tx,
       {...batch,scope:{employmentIds:ids}},
-      isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'),
+      isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'),ctx,
     );
     const flagsOf = (list: PreProcessCheckRow[] | undefined, label: string) =>
       (list ?? []).map((r) => [r.employmentId, label] as const);
@@ -11315,6 +11393,7 @@ function listPayslipLessEligibleTx(
     // Item 1bb09a73 — a declared Form TP3 figure this run would seed as zero blocks the ADD too, for
     // the same reason it blocks the run: the person would be paid with a wrong PCB and nothing would say so.
     push(blockerBy, flagsOf(checks.tp3YearMismatch, 'tp3YearMismatch'));
+    push(blockerBy,flagsOf(checks.organisationGrouping,'organisationGrouping'));
     push(warningBy, flagsOf(checks.missingStatutory, 'missingStatutory'));
     push(warningBy, flagsOf(checks.missingBank, 'missingBank'));
     // r369 (item eb949191) — A DELIBERATE SKIP MUST NOT READ AS "YOU FORGOT THIS PERSON".
@@ -11381,10 +11460,11 @@ export function preProcessAdvisoryForSelection(
       // all-clear for a run the terminal Process action then refuses. Same parity trap the note above
       // records for currencyMismatch.
       tp3YearMismatch: [],
+      organisationGrouping: [],
     };
     const contexts=await payrollRunContextsTx(tx,input.companyIds,input.payPeriod,input.payrollCycleId);
     for (const run of contexts) {
-      const a = await preProcessChecksTx(tx,{...run,scope}, isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'));
+      const a = await preProcessChecksTx(tx,{...run,scope}, isModuleEnabled(ctx, 'typed_pay_components'),settingEnabled(ctx,'payroll.individual_txn_pay_enabled'),ctx);
       merged.missingCompensation.push(...a.missingCompensation);
       merged.unpayablePayMode!.push(...(a.unpayablePayMode ?? []));
       merged.zeroBasic!.push(...(a.zeroBasic ?? []));
@@ -11395,6 +11475,7 @@ export function preProcessAdvisoryForSelection(
       merged.currencyMismatch!.push(...(a.currencyMismatch ?? []));
       merged.hrdfSubjectUnregistered!.push(...(a.hrdfSubjectUnregistered ?? []));
       merged.tp3YearMismatch!.push(...(a.tp3YearMismatch ?? []));
+      merged.organisationGrouping!.push(...(a.organisationGrouping??[]));
     }
     return merged;
   });

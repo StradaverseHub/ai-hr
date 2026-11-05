@@ -1,3 +1,4 @@
+import {readManagedAccountDirectory} from '@/core/account-management';
 import {PasswordUnlock} from './password-unlock';
 import {internalSelected} from '@/lib/internal-auth/config';
 import {getTranslations} from 'next-intl/server';
@@ -17,13 +18,14 @@ export default async function UsersPage({searchParams}:{searchParams:Promise<{er
  if(['created','cancelled'].includes(params.manualSuccess??''))legacy.set('manualSuccess',params.manualSuccess!);
  if(legacy.size)redirect(`/admin/users/create?${legacy}`);
  const {rows,groupAdmin,companies,roleOptions,assistantGranted}=await loadUsersData(s);
+ const accounts=await readManagedAccountDirectory(s,rows.flatMap(row=>row.appUserId?[row.appUserId]:[]));
  const target=params.activate&&/^[0-9a-f-]{36}$/i.test(params.activate)?`?activate=${encodeURIComponent(params.activate)}`:'';
- return <div className="mx-auto max-w-5xl space-y-6">
+ return <div className="mx-auto w-full space-y-6">
   <SecurityPageHeader title={center('users.title')} actions={<span className="text-sm text-muted-foreground">{t('userCount',{count:rows.length})}</span>}/>
   {params.error&&<div role="alert"><ErrorBanner message={params.error}/></div>}
   <div data-tour="admin-provisioning" className="rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">{t.rich('provisioningNote',{strong:chunks=><span className="font-medium">{chunks}</span>,em:chunks=><em>{chunks}</em>})}</div>
   {isGroupAdmin(s)&&<><LegacySecurityNavigation/><noscript><p>{center('legacyHelp')}</p><Link href={`/admin/users/create${target}`} className={btnGhost}>{center('create.title')}</Link><Link href={`/admin/users/invite${target}`} className={btnGhost}>{center('invite.title')}</Link></noscript></>}
   {groupAdmin&&internalSelected()&&<PasswordUnlock users={rows.flatMap(row=>row.appUserId?[{id:row.appUserId,label:row.name??row.email??row.appUserId}]:[])}/>}
-  <UsersDirectory rows={rows} groupAdmin={groupAdmin} includeArchived={params.archived==='1'} companies={companies} roleOptions={[...roleOptions]} assistantGrantedIds={rows.flatMap(row=>row.appUserId&&assistantGranted.has(row.appUserId)?[row.appUserId]:[])}/>
+  <UsersDirectory accounts={accounts} rows={rows} groupAdmin={groupAdmin} includeArchived={params.archived==='1'} companies={companies} roleOptions={[...roleOptions]} assistantGrantedIds={rows.flatMap(row=>row.appUserId&&assistantGranted.has(row.appUserId)?[row.appUserId]:[])}/>
  </div>;
 }

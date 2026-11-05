@@ -5,6 +5,7 @@
 import {useMemo,useRef,useState,type ReactNode} from 'react';
 import Link from 'next/link';
 import {useTranslations} from 'next-intl';
+import {personnelFormulaFieldDescriptor} from '@/lib/pay-formula-personnel';
 import {parsePayFormula,type FormulaValue} from '@/lib/pay-formula-language';
 import {explainPayFormula,type FormulaExplanationWords} from '@/lib/pay-formula-explain';
 import {PAY_FORMULA_TEMPLATE_KEYS,payFormulaTemplateSource,type PayFormulaTemplateKey} from '@/lib/pay-formula-templates';
@@ -76,11 +77,12 @@ export function FormulaChecks({diagnostics,onSelect}:{diagnostics:readonly Formu
 const SYMBOL:Readonly<Record<string,string>>={'*':'×','/':'÷','+':'+','-':'−'};
 const shown=(value:FormulaValue)=>value.type==='boolean'?String(value.value):value.value;
 export function FormulaSampleTest({text}:{text:string}){
- const t=useTranslations('payFormula'),busy=useRef(false);
+ const t=useTranslations('payFormula'),labels=useTranslations(),busy=useRef(false);
  const [values,setValues]=useState<PayFormulaSampleValues>({}),[result,setResult]=useState<PayFormulaSampleResult|null>(null),[error,setError]=useState(''),[pending,setPending]=useState(false);
  const [resultKey,setResultKey]=useState('');
  const inputKey=JSON.stringify([text,values]);
  const fields=payFormulaSampleFields(text);
+ const fieldLabel=(field:typeof fields[number])=>{if(t.has('generator.fields.'+field.field))return t('generator.fields.'+field.field);const descriptor=personnelFormulaFieldDescriptor(field.code,field.field);return descriptor&&labels.has(descriptor.labelKey)?labels(descriptor.labelKey):descriptor?.label??field.field;};
  const visible=PAY_FORMULA_SAMPLE_VARIABLES.filter(name=>['Basic','FixedAllowances','CalendarDays','Input'].includes(name)||new RegExp('\\{#'+name+'\\}','i').test(text));
  async function run(){
   if(busy.current)return;const requestKey=inputKey;busy.current=true;setPending(true);setError('');
@@ -105,7 +107,7 @@ export function FormulaSampleTest({text}:{text:string}){
  return <div className="space-y-4">
   <p className="text-sm text-muted-foreground">{t('testArea.sampleHelp')}</p>
   <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">{visible.map((name:PayFormulaSampleVariable)=><label key={name} className="text-sm">{t('testArea.fields.'+name)}<input className={formulaInput} inputMode="decimal" value={values[name]??''} onChange={event=>setValues({...values,[name]:event.target.value})}/></label>)}</fieldset>
-  {fields.length>0&&<fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">{fields.map(field=><label key={field.key} className="text-sm">{t('generator.fields.'+field.field)}<input className={formulaInput} type={field.type==='date'?'date':'text'} maxLength={500} value={values.fields?.[field.key]??''} onChange={event=>setValues({...values,fields:{...values.fields,[field.key]:event.target.value}})}/></label>)}</fieldset>}
+  {fields.length>0&&<fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">{fields.map(field=><label key={field.key} className="text-sm">{fieldLabel(field)}<input className={formulaInput} type={field.type==='date'?'date':'text'} maxLength={500} value={values.fields?.[field.key]??''} onChange={event=>setValues({...values,fields:{...values.fields,[field.key]:event.target.value}})}/></label>)}</fieldset>}
   <button type="button" className={formulaPrimary} disabled={pending||!text.trim()} onClick={run}>{pending?t('working'):t('testArea.run')}</button>
   {error&&resultKey===inputKey&&<p className="text-sm text-destructive">{error}</p>}
   {shownResult&&<div role="status" className="space-y-3">

@@ -1,7 +1,10 @@
+import {personnelFormulaDependencyTx} from './pay-formula-personnel';
 /** Authorized source adapter shared by simulation and the native payroll kernel. */
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {Tx,SessionContext} from '../db/client';
+import {personnelFormulaAdapter,PAY_FORMULA_LEGACY_PERSONNEL_FIELDS,PAY_FORMULA_PERSONNEL_PROVIDER_VERSION,type PersonnelFormulaAdapter} from '../lib/pay-formula-personnel';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {isCalendarDate} from '../lib/calendar-date';
 import {serviceYearsAt} from '../lib/completed-years';
@@ -47,13 +50,12 @@ export async function formulaReadRequirementsAllowedTx(tx:Tx,ctx:SessionContext,
   if(workforce&&c!=='compensation'&&subject.companyId!==companyId&&!await resolvePayrollPermission(tx,ctx,`report.read.${c}`,subject.companyId))return false;
  }return true;
 }
-const profileFields:Record<string,string>={joinDate:'employment.employment_dates_and_service.joindate',groupJoinDate:'employment.employment_dates_and_service.hiredon',resignationDate:'employment.employment_dates_and_service.resignationdate',confirmationDate:'employment.employment_dates_and_service.confirmationdate',lastWorkingDate:'employment.employment_dates_and_service.lastworkingdate',employmentType:'employment.organisation_assignment.employmenttype',employeeNo:'profile.personal_details.employeecode',departmentCode:'employment.organisation_assignment.departmentname',positionCode:'employment.organisation_assignment.positionname',gradeCode:'employment.organisation_assignment.gradename'};
-const employeeFields:Record<string,string>={dateOfBirth:'profile.personal_details.dateofbirth',gender:'profile.personal_details.gender',nationality:'profile.personal_details.nationality',maritalStatus:'profile.personal_details.maritalstatus'};
+const profileFields:Record<string,string>=PAY_FORMULA_LEGACY_PERSONNEL_FIELDS.profile,employeeFields:Record<string,string>=PAY_FORMULA_LEGACY_PERSONNEL_FIELDS.employee;
 const basicField='payroll.basic_salary_and_salary_history.basicsalary',payModeField='payroll.basic_salary_and_salary_history.paymode';
 function sourceFields(request:FormulaRequest):string[]{
  const code=request.code,a=String(request.args[0]?.value??'');
  if(code==='Basic'||code==='Input'||code==='FixedAllowances')return [basicField];if(code==='Payrate')return [payModeField];
- if(code==='EmployeeProfile')return [profileFields[a]];if(code==='EmployeeInformation')return [employeeFields[a]];
+ if(code==='EmployeeProfile')return [personnelFormulaAdapter(code,a)?.fieldId??profileFields[a]];if(code==='EmployeeInformation')return [personnelFormulaAdapter(code,a)?.fieldId??employeeFields[a]];
  if(['JoinDate','JoinedThisMonth'].includes(code))return [profileFields.joinDate];
  if(['GroupJoinDate','GroupJoinedThisMonth'].includes(code))return [profileFields.groupJoinDate];
  if(['ResignationDate','ResignedThisMonth'].includes(code))return [profileFields.resignationDate];
@@ -92,6 +94,45 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
  const column={dateOfBirth:'date_of_birth',gender:'gender',nationality:'nationality',maritalStatus:'marital_status'}[key]!;
  const rows=await tx.execute<{value:unknown}>(sql`select ${sql.identifier(column)}::text as value from person where id=(select person_id from employment where id=${context.employmentId}::uuid)`);values.set(id,rows[0]?.value);sources.push({owner:'person-current',field:id,value:rows[0]?.value});
  }
+ const personnelValues=new Map<string,unknown>();
+ for(const formula of active.values()){const contract=await personnelFormulaDependencyTx(tx,formula.program);if(contract)sources.push({owner:'personnel-registry',contract});}
+ const adapters=[...new Map(calls.flatMap(call=>{const adapter=personnelFormulaAdapter(call.code,String(call.args[0]?.value??''));return adapter?[[adapter.key,adapter] as const]:[];})).values()];
+ for(const adapter of adapters){
+  if(!allowed.get(adapter.fieldId))continue;
+  if(adapter.dateBasis==='current-only'&&context.asOf!==todayInKualaLumpur()){
+   // Reuse only a source read referenced by this exact run's current native payslip, never a
+   // convenient current master or an arbitrary earlier evaluation. Missing/ambiguous evidence fails closed.
+   if(snapshot.batchId){
+    const rows=await tx.execute<{id:string;value:FormulaValue}>(sql`select distinct e.id,r.value->'value' as value from pay_formula_evaluation e join payslip p on p.batch_id=e.batch_id and p.employment_id=e.employment_id and p.tenant_id=e.tenant_id and coalesce(p.statutory->'formulaEvaluations','[]'::jsonb) @> jsonb_build_array(jsonb_build_object('evaluationId',e.id::text)) cross join lateral jsonb_array_elements(coalesce(e.payload->'reads','[]'::jsonb)) r(value) where e.tenant_id=${ctx.tenantId}::uuid and e.company_id=${context.companyId}::uuid and e.employment_id=${context.employmentId}::uuid and e.batch_id=${snapshot.batchId}::uuid and e.period=${context.period} and e.payload->'sources'->'context'->>'asOf'=${context.asOf} and exists(select 1 from jsonb_array_elements(coalesce(e.payload->'sources'->'sourceEvidence','[]'::jsonb)) evidence(value) where evidence.value->>'provider'=${PAY_FORMULA_PERSONNEL_PROVIDER_VERSION} and evidence.value->>'key'=${adapter.key} and evidence.value->>'owner' in ('typed-personnel','typed-personnel-frozen')) and r.value->>'code'=${adapter.group==='profile'?'EmployeeProfile':'EmployeeInformation'} and r.value->'args'->0->>'value'=${adapter.key} order by e.id`);
+    const distinct=new Set(rows.map(row=>JSON.stringify(row.value)));if(distinct.size===1&&rows[0]?.value?.type===adapter.type){personnelValues.set(adapter.key,rows[0].value.value);sources.push({owner:'typed-personnel-frozen',provider:PAY_FORMULA_PERSONNEL_PROVIDER_VERSION,key:adapter.key,asOf:context.asOf,evaluationId:rows[0].id,value:rows[0].value});}
+   }
+   continue;
+  }
+  let value:unknown,sourceId:string|undefined;
+  if(adapter.adapter==='company'){
+   if(adapter.column==='id')value=context.companyId;
+   else {const [row]=await tx.execute<{value:unknown}>(sql`select legal_name as value from company where id=${context.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid`);value=row?.value;}
+  }else if(adapter.adapter==='assignment'){
+   const rows=await tx.execute<{id:string;value:unknown}>(sql`select a.id,${sql.identifier('a')}.${sql.identifier(adapter.column)}::text as value from assignment a join employment on employment.id=a.employment_id where a.employment_id=${context.employmentId}::uuid and a.tenant_id=${ctx.tenantId}::uuid and coalesce(a.company_id,${employmentInformationAt('companyId',sql`${context.asOf}::date`,sql`${employment.companyId}`)}::uuid)=${context.companyId}::uuid and a.valid_from<=${context.asOf}::date and (a.valid_to is null or a.valid_to>${context.asOf}::date) and a.superseded_at is null`);if(rows.length===1){value=rows[0].value;sourceId=rows[0].id;}
+  }else if(adapter.adapter==='derived'){
+   const personAge=adapter.column==='age';
+   const [row]=personAge?await tx.execute<{value:string|null}>(sql`select date_of_birth::text as value from person where id=(select person_id from employment where id=${context.employmentId}::uuid) and tenant_id=${ctx.tenantId}::uuid`):await tx.execute<{value:string|null}>(sql`select ${adapter.column==='companyService'?joinDate:hiredOn}::text as value from employment where id=${context.employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+   if(row?.value&&isCalendarDate(row.value)&&row.value<=context.asOf)value=String(serviceYearsAt(row.value,context.asOf));
+  }else{
+   // The table and column are closed software-owned adapter metadata, never registration input.
+   const table=adapter.adapter==='statutory'?'employee_statutory_my':adapter.adapter;
+   const subject=adapter.adapter==='employment'?sql`id=${context.employmentId}::uuid`:adapter.adapter==='person'?sql`id=(select person_id from employment where id=${context.employmentId}::uuid)`:sql`person_id=(select person_id from employment where id=${context.employmentId}::uuid)`;
+   const [row]=await tx.execute<{value:unknown}>(sql`select ${sql.identifier(adapter.column)}::text as value from ${sql.identifier(table)} where ${subject} and tenant_id=${ctx.tenantId}::uuid`);value=row?.value;
+  }
+  if(value!==null&&value!==undefined&&value!=='')personnelValues.set(adapter.key,value);
+  sources.push({owner:'typed-personnel',provider:PAY_FORMULA_PERSONNEL_PROVIDER_VERSION,key:adapter.key,dateBasis:adapter.dateBasis,asOf:context.asOf,sourceId,value});
+ }
+ const personnelFieldValue=(adapter:PersonnelFormulaAdapter,loc:FormulaRequest['loc']):FormulaValue=>{
+  if(!allowed.get(adapter.fieldId))throw new PayFormulaError('Formula source permission is unavailable.','FORMULA_SOURCE_DENIED');
+  usedFields.add(adapter.fieldId);const value=personnelValues.get(adapter.key);if(value===null||value===undefined||value==='')throw new FormulaLanguageError('source',`Personnel field ${adapter.key} is unavailable for ${context.asOf} (${adapter.dateBasis}); no recorded source is available.`,loc);
+  if(adapter.type==='decimal')return decimal(String(value));if(adapter.type==='boolean')return {type:'boolean',value:value===true||value==='true'};
+  return {type:adapter.type,value:String(value)};
+ };
  if(allowed.get(basicField))values.set(basicField,snapshot.basic);
  if(allowed.get(payModeField)){const rows=await tx.execute<{id:string;value:string}>(sql`select id,pay_mode as value from compensation where employment_id=${context.employmentId}::uuid and valid_from<=${context.asOf}::date and (valid_to is null or valid_to>${context.asOf}::date) and superseded_at is null`);if(rows.length===1){values.set(payModeField,rows[0].value);sources.push({owner:'compensation',...rows[0]});}}
  const groups=await loadFormulaAccumulationGroupsTx(tx,ctx),history=new Map<string,FormulaValue|Error>();
@@ -148,8 +189,8 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
  case 'PayItem':return fromMap(prorated,args[0]);case 'PayItemNoProrate':return fromMap(unprorated,args[0]);case 'PayItemInput':return fromMap(raw,args[0]);
  case 'Accumulation':{const group=groups.find(g=>g.code===args[0].toUpperCase());if(!group)throw unavailable(args[0]);return decimal(group.members.reduce((sum,c)=>addFormulaDecimal(sum,String(fromMap(prorated,c).value)),'0'));}
  case 'AnotherPayItems':{usedFields.add(basicField);const result=history.get(JSON.stringify(args));if(result instanceof Error)throw result;if(!result)throw unavailable('historical result');return result;}
- case 'EmployeeProfile':return fieldValue(profileFields[args[0]],/Date$/.test(args[0])?'date':'string');
- case 'EmployeeInformation':return fieldValue(employeeFields[args[0]],args[0]==='dateOfBirth'?'date':'string');
+ case 'EmployeeProfile':{const adapter=personnelFormulaAdapter(code,args[0]);return adapter?personnelFieldValue(adapter,request.loc):fieldValue(profileFields[args[0]],/Date$/.test(args[0])?'date':'string');}
+ case 'EmployeeInformation':{const adapter=personnelFormulaAdapter(code,args[0]);return adapter?personnelFieldValue(adapter,request.loc):fieldValue(employeeFields[args[0]],args[0]==='dateOfBirth'?'date':'string');}
  case 'JoinDate':case 'GroupJoinDate':case 'ResignationDate':return fieldValue(profileFields[code[0].toLowerCase()+code.slice(1)],'date');
  case 'JoinedThisMonth':case 'GroupJoinedThisMonth':case 'ResignedThisMonth':{const id=profileFields[code==='JoinedThisMonth'?'joinDate':code==='GroupJoinedThisMonth'?'groupJoinDate':'resignationDate'];usedFields.add(id);const value=values.get(id);return {type:'boolean',value:typeof value==='string'&&value.slice(0,7)===context.period};}
  case 'ServiceLength':{const basis=args[1]==='joinDate'?'joinDate':'groupJoinDate',date=read(profileFields[basis]);if(date>context.asOf)throw unavailable('service start');const start=new Date(date+'T00:00:00Z'),end=new Date(context.asOf+'T00:00:00Z');const n=args[0]==='years'?serviceYearsAt(date,context.asOf):args[0]==='months'?(end.getUTCFullYear()-start.getUTCFullYear())*12+end.getUTCMonth()-start.getUTCMonth()-(end.getUTCDate()<start.getUTCDate()?1:0):Math.floor((end.getTime()-start.getTime())/86400000);return decimal(String(n));}

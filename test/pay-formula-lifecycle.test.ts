@@ -1,3 +1,5 @@
+import {randomUUID} from 'node:crypto';
+import {parsePayFormula,type FormulaProgram} from '../lib/pay-formula-language';
 /** Immutable evidence and native catalog activation, exercised through the public services. */
 import {sql,eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
@@ -51,4 +53,33 @@ it('refuses immutable receipt mutation and tenant-forged evidence through the ap
  await expect(withTenant(ctx,tx=>tx.execute(sql`delete from pay_formula_revision where id=${s.revisionId}::uuid`))).rejects.toThrow();
  const other=await seedBase();await expect(withTenant({...ctx,tenantId:other.tenantId},tx=>tx.execute(sql`insert into pay_formula_event(tenant_id,formula_id,kind,actor_id) values(${other.tenantId}::uuid,${s.id}::uuid,'deactivated',${base.adminUserId}::uuid)`))).rejects.toThrow();
  expect((await owner.db.select().from(schema.payFormulaRevision).where(eq(schema.payFormulaRevision.id,s.revisionId))).length).toBe(1);
+});
+
+it('refuses reserved placeholders in native written and visual saves without persisting formula identities',async()=>{
+ const sources=['If {#EmployeeProfile}("companyId") = "{#MISSING:Company}" Then\nReturn 9\nElse\nReturn 0\nEnd If',"' {#missing:Company}\nReturn 9",'Dim Text As String = "{#MiSsInG:Company}"\nReturn 9'];
+ for(const [index,source] of sources.entries())await expect(saved('UNFINISHED_'+index,source)).rejects.toThrow(/Complete every reserved MISSING/);
+ const program:FormulaProgram={version:1,statements:[{kind:'comment',text:'{#MISSING:Company}',loc:{line:1,column:1}},...parsePayFormula('Return 9').statements]};
+ await expect(savePayFormula(ctx,{formulaId:'VISUAL_UNFINISHED',description:'Unfinished visual comment',method:'conditions',source:'Return 9',program})).rejects.toThrow(/Complete every reserved MISSING/);
+ expect(await owner.db.select().from(schema.payFormula)).toEqual([]);expect(await owner.db.select().from(schema.payFormulaRevision)).toEqual([]);
+});
+it('refuses an already-retained incomplete source at native test, activation and active payroll loading even with a clean AST and old successful receipt',async()=>{
+ const good=await activated('RETAINED_SOURCE','Return 9');
+ const [revision]=await owner.db.select().from(schema.payFormulaRevision).where(eq(schema.payFormulaRevision.id,good.revisionId));
+ const [receipt]=await owner.db.select().from(schema.payFormulaTest).where(eq(schema.payFormulaTest.id,good.test.id));
+ const revisionId=randomUUID(),testId=randomUUID(),source="' Retained unfinished {#MISSING:Company}\nReturn 9";
+ // Reconstruct a pre-guard revision through the app fixture transaction, retaining immutable originals.
+ // Intentionally clean AST isolates the raw retained-source guard from the independent AST guard.
+ await withTenant(ctx,async tx=>{
+  await tx.insert(schema.payFormulaRevision).values({...revision,id:revisionId,ordinal:revision.ordinal+1,source});
+  await tx.insert(schema.payFormulaTest).values({...receipt,id:testId,revisionId});
+  await tx.insert(schema.payFormulaEvent).values({tenantId:base.tenantId,formulaId:good.id,revisionId,testId,kind:'activated',detail:{fixture:'retained pre-guard source'},actorId:ctx.userId!});
+ });
+ await expect(testPayFormula(ctx,{id:good.id,revisionId,context})).rejects.toThrow(/Complete every reserved MISSING/);
+ await expect(setPayFormulaActive(ctx,{id:good.id,revisionId,testId,active:true})).rejects.toThrow(/Complete every reserved MISSING/);
+ await expect(withTenant(ctx,tx=>loadActiveFormulaProgramTx(tx,ctx,'RETAINED_SOURCE',base.companyId))).rejects.toThrow(/Complete every reserved MISSING/);
+ expect((await owner.db.select().from(schema.payFormulaRevision).where(eq(schema.payFormulaRevision.id,revisionId)))[0].source).toBe(source);expect(await owner.db.select().from(schema.payFormulaTest)).toHaveLength(2);
+});
+it('saves, tests and activates a completed formula containing ordinary MISSING words',async()=>{
+ const good=await activated('COMPLETED_MISSING_WORD','Dim Note As String = "MISSING is an ordinary word"\n\' MISSING documentation\nReturn 9');
+ expect(good.test.amount).toBe('9');expect((await withTenant(ctx,tx=>loadActiveFormulaProgramTx(tx,ctx,'COMPLETED_MISSING_WORD',base.companyId))).revisionId).toBe(good.revisionId);
 });
