@@ -25,11 +25,12 @@ function DeliveredBody<T>({value,render}:{value:T;render:(value:T)=>React.ReactN
  * unserializable function through a Server Component. Empty/unavailable facts belong to that owner's
  * typed result; a failed transport must never be reinterpreted as an empty list or a calm summary.
  */
-export function IndependentHomeCard<T>({card,title,labels,requestKey,read,children,className,regionRef,footer}:{
+export function IndependentHomeCard<T>({card,title,labels,requestKey,read,children,className,regionRef,footer,initialRead}:{
   card:EmployeeHomeCard;title:string;labels:Labels;requestKey:string;read:HomeCardReader<T>;
   children:(value:T)=>React.ReactNode;className?:string;
   regionRef?:React.Ref<HTMLDivElement>;
   footer?:React.ReactNode;
+  initialRead?:HomeCardReader<T>;
 }){
   const titleId=React.useId();
   const [attempt,setAttempt]=React.useState(0);
@@ -42,11 +43,11 @@ export function IndependentHomeCard<T>({card,title,labels,requestKey,read,childr
     const controller=new AbortController();
     let current=true;
     setView({key,result:{state:'loading'}});
-    void deliverHomeCard(read,{signal:controller.signal}).then(next=>{
+    void deliverHomeCard(attempt===0&&initialRead?initialRead:read,{signal:controller.signal}).then(next=>{
       if(current&&next.state!=='cancelled')setView({key,result:next});
     });
     return ()=>{current=false;controller.abort();};
-  },[key,read]);
+  },[key,read,attempt,initialRead]);
   const renderFailed=React.useCallback(()=>{
     setView({key,result:{state:'failed',reason:'unavailable'}});
   },[key]);
