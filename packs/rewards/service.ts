@@ -117,7 +117,7 @@ export async function getRewardUnitGovernance(ctx:SessionContext,unitId:string){
   const canAmounts=maySeeSeniorAmounts(roles),isGr=roles.includes('gr');
   const [ready]=await tx.execute<{ready:boolean}>(sql`select to_regclass('public.reward_governance') is not null as ready`);
   const [setupPat]=await tx.execute<{pool_recalculation_required:boolean}>(sql`select pool_recalculation_required from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
-  return {unitId,revision:unit.revision,companyPatBound:!!setupPat,patRecalculationRequired:!!setupPat?.pool_recalculation_required,canEdit:isGr&&unit.status==='draft'&&unit.kind==='annual',isGr,canAmounts,managed:!!publicState,
+  return {unitId,revision:unit.revision,companyPatBound:!!setupPat,patBasisStale:!!setupPat&&publicState?.basis!==governanceBasis(unit.policy,entries),patRecalculationRequired:!!setupPat?.pool_recalculation_required,canEdit:isGr&&unit.status==='draft'&&unit.kind==='annual',isGr,canAmounts,managed:!!publicState,
    available:ready?.ready===true,legacyInputs:isGr?{forecastCents:null,actualCents:unit.policy.patActual,targetCents:unit.policy.patTarget,targetMonthsBp:unit.policy.targetMonthsBp,multiplierBp:unit.policy.bonusStructure==='branch'?10000:unit.policy.multiplierBp,branchRatings:unit.policy.branchRatings}:null,
    poolStatus:publicState?.status??'legacy',inputs:isGr?(state?.inputs??null):null,selection:isGr?state?.selection??null:null,
    exemption:isGr?state?.exemption??null:null,previousPools:publicState?.previousPools??null,
@@ -1691,6 +1691,20 @@ export async function prepareMobileRewardReview(ctx:SessionContext,unitId:string
  return {people:v.rows.map(r=>({id:r.id,name:r.source.name})),view:{title:`${v.companyName} · ${v.name}`,revision:u.revision,blocks,documents:[],actions},run:async(tx,a,values)=>{
   await decideRewardUnitTx(tx,ctx,unitId,u.revision,z.enum(['submit','approve','return','reject','withdraw']).parse(a),String(values.reason??''),values.acknowledged===true);return 'recorded';
  }};
+}
+
+/** Rebuild the draft pool from current eligibility and its already applied PAT inputs. */
+export async function refreshRewardPatBasis(ctx:SessionContext,unitId:string,revision:number,reason:string){
+ const why=reasonForGovernance(reason);
+ return withRewardsTenant(ctx,async tx=>{
+  const {unit,roles,entries}=await load(tx,unitId,true);governanceAuthority(unit,roles,revision);
+  const [binding]=await tx.execute<{pool_recalculation_required:boolean}>(sql`select pool_recalculation_required from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+  const before=await governanceStateTx(tx,unitId),publicState=await governancePublicTx(tx,unitId);
+  if(!binding||!before?.inputs)throw new RewardError('This review has no applied company PAT inputs.');
+  if(binding.pool_recalculation_required)throw new RewardError('Apply the confirmed company PAT inputs first.');
+  if(publicState?.basis===governanceBasis(unit.policy,entries))return;
+  await saveGovernanceTx(tx,ctx,unitId,before,{...before,previousPools:publicState?.pools??null},'pat-eligibility-refreshed',why);
+ });
 }
 
 /** Company PAT adoption preserves old pools and invalidates the review revision under its existing lock. */
