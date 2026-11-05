@@ -31,7 +31,7 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   const [buRow]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'GOV',name:'Governance fixture'}).returning();
   const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'21',name:'Grade21'}).returning();
   const hired=await hireEmployee(gr,{person:{fullName:'Fictional Senior employee',primaryEmail:'senior@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year-2}-01-01`});employeeId=hired.employmentId;
-  await owner.db.update(schema.assignment).set({businessUnitId:buRow.id}).where(eq(schema.assignment.employmentId,employeeId));
+  await owner.withTenant(gr,tx=>tx.update(schema.assignment).set({businessUnitId:buRow.id}).where(eq(schema.assignment.employmentId,employeeId)));
   await owner.db.update(schema.employment).set({gradeId:grade.id,confirmationDate:`${year-2}-04-01`}).where(eq(schema.employment.id,employeeId));
   await setCompensation(gr,{employmentId:employeeId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
   unitId=await createApprovedRewardUnit(gr,{name:'Unit governance fixture',year,companyId:b.companyId,businessUnitId:buRow.id,snapshotDate:today});

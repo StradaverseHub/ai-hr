@@ -29,7 +29,7 @@ describe('Rewards board items 8ad87ae8, 4e3e1af7, c28db2f0', () => {
     const [grade] = await owner.db.insert(schema.jobGrade).values({ tenantId: b.tenantId, code: '12', name: 'Grade 12' }).returning();
     const hire = await hireEmployee(admin, { person: { fullName: 'Reward Employee', primaryEmail: 'employee@rewards.test' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
     employmentId = hire.employmentId;
-    await owner.db.update(schema.assignment).set({ businessUnitId: unit.id }).where(eq(schema.assignment.employmentId, employmentId));
+    await owner.withTenant(admin,tx=>tx.update(schema.assignment).set({ businessUnitId: unit.id }).where(eq(schema.assignment.employmentId, employmentId)));
     await owner.db.update(schema.employment).set({ gradeId: grade.id, confirmationDate: `${year - 2}-04-01` }).where(eq(schema.employment.id, employmentId));
     await setCompensation(admin, { employmentId, basicSalary: 5000, effectiveFrom: `${year - 2}-01-01` });
     // In the window: a tagged promotion, a re-save with the same basic (not a change), and a future-dated raise.
