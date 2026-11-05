@@ -35922,6 +35922,7 @@
     "inactive": "无效"
   },
   "rewardAdvisor": {
+    "figureBreakdown": "绩效加薪：{merit} · 晋升加薪：{promotion} · 特别调整：{special}",
     "saveCycle": "保存为周期默认设置",
     "title": "推荐建议助手",
     "back": "薪酬审查",

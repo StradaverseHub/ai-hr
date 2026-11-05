@@ -35922,6 +35922,7 @@
     "inactive": "Tidak aktif"
   },
   "rewardAdvisor": {
+    "figureBreakdown": "Merit: {merit} · Kenaikan pangkat: {promotion} · Pelarasan khas: {special}",
     "saveCycle": "Simpan sebagai tetapan lalai kitaran",
     "title": "Penasihat cadangan",
     "back": "Semakan imbuhan",

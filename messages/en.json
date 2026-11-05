@@ -35922,6 +35922,7 @@
     "inactive": "Inactive"
   },
   "rewardAdvisor": {
+    "figureBreakdown": "Merit: {merit} · Promotion: {promotion} · Special adjustment: {special}",
     "saveCycle": "Save as cycle default",
     "title": "Recommendation advisor",
     "back": "Compensation review",
