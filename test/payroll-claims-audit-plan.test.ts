@@ -29,7 +29,7 @@ it.each(['sparse','dense'] as const)('compares claim-input plans without changin
  for(let offset=0;offset<people.length;offset+=100)await owner.db.insert(s.payslip).values(people.slice(offset,offset+100).map(p=>({...slip,id:randomUUID(),employmentId:p.employmentId})));
  const [type]=await owner.db.insert(s.claimType).values({tenantId:b.tenantId,code:'AUDIT_PLAN',name:'Fictional audit input',requiresReceipt:false}).returning({id:s.claimType.id});
  const common={tenantId:b.tenantId,claimTypeId:type.id,amount:'1.23',description:'PRIVATE_FICTIONAL_AUDIT_INPUT'};
- const decoyCount=shape==='small'?0:20000;
+ const decoyCount=20000;
  for(let offset=0;offset<decoyCount;offset+=500)await owner.db.insert(s.claimRequest).values(Array.from({length:500},(_,i)=>({...common,employmentId:people[(offset+i)%people.length].employmentId,incurredOn:shape==='dense'||(offset+i)%100===0?'2026-01-15':'2010-06-01',status:'draft' as const})));
  await owner.db.insert(s.claimRequest).values([
   {...common,employmentId:target.employmentId,incurredOn:'2026-01-01',status:'draft',fieldValues:{fixture:'boundary-start',number:12,empty:null}},
@@ -44,14 +44,6 @@ it.each(['sparse','dense'] as const)('compares claim-input plans without changin
  const worker:SessionContext={...root,userId:await createAppUser(b.tenantId,target.personId,'employee'),personId:target.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]},foreign=adminCtx(await seedBase());
  const originalQuery=sql`select x.employment_id::text as e,count(*)::int as n,app.payroll_audit_hash(jsonb_agg(to_jsonb(x) order by x.id)::text) as h from (select c.* from public.claim_request c where c.payroll_batch_id=${batchId}::uuid or (c.employment_id in (select s.employment_id from public.payslip s where s.batch_id=${batchId}::uuid) and c.incurred_on between ${'2026-01-01'}::date and ${'2026-01-31'}::date)) x group by x.employment_id order by x.employment_id`;
 
- // UNION preserves every original c.* value. IS DISTINCT FROM retains NULL batch links while
- // excluding rows already included by the first arm; a plain <> would silently lose unpaid rows.
- const unionQuery=sql`select x.employment_id::text as e,count(*)::int as n,app.payroll_audit_hash(jsonb_agg(to_jsonb(x) order by x.id)::text) as h from (
- select c.* from public.claim_request c where c.payroll_batch_id=${batchId}::uuid
- union all select c.* from public.claim_request c where c.payroll_batch_id is distinct from ${batchId}::uuid
- and c.employment_id in(select s.employment_id from public.payslip s where s.batch_id=${batchId}::uuid)
- and c.incurred_on between ${'2026-01-01'}::date and ${'2026-01-31'}::date
- )x group by x.employment_id order by x.employment_id`;
  // Statement-local native array, not an application/session permission or result cache.
  const arrayQuery=sql`select x.employment_id::text as e,count(*)::int as n,app.payroll_audit_hash(jsonb_agg(to_jsonb(x) order by x.id)::text) as h from (
  select c.* from public.claim_request c where c.payroll_batch_id=${batchId}::uuid or
