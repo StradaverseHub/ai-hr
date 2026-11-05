@@ -1369,6 +1369,16 @@ function mayAppearInApplyMenu(t: ApplyMenuType, emp: ApplyMenuEmp, today: string
   );
 }
 
+const applyMenuTypeColumns = {
+  code: leaveType.code,
+  eligibility: leaveType.eligibility,
+  probationEligibility: leaveType.probationEligibility,
+  employeeCanApply: leaveType.employeeCanApply,
+  visibleToEmployee: leaveType.visibleToEmployee,
+  essPlacement: leaveType.essPlacement,
+  role: leaveType.role,
+} as const;
+
 /** The gate's employee-side projection, shared by both reads so neither can fetch a column the other
  *  needs and silently answer a different question (a missing confirmation date reads as "confirmed"). */
 const applyMenuEmpColumns = {
@@ -1386,6 +1396,21 @@ const applyMenuEmpColumns = {
   orgBase: employment.orgBase,
   employmentCategory: employment.employmentCategory,
 } as const;
+
+function applyMenuEmploymentTx(tx:Tx,employmentId:string) {
+  return tx.select(applyMenuEmpColumns).from(employment)
+    .innerJoin(person,eq(person.id,employment.personId)).where(eq(employment.id,employmentId)).limit(1);
+}
+
+/** Home only needs to know whether it can show the application entry point. */
+export async function hasEligibleLeaveTypeForTx(tx:Tx,employmentId:string):Promise<boolean> {
+  const [types,[emp]]=await Promise.all([
+    tx.select(applyMenuTypeColumns).from(leaveType).where(isNull(leaveType.archivedAt)),
+    applyMenuEmploymentTx(tx,employmentId),
+  ]);
+  const today=todayInKualaLumpur();
+  return types.some(type=>mayAppearInApplyMenu(type,emp,today));
+}
 
 /**
  * The leave types ONE employee may actually take — `listLeaveTypes` filtered through the eligibility
@@ -1407,7 +1432,7 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
       tx
         .select({
           id: leaveType.id,
-          code: leaveType.code,
+          ...applyMenuTypeColumns,
           name: leaveType.name,
           i18n: leaveType.i18n,
           paid: leaveType.paid,
@@ -1429,11 +1454,6 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           // Feedback 9d8cf621: the apply-time custom message (applyNotice key) is read off this JSONB to show
           // the HR-authored notice under the leave-type select on the /me apply form.
           customMessages: leaveType.customMessages,
-          eligibility: leaveType.eligibility,
-          // ad965821 — the probation rule's own column (migration 0225). Projected so the gate below can
-          // merge it into `eligibility` the way requestLeave does; without it a confirmed_only type stayed
-          // in the dropdown for a probationer until the submit refused it.
-          probationEligibility: leaveType.probationEligibility,
           durations: leaveType.durations,
           archivedAt: leaveType.archivedAt,
           // ad965821 — Balance Deduction Source (cdf9ca48), already projected by listLeaveTypes at the top
@@ -1442,30 +1462,10 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           // another type's balance. Missing it here would have silently re-shown those controls the moment
           // this became the dropdown's source.
           balanceSourceTypeId: leaveType.balanceSourceTypeId,
-          // Leave Type Employee Visibility (7b11f1c1): the can-apply switch — false ⇒ this type is dropped
-          // from the apply dropdown (in addition to the eligibility filter). NULL ⇒ can apply (today's
-          // behaviour). Independent of visibleToEmployee: a visible-but-not-can-apply type still shows in
-          // leaveBalances but never here. requestLeave enforces the same rule server-side (defense-in-depth).
-          employeeCanApply: leaveType.employeeCanApply,
-          // Leave View Dashboard (6d78f373): the placement inputs so a HIDDEN type never reaches the Request
-          // Leave dropdown. resolvePlacement (lib/leave-groups) resolves 'hidden' from EITHER visible_to_employee
-          // =false OR the code-keyed default-hidden set (Prolonged Illness / Suspension / Unrecorded / Unpaid
-          // Medical). NULL/absent config ⇒ primary|secondary (kept), so every ordinary type is unaffected.
-          visibleToEmployee: leaveType.visibleToEmployee,
-          essPlacement: leaveType.essPlacement,
-          // 5ff7daff: the role marker, so the hidden gate below resolves placement the same way the ESS
-          // cards do. Stripped from the returned rows (below) — this projection is the apply dropdown's
-          // shape and no consumer of it asks the role.
-          role: leaveType.role,
         })
         .from(leaveType)
         .where(isNull(leaveType.archivedAt)),
-      tx
-        .select(applyMenuEmpColumns)
-        .from(employment)
-        .innerJoin(person, eq(person.id, employment.personId))
-        .where(eq(employment.id, employmentId))
-        .limit(1),
+      applyMenuEmploymentTx(tx,employmentId),
     ]);
     const today = todayInKualaLumpur();
     // ONE named gate (mayAppearInApplyMenu above) rather than three chained filters restated per surface.
@@ -1522,16 +1522,7 @@ export function eligibleLeaveTypeIdsFor(
     if (ids.length === 0) return {};
     const [types, emps] = await Promise.all([
       tx
-        .select({
-          id: leaveType.id,
-          code: leaveType.code,
-          eligibility: leaveType.eligibility,
-          probationEligibility: leaveType.probationEligibility,
-          employeeCanApply: leaveType.employeeCanApply,
-          visibleToEmployee: leaveType.visibleToEmployee,
-          essPlacement: leaveType.essPlacement,
-          role: leaveType.role,
-        })
+        .select({id:leaveType.id,...applyMenuTypeColumns})
         .from(leaveType)
         .where(isNull(leaveType.archivedAt)),
       tx
