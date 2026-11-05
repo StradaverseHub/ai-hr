@@ -4568,8 +4568,19 @@ export async function decideAttendanceCorrection(
         // after the upsert, so the row is the only thing that knows what the day now says.
         const afterFigures = await attendanceFiguresByIdTx(tx, amendedId);
         const afterPunchFingerprint = clockFingerprint(await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate));
-        await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-correction',aggregateId:cor.id,eventType:'attendance-correction.effect.recorded',actor:actorOf(ctx),subjectEmploymentId:cor.employmentId,payload:{attendanceId:amendedId,date:cor.attendanceDate,before:beforeFigures,after:afterFigures,beforePunches,afterPunchFingerprint,clockChanged:hasClockCorrection}});
-        await appendEvent(tx, {
+        await appendEvents(tx, [{
+          tenantId: ctx.tenantId,
+          aggregateType: 'attendance-correction',
+          aggregateId: cor.id,
+          eventType: 'attendance-correction.effect.recorded',
+          actor: actorOf(ctx),
+          subjectEmploymentId: cor.employmentId,
+          payload: {
+            attendanceId: amendedId, date: cor.attendanceDate,
+            before: beforeFigures, after: afterFigures, beforePunches, afterPunchFingerprint,
+            clockChanged: hasClockCorrection,
+          },
+        }, {
           tenantId: ctx.tenantId,
           aggregateType: 'attendance',
           aggregateId: amendedId,
@@ -4583,7 +4594,7 @@ export async function decideAttendanceCorrection(
           // election applies here. Nesting the pair would drop describePayload through to the flat dump and
           // render it as JSON truncated at 120 characters.
           payload: { ...eventPayload, before: beforeFigures, after: afterFigures },
-        });
+        }]);
       }
 
       // Deferred plans bank only when actual work lands. Immediate decisions bank after their
