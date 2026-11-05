@@ -286,7 +286,9 @@ try{
     assert.deepEqual(homeCardIds,[...expectedCards].sort(),'fictional Home must render every expected card');
    }
    if(!personal){
-    const expected=fixture.users.filter(actor=>actor.tenant===user.tenant&&(user.role==='groupHR'||actor.companyId===user.companyId)).length;
+    const rewardDraft=fixture.tenants[user.tenant].rewardDraft;
+    const extraRewardEmployee=rewardDraft&&(user.role==='groupHR'||rewardDraft.companyId===user.companyId)?1:0;
+    const expected=fixture.users.filter(actor=>actor.tenant===user.tenant&&(user.role==='groupHR'||actor.companyId===user.companyId)).length+extraRewardEmployee;
     assert(await page.locator('[data-dashboard-card="headcount"]').getByText(String(expected),{exact:true}).count()>0,'HR dashboard headcount must match its actual fixture scope');
    }
    homeCards=homeCardIds.length;assert(homeCards>0,'expected fictional Home cards');
@@ -404,7 +406,7 @@ try{
     await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:90000});
     assert((await page.locator('main h1').innerText()).trim().length>0,'AI Centre supplemental view heading unavailable');
     assert.equal(await page.locator('main [data-read-unavailable]').count(),0,'AI Centre supplemental view unavailable');
-    if(view==='tools')await page.locator('#ai-ask-shortcuts').waitFor({timeout:90000});
+    if(view==='tools')await page.locator('main [data-ai-centre="tools"] #ai-ask-shortcuts:visible').waitFor({timeout:90000});
     if(view==='privacy')await page.locator('#assistant-privacy').waitFor({timeout:90000});
     if(view==='ask')assert(await page.locator('main textarea:enabled').count()>0,'Ask composer unavailable after supplemental navigation');
     assert.equal(documents.length,0,'AI Centre supplemental navigation unexpectedly reloaded the document');
