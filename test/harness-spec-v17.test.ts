@@ -150,7 +150,9 @@ describe('suggest_action\'s description (spec v13, kept since)',()=>{
   expect(suggestDescription(rows(['payroll.close','payroll.reopen']))).toBe(base);
   expect(base).not.toContain('What these actions do');
   expect(base).toMatch(/^Point the person to the page where they complete and confirm one change\. For leave\.apply,/);
-  expect(base).toContain('For leave.apply, details may carry leaveType, startDate and endDate (YYYY-MM-DD)');
+  // Spec v25 (test/harness-spec-v25.test.ts): a leave or attendance date is a date or the person's words for the day.
+  expect(base).toContain('For leave.apply, details may carry leaveType, startDate and endDate, durationType (full_day, half_day_am or half_day_pm) and reason');
+  expect(base).toContain('a date detail is YYYY-MM-DD when the person gave a date; when they named a day instead');
   expect(base).toContain('Never put a bank account, phone or identity number in details: the system reads those from the person\'s own message.');
  });
 });
