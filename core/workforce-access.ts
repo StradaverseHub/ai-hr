@@ -67,21 +67,22 @@ export function workforceCommandAccess(ctx:SessionContext,employmentId:string){
  });
 }
 
-/** The shared navigation only needs to know whether any Workforce scope is visible. */
-export function canOpenWorkforce(ctx:SessionContext){
- return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
-  // Dormant company access requires a claimed administrative grant. Preserve its
-  // full predicate for those callers; everyone else can use the current-principal
-  // capability owner after one snapshot proof, over the same RLS-visible companies.
-  const [row]=await tx.execute<{allowed:boolean}>(sql`select (
+// Dormant company access requires a claimed administrative grant. Everyone else
+// uses the current-principal capability owner over the same RLS-visible companies.
+export const workforceNavigationAllowedSql = sql`(
    case when exists(select 1 from app.current_grants() where role in ('hr_admin','super_admin')) then
     exists(select 1 from company where tenant_id=app.current_tenant_id() and app.access_workforce_projection_company(id))
    when app.principal_snapshot_current() then
     exists(select 1 from company where tenant_id=app.current_tenant_id() and app.access_capability_allowed('workforce.view',id))
    else false end
    or app.access_workforce_unassigned('workforce.view')
-  ) as allowed`);
+  )`;
+
+/** The shared navigation only needs to know whether any Workforce scope is visible. */
+export function canOpenWorkforce(ctx:SessionContext){
+ return withTenant(ctx,async tx=>{
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+  const [row]=await tx.execute<{allowed:boolean}>(sql`select ${workforceNavigationAllowedSql} as allowed`);
   return row?.allowed===true;
  });
 }

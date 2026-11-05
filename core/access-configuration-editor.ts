@@ -4,10 +4,12 @@ import {withTenant,type SessionContext} from '../db/client';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {accessConfigurationStore} from './access-configuration-store';
 import {parseAccessEditorMetadata} from '../lib/access-editor-data';
+export const accessConfigurationNavigationAllowedSql=sql`app.access_capability_allowed('access.configure',NULL)`;
+
 /** Navigation hint only; page, preview and commit independently repeat their current SQL checks. */
 export function canConfigureAccess(ctx:SessionContext){
  return withTenant(ctx,async tx=>{
-  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_capability_allowed('access.configure',NULL) as allowed`);
+  const [row]=await tx.execute<{allowed:boolean}>(sql`select ${accessConfigurationNavigationAllowedSql} as allowed`);
   return row?.allowed===true;
  });
 }

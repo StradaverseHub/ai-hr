@@ -23,7 +23,6 @@ import { Suspense } from 'react';
 import { Providers } from './providers';
 import { OperatorShell } from '@/components/operator-shell';
 import { Sidebar } from '@/components/sidebar';
-import {canViewJobArchitecture} from '@/packs/job-architecture/service';
 import {letterNavigation} from '@/core/letter-navigation';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { LanguageSwitcher } from '@/components/language-switcher';
@@ -51,8 +50,7 @@ import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
 import { canAdminOnehr, canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
-import {canConfigureAccess} from '@/core/access-configuration-editor';
-import {canOpenWorkforce} from '@/core/workforce-access';
+import {readShellNavigationAccess} from '@/core/shell-navigation-access';
 import { companyContextForPage } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
@@ -180,10 +178,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // identity at all. It always resolves to something renderable — an employed viewer, a named principal
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const [viewer,accessConfigurationAvailable,workforceAvailable,architectureAvailable]=await Promise.all([
-    viewerIdentity(session),canConfigureAccess(session),
-    isAdmin(session)?Promise.resolve(false):canOpenWorkforce(session),
-    canViewJobArchitecture(session),
+  const [viewer,{accessConfigurationAvailable,workforceAvailable,architectureAvailable}]=await Promise.all([
+    viewerIdentity(session),readShellNavigationAccess(session,!isAdmin(session)),
   ]);
   const [letterDestinations,onboarded]=await Promise.all([
     isModuleEnabledOrFalse(session,'employees')?letterNavigation(session,scopeIds):Promise.resolve([]),

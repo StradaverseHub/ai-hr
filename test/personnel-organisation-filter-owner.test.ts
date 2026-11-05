@@ -1,16 +1,18 @@
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
+import {client,withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee,setEmploymentAssignment} from '../core/org';
 import {listEmployeesPage,countEmployeesByStatus,personnelFilterChoices,readPersonnelOverview} from '../core/read';
 import {createPersonnelPrivateSearch,personnelPrivateSearchAvailable,privateSearchHash} from '../core/personnel-private-search';
 import {lockAccessConfigurationReadTx,lockAccessConfigurationTx,tryLockAccessConfigurationReadTx} from '../core/access-configuration-lock';
 import {PersonnelReadBusyError} from '../core/personnel-read-bounds';
-import {personnelMaintenanceCompanyIds,workforceViewScope} from '../core/workforce-access';
+import {canOpenWorkforce,personnelMaintenanceCompanyIds,workforceViewScope} from '../core/workforce-access';
+import {canConfigureAccess} from '../core/access-configuration-editor';
+import {readShellNavigationAccess} from '../core/shell-navigation-access';
 import {personnelGroupingReadinessTx} from '../core/personnel-quality';
-import {canViewJobArchitecture} from '../packs/job-architecture/owner';
+import {assignArchitectureSeat,canViewJobArchitecture} from '../packs/job-architecture/owner';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,ctx:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();ctx=adminCtx(b);});
@@ -127,6 +129,38 @@ it('creates private searches alongside Personnel readers and retains only the na
   expect(new Set(tokens).size).toBe(10);
   const available = await Promise.all(tokens.map(token => personnelPrivateSearchAvailable(ctx, token, [b.companyId])));
   expect(available.filter(Boolean)).toHaveLength(8);
+});
+
+it('keeps Architecture navigation equivalent for Workforce access, unseated employees and scoped seats', async () => {
+  const employee = await hire('Fictional Architecture Viewer');
+  const userId = await createAppUser(b.tenantId, employee.personId, 'employee');
+  const actor = {...ctx, userId, personId: employee.personId, roles: ['employee'], grants: [{role:'employee',companyId:null}]};
+  async function expectNavigation(session: SessionContext, expected: boolean) {
+    const [previous] = await withTenant(session, tx => tx.execute<{ok:boolean}>(sql`
+      select app.job_architecture_can(null,'view') or exists(
+        select 1 from company c where c.tenant_id=${session.tenantId}::uuid
+          and app.job_architecture_can(c.id,'view')
+      ) as ok
+    `));
+    expect(previous.ok).toBe(expected);
+    expect(await canViewJobArchitecture(session)).toBe(expected);
+    const [accessConfigurationAvailable, workforceAvailable] = await Promise.all([
+      canConfigureAccess(session), canOpenWorkforce(session),
+    ]);
+    const begins = vi.spyOn(client, 'begin');
+    try {
+      expect(await readShellNavigationAccess(session, true)).toEqual({
+        accessConfigurationAvailable, workforceAvailable, architectureAvailable:expected,
+      });
+      expect(begins).toHaveBeenCalledTimes(1);
+    } finally {
+      begins.mockRestore();
+    }
+  }
+  await expectNavigation(ctx, true);
+  await expectNavigation(actor, false);
+  await assignArchitectureSeat(ctx, {userId, companyId:b.companyId, role:'org_design', validFrom:'2024-01-01', validTo:null});
+  await expectNavigation(actor, true);
 });
 
 it('recovers a standalone Personnel read when a brief Access writer releases its lock', async () => {
