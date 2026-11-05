@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
+import { ModuleNotEnabledError } from '../core/entitlements';
 import { client, type SessionContext } from '../db/client';
 import { company, itAssetCatalogue, itAssetRequest, itRequisition, lcCase, lcCaseStep } from '../db/schema';
 import * as lifecycle from '../packs/lifecycle/service';
@@ -17,7 +18,7 @@ const readTileSources = (ctx: SessionContext) => Promise.all([
   lifecycle.listRequisitions(ctx, { status: 'open' }), lifecycle.pendingApprovals(ctx),
 ]);
 
-it('profiles existing tile cardinality with capped active lists and exact current-company approvals', async () => {
+it('returns minimal native tile counts with explicit overflow and exact current-company approvals', async () => {
   await resetDb();
   const b = await seedBase();
   await setModule(b.tenantId, 'lifecycle', 'active');
@@ -95,21 +96,63 @@ it('profiles existing tile cardinality with capped active lists and exact curren
   expect(pending.assetRequests.map(row => row.number)).toEqual(['AR-REQUESTED', 'AR-SECOND']);
   expect(sqlReads.some(text => text.includes('from "lc_case_step"'))).toBe(true);
   expect(sqlReads.some(text => text.includes('"notes"'))).toBe(true);
+  const referenceRoundTrips = sqlReads.length;
+  sqlReads.length = 0;
+  capture = true;
+  const countStart = performance.now();
+  const counts = await lifecycle.lifecycleHubTileCounts(manager);
+  const countMs = performance.now() - countStart;
+  capture = false;
+  const countRoundTrips = sqlReads.length;
+  const [countQuery] = sqlReads.filter(text => text.includes('count(*)'));
+  expect(counts).toEqual({
+    onboarding: { count: onboarding.length, overflow: true },
+    offboarding: { count: offboarding.length, overflow: false },
+    open: { count: open.length, overflow: false },
+    pending: pending.requisitions.length + pending.assetRequests.length,
+  });
+  expect(countRoundTrips).toBeLessThan(referenceRoundTrips);
+  expect(sqlReads.filter(text => text.includes('count(*)'))).toHaveLength(1);
+  expect(countQuery.match(/\blimit\b/g)).toHaveLength(3);
+  expect(countQuery.match(/count\(\*\)/g)).toHaveLength(5);
+  expect(countQuery).toContain('app.lc_level("it_requisition"."company_id")');
+  expect(countQuery).toContain('app.lc_level("it_asset_request"."company_id")');
+  expect(sqlReads.some(text => text.includes('"notes"') || text.includes('"lc_case_step"') || text.includes('"justification"'))).toBe(false);
+
+  // Pending work is independent of the linked active-list caps, including at a larger cardinality.
+  const extraPending = Array.from({ length: 1001 }, (_, i) => req(b.companyId, `REQ-EXACT-${i}`, 'in_progress', 'pending'));
+  for (let offset = 0; offset < extraPending.length; offset += 250) await owner.db.insert(itRequisition).values(extraPending.slice(offset, offset + 250));
+  expect((await lifecycle.lifecycleHubTileCounts(manager)).pending).toBe(1005);
+
   const foreign = await seedBase();
   await setModule(foreign.tenantId, 'lifecycle', 'active');
   expect(await readTileSources(await entitledCtx(foreign))).toEqual([[], [], [], { requisitions: [], assetRequests: [] }]);
+  const emptyTile = { count: 0, overflow: false };
+  expect(await lifecycle.lifecycleHubTileCounts(await entitledCtx(foreign))).toEqual({ onboarding: emptyTile, offboarding: emptyTile, open: emptyTile, pending: 0 });
   await lifecycle.setStaff(admin, { userId, companyId: b.companyId, level: null });
   const [afterOn, afterOff, afterOpen, afterPending] = await readTileSources(manager);
   expect([afterOn.length, afterOff.length, afterOpen.length, afterPending]).toEqual([0, 3, 1, { requisitions: [], assetRequests: [] }]);
+  sqlReads.length = 0;
+  capture = true;
+  const agentCounts = await lifecycle.lifecycleHubTileCounts(manager);
+  capture = false;
+  expect(agentCounts).toEqual({ onboarding: emptyTile, offboarding: { count: 3, overflow: false }, open: { count: 1, overflow: false }, pending: 0 });
+  expect(sqlReads.some(text => text.includes('"it_asset_request"') || text.includes('"approval_status"'))).toBe(false);
   await lifecycle.setStaff(admin, { userId, companyId: other.id, level: null });
   await expect(lifecycle.listCases(manager, 'onboarding')).rejects.toMatchObject({ code: 'forbidden' });
 
+  await expect(lifecycle.lifecycleHubTileCounts(manager)).rejects.toMatchObject({ code: 'forbidden' });
+  await setModule(b.tenantId, 'lifecycle', 'disabled');
+  await expect(lifecycle.lifecycleHubTileCounts(await entitledCtx(b))).rejects.toBeInstanceOf(ModuleNotEnabledError);
+
   const evidence = {
-    kind: 'NATIVE_LIFECYCLE_HUB_TILE_BASELINE_ONLY', releaseEligible: false,
+    kind: 'NATIVE_LIFECYCLE_HUB_TILE_COUNTS_COMPONENT_ONLY', releaseEligible: false,
     activeVisibleOnboarding: 1001, activeVisibleOffboarding: 1000,
     cappedOnboardingRows: onboarding.length, cappedOffboardingRows: offboarding.length,
     openRequisitionRows: open.length, exactPendingRequisitions: pending.requisitions.length, exactPendingAssets: pending.assetRequests.length,
-    applicationRoundTrips: sqlReads.length, materializedDtoBytes: Buffer.byteLength(JSON.stringify(reference)), elapsedMs,
+    baselineRoundTrips: referenceRoundTrips, countRoundTrips,
+    baselineMaterializedDtoBytes: Buffer.byteLength(JSON.stringify(reference)), countDtoBytes: Buffer.byteLength(JSON.stringify(counts)),
+    baselineMs: elapsedMs, countMs, explicitOverflowOnlyWhenProven: true, exactPendingAfterCompanyGate: true,
     nativeAuthorityControls: true, providerCalls: 0, limitations: 'Native component on fictional retained data only. No browser or capacity claim.',
   };
   if (process.env.AIHR_FOCUSED_EVIDENCE_DIR) writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR, 'lifecycle-hub-count-profile.json'), JSON.stringify(evidence, null, 2));
