@@ -30,7 +30,8 @@ import { payrollHistoryEffectiveBatch } from '../db/schema';
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { pageState, type PageQuery } from '../lib/pagination';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withPayrollTenant` — all 38 exported entry
 // points, THE ENGINE included, refuse a tenant without the Payroll module. The `tx`-taking helpers
@@ -11469,6 +11470,86 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
       .where(eq(payslip.batchId, batchId))
       .orderBy(person.fullName);
     return { batch, slips };
+  });
+}
+
+/** Count and page the exact joined register in one SQL snapshot after the history barrier. */
+export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, page: PageQuery) {
+  return withTenant(ctx, async tx => {
+    const batch = await readBatchHeaderTx(tx, batchId);
+    if (!batch) return null;
+    // Both consumers reference the same CTE, so Postgres materializes one narrow RLS-visible set.
+    // The payload stays on payslip and is fetched only for the requested page.
+    const visibleRegister = tx.$with('visible_register').as(tx.select({
+      id: payslip.id,
+      employmentId: payslip.employmentId,
+      name: person.fullName,
+      employeeCode: employment.employeeCode,
+    }).from(payslip)
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(payslip.batchId, batchId)));
+    const registerTotal = tx.select({ total: sql<number>`count(*)`.mapWith(Number).as('total') })
+      .from(visibleRegister).as('register_total');
+    const registerPage = tx.select().from(visibleRegister)
+      .orderBy(asc(visibleRegister.name), asc(visibleRegister.id)).limit(page.limit)
+      // An oversized URL offset cannot address a real row, but must still fit Postgres bigint.
+      .offset(Math.min(page.offset, Number.MAX_SAFE_INTEGER))
+      .as('register_page');
+    const pageSlip = tx.select({
+      id: payslip.id,
+      basic: payslip.basicSalary,
+      bonus: payslip.bonus,
+      daysWorked: payslip.daysWorked,
+      gross: payslip.grossPay,
+      statutory: payslip.statutory,
+      net: payslip.netPay,
+      version: payslip.version,
+    }).from(payslip).where(eq(payslip.id, registerPage.id)).limit(1).as('page_slip');
+    const entries = await tx.with(visibleRegister).select({
+      total: registerTotal.total,
+      employmentId: registerPage.employmentId,
+      name: registerPage.name,
+      employeeCode: registerPage.employeeCode,
+      slip: {
+        id: pageSlip.id,
+        basic: pageSlip.basic,
+        bonus: pageSlip.bonus,
+        daysWorked: pageSlip.daysWorked,
+        gross: pageSlip.gross,
+        statutory: pageSlip.statutory,
+        net: pageSlip.net,
+        version: pageSlip.version,
+      },
+    }).from(registerTotal)
+      .leftJoin(registerPage, sql`true`)
+      .leftJoinLateral(pageSlip, sql`true`)
+      .orderBy(asc(registerPage.name), asc(registerPage.id));
+    const rows = entries.flatMap(({ slip, employmentId, name, employeeCode }) =>
+      slip === null || employmentId === null || name === null ? [] : [{ ...slip, employmentId, name, employeeCode }]);
+    return { batch, slipPage: { rows, state: pageState(page, entries[0].total, rows.length) } };
+  });
+}
+
+/** Run-wide stale banner identities, including people outside the visible register page. */
+export function listBatchRecalcPayslipIdentities(ctx: SessionContext, batchId: string, employmentIds: readonly string[]) {
+  // The prior JS join matched the exact lowercase IDs returned by Postgres. Invalid or differently
+  // formatted IDs in a retained event did not match any payslip.
+  const ids = employmentIds.filter(id => /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(id));
+  if (ids.length === 0) return Promise.resolve([]);
+  return withTenant(ctx, async tx => {
+    const batch = await readBatchHeaderTx(tx, batchId);
+    if (!batch) return [];
+    const selectedIds = '{' + ids.join(',') + '}';
+    return tx.select({
+      employmentId: payslip.employmentId,
+      name: person.fullName,
+      employeeCode: employment.employeeCode,
+    }).from(payslip)
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(and(eq(payslip.batchId, batchId), sql`${payslip.employmentId} = any(${selectedIds}::uuid[])`))
+      .orderBy(asc(person.fullName), asc(payslip.id));
   });
 }
 
