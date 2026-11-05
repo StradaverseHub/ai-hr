@@ -72,7 +72,13 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
   const started=performance.now();await page.goto('https://localhost:3443/org',{waitUntil:'domcontentloaded',timeout:90000});
   assert.equal(new URL(page.url()).pathname,'/org');await page.getByRole('heading',{level:1,name:catalog('en').org.title,exact:true}).waitFor({timeout:90000});
   const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});if(await skip.isVisible())await skip.click();
-  await ready(cohort.length);assert.equal(await explorer().getAttribute('data-org-view'),'roots');record('navigation-to-usable',started,{mode:'explorer',renderedRows:await rows().count(),totalPeople:cohort.length});
+  await page.locator('[data-org-tree] [data-org-node]').first().waitFor({state:'visible',timeout:90000});
+  record('dated-chart-to-usable',started,{mode:'dated-chart'});
+  stage='open-explorer';
+  const explorerStarted=performance.now();
+  await page.getByRole('link',{name:catalog('en').org.explorer.explore,exact:true}).click();
+  await page.waitForURL(url=>url.pathname==='/org'&&url.searchParams.get('view')==='explorer',{timeout:90000});
+  await ready(cohort.length);assert.equal(await explorer().getAttribute('data-org-view'),'roots');record('navigation-to-usable',explorerStarted,{mode:'explorer',renderedRows:await rows().count(),totalPeople:cohort.length});
   stage='all-people-first-page';const first=await allPeople();assert.equal(first.totalItems,cohort.length);assert.equal(first.items.length,50);assert(first.nextCursor);
   stage='all-people-next-page';const next=await request(()=>button('next').click(),'search');
   assert(first.items.every(item=>!next.items.some(other=>other.key===item.key)),'Org paging repeated an item');
