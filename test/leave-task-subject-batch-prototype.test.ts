@@ -4,7 +4,7 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {and,asc,desc,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type Tx,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {assertAssignedWorkPrincipalTx} from '../core/approvals';
@@ -14,8 +14,9 @@ import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} fr
 
 beforeAll(migrateTestDb);afterAll(closeAll);
 async function readCandidates(ctx:SessionContext,batch:boolean,companyIds?:string[]){
- return withTenant(ctx,async tx=>{
-  await assertAssignedWorkPrincipalTx(tx,ctx);
+ return withTenant(ctx,async tx=>{await assertAssignedWorkPrincipalTx(tx,ctx);return candidateQuery(tx,ctx,batch,companyIds);});
+}
+function candidateQuery(tx:Tx,ctx:SessionContext,batch:boolean,companyIds?:string[]){
   if(!batch)return tx.select({id:s.leaveRequest.id,employmentId:s.leaveRequest.employmentId,personId:sql<string>`approval_subject.person_id`,employee:sql<string>`approval_subject.employee`,createdAt:s.leaveRequest.createdAt})
    .from(s.leaveRequest).innerJoin(sql`LATERAL app.delegated_approval_subject(${s.leaveRequest.employmentId},'leave','leave.application') AS approval_subject`,sql`true`)
    .where(and(eq(s.leaveRequest.tenantId,ctx.tenantId),eq(s.leaveRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
@@ -33,8 +34,9 @@ async function readCandidates(ctx:SessionContext,batch:boolean,companyIds?:strin
   return tx.select({id,employmentId:sql<string>`pending_leave.employment_id`,personId:sql<string>`pending_leave.person_id`,employee:sql<string>`pending_leave.employee`,createdAt}).from(source)
    .where(and(sql`NOT app.is_self_person(pending_leave.person_id)`,companyIds===undefined?undefined:sql`pending_leave.company_id=ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
    .orderBy(desc(createdAt),asc(id));
- });
 }
+async function plan(ctx:SessionContext,batch:boolean,companyIds:string[]){return withTenant(ctx,async tx=>{await assertAssignedWorkPrincipalTx(tx,ctx);return tx.execute(sql`explain (analyze,buffers,settings,format json) ${candidateQuery(tx,ctx,batch,companyIds)}`);});}
+async function analyzeFixture(){for(const table of ['leave_request','employment','person','role_assignment','reporting_line','reporting_line_scope','leave_approval_step'])await owner.client.unsafe('analyze public.'+table);}
 
 it('preserves native visible headers and live assignments while batching repeated Leave subjects',async()=>{
  await resetDb();const b=await seedBase(),admin=adminCtx(b),today=todayInKualaLumpur();
@@ -60,8 +62,11 @@ it('preserves native visible headers and live assignments while batching repeate
   await expect(readCandidates(admin,shape,['not-a-uuid'])).rejects.toThrow();
  }
  controls.push('forgedRoleRefused','invalidScopeRefused');
+ await analyzeFixture();
+ const plans:unknown[]=[];
  const measurements:{actor:string;phase:string;reads:number;elapsedMs:number}[]=[];
  for(const [actor,ctx]of [['admin',admin],['manager',reviewer]]as const)for(const phase of ['original','candidate','candidate-warm','restored']){
+  plans.push({actor,phase,explain:await plan(ctx,phase==='candidate'||phase==='candidate-warm',[b.companyId])});
   const started=performance.now();for(let i=0;i<15;i++)expect(await readCandidates(ctx,phase==='candidate'||phase==='candidate-warm',[b.companyId])).toEqual(expected);
   measurements.push({actor,phase,reads:15,elapsedMs:performance.now()-started});
  }
@@ -93,7 +98,7 @@ it('preserves native visible headers and live assignments while batching repeate
  expect((await pendingLeaveTaskMetadata(reviewer,[b.companyId])).map(row=>row.id)).toEqual(expected.filter(row=>![requests[0].id,requests[2].id,requests[3].id].includes(row.id)).map(row=>row.id));
  expect((await pendingLeaveTaskMetadata(admin,[b.companyId])).map(row=>row.id)).toEqual(expected.filter(row=>row.id!==requests[2].id).map(row=>row.id));controls.push('currentStep','completedChainOmitted','namedAlternate');
  const ratios=Object.fromEntries(['admin','manager'].map(actor=>{const m=measurements.filter(row=>row.actor===actor);return[actor,Math.max(m[1].elapsedMs,m[2].elapsedMs)/Math.min(m[0].elapsedMs,m[3].elapsedMs)];}));
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'leave-task-subject-batch-prototype.json'),JSON.stringify({kind:'NATIVE_LEAVE_CANDIDATE_QUERY_COMPONENT_ONLY',releaseEligible:false,fixtureRequests:211,fixtureSubjects:1,measurements,ratios,controls,currentDecisionOwnerUnchanged:true,actualConsumerGroupedQueryCalls:shapeBefore===null||shapeAfter===null?null:shapeAfter-shapeBefore,limitations:'Candidate-query comparison only; no500-user or whole-page speed claim; retained native owner fixtures, not application throughput'},null,2));
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'leave-task-subject-batch-prototype.json'),JSON.stringify({kind:'NATIVE_LEAVE_CANDIDATE_QUERY_COMPONENT_ONLY',releaseEligible:false,fixtureRequests:211,fixtureSubjects:1,explicitAnalyze:true,plans,measurements,ratios,controls,currentDecisionOwnerUnchanged:true,actualConsumerGroupedQueryCalls:shapeBefore===null||shapeAfter===null?null:shapeAfter-shapeBefore,limitations:'Candidate-query comparison only; no500-user or whole-page speed claim; retained native owner fixtures, not application throughput'},null,2));
  expect(ratios.admin).toBeLessThan(.8);expect(ratios.manager).toBeLessThan(.8);
 },600000);
 
@@ -105,4 +110,20 @@ it('splits more than1000distinct subject identities without truncating the nativ
  const requests=await owner.db.insert(s.leaveRequest).values(people.map(p=>({tenantId:b.tenantId,employmentId:p.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:today,endDate:today,days:'1',reason:'PRIVATE_LEAVE_DISTINCT_REASON'}))).returning({id:s.leaveRequest.id});
  const original=await readCandidates(ctx,false,[b.companyId]),candidate=await readCandidates(ctx,true,[b.companyId]);expect(original).toHaveLength(1001);expect(candidate).toEqual(original);expect(new Set(candidate.map(row=>row.id))).toEqual(new Set(requests.map(row=>row.id)));
  expect(await pendingLeaveTaskMetadata(ctx,[b.companyId])).toEqual(original);expect(JSON.stringify(candidate)).not.toContain('PRIVATE_LEAVE_DISTINCT_REASON');
+ await analyzeFixture();
+ const manager=await hireEmployee(ctx,{person:{fullName:'Fictional distinct-subject manager',primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:'2020-01-01'});
+ await owner.db.insert(s.reportingLine).values(people.map(p=>({tenantId:b.tenantId,subordinateEmploymentId:p.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative' as const,validFrom:'2020-01-01'})));
+ const reviewer:SessionContext={...ctx,userId:await createAppUser(b.tenantId,manager.personId,'manager'),personId:manager.personId,roles:['manager'],grants:[{role:'manager',companyId:null}]};
+ await analyzeFixture();
+ const measurements:unknown[]=[],plans:unknown[]=[];
+ for(const [actor,who]of [['admin',ctx],['manager',reviewer]]as const){
+  const expected=await readCandidates(who,false,[b.companyId]);expect(expected).toHaveLength(1001);
+  for(const phase of ['original','candidate','candidate-warm','restored']){
+   const batch=phase==='candidate'||phase==='candidate-warm';plans.push({actor,phase,explain:await plan(who,batch,[b.companyId])});
+   const started=performance.now();for(let i=0;i<5;i++)expect(await readCandidates(who,batch,[b.companyId])).toEqual(expected);
+   measurements.push({actor,phase,reads:5,elapsedMs:performance.now()-started});
+  }
+ }
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'leave-distinct-subject-plan-diagnostic.json'),JSON.stringify({fixtureSubjects:1001,explicitAnalyze:true,plans,measurements},null,2));
+
 },600000);
