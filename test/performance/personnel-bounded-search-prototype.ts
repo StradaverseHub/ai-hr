@@ -50,9 +50,10 @@ export async function installPersonnelSearchProbe(sampleOverflow=false):Promise<
   CROSS JOIN LATERAL (VALUES (s.employee_code ILIKE search_pattern),
    (s.full_name ILIKE search_pattern OR s.primary_email ILIKE search_pattern)) matched(hit)
   WHERE matched.hit LIMIT 26
- ),sample_state as materialized(SELECT count(*)=26 AS overflow FROM sample_hits)
+ ),sample_state as materialized(SELECT count(*)=26 AS overflow FROM sample_hits),
+ indexed_hits as materialized(${indexed})
  SELECT sample_hits.id,true FROM sample_hits WHERE (SELECT overflow FROM sample_state)
- UNION ALL SELECT full_probe.id,false FROM (${indexed}) full_probe WHERE NOT (SELECT overflow FROM sample_state)
+ UNION ALL SELECT indexed_hits.id,false FROM indexed_hits WHERE NOT (SELECT overflow FROM sample_state)
  `:guard+' SELECT full_probe.id,false FROM ('+indexed+') full_probe';
  await owner.client.unsafe('create function '+name+'(search_pattern text,company_scope uuid[]) returns table(id uuid,sample_overflow boolean) language sql stable security definer set search_path=pg_catalog,public,pg_temp as $probe$'+body+'$probe$');
  try{
