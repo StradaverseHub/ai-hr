@@ -911,6 +911,13 @@ export async function withdrawProfileChangesForLockedFields(
 export async function pendingProfileTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  const candidates=await withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
+  // No RLS-visible pending request can produce an actionable task. Avoid unrelated
+  // Workforce projections in that case; positives retain the full reader below.
+  // Bind scope UUIDs here too, preserving malformed-input errors for an empty queue.
+  const [pending]=await tx.select({id:profileChangeRequest.id}).from(profileChangeRequest)
+   .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),
+    companyIds===undefined?undefined:sql`array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[] is not null`)).limit(1);
+  if(!pending)return [];
   // The native reader predicate and RLS already evaluate current routing/access facts.
   // This first transaction only finds candidates: resolving edit settings here took
   // the exclusive profile-write barrier on every shell read, even for an empty queue.
