@@ -45,7 +45,15 @@ it('applies the Teras tail from 0890/0891 on over populated leave policy and app
   await setLeaveApprovalPolicy(ctx,{companyId:b.companyId,levels:['direct_manager','hr_admin']});
   await owner.db.insert(schema.leaveApprovalTemplate).values({tenantId:b.tenantId,name:'Fictional upgrade chain',levels:['hr_admin'],isTenantDefault:true});
   const tables:PgTable[]=[schema.tenant,schema.company,schema.department,schema.person,schema.appUser,schema.roleAssignment,schema.leaveType,schema.leaveApprovalTemplate,schema.leaveApprovalPolicy];
-  for(const table of tables){const rows=await owner.db.select().from(table).where(table===schema.tenant?eq(schema.tenant.id,b.tenantId):sql`tenant_id=${b.tenantId}::uuid`);if(rows.length)await target.db.insert(table).values(rows);}
+  for(const table of tables){
+   if(table===schema.company){
+    const [company]=await owner.db.select({name:schema.company.legalName}).from(schema.company).where(eq(schema.company.id,b.companyId));
+    await target.client`insert into public.company(id,tenant_id,legal_name) values(${b.companyId},${b.tenantId},${company.name})`;
+    continue;
+   }
+   const rows=await owner.db.select().from(table).where(table===schema.tenant?eq(schema.tenant.id,b.tenantId):sql`tenant_id=${b.tenantId}::uuid`);
+   if(rows.length)await target.db.insert(table).values(rows);
+  }
   const snapshot=async()=>{const out:Record<string,unknown>={};
    for(const table of ['leave_type','leave_approval_policy','leave_approval_template'])out[table]=await target!.client.unsafe(`select to_jsonb(t)-'rule_version' as value from public.${table} t order by id`);
    return out;};
