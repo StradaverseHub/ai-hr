@@ -105,7 +105,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   [data-ui-theme='atelier'] :is(.atelier-approval-seal, [data-action-pending='true']),
-  [data-ui-theme='atelier'] :is(.atelier-navigation-feedback, .atelier-filter-feedback)::after { animation: none; }
+  [data-ui-theme='atelier'] :is(.atelier-navigation-feedback, .atelier-filter-feedback)::after { animation: none !important; }
   [data-ui-theme='atelier'] [data-action-pending='true'] { box-shadow: inset 0 -2px 0 currentColor; }
   [data-ui-theme='atelier'] .atelier-approval-seal::after { display: none; }
   [data-ui-theme='atelier'] [data-approval-surface]::after { transition: none; transform: none; }
