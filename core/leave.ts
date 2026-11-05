@@ -2358,19 +2358,12 @@ export function applicationLimitWindow(p: {
  * (cdf9ca48) and, on the edit path, excluding the request's own reservation. Re-reading it here would
  * quietly measure a different balance from the one the caller just gated on.
  */
-async function enforceMaxNegativeBalance(
-  tx: Tx,
-  p: { leaveTypeId: string; available: number; requestedDays: number },
-): Promise<void> {
-  const [lt] = await tx
-    .select({ name: leaveType.name, maxNegativeBalance: leaveType.maxNegativeBalance })
-    .from(leaveType)
-    .where(eq(leaveType.id, p.leaveTypeId))
-    .limit(1);
-  if (!lt || lt.maxNegativeBalance == null) return; // NULL ⇒ unbounded, today's behaviour
+function enforceMaxNegativeBalance(
+  lt: { name: string; maxNegativeBalance: string },
+  p: { available: number; requestedDays: number },
+): void {
   const floor = Number(lt.maxNegativeBalance);
-  // A non-positive floor is refused by the DB CHECK, but restate it: a hand-edited row must not start
-  // refusing every application of the type (the same reasoning as the application-limit guard).
+  // The database rejects non-positive floors. Do not apply an invalid legacy floor.
   if (!Number.isFinite(floor) || floor <= 0) return;
   if (round2(p.available - p.requestedDays) < -floor) {
     throw new NegativeLeaveBalanceLimitExceededError({
@@ -3240,6 +3233,7 @@ const leaveTypeRequestColumns = {
   // Configurable Negative Leave Balance Validation (0ef0defd): false ⇒ reject a submit that would take
   // the balance negative (enforced below, after `days` is known); true ⇒ skip the submit-time check.
   allowNegativeBalance: leaveType.allowNegativeBalance,
+  maxNegativeBalance: leaveType.maxNegativeBalance,
   // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): the two settings that decide
   // WHICH balance this application is measured against and what happens to the part it cannot cover.
   // Both are read here and used together below — see the balance guard.
@@ -3968,11 +3962,11 @@ export async function requestLeave(
     } else if (lt?.allowNegativeBalance === false) {
       const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
       if (round2(available - days) < 0) throw new InsufficientLeaveBalanceOnSubmitError();
-    } else if (lt?.allowNegativeBalance === true) {
+    } else if (lt?.allowNegativeBalance === true && lt.maxNegativeBalance != null) {
       // bc512dc3 — going negative is permitted, but not without end. Same balance the branch above reads,
       // resolved through the BALANCE SOURCE, so the two gates never talk about different ledgers.
       const available = await availableLeaveBalance(tx, p.employmentId, p.leaveTypeId);
-      await enforceMaxNegativeBalance(tx, { leaveTypeId: p.leaveTypeId, available, requestedDays: days });
+      enforceMaxNegativeBalance({ name: lt.name, maxNegativeBalance: lt.maxNegativeBalance }, { available, requestedDays: days });
     }
 
     // Shared Leave Group (R44 4c48fd1f, re-pointed to leave-type level by r88 1ef1cf95): reject when this
@@ -7898,6 +7892,7 @@ export async function editLeaveRequestTx(
         // Configurable Negative Leave Balance Validation (0ef0defd): submit/edit-time balance guard flag —
         // enforced below (excluding this very request from its own pending reservation). false ⇒ block.
         allowNegativeBalance: leaveType.allowNegativeBalance,
+        maxNegativeBalance: leaveType.maxNegativeBalance,
         // Allow Unpaid Leave (a7fab30b): the edit re-splits paid/unpaid from scratch. An edit can change the
         // type, the dates, or the duration, any of which moves the boundary — carrying the old split forward
         // would leave the request claiming unpaid days it no longer has (or paying for days it cannot cover).
@@ -8104,27 +8099,24 @@ export async function editLeaveRequestTx(
     } else if (lt.allowNegativeBalance === false) {
       const available = await availableLeaveBalance(tx, req.employmentId, p.leaveTypeId, req.id);
       if (round2(available - days) < 0) throw new InsufficientLeaveBalanceOnSubmitError();
-    } else if (lt.allowNegativeBalance === true) {
+    } else if (lt.allowNegativeBalance === true && lt.maxNegativeBalance != null) {
       // bc512dc3 — the floor applies to an EDIT too, or an application refused at submission could be
       // resubmitted as an edit and land past the limit. Excludes this request's own reservation, exactly
       // as the branch above does.
       const available = await availableLeaveBalance(tx, req.employmentId, p.leaveTypeId, req.id);
-      await enforceMaxNegativeBalance(tx, { leaveTypeId: p.leaveTypeId, available, requestedDays: days });
+      enforceMaxNegativeBalance({ name: lt.name, maxNegativeBalance: lt.maxNegativeBalance }, { available, requestedDays: days });
     }
 
     // Document + remark gates (identical to requestLeave). hasDocument = an attachment already exists on this
     // request (edit does not re-upload; changing to a doc-required type with no attachment is refused).
-    const [att] = await tx
-      .select({ id: leaveRequestAttachment.id })
-      .from(leaveRequestAttachment)
-      .where(eq(leaveRequestAttachment.leaveRequestId, req.id))
-      .limit(1);
-    const hasDocument = !!att;
-    if (lt.requiresDocument && !hasDocument) {
-      const after = lt.mandatoryAfterDays;
-      if (after == null || after === 0 || days > after) {
-        throw new LeaveDocumentRequiredError(lt.name, after ?? undefined);
-      }
+    const mandatoryAfter = lt.mandatoryAfterDays;
+    if (lt.requiresDocument && (mandatoryAfter == null || mandatoryAfter === 0 || days > mandatoryAfter)) {
+      const [attachment] = await tx
+        .select({ id: leaveRequestAttachment.id })
+        .from(leaveRequestAttachment)
+        .where(eq(leaveRequestAttachment.leaveRequestId, req.id))
+        .limit(1);
+      if (!attachment) throw new LeaveDocumentRequiredError(lt.name, mandatoryAfter ?? undefined);
     }
     const employeeRemark = p.employeeRemark?.trim() || null;
     if (lt.employeeRemarkRequired && !employeeRemark) throw new LeaveRemarkRequiredError(lt.name);
