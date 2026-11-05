@@ -1,6 +1,6 @@
 # Release speed review — 4 November 2026
 
-Status: **accepted by the owner on 4 November 2026 ("Okay go ahead"); recorded as [ADR-0175](../adr/0175-first-time-right-releases.md), with Option A for AI approval.** Phase 0 tooling: `scripts/release/preflight.mjs`, `scripts/release/select-focused.ts`, `scripts/release/migrations-renumber.mjs`, the [fast path](../RELEASE-FAST-PATH.md) and the [flaky test register](../FLAKY-TESTS.md). Phase 1 controller changes are still proposals. Original status: **review and proposal only.** Nothing in this document changes a workflow, `.github/ci/*`, the release controller, the staging queue, a manifest or an approval file. Each control change below is a proposal that must be reviewed and validated under [CI policy § Change control](../CI-STAGING-VERIFICATION-POLICY.md#change-control) before use.
+Status: **accepted by the owner on 4 November 2026 ("Okay go ahead"); recorded as [ADR-0176](../adr/0176-first-time-right-releases.md) (renumbered from the provisional 0175 on 5 November; the draft below is the submitted text), with Option A for AI approval.** Phase 0 tooling: `scripts/release/preflight.mjs`, `scripts/release/select-focused.ts`, `scripts/release/migrations-renumber.mjs`, the [fast path](../RELEASE-FAST-PATH.md) and the [flaky test register](../FLAKY-TESTS.md). Phase 1 controller changes are still proposals. Original status: **review and proposal only.** Nothing in this document changes a workflow, `.github/ci/*`, the release controller, the staging queue, a manifest or an approval file. Each control change below is a proposal that must be reviewed and validated under [CI policy § Change control](../CI-STAGING-VERIFICATION-POLICY.md#change-control) before use.
 
 Sources: the running log `ai-hr-builders/RESUME/TERAS-RELEASE-STATUS.md` (2–4 November), GitHub Actions run and job records read through the API on 4 November 2026 at 05:58 UTC, and the controller source on main `aa260e8d0`. Times are Kuala Lumpur time (UTC+8) unless marked Z. Figures marked *log* come from the log and were not re-measured.
 
@@ -331,9 +331,9 @@ P4 Option B, the P5 allocation lease in the queue, and P9 staging windows and sp
 
 ---
 
-## Part 3 — Draft ADR for owner approval (as submitted; the accepted text is ADR-0175)
+## Part 3 — Draft ADR for owner approval (as submitted; the accepted text is ADR-0176)
 
-> **ADR-0175 — First-time-right releases with bounded recovery and single binding**
+> **ADR-0176 — First-time-right releases with bounded recovery and single binding**
 >
 > - Date: 2026-11-04
 > - Status: **Proposed**, awaiting the owner's approval.

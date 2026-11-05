@@ -1,4 +1,4 @@
-/** ADR-0175 decision 6: number unapplied migrations at landing. Dry run by default.
+/** ADR-0176 decision 6: number unapplied migrations at landing. Dry run by default.
  *
  *   node scripts/release/migrations-renumber.mjs [--base origin/main] [--staging-watermark WHEN]
  *        [--start-file N] [--write]

@@ -117,9 +117,10 @@ describe('AI management sub-menu',()=>{
     // Issue 17: Administration's second row (Workers, Setup, Spend and providers) sits under the tab bar, with
     // Workers current, then the Workers section switcher.
     const sections=container.querySelector('nav[data-ai-centre-sections="administration"]') as HTMLElement;
-    expect(within(sections).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/control-tower/agents/features','/control-tower/agents','/control-tower/agents/allowances']);
+    // AI Centre restructure: a group administrator also gets the Build list; Workers is one list, so it has no section switcher.
+    expect(within(sections).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/control-tower/agents/features','/control-tower/agents','/control-tower/agents/allowances','/control-tower/agents/build-list']);
     expect(within(sections).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower/agents/features');
-    expect(screen.getAllByRole('navigation')).toHaveLength(3);
+    expect(screen.getAllByRole('navigation')).toHaveLength(2);
     expect(container.querySelector('#ai-features')).not.toBeNull();
     for(const other of ['#ai-map','#ai-attention','#company-limits','#user-limits','#ai-spend','#orchestrator','#ai-runs'])expect(container.querySelector(other),other).toBeNull();
   });

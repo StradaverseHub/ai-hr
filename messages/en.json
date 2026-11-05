@@ -526,7 +526,8 @@
     "contractIntake": "Contract intake and retirement evidence",
     "passwordPolicy": "Password Policy",
     "myPrivateCases": "My private cases",
-    "privateCases": "Private cases"
+    "privateCases": "Private cases",
+    "myPayrollReadiness": "My payroll readiness"
   },
   "dashboard": {
     "title": "Dashboard",

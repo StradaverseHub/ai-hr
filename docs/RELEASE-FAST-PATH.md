@@ -1,6 +1,6 @@
-# Release fast path (ADR-0175 Phase 0)
+# Release fast path (ADR-0176 Phase 0)
 
-This checklist adopts [ADR-0175](adr/0175-first-time-right-releases.md) Phase 0 for builders, integrators and release operators. It adds earlier checks only. Every existing control still applies:
+This checklist adopts [ADR-0176](adr/0176-first-time-right-releases.md) Phase 0 for builders, integrators and release operators. It adds earlier checks only. Every existing control still applies:
 - the full gate on main;
 - CI admission;
 - the owner's direct binding approval;
@@ -67,4 +67,4 @@ For each release, record in the release record or log:
 - the approval rounds;
 - the queue wait.
 
-ADR-0175's target is one gate, at most one recovery, and under 90 minutes.
+ADR-0176's target is one gate, at most one recovery, and under 90 minutes.

@@ -93,5 +93,5 @@ export const periodOf=(date:string)=>date.slice(0,7);
 export const nextPeriod=(period:string)=>{const y=Number(period.slice(0,4)),m=Number(period.slice(5,7));return m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,'0')}`;};
 export const monthEnd=(period:string)=>{const y=Number(period.slice(0,4)),m=Number(period.slice(5,7));return new Date(Date.UTC(y,m,0)).toISOString().slice(0,10);};
 
-/** Where Today's card and the Insights view link. */
-export const PAYROLL_READINESS_HREF='/assistant?view=insights#my-payroll-readiness';
+/** The person's own "My payroll readiness" page (owner decision 27), where Today's "See all" goes. */
+export const PAYROLL_READINESS_HREF='/me/payroll-readiness';

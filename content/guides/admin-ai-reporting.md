@@ -1,9 +1,10 @@
-Use [AI Centre › Operations](/control-tower) to review operational readiness and exceptions. AI suggestions support a responsible reviewer; they are not authority to pay, terminate employment or change access.
+Use [AI Centre › Operations](/control-tower/loops) to review the loops, the payroll cycle, exceptions and record readiness. AI suggestions support a responsible reviewer; they are not authority to pay, terminate employment or change access.
 
 ## Coordinate outstanding work
 
-The Overview shows readiness issues, the responsible party and the next action. **Check current records**
-refreshes the queue from the HR engine without sending reminders. The scheduled review also refreshes
+[Record readiness](/control-tower/readiness) is the one list of missing employee data: each gap, the people it affects,
+who acts (the employee, HR or group HR), the next action, and what the missing-data loop has already asked the employee.
+**Check current records** refreshes the queue from the HR engine without sending reminders. The scheduled review also refreshes
 it and runs readiness and claims passes when their tenant switches are enabled. Readiness can use fixed
 templates; scheduled model drafting additionally requires an admitted principal.
 
@@ -12,16 +13,19 @@ the information itself. Ended employments are retired from the queue without bei
 If a gap returns, its case reopens and the reopen count is shown. The recorded check time identifies
 the observation behind the queue. Execution failures are shown separately from outstanding HR work.
 
-Use the Operations tabs (Overview, Exceptions, Record readiness, Proposed actions and Opportunities) to
-move between them; Administration holds the AI workers, setup and spending, and How it works explains each capability. Expand **Payroll and AI quality** on the Overview for the
-existing quality and coverage metrics. The employee links open the authoritative personnel record.
+Use the Operations tabs (Loops, Payroll cycle, Exceptions and Record readiness) to move between them.
+Administration holds Workers (every AI piece, its switch and its inventory record), Setup, Spend and providers and,
+for group administrators, the [Build list](/control-tower/agents/build-list) of agent capabilities ranked by the work they
+would take off HR, with its export. How it works explains each capability. Insights holds HR capacity (time freed, the
+baseline, and where the work is) and AI quality, which includes the agreement and payroll-check figures. No screen shows
+a ratio of HR staff to employees. The employee links open the authoritative personnel record.
 
 ## Work through an exception
 
 1. Select the company and period where offered.
 2. Open [Record readiness](/control-tower/readiness) or [Exceptions](/control-tower/exceptions).
 3. Read the underlying facts and the affected record. Verify the source data before accepting an explanation or suggested action.
-4. Use [Proposed actions](/control-tower/actions) for the actions available to your role and current workflow state.
+4. Resolve the exception on [Exceptions](/control-tower/exceptions), the one place exceptions are resolved. Its **Cause already fixed** group closes exceptions whose cause is now on file, and its acknowledged group resolves blocks a standing acknowledgement covers; each is re-checked when you press it.
 5. Review the outcome in the authoritative HR/payroll record. A resolved suggestion is not proof that an external payment or submission occurred.
 
 [How it works](/control-tower/how-it-works) describes the current model and, for administrators, what is switched on for your company. [Administration](/control-tower/agents) and [AI configuration](/admin/ai) expose the available configuration. Check provider readiness, permissions and the scope of any enabled behavior before changing it.

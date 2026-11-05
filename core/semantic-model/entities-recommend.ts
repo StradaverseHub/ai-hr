@@ -10,6 +10,7 @@
  * Counts are `minimum` (the person may read every row behind them) except where they describe a group of
  * other people, which are `bands`. Rule-version labels carry internal ids, so they are `never`. */
 import type {DisclosureClass,FieldType,SemanticEntity,SemanticField} from './types';
+import {WEEKDAYS} from '../../lib/hr-date-phrase';
 
 const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'|'screen'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
@@ -54,7 +55,7 @@ export const RECOMMEND_ENTITIES:readonly SemanticEntity[]=freeze([
   meaning:'One registered automated worker: its family, trigger, read scope, declared effect, authority, per-tenant switch, stop switch, last run, and acceptance and reversal rates where they are measurable.',
   module:null,sensitivity:'ordinary',audience:'admin',rls:'administered_scope',
   owners:['core/agent-registry/views.ts#listWorkers','core/agent-registry/views.ts#workerDetail','core/agent-registry/export.ts#exportAgentRegistry'],
-  ruleVersion:null,relations:[],page:'/control-tower/agents',
+  ruleVersion:null,relations:[],page:'/control-tower/agents/features',
   fields:[f('id','label','full','Worker key.'),f('family','enum','full','Worker family.',{values:WORKER_FAMILIES}),f('effect','enum','full','Declared effect.',{values:WORKER_EFFECTS}),
    f('trigger','label','full','What starts it.'),f('readScope','list','full','Semantic entities it reads.'),f('enabled','boolean','full','Its tenant switch.'),
    f('stopped','boolean','full','The tenant-wide stop switch.'),f('lastRunAt','datetime','full','When it last ran.'),
@@ -62,7 +63,7 @@ export const RECOMMEND_ENTITIES:readonly SemanticEntity[]=freeze([
  // Inputs of the existing automated workers (§3.7), declared so their read scope comes from the model.
  {id:'payroll_anomaly',label:'Payroll anomaly',meaning:'A deterministic detector finding on one payroll run line, with its disposition and the facts behind it.',
   module:'payroll',sensitivity:'pay',audience:'admin',rls:'administered_scope',owners:['core/payroll-anomaly.ts#evaluateBatchAnomalies','core/payroll-anomaly-narrate.ts#narrateVerdict'],
-  ruleVersion:null,relations:[],page:'/control-tower',
+  ruleVersion:null,relations:[],page:'/control-tower/exceptions',
   fields:[f('detector','label','full','Detector key.'),f('disposition','enum','full','Auto-clear, review or block.',{values:['auto_clear','review','block']}),
    f('facts','object','bands','The figures the detector compared.'),f('employmentId','id','never','Handle of the employment.')]},
  {id:'readiness_gap',label:'Record readiness gap',meaning:'A missing field on an employee record that blocks or weakens payroll or statutory filing.',
@@ -101,6 +102,15 @@ export const RECOMMEND_ENTITIES:readonly SemanticEntity[]=freeze([
     // The caller's own pending claim, so its date may be named back as incurredOn to choose it.
     f('incurredOn','date','full','Date one of the caller\'s own pending claims was incurred.'),f('amount','number','bands','Amount of a pending claim, as stored.')]}),
    f('notListed','integer','full','Further pending requests left to the review page.'),
+   // Owner, 5 November 2026 ("Fix dates first"): the caller's own request dates, worked out by the HR date owner from the
+   // person's words (core/proposals/request-dates.ts), and what the caller's own attendance day holds now.
+   f('dates','object','full','The dates of the caller\'s own request, worked out from the person\'s words, each with its weekday.',{of:[
+    f('startDate','date','full','First day.'),f('startDay','enum','full','Weekday of the first day.',{values:WEEKDAYS}),
+    f('endDate','date','full','Last day.'),f('endDay','enum','full','Weekday of the last day.',{values:WEEKDAYS}),
+    f('others','list','full','Another day the person\'s words may mean; the card offers to switch to it.',{of:[
+     f('date','date','full','The other day.'),f('day','enum','full','Its weekday.',{values:WEEKDAYS})]})]}),
+   f('recorded','object','full','What the caller\'s own attendance day holds now; never asked for again.',{of:[
+    f('checkIn','time','full','Clock-in on record; the request uses it.'),f('checkOut','time','full','Clock-out on record.')]}),
    f('pending','list','full','Pending leave requests the approver chooses between, in a fixed order.',{of:[
     f('request','integer','full','The request\'s number in this list; the approver chooses by it.'),
     f('applicant','name','minimum','Who applied.'),f('leaveType','label','full','Leave type name.',{screen:'sensitive_label'}),

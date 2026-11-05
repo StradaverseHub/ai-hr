@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getFormatter, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { withTenant } from '@/db/client';
 import { batchDetail } from '@/core/payroll';
@@ -13,16 +13,16 @@ import {
   type ThresholdInForce,
 } from '@/core/payroll-anomaly';
 import { HYPOTHESIS_DETECTOR_ID } from '@/core/payroll-anomaly-detectors';
+import { runEvidence, type Evidence } from '@/core/payroll-learning/evidence';
 // d75b0c11 — this screen's Back goes to the RUN, not to the list, so what it carries is the run screen's
 // own `?from=`. Whitelisted by shape here for the same reason every other consumer does it: a href taken
 // straight out of searchParams is the open-redirect shape (lib/return-to.ts).
 import { payrollListReturnTo, withPayrollFrom } from '@/lib/return-to';
-import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import {
   evaluateAnomaliesAction,
   narrateAnomalyAction,
   proposeHypothesesAction,
-  resolveAnomalyAction,
 } from '../../actions';
 
 /**
@@ -43,6 +43,12 @@ import {
  * A NOTE ON WHO CAN SEE THIS: verdicts are payroll-admin-only by RLS, deliberately unlike payslips, which
  * an employee may read about themselves. A verdict is an operator's working note about a person — "confirm
  * the employee actually worked" — and early cycles are expected to produce false positives.
+ *
+ * PAYROLL HISTORY LEARNING (P2). Where the company learns from its payroll history, a flagged person's card says what is
+ * usual for them: "Usual for this person: within / above / below range from N runs", with the exact range, their net pay
+ * in this run against their learned regular (or bonus) pay from closed months before this one
+ * (core/payroll-learning/evidence.ts runEvidence). It is evidence beside the facts, never a finding: it changes no
+ * severity, resolves nothing and never downgrades a block.
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -80,6 +86,9 @@ export default async function AnomaliesPage({
   // payroll-admin-only by RLS, so the route gate and the row gate agree.
   const s = await requireAdmin();
   const t = await getTranslations('anomaly');
+  // AI Centre restructure (owner decision 28): an open exception is resolved on Exceptions only; this run's page lists
+  // its rows, keeps its explanations and the auto-cleared list where a missed issue is raised, and links there.
+  const resolveThere = (await getTranslations('aiCentre.exceptions'))('resolveThere');
   const sp = await searchParams;
   // d75b0c11 — Back returns the RUN, and hands the run its own `?from=` back so the run screen's Back
   // still returns the Payroll Process list as it was left. Nothing to carry ⇒ the bare run address,
@@ -96,12 +105,21 @@ export default async function AnomaliesPage({
   const batch = await batchDetail(s, batchId).catch(() => null);
   if (!batch) notFound();
 
-  const [rows, metrics, swing, provenance] = await Promise.all([
+  const [rows, metrics, swing, provenance, evidence] = await Promise.all([
     anomalyQueue(s, { batchId }),
     anomalyMetrics(s, { batchId }),
     withTenant(s, (tx) => evaluateCircuitBreaker(tx, s.tenantId, batchId)),
     thresholdsInForce(s, { batchId }),
+    // A learning read that fails leaves the cards without evidence lines; it never stops the queue.
+    runEvidence(s, { batchId }).catch(() => new Map<string, Evidence>()),
   ]);
+  // The learning copy is loaded only when there is evidence to word.
+  const [tl, f] = evidence.size ? await Promise.all([getTranslations('aiCentre.payrollLearning'), getFormatter()]) : [null, null];
+  const sen = (value: number) => f ? f.number(value / 100, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(value / 100);
+  const usualFor = (employmentId: string): Usual => {
+    const e = evidence.get(employmentId);
+    return e && tl ? { judgement: e.judgement, line: tl(`evidence.${e.judgement}`, { count: e.runs }), range: tl('range', { low: sen(e.low), high: sen(e.high) }) } : null;
+  };
 
   /**
    * r292 — THE THRESHOLD DISCLOSURE, and why it is on THIS screen rather than in a document.
@@ -294,7 +312,9 @@ export default async function AnomaliesPage({
           batchId={batchId}
           from={carry}
           explainLabel={t('explain')}
+          resolveThere={resolveThere}
           hypothesis={hypothesis}
+          usual={usualFor(row.employmentId)}
         />
       ))}
 
@@ -329,20 +349,27 @@ export default async function AnomaliesPage({
 // `explainLabel` is passed in rather than resolved here: this is a plain (non-async) component and
 // getTranslations belongs to the page, which is also where every other string on this screen comes from.
 type HypothesisCopy = { label: string; help: string; claim: Record<string, string> };
+/** The person's evidence line, resolved by the page (null: no learned baseline to show). */
+type Usual = { judgement: string; line: string; range: string } | null;
 
 function VerdictCard({
   row,
   batchId,
   from,
   explainLabel,
+  resolveThere,
   hypothesis,
+  usual,
 }: {
   row: QueueRow;
   batchId: string;
   /** r253 — the whitelisted Payroll Process filter query this screen was opened with; see the page. */
   from?: string;
   explainLabel: string;
+  /** The link to Exceptions, where an open exception is resolved (owner decision 28). */
+  resolveThere: string;
   hypothesis: HypothesisCopy;
+  usual: Usual;
 }) {
   return (
     <Card className="p-5">
@@ -355,6 +382,12 @@ function VerdictCard({
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             {row.detectorsSkipped.length > 0 ? `${row.detectorsSkipped.length} skipped` : 'all checks ran'}
           </p>
+          {usual ? (
+            <p data-learning-evidence={usual.judgement} className="mt-1 text-[11px] text-muted-foreground">
+              {usual.line}
+              <span className="block tabular-nums">{usual.range}</span>
+            </p>
+          ) : null}
         </div>
         <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${TONE[row.disposition]}`}>
           {row.disposition}
@@ -408,23 +441,9 @@ function VerdictCard({
       {row.resolvedAt ? (
         <p className="mt-3 text-[11px] text-muted-foreground">{`resolved: ${row.resolution ?? ''}`}</p>
       ) : (
-        <form action={resolveAnomalyAction} className="mt-4 space-y-2">
-          <input type="hidden" name="batchId" value={batchId} />
-          <input type="hidden" name="verdictId" value={row.verdictId} />
-          {from ? <input type="hidden" name="from" value={from} /> : null}
-          <input name="note" placeholder="note (optional)" className={inputCls} />
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" size="sm" name="resolution" value="accepted" variant="secondary">
-              correct as it stands
-            </Button>
-            <Button type="submit" size="sm" name="resolution" value="fixed_upstream" variant="secondary">
-              fixed at the source
-            </Button>
-            <Button type="submit" size="sm" name="resolution" value="false_positive" variant="secondary">
-              not a real problem
-            </Button>
-          </div>
-        </form>
+        <Link href="/control-tower/exceptions" data-resolve-on-exceptions className="mt-4 inline-flex min-h-9 items-center text-sm font-medium text-primary hover:underline pointer-coarse:min-h-11">
+          {resolveThere}
+        </Link>
       )}
     </Card>
   );

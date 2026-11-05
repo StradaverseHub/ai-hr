@@ -113,7 +113,7 @@ describe('spec v15 instructions, unchanged in v16 and v17 and kept in v18',()=>{
  });
  it('offers a change as its card with "Yes, I can …", directly from suggest_action\'s list, and an import by its action',()=>{
   const change=instructions.find(row=>row.startsWith('To help with a change'))!;
-  expect(change).toBe('To help with a change, start with "Yes, I can …" and call suggest_action with the action from its list (an action\'s id, or an import\'s action), so its card comes with your reply; never open with "I can\'t" when an action is listed, and do not link that page in your text. If suggest_action reports missing details, ask for them in one short question, numbering any options it lists as given; never guess them. Only when its result says a review item is ready or a form is filled in, say it is ready for them to review and confirm (for a decision: "a decision card is ready for you to review and confirm"); never write "I\'ve prepared …". Never say anything is submitted, approved, closed or done: the person confirms every change themselves. Fill details only with what the person said: dates worked out from today, times as 24-hour HH:MM.');
+  expect(change).toBe('To help with a change, start with "Yes, I can …" and call suggest_action with the action from its list (an action\'s id, or an import\'s action), so its card comes with your reply; never open with "I can\'t" when an action is listed, and do not link that page in your text. If suggest_action reports missing details, ask for them in one short question, numbering any options it lists as given; never guess them. Only when its result says a review item is ready or a form is filled in, say it is ready for them to review and confirm (for a decision: "a decision card is ready for you to review and confirm"); never write "I\'ve prepared …". Never say anything is submitted, approved, closed or done: the person confirms every change themselves. Fill details only with what the person said, times as 24-hour HH:MM; a day they name for leave or attendance (such as "next Friday" or "esok") goes in as their words, which the system works out, any other date as YYYY-MM-DD from today. State the exact date the result gives, with its weekday, so they can correct it.');
   expect(count(/call available_actions/)).toBe(0);
   expect(count(/start with "Yes, I can …" and call suggest_action/)).toBe(1);
   expect(instructions[0]).toBe('You are the HR Assistant inside an HR application. Today is {today} (Asia/Kuala_Lumpur).');
@@ -150,7 +150,9 @@ describe('suggest_action\'s description (spec v13, kept since)',()=>{
   expect(suggestDescription(rows(['payroll.close','payroll.reopen']))).toBe(base);
   expect(base).not.toContain('What these actions do');
   expect(base).toMatch(/^Point the person to the page where they complete and confirm one change\. For leave\.apply,/);
-  expect(base).toContain('For leave.apply, details may carry leaveType, startDate and endDate (YYYY-MM-DD)');
+  // Spec v25 (test/harness-spec-v25.test.ts): a leave or attendance date is a date or the person's words for the day.
+  expect(base).toContain('For leave.apply, details may carry leaveType, startDate and endDate, durationType (full_day, half_day_am or half_day_pm) and reason');
+  expect(base).toContain('a date detail is YYYY-MM-DD when the person gave a date; when they named a day instead');
   expect(base).toContain('Never put a bank account, phone or identity number in details: the system reads those from the person\'s own message.');
  });
 });

@@ -52,7 +52,7 @@ describe('operations_status',()=>{
   const hr=await person('Fictional Topic Payroll-Off Admin',[{role:'hr_admin',companyId:base.companyId}]);
   await setModule(base.tenantId,'payroll','disabled');
   const off=await named(await again(hr),'operations_status');
-  for(const topic of ['payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit'])
+  for(const topic of ['payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit','payroll_learning'])
    expect(await off.run({topic}),topic).toMatchObject({ok:false,refusal:'not_permitted',content:{ok:false,refusal:'not_permitted'}});
   const loops=await off.run({topic:'loops'});
   expect(loops.ok).toBe(true);expect(Array.isArray((loops.content as {loops:unknown[]}).loops)).toBe(true);
@@ -64,6 +64,11 @@ describe('operations_status',()=>{
   expect(cycle).toMatchObject({ok:true,content:{ok:true,period:'2026-07'}});
   // Its own page link, as the payroll cycle page.
   expect(JSON.stringify(cycle.content)).toContain('/control-tower/loops/payroll-cycle');
+  // Payroll history learning (P2): its own topic, with learning off as seeded: the mode and zero counts, never an amount.
+  const learning=await on.run({topic:'payroll_learning',period:'2026-07'});
+  expect(learning).toMatchObject({ok:true,content:{ok:true,period:'2026-07'}});
+  expect((learning.content as {companies:{mode:string;people:Record<string,number|null>}[]}).companies.map(c=>[c.mode,c.people]))
+   .toEqual([['off',{stable:0,provisional:0,notYet:0,rebasing:0,contradicted:0}]]);
  },60000);
 });
 

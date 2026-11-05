@@ -862,3 +862,39 @@ fingerprint 5212672b. The session recorded the message on receipt at 2026-11-04T
 Counsel's advice (ADR-0169 §5.1) is still required before any real tenant data reaches a provider. Staging uses
 fictional data only. Production remains held. This record is not a runtime PASS, staging acceptance or deployment
 authorisation.
+
+## AI Centre restructure binding
+
+This supersedes the "AI v2 release binding r2" fingerprint (5212672b) for the AI Centre restructure (owner decisions
+26–29), payroll history learning P1–P2 and the date fix (decisions 30 and 31). The packet is
+`docs/reviews/teras-whole-stack-20261102/binding-packet-ai-centre-restructure.md`.
+
+The provider-data closure for code ce28967e8d197b0764c42bef81c859953482d12d is 1420 files /
+`ed5d8c241a27e1cc2c1347eba8ab8af1d534408ce27b8bef683ecfcbfa26f432`. Against 5212672b, 8 files were added, 31 changed and
+none removed. The manifest generator and scope scripts are byte-identical to main's.
+
+**What the AI gains:**
+- **The `payroll_learning` topic** inside `operations_status`. It is for payroll administrators only and gives counts
+  only, banded and under the small-group rule: no person, amount or range. There is no new tool.
+- **The HR date owner's rule for named days**, which the model passes as the person's own words.
+- **The restructure's single-source page pointers.**
+- **Spec v25** (`e3d5c13543380478704e0956ef7eef5f594e399485eefb1fb9f973b71fe9384c`).
+
+No provider-data contract was added. Evidence:
+- focused CI 41963174642 and 41966657296;
+- Luna eval 41964492426, where every role bar passes on the 44 shared turns with 0 safety faults.
+
+The repository owner approved the packet directly in the coordinator session teras-noveri-handoff-54e696
+("I approve it"), answering the session's question to approve the AI Centre packet at fingerprint ed5d8c24. The
+session recorded the message on receipt at 2026-11-05T06:09:20Z. The approval covers this closure only.
+
+**Records:**
+- All 27 approved records take the new sourceDigest.
+- `teras_harness_turn_v1` and `handbook_policy_values_v1` take evidence #ai-centre-restructure-binding and reviewedAt
+  2026-11-05T06:09:20Z.
+- Every other record is unchanged apart from its digest, and both pending records stay byte-identical.
+- The module-agent manifest is regenerated last.
+
+Counsel's advice (ADR-0169 §5.1) is still required before any real tenant data reaches a provider. Staging uses
+fictional data only. Production remains held. This record is not a runtime PASS, staging acceptance or deployment
+authorisation.

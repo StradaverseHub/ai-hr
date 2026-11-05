@@ -1,11 +1,11 @@
 # Flaky and time-dependent test register
 
-Owner decision: [ADR-0175](adr/0175-first-time-right-releases.md) decision 5, 4 November 2026.
+Owner decision: [ADR-0176](adr/0176-first-time-right-releases.md) decision 5, 4 November 2026.
 
 ## Rules
 
 - A registered test **still runs in every gate and still fails the run**. It is never skipped, never made non-blocking, and never moved out of a release unit.
-- Registration permits exactly one thing: once the reviewed single-shot recovery route exists (ADR-0175 Phase 1), it may be used once per candidate, and only when the test lies outside that candidate's impact set. Until then, the existing recovery routes and their limits apply unchanged.
+- Registration permits exactly one thing: once the reviewed single-shot recovery route exists (ADR-0176 Phase 1), it may be used once per candidate, and only when the test lies outside that candidate's impact set. Until then, the existing recovery routes and their limits apply unchanged.
 - To add an entry:
   - give evidence of the same test passing and failing on the same source (run IDs);
   - name an owner;

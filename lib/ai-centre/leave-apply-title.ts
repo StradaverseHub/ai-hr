@@ -14,6 +14,10 @@ type TitledProposal=Readonly<{what:Readonly<{action:string;selectors:Readonly<Re
  facts?:Readonly<{leaveType?:string;startDate?:string;endDate?:string;days?:number}>}>;
 
 export const LEAVE_APPLY_TITLE_DATE={weekday:'short',day:'numeric',month:'short',timeZone:'UTC'} as const;
+/** Owner, 5 November 2026: the other date a card offers, written out in the message it fills ("Make it Friday, 13 November
+ * 2026 instead."): the whole date in the Gregorian calendar (a Thai locale would otherwise write the Buddhist year), so the
+ * person's next turn names an explicit date. A calendar date, formatted in UTC like the title. */
+export const OTHER_DATE_PROMPT_DATE={weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC',calendar:'gregory'} as const;
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
 
 export function leaveApplyCardTitle(body:TitledProposal,t:Translate,formatDate:FormatDate):string|null{

@@ -1,4 +1,4 @@
-/** ADR-0175 decision 1: builder/integrator focused-test selection from the deterministic impact selector
+/** ADR-0176 decision 1: builder/integrator focused-test selection from the deterministic impact selector
  * (ADR-0114, scripts/gate-impact.ts) instead of hand-picked unions. Advisory: it selects and prints; it
  * issues no receipt, and the full release gate is still required.
  *

@@ -7,6 +7,9 @@
  *
  * Canonical home of the helper previously defined in core/leave.ts (which now re-exports it): pure,
  * dependency-free, safe to import from leaf modules like core/employment-status.ts and from tests.
+ *
+ * The days people name in a request ("tomorrow", "next Friday", "esok", "下周五", "on the 13th") are this owner's too: the
+ * rule lives beside it in ./hr-date-phrase.ts and reads "today" from todayInKualaLumpur here.
  */
 import {isCalendarDate} from './calendar-date';
 export const HR_LOCAL_TZ = 'Asia/Kuala_Lumpur';

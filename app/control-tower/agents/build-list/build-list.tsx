@@ -2,7 +2,8 @@ import { getFormatter, getTranslations } from 'next-intl/server';
 import type { agentBuildList } from '@/core/agent-build-list';
 import { Card, SectionHeader, btnGhost } from '@/components/ui';
 
-/** Complete export; bounded, explicitly paginated display. No capability can execute from this view. */
+/** Complete export; bounded, explicitly paginated display. No capability can execute from this view. AI Centre
+ * restructure (4 Nov 2026): moved from the former Opportunities page to Administration › Build list. */
 export async function RankedBuildList({view,page=1}:{view:Awaited<ReturnType<typeof agentBuildList>>;page?:number}) {
   const t=await getTranslations('processAssessment.buildList');
   const process=await getTranslations('processAssessment');
@@ -10,13 +11,13 @@ export async function RankedBuildList({view,page=1}:{view:Awaited<ReturnType<typ
   const pageSize=50,pages=Math.max(1,Math.ceil(view.entries.length/pageSize));
   const current=Math.min(pages,Math.max(1,Math.trunc(page)||1)),start=(current-1)*pageSize;
   const rows=view.entries.slice(start,start+pageSize);
-  const href=(n:number)=>`/control-tower/opportunities?days=${view.window}&backlogPage=${n}#ranked-build-list`;
+  const href=(n:number)=>`/control-tower/agents/build-list?days=${view.window}&backlogPage=${n}#ranked-build-list`;
   const number=(n:number|null)=>n===null?'—':f.number(n,{maximumFractionDigits:1});
   return <Card id="ranked-build-list" className="overflow-hidden">
     <div className="space-y-3 p-5">
       <SectionHeader title={t('title')} subtitle={t('subtitle')}/>
       <p className="max-w-4xl text-sm text-muted-foreground">{t('proxy')}</p>
-      <a className={btnGhost} href={`/control-tower/opportunities/backlog?days=${view.window}`}>{t('export')}</a>
+      <a className={btnGhost} href={`/control-tower/agents/build-list/export?days=${view.window}`}>{t('export')}</a>
     </div>
     <div className="overflow-x-auto"><table className="w-full min-w-[780px] text-left text-sm">
       <caption className="sr-only">{t('title')}</caption>

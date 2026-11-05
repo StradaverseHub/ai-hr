@@ -70,6 +70,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { inputCls } from '@/components/ui';
+import { useFitToView } from '@/components/ui/fit-to-view';
 
 export type MultiSelectPopoverOption = { id: string; name: string };
 /** r299 — a row's tag and the tone it is drawn in. `positive` for a row the caller wants read as included,
@@ -139,6 +140,7 @@ export function MultiSelectPopover({
 }) {
   const captionId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
@@ -150,6 +152,9 @@ export function MultiSelectPopover({
     return options.filter((o) => o.name.toLowerCase().includes(lower));
   }, [options, search, matchOption]);
   const visibleIds = useMemo(() => new Set(visible.map((o) => o.id)), [visible]);
+  // Opened near the bottom of the window or inside a dialog, the panel opens upwards or shrinks to fit;
+  // the option list is the part that gives up height (min-h-0), the search box and bulk links stay.
+  useFitToView(open, panelRef, visible.length);
   // r299 — what Select all may tick: the visible rows the caller has not disabled. Clear all is unchanged
   // (it only ever removes), so a disabled row can never be ADDED by either bulk control.
   const selectableVisibleIds = useMemo(
@@ -216,7 +221,7 @@ export function MultiSelectPopover({
           />
         </button>
         {open && (
-          <div className="absolute left-0 z-50 mt-1 w-72 rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-lg">
+          <div ref={panelRef} className="absolute left-0 z-50 mt-1 flex w-72 flex-col rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-lg">
             <input
               type="text"
               value={search}
@@ -238,7 +243,7 @@ export function MultiSelectPopover({
             {noMatches && emptyLabelFor != null && (
               <p className="px-2 py-3 text-center text-xs text-muted-foreground">{emptyLabelFor(search.trim())}</p>
             )}
-            <div className="max-h-56 overflow-y-auto">
+            <div className="max-h-56 min-h-0 overflow-y-auto">
               {options.map((o) => {
                 // r293 — computed per row and rendered ONLY when the caller returns one. It sits INSIDE the
                 // <label>, so it is part of the option's accessible name too — a screen reader hears

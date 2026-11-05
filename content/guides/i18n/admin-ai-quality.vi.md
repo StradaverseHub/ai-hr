@@ -17,6 +17,6 @@ Mỗi số liệu là một phần trăm kèm số đếm. Biểu đồ cho th�
 
 ## Đề xuất
 
-**Đề xuất** liệt kê những gì các vòng lặp đề xuất từ chính quyết định của bạn. Một đề xuất chỉ áp dụng khi quản trị viên phê duyệt, từ lần chạy tiếp theo, và **Hoàn nguyên** khôi phục thiết lập trước đó dưới dạng một phiên bản mới. Chỉnh sửa theo tháng của mỗi vòng lặp được hiển thị bên cạnh; cấp độ của một vòng lặp chỉ thay đổi trên trang riêng của nó.
+**Đề xuất** liệt kê những gì các vòng lặp đề xuất từ chính quyết định của bạn, ở đây chỉ để xem. Mỗi đề xuất được quyết định trong [Cài đặt chu kỳ lương](/control-tower/loops/payroll-cycle/settings): một đề xuất chỉ áp dụng khi quản trị viên phê duyệt tại đó, từ lần chạy tiếp theo, và một đề xuất đã áp dụng được đổi lại tại đó dưới dạng một phiên bản mới. Chỉnh sửa theo tháng của mỗi vòng lặp được hiển thị bên cạnh; cấp độ của một vòng lặp chỉ thay đổi trên trang riêng của nó.
 
 Việc học không bao giờ thay đổi cách tính, quyền hạn hay những gì AI Centre được phép hiển thị.

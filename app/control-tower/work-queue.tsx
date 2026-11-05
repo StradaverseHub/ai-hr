@@ -6,11 +6,14 @@ import { Card } from '@/components/ui';
 import { refreshOrchestrationAction } from './orchestrator-actions';
 import { RefreshWorkButton } from './refresh-button';
 
-export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = false, returnTo = '/control-tower' }: {
+/** The HR engine's readiness queue: its Refresh, its last check and run, and (with `rows`) its table. Operations › Record
+ * readiness renders it without the table (AI Centre restructure, 4 Nov 2026): who acts is shown with each person in the
+ * one list of gaps there, so the table would list the same people twice. */
+export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = false, rows: withRows = true }: {
   view: Awaited<ReturnType<typeof orchestrationQueue>>;
   refresh?: string;
   canViewRuns?: boolean;
-  returnTo?: '/control-tower' | '/control-tower/agents';
+  rows?: boolean;
 }) {
   const t = await getTranslations('controlTower.orchestrator');
   const corrections = await getTranslations('controlTower.corrections');
@@ -28,7 +31,7 @@ export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = fals
   return <Card className="overflow-hidden">
     <div className="flex flex-wrap items-center justify-between gap-3 p-5">
       <div><h2 className="text-lg font-semibold">{t('workTitle')}</h2><p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('workDescription')}</p></div>
-      <form action={refreshOrchestrationAction}><input type="hidden" name="returnTo" value={returnTo}/><RefreshWorkButton /></form>
+      <form action={refreshOrchestrationAction}><RefreshWorkButton /></form>
     </div>
     {refresh === 'failed' && <p role="alert" className="px-5 pb-3 text-sm text-destructive">{t('refreshFailed')}</p>}
     {refresh === 'complete' && <p role="status" className="px-5 pb-3 text-sm">{t('refreshed')}</p>}
@@ -59,7 +62,8 @@ export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = fals
         <p className="text-xs text-muted-foreground">{t('runDetails.evidenceNote')}</p>
       </div>
     </details>}
-    {view.rows.length === 0 ? <p className="p-5 text-sm text-muted-foreground">{t(view.observedAt ? 'empty' : 'unobserved')}</p> : <>
+    {!withRows ? (view.observedAt ? null : <p className="p-5 text-sm text-muted-foreground">{t('unobserved')}</p>)
+      : view.rows.length === 0 ? <p className="p-5 text-sm text-muted-foreground">{t(view.observedAt ? 'empty' : 'unobserved')}</p> : <>
       <div className="overflow-x-auto"><table className="w-full text-left text-sm">
         <thead className="border-b border-border text-muted-foreground"><tr>
           {['employee', 'issue', 'next', 'owner'].map(k => <th key={k} scope="col" className="px-5 py-3 font-medium">{t(k)}</th>)}

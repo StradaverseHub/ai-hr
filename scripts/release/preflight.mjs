@@ -1,4 +1,4 @@
-/** ADR-0175 pre-binding preflight. Advisory and read-only: it never writes the checkout, never issues a
+/** ADR-0176 pre-binding preflight. Advisory and read-only: it never writes the checkout, never issues a
  * receipt, witness, grant or approval, and CI admission (.github/ci/ai-manifest-admission.mjs) is unchanged.
  *
  *   node scripts/release/preflight.mjs [--head HEAD] [--base origin/main] [--staging-watermark WHEN] [--json]

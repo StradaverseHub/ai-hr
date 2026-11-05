@@ -7,7 +7,7 @@ import { AI_MANIFEST_INPUTS } from '../.github/ci/ai-manifest-admission.mjs';
 const entry = (tag: string, idx: number, when: number) => ({ idx, version: '7', when, tag, breakpoints: true });
 const base = [entry('0952_a', 798, 1793330000352), entry('0953_b', 799, 1793330000353)];
 
-describe('preflight generator comparison (ADR-0175 decision 2)', () => {
+describe('preflight generator comparison (ADR-0176 decision 2)', () => {
   it('checks exactly the inputs CI admission byte-compares', () => {
     const same = compareGenerators('h', 'b', () => Buffer.from('x'));
     expect(same.map((g) => g.path)).toEqual([...AI_MANIFEST_INPUTS]);
@@ -56,7 +56,7 @@ describe('preflight migration watermark', () => {
   });
 });
 
-describe('migration renumbering at landing (ADR-0175 decision 6)', () => {
+describe('migration renumbering at landing (ADR-0176 decision 6)', () => {
   it('moves only entries after the exact base prefix, strictly above base and watermark', () => {
     const head = [...base, entry('2000_x', 800, 1793330001400), entry('2001_y', 801, 1793330001401)];
     const plan = renumberPlan(base, head, { stagingWatermark: 1793330000400 });
@@ -75,7 +75,7 @@ describe('migration renumbering at landing (ADR-0175 decision 6)', () => {
   });
 });
 
-describe('focused selection (ADR-0175 decision 1)', () => {
+describe('focused selection (ADR-0176 decision 1)', () => {
   it('chunks canonically within the focused workflow bound', () => {
     const files = Array.from({ length: 130 }, (_, i) => `test/f${String(i).padStart(3, '0')}.test.ts`).reverse();
     const chunks = chunk(files);

@@ -47,19 +47,21 @@ describe('r233 — the move out of the Payroll menu', () => {
     expect(side).not.toMatch(/href:\s*'\/control-tower/);
     expect(side).toContain("{ href: '/assistant', labelKey: 'aiCentre', icon: Sparkles, ownedSubpaths: ['/control-tower'] }");
     // The payroll gate moved with the rows into the AI Centre's second tab row.
+    // AI Centre restructure (owner decisions 26–29): Loops, Payroll cycle, Exceptions, Record readiness.
     const nav = read('lib/ai-centre/centre-nav.ts');
-    expect(nav).toContain("{ key: 'overview', href: '/control-tower', payroll: false }");
-    expect(nav).toContain("{ key: 'actions', href: '/control-tower/actions', payroll: true }");
-    expect(nav).toContain("{ key: 'exceptions', href: '/control-tower/exceptions', payroll: true }");
-    expect(nav).toContain("{ key: 'readiness', href: '/control-tower/readiness', payroll: false }");
+    expect(nav).toContain("{ key: 'loops', href: '/control-tower/loops', payroll: false, groupAdmin: false }");
+    expect(nav).toContain("{ key: 'payrollCycle', href: '/control-tower/loops/payroll-cycle', payroll: true, groupAdmin: false }");
+    expect(nav).toContain("{ key: 'exceptions', href: '/control-tower/exceptions', payroll: true, groupAdmin: false }");
+    expect(nav).toContain("{ key: 'readiness', href: '/control-tower/readiness', payroll: false, groupAdmin: false }");
+    expect(nav).not.toMatch(/key: '(overview|actions|opportunities)'/);
     // Phase 2 hardening: the layout also admits a read-only auditor, for the Audit loop page only (every other page
     // calls requireAdmin itself; test/ai-centre-operations-guards.test.ts pins both).
     expect(read('app/control-tower/layout.tsx')).toContain('await requireAdminOrAuditReader();');
   });
 
   it('both guarded routes carry a function-access column, and the FORWARD does not', () => {
-    // AGENTS 20 for the two real screens; the redirect has no guard of its own, and listing it would
-    // claim a screen that does not exist.
+    // AGENTS 20 for the two guarded routes (now both guarded forward stubs); the unguarded redirect has no guard of its
+    // own, and listing it would claim a screen that does not exist.
     const perms = read('lib/permissions.ts');
     expect(perms).toContain("'/control-tower'");
     expect(perms).toContain("'/control-tower/how-it-works'");
@@ -116,31 +118,32 @@ describe('issue 17 — "How the Control Tower works" answers 308 to AI Centre �
     expect(page).not.toMatch(/\bredirect\(/);
   });
 
-  it('its live statuses render in How it works for administrators only', () => {
+  it('AI Centre restructure: How it works is the explainer; administrators get a link to Workers instead of a live list', () => {
     const ask = read('app/assistant/page.tsx');
-    expect(ask).toContain("{admin && <AiCentreLiveStatus session={s} />}");
+    expect(ask).toContain("<HowItWorks adminHref={admin ? '/control-tower/agents/features' : undefined} />");
+    expect(ask).not.toMatch(/AiCentreLiveStatus/);
+    expect(fs.existsSync(path.join(ROOT, 'components/ai-centre/live-status.tsx'))).toBe(false);
     expect(ask).toContain('const admin = isAdmin(s);');
     expect(ask).toContain("import {isAdmin} from '@/lib/authz-model';");
   });
 });
 
-describe('ADR-0083 — the explainer states what does NOT run', () => {
-  // Issue 17: the explainer's content moved verbatim into AI Centre › How it works.
-  const page = read('components/ai-centre/live-status.tsx');
+describe('ADR-0083 — the one list of AI pieces states what does NOT run', () => {
+  // The built-in checks' live states, once the explainer's, are on Administration › Workers, the one list of AI pieces.
+  const page = read('app/control-tower/agents/screen.tsx');
   const en = JSON.parse(read('messages/en.json')).controlTower as Record<string, Record<string, string> | string>;
 
   it('renders the autonomy row rather than omitting it', () => {
-    // The row exists in the roster with offByDesign; the page must show `statusByDesign` rather than
-    // treating it as an ordinary "off" or hiding it.
-    expect(page).toContain('offByDesign');
-    expect(page).toContain('statusByDesign');
+    // The row exists in the roster with offByDesign; the page must show it as off by design rather than treating it as
+    // an ordinary "off" or hiding it.
+    expect(page).toContain('row.offByDesign?tc(\'workers.byDesign\')');
     expect((en.agent as Record<string, string>).autonomy).toBeTruthy();
     expect((en.why as Record<string, string>).autonomyByDesign).toBeTruthy();
   });
 
   it('carries a reason for every status, never a bare flag', () => {
     // "Off" with no explanation is the one thing an operator cannot act on.
-    expect(page).toContain('why.');
+    expect(page).toContain('tTower(`why.${row.reasonKey}`)');
     for (const key of ['moduleOff', 'sweepNever', 'sweepStale', 'noProvider', 'assistantNoGrant']) {
       expect((en.why as Record<string, string>)[key], `why.${key}`).toBeTruthy();
     }
@@ -201,12 +204,4 @@ describe('ADR-0083 — the explainer states what does NOT run', () => {
     for (const key of reasons) expect(why[key], `controlTower.why.${key}`).toBeTruthy();
   });
 
-  it('distinguishes the AI steps from the rules-only ones in the drawing', () => {
-    // The legend is the point of the illustration: an operator should see at a glance which parts can be
-    // creative and which cannot.
-    expect(page).toContain('legendDeterministic');
-    expect(page).toContain('legendLlm');
-    expect(page).toContain('legendHuman');
-    expect(page).toContain('aria-label');
-  });
 });

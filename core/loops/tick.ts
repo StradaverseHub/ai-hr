@@ -19,10 +19,16 @@
  * refreshes the Salary payroll loop and the Audit loop for the companies whose payroll changed since each last ran there
  * (a run created, processed, reprocessed, closed, reopened or reset; for the Audit loop also a statutory or bank file):
  * core/loops/payroll-freshness.ts. A company with no change is left to the nightly sweep. Each loop's own switch, stop,
- * pause and sponsor checks apply exactly as in the sweep. */
+ * pause and sponsor checks apply exactly as in the sweep.
+ *
+ * Payroll history learning (P1, migration 2012): last, under the same tenant lock, the learned baselines of the companies
+ * learning is on for and whose history changed since their last learning run (a run closed, unlocked or reset, a
+ * payroll-history import confirmed or reverted, or learning switched on): core/payroll-learning/recompute.ts. The nightly
+ * sweep is its backstop. Learning reads and writes under its sponsor's authority, never the agent principal's. */
 import type postgres from 'postgres';
 import {runLoop,type LoopRunOptions,type LoopRunResult} from './run';
 import {runPayrollAuditLoop,type AuditRunResult} from '../payroll-audit/run';
+import {runPayrollLearning,type LearningRunResult} from '../payroll-learning/recompute';
 
 export const PRE_SALARY_TICK_LOOP='loop_payroll_inputs' as const;
 export const preSalaryTickLockKey=(tenantId:string)=>`teras-pre-salary-tick:${tenantId}`;
@@ -46,7 +52,9 @@ export async function runPreSalaryTick(lock:postgres.Sql,options:LoopRunOptions)
  return result??Object.freeze({workerId:PRE_SALARY_TICK_LOOP,status:'busy' as const});
 }
 
-export type PayrollTickResult=Readonly<{status:'busy'}>|Readonly<{status:'ran';preSalary:LoopRunResult;salary:LoopRunResult;audit:AuditRunResult|null}>;
+export type PayrollTickResult=Readonly<{status:'busy'}>|Readonly<{status:'ran';preSalary:LoopRunResult;salary:LoopRunResult;audit:AuditRunResult|null;
+ /** Payroll history learning (P1): null when the learning run failed before it reached a company. */
+ learning:LearningRunResult|null}>;
 /** The full payroll tick for one tenant: the Pre-salary loop where due, then the Salary payroll and Audit loops for the
  * companies whose payroll changed since each last ran there. One loop's failure never stops the next. */
 export async function runPayrollTick(lock:postgres.Sql,options:LoopRunOptions):Promise<PayrollTickResult>{
@@ -56,7 +64,9 @@ export async function runPayrollTick(lock:postgres.Sql,options:LoopRunOptions):P
   const salary=await runLoop('loop_salary_payroll',{...options,onlyChanged:true}).catch(()=>failed('loop_salary_payroll'));
   const audit=await runPayrollAuditLoop({tenantId:options.tenantId,principalId:options.principalId,entitlements:options.entitlements,
    ...(options.today?{today:options.today}:{}),onlyChanged:true}).catch(()=>null);
-  return Object.freeze({status:'ran' as const,preSalary,salary,audit});
+  const learning=await runPayrollLearning({tenantId:options.tenantId,principalId:options.principalId,entitlements:options.entitlements,trigger:'tick',onlyChanged:true,
+   ...(options.now?{now:options.now}:{})}).catch(()=>null);
+  return Object.freeze({status:'ran' as const,preSalary,salary,audit,learning});
  });
  return result??Object.freeze({status:'busy' as const});
 }

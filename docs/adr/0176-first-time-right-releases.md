@@ -1,9 +1,9 @@
-# ADR-0175 — First-time-right releases with bounded recovery and single binding
+# ADR-0176 — First-time-right releases with bounded recovery and single binding
 
 > Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
 
 - **Status:** Accepted by the owner on 4 November 2026, directly in session ("Okay go ahead"), in response to the [release speed review](../reviews/release-speed-review-2026-11-04.md). Phase 0 is adopted now. Every controller change in Phase 1 takes effect only after its validation witness (§Validation). For AI approval the owner took the review's recommended **Option A** (approve every digest, with an automatic delta). Option B (two digests) is **not** adopted and needs its own decision.
-- **Number:** provisional. ADR-0174 is claimed by the tenant-isolation hardening branch (PR #218); reconcile at integration.
+- **Number:** renumbered on 5 November 2026 from the provisional 0175, which main now uses for payroll history learning (0174 is tenant isolation). A scan of every remote branch found 0176 unclaimed.
 - **Date:** 2026-11-04
 - **Relates to:** [ADR-0114](0114-impact-aware-release-and-learning.md), [ADR-0169](0169-assistant-context-harness-and-disclosure-repivot.md) §5.1, [CI recovery policy](../CI-STAGING-VERIFICATION-POLICY.md), [staging queue](../STAGING-RELEASE-QUEUE.md), [migration allocation](../MIGRATION-ALLOCATION.md).
 
