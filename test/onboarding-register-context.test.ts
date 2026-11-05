@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { saveEmployeeDraft } from '../core/employee-draft';
 import { ModuleNotEnabledError } from '../core/entitlements';
+import { setLabelGlobal } from '../core/system-labels';
 import { client, type SessionContext } from '../db/client';
 import { businessUnit, lcOnboardingCase, position } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -33,10 +34,13 @@ it('keeps register setup/label authority exact without loading case history or t
   config.access.onboarding.push(userId);
   await onboardingSaveConfig(admin, startContext.revision, config);
   const [buA, buB] = await owner.db.insert(businessUnit).values([
-    { tenantId: b.tenantId, companyId: b.companyId, isGlobal: true, code: 'BU-A', name: 'Group A', label: 'Fictional shared group' },
-    { tenantId: b.tenantId, companyId: b.companyId, isGlobal: true, code: 'BU-B', name: 'Group B', label: 'Fictional shared group' },
+    { tenantId: b.tenantId, companyId: b.companyId, code: 'BU-A', name: 'Group A', label: 'Fictional shared group' },
+    { tenantId: b.tenantId, companyId: b.companyId, code: 'BU-B', name: 'Group B', label: 'Fictional shared group' },
   ]).returning();
-  const [title] = await owner.db.insert(position).values({ tenantId: b.tenantId, companyId: b.companyId, isGlobal: true, title: 'Fictional title', description: 'Fictional description fallback' }).returning();
+  const [title] = await owner.db.insert(position).values({ tenantId: b.tenantId, companyId: b.companyId, title: 'Fictional title', description: 'Fictional description fallback' }).returning();
+  await setLabelGlobal(admin, { kind: 'business_unit', labelId: buA.id, isGlobal: true });
+  await setLabelGlobal(admin, { kind: 'business_unit', labelId: buB.id, isGlobal: true });
+  await setLabelGlobal(admin, { kind: 'position', labelId: title.id, isGlobal: true });
   const draft = await saveEmployeeDraft(admin, { currentStep: 1, data: {
     profile: { fullName: 'Fictional register draft', primaryEmail: 'register@example.test' },
     employment: { companyId: b.companyId, departmentId: b.deptA, positionId: title.id, hiredOn: todayInKualaLumpur() },
