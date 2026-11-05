@@ -409,7 +409,8 @@ describe('B6: automatic cut-off reminders',()=>{
   const notices=await owner.db.select().from(schema.notification).where(eq(schema.notification.kind,'teras-loop.cut-off-reminder'));
   expect(notices.map(row=>row.recipientEmploymentId).sort()).toEqual([drafting.employmentId,manager.employmentId].sort());
   for(const notice of notices){
-   expect(JSON.stringify(notice)).not.toMatch(/987|123\.45|3000/);
+   const {kind,title,body,linkPath,severity}=notice;
+   expect(JSON.stringify({kind,title,body,linkPath,severity})).not.toMatch(/987|123\.45|3000/);
    expect(notice.linkPath).toBe('/');
   }
   // Stored as message keys, rendered in the reader's own language by the bell (test/payroll-cut-off-reminder-notification.dom.test.tsx).

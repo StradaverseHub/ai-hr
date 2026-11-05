@@ -317,7 +317,7 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
   // Retain the exact 568→636 witness, then prove every later ordinary successor as well.
   const forward=await captureTenantUpgradeRows(storage,tenantIds,[...tables,'app.assistant_own_leave_review','app.assistant_own_leave_review_content']);
   const approvedUpgrade=await migrateApprovedUpgrade(storage);
-  const complete=await ledger();expect(complete).toHaveLength(681);expect(complete.slice(0,636)).toEqual(after);
+  const complete=await ledger();expect(complete).toHaveLength(682);expect(complete.slice(0,636)).toEqual(after);
   expect(complete.slice(636).map(({hash,created_at})=>({hash,created_at}))).toEqual(journal.entries.slice(636).map(entry=>({hash:hashFile(entry.tag),created_at:String(entry.when)})));
   expect(retainedUpgradeSnapshot(await forward.read(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(forward.before));
   const terminal=await retainedRows();await migrate(storage.db,{migrationsFolder:'db/migrations'});

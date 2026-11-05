@@ -20,6 +20,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:1381,when:1793330001527,tag:'2127_personnel_filter_search'},
  {idx:1382,when:1793330001528,tag:'2128_organisation_account_admission'},
  {idx:1383,when:1793330001530,tag:'2130_approved_company_retention'},
+ {idx:1410,when:1793330001610,tag:'2210_personnel_projection_reuse'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -33,9 +34,10 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '2127_personnel_filter_search':'ce56780cd696e805c4a217316b9d36bc411cfa0f8a5015c53a46e7ff9b606283',
  '2128_organisation_account_admission':'c239e97d982c0e5e2075e30c5b431ef03f8f61ff367f6660602234a6c74dd62d',
  '2130_approved_company_retention':'6d549d157a0c21f1da680daa1546cd45bd2f19187b8d7a9d9a4dc56482d68d2c',
+ '2210_personnel_projection_reuse':'84665a381ed31061437c601197d9a9f8da5f8a5573abef5c09c0603b4546d613',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
- expect(entries).toHaveLength(681);
+ expect(entries).toHaveLength(682);
  expect(entries.slice(671)).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({...entry,version:'7',breakpoints:true})));
  for(const entry of APPROVED_UPGRADE_TAIL)expect(createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex'),entry.tag+' reviewed pending SQL identity').toBe(APPROVED_UPGRADE_HASHES[entry.tag]);
 }

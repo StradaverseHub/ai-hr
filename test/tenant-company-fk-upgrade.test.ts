@@ -124,7 +124,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:folder});
   expect(await ledger()).toEqual(afterLedger);expect(await native()).toEqual(beforeRerun);
   await migrateApprovedUpgrade(storage);
-  const complete=await ledger();expect(complete).toHaveLength(681);expect(complete.slice(0,671)).toEqual(afterLedger);
+  const complete=await ledger();expect(complete).toHaveLength(682);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));
   expect(await native()).toEqual(beforeRerun);expect(await keys()).toEqual(installed);
   expect(await asAdmin(tx=>tx`select app.can_admin_employment(${employmentA}::uuid) own,app.can_admin_employment(${employmentB}::uuid) foreign`)).toEqual([{own:true,foreign:false}]);

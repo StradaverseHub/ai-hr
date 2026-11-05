@@ -1615,4 +1615,4 @@ The still-unapplied2127 grant correction explicitly revokes bootstrap default ta
 
 ## Personnel projection availability repair
 
-Staging was verified at b84f6e269 with a 681-row ledger ending at 1793330001530. Reserve `2210_personnel_projection_reuse` at index 1410 and timestamp 1793330001610, above the previously surveyed claims. SQL SHA-256 is `c1a96622c355fc58cdf94b2b46031b1df5d62aa93e21174412dce766451b44eb`. The existing entries and SQL are preserved. Other pending branches must reconcile their reservations against the actual ledger before installation. The unrelated payroll learning relocation remains a draft.
+Staging was verified at b84f6e269 with a 681-row ledger ending at 1793330001530. Reserve `2210_personnel_projection_reuse` at index 1410 and timestamp 1793330001610, above the previously surveyed claims. SQL SHA-256 is `84665a381ed31061437c601197d9a9f8da5f8a5573abef5c09c0603b4546d613`. The existing entries and SQL are preserved. Other pending branches must reconcile their reservations against the actual ledger before installation. The unrelated payroll learning relocation remains a draft.

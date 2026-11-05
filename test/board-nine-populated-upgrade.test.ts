@@ -161,7 +161,7 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   // Then this integration's eight AI v2 Phase 2 migrations (2004-2011) and the ADR-0174 hardening (2100-2102), by the ordinary migrator over the whole journal.
   // Their when values sit above Phase 1's 1793330001403, so none is skipped.
   await migrateApprovedUpgrade(storage);
-  const afterLedger=await ledger();expect(afterLedger).toHaveLength(681);expect(afterLedger.slice(0,660)).toEqual(phaseOneLedger);
+  const afterLedger=await ledger();expect(afterLedger).toHaveLength(682);expect(afterLedger.slice(0,660)).toEqual(phaseOneLedger);
   expect(afterLedger.slice(660,671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
    {hash:'b6bdeac1995dad6df759ce9a537c98e9a3666bf01aef716a7f6cac9a9134b132',created_at:'1793330001404'},
    {hash:'d211dd97ebdeb673998d29a2a9b3b8d8597c39a5646259ac0c855d46eca49fbc',created_at:'1793330001405'},

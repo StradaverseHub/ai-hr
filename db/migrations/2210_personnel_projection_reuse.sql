@@ -118,3 +118,77 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  LEFT JOIN public.company pc ON pc.id=allowed_parent.id AND pc.tenant_id=v.tenant_id
  LEFT JOIN public.company bg ON bg.id=allowed_group.id AND bg.tenant_id=v.tenant_id
 $$;
+
+--> statement-breakpoint
+-- Preserve the existing signatures, SECURITY DEFINER owners, ACLs and trigger binding.
+CREATE OR REPLACE FUNCTION app.personnel_private_search_bind() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE v_day date := (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
+BEGIN
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.actor_id IS DISTINCT FROM app.current_user_id() OR NOT app.principal_snapshot_current() OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=NEW.actor_id AND u.tenant_id=NEW.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RAISE EXCEPTION 'Private search unavailable' USING ERRCODE='42501'; END IF;
+ IF jsonb_typeof(NEW.matches)<>'array' OR jsonb_array_length(NEW.matches)>100000 OR EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.matches)m WHERE COALESCE(m->>'employmentId','') !~ '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$' OR m->>'kind' IS NULL OR m->>'kind' NOT IN ('public','identity') OR COALESCE(m->>'personRevision','') !~ '^[0-9]{1,12}$' OR COALESCE(m->>'employmentRevision','') !~ '^[0-9]{1,12}$' OR (m->>'identityRevision' IS NOT NULL AND m->>'identityRevision' !~ '^[0-9]{1,12}$') OR jsonb_typeof(m)<>'object' OR m-ARRAY['employmentId','kind','personRevision','employmentRevision','identityRevision']<>'{}'::jsonb) THEN RAISE EXCEPTION 'Private search unavailable' USING ERRCODE='22023'; END IF;
+ -- Bind exact row identity and revisions before the guarded resolver can run.
+ -- PostgreSQL may reorder WHERE predicates, but cannot push them through these fences.
+ IF EXISTS (
+  WITH entries AS MATERIALIZED (
+   SELECT item,ordinal FROM jsonb_array_elements(NEW.matches) WITH ORDINALITY AS m(item,ordinal)
+  ),
+  matched AS MATERIALIZED (
+   SELECT m.ordinal,m.item->>'kind' AS kind,e.id,e.company_id
+   FROM entries m
+   JOIN public.employment e ON e.id=(m.item->>'employmentId')::uuid AND e.tenant_id=NEW.tenant_id
+   JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+   LEFT JOIN public.employee_statutory_my i ON i.person_id=p.id AND i.tenant_id=p.tenant_id
+   WHERE e.voided_at IS NULL
+     AND e.xmin::text=m.item->>'employmentRevision'
+     AND p.xmin::text=m.item->>'personRevision'
+     AND (m.item->>'kind'='public' OR i.xmin::text=m.item->>'identityRevision')
+  ),
+  dated AS MATERIALIZED (
+   SELECT m.ordinal,m.kind,
+     COALESCE((app.employment_organisation_tags(m.id,v_day)->>'companyId')::uuid,m.company_id) AS company_id
+   FROM matched m
+  )
+  SELECT 1 FROM entries m WHERE NOT EXISTS (
+   SELECT 1 FROM dated d
+   WHERE d.ordinal=m.ordinal AND app.access_workforce_projection_company(d.company_id)
+     AND (d.kind='public' OR app.personnel_identity_search_permitted(d.company_id))
+  )
+ ) THEN RAISE EXCEPTION 'Private search changed. Try again.' USING ERRCODE='40001'; END IF;
+ IF NEW.scope_ids IS NULL OR cardinality(NEW.scope_ids)>1000 OR EXISTS(SELECT 1 FROM unnest(NEW.scope_ids)x WHERE x IS NULL OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.id=x AND c.tenant_id=NEW.tenant_id AND app.access_workforce_projection_company(c.id))) THEN RAISE EXCEPTION 'Private search scope unavailable' USING ERRCODE='42501'; END IF;
+ NEW.scope_ids:=ARRAY(SELECT DISTINCT x FROM unnest(NEW.scope_ids)x ORDER BY x);
+ PERFORM pg_advisory_xact_lock(hashtextextended('personnel-private-search:'||NEW.tenant_id::text||':'||NEW.actor_id::text,0));
+ NEW.created_at:=clock_timestamp();NEW.expires_at:=NEW.created_at+interval '5 minutes';
+ DELETE FROM public.personnel_private_search WHERE tenant_id=NEW.tenant_id AND actor_id=NEW.actor_id AND (expires_at<=now() OR token_hash IN(SELECT token_hash FROM public.personnel_private_search WHERE tenant_id=NEW.tenant_id AND actor_id=NEW.actor_id ORDER BY created_at DESC OFFSET 7));
+ RETURN NEW;
+END $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.personnel_private_search_matches(p_hash text,p_employment uuid,p_company uuid,p_scope uuid[]) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ WITH matched AS MATERIALIZED (
+  SELECT e.id,e.company_id
+  FROM public.personnel_private_search s
+  CROSS JOIN LATERAL jsonb_array_elements(s.matches) AS m(item)
+  JOIN public.employment e ON e.id=p_employment AND e.tenant_id=s.tenant_id
+  JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+  LEFT JOIN public.employee_statutory_my i ON i.person_id=p.id AND i.tenant_id=p.tenant_id
+  WHERE app.principal_snapshot_current() AND app.access_workforce_projection_company(p_company)
+    AND s.token_hash=p_hash AND s.tenant_id=app.current_tenant_id()
+    AND s.actor_id=app.current_user_id() AND s.expires_at>now()
+    AND s.scope_ids @> p_scope AND s.scope_ids <@ p_scope
+    AND m.item->>'employmentId'=p_employment::text AND e.voided_at IS NULL
+    AND e.xmin::text=m.item->>'employmentRevision' AND p.xmin::text=m.item->>'personRevision'
+    AND (m.item->>'kind'='public' OR (
+      m.item->>'kind'='identity' AND i.xmin::text=m.item->>'identityRevision'
+      AND app.personnel_identity_search_permitted(p_company)
+    ))
+ ),
+ dated AS MATERIALIZED (
+  SELECT COALESCE((app.employment_organisation_tags(m.id,(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+    ->>'companyId')::uuid,m.company_id) AS company_id
+  FROM matched m
+ )
+ SELECT EXISTS (
+  SELECT 1 FROM dated d
+  WHERE d.company_id=p_company AND app.access_workforce_projection_company(d.company_id)
+ )
+$$;
