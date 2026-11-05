@@ -30531,7 +30531,12 @@
     },
     "subfamily": "Phân nhóm nghề",
     "specialisation": "Chuyên môn vai trò",
-    "jobUnit": "Đơn vị công việc"
+    "jobUnit": "Đơn vị công việc",
+    "actorNameUnavailable": "Chưa ghi nhận tên",
+    "jobHolderAcknowledgement": "Xác nhận của người giữ vị trí",
+    "acknowledgementName": "Họ tên",
+    "acknowledgementSignature": "Chữ ký",
+    "acknowledgementDate": "Ngày"
   },
   "rewardsAccess": {
     "title": "Quyền truy cập Thưởng",
@@ -35711,7 +35716,8 @@
     "positionMovementHint": "Thao tác này chỉ điền ngạch đề xuất. Lưu và duyệt điều chuyển có ngày hiệu lực để đổi ngạch nhân viên.",
     "positionReadonlyHint": "Loại điều chuyển này không cho sửa ngạch. Hãy dùng điều chuyển có ngày hiệu lực được cho phép.",
     "positionDraftHint": "Thao tác này chỉ điền ngạch trong bản nháp. Rà soát bản nháp nhân viên trước khi kích hoạt.",
-    "pdfExport": "Xuất PDF"
+    "pdfExport": "Xuất PDF",
+    "employeeGradeAccessHint": "So sánh ngạch nhân viên cần quyền truy cập dữ liệu nhân sự. Vẫn có thể kiểm tra vị trí và danh mục."
   },
   "rewardRules": {
     "title": "Quy tắc",
