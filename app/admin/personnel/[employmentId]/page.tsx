@@ -678,7 +678,7 @@ export default async function EmployeePage({
     // have one option and silently re-affirm the move it is meant to be able to fix.
     movementCurrent
       ? await (async () => {
-          const managed = await adminCompanies(s);
+          const managed = companyEditable ? managedCompanies : await adminCompanies(s);
           // The current company leads and is always present, even for an actor who does not administer it:
           // it is the select's initial value, and a control whose value matches no option is a broken one.
           return [
@@ -689,13 +689,16 @@ export default async function EmployeePage({
       : [];
   const movementOrgByCompany = Object.fromEntries(
     await Promise.all(
-      movementCompanies.map((c) => withTenant(s, async (tx) => {
-        const [deps, poss, bus, locs] = await Promise.all([
-          listDepartments(s, { companyIds: [c.id] }, tx),
-          listPositions(s, { companyIds: [c.id] }, tx),
-          listBusinessUnits(s, { companyIds: [c.id] }, tx),
-          listLocations(s, [c.id], {}, tx),
-        ]);
+      movementCompanies.map(async (c) => {
+        // The current-company form already loaded these exact scoped lists.
+        const [deps, poss, bus, locs] = c.id === emp.companyId
+          ? [departments, positions, businessUnits, locations] as const
+          : await withTenant(s, (tx) => Promise.all([
+              listDepartments(s, { companyIds: [c.id] }, tx),
+              listPositions(s, { companyIds: [c.id] }, tx),
+              listBusinessUnits(s, { companyIds: [c.id] }, tx),
+              listLocations(s, [c.id], {}, tx),
+            ]));
         return [
           c.id,
           {
@@ -705,7 +708,7 @@ export default async function EmployeePage({
             locations: locs.map((l) => ({ id: l.id, name: `${l.name} (${l.code})` })),
           },
         ] as const;
-      })),
+      }),
     ),
   );
   // 7d309da7 — configurable profile-field dropdown catalogs (religion / race / nationality / state /
