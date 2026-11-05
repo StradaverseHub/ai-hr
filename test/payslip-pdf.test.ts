@@ -526,11 +526,11 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
     // the reporter pointed out that the second half is an internal reconciliation key with nothing on an
     // employee's side to reconcile against. 6b134681's guard is untouched in substance — the lumped
     // category word still gives way to the pay item — and what changed is that the item is now named
-    // without its code. The admin surfaces still print the code through `payItemLabel`.
+    // without its code. The dated entries and recorded items retain the code.
     expect(text.replace(/\s+/g,' ')).toContain('Handphone allowance');
     expect(text).toContain('Travel allowance');
-    expect(text, 'approved 7de6fc4e: document preserves pay item identity').toContain('A0027');
-    expect(text, 'approved 7de6fc4e: document preserves pay item identity').toContain('A0031');
+    expect(text, 'the description has no pay item code').not.toContain('A0027');
+    expect(text, 'the description has no pay item code').not.toContain('A0031');
     expect(text).toContain('MYR 300.00');
     expect(text).toContain('MYR 200.00');
     expect(text).not.toContain('Allowances'); // the lump is gone, replaced by its parts
@@ -1101,7 +1101,7 @@ describe('6b134681 — bonus and overtime print by pay item, not by category', (
     // a96d320c — this read `toContain('B0001')`. 6b134681's point was that the CATEGORY must give way to
     // the ITEM, and it still does; the reporter's point is that the item's internal code means nothing to
     // the person reading their own payslip. Both are now pinned, in the same test.
-    expect(text, 'approved 7de6fc4e: document preserves pay item identity').toContain('B0001');
+    expect(text, 'the description has no pay item code').not.toContain('B0001');
     // The grouped word is GONE from the earnings box: it was never the item's name.
     expect(text, 'a bare "Bonus" row must not stand where a named item exists').not.toContain('Bonus');
   });
@@ -1139,7 +1139,7 @@ describe('6b134681 — bonus and overtime print by pay item, not by category', (
     );
     expect(text).toContain('OVERTIME 1.5');
     // a96d320c — was `toContain('OT15')`. See the ANGPOW test above for why it inverted.
-    expect(text, 'approved 7de6fc4e: document preserves pay item identity').toContain('OT15');
+    expect(text, 'the description has no pay item code').not.toContain('OT15');
     expect(text, 'the category word gives way to the item').not.toContain('Overtime');
   });
 });
@@ -1441,7 +1441,7 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
     expect(text).toContain('2 days');
   });
 
-  it('7de6fc4e: prints payable item codes consistently with Review', async () => {
+  it('7de6fc4e: prints descriptions without codes consistently with Review', async () => {
     // The blanket version of the two per-site assertions above: every itemised box at once.
     const text = drawnText(
       await renderPayslipPdf(
@@ -1463,7 +1463,7 @@ describe('a96d320c — payment date in words, ruled boxes, no internal pay codes
     for (const name of ['Handphone allowance', 'ANGPOW', 'OVERTIME 1.5', 'COMPANY CAR']) {
       expect(text.replace(/\s+/g,' '), `${name} is still named`).toContain(name);
     }
-    for (const code of ['A0027', 'B0001', 'OT15']) expect(text).toContain(code);
+    for (const code of ['A0027', 'B0001', 'OT15']) expect(text).not.toContain(code);
     expect(text).not.toContain('BIK01');
   });
 });
@@ -1618,7 +1618,7 @@ describe('a96d320c — the overtime rate and the hours behind it', () => {
     );
     const text = flat(await renderPayslipPdf(d, labels));
     expect(text).toContain('Site allowance · MYR 25.00 18 days');
-    expect(text, 'approved 7de6fc4e: document preserves pay item identity').toContain('A0044');
+    expect(text, 'the description has no pay item code').not.toContain('A0044');
   });
 
   it('drops the caption when the row prints only PART of what the factors explain', async () => {
