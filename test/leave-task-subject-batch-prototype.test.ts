@@ -37,6 +37,12 @@ function candidateQuery(tx:Tx,ctx:SessionContext,batch:boolean,companyIds?:strin
 }
 async function plan(ctx:SessionContext,batch:boolean,companyIds:string[]){return withTenant(ctx,async tx=>{await assertAssignedWorkPrincipalTx(tx,ctx);return tx.execute(sql`explain (analyze,buffers,settings,format json) ${candidateQuery(tx,ctx,batch,companyIds)}`);});}
 async function analyzeFixture(){for(const table of ['leave_request','employment','person','role_assignment','reporting_line','reporting_line_scope','leave_approval_step'])await owner.client.unsafe('analyze public.'+table);}
+function functionLoops(explain:unknown,functionName:string){
+ const rows=explain as {'QUERY PLAN':{Plan:{[key:string]:unknown}}[]}[];
+ let loops=0;
+ const walk=(node:{[key:string]:unknown})=>{if(node['Node Type']==='Function Scan'&&node['Function Name']===functionName)loops+=Number(node['Actual Loops']);for(const child of (node.Plans??[]) as {[key:string]:unknown}[])walk(child);};
+ walk(rows[0]['QUERY PLAN'][0].Plan);return loops;
+}
 
 it('preserves native visible headers and live assignments while batching repeated Leave subjects',async()=>{
  await resetDb();const b=await seedBase(),admin=adminCtx(b),today=todayInKualaLumpur();
@@ -98,8 +104,10 @@ it('preserves native visible headers and live assignments while batching repeate
  expect((await pendingLeaveTaskMetadata(reviewer,[b.companyId])).map(row=>row.id)).toEqual(expected.filter(row=>![requests[0].id,requests[2].id,requests[3].id].includes(row.id)).map(row=>row.id));
  expect((await pendingLeaveTaskMetadata(admin,[b.companyId])).map(row=>row.id)).toEqual(expected.filter(row=>row.id!==requests[2].id).map(row=>row.id));controls.push('currentStep','completedChainOmitted','namedAlternate');
  const ratios=Object.fromEntries(['admin','manager'].map(actor=>{const m=measurements.filter(row=>row.actor===actor);return[actor,Math.max(m[1].elapsedMs,m[2].elapsedMs)/Math.min(m[0].elapsedMs,m[3].elapsedMs)];}));
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'leave-task-subject-batch-prototype.json'),JSON.stringify({kind:'NATIVE_LEAVE_CANDIDATE_QUERY_COMPONENT_ONLY',releaseEligible:false,fixtureRequests:211,fixtureSubjects:1,explicitAnalyze:true,plans,measurements,ratios,controls,currentDecisionOwnerUnchanged:true,actualConsumerGroupedQueryCalls:shapeBefore===null||shapeAfter===null?null:shapeAfter-shapeBefore,limitations:'Candidate-query comparison only; no500-user or whole-page speed claim; retained native owner fixtures, not application throughput'},null,2));
- expect(ratios.admin).toBeLessThan(.8);expect(ratios.manager).toBeLessThan(.8);
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'leave-task-subject-batch-prototype.json'),JSON.stringify({kind:'NATIVE_LEAVE_CANDIDATE_QUERY_COMPONENT_ONLY',releaseEligible:false,fixtureRequests:211,fixtureSubjects:1,explicitAnalyze:true,singletonSpeedAcceptance:false,singletonReason:'PostgreSQL Memoize already reduces the scalar control to one subject lookup; latency ratios are observations only',plans,measurements,ratios,controls,currentDecisionOwnerUnchanged:true,actualConsumerGroupedQueryCalls:shapeBefore===null||shapeAfter===null?null:shapeAfter-shapeBefore,limitations:'Candidate-query comparison only; no500-user or whole-page speed claim; retained native owner fixtures, not application throughput'},null,2));
+ // ANALYZE lets PostgreSQL Memoize this singleton queue: both shapes perform one subject lookup.
+ // A mandatory20% wall-clock gain here would compare two already optimal one-lookup plans.
+ for(const observation of plans as {phase:string;explain:unknown}[])expect(functionLoops(observation.explain,observation.phase==='original'||observation.phase==='restored'?'delegated_approval_subject':'delegated_approval_subjects')).toBe(1);
 },600000);
 
 it('splits more than1000distinct subject identities without truncating the native candidate queue',async()=>{
@@ -115,7 +123,7 @@ it('splits more than1000distinct subject identities without truncating the nativ
  await owner.db.insert(s.reportingLine).values(people.map(p=>({tenantId:b.tenantId,subordinateEmploymentId:p.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative' as const,validFrom:'2020-01-01'})));
  const reviewer:SessionContext={...ctx,userId:await createAppUser(b.tenantId,manager.personId,'manager'),personId:manager.personId,roles:['manager'],grants:[{role:'manager',companyId:null}]};
  await analyzeFixture();
- const measurements:unknown[]=[],plans:unknown[]=[];
+ const measurements:{actor:string;phase:string;reads:number;elapsedMs:number}[]=[],plans:{actor:string;phase:string;explain:unknown}[]=[];
  for(const [actor,who]of [['admin',ctx],['manager',reviewer]]as const){
   const expected=await readCandidates(who,false,[b.companyId]);expect(expected).toHaveLength(1001);
   for(const phase of ['original','candidate','candidate-warm','restored']){
@@ -124,6 +132,9 @@ it('splits more than1000distinct subject identities without truncating the nativ
    measurements.push({actor,phase,reads:5,elapsedMs:performance.now()-started});
   }
  }
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'leave-distinct-subject-plan-diagnostic.json'),JSON.stringify({fixtureSubjects:1001,explicitAnalyze:true,plans,measurements},null,2));
+ const ratios=Object.fromEntries(['admin','manager'].map(actor=>{const rows=measurements.filter(row=>row.actor===actor);return[actor,Math.max(rows[1].elapsedMs,rows[2].elapsedMs)/Math.min(rows[0].elapsedMs,rows[3].elapsedMs)];}));
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'leave-distinct-subject-plan-diagnostic.json'),JSON.stringify({kind:'NATIVE_ANALYZED_HETEROGENEOUS_LEAVE_QUERY_COMPONENT',releaseEligible:false,fixtureSubjects:1001,explicitAnalyze:true,plans,measurements,ratios,limitations:'Only native candidate-query component; original and installed2141 grouped helper; no HTTP/browser/500-user or million-row claim'},null,2));
+ for(const observation of plans)expect(functionLoops(observation.explain,observation.phase==='original'||observation.phase==='restored'?'delegated_approval_subject':'delegated_approval_subjects')).toBe(observation.phase==='original'||observation.phase==='restored'?1001:2);
+ expect(ratios.admin).toBeLessThan(.8);expect(ratios.manager).toBeLessThan(.8);
 
 },600000);
