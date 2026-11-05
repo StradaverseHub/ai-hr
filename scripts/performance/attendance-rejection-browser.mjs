@@ -61,8 +61,14 @@ export async function prepareAttendanceRejection({context,visit,fixture,db,repor
   await form.locator('[name="checkIn"]').fill('09:15',{timeout});
   await form.locator('[name="checkOut"]').fill('17:15',{timeout});
   await form.locator('[name="reason"]').fill(marker,{timeout});
+  // The tour dismissal also posts to the current route. Match this form's
+  // fictional marker so its earlier response cannot satisfy the correction wait.
   const [response]=await Promise.all([
-   page.waitForResponse(result=>result.request().method()==='POST'&&new URL(result.url()).pathname===path,{timeout}),
+   page.waitForResponse(result=>{
+    const request=result.request();
+    return request.method()==='POST'&&new URL(request.url()).pathname===path&&
+     request.postDataBuffer()?.includes(Buffer.from(marker));
+   },{timeout}),
    form.locator('button[type="submit"]').click({timeout}),
   ]);
   const redirect=response.headers()['x-action-redirect']??response.headers().location;
