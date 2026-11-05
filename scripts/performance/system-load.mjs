@@ -74,7 +74,7 @@ function appMemory(){
 }
 const samples=[],pageInteractions=[];
 const homeHttp=createHomeHttpReplay({base,request,report});
-async function request(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[]){
+async function request(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[],action){
  assert(path.startsWith('/')&&!path.startsWith('//'));const started=performance.now();let body,contentType;
  if(Array.isArray(fields)){body=Buffer.from(JSON.stringify(fields));contentType='text/plain;charset=UTF-8';}
  else if(fields){const encoded=new Response(actionFormData(fields,fieldOrder));contentType=encoded.headers.get('content-type');body=Buffer.from(await encoded.arrayBuffer());}
@@ -86,9 +86,9 @@ async function request(user,path,fields,expectedStatus=200,record=true,actionHea
    stream.on('data',chunk=>{decodedBytes+=chunk.length;if(decodedBytes>12*1024*1024){stream.destroy(new Error('Decoded response exceeded the 12MiB measurement ceiling'));return;}content+=chunk.toString();});
    stream.on('error',reject);stream.on('end',()=>resolve({status:res.statusCode,headers:res.headers,content,wireBytes,decodedBytes,ttfbMs}));
   });req.on('error',reject);req.end(body);
- }).catch(error=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',elapsedMs:performance.now()-started,error:String(error.message).slice(0,180)});throw error;});
+ }).catch(error=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',action,startedMs:started,elapsedMs:performance.now()-started,error:String(error.message).slice(0,180)});throw error;});
  response.durationMs=performance.now()-started;
- if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
+ if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',action,status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
  assert.equal(response.status,expectedStatus,`Unexpected HTTP status for ${path.split('?')[0]}`);
  const ownPayslipPdf=/^\/me\/payslip\/[0-9a-f-]{36}\/pdf$/.test(path.split('?')[0]);
  if(!fields&&expectedStatus===200&&ownPayslipPdf){
@@ -740,15 +740,15 @@ try{
   delete fields[template.prefix+'draftId'];
   const created=await observedMutation(user,'create',async()=>{
    const rows=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft' and description=${description} limit 2`;return rows.length===1;
-  },()=>request(user,'/claims',fields,template.status,true,template.headers,template.fieldOrder));assert.equal(new URL(String(created.headers['x-action-redirect']??created.headers.location).split(';')[0],base).searchParams.get('toast'),'Draft saved');
+  },()=>request(user,'/claims',fields,template.status,true,template.headers,template.fieldOrder,'claimsCreate'));assert.equal(new URL(String(created.headers['x-action-redirect']??created.headers.location).split(';')[0],base).searchParams.get('toast'),'Draft saved');
   const [draft]=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft'and description=${description}`;assert(draft,'HTTP create did not persist');
   await pause(thinkTimeMs);await observedMutation(user,'edit',async()=>{
    const [row]=await db`select amount from claim_request where id=${draft.id}::uuid`;return row&&Number(row.amount)===2;
-  },()=>request(user,'/claims',{...fields,[template.prefix+'draftId']:draft.id,[template.prefix+'amount']:'2'},template.status,true,template.headers,template.fieldOrder));
+  },()=>request(user,'/claims',{...fields,[template.prefix+'draftId']:draft.id,[template.prefix+'amount']:'2'},template.status,true,template.headers,template.fieldOrder,'claimsEdit'));
   const [edited]=await db`select amount from claim_request where id=${draft.id}::uuid`;assert.equal(Number(edited.amount),2);
   await pause(thinkTimeMs);await observedMutation(user,'delete',async()=>{
    return (await db`select id from claim_request where id=${draft.id}::uuid`).length===0;
-  },()=>request(user,'/claims',{...contextTemplates.deleteTemplate.fields,[contextTemplates.deleteTemplate.prefix+'employmentId']:user.employmentId,[contextTemplates.deleteTemplate.prefix+'id']:draft.id},contextTemplates.deleteTemplate.status,true,contextTemplates.deleteTemplate.headers,contextTemplates.deleteTemplate.fieldOrder));
+  },()=>request(user,'/claims',{...contextTemplates.deleteTemplate.fields,[contextTemplates.deleteTemplate.prefix+'employmentId']:user.employmentId,[contextTemplates.deleteTemplate.prefix+'id']:draft.id},contextTemplates.deleteTemplate.status,true,contextTemplates.deleteTemplate.headers,contextTemplates.deleteTemplate.fieldOrder,'claimsDelete'));
   assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
   await pause(thinkTimeMs);iteration++;progress.iterations++;
   }while(performance.now()<steadyUntil);

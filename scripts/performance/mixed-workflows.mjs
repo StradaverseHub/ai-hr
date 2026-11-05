@@ -44,7 +44,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   return fields;
  };
  async function send(user,template,fields,record=true){
-  const response=await request(user,template.path,fields,template.status,record,template.headers,template.fieldOrder);
+  const response=await request(user,template.path,fields,template.status,record,template.headers,template.fieldOrder,template.kind);
   const target=response.headers['x-action-redirect']??response.headers.location;
   const fail=(reason)=>{
    const safe=String(reason).replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,'<email>').replace(/[A-Za-z0-9_-]{40,}/g,'<token>').slice(0,240);
