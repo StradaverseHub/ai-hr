@@ -8,7 +8,7 @@ import { scopedSession } from '@/lib/scope';
 import { canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin, requireModule } from '@/lib/authz';
 import { hasAssignedPerformanceWork, hasLedPeople, onehrAssignments } from '@/packs/performance/service';
 import { listCompanies } from '@/core/read';
-import { listCycles, listOnehrAdminCompanyIds, listOnehrAdminCycles, managerCheckIns, managerPendingReviews, type OnehrAdminCycleSummary } from '@/core/performance';
+import { listCyclePage, listOnehrAdminCompanyIds, listOnehrAdminCycles, managerCheckIns, managerPendingReviews } from '@/core/performance';
 import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   cancelCheckInAction,
@@ -49,8 +49,8 @@ export default async function PerformancePage({
   const { error } = sp;
   const today = todayInKualaLumpur();
 
-  const [cycles, pending, companies, checkinData, onehr] = await Promise.all([
-    (admin ? listCycles(s) : onehrOnly ? listOnehrAdminCycles(s) : Promise.resolve([])) as Promise<(OnehrAdminCycleSummary & { pendingComp?: number })[]>,
+  const [cycleResult, pending, companies, checkinData, onehr] = await Promise.all([
+    admin ? listCyclePage(s, sp) : (onehrOnly ? listOnehrAdminCycles(s) : Promise.resolve([])).then(rows => paginateRows(rows, parsePageQuery(sp))),
     managerPendingReviews(s),
     admin ? listCompanies(s) : onehrOnly ? Promise.all([listCompanies(s), listOnehrAdminCompanyIds(s)]).then(([rows, ids]) => rows.filter((c) => ids.has(c.id))) : Promise.resolve([]),
     managerCheckIns(s),
@@ -59,7 +59,7 @@ export default async function PerformancePage({
   const to=await getTranslations('onehr');
   const { checkins, reports } = checkinData;
   // fc776376 — review cycles accumulate every period; the rest of this screen is a fixed worklist.
-  const { rows: cyclePage, state: pgState } = paginateRows(cycles, parsePageQuery(sp));
+  const { rows: cyclePage, state: pgState } = cycleResult;
   const checkinTone = (status: string) =>
     status === 'completed'
       ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
@@ -171,7 +171,7 @@ export default async function PerformancePage({
         </Card>
       )}
 
-      {performanceAdmin && <PerformanceCyclesAdmin cycles={cycles} rows={cyclePage} pgState={pgState} basePath="/performance" admin={admin} companies={companies.filter(c=>scopeIds.includes(c.id))} today={today} />}
+      {performanceAdmin && <PerformanceCyclesAdmin cycleCount={pgState.total} rows={cyclePage} pgState={pgState} basePath="/performance" admin={admin} companies={companies.filter(c=>scopeIds.includes(c.id))} today={today} />}
     </div>
   );
 }
