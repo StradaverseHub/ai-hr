@@ -161,13 +161,22 @@ describe('V3.1 localized task controls', () => {
         const pending=blankCase('pending','OB-4','draft-4',{fullName:'Older pending preparation',joinDate:join},env);pending.personnelStatus='Active';
         const rows=[working,cancelled,complete,pending].map(c=>({case:c,revision:1,isNew:false,progress:progress(config,c)}));
         const options={businessGroup:[],company:[],department:[],title:[],grade:[],employmentType:[],supervisor:[]};
-        render(<NextIntlClientProvider locale="en" messages={messages('en')}><Joiners rows={rows as never} config={config} options={options}/></NextIntlClientProvider>);
+        const {unmount}=render(<NextIntlClientProvider locale="en" messages={messages('en')}><Joiners rows={rows as never} config={config} options={options}/></NextIntlClientProvider>);
         expect(screen.getByRole('link',{name:'Older equipment work'})).toBeVisible();
         expect(screen.getByRole('link',{name:'Older pending preparation'})).toBeVisible();
         expect(screen.queryByRole('link',{name:'Old cancelled case'})).not.toBeInTheDocument();
         expect(screen.queryByRole('link',{name:'Old completed case'})).not.toBeInTheDocument();
         expect(screen.getByRole('button',{name:/Progress 0%.*Older pending preparation/})).toHaveTextContent('Pending submission');
         expect(screen.getByText('Due '+new Intl.DateTimeFormat('en',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(dayDate(join,-7)+'T00:00:00Z')))).toBeInTheDocument();
+        unmount();
+        render(<NextIntlClientProvider locale="en" messages={messages('en')}>
+            <Joiners rows={[working,pending].map(c=>({case:c,isNew:false}))} display={{today,latestSync:'2099-01-01T00:00:00.000Z'}} config={config} options={options}/>
+        </NextIntlClientProvider>);
+        expect(screen.getByText(/Latest Personnel sync/)).toHaveTextContent('2099');
+        expect(screen.getByRole('link',{name:'Older equipment work'})).toBeVisible();
+        fireEvent.change(screen.getByRole('textbox',{name:'Search by name'}),{target:{value:'pending preparation'}});
+        expect(screen.getByRole('link',{name:'Older pending preparation'})).toBeVisible();
+        expect(screen.queryByRole('link',{name:'Older equipment work'})).not.toBeInTheDocument();
     });
     it('keeps a future task visible with its status control locked', () => {
         render(<NextIntlClientProvider locale="en" messages={messages('en')} timeZone="Asia/Kuala_Lumpur"><TasksView items={[{ ...task, locked: true, lockReason: 'After Day 1 handover' }]} existing={[]}/></NextIntlClientProvider>);
