@@ -116,3 +116,16 @@ record a new human review, activate any configuration, or authorize the new work
 The gate repairs classify the native actions and import owners, protect public errors, and keep
 notification routing and company retention within their native authority boundaries. They do not
 change the approved input fields or activate the pending provider workloads.
+
+## Payroll and Personnel staging source binding
+
+The repository owner explicitly approved rebinding the existing provider data approvals
+on 2026-11-05T13:05:47Z in the approved-items release chat.
+The approval covers candidate `b8864244443fc56d9c572344294e25bb4483606d` and the
+1,453-file provider digest `009020245bc008d9ba872bd94282ba8ab043140cd2b8c7ac4f495d2ffda3761b`, compared with the serving source
+`56de1037e7f2515561b7577027c92c9665b84c1c`.
+
+The seven changed files in the provider closure implement payroll display and quantity evidence
+or Personnel read locking and company scope. Provider contracts, serializers and transport
+are unchanged. The 28 existing approvals retain their original provenance and both pending
+records retain their status. This entry records the owner's approval of the exact source binding.
