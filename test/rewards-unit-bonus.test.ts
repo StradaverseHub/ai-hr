@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {establishRewardMembership} from './rewards-shared-policy-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
@@ -46,7 +47,7 @@ describe('Rewards unit bonus inputs (fictional fixtures)', () => {
     await owner.db.update(schema.assignment).set({ businessUnitId: bu.id }).where(eq(schema.assignment.employmentId, employmentId));
     await owner.db.update(schema.employment).set({ gradeId: grade.id, confirmationDate: `${year - 2}-04-01` }).where(eq(schema.employment.id, employmentId));
     await setCompensation(admin, { employmentId, basicSalary: 5000, effectiveFrom: `${year - 2}-01-01` });
-    unitId = await createRewardUnit(admin, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
+    unitId = await createApprovedRewardUnit(admin, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
     for (const role of ['bu', 'bg', 'ctro', 'ec', 'pbp'] as const) {
       const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: `${role} reviewer`, primaryEmail: `${role}@rewards.test` }).returning();
       const userId = await createAppUser(b.tenantId, p.id, 'employee');
@@ -102,10 +103,11 @@ describe('Rewards unit bonus inputs (fictional fixtures)', () => {
       expect(v.companyName.length).toBeGreaterThan(0);
       expect(v.name).toBe('NS');
     });
-    it('saving a multiplier and a lump sum changes only that review, never another unit of the same scope', async () => {
-      const [other] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'SS', name: 'Southern Sales' }).returning();
-      await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:other.id,departmentId:b.deptA,year});
-      const otherId = await createRewardUnit(admin, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: other.id, snapshotDate: today });
+    it('saving a multiplier and a lump sum changes only that company review, never another company review', async () => {
+      const [otherCompany]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Other independently reviewed company'}).returning();
+      const [other] = await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:otherCompany.id,code:'SS',name:'Southern Sales'}).returning();
+      await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:otherCompany.id,businessUnitId:other.id,year});
+      const otherId = await createApprovedRewardUnit(admin,{name:'Annual rewards',year,companyId:otherCompany.id,businessUnitId:other.id,snapshotDate:today});
       const [beforeOther] = await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id, otherId));
       const v = await view();
       const preview = await previewRewardMultiplier(admin, unitId, v.unit.revision, 12000);
