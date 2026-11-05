@@ -238,7 +238,12 @@ try{
   const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});
   if(await skip.isVisible()){await skip.click();await skip.waitFor({state:'hidden'});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
   visitStage='table-data';
-  if(['/claims','/admin/personnel','/payroll'].includes(path))assert(await page.locator('main tbody tr').count()>0,'expected fictional table rows');
+  if(['/claims','/admin/personnel','/payroll'].includes(path)){
+   // A streamed page can expose its heading/form before the actual table is attached.
+   // Await the same required source rows; count() alone does not retry DOM readiness.
+   await page.locator('main tbody tr').first().waitFor({state:'attached',timeout:90000});
+   assert(await page.locator('main tbody tr').count()>0,'expected fictional table rows');
+  }
   let homeCards=null,homeCardIds=[],todaySectionIds=[];
   visitStage='home-cards';
   if(path==='/'||(path==='/me/calendar'&&['employee','manager'].includes(user.role))){
