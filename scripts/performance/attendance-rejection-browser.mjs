@@ -26,6 +26,16 @@ export async function prepareAttendanceRejection({context,visit,fixture,db,repor
  const date=performanceFixtureCalendar(fixture.today).importDate(1);
  const marker='PERF_ATTENDANCE_REJECTION_'+phase.toUpperCase();
  const reason='Fictional correction rejected in '+phase+' performance probe';
+
+ // The tour can mount after visit returns on a fresh browser. Dismiss it through
+ // the real UI before actionability checks proceed.
+ async function handleWelcomeTour(page){
+  const tour=page.getByRole('dialog',{name:'Product tour',exact:true});
+  await page.addLocatorHandler(tour,async()=>{
+   await tour.getByRole('button',{name:'Skip',exact:true}).click({timeout});
+   report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;
+  });
+ }
  const evidence={phase,status:'preparing',syntheticSubjectIndex:subject.index};
  (report.attendanceRejectionBrowser??=[]).push(evidence);
  save();
@@ -46,6 +56,7 @@ export async function prepareAttendanceRejection({context,visit,fixture,db,repor
  try{
   const page=await employeeContext.newPage(),path='/attendance/my-records/'+date;
   await visit(page,subject,path,'attendance-rejection-setup');
+  await handleWelcomeTour(page);
   const form=page.locator('main form').filter({has:page.locator('[name="checkIn"]')}).filter({visible:true});
   await form.locator('[name="checkIn"]').fill('09:15',{timeout});
   await form.locator('[name="checkOut"]').fill('17:15',{timeout});
@@ -68,6 +79,7 @@ export async function prepareAttendanceRejection({context,visit,fixture,db,repor
  try{
   const page=await reviewerContext.newPage(),path='/attendance/application-history/'+correction.id;
   await visit(page,approver,path,'attendance-rejection-setup');
+  await handleWelcomeTour(page);
   const main=page.locator('main');
   const form=main.locator('form').filter({has:page.locator('input[name="action"][value="rejected"]')}).filter({visible:true});
   assert.equal(await form.locator('input[name="workflowParticipant"]').inputValue(),'0:0');
