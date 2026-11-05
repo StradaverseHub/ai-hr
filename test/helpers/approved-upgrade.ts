@@ -147,6 +147,10 @@ export function retainedUpgradeRows(name:string,rows:unknown[],witness?:Approved
   const field=wrapper&&typeof wrapper==='object'&&Object.keys(wrapper).length===1&&('row' in wrapper||'value' in wrapper)?('row' in wrapper?'row':'value'):null;
   const row=(field?wrapper[field]:parsed) as Row;
   let normalized=row;
+  if(tableName==='company'&&row.display_group_field===null&&row.display_group_option_id===null){
+   const {display_group_field:_field,display_group_option_id:_option,...original}=row;
+   normalized=original;
+  }
   if(witness){
    const additions=tableName==='domain_event'||tableName==='audit'?witness.events:tableName==='access_group_grant'?witness.grants:tableName==='access_user_override'?witness.overrides:[];
    const added=additions.find(value=>value.id===row.id);

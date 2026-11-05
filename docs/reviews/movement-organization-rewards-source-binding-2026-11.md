@@ -9,3 +9,7 @@ The approval covers the source binding. The 28 existing records retain their ori
 ## Repaired source binding
 
 On 2026-11-05 at 16:27 UTC, the repository owner approved rebinding the same 28 approvals to the repaired provider digest `76ca563ba05aa50c6be4826750e6b4e44e26618ba3e31fc180125ce5229b54ce`. Commit `3455783a5ae19744120f4a9bcd33e7099af566bf` binds the Personnel inputs to the shared form metadata and exports the existing Rewards navigation function through the public service interface. These changes preserve the provider contracts, payload fields and transport. The original review metadata and pending dispositions are preserved.
+
+## Native destination and confirmation repair
+
+The repository owner approved rebinding the same 28 approvals on 2026-11-05 at 16:47 UTC to `47ca4b35ee76f76d6213c348b3c00f6083fdd0eaa1a57b64ee92224e3c461dcc`. The assessed source is `5f98a1c27d6433a3ad15263c093aa4f927ea48af`. The product destination catalogue now excludes Rewards pages that need native grants, and the backdated Movement dispatcher retains the established confirmation date validation. The narrower catalogue removes five link destinations without changing provider contracts, payload fields or transport. The original review metadata and both pending dispositions are preserved.
