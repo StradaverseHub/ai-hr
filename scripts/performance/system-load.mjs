@@ -415,17 +415,17 @@ try{
    }});}finally{page.off('request',observe);(report.assistantHistoryTraffic??=[]).push({phase,role:user.role,...traffic});save();}
   }
  }
- const aiBrowserActors=fixture.assistantHistory?[employee,hr,fixture.users[254],fixture.users[251]]:[employee,hr];
- await Promise.all(aiBrowserActors.map(async user=>{
-  const ctx=await context(user),page=await ctx.newPage();
-  try{await aiCentreJourney(page,user,'baseline');}finally{await ctx.close();}
- }));
  // Exercise real password/MFA before any capacity test; these results are never loaded proof.
  await Promise.all([employee,manager,hr,group].map(async user=>{
   const ctx=await context(user,'en',true),page=await ctx.newPage();
   try{await visit(page,user,'/','sign-in-preflight',true);}finally{await ctx.close();}
  }));
  assert(['employee','manager','companyHR','groupHR'].every(role=>report.preflightBrowserSignIns?.some(row=>row.role===role&&row.homeCards>0&&row.todaySectionIds.length>0&&row.cardFailures===0)),'all four preflight sign-ins must load their dashboards');
+ const aiBrowserActors=fixture.assistantHistory?[employee,hr,fixture.users[254],fixture.users[251]]:[employee,hr];
+ await Promise.all(aiBrowserActors.map(async user=>{
+  const ctx=await context(user),page=await ctx.newPage();
+  try{await aiCentreJourney(page,user,'baseline');}finally{await ctx.close();}
+ }));
  if(suite==='whole-system'){
   const ctx=await context(group),page=await ctx.newPage();
   try{await exerciseOrgExplorer({page,user:group,fixture,report,save,phase:'baseline'});}finally{await ctx.close();}
