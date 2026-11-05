@@ -22,6 +22,7 @@ vi.mock('../core/assistant-grant',()=>({mayUseAssistant:async()=>({allowed:false
 // This shell test controls those boundaries; their actual permission algebra is covered by DB cases.
 vi.mock('../core/access-configuration-editor',()=>({canConfigureAccess:async()=>false}));
 vi.mock('../core/workforce-access',()=>({workforceViewScope:async()=>({canOpen:false,companyIds:[]})}));
+vi.mock('../packs/job-architecture/service',()=>({canViewJobArchitecture:async()=>false}));
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks}));
 // AI v2 W11: the rail's "Private cases" row asks the private-case owner (a database read) on every page. Unmocked,
 // this no-database shell test sent it to the closed CI port, and postgres.js's shared reconnect backoff made each

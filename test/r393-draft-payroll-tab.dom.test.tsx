@@ -1,3 +1,4 @@
+vi.mock('../components/derived-organisation-fields',()=>({useDerivedOrganisation:()=>({data:{status:'legacy'},loading:false,failed:false}),DerivedOrganisationFields:()=>null}));
 import { personnelMarkupContract } from './helpers/personnel-markup';
 /**
  * r393 — item 685d2380 STEP 2, the draft's Payroll tab ON THE SCREEN, and the Personnel record's two

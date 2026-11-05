@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {pgErrorChain,pgSqlState} from '../lib/db-error';
 import {createBatch} from '../packs/payroll/service';
 import {randomUUID} from 'node:crypto';
@@ -37,7 +38,7 @@ describe('Native annual Rewards return seam', () => {
       await owner.db.update(schema.employment).set({ gradeId: grade.id, confirmationDate: `${year - 2}-04-01` }).where(eq(schema.employment.id, hire.employmentId));
       await setCompensation(admin, { employmentId: hire.employmentId, basicSalary: 5000, effectiveFrom: `${year - 2}-01-01` });
     }
-    unitId = await createRewardUnit(admin, { name: 'Fictional Annual Compensation Review', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
+    unitId = await createApprovedRewardUnit(admin, { name: 'Fictional Annual Compensation Review', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
     for (const role of ['bu', 'bg', 'ctro', 'ec'] as const) {
       const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: `Fictional ${role} reviewer`, primaryEmail: `${role}@rewards-config.test` }).returning();
       const userId = await createAppUser(b.tenantId, p.id, 'employee');

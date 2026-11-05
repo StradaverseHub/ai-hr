@@ -113,12 +113,14 @@ export function movementRowsToRecords(rows:MovementSheetRow[],types:MovementWork
   }
   if(action==='delete'){if(fieldRaw||beforeRaw||afterRaw)record.errors.push('not_applicable_on_delete');continue;}
   if(!fieldRaw){if(beforeRaw||afterRaw)record.errors.push('system_field_required');continue;}
+  if(['parent company','parentcompany','parent_company','parentcompanyid'].includes(key(fieldRaw))){if(record.ignoredOrganisation?.parentCompany!==undefined)record.errors.push('duplicate_system_field:parentCompany');else record.ignoredOrganisation={...record.ignoredOrganisation,parentCompany:afterRaw};continue;}
   const fieldType=type??(action==='update'&&!typeRaw?undefined:null);
   if(fieldType===null)continue;
   // An Update that keeps its event type names any System Field of any type; the server then refuses one the
   // movement's own type cannot change (not_applicable), exactly as it does for a Create.
   const fields=resolvers.flatMap(resolve=>fieldType?movementSystemFields(fieldType,resolve):types.flatMap(t=>movementSystemFields(t,resolve)));
   const field=fields.find(f=>key(f.key)===key(fieldRaw)||key(f.label)===key(fieldRaw));
+  if(!field&&['business unit','businessunitid','business_unit'].includes(key(fieldRaw))){if(record.ignoredOrganisation?.businessUnit!==undefined)record.errors.push('duplicate_system_field:businessUnitId');else record.ignoredOrganisation={...record.ignoredOrganisation,businessUnit:afterRaw};continue;}
   if(!field){record.errors.push('unknown_system_field:'+fieldRaw.slice(0,100));continue;}
   if(record.before![field.key]!==undefined||field.key==='incrementAmount'&&record.incrementAmount!==undefined||field.key!=='incrementAmount'&&record.cells[field.key as keyof MovementImportRecord['cells']]!==undefined){record.errors.push('duplicate_system_field:'+field.key);continue;}
   if(action==='update'&&field.key==='incrementAmount'){record.errors.push('increment_amount_not_for_update');continue;}

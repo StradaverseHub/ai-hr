@@ -27,6 +27,6 @@ describe('combined release rendered-shell source boundary',()=>{
  });
  it('retains real server authorization behind the displayed destinations',()=>{
   expect(readFileSync('app/admin/audit/page.tsx','utf8')).toContain('await requireAdmin()');
-  expect(readFileSync('app/admin/personnel/page.tsx','utf8')).toContain('await requireWorkforceAccess()');
+  expect(readFileSync('app/admin/personnel/page.tsx','utf8')).toContain('await requireWorkforceAccess({ personnelList: true })');
  });
 });

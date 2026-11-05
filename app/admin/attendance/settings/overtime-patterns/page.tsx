@@ -2,7 +2,7 @@ import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
 import {scopedAdmin} from '@/lib/scope';
 import {PageHeader,Card,pageWideCls,btnPrimary,inputCls} from '@/components/ui';
-import {listOvertimePatterns,getOvertimePattern,overtimePatternSetup,listAttendanceRules,attendanceGroupPolicyReview,OvertimeOwnerError,type AttendanceGroupPolicyReview} from '@/packs/attendance/service';
+import {listOvertimePatterns,getOvertimePattern,overtimePatternSetup,overtimePatternWorkspaceCompanies,listAttendanceRules,attendanceGroupPolicyReview,OvertimeOwnerError,type AttendanceGroupPolicyReview} from '@/packs/attendance/service';
 import {OVERTIME_STARTERS,overtimeStarter} from '@/lib/overtime-pattern-starters';
 import {OvertimeStarterInitializer} from '@/components/overtime-patterns/starter-initializer';
 import {OvertimeWorkspace} from '@/components/overtime-patterns/workspace';
@@ -13,8 +13,12 @@ const PAGE='/admin/attendance/settings/overtime-patterns';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const states=['draft','active','inactive','archived'] as const;
 export default async function OvertimePatternsPage({searchParams}:{searchParams:Promise<{pattern?:string;version?:string;new?:string;starter?:string;search?:string;status?:string;cursor?:string;method?:string;assignmentSearch?:string;policyCompany?:string;policyGroup?:string;policyVersion?:string}>}) {
-  const {s,scopeIds}=await scopedAdmin();
+  const {s,scopeIds:selectedScopeIds}=await scopedAdmin();
   const [t,query]=await Promise.all([getTranslations('overtimePatterns'),searchParams]);
+  const eligible=await overtimePatternWorkspaceCompanies(s),eligibleIds=new Set(eligible.map(company=>company.id));
+  const scopeIds=selectedScopeIds.filter(id=>eligibleIds.has(id));
+  if(!scopeIds.length)return <div className={pageWideCls}><PageHeader title={t('title')} description={t('descriptionText')} back={{href:'/admin/attendance/settings',label:t('backToSettings')}}/><Card className="p-6"><p role="status">{t('noActiveAdminScope')}</p></Card></div>;
+
   const status=states.find(state=>state===query.status);
   const method=(['hourly','flat','formula'] as const).find(value=>value===query.method);
   async function readDetail(id:string) {try{return await getOvertimePattern(s,id);}catch(error){if(error instanceof OvertimeOwnerError&&['permission','unavailable','invalid'].includes(error.code))return null;throw error;}}

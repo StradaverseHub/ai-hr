@@ -64,7 +64,7 @@ describe('EPF Third Schedule Part A (#95)', () => {
     // voluntary excess employee 15% on RM3000 = 450 > schedule floor 330 → raised
     expect(epf(3000, 0, undefined, { mode: 'voluntary_excess', employeeRate: 0.15 }).employee).toBe(450);
     // an election below the floor cannot lower it
-    expect(epf(3000, 0, undefined, { mode: 'voluntary_excess', employeeRate: 0.05 }).employee).toBe(330);
+    expect(epf(3000, 0, undefined, { mode: 'voluntary_excess', employeeRate: 0.05, employerRate: 0.12 }).employee).toBe(330);
   });
 
   it('the table is monotonic and spans NIL → RM20,000', () => {

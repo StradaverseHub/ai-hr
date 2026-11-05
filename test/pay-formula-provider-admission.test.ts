@@ -13,7 +13,7 @@ const fixture=vi.hoisted(()=>({reviewed:true,stale:false}));
 vi.mock('../lib/ai/provider-data-reviews',async original=>{
  const actual=await original<typeof import('../lib/ai/provider-data-reviews')>();
  return {...actual,assertProviderDataContractReviewed:(contract:string,digest:string)=>{
-  if(contract==='authored_pay_formula_v1'&&fixture.reviewed)return;
+  if(contract==='authored_pay_formula_v2'&&fixture.reviewed)return;
   return actual.assertProviderDataContractReviewed(contract,fixture.stale?'0'.repeat(64):digest);
  }};
 });
@@ -43,12 +43,19 @@ describe('formula authoring provider admission',()=>{
   beforeAdmission=async()=>{if(kind==='module')await setModule(base.tenantId,'payroll','disabled');else await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,base.adminUserId));};
   await expect(draftPayFormula(ctx,input)).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();
  });
+ it('refuses field metadata disabled after preparation before transport',async()=>{
+  beforeAdmission=async()=>{await owner.db.execute(sql`insert into pay_formula_personnel_registration(tenant_id,source_key,ordinal,label,description,enabled,created_by) values(${base.tenantId}::uuid,'companyId',1,'Company','Fictional registration policy',false,${base.adminUserId}::uuid)`);};
+  await expect(draftPayFormula(ctx,input)).rejects.toThrow('The current AI source access could not be confirmed.');expect(openaiAdapter.generate).not.toHaveBeenCalled();
+ });
  it('refuses changed outbound bytes even after native source preparation',async()=>{retarget=true;await expect(draftPayFormula(ctx,input)).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();});
  it.each(['module','login'] as const)('rechecks %s authority after the provider reply',async kind=>{
   vi.mocked(openaiAdapter.generate).mockImplementationOnce(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});if(kind==='module')await setModule(base.tenantId,'payroll','disabled');else await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,base.adminUserId));return JSON.stringify({source:'Return 1',explanation:'A draft',questions:[],unsupported:[]});});
   const before=await counts();await expect(draftPayFormula(ctx,input)).rejects.toThrow();expect(await counts()).toEqual(before);
  });
- it('uses the actual owner-reviewed source binding with synthetic provider transport',async()=>{
+ it('refuses a stale exact source binding before transport',async()=>{
+  fixture.reviewed=false;fixture.stale=true;await expect(draftPayFormula(ctx,input)).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();
+ });
+ it('uses the actual current source-owned review when authorising transport',async()=>{
   fixture.reviewed=false;expect(await draftPayFormula(ctx,input)).toMatchObject({valid:true,source:'Return {#Basic}'});expect(openaiAdapter.generate).toHaveBeenCalledOnce();
  });
  it('has no provider call when unconfigured',async()=>{

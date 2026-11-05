@@ -5,14 +5,27 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import { RewardsAdminTabs } from '../app/admin/rewards/admin-tabs';
+const destinations = [
+    ['configuration', '/admin/rewards'],
+    ['shared', '/admin/rewards/plans'],
+    ['salary', '/admin/rewards/salary-structures'],
+    ['bonus', '/admin/rewards/bonus-matrices'],
+    ['pat', '/admin/rewards/pat-inputs'],
+    ['access', '/admin/rewards/access'],
+] as const;
 afterEach(cleanup);
 describe('086915a8: Rewards admin tabs', () => {
-    it.each([['configuration', '/admin/rewards'], ['shared', '/admin/rewards/shared'], ['access', '/admin/rewards/access']] as const)('marks only the %s page as current', (current, href) => {
+    it.each(destinations)('marks only the %s page as current', (current, href) => {
         render(<NextIntlClientProvider locale="en" messages={en}><RewardsAdminTabs current={current}/></NextIntlClientProvider>);
         const nav = screen.getByRole('navigation', { name: en.rewardsAdminTabs.label });
         const links = Array.from(nav.querySelectorAll('a'));
-        expect(links.map(a => [a.textContent, a.getAttribute('href')])).toEqual([[en.rewardsAdminTabs.configuration, '/admin/rewards'], [en.rewardsAdminTabs.shared, '/admin/rewards/shared'], [en.rewardsAdminTabs.access, '/admin/rewards/access']]);
+        expect(links.map(a => [a.textContent, a.getAttribute('href')])).toEqual(destinations.map(([key, url]) => [en.rewardsAdminTabs[key], url]));
         expect(links.filter(a => a.getAttribute('aria-current') === 'page').map(a => a.getAttribute('href'))).toEqual([href]);
+    });
+    it('only shows the two library destinations in the library-only navigation', () => {
+        render(<NextIntlClientProvider locale="en" messages={en}><RewardsAdminTabs current="salary" librariesOnly/></NextIntlClientProvider>);
+        const nav = screen.getByRole('navigation', { name: en.rewardsAdminTabs.label });
+        expect(Array.from(nav.querySelectorAll('a')).map(a => a.getAttribute('href'))).toEqual(['/admin/rewards/salary-structures', '/admin/rewards/bonus-matrices']);
     });
     it('replaces the loose header links on the access and shared pages', () => {
         const access = readFileSync(join(process.cwd(), 'app/admin/rewards/access/page.tsx'), 'utf8');

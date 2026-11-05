@@ -1,3 +1,4 @@
+vi.mock('../components/derived-organisation-fields',()=>({useDerivedOrganisation:()=>({data:{status:'legacy'},loading:false,failed:false}),DerivedOrganisationFields:()=>null}));
 import { personnelMarkupContract, personnelCaption } from './helpers/personnel-markup';
 /**
  * r393 — item 685d2380 STEP 3a, the draft's custom payment holder ON THE SCREEN, and the Active profile's

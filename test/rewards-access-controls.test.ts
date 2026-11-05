@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit,setupCompanyStructureFixture} from './rewards-setup-fixture';
 import {setRewardMember as grantCheckedFixtureSeat} from './rewards-access-fixture';
 import {migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {randomUUID} from 'node:crypto';
@@ -9,8 +10,8 @@ import {dispatchNotifications} from '../core/notifications';
 import {agentContext,ensureAgentPrincipal} from '../core/agent-principal';
 import {resolveEntitlementsTx} from '../core/entitlements';
 import {pgSqlState} from '../lib/db-error';
-import {hireEmployee} from '../core/org';
-import {createRewardUnit,getRewardConfiguration,getRewardUnit,previewRewardAccessChange,saveRewardAccessChange,decideRewardAccessRequest,rewardAccessRequests,rewardAccessAdministration,rewardAccessSuspensionRecipients,setRewardMember,confirmRewardGovernance} from '../packs/rewards/service';
+import {hireEmployee,transferEmploymentCompanyTx} from '../core/org';
+import {getRewardConfiguration,getRewardUnit,previewRewardAccessChange,saveRewardAccessChange,decideRewardAccessRequest,rewardAccessRequests,rewardAccessAdministration,rewardAccessSuspensionRecipients,setRewardMember,confirmRewardGovernance} from '../packs/rewards/service';
 import {migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,closeAll,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 let b:Base,admin:SessionContext,requester:SessionContext,checker:SessionContext,target:SessionContext,unitId:string,bu:string,employmentId:string;
@@ -36,7 +37,7 @@ beforeEach(async()=>{
  const [unit]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'ACCESS',name:'Fictional access unit'}).returning();bu=unit.id;
  checker=await account('Independent checker','hr_admin');requester=await account('Non-exempt access requester','super_admin');
  const hire=await hireEmployee(admin,{person:{fullName:'Fictional BU reviewer',primaryEmail:randomUUID()+'@access.test'},companyId:b.companyId,departmentId:b.deptA,businessUnitId:bu,employmentType:'full_time',hiredOn:`${year-1}-01-01`});employmentId=hire.employmentId;
- unitId=await createRewardUnit(admin,{name:'Fictional access controls',year,companyId:b.companyId,businessUnitId:bu,snapshotDate:today});
+ unitId=await createApprovedRewardUnit(admin,{name:'Fictional access controls',year,companyId:b.companyId,businessUnitId:bu,snapshotDate:today});
  await owner.db.insert(s.rewardMember).values({tenantId:b.tenantId,unitId,userId:checker.userId!,role:'gr'});
 
  const [employee]=await owner.db.select().from(s.employment).where(eq(s.employment.id,employmentId));
@@ -72,7 +73,7 @@ describe('Rewards two-person access and live People eligibility',()=>{
  it('scopes the request read policy to the application role so owner-run checks never re-enter it',async()=>{
   // 0875: a policy with no role also applies to the (non-superuser) owner inside SECURITY DEFINER
   // reward_access_request_authorised, which reads this FORCE RLS table — infinite recursion on staging.
-  const rows=await owner.client`select policyname,roles::text[] as roles,cmd from pg_policies where schemaname='public' and tablename='reward_access_request' order by policyname`;
+  const rows=await owner.client`select policyname,roles::text[] as roles,cmd from pg_policies where schemaname='public' and tablename='reward_access_request' and permissive='PERMISSIVE' order by policyname`;
   expect(rows.map(r=>({policyname:r.policyname,roles:r.roles,cmd:r.cmd}))).toEqual([
    {policyname:'reward_access_request_owner',roles:['public'],cmd:'ALL'},
    {policyname:'reward_access_request_read',roles:['ai_hr_app'],cmd:'SELECT'},
@@ -170,8 +171,8 @@ describe('Rewards two-person access and live People eligibility',()=>{
  it('bounds a named proxy by its own access dates and refuses a cover identity without that role',async()=>{
   await confirmBuOpening();
   let pending=await request({userId:target.userId!,role:'bu'});await decideRewardAccessRequest(checker,pending.requestId,true);
-  const hire=await hireEmployee(admin,{person:{fullName:'Fictional temporary proxy',primaryEmail:randomUUID()+'@access.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year-1}-01-01`});
-  const [employee]=await owner.db.select().from(s.employment).where(eq(s.employment.id,hire.employmentId));await owner.db.update(s.assignment).set({businessUnitId:bu}).where(eq(s.assignment.employmentId,hire.employmentId));
+  const hire=await hireEmployee(admin,{person:{fullName:'Fictional temporary proxy',primaryEmail:randomUUID()+'@access.test'},companyId:b.companyId,departmentId:b.deptA,businessUnitId:bu,employmentType:'full_time',hiredOn:today});
+  const [employee]=await owner.db.select().from(s.employment).where(eq(s.employment.id,hire.employmentId));
   const proxyId=await createAppUser(b.tenantId,employee.personId,'employee'),proxy={...target,userId:proxyId,personId:employee.personId};
   await expect(request({userId:proxyId,role:'bu',validFrom:today,validTo:today,coversUserId:checker.userId})).rejects.toMatchObject({code:'proxy'});
   pending=await request({userId:proxyId,role:'bu',validFrom:today,validTo:today,coversUserId:target.userId});await decideRewardAccessRequest(checker,pending.requestId,true);
@@ -185,8 +186,11 @@ describe('Rewards two-person access and live People eligibility',()=>{
   await confirmBuOpening();
   let pending=await request({userId:target.userId!,role:'bu'});await decideRewardAccessRequest(checker,pending.requestId,true);
   pending=await request({userId:target.userId!,role:'bg'});await decideRewardAccessRequest(checker,pending.requestId,true);
-  const [other]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'OTHER',name:'Fictional other unit'}).returning();
-  await owner.db.update(s.assignment).set({businessUnitId:other.id}).where(eq(s.assignment.employmentId,employmentId));
+  const [destination]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional destination company'}).returning();
+  const [dept]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:destination.id,name:'Fictional destination department'}).returning();
+  const [other]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:destination.id,code:'OTHER',name:'Fictional other unit'}).returning();
+  await setupCompanyStructureFixture(admin,[{companyId:destination.id,businessUnitId:other.id}],today);
+  await withTenant(admin,tx=>transferEmploymentCompanyTx(tx,admin,{employmentId,newCompanyId:destination.id,effectiveDate:today,placement:{departmentId:dept.id,businessUnitId:other.id},movement:{type:'transfer',groupId:randomUUID()}}));
   expect((await getRewardUnit(target,unitId)).roles).toEqual(['bg']);
   pending=await request({userId:target.userId!,role:'bu',restoreReason:'Approved temporary continuity exception'},{userId:target.userId!,role:'bu'},admin);
   expect(pending.pending).toBe(false);

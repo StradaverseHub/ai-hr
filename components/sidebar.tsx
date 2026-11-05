@@ -443,7 +443,7 @@ const GROUPS: Group[] = [
     items: [
       { href: '/tasks', labelKey: 'myTasks', icon: ListChecks },
       { href: '/admin/personnel', labelKey: 'personnelAdmin', icon: Users, adminOnly: true },
-      { href: '/admin/job-descriptions', labelKey: 'jobDescriptions', icon: BookOpen, adminOnly: true },
+      { href: '/admin/job-architecture', labelKey: 'jobDescriptions', icon: BookOpen, adminOnly: true },
       ONBOARDING_NODE,
       ONBOARDING_REQUISITIONS_NODE,
       ...LIFECYCLE_LINKS.filter(link=>link.group==='manage'&&link.href!=='/lifecycle/requisitions/onboarding'),
@@ -575,11 +575,13 @@ export function Sidebar({
   assistantAccess = true,
   feedbackAccess = true,
   privateCaseHandler = false,
+  canViewJobArchitecture = false,
   defaultCollapsed,
   viewerName = null,
   viewerCode = null,
 }: {
   isAdmin: boolean;
+  canViewJobArchitecture?: boolean;
   canAdministerSecurity?: boolean;
   canConfigureAccess?: boolean;
   canProvisionUsers?: boolean;
@@ -742,7 +744,7 @@ export function Sidebar({
   // administrator (whose requireAdmin pages those are) keeps it without the Assistant grant or module; /assistant
   // then shows its unavailable home with the centre's tabs, and every page still checks for itself.
   const canSeeChild = (c: ChildItem) => (c.href === '/assistant' && canAdministerAi) ||
-    (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (c.href !== '/cases' || privateCaseHandler) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
+    (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (c.href !== '/cases' || privateCaseHandler) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === '/admin/job-architecture' ? canViewJobArchitecture : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS
@@ -786,12 +788,12 @@ export function Sidebar({
   // New module owners resolve both the actual purchased company and business-role visibility.
   // These additive People destinations do not inherit the legacy global-only Lifecycle nav gate.
   const scopedLifecycleRows:ChildItem[]=[
-    ...(probationAccess.page?[{href:'/lifecycle/probation',labelKey:'probationConfirmation',icon:ONBOARDING_NODE.icon,exactHref:true,ownedSubpaths:['/lifecycle/probation'] }]:[]),
-    ...(contractStaffAccess.page?[{href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ONBOARDING_NODE.icon,exactHref:true,ownedSubpaths:['/lifecycle/contracts'] }]:[]),
-    ...(probationAccess.configure?[['settings','probationSettings'],['forms','probationForms'],['routes','probationRoutes'],['workflows','probationWorkflows'],['templates','probationTemplates']].map(([path,labelKey])=>({href:`/lifecycle/probation/${path}`,labelKey,icon:ONBOARDING_NODE.icon,submenuKey:'probationConfirmation'})):[]),
-    ...(probationAccess.configure||probationAccess.intake===true?[{href:'/lifecycle/probation/intake',labelKey:'probationIntake',icon:ONBOARDING_NODE.icon,submenuKey:'probationConfirmation'}]:[]),
-    ...(contractStaffAccess.intake===true?[{href:'/lifecycle/contracts/intake',labelKey:'contractIntake',icon:ONBOARDING_NODE.icon,submenuKey:'contractManagement'}]:[]),
-    ...(contractStaffAccess.configure?[['settings','contractSettings'],['workflows','contractWorkflows'],['templates','contractTemplates']].map(([path,labelKey])=>({href:`/lifecycle/contracts/${path}`,labelKey,icon:ONBOARDING_NODE.icon,submenuKey:'contractManagement'})):[]),
+    ...(probationAccess.page?[{href:'/lifecycle/probation',labelKey:'probationTracker',icon:Timer,exactHref:true,ownedSubpaths:['/lifecycle/probation'] }]:[]),
+    ...(contractStaffAccess.page?[{href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ScrollText,exactHref:true,ownedSubpaths:['/lifecycle/contracts'] }]:[]),
+    ...(probationAccess.configure?[['settings','probationSettings'],['forms','probationForms'],['routes','probationRoutes'],['workflows','probationWorkflows'],['templates','probationTemplates']].map(([path,labelKey])=>({href:`/lifecycle/probation/${path}`,labelKey,icon:Timer})):[]),
+    ...(probationAccess.configure||probationAccess.intake===true?[{href:'/lifecycle/probation/intake',labelKey:'probationIntake',icon:Timer}]:[]),
+    ...(contractStaffAccess.intake===true?[{href:'/lifecycle/contracts/intake',labelKey:'contractIntake',icon:ScrollText}]:[]),
+    ...(contractStaffAccess.configure?[['settings','contractSettings'],['workflows','contractWorkflows'],['templates','contractTemplates']].map(([path,labelKey])=>({href:`/lifecycle/contracts/${path}`,labelKey,icon:ScrollText})):[]),
   ];
   const destinations: ChildItem[] = [...authorizedRows.filter(row => {
     const placement = navigationPlacement(row.href);
@@ -810,7 +812,7 @@ export function Sidebar({
       'module' in row.placement && row.placement.module === module.id && row.placement.section === section,
     ).map(row => row.destination));
     if (!children.length) return [];
-    if (children.length === 1 && module.id !== 'onboarding') return [{...children[0],labelKey:module.labelKey}];
+    if (children.length === 1 && !['onboarding','probation','contracts'].includes(module.id)) return [{...children[0],labelKey:module.labelKey}];
     return [{collapsible:true,activeMatch:'children',labelKey:module.labelKey,icon:children[0].icon,
       children,tour:children.some(child=>child.tour==='nav-admin')?'nav-admin':undefined} satisfies CollapsibleGroupItem];
   });
@@ -846,6 +848,7 @@ export function Sidebar({
     const lifecycle = lifecycleNavigation.find(item => item.href === href);
     if (lifecycle) return lifecycle.submenuKey;
     const placement=navigationPlacement(href);
+    if (placement && 'module' in placement && ['probation','contracts'].includes(placement.module) && placement.section === 'hr') return undefined;
     return placement && 'section' in placement ? `section${placement.section==='hr'?'HR':placement.section==='ai'?'AiManagement':placement.section==='config'?'Configuration':placement.section==='mine'?'Mine':'Team'}` : undefined;
   };
 

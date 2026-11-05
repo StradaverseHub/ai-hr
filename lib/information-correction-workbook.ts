@@ -10,8 +10,10 @@ export function parseInformationWorkbook(content:Buffer):InformationImportRow[]{
  const book=XLSX.read(content,{type:'buffer',cellDates:false,cellFormula:true});
  const sheet=book.Sheets.Corrections;if(!sheet||!sheet['!ref'])throw new Error('Use the Corrections sheet from the Information-Only Correction template.');
  const range=XLSX.utils.decode_range(sheet['!ref']);
- if(range.s.r!==0||range.s.c!==0||range.e.r<1||range.e.r>INFORMATION_MAX_ROWS||range.e.c>=INFORMATION_HEADERS.length)throw new Error('Use the nine-column template with between 1 and 200 employee rows.');
+ if(range.s.r!==0||range.s.c!==0||range.e.r<1||range.e.r>INFORMATION_MAX_ROWS||range.e.c>=INFORMATION_HEADERS.length+2)throw new Error('Use the nine-column template with between 1 and 200 employee rows.');
  INFORMATION_HEADERS.forEach((header,c)=>{const cell=sheet[XLSX.utils.encode_cell({r:0,c})];if(cell?.v!==header||cell.f)throw new Error('The template columns changed. Download a new template.');});
+ const ignoredColumns:Array<{column:number;field:'businessUnit'|'parentCompany'}>=[];
+ for(let c=INFORMATION_HEADERS.length;c<=range.e.c;c++){const cell=sheet[XLSX.utils.encode_cell({r:0,c})],header=String(cell?.v??'');if(cell?.f||!['Business Unit','Parent company','Parent Company'].includes(header))throw new Error('The template columns changed. Download a new template.');const field=header==='Business Unit'?'businessUnit':'parentCompany';if(ignoredColumns.some(column=>column.field===field))throw new Error('The template repeats an organisation column.');ignoredColumns.push({column:c,field});}
  const rows:InformationImportRow[]=[];
  for(let r=1;r<=range.e.r;r++){
   const values:InformationImportRow['values']={},errors:string[]=[];
@@ -27,11 +29,12 @@ export function parseInformationWorkbook(content:Buffer):InformationImportRow[]{
     if(!isCalendarDate(date))errors.push(`${header}: use YYYY-MM-DD or an Excel date.`);else values[header]=date;
    }else {const value=String(cell.v).trim();if(value.length>1000)errors.push(`${header}: maximum 1,000 characters.`);else values[header]=value;}
   }
-  if(!Object.keys(values).length&&!errors.length)continue;
+  const ignoredOrganisation:NonNullable<InformationImportRow['ignoredOrganisation']>={};for(const column of ignoredColumns){const cell=sheet[XLSX.utils.encode_cell({r,c:column.column})];if(cell?.f||cell?.t==='e'){errors.push('Organisation columns cannot contain formulas or error cells.');continue;}const value=String(cell?.v??'').trim();if(value.length>1000)errors.push('Organisation value: maximum 1,000 characters.');else if(value)ignoredOrganisation[column.field]=value;}
+  if(!Object.keys(values).length&&!errors.length&&!Object.keys(ignoredOrganisation).length)continue;
   const companyCode=values['Company Code']??'',employeeCode=values['Employee ID']??'';
   if(!companyCode)errors.push('Company Code is required.');if(!employeeCode)errors.push('Employee ID is required.');
   if(!values['Correction Reason']||values['Correction Reason']!.length<3)errors.push('Correction Reason must contain at least three characters.');
-  rows.push({row:r+1,companyCode,employeeCode,values,errors});
+  rows.push({row:r+1,companyCode,employeeCode,values,errors,...(Object.keys(ignoredOrganisation).length?{ignoredOrganisation}:{})});
  }
  if(!rows.length)throw new Error('The file has no employee rows.');
  const seen=new Map<string,InformationImportRow[]>();

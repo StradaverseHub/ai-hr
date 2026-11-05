@@ -1,14 +1,16 @@
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {PAY_FORMULA_PERSONNEL_PROVIDER_VERSION} from '../lib/pay-formula-personnel';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
-import {eq} from 'drizzle-orm';
+import {sql,eq} from 'drizzle-orm';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayComponentCatalog,upsertPayComponent,setEmploymentPayComponent} from '../core/pay-components';
-import {createBatch,generatePayslips} from '../core/payroll';
-import {savePayFormula,testPayFormula,setPayFormulaActive,getFormulaEvaluation,saveFormulaAccumulationGroup} from '../core/pay-formula';
+import {createBatch,createAdditionalRun,generatePayslips} from '../core/payroll';
+import {registerPayFormulaPersonnelField,payFormulaOptions,savePayFormula,testPayFormula,setPayFormulaActive,getFormulaEvaluation,saveFormulaAccumulationGroup} from '../core/pay-formula';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
-import type {SessionContext} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import type {PayFormulaContext} from '../lib/pay-formula-model';
 let base:Base,ctx:SessionContext,employee:{employmentId:string;personId:string},context:PayFormulaContext;
 const item={code:'EXACT_FORMULA',name:'Exact formula allowance',label:'Exact formula allowance',kind:'allowance' as const,includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false,formulaContext:{rate:'1.005'}};
@@ -17,7 +19,10 @@ beforeEach(async()=>{
  await resetDb();base=await seedBase();await setModule(base.tenantId,'typed_pay_components','active');ctx=await entitledCtx(base);
  employee=await hireEmployee(ctx,{person:{fullName:'Fictional runtime employee',primaryEmail:'formula-runtime@example.invalid'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
  await setCompensation(ctx,{employmentId:employee.employmentId,basicSalary:5000,monthlyAllowance:0,effectiveFrom:'2026-01-01'});
- await setStatutoryProfileMY(ctx,{personId:employee.personId,icNumber:'900101011234'});await seedPayComponentCatalog(ctx);await upsertPayComponent(ctx,{...item,rule:{kind:'fixed'}});
+ await setStatutoryProfileMY(ctx,{personId:employee.personId,icNumber:'900101011234'});await seedPayComponentCatalog(ctx);
+ // Preserve the existing standalone formula-test context. Explicit fixed intent deliberately clears
+ // rate bindings; a legacy unset-rule receiver is the supported fixture for testing named bindings.
+ await upsertPayComponent(ctx,{...item,rule:null});
  const [cycle]=await owner.db.insert(schema.payrollCycle).values({tenantId:base.tenantId,companyId:base.companyId,name:'Formula runtime cycle',code:'FORMULA_RUNTIME',runType:'regular'}).returning();
  context={companyId:base.companyId,employmentId:employee.employmentId,cycleId:cycle.id,period:'2026-05',asOf:'2026-05-31',currentCode:item.code,input:'3'};
 });
@@ -100,7 +105,7 @@ it('matches the approved Monthly overtime vocabulary and explicit rate bindings 
  const allowance=await upsertPayComponent(ctx,{...item,code:'OT_BASE_ALLOWANCE',name:'OT base allowance',rule:{kind:'fixed'}});
  await setEmploymentPayComponent(ctx,{employmentId:employee.employmentId,componentId:allowance.id,amount:500,effectiveFrom:context.period+'-01'});
  await saveFormulaAccumulationGroup(ctx,{code:'OT_GROSS',members:['OT_BASE_ALLOWANCE']});
- const formulaContext={ordinaryRate:'26',hoursPerDay:'8',rate:'1.5'};await upsertPayComponent(ctx,{...item,formulaContext,rule:{kind:'fixed'}});
+ const formulaContext={ordinaryRate:'26',hoursPerDay:'8',rate:'1.5'};await upsertPayComponent(ctx,{...item,formulaContext,rule:null});
  const source='Dim Gross As Decimal = {#Basic} + {#Accumulation}("OT_GROSS")\nIf Gross > 4000 Then\n Gross = 4000\nEnd If\nIf {#Payrate} = "Monthly" Then\n Return Gross / {#OrdinaryRate} / {#HoursPerDay} * {#Rate} * {#Input}\nElse\n Return 0\nEnd If';
  const result=await activate(source,'3',{formulaContext});expect(result.amount).toBe('86.54');
  const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});await generatePayslips(ctx,{batchId});
@@ -143,4 +148,71 @@ it('uses the Native period-end salary owner when testing an existing run',async(
  await generatePayslips(ctx,{batchId});
  const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
  expect(slip.basicSalary).toBe('6200.00');expect((slip.statutory as {componentLines:{code:string;amount:number}[]}).componentLines.find(l=>l.code===item.code)?.amount).toBe(620);
+});
+
+it('uses stable Company identities for both EBAC-style overtime branches through the native source owner',async()=>{
+ await owner.db.update(schema.company).set({legalName:'EBAC HOME SDN BHD'}).where(eq(schema.company.id,base.companyId));
+ const allowance=await upsertPayComponent(ctx,{...item,code:'COMPANY_FIXED',name:'Company fixed allowance',orpOvertime:true,rule:null});
+ await setEmploymentPayComponent(ctx,{employmentId:employee.employmentId,componentId:allowance.id,amount:1000,effectiveFrom:context.period+'-01'});
+ const source=(companyId:string)=>`If {#EmployeeProfile}("companyId") = "${companyId}" Then\n Return ({#Basic} + {#FixedAllowances}) / 26 / 8 * 1.5 * {#Input}\nElse\n Return {#Basic} / 26 / 8 * 1.5 * {#Input}\nEnd If`;
+ const yes=await savePayFormula(ctx,{formulaId:'COMPANY_YES',description:'Company branch',method:'write',source:source(base.companyId)}),no=await savePayFormula(ctx,{formulaId:'COMPANY_NO',description:'Other-company branch',method:'write',source:source('10000000-0000-4000-8000-000000000009')});
+ expect((await testPayFormula(ctx,{...yes,context})).amount).toBe('129.81');expect((await testPayFormula(ctx,{...no,context})).amount).toBe('108.17');
+ const [duplicateLabel]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'EBAC HOME SDN BHD'}).returning();
+ const options=await payFormulaOptions(ctx),field=options.personnelFields.find(f=>f.key==='companyId');expect(field?.listValues).toContainEqual({value:base.companyId,label:'EBAC HOME SDN BHD · '+base.companyId});expect(field?.listValues).toContainEqual({value:duplicateLabel.id,label:'EBAC HOME SDN BHD · '+duplicateLabel.id});
+});
+it('refuses current-only history and sensitive authoring while retaining the existing formula contract',async()=>{
+ const historical=await savePayFormula(ctx,{formulaId:'PAST',description:'No current-as-past source',method:'write',source:'{#Explain}({#EmployeeInformation}("profile.personal_details.fullname"))\nReturn 1'});
+ expect(await testPayFormula(ctx,{...historical,context})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
+ await owner.db.insert(schema.payrollPermissionGrant).values(['hr_admin','super_admin'].map(role=>({tenantId:base.tenantId,companyId:base.companyId,role,permissionKey:'report.read.identity',allowed:false})));
+ await expect(savePayFormula(ctx,{formulaId:'DENIED_FIELD',description:'Denied sensitive source',method:'write',source:'{#Explain}({#EmployeeInformation}("profile.personal_details.fullname"))\nReturn 1'})).rejects.toThrow(/permission/);
+});
+it('versions only affected registrations, rejects executable source configuration and retains old formula receipts',async()=>{
+ const old=await savePayFormula(ctx,{formulaId:'OLD_CONTRACT',description:'Unchanged old dependency receipt',method:'write',source:'Return {#Basic} / 10'}),fresh=await savePayFormula(ctx,{formulaId:'NEW_CONTRACT',description:'New Personnel dependency receipt',method:'write',source:`If {#EmployeeProfile}("companyId") = "${base.companyId}" Then\nReturn 1\nElse\nReturn 0\nEnd If`});
+ const oldTest=await testPayFormula(ctx,{...old,context});expect(oldTest.passed).toBe(true);
+ await registerPayFormulaPersonnelField(ctx,{sourceKey:'companyId',label:'Legal employer',description:'Verified legal company identity',enabled:true});
+ expect((await testPayFormula(ctx,{...old,context})).amount).toBe(oldTest.amount);
+ await expect(testPayFormula(ctx,{...fresh,context})).rejects.toThrow(/Dependencies changed/);
+ await expect(registerPayFormulaPersonnelField(ctx,{sourceKey:'person; drop table company',label:'Forbidden',description:'No executable source registrations',enabled:true})).rejects.toThrow(/supported typed source/);
+ const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'pay-formula.personnel-registered'));expect(events).toHaveLength(1);
+ await expect(withTenant(ctx,tx=>tx.execute(sql`update pay_formula_personnel_registration set enabled=false`))).rejects.toBeDefined();
+});
+
+it('reads actual current text, number and date scalars through their typed adapters',async()=>{
+ const today=todayInKualaLumpur(),current={...context,period:today.slice(0,7),asOf:today};
+ await owner.db.update(schema.employment).set({probationValue:6,contractStartDate:'2026-01-01'}).where(eq(schema.employment.id,employee.employmentId));
+ const source='If {#EmployeeInformation}("profile.personal_details.fullname") = "Fictional runtime employee" And {#EmployeeProfile}("employment.employment_dates_and_service.probationvalue") = 6 And {#EmployeeProfile}("employment.employment_dates_and_service.contractstartdate") = {#Date}("2026-01-01") Then\nReturn 11.25\nElse\nReturn 0\nEnd If';
+ const saved=await savePayFormula(ctx,{formulaId:'TYPED_CURRENT',description:'Native typed scalar boundaries',method:'write',source});
+ expect(await testPayFormula(ctx,{...saved,context:current})).toMatchObject({passed:true,amount:'11.25'});
+});
+it('uses only exact-run native payslip-referenced frozen reads with the matching Personnel provider and date',async()=>{
+ await activate('Return 1');const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});await generatePayslips(ctx,{batchId});
+ const key='profile.personal_details.fullname',source=`If {#EmployeeInformation}("${key}") = "Frozen historical name" Then\nReturn 9\nElse\nReturn 0\nEnd If`,saved=await savePayFormula(ctx,{formulaId:'FROZEN_PERSONNEL',description:'Exact native run snapshot',method:'write',source});
+ const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
+ const statutory=slip?.statutory;
+ if(!statutory||typeof statutory!=='object'||Array.isArray(statutory))throw new Error('The native fixture payslip must contain an object statutory payload.');
+ const payload={explanations:[],reads:[{code:'EmployeeInformation',args:[{type:'string',value:key}],loc:{line:1,column:1},value:{type:'string',value:'Frozen historical name'}}],sources:{context:{...context,batchId},sourceEvidence:[{owner:'typed-personnel',provider:PAY_FORMULA_PERSONNEL_PROVIDER_VERSION,key,dateBasis:'current-only',asOf:context.asOf}]}};
+ // An owner-created historical native fixture represents a retained source read from that payroll day.
+ const [evidence]=await owner.withTenant(ctx,tx=>tx.insert(schema.payFormulaEvaluation).values({tenantId:base.tenantId,formulaId:saved.id,revisionId:saved.revisionId,companyId:base.companyId,employmentId:employee.employmentId,batchId,componentCode:item.code,period:context.period,amount:'9',payload,readRequirements:{categories:['identity'],fieldIds:[key],workforce:true},actorId:ctx.userId!}).returning());
+ await owner.db.update(schema.payslip).set({statutory:{...statutory,formulaEvaluations:[{evaluationId:evidence.id}]}}).where(eq(schema.payslip.id,slip.id));
+ await owner.db.update(schema.person).set({fullName:'Changed live employee name'}).where(eq(schema.person.id,employee.personId));
+ // A second regular run is forbidden. Use the native entitled additional-run path and its own cycle.
+ await setModule(base.tenantId,'multi_cycle_payroll','active');ctx=await entitledCtx(base);
+ const [bonusCycle]=await owner.db.insert(schema.payrollCycle).values({tenantId:base.tenantId,companyId:base.companyId,name:'Frozen source Bonus cycle',code:'FORMULA_FROZEN_BONUS',runType:'bonus'}).returning();
+ const alternate=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:context.period,runType:'bonus',payrollCycleId:bonusCycle.id});
+ expect(await testPayFormula(ctx,{...saved,context:{...context,cycleId:bonusCycle.id,batchId:alternate.batchId}})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
+ const selected={...context,batchId};expect(await testPayFormula(ctx,{...saved,context:selected})).toMatchObject({passed:true,amount:'9'});
+ expect(await testPayFormula(ctx,{...saved,context:{...selected,asOf:'2026-05-30'}})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
+ const [wrongProvider]=await owner.withTenant(ctx,tx=>tx.insert(schema.payFormulaEvaluation).values({...evidence,id:undefined,payload:{...payload,sources:{...payload.sources,sourceEvidence:[{...payload.sources.sourceEvidence[0],provider:'unreviewed-provider'}]}}}).returning());
+ await owner.db.update(schema.payslip).set({statutory:{...statutory,formulaEvaluations:[{evaluationId:wrongProvider.id}]}}).where(eq(schema.payslip.id,slip.id));
+ expect(await testPayFormula(ctx,{...saved,context:selected})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
+ await owner.db.update(schema.payslip).set({statutory:{...statutory,formulaEvaluations:[]}}).where(eq(schema.payslip.id,slip.id));
+ expect(await testPayFormula(ctx,{...saved,context:selected})).toMatchObject({passed:false,error:expect.stringContaining('current-only')});
+});
+it('requires administrator authority at both registration boundaries and refuses malformed native sources and forged audits',async()=>{
+ const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'formula-personnel-unprivileged',personId:employee.personId}).returning();
+ const unprivileged={...ctx,userId:user.id,personId:employee.personId,roles:[],grants:[]} satisfies SessionContext;
+ await expect(registerPayFormulaPersonnelField(unprivileged,{sourceKey:'companyId',label:'Employer',description:'A legitimate description does not grant authority',enabled:true})).rejects.toThrow();
+ await expect(withTenant(unprivileged,tx=>tx.execute(sql`select app.pay_formula_personnel_register('companyId','Employer','A direct call does not grant authority',true)`))).rejects.toBeDefined();
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select app.pay_formula_personnel_register('person; DROP TABLE company','Employer','No native executable source registration',true)`))).rejects.toBeDefined();
+ await expect(withTenant(ctx,tx=>tx.insert(schema.domainEvent).values({tenantId:base.tenantId,aggregateType:'pay-formula-personnel-registration',aggregateId:user.id,eventType:'pay-formula.personnel-registered',actorType:'user',actorId:ctx.userId!,payload:{sourceKey:'companyId'}}))).rejects.toBeDefined();
 });

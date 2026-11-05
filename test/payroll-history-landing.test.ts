@@ -114,17 +114,17 @@ describe('862ed0ad — the itemised section no longer claims "no cash impact"', 
     // The claim being pinned is unchanged in kind (the Allowances figure IS itemised from the stamp);
     // only which buckets feed it moved, into `allowanceLines` so both consumers of the derivation get the
     // same list. The `ot` and `bonus` pins below are untouched.
-    expect(TABLE).toContain('<SubLines lines={b.allowanceLines}');
+    expect(TABLE).toMatch(/<SubLines\b[^>]*\blines=\{b\.allowanceLines\}/);
     // UPDATED AGAIN, NOT DELETED — and for the third time the claim is unchanged in kind. Which buckets
     // feed the figure is still pinned below; what moved is that the list now goes through the SAME
     // reconciliation gate as Overtime and Bonus, so the one remaining list able to print rows that do not
     // add up to the total above them no longer can. Both halves are asserted: drop either and the guard
     // stops describing the code.
     expect(BREAKDOWN, 'the allowance lines are wage + the PCB-exempt reimburse bucket').toContain(
-      '[...byBucket.wage, ...byBucket.reimburse]',
+      "payItemLinesForCategory(componentLines, 'allowance')",
     );
     expect(BREAKDOWN, 'and they are reconciled against the Allowances figure before being handed out').toContain(
-      'allowanceLines: reconciled([...byBucket.wage, ...byBucket.reimburse], allowanceNet)',
+      "allowanceLines: reconciled(payItemLinesForCategory(componentLines, 'allowance').map(asSubLine), allowanceNet)",
     );
     // 6b134681 — UPDATED, NOT DELETED, for the same reason as the allowance pin above. The claim is
     // unchanged in kind — Overtime and Bonus ARE itemised from the stamp — but the source moved from the
@@ -133,14 +133,14 @@ describe('862ed0ad — the itemised section no longer claims "no cash impact"', 
     // routed to `bonus` printed an itemised row under a zero Bonus total; pinning the raw bucket would
     // pin that. All four payroll result surfaces (this grid, Individual Payslip, the ESS payslip and the
     // printed PDF) now apply the same `payItemLinesReconcile` rule.
-    expect(TABLE).toContain('<SubLines lines={b.overtimeLines}');
-    expect(TABLE).toContain('<SubLines lines={b.bonusLines}');
+    expect(TABLE).toMatch(/<SubLines\b[^>]*\blines=\{b\.overtimeLines\}/);
+    expect(TABLE).toMatch(/<SubLines\b[^>]*\blines=\{b\.bonusLines\}/);
     // 5a5309d5 — UPDATED, NOT DELETED: the overtime source now falls back to the attendance legs
     // (`statutory.otDetail`) when no pay item fed the figure; the reconciliation gate is unchanged.
     expect(BREAKDOWN, 'the ot/bonus lines are handed out only when they reconcile').toContain(
       'overtimeLines: reconciled(overtimeSourceLines(componentLines, row.statutory), disp.overtime)',
     );
-    expect(BREAKDOWN).toContain('bonusLines: reconciled(byBucket.bonus, disp.bonus)');
+    expect(BREAKDOWN).toContain("bonusLines: reconciled(payItemLinesForCategory(componentLines, 'bonus').map(asSubLine), disp.bonus)");
     expect(BREAKDOWN, 'and “reconciled” is the shared predicate, not a local re-implementation').toContain(
       'payItemLinesReconcile(lines, total) ? lines : []',
     );

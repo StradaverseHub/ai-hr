@@ -35,6 +35,7 @@ function compare(gaps:Readonly<Record<string,readonly string[]>>,list:ReadonlyMa
 
 describe('definition of done',()=>{
  const inputs=definitionOfDoneInputs(),gaps=definitionOfDoneGaps(inputs),list=allowed();
+ it('covers organisation review with its literal semantic owner, guide and corpus without a new gap',()=>{expect(inputs.pages.some(page=>page.path==='/admin/organization/organisation-tagging')).toBe(true);expect(gaps['page:/admin/organization/organisation-tagging']).toBeUndefined();});
  it('reads the live registries',()=>{
   expect(inputs.actions.length).toBeGreaterThanOrEqual(71);expect(inputs.pages.length).toBeGreaterThanOrEqual(293);
   expect(inputs.guideBodies.length).toBeGreaterThan(40);expect(inputs.corpus.length).toBeGreaterThan(150);
@@ -100,14 +101,17 @@ describe('the rules fail when they should',()=>{
 });
 
 /** The private-by-design classification is a guard, not debt: none of its pages has an AI semantic surface. */
-describe('private by design: no AI semantic surface (ADR-0173)',()=>{
+describe('private by design: no AI semantic surface',()=>{
  const pages=Object.keys(PRIVATE_BY_DESIGN);
  const root=fileURLToPath(new URL('..',import.meta.url));
  const names=(path:string)=>new RegExp('(?<![A-Za-z0-9/_-])'+path.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![A-Za-z0-9/_-])');
- it('lists the four private case pages, each a linkable page with its reason',()=>{
-  expect(pages.sort()).toEqual(['/admin/privacy/case-handlers','/cases','/me/cases','/me/cases/new']);
+ it('keeps the private case pages and own job description linkable with explicit read boundaries',()=>{
+  const casePages=['/admin/privacy/case-handlers','/cases','/me/cases','/me/cases/new'];
+  expect(pages.sort()).toEqual([...casePages,'/me/job-description']);
   const linkable=new Set(LINKABLE_PAGES.map(([path])=>path));
-  for(const page of pages){expect(linkable.has(page),page).toBe(true);expect(PRIVATE_BY_DESIGN[page]).toMatch(/^ADR-0173: /);}
+  for(const page of pages)expect(linkable.has(page),page).toBe(true);
+  for(const page of casePages)expect(PRIVATE_BY_DESIGN[page]).toMatch(/^ADR-0173: /);
+  expect(PRIVATE_BY_DESIGN['/me/job-description']).toMatch(/native owner alone reads/);
  });
  it('gives none of them a semantic entity, a declared action or a read',()=>{
   const entityPages=new Set(terasEntities().map(entity=>entity.page));
@@ -122,7 +126,7 @@ describe('private by design: no AI semantic surface (ADR-0173)',()=>{
   const specs=[...ASSISTANT_TOOL_CATALOGUE,...contextToolSpecs(),...terasToolSpecs()];expect(specs.length).toBeGreaterThan(10);
   for(const page of pages)for(const spec of specs)expect(JSON.stringify(spec),spec.name+' names '+page).not.toMatch(names(page));
  });
- it('keeps the private case owner and tables out of the semantic model and the harness, and the pages out of the model',()=>{
+ it('keeps private case storage out of the harness and every protected page out of the semantic model',()=>{
   const files=(dir:string)=>readdirSync(join(root,dir)).filter(name=>/\.tsx?$/.test(name)).map(name=>join(dir,name));
   const model=files('core/semantic-model'),harness=files('core/harness');expect(model.length).toBeGreaterThan(10);expect(harness.length).toBeGreaterThan(5);
   // The harness may one day link the case form from a routed reply (ADR-0173 §3); it must never read a case.

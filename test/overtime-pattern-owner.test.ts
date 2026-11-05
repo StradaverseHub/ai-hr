@@ -10,7 +10,7 @@ import {lockLeaveDependenciesTx} from '../core/leave-dependency-lock';
 import {createCompany} from '../core/admin';
 import {readOvertimeStarterSeed,prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import type {OvertimePattern} from '../lib/overtime-pattern-model';
-import {activateOvertimePattern,archiveOvertimePattern,ensureOvertimePatternStarters,captureOvertimePersonnelContextTx,createOvertimeCalculationOwner,forkOvertimePatternDraft,getOvertimePattern,listOvertimePatterns,readOvertimeCalculationTx,readOvertimeDurationsTx,listCoveredOvertimeDaysTx,readOvertimePersonnelContextTx,readOvertimeSettlementForDayTx,releaseOvertimeSettlementsForDraftTeardownTx,releaseOvertimeSettlementTx,reserveOvertimeSettlementTx,saveOvertimePatternAssignment,saveOvertimePatternDraft,stopOvertimePatternVersion,validateOvertimePatternActivation,type CanonicalOvertimeSnapshot} from '../packs/attendance/overtime-patterns';
+import {activateOvertimePattern,archiveOvertimePattern,ensureOvertimePatternStarters,captureOvertimePersonnelContextTx,createOvertimeCalculationOwner,forkOvertimePatternDraft,getOvertimePattern,listOvertimePatterns,overtimePatternWorkspaceCompanies,readOvertimeCalculationTx,readOvertimeDurationsTx,listCoveredOvertimeDaysTx,readOvertimePersonnelContextTx,readOvertimeSettlementForDayTx,releaseOvertimeSettlementsForDraftTeardownTx,releaseOvertimeSettlementTx,reserveOvertimeSettlementTx,saveOvertimePatternAssignment,saveOvertimePatternDraft,stopOvertimePatternVersion,validateOvertimePatternActivation,type CanonicalOvertimeSnapshot} from '../packs/attendance/overtime-patterns';
 import {requestAttendanceCorrection,decideAttendanceCorrection,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../packs/attendance/service';
 let b:Base,employmentId:string,attendanceId:string,earningId:string;const day=()=>todayInKualaLumpur();
 const plus=(n:number)=>{const d=new Date(day()+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
@@ -90,6 +90,13 @@ describe('persisted standard starting drafts',()=>{
  });
 });
 describe('company-filtered Overtime Pattern listing',()=>{
+ it('excludes archived companies from workspace eligibility without relaxing explicit scope validation',async()=>{
+  const ctx=adminCtx(b),archived=await createCompany(ctx,{legalName:'Archived fictional employer',country:'MY',currency:'MYR'});
+  await owner.db.update(s.company).set({archivedAt:new Date()}).where(eq(s.company.id,archived.id));
+  const eligible=await overtimePatternWorkspaceCompanies(ctx);expect(eligible.map(row=>row.id)).toContain(b.companyId);expect(eligible.map(row=>row.id)).not.toContain(archived.id);
+  await expect(listOvertimePatterns(ctx,{companyIds:[b.companyId,archived.id]})).rejects.toMatchObject({code:'permission'});
+ });
+
  async function listFixture(){
   const ctx=adminCtx(b),other=await createCompany(ctx,{legalName:'Other OT listing company',country:'MY',currency:'MYR'}),empty=await createCompany(ctx,{legalName:'Empty OT listing company',country:'MY',currency:'MYR'}),prefix='LIST_'+randomUUID().slice(0,8);
   const save=(suffix:string,creationCompanyId:string,companyIds:string[])=>saveOvertimePatternDraft(ctx,{draft:{...draft(),code:prefix+'_'+suffix,name:prefix+' '+suffix,creationCompanyId,companyIds}});

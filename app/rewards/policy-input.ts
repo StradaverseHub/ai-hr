@@ -33,11 +33,11 @@ function matrix(rows:string[][],kind:'ranges'|'bonusMatrix'|'branchFactors'){
  }
  return result;
 }
-export function rewardPolicyFromForm(f:FormData,p:RewardPolicy,options:{context?:'shared'|'unit'}={}):RewardPolicy{
+export function rewardPolicyFromForm(f:FormData,p:RewardPolicy,options:{context?:'shared'|'unit';libraryOwned?:boolean}={}):RewardPolicy{
     const gridRows=Object.fromEntries((['ranges','bonusMatrix','branchFactors'] as const).map(kind=>[kind,inputMatrixRows(f,kind)])) as Record<'ranges'|'bonusMatrix'|'branchFactors',string[][]>;
     for(const kind of ['ranges','bonusMatrix','branchFactors'] as const){
       if(kind==='branchFactors'&&str(f,'bonusStructure')!=='branch')continue;
-      if(policyGridIssues(kind,gridRows[kind]).length)throw new RewardPolicyInputError('Correct the highlighted policy grid cells.');
+      if(!options.libraryOwned&&policyGridIssues(kind,gridRows[kind]).length)throw new RewardPolicyInputError('Correct the highlighted policy grid cells.');
     }
     const meritMatrix = Object.fromEntries(talents.map(t => [t, [0, 1, 2].map(pos => Math.round(number(f, `merit.${t}.${pos}`) * 100))]));
     const shared=options.context==='shared';
@@ -46,8 +46,8 @@ export function rewardPolicyFromForm(f:FormData,p:RewardPolicy,options:{context?
     return policySchema.parse({ ...p,...eligibility, effectiveFrom: str(f, 'effectiveFrom'), joinedBefore: str(f, 'joinedBefore'), confirmedBy: str(f, 'confirmedBy'), blockedFrom: str(f, 'blockedFrom'), blockedTo: str(f, 'blockedTo'),
       patActual: shared?0:f.has('patActual')?scaled(f,'patActual'):p.patActual, patTarget:shared?100:f.has('patTarget')?scaled(f,'patTarget'):p.patTarget, targetMonthsBp:shared?0:f.has('targetMonths')?scaled(f,'targetMonths',10000):p.targetMonthsBp, multiplierBp:shared?null:f.has('multiplier')?scaled(f,'multiplier',10000):p.multiplierBp,
       standardPools: [0, 1, 2].map(i => Math.round(number(f, `standard.${i}`) * 100)), hPools: [0, 1, 2].map(i => Math.round(number(f, `h.${i}`) * 100)),
-      meritMatrix, ranges:matrix(gridRows.ranges,'ranges'),bonusMatrix:matrix(gridRows.bonusMatrix,'bonusMatrix'), bonusStructure: str(f, 'bonusStructure'),
-      branchFactors:matrix(gridRows.branchFactors,'branchFactors'), branchRatings,
+      meritMatrix, ranges:options.libraryOwned?p.ranges:matrix(gridRows.ranges,'ranges'),bonusMatrix:options.libraryOwned?p.bonusMatrix:matrix(gridRows.bonusMatrix,'bonusMatrix'), bonusStructure: options.libraryOwned?p.bonusStructure:str(f, 'bonusStructure'),
+      branchFactors:options.libraryOwned?p.branchFactors:matrix(gridRows.branchFactors,'branchFactors'), branchRatings,
       seniorGrades: p.seniorGrades,
       lumpStepCents: scaled(f, 'lumpStep'), lumpShareBp: scaled(f, 'lumpShare'), lumpCapCents: scaled(f, 'lumpCap'), exemptReason: shared?'':f.has('exemptReason')?str(f,'exemptReason'):p.exemptReason,
     });

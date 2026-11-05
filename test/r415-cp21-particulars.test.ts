@@ -355,7 +355,14 @@ export function eaIncomePartsForSource(source:{basic:unknown;overtime:unknown;bo
       const now = fs.readFileSync(path.join(ROOT, f), 'utf8');
       expect(now.length, f).toBeGreaterThan(1000);
       const unchanged = f === 'localization/my/ea-routing.ts' && now.endsWith(eaRoutingAddition) ? now.slice(0, -eaRoutingAddition.length) : now;
-      expect(unchanged === show(f), f).toBe(true);
+      if(f==='core/payslip-earning-lines.ts'){
+        // Approved940ea724 adds display-category/quantity readers. Keep its entire finite delta
+        // pinned and prove the prior source was exactly the CP21 financial baseline.
+        const approved='940ea7246e44900b58f0d1c9671f08aee254d331';
+        const gitSource=(ref:string)=>execFileSync('git',['show',`${ref}:${f}`],{cwd:ROOT,encoding:'utf8',maxBuffer:1<<26});
+        expect(gitSource(approved+'^')).toBe(show(f));
+        expect(unchanged).toBe(gitSource(approved));
+      }else expect(unchanged === show(f), f).toBe(true);
     }
     const slice = (src: string) => {
       const start = src.indexOf('export async function eaStatement(');

@@ -22,6 +22,7 @@ import { getTranslations } from 'next-intl/server';
 import {getScopeIds} from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listEmployeesPage } from '@/core/read';
+import { PersonnelReadBusyError } from '@/core/personnel-read-bounds';
 import { getEmployeeListColumns } from '@/core/employee-list-prefs';
 import { listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
@@ -62,23 +63,28 @@ const EMPLOYMENT_TYPE_KEY: Record<string, string> = {
 const ROW_CAP = 10_000;
 
 export async function GET(req: Request) {
+  try {
+    return await exportPersonnel(req);
+  } catch (error) {
+    if (!(error instanceof PersonnelReadBusyError)) throw error;
+    const messages = await getTranslations('personnelOrganisationFilters');
+    return new Response(messages('readBusy'), {
+      status: 503,
+      headers: { 'Retry-After': '5', 'Cache-Control': 'private, no-store', Vary: 'Cookie' },
+    });
+  }
+}
+
+async function exportPersonnel(req: Request) {
   const session=await getSession();
-  const allowed=await workforceViewScope(session);
+  const allowed=await workforceViewScope(session, { personnelList: true });
   if(!allowed.canOpen||allowed.companyIds.length===0)return new Response('Forbidden',{status:403});
   const scopeIds=await getScopeIds(allowed.companyIds),allowedCount=allowed.companyIds.length;
 
   const url = new URL(req.url);
   const sp = url.searchParams;
-  const one = (k: string) => sp.get(k)?.trim() || undefined;
-  const params: PersonnelSearchParams = {
-    q: one('q'),
-    company: one('company'),
-    dept: one('dept'),
-    status: one('status'),
-    type: one('type'),
-    bucket: one('bucket'),
-    cols: one('cols'),
-  };
+  const params: PersonnelSearchParams = {};
+  for(const key of ['q','company','companies','dept','status','type','bucket','cols','bu','parent','group','grade','position','quality','confirmation','joinedFrom','joinedTo','probationFrom','probationTo','search'] as const){const values=sp.getAll(key).map(value=>value.trim()).filter(Boolean);if(values.length)Object.assign(params,{[key]:['companies','bu','parent','group','grade','position','quality'].includes(key)&&values.length>1?values:values[0]});}
   const query = parsePersonnelListQuery(params);
   // xlsx is this item's default — the reporter asked for Excel by name. `format=csv` stays available
   // because the neutral report shape gets it for free and some downstream tools prefer it.
@@ -93,14 +99,15 @@ export async function GET(req: Request) {
   // Draft-only is not an employment query at all — the same suppression the screen applies. Exporting
   // the drafts under it keeps "what is on screen" literally true for the one selection where the rows
   // come from a different table.
-  const { rows } = query.draftOnly
-    ? { rows: [] }
+  const { rows, total } = query.draftOnly
+    ? { rows: [], total: 0 }
     : await listEmployeesPage(session, {
         companyIds: scopeIds,
         ...query.filters,
         limit: ROW_CAP,
         offset: 0,
-      },'workforce');
+      }, 'workforce');
+  if(total>ROW_CAP)return new Response('Too many matching employees. Narrow the filters before exporting.',{status:413,headers:{'Cache-Control':'private, no-store','Vary':'Cookie'}});
   // b1b1879d — the SAME top-bar scope the employees above are read under, built by the same function the
   // screen uses. Without it a file exported while viewing one company carried every company's drafts.
   const drafts = query.draftOnly && isAdmin(session)
@@ -108,6 +115,8 @@ export async function GET(req: Request) {
         draftMatchesQuery(d, query),
       )
     : [];
+
+  if(drafts.length>ROW_CAP)return new Response('Too many matching drafts. Narrow the filters before exporting.',{status:413,headers:{'Cache-Control':'private, no-store','Vary':'Cookie'}});
 
   const cell = (v: string | null): string => v ?? '';
   const data: ReportData = {
@@ -149,6 +158,7 @@ export async function GET(req: Request) {
   const file = format === 'csv' ? toCsvReport(data) : toXlsxReport(data);
   return new Response(Buffer.from(file.bytes), {
     headers: {
+      'Cache-Control':'private, no-store','Vary':'Cookie','Referrer-Policy':'no-referrer',
       'Content-Type': file.contentType,
       'Content-Disposition': `attachment; filename="${data.filename}.${file.ext}"`,
     },

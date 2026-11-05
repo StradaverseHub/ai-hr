@@ -134,8 +134,9 @@ export const HARNESS_SPEC=freeze({
   * Friday" was 6 November on one pass and 13 November on the other). For a leave or attendance request the model passes
   * the person's own words for a named day, and lib/hr-date-phrase.ts works the date out in Kuala Lumpur from today
   * (core/proposals/request-dates.ts); the reply states the date the result gives. Any other date is still worked out from
-  * today. Only the change line's last two sentences differ from v24. */
- version:25,
+  * today. Only the change line's last two sentences differ from v24.
+  * 26: merge v25 with the deployed organisation review guidance, a literal public product_guidance topic. */
+ version:26,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
@@ -180,7 +181,7 @@ export const HARNESS_SPEC=freeze({
   publicContextTools:['product_destinations','product_guidance','available_actions'],
   /** v22: the topics product_guidance serves besides its guide search, each one of main's administrator page guides
    * (core/explainers/capabilities.ts, gated as there). The harness refuses any other topic before the owner runs. */
-  guidanceTopics:['password_policy','correction_controls'],
+  guidanceTopics:['password_policy','correction_controls','organisation_tagging'],
   /** v23: the topic tools and their topics, in order (core/semantic-model/topic-tools.ts TOPIC_TOOLS). Each topic is one
    * declared read, bound only through its tool; the harness refuses any other topic before a runner. */
   topicTools:{
@@ -381,4 +382,9 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  24:'ce0ac9b4b80db7aacf2e4d1939819e69099a8416ef64c9cc4d8b38acced1029e',
  // Dates from the HR date owner: a named day passes as the person's words for leave and attendance requests.
  25:'e3d5c13543380478704e0956ef7eef5f594e399485eefb1fb9f973b71fe9384c',
+ // Main v25 plus deployed public organisation review guidance.
+ 26:'584e57dba0129ecb6c4c488137a82186f68c7cbfa171d2672a9b0d3f68b76dfa',
 });
+
+/** Parallel v24 deployed before the histories converged. Its number also identifies main's payroll-learning spec. */
+export const HARNESS_SPEC_STAGING_V24_ORGANISATION_DIGEST='3a76dffa0b7ae5c61c55a631e38bdf8d937a6b8955ef8f2f0a12b835ffb64a18';

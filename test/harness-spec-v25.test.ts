@@ -13,16 +13,17 @@ import {HARNESS_SPEC,HARNESS_SPEC_DIGESTS,harnessSpecDigest} from '../core/harne
 import {suggestDescription} from '../core/harness/tools';
 import {terasEntity} from '../core/semantic-model/generate';
 import {WEEKDAYS} from '../lib/hr-date-phrase';
-import {V25_REPLACED,v24ShapedSpec} from './harness-spec-shapes';
+import {V25_REPLACED,v24ShapedSpec,v25ShapedSpec} from './harness-spec-shapes';
 
-const instructions=HARNESS_SPEC.instructions as readonly string[];
+const v25=v25ShapedSpec();
+const instructions=v25.instructions as readonly string[];
 
 describe('spec v25',()=>{
- it('is version 25 with its digest recorded, and every earlier digest is kept',()=>{
-  expect(HARNESS_SPEC.version).toBe(25);expect(HARNESS_SPEC_DIGESTS[25]).toBe(harnessSpecDigest());
+ it('keeps the main v25 digest and every earlier version',()=>{
+  expect(HARNESS_SPEC.version).toBeGreaterThan(25);expect(HARNESS_SPEC_DIGESTS[25]).toBe(harnessSpecDigest(v25));
   expect(HARNESS_SPEC_DIGESTS[25]).toBe('e3d5c13543380478704e0956ef7eef5f594e399485eefb1fb9f973b71fe9384c');
   expect(HARNESS_SPEC_DIGESTS[24]).toBe('ce0ac9b4b80db7aacf2e4d1939819e69099a8416ef64c9cc4d8b38acced1029e');
-  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual(Array.from({length:25},(_,index)=>index+1));
+  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number).slice(0,25)).toEqual(Array.from({length:25},(_,index)=>index+1));
  });
  it('is v24 with only its own change: the v24-shaped spec hashes to v24\'s recorded digest',()=>{
   const v24=v24ShapedSpec();
@@ -31,7 +32,7 @@ describe('spec v25',()=>{
   expect(V25_REPLACED).toHaveLength(1);expect(instructions).toHaveLength(v24.instructions.length);
   const changed=instructions.filter((line,index)=>line!==v24.instructions[index]);
   expect(changed).toEqual([V25_REPLACED[0][1]]);
-  const {instructions:_now,version:_nowVersion,...nowRest}=HARNESS_SPEC,{instructions:_then,version:_thenVersion,...thenRest}=v24;
+  const {instructions:_now,version:_nowVersion,...nowRest}=v25,{instructions:_then,version:_thenVersion,...thenRest}=v24;
   expect(nowRest).toEqual(thenRest);
  });
  it('has the replaced line once, word for word, keeping v24\'s first sentences and nothing of its dates wording',()=>{

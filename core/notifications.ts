@@ -4,7 +4,7 @@ import {currentFollowupTargetsTx} from './automatic-followups';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { assessmentReviewTaskRecipientsTx,assessmentReminderRecipientsTx } from '../packs/performance/service';
-import { rewardAccessSuspensionEventRecipients,rewardNotificationRecipients,rewardPoolNotificationRecipients } from '../packs/rewards/service';
+import { rewardUploadCheckerRecipients,rewardAccessSuspensionEventRecipients,rewardNotificationRecipients,rewardPoolNotificationRecipients } from '../packs/rewards/notification-recipients';
 /**
  * Notification engine (ADR-0034) — 34-2 registry + dispatch + reads. A sweep reads new domain events after a
  * per-tenant cursor and turns the mapped ones into recipient-scoped notifications. Gated by the per-tenant
@@ -358,6 +358,8 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     render:(_payload,event)=>({severity:'warning',title:'Rewards access suspended',body:'People records changed. Check approval-role coverage and ask a Rewards administrator to review suspended access.',linkPath:`/rewards/${event.aggregateId}?view=approvals`}),
     recipients:(tx,ev)=>rewardAccessSuspensionEventRecipients(tx,ev.id),
   },
+  'reward-unit.upload-replaced':{kind:'rewards.upload-check',category:'rewards',recipients:(tx,event)=>rewardUploadCheckerRecipients(tx,event.aggregateId),render:(_payload,event)=>({severity:'action',title:'rewardUploaded.checkNotificationTitle',body:'rewardUploaded.checkNotificationBody',linkPath:`/rewards/${event.aggregateId}/uploaded`})},
+  'reward-unit.upload-confirmed':{kind:'rewards.upload-ready',category:'rewards',recipients:(tx,event)=>rewardNotificationRecipients(tx,event.aggregateId,'draft'),render:(_payload,event)=>({severity:'action',title:'rewardUploaded.readyNotificationTitle',body:'rewardUploaded.readyNotificationBody',linkPath:`/rewards/${event.aggregateId}`})},
   'reward-unit.routed': {
     kind: 'rewards.review', category: 'rewards',
     render: (p, ev) => renderRewardRouted(p, ev),

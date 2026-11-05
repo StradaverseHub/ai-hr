@@ -1,3 +1,4 @@
+import {probationOrganisationFacts,probationOrganisationMapping,type ProbationOrganisationFacts} from './probation-organisation';
 import {addDaysIso} from './roster-month';
 import {ProbationError,type ProbationCase,type ProbationPart} from './probation-model';
 import type {ProbationWorkflow} from './probation-workflow';
@@ -17,7 +18,7 @@ export function probationCutoverDates(record:Pick<ProbationCase,'parts'|'config'
  }
  return dates.sort((a,b)=>a.dueOn.localeCompare(b.dueOn)||a.part.id.localeCompare(b.part.id)||a.event.localeCompare(b.event));
 }
-export function probationCutoverWorkflowMatches(workflow:ProbationWorkflow,facts:{companyId:string;businessGroupId:string;businessUnitId:string|null;departmentId:string|null;grade:string},type:number){const c=workflow.conditions;return(!c.businessGroupId||c.businessGroupId===facts.businessGroupId)&&(!c.businessUnitId||c.businessUnitId===facts.businessUnitId)&&(!c.departmentId||c.departmentId===facts.departmentId)&&(!c.grade||c.grade===facts.grade)&&(!c.part||c.part===type);}
+export function probationCutoverWorkflowMatches(workflow:ProbationWorkflow,facts:ProbationOrganisationFacts&{departmentId:string|null;grade:string},type:number){const c=workflow.conditions,scope=probationOrganisationFacts(facts,probationOrganisationMapping(workflow));return(!c.businessGroupId||c.businessGroupId===scope.businessGroupId)&&(!c.businessUnitId||c.businessUnitId===scope.businessUnitId)&&(!c.departmentId||c.departmentId===facts.departmentId)&&(!c.grade||c.grade===facts.grade)&&(!c.part||c.part===type);}
 export type ProbationExtensionSource={id:string;kind:'probation_extension'|'date_shift'|'unclassified'|'current_source';oldEndOn:string|null;newEndOn:string;months:3|6|null;recordedAt:string|null};
 export type ProbationRequiredIntakePart={type:1|2|3;cycle:number;requiresOffline:boolean};
 export type ProbationIntakeStageOption={extensionCount:number;requiredParts:ProbationRequiredIntakePart[]};

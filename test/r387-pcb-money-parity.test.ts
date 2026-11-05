@@ -156,7 +156,12 @@ describe('r387 complete monetary parity against original calculation',()=>{
   if(process.env.R387_WRITE_BASELINE){writeFileSync(process.env.R387_WRITE_BASELINE,JSON.stringify(snapshots,null,2)+'\n');}
   else {
     const golden:unknown=JSON.parse(readFileSync('test/fixtures/r387-exemption-money-golden.json','utf8'));
-    expect(snapshots.map(canonicalMoneySnapshot)).toEqual(array(jsonValue(golden),'golden snapshots').map(canonicalMoneySnapshot));
+    expect(snapshots.map(canonicalMoneySnapshot)).toEqual(array(jsonValue(golden),'golden snapshots').map(value=>{
+      const reference=moneySnapshot(value);
+      // The approved run stamp adds only this non-monetary nullable display declaration.
+      // Preserve every historical money/identity field and assert the added value exactly.
+      return canonicalMoneySnapshot({...reference,statutory:{...reference.statutory,componentLines:reference.statutory.componentLines.map(line=>({...line,displayCategory:null}))}});
+    }));
   }
   // TP3 consumed all but50 of the annual travel exemption BEFORE January. Two different items
   // share that code: A100 takes50 exempt/50 wage, B50 is all wage. February has no travel room.

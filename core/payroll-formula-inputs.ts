@@ -34,7 +34,7 @@ export async function readPayrollIndividualLedgerTx(tx:Tx,p:{batchId?:string;emp
  if(p.unattached){const collection=await collectableCycleIds(tx,p.unattached);if(!collection.collectsNothing)predicates.push(and(isNull(payrollIndividualTxn.batchId),isNull(payrollIndividualTxn.consumedBatchId),eq(payrollIndividualTxn.companyId,p.unattached.companyId),eq(payrollIndividualTxn.payPeriod,p.unattached.payPeriod),intendedCycleFilter(collection)));}
  if(!predicates.length)return [];
  return tx.select({
-  id:payrollIndividualTxn.id,employmentId:payrollIndividualTxn.employmentId,kind:payrollIndividualTxn.kind,amount:payrollIndividualTxn.amount,notes:payrollIndividualTxn.notes,componentId:payrollIndividualTxn.componentId,
+  id:payrollIndividualTxn.id,employmentId:payrollIndividualTxn.employmentId,kind:payrollIndividualTxn.kind,amount:payrollIndividualTxn.amount,quantity:payrollIndividualTxn.quantity,unit:payrollIndividualTxn.unit,notes:payrollIndividualTxn.notes,componentId:payrollIndividualTxn.componentId,
   batchId:payrollIndividualTxn.batchId,consumedBatchId:payrollIndividualTxn.consumedBatchId,intendedCycleId:payrollIndividualTxn.intendedCycleId,source:payrollIndividualTxn.source,sourceRef:payrollIndividualTxn.sourceRef,txnDate:payrollIndividualTxn.txnDate,
   compCode:payComponent.code,compName:payComponent.name,compKind:payComponent.kind,compEpf:payComponent.includedInEpf,compSocso:payComponent.includedInSocsoEis,compPcb:payComponent.includedInPcb,compHrdf:payComponent.includedInHrdfBase,
   compNonPayable:payComponent.isNonPayable,compProrates:payComponent.prorates,compRounding:payComponent.roundingMethod,compRule:payComponent.rule,compResolutionOrder:payComponent.resolutionOrder,compFormulaContext:formulaContext,

@@ -1,3 +1,5 @@
+import { companyRegistrationOverview } from '@/core/company-registration-readiness';
+import { RegistrationClassification } from '../registration-classification';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -56,11 +58,11 @@ export default async function CompanyMaintenancePage({
   searchParams,
 }: {
   params: Promise<{ companyId: string }>;
-  searchParams: Promise<{ error?: string; tab?: string }>;
+  searchParams: Promise<{ error?: string; tab?: string; classificationSaved?:string }>;
 }) {
   const { s } = await scopedAdmin();
   const { companyId } = await params;
-  const { error, tab } = await searchParams;
+  const { error, tab,classificationSaved } = await searchParams;
   const t = await getTranslations('admin.organization');
 
   const [companies, tree] = await Promise.all([
@@ -71,6 +73,7 @@ export default async function CompanyMaintenancePage({
   // concerned. Resolved before any per-company read runs, so an out-of-scope id never even hits them.
   const c = companies.find((x) => x.id === companyId);
   if (!c) notFound();
+  const registration = (await companyRegistrationOverview(s)).find(row => row.id === companyId);
 
   /**
    * r298 (board ceb1c560) — THE DEFAULT PAYROLL CYCLE IS A PAYROLL SECTION, AND A TENANT WITHOUT PAYROLL
@@ -123,6 +126,8 @@ export default async function CompanyMaintenancePage({
         back={{ href: '/admin/organization', label: t('backToCompanies') }}
       />
       <ErrorBanner message={error} />
+      {classificationSaved==='1' && <p role="status" className="text-sm">{t('registration.saved')}</p>}
+      {registration && <RegistrationClassification companyId={companyId} value={registration.classification}/>}
 
       {/* 3783fd87 — THE WHITE CARD THE REST OF THE MODULE ALREADY HAS. The listing wraps each of its
           sections in a <Card>; this screen put the panel straight onto the page, whose ground is

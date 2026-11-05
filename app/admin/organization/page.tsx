@@ -1,8 +1,11 @@
+import {OrganisationTaggingWorkspace} from './organisation-tagging-workspace';
 import Link from 'next/link';
+import { AlertTriangle } from 'lucide-react';
+import { companyRegistrationOverview } from '@/core/company-registration-readiness';
+import { registrationTreeState, type CompanyRegistrationStatus, type CompanyRegistrationReadiness } from '@/lib/company-registration-readiness';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { companyTree, listCompanies } from '@/core/read';
-import { packFor } from '@/localization/registry';
+import { companyTree } from '@/core/read';
 import {
   Card,
   ErrorBanner,
@@ -66,10 +69,14 @@ function CompanyTree({
   nodes,
   parentId = null,
   depth = 0,
+  registration, counts, missingLabel,
 }: {
   nodes: TreeNode[];
   parentId?: string | null;
   depth?: number;
+  registration: ReadonlyMap<string, CompanyRegistrationReadiness>;
+  counts: ReadonlyMap<string, number>;
+  missingLabel: (count: number) => string;
 }) {
   const children = nodes.filter((n) => n.parentId === parentId);
   if (children.length === 0) return null;
@@ -77,9 +84,9 @@ function CompanyTree({
     <ul className={depth === 0 ? 'space-y-0.5' : 'ml-3 space-y-0.5 border-l border-border pl-3'}>
       {children.map((n) => (
         <li key={n.id}>
-          <span className="text-sm font-medium text-foreground">{n.name}</span>{' '}
+          <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground">{n.name}{registration.get(n.id)?.counted && registration.get(n.id)?.status==='missing' && <AlertTriangle aria-label={missingLabel(1)} className="h-4 w-4 text-amber-700 dark:text-amber-400"/>}{!!counts.get(n.id) && <span className="text-xs font-normal text-muted-foreground">{missingLabel(counts.get(n.id)!)}</span>}</span>{' '}
           <span className="text-xs text-muted-foreground">{n.country}</span>
-          <CompanyTree nodes={nodes} parentId={n.id} depth={depth + 1} />
+          <CompanyTree nodes={nodes} parentId={n.id} depth={depth + 1} registration={registration} counts={counts} missingLabel={missingLabel} />
         </li>
       ))}
     </ul>
@@ -94,6 +101,8 @@ export default async function OrganizationPage({
     q?: string;
     status?: string;
     sort?: string;
+    statutory?: string;
+    issues?: string;
     page?: string;
     size?: string;
   }>;
@@ -106,29 +115,29 @@ export default async function OrganizationPage({
   // Three reads, all RLS-scoped. The per-company panel data (bank profiles, statutory authorities,
   // signatories, profile options, payroll cycles) moved to the maintenance page with the panel it
   // feeds — a browse screen has no business running an N+1 over payroll cycles.
-  const [companies, tree, statutory] = await Promise.all([
-    listCompanies(s, { includeArchived: true, adminOnly: true }),
+  const [statutory, tree] = await Promise.all([
+    companyRegistrationOverview(s),
     companyTree(s),
-    // Rung 5c — company statutory rows come through the pack registry (ADR-0080 D1), not a direct import.
-    packFor('MY')?.companyStatutory.list(s) ?? [],
   ]);
-  const statBy = new Map(statutory.map((r) => [r.companyId, r]));
+  const companies=statutory.map(row=>row.company);
+  const statBy = new Map(statutory.map((r) => [r.id, r]));
 
-  // Feedback efece4ce — the active Malaysian companies with NO statutory record at all. Payroll resolves a
-  // missing row to hrdf_status = 'not_registered' and charges nothing, so a company can sit for months
-  // producing zero HRDF with nothing anywhere saying it was never registered. Archived companies run no
-  // payroll; non-MY companies have no MY statutory row by design — neither is a gap. Derived from the two
-  // lists already fetched, no new query.
-  const missingStatutory = companies.filter(
-    (c) => !c.archivedAt && c.country === 'MY' && !statBy.has(c.id),
-  );
+  // Country-pack completeness and explicit entity metadata share the same scoped readiness owner.
+  const missingStatutory = statutory.filter(row=>row.counted && row.status==='missing');
+  const countedCompanies = statutory.filter(row=>row.counted).length;
 
   // The group hierarchy, intersected with the administrable set and re-rooted — see ./group-tree.ts.
   const { visibleTree, parentBy } = resolveGroupTree(companies, tree);
 
   // Rows for the table: derived from the SAME resolved company array as the Group Structure card, so
   // the two bracketed counts on this screen cannot drift apart.
-  const rows = selectCompanyRows(companies, parentBy, { q, status, sort });
+  const treeReadiness = registrationTreeState(visibleTree, statBy);
+  const issuesOnly=sp.issues==='1';
+  const displayedTree=issuesOnly?visibleTree.filter(node=>treeReadiness.visible.has(node.id)):visibleTree;
+  const rows = selectCompanyRows(companies, parentBy, { q, status, sort })
+    .map(row=>({...row,statutoryStatus:(statBy.get(row.id)?.status??'missing') as CompanyRegistrationStatus,activeEmployees:statBy.get(row.id)?.activeEmployees??0,registrationCounted:statBy.get(row.id)?.counted??false}))
+    .filter(row=>!['complete','missing','not_required'].includes(sp.statutory??'')||(row.statutoryStatus===sp.statutory&&(sp.statutory!=='missing'||row.registrationCounted)));
+  rows.sort((a,b)=>Number(b.activeEmployees>0)-Number(a.activeEmployees>0));
   const pq = parsePageQuery(sp);
   const { rows: pageRows } = paginateRows(rows, pq);
   const pgState = pageState(pq, rows.length, pageRows.length);
@@ -138,6 +147,8 @@ export default async function OrganizationPage({
     if (q) p.set('q', q);
     if (status) p.set('status', status);
     if (sp.size) p.set('size', sp.size);
+    if (sp.statutory) p.set('statutory', sp.statutory);
+    if (sp.issues) p.set('issues', sp.issues);
     p.set('sort', key);
     return `/admin/organization?${p.toString()}`;
   };
@@ -157,6 +168,7 @@ export default async function OrganizationPage({
         }
       />
       <ErrorBanner message={error} />
+      {missingStatutory.length>0 && <div role="status" className="rounded-md border border-border p-4 text-sm"><p>{t('registration.topAlert',{missing:missingStatutory.length,total:countedCompanies})}</p><p className="mt-1 text-xs text-muted-foreground">{t('registration.levyHint')}</p><Link href="/admin/organization?statutory=missing" className="mt-2 inline-flex min-h-11 items-center text-primary underline underline-offset-2">{t('registration.showInTable')}</Link></div>}
 
       {/* Group structure is collapsed by default (native details/summary keeps this a server
           component — no client JS/state). Reuses SectionHeader's border/padding classes; the
@@ -175,8 +187,9 @@ export default async function OrganizationPage({
             </span>
           </summary>
           <div className="px-4 py-3">
-            {visibleTree.length > 0 ? (
-              <CompanyTree nodes={visibleTree} />
+            <Link href={issuesOnly?'/admin/organization':'/admin/organization?issues=1'} aria-pressed={issuesOnly} className="mb-3 inline-flex min-h-11 items-center text-sm text-primary underline underline-offset-2">{issuesOnly?t('registration.showAllBranches'):t('registration.showIssuesOnly')}</Link>
+            {displayedTree.length > 0 ? (
+              <CompanyTree nodes={displayedTree} registration={statBy} counts={treeReadiness.counts} missingLabel={count=>t('registration.missingCount',{count})} />
             ) : (
               <p className="text-sm text-muted-foreground">{t('noCompaniesYet')}</p>
             )}
@@ -184,27 +197,7 @@ export default async function OrganizationPage({
         </details>
       </Card>
 
-      {/* Feedback efece4ce — statutory-registration gaps, listed BEFORE the company grid so they are read
-          rather than scrolled past. Read-only: which rate each company should carry is the operator's call,
-          not something to guess on their behalf, so this names the companies and links nowhere else. */}
-      {missingStatutory.length > 0 && (
-        <Card>
-          <SectionHeader title={t('statutoryMissingTitle')} count={missingStatutory.length} />
-          <div className="px-4 py-3">
-            <p className="text-xs text-muted-foreground">{t('statutoryMissingHint')}</p>
-            <ul className="mt-2 space-y-1">
-              {missingStatutory.map((c) => (
-                <li key={c.id} className="text-sm text-foreground">
-                  {c.name}
-                  {c.registrationNo ? (
-                    <span className="ml-2 text-xs text-muted-foreground">{c.registrationNo}</span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </Card>
-      )}
+      <OrganisationTaggingWorkspace session={s}/>
 
       <Card data-tour="people-org-companies">
         <SectionHeader title={t('companies')} count={rows.length} />
@@ -231,6 +224,8 @@ export default async function OrganizationPage({
               ))}
             </select>
           </label>
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">{t('registration.column')}<select name="statutory" defaultValue={sp.statutory??''} className={cn(inputCls,'w-44')}><option value="">{t('registration.all')}</option>{(['complete','missing','not_required'] as const).map(value=><option key={value} value={value}>{t(`registration.${value}`)}</option>)}</select></label>
+          {sp.issues && <input type="hidden" name="issues" value={sp.issues}/>}
           {/* Sort and page size ride along so applying a filter does not silently reset them. `page`
               deliberately does NOT: a new filter belongs on page one. */}
           {sort && <input type="hidden" name="sort" value={sort} />}
@@ -240,7 +235,7 @@ export default async function OrganizationPage({
           </button>
         </form>
 
-        <Pager basePath="/admin/organization" params={{ q, status, sort }} state={pgState} />
+        <Pager basePath="/admin/organization" params={{ q, status, sort, statutory:sp.statutory,issues:sp.issues }} state={pgState} />
         {/* 3783fd87 — lines rather than filled grey. `tableWrapCls`'s own rounded border is dropped
             because this table sits INSIDE a Card that already draws one; two borders 4px apart is the
             "unnecessary grey" the request names, and the Card's own edge is the boundary. The shared
@@ -250,7 +245,7 @@ export default async function OrganizationPage({
           <table className="w-full text-sm">
             <thead className={cn(theadCls, 'border-y border-border bg-transparent')}>
               <tr>
-                <th className={thCls}>
+                <th className={cn(thCls,'hidden sm:table-cell')}>
                   <Link href={sortHref('code')}>{t('colCode')}</Link>
                 </th>
                 <th className={thCls}>
@@ -259,6 +254,7 @@ export default async function OrganizationPage({
                 <th className={thCls}>
                   <Link href={sortHref('regNo')}>{t('regNo')}</Link>
                 </th>
+                <th className={thCls}>{t('registration.column')}</th>
                 <th className={thCls}>
                   <Link href={sortHref('parent')}>{t('parentCompany')}</Link>
                 </th>
@@ -282,6 +278,7 @@ export default async function OrganizationPage({
                   edit: t('actionEdit'),
                   archive: t('actionArchive'),
                   unarchive: t('actionUnarchive'),
+                  registration:{complete:t('registration.complete'),missing:t('registration.missing'),not_required:t('registration.not_required'),completeAction:t('registration.completeAction')},
                 }}
                 archiveAction={archiveCompanyAction}
               />

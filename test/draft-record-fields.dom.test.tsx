@@ -1,3 +1,4 @@
+vi.mock('../components/derived-organisation-fields',()=>({useDerivedOrganisation:()=>({data:{status:'legacy'},loading:false,failed:false}),DerivedOrganisationFields:()=>null}));
 /**
  * THE FIELDS ITEM a72610af ADDED, ON THE SCREEN — rendered, typed into, and read back out of Save.
  *

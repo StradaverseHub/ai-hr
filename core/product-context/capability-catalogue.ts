@@ -129,6 +129,7 @@ export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze(
  'core/proposals/chat-import.ts':'AI Centre chat import preparer: runs the listed owners\' own previews and signs the card; imports nothing.',
  'core/semantic-model/entities-imports.ts':'Semantic declaration of the chat import result the model is shown (counts and reasons only).',
  'packs/attendance/policy-import-input.ts':'Attendance policy routing inside the clocking import.',
+ 'packs/job-architecture/imports.ts':'Parses and previews workbooks and builds templates. The Job Architecture owner checks the current seat and company before committing a preview.',
  'packs/performance/onehr/import-model.ts':'Record-scoped: KPI and panel imports inside one OneHR cycle, admitted per cycle by its owner; not listed.',
 });
 

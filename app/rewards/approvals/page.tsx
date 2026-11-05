@@ -1,6 +1,7 @@
+import {rewardVisibleCompanies} from '@/packs/rewards/access-policy';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
-import { scopedSession } from '@/lib/scope';
+import { scopedSession,getScopeIds } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
 import { rewardApprovalsBoard, rewardDueWording, type RewardBoardRow } from '@/packs/rewards/service';
 import { Badge, ErrorBanner, PageHeader, tableWrapCls, tbodyCls, theadCls, thCls } from '@/components/ui';
@@ -18,7 +19,7 @@ const COLUMNS = ['unit', 'stage', 'due', 'people', 'salary', 'bonus', 'exception
  */
 export default async function RewardApprovalsPage({ searchParams }: { searchParams: Promise<{ view?: string; group?: string; error?: string; decided?: string; sent?: string; skipped?: string; refused?: string; refusedDetail?: string }> }) {
   await requireModule('rewards');
-  const { s, scopeIds } = await scopedSession();
+  const { s } = await scopedSession();const scopeIds=await getScopeIds((await rewardVisibleCompanies(s)).map(c=>c.id));
   const sp = await searchParams;
   const t = await getTranslations('rewards');
   const locale = await getLocale();
@@ -32,7 +33,7 @@ export default async function RewardApprovalsPage({ searchParams }: { searchPara
   };
   const rows = group ? all.filter(r => r.companyId === group) : all;
   const waiting = rows.filter(r => r.waiting), elsewhere = rows.filter(r => !r.waiting);
-  const sendable = waiting.filter(r => r.action === 'approve');
+  const sendable = waiting.filter(r => r.action === 'approve'&&r.batchAllowed!==false);
   const ready = sendable.filter(r => r.ready);
   // One phrase per distinct step waiting on the viewer, in the words of its decision: "Send to CTRO or return to BG / BU".
   const steps = [...new Set(all.filter(r => r.waiting).map(r => boardStepPhrase(t, locale, r)))];

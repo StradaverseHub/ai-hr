@@ -33,6 +33,16 @@ describe('approved Rewards policy grids',()=>{
   fireEvent.change(input,{target:{value:'2.5'}});expect(input.checkValidity()).toBe(true);
   const encoded=document.querySelector<HTMLInputElement>('input[name="bonusMatrix"]')!.value;expect(encoded).toContain('H, 0, 1, 2.5, 3, 4');
  });
+ it('identifies only the failing salary comparison and gives each cell its own correction',()=>{
+  cleanup();const ranges=Object.fromEntries(REWARD_POLICY_GRADES.filter(g=>g!=='23').map(g=>[g,[10000,20000,30000]]));
+  render(wrap(<PolicyMatrixGrid kind="ranges" year={2026} matrix={ranges}/>));
+  const midpoint=screen.getByRole<HTMLInputElement>('spinbutton',{name:'H Midpoint'}),minimum=screen.getByRole<HTMLInputElement>('spinbutton',{name:'H Minimum'});
+  fireEvent.change(midpoint,{target:{value:'50'}});
+  expect(midpoint).toHaveAttribute('aria-invalid','true');expect(minimum).toHaveAttribute('aria-invalid','false');
+  expect(midpoint.validationMessage).toBe('H · Midpoint: must be greater than Minimum.');
+  expect(document.getElementById(midpoint.getAttribute('aria-describedby')!)?.textContent).toBe(midpoint.validationMessage);
+  fireEvent.change(midpoint,{target:{value:'200'}});expect(screen.queryByRole('alert')).toBeNull();
+ });
  it('previews a permitted previous-year configuration and applies it only after confirmation',async()=>{
   cleanup();render(wrap(<PolicyMatrixGrid kind="branchFactors" year={2026} matrix={{old:[0,20000,20000,20000,20000]}}/>));
   fireEvent.click(screen.getByRole('button',{name:en.rewards.policyGrids.copy}));

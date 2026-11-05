@@ -8,7 +8,7 @@ const state=()=>({...emptyGovernance(),inputs:{forecastCents:900000,actualCents:
 describe('unit-owned PAT and independently checked Senior plan',()=>{
  it('distinguishes missing actual from entered zero without using forecast as a fallback',()=>{
   const s=state();expect(poolStatus(s)).toBe('provisional');s.inputs.actualCents=0 as never;
-  expect(poolStatus(s)).toBe('not-set');expect(effectiveRewardPolicy(policy(),s).patActual).toBe(0);
+  expect(poolStatus(s)).toBe('final');expect(effectiveRewardPolicy(policy(),s).patActual).toBe(0);
  });
  it('uses forecast then actual, and permits a genuine positive RM1 target',()=>{
   const s=state();expect(effectiveRewardPolicy(policy(),s)).toMatchObject({patActual:900000,patTarget:1000000});

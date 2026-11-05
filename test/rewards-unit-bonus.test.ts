@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {establishRewardMembership} from './rewards-shared-policy-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
@@ -9,7 +10,7 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch } from '../packs/payroll/service';
 import { createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, setRewardUnitLump, decideRewardUnit, postRewardUnit, previewRewardMultiplier, saveRewardMultiplier } from '../packs/rewards/service';
-import { emptyFacts, type RewardRole } from '../packs/rewards/model';
+import { defaultPolicy, emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -46,7 +47,7 @@ describe('Rewards unit bonus inputs (fictional fixtures)', () => {
     await owner.db.update(schema.assignment).set({ businessUnitId: bu.id }).where(eq(schema.assignment.employmentId, employmentId));
     await owner.db.update(schema.employment).set({ gradeId: grade.id, confirmationDate: `${year - 2}-04-01` }).where(eq(schema.employment.id, employmentId));
     await setCompensation(admin, { employmentId, basicSalary: 5000, effectiveFrom: `${year - 2}-01-01` });
-    unitId = await createRewardUnit(admin, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
+    unitId = await createApprovedRewardUnit(admin, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
     for (const role of ['bu', 'bg', 'ctro', 'ec', 'pbp'] as const) {
       const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: `${role} reviewer`, primaryEmail: `${role}@rewards.test` }).returning();
       const userId = await createAppUser(b.tenantId, p.id, 'employee');
@@ -102,10 +103,11 @@ describe('Rewards unit bonus inputs (fictional fixtures)', () => {
       expect(v.companyName.length).toBeGreaterThan(0);
       expect(v.name).toBe('NS');
     });
-    it('saving a multiplier and a lump sum changes only that review, never another unit of the same scope', async () => {
-      const [other] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'SS', name: 'Southern Sales' }).returning();
-      await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:other.id,departmentId:b.deptA,year});
-      const otherId = await createRewardUnit(admin, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: other.id, snapshotDate: today });
+    it('saving a multiplier and a lump sum changes only that company review, never another company review', async () => {
+      const [otherCompany]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Other independently reviewed company'}).returning();
+      const [other] = await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:otherCompany.id,code:'SS',name:'Southern Sales'}).returning();
+      await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:otherCompany.id,businessUnitId:other.id,year});
+      const otherId = await createApprovedRewardUnit(admin,{name:'Annual rewards for Southern Sales',year,companyId:otherCompany.id,businessUnitId:other.id,snapshotDate:today});
       const [beforeOther] = await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id, otherId));
       const v = await view();
       const preview = await previewRewardMultiplier(admin, unitId, v.unit.revision, 12000);
@@ -173,10 +175,13 @@ describe('Rewards unit bonus inputs (fictional fixtures)', () => {
       await expect(previewRewardMultiplier(actors.bu!, unitId, v.unit.revision, 12000)).rejects.toThrow(/Only Group Rewards/);
       const preview = await previewRewardMultiplier(admin, unitId, v.unit.revision, 12000);
       await expect(saveRewardMultiplier(actors.bg!, unitId, v.unit.revision, 12000, 'Fictional unit-only override', preview.digest)).rejects.toThrow(/Only Group Rewards/);
-      await saveRewardPolicy(admin, unitId, v.unit.revision, { ...v.unit.policy, bonusStructure: 'branch',branchFactors:{Fictional:[0,5000,10000,15000,20000]} });
-      await expect(previewRewardMultiplier(admin, unitId, v.unit.revision + 1, 12000)).rejects.toThrow(/branch factors/);
-      const branch = await view();
-      await saveRewardPolicy(admin, unitId, branch.unit.revision, { ...branch.unit.policy, bonusStructure: 'standard' });
+      const [branchCompany]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional branch plan company'}).returning();
+      const [branchUnit]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:branchCompany.id,code:'BR',name:'Fictional branch unit'}).returning();
+      await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:branchCompany.id,businessUnitId:branchUnit.id,year});
+      const branchId=await createApprovedRewardUnit(admin,{name:'Annual rewards with branch factors',year,companyId:branchCompany.id,businessUnitId:branchUnit.id,snapshotDate:today},
+        {...defaultPolicy(year),bonusStructure:'branch',branchFactors:{Fictional:[0,5000,10000,15000,20000]}});
+      const branch=await getRewardUnit(admin,branchId);
+      await expect(previewRewardMultiplier(admin,branchId,branch.unit.revision,12000)).rejects.toThrow(/branch factors/);
       const rev = (await view()).unit.revision;
       await decideRewardUnit(actors.bu!, unitId, rev, 'submit', 'Reviewed recommendations');
       await expect(previewRewardMultiplier(admin, unitId, rev, 12000)).rejects.toThrow(/Return the unit to draft/);

@@ -14,7 +14,8 @@
  * the other packs. NOT scanned: db/ — db/schema.ts types the reward jsonb columns with type-only
  * `import('../packs/rewards/model')` expressions, the schema's own data contract — and scripts/, whose dev
  * fixtures read the model directly. The pack's own routes (app/rewards/, app/admin/rewards/) are its surface
- * and may read its pure model modules. No allowlist: there is no audited debt to carry.
+ * and may read its pure model modules. The scheduled notification worker uses one Node-safe
+ * Rewards recipient port so it does not load web-only modules. Other callers stay on the facade.
  */
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -46,7 +47,8 @@ describe('ADR-0080 D9: rewards pack import ratchet', () => {
       root,
       scan: ['app', 'components', 'core', 'i18n', 'lib', 'localization', 'middleware.ts', 'packs'],
       boundary,
-      allowedImporters: (rel) => ALWAYS_ALLOWED.some((a) => rel.startsWith(a)),
+      allowedImporters: (rel) => ALWAYS_ALLOWED.some((a) => rel.startsWith(a)) ||
+        (rel === 'core/notifications.ts' && boundary === 'packs/rewards/notification-recipients'),
       allowlist: [],
     }),
   );

@@ -1,6 +1,4 @@
-/** The spec as it stood at v24, v23 and v22, rebuilt from the current spec by reverting exactly v25's change, then v24's,
- * then v23's (core/harness/spec.ts version 25). Shared by the spec tests so each earlier version is still proved from
- * today's object: each shaped spec must hash to its version's recorded digest. Not a test itself; pure. */
+/** Reconstruct earlier specs from v26. Each reconstruction must hash to the recorded digest for that history. */
 import {HARNESS_SPEC} from '../core/harness/spec';
 
 /** v23's replacement lines, each with the v22 line it replaced, word for word. */
@@ -66,8 +64,21 @@ export const V25_REPLACED:readonly (readonly [v24:string,v25:string])[]=[
  [V24_REPLACED[0][1],
   'To help with a change, start with "Yes, I can …" and call suggest_action with the action from its list (an action\'s id, or an import\'s action), so its card comes with your reply; never open with "I can\'t" when an action is listed, and do not link that page in your text. If suggest_action reports missing details, ask for them in one short question, numbering any options it lists as given; never guess them. Only when its result says a review item is ready or a form is filled in, say it is ready for them to review and confirm (for a decision: "a decision card is ready for you to review and confirm"); never write "I\'ve prepared …". Never say anything is submitted, approved, closed or done: the person confirms every change themselves. Fill details only with what the person said, times as 24-hour HH:MM; a day they name for leave or attendance (such as "next Friday" or "esok") goes in as their words, which the system works out, any other date as YYYY-MM-DD from today. State the exact date the result gives, with its weekday, so they can correct it.'],
 ];
-/** The current spec with v25's change reverted and the version set to 24. */
+/** Revert v26's single added guidance topic to recover main's v25. */
+export function v25ShapedSpec(){
+ const guidanceTopics=HARNESS_SPEC.offer.guidanceTopics.filter(topic=>topic!=='organisation_tagging');
+ return {...HARNESS_SPEC,version:25,offer:{...HARNESS_SPEC.offer,guidanceTopics}};
+}
+
+/** Revert main v25's named-date instruction to recover main's v24. */
 export function v24ShapedSpec(){
+ const v25=v25ShapedSpec();
  const back=new Map(V25_REPLACED.map(([v24,v25])=>[v25,v24] as const));
- return{...HARNESS_SPEC,version:24,instructions:(HARNESS_SPEC.instructions as readonly string[]).map(line=>back.get(line)??line)};
+ return {...v25,version:24,instructions:v25.instructions.map(line=>back.get(line)??line)};
+}
+
+/** The deployed v24 branched from v23 with only the organisation guidance topic. */
+export function v24OrganisationShapedSpec(){
+ const v23=v23ShapedSpec();
+ return {...v23,version:24,offer:{...v23.offer,guidanceTopics:[...v23.offer.guidanceTopics,'organisation_tagging']}};
 }
