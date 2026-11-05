@@ -3,8 +3,8 @@
 import {sql} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
 import {withTenant} from '../db/client';
-import {isOwnProfileEditEmploymentTx,hasEligibleLeaveTypeForTx} from './read';
-import {requireOwnHomeSubjectTx,HomeAccessError} from './employee-home';
+import {hasEligibleLeaveTypeForTx} from './read';
+import {requireActiveOwnHomeEmploymentIdTx} from './employee-home';
 import {myCurrentLeaveCards,nextApprovedLeavePresenceTx} from '../packs/leave/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {EmployeeHomeTimeOff} from '../lib/employee-home-read-model';
@@ -12,17 +12,15 @@ export type {EmployeeHomeTimeOff} from '../lib/employee-home-read-model';
 export async function readEmployeeHomeTimeOff(ctx:SessionContext,employmentId?:string,locale?:string):Promise<EmployeeHomeTimeOff>{
  return withTenant(ctx,async tx=>{
   await tx.execute(sql`set transaction read only`);
-  const subject=await requireOwnHomeSubjectTx(tx,ctx,employmentId);
-  // A prior selected card cannot survive a blocked/archived login or a now-ended employment.
-  if(!await isOwnProfileEditEmploymentTx(tx,ctx,subject.employmentId))throw new HomeAccessError('employmentUnavailable');
+  const subjectId=await requireActiveOwnHomeEmploymentIdTx(tx,ctx,employmentId);
   const today=todayInKualaLumpur();
   const [cards,nextApproved,eligible]=await Promise.all([
-   myCurrentLeaveCards(ctx,subject.employmentId,{today,locale},tx),
-   nextApprovedLeavePresenceTx(tx,subject.employmentId,today),
-   hasEligibleLeaveTypeForTx(tx,subject.employmentId),
+   myCurrentLeaveCards(ctx,subjectId,{today,locale},tx),
+   nextApprovedLeavePresenceTx(tx,subjectId,today),
+   hasEligibleLeaveTypeForTx(tx,subjectId),
   ]);
   if(cards.length>100)throw Error('Own leave catalogue exceeds its supported Home limit.');
-  return {version:1,employmentId:subject.employmentId,asOf:today,canApply:eligible,
+  return {version:1,employmentId:subjectId,asOf:today,canApply:eligible,
    balances:cards.map(card=>({id:card.leaveTypeId,name:card.leaveType,annualLeave:card.annualLeave,available:card.canApplyFor,pending:card.pending})),
    nextApproved};
  });
