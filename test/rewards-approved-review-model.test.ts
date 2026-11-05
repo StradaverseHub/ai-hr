@@ -38,3 +38,8 @@ it('preserves physical CSV lines after blank lines and multiline remarks, and re
  expect(validateUploadedAwards(prepared.rows,[entry],['12'],2026,prepared.rowNumbers).rejected[0].row).toBe(5);
  expect(()=>parseCsvWithLineNumbers('a,b\n"unfinished',true)).toThrow(/not closed/);
 });
+
+it('rejects mismatched employee codes even when the uploaded employment UUID exists',()=>{
+ expect(validateUploadedAwards([{...row,sourceEmployeeCode:'another code'}],[entry],['12'],2026).rejected[0].reason).toMatch(/not found/);
+ expect(validateUploadedAwards([{...row,sourceEmployeeCode:'A1'}],[entry],['12'],2026).accepted).toHaveLength(1);
+});
