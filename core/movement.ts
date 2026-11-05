@@ -3082,7 +3082,7 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
   // The tenant catalogue resolves custom codes to their actual effect. Own configuration before
   // that resolution and before current-state planning, not merely when the termination leg writes.
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
-  if (isCalendarDate(rawInput.effectiveDate) && rawInput.effectiveDate < todayInKualaLumpur()) {
+  if (!probationMovementAuthorityTx(tx, rawInput) && isCalendarDate(rawInput.effectiveDate) && rawInput.effectiveDate < todayInKualaLumpur()) {
     const input = await resolveInputTypeTx(tx, ctx, rawInput, 'record');
     if (isComparisonKind(input.kind)) {
       return recordComparisonInEffectiveOrderTx(tx, ctx, rawInput);
