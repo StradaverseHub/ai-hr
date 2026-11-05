@@ -1,0 +1,5 @@
+import {NextRequest} from 'next/server';
+import {scopedSession} from '@/lib/scope';
+import {architectureWorkspace} from '@/packs/job-architecture/service';
+import {architectureImportTemplate} from '@/packs/job-architecture/imports';
+export async function GET(request:NextRequest){const {s}=await scopedSession(),kind=request.nextUrl.searchParams.get('kind'),company=request.nextUrl.searchParams.get('company');if(!['catalogue','positions','outliers'].includes(kind??''))return new Response(null,{status:400});try{const w=await architectureWorkspace(s,company??undefined);if(!w.global.canPropose&&(!company||!w.companies.some(c=>c.id===company&&c.canPropose)))return new Response(null,{status:403});const bytes=architectureImportTemplate(kind as 'catalogue'|'positions'|'outliers',w,company);return new Response(new Uint8Array(bytes),{headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="job-architecture-${kind}.xlsx"`,'Cache-Control':'private, no-store'}});}catch{return new Response(null,{status:403});}}

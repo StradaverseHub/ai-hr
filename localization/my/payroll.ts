@@ -128,7 +128,7 @@ export type TaxProfile = {
  * wage-banded employer rate, Part E, the non-citizen flat rate), so the statutory minimum is always kept
  * and the top-up never replaces it. A null side adds nothing. The combined rate is capped at 100%
  * (`resolveEpfElection` refuses more at save time; `topupRate` clamps defensively). `voluntary_excess`
- * keeps its total-rate max(elected, statutory) meaning for Semi-Auto and for unconverted legacy rows. */
+ * keeps its total-rate max(elected, statutory) meaning for legacy rows with an employer election. */
 export type EpfMode = 'auto' | 'voluntary_excess' | 'exempt' | 'manual_amount' | 'manual_percentage' | 'topup_percentage';
 export type EpfElection = {
   mode: EpfMode;
@@ -203,6 +203,8 @@ export function resolveEpfRates(
   const mode = election?.mode ?? 'auto';
   if (mode === 'exempt') return { employeeRate: 0, employerRate: 0 };
   if (mode === 'manual_percentage') return manualEpfPercentageRates(election?.employeeRate, election?.employerRate);
+  const semiAutoRate = epfSemiAutoEmployeeRate(election);
+  if (semiAutoRate != null) return { employeeRate: semiAutoRate, employerRate: statutoryEmployer };
   if (mode === 'topup_percentage')
     return { employeeRate: topupRate(cfg.employeeRate, election?.employeeRate), employerRate: topupRate(statutoryEmployer, election?.employerRate) };
   const elect = (elected: number | null | undefined, floor: number) =>
@@ -255,13 +257,8 @@ export function epf(
   // from `round2` in the last bits and none that crossed a band edge — so this is a guard against a
   // narrow case, not a demonstrated bug, and it costs one multiplication.)
   const base = round2(Math.max(0, wage) + Math.max(0, additional));
-  if (election?.mode === 'manual_percentage') {
-    const rates = manualEpfPercentageRates(election.employeeRate, election.employerRate);
-    const cents = Math.round(base * 100);
-    if (!Number.isSafeInteger(cents)) throw new Error('EPF manual percentage wage exceeds supported precision.');
-    const contribution = (rate: number) => Number((BigInt(cents) * BigInt(Math.round(rate * 10000)) + BigInt(999999)) / BigInt(1000000));
-    return { employee: contribution(rates.employeeRate), employer: contribution(rates.employerRate) };
-  }
+  const working = epfEnteredRateWorking(wage, additional, cfg, election);
+  if (working) return { employee: working.employee.amount, employer: working.employer.amount };
   const statEmployerRate = base <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
 
   // Statutory floor: exact Third Schedule band (incl. the NIL first band), or the percentage rounded
@@ -298,6 +295,98 @@ export function epf(
 
 export type EpfCitizenship = 'citizen' | 'pr' | 'non_citizen';
 
+type EpfSelection = { age?: number | null; citizenship?: EpfCitizenship; wageMonth?: string; bonus?: number };
+type EpfWorkingSide =
+  | { method: 'entered_rate'; rate: number; amount: number }
+  | { method: 'schedule_row'; schedulePart: string; bandFrom: number; bandUpTo?: number; amount: number }
+  | { method: 'schedule_formula'; schedulePart: string; rate: number; amount: number }
+  | { method: 'no_contribution'; amount: number };
+
+function epfSemiAutoEmployeeRate(election?: EpfElection): number | null {
+  return election?.mode === 'voluntary_excess' && election.employerRate == null
+    ? election.employeeRate ?? null
+    : null;
+}
+
+function epfContributionAtRate(cents: number, rate: number): number {
+  return Number((BigInt(cents) * BigInt(Math.round(rate * 10000)) + 999999n) / 1000000n);
+}
+
+// KWSP Part C shares the A/E wage bands. Verified against all 401 employer rows in the
+// October 2025 Third Schedule. The employer rates on the band ceiling are 6.5% and 6%.
+const EPF_PART_C_EMPLOYER = MY_EPF_THIRD_SCHEDULE_PART_A.map(({ upTo }) => ({
+  upTo,
+  employee: 0,
+  employer: upTo <= 10 ? 0 : epfContributionAtRate(upTo * 100, upTo <= 5000 ? 0.065 : 0.06),
+}));
+
+const EPF_PART_F_START = '2025-10';
+
+function semiAutoEmployer(
+  wage: number, additional: number, cfg: StatutoryRuleset['epf'], sel?: EpfSelection,
+): EpfWorkingSide {
+  const base = round2(Math.max(0, wage) + Math.max(0, additional));
+  const senior = sel?.age != null && sel.age >= EPF_SENIOR_AGE;
+  const foreign = sel?.citizenship === 'non_citizen';
+  if (base === 0 || (sel?.age != null && sel.age >= EPF_NO_CONTRIB_AGE)) {
+    return { method: 'no_contribution', amount: 0 };
+  }
+  if (foreign && sel?.wageMonth && sel.wageMonth < EPF_PART_F_START) {
+    // Before Part F, a non-PR employee with an election in the supported
+    // post-1998 category had a fixed RM5 employer share above the NIL band.
+    const schedulePart = senior ? 'D' : 'B';
+    return base <= 10
+      ? { method: 'schedule_row', schedulePart, bandFrom: 0.01, bandUpTo: 10, amount: 0 }
+      : { method: 'schedule_row', schedulePart, bandFrom: 10.01, amount: 5 };
+  }
+  const part = foreign ? 'F' : !senior ? 'A' : sel?.citizenship === 'pr' ? 'C' : 'E';
+  const lowRate = part === 'C' ? 0.065 : cfg.employerRateLow;
+  const highRate = part === 'C' ? 0.06 : cfg.employerRateHigh;
+  const threshold = part === 'C' ? 5000 : cfg.employerThreshold;
+  const scheduleMax = part === 'C' ? EPF_SCHEDULE_MAX : cfg.scheduleMax ?? EPF_SCHEDULE_MAX;
+  // Parts A and C retain the low-wage employer rate when a bonus takes the month above RM5,000.
+  const crossesWithBonus = (part === 'A' || part === 'C') && base > threshold &&
+    round2(base - Math.max(0, sel?.bonus ?? additional)) <= threshold;
+  const rate = part === 'F' ? cfg.nonCitizenEmployerRate ?? 0.02
+    : part === 'E' ? cfg.seniorEmployerRate ?? 0.04
+    : base <= threshold || crossesWithBonus ? lowRate : highRate;
+  if (part === 'F' || base > scheduleMax || crossesWithBonus) {
+    return { method: 'schedule_formula', schedulePart: part, rate, amount: epfContributionAtRate(Math.round(base * 100), rate) };
+  }
+  const bands = part === 'C' ? EPF_PART_C_EMPLOYER : part === 'E' ? cfg.partE ?? MY_EPF_THIRD_SCHEDULE_PART_E : cfg.partA ?? MY_EPF_THIRD_SCHEDULE_PART_A;
+  const row = bandFor(bands, base);
+  const previous = bands[bands.indexOf(row) - 1];
+  return {
+    method: 'schedule_row', schedulePart: part, amount: row.employer,
+    bandFrom: round2((previous?.upTo ?? 0) + 0.01), bandUpTo: row.upTo,
+  };
+}
+
+function epfEnteredRateWorking(
+  wage: number, additional: number, cfg: StatutoryRuleset['epf'], election?: EpfElection, sel?: EpfSelection,
+) {
+  const manual = election?.mode === 'manual_percentage'
+    ? manualEpfPercentageRates(election.employeeRate, election.employerRate)
+    : null;
+  const employeeRate = manual?.employeeRate ?? epfSemiAutoEmployeeRate(election);
+  if (employeeRate == null) return undefined;
+  const actualWage = round2(Math.max(0, wage) + Math.max(0, additional));
+  const cents = Math.round(actualWage * 100);
+  const increment = cents <= 500000 ? 20 : cents <= 2000000 ? 100 : 1;
+  const roundedCents = Math.ceil(cents / (increment * 100)) * increment * 100;
+  if (!Number.isSafeInteger(roundedCents)) throw new Error('EPF percentage wage exceeds supported precision.');
+  const entered = (rate: number) => ({
+    method: 'entered_rate' as const, rate, amount: epfContributionAtRate(roundedCents, rate),
+  });
+  const employer = manual ? entered(manual.employerRate) : semiAutoEmployer(wage, additional, cfg, sel);
+  return {
+    actualWage, roundedWage: roundedCents / 100, increment,
+    employee: entered(employeeRate), employer,
+    ...('schedulePart' in employer ? { scheduleEffectiveFrom: !sel?.wageMonth || sel.wageMonth >= EPF_PART_F_START
+      ? '2025-10-01' : '2022-07-01' } : {}),
+  };
+}
+
 /** Flat-rate EPF side (non-citizen 2%/2%), round up to RM1; respects exempt / i-Topup excess and the
  *  b6dbadc5 additive top-up (2% + increment). */
 function epfFlatSide(base: number, statRate: number, electedRate: number | null | undefined, mode: string): number {
@@ -321,12 +410,24 @@ export function epfContribution(
   additional = 0,
   cfg: StatutoryRuleset['epf'] = DEFAULT_MY_STATUTORY.epf,
   election?: EpfElection,
-  sel?: { age?: number | null; citizenship?: EpfCitizenship },
+  sel?: EpfSelection,
 ): { employee: number; employer: number; employeeOnBonus: number } {
-  if (election?.mode === 'manual_percentage') {
-    const total = epf(wage, additional, cfg, election);
-    const normal = epf(wage, 0, cfg, election);
-    return {...total, employeeOnBonus: Math.max(0, total.employee - normal.employee)};
+  return epfContributionWithWorking(wage, additional, cfg, election, sel).contribution;
+}
+
+function epfContributionWithWorking(
+  wage: number, additional: number, cfg: StatutoryRuleset['epf'], election?: EpfElection, sel?: EpfSelection,
+) {
+  const working = epfEnteredRateWorking(wage, additional, cfg, election, sel);
+  if (working) {
+    const normal = additional > 0 ? epfEnteredRateWorking(wage, 0, cfg, election, { ...sel, bonus: 0 })! : working;
+    return {
+      working,
+      contribution: {
+        employee: working.employee.amount, employer: working.employer.amount,
+        employeeOnBonus: Math.max(0, working.employee.amount - normal.employee.amount),
+      },
+    };
   }
   const byRule = epfContributionByRule(wage, additional, cfg, election, sel);
   // ── Item 70b14723 — THE TYPED AMOUNT, APPLIED ACROSS EVERY RULE BRANCH ──────────────────────────────
@@ -343,8 +444,8 @@ export function epfContribution(
   // — it requires a category, an amount and a written reason.
   const mEmployee = manualEpfSide(election, 'employeeAmount');
   const mEmployer = manualEpfSide(election, 'employerAmount');
-  if (mEmployee == null && mEmployer == null) return byRule;
-  return {
+  if (mEmployee == null && mEmployer == null) return { contribution: byRule };
+  return { contribution: {
     employee: mEmployee ?? byRule.employee,
     employer: mEmployer ?? byRule.employer,
     // Kₜ, the employee EPF attributable to the bonus, is "the month's figure minus the same figure on the
@@ -352,7 +453,7 @@ export function epfContribution(
     // subtraction. Which also means K₁ = M: the whole typed amount is claimed as the month's normal-wage
     // EPF relief in PCB, once, and `employee − employeeOnBonus` still equals it exactly.
     employeeOnBonus: mEmployee != null ? 0 : byRule.employeeOnBonus,
-  };
+  } };
 }
 
 /** The contribution the RULE produces — Third Schedule Part A / Part E / the non-citizen flat rate — with
@@ -1298,6 +1399,8 @@ export function statutory(
     /** Employee age + citizenship select the EPF rule (Part A / Part E senior / non-citizen 2%/2%). */
     epfAge?: number | null;
     epfCitizenship?: EpfCitizenship;
+    epfWageMonth?: string;
+    epfBonus?: number;
     // ── Feedback 017d9c25 (r187) — PER-AGENCY BASE CARVE-OUTS ──────────────────────────────────────
     // `wage` / `additional` / `overtime` keep their meanings EXACTLY (the whole golden suite is pinned
     // to them). These four numbers say how much of that money a specific agency's base must NOT (or
@@ -1385,10 +1488,13 @@ export function statutory(
   const pcbWage = round2(pcbCashWage + (benefit?.bik ?? 0) + (benefit?.vola ?? 0));
   // EPF by age + citizenship (Part A / Part E senior / non-citizen 2%/2%; #95). Bonus IS subject to
   // EPF; overtime is NOT.
-  const eC = epfContribution(epfWage, epfAdditional, rules.epf, opts?.epfElection, {
+  const { contribution: eC, working } = epfContributionWithWorking(epfWage, epfAdditional, rules.epf, opts?.epfElection, {
     age: opts?.epfAge,
     citizenship: opts?.epfCitizenship,
+    wageMonth: opts?.epfWageMonth,
+    bonus: opts?.epfBonus,
   });
+  const epfTrace = working ? { epfWorking: working } : {};
   const e = { employee: eC.employee, employer: eC.employer };
   const sRaw = socso(socsoWage, opts?.socsoCategory ?? 1, rules.socso); // bonus excluded; overtime included
   // Item 5a461b99 — "Subject to SOCSO" gates the SOCSO Injury/Invalidity legs; "Subject to SKBBK" gates the
@@ -1411,6 +1517,7 @@ export function statutory(
   // None is explicit non-applicability, not a tax rate or a fourth mathematical category.
   if(opts?.taxCircumstance && !readSavedTaxCircumstance(opts.taxCircumstance))throw new StatutoryRulesetMalformedError('Invalid tax circumstance snapshot');
   if(opts?.taxCircumstance?.applicable===false)return {
+    ...epfTrace,
     epfEmployee:e.employee,epfEmployer:e.employer,socsoEmployee:s.employee,socsoEmployer:s.employer,
     socsoSkbbk:s.skbbk,eisEmployee:i.employee,eisEmployer:i.employer,
     pcb:0,pcbBonus:0,pcbNormalPreZakat:0,
@@ -1427,6 +1534,7 @@ export function statutory(
     const pcbAll = rm10Floor(ceil5sen(trunc2((pcbWage + pcbAdditional) * flatRate)));
     const pcbBonusOnly = rm10Floor(ceil5sen(trunc2(pcbAdditional * flatRate)));
     return {
+      ...epfTrace,
       epfEmployee: e.employee,
       epfEmployer: e.employer,
       socsoEmployee: s.employee,
@@ -1473,6 +1581,7 @@ export function statutory(
     pcb: rules.pcb,
   });
   return {
+    ...epfTrace,
     epfEmployee: e.employee,
     epfEmployer: e.employer,
     socsoEmployee: s.employee,

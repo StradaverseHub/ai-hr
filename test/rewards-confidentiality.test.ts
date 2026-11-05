@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {initializeRewardGovernanceFixture} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
@@ -6,7 +7,7 @@ import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { createRewardUnit, getRewardUnit, importRewardFacts, refreshRewardSources, saveRewardEntry } from '../packs/rewards/service';
+import { getRewardUnit, importRewardFacts, refreshRewardSources, saveRewardEntry } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -20,7 +21,7 @@ describe('Rewards derived confidentiality', () => {
   const row = async (key: string, ctx = admin) => (await view(ctx)).rows.find(r => r.source.employmentId === emp[key].employmentId);
   async function hire(key: string, inUnit: boolean) {
     const h = await hireEmployee(admin, { person: { fullName: `Confidential ${key}`, primaryEmail: `${key}@confidential.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
-    if (inUnit) await owner.db.update(schema.assignment).set({ businessUnitId: buId }).where(eq(schema.assignment.employmentId, h.employmentId));
+    if (inUnit) await owner.withTenant(admin,tx=>tx.update(schema.assignment).set({ businessUnitId: buId }).where(eq(schema.assignment.employmentId, h.employmentId)));
     await owner.db.update(schema.employment).set({ gradeId, confirmationDate: `${year - 2}-04-01` }).where(eq(schema.employment.id, h.employmentId));
     await setCompensation(admin, { employmentId: h.employmentId, basicSalary: 5000, effectiveFrom: `${year - 2}-01-01` });
     const [e] = await owner.db.select({ personId: schema.employment.personId }).from(schema.employment).where(eq(schema.employment.id, h.employmentId));
@@ -43,7 +44,7 @@ describe('Rewards derived confidentiality', () => {
     await hire('bgCeo', false); await hire('chairman', false);
     for (const key of ['bgReport', 'ecReport', 'plain']) await hire(key, true);
     await line('bgReport', 'bgCeo'); await line('ecReport', 'chairman');
-    unitId = await createRewardUnit(admin, { name: 'Confidential rewards', year, companyId: b.companyId, businessUnitId: buId, snapshotDate: today });
+    unitId = await createApprovedRewardUnit(admin, { name: 'Confidential rewards', year, companyId: b.companyId, businessUnitId: buId, snapshotDate: today });
     await seat('bg', emp.bgCeo.personId, 'BG CEO'); await seat('ec', emp.chairman.personId, 'Chairman');
     for (const role of ['bu', 'pbp', 'ctro'] as const) {
       const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: `${role} reviewer`, primaryEmail: `${role}@confidential.test` }).returning();
@@ -63,15 +64,19 @@ describe('Rewards derived confidentiality', () => {
 
   it('hides a BG direct report from the BU CEO and PBP and an EC direct report from all but GR/CTRO/EC, totals unchanged', async () => {
     const gr = await view();
+    const visibleIds = (v: Awaited<ReturnType<typeof view>>) => v.rows.map(r => r.source.employmentId).sort();
+    const idsFor = (...keys: string[]) => keys.map(key => emp[key].employmentId).sort();
+    // The company-wide review includes the seat holders. The own-row rule still applies.
+    expect(visibleIds(gr)).toEqual(idsFor('bgCeo', 'chairman', 'bgReport', 'ecReport', 'plain'));
     for (const role of ['bu', 'pbp'] as const) {
       const v = await view(actors[role]);
-      expect(v.rows.map(r => r.source.employmentId)).toEqual([emp.plain.employmentId]);
+      expect(visibleIds(v)).toEqual(idsFor('bgCeo', 'chairman', 'plain'));
       expect(v.hiddenCount).toBe(2);
       expect(v.budgets.standard.payrollCents).toBe(gr.budgets.standard.payrollCents);
     }
-    const bg = await view(actors.bg);
-    expect(bg.rows.map(r => r.source.employmentId).sort()).toEqual([emp.bgReport.employmentId, emp.plain.employmentId].sort());
-    for (const role of ['ctro', 'ec'] as const) expect((await view(actors[role])).rows).toHaveLength(3);
+    expect(visibleIds(await view(actors.bg))).toEqual(idsFor('chairman', 'bgReport', 'plain'));
+    expect(visibleIds(await view(actors.ctro))).toEqual(visibleIds(gr));
+    expect(visibleIds(await view(actors.ec))).toEqual(idsFor('bgCeo', 'bgReport', 'ecReport', 'plain'));
   });
 
   it('Group Rewards can make a marking stricter but never lower, by screen or import', async () => {

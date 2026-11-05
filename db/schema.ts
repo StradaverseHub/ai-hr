@@ -7001,7 +7001,7 @@ export const payrollInput = pgTable(
     // PCB inputs (LHDN spec): TP1 optional deductions claimed this month (LP₁) and zakat paid
     // via salary deduction — zakat offsets the month's MTD per §E.5 and accumulates into Z.
     /** Historical source references only; manual edits never make these a current amount owner. */
-    rewardProvenance:jsonb('reward_provenance').$type<{unitId:string;entryId:string;revision:number;plan:'Senior plan';confirmedBy:string;confirmedAt:string;historicalOnly:true}[]>().notNull().default([]),
+    rewardProvenance:jsonb('reward_provenance').$type<{unitId:string;entryId:string;revision:number;plan:'Senior plan'|'Uploaded award';confirmedBy:string;confirmedAt:string;historicalOnly:true}[]>().notNull().default([]),
     tp1Deduction: numeric('tp1_deduction', { precision: 12, scale: 2 }).notNull().default('0'),
     // ADR-0050 §0.4 provenance: who last set tp1_deduction. 'tp1_self' = a TP1 self-relief prefill set it
     // (refreshable by a later prefill); null (default) = an admin keyed it / never prefilled (sticky — a
@@ -10503,6 +10503,7 @@ export const rewardPolicyGroupTarget = pgTable('reward_policy_group_target', {
  companyId:uuid('company_id').notNull().references(()=>company.id),businessUnitId:uuid('business_unit_id').notNull().references(()=>businessUnit.id),
 },t=>[primaryKey({columns:[t.versionId,t.companyId,t.businessUnitId]})]);
 export const rewardUnit = pgTable('reward_unit', {
+  uploadedAwardDigest:text('uploaded_award_digest'),
   deletedAt: timestamp('deleted_at', { withTimezone: true }), deletedBy: uuid('deleted_by').references(() => appUser.id),
   kind: text('kind').$type<import('../packs/rewards/offcycle').RewardKind>().notNull().default('annual'),
   parentUnitId: uuid('parent_unit_id'), createdBy: uuid('created_by').notNull(),

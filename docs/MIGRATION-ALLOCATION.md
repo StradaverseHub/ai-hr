@@ -5,6 +5,17 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Approved expansion — 5 November 2026 (unapplied source reservation)
+
+Branch codex/approved-expansion-20261105 reserves 2200–2209, journal idx1400–1409,
+when1793330001600–1793330001609 for the approved Job Architecture, Rewards libraries/PAT/plan,
+and statutory-readiness work. The initial read-only audit found 2437 distinct branch heads,
+443 journal blobs and maximum file2141/idx1394/when1793330001541; registered worktree
+journals were checked separately. No 2200-or-higher source claim was observed.
+The complete main prefix through 2102 is preserved. These are source reservations only:
+recheck current main/alpha, worktree WIP, peer claims and the actual installed ledger before
+integration or installation. No live re-tag, future grade-track activation or deployment is authorized.
+
 ## Tenant-isolation hardening (ADR-0174) — 4 November 2026 (provisional source claim)
 
 `claude/wonderful-mccarthy-2fb38f` appends three migrations above the 668-entry main journal (`aa260e8d0`,

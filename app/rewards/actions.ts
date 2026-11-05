@@ -7,7 +7,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
 import {rewardPolicyFromForm} from './policy-input';
-import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, importRewardFacts, postRewardUnit, saveRewardEntry, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump, previewRewardLump, setRewardPayWindowKeep, previewRewardSourceRefresh, saveRewardSourceRefresh } from '@/packs/rewards/service';
+import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, getRewardConfiguration,importRewardFacts, postRewardUnit, saveRewardEntry, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump, previewRewardLump, setRewardPayWindowKeep, previewRewardSourceRefresh, saveRewardSourceRefresh } from '@/packs/rewards/service';
 import { emptyFacts, isSalaryReductionAttempt, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
@@ -25,11 +25,10 @@ async function change(f: FormData, work: (s: Awaited<ReturnType<typeof getSessio
   revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout'); redirect(notice ? `${url}?notice=${notice}` : url);
 }
 
-export async function createRewardAction(f: FormData) {
-  const s = await getSession(); let unitId: string;
-  try { unitId = await createRewardUnit(s, { name: str(f, 'name'), year: number(f, 'year'), companyId: str(f, 'companyId'), businessUnitId: str(f, 'businessUnitId'), cycleId: str(f, 'cycleId') || undefined, snapshotDate: str(f, 'snapshotDate'),sharedPolicyVersionId:str(f,'sharedPolicyVersionId')||undefined }); }
-  catch (e) {if(e instanceof RewardPolicyGroupError)redirect(`/admin/rewards?sharedError=${e.code}`);redirect(`/admin/rewards?error=${encodeURIComponent(errorText(e))}`);}
-  revalidatePath('/rewards'); revalidatePath('/admin/rewards'); redirect(`/admin/rewards/${unitId}`);
+/** Annual review creation is owned by the approved plan preview, including legacy form posts. */
+export async function createRewardAction(_f: FormData) {
+  await getSession();
+  redirect('/admin/rewards/plans');
 }
 /** A role change is stored as a pending request for an independent administrator (changeRewardMember), so the
  *  page says so instead of reloading as if nothing happened. */
@@ -101,8 +100,8 @@ export async function entryAction(f: FormData) {
 
 export async function policyAction(f: FormData) {
   return change(f, async (s,id,rev)=>{
-    const view=await getRewardUnit(s,id);
-    await saveRewardPolicy(s,id,rev,rewardPolicyFromForm(f,view.unit.policy));
+    const view=await getRewardConfiguration(s,id);
+    await saveRewardPolicy(s,id,rev,rewardPolicyFromForm(f,view.unit.policy,{libraryOwned:view.libraryBound}));
   },true);
 }
 

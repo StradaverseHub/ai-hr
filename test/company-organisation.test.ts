@@ -1,7 +1,7 @@
 import {createBusinessUnit} from '../core/admin';
 import {setLabelGlobal} from '../core/system-labels';
 import {pgSqlState} from '../lib/db-error';
-import {createRewardUnit} from '../packs/rewards/service';
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
@@ -116,7 +116,7 @@ it('projects only a proven existing future hire interval and freezes that actual
 it('admits a real Group Rewards checker only for the complete old/new unit footprint, without giving HR execution rights',async()=>{
  const reviewer=await hire('FictionalRewardsReviewer'),grUser=await createAppUser(b.tenantId,reviewer.personId,'employee');
  await publish(await prepare());await setModule(b.tenantId,'rewards','active');
- const rewardUnit=await createRewardUnit(adminCtx(b),{name:'Fictional reviewed unit',year:Number(today().slice(0,4)),companyId:b.companyId,businessUnitId:unit,snapshotDate:today()});
+ const rewardUnit=await createApprovedRewardUnit(adminCtx(b),{name:'Fictional reviewed unit',year:Number(today().slice(0,4)),companyId:b.companyId,businessUnitId:unit,snapshotDate:today()});
  await owner.db.insert(schema.rewardMember).values({tenantId:b.tenantId,unitId:rewardUnit,userId:grUser,role:'gr'});
  const gr:SessionContext={...adminCtx(b),userId:grUser,personId:reviewer.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
  const id=await prepare(),report=await companyOrganisationRunReport(gr,id);expect(report.run.canApprove).toBe(true);

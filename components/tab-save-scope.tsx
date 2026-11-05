@@ -858,7 +858,7 @@ export function TabSaveScope({
       <Dialog.Root open={promptOpen} onOpenChange={(open) => (open ? setPromptOpen(true) : closePrompt())}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] overflow-y-auto w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
             {/* 15e5bd93 rev 4 — a screen scope speaks its own words here. The prompt is reached by
                 LEAVING (Back, Cancel, a nav link, browser Back), so "Discard Changes" / "Save Changes"
                 under-describe what the buttons do; the reporter listed Save & Leave / Discard & Leave /

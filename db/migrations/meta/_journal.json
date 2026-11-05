@@ -4775,6 +4775,76 @@
       "when": 1793330001610,
       "tag": "2210_personnel_projection_reuse",
       "breakpoints": true
+    },
+    {
+      "idx": 1412,
+      "version": "7",
+      "when": 1793330001612,
+      "tag": "2200_job_architecture",
+      "breakpoints": true
+    },
+    {
+      "idx": 1413,
+      "version": "7",
+      "when": 1793330001613,
+      "tag": "2201_job_architecture_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 1414,
+      "version": "7",
+      "when": 1793330001614,
+      "tag": "2202_job_architecture_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 1415,
+      "version": "7",
+      "when": 1793330001615,
+      "tag": "2203_rewards_libraries_pat",
+      "breakpoints": true
+    },
+    {
+      "idx": 1416,
+      "version": "7",
+      "when": 1793330001616,
+      "tag": "2204_rewards_plan_setup",
+      "breakpoints": true
+    },
+    {
+      "idx": 1417,
+      "version": "7",
+      "when": 1793330001617,
+      "tag": "2205_rewards_review_creation",
+      "breakpoints": true
+    },
+    {
+      "idx": 1418,
+      "version": "7",
+      "when": 1793330001618,
+      "tag": "2206_rewards_role_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 1419,
+      "version": "7",
+      "when": 1793330001619,
+      "tag": "2207_reward_advisor",
+      "breakpoints": true
+    },
+    {
+      "idx": 1420,
+      "version": "7",
+      "when": 1793330001620,
+      "tag": "2208_rewards_uploaded_awards",
+      "breakpoints": true
+    },
+    {
+      "idx": 1421,
+      "version": "7",
+      "when": 1793330001621,
+      "tag": "2209_company_registration_classification",
+      "breakpoints": true
     }
   ]
 }

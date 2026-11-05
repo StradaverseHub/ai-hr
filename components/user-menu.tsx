@@ -181,7 +181,7 @@ export function UserMenu({
             id={menuId}
             role="menu"
             aria-label={t('accountMenu')}
-            className="absolute right-0 z-50 mt-1 w-64 origin-top-right scale-100 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground opacity-100 shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
+            className="absolute right-0 z-50 mt-1 max-h-[calc(100dvh-6rem)] w-64 origin-top-right overflow-y-auto overscroll-contain scale-100 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground opacity-100 shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
           >
             <div className="px-2 py-1.5">
               <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">

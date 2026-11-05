@@ -1,3 +1,4 @@
+import {rewardArchitectureFlags} from './architecture-parity';
 import { type RewardEntry, type RewardPolicy, type Plan, type RewardFlag, performances, policySchema, factsSchema, recommendationSchema, isSeniorPlanMember } from './model';
 
 /** BigInt intermediates prevent precision loss while keeping JSON outputs as safe integers. */
@@ -42,6 +43,7 @@ export function calculateRewards(entries: RewardEntry[], input: RewardPolicy, co
   const start = `${policy.year}-01-01`, end = `${policy.year}-12-31`, yearDays = dateNumber(end) - dateNumber(start) + 1;
   const rows: CalculatedEntry[] = entries.map(e => {
     const f = factsSchema.parse(e.facts), r = recommendationSchema.parse(e.recommendation), s = e.source;
+    flags.push(...rewardArchitectureFlags(e.id,s));
     if (!Number.isSafeInteger(s.basicCents) || s.basicCents < 0) throw new Error('Invalid salary snapshot.');
     const plan: Plan = f.confidentiality === 'ec' ? 'ec' : s.grade === 'H' ? 'h' : 'standard';
     if (!f.reviewed) add('block', 'DATA-01', 'Validate the reward classification and ratings before submission.', e.id);

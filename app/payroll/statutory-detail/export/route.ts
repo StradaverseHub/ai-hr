@@ -47,6 +47,7 @@ import {
   type StatutoryRuleKind,
 } from '@/core/statutory-explain';
 import { toXlsxReport, type ReportData } from '@/lib/report-export';
+import { epfWorkingRows } from '../epf-working';
 import { employeeLabel } from '@/lib/employee-code';
 
 /** STATIC keys, exhaustively mapped — the same map the view uses, for the same reason: a computed `t()`
@@ -67,6 +68,7 @@ const RULE_LABEL: Record<StatutoryRuleKind, string> = {
   schedule: 'ruleSchedule',
   mtd: 'ruleMtd',
   manual: 'ruleManual',
+  epf_working: 'epfWorkingTitle',
 };
 /** 70b14723 — the same two per-source maps the view carries, kept in step for the same reason the rule
  *  labels are: a file that words the disclosure differently from the screen it was taken from has to be
@@ -124,6 +126,12 @@ export async function GET(req: Request) {
   const money = (v: number) => v.toFixed(2);
   // ONE flag decides the two extra columns AND the two extra cells per row, so the sheet cannot go ragged.
   const setByHand = explanation?.setByHand ?? null;
+  const workingRows = explanation?.epfWorking
+    ? [
+        { label: t('epfWorkingTitle'), value: '' },
+        ...epfWorkingRows(explanation.epfWorking, t, money, locale),
+      ].map(({ label, value }) => [label, value, '', '', '', '', '', ...(setByHand ? ['', ''] : [])])
+    : [];
 
   const data: ReportData = {
     filename: `statutory-explanation-${row?.employeeCode ?? 'employee'}-${row?.payPeriod ?? ''}`.replace(/-$/, ''),
@@ -140,25 +148,28 @@ export async function GET(req: Request) {
       // a file that renames what the screen showed is a file that has to be reconciled against it.
       ...(setByHand ? [t('fieldSystemEmployeeShare'), t('fieldSystemEmployerShare')] : []),
     ],
-    rows: (explanation?.items ?? []).map((i) => [
-      t(ITEM_LABEL[i.key]),
-      t(ruleLabelKey(i)),
-      // EMPTY, never 0.00, for a wage base this run did not record. See the header.
-      i.totalBase == null ? '' : money(i.totalBase),
-      money(i.employeeReported),
-      money(i.employerBorne),
-      money(i.employeeTakeHome),
-      money(i.employer),
-      // EMPTY for a leg nobody typed — including on an item whose other leg was. In this pair a 0.00 would
-      // assert "the rule produced nothing", which is the wrong-zero failure the header forbids, aimed at
-      // the one figure a reader is checking the typed amount against.
-      ...(setByHand
-        ? [
-            i.provenance.employee ? money(i.provenance.employee.system) : '',
-            i.provenance.employer ? money(i.provenance.employer.system) : '',
-          ]
-        : []),
-    ]),
+    rows: [
+      ...(explanation?.items ?? []).map((i) => [
+        t(ITEM_LABEL[i.key]),
+        t(ruleLabelKey(i)),
+        // EMPTY, never 0.00, for a wage base this run did not record. See the header.
+        i.totalBase == null ? '' : money(i.totalBase),
+        money(i.employeeReported),
+        money(i.employerBorne),
+        money(i.employeeTakeHome),
+        money(i.employer),
+        // EMPTY for a leg nobody typed — including on an item whose other leg was. In this pair a 0.00 would
+        // assert "the rule produced nothing", which is the wrong-zero failure the header forbids, aimed at
+        // the one figure a reader is checking the typed amount against.
+        ...(setByHand
+          ? [
+              i.provenance.employee ? money(i.provenance.employee.system) : '',
+              i.provenance.employer ? money(i.provenance.employer.system) : '',
+            ]
+          : []),
+      ]),
+      ...workingRows,
+    ],
     layout: {
       orientation: 'landscape',
       freeze: 1,

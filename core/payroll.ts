@@ -5565,6 +5565,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // byte-identical to today (MONTHLY PARKING is that case on production and must stay that way).
       /** Deduction money ticked "subject to EPF" — leaves the EPF wage base. */
       epfWageDeduction: number;
+      epfDeductionItems: { label: string; amount: number }[];
       /** Deduction money ticked "subject to SOCSO/EIS" — leaves the SOCSO/EIS/SKBBK base. */
       socsoWageDeduction: number;
       /** Deduction money ticked "subject to PCB" — leaves the taxable remuneration base. */
@@ -5614,6 +5615,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           // 2333b7fb — likewise: with typed components off there are no deduction pay items at all (the
           // legacy path has no deduct bucket — `deduct: 0` above), so there is nothing to carve.
           epfWageDeduction: 0,
+          epfDeductionItems: [],
           socsoWageDeduction: 0,
           pcbWageDeduction: 0,
           hrdfWageDeduction: 0,
@@ -5640,6 +5642,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // 017d9c25 — the four base carve-outs, accumulated beside the buckets they carve (see the return type).
       let epfWageExcluded = 0, epfAdditionalExcluded = 0, socsoWageExcluded = 0, socsoWageExtra = 0;
       // 2333b7fb — and the four deduction-side reductions, accumulated in the `kind === 'deduction'` branch.
+      const epfDeductionItems: { label: string; amount: number }[] = [];
       let epfWageDeduction = 0, socsoWageDeduction = 0, pcbWageDeduction = 0, hrdfWageDeduction = 0;
       // 711adcd2 — the unpaid-leave ORP base's pay-item half. See the return type.
       let orpUnpaidLeaveExtra = 0;
@@ -5908,7 +5911,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         if (c.kind === 'deduction') {
           deduct = round2(deduct + applied);
           contributes('deduct', applied);
-          if (c.epf) epfWageDeduction = round2(epfWageDeduction + applied);
+          if (c.epf) {
+            epfWageDeduction = round2(epfWageDeduction + applied);
+            epfDeductionItems.push({ label: c.name, amount: -applied });
+          }
           if (c.socso) socsoWageDeduction = round2(socsoWageDeduction + applied);
           if (c.pcb) pcbWageDeduction = round2(pcbWageDeduction + applied);
           if (c.hrdf) hrdfWageDeduction = round2(hrdfWageDeduction + applied);
@@ -6004,7 +6010,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         else { reimburse = round2(reimburse + applied); contributes('reimburse', applied); } // all-false earning: paid but untaxed
       }
       for(const row of exemptionInformation.values())row.thisMonth=row.table==='lp' && isAdditionalRun ? 0 : round2((exemptionUsed[row.code]??0)+(reusedExemption.get(row.code)??0));
-      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, recordLines, componentLines, lpDeclared, exemptionUsed, exemptionInformation:[...exemptionInformation.values()].sort((a,b)=>a.code.localeCompare(b.code)), nonCashEntries, nonCashEaEntries, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, epfWageExcluded, epfAdditionalExcluded, socsoWageExcluded, socsoWageExtra, epfWageDeduction, epfDeductionItems, socsoWageDeduction, pcbWageDeduction, hrdfWageDeduction, recordLines, componentLines, lpDeclared, exemptionUsed, exemptionInformation:[...exemptionInformation.values()].sort((a,b)=>a.code.localeCompare(b.code)), nonCashEntries, nonCashEaEntries, display, displayMoved, displayOtOutbound, orpUnpaidLeaveExtra };
     };
 
     /**
@@ -6871,6 +6877,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         taxSelectionSource:resolvedTaxScheme.selectionSource,
         taxCircumstance:resolvedTaxSchemes.get(e.employmentId)?.taxCircumstance,
         // EPF rule selection (#95): age + citizenship pick Part A / Part E senior / non-citizen 2%/2%.
+        epfWageMonth: payPeriod,
         epfAge: age,
         epfCitizenship: e.epfCitizenship ?? 'citizen',
         // EPF contribution mode (Wave 2B): i-Topup excess / exempt. Rates are decimals; null = statutory.
@@ -7261,6 +7268,59 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // statDeductions, so an employer-side override cannot reduce anyone's net pay.
       const st = applyStatutoryAdjustment(stComputed, statutoryAdjustmentByEmp.get(e.employmentId) ?? null);
 
+      // The method explains the cumulative wage calculation. Keep the final amounts on this
+      // payslip separate because prior runs and statutory adjustments can change what it charges.
+      const epfWorking = stCore.epfWorking;
+      const savedEpfWorking = epfWorking ? (() => {
+        const items: { label: string; amount: number }[] = [];
+        const add = (label: string, value: number) => {
+          const amount = round2(value);
+          if (amount !== 0) items.push({ label, amount });
+        };
+        add('Basic salary', basic);
+
+        let namedAllowance = 0;
+        let namedBonus = 0;
+        for (const line of en.componentLines) {
+          if (!line.epf) continue;
+          for (const { bucket, amount } of line.buckets) {
+            if (bucket === 'wage') {
+              namedAllowance += amount;
+              add(line.name, amount);
+            } else if (bucket === 'bonus') {
+              namedBonus += amount;
+              add(line.name, amount);
+            }
+          }
+        }
+        add('Allowance', en.allowanceApplied - en.epfWageExcluded - namedAllowance);
+        add('Bonus', bonus - en.epfAdditionalExcluded - namedBonus);
+        add('Unpaid leave and absence', -unpaidDeduction);
+        for (const item of en.epfDeductionItems) add(item.label, item.amount);
+
+        const priorPost = postEmployment ? postEarlierByEmp.get(e.employmentId)?.inputs : undefined;
+        if (priorPost) {
+          add('Earlier runs in the wage month', priorPost.wages + priorPost.additional
+            - priorPost.options.epfWageExcluded - priorPost.options.epfWageDeduction - priorPost.options.epfAdditionalExcluded);
+        } else if (isAdditionalRun || restatesMonth) {
+          add('Earlier additional pay in the wage month', earlierRun.additional);
+        }
+        // The pack clamps the normal and additional wage streams separately. Disclose the
+        // difference when a deduction exceeds its stream rather than overstating eligible pay.
+        add('EPF wage adjustment', epfWorking.actualWage - items.reduce((sum, item) => sum + item.amount, 0));
+
+        const usesSchedule = epfWorking.employer.method === 'schedule_row' || epfWorking.employer.method === 'schedule_formula';
+        const scheduleEffectiveFrom = usesSchedule
+          ? resolved.components.epf.effectiveFrom ?? epfWorking.scheduleEffectiveFrom : undefined;
+        return {
+          ...epfWorking,
+          ...(scheduleEffectiveFrom ? { scheduleEffectiveFrom } : {}),
+          items,
+          employeeThisRun: stComputed.epfEmployee,
+          employerThisRun: stComputed.epfEmployer,
+        };
+      })() : null;
+
       // Item 5a461b99 — "Employer bears" reassignment. The contribution is still computed AND reported in
       // full (st.socsoEmployee / st.eisEmployee / st.socsoSkbbk are untouched, so SOCSO/EIS reports + the
       // submitted PERKESO file are unchanged). What changes is WHO funds the employee's share: when a flag is
@@ -7564,6 +7624,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // zero-OT slip / additional run, which sets slipOvertime to 0).
         statutory: {
           ...st,
+          ...(savedEpfWorking ? { epfWorking: savedEpfWorking } : {}),
           ...(formulaRefsByEmp.has(e.employmentId)?{formulaEvaluations:formulaRefsByEmp.get(e.employmentId)!.filter(ref=>stampComponentLines.some(line=>line.code===ref.componentCode))}:{}),
           ...statutoryProvenance,
           // Saved selection input, before existing proration. Back-pay reads this new contract rather

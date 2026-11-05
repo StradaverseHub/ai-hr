@@ -23,6 +23,7 @@
 
 import { refreshEditableRows } from '@/lib/refresh-editable-rows';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
+import { useFitToView } from '@/components/ui/fit-to-view';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import {
@@ -1104,6 +1105,8 @@ function ScopePopover({row, companies, isGroupAdmin, pending, onApplyCriteria, o
   t: ReturnType<typeof useTranslations>;
 }) {
   const dialog=useRef<HTMLDivElement>(null);
+  // Opened from a row near the bottom of the grid, the panel opens upwards or shrinks to fit (components/ui/fit-to-view.ts).
+  useFitToView(true, dialog);
   useEffect(()=>{const previous=document.activeElement as HTMLElement|null;dialog.current?.querySelector<HTMLInputElement>('input:not([disabled])')?.focus();return()=>{if(previous?.isConnected)previous.focus();};},[]);
   const [global, setGlobal] = useState(row.isGlobal);
   const [checked, setChecked] = useState<Set<string>>(new Set(row.assignedCompanyIds.length ? row.assignedCompanyIds : [row.companyId]));

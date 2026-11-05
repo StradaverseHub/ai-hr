@@ -1,3 +1,4 @@
+import {historicalEmptyRewardUnit,historicalRewardDraft} from './rewards-historical-fixture';
 import {establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {previewRewardAccessChange,saveRewardAccessChange,setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -6,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext } from '../db/client';
 import * as s from '../db/schema';
 import { hireEmployee, setEmploymentBlacklist } from '../core/org';
-import { createRewardUnit, deleteRewardReview, getRewardConfiguration, getRewardUnit, listRewardUnits, rewardAccessAdministration, rewardDeletionEligibility, saveRewardEntry, saveRewardPolicy, saveRewardUnitInputs, proposeRewardExemption } from '../packs/rewards/service';
+import { deleteRewardReview, getRewardConfiguration, getRewardUnit, listRewardUnits, rewardAccessAdministration, rewardDeletionEligibility, saveRewardEntry, saveRewardPolicy, saveRewardUnitInputs, proposeRewardExemption } from '../packs/rewards/service';
 import { emptyFacts, emptyRecommendation, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -36,7 +37,7 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         const [u] = await owner.db.insert(s.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'OPS', name: 'Legacy name', label: 'Operations' }).returning();
         bu = u.id;
         scopeHire=await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:bu,departmentId:b.deptA,year});
-        id = await createRewardUnit(admin, { name: 'Annual maintenance', year, companyId: b.companyId, businessUnitId: bu, snapshotDate: today });
+        id = await historicalRewardDraft(admin, { name: 'Annual maintenance', year, companyId: b.companyId, businessUnitId: bu, snapshotDate: today, employmentId: scopeHire.employmentId });
         reviewer = await user();
     });
     afterAll(closeAll);
@@ -141,7 +142,7 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         await save(replacement);
         const state = await rewardAccessAdministration(admin, [b.companyId]);
         expect(state.members.filter(m => m.role === 'gr')).toMatchObject([{ userId: reviewer.userId }]);
-        await expect(getRewardUnit(admin, id)).rejects.toThrow(/assign your Reward Desk role/);
+        await expect(getRewardUnit(admin, id)).rejects.toThrow(/does not permit this action/);
         expect((await getRewardConfiguration(admin, id)).canManageMembers).toBe(true);
     });
     it('cd72f915: projects required-seat coverage with the submit login predicate and refuses losing the last active holder', async () => {
@@ -177,7 +178,7 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         const hire = async (fullName: string) => hireEmployee(admin, { person: { fullName, primaryEmail: `${randomUUID()}@rewards.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 1}-01-01` });
         const linked = await hire('Facts Reviewer');
         await owner.db.update(s.employment).set({ employeeCode: 'RW-0042' }).where(eq(s.employment.id, linked.employmentId));
-        await owner.db.update(s.assignment).set({ businessUnitId: bu, positionId: title.id }).where(eq(s.assignment.employmentId, linked.employmentId));
+        await owner.withTenant(admin,tx=>tx.update(s.assignment).set({ businessUnitId: bu, positionId: title.id }).where(eq(s.assignment.employmentId, linked.employmentId)));
         const login = await createAppUser(b.tenantId, linked.personId, 'employee');
         const unlinked = await hire('Unlinked Employee');
         const departed = await hire('Departed Employee'), departedUnlinked = await hire('Departed Unlinked');
@@ -257,7 +258,8 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         const summary = await rewardAccessAdministration(admin, [b.companyId]);
         expect(summary.users.some(u => u.id === reviewer.userId)).toBe(true);
         await save(await preview({ userId: reviewer.userId!, role: 'gr' }));
-        await expect(preview({ userId: admin.userId!, role: 'payroll' })).rejects.toThrow(/active existing/);
+        const personless = await createAppUser(b.tenantId, null, 'employee');
+        await expect(preview({ userId: personless, role: 'payroll' })).rejects.toThrow(/active existing/);
     });
     it('shows disabled accounts and locked assignments without permitting changes', async () => {
         await setRewardMember(admin, id, await revision(), reviewer.userId!, 'pbp');
@@ -313,22 +315,23 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         expect(before).toHaveLength(2);
         const retainedMember=before.find(member=>member.userId===reviewer.userId)!;
         expect(retainedMember.role).toBe('pbp');
+        const [legacyUnit]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'OLD-OPS',name:'Preserved historical unit'}).returning();
+        await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:legacyUnit.id,departmentId:b.deptA,year});
+        const replacement=await historicalEmptyRewardUnit(admin,id,legacyUnit.id);
         await deleteRewardReview(admin,id,await revision(),id);
-        const replacement=await createRewardUnit(admin,{name:'Replacement review',year,companyId:b.companyId,businessUnitId:bu,snapshotDate:today});
         expect(await withTenant(admin,tx=>tx.update(s.rewardMember).set({unitId:replacement}).where(eq(s.rewardMember.id,retainedMember.id)).returning())).toEqual([]);
         const retained=await owner.db.select().from(s.rewardMember).where(eq(s.rewardMember.unitId,id)).orderBy(asc(s.rewardMember.id));
         expect(retained).toEqual(before);
     });
     it('retains owned source snapshots on removal but refuses changed facts and recommendations', async () => {
         // The canonical People hire establishing the pair is also this review's real source employee.
-        // A second review sees the real immutable source snapshot; no employee award has been entered.
-        const create = async (name: string) => createRewardUnit(admin, { name, year, companyId: b.companyId, businessUnitId: bu, snapshotDate: today });
-        const snapshotId = await create('Snapshot only');
+        // The current review has the immutable source snapshot and no employee award.
+        const snapshotId=id;
         const snapshotRows=(await getRewardUnit(admin,snapshotId)).rows;
         expect(snapshotRows).toHaveLength(1);expect(snapshotRows[0].source.employmentId).toBe(scopeHire.employmentId);
         await deleteRewardReview(admin, snapshotId, (await getRewardConfiguration(admin, snapshotId)).unit.revision, snapshotId);
         expect((await owner.db.select().from(s.rewardEntry).where(eq(s.rewardEntry.unitId, snapshotId)))).toHaveLength(1);
-        const usedId = await create('Used facts');
+        const usedId=await historicalRewardDraft(admin,{name:'Following year with used facts',year:year+1,companyId:b.companyId,businessUnitId:bu,snapshotDate:today,employmentId:scopeHire.employmentId});
         let v = await getRewardUnit(admin, usedId);
         await saveRewardEntry(admin, usedId, v.unit.revision, v.rows[0].id, emptyRecommendation(), { ...emptyFacts(), reviewed: true });
         expect(await rewardDeletionEligibility(admin, usedId)).toBe('recommendations');
@@ -350,7 +353,8 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         const before = await getRewardConfiguration(admin, id);
         const [u] = await owner.db.insert(s.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'FIN', name: 'Finance' }).returning();
         await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:u.id,departmentId:b.deptA,year});
-        const other = await createRewardUnit(admin, { name: 'Same cycle', cycleId: before.unit.cycleId, year, companyId: b.companyId, businessUnitId: u.id, snapshotDate: today });
+        const other=await historicalEmptyRewardUnit(admin,id,u.id);
+        expect((await getRewardConfiguration(admin,other)).unit.cycleId).toBe(before.unit.cycleId);
         await deleteRewardReview(admin, other, (await getRewardConfiguration(admin, other)).unit.revision, other);
         expect((await getRewardConfiguration(admin, id)).cycle?.name).toBe('Annual maintenance');
     });

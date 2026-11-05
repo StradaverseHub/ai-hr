@@ -2,7 +2,7 @@
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { jobErrorGuidance } from './error-guidance';
-import { requireAdmin } from '@/lib/authz';
+import { scopedSession } from '@/lib/scope';
 import { saveJobDraft, transitionJob, configureJobForm, attachJobDocument, removeJobAttachment, type JobInput, type FormDefinition } from '@/packs/job-descriptions/service';
 const BASE = '/admin/job-descriptions';
 export type SaveState = {
@@ -11,7 +11,7 @@ export type SaveState = {
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '');
 const failure=async(e:unknown)=>jobErrorGuidance(e,await getTranslations('jobDescriptions'));
 export async function saveDraftAction(_state: SaveState, fd: FormData): Promise<SaveState> {
-    const s = await requireAdmin();
+    const {s} = await scopedSession();
     let id: string;
     try {
         const raw = text(fd, 'payload');
@@ -27,16 +27,17 @@ export async function saveDraftAction(_state: SaveState, fd: FormData): Promise<
     }
     redirect(`${BASE}/${id}?saved=1`);
 }
-export async function transitionAction(fd: FormData) { const s = await requireAdmin(); const id = text(fd, 'jobId'); const action = text(fd, 'transition'); if (!['submit', 'review', 'return', 'approve', 'revise', 'inactivate', 'reactivate', 'delete', 'acknowledge'].includes(action))
+export async function transitionAction(fd: FormData) { const {s} = await scopedSession(); const id = text(fd, 'jobId'); const action = text(fd, 'transition'); if (!['submit', 'review', 'return', 'approve', 'revise', 'inactivate', 'reactivate', 'delete', 'acknowledge'].includes(action))
     return; let error = ''; try {
     if (action === 'delete' && text(fd, 'confirm') !== 'yes')
         throw new Error('Confirm draft deletion');
-    await transitionJob(s, { jobId: id, revisionId: text(fd, 'revisionId'), lockVersion: Number(text(fd, 'lockVersion')), action: action as Parameters<typeof transitionJob>[1]['action'], comments: text(fd, 'comments'), receiptOn:text(fd,'receiptOn') });
+    const result=await transitionJob(s, { jobId: id, revisionId: text(fd, 'revisionId'), lockVersion: Number(text(fd, 'lockVersion')), action: action as Parameters<typeof transitionJob>[1]['action'], comments: text(fd, 'comments'), receiptOn:text(fd,'receiptOn'),scopeGrade:text(fd,'scopeGrade') });
+    if(result?.outlier)error=(await getTranslations('jobArchitecture'))('scopeFlagged');
 }
 catch (e) {
     error = await failure(e);
 } redirect(error ? `${BASE}/${encodeURIComponent(id)}?error=${encodeURIComponent(error)}` : action === 'delete' ? BASE : `${BASE}/${id}?saved=1`); }
-export async function configureAction(_state: SaveState, fd: FormData): Promise<SaveState> { const s = await requireAdmin(); const companyId = text(fd, 'companyId'); try {
+export async function configureAction(_state: SaveState, fd: FormData): Promise<SaveState> { const {s} = await scopedSession(); const companyId = text(fd, 'companyId'); try {
     const raw = text(fd, 'definition');
     if (raw.length > 150000)
         throw new Error('Form is too large');
@@ -45,7 +46,7 @@ export async function configureAction(_state: SaveState, fd: FormData): Promise<
 catch (e) {
     return { error: await failure(e) };
 } redirect(`${BASE}/configuration?company=${companyId}&saved=1`); }
-export async function uploadAction(fd: FormData) { const s = await requireAdmin(); const id = text(fd, 'jobId'); let error = ''; try {
+export async function uploadAction(fd: FormData) { const {s} = await scopedSession(); const id = text(fd, 'jobId'); let error = ''; try {
     const file = fd.get('attachment');
     if (!(file instanceof File) || file.size > 2097152)
         throw new Error('Choose a file up to 2 MB');
@@ -54,7 +55,7 @@ export async function uploadAction(fd: FormData) { const s = await requireAdmin(
 catch (e) {
     error = await failure(e);
 } redirect(`${BASE}/${encodeURIComponent(id)}?${error ? `error=${encodeURIComponent(error)}` : 'saved=1'}`); }
-export async function removeAttachmentAction(fd: FormData) { const s = await requireAdmin(); const id = text(fd, 'jobId'); let error = ''; try {
+export async function removeAttachmentAction(fd: FormData) { const {s} = await scopedSession(); const id = text(fd, 'jobId'); let error = ''; try {
     await removeJobAttachment(s, { jobId: id, revisionId: text(fd, 'revisionId'), lockVersion: Number(text(fd, 'lockVersion')), attachmentId: text(fd, 'attachmentId') });
 }
 catch (e) {

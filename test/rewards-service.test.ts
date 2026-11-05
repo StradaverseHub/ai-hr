@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
@@ -29,10 +30,10 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const [grade] = await owner.db.insert(schema.jobGrade).values({ tenantId: b.tenantId, code: '12', name: 'Grade 12' }).returning();
     const hire = await hireEmployee(admin, { person: { fullName: 'Reward Employee', primaryEmail: 'employee@rewards.test' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
     employmentId = hire.employmentId;
-    await owner.db.update(schema.assignment).set({ businessUnitId: bu.id }).where(eq(schema.assignment.employmentId, employmentId));
+    await owner.withTenant(admin,tx=>tx.update(schema.assignment).set({ businessUnitId: bu.id }).where(eq(schema.assignment.employmentId, employmentId)));
     await owner.db.update(schema.employment).set({ gradeId: grade.id, confirmationDate: `${year - 2}-04-01` }).where(eq(schema.employment.id, employmentId));
     await setCompensation(admin, { employmentId, basicSalary: 5000, effectiveFrom: `${year - 2}-01-01` });
-    unitId = await createRewardUnit(admin, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
+    unitId = await createApprovedRewardUnit(admin, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
     for (const role of ['bu', 'bg', 'ctro', 'ec', 'pbp'] as const) {
       const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: `${role} reviewer`, primaryEmail: `${role}@rewards.test` }).returning();
       const userId = await createAppUser(b.tenantId, p.id, 'employee');
@@ -151,8 +152,8 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const [adminPerson] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: 'Configuration administrator', primaryEmail: 'admin@rewards.test' }).returning();
     const userId = await createAppUser(b.tenantId, adminPerson.id, 'hr_admin');
     const otherAdmin = { ...admin, userId, personId: adminPerson.id, roles: ['hr_admin'] as SessionContext['roles'], grants: undefined };
-    await expect(getRewardUnit(otherAdmin, unitId)).rejects.toThrow(/assign your/);
-    await expect(getRewardSeniorMembership(otherAdmin, unitId)).rejects.toThrow(/assign your/);
+    await expect(getRewardUnit(otherAdmin, unitId)).rejects.toThrow(/Rewards role does not permit/);
+    await expect(getRewardSeniorMembership(otherAdmin, unitId)).rejects.toThrow(/Rewards role does not permit/);
     const config = await getRewardConfiguration(otherAdmin, unitId);
     expect(config.canManageMembers).toBe(true);
     expect(config.canConfigure).toBe(false);
@@ -352,14 +353,6 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
   // WP-F (RW-131): Returned is derived from the latest decision, never a stored stage.
   describe('derived Returned state', () => {
     const submit = async (who: RewardRole = 'bu', id = unitId) => decideRewardUnit(actors[who]!, id, (await getRewardUnit(actors[who]!, id)).unit.revision, 'submit', 'Reviewed recommendations');
-    const giveEmployment = async (role: RewardRole, name: string) => {
-      const hire = await hireEmployee(admin, { person: { fullName: name, primaryEmail: `${role}.employment@rewards.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
-      const currentReview = await getRewardUnit(admin, unitId);
-      await owner.db.update(schema.assignment).set({ businessUnitId: currentReview.unit.businessUnitId }).where(eq(schema.assignment.employmentId, hire.employmentId));
-      await owner.db.update(schema.appUser).set({ personId: hire.personId }).where(eq(schema.appUser.id, actors[role]!.userId!));
-      actors[role] = { ...actors[role]!, personId: hire.personId };
-      return hire;
-    };
     it('shows a BG return to the BU CEO and the BG reviewer with reason, actor and date; resubmission clears it', async () => {
       const before = Date.now();
       expect(await submit()).toBe('bg');
@@ -427,7 +420,9 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     });
     it('notifies the BU CEO that the review was returned, without amount or reason', async () => {
       await setModule(b.tenantId, 'notifications', 'active');
-      const buEmployment = await giveEmployment('bu', 'BU Reviewer');
+      const [buEmployment]=await owner.db.select({employmentId:schema.employment.id}).from(schema.employment)
+        .where(and(eq(schema.employment.tenantId,b.tenantId),eq(schema.employment.personId,actors.bu!.personId!)));
+      expect(buEmployment?.employmentId).toBeTruthy();
       await submit();
       await decideRewardUnit(actors.bg!, unitId, (await view()).unit.revision, 'return', 'Merit for the sales team needs a rethink');
       const enabled = await entitledCtx(b);

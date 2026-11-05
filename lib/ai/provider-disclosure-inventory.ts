@@ -8,11 +8,13 @@ import {PROVIDER_DATA_CONTRACT} from './provider-data-policy';
 import {providerDataReviewStatus} from './provider-data-reviews';
 import {PROVIDER_WORKLOAD_CONTRACT_IDS,PROVIDER_WORKLOAD_AVAILABILITY,getProviderWorkloadDescriptor,type ProviderWorkloadContractId} from './provider-workload-policy';
 // AI v2 Phase 2 P2-5 adds authored_policy_text: an HR administrator's own policy wording (the Living Handbook), screened for identifiers.
-export const PROVIDER_OUTGOING_FIELDS=['closed_references','coarse_aggregate_bands','pseudonymous_person_bands','synthetic_only','authored_formula_request','authored_policy_text'] as const;
+export const PROVIDER_OUTGOING_FIELDS=['closed_references','coarse_aggregate_bands','pseudonymous_person_bands','synthetic_only','authored_formula_request','authored_policy_text','authored_job_architecture'] as const;
 export type ProviderOutgoingField=typeof PROVIDER_OUTGOING_FIELDS[number];
 /** Exhaustive reviewed classification of actual captures, NOT the raw native input or legacy prompt.
  * New descriptor IDs must receive an explicit disclosure classification; there is no default. */
 export const WORKLOAD_DISCLOSURE_FIELDS=Object.freeze({
+ job_architecture_advice_v1:'authored_job_architecture',
+ rewards_advisor_outline_v1:'closed_references',
  performance_native_outline_v1:'closed_references',
  performance_explicit_commands_v1:'closed_references',
  performance_starter_selection_v1:'closed_references',

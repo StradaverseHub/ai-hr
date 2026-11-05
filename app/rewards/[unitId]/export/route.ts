@@ -1,5 +1,5 @@
 import { getSession } from '@/lib/session';
-import { getRewardUnit } from '@/packs/rewards/service';
+import { exportRewardReview } from '@/packs/rewards/service';
 import {isSeniorPlanMember} from '@/packs/rewards/model';
 import { payWindowReasons } from '@/packs/rewards/engine';
 
@@ -10,9 +10,9 @@ function cell(value: unknown): string {
 }
 export async function GET(request: Request, { params }: { params: Promise<{ unitId: string }> }) {
   const s = await getSession(), { unitId } = await params;
-  const v = await getRewardUnit(s, unitId);
+  const v = await exportRewardReview(s, unitId).catch(() => null);
+  if (!v) return new Response('Group Rewards export is unavailable.', { status: 403 });
   const template = new URL(request.url).searchParams.get('template') === '1';
-  if (!v.roles.includes('gr')) return new Response('Group Rewards access required.', { status: 403 });
   // 8ad87ae8: everyone with a basic-salary change in the review's exclusion window, and Group Rewards' decision.
   if (new URL(request.url).searchParams.get('excluded') === '1') {
     const kept = v.unit.policy.payWindowKeep ?? {};

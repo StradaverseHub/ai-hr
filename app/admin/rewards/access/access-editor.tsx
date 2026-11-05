@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import {todayInKualaLumpur} from '@/lib/hr-date';
-import {RewardAccessRequests} from './requests';
+import {beginRewardViewAsAction} from './policy-actions';
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -18,9 +18,11 @@ type Member = RewardAccessAdministration['members'][number];
 type Preview = RewardAccessChange & {
     digest: string;pending?:boolean;
 };
-export function RewardAccessEditor({ value,requests=[],singleAdminCompanies=[] }: {
+export function RewardAccessEditor({ value,requests=[],singleAdminCompanies=[],initialCopy=false }: {
+    initialCopy?:boolean;
     value: RewardAccessAdministration;requests?:RewardAccessRequest[];singleAdminCompanies?:string[];
 }) {
+ const usePolicy=useTranslations('rewardAccessPolicy');
     const c=useTranslations('rewardsAccessControl');
     const t = useTranslations('rewardsAccess'), b = useTranslations('rewardsAccessBatch'), r = useTranslations('rewards'), router = useRouter();
     const [query, setQuery] = useState(''), [company, setCompany] = useState(''), [cycle, setCycle] = useState(''), [unitFilter, setUnitFilter] = useState(''), [gaps, setGaps] = useState(false);
@@ -32,7 +34,7 @@ export function RewardAccessEditor({ value,requests=[],singleAdminCompanies=[] }
     const [validFrom,setValidFrom]=useState(todayInKualaLumpur()),[validTo,setValidTo]=useState(''),[coversUserId,setCoversUserId]=useState(''),[restoreReason,setRestoreReason]=useState(''),[restoring,setRestoring]=useState(false);
     const [unitId, setUnitId] = useState(''), [userId, setUserId] = useState(''), [role, setRole] = useState<RewardRole>('bu');
     const [preview, setPreview] = useState<Preview | null>(null), [error, setError] = useState(''), [saved, setSaved] = useState(false), [busy, start] = useTransition();
-    const editorRef = useRef<HTMLDivElement>(null), userRef = useRef<HTMLDivElement>(null), [pickerKey, setPickerKey] = useState(0), [mode, setMode] = useState<'add' | 'copy' | null>(null);
+    const editorRef = useRef<HTMLDivElement>(null), userRef = useRef<HTMLDivElement>(null), [pickerKey, setPickerKey] = useState(0), [mode, setMode] = useState<'add' | 'copy' | null>(initialCopy?'copy':null);
     const clear = () => { setPreview(null); setError(''); setSaved(false); };
     const open = (before: Member | null, remove = false) => { clear(); setMode(null); setEditor({ before, remove }); setUnitId(before?.unitId ?? value.reviews.find(x => x.status === 'draft')?.id ?? ''); setUserId(before?.userId ?? ''); setRole(before?.role ?? 'bu');setValidFrom(before?.validFrom??todayInKualaLumpur());setValidTo(before?.validTo??'');setCoversUserId(before?.coversUserId??'');setRestoreReason('');setRestoring(false);setReason(''); setPickerKey(k => k + 1); requestAnimationFrame(() => { editorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' }); userRef.current?.querySelector<HTMLElement>('button, input')?.focus(); }); };
     const review = value.reviews.find(x => x.id === unitId);
@@ -53,9 +55,9 @@ export function RewardAccessEditor({ value,requests=[],singleAdminCompanies=[] }
     const unchanged = !!editor?.before && !editor.remove && editor.before.userId === userId && editor.before.role === role && (editor.before.validFrom??todayInKualaLumpur())===validFrom && (editor.before.validTo??'')===validTo && (editor.before.coversUserId??'')===coversUserId&&!restoring;
     return <div className="space-y-6">
   {singleAdminCompanies.length>0&&<p role="status" className="rounded-md border border-warning/40 p-3 text-sm">{c('singleAdmin',{companies:singleAdminCompanies.join(', ')})}</p>}
-  <RewardAccessRequests requests={requests} value={value}/>
-  <Link href="/admin/rewards/access/export" className="inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">{c('export')}</Link>
-  <Link href="/admin/rewards/access/audit" className="inline-flex rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">{c('exportAudit')}</Link>
+
+
+
   <p className="text-sm text-muted-foreground">{c('proposalScope')}</p>
   <div className="flex flex-wrap items-end justify-between gap-3"><div className="flex flex-wrap items-end gap-3">
    <Field label={t('search')}><input type="search" value={query} onChange={e => setQuery(e.target.value)} className={inputCls}/></Field>
@@ -72,7 +74,7 @@ export function RewardAccessEditor({ value,requests=[],singleAdminCompanies=[] }
             const required = !!v.coverage?.roles.find(x => x.role === m.role)?.required;
             const lastRequired = required && (m.role === 'gr' || !m.disabled) && !value.members.some(x => x.unitId === m.unitId && x.role === m.role && x.id !== m.id && !x.disabled);
             const lastGr = lastRequired && m.role === 'gr';
-            return <tr key={m.id}><td className="px-3 py-3"><span className="font-medium">{m.name ?? m.email ?? t('unavailable', { id: m.userId })}</span>{m.email && m.name && <span className="block text-xs text-muted-foreground">{m.email}</span>}<span className="block text-xs text-muted-foreground">{m.suspension?c(`suspensions.${m.suspension.reason}`,{on:m.suspension.on}):t(m.disabled?'disabled':'active')}</span><span className="block text-xs text-muted-foreground">{m.validFrom} – {m.validTo??c('openEnded')}{m.coversUserId&&` · ${c('proxyFor',{name:name(m.coversUserId)})}`}</span></td><td className="px-3 py-3">{r(`roles.${m.role}`)}{m.role === 'pbp' && <span className="block text-xs text-muted-foreground">{t('readOnly')}</span>}</td><td className="px-3 py-3"><span>{v.company} / {v.unit}</span><span className="block text-xs text-muted-foreground">{v.cycle}</span></td><td className="px-3 py-3">{r(`stages.${v.status}`)}<span className="block text-xs text-muted-foreground">{t(locked ? 'locked' : 'editable')}</span></td><td className="px-3 py-3"><div className="flex flex-wrap gap-1"><Button type="button" variant="ghost" size="sm" disabled={busy || locked} onClick={() => open(m)} aria-label={`${t('edit')} · ${name(m.userId)} · ${r(`roles.${m.role}`)}`}><Pencil aria-hidden className="size-4"/>{t('edit')}</Button><Button type="button" variant="ghost" size="sm" disabled={busy || locked || lastRequired} onClick={() => open(m, true)} aria-label={`${t('remove')} · ${name(m.userId)} · ${r(`roles.${m.role}`)}`}><Trash2 aria-hidden className="size-4"/>{t('remove')}</Button></div>{locked && <p className="max-w-xs text-xs text-muted-foreground">{t('lockedHelp')}</p>}{lastRequired && !locked && <p className="max-w-xs text-xs text-muted-foreground">{t(lastGr ? 'lastGrHelp' : 'lastRequiredHelp')}</p>}</td></tr>;
+            return <tr key={m.id}><td className="px-3 py-3"><span className="font-medium">{m.name ?? m.email ?? t('unavailable', { id: m.userId })}</span>{m.email && m.name && <span className="block text-xs text-muted-foreground">{m.email}</span>}<span className="block text-xs text-muted-foreground">{m.suspension?c(`suspensions.${m.suspension.reason}`,{on:m.suspension.on}):t(m.disabled?'disabled':'active')}</span><span className="block text-xs text-muted-foreground">{m.validFrom} – {m.validTo??c('openEnded')}{m.coversUserId&&` · ${c('proxyFor',{name:name(m.coversUserId)})}`}</span></td><td className="px-3 py-3">{r(`roles.${m.role}`)}{m.role === 'pbp' && <span className="block text-xs text-muted-foreground">{t('readOnly')}</span>}</td><td className="px-3 py-3"><span>{v.company} / {v.unit}</span><span className="block text-xs text-muted-foreground">{v.cycle}</span></td><td className="px-3 py-3">{r(`stages.${v.status}`)}<span className="block text-xs text-muted-foreground">{t(locked ? 'locked' : 'editable')}</span></td><td className="px-3 py-3"><div className="flex flex-wrap gap-1"><Button type="button" variant="ghost" size="sm" disabled={busy || locked} onClick={() => open(m)} aria-label={`${t('edit')} · ${name(m.userId)} · ${r(`roles.${m.role}`)}`}><Pencil aria-hidden className="size-4"/>{t('edit')}</Button><form action={beginRewardViewAsAction}><input type="hidden" name="userId" value={m.userId}/><Button type="submit" variant="ghost" size="sm">{(usePolicy('viewAs'))}</Button></form><Button type="button" variant="ghost" size="sm" disabled={busy || locked || lastRequired} onClick={() => open(m, true)} aria-label={`${t('remove')} · ${name(m.userId)} · ${r(`roles.${m.role}`)}`}><Trash2 aria-hidden className="size-4"/>{t('remove')}</Button></div>{locked && <p className="max-w-xs text-xs text-muted-foreground">{t('lockedHelp')}</p>}{lastRequired && !locked && <p className="max-w-xs text-xs text-muted-foreground">{t(lastGr ? 'lastGrHelp' : 'lastRequiredHelp')}</p>}</td></tr>;
         })}</tbody></table>{!rows.length && <p className="px-5 py-10 text-sm text-muted-foreground">{t(value.reviews.length ? 'empty' : 'noScopes')}</p>}</div>
   <RewardCoveragePanel reviews={value.reviews.filter(inScope)}/>
   {saved && <p role="status" className="rounded-md border p-3 text-sm">{c(savedPending?'pendingSaved':'immediateSaved')}</p>}

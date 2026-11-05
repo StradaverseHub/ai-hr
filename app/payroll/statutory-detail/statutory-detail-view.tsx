@@ -47,7 +47,8 @@
  *      itself — item 70b14723 extends that one function and this screen follows it.
  */
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { epfWorkingRows } from './epf-working';
 import { Card } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
 // `isSetByHand` is the derivation's OWN predicate over `provenance` — imported rather than re-spelled as
@@ -106,6 +107,7 @@ const RULE_LABEL: Record<StatutoryItemExplanation['ruleKind'], string> = {
   mtd: 'ruleMtd',
   // NOT a rule at all, and the label says so rather than naming an instrument: nothing looked this up.
   manual: 'ruleManual',
+  epf_working: 'epfWorkingTitle',
 };
 /**
  * The rule NAMES the schedule, because there are two of them and they are different instruments: EPF is
@@ -223,6 +225,7 @@ export async function StatutoryDetailView({
   explanation: StatutoryExplanation;
 }) {
   const t = await getTranslations('payroll.statutoryDetail');
+  const locale = await getLocale();
   const cur = ctx.currency;
   const rm = (v: number) => formatMoney(v, cur);
   /** The "not recorded" chip, as a single reusable ELEMENT rather than a component declared inside the
@@ -397,7 +400,13 @@ export async function StatutoryDetailView({
               and the header's refusals #2 and #4. */}
           <div className="mt-3 space-y-2 rounded-lg border border-border bg-muted/30 p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">{t('workingLabel')}</p>
-            {i.workingNotRecorded ? (
+            {i.key === 'epf' && explanation.epfWorking ? (
+              <div aria-label={t('epfWorkingTitle')}>
+                {epfWorkingRows(explanation.epfWorking, t, rm, locale).map(({ label, value }, index) => (
+                  <Row key={index} label={label} value={value} />
+                ))}
+              </div>
+            ) : i.workingNotRecorded ? (
               <p className="text-sm text-muted-foreground">{t('workingNotRecorded')}</p>
             ) : i.ruleKind === 'mtd' ? (
               <>

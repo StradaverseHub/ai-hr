@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { inputCls } from '@/components/ui';
 import { ENTER_OWNER_ATTR } from '@/lib/tab-save-dom';
+import { useFitToView } from '@/components/ui/fit-to-view';
 
 /**
  * Combobox (59047802) — a reusable, searchable, keyboard-navigable single-select. Built for the Personnel
@@ -64,6 +65,7 @@ export function Combobox({
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const optionRefs = useRef<(HTMLLIElement | null)[]>([]);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const initial = value ?? '';
   const [selected, setSelected] = useState(initial);
@@ -90,6 +92,8 @@ export function Combobox({
     // Always keep the clear/placeholder row reachable; filter the rest by case-insensitive substring.
     return allRows.filter((r) => r.value === '' || r.label.toLowerCase().includes(q) || r.value.toLowerCase().includes(q) || !!r.description?.toLowerCase().includes(q) || !!r.keywords?.toLowerCase().includes(q));
   }, [allRows, query]);
+  // Opened near the bottom of the window or inside a dialog, the list opens upwards or shrinks to fit.
+  useFitToView(open, panelRef, filtered.length);
 
   const selectedLabel = allRows.find((r) => r.value === selected)?.label ?? placeholder;
 
@@ -173,8 +177,8 @@ export function Combobox({
         </svg>
       </button>
       {open && (
-        <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-card shadow-lg">
-          <div className="p-1.5">
+        <div ref={panelRef} className="absolute z-20 mt-1 flex w-full flex-col rounded-md border border-border bg-card shadow-lg">
+          <div className="shrink-0 p-1.5">
             <input
               ref={searchRef}
               type="text"
@@ -190,7 +194,7 @@ export function Combobox({
               aria-autocomplete="list"
             />
           </div>
-          <ul id={listId} role="listbox" className="max-h-60 overflow-y-auto p-1 text-sm">
+          <ul id={listId} role="listbox" className="max-h-60 min-h-0 overflow-y-auto p-1 text-sm">
             {filtered.length === 0 ? (
               <li className="px-2 py-2 text-muted-foreground">{noResultsLabel}</li>
             ) : (

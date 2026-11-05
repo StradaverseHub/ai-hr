@@ -174,17 +174,16 @@ describe('bdf7d248 — the paths the combined rule deliberately does NOT reach',
 describe('bdf7d248 — i-Topup can still only RAISE a side', () => {
   it('an election below the statutory floor changes nothing, on the combined base', () => {
     expect(epf(5001, 1001, CFG.epf)).toEqual({ employee: 671, employer: 732 });
-    expect(epf(5001, 1001, CFG.epf, { mode: 'voluntary_excess', employeeRate: 0.05 })).toEqual({
+    expect(epf(5001, 1001, CFG.epf, { mode: 'voluntary_excess', employeeRate: 0.05, employerRate: 0.12 })).toEqual({
       employee: 671,
       employer: 732,
     });
   });
 
   it('an election above the floor is measured on the combined base too', () => {
-    // 15% of the month (6,002) is RM901. The pre-r210 reading charged 15% of the wage and 15% of the
-    // bonus separately and rounded each up, which came to RM902.
+    // Semi-Auto applies 15% to the rounded combined wage of RM6,100.
     expect(epf(5001, 1001, CFG.epf, { mode: 'voluntary_excess', employeeRate: 0.15 })).toEqual({
-      employee: 901,
+      employee: 915,
       employer: 732,
     });
   });
@@ -198,7 +197,7 @@ describe('bdf7d248 — i-Topup can still only RAISE a side', () => {
       for (const b of [0, 0.01, 500, 5000]) {
         const floor = epf(w, b, CFG.epf);
         for (const rate of [0, 0.05, 0.11, 0.13, 0.2]) {
-          const ee = epf(w, b, CFG.epf, { mode: 'voluntary_excess', employeeRate: rate });
+          const ee = epf(w, b, CFG.epf, { mode: 'voluntary_excess', employeeRate: rate, employerRate: 0 });
           const er = epf(w, b, CFG.epf, { mode: 'voluntary_excess', employerRate: rate });
           expect(ee.employee).toBeGreaterThanOrEqual(floor.employee);
           expect(ee.employer).toBe(floor.employer); // the other side stays statutory (semi-auto)

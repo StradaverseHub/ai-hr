@@ -480,6 +480,8 @@ export interface CountryPack {
     get: MyCompanyStatutoryModule['getCompanyStatutoryMY'];
     /** Every company's statutory registration row (the group Organization admin panel). */
     list: MyCompanyStatutoryModule['listCompanyStatutoryMY'];
+    /** Country-owned completeness and actual zero-levy registration predicate. */
+    readiness?: (row: Awaited<ReturnType<MyCompanyStatutoryModule['getCompanyStatutoryMY']>> | null | undefined) => { missing: readonly string[]; levyUnavailable: boolean };
   };
 
   /** Statutory leave vocabulary + entitlement hooks the leave engine dispatches through. */

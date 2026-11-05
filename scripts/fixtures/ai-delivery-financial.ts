@@ -15,9 +15,10 @@ import {createClaimType,saveClaimDraft,submitClaim} from '../../packs/claims/ser
 import * as performance from '../../packs/performance/service';
 import {defaultPolicy} from '../../packs/performance/onehr/model';
 import framework from '../../packs/performance/onehr/framework.json';
-import {createRewardUnit,getRewardUnit,saveRewardPolicy,saveRewardEntry,previewRewardAccessChange,saveRewardAccessChange,decideRewardUnit,getRewardUnitGovernance,previewRewardSeniorMembership,saveRewardSeniorMembership,confirmRewardGovernance,saveRewardUnitInputs} from '../../packs/rewards/service';
+import {getRewardUnit,saveRewardEntry,previewRewardAccessChange,saveRewardAccessChange,decideRewardUnit,getRewardUnitGovernance,previewRewardSeniorMembership,saveRewardSeniorMembership,confirmRewardGovernance,refreshRewardPatBasis} from '../../packs/rewards/service';
 import {REWARD_POLICY_GRADES} from '../../packs/rewards/policy-grid-validation';
-import {emptyFacts,type RewardRole} from '../../packs/rewards/model';
+import {approvedRewardFixtures} from './reward-approved';
+import {defaultPolicy as defaultRewardPolicy,emptyFacts,type RewardRole} from '../../packs/rewards/model';
 const refuse=():never=>{throw Error('Fictional financial fixture prerequisites could not be confirmed. Preserve partial setup; do not retry automatically.');};
 export type AiDeliveryFinancialFixture={
  releasedBatchId:string;closeBatchId:string;rewardBatchId:string;bonusCycleId:string;additionalRunPeriod:string;
@@ -33,8 +34,7 @@ export async function populateAiDeliveryFinancial(c:AiDeliveryFixtureContext):Pr
  const grade=await createJobGrade(admin,{code:'JG12',name:'Fictional browser grade 12'}),unit=await createBusinessUnit(admin,{companyId:c.companyId,code:'AI_BROWSER_FIN',name:'Fictional browser financial unit'});
  for(const[index,actor]of actors.entries()){
   await setEmploymentGrade(admin,{employmentId:actor.employmentId,gradeId:grade.id});
-  // BU authority follows an actual current assignment. Native own-person masking still hides the
-  // operator's own reward; all other decision-makers stay outside this selected cohort.
+  // BU authority follows an actual current assignment. The annual review takes the checked company cohort.
   if([c.actors.self.employmentId,c.actors.operator.employmentId].includes(actor.employmentId))await setEmploymentAssignment(admin,{employmentId:actor.employmentId,effectiveDate:c.today,departmentId:c.departmentId,businessUnitId:unit.id});
   await setCompensation(admin,{employmentId:actor.employmentId,basicSalary:3000+index*100,monthlyAllowance:0,effectiveFrom});
   await requirePackFor('MY').statutory.set(admin,{personId:actor.personId,icNumber:`91070703${String(index+1).padStart(4,'0')}`,epfNumber:`FIC-EPF-${index+1}`,socsoNumber:`FIC-SOCSO-${index+1}`});
@@ -69,7 +69,10 @@ export async function populateAiDeliveryFinancial(c:AiDeliveryFixtureContext):Pr
   [plan]=await c.owner.db.select().from(s.onehrPlan).where(eq(s.onehrPlan.id,plan.id));if(plan?.status!=='closed'||plan.acknowledgedAt!==null)return refuse();
   performanceRows.push({userId:actor.userId,standardReviewId:old.id,onehrReviewId:review.id,onehrPlanId:plan.id});
  }
- const rewardId=await createRewardUnit(admin,{name:'Fictional approved browser reward',year,companyId:c.companyId,businessUnitId:unit.id,snapshotDate:c.today});
+ const ranges=Object.fromEntries(REWARD_POLICY_GRADES.filter(grade=>grade!=='23').map(grade=>[grade,[100000,500000,1000000] as [number,number,number]]));
+ ranges['12']=[300000,500000,700000];
+ const base=defaultRewardPolicy(year);
+ const rewardId=await approvedRewardFixtures(c.owner).createApprovedRewardUnit(admin,{name:'Fictional approved browser reward',year,companyId:c.companyId,businessUnitId:unit.id,snapshotDate:c.today},{...base,effectiveFrom:c.today,ranges,bonusMatrix:{...base.bonusMatrix,'23':[0,5000,40000,50000,60000]},patActual:100,patTarget:100,targetMonthsBp:20000});
  const memberships:readonly[RewardRole,typeof c.actors.operator][]=[['bu',c.actors.operator],['bg',c.actors.reviewers[0]],['ctro',c.actors.reviewers[1]],['ec',c.actors.peer],['payroll',c.actors.operator]];
  // Use the actual HR Administrator exemption for fixture-only prerequisite setup.
  // The independent Group Rewards actor still confirms the subsequent governance step.
@@ -92,13 +95,10 @@ export async function populateAiDeliveryFinancial(c:AiDeliveryFixtureContext):Pr
  }
  const operatorReview=await getRewardUnit(c.actors.operator.ctx,rewardId);
  if(operatorReview.rows.some(row=>row.source.personId===c.actors.operator.personId))return refuse();
- let reward=await getRewardUnit(admin,rewardId);
- const ranges=Object.fromEntries(REWARD_POLICY_GRADES.filter(grade=>grade!=='23').map(grade=>[grade,[100000,500000,1000000] as [number,number,number]]));
- ranges['12']=[300000,500000,700000];
- await saveRewardPolicy(admin,rewardId,reward.unit.revision,{...reward.unit.policy,effectiveFrom:c.today,ranges,bonusMatrix:{...reward.unit.policy.bonusMatrix,'23':[0,5000,40000,50000,60000]}});
- reward=await getRewardUnit(admin,rewardId);if(!reward.rows.length)return refuse();
+ let reward=await getRewardUnit(admin,rewardId);if(!reward.rows.length)return refuse();
  for(const row of reward.rows)await saveRewardEntry(admin,rewardId,(await getRewardUnit(admin,rewardId)).unit.revision,row.id,row.recommendation,{...emptyFacts(),reviewed:true,talent:'SCORE',performance:'ME'});
- await saveRewardUnitInputs(admin,rewardId,(await getRewardUnit(admin,rewardId)).unit.revision,{forecastCents:null,actualCents:100,targetCents:100,targetMonthsBp:20000,multiplierBp:null,branchRatings:{}},'Fictional human approved unit budget inputs');
+ const preparedPool=await getRewardUnitGovernance(admin,rewardId);
+ if(preparedPool.patBasisStale)await refreshRewardPatBasis(admin,rewardId,preparedPool.revision,'Fictional employee inputs reviewed before route submission');
  reward=await getRewardUnit(admin,rewardId);const revision=reward.unit.revision;await decideRewardUnit(c.actors.operator.ctx,rewardId,revision,'submit','Fictional human fixture recommendations');
  const actorFor:Partial<Record<RewardRole,typeof c.actors.operator>>={bg:c.actors.reviewers[0],gr:{...c.actors.operator,ctx:admin},ctro:c.actors.reviewers[1],ec:c.actors.peer};
  for(const role of reward.route.slice(1)){const actor=actorFor[role];if(!actor)return refuse();await decideRewardUnit(actor.ctx,rewardId,revision,'approve','Fictional human fixture review');}
