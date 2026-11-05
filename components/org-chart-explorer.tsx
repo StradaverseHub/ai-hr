@@ -7,8 +7,8 @@ import {Button,inputCls} from '@/components/ui';
 import {decodeOrgWindow,type OrgWindow,type OrgWindowNode,type OrgWindowRequest} from '@/lib/org-chart-window';
 
 type Crumb={id:string;name:string};
-type Navigation={request:OrgWindowRequest;offset:number;crumbs:Crumb[]};
-const root:Navigation={request:{view:'roots'},offset:0,crumbs:[]};
+type Navigation={request:OrgWindowRequest;crumbs:Crumb[]};
+const root:Navigation={request:{view:'roots'},crumbs:[]};
 const relationKey={administrative:'direct',functional:'functional',project:'project',dotted:'dotted'} as const;
 
 /** Fifty rows at a time, with fresh server authorization on every navigation. No full-tree DOM,
@@ -44,12 +44,12 @@ export function OrgChartExplorer({initial}:{initial:OrgWindow}){
   }finally{if(current===sequence.current)setBusy(false);}
  }
  function focus(person:OrgWindowNode){
-  void load({request:{view:'children',focusId:person.employmentId},offset:0,crumbs:[...nav.crumbs,{id:person.employmentId,name:person.name}]});
+  void load({request:{view:'children',focusId:person.employmentId},crumbs:[...nav.crumbs,{id:person.employmentId,name:person.name}]});
  }
- function search(event:FormEvent){event.preventDefault();void load({request:{view:'search',q:query.trim()},offset:0,crumbs:[]});}
+ function search(event:FormEvent){event.preventDefault();void load({request:{view:'search',q:query.trim()},crumbs:[]});}
  const viewTitle=nav.request.view==='roots'?t('explorer.topLevel'):nav.request.view==='search'?t('explorer.searchResults'):
   nav.request.view==='children'?t('explorer.reports'):nav.request.view==='parents'?t('explorer.managers'):t('explorer.connections');
- return <section data-org-explorer className="space-y-5">
+ return <section data-org-explorer data-org-total-people={data?.totalPeople} data-org-view={data?.view} className="space-y-5">
   <p className="text-sm text-muted-foreground">{t('explorer.hint')}</p>
   <div className="flex flex-wrap items-end gap-3">
    <form onSubmit={search} className="flex min-w-0 flex-1 flex-wrap items-end gap-2">
@@ -59,17 +59,17 @@ export function OrgChartExplorer({initial}:{initial:OrgWindow}){
     <Button type="submit" className="min-h-11">{t('explorer.search')}</Button>
    </form>
    <Button variant="outline" className="min-h-11" disabled={busy||error==='access'} onClick={()=>void load(root)}>{t('explorer.topLevel')}</Button>
-   <Button variant="outline" className="min-h-11" disabled={busy||error==='access'} onClick={()=>{setQuery('');void load({request:{view:'search',q:''},offset:0,crumbs:[]});}}>{t('explorer.allPeople')}</Button>
+   <Button variant="outline" className="min-h-11" disabled={busy||error==='access'} onClick={()=>{setQuery('');void load({request:{view:'search',q:''},crumbs:[]});}}>{t('explorer.allPeople')}</Button>
   </div>
   {nav.crumbs.length>0&&<nav aria-label={t('explorer.history')} className="flex flex-wrap items-center gap-2 text-sm">
    <span className="text-muted-foreground">{t('explorer.history')}:</span>
    {nav.crumbs.length>8&&<span aria-hidden="true">…</span>}
-   {nav.crumbs.slice(-8).map((crumb,index)=><Button key={`${crumb.id}-${index}`} variant="link" disabled={busy||error==='access'} onClick={()=>void load({request:{view:'children',focusId:crumb.id},offset:0,crumbs:nav.crumbs.slice(0,nav.crumbs.length-Math.min(8,nav.crumbs.length)+index+1)})}>{crumb.name}</Button>)}
+   {nav.crumbs.slice(-8).map((crumb,index)=><Button key={`${crumb.id}-${index}`} variant="link" disabled={busy||error==='access'} onClick={()=>void load({request:{view:'children',focusId:crumb.id},crumbs:nav.crumbs.slice(0,nav.crumbs.length-Math.min(8,nav.crumbs.length)+index+1)})}>{crumb.name}</Button>)}
   </nav>}
-  <div aria-live="polite" role="status" className="text-sm text-muted-foreground">{busy?t('explorer.loading'):data?t('explorer.loaded',{start:data.items.length?nav.offset+1:0,end:nav.offset+data.items.length,total:data.totalItems,people:data.totalPeople}):null}</div>
+  <div aria-live="polite" role="status" className="text-sm text-muted-foreground">{busy?t('explorer.loading'):data?t('explorer.loaded',{loaded:data.items.length,total:data.totalItems,people:data.totalPeople}):null}</div>
   {error&&<div role="alert" className="space-y-2 rounded-md border p-4">
    <p>{t(error==='access'?'explorer.accessChanged':error==='refresh'?'explorer.changed':'explorer.failed')}</p>
-   {error==='access'?<Button onClick={()=>window.location.reload()}>{t('explorer.refresh')}</Button>:<Button disabled={busy} onClick={()=>void load(error==='refresh'?{...pending.current,request:{...pending.current.request,after:undefined},offset:0}:pending.current)}>{t('explorer.retry')}</Button>}
+   {error==='access'?<Button onClick={()=>window.location.reload()}>{t('explorer.refresh')}</Button>:<Button disabled={busy} onClick={()=>void load(error==='refresh'?{...pending.current,request:{...pending.current.request,after:undefined}}:pending.current)}>{t('explorer.retry')}</Button>}
   </div>}
   <div aria-busy={busy} className="space-y-4">
    {data?.focus&&<div className="rounded-md border bg-muted/30 p-4">
@@ -78,7 +78,7 @@ export function OrgChartExplorer({initial}:{initial:OrgWindow}){
     {data.focus.assignmentCount>1&&<p className="text-sm">{t('explorer.multipleAssignments')}</p>}
     <Link className="inline-flex min-h-11 items-center text-sm underline" href={`/personnel/${data.focus.employmentId}?from=org`}>{t('explorer.profile')}</Link>
     <div className="flex flex-wrap gap-2" aria-label={t('explorer.relationships')}>
-     {(['children','parents','connections'] as const).map(view=><Button key={view} variant={nav.request.view===view?'secondary':'outline'} aria-pressed={nav.request.view===view} disabled={busy} onClick={()=>void load({...nav,request:{view,focusId:data.focus!.employmentId},offset:0})}>{t(`explorer.${view==='children'?'reports':view==='parents'?'managers':'connections'}`)}</Button>)}
+     {(['children','parents','connections'] as const).map(view=><Button key={view} variant={nav.request.view===view?'secondary':'outline'} aria-pressed={nav.request.view===view} disabled={busy} onClick={()=>void load({...nav,request:{view,focusId:data.focus!.employmentId}})}>{t(`explorer.${view==='children'?'reports':view==='parents'?'managers':'connections'}`)}</Button>)}
     </div>
    </div>}
    <h2 ref={heading} tabIndex={-1} className="font-semibold focus:outline-none">{viewTitle}</h2>
@@ -94,7 +94,7 @@ export function OrgChartExplorer({initial}:{initial:OrgWindow}){
     </ul>}
     <div className="flex justify-between gap-3">
      <Button variant="outline" className="min-h-11" disabled={busy||history.length===0} onClick={()=>void load(history[history.length-1],true)}>{t('explorer.back')}</Button>
-     <Button variant="outline" className="min-h-11" disabled={busy||!data.nextCursor} onClick={()=>void load({...nav,request:{...nav.request,after:data.nextCursor!},offset:nav.offset+data.items.length})}>{t('explorer.next')}</Button>
+     <Button variant="outline" className="min-h-11" disabled={busy||!data.nextCursor} onClick={()=>void load({...nav,request:{...nav.request,after:data.nextCursor!}})}>{t('explorer.next')}</Button>
     </div>
    </>}
   </div>

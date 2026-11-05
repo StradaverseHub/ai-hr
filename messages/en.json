@@ -4694,7 +4694,7 @@
       "connections": "All connections",
       "history": "Visited people",
       "loading": "Loading organization…",
-      "loaded": "Showing {start}–{end} of {total} results · {people} people in your selected companies",
+      "loaded": "Loaded {loaded} on this page · {total} matching results · {people} people in your selected companies",
       "accessChanged": "Your access changed. Reload to continue.",
       "changed": "The organization changed. Refresh this section to continue.",
       "failed": "This section could not load. Please try again.",
