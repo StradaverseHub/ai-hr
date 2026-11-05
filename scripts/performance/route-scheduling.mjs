@@ -17,3 +17,26 @@ export function navigationRoutesForIteration(pool,{role,ordinal,actors,iteration
  if(!Number.isSafeInteger(offset))throw new RangeError('Invalid route lane');
  return Array.from({length:count},(_,step)=>pool[(offset+step)%pool.length]);
 }
+
+/** Cover the routes that only Group HR can reach in the first cycle of this fixture.
+ * Slow runs can finish just one cycle, so distribute the remaining routes before any
+ * repeated Group HR navigation. Later cycles keep their normal rotation. */
+export function firstGroupNavigationRoutes(pools,roleCounts){
+ const covered=new Set();
+ for(const role of ['employee','manager','companyHR']){
+  const actors=roleCounts.get(role)??0;
+  for(let ordinal=0;ordinal<actors;ordinal++)
+   for(const route of navigationRoutesForIteration(pools[role],{role,ordinal,actors,iteration:0}))covered.add(route);
+ }
+ const actors=roleCounts.get('groupHR')??0;
+ const remaining=pools.groupHR.filter(route=>!covered.has(route));
+ return Array.from({length:actors},(_,ordinal)=>{
+  const required=remaining.slice(Math.floor(ordinal*remaining.length/actors),Math.floor((ordinal+1)*remaining.length/actors));
+  const routes=new Set(required);
+  for(const route of navigationRoutesForIteration(pools.groupHR,{role:'groupHR',ordinal,actors,iteration:0})){
+   if(routes.size>=6)break;
+   routes.add(route);
+  }
+  return [...routes];
+ });
+}
