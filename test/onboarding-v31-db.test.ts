@@ -183,7 +183,7 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(metadata.find(task => task.id === beforeTech.find(task => task.taskId === 'welcome')?.id)).toMatchObject({ kind: 'onboarding', dueDate: beforeTech.find(task => task.taskId === 'welcome')?.due });
         expect(metadata.find(task => task.id === beforeTech.find(task => task.kind === 'mention')?.id)).not.toHaveProperty('dueDate');
         const [caseRead] = reads.filter(text => text.includes('from "lc_onboarding_case"'));
-        const [noteRead] = reads.filter(text => text.includes('from "lc_onboarding_note"'));
+        const [noteRead] = reads.filter(text => text.startsWith('select "case_id", "data" from "lc_onboarding_note"'));
         expect(caseRead).toContain('select "revision", "data"');
         expect(noteRead).toContain('select "case_id", "data"');
         expect(caseRead).toContain('jsonb_array_elements(');
