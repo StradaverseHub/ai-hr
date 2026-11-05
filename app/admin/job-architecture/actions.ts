@@ -12,7 +12,7 @@ export async function architectureAction(_state:ArchitectureActionState,fd:FormD
  else if(operation==='decision')await decideArchitectureProposal(s,{id:field(fd,'id'),approve:field(fd,'decision')==='approve'});
  else if(operation==='scan')await scanArchitecture(s);
  else if(operation==='resolve')await proposeOutlierResolution(s,{id:field(fd,'id'),revision:Number(field(fd,'revision')),reason:field(fd,'reason')});
- else if(operation==='outlier')await updateArchitectureOutlier(s,{id:field(fd,'id'),revision:Number(field(fd,'revision')),ownerId:field(fd,'ownerId')||null,dueOn:field(fd,'dueOn')||null,state:field(fd,'state'),description:field(fd,'description'),proposedFix:field(fd,'proposedFix')});
+ else if(operation==='outlier')await updateArchitectureOutlier(s,{id:field(fd,'id'),revision:Number(field(fd,'revision')),ownerId:field(fd,'ownerId')||null,dueOn:field(fd,'dueOn')||null,state:field(fd,'state'),businessUnitId:field(fd,'businessUnitId')||null,description:field(fd,'description'),proposedFix:field(fd,'proposedFix')});
  else if(operation==='advice')await generateArchitectureAdvice(s,{kind:field(fd,'kind'),companyId:field(fd,'companyId'),subjectId:field(fd,'subjectId')});
  else if(operation==='adviceDecision')await decideArchitectureAdvice(s,{id:field(fd,'id'),decision:field(fd,'decision'),...(p.edited?{edited:p.edited}:{})});
  else if(operation==='seat')await assignArchitectureSeat(s,{userId:field(fd,'userId'),companyId:field(fd,'companyId')||null,role:field(fd,'role'),validFrom:field(fd,'validFrom'),validTo:field(fd,'validTo')||null});

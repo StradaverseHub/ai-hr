@@ -35654,7 +35654,8 @@
     "roles": {
       "group_rewards": "Đãi ngộ Tập đoàn",
       "org_design": "Thiết kế tổ chức",
-      "pbp": "PBP"
+      "pbp": "PBP",
+      "hod": "Trưởng bộ phận"
     },
     "proposalKinds": {
       "catalogue": "Đề xuất Thang bậc / Danh mục công việc",
@@ -35679,7 +35680,15 @@
       "changed": "Hồ sơ đã thay đổi hoặc bản xem trước đã hết hạn. Mở lại và xem trước lần nữa.",
       "independent": "Một người có thẩm quyền khác phải xác nhận thay đổi này.",
       "missing": "Không có hồ sơ đã chọn hoặc cấu hình đã duyệt."
-    }
+    },
+    "positionPreviewLoading": "Đang tải phạm vi vị trí đã duyệt…",
+    "positionPreviewUnavailable": "Không thể xem phạm vi vị trí đã duyệt. Hãy mở lại vị trí và thử lại.",
+    "positionPreviewUnmapped": "Vị trí này chưa có đối chiếu công việc đã duyệt có thể sử dụng.",
+    "approvedPositionScope": "Phạm vi vị trí đã duyệt",
+    "usePositionGrade": "Dùng ngạch của vị trí",
+    "positionMovementHint": "Thao tác này chỉ điền ngạch đề xuất. Lưu và duyệt điều chuyển có ngày hiệu lực để đổi ngạch nhân viên.",
+    "positionReadonlyHint": "Loại điều chuyển này không cho sửa ngạch. Hãy dùng điều chuyển có ngày hiệu lực được cho phép.",
+    "positionDraftHint": "Thao tác này chỉ điền ngạch trong bản nháp. Rà soát bản nháp nhân viên trước khi kích hoạt."
   },
   "rewardRules": {
     "title": "Quy tắc",

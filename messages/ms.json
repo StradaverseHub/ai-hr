@@ -35654,7 +35654,8 @@
     "roles": {
       "group_rewards": "Ganjaran Kumpulan",
       "org_design": "Reka Bentuk Organisasi",
-      "pbp": "Rakan perniagaan sumber manusia"
+      "pbp": "Rakan perniagaan sumber manusia",
+      "hod": "Ketua jabatan"
     },
     "proposalKinds": {
       "catalogue": "Cadangan Tangga Gred / Katalog Kerja",
@@ -35679,7 +35680,15 @@
       "changed": "Rekod ini berubah atau pratonton tamat tempoh. Buka semula dan pratonton lagi.",
       "independent": "Orang lain yang diberi kuasa mesti mengesahkan perubahan ini.",
       "missing": "Rekod dipilih atau konfigurasi diluluskan tidak tersedia."
-    }
+    },
+    "positionPreviewLoading": "Memuatkan skop jawatan diluluskan…",
+    "positionPreviewUnavailable": "Skop jawatan diluluskan tidak tersedia. Buka semula jawatan dan cuba lagi.",
+    "positionPreviewUnmapped": "Jawatan ini belum mempunyai pemetaan kerja diluluskan yang boleh digunakan.",
+    "approvedPositionScope": "Skop jawatan diluluskan",
+    "usePositionGrade": "Gunakan gred jawatan",
+    "positionMovementHint": "Ini hanya mengisi gred cadangan. Simpan dan luluskan pergerakan bertarikh untuk mengubah gred pekerja.",
+    "positionReadonlyHint": "Jenis pergerakan ini tidak boleh mengedit gred. Gunakan pergerakan bertarikh yang dibenarkan untuk mengubahnya.",
+    "positionDraftHint": "Ini hanya mengisi gred draf. Semak draf pekerja sebelum pengaktifan."
   },
   "rewardRules": {
     "title": "Peraturan",

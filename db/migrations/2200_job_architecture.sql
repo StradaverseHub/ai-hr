@@ -2,7 +2,7 @@
 CREATE TABLE job_architecture_seat (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),
  user_id uuid NOT NULL REFERENCES app_user(id),company_id uuid REFERENCES company(id),
- role text NOT NULL CHECK(role IN('group_rewards','org_design','pbp')),
+ role text NOT NULL CHECK(role IN('group_rewards','org_design','pbp','hod')),
  valid_from date NOT NULL,valid_to date,created_by uuid NOT NULL REFERENCES app_user(id),created_at timestamptz NOT NULL DEFAULT now(),
  CHECK(valid_to IS NULL OR valid_to>=valid_from),UNIQUE(tenant_id,id)
 );
@@ -65,7 +65,7 @@ DO $$ DECLARE n text; BEGIN
  END LOOP;
 END $$;
 CREATE POLICY job_architecture_proposal_read ON job_architecture_proposal FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.job_architecture_can(company_id,'view') AND NOT EXISTS(SELECT 1 FROM unnest(affected_company_ids) c WHERE NOT app.job_architecture_can(c,'view')));
-CREATE POLICY job_architecture_proposal_insert ON job_architecture_proposal FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND status='pending' AND app.job_architecture_can(company_id,'propose'));
+CREATE POLICY job_architecture_proposal_insert ON job_architecture_proposal FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND status='pending' AND app.job_architecture_can(company_id,'propose') AND (kind<>'catalogue' OR EXISTS(SELECT 1 FROM job_architecture_seat s WHERE s.tenant_id=job_architecture_proposal.tenant_id AND s.user_id=app.current_user_id() AND s.company_id IS NULL AND s.role IN('group_rewards','org_design') AND s.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND (s.valid_to IS NULL OR s.valid_to>=timezone('Asia/Kuala_Lumpur',now())::date))));
 CREATE POLICY job_architecture_proposal_check ON job_architecture_proposal FOR UPDATE USING(tenant_id=app.current_tenant_id() AND status='pending' AND created_by<>app.current_user_id() AND app.job_architecture_can(company_id,'check')) WITH CHECK(tenant_id=app.current_tenant_id() AND status IN('approved','rejected') AND checked_by=app.current_user_id() AND created_by<>checked_by AND app.job_architecture_can(company_id,'check'));
 CREATE POLICY job_architecture_catalogue_read ON job_architecture_catalogue_revision FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.job_architecture_can(NULL,'view'));
 CREATE POLICY job_architecture_catalogue_insert ON job_architecture_catalogue_revision FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND checked_by=app.current_user_id() AND app.job_architecture_can(NULL,'check') AND EXISTS(SELECT 1 FROM job_architecture_proposal p WHERE p.id=proposal_id AND p.tenant_id=job_architecture_catalogue_revision.tenant_id AND p.kind='catalogue' AND p.status='approved' AND p.created_by=proposed_by AND p.checked_by=job_architecture_catalogue_revision.checked_by AND p.base_revision+1=job_architecture_catalogue_revision.revision AND p.payload->'catalogue'=job_architecture_catalogue_revision.catalogue));
@@ -141,3 +141,10 @@ BEGIN
 END $$;
 CREATE TRIGGER architecture_outlier_closure BEFORE INSERT OR UPDATE ON job_architecture_outlier FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_outlier_closure();
 REVOKE ALL ON FUNCTION app.guard_architecture_outlier_closure() FROM PUBLIC;
+
+-- Shared lexical owner for consumers that validate SQL-authored grade references.
+CREATE FUNCTION app.architecture_grade(raw text) RETURNS text LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE SET search_path=pg_catalog AS $$
+ SELECT CASE WHEN code=ANY(ARRAY['H','12','13','14','15','16','17','18','19','20','21','22','23']) THEN code ELSE NULL END FROM(SELECT regexp_replace(upper(trim(raw)),'^JG\s*','') AS code) normalized
+$$;
+REVOKE ALL ON FUNCTION app.architecture_grade(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.architecture_grade(text) TO ai_hr_app;

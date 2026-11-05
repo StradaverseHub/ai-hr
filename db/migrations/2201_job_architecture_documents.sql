@@ -65,7 +65,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  WHERE co.id=p_company AND co.tenant_id=app.current_tenant_id() AND u.id=p_user AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
  AND (EXISTS(SELECT 1 FROM public.role_assignment ra JOIN public.access_capability cap ON cap.id='workforce.maintain'
  WHERE ra.tenant_id=u.tenant_id AND ra.app_user_id=u.id AND ra.role::text IN('hr_admin','super_admin') AND app.access_scope_covers(ra.company_id,co.id,co.tenant_id) AND (NOT cap.supported OR app.access_allowed_for(u.id,cap.id,co.id)))
- OR EXISTS(SELECT 1 FROM public.job_architecture_seat s WHERE s.tenant_id=u.tenant_id AND s.user_id=u.id AND (s.company_id IS NULL OR s.company_id=co.id) AND s.role IN('group_rewards','org_design','pbp') AND s.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND (s.valid_to IS NULL OR s.valid_to>=timezone('Asia/Kuala_Lumpur',now())::date))));
+ OR EXISTS(SELECT 1 FROM public.job_architecture_seat s WHERE s.tenant_id=u.tenant_id AND s.user_id=u.id AND (s.company_id IS NULL OR s.company_id=co.id) AND s.role IN('group_rewards','org_design','pbp','hod') AND s.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND (s.valid_to IS NULL OR s.valid_to>=timezone('Asia/Kuala_Lumpur',now())::date))));
 $$;
 --> statement-breakpoint
 CREATE TABLE job_architecture_import_preview(
@@ -135,3 +135,12 @@ END $$;
 CREATE TRIGGER architecture_jd_publication_binding BEFORE INSERT OR UPDATE ON job_architecture_jd_publication FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_jd_publication();
 CREATE TRIGGER architecture_jd_history_binding BEFORE INSERT ON job_architecture_jd_publication_history FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_jd_publication();
 REVOKE ALL ON FUNCTION app.guard_architecture_jd_publication() FROM PUBLIC;
+
+ALTER TABLE job_architecture_outlier ADD COLUMN business_unit_id uuid REFERENCES business_unit(id);
+CREATE FUNCTION app.guard_architecture_outlier_bu() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$
+BEGIN
+ IF NEW.business_unit_id IS NOT NULL AND (cardinality(NEW.company_ids)<>1 OR NOT EXISTS(SELECT 1 FROM business_unit b WHERE b.id=NEW.business_unit_id AND b.tenant_id=NEW.tenant_id AND b.archived_at IS NULL AND (b.is_global OR EXISTS(SELECT 1 FROM label_company_assignment a WHERE a.tenant_id=b.tenant_id AND a.label_kind='business_unit' AND a.label_id=b.id AND a.company_id=NEW.company_ids[1])))) THEN RAISE EXCEPTION 'Choose a business unit available to the outlier company'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER architecture_outlier_bu BEFORE INSERT OR UPDATE ON job_architecture_outlier FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_outlier_bu();
+REVOKE ALL ON FUNCTION app.guard_architecture_outlier_bu() FROM PUBLIC;
