@@ -35987,6 +35987,9 @@
     }
   },
   "rewardUploaded": {
+    "refreshSources": "Muat semula sumber Gaji",
+    "refreshHelp": "Fail lama kekal dalam sejarah. Muat turun templat baharu, gantikan fail dan minta penyemak Group Rewards yang lain menyemaknya.",
+    "newUploadRequired": "Muat naik baharu diperlukan",
     "title": "Ganjaran dimuat naik",
     "back": "Semakan imbuhan",
     "configuration": "Konfigurasi Ganjaran",

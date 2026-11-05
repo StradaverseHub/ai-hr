@@ -35987,6 +35987,9 @@
     }
   },
   "rewardUploaded": {
+    "refreshSources": "刷新薪资来源",
+    "refreshHelp": "旧文件将保留在历史记录中。请下载新模板、替换文件，并请另一位集团薪酬审核人员复核。",
+    "newUploadRequired": "需要重新上传",
     "title": "上传奖励",
     "back": "薪酬审查",
     "configuration": "薪酬配置",

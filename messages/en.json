@@ -35987,6 +35987,9 @@
     }
   },
   "rewardUploaded": {
+    "refreshSources": "Refresh Payroll sources",
+    "refreshHelp": "Refreshing keeps the old file in history. Download a new template, replace the file and ask another Group Rewards reviewer to check it.",
+    "newUploadRequired": "New upload required",
     "title": "Uploaded awards",
     "back": "Compensation review",
     "configuration": "Rewards configuration",
