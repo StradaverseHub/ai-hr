@@ -17,6 +17,11 @@ export async function exercisePersonnelSwitcher({page,user,fixture,report,save,p
  const [first,second]=fixture.users.filter(person=>person.tenant===user.tenant&&person.company===user.company&&person.role==='employee');
  const outside=fixture.users.find(person=>person.tenant!==user.tenant);
  assert(first&&second&&outside,'missing fictional switcher witnesses');
+ async function results(){
+  const id=await box(page).getAttribute('aria-controls',{timeout:remaining()});
+  assert(id,'Personnel switcher must identify its results list');
+  return page.locator('[id='+JSON.stringify(id)+']');
+ }
  const capture=(step,began,extra={})=>{
   (report.personnelSwitcherBrowser??=[]).push({phase,role:user.role,step,elapsedMs:performance.now()-began,usable:true,loadAtReady:loadState?.(),...extra});
   save();
@@ -41,13 +46,14 @@ export async function exercisePersonnelSwitcher({page,user,fixture,report,save,p
   assert(Array.isArray(payload.rows)&&payload.rows.length<=8,'invalid switcher result bound');
   if(!visible){
    assert.equal(payload.rows.length,0);
-   await page.getByText('No employee matches that.',{exact:true}).waitFor({timeout:remaining()});
-   assert.equal(await page.getByRole('option').count(),0);
+   const list=await results();
+   await list.getByText('No employee matches that.',{exact:true}).waitFor({timeout:remaining()});
+   assert.equal(await list.getByRole('option').count(),0);
    capture(step,began,{resultCount:0});
    return null;
   }
   assert.equal(payload.rows[0]?.employmentId,person.employmentId,'exact employee code must rank first');
-  const option=page.getByRole('option').filter({hasText:person.name});
+  const option=(await results()).getByRole('option').filter({hasText:person.name});
   await option.waitFor({timeout:remaining()});
   capture(step,began,{resultCount:payload.rows.length});
   return option;
@@ -71,9 +77,10 @@ export async function exercisePersonnelSwitcher({page,user,fixture,report,save,p
  await goto(profile(first)+'?tab=job',first.name);
  const began=performance.now();
  await box(page).fill(code(second),{timeout:remaining()});
- const secondOption=page.getByRole('option').filter({hasText:second.name});
+ const profileResults=await results();
+ const secondOption=profileResults.getByRole('option').filter({hasText:second.name});
  await secondOption.waitFor({timeout:remaining()});
- const resultCount=await page.getByRole('option').count();
+ const resultCount=await profileResults.getByRole('option').count();
  assert(resultCount>0&&resultCount<=8,'invalid profile switcher result bound');
  capture('profile-code-search',began,{resultCount,source:'existing-local'});
  await jump(secondOption,second,'job');
