@@ -138,6 +138,23 @@ describe('workflow email configuration and outbox in the actual database',()=>{
   await withTenant(scoped,tx=>tx.execute(sql`select app.notification_email_enqueue(${foreignJob.notificationId}::uuid,'leave',${foreignEvent.sequence}::bigint)`));expect((await deliveries()).map(d=>d.id)).toEqual([ownJob.id]);
   await withTenant(adminCtx(b),tx=>tx.execute(sql`select app.notification_email_enqueue(${foreignJob.notificationId}::uuid,'leave',${foreignEvent.sequence}::bigint)`));expect(await deliveries()).toHaveLength(2);
  });
+ it('leaves a busy cursor to its current owner during page catch-up',async()=>{
+  const e=await employee();
+  const source=await event(e.employmentId);
+  await raw.begin(async tx=>{
+   await tx`select pg_advisory_xact_lock(hashtextextended(${'notification-cursor:'+b.tenantId},0))`;
+   let timer:ReturnType<typeof setTimeout>|undefined;
+   try{
+    const skipped=await Promise.race([
+     dispatchNotifications(adminCtx(b),{skipIfBusy:true}),
+     new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Page catch-up waited for the cursor')),3000);}),
+    ]);
+    expect(skipped).toEqual({processed:0,created:0});
+   }finally{clearTimeout(timer);}
+  });
+  await dispatchNotifications(adminCtx(b));
+  expect(await owner.db.select().from(schema.notification).where(eq(schema.notification.sourceEventId,source.id))).toHaveLength(1);
+ });
  it('serializes concurrent projection and coalesces concurrent employments for one exact account',async()=>{
   const e=await employee();const second=await hireEmployee(adminCtx(b),{person:{id:e.personId},companyId:b.companyId,departmentId:b.deptB,employmentType:'part_time',hiredOn:todayInKualaLumpur()});
   await consent(e);await saveNotificationEmailPreferences(e.ctx,second.employmentId,['leave'],'en',e.identity);

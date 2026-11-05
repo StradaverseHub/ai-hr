@@ -191,7 +191,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
   // ADR-0034 34-3: when notifications are on, the bell shows the viewer's own notifications (everyone), not
   // just the approvals queue. Opportunistic catch-up — an admin loading any page dispatches the tenant's new
-  // events (a cron is the production path, 34-4); non-admins can't dispatch (RLS), they read what exists.
+  // events when the cursor is free. The scheduled sweep owns queued projection; non-admins only read.
   // `…OrFalse`, not `isModuleEnabled`: this is the ROOT layout, so a throw here 500s every
   // authenticated route — and lib/session.ts deliberately degrades a snapshot-resolution failure into
   // `entitlementsError` on the session precisely so the app stays navigable. See the helper: it
@@ -201,7 +201,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const letterNotificationCompanies=scopeIds.filter(id=>isModuleEnabledOrFalse(session,'notifications',id));
   const bellNotificationsEnabled=notifEnabled||letterNotificationCompanies.length>0,notificationScope=notifEnabled?{}:{letterCompanyIds:letterNotificationCompanies};
   if (notifEnabled && isAdmin(session) && (session.grants === undefined || isGroupAdmin(session))) {
-    await dispatchNotifications(session).catch(() => {});
+    await dispatchNotifications(session, { skipIfBusy: true }).catch(() => {});
   }
   // D-P1-32 PT-X5 — where the sidebar's Performance admin entry opens: the admin area's first tab for the latest
   // cycle this OneHR administrator administers, started here so it overlaps the task-list reads below. No cycle, a

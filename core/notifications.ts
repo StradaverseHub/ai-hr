@@ -1101,7 +1101,7 @@ export type DispatchResult = { processed: number; created: number };
 
 /** Complete global projection is owned by a fresh group administrator or the authenticated sweep.
  * A company-scoped web request cannot consume a partially visible global event stream. */
-export async function dispatchNotifications(ctx:SessionContext,opts:{limit?:number}={}):Promise<DispatchResult>{
+export async function dispatchNotifications(ctx:SessionContext,opts:{limit?:number;skipIfBusy?:boolean}={}):Promise<DispatchResult>{
   const allCategories=enabled(ctx);
   if(!allCategories&&!hasScopedReminders(ctx))return {processed:0,created:0};
   return withTenant(ctx,async tx=>{
@@ -1109,7 +1109,7 @@ export async function dispatchNotifications(ctx:SessionContext,opts:{limit?:numb
       const [scope]=await tx.execute(sql`select app.principal_snapshot_current() AND app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
       if(!scope?.allowed)return {processed:0,created:0};
     }
-    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit));
+    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit),{skipIfBusy:opts.skipIfBusy});
   });
 }
 
@@ -1123,13 +1123,22 @@ export async function dispatchNotificationsFromSweep(ctx:SessionContext,connecti
     const priorRole=await assertNotificationSweepConnection(tx);
     const [scope]=await tx.execute(sql`select app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
     if(!scope?.allowed)throw Error('Notification sweep requires the complete tenant scope.');
-    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit),priorRole);
+    return projectNotificationsTx(tx,ctx,allCategories,projectionLimit(opts.limit),{priorRole});
   });
 }
 function hasScopedReminders(ctx:SessionContext){return (ctx.entitlements?.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId));}
 function projectionLimit(value?:number){return Math.min(Math.max(value??1000,1),5000);}
-async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boolean,limit:number,priorRole?:string):Promise<DispatchResult>{
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`notification-cursor:${ctx.tenantId}`},0))`);
+async function projectNotificationsTx(
+  tx:Tx,ctx:SessionContext,allCategories:boolean,limit:number,
+  {priorRole,skipIfBusy}:{priorRole?:string;skipIfBusy?:boolean},
+):Promise<DispatchResult>{
+    const cursorKey=`notification-cursor:${ctx.tenantId}`;
+    if(skipIfBusy){
+      const [lock]=await tx.execute<{acquired:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${cursorKey},0)) as acquired`);
+      if(!lock?.acquired)return {processed:0,created:0};
+    }else{
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${cursorKey},0))`);
+    }
     const [cur] = await tx.select().from(notificationCursor).where(eq(notificationCursor.tenantId, ctx.tenantId)).limit(1);
     const cursor=allCategories?cur?.lastSequence:cur?.assessmentLastSequence;
     const after=cursor!=null?gt(domainEvent.sequence,cursor):undefined;
