@@ -108,7 +108,8 @@ export async function getRewardUnitGovernance(ctx:SessionContext,unitId:string){
   const visible=entries.filter(entry=>visibleEntry(entry,roles,ctx.personId)),senior=visible.filter(entry=>isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade));
   const canAmounts=maySeeSeniorAmounts(roles),isGr=roles.includes('gr');
   const [ready]=await tx.execute<{ready:boolean}>(sql`select to_regclass('public.reward_governance') is not null as ready`);
-  return {unitId,revision:unit.revision,canEdit:isGr&&unit.status==='draft'&&unit.kind==='annual',isGr,canAmounts,managed:!!publicState,
+  const [setupPat]=await tx.execute<{pool_recalculation_required:boolean}>(sql`select pool_recalculation_required from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+  return {unitId,revision:unit.revision,companyPatBound:!!setupPat,patRecalculationRequired:isGr&&!!setupPat?.pool_recalculation_required,canEdit:isGr&&unit.status==='draft'&&unit.kind==='annual',isGr,canAmounts,managed:!!publicState,
    available:ready?.ready===true,legacyInputs:isGr?{forecastCents:null,actualCents:unit.policy.patActual,targetCents:unit.policy.patTarget,targetMonthsBp:unit.policy.targetMonthsBp,multiplierBp:unit.policy.bonusStructure==='branch'?10000:unit.policy.multiplierBp,branchRatings:unit.policy.branchRatings}:null,
    poolStatus:publicState?.status??'legacy',inputs:isGr?(state?.inputs??null):null,selection:isGr?state?.selection??null:null,
    exemption:isGr?state?.exemption??null:null,previousPools:publicState?.previousPools??null,
