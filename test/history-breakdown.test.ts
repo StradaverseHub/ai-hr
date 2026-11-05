@@ -494,3 +494,55 @@ it('9808e638: names category-overridden OT from the run declaration, preserving 
  expect(b.overtimeLines).toEqual([{code:'OT1_5',name:'Overtime 1.5',amount:120,inputQuantity:{qty:4,unit:'hours'}}]);
  expect(b.deductionLines).toEqual([{code:'ABSENT',name:'ABSENT',amount:40,detail:{qty:2,rate:20,unit:'days'}}]);
 });
+
+it('consolidates recorded overtime and absence within one payslip', () => {
+  const breakdown = deriveHistoryBreakdown(row({
+    overtime: '145',
+    otherDeductions: '90',
+    statutory: {
+      absent: { days: 1, amount: 30 },
+      componentLines: [
+        { code: 'OT1_5', name: 'Overtime 1.5', amount: 30, buckets: [{ bucket: 'ot', amount: 30 }], detail: { qty: 2, rate: 15, unit: 'hours' } },
+        { code: 'OT1_5', name: 'Overtime 1.5', amount: 75, buckets: [{ bucket: 'ot', amount: 75 }], detail: { qty: 3, rate: 25, unit: 'hours' } },
+        { code: 'OT2', name: 'Overtime 2.0', amount: 40, buckets: [{ bucket: 'ot', amount: 40 }] },
+        { code: 'ABSENT', name: 'Absent', amount: 30, buckets: [{ bucket: 'deduct', amount: 30 }], inputQuantity: { qty: 1, unit: null } },
+        { code: 'ABSENT', name: 'Absent', amount: 30, buckets: [{ bucket: 'deduct', amount: 30 }], inputQuantity: { qty: 1, unit: 'days' } },
+      ],
+    },
+  }));
+  expect(breakdown.overtimeLines).toEqual([
+    { code: 'OT1_5', name: 'Overtime 1.5', amount: 105, inputQuantity: { qty: 5, unit: 'hours' } },
+    { code: 'OT2', name: 'Overtime 2.0', amount: 40 },
+  ]);
+  expect(breakdown.absence.absent).toBeNull();
+  expect(breakdown.absence.residual).toBe(90);
+  expect(breakdown.deductionLines).toEqual([
+    { code: 'ABSENT', name: 'Absent', amount: 90, inputQuantity: { qty: 3, unit: 'days' } },
+  ]);
+});
+
+it('uses matching consumed dated inputs to recover missing legacy quantities', () => {
+  const slip = row({
+    overtime: '60',
+    otherDeductions: '20',
+    statutory: { componentLines: [
+      { code: 'OT1_5', name: 'Overtime 1.5', amount: 30, buckets: [{ bucket: 'ot', amount: 30 }] },
+      { code: 'OT1_5', name: 'Overtime 1.5', amount: 30, buckets: [{ bucket: 'ot', amount: 30 }] },
+      { code: 'ABSENT', name: 'Absent', amount: 20, buckets: [{ bucket: 'deduct', amount: 20 }] },
+    ] },
+  });
+  const overtime = { componentCode: 'OT1_5', consumedByThisRun: true, quantityEvidenceCurrent: true, kind: 'earning', amount: '30', unit: 'hours' };
+  const absent = { componentCode: 'ABSENT', consumedByThisRun: true, quantityEvidenceCurrent: true, kind: 'deduction', amount: '20', quantity: '1', unit: null };
+  const sources = [{ ...overtime, quantity: '2' }, { ...overtime, quantity: '3' }, absent];
+  const breakdown = deriveHistoryBreakdown(slip, [...sources, { ...overtime, consumedByThisRun: false, quantity: '100' }]);
+  expect(breakdown.overtimeLines).toEqual([
+    { code: 'OT1_5', name: 'Overtime 1.5', amount: 60, inputQuantity: { qty: 5, unit: 'hours' } },
+  ]);
+  expect(breakdown.deductionLines).toEqual([
+    { code: 'ABSENT', name: 'Absent', amount: 20, inputQuantity: { qty: 1, unit: 'days' } },
+  ]);
+  const edited = deriveHistoryBreakdown(slip, [{ ...sources[0], quantityEvidenceCurrent: false }, ...sources.slice(1)]);
+  expect(edited.overtimeLines).toEqual([{ code: 'OT1_5', name: 'Overtime 1.5', amount: 60 }]);
+  const mismatched = deriveHistoryBreakdown(slip, [{ ...sources[0], amount: '31' }, ...sources.slice(1)]);
+  expect(mismatched.overtimeLines).toEqual([{ code: 'OT1_5', name: 'Overtime 1.5', amount: 60 }]);
+});

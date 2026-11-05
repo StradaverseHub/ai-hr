@@ -14,6 +14,12 @@ export async function tryLockAccessConfigurationTx(tx: Tx, tenantId: string): Pr
   return row.acquired;
 }
 
+/** Read-only Personnel transactions may overlap, while access writers remain exclusive. */
+export async function tryLockAccessConfigurationReadTx(tx: Tx, tenantId: string): Promise<boolean> {
+  const [row] = await tx.execute<{ acquired: boolean }>(sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${accessConfigurationKey(tenantId)},0)) as acquired`);
+  return row.acquired;
+}
+
 /** Profile/register writers join the physical configuration tuple before policy or subject locks.
  * This is a write barrier, not an access edit or an ESS approval bypass. */
 export async function lockProfileValueWritesTx(tx:Tx,tenantId:string){

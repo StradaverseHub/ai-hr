@@ -336,7 +336,7 @@ describe('every payroll-result surface asks before it itemises (6b134681)', () =
     const breakdown = code('app/payroll/transaction-view/history-breakdown.ts');
     expect(breakdown).toContain('payItemLinesReconcile(lines, total) ? lines : []');
     // 5a5309d5 — the source falls back to the attendance legs; the gate is the same.
-    expect(breakdown).toContain('overtimeLines: reconciled(overtimeSourceLines(componentLines, row.statutory), disp.overtime)');
+    expect(breakdown).toContain('overtimeLines: reconciled(payslipOvertimeLines(componentLines, row.statutory, sources).map(asSubLine), disp.overtime)');
     expect(breakdown).toContain("bonusLines: reconciled(payItemLinesForCategory(componentLines, 'bonus').map(asSubLine), disp.bonus)");
 
     // THE MISS ITSELF: mapping `componentsByBucket.ot` / `.bonus` beside a figure that comes from

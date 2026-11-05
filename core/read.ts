@@ -669,7 +669,7 @@ export function listEmployeesPage(
   if (purpose) return withPersonnelRead(ctx, async tx => {
     const { rows, total } = await workforcePersonnelPageTx(tx, ctx, p, todayInKualaLumpur());
     return { rows, total };
-  }, existingTx);
+  }, { existingTx });
   const read = async (tx: Tx) => {
     const currentAssignment = currentAssignmentJoin();
     const where = employeeListWhere(p);

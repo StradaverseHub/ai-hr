@@ -486,10 +486,16 @@ function deductionRowsOf(tree: unknown): { label: string; amount: number }[] {
   });
   expect(candidates.length, 'the rendered screen has a Deductions block').toBeGreaterThan(0);
   const block = candidates.sort((a, b) => textOf(a).join('').length - textOf(b).join('').length)[0];
-  const rows = nodes(block)
-    .filter((el) => typeof el.props?.label === 'string' && 'value' in (el.props ?? {}))
-    .map((el) => ({ label: el.props.label as string, amount: moneyIn(textOf(el.props.value).join(' ')) }))
-    .filter((r): r is { label: string; amount: number } => r.amount != null);
+  const rows = nodes(block).flatMap((el) => {
+    const props = el.props ?? {};
+    if (typeof props.label === 'string' && 'value' in props) {
+      return [{ label: props.label as string, amount: moneyIn(textOf(props.value).join(' ')) }];
+    }
+    const cells = props.children;
+    if (el.type !== 'p' || !Array.isArray(cells) || cells.length !== 3 || !cells.every(cell => cell?.type === 'span')) return [];
+    const label = textOf(cells[0].props.children?.props?.children ?? cells[0].props.children).join(' ');
+    return [{ label, amount: moneyIn(textOf(cells[2].props.children).join(' ')) }];
+  }).filter((r): r is { label: string; amount: number } => r.amount != null);
   // NON-VACUITY: a block with no EPF row means the walk found the wrong subtree and every sum below is 0.
   expect(rows.map((r) => r.label), 'the block really is the deductions block').toContain(msg('me.payslip.epf'));
   return rows;
@@ -544,6 +550,7 @@ describe('970e4143 B — an UNCLAMPED CP38: all three payslip renderers add up',
     const rows = deductionRowsOf(tree);
     expect(rows.map((r) => r.label), 'the CP38 row renders').toContain(msg('me.payslip.cp38'));
     expect(rows.find((r) => r.label === msg('me.payslip.cp38'))!.amount).toBe(450);
+    expect(rows.filter((r) => r.label === 'Staff purchase')).toEqual([{ label: 'Staff purchase', amount: 125 }]);
     expect(sum(rows.map((r) => r.amount))).toBe(Number(slip.totalDeductions));
   });
 
