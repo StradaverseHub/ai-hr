@@ -35367,6 +35367,10 @@
     "externalChannel": "[நிறுவனம் நியமித்த வெளிப்புற வழி, எடுத்துக்காட்டாக நெறிமுறைத் தொலைபேசி இணைப்பு]"
   },
   "rewardSetup": {
+    "libraryHistory": "மாற்ற வரலாறு",
+    "libraryChangedValues": "மாறிய மதிப்புகளைக் காண்க",
+    "libraryBefore": "முன்பு",
+    "libraryAfter": "பிறகு",
     "salaryStructures": "சம்பள அமைப்புகள்",
     "bonusMatrices": "போனஸ் அட்டவணைகள்",
     "patInputs": "PAT உள்ளீடுகள்",

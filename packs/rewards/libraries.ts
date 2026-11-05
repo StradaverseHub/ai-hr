@@ -28,3 +28,11 @@ export function confirmRewardLibrary(ctx:SessionContext,id:string,expectedLock:n
 export function libraryCandidates(rows:readonly RewardLibraryVersion[]):LibraryCandidate[]{return rows.filter(r=>r.state==='confirmed').map(r=>({id:r.id,libraryId:r.libraryId,name:r.name,year:r.year,version:r.version,kind:r.kind,tags:r.tags,groupDefault:r.groupDefault,previousLibraryId:r.previousLibraryId,...(r.data.kind==='bonus'?{type:r.data.type}:{})}));}
 export function rewardLibraryForExport(ctx:SessionContext,id:string){return setupTenant(ctx,async tx=>{const v=await libraryVersionTx(tx,ctx,id);await setupEvent(tx,ctx,'library.exported',id,{libraryId:v.libraryId,version:v.version});return v;});}
 export function rewardLibraryGradeChoices(ctx:SessionContext){return setupTenant(ctx,async tx=>{await setupAuthority(tx,null,'library_view');const rows=await tx.execute<{id:string;code:string;name:string}>(sql`select * from app.reward_setup_grade_choices()`);return rows.map(r=>({gradeId:r.id,grade:gradeCodeForLibrary(r.code),name:r.name}));});}
+
+export function rewardLibraryHistory(ctx:SessionContext,id:string){
+ setupUuid.parse(id);
+ return setupTenant(ctx,async tx=>{
+  await setupAuthority(tx,null,'library_view');
+  return [...await tx.execute<{lockVersion:number;actorId:string;occurredAt:string;reason:string;beforeState:string|null;afterState:string;before:RewardLibrary|null;after:RewardLibrary}>(sql`select lock_version as "lockVersion",actor_id as "actorId",occurred_at::text as "occurredAt",reason,before_state as "beforeState",after_state as "afterState",before_values as "before",after_values as "after" from reward_library_revision_audit where version_id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid order by lock_version desc`)];
+ });
+}

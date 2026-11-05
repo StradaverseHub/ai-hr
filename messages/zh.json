@@ -35367,6 +35367,10 @@
     "externalChannel": "[公司指定的外部渠道，例如道德热线]"
   },
   "rewardSetup": {
+    "libraryHistory": "变更历史",
+    "libraryChangedValues": "查看变更值",
+    "libraryBefore": "变更前",
+    "libraryAfter": "变更后",
     "salaryStructures": "薪资结构",
     "bonusMatrices": "奖金矩阵",
     "patInputs": "PAT 数据",
