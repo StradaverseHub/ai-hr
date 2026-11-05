@@ -80,3 +80,50 @@ CREATE POLICY job_architecture_import_preview_read ON job_architecture_import_pr
 CREATE POLICY job_architecture_import_preview_insert ON job_architecture_import_preview FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND consumed_at IS NULL AND app.job_architecture_can(company_id,'propose'));
 CREATE POLICY job_architecture_import_preview_update ON job_architecture_import_preview FOR UPDATE USING(tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND consumed_at IS NULL AND app.job_architecture_can(company_id,'propose')) WITH CHECK(tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND consumed_at IS NOT NULL AND app.job_architecture_can(company_id,'propose'));
 GRANT SELECT,INSERT,UPDATE ON job_architecture_import_preview TO ai_hr_app;
+
+-- Retain all historical content when publishing a successor.
+CREATE OR REPLACE FUNCTION app.guard_job_revision() RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
+BEGIN
+ IF TG_OP='DELETE' THEN
+  IF OLD.status<>'draft' OR OLD.version<>1 THEN RAISE EXCEPTION 'Only an unused initial draft may be deleted'; END IF;
+  RETURN OLD;
+ END IF;
+ IF TG_OP='INSERT' THEN
+  IF NEW.status<>'draft' OR NEW.prepared_by IS DISTINCT FROM app.current_user_id() OR NEW.last_edited_by IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'Create a draft as the authenticated preparer'; END IF;
+  NEW.contributor_ids:=ARRAY[app.current_user_id()];
+  RETURN NEW;
+ END IF;
+ IF OLD.status='approved' THEN
+  IF NEW.status='superseded' AND NEW.lock_version=OLD.lock_version+1 AND (to_jsonb(NEW)-ARRAY['status','updated_at','lock_version'])=(to_jsonb(OLD)-ARRAY['status','updated_at','lock_version']) AND EXISTS(SELECT 1 FROM job_document j WHERE j.id=OLD.job_id AND j.tenant_id=OLD.tenant_id AND app.job_architecture_can(CASE WHEN j.company_variant THEN j.company_id ELSE NULL END,'check')) THEN RETURN NEW; END IF;
+  RAISE EXCEPTION 'Approved revisions are immutable';
+ END IF;
+ IF OLD.status='superseded' THEN RAISE EXCEPTION 'Superseded revisions are immutable'; END IF;
+ IF NEW.tenant_id<>OLD.tenant_id OR NEW.job_id<>OLD.job_id OR NEW.id<>OLD.id OR NEW.version<>OLD.version OR NEW.prepared_by<>OLD.prepared_by OR NEW.definition<>OLD.definition THEN RAISE EXCEPTION 'Revision identity and form snapshot are immutable'; END IF;
+ IF NEW.lock_version<>OLD.lock_version+1 THEN RAISE EXCEPTION 'Stale revision'; END IF;
+ IF OLD.status='submitted' AND (NEW.architecture IS DISTINCT FROM OLD.architecture OR NEW.title<>OLD.title OR NEW.org<>OLD.org OR NEW.org_labels<>OLD.org_labels OR NEW.answers<>OLD.answers OR NEW.document_owner<>OLD.document_owner OR NEW.effective_on IS DISTINCT FROM OLD.effective_on OR NEW.review_on IS DISTINCT FROM OLD.review_on OR NEW.reason<>OLD.reason OR NEW.approver_id IS DISTINCT FROM OLD.approver_id OR NEW.last_edited_by<>OLD.last_edited_by) THEN RAISE EXCEPTION 'Return the document before editing'; END IF;
+ IF OLD.status='draft' THEN
+  NEW.contributor_ids:=ARRAY(SELECT DISTINCT unnest(OLD.contributor_ids || ARRAY[app.current_user_id()]));
+ ELSE NEW.contributor_ids:=OLD.contributor_ids; END IF;
+ IF NEW.status='approved' THEN
+  IF OLD.status<>'submitted' OR NEW.approver_id IS DISTINCT FROM app.current_user_id() OR NEW.approved_by IS DISTINCT FROM app.current_user_id() OR NEW.approved_by=ANY(OLD.contributor_ids) OR NEW.approved_by=OLD.submitted_by OR NOT EXISTS(SELECT 1 FROM job_document_review WHERE revision_id=OLD.id) OR EXISTS(SELECT 1 FROM job_document_review WHERE revision_id=OLD.id AND decision<>'reviewed') THEN RAISE EXCEPTION 'An independent named approver and completed reviews are required'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+
+
+-- Publication history preserves the currently effective document when a successor starts later.
+CREATE TABLE job_architecture_jd_publication_history (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES tenant(id),
+ job_unit_id uuid NOT NULL,variant_company_id uuid,job_id uuid NOT NULL,revision_id uuid NOT NULL,
+ published_by uuid NOT NULL,published_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(tenant_id,revision_id),
+ FOREIGN KEY(tenant_id,job_id) REFERENCES job_document(tenant_id,id),
+ FOREIGN KEY(tenant_id,revision_id) REFERENCES job_document_revision(tenant_id,id),
+ FOREIGN KEY(tenant_id,variant_company_id) REFERENCES company(tenant_id,id),
+ FOREIGN KEY(tenant_id,published_by) REFERENCES app_user(tenant_id,id)
+);
+ALTER TABLE job_architecture_jd_publication_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE job_architecture_jd_publication_history FORCE ROW LEVEL SECURITY;
+CREATE POLICY architecture_jd_history_read ON job_architecture_jd_publication_history FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.job_document_scope(tenant_id,job_id));
+CREATE POLICY architecture_jd_history_insert ON job_architecture_jd_publication_history FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND published_by=app.current_user_id() AND app.job_architecture_can(variant_company_id,'check'));
+GRANT SELECT,INSERT ON job_architecture_jd_publication_history TO ai_hr_app;
