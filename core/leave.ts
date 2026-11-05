@@ -4106,21 +4106,22 @@ export async function requestLeave(
     // most one level: the same gate generateApprovalSteps uses (isMultiStepChain), resolved from the same
     // helper with the same day count, so the per-date rows and the step rows can never disagree about the
     // request's shape. An unresolvable employment stays ineligible, exactly as `multi === false` did.
-    const resolvedChain = await resolveRequestApprovalChain(tx, p.employmentId, p.leaveTypeId, days);
-    const perDateEligible =
+    const canUsePerDateApproval =
       durationType === 'full_day' &&
       lt?.counting === 'working_days' &&
       !!lt?.perDateApproval &&
       !leaveTypeIs(lt, 'replacement') &&
       p.startDate !== p.endDate &&
-      resolvedChain !== null &&
-      !isMultiStepChain(resolvedChain.chain) &&
       // Allow Unpaid Leave (a7fab30b): a part-unpaid request is excluded, for the same reason REPLACEMENT is —
       // the two features have no agreed answer between them. The paid/unpaid boundary is a QUANTITY of days,
       // not an attribution to particular dates, so "approve Tuesday, reject Wednesday" cannot say which of the
       // two was the unpaid one, and any rule we invented would silently change what the employee is paid.
       // The request still goes through normally, just as one whole-span decision.
       unpaidDays === 0;
+    const resolvedChain = canUsePerDateApproval
+      ? await resolveRequestApprovalChain(tx, p.employmentId, p.leaveTypeId, days)
+      : null;
+    const perDateEligible = resolvedChain !== null && !isMultiStepChain(resolvedChain.chain);
 
     if (reviewedOwnLeave) {
       // Reuse THIS execution's calculations, not a second preview. This adds no lock or retry:
