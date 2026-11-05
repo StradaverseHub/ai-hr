@@ -1,8 +1,9 @@
+import {assignArchitectureSeat,proposeArchitectureCatalogue,decideArchitectureProposal,proposeOutlierResolution,architectureWorkspace,proposeArchitecturePositions,ownArchitectureJob} from '../packs/job-architecture/service';
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { beforeAll, beforeEach, afterAll, describe, expect, it } from 'vitest';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
-import { appUser, company, department, person, position, profileOption, roleAssignment } from '../db/schema';
+import { appUser, company, department, person, position, profileOption, roleAssignment,jobGrade } from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { DEFAULT_FORM, saveJobDraft, readJobDocument, listJobDocuments, transitionJob, configureJobForm, getJobForm, getJobMasters, attachJobDocument, downloadJobAttachment, removeJobAttachment, type JobInput } from '../packs/job-descriptions/service';
@@ -86,4 +87,25 @@ it('records optional reported receipt as its own attributable event without modi
 });
 it('offers named reviewers through actual descendant company scope, excluding disabled or denied principals',async()=>{
  const[child]=await owner.db.insert(company).values({tenantId:b.tenantId,legalName:'Child company',parentCompanyId:b.companyId}).returning();const scoped=await principal('Parent-company reviewer',b.companyId);const masters=await getJobMasters(adminCtx(b));expect(masters.people.find(v=>v.value===scoped.userId)?.companyIds).toContain(child.id);await owner.db.update(appUser).set({archivedAt:new Date()}).where(eq(appUser.id,scoped.userId!));expect((await getJobMasters(adminCtx(b))).people.some(v=>v.value===scoped.userId)).toBe(false);
+});
+
+it('binds canonical unit scope, flags grade disagreement and preserves one current JD with immutable publication history',async()=>{
+ const [grade]=await owner.db.insert(jobGrade).values({tenantId:b.tenantId,code:'13',name:'Architecture13'}).returning();
+ await assignArchitectureSeat(adminCtx(b),{userId:approver.userId,companyId:null,role:'group_rewards',validFrom:todayInKualaLumpur(),validTo:null});
+ const ids=[randomUUID(),randomUUID(),randomUUID(),randomUUID()];const nodes=ids.map((id,i)=>({id,kind:(['family','subfamily','specialisation','unit'] as const)[i],code:'ARCH'+i,title:i===3?'Finance Analyst':'Classification'+i,parentId:i?ids[i-1]:null,minGrade:i===3?'12':null,maxGrade:i===3?'19':null,statutory:false,sme:false,description:''}));
+ const proposal=await proposeArchitectureCatalogue(adminCtx(b),{catalogue:{nodes,ladder:[]},baseRevision:0,reason:'Approved canonical financial work'});await decideArchitectureProposal(approver,{id:proposal,approve:true});
+ const linked=input({jobUnitId:ids[3],org:{grade:grade.id}});await expect(saveJobDraft(adminCtx(b),{...linked,title:'Invented title'})).rejects.toThrow(/title/);
+ const first=await saveJobDraft(adminCtx(b),linked);await command(adminCtx(b),first.jobId,'submit');await command(reviewer,first.jobId,'review');
+ let detail=await readJobDocument(approver,first.jobId);const flagged=await transitionJob(approver,{jobId:first.jobId,revisionId:detail.revision.id,lockVersion:detail.revision.lock_version,action:'approve',scopeGrade:'14'});expect(flagged).toEqual({outlier:true});expect((await readJobDocument(approver,first.jobId)).revision.status).toBe('submitted');
+ await expect(command(approver,first.jobId,'approve')).rejects.toThrow(/Resolve/);
+ const [outlier]=await owner.db.execute<{id:string;revision:number}>(sql`select id,revision from job_architecture_outlier where fingerprint=${'jd_scope:'+detail.revision.id}`);const resolution=await proposeOutlierResolution(adminCtx(b),{id:outlier.id,revision:outlier.revision,reason:'Checked job evidence confirms the original grade13 scope'});await decideArchitectureProposal(approver,{id:resolution,approve:true});
+ await command(approver,first.jobId,'approve');const prior=(await readJobDocument(approver,first.jobId)).revision;
+ const [selfPerson]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Own JD employee'}).returning();const [selfUser]=await owner.db.insert(appUser).values({tenantId:b.tenantId,personId:selfPerson.id,workosUserId:randomUUID()}).returning();await owner.db.insert(roleAssignment).values({tenantId:b.tenantId,appUserId:selfUser.id,role:'employee',companyId:null});const self={...adminCtx(b),userId:selfUser.id,roles:['employee']};const [ownEmployment]=await owner.db.insert(employment).values({tenantId:b.tenantId,personId:selfPerson.id,companyId:b.companyId,hiredOn:todayInKualaLumpur(),gradeId:grade.id}).returning();await owner.db.insert(assignment).values({tenantId:b.tenantId,employmentId:ownEmployment.id,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',validFrom:todayInKualaLumpur()});
+ const source=await architectureWorkspace(adminCtx(b),b.companyId);const mapProposal=await proposeArchitecturePositions(adminCtx(b),{companyId:b.companyId,catalogueRevision:source.catalogue.revision,sourceDigest:source.sourceDigest,mappings:[{positionId:b.positionId,companyId:b.companyId,businessUnitId:null,reportsToPositionId:null,jobUnitId:ids[3],gradeId:grade.id,grade:'13',status:'filled'}],reason:'Link effective position to approved job unit'});await decideArchitectureProposal(approver,{id:mapProposal,approve:true});
+ const own=await ownArchitectureJob(self,ownEmployment.id);expect(own?.revisionId).toBe(first.revisionId);expect(own?.definition.sections.every(s=>['description','specification'].includes(s.form))).toBe(true);expect(own?.answers).not.toHaveProperty('quality');await expect(ownArchitectureJob({...adminCtx(b),userId:reviewer.userId},ownEmployment.id)).rejects.toThrow();
+ const second=await saveJobDraft(adminCtx(b),{...linked,jobCode:'FIN-SECOND',effectiveOn:'2099-01-01',reviewOn:'2099-12-31'});await command(adminCtx(b),second.jobId,'submit');await command(reviewer,second.jobId,'review');await command(approver,second.jobId,'approve');
+ const [current]=await owner.db.execute(sql`select revision_id from job_architecture_jd_publication where tenant_id=${b.tenantId}::uuid`);expect(current.revision_id).toBe(second.revisionId);
+ const historic=(await readJobDocument(approver,first.jobId,prior.id)).revision;expect(historic.status).toBe('superseded');expect(historic.answers).toEqual(prior.answers);expect(historic.architecture).toEqual(prior.architecture);
+ const [history]=await owner.db.execute(sql`select count(*)::int as n from job_architecture_jd_publication_history where tenant_id=${b.tenantId}::uuid`);expect(history.n).toBe(2);expect((await ownArchitectureJob(self,ownEmployment.id))?.revisionId).toBe(first.revisionId);
+ await expect(withTenant(approver,tx=>tx.execute(sql`update job_document_revision set title='Changed history',lock_version=lock_version+1 where id=${prior.id}::uuid`))).rejects.toThrow();
 });

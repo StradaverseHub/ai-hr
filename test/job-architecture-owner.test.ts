@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,it,expect} from 'vitest';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
-import {appUser,person,roleAssignment,company} from '../db/schema';
+import {appUser,person,roleAssignment,company,jobGrade,employment} from '../db/schema';
 import {type SessionContext,withTenant} from '../db/client';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {architectureWorkspace,assignArchitectureSeat,proposeArchitectureCatalogue,decideArchitectureProposal,scanArchitecture} from '../packs/job-architecture/service';
@@ -13,9 +13,9 @@ afterAll(closeAll);
 const empty={nodes:[],ladder:[]};
 it('requires an independent explicitly authorized checker and preserves immutable approved versions',async()=>{
  const id=await proposeArchitectureCatalogue(adminCtx(b),{catalogue:empty,baseRevision:0,reason:'Create the first reviewed catalogue'});
- await expect(decideArchitectureProposal(adminCtx(b),{id,approve:true})).rejects.toThrow(/access|different/);
+ await expect(decideArchitectureProposal(adminCtx(b),{id,approve:true})).rejects.toThrow(/access|different|no longer/);
  await decideArchitectureProposal(checker,{id,approve:true});const w=await architectureWorkspace(adminCtx(b));expect(w.catalogue.revision).toBe(1);expect(w.catalogue.catalogue).toEqual(empty);
- await expect(withTenant(checker,tx=>tx.execute(sql`update job_architecture_catalogue_revision set catalogue='{}'::jsonb where tenant_id=${b.tenantId}::uuid`))).rejects.toThrow();
+ expect(await withTenant(checker,tx=>tx.execute(sql`update job_architecture_catalogue_revision set catalogue='{}'::jsonb where tenant_id=${b.tenantId}::uuid returning id`))).toHaveLength(0);expect((await architectureWorkspace(checker)).catalogue.catalogue).toEqual(empty);
  await expect(decideArchitectureProposal(checker,{id,approve:true})).rejects.toThrow(/no longer/);
  const[e]=await owner.db.execute(sql`select count(*)::int as n from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_type='job-architecture' and event_type='job-architecture.proposal.approved'`);expect(e.n).toBe(1);
 });
@@ -38,6 +38,20 @@ it('runs repeatable scans without duplicate outlier records or employee grade wr
 });
 it('checks the seat company and end date against the tenant and refuses expired checker authority',async()=>{
  await owner.db.execute(sql`update job_architecture_seat set valid_from='2020-01-01',valid_to='2020-01-02' where tenant_id=${b.tenantId}::uuid`);
- const id=await proposeArchitectureCatalogue(adminCtx(b),{catalogue:empty,baseRevision:0,reason:'Requires a currently eligible checker'});await expect(decideArchitectureProposal(checker,{id,approve:true})).rejects.toThrow(/access/);
+ const id=await proposeArchitectureCatalogue(adminCtx(b),{catalogue:empty,baseRevision:0,reason:'Requires a currently eligible checker'});await expect(decideArchitectureProposal(checker,{id,approve:true})).rejects.toThrow(/access|no longer/);
  const [foreign]=await owner.db.insert(company).values({tenantId:(await seedBase()).tenantId,legalName:'Outside architecture tenant'}).returning();await expect(assignArchitectureSeat(adminCtx(b),{userId:checker.userId,companyId:foreign.id,role:'org_design',validFrom:todayInKualaLumpur(),validTo:null})).rejects.toThrow(/tenant|access/);
+});
+
+it('guards every employment writer while preserving unchanged historical grades and legacy grades before official publication',async()=>{
+ const [p]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Grade guard employee'}).returning();
+ const [legacy]=await owner.db.insert(jobGrade).values({tenantId:b.tenantId,code:'CUSTOM',name:'Legacy custom'}).returning();const [future]=await owner.db.insert(jobGrade).values({tenantId:b.tenantId,code:'jg t3',name:'Future inactive'}).returning();
+ const [e]=await owner.db.insert(employment).values({tenantId:b.tenantId,companyId:b.companyId,personId:p.id,hiredOn:todayInKualaLumpur(),gradeId:legacy.id}).returning();
+ await expect(owner.db.execute(sql`update employment set grade_id=${future.id}::uuid where id=${e.id}::uuid`)).rejects.toMatchObject({cause:expect.objectContaining({message:'Future architecture grades are not in use',code:'23514'})});
+ const codes=['H','12','13','14','15','16','17','18','19','20','21','22','23'];const grades=await owner.db.insert(jobGrade).values(codes.map(code=>({tenantId:b.tenantId,code,name:'Active '+code}))).returning();const ladder=grades.map(g=>({gradeId:g.id,code:g.code,name:g.name,complexity:'Scope',authority:'Authority',people:'People',impact:'Impact',qualifications:'Qualifications'}));
+ const proposal=await proposeArchitectureCatalogue(adminCtx(b),{catalogue:{nodes:[],ladder},baseRevision:0,reason:'Official complete active grade ladder'});await decideArchitectureProposal(checker,{id:proposal,approve:true});
+ await owner.db.execute(sql`update employment set grade_id=grade_id where id=${e.id}::uuid`);
+ await owner.db.execute(sql`update employment set grade_id=${grades[0].id}::uuid where id=${e.id}::uuid`);
+ await expect(owner.db.execute(sql`update employment set grade_id=${legacy.id}::uuid where id=${e.id}::uuid`)).rejects.toMatchObject({cause:expect.objectContaining({message:'Choose an approved active architecture grade',code:'23514'})});
+ await owner.db.execute(sql`update employment set grade_id=null where id=${e.id}::uuid`);
+ await expect(proposeArchitectureCatalogue(adminCtx(b),{catalogue:empty,baseRevision:1,reason:'Must not silently remove official ladder'})).rejects.toThrow(/retain/);
 });

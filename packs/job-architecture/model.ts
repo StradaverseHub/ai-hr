@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const ARCHITECTURE_GRADES = ['H', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23'] as const;
 export type ArchitectureGrade = typeof ARCHITECTURE_GRADES[number];
 export const FUTURE_TRACKS = ['H1','H2','H3','H4','T1','T2','T3','T4','S1','S2','S3','S4'] as const;
+export function isFutureArchitectureGrade(raw:string):boolean{return (FUTURE_TRACKS as readonly string[]).includes(raw.trim().toUpperCase().replace(/^JG\s*/,''));}
 export const FUTURE_CROSSWALK = {H3:'12',T3:'12',S3:'12',H4:'13',T4:'13',S4:'13'} as const;
 export const gradeSchema = z.enum(ARCHITECTURE_GRADES);
 export function architectureGrade(raw: string): ArchitectureGrade | null {
@@ -22,7 +23,7 @@ export type LadderEntry=z.infer<typeof ladderEntrySchema>;
 export const architectureCatalogueSchema=z.object({nodes:z.array(catalogueNodeSchema).max(20000),ladder:z.array(ladderEntrySchema).max(13)}).strict();
 export type ArchitectureCatalogue=z.infer<typeof architectureCatalogueSchema>;
 export class ArchitectureError extends Error{constructor(public code:'invalid'|'forbidden'|'changed'|'independent'|'missing',message:string){super(message);this.name='ArchitectureError';}}
-const invalid=(message:string):never=>{throw new ArchitectureError('invalid',message);};
+function invalid(message:string):never{throw new ArchitectureError('invalid',message);}
 export function gradeInRange(grade:ArchitectureGrade,min:ArchitectureGrade,max:ArchitectureGrade):boolean {
  const n=ARCHITECTURE_GRADES.indexOf(grade);return n>=ARCHITECTURE_GRADES.indexOf(min)&&n<=ARCHITECTURE_GRADES.indexOf(max);
 }
@@ -68,7 +69,7 @@ export type ArchitectureOutlier={fingerprint:string;type:typeof outlierTypes[num
 /** Input must already be authorized. Names or grades outside the caller's scope never enter aggregates. */
 export function scanArchitectureOutliers(nodes:readonly CatalogueNode[],positions:readonly ArchitecturePosition[],employees:readonly ArchitectureEmployee[]):ArchitectureOutlier[]{
  const result:ArchitectureOutlier[]=[],byNode=new Map(nodes.map(n=>[n.id,n])),byPosition=new Map(positions.map(p=>[p.companyId+':'+p.id,p]));
- const add=(type:ArchitectureOutlier['type'],ids:string[],companies:string[],migrationOnly=false)=>{const recordIds=[...new Set(ids)].sort();result.push({type,recordIds,companyIds:[...new Set(companies)].sort(),migrationOnly,fingerprint:type+':'+recordIds.join(':')});};
+ const add=(type:ArchitectureOutlier['type'],ids:string[],companies:string[],migrationOnly=false)=>{const recordIds=[...new Set(ids)].sort();result.push({type,recordIds,companyIds:[...new Set(companies)].sort(),migrationOnly,fingerprint:type+':'+[...new Set(companies)].sort().join(',')+':'+recordIds.join(':')});};
  const titles=new Map<string,ArchitecturePosition[]>();
  for(const p of positions){const same=titles.get(p.title)??[];same.push(p);titles.set(p.title,same);const m=p.mapping,u=m?byNode.get(m.jobUnitId):null;
   if(!m){add('unmapped_position',[p.id],[p.companyId]);continue;}
@@ -94,4 +95,9 @@ export function validateArchitectureSuggestion(raw:unknown,nodes:readonly Catalo
  const p=architectureSuggestionSchema.parse(raw),u=nodes.find(n=>n.id===p.jobUnitId&&n.kind==='unit');
  if(!allowedPositionIds.has(p.positionId)||!u||!u.minGrade||!u.maxGrade||!gradeInRange(p.grade,u.minGrade,u.maxGrade)||u.sme&&ARCHITECTURE_GRADES.indexOf(p.grade)>ARCHITECTURE_GRADES.indexOf('19'))invalid('Suggestion does not match an authorized position and approved active grade range.');
  return {...p,statutoryMigrationReview:!!u.statutory&&p.grade==='H',advisoryOnly:true as const};
+}
+/** Publishing the official ladder is monotonic. Later edits cannot reopen legacy grade assignment. */
+export function assertLadderContinuity(previous:ArchitectureCatalogue,next:ArchitectureCatalogue):void{
+ const official=previous.ladder.length===ARCHITECTURE_GRADES.length&&ARCHITECTURE_GRADES.every(code=>previous.ladder.some(g=>g.code===code));
+ if(official&&(!ARCHITECTURE_GRADES.every(code=>next.ladder.some(g=>g.code===code&&g.gradeId===previous.ladder.find(p=>p.code===code)!.gradeId))||next.ladder.length!==ARCHITECTURE_GRADES.length))throw new ArchitectureError('invalid','The official ladder must retain all active grade identities. A separately reviewed grade migration is required to replace them.');
 }
