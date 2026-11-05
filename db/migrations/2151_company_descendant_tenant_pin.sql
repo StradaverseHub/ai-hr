@@ -6,7 +6,7 @@
 --
 -- The walk now starts only from a company of the session tenant and every hop stays in the child's tenant.
 -- With no session tenant (owner provisioning and seeding, where the company cycle trigger still has to see a
--- cycle) it stays inside the child's own tenant, which is still narrower than before. 2122/2123 make a
+-- cycle) it stays inside the child's own tenant, which is still narrower than before. 2152/2153 make a
 -- cross-tenant parent impossible in data as well. Signature, owner, volatility, SECURITY DEFINER, path and
 -- ACL are unchanged; CREATE OR REPLACE keeps the OID and the dependent policy.
 CREATE OR REPLACE FUNCTION app.is_company_descendant(child uuid, ancestor uuid)

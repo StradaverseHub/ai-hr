@@ -24,10 +24,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
  const boundary=journal.entries.findIndex(row=>row.tag===TAIL[0].tag);
  expect(boundary).toBe(668);
  expect(journal.entries.slice(boundary,boundary+TAIL.length)).toEqual(TAIL);
- // Payroll history learning's 2013 and the ADR-0174 follow-up 2120-2123 follow (test/company-reference-tenant-fk-upgrade.test.ts). This test upgrades through 2102 only, so
+ // Payroll history learning's 2013 and the ADR-0174 follow-up 2150-2153 follow (test/company-reference-tenant-fk-upgrade.test.ts). This test upgrades through 2102 only, so
  // its no-grant and no-data-change checks stay about 2100-2102; test/board-nine-populated-upgrade.test.ts applies 2013.
- expect(journal.entries.slice(boundary+TAIL.length).map(row=>row.tag)).toEqual(['2013_payroll_learned_baseline','2120_definer_search_path_pin',
-  '2121_company_descendant_tenant_pin','2122_company_reference_tenant_fk_not_valid','2123_company_reference_tenant_fk_validate']);
+ expect(journal.entries.slice(boundary+TAIL.length).map(row=>row.tag)).toEqual(['2013_payroll_learned_baseline','2150_definer_search_path_pin',
+  '2151_company_descendant_tenant_pin','2152_company_reference_tenant_fk_not_valid','2153_company_reference_tenant_fk_validate']);
  expect(journal.entries[boundary-1]).toEqual({idx:811,version:'7',when:1793330001411,tag:'2011_payroll_loops_hardening',breakpoints:true});
  const prefix=journal.entries.slice(0,boundary);
  const folder=mkdtempSync(join(tmpdir(),'tenant-company-fk-upgrade-')),database='ai_hr_tenant_fk_upgrade_'+randomUUID().replaceAll('-','');

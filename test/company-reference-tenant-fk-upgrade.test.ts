@@ -1,4 +1,4 @@
-/** ADR-0174 follow-up populated upgrade through 2120–2123, on an owned disposable localhost database only.
+/** ADR-0174 follow-up populated upgrade through 2150–2153, on an owned disposable localhost database only.
  * Cross-tenant references present at the 672-entry boundary must stop the whole upgrade with a report naming
  * every offending table and leave the ledger and every function untouched. Once the owner resolves them, the
  * upgrade validates the seven keys, rewrites no row, changes no grant or policy, appends pg_temp to every
@@ -16,16 +16,16 @@ type Entry={idx:number;version:string;when:number;tag:string;breakpoints:boolean
 type Fn={fn:string;body:string;owner:string;acl:string|null;config:string[]|null;definer:boolean};
 const hash=(bytes:string|Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const TAIL=[
- {idx:1367,version:'7',when:1793330001520,tag:'2120_definer_search_path_pin',breakpoints:true},
- {idx:1368,version:'7',when:1793330001521,tag:'2121_company_descendant_tenant_pin',breakpoints:true},
- {idx:1369,version:'7',when:1793330001522,tag:'2122_company_reference_tenant_fk_not_valid',breakpoints:true},
- {idx:1370,version:'7',when:1793330001523,tag:'2123_company_reference_tenant_fk_validate',breakpoints:true},
+ {idx:1395,version:'7',when:1793330001550,tag:'2150_definer_search_path_pin',breakpoints:true},
+ {idx:1396,version:'7',when:1793330001551,tag:'2151_company_descendant_tenant_pin',breakpoints:true},
+ {idx:1397,version:'7',when:1793330001552,tag:'2152_company_reference_tenant_fk_not_valid',breakpoints:true},
+ {idx:1398,version:'7',when:1793330001553,tag:'2153_company_reference_tenant_fk_validate',breakpoints:true},
 ];
 const KEYS=['company_parent_company_tenant_fk','notice_owner_company_tenant_fk','overtime_pattern_creation_company_tenant_fk',
  'overtime_pattern_version_creation_company_tenant_fk','performance_kpi_library_group_company_tenant_fk','reporting_line_scope_company_tenant_fk',
  'teras_chat_company_tenant_fk'];
 const REISSUED=['app.can_see_employment(uuid)','app.can_see_person(uuid)','app.heads_department_of(uuid,uuid)','app.is_admin_report_of(uuid,uuid)','app.is_company_descendant(uuid,uuid)'];
-/** What 2120 does to a path: append pg_temp; a bare `public` resolves identically as `pg_catalog, public, pg_temp`. */
+/** What 2150 does to a path: append pg_temp; a bare `public` resolves identically as `pg_catalog, public, pg_temp`. */
 const pinned=(config:string[]|null)=>config?.map(setting=>{
  if(!setting.startsWith('search_path='))return setting;
  const parts=setting.slice('search_path='.length).split(',').map(part=>part.trim());
@@ -116,7 +116,7 @@ it('stops on cross-tenant references, then pins every definer and validates the 
    (${tenantA},${reportA},${managerA},'administrative','2024-01-01',${holdingA}),(${tenantB},${reportB},${managerB},'administrative','2024-01-01',null)`;
   await storage.client`insert into performance_kpi_library(tenant_id,name,template,group_company_id) values(${tenantA},'Fictional group KPI','{}'::jsonb,${holdingA})`;
   await storage.client`insert into teras_chat(id,tenant_id,app_user_id,person_id,company_id,scope_digest) values(${ownChat},${tenantA},${userManagerA},${persons[0]},${holdingA},${'a'.repeat(64)})`;
-  // The gaps 2120/2121 close: tenant A's session reaches tenant B's reporting line and company tree.
+  // The gaps 2150/2151 close: tenant A's session reaches tenant B's reporting line and company tree.
   expect(await answers()).toEqual([{own_report:true,own_line:true,foreign_line:true,foreign_head:true,foreign_tree:true,own_tree:true}]);
 
   // The defects the old keys accepted: a tenant A company under tenant B's holding, a tenant A line scoped to B, and a

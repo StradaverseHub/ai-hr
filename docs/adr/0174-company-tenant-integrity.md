@@ -51,12 +51,13 @@ that row. The error names each table and its first offending key, and the journa
 `test/tenant-company-fk-upgrade.test.ts` rehearses both outcomes on a populated database at the 668-entry
 boundary.
 
-## Follow-up: 2120–2123 (4 November 2026)
+## Follow-up: 2150–2153 (4–5 November 2026)
 
-Proposed on branch `claude/pensive-hofstadter-d1bf14`; no deployment authorized. The gaps this ADR left open
+Proposed on branch `claude/pensive-hofstadter-d1bf14`; no deployment authorized. First numbered 2120–2123; renumbered above
+staging's 2130 watermark on 5 November 2026 (`docs/MIGRATION-ALLOCATION.md`). The gaps this ADR left open
 are closed as follows. None was a known exploitable path.
 
-1. **Every definer names pg_temp last (2120).** A path that does not name pg_temp searches the session's
+1. **Every definer names pg_temp last (2150).** A path that does not name pg_temp searches the session's
    temporary schema first for relation *and type* names. Schema-qualifying relations is therefore not enough:
    a TEMP table named `uuid` or `jsonb` replaces that type inside a body whose path is `pg_catalog` alone.
    `app.can_see_employment`, `app.can_see_person`, `app.is_admin_report_of` and `app.heads_department_of` are
@@ -66,17 +67,17 @@ are closed as follows. None was a known exploitable path.
    invoker with its own path (34) keeps its path with pg_temp appended; nothing else about them changes.
    `test/definer-search-path-pin.test.ts` fails on any future definer, or function with its own path, that does
    not end its path with pg_temp.
-2. **`app.is_company_descendant` is tenant-filtered (2121), not narrowed.** The KPI library read policy, the
+2. **`app.is_company_descendant` is tenant-filtered (2151), not narrowed.** The KPI library read policy, the
    company cycle trigger and other invoker callers need it as `ai_hr_app`. It now starts only from a company
    of the session tenant and never leaves the child's tenant; with no session tenant (owner provisioning and
    seeding, where the cycle trigger still runs) it stays inside the child's own tenant.
-3. **The six remaining company references carry the composite key (2122 NOT VALID, 2123 validate).**
+3. **The six remaining company references carry the composite key (2152 NOT VALID, 2153 validate).**
    `company.parent_company_id`, `reporting_line.scope_company_id`, `notice.owner_company_id`,
    `overtime_pattern(.version).creation_company_id` and `performance_kpi_library.group_company_id` reference
    `company(id, tenant_id)` as `<table>_<column minus _id>_tenant_fk`, ON DELETE NO ACTION like their plain
    keys. `teras_chat.company_id` (2000), which had no company key, gets `teras_chat_company_tenant_fk`. `setCompanyParent` and the delegation scope picker pass a submitted company id straight through, so
    the key is what refuses another tenant's; a chat takes its company from the browser's conversation scope.
-   2123 reports every offending table and stops the upgrade, as 2102
+   2153 reports every offending table and stops the upgrade, as 2102
    does. `test/tenant-company-fk.test.ts` now requires a twin for every single-column company key on a tenant
    table, and `test/company-reference-tenant-fk-upgrade.test.ts` rehearses both outcomes at the 672-entry
    boundary.

@@ -5,31 +5,35 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
-## Tenant-isolation follow-up (ADR-0174) — 4 November 2026 (provisional source claim)
+## Tenant-isolation follow-up (ADR-0174) — 5 November 2026 (provisional source claim, renumbered)
 
-`claude/pensive-hofstadter-d1bf14` appends four migrations above main's journal: 671 entries at `dc1c70deb`
-(2102 / idx 1349 / when 1793330001502), and 672 since main applied the AI Centre's `2013_payroll_learned_baseline`
-(idx 1350 / when 1793330001503) on 5 November 2026, which still sorts below these. A read-only scan on 4 November 2026 of 4149 local and remote refs, 426
-journal blobs and 456 registered worktrees found unapplied claims up to file 2111 / idx 1358 / when
-1793330001511 (Codex branches, 2103–2111) and the AI Centre's reserved 2012–2019. These take 2120–2123 with
-`when` = 1793330000000 + (file − 600) and idx = file − 753, leaving 2112–2119 free for the active 2103–2111
-series.
+`claude/pensive-hofstadter-d1bf14` appends four migrations to main's 672-entry journal, after the AI Centre's
+`2013_payroll_learned_baseline` (idx 1350 / when 1793330001503). They were first claimed as 2120–2123
+(when 1793330001520–523) on 4 November. Staging then installed Codex's `b84f6e269` (STAGING_DEPLOYED_SHA, not on
+main), whose journal ends at `2130_approved_company_retention` (idx 1383 / when 1793330001530), so those
+timestamps would have been skipped there. A read-only scan on 5 November 2026 of 4763 local and remote refs, 446
+journal blobs and every registered worktree found claims up to 2141 (idx 1394 / when 1793330001541) in the 21xx
+series and 2200–2209 (idx 1400–1409 / when 1793330001600–609), with nothing in 2142–2159 or idx 1395–1399. The
+block therefore moves to 2150–2153, `when` = 1793330000000 + (file − 600), idx 1395–1398, leaving 2142–2149 for
+the active 21xx series and the relocated 2013. The live staging ledger was not queried directly; recheck it at
+admission.
 
 | Tag | idx | when | SQL SHA256 |
 | --- | ---: | ---: | --- |
-|2120_definer_search_path_pin|1367|1793330001520|d3154b1a705b519b3df8263492338253d3a445126e0e29aae8d228658b176238|
-|2121_company_descendant_tenant_pin|1368|1793330001521|226a62add7c1b827f5486e327419186da115f7f74834dea87e1c385b711a0a34|
-|2122_company_reference_tenant_fk_not_valid|1369|1793330001522|91bf130056cf56c6d114c472cfe27afed5725f2956b24f62f2a5f94cf8756752|
-|2123_company_reference_tenant_fk_validate|1370|1793330001523|64a6df6bf067290871d7415d0efbd11a1c27f6f4c268313f4a673c331bebaaa4|
+|2150_definer_search_path_pin|1395|1793330001550|d3154b1a705b519b3df8263492338253d3a445126e0e29aae8d228658b176238|
+|2151_company_descendant_tenant_pin|1396|1793330001551|3d96ad8d0ffa688fda4ba70737c16dda2a89acb27a9299a9881fa910fef6b239|
+|2152_company_reference_tenant_fk_not_valid|1397|1793330001552|4af62e556b49a6af7021db5cb45a63c6767fc6d83857ed5ea41b9c869dc3997d|
+|2153_company_reference_tenant_fk_validate|1398|1793330001553|fc41c330e3f188abc183c5983dde402ebd877e51ea5cae897c83ed15ac705856|
 
-2120 appends pg_temp to every unpinned function path and re-issues the four visibility helpers; 2121
-tenant-filters `app.is_company_descendant`; 2122 adds seven company/tenant keys NOT VALID (the seventh,
-`teras_chat.company_id`, ON DELETE NO ACTION by owner decision); 2123 checks the data and validates them. Unapplied source only: re-check main's highest file, idx and `when` immediately before
-merge and keep each timestamp above every earlier-applied migration.
+2150 appends pg_temp to every unpinned function path and re-issues the four visibility helpers; 2151
+tenant-filters `app.is_company_descendant`; 2152 adds seven company/tenant keys NOT VALID (the seventh,
+`teras_chat.company_id`, ON DELETE NO ACTION by owner decision); 2153 checks the data and validates them.
+Unapplied source only: re-check main's and staging's highest file, idx and `when` immediately before merge and
+keep each timestamp above every earlier-applied migration.
 
 Integration notes: Codex's 2103 and 2105 re-issue `app.visible_employment_ids` with `SET search_path = public`.
-If they land first, 2120's ALTER pins their body; if this lands first, `test/definer-search-path-pin.test.ts`
-fails their branch until that path ends with pg_temp. 2120 assumes `ai_hr_rewards_post_reader` for two
+If they land first, 2150's ALTER pins their body; if this lands first, `test/definer-search-path-pin.test.ts`
+fails their branch until that path ends with pg_temp. 2150 assumes `ai_hr_rewards_post_reader` for two
 statements, which the migrator could already do when 0689 installed; confirm at staging admission.
 
 ## Tenant-isolation hardening (ADR-0174) — 4 November 2026 (provisional source claim)

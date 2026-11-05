@@ -58,10 +58,10 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   // Payroll history learning P1 (claude/payroll-history-learning): the learned baselines, modes and runs.
   {tag:'2013_payroll_learned_baseline',when:1793330001503},
   // ADR-0174 follow-up: pinned definer paths and the remaining company/tenant keys.
-  {tag:'2120_definer_search_path_pin',when:1793330001520},
-  {tag:'2121_company_descendant_tenant_pin',when:1793330001521},
-  {tag:'2122_company_reference_tenant_fk_not_valid',when:1793330001522},
-  {tag:'2123_company_reference_tenant_fk_validate',when:1793330001523},
+  {tag:'2150_definer_search_path_pin',when:1793330001550},
+  {tag:'2151_company_descendant_tenant_pin',when:1793330001551},
+  {tag:'2152_company_reference_tenant_fk_not_valid',when:1793330001552},
+  {tag:'2153_company_reference_tenant_fk_validate',when:1793330001553},
  ]);
  expect(hash(readFileSync('db/migrations/0935_password_account_unlock.sql'))).toBe('3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa');
  expect(hash(readFileSync('db/migrations/0946_draft_creation_cohort_custody.sql'))).toBe('cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390');
@@ -162,7 +162,7 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
    to_regclass('public.teras_learning_signal')::text as learning,to_regclass('public.payroll_check_acknowledgement')::text as hardening`;
   expect(await phaseTwoObjects()).toEqual([{levels:null,settings:null,audit:null,baseline:null,cutoff:false,handbook:null,learning:null,hardening:null}]);
   expect(await native()).toEqual(upgradeNative);
-  // Then this integration's eight AI v2 Phase 2 migrations (2004-2011), the ADR-0174 hardening (2100-2102), payroll history learning's 2013 and the ADR-0174 follow-up (2120-2123), by the ordinary migrator over the whole journal.
+  // Then this integration's eight AI v2 Phase 2 migrations (2004-2011), the ADR-0174 hardening (2100-2102), payroll history learning's 2013 and the ADR-0174 follow-up (2150-2153), by the ordinary migrator over the whole journal.
   // Their when values sit above Phase 1's 1793330001403, so none is skipped.
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const afterLedger=await ledger();expect(afterLedger).toHaveLength(676);expect(afterLedger.slice(0,660)).toEqual(phaseOneLedger);
@@ -179,10 +179,10 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
    {hash:'5aaf9b7e1f06514771e46ae3303e2e375eb461ba3acf0f8bb21af510bf49eb18',created_at:'1793330001501'},
    {hash:'b2a6af380bb89765c2b32b6edaf8b5c7707ca23901f22806cd9f8888856983b4',created_at:'1793330001502'},
    {hash:'bd490fda5f21c713262ecc6c8a29e8ed5dc88e0c963e201be7745bdc5a351da3',created_at:'1793330001503'},
-   {hash:'d3154b1a705b519b3df8263492338253d3a445126e0e29aae8d228658b176238',created_at:'1793330001520'},
-   {hash:'226a62add7c1b827f5486e327419186da115f7f74834dea87e1c385b711a0a34',created_at:'1793330001521'},
-   {hash:'91bf130056cf56c6d114c472cfe27afed5725f2956b24f62f2a5f94cf8756752',created_at:'1793330001522'},
-   {hash:'64a6df6bf067290871d7415d0efbd11a1c27f6f4c268313f4a673c331bebaaa4',created_at:'1793330001523'},
+   {hash:'d3154b1a705b519b3df8263492338253d3a445126e0e29aae8d228658b176238',created_at:'1793330001550'},
+   {hash:'3d96ad8d0ffa688fda4ba70737c16dda2a89acb27a9299a9881fa910fef6b239',created_at:'1793330001551'},
+   {hash:'4af62e556b49a6af7021db5cb45a63c6767fc6d83857ed5ea41b9c869dc3997d',created_at:'1793330001552'},
+   {hash:'fc41c330e3f188abc183c5983dde402ebd877e51ea5cae897c83ed15ac705856',created_at:'1793330001553'},
   ]);
   expect(await phaseTwoObjects()).toEqual([{levels:'teras_loop_level',settings:'teras_payroll_loop_setting',audit:'payroll_audit_capture',baseline:'teras_capacity_baseline',
    cutoff:true,handbook:'teras_policy_version',learning:'teras_learning_signal',hardening:'payroll_check_acknowledgement'}]);

@@ -14,7 +14,7 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(676); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors, the four AI v2 Phase 1 migrations 2000-2003 and the seven AI v2 Phase 2 migrations 2004-2010, the Phase 2 hardening migration 2011, the ADR-0174 tenant-isolation hardening 2100-2102, the payroll history learning migration 2013 and the ADR-0174 follow-up 2120-2123 below.
+ expect(journal.entries).toHaveLength(676); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors, the four AI v2 Phase 1 migrations 2000-2003 and the seven AI v2 Phase 2 migrations 2004-2010, the Phase 2 hardening migration 2011, the ADR-0174 tenant-isolation hardening 2100-2102, the payroll history learning migration 2013 and the ADR-0174 follow-up 2150-2153 below.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
  expect(journal.entries.slice(boundary)).toHaveLength(105);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
@@ -82,10 +82,10 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:1349,version:'7',when:1793330001502,tag:'2102_company_tenant_fk_validate',breakpoints:true,hash:'b2a6af380bb89765c2b32b6edaf8b5c7707ca23901f22806cd9f8888856983b4'},
   // Payroll history learning P1 (claude/payroll-history-learning), frozen here.
   {idx:1350,version:'7',when:1793330001503,tag:'2013_payroll_learned_baseline',breakpoints:true,hash:'bd490fda5f21c713262ecc6c8a29e8ed5dc88e0c963e201be7745bdc5a351da3'},
-  {idx:1367,version:'7',when:1793330001520,tag:'2120_definer_search_path_pin',breakpoints:true,hash:'d3154b1a705b519b3df8263492338253d3a445126e0e29aae8d228658b176238'},
-  {idx:1368,version:'7',when:1793330001521,tag:'2121_company_descendant_tenant_pin',breakpoints:true,hash:'226a62add7c1b827f5486e327419186da115f7f74834dea87e1c385b711a0a34'},
-  {idx:1369,version:'7',when:1793330001522,tag:'2122_company_reference_tenant_fk_not_valid',breakpoints:true,hash:'91bf130056cf56c6d114c472cfe27afed5725f2956b24f62f2a5f94cf8756752'},
-  {idx:1370,version:'7',when:1793330001523,tag:'2123_company_reference_tenant_fk_validate',breakpoints:true,hash:'64a6df6bf067290871d7415d0efbd11a1c27f6f4c268313f4a673c331bebaaa4'},
+  {idx:1395,version:'7',when:1793330001550,tag:'2150_definer_search_path_pin',breakpoints:true,hash:'d3154b1a705b519b3df8263492338253d3a445126e0e29aae8d228658b176238'},
+  {idx:1396,version:'7',when:1793330001551,tag:'2151_company_descendant_tenant_pin',breakpoints:true,hash:'3d96ad8d0ffa688fda4ba70737c16dda2a89acb27a9299a9881fa910fef6b239'},
+  {idx:1397,version:'7',when:1793330001552,tag:'2152_company_reference_tenant_fk_not_valid',breakpoints:true,hash:'4af62e556b49a6af7021db5cb45a63c6767fc6d83857ed5ea41b9c869dc3997d'},
+  {idx:1398,version:'7',when:1793330001553,tag:'2153_company_reference_tenant_fk_validate',breakpoints:true,hash:'fc41c330e3f188abc183c5983dde402ebd877e51ea5cae897c83ed15ac705856'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {
