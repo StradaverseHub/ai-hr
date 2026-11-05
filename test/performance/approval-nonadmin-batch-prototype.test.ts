@@ -33,13 +33,16 @@ it('compares one visible set per non-admin batch against every canonical scalar 
  await owner.db.insert(s.employment).values({id:foreignEmployment,tenantId:foreign.tenantId,personId:foreignPerson,companyId:foreign.companyId,hiredOn:'2020-01-01'});
  const ended=randomUUID();await owner.db.insert(s.employment).values({id:ended,tenantId:b.tenantId,personId:users[4].personId,companyId:companies[9].id,hiredOn:'2010-01-01',terminatedOn:'2015-01-01'});
  const ids=[...users.map(u=>u.employmentId),ended,foreignEmployment,randomUUID(),users[4].employmentId];
- const [original]=await owner.client<{ddl:string;acl:string|null;owner:string}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl,proowner::text as owner from pg_proc where oid='app.delegated_approval_subject(uuid,text,text)'::regprocedure`;
- const [installed]=await owner.client<{ddl:string;acl:string|null;owner:string}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl,proowner::text as owner from pg_proc where oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure`;
- expect(installed.ddl).toContain('app.delegated_approval_subject');
+ const [original]=await owner.client<{ddl:string;acl:string|null;owner:string;body:string}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl,proowner::text as owner,prosrc as body from pg_proc where oid='app.delegated_approval_subject(uuid,text,text)'::regprocedure`;
+ const [installed]=await owner.client<{ddl:string;acl:string|null;owner:string;body:string}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl,proowner::text as owner,prosrc as body from pg_proc where oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure`;
+ const legacySql=readFileSync(new URL('../../db/migrations/2125_approval_subject_batch.sql',import.meta.url),'utf8');
+ const legacyBody=legacySql.split('AS $$')[1].split('$$;')[0];
+ const predecessor={...installed,body:legacyBody,ddl:installed.ddl.replace(installed.body,()=>legacyBody)};
+ expect(predecessor.ddl).toContain('app.delegated_approval_subject');
  const nonAdmin='SELECT c.id FROM candidates c JOIN admin_companies a ON a.company_id=c.company_id WHERE a.allowed IS NOT TRUE';
  const oldTail=` FROM non_admin c JOIN LATERAL app.delegated_approval_subject(c.id,wanted_module,wanted_task) s ON true;`;
- expect(installed.ddl.split(nonAdmin)).toHaveLength(2);expect(installed.ddl.split(oldTail)).toHaveLength(2);
- let candidate=installed.ddl.replace(nonAdmin,'SELECT c.id,c.person_id,c.full_name,c.employee_code,c.company_id FROM candidates c JOIN admin_companies a ON a.company_id=c.company_id WHERE a.allowed IS NOT TRUE');
+ expect(predecessor.ddl.split(nonAdmin)).toHaveLength(2);expect(predecessor.ddl.split(oldTail)).toHaveLength(2);
+ let candidate=predecessor.ddl.replace(nonAdmin,'SELECT c.id,c.person_id,c.full_name,c.employee_code,c.company_id FROM candidates c JOIN admin_companies a ON a.company_id=c.company_id WHERE a.allowed IS NOT TRUE');
  candidate=candidate.replace(' )\n SELECT c.id,c.person_id,c.full_name,c.employee_code,c.company_id',` ), visible_set AS MATERIALIZED (
   SELECT app.visible_employment_ids() AS ids WHERE EXISTS(SELECT 1 FROM non_admin)
  ), unseen AS MATERIALIZED (
@@ -56,6 +59,8 @@ it('compares one visible set per non-admin batch against every canonical scalar 
  const proposal=JSON.parse(readFileSync(new URL('./approval-nonadmin-batch-migration.proposal.json',import.meta.url),'utf8')) as {sql:string};
  expect(proposal.sql.split('AS $$')[1].split('$$;')[0]).toBe(candidate.split('AS $function$')[1].split('$function$')[0]);
  candidate=proposal.sql;
+ expect(readFileSync(new URL('../../db/migrations/2141_approval_nonadmin_visibility_batch.sql',import.meta.url),'utf8')).toBe(candidate);
+ expect(installed.body).toBe(candidate.split('AS $$')[1].split('$$;')[0]);
  const dependencyDefinitions=await owner.client<{identity:string;ddl:string;body:string}[]>`select oid::regprocedure::text as identity,pg_get_functiondef(oid)as ddl,prosrc as body from pg_proc where oid=any(array['app.visible_employment_ids()'::regprocedure,'app.delegated_approval_subject(uuid,text,text)'::regprocedure,'app.can_see_employment(uuid)'::regprocedure])order by 1`;
  const dependencyCatalog=await owner.client`select oid::regprocedure::text as identity,md5(prosrc)as fingerprint,proowner::regrole::text as owner,proacl::text,prosecdef,provolatile,proparallel,proisstrict,proleakproof,proconfig,prorettype::regtype::text,proretset,proargtypes::text,proallargtypes::text,proargmodes::text,proargnames from pg_proc where oid=any(array['app.delegated_approval_subjects(uuid[],text,text)'::regprocedure,'app.visible_employment_ids()'::regprocedure,'app.delegated_approval_subject(uuid,text,text)'::regprocedure,'app.can_see_employment(uuid)'::regprocedure])order by 1`;
  let improvementRatio:number|null=null;
@@ -85,6 +90,7 @@ it('compares one visible set per non-admin batch against every canonical scalar 
   expect(reference.map(row=>row.employment_id)).toEqual([...expected].sort());expect(current).toEqual(reference);controls.push(label);
  };
  try{
+  await owner.client.unsafe(predecessor.ddl);
   await owner.client.unsafe(candidate);
   const all=[...users.map(u=>u.employmentId),ended];
   await compare('group HR',base,all);await compare('company HR',context(users[0]),users.slice(0,50).map(u=>u.employmentId));
@@ -118,7 +124,7 @@ it('compares one visible set per non-admin batch against every canonical scalar 
   expect(access).toEqual({app_execute:true,public_execute:false});
   const headerSubjects=users.slice(0,50).filter(u=>u.index!==3).map(u=>u.employmentId);
   for(const phase of ['original','candidate','candidate-warm','restored']){
-   await owner.client.unsafe(installed.ddl);
+   await owner.client.unsafe(predecessor.ddl);
    if(phase==='candidate'||phase==='candidate-warm')await owner.client.unsafe(candidate);
    const started=performance.now();for(let i=0;i<10;i++)expect((await read(context(users[3]),true,headerSubjects,false)).map(row=>row.employment_id)).toEqual([...headerSubjects].sort());
    measurements.push({phase,reads:10,subjectsPerRead:headerSubjects.length,elapsedMs:performance.now()-started});
@@ -129,9 +135,9 @@ it('compares one visible set per non-admin batch against every canonical scalar 
    for(let n=0;n<5;n++)expect((await read(context(users[3]),true,headerSubjects,applyOrgFilter)).map(row=>row.employment_id)).toEqual([...headerSubjects].sort());
    measurements.push({phase,reads:5,subjectsPerRead:headerSubjects.length,elapsedMs:performance.now()-began});
   }
-  await owner.client.unsafe(installed.ddl);
+  await owner.client.unsafe(predecessor.ddl);
   const drifts:[string,string][]=[
-   ['batch-body',installed.ddl.replace('BEGIN','-- controlled predecessor drift\nBEGIN')],
+   ['batch-body',predecessor.ddl.replace('BEGIN','-- controlled predecessor drift\nBEGIN')],
    ['batch-volatility','ALTER FUNCTION app.delegated_approval_subjects(uuid[],text,text) VOLATILE'],
    ['batch-app-execute','REVOKE EXECUTE ON FUNCTION app.delegated_approval_subjects(uuid[],text,text) FROM ai_hr_app'],
    ['batch-public-execute','GRANT EXECUTE ON FUNCTION app.delegated_approval_subjects(uuid[],text,text) TO PUBLIC'],
@@ -142,18 +148,18 @@ it('compares one visible set per non-admin batch against every canonical scalar 
   drifts.push(['visible-security','ALTER FUNCTION app.visible_employment_ids() SECURITY INVOKER'],['scalar-volatility','ALTER FUNCTION app.delegated_approval_subject(uuid,text,text) VOLATILE']);
   for(const [kind,ddl]of drifts){
    await expect(owner.client.begin(async tx=>{await tx.unsafe(ddl);await tx.unsafe(candidate);})).rejects.toMatchObject({code:'55000'});
-   const [restored]=await owner.client<{ddl:string;acl:string|null;owner:string}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl,proowner::text as owner from pg_proc where oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure`;expect(restored).toEqual(installed);
+   const [restored]=await owner.client<{ddl:string;acl:string|null;owner:string;body:string}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl,proowner::text as owner,prosrc as body from pg_proc where oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure`;expect(restored).toEqual(predecessor);
    controls.push('drift-refused:'+kind);
   }
  }finally{
   await owner.client.unsafe(installed.ddl);
-  const [after]=await owner.client<{ddl:string;acl:string|null;owner:string}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl,proowner::text as owner from pg_proc where oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure`;
+  const [after]=await owner.client<{ddl:string;acl:string|null;owner:string;body:string}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl,proowner::text as owner,prosrc as body from pg_proc where oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure`;
   expect(after).toEqual(installed);
-  const [restored]=await owner.client<{ddl:string;acl:string|null;owner:string}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl,proowner::text as owner from pg_proc where oid='app.delegated_approval_subject(uuid,text,text)'::regprocedure`;
+  const [restored]=await owner.client<{ddl:string;acl:string|null;owner:string;body:string}[]>`select pg_get_functiondef(oid)as ddl,proacl::text as acl,proowner::text as owner,prosrc as body from pg_proc where oid='app.delegated_approval_subject(uuid,text,text)'::regprocedure`;
   expect(restored).toEqual(original);
   const dependenciesAfter=await owner.client<{identity:string;ddl:string;body:string}[]>`select oid::regprocedure::text as identity,pg_get_functiondef(oid)as ddl,prosrc as body from pg_proc where oid=any(array['app.visible_employment_ids()'::regprocedure,'app.delegated_approval_subject(uuid,text,text)'::regprocedure,'app.can_see_employment(uuid)'::regprocedure])order by 1`;expect(dependenciesAfter).toEqual(dependencyDefinitions);
   if(measurements.length>=4){const m=measurements as {elapsedMs:number}[];improvementRatio=Math.max(m[1].elapsedMs,m[2].elapsedMs)/Math.min(m[0].elapsedMs,m[3].elapsedMs);}
-  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'approval-nonadmin-batch-prototype.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_NONADMIN_BATCH_PROTOTYPE_ONLY',releaseEligible:false,improvementRatio,dependencyCatalog,fixturePrincipals:500,controls,measurements,subsumptionChecks,proofSnapshot:'native REPEATABLE READ READ ONLY',canonicalScalarUnchanged:true,installedDefinitionRestored:true,productMigrationAllocated:false},null,2));
+  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'approval-nonadmin-batch-prototype.json'),JSON.stringify({kind:'INSTALLED_NATIVE_NONADMIN_BATCH_COMPARISON_ONLY',releaseEligible:false,improvementRatio,dependencyCatalog,fixturePrincipals:500,controls,measurements,subsumptionChecks,proofSnapshot:'native REPEATABLE READ READ ONLY',canonicalScalarUnchanged:true,installedDefinitionRestored:true,productMigrationAllocated:true},null,2));
  }
  if(improvementRatio!==null)expect(improvementRatio,'Both candidate phases must improve at least20% against the faster control').toBeLessThan(.8);
 },600000);

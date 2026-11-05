@@ -1,5 +1,29 @@
 # Coordinated migration reservations
 
+## Non-admin approval subject visibility batch — 5 November 2026 (unapplied)
+
+`codex/performance-nonadmin-batch-migration-20261105` reserves
+`2141_approval_nonadmin_visibility_batch`, idx1394 / when1793330001541 /
+SHA256 `d25a2cc9c4c30e6941b15a203fdf869f60e2a7cc34853b0fb40007d5fbd309a1`.
+Fresh claims cover2430 heads,442 committed journals,605 migration trees and243 readable
+worktrees through2140 / idx1393 / when1793330001540. Foreign malformed WIP and literal
+claims remain untouched. Read-only staging matches all671 ordered canonical identities
+through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e.
+
+Guarded reversible native experiment41956573325 retained500 actual fixture principals,
+scalar owner/DTO equality, live scope/delegation/revocation controls and exact owner/ACL
+restoration. Ten49-subject manager reads measured1112ms original,44/47ms candidate and
+1104ms restored. Eleven source/privilege/configuration/dependency drifts refuse55000
+and roll back. These are component measurements, not500-user or million-row acceptance.
+
+The exact tested append reuses the existing native visible-employment set once per
+nonempty non-admin batch; unseen subjects keep the unchanged scalar purpose/delegation
+reader. Administrator arm,1000-input limit, tenant joins, five fields, signature, owner,
+ACL and all decision/writer locks remain unchanged. The predecessor and the qualified
+set/scalar dependency bodies and security metadata are guarded. No authorization cache.
+Installed purpose/visibility tests, four populated upgrades and compiler qualification
+remain required. Complete BOARD roles stays excluded. No deployment is authorized.
+
 ## Probation navigation mapping probe — 5 November 2026 (unapplied)
 
 `codex/performance-probation-navigation-migration-20261105` reserves
