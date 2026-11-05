@@ -8379,6 +8379,8 @@
       "epfBandUpTo": "Cận trên của bậc",
       "epfScheduleEffective": "Biểu có hiệu lực từ",
       "epfCalculatedEmployer": "Khoản đóng của người sử dụng lao động đã tính",
+      "epfEmployeeEarlierRuns": "Khoản đóng của người lao động đã trả ở các kỳ chạy trước",
+      "epfEmployerEarlierRuns": "Khoản đóng của người sử dụng lao động đã trả ở các kỳ chạy trước",
       "epfEmployeeThisRun": "Khoản đóng của người lao động kỳ này trước điều chỉnh",
       "epfEmployerThisRun": "Khoản đóng của người sử dụng lao động kỳ này trước điều chỉnh",
       "epfFinalEmployee": "Khoản đóng cuối cùng của người lao động trên phiếu lương",

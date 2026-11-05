@@ -104,6 +104,40 @@ describe('6b4ca488 — the six statutory items, read from the payslip’s own st
     ]);
   });
 
+  it('keeps earlier paid EPF, this run’s calculation and final adjusted amounts distinct', () => {
+    const working = {
+      actualWage: 5100,
+      roundedWage: 5100,
+      increment: 100,
+      employee: { method: 'entered_rate', rate: 0.11, amount: 561 },
+      employer: { method: 'schedule_row', schedulePart: 'A', bandFrom: 5000.01, bandUpTo: 5100, amount: 612 },
+      scheduleEffectiveFrom: '2025-10-01',
+      items: [{ label: 'Basic salary', amount: 5000 }, { label: 'Bonus', amount: 100 }],
+      employeeEarlierRuns: 550,
+      employerEarlierRuns: 650,
+      employeeThisRun: 11,
+      employerThisRun: 0,
+    } as const;
+    const result = explainStatutory({
+      ...STAMPED,
+      epfWorking: working,
+      epfEmployee: 19,
+      epfEmployer: 0,
+      adjustment: { reason: 'Approved correction', lines: { epfEmployee: { system: 11, applied: 19 } } },
+    }, 'bonus');
+
+    expect(result.epfWorking).toEqual({ ...working, finalEmployee: 19, finalEmployer: 0 });
+    expect(result.items[0]).toMatchObject({
+      key: 'epf', ruleKind: 'manual', employeeReported: 19, effectiveEmployeeRate: null,
+    });
+
+    const { employeeEarlierRuns: _employee, employerEarlierRuns: _employer, ...olderWorking } = working;
+    expect(explainStatutory({ ...STAMPED, epfWorking: olderWorking }, 'regular').epfWorking)
+      .toMatchObject({ employeeThisRun: 11, employerThisRun: 0 });
+    expect(explainStatutory({ ...STAMPED, epfWorking: { ...working, employer: { method: 'schedule_row', amount: 612 } } }, 'regular').epfWorking)
+      .toBeNull();
+  });
+
   it('takes each item’s wage base from the run’s own `bases`, not from any earnings figure', () => {
     const i = byKey(STAMPED);
     expect(i.epf.base, 'EPF is charged on the normal stream').toBe(5000);

@@ -8379,6 +8379,8 @@
       "epfBandUpTo": "Band upper bound",
       "epfScheduleEffective": "Schedule effective from",
       "epfCalculatedEmployer": "Calculated employer contribution",
+      "epfEmployeeEarlierRuns": "Employee contribution already paid in earlier runs",
+      "epfEmployerEarlierRuns": "Employer contribution already paid in earlier runs",
       "epfEmployeeThisRun": "Employee contribution for this run before adjustments",
       "epfEmployerThisRun": "Employer contribution for this run before adjustments",
       "epfFinalEmployee": "Final employee contribution on payslip",

@@ -293,6 +293,8 @@ const epfWorkingSchema = z.object({
   ]),
   scheduleEffectiveFrom: z.iso.date().optional(),
   items: z.array(z.object({ label: z.string(), amount: z.number() })),
+  employeeEarlierRuns: z.number().optional(),
+  employerEarlierRuns: z.number().optional(),
   employeeThisRun: z.number(),
   employerThisRun: z.number(),
 });

@@ -295,7 +295,7 @@ export function epf(
 
 export type EpfCitizenship = 'citizen' | 'pr' | 'non_citizen';
 
-type EpfSelection = { age?: number | null; citizenship?: EpfCitizenship; wageMonth?: string; bonus?: number };
+type EpfSelection = { age?: number | null; citizenship?: EpfCitizenship; wageMonth?: string };
 type EpfWorkingSide =
   | { method: 'entered_rate'; rate: number; amount: number }
   | { method: 'schedule_row'; schedulePart: string; bandFrom: number; bandUpTo?: number; amount: number }
@@ -346,7 +346,7 @@ function semiAutoEmployer(
   const scheduleMax = part === 'C' ? EPF_SCHEDULE_MAX : cfg.scheduleMax ?? EPF_SCHEDULE_MAX;
   // Parts A and C retain the low-wage employer rate when a bonus takes the month above RM5,000.
   const crossesWithBonus = (part === 'A' || part === 'C') && base > threshold &&
-    round2(base - Math.max(0, sel?.bonus ?? additional)) <= threshold;
+    round2(base - Math.max(0, additional)) <= threshold;
   const rate = part === 'F' ? cfg.nonCitizenEmployerRate ?? 0.02
     : part === 'E' ? cfg.seniorEmployerRate ?? 0.04
     : base <= threshold || crossesWithBonus ? lowRate : highRate;
@@ -382,8 +382,9 @@ function epfEnteredRateWorking(
   return {
     actualWage, roundedWage: roundedCents / 100, increment,
     employee: entered(employeeRate), employer,
-    ...('schedulePart' in employer ? { scheduleEffectiveFrom: !sel?.wageMonth || sel.wageMonth >= EPF_PART_F_START
-      ? '2025-10-01' : '2022-07-01' } : {}),
+    ...('schedulePart' in employer && (!sel?.wageMonth || sel.wageMonth >= '2022-07')
+      ? { scheduleEffectiveFrom: !sel?.wageMonth || sel.wageMonth >= EPF_PART_F_START ? '2025-10-01' : '2022-07-01' }
+      : {}),
   };
 }
 
@@ -420,7 +421,7 @@ function epfContributionWithWorking(
 ) {
   const working = epfEnteredRateWorking(wage, additional, cfg, election, sel);
   if (working) {
-    const normal = additional > 0 ? epfEnteredRateWorking(wage, 0, cfg, election, { ...sel, bonus: 0 })! : working;
+    const normal = additional > 0 ? epfEnteredRateWorking(wage, 0, cfg, election, sel)! : working;
     return {
       working,
       contribution: {
@@ -1400,7 +1401,6 @@ export function statutory(
     epfAge?: number | null;
     epfCitizenship?: EpfCitizenship;
     epfWageMonth?: string;
-    epfBonus?: number;
     // ── Feedback 017d9c25 (r187) — PER-AGENCY BASE CARVE-OUTS ──────────────────────────────────────
     // `wage` / `additional` / `overtime` keep their meanings EXACTLY (the whole golden suite is pinned
     // to them). These four numbers say how much of that money a specific agency's base must NOT (or
@@ -1492,7 +1492,6 @@ export function statutory(
     age: opts?.epfAge,
     citizenship: opts?.epfCitizenship,
     wageMonth: opts?.epfWageMonth,
-    bonus: opts?.epfBonus,
   });
   const epfTrace = working ? { epfWorking: working } : {};
   const e = { employee: eC.employee, employer: eC.employer };

@@ -8379,6 +8379,8 @@
       "epfBandUpTo": "档位上限",
       "epfScheduleEffective": "缴费表生效日期",
       "epfCalculatedEmployer": "计算出的雇主缴款",
+      "epfEmployeeEarlierRuns": "此前发薪已缴纳的员工缴款",
+      "epfEmployerEarlierRuns": "此前发薪已缴纳的雇主缴款",
       "epfEmployeeThisRun": "本次发薪调整前的员工缴款",
       "epfEmployerThisRun": "本次发薪调整前的雇主缴款",
       "epfFinalEmployee": "工资单最终员工缴款",

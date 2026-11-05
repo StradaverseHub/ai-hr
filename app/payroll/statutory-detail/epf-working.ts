@@ -40,8 +40,14 @@ export function epfWorkingRows(
   if (working.scheduleEffectiveFrom) {
     rows.push({ label: t('epfScheduleEffective'), value: working.scheduleEffectiveFrom });
   }
+  rows.push({ label: t('epfCalculatedEmployer'), value: money(employer.amount) });
+  if (working.employeeEarlierRuns != null) {
+    rows.push({ label: t('epfEmployeeEarlierRuns'), value: money(working.employeeEarlierRuns) });
+  }
+  if (working.employerEarlierRuns != null) {
+    rows.push({ label: t('epfEmployerEarlierRuns'), value: money(working.employerEarlierRuns) });
+  }
   rows.push(
-    { label: t('epfCalculatedEmployer'), value: money(employer.amount) },
     { label: t('epfEmployeeThisRun'), value: money(working.employeeThisRun) },
     { label: t('epfEmployerThisRun'), value: money(working.employerThisRun) },
     { label: t('epfFinalEmployee'), value: money(working.finalEmployee) },

@@ -4976,6 +4976,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     type PostInputs={wages:number;additional:number;overtime:number;lp:number;zakat:number;options:Record<string,number>};
     const postEarlierByEmp=new Map<string,{inputs:PostInputs;paid:Record<string,number>}>();
     const earlierRunByEmp = new Map<string, { additional: number; overtime: number }>();
+    const earlierEpfByEmp = new Map<string, { employee: number | null; employer: number | null }>();
     const earlierTaxBasisByEmp = new Map<string,{additionalDelta:number;normal:number|undefined;paidPcb:number;paidBonus:number;corrected:boolean}>();
     const earlierNonCashByEmp = new Map<string,{ownedEntries:NonCashEntry[];regularEntries:NonCashEntry[]|null;ownedEaEntries:NonCashEaEntry[];regularEaEntries:NonCashEaEntry[]|null;legacyRegular:boolean}>();
     const accumulatedNonCashByEmp = new Map<string,{bik:number;vola:number;complete:boolean}>();
@@ -5001,6 +5002,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         .where(and(eq(payrollBatch.companyId,batch.companyId),eq(payrollBatch.payPeriodId, batch.payPeriodId), lt(payrollBatch.runSeq, batch.runSeq)));
       const correctedEarlier = await readEffectiveTaxBasesTx(tx, ctx, earlier.map(s => s.id));
       for (const r of earlier) {
+        // Read what the original payslip charged before applying any tax-input correction.
+        const savedEpf = r.statutory as { epfEmployee?: unknown; epfEmployer?: unknown } | null;
+        const accumulated = earlierEpfByEmp.get(r.employmentId) ?? { employee: 0, employer: 0 };
+        const addSaved = (total: number | null, value: unknown) =>
+          total !== null && typeof value === 'number' && Number.isFinite(value) ? round2(total + value) : null;
+        earlierEpfByEmp.set(r.employmentId, {
+          employee: addSaved(accumulated.employee, savedEpf?.epfEmployee),
+          employer: addSaved(accumulated.employer, savedEpf?.epfEmployer),
+        });
         const correction = correctedEarlier.get(r.id);
         if (correction) {
           r.statutory = correction.statutory;
@@ -7312,6 +7322,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         const usesSchedule = epfWorking.employer.method === 'schedule_row' || epfWorking.employer.method === 'schedule_formula';
         const scheduleEffectiveFrom = usesSchedule
           ? resolved.components.epf.effectiveFrom ?? epfWorking.scheduleEffectiveFrom : undefined;
+        const earlierEpf = earlierEpfByEmp.get(e.employmentId);
         return {
           ...epfWorking,
           ...(scheduleEffectiveFrom ? { scheduleEffectiveFrom } : {}),
