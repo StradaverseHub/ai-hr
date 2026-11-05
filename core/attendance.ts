@@ -4085,8 +4085,12 @@ export class MissingAttendanceRejectReasonError extends Error {
 // Native approvals take the exclusive leave-configuration lock. Let only one per tenant and
 // process enter the pool at a time, so local waiters leave connections available for other requests.
 const attendanceApprovalTails = new Map<string, Promise<void>>();
+const attendancePerformance = globalThis as typeof globalThis & {
+  __aihrPerfBeginAttendanceApproval?: () => { acquired: () => void; finished: () => void };
+};
 
 async function queueNativeAttendanceApproval<T>(tenantId: string, approve: () => Promise<T>): Promise<T> {
+  const timing = attendancePerformance.__aihrPerfBeginAttendanceApproval?.();
   const key = tenantId.toLowerCase();
   const previous = attendanceApprovalTails.get(key);
   let release!: () => void;
@@ -4094,10 +4098,12 @@ async function queueNativeAttendanceApproval<T>(tenantId: string, approve: () =>
   attendanceApprovalTails.set(key, current);
   try {
     await previous;
+    timing?.acquired();
     return await approve();
   } finally {
     if (attendanceApprovalTails.get(key) === current) attendanceApprovalTails.delete(key);
     release();
+    timing?.finished();
   }
 }
 
