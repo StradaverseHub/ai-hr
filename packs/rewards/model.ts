@@ -97,7 +97,13 @@ export const isSalaryReductionAttempt = (e: unknown) => e instanceof ZodError &&
 export const emptyFacts = (): RewardFacts => ({ talent: null, performance: null, confidentiality: 'standard', seniorPlan: false, erCase: false, pipCase: false, erDecision: 'pending', pipDecision: 'pending', caseReason: '', segment: '', branch: '', reviewed: false });
 export const emptyRecommendation = (): Recommendation => ({ meritBp: null, promotionGrade: null, promotionBp: null, specialBp: null, multiplierBp: null, bonusCents: null, lumpCents: null, reason: '', currentRoleSummary: '', proposedRoleSummary: '' });
 
+/** Approved position metadata frozen with the review; it never substitutes an employee grade. */
+export type RewardArchitectureSource = {
+  positionId:string;mappingRevision:number;catalogueRevision:number;
+  jobUnitId:string;jobUnitTitle:string;classification:string[];gradeId:string;gradeCode:string;
+};
 export type RewardSource = {
+  architecture?:RewardArchitectureSource|null;
   employmentId: string; personId: string; compensationId: string | null;
   employeeCode: string; name: string; grade: string; gradeId: string | null;
   basicCents: number; currency: string; payMode: string;
