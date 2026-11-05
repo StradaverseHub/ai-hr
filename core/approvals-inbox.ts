@@ -26,7 +26,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import {assertAssignedWorkPrincipalTx} from './approvals';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata,pendingLeaveCancellationCandidatesExistSql,listPendingReplacementLeaveTasks} from '../packs/leave/service';
-import {pendingClaimTaskMetadata,pendingClaimTaskSummary} from '../packs/claims/service';
+import {countPendingClaimTasks,pendingClaimTaskMetadata,pendingClaimTaskSummary} from '../packs/claims/service';
 import {pendingAttendanceTaskMetadata} from '../packs/attendance/service';
 import {pendingProfileTaskMetadata} from './profile';
 import {pendingResignationCandidatesExistSql,pendingResignationTaskMetadata} from './offboarding';
@@ -145,19 +145,37 @@ async function loadDecisionHeaders(ctx:SessionContext,scopeIds:string[]|undefine
   ]);
 }
 
-async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
-  options:{noticeAcknowledgements?:boolean;preview?:true}){
+async function loadPendingTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+  options:{noticeAcknowledgements?:boolean;preview?:true;countOnly?:true}){
   // Each owner proves actual current assignment without selecting its private decision workspace.
   // A platform role or broad read permission alone is not an actionable task assignment.
-  const [leave,[cancellations,resignations,managerReviews,hrReviews],replacement,attendance,profile,claimResult,noticeAcknowledgements,packTaskLists]=await Promise.all([
+  return Promise.all([
     pendingLeaveTaskMetadata(ctx,scopeIds),loadDecisionHeaders(ctx,scopeIds,options.preview),
     listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds}),
     modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([]),
     pendingProfileTaskMetadata(ctx,scopeIds),
-    modules.claims?(options.preview?pendingClaimTaskSummary(ctx,scopeIds,25):pendingClaimTaskMetadata(ctx,scopeIds).then(items=>({items,total:items.length}))):Promise.resolve({items:[],total:0}),
+    modules.claims
+      ? options.countOnly ? countPendingClaimTasks(ctx,scopeIds).then(total=>({items:[],total}))
+        : options.preview ? pendingClaimTaskSummary(ctx,scopeIds,25)
+        : pendingClaimTaskMetadata(ctx,scopeIds).then(items=>({items,total:items.length}))
+      : Promise.resolve({items:[],total:0}),
     options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
     Promise.all(PACK_TASK_SOURCES.map(source=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([]))),
   ]);
+}
+
+export async function countPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules):Promise<number>{
+  const [leave,decisionHeaders,replacement,attendance,profile,claims,notices,packTasks]=await loadPendingTaskSources(
+    ctx,scopeIds,modules,{preview:true,countOnly:true},
+  );
+  return claims.total+leave.length+replacement.length+attendance.length+profile.length+notices.length+
+    decisionHeaders.reduce((total,rows)=>total+rows.length,0)+packTasks.reduce((total,rows)=>total+rows.length,0);
+}
+
+async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+  options:{noticeAcknowledgements?:boolean;preview?:true}){
+  const [leave,[cancellations,resignations,managerReviews,hrReviews],replacement,attendance,profile,claimResult,noticeAcknowledgements,packTaskLists]=
+    await loadPendingTaskSources(ctx,scopeIds,modules,options);
   const packTasks:PackTaskItem[]=packTaskLists.flat();
   const iso=(value:Date|string)=>value instanceof Date?value.toISOString():new Date(value).toISOString();
   const project=(rows:readonly Pick<AssignedApprovalMetadata,'id'|'employee'|'createdAt'>[],kind:AssignedApprovalKind):PendingTaskItem[]=>

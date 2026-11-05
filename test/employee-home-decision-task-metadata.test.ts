@@ -6,6 +6,7 @@ import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata} from '../packs/leave/service';
 import {createClaimType,pendingClaimTaskMetadata,pendingClaimTaskSummary} from '../packs/claims/service';
+import {countPendingTasks,pendingTaskSummary} from '../core/approvals-inbox';
 import {pendingProfileTaskMetadata,decideProfileChange} from '../core/profile';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -54,7 +55,16 @@ describe('Home assigned-decision metadata is an uncapped projection at its sourc
    expect(new Set(rows.map(r=>r.id))).toEqual(new Set(heads.map(r=>r.id)));expectHeaders(rows);
    expect(await pendingClaimTaskSummary(ctx,undefined)).toEqual({items:rows.slice(0,25),total:211});
    expect(await pendingClaimTaskSummary(ctx,[])).toEqual({items:[],total:0});
+
    expect(JSON.stringify(rows)).not.toContain('8923.45');expect(await pendingClaimTaskMetadata(ctx,[])).toEqual([]);
+  });
+  const modules={attendance:false,claims:true,performance:false,rewards:false};
+  const previewTotal=(await pendingTaskSummary(ctx,undefined,modules)).total;
+  await onlyColumns('claim_request',['id','tenant_id','employment_id','status'],async()=>{
+   await expectDenied(pendingClaimTaskSummary(ctx,undefined));
+   expect(previewTotal).toBe(211);
+   expect(await countPendingTasks(ctx,undefined,modules)).toBe(previewTotal);
+   expect(await countPendingTasks(ctx,[],modules)).toBe(0);
   });
  });
  it('reads every stored profile task without proposed values or before/after review projection, then removes a real decision',async()=>{

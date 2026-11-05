@@ -1,7 +1,7 @@
 /** Home projects the existing workflow owners. It never creates tasks, decisions or capabilities. */
 import type {SessionContext} from '../db/client';
 import {readOwnEmployeeHomeConfiguration} from './employee-home-configuration';
-import {listPendingTasks,pendingTaskSummary} from './approvals-inbox';
+import {countPendingTasks,listPendingTasks,pendingTaskSummary} from './approvals-inbox';
 import {pendingStandardFeedbackTaskMetadata,pendingOnehrFeedbackTaskMetadata} from '../packs/performance/service';
 import {onboardingAssignedTaskMetadata} from '../packs/lifecycle/service';
 import {isModuleEnabled} from './entitlements';
@@ -13,13 +13,13 @@ import {ASSIGNED_APPROVAL_KINDS,assignedApprovalHref,type AssignedApprovalKind} 
 export async function countEmployeeHomeTasks(ctx:SessionContext):Promise<number>{
  const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),
   performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
- const [inbox,standardFeedback,onehrFeedback,onboarding]=await Promise.all([
-  pendingTaskSummary(ctx,undefined,modules),
+ const [inboxCount,standardFeedback,onehrFeedback,onboarding]=await Promise.all([
+  countPendingTasks(ctx,undefined,modules),
   modules.performance?pendingStandardFeedbackTaskMetadata(ctx):Promise.resolve([]),
   modules.performance?pendingOnehrFeedbackTaskMetadata(ctx):Promise.resolve([]),
   isModuleEnabled(ctx,'lifecycle')?onboardingAssignedTaskMetadata(ctx):Promise.resolve([]),
  ]);
- return inbox.total+standardFeedback.length+onehrFeedback.length+onboarding.length;
+ return inboxCount+standardFeedback.length+onehrFeedback.length+onboarding.length;
 }
 
 export async function readEmployeeHomeTasks(ctx:SessionContext,employmentId?:string,page?:number):Promise<EmployeeHomeTasks>{
