@@ -191,12 +191,18 @@ export async function activateCiBuild(sourceRef,installId,buildRecordId){
  save(join(p.directory,'activated.json'),result);return result;
 }
 async function confirmRuntime(sourceRef,installId,buildRecordId,{persist=true,allowCleanup=false}={}){
- const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId,{allowCleanup}),g=p.grant;
+ const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId,{allowCleanup});
+ const result=await auditSelectedRuntime(source,p);
+ if(persist)save(join(p.directory,'runtime.json'),result);return result;
+}
+/** Read-only audit primitive. The caller owns selection/authority; normal CLI retains strict grant admission. */
+export async function auditSelectedRuntime(source,p,{beforeVerifyDirectory=()=>{}}={}){
+ source=targetRoot(source);const g=p.grant,sourceRef=g.source,installId=g.installId,buildRecordId=g.build.buildRecordId;
  const activated=JSON.parse(regular(join(p.directory,'activated.json'),1024**2));
  assert(activated.installId===installId&&activated.source===sourceRef&&activated.buildRecordId===buildRecordId&&activated.authorizationSha256===p.authorizationSha256,'Activated installation differs');
  runtimeContract(source,g);const bound=await sourceContract(source,p);
  assert(buildId(join(source,'.next'))===g.build.nextBuildId,'Active build ID differs');compiledContract(join(source,'.next'),bound.testing,bound.prepared);
- const compiledByteInventory=verifyDirectory(source,p,{active:true,records:bound.records});
+ beforeVerifyDirectory();const compiledByteInventory=verifyDirectory(source,p,{active:true,records:bound.records});
  assert(activated.bootIdSha256===installHash(readFileSync('/proc/sys/kernel/random/boot_id')),'Server rebooted during installation; explicit recovery required');
  const get=property=>execFileSync('systemctl',['show','aihr','--property='+property,'--value'],{encoding:'utf8',timeout:10000}).trim();
  assert(execFileSync('systemctl',['is-active','aihr'],{encoding:'utf8',timeout:10000}).trim()==='active','Service is not active');
@@ -211,7 +217,7 @@ async function confirmRuntime(sourceRef,installId,buildRecordId,{persist=true,al
  assert(response?.status===200&&get('MainPID')===pid,'Restarted service health or stable PID not verified');
  const result={format:1,kind:'CI_BUILD_ACTIVE_SERVICE_VERIFIED_NOT_FULL_ARRIVAL',source:sourceRef,installId,buildRecordId,nextBuildId:g.build.nextBuildId,
   authorizationSha256:p.authorizationSha256,pid,startedMonotonicUs:started,healthStatus:200,compiledByteInventory,migrationLedger:collectMigrationLedger(source),verifiedAt:new Date().toISOString(),releaseAuthorized:false,fullSourceChecksumVerified:false,fullMigrationLedgerVerified:true};
- if(persist)save(join(p.directory,'runtime.json'),result);return result;
+ return result;
 }
 async function readStatus(sourceRef,installId,buildRecordId){
  targetRoot();const p=selected(installId,sourceRef,buildRecordId,{allowCleanup:true});
