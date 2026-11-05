@@ -944,6 +944,7 @@ export async function setRewardUnitLump(ctx: SessionContext, unitId: string, rev
   return withRewardsTenant(ctx, async tx => {
     const { unit, roles } = await load(tx, unitId, true); assertRevision(unit, revision); assertUnlocked(unit);
     if (!canEditStage(unit.status, roles)) throw new RewardError('You cannot change this unit recommendation.');
+    if((await tx.execute(sql`select 1 from reward_uploaded_review where unit_id=${unit.id}::uuid`)).length)throw new RewardError('Use the Uploaded awards page for recorded amounts.');
     const { lumpReason: _old, ...rest } = unit.policy;
     await tx.update(rewardUnit).set({ policy: { ...rest, lumpUnitCents: value, ...(choice.reason ? { lumpReason: choice.reason } : {}) } }).where(eq(rewardUnit.id, unitId));
     await touch(tx, unitId);
@@ -961,7 +962,9 @@ export async function previewRewardLump(ctx: SessionContext, unitId: string, rev
   return withRewardsTenant(ctx, async tx => {
     const { unit, roles, entries } = await load(tx, unitId); assertRevision(unit, revision);
     if (unit.kind !== 'annual') throw new RewardError('Off-cycle reviews have no unit lump sum.');
-    const result = calculateRewards(entries, { ...unit.policy, lumpUnitCents: value });
+    if((await tx.execute(sql`select 1 from reward_uploaded_review where unit_id=${unit.id}::uuid`)).length)throw new RewardError('Uploaded awards have no planned lump sum pool.');
+    const {policy,controls}=await annualRewardCalculationTx(tx,unit,entries);
+    const result = calculateRewards(entries, { ...policy, lumpUnitCents: value }, controls);
     const plans = (['standard', 'h'] as const).map(plan => {
       const group = result.rows.filter(x => x.plan === plan), b = result.budgets[plan];
       const hidden = group.some(x => !visibleEntry(x, roles, ctx.personId));
@@ -969,7 +972,7 @@ export async function previewRewardLump(ctx: SessionContext, unitId: string, rev
         amendments: hidden ? null : group.filter(x => x.lumpEligible && x.recommendation.lumpCents != null && x.lumpCents !== result.lumpUnitCents).length,
         lumpCents: b.lumpCents, balanceCents: b.balanceCents, usedBp: b.bonusPoolCents > 0 ? ratio(b.bonusUsedCents, 10000, b.bonusPoolCents, 'nearest') : null, over: b.bonusUsedCents > b.bonusPoolCents };
     });
-    return { unitId, revision: unit.revision, lumpUnitCents: result.lumpUnitCents, suggestedLumpCents: result.suggestedLumpCents, exempt: !!unit.policy.exemptReason, plans };
+    return { unitId, revision: unit.revision, lumpUnitCents: result.lumpUnitCents, suggestedLumpCents: result.suggestedLumpCents, exempt: !!policy.exemptReason, plans };
   });
 }
 

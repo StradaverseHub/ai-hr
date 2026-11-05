@@ -48,7 +48,7 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
   async function unit(code: string, people: { salary: number; confidentiality?: 'standard' | 'bg' | 'ec' }[], buActor: SessionContext = actors.bu!, companyId=b.companyId,departmentId=b.deptA) {
     const [bu] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId, code, name: `Unit ${code}` }).returning();
     for (const [i, p] of people.entries()) await employee(`${code}-${i}`, p.salary, bu.id,companyId,departmentId);
-    const id=await createApprovedRewardUnit(admin,{name:'Board cycle',year,companyId,businessUnitId:bu.id,snapshotDate:today},{...defaultPolicy(year),ranges:{'12':[300000,600000,1200000]}});
+    const id=await createApprovedRewardUnit(admin,{name:`Board cycle ${code}`,year,companyId,businessUnitId:bu.id,snapshotDate:today},{...defaultPolicy(year),ranges:{'12':[300000,600000,1200000]}});
     const rev = async () => (await getRewardUnit(admin, id)).unit.revision;
     for (const seat of ['bu', 'bg', 'ctro', 'ec', 'pbp'] as const) await setRewardMember(admin, id, await rev(), (seat === 'bu' ? buActor : actors[seat]!).userId!, seat);
     await setRewardMember(admin, id, await rev(), admin.userId!, 'payroll');
@@ -251,7 +251,7 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       const other = await createCompany(admin, { legalName: 'Board Other Co (fictional)', companyLabel: 'BRD-OTHER' });
       const [obu] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: other.id, code: 'OTH', name: 'Other unit' }).returning();
       await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:other.id,businessUnitId:obu.id,year});
-      const otherUnit = await createApprovedRewardUnit(admin, { name: 'Board cycle', year, companyId: other.id, businessUnitId: obu.id, snapshotDate: today });
+      const otherUnit = await createApprovedRewardUnit(admin, { name: 'Separate company board cycle', year, companyId: other.id, businessUnitId: obu.id, snapshotDate: today });
       expect((await rewardApprovalsBoard(admin, [b.companyId])).map(r => r.id)).toEqual([id]);
       expect((await rewardApprovalsBoard(admin, [b.companyId, other.id])).map(r => r.id).sort()).toEqual([id, otherUnit].sort());
       expect((await rewardApprovalsBoard(actors.bu!, [b.companyId, other.id])).map(r => r.id)).toEqual([id]);
