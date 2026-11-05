@@ -21,7 +21,8 @@ export async function assertActiveCredential(tx: AuthSql, c: Credential) {
  * They bound decrypted input; they add no password, entitlement, MFA or eligibility policy and do
  * not change existing Auth readers. Active state remains assertActiveCredential's authority. */
 const credentialProjection=z.object({
- subject:z.uuid(),tenantId:z.uuid(),issuer:z.string().url().max(500),
+ // Tenant IDs are existing PostgreSQL identifiers; Auth subjects/versions are server-minted RFC UUIDs.
+ subject:z.uuid(),tenantId:z.guid(),issuer:z.string().url().max(500),
  organization:z.string().max(64),username:z.string().max(64),email:z.string().max(320),
  emailVerified:z.boolean(),enabled:z.boolean(),password:z.string().max(1024).nullable(),
  mustChange:z.boolean(),version:z.uuid(),totpSecret:z.string().max(1024).nullable(),

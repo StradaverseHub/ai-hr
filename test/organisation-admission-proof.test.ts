@@ -15,3 +15,20 @@ it('rejects extra claims, nonfinite times, wrong purpose and TTL extension',()=>
  for(const changed of [{...parsed,available:'true'},{...parsed,expiresAt:60101},{...parsed,expiresAt:Infinity},{...parsed,purpose:'login'},{...parsed,password:'hidden'},{...parsed,issuedAt:100.1}])expect(organisationAdmissionClaims.safeParse(changed).success).toBe(false);
  expect(()=>organisationAdmissionKey('bad')).toThrow();
 });
+
+it('signs existing PostgreSQL identity IDs without changing their exact binding bytes',()=>{
+ const legacyTenant='11111111-1111-1111-1111-111111111111';
+ const legacy={...claims,tenantId:legacyTenant,userId:'22222222-2222-2222-2222-222222222222',personId:'33333333-3333-3333-3333-333333333333',issuer:'https://hr.test/auth/'+legacyTenant};
+ const {payload,signature}=signOrganisationAdmission(legacy,master);
+ expect(JSON.parse(payload)).toEqual({v:1,purpose:'aihr-company-organisation-admission-v1',...legacy});
+ expect(signature).toBe(createHmac('sha256',organisationAdmissionKey(master)).update(payload).digest('hex'));
+ expect(JSON.parse(payload).available).toBe(true);
+});
+it('still rejects malformed database identities and non-RFC Auth subjects',()=>{
+ const {payload}=signOrganisationAdmission(claims,master),parsed=JSON.parse(payload);
+ for(const field of ['tenantId','userId','personId'])for(const bad of ['11111111-1111-1111-1111-11111111111g','11111111111111111111111111111111','{11111111-1111-1111-1111-111111111111}',' '+id,id+' ',null,7]){
+  if(field==='personId'&&bad===null)continue;
+  expect(organisationAdmissionClaims.safeParse({...parsed,[field]:bad}).success).toBe(false);
+ }
+ expect(organisationAdmissionClaims.safeParse({...parsed,subject:'11111111-1111-1111-1111-111111111111'}).success).toBe(false);
+});

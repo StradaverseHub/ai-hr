@@ -28,6 +28,20 @@ async function bind(userId:string):Promise<Credential>{
 }
 const nativeOptions=(ctx=adminCtx(b))=>withTenant(ctx,async tx=>{const [row]=await tx.execute<{options:{companies:{id:string}[]}}>(sql`select app.company_organisation_options() options`);return row.options;});
 async function storedProof(userId=b.adminUserId){const [row]=await owner.client`select payload from app.organisation_admission_proof where tenant_id=${b.tenantId} and user_id=${userId}`;return row.payload;}
+it('admits a real native account with existing PostgreSQL tenant/user/person IDs and still refuses its suspension',async()=>{
+ const tenantId='11111111-1111-1111-1111-111111111111',userId='22222222-2222-2222-2222-222222222222',personId='33333333-3333-3333-3333-333333333333';
+ await owner.client`insert into tenant(id,workos_org_id,name) values(${tenantId},${'org_legacy_'+randomUUID()},'Fictional legacy tenant')`;
+ await owner.client`insert into person(id,tenant_id,full_name) values(${personId},${tenantId},'Fictional legacy administrator')`;
+ await owner.client`insert into app_user(id,tenant_id,workos_user_id,person_id) values(${userId},${tenantId},${'user_legacy_'+randomUUID()},${personId})`;
+ await owner.client`insert into role_assignment(tenant_id,app_user_id,company_id,role) values(${tenantId},${userId},null,'hr_admin')`;
+ const [company]=await owner.client`insert into company(tenant_id,legal_name) values(${tenantId},'Fictional legacy company') returning id`;
+ b={...b,tenantId,adminUserId:userId,companyId:company.id};c=await bind(userId);
+ expect((await companyOrganisationOptions(adminCtx(b))).companies.map(x=>x.id)).toEqual([company.id]);
+ expect(await storedProof()).toMatchObject({tenantId,userId,personId,subject:c.subject,available:true});
+ await writeRecord(client,'credential:'+c.subject,{...c,suspended:true},c.subject);
+ expect((await companyOrganisationOptions(adminCtx(b))).companies).toHaveLength(0);
+ expect(await storedProof()).toMatchObject({tenantId,userId,personId,available:false});
+});
 it('requires canonical native availability; revoked or deleted bindings never become compatibility actors',async()=>{
  expect((await nativeOptions()).companies).toHaveLength(0);
  expect((await companyOrganisationOptions(adminCtx(b))).companies.map(x=>x.id)).toContain(b.companyId);
