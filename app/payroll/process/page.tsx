@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { PageHeader, ErrorBanner, pageWideCls } from '@/components/ui';
-import { batchDetail, listBatches } from '@/core/payroll';
+import { batchHeader, listBatches } from '@/core/payroll';
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
 import { listCompanies, listDepartments, listJobGrades } from '@/core/read';
 import { listPayrollConfigs } from '@/core/payroll-config';
@@ -70,7 +70,7 @@ export default async function PayrollProcessPage({
   let resumeBatch: ResumeBatch | undefined;
   let resumeError: string | undefined;
   if (resume) {
-    const data = await batchDetail(s, resume);
+    const data = await batchHeader(s, resume);
     if (!data) {
       // Not found OR not authorised for this admin's scope — show an explicit error, NOT a blank Step 1
       // (a silent fresh wizard reads as "my draft vanished"). Access-control edge case, per plan §3b.

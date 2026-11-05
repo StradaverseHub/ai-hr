@@ -100,12 +100,11 @@ import {
 } from './actions';
 // Movement tab redesign (78853b97): Employment History projection + New Event dispatcher.
 import {
-  movementHistory,
+  movementHistoryWithTypes,
   movementDetail,
   movementAttachments,
   movementPendingEditInput,
   resignationInformation,
-  movementCurrentState,
   MOVEMENT_FLAT_FIELDS,
 } from '@/core/movement';
 // 95d17761 — the DEFAULT Employment History view drops the correction artefacts. A pure view filter, so
@@ -114,12 +113,10 @@ import { partitionMovementRows } from '@/lib/movement-visibility';
 // e6a144d4 — the Employment History event-type caption, shared with the Download Excel route so the file
 // and the screen cannot print different names for the same event.
 import { movementKindLabel as movementKindLabelOf } from '@/lib/movement-kind-label';
-// ae9350f2 — the built-in exit-reason catalogue behind the Termination movement.
-import { terminationReasonCatalogue } from '@/core/termination-reason-catalog';
 // 476f23ed — the tenant's configurable movement event-type catalogue.
 import { listMovementEventTypes } from '@/core/movement-type';
-// 1d58019a Step 2 — each type's offered reasons and Field Controls, for the New Event / Edit form.
-import { movementTypeControls, type MovementTypeControls } from '@/core/movement-type-controls';
+import { readPersonnelMovementFormData } from './movement-form-data';
+import { withTenant } from '@/db/client';
 import { MovementNewEvent } from './movement-new-event';
 // c063eea9 — "Correct hire details" on the Hired row: the read behind the form, and its client island.
 import { HireCorrectionError, hireCorrectionView, type HireCorrectionField } from '@/core/hire-correction';
@@ -283,6 +280,10 @@ export default async function EmployeePage({
   // reader back onto a bare tab.
   const rawSearchParams = await searchParams;
   const movementPage=rawSearchParams.movementPage;
+  // Dedicated Movement screens return only their action card. Profile-only
+  // catalogs and employee records cannot affect that card's scope or options.
+  const readProfileCards = admin && !movementPage;
+  const readMovementEditorChoices = admin && (!movementPage || movementPage === 'new' || movementPage === 'edit');
   const movementContext={showCorrected:rawSearchParams.showCorrected,from:rawSearchParams.from};
   const historyHref=movementHistoryHref(employmentId,movementContext);
   if(!movementPage){
@@ -344,14 +345,14 @@ export default async function EmployeePage({
   const derivedStatus = deriveEmploymentStatus(emp, today);
   const derivedStatusLabel = tStatus(derivedStatus);
   // b4682879 — does this employee have a profile photo the viewer may see? (existence only; never the blob).
-  const photoExists = await hasPersonPhoto(s, emp.personId);
+  const photoExists = readProfileCards && await hasPersonPhoto(s, emp.personId);
 
   // Company change before any transaction (9464bd56) — admin-only inline correction of a mis-picked Company
   // while the employee has NO operational activity. `companyEditable` is the pre-transaction gate; when it is
   // false the Company field stays locked and points HR to Movement / Transfer. Phase 1 lets HR pick a
   // destination (companyChange param) which re-scopes the org dropdowns + shows a banner (nothing committed);
   // phase 2 Saves via changeEmploymentCompanyAction.
-  const companyEditable = admin ? await employmentCompanyEditable(s, employmentId) : false;
+  const companyEditable = readProfileCards ? await employmentCompanyEditable(s, employmentId) : false;
   // Destinations HR may pick = companies they administer (the writer requires is_admin_for(destination), so
   // offering only these keeps offered == acceptable). Only fetched when the field is actually editable.
   const managedCompanies = companyEditable ? await adminCompanies(s) : [];
@@ -364,39 +365,39 @@ export default async function EmployeePage({
   const orgScopeCompanyId = pendingCompany?.id ?? emp.companyId;
 
   const [history, departments, reporting, employees, grades, delegations] = await Promise.all([
-    assignmentHistory(s, employmentId),
+    readProfileCards ? assignmentHistory(s, employmentId) : [],
     // 570e3311 — departments scoped to THIS employee's company (origin ∪ shared-in ∪ global via the
     // System Labels resolver), matching the Position/BU/Location pickers. Feeds exactly two places:
     // the Organisation Assignment department select and the MovementNewEvent departments prop.
-    listDepartments(s, { companyIds: [emp.companyId] }),
-    reportingLinesFor(s, employmentId),
-    listWorkforcePickOptions(s),
-    listJobGrades(s),
-    delegationsFor(s, employmentId),
+    readMovementEditorChoices ? listDepartments(s, { companyIds: [emp.companyId] }) : [],
+    readProfileCards ? reportingLinesFor(s, employmentId) : {managers:[],reports:[]},
+    readMovementEditorChoices || movementPage === 'correct-hire' ? listWorkforcePickOptions(s) : [],
+    readMovementEditorChoices ? listJobGrades(s) : [],
+    readProfileCards ? delegationsFor(s, employmentId) : [],
   ]);
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
-  const salaryHistory = admin ? await compensationHistoryDetailed(s, employmentId) : [];
+  const salaryHistory = readProfileCards ? await compensationHistoryDetailed(s, employmentId) : [];
   // 7c7c2f80 — periods of CLOSED payroll runs that paid this employee: drives the per-row "deletable"
   // flag on the salary history (records a closed run relied on are payroll evidence and cannot go).
-  const closedPayrollPeriods = admin ? await closedPayrollPeriodsFor(s, employmentId) : [];
+  const closedPayrollPeriods = readProfileCards || movementPage === 'edit' ? await closedPayrollPeriodsFor(s, employmentId) : [];
   // Rung 5c — the acting company's country pack; statutory reads + the SOCSO/EIS default resolve through it.
   const countryPack = packFor('MY');
   // This scoped service verifies the owning company is MY; a person-level tax flag is not approval.
-  const taxSelection = admin && payrollOn
+  const taxSelection = readProfileCards && payrollOn
     ? await countryPack?.statutory.getTaxSelection?.(s, emp.employmentId) ?? null : null;
   // Rung 5c — the holiday-calendar state pick-list comes from the country packs via the registry
   // (union-read, the rung-5a `countryPacks()` precedent). MY-only ⇒ byte-identical to the old MY_STATES.
   const stateOptions = countryPacks().flatMap((p) => p.states);
-  const statutory = admin ? ((await countryPack?.statutory.get(s, emp.personId)) ?? null) : null;
+  const statutory = readProfileCards ? ((await countryPack?.statutory.get(s, emp.personId)) ?? null) : null;
   // 04b88724 — the QUALIFYING-CHILDREN figure and its working. `num_children` (the head count Form E, CP8D
   // and the EA statement read) and C (what the projection of P counts in) are two different numbers, and the
   // card used to show one of them under a caption that implied both. This resolves the ruleset and returns
   // the pack's own prices plus the Family register's child rows; the card multiplies those prices by the
   // counts on screen so the figure stays true while the admin types. null ⇒ no pack / no PCB reliefs, and
   // the card then names no figure rather than inventing a rate. 'MY' matches this page's own packFor('MY').
-  const qualifyingChildRelief = admin
+  const qualifyingChildRelief = readProfileCards
     ? await qualifyingChildReliefFor(s, { personId: emp.personId, country: 'MY', asOf: today })
     : null;
   // r351 — THE ONE INSTANT THE FAMILY TAB'S AGE AND RELIEF COLUMNS ARE TAKEN AT, and it is the same date the
@@ -430,11 +431,11 @@ export default async function EmployeePage({
   // company with no HRDF Contribution Rate is accepted by the save and then silently discarded at payroll
   // time (pack.payroll.hrdfSubject honours the flag, but hrdfLevy rates not_registered to 0). HR set
   // something and nothing happened, with nothing on any screen saying why. Must NOT touch defaultValue.
-  const companyHrdf = admin ? ((await countryPack?.companyStatutory.get(s, emp.companyId)) ?? null) : null;
+  const companyHrdf = readProfileCards ? ((await countryPack?.companyStatutory.get(s, emp.companyId)) ?? null) : null;
   const companyHrdfUnregistered = (companyHrdf?.hrdfStatus ?? 'not_registered') === 'not_registered';
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
-  const holidayGroups = admin ? await listHolidayGroups(s) : [];
-  const holidayCalendarRows=admin?await employmentHolidayCalendarHistory(s,employmentId):[];
+  const holidayGroups = readProfileCards ? await listHolidayGroups(s) : [];
+  const holidayCalendarRows=readProfileCards?await employmentHolidayCalendarHistory(s,employmentId):[];
   /**
    * f513ec02 — THE SCHEDULE GROUP PICKER'S OPTIONS AND ITS CURRENT VALUE.
    *
@@ -448,19 +449,19 @@ export default async function EmployeePage({
    * something other than what is stored, then persisting it), reached by a different route. The extra
    * option is marked inactive so the reader is told why it is there.
    */
-  const scheduleGroupCurrentId = admin ? await employmentScheduleGroupId(s, employmentId) : null;
-  const attendanceRules = admin ? await listAttendanceRules(s) : [];
+  const scheduleGroupCurrentId = readProfileCards ? await employmentScheduleGroupId(s, employmentId) : null;
+  const attendanceRules = readProfileCards ? await listAttendanceRules(s) : [];
   const scheduleGroupOptions = attendanceRules.filter(
     (r) => r.status === 'active' || r.id === scheduleGroupCurrentId,
   );
   // Employment tab org-info edit (594323a6): position catalog for the editable Position dropdown. Scoped to
   // THIS employee's company (the assignment's position must belong to the same company). Admin-only.
-  const positions = admin ? await listPositions(s, { companyIds: [emp.companyId] }) : [];
+  const positions = readMovementEditorChoices ? await listPositions(s, { companyIds: [emp.companyId] }) : [];
   // 1001ff61 — Business Units for THIS employee's company (admin-only) — the Organisation Assignment BU picker
   // options. Sourced company-scoped (origin ∪ shared ∪ global), mirroring the Position/Location pickers.
-  const businessUnits = admin ? await listBusinessUnits(s, { companyIds: [emp.companyId] }) : [];
+  const businessUnits = readMovementEditorChoices ? await listBusinessUnits(s, { companyIds: [emp.companyId] }) : [];
   // ADR-0054: locations for THIS employee's company (admin-only) — the "Set location" picker options.
-  const locations = admin ? await listLocations(s, [emp.companyId]) : [];
+  const locations = readMovementEditorChoices ? await listLocations(s, [emp.companyId]) : [];
   // Company change (9464bd56) — the Organisation Assignment selects re-scope to the PENDING company during a
   // company change; everything else (MovementNewEvent, the Set-location picker) keeps the current-company
   // lists. When no company is pending these ARE the current-company lists (byte-identical to before).
@@ -470,37 +471,37 @@ export default async function EmployeePage({
   const orgLocations = pendingCompany ? await listLocations(s, [orgScopeCompanyId]) : locations;
   // Typed pay components (Wave 3 #9) — recurring components for this employee + the catalog to add from.
   // r298 — Payroll-owned: not read at all for a tenant without Payroll (see `payrollOn`).
-  const payComps = admin && payrollOn ? await listEmploymentPayComponents(s, employmentId) : [];
-  const componentCatalog = admin && payrollOn ? await listPayComponents(s, { readyOnly: true }) : [];
+  const payComps = readProfileCards && payrollOn ? await listEmploymentPayComponents(s, employmentId) : [];
+  const componentCatalog = readProfileCards && payrollOn ? await listPayComponents(s, { readyOnly: true }) : [];
   // 1.2.3 CP38 — per-employee LHDN instalment records (admin-only master data). r298 — Payroll-owned.
-  const cp38Records = admin && payrollOn ? await listCp38(s, { employmentId }) : [];
+  const cp38Records = readProfileCards && payrollOn ? await listCp38(s, { employmentId }) : [];
   // ADR-0069 — leave encashment snapshot, admin-only card. Null when no resignation has been frozen
   // (policy off, or the employment was terminated directly bypassing the resignation flow).
-  const encashmentSnapshot = admin ? await encashmentSnapshotForEmployment(s, employmentId) : null;
+  const encashmentSnapshot = readProfileCards ? await encashmentSnapshotForEmployment(s, employmentId) : null;
   // Personnel — Family / Dependents (phase 1): per-person benefits/insurance register (admin-only). Keyed
   // on person_id (already loaded on emp), NOT employment_id. Does NOT feed the tax num_children figure.
-  const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
+  const dependents = readProfileCards ? await listDependents(s, { personId: emp.personId }) : [];
   // Feedback a949184a — Qualification tab: this employment's academic/professional qualification records
   // (admin-only surface; employment-keyed, unlike the person-keyed Family register). Sorted by the service:
   // most recent graduation first, in-progress (blank graduation date) last.
-  const qualifications = admin ? await listQualifications(s, { employmentId }) : [];
+  const qualifications = readProfileCards ? await listQualifications(s, { employmentId }) : [];
   // Feedback 23ad620e — Emergency Contact register: every person to call for this employee, in resolution
   // order (Primary → Secondary → Other). PERSON-keyed like the Family register, so it survives termination
   // and is visible to a second company's admin.
-  const emergencyContacts = admin ? await listEmergencyContacts(s, { personId: emp.personId }) : [];
+  const emergencyContacts = readProfileCards ? await listEmergencyContacts(s, { personId: emp.personId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   // r298 — Payroll-owned (core/payroll-policy.ts): not read for a tenant without Payroll.
-  const assignablePolicies = admin && payrollOn ? await listAssignablePolicies(s, emp.companyId) : [];
+  const assignablePolicies = readProfileCards && payrollOn ? await listAssignablePolicies(s, emp.companyId) : [];
   // 297ae65a — the company's currency: the Basic Salary form preselects it for a brand-new first record.
   // r79a (4fb8b75a step 3): read from `company.currency` (owned by Organization → General) instead of the
   // duplicate company_payroll_config.default_currency the pair collapsed into it (migration 0324).
-  const defaultSalaryCurrency = admin ? await getCompanyCurrency(s, emp.companyId) : 'MYR';
+  const defaultSalaryCurrency = readProfileCards ? await getCompanyCurrency(s, emp.companyId) : 'MYR';
   // ADR-0070 — Clocking Location & Geofencing: the picker's options + this employee's current assignment
   // (admin-only). r423 (83c0d3c8) REVERSES f9afd1ce's "every active site in the tenant": the picker offers
   // only the ACTIVE locations OPEN TO THIS EMPLOYEE'S COMPANY (clocking_location_company). The service
   // (setClockingControl) refuses anything else, so this filter is the courtesy and the service the rule.
-  const clockingLocations = admin ? await listClockingLocations(s, { companyId: emp.companyId }) : [];
-  const assignedClockingLocations = admin ? await listEmployeeClockingLocations(s, employmentId) : [];
+  const clockingLocations = readProfileCards ? await listClockingLocations(s, { companyId: emp.companyId }) : [];
+  const assignedClockingLocations = readProfileCards ? await listEmployeeClockingLocations(s, employmentId) : [];
   const assignedClockingLocationIds = new Set(assignedClockingLocations.map((l) => l.id));
   /**
    * r272 (0e8cf366) — THE PRE-TICK IS GONE, AND ITS REMOVAL IS THE POINT OF THE ITEM.
@@ -557,7 +558,7 @@ export default async function EmployeePage({
   // one relationship every downstream consumer — approvals, visibility, calendars — actually follows).
   // The closed lines feed the read-only history disclosure; the storage stays effective-dated underneath.
   const currentSuperior = reporting.managers.find((m) => m.lineType === 'administrative') ?? null;
-  const superiorHistory = admin ? await directSuperiorHistoryFor(s, employmentId) : [];
+  const superiorHistory = readProfileCards ? await directSuperiorHistoryFor(s, employmentId) : [];
   // "EMP-0008 – John Tan" labels: the Combobox filters on the label, so one picker searches Employee ID
   // and name alike. Active employees only (`others` already excludes self + terminated); the current
   // superior is prepended if no longer in that set (e.g. terminated) so the field never shows a raw id.
@@ -572,7 +573,11 @@ export default async function EmployeePage({
   // Movement tab redesign (78853b97): Employment History is a read-model projection over the
   // domain_event ledger — Hired-first, date-ascending, no second record-keeping system. The detail view
   // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
-  const movements = admin ? await movementHistory(s, employmentId) : [];
+  // Only the history table, the pending banner, and the edit lookup need the full projection.
+  const movementProjection = admin && (!movementPage || movementPage === 'edit')
+    ? await movementHistoryWithTypes(s, employmentId)
+    : null;
+  const movements = movementProjection?.movements ?? [];
   // 95d17761 — the DEFAULT view drops the correction artefacts (rolled back / corrected / cancelled /
   // superseded) so the tab reads as a career rather than a list of mistakes. Nothing is deleted and the
   // projection above is untouched: `movements` stays the complete history and is what the Edit lookup,
@@ -597,24 +602,14 @@ export default async function EmployeePage({
   // 476f23ed — the tenant's movement event-type catalogue. Read UNFILTERED, because Employment History has
   // to label a movement recorded under a type that has since been switched off; the New Event form filters
   // to the active ones below. A tenant that has configured nothing gets the built-in list unchanged.
-  const movementTypes = admin ? await listMovementEventTypes(s) : [];
+  const movementTypes = movementProjection?.movementTypes ?? (admin ? await listMovementEventTypes(s, { includeUsage: false }) : []);
   const movementTypeByCode = new Map(movementTypes.map((r) => [r.code, r]));
-  // 1d58019a Step 2 (ADR-0166) — the controls the form applies on screen; the writer enforces them again.
-  const movementControls = admin ? await movementTypeControls(s, movementTypes) : new Map<string, MovementTypeControls>();
-  const typeControls = (code: string) => {
-    const c = movementControls.get(code);
-    return { reasonCodes: c?.reasonCodes ?? null, ...(c?.configured ? { rules: c.rules } : {}) };
-  };
-  // 1d58019a — the tenant's exit reasons (built-ins with its renames, plus its own), switched-off ones
-  // included and flagged: the New Event form offers the active ones and keeps a switched-off reason that a
-  // termination being corrected already carries.
-  const terminationReasonRows = admin ? await terminationReasonCatalogue(s) : [];
   const movementDetailData = admin && spMovement ? await movementDetail(s, employmentId, spMovement) : null;
   // 1d58019a Step 2 — the movement's supporting documents; the service applies history visibility and the
   // table's pay rule, so a document this admin may not see is simply not listed.
   const movementDocuments = movementDetailData && spMovement ? await movementAttachments(s, employmentId, spMovement) : [];
-  const resignationInfo = admin ? await resignationInformation(s, employmentId) : null;
-  const costAllocationView = admin && emp.companyId ? await getEmploymentCostAllocations(s, employmentId) : null;
+  const resignationInfo = readProfileCards ? await resignationInformation(s, employmentId) : null;
+  const costAllocationView = readProfileCards && emp.companyId ? await getEmploymentCostAllocations(s, employmentId) : null;
   /**
    * c063eea9 — the Correct hire details form (?correctHire=1). Read ONLY while it is open, and only where
    * the caller may correct the employment, including after an exit.
@@ -656,11 +651,17 @@ export default async function EmployeePage({
         return byField;
       })()
     : null;
-  // 08913328 — the Current column of the New Event comparison screen. Only read when that screen is open.
-  // 66a63bd6 — the Edit screen is the same form, so it reads the same Current column: a correction is
-  // only offered on the LATEST movement, where "current" and "what this movement set" are the same values.
-  const movementCurrent =
-    admin && (spNewEvent || spEditMovement) ? await movementCurrentState(s, employmentId) : null;
+  // New and Edit use the same current values, configured controls and full reason catalogue.
+  // Read them together only for those forms; the History tab still uses the type labels above.
+  const { canCreateMovement, canCorrectMovement } = movementScreenAccess({ admin, canMaintainWorkforce, terminatedOn: emp.terminatedOn });
+  const movementEditRow = spEditMovement ? movements.find((row) => row.id === spEditMovement && row.canEdit) : undefined;
+  const movementFormOpen = Boolean((canCreateMovement && spNewEvent) || (canCorrectMovement && movementEditRow));
+  const movementFormData = await readPersonnelMovementFormData(s, employmentId, movementTypes, movementFormOpen);
+  const movementCurrent = movementFormData?.current ?? null;
+  const typeControls = (code: string) => {
+    const c = movementFormData?.controls.get(code);
+    return { reasonCodes: c?.reasonCodes ?? null, ...(c?.configured ? { rules: c.rules } : {}) };
+  };
   /**
    * b7b22514 — Entity Transfer's destination list, and the org option lists of every destination.
    *
@@ -683,7 +684,7 @@ export default async function EmployeePage({
     // have one option and silently re-affirm the move it is meant to be able to fix.
     movementCurrent
       ? await (async () => {
-          const managed = await adminCompanies(s);
+          const managed = companyEditable ? managedCompanies : await adminCompanies(s);
           // The current company leads and is always present, even for an actor who does not administer it:
           // it is the select's initial value, and a control whose value matches no option is a broken one.
           return [
@@ -695,12 +696,15 @@ export default async function EmployeePage({
   const movementOrgByCompany = Object.fromEntries(
     await Promise.all(
       movementCompanies.map(async (c) => {
-        const [deps, poss, bus, locs] = await Promise.all([
-          listDepartments(s, { companyIds: [c.id] }),
-          listPositions(s, { companyIds: [c.id] }),
-          listBusinessUnits(s, { companyIds: [c.id] }),
-          listLocations(s, [c.id]),
-        ]);
+        // The current-company form already loaded these exact scoped lists.
+        const [deps, poss, bus, locs] = c.id === emp.companyId
+          ? [departments, positions, businessUnits, locations] as const
+          : await withTenant(s, (tx) => Promise.all([
+              listDepartments(s, { companyIds: [c.id] }, tx),
+              listPositions(s, { companyIds: [c.id] }, tx),
+              listBusinessUnits(s, { companyIds: [c.id] }, tx),
+              listLocations(s, [c.id], {}, tx),
+            ]));
         return [
           c.id,
           {
@@ -716,7 +720,7 @@ export default async function EmployeePage({
   // 7d309da7 — configurable profile-field dropdown catalogs (religion / race / nationality / state /
   // country / relationship). Active options only for the pickers; the ProfileOptionSelect renders any
   // out-of-catalog stored value as a pre-selected extra so a Save never blanks legacy data.
-  const profileOptions = admin
+  const profileOptions = readMovementEditorChoices
     ? await listAllProfileOptions(s, { activeOnly: true })
     : ({
         religion: [],
@@ -1033,7 +1037,7 @@ export default async function EmployeePage({
     payroll: [t('payMethodGroup'), ...whenPayroll(...whenLive(tp('assignTitle'))), t('tp3SectionTitle')],
   };
 
-  const canEditPassport=admin&&canMaintainWorkforce&&!!await countryPack?.statutory.passportEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
+  const canEditPassport=readProfileCards&&canMaintainWorkforce&&!!await countryPack?.statutory.passportEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
   const profilePanel = admin ? (
     <>
       {/* 420ebab5 part two — ONE "Save Changes" for the Profile tab. TabSaveScope wraps the bucket (a) cards
@@ -2899,7 +2903,7 @@ export default async function EmployeePage({
   // name is now a pick-from-catalog select and the card adds the custom-payment-holder function (pay salary
   // to a third party's account). It's a client island (interactive reveal/require) rendered as JSX only, so
   // the RSC server/client boundary is respected.
-  const canEditBank=admin&&canMaintainWorkforce&&!!await countryPack?.statutory.bankEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
+  const canEditBank=readProfileCards&&canMaintainWorkforce&&!!await countryPack?.statutory.bankEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
   const bankCard = admin ? (
     <>
     {!canEditBank&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}
@@ -3103,9 +3107,6 @@ export default async function EmployeePage({
   const movementEmpTypeLabel = (v: string | null): string | null =>
     v ? t(`employmentInfo.employmentType_${v}` as 'employmentInfo.employmentType_full_time') : null;
 
-  // New Event is hidden once terminated (the same gate that hid the old Transfer form); the history
-  // itself stays viewable. Rehire is a future, separate piece.
-  const {canCreateMovement, canCorrectMovement} = movementScreenAccess({admin, canMaintainWorkforce, terminatedOn: emp.terminatedOn});
   /** c063eea9 — the caption of a hire-correction field, shared by the history row and the detail view. */
   const hireFieldIds = {
   "businessUnitId": "employment.organisation_assignment.businessunitname",
@@ -3195,6 +3196,7 @@ export default async function EmployeePage({
             // never removed: the history is the evidence payroll and statutory reporting lean on.
             <tr
               key={m.id}
+              data-movement-id={m.id}
               className={m.reversed || m.status === 'superseded' ? 'text-muted-foreground' : undefined}
             >
               <td className="px-4 py-2.5 font-medium text-foreground">
@@ -3518,14 +3520,14 @@ export default async function EmployeePage({
     other: t('terminationOther'),
   };
 
-  const movementFormProps = movementCurrent
+  const movementFormProps = movementFormData
     ? {
         employmentId: emp.employmentId,
         today,
         isBlacklisted: !!emp.blacklistedAt,
         // 08913328 — the read-only left column AND the pre-fill of the editable right column. One read,
         // so the two sides cannot disagree about what "current" means.
-        current: movementCurrent,
+        current: movementFormData.current,
         departments: organisationChoiceLabels(departments).map((d) => ({ id: d.id, name: d.displayLabel })),
         positions: organisationChoiceLabels(positions).map((pos) => ({ id: pos.id, name: pos.displayLabel })),
         businessUnits: organisationChoiceLabels(businessUnits).map((bu) => ({ id: bu.id, name: bu.displayLabel })),
@@ -3545,7 +3547,7 @@ export default async function EmployeePage({
         // `typeLabel` reuses the EXISTING termination-type labels, so the classification the reason derives
         // reads the same everywhere it already appears (turnover analytics included). 1d58019a — now the
         // TENANT's catalogue: its own name wins, a built-in it never renamed keeps the shipped label.
-        terminationReasons: terminationReasonRows.map((r) => ({
+        terminationReasons: movementFormData.reasons.map((r) => ({
           code: r.code,
           category: r.category,
           categoryLabel: t(`movement.terminationReasonCategory.${r.category}` as 'movement.terminationReasonCategory.voluntary'),
@@ -3576,9 +3578,8 @@ export default async function EmployeePage({
   // 66a63bd6 — Edit (?editMovement=<id>): the SAME comparison form, pre-filled from the movement being
   // corrected. `canEdit` comes from the service, so a row the service would refuse never renders a form.
   // Include the edited code's metadata even if inactive; the client needs its resolved behavior.
-  const movementEditRow = spEditMovement ? movements.find((m) => m.id === spEditMovement && m.canEdit) : undefined;
   // 1d58019a Step 2 — termination is decided by the catalogue, so a tenant's own Termination type pre-fills too.
-  const movementEditInput = movementEditRow
+  const movementEditInput = canCorrectMovement && movementEditRow
     ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
   const editEventCard = canCorrectMovement && movementEditRow && movementFormProps ? (
     <Card id="section-movement-edit-event" className="overflow-hidden">

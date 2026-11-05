@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {and,eq} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import type {SessionContext} from '../db/client';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import {client,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {readEmployeeHomeGreeting} from '../core/employee-home-greeting';
@@ -56,7 +56,25 @@ describe('Home greeting uses current own facts and saved templates',()=>{
   const [leave]=await owner.db.insert(s.leaveRequest).values({tenantId:b.tenantId,employmentId:e.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:friday,endDate:friday,days:'1',status:'approved',reason:'Private medical detail must never be rendered'}).returning({id:s.leaveRequest.id});
   let value=await readEmployeeHomeGreeting(e.ctx,e.employmentId,'en',at(monday));expect(value.templateKey).toBe('greetingReturn');expect(JSON.stringify(value)).not.toMatch(/medical|reason|leaveRequest|days/);
   await owner.db.update(s.leaveRequest).set({status:'cancelled'}).where(eq(s.leaveRequest.id,leave.id));
-  value=await readEmployeeHomeGreeting(e.ctx,e.employmentId,'en',at(monday));expect(value.templateKey).toBe('greetingMorning');
+  const statements:string[]=[];
+  const begin=client.begin;
+  const observer=vi.spyOn(client,'begin').mockImplementation(((...args:unknown[])=>{
+   const index=args.findIndex(arg=>typeof arg==='function'),callback=args[index] as (native:typeof client)=>unknown;
+   args[index]=(native:typeof client)=>callback(new Proxy(native,{get(target,key,receiver){
+    if(key==='unsafe')return(...query:unknown[])=>{
+     if(typeof query[0]==='string')statements.push(query[0]);
+     return Reflect.apply(target.unsafe,target,query);
+    };
+    return Reflect.get(target,key,receiver);
+   }}));
+   return Reflect.apply(begin,client,args);
+  }) as typeof client.begin);
+  try{
+   value=await readEmployeeHomeGreeting(e.ctx,e.employmentId,'en',at(monday));
+   expect(value.templateKey).toBe('greetingMorning');
+  }finally{observer.mockRestore();}
+  expect(statements.some(query=>query.includes('app.leave_calendar_presence('))).toBe(true);
+  expect(statements.some(query=>query.includes('"attendance_policy"'))).toBe(false);
  });
  it('does not invent a substitute birthday in a non-leap year',async()=>{
   const year=Number(today().slice(0,4));let nonLeap=year;while(nonLeap%4===0)nonLeap--;

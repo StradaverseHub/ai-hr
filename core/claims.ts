@@ -1,3 +1,4 @@
+import {parsePageQuery, pageState} from '../lib/pagination';
 import {assertClaimsProviderSourceTx} from './claims-provider-source';
 import {createHash} from 'node:crypto';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
@@ -6,7 +7,7 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
  * admin-write); every state change appends a DomainEvent. The lifecycle (submit/decide) + payout live in
  * later slices of this file.
  */
-import { and, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withClaimsTenant` — every one of this file's
 // 35 exported entry points refuses a tenant without the Claims module, however the call was reached.
@@ -38,13 +39,13 @@ import {
 
 export type { ClaimMileageStamp, ClaimRateConfig };
 import { toCsv } from '../lib/csv';
-import { assertCanDecide, filterDelegationOrgScopeTx,isApprovalDecisionRefusal,assertAssignedWorkPrincipalTx } from './approvals';
+import { assertCanDecide, filterDelegationOrgScopeTx,decisionEmploymentAuthorityTx,assertAssignedWorkPrincipalTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } from './payroll';
 import { calendarWindowFor } from './payroll-policy-config';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
-import {myOwnEmploymentSubjectsTx} from './read';
+import {isOwnProfileEditEmploymentTx,myOwnEmploymentSubjectsTx} from './read';
 import { assertAiPrincipalTx } from './ai-principal';
 import { assertModuleEnabled, resolveEntitlementsTx } from './entitlements';
 
@@ -1789,10 +1790,10 @@ export type EmployeeClaimType = {
  * loading reimbursement amounts, grade rates, receipts or balances. Submission still owns policy. */
 export function ownClaimFormAvailable(ctx:SessionContext,employmentId:string):Promise<boolean>{
  return withTenant(ctx,async tx=>{
-  if(!ctx.userId||!ctx.personId)throw new ClaimError('The own claim context is unavailable');
-  const own=await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true});
-  if(!own.some(row=>row.employmentId===employmentId))throw new ClaimError('The own claim context is unavailable');
-  const [row]=await tx.select({id:claimType.id}).from(claimType).where(isNull(claimType.archivedAt)).orderBy(claimType.id).limit(1);
+  if(!ctx.userId||!ctx.personId||typeof employmentId!=='string'
+   ||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(employmentId)
+   ||!await isOwnProfileEditEmploymentTx(tx,ctx,employmentId))throw new ClaimError('The own claim context is unavailable');
+  const [row]=await tx.select({id:claimType.id}).from(claimType).where(isNull(claimType.archivedAt)).limit(1);
   return Boolean(row);
  });
 }
@@ -3444,21 +3445,49 @@ const toRow = (r: RawClaimRow, atts: Map<string, ClaimRow['attachments']>): Clai
   attachments: atts.get(r.id) ?? [],
 });
 
-/** A single employment's claims (newest first) — "my claims". */
-export async function listClaimsForEmployment(ctx: SessionContext, employmentId: string): Promise<ClaimRow[]> {
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select(rowSelect())
-      .from(claimRequest)
+type EmploymentClaimRead = {claimId?: string; status?: 'draft' | 'history'; limit?: number; offset?: number};
+function employmentClaimWhere(employmentId: string, opts: EmploymentClaimRead) {
+  return and(eq(claimRequest.employmentId, employmentId),
+    opts.claimId ? eq(claimRequest.id, opts.claimId) : undefined,
+    opts.status === 'draft' ? eq(claimRequest.status, 'draft') : undefined,
+    opts.status === 'history' ? ne(claimRequest.status, 'draft') : undefined);
+}
+async function employmentClaimRowsTx(tx: Tx, employmentId: string, opts: EmploymentClaimRead = {}): Promise<ClaimRow[]> {
+  const query = tx.select(rowSelect()).from(claimRequest)
+    .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
+    .leftJoin(claimItem, eq(claimItem.id, claimRequest.claimItemId))
+    .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
+    .innerJoin(person, eq(person.id, employment.personId))
+    .where(employmentClaimWhere(employmentId, opts))
+    .orderBy(desc(claimRequest.createdAt), desc(claimRequest.id)).$dynamic();
+  if (opts.limit !== undefined) query.limit(opts.limit);
+  if (opts.offset !== undefined) query.offset(opts.offset);
+  const rows = await query;
+  const atts = await attachmentsByClaim(tx, rows.map(row => row.id));
+  return rows.map(row => toRow(row, atts));
+}
+
+/** A single employment's claims, newest first; a detail read can narrow by id in SQL. */
+export function listClaimsForEmployment(ctx: SessionContext, employmentId: string, opts: {claimId?: string} = {}): Promise<ClaimRow[]> {
+  return withTenant(ctx, tx => employmentClaimRowsTx(tx, employmentId, opts));
+}
+
+/** Drafts have their own workspace; never read filed history to populate it. */
+export function listClaimDraftsForEmployment(ctx: SessionContext, employmentId: string): Promise<ClaimRow[]> {
+  return withTenant(ctx, tx => employmentClaimRowsTx(tx, employmentId, {status: 'draft'}));
+}
+
+/** Bound history rows and attachment metadata in SQL before constructing the browser's page. */
+export function listClaimHistoryPage(ctx: SessionContext, employmentId: string, input: {page?: string; size?: string} = {}) {
+  const query = parsePageQuery(input);
+  return withTenant(ctx, async tx => {
+    const [countRow] = await tx.select({n: sql<number>`count(*)::int`}).from(claimRequest)
       .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
-      // LEFT join: legacy/zero-item rows (claim_item_id IS NULL) must not be dropped from the list.
-      .leftJoin(claimItem, eq(claimItem.id, claimRequest.claimItemId))
       .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(claimRequest.employmentId, employmentId))
-      .orderBy(desc(claimRequest.createdAt));
-    const atts = await attachmentsByClaim(tx, rows.map((r) => r.id));
-    return rows.map((r) => toRow(r, atts));
+      .where(employmentClaimWhere(employmentId, {status: 'history'}));
+    const rows = await employmentClaimRowsTx(tx, employmentId, {status: 'history', limit: query.limit, offset: query.offset});
+    return {rows, state: pageState(query, Number(countRow?.n ?? 0), rows.length)};
   });
 }
 
@@ -3517,6 +3546,60 @@ export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:str
     const atts = await attachmentsByClaim(tx, scoped.map((r) => r.id));
     return scoped.map((r) => toRow(r, atts));
   });
+}
+
+/** Page the authorized queue before reading private details or attachments. */
+export function listPendingClaimsPage(ctx:SessionContext,opts:{
+ page?:string;size?:string;sort?:'latest'|'oldest'|'name_asc'|'name_desc';companyIds?:string[];
+}={}){
+ const page=parsePageQuery(opts);
+ return withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  if(opts.companyIds?.length===0)return {rows:[] as ClaimRow[],page:pageState(page,0,0)};
+  const subjects=await tx.execute<{employmentId:string;name:string}>(sql`
+   with candidates as materialized (
+    select unnest(app.visible_employment_ids()) as employment_id
+    union select unnest(app.delegated_subject_ids('claims','claims.claim')) as employment_id
+   )
+   select candidate.employment_id as "employmentId",header.employee as name
+   from candidates candidate
+   join lateral app.delegated_approval_subject(candidate.employment_id,'claims','claims.claim') header on true
+   where ${opts.companyIds===undefined?sql`true`:sql`header.company_id=any(${'{'+opts.companyIds.join(',')+'}'}::uuid[])`}
+  `);
+  const scoped=await filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
+  if(!scoped.length)return {rows:[] as ClaimRow[],page:pageState(page,0,0)};
+  const ids='{'+scoped.map(row=>row.employmentId).join(',')+'}';
+  const where=and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),
+   sql`${claimRequest.employmentId}=any(${ids}::uuid[])`);
+  const names=[...new Set(scoped.map(row=>row.name))].sort((a,b)=>a.localeCompare(b));
+  let rank=0;
+  const ranks=new Map(names.map((name,index)=>{
+   if(index>0&&name.localeCompare(names[index-1])!==0)rank++;
+   return [name,rank] as const;
+  }));
+  const encodedRanks=JSON.stringify(Object.fromEntries(scoped.map(row=>[row.employmentId,ranks.get(row.name)])));
+  const nameRank=sql`(${encodedRanks}::jsonb ->> ${claimRequest.employmentId}::text)::int`;
+  const order=opts.sort==='oldest'?[asc(claimRequest.createdAt),asc(claimRequest.id)]:
+   opts.sort==='name_asc'?[asc(nameRank),asc(claimRequest.id)]:
+   opts.sort==='name_desc'?[desc(nameRank),asc(claimRequest.id)]:
+   [desc(claimRequest.createdAt),asc(claimRequest.id)];
+  const [count]=await tx.select({total:sql<number>`count(*)::int`}).from(claimRequest)
+   .innerJoin(claimType,eq(claimType.id,claimRequest.claimTypeId)).where(where);
+  const selected=await tx.select({id:claimRequest.id}).from(claimRequest)
+   .innerJoin(claimType,eq(claimType.id,claimRequest.claimTypeId)).where(where)
+   .orderBy(...order).limit(page.limit).offset(page.offset);
+  if(!selected.length)return {rows:[] as ClaimRow[],page:pageState(page,count.total,0)};
+  const requestIds=selected.map(row=>row.id);
+  const rows=await tx.select(rowSelect(true)).from(claimRequest)
+   .innerJoin(claimType,eq(claimType.id,claimRequest.claimTypeId))
+   .leftJoin(claimItem,eq(claimItem.id,claimRequest.claimItemId))
+   .innerJoin(sql`LATERAL app.delegated_approval_subject(${claimRequest.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
+   .where(and(where,inArray(claimRequest.id,requestIds)));
+  const attachments=await attachmentsByClaim(tx,requestIds);
+  const byId=new Map(rows.map(row=>[row.id,toRow(row,attachments)]));
+  const ordered=requestIds.flatMap(id=>{const row=byId.get(id);return row?[row]:[];});
+  return {rows:ordered,page:pageState(page,count.total,ordered.length)};
+ },{readOnlySnapshot:true});
 }
 
 /** M11 — the facts of a claim that the list row (ClaimRow) does not carry, for its detail screens. */
@@ -3866,18 +3949,114 @@ export async function markReimbursementsPaid(
 export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  const candidates=await withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,personId:sql<string>`approval_subject.person_id`,
-   employee:sql<string>`approval_subject.employee`,createdAt:claimRequest.createdAt}).from(claimRequest)
-   .innerJoin(sql`LATERAL app.delegated_approval_subject(${claimRequest.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
-   .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
-    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
-   .orderBy(desc(claimRequest.createdAt),claimRequest.id);
+  // Group only the native subject lookup. Request RLS and the per-record delegation and
+  // decision checks still run through the existing owners.
+  const headers=await tx.execute<Omit<AssignedApprovalMetadata,'createdAt'>&{createdAt:Date|string}>(sql`
+   with visible_requests as materialized (
+    select id, employment_id, created_at from public.claim_request
+    where tenant_id=${ctx.tenantId}::uuid and status='pending'
+   ), subjects as materialized (
+    select distinct employment_id from visible_requests
+   ), labels as materialized (
+    select subject.employment_id, approval_subject.person_id, approval_subject.employee
+    from subjects subject
+    join lateral app.delegated_approval_subject(subject.employment_id,'claims','claims.claim') approval_subject on true
+    where not app.is_self_person(approval_subject.person_id)
+      and ${companyIds===undefined?sql`true`:sql`approval_subject.company_id=any(array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}
+   )
+   select request.id, request.employment_id as "employmentId", labels.person_id as "personId",
+    labels.employee, request.created_at as "createdAt"
+   from visible_requests request join labels using (employment_id)
+   order by request.created_at desc, request.id
+  `);
+  const rows=headers.map(row=>{
+   const createdAt=row.createdAt instanceof Date
+    ?row.createdAt:claimRequest.createdAt.mapFromDriverValue(row.createdAt);
+   if(!(createdAt instanceof Date)||!Number.isFinite(createdAt.getTime())){
+    throw new TypeError('Invalid Claims task timestamp');
+   }
+   return {...row,createdAt};
+  });
   return filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
  });
  const allowed=new Set(await actionablePendingClaimIds(ctx,candidates.map(row=>row.id)));
  return candidates.filter(row=>allowed.has(row.id));
 }
 
+
+async function pendingClaimSubjectsTx(tx:Tx,ctx:SessionContext,companyIds:string[]|undefined){
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  // This private header reader relies on one repeatable, read-only snapshot. Refuse any future
+  // caller that changes that contract rather than reusing a proof across different authority reads.
+  const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='repeatable read'
+   and current_setting('transaction_read_only')='on' as safe`);
+  if(snapshot?.safe!==true)throw new Error('Claims metadata requires a read-only repeatable snapshot.');
+  if(companyIds?.length===0)return [];
+  // Preserve the native visibility/delegation candidate owners and actual Claim RLS.
+  // Probe pending existence before projecting labels, then keep each native call bounded.
+  const subjects=await tx.execute<{employmentId:string;personId:string;employee:string}>(sql`
+   with candidate_subjects as materialized (
+    select unnest(app.visible_employment_ids()) as employment_id
+    union select unnest(app.delegated_subject_ids('claims','claims.claim')) as employment_id
+   ), pending_subjects as materialized (
+    select candidate.employment_id from candidate_subjects candidate
+    where exists(select 1 from public.claim_request pending where pending.tenant_id=${ctx.tenantId}::uuid
+     and pending.employment_id=candidate.employment_id and pending.status='pending')
+   ), numbered_subjects as (
+    select employment_id,(row_number() over(order by employment_id)-1)/1000 as bucket from pending_subjects
+   ), subject_batches as (
+    select array_agg(employment_id order by employment_id) as ids from numbered_subjects group by bucket
+   )
+   select approval_subject.employment_id as "employmentId",approval_subject.person_id as "personId",approval_subject.employee
+   from subject_batches batch
+   cross join lateral app.delegated_approval_subjects(batch.ids,'claims','claims.claim') approval_subject
+   where not app.is_self_person(approval_subject.person_id)
+    and ${companyIds===undefined?sql`true`:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}`);
+
+  // Native labels already require visibility OR delegation scoped to claims.claim, which implies
+  // the generic NULL-module org predicate in this same snapshot. Keep that one purpose owner and
+  // the independent decisionEmploymentAuthorityTx below; broader/full-data readers retain their filter.
+  return Array.from(subjects);
+}
+
+/** Metadata remains uncapped for full task screens; shell callers use the counted preview. */
+export function pendingClaimTaskSummary(ctx:SessionContext,companyIds:string[]|undefined,limit=25){
+ if(!Number.isSafeInteger(limit)||limit<1||limit>200)throw new Error('Invalid claim task preview limit');
+ return readPendingClaimTasks(ctx,companyIds,limit);
+}
+
+async function readPendingClaimTasks(ctx:SessionContext,companyIds:string[]|undefined,limit:number){
+ return withTenant(ctx,async tx=>{
+  // This bounded OLTP preview paid more to compile JIT code than to use it under large
+  // retained queues. Scope the execution setting to this existing read-only transaction;
+  // the native visibility/decision owners and exact count remain unchanged.
+  await tx.execute(sql`set local jit=off`);
+  const scoped=await pendingClaimSubjectsTx(tx,ctx,companyIds);
+  const allowed=await claimDecisionEmploymentsTx(tx,ctx,scoped.map(row=>row.employmentId));
+  if(!allowed.size)return {items:[] as AssignedApprovalMetadata[],total:0};
+  const byEmployment=new Map(scoped.map(row=>[row.employmentId,row]));
+  const where=and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),inArray(claimRequest.employmentId,[...allowed]));
+  // A global top N cannot include a request below its own employment's top N. Use the
+  // existing employment/history indexes before merging that bounded candidate set. The exact
+  // count below still covers every currently authorized pending request, without truncation.
+  const headers=tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,createdAt:claimRequest.createdAt})
+   .from(claimRequest).where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),
+    eq(claimRequest.employmentId,sql`claim_preview_subject.employment_id`)))
+   .orderBy(desc(claimRequest.createdAt),claimRequest.id).limit(limit).as('claim_preview_headers');
+  const rows=await tx.select({id:headers.id,employmentId:headers.employmentId,createdAt:headers.createdAt})
+   .from(sql`(VALUES ${sql.join([...allowed].map(id=>sql`(${id}::uuid)`),sql`, `)}) AS claim_preview_subject(employment_id)`)
+   .innerJoinLateral(headers,sql`true`).orderBy(desc(headers.createdAt),headers.id).limit(limit);
+  const items=rows.map(row=>({...byEmployment.get(row.employmentId)!,...row}));
+  const [count]=await tx.select({total:sql<number>`count(*)::int`}).from(claimRequest).where(where);
+  return {items,total:count.total};
+ },{readOnlySnapshot:true});
+}
+
+/** Authority depends on the subject employment, not the number of requests it owns. Keep this
+ * transaction-local: never reuse a decision across requests or after reporting/delegation changes. */
+async function claimDecisionEmploymentsTx(tx:Tx,ctx:SessionContext,employmentIds:readonly string[]){
+ return (await decisionEmploymentAuthorityTx(tx,ctx,employmentIds,scopeOf('claims.claim'))).allowed;
+}
 
 export function actionablePendingClaimIds(ctx:SessionContext,requestIds:readonly string[]){
  return withTenant(ctx,async tx=>{
@@ -3889,10 +4068,8 @@ export function actionablePendingClaimIds(ctx:SessionContext,requestIds:readonly
   for(let offset=0;offset<ids.length;offset+=1000){
    const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId}).from(claimRequest)
     .where(and(inArray(claimRequest.id,ids.slice(offset,offset+1000)),eq(claimRequest.status,'pending'))).orderBy(claimRequest.id);
-   for(const row of rows){
-    try{await assertCanDecide(tx,ctx,row.employmentId,'claim',scopeOf('claims.claim'));result.push(row.id);}
-    catch(error){if(!isApprovalDecisionRefusal(error,'claim'))throw error;}
-   }
+   const {allowed}=await decisionEmploymentAuthorityTx(tx,ctx,rows.map(row=>row.employmentId),scopeOf('claims.claim'));
+   for(const row of rows)if(allowed.has(row.employmentId))result.push(row.id);
   }
   return result.sort();
  });

@@ -792,7 +792,8 @@
       "placeholder": "搜索员工编号或姓名…",
       "resultsLabel": "员工搜索结果",
       "noMatches": "没有匹配的员工。",
-      "currentTag": "当前"
+      "currentTag": "当前",
+      "loadFailed": "无法加载员工搜索，请重试。"
     },
     "detail": {
       "incentiveDeclarations": {
@@ -4758,6 +4759,33 @@
       "active": "在职",
       "probation": "试用期",
       "notice": "通知期"
+    },
+    "explorer": {
+      "hint": "分段浏览大型组织。搜索涵盖所选公司中的所有人员。",
+      "topLevel": "最高层级",
+      "allPeople": "所有人员",
+      "search": "搜索",
+      "searchResults": "搜索结果",
+      "reports": "直属下属",
+      "managers": "经理",
+      "connections": "所有关系",
+      "history": "已浏览人员",
+      "loading": "正在加载组织…",
+      "loaded": "本页已加载 {loaded} 项 · 共 {total} 项匹配结果 · 所选公司共 {people} 人",
+      "accessChanged": "您的访问权限已更改。请重新加载以继续。",
+      "changed": "组织已更改。请刷新此部分以继续。",
+      "failed": "无法加载此部分。请重试。",
+      "refresh": "重新加载",
+      "retry": "重试",
+      "multipleAssignments": "多个当前任职",
+      "profile": "查看个人资料",
+      "relationships": "汇报关系",
+      "outsideScope": "此关系位于所选公司之外",
+      "incoming": "向此人汇报",
+      "outgoing": "此人汇报给",
+      "explore": "浏览",
+      "back": "返回",
+      "next": "下一页"
     }
   },
   "me": {
@@ -5433,7 +5461,7 @@
     "submitDecisions": "提交",
     "employeeRemark": "员工备注",
     "closeDialog": "关闭",
-    "bulkSelectAll": "全选",
+    "bulkSelectAll": "选择本页全部项目",
     "bulkSelectRow": "选择申请",
     "bulkSelected": "已选择：{count, plural, other {# 项申请}}",
     "bulkClear": "清除",

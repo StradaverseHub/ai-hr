@@ -107,6 +107,17 @@ describe.each(['claim','attendance','toil'] as const)('ADR-0151 assigned %s deci
  const prepare=async(who:SessionContext,value:unknown)=>(await k().store.prepare(who,value)).review;
  const confirm=(r:{actionId:string;reviewedDigest:string},who:SessionContext)=>k().store.confirm(who,{actionId:r.actionId,reviewedDigest:r.reviewedDigest});
 
+ it('lists actual assigned metadata alongside another reader while native confirmation remains intact',async()=>{
+  const id=await k().create(),r=await prepare(mgr,k().human(id)),before=await native(k(),id),expected=await k().store.list(mgr);
+  expect(expected.reviews.map(row=>row.actionId)).toEqual([r.actionId]);
+  await owner.client.begin(async holder=>{
+   await holder`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+   expect(await k().store.list(mgr)).toEqual(expected);
+  });
+  expect(await native(k(),id)).toEqual(before);expect(await custody(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});
+  expect((await confirm(r,mgr)).kind).toBe('completed');expect((await native(k(),id)).status).toBe('approved');
+ });
+
  it.each(['approved','rejected'] as const)('decides %s exactly once across duplicate deliveries and completes with that event',async decision=>{
   const id=await k().create(),before=await native(k(),id);expect(before.status).toBe('pending');
   expect(await k().choices(mgr)).toMatchObject({kind:'choices',items:[{subjectId:id,employmentId:subject.employmentId,employeeName:'Fictional Decision Subject'}]});

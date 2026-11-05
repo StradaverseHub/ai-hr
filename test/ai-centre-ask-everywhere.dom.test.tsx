@@ -25,7 +25,7 @@ const state = vi.hoisted(() => ({
   session: null as unknown as Record<string, unknown>,
   path: '/assistant',
   push: vi.fn(), refresh: vi.fn(),
-  listOwnChats: vi.fn(), readChatRetention: vi.fn(),
+  listOwnChats: vi.fn(), readChatRetention: vi.fn(), legacyList: vi.fn(), workspace: vi.fn(),
   listChats: vi.fn(), deleteChat: vi.fn(), setRetention: vi.fn(),
   openStoredChat: vi.fn(), askWorkspace: vi.fn(), askLauncher: vi.fn(),
   groupAdmin: false,
@@ -57,8 +57,8 @@ vi.mock('../app/assistant/launcher-actions', () => ({
   loadEarlierChatAction: vi.fn(), loadMoreChatsAction: vi.fn(),
 }));
 vi.mock('../app/assistant/conversation-scope', () => ({ assistantBrowserConversationScope: async () => '["c0000000-0000-4000-8000-000000000001"]' }));
-vi.mock('../core/ai-workspace', () => ({ loadAiWorkspace: async () => ({ access: { allowed: true }, history: [], jobModules: [], taskIds: [], planningPermit: null, planningAvailability: 'resting', proposal: null, governedJob: null }), loadAiGovernance: async () => ({ access: { allowed: false, reason: 'no_grant' } }) }));
-vi.mock('../core/assistant-threads', () => ({ listOwnAssistantChats: async () => ({ chats: [], nextCursor: null, scopeDigest: 'fixture' }), loadOwnAssistantChat: vi.fn() }));
+vi.mock('../core/ai-workspace', () => ({ loadAiWorkspace: state.workspace, loadAiGovernance: async () => ({ access: { allowed: false, reason: 'no_grant' } }) }));
+vi.mock('../core/assistant-threads', () => ({ listOwnAssistantChats: state.legacyList, loadOwnAssistantChat: vi.fn() }));
 vi.mock('../core/assistant', () => ({ MAX_TURNS: 5 }));
 vi.mock('../core/read', () => ({ allowedCompanies: async () => [] }));
 vi.mock('../lib/viewer', () => ({ viewerIdentity: async () => ({ name: null }) }));
@@ -134,7 +134,9 @@ async function showAsk(searchParams: Record<string, string> = {}) {
 
 beforeEach(() => {
   state.session = ROLES[0][1]; state.path = '/assistant'; state.groupAdmin = false; state.route = { route: 'closed' }; state.importKinds = [];
-  for (const fn of [state.push, state.refresh, state.listOwnChats, state.readChatRetention, state.listChats, state.deleteChat, state.setRetention, state.openStoredChat, state.askWorkspace, state.askLauncher]) fn.mockReset();
+  for (const fn of [state.push, state.refresh, state.listOwnChats, state.readChatRetention, state.legacyList, state.workspace, state.listChats, state.deleteChat, state.setRetention, state.openStoredChat, state.askWorkspace, state.askLauncher]) fn.mockReset();
+  state.legacyList.mockResolvedValue({chats:[],nextCursor:null,scopeDigest:'fixture'});
+  state.workspace.mockResolvedValue({access:{allowed:true},history:[],jobModules:[],taskIds:[],planningPermit:null,planningAvailability:'resting',proposal:null,governedJob:null});
   state.listOwnChats.mockImplementation(async (ctx: { userId: string }) => ({ chats: chatsOf(ctx.userId), nextCursor: null }));
   state.readChatRetention.mockResolvedValue({ keepDays: 7, version: 3, changedAt: at(48) });
   state.listChats.mockResolvedValue({ ok: true, chats: [], nextCursor: null });
@@ -310,6 +312,7 @@ describe.each(ROLES)('Ask is chat-only for %s', (_role, session) => {
 
   it('moves the shortcuts and tools to More tools', async () => {
     await showAsk({ view: 'tools' });
+    expect(state.readChatRetention).not.toHaveBeenCalled();
     expect(screen.getByRole('heading', { level: 1, name: ask.tools.title })).toBeTruthy();
     expect(document.querySelector('[data-tool="review-an-action"]')).toBeTruthy();
     expect(document.querySelector('[data-tool="module-jobs"]')).toBeTruthy();
@@ -498,4 +501,20 @@ describe('AI v2 slice 3: the paperclip in Ask (imports inside the chat)', () => 
     await showAsk();
     expect(screen.queryByLabelText(attach, { selector: 'input[accept*=".txt"]' })).toBeNull();
   });
+});
+
+// Ask keeps its displayed retention setting, without a second unused history payload.
+it('Ask keeps the visible retention setting and loads history through its chat owners', async()=>{
+ await AssistantPage({searchParams:Promise.resolve({})});
+ expect(state.readChatRetention).toHaveBeenCalledTimes(1);
+ expect(state.workspace).toHaveBeenCalledWith(state.session,expect.objectContaining({includeHistory:false,includeGovernance:false}));
+ expect(state.listOwnChats).toHaveBeenCalledTimes(1);
+});
+it('starts the stored chat list while the independent legacy list is still pending', async()=>{
+ let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});
+ state.legacyList.mockImplementation(async()=>{await gate;return {chats:[],nextCursor:null};});
+ const page=AssistantPage({searchParams:Promise.resolve({})});
+ try{await vi.waitFor(()=>expect(state.listOwnChats).toHaveBeenCalledTimes(1));}
+ finally{release();}
+ await page;
 });

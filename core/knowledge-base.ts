@@ -16,6 +16,7 @@ import { isAdmin } from '../lib/authz-model';
 import { rankKnowledgeArticles,rankPerformanceArticles,rankPerformanceDashboardArticles } from '../lib/knowledge-search';
 import {homeSearchWords,homeKnowledgeHref,homeKnowledgeExcerpt,HOME_SEARCH_RESULT_LIMIT} from '../lib/employee-home-search';
 import {isLocale} from '../i18n/config';
+import { pageState, parsePageQuery, type PageQuery } from '../lib/pagination';
 
 export const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB (ADR-0017 — Postgres bytea storage)
 
@@ -63,56 +64,68 @@ function localize(
 
 // ─────────────────────────────── Reads ───────────────────────────────
 
-/** Library listing — metadata only (no body, no bytes). Title resolves to the active locale (via a
- *  JSON path so we never pull the full translations blob into a list). RLS trims to the tenant. */
-export function listDocuments(
-  ctx: SessionContext,
-  opts: {
-    category?: string;
-    audience?: KbAudience;
-    includeArchived?: boolean;
-    search?: string;
-    locale?: string;
-  } = {}, existingTx?: AiReadTx
-) {
+type DocumentListOptions = {
+  category?: string;
+  audience?: KbAudience;
+  includeArchived?: boolean;
+  search?: string;
+  locale?: string;
+};
+
+/** The same audience/status/search owner applies before both counting and reading a page. */
+function documentListWhere(ctx: SessionContext, opts: DocumentListOptions) {
+  return and(
+    inArray(kbDocument.audience, visibleAudiencesFor(ctx)),
+    opts.includeArchived ? undefined : isNull(kbDocument.archivedAt),
+    opts.category ? eq(kbDocument.category, opts.category) : undefined,
+    opts.audience && opts.audience !== 'all' ? eq(kbDocument.audience, opts.audience) : undefined,
+    opts.search ? sql`${kbDocument.title} ilike ${'%' + opts.search + '%'}` : undefined,
+  );
+}
+
+async function documentListTx(tx: Tx, ctx: SessionContext, opts: DocumentListOptions, page?: PageQuery) {
+  const localizedTitle = opts.locale && opts.locale !== 'en'
+    ? sql<string | null>`${kbDocument.i18n} -> ${opts.locale} ->> 'title'`
+    : sql<string | null>`null`;
+  const query = tx.select({
+    id: kbDocument.id,
+    kind: kbDocument.kind,
+    title: kbDocument.title,
+    localizedTitle,
+    slug: kbDocument.slug,
+    category: kbDocument.category,
+    audience: kbDocument.audience,
+    isSystem: kbDocument.isSystem,
+    fileName: kbDocument.fileName,
+    mimeType: kbDocument.mimeType,
+    sizeBytes: kbDocument.sizeBytes,
+    createdByUserId: kbDocument.createdByUserId,
+    archivedAt: kbDocument.archivedAt,
+    updatedAt: kbDocument.updatedAt,
+  }).from(kbDocument).where(documentListWhere(ctx, opts))
+    // Preserve full/AI list ordering; paged reads additionally stabilize equal titles by ID.
+    .orderBy(asc(kbDocument.category), asc(kbDocument.title), ...(page ? [asc(kbDocument.id)] : []));
+  const rows = page ? await query.limit(page.limit).offset(page.offset) : await query;
+  return rows.map(({ localizedTitle: lt, ...d }) => ({ ...d, title: lt ?? d.title }));
+}
+
+/** Library listing — metadata only (no body, bytes or full translation blob). Full/AI callers retain
+ * their existing API and complete result set, with the same native tenant and audience filters. */
+export function listDocuments(ctx: SessionContext, opts: DocumentListOptions = {}, existingTx?: AiReadTx) {
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   opts = { ...opts };
+  return withCanonicalAiReadTx(ctx, existingTx, 'knowledge_base', withTenant, tx => documentListTx(tx, ctx, opts));
+}
 
-  const localizedTitle =
-    opts.locale && opts.locale !== 'en'
-      ? sql<string | null>`${kbDocument.i18n} -> ${opts.locale} ->> 'title'`
-      : sql<string | null>`null`;
-  return withCanonicalAiReadTx(ctx, existingTx, 'knowledge_base', withTenant, async (tx) => {
-    const rows = await tx
-      .select({
-        id: kbDocument.id,
-        kind: kbDocument.kind,
-        title: kbDocument.title,
-        localizedTitle,
-        slug: kbDocument.slug,
-        category: kbDocument.category,
-        audience: kbDocument.audience,
-        isSystem: kbDocument.isSystem,
-        fileName: kbDocument.fileName,
-        mimeType: kbDocument.mimeType,
-        sizeBytes: kbDocument.sizeBytes,
-        createdByUserId: kbDocument.createdByUserId,
-        archivedAt: kbDocument.archivedAt,
-        updatedAt: kbDocument.updatedAt,
-      })
-      .from(kbDocument)
-      .where(
-        and(
-          // Viewer clearance — always applied, independent of the UI filter below (R34).
-          inArray(kbDocument.audience, visibleAudiencesFor(ctx)),
-          opts.includeArchived ? undefined : isNull(kbDocument.archivedAt),
-          opts.category ? eq(kbDocument.category, opts.category) : undefined,
-          opts.audience && opts.audience !== 'all' ? eq(kbDocument.audience, opts.audience) : undefined,
-          opts.search ? sql`${kbDocument.title} ilike ${'%' + opts.search + '%'}` : undefined,
-        ),
-      )
-      .orderBy(asc(kbDocument.category), asc(kbDocument.title));
-    return rows.map(({ localizedTitle: lt, ...d }) => ({ ...d, title: lt ?? d.title }));
+/** UI list with an exact authorized total. No body/bytes are fetched and no inaccessible rows count. */
+export function listDocumentsPage(ctx: SessionContext, opts: DocumentListOptions = {}, query: { page?: string; size?: string } = {}) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  opts = { ...opts };
+  const page = parsePageQuery(query);
+  return withCanonicalAiReadTx(ctx, undefined, 'knowledge_base', withTenant, async tx => {
+    const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(kbDocument).where(documentListWhere(ctx, opts));
+    const rows = await documentListTx(tx, ctx, opts, page);
+    return { rows, state: pageState(page, count.total, rows.length) };
   });
 }
 

@@ -12,11 +12,17 @@ const MIGRATION = 'db/migrations/0812_ai_feature_switch_owner.sql';
 const journal: string[] = JSON.parse(read('db/migrations/meta/_journal.json')).entries.map((e: { tag: string }) => `db/migrations/${e.tag}.sql`);
 /** The live definition of a SQL function is its LAST definition in journal (apply) order. */
 const live = (marker: string) => {
-  const files = journal.filter(f => read(f).includes(marker));
-  expect(files.length, marker).toBeGreaterThan(0);
-  const src = read(files.at(-1)!), at = src.lastIndexOf(marker), end = src.indexOf('$$;', src.indexOf('$$', at) + 2);
+  // Ownership ALTER statements also name functions; only CREATE definitions own bodies.
+  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const definitions = journal.flatMap(file => {
+    const src = read(file);
+    const pattern = new RegExp(String.raw`(?:^|\n)[\t ]*CREATE(?:\s+OR\s+REPLACE)?\s+` + escaped, 'g');
+    return [...src.matchAll(pattern)].map(match => ({file, src, at: match.index + match[0].lastIndexOf(marker)}));
+  });
+  expect(definitions.length, marker).toBeGreaterThan(0);
+  const {file, src, at} = definitions.at(-1)!, end = src.indexOf('$$;', src.indexOf('$$', at) + 2);
   expect(at).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(at);
-  return { file: files.at(-1)!, body: src.slice(at, end) };
+  return {file, body: src.slice(at, end)};
 };
 const seed = () => journal.flatMap(file=>{
   const inserts=[...read(file).matchAll(/INSERT INTO app\.ai_feature_setting\(feature_id,setting_key\) VALUES([\s\S]*?);/g)];
@@ -38,8 +44,13 @@ describe('one switch owner per AI feature (0692)', () => {
   });
 
   it('reads the live switch key from the table, with no hard-coded CASE left', () => {
-    const context = live('FUNCTION app._ai_control_context(');
-    expect(context.file).toBe(MIGRATION);
+    const context = live('FUNCTION app._ai_control_context_for_purpose(');
+    expect(context.file).toBe('db/migrations/2138_ai_pause_company_discovery.sql');
+    const fullContext=live('FUNCTION app._ai_control_context(').body;
+    const pause=live('FUNCTION app.ai_action_unpaused(').body;
+    expect(fullContext).toContain('app._ai_control_context_for_purpose(wanted_feature,forced_pause,false)');
+    expect(pause).toContain('app._ai_control_context_for_purpose(wanted_feature,forced_pause,true)');
+    expect(fullContext).not.toContain('SELECT s.setting_key');
     expect(context.body).not.toMatch(/CASE\s+wanted_feature/);
     for (const [, key] of settingBacked) expect(context.body).not.toContain(`'${key}'`);
     expect(context.body).toContain('SELECT s.setting_key INTO switch_key FROM app.ai_feature_setting s WHERE s.feature_id=wanted_feature');

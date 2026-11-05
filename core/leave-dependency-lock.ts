@@ -2,7 +2,7 @@
  * protect participating transactions; they are NOT a universal database constraint or authority.
  * Caller owns fresh access checks, complete dependency coverage and whole-transaction rollback on
  * refusal. Acquire before protected reads; do not catch a busy refusal and continue to write. */
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Tx } from '../db/client';
 
@@ -14,15 +14,19 @@ export class LeaveDependencyUnavailable extends Error {
 }
 const uuid = z.guid();
 
-async function acquire(tx: Tx, tenantId: string, key: string, shared: boolean): Promise<void> {
+function tryDependencyLock(key: string, shared: boolean): SQL {
+  return shared ? sql`pg_try_advisory_xact_lock_shared(hashtextextended(${key},0))`
+    : sql`pg_try_advisory_xact_lock(hashtextextended(${key},0))`;
+}
+
+async function acquire(tx: Tx, tenantId: string, lock: SQL): Promise<void> {
   // CASE prevents a mismatched carrier from acquiring a foreign tenant's advisory lock. No waiting:
   // a busy source requires a fresh review rather than an unbounded response or an automatic retry.
   const [row] = await tx.execute<{ acquired: boolean }>(sql`select case
     when app.current_tenant_id()=${tenantId}::uuid
       and current_setting('transaction_isolation')='read committed'
       and current_setting('transaction_read_only')='off'
-    then ${shared ? sql`pg_try_advisory_xact_lock_shared(hashtextextended(${key},0))`
-      : sql`pg_try_advisory_xact_lock(hashtextextended(${key},0))`}
+    then ${lock}
     else false end as acquired`);
   if (row?.acquired !== true) throw new LeaveDependencyUnavailable('busy');
 }
@@ -32,7 +36,7 @@ async function acquire(tx: Tx, tenantId: string, key: string, shared: boolean): 
 export async function lockLeaveDependencyReadConfigurationTx(tx: Tx, tenantId: string): Promise<void> {
   if (!uuid.safeParse(tenantId).success) throw new LeaveDependencyUnavailable();
   tenantId=tenantId.toLowerCase();
-  await acquire(tx, tenantId, `leave-dependency-configuration:${tenantId}`, true);
+  await acquire(tx, tenantId, tryDependencyLock(`leave-dependency-configuration:${tenantId}`, true));
 }
 
 /** Configuration writers must join exclusively before changing any participating dependency.
@@ -41,7 +45,7 @@ export async function lockLeaveDependencyReadConfigurationTx(tx: Tx, tenantId: s
 export async function lockLeaveDependencyConfigurationTx(tx: Tx, tenantId: string): Promise<void> {
   if (!uuid.safeParse(tenantId).success) throw new LeaveDependencyUnavailable();
   tenantId=tenantId.toLowerCase();
-  await acquire(tx, tenantId, `leave-dependency-configuration:${tenantId}`, false);
+  await acquire(tx, tenantId, tryDependencyLock(`leave-dependency-configuration:${tenantId}`, false));
 }
 
 /** Ordinary commands share stable configuration, then serialize each affected employment, covering
@@ -54,8 +58,15 @@ export async function lockLeaveDependenciesTx(tx: Tx, tenantId: string, employme
   // so an accepted uppercase UUID cannot own a different key for the same physical subject.
   tenantId=tenantId.toLowerCase();
   const subjects = [...new Set(employmentIds.map(id=>id.toLowerCase()))].sort();
-  await acquire(tx, tenantId, `leave-dependency-configuration:${tenantId}`, true);
-  for (const id of subjects) await acquire(tx, tenantId, `leave-dependency-employment:${tenantId}:${id}`, false);
+  const configuration = tryDependencyLock(`leave-dependency-configuration:${tenantId}`, true);
+  const subjectLock = (id: string) => tryDependencyLock(`leave-dependency-employment:${tenantId}:${id}`, false);
+  if (subjects.length === 1) {
+    // CASE keeps configuration first and never touches the subject when it fails.
+    await acquire(tx, tenantId, sql`case when ${configuration} then ${subjectLock(subjects[0])} else false end`);
+    return;
+  }
+  await acquire(tx, tenantId, configuration);
+  for (const id of subjects) await acquire(tx, tenantId, subjectLock(id));
 }
 
 /** Explicit SOURCE-READ interval for an actual READ COMMITTED READ ONLY transaction. Same physical

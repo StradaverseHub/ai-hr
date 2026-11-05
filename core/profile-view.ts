@@ -1,6 +1,6 @@
 /** Own-only safe projections over canonical owners. No administrator row crosses this boundary. */
 import {projectEssVisible,essFactVisible} from '../lib/personnel-ess-visibility';
-import {freshProfileEditPolicyTx,type ProfilePresentationPolicy} from './profile-edit-policy';
+import {readProfilePresentationPolicy,type ProfilePresentationPolicy} from './profile-edit-policy';
 import {eq} from 'drizzle-orm';
 import {attendanceRule,shift} from '../db/schema';
 import type {SessionContext} from '../db/client';
@@ -30,7 +30,7 @@ function project(owner:string,row:Record<string,unknown>){
 }
 export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string,presentation?:ProfilePresentationPolicy){
  const subjects=await myOwnEmploymentSubjects(ctx);const subject=subjects.find(row=>row.employmentId===employmentId);if(!subject)throw new EssProfileError('permission');
- const policy=presentation??await withTenant(ctx,tx=>freshProfileEditPolicyTx(tx,ctx));ctx=policy.ctx;const visible=policy.visible;
+ const policy=presentation??await readProfilePresentationPolicy(ctx);ctx=policy.ctx;const visible=policy.visible;
  const payrollOn=isModuleEnabled(ctx,'payroll'),leaveOn=isModuleEnabled(ctx,'leave'),attendanceOn=isModuleEnabled(ctx,'attendance');
  const today=todayInKualaLumpur();
  const [emp,assignments,salaries,lines,movements,catalog,photo,payItems,cp38,shifts,leave,requests]=await Promise.all([
@@ -111,7 +111,7 @@ export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string
 /** One selected immutable history event, loaded on demand instead of replaying every event per page. */
 export async function readOwnProfileMovementComparison(ctx:SessionContext,p:{employmentId:string;movementId:string}):Promise<EssReadRecord[]>{
  if(!(await myOwnEmploymentSubjects(ctx)).some(row=>row.employmentId===p.employmentId))throw new EssProfileError('permission');
- const policy=await withTenant(ctx,tx=>freshProfileEditPolicyTx(tx,ctx));ctx=policy.ctx;
+ const policy=await readProfilePresentationPolicy(ctx);ctx=policy.ctx;
  const detail=await ownMovementDetail(ctx,p.employmentId,p.movementId);if(!detail)throw new EssProfileError('unavailable');
  return (['before','after'] as const).flatMap(side=>{
   const snapshot=detail[side];if(!snapshot)return [];

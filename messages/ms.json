@@ -792,7 +792,8 @@
       "placeholder": "Cari ID pekerja atau nama…",
       "resultsLabel": "Hasil carian pekerja",
       "noMatches": "Tiada pekerja yang sepadan.",
-      "currentTag": "Semasa"
+      "currentTag": "Semasa",
+      "loadFailed": "Carian pekerja tidak dapat dimuatkan. Cuba lagi."
     },
     "detail": {
       "incentiveDeclarations": {
@@ -4758,6 +4759,33 @@
       "active": "Aktif",
       "probation": "Percubaan",
       "notice": "Notis"
+    },
+    "explorer": {
+      "hint": "Terokai organisasi besar satu bahagian pada satu masa. Carian merangkumi semua orang dalam syarikat pilihan anda.",
+      "topLevel": "Peringkat teratas",
+      "allPeople": "Semua orang",
+      "search": "Cari",
+      "searchResults": "Hasil carian",
+      "reports": "Laporan langsung",
+      "managers": "Pengurus",
+      "connections": "Semua hubungan",
+      "history": "Orang yang dilawati",
+      "loading": "Memuatkan organisasi…",
+      "loaded": "{loaded} dimuatkan pada halaman ini · {total} hasil sepadan · {people} orang dalam syarikat pilihan anda",
+      "accessChanged": "Akses anda telah berubah. Muat semula untuk meneruskan.",
+      "changed": "Organisasi telah berubah. Muat semula bahagian ini untuk meneruskan.",
+      "failed": "Bahagian ini tidak dapat dimuatkan. Sila cuba lagi.",
+      "refresh": "Muat semula",
+      "retry": "Cuba lagi",
+      "multipleAssignments": "Berbilang penugasan semasa",
+      "profile": "Lihat profil",
+      "relationships": "Hubungan pelaporan",
+      "outsideScope": "Hubungan di luar syarikat pilihan anda",
+      "incoming": "Melapor kepada orang ini",
+      "outgoing": "Orang ini melapor kepada",
+      "explore": "Terokai",
+      "back": "Kembali",
+      "next": "Halaman seterusnya"
     }
   },
   "me": {
@@ -5433,7 +5461,7 @@
     "submitDecisions": "Hantar",
     "employeeRemark": "Catatan pekerja",
     "closeDialog": "Tutup",
-    "bulkSelectAll": "Pilih semua",
+    "bulkSelectAll": "Pilih semua pada halaman ini",
     "bulkSelectRow": "Pilih permohonan",
     "bulkSelected": "Dipilih: {count, plural, other {# permohonan}}",
     "bulkClear": "Kosongkan",

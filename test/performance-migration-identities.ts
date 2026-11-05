@@ -1,0 +1,21 @@
+/** Independently frozen unapplied performance identities; never derive expectations from the journal. */
+export const PERFORMANCE_MIGRATION_IDENTITIES = [
+ {idx:1452,version:'7',when:1793330001652,tag:'2103_system_performance_read_guards',breakpoints:true,hash:'0f9ec0dfac05dfd46db765cdc868b0dfc14637e4c6266d229dea12f3691f8111'},
+ {idx:1453,version:'7',when:1793330001653,tag:'2104_contract_navigation_role_guards',breakpoints:true,hash:'6aa941d06156cd4112ed9bd5ee6974323e96dc57b000e67f4ab21776f4459fcc'},
+ {idx:1454,version:'7',when:1793330001654,tag:'2105_authorization_navigation_plans',breakpoints:true,hash:'c2f47c495fec180999d2ec236eeed1f334f3231106e08c0fec3a0c9c3c69550f'},
+ {idx:1455,version:'7',when:1793330001655,tag:'2124_ai_control_navigation_candidates',breakpoints:true,hash:'ed8666bfc29767ce266c362f07046dcd6b5b65b8434738bb9257daf5e328292c'},
+ {idx:1456,version:'7',when:1793330001656,tag:'2125_approval_subject_batch',breakpoints:true,hash:'46573298e6faa5545dccf3c7ac5fda930ac48860636630dc4d3bd14e546a5461'},
+ {idx:1457,version:'7',when:1793330001657,tag:'2129_personnel_native_paging',breakpoints:true,hash:'877fb32d3e85cd3c3476038b7d1787877a27f7633bdc5308d6c660e669dc1255'},
+ {idx:1458,version:'7',when:1793330001658,tag:'2131_ai_read_only_metadata_locks',breakpoints:true,hash:'409262dd7b958eb8c2633556f9dba13ad637042efcb07b632a5bcea5c8131077'},
+ {idx:1459,version:'7',when:1793330001659,tag:'2132_ai_metadata_claim_preview_index',breakpoints:true,hash:'ea9d1a6ee283b0586a835d98ee4c5e75196615a5f51d22d643966fc519c97508'},
+ {idx:1460,version:'7',when:1793330001660,tag:'2133_ai_action_read_only_lock',breakpoints:true,hash:'d22cc6aa2e0995a4b7368127ac4d0a2d0c8f18e4bc44a5ca31480ab5d144ea8f'},
+ {idx:1461,version:'7',when:1793330001661,tag:'2134_claim_visibility_set_membership',breakpoints:true,hash:'a489a4293bc835003a0c6ee3f77f68d3847c618827949b54d541290563d3f2f6'},
+ {idx:1462,version:'7',when:1793330001662,tag:'2135_profile_presentation_read_lock',breakpoints:true,hash:'b05f44a52bce44559088003111d1cc36e734ed01971a3042766909128b2d82fd'},
+ {idx:1463,version:'7',when:1793330001663,tag:'2136_grant_admin_role_precheck',breakpoints:true,hash:'c2c67726492e0aa45bb601fe6f0c0e61c54ca39bbfb2658cad476958ced6a027'},
+ {idx:1464,version:'7',when:1793330001664,tag:'2137_home_peer_cohort_batch',breakpoints:true,hash:'25b659236aa53f5dfd268eef64dfbda0315bfdc84aca122463d37cb943555597'},
+ {idx:1465,version:'7',when:1793330001665,tag:'2138_ai_pause_company_discovery',breakpoints:true,hash:'bc44d218c30fcaa1db8a2f92e661be228cc4638fdfeb4280be0cacef388e5574'},
+ {idx:1466,version:'7',when:1793330001666,tag:'2139_workforce_bounded_read_plan',breakpoints:true,hash:'da60091cd9f282910810fc493c3edc5fb124819899d3e91f1d2376f704f0ac75'},
+ {idx:1467,version:'7',when:1793330001667,tag:'2252_probation_navigation_capability_probe',breakpoints:true,hash:'48982043ee84171b29f61c639146b4997e687e961362e3b495c24d5c858d483c'},
+ {idx:1468,version:'7',when:1793330001668,tag:'2141_approval_nonadmin_visibility_batch',breakpoints:true,hash:'d25a2cc9c4c30e6941b15a203fdf869f60e2a7cc34853b0fb40007d5fbd309a1'},
+ {idx:1469,version:'7',when:1793330001669,tag:'2212_payroll_audit_claim_lookup_indexes',breakpoints:true,hash:'ba7080ebfe158a3e2c339552de3a4c9c5adc2ae63dd5e32ec846671e647f37e2'},
+] as const;

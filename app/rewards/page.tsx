@@ -9,7 +9,7 @@ import type {RewardReviewFilters} from '@/packs/rewards/review-list-model';
 import {RewardReviewList} from './review-list';
 export default async function RewardsPage({searchParams}:{searchParams:Promise<RewardReviewFilters&{error?:string}>}){
  await requireModule('rewards');const {s}=await scopedSession(),scopeIds=await getScopeIds((await rewardVisibleCompanies(s)).map(c=>c.id)),setupEntry=await rewardSetupEntry(s),t=await getTranslations('rewards'),sp=await searchParams;
- const [list,choices]=await Promise.all([listRewardReviewStatus(s,scopeIds),rewardSetupChoices(s,scopeIds)]),canConfigure=choices.companies.length>0,accessScopes=await rewardAccessPageCompanies(s).catch(()=>[]);
+ const [list,choices]=await Promise.all([listRewardReviewStatus(s,scopeIds),rewardSetupChoices(s,scopeIds,{fields:[]})]),canConfigure=choices.companies.length>0,accessScopes=await rewardAccessPageCompanies(s).catch(()=>[]);
  return <div className="w-full space-y-6"><PageHeader title={t('title')} description={t('description')} actions={<>
   {setupEntry.manage&&<Link href="/admin/rewards/uploaded" className="inline-flex text-sm font-medium text-primary hover:underline">{(await getTranslations('rewardUploaded'))('createTitle')}</Link>}
   <Link href="/rewards/analytics" className="inline-flex text-sm font-medium text-primary hover:underline">{(await getTranslations('rewardAdvisor'))('analytics')}</Link>

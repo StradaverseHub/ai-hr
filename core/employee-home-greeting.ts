@@ -5,8 +5,7 @@ import {person} from '../db/schema';
 import {requireOwnHomeSubject} from './employee-home';
 import {readEmployeeHomeGreetingIdentity} from './employee-home';
 import {readOwnEmployeeHomeConfiguration} from './employee-home-configuration';
-import {listEmployeeHomeCards} from './dashboard-card-config';
-import {getEmployeeHomePreferences} from './dashboard-prefs';
+import {getEmployeeHomeDisplayPreferences} from './dashboard-prefs';
 import {approvedLeavePresenceByEmploymentTx} from '../packs/leave/service';
 import {workedDayKindForTx} from '../packs/attendance/service';
 import {isModuleEnabled} from './entitlements';
@@ -24,12 +23,14 @@ export type EmployeeHomeGreeting={version:1;employmentId:string;serverNow:string
 async function returnFromLeave(ctx:SessionContext,employmentId:string,today:string){
  if(!isModuleEnabled(ctx,'attendance'))return false;
  return withTenant(ctx,async tx=>{
-  if(await workedDayKindForTx(tx,employmentId,today)!=='workday')return false;
   const days=(await approvedLeavePresenceByEmploymentTx(tx,[employmentId],addDaysIso(today,-14),today)).get(employmentId);
-  if(days?.has(today))return false;
+  // A return greeting requires approved full-day leave. Without any candidate, there
+  // is no need to resolve shifts, holidays, or overtime rules for the preceding days.
+  if(!days||days.has(today)||![...days.values()].includes('full_day'))return false;
+  if(await workedDayKindForTx(tx,employmentId,today)!=='workday')return false;
   for(let distance=1;distance<=14;distance++){
    const prior=addDaysIso(today,-distance);
-   if(await workedDayKindForTx(tx,employmentId,prior)==='workday')return days?.get(prior)==='full_day';
+   if(await workedDayKindForTx(tx,employmentId,prior)==='workday')return days.get(prior)==='full_day';
   }
   return false;
  });
@@ -43,7 +44,7 @@ export async function readEmployeeHomeGreeting(ctx:SessionContext,employmentId:s
  const [identity,view,preferences]=await Promise.all([
   readEmployeeHomeGreetingIdentity(ctx,subject.employmentId),
   readOwnEmployeeHomeConfiguration(ctx,subject.employmentId),
-  listEmployeeHomeCards(ctx).then(cards=>getEmployeeHomePreferences(ctx,cards)),
+  getEmployeeHomeDisplayPreferences(ctx),
  ]);
  const display=homeDisplayClock(now,preferences.timeZone??'Asia/Kuala_Lumpur'),today=todayInKualaLumpur(now);
  const [birthday,returnedFromLeave]=await Promise.all([

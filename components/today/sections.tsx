@@ -1,3 +1,4 @@
+import {dateTimeFormatter} from '@/lib/date-time-formatter';
 import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
 import {CalendarCheck,ClipboardCheck,FileCheck2,ListChecks,Wand2} from 'lucide-react';
@@ -30,10 +31,10 @@ export const NEEDS_ALL_HREF=`${TODAY_HREF}?needs=all`;
 
 type Common=Readonly<{session:SessionContext;scopeIds:readonly string[];audience:TodayAudience;today:string;locale:string}>;
 
-const instant=(locale:string)=>new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeZone:HR_LOCAL_TZ});
-const instantWithTime=(locale:string)=>new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:HR_LOCAL_TZ});
+const instant=(locale:string)=>dateTimeFormatter(locale,{dateStyle:'medium',timeZone:HR_LOCAL_TZ});
+const instantWithTime=(locale:string)=>dateTimeFormatter(locale,{dateStyle:'medium',timeStyle:'short',timeZone:HR_LOCAL_TZ});
 /** An HR calendar date (yyyy-mm-dd) is a day, not an instant: format it as UTC so no offset moves it. */
-const hrDay=(locale:string,iso:string,style:'short'|'medium'='medium')=>new Intl.DateTimeFormat(locale,
+const hrDay=(locale:string,iso:string,style:'short'|'medium'='medium')=>dateTimeFormatter(locale,
  style==='short'?{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'}:{dateStyle:'medium',timeZone:'UTC'}).format(new Date(`${iso}T00:00:00Z`));
 
 /** The approved employee mock-up names the first section "Ready for you to confirm"; administrators and managers,
@@ -45,8 +46,8 @@ export const needsYouHeading=(audience:TodayAudience)=>audience.layout==='person
  * run and the id is a leave request in this viewer's own queue, exactly as the AI Centre Inbox did. */
 export async function NeedsYouSection(p:Common&Readonly<{all?:boolean;recommend?:string}>){
  const [t,tTask,tCard,data]=await Promise.all([getTranslations('today'),getTranslations('notifications.task'),getTranslations('aiCentre.conversation'),
-  readNeedsYou(p.session,{scopeIds:p.scopeIds,audience:p.audience,today:p.today,locale:p.locale})]);
- const cardDate=new Intl.DateTimeFormat(p.locale,LEAVE_APPLY_TITLE_DATE);
+  readNeedsYou(p.session,{scopeIds:p.scopeIds,audience:p.audience,today:p.today,locale:p.locale,all:p.all})]);
+ const cardDate=dateTimeFormatter(p.locale,LEAVE_APPLY_TITLE_DATE);
  /** Issue 16: a prepared card names its leave the way the chat card does (lib/ai-centre/leave-apply-title.ts:
   * "Annual Leave, Thu, Nov 5 (1 day)"), from the facts its owner returned; the formatter is used for that leave
   * phrase for all three kinds, and the kind itself is the card's first line. No facts: the generic title. */
@@ -68,11 +69,12 @@ export async function NeedsYouSection(p:Common&Readonly<{all?:boolean;recommend?
   <ProposalCard tone="finding" icon={finding.key==='proposals'?<Wand2/>:<ClipboardCheck/>} title={t(`findings.${finding.key}Title`,{count:finding.count})}
    meta={[t(`findings.${finding.key}Source`)]} href={finding.href} cta={t(`findings.${finding.key}Cta`)}/>
  </li>;
- const count=data.tasks.length+data.prepared.length+data.findings.length+data.loops.length;
+ const taskTotal=data.taskTotal??data.tasks.length;
+ const count=taskTotal+data.prepared.length+data.findings.length+data.loops.length;
  return <TodaySection id="today-needs-you" title={t(needsYouHeading(p.audience))} count={count} empty={count===0} emptyText={t('needsYouEmpty')}
   unavailable={data.failed?t('unavailable'):null}
-  footer={data.tasks.length>shown.length?<Link href={NEEDS_ALL_HREF} className="inline-flex min-h-9 items-center text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
-   {t('tasks.seeAll',{count:data.tasks.length})}</Link>:null}>
+  footer={taskTotal>shown.length?<Link href={NEEDS_ALL_HREF} className="inline-flex min-h-9 items-center text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
+   {t('tasks.seeAll',{count:taskTotal})}</Link>:null}>
   {data.prepared.map(preparedCard)}
   {/* AI v2 W8: what the loops prepared for this person, before the decisions waiting on them. */}
   <LoopCards cards={data.loops} locale={p.locale}/>

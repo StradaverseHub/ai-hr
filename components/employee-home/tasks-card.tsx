@@ -4,22 +4,15 @@ import * as React from 'react';
 import Link from 'next/link';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
-import {IndependentHomeCard} from './home-card';
+import {IndependentHomeCard,useHomeCardRefresh} from './home-card';
 import {HOME_TASK_KINDS} from '@/lib/employee-home';
 import {isCalendarDate} from '@/lib/calendar-date';
 import type {EmployeeHomeTasks} from '@/lib/employee-home-tasks';
 
 export function HomeTasksCard({employmentId}:{employmentId:string}){
  const t=useTranslations('employeeHome.tasks'),kind=useTranslations('employeeHome.taskNames'),locale=useLocale();
- const [page,setPage]=React.useState(1),[refresh,setRefresh]=React.useState(0);
- React.useEffect(()=>{
-  // Navigation back from the real owner and a newly focused tab refresh current work. Concurrent
-  // decisions are also reconciled while Home is visible; a sent request alone never removes a row.
-  const update=()=>{if(document.visibilityState==='visible')setRefresh(value=>value+1);};
-  window.addEventListener('focus',update);document.addEventListener('visibilitychange',update);
-  const timer=window.setInterval(update,30000);
-  return ()=>{window.removeEventListener('focus',update);document.removeEventListener('visibilitychange',update);window.clearInterval(timer);};
- },[]);
+ const [page,setPage]=React.useState(1);
+ const refresh=useHomeCardRefresh(30000);
  const read=React.useCallback(async(signal:AbortSignal):Promise<EmployeeHomeTasks>=>{
   const response=await fetch('/api/home/tasks?'+new URLSearchParams({employmentId,page:String(page)}),{signal,cache:'no-store',credentials:'same-origin'});
   if(!response.ok)throw Error('Assigned work unavailable');

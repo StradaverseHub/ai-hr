@@ -4,8 +4,9 @@ import type {PolicyFinancialContract,PolicyFinancialDurationContract} from './po
 import type {SessionContext, Tx} from '../../db/client';
 import {actorOf, appendEvent} from '../../db/events';
 import {withAttendanceTenant} from '../../core/module-gate';
-import {and, eq, sql} from 'drizzle-orm';
-import {attendance, attendanceOvertimeSource} from '../../db/schema';
+import {and, eq, gte, inArray, lte, sql} from 'drizzle-orm';
+import {attendance, attendanceOvertimeSource, attendanceGroupPolicyRevision, overtimePatternAssignment, overtimePatternVersion} from '../../db/schema';
+import {overtimeDate,overtimeUuid} from '../../lib/overtime-pattern-schema';
 import {OVERTIME_LIMITS, type OvertimeInput, type OvertimeEvaluation, type OvertimeDurationEvaluation} from '../../lib/overtime-pattern-model';
 import {parseRecordedOvertimeEvaluation, parseRecordedOvertimeDurationEvaluation} from '../../lib/overtime-pattern-result';
 import {canonicalOvertimeInputTx} from './overtime-input';
@@ -30,9 +31,17 @@ export async function reconcileOvertimePatternDayTx(tx: Tx, ctx: SessionContext,
   await storeResultMarkerTx(tx,day.id,result);
   return result;
 }
+async function clearOvertimePatternMarkerTx(tx: Tx, dayId: string) {
+  // Preserve the existing PostgreSQL behavior for historical non-object traces.
+  await tx.update(attendance).set({calcTrace:sql`${attendance.calcTrace} - 'overtimePattern'`}).where(and(
+    eq(attendance.id,dayId),
+    sql`(jsonb_typeof(${attendance.calcTrace}) <> 'object' or ${attendance.calcTrace} ? 'overtimePattern')`,
+  ));
+}
+
 async function storeResultMarkerTx(tx:Tx,dayId:string,result:OvertimeRecordOutcome) {
   if (result.status === 'legacy') {
-    await tx.update(attendance).set({calcTrace:sql`${attendance.calcTrace} - 'overtimePattern'`}).where(eq(attendance.id,dayId));
+    await clearOvertimePatternMarkerTx(tx,dayId);
     return;
   }
   // A selected policy alone cannot establish coverage. Complete independently replayed duration
@@ -47,7 +56,7 @@ export async function refreshOvertimePatternDayTx(tx: Tx, ctx: SessionContext, p
   const [day] = await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),eq(attendance.employmentId,p.employmentId),eq(attendance.attendanceDate,p.date))).limit(1);
   if (!day) return null;
   if (!await hasOvertimePatternForDayTx(tx,ctx,p)) {
-    await tx.update(attendance).set({calcTrace:sql`${attendance.calcTrace} - 'overtimePattern'`}).where(eq(attendance.id,day.id));
+    await clearOvertimePatternMarkerTx(tx,day.id);
     return null;
   }
   let result;
@@ -68,6 +77,52 @@ export async function refreshOvertimePatternDayTx(tx: Tx, ctx: SessionContext, p
   await storeResultMarkerTx(tx,day.id,result);
   return result;
 }
+/** A batch may omit only a proven legacy no-op. No decision/calculation is memoized: any
+ * recorded marker/source, attested work, policy revision or formula candidate uses the exact
+ * scalar owner. Both existing writer barriers must already be held in this native transaction. */
+async function legacyRefreshIsNoopTx(tx:Tx,ctx:SessionContext,days:readonly {employmentId:string;date:string}[]):Promise<boolean>{
+ const [carrier]=await tx.execute<{locked:boolean}>(sql`select app.current_tenant_id()=${ctx.tenantId}::uuid
+  and current_setting('transaction_isolation')='read committed' and current_setting('transaction_read_only')='off'
+  and (select count(*)=2 from pg_locks l where l.pid=pg_backend_pid() and l.locktype='advisory'
+   and l.granted and l.mode='ExclusiveLock' and l.objsubid=1
+   and l.database=(select oid from pg_database where datname=current_database())
+   and ((l.classid::bigint<<32)|l.objid::bigint) in (
+    hashtextextended(${'access-configuration:'+ctx.tenantId},0),
+    hashtextextended(${'leave-dependency-configuration:'+ctx.tenantId.toLowerCase()},0))) as locked`);
+ if(carrier?.locked!==true)return false;
+ const [principal]=await tx.execute<{current:boolean}>(sql`select app.attendance_policy_principal_current() as current`);
+ if(principal?.current!==true)return false;
+ const ids=[...new Set(days.map(day=>day.employmentId))],dates=days.map(day=>day.date).sort(),from=dates[0],to=dates[dates.length-1];
+ // These are deliberately broad necessary candidates using the same RLS tables as the scalar
+ // selector. Ignoring target/company/effective-state details can only cause a scalar fallback.
+ const dayWhere=and(eq(attendance.tenantId,ctx.tenantId),inArray(attendance.employmentId,ids),gte(attendance.attendanceDate,from),lte(attendance.attendanceDate,to));
+ const [row]=await tx.execute<{hasDay:boolean;uncertainDay:boolean;recorded:boolean;policy:boolean;formula:boolean}>(sql`select
+  exists(select 1 from ${attendance} where ${dayWhere}) as "hasDay",
+  exists(select 1 from ${attendance} where ${dayWhere} and (
+   ${attendance.attestedWorkCorrectionId} is not null or ${attendance.calcTrace} ? 'overtimePattern'
+   or (${attendance.calcTrace} is not null and jsonb_typeof(${attendance.calcTrace})<>'object'))) as "uncertainDay",
+  exists(select 1 from ${attendanceOvertimeSource} where ${attendanceOvertimeSource.tenantId}=${ctx.tenantId}::uuid
+   and ${inArray(attendanceOvertimeSource.employmentId,ids)} and ${attendanceOvertimeSource.attendanceDate} between ${from}::date and ${to}::date
+   and ${attendanceOvertimeSource.currentCalculationId} is not null) as recorded,
+  exists(select 1 from ${attendanceGroupPolicyRevision} where ${attendanceGroupPolicyRevision.tenantId}=${ctx.tenantId}::uuid) as policy,
+  exists(select 1 from ${overtimePatternAssignment} inner join ${overtimePatternVersion}
+   on ${overtimePatternVersion.id}=${overtimePatternAssignment.versionId}
+   where ${overtimePatternAssignment.tenantId}=${ctx.tenantId}::uuid and ${overtimePatternVersion.kind}='formula') as formula`);
+ return row?.hasDay===true&&row.uncertainDay===false&&row.recorded===false&&row.policy===false&&row.formula===false;
+}
+
+/** Import-only batching preserves the scalar owner for every possibly meaningful OT refresh.
+ * Outside its existing Access+leave-configuration writer interval there is no fast course. */
+export async function refreshOvertimePatternDaysTx(tx:Tx,ctx:SessionContext,days:readonly {employmentId:string;date:string;reason:string}[]):Promise<void>{
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};days=structuredClone(days);
+ for(const day of days){overtimeUuid(day.employmentId,'employmentId');overtimeDate(day.date,'attendanceDate');}
+ for(let offset=0;offset<days.length;offset+=1000){
+  const part=days.slice(offset,offset+1000);
+  if(await legacyRefreshIsNoopTx(tx,ctx,part))continue;
+  for(const day of part)await refreshOvertimePatternDayTx(tx,ctx,day);
+ }
+}
+
 /** Deliberate administrative recalculation before review/transfer; no client facts or computed amount. */
 export function calculateOvertimePatternDay(ctx: SessionContext, p: {employmentId: string; date: string; expectedCurrentRevision: number; reason: string}) {
   return withAttendanceTenant(ctx, async tx => {

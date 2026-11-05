@@ -14,7 +14,7 @@ import {isProfilePhotoProposal} from '../lib/profile-photo-proposal';
 import {readProfileRoutingPolicy,resolveProfileRouteTx,assertProfileRouteDecisionTx,profileRouteReaderPredicate,ProfileRoutingError,type ProfileRouteDecisionSubject} from './profile-routing';
 import type {ProfilePresentationPolicy} from './profile-edit-policy';
 import {projectOwnProfileProposal,ownProfileProposalIsIntact} from '../lib/personnel-ess-visibility';
-import {freshProfileEditPolicyTx} from './profile-edit-policy';
+import {freshProfileEditPolicyTx,freshProfilePresentationPolicyTx} from './profile-edit-policy';
 import {EssProfileError,type EssProfileProposal} from '../lib/personnel-ess-model';
 import {personnelField,PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import { isCalendarDate } from '../lib/calendar-date';
@@ -784,7 +784,9 @@ export function myProfileChangeRequests(ctx: SessionContext, limit = 50,presenta
   const personId = ctx.personId;
   if (!personId) return Promise.resolve([]);
   return withTenant(ctx, async (tx) => {
-    const policy=presentation??await freshProfileEditPolicyTx(tx,ctx);
+    await tx.execute(sql`SET TRANSACTION READ ONLY`);
+    const policy=presentation??await freshProfilePresentationPolicyTx(tx,ctx);
+    if(presentation)await tx.execute(sql`select app.access_profile_policy_read_lock()`);
     const rows=await tx
       .select({
         id: profileChangeRequest.id,
@@ -909,15 +911,28 @@ export async function withdrawProfileChangesForLockedFields(
 export async function pendingProfileTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  const candidates=await withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const current=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
+  // No RLS-visible pending request can produce an actionable task. Avoid unrelated
+  // Workforce projections in that case; positives retain the full reader below.
+  // Bind scope UUIDs here too, preserving malformed-input errors for an empty queue.
+  const [pending]=await tx.select({id:profileChangeRequest.id}).from(profileChangeRequest)
+   .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),
+    companyIds===undefined?undefined:sql`array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[] is not null`)).limit(1);
+  if(!pending)return [];
+  // The native reader predicate and RLS already evaluate current routing/access facts.
+  // This first transaction only finds candidates: resolving edit settings here took
+  // the exclusive profile-write barrier on every shell read, even for an empty queue.
+  // Nonempty candidates still pass the locked current-policy decision check below.
   return tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
    employee:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest)
    .innerJoin(employment,and(eq(employment.id,profileChangeRequest.employmentId),eq(employment.tenantId,profileChangeRequest.tenantId)))
    .leftJoin(person,and(eq(person.id,profileChangeRequest.personId),eq(person.tenantId,profileChangeRequest.tenantId)))
-   .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current),
+   .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(ctx),
     sql`NOT app.is_self_person(${profileChangeRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
    .orderBy(desc(profileChangeRequest.createdAt),profileChangeRequest.id);
  });
+ // The first transaction has already checked the current principal and native reader. With no
+ // candidates there is no decision authority to resolve in a second locked transaction.
+ if(candidates.length===0)return [];
  const allowed=new Set(await actionableProfileChangeIds(ctx,candidates.map(row=>row.id)));
  return candidates.filter(row=>allowed.has(row.id));
 }

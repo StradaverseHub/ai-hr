@@ -59,7 +59,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ employm
 
   // 476f23ed — the tenant's own names for their event types win over the shipped captions, resolved
   // through the SAME helper the page uses so the file and the screen cannot drift.
-  const typeByCode = new Map((await listMovementEventTypes(s)).map((r) => [r.code, r]));
+  const typeByCode = new Map((await listMovementEventTypes(s, { includeUsage: false })).map((r) => [r.code, r]));
   const kindLabel = (kind: string) => movementKindLabel(kind, typeByCode.get(kind)?.label, t);
 
   const built = buildMovementExport(rows, { t, kindLabel });

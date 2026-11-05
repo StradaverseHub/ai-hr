@@ -9,11 +9,12 @@ import { useLocale } from 'next-intl';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Button, Field, PageHeader, inputCls } from '@/components/ui';
-import { type OnboardingConfig, type onboardingList, type onboardingOptions } from '@/packs/lifecycle/service';
+import { type OnboardingConfig, type onboardingRegisterRows, type onboardingRegisterOptions } from '@/packs/lifecycle/service';
 import { effectiveFacts, matchChecklist, dayDate, currentReq, validDate, requisitionStatus, visibleRecentJoiner, missingCaseFields } from '@/lib/onboarding-model';
-type Options = Awaited<ReturnType<typeof onboardingOptions>>;
-export function Joiners({ rows, config, options, embedded = false, caseBasePath = '/lifecycle/onboarding/cases/' }: {
-    rows: Awaited<ReturnType<typeof onboardingList>>;
+type Options = Awaited<ReturnType<typeof onboardingRegisterOptions>>;
+export function Joiners({ rows, display, config, options, embedded = false, caseBasePath = '/lifecycle/onboarding/cases/' }: {
+    rows: Awaited<ReturnType<typeof onboardingRegisterRows>>['rows'];
+    display?: { today: string; latestSync: string };
     config: OnboardingConfig;
     options: Options;
     embedded?: boolean;
@@ -22,10 +23,10 @@ export function Joiners({ rows, config, options, embedded = false, caseBasePath 
     const copy = useOnboardingCopy();
     const displayDate=(value:string,language:string)=>embedded?(validDate(value)?value.split('-').reverse().join('/'):copy('Date needed')):onboardingDate(value,language);
     const [query, setQuery] = useState(''), [group, setGroup] = useState(''), [status, setStatus] = useState(''), [state, setState] = useState(''), [from, setFrom] = useState(''), [to, setTo] = useState('');
-    const today = todayInKualaLumpur();
-    const latestSync=rows.reduce((latest,row)=>row.case.syncedAt>latest?row.case.syncedAt:latest,'');
+    const today = display?.today ?? todayInKualaLumpur();
+    const latestSync = display?.latestSync ?? rows.reduce((latest,row)=>row.case.syncedAt>latest?row.case.syncedAt:latest,'');
     const rangeBad=validDate(from)&&validDate(to)&&from>to;
-    const recent = rows.filter(({case:c})=>visibleRecentJoiner(config,c,today));
+    const recent = display ? rows : rows.filter(({case:c})=>visibleRecentJoiner(config,c,today));
     const filtered = useMemo(() => recent.filter(({ case: c }) => { const f = effectiveFacts(c); return (embedded ? `${f.fullName} ${f.employeeId} ${c.number}` : f.fullName).toLocaleLowerCase().includes(query.toLocaleLowerCase()) && (!group || f.businessGroup === group) && (!status || c.personnelStatus === status) && (!state || c.state === state) && (rangeBad || !validDate(from) || f.joinDate >= from) && (rangeBad || !validDate(to) || f.joinDate <= to); }).sort((a,b)=>(effectiveFacts(a.case).joinDate||'9999').localeCompare(effectiveFacts(b.case).joinDate||'9999')||a.case.id.localeCompare(b.case.id)), [recent, query, group, status, state, from, to, rangeBad, embedded]);
     const label = (kind: keyof Options, id: string) => options[kind].find(x => x.id === id)?.name ?? id;
     const locale = useLocale();

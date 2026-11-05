@@ -101,11 +101,42 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const upgradeNative=await native();
   await migrate(storage.db,{migrationsFolder:folder});
   const afterLedger=await ledger();
-  expect(afterLedger).toHaveLength(671);expect(afterLedger.slice(0,668)).toEqual(beforeLedger);
+  expect(afterLedger).toHaveLength(668+TAIL.length);expect(afterLedger.slice(0,668)).toEqual(beforeLedger);
   expect(afterLedger.slice(668).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(
    TAIL.map(row=>({hash:hash(readFileSync('db/migrations/'+row.tag+'.sql')),created_at:String(row.when)})));
   expect(await native()).toEqual(upgradeNative);
-  expect(await privileges()).toEqual(beforePrivileges);
+  const afterPrivileges=await privileges();
+  const privateFunctions=['app._ai_control_context_for_purpose(text,boolean,boolean)','app._access_workforce_list_rows(uuid[])','app._assistant_assigned_index_login(uuid,boolean)'];
+  const addedFunctions=[...privateFunctions,'app.access_profile_policy_read_lock()','app.access_workforce_list_facts()','app.access_workforce_list_rows_for_ids(uuid[])','app.attendance_frozen_actor_identity_keys(jsonb,text)','app.delegated_approval_subjects(uuid[],text,text)','app.may_have_attendance_task_metadata()'].sort();
+  const beforeFunctions=new Set(beforePrivileges.functions.map(row=>row.fn));
+  expect(afterPrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
+  for(const fn of addedFunctions){
+   const [permission]=await storage.client`select has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app_execute,
+    exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_execute
+    from pg_proc p where p.oid=to_regprocedure(${fn})`;
+   expect(permission).toEqual({app_execute:!privateFunctions.includes(fn),public_execute:false});
+  }
+  // Independently parse both reviewed Claim expressions against this table. No broad policy
+  // exception: only this exact USING representation may differ; WITH CHECK and every other field stay.
+  const expectedClaimQuals=await storage.client.begin(async tx=>{
+   const expressions=[
+    "tenant_id=app.current_tenant_id() and employment_id=any((select app.visible_employment_ids())::uuid[])",
+    "tenant_id=app.current_tenant_id() and employment_id in(select unnest(app.visible_employment_ids()))",
+   ],qualifiers:string[]=[];
+   for(const expression of expressions){
+    await tx.unsafe('create policy performance_expected_claim_membership on public.claim_request for select to ai_hr_app using ('+expression+')');
+    const [row]=await tx<{qual:string}[]>`select qual from pg_policies where schemaname='public' and tablename='claim_request' and policyname='performance_expected_claim_membership'`;
+    qualifiers.push(row.qual);await tx.unsafe('drop policy performance_expected_claim_membership on public.claim_request');
+   }
+   return qualifiers;
+  });
+  const isClaimPolicy=(row:(typeof beforePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='claim_request'&&row.policyname==='claim_request_rls';
+  expect(beforePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[0]);
+  expect(afterPrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[1]);
+  // The nine helpers remain the only new functions, with three shared owners private. Every prior
+  // ACL/table/column/policy field still matches, except the exact Claim USING expression above.
+  expect({...afterPrivileges,functions:afterPrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
+   policies:afterPrivileges.policies.map(row=>isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:row)}).toEqual(beforePrivileges);
   const installed=await keys();
   expect(installed).toHaveLength(148);
   expect(installed.filter(row=>!row.convalidated)).toEqual([]);

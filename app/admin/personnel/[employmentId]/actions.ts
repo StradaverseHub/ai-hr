@@ -489,12 +489,9 @@ export async function createMovementEventAction(formData: FormData) {
   let payrollFlagged: string[] = [];
   try {
     const p = parseMovementForm(formData);
-    // 9e2a89e9 — READ BEFORE THE WRITE. After createMovementEvent has committed, employment.grade_id is
-    // the NEW grade and the old one is unrecoverable without replaying the event trail, so the history
-    // row could only ever have named one of the two. One indexed read, on the path that already opens
-    // several transactions.
-    const gradeBefore = { gradeId: await employmentGradeId(s, employmentId) };
-    const res = await createMovementEvent(s, { employmentId, ...p, documents: await parseMovementDocuments(formData) });
+    const res = await createMovementEvent(s, {
+      employmentId, ...p, documents: await parseMovementDocuments(formData),
+    }, {captureGradeBefore:true});
     if (res && 'payrollFlaggedPeriods' in res && Array.isArray(res.payrollFlaggedPeriods)) {
       payrollFlagged = res.payrollFlaggedPeriods as string[];
     }
@@ -521,7 +518,7 @@ export async function createMovementEventAction(formData: FormData) {
       // recorded as having taken effect on 1 July. It reaches the AUDIT row only — the ledger row keeps
       // the posting date, because re-dating money is a separate decision (see the migration's header).
       await recomputeEntitlement(s, employmentId, 'movement_recorded', {
-        gradeBefore,
+        gradeBefore: res.gradeBefore,
         changeEffectiveOn: p.effectiveDate ?? null,
       });
     }

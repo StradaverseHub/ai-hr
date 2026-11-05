@@ -54,6 +54,7 @@ import {
   collectableCycleIds,
   intendedCycleFilter,
   listPayslipLessEligible,
+  payrollCloseCompanyIdsTx,
   resolveBatchScopeFilter,
   type BatchScope,
   type PayrollSkipReason,
@@ -2992,22 +2993,41 @@ export function listBatchProcessedDates(
   batchIds: readonly string[],
 ): Promise<Map<string, string>> {
   if (batchIds.length === 0) return Promise.resolve(new Map());
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select({
-        batchId: domainEvent.aggregateId,
-        processedOn: sql<string>`to_char(max(${domainEvent.occurredAt}) at time zone ${HR_LOCAL_TZ}::text, 'YYYY-MM-DD')`,
-      })
-      .from(domainEvent)
-      .where(
-        and(
-          eq(domainEvent.aggregateType, 'payroll-batch'),
-          eq(domainEvent.eventType, 'payroll-batch.processed'),
-          inArray(domainEvent.aggregateId, batchIds as string[]),
-        ),
-      )
-      .groupBy(domainEvent.aggregateId);
-    return new Map(rows.map((r) => [r.batchId, r.processedOn]));
+  return withTenant(ctx, tx => listBatchProcessedDatesTx(tx, batchIds));
+}
+
+async function listBatchProcessedDatesTx(tx: Tx, batchIds: readonly string[]): Promise<Map<string, string>> {
+  if (batchIds.length === 0) return new Map();
+  const rows = await tx
+    .select({
+      batchId: domainEvent.aggregateId,
+      processedOn: sql<string>`to_char(max(${domainEvent.occurredAt}) at time zone ${HR_LOCAL_TZ}::text, 'YYYY-MM-DD')`,
+    })
+    .from(domainEvent)
+    .where(
+      and(
+        eq(domainEvent.aggregateType, 'payroll-batch'),
+        eq(domainEvent.eventType, 'payroll-batch.processed'),
+        inArray(domainEvent.aggregateId, batchIds as string[]),
+      ),
+    )
+    .groupBy(domainEvent.aggregateId);
+  return new Map(rows.map((row) => [row.batchId, row.processedOn]));
+}
+
+/** Only visible-page metadata, using one Payroll history barrier and the original close authority. */
+export function payrollDashboardBatchMetadata(
+  ctx: SessionContext,
+  batchIds: readonly string[],
+  processedCompanyIds: readonly string[],
+): Promise<{ processedOn: Map<string, string>; closeCompanies: Set<string> }> {
+  if (batchIds.length === 0 && processedCompanyIds.length === 0) {
+    return Promise.resolve({ processedOn: new Map(), closeCompanies: new Set() });
+  }
+  return withTenant(ctx, async tx => {
+    const processedOn = await listBatchProcessedDatesTx(tx, batchIds);
+    const closeCompanies = await payrollCloseCompanyIdsTx(tx, ctx, processedCompanyIds);
+    return { processedOn, closeCompanies };
   });
 }
 

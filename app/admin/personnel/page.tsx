@@ -14,7 +14,7 @@ import {
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
 
-import { listEmployeeDrafts } from '@/core/employee-draft';
+import { readPersonnelDraftList } from './draft-list-read';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { getEmployeeListColumns } from '@/core/employee-list-prefs';
 import { Card, PageHeader } from '@/components/ui';
@@ -41,7 +41,6 @@ import {
   DRAFT_BUCKET,
   EMPLOYEE_STATUS_BUCKETS,
   draftListScope,
-  draftMatchesQuery,
   headcountFilters,
   parsePersonnelListQuery,
   personnelQueryParams,
@@ -158,12 +157,12 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
     offset: pq.offset,
   }, headcountFilters(query));
   const { employees: { rows: employeeRows, total: employeeTotal }, headcount, organisationChoices } = overview;
-  const [companies, departments, allDrafts, savedColumns, idConfigs] = await Promise.all([
+  const [companies, departments, { rows: drafts, count: draftCardCount }, savedColumns, idConfigs] = await Promise.all([
     listCompanies(session).then(rows=>rows.filter(row=>workforceIds.has(row.id))),
     scopeIds.length?listDepartments(session,{companyIds:scopeIds}):Promise.resolve([]),
     // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees above do. They used to
     // be read with no scope at all, so choosing one company still listed every company's drafts.
-    isAdmin ? listEmployeeDrafts(session, draftListScope(scopeIds, allowedCount)) : Promise.resolve([]),
+    isAdmin ? readPersonnelDraftList(session, draftListScope(scopeIds, allowedCount), query, pq.offset === 0) : Promise.resolve({ rows: [], count: 0 }),
     // 579255c3 — this reader's own columns and their order. Per user (app_user.list_preferences through
     // the own-row seam), so one person's arrangement never changes what anybody else sees.
     getEmployeeListColumns(session),
@@ -186,33 +185,8 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   const employeeIdRules: Record<string, EmployeeIdRule> = {};
   for (const c of companies) employeeIdRules[c.id] = resolveEmployeeIdRule(idConfigs, c.id);
 
-  // ── Draft rows (item 06f0cb8f, preserved) ─────────────────────────────────────────────────────────
-  // Drafts are PINNED ABOVE the employees on every page, not merged into the sort and not paged. There
-  // are a handful of them at most (they exist for days, not years), and the reporter's reason for wanting
-  // them in this list is to see who is still outstanding — an outstanding record on page 4 answers
-  // nothing. THE PAGER TOTAL STILL COUNTS EMPLOYMENTS ONLY: "40 employees" must keep meaning forty people
-  // on the books, and a Draft is a reserved place, not a person.
-  //
-  // 579255c3 DELIBERATELY DOES NOT RE-SEPARATE THEM. A standalone "Draft Employees" card above the table
-  // used to exist and was REMOVED AT THE REPORTER'S OWN REQUEST (06f0cb8f) — a draft parked outside the
-  // list with no status against it was exactly the complaint. What the redesign adds instead is the Draft
-  // CARD, which shows the count and pulls up those rows alone in one click.
-  //
-  // Which filters hide a draft, and why, now lives in ONE predicate (draftMatchesQuery) shared with the
-  // Draft card's count and with the export, so a card can never promise records the table then refuses.
-  const matchingDrafts = allDrafts.filter((d) => draftMatchesQuery(d, query));
-  // THE DRAFT CARD COUNTS WHAT CLICKING IT WOULD SHOW, not what the current selection shows. Clicking a
-  // card REPLACES the bucket, so counting the drafts under the bucket already chosen made the card read
-  // "0" the moment Active was selected — a card offering nothing, next to two records that exist. Caught
-  // by rendering, not by a test: every count was individually correct.
-  const draftCardCount = allDrafts.filter((d) =>
-    draftMatchesQuery(d, { ...query, bucket: undefined }),
-  ).length;
-  // FIRST PAGE ONLY. Pinned rows that repeat above every page of a long list stop reading as "these are
-  // outstanding" and start reading as a rendering fault. Under the Draft selection there is only one
-  // page, so this costs nothing there.
-  const drafts = pq.offset > 0 ? [] : matchingDrafts;
-
+  // Drafts share the employee list and stay pinned on its first page (06f0cb8f/579255c3).
+  // The Draft card counts the view it opens; the pager still counts employments only.
   const employees = draftOnly ? [] : employeeRows;
   const total = draftOnly ? 0 : employeeTotal;
   const pgState = pageState(pq, total, employees.length);

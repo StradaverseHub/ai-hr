@@ -4859,6 +4859,132 @@
       "when": 1793330001622,
       "tag": "2211_company_retention_approved_expansion",
       "breakpoints": true
+    },
+    {
+      "idx": 1452,
+      "version": "7",
+      "when": 1793330001652,
+      "tag": "2103_system_performance_read_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 1453,
+      "version": "7",
+      "when": 1793330001653,
+      "tag": "2104_contract_navigation_role_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 1454,
+      "version": "7",
+      "when": 1793330001654,
+      "tag": "2105_authorization_navigation_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 1455,
+      "version": "7",
+      "when": 1793330001655,
+      "tag": "2124_ai_control_navigation_candidates",
+      "breakpoints": true
+    },
+    {
+      "idx": 1456,
+      "version": "7",
+      "when": 1793330001656,
+      "tag": "2125_approval_subject_batch",
+      "breakpoints": true
+    },
+    {
+      "idx": 1457,
+      "version": "7",
+      "when": 1793330001657,
+      "tag": "2129_personnel_native_paging",
+      "breakpoints": true
+    },
+    {
+      "idx": 1458,
+      "version": "7",
+      "when": 1793330001658,
+      "tag": "2131_ai_read_only_metadata_locks",
+      "breakpoints": true
+    },
+    {
+      "idx": 1459,
+      "version": "7",
+      "when": 1793330001659,
+      "tag": "2132_ai_metadata_claim_preview_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 1460,
+      "version": "7",
+      "when": 1793330001660,
+      "tag": "2133_ai_action_read_only_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 1461,
+      "version": "7",
+      "when": 1793330001661,
+      "tag": "2134_claim_visibility_set_membership",
+      "breakpoints": true
+    },
+    {
+      "idx": 1462,
+      "version": "7",
+      "when": 1793330001662,
+      "tag": "2135_profile_presentation_read_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 1463,
+      "version": "7",
+      "when": 1793330001663,
+      "tag": "2136_grant_admin_role_precheck",
+      "breakpoints": true
+    },
+    {
+      "idx": 1464,
+      "version": "7",
+      "when": 1793330001664,
+      "tag": "2137_home_peer_cohort_batch",
+      "breakpoints": true
+    },
+    {
+      "idx": 1465,
+      "version": "7",
+      "when": 1793330001665,
+      "tag": "2138_ai_pause_company_discovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 1466,
+      "version": "7",
+      "when": 1793330001666,
+      "tag": "2139_workforce_bounded_read_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 1467,
+      "version": "7",
+      "when": 1793330001667,
+      "tag": "2252_probation_navigation_capability_probe",
+      "breakpoints": true
+    },
+    {
+      "idx": 1468,
+      "version": "7",
+      "when": 1793330001668,
+      "tag": "2141_approval_nonadmin_visibility_batch",
+      "breakpoints": true
+    },
+    {
+      "idx": 1469,
+      "version": "7",
+      "when": 1793330001669,
+      "tag": "2212_payroll_audit_claim_lookup_indexes",
+      "breakpoints": true
     }
   ]
 }

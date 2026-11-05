@@ -1,6 +1,7 @@
 /** Exact approved forward tail and its ONE intended populated permission transition.
  * Historical receipts remain pinned by each owning fixture. No migration or old audit row is skipped. */
 import {expect} from 'vitest';
+import {PERFORMANCE_MIGRATION_IDENTITIES} from '../performance-migration-identities';
 import {createHash} from 'node:crypto';
 import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -34,6 +35,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:1420,when:1793330001620,tag:'2208_rewards_uploaded_awards'},
  {idx:1421,when:1793330001621,tag:'2209_company_registration_classification'},
  {idx:1422,when:1793330001622,tag:'2211_company_retention_approved_expansion'},
+ ...PERFORMANCE_MIGRATION_IDENTITIES.map(({idx,when,tag})=>({idx,when,tag})),
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -60,6 +62,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '2208_rewards_uploaded_awards':'97012d64969a58fe52f611aee883d61822e3021d5ed49bccac276f217119eefb',
  '2209_company_registration_classification':'9685fcef72990612baedf333b4af3fe8c4d3e0a6ebe9611bcc7eabea466ad0e0',
  '2211_company_retention_approved_expansion':'5e336a948b9490d9355eba65d6f341618334a031c7bdc66562ed9139b7c5f0c4',
+ ...Object.fromEntries(PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,hash})=>[tag,hash])),
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);
