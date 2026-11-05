@@ -4845,28 +4845,20 @@ async function requestEmergencyLeave(
  * Null only when the employment row is not visible.
  */
 async function resolveRequestApprovalChain(tx: Tx, employmentId: string, leaveTypeId: string, days: number) {
-  const [co] = await tx
-    .select({ companyId: company.id })
-    .from(employment)
-    .innerJoin(company, eq(company.id, employment.companyId))
-    .where(eq(employment.id, employmentId))
-    .limit(1);
-  if (!co) return null;
-
-  // ADR-0071: gather the requester's OWN current-assignment attributes (validTo/supersededAt null — the
-  // same currentAssignment predicate used across the read layer) plus grade (on the employment row) and
-  // the department's business unit (nullable — a BU-scoped rule simply fails to match when unset, never
-  // errors). Scoped strictly to THIS employmentId — never a concurrent employment at another company
-  // (ADR-0071 1(f)).
-  const [attr] = await tx
+  // Read the company and current assignment together. The optional grade group is unique
+  // per tenant and grade, so it does not multiply the requester's assignment rows.
+  const [subject] = await tx
     .select({
+      companyId: company.id,
       gradeId: employment.gradeId,
+      gradeGroupId: gradeGroupMember.gradeGroupId,
       departmentId: assignment.departmentId,
       positionId: assignment.positionId,
       employmentType: assignment.employmentType,
       businessUnitId: department.businessUnitId,
     })
     .from(employment)
+    .innerJoin(company, eq(company.id, employment.companyId))
     .leftJoin(
       assignment,
       and(
@@ -4876,21 +4868,14 @@ async function resolveRequestApprovalChain(tx: Tx, employmentId: string, leaveTy
       ),
     )
     .leftJoin(department, eq(department.id, assignment.departmentId))
+    .leftJoin(gradeGroupMember, and(
+      eq(gradeGroupMember.tenantId, employment.tenantId),
+      eq(gradeGroupMember.gradeId, employment.gradeId),
+    ))
     .where(eq(employment.id, employmentId))
     .limit(1);
-
-  // R41 72800eda: map the requester's individual grade → its GRADE GROUP (grade_group_member) so a
-  // grade-group-scoped approval rule can match. A grade belongs to at most one group (unique index); an
-  // ungrouped/ungraded requester resolves to null and simply never matches a group-scoped rule.
-  let gradeGroupId: string | null = null;
-  if (attr?.gradeId) {
-    const [gm] = await tx
-      .select({ gradeGroupId: gradeGroupMember.gradeGroupId })
-      .from(gradeGroupMember)
-      .where(eq(gradeGroupMember.gradeId, attr.gradeId))
-      .limit(1);
-    gradeGroupId = gm?.gradeGroupId ?? null;
-  }
+  if (!subject) return null;
+  const { companyId, gradeGroupId, ...attr } = subject;
 
   // 2B-2 / ADR-0071: the chain is data — resolve the most-specific matching rule for this request.
   //
@@ -4898,16 +4883,8 @@ async function resolveRequestApprovalChain(tx: Tx, employmentId: string, leaveTy
   // PREVIEW has to name WHERE the chain came from (a scoped rule, the org-wide default, or the built-in
   // fallback) and re-resolving to find that out would be a second ranking of the same rows over a
   // different attribute set. The chain below is that decision's own `levels` — the wrapper's whole body.
-  const decision = await resolveApprovalDecision(tx, co.companyId, leaveTypeId, {
-    gradeId: attr?.gradeId ?? null,
-    gradeGroupId,
-    departmentId: attr?.departmentId ?? null,
-    positionId: attr?.positionId ?? null,
-    employmentType: attr?.employmentType ?? null,
-    businessUnitId: attr?.businessUnitId ?? null,
-    days,
-  });
-  return { companyId: co.companyId, chain: decision.levels, decision, attr: attr ?? null };
+  const decision = await resolveApprovalDecision(tx, companyId, leaveTypeId, { ...attr, gradeGroupId, days });
+  return { companyId, chain: decision.levels, decision, attr };
 }
 
 /** r79 0322 — a request is MULTI-STEP when its resolved chain has two or more levels. One level is a
