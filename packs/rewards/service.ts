@@ -378,7 +378,7 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
       .leftJoin(appUser, eq(appUser.id, domainEvent.actorId)).leftJoin(person, and(eq(person.id, appUser.personId), visibleSeatHolder))
       .where(and(eq(domainEvent.aggregateType, 'reward-unit'), eq(domainEvent.aggregateId, unitId), eq(domainEvent.eventType, 'reward-unit.lump-updated'))).orderBy(desc(domainEvent.occurredAt)).limit(1) : [];
     const [libraryBinding]=await tx.execute<{bound:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as bound`);
-    return { libraryBound:libraryBinding?.bound??false,...(caps?{capabilities:{...caps.value,snapshotRefresh:!uploadedReview?.present&&caps.value.snapshotRefresh}}:{}),uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
+    return { libraryBound:libraryBinding?.bound??false,...(caps?{capabilities:{...caps.value,snapshotRefresh:!uploadedReview?.present&&caps.value.snapshotRefresh}}:{}),uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.filter(row=>entries.some(e=>e.id===row.id&&e.uploadedAward!==null)).length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0),lumpCents:visible.reduce((n,e)=>n+e.lumpCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
       rows: visible.map(e=>{const {uploadedAward:_award,...safe}=e as typeof e&{uploadedAward?:unknown};return safe;}), flags, hiddenCount: entries.length - visible.length,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
       bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
@@ -1612,7 +1612,7 @@ export async function rewardApprovalsBoard(ctx: SessionContext, companyIds: stri
       .orderBy(asc(company.legalName), asc(rewardCycle.name), asc(rewardUnit.id));
     const today = todayInKualaLumpur();
     const rows: RewardBoardRow[] = [];
-    for (const u of units) rows.push(boardRow(await reviewProjectionTx(tx, ctx, u.id), u, today));
+    for (const u of units) rows.push(boardRow(await reviewProjectionTx(tx, ctx, u.id,'approvals.view'), u, today));
     return rows;
   });
 }
@@ -1627,12 +1627,12 @@ export async function listRewardReviewStatus(ctx:SessionContext,companyIds:strin
   for(const unit of units){
    const roles=await rolesFor(tx,unit.id);
    if(roles.length){const [cap]=await tx.execute<{allowed:boolean}>(sql`select app.reward_capability(${unit.id}::uuid,'review.view') as allowed`);if(!cap?.allowed)continue;}
-   if(unit.uploadPending&&!roles.includes('gr')){rows.push({...unit,roles,waiting:false,salary:null,bonus:null,blocking:null,exceptions:null,laterSeats:[] as RewardRole[]});continue;}
+   if(unit.uploadPending&&!roles.includes('gr')){rows.push({...unit,people:null,verified:null,roles,waiting:false,salary:null,bonus:null,blocking:null,exceptions:null,laterSeats:[] as RewardRole[]});continue;}
    if(!roles.length){rows.push({...unit,roles,waiting:false,salary:null,bonus:null,blocking:null,exceptions:null,laterSeats:[] as RewardRole[]});continue;}
    const projection=await reviewProjectionTx(tx,ctx,unit.id),board=boardRow(projection,{cycle:unit.cycle,company:unit.company},today);
    const step=rewardStageStep(projection.unit.status,projection.route);
    const laterSeats=step?([...projection.route,'payroll'] as RewardRole[]).filter((seat,index)=>index>=step.step&&roles.includes(seat)):[];
-   rows.push({...unit,roles,waiting:board.waiting,salary:board.salary,bonus:board.bonus,blocking:board.blocking,exceptions:board.exceptions,laterSeats});
+   rows.push({...unit,people:projection.rows.length,verified:projection.rows.filter(row=>row.facts.reviewed).length,roles,waiting:board.waiting,salary:board.salary,bonus:board.bonus,blocking:board.blocking,exceptions:board.exceptions,laterSeats});
   }
   let emptyReason:'noScope'|'noCycle'|'noRole'|'otherScope'|null=null;
   if(!rows.length){
@@ -1678,15 +1678,21 @@ export async function sendReadyRewardUnits(ctx: SessionContext, companyIds: stri
 export async function rewardsAnalysisSourceTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[],unitId?:string){
  if(!companyIds.length)throw Error('Rewards analysis requires a company scope.');
  const available=await listRewardUnits(ctx,[...companyIds],tx);
- const latest=Math.max(...available.map(unit=>unit.year));
- const units=unitId?available.filter(unit=>unit.id===unitId):available.filter(unit=>unit.year===latest);
- if(!units.length||units.some(unit=>unit.people===null||unit.verified===null))throw Error('A complete authorized rewards review is unavailable.');
- const rows=await tx.select({id:rewardEntry.id,unitId:rewardEntry.unitId,personId:employment.personId,
-  reviewed:sql<boolean>`coalesce(${rewardEntry.facts}->>'reviewed','false')='true'`}).from(rewardEntry)
-  .innerJoin(employment,eq(employment.id,rewardEntry.employmentId))
-  .where(and(inArray(rewardEntry.unitId,units.map(unit=>unit.id)),inArray(employment.companyId,[...companyIds])));
- for(const unit of units)if(rows.filter(row=>row.unitId===unit.id).length!==Number(unit.people))throw Error('Incomplete rewards population.');
- return {selection:units.map(unit=>unit.id).sort().join(','),rows:rows.map(row=>({personId:row.personId,conditions:{facts_verification_share:row.reviewed}}))};
+ const scoped=[];
+ for(const unit of available){
+  if(unitId&&unit.id!==unitId||unit.uploadPending)continue;
+  const [cap]=await tx.execute<{allowed:boolean}>(sql`select app.reward_capability(${unit.id}::uuid,'analytics.view') as allowed`);
+  if(cap?.allowed)scoped.push(unit);
+ }
+ const latest=Math.max(...scoped.map(unit=>unit.year)),units=unitId?scoped:scoped.filter(unit=>unit.year===latest);
+ if(!units.length)throw Error('A complete authorized rewards review is unavailable.');
+ const rows=[];
+ for(const unit of units){
+  const view=await reviewProjectionTx(tx,ctx,unit.id,'analytics.view');
+  for(const entry of view.rows)rows.push({personId:entry.source.personId,conditions:{facts_verification_share:entry.facts.reviewed}});
+ }
+ if(!rows.length)throw Error('A complete authorized rewards review is unavailable.');
+ return {selection:units.map(unit=>unit.id).sort().join(','),rows};
 }
 
 /** Mobile review is an explicit outbound projection. Senior amounts never enter the payload. */
