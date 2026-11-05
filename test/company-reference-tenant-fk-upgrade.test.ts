@@ -1,5 +1,5 @@
 /** ADR-0174 follow-up populated upgrade through 2120–2123, on an owned disposable localhost database only.
- * Cross-tenant references present at the 671-entry boundary must stop the whole upgrade with a report naming
+ * Cross-tenant references present at the 672-entry boundary must stop the whole upgrade with a report naming
  * every offending table and leave the ledger and every function untouched. Once the owner resolves them, the
  * upgrade validates the seven keys, rewrites no row, changes no grant or policy, appends pg_temp to every
  * unpinned path and changes only the five function bodies it re-issues. This supplies no staging acceptance. */
@@ -36,9 +36,9 @@ const pinned=(config:string[]|null)=>config?.map(setting=>{
 it('stops on cross-tenant references, then pins every definer and validates the seven keys without changing data or grants',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:Entry[]};
  const boundary=journal.entries.findIndex(row=>row.tag===TAIL[0].tag);
- expect(boundary).toBe(671);
+ expect(boundary).toBe(672);
  expect(journal.entries.slice(boundary,boundary+TAIL.length)).toEqual(TAIL);
- expect(journal.entries[boundary-1]).toEqual({idx:1349,version:'7',when:1793330001502,tag:'2102_company_tenant_fk_validate',breakpoints:true});
+ expect(journal.entries[boundary-1]).toEqual({idx:1350,version:'7',when:1793330001503,tag:'2013_payroll_learned_baseline',breakpoints:true});
  const prefix=journal.entries.slice(0,boundary),through=journal.entries.slice(0,boundary+TAIL.length);
  const root=mkdtempSync(join(tmpdir(),'company-reference-fk-upgrade-')),database='ai_hr_company_ref_upgrade_'+randomUUID().replaceAll('-','');
  const folder=(name:string,entries:Entry[])=>{
@@ -92,7 +92,7 @@ it('stops on cross-tenant references, then pins every definer and validates the 
  try{
   await admin.unsafe(`CREATE DATABASE "${database}"`);created=true;
   await migrate(storage.db,{migrationsFolder:folder('prefix',prefix)});
-  const beforeLedger=await ledger();expect(beforeLedger).toHaveLength(671);
+  const beforeLedger=await ledger();expect(beforeLedger).toHaveLength(672);
   expect(beforeLedger.map(row=>row.hash)).toEqual(prefix.map(row=>hash(readFileSync('db/migrations/'+row.tag+'.sql'))));
   expect(await keys()).toEqual([]);
   expect(await unpinned()).toBe(168);
@@ -146,8 +146,8 @@ it('stops on cross-tenant references, then pins every definer and validates the 
   const upgradeNative=await native();
   await migrate(storage.db,{migrationsFolder:folder('through-resolved',through)});
   const afterLedger=await ledger();
-  expect(afterLedger).toHaveLength(675);expect(afterLedger.slice(0,671)).toEqual(beforeLedger);
-  expect(afterLedger.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(
+  expect(afterLedger).toHaveLength(676);expect(afterLedger.slice(0,672)).toEqual(beforeLedger);
+  expect(afterLedger.slice(672).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(
    TAIL.map(row=>({hash:hash(readFileSync('db/migrations/'+row.tag+'.sql')),created_at:String(row.when)})));
   expect(await native()).toEqual(upgradeNative);
   expect(await privileges()).toEqual(beforePrivileges);

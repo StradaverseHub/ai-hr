@@ -50,9 +50,11 @@ import { drainNotificationProjection } from '../core/orchestrator-harness';
 import { dispatchNotificationsFromSweep } from '../core/notifications';
 import { todayInKualaLumpur } from '../core/leave';
 import { recordJobRun } from '../core/job-run';
-import { resolveEntitlementsTx } from '../core/entitlements';
+import { isModuleEnabled, resolveEntitlementsTx } from '../core/entitlements';
+import { NOTIFICATION_ROLE_MISSING, notificationDowngradeReady } from './lib/notification-sweep-role';
 import { runLoopsForTenant } from '../core/loops/run';
 import { runPayrollAuditLoop } from '../core/payroll-audit/run';
+import { runPayrollLearning } from '../core/payroll-learning/recompute';
 
 async function main() {
   const startedAt = Date.now();
@@ -65,6 +67,10 @@ async function main() {
   // review due today would be missed by a day.
   const today = todayInKualaLumpur();
   const owner = createDb(ownerUrl);
+  // Probed once. Without the downgrade edge every tenant's projection fails at SET ROLE, which used to discard that
+  // tenant's whole summary line; now the projection alone is skipped and counted as a failure (exit 1 remains).
+  const downgradeReady = await notificationDowngradeReady(owner.db);
+  if (!downgradeReady) console.error(`review:sweep — ${NOTIFICATION_ROLE_MISSING}`);
   // ADR-0077 slice 9 — standing is consulted BEFORE any transaction opens. A tenant that is not in
   // good standing is stepped over, not attempted: withTenant would refuse the writes anyway, and
   // discovering that as a read-only error would report a suspended customer as a nightly failure.
@@ -97,6 +103,7 @@ async function main() {
   let failures = 0;
   let notificationCappedTenants = 0;
   let notificationsCreated = 0;
+  let notificationProjectionBlockedTenants = 0;
   let agentPromotionsRetired = 0;
   let agentPromotionsOutcomeRegressed = 0;
   let agentPromotionMaintenanceFailedTenants = 0;
@@ -232,15 +239,33 @@ async function main() {
         console.error('  loop_payroll_audit failed before it reached a company.');
       }
 
+      // Payroll history learning (P1, migration 2012): the backstop for the payroll tick, every company learning is on for,
+      // under each company's sponsor; and the leaver retention purge. Deterministic statistics only, no model.
+      const learning = await runPayrollLearning({ tenantId: t.id, principalId, entitlements, trigger: 'sweep' }).catch(() => null);
+      if (learning === null) { loopRunsFailed++; console.error('  payroll history learning failed before it reached a company.'); }
+      else if (learning.stopped) console.log('  payroll history learning: the stop switch is on, so nothing was learned (the leaver retention purge still ran).');
+      else for (const c of learning.companies) {
+        if (c.status === 'sponsor_lost') { loopRunsStopped++; console.error('  ⚠ payroll history learning stopped for a company: its sponsor no longer administers its payroll; an administrator of its payroll must switch learning on again.'); }
+        else if (c.status === 'failed') { loopRunsFailed++; console.error('  payroll history learning could not complete a company; nothing was written for it.'); }
+      }
+
       // Project the new started/reminder/escalation/nudge events into notifications now — gated on the
       // tenant's `notifications` entitlement, which the snapshot above makes this context answer truthfully.
-      const projection = await drainNotificationProjection(limit => dispatchNotificationsFromSweep(ctx,owner,{limit}));
+      const notificationsOn = isModuleEnabled(ctx, 'notifications') || (entitlements.scopedModules.notifications ?? []).some(companyId => isModuleEnabled(ctx, 'notifications', companyId));
+      const projectionBlocked = notificationsOn && !downgradeReady;
+      const projection = projectionBlocked ? { created: 0, cappedOut: false }
+        : await drainNotificationProjection(limit => dispatchNotificationsFromSweep(ctx,owner,{limit}));
+      if (projectionBlocked) {
+        notificationProjectionBlockedTenants++;
+        console.error('  Notifications NOT projected: the sweep login cannot switch to ai_hr_app.');
+      }
       notificationsCreated += projection.created;
       if (projection.cappedOut) {
         notificationCappedTenants++;
         console.error('  Notification queue reached its batch limit; more work may remain.');
       }
-      if (orchestration?.failed || chasers?.failed || projection.cappedOut || releasesFailed || loops.some(loop => loop.status === 'failed') || audit === null || (audit?.status === 'ran' && audit.failed > 0)) failures++;
+      if (orchestration?.failed || chasers?.failed || projection.cappedOut || projectionBlocked || releasesFailed || loops.some(loop => loop.status === 'failed') || audit === null || (audit?.status === 'ran' && audit.failed > 0)
+        || learning === null || learning.companies.some(c => c.status === 'failed')) failures++;
       totalOpened += opened;
       totalReminders += reminders;
       totalEscalated += escalated;
@@ -329,6 +354,7 @@ async function main() {
         triageCappedTenants,
         notificationsCreated,
         notificationCappedTenants,
+        notificationProjectionBlockedTenants,
         agentPromotionsRetired,
         agentPromotionsOutcomeRegressed,
         agentPromotionMaintenanceFailedTenants,

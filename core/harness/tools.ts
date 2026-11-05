@@ -48,6 +48,7 @@ import {asksToBypassReview,assignedLeaveDecisionChoices,pendingStarts,prepareSug
 import {approvalQueueWithLeaveIdsFor} from '../product-context/approval-queue';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {LEAVE_APPLY_FORM_ROUTE} from '../proposals/leave-apply';
+import {requestDates,requestDatesView} from '../proposals/request-dates';
 import type {Proposal} from '../proposals/proposal';
 import {HARNESS_SPEC} from './spec';
 import {PRODUCT_CAPABILITIES_SPEC,productCapabilities} from '../product-context/capability-catalogue';
@@ -81,9 +82,11 @@ export type ToolCandidates=Readonly<{bindings:readonly ToolBinding[];
  destinations:readonly string[]}>;
 export type ToolProvider=(ctx:SessionContext,scope:ToolScope,actions:boolean)=>Promise<ToolCandidates>;
 
-const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change. For leave.apply, details may carry leaveType, startDate and endDate (YYYY-MM-DD), durationType (full_day, half_day_am or half_day_pm) and reason, each only from the person\'s own words; leave out what they did not say. Nothing is submitted.'
+const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change. For leave.apply, details may carry leaveType, startDate and endDate, durationType (full_day, half_day_am or half_day_pm) and reason, each only from the person\'s own words; leave out what they did not say. Nothing is submitted.'
  // AI v2 W2: the attendance requests prepared from chat (core/proposals/attendance-request.ts).
- +' For attendance.correction.request, details may carry date (YYYY-MM-DD), checkIn and checkOut (HH:MM, 24-hour) and reason; for attendance.overtime.request, date, plannedStartTime and plannedEndTime (HH:MM, 24-hour) and reason. The same rule applies: only what the person said.'
+ +' For attendance.correction.request, details may carry date, checkIn and checkOut (HH:MM, 24-hour) and reason; for attendance.overtime.request, date, plannedStartTime and plannedEndTime (HH:MM, 24-hour) and reason. The same rule applies: only what the person said.'
+ // Owner, 5 November 2026 ("Fix dates first"): the HR date owner works out a named day (core/proposals/request-dates.ts).
+ +' For leave.apply, attendance.correction.request and attendance.overtime.request, a date detail is YYYY-MM-DD when the person gave a date; when they named a day instead (today, tomorrow, yesterday, next Friday, this Monday, last Tuesday, next week, on the 13th, or the same in Malay or Chinese), put their own words for it, such as "next friday", and the system works out the date. Their reason is the person\'s own words for why, which may already be in their message (such as "forgot to clock out").'
  // AI v2 W2: own claims and own profile changes (core/proposals/claim-submit.ts, claim-cancel.ts, profile-change.ts).
  +' For claims.submit, details may carry claimType, claimItem, amount (exactly as the person stated it), incurredOn (YYYY-MM-DD) and description. For claims.cancel, details may carry incurredOn.'
  +' For ess.profile.request, details carry change (address, emergency_contact, dependant or bank) and only what the person said: addressLine1, addressLine2, addressLine3, postcode, city, state; contactName, relationship; dependantName, relationship, dateOfBirth (YYYY-MM-DD), gender; bankName.'
@@ -92,6 +95,17 @@ const SUGGEST_DESCRIPTION='Point the person to the page where they complete and 
  +' For toil.replacement.request, details may carry workedDate (YYYY-MM-DD), claimStart and claimEnd (HH:MM, 24-hour) and reason, only what the person said. The system counts any days credited; never state or work out a credit, rate or pay, and never put anything about agreement or consent in details: only the person can agree, on the card.'
  // AI v2 W2 (slice 3): an assigned approver's claim or attendance decision (core/proposals/assigned-decide.ts).
  +' For approvals.claim.decide and approvals.attendance.decide, details may carry request (the number the person chose from a list), date (YYYY-MM-DD) and, for a rejection, reason in the person\'s own words. Never put a name, an amount or a decision in details: the system reads whose request it is and whether to approve or reject from the person\'s own message, and the approver confirms it on the card.';
+/** The details the native hint check sees for one suggestion. The overtime card's hint is its selectors only, without the
+ * person's reason, and its date is a date (lib/ai/assistant-action-proposal-hints.ts): a day the person named in their own
+ * words is worked out first by the HR date owner's rule (core/proposals/request-dates.ts), the same rule its preparer runs,
+ * so "this Saturday" is never refused as a missing date (eval on ef479b55c, mgr-overtime-1). Every other action's
+ * details pass unchanged. Pure apart from the clock. */
+export function suggestHint(action:unknown,details:unknown,personWords:string|undefined,now:Date=new Date()):unknown{
+ if(action!=='attendance.overtime.request'||!details||typeof details!=='object'||Array.isArray(details))return details;
+ const hint:Record<string,unknown>=Object.fromEntries(Object.entries(details as Record<string,unknown>).filter(([key])=>key!=='reason'));
+ if(typeof hint.date==='string'){const day=requestDates(hint.date,'',personWords,{now,singleDay:true});if(day.kind==='dates')hint.date=day.dates.startDate;}
+ return hint;
+}
 /** Spec v13 (aiv2-speed-findings-20261103, cause 1b): suggest_action is called without available_actions when the action is
  * clear, so its description names the purpose of each declared action (core/semantic-model/entities.ts SEMANTIC_ACTIONS)
  * this caller holds, from the same catalogue rows available_actions returns. Only those (eight at v13; eleven with the
@@ -105,7 +119,9 @@ export function suggestDescription(catalogue:readonly Readonly<{id:string;purpos
 const ASK_NOTE='Some details for this leave application are missing or unclear (listed in missing). Nothing is prepared. Ask the person one short question for them; when options are listed, show them numbered as given and ask for the number. Never guess a leave type or a date.';
 /** AI v2 W2: an attendance correction or overtime request with details missing (the date, a time, a clock-in to pair with
  * a clock-out, or the person's own reason). One question, never a guess. */
-const ATTENDANCE_ASK_NOTE='Some details for this attendance request are missing or unclear (listed in missing). Nothing is prepared. Ask the person one short question for them; checkIn means the clock-in time to pair with the clock-out they gave. Never guess a date, a time or a reason.';
+const ATTENDANCE_ASK_NOTE='Some details for this attendance request are missing or unclear (listed in missing). Nothing is prepared. Ask the person one short question for them only: checkOut means only the clock-out time, because the clock-in on record (in recorded) is used; checkIn means the clock-in time to pair with the clock-out; time means the clock-in or clock-out time they want corrected. Never ask for anything in recorded or dates, and never guess a date, a time or a reason.';
+/** Owner, 5 November 2026: the dates the system worked out, stated with their weekdays; other dates are offered on the card. */
+const DATES_NOTE=' The dates in dates are the ones the system worked out: state them with their weekdays as given. When dates lists others, say the card lets them switch to that date.';
 const FORM_NOTE='The leave application is filled in on the Request Leave form for the person to check and submit there. Nothing is submitted until they do.';
 const CHOOSE_NOTE='Several leave requests are waiting for this person\'s decision, numbered in pending. Nothing is prepared. List them by number (applicant, leave type, days and when it starts) and ask which number they want to approve; never choose one yourself. When they say which, suggest again with that number as request in details. Requests not listed are on the review page.';
 /** Entities whose rows name other people the caller may see (core/semantic-model/entities.ts). */
@@ -200,16 +216,20 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
     return{ok:false,refusal:'review_required',content:{ok:false,note:'The person asked to skip the review or to decide in bulk. Nothing is suggested: every decision is checked and confirmed one at a time on its review page. Say so briefly.'}};
    // AI v2 W2: the overtime card's native hint shape is its selectors only (date and window); the person's own reason is
    // for the native preparer (core/proposals/attendance-request.ts), never a hint, so it is left out of the hint check.
-   const hinted=input.action==='attendance.overtime.request'&&input.details&&typeof input.details==='object'&&!Array.isArray(input.details)
-    ?Object.fromEntries(Object.entries(input.details as Record<string,unknown>).filter(([key])=>key!=='reason')):input.details;
+   // A day the person named ("this Saturday") is worked out by the HR date owner first (suggestHint above).
+   const hinted=suggestHint(input.action,input.details,scope.personWords);
    // AI v2 W2 (slice 3): an assigned decision card has no hint selectors; the request number, date and reason are for the
    // native preparer (core/proposals/assigned-decide.ts), which counts them only when the person said them.
    const decideHint=input.action==='approvals.claim.decide'||input.action==='approvals.attendance.decide'?{}:hinted;
    const result=suggestAction(catalogue,input.action,decideHint);
    if(result.suggested){const outcome=await prepareSuggestedProposal(ctx,result.action,input.details,scope.personWords,undefined,scope.locale);
     // A leave application with details missing or unclear: the person is asked, and nothing is suggested yet.
-    if(outcome?.kind==='ask')return{ok:false,refusal:'missing_details',content:{suggested:false,action:result.action,reason:'missing_details',missing:outcome.missing,
-     ...(outcome.options.length?{options:outcome.options}:{}),note:'note' in outcome?outcome.note:result.action.startsWith('attendance.')?ATTENDANCE_ASK_NOTE:ASK_NOTE}};
+    if(outcome?.kind==='ask'){
+     // The dates the HR date owner worked out and what the attendance day holds now, so the question asks only for what is missing.
+     const dates='dates' in outcome&&outcome.dates?requestDatesView(outcome.dates):null,recorded='recorded' in outcome&&outcome.recorded?outcome.recorded:null;
+     return{ok:false,refusal:'missing_details',content:{suggested:false,action:result.action,reason:'missing_details',missing:outcome.missing,
+     ...(outcome.options.length?{options:outcome.options}:{}),...(dates?{dates}:{}),...(recorded?{recorded}:{}),
+     note:('note' in outcome?outcome.note:result.action.startsWith('attendance.')?ATTENDANCE_ASK_NOTE:ASK_NOTE)+(dates?DATES_NOTE:'')}};}
     // Spec v20: a decision with nothing pending that matches the person's words (or whose queue could not be read) gets no
     // card and no suggestion: the reply says so plainly, with the approvals page.
     if(outcome?.kind==='no_match'||outcome?.kind==='unavailable')return{ok:false,refusal:outcome.kind,content:{suggested:false,action:result.action,reason:outcome.kind,
@@ -218,9 +238,12 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
     // Several pending: the person chooses; the model lists them and asks, and nothing is prepared (ADR-0170 §3.15).
     if(outcome?.kind==='choose')return{ok:true,content:{...result,pending:outcome.pending,...(outcome.more?{notListed:outcome.more}:{}),note:'note' in outcome?outcome.note:CHOOSE_NOTE},suggestion};
     const proposal=outcome?.kind==='proposal'?outcome.proposal:null;
-    const note=!proposal?'The person completes and confirms this on the review page; nothing is prepared or submitted.'
-     :proposal.body.review.route===LEAVE_APPLY_FORM_ROUTE?FORM_NOTE:'A review item is ready; the person checks and confirms it on the review page. Nothing is submitted until they do.';
-    return{ok:true,content:{...result,note},
+    // The card's own dates, as the proposal carries them, with any other date the person's words may mean.
+    const dates=proposal&&outcome&&'dates' in outcome&&outcome.dates&&proposal.body.facts?.startDate
+     ?requestDatesView({startDate:proposal.body.facts.startDate,endDate:proposal.body.facts.endDate??proposal.body.facts.startDate,others:proposal.body.facts.otherDates}):null;
+    const note=(!proposal?'The person completes and confirms this on the review page; nothing is prepared or submitted.'
+     :proposal.body.review.route===LEAVE_APPLY_FORM_ROUTE?FORM_NOTE:'A review item is ready; the person checks and confirms it on the review page. Nothing is submitted until they do.')+(dates?DATES_NOTE:'');
+    return{ok:true,content:{...result,...(dates?{dates}:{}),note},
      suggestion,...(proposal?{proposal}:{})};}
    return{ok:false,refusal:result.reason,content:{...result,note:result.reason==='missing_details'?'Ask the person for the missing details. Do not say anything is prepared.':'This change is not available to this person here.'}};}}]:[];
  // AI v2 W1: what this person can do, import, report on or open; nothing is `prepare` when this surface offers no actions.

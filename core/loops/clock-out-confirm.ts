@@ -61,7 +61,7 @@ export async function confirmMissedClockOut(supplied:SessionContext,input:Readon
   const shown=await ownOpenCase(ctx,input.caseId);
   if(shown==='retired'||shown==='unavailable')return refused(shown);
   // The case's own employment: a person with two employments, or serving notice, corrects the day the case is about.
-  const prepared=await prepareChatAttendanceCorrectionProposal(ctx,{date:shown.date,checkOut:shown.proposedCheckOut,reason:input.reason},input.reason,now,{employmentId:shown.employmentId});
+  const prepared=await prepareChatAttendanceCorrectionProposal(ctx,{date:shown.date,checkOut:shown.proposedCheckOut,reason:input.reason},input.reason,now,{employmentId:shown.employmentId,dayOnRecord:true});
   if(!prepared)return refused('unavailable');
   if(prepared.kind!=='proposal')return refused('changed');
   // What the attendance service prepared must be what the card showed: the employment, the day, its clock-in and the

@@ -30,7 +30,9 @@ import type {OutcomeRead} from '../outcome-record/types';
 import {complianceWorklist} from '../reporting';
 import {setupCopilot} from '../setup-copilot/copilot';
 
-export const DIGEST_PAGES=Object.freeze({approvals:'/approvals',setup:'/control-tower/readiness',deadlines:'/payroll/statutory-forms'} as const);
+// AI Centre restructure (Today fix c): setup gaps open the go-live setup with its readiness stages, the one place setup is
+// shown (Record readiness lists record gaps and shows no stages).
+export const DIGEST_PAGES=Object.freeze({approvals:'/approvals',setup:'/payroll/setup?readiness=full',deadlines:'/payroll/statutory-forms'} as const);
 /** At most this many administered companies are checked for setup gaps and deadlines in one digest. */
 export const DIGEST_COMPANY_LIMIT=20;
 export type DailyDigest=Readonly<{kind:'teras.daily_digest';version:1;asOf:string;

@@ -19,8 +19,6 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  ],
  'guide,corpus':[
  'page:/personnel',
- // AI v2 Phase 2 P2-3 gave Today (/) its semantic entry (payroll_readiness); its guide link and corpus turn are still to come.
- 'page:/',
  ],
  'guide':[
  'page:/me/payslip',
@@ -39,6 +37,12 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'action:leave.adjustment.apply','action:notifications.email_preferences.save',
  ],
  'semantic,corpus':[
+ // AI Centre restructure (owner decisions 26–29, 4 Nov 2026), truthfully: the setup co-pilot's page was this one by mistake
+ // (it shows no stages; the pointer moved to /payroll/setup, whose semantic and corpus gaps closed), so Record readiness, whose
+ // own entity (readiness_gap) has no read yet, has none. The Build list is Opportunities' ranked list, moved here; no read
+ // describes it. The five forward stubs (/control-tower, its actions, opportunities, agents/inventory and agents/orchestrator)
+ // left the linkable pages, so their entries are gone.
+ 'page:/control-tower/readiness','page:/control-tower/agents/build-list',
  'action:approvals.attendance.chase','action:approvals.claim.chase','action:approvals.toil.chase','action:approvals.toil.decide',
  'action:attendance.missing_clock.remind','action:employees.import','action:employees.passport_expiry.remind',
  'action:employees.review_overdue.remind','action:leave.edit','action:lifecycle.acknowledgement.submit','action:lifecycle.step.chase',
@@ -57,12 +61,12 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/admin/system-explorer','page:/admin/system-testing','page:/admin/users','page:/admin/work-locations/clocking',
  'page:/approvals','page:/approvals/history','page:/attendance','page:/attendance/breakdown','page:/attendance/clock','page:/attendance/import',
  'page:/attendance/import/logs','page:/attendance/my-roster','page:/attendance/plan-ot','page:/attendance/recompute',
- 'page:/attendance/request-status','page:/attendance/requests','page:/control-tower','page:/control-tower/actions','page:/control-tower/agents',
+ 'page:/attendance/request-status','page:/attendance/requests','page:/control-tower/agents',
  'page:/control-tower/exceptions','page:/control-tower/how-it-works','page:/delegations','page:/feedback','page:/knowledge-base','page:/leave/credit',
  'page:/leave/details','page:/leave/employee-balances','page:/leave/history','page:/leave/tracker','page:/lifecycle','page:/lifecycle/onboarding',
  'page:/manage/my-team','page:/me','page:/me/notifications','page:/me/performance','page:/me/tax-relief','page:/notices','page:/payroll',
  'page:/payroll/back-pay','page:/payroll/history-import','page:/payroll/payment-submission','page:/payroll/pcb-detail',
- 'page:/payroll/setup','page:/payroll/statutory-adjustment','page:/payroll/statutory-detail','page:/payroll/statutory-forms',
+ 'page:/payroll/statutory-adjustment','page:/payroll/statutory-detail','page:/payroll/statutory-forms',
  'page:/payroll/transaction-view','page:/payroll/transactions','page:/payroll/transactions/individual','page:/performance','page:/reports',
  'page:/rewards','page:/roster',
  ],
@@ -73,6 +77,10 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'action:typed_pay_components.create',
  ],
  'semantic,guide,corpus':[
+ // AI Centre restructure (owner decision 27): the payroll_readiness entity's page is the person's own page,
+ // /me/payroll-readiness, which has its guide link and corpus turn; Today (/) shows only its count and link, so it has no
+ // semantic entry of its own now.
+ 'page:/',
  'action:attendance.day_schedule.correct','action:attendance.schedule_group.maintain','action:country-my.statutory.update',
  'action:employees.code.maintain','action:employees.compensation.maintain','action:employees.cost_allocation.maintain',
  'action:employees.document_metadata.maintain','action:employees.draft.activate','action:employees.draft.discard','action:employees.family.maintain',
@@ -111,8 +119,8 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/admin/work-locations','page:/admin/work-locations/clocking/new','page:/admin/work-locations/new','page:/attendance/application-history',
  'page:/attendance/application-history/visible','page:/attendance/daily','page:/attendance/individual','page:/attendance/plan-ot/apply',
  'page:/control-tower/agents/allowances','page:/control-tower/agents/assistant','page:/control-tower/agents/features',
- 'page:/control-tower/agents/inventory','page:/control-tower/agents/orchestrator','page:/control-tower/agents/provider',
- 'page:/control-tower/agents/runs','page:/control-tower/agents/spending','page:/control-tower/opportunities','page:/leave/credit-details',
+ 'page:/control-tower/agents/provider',
+ 'page:/control-tower/agents/runs','page:/control-tower/agents/spending','page:/leave/credit-details',
  'page:/leave/employee-records','page:/letters/approval','page:/letters/fields','page:/letters/generate','page:/letters/generate/new',
  'page:/letters/register','page:/letters/reports','page:/letters/settings','page:/letters/settings/automation','page:/letters/settings/policy',
  'page:/letters/templates','page:/letters/templates/new','page:/lifecycle/acknowledgement','page:/lifecycle/onboarding/checklists',

@@ -78,7 +78,7 @@ are closed as follows. None was a known exploitable path.
    the key is what refuses another tenant's; a chat takes its company from the browser's conversation scope.
    2123 reports every offending table and stops the upgrade, as 2102
    does. `test/tenant-company-fk.test.ts` now requires a twin for every single-column company key on a tenant
-   table, and `test/company-reference-tenant-fk-upgrade.test.ts` rehearses both outcomes at the 671-entry
+   table, and `test/company-reference-tenant-fk-upgrade.test.ts` rehearses both outcomes at the 672-entry
    boundary.
 
 The owner chose ON DELETE NO ACTION for `teras_chat` (4 November 2026) over CASCADE. A company with chats or chat

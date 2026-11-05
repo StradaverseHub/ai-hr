@@ -73,14 +73,16 @@ async function overtime(date=planned):Promise<Proposal>{
 describe('an attendance correction from chat',()=>{
  it('asks one question when the time, the reason, a real date or the clock-in is missing, and saves nothing',async()=>{
   const ctx=await caller(),before=await counts();
-  expect(await prepareChatAttendanceCorrectionProposal(ctx,{date:worked,reason:'forgot to clock out'},WORDS)).toEqual({kind:'ask',missing:['time'],options:[]});
-  expect(await prepareChatAttendanceCorrectionProposal(ctx,{date:worked,checkOut:'18:10'},WORDS)).toEqual({kind:'ask',missing:['reason'],options:[]});
+  // The day has its clock-in on record and no clock-out: only the clock-out is asked for, with the clock-in as a fact
+  // (owner, 5 November 2026; eval 41843568709, emp-clockout-1 asked for the recorded clock-in again).
+  expect(await prepareChatAttendanceCorrectionProposal(ctx,{date:worked,reason:'forgot to clock out'},WORDS)).toEqual({kind:'ask',missing:['checkOut'],options:[],recorded:{checkIn:'08:00'}});
+  expect(await prepareChatAttendanceCorrectionProposal(ctx,{date:worked,checkOut:'18:10'},WORDS)).toEqual({kind:'ask',missing:['reason'],options:[],recorded:{checkIn:'08:00'}});
   expect(await prepareChatAttendanceCorrectionProposal(ctx,{date:calendarDate(1),checkOut:'18:10',reason:'forgot to clock out'},WORDS)).toEqual({kind:'ask',missing:['date'],options:[]});
   // Nothing on record that day: the clock-in is asked for, never taken from the roster.
   expect(await prepareChatAttendanceCorrectionProposal(ctx,forgot(unclocked),WORDS)).toEqual({kind:'ask',missing:['checkIn'],options:[]});
   expect(await counts()).toEqual(before);
   // The dispatcher the harness calls agrees.
-  expect(await prepareSuggestedProposal(ctx,'attendance.correction.request',{date:worked},WORDS)).toMatchObject({kind:'ask',missing:['time','reason']});
+  expect(await prepareSuggestedProposal(ctx,'attendance.correction.request',{date:worked},WORDS)).toMatchObject({kind:'ask',missing:['checkOut','reason'],recorded:{checkIn:'08:00'}});
  });
  it('prepares the clock-out against the day on record and submits it only on Confirm, for the existing approval',async()=>{
   const before=await counts(),proposal=await correction();
@@ -203,8 +205,12 @@ describe('the harness turn',()=>{
     return{final:{reply:'What time did you clock out?',mode:'clarify'}};}]);
   const result=await runTurn({enabled:HARNESS_TEST_ONLY,ctx:await caller(),conversationId:randomUUID(),question:'I forgot to clock out that day',
    scope:{companyId:base.companyId,locale:'en'},model,memory:new InMemoryTaskMemoryStore()});
-  expect(sent).toMatchObject({suggested:false,action:'attendance.correction.request',reason:'missing_details',missing:['time']});
+  // The clock-in on record reaches the model as a fact, through the suggested_action entity's own declaration, so the one
+  // question asks only for the clock-out.
+  expect(sent).toMatchObject({suggested:false,action:'attendance.correction.request',reason:'missing_details',missing:['checkOut'],recorded:{checkIn:'08:00'}});
   expect((sent as {note:string}).note).toMatch(/attendance request/);expect((sent as {note:string}).note).toMatch(/one short question/);
+  expect((sent as {note:string}).note).toMatch(/checkOut means only the clock-out time, because the clock-in on record \(in recorded\) is used/);
+  expect(result.trace.disclosure.find(row=>row.tool==='suggest_action')).toMatchObject({entity:'suggested_action',undeclared:[]});
   expect(result.trace.calls[0]).toMatchObject({tool:'suggest_action',status:'refused'});
   expect(result.proposals).toEqual([]);expect(result.suggestion).toBeNull();
   expect(await counts()).toEqual({requests:0,pending:0});

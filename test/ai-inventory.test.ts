@@ -251,8 +251,10 @@ describe('static wiring', () => {
     // /control-tower page, Workers groups the inventory section, and Workers comes before Setup.
     expect(read('components/sidebar.tsx')).toContain("{ href: '/assistant', labelKey: 'aiCentre', icon: Sparkles, ownedSubpaths: ['/control-tower'] }");
     const nav = read('lib/ai-centre/centre-nav.ts');
-    expect(nav).toContain("workers: [{ section: 'features', label: 'workers' }, { section: 'inventory', label: 'inventory' }],");
-    expect(nav.indexOf("{ key: 'workers', href: '/control-tower/agents/features', payroll: false }")).toBeGreaterThan(-1);
+    // AI Centre restructure: Workers is one list, the inventory section part of it; the Inventory page forwards there.
+    expect(nav).toContain("workers: [{ section: 'features', label: 'workers' }],");
+    expect(read('app/control-tower/agents/inventory/page.tsx')).toContain("permanentRedirect('/control-tower/agents/features#ai-inventory');");
+    expect(nav.indexOf("{ key: 'workers', href: '/control-tower/agents/features', payroll: false, groupAdmin: false }")).toBeGreaterThan(-1);
     expect(nav.indexOf("{ key: 'workers', href: '/control-tower/agents/features'")).toBeLessThan(nav.indexOf("{ key: 'setup', href: '/control-tower/agents'"));
   });
 });

@@ -27,7 +27,8 @@ import th from '../messages/th.json';
 type Locale='en'|'ms'|'zh'|'vi'|'ta'|'th';
 const CATALOGUES={en,ms,zh,vi:vi_,ta,th};
 const messagesFor=(locale:Locale)=>withAiCentre(locale,CATALOGUES[locale] as Record<string,unknown>) as typeof en & {aiCentre:Record<string,any>};
-const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'ta'|'th',session:null as unknown,reads:[] as string[],scope:'group' as 'group'|'company',runs:[] as unknown[]}));
+const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'ta'|'th',session:null as unknown,reads:[] as string[],scope:'group' as 'group'|'company',runs:[] as unknown[],
+ salaryView:null as unknown}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',async()=>{
  const {createTranslator:translator,createFormatter:formatter}=await import('next-intl');
@@ -45,7 +46,8 @@ vi.mock('next/navigation',()=>({
 vi.mock('../lib/session',()=>({getSession:async()=>state.session}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>true,isModuleEnabledOrFalse:()=>true}));
 vi.mock('../app/control-tower/loops/payroll-cycle/actions',()=>({recordSwingDispositionAction:vi.fn(),setPayrollLoopSettingAction:vi.fn(),decideThresholdProposalAction:vi.fn(),
- disposeSwingGroupAction:vi.fn(),resolveAcknowledgedBlockAction:vi.fn(),acknowledgeCheckAction:vi.fn(),revokeAcknowledgementAction:vi.fn(),decideRuleProposalAction:vi.fn()}));
+ disposeSwingGroupAction:vi.fn(),resolveAcknowledgedBlockAction:vi.fn(),acknowledgeCheckAction:vi.fn(),revokeAcknowledgementAction:vi.fn(),decideRuleProposalAction:vi.fn(),
+ setPayrollLearningModeAction:vi.fn()}));
 // Phase 2 hardening: the grouping is the real pure function; the acknowledged blocks are a fixture (the service is covered by
 // test/payroll-loops-hardening.test.ts).
 vi.mock('../core/loops/grouped-dispositions',async importOriginal=>({...(await importOriginal<typeof import('../core/loops/grouped-dispositions')>()),
@@ -118,9 +120,14 @@ const fx=vi.hoisted(()=>{
  class PayrollCycleRefused extends Error{constructor(readonly reason:string){super(reason);}}
  return {A,B,overview,run,salary,settings,PayrollCycleRefused};
 });
+// Payroll history learning (P2): its evidence lines and "Learned this cycle" have their own DOM test
+// (test/payroll-learning-pages.dom.test.tsx); here they read nothing, so these pages render as before.
+vi.mock('../core/payroll-learning/evidence',()=>({swingFlagEvidence:async()=>new Map(),runEvidence:async()=>new Map()}));
+vi.mock('../core/payroll-learning/status',async importOriginal=>({...(await importOriginal<typeof import('../core/payroll-learning/status')>()),learnedThisCycle:async()=>null}));
+vi.mock('../core/payroll-learning/mode',async importOriginal=>({...(await importOriginal<typeof import('../core/payroll-learning/mode')>()),learningSettingsView:async()=>new Map()}));
 vi.mock('../core/loops/payroll-cycle-views',()=>({PayrollCycleRefused:fx.PayrollCycleRefused,
  payrollCycleOverview:async(_s:unknown,options:{companyId?:string})=>{state.reads.push('overview');return fx.overview(state.scope,typeof options.companyId==='string'?options.companyId:null,state.runs);},
- salaryLoopPage:async()=>{state.reads.push('salary');return fx.salary;},
+ salaryLoopPage:async()=>{state.reads.push('salary');return state.salaryView??fx.salary;},
  payrollLoopSettingsPage:async()=>{state.reads.push('settings');return fx.settings;}}));
 import PayrollCyclePage from '../app/control-tower/loops/payroll-cycle/page';
 import SalaryLoopPage from '../app/control-tower/loops/payroll-cycle/salary/page';
@@ -143,7 +150,7 @@ const settings=async(query:Record<string,string>={})=>PayrollLoopSettingsPage({s
 const rows=(container:Element,selector:string)=>[...container.querySelectorAll(`${selector} tbody tr`)].map(row=>[...row.querySelectorAll('th,td')].map(parts));
 const coarse=(container:Element)=>{for(const el of container.querySelectorAll('main button, main select, main input:not([type=hidden]), [data-payroll-loops] a, [data-people-loops] a, [data-swing-flags] button'))
  expect(el.className,el.outerHTML.slice(0,120)).toContain('pointer-coarse:min-h-11');};
-afterEach(()=>{cleanup();state.locale='en';state.session=null;state.reads=[];state.scope='group';state.runs=[];});
+afterEach(()=>{cleanup();state.locale='en';state.session=null;state.reads=[];state.scope='group';state.runs=[];state.salaryView=null;});
 
 describe('Phase 2 hardening: approving is a group administrator\'s',()=>{
  it('an HR administrator of one company may reject a proposal but is not offered Approve',async()=>{
@@ -153,6 +160,45 @@ describe('Phase 2 hardening: approving is a group administrator\'s',()=>{
   expect([...proposal.querySelectorAll('button')].map(text)).toEqual(['Reject']);
   expect(text(proposal)).toContain('A group administrator approves this; you can reject it.');
   expect([...view.container.querySelectorAll('[data-rule-proposal] button')].map(text)).toEqual(['Reject']);
+ });
+});
+
+describe('Owner decision 28: the Salary payroll page records swing dispositions only and resolves no exception',()=>{
+ it('says a group\'s tap decides only its flags and links to Exceptions while the month has open exceptions; no control here resolves one',async()=>{
+  state.session=SESSIONS.groupAdmin;
+  const view=wrap('en',await salary({period:'2026-10'}));
+  // The fixture's salary run has 2 open exceptions.
+  const note=view.container.querySelector('[data-groups-note]')!;
+  expect(text(note)).toBe('Marking a group records your decision on these flags only. Any exception for the same people is resolved on Exceptions. Resolve on Exceptions');
+  expect([...note.querySelectorAll('a')].map(a=>[a.textContent,a.getAttribute('href')])).toEqual([['Resolve on Exceptions','/control-tower/exceptions']]);
+  // Every open exception's link in the page goes to Exceptions (a run with none opens its own anomalies page, which resolves
+  // nothing); the Operations tab row's own Exceptions tab is not part of the page.
+  expect(screen.getByRole('navigation',{name:'Operations sections'}).querySelector('a[href="/control-tower/exceptions"]')).not.toBeNull();
+  expect([...view.container.querySelectorAll('a')].filter(a=>!a.closest('nav')&&/exception/i.test(a.textContent??'')).map(a=>[text(a),a.getAttribute('href')])).toEqual([
+   ['2 exceptions open','/control-tower/exceptions'],['No exceptions open','/payroll/b-2/anomalies'],['Resolve on Exceptions','/control-tower/exceptions'],
+   ['Open Exceptions','/control-tower/exceptions#acknowledged-blocks']]);
+  // No form here carries a verdict or a resolution: the forms are swing dispositions and acknowledgements only.
+  expect(view.container.querySelectorAll('input[name="verdict"],input[name="verdictId"],input[name="resolution"],input[name="batchId"]')).toHaveLength(0);
+  const posted=new Set([...view.container.querySelectorAll('form input')].map(input=>input.getAttribute('name')));
+  expect(posted.size).toBeGreaterThan(0);
+  for(const name of posted)expect(['back','case','check','company','disposition','employment','pattern','period','reason','reviewOn','scope','target'],String(name)).toContain(name);
+ });
+ it('drops the link when the month has no open exception, and words the note in every locale',async()=>{
+  state.session=SESSIONS.groupAdmin;
+  state.salaryView={...fx.salary,companies:fx.salary.companies.map(c=>({...c,runs:c.runs.map(run=>({...run,exceptions:0}))}))};
+  const view=wrap('en',await salary({period:'2026-10'}));
+  const note=view.container.querySelector('[data-groups-note]')!;
+  expect(text(note)).toBe('Marking a group records your decision on these flags only. Any exception for the same people is resolved on Exceptions.');
+  expect(note.querySelectorAll('a')).toHaveLength(0);
+  cleanup();
+  for(const locale of ['ms','zh','vi','ta','th'] as const){
+   state.locale=locale;
+   const local=wrap(locale,await salary({period:'2026-10'}));
+   const expected=(messagesFor(locale).aiCentre.payrollCycle as {groups:{note:string}}).groups.note;
+   expect(expected,locale).not.toBe(messagesFor('en').aiCentre.payrollCycle.groups.note);
+   expect(text(local.container.querySelector('[data-groups-note]')),locale).toBe(expected);
+   cleanup();
+  }
  });
 });
 
@@ -169,7 +215,11 @@ describe('Operations › Loops › Payroll cycle, per role',()=>{
   state.session=SESSIONS.groupAdmin;
   const view=wrap('en',await cycle());
   expect(state.reads).toEqual(['overview']);
-  expect(within(screen.getByRole('navigation',{name:'Operations sections'})).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower/loops');
+  // AI Centre restructure: the payroll loops' pages are Operations › Payroll cycle, with their own in-section row.
+  expect(within(screen.getByRole('navigation',{name:'Operations sections'})).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower/loops/payroll-cycle');
+  expect([...within(screen.getByRole('navigation',{name:'Payroll cycle pages'})).getAllByRole('link')].map(link=>[link.textContent,link.getAttribute('href'),link.getAttribute('aria-current')])).toEqual([
+   ['Pre-salary','/control-tower/loops/payroll-cycle','page'],['Salary payroll','/control-tower/loops/payroll-cycle/salary',null],
+   ['Settings','/control-tower/loops/payroll-cycle/settings',null],['Audit','/control-tower/loops/loop_payroll_audit',null]]);
   expect(screen.getByRole('heading',{level:1,name:'Payroll cycle: November 2026'})).toBeTruthy();
   expect(text(view.container.querySelector('[data-page-header]'))).toContain('Three loops carry each company\'s payroll from inputs to audit. EPF, SOCSO, EIS and PCB due Dec 15. Each company keeps its own cut-off and pay day.');
   const filter=view.container.querySelector('[data-company-filter]')!;
@@ -274,7 +324,9 @@ describe('Operations › Loops › Payroll cycle, per role',()=>{
    ['Salary run 1','Processed 42 employees','2 exceptions open','12 people changed 2 people over the threshold Salary change (3), Overtime hours (8)','Rule version 2026.1 Newer rule: PCB','Not closed yet','Total does not match net pay'],
    ['Bonus run 2','Closed 5 employees','No exceptions open','0 people changed','Rule version 2026.1','Closed by Aisyah Fictional Reopened once after close','Matches net pay and headcount']]);
   expect(view.container.querySelector('[data-salary-run="b-1"] a')).toHaveAttribute('href','/payroll/b-1');
-  expect(view.container.querySelector('[data-salary-run="b-1"] a[href="/payroll/b-1/anomalies"]')).not.toBeNull();
+  // Owner decision 28: an open exception is resolved on Exceptions only, so the count links there; none open, the run's own page.
+  expect(view.container.querySelector('[data-salary-run="b-1"] a[href="/control-tower/exceptions"]')?.textContent).toBe('2 exceptions open');
+  expect(view.container.querySelector('[data-salary-run="b-2"] a[href="/payroll/b-2/anomalies"]')?.textContent).toBe('No exceptions open');
   expect(rows(view.container,'[data-swing-flags]').map(row=>row.slice(0,3))).toEqual([
    ['Ravi Fictional Fictional A Sdn Bhd','Up 31.1% Threshold ±15%','Salary change Salary change'],
    ['Mei Ling Fictional Fictional A Sdn Bhd','Down 23.3% Threshold ±15%','Pay item Meal Allowance']]);
@@ -299,11 +351,13 @@ describe('Operations › Loops › Payroll cycle, per role',()=>{
    ['back=salary','period=2026-10',`target=${fx.A}`,'pattern=cause:salary_change','disposition=problem']]);
   expect([...group.querySelectorAll('button')].map(text)).toEqual(['All 1 expected','All 1 are a real problem']);
   expect(view.container.querySelectorAll('[data-swing-group]')).toHaveLength(1);
-  // A blocking exception a standing acknowledgement covers: never hidden; its one-tap resolve pre-filled with the reason.
-  const block=view.container.querySelector('[data-acknowledged-block]')!;
-  expect(parts(block.querySelector('p')!)).toBe('Chong Fictional No bank account to pay into');
-  expect((block.querySelector('input[readonly]') as HTMLInputElement).value).toBe('Paid in cash at the site office');
-  expect(block.querySelector('button')?.getAttribute('aria-label')).toBe('Resolve as expected · Chong Fictional');
+  // A blocking exception a standing acknowledgement covers: never hidden. Owner decision 28: resolved on Exceptions only, so
+  // this page counts it and links there, and offers no resolve of its own.
+  const block=view.container.querySelector('[data-acknowledged-blocks]')!;
+  expect(block.getAttribute('data-acknowledged-blocks')).toBe('1');
+  expect(text(block.querySelector('p'))).toBe('1 blocking exception this month has a standing acknowledgement. They are resolved on Exceptions.');
+  expect(block.querySelector('a')?.getAttribute('href')).toBe('/control-tower/exceptions#acknowledged-blocks');
+  expect(view.container.querySelector('[data-acknowledged-block] form,input[name="verdict"]')).toBeNull();
   // Nothing on the page starts, approves or closes payroll.
   expect(text(view.container)).not.toMatch(/\b(Run payroll|Approve run|Close run)\b/);
   expect(text(view.container)).toContain('The net-swing threshold starts at ±15%.');

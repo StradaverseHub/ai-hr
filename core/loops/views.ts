@@ -13,8 +13,7 @@ import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {appUser,company,employment,person} from '../../db/schema';
 import {terasLoopCase,terasLoopPause,terasLoopRun} from '../../db/teras-schema';
 import {isAdmin,isGroupAdmin} from '../../lib/authz-model';
-import {tenantStoppedTx,workerRunGateTx,workerSwitchStateTx} from '../agent-registry/controls';
-import {registeredWorker} from '../agent-registry/workers';
+import {tenantStoppedTx,workerRunGatesTx} from '../agent-registry/controls';
 import {LOOP_DEFINITIONS} from './definitions';
 import {LOOP_IDS,isLoopId,type LoopCaseState,type LoopCloseReason,type LoopFacts,type LoopId,type LoopResolution,type LoopRunStatus} from './types';
 
@@ -30,32 +29,41 @@ export type LoopsOverview=Readonly<{rows:readonly LoopRow[];canSwitch:boolean;wi
 
 const requireAdmin=(ctx:SessionContext)=>{if(!ctx.userId||ctx.agent||!isAdmin(ctx))throw new LoopViewRefused('not_administrator');};
 
-async function sponsorTx(tx:Tx,userId:string|null):Promise<LoopRow['sponsor']>{
- if(!userId)return null;
- // The sponsor's own name through their person record, where the viewer may read it; otherwise no name.
- const [row]=await tx.select({name:person.fullName}).from(appUser).leftJoin(person,eq(person.id,appUser.personId)).where(eq(appUser.id,userId)).limit(1);
- return Object.freeze({userId,name:row?.name??null});
-}
-
-async function rowTx(tx:Tx,ctx:SessionContext,id:LoopId,since:Date,stopped:boolean,paused:Map<string,number>):Promise<LoopRow>{
- const worker=registeredWorker(id)!,def=LOOP_DEFINITIONS[id];
- const state=await workerSwitchStateTx(tx,ctx,worker),gate=await workerRunGateTx(tx,ctx,id);
- const [control]=await tx.execute(sql`select changed_by_user_id from public.teras_worker_control where tenant_id=${ctx.tenantId}::uuid and worker_id=${id} and enabled`) as unknown as {changed_by_user_id:string|null}[];
- const [last]=await tx.select({at:terasLoopRun.startedAt,status:terasLoopRun.status,capped:terasLoopRun.capped}).from(terasLoopRun)
-  .where(and(eq(terasLoopRun.tenantId,ctx.tenantId),eq(terasLoopRun.workerId,id))).orderBy(desc(terasLoopRun.startedAt),desc(terasLoopRun.id)).limit(1);
- const [prepared]=await tx.select({n:count()}).from(terasLoopCase).where(and(eq(terasLoopCase.tenantId,ctx.tenantId),eq(terasLoopCase.workerId,id),gte(terasLoopCase.openedAt,since)));
- const closed=await tx.select({resolution:terasLoopCase.resolution,n:count()}).from(terasLoopCase)
-  .where(and(eq(terasLoopCase.tenantId,ctx.tenantId),eq(terasLoopCase.workerId,id),eq(terasLoopCase.state,'closed'),eq(terasLoopCase.closeReason,'done'),gte(terasLoopCase.closedAt,since)))
-  .groupBy(terasLoopCase.resolution);
- const now=await tx.select({state:terasLoopCase.state,n:count()}).from(terasLoopCase)
-  .where(and(eq(terasLoopCase.tenantId,ctx.tenantId),eq(terasLoopCase.workerId,id),inArray(terasLoopCase.state,['open','waiting']))).groupBy(terasLoopCase.state);
- const of=(resolution:LoopResolution)=>Number(closed.find(row=>row.resolution===resolution)?.n??0);
- const confirmed=of('as_prepared')+of('completed'),changed=of('changed');
- return Object.freeze({id,level:'prepare' as const,on:state.on,stopped,running:gate.run,sponsor:state.on?await sponsorTx(tx,control?.changed_by_user_id??null):null,
-  lastRun:last?Object.freeze({at:last.at,status:last.status,capped:last.capped}):null,
-  prepared:Number(prepared?.n??0),confirmed,changed,
-  correctionRate:def.proposesValue&&of('as_prepared')+changed>0?changed/(of('as_prepared')+changed):null,proposesValue:def.proposesValue,
-  openNow:Number(now.find(row=>row.state==='open')?.n??0),waitingNow:Number(now.find(row=>row.state==='waiting')?.n??0),pausedCompanies:paused.get(id)??0});
+/** AI Centre navigation speed (4 Nov 2026): every row in one batch of statements, not seven per loop one after another.
+ * Each figure is the same filter on the same table as before, grouped by worker: the switches and the stop switch
+ * (agent-registry workerRunGatesTx, exactly workerRunGateTx's answer), the last run (distinct on worker), the cards
+ * prepared since `since`, those closed as done since then by resolution, those open or waiting now, and the sponsors'
+ * names (the user who switched the loop on, through their person record where the viewer may read it; otherwise no
+ * name). All under the viewer's row-level security, in the caller's transaction. Rows come back in `ids` order. */
+async function rowsTx(tx:Tx,ctx:SessionContext,ids:readonly LoopId[],since:Date,stopped:boolean,paused:Map<string,number>):Promise<LoopRow[]>{
+ if(!ids.length)return [];
+ const gates=await workerRunGatesTx(tx,ctx,ids,{stopped});
+ const workers=[...ids];
+ const last=await tx.selectDistinctOn([terasLoopRun.workerId],{workerId:terasLoopRun.workerId,at:terasLoopRun.startedAt,status:terasLoopRun.status,capped:terasLoopRun.capped})
+  .from(terasLoopRun).where(and(eq(terasLoopRun.tenantId,ctx.tenantId),inArray(terasLoopRun.workerId,workers)))
+  .orderBy(terasLoopRun.workerId,desc(terasLoopRun.startedAt),desc(terasLoopRun.id));
+ const prepared=await tx.select({workerId:terasLoopCase.workerId,n:count()}).from(terasLoopCase)
+  .where(and(eq(terasLoopCase.tenantId,ctx.tenantId),inArray(terasLoopCase.workerId,workers),gte(terasLoopCase.openedAt,since))).groupBy(terasLoopCase.workerId);
+ const closed=await tx.select({workerId:terasLoopCase.workerId,resolution:terasLoopCase.resolution,n:count()}).from(terasLoopCase)
+  .where(and(eq(terasLoopCase.tenantId,ctx.tenantId),inArray(terasLoopCase.workerId,workers),eq(terasLoopCase.state,'closed'),eq(terasLoopCase.closeReason,'done'),gte(terasLoopCase.closedAt,since)))
+  .groupBy(terasLoopCase.workerId,terasLoopCase.resolution);
+ const now=await tx.select({workerId:terasLoopCase.workerId,state:terasLoopCase.state,n:count()}).from(terasLoopCase)
+  .where(and(eq(terasLoopCase.tenantId,ctx.tenantId),inArray(terasLoopCase.workerId,workers),inArray(terasLoopCase.state,['open','waiting']))).groupBy(terasLoopCase.workerId,terasLoopCase.state);
+ const sponsorIds=[...new Set(ids.flatMap(id=>{const gate=gates.get(id);return gate?.on&&gate.changedByUserId?[gate.changedByUserId]:[];}))];
+ const names=new Map<string,string|null>();
+ if(sponsorIds.length)for(const row of await tx.select({id:appUser.id,name:person.fullName}).from(appUser).leftJoin(person,eq(person.id,appUser.personId))
+  .where(inArray(appUser.id,sponsorIds)))names.set(row.id,row.name??null);
+ return ids.map(id=>{
+  const def=LOOP_DEFINITIONS[id],gate=gates.get(id)!,run=last.find(row=>row.workerId===id);
+  const of=(resolution:LoopResolution)=>Number(closed.find(row=>row.workerId===id&&row.resolution===resolution)?.n??0);
+  const confirmed=of('as_prepared')+of('completed'),changed=of('changed');
+  const sponsor=gate.on&&gate.changedByUserId?Object.freeze({userId:gate.changedByUserId,name:names.get(gate.changedByUserId)??null}):null;
+  return Object.freeze({id,level:'prepare' as const,on:gate.on,stopped,running:gate.gate.run,sponsor,
+   lastRun:run?Object.freeze({at:run.at,status:run.status,capped:run.capped}):null,
+   prepared:Number(prepared.find(row=>row.workerId===id)?.n??0),confirmed,changed,
+   correctionRate:def.proposesValue&&of('as_prepared')+changed>0?changed/(of('as_prepared')+changed):null,proposesValue:def.proposesValue,
+   openNow:Number(now.find(row=>row.workerId===id&&row.state==='open')?.n??0),waitingNow:Number(now.find(row=>row.workerId===id&&row.state==='waiting')?.n??0),pausedCompanies:paused.get(id)??0});
+ });
 }
 
 async function pausedCountsTx(tx:Tx,ctx:SessionContext){
@@ -69,8 +77,7 @@ export async function loopsOverview(ctx:SessionContext,options:Readonly<{now?:Da
  const since=new Date((options.now??new Date()).getTime()-LOOP_WINDOW_DAYS*DAY_MS);
  return withTenant(ctx,async tx=>{
   const stopped=await tenantStoppedTx(tx,ctx.tenantId),paused=await pausedCountsTx(tx,ctx);
-  const rows:LoopRow[]=[];
-  for(const id of LOOP_IDS)rows.push(await rowTx(tx,ctx,id,since,stopped,paused));
+  const rows=await rowsTx(tx,ctx,LOOP_IDS,since,stopped,paused);
   return Object.freeze({rows:Object.freeze(rows),canSwitch:isGroupAdmin(ctx),windowDays:LOOP_WINDOW_DAYS});
  });
 }
@@ -104,7 +111,7 @@ export async function loopDetail(ctx:SessionContext,workerId:unknown,options:Rea
  const since=new Date((options.now??new Date()).getTime()-LOOP_WINDOW_DAYS*DAY_MS);
  return withTenant(ctx,async tx=>{
   const stopped=await tenantStoppedTx(tx,ctx.tenantId),paused=await pausedCountsTx(tx,ctx);
-  const row=await rowTx(tx,ctx,workerId,since,stopped,paused);
+  const [row]=await rowsTx(tx,ctx,[workerId],since,stopped,paused);
   // The companies the viewer administers, each with this loop's pause.
   const companies=await tx.execute(sql`select c.id,c.legal_name,coalesce(p.paused,false) as paused from public.company c
    left join public.teras_loop_pause p on p.tenant_id=c.tenant_id and p.company_id=c.id and p.worker_id=${workerId}

@@ -136,7 +136,10 @@ describe('AI centre catalogue completeness', () => {
       // aiCentre.payrollCycle.acknowledgements.*).
       change: '+12.5%', causes: 'Salary change', check: 'Pay without attendance', runs: 6,
       // Phase 2 integration: the handbook hardening branch's quoted figure (aiCentre.policies.*: drift and the reader's note).
-      quote: 'RM 0.60 per km', enforced: 'RM 0.55 per km' };
+      quote: 'RM 0.60 per km', enforced: 'RM 0.55 per km',
+      // Payroll history learning (P2): the usual range of an evidence line (aiCentre.payrollLearning.range) and the learning
+      // mode on the settings page (aiCentre.payrollLearning.settings.*).
+      low: '4,000.00', high: '4,200.00', mode: 'Evidence lines' };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });

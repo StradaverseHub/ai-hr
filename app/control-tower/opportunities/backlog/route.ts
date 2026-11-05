@@ -1,19 +1,12 @@
 import { requireAdmin } from '@/lib/authz';
-import { AgentBuildListAccessError, agentBuildList } from '@/core/agent-build-list';
-import { parseWindow } from '@/core/process-assessment';
 
-/** Same group-only read owner as the page. No user-supplied tenant, company, entries or measurements. */
+/** AI Centre restructure (4 Nov 2026): the build-list export moved with the build list to Administration › Build list
+ * (/control-tower/agents/build-list/export). This old address forwards there with its window, after the same guard, so a
+ * saved link keeps working; the new route applies the same group-only read owner. It reads nothing. */
 export async function GET(request: Request) {
-  const session = await requireAdmin();
-  const window = parseWindow(new URL(request.url).searchParams.get('days'));
-  let packet;
-  try { const {assessment: _assessment, ...result} = await agentBuildList(session, window); packet=result; }
-  catch(error) {
-    if(error instanceof AgentBuildListAccessError)return Response.json({error:'forbidden'},{status:403,headers:{'Cache-Control':'private, no-store'}});
-    throw error;
-  }
-  return Response.json(packet, {headers:{
-    'Cache-Control':'private, no-store',
-    'Content-Disposition':`attachment; filename="ai-build-list-${window}d.json"`,
-  }});
+  await requireAdmin();
+  const days = new URL(request.url).searchParams.get('days');
+  const target = new URL('/control-tower/agents/build-list/export', request.url);
+  if (days) target.searchParams.set('days', days);
+  return Response.redirect(target, 308);
 }

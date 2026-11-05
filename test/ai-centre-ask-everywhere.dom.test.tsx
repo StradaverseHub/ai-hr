@@ -80,7 +80,6 @@ vi.mock('../components/assistant/assistant-home-tabs', () => ({ AssistantHomeTab
 vi.mock('../components/employee-home/tasks-card', () => ({ HomeTasksCard: () => null }));
 vi.mock('../components/employee-home/calendar-card', () => ({ HomeCalendarCard: () => null }));
 vi.mock('../components/ai-centre/delegated-jobs', () => ({ AiCentreDelegatedJobs: () => null }));
-vi.mock('../components/ai-centre/live-status', () => ({ AiCentreLiveStatus: () => null }));
 vi.mock('../app/assistant/agent-review-actions', () => ({ eraseConversationMetadataAction: vi.fn() }));
 vi.mock('../app/assistant/module-plan-actions', () => ({ eraseModuleProposalsAction: vi.fn() }));
 vi.mock('../app/assistant/job-feedback-actions', () => ({ eraseGovernedJobFeedbackAction: vi.fn() }));

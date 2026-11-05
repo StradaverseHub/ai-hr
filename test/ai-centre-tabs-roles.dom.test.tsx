@@ -1,9 +1,8 @@
 /** @vitest-environment jsdom */
-/** Issue 17 (owner: "Merge both entirely", 3 November 2026; mock-ups Operations.dc.html and Ask.dc.html): the AI Centre
- * tab row is Ask · Delegated jobs · Operations ▾ · Administration ▾ · How it works (the Inbox tab is retired: Today at /
- * replaces it, AI v2 Phase 1), and the former Control
- * Tower pages render inside it with Operations' second row (Overview, Exceptions, Record readiness, Proposed actions,
- * Opportunities). Rendered with the real tab components and the real Record readiness page, per role, from the
+/** Issue 17 (owner: "Merge both entirely", 3 November 2026; mock-ups Operations.dc.html and Ask.dc.html) and the AI Centre
+ * restructure (owner decisions 26–29, 4 November 2026): the AI Centre tab row is Ask · Operations ▾ · Insights · Policies ·
+ * Administration ▾ · How it works (Delegated jobs hidden until it works; Insights for administrators only), and the former
+ * Control Tower pages render inside it with Operations' second row (Loops, Payroll cycle, Exceptions, Record readiness). Rendered with the real tab components and the real Record readiness page, per role, from the
  * same isAdmin predicate requireAdmin uses. Fictional data owners only. In CI the rendered page is also captured at
  * desktop (1440px) and phone (390px) width in Chrome, which fails on any horizontal page overflow. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
@@ -38,6 +37,13 @@ vi.mock('next/navigation',()=>({
 }));
 vi.mock('../lib/session',()=>({getSession:async()=>state.session}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:(_ctx:unknown,code:string)=>code!=='payroll'||state.payroll,isModuleEnabledOrFalse:(_ctx:unknown,code:string)=>code!=='payroll'||state.payroll}));
+// The HR engine's queue and the missing-data loop's cases, which Record readiness now annotates its people with.
+vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({rows:[{id:'case-1',employmentId:'00000000-0000-4000-8000-00000000e001',gap:'no_bank_account',state:'needs_input',
+ audience:'employee',openedAt:new Date('2026-11-01T00:00:00Z'),observedAt:new Date('2026-11-03T00:00:00Z'),verifiedAt:null,reopenCount:0,name:'Aina Fictional',company:'Demo Sdn Bhd',
+ action:{type:'submit_correction',audience:'employee',tab:'bankStatutory',requestId:null,approver:'admin'}}],total:1,actionsUnavailable:false,verified:0,inactive:0,
+ observedAt:new Date('2026-11-03T00:00:00Z'),scheduledRun:false,lastRun:null})}));
+vi.mock('../core/loops/readiness-asks',()=>({readinessLoopAsks:async()=>new Map([['00000000-0000-4000-8000-00000000e001',{state:'open',openedAt:new Date('2026-11-02T01:00:00Z'),gaps:['no_bank_account']}]])}));
+vi.mock('../app/control-tower/orchestrator-actions',()=>({refreshOrchestrationAction:vi.fn()}));
 vi.mock('../core/record-readiness',()=>({PEOPLE_PER_GAP:25,recordReadiness:async()=>{state.reads++;return {employees:3,ready:1,gaps:[
  {id:'no_bank_account',blocks:'payment',count:2,people:[
   {employmentId:'00000000-0000-4000-8000-00000000e001',name:'Aina Fictional',employeeCode:'F-001',company:'Demo Sdn Bhd'},
@@ -64,7 +70,8 @@ describe('AI Centre tabs per role',()=>{
  // AI v2 Phase 2 (P2-5): Policies, the Living Handbook, for every role (employees read approved text only), between Operations
  // and Insights as in the approved mock-ups.
  // AI v2 Phase 2 (P2-3): Insights, for every role. Its HR capacity ledger section (P2-4) is admin-only inside the view.
- const ALL=[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Operations','/control-tower'],['Policies','/policies'],['Insights','/assistant?view=insights'],['Administration','/control-tower/agents/features'],['How it works','/assistant?view=how']];
+ // AI Centre restructure: the approved order; Delegated jobs is hidden, and Insights is an administrator tab.
+ const ALL=[['Ask','/assistant'],['Operations','/control-tower/loops'],['Insights','/assistant?view=insights'],['Policies','/policies'],['Administration','/control-tower/agents/features'],['How it works','/assistant?view=how']];
  it.each([['employee',false],['manager',false],['hrAdmin',true],['groupAdmin',true]] as const)('%s sees exactly the tabs whose guard admits them',(role,admitted)=>{
   expect(isAdmin(SESSIONS[role] as never)).toBe(admitted);
   wrap('en',<AiCentreTabs active="ask" isAdmin={isAdmin(SESSIONS[role] as never)} />);
@@ -72,7 +79,8 @@ describe('AI Centre tabs per role',()=>{
   // No Inbox tab for anyone: what waits on the person is on Today.
   expect(within(nav).queryByRole('link',{name:/Inbox/})).toBeNull();
   expect(nav.querySelector('a[href*="view=inbox"]')).toBeNull();
-  expect(linksOf(nav)).toEqual(admitted?ALL:ALL.filter(([label])=>label!=='Operations'&&label!=='Administration'));
+  expect(linksOf(nav)).toEqual(admitted?ALL:ALL.filter(([label])=>label!=='Operations'&&label!=='Insights'&&label!=='Administration'));
+  expect(nav.querySelector('a[href*="view=jobs"]')).toBeNull();
   // The two group tabs carry the ▾ mark of the approved mock-up; no other tab does.
   expect(nav.querySelectorAll('[data-centre-group-mark]')).toHaveLength(admitted?2:0);
   expect(within(nav).getByRole('link',{current:'page'})).toHaveAttribute('href','/assistant');
@@ -91,9 +99,9 @@ describe('an Operations page renders inside AI Centre',()=>{
   const view=wrap('en',await ReadinessPage());
   expect(state.reads).toBe(1);
   const top=screen.getByRole('navigation',{name:'AI Centre sections'}),second=screen.getByRole('navigation',{name:'Operations sections'});
-  expect(within(top).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower');
+  expect(within(top).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower/loops');
   expect(within(top).getByRole('link',{current:'page'}).textContent).toBe('Operations');
-  expect(linksOf(second)).toEqual([['Overview','/control-tower'],['Loops','/control-tower/loops'],['Exceptions','/control-tower/exceptions'],['Record readiness','/control-tower/readiness'],['Proposed actions','/control-tower/actions'],['Opportunities','/control-tower/opportunities']]);
+  expect(linksOf(second)).toEqual([['Loops','/control-tower/loops'],['Payroll cycle','/control-tower/loops/payroll-cycle'],['Exceptions','/control-tower/exceptions'],['Record readiness','/control-tower/readiness']]);
   expect(within(second).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower/readiness');
   // Order: the AI Centre row, its second row, then the page's own heading and content.
   const heading=screen.getByRole('heading',{level:1,name:en.controlTower.readinessScreen.title});
@@ -102,7 +110,15 @@ describe('an Operations page renders inside AI Centre',()=>{
   expect(screen.getByRole('link',{name:'Aina Fictional'})).toHaveAttribute('href','/admin/personnel/00000000-0000-4000-8000-00000000e001');
   // The way back is the tab row; the old "Back to the Control Tower" link and the name are gone.
   expect(screen.queryByRole('link',{name:en.controlTower.readinessScreen.backToTower})).toBeNull();
-  expect(view.container.querySelectorAll('a[href="/control-tower"]')).toHaveLength(2);
+  // The Operations tab and its Loops section both open Loops; no link leads to the forwarded Overview.
+  expect(view.container.querySelectorAll('a[href="/control-tower/loops"]')).toHaveLength(2);
+  expect(view.container.querySelectorAll('a[href="/control-tower"]')).toHaveLength(0);
+  // The former Overview's queue, merged in: who acts and what the loop asked, on the person; Refresh above.
+  const aina=view.container.querySelector('[data-readiness-person="00000000-0000-4000-8000-00000000e001"]')!;
+  expect(aina.querySelector('[data-readiness-who]')!.textContent).toBe('Employee · Collect employee submission');
+  expect(aina.querySelector('[data-readiness-loop="open"]')!.textContent).toMatch(/^The loop asked the employee on /);
+  expect(view.container.querySelector('[data-readiness-person="00000000-0000-4000-8000-00000000e002"] [data-readiness-who]')!.textContent).toBe('Not yet checked by the HR engine');
+  expect(screen.getByRole('button',{name:'Check current records'})).toBeTruthy();
   expect(view.container.textContent).not.toMatch(/control tower/i);
   // Phone width: both rows scroll sideways inside themselves (from sm they wrap), with 44px targets.
   for(const nav of [top,second]){
@@ -115,7 +131,7 @@ describe('an Operations page renders inside AI Centre',()=>{
  it('without payroll the payroll queues leave the second row, as their sidebar rows did',async()=>{
   state.session=SESSIONS.hrAdmin;state.payroll=false;
   wrap('en',await ReadinessPage());
-  expect(linksOf(screen.getByRole('navigation',{name:'Operations sections'})).map(([,href])=>href)).toEqual(['/control-tower','/control-tower/loops','/control-tower/readiness','/control-tower/opportunities']);
+  expect(linksOf(screen.getByRole('navigation',{name:'Operations sections'})).map(([,href])=>href)).toEqual(['/control-tower/loops','/control-tower/readiness']);
  });
 
  it.each(['ms','zh','vi','ta','th'] as const)('%s: both rows render translated, with no missing message and no Control Tower',async locale=>{

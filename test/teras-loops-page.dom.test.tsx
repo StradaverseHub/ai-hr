@@ -70,7 +70,11 @@ vi.mock('../core/loops/views',()=>({LoopViewRefused:fx.LoopViewRefused,
     {id:'k1',openedAt:new Date('2026-11-02T15:04:00Z'),closedAt:new Date('2026-11-03T15:05:00Z'),personName:'Siti Fictional',companyName:'Fictional A Sdn Bhd',state:'closed',closeReason:'done',resolution:'as_prepared',reopenCount:0,facts:{date:'2026-11-02',proposedCheckOut:'18:00'}},
     {id:'k2',openedAt:new Date('2026-11-03T15:05:00Z'),closedAt:null,personName:'Ravi Fictional',companyName:'Fictional A Sdn Bhd',state:'waiting',closeReason:null,resolution:null,reopenCount:1,facts:{date:'2026-11-03',proposedCheckOut:'17:30'}},
    ]};}}));
+// AI Centre navigation (4 Nov 2026): the list also shows the three payroll loops' statuses (their own test:
+// ai-centre-loops-payroll-list.dom.test.tsx); here the payroll read is a marker with no month in view.
+vi.mock('../core/loops/payroll-cycle-views',()=>({payrollCycleOverview:async()=>{state.reads.push('payroll');return null;}}));
 import LoopsPage from '../app/control-tower/loops/page';
+import {resolveServerTree} from './helpers/server-tree';
 import LoopPage from '../app/control-tower/loops/[loop]/page';
 
 const TENANT='00000000-0000-4000-8000-0000000000a1',COMPANY='00000000-0000-4000-8000-0000000000c1';
@@ -85,7 +89,7 @@ const wrap=(locale:Locale,node:ReactNode)=>render(<NextIntlClientProvider locale
 const text=(el:Node|null|undefined)=>(el?.textContent??'').replace(/\s+/g,' ').trim();
 /** A cell's or tile's text with its parts kept apart, as they read on screen. */
 const parts=(el:Element)=>[...el.childNodes].map(node=>text(node)).filter(Boolean).join(' ');
-const list=async()=>LoopsPage({searchParams:Promise.resolve({})});
+const list=async()=>resolveServerTree(await LoopsPage({searchParams:Promise.resolve({})}));
 const detail=async(loop:string,query:Record<string,string>={})=>LoopPage({params:Promise.resolve({loop}),searchParams:Promise.resolve(query)});
 afterEach(()=>{cleanup();state.locale='en';state.session=null;state.reads=[];state.canSwitch=false;});
 
@@ -100,7 +104,7 @@ describe('Operations › Loops, per role',()=>{
  it('an HR administrator sees each loop at Prepare with its figures and sponsor, and no switch',async()=>{
   state.session=SESSIONS.hrAdmin;
   const view=wrap('en',await list());
-  expect(state.reads).toEqual(['overview']);
+  expect(state.reads).toEqual(['payroll','overview']);
   const second=screen.getByRole('navigation',{name:'Operations sections'});
   expect(within(second).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower/loops');
   expect(screen.getByRole('heading',{level:1,name:'Loops'})).toBeTruthy();

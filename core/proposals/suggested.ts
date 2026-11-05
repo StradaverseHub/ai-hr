@@ -46,6 +46,7 @@ import {prepareChatClaimCancelProposal} from './claim-cancel';
 import {prepareChatProfileChangeProposal} from './profile-change';
 import {prepareChatToilRequestProposal,type ToilChatOutcome} from './toil-request';
 import {decisionNoMatch,isAssignedDecideAction,prepareChatAssignedDecisionProposal,wordsNameEmployee,wordsNameSomeone,type AssignedDecideOutcome} from './assigned-decide';
+import {requestDates,type RequestDates} from './request-dates';
 
 const isDate=(value:unknown):value is string=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value);
 /** "Do not approve", "don't approve", "never approve", "not yet approve", "jangan lulus", "tak approve": a negation
@@ -127,8 +128,10 @@ export const LEAVE_APPLY_DETAILS=['leaveType','startDate','endDate','durationTyp
 export type LeaveApplyDetail=typeof LEAVE_APPLY_DETAILS[number];
 /** One numbered leave type from the caller's own apply menu, in the menu's fixed order. */
 export type LeaveApplyOption=Readonly<{option:number;leaveType:string}>;
-export type ChatLeaveApplyOutcome=Readonly<{kind:'proposal';proposal:Proposal}>
- |Readonly<{kind:'ask';missing:readonly LeaveApplyDetail[];options:readonly LeaveApplyOption[]}>;
+/** `dates` (owner, 5 November 2026: "Fix dates first"): the dates the HR date owner worked out from the person's words
+ * (./request-dates.ts), with any other date those words may mean, for the tool result to state. */
+export type ChatLeaveApplyOutcome=Readonly<{kind:'proposal';proposal:Proposal;dates?:RequestDates}>
+ |Readonly<{kind:'ask';missing:readonly LeaveApplyDetail[];options:readonly LeaveApplyOption[];dates?:RequestDates}>;
 
 const squash=(value:string)=>value.normalize('NFKC').toLowerCase().replace(/\s+/g,' ').trim();
 /** The leave type the model named, against the caller's own menu (./leave-type-match.ts: a name in any language or a
@@ -144,9 +147,11 @@ const optionsFor=(types:readonly OwnLeaveApplyType[]):readonly LeaveApplyOption[
 
 /** A leave application from a chat turn, for the caller's own leave only. `details` is the model's suggestion
  * (leaveType, startDate or date, endDate, durationType, reason); the leave type is resolved only against the
- * caller's own apply menu, and a reason is kept only when it is the person's own words this turn. Missing or
- * unclear details are asked for (with the menu numbered when the leave type is unclear), never guessed. Null when
- * the caller cannot apply here at all (the suggestion stays a pointer). Throws a pause, as the owners do. */
+ * caller's own apply menu, and a reason is kept only when it is the person's own words this turn. The dates are a date
+ * or the person's own words for the day, worked out by the HR date owner's rule (./request-dates.ts), never by the
+ * model. Missing or unclear details are asked for (with the menu numbered when the leave type is unclear), never
+ * guessed. Null when the caller cannot apply here at all (the suggestion stays a pointer). Throws a pause, as the
+ * owners do. */
 export async function prepareChatLeaveApplyProposal(ctx:SessionContext,details:Readonly<Record<string,unknown>>,personWords:string|undefined,locale?:string,now:Date=new Date()):Promise<ChatLeaveApplyOutcome|null>{
  const menu=await readOwnLeaveApplyMenu(ctx,locale,now);
  if(menu.kind!=='menu'||!menu.types.length)return null;
@@ -154,22 +159,30 @@ export async function prepareChatLeaveApplyProposal(ctx:SessionContext,details:R
  const missing:LeaveApplyDetail[]=[];
  const type=text('leaveType')?matchLeaveType(menu.types,text('leaveType'),personWords):null;
  if(!type)missing.push('leaveType');
- const start=text('startDate')||text('date'),end=text('endDate')||start,duration=text('durationType')||'full_day';
- if(!isCalendarDate(start))missing.push('startDate');
+ const given=text('startDate')||text('date'),settled=given?requestDates(given,text('endDate'),personWords,{now}):null;
+ const dates=settled?.kind==='dates'?settled.dates:undefined;
+ const start=dates?.startDate??'',end=dates?.endDate??'',duration=text('durationType')||'full_day';
+ if(!isCalendarDate(start))missing.push(settled?.kind==='missing'&&settled.missing==='end'?'endDate':'startDate');
  else if(!isCalendarDate(end)||end<start||leaveApplyDaySpan(start,end)>LEAVE_APPLY_MAX_DAYS)missing.push('endDate');
  if(!isChatLeaveDuration(duration))missing.push('durationType');
  else if(duration!=='full_day'&&isCalendarDate(start)&&end!==start)missing.push('endDate');
  else if(type&&duration!=='full_day'&&!type.durations.includes(duration))missing.push('durationType');
- if(missing.length)return Object.freeze({kind:'ask' as const,missing:Object.freeze([...new Set(missing)]),options:missing.includes('leaveType')?optionsFor(menu.types):Object.freeze([])});
+ // Dates worked out from the person's words go back with the question, so it can name them (a leave type still to
+ // choose, say); a date the person gave as a date needs no restating.
+ const worked=dates&&dates.phrase!==null&&!missing.includes('startDate')&&!missing.includes('endDate')?{dates}:{};
+ if(missing.length)return Object.freeze({kind:'ask' as const,missing:Object.freeze([...new Set(missing)]),options:missing.includes('leaveType')?optionsFor(menu.types):Object.freeze([]),...worked});
+ const known=dates?{dates}:{};
  const chosen=type!,durationType=duration as ChatLeaveDuration;
+ // Other dates the person's words may mean go on the card, which offers them; only for one day.
+ const card={otherDates:start===end?dates?.others??[]:[]};
  if(durationType==='full_day'&&start===end){
   const reason=text('reason'),own=reason.length>0&&reason.length<=2000&&typeof personWords==='string'&&squash(personWords).includes(squash(reason));
   const review=await prepareLeaveApplyProposal(ctx,{nomination:{action:OWN_LEAVE_ACTION,contractVersion:OWN_LEAVE_CONTRACT_VERSION,employmentId:menu.employmentId,leaveTypeId:chosen.id,date:start,durationType:'full_day'},
-   selection:{employmentId:menu.employmentId,leaveTypeId:chosen.id},humanText:own?{reason}:{}},locale);
-  if(review.kind==='proposal')return review;
+   selection:{employmentId:menu.employmentId,leaveTypeId:chosen.id},humanText:own?{reason}:{}},locale,card);
+  if(review.kind==='proposal')return Object.freeze({...review,...known});
  }
- const form=await prepareLeaveApplyFormProposal(ctx,{leaveTypeId:chosen.id,startDate:start,endDate:end,durationType},locale,now);
- return form.kind==='proposal'?form:null;
+ const form=await prepareLeaveApplyFormProposal(ctx,{leaveTypeId:chosen.id,startDate:start,endDate:end,durationType},locale,now,card);
+ return form.kind==='proposal'?Object.freeze({...form,...known}):null;
 }
 
 export type SuggestedOutcome=Readonly<{kind:'proposal';proposal:Proposal}>|Readonly<{kind:'choose';pending:readonly PendingChoice[];more:number}>
@@ -189,7 +202,7 @@ export async function prepareSuggestedProposal(ctx:SessionContext,action:string,
   if(action==='leave.apply')return await prepareChatLeaveApplyProposal(ctx,given,personWords,locale,now);
   // AI v2 W2: own attendance requests (./attendance-request.ts), the caller's own records only.
   if(action==='attendance.correction.request')return await prepareChatAttendanceCorrectionProposal(ctx,given,personWords,now);
-  if(action==='attendance.overtime.request')return await prepareChatOvertimeRequestProposal(ctx,given,personWords);
+  if(action==='attendance.overtime.request')return await prepareChatOvertimeRequestProposal(ctx,given,personWords,now);
   // AI v2 W2: own claims and own profile changes (core/proposals/claim-submit.ts, claim-cancel.ts, profile-change.ts).
   if(action==='claims.submit')return await prepareChatClaimSubmitProposal(ctx,given,personWords,now);
   if(action==='claims.cancel')return await prepareChatClaimCancelProposal(ctx,given);

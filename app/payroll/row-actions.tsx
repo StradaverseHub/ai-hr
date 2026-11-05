@@ -48,11 +48,13 @@ export function PayrollRowActions({
   /** The actions for THIS row, already rendered by the server page under their own conditions. */
   children?: ReactNode;
 }) {
-  const [at, setAt] = useState<{ top: number; right: number } | null>(null);
+  // `top` when the menu opens DOWN from the button, `bottom` when there is not room below and it opens UP.
+  const [at, setAt] = useState<{ top?: number; bottom?: number; right: number; maxHeight: number } | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const items = Children.toArray(children);
 
-  // CLOSE ON ANY SCROLL OR RESIZE, from anywhere. The panel is `position: fixed` and its coordinates are
+  // CLOSE ON ANY SCROLL OR RESIZE, from anywhere but the menu itself. The panel is `position: fixed` and its coordinates are
   // measured ONCE in `toggle`, so anything that moves the row under it leaves the menu nailed to the
   // viewport beside a DIFFERENT run while still carrying the original row's hrefs. Closing is the whole
   // mitigation, and it is now sufficient: since 9f8cd608 every item is a link to a screen that names the
@@ -65,7 +67,11 @@ export function PayrollRowActions({
   // that stops propagation still closes it.
   useEffect(() => {
     if (!at) return;
-    const close = () => setAt(null);
+    // A scroll INSIDE the menu is the operator reading a long menu, not the row moving: it must not close it.
+    const close = (e: Event) => {
+      if (e.type === 'scroll' && e.target instanceof Node && panel.current?.contains(e.target)) return;
+      setAt(null);
+    };
     window.addEventListener('scroll', close, true);
     window.addEventListener('resize', close);
     return () => {
@@ -82,7 +88,20 @@ export function PayrollRowActions({
     if (at) return setAt(null);
     const r = btn.current?.getBoundingClientRect();
     // jsdom (and a button that has not laid out yet) reports zeroes — the menu still opens, at 0,0.
-    setAt({ top: (r?.bottom ?? 0) + 4, right: Math.max(0, window.innerWidth - (r?.right ?? 0)) });
+    const top = r?.top ?? 0;
+    const bottom = r?.bottom ?? 0;
+    const right = Math.max(0, window.innerWidth - (r?.right ?? 0));
+    // The last rows of a long run sit near the bottom of the window, and a fixed panel opened DOWN from there
+    // ran off the screen with no way to reach it (any scroll closes it). Open UP when the menu would not fit
+    // below and there is more room above, and cap it to the room it has so a long menu scrolls inside itself.
+    const roomBelow = window.innerHeight - bottom - 12;
+    const roomAbove = top - 12;
+    const wanted = items.length * 40 + 8;
+    setAt(
+      roomBelow < wanted && roomAbove > roomBelow
+        ? { bottom: window.innerHeight - top + 4, right, maxHeight: roomAbove }
+        : { top: bottom + 4, right, maxHeight: Math.max(roomBelow, 160) },
+    );
   };
 
   return (
@@ -110,9 +129,10 @@ export function PayrollRowActions({
             aria-hidden
           />
           <div
+            ref={panel}
             role="menu"
-            style={{ top: at.top, right: at.right }}
-            className="fixed z-50 w-56 overflow-hidden rounded-lg border border-border bg-popover py-1 text-left shadow-lg"
+            style={{ top: at.top, bottom: at.bottom, right: at.right, maxHeight: at.maxHeight }}
+            className="fixed z-50 w-56 overflow-y-auto overscroll-contain rounded-lg border border-border bg-popover py-1 text-left shadow-lg"
           >
             {items.map((item, i) => (
               <div key={i} className="px-1 py-0.5 [&_a]:block [&_a]:w-full [&_button]:w-full">

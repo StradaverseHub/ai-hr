@@ -174,9 +174,10 @@ export async function setAgentActionPauseAction(formData: FormData) {
     const s = await getBrowserCommandSession();
     if (!isAgentActionId(action) || !['true','false'].includes(paused)) throw new AiControlError(t('invalid'));
     await setAgentActionPause(s, action, paused === 'true');
-  } catch (e) { redirect(failedAt('inventory', await commandError(e))); }
+  } catch (e) { redirect(failedAt('features', await commandError(e))); }
   revalidatePath(PAGE, 'layout');
-  redirect(aiManagementHref('inventory', {toast:'saved', anchor:isAgentActionId(action) ? `#ai-component-action-${String(action).replace(/[^a-z0-9_-]/gi,'-')}` : '#ai-inventory'}));
+  // Workers is the one list of AI pieces: the inventory is a section of it (the Inventory page forwards there).
+  redirect(aiManagementHref('features', {toast:'saved', anchor:isAgentActionId(action) ? `#ai-component-action-${String(action).replace(/[^a-z0-9_-]/gi,'-')}` : '#ai-inventory'}));
 }
 
 /** WP14 / R19 — a tenant-wide cap on one AI feature (group administrators; the owner re-checks). */

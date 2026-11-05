@@ -85,9 +85,9 @@ describe('the Policies tab',()=>{
   const nav=screen.getByRole('navigation',{name:'AI Centre sections'});
   const links=within(nav).getAllByRole('link').map(link=>[text(link),link.getAttribute('href')]);
   expect(links).toEqual(isAdmin
-   ?[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Operations','/control-tower'],['Policies','/policies'],['Insights','/assistant?view=insights'],
+   ?[['Ask','/assistant'],['Operations','/control-tower/loops'],['Insights','/assistant?view=insights'],['Policies','/policies'],
     ['Administration','/control-tower/agents/features'],['How it works','/assistant?view=how']]
-   :[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Policies','/policies'],['Insights','/assistant?view=insights'],['How it works','/assistant?view=how']]);
+   :[['Ask','/assistant'],['Policies','/policies'],['How it works','/assistant?view=how']]);
   expect(within(nav).getByRole('link',{current:'page'})).toHaveAttribute('href','/policies');
  });
 });

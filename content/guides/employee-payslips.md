@@ -1,5 +1,9 @@
 Open [My Workspace](/me) to find the payslips and annual tax statements available for your employment. Payroll records are personal; another employee's link does not grant access.
 
+## Before payroll
+
+[My payroll readiness](/me/payroll-readiness) lists your own items for this month's payroll before the cut-off: missed clock-ins and clock-outs, overtime, leave, claims, your bank and statutory details, and letters to acknowledge, each with the page where you finish it. If you approve other people's requests, it also lists the decisions waiting for you before the cut-off. Today shows the first few under **Before payroll**; **See all** opens this page. It shows no pay figure.
+
 ## Read a payslip
 
 1. Choose the period and company. If there is more than one cycle, check which payment the document represents.

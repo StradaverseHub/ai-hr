@@ -50,7 +50,9 @@ const optional=async(tx:Tx,query:SQL):Promise<Row[]>=>{try{return await tx.trans
 export const CONFIG_EVENT_PREFIXES=Object.freeze(['pay-component.','payroll-policy.','payroll-cycle.','statutory.config.','statutory.component.',
  'company-statutory-authority.','company-bank-profile.','payroll-config.','pay-formula.','payslip-information.','payroll-permission-grant.',
  'teras-payroll-loop.setting-changed','teras-payroll-loop.proposal-decided','payroll-audit.settings-changed','payroll-audit.reader-',
- 'payroll-check.acknowledgement-','payroll-check.rule-proposal-']);
+ 'payroll-check.acknowledgement-','payroll-check.rule-proposal-',
+ // Payroll history learning (migration 2012): a company's learning mode switched on or off (core/payroll-learning/mode.ts).
+ 'payroll-learning.mode-set']);
 /** Post-run corrections: a closed run reopened, or a processed run reset to draft. */
 const CORRECTION_ACTIONS=['unlock','rollback'];
 

@@ -526,7 +526,8 @@
     "contractIntake": "合同登记及退休证据",
     "passwordPolicy": "密码策略",
     "myPrivateCases": "我的私密个案",
-    "privateCases": "私密个案"
+    "privateCases": "私密个案",
+    "myPayrollReadiness": "我的发薪准备"
   },
   "dashboard": {
     "title": "仪表盘",
