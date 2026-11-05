@@ -1929,8 +1929,9 @@ function punchGeoValues(geo: GeofenceCheck) {
  * calendar recompute owners; ordinary clock mutations retain the day classification already stored.
  * The helper does not write a raw day or grant approval and never accepts a posted day type. */
 async function policyRawDayProjectionTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;
- fallbackIn:string|null;fallbackOut:string|null;classification?:'stored'|'currentSchedule'}){
-  const raw=await attendancePolicyRawInputTx(tx,ctx,p);
+ fallbackIn:string|null;fallbackOut:string|null;classification?:'stored'|'currentSchedule'},
+ rawInput?: Awaited<ReturnType<typeof attendancePolicyRawInputTx>>){
+  const raw=rawInput ?? await attendancePolicyRawInputTx(tx,ctx,p);
   if(raw.state==='unavailable')throw Error('Canonical raw Attendance inputs are unavailable.');
   if(raw.state!=='policy')return {state:'legacy' as const};
   const current=await scheduleFor(tx,p.employmentId,p.date);
@@ -1962,6 +1963,7 @@ async function policyRawDayProjectionTx(tx:Tx,ctx:SessionContext,p:{employmentId
 async function recomputeDayFromPunches(
   tx: Tx, ctx: SessionContext,
   p: { employmentId:string; attendanceId: string; attendanceDate: string; sched: ResolvedSchedule; fallbackCheckInAt: string | null },
+  rawInput?: Awaited<ReturnType<typeof attendancePolicyRawInputTx>>,
 ): Promise<{
   status: 'present' | 'late' | 'half_day';
   workedMinutes: number | null;
@@ -1977,7 +1979,7 @@ async function recomputeDayFromPunches(
   const ins=punches.filter(row=>row.direction==='in').map(row=>row.punchAt).sort();
   const outs=punches.filter(row=>row.direction==='out').map(row=>row.punchAt).sort();
   const projected=await policyRawDayProjectionTx(tx,ctx,{employmentId:p.employmentId,date:p.attendanceDate,
-    fallbackIn:ins[0]??p.fallbackCheckInAt,fallbackOut:outs.at(-1)??null});
+    fallbackIn:ins[0]??p.fallbackCheckInAt,fallbackOut:outs.at(-1)??null},rawInput);
   if(projected.state==='policy'){
     const set=projected.columns;
     await tx.update(attendance).set(set).where(and(eq(attendance.id,p.attendanceId),eq(attendance.tenantId,ctx.tenantId)));
@@ -4426,7 +4428,7 @@ export async function decideAttendanceCorrection(
         const raw=await attendancePolicyRawInputTx(tx,ctx,{employmentId:cor.employmentId,date:cor.attendanceDate});
         if(raw.state==='unavailable')throw Error('Canonical corrected Attendance inputs are unavailable.');
         const policyDerived=raw.state==='policy'?await recomputeDayFromPunches(tx,ctx,{employmentId:cor.employmentId,
-          attendanceId:amended.id,attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:cor.proposedCheckIn}):null;
+          attendanceId:amended.id,attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:cor.proposedCheckIn},raw):null;
         if(policyDerived)otMinutes=policyDerived.otMinutes;
         if (!hasOtRequest&&!policyDerived) {
           const planned = await applyApprovedOtPlanTx(tx, ctx, {
@@ -4478,7 +4480,7 @@ export async function decideAttendanceCorrection(
           if(!binding||!submission?.policyBinding||!isDeepStrictEqual(submission.policyBinding,binding))
             throw Error('The submitted Attendance policy changed. Withdraw and resubmit the request.');
           const derived=await recomputeDayFromPunches(tx,ctx,{employmentId:cor.employmentId,attendanceId:existing.id,
-            attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:null});
+            attendanceDate:cor.attendanceDate,sched,fallbackCheckInAt:null},raw);
           if(!derived.policyRaw||derived.workedMinutes===null||derived.checkOutAt===null)
             throw Error('A captured complete Attendance day is required for this policy decision.');
           policyRawDecision=true;
