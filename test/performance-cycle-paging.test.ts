@@ -49,7 +49,7 @@ it('pages retained cycles before projecting details and aggregating review count
   expect(countParameterWidths).toEqual([25]);
   for(const query of [{page:'1'},{size:'50',page:'2'},{page:'9999'},{size:'all'},{page:'-1',size:'nonsense'}])expect(await readPage(ctx,query)).toEqual(paginateRows(reference,parsePageQuery(query)));
   const foreign=await seedBase();await setModule(foreign.tenantId,'performance','active');expect((await readPage(await entitledCtx(foreign),{})).state.total).toBe(0);
-  await setModule(b.tenantId,'performance','suspended');await expect(readPage(await entitledCtx(b),{})).rejects.toThrow();
+  await setModule(b.tenantId,'performance','disabled');await expect(readPage(await entitledCtx(b),{})).rejects.toThrow();
   evidence.exactRowsCountsAndPager=true;evidence.foreignTenantRefused=true;evidence.disabledModuleRefused=true;
  }finally{save();}
 },300000);
