@@ -6822,19 +6822,19 @@ export function allowedCompanies(ctx: SessionContext, existingTx?: Tx) {
         .from(company)
         .orderBy(company.legalName);
     }
-    const ids = new Set((ctx.grants ?? []).map((g) => g.companyId).filter((c): c is string => !!c));
-    if (ctx.personId) {
-      const emps = await tx
-        .select({ c: employment.companyId })
-        .from(employment)
-        .where(and(eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)));
-      emps.forEach((e) => ids.add(e.c));
-    }
-    if (ids.size === 0) return [];
+    const grantCompanyIds = [...new Set((ctx.grants ?? []).map(grant => grant.companyId).filter((id): id is string => !!id))];
+    if (!ctx.personId && grantCompanyIds.length === 0) return [];
+    const activeEmployments = ctx.personId
+      ? tx.select({ id: employment.companyId }).from(employment)
+        .where(and(eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)))
+      : undefined;
     return tx
       .select({ id: company.id, name: company.legalName })
       .from(company)
-      .where(inArray(company.id, [...ids]))
+      .where(or(
+        grantCompanyIds.length ? inArray(company.id, grantCompanyIds) : undefined,
+        activeEmployments ? inArray(company.id, activeEmployments) : undefined,
+      ))
       .orderBy(company.legalName);
   });
 }
