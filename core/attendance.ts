@@ -7193,6 +7193,9 @@ export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:str
     const nativeHeaders=sql`select q.id,q.employment_id,q.created_at
       from public.attendance_correction q where q.tenant_id=${ctx.tenantId}::uuid and q.status='pending'`;
     const administratorHint=ctx.roles?.some(role=>role==='hr_admin'||role==='super_admin')===true;
+    // Ordinary visibility is one arm of the native subject predicate. Only those
+    // subjects can reuse metadata across requests. Frozen participants and delegates
+    // outside that set still require the original request-specific projection.
     const source=administratorHint?sql`(
       with headers as materialized(${nativeHeaders}),
       distinct_subjects as(select distinct employment_id from headers),
@@ -7212,8 +7215,29 @@ export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:str
       from headers h cross join lateral app.attendance_application_subject(h.id)s
       where not exists(select 1 from administrator_subjects a where a.employment_id=h.employment_id)
     )as pending_attendance`:sql`(
+      with headers as materialized(${nativeHeaders}),
+      visible_set as materialized(
+        select app.visible_employment_ids() as ids where exists(select 1 from headers)
+      ),
+      visible_subjects as(
+        select distinct h.employment_id from headers h cross join visible_set v where h.employment_id=any(v.ids)
+      ),
+      numbered_subjects as(
+        select employment_id,(row_number() over(order by employment_id)-1)/1000 as bucket from visible_subjects
+      ),
+      subject_batches as(
+        select array_agg(employment_id order by employment_id) as ids from numbered_subjects group by bucket
+      ),
+      ordinary_subjects as materialized(
+        select s.* from subject_batches b
+        cross join lateral app.delegated_approval_subjects(b.ids,'attendance','attendance.correction')s
+      )
       select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id
-      from(${nativeHeaders})h cross join lateral app.attendance_application_subject(h.id)s
+      from headers h join ordinary_subjects s on s.employment_id=h.employment_id
+      union all
+      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id
+      from headers h cross join lateral app.attendance_application_subject(h.id)s
+      where not exists(select 1 from ordinary_subjects s where s.employment_id=h.employment_id)
     )as pending_attendance`;
     const id=sql<string>`pending_attendance.id`,employmentId=sql<string>`pending_attendance.employment_id`,
       personId=sql<string>`pending_attendance.person_id`,employee=sql<string|null>`pending_attendance.employee`,
