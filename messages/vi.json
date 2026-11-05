@@ -35710,7 +35710,8 @@
     "usePositionGrade": "Dùng ngạch của vị trí",
     "positionMovementHint": "Thao tác này chỉ điền ngạch đề xuất. Lưu và duyệt điều chuyển có ngày hiệu lực để đổi ngạch nhân viên.",
     "positionReadonlyHint": "Loại điều chuyển này không cho sửa ngạch. Hãy dùng điều chuyển có ngày hiệu lực được cho phép.",
-    "positionDraftHint": "Thao tác này chỉ điền ngạch trong bản nháp. Rà soát bản nháp nhân viên trước khi kích hoạt."
+    "positionDraftHint": "Thao tác này chỉ điền ngạch trong bản nháp. Rà soát bản nháp nhân viên trước khi kích hoạt.",
+    "pdfExport": "Xuất PDF"
   },
   "rewardRules": {
     "title": "Quy tắc",

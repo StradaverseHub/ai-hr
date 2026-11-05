@@ -35710,7 +35710,8 @@
     "usePositionGrade": "Use position grade",
     "positionMovementHint": "This fills the proposed grade only. Save and approve the dated movement to change the employee’s grade.",
     "positionReadonlyHint": "This movement type cannot edit the grade. Use an authorized dated movement to change it.",
-    "positionDraftHint": "This fills the draft grade only. Review the employee draft before activation."
+    "positionDraftHint": "This fills the draft grade only. Review the employee draft before activation.",
+    "pdfExport": "Export PDF"
   },
   "rewardRules": {
     "title": "Rules",
