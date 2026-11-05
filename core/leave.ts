@@ -3035,6 +3035,8 @@ async function insertLeaveRequest(
   const approvalSteps = await prepareApprovalSteps(
     tx, ctx.tenantId, row.id, v.employmentId, v.leaveTypeId, v.days, v.resolvedApprovalChain,
   );
+  // Keep the approval-step write ahead of the tenant-wide audit lock.
+  if (approvalSteps.length > 0) await tx.insert(leaveApprovalStep).values(approvalSteps);
   const submittedEventId = await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',
@@ -3132,9 +3134,6 @@ async function insertLeaveRequest(
     },
   }, { returnId: includeSubmittedEventId });
   if (includeSubmittedEventId && !submittedEventId) throw new Error('leave.submitted_reference_missing');
-  // 2B-1/2B-2/ADR-0071: if the company runs a multi-step chain, generate the instance approval steps,
-  // resolving the scoped rule matrix against this request's day count (fractional for hourly/partial).
-  if (approvalSteps.length > 0) await tx.insert(leaveApprovalStep).values(approvalSteps);
   return { id: row.id, ...(submittedEventId ? { submittedEventId } : {}) };
 }
 

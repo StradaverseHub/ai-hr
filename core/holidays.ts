@@ -59,7 +59,7 @@ import {companySegmentsForPeriod,companySegmentsForPeriodBulk,type CompanySegmen
 // unlike every resolver above, which runs inside the caller's tx. `withTenant` is the only addition.
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { appendEvent, actorOf } from '../db/events';
+import { appendEvents, actorOf } from '../db/events';
 import { company, employment, holiday, holidayGroup, holidayGroupHoliday } from '../db/schema';
 
 // R18 a519a96e — group INHERITANCE: the employment's assigned group may point at a PARENT group
@@ -273,10 +273,8 @@ export async function appendHolidayCompletenessWarnings(
   args: HolidayCompletenessEvent,
   warnings: readonly HolidayCompletenessWarning[],
 ): Promise<void> {
-  for (const warning of warnings) {
-    // NON-BLOCKING: the gazetted-holiday count is below the s.60D minimum for this (state, year). Loud,
-    // not fatal — the leave/payroll write still commits; HR must finish loading the state gazette.
-    await appendEvent(tx, {
+  // Keep one audit event per warning, with one insert for the ordered batch.
+  await appendEvents(tx, warnings.map(warning => ({
       tenantId: ctx.tenantId,
       aggregateType: args.aggregateType,
       aggregateId: args.aggregateId,
@@ -292,8 +290,7 @@ export async function appendHolidayCompletenessWarnings(
         required: warning.required,
         ...(args.context ?? {}),
       },
-    });
-  }
+  })));
 }
 
 /** The set of holiday dates in [startDate, endDate] for an employment, resolved business-group → state →
