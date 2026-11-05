@@ -216,6 +216,24 @@ describe('multi-company payroll — orchestration (DB)', () => {
     }
   });
 
+  it('preserves exact legacy Payroll Process counts and posted selection without loading employee detail',async()=>{
+    const group=groupAdmin(),scoped=await scopedAdminFor(base.companyId);
+    const [own]=await payrollRead.listEmployees(group,[base.companyId]);
+    const [other]=await payrollRead.listEmployees(group,[companyB]);
+    expect(own.employmentId).not.toBe(other.employmentId);
+    await terminateEmployment(group,{employmentId:own.employmentId,terminationDate:'2026-05-15'});
+    const posted=[other.employmentId,own.employmentId.toUpperCase(),'not-a-uuid',own.employmentId,own.employmentId,randomUUID()];
+    for(const ctx of [group,scoped]){
+      for(const companyId of [base.companyId,companyB]){
+        const legacy=await payrollRead.listEmployees(ctx,[companyId]),ids=new Set(legacy.map(row=>row.employmentId));
+        expect(await payrollRead.payrollProcessEmployeeCount(ctx,companyId)).toBe(legacy.length);
+        expect(await payrollRead.payrollProcessEmployeeSelection(ctx,companyId,posted)).toEqual(posted.filter(id=>ids.has(id)));
+      }
+    }
+    expect(await payrollRead.payrollProcessEmployeeSelection(scoped,base.companyId,posted)).toEqual([own.employmentId,own.employmentId]);
+    expect(await payrollRead.payrollProcessEmployeeCount(scoped,companyB)).toBe(0);
+  });
+
   it('draft scope uses the Payroll period population, retaining a mid-period leaver',async()=>{
     const a=groupAdmin(),employees=await owner.db.select().from(schema.employment).where(eq(schema.employment.companyId,base.companyId)).orderBy(schema.employment.id);expect(employees).toHaveLength(1);const employee=employees[0];
     await terminateEmployment(a,{employmentId:employee.id,terminationDate:'2026-05-15'});

@@ -29,7 +29,7 @@ import {
   type AnyColumn,
   type SQL,
 } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { alias, type SelectedFields } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { assertModuleGate } from './module-gate';
 import { assertAiPrincipalTx } from './ai-principal';
@@ -209,8 +209,7 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[],purpose
   return withReadTx(ctx,existingTx,async tx=>{if(purpose)await lockProjectionConfigurationTx(tx,ctx.tenantId,existingTx);return listEmployeesTx(tx,companyIds,purpose);});
 }
 export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforce') {
-  return tx
-      .select({
+  return employeeListRowsTx(tx,{
         employmentId: employment.id,
         name: person.fullName,
         email: person.primaryEmail,
@@ -263,6 +262,12 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforc
         lastWorkingDate: employment.lastWorkingDate,
         blacklistedAt: employment.blacklistedAt,
       })
+      .where(and(companyIds&&companyIds.length?inArray(employment.companyId,companyIds):undefined,purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',companyIds):undefined))
+      .orderBy(person.fullName);
+}
+
+function employeeListRowsTx<T extends SelectedFields>(tx:Tx,selection:T) {
+  return tx.select(selection)
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
@@ -276,9 +281,27 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforc
       )
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
-      .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
-      .where(and(companyIds&&companyIds.length?inArray(employment.companyId,companyIds):undefined,purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',companyIds):undefined))
-      .orderBy(person.fullName);
+      .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId));
+}
+
+/** Intersect a posted selection with the exact RLS-visible company rows. Keep input order and duplicates. */
+export async function payrollProcessEmployeeSelection(ctx:SessionContext,companyId:string,submittedIds:string[]) {
+  // The legacy string comparison never matched alternate UUID spellings or malformed input.
+  const ids=[...new Set(submittedIds.filter(id=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id)))];
+  if(!ids.length)return [];
+  const visible=await withTenant(ctx,tx=>employeeListRowsTx(tx,{id:employment.id}).where(and(
+    eq(employment.companyId,companyId),sql`${employment.id} = any(${'{' + ids.join(',') + '}'}::uuid[])`,
+  )));
+  const allowed=new Set(visible.map(row=>row.id));
+  return submittedIds.filter(id=>allowed.has(id));
+}
+
+/** Exact count of the same legacy company list, including its join multiplicity and retained employments. */
+export function payrollProcessEmployeeCount(ctx:SessionContext,companyId:string) {
+  return withTenant(ctx,async tx=>{
+    const [row]=await employeeListRowsTx(tx,{total:sql<number>`count(*)`.mapWith(Number)}).where(eq(employment.companyId,companyId));
+    return row.total;
+  });
 }
 
 /**
@@ -464,12 +487,24 @@ export async function readWorkforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:strin
  const source=sql`app.access_workforce_list_rows_for_ids(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) as workforce_row(value)`;
  return tx.select(columns).from(source).orderBy(columns.employmentId);
 }
-/** Bounded picker over the same purpose projection, reusable inside a caller's authorization transaction.
- * Resolve a cursor only inside this exact authorized search; equal names are ordered by employment ID. */
-export async function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:{companyIds:string[];q?:string;after?:string;limit:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string}){
+type WorkforcePickPageInput={companyIds:string[];q?:string;after?:string;limit:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string};
+/** A caller-owned transaction can write, so keep its exclusive barrier. */
+export function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput){
+ return workforcePickPageTx(ctx,tx,input,lockAccessConfigurationTx);
+}
+
+/** The database must enforce read-only before this shared-barrier picker can run. */
+export async function listReadOnlyWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput){
+ const [state]=await tx.execute<{read_only:boolean}>(sql`select current_setting('transaction_read_only')='on' as read_only`);
+ if(state?.read_only!==true)throw Error('Workforce picker requires a read-only transaction.');
+ return workforcePickPageTx(ctx,tx,input,lockAccessConfigurationReadTx);
+}
+
+/** Resolve a cursor only inside this exact authorized search. Equal names are ordered by employment ID. */
+async function workforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput,lock:typeof lockAccessConfigurationTx){
   if(!Number.isInteger(input.limit)||input.limit<1||input.limit>100||(input.q?.length??0)>200||input.after&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.after))throw new RangeError('Invalid workforce picker');
   if((input.departmentSearch?.length??0)>200||(input.branch?.length??0)>200||input.departmentId&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.departmentId)||input.hiredFrom&&!isCalendarDate(input.hiredFrom)||input.hiredTo&&!isCalendarDate(input.hiredTo)||input.hiredFrom&&input.hiredTo&&input.hiredFrom>input.hiredTo)throw new RangeError('Invalid workforce picker filters');
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lock(tx,ctx.tenantId);
   const source=sql`app.access_workforce_picker_rows(${input.branch?.trim()||null},${input.hiredFrom??null}::date,${input.hiredTo??null}::date) as workforce_row(value)`;
   const departmentSearch=input.departmentSearch?.trim(),needle=departmentSearch?'%'+departmentSearch.replace(/[\\%_]/g,'\\$&')+'%':undefined;
   const where=and(workforceListWhere({companyIds:input.companyIds,q:input.q,departmentId:input.departmentId},workforceListColumns()),needle?sql`${workforceListValue('department')} ilike ${needle}`:undefined),columns=workforcePickerColumns();
@@ -6456,6 +6491,15 @@ export async function myEmploymentsTx(tx:Tx,ctx:SessionContext,opts:{profileEdit
 
 function ownEmploymentSubjectPredicate(ctx:SessionContext,personId:string){
  return and(ownPersonPredicate(ctx),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,personId));
+}
+
+/** Same own-subject membership as the Home inventory, with fresh principal and actual-login checks. */
+export async function isCurrentOwnHomeEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ if(!ctx.userId||!ctx.personId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(employmentId))return false;
+ const [row]=await tx.select({id:employment.id}).from(employment)
+  .innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+  .where(and(ownEmploymentSubjectPredicate(ctx,ctx.personId),eq(employment.id,employmentId),sql`app.principal_snapshot_current()`)).limit(1);
+ return row!==undefined;
 }
 
 /** Selected own subject eligibility, without projecting an inventory or resolving its dated companies. */

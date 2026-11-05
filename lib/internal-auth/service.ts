@@ -6,7 +6,7 @@ import { generateSecret, verify } from 'otplib';
 import { client } from '../../db/client';
 import { internalConfig, internalIssuer } from './config';
 import { digest, opaque, validOpaque, passwordMatches, DUMMY_PASSWORD_HASH } from './crypto';
-import { authTransaction, readRecord, writeRecord, deleteRecord, revokeCredentialsSessions, type AuthSql } from './store';
+import { authTransaction, readRecord, readRecordPair, writeRecord, deleteRecord, revokeCredentialsSessions, type AuthSql } from './store';
 import { InternalAuthError } from './errors';
 import { assertActiveCredential, type Credential } from './credential';
 import { idleTimeoutMinutesFor } from '../session-policy-server';
@@ -209,8 +209,9 @@ async function loadSession(token: string | undefined, native: boolean) {
   if (!validOpaque(raw)) return null;
   const key = `session:${digest(raw)}`, session = await readRecord<Session>(client, key);
   if (!session || session.native !== native || session.absoluteExpiry <= Date.now()) return null;
-  const c = await readRecord<Credential>(client, credentialKey(session.subject));
-  if (!c || c.version !== session.version || !await readRecord(client, `family:${session.family}`)) return null;
+  const c = await readRecordPair<Credential>(client, credentialKey(session.subject), `family:${session.family}`,
+    credential => credential.version === session.version);
+  if (!c) return null;
   try { await assertActiveCredential(client, c); } catch (e) { if (e instanceof InternalAuthError) return null; throw e; }
   if (native) return { key, session, c, idleMs: null };
   const idleMs = await idleTimeoutMinutesFor(c.tenantId) * 60_000;

@@ -7,7 +7,7 @@ import { getSession } from '@/lib/session';
 import { scopedAdmin } from '@/lib/scope';
 import { batchHeader, createAdditionalRun, createBatch, generatePayslips, preProcessAdvisoryForSelection, updateBatchScope, type PreProcessAdvisory } from '@/core/payroll';
 import { getActivePayrollCycle } from '@/core/payroll-cycle';
-import { allowedCompanies, listEmployees, listEmployeesForPayrollRun, type PayrollRunEmployeeRow } from '@/core/read';
+import { allowedCompanies, payrollProcessEmployeeCount, payrollProcessEmployeeSelection, listEmployeesForPayrollRun, type PayrollRunEmployeeRow } from '@/core/read';
 import {
   companiesMissingCycle,
   encodeRunGroupResult,
@@ -159,12 +159,7 @@ export async function createRunAction(formData: FormData) {
 
   // Same guard as the legacy create form: intersect submitted ids with the chosen company's employees so
   // a stale/cross-company id can never reach createBatch/createAdditionalRun and silently under-set the run.
-  let employmentIds = submittedEmploymentIds;
-  if (submittedEmploymentIds.length) {
-    const companyEmps = await listEmployees(s, [companyId]);
-    const valid = new Set(companyEmps.map((e) => e.employmentId));
-    employmentIds = submittedEmploymentIds.filter((id) => valid.has(id));
-  }
+  const employmentIds = await payrollProcessEmployeeSelection(s, companyId, submittedEmploymentIds);
   // Scope rule (plan): ANY filter use or manual deselect ⇒ submit the resolved explicit snapshot. NO
   // filters and nobody deselected ⇒ submit no scope at all (today's whole-company dynamic default). The
   // client only ever posts employmentIds when the user actually narrowed the set (see step-selection.tsx).
@@ -264,7 +259,7 @@ export async function resumeRunAction(formData: FormData) {
     (await allowedCompanies(s)).find((c) => c.id === batch.companyId)?.name ?? batch.companyId;
   const employeesSelected = persistedScope?.employmentIds?.length
     ? persistedScope.employmentIds.length
-    : (await listEmployees(s, [batch.companyId])).length;
+    : await payrollProcessEmployeeCount(s, batch.companyId);
 
   const startedAt = new Date().toISOString();
   let outcome: CompanyOutcome;
