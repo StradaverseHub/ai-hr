@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { attendancePunch } from '../db/schema';
 import { actorOf, appendEvent, appendEvents, type AppendEventArgs } from '../db/events';
@@ -79,10 +79,15 @@ export async function applyClockChangesTx(tx: Tx, ctx: SessionContext, p: {
   const event = (eventType: string, id: string, before: unknown, after: unknown) =>
     appendEvent(tx, auditEntry(eventType, id, before, after));
   // Void superseded entries before restoring/inserting, so the live unique index sees the final set.
-  for (const row of rows.filter(r => !r.voidedAt && !unchanged.has(r.id))) {
-    const metadata = { voidedAt: now, voidedBy: ctx.userId ?? 'system', voidReason: p.reason };
-    await tx.update(attendancePunch).set(metadata).where(eq(attendancePunch.id, row.id));
-    await event('attendance.punch.voided', row.id, { punchAt: row.punchAt, direction: row.direction }, metadata);
+  const superseded = rows.filter(row => !row.voidedAt && !unchanged.has(row.id));
+  const metadata = { voidedAt: now, voidedBy: ctx.userId ?? 'system', voidReason: p.reason };
+  for (let offset = 0; offset < superseded.length; offset += 500) {
+    const batch = superseded.slice(offset, offset + 500);
+    await tx.update(attendancePunch).set(metadata)
+      .where(inArray(attendancePunch.id, batch.map(row => row.id)));
+    await appendEvents(tx, batch.map(row => auditEntry(
+      'attendance.punch.voided', row.id, { punchAt: row.punchAt, direction: row.direction }, metadata,
+    )));
   }
   const newPunch = (e: ClockEntry) => ({
     tenantId: ctx.tenantId, attendanceId: p.attendanceId, employmentId: p.employmentId,
