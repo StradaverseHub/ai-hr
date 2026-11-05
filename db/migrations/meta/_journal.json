@@ -4768,6 +4768,13 @@
       "when": 1793330001530,
       "tag": "2130_approved_company_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 1410,
+      "version": "7",
+      "when": 1793330001610,
+      "tag": "2210_personnel_projection_reuse",
+      "breakpoints": true
     }
   ]
 }

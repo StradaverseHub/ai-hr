@@ -1,4 +1,4 @@
-/** Compare the pending append-only repair to both independent 2127 bodies as the real app login. */
+/** Compare the append-only repair to both independent 2127 bodies as the real app login. */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
@@ -12,7 +12,7 @@ beforeAll(migrateTestDb);
 afterAll(closeAll);
 
 const original = readFileSync(new URL('../db/migrations/2127_personnel_filter_search.sql', import.meta.url), 'utf8');
-const draft = readFileSync(new URL('./fixtures/personnel-projection-candidate.sql', import.meta.url), 'utf8');
+const draft = readFileSync(new URL('../db/migrations/2210_personnel_projection_reuse.sql', import.meta.url), 'utf8');
 const oracleNames = {
   'app.personnel_filter_rows': 'app.fixture_personnel_projection_oracle',
   'app.employment_organisation_quality': 'app.fixture_personnel_quality_oracle',

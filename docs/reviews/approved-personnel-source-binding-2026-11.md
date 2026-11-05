@@ -88,3 +88,17 @@ The first complete twenty-item run41861304920 on a74b95b0b finished with failure
 The assessed provider closure stays1,428 files, digest `995111286099864a7d6d155b3a900119743563acb5a2c03704091272793734e7`. All28 approved literal records receive digest-only technical renewal under the standing same-purpose owner authority above; original human metadata and the two unrelated pending contracts remain unchanged. This does not assert a new human hash inspection, successful behavior or installed release. Generate the agent manifest last.
 
 Repairs to the unapplied native organisation migration, canonical read policy and shared permissions invalidate broader evidence under the existing immutable impact classifier: `db/` and `lib/permissions.ts` are high-risk roots, and the plan classifies them as full. A subsequent complete witness is required because those native authorization/trigger inputs affect every database setup and shared read scope. This is concrete source/coverage invalidation, not a retry of unchanged failed jobs; original successful evidence remains preserved on its original candidate.
+
+### Staging Personnel availability repair
+
+The admission fix preserves existing credential and organisation claim semantics while accepting
+legacy PostgreSQL identifier syntax. The Personnel change bounds reads and reuses authorized
+results. Its SQL compares the optimized projection and quality flags against the prior versions
+under the app role. No provider purpose, outgoing data category, tool permission or dataset changes.
+
+The provider closure has 1,429 files at
+`bc67146b4838f43977107d6ea5b34d39284d16f105caa7e2cd85d7bfac67d053`.
+The existing 28 approved records receive a digest-only renewal under the same-purpose authority.
+The agent manifest was generated last and has 465 files at
+`a868ad15cf2dbb567bbcbf7bc6505eccb75b3000dde848e4225130f30f6726c0`.
+Hosted release qualification and live performance verification are separate checks.
