@@ -215,7 +215,7 @@ export function CompanyRows({
               <Link href={`${basePath}/${r.id}`} className="text-primary underline underline-offset-2">
                 {labels.edit}
               </Link>
-              {labels.registration && r.statutoryStatus==='missing' && <Link href={`${basePath}/${r.id}?tab=statutory`} className="text-primary underline underline-offset-2">{labels.registration.completeAction}</Link>}
+              {labels.registration && r.statutoryStatus==='missing' && <Link href={`${basePath}/${r.id}?tab=statutory`} className="inline-flex min-h-11 items-center text-primary underline underline-offset-2">{labels.registration.completeAction}</Link>}
               <span aria-hidden className="text-border">|</span>
               <form action={archiveAction} className="inline">
                 <input type="hidden" name="id" value={r.id} />

@@ -134,8 +134,8 @@ export default async function OrganizationPage({
   const issuesOnly=sp.issues==='1';
   const displayedTree=issuesOnly?visibleTree.filter(node=>treeReadiness.visible.has(node.id)):visibleTree;
   const rows = selectCompanyRows(companies, parentBy, { q, status, sort })
-    .map(row=>({...row,statutoryStatus:(statBy.get(row.id)?.status??'missing') as CompanyRegistrationStatus,activeEmployees:statBy.get(row.id)?.activeEmployees??0}))
-    .filter(row=>!['complete','missing','not_required'].includes(sp.statutory??'')||row.statutoryStatus===sp.statutory);
+    .map(row=>({...row,statutoryStatus:(statBy.get(row.id)?.status??'missing') as CompanyRegistrationStatus,activeEmployees:statBy.get(row.id)?.activeEmployees??0,registrationCounted:statBy.get(row.id)?.counted??false}))
+    .filter(row=>!['complete','missing','not_required'].includes(sp.statutory??'')||(row.statutoryStatus===sp.statutory&&(sp.statutory!=='missing'||row.registrationCounted)));
   rows.sort((a,b)=>Number(b.activeEmployees>0)-Number(a.activeEmployees>0));
   const pq = parsePageQuery(sp);
   const { rows: pageRows } = paginateRows(rows, pq);
