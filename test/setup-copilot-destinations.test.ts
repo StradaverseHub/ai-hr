@@ -47,7 +47,6 @@ describe('linkable pages',()=>{
  it('links the caller’s own job description while leaving seat-based workflows in native navigation',()=>{
   const admin=linkablePathsFor(as(['hr_admin']),['rewards']);
   const employee=linkablePathsFor(as(['employee']),['rewards']);
-  expect(employee).toContain('/me/job-description');
   for(const path of NATIVE_SCOPE_ONLY_PAGES){
    expect(staticPages().some(([route])=>route===path),path).toBe(true);
    expect(admin,path).not.toContain(path);

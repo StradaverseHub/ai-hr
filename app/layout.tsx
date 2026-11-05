@@ -22,7 +22,6 @@ import { Suspense } from 'react';
 import { Providers } from './providers';
 import { OperatorShell } from '@/components/operator-shell';
 import { Sidebar } from '@/components/sidebar';
-import {canViewJobArchitecture} from '@/packs/job-architecture/service';
 import {letterNavigation} from '@/core/letter-navigation';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { LanguageSwitcher } from '@/components/language-switcher';
@@ -182,10 +181,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // identity at all. It always resolves to something renderable — an employed viewer, a named principal
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const [viewer,accessConfigurationAvailable,workforceAvailable,architectureAvailable]=await Promise.all([
+  const [viewer,accessConfigurationAvailable,workforceAvailable]=await Promise.all([
     viewerIdentity(session),canConfigureAccess(session),
     isAdmin(session)?Promise.resolve(false):workforceViewScope(session).then(scope=>scope.canOpen),
-    canViewJobArchitecture(session),
   ]);
   const letterDestinations=isModuleEnabledOrFalse(session,'employees')?await letterNavigation(session,scopeIds):[];
   const rewardDestinations = isModuleEnabledOrFalse(session, 'rewards')
@@ -292,7 +290,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <AiAskAvailability available={assistantAccess}>
           <div data-app-shell className="flex h-full gap-3 lg:gap-4 monolith:gap-0! max-sm:flex-col">
             <Sidebar
-              canViewJobArchitecture={architectureAvailable}
               letterDestinations={letterDestinations}
               rewardDestinations={rewardDestinations}
               canConfigureLoginPresentation={isGroupAdmin(session)}

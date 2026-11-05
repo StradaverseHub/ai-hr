@@ -4873,6 +4873,13 @@
       "when": 1793330001651,
       "tag": "2251_company_display_group",
       "breakpoints": true
+    },
+    {
+      "idx": 1500,
+      "version": "7",
+      "when": 1793330001700,
+      "tag": "2300_retire_job_architecture_workflows",
+      "breakpoints": true
     }
   ]
 }
