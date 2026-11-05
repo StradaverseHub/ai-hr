@@ -104,7 +104,6 @@ import {
   movementAttachments,
   movementPendingEditInput,
   resignationInformation,
-  movementCurrentState,
   MOVEMENT_FLAT_FIELDS,
 } from '@/core/movement';
 // 95d17761 — the DEFAULT Employment History view drops the correction artefacts. A pure view filter, so
@@ -113,12 +112,9 @@ import { partitionMovementRows } from '@/lib/movement-visibility';
 // e6a144d4 — the Employment History event-type caption, shared with the Download Excel route so the file
 // and the screen cannot print different names for the same event.
 import { movementKindLabel as movementKindLabelOf } from '@/lib/movement-kind-label';
-// ae9350f2 — the built-in exit-reason catalogue behind the Termination movement.
-import { terminationReasonCatalogue } from '@/core/termination-reason-catalog';
 // 476f23ed — the tenant's configurable movement event-type catalogue.
 import { listMovementEventTypes } from '@/core/movement-type';
-// 1d58019a Step 2 — each type's offered reasons and Field Controls, for the New Event / Edit form.
-import { movementTypeControls, type MovementTypeControls } from '@/core/movement-type-controls';
+import { readPersonnelMovementFormData } from './movement-form-data';
 import { MovementNewEvent } from './movement-new-event';
 // c063eea9 — "Correct hire details" on the Hired row: the read behind the form, and its client island.
 import { HireCorrectionError, hireCorrectionView, type HireCorrectionField } from '@/core/hire-correction';
@@ -598,16 +594,6 @@ export default async function EmployeePage({
   // to the active ones below. A tenant that has configured nothing gets the built-in list unchanged.
   const movementTypes = admin ? await listMovementEventTypes(s) : [];
   const movementTypeByCode = new Map(movementTypes.map((r) => [r.code, r]));
-  // 1d58019a Step 2 (ADR-0166) — the controls the form applies on screen; the writer enforces them again.
-  const movementControls = admin ? await movementTypeControls(s, movementTypes) : new Map<string, MovementTypeControls>();
-  const typeControls = (code: string) => {
-    const c = movementControls.get(code);
-    return { reasonCodes: c?.reasonCodes ?? null, ...(c?.configured ? { rules: c.rules } : {}) };
-  };
-  // 1d58019a — the tenant's exit reasons (built-ins with its renames, plus its own), switched-off ones
-  // included and flagged: the New Event form offers the active ones and keeps a switched-off reason that a
-  // termination being corrected already carries.
-  const terminationReasonRows = admin ? await terminationReasonCatalogue(s) : [];
   const movementDetailData = admin && spMovement ? await movementDetail(s, employmentId, spMovement) : null;
   // 1d58019a Step 2 — the movement's supporting documents; the service applies history visibility and the
   // table's pay rule, so a document this admin may not see is simply not listed.
@@ -655,11 +641,14 @@ export default async function EmployeePage({
         return byField;
       })()
     : null;
-  // 08913328 — the Current column of the New Event comparison screen. Only read when that screen is open.
-  // 66a63bd6 — the Edit screen is the same form, so it reads the same Current column: a correction is
-  // only offered on the LATEST movement, where "current" and "what this movement set" are the same values.
-  const movementCurrent =
-    admin && (spNewEvent || spEditMovement) ? await movementCurrentState(s, employmentId) : null;
+  // New and Edit use the same current values, configured controls and full reason catalogue.
+  // Read them together only for those forms; the History tab still uses the type labels above.
+  const movementFormData = await readPersonnelMovementFormData(s, employmentId, movementTypes, !!(admin && (spNewEvent || spEditMovement)));
+  const movementCurrent = movementFormData?.current ?? null;
+  const typeControls = (code: string) => {
+    const c = movementFormData?.controls.get(code);
+    return { reasonCodes: c?.reasonCodes ?? null, ...(c?.configured ? { rules: c.rules } : {}) };
+  };
   /**
    * b7b22514 — Entity Transfer's destination list, and the org option lists of every destination.
    *
@@ -3517,14 +3506,14 @@ export default async function EmployeePage({
     other: t('terminationOther'),
   };
 
-  const movementFormProps = movementCurrent
+  const movementFormProps = movementFormData
     ? {
         employmentId: emp.employmentId,
         today,
         isBlacklisted: !!emp.blacklistedAt,
         // 08913328 — the read-only left column AND the pre-fill of the editable right column. One read,
         // so the two sides cannot disagree about what "current" means.
-        current: movementCurrent,
+        current: movementFormData.current,
         departments: organisationChoiceLabels(departments).map((d) => ({ id: d.id, name: d.displayLabel })),
         positions: organisationChoiceLabels(positions).map((pos) => ({ id: pos.id, name: pos.displayLabel })),
         businessUnits: organisationChoiceLabels(businessUnits).map((bu) => ({ id: bu.id, name: bu.displayLabel })),
@@ -3544,7 +3533,7 @@ export default async function EmployeePage({
         // `typeLabel` reuses the EXISTING termination-type labels, so the classification the reason derives
         // reads the same everywhere it already appears (turnover analytics included). 1d58019a — now the
         // TENANT's catalogue: its own name wins, a built-in it never renamed keeps the shipped label.
-        terminationReasons: terminationReasonRows.map((r) => ({
+        terminationReasons: movementFormData.reasons.map((r) => ({
           code: r.code,
           category: r.category,
           categoryLabel: t(`movement.terminationReasonCategory.${r.category}` as 'movement.terminationReasonCategory.voluntary'),
