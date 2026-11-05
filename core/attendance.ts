@@ -4288,7 +4288,9 @@ export async function decideAttendanceCorrection(
           ? lockedDay.figures
           : await attendanceFiguresTx(tx, cor.employmentId, cor.attendanceDate);
       }
-      const beforePunches = deferred ? [] : (await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate)).filter(row => !row.voidedAt).map(row=>({id:row.id,punchAt:row.punchAt,direction:row.direction}));
+      const originalPunchRows = deferred ? [] : await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate);
+      const beforePunches = originalPunchRows.filter(row => !row.voidedAt)
+        .map(row=>({id:row.id,punchAt:row.punchAt,direction:row.direction}));
 
       let amendedId: string | null = null;
       let eventPayload: Record<string, unknown>;
@@ -4410,9 +4412,9 @@ export async function decideAttendanceCorrection(
           })
           .returning({ id: attendance.id });
         amendedId = amended.id;
-        // Legacy pair corrections now reconcile the effective punches too. Original evidence is retained.
-        const originals = await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate);
-        await applyClockChangesTx(tx,ctx,{attendanceId:amended.id,employmentId:cor.employmentId,date:cor.attendanceDate,reason:cor.reason ?? 'Attendance correction',correctionId:cor.id,changes:{version:1,baseline:clockFingerprint(originals),entries:[{punchAt:cor.proposedCheckIn!,direction:'in'},...(cor.proposedCheckOut ? [{punchAt:cor.proposedCheckOut,direction:'out' as const}] : [])]}});
+        // The day upsert changes figures, not punch rows. Reuse the locked audit preimage;
+        // applyClockChangesTx still re-reads and verifies the fingerprint before editing.
+        await applyClockChangesTx(tx,ctx,{attendanceId:amended.id,employmentId:cor.employmentId,date:cor.attendanceDate,reason:cor.reason ?? 'Attendance correction',correctionId:cor.id,changes:{version:1,baseline:clockFingerprint(originalPunchRows),entries:[{punchAt:cor.proposedCheckIn!,direction:'in'},...(cor.proposedCheckOut ? [{punchAt:cor.proposedCheckOut,direction:'out' as const}] : [])]}});
         // 1e9145d4 — an approved clock correction RE-DERIVES the day from the proposed punches, which would
         // quietly wipe the hours of an OT plan that had already landed on it. Re-assert them (and, if the
         // correction is what finally gives the day its punches, LAND a plan that was waiting for exactly
