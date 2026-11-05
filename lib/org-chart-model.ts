@@ -35,16 +35,37 @@ export function projectOrgChart(input:{employees:OrgChartEmployee[];edges:OrgCha
 }
 export function orgChartVisibleIds(employees:{employmentId:string}[],edges:OrgChartEdge[],collapsed:readonly string[],root?:string){
  const allowed=new Set(employees.map(e=>e.employmentId));const children=new Map<string,string[]>();const child=new Set<string>();
- for(const e of edges)if(e.type==='administrative'&&allowed.has(e.manager)&&allowed.has(e.subordinate)){children.set(e.manager,[...(children.get(e.manager)??[]),e.subordinate]);child.add(e.subordinate);}
- const hidden=new Set(collapsed),visible=new Set<string>();const visit=(id:string)=>{if(!allowed.has(id)||visible.has(id))return;visible.add(id);if(!hidden.has(id))for(const sub of children.get(id)??[])visit(sub);};
- if(root)visit(root);else for(const e of employees)if(!child.has(e.employmentId))visit(e.employmentId);
+ for(const edge of edges){
+  if(edge.type!=='administrative'||!allowed.has(edge.manager)||!allowed.has(edge.subordinate))continue;
+  const reports=children.get(edge.manager);
+  if(reports)reports.push(edge.subordinate);
+  else children.set(edge.manager,[edge.subordinate]);
+  child.add(edge.subordinate);
+ }
+ const hidden=new Set(collapsed),visible=new Set<string>();
+ const roots=root?[root]:employees.map(employee=>employee.employmentId).filter(id=>!child.has(id));
+ const stack=roots.reverse();
+ while(stack.length){
+  const id=stack.pop()!;
+  if(!allowed.has(id)||visible.has(id))continue;
+  visible.add(id);
+  if(hidden.has(id))continue;
+  const reports=children.get(id)??[];
+  for(let index=reports.length-1;index>=0;index--)stack.push(reports[index]);
+ }
  return visible;
 }
 
 /** Deterministic forest layout reused by PDF tiling; invalid cycles have already been removed. */
 export function layoutOrgChart(employees:{employmentId:string}[],edges:OrgChartEdge[],horizontal=false,cardHeight=100){
  const ids=new Set(employees.map(e=>e.employmentId));const children=new Map<string,string[]>(),parent=new Set<string>();
- for(const edge of edges)if(edge.type==='administrative'&&ids.has(edge.manager)&&ids.has(edge.subordinate)){children.set(edge.manager,[...(children.get(edge.manager)??[]),edge.subordinate]);parent.add(edge.subordinate);}
+ for(const edge of edges){
+  if(edge.type!=='administrative'||!ids.has(edge.manager)||!ids.has(edge.subordinate))continue;
+  const reports=children.get(edge.manager);
+  if(reports)reports.push(edge.subordinate);
+  else children.set(edge.manager,[edge.subordinate]);
+  parent.add(edge.subordinate);
+ }
  const positions=new Map<string,{x:number;y:number;width:number;height:number}>();let leaf=0;const seen=new Set<string>();
  for(const root of employees.filter(e=>!parent.has(e.employmentId))){const stack=[{id:root.employmentId,depth:0,exit:false}];while(stack.length){const node=stack.pop()!;
   if(!node.exit){if(seen.has(node.id))continue;seen.add(node.id);stack.push({...node,exit:true});for(const id of [...(children.get(node.id)??[])].reverse())stack.push({id,depth:node.depth+1,exit:false});}
