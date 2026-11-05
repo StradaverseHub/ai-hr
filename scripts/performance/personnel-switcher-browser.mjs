@@ -42,17 +42,37 @@ export async function exercisePersonnelSwitcher({page,user,fixture,report,save,p
   const began=performance.now(),term=code(person),form=listSearch(page);
   const oldToken=new URL(page.url()).searchParams.get('search');
   await form.locator('input[name="term"]').fill(term,{timeout:remaining()});
-  const [response]=await Promise.all([
-   page.waitForResponse(response=>new URL(response.url()).pathname==='/admin/personnel/search'&&response.request().method()==='POST',{timeout:remaining()}),
-   form.locator('button[type="submit"]').click({timeout:remaining()}),
-  ]);
-  assert.equal(response.status(),303,'Personnel private search did not redirect');
-  assert.equal(response.headers()['cache-control'],'private, no-store');
-  await page.waitForURL(url=>{
-   const token=url.searchParams.get('search');
-   return url.pathname==='/admin/personnel'&&token!==null&&token!==oldToken&&/^[A-Za-z0-9_-]{43}$/.test(token);
-  },{timeout:remaining()});
-  assert(!page.url().includes(term),'Private search exposed the term in its result URL');
+  let submitted=false,postStatus=null,cacheControl=null;
+  const isSearchPost=request=>request.method()==='POST'&&new URL(request.url()).pathname==='/admin/personnel/search';
+  const onRequest=request=>{if(isSearchPost(request))submitted=true;};
+  const onResponse=response=>{
+   if(!isSearchPost(response.request()))return;
+   postStatus=response.status();
+   cacheControl=response.headers()['cache-control']??null;
+  };
+  page.on('request',onRequest);
+  page.on('response',onResponse);
+  try{
+   await Promise.all([
+    page.waitForURL(url=>{
+     const token=url.searchParams.get('search');
+     return url.pathname==='/admin/personnel'&&token!==null&&token!==oldToken&&/^[A-Za-z0-9_-]{43}$/.test(token);
+    },{timeout:remaining()}),
+    form.evaluate(form=>form.requestSubmit()),
+   ]);
+   assert(submitted,'Personnel search did not submit the native form');
+   assert.equal(postStatus,303,'Personnel private search did not redirect');
+   assert.equal(cacheControl,'private, no-store');
+   assert(!page.url().includes(term),'Private search exposed the term in its result URL');
+  }catch(error){
+   (report.personnelSearchFailures??=[]).push({phase,role:user.role,step,submitted,postStatus,
+    path:new URL(page.url()).pathname,hasOpaqueResult:new URL(page.url()).searchParams.has('search')});
+   save();
+   throw error;
+  }finally{
+   page.off('request',onRequest);
+   page.off('response',onResponse);
+  }
   await page.getByText(messages.personnelOrganisationFilters.privateActive,{exact:true}).waitFor({timeout:remaining()});
   const table=page.locator('main tbody');
   if(visible)await table.getByText(person.name,{exact:true}).waitFor({timeout:remaining()});
