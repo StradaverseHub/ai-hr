@@ -23,6 +23,8 @@ it('proves current-assignment uniqueness implication before testing join removal
   report.installedConstraint=installed;
   expect(installed.contype).toBe('x');expect(installed.condeferrable).toBe(false);expect(installed.condeferred).toBe(false);expect(installed.convalidated).toBe(true);expect(installed.indisexclusion).toBe(true);expect(installed.indisvalid).toBe(true);expect(installed.indisready).toBe(true);
   expect(installed.predicate).toBe('(superseded_at IS NULL)');expect(installed.expressions).toBe("daterange(valid_from, valid_to, '[)'::text)");expect(installed.required_not_null).toEqual([true,true]);expect(installed.operators).toEqual(['=','&&']);
+  const operators=await owner.client`select o.oid::regoperator::text as signature,o.oprnamespace::regnamespace::text as namespace,p.prosrc,p.provolatile from pg_constraint c cross join unnest(c.conexclop)with ordinality x(oid,n)join pg_operator o on o.oid=x.oid join pg_proc p on p.oid=o.oprcode where c.conrelid='public.assignment'::regclass and c.conname='assignment_no_overlap'order by n`;
+  report.nativeOperators=Array.from(operators);expect(operators.map(op=>op.namespace)).toEqual(['pg_catalog','pg_catalog']);expect(operators.map(op=>op.prosrc)).toEqual(['uuid_eq','range_overlaps']);expect(operators.every(op=>op.provolatile==='i')).toBe(true);
   // Every current interval has an unbounded upper endpoint and contains the native +infinity
   // date value. Thus any two current intervals overlap, including past/future/infinite lower bounds.
   const bounds=await owner.client`select x::text as lower_bound,isempty(daterange(x,null,'[)'))as empty,daterange(x,null,'[)')@>'infinity'::date as includes_infinity from unnest(array['-infinity'::date,'0001-01-01'::date,current_date,'9999-12-31'::date,'infinity'::date])x`;
@@ -64,7 +66,7 @@ it('proves current-assignment uniqueness implication before testing join removal
      if(state.operation==='reverse-reopen'){await tx`update assignment set superseded_at=now()where id=${inserted[1]}::uuid`;await tx`update assignment set valid_to=null where id=${inserted[0]}::uuid`;}
      throw new WitnessRollback();
     });}catch(error){if(!(error instanceof WitnessRollback)){const e=error as{code?:string;constraint_name?:string;name?:string;message?:string};outcome={allowed:false,code:e.code,constraint:e.constraint_name,diagnostic:{name:e.name??'Unknown',message:e.message??''}};}}
-    outcomes.push({name:state.name,...outcome});report[witnessPhase+'StateProgress']=outcomes;save();expect(outcome.allowed,state.name+' '+JSON.stringify(outcome)).toBe(state.allowed);
+    outcomes.push({name:state.name,...outcome});report[witnessPhase+'StateProgress']=outcomes;save();expect(outcome.allowed,state.name+' '+JSON.stringify(outcome)).toBe(state.allowed);if(!state.allowed)expect(outcome.code,state.name+' must be a native integrity refusal').toMatch(/^23/);
    }return outcomes;
   };
   const originalStates=await witness('original');report.originalStates=originalStates;save();
