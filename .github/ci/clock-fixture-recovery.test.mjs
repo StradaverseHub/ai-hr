@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,renameSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,renameSync,chmodSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -111,6 +111,7 @@ test('source refuses extra paths, wrong old hash, preexisting clock, dirty check
   assert.throws(()=>validateClockFixtureSourceDelta({cwd:repo.root,original:'HEAD~1',candidate}));
   repo.reset();repo.write(PATH,readFileSync(join(repo.root,PATH),'utf8')+'\n// changed old assertion boundary\n');const wrongOriginal=repo.commit();repo.write(PATH,readFileSync(join(repo.root,PATH),'utf8').replace('tools:provider','tools:provider'+INSERTION));candidate=repo.commit();assert.throws(()=>validateClockFixtureSourceDelta({cwd:repo.root,original:wrongOriginal,candidate}));
   const already=clockCandidate(repo);repo.write(PATH,readFileSync(join(repo.root,PATH),'utf8')+'\n// already contains clock\n');candidate=repo.commit();assert.throws(()=>validateClockFixtureSourceDelta({cwd:repo.root,original:already,candidate}));
+  candidate=clockCandidate(repo);chmodSync(join(repo.root,PATH),0o755);candidate=repo.commit();assert.throws(()=>validateClockFixtureSourceDelta({cwd:repo.root,original:CLOCK_FIXTURE_SOURCE_CONTROLLER,candidate}),/Regular immutable source blob/);
   repo.reset();renameSync(join(repo.root,PATH),join(repo.root,'test/harness-ratchet/renamed.test.ts'));candidate=repo.commit();assert.throws(()=>validateClockFixtureSourceDelta({cwd:repo.root,original:CLOCK_FIXTURE_SOURCE_CONTROLLER,candidate}));
  }finally{repo.close();}
 });
@@ -119,6 +120,7 @@ test('controller refuses outside paths, missing implementation, replacement/rena
   let verifier=controllerCandidate(repo,r=>r.write('lib/clock-policy-outside.ts','export const changed=true;'));assert.throws(()=>validateClockFixtureControllerDelta({cwd:repo.root,sourceController:CLOCK_FIXTURE_SOURCE_CONTROLLER,verificationController:verifier,reviewedController:verifier}));
   verifier=controllerCandidate(repo,r=>rmSync(join(r.root,'docs/CLOCK-FIXTURE-RECOVERY.md')));assert.throws(()=>validateClockFixtureControllerDelta({cwd:repo.root,sourceController:CLOCK_FIXTURE_SOURCE_CONTROLLER,verificationController:verifier,reviewedController:verifier}));
   verifier=controllerCandidate(repo,r=>renameSync(join(r.root,'.github/ci/operator-release.mjs'),join(r.root,'.github/ci/operator-release-renamed.mjs')));assert.throws(()=>validateClockFixtureControllerDelta({cwd:repo.root,sourceController:CLOCK_FIXTURE_SOURCE_CONTROLLER,verificationController:verifier,reviewedController:verifier}));
+  verifier=controllerCandidate(repo,r=>chmodSync(join(r.root,'.github/ci/operator-release.mjs'),0o755));assert.throws(()=>validateClockFixtureControllerDelta({cwd:repo.root,sourceController:CLOCK_FIXTURE_SOURCE_CONTROLLER,verificationController:verifier,reviewedController:verifier}),/Regular immutable source blob/);
   verifier=controllerCandidate(repo);assert.throws(()=>validateClockFixtureControllerDelta({cwd:repo.root,sourceController:verifier,verificationController:verifier,reviewedController:verifier}));
   const reviewed=verifier;repo.write('.github/ci/operator-release.mjs',readFileSync(join(repo.root,'.github/ci/operator-release.mjs'),'utf8')+'\n// further unreviewed edit\n');verifier=repo.commit();assert.throws(()=>validateClockFixtureControllerDelta({cwd:repo.root,sourceController:CLOCK_FIXTURE_SOURCE_CONTROLLER,verificationController:verifier,reviewedController:reviewed}));
   repo.write('dirty-untracked.txt','dirty');assert.throws(()=>validateClockFixtureControllerDelta({cwd:repo.root,sourceController:CLOCK_FIXTURE_SOURCE_CONTROLLER,verificationController:verifier,reviewedController:verifier}));
