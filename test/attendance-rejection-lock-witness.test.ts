@@ -186,7 +186,10 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
       decisions.push(decideAttendanceCorrection(admin,{correctionId:request.correctionId,decision:'rejected',
         rejectReason:'Fictional direct concurrent rejection'}));
     }
-    await within(Promise.race([Promise.all(decisions), (async()=>{
+    const decisionsFinishedBeforeLockWitness=Promise.all(decisions).then(()=>{
+      throw new Error('Rejections completed before their held shared Access locks could be observed');
+    });
+    await within(Promise.race([decisionsFinishedBeforeLockWitness, (async()=>{
       for(let attempt=0;attempt<100;attempt++){
         const [result]=await owner.client`with key as (select hashtextextended(${'access-configuration:'+base.tenantId},0) as value)
           select count(distinct l.pid)::integer as readers from pg_locks l cross join key k
@@ -224,7 +227,10 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
     await within(Promise.race([holdingAccess.promise,accessHolder]));
     overtimeDecision=decideAttendanceCorrection(admin,{correctionId:overtime.correctionId,decision:'rejected',
       rejectReason:'Fictional overtime rejection retains exclusive configuration'});
-    await within(Promise.race([overtimeDecision,(async()=>{
+    const overtimeFinishedBeforeLockWitness=overtimeDecision.then(()=>{
+      throw new Error('Overtime-bearing rejection completed while another transaction held shared Access');
+    });
+    await within(Promise.race([overtimeFinishedBeforeLockWitness,(async()=>{
       for(let attempt=0;attempt<100;attempt++){
         const [result]=await owner.client`select exists(select 1 from pg_locks l where l.locktype='advisory'
           and l.mode='ExclusiveLock' and not l.granted and ${accessHolderPid}::integer=any(pg_blocking_pids(l.pid))) as waiting`;
