@@ -35367,6 +35367,10 @@
     "externalChannel": "[saluran luar yang ditetapkan oleh syarikat, contohnya talian etika]"
   },
   "rewardSetup": {
+    "libraryHistory": "Sejarah perubahan",
+    "libraryChangedValues": "Lihat nilai yang berubah",
+    "libraryBefore": "Sebelum",
+    "libraryAfter": "Selepas",
     "salaryStructures": "Struktur Gaji",
     "bonusMatrices": "Matriks Bonus",
     "patInputs": "Input PAT",
@@ -35459,6 +35463,8 @@
     "useApprovedPlan": "Cipta semakan tahunan daripada pelan Ganjaran yang diluluskan",
     "newVersion": "Cipta versi seterusnya",
     "companyPatOwner": "Input PAT diurus pada skrin Input PAT mengikut syarikat dan tahun.",
+    "patBasisStale": "Kelayakan pekerja telah berubah. Kira semula kumpulan dana menggunakan versi PAT syarikat yang telah digunakan dalam semakan ini.",
+    "refreshPatBasis": "Kira semula kumpulan dana mengikut kelayakan semasa",
     "adoptPat": "Gunakan PAT syarikat yang disahkan",
     "patChanged": "PAT syarikat telah berubah. Group Rewards mesti menggunakan versi disahkan dalam Draf sebelum semakan boleh diteruskan.",
     "patHistory": "Versi terdahulu yang disahkan kekal dalam sejarah audit.",

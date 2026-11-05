@@ -35367,6 +35367,10 @@
     "externalChannel": "[the company’s designated external channel, for example an ethics line]"
   },
   "rewardSetup": {
+    "libraryHistory": "Change history",
+    "libraryChangedValues": "See changed values",
+    "libraryBefore": "Before",
+    "libraryAfter": "After",
     "salaryStructures": "Salary Structures",
     "bonusMatrices": "Bonus Matrices",
     "patInputs": "PAT Inputs",
@@ -35459,6 +35463,8 @@
     "useApprovedPlan": "Create annual reviews from an approved Rewards plan",
     "newVersion": "Create next version",
     "companyPatOwner": "PAT inputs are owned by the company-year PAT Inputs screen.",
+    "patBasisStale": "Employee eligibility changed. Refresh the pools using the company PAT version already applied to this review.",
+    "refreshPatBasis": "Refresh pools from current eligibility",
     "adoptPat": "Adopt confirmed company PAT",
     "patChanged": "Company PAT has changed. Group Rewards must adopt the confirmed version in Draft before the review can progress.",
     "patHistory": "Prior confirmed versions remain in the audit history.",

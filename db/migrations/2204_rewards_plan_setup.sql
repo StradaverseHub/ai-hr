@@ -262,3 +262,40 @@ BEGIN
  RETURN NEW;
 END;
 $$;
+--> statement-breakpoint
+-- Private history preserves overwritten drafts as well as submit and confirm transitions.
+CREATE TABLE reward_library_revision_audit(
+ tenant_id uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+ version_id uuid NOT NULL REFERENCES reward_library_version(id) ON DELETE CASCADE,
+ lock_version integer NOT NULL,
+ actor_id uuid NOT NULL,
+ occurred_at timestamptz NOT NULL DEFAULT now(),
+ reason text NOT NULL,
+ before_state text,
+ after_state text NOT NULL,
+ before_values jsonb,
+ after_values jsonb NOT NULL,
+ PRIMARY KEY(tenant_id,version_id,lock_version)
+);
+ALTER TABLE reward_library_revision_audit ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reward_library_revision_audit FORCE ROW LEVEL SECURITY;
+GRANT SELECT ON reward_library_revision_audit TO ai_hr_app;
+GRANT INSERT ON reward_library_revision_audit TO ai_hr_reward_setup_reader;
+CREATE POLICY reward_library_revision_audit_read ON reward_library_revision_audit FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(NULL,'library_view'));
+CREATE POLICY reward_library_revision_audit_append ON reward_library_revision_audit FOR INSERT TO ai_hr_reward_setup_reader WITH CHECK(tenant_id=app.current_tenant_id() AND actor_id=app.current_user_id() AND app.reward_setup_allowed(NULL,'manage'));
+CREATE FUNCTION app.reward_library_capture_revision() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF TG_OP='INSERT' THEN
+  INSERT INTO reward_library_revision_audit(tenant_id,version_id,lock_version,actor_id,reason,after_state,after_values)
+  VALUES(NEW.tenant_id,NEW.id,NEW.lock_version,app.current_user_id(),NEW.reason,NEW.state,NEW.data);
+ ELSE
+  INSERT INTO reward_library_revision_audit(tenant_id,version_id,lock_version,actor_id,reason,before_state,after_state,before_values,after_values)
+  VALUES(NEW.tenant_id,NEW.id,NEW.lock_version,app.current_user_id(),NEW.reason,OLD.state,NEW.state,OLD.data,NEW.data);
+ END IF;
+ RETURN NEW;
+END;
+$$;
+ALTER FUNCTION app.reward_library_capture_revision() OWNER TO ai_hr_reward_setup_reader;
+REVOKE ALL ON FUNCTION app.reward_library_capture_revision() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER reward_library_capture_revision AFTER INSERT OR UPDATE ON reward_library_version FOR EACH ROW EXECUTE FUNCTION app.reward_library_capture_revision();

@@ -35367,6 +35367,10 @@
     "externalChannel": "[公司指定的外部渠道，例如道德热线]"
   },
   "rewardSetup": {
+    "libraryHistory": "变更历史",
+    "libraryChangedValues": "查看变更值",
+    "libraryBefore": "变更前",
+    "libraryAfter": "变更后",
     "salaryStructures": "薪资结构",
     "bonusMatrices": "奖金矩阵",
     "patInputs": "PAT 数据",
@@ -35459,6 +35463,8 @@
     "useApprovedPlan": "从已批准的奖励计划创建年度审核",
     "newVersion": "创建下一版本",
     "companyPatOwner": "PAT 数据由公司年度 PAT 数据页面统一管理。",
+    "patBasisStale": "员工资格已变更。请使用本次评审已应用的公司 PAT 版本重新计算奖金池。",
+    "refreshPatBasis": "按当前资格重新计算奖金池",
     "adoptPat": "采用已确认的公司 PAT",
     "patChanged": "公司 PAT 已变更。集团薪酬奖励团队必须在草稿中采用已确认的版本，审核才能继续。",
     "patHistory": "之前确认的版本保留在审计记录中。",
