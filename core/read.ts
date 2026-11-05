@@ -3450,9 +3450,15 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
     }
     // 2F-1 (R18): surface every active leave type the employee is ELIGIBLE for — even with no activity
     // yet — so the list is the full menu, not just types they've already accrued or requested.
+    const typePresentation = {
+      id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code,
+      role: leaveType.role, essPlacement: leaveType.essPlacement, visibleToEmployee: leaveType.visibleToEmployee,
+      balanceSourceTypeId: leaveType.balanceSourceTypeId, archivedAt: leaveType.archivedAt,
+      eligibility: leaveType.eligibility,
+    };
     const [types, [emp]] = await Promise.all([
       tx
-        .select({ id: leaveType.id, name: leaveType.name, eligibility: leaveType.eligibility, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, visibleToEmployee: leaveType.visibleToEmployee, essPlacement: leaveType.essPlacement })
+        .select({ ...typePresentation, name: leaveType.name, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig })
         .from(leaveType)
         .where(isNull(leaveType.archivedAt)),
       tx
@@ -3484,35 +3490,15 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
     // Employee Leave View Configuration (65dec703): resolve each active type's ESS-view config (missing ⇒
     // all-visible). Archived types with only old ledger entries keep the all-visible placeholder set above.
     const essViewByType = new Map(types.map((t) => [t.id, resolveEssView(t.essViewConfig as Record<string, boolean> | null)]));
-    // Leave Type Visual Configuration Enhancement (639fdf77): one select over every seen type id (active OR
-    // archived-with-old-ledger) for the DISPLAY-ONLY colour / icon / code. Attached below so the ESS Leave
-    // tab can render the icon + colour chip. This does NOT touch any sum / ledger / entitlement math above —
-    // it is a pure presentation join. null ⇒ default styling + code-keyed icon (via lib/leave-visual.ts).
-    const seenIds = out.map((r) => r.leaveTypeId);
-    // Leave grouping visibility (b653ac1b): select ess_placement + visible_to_employee alongside the visual
-    // columns so EVERY seen type (active OR archived-with-old-ledger) has what resolvePlacement needs, in one
-    // query. Archived types (absent from `types`) thus still resolve to their code-keyed default.
-    const visualByType = new Map<
-      string,
-      { color: string | null; icon: string | null; code: string | null; role: string | null; essPlacement: string | null; visibleToEmployee: boolean | null; balanceSourceTypeId: string | null; archivedAt: Date | null; eligibility: unknown }
-    >();
-    if (seenIds.length > 0) {
-      const visuals = await tx
-        // r209 — `balanceSourceTypeId` rides along on the select that already runs for every seen type. It
-        // is not a visual, and it is here for the same reason the placement columns are: one query over the
-        // ids already in hand, rather than a second one for a column that is null on almost every type.
-        // ec991c2a — `archivedAt` rides along for the same reason `balanceSourceTypeId` does: this select
-        // already runs over exactly the ids in hand, and the archived gate at the bottom needs the column.
-        // Read EXPLICITLY rather than inferred from "absent from `types`" — the two are equivalent today
-        // (`types` is the non-archived catalogue) but only one of them says so in the code.
-        // d272834b — `eligibility` rides along for the same reason `archivedAt` does: this select already
-        // runs over exactly the ids in hand, and the identity gate at the bottom needs the rule for EVERY
-        // seen type. It cannot read `types` for it: `types` is the non-archived catalogue, and a row that
-        // came from an old ledger entry on an ARCHIVED type is absent from it.
-        .select({ id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code, role: leaveType.role, essPlacement: leaveType.essPlacement, visibleToEmployee: leaveType.visibleToEmployee, balanceSourceTypeId: leaveType.balanceSourceTypeId, archivedAt: leaveType.archivedAt, eligibility: leaveType.eligibility })
-        .from(leaveType)
-        .where(inArray(leaveType.id, seenIds));
-      for (const v of visuals) visualByType.set(v.id, { color: v.color, icon: v.icon, code: v.code, role: v.role, essPlacement: v.essPlacement, visibleToEmployee: v.visibleToEmployee, balanceSourceTypeId: v.balanceSourceTypeId, archivedAt: v.archivedAt, eligibility: v.eligibility });
+    // The active catalogue already carries presentation and pooling metadata. Only retained
+    // ledger or pending rows outside that catalogue need a second lookup.
+    const visualByType = new Map(types.map(type => [type.id, type] as const));
+    const retainedIds = out.map(row => row.leaveTypeId).filter(id => !visualByType.has(id));
+    if (retainedIds.length > 0) {
+      const retained = await tx.select({
+        ...typePresentation, name: leaveType.name, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig,
+      }).from(leaveType).where(inArray(leaveType.id, retainedIds));
+      for (const type of retained) visualByType.set(type.id, type);
     }
     for (const r of out) {
       r.leaveType = localName.get(r.leaveTypeId) ?? r.leaveType;
