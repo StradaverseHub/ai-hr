@@ -4,7 +4,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {lockAccessConfigurationReadTx} from './access-configuration-lock';
 import {isAiPrincipalCurrentTx} from './ai-principal';
 import {person} from '../db/schema';
-import {isOwnProfileEditEmploymentTx,myOwnEmploymentSubjectsTx,type OwnEmploymentSubject} from './read';
+import {isCurrentOwnHomeEmploymentTx,isOwnProfileEditEmploymentTx,myOwnEmploymentSubjectsTx,type OwnEmploymentSubject} from './read';
 import {hasPersonPhoto} from './person-photo';
 import {isAdmin} from '../lib/authz-model';
 import {resolveDashboardRole} from '../lib/dashboard-cards';
@@ -51,6 +51,13 @@ async function ownHomeSubjectSelectionTx(tx:Tx,ctx:SessionContext,requestedEmplo
  */
 export async function requireOwnHomeSubject(ctx:SessionContext,employmentId?:string):Promise<OwnEmploymentSubject>{
  return selectedHomeSubject(await ownHomeSubjectSelection(ctx,employmentId));
+}
+/** A card with an explicit selection can prove ownership without projecting the whole inventory. */
+export async function requireSelectedOwnHomeEmploymentId(ctx:SessionContext,employmentId:string):Promise<string>{
+ if(!ctx.userId)throw new HomeAccessError('authentication');
+ const allowed=await withTenant(ctx,tx=>isCurrentOwnHomeEmploymentTx(tx,ctx,employmentId),{readOnlySnapshot:true});
+ if(!allowed)throw new HomeAccessError('employmentUnavailable');
+ return employmentId;
 }
 async function assertReadOnlyHomePrincipalTx(tx:Tx,ctx:SessionContext):Promise<void>{
  const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='read committed'

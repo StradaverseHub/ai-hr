@@ -1,7 +1,7 @@
 /** Own calendar metadata plus the separate, purpose-bound shared-team projection. No attendance
  * pricing, private leave reasons or payroll amounts are fetched. Every fact retains its owner. */
 import {withTenant,type SessionContext} from '../db/client';
-import {requireOwnHomeSubject} from './employee-home';
+import {requireSelectedOwnHomeEmploymentId} from './employee-home';
 import {isOwnProfileEditEmploymentTx,hasEligibleLeaveTypeForTx} from './read';
 import {getEmployeeHomeDisplayPreferences} from './dashboard-prefs';
 import {homeDisplayClock} from '../lib/employee-home';
@@ -15,7 +15,7 @@ import {provenCompanyDatesTx} from './employment-company';
 import {readHomeTeamCalendar} from './employee-home-sharing';
 
 export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:string,requestedMonth?:string,now=new Date()):Promise<EmployeeHomeCalendar>{
- const subject=await requireOwnHomeSubject(ctx,employmentId);
+ const subjectId=await requireSelectedOwnHomeEmploymentId(ctx,employmentId);
  const preferences=await getEmployeeHomeDisplayPreferences(ctx);
  const display=homeDisplayClock(now,preferences.timeZone??'Asia/Kuala_Lumpur');
  const month=requestedMonth??display.date.slice(0,7),dates=homeCalendarGrid(month,preferences.weekStartsOn);
@@ -24,31 +24,31 @@ export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:s
  const [facts,paymentDates,team]=await Promise.all([
   withTenant(ctx,async tx=>{
    const [leave,holidays,replacements,coverage,eligible,active]=await Promise.all([
-    leaveCalendarPresenceByEmploymentTx(tx,[subject.employmentId],from,to),
-    originalHolidayCalendarFor(tx,{employmentId:subject.employmentId,startDate:from,endDate:to}),
-    replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subject.employmentId],startDate:from,endDate:to}),
-    provenCompanyDatesTx(tx,dates.map(date=>({employmentId:subject.employmentId,date}))),
-    hasEligibleLeaveTypeForTx(tx,subject.employmentId),
-    isOwnProfileEditEmploymentTx(tx,ctx,subject.employmentId),
+    leaveCalendarPresenceByEmploymentTx(tx,[subjectId],from,to),
+    originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:from,endDate:to}),
+    replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:from,endDate:to}),
+    provenCompanyDatesTx(tx,dates.map(date=>({employmentId:subjectId,date}))),
+    hasEligibleLeaveTypeForTx(tx,subjectId),
+    isOwnProfileEditEmploymentTx(tx,ctx,subjectId),
    ]);
    return {leave,holidays,replacements,coverage,eligible,active};
   }),
-  payrollEnabled?readOwnPayrollCalendarPayments(ctx,subject.employmentId,from,to):Promise.resolve([]),
-  readHomeTeamCalendar(ctx,subject.employmentId,from,to),
+  payrollEnabled?readOwnPayrollCalendarPayments(ctx,subjectId,from,to):Promise.resolve([]),
+  readHomeTeamCalendar(ctx,subjectId,from,to),
  ]);
  const canApply=facts.active&&facts.eligible;
  const payments=new Set(paymentDates);
- return {version:1,employmentId:subject.employmentId,month,today:display.date,weekStartsOn:preferences.weekStartsOn,payrollEnabled,team,
+ return {version:1,employmentId:subjectId,month,today:display.date,weekStartsOn:preferences.weekStartsOn,payrollEnabled,team,
   days:dates.map(date=>{
    const entries:HomeCalendarEntry[]=[];
    for(const status of ['approved','pending'] as const){
-    const duration=facts.leave[status].get(subject.employmentId)?.get(date);
+    const duration=facts.leave[status].get(subjectId)?.get(date);
     if(duration)entries.push({kind:'leave',date,status,duration});
    }
    for(const holiday of facts.holidays)if(holiday.date===date)entries.push({kind:'holiday',date,name:holiday.name,replacement:false,tentative:holiday.tentative});
    if(facts.replacements.some(row=>row.replacementDate===date))entries.push({kind:'holiday',date,name:null,replacement:true,tentative:false});
    if(payments.has(date))entries.push({kind:'payday',date});
-   const proof=facts.coverage.get(subject.employmentId+'|'+date);
+   const proof=facts.coverage.get(subjectId+'|'+date);
    // This opens the existing form; only its owner can decide date/notice/blackout policy. In
    // particular, Home must not override a company's configurable backdated-leave permission.
    return {date,entries,canRequestLeave:canApply&&Boolean(proof?.companyId&&!proof.reason)&&!entries.some(entry=>entry.kind==='leave')};
