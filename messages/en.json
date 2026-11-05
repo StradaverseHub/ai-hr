@@ -35410,6 +35410,7 @@
     "noRange": "No range",
     "segments": "Branch segments",
     "segment": "Segment",
+    "removeSegment": "Remove segment",
     "addSegment": "Add segment",
     "reason": "Reason",
     "saveDraft": "Save draft",

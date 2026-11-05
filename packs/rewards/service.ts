@@ -24,7 +24,8 @@ import type { PackTaskItem } from '../../lib/assigned-work';
 import { calculateRewards, ratio, increase, type RewardMultiplierSuggestion } from './engine';
 import {approvedPlanPolicyTx} from './plan-configuration';
 import {latestConfirmedPatTx} from './pat-inputs';
-import {setupAuthority} from './setup-data';
+import {setupAuthority,setupLock} from './setup-data';
+import {setupYear} from './setup-model';
 import { emptyGovernance, effectiveRewardPolicy, poolStatus, unitInputSchema, confirmedSeniorAwards, seniorGrade, maySeeSeniorAmounts, redactPatPolicy, seniorAwardSchema, governanceBasis,governanceHistoryProjection,seniorSourceFingerprint,type RewardPublicGovernance,type RewardGovernance, type SeniorAward } from './governance-model';
 import { assertRewardPolicyGrids } from './policy-grid-validation';
 import { onehrRewardResultTx } from '../performance/service';
@@ -584,7 +585,10 @@ export async function createRewardUnit(ctx:SessionContext,raw:PlannedRewardUnitI
 }
 /** Internal transaction seam used by approved bulk creation; SQL rechecks all authority and frozen bindings. */
 export async function createRewardUnitTx(tx:Tx,ctx:SessionContext,raw:PlannedRewardUnitInput){
- const version=idSchema.parse(raw.approvedPlanVersionId),resolved=await approvedPlanPolicyTx(tx,ctx,version,idSchema.parse(raw.companyId),idSchema.parse(raw.businessUnitId));
+ const version=idSchema.parse(raw.approvedPlanVersionId),companyId=idSchema.parse(raw.companyId),businessUnitId=idSchema.parse(raw.businessUnitId);
+ await setupLock(tx,ctx,'plans');
+ await setupLock(tx,ctx,'pat:'+companyId+':'+setupYear.parse(raw.year));
+ const resolved=await approvedPlanPolicyTx(tx,ctx,version,companyId,businessUnitId);
  if(raw.year!==resolved.setup.year||raw.snapshotDate!==resolved.setup.snapshotDate||raw.name&&raw.name!==resolved.setup.cycleName||raw.cycleId)throw new RewardError('Use the frozen approved plan cycle, year and snapshot date.');
  const [created]=await tx.execute<{id:string}>(sql`select app.reward_create_planned_unit(${version}::uuid,${raw.companyId}::uuid,${raw.businessUnitId}::uuid) as id`);
  const [unit]=await tx.select().from(rewardUnit).where(eq(rewardUnit.id,created.id));if(!unit)throw new RewardError('The approved review could not be loaded.');
