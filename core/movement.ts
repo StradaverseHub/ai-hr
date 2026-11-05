@@ -1489,7 +1489,22 @@ export async function movementAutomationFactsTx(tx:Tx,input:{tenantId:string;com
 
 /** Read-side correction overlay only. Existing effective-dated payroll/report reconstruction is untouched. */
 async function personnelCorrectionViewTx(tx:Tx,events:RawEvent[],rows:ProjectedRow[]){
- const beforeRows=rows.filter(row=>row.kind!=='hired').map(row=>({...row,id:row.id+':before',groupId:null,scheduled:false,appliedAt:null,sequence:Math.min(row.sequence,...events.filter(event=>row.groupId&&tagOf(event)?.groupId===row.groupId).map(event=>event.sequence))-.5}));
+ const hasCorrections=events.some(event=>event.eventType==='employment.information.corrected');
+ const firstSequenceByGroup=new Map<string,number>();
+ if(hasCorrections){
+  for(const event of events){
+   const groupId=tagOf(event)?.groupId;
+   if(!groupId)continue;
+   const first=firstSequenceByGroup.get(groupId);
+   if(first===undefined||event.sequence<first)firstSequenceByGroup.set(groupId,event.sequence);
+  }
+ }
+ const beforeRows=hasCorrections
+  ? rows.filter(row=>row.kind!=='hired').map(row=>{
+   const first=row.groupId?firstSequenceByGroup.get(row.groupId):undefined;
+   return {...row,id:row.id+':before',groupId:null,scheduled:false,appliedAt:null,sequence:Math.min(row.sequence,first??row.sequence)-.5};
+  })
+  : [];
  const corrections=personnelInformationCorrections(events,[...rows,...beforeRows]);
  const companyIds=new Set<string>(),gradeIds=new Set<string>();
  for(const list of corrections.values())for(const item of list){if(item.values.companyId)companyIds.add(item.values.companyId);if(item.values.gradeId)gradeIds.add(item.values.gradeId);}

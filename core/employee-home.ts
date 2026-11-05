@@ -5,7 +5,7 @@ import {lockAccessConfigurationReadTx} from './access-configuration-lock';
 import {isAiPrincipalCurrentTx} from './ai-principal';
 import {person} from '../db/schema';
 import {isCurrentOwnHomeEmploymentTx,isOwnProfileEditEmploymentTx,myOwnEmploymentSubjectsTx,type OwnEmploymentSubject} from './read';
-import {hasPersonPhoto} from './person-photo';
+import {hasPersonPhotoTx} from './person-photo';
 import {isAdmin} from '../lib/authz-model';
 import {resolveDashboardRole} from '../lib/dashboard-cards';
 import {employeeHomeGreetingName} from '../lib/employee-home';
@@ -132,19 +132,22 @@ export async function readEmployeeHomeIdentityContextTx(tx:Tx,ctx:SessionContext
  * Null means no recorded name/photo, never a swallowed read failure or a guessed fallback value.
  */
 export async function readEmployeeHomeGreetingIdentity(ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeGreetingIdentity>{
- const employmentId=requestedEmploymentId===undefined
-  ? (await requireOwnHomeSubject(ctx)).employmentId
-  : await requireSelectedOwnHomeEmploymentId(ctx,requestedEmploymentId);
- const personId=ctx.personId;
- const [name,photo]=await Promise.all([
-  personId?withTenant(ctx,async tx=>{
-   const [row]=await tx.select({preferredName:person.preferredName,firstName:person.firstName,fullName:person.fullName})
-    .from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,personId))).limit(1);
-   return row?employeeHomeGreetingName(row):null;
-  }):Promise.resolve(null),
-  personId?hasPersonPhoto(ctx,personId):Promise.resolve(false),
- ]);
- return {version:1,employmentId,name,photoHref:photo&&personId?`/personnel/photo/${encodeURIComponent(personId)}`:null};
+ return withTenant(ctx,async tx=>{
+  // Keep the photo policy's fresh read-committed check in the same read-only transaction.
+  await tx.execute(sql`SET TRANSACTION READ ONLY`);
+  const employmentId=requestedEmploymentId===undefined
+   ? selectedHomeSubject(await ownHomeSubjectSelectionTx(tx,ctx)).employmentId
+   : await requireSelectedOwnHomeEmploymentIdTx(tx,ctx,requestedEmploymentId);
+  const personId=ctx.personId;
+  if(!personId)return {version:1,employmentId,name:null,photoHref:null};
+  const [rows,photo]=await Promise.all([
+   tx.select({preferredName:person.preferredName,firstName:person.firstName,fullName:person.fullName})
+    .from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,personId))).limit(1),
+   hasPersonPhotoTx(tx,ctx,personId),
+  ]);
+  return {version:1,employmentId,name:rows[0]?employeeHomeGreetingName(rows[0]):null,
+   photoHref:photo?`/personnel/photo/${encodeURIComponent(personId)}`:null};
+ });
 }
 
 /** Independent pay hint reader. Payroll repeats own-active/login and publication enforcement and

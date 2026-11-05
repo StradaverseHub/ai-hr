@@ -66,7 +66,16 @@ export async function exerciseMovement({base,page,actor,subject,fixture,db,repor
      assert(eventId&&evidence.auditObservation.expectedActor,'Movement save did not produce one audited event for the expected actor');
      // Identify the actual saved event, even when a status badge adds text to its cell.
      const savedRow=history.locator(`tr[data-movement-id="${eventId}"]`);
-     await savedRow.getByText('Secondment',{exact:true}).waitFor({state:'visible',timeout});
+     const savedLabel=savedRow.getByText('Secondment',{exact:true});
+     try {
+      await savedLabel.waitFor({state:'visible',timeout});
+     } catch(error) {
+      const visibility=await Promise.allSettled([history.isVisible(),savedRow.isVisible(),savedLabel.isVisible()]);
+      const [historyVisible,auditedRowVisible,expectedLabelVisible]=visibility.map(result=>result.status==='fulfilled'?result.value:null);
+      evidence.steps.save.visibilityOnFailure={historyVisible,auditedRowVisible,expectedLabelVisible};
+      save();
+      throw error;
+     }
     });
    } finally {
     // Capture persistence independently when the click or navigation did not finish.

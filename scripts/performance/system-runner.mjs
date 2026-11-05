@@ -27,9 +27,11 @@ const env={...process.env,AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUIT
 for(const key of Object.keys(env))if(key.startsWith('WORKOS_')||key==='SHARE_PASSWORD'||key==='DEV_USER_ID')delete env[key];
 env.SHARE_PASSWORD='';env.DEV_USER_ID='';
 const workers=Number(process.env.PERF_APP_WORKERS||'1');assert([1,2].includes(workers));
-const ports=Array.from({length:workers},(_,index)=>3174+index),poolPerWorker=10/workers,heapPerWorker=4096/workers;
+const totalApplicationPool=Number(process.env.PERF_APP_POOL_CONNECTIONS??'10');
+assert([10,16].includes(totalApplicationPool),'Unsupported isolated application connection budget');
+const ports=Array.from({length:workers},(_,index)=>3174+index),poolPerWorker=totalApplicationPool/workers,heapPerWorker=4096/workers;
 const report={kind:'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY',releaseEligible:false,sha,controller:process.env.AIHR_CI_CONTROL_HEAD,
- run:process.env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,topology:{workers,poolPerWorker,totalApplicationPool:10,heapMiBPerWorker:heapPerWorker,totalHeapMiB:4096,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host:{cpus:os.availableParallelism(),memoryBytes:os.totalmem()},phases:[],exitCode:1};
+ run:process.env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,topology:{workers,poolPerWorker,totalApplicationPool,heapMiBPerWorker:heapPerWorker,totalHeapMiB:4096,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host:{cpus:os.availableParallelism(),memoryBytes:os.totalmem()},phases:[],exitCode:1};
 const save=()=>writeFileSync(join(out,'runner.json'),JSON.stringify(report,null,2));
 save();
 async function assertPortFree(port){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});await new Promise(resolve=>server.close(resolve));}

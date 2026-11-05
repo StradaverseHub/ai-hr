@@ -208,14 +208,19 @@ export async function getPersonPhoto(
 export async function hasPersonPhoto(ctx: SessionContext, personId: string): Promise<boolean> {
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`SET TRANSACTION READ ONLY`);
-    const visible=await photoReadPredicateTx(tx,ctx);
-    const [row] = await tx
-      .select({ id: personPhoto.id })
-      .from(personPhoto)
-      .where(and(eq(personPhoto.personId, personId),visible))
-      .limit(1);
-    return row != null;
+    return hasPersonPhotoTx(tx, ctx, personId);
   });
+}
+
+/** Existence-only read for an existing read-only composition. */
+export async function hasPersonPhotoTx(tx: Tx, ctx: SessionContext, personId: string): Promise<boolean> {
+  const visible = await photoReadPredicateTx(tx, ctx);
+  const [row] = await tx
+    .select({ id: personPhoto.id })
+    .from(personPhoto)
+    .where(and(eq(personPhoto.personId, personId), visible))
+    .limit(1);
+  return row != null;
 }
 
 /**

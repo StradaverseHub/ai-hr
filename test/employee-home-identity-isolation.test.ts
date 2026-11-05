@@ -2,7 +2,7 @@ import {beforeEach,describe,expect,it,vi} from 'vitest';
 const state=vi.hoisted(()=>({subjects:vi.fn(),lines:vi.fn(),photo:vi.fn(),selected:vi.fn(),tenant:vi.fn(),proof:vi.fn(),names:vi.fn()}));
 vi.mock('../db/client',()=>({withTenant:state.tenant}));
 vi.mock('../core/read',()=>({myOwnEmploymentSubjectsTx:state.subjects,isCurrentOwnHomeEmploymentTx:state.selected,reportingLinesFor:state.lines}));
-vi.mock('../core/person-photo',()=>({hasPersonPhoto:state.photo}));
+vi.mock('../core/person-photo',()=>({hasPersonPhotoTx:state.photo}));
 import {readEmployeeHomeIdentity,readEmployeeHomeGreetingIdentity} from '../core/employee-home';
 
 const ctx={tenantId:'fictional-tenant',userId:'fictional-login',personId:'fictional-person',roles:['employee']};
@@ -24,7 +24,8 @@ describe('Home identity versus greeting presentation failure',()=>{
     expect(state.subjects).toHaveBeenCalledWith(expect.objectContaining({execute:state.proof}),ctx);
     expect(identity).not.toHaveProperty('name');expect(identity).not.toHaveProperty('photoHref');
     await expect(readEmployeeHomeGreetingIdentity(ctx)).rejects.toThrow('Fictional private photo failure');
-    expect(state.photo).toHaveBeenCalledWith(ctx,'fictional-person');
+    expect(state.photo).toHaveBeenCalledWith(expect.objectContaining({execute:state.proof}),ctx,'fictional-person');
+    expect(state.tenant).toHaveBeenCalledTimes(2);
   });
   it('refuses a non-own selector before reading any greeting facts',async()=>{
     await expect(readEmployeeHomeGreetingIdentity(ctx,'not-own')).rejects.toMatchObject({code:'employmentUnavailable'});
