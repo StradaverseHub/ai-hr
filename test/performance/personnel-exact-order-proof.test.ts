@@ -4,9 +4,10 @@ import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {sql} from 'drizzle-orm';
+import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {lockAccessConfigurationReadTx} from '../../core/access-configuration-lock';
-import {personnelListPage} from '../../core/read';
+import {personnelListPage,personnelListPageSql} from '../../core/read';
 import {withTenant,type SessionContext} from '../../db/client';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from '../harness';
@@ -18,14 +19,14 @@ beforeAll(migrateTestDb);
 afterAll(closeAll);
 
 it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using ordered index entries and compact date signatures',async()=>{
- const report:Record<string,unknown>={kind:'SMALL_PERSONNEL_STATIC_EXACT_ORDER_RANGES_ONLY',releaseEligible:false,
-  limitations:'Disposable static projection, no writers, no assignment/text/status filters, no concurrency or retained-million proof.'};
+ const report:Record<string,unknown>={kind:'SMALL_PERSONNEL_EXACT_ORDER_RANGES_ROLLBACK_WRITER_ONLY',releaseEligible:false,
+  limitations:'Disposable owner-driven projection, rollback-only writer and overlapping reader, no live trigger or same-key contention proof, no assignment/text/status filters or retained-million proof.'};
  const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-exact-order-proof.json'),JSON.stringify(report,null,2));
  const modeNames=['name','company'] as const;
  const typeList='uuid[],uuid[],integer,integer,date';
  const args='page_companies uuid[],facet_companies uuid[],page_size integer,page_offset integer,as_of date';
  const joins='from public.employment e join public.person p on p.id=e.person_id and p.tenant_id=e.tenant_id join public.company c on c.id=e.company_id and c.tenant_id=e.tenant_id where e.voided_at is null';
- const dates='e.resignation_date,e.last_working_date,e.terminated_on,e.final_confirmation_date,e.confirmation_date,e.probation_end_date,e.provisional_end_on,e.blacklisted_at';
+ const dates=lifecycleDates.map(date=>'e.'+date).join(',');
  const ddl:string[]=[];
  const create=async(statement:string,drop:string)=>{await owner.client.unsafe(statement);ddl.unshift(drop);};
  const native=()=>owner.client`select oid::regprocedure::text as signature,prosrc,proowner::regrole::text as owner,proacl::text as acl,proconfig from pg_proc where oid=any(array['app.access_workforce_list_facts()'::regprocedure,'app.access_workforce_list_rows_for_ids(uuid[])'::regprocedure]) order by oid`;
@@ -52,7 +53,7 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
   await owner.client`insert into employment(id,tenant_id,person_id,company_id,hired_on) values(${fe}::uuid,${foreign.tenantId}::uuid,${fp}::uuid,${foreign.companyId}::uuid,date '2020-01-01')`;
   await create('create table app.performance_personnel_order as select e.tenant_id,e.company_id,e.id as employment_id,p.full_name as name,lower(p.full_name) as name_folded,lower(c.legal_name) as company_folded,'+
    '((row_number()over(partition by e.tenant_id order by p.full_name,e.id)-1)/'+blockSize+')::int as name_block,'+
-   '((row_number()over(partition by e.tenant_id order by lower(c.legal_name),lower(p.full_name),e.id)-1)/'+blockSize+')::int as company_block '+joins,'drop table app.performance_personnel_order');
+   '((row_number()over(partition by e.tenant_id order by lower(c.legal_name),lower(p.full_name),e.id)-1)/'+blockSize+')::int as company_block,'+dates+' '+joins,'drop table app.performance_personnel_order');
   await create('create table app.performance_personnel_count as select e.tenant_id,e.company_id,'+dates+',count(*) as quantity '+joins+' group by 1,2,3,4,5,6,7,8,9,10','drop table app.performance_personnel_count');
   await owner.client`create index performance_personnel_order_name on app.performance_personnel_order(tenant_id,name,employment_id) include(company_id)`;
   await owner.client`create index performance_personnel_order_company on app.performance_personnel_order(tenant_id,company_folded,name_folded,employment_id) include(company_id)`;
@@ -62,7 +63,11 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
    'drop table app.performance_personnel_blocks');
   await owner.client`create index performance_personnel_range_name on app.performance_personnel_order(tenant_id,name_block,name,employment_id) include(company_id)`;
   await owner.client`create index performance_personnel_range_company on app.performance_personnel_order(tenant_id,company_block,company_folded,name_folded,employment_id) include(company_id)`;
-  await owner.client`create index performance_personnel_block_count on app.performance_personnel_blocks(tenant_id,sort,company_id,block_no) include(quantity)`;
+  await owner.client`create unique index performance_personnel_block_count on app.performance_personnel_blocks(tenant_id,sort,company_id,block_no) include(quantity)`;
+  await owner.client`create unique index performance_personnel_order_subject on app.performance_personnel_order(employment_id)`;
+  await owner.client.unsafe('create unique index performance_personnel_signature_key on app.performance_personnel_count(tenant_id,company_id,'+
+   lifecycleDates.join(',')+') nulls not distinct');
+  const refresh=await installDisposableRangeWriter(create);
   await owner.client`vacuum (analyze) app.performance_personnel_order`;
   await owner.client`analyze app.performance_personnel_blocks`;
   await owner.client`analyze app.performance_personnel_count`;
@@ -187,6 +192,112 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
    expect(jump?.indexUsed,'deep numbered jump uses an ordered range index').toBe(true);
    expect(Number(jump?.indexOutputRows),'deep numbered jump reads only the local offset and requested rows').toBeLessThanOrEqual(blockSize+25);
   }
+
+  // All base and projection mutations below are rolled back. No live trigger or grant is installed.
+  const suffix=(n:number)=>String(n).padStart(12,'0');
+  const duplicateId=randomUUID(),renameId=p+suffix(1999),existingRenameEmployment=e+suffix(1999),
+   transferId=e+suffix(2000),lifecycleId=e+suffix(1997);
+  const changedIds=[duplicateId,existingRenameEmployment,transferId,lifecycleId];
+  const writeSet=async(tx:NativeWriterTx)=>{
+   // A person can hold jobs in multiple companies; both ordered keys must reflect a rename.
+   await tx`insert into employment(id,tenant_id,person_id,company_id,employee_code,hired_on)
+    values(${duplicateId}::uuid,${b.tenantId}::uuid,${renameId}::uuid,${other.id}::uuid,'FIXED-RANGE-INSERT',date '2020-01-01')`;
+   await tx`update person set full_name='A Writer Reordered Person' where id=${renameId}::uuid`;
+   await tx`update employment set company_id=${b.companyId}::uuid where id=${transferId}::uuid`;
+   await tx`update employment set resignation_date=${today}::date+2 where id=${lifecycleId}::uuid`;
+  };
+  const normalize=(row:{rows:unknown[];total:number;status_counts:{status:string;count:number}[]})=>({
+   rows:row.rows,total:Number(row.total),statusCounts:Object.fromEntries(row.status_counts.map(x=>[x.status,Number(x.count)])),
+  });
+  const dialect=new PgDialect();
+  const asNativeReader=async(tx:NativeWriterTx,run:()=>Promise<void>)=>{
+   await tx`set local role ai_hr_app`;
+   try{
+    await tx`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId??''},true),
+     set_config('app.roles',${ctx.roles?.join(',')??''},true),set_config('app.grants',${JSON.stringify(ctx.grants??ctx.roles?.map(role=>({role,companyId:null}))??[])},true)`;
+    await tx`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+ctx.tenantId},0))`;
+    const [role]=await tx`select current_user as role,app.principal_snapshot_current() as allowed`;
+    expect(role).toEqual({role:'ai_hr_app',allowed:true});await run();
+   }finally{await tx`reset role`;}
+  };
+  const readWithinWriter=async(tx:NativeWriterTx)=>{
+   await asNativeReader(tx,async()=>{
+    const [writerAccess]=await tx`select has_function_privilege(current_user,'app.performance_personnel_refresh_order(uuid[])','EXECUTE') as execute`;
+    expect(writerAccess.execute).toBe(false);
+    for(const mode of modeNames)for(const [pageScope,facets,offset,limit] of [
+     [all,narrow,0,25],[all,narrow,count-25,25],[[other.id],narrow,count/4-25,25],[all,all,0,0],
+    ] as const){
+     const pageIds=[...pageScope],facetIds=[...facets];
+     const native=personnelListPageSql({companyIds:pageIds,limit,offset,sort:mode},{companyIds:facetIds},
+      {source:sql`app.access_workforce_list_facts()`,materialized:true,projectPageFacts:true});
+     const compiled=dialect.sqlToQuery(native);
+     type Row={rows:unknown[];total:number;status_counts:{status:string;count:number}[]};
+     const [expected]=await tx.unsafe<Row[]>(compiled.sql,compiled.params as (string|number|boolean|null)[]);
+     const [actual]=await tx.unsafe<Row[]>('select * from '+namespace+mode+'_range($1::uuid[],$2::uuid[],$3::int,$4::int,$5::date)',
+      [pageIds,facetIds,limit,offset,today]);
+     expect(normalize(actual)).toEqual(normalize(expected));
+     if(pageIds.length===all.length)expect(Number(actual.total)).toBe(count+1);
+    }
+   });
+  };
+  const rolled=new Error('rollback only');
+  const rollback=async(fn:(tx:NativeWriterTx)=>Promise<void>)=>{
+   try{await owner.client.begin(async tx=>{await fn(tx);throw rolled;});}
+   catch(error){if(error!==rolled)throw error;}
+  };
+  const timings:{stage:string;durationsMs:number[]}[]=[];
+  for(const stage of ['original','with-deltas','with-deltas-warm','restored']){
+   const durationsMs:number[]=[];
+   for(let i=0;i<3;i++)await rollback(async tx=>{
+    const began=performance.now();
+    await writeSet(tx);
+    if(stage.startsWith('with-deltas'))await refresh(tx,changedIds);
+    durationsMs.push(performance.now()-began);
+   });
+   timings.push({stage,durationsMs});
+  }
+  const barrier=()=>{let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return {resolve,promise};};
+  report.writeTimings=timings;save();
+  const entered=barrier(),release=barrier();
+  const writer=rollback(async tx=>{
+   await writeSet(tx);await refresh(tx,changedIds);
+   await readWithinWriter(tx);
+   entered.resolve();await release.promise;
+  });
+  const bounded=async<T>(task:Promise<T>,description:string)=>{
+   let timer:ReturnType<typeof setTimeout>|undefined;
+   try{return await Promise.race([task,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error(description)),5000);})]);}
+   finally{if(timer)clearTimeout(timer);}
+  };
+  let reader:Promise<void>|undefined,independentWriter:Promise<void>|undefined,readerMs=0,independentWriterMs=0;
+  try{
+   await bounded(Promise.race([entered.promise,writer]),'writer did not reach the uncommitted checkpoint');
+   const start=performance.now();
+   reader=compare(ctx,'name',all,narrow,25,count-25,false,true);
+   await bounded(reader,'reader did not finish while base and projection writes were uncommitted');
+   readerMs=performance.now()-start;
+   // Independent tenant writes remain free to update their own point projection.
+   const writerStart=performance.now();
+   independentWriter=rollback(async tx=>{
+    await tx`update person set full_name='AAA independent writer' where id=${fp}::uuid`;
+    await refresh(tx,[fe]);
+   });
+   await bounded(independentWriter,'independent writer did not finish while first writer held its changes');
+   independentWriterMs=performance.now()-writerStart;
+  }finally{release.resolve();await Promise.allSettled([writer,...(reader?[reader]:[]),...(independentWriter?[independentWriter]:[])]);}
+  await writer;
+  const [restored]=await owner.client`select exists(select 1 from employment where id=${duplicateId}::uuid) as source_insert,
+   exists(select 1 from app.performance_personnel_order where employment_id=${duplicateId}::uuid) as projection_insert,
+   (select full_name from person where id=${fp}::uuid) as other_name,
+   (select full_name from person where id=${renameId}::uuid) as restored_name,
+   (select company_id from employment where id=${transferId}::uuid) as restored_company,
+   (select resignation_date from employment where id=${lifecycleId}::uuid) as restored_date`;
+  expect(restored).toEqual({source_insert:false,projection_insert:false,other_name:'AAA outside',restored_name:'Person 001999',restored_company:other.id,restored_date:null});
+  for(const mode of modeNames)await compare(ctx,mode,all,narrow,25,count-25,false,true);
+  report.writer={exactEightNativeWindowsDuringWrite:true,existingRoleReaderNeverWaitedOnUncommittedData:true,
+   independentTenantWriterOverlapped:true,readerMs,independentWriterMs,timings,rolledBack:true,
+   scope:'Four owner fixture writes + one explicit delta refresh; not actual application write throughput, same-key contention, or live triggers.'};
+  save();
  }finally{
   for(const statement of ddl)await owner.client.unsafe(statement);
   if(before)expect(Array.from(await native())).toEqual(before);
