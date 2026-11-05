@@ -1,6 +1,6 @@
 import { clockFingerprint, punchesForCorrectionTx } from './attendance-punch-change';
 /** Own live clock read model. This never writes or derives payable payroll figures. */
-import { and, asc, desc, eq, isNotNull, isNull, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNotNull, isNull, type SQL } from 'drizzle-orm';
 import { attendance, attendancePunch, attendanceClockCapture, attendanceCorrection, clockingLocation, employment } from '../db/schema';
 import type { SessionContext, Tx } from '../db/client';
 import { assertModuleGate, withAttendanceTenant as withTenant } from './module-gate';
@@ -39,10 +39,19 @@ export async function previewOwnClockLocation(ctx:SessionContext,selectedEmploym
 /** Shared live punch calculation; neither reader creates a capture or payable figure. */
 async function ownClockCoreTx(tx:Tx,employmentId:string,geo?:ClockGeo){
     const now = new Date();
-    let date = todayInKualaLumpur(now);
-    const [openDay] = await tx.select({ date: attendance.attendanceDate }).from(attendance).where(and(eq(attendance.employmentId, employmentId), isNotNull(attendance.checkInAt), isNull(attendance.checkOutAt))).orderBy(desc(attendance.attendanceDate)).limit(1);
-    if (openDay && openDay.date === todayInKualaLumpur(new Date(now.getTime() - 86400000)) && (await clockScheduleForTx(tx, employmentId, openDay.date)).crossesMidnight) date = openDay.date;
-    const schedule = await clockScheduleForTx(tx, employmentId, date);
+    const today = todayInKualaLumpur(now);
+    const yesterday = todayInKualaLumpur(new Date(now.getTime() - 86400000));
+    // Older open rows cannot select the live date. Keep newer rows in the probe so they
+    // still take precedence over yesterday, even if a future import left one open.
+    const [openDay] = await tx.select({ date: attendance.attendanceDate }).from(attendance)
+      .where(and(eq(attendance.employmentId, employmentId), gte(attendance.attendanceDate, yesterday),
+        isNotNull(attendance.checkInAt), isNull(attendance.checkOutAt)))
+      .orderBy(desc(attendance.attendanceDate)).limit(1);
+    const overnightSchedule = openDay?.date === yesterday
+      ? await clockScheduleForTx(tx, employmentId, yesterday) : null;
+    const date = overnightSchedule?.crossesMidnight ? yesterday : today;
+    const schedule = overnightSchedule?.crossesMidnight
+      ? overnightSchedule : await clockScheduleForTx(tx, employmentId, today);
     const [day] = await tx.select({ id: attendance.id, checkIn: attendance.checkInAt, checkOut: attendance.checkOutAt, checkInMethod: attendance.checkInMethod }).from(attendance).where(and(eq(attendance.employmentId, employmentId), eq(attendance.attendanceDate, date))).limit(1);
     // A capture's true instant orders and times the day: an offline capture's server_recorded_at is its arrival.
     // Typed nullable: a raw SQL field is not widened by the left join, and a punch without a capture reads NULL.
