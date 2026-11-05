@@ -42,7 +42,7 @@ it.skipIf(!requested)('compares atomic bounded search candidates with exact fall
   await owner.client`update employment set employee_code='DUPMARK',blacklisted_at='2025-01-01'where id=${ids[0]}::uuid`;
   await owner.client`update person set full_name='Literal %_ marker'where id=${personIds[1]}::uuid`;
   await owner.client`update person set full_name='Escape END%'where id=${personIds[2]}::uuid`;
-  await owner.client`update person set full_name=${'Backslash\\middle'}where id=${personIds[3]}::uuid`;
+  await owner.client`update person set full_name=${'Backslash\\middle'} where id=${personIds[3]}::uuid`;
   await owner.client`update person set primary_email='unique-email-search@example.invalid'where id=${personIds[4]}::uuid`;
   await owner.client`update employment set employee_code='LIMIT25-'||id::text where id=any(${ids.slice(100,125)}::uuid[])`;
   await owner.client`update employment set employee_code='LIMIT26-'||id::text where id=any(${ids.slice(150,176)}::uuid[])`;
@@ -133,7 +133,7 @@ it.skipIf(!requested)('compares atomic bounded search candidates with exact fall
     await tx`update person set primary_email='write-probe-'||id::text||'@example.invalid'where id=any(${targetPeople}::uuid[])`;
     await tx`update employment set employee_code='WRITE-'||id::text where id=any(${targetIds}::uuid[])`;
    });const elapsedMs=performance.now()-began;
-   await owner.client.begin(async tx=>{for(const row of previousPeople)await tx`update person set primary_email=${row.primary_email}where id=${row.id}::uuid`;for(const row of previousEmployment)await tx`update employment set employee_code=${row.employee_code}where id=${row.id}::uuid`;});
+   await owner.client.begin(async tx=>{for(const row of previousPeople)await tx`update person set primary_email=${row.primary_email} where id=${row.id}::uuid`;for(const row of previousEmployment)await tx`update employment set employee_code=${row.employee_code} where id=${row.id}::uuid`;});
    writes.push({indexed,personRows:100,employmentRows:100,elapsedMs,kind:'OWNER_NATIVE_FIXTURE_UPDATES_NOT_APP_CRUD'});report.writeProbe=writes;save();
   };
   await benchmark(false);await measureWrites(false);
