@@ -4,11 +4,31 @@ import {validateEmployeeHomeSummary} from '../../lib/employee-home-summary.ts';
 import {validateEmployeeHomeToday} from '../../lib/employee-home-today.ts';
 import {validateHomeCalendar} from '../../lib/employee-home-calendar.ts';
 import {validateHomeTeamResponse,validateHomeCelebrationResponse} from '../../lib/employee-home-sharing.ts';
+import {HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,HOME_SHARING_STREAM} from '../../lib/employee-home-sharing-cohort.ts';
 import {todayInKualaLumpur} from '../../lib/hr-date.ts';
 import {calendarWindowDates} from '../../lib/calendar-window.ts';
-const paths=new Set(['summary','today','calendar','team','celebrations','time-off','tasks','notices','greeting-message'].map(name=>'/api/home/'+name));
+const sharingPath='/api/home/sharing-initial';
+const paths=new Set(['summary','today','calendar','team','celebrations','time-off','tasks','notices','greeting-message','sharing-initial'].map(name=>'/api/home/'+name));
+function sharingFrames(response,expectedStatus){
+ assert.equal(String(response.headers['content-type']).split(';')[0],HOME_SHARING_STREAM);
+ assert(String(response.headers['cache-control']).includes('no-store'));
+ const lines=response.content.split('\n');
+ assert.equal(lines.pop(),'','Home sharing stream ended mid-frame');
+ assert.equal(lines.length,HOME_SHARING_CARDS.length,'Home sharing stream did not deliver both card frames');
+ const cards=new Map();
+ for(const line of lines){
+  assert(Buffer.byteLength(line)+1<=HOME_SHARING_MAX_FRAME_BYTES,'Home sharing frame exceeded its wire limit');
+  const frame=JSON.parse(line);
+  assert(HOME_SHARING_CARDS.includes(frame.card)&&!cards.has(frame.card),'Home sharing frame key was unexpected or repeated');
+  assert.deepEqual(Object.keys(frame).sort(),expectedStatus===200?['card','status','value','version']:['card','status','version']);
+  assert.equal(frame.version,1);assert.equal(frame.status,expectedStatus);
+  cards.set(frame.card,frame.value);
+ }
+ return cards;
+}
+
 export function createHomeHttpReplay({base,request,report}){
- const templates=new Map();report.homeApiTraffic={templates:[],completed:{}};
+ const templates=new Map();report.homeApiTraffic={templates:[],completed:{},sharingFrames:{}};
  function track(page,user,path){
   // HR's dashboard is server-rendered; only personal Home emits these subject-bound APIs.
   if(path!=='/'||!['employee','manager'].includes(user.role))return()=>{};
@@ -28,11 +48,25 @@ export function createHomeHttpReplay({base,request,report}){
   await Promise.all([...observed].map(async path=>{
    const url=new URL(path,base);url.searchParams.set('employmentId',user.employmentId);
    const startedOn=todayInKualaLumpur();
-   const response=await request(user,url.pathname+url.search,undefined,200,record),finishedOn=todayInKualaLumpur(),value=JSON.parse(response.content);
+   const response=await request(user,url.pathname+url.search,undefined,200,record),finishedOn=todayInKualaLumpur();
    // Fixture creation and production builds can cross HR midnight. Only the actual request's
    // boundary days are live; a clock jump must not admit an arbitrary historical/future response.
    const liveDays=calendarWindowDates(startedOn,finishedOn,2);
    const liveDate=(date,label)=>{assert(liveDays.includes(date),label+' outside live HR request dates '+liveDays.join('..'));return date;};
+   const key=user.role+':'+url.pathname;
+   if(url.pathname===sharingPath){
+    const cards=sharingFrames(response,200);
+    const team=cards.get('team');
+    validateHomeTeamResponse(team,user.employmentId,liveDate(team?.page?.date,'team.date'));
+    validateHomeCelebrationResponse(cards.get('celebrations'),user.employmentId);
+    for(const card of cards.keys()){
+     const frameKey=user.role+':'+card;
+     report.homeApiTraffic.sharingFrames[frameKey]=(report.homeApiTraffic.sharingFrames[frameKey]??0)+1;
+    }
+    report.homeApiTraffic.completed[key]=(report.homeApiTraffic.completed[key]??0)+1;
+    return;
+   }
+   const value=JSON.parse(response.content);
    assert(String(response.headers['content-type']).includes('application/json'));assert(String(response.headers['cache-control']).includes('no-store'));
    assert.equal(value.version,1);assert.equal(value.employmentId,user.employmentId);assert(!Object.hasOwn(value,'error'));
    if(Object.hasOwn(value,'asOf'))liveDate(value.asOf,'asOf');
@@ -49,15 +83,26 @@ export function createHomeHttpReplay({base,request,report}){
    else if(url.pathname.endsWith('/tasks')){assert.equal(value.grain,'account');assert(Array.isArray(value.items));assert(Number.isSafeInteger(value.total)&&value.total>=value.items.length);}
    else if(url.pathname.endsWith('/notices')){assert(Array.isArray(value.items));assert(Number.isSafeInteger(value.total)&&value.total>=value.items.length);}
    else if(url.pathname.endsWith('/greeting-message')){liveDate(value.displayDate,'displayDate');assert(value.message===null||typeof value.message==='string'&&value.message.trim());}
-   const key=user.role+':'+url.pathname;report.homeApiTraffic.completed[key]=(report.homeApiTraffic.completed[key]??0)+1;
+   report.homeApiTraffic.completed[key]=(report.homeApiTraffic.completed[key]??0)+1;
   }));
  }
  async function boundary(actor,target){
   const observed=templates.get(actor.role);assert(observed?.size);
-  const url=new URL([...observed][0],base);url.searchParams.set('employmentId',target.employmentId);
-  const response=await request(actor,url.pathname+url.search,undefined,403,false);
-  assert.equal(JSON.parse(response.content).error,'employmentUnavailable');
-  report.boundaries.push({kind:'foreign-own-home-subject',role:actor.role,passed:true});
+  const paths=[...observed];
+  const standalone=paths.find(path=>new URL(path,base).pathname!==sharingPath);
+  const sharing=paths.find(path=>new URL(path,base).pathname===sharingPath);
+  if(standalone){
+   const url=new URL(standalone,base);url.searchParams.set('employmentId',target.employmentId);
+   const response=await request(actor,url.pathname+url.search,undefined,403,false);
+   assert.equal(JSON.parse(response.content).error,'employmentUnavailable');
+   report.boundaries.push({kind:'foreign-own-home-subject',role:actor.role,passed:true});
+  }
+  if(sharing){
+   const url=new URL(sharing,base);url.searchParams.set('employmentId',target.employmentId);
+   const response=await request(actor,url.pathname+url.search,undefined,200,false);
+   sharingFrames(response,403);
+   report.boundaries.push({kind:'foreign-own-home-sharing-cohort',role:actor.role,passed:true});
+  }
  }
  return{track,read,boundary};
 }
