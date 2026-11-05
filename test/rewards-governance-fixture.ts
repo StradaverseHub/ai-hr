@@ -36,7 +36,7 @@ export function completeRewardFixturePolicy(raw:RewardPolicy):RewardPolicy{
  }
  return {...raw,ranges,bonusMatrix};
 }
-async function refreshCompanyPatFixture(ctx:SessionContext,unitId:string,inputs:{targetCents:number;forecastCents:number|null;actualCents:number|null;targetMonthsBp:number}){
+async function refreshCompanyPatFixture(ctx:SessionContext,unitId:string,inputs:{targetCents:number|null;forecastCents:number|null;actualCents:number|null;targetMonthsBp:number}){
  const [binding]=await owner.db.execute<{present:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as present`);
  if(!binding.present)return;
  const v=await getRewardUnit(ctx,unitId),g=await getRewardUnitGovernance(ctx,unitId),current=g.inputs;
