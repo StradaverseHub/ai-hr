@@ -8812,17 +8812,28 @@ async function assertNoOutstandingCloseWorkTx(tx: Tx, ctx: SessionContext, batch
  * `closeBatch` remains the authority.
  */
 export function payrollCloseCompanyIds(ctx: SessionContext, companyIds: readonly string[]): Promise<Set<string>> {
+  const requested = companyIds.slice();
+  if (requested.length === 0) return Promise.resolve(new Set());
+  return withTenant(ctx, tx => payrollCloseCompanyIdsTx(tx, ctx, requested));
+}
+
+/** The caller supplies its existing Payroll-gated transaction and the same principal. */
+export async function payrollCloseCompanyIdsTx(
+  tx: Tx,
+  ctx: SessionContext,
+  companyIds: readonly string[],
+): Promise<Set<string>> {
   const ids = [...new Set(companyIds)];
-  if (ids.length === 0) return Promise.resolve(new Set());
-  return withTenant(ctx, async (tx) => {
-    const scoped = await tx
-      .select({ id: company.id })
-      .from(company)
-      .where(and(inArray(company.id, ids), sql`app.can_admin_payroll_for(${company.id})`));
-    const allowed = new Set<string>();
-    for (const row of scoped) if (await resolvePayrollPermission(tx, ctx, 'payroll.close', row.id)) allowed.add(row.id);
-    return allowed;
-  });
+  const allowed = new Set<string>();
+  if (ids.length === 0) return allowed;
+  const scoped = await tx
+    .select({ id: company.id })
+    .from(company)
+    .where(and(inArray(company.id, ids), sql`app.can_admin_payroll_for(${company.id})`));
+  for (const row of scoped) {
+    if (await resolvePayrollPermission(tx, ctx, 'payroll.close', row.id)) allowed.add(row.id);
+  }
+  return allowed;
 }
 
 export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {

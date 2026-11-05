@@ -53,7 +53,7 @@ describe('cdb1c6ca · A — Close Batch in the row menu', () => {
   });
 
   it('resolves the permission once per company on the server, for the processed rows rendered', () => {
-    expect(LIST).toContain('const closeCompanies = await payrollCloseCompanyIds(');
+    expect(LIST).toContain('const { processedOn, closeCompanies } = await payrollDashboardBatchMetadata(');
     expect(LIST).toMatch(/batchPage\.filter\(\(b\) => b\.status === 'processed'\)\.map\(\(b\) => b\.companyId\)/);
     expect(LIST, 'the list must not post a close itself').not.toContain('closeAction');
   });
