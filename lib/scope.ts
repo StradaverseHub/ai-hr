@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { cache } from 'react';
 import type { SessionContext } from '../db/client';
 import { allowedCompanies, listCompanies } from '../core/read';
 import { getSession } from './session';
@@ -17,6 +18,13 @@ export async function getScopeIds(allowedIds: string[]): Promise<string[]> {
   return scoped.length ? scoped : allowedIds;
 }
 
+// The root layout and page use the same cached session during a server render.
+export const companyContextForPage = cache(async (session: SessionContext) => {
+  const allowed = await allowedCompanies(session);
+  const scopeIds = await getScopeIds(allowed.map(company => company.id));
+  return { allowed, scopeIds };
+});
+
 /**
  * The session plus the active company-context scope — what every page filters its lists by.
  *
@@ -31,17 +39,15 @@ export async function getScopeIds(allowedIds: string[]): Promise<string[]> {
  */
 export async function scopedSession(): Promise<{ s: SessionContext; scopeIds: string[]; allowedCount: number }> {
   const s = await getSession();
-  const allowed = await allowedCompanies(s);
-  const scopeIds = await getScopeIds(allowed.map((c) => c.id));
-  return { s, scopeIds, allowedCount: allowed.length };
+  const { allowed, scopeIds } = await companyContextForPage(s);
+  return { s, scopeIds: [...scopeIds], allowedCount: allowed.length };
 }
 
 /** Admin-gated variant: redirects non-admins, then returns the session + active company scope. */
 export async function scopedAdmin(): Promise<{ s: SessionContext; scopeIds: string[] }> {
   const s = await requireAdmin();
-  const allowed = await allowedCompanies(s);
-  const scopeIds = await getScopeIds(allowed.map((c) => c.id));
-  return { s, scopeIds };
+  const { scopeIds } = await companyContextForPage(s);
+  return { s, scopeIds: [...scopeIds] };
 }
 
 /**

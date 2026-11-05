@@ -50,10 +50,9 @@ import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
 import { canAdminOnehr, canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
-import { allowedCompanies } from '@/core/read';
 import {canConfigureAccess} from '@/core/access-configuration-editor';
 import {canOpenWorkforce} from '@/core/workforce-access';
-import { getScopeIds } from '@/lib/scope';
+import { companyContextForPage } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
@@ -168,8 +167,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const principals = await listPrincipals();
   // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).
   const showDevSwitcher = demoSwitcherEnabled();
-  const allowed = await allowedCompanies(session);
-  const scopeIds = await getScopeIds(allowed.map((c) => c.id));
+  const { allowed, scopeIds } = await companyContextForPage(session);
   const cookieStore = await cookies();
   const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
   // fdc20776: the per-group nav_*_open cookies are gone — flyout panels are show-on-demand, so

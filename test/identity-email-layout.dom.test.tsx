@@ -11,7 +11,7 @@ vi.mock('../lib/identity/email-settings',()=>({canConfigureIdentityEmail:m.opera
 vi.mock('../lib/viewer',()=>({viewerIdentity:async()=>({name:'Fixture',employeeCode:null,employed:false})}));
 vi.mock('../lib/principals',()=>({listPrincipals:async()=>[]}));
 vi.mock('../lib/demo-mode',()=>({demoSwitcherEnabled:()=>true,isDemoDeployment:()=>true}));
-vi.mock('../lib/scope',()=>({getScopeIds:async()=>m.scopeIds}));
+vi.mock('../lib/scope',()=>({companyContextForPage:async()=>({allowed:[],scopeIds:m.scopeIds})}));
 vi.mock('../lib/ui-theme-server',()=>({currentUiTheme:async()=>m.theme}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[],listApprovalHistory:async()=>[]}));
 vi.mock('../core/onboarding',()=>({getOnboardingStatus:async()=>m.onboarded}));
