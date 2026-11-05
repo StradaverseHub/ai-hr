@@ -128,7 +128,7 @@ describe('a correction from chat: one question when something is missing, the da
    .toEqual({kind:'ask',missing:['checkIn'],options:[],recorded:{checkOut:'17:30'}});
   expect(state.prepareCorrection).not.toHaveBeenCalled();
  });
- it('works the day out from the person's words, never the model's own date, and refuses a day still to come',async()=>{
+ it('works the day out from the person\'s words, never the model\'s own date, and refuses a day still to come',async()=>{
   // Wednesday 4 November 2026, noon in Kuala Lumpur.
   const now=new Date('2026-11-04T04:00:00.000Z');
   state.rows.mockResolvedValue(recordedDay('2026-11-03','08:00:00',null));
