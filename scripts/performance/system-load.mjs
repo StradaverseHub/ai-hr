@@ -485,17 +485,22 @@ try{
   const ctx=await context(employee,locale),page=await ctx.newPage();await visit(page,employee,'/claims');
   const messages=JSON.parse(readFileSync(new URL('../../messages/'+locale+'.json',import.meta.url),'utf8'));
   const fallback=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
-  assert((await page.locator('h1').innerText()).includes(messages.claims?.title||fallback.claims.title));
+  const title=messages.claims?.title||fallback.claims.title;
+  await page.getByRole('heading',{level:1,name:title,exact:true}).waitFor({state:'visible',timeout:90000});
   report.browser.at(-1).locale=locale;await ctx.close();
  }
  {
   const ctx=await context(employee),page=await ctx.newPage();await visit(page,employee,'/leave');
   const documents=[];page.on('request',request=>{if(request.resourceType()==='document')documents.push(request.url());});
   await Promise.all([page.waitForURL(url=>url.pathname==='/claims',{timeout:90000}),page.locator('a[href="/claims"]:visible').first().click()]);
-  await claimDraftForm(page).locator('textarea[name="description"]:visible').waitFor();assert.equal(documents.length,0,'client link unexpectedly reloaded the document');
-  assert.equal((await page.locator('h1').innerText()).trim(),'Claims');assert(await page.locator('main tbody tr').count()>0);
   const catalog=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
-  assert((await page.locator('main').innerText()).includes(catalog.claims.typeLabel),'client form lost route translations');
+  const heading=page.getByRole('heading',{level:1,name:catalog.claims.title,exact:true});
+  const main=page.locator('main:visible').filter({has:heading});
+  await heading.waitFor({state:'visible',timeout:90000});
+  await claimDraftForm(page).locator('textarea[name="description"]:visible').waitFor();
+  assert.equal(documents.length,0,'client link unexpectedly reloaded the document');
+  assert(await main.locator('tbody tr:visible').count()>0,'client route has no visible Claims rows');
+  assert((await main.innerText()).includes(catalog.claims.typeLabel),'client form lost route translations');
   report.browser.push({workflow:'client navigation',from:'/leave',to:'/claims',documentRequests:0,passed:true});await ctx.close();save();
  }
  for(const [user,path]of [[employee,'/claims'],[hr,'/admin/personnel']]){
