@@ -39,7 +39,15 @@ it('seeds four real identity-bound principals with twenty retained authenticated
   const path=join(directory,'fixture.json');
   writeFileSync(path,JSON.stringify({tenants:bases.map(base=>({tenantId:base.tenantId})),users:actors.map(actor=>({...actor,tenant:bases.findIndex(base=>base.tenantId===actor.tenantId),role:actor.index%2===0?'employee':'companyHR'}))}),{mode:0o600});
   const child=spawnSync(process.execPath,['--conditions=react-server','--import','tsx','scripts/performance/assistant-history-seed.mjs'],{encoding:'utf8',timeout:120000,env:{...process.env,NODE_ENV:'development',DATABASE_URL:process.env.TEST_DATABASE_URL,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL,PERF_PRIVATE_DIR:directory}});
-  expect(child.status,child.stderr?.slice(0,1800)).toBe(0);
+  if(child.status!==0){
+   // Keep the standalone stack out of Vitest's assertion stack parser.
+   // Report only the error summary and module frames, never the child environment.
+   const diagnostic=(child.stderr??'').split('\n')
+    .filter(line=>/^\s*(?:[A-Za-z]+Error[: ]|at )/.test(line))
+    .slice(0,12).join('\n');
+   console.error('Saved history child failed',child.status,child.signal,child.error?.code,diagnostic);
+  }
+  expect(child.status).toBe(0);
   const result=JSON.parse(readFileSync(path,'utf8')).assistantHistory as Record<number,AssistantHistoryFixture>;
   fixtures.push(...actors.map(actor=>result[actor.index]));expect(fixtures.every(value=>value?.nativeVerified===true)).toBe(true);
  }finally{rmSync(directory,{recursive:true,force:true});}
