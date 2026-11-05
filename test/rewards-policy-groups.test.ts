@@ -55,8 +55,10 @@ describe('shared reward configuration versions',()=>{
   const legacy={...policy,seniorMembershipMode:'named-members',seniorGrades:[],patActual:1200000,patTarget:900000,targetMonthsBp:25000,multiplierBp:8000,branchRatings:{Legacy:'AE'},exemptReason:'Historical approved exemption'};
   const [row]=await withTenant(admin,tx=>tx.execute<{version:{versionId:string}}>(sql`select app.reward_policy_group_commit(NULL,0,'Historical shared source',${JSON.stringify(legacy)}::jsonb,${JSON.stringify([{companyId:b.companyId,businessUnitId:buA}])}::jsonb) as version`));
   const versionId=row.version.versionId,before=await owner.db.select().from(schema.rewardPolicyGroupVersion).where(eq(schema.rewardPolicyGroupVersion.id,versionId));
-  const reviewId=await unit(b.companyId,buA,versionId),configuration=await getRewardConfiguration(admin,reviewId);
-  expect(configuration.unit.policy).toMatchObject({seniorMembershipMode:'named-members',seniorGrades:[],patActual:0,patTarget:100,targetMonthsBp:0,multiplierBp:null,branchRatings:{},exemptReason:''});
+  const companyPat={...defaultPolicy(year),patActual:0,patTarget:100,targetMonthsBp:15000};
+  const reviewId=await createApprovedRewardUnit(admin,{name:'Fictional checked shared review',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today,sharedPolicyVersionId:versionId},companyPat);
+  const configuration=await getRewardConfiguration(admin,reviewId);
+  expect(configuration.unit.policy).toMatchObject({seniorMembershipMode:'named-members',seniorGrades:[],patActual:0,patTarget:100,targetMonthsBp:15000,multiplierBp:null,branchRatings:{},exemptReason:''});
   expect(configuration.policyOrigin).toMatchObject({versionId,changed:false});
   expect(await owner.db.select().from(schema.rewardPolicyGroupVersion).where(eq(schema.rewardPolicyGroupVersion.id,versionId))).toEqual(before);
  });

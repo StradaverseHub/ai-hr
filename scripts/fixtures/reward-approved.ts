@@ -81,7 +81,10 @@ async function createApprovedRewardUnit(ctx:SessionContext,raw:PlannedRewardUnit
  await setupCompanyStructureFixture(ctx,targets,raw.snapshotDate,checker);
  const {policy,salary,bonus}=await setupRewardLibrariesFixture(ctx,raw.year,fixturePolicy??existing?.source.policy??defaultPolicy(raw.year),checker);
  const fixturePat=fixturePolicy??defaultPolicy(raw.year);
- for(const target of targets)await confirmFixturePat(ctx,target.companyId,raw.year,{targetCents:fixturePat.patTarget,forecastCents:null,actualCents:fixturePat.patActual,targetMonthsBp:fixturePat.targetMonthsBp},checker);
+ for(const target of targets){
+  const [prior]=await owner.db.execute<{confirmed:boolean}>(sql`select exists(select 1 from reward_pat_version where tenant_id=${ctx.tenantId}::uuid and company_id=${target.companyId}::uuid and year=${raw.year} and state='confirmed') as confirmed`);
+  if(!prior.confirmed)await confirmFixturePat(ctx,target.companyId,raw.year,{targetCents:fixturePat.patTarget,forecastCents:null,actualCents:fixturePat.patActual,targetMonthsBp:fixturePat.targetMonthsBp},checker);
+ }
  const version=existing?.source??await saveRewardPlanConfiguration(ctx,{groupId:null,expectedRevision:0,name,policy,targets});
  const revision=await saveRewardSetupPlan(ctx,{versionId:version.versionId,expectedRevision:existing?.setup?.revision??0,cycleName:name,snapshotDate:raw.snapshotDate,bindings:targets.map(t=>({...t,salaryVersionId:salary,bonusVersionId:bonus,branchAcknowledged:policy.bonusStructure==='branch'})),reason:why});
  await submitRewardSetupPlan(ctx,version.versionId,revision);await approveRewardSetupPlan(checker,version.versionId,revision+1);
