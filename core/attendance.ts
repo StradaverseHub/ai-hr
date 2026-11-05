@@ -464,9 +464,10 @@ type Policy = typeof DEFAULTS;
  * resolver `holidayDatesFor` (ADR-0055), so attendance classifies the same calendar leave does and the
  * country/state inputs that used to be carried on the Policy are gone.
  */
-async function policyFor(tx: Tx, employmentId: string): Promise<Policy> {
+async function policyFor(tx: Tx, employmentId: string, includeScheduleGroup = false): Promise<Policy & { scheduleGroupId: string | null }> {
   const [row] = await tx
     .select({
+      ...(includeScheduleGroup ? { scheduleGroupId: employment.attendanceRuleId } : {}),
       lateAfter: attendancePolicy.lateAfter,
       halfDayBefore: attendancePolicy.halfDayBefore,
       workStart: attendancePolicy.workStart,
@@ -480,6 +481,7 @@ async function policyFor(tx: Tx, employmentId: string): Promise<Policy> {
     .where(eq(employment.id, employmentId))
     .limit(1);
   return {
+    scheduleGroupId: row?.scheduleGroupId ?? null,
     lateAfter: row?.lateAfter ?? DEFAULTS.lateAfter,
     halfDayBefore: row?.halfDayBefore ?? DEFAULTS.halfDayBefore,
     workStart: row?.workStart ?? DEFAULTS.workStart,
@@ -926,7 +928,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string, memo?: Sc
 }
 
 async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?: ScheduleMemo, datedShiftId?:string): Promise<ResolvedSchedule> {
-  const pol = await memoized(memo, `pol|${employmentId}`, () => policyFor(tx, employmentId));
+  const pol = await memoized(memo, `pol|${employmentId}`, () => policyFor(tx, employmentId, true));
   const grace = Math.max(0, toMinutes(pol.lateAfter) - toMinutes(pol.workStart)); // 15m by default
   // ADR-0055: the day-type holiday flag comes from the unified resolver — business-group → state →
   // national, single-winner replacement — the SAME calendar the leave engine resolves (leave.ts
@@ -943,7 +945,6 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
   // AND as the fallback when a resolved shift carries no explicit rule_id. Null when the tenant has no rule
   // yet ⇒ byte-identical legacy behaviour. 6da67ab7: one Standard per TENANT, not per company — the rule is
   // chosen by the shift, and shifts are tenant-wide, so the employee's company no longer selects it.
-  const defaultRule = await memoized(memo, 'rule|default', () => resolveRuleTx(tx, { ruleId: null }));
   /**
    * 870b79e2 (r277, migration 0464) — THE EMPLOYEE'S SCHEDULE GROUP, and the ONE line of this item that
    * touches the engine.
@@ -971,12 +972,12 @@ async function scheduleBaseFor(tx: Tx, employmentId: string, date: string, memo?
    * unrepresentable, and if RLS or a missing row ever made the rule unreadable, `resolveRuleTx` returns
    * null and the employee falls through to the pre-existing chain rather than losing their rules.
    */
-  const [empRow] = await memoized(memo, `emprule|${employmentId}`, () =>
-    tx.select({ ruleId: employment.attendanceRuleId }).from(employment).where(eq(employment.id, employmentId)).limit(1),
-  );
-  const groupRule = empRow?.ruleId
-    ? await memoized(memo, `rule|${empRow.ruleId}`, () => resolveRuleTx(tx, { ruleId: empRow.ruleId! }))
+  const groupId = pol.scheduleGroupId;
+  const groupRule = groupId
+    ? await memoized(memo, `rule|${groupId}`, () => resolveRuleTx(tx, { ruleId: groupId }))
     : null;
+  // A readable group owns every branch; the Standard is only a fallback.
+  const defaultRule = groupRule ? null : await memoized(memo, 'rule|default', () => resolveRuleTx(tx, { ruleId: null }));
   /** The rule for a branch with NO shift of its own (company policy, rest day): the group's, else Standard. */
   const baseRule = groupRule ?? defaultRule;
   // The effective late/early grace for a shift branch: an explicit per-shift grace wins (R17, unchanged); else
