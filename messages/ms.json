@@ -24102,7 +24102,8 @@
       "help": "Dikecualikan daripada kenaikan gaji dan asas kumpulan kenaikan gaji. Masih layak menerima bonus berdasarkan gaji asas terlaras dan dikira dalam kumpulan bonus. Pertukaran setara tanpa perubahan gaji asas tidak dikecualikan."
     },
     "unitInputsHelp": "Belanjawan unit, PAT, pengganda, penarafan cawangan dan pengecualian diurus berasingan dalam semakan.",
-    "unitInputsLink": "Buka input unit"
+    "unitInputsLink": "Buka input unit",
+    "architectureMismatch": "Gred pekerja berbeza daripada gred jawatan yang diluluskan. Semak pemetaan atau cadangkan perubahan gred bertarikh; gred pekerja yang direkodkan kekal."
   },
   "identityEmail": {
     "title": "Penghantaran e-mel",
@@ -35195,7 +35196,8 @@
       "ACC-05": "Anugerah diluluskan EC dikunci. Perubahan memerlukan laluan pemulangan yang dibenarkan.",
       "OC-01": "Perubahan luar kitaran dihalang dari {from} hingga {to}.",
       "UPL-01": "Anugerah dimuat naik mesti mempunyai pekerja syarikat sah, gred aktif, amaun tidak negatif dan tiada pengurangan gaji.",
-      "UPL-02": "Kelayakan umum hanya memberi amaran untuk anugerah dimuat naik, termasuk had masuk {cutoff} dan perubahan gaji {from} hingga {to}."
+      "UPL-02": "Kelayakan umum hanya memberi amaran untuk anugerah dimuat naik, termasuk had masuk {cutoff} dan perubahan gaji {from} hingga {to}.",
+      "ARCH-01": "Gred pekerja berbeza daripada gred jawatan yang diluluskan. Semak pemetaan atau cadangkan perubahan gred bertarikh; gred pekerja yang direkodkan kekal."
     }
   },
   "rewardAccessPolicy": {
@@ -35379,7 +35381,8 @@
       "ineligible": "kelayakan pelan am",
       "rules": "semakan yang menghalang",
       "budget": "kapasiti kumpulan dana",
-      "final_pool": "kumpulan dana akhir"
+      "final_pool": "kumpulan dana akhir",
+      "calibrated": "penarafan akhir yang diselaraskan"
     },
     "fairnessReport": "Laporan keadilan",
     "acceptAll": "Terima semua dalam belanjawan",
@@ -35408,6 +35411,12 @@
       "include": "Sertakan ganjaran dimuat naik",
       "exclude": "Kecualikan ganjaran dimuat naik",
       "only": "Ganjaran dimuat naik sahaja"
+    },
+    "decisionHistory": "Sejarah keputusan",
+    "decisionStatus": {
+      "accepted": "Diterima",
+      "adjusted": "Dilaras",
+      "ignored": "Diabaikan"
     }
   },
   "rewardUploaded": {
@@ -35456,7 +35465,15 @@
       "joined": "Menyertai pada atau selepas 1 Oktober.",
       "pay_change": "Gaji dilaras antara 1 Oktober hingga 31 Disember.",
       "increase": "Kenaikan melebihi ambang amaran biasa.",
-      "bonus": "Bonus melebihi sembilan bulan gaji pokok semasa."
-    }
+      "bonus": "Bonus melebihi sembilan bulan gaji pokok semasa.",
+      "restricted": "Baris muat naik terhad mempunyai amaran untuk penyemak yang dibenarkan."
+    },
+    "checkNotificationTitle": "Ganjaran dimuat naik perlu disemak",
+    "checkNotificationBody": "Pengguna Group Rewards yang berbeza mesti menyemak muat naik semasa sebelum semakan BU dibuka.",
+    "readyNotificationTitle": "Ganjaran dimuat naik sedia disemak",
+    "readyNotificationBody": "Group Rewards telah menyemak muat naik ini secara bebas. Buka semakan untuk menilai ganjaran.",
+    "participation": "Penyertaan",
+    "excludedNoAwards": "Dikecualikan – tiada ganjaran tahun ini",
+    "excludedUploaded": "Dikecualikan – ganjaran dimuat naik"
   }
 }

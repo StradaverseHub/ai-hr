@@ -1,3 +1,7 @@
+import {pgSqlState} from '../lib/db-error';
+import {hireEmployee} from '../core/org';
+import {setCompensation} from '../core/comp';
+import {createBatch,rewardPayrollProvenance} from '../packs/payroll/service';
 import {createApprovedRewardUnit as createRewardUnit} from './rewards-setup-fixture';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {randomUUID} from 'node:crypto';
@@ -5,12 +9,13 @@ import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {owner,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,closeAll,type Base} from './harness';
-import {getRewardUnit,saveRewardEntry} from '../packs/rewards/service';
+import {getRewardUnit,saveRewardEntry,decideRewardUnit,postRewardUnit} from '../packs/rewards/service';
 import {beginRewardViewAs,endRewardViewAs,changeRewardPermission} from '../packs/rewards/access-policy';
-import {saveUploadedRewards,confirmUploadedRewards,adjustUploadedAward} from '../packs/rewards/uploaded-awards';
+import {createUploadedRewards,uploadedRewards,saveUploadedRewards,confirmUploadedRewards,adjustUploadedAward} from '../packs/rewards/uploaded-awards';
 import {emptyFacts,emptyRecommendation} from '../packs/rewards/model';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
+async function denied(promise:Promise<unknown>){const error=await promise.then(()=>null,error=>error);expect(error).not.toBeNull();expect(pgSqlState(error)).toBe('42501');}
 describe('approved Rewards review SQL custody',()=>{
  let b:Base,gr:SessionContext,checker:SessionContext,unitId:string,entryId:string,employmentId:string;
  beforeAll(migrateTestDb);afterAll(closeAll);
@@ -24,14 +29,48 @@ describe('approved Rewards review SQL custody',()=>{
  const [comp]=await owner.db.insert(schema.compensation).values({tenantId:b.tenantId,employmentId,basicSalary:'5000.00',currency:'MYR',payMode:'monthly',validFrom:`${year-2}-01-01`}).returning();
  const [entry]=await owner.db.insert(schema.rewardEntry).values({tenantId:b.tenantId,unitId,employmentId,source:{employmentId,personId:subject.id,compensationId:comp.id,gradeId:null,employeeCode:'AWARD',name:'Fictional award employee',grade:'12',basicCents:500000,currency:'MYR',payMode:'monthly',hiredOn:`${year-2}-01-01`,confirmedOn:`${year-2}-04-01`,notice:true,lastPayChange:null,confirmationPayChange:false,performanceReviewId:null,performanceRating:null},facts:{...emptyFacts(),reviewed:true},recommendation:emptyRecommendation()}).returning();entryId=entry.id;
  });
- it('read-only View as blocks native writers, direct writes and legacy SECURITY DEFINER helpers until ended',async()=>{await beginRewardViewAs(gr,checker.userId!);await expect(saveRewardEntry(gr,unitId,1,entryId,emptyRecommendation())).rejects.toThrow(/read-only|View as/);await expect(withTenant(gr,tx=>tx.update(schema.rewardEntry).set({recommendation:emptyRecommendation()}).where(eq(schema.rewardEntry.id,entryId)))).rejects.toThrow(/View as/);await expect(withTenant(gr,tx=>tx.execute(sql`select app.reward_company_exclusion_change(${b.companyId}::uuid,${year},'Fictional attempted mutation during view',NULL)`))).rejects.toThrow(/View as/);await endRewardViewAs(gr);expect((await getRewardUnit(gr,unitId)).rows).toHaveLength(1);});
+ it('read-only View as blocks native writers, direct writes and legacy SECURITY DEFINER helpers until ended',async()=>{await beginRewardViewAs(gr,checker.userId!);await expect(saveRewardEntry(gr,unitId,1,entryId,emptyRecommendation())).rejects.toThrow(/read-only|View as/);await denied(withTenant(gr,tx=>tx.update(schema.rewardEntry).set({recommendation:emptyRecommendation()}).where(eq(schema.rewardEntry.id,entryId))));await denied(withTenant(gr,tx=>tx.execute(sql`select app.reward_company_exclusion_change(${b.companyId}::uuid,${year},'Fictional attempted mutation during view',NULL)`)));await endRewardViewAs(gr);expect((await getRewardUnit(gr,unitId)).rows).toHaveLength(1);});
  it('permission overrides narrow the native read owner and fixed own-line protection cannot be changed',async()=>{await expect(changeRewardPermission(gr,{role:'gr',capability:'own.never',allowed:true,reason:'Attempt to weaken own-line confidentiality'})).rejects.toThrow(/fixed/);await changeRewardPermission(gr,{role:'gr',capability:'review.view',allowed:false,reason:'Temporarily suspend this native page capability'});await expect(getRewardUnit(gr,unitId)).rejects.toThrow(/does not permit/);});
  it('whole upload versions stay immutable and a doer cannot check their own upload',async()=>{await owner.db.execute(sql`insert into reward_uploaded_review(unit_id,tenant_id) values(${unitId}::uuid,${b.tenantId}::uuid)`);const raw={employmentId,incrementType:'merit',incrementBp:1000,newBasicCents:null,newGrade:null,bonusCents:10000,lumpCents:0,remarks:'Fictional external basis'};
- // No assignment/current source exists in this deliberately stale fixture: saving must fail atomically.
+ // A real Payroll change makes this snapshot stale; saving must fail atomically.
+ await owner.db.update(schema.compensation).set({basicSalary:'5100.00'}).where(eq(schema.compensation.employmentId,employmentId));
  await expect(saveUploadedRewards(gr,unitId,[raw],1,'Fictional checked external award')).rejects.toThrow(/source changed/);expect((await owner.db.execute(sql`select * from reward_uploaded_version where unit_id=${unitId}::uuid`))).toHaveLength(0);
- await owner.db.execute(sql`insert into reward_uploaded_version(tenant_id,unit_id,version,rows,digest,uploaded_by,reason) values(${b.tenantId}::uuid,${unitId}::uuid,1,${JSON.stringify([raw])}::jsonb,${'a'.repeat(64)},${gr.userId}::uuid,'Fictional immutable upload record')`);await owner.db.execute(sql`update reward_uploaded_review set current_version=1 where unit_id=${unitId}::uuid`);
- await expect(withTenant(gr,tx=>tx.execute(sql`select rows from reward_uploaded_version where unit_id=${unitId}::uuid`))).rejects.toThrow(/permission denied/);await expect(withTenant(checker,tx=>tx.execute(sql`select rows from reward_uploaded_version where unit_id=${unitId}::uuid`))).rejects.toThrow(/permission denied/);
+ await withTenant(gr,async tx=>{await tx.execute(sql`insert into reward_uploaded_version(tenant_id,unit_id,version,rows,digest,uploaded_by,reason) values(${b.tenantId}::uuid,${unitId}::uuid,1,${JSON.stringify([raw])}::jsonb,${'a'.repeat(64)},${gr.userId}::uuid,'Fictional immutable upload record')`);await tx.execute(sql`update reward_uploaded_review set current_version=1 where unit_id=${unitId}::uuid`);});
+ await denied(withTenant(gr,tx=>tx.execute(sql`select rows from reward_uploaded_version where unit_id=${unitId}::uuid`)));await denied(withTenant(checker,tx=>tx.execute(sql`select rows from reward_uploaded_version where unit_id=${unitId}::uuid`)));
  await expect(confirmUploadedRewards(gr,unitId,1,'I checked my own file')).rejects.toThrow(/different/);await expect(withTenant(gr,tx=>tx.execute(sql`update reward_uploaded_version set reason='Tamper old version' where unit_id=${unitId}::uuid`))).rejects.toThrow();
  });
- it('private advisor row visibility always removes the signed-in person',async()=>{await owner.db.update(schema.rewardEntry).set({source:{...(await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.id,entryId)))[0].source,personId:checker.personId!}}).where(eq(schema.rewardEntry.id,entryId));const [row]=await withTenant(checker,tx=>tx.execute<{allowed:boolean}>(sql`select app.reward_private_entry_visible(${unitId}::uuid,${entryId}::uuid) as allowed`));expect(row.allowed).toBe(false);});
+
+ it('creates a company upload, independently checks it, revalidates each route edit and posts Payroll once',async()=>{
+  await setModule(b.tenantId,'payroll','active');gr=await entitledCtx(b);
+  const [co]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional uploaded company'}).returning();
+  const [dept]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:co.id,code:'UPL-D',name:'Uploaded department'}).returning();
+  const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:co.id,code:'UPL-C',name:'Uploaded company unit'}).returning();
+  const [grade]=await owner.db.select().from(schema.jobGrade).where(eq(schema.jobGrade.code,'12'));
+  const subject=await hireEmployee(gr,{person:{fullName:'Fictional uploaded recipient',primaryEmail:randomUUID()+'@fixture.test'},companyId:co.id,departmentId:dept.id,businessUnitId:bu.id,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
+  await owner.db.update(schema.employment).set({gradeId:grade.id,confirmationDate:`${year-2}-04-01`}).where(eq(schema.employment.id,subject.employmentId));await setCompensation(gr,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
+  const buPerson=await hireEmployee(gr,{person:{fullName:'Fictional uploaded BU reviewer',primaryEmail:randomUUID()+'@fixture.test'},companyId:co.id,departmentId:dept.id,businessUnitId:bu.id,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
+  const buUser=await createAppUser(b.tenantId,buPerson.personId,'employee');const buCtx={...gr,userId:buUser,personId:buPerson.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;
+  const existing=(await getRewardUnit(gr,unitId)).unit;
+  const uploadedId=await createUploadedRewards(gr,{companyId:co.id,businessUnitId:bu.id,cycleId:existing.cycleId,year,snapshotDate:today,reason:'External company awards prepared outside general plans'});
+  const actors:Partial<Record<'bg'|'ctro'|'ec'|'payroll',SessionContext>>={};
+  for(const role of ['bg','ctro','ec','payroll'] as const){const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional uploaded '+role,primaryEmail:randomUUID()+'@fixture.test'}).returning();const login=await createAppUser(b.tenantId,p.id,role==='payroll'?'hr_admin':'employee');actors[role]={...gr,userId:login,personId:p.id,roles:[role==='payroll'?'hr_admin':'employee'],grants:[{role:role==='payroll'?'hr_admin':'employee',companyId:null}]};await owner.db.insert(schema.rewardMember).values({tenantId:b.tenantId,unitId:uploadedId,userId:login,role});}
+  await owner.db.insert(schema.rewardMember).values([{tenantId:b.tenantId,unitId:uploadedId,userId:buUser,role:'bu'},{tenantId:b.tenantId,unitId:uploadedId,userId:checker.userId!,role:'gr'}]);
+  await expect(getRewardUnit(buCtx,uploadedId)).rejects.toThrow(/independent/);
+  const award={employmentId:subject.employmentId,incrementType:'merit' as const,incrementBp:1000,newBasicCents:550000,newGrade:null,bonusCents:10000,lumpCents:0,remarks:'Fictional checked external award'};
+  await saveUploadedRewards(gr,uploadedId,[award],1,'Original independently prepared company upload');
+  await expect(confirmUploadedRewards(gr,uploadedId,2,'Doer attempted self confirmation')).rejects.toThrow(/different/);
+  await confirmUploadedRewards(checker,uploadedId,2,'Independent reviewer checked source and totals');
+  expect((await getRewardUnit(buCtx,uploadedId)).rows.some(r=>r.source.personId===buCtx.personId)).toBe(false);
+  await decideRewardUnit(buCtx,uploadedId,2,'submit','External company amounts reviewed and accepted');
+  const line=(await uploadedRewards(actors.bg!,uploadedId))!.rows.find(r=>r.source.employmentId===subject.employmentId)!;
+  await adjustUploadedAward(actors.bg!,uploadedId,line.id,2,{...award,incrementBp:null,newBasicCents:560000},'BG adjusted the external award after review');
+  const adjusted=await getRewardUnit(actors.bg!,uploadedId);expect(adjusted.flags).toContainEqual(expect.objectContaining({code:'UPL-02',severity:'warning'}));expect(adjusted.flags.some(f=>f.code.startsWith('BUD'))).toBe(false);
+  for(const actor of [actors.bg!,gr,actors.ctro!,actors.ec!])await decideRewardUnit(actor,uploadedId,3,'approve','External award warning reviewed and accepted');
+  const {batchId}=await createBatch(actors.payroll!,{companyId:co.id,payPeriod:`${year+1}-01`});
+  await postRewardUnit(actors.payroll!,uploadedId,3,batchId);expect(await postRewardUnit(actors.payroll!,uploadedId,3,batchId)).toEqual({alreadyPosted:true});
+  const [input]=await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batchId));expect(Number(input.bonusAmount)).toBe(100);expect(input.rewardProvenance).toContainEqual(expect.objectContaining({unitId:uploadedId,plan:'Uploaded award',confirmedBy:checker.userId}));
+  const sources=await rewardPayrollProvenance(actors.payroll!,batchId);expect(sources.flatMap(r=>r.sources).filter(r=>r.unitId===uploadedId)).toHaveLength(1);
+ });
+ it('private advisor row visibility always removes the signed-in person',async()=>{await owner.db.update(schema.rewardEntry).set({source:{...(await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.id,entryId)))[0].source,personId:checker.personId!}}).where(eq(schema.rewardEntry.id,entryId));const [row]=await withTenant(checker,tx=>tx.execute<{allowed:boolean}>(sql`select app.reward_private_entry_visible(${unitId}::uuid,${entryId}::uuid) as allowed`));expect(row.allowed).toBe(false);
+ await owner.db.execute(sql`insert into reward_uploaded_review(unit_id,tenant_id) values(${unitId}::uuid,${b.tenantId}::uuid)`);const award={employmentId,incrementType:'merit',incrementBp:1000,newBasicCents:550000,newGrade:null,bonusCents:10000,lumpCents:0,remarks:'Fictional private award'};await withTenant(gr,async tx=>{await tx.execute(sql`insert into reward_uploaded_version(tenant_id,unit_id,version,rows,digest,uploaded_by,reason) values(${b.tenantId}::uuid,${unitId}::uuid,1,${JSON.stringify([award])}::jsonb,${'b'.repeat(64)},${gr.userId}::uuid,'Fictional private own-line probe')`);await tx.execute(sql`insert into reward_uploaded_award(entry_id,tenant_id,unit_id,award,source_version,updated_by) values(${entryId}::uuid,${b.tenantId}::uuid,${unitId}::uuid,${JSON.stringify(award)}::jsonb,1,${gr.userId}::uuid)`);await tx.execute(sql`update reward_uploaded_review set current_version=1 where unit_id=${unitId}::uuid`);});expect(await withTenant(checker,tx=>tx.execute(sql`select award from reward_uploaded_award where unit_id=${unitId}::uuid`))).toHaveLength(0);expect(await withTenant(gr,tx=>tx.execute(sql`select award from reward_uploaded_award where unit_id=${unitId}::uuid`))).toHaveLength(1);});
 });

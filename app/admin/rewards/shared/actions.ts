@@ -35,7 +35,7 @@ export async function loadSharedRewardTakenAction(year:number){
 export async function changeSharedRewardExclusionAction(form:FormData):Promise<{ok:boolean}>{
  const session=await getSession();
  try{
-  await changeRewardCompanyExclusion(session,{companyId:form.get('companyId'),year:Number(form.get('year')),reason:form.get('reason'),endId:form.get('endId')||null});
+  await changeRewardCompanyExclusion(session,{companyId:form.get('companyId'),year:Number(form.get('year')),reason:form.get('reason'),endId:form.get('endId')||null,awardType:form.get('awardType')||'no_awards'});
   revalidatePath('/admin/rewards','layout');return {ok:true};
  }catch{return {ok:false};}
 }

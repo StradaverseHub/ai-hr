@@ -24102,7 +24102,8 @@
       "help": "Excluded from the salary increase and from the salary increase pool base. Still eligible for bonus, calculated on the adjusted basic salary, and counted in the bonus pool. Lateral transfers with no change to basic salary are not excluded."
     },
     "unitInputsHelp": "Unit budgets, PAT, multipliers, branch ratings and exemptions are maintained separately in the review.",
-    "unitInputsLink": "Open unit inputs"
+    "unitInputsLink": "Open unit inputs",
+    "architectureMismatch": "The employee grade differs from the approved position grade. Review the mapping or propose a dated grade movement; the recorded employee grade stays unchanged."
   },
   "identityEmail": {
     "title": "Email delivery",
@@ -35195,7 +35196,8 @@
       "ACC-05": "EC-approved awards are locked. Changes require the authorized return route.",
       "OC-01": "Off-cycle changes are blocked from {from} to {to}.",
       "UPL-01": "Uploaded awards must have valid company employees, active grades, nonnegative amounts and no salary reduction.",
-      "UPL-02": "General eligibility is warning-only for uploaded awards, including joining cutoff {cutoff} and salary changes {from} to {to}."
+      "UPL-02": "General eligibility is warning-only for uploaded awards, including joining cutoff {cutoff} and salary changes {from} to {to}.",
+      "ARCH-01": "The employee grade differs from the approved position grade. Review the mapping or propose a dated grade movement; the recorded employee grade stays unchanged."
     }
   },
   "rewardAccessPolicy": {
@@ -35379,7 +35381,8 @@
       "ineligible": "general-plan eligibility",
       "rules": "blocking checks",
       "budget": "pool capacity",
-      "final_pool": "final pool"
+      "final_pool": "final pool",
+      "calibrated": "final calibrated ratings"
     },
     "fairnessReport": "Fairness report",
     "acceptAll": "Accept all within budget",
@@ -35408,6 +35411,12 @@
       "include": "Include uploaded awards",
       "exclude": "Exclude uploaded awards",
       "only": "Uploaded awards only"
+    },
+    "decisionHistory": "Decision history",
+    "decisionStatus": {
+      "accepted": "Accepted",
+      "adjusted": "Adjusted",
+      "ignored": "Ignored"
     }
   },
   "rewardUploaded": {
@@ -35456,7 +35465,15 @@
       "joined": "Joined on or after 1 October.",
       "pay_change": "Salary adjusted between 1 October and 31 December.",
       "increase": "Increase exceeds the normal warning threshold.",
-      "bonus": "Bonus is above nine months of current basic salary."
-    }
+      "bonus": "Bonus is above nine months of current basic salary.",
+      "restricted": "A restricted uploaded line has warnings for its authorized reviewer."
+    },
+    "checkNotificationTitle": "Uploaded awards need checking",
+    "checkNotificationBody": "A different Group Rewards user must check the current upload before the BU review opens.",
+    "readyNotificationTitle": "Uploaded awards ready for review",
+    "readyNotificationBody": "Group Rewards independently checked this upload. Open the review to assess the awards.",
+    "participation": "Participation",
+    "excludedNoAwards": "Excluded – no awards this year",
+    "excludedUploaded": "Excluded – awards uploaded"
   }
 }

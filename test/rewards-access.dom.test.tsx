@@ -1,3 +1,4 @@
+import {RewardAccessRequests} from '../app/admin/rewards/access/requests';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
@@ -182,12 +183,12 @@ it('shows an exact pending request and gives only an independent checker the dec
  const c=en.rewardsAccessControl;
  const request={id:'pending',changes:[{unitId:'review',revision:4,before:null,after:{userId:'user',role:'ctro' as const}}],requestedBy:'requester',requestedName:'Fictional requester',requestedAt:'2026-10-29',status:'pending' as const,canDecide:true,decidedAt:null,reason:null};
  ports.decide.mockResolvedValue({ok:true,result:{status:'approved'}});
- const view=render(<NextIntlClientProvider locale="en" messages={en}><RewardAccessEditor value={value} requests={[request]}/></NextIntlClientProvider>);
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><RewardAccessRequests value={value} requests={[request]}/><RewardAccessEditor value={value}/></NextIntlClientProvider>);
  fireEvent.click(screen.getByText(/Fictional requester requested/));
  expect(screen.getByRole('button',{name:c.reject}).hasAttribute('disabled')).toBe(true);
  fireEvent.click(screen.getByRole('button',{name:c.approve}));
  await waitFor(()=>expect(ports.decide).toHaveBeenCalledWith('pending',true,''));
- view.rerender(<NextIntlClientProvider locale="en" messages={en}><RewardAccessEditor value={value} requests={[{...request,canDecide:false}]}/></NextIntlClientProvider>);
+ view.rerender(<NextIntlClientProvider locale="en" messages={en}><RewardAccessRequests value={value} requests={[{...request,canDecide:false}]}/><RewardAccessEditor value={value}/></NextIntlClientProvider>);
  const pending = within(screen.getByText(/Fictional requester requested/).closest('details')!);
  expect(pending.queryByRole('button',{name:c.approve})).toBeNull();
  expect(pending.queryByRole('button',{name:c.reject})).toBeNull();
