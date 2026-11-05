@@ -6,7 +6,7 @@ const state=vi.hoisted(()=>({subject:vi.fn(),enabled:vi.fn(),clock:vi.fn(),kind:
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,read:(tx:unknown)=>unknown)=>read({})}));
 vi.mock('../core/employee-home',()=>({requireOwnHomeSubject:state.subject}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:state.enabled}));
-vi.mock('../packs/attendance/service',()=>({ownClockTodaySummary:state.clock,workedDayKindForTx:state.kind,employeeClockingLocationLabels:state.locations}));
+vi.mock('../packs/attendance/service',()=>({ownClockTodaySummary:state.clock,workedDayKindForTx:state.kind,employeeClockingLocationLabelsTx:state.locations}));
 vi.mock('../packs/leave/service',()=>({approvedLeavePresenceByEmploymentTx:state.leave}));
 vi.mock('../packs/payroll/service',()=>({readOwnPayrollHomeMetadata:state.payroll}));
 import {readEmployeeHomeToday} from '../core/employee-home-today';
