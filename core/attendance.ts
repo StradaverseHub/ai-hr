@@ -4010,7 +4010,7 @@ async function lockAttendanceApplicationTx(tx: Tx, ctx: SessionContext, correcti
   try {
     if (sharedApproval) {
       await lockAccessConfigurationReadTx(tx, ctx.tenantId);
-      await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+      await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     } else if (rejectionSubject === undefined) {
       await lockAttendanceLeaveDependenciesTx(tx, ctx, []);
     } else {
@@ -4082,9 +4082,10 @@ export class MissingAttendanceRejectReasonError extends Error {
   constructor() { super('A rejection explanation of 1–1000 characters is required.'); }
 }
 
-// Native approvals take the exclusive leave-configuration lock. Let only one per tenant and
-// process enter the pool at a time, so local waiters leave connections available for other requests.
-const attendanceApprovalTails = new Map<string, Promise<void>>();
+// Bound application admission before borrowing a connection. PostgreSQL still serializes each
+// employee and excludes configuration writers across all application processes.
+const attendanceApprovalConcurrency = 2;
+const attendanceApprovalQueues = new Map<string, { active: number; waiting: Array<() => void> }>();
 const attendancePerformance = globalThis as typeof globalThis & {
   __aihrPerfBeginAttendanceApproval?: () => { acquired: () => void; finished: () => void };
 };
@@ -4092,17 +4093,23 @@ const attendancePerformance = globalThis as typeof globalThis & {
 async function queueNativeAttendanceApproval<T>(tenantId: string, approve: () => Promise<T>): Promise<T> {
   const timing = attendancePerformance.__aihrPerfBeginAttendanceApproval?.();
   const key = tenantId.toLowerCase();
-  const previous = attendanceApprovalTails.get(key);
-  let release!: () => void;
-  const current = new Promise<void>(resolve => { release = resolve; });
-  attendanceApprovalTails.set(key, current);
+  const queue = attendanceApprovalQueues.get(key) ?? { active: 0, waiting: [] };
+  attendanceApprovalQueues.set(key, queue);
+  if (queue.active < attendanceApprovalConcurrency) {
+    queue.active++;
+  } else {
+    await new Promise<void>(resolve => queue.waiting.push(resolve));
+  }
   try {
-    await previous;
     timing?.acquired();
     return await approve();
   } finally {
-    if (attendanceApprovalTails.get(key) === current) attendanceApprovalTails.delete(key);
-    release();
+    const next = queue.waiting.shift();
+    if (next) {
+      next();
+    } else if (--queue.active === 0) {
+      attendanceApprovalQueues.delete(key);
+    }
     timing?.finished();
   }
 }
@@ -4695,8 +4702,8 @@ export async function decideAttendanceCorrection(
   const correctionIdIsCanonical = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(p.correctionId);
   if (p.decision === 'approved') {
     return queueNativeAttendanceApproval(ctx.tenantId, async () => {
-      // Only the native ordinary correction path with a positively disabled TOIL gate may share
-      // Access. Keep the existing leave-configuration, subject, Payroll and audit fences.
+      // Ordinary corrections with TOIL disabled cannot create leave configuration. They can
+      // share both configuration locks while retaining the subject, Payroll and audit fences.
       let toilDisabled = false;
       if (ctx.userId && !ctx.agent && correctionIdIsCanonical && ctx.entitlements) {
         ctx = {...ctx, entitlements: structuredClone(ctx.entitlements)};

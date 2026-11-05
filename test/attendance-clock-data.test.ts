@@ -99,6 +99,70 @@ describe('approved attendance clock-data corrections', () => {
     }
     expect((await day(employmentId)).checkInAt).toBe('09:00:00');
   });
+  it('approves a different employee while the first approval waits on its subject lock', async () => {
+    const { a, employmentId } = await fixture();
+    const second = await hireEmployee(a, {
+      person: { fullName: 'Independent clock worker', primaryEmail: 'independent-clock@test.local' },
+      companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2020-01-01',
+    });
+    const request = (subjectId: string) => requestAttendanceCorrection(a, {
+      employmentId: subjectId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Verified independent gate log',
+    });
+    const firstRequest = await request(employmentId);
+    const secondRequest = await request(second.employmentId);
+    const approve = (correctionId: string) => decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    const timings = globalThis as typeof globalThis & {
+      __aihrPerfBeginAttendanceApproval?: () => { acquired: () => void; finished: () => void };
+    };
+    const previousTiming = timings.__aihrPerfBeginAttendanceApproval;
+    let notifyAdmitted!: () => void;
+    const firstAdmitted = new Promise<void>(resolve => { notifyAdmitted = resolve; });
+    timings.__aihrPerfBeginAttendanceApproval = () => ({ acquired: notifyAdmitted, finished() {} });
+    const approvals: ReturnType<typeof approve>[] = [];
+    const beginApproval = (id: string) => {
+      const approval = approve(id);
+      approvals.push(approval);
+      void approval.catch(() => {});
+      return approval;
+    };
+    try {
+      const completed = await owner.db.transaction(async tx => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${a.tenantId + ':' + employmentId},0))`);
+        void beginApproval(firstRequest.correctionId);
+        await firstAdmitted;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([
+            beginApproval(secondRequest.correctionId),
+            new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 3000); }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+      });
+      expect(completed).toMatchObject({ status: 'approved' });
+    } finally {
+      timings.__aihrPerfBeginAttendanceApproval = previousTiming;
+      await Promise.all(approvals);
+    }
+    expect((await day(employmentId)).checkInAt).toBe('09:00:00');
+    expect((await day(second.employmentId)).checkInAt).toBe('09:00:00');
+  });
+  it('records one decision when the same correction is approved concurrently', async () => {
+    const { a, employmentId } = await fixture();
+    const { correctionId } = await requestAttendanceCorrection(a, {
+      employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'One verified correction',
+    });
+    const decide = () => decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    const outcomes = await Promise.allSettled([decide(), decide()]);
+    expect(outcomes.filter(outcome => outcome.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter(outcome => outcome.status === 'rejected')).toHaveLength(1);
+    const events = await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(
+      eq(schema.domainEvent.aggregateId, correctionId),
+      eq(schema.domainEvent.eventType, 'attendance-correction.approved'),
+    ));
+    expect(events).toHaveLength(1);
+  });
   it('rejects stale approval atomically when new clocking arrived after the request', async () => {
     const { a, employmentId } = await fixture();
     const raw = await attendanceClockData(a, employmentId, date);
