@@ -8,18 +8,19 @@ vi.mock('../core/employee-home',()=>({requireOwnHomeSubject:state.subject}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:state.enabled}));
 vi.mock('../packs/attendance/service',()=>({ownClockTodaySummaryTx:state.clock,workedDayKindForTx:state.kind,employeeClockingLocationLabelsTx:state.locations}));
 vi.mock('../packs/leave/service',()=>({approvedLeavePresenceByEmploymentTx:state.leave}));
-vi.mock('../packs/payroll/service',()=>({readOwnPayrollHomeMetadata:state.payroll}));
+vi.mock('../packs/payroll/service',()=>({readOwnNextPayrollPaymentDate:state.payroll}));
 import {readEmployeeHomeToday} from '../core/employee-home-today';
 const now=new Date().toISOString(),date=todayInKualaLumpur(new Date(now)),ctx={tenantId:'tenant',personId:'person',userId:'login',roles:['employee']} as Parameters<typeof readEmployeeHomeToday>[0];
 export function todayData():EmployeeHomeToday{return {version:1,employmentId:'own',serverNow:now,businessDate:date,attendanceEnabled:true,payrollEnabled:true,clock:{date,clockedIn:false,openSince:null,workedSeconds:300,crossesMidnight:false,shift:{code:'SF',start:'09:00',end:'18:00'},geofencingRequired:false,photoRequired:false},dayKind:'workday',leavePresence:null,workLocations:{total:1,names:['Fictional HQ']},payday:{date,daysAway:0}};}
-beforeEach(()=>{vi.clearAllMocks();state.subject.mockResolvedValue({employmentId:'own'});state.enabled.mockReturnValue(true);state.clock.mockResolvedValue({...todayData().clock,serverNow:now,attendancePhotoSetting:'not_required',captureGPS:'private'});state.kind.mockResolvedValue('workday');state.locations.mockResolvedValue({total:1,names:['Fictional HQ']});state.leave.mockResolvedValue(new Map());state.payroll.mockResolvedValue({nextPayment:{date,amount:'private'}});});
+beforeEach(()=>{vi.clearAllMocks();state.subject.mockResolvedValue({employmentId:'own'});state.enabled.mockReturnValue(true);state.clock.mockResolvedValue({...todayData().clock,serverNow:now,attendancePhotoSetting:'not_required',captureGPS:'private'});state.kind.mockResolvedValue('workday');state.locations.mockResolvedValue({total:1,names:['Fictional HQ']});state.leave.mockResolvedValue(new Map());state.payroll.mockResolvedValue(date);});
 describe('Your Day independent own metadata',()=>{
  it('uses canonical owners and sends only the small clock and recorded payment facts',async()=>{
   const value=await readEmployeeHomeToday(ctx,'own');expect(validateEmployeeHomeToday(value,'own')).toEqual(todayData());
   expect(state.leave.mock.calls[0][0]).toBe(state.kind.mock.calls[0][0]);
   expect(state.subject).toHaveBeenCalledWith(ctx,'own');expect(state.clock).toHaveBeenCalledWith(expect.any(Object),ctx,'own');
- const [attendanceTx]=state.clock.mock.calls[0];
- expect(state.locations).toHaveBeenCalledWith(attendanceTx,'own');expect(state.payroll).toHaveBeenCalledWith(ctx,'own');
+  const [attendanceTx]=state.clock.mock.calls[0];
+  expect(state.locations).toHaveBeenCalledWith(attendanceTx,'own');
+  expect(state.payroll).toHaveBeenCalledWith(ctx,'own');
   expect(JSON.stringify(value)).not.toMatch(/private|amount|captureGPS/);
  });
  it('does not read disabled attendance or payroll owners',async()=>{

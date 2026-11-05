@@ -6,7 +6,7 @@ import {appUser,roleAssignment} from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {readEmployeeHomePayHints} from '../core/employee-home';
-import {readOwnPayrollHomeMetadata,readOwnPayrollCalendarPayments,createBatch,generatePayslips,closeBatch,unlockClosedBatch,setPayrollConfig,createIndividualTxn} from '../packs/payroll/service';
+import {readOwnNextPayrollPaymentDate,readOwnPayrollHomeMetadata,readOwnPayrollCalendarPayments,createBatch,generatePayslips,closeBatch,unlockClosedBatch,setPayrollConfig,createIndividualTxn} from '../packs/payroll/service';
 import {requirePackFor} from '../localization/registry';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {dayAfter} from '../core/employment-company';
@@ -54,13 +54,16 @@ describe('Home consumes own salary-free Payroll metadata',()=>{
   const own=await worker();const date=dayAfter(todayInKualaLumpur());
   const batch=await createBatch(admin,{companyId:b.companyId,payPeriod:period,paymentDate:date});
   expect((await readOwnPayrollHomeMetadata(own.ctx,own.employmentId)).nextPayment).toBeNull();
+  expect(await readOwnNextPayrollPaymentDate(own.ctx,own.employmentId)).toBeNull();
   expect(await readOwnPayrollCalendarPayments(own.ctx,own.employmentId,date,date)).toEqual([]);
   await generatePayslips(admin,{batchId:batch.batchId});
   expect(await readOwnPayrollHomeMetadata(own.ctx,own.employmentId)).toEqual({version:1,employmentId:own.employmentId,payslips:[],nextPayment:{date,period,runType:'regular'}});
+  expect(await readOwnNextPayrollPaymentDate(own.ctx,own.employmentId)).toBe(date);
   expect(await readOwnPayrollCalendarPayments(own.ctx,own.employmentId,date,date)).toEqual([date]);
   expect(await readOwnPayrollCalendarPayments(own.ctx,own.employmentId,dayAfter(date),dayAfter(date))).toEqual([]);
   await createIndividualTxn(admin,{batchId:batch.batchId,employmentId:own.employmentId,kind:'earning',txnDate:period+'-01',amount:1});
   expect((await readOwnPayrollHomeMetadata(own.ctx,own.employmentId)).nextPayment).toBeNull();
+  expect(await readOwnNextPayrollPaymentDate(own.ctx,own.employmentId)).toBeNull();
   expect(await readOwnPayrollCalendarPayments(own.ctx,own.employmentId,date,date)).toEqual([]);
  });
  it('refuses foreign subjects even for HR, forged person context and a freshly archived login',async()=>{
@@ -69,6 +72,7 @@ describe('Home consumes own salary-free Payroll metadata',()=>{
   await generatePayslips(admin,{batchId:batch.batchId});await closeBatch(admin,{batchId:batch.batchId});
   for(const id of [other.employmentId,randomUUID(),''])await expect(readOwnPayrollHomeMetadata(own.ctx,id)).rejects.toMatchObject({name:'OwnPayrollSubjectUnavailableError'});
   for(const id of [other.employmentId,randomUUID(),''])await expect(readOwnPayrollCalendarPayments(own.ctx,id,period+'-01',period+'-02')).rejects.toMatchObject({name:'OwnPayrollSubjectUnavailableError'});
+  await expect(readOwnNextPayrollPaymentDate(own.ctx,other.employmentId)).rejects.toMatchObject({name:'OwnPayrollSubjectUnavailableError'});
   const foreign=await seedBase();
   await expect(readOwnPayrollHomeMetadata({...own.ctx,tenantId:foreign.tenantId},own.employmentId)).rejects.toMatchObject({name:'EntitlementsTenantMismatchError'});
   await expect(readOwnPayrollHomeMetadata({...own.ctx,personId:other.personId},other.employmentId)).rejects.toMatchObject({name:'OwnPayrollSubjectUnavailableError'});

@@ -3,7 +3,7 @@ import {requireOwnHomeSubject} from './employee-home';
 import {isModuleEnabled} from './entitlements';
 import {ownClockTodaySummaryTx,workedDayKindForTx,employeeClockingLocationLabelsTx} from '../packs/attendance/service';
 import {approvedLeavePresenceByEmploymentTx} from '../packs/leave/service';
-import {readOwnPayrollHomeMetadata} from '../packs/payroll/service';
+import {readOwnNextPayrollPaymentDate} from '../packs/payroll/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {EmployeeHomeToday} from '../lib/employee-home-today';
 
@@ -12,7 +12,7 @@ import type {EmployeeHomeToday} from '../lib/employee-home-today';
 export async function readEmployeeHomeToday(ctx:SessionContext,employmentId:string):Promise<EmployeeHomeToday>{
  const subject=await requireOwnHomeSubject(ctx,employmentId);
  const attendanceEnabled=isModuleEnabled(ctx,'attendance'),payrollEnabled=isModuleEnabled(ctx,'payroll');
- const [attendance,payroll]=await Promise.all([
+ const [attendance,paymentDate]=await Promise.all([
   attendanceEnabled?withTenant(ctx,async tx=>{
    const clock=await ownClockTodaySummaryTx(tx,ctx,subject.employmentId);
    const businessDate=todayInKualaLumpur(new Date(clock.serverNow));
@@ -23,17 +23,16 @@ export async function readEmployeeHomeToday(ctx:SessionContext,employmentId:stri
    ]);
    return {clock,businessDate,dayKind,leavePresence:presence.get(subject.employmentId)?.get(businessDate)??null,workLocations};
   }):null,
-  payrollEnabled?readOwnPayrollHomeMetadata(ctx,subject.employmentId):null,
+  payrollEnabled?readOwnNextPayrollPaymentDate(ctx,subject.employmentId):null,
  ]);
  const clock=attendance?.clock??null;
  const serverNow=clock?.serverNow??new Date().toISOString();
  const businessDate=attendance?.businessDate??todayInKualaLumpur(new Date(serverNow));
- const payment=payroll?.nextPayment;
  return {version:1,employmentId:subject.employmentId,serverNow,businessDate,attendanceEnabled,payrollEnabled,
   clock:clock?{date:clock.date,clockedIn:clock.clockedIn,openSince:clock.openSince,workedSeconds:clock.workedSeconds,
    crossesMidnight:clock.crossesMidnight,shift:{code:clock.shift.code,start:clock.shift.start,end:clock.shift.end},
    geofencingRequired:clock.geofencingRequired,photoRequired:clock.attendancePhotoSetting==='required'}:null,
   dayKind:attendance?.dayKind??null,leavePresence:attendance?.leavePresence??null,
   workLocations:attendance?.workLocations??{total:0,names:[]},
-  payday:payment?{date:payment.date,daysAway:Math.round((Date.parse(payment.date+'T00:00:00Z')-Date.parse(businessDate+'T00:00:00Z'))/86400000)}:null};
+  payday:paymentDate?{date:paymentDate,daysAway:Math.round((Date.parse(paymentDate+'T00:00:00Z')-Date.parse(businessDate+'T00:00:00Z'))/86400000)}:null};
 }
