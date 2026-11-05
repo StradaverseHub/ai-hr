@@ -75,7 +75,7 @@ export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage'
 // Reuse pools across hot-reloads (dev) so HMR doesn't leak Postgres connections.
 const globalForPg = globalThis as unknown as {
   __aihrPgPools?: Map<string, ReturnType<typeof postgres>>;
-  __aihrPerfBeginTransaction?: () => { acquired: () => void; finished: () => void };
+  __aihrPerfBeginTransaction?: (poolMax: number) => { acquired: () => void; finished: () => void };
 };
 const pgPools = (globalForPg.__aihrPgPools ??= new Map<string, ReturnType<typeof postgres>>());
 
@@ -196,7 +196,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     // Backward-compat: a context with only `roles` becomes group-wide grants (companyId null).
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
-    const timing = globalForPg.__aihrPerfBeginTransaction?.();
+    const timing = globalForPg.__aihrPerfBeginTransaction?.(client.options.max);
     const result = db.transaction(async (tx) => {
       timing?.acquired();
       // The existing sticky fact only moves from unknown to on. An already known chain can
@@ -289,5 +289,12 @@ export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error('DATABASE_URL is not set');
 
-// App singleton (non-privileged role).
-export const { db, client, withTenant } = createDb(url);
+// App singleton (non-privileged role). Keep the default for deployments that do
+// not explicitly divide a connection budget among application workers.
+const poolMax = process.env.AIHR_DB_POOL_MAX;
+if (poolMax !== undefined && !/^(?:[1-9]|[1-4][0-9]|50)$/.test(poolMax)) {
+  throw new Error('AIHR_DB_POOL_MAX must be an integer from 1 to 50');
+}
+export const { db, client, withTenant } = createDb(url, {
+  max: poolMax === undefined ? undefined : Number(poolMax),
+});

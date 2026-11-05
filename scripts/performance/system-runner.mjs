@@ -148,6 +148,18 @@ finally{
   if(forced){app.kill('SIGKILL');await exited;}
   return {worker,requestedSignal:'SIGUSR2',forced,code:app.exitCode,signal:app.signalCode};
  }));
+ if(apps.length){
+  const observedPoolSizes=apps.map((_,worker)=>{
+   try{return JSON.parse(readFileSync(join(out,'app-transactions-'+worker+'.json'),'utf8')).observedPoolSizes??[];}
+   catch{return [];}
+  });
+  const verified=observedPoolSizes.length===workers&&observedPoolSizes.every(sizes=>sizes.length===1&&sizes[0]===poolPerWorker);
+  report.poolBudgetEvidence={observedPoolSizes,verified};
+  if(report.exitCode===0&&!verified){
+   report.exitCode=1;
+   report.error='Application worker database pools did not verify the requested connection budget';
+  }
+ }
  for(const fd of appFds)closeSync(fd);
  try{summarizeNativeFailures();}catch{report.nativeFailureSummaryUnavailable=true;}
  if(apps.length)try{summarizeCpu();}catch(error){report.cpuSummaryError=String(error.message).slice(0,180);}
