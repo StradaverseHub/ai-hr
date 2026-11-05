@@ -4,7 +4,7 @@
 import {and,eq} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import type {SessionContext} from '../db/client';
-import {rewardUnit,rewardMember,businessUnit,rewardCycle,rewardEntry,rewardGovernance,rewardGovernancePublic,employment,person} from '../db/schema';
+import {rewardUnit,rewardMember,businessUnit,rewardCycle,rewardEntry,rewardGovernance,rewardGovernancePublic,employment,person,labelCompanyAssignment} from '../db/schema';
 import {defaultPolicy,emptyFacts,emptyRecommendation} from '../packs/rewards/model';
 import {emptyGovernance,governanceBasis} from '../packs/rewards/governance-model';
 import {owner} from './harness';
@@ -13,6 +13,7 @@ export async function historicalEmptyRewardUnit(ctx:SessionContext,templateUnitI
   const [template]=await tx.select().from(rewardUnit).where(and(eq(rewardUnit.id,templateUnitId),eq(rewardUnit.tenantId,ctx.tenantId)));
   const [bu]=await tx.select().from(businessUnit).where(and(eq(businessUnit.id,businessUnitId),eq(businessUnit.tenantId,ctx.tenantId)));
   if(!template||template.kind!=='annual'||!bu||bu.companyId!==template.companyId)throw new Error('Historical fixture must retain the same tenant and employer.');
+  if(!bu.isGlobal)await tx.insert(labelCompanyAssignment).values({tenantId:ctx.tenantId,labelKind:'business_unit',labelId:bu.id,companyId:template.companyId}).onConflictDoNothing();
   const {unitGovernanceDigest:_privateBasis,...policy}=template.policy;
   const id=randomUUID();
   await tx.insert(rewardUnit).values({id,tenantId:ctx.tenantId,createdBy:ctx.userId!,cycleId:template.cycleId,companyId:template.companyId,businessUnitId,kind:'annual',policy,snapshotDate:template.snapshotDate,policyGroupVersionId:null,createdAt:template.createdAt});
@@ -30,6 +31,9 @@ export async function historicalRewardDraft(ctx:SessionContext,input:{
    .innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId)))
    .where(and(eq(employment.id,input.employmentId),eq(employment.companyId,input.companyId),eq(employment.tenantId,ctx.tenantId)));
   if(!source||!ctx.userId)throw new Error('Historical draft requires a real source employee and author in its tenant.');
+  const [bu]=await tx.select().from(businessUnit).where(and(eq(businessUnit.id,input.businessUnitId),eq(businessUnit.tenantId,ctx.tenantId)));
+  if(!bu||bu.companyId!==input.companyId)throw new Error('Historical draft requires an actual Business unit in its employer.');
+  if(!bu.isGlobal)await tx.insert(labelCompanyAssignment).values({tenantId:ctx.tenantId,labelKind:'business_unit',labelId:bu.id,companyId:input.companyId}).onConflictDoNothing();
   const [cycle]=await tx.insert(rewardCycle).values({tenantId:ctx.tenantId,name:input.name,year:input.year,createdBy:ctx.userId}).returning();
   const policy=defaultPolicy(input.year);
   const [unit]=await tx.insert(rewardUnit).values({
