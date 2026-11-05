@@ -64,8 +64,11 @@ async function templateTx(tx:Tx,ctx:SessionContext,scopeIds:readonly string[],id
 export async function getEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string):Promise<MasterTemplate>{return withTenant(ctx,tx=>templateTx(tx,ctx,scopeIds,id,'definition'));}
 /** Scheduling and delivery consumers retain the same strict validation as an actual run. */
 export async function getExecutableEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string):Promise<MasterTemplate>{return withTenant(ctx,tx=>templateTx(tx,ctx,scopeIds,id,'execution'));}
-export async function listEmployeeMasterReports(ctx:SessionContext,scopeIds:readonly string[],input:{all?:boolean;search?:string}={}):Promise<MasterTemplate[]>{
-  const ids=await withTenant(ctx,async tx=>(await tx.select({id:customReport.id,name:customReport.name}).from(customReport).where(and(eq(customReport.datasetId,'master'),sql`${customReport.spec} ? 'employeeMaster'`)).orderBy(sql`${customReport.lastRunAt} desc nulls last`,desc(customReport.updatedAt),asc(customReport.id))).filter(row=>!input.search||row.name.toLocaleLowerCase().includes(input.search.toLocaleLowerCase())).map(row=>row.id));
+export async function listEmployeeMasterReports(ctx:SessionContext,scopeIds:readonly string[],input:{all?:boolean;search?:string;id?:string}={}):Promise<MasterTemplate[]>{
+  // A saved-toast lookup still passes through the same native visibility and per-definition
+  // field checks. Invalid IDs select no rows without casting untrusted text or masking DB errors.
+  const idFilter=input.id===undefined?undefined:z.uuid().safeParse(input.id).success?eq(customReport.id,input.id):sql`false`;
+  const ids=await withTenant(ctx,async tx=>(await tx.select({id:customReport.id,name:customReport.name}).from(customReport).where(and(eq(customReport.datasetId,'master'),sql`${customReport.spec} ? 'employeeMaster'`,idFilter)).orderBy(sql`${customReport.lastRunAt} desc nulls last`,desc(customReport.updatedAt),asc(customReport.id))).filter(row=>!input.search||row.name.toLocaleLowerCase().includes(input.search.toLocaleLowerCase())).map(row=>row.id));
   const reports:MasterTemplate[]=[];for(const id of ids){try{reports.push(await getEmployeeMasterReport(ctx,scopeIds,id));}catch(error){if(!(error instanceof MasterReportAccessError))throw error;}if(!input.all&&reports.length===5)break;}return reports;
 }
 export async function duplicateEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string){const source=await getEmployeeMasterReport(ctx,scopeIds,id);return saveEmployeeMasterReport(ctx,scopeIds,{name:source.name+' (copy)',description:source.description,sharedRoleIds:[],spec:source.spec});}

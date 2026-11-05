@@ -51,11 +51,13 @@ export default async function ReportsPage({
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const mt=await getTranslations('employeeMasterReports');
-  const visibleMasterReports=await listEmployeeMasterReports(s,scopeIds,{all:true});
-  const masterReports=visibleMasterReports.slice(0,5);
-  const t = await getTranslations('reports');
   const sp = await searchParams;
-  const savedMasterReport=sp.saved?visibleMasterReports.find(report=>report.id===sp.saved):undefined;
+  const masterReports=await listEmployeeMasterReports(s,scopeIds);
+  const t = await getTranslations('reports');
+  let savedMasterReport=sp.saved?masterReports.find(report=>report.id===sp.saved):undefined;
+  // Keep the full-library screen unchanged; the hub only displays five authorized templates.
+  // A newly saved template outside that preview needs one exact, independently authorized lookup.
+  if(sp.saved&&!savedMasterReport)savedMasterReport=(await listEmployeeMasterReports(s,scopeIds,{id:sp.saved})).find(report=>report.id===sp.saved);
   const only = sp.cat as ReportCategory | undefined;
   const categories = only && REPORT_CATEGORIES.includes(only) ? [only] : REPORT_CATEGORIES;
 
