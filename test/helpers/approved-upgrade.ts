@@ -76,7 +76,7 @@ const ordered=(rows:Row[])=>rows.map(canonical).sort();
 async function table(db:Database,name:string):Promise<Row[]>{return (await db.client.unsafe('select to_jsonb(t) value from '+name+' t order by to_jsonb(t)::text')).map(row=>row.value as Row);}
 /** Stage the complete ordinary prefix immediately before 2107, inspect exactly that transition,
  * then migrate every remaining journal entry. No SQL is installed outside the ordinary migrator. */
-export async function migrateApprovedUpgrade(db:Database):Promise<ApprovedUpgradeWitness>{
+export async function migrateApprovedUpgrade(db:Database, migrationsFolder = 'db/migrations'):Promise<ApprovedUpgradeWitness>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));
  assertApprovedUpgradeTail(journal.entries);
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='2107_probation_module_permission');
@@ -127,7 +127,7 @@ export async function migrateApprovedUpgrade(db:Database):Promise<ApprovedUpgrad
    expect(after).toEqual({...before,generation:Number(before.generation)+(configs.some(row=>row.tenant_id===before.tenant_id)?1:0)});return {before,after};
   });
   expect(await table(db,'public.access_group')).toEqual(groups);expect(await table(db,'public.app_user')).toEqual(users);
-  await migrate(db.db,{migrationsFolder:'db/migrations'});
+  await migrate(db.db,{migrationsFolder});
   expect(await table(db,'public.domain_event')).toEqual(eventsAfter);
   expect(await table(db,'public.access_group_grant')).toEqual(groupAfter);expect(await table(db,'public.access_user_override')).toEqual(overrideAfter);
   expect(await table(db,'public.access_configuration')).toEqual(configsAfter);expect(await table(db,'app.access_profile_write_generation')).toEqual(generationsAfter);

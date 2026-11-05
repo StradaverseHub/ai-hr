@@ -1,3 +1,4 @@
+import {PERFORMANCE_MIGRATION_IDENTITIES} from './performance-migration-identities';
 import {APPROVED_UPGRADE_TAIL,assertApprovedUpgradeTail,migrateApprovedUpgrade} from './helpers/approved-upgrade';
 /** ADR-0174 populated upgrade through 2100–2102, on an owned disposable localhost database only.
  * A cross-tenant row present at the boundary must stop the whole upgrade with a readable report and leave
@@ -105,11 +106,41 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(afterLedger.slice(668).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(
    TAIL.map(row=>({hash:hash(readFileSync('db/migrations/'+row.tag+'.sql')),created_at:String(row.when)})));
   expect(await native()).toEqual(upgradeNative);
-  const afterPrivileges=await privileges();
+  expect(await privileges()).toEqual(beforePrivileges);
+  const installed=await keys();
+  expect(installed).toHaveLength(148);
+  expect(installed.filter(row=>!row.convalidated)).toEqual([]);
+  expect(installed.map(row=>row.rel)).toEqual(expect.arrayContaining(['department','employment','location','role_assignment','app.attendance_policy_company_epoch']));
+  expect(await storage.client`select has_function_privilege('ai_hr_app','app.company_subtree(uuid)','EXECUTE') as callable`).toEqual([{callable:false}]);
+
+  const asAdmin=<T>(body:(tx:postgres.TransactionSql)=>Promise<T>)=>application.client.begin(async tx=>{
+   await tx`select set_config('app.tenant_id',${tenantA},true),set_config('app.user_id',${userA},true),set_config('app.roles','hr_admin',true),set_config('app.grants','[{"role":"hr_admin","companyId":null}]',true)`;
+   return body(tx);
+  });
+  expect(await asAdmin(tx=>tx`select app.can_admin_employment(${employmentA}::uuid) as own,app.can_admin_employment(${employmentB}::uuid) as foreign,app.is_admin_for(${foreign}::uuid) as grant_says`))
+   .toEqual([{own:true,foreign:false,grant_says:true}]);
+  await expect(storage.client`insert into location(tenant_id,company_id,code,name) values(${tenantA},${foreign},'XB','Fictional misfiled site')`)
+   .rejects.toMatchObject({code:'23503',constraint_name:'location_company_tenant_fk'});
+
+  const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:folder});
+  expect(await ledger()).toEqual(afterLedger);expect(await native()).toEqual(beforeRerun);
+  // Rehearse from the combined staging baseline as well as the historical defect boundary.
+  const performanceStart=journal.entries.length-PERFORMANCE_MIGRATION_IDENTITIES.length;
+  const stagingPrefix=journal.entries.slice(0,performanceStart);
+  for(const row of stagingPrefix.slice(prefix.length+TAIL.length)){
+   copyFileSync('db/migrations/'+row.tag+'.sql',join(folder,row.tag+'.sql'));
+  }
+  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:stagingPrefix}));
+  await migrateApprovedUpgrade(storage,folder);
+  const beforePerformanceLedger=await ledger();
+  expect(beforePerformanceLedger).toHaveLength(stagingPrefix.length);
+  const beforePerformancePrivileges=await privileges();
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  const afterPerformancePrivileges=await privileges();
   const privateFunctions=['app._ai_control_context_for_purpose(text,boolean,boolean)','app._access_workforce_list_rows(uuid[])','app._assistant_assigned_index_login(uuid,boolean)'];
   const addedFunctions=[...privateFunctions,'app.access_profile_policy_read_lock()','app.access_workforce_list_facts()','app.access_workforce_list_rows_for_ids(uuid[])','app.attendance_frozen_actor_identity_keys(jsonb,text)','app.delegated_approval_subjects(uuid[],text,text)','app.may_have_attendance_task_metadata()'].sort();
-  const beforeFunctions=new Set(beforePrivileges.functions.map(row=>row.fn));
-  expect(afterPrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
+  const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
+  expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
   for(const fn of addedFunctions){
    const [permission]=await storage.client`select has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app_execute,
     exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_execute
@@ -130,32 +161,15 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    }
    return qualifiers;
   });
-  const isClaimPolicy=(row:(typeof beforePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='claim_request'&&row.policyname==='claim_request_rls';
-  expect(beforePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[0]);
-  expect(afterPrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[1]);
+  const isClaimPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='claim_request'&&row.policyname==='claim_request_rls';
+  expect(beforePerformancePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[0]);
+  expect(afterPerformancePrivileges.policies.find(isClaimPolicy)?.qual).toBe(expectedClaimQuals[1]);
   // The nine helpers remain the only new functions, with three shared owners private. Every prior
   // ACL/table/column/policy field still matches, except the exact Claim USING expression above.
-  expect({...afterPrivileges,functions:afterPrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPrivileges.policies.map(row=>isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:row)}).toEqual(beforePrivileges);
-  const installed=await keys();
-  expect(installed).toHaveLength(148);
-  expect(installed.filter(row=>!row.convalidated)).toEqual([]);
-  expect(installed.map(row=>row.rel)).toEqual(expect.arrayContaining(['department','employment','location','role_assignment','app.attendance_policy_company_epoch']));
-  expect(await storage.client`select has_function_privilege('ai_hr_app','app.company_subtree(uuid)','EXECUTE') as callable`).toEqual([{callable:false}]);
-
-  const asAdmin=<T>(body:(tx:postgres.TransactionSql)=>Promise<T>)=>application.client.begin(async tx=>{
-   await tx`select set_config('app.tenant_id',${tenantA},true),set_config('app.user_id',${userA},true),set_config('app.roles','hr_admin',true),set_config('app.grants','[{"role":"hr_admin","companyId":null}]',true)`;
-   return body(tx);
-  });
-  expect(await asAdmin(tx=>tx`select app.can_admin_employment(${employmentA}::uuid) as own,app.can_admin_employment(${employmentB}::uuid) as foreign,app.is_admin_for(${foreign}::uuid) as grant_says`))
-   .toEqual([{own:true,foreign:false,grant_says:true}]);
-  await expect(storage.client`insert into location(tenant_id,company_id,code,name) values(${tenantA},${foreign},'XB','Fictional misfiled site')`)
-   .rejects.toMatchObject({code:'23503',constraint_name:'location_company_tenant_fk'});
-
-  const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:folder});
-  expect(await ledger()).toEqual(afterLedger);expect(await native()).toEqual(beforeRerun);
-  await migrateApprovedUpgrade(storage);
+  expect({...afterPerformancePrivileges,functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
+   policies:afterPerformancePrivileges.policies.map(row=>isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:row)}).toEqual(beforePerformancePrivileges);
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
+  expect(complete.slice(0,performanceStart)).toEqual(beforePerformanceLedger);
   expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));
   expect(await native()).toEqual(beforeRerun);
   // The final 2211 expansion adds validated tenant matches beside the original NO ACTION keys.
