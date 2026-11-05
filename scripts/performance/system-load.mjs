@@ -253,8 +253,17 @@ try{
   if(['/claims','/admin/personnel','/payroll'].includes(path)){
    // A streamed page can expose its heading/form before the actual table is attached.
    // Await the same required source rows; count() alone does not retry DOM readiness.
-   await page.locator('main tbody tr').first().waitFor({state:'attached',timeout:90000});
-   assert(await page.locator('main tbody tr').count()>0,'expected fictional table rows');
+   const rows=page.locator('main tbody tr');
+   if(path==='/admin/personnel'){
+    const busy=page.locator('main [data-personnel-busy]');
+    await rows.or(busy).first().waitFor({state:'attached',timeout:90000});
+    if(await busy.count()){
+     const reason=await busy.getAttribute('data-personnel-busy');
+     visitStage=reason==='access-lock'?'personnel-access-lock':'personnel-statement-timeout';
+     assert.fail('Personnel returned a busy screen before its rows rendered');
+    }
+   }else await rows.first().waitFor({state:'attached',timeout:90000});
+   assert(await rows.count()>0,'expected fictional table rows');
   }
   if(path==='/me/payslip'){
    visitStage='payslip-statement';

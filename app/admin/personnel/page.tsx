@@ -114,7 +114,7 @@ export default async function PeoplePage({
     return (
       <div className="mx-auto max-w-[100rem] space-y-4">
         <PageHeader title={t('adminTitle')} />
-        <div role="alert" className="space-y-2 rounded-md border p-4">
+        <div role="alert" data-personnel-busy={error.reason} className="space-y-2 rounded-md border p-4">
           <p>{to('readBusy')}</p>
           <a className="text-primary underline" href={`/admin/personnel?${params}`}>{to('retryRead')}</a>
         </div>
