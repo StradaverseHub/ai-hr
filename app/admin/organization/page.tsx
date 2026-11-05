@@ -79,6 +79,8 @@ export default async function OrganizationPage({
   const sp = await searchParams;
   const { error, q, status, sort } = sp;
   const t = await getTranslations('admin.organization');
+  const detailsText = await getTranslations('leave');
+  const common = await getTranslations('common');
 
   // All reads are scoped to the companies this administrator can manage. The per-company panel data (bank profiles, statutory authorities,
   // signatories, profile options, payroll cycles) moved to the maintenance page with the panel it
@@ -147,9 +149,11 @@ export default async function OrganizationPage({
       <Card data-tour="people-org-companies">
         <SectionHeader title={t('companies')} count={rows.length} />
         {missingStatutory.length > 0 && (
-          <details className="mx-4 mt-4 rounded-md border border-border text-sm">
+          <details className="group mx-4 mt-4 rounded-md border border-border text-sm">
             <summary className="cursor-pointer px-4 py-3">
-              {t('registration.topAlert', { missing: missingStatutory.length, total: countedCompanies })}
+              {t('registration.topAlert', { missing: missingStatutory.length, total: countedCompanies })}{' '}
+              <span className="text-primary underline group-open:hidden">{detailsText('viewDetails')}</span>
+              <span className="hidden text-primary underline group-open:inline">{common('close')}</span>
             </summary>
             <div className="space-y-2 border-t border-border px-4 py-3">
               <p className="text-xs text-muted-foreground">{t('registration.levyHint')}</p>

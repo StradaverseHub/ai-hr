@@ -753,7 +753,7 @@ export function MovementNewEvent({
 
         <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
           {label(movementField('remarks'))}
-          <input {...personnelWorkflowInput(movementField('remarks'), 'movement', 'edit')} maxLength={200} required={behaviour === 'historicalHire'} defaultValue={edit?.remarks ?? ''} className={inputCls} />
+          <input {...personnelWorkflowInput(movementField('remarks'), 'movement', 'edit', { historicalHireRemarks: behaviour === 'historicalHire' })} maxLength={200} defaultValue={edit?.remarks ?? ''} className={inputCls} />
         </label>
 
         {edit && (

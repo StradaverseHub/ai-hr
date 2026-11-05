@@ -103,8 +103,7 @@ const stripComments = (src: string): string =>
  * test still passes (the content is present in the DOM either way — `<details>` hides it with CSS, not
  * by unmounting). Only the shape says so.
  *
- * NOT pinned here, deliberately: the group-structure fold on the LISTING page, which is a separate and
- * still-current decision — see test/organization-group-structure-collapse.test.ts.
+ * The registration disclosure on the company listing is covered separately.
  */
 describe('an opened company has nothing left to unfold (3c2f55d7)', () => {
   it('renders no details/summary disclosure anywhere in the panel', () => {

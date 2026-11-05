@@ -178,6 +178,11 @@ const NOT_A_PAGE:Readonly<Record<string,string>>={
 const NOT_YET_LINKABLE:Readonly<Record<string,string>>={
  '/lifecycle/probation':'Main\'s Probation Confirmation pages: unlinkable until their semantic, guide and corpus entries exist.',
  '/lifecycle/contracts':'Main\'s Contract Management pages: unlinkable until their semantic, guide and corpus entries exist.',
+ '/rewards/analytics':'Native Rewards analytics awaits semantic, guide and corpus entries.',
+ '/rewards/rules':'Native Rewards rules awaits semantic, guide and corpus entries.',
+ '/admin/rewards/salary-structures':'Native salary structure configuration awaits semantic, guide and corpus entries.',
+ '/admin/rewards/bonus-matrices':'Native bonus matrix configuration awaits semantic, guide and corpus entries.',
+ '/admin/rewards/pat-inputs':'Native PAT configuration awaits semantic, guide and corpus entries.',
 };
 const pendingArea=(path:string)=>Object.keys(NOT_YET_LINKABLE).find(area=>path===area||path.startsWith(area+'/'));
 describe('destinations',()=>{

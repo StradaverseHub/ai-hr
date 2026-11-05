@@ -50,6 +50,7 @@ export type {RewardAccessBatch,RewardAccessCopyProposal} from './maintenance';
 import { wholeGroupCoverageTx,activeRewardLogin,missingRewardRoles,rewardRequiredRoles,rewardRoleLabels,rewardUnitCoverage} from './coverage';
 export {rewardRoleLabels,rewardRequiredRoles,rewardUnitCoverage} from './coverage';
 export type {RewardUnitCoverage,RewardRoleCoverage} from './coverage';
+export { rewardNavigation } from './access-policy';
 /** cd72f915 — required-role coverage for the configuration list's "roles missing" badge (same predicate as submission). */
 export async function rewardCoverageForUnits(ctx: SessionContext, unitIds: string[]) { return withRewardsTenant(ctx, tx => rewardUnitCoverage(tx, unitIds)); }
 

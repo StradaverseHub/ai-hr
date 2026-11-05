@@ -1,54 +1,31 @@
-/**
- * Feedback 62a359e7 — Group Structure collapse.
- *
- * Presentation-only change (no schema/service/domain event): the first Card on the admin
- * Organization page becomes a native <details>/<summary> that starts COLLAPSED, with a
- * Show/Hide affordance, while CompanyTree stays server-rendered inside. These structural
- * assertions guard the reported behaviour: default-hidden group structure + show/hide control
- * + unchanged hierarchy rendering, across all 6 locales.
- */
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const ROOT = path.resolve(__dirname, '..');
-const PAGE = path.join(ROOT, 'app/admin/organization/page.tsx');
-const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
+const root = path.resolve(__dirname, '..');
+const page = fs.readFileSync(path.join(root, 'app/admin/organization/page.tsx'), 'utf8');
 
-const src = fs.readFileSync(PAGE, 'utf8');
-
-describe('organization group-structure collapse', () => {
-  it('renders the group structure as a native details/summary (server component, no client JS)', () => {
-    expect(src).toMatch(/<details\b/);
-    expect(src).toMatch(/<summary\b/);
+describe('Organization company listing', () => {
+  it('leads with Companies and keeps hierarchy data available to company rows', () => {
+    expect(page.match(/<Card\b[^>]*>/)?.[0]).toContain('people-org-companies');
+    expect(page).toContain('companyTree(s)');
+    expect(page).toContain('selectCompanyRows(companies, parentBy');
+    expect(page).not.toContain('<CompanyTree');
+    expect(page).not.toContain("t('showGroupStructure')");
   });
 
-  it('starts COLLAPSED by default (the details has no open attribute)', () => {
-    // Grab the opening <details ...> tag and assert it carries no `open` attribute.
-    const openTag = src.match(/<details[^>]*>/)?.[0] ?? '';
-    expect(openTag).not.toMatch(/\bopen\b/);
+  it('starts registration details collapsed and offers separate open and close labels', () => {
+    const details = page.match(/(<details[^>]*>)([\s\S]*?)<\/details>/);
+    expect(details).not.toBeNull();
+    expect(details?.[1]).not.toMatch(/\sopen(?:[\s=>])/);
+    expect(details?.[2]).toMatch(/<summary\b[\s\S]*?group-open:hidden[\s\S]*?viewDetails[\s\S]*?group-open:inline[\s\S]*?common\('close'\)/);
   });
 
-  it('provides a Show/Hide affordance via static t() calls (group-open CSS toggle)', () => {
-    expect(src).toContain("t('showGroupStructure')");
-    expect(src).toContain("t('hideGroupStructure')");
-    expect(src).toMatch(/group-open:hidden/);
-    expect(src).toMatch(/group-open:inline/);
-  });
-
-  it('keeps the scoped company tree inside the collapsible body and applies the explicit issues filter', () => {
-    const detailsBody = src.slice(src.indexOf('<details'), src.indexOf('</details>'));
-    expect(src).toMatch(/const displayedTree\s*=\s*issuesOnly\s*\?\s*visibleTree\.filter\([^)]+\)\)\s*:\s*visibleTree/);
-    expect(detailsBody).toContain('<CompanyTree nodes={displayedTree}');
-    expect(detailsBody).toContain("t('noCompaniesYet')");
-  });
-
-  it('adds show/hide labels to admin.organization in every locale', () => {
-    for (const loc of LOCALES) {
-      const dict = JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', `${loc}.json`), 'utf8'));
-      const org = dict?.admin?.organization ?? {};
-      expect(org.showGroupStructure, `${loc}.showGroupStructure`).toBeTruthy();
-      expect(org.hideGroupStructure, `${loc}.hideGroupStructure`).toBeTruthy();
+  it('provides both controls in all six locales', () => {
+    for (const locale of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
+      const messages = JSON.parse(fs.readFileSync(path.join(root, 'messages', `${locale}.json`), 'utf8'));
+      expect(messages.leave.viewDetails).toBeTruthy();
+      expect(messages.common.close).toBeTruthy();
     }
   });
 });

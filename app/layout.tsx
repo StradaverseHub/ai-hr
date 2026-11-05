@@ -189,7 +189,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   ]);
   const letterDestinations=isModuleEnabledOrFalse(session,'employees')?await letterNavigation(session,scopeIds):[];
   const rewardDestinations = isModuleEnabledOrFalse(session, 'rewards')
-    ? await import('@/packs/rewards/access-policy').then(({ rewardNavigation }) =>
+    ? await import('@/packs/rewards/service').then(({ rewardNavigation }) =>
       rewardNavigation(session, isAdmin(session)),
     ).catch(() => [])
     : [];

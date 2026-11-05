@@ -10,7 +10,7 @@ import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/der
 // six allow-listed field names in any case.
 import { useMemo, useRef, useActionState, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { personnelControl, personnelCarry, personnelWorkflowCarry, personnelFormLabel, personnelFormRequired } from '@/lib/personnel-form-contract';
+import { personnelControl, personnelCarry, personnelWorkflowCarry, personnelWorkflowInput, personnelFormLabel, personnelFormRequired } from '@/lib/personnel-form-contract';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { correctHireDetailsAction,saveMovementPageAction } from './actions';
 
@@ -239,7 +239,8 @@ export function HireCorrectionForm({
 
       {salaryAtHire && <label className="mx-4 mt-4 block space-y-1 text-sm">
         <span>{salaryLabel} ({salaryAtHire.currency})</span>
-        <input name={salaryChanged ? 'hireBasicSalary' : undefined} type="number" min="0" step="0.01"
+        <input {...personnelWorkflowInput('payroll.basic_salary_and_salary_history.basicsalary', 'hireCorrection')}
+          name={salaryChanged ? 'hireBasicSalary' : undefined}
           className={selectCls} value={salary} onChange={event => setSalary(event.target.value)} />
       </label>}
 
