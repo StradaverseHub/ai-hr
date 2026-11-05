@@ -282,6 +282,7 @@ export default async function EmployeePage({
   // Dedicated Movement screens return only their action card. Profile-only
   // catalogs and employee records cannot affect that card's scope or options.
   const readProfileCards = admin && !movementPage;
+  const readMovementEditorChoices = admin && (!movementPage || movementPage === 'new' || movementPage === 'edit');
   const movementContext={showCorrected:rawSearchParams.showCorrected,from:rawSearchParams.from};
   const historyHref=movementHistoryHref(employmentId,movementContext);
   if(!movementPage){
@@ -343,14 +344,14 @@ export default async function EmployeePage({
   const derivedStatus = deriveEmploymentStatus(emp, today);
   const derivedStatusLabel = tStatus(derivedStatus);
   // b4682879 — does this employee have a profile photo the viewer may see? (existence only; never the blob).
-  const photoExists = await hasPersonPhoto(s, emp.personId);
+  const photoExists = readProfileCards && await hasPersonPhoto(s, emp.personId);
 
   // Company change before any transaction (9464bd56) — admin-only inline correction of a mis-picked Company
   // while the employee has NO operational activity. `companyEditable` is the pre-transaction gate; when it is
   // false the Company field stays locked and points HR to Movement / Transfer. Phase 1 lets HR pick a
   // destination (companyChange param) which re-scopes the org dropdowns + shows a banner (nothing committed);
   // phase 2 Saves via changeEmploymentCompanyAction.
-  const companyEditable = admin ? await employmentCompanyEditable(s, employmentId) : false;
+  const companyEditable = readProfileCards ? await employmentCompanyEditable(s, employmentId) : false;
   // Destinations HR may pick = companies they administer (the writer requires is_admin_for(destination), so
   // offering only these keeps offered == acceptable). Only fetched when the field is actually editable.
   const managedCompanies = companyEditable ? await adminCompanies(s) : [];
@@ -363,15 +364,15 @@ export default async function EmployeePage({
   const orgScopeCompanyId = pendingCompany?.id ?? emp.companyId;
 
   const [history, departments, reporting, employees, grades, delegations] = await Promise.all([
-    assignmentHistory(s, employmentId),
+    readProfileCards ? assignmentHistory(s, employmentId) : [],
     // 570e3311 — departments scoped to THIS employee's company (origin ∪ shared-in ∪ global via the
     // System Labels resolver), matching the Position/BU/Location pickers. Feeds exactly two places:
     // the Organisation Assignment department select and the MovementNewEvent departments prop.
-    listDepartments(s, { companyIds: [emp.companyId] }),
-    reportingLinesFor(s, employmentId),
-    listWorkforcePickOptions(s),
-    listJobGrades(s),
-    delegationsFor(s, employmentId),
+    readMovementEditorChoices ? listDepartments(s, { companyIds: [emp.companyId] }) : [],
+    readProfileCards ? reportingLinesFor(s, employmentId) : {managers:[],reports:[]},
+    readMovementEditorChoices || movementPage === 'correct-hire' ? listWorkforcePickOptions(s) : [],
+    readMovementEditorChoices ? listJobGrades(s) : [],
+    readProfileCards ? delegationsFor(s, employmentId) : [],
   ]);
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
@@ -379,7 +380,7 @@ export default async function EmployeePage({
   const salaryHistory = readProfileCards ? await compensationHistoryDetailed(s, employmentId) : [];
   // 7c7c2f80 — periods of CLOSED payroll runs that paid this employee: drives the per-row "deletable"
   // flag on the salary history (records a closed run relied on are payroll evidence and cannot go).
-  const closedPayrollPeriods = admin ? await closedPayrollPeriodsFor(s, employmentId) : [];
+  const closedPayrollPeriods = readProfileCards || movementPage === 'edit' ? await closedPayrollPeriodsFor(s, employmentId) : [];
   // Rung 5c — the acting company's country pack; statutory reads + the SOCSO/EIS default resolve through it.
   const countryPack = packFor('MY');
   // This scoped service verifies the owning company is MY; a person-level tax flag is not approval.
@@ -454,12 +455,12 @@ export default async function EmployeePage({
   );
   // Employment tab org-info edit (594323a6): position catalog for the editable Position dropdown. Scoped to
   // THIS employee's company (the assignment's position must belong to the same company). Admin-only.
-  const positions = admin ? await listPositions(s, { companyIds: [emp.companyId] }) : [];
+  const positions = readMovementEditorChoices ? await listPositions(s, { companyIds: [emp.companyId] }) : [];
   // 1001ff61 — Business Units for THIS employee's company (admin-only) — the Organisation Assignment BU picker
   // options. Sourced company-scoped (origin ∪ shared ∪ global), mirroring the Position/Location pickers.
-  const businessUnits = admin ? await listBusinessUnits(s, { companyIds: [emp.companyId] }) : [];
+  const businessUnits = readMovementEditorChoices ? await listBusinessUnits(s, { companyIds: [emp.companyId] }) : [];
   // ADR-0054: locations for THIS employee's company (admin-only) — the "Set location" picker options.
-  const locations = admin ? await listLocations(s, [emp.companyId]) : [];
+  const locations = readMovementEditorChoices ? await listLocations(s, [emp.companyId]) : [];
   // Company change (9464bd56) — the Organisation Assignment selects re-scope to the PENDING company during a
   // company change; everything else (MovementNewEvent, the Set-location picker) keeps the current-company
   // lists. When no company is pending these ARE the current-company lists (byte-identical to before).
@@ -718,7 +719,7 @@ export default async function EmployeePage({
   // 7d309da7 — configurable profile-field dropdown catalogs (religion / race / nationality / state /
   // country / relationship). Active options only for the pickers; the ProfileOptionSelect renders any
   // out-of-catalog stored value as a pre-selected extra so a Save never blanks legacy data.
-  const profileOptions = admin
+  const profileOptions = readMovementEditorChoices
     ? await listAllProfileOptions(s, { activeOnly: true })
     : ({
         religion: [],
