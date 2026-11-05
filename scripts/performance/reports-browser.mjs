@@ -110,7 +110,8 @@ export async function exerciseSavedReport({ page, user, fixture, db, base, phase
     if (phase === 'loaded') await pause(thinkTimeMs);
     step = 'edit';
     await fillName(edited);
-    await page.getByLabel('Orientation', { exact: true }).selectOption('portrait', { timeout });
+    const orientation = page.locator('main select').filter({ has: page.locator('option[value="portrait"]') });
+    await orientation.selectOption('portrait', { timeout });
     await record('edit', async () => {
       await Promise.all([
         page.waitForURL(url => url.pathname === '/reports/builder/' + reportId && url.searchParams.get('toast') === 'Report saved', { timeout }),
