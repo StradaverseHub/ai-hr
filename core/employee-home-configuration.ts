@@ -7,8 +7,8 @@ import {actorOf,appendEvent} from '../db/events';
 import {DASHBOARD_LAYOUT_ROLES,type DashboardLayoutRole} from '../lib/dashboard-layout';
 import {validateEmployeeHomeConfiguration,type EmployeeHomeConfiguration} from '../lib/employee-home';
 import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
-import {readEmployeeHomeIdentityTx,HomeAccessError} from './employee-home';
-import {myOwnEmploymentSubjectsTx} from './read';
+import {readEmployeeHomeIdentityContextTx,HomeAccessError} from './employee-home';
+import {isOwnProfileEditEmploymentTx} from './read';
 
 export class HomeConfigurationAccessError extends Error{
  constructor(){super('This employee Home configuration is outside your company scope.');this.name='HomeConfigurationAccessError';}
@@ -49,14 +49,15 @@ export function readEmployeeHomeConfigurationEditor(ctx:SessionContext,p:{compan
  * and the same deterministic dashboard-role resolver used by the shell. No salary projection is read. */
 export async function readOwnEmployeeHomeConfiguration(ctx:SessionContext,requestedEmploymentId?:string){
  return withTenant(ctx,async tx=>{
-  const identity=await readEmployeeHomeIdentityTx(tx,ctx,requestedEmploymentId);
+  const {identity,companyId}=await readEmployeeHomeIdentityContextTx(tx,ctx,requestedEmploymentId);
   if(identity.employmentState!=='selected')throw new HomeAccessError(identity.employmentState==='choose'?'chooseEmployment':'employmentUnavailable');
-  const own=await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true}),subject=own.find(row=>row.employmentId===identity.selectedEmploymentId);
-  if(!subject?.companyProof.companyId)throw new HomeAccessError('employmentUnavailable');
+  const employmentId=identity.selectedEmploymentId;
+  if(!companyId||!employmentId||!await isOwnProfileEditEmploymentTx(tx,ctx,employmentId))
+   throw new HomeAccessError('employmentUnavailable');
   const [proof]=await tx.execute(sql`SELECT app.principal_snapshot_current() AS allowed`) as unknown as {allowed:boolean}[];
   if(!proof?.allowed)throw new HomeConfigurationAccessError();
-  const view=await currentTx(tx,ctx,subject.companyProof.companyId!,identity.role);
-  return {...view,employmentId:subject.employmentId};
+  const view=await currentTx(tx,ctx,companyId,identity.role);
+  return {...view,employmentId};
  },{readOnlySnapshot:true});
 }
 export async function saveEmployeeHomeConfiguration(ctx:SessionContext,p:{companyId:string;audienceRole:string;expectedOrdinal:number;configuration:unknown;reason:string}){

@@ -87,6 +87,13 @@ export async function readEmployeeHomeIdentity(ctx:SessionContext,requestedEmplo
 /** Compose only inside a complete read-only snapshot; never carry this identity across requests.
  * All subject, actual-login, role and dated-company owners remain inside the same transaction. */
 export async function readEmployeeHomeIdentityTx(tx:Tx,ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeIdentity>{
+ return (await readEmployeeHomeIdentityContextTx(tx,ctx,requestedEmploymentId)).identity;
+}
+
+/** Keep the dated company proof inside the authorized Home read for configuration callers. */
+export async function readEmployeeHomeIdentityContextTx(tx:Tx,ctx:SessionContext,requestedEmploymentId?:string):Promise<{
+ identity:EmployeeHomeIdentity;companyId:string|null;
+}>{
  const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='repeatable read'
   and current_setting('transaction_read_only')='on' as safe`);
  if(snapshot?.safe!==true)throw new HomeAccessError('employmentUnavailable');
@@ -102,11 +109,12 @@ export async function readEmployeeHomeIdentityTx(tx:Tx,ctx:SessionContext,reques
   if(!proof?.role||!['employee','manager','hr_admin'].includes(proof.role))throw new HomeAccessError('employmentUnavailable');
   role=proof.role;
  }
- return {version:1,
+ const companyId=selection.subject?.companyProof.companyId??null;
+ return {companyId,identity:{version:1,
   role,
   employmentState:selection.state,selectedEmploymentId:selection.subject?.employmentId??null,
-  companyEstablished:Boolean(selection.subject?.companyProof.companyId),
-  employments:selection.subjects.map(row=>({employmentId:row.employmentId,employeeCode:row.employeeCode,company:row.company}))};
+  companyEstablished:Boolean(companyId),
+  employments:selection.subjects.map(row=>({employmentId:row.employmentId,employeeCode:row.employeeCode,company:row.company}))}};
 }
 
 /** A failure in greeting presentation belongs to that card, not to the selection/role context. The
