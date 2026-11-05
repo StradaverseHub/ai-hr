@@ -8977,7 +8977,9 @@ export const claimRequest = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('claim_request_employment_idx').on(t.employmentId, t.status),
-    index('claim_request_preview_order_idx').on(t.tenantId,t.employmentId,t.status,t.createdAt.desc(),t.id)],
+    index('claim_request_preview_order_idx').on(t.tenantId,t.employmentId,t.status,t.createdAt.desc(),t.id),
+    index('claim_request_payroll_batch_idx').on(t.payrollBatchId).where(sql`payroll_batch_id is not null`),
+    index('claim_request_employment_incurred_idx').on(t.employmentId, t.incurredOn)],
 );
 
 export const claimAttachment = pgTable(

@@ -97,8 +97,11 @@ async function runInputsUtcTx(tx:Tx,p:InputQuery,processing:boolean):Promise<Run
   attendance:attendanceInput(membership,windows.attendance),
   overtime:overtimeInput(membership,windows.overtime),
   leave:sql`select l.* from public.leave_request l where l.employment_id in ${inList} and l.start_date<=${windows.leave.end}::date and l.end_date>=${windows.leave.start}::date`,
+  // Separate the indexed lookups. Exclude this batch from the date branch so each row is hashed once.
   claims:sql`select c.* from public.claim_request c where c.payroll_batch_id=${batchId}::uuid
-   or (c.employment_id in ${inList} and c.incurred_on between ${windows.claim.start}::date and ${windows.claim.end}::date)`,
+   union all
+   select c.* from public.claim_request c where c.payroll_batch_id is distinct from ${batchId}::uuid
+    and c.employment_id in ${inList} and c.incurred_on between ${windows.claim.start}::date and ${windows.claim.end}::date`,
   payChanges:sql`select c.* from public.compensation c where c.employment_id in ${inList} and c.valid_from<=${monthEnd(payPeriod)}::date
    and (c.valid_to is null or c.valid_to>=${payPeriod+'-01'}::date)`,
   runInputs:sql`select i.* from public.payroll_input i where i.batch_id=${batchId}::uuid`,
