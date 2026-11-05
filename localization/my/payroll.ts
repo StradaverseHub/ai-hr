@@ -313,6 +313,9 @@ function epfContributionAtRate(cents: number, rate: number): number {
   return Number((BigInt(cents) * BigInt(Math.round(rate * 10000)) + BigInt(999999)) / BigInt(1000000));
 }
 
+export const EPF_PART_C_EMPLOYEE_RATE = 0.055;
+export const epfPartCEmployerRate = (wage: number) => wage <= 5000 ? 0.065 : 0.06;
+
 type EpfTopupSide = {
   savedRate: number | null;
   amount: number;
@@ -336,10 +339,10 @@ function epfTopupWorking(
   const part = citizenship === 'non_citizen' ? 'F' : !senior ? 'A' : citizenship === 'pr' ? 'C' : 'E';
   const legacyForeign = part === 'F' && sel?.wageMonth != null && sel.wageMonth < EPF_PART_F_START;
   const employeeRate = part === 'F' ? cfg.nonCitizenEmployeeRate ?? 0.02
-    : part === 'C' ? 0.055 : part === 'E' ? 0 : cfg.employeeRate;
+    : part === 'C' ? EPF_PART_C_EMPLOYEE_RATE : part === 'E' ? 0 : cfg.employeeRate;
   const employerRate = part === 'F' ? cfg.nonCitizenEmployerRate ?? 0.02
     : part === 'E' ? cfg.seniorEmployerRate ?? 0.04
-    : part === 'C' ? (actualWage <= 5000 ? 0.065 : 0.06)
+    : part === 'C' ? epfPartCEmployerRate(actualWage)
     : actualWage <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
   const bands = part === 'C' ? EPF_PART_C : part === 'A' ? cfg.partA ?? MY_EPF_THIRD_SCHEDULE_PART_A
     : part === 'E' ? cfg.partE ?? MY_EPF_THIRD_SCHEDULE_PART_E : null;
@@ -379,8 +382,8 @@ function epfTopupWorking(
 // on the band ceiling. The first wage band is NIL on both sides.
 const EPF_PART_C = MY_EPF_THIRD_SCHEDULE_PART_A.map(({ upTo }) => ({
   upTo,
-  employee: upTo <= 10 ? 0 : epfContributionAtRate(upTo * 100, 0.055),
-  employer: upTo <= 10 ? 0 : epfContributionAtRate(upTo * 100, upTo <= 5000 ? 0.065 : 0.06),
+  employee: upTo <= 10 ? 0 : epfContributionAtRate(upTo * 100, EPF_PART_C_EMPLOYEE_RATE),
+  employer: upTo <= 10 ? 0 : epfContributionAtRate(upTo * 100, epfPartCEmployerRate(upTo)),
 }));
 
 const EPF_PART_F_START = '2025-10';
