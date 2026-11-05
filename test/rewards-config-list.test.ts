@@ -185,7 +185,7 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
         snapshotDate: today, policy: defaultPolicy(year),
       }))).returning({ id: schema.rewardUnit.id });
       await tx.insert(schema.rewardMember).values(reviews.map(review => ({
-        tenantId: b.tenantId, unitId: review.id, userId: admin.userId!, role: 'gr',
+        tenantId: b.tenantId, unitId: review.id, userId: admin.userId!, role: 'gr' as const,
       })));
     });
     const started=performance.now(),overview=await listRewardReviewStatus(admin,companyIds),elapsed=performance.now()-started;
