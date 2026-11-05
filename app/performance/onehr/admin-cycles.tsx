@@ -7,7 +7,7 @@ import { scopedSession } from '@/lib/scope';
 import { canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin } from '@/lib/authz';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { listCompanies } from '@/core/read';
-import { listCyclePage, listOnehrAdminCycles, type OnehrAdminCycleSummary } from '@/core/performance';
+import { listCyclePage, listOnehrAdminCyclePage, type OnehrAdminCycleSummary } from '@/core/performance';
 import { NewCycleForm } from '../new-cycle-form';
 
 export type CycleRow = OnehrAdminCycleSummary & { pendingComp?: number };
@@ -107,7 +107,7 @@ export async function AdminAllCycles({ basePath, query }: { basePath: string; qu
   const { s, scopeIds } = await scopedSession();
   const admin = isAdmin(s) || canManagePerfComp(s), onehrOnly = isOnehrOnlyPerformanceAdmin(s);
   const [result, companies] = await Promise.all([
-    admin ? listCyclePage(s, query) : (onehrOnly ? listOnehrAdminCycles(s) : Promise.resolve([])).then(rows => paginateRows(rows, parsePageQuery(query))),
+    admin ? listCyclePage(s, query) : onehrOnly ? listOnehrAdminCyclePage(s, query) : Promise.resolve(paginateRows([], parsePageQuery(query))),
     admin ? listCompanies(s) : Promise.resolve([]),
   ]);
   const { rows, state } = result;

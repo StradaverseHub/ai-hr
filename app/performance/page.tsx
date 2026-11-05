@@ -8,7 +8,7 @@ import { scopedSession } from '@/lib/scope';
 import { canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin, requireModule } from '@/lib/authz';
 import { hasAssignedPerformanceWork, hasLedPeople, onehrAssignments } from '@/packs/performance/service';
 import { listCompanies } from '@/core/read';
-import { listCyclePage, listOnehrAdminCompanyIds, listOnehrAdminCycles, managerCheckIns, managerPendingReviews } from '@/core/performance';
+import { listCyclePage, listOnehrAdminCompanyIds, listOnehrAdminCyclePage, managerCheckIns, managerPendingReviews } from '@/core/performance';
 import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   cancelCheckInAction,
@@ -50,7 +50,7 @@ export default async function PerformancePage({
   const today = todayInKualaLumpur();
 
   const [cycleResult, pending, companies, checkinData, onehr] = await Promise.all([
-    admin ? listCyclePage(s, sp) : (onehrOnly ? listOnehrAdminCycles(s) : Promise.resolve([])).then(rows => paginateRows(rows, parsePageQuery(sp))),
+    admin ? listCyclePage(s, sp) : onehrOnly ? listOnehrAdminCyclePage(s, sp) : Promise.resolve(paginateRows([], parsePageQuery(sp))),
     managerPendingReviews(s),
     admin ? listCompanies(s) : onehrOnly ? Promise.all([listCompanies(s), listOnehrAdminCompanyIds(s)]).then(([rows, ids]) => rows.filter((c) => ids.has(c.id))) : Promise.resolve([]),
     managerCheckIns(s),
