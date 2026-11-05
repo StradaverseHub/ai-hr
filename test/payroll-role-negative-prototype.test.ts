@@ -29,11 +29,12 @@ it('compares a negative Payroll role precheck with canonical inputs, errors and 
   [{role:'super_admin',companyId:child}],[{role:'payroll_partner',companyId:null}],[{role:'payroll_partner',companyId:b.companyId}],
   [{role:'payroll_partner',companyId:foreign.companyId}],[{role:'employee',companyId:null},{role:'hr_admin',companyId:foreign.companyId}],{},'invalid-json-shape',
   [{role:'employee',companyId:'invalid-company'}],[{role:'hr_admin',companyId:'invalid-company'}],[{role:'payroll_partner',companyId:'invalid-company'}],
-  [{role:'hr_admin',companyId:''}],[{role:'payroll_partner',companyId:''}],[{role:null,companyId:null}],null];
+  [{role:'hr_admin',companyId:''}],[{role:'payroll_partner',companyId:''}],[{role:null,companyId:null}],Symbol('jsonb-null'),true,17,[null],
+  [{role:'payroll_partner'}],[{role:'payroll_partner',companyId:17}],[{role:'employee',companyId:17}]];
  const targets=[b.companyId,child,sibling,foreign.companyId,randomUUID(),null];
  const evaluate=(value:unknown,company:string|null)=>withTenant(admin,async tx=>{
   await tx.execute(sql`set transaction read only`);
-  const argument=value===null?sql`null::jsonb`:sql`${JSON.stringify(value)}::jsonb`;
+  const argument=value===null?sql`null::jsonb`:typeof value==='symbol'?sql`'null'::jsonb`:sql`${JSON.stringify(value)}::jsonb`;
   const [row]=await tx.execute<{allowed:boolean}>(sql`select app.grants_payroll_admin_for(${argument},${company}::uuid)as allowed`);return{allowed:row.allowed};
  }).catch(error=>({error:pgSqlState(error)??'unknown'}));
  const inputs=values.flatMap(value=>targets.map(target=>({value,target}))),expected=[];
