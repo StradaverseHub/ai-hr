@@ -4,6 +4,7 @@ import {withTenant} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {listEmployees,listEmployeesPage,listWorkforcePickOptions,countEmployeesByStatus,employeeDetail,personnelListPage,searchWorkforceEmployees,searchWorkforceEmployeesTx} from '../core/read';
 import {workforceCompanies,workforceEmploymentAccess,workforceCommandAccess} from '../core/workforce-access';
+import {workforceRecord} from '../core/workforce-record';
 import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from '../core/access-configuration-lock';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -63,7 +64,7 @@ it.each(['view','maintain'] as const)('keeps borrowed %s metadata exclusive for 
  expect(released.acquired).toBe(true);
 });
 
-it.each(['list','picker','counts','page','personnel','switcher','detail'] as const)('lets a complete standalone Workforce %s projection overlap another native reader',async kind=>{
+it.each(['list','picker','counts','page','personnel','switcher','record','detail'] as const)('lets a complete standalone Workforce %s projection overlap another native reader',async kind=>{
  await resetDb();const b=await seedBase(),ctx=adminCtx(b);
  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional projection subject',primaryEmail:'projection@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const entered=barrier(),release=barrier();
@@ -71,10 +72,11 @@ it.each(['list','picker','counts','page','personnel','switcher','detail'] as con
  let read:Promise<unknown>|undefined;
  try{
   await bounded(entered.promise);
-  read=kind==='list'?listEmployees(ctx,[b.companyId],'workforce'):kind==='picker'?listWorkforcePickOptions(ctx,[b.companyId]):kind==='counts'?countEmployeesByStatus(ctx,{companyIds:[b.companyId]},'workforce'):kind==='page'?listEmployeesPage(ctx,{companyIds:[b.companyId],limit:25,offset:0},'workforce'):kind==='personnel'?personnelListPage(ctx,{companyIds:[b.companyId],limit:25,offset:0},{companyIds:[b.companyId]}):kind==='switcher'?searchWorkforceEmployees(ctx,[b.companyId],'Fictional projection subject'):employeeDetail(ctx,hired.employmentId,'workforce');
+  read=kind==='list'?listEmployees(ctx,[b.companyId],'workforce'):kind==='picker'?listWorkforcePickOptions(ctx,[b.companyId]):kind==='counts'?countEmployeesByStatus(ctx,{companyIds:[b.companyId]},'workforce'):kind==='page'?listEmployeesPage(ctx,{companyIds:[b.companyId],limit:25,offset:0},'workforce'):kind==='personnel'?personnelListPage(ctx,{companyIds:[b.companyId],limit:25,offset:0},{companyIds:[b.companyId]}):kind==='switcher'?searchWorkforceEmployees(ctx,[b.companyId],'Fictional projection subject'):kind==='record'?workforceRecord(ctx,hired.employmentId):employeeDetail(ctx,hired.employmentId,'workforce');
   const value=await bounded(read);
   if(kind==='list'||kind==='picker'||kind==='switcher')expect(value).toEqual([expect.objectContaining({employmentId:hired.employmentId})]);
   else if(kind==='counts'||kind==='page'||kind==='personnel')expect(value).toMatchObject({total:1});
+  else if(kind==='record')expect(value).toMatchObject({employment:{employmentId:hired.employmentId}});
   else expect(value).toMatchObject({employmentId:hired.employmentId});
  }finally{release.resolve();await Promise.allSettled([holder,...(read?[read]:[])]);}
 });
@@ -91,6 +93,16 @@ it.each(['list','page','switcher','detail'] as const)('keeps a borrowed Workforc
  });
 });
 
+async function waitingForSharedAccess(writerPid:number){
+ const stop=Date.now()+2000;
+ while(Date.now()<stop){
+  const [row]=await owner.client`select exists(select 1 from pg_locks where locktype='advisory' and mode='ShareLock' and not granted and ${writerPid}::integer=any(pg_blocking_pids(pid))) as waiting`;
+  if(row.waiting)return true;
+  await new Promise(resolve=>setTimeout(resolve,20));
+ }
+ return false;
+}
+
 it('keeps the standalone Personnel switcher behind an exclusive Access writer',async()=>{
  await resetDb();const b=await seedBase(),ctx=adminCtx(b),entered=barrier(),release=barrier();
  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional protected switcher',primaryEmail:'protected-switcher@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
@@ -104,15 +116,32 @@ it('keeps the standalone Personnel switcher behind an exclusive Access writer',a
  try{
   await bounded(entered.promise);
   read=searchWorkforceEmployees(ctx,[b.companyId],'Fictional protected switcher');
-  let waiting=false;
-  const stop=Date.now()+2000;
-  while(!waiting&&Date.now()<stop){
-   const [row]=await owner.client`select exists(select 1 from pg_locks where locktype='advisory' and mode='ShareLock' and not granted and ${writerPid!}::integer=any(pg_blocking_pids(pid))) as waiting`;
-   waiting=row.waiting;
-   if(!waiting)await new Promise(resolve=>setTimeout(resolve,20));
-  }
-  expect(waiting,'the actual switcher waits with a shared lock on the writer').toBe(true);
+  expect(await waitingForSharedAccess(writerPid!),'the actual switcher waits with a shared lock on the writer').toBe(true);
   release.resolve();await writer;
   expect(await bounded(read)).toEqual([expect.objectContaining({employmentId:hired.employmentId})]);
  }finally{release.resolve();await Promise.allSettled([writer,...(read?[read]:[])]);}
+});
+
+it('waits for a Workforce record Access writer and observes the committed denial',async()=>{
+ await resetDb();const b=await seedBase(),ctx=adminCtx(b),entered=barrier(),release=barrier();
+ const hired=await hireEmployee(ctx,{person:{fullName:'Fictional protected record',primaryEmail:'protected-record@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+ expect(await workforceRecord(ctx,hired.employmentId)).toMatchObject({employment:{employmentId:hired.employmentId}});
+ let writerPid:number|undefined;
+ const writer=owner.client.begin(async tx=>{
+  const [row]=await tx`select pg_backend_pid() as pid,pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+  writerPid=row.pid;
+  await tx`update app_user set archived_at=now() where id=${b.adminUserId}::uuid`;
+  entered.resolve();await release.promise;
+ });
+ let read:ReturnType<typeof workforceRecord>|undefined;
+ try{
+  await bounded(entered.promise);
+  read=workforceRecord(ctx,hired.employmentId);
+  expect(await waitingForSharedAccess(writerPid!),'the record read waits with a shared lock on the writer').toBe(true);
+  release.resolve();await writer;
+  expect(await bounded(read)).toBeNull();
+ }finally{
+  release.resolve();await Promise.allSettled([writer,...(read?[read]:[])]);
+  await owner.client`update app_user set archived_at=null where id=${b.adminUserId}::uuid`;
+ }
 });
