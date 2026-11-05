@@ -32,7 +32,7 @@ CREATE UNIQUE INDEX reward_library_name_year ON reward_library(tenant_id,kind,ye
 CREATE TABLE reward_library_version(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),library_id uuid NOT NULL,revision integer NOT NULL CHECK(revision>0),
  data jsonb NOT NULL CHECK(jsonb_typeof(data)='object'),state text NOT NULL CHECK(state IN('draft','pending','confirmed')),lock_version integer NOT NULL DEFAULT 1,
- created_by uuid NOT NULL REFERENCES app_user(id),contributor_ids uuid[] NOT NULL,confirmed_by uuid REFERENCES app_user(id),confirmed_at timestamptz,
+ created_by uuid NOT NULL REFERENCES app_user(id),created_by_person_id uuid NOT NULL REFERENCES person(id),contributor_ids uuid[] NOT NULL,contributor_person_ids uuid[] NOT NULL DEFAULT '{}',confirmed_by uuid REFERENCES app_user(id),confirmed_by_person_id uuid REFERENCES person(id),confirmed_at timestamptz,
  reason text NOT NULL CHECK(length(trim(reason)) BETWEEN 10 AND 4000),created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(tenant_id,id),UNIQUE(tenant_id,library_id,revision),FOREIGN KEY(tenant_id,library_id) REFERENCES reward_library(tenant_id,id),
  CHECK((state='confirmed')=(confirmed_by IS NOT NULL)),CHECK(confirmed_by IS NULL OR NOT confirmed_by=ANY(contributor_ids))
@@ -41,7 +41,7 @@ CREATE UNIQUE INDEX reward_library_one_working ON reward_library_version(tenant_
 CREATE TABLE reward_pat_version(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),company_id uuid NOT NULL REFERENCES company(id),year integer NOT NULL CHECK(year BETWEEN 2000 AND 2200),
  revision integer NOT NULL CHECK(revision>0),inputs jsonb NOT NULL CHECK(jsonb_typeof(inputs)='object'),state text NOT NULL DEFAULT 'pending' CHECK(state IN('pending','confirmed')),
- created_by uuid NOT NULL REFERENCES app_user(id),confirmed_by uuid REFERENCES app_user(id),confirmed_at timestamptz,reason text NOT NULL CHECK(length(trim(reason)) BETWEEN 10 AND 4000),
+ created_by uuid NOT NULL REFERENCES app_user(id),created_by_person_id uuid NOT NULL REFERENCES person(id),confirmed_by uuid REFERENCES app_user(id),confirmed_by_person_id uuid REFERENCES person(id),confirmed_at timestamptz,reason text NOT NULL CHECK(length(trim(reason)) BETWEEN 10 AND 4000),
  created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(tenant_id,id),UNIQUE(tenant_id,company_id,year,revision),
  CHECK((state='confirmed')=(confirmed_by IS NOT NULL)),CHECK(confirmed_by IS NULL OR confirmed_by<>created_by)
 );

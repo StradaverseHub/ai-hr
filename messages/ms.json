@@ -35455,7 +35455,7 @@
     "newVersion": "Cipta versi seterusnya",
     "companyPatOwner": "Input PAT diurus pada skrin Input PAT mengikut syarikat dan tahun.",
     "adoptPat": "Gunakan PAT syarikat yang disahkan",
-    "patChanged": "PAT syarikat telah berubah. Gunakan versi yang disahkan dalam draf sebelum menghantar.",
+    "patChanged": "PAT syarikat telah berubah. Group Rewards mesti menggunakan versi disahkan dalam Draf sebelum semakan boleh diteruskan.",
     "patHistory": "Versi terdahulu yang disahkan kekal dalam sejarah audit.",
     "uncoveredPlans": "Syarikat belum diliputi",
     "previewUncovered": "Pratonton pelan draf",
@@ -35485,7 +35485,12 @@
     "saveSettings": "Simpan tetapan sebagai versi draf baharu",
     "newPlanVersion": "Cipta versi pelan seterusnya",
     "successorHelp": "Cipta draf pengganti untuk mengubah tetapan akan datang. Petikan semakan sedia ada mengekalkan versi yang direkodkan.",
-    "structure-not-ready": "Tiada penugasan unit perniagaan bertarikh yang jelas. Semak struktur syarikat sebelum menetapkan pustaka."
+    "structure-not-ready": "Tiada penugasan unit perniagaan bertarikh yang jelas. Semak struktur syarikat sebelum menetapkan pustaka.",
+    "newPlan": "Pelan ganjaran baharu",
+    "draftOnly": "Ini hanya mencipta draf. Pengguna Group Rewards yang lain mesti meluluskan pelan sebelum semakan boleh dicipta.",
+    "createDraftPlan": "Cipta pelan draf",
+    "already-assigned": "Sudah ditugaskan kepada pelan lain bagi tahun ganjaran ini.",
+    "branchAllAcknowledged": "Setiap syarikat yang dipilih dikonfigurasi untuk menggunakan faktor cawangan"
   },
   "jobArchitecture": {
     "title": "Seni Bina Kerja",
