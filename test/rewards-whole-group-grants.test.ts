@@ -2,9 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { appUser, domainEvent, employment } from '../db/schema';
+import { appUser, businessUnit, company, domainEvent, employment, rewardCycle, rewardUnit } from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { defaultPolicy } from '../packs/rewards/model';
 import { pgSqlState } from '../lib/db-error';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -86,4 +87,32 @@ it('does not accept a user from another tenant', async () => {
   const [foreign] = await owner.db.select({ id: appUser.id }).from(appUser)
     .where(eq(appUser.id, (await seedBase()).adminUserId));
   await refused(save(admin, foreign.id, true, 0), '22023');
+});
+
+it('resolves grants on future draft reviews without assigning a review seat', async () => {
+  await save(admin, reviewer.userId!, true, 0);
+  const day = todayInKualaLumpur(), year = Number(day.slice(0, 4));
+  const unit = await owner.withTenant(admin, async tx => {
+    const [co] = await tx.insert(company).values({tenantId:base.tenantId,legalName:'Future company'}).returning();
+    const [bu] = await tx.insert(businessUnit).values({tenantId:base.tenantId,companyId:co.id,code:'FUTURE',name:'Future unit'}).returning();
+    const [cycle] = await tx.insert(rewardCycle).values({tenantId:base.tenantId,createdBy:admin.userId!,name:'Future cycle',year}).returning();
+    const [review] = await tx.insert(rewardUnit).values({
+      tenantId:base.tenantId,createdBy:admin.userId!,companyId:co.id,businessUnitId:bu.id,cycleId:cycle.id,
+      snapshotDate:day,policy:defaultPolicy(year),
+    }).returning();
+    return review;
+  });
+  async function access() {
+    const [row] = await withTenant(reviewer, tx => tx.execute<{ review: boolean; edit: boolean; coverage: string[] }>(sql`
+      select app.reward_access(${unit.id}::uuid) as review,
+        app.reward_group_figures_stage_allowed(${unit.id}::uuid) as edit,
+        array(select app.reward_group_coverage_roles(${unit.id}::uuid)) as coverage
+    `));
+    return row;
+  }
+  expect(await access()).toEqual({review:true,edit:false,coverage:['gr']});
+  await owner.withTenant(admin, tx => tx.update(rewardUnit).set({status:'gr'}).where(eq(rewardUnit.id,unit.id)));
+  expect(await access()).toEqual({review:true,edit:true,coverage:['gr']});
+  await save(admin, reviewer.userId!, false, 1);
+  expect(await access()).toEqual({review:false,edit:false,coverage:[]});
 });

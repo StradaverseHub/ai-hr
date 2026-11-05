@@ -47,7 +47,7 @@ export {rewardAccessCompanies,rewardAccessSingleAdminCompanies,rewardAccessReque
 export type {RewardAccessRequest,RewardAccessChange,RewardAccessAdministration,RewardDeletionReason} from './maintenance';
 export {previewRewardAccessBatch,saveRewardAccessBatch,previewRewardAccessCopy} from './maintenance';
 export type {RewardAccessBatch,RewardAccessCopyProposal} from './maintenance';
-import {activeRewardLogin,missingRewardRoles,rewardRequiredRoles,rewardRoleLabels,rewardUnitCoverage} from './coverage';
+import { wholeGroupCoverageTx,activeRewardLogin,missingRewardRoles,rewardRequiredRoles,rewardRoleLabels,rewardUnitCoverage} from './coverage';
 export {rewardRoleLabels,rewardRequiredRoles,rewardUnitCoverage} from './coverage';
 export type {RewardUnitCoverage,RewardRoleCoverage} from './coverage';
 /** cd72f915 — required-role coverage for the configuration list's "roles missing" badge (same predicate as submission). */
@@ -1037,7 +1037,7 @@ export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: st
       if (calculated.flags.some(f => f.severity === 'block')) throw new RewardError('Resolve all blocking checks, including restricted records, before proceeding.');
       if (calculated.flags.some(f => ['exception', 'warning'].includes(f.severity)) && reason.length < 10) throw new RewardError('Record why the exceptions and warnings are acceptable.');
       const members = await tx.select({ role: rewardMember.role }).from(rewardMember).innerJoin(appUser, eq(appUser.id, rewardMember.userId)).where(and(eq(rewardMember.unitId, unitId),sql`app.reward_member_eligible(${rewardMember.id})`));
-      const missing = missingRewardRoles(rewardRequiredRoles(unit, entries), members);
+      const missing = missingRewardRoles(rewardRequiredRoles(unit, entries), [...members, ...await wholeGroupCoverageTx(tx, unitId)]);
       if (missing.length) throw new RewardError(`Assign every approval role and the payroll handoff before submitting. Missing: ${missing.map(role => rewardRoleLabels[role]).join(', ')}.`);
       if (unit.status !== 'draft' && unit.approvedDigest !== hash) throw new RewardError('The inputs changed after submission. Return this review to draft.');
       // A person must not sign consecutive stages of the same revision, even if granted both roles.

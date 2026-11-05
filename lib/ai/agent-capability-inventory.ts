@@ -150,6 +150,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/privacy/actions.ts":{"erasePersonPiiAction":"handoff:privacy_erasure"},
  "app/admin/privacy/case-handlers/actions.ts":{"designateCaseHandlerAction":"handoff:access_and_authentication","revokeCaseHandlerAction":"handoff:access_and_authentication"},
  "app/admin/rewards/access/actions.ts":{"decideRewardAccessRequestAction":"handoff:access_and_authentication","previewRewardAccessBatchAction":"backlog:automatic","previewRewardAccessCopyAction":"backlog:automatic","saveRewardAccessBatchAction":"handoff:access_and_authentication"},
+ "app/admin/rewards/access/group-role-actions.ts":{"saveRewardGroupRoleAction":"handoff:access_and_authentication"},
  "app/admin/rewards/access/policy-actions.ts":{
   "beginRewardViewAsAction":"handoff:access_and_authentication","endRewardViewAsAction":"handoff:access_and_authentication",
   "resetRewardPermissionsAction":"handoff:access_and_authentication","rewardPermissionAction":"handoff:access_and_authentication",

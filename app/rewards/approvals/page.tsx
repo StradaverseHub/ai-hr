@@ -19,7 +19,7 @@ const COLUMNS = ['unit', 'stage', 'due', 'people', 'salary', 'bonus', 'exception
  */
 export default async function RewardApprovalsPage({ searchParams }: { searchParams: Promise<{ view?: string; group?: string; error?: string; decided?: string; sent?: string; skipped?: string; refused?: string; refusedDetail?: string }> }) {
   await requireModule('rewards');
-  const { s } = await scopedSession();const scopeIds=await getScopeIds((await rewardVisibleCompanies(s)).map(c=>c.id));
+  const { s } = await scopedSession();const companies=await rewardVisibleCompanies(s),allowedIds=companies.map(c=>c.id),scopeIds=companies.some(c=>c.wholeGroup)?allowedIds:await getScopeIds(allowedIds);
   const sp = await searchParams;
   const t = await getTranslations('rewards');
   const locale = await getLocale();

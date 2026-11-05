@@ -122,3 +122,76 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_te
 $$;
 REVOKE ALL ON FUNCTION app.reward_group_role_directory() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_group_role_directory() TO ai_hr_app;
+--> statement-breakpoint
+
+-- Native unit access resolves explicit group grants on demand, including units
+-- added after a grant. Scoped review seats still have their own eligibility.
+CREATE OR REPLACE FUNCTION app.reward_roles(wanted_unit uuid) RETURNS SETOF text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+  SELECT m.role
+  FROM public.reward_member m
+  JOIN public.reward_unit r ON r.id = m.unit_id AND r.tenant_id = m.tenant_id AND r.deleted_at IS NULL
+  WHERE m.unit_id = wanted_unit AND m.tenant_id = app.current_tenant_id()
+    AND m.user_id = app.current_user_id() AND app.reward_member_eligible_internal(m.id)
+  UNION
+  SELECT role FROM app.reward_current_group_roles()
+  WHERE EXISTS (
+    SELECT 1 FROM public.reward_unit r
+    WHERE r.id = wanted_unit AND r.tenant_id = app.current_tenant_id() AND r.deleted_at IS NULL
+  );
+$$;
+--> statement-breakpoint
+
+-- Returning roles rather than identities avoids exposing the group role directory
+-- to an ordinary reviewer checking coverage before a decision.
+CREATE FUNCTION app.reward_group_coverage_roles(wanted_unit uuid) RETURNS SETOF text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+  SELECT DISTINCT g.role FROM public.reward_group_role_grant g
+  WHERE g.tenant_id = app.current_tenant_id() AND g.active
+    AND app.reward_access(wanted_unit) AND app.principal_snapshot_current()
+    AND app.reward_group_person_eligible(g.user_id);
+$$;
+REVOKE ALL ON FUNCTION app.reward_group_coverage_roles(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_group_coverage_roles(uuid) TO ai_hr_app;
+--> statement-breakpoint
+
+-- Group visibility does not open a new figures-edit window. Legacy scoped roles
+-- retain their existing policy, while explicit group grants must match the step.
+CREATE FUNCTION app.reward_group_figures_stage_allowed(wanted_unit uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.reward_unit r
+    WHERE r.id = wanted_unit AND r.tenant_id = app.current_tenant_id() AND r.deleted_at IS NULL
+      AND (
+        EXISTS (
+          SELECT 1 FROM public.reward_member m
+          WHERE m.tenant_id = r.tenant_id AND m.unit_id = r.id AND m.user_id = app.current_user_id()
+            AND m.role NOT IN ('pbp', 'payroll') AND app.reward_member_eligible_internal(m.id)
+        )
+        OR r.status IN ('gr', 'ctro', 'ec') AND r.status IN (SELECT app.reward_current_group_roles())
+      )
+  );
+$$;
+REVOKE ALL ON FUNCTION app.reward_group_figures_stage_allowed(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_group_figures_stage_allowed(uuid) TO ai_hr_app;
+
+CREATE POLICY reward_entry_group_stage_update ON public.reward_entry AS RESTRICTIVE FOR UPDATE TO ai_hr_app
+USING (NOT EXISTS (SELECT 1 FROM app.reward_current_group_roles()) OR app.reward_group_figures_stage_allowed(unit_id))
+WITH CHECK (NOT EXISTS (SELECT 1 FROM app.reward_current_group_roles()) OR app.reward_group_figures_stage_allowed(unit_id));
+--> statement-breakpoint
+
+-- Group Rewards may maintain setup. CTRO receives library view only, and
+-- Executive Chairman receives no configuration authority from this grant.
+GRANT EXECUTE ON FUNCTION app.reward_current_group_roles() TO ai_hr_reward_setup_reader;
+CREATE OR REPLACE FUNCTION app.reward_setup_allowed(wanted_company uuid,wanted_operation text) RETURNS boolean LANGUAGE sql STABLE SET search_path=pg_catalog,public,app AS $$
+ SELECT wanted_operation IN('library_view','manage')
+ AND EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
+ AND (wanted_company IS NULL OR EXISTS(SELECT 1 FROM company c WHERE c.id=wanted_company AND c.tenant_id=app.current_tenant_id()))
+ AND (EXISTS(SELECT 1 FROM app.reward_current_group_roles() role
+              WHERE role='gr' OR wanted_operation='library_view' AND role='ctro')
+ OR EXISTS(SELECT 1 FROM reward_setup_grant g WHERE g.tenant_id=app.current_tenant_id() AND g.user_id=app.current_user_id() AND g.active
+  AND g.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND(g.valid_to IS NULL OR g.valid_to>=timezone('Asia/Kuala_Lumpur',now())::date)
+  AND((wanted_company IS NULL AND g.company_id IS NULL) OR (wanted_company IS NOT NULL AND(g.company_id IS NULL OR g.company_id=wanted_company))) AND(g.role='gr' OR wanted_operation='library_view' AND g.role='ctro'))
+ OR EXISTS(SELECT 1 FROM reward_unit u WHERE u.tenant_id=app.current_tenant_id() AND u.deleted_at IS NULL AND wanted_company IS NOT NULL AND u.company_id=wanted_company
+  AND EXISTS(SELECT 1 FROM app.reward_roles(u.id) r WHERE r='gr' OR wanted_operation='library_view' AND r='ctro')))
+$$;

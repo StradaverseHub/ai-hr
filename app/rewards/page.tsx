@@ -10,7 +10,7 @@ import {RewardReviewList} from './review-list';
 export default async function RewardsPage({searchParams}:{searchParams:Promise<RewardReviewFilters&{error?:string}>}){
  await requireModule('rewards');
  const {s}=await scopedSession();
- const scopeIds=await getScopeIds((await rewardVisibleCompanies(s)).map(c=>c.id));
+ const companies=await rewardVisibleCompanies(s),allowedIds=companies.map(c=>c.id),scopeIds=companies.some(c=>c.wholeGroup)?allowedIds:await getScopeIds(allowedIds);
  const t=await getTranslations('rewards'), nav=await getTranslations('nav'), sp=await searchParams;
  const [list,choices,destinations]=await Promise.all([listRewardReviewStatus(s,scopeIds),rewardSetupChoices(s,scopeIds),rewardNavigation(s,isAdmin(s))]);
  return <div className="w-full space-y-6"><PageHeader title={nav('rewardsReviewing')} description={t('description')} actions={<>
