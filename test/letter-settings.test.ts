@@ -7,6 +7,7 @@ import {saveLetterPolicy,getLetterPolicy,listLetterPolicies,saveLetterPermission
 import type {LetterPolicy} from '../lib/letter-workflow';
 import type {NotificationEmailTransport} from '../core/notification-email-delivery';
 import {letterNavigation} from '../core/letter-navigation';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {companyDeleteStatus} from '../core/read';
 import {createCompany,deleteCompany} from '../core/admin';
 import {visibleModuleCodes} from '../lib/nav-entitlements';
@@ -78,4 +79,45 @@ it('resolves real navigation permissions only in the selected company and immedi
 
 it('refuses activation of a reference format whose company code is unavailable without allocating a counter',async()=>{
  await expect(saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...policy(),referenceFormat:'{COMPANY}/{YYYY}/{SEQ:6}'},expectedOrdinal:0})).rejects.toMatchObject({code:'configuration',detail:'companyCode'});expect(await owner.db.select().from(s.letterPolicyVersion)).toHaveLength(0);expect(await owner.db.select().from(s.letterCounter)).toHaveLength(0);
+});
+
+
+it('shares the company permission read lock and still waits for Access writers',async()=>{
+ const expected=await letterCompanyAccess(ctx);
+ expect(expected).toContainEqual(expect.objectContaining({id:b.companyId,read:true,settings:true}));
+ const barrier=()=>{let release!:()=>void;const reached=new Promise<void>(resolve=>{release=resolve;});return {reached,release};};
+ const deadline=async<T>(promise:Promise<T>)=>{
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  try{return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Letter permission lock test timed out')),5000);})]);}
+  finally{clearTimeout(timer);}
+ };
+ for(const lock of [lockAccessConfigurationReadTx,lockAccessConfigurationTx]){
+  const entered=barrier(),release=barrier();
+  let pid=0,read:ReturnType<typeof letterCompanyAccess>|undefined;
+  const held=withTenant(ctx,async tx=>{
+   await lock(tx,b.tenantId);
+   const [row]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);pid=row.pid;
+   entered.release();await release.reached;
+  });
+  try{
+   await deadline(entered.reached);
+   read=letterCompanyAccess(ctx);
+   if(lock===lockAccessConfigurationReadTx)expect(await deadline(read)).toEqual(expected);
+   else{
+    const until=Date.now()+4000;
+    let waiting=false;
+    while(Date.now()<until&&!waiting){
+     const [row]=await owner.client`select exists(
+      select 1 from pg_locks waiter join pg_locks holder using(locktype,database,classid,objid,objsubid)
+      where holder.pid=${pid} and holder.granted and holder.locktype='advisory'
+        and not waiter.granted and waiter.mode='ShareLock'
+     ) as waiting`;
+     waiting=row.waiting===true;
+     if(!waiting)await new Promise(resolve=>setTimeout(resolve,20));
+    }
+    expect(waiting).toBe(true);
+    release.release();await held;expect(await deadline(read)).toEqual(expected);
+   }
+  }finally{release.release();await Promise.allSettled([held,...(read?[read]:[])]);}
+ }
 });
