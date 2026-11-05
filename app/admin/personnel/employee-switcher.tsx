@@ -4,6 +4,7 @@ import { useId, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { EmployeeName, inputCls } from '@/components/ui';
+import { useFitToView } from '@/components/ui/fit-to-view';
 import { SWITCHER_RESULT_CAP, matchEmployees, switcherHref, type SwitcherEmployee } from './employee-search';
 import { firstDirtyGuard } from '@/lib/unsaved-changes';
 
@@ -95,6 +96,9 @@ export function EmployeeSwitcher({
   };
 
   const showList = open && query.trim() !== '';
+  const listRef = useRef<HTMLDivElement>(null);
+  // Opened near the bottom of the window, the list opens upwards or shrinks to fit (components/ui/fit-to-view.ts).
+  useFitToView(showList, listRef, results.length);
 
   return (
     <div
@@ -132,6 +136,7 @@ export function EmployeeSwitcher({
 
       {showList && (
         <div
+          ref={listRef}
           id={listId}
           role="listbox"
           aria-label={t('resultsLabel')}
