@@ -134,7 +134,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_te
   WHERE m.unit_id = wanted_unit AND m.tenant_id = app.current_tenant_id()
     AND m.user_id = app.current_user_id() AND app.reward_member_eligible_internal(m.id)
   UNION
-  SELECT role FROM app.reward_current_group_roles()
+  SELECT g.role FROM app.reward_current_group_roles() AS g(role)
   WHERE EXISTS (
     SELECT 1 FROM public.reward_unit r
     WHERE r.id = wanted_unit AND r.tenant_id = app.current_tenant_id() AND r.deleted_at IS NULL
@@ -302,3 +302,38 @@ GRANT EXECUTE ON FUNCTION app.reward_group_decision_stage_allowed(uuid, text) TO
 CREATE POLICY reward_decision_group_stage_insert ON public.reward_decision AS RESTRICTIVE FOR INSERT TO ai_hr_app
 WITH CHECK (NOT EXISTS (SELECT 1 FROM app.reward_current_group_roles())
   OR app.reward_group_decision_stage_allowed(unit_id, from_stage));
+--> statement-breakpoint
+
+-- Reuse the review snapshot date for group EC direct reports. This read-time
+-- restriction does not rewrite a submitted review or its approved digest.
+CREATE FUNCTION app.reward_group_ec_direct_reports(wanted_unit uuid) RETURNS SETOF uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+  SELECT DISTINCT line.subordinate_employment_id
+  FROM public.reward_unit r
+  JOIN public.reward_group_role_grant g ON g.tenant_id = r.tenant_id AND g.role = 'ec' AND g.active
+  JOIN public.app_user u ON u.id = g.user_id AND u.tenant_id = g.tenant_id
+  JOIN public.employment manager ON manager.person_id = u.person_id AND manager.tenant_id = u.tenant_id
+    AND manager.hired_on <= r.snapshot_date
+    AND (manager.terminated_on IS NULL OR r.snapshot_date < manager.terminated_on)
+  JOIN public.reporting_line line ON line.manager_employment_id = manager.id AND line.tenant_id = manager.tenant_id
+    AND line.line_type = 'administrative' AND line.superseded_at IS NULL
+    AND line.valid_from <= r.snapshot_date AND (line.valid_to IS NULL OR r.snapshot_date < line.valid_to)
+  JOIN public.reward_entry e ON e.employment_id = line.subordinate_employment_id AND e.unit_id = r.id AND e.tenant_id = r.tenant_id
+  WHERE r.id = wanted_unit AND r.tenant_id = app.current_tenant_id() AND r.deleted_at IS NULL
+    AND app.reward_access(r.id) AND app.reward_group_person_eligible(g.user_id);
+$$;
+REVOKE ALL ON FUNCTION app.reward_group_ec_direct_reports(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_group_ec_direct_reports(uuid) TO ai_hr_app, ai_hr_reward_setup_reader, ai_hr_reward_upload_reader;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.reward_private_entry_visible(wanted_unit uuid,wanted_entry uuid) RETURNS boolean LANGUAGE sql STABLE SET search_path=pg_catalog,public,app AS $$
+ SELECT EXISTS(SELECT 1 FROM reward_entry e WHERE e.id=wanted_entry AND e.unit_id=wanted_unit AND e.tenant_id=app.current_tenant_id()
+  AND EXISTS(SELECT 1 FROM app.reward_roles(e.unit_id))
+  AND NOT EXISTS(SELECT 1 FROM app_user me WHERE me.id=app.current_user_id() AND me.tenant_id=e.tenant_id AND me.person_id::text=e.source->>'personId')
+  AND (e.facts->>'reviewed'='true' OR 'gr'=ANY(ARRAY(SELECT app.reward_roles(e.unit_id))))
+  AND (e.employment_id NOT IN (SELECT app.reward_group_ec_direct_reports(e.unit_id))
+       OR ARRAY(SELECT app.reward_roles(e.unit_id)) && ARRAY['gr','ctro','ec'])
+  AND (e.facts->>'confidentiality'<>'ec' OR ARRAY(SELECT app.reward_roles(e.unit_id)) && ARRAY['gr','ctro','ec'])
+  AND (NOT(coalesce((e.facts->>'seniorPlan')::boolean,false) OR EXISTS(SELECT 1 FROM reward_unit u WHERE u.id=e.unit_id AND coalesce(u.policy->>'seniorMembershipMode','legacy-grades')<>'named-members' AND u.policy->'seniorGrades' ? (e.source->>'grade'))) OR ARRAY(SELECT app.reward_roles(e.unit_id)) && ARRAY['gr','ctro','ec'])
+  AND (e.facts->>'confidentiality'<>'bg' OR ARRAY(SELECT app.reward_roles(e.unit_id)) && ARRAY['bg','gr','ctro','ec','payroll']))
+$$;

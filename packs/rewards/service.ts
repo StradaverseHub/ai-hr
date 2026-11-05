@@ -280,7 +280,10 @@ async function load(tx: Tx, unitId: string, lock = false,capability:import('./ac
   if (!roles.length) throw new RewardError('Ask an administrator to assign your Reward Desk role for this unit.');
   const entries = await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId, unitId)).orderBy(asc(rewardEntry.id));
   const awards=await tx.execute<{entryId:string;award:import('./uploaded-awards-model').UploadedAward}>(sql`select entry_id as "entryId",award from reward_uploaded_award where unit_id=${unitId}::uuid and tenant_id=app.current_tenant_id()`);
-  return { unit, roles, entries:entries.map(e=>({...e,uploadedAward:awards.find(a=>a.entryId===e.id)?.award??null})) };
+  const directReports = new Set((await tx.execute<{ id:string }>(sql`
+    select app.reward_group_ec_direct_reports(${unitId}::uuid) as id
+  `)).map(row=>row.id));
+  return { unit, roles, entries:entries.map(e=>({...e,groupEcDirectReport:directReports.has(e.employmentId),uploadedAward:awards.find(a=>a.entryId===e.id)?.award??null})) };
 }
 function assertRevision(unit: typeof rewardUnit.$inferSelect, revision: number) {
   if (!Number.isInteger(revision) || unit.revision !== revision) throw new RewardError('This review changed in another session. Reload before saving.');
@@ -337,7 +340,10 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
     const [caps]=await tx.execute<{value:{figuresEdit:boolean;reviewDecide:boolean;batch:boolean;dataCheck:boolean;snapshotRefresh:boolean;offcycleRaise:boolean;notesAdd:boolean;casesDecide:boolean}}>(sql`select jsonb_build_object('figuresEdit',app.reward_capability(${unitId}::uuid,'figures.edit') and (not exists(select 1 from app.reward_current_group_roles()) or app.reward_group_figures_stage_allowed(${unitId}::uuid)),'reviewDecide',app.reward_capability(${unitId}::uuid,'review.decide'),'batch',app.reward_capability(${unitId}::uuid,'review.batch'),'dataCheck',app.reward_capability(${unitId}::uuid,'data.check'),'snapshotRefresh',app.reward_capability(${unitId}::uuid,'snapshot.refresh'),'offcycleRaise',app.reward_capability(${unitId}::uuid,'offcycle.raise'),'notesAdd',app.reward_capability(${unitId}::uuid,'notes.add'),'casesDecide',app.reward_capability(${unitId}::uuid,'cases.decide')) as value`);
     const calculated = await calculateUnit(tx, unit, entries);
     const [uploadedReview]=await tx.execute<{present:boolean;pending:boolean}>(sql`select true as present,(current_version=0 or checked_version is distinct from current_version) as pending from reward_uploaded_review where unit_id=${unitId}::uuid and tenant_id=app.current_tenant_id()`);
-    if(uploadedReview?.pending&&!roles.includes('gr'))throw new RewardError('This upload awaits independent Group Rewards confirmation before the BU review opens.');
+    const [groupScope] = await tx.execute<{ wholeGroup:boolean }>(sql`
+      select exists(select 1 from app.reward_current_group_roles()) as "wholeGroup"
+    `);
+    if(uploadedReview?.pending&&!roles.includes('gr')&&!groupScope?.wholeGroup)throw new RewardError('This upload awaits independent Group Rewards confirmation before the BU review opens.');
     const state=await governanceStateTx(tx,unitId),publicState=await governancePublicTx(tx,unitId),effectivePolicy=state?effectiveRewardPolicy(unit.policy,state):publicState?{...unit.policy,multiplierBp:publicState.multiplierBp,branchRatings:publicState.branchRatings,targetMonthsBp:publicState.targetMonthsBp}:unit.policy;
     if(publicState&&!publicState.selectionConfirmed&&roles.includes('bu')&&!roles.includes('gr'))throw new RewardError('Senior plan membership awaits independent Group Rewards confirmation before the BU review can open.');
     const visible = calculated.rows.filter(e => visibleEntry(e, roles, ctx.personId)).map(entry=>{
@@ -382,7 +388,7 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
       .where(and(eq(domainEvent.aggregateType, 'reward-unit'), eq(domainEvent.aggregateId, unitId), eq(domainEvent.eventType, 'reward-unit.lump-updated'))).orderBy(desc(domainEvent.occurredAt)).limit(1) : [];
     const [libraryBinding]=await tx.execute<{bound:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as bound`);
     return { libraryBound:libraryBinding?.bound??false,...(caps?{capabilities:{...caps.value,snapshotRefresh:!uploadedReview?.present&&caps.value.snapshotRefresh}}:{}),uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.filter(row=>entries.some(e=>e.id===row.id&&e.uploadedAward!==null)).length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0),lumpCents:visible.reduce((n,e)=>n+e.lumpCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
-      rows: visible.map(e=>{const {uploadedAward:_award,...safe}=e as typeof e&{uploadedAward?:unknown};return safe;}), flags, hiddenCount: entries.length - visible.length,
+      rows: visible.map(e=>{const {uploadedAward:_award,groupEcDirectReport:_groupEc,...safe}=e as typeof e&{uploadedAward?:unknown;groupEcDirectReport?:boolean};return safe;}), flags, hiddenCount: entries.length - visible.length,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
       bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
       payWindow: { standard: payWindow('standard'), h: payWindow('h') },
@@ -390,6 +396,8 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
       ec: roles.some(r => ['gr', 'ctro', 'ec'].includes(r)) ? { count: ecRows.length, referenceCents: Math.round(ecRows.reduce((v, e) => v + e.source.basicCents, 0) * .07), incrementCents: ecRows.reduce((v, e) => v + e.newBasicCents - e.source.basicCents, 0), bonusCents: ecRows.reduce((v, e) => v + e.bonusCents + e.lumpCents, 0) } : null,
       suggestedLumpCents: calculated.suggestedLumpCents, lumpUnitCents: calculated.lumpUnitCents,
       suggestedMultiplierBp: calculated.suggestedMultiplierBp, suggestion: (roles.includes('gr')&&'suggestion' in calculated ? calculated.suggestion : null) as RewardMultiplierSuggestion | null, lumpWorking: calculated.lumpWorking,
+      approvalStageEdit: !!groupScope?.wholeGroup && !uploadedReview?.present &&
+        !!caps?.value.figuresEdit && ['gr','ctro','ec'].includes(unit.status) && roles.includes(unit.status as RewardRole),
       canEdit: !!caps?.value.figuresEdit&&(canEditStage(unit.status, roles) || unit.kind !== 'annual' && unit.status === 'draft' && roles.includes('bg')), canConfigure: roles.includes('gr') && unit.status === 'draft' && unit.kind === 'annual',
       posting: await rewardPostingAuthorityTx(tx, unit, roles),
     };
@@ -1619,7 +1627,9 @@ export async function rewardApprovalsBoard(ctx: SessionContext, companyIds: stri
     const units = await tx.select({ id: rewardUnit.id, cycle: rewardCycle.name, company: company.legalName })
       .from(rewardUnit).innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).innerJoin(company, eq(company.id, rewardUnit.companyId))
       .where(and(inArray(rewardUnit.companyId, companyIds), isNull(rewardUnit.deletedAt), inArray(rewardUnit.status, [...BOARD_STAGES]),
-        sql`app.reward_capability(${rewardUnit.id},'approvals.view')`,sql`not exists(select 1 from reward_uploaded_review r where r.unit_id=${rewardUnit.id} and (r.current_version=0 or r.checked_version is distinct from r.current_version))`))
+        sql`app.reward_capability(${rewardUnit.id},'approvals.view')`,sql`(exists(select 1 from app.reward_current_group_roles()) or not exists(
+          select 1 from reward_uploaded_review r where r.unit_id=${rewardUnit.id}
+          and (r.current_version=0 or r.checked_version is distinct from r.current_version)))`))
       .orderBy(asc(company.legalName), asc(rewardCycle.name), asc(rewardUnit.id));
     const today = todayInKualaLumpur();
     const rows: RewardBoardRow[] = [];

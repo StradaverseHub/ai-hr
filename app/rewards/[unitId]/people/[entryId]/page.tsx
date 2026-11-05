@@ -17,7 +17,7 @@ export default async function RewardPersonPage({ params }: { params: Promise<{ u
   const onehrText = await getTranslations('onehr');
   const t = await getTranslations('rewards'); const v = await getRewardUnit(s, unitId); const e = v.rows.find(r => r.id === entryId);
   if (!e) notFound();
-  const canEdit = v.unit.status === 'draft' && (v.canEdit || e.plan === 'ec' && v.roles.some(r => ['gr', 'ctro', 'ec'].includes(r)));
+  const canEdit = v.approvalStageEdit || (v.unit.status === 'draft' && v.canEdit);
   const senior=isSeniorPlanMember(v.unit.policy,e.facts,e.source.grade);
   const gr = v.roles.includes('gr'), r = e.recommendation, f = e.facts;
   const payWindowLocked = !!e.payChange && payWindowReasons.includes(e.incrementReason);
@@ -41,7 +41,7 @@ export default async function RewardPersonPage({ params }: { params: Promise<{ u
         </div>
         <Field label={t('businessCase')}><textarea name="reason" rows={3} maxLength={4000} defaultValue={r.reason} className={`${inputCls} h-auto py-2`} /></Field>
         {v.unit.kind !== 'annual' && <RoleComparison current={r.currentRoleSummary} proposed={r.proposedRoleSummary} />}
-        </fieldset>{gr && <>
+        </fieldset>{gr && v.unit.status==='draft' && <>
           <input type="hidden" name="facts" value="true" />
           <h2 className="pt-3 text-base font-semibold">{t('classification')}</h2><p className="max-w-3xl text-sm text-muted-foreground">{t('classificationHelp')}</p>
           {!e.source.onehr&&e.source.performanceReviewId && <p className="text-sm">{t('sourceRating')}: <Link href={`/performance/review/${e.source.performanceReviewId}`} className="text-primary hover:underline">{e.source.performanceRating ?? '—'}</Link></p>}
@@ -53,7 +53,7 @@ export default async function RewardPersonPage({ params }: { params: Promise<{ u
             <Field label={t('branch')}><input name="branch" defaultValue={f.branch} maxLength={100} className={inputCls} /></Field><Field label={t('segment')}><input name="segment" defaultValue={f.segment} maxLength={80} className={inputCls} /></Field>
           </div>{f.seniorPlan&&<input type="hidden" name="seniorPlan" value="true"/>}<div className="flex flex-wrap gap-5 text-sm">{(['erCase', 'pipCase', 'reviewed'] as const).map(key => <label key={key} className="flex items-center gap-2"><input type="checkbox" name={key} defaultChecked={f[key]} />{t(key)}</label>)}</div>
         </>}
-        {(gr || v.roles.includes('bu')) && <><input type="hidden" name="cases" value="true" /><div className="grid gap-4 sm:grid-cols-2">
+        {v.unit.status==='draft' && (gr || v.roles.includes('bu')) && <><input type="hidden" name="cases" value="true" /><div className="grid gap-4 sm:grid-cols-2">
           <Field label={t('erDecision')}><select name="erDecision" defaultValue={f.erDecision} className={inputCls}>{['pending', 'in', 'out'].map(k => <option key={k} value={k}>{t(`case.${k}`)}</option>)}</select></Field>
           <Field label={t('pipDecision')}><select name="pipDecision" defaultValue={f.pipDecision} className={inputCls}>{['pending', 'lift', 'confirm'].map(k => <option key={k} value={k}>{t(`case.${k}`)}</option>)}</select></Field>
         </div><Field label={t('caseReason')}><textarea name="caseReason" rows={3} defaultValue={f.caseReason} maxLength={3000} className={`${inputCls} h-auto py-2`} /></Field></>}
