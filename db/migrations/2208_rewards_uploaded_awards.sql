@@ -39,6 +39,7 @@ CREATE POLICY reward_uploaded_version_insert ON reward_uploaded_version FOR INSE
 GRANT SELECT,UPDATE ON reward_uploaded_review TO ai_hr_app;GRANT SELECT,INSERT ON reward_uploaded_version TO ai_hr_app;
 GRANT SELECT,INSERT,UPDATE ON reward_uploaded_review TO ai_hr_reward_setup_reader;
 CREATE POLICY reward_uploaded_review_create ON reward_uploaded_review FOR INSERT TO ai_hr_reward_setup_reader WITH CHECK(tenant_id=app.current_tenant_id() AND app.reward_setup_allowed((SELECT company_id FROM reward_unit WHERE id=unit_id),'manage'));
+GRANT EXECUTE ON FUNCTION app.reward_confidentiality_floors(uuid,uuid[],date) TO ai_hr_reward_setup_reader;
 CREATE FUNCTION app.reward_uploaded_snapshot_roster(wanted_unit uuid,wanted_snapshot date) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 DECLARE u reward_unit%ROWTYPE;t uuid:=app.current_tenant_id();unit uuid:=wanted_unit;wanted_company uuid;wanted_year integer;row record;overlap boolean;pending_names text;company_tags jsonb;seen uuid[]:='{}';
 BEGIN
@@ -59,15 +60,27 @@ BEGIN
  LOOP
  INSERT INTO reward_entry(tenant_id,unit_id,employment_id,source,facts,recommendation) VALUES(t,unit,row.id,jsonb_build_object('employmentId',row.id,'assignmentId',row.assignment_id,'positionId',row.assignment_position_id,'personId',row.person_id,'compensationId',row.compensation_id,'employeeCode',coalesce(row.employee_code,row.id::text),'name',row.full_name,'grade',regexp_replace(coalesce(row.grade_code,''),'^JG[[:space:]]*','','i'),'gradeId',row.grade_id,'basicCents',coalesce(round(row.basic_salary*100),0),'currency',coalesce(row.comp_currency,'MYR'),'payMode',coalesce(row.pay_mode,'monthly'),'hiredOn',row.hired_on,'confirmedOn',row.confirmation_date,'notice',(row.tender_resignation_date IS NOT NULL AND row.tender_resignation_date<=wanted_snapshot) OR(row.resignation_date IS NOT NULL AND row.resignation_date<=wanted_snapshot),'lastPayChange',CASE WHEN row.pay_from>row.hired_on THEN row.pay_from ELSE NULL END,'confirmationPayChange',coalesce(row.pay_from=row.confirmation_date AND row.pay_from>row.hired_on,false),'performanceReviewId',row.review_id,'performanceRating',row.overall_rating,'architecture',app.reward_architecture_for_source(unit,row.id,row.assignment_position_id,wanted_snapshot),'payChanges',coalesce((SELECT jsonb_agg(jsonb_build_object('on',x.valid_from,'basicCents',round(x.basic_salary*100),'kind',NULL) ORDER BY x.valid_from,x.id) FROM(SELECT c.*,lag(c.basic_salary)over(ORDER BY c.valid_from,c.id) AS prior_basic FROM compensation c WHERE c.employment_id=row.id AND c.tenant_id=t AND c.superseded_at IS NULL)x WHERE x.prior_basic IS NOT NULL AND x.basic_salary<>x.prior_basic AND x.valid_from>row.hired_on AND x.valid_from BETWEEN make_date(wanted_year,1,1) AND make_date(wanted_year+1,12,31)),'[]'::jsonb)),
  '{"talent":null,"performance":null,"confidentiality":"standard","seniorPlan":false,"erCase":false,"pipCase":false,"erDecision":"pending","pipDecision":"pending","caseReason":"","segment":"","branch":"","reviewed":false}'::jsonb,
- '{"meritBp":null,"promotionGrade":null,"promotionBp":null,"specialBp":null,"multiplierBp":null,"bonusCents":null,"lumpCents":null,"reason":"","currentRoleSummary":"","proposedRoleSummary":""}'::jsonb) ON CONFLICT(unit_id,employment_id) DO UPDATE SET source=excluded.source,updated_at=now();
+ '{"meritBp":null,"promotionGrade":null,"promotionBp":null,"specialBp":null,"multiplierBp":null,"bonusCents":null,"lumpCents":null,"reason":"","currentRoleSummary":"","proposedRoleSummary":""}'::jsonb) ON CONFLICT(unit_id,employment_id) DO UPDATE SET source=excluded.source||jsonb_strip_nulls(jsonb_build_object('confidentialityFloor',reward_entry.source->'confidentialityFloor','confidentialityReason',reward_entry.source->'confidentialityReason')),updated_at=now();
  seen:=array_append(seen,row.id);
  END LOOP;
+ WITH floors AS (SELECT * FROM app.reward_confidentiality_floors(unit,seen,wanted_snapshot)), source_rows AS (
+   SELECT e.id,f.level,f.manager_employment_id,
+     CASE e.facts->>'confidentiality' WHEN 'ec' THEN 2 WHEN 'bg' THEN 1 ELSE 0 END current_rank,
+     CASE e.source->>'confidentialityFloor' WHEN 'ec' THEN 2 WHEN 'bg' THEN 1 ELSE 0 END old_rank,
+     CASE f.level WHEN 'ec' THEN 2 WHEN 'bg' THEN 1 ELSE 0 END new_rank
+   FROM reward_entry e LEFT JOIN floors f ON f.employment_id=e.employment_id
+   WHERE e.tenant_id=t AND e.unit_id=unit AND e.employment_id=ANY(seen)
+ )
+ UPDATE reward_entry e SET source=(e.source-ARRAY['confidentialityFloor','confidentialityReason'])||
+     CASE WHEN f.level IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('confidentialityFloor',f.level,'confidentialityReason',jsonb_build_object('seat',f.level,'managerEmploymentId',f.manager_employment_id)) END,
+   facts=e.facts||jsonb_build_object('reviewed',true,'confidentiality',CASE greatest(CASE WHEN f.current_rank>f.old_rank THEN f.current_rank ELSE 0 END,f.new_rank) WHEN 2 THEN 'ec' WHEN 1 THEN 'bg' ELSE 'standard' END),updated_at=now()
+ FROM source_rows f WHERE e.id=f.id AND e.tenant_id=t AND e.unit_id=unit;
  UPDATE reward_entry e SET source=e.source||jsonb_build_object('leftOn',wanted_snapshot,'leftReason',CASE WHEN EXISTS(SELECT 1 FROM employment x WHERE x.id=e.employment_id AND x.tenant_id=t AND x.terminated_on<=wanted_snapshot) THEN 'terminated' ELSE 'moved' END),updated_at=now() WHERE e.unit_id=unit AND e.tenant_id=t AND NOT e.employment_id=ANY(seen);
 END $$;
 ALTER FUNCTION app.reward_uploaded_snapshot_roster(uuid,date) OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_uploaded_snapshot_roster(uuid,date) FROM PUBLIC,ai_hr_app;
 GRANT SELECT ON reward_entry TO ai_hr_reward_setup_reader;
-GRANT UPDATE(source,updated_at) ON reward_entry TO ai_hr_reward_setup_reader;
+GRANT UPDATE(source,facts,updated_at) ON reward_entry TO ai_hr_reward_setup_reader;
 GRANT UPDATE(snapshot_date,revision,approved_digest,updated_at) ON reward_unit TO ai_hr_reward_setup_reader;
 CREATE FUNCTION app.reward_create_uploaded_unit(wanted_company uuid,wanted_business_unit uuid,wanted_cycle uuid,wanted_year integer,wanted_snapshot date,wanted_policy jsonb,wanted_cycle_name text DEFAULT NULL) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 DECLARE t uuid:=app.current_tenant_id();actor uuid:=app.current_user_id();unit uuid:=gen_random_uuid();row record;overlap boolean;pending_names text;company_tags jsonb;
@@ -141,7 +154,7 @@ ALTER FUNCTION app.reward_uploaded_binding() SECURITY DEFINER;
 ALTER FUNCTION app.reward_uploaded_binding() OWNER TO ai_hr_reward_setup_reader;
 CREATE FUNCTION app.reward_uploaded_evidence(wanted_unit uuid,wanted_version integer) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  SELECT jsonb_build_object('name',v.evidence_name,'mime',v.evidence_mime,'content',v.evidence_content) FROM reward_uploaded_version v
- WHERE v.tenant_id=app.current_tenant_id() AND v.unit_id=wanted_unit AND v.version=wanted_version AND v.evidence_content IS NOT NULL AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(v.unit_id)))
+ WHERE v.tenant_id=app.current_tenant_id() AND v.unit_id=wanted_unit AND v.version=wanted_version AND v.evidence_content IS NOT NULL AND app.reward_not_viewing_as() AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(v.unit_id)))
  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(v.rows) r JOIN reward_entry e ON e.employment_id=(r->>'employmentId')::uuid AND e.unit_id=v.unit_id AND e.tenant_id=v.tenant_id WHERE NOT app.reward_private_entry_visible(e.unit_id,e.id))
 $$;
 ALTER FUNCTION app.reward_uploaded_evidence(uuid,integer) OWNER TO ai_hr_reward_setup_reader;
@@ -309,3 +322,41 @@ BEGIN
 END $$;
 ALTER FUNCTION app.reward_refresh_uploaded_sources(uuid,integer,text) OWNER TO ai_hr_reward_setup_reader;
 REVOKE ALL ON FUNCTION app.reward_refresh_uploaded_sources(uuid,integer,text) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_refresh_uploaded_sources(uuid,integer,text) TO ai_hr_app;
+
+-- Uploaded money cannot enter or skip the approval route through a generic unit update.
+CREATE FUNCTION app.reward_uploaded_route_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE upload reward_uploaded_review%ROWTYPE; roles text[]; needed text; action_name text; facts jsonb; last_actor uuid;
+BEGIN
+ IF NEW.status=OLD.status THEN RETURN NEW; END IF;
+ SELECT * INTO upload FROM reward_uploaded_review WHERE unit_id=OLD.id AND tenant_id=OLD.tenant_id;
+ IF NOT FOUND THEN RETURN NEW; END IF;
+ IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.reward_not_viewing_as() THEN RAISE EXCEPTION 'Uploaded review route is not writable'; END IF;
+ roles:=ARRAY(SELECT app.reward_roles(OLD.id));
+ IF NEW.status='withdrawn' AND OLD.status NOT IN('posted','rejected','withdrawn') AND ('gr'=ANY(roles) OR app.reward_admin(OLD.company_id)) AND NEW.revision=OLD.revision+1 AND NEW.approved_digest IS NULL THEN RETURN NEW; END IF;
+ IF NEW.status='posted' THEN
+  IF OLD.status<>'approved' OR NOT 'payroll'=ANY(roles) OR NOT app.reward_admin(OLD.company_id) OR NEW.posted_at IS NULL OR upload.refresh_required OR upload.current_version=0 OR upload.checked_version IS DISTINCT FROM upload.current_version OR NOT app.reward_uploaded_cycle_ready(OLD.id) THEN RAISE EXCEPTION 'Only confirmed, approved uploaded awards may be posted by Payroll'; END IF;
+  RETURN NEW;
+ END IF;
+ IF NOT app.reward_capability(OLD.id,'review.decide') THEN RAISE EXCEPTION 'Review decision authority is required'; END IF;
+ IF NEW.status='draft' AND OLD.status IN('bg','gr','ctro','ec','approved') THEN
+  IF NOT (OLD.status=ANY(roles) OR OLD.status='approved' AND roles&&ARRAY['gr','ctro','ec']) OR NEW.revision<>OLD.revision+1 OR NEW.approved_digest IS NOT NULL THEN RAISE EXCEPTION 'Only a current reviewer may return the uploaded review'; END IF;
+  action_name:='return';
+ ELSE
+  needed:=CASE OLD.status WHEN 'draft' THEN 'bu' WHEN 'bg' THEN 'bg' WHEN 'gr' THEN 'gr' WHEN 'ctro' THEN 'ctro' WHEN 'ec' THEN 'ec' END;
+  IF needed IS NULL OR NOT needed=ANY(roles) OR NEW.status IS DISTINCT FROM (CASE OLD.status WHEN 'draft' THEN 'bg' WHEN 'bg' THEN 'gr' WHEN 'gr' THEN 'ctro' WHEN 'ctro' THEN 'ec' WHEN 'ec' THEN 'approved' END) THEN RAISE EXCEPTION 'Uploaded reviews must follow the normal approval sequence'; END IF;
+  action_name:=CASE OLD.status WHEN 'draft' THEN 'submit' ELSE 'approve' END;
+  IF upload.refresh_required OR upload.current_version=0 OR upload.checked_version IS DISTINCT FROM upload.current_version OR NEW.revision<>OLD.revision OR NEW.approved_digest IS NULL OR(OLD.status<>'draft' AND NEW.approved_digest IS DISTINCT FROM OLD.approved_digest) THEN RAISE EXCEPTION 'Confirm the unchanged upload independently before approving'; END IF;
+  facts:=app.reward_uploaded_validation(OLD.id);
+  IF NOT coalesce((facts->>'valid')::boolean,false) THEN RAISE EXCEPTION 'An uploaded award fails current validation'; END IF;
+  SELECT d.actor_id INTO last_actor FROM reward_decision d WHERE d.tenant_id=OLD.tenant_id AND d.unit_id=OLD.id AND d.revision=OLD.revision AND d.to_stage=OLD.status ORDER BY d.created_at DESC,d.id DESC LIMIT 1;
+  IF action_name='approve' AND last_actor=app.current_user_id() THEN RAISE EXCEPTION 'A different reviewer must sign the next stage'; END IF;
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM reward_decision d WHERE d.tenant_id=OLD.tenant_id AND d.unit_id=OLD.id AND d.revision=OLD.revision AND d.actor_id=app.current_user_id() AND d.action=action_name AND d.from_stage=OLD.status AND d.to_stage=NEW.status AND (action_name='return' OR d.digest=NEW.approved_digest) AND (NOT coalesce((facts->>'warnings')::boolean,false) AND action_name<>'return' OR length(trim(d.reason))>=10) AND d.xmin=pg_current_xact_id()::text::xid) THEN RAISE EXCEPTION 'The uploaded review requires its authorized decision in the same transaction'; END IF;
+ RETURN NEW;
+END $$;
+GRANT SELECT ON reward_decision,reward_role_permission,reward_page_grant,reward_setup_grant TO ai_hr_reward_upload_reader;
+GRANT EXECUTE ON FUNCTION app.reward_not_viewing_as(),app.reward_capability(uuid,text),app.reward_role_native_capability(text,text),app.reward_member_eligible(uuid),app.reward_setup_allowed(uuid,text) TO ai_hr_reward_upload_reader;
+ALTER FUNCTION app.reward_uploaded_route_guard() OWNER TO ai_hr_reward_upload_reader;
+REVOKE ALL ON FUNCTION app.reward_uploaded_route_guard() FROM PUBLIC;
+CREATE TRIGGER reward_uploaded_route_guard BEFORE UPDATE OF status ON reward_unit FOR EACH ROW EXECUTE FUNCTION app.reward_uploaded_route_guard();

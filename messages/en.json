@@ -35909,6 +35909,7 @@
     "inactive": "Inactive"
   },
   "rewardAdvisor": {
+    "saveCycle": "Save as cycle default",
     "title": "Recommendation advisor",
     "back": "Compensation review",
     "advisory": "Advisory only. The deterministic rules calculate every figure. A human decides and the normal approvals still apply.",

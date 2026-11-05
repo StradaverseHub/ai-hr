@@ -35909,6 +35909,7 @@
     "inactive": "Ngừng hoạt động"
   },
   "rewardAdvisor": {
+    "saveCycle": "Lưu làm mặc định cho chu kỳ",
     "title": "Trợ lý đề xuất",
     "back": "Rà soát đãi ngộ",
     "advisory": "Chỉ để tham khảo. Quy tắc xác định tính mọi số liệu. Con người quyết định và quy trình phê duyệt thông thường vẫn áp dụng.",

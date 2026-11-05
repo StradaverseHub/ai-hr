@@ -45,3 +45,22 @@ CREATE TRIGGER reward_advisor_suggestion_binding BEFORE INSERT OR UPDATE ON rewa
 REVOKE ALL ON FUNCTION app.reward_advisor_binding() FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_advisor_binding() TO ai_hr_app;
 CREATE TRIGGER reward_advisor_setting_readonly BEFORE INSERT OR UPDATE OR DELETE ON reward_advisor_setting FOR EACH ROW EXECUTE FUNCTION app.reward_view_as_write_guard();
 CREATE TRIGGER reward_advisor_suggestion_readonly BEFORE INSERT OR UPDATE OR DELETE ON reward_advisor_suggestion FOR EACH ROW EXECUTE FUNCTION app.reward_view_as_write_guard();
+
+CREATE TABLE reward_advisor_cycle_setting(
+ cycle_id uuid PRIMARY KEY REFERENCES reward_cycle(id),tenant_id uuid NOT NULL REFERENCES tenant(id),revision integer NOT NULL DEFAULT 1,
+ settings jsonb NOT NULL CHECK(jsonb_typeof(settings)='object'),changed_by uuid NOT NULL REFERENCES app_user(id),updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE reward_advisor_cycle_setting ENABLE ROW LEVEL SECURITY;ALTER TABLE reward_advisor_cycle_setting FORCE ROW LEVEL SECURITY;
+CREATE POLICY reward_advisor_cycle_read ON reward_advisor_cycle_setting FOR SELECT TO ai_hr_app USING(
+ tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.tenant_id=reward_advisor_cycle_setting.tenant_id AND u.cycle_id=reward_advisor_cycle_setting.cycle_id AND u.deleted_at IS NULL AND EXISTS(SELECT 1 FROM app.reward_roles(u.id)))
+);
+CREATE POLICY reward_advisor_cycle_write ON reward_advisor_cycle_setting FOR ALL TO ai_hr_app USING(
+ tenant_id=app.current_tenant_id() AND app.reward_setup_allowed(NULL,'manage') AND app.reward_not_viewing_as() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.tenant_id=reward_advisor_cycle_setting.tenant_id AND u.cycle_id=reward_advisor_cycle_setting.cycle_id AND u.deleted_at IS NULL AND u.status='draft' AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(u.id))))
+) WITH CHECK(
+ tenant_id=app.current_tenant_id() AND changed_by=app.current_user_id() AND app.reward_setup_allowed(NULL,'manage') AND app.reward_not_viewing_as() AND EXISTS(SELECT 1 FROM reward_unit u WHERE u.tenant_id=reward_advisor_cycle_setting.tenant_id AND u.cycle_id=reward_advisor_cycle_setting.cycle_id AND u.deleted_at IS NULL AND u.status='draft' AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(u.id))))
+);
+GRANT SELECT,INSERT,UPDATE ON reward_advisor_cycle_setting TO ai_hr_app;
+CREATE TRIGGER reward_advisor_cycle_readonly BEFORE INSERT OR UPDATE OR DELETE ON reward_advisor_cycle_setting FOR EACH ROW EXECUTE FUNCTION app.reward_view_as_write_guard();
+-- Reviewers need the validated output and its provenance, not the raw personnel input snapshot.
+REVOKE SELECT ON reward_advisor_suggestion FROM ai_hr_app;
+GRANT SELECT(id,tenant_id,unit_id,entry_id,unit_revision,source_digest,settings_revision,recommendation,reason_refs,provider,model,contract_id,prompt_digest,created_by,created_at,status,decided_by,decided_at,decision_reason,final_recommendation) ON reward_advisor_suggestion TO ai_hr_app;
