@@ -25,6 +25,7 @@ export function movementKindLabel(
 ): string {
   if (configuredLabel) return configuredLabel;
   switch (kind) {
+    case 'historicalHire': return t('movement.eventType.historicalHire');
     case 'hired': return t('movement.eventType.hired');
     case 'transfer': return t('movement.eventType.transfer');
     // b7b22514 — without this case the humanized fallback below would label the row "Entity Transfer" in

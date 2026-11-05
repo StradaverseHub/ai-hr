@@ -3082,6 +3082,12 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
   // The tenant catalogue resolves custom codes to their actual effect. Own configuration before
   // that resolution and before current-state planning, not merely when the termination leg writes.
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+  if (isCalendarDate(rawInput.effectiveDate) && rawInput.effectiveDate < todayInKualaLumpur()) {
+    const input = await resolveInputTypeTx(tx, ctx, rawInput, 'record');
+    if (isComparisonKind(input.kind)) {
+      return recordComparisonInEffectiveOrderTx(tx, ctx, rawInput);
+    }
+  }
   return dispatchMovementEventTx(tx,ctx,rawInput);
 }
 
@@ -3214,6 +3220,30 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
         blacklisted: p.blacklisted ?? true,
         reason: remarks,
       },tx);
+
+    case 'historicalHire': {
+      if (!isCalendarDate(p.effectiveDate) || !remarks || remarks.length > 200) {
+        throw new Error('Enter a valid historical hire date and a reason of up to 200 characters.');
+      }
+      await lockEmploymentStatutoryOwnerTx(tx, p.employmentId);
+      const projected = await projectRows(tx, ctx.tenantId, p.employmentId);
+      if (p.effectiveDate > projected.emp.hiredOn) {
+        throw new Error('A historical hire must be on or before the recorded Group Join Date.');
+      }
+      if (projected.rows.some(row => row.kind === 'historicalHire' && !row.reversed && row.effectiveDate === p.effectiveDate)) {
+        throw new MovementNoChangeError();
+      }
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'employment',
+        aggregateId: p.employmentId,
+        eventType: 'employment.movement.recorded',
+        actor: actorOf(ctx),
+        subjectEmploymentId: p.employmentId,
+        payload: { type: 'historicalHire', effectiveDate: p.effectiveDate, endDate: null, remarks },
+      });
+      return { employmentId: p.employmentId };
+    }
 
     case 'secondment':
     case 'actingPosition': {
@@ -3629,13 +3659,13 @@ async function laterReplayPlanTx(
   rows: ProjectedRow[],
   statusOf: Awaited<ReturnType<typeof projectRows>>['statusOf'],
   resolvedTypes: Awaited<ReturnType<typeof projectRows>>['resolvedTypes'],
-  target: ProjectedRow,
+  target: ProjectedRow | null,
   targetSpanEnd: number,
   correctedDate: string,
 ): Promise<ReplayStep[]> {
   const steps: ReplayStep[] = [];
   for (const r of rows) {
-    if (r.id === target.id || r.reversed || r.scheduled && statusOf(r) !== 'applied') continue;
+    if (r.id === target?.id || (!target && r.effectiveDate <= correctedDate) || r.reversed || r.scheduled && statusOf(r) !== 'applied') continue;
     const g = groupEventsOf(events, r);
     if (!g.some((e) => STATE_CHANGING_EVENT_TYPES.has(e.eventType))) continue;
     const end = Math.max(...g.map((e) => e.sequence));
@@ -3665,6 +3695,30 @@ async function laterReplayPlanTx(
     steps.push({ movementId: r.id, label, effectiveDate: when, sequence: r.sequence, behaviour, input: await replayInputOfTx(tx, r, g, behaviour), terminationType });
   }
   return steps.sort((a, b) => (a.effectiveDate === b.effectiveDate ? a.sequence - b.sequence : a.effectiveDate < b.effectiveDate ? -1 : 1));
+}
+
+/** Insert before later movements without letting the most recently written row win. */
+async function recordComparisonInEffectiveOrderTx(tx: Tx, ctx: SessionContext, input: CreateMovementInput) {
+  assertMovementAdmin(ctx, 'record a backdated movement');
+  await lockEmploymentStatutoryOwnerTx(tx, input.employmentId);
+  const { emp, events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, input.employmentId);
+  if (input.effectiveDate < emp.hiredOn) {
+    throw new Error('Use Historical Hire to record dates before the current Group Join Date.');
+  }
+  const later = await laterReplayPlanTx(tx, events, rows, statusOf, resolvedTypes, null, -1, input.effectiveDate);
+  if (!later.length) return dispatchMovementEventTx(tx, ctx, input);
+
+  const reason = input.remarks?.trim();
+  if (!reason) throw new MovementReasonRequiredError('Record a reason for inserting this earlier movement.');
+  const closed = (await closedPeriodsTx(tx, input.employmentId))
+    .filter(period => overlapsClosedPeriod([period], input.effectiveDate, null));
+  if (closed.length) throw new MovementClosedPayrollAcknowledgementError(closed);
+  for (const step of [...later].sort((a, b) => b.sequence - a.sequence)) {
+    await reverseMovementTx(tx, ctx, input.employmentId, step.movementId, reason, true);
+  }
+  const created = await dispatchMovementEventTx(tx, ctx, input);
+  await replayLaterMovementsTx(tx, ctx, input.employmentId, later);
+  return created;
 }
 
 /** The movement input one applied movement represents, rebuilt from its legs' recorded after-values. */
@@ -4228,8 +4282,10 @@ async function reverseMovementTx(
   for (const e of [...group].sort((a, b) => b.sequence - a.sequence)) {
     await reverseLegTx(tx, ctx, employmentId, e, tag, hireCorrections, reason);
   }
-  const organisation=await employmentOrganisationTagsTx(tx,ctx,{employmentId,asOf:row.effectiveDate});
-  await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId,companyId:organisation.companyId,asOf:row.effectiveDate,trigger:'movement'});
+  if (row.kind !== 'historicalHire') {
+    const organisation=await employmentOrganisationTagsTx(tx,ctx,{employmentId,asOf:row.effectiveDate});
+    await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId,companyId:organisation.companyId,asOf:row.effectiveDate,trigger:'movement'});
+  }
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'employment',
@@ -4354,6 +4410,9 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
       // for one of the organisation's own Termination types is not the string 'termination'.
       const rowBehaviour = resolvedTypes.get(recordedMovementKind(row, groupEventsOf(events, row)))?.behaviourKind ?? null;
       previousBehaviourKind = rowBehaviour;
+      if ((rowBehaviour === 'historicalHire') !== (p.kind === 'historicalHire')) {
+        throw new MovementNotCorrectableError('A historical hire must remain a historical hire.');
+      }
       const sourceKind=recordedMovementKind(row,groupEventsOf(events,row));
       if((p.typeCode??p.kind)!==sourceKind){
         const destination=await resolveMovementEventTypeTx(tx,ctx.tenantId,p.typeCode??p.kind);
@@ -4577,6 +4636,9 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
         // fresh record carrying the fixed dates / remarks.
         if (datesUnchanged) throw new MovementNoChangeError();
         await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true, {additionalClosedPayrollPeriods:targetClosedPeriods});
+        if (p.kind === 'historicalHire') {
+          return dispatchMovementEventTx(tx, ctx, { ...p, remarks, endDate: null });
+        }
         await appendEvent(tx, {
           tenantId: ctx.tenantId,
           aggregateType: 'employment',

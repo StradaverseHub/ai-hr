@@ -62,6 +62,7 @@ export function HireCorrectionForm({
   employmentId,
   heading,
   fields,
+  salaryAtHire,
   readOnly,
   cancelHref,
   pageContext,
@@ -70,6 +71,7 @@ export function HireCorrectionForm({
   /** "Hired · 2024-03-01" */
   heading: string;
   fields: HireCorrectionFormField[];
+  salaryAtHire?: { amount: string; currency: string };
   readOnly: HireCorrectionReadOnlyRow[];
   cancelHref: string;
   pageContext?:import('@/lib/personnel-movement-navigation').MovementPageContext;
@@ -86,6 +88,9 @@ export function HireCorrectionForm({
     Object.fromEntries(fields.map((f) => [f.field, f.currentId ?? ''])),
   );
   const [reason, setReason] = useState('');
+  const [salary, setSalary] = useState(salaryAtHire?.amount ?? '');
+  const salaryChanged = !!salaryAtHire && salary !== '' && Number(salary) !== Number(salaryAtHire.amount);
+  const salaryLabel = tRoot('people.detail.movement.field.basicSalary');
 
   const changed = useMemo(
     () => editableFields.filter((f) => (values[f.field] || null) !== f.currentId),
@@ -107,7 +112,7 @@ export function HireCorrectionForm({
     return [...byRecord.entries()].map(([record, labels]) => t('recordFields', { record, fields: labels.join(', ') }));
   }, [changed, t]);
 
-  const canReview = changed.length > 0 && reason.trim().length > 0;
+  const canReview = (changed.length > 0 || salaryChanged) && reason.trim().length > 0;
 
   return (
     <form ref={formRef} aria-busy={pagePending} action={pageContext?pageAction:correctHireDetailsAction}>
@@ -232,6 +237,12 @@ export function HireCorrectionForm({
         />
       </label>
 
+      {salaryAtHire && <label className="mx-4 mt-4 block space-y-1 text-sm">
+        <span>{salaryLabel} ({salaryAtHire.currency})</span>
+        <input name={salaryChanged ? 'hireBasicSalary' : undefined} type="number" min="0" step="0.01"
+          className={selectCls} value={salary} onChange={event => setSalary(event.target.value)} />
+      </label>}
+
       <div className="mt-4 flex items-center justify-end gap-2 border-t border-border p-4">
         <a href={cancelHref} className={btnGhost}>
           {t('cancel')}
@@ -249,6 +260,9 @@ export function HireCorrectionForm({
               <p className="mt-1 text-sm font-medium text-foreground">{heading}</p>
               <AlertDialog.Description asChild>
                 <div className="mt-4 divide-y divide-border rounded-md border border-border text-sm">
+                  {salaryChanged && salaryAtHire && <div className="px-3 py-2">
+                    {salaryLabel} ({salaryAtHire.currency}) · {salaryAtHire.amount} → {salary}
+                  </div>}
                   {changed.map((f) => (
                     <div key={f.field} className="px-3 py-2">
                       <span className="text-muted-foreground">{fieldLabel(f.field)}:</span>{' '}

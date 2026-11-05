@@ -274,6 +274,7 @@ export function MovementNewEvent({
       case 'probationExtension': return t('eventType.probationExtension');
       case 'secondment': return t('eventType.secondment');
       case 'actingPosition': return t('eventType.actingPosition');
+      case 'historicalHire': return t('eventType.historicalHire');
       case 'resignation': return t('eventType.resignation');
       case 'termination': return t('eventType.termination');
       case 'blacklist': return t('eventType.blacklist');
@@ -752,7 +753,7 @@ export function MovementNewEvent({
 
         <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
           {label(movementField('remarks'))}
-          <input {...personnelWorkflowInput(movementField('remarks'), 'movement', 'edit')} maxLength={200} defaultValue={edit?.remarks ?? ''} className={inputCls} />
+          <input {...personnelWorkflowInput(movementField('remarks'), 'movement', 'edit')} maxLength={200} required={behaviour === 'historicalHire'} defaultValue={edit?.remarks ?? ''} className={inputCls} />
         </label>
 
         {edit && (
