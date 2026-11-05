@@ -284,6 +284,15 @@ describe('scoped application history and reversible cancellation', () => {
         await enable(a, input(['hr_admin']));
         const before = await day(worker.employmentId), id = await submit(a, worker.employmentId);
         await decideAttendanceCorrection(a, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
+        const activePunches = (await attendanceClockData(a, worker.employmentId, date)).rows.filter(p => !p.voidedAt);
+        const added = await owner.db.select({ id: schema.domainEvent.aggregateId, payload: schema.domainEvent.payload })
+            .from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType, 'attendance.punch.added'),
+                sql`${schema.domainEvent.payload}->>'correctionId'=${id}`)).orderBy(asc(schema.domainEvent.sequence));
+        expect(added.map(event => event.id)).toEqual(activePunches.map(punch => punch.id));
+        expect(added.map(event => event.payload)).toMatchObject([
+            { before: null, after: { punchAt: '09:00:00', direction: 'in', method: 'admin' } },
+            { before: null, after: { punchAt: '18:00:00', direction: 'out', method: 'admin' } },
+        ]);
         const trail = await decisions();
         expect(await cancelAttendanceApplication(a, { correctionId: id, kind: 'cancelled', reason: 'Approved in error' })).toEqual({ status: 'cancelled', reversed: true });
         const after = await day(worker.employmentId);

@@ -62,8 +62,15 @@ export function workforceCommandAccess(ctx:SessionContext,employmentId:string){
 export function canOpenWorkforce(ctx:SessionContext){
  return withTenant(ctx,async tx=>{
   await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+  // Dormant company access requires a claimed administrative grant. Preserve its
+  // full predicate for those callers; everyone else can use the current-principal
+  // capability owner after one snapshot proof, over the same RLS-visible companies.
   const [row]=await tx.execute<{allowed:boolean}>(sql`select (
-   exists(select 1 from company where tenant_id=app.current_tenant_id() and app.access_workforce_projection_company(id))
+   case when exists(select 1 from app.current_grants() where role in ('hr_admin','super_admin')) then
+    exists(select 1 from company where tenant_id=app.current_tenant_id() and app.access_workforce_projection_company(id))
+   when app.principal_snapshot_current() then
+    exists(select 1 from company where tenant_id=app.current_tenant_id() and app.access_capability_allowed('workforce.view',id))
+   else false end
    or app.access_workforce_unassigned('workforce.view')
   ) as allowed`);
   return row?.allowed===true;

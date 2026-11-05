@@ -78,6 +78,24 @@ export async function applyClockChangesTx(tx: Tx, ctx: SessionContext, p: {
     await tx.update(attendancePunch).set(metadata).where(eq(attendancePunch.id, row.id));
     await event('attendance.punch.voided', row.id, { punchAt: row.punchAt, direction: row.direction }, metadata);
   }
+  const newPunch = (e: ClockEntry) => ({
+    tenantId: ctx.tenantId, attendanceId: p.attendanceId, employmentId: p.employmentId,
+    attendanceDate: p.date, punchAt: e.punchAt, direction: e.direction, method: 'admin' as const,
+  });
+  // A replacement pair has no existing punch IDs. Insert it in one statement
+  // and retain the original per-punch audit order, independent of RETURNING order.
+  if (entries.length > 1 && entries.every(e => !e.id)) {
+    const added = await tx.insert(attendancePunch).values(entries.map(newPunch)).returning({
+      id: attendancePunch.id, punchAt: attendancePunch.punchAt, direction: attendancePunch.direction,
+    });
+    const ids = new Map(added.map(row => [row.punchAt + ':' + row.direction, row.id]));
+    for (const entry of entries) {
+      const id = ids.get(entry.punchAt + ':' + entry.direction);
+      if (!id) throw new Error('The replacement clocking could not be recorded.');
+      await event('attendance.punch.added', id, null, { punchAt: entry.punchAt, direction: entry.direction, method: 'admin' });
+    }
+    return;
+  }
   for (const e of entries) {
     const original = e.id ? rows.find(r => r.id === e.id)! : null;
     if (original && unchanged.has(original.id)) {
@@ -87,7 +105,7 @@ export async function applyClockChangesTx(tx: Tx, ctx: SessionContext, p: {
       }
     }
     else {
-      const [added] = await tx.insert(attendancePunch).values({ tenantId: ctx.tenantId, attendanceId: p.attendanceId, employmentId: p.employmentId, attendanceDate: p.date, punchAt: e.punchAt, direction: e.direction, method: 'admin' }).returning({ id: attendancePunch.id });
+      const [added] = await tx.insert(attendancePunch).values(newPunch(e)).returning({ id: attendancePunch.id });
       await event('attendance.punch.added', added.id, original ? { supersedes: original.id } : null, { punchAt: e.punchAt, direction: e.direction, method: 'admin' });
     }
   }
