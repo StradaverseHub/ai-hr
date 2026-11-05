@@ -37,3 +37,28 @@ describe('replacement-leave tasks in the real bell', () => {
     expect(screen.getByText('Fictional replacement applicant 1')).toBeVisible();
   });
 });
+
+it('reads approval history only when an authorized viewer opens History', async () => {
+  const fetcher = vi.fn().mockResolvedValue(Response.json([{
+    id:'decision', moduleKey:'leave', actionKey:'approved', subjectName:'Fictional approved employee',
+    deciderName:null, isAuto:false, onBehalfOfName:null, occurredAt:new Date().toISOString(),
+  }]));
+  vi.stubGlobal('fetch',fetcher);
+  try {
+    render(<NextIntlClientProvider locale="en" messages={en} onError={error => { throw error; }}>
+      <NotificationCenter unread={0} items={[]} canApprove />
+    </NextIntlClientProvider>);
+    const user = userEvent.setup();
+    expect(fetcher).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button'));
+    await user.click(screen.getByRole('button',{name:en.notifications.tabTasks}));
+    expect(fetcher).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button',{name:en.notifications.tabHistory}));
+    expect(await screen.findByText(/Fictional approved employee/)).toBeVisible();
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith('/api/notifications/approval-history',expect.objectContaining({
+      cache:'no-store',credentials:'same-origin',
+    }));
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback,useMemo, useState, useTransition } from 'react';
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -61,7 +61,6 @@ export function NotificationCenter({
   taskCount = 0,
   claimTaskCount=0,
   readItems = [],
-  history = [],
   canApprove = false,
 }: {
   /** Unread informational (non-action) notifications — the Notification tab badge. */
@@ -78,12 +77,12 @@ export function NotificationCenter({
   claimTaskCount?:number;
   /** Read notifications — the History tab's "past notifications" half. */
   readItems?: NotificationRow[];
-  /** Recent approval decisions — the History tab's "completed activities" half (canApprove only). */
-  history?: ApprovalHistoryItem[];
   canApprove?: boolean;
 }) {
   const t = useTranslations('notifications');
   const tH = useTranslations('approvalHistory');
+  const tCommon = useTranslations('common');
+  const tLoad = useTranslations('commandBar');
   const tApprovals=useTranslations('approvals');
   const tGreeting=useTranslations('employeeHome.greetingNotification');
   const tLetter=useTranslations('letters.notifications');
@@ -103,6 +102,25 @@ export function NotificationCenter({
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TabKey>('notifications');
   const [query, setQuery] = useState('');
+  const [approvalHistory, setApprovalHistory] = useState<ApprovalHistoryItem[] | 'unavailable' | null>(null);
+  const loadApprovalHistory = open && tab === 'history' && canApprove;
+
+  useEffect(() => {
+    if (!loadApprovalHistory) return;
+    const controller = new AbortController();
+    void fetch('/api/notifications/approval-history', {
+      cache: 'no-store', credentials: 'same-origin', signal: controller.signal,
+    }).then(response => {
+      if (!response.ok) throw new Error('Approval history unavailable');
+      return response.json() as Promise<ApprovalHistoryItem[]>;
+    }).then(items => {
+      if (!controller.signal.aborted) setApprovalHistory(items);
+    }).catch(() => {
+      if (!controller.signal.aborted) setApprovalHistory('unavailable');
+    });
+    return () => controller.abort();
+  }, [loadApprovalHistory]);
+
   const [, start] = useTransition();
 
   const markRead = (id: string) => start(async () => { await markNotificationReadAction(id); router.refresh(); });
@@ -127,7 +145,7 @@ export function NotificationCenter({
         text: `${notificationText(item).title} ${notificationText(item).body}`.toLowerCase(),
         item,
       })),
-      ...history.map((item) => ({
+      ...(canApprove && Array.isArray(approvalHistory) ? approvalHistory : []).map((item) => ({
         type: 'decision' as const,
         at: Date.parse(item.occurredAt),
         text: `${item.moduleKey} ${item.subjectName ?? ''} ${item.deciderName ?? ''} ${item.actionKey}`.toLowerCase(),
@@ -136,7 +154,7 @@ export function NotificationCenter({
     ];
     const q = query.trim().toLowerCase();
     return entries.filter((e) => (q ? e.text.includes(q) : true)).sort((a, b) => b.at - a.at);
-  }, [readItems, history, query,notificationText]);
+  }, [readItems, approvalHistory, canApprove, query, notificationText]);
 
   const notifRow = (n: NotificationRow) => {
     const copy=notificationText(n);
@@ -226,7 +244,10 @@ export function NotificationCenter({
   const tabBtn = (key: TabKey, label: string, count?: number) => (
     <button
       type="button"
-      onClick={() => setTab(key)}
+      onClick={() => {
+        if (key === 'history' && key !== tab) setApprovalHistory(null);
+        setTab(key);
+      }}
       aria-pressed={tab === key}
       className={`flex items-center justify-center gap-1 rounded-md px-1 py-1.5 text-xs font-semibold transition-colors ${
         tab === key ? selectedTabCls[key] : 'text-muted-foreground hover:text-foreground'
@@ -245,7 +266,10 @@ export function NotificationCenter({
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (!open) setApprovalHistory(null);
+          setOpen(!open);
+        }}
         aria-label={t('ariaBell', { total, unread, tasks: taskCount })}
         className="relative inline-flex size-9 items-center justify-center min-h-11 max-sm:min-w-11 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground monolith:w-auto monolith:gap-1.5 monolith:rounded-none monolith:px-1 monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em] monolith:text-mid monolith:hover:bg-transparent monolith:hover:text-ink"
       >
@@ -331,7 +355,14 @@ export function NotificationCenter({
                     />
                   </div>
                 </div>
+                {loadApprovalHistory && approvalHistory === null && (
+                  <p role="status" className="px-4 py-2 text-sm text-muted-foreground">{tCommon('loading')}</p>
+                )}
+                {loadApprovalHistory && approvalHistory === 'unavailable' && (
+                  <p role="alert" className="px-4 py-2 text-sm text-muted-foreground">{tLoad('loadError')}</p>
+                )}
                 {historyEntries.length === 0 ? (
+                  (!canApprove || Array.isArray(approvalHistory)) &&
                   <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('historyEmpty')}</p>
                 ) : (
                   <ul className="max-h-[19rem] divide-y divide-border overflow-y-auto">

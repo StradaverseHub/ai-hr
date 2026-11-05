@@ -62,8 +62,6 @@ import { NotificationCenter, type NotificationTaskItem } from '@/components/noti
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
 import { dispatchNotifications, notificationBellSummary } from '@/core/notifications';
-import { listApprovalHistory } from '@/core/read';
-import { shapeApprovalHistoryItems } from '@/lib/approval-history';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { currentUiTheme } from '@/lib/ui-theme-server';
@@ -245,16 +243,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     bellNotificationsEnabled
       ? await notificationBellSummary(session, notificationScope)
       : { unread: 0, taskCount: 0, items: [], tasks: [], read: [] };
-  // Approval history (44a89810): recent team decisions for the bell's History tab — canApprove only,
-  // no dead query for regular employees.
-  const approvalHistory = canApprove
-    ? shapeApprovalHistoryItems(
-        await listApprovalHistory(session, {
-          from: new Date(Date.now() - 90 * 86400000).toISOString(),
-          limit: 10,
-        }),
-      )
-    : [];
   // Navigation and the floating launcher share the current Assistant grant read.
   const [{launcher,allowed:assistantAccess},privateCaseHandler] = await Promise.all([
     assistantShellFor(session),
@@ -468,7 +456,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                     claimTaskCount={approvalSummary.claimTotal}
                     taskCount={pendingTaskCount+taskNotifCount}
                     readItems={[...readNotifs,...onboardingNotices.read]}
-                    history={approvalHistory}
                     canApprove={canApprove}
                   />
                   <span data-tour="language">
