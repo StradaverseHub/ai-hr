@@ -22,7 +22,7 @@ vi.mock('../core/assistant-grant',()=>({mayUseAssistant:async()=>({allowed:false
 // New capability owners are independent of SMTP installation enrollment and the legacy rail.
 // This shell test controls those boundaries; their actual permission algebra is covered by DB cases.
 vi.mock('../core/access-configuration-editor',()=>({canConfigureAccess:async()=>false}));
-vi.mock('../core/workforce-access',()=>({workforceViewScope:async()=>({canOpen:false,companyIds:[]})}));
+vi.mock('../core/workforce-access',()=>({canOpenWorkforce:async()=>false}));
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks,pendingTaskSummary:async(...args:unknown[])=>{
  const items=await m.tasks(...args);return m.summaryOverride??{items,total:items.length,approvalCount:items.filter((item:{linkPath:string})=>item.linkPath.split(/[?#]/,1)[0]==='/approvals').length,claimTotal:items.filter((item:{kind:string})=>item.kind==='claim').length};
 }}));
