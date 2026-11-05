@@ -480,13 +480,23 @@ export async function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:{co
 }
 
 
-/** Top matches for profile navigation, through the current Workforce-purpose projection.
- * This deliberately offers no continuation: the switcher is an eight-result jump control. */
-export async function searchWorkforceEmployeesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string){
+/** Standalone, read-only switcher search. Readers may overlap; Access changes still use the
+ * exclusive side of the same lock and the native projection checks Workforce scope again. */
+export function searchWorkforceEmployees(ctx:SessionContext,companyIds:string[],query:string){
+  return withTenant(ctx,tx=>searchWorkforceMatchesTx(ctx,tx,companyIds,query,lockAccessConfigurationReadTx));
+}
+
+/** A borrowed transaction may later write, so keep its exclusive Access lock. */
+export function searchWorkforceEmployeesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string){
+  return searchWorkforceMatchesTx(ctx,tx,companyIds,query,lockAccessConfigurationTx);
+}
+
+/** This deliberately offers no continuation: the switcher is an eight-result jump control. */
+async function searchWorkforceMatchesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string,lock:typeof lockAccessConfigurationTx){
   if(query.length>200)throw new RangeError('Invalid employee search');
   const raw=query.trim().toLowerCase(),folded=foldEmployeeCode(query);
   if(!raw||!companyIds.length)return [];
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lock(tx,ctx.tenantId);
   const columns=workforcePickerColumns(),name=sql`workforce_row.search_name`,code=sql`workforce_row.search_code`;
   const compact=sql`workforce_row.search_compact`;
   const rank=sql<number>`case
