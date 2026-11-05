@@ -27,7 +27,7 @@ it('proves current-assignment uniqueness implication before testing join removal
   // date value. Thus any two current intervals overlap, including past/future/infinite lower bounds.
   const bounds=await owner.client`select x::text as lower_bound,isempty(daterange(x,null,'[)'))as empty,daterange(x,null,'[)')@>'infinity'::date as includes_infinity from unnest(array['-infinity'::date,'0001-01-01'::date,current_date,'9999-12-31'::date,'infinity'::date])x`;
   report.rangeWitness=Array.from(bounds);expect(bounds.every(row=>row.empty===false&&row.includes_infinity===true)).toBe(true);
-  const proofPerson=randomUUID(),proofEmployment=randomUUID();await owner.db.insert(s.person).values({id:proofPerson,tenantId:b.tenantId,fullName:'Native integrity witness'});
+  const proofPerson=randomUUID(),proofEmployment=randomUUID();await owner.db.insert(s.person).values({id:proofPerson,tenantId:b.tenantId,fullName:'Native integrity witness',primaryEmail:proofPerson+'@example.invalid'});
   await owner.db.insert(s.employment).values({id:proofEmployment,tenantId:b.tenantId,personId:proofPerson,companyId:b.companyId,hiredOn:'2000-01-01'});
   type Version={from:string;to?:string|null;superseded?:boolean;tenant?:string;department?:string};
   const states:{name:string;versions:Version[];allowed:boolean;operation?:'close-insert'|'supersede-insert'|'reopen'|'reverse-reopen'}[]=[
