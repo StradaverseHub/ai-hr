@@ -22,7 +22,7 @@ describe('spec v22',()=>{
  });
  it('is v20 with only the guidance topics added: v20\'s three public context tools, and the v20-shaped spec hashes to v20',()=>{
   expect(HARNESS_SPEC.offer.publicContextTools).toEqual(['product_destinations','product_guidance','available_actions']);
-  expect(HARNESS_SPEC.offer.guidanceTopics).toEqual(['password_policy','correction_controls']);
+  expect(v22ShapedSpec().offer.guidanceTopics).toEqual(['password_policy','correction_controls']);
   const v22=v22ShapedSpec(),{guidanceTopics:_topics,...v20Offer}=v22.offer;
   expect(harnessSpecDigest({...v22,version:20,offer:v20Offer})).toBe(HARNESS_SPEC_DIGESTS[20]);
   expect(harnessSpecDigest({...v22,version:20})).not.toBe(HARNESS_SPEC_DIGESTS[20]);
@@ -32,6 +32,6 @@ describe('spec v22',()=>{
   expect((CONTEXT_TOOL_SPECS.product_guidance.inputSchema as unknown as {properties:{topic:{enum:string[]}}}).properties.topic.enum).toEqual([...GUIDANCE_TOPICS]);
   expect((CONTEXT_TOOL_SPECS.product_guidance.inputSchema as unknown as {required:string[]}).required).toEqual(['query']);
   expect(TERAS_CAPABILITIES.filter(row=>row.topic).map(row=>[row.topic,row.name,row.admin,row.module])).toEqual([
-   ['password_policy','password_policy_guidance',true,null],['correction_controls','correction_controls_guidance',true,'payroll']]);
+   ['password_policy','password_policy_guidance',true,null],['correction_controls','correction_controls_guidance',true,'payroll'],['organisation_tagging','organisation_tagging_guidance',true,null]]);
  });
 });

@@ -2,7 +2,7 @@
 import {revalidatePath} from 'next/cache';
 import {getTranslations} from 'next-intl/server';
 import {getSession} from '@/lib/session';
-import {getPayFormula,savePayFormula,testPayFormula,samplePayFormula,setPayFormulaActive,deletePayFormula,saveFormulaAccumulationGroup} from '@/packs/payroll/service';
+import {registerPayFormulaPersonnelField,getPayFormula,savePayFormula,testPayFormula,samplePayFormula,setPayFormulaActive,deletePayFormula,saveFormulaAccumulationGroup} from '@/packs/payroll/service';
 import {PAY_FORMULA_SAMPLE_VARIABLES,payFormulaSampleFields,type PayFormulaSampleValues} from '@/lib/pay-formula-sample';
 import {PayFormulaError,type PayFormulaContext,type PayFormulaMethod} from '@/lib/pay-formula-model';
 import {PayFormulaError as FormulaLanguageError} from '@/lib/pay-formula-language';
@@ -47,4 +47,8 @@ export async function draftFormulaAction(input:unknown){
   const code=error instanceof Error&&error.name==='AiPrivacyGateError'?'reviewRequired':error instanceof Error&&error.message==='not_configured'?'unavailable':'failed';
   return {ok:false as const,error:t(code)};
  }
+}
+
+export async function registerPersonnelFormulaFieldAction(input:{sourceKey:string;label:string;description:string;enabled:boolean}){
+ return execute(async()=>{const result=await registerPayFormulaPersonnelField(await getSession(),{sourceKey:input.sourceKey,label:input.label,description:input.description,enabled:input.enabled});revalidatePath(PAGE,'layout');return result;});
 }

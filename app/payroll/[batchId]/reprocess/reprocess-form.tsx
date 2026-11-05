@@ -132,6 +132,7 @@ export function ReprocessForm({
   from?: string | null;
 }) {
   const t = useTranslations('payroll.batch');
+  const td=useTranslations('derivedOrganisation');
   const additions = newCandidates ?? [];
   // c3258a72 — the run has already decided there is nothing to pay these people, so they are not pending:
   // their own group, never pre-ticked, never in the New / Pending count. `total` below still spans both.
@@ -272,7 +273,7 @@ export function ReprocessForm({
   const additionRow = (c: ReprocessAddCandidate) => {
     const on = selected.has(c.employmentId);
     const blocked = c.blockers.length > 0;
-    const gaps = (codes: string[]) => codes.map((g) => t(GAP_LABEL[g] ?? g)).join(', ');
+    const gaps = (codes: string[]) => codes.map((g) => g==='organisationGrouping'?td('groupingBlocked'):t(GAP_LABEL[g] ?? g)).join(', ');
     // The no-monthly-basic code is never an "Also missing" gap — see DELIBERATE_SKIP.
     const otherWarnings = c.warnings.filter((w) => w !== DELIBERATE_SKIP);
     return (

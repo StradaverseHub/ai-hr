@@ -27,10 +27,13 @@ export const V22_PAY_VIEW_NONE='If they ask about this person\'s pay: no page th
 export const V23_PAY_VIEW_NONE='If they ask about this person\'s pay: no page they can open here shows it. Say in one line that pay is not shown in chat and that no page they can open shows it; never send them to HR or the payroll team.';
 export const V22_OVERCLAIM_NOTE='Your reply said a change was made. Nothing is changed in chat: the person completes and confirms every change on its review page. Call final_answer again without saying anything was submitted, approved, closed or done; say "prepared … for you to review and confirm" only for a card this turn prepared.';
 export const V23_OVERCLAIM_NOTE='Your reply said a change was made. Nothing is changed in chat: the person completes and confirms every change on its review page. Call final_answer again without saying anything was submitted, approved, closed or done; say a card "is ready for you to review and confirm" only for a card this turn prepared.';
-/** The current spec with v23's changes reverted and the version set to 22. */
+/** Remove only v24's public guidance topic to recover the exact prior spec. */
+export function v23ShapedSpec(){return {...HARNESS_SPEC,version:23,offer:{...HARNESS_SPEC.offer,guidanceTopics:['password_policy','correction_controls']}};}
+/** The v23 shape with its changes reverted and the version set to 22. */
 export function v22ShapedSpec(){
+ const current=v23ShapedSpec();
  const back=new Map(V23_REPLACED.map(([v22,v23])=>[v23,v22] as const));
- const {topicTools:_topicTools,...offer}=HARNESS_SPEC.offer;
- return{...HARNESS_SPEC,version:22,offer,instructions:(HARNESS_SPEC.instructions as readonly string[]).filter(line=>!V23_ADDED.includes(line)).map(line=>back.get(line)??line),
+ const {topicTools:_topicTools,...offer}=current.offer;
+ return{...current,version:22,offer,instructions:(HARNESS_SPEC.instructions as readonly string[]).filter(line=>!V23_ADDED.includes(line)).map(line=>back.get(line)??line),
   payView:{...HARNESS_SPEC.payView,none:V22_PAY_VIEW_NONE},retryNotes:{...HARNESS_SPEC.retryNotes,overclaim:V22_OVERCLAIM_NOTE}};
 }

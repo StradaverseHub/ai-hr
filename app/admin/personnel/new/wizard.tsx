@@ -1,4 +1,5 @@
 'use client';
+import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/derived-organisation-fields';
 
 /**
  * A DRAFT EMPLOYEE RECORD — the same tabs an activated employee opens (item 6d671f44, reshaped by
@@ -52,6 +53,7 @@
  * `CrossCompanyError` guard in `core/org.ts` remains the last line of defence, exactly as before.
  */
 
+import {ApprovedPositionArchitecture} from '@/components/approved-position-architecture';
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
@@ -273,6 +275,8 @@ export function EmployeeWizard({
   // Employee ID came from, so it is read from the draft and never written back — there is no company
   // picker on this screen at all, and `saveEmployeeDraft` re-pins it server-side.
   const companyId = data.employment?.companyId ?? '';
+  const derivedOrganisation=useDerivedOrganisation({companyId,asOf:data.employment?.hiredOn??today});
+  useEffect(()=>{if(derivedOrganisation.data&&(derivedOrganisation.data.managed||derivedOrganisation.data.status!=='legacy'))setBusinessUnitId(derivedOrganisation.data.businessUnitId??'');},[derivedOrganisation.data]);
   const employeeCode = reservedEmployeeCode ?? data.profile?.employeeCode ?? '';
   // 8590615a — the single provisional/lifecycle end date the wizard captures MEANS the contract end date
   // when the hire is a contract hire, so it is labelled that way (the field itself is unchanged).
@@ -695,7 +699,8 @@ export function EmployeeWizard({
                 gone entirely now: it is in the header card above, on every step, because since 06f0cb8f it
                 is not merely "chosen elsewhere" but FIXED — the held Employee ID came from this company's
                 numbering rule, so changing it would orphan the number. */}
-            <PersonnelField fieldId={"employment.organisation_assignment.businessunitname"} mode="draft">
+            <DerivedOrganisationFields state={derivedOrganisation}/>
+            {derivedOrganisation.data?.status==='legacy'&&!derivedOrganisation.data.managed&&<PersonnelField fieldId={"employment.organisation_assignment.businessunitname"} mode="draft">
               <select {...personnelControl("employment.organisation_assignment.businessunitname", 'draft')}
                 className={inputCls}
                 value={businessUnitId}
@@ -712,7 +717,7 @@ export function EmployeeWizard({
                 <p className="mt-1 text-xs text-muted-foreground">{t('orgLabelsEmptyForCompany')}</p>
               )}
               <p className="mt-1 text-xs text-muted-foreground">{t('hints.businessUnit')}</p>
-            </PersonnelField>
+            </PersonnelField>}
             <PersonnelField fieldId={"employment.organisation_assignment.departmentname"} mode="draft">
               <select {...personnelControl("employment.organisation_assignment.departmentname", 'draft')}
                 className={inputCls}
@@ -747,6 +752,7 @@ export function EmployeeWizard({
                 <p className="mt-1 text-xs text-muted-foreground">{t('orgLabelsEmptyForCompany')}</p>
               )}
             </PersonnelField>
+            <div className="sm:col-span-2"><ApprovedPositionArchitecture companyId={companyId} positionId={data.employment?.positionId} gradeIds={grades.map(g=>g.id)} onUseGrade={gradeId=>set('employment',{gradeId})}/></div>
             <PersonnelField fieldId={"employment.draft_only_employment_fields.costcenterid"} mode="draft">
               <select {...personnelControl("employment.draft_only_employment_fields.costcenterid", 'draft')}
                 className={inputCls}

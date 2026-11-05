@@ -7001,7 +7001,7 @@ export const payrollInput = pgTable(
     // PCB inputs (LHDN spec): TP1 optional deductions claimed this month (LP₁) and zakat paid
     // via salary deduction — zakat offsets the month's MTD per §E.5 and accumulates into Z.
     /** Historical source references only; manual edits never make these a current amount owner. */
-    rewardProvenance:jsonb('reward_provenance').$type<{unitId:string;entryId:string;revision:number;plan:'Senior plan';confirmedBy:string;confirmedAt:string;historicalOnly:true}[]>().notNull().default([]),
+    rewardProvenance:jsonb('reward_provenance').$type<{unitId:string;entryId:string;revision:number;plan:'Senior plan'|'Uploaded award';confirmedBy:string;confirmedAt:string;historicalOnly:true}[]>().notNull().default([]),
     tp1Deduction: numeric('tp1_deduction', { precision: 12, scale: 2 }).notNull().default('0'),
     // ADR-0050 §0.4 provenance: who last set tp1_deduction. 'tp1_self' = a TP1 self-relief prefill set it
     // (refreshable by a later prefill); null (default) = an admin keyed it / never prefilled (sticky — a
@@ -10567,6 +10567,7 @@ export const rewardAccessSourceEpoch=pgTable('reward_access_source_epoch',{
  tenantId:tenantId(),sourceKind:text('source_kind').$type<'person'|'user'>().notNull(),sourceId:uuid('source_id').notNull(),generation:bigint('generation',{mode:'bigint'}).notNull().default(sql`1`),
 },table=>[primaryKey({columns:[table.tenantId,table.sourceKind,table.sourceId]})]);
 export const rewardEntry = pgTable('reward_entry', {
+  uploadedAward:jsonb('uploaded_award').$type<import('../packs/rewards/uploaded-awards-model').UploadedAward>(),
   id: id(), tenantId: tenantId(), unitId: uuid('unit_id').notNull().references(() => rewardUnit.id),
   employmentId: uuid('employment_id').notNull().references(() => employment.id),
   source: jsonb('source').$type<import('../packs/rewards/model').RewardSource>().notNull(),
@@ -11681,3 +11682,9 @@ export const payrollTaxBasisEvent=pgTable('payroll_tax_basis_event',{
 export const payrollTaxBasisRevision=pgTable('payroll_tax_basis_revision',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),payslipId:uuid('payslip_id').notNull().references(()=>payslip.id),period:text('period').notNull(),sourceHash:text('source_hash').notNull(),ordinal:integer('ordinal').notNull(),batchId:uuid('batch_id').notNull().references(()=>payrollTaxBasisBatch.id),basis:jsonb('basis').notNull().$type<import('../lib/payroll-tax-basis').TaxBasisValue>(),supersedes:uuid('supersedes').array().notNull().default(sql`'{}'::uuid[]`),createdAt:createdAt(),
 },t=>[uniqueIndex('payroll_tax_basis_revision_payslip_id_ordinal_key').on(t.payslipId,t.ordinal),uniqueIndex('payroll_tax_basis_revision_batch_id_payslip_id_key').on(t.batchId,t.payslipId)]);
+
+/** Explicit effective-dated Org Chart roots; reporting_line remains the Direct Superior owner. */
+export const orgChartRoot=pgTable('org_chart_root',{
+ id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ validFrom:date('valid_from').notNull(),validTo:date('valid_to'),createdAt:createdAt(),
+},t=>[index('org_chart_root_employment_idx').on(t.tenantId,t.employmentId,t.validFrom)]);

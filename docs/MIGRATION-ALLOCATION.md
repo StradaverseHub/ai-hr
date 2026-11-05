@@ -1550,3 +1550,76 @@ the latest **closed** run of the same run type (`payroll_status` is exactly draf
 main's 0631 versions of these functions. No statement added or removed; owner and grants unchanged. The idx811 row's
 SHA256 above, the `lifecycle-v9` journal pin and the `board-nine` applied-ledger pin are the new file's. Same number, idx
 and `when`.
+
+## Approved feedback candidate reservations — 4 November 2026
+
+2107_probation_module_permission: idx1354, timestamp1793330001507, owned by codex/approved-ui-20261104. Checked main/alpha b6077019 and staging watermark1793330001502; discovered competing source claims through2105/1352/1505. Keep preceding journal bytes; gaps are intentional. Source reservation only, unapplied. Security2106, Rewards2108, Org Chart2109 and Personnel registry2110 are coordinated separately. Reconcile ledger/source divergence before release.
+
+## Approved Personnel formula registry — 4 November 2026 (unapplied)
+
+Coordinator reserved `2110_pay_formula_personnel_registry`, idx1357 / when1793330001510,
+after sibling Rewards2108/1355/1508 and Organization2109/1356/1509. This source branch preserves
+the complete b6077019c journal prefix through2011/811/1411. Registration metadata selects only
+closed typed source keys: it cannot supply executable SQL, table names, columns or source code.
+No production registration or migration has been applied. Reconcile all then-applied prefixes
+and concurrent allocations before release admission.
+
+## 2026-11-04 Probation organisation mapping source reservation
+
+`2111_probation_personnel_mapping`, idx `1358`, when `1793330001511`, reserved by the root approved-item coordinator. No tenant mapping enabled, no live migration applied. This source creates a dormant owner-only reviewed mapping register; release and any per-tenant switch require reporter inventory review. Existing journal prefix remains unchanged.
+
+## Approved Rewards entity picker — 4 November 2026 (unapplied)
+
+Coordinator reserved `2108_rewards_entity_classification`, idx1355 / when1793330001508, above
+the audited staging watermark1502 and sibling provisional claims through2105/idx1352/1505.
+The Rewards branch preserves the complete main/alpha b6077019c journal prefix through2011/idx811/1411.
+This additive Rewards-only designation stores explicitly reviewed company UUIDs and canonical alias
+UUIDs; no name inference, backfill, company merge, saved-policy rewrite or production data action.
+Recheck every then-applied prefix and competing claim at integration/release admission.
+
+### Approved Org Chart roots (4 November2026)
+
+Parent allocation reserves2109_org_chart_roots / idx1356 / when1793330001509 above discovered main/live claims. This adds explicit effective-dated roots and guards their reporting-line consistency; no roots are inferred or backfilled. Source allocation grants no deployment or live application authority. SQL SHA256: `244664d78a5d54017e7c28b063bc627cc0af7d9a524ba6fc2d710d70d845dfdd`.
+
+## 2026-11-04 approved Security Center reservation
+
+`2106_account_management_subject`, journal idx `1353`, when `1793330001506`, reserved by root delivery coordinator after read-only ref/live-ledger audit. Canonical prefix is unchanged. Recent source tail2105/idx1352/when1793330001505 and staging max1793330001502 precede this claim. No migration deployed. Live-ahead reconciliation remains a release prerequisite.
+
+## Approved Personnel organisation tagging and filters — 4 November 2026 (unapplied)
+
+Coordinator `codex/approved-ui-20261104` reserves `2126_company_organisation_tagging`, idx1373 /
+when1793330001526, for the shared explicit dated mapping, independent structure/re-tag review and
+published classification owner; and `2127_personnel_filter_search`, idx1374 / when1793330001527,
+for the authorised Personnel projection and private sensitive-search state. The implementation worktrees
+are `codex/approved-organisation-owner-20261104`, `codex/approved-organisation-writers-20261104` and
+`codex/approved-personnel-filters-20261104`.
+
+A fresh read-only audit covered 4,256 local/remote heads, 429 distinct journals and every registered
+worktree, including uncommitted migration filenames. Competing source claims end at2125/idx1372/
+when1793330001525. Main/alpha and the independently observed healthy staging source are
+74db3bb7621c33de256372162a1961ee320baf6e; its canonical journal ends at2102/idx1349/when1793330001502.
+The candidate already preserves this complete prefix and reserves2106–2111. Gaps remain intentional;
+no competing unapplied branch is silently included. Recheck the actual ordered installation ledger,
+canonical refs and competing reservations at release admission. These reservations apply no live data
+or schema and do not execute the separately reviewed employee re-tag operation.
+
+The same coordinator additionally reserves `2128_organisation_account_admission`, idx1375 /
+when1793330001528, for native account-availability reproof of the reviewed organisation operation.
+A refreshed 4,264-ref / 429-journal plus registered-worktree audit found no competing claim at2128
+or higher (2126/2127 are this coordinated source). This introduces no plaintext credential or
+employee re-tag. Its purpose-derived verifier requires explicit private technical provisioning;
+the server authentication master key is neither moved nor rotated. Installation ledger remains
+independently verified at671rows / max1793330001502. Revalidate all identities at release admission.
+
+Final index reconciliation for this still-unapplied source: a later concurrent source claim
+`2129_personnel_native_paging` uses idx1373 / when1793330001529. The approved Personnel coordinator
+therefore reserves idx1380–1383 for2126,2127,2128 and new2130_approved_company_retention respectively,
+with timestamps1793330001526,1527,1528 and1530. These supersede the earlier provisional1373–1375
+indices above; no applied row changes. 2129 is not silently included. The2130 helper declares retention
+for the new company/Business Unit references and keeps deletion/status authority on the reviewed
+current parent. Refresh the actual installation prefix/watermark again before application; lower
+unapplied timestamps must be reallocated if a competing release reaches staging first.
+
+Focused-development repair checkpoint5ea39a20d changes only still-unapplied2126/2127 bytes. Reserved indices/timestamps remain1380/1526 and1381/1527. Source SQL SHA256s: 2126_company_organisation_tagging `180d9ae5e937ecd6dc1f92505097f7c6bc72a7f20756660229586948624b794e`, 2127_personnel_filter_search `ea5f6a7ae8b84116e143ffa0849712f78f4f93dae18548a1239e5cac6bbafa2b`. No installation ledger byte is rewritten; release preflight must verify the actual then-applied prefix.
+
+The still-unapplied2127 grant correction explicitly revokes bootstrap default table privileges before the declared column-specific SELECT/INSERT/DELETE grants. Its final SQL SHA256 is `ce56780cd696e805c4a217316b9d36bc411cfa0f8a5015c53a46e7ff9b606283`; allocation1381/1793330001527 is unchanged. No applied migration is edited. Native denial checks cover matches reads, membership updates and expiry extension.

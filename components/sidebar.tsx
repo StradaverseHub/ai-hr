@@ -788,12 +788,12 @@ export function Sidebar({
   // New module owners resolve both the actual purchased company and business-role visibility.
   // These additive People destinations do not inherit the legacy global-only Lifecycle nav gate.
   const scopedLifecycleRows:ChildItem[]=[
-    ...(probationAccess.page?[{href:'/lifecycle/probation',labelKey:'probationConfirmation',icon:ONBOARDING_NODE.icon,exactHref:true,ownedSubpaths:['/lifecycle/probation'] }]:[]),
-    ...(contractStaffAccess.page?[{href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ONBOARDING_NODE.icon,exactHref:true,ownedSubpaths:['/lifecycle/contracts'] }]:[]),
-    ...(probationAccess.configure?[['settings','probationSettings'],['forms','probationForms'],['routes','probationRoutes'],['workflows','probationWorkflows'],['templates','probationTemplates']].map(([path,labelKey])=>({href:`/lifecycle/probation/${path}`,labelKey,icon:ONBOARDING_NODE.icon,submenuKey:'probationConfirmation'})):[]),
-    ...(probationAccess.configure||probationAccess.intake===true?[{href:'/lifecycle/probation/intake',labelKey:'probationIntake',icon:ONBOARDING_NODE.icon,submenuKey:'probationConfirmation'}]:[]),
-    ...(contractStaffAccess.intake===true?[{href:'/lifecycle/contracts/intake',labelKey:'contractIntake',icon:ONBOARDING_NODE.icon,submenuKey:'contractManagement'}]:[]),
-    ...(contractStaffAccess.configure?[['settings','contractSettings'],['workflows','contractWorkflows'],['templates','contractTemplates']].map(([path,labelKey])=>({href:`/lifecycle/contracts/${path}`,labelKey,icon:ONBOARDING_NODE.icon,submenuKey:'contractManagement'})):[]),
+    ...(probationAccess.page?[{href:'/lifecycle/probation',labelKey:'probationTracker',icon:Timer,exactHref:true,ownedSubpaths:['/lifecycle/probation'] }]:[]),
+    ...(contractStaffAccess.page?[{href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ScrollText,exactHref:true,ownedSubpaths:['/lifecycle/contracts'] }]:[]),
+    ...(probationAccess.configure?[['settings','probationSettings'],['forms','probationForms'],['routes','probationRoutes'],['workflows','probationWorkflows'],['templates','probationTemplates']].map(([path,labelKey])=>({href:`/lifecycle/probation/${path}`,labelKey,icon:Timer})):[]),
+    ...(probationAccess.configure||probationAccess.intake===true?[{href:'/lifecycle/probation/intake',labelKey:'probationIntake',icon:Timer}]:[]),
+    ...(contractStaffAccess.intake===true?[{href:'/lifecycle/contracts/intake',labelKey:'contractIntake',icon:ScrollText}]:[]),
+    ...(contractStaffAccess.configure?[['settings','contractSettings'],['workflows','contractWorkflows'],['templates','contractTemplates']].map(([path,labelKey])=>({href:`/lifecycle/contracts/${path}`,labelKey,icon:ScrollText})):[]),
   ];
   const destinations: ChildItem[] = [...authorizedRows.filter(row => {
     const placement = navigationPlacement(row.href);
@@ -812,7 +812,7 @@ export function Sidebar({
       'module' in row.placement && row.placement.module === module.id && row.placement.section === section,
     ).map(row => row.destination));
     if (!children.length) return [];
-    if (children.length === 1 && module.id !== 'onboarding') return [{...children[0],labelKey:module.labelKey}];
+    if (children.length === 1 && !['onboarding','probation','contracts'].includes(module.id)) return [{...children[0],labelKey:module.labelKey}];
     return [{collapsible:true,activeMatch:'children',labelKey:module.labelKey,icon:children[0].icon,
       children,tour:children.some(child=>child.tour==='nav-admin')?'nav-admin':undefined} satisfies CollapsibleGroupItem];
   });
@@ -848,6 +848,7 @@ export function Sidebar({
     const lifecycle = lifecycleNavigation.find(item => item.href === href);
     if (lifecycle) return lifecycle.submenuKey;
     const placement=navigationPlacement(href);
+    if (placement && 'module' in placement && ['probation','contracts'].includes(placement.module) && placement.section === 'hr') return undefined;
     return placement && 'section' in placement ? `section${placement.section==='hr'?'HR':placement.section==='ai'?'AiManagement':placement.section==='config'?'Configuration':placement.section==='mine'?'Mine':'Team'}` : undefined;
   };
 

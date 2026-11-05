@@ -121,8 +121,9 @@ export const HARNESS_SPEC=freeze({
   * notShown for leave balances (the entitlement breakdowns now carry it too) in place of v9's withheld:true; a prepared
   * card is "ready for you to review and confirm", never "I've prepared …" (eval 41679463324, mgr-queue-2, tripped the
   * deterministic overclaim check); and a pay question about another person with no page to open is never sent to HR or
-  * the payroll team (pay-net-1). */
- version:23,
+  * the payroll team (pay-net-1).
+  * 24: literal organisation review guidance is a third product_guidance topic; no private read or effect is added. */
+ version:24,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
@@ -167,7 +168,7 @@ export const HARNESS_SPEC=freeze({
   publicContextTools:['product_destinations','product_guidance','available_actions'],
   /** v22: the topics product_guidance serves besides its guide search, each one of main's administrator page guides
    * (core/explainers/capabilities.ts, gated as there). The harness refuses any other topic before the owner runs. */
-  guidanceTopics:['password_policy','correction_controls'],
+  guidanceTopics:['password_policy','correction_controls','organisation_tagging'],
   /** v23: the topic tools and their topics, in order (core/semantic-model/topic-tools.ts TOPIC_TOOLS). Each topic is one
    * declared read, bound only through its tool; the harness refuses any other topic before a runner. */
   topicTools:{
@@ -362,4 +363,6 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  22:'23c7a0b27b5d0029510b44935af4b07dd27d25aa34f1ff2607d0075f075e85d3',
  // AI v2 Phase 2 hardening: the topic tools (operations_status, explain_why) and the queued Phase 2 lines.
  23:'0052cefe8d066154db37c62bc213dfb26eabcbe0cc861577103212d6e4e5f0c5',
+ // Public literal organisation review guidance, folded into product_guidance without effect authority.
+ 24:'3a76dffa0b7ae5c61c55a631e38bdf8d937a6b8955ef8f2f0a12b835ffb64a18',
 });

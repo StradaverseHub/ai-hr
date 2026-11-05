@@ -19,7 +19,7 @@ import {KIT_CAPABILITIES} from '../core/improvement/kit-registry';
 import {LINKABLE_PAGES} from '../lib/product-context/destinations';
 import {registeredWorker} from '../core/agent-registry/workers';
 import {ANSWERED_BY} from './assistant-behaviour-score';
-import {V22_OVERCLAIM_NOTE,V22_PAY_VIEW_NONE,V23_ADDED,V23_OVERCLAIM_NOTE,V23_PAY_VIEW_NONE,V23_REPLACED,v22ShapedSpec} from './harness-spec-shapes';
+import {V22_OVERCLAIM_NOTE,V22_PAY_VIEW_NONE,V23_ADDED,V23_OVERCLAIM_NOTE,V23_PAY_VIEW_NONE,V23_REPLACED,v22ShapedSpec,v23ShapedSpec} from './harness-spec-shapes';
 
 const instructions=HARNESS_SPEC.instructions as readonly string[];
 const OPERATIONS={loops:'loops_overview',payroll_cycle:'payroll_cycle_status',salary_payroll:'salary_payroll_checks',payroll_loop_settings:'payroll_loop_settings',
@@ -29,10 +29,10 @@ const WHY={pay_difference:'explain_pay_difference',payslip_statutory:'explain_pa
 
 describe('spec v23',()=>{
  it('is version 23 with its digest recorded, and every earlier digest is kept',()=>{
-  expect(HARNESS_SPEC.version).toBe(23);expect(HARNESS_SPEC_DIGESTS[23]).toBe(harnessSpecDigest());
+  expect(HARNESS_SPEC.version).toBeGreaterThan(23);expect(HARNESS_SPEC_DIGESTS[23]).toBe(harnessSpecDigest(v23ShapedSpec()));
   expect(HARNESS_SPEC_DIGESTS[23]).toBe('0052cefe8d066154db37c62bc213dfb26eabcbe0cc861577103212d6e4e5f0c5');
   expect(HARNESS_SPEC_DIGESTS[22]).toBe('23c7a0b27b5d0029510b44935af4b07dd27d25aa34f1ff2607d0075f075e85d3');
-  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual(Array.from({length:23},(_,index)=>index+1));
+  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number).slice(0,23)).toEqual(Array.from({length:23},(_,index)=>index+1));
  });
  it('is v22 with only its own changes: the v22-shaped spec hashes to v22\'s recorded digest',()=>{
   expect(harnessSpecDigest(v22ShapedSpec())).toBe(HARNESS_SPEC_DIGESTS[22]);

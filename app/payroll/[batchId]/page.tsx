@@ -1,3 +1,4 @@
+import {DerivedOrganisationPayroll} from '@/components/derived-organisation-payroll';
 import { recordPayrollAccess } from '@/core/payroll-audit/access-log';
 import Link from 'next/link';
 import { payrollCloseCycleLabel, payrollRunLabel } from '@/core/payslip-cycle-label';
@@ -170,7 +171,7 @@ export default async function BatchPage({
   // (ADR-0078). Counted into `preBlockers` — the card's colour and the parity with the server's exact set
   // — with its own red banner below. The server already refused these runs; this card just never said so.
   const prePayModeBlockers = preChecks.unpayablePayMode?.length ?? 0;
-  const preBlockers = preSalaryBlockers + prePayModeBlockers + preTp3Blockers;
+  const preBlockers = preSalaryBlockers + prePayModeBlockers + preTp3Blockers+(preChecks.organisationGrouping?.length??0);
   // r369 (item eb949191) — THE THIRD STATE, AND IT IS IN NEITHER COUNT ABOVE NOR THE WARNING COUNT BELOW.
   //
   // An employee with no monthly basic salary is a deliberate arrangement (a Director paid fees quarterly),
@@ -897,6 +898,7 @@ export default async function BatchPage({
                   </ul>
                 </div>
               )}
+              <DerivedOrganisationPayroll rows={preChecks.organisationGrouping??[]}/>
               {(
                 [
                   ['missingCompensation', preChecks.missingCompensation, true],

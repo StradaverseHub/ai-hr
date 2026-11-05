@@ -405,8 +405,8 @@ export function PayRuleEditor({
 
   return (
     <div ref={rootRef} className="space-y-3 rounded-xl border border-border bg-muted/30 p-3 sm:col-span-3">
-      {/* Serialised rule for the server action. Empty when fixed ⇒ null rule (legacy behaviour). */}
-      <input type="hidden" name="rule" value={rule ? JSON.stringify(rule) : ''} />
+      {/* Serialised rule for the server action. Fixed is explicit intent; a blank legacy submission preserves pending imports. */}
+      <input type="hidden" name="rule" value={JSON.stringify(kind === 'fixed' ? { kind: 'fixed' } : rule)} />
 
       <div className="flex items-center justify-between gap-3">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('sectionTitle')}</h4>
@@ -758,7 +758,7 @@ export function PayRuleEditor({
       {!catalogueOnly && <AlertDialog.Root open={aiOpen} onOpenChange={setAiOpen}>
         <AlertDialog.Portal>
           <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] overflow-y-auto w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
             <AlertDialog.Title className="text-base font-semibold">{t('assistTitle')}</AlertDialog.Title>
             <AlertDialog.Description className="mt-1.5 text-sm text-muted-foreground">{t('assistDescription')}</AlertDialog.Description><ProtectedInputHelp kind="payRule" onChoose={setDescription}/>
             <textarea

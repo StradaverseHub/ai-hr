@@ -1,7 +1,9 @@
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {sql} from 'drizzle-orm';
+import {PgDialect} from 'drizzle-orm/pg-core';
 import {randomUUID} from 'node:crypto';
 import {hireEmployee,setReportingLine} from '../core/org';
+import {saveMovementEventType} from '../core/movement-type';
 import {createAppUser} from './harness';
 import {newProbationPart} from '../lib/probation-model';
 import {addCalendarMonths,todayInKualaLumpur} from '../lib/hr-date';
@@ -15,13 +17,13 @@ import {newProbationLetterTemplate} from '../lib/probation-letter-template';
 import {probationCase,saveProbationDraft,applyProbationOutcome,requestProbationDateShift,applyProbationDateShift,previewProbationWorkflow,uploadProbationEvidence,actOnProbation,saveProbationLetterTemplate,probationLetterTemplateChoices,prepareProbationLetter,readProbationLetter,actOnProbationLetter,releaseProbationLetter,probationIntakeWorkspace,saveProbationIntakeDisposition,uploadProbationCutoverEvidence,readProbationCutoverEvidence,prepareProbationCutover,approveProbationCutover,activatePreparedProbationCutover,saveProbationWorkflow,probationRequiredWorkflowStatus,requestProbationLegacyReconciliation,approveProbationLegacyReconciliation,applyProbationLegacyReconciliation,probationIntakeCompanies,probationNavigationAccess,probationInbox,supersedeProbationDateShift,pauseProbationCompany,reconcileProbationDates,probationPublicationRetirement,retireProbationPublication,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision} from '../packs/probation/service';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {adminCtx,entitledCtx,closeAll,setModule,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
-import {bootstrapProbationPreparer,installProbationDrafts,probationSetup,saveProbationConfiguration,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,canConfigureProbationWorkflows,sweepProbation} from '../packs/probation/service';
+import {bootstrapProbationPreparer,installProbationDrafts,probationSetup,saveProbationConfiguration,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,canConfigureProbationWorkflows,probationEmployeeNameSuggestions,probationSummaryRows,sweepProbation} from '../packs/probation/service';
 let b:Base,admin:SessionContext;
 beforeAll(migrateTestDb);afterAll(async()=>{await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id='workforce.maintain'`);await closeAll();});beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=adminCtx(b);await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id='workforce.maintain'`);});
 describe('native probation configuration custody and default-off authority',()=>{
- it('starts hidden and disabled and only bounded bootstrap creates named configuration authority',async()=>{
-  expect(await canConfigureProbationWorkflows(admin)).toBe(false);
-  await bootstrapProbationPreparer(admin,{companyId:b.companyId,userId:admin.userId!,reason:'Named staging preparer'});
+ it('starts disabled and permits module holders to prepare without nomination',async()=>{
+  expect(await canConfigureProbationWorkflows(admin)).toBe(true);
+
   expect(await canConfigureProbationWorkflows(admin)).toBe(true);
   await expect(bootstrapProbationPreparer(admin,{companyId:b.companyId,userId:admin.userId!,reason:'Second bootstrap'})).rejects.toThrow();
   await installProbationDrafts(admin,b.companyId);await installProbationDrafts(admin,b.companyId);
@@ -30,12 +32,12 @@ describe('native probation configuration custody and default-off authority',()=>
   await saveProbationConfiguration(admin,{companyId:b.companyId,kind:'settings',data:DEFAULT_PROBATION_CONFIG,publish:true,expectedVersion:1});expect((await probationSetup(admin,b.companyId)).settings?.version).toBe(2);
  });
  it('distinguishes an omitted hire period from an explicit zero-period exclusion and gives preparers no PBP adjudication authority',async()=>{
-  await bootstrapProbationPreparer(admin,{companyId:b.companyId,userId:admin.userId!,reason:'Named missing-data preparer'});const missing=await person('Fictional missing period');
+const missing=await person('Fictional missing period');
   const candidate=(await probationIntakeWorkspace(admin,b.companyId)).candidates.find(c=>c.source.employmentId===missing.employmentId)!;expect(candidate.source).toMatchObject({explicitNoProbation:false,unknownPeriod:true});expect(candidate.classification).toBe('held');expect(candidate.canValidate).toBe(false);
   await owner.db.execute(sql`update employment set probation_months=0,probation_value=0 where id=${missing.employmentId}::uuid`);const[source]=await withTenant(admin,tx=>tx.execute<{data:{explicitNoProbation:boolean}}>(sql`select app.probation_personnel_source(${missing.employmentId}::uuid) as data`));expect(source.data.explicitNoProbation).toBe(true);const after=await probationIntakeWorkspace(admin,b.companyId);expect(after.candidates.some(c=>c.source.employmentId===missing.employmentId)).toBe(false);expect(after.excludedCount).toBe(1);
  });
  it('rejects direct table writes, unapproved Grade H and an unrunnable evaluation route',async()=>{
-  await bootstrapProbationPreparer(admin,{companyId:b.companyId,userId:admin.userId!,reason:'Named configuration preparer'});
+
   await expect(withTenant(admin,tx=>tx.execute(sql`insert into probation_activation(tenant_id,company_id,enabled) values(${b.tenantId}::uuid,${b.companyId}::uuid,true)`))).rejects.toThrow();
   await expect(saveProbationConfiguration(admin,{companyId:b.companyId,kind:'settings',data:{...DEFAULT_PROBATION_CONFIG,gradeHEnabled:true,gradeHFormPublished:true},publish:true,expectedVersion:0})).rejects.toThrow();
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_config_write(${b.companyId}::uuid,'settings',${JSON.stringify({...DEFAULT_PROBATION_CONFIG,eligibleGrades:['12','H']})}::jsonb,true,0)`))).rejects.toThrow();
@@ -55,7 +57,7 @@ describe('native probation configuration custody and default-off authority',()=>
 
 async function person(name:string){const e=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@probation.example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});const userId=await createAppUser(b.tenantId,e.personId,'employee');return{...e,userId,ctx:{...admin,userId,personId:e.personId,roles:['employee'],grants:undefined}};}
 async function privateCase(){
- await bootstrapProbationPreparer(admin,{companyId:b.companyId,userId:admin.userId!,reason:'Named privacy fixture preparer'});
+
  const[hrPerson]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional HR Partner',${randomUUID()+'@probation.example.test'}) returning id`);await owner.db.execute(sql`update app_user set person_id=${hrPerson.id}::uuid where id=${admin.userId}::uuid`);admin={...admin,personId:hrPerson.id};
  const staff=await person('Fictional Staff'),manager=await person('Fictional Manager'),peer=await person('Fictional Peer');
  await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',bpRules:[{rules:{company:[b.companyId]},userId:admin.userId}]})}::jsonb)`);
@@ -243,7 +245,7 @@ describe('real evaluation to signed letter custody',()=>{
    const [bScope]=await withTenant(reviewerB.ctx,tx=>tx.execute<{ok:boolean}>(sql`select app.probation_role(${subjectB.employmentId}::uuid,'pbp') as ok`));
    expect(bScope.ok).toBe(true);
    await expect(probationLetterTemplateChoices(reviewerB.ctx,decision.id)).rejects.toThrow();
-   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_cutover_snapshot(${companyB.id}::uuid)`))).rejects.toThrow();
+   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_cutover_snapshot(${companyB.id}::uuid)`))).resolves.toMatchObject([{probation_cutover_snapshot:{companyId:companyB.id}}]);
   }
 
   let prepared=await prepareProbationLetter(admin,{outcomeId:decision.id,templateId,revision:decision.revision,edits:{}});
@@ -260,10 +262,20 @@ describe('real evaluation to signed letter custody',()=>{
   const request=await releaseProbationLetter(admin,{caseId:ids.caseId,partId:prepared.partId,outcomeRevision:prepared.outcomeRevision,reason:'Release the approved signed letter'});expect(request).toMatch(/^[a-f0-9-]{36}$/);
   const[pending]=await owner.db.execute<{released:string|null;state:string}>(sql`select released_at::text as released,state from probation_outcome where id=${decision.id}::uuid`);expect(pending).toEqual({released:null,state:'release_requested'});expect((await readProbationLetter(admin,ids.caseId,prepared.partId)).canRelease).toBe(false);
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_file_save(${ids.caseId}::uuid,${ids.part}::uuid,'completed_part','forged.pdf',${Buffer.from('%PDF-forged')},1,'Forged completed source')`))).rejects.toThrow();
+  if(outcome==='confirm')await saveMovementEventType(admin,{code:'confirmation',label:'Confirmation',fieldRules:[{field:'businessUnitId',included:true,editable:true,mustChange:false,document:'none'}]});
+  const assignmentBefore=await owner.db.execute(sql`select * from assignment where employment_id=${staff.employmentId}::uuid order by id`);
+  const portQueries:string[]=[],dialect=new PgDialect();
+  const fixedPortOwner={withTenant:async<T>(context:SessionContext,run:(tx:Tx)=>Promise<T>)=>owner.withTenant(context,tx=>run(new Proxy(tx,{get(target,key){
+   if(key==='execute')return (query:Parameters<Tx['execute']>[0])=>{
+    portQueries.push(typeof query==='string'?query:dialect.sqlToQuery(query.getSQL()).sql);
+    return target.execute(query);
+   };
+   const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;
+  }})))};
   if(held){
    let changed=false;
    const changeAfterFiling={withTenant:async<T>(ctx:SessionContext,run:(tx:Tx)=>Promise<T>)=>{
-    const result=await owner.withTenant(ctx,run);
+    const result=await fixedPortOwner.withTenant(ctx,run);
     if(!changed){
      const [release]=await owner.db.execute<{released:boolean}>(sql`select released_at is not null as released from probation_outcome where id=${decision.id}::uuid`);
      if(release.released){
@@ -279,12 +291,12 @@ describe('real evaluation to signed letter custody',()=>{
    expect(heldOutcome).toMatchObject({failure:expect.stringContaining('canonical Personnel'),movement:null});
    await owner.db.execute(sql`update employment set probation_end_date=${endOn}::date where id=${staff.employmentId}::uuid`);
    expect(await applyProbationOutcome(admin,decision.id)).toEqual({completed:false,queued:true});
-   await sweepProbation(runner,owner);
+   await sweepProbation(runner,fixedPortOwner);
   }else if(outcome==='not_confirm'){
    let releaseAudit!:()=>void,enteredAudit!:()=>void,contender:Promise<void>|undefined;
    const auditGate=new Promise<void>(resolve=>{releaseAudit=resolve}),auditHeld=new Promise<void>(resolve=>{enteredAudit=resolve});
    const competingV9={withTenant:async<T>(ctx:SessionContext,run:(tx:Tx)=>Promise<T>)=>{
-    const result=await owner.withTenant(ctx,run);
+    const result=await fixedPortOwner.withTenant(ctx,run);
     if(!contender){
      const [filed]=await owner.db.execute<{ready:boolean}>(sql`select released_at is not null as ready from probation_outcome where id=${decision.id}::uuid`);
      if(filed.ready){
@@ -304,16 +316,23 @@ describe('real evaluation to signed letter custody',()=>{
     const [waiting]=await owner.db.execute<{handoff:string|null;failure:string|null}>(sql`select handoff_ref as handoff,failure from probation_outcome where id=${decision.id}::uuid`);
     expect(waiting).toEqual({handoff:null,failure:null});
    }finally{releaseAudit();await contender;}
-   await sweepProbation(runner,owner);
-  }else await sweepProbation(runner,owner);
+   await sweepProbation(runner,fixedPortOwner);
+  }else await sweepProbation(runner,fixedPortOwner);
   const[file]=await owner.db.execute<{content:Buffer;documentId:string;released:string}>(sql`select f.content,f.employee_document_id as "documentId",o.released_at::text as released from probation_outcome o join probation_file f on f.id=o.letter_file_id where o.id=${decision.id}::uuid`);expect(file.documentId).toBeTruthy();expect(file.released).toBeTruthy();const{PDFDocument}=await import('pdf-lib');expect((await PDFDocument.load(file.content)).getPageCount()).toBeGreaterThan(0);
-  await sweepProbation(runner,owner);
+  await sweepProbation(runner,fixedPortOwner);
   const [effect]=await owner.db.execute<{outcomeState:string;caseState:string;movement:string|null;handoff:string|null;confirmed:string|null;extended:string|null}>(sql`
    select outcome.state as "outcomeState",c.data->>'state' as "caseState",outcome.movement_ref as movement,outcome.handoff_ref as handoff,
     e.confirmation_date::text as confirmed,e.extended_confirmation_date::text as extended
    from probation_outcome outcome join probation_case c on c.id=outcome.case_id and c.tenant_id=outcome.tenant_id
    join employment e on e.id=c.employment_id and e.tenant_id=c.tenant_id where outcome.id=${decision.id}::uuid`);
   expect(effect.outcomeState).toBe('completed');
+  if(outcome==='confirm'){
+   expect(portQueries.some(query=>query.includes('app.probation_personnel_intent('))).toBe(true);
+   expect(portQueries.filter(query=>/app\.(?:company_organisation_tags|employment_organisation_tags|record_employment_organisation_tags)\(/.test(query))).toEqual([]);
+   expect(await owner.db.execute(sql`select * from assignment where employment_id=${staff.employmentId}::uuid order by id`)).toEqual(assignmentBefore);
+   const written=await owner.db.execute<{fields:string[]}>(sql`select payload->'fields' as fields from domain_event where id=${effect.movement}::uuid`);
+   expect(written).toHaveLength(1);expect(written[0].fields).not.toContain('businessUnitId');
+  }
   if(outcome==='confirm')expect(effect).toMatchObject({caseState:'confirmed',movement:expect.any(String),handoff:null,confirmed:endOn,extended:null});
   if(outcome==='extend'){
    expect(effect).toMatchObject({caseState:'extended',movement:expect.any(String),handoff:null,confirmed:null,extended:addDaysIso(addCalendarMonths(addDaysIso(endOn,1),3),-1)});
@@ -634,5 +653,26 @@ describe('required workflow publication warning',()=>{
   expect((await probationRequiredWorkflowStatus(admin,b.companyId))?.missing).not.toContain('review_due');
   await retireProbationPublication(admin,{companyId:b.companyId,kind:'workflow',versionId:published,expectedVersion:1,reason:'Replace the default wording'});
   expect((await probationRequiredWorkflowStatus(peer.ctx,b.companyId))?.missing).toContain('review_due');
+ });
+});
+
+describe('scoped Probation employee-name filtering',()=>{
+ it('matches literal partial names without leaking unauthorized cases, with facets before pagination',async()=>{
+  const {ids,staff,peer}=await privateCase();
+  expect(await probationEmployeeNameSuggestions(staff.ctx,{search:'ONAL ST'})).toEqual(['Fictional Staff']);
+  expect(await probationEmployeeNameSuggestions(peer.ctx,{search:'Staff'})).toEqual([]);
+  expect(await probationEmployeeNameSuggestions(admin,{search:'%Staff'})).toEqual([]);
+  expect(await probationEmployeeNameSuggestions(admin,{search:'S'})).toEqual([]);
+  const second=await person('Fictional Alice Workshop'),id=randomUUID(),bg=randomUUID(),bu=randomUUID();
+  const[source]=await owner.db.execute<{data:Record<string,unknown>}>(sql`select data from probation_case where id=${ids.caseId}::uuid`);
+  const data={...source.data,id,employmentId:second.employmentId,sourceKey:'employment:'+second.employmentId,gradeAtStart:'15',endOn:'2027-01-31',facts:{employeeName:'Fictional Alice Workshop',businessGroupId:bg,businessGroup:'Second group',businessUnitId:bu,businessUnit:'Second unit',departmentId:b.deptB,department:'Second department',holders:{employee:second.userId}}};
+  await owner.db.execute(sql`insert into probation_case(id,tenant_id,company_id,employment_id,source_key,settings_id,form_id,route_id,data) values(${id}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${second.employmentId}::uuid,${data.sourceKey},${ids.settings}::uuid,${ids.form}::uuid,${ids.route}::uuid,${JSON.stringify(data)}::jsonb)`);
+  expect((await probationSummaryRows(admin)).rows).toEqual([]); // Setup permission is not participant authority.
+  await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) values(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'gbs','2026-01-01','Canonical People Ops tracker fixture')`);
+  const page=await probationSummaryRows(admin,{limit:1});expect(page.rows).toHaveLength(1);expect(page.total).toBe(2);expect(page.options.grades).toEqual(['12','15']);expect(page.options.businessGroups).toContainEqual({id:bg,name:'Second group'});
+  expect((await probationSummaryRows(admin,{search:'ALICE WORK'})).rows.map(row=>row.id)).toEqual([id]);
+  expect((await probationSummaryRows(staff.ctx,{search:'Alice'})).rows).toEqual([]);
+  await owner.db.execute(sql`update employment set grade_id=null where id=${second.employmentId}::uuid`);
+  expect((await probationSummaryRows(admin,{businessGroupId:bg,grade:'15'})).rows[0].grade).toBe('15');
  });
 });

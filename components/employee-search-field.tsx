@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useRef, useState } from 'react';
 import { inputCls } from '@/components/ui';
+import { useFitToView } from '@/components/ui/fit-to-view';
 import { employeeLabel } from '@/lib/employee-code';
 import { EMPLOYEE_SEARCH_RESULT_CAP, matchEmployees } from '@/lib/employee-search';
 
@@ -167,6 +168,9 @@ export function EmployeeSearchField({
    * "No matching employee" about the person the box is currently showing.
    */
   const showList = open && selected === '' && query.trim() !== '';
+  const listRef = useRef<HTMLDivElement>(null);
+  // Opened near the bottom of the window, the list opens upwards or shrinks to fit (components/ui/fit-to-view.ts).
+  useFitToView(showList, listRef, results.length);
 
   const commit = (o: EmployeeSearchOption) => {
     setSelected(o.value);
@@ -283,6 +287,7 @@ export function EmployeeSearchField({
 
       {showList && (
         <div
+          ref={listRef}
           id={listId}
           role="listbox"
           aria-label={labels.resultsLabel}

@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {randomUUID} from 'node:crypto';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
@@ -24,7 +25,7 @@ beforeEach(async()=>{
  await resetDb();b=await seedBase();await setModule(b.tenantId,'rewards','active');admin=await entitledCtx(b);
  const [unit]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'EXEMPT',name:'Fictional exemption scope'}).returning();bu=unit.id;
  await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:bu,departmentId:b.deptA,year});
- unitId=await createRewardUnit(admin,{name:'Exemption fixture',companyId:b.companyId,businessUnitId:bu,year,snapshotDate:today});
+ unitId=await createApprovedRewardUnit(admin,{name:'Exemption fixture',companyId:b.companyId,businessUnitId:bu,year,snapshotDate:today});
 });
 describe('Rewards authoritative immediate application and GR decisions',()=>{
  it.each(['gr','ctro','hr_admin'] as const)('applies %s immediately from current native authority, with no fabricated checker',async role=>{
@@ -93,9 +94,10 @@ describe('Rewards authoritative immediate application and GR decisions',()=>{
  });
  it('keeps a mixed-scope batch wholly pending and prevents a GR holder approving changes to themselves',async()=>{
   const actor=await user('Mixed authority requester'),checker=await user('All-scope GR'),target=await user('View recipient');
-  const [unit]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'OTHER',name:'Other review'}).returning();
-  await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:unit.id,departmentId:b.deptA,year});
-  const second=await createRewardUnit(admin,{name:'Second scope',companyId:b.companyId,businessUnitId:unit.id,year,snapshotDate:today});
+  const [otherCompany]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Other mixed-authority company'}).returning();
+  const [unit]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:otherCompany.id,code:'OTHER',name:'Other review'}).returning();
+  await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:otherCompany.id,businessUnitId:unit.id,year});
+  const second=await createApprovedRewardUnit(admin,{name:'Second scope',companyId:otherCompany.id,businessUnitId:unit.id,year,snapshotDate:today});
   await seat(actor,'gr');await seat(actor,'pbp',second);await seat(checker,'gr');await seat(checker,'gr',second);
   const input={changes:[{unitId,revision:await revision(),before:null,after:{userId:target.userId!,role:'pbp' as const}},{unitId:second,revision:await revision(second),before:{userId:actor.userId!,role:'pbp' as const},after:null}],reason};
   const preview=await previewRewardAccessBatch(actor,input);expect(preview.pending).toBe(true);const pending=await saveRewardAccessBatch(actor,input,preview.digest);expect(pending.pending).toBe(true);

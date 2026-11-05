@@ -81,7 +81,7 @@ export function EmployeeRow({
   return (
     <tr className={CLICKABLE_ROW_CLS} data-employment-id={employmentId}>
       {columns.map((key) => (
-        <td key={key} className={ROW_CELL_CLS}>
+        <td key={key} className={ROW_CELL_CLS} title={key==='businessUnit'?text[key]??undefined:undefined}>
           {key === 'name' ? (
             // The ONE named, focusable link of the row. Its own `::after` covers this cell, so the name
             // cell needs no overlay of its own — and hovering anywhere in it still tints the name.
@@ -101,7 +101,7 @@ export function EmployeeRow({
               ) : key === 'status' ? (
                 <StatusBadge status={status} label={statusLabel} />
               ) : (
-                <span className="whitespace-nowrap text-muted-foreground">{text[key] ?? '—'}</span>
+                <span className={key==='businessUnit'?'block max-w-72 whitespace-normal break-words [overflow-wrap:anywhere] text-muted-foreground':'whitespace-nowrap text-muted-foreground'} title={key==='businessUnit'?text[key]??undefined:undefined}>{text[key] ?? '—'}</span>
               )}
               <RowOverlayLink href={href} />
             </>

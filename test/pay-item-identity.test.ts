@@ -337,7 +337,7 @@ describe('every payroll-result surface asks before it itemises (6b134681)', () =
     expect(breakdown).toContain('payItemLinesReconcile(lines, total) ? lines : []');
     // 5a5309d5 — the source falls back to the attendance legs; the gate is the same.
     expect(breakdown).toContain('overtimeLines: reconciled(overtimeSourceLines(componentLines, row.statutory), disp.overtime)');
-    expect(breakdown).toContain('bonusLines: reconciled(byBucket.bonus, disp.bonus)');
+    expect(breakdown).toContain("bonusLines: reconciled(payItemLinesForCategory(componentLines, 'bonus').map(asSubLine), disp.bonus)");
 
     // THE MISS ITSELF: mapping `componentsByBucket.ot` / `.bonus` beside a figure that comes from
     // `payslipDisplayEarnings` prints rows that need not add up to the total above them.

@@ -22,7 +22,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-const ORG = en.admin.organization as Record<string, string>;
+const ORG = en.admin.organization;
 const FULL_NO = '5140-1234-5678';
 
 const company: PanelCompany = {

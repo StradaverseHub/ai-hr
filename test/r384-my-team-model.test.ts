@@ -1,3 +1,4 @@
+import {restorePreOrgRootReportingLines} from './helpers/pre-org-root-reporting-fixture';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
@@ -69,13 +70,18 @@ describe('My Team current scope and canonical projection',()=>{
   expect(await compare(hr)).not.toContain(otherReport.id);expect(await compare(superCtx)).toContain(otherReport.id);
   const [foreignTenant]=await owner.db.insert(schema.tenant).values({name:'Synthetic parity foreign tenant',workosOrgId:`org_parity_${randomUUID()}`}).returning({id:schema.tenant.id});
   expect(await compare({...managerCtx,tenantId:foreignTenant.id})).toEqual([]);
-  await owner.db.insert(schema.reportingLine).values({tenantId:b.tenantId,managerEmploymentId:downline.employmentId,subordinateEmploymentId:manager.employmentId,lineType:'administrative',validFrom:today});
-  expect(await compare(managerCtx)).toEqual([subject.employmentId,downline.employmentId].sort());
   await owner.db.update(schema.reportingLine).set({validTo:today}).where(eq(schema.reportingLine.subordinateEmploymentId,subject.employmentId));
   expect(await compare(managerCtx)).toEqual([]);
   await owner.db.update(schema.reportingLine).set({validTo:null,validFrom:addDaysIso(today,1)}).where(eq(schema.reportingLine.subordinateEmploymentId,subject.employmentId));
   expect(await compare(managerCtx)).toEqual([]);
   await owner.db.update(schema.reportingLine).set({validFrom:today}).where(eq(schema.reportingLine.subordinateEmploymentId,subject.employmentId));
+  // Exercise ordinary period edits before restoring corruption retained from an old release.
+  // Re-opening an edge inside the retained cycle is correctly refused by today's writer.
+  const retainedCycle={tenantId:b.tenantId,managerEmploymentId:downline.employmentId,subordinateEmploymentId:manager.employmentId,lineType:'administrative' as const,validFrom:today};
+  await expect(owner.db.insert(schema.reportingLine).values(retainedCycle)).rejects.toThrow();
+  // Upgrade-retained cycles still need defensive read parity; the new writer rejects new cycles.
+  await restorePreOrgRootReportingLines([retainedCycle]);
+  expect(await compare(managerCtx)).toEqual([subject.employmentId,downline.employmentId].sort());
   await owner.db.update(schema.employment).set({hiredOn:addDaysIso(today,1)}).where(eq(schema.employment.id,subject.employmentId));
   expect(await compare(managerCtx)).toEqual([]);
   await owner.db.update(schema.employment).set({hiredOn:'2024-01-01',terminatedOn:addDaysIso(today,1)}).where(eq(schema.employment.id,subject.employmentId));

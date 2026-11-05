@@ -1,3 +1,4 @@
+import {accountAvailable} from './account-state';
 import 'server-only';
 import { sql } from 'drizzle-orm';
 import { client, withTenant, type SessionContext } from '../../db/client';
@@ -21,7 +22,7 @@ export async function withInternalRecoveryLabels(ctx: SessionContext, actor: Ide
     if (!context || typeof context.organization !== 'string' || typeof context.username !== 'string') return null;
     const c = await readRecord<Credential>(client, `credential:${context.subject}`);
     const active = c ? await client.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]) : [];
-    return { account: { organization: context.organization, username: context.username }, eligible: Boolean(c?.enabled && c.emailVerified &&
+    return { account: { organization: context.organization, username: context.username }, eligible: Boolean(c && accountAvailable(c) && c.emailVerified &&
       c.version === context.version && c.email === context.email && c.issuer === context.issuer && c.tenantId === context.tenantId && active[0]?.tenant_id === c.tenantId) };
   }
   return Promise.all(items.map(async item => {

@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {initializeRewardGovernanceFixture} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
@@ -34,7 +35,7 @@ describe('Rewards source refresh preview and confirm', () => {
     const [grade] = await owner.db.insert(schema.jobGrade).values({ tenantId: b.tenantId, code: '12', name: 'Grade 12' }).returning(); gradeId = grade.id;
     for (const key of ['same', 'notice', 'grade', 'salary', 'terminated', 'moved']) await hire(key);
     await hire('confirmed', false);
-    unitId = await createRewardUnit(admin, { name: 'Refresh rewards', year, companyId: b.companyId, businessUnitId: buId, snapshotDate: earlier });
+    unitId = await createApprovedRewardUnit(admin, { name: 'Refresh rewards', year, companyId: b.companyId, businessUnitId: buId, snapshotDate: earlier });
     await initializeRewardGovernanceFixture(admin,unitId);
     const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: 'BU reviewer', primaryEmail: 'bu@refresh.test' }).returning();
     const userId = await createAppUser(b.tenantId, p.id, 'employee');

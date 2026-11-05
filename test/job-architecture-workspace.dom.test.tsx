@@ -13,7 +13,7 @@ import type {ArchitectureWorkspace} from '../packs/job-architecture/owner';
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../app/admin/job-architecture/actions',()=>({architectureAction:vi.fn(async()=>({saved:true}))}));
 const companyId='11111111-1111-4111-8111-111111111111';
-const workspace=():ArchitectureWorkspace=>({catalogue:{revision:0,catalogue:{nodes:[],ladder:[]}},companies:[{id:companyId,name:'Company',canPropose:true,canCheck:false}],positions:[],businessUnits:[],publications:[],suggestions:[],suggestionMetrics:[],employees:[],proposals:[],outliers:[],grades:[],global:{canPropose:true,canCheck:false,canConfigure:false},sourceDigest:'a'.repeat(64)});
+const workspace=():ArchitectureWorkspace=>({catalogue:{revision:0,catalogue:{nodes:[],ladder:[]}},companies:[{id:companyId,name:'Company',canPropose:true,canCheck:false}],positions:[],businessUnits:[],publications:[],suggestions:[],suggestionMetrics:[],employees:[],proposals:[],outliers:[],grades:[],global:{canPropose:true,canProposeCatalogue:true,canCheck:false,canConfigure:false},sourceDigest:'a'.repeat(64)});
 const locales={en,ms,zh,th,ta,vi:viMessages};
 function mount(tab:'ladder'|'catalogue'|'positions'|'outliers',locale:keyof typeof locales='en',w=workspace()){return render(<NextIntlClientProvider locale={locale} messages={locales[locale]} onError={error=>{throw error;}}><ArchitectureWorkspaceClient w={w} tab={tab} companyId={companyId} people={[]} actorId={companyId} adviceReviewed={false}/></NextIntlClientProvider>);}
 describe('architecture observable workspace',()=>{

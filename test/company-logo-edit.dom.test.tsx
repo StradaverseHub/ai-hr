@@ -31,7 +31,7 @@ import userEvent from '@testing-library/user-event';
 import en from '../messages/en.json';
 import { CompanyLogoEdit, type CompanyLogoLabels } from '../components/company-logo';
 
-const ORG = en.admin.organization as Record<string, string>;
+const ORG = en.admin.organization;
 
 /**
  * The labels are built the way components/company-panel.tsx builds them — from the real catalogue, with

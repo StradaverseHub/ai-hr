@@ -1,10 +1,11 @@
+import {rewardAccessPageCompanies} from '@/packs/rewards/access-policy';
 import {getSession} from '@/lib/session';
 import {getScopeIds} from '@/lib/scope';
 import {rewardAccessCompanies,rewardRoleLabels,rewardAccessAdministration} from '@/packs/rewards/service';
 import {toCsv} from '@/lib/csv';
 /** Same live company/member authority as the screen, no pay roster, and formula-safe CSV cells. */
 export async function GET(){
- const session=await getSession(),companies=await rewardAccessCompanies(session),scope=await getScopeIds(companies.map(company=>company.id));
+ const session=await getSession(),companies=await rewardAccessPageCompanies(session,true),scope=await getScopeIds(companies.map(company=>company.id));
  const value=await rewardAccessAdministration(session,scope);
  const rows=value.members.map(member=>{
   const review=value.reviews.find(review=>review.id===member.unitId)!;
