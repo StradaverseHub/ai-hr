@@ -132,6 +132,7 @@ GRANT EXECUTE ON FUNCTION app.reward_architecture_for_source(uuid,uuid,uuid,date
 -- Private canonical-engine payroll aggregates: no runtime SELECT or employee-source export.
 CREATE TABLE reward_pat_basis(unit_id uuid PRIMARY KEY REFERENCES reward_unit(id),tenant_id uuid NOT NULL REFERENCES tenant(id),fingerprint text NOT NULL,engine_basis text NOT NULL,standard_payroll bigint NOT NULL CHECK(standard_payroll>=0),h_payroll bigint NOT NULL CHECK(h_payroll>=0),updated_at timestamptz NOT NULL DEFAULT now());
 ALTER TABLE reward_pat_basis ENABLE ROW LEVEL SECURITY;ALTER TABLE reward_pat_basis FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON reward_pat_basis FROM PUBLIC,ai_hr_app;
 GRANT SELECT,INSERT,UPDATE ON reward_pat_basis TO ai_hr_reward_setup_reader;
 GRANT SELECT ON reward_entry,reward_governance,reward_governance_public TO ai_hr_reward_setup_reader;
 GRANT UPDATE ON reward_governance,reward_governance_public,reward_unit TO ai_hr_reward_setup_reader;
@@ -544,6 +545,7 @@ INSERT INTO reward_snapshot_comp_movement(tenant_id,compensation_id,source_seque
  SELECT DISTINCT ON(event.tenant_id,event.aggregate_id) event.tenant_id,event.aggregate_id,event.sequence,event.payload->'movement'->>'type'
  FROM domain_event event JOIN compensation c ON c.tenant_id=event.tenant_id AND c.id=event.aggregate_id
  WHERE event.aggregate_type='compensation' AND event.event_type='compensation.set' AND event.payload->'movement'->>'type' IS NOT NULL
+ AND coalesce(event.subject_employment_id::text,event.payload->>'employmentId')=c.employment_id::text AND event.payload->>'effectiveFrom'=c.valid_from::text
  ORDER BY event.tenant_id,event.aggregate_id,event.sequence DESC;
 ALTER TABLE reward_snapshot_comp_movement ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reward_snapshot_comp_movement FORCE ROW LEVEL SECURITY;
@@ -555,10 +557,17 @@ CREATE POLICY reward_snapshot_pay_change_read ON reward_snapshot_comp_movement F
 );
 CREATE POLICY reward_snapshot_pay_change_write ON reward_snapshot_comp_movement FOR INSERT TO ai_hr_reward_setup_reader WITH CHECK(tenant_id=app.current_tenant_id());
 CREATE POLICY reward_snapshot_pay_change_type ON movement_event_type FOR SELECT TO ai_hr_reward_setup_reader USING(tenant_id=app.current_tenant_id());
+-- Only current-transaction compensation identity can feed the private read model.
+CREATE POLICY reward_snapshot_comp_event_source ON compensation FOR SELECT TO ai_hr_reward_setup_reader USING(
+ tenant_id=app.current_tenant_id() AND xmin=pg_current_xact_id_if_assigned()::xid
+);
 CREATE FUNCTION app.reward_capture_comp_movement() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 BEGIN
- IF NEW.tenant_id=app.current_tenant_id() AND NEW.aggregate_type='compensation' AND NEW.event_type='compensation.set' AND NEW.payload->'movement'->>'type' IS NOT NULL THEN
+ IF NEW.tenant_id=app.current_tenant_id() AND NEW.aggregate_type='compensation' AND NEW.event_type='compensation.set' AND NEW.payload->'movement'->>'type' IS NOT NULL
+  AND EXISTS(SELECT 1 FROM compensation c WHERE c.id=NEW.aggregate_id AND c.tenant_id=NEW.tenant_id
+   AND c.employment_id=NEW.subject_employment_id AND c.employment_id::text=NEW.payload->>'employmentId'
+   AND c.valid_from::text=NEW.payload->>'effectiveFrom' AND c.xmin=pg_current_xact_id_if_assigned()::xid) THEN
   INSERT INTO reward_snapshot_comp_movement(tenant_id,compensation_id,source_sequence,movement_code)
   VALUES(NEW.tenant_id,NEW.aggregate_id,NEW.sequence,NEW.payload->'movement'->>'type')
   ON CONFLICT(tenant_id,compensation_id) DO NOTHING;
@@ -596,3 +605,11 @@ $$;
 -- the dedicated source policy supplies the authorized row. No Performance write authority.
 GRANT SELECT(tenant_id,cycle_id) ON performance_onehr_cycle TO ai_hr_reward_setup_reader;
 GRANT EXECUTE ON FUNCTION app.onehr_partner_company_ids(),app.onehr_partner_for(uuid),app.onehr_employment_facts(),app.visible_employment_ids(),app.can_admin_perfcomp_employment(uuid) TO ai_hr_reward_setup_reader;
+--> statement-breakpoint
+-- Plan ancestry can be authored by another linked account. Only the private setup owner can
+-- resolve that stored source author; no Workforce access or generic user-list projection is added.
+CREATE POLICY reward_setup_plan_source_author ON app_user FOR SELECT TO ai_hr_reward_setup_reader USING(
+ tenant_id=app.current_tenant_id() AND EXISTS(
+  SELECT 1 FROM reward_policy_group_version v WHERE v.tenant_id=app_user.tenant_id AND v.created_by=app_user.id
+ )
+);
