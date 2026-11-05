@@ -3599,16 +3599,43 @@ function normalizeAttendanceCorrectionRequest(input:AttendanceCorrectionRequestI
 
  return {p,hasOt,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork};
 }
-/** Full canonical preflight with no correction/workflow/event INSERT. Infrastructure policy-epoch
- * initialization remains the existing canonical barrier, not a request or an approval effect. */
-export async function prepareAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput){
+const retryAttendanceSubmissionExclusively = new Error('Attendance submission requires the exclusive configuration path.');
+
+async function prepareAttendanceCorrectionRequest(
+ tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput,sharedAccess=false,
+){
  ctx=captureAttendanceContext(ctx);assertModuleGate(ctx,'attendance');
  const {p,hasOt,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork}=normalizeAttendanceCorrectionRequest(input);
- await lockAccessConfigurationTx(tx,ctx.tenantId);
- const [subject]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);if(!subject)throw Error('Attendance subject is unavailable.');
+ if(sharedAccess){
+  // Only this owned submission transaction shares Access. Native configuration writers
+  // still conflict with it; the subject, workflow, policy epoch and audit fences remain.
+  await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+ctx.tenantId},0))`);
+ }else await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const [subject]=await tx.select({id:employment.id,companyId:employment.companyId}).from(employment)
+  .where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId),sharedAccess?and(
+   eq(employment.personId,ctx.personId!),
+   sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`,
+   lte(employment.hiredOn,todayInKualaLumpur()),isNull(employment.blacklistedAt),
+   or(isNull(employment.terminatedOn),gt(employment.terminatedOn,todayInKualaLumpur())),
+  ):undefined)).limit(1);
+ if(!subject){
+  if(sharedAccess)throw retryAttendanceSubmissionExclusively;
+  throw Error('Attendance subject is unavailable.');
+ }
  p.employmentId=subject.id; // Canonical UUID spelling owns every shared source/credit lock key.
- await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
+ try{
+  await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
+ }catch(error){
+  if(sharedAccess&&error instanceof LeaveDependencyUnavailable&&error.reason==='busy')throw retryAttendanceSubmissionExclusively;
+  throw error;
+ }
  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
+ if(sharedAccess){
+  // Unavailable, ambiguous or different dated employers retain the original exclusive path.
+  // This routing proof grants no write authority and does not replace native epoch capture.
+  const companies=await provenCompanyDatesTx(tx,[{employmentId:p.employmentId,date:p.date}]);
+  if(companies.get(p.employmentId+'|'+p.date)?.companyId!==subject.companyId)throw retryAttendanceSubmissionExclusively;
+ }
  // Normal OT may consult the policy to position an additional approved plan before the legacy
  // insertion owner. Own its existing epoch before that first lookup; unclocked work already takes
  // its actual protected day locks then this epoch in the canonical branch below.
@@ -3721,6 +3748,10 @@ export async function prepareAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionCont
  const workflow=await prepareAttendanceWorkflowSnapshotTx(tx,ctx,p.employmentId,attendanceApplicationType({requestKind,proposedCheckIn:checkIn,proposedCheckOut:checkOut,clockChanges,requestedOtMinutes}));
  return {data,source,workflow,asOf:todayInKualaLumpur()};
 }
+/** Canonical preflight for supplied transactions and reviewed work always takes exclusive Access. */
+export async function prepareAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput){
+ return prepareAttendanceCorrectionRequest(tx,ctx,input);
+}
 export function attendanceCorrectionPreparedDigest(ctx:SessionContext,prepared:Awaited<ReturnType<typeof prepareAttendanceCorrectionRequestTx>>){return createHash('sha256').update(JSON.stringify({version:1,tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId,prepared})).digest('hex');}
 /** Reviewed digest is refusal-only, never a source of policy, clocks, routing, actor or approval. */
 export async function requestAttendanceCorrectionTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput,reviewed?:{expectedDigest:string}){
@@ -3744,9 +3775,31 @@ function attendanceCorrectionSubmissionFailure(error:unknown):never{
  *  claim resolution in packs/attendance/mobile-offline-claim-review.ts; the mobile command receipt). Omitted: its
  *  own transaction, as before. Both paths run the same preparation, locks and insert (requestAttendanceCorrectionTx). */
 export async function requestAttendanceCorrection(ctx:SessionContext,p:AttendanceCorrectionRequestInput,existingTx?:Tx){
- const current=captureAttendanceContext(ctx),captured=structuredClone(p);normalizeAttendanceCorrectionRequest(captured);
- const run=async(tx:Tx)=>{const result=await requestAttendanceCorrectionTx(tx,current,captured);return {correctionId:result.correctionId};};
- return (existingTx?run(existingTx):withTenant(current,run)).catch(attendanceCorrectionSubmissionFailure);
+ const current=captureAttendanceContext(ctx),captured=structuredClone(p);
+ const normalized=normalizeAttendanceCorrectionRequest(captured);
+ const run=async(tx:Tx)=>{
+  const result=await requestAttendanceCorrectionTx(tx,current,captured);
+  return {correctionId:result.correctionId};
+ };
+ if(existingTx)return run(existingTx).catch(attendanceCorrectionSubmissionFailure);
+ const sharedCandidate=current.userId&&current.personId&&!current.agent&&isCalendarDate(captured.date)&&
+  /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(captured.employmentId)&&
+  !normalized.clockChanges&&normalized.requestedOtMinutes===null&&!normalized.unclockedWork&&
+  normalized.plannedStartTime===null&&normalized.plannedEndTime===null&&normalized.otReasonCategory===null&&
+  ['short_hours','incomplete_entry','absent','other'].includes(normalized.requestKind);
+ if(sharedCandidate){
+  try{
+   return await withTenant(current,async tx=>{
+    const prepared=await prepareAttendanceCorrectionRequest(tx,current,captured,true);
+    const {correctionId}=await insertAttendanceCorrectionRequestTx(tx,current,prepared.data,{returnEventId:true});
+    return {correctionId};
+   });
+  }catch(error){
+   if(error!==retryAttendanceSubmissionExclusively)attendanceCorrectionSubmissionFailure(error);
+   // The shared attempt has rolled back. Never upgrade Access or retry an effect failure.
+  }
+ }
+ return withTenant(current,run).catch(attendanceCorrectionSubmissionFailure);
 }
 
 /**
