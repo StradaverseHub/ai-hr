@@ -32,8 +32,11 @@ describe('probation intake review boundaries',()=>{
   await screen.findByRole('button',{name:t.requestActivation});expect(m.request).not.toHaveBeenCalled();
   expect(screen.getByRole('button',{name:t.requestActivation})).toBeDisabled();
   fireEvent.change(screen.getByRole('textbox',{name:t.installationReference}),{target:{value:'Verified fictional installation'}});fireEvent.click(screen.getByRole('button',{name:t.requestActivation}));
-  await screen.findByRole('button',{name:t.checkActivation});expect(m.request).toHaveBeenCalledWith({id:'review',digest:'d'.repeat(64),installationReference:'Verified fictional installation'});
-  fireEvent.click(screen.getByRole('button',{name:t.checkActivation}));await screen.findByText(t.activationStates.failed.replace('{reference}','activation-ref'));
+  const checkStatus = await screen.findByRole('button', { name: t.checkActivation });
+  expect(m.request).toHaveBeenCalledWith({id:'review',digest:'d'.repeat(64),installationReference:'Verified fictional installation'});
+  await waitFor(() => expect(checkStatus).toBeEnabled());
+  fireEvent.click(checkStatus);
+  await screen.findByText(t.activationStates.failed.replace('{reference}','activation-ref'));
   expect(screen.queryByRole('button',{name:t.checkActivation})).toBeNull();expect(screen.queryByText(t.activationStates.pending.replace('{reference}','activation-ref'))).toBeNull();
  });
 
