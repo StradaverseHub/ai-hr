@@ -69,7 +69,7 @@ describe('ADR-0171 idle sign-out in the embedded sign-in service', () => {
     const family = 'family:' + admitted!.family;
     await writeRecord(owner.client, key, { ...credential, version: randomUUID() }, admitted!.subject);
     // An obsolete credential is refused before opening the invalid sealed family record.
-    await owner.client`select app.internal_auth_write(${family},${admitted!.subject}::uuid,'invalid-fixture-record',null)`;
+    await owner.client`select app.internal_auth_write(${family},${admitted!.subject}::uuid,${'invalid-fixture-record'.repeat(2)},null)`;
     expect(await readSession(token)).toBeNull();
 
     await writeRecord(owner.client, key, credential, admitted!.subject);
