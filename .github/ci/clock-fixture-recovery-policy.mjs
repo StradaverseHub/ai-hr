@@ -117,6 +117,7 @@ export function assertClockFixtureRecoveryGrant(evidence,run){
  const certificate=evidence?.recovery;
  assert(certificate?.kind==='AUTHENTICATED_CLOCK_FIXTURE_RECOVERY'&&certificate.recoveryPolicy===CLOCK_FIXTURE_RECOVERY_POLICY&&evidence.fingerprint===hash(certificate),'Exact clock fixture recovery certificate required');
  const {accounting,sourceProof:source,controllerProof:controller}=certificate;bind(accounting,source,controller);
+ same(certificate,wrapClockFixtureRecovery({accounting,sourceProof:source,controllerProof:controller}),'Clock wrapper differs from its exact embedded accounting and proofs');
  assert(certificate.accountingFingerprint===hash(accounting)&&certificate.sourceProofFingerprint===source.fingerprint&&certificate.controllerProofFingerprint===controller.fingerprint,'Embedded proof fingerprint differs');
  for(const key of IDENTITIES){same(certificate[key],accounting[key],'Clock accounting identity differs: '+key);same(evidence[key],certificate[key],'Clock grant identity differs: '+key);}
  for(const key of ['kind','recoveryPolicy','accounting','sourceProof','controllerProof','accountingFingerprint','sourceProofFingerprint','controllerProofFingerprint'])same(evidence[key],certificate[key],'Clock grant proof differs: '+key);
