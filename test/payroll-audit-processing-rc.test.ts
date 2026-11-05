@@ -197,3 +197,35 @@ it('captures exact nonempty Attendance and OT evidence from the real Payroll pro
  expect(original.components.attendance.rows).toBe(2);expect(original.components.overtime.rows).toBe(1);
  expect(capture).toMatchObject({kind:'inputs_snapshot',writer:'user',writerId:root.userId,content:{...original,basis:'processed',trigger:'processed',processedBy:root.userId}});
 },60000);
+
+it('preserves the Claims audit digest when payroll membership and expense dates overlap', async () => {
+ const {root, worker, batchId, b} = await loadAuditFixture(1);
+ const [type] = await owner.db.insert(schema.claimType).values({
+  tenantId: b.tenantId, code: 'AUDIT_LOOKUP', name: 'Fictional audit claim',
+ }).returning({id: schema.claimType.id});
+ const claim = {tenantId: b.tenantId, employmentId: worker.employmentId, claimTypeId: type.id, amount: '12.34'};
+ await owner.db.insert(schema.claimRequest).values([
+  {...claim, incurredOn: '2026-01-10', payrollBatchId: batchId},
+  {...claim, incurredOn: '2025-12-10', payrollBatchId: batchId},
+  {...claim, incurredOn: '2026-01-15'},
+  {...claim, incurredOn: '2025-12-15'},
+ ]);
+
+ const month = {start: '2026-01-01', end: '2026-01-31'};
+ const windows = {attendance: month, overtime: month, leave: month, claim: month};
+ await withTenant(root, async tx => {
+  await tx.execute(sql`set local timezone = 'UTC'`);
+  const [expected] = await tx.execute<{e: string; n: number; h: string}>(groupRows(sql`
+   select c.* from public.claim_request c
+   where c.payroll_batch_id = ${batchId}::uuid
+    or (c.employment_id in (${paidMembership(batchId)})
+     and c.incurred_on between ${month.start}::date and ${month.end}::date)
+  `));
+  expect(expected).toMatchObject({e: worker.employmentId, n: 3});
+  const inputs = await runInputsTx(tx, {batchId, payPeriod: '2026-01', windows});
+  expect(inputs.components.claims).toEqual({
+   rows: 3,
+   hash: createHash('sha256').update(`${expected.e}:${expected.n}:${expected.h}\n`).digest('hex'),
+  });
+ });
+}, 60000);
