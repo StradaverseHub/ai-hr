@@ -4,7 +4,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import {readOwnEmployeeHomeConfiguration} from './employee-home-configuration';
 import {countEmployeeHomeTasks} from './employee-home-tasks';
 import {isModuleEnabled} from './entitlements';
-import {listEligibleLeaveTypesFor} from './read';
+import {hasEligibleLeaveTypeForTx} from './read';
 import {nextApprovedLeavePresenceTx} from '../packs/leave/service';
 import {readOwnPayrollHomeMetadata} from '../packs/payroll/service';
 import {ownClaimFormAvailable} from '../packs/claims/service';
@@ -24,15 +24,15 @@ export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:st
  const now=new Date(),today=todayInKualaLumpur(now),through=new Date(Date.parse(today+'T00:00:00Z')+HOME_SUMMARY_LOOKAHEAD_DAYS*86400000).toISOString().slice(0,10);
  const leaveOn=isModuleEnabled(ctx,'leave'),payrollOn=isModuleEnabled(ctx,'payroll'),claimsOn=isModuleEnabled(ctx,'claims');
  const configured=new Set(configuration.quickActions);
- const [taskCount,[leave,holidays,replacements],payroll,leaveTypes,claimAvailable,profile]=await Promise.all([
+ const [taskCount,[leave,holidays,replacements,leaveAvailable],payroll,claimAvailable,profile]=await Promise.all([
   countEmployeeHomeTasks(ctx),
   withTenant(ctx,tx=>Promise.all([
    leaveOn?nextApprovedLeavePresenceTx(tx,subjectId,today):null,
    originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:today,endDate:through}),
    replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:today,endDate:through}),
+   leaveOn&&configured.has('leave')?hasEligibleLeaveTypeForTx(tx,subjectId):false,
   ])),
   payrollOn?readOwnPayrollHomeMetadata(ctx,subjectId):Promise.resolve(null),
-  leaveOn&&configured.has('leave')?listEligibleLeaveTypesFor(ctx,subjectId,locale):Promise.resolve([]),
   claimsOn&&configured.has('claim')?ownClaimFormAvailable(ctx,subjectId):Promise.resolve(false),
   configured.has('profile')?readProfilePresentationPolicy(ctx):Promise.resolve(null),
  ]);
@@ -54,7 +54,7 @@ export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:st
  const templates=new Map(configuration.templates.map(row=>[row.key,row]));
  const calm=templates.get('calm');
  const reasons:Record<HomeQuickAction,HomeActionRefusal|null>={
-  leave:!leaveOn?'moduleUnavailable':!leaveTypes.length?'notConfigured':null,
+  leave:!leaveOn?'moduleUnavailable':!leaveAvailable?'notConfigured':null,
   claim:!claimsOn?'moduleUnavailable':!claimAvailable?'notConfigured':null,
   payslip:!payrollOn?'moduleUnavailable':!slip?'noPayslip':null,
   profile:profile&&profile.editable.size>0?null:'detailsLocked',calendar:null,notices:null,
