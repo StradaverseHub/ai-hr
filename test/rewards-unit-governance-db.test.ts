@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {ensureAgentPrincipal,agentContext} from '../core/agent-principal';
 import {resolveEntitlementsTx} from '../core/entitlements';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
@@ -33,7 +34,7 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   await owner.db.update(schema.assignment).set({businessUnitId:buRow.id}).where(eq(schema.assignment.employmentId,employeeId));
   await owner.db.update(schema.employment).set({gradeId:grade.id,confirmationDate:`${year-2}-04-01`}).where(eq(schema.employment.id,employeeId));
   await setCompensation(gr,{employmentId:employeeId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
-  unitId=await createRewardUnit(gr,{name:'Unit governance fixture',year,companyId:b.companyId,businessUnitId:buRow.id,snapshotDate:today});
+  unitId=await createApprovedRewardUnit(gr,{name:'Unit governance fixture',year,companyId:b.companyId,businessUnitId:buRow.id,snapshotDate:today});
   async function actor(name:string,role:'gr'|'bu'|'ctro'|'payroll'){
    const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:name,primaryEmail:name+'@fixture.test'}).returning();
    const userId=await createAppUser(b.tenantId,person.id,'employee');

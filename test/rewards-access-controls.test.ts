@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {setRewardMember as grantCheckedFixtureSeat} from './rewards-access-fixture';
 import {migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {randomUUID} from 'node:crypto';
@@ -36,7 +37,7 @@ beforeEach(async()=>{
  const [unit]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'ACCESS',name:'Fictional access unit'}).returning();bu=unit.id;
  checker=await account('Independent checker','hr_admin');requester=await account('Non-exempt access requester','super_admin');
  const hire=await hireEmployee(admin,{person:{fullName:'Fictional BU reviewer',primaryEmail:randomUUID()+'@access.test'},companyId:b.companyId,departmentId:b.deptA,businessUnitId:bu,employmentType:'full_time',hiredOn:`${year-1}-01-01`});employmentId=hire.employmentId;
- unitId=await createRewardUnit(admin,{name:'Fictional access controls',year,companyId:b.companyId,businessUnitId:bu,snapshotDate:today});
+ unitId=await createApprovedRewardUnit(admin,{name:'Fictional access controls',year,companyId:b.companyId,businessUnitId:bu,snapshotDate:today});
  await owner.db.insert(s.rewardMember).values({tenantId:b.tenantId,unitId,userId:checker.userId!,role:'gr'});
 
  const [employee]=await owner.db.select().from(s.employment).where(eq(s.employment.id,employmentId));

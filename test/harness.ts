@@ -22,8 +22,6 @@ const ALL_TABLES = [
   'job_architecture_position_revision', 'job_architecture_catalogue_revision', 'job_architecture_outlier',
   'job_architecture_proposal', 'job_architecture_seat',
   'company_registration_classification',
-  'job_architecture_position_revision', 'job_architecture_catalogue_revision', 'job_architecture_outlier',
-  'job_architecture_proposal', 'job_architecture_seat',
   'information_payslip_snapshot',
   'app.assistant_question_budget',
   'payroll_txn_import_attempt',

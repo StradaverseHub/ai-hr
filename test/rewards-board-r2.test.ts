@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
@@ -35,7 +36,7 @@ describe('Rewards board items 8ad87ae8, 4e3e1af7, c28db2f0', () => {
     await setCompensation(admin, { employmentId, basicSalary: 5500, effectiveFrom: inWindow('10-01'), movement: { type: 'promotion' } });
     await setCompensation(admin, { employmentId, basicSalary: 5500, effectiveFrom: inWindow('10-15') });
     await setCompensation(admin, { employmentId, basicSalary: 6000, effectiveFrom: inWindow('12-01') });
-    unitId = await createRewardUnit(admin, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: unit.id, snapshotDate: today });
+    unitId = await createApprovedRewardUnit(admin, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: unit.id, snapshotDate: today });
     const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: 'BU reviewer', primaryEmail: 'bu@rewards.test' }).returning();
     const userId = await createAppUser(b.tenantId, p.id, 'employee');
     bu = { ...admin, userId, personId: p.id, roles: ['employee'], grants: undefined };

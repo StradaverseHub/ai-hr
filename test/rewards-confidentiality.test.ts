@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {initializeRewardGovernanceFixture} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
@@ -43,7 +44,7 @@ describe('Rewards derived confidentiality', () => {
     await hire('bgCeo', false); await hire('chairman', false);
     for (const key of ['bgReport', 'ecReport', 'plain']) await hire(key, true);
     await line('bgReport', 'bgCeo'); await line('ecReport', 'chairman');
-    unitId = await createRewardUnit(admin, { name: 'Confidential rewards', year, companyId: b.companyId, businessUnitId: buId, snapshotDate: today });
+    unitId = await createApprovedRewardUnit(admin, { name: 'Confidential rewards', year, companyId: b.companyId, businessUnitId: buId, snapshotDate: today });
     await seat('bg', emp.bgCeo.personId, 'BG CEO'); await seat('ec', emp.chairman.personId, 'Chairman');
     for (const role of ['bu', 'pbp', 'ctro'] as const) {
       const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: `${role} reviewer`, primaryEmail: `${role}@confidential.test` }).returning();
