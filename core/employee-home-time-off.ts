@@ -3,7 +3,7 @@
 import {sql} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
 import {withTenant} from '../db/client';
-import {isOwnProfileEditEmploymentTx,listEligibleLeaveTypesFor} from './read';
+import {isOwnProfileEditEmploymentTx,hasEligibleLeaveTypeForTx} from './read';
 import {requireOwnHomeSubjectTx,HomeAccessError} from './employee-home';
 import {myCurrentLeaveCards,nextApprovedLeavePresenceTx} from '../packs/leave/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -19,10 +19,10 @@ export async function readEmployeeHomeTimeOff(ctx:SessionContext,employmentId?:s
   const [cards,nextApproved,eligible]=await Promise.all([
    myCurrentLeaveCards(ctx,subject.employmentId,{today,locale},tx),
    nextApprovedLeavePresenceTx(tx,subject.employmentId,today),
-   listEligibleLeaveTypesFor(ctx,subject.employmentId,locale,tx),
+   hasEligibleLeaveTypeForTx(tx,subject.employmentId),
   ]);
   if(cards.length>100)throw Error('Own leave catalogue exceeds its supported Home limit.');
-  return {version:1,employmentId:subject.employmentId,asOf:today,canApply:eligible.length>0,
+  return {version:1,employmentId:subject.employmentId,asOf:today,canApply:eligible,
    balances:cards.map(card=>({id:card.leaveTypeId,name:card.leaveType,annualLeave:card.annualLeave,available:card.canApplyFor,pending:card.pending})),
    nextApproved};
  });
