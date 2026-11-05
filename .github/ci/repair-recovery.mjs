@@ -17,6 +17,7 @@ import {reconstructRepairImpact} from './repair-impact.mjs';
 import {collectRecoveryEvidence} from './focused-recovery.mjs';
 import {validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
 import {verifyRepairRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata} from './repair-recovery-policy.mjs';
+import {validateClockFixtureSourceDelta,validateClockFixtureControllerDelta,wrapClockFixtureRecovery} from './clock-fixture-recovery-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const r=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(r[key]),'Missing complete API inventory');rows.push(...r[key]);if(r[key].length<100)return rows;}throw Error('Repair API inventory exceeds bound');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2,timeout:60000}).trim();
@@ -69,21 +70,25 @@ function latestHistory({source,focusedWorkflowId,candidateBranch,focusedRunIds,b
  for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages(`actions/runs?status=${status}`,'workflow_runs').filter(r=>[WORKFLOW_ID,focusedWorkflowId].includes(r.workflow_id)));
  return validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId});
 }
-export async function verifyRepairedCi({candidatePath,originalPath,runId,baseline,focusedRunIds,buildRunId,candidateBranch,evidenceDirectory,reuse=false}){
+async function verifyRepairImplementation({candidatePath,originalPath,runId,baseline,focusedRunIds,buildRunId,candidateBranch,evidenceDirectory,reuse=false},mode){
+ assert(['product-v2','clock-fixture-v1'].includes(mode),'Private repair mode required');
+ const clockFixture=mode==='clock-fixture-v1';
  candidatePath=resolve(candidatePath);originalPath=resolve(originalPath);runId=Number(runId);buildRunId=Number(buildRunId);
  assert(/^[a-f0-9]{40}$/.test(baseline??'')&&Number.isSafeInteger(runId)&&runId>0&&Number.isSafeInteger(buildRunId)&&buildRunId>0&&buildRunId!==runId,'Exact original/build/baseline identities required');
  assert(Array.isArray(focusedRunIds)&&focusedRunIds.length>0&&focusedRunIds.length<=64&&focusedRunIds.every(n=>Number.isSafeInteger(n)&&n>0&&! [runId,buildRunId].includes(n))&&new Set(focusedRunIds).size===focusedRunIds.length,'Distinct bounded replacement executions required');
  assert(typeof candidateBranch==='string'&&/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(candidateBranch)&&!candidateBranch.includes('..'),'Exact repaired source branch required');
  const candidate=cleanHead(candidatePath),original=cleanHead(originalPath),verificationController=cleanHead(controllerRoot);
- const reviewedController=process.env.AIHR_REPAIR_REVIEWED_CONTROLLER??null;assert(reviewedController===null||reviewedController===verificationController,'Reviewed verifier identity changed');
+ const reviewedController=(clockFixture?process.env.AIHR_CLOCK_FIXTURE_REVIEWED_CONTROLLER:process.env.AIHR_REPAIR_REVIEWED_CONTROLLER)??null;assert(reviewedController===null||reviewedController===verificationController,'Reviewed verifier identity changed');
  for(const path of [candidatePath,originalPath])assert(git(path,'remote','get-url','origin').toLowerCase()==='https://github.com/stradaversehub/ai-hr.git','Unexpected source repository');
  assert(api('git/ref/heads/'+candidateBranch.split('/').map(encodeURIComponent).join('/')).object?.sha===candidate,'Repaired candidate branch moved');
  execFileSync('git',['merge-base','--is-ancestor',baseline,original],{cwd:candidatePath,stdio:'ignore'});
- const delta=validateRepairDelta({cwd:candidatePath,original,candidate});
+ const delta=clockFixture?validateClockFixtureSourceDelta({cwd:candidatePath,original,candidate}):validateRepairDelta({cwd:candidatePath,original,candidate});
  const diagnosticId=Number(process.env.AIHR_RECOVERY_CONTROLLER_RUN_ID);assert(Number.isSafeInteger(diagnosticId)&&diagnosticId>0,'Reviewed verifier controller diagnostic required');
  assert(readFileSync(join(controllerRoot,'.github/workflows/alpha-staging.yml'),'utf8').includes(' .github/ci/repair-recovery.test.mjs'),'Hosted integrity suite must execute v2 refusal controls');
+ if(clockFixture)assert(readFileSync(join(controllerRoot,'.github/workflows/alpha-staging.yml'),'utf8').includes(' .github/ci/clock-fixture-recovery.test.mjs'),'Hosted integrity suite must execute clock fixture refusal controls');
  const dm=metadata(diagnosticId),verificationDiagnostic=validateRecoveryControllerDiagnostic({...dm,controller:verificationController});
  const originalMetadata=metadata(runId),controller=originalMetadata.run.head_sha;
+ const controllerProof=clockFixture?validateClockFixtureControllerDelta({cwd:controllerRoot,sourceController:controller,verificationController,reviewedController}):null;
  assert(originalMetadata.run.status==='completed'&&originalMetadata.run.conclusion==='failure'&&originalMetadata.run.run_attempt===1,'Wait for all planned original jobs to finish');
  const preliminary=planAt(originalPath,{controller,baseline,runtime:{node:'22.23.3',platform:'linux',arch:'x64'}}),topology=requiredEvidence(preliminary);
  const allowed=new Set([...topology.artifacts,COMPILER_STATE_ARTIFACT,NEXT_APPLICATION_STATE,NEXT_APPLICATION_FAILURE]);
@@ -122,13 +127,16 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  const p={candidate,controller,baseline,runId:buildRunId,controllerBranch:built.run.head_branch},build=await sourceBoundBuild({candidatePath,dir,p,jobs:built.jobs});
  const history=latestHistory({source,focusedWorkflowId:workflow.id,candidateBranch,focusedRunIds,buildRunId});
  const reports=sourcePlan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
- const recovery=verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun:source.run,reports,focused,impactContext,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,reviewedController,buildRun:built.run,build,history});
- recovery.delta=delta;recovery.originalArtifacts=source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}));recovery.originalJobConclusions=source.jobs.map(j=>({id:j.id,name:j.name,conclusion:j.conclusion}));
+ const accounting=verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun:source.run,reports,focused,impactContext,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,reviewedController,buildRun:built.run,build,history});
+ accounting.delta=delta;accounting.originalArtifacts=source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}));accounting.originalJobConclusions=source.jobs.map(j=>({id:j.id,name:j.name,conclusion:j.conclusion}));
+ const recovery=clockFixture?wrapClockFixtureRecovery({accounting,sourceProof:delta,controllerProof}):accounting;
  assert(cleanHead(candidatePath)===candidate&&cleanHead(originalPath)===original&&cleanHead(controllerRoot)===verificationController,'Source/controller changed while verifying');
  assert([baseline,candidate].includes(api('git/ref/heads/alpha').object?.sha),'Alpha moved away from exact staging baseline/candidate');
  const result={...recovery,recovery,result:recovery.pendingReview?'DIAGNOSTIC_NONINSTALLABLE':'PASS',tier:recovery.pendingReview?'diagnostic':'ci',installationEligible:!recovery.pendingReview,fingerprint:hash(recovery),build,candidatePath,originalPath,originalRunId:runId,candidateBranch,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),buildRunId,controllerBranch:built.run.head_branch,evidenceDirectory:dir,verifiedAt:new Date().toISOString(),url:built.run.html_url,artifacts:built.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
  save(dir,reuse?`revalidation-${randomUUID()}.json`:'verification.json',result);return result;
 }
+export async function verifyRepairedCi(options){return verifyRepairImplementation(options,'product-v2');}
+export async function verifyClockFixtureRecoveredCi(options){return verifyRepairImplementation(options,'clock-fixture-v1');}
 function facts(f){return {run:f.run,jobs:f.jobs,artifacts:f.artifacts};}
 export function assertRepairRevalidation(evidence,current){
  assert(isDeepStrictEqual(current.recovery,evidence.recovery)&&isDeepStrictEqual(current.build,evidence.build)&&isDeepStrictEqual(current.artifacts,evidence.artifacts),'Repair evidence changed before launch');return true;
@@ -136,5 +144,11 @@ export function assertRepairRevalidation(evidence,current){
 export async function revalidateRepairedCi(evidence){
  assert(cleanHead(controllerRoot)===evidence.verificationController,'Verification controller changed');
  const current=await verifyRepairedCi({...evidence,runId:evidence.originalRunId,evidenceDirectory:evidence.evidenceDirectory,reuse:true});
+ return assertRepairRevalidation(evidence,current);
+}
+
+export async function revalidateClockFixtureRecoveredCi(evidence){
+ assert(cleanHead(controllerRoot)===evidence.verificationController,'Verification controller changed');
+ const current=await verifyClockFixtureRecoveredCi({...evidence,runId:evidence.originalRunId,evidenceDirectory:evidence.evidenceDirectory,reuse:true});
  return assertRepairRevalidation(evidence,current);
 }
