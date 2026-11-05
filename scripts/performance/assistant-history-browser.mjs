@@ -34,6 +34,12 @@ export async function verifyAssistantHistoryBrowser({page,history,visitAsk,timeo
   const log=page.locator('[data-ask-conversation] [role="log"]');
   for(const question of history.selectedQuestions)await log.getByText(question,{exact:true}).waitFor({state:'visible',timeout});
   assert.deepEqual(await log.locator(':scope > div > p:first-child').allTextContents(),history.selectedQuestions,'Expected exactly the selected two-turn conversation.');
+  const composer=page.locator('[data-ask-conversation] textarea');
+  await composer.waitFor({state:'visible',timeout});
+  // A fully rendered read-only transcript is terminal for this navigation, not a slow mount.
+  if(await page.locator('[data-ask-conversation] fieldset[disabled]').filter({has:page.locator('textarea')}).count()){
+   throw new Error('Saved history rendered but its composer is read-only.');
+  }
   await page.locator('[data-ask-conversation] textarea:enabled').waitFor({state:'visible',timeout});
   assert.equal(documents.length,0,'Saved-history selection unexpectedly reloaded the document.');
   await onMeasurement({step:'saved-history-open',userIndex:history.userIndex,clickToUsableMs:performance.now()-clickStart,verifiedTurns:2,documentRequests:0,promptsSubmitted:0});

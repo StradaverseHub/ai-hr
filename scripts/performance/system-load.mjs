@@ -444,10 +444,13 @@ try{
  }));
  assert(['employee','manager','companyHR','groupHR'].every(role=>report.preflightBrowserSignIns?.some(row=>row.role===role&&row.homeCards>0&&row.todaySectionIds.length>0&&row.cardFailures===0)),'all four preflight sign-ins must load their dashboards');
  const aiBrowserActors=fixture.assistantHistory?[employee,hr,fixture.users[254],fixture.users[251]]:[employee,hr];
- await Promise.all(aiBrowserActors.map(async user=>{
+ const aiBaseline=await Promise.allSettled(aiBrowserActors.map(async user=>{
   const ctx=await context(user),page=await ctx.newPage();
   try{await aiCentreJourney(page,user,'baseline');}finally{await ctx.close();}
  }));
+ report.aiBaselineFailures=aiBaseline.flatMap((result,index)=>result.status==='rejected'
+  ?[{role:aiBrowserActors[index].role,userIndex:aiBrowserActors[index].index,error:String(result.reason.message).slice(0,220)}]:[]);
+ save();
  if(suite==='whole-system'){
   const ctx=await context(group),page=await ctx.newPage();
   try{
@@ -628,6 +631,7 @@ try{
  await databaseSnapshot('pilot');
  if(report.coverage.some(v=>v.status==='failed'))throw Error('Pilot route failures must be diagnosed before a 500-user run');
  if(suite==='workflow-preflight'){
+  assert.equal(report.aiBaselineFailures.length,0,'AI Centre baseline browser journeys failed');
   await exerciseLetterDraft({base,context,visit,fixture,db,report,save});
   const {exercisePerformanceRewardsDrafts}=await import('./performance-rewards-draft-browser.mjs');
   await exercisePerformanceRewardsDrafts({base,context,fixture,db,report,save});
@@ -842,6 +846,7 @@ try{
  }
  if(suite==='whole-system')assert(['baseline','loaded'].every(phase=>report.browserSavedReportJourneys?.some(row=>row.phase===phase&&row.status==='passed')),'saved Reports browser journeys did not finish');
  if(suite==='whole-system')assert(report.concurrentHomeApiCoverage.length>0&&report.concurrentHomeApiCoverage.every(row=>row.requests>0),'observed Home fetches missing from concurrent traffic');if(runMixedWorkflow)assert(Object.values(report.mixedWorkflows.completed).every(count=>count>0),'a required mixed mutation/processing scenario did not complete');if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure during baseline or load');assert(report.loadedBrowserSignIn?.homeCards>0,'real loaded browser sign-in did not finish');
+ assert.equal(report.aiBaselineFailures.length,0,'AI Centre baseline browser journeys failed');
  assert(['employee','manager','companyHR','groupHR'].every(role=>report.loadedBrowserSignIns?.some(row=>
   row.role===role&&row.homeCards>0&&row.todaySectionIds.length>0&&row.cardFailures===0
   &&row.startedWith?.active===500&&row.startedWith.inSteadyWindow
