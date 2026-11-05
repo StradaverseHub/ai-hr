@@ -7360,7 +7360,7 @@ export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:str
       from public.attendance_correction q where q.tenant_id=${ctx.tenantId}::uuid and q.status='pending'`;
     const administratorHint=ctx.roles?.some(role=>role==='hr_admin'||role==='super_admin')===true;
     // Ordinary visibility is one arm of the native subject predicate. Only those
-    // subjects can reuse metadata across requests. Frozen participants and delegates
+    // subjects can reuse metadata and self-exclusion across requests. Frozen participants and delegates
     // outside that set still require the original request-specific projection.
     const source=administratorHint?sql`(
       with headers as materialized(${nativeHeaders}),
@@ -7372,12 +7372,13 @@ export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:str
       ), subject_companies as(select distinct company_id from subject_rows),
       administrator_companies as materialized(select company_id,app.is_admin_for(company_id)as allowed from subject_companies),
       administrator_subjects as materialized(
-        select s.* from subject_rows s join administrator_companies c on c.company_id=s.company_id where c.allowed
+        select s.*,app.is_self_person(s.person_id) as is_self
+        from subject_rows s join administrator_companies c on c.company_id=s.company_id where c.allowed
       )
-      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id
+      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id,s.is_self
       from headers h join administrator_subjects s on s.employment_id=h.employment_id
       union all
-      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id
+      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id,app.is_self_person(s.person_id)
       from headers h cross join lateral app.attendance_application_subject(h.id)s
       where not exists(select 1 from administrator_subjects a where a.employment_id=h.employment_id)
     )as pending_attendance`:sql`(
@@ -7395,13 +7396,13 @@ export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:str
         select array_agg(employment_id order by employment_id) as ids from numbered_subjects group by bucket
       ),
       ordinary_subjects as materialized(
-        select s.* from subject_batches b
+        select s.*,app.is_self_person(s.person_id) as is_self from subject_batches b
         cross join lateral app.delegated_approval_subjects(b.ids,'attendance','attendance.correction')s
       )
-      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id
+      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id,s.is_self
       from headers h join ordinary_subjects s on s.employment_id=h.employment_id
       union all
-      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id
+      select h.id,h.employment_id,h.created_at,s.person_id,s.employee,s.company_id,app.is_self_person(s.person_id)
       from headers h cross join lateral app.attendance_application_subject(h.id)s
       where not exists(select 1 from ordinary_subjects s where s.employment_id=h.employment_id)
     )as pending_attendance`;
@@ -7409,7 +7410,7 @@ export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:str
       personId=sql<string>`pending_attendance.person_id`,employee=sql<string|null>`pending_attendance.employee`,
       createdAt=sql<Date>`pending_attendance.created_at`.mapWith(attendanceCorrection.createdAt);
     const rows=await tx.select({id,employmentId,personId,employee,createdAt}).from(source)
-      .where(and(sql`NOT app.is_self_person(pending_attendance.person_id)`,companyIds===undefined?undefined:companyIds.length===0?sql`false`:
+      .where(and(sql`NOT pending_attendance.is_self`,companyIds===undefined?undefined:companyIds.length===0?sql`false`:
         sql`(pending_attendance.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(pending_attendance.id) IS NOT NULL)`))
       .orderBy(desc(createdAt),id);
     const allowed=await actionableAttendanceApplicationIdsTx(tx,ctx,rows);
