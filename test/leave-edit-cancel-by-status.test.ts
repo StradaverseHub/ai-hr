@@ -119,6 +119,28 @@ afterAll(async () => {
   await closeAll();
 });
 
+it('submits own annual leave while another transaction shares the Access lock', async () => {
+  let submission: ReturnType<typeof requestLeave> | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await owner.db.transaction(async tx => {
+      await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + b.tenantId},0))`);
+      submission = requestLeave(subjectCtx, {
+        employmentId: subject.employmentId, leaveTypeId: b.annualLeaveTypeId,
+        startDate: '2026-08-10', endDate: '2026-08-12',
+        hasDocument: false, unpaidConsent: false, overrideConsent: [],
+      });
+      const result = await Promise.race([submission, new Promise<null>(resolve => {
+        timeout = setTimeout(() => resolve(null), 5000);
+      })]);
+      expect(result).toMatchObject({leaveRequestId: expect.any(String)});
+    });
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    await submission?.catch(() => undefined);
+  }
+});
+
 describe('editLeaveRequest — pending edit', () => {
   it('allows an own pending edit while another transaction shares the Access lock', async () => {
     const id = await pendingThreeDay();

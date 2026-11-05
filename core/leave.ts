@@ -3392,10 +3392,15 @@ export async function requestLeave(
       || p.startDate !== reviewedOwnLeave.date || p.endDate !== reviewedOwnLeave.date)
       throw new LeaveReviewedEffectError('changed');
   }
-  const perform = async (tx: Tx) => {
+  const retryWithExclusiveAccess = new Error();
+  const perform = async (tx: Tx, sharedAccess = false) => {
     // Rights first, then shared source configuration. An unauthorized subject is refused by the
     // original gate before acquiring any employment lock or reading leave policy/balance facts.
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    if (sharedAccess) {
+      await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + ctx.tenantId},0))`);
+    } else {
+      await lockAccessConfigurationTx(tx, ctx.tenantId);
+    }
     await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     if (p.document) p = { ...p, hasDocument: true };
     // ── On-behalf gate (5206539f) — THE FIRST THING THIS FUNCTION DOES, and deliberately ────────────────
@@ -3416,7 +3421,9 @@ export async function requestLeave(
         resignationDate: employment.resignationDate, lastWorkingDate: employment.lastWorkingDate,
         blacklistedAt: employment.blacklistedAt })
       .from(employment)
-      .where(eq(employment.id, p.employmentId))
+      .where(and(eq(employment.id, p.employmentId), sharedAccess
+        ? sql`app.principal_snapshot_current() and app.is_self_person(${employment.personId})`
+        : undefined))
       .limit(1);
     const [subject] = await readSubject();
     // Self is decided by PERSON, not by employment id: one person can hold several employments (multi-company
@@ -3424,6 +3431,7 @@ export async function requestLeave(
     // not tied to an employee) can never satisfy this, and falls to the permission below — which is where an
     // HR administrator has always passed.
     const isSelfSubject = ctx.personId != null && subject?.personId != null && ctx.personId === subject.personId;
+    if (sharedAccess && !isSelfSubject) throw retryWithExclusiveAccess;
     if (reviewedOwnLeave) {
       const currentDate = todayInKualaLumpur();
       if (!isSelfSubject || !subject || subject.companyId !== reviewedOwnLeave.companyId
@@ -3465,6 +3473,13 @@ export async function requestLeave(
     // conversion re-points BOTH so every gate after it is judged against the type the application actually
     // becomes, rather than a second submission path re-implementing them. Nothing else reassigns either.
     let lt = lt0;
+    // Only ordinary annual applications may stay in this owned shared transaction.
+    // Other policy branches restart before any effect, with the original exclusive lock.
+    if (sharedAccess && (!lt || !leaveTypeIs(lt, 'annual') || !lt.paid || lt.archivedAt !== null
+      || lt.requiresDocument || lt.balanceSourceTypeId !== null || lt.perDateApproval
+      || normalizeLeaveOverrideRules(lt.overrideRules).some(rule => rule.enabled))) {
+      throw retryWithExclusiveAccess;
+    }
     if (reviewedOwnLeave && (!lt || !leaveTypeIs(lt, 'annual') || !lt.paid || lt.archivedAt !== null
       || lt.requiresDocument || lt.balanceSourceTypeId !== null || lt.employeeCanApply === false)) {
       throw new LeaveReviewedEffectError('unsupported');
@@ -4242,7 +4257,18 @@ export async function requestLeave(
       ...(holidayWarnings.length ? { holidayWarnings } : {}),
     };
   };
-  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
+  if (existingTx) return perform(existingTx);
+  if (ctx.userId && ctx.personId && !ctx.agent && !isAdmin(ctx)
+    && (p.durationType ?? 'full_day') === 'full_day' && !p.document && !p.hasDocument
+    && !p.overrideConsent?.length && p.reasonCategory === undefined && !p.unpaidConsent
+    && p.survivingChildren === undefined && p.confinementDate === undefined) {
+    try {
+      return await withTenant(ctx, tx => perform(tx, true));
+    } catch (error) {
+      if (error !== retryWithExclusiveAccess) throw error;
+    }
+  }
+  return withTenant(ctx, perform);
 }
 
 /** Feedback 31474452 (Step 5): pre-submission preview — "this will deduct X day(s), balance before/after" —
