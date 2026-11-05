@@ -611,12 +611,25 @@ try{
  sampling=setInterval(async()=>{
   if(samplingBusy)return;samplingBusy=true;
   try{
-   const rows=await db`select coalesce(wait_event_type,'CPU-or-ready')as kind,count(*)::int as connections from pg_stat_activity where datname=current_database()and state='active'group by 1`;
-   const locks=await db`select a.pid,pg_blocking_pids(a.pid)as blockers,l.mode,l.classid::text,l.objid::text,l.objsubid from pg_locks l join pg_stat_activity a on a.pid=l.pid where a.datname=current_database()and l.database=(select oid from pg_database where datname=current_database())and l.locktype='advisory'and not l.granted order by a.pid limit 20`;
+   const activity=await db`select state,coalesce(wait_event_type,'CPU-or-ready') as kind,count(*)::int as connections,
+      (count(*) filter(where usename='ai_hr_app'))::int as app_connections
+     from pg_stat_activity where datname=current_database() and backend_type='client backend' group by 1,2`;
+   const rows=activity.filter(row=>row.state==='active').map(({kind,connections})=>({kind,connections}));
+   const appConnections={
+    open:activity.reduce((total,row)=>total+row.app_connections,0),
+    active:activity.filter(row=>row.state==='active').reduce((total,row)=>total+row.app_connections,0),
+    idleInTransaction:activity.filter(row=>row.state?.startsWith('idle in transaction')).reduce((total,row)=>total+row.app_connections,0),
+    waitingOnLock:activity.filter(row=>row.state==='active'&&row.kind==='Lock').reduce((total,row)=>total+row.app_connections,0),
+   };
+   const locks=await db`select a.pid,pg_blocking_pids(a.pid)as blockers,l.mode,l.classid::text,l.objid::text,l.objsubid,
+     a.usename='ai_hr_app' as app_session from pg_locks l join pg_stat_activity a on a.pid=l.pid
+     where a.datname=current_database()and l.database=(select oid from pg_database where datname=current_database())
+       and l.locktype='advisory'and not l.granted order by a.pid limit 20`;
+   appConnections.sampledAdvisoryWaiters=new Set(locks.filter(row=>row.app_session).map(row=>row.pid)).size;
    const pids=[...new Set(locks.flatMap(row=>row.blockers??[]))].filter(pid=>Number.isSafeInteger(pid)&&pid>0).slice(0,20);
    // Native holder state and normalized query IDs only; never capture statement parameters.
    const holders=pids.length?await db.unsafe('select pid,state,wait_event_type,wait_event,query_id::text,extract(epoch from(clock_timestamp()-xact_start))as transaction_age_seconds from pg_stat_activity where datname=current_database()and pid in('+pids.map((_,i)=>'$'+(i+1)).join(',')+')',pids):[];
-   waits.push({at:Date.now(),rows,blockingSessions:holders,advisoryWaiters:locks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))});
+   waits.push({at:Date.now(),rows,appConnections,blockingSessions:holders,advisoryWaiters:locks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))});
    // The top-statement summary can omit rare root holders. Resolve only sampled root IDs,
    // never queued waiters or parameters; all data belongs to the fictional runner fixture.
    const queued=new Set(locks.map(row=>row.pid));
@@ -634,7 +647,7 @@ try{
  const progress={launched:0,active:0,peakActive:0,completed:0,failed:0,iterations:0};
  report.trafficSettled=false;report.functionalAccountingComplete=false;
  report.measurementWindow={startPerformanceMs:started,steadyStartPerformanceMs:steadyStart,steadyUntilPerformanceMs:steadyUntil};
- report.telemetry={querySnapshotIntervalMs:30000,resourceCounterIntervalMs:30000,holderQueries:'bounded native pid/state/query-id; up to128normalizedrootquerytexts withoutparameters',partialSamplesAreAcceptance:false};
+ report.telemetry={querySnapshotIntervalMs:30000,resourceCounterIntervalMs:30000,holderQueries:'bounded native pid/state/query-id; up to128normalizedrootquerytexts withoutparameters',appConnections:'sampled PostgreSQL backends for ai_hr_app; excludes application-side queue length',partialSamplesAreAcceptance:false};
  let sqlSnapshotBusy=false;
  sqlSnapshotTimer=setInterval(async()=>{
   if(sqlSnapshotBusy)return;sqlSnapshotBusy=true;
