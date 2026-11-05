@@ -66,9 +66,10 @@ it.skipIf(!requested)('reports profile JS and remote native ranking parity and d
   const localLong=selectedTags(matchEmployees(old,capped));
   await expect(searchWorkforceEmployees(actor,[b.companyId],capped)).rejects.toThrow('Invalid employee search');
   expect(localLong).toEqual(['long-name']);
-  report.queryLength={length:capped.length,local:localLong,remote:'rejected'};report.comparisons=comparisons;
-  report.database=(await owner.client`select current_setting('lc_collate') as lc_collate,current_setting('lc_ctype') as lc_ctype,
-   current_setting('server_encoding') as encoding,version() as version`)[0];
+  report.queryLength={length:capped.length,local:localLong,remote:'rejected'};report.comparisons=comparisons;save();
+  report.database=(await owner.client`select to_jsonb(d)->>'datcollate' as lc_collate,to_jsonb(d)->>'datctype' as lc_ctype,
+   to_jsonb(d)->>'datlocale' as locale,to_jsonb(d)->>'datlocprovider' as provider,
+   current_setting('server_encoding') as encoding,version() as version from pg_database d where datname=current_database()`)[0];
   report.javascript={icu:process.versions.icu,unicode:process.versions.unicode};
   const [icu]=await owner.client`select to_regcollation('pg_catalog."und-x-icu"') is not null as available`;
   const mapping=[];
