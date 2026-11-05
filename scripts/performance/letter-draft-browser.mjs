@@ -31,7 +31,18 @@ export async function exerciseLetterDraft({base,context,visit,fixture,db,report,
  try{
   const page=await authorContext.newPage(),main=page.locator('main');
   const newPath='/letters/generate/new?versionId='+seed.versionId;
+  const toursBefore=report.onboardingTourDismissals??0;
   await visit(page,author,newPath);
+  // This author has a fresh browser and has not dismissed the welcome tour.
+  // The client can mount its blocking overlay after the shared visit sees the heading.
+  if((report.onboardingTourDismissals??0)===toursBefore){
+   const tour=page.getByRole('dialog',{name:'Product tour',exact:true});
+   const skip=tour.getByRole('button',{name:'Skip',exact:true});
+   await skip.click({timeout});
+   await tour.waitFor({state:'hidden',timeout});
+   report.onboardingTourDismissals=toursBefore+1;
+   save();
+  }
   await main.getByRole('heading',{name:formCopy.create,exact:true}).waitFor({state:'visible',timeout});
   await main.getByRole('textbox',{name:picker.search,exact:true}).fill(code);
   const [choices]=await Promise.all([
