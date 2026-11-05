@@ -1,6 +1,6 @@
 /** Reversible native experiment only: no installed migration or production function changes. */
 import {randomUUID} from 'node:crypto';
-import {writeFileSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
@@ -20,15 +20,18 @@ it('compares a necessary admin-mapping probe against the installed navigation ow
  const metadata=await catalog();
  const [definition]=await owner.db.execute<{ddl:string}>(sql`select pg_get_functiondef('app.probation_navigation_access()'::regprocedure) as ddl`);
  const original=definition.ddl;
- let candidate=original.replace('DECLARE configuration boolean;participant boolean;intake boolean;','DECLARE configuration boolean;participant boolean;intake boolean;has_admin_mapping boolean;');
+ let proposedDefinition=original.replace('DECLARE configuration boolean;participant boolean;intake boolean;','DECLARE configuration boolean;participant boolean;intake boolean;has_admin_mapping boolean;');
  const entry="IF app.probation_active_user() IS NOT TRUE THEN RETURN jsonb_build_object('page',false,'configure',false,'intake',false);END IF;";
- expect(candidate.split(entry)).toHaveLength(2);
- candidate=candidate.replace(entry,entry+"\n SELECT EXISTS(SELECT 1 FROM public.probation_access a WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id() AND a.role='admin') INTO has_admin_mapping;");
+ expect(proposedDefinition.split(entry)).toHaveLength(2);
+ proposedDefinition=proposedDefinition.replace(entry,entry+"\n SELECT EXISTS(SELECT 1 FROM public.probation_access a WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id() AND a.role='admin') INTO has_admin_mapping;");
  for(const alias of ['c','co']){
-  const call='app.probation_config_admin('+alias+'.id)';expect(candidate.split(call)).toHaveLength(2);
-  candidate=candidate.replace(call,'CASE WHEN has_admin_mapping THEN '+call+' ELSE false END');
+  const call='app.probation_config_admin('+alias+'.id)';expect(proposedDefinition.split(call)).toHaveLength(2);
+  proposedDefinition=proposedDefinition.replace(call,'CASE WHEN has_admin_mapping THEN '+call+' ELSE false END');
  }
- expect(candidate).not.toBe(original);
+ expect(proposedDefinition).not.toBe(original);
+ const proposal=JSON.parse(readFileSync(new URL('./performance/probation-navigation-migration.proposal.json',import.meta.url),'utf8')) as {sql:string};
+ const candidate=proposal.sql;
+ expect(candidate.split('AS $$')[1].split('$$;')[0]).toBe(proposedDefinition.split('AS $function$')[1]?.split('$function$')[0]??proposedDefinition.split('AS $$')[1].split('$$;')[0]);
  const read=(ctx:SessionContext)=>withTenant(ctx,async tx=>{
   const [row]=await tx.execute<{data:{page:boolean;configure:boolean;intake:boolean}}>(sql`select app.probation_navigation_access() as data`);return row.data;
  });
@@ -41,8 +44,10 @@ it('compares a necessary admin-mapping probe against the installed navigation ow
  try{
   controls.employee=await compare(employee);expect(controls.employee).toEqual({page:false,configure:false,intake:false});
   controls.groupAdmin=await compare(admin);controls.foreign=await compare(adminCtx(foreign));
+  controls.foreignPrincipal=await compare({...adminCtx(foreign),userId:admin.userId});expect(controls.foreignPrincipal).toEqual(controls.employee);
   for(const phase of ['original','candidate','candidate-warm','restored']){
-   await owner.client.unsafe(phase==='original'||phase==='restored'?original:candidate);
+   await owner.client.unsafe(original);
+   if(phase==='candidate'||phase==='candidate-warm')await owner.client.unsafe(candidate);
    await read(employee);const began=performance.now();
    for(let index=0;index<50;index++)expect(await read(employee)).toEqual(controls.employee);
    measurements.push({phase,reads:50,elapsedMs:performance.now()-began});
@@ -60,6 +65,21 @@ it('compares a necessary admin-mapping probe against the installed navigation ow
   const outcome=async(ddl:string)=>{await owner.client.unsafe(ddl);try{return {value:await read(forged)}}catch{return {refused:true}}};
   controls.forged=await outcome(original);expect(await outcome(candidate)).toEqual(controls.forged);
   await setModule(b.tenantId,'lifecycle','disabled');controls.disabled=await compare(admin);
+  await owner.client.unsafe(original);
+  const drifts:[string,string][]=[
+   ['body',original.replace('DECLARE configuration','-- controlled predecessor drift\nDECLARE configuration')],
+   ['volatility','ALTER FUNCTION app.probation_navigation_access() VOLATILE'],
+   ['app-execute','REVOKE EXECUTE ON FUNCTION app.probation_navigation_access() FROM ai_hr_app'],
+   ['public-execute','GRANT EXECUTE ON FUNCTION app.probation_navigation_access() TO PUBLIC'],
+   ['app-grant-option','GRANT EXECUTE ON FUNCTION app.probation_navigation_access() TO ai_hr_app WITH GRANT OPTION'],
+   ['configuration','ALTER FUNCTION app.probation_navigation_access() SET search_path=public'],
+   ['security','ALTER FUNCTION app.probation_navigation_access() SECURITY INVOKER'],
+  ];
+  for(const [,ddl]of drifts){
+   await expect(owner.client.begin(async tx=>{await tx.unsafe(ddl);await tx.unsafe(candidate);})).rejects.toMatchObject({code:'55000'});
+   expect(await catalog()).toEqual(metadata);
+  }
+  controls.predecessorDriftsRefused=drifts.map(([kind])=>kind);
  }finally{
   await owner.client.unsafe(original);expect(await catalog()).toEqual(metadata);
   const [restored]=await owner.db.execute<{ddl:string}>(sql`select pg_get_functiondef('app.probation_navigation_access()'::regprocedure) as ddl`);expect(restored.ddl).toBe(original);
