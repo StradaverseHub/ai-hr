@@ -150,8 +150,9 @@ describe('a correction from chat: one question when something is missing, the da
  });
  it('asks for the clock-in when the day has none on record, instead of taking one from the roster',async()=>{
   state.rows.mockResolvedValue(recordedDay(yesterday(),null,null));
+  // The person said "yesterday", so the HR date owner's day goes back with the question.
   expect(await prepareChatAttendanceCorrectionProposal(caller,{date:yesterday(),checkOut:'18:10',reason:'forgot to clock out'},'I forgot to clock out yesterday at 6:10pm'))
-   .toEqual({kind:'ask',missing:['checkIn'],options:[]});
+   .toEqual({kind:'ask',missing:['checkIn'],options:[],dates:{startDate:yesterday(),endDate:yesterday(),others:[],phrase:'yesterday'}});
   expect(state.prepareCorrection).not.toHaveBeenCalled();
  });
  it('pairs the clock-out with the clock-in on record and files it as the screen does, with the reason only in the sealed review',async()=>{
