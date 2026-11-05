@@ -11,7 +11,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {owner,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,closeAll,type Base} from './harness';
 import {getRewardUnit,saveRewardEntry,decideRewardUnit,postRewardUnit,exportRewardReview,readOnlyRewardProjection,refreshRewardPatBasis} from '../packs/rewards/service';
-import {beginRewardViewAs,endRewardViewAs,changeRewardPermission,saveRewardSetupGrant,rewardPermissions,rewardViewAsState} from '../packs/rewards/access-policy';
+import {beginRewardViewAs,endRewardViewAs,changeRewardPermission,saveRewardSetupGrant,rewardPermissions,rewardViewAsState,saveRewardPersonalPage} from '../packs/rewards/access-policy';
 import {createUploadedRewards,uploadedRewards,saveUploadedRewards,confirmUploadedRewards,adjustUploadedAward,refreshUploadedRewardSources} from '../packs/rewards/uploaded-awards';
 import {emptyFacts,emptyRecommendation} from '../packs/rewards/model';
 import {generateRewardAdvisor,saveRewardAdvisorSettings} from '../packs/rewards/advisor';
@@ -58,6 +58,15 @@ describe('approved Rewards review SQL custody',()=>{
   await endRewardViewAs(checker);
  });
  it('permission overrides narrow the native read owner and fixed own-line protection cannot be changed',async()=>{await expect(changeRewardPermission(gr,{role:'gr',capability:'own.never',allowed:true,reason:'Attempt to weaken own-line confidentiality'})).rejects.toThrow(/fixed/);await changeRewardPermission(gr,{role:'gr',capability:'review.view',allowed:false,reason:'Temporarily suspend this native page capability'});await expect(getRewardUnit(gr,unitId)).rejects.toThrow(/does not permit/);});
+ it('applies a dated personal page grant only inside an existing seat and company scope',async()=>{
+  await changeRewardPermission(gr,{role:'gr',capability:'review.view',allowed:false,reason:'Test the configured review page restriction'});
+  await expect(getRewardUnit(checker,unitId)).rejects.toThrow(/does not permit/);
+  const grant={userId:checker.userId!,companyId:b.companyId,capability:'review.view',validFrom:today,validTo:today,active:true,reason:'Allow the existing reviewer to view this company review'};
+  await saveRewardPersonalPage(gr,grant);
+  expect((await getRewardUnit(checker,unitId)).roles).toContain('gr');
+  await saveRewardPersonalPage(gr,{...grant,active:false,reason:'Remove the temporary page exception after review'});
+  await expect(getRewardUnit(checker,unitId)).rejects.toThrow(/does not permit/);
+ });
  it('lets Group Admin bootstrap a dated company CTRO grant without widening scope or blocking login on revocation',async()=>{
   const p=await hireEmployee(gr,{person:{fullName:'Fictional CTRO library reader',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
   const userId=await createAppUser(b.tenantId,p.personId,'employee');
