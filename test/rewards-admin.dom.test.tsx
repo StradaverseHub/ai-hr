@@ -9,6 +9,7 @@ vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslation
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: ports.scopedAdmin, scopedSession: ports.scopedSession, getScopeIds: ports.scope }));
 vi.mock('../packs/rewards/access-policy', () => ({ rewardVisibleCompanies: ports.visibleCompanies, rewardNavigation: ports.navigation, rewardAccessPageCompanies: ports.accessCompanies }));
+vi.mock('../packs/rewards/group-roles', () => ({ rewardWholeGroupPlans: async () => [] }));
 vi.mock('../lib/authz', () => ({ requireModule: ports.requireModule, isAdmin: () => false }));
 vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, listRewardReviewStatus: ports.reviewStatus, rewardCoverageForUnits: async () => [], rewardSetupChoices: ports.choices, getRewardConfiguration: ports.configuration, getRewardSeniorMembership: vi.fn(), rewardSharedPolicyChoices: ports.shared, rewardPolicyMemberships: ports.memberships, getRewardCalendar: async () => ({ revision: 1, canEdit: true, values: { due: { bu: '2026-12-11' }, caseDue: null, offcycleDays: {} } }), rewardAccessRequests: ports.requests, rewardCalendarStages: ['bu'], rewardOffcycleSlaStages: ['bg'] }));
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), memberAction: vi.fn(), policyAction: vi.fn(), deleteRewardAction: vi.fn(), calendarAction: vi.fn() }));

@@ -1,3 +1,4 @@
+import {rewardWholeGroupPlans} from '@/packs/rewards/group-roles';
 import {rewardNavigation,rewardVisibleCompanies} from '@/packs/rewards/access-policy';
 import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
@@ -12,10 +13,24 @@ export default async function RewardsPage({searchParams}:{searchParams:Promise<R
  const {s}=await scopedSession();
  const companies=await rewardVisibleCompanies(s),allowedIds=companies.map(c=>c.id),scopeIds=companies.some(c=>c.wholeGroup)?allowedIds:await getScopeIds(allowedIds);
  const t=await getTranslations('rewards'), nav=await getTranslations('nav'), sp=await searchParams;
- const [list,choices,destinations]=await Promise.all([listRewardReviewStatus(s,scopeIds),rewardSetupChoices(s,scopeIds),rewardNavigation(s,isAdmin(s))]);
+ const [list,choices,destinations,plans]=await Promise.all([
+   listRewardReviewStatus(s,scopeIds),rewardSetupChoices(s,scopeIds),rewardNavigation(s,isAdmin(s)),rewardWholeGroupPlans(s),
+ ]);
+ const setup=await getTranslations('rewardSetup');
  return <div className="w-full space-y-6"><PageHeader title={nav('rewardsReviewing')} description={t('description')} actions={<>
   {destinations.includes('/rewards/analytics') && <Link href="/rewards/analytics" className="inline-flex text-sm font-medium text-primary hover:underline">{nav('rewardsAnalytics')}</Link>}
   {destinations.includes('/rewards/approvals') && <Link href="/rewards/approvals" className="inline-flex text-sm font-medium text-primary hover:underline">{nav('rewardsApprovalsBoard')}</Link>}
   {destinations.includes('/rewards/rules') && <Link href="/rewards/rules" className="inline-flex text-sm font-medium text-primary hover:underline">{nav('rewardsRules')}</Link>}
- </>}/><ErrorBanner message={sp.error}/><RewardReviewList {...list} filters={sp} canConfigure={choices.companies.length>0}/></div>;
+ </>}/><ErrorBanner message={sp.error}/>
+  {plans.length>0&&<details className="rounded-lg border border-border p-4">
+    <summary className="cursor-pointer font-medium">{setup('plans')} ({plans.length})</summary>
+    <ul className="mt-3 divide-y divide-border">
+      {plans.map(plan=><li key={plan.id} className="space-y-1 py-3 text-sm">
+        <p className="font-medium">{plan.cycle} · {plan.year}</p>
+        <p>{t('stage')}: {setup(plan.state)} · {setup('snapshotDate')}: {plan.snapshot}</p>
+        <p className="text-muted-foreground">{plan.companies.join(' · ')}</p>
+      </li>)}
+    </ul>
+  </details>}
+  <RewardReviewList {...list} filters={sp} canConfigure={choices.companies.length>0}/></div>;
 }

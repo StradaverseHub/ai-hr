@@ -334,7 +334,7 @@ export function exportRewardReview(ctx:SessionContext,unitId:string,format:'revi
 async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,capability:import('./access-policy-model').RewardCapability='review.view') {
   {
     const { unit, roles, entries } = await load(tx, unitId,false,capability);
-    const [caps]=await tx.execute<{value:{figuresEdit:boolean;reviewDecide:boolean;batch:boolean;dataCheck:boolean;snapshotRefresh:boolean;offcycleRaise:boolean;notesAdd:boolean;casesDecide:boolean}}>(sql`select jsonb_build_object('figuresEdit',app.reward_capability(${unitId}::uuid,'figures.edit'),'reviewDecide',app.reward_capability(${unitId}::uuid,'review.decide'),'batch',app.reward_capability(${unitId}::uuid,'review.batch'),'dataCheck',app.reward_capability(${unitId}::uuid,'data.check'),'snapshotRefresh',app.reward_capability(${unitId}::uuid,'snapshot.refresh'),'offcycleRaise',app.reward_capability(${unitId}::uuid,'offcycle.raise'),'notesAdd',app.reward_capability(${unitId}::uuid,'notes.add'),'casesDecide',app.reward_capability(${unitId}::uuid,'cases.decide')) as value`);
+    const [caps]=await tx.execute<{value:{figuresEdit:boolean;reviewDecide:boolean;batch:boolean;dataCheck:boolean;snapshotRefresh:boolean;offcycleRaise:boolean;notesAdd:boolean;casesDecide:boolean}}>(sql`select jsonb_build_object('figuresEdit',app.reward_capability(${unitId}::uuid,'figures.edit') and (not exists(select 1 from app.reward_current_group_roles()) or app.reward_group_figures_stage_allowed(${unitId}::uuid)),'reviewDecide',app.reward_capability(${unitId}::uuid,'review.decide'),'batch',app.reward_capability(${unitId}::uuid,'review.batch'),'dataCheck',app.reward_capability(${unitId}::uuid,'data.check'),'snapshotRefresh',app.reward_capability(${unitId}::uuid,'snapshot.refresh'),'offcycleRaise',app.reward_capability(${unitId}::uuid,'offcycle.raise'),'notesAdd',app.reward_capability(${unitId}::uuid,'notes.add'),'casesDecide',app.reward_capability(${unitId}::uuid,'cases.decide')) as value`);
     const calculated = await calculateUnit(tx, unit, entries);
     const [uploadedReview]=await tx.execute<{present:boolean;pending:boolean}>(sql`select true as present,(current_version=0 or checked_version is distinct from current_version) as pending from reward_uploaded_review where unit_id=${unitId}::uuid and tenant_id=app.current_tenant_id()`);
     if(uploadedReview?.pending&&!roles.includes('gr'))throw new RewardError('This upload awaits independent Group Rewards confirmation before the BU review opens.');
@@ -788,11 +788,25 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
   idSchema.parse(entryId); const rec = recommendationSchema.parse(recommendation);
   const validatedFacts = facts === undefined ? undefined : factsSchema.parse(facts);
   return withRewardsTenant(ctx, async tx => {
-    const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision); assertUnlocked(unit);
+    const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision);
+    const [scope] = await tx.execute<{ wholeGroup: boolean; stageAllowed: boolean }>(sql`
+      select exists(select 1 from app.reward_current_group_roles()) as "wholeGroup",
+        app.reward_group_figures_stage_allowed(${unitId}::uuid) as "stageAllowed"
+    `);
+    const approvalStageEdit = scope?.wholeGroup && ['gr','ctro','ec'].includes(unit.status)
+      && roles.includes(unit.status as RewardRole) && scope.stageAllowed;
+    if (scope?.wholeGroup && !scope.stageAllowed) throw new RewardError('You can edit figures only at your approval step.');
+    if (!approvalStageEdit) assertUnlocked(unit);
+    if (approvalStageEdit && unit.approvedDigest !== digest(unit, entries)) {
+      throw new RewardError('The inputs changed after submission. Return this review to draft.');
+    }
     await assertRewardCapabilityTx(tx,unitId,'figures.edit');
     const entry = entries.find(e => e.id === entryId);
     if((await tx.execute<{uploaded:boolean}>(sql`select exists(select 1 from reward_uploaded_review where unit_id=${unitId}::uuid) as uploaded`))[0]?.uploaded)throw new RewardError('Use the Uploaded awards adjustment form to change this amount with a reason.');
     if (!entry || !visibleEntry(entry, roles, ctx.personId)) throw new RewardError('This reward record is not available to you.');
+    if (approvalStageEdit && validatedFacts && !isDeepStrictEqual(validatedFacts, entry.facts)) {
+      throw new RewardError('Only the recommendation can change at this approval step.');
+    }
     const canEC = entry.facts.confidentiality === 'ec' && roles.some(r => ['gr', 'ctro', 'ec'].includes(r));
     if (!canEditStage(unit.status, roles) && !(unit.kind !== 'annual' && roles.includes('bg')) && !canEC) throw new RewardError('You cannot edit this reward recommendation.');
     if (entry.facts.confidentiality !== 'ec' && rec.bonusCents != null) throw new RewardError('Use the bonus multiplier for a standard or JG H employee.');
@@ -808,7 +822,15 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
     const [advice]=await tx.execute<{id:string;sourceDigest:string;recommendation:typeof rec}>(sql`select id,source_digest as "sourceDigest",recommendation from reward_advisor_suggestion where unit_id=${unitId}::uuid and entry_id=${entryId}::uuid and status='pending' and unit_revision=${unit.revision} order by created_at desc,id desc limit 1`);
     if(advice){const {rewardAdvisorSettingTx,advisorFingerprintTx}=await import('./advisor');const setting=await rewardAdvisorSettingTx(tx,unitId);if(setting.settings.enabled&&unit.status==='draft'&&advice.sourceDigest===await advisorFingerprintTx(tx,unitId)){if(advisorNeedsOverrideReason(rec,advice.recommendation,setting.settings.overrideThresholdBp)&&rec.reason.trim().length<10)throw new RewardError('Explain the difference from the advisor suggestion in at least 10 characters.');await tx.execute(sql`update reward_advisor_suggestion set status='adjusted',decided_by=app.current_user_id(),decided_at=now(),decision_reason=${rec.reason},final_recommendation=${JSON.stringify(rec)}::jsonb where id=${advice.id}::uuid`);}}
     await tx.update(rewardEntry).set({ recommendation: rec, ...(validatedFacts ? { facts: validatedFacts } : {}), updatedAt: new Date() }).where(eq(rewardEntry.id, entryId));
-    await touch(tx, unitId); await stamp(tx, ctx, unitId, 'recommendation-updated', { entryId, revision: unit.revision + 1 });
+    if (approvalStageEdit) {
+      const revised = entries.map(row => row.id === entry.id ? { ...row, recommendation: rec } : row);
+      await tx.update(rewardUnit).set({
+        revision: unit.revision + 1, approvedDigest: digest(unit, revised), updatedAt: new Date(),
+      }).where(eq(rewardUnit.id, unitId));
+    } else {
+      await touch(tx, unitId);
+    }
+    await stamp(tx, ctx, unitId, 'recommendation-updated', { entryId, revision: unit.revision + 1, stage: unit.status });
   });
 }
 
@@ -1041,7 +1063,9 @@ export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: st
       if (missing.length) throw new RewardError(`Assign every approval role and the payroll handoff before submitting. Missing: ${missing.map(role => rewardRoleLabels[role]).join(', ')}.`);
       if (unit.status !== 'draft' && unit.approvedDigest !== hash) throw new RewardError('The inputs changed after submission. Return this review to draft.');
       // A person must not sign consecutive stages of the same revision, even if granted both roles.
-      const [prior] = await tx.select().from(rewardDecision).where(and(eq(rewardDecision.unitId, unitId), eq(rewardDecision.revision, revision))).orderBy(desc(rewardDecision.createdAt), desc(rewardDecision.id)).limit(1);
+      const [prior] = await tx.select().from(rewardDecision).where(and(
+        eq(rewardDecision.unitId, unitId), eq(rewardDecision.toStage, unit.status),
+      )).orderBy(desc(rewardDecision.createdAt), desc(rewardDecision.id)).limit(1);
       if (prior?.actorId === ctx.userId && action === 'approve') throw new RewardError('A different reviewer must sign the next approval stage.');
     }
     await tx.insert(rewardDecision).values({ tenantId: ctx.tenantId, unitId, actorId: ctx.userId!, revision, action, fromStage: unit.status, toStage: next, reason, digest: hash });

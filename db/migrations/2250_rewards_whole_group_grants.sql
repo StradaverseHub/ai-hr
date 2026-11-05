@@ -195,3 +195,20 @@ CREATE OR REPLACE FUNCTION app.reward_setup_allowed(wanted_company uuid,wanted_o
  OR EXISTS(SELECT 1 FROM reward_unit u WHERE u.tenant_id=app.current_tenant_id() AND u.deleted_at IS NULL AND wanted_company IS NOT NULL AND u.company_id=wanted_company
   AND EXISTS(SELECT 1 FROM app.reward_roles(u.id) r WHERE r='gr' OR wanted_operation='library_view' AND r='ctro')))
 $$;
+--> statement-breakpoint
+
+-- A narrow catalogue keeps plan review separate from configuration authority.
+CREATE POLICY reward_plan_whole_group_catalogue ON public.reward_plan_setup FOR SELECT TO ai_hr_owner
+USING (tenant_id = app.current_tenant_id() AND EXISTS (SELECT 1 FROM app.reward_current_group_roles()));
+CREATE FUNCTION app.reward_whole_group_plan_catalogue()
+RETURNS TABLE(plan_id uuid, cycle_name text, year integer, snapshot_date date, state text, companies text[])
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+  SELECT r.version_id, r.cycle_name, r.year, r.snapshot_date, r.state,
+    ARRAY(SELECT c.legal_name FROM public.company c
+      WHERE c.tenant_id = r.tenant_id AND c.id = ANY(r.company_ids) ORDER BY c.legal_name, c.id)
+  FROM public.reward_plan_setup r
+  WHERE r.tenant_id = app.current_tenant_id() AND EXISTS (SELECT 1 FROM app.reward_current_group_roles())
+  ORDER BY r.year DESC, r.cycle_name, r.version_id;
+$$;
+REVOKE ALL ON FUNCTION app.reward_whole_group_plan_catalogue() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_whole_group_plan_catalogue() TO ai_hr_app;

@@ -36,3 +36,17 @@ export function saveRewardGroupRole(session: SessionContext, raw: unknown) {
     )
   `));
 }
+
+export function rewardWholeGroupPlans(session: SessionContext) {
+  return withRewardsTenant(session, tx => tx.execute<{
+    id: string;
+    cycle: string;
+    year: number;
+    snapshot: string;
+    state: 'draft' | 'pending' | 'approved';
+    companies: string[];
+  }>(sql`
+    select plan_id as id, cycle_name as cycle, year, snapshot_date::text as snapshot, state, companies
+    from app.reward_whole_group_plan_catalogue()
+  `));
+}
