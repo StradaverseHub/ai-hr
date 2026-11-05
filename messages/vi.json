@@ -35459,6 +35459,8 @@
     "useApprovedPlan": "Tạo đánh giá hằng năm từ kế hoạch đãi ngộ đã được phê duyệt",
     "newVersion": "Tạo phiên bản tiếp theo",
     "companyPatOwner": "Dữ liệu PAT được quản lý tại màn hình PAT theo công ty và năm.",
+    "patBasisStale": "Điều kiện hưởng của nhân viên đã thay đổi. Tính lại quỹ bằng phiên bản PAT công ty đã áp dụng cho kỳ xét duyệt này.",
+    "refreshPatBasis": "Tính lại quỹ theo điều kiện hiện tại",
     "adoptPat": "Áp dụng PAT công ty đã xác nhận",
     "patChanged": "PAT công ty đã thay đổi. Nhóm Đãi ngộ tập đoàn phải áp dụng phiên bản đã xác nhận trong Bản nháp trước khi đợt đánh giá có thể tiếp tục.",
     "patHistory": "Các phiên bản đã xác nhận trước đó được giữ trong lịch sử kiểm toán.",

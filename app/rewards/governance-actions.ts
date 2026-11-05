@@ -6,7 +6,7 @@ import {ZodError} from 'zod';
 import {publicErrorMessage} from '@/lib/public-error';
 import {PROFILE_ATTACHMENT_TOTAL_MAX_BYTES} from '@/lib/profile-attachment';
 import { getSession } from '@/lib/session';
-import { adoptConfirmedCompanyPat,getRewardUnitGovernance,saveRewardUnitInputs, proposeRewardExemption, confirmRewardGovernance, saveRewardSeniorAward,RewardError } from '@/packs/rewards/service';
+import { adoptConfirmedCompanyPat,refreshRewardPatBasis,getRewardUnitGovernance,saveRewardUnitInputs, proposeRewardExemption, confirmRewardGovernance, saveRewardSeniorAward,RewardError } from '@/packs/rewards/service';
 
 /** Decimal input to integer money/rates; never binary multiplication of an HR-entered decimal. */
 function scaled(value:FormDataEntryValue|null,places:number):number|null{
@@ -32,6 +32,7 @@ async function change(f:FormData,work:(session:Awaited<ReturnType<typeof getSess
  redirect(`/rewards/${encodeURIComponent(unitId)}${error?'?error='+encodeURIComponent(error):''}#unit-governance`);
 }
 export async function adoptCompanyPatAction(f:FormData){return change(f,(s,id,rev)=>adoptConfirmedCompanyPat(s,id,rev,String(f.get('reason')??'')));}
+export async function refreshCompanyPatBasisAction(f:FormData){return change(f,(s,id,rev)=>refreshRewardPatBasis(s,id,rev,String(f.get('reason')??'')));}
 export async function unitInputsAction(f:FormData){return change(f,async(s,id,rev)=>{const view=await getRewardUnitGovernance(s,id),bound=view.companyPatBound?view.inputs:null;return saveRewardUnitInputs(s,id,rev,{
  forecastCents:bound?bound.forecastCents:scaled(f.get('forecast'),2),actualCents:bound?bound.actualCents:scaled(f.get('actual'),2),targetCents:bound?bound.targetCents:scaled(f.get('target'),2),targetMonthsBp:bound?bound.targetMonthsBp:scaled(f.get('targetMonths'),4)??0,
  multiplierBp:scaled(f.get('multiplier'),4),branchRatings:Object.fromEntries([...f.entries()].filter(([key])=>key.startsWith('branch.')).map(([key,value])=>[key.slice(7),String(value)])),

@@ -7,7 +7,7 @@ import {businessUnit,employment,jobGrade,person} from '../db/schema';
 import {withTenant} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {createRewardUnit,getRewardUnit,getRewardUnitGovernance,saveRewardEntry,saveRewardUnitInputs,saveRewardPolicy} from '../packs/rewards/service';
+import {createRewardUnit,getRewardUnit,getRewardUnitGovernance,saveRewardEntry,refreshRewardPatBasis,saveRewardPolicy} from '../packs/rewards/service';
 import {emptyFacts,emptyRecommendation} from '../packs/rewards/model';
 import {approveRewardSetupPlan,createNewRewardPlan,previewNewRewardPlan,rewardPlanSettings,saveRewardPlanSettings,submitRewardSetupPlan} from '../packs/rewards/plan-configuration';
 import {rewardPatInputs,proposeRewardPat,confirmRewardPat} from '../packs/rewards/pat-inputs';
@@ -39,7 +39,7 @@ it('runs the real GR-only library, checked plan, dated roster and atomic draft P
  const unit=await getRewardUnit(maker,id);expect(unit.rows.map(r=>r.source.employeeCode)).toEqual(['PAT-BASIS']);expect(unit.roles).toContain('gr');
  await expect(saveRewardPolicy(maker,id,unit.unit.revision,{...unit.unit.policy,ranges:{...unit.unit.policy.ranges,'12':[1,2,3]}})).rejects.toThrow(/read-only/);
  await saveRewardEntry(maker,id,unit.unit.revision,unit.rows[0].id,emptyRecommendation(),{...emptyFacts(),performance:'ME',reviewed:true});
- const basis=await getRewardUnitGovernance(maker,id);await saveRewardUnitInputs(maker,id,basis.revision,basis.inputs!,reason);
+ const basis=await getRewardUnitGovernance(maker,id);expect(basis.patBasisStale).toBe(true);await refreshRewardPatBasis(maker,id,basis.revision,reason);
  expect((await getRewardUnitGovernance(maker,id)).pools.standard).toBe(1000000);
  const next=await proposeRewardPat(maker,{companyId:b.companyId,year:2026,expectedRevision:1,inputs:{targetCents:3,forecastCents:null,actualCents:2,targetMonthsBp:15000},reason});expect(await confirmRewardPat(checker,next)).toEqual([id]);
  const repriced=await getRewardUnitGovernance(maker,id);expect(repriced.pools.standard).toBe(499999);expect(repriced.previousPools?.standard).toBe(1000000);expect(repriced.inputs?.actualCents).toBe(2);expect(repriced.patRecalculationRequired).toBe(false);
