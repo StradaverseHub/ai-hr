@@ -24127,7 +24127,8 @@
       "help": "Excluded from the salary increase and from the salary increase pool base. Still eligible for bonus, calculated on the adjusted basic salary, and counted in the bonus pool. Lateral transfers with no change to basic salary are not excluded."
     },
     "unitInputsHelp": "Unit budgets, PAT, multipliers, branch ratings and exemptions are maintained separately in the review.",
-    "unitInputsLink": "Open unit inputs"
+    "unitInputsLink": "Open unit inputs",
+    "architectureMismatch": "The employee grade differs from the approved position grade. Review the mapping or propose a dated grade movement; the recorded employee grade stays unchanged."
   },
   "identityEmail": {
     "title": "Email delivery",

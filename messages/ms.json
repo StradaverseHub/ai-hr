@@ -24127,7 +24127,8 @@
       "help": "Dikecualikan daripada kenaikan gaji dan asas kumpulan kenaikan gaji. Masih layak menerima bonus berdasarkan gaji asas terlaras dan dikira dalam kumpulan bonus. Pertukaran setara tanpa perubahan gaji asas tidak dikecualikan."
     },
     "unitInputsHelp": "Belanjawan unit, PAT, pengganda, penarafan cawangan dan pengecualian diurus berasingan dalam semakan.",
-    "unitInputsLink": "Buka input unit"
+    "unitInputsLink": "Buka input unit",
+    "architectureMismatch": "Gred pekerja berbeza daripada gred jawatan yang diluluskan. Semak pemetaan atau cadangkan perubahan gred bertarikh; gred pekerja yang direkodkan kekal."
   },
   "identityEmail": {
     "title": "Penghantaran e-mel",
