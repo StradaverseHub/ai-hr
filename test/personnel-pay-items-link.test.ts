@@ -60,7 +60,7 @@ describe('2f889bae: Pay items rows reach the item page', () => {
 
   it('the finite non-HR record exits before Payroll links; their destination keeps its admin guard', () => {
     // Verified rather than assumed: revision 1 listed this as unverified.
-    expect(personnel).toContain('await requireWorkforceAccess({ personnelList: true })');
+    expect(personnel).toContain('await requireWorkforceAccess()');
     const exit=personnel.indexOf('if(!isAdmin(s))return <WorkforceScopedRecord');
     expect(exit).toBeGreaterThan(-1);
     expect(personnel.indexOf('const payrollOn = isModuleEnabledOrFalse')).toBeGreaterThan(exit);
