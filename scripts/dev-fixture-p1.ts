@@ -38,6 +38,8 @@ import * as perf from '../packs/performance/service';
 import { defaultPolicy, pmBands, potentialBands, talentColumn, type PMBand, type PotentialBand } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import * as rw from '../packs/rewards/service';
+import {defaultPolicy as defaultRewardPolicy} from '../packs/rewards/model';
+import {approvedRewardFixtures} from './fixtures/reward-approved';
 import * as payroll from '../packs/payroll/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -245,24 +247,35 @@ async function build() {
   const row = must(queue.rows.find(r => r.reviewId === rid.a1), 'a1 final-band row');
   await perf.decideAssessmentFinalBands(a, group, queue.sourceDigest, { action: 'decide', reviewId: rid.a1, band: must(row.suggestion?.band ?? row.group ?? row.bg, 'a1 suggested band'), reason: 'Final band confirmed after both calls.' });
 
-  // ── Rewards: one company, one business unit per stage, one reward cycle. ──────────────────────────────
+  // ── Rewards: a distinct fictional employer per stage, with one shared plan and cycle. ──────────────────────────────
   const R = await company('P1 Rewards (dev fixture)', 'P1-RWD');
   const dR = (await createDepartment(a, { companyId: R, name: 'P1 Rewards department' })).id;
   const buSeats = await unit(R, 'P1R-SEATS', 'P1 Rewards leadership');
   const seat: Record<string, Persona> = {};
   for (const role of SEATS) seat[role] = await hire(`rw-${role}`, `P1 Rewards ${role.toUpperCase()} seat`, { companyId: R, departmentId: dR, businessUnitId: buSeats }, 'manager', grade.id);
   const stageUnit: Record<string, string> = {};
-  let rewardCycleId: string | undefined;
+  const stageCompany: Record<string,string> = {};
+  const targets: {stage:RewardStage;companyId:string;businessUnitId:string}[] = [];
   for (const [i, stage] of REWARD_STAGES.entries()) {
-    const businessUnitId = await unit(R, `P1R-${stage.toUpperCase()}`, `P1 Rewards ${stage} unit`);
+    const companyId=await company(`P1 Rewards ${stage} employer`,`P1-RWD-${stage.toUpperCase()}`);
+    const departmentId=(await createDepartment(a,{companyId,name:`P1 Rewards ${stage} department`})).id;
+    const businessUnitId = await unit(companyId, `P1R-${stage.toUpperCase()}`, `P1 Rewards ${stage} unit`);
     for (const n of [1, 2]) {
-      const p = await hire(`rw-${stage}-${n}`, `P1 Rewards ${stage} employee ${n}`, { companyId: R, departmentId: dR, businessUnitId }, 'employee', grade.id);
+      const p = await hire(`rw-${stage}-${n}`, `P1 Rewards ${stage} employee ${n}`, { companyId, departmentId, businessUnitId }, 'employee', grade.id);
       await setEmploymentInfo(a, { employmentId: p.employmentId!, confirmationDate: `${year - 2}-04-01` });
       await setCompensation(a, { employmentId: p.employmentId!, basicSalary: 5000 + 1000 * ((i + n) % 3), effectiveFrom: hiredOn });
     }
-    const uid = await rw.createRewardUnit(a, { name: REWARD_CYCLE, year, companyId: R, businessUnitId, snapshotDate: today, ...(rewardCycleId ? { cycleId: rewardCycleId } : {}) });
-    rewardCycleId ??= must((await owner.db.select().from(s.rewardUnit).where(eq(s.rewardUnit.id, uid)))[0], 'reward unit').cycleId;
-    stageUnit[stage] = uid;
+    stageCompany[stage]=companyId;
+    targets.push({stage,companyId,businessUnitId});
+  }
+  const approved=approvedRewardFixtures(owner);
+  const base=defaultRewardPolicy(year);
+  let versionId:string|undefined;
+  for(const {stage,companyId,businessUnitId} of targets){
+    const uid=await approved.createApprovedRewardUnit(a,{name:REWARD_CYCLE,year,companyId,businessUnitId,snapshotDate:today,sharedPolicyVersionId:versionId},{...base,patActual:100,patTarget:100,ranges:{'12':[300000,600000,1200000]}},targets.map(({companyId,businessUnitId})=>({companyId,businessUnitId})));
+    const row=must((await owner.db.select().from(s.rewardUnit).where(eq(s.rewardUnit.id,uid)))[0],'reward unit');
+    versionId??=must(row.policyGroupVersionId,'approved plan version');
+    stageUnit[stage]=uid;
   }
   const urev = async (ctx: SessionContext, uid: string) => (await rw.getRewardUnit(ctx, uid)).unit.revision;
   const gr = seat.gr;
@@ -270,8 +283,6 @@ async function build() {
     const uid = stageUnit[stage];
     for (const role of SEATS) await rw.setRewardMember(a, uid, await urev(a, uid), seat[role].userId!, role);
     await rw.setRewardMember(a, uid, await urev(a, uid), a.userId!, 'payroll');
-    const current = (await rw.getRewardUnit(gr, uid)).unit.policy;
-    await rw.saveRewardPolicy(gr, uid, await urev(gr, uid), { ...current, patActual: 100, patTarget: 100, ranges: { '12': [300000, 600000, 1200000] } });
     // Group Rewards verifies the classification. On the unit that will be posted, employee 1 is a BG direct report.
     const v = await rw.getRewardUnit(gr, uid);
     const rows = v.rows.map(r => ({ employmentId: r.source.employmentId, facts: { ...r.facts, talent: 'SCORE' as const, performance: 'ME' as const, confidentiality: (stage === 'posted' && r.source.name.endsWith(' 1') ? 'bg' : 'standard') as 'bg' | 'standard', reviewed: true } }));
@@ -287,7 +298,7 @@ async function build() {
   await rw.decideRewardUnit(seat.bg, stageUnit.returned, await urev(seat.bg, stageUnit.returned), 'return', 'Returned: please revisit the merit split for this unit.');
   {
     const uid = stageUnit.posted;
-    await payroll.createBatch(a, { companyId: R, payPeriod: today.slice(0, 7) });
+    await payroll.createBatch(a, { companyId: stageCompany.posted, payPeriod: today.slice(0, 7) });
     const choices = await rw.rewardPayrollChoices(a, uid);
     await rw.postRewardUnit(a, uid, await urev(a, uid), choices[0]?.id);
     // Off-cycle, originated by the BG seat for its direct report on the posted unit.
