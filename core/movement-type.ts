@@ -206,10 +206,11 @@ async function inUseCodesTx(tx: Tx, tenantId: string): Promise<Set<string>> {
  * shipped list was not asked for), then custom types by their sort order. `sortOrder` is carried so a later
  * item can make the whole list orderable without a schema change.
  */
-export function listMovementEventTypes(ctx: SessionContext): Promise<MovementEventTypeRow[]> {
+export function listMovementEventTypes(ctx: SessionContext, options: { includeUsage?: boolean } = {}): Promise<MovementEventTypeRow[]> {
   return withTenant(ctx, async (tx) => {
     const overlay = await overlayTx(tx, ctx.tenantId);
-    const inUse = await inUseCodesTx(tx, ctx.tenantId);
+    // Only settings need usage to show whether a type can be deleted.
+    const inUse = options.includeUsage === false ? undefined : await inUseCodesTx(tx, ctx.tenantId);
     const rows: MovementEventTypeRow[] = MOVEMENT_KINDS.map((kind, i) => {
       const o = overlay.get(kind);
       return {
@@ -220,7 +221,7 @@ export function listMovementEventTypes(ctx: SessionContext): Promise<MovementEve
         active: o ? o.isActive : true,
         sortOrder: o?.sortOrder ?? i,
         builtIn: true,
-        inUse: inUse.has(kind),
+        inUse: inUse?.has(kind) ?? false,
         // Never o.createdAt: that is when the tenant first RENAMED or switched this built-in, not when
         // the type came into being. See the field's doc comment.
         createdAt: null,
@@ -238,7 +239,7 @@ export function listMovementEventTypes(ctx: SessionContext): Promise<MovementEve
         active: o.isActive,
         sortOrder: o.sortOrder,
         builtIn: false,
-        inUse: inUse.has(code),
+        inUse: inUse?.has(code) ?? false,
         createdAt: o.createdAt,
       });
     }

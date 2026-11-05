@@ -596,7 +596,7 @@ export default async function EmployeePage({
   // 476f23ed — the tenant's movement event-type catalogue. Read UNFILTERED, because Employment History has
   // to label a movement recorded under a type that has since been switched off; the New Event form filters
   // to the active ones below. A tenant that has configured nothing gets the built-in list unchanged.
-  const movementTypes = admin ? await listMovementEventTypes(s) : [];
+  const movementTypes = admin ? await listMovementEventTypes(s, { includeUsage: false }) : [];
   const movementTypeByCode = new Map(movementTypes.map((r) => [r.code, r]));
   const movementDetailData = admin && spMovement ? await movementDetail(s, employmentId, spMovement) : null;
   // 1d58019a Step 2 — the movement's supporting documents; the service applies history visibility and the
