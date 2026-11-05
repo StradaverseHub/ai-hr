@@ -106,7 +106,7 @@ describe('Rewards source refresh preview and confirm', () => {
     await expect(saveRewardSourceRefresh(admin, unitId, rev, p.asOf, p.digest)).rejects.toThrow(/Preview the refresh again/);
     await expect(previewRewardSourceRefresh(admin, unitId, rev, `${year - 3}-01-01`)).rejects.toThrow(/on or after the current snapshot/);
     await expect(previewRewardSourceRefresh(admin, unitId, rev, `${year + 1}-12-31`)).rejects.toThrow(/future/);
-    await expect(previewRewardSourceRefresh(bu, unitId, rev)).rejects.toThrow(/Only Group Rewards/);
+    await expect(previewRewardSourceRefresh(bu, unitId, rev)).rejects.toThrow('Your Rewards role does not permit this action.');
     await owner.db.update(schema.rewardUnit).set({ status: 'bg' }).where(eq(schema.rewardUnit.id, unitId));
     await expect(previewRewardSourceRefresh(admin, unitId, rev)).rejects.toThrow(/Return the unit to draft/);
     expect((await view()).unit.snapshotDate).toBe(earlier);
