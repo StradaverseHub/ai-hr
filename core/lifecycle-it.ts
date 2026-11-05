@@ -271,7 +271,10 @@ export async function createAssetRequest(ctx: SessionContext, p: AssetRequestInp
   });
 }
 
-export async function listAssetRequests(ctx: SessionContext, f: { status?: string; mine?: boolean } = {}): Promise<(AssetRequestRow & { itemName: string; itemCode: string })[]> {
+export async function listAssetRequests(ctx: SessionContext, f: { status?: string; mine?: boolean; limit?: number } = {}): Promise<(AssetRequestRow & { itemName: string; itemCode: string })[]> {
+  // The hub needs five rows; regular list callers retain their existing1000-row ceiling.
+  const limit=f.limit??1000;
+  if(!Number.isSafeInteger(limit)||limit<1||limit>1000)throw new LifecycleError('Invalid asset request preview limit.');
   return withTenant(ctx, async (tx) => {
     const conds = [];
     if (f.status) conds.push(eq(itAssetRequest.status, f.status));
@@ -279,7 +282,7 @@ export async function listAssetRequests(ctx: SessionContext, f: { status?: strin
     // RLS returns managers/admins every request and everyone else only their own.
     const rows = await tx.select({ r: itAssetRequest, itemName: itAssetCatalogue.itemName, itemCode: itAssetCatalogue.itemCode })
       .from(itAssetRequest).innerJoin(itAssetCatalogue, eq(itAssetCatalogue.id, itAssetRequest.catalogueId))
-      .where(conds.length ? and(...conds) : undefined).orderBy(desc(itAssetRequest.number)).limit(1000);
+      .where(conds.length ? and(...conds) : undefined).orderBy(desc(itAssetRequest.number)).limit(limit);
     return rows.map((x) => ({ ...x.r, itemName: x.itemName, itemCode: x.itemCode }));
   });
 }

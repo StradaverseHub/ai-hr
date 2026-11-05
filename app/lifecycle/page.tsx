@@ -13,7 +13,7 @@ export default async function LifecycleHub({ searchParams }: { searchParams: Pro
   const t = await getTranslations('lifecycle');
   const { error } = await searchParams;
   const mine = await getMyOnboarding(s);
-  const myRequests = (await listAssetRequests(s, { mine: true })).slice(0, 5);
+  const myRequests = await listAssetRequests(s, { mine: true, limit: 5 });
   const staff = level >= LEVEL.agent;
   const [onb, ofb, reqs, work, pending] = staff
     ? await Promise.all([listCases(s, 'onboarding'), listCases(s, 'offboarding'), listRequisitions(s, { status: 'open' }), lifecycleWorklist(s), pendingApprovals(s)])
