@@ -44,7 +44,7 @@ CREATE UNIQUE INDEX job_architecture_outlier_import_source ON job_architecture_o
 CREATE TABLE job_architecture_suggestion (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),company_id uuid NOT NULL REFERENCES company(id),
  kind text NOT NULL CHECK(kind IN('position','description','outlier')),subject_id uuid NOT NULL,source_digest text NOT NULL CHECK(source_digest~'^[a-f0-9]{64}$'),
- catalogue_revision integer NOT NULL,payload jsonb NOT NULL CHECK(jsonb_typeof(payload)='object'),provider_ref text NOT NULL,
+ catalogue_revision integer NOT NULL,payload jsonb NOT NULL CHECK(jsonb_typeof(payload)='object'),provider_ref text NOT NULL,contract_id text NOT NULL DEFAULT 'job_architecture_advice_v1',prompt_version integer NOT NULL DEFAULT 1 CHECK(prompt_version=1),
  created_by uuid NOT NULL REFERENCES app_user(id),created_at timestamptz NOT NULL DEFAULT now(),
  decision text NOT NULL DEFAULT 'pending' CHECK(decision IN('pending','accepted','edited','rejected')),decided_by uuid REFERENCES app_user(id),decided_at timestamptz,
  proposal_id uuid,FOREIGN KEY(tenant_id,proposal_id) REFERENCES job_architecture_proposal(tenant_id,id),
@@ -144,3 +144,11 @@ BEGIN
 END $$;
 CREATE TRIGGER architecture_outlier_bu BEFORE INSERT OR UPDATE ON job_architecture_outlier FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_outlier_bu();
 REVOKE ALL ON FUNCTION app.guard_architecture_outlier_bu() FROM PUBLIC;
+
+CREATE FUNCTION app.guard_architecture_suggestion_history() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$
+BEGIN
+ IF (to_jsonb(NEW)-ARRAY['decision','decided_by','decided_at','proposal_id','payload']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['decision','decided_by','decided_at','proposal_id','payload']) OR OLD.decision<>'pending' OR NEW.decision='pending' THEN RAISE EXCEPTION 'Suggestion source and decision history are immutable'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER architecture_suggestion_history BEFORE UPDATE ON job_architecture_suggestion FOR EACH ROW EXECUTE FUNCTION app.guard_architecture_suggestion_history();
+REVOKE ALL ON FUNCTION app.guard_architecture_suggestion_history() FROM PUBLIC;

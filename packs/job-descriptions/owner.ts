@@ -96,7 +96,7 @@ function uuid(x: string): string { if (!UUID.test(x))
 function actor(ctx: SessionContext) { if(!ctx.userId||!UUID.test(ctx.userId))throw new JobDocumentError('Job documentation requires an authorized HR user');return ctx.userId; }
 /** Access decisions are read under the same configuration lock used by revocation writers. */
 async function jobTenant<T>(ctx:SessionContext, fn:(tx:Tx)=>Promise<T>):Promise<T>{
- return withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);return fn(tx);});
+ return withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and (app.job_architecture_can(null,'view') or exists(select 1 from role_assignment ra join app_user u on u.id=ra.app_user_id and u.tenant_id=ra.tenant_id where ra.tenant_id=${ctx.tenantId}::uuid and ra.app_user_id=${ctx.userId}::uuid and ra.role::text in('hr_admin','super_admin') and u.archived_at is null and not app.login_blocked(u.id))) as ok`);if(!eligible?.ok)throw new JobDocumentError('Job documentation requires an authorized HR user');return fn(tx);});
 }
 async function rows<T>(tx: Tx, q: ReturnType<typeof sql>): Promise<T[]> { return await tx.execute(q) as unknown as T[]; }
 async function scope(tx: Tx, ctx: SessionContext, companyId: string, operation: 'view'|'maintain'='maintain'): Promise<void> { uuid(companyId); const [r] = await rows<{

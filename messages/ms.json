@@ -35372,6 +35372,7 @@
     "usePositionGrade": "Gunakan gred jawatan",
     "positionMovementHint": "Ini hanya mengisi gred cadangan. Simpan dan luluskan pergerakan bertarikh untuk mengubah gred pekerja.",
     "positionReadonlyHint": "Jenis pergerakan ini tidak boleh mengedit gred. Gunakan pergerakan bertarikh yang dibenarkan untuk mengubahnya.",
-    "positionDraftHint": "Ini hanya mengisi gred draf. Semak draf pekerja sebelum pengaktifan."
+    "positionDraftHint": "Ini hanya mengisi gred draf. Semak draf pekerja sebelum pengaktifan.",
+    "pdfExport": "Eksport PDF"
   }
 }

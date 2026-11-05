@@ -35372,6 +35372,7 @@
     "usePositionGrade": "使用职位职级",
     "positionMovementHint": "此操作仅填写建议职级。须保存并批准有生效日期的异动后，才会更改员工职级。",
     "positionReadonlyHint": "此异动类型无法编辑职级。请使用获授权且有生效日期的异动来更改。",
-    "positionDraftHint": "此操作仅填写草稿职级。启用前请审核员工草稿。"
+    "positionDraftHint": "此操作仅填写草稿职级。启用前请审核员工草稿。",
+    "pdfExport": "导出 PDF"
   }
 }
