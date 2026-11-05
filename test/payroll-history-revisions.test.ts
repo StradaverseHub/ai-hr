@@ -83,7 +83,13 @@ describe('immutable payroll history correction and recovery',()=>{
   await setCompensation(ctx,{employmentId:employeeId,basicSalary:4000,effectiveFrom:`${year-1}-01-01`});
   await setStatutoryProfileMY(ctx,{personId:employeePersonId,icNumber:'850202025555',taxCategory:1,numChildren:0});
   const run=await createBatch(ctx,{companyId:b.companyId,payPeriod:period});
-  await generatePayslips(ctx,{batchId:run.batchId});await closeBatch(ctx,{batchId:run.batchId});
+  expect((await listBatches(ctx,[b.companyId],period,['draft'])).map(row=>row.id)).toEqual([run.batchId]);
+  expect(await listBatches(ctx,[b.companyId],period,[])).toEqual([]);
+  await generatePayslips(ctx,{batchId:run.batchId});
+  expect(await listBatches(ctx,[b.companyId],period,['draft'])).toEqual([]);
+  expect((await listBatches(ctx,[b.companyId],period,['draft','processed'])).map(row=>row.id)).toEqual([run.batchId]);
+  await closeBatch(ctx,{batchId:run.batchId});
+  expect(await listBatches(ctx,[b.companyId],period,['draft','processed'])).toEqual([]);
   const [original]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,run.batchId));
   expect(original,'fixture: the processed run must hold the employee').toBeTruthy();
   const preview=await upload('6000.00');
