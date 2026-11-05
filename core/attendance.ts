@@ -4205,7 +4205,11 @@ export async function decideAttendanceCorrection(
         }
       }
       const payrollBatches = deferred ? null : await lockAttendancePayrollTx(tx, cor.employmentId, unclockedProtectedDates??plannedProtectedDates??cor.attendanceDate);
-      const [lockedDay] = deferred ? [] : await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.employmentId,cor.employmentId),eq(attendance.attendanceDate,cor.attendanceDate))).limit(1).for('update');
+      const [lockedDay] = deferred ? [] : await tx
+        .select({ id: attendance.id, figures: AMENDED_FIGURE_COLUMNS })
+        .from(attendance)
+        .where(and(eq(attendance.employmentId, cor.employmentId), eq(attendance.attendanceDate, cor.attendanceDate)))
+        .limit(1).for('update');
       // ADR-0069: resolve the APPROVED OT once, up front, so the SAME value is written to attendance.otMinutes,
       // stamped on the correction row, and (crucially) read by maybeAutoAccrueOnApprovalTx below. The auto-accrual
       // reads attendance.otMinutes AFTER we write it — so the DECISION (tested & documented in ADR-0069) is: TOIL
@@ -4273,7 +4277,13 @@ export async function decideAttendanceCorrection(
       // Skipped for a DEFERRED approval, which writes nothing to attendance and emits no
       // `attendance.amended` at all: its before/after is taken at the moment the plan LANDS, in
       // applyApprovedOtPlanTx, because that is the moment a figure actually moves.
-      const beforeFigures = deferred ? null : await attendanceFiguresTx(tx, cor.employmentId, cor.attendanceDate);
+      let beforeFigures: AmendedFigures | null = null;
+      if (!deferred) {
+        // For a non-OT decision, a locked row cannot change between these two points.
+        beforeFigures = !hasOtRequest && lockedDay
+          ? lockedDay.figures
+          : await attendanceFiguresTx(tx, cor.employmentId, cor.attendanceDate);
+      }
       const beforePunches = deferred ? [] : (await punchesForCorrectionTx(tx,cor.employmentId,cor.attendanceDate)).filter(row => !row.voidedAt).map(row=>({id:row.id,punchAt:row.punchAt,direction:row.direction}));
 
       let amendedId: string | null = null;
