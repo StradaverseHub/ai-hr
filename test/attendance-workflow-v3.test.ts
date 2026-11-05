@@ -1,10 +1,11 @@
+import {legacyPendingAttendanceTaskMetadata} from './helpers/attendance-task-original';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
-import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, listAttendanceCorrections, addAttendanceCorrectionAttachment, getAttendanceCorrectionAttachment } from '../core/attendance';
+import { checkIn, checkOut, requestAttendanceCorrection, pendingAttendanceTaskMetadata, decideAttendanceCorrection, listAttendanceCorrections, addAttendanceCorrectionAttachment, getAttendanceCorrectionAttachment } from '../core/attendance';
 import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, previewAttendanceWorkflow, reassignAttendanceWorkflowStageToHr, hasPendingAttendanceParticipantAssignment, decideAttendanceWorkflowStageTx } from '../core/attendance-workflow';
 import { attendanceApplicationDetail, attendanceApplicationFilterOptions } from '../core/attendance-application-history';
 import { listPendingTasks } from '../core/approvals-inbox';
@@ -200,6 +201,10 @@ describe('v3 database authority refuses bypasses and committed/released proof', 
     it('keeps an exact assigned request visible when the active company filter excludes its subject', async () => {
         const f = await fixture(), unrelated = await actor('Fictional non-assignee');
         const otherCompanyContext = [randomUUID()];
+        const crossCompanyTasks = await pendingAttendanceTaskMetadata(f.first.ctx, otherCompanyContext);
+        expect(crossCompanyTasks.map(row => row.id)).toEqual([f.id]);
+        expect(crossCompanyTasks).toEqual(await legacyPendingAttendanceTaskMetadata(f.first.ctx, otherCompanyContext));
+        expect(await pendingAttendanceTaskMetadata(unrelated.ctx, otherCompanyContext)).toEqual([]);
         expect((await listAttendanceCorrections(f.first.ctx, { companyIds: otherCompanyContext, status: 'pending' })).map(row => row.id)).toContain(f.id);
         expect((await listAttendanceCorrections(unrelated.ctx, { companyIds: otherCompanyContext, status: 'pending' })).map(row => row.id)).not.toContain(f.id);
         expect((await listPendingTasks(f.first.ctx, otherCompanyContext, { attendance: true, claims: true, performance: false, rewards: false })).map(row => row.id)).toEqual([f.id]);

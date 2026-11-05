@@ -1,3 +1,4 @@
+import {legacyPendingAttendanceTaskMetadata} from './helpers/attendance-task-original';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
@@ -84,6 +85,7 @@ describe('797ba70b: explicit hierarchy routing and frozen accountable actors', (
     await approveFirstTwo(f, id);
     expect((await pendingAttendanceTaskMetadata(f.actors[2],[b.companyId])).map(row=>row.id)).toEqual([id]);
     expect(await pendingAttendanceTaskMetadata(f.actors[0],[b.companyId])).toEqual([]);
+    expect(await pendingAttendanceTaskMetadata(f.actors[2],[b.companyId])).toEqual(await legacyPendingAttendanceTaskMetadata(f.actors[2],[b.companyId]));
     expect(await readDay(f.d.employmentId)).toEqual(before);
     expect((await listAttendanceCorrections(f.actors[2], { status: 'pending' })).map(r => r.id)).toContain(id);
     expect(await decideAttendanceCorrection(f.actors[2], { correctionId: id, decision: 'approved', expectedStageIndex: 2 })).toMatchObject({ status: 'approved' });
@@ -378,8 +380,12 @@ describe('797ba70b: Personnel-owned assignment criteria and request-bound delega
     const cover=await setReportingLine(f.a,{subordinateEmploymentId:f.second.employmentId,managerEmploymentId:stand.employmentId,lineType:'delegate',validFrom:'2020-01-01',reason:'Temporary level two cover',scopes:[{module:'attendance',taskType:'attendance.correction'}],orgScope:{companyId:b.companyId,departmentId:b.deptB,businessUnitId:null}});
     await enable(f.a); const id=await submit(f.self,f.d.employmentId); await decideAttendanceCorrection(f.actors[0],{correctionId:id,decision:'approved',expectedStageIndex:0});
     await expect(decideAttendanceCorrection(delegate,{correctionId:id,decision:'approved',expectedStageIndex:1})).rejects.toThrow();
+    expect(await pendingAttendanceTaskMetadata(delegate,[b.companyId])).toEqual([]);
     await editDelegation(f.a,{reportingLineId:cover.reportingLineId,managerEmploymentId:stand.employmentId,validFrom:'2020-01-01',validTo:null,reason:'Correct scoped cover',scopes:[{module:'attendance',taskType:'attendance.correction'}],orgScope:{companyId:b.companyId,departmentId:b.deptA,businessUnitId:null}});
     expect((await listAttendanceCorrections(delegate,{status:'pending'})).map(r=>r.id)).toContain(id);
+    const delegatedTasks=await pendingAttendanceTaskMetadata(delegate,[b.companyId]);
+    expect(delegatedTasks.map(row=>row.id)).toContain(id);
+    expect(delegatedTasks).toEqual(await legacyPendingAttendanceTaskMetadata(delegate,[b.companyId]));
     await decideAttendanceCorrection(delegate,{correctionId:id,decision:'approved',expectedStageIndex:1});
     const decision=(await readDecisions()).find(d=>d.stageIndex===1)!;
     expect(decision).toMatchObject({assignedEmploymentId:f.second.employmentId,actualUserId:delegate.userId,actualPersonId:stand.personId,actualEmploymentId:null,actingMode:'delegate'});

@@ -1,3 +1,4 @@
+import {legacyPendingAttendanceTaskMetadata} from './helpers/attendance-task-original';
 import {assignedApprovalHref} from '../lib/assigned-approval-focus';
 import {listPendingTasks} from '../core/approvals-inbox';
 import {randomUUID} from 'node:crypto';
@@ -6,7 +7,7 @@ import {and,asc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
-import {checkIn,checkOut,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,listAttendanceCorrections,myOvertimePlans} from '../core/attendance';
+import {checkIn,checkOut,requestAttendanceCorrection,pendingAttendanceTaskMetadata,decideAttendanceCorrection,cancelAttendanceApplication,listAttendanceCorrections,myOvertimePlans} from '../core/attendance';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled,previewAttendanceWorkflow,retireAttendanceWorkflow,restoreAttendanceWorkflow,listAttendanceWorkflows,listRetiredAttendanceWorkflows,decideAttendanceWorkflowStageTx} from '../core/attendance-workflow';
 import {attendanceApplicationDetail,attendanceApplicationFilterOptions} from '../core/attendance-application-history';
 import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
@@ -47,6 +48,7 @@ describe('v4 uses the immutable participant and final Attendance owners',()=>{
  it('exposes a real named v4 assignment through the canonical inbox without granting unrelated queues',async()=>{
   const f=await fixture('all_required');
   const modules={attendance:true,claims:true,performance:false,rewards:false};
+  expect(await pendingAttendanceTaskMetadata(f.second.ctx,[base.companyId])).toEqual(await legacyPendingAttendanceTaskMetadata(f.second.ctx,[base.companyId]));
   expect(await listPendingTasks(f.second.ctx,[base.companyId],modules)).toEqual([
    expect.objectContaining({id:f.id,kind:'attendance',linkPath:assignedApprovalHref({kind:'attendance',id:f.id})})
   ]);
