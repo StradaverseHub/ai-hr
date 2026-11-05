@@ -7969,13 +7969,14 @@ export async function editLeaveRequestTx(
     // is empty either way.
     const editMinAdvance = lt.minAdvanceDays ?? null;
     const editDayType = resolveAdvanceNoticeDayType(lt.minAdvanceDayType);
+    let editNoticeSchedule: LeaveResolvedSchedule | undefined;
     let editNoticeRotation: LeaveResolvedSchedule['rotationKindOn'];
     let editNoticeRoster: number[] | undefined;
     let editNoticeHolidays: Set<string> | undefined;
     if (!isAdmin(ctx) && editMinAdvance != null && editDayType === 'working_days' && p.startDate > today) {
-      const noticeSchedule = await resolveSchedule(tx, req.employmentId);
-      editNoticeRoster = [...new Set([...noticeSchedule.workingDaysIso,...noticeSchedule.halfDaysIso])];
-      editNoticeRotation = noticeSchedule.rotationKindOn;
+      editNoticeSchedule = await resolveSchedule(tx, req.employmentId);
+      editNoticeRoster = [...new Set([...editNoticeSchedule.workingDaysIso, ...editNoticeSchedule.halfDaysIso])];
+      editNoticeRotation = editNoticeSchedule.rotationKindOn;
       editNoticeHolidays = await resolveHolidaySet(tx, req.employmentId, today, p.startDate);
     }
     if (
@@ -8015,7 +8016,7 @@ export async function editLeaveRequestTx(
     let workingDayWeight: number | null = null;
     if (lt.counting === 'working_days') {
       const hols = await resolveHolidaySet(tx, req.employmentId, p.startDate, p.endDate);
-      const sched = await resolveSchedule(tx, req.employmentId);
+      const sched = editNoticeSchedule ?? await resolveSchedule(tx, req.employmentId);
       const incl = normalizeDayTypeInclusion(lt.dayTypeInclusion);
       workingDayCount = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols, incl)).length;
       workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
