@@ -5,6 +5,18 @@ DO $$ BEGIN
 END $$;
 GRANT USAGE ON SCHEMA public,app TO ai_hr_job_profile_reader;
 GRANT SELECT ON employment,assignment,job_architecture_position_revision,job_architecture_jd_publication_history,job_document_revision,job_document TO ai_hr_job_profile_reader;
+-- Runtime policies belong to the runtime role. The bounded reader must use only its own
+-- policies, rather than recursively entering document/workforce authorization helpers.
+ALTER POLICY employment_rls ON employment TO ai_hr_app;
+ALTER POLICY assignment_rls ON assignment TO ai_hr_app;
+ALTER POLICY job_architecture_position_read ON job_architecture_position_revision TO ai_hr_app;
+ALTER POLICY architecture_jd_history_read ON job_architecture_jd_publication_history TO ai_hr_app;
+ALTER POLICY job_document_read ON job_document TO ai_hr_app;
+ALTER POLICY job_document_architecture_read ON job_document TO ai_hr_app;
+ALTER POLICY job_document_revision_read ON job_document_revision TO ai_hr_app;
+ALTER POLICY job_document_revision_write ON job_document_revision TO ai_hr_app;
+ALTER POLICY job_document_revision_architecture_write ON job_document_revision TO ai_hr_app;
+
 GRANT EXECUTE ON FUNCTION app.current_tenant_id(),app.current_user_id(),app.is_self_person(uuid),app.principal_snapshot_current() TO ai_hr_job_profile_reader;
 CREATE POLICY architecture_profile_employment ON employment FOR SELECT TO ai_hr_job_profile_reader USING(tenant_id=app.current_tenant_id() AND app.is_self_person(person_id));
 CREATE POLICY architecture_profile_assignment ON assignment FOR SELECT TO ai_hr_job_profile_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM employment e WHERE e.id=assignment.employment_id AND e.tenant_id=assignment.tenant_id AND app.is_self_person(e.person_id)));

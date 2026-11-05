@@ -65,7 +65,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  WHERE co.id=p_company AND co.tenant_id=app.current_tenant_id() AND u.id=p_user AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
  AND (EXISTS(SELECT 1 FROM public.role_assignment ra JOIN public.access_capability cap ON cap.id='workforce.maintain'
  WHERE ra.tenant_id=u.tenant_id AND ra.app_user_id=u.id AND ra.role::text IN('hr_admin','super_admin') AND app.access_scope_covers(ra.company_id,co.id,co.tenant_id) AND (NOT cap.supported OR app.access_allowed_for(u.id,cap.id,co.id)))
- OR EXISTS(SELECT 1 FROM public.job_architecture_seat s WHERE s.tenant_id=u.tenant_id AND s.user_id=u.id AND (s.company_id IS NULL OR s.company_id=co.id) AND s.role IN('group_rewards','org_design','pbp') AND s.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND (s.valid_to IS NULL OR s.valid_to>=timezone('Asia/Kuala_Lumpur',now())::date))));
+ OR EXISTS(SELECT 1 FROM public.job_architecture_seat s WHERE s.tenant_id=u.tenant_id AND s.user_id=u.id AND (s.company_id IS NULL OR s.company_id=co.id) AND s.role IN('group_rewards','org_design','pbp','hod') AND s.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND (s.valid_to IS NULL OR s.valid_to>=timezone('Asia/Kuala_Lumpur',now())::date))));
 $$;
 --> statement-breakpoint
 CREATE TABLE job_architecture_import_preview(
