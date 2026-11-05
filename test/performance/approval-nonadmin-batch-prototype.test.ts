@@ -46,11 +46,12 @@ it('compares one visible set per non-admin batch against every canonical scalar 
   SELECT c.id FROM non_admin c CROSS JOIN visible_set v WHERE NOT(c.id=ANY(v.ids))
  )
  SELECT c.id,c.person_id,c.full_name,c.employee_code,c.company_id`);
- candidate=candidate.replace(` UNION ALL\n SELECT c.id,s.person_id,s.employee,s.employee_code,s.company_id`+oldTail,` UNION ALL
+ const scalarSelect=` UNION ALL\n SELECT c.id,s.person_id,s.employee,s.employee_code,s.company_id\n`;
+ expect(candidate.split(scalarSelect)).toHaveLength(2);
+ candidate=candidate.replace(scalarSelect,` UNION ALL
  SELECT c.id,c.person_id,c.full_name,c.employee_code,c.company_id FROM non_admin c CROSS JOIN visible_set v WHERE c.id=ANY(v.ids)
- UNION ALL
- SELECT c.id,s.person_id,s.employee,s.employee_code,s.company_id
- FROM unseen c JOIN LATERAL app.delegated_approval_subject(c.id,wanted_module,wanted_task) s ON true;`);
+`+scalarSelect).replace(oldTail,' FROM unseen c JOIN LATERAL app.delegated_approval_subject(c.id,wanted_module,wanted_task) s ON true;');
+ expect(candidate).toContain('FROM non_admin c CROSS JOIN visible_set v WHERE c.id=ANY(v.ids)');
  expect(candidate).toContain('visible_set AS MATERIALIZED');expect(candidate).toContain('FROM unseen c JOIN LATERAL');
  let improvementRatio:number|null=null;
 
