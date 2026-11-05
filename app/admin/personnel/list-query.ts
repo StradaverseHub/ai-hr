@@ -116,6 +116,11 @@ export function headcountFilters(query: PersonnelListQuery): Omit<EmployeeListFi
   return { ...query.filters, employmentStatuses: undefined };
 }
 
+/** Filters that require a live employment can never match a draft. */
+export function draftFiltersPermitRows(query: PersonnelListQuery): boolean {
+  return !query.dept && !query.type && !query.legacyStatus && !query.bucket;
+}
+
 /**
  * Whether an unfinished draft record survives the current narrowing (feedback 06f0cb8f, preserved here).
  *
@@ -133,8 +138,7 @@ export function draftMatchesQuery(
   },
   query: PersonnelListQuery,
 ): boolean {
-  if (query.dept || query.type || query.legacyStatus) return false;
-  if (query.bucket) return false; // a derived employment bucket can never contain a draft
+  if (!draftFiltersPermitRows(query)) return false;
   if (query.company && d.companyId !== query.company) return false;
   if (query.q) {
     const needle = query.q.trim().toLowerCase();

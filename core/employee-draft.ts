@@ -307,36 +307,64 @@ export type DraftListScope = {
  *  AUTHORITY: an administrator sees a company's drafts only when they administer that company, a draft with
  *  no company only when they administer every company, and an author always sees their own. The scope can
  *  only ever be narrower than RLS; it never grants anything. */
-export function listEmployeeDrafts(ctx: SessionContext, scope: DraftListScope): Promise<EmployeeDraftRow[]> {
-  const ids = [...new Set(scope.companyIds)];
-  // An empty selection selects nothing. Without this, `includeWithoutCompany` alone would answer with the
-  // unassigned drafts under a scope that names no company at all.
-  if (ids.length === 0) return Promise.resolve([]);
+export function listEmployeeDrafts(
+  ctx: SessionContext, scope: DraftListScope, matches?: (row: EmployeeDraftSearchFields) => boolean,
+): Promise<EmployeeDraftRow[]> {
+  const where = employeeDraftScopeWhere(scope);
+  if (!where) return Promise.resolve([]);
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
+        ...draftSearchFields,
         id: employeeDraft.id,
-        label: employeeDraft.label,
-        companyId: employeeDraft.companyId,
-        companyName: company.legalName,
         currentStep: employeeDraft.currentStep,
         createdByName: person.fullName,
         createdAt: employeeDraft.createdAt,
         updatedAt: employeeDraft.updatedAt,
-        reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
         data: employeeDraft.data,
       })
       .from(employeeDraft)
       .leftJoin(company, eq(company.id, employeeDraft.companyId))
       .leftJoin(person, eq(person.id, employeeDraft.createdByPersonId))
-      .where(
-        scope.includeWithoutCompany
-          ? or(inArray(employeeDraft.companyId, ids), isNull(employeeDraft.companyId))
-          : inArray(employeeDraft.companyId, ids),
-      )
+      .where(where)
       // `id` breaks a tie on `updated_at`, so two drafts saved in the same instant keep one order.
       .orderBy(desc(employeeDraft.updatedAt), desc(employeeDraft.id));
-    return rows.map(({ data, ...r }) => ({ ...r, missing: missingForCreation(asData(data)) }));
+    const visible = matches ? rows.filter(matches) : rows;
+    return visible.map(({ data, ...r }) => ({ ...r, missing: missingForCreation(asData(data)) }));
+  });
+}
+
+type EmployeeDraftSearchFields = Pick<EmployeeDraftRow, 'label' | 'companyId' | 'companyName' | 'reservedEmployeeCode'>;
+const draftSearchFields = {
+  label: employeeDraft.label,
+  companyId: employeeDraft.companyId,
+  companyName: company.legalName,
+  reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
+};
+
+function employeeDraftScopeWhere(scope: DraftListScope) {
+  const ids = [...new Set(scope.companyIds)];
+  // Empty scope excludes even unassigned drafts. The same RLS policy applies to every projection.
+  if (ids.length === 0) return undefined;
+  const selected = inArray(employeeDraft.companyId, ids);
+  return scope.includeWithoutCompany ? or(selected, isNull(employeeDraft.companyId)) : selected;
+}
+
+/** Count without fetching draft forms or creator details. A literal search reuses the caller's
+ * existing JavaScript predicate over four small fields, including company labels from the same RLS join. */
+export function countEmployeeDrafts(
+  ctx: SessionContext, scope: DraftListScope, matches?: (row: EmployeeDraftSearchFields) => boolean,
+): Promise<number> {
+  const where = employeeDraftScopeWhere(scope);
+  if (!where) return Promise.resolve(0);
+  return withTenant(ctx, async (tx) => {
+    if (matches) {
+      const rows = await tx.select(draftSearchFields).from(employeeDraft)
+        .leftJoin(company, eq(company.id, employeeDraft.companyId)).where(where);
+      return rows.reduce((count, row) => count + Number(matches(row)), 0);
+    }
+    const [row] = await tx.select({ count: sql<number>`count(*)::int` }).from(employeeDraft).where(where);
+    return Number(row.count);
   });
 }
 
