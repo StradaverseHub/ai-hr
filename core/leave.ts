@@ -3605,6 +3605,7 @@ export async function requestLeave(
     // question whose answer cannot matter.
     const minAdvance = lt?.minAdvanceDays ?? null;
     const minAdvanceDayType = resolveAdvanceNoticeDayType(lt?.minAdvanceDayType);
+    let noticeSchedule: LeaveResolvedSchedule | undefined;
     let noticeRotation: LeaveResolvedSchedule['rotationKindOn'];
     let noticeRoster: number[] | undefined;
     let noticeHolidays: Set<string> | undefined;
@@ -3612,7 +3613,7 @@ export async function requestLeave(
       // The SAME sources the deduction engine uses — attendance_policy.working_days (Full ∪ Half) and the
       // business-group → state → national holiday resolution — so "working day" means one thing in this
       // product, not two.
-      const noticeSchedule = await resolveSchedule(tx, p.employmentId);
+      noticeSchedule = await resolveSchedule(tx, p.employmentId);
       noticeRoster = [...new Set([...noticeSchedule.workingDaysIso,...noticeSchedule.halfDaysIso])];
       noticeRotation = noticeSchedule.rotationKindOn;
       noticeHolidays = await resolveHolidaySet(tx, p.employmentId, today, p.startDate);
@@ -3802,13 +3803,15 @@ export async function requestLeave(
     // company's leaveHalfDayFullDeduction toggle apply (D2/Feedback 31474452).
     let workingDayCount: number | null = null;
     let workingDayWeight: number | null = null;
+    let workingDayFacts: { schedule: LeaveResolvedSchedule; holidays: Set<string> } | undefined;
     let creditDateWeights: {date: string; days: number}[] | undefined;
     if (lt?.counting === 'working_days') {
       // 2C (ADR-0038) + holiday grouping: holidays apply per the employee's effective set of states —
       // national (state null) ∪ those states, resolved holiday_group → work_state →
       // company.default_work_state → national-only (see resolveHolidaySet).
       const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
-      const sched = await resolveSchedule(tx, p.employmentId);
+      const sched = noticeSchedule ?? await resolveSchedule(tx, p.employmentId);
+      workingDayFacts = { schedule: sched, holidays: hols };
       // Day Type Inclusion (feedback ef6d7146): the type's re-inclusion vector (undefined ⇒ inert legacy
       // path). Both the deducted WEIGHT and the "any deductible day in range?" guard honour it so a type
       // configured to count e.g. public holidays deducts them and a half/hourly guard sees them as valid.
@@ -4200,9 +4203,8 @@ export async function requestLeave(
     // lifecycle is captured by the aggregate's submitted (with perDate) + per-date-decided events — no separate
     // event per sub-row insert.
     let perDate: { date: string; days: number }[] = [];
-    if (perDateEligible) {
-      const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
-      const sched = await resolveSchedule(tx, p.employmentId);
+    if (perDateEligible && workingDayFacts) {
+      const { schedule: sched, holidays: hols } = workingDayFacts;
       // Day Type Inclusion (feedback ef6d7146): the per-date sub-rows must span exactly the DEDUCTIBLE dates
       // (re-included day types included) and carry each date's inclusion-aware weight, so sum(perDate.days)
       // still equals the request's weighted `days` and no re-included day is stranded outside per-date approval.
