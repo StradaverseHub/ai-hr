@@ -245,7 +245,7 @@ export default async function OrganizationPage({
           <table className="w-full text-sm">
             <thead className={cn(theadCls, 'border-y border-border bg-transparent')}>
               <tr>
-                <th className={thCls}>
+                <th className={cn(thCls,'hidden sm:table-cell')}>
                   <Link href={sortHref('code')}>{t('colCode')}</Link>
                 </th>
                 <th className={thCls}>
