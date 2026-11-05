@@ -35480,7 +35480,12 @@
       "none": "No unambiguous suggestion; choose a version"
     },
     "libraryReadOnly": "Consumed salary and bonus library values are read only. Approve a new plan version for future reviews.",
-    "businessUnit": "Business unit"
+    "businessUnit": "Business unit",
+    "planSettings": "Plan policy settings",
+    "saveSettings": "Save settings as a new draft version",
+    "newPlanVersion": "Create next plan version",
+    "successorHelp": "Create a draft successor to change future settings. Existing review snapshots keep their recorded versions.",
+    "structure-not-ready": "No unambiguous dated Business unit assignment is available. Review the company structure before assigning libraries."
   },
   "jobArchitecture": {
     "title": "Job Architecture",

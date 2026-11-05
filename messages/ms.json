@@ -35480,7 +35480,12 @@
       "none": "Tiada cadangan yang jelas; pilih versi"
     },
     "libraryReadOnly": "Nilai pustaka gaji dan bonus yang digunakan adalah untuk bacaan sahaja. Luluskan versi pelan baharu bagi semakan akan datang.",
-    "businessUnit": "Unit perniagaan"
+    "businessUnit": "Unit perniagaan",
+    "planSettings": "Tetapan dasar pelan",
+    "saveSettings": "Simpan tetapan sebagai versi draf baharu",
+    "newPlanVersion": "Cipta versi pelan seterusnya",
+    "successorHelp": "Cipta draf pengganti untuk mengubah tetapan akan datang. Petikan semakan sedia ada mengekalkan versi yang direkodkan.",
+    "structure-not-ready": "Tiada penugasan unit perniagaan bertarikh yang jelas. Semak struktur syarikat sebelum menetapkan pustaka."
   },
   "jobArchitecture": {
     "title": "Seni Bina Kerja",
