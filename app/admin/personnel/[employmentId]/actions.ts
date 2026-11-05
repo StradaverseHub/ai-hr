@@ -13,6 +13,7 @@ import { requireAdmin } from '@/lib/authz';
 import { changeEmploymentCompany, CompanyLockedError, DestinationCompanyNotAdministered, employmentGradeId, endReportingLine, setEmployeeCode, setEmploymentPaymentMethod, updatePerson, type EmploymentTypeValue, type PaymentMethod, PAYMENT_METHODS } from '@/core/org';
 import {
   NegativeSalaryAmountError,
+  SalaryBeforeCurrentRecordError,
   NonFiniteSalaryAmountError,
   PayModePeriodBoundaryError,
   SalaryRemarkRequiredError,
@@ -82,6 +83,7 @@ import {
 } from '@/lib/personnel-tab-sections';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
+import { formatDmy } from '@/lib/date-display';
 
 // Tab retention (feedback bd2f0bb2): the client tab shell (components/personnel-tabs.tsx) injects a hidden
 // `tab` field into every submitting form. Each action appends `&tab=<key>` to its post-save redirect so the
@@ -762,9 +764,9 @@ export async function endDelegationAction(formData: FormData) {
  * (CLAUDE.md §1: one authoritative owner; §8: prose outlives the kernel).
  *
  * WHAT IT DOES NOT CLAIM, so that routing another caller through it is a safe act and not a widening:
- * it translates these four typed classes and NOTHING else. Every other refusal on every path that calls
+ * it translates these five typed classes and NOTHING else. Every other refusal on every path that calls
  * it — and the movement writers raise dozens, each with its own English prose — still falls through to
- * `(e as Error).message` exactly as it does today. Adding a caller adds coverage for these four and
+ * `(e as Error).message` exactly as it does today. Adding a caller adds coverage for these five and
  * changes nothing about the rest.
  *
  * CALLERS (r374): the two salary forms (`setCompensationAction`, `editCompensationAction`) and the two
@@ -794,6 +796,11 @@ async function compensationErrorMessage(e: unknown): Promise<string> {
   if (e instanceof NonFiniteSalaryAmountError || name === 'NonFiniteSalaryAmountError') {
     const t = await getTranslations('people.detail');
     return t('salaryNotANumberError');
+  }
+  // 03877e — the date HR has to move past, in the same DD-Mon-YYYY form the date fields show.
+  if (e instanceof SalaryBeforeCurrentRecordError || name === 'SalaryBeforeCurrentRecordError') {
+    const t = await getTranslations('people.detail');
+    return t('salaryBeforeCurrentRecordError', { date: formatDmy((e as SalaryBeforeCurrentRecordError).currentStart) });
   }
   return publicErrorMessage(e);
 }

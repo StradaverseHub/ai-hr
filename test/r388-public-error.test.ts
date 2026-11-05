@@ -10,17 +10,34 @@
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { publicErrorMessage, databaseErrorKind, DATABASE_ERROR_TEXT_EN } from '../lib/public-error';
-import { isDatabaseError, pgSqlState } from '../lib/db-error';
-import { DATABASE_ERROR_KINDS, formatDatabaseErrorRef, parseDatabaseErrorRef } from '../lib/database-error-token';
+import {
+  publicErrorMessage,
+  databaseErrorKind,
+  databaseErrorReason,
+  DATABASE_ERROR_REASON_TEXT_EN,
+  DATABASE_ERROR_TEXT_EN,
+} from '../lib/public-error';
+import { isDatabaseError, pgErrorDetail, pgSqlState } from '../lib/db-error';
+import {
+  DATABASE_ERROR_KINDS,
+  DATABASE_ERROR_REASONS,
+  formatDatabaseErrorReasonRef,
+  formatDatabaseErrorRef,
+  parseDatabaseErrorRef,
+} from '../lib/database-error-token';
+import { CHECK_CONSTRAINT_REASONS, CHOICE_CONSTRAINT } from '../lib/database-check-reasons';
 import { fail, failCompany } from '../app/admin/_redirects';
 
 const PERSON = 'Siti Aminah binti Ahmad';
 const ID = '3f9a2c1d-7b4e-4c2a-9d1f-0a1b2c3d4e5f';
 
 /** A drizzle-shaped failure: its own Error over the driver's PostgresError, as node_modules/drizzle-orm throws it. */
-function drizzleError(code: string | undefined, driverMessage = 'new row violates row-level security policy') {
-  const cause = Object.assign(new Error(driverMessage), code ? { code } : {});
+function drizzleError(
+  code: string | undefined,
+  driverMessage = 'new row violates row-level security policy',
+  fields: Record<string, string> = {},
+) {
+  const cause = Object.assign(new Error(driverMessage), code ? { code } : {}, fields);
   const e = new Error(`Failed query: update "person" set "full_name" = $1 where "id" = $2\nparams: ${PERSON},${ID}`);
   (e as Error & { cause?: unknown }).cause = cause;
   return e;
@@ -61,7 +78,7 @@ describe('publicErrorMessage', () => {
   ])('maps SQLSTATE %s to %s', (code, kind) => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(databaseErrorKind(code)).toBe(kind);
-    const text = publicErrorMessage(drizzleError(code, `payroll batch ${ID} is closed and immutable`));
+    const text = publicErrorMessage(drizzleError(code, `row ${ID} refused`));
     noLeak(text);
     expect(parseDatabaseErrorRef(text)?.kind).toBe(kind);
   });
@@ -103,6 +120,101 @@ describe('the reference format', () => {
     expect(parseDatabaseErrorRef('Select a bank from the Malaysian bank list')).toBeNull();
     expect(parseDatabaseErrorRef(undefined)).toBeNull();
   });
+
+  it('round-trips every reason inside its own kind, and keeps references written before reasons existed', () => {
+    for (const { reason, kind } of Object.values(DATABASE_ERROR_REASONS)) {
+      const ref = formatDatabaseErrorReasonRef(reason, 'A1B2C3');
+      expect(ref).toMatch(/^DB-[SPDLVRBN][A-Z]{2}-A1B2C3$/);
+      expect(parseDatabaseErrorRef(`Something. Reference ${ref}.`)).toEqual({ kind, reason, ref });
+    }
+    // The production reference from 5 Nov 2026 still reads as the invalid-value sentence.
+    expect(parseDatabaseErrorRef('Reference DB-V-03877E.')).toEqual({ kind: 'invalidValue', ref: 'DB-V-03877E' });
+    // A newer server's unknown reason, or a reason under the wrong kind, falls back to the kind's sentence.
+    expect(parseDatabaseErrorRef('Reference DB-VZZ-03877E.')).toEqual({ kind: 'invalidValue', ref: 'DB-VZZ-03877E' });
+    expect(parseDatabaseErrorRef('Reference DB-PDO-03877E.')).toEqual({ kind: 'permission', ref: 'DB-PDO-03877E' });
+  });
+
+  it('never reuses a reason code', () => {
+    const reasons = Object.values(DATABASE_ERROR_REASONS).map((r) => r.reason);
+    expect(new Set(reasons).size).toBe(reasons.length);
+  });
+});
+
+describe('03877e — the specific explanation for each refusal', () => {
+  /** What the production log recorded for DB-V-03877E, with a placeholder id. */
+  const productionRangeError = () =>
+    drizzleError('22000', 'range lower bound must be less than or equal to range upper bound', {
+      routine: 'range_serialize',
+    });
+
+  it('explains the production failure as a date ordering problem, with a reference that names it', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const text = publicErrorMessage(productionRangeError());
+    noLeak(text);
+    const parsed = parseDatabaseErrorRef(text);
+    expect(parsed).toMatchObject({ kind: 'invalidValue', reason: 'dateOrder' });
+    expect(parsed!.ref).toMatch(/^DB-VDO-[0-9A-F]{6}$/);
+    expect(text).toBe(DATABASE_ERROR_REASON_TEXT_EN.dateOrder.replace('{ref}', parsed!.ref));
+    expect(text).toMatch(/end before it starts/);
+  });
+
+  it.each([
+    ['22000', 'range lower bound must be less than or equal to range upper bound', {}, 'dateOrder'],
+    ['22001', 'value too long for type character varying(200)', {}, 'textTooLong'],
+    ['22003', 'numeric field overflow', {}, 'numberOutOfRange'],
+    ['22007', 'invalid input syntax for type date', {}, 'invalidDate'],
+    ['22008', 'date/time field value out of range', {}, 'invalidDate'],
+    ['22P02', 'invalid input syntax for type numeric', {}, 'wrongFormat'],
+    ['23502', 'null value in column "department_id" violates not-null constraint', { column_name: 'department_id' }, 'required'],
+    ['23P01', 'conflicting key value violates exclusion constraint', { constraint_name: 'compensation_no_overlap' }, 'overlap'],
+    ['23503', 'insert or update on table "assignment" violates foreign key constraint', {}, 'missingReference'],
+    ['23503', 'update or delete on table "department" violates foreign key constraint', {}, 'inUse'],
+    ['23514', 'new row violates check constraint', { constraint_name: 'notice_window_check' }, 'dateOrder'],
+    ['23514', 'new row violates check constraint', { constraint_name: 'notice_title_check' }, 'required'],
+    ['23514', 'new row violates check constraint', { constraint_name: 'shift_late_grace_nonneg' }, 'numberOutOfRange'],
+    ['23514', 'new row violates check constraint', { constraint_name: 'leave_cancellation_request_status_check' }, 'choiceNotAllowed'],
+    ['P0001', 'Payroll period is closed', {}, 'closedPayroll'],
+    ['23514', 'Activated overtime scope is immutable', {}, 'locked'],
+    ['P0001', 'Payroll import record changed; validate a new attempt', {}, 'changedMeanwhile'],
+    ['42501', 'new row violates row-level security policy for table "assignment"', {}, 'outsideScope'],
+  ] as const)('%s "%s" → %s', (code, message, fields, reason) => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(databaseErrorReason(pgErrorDetail(drizzleError(code, message, fields)))).toBe(reason);
+    const text = publicErrorMessage(drizzleError(code, `${message} ${ID} ${PERSON}`, fields));
+    noLeak(text);
+    expect(parseDatabaseErrorRef(text)?.reason).toBe(reason);
+  });
+
+  it('keeps the general sentence when the rule is not one it can honestly explain', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const e of [
+      drizzleError('23514', 'new row violates check constraint', { constraint_name: 'assistant_bank_retained_columns' }),
+      drizzleError('23514', 'Exact requested interval identity required'),
+      drizzleError('P0001', 'Persist every exact individual assignment member'),
+      drizzleError('22000', 'some other data exception'),
+      drizzleError('42501', 'permission denied for table payroll_batch'),
+      drizzleError('23505', 'duplicate key value violates unique constraint'),
+    ]) {
+      const parsed = parseDatabaseErrorRef(publicErrorMessage(e));
+      expect(parsed).not.toBeNull();
+      expect(parsed!.reason).toBeUndefined();
+      expect(parsed!.ref).toMatch(/^DB-[SPDLVRBN]-[0-9A-F]{6}$/);
+    }
+  });
+
+  it('every check rule with an explanation names a constraint that exists in db/migrations', () => {
+    const sql = execFileSync('git', ['ls-files', 'db/migrations'], { encoding: 'utf8' })
+      .split('\n')
+      .filter((f) => f.endsWith('.sql'))
+      .map((f) => readFileSync(f, 'utf8'))
+      .join('\n');
+    const names = Object.keys(CHECK_CONSTRAINT_REASONS);
+    expect(names.length).toBeGreaterThan(50);
+    const missing = names.filter((n) => !new RegExp(`constraint\\s+"?${n}"?\\s+check`, 'i').test(sql));
+    expect(missing).toEqual([]);
+    // A listed rule is never ALSO caught by the pick-list pattern with a different meaning.
+    expect(names.filter((n) => CHOICE_CONSTRAINT.test(n))).toEqual([]);
+  });
 });
 
 describe('common.databaseError in all six locales', () => {
@@ -118,6 +230,23 @@ describe('common.databaseError in all six locales', () => {
   it('the English catalogue is exactly the server-side source', () => {
     const en = JSON.parse(readFileSync('messages/en.json', 'utf8')).common.databaseError;
     expect(en).toEqual(DATABASE_ERROR_TEXT_EN);
+  });
+
+  const reasons = Object.values(DATABASE_ERROR_REASONS).map((r) => r.reason);
+  it.each(['en', 'ms', 'ta', 'th', 'vi', 'zh'])('%s has every specific explanation, each keeping {ref}', (locale) => {
+    const messages = JSON.parse(readFileSync(`messages/${locale}.json`, 'utf8'));
+    const reasonText = messages.common.databaseErrorReason;
+    expect(Object.keys(reasonText).sort()).toEqual([...reasons].sort());
+    for (const reason of reasons) {
+      expect(reasonText[reason]).toContain('{ref}');
+      expect(reasonText[reason].trim().length).toBeGreaterThan(10);
+    }
+    // 03877e — the salary refusal names the day the current salary starts, twice (the problem and the fix).
+    expect(messages.people.detail.salaryBeforeCurrentRecordError.match(/\{date\}/g)).toHaveLength(2);
+  });
+  it('the English explanations are exactly the server-side source', () => {
+    const en = JSON.parse(readFileSync('messages/en.json', 'utf8')).common.databaseErrorReason;
+    expect(en).toEqual(DATABASE_ERROR_REASON_TEXT_EN);
   });
 });
 
