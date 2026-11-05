@@ -3,7 +3,8 @@
  * sharing configuration and person-wide celebration choices at each read, including pagination. */
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
-import {requireOwnHomeSubject} from './employee-home';
+import {HomeAccessError,requireOwnHomeSubject} from './employee-home';
+import {isCurrentOwnHomeEmploymentTx} from './read';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {calendarWindowDates} from '../lib/calendar-window';
 import {homeSharingPageInput,validateHomeTeamPage,validateHomeCelebrationPage,validateHomeTeamCalendar} from '../lib/employee-home-sharing';
@@ -26,9 +27,11 @@ export async function readHomeTeamCalendar(ctx:SessionContext,employmentId:strin
  });
 }
 export async function readHomeCelebrationPage(ctx:SessionContext,employmentId:string,p:{after?:string;limit?:number}={}){
- const subject=await requireOwnHomeSubject(ctx,employmentId),input=homeSharingPageInput(p.after,p.limit,'celebration');
+ if(!ctx.userId)throw new HomeAccessError('authentication');
  return withTenant(ctx,async tx=>{
-  const [row]=await tx.execute(sql`SELECT app.home_celebration_page(${subject.employmentId}::uuid,
+  if(!await isCurrentOwnHomeEmploymentTx(tx,ctx,employmentId))throw new HomeAccessError('employmentUnavailable');
+  const input=homeSharingPageInput(p.after,p.limit,'celebration');
+  const [row]=await tx.execute(sql`SELECT app.home_celebration_page(${employmentId}::uuid,
    ${input.after}::text,${input.limit}::integer) AS projection`) as unknown as {projection:unknown}[];
   return validateHomeCelebrationPage(row?.projection);
  });

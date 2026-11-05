@@ -6467,6 +6467,15 @@ function ownEmploymentSubjectPredicate(ctx:SessionContext,personId:string){
  return and(ownPersonPredicate(ctx),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,personId));
 }
 
+/** Same own-subject membership as the Home inventory, with fresh principal and actual-login checks. */
+export async function isCurrentOwnHomeEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ if(!ctx.userId||!ctx.personId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(employmentId))return false;
+ const [row]=await tx.select({id:employment.id}).from(employment)
+  .innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+  .where(and(ownEmploymentSubjectPredicate(ctx,ctx.personId),eq(employment.id,employmentId),sql`app.principal_snapshot_current()`)).limit(1);
+ return row!==undefined;
+}
+
 /** Selected own subject eligibility, without projecting an inventory or resolving its dated companies. */
 export async function isOwnProfileEditEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
  if(!ctx.personId)return false;
