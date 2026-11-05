@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { attendancePunch } from '../db/schema';
-import { actorOf, appendEvent } from '../db/events';
+import { actorOf, appendEvent, appendEvents, type AppendEventArgs } from '../db/events';
 import { lockPayrollForAttendanceChange, markPayrollForAttendanceChange } from '../packs/payroll/service';
 export type ClockEntry = {
   id?: string;
@@ -71,7 +71,13 @@ export async function applyClockChangesTx(tx: Tx, ctx: SessionContext, p: {
       throw new Error('Clocking does not belong to this attendance day.');
   const unchanged = new Set(entries.filter(e => e.id && rows.some(r => r.id === e.id && r.punchAt === e.punchAt && r.direction === e.direction)).map(e => e.id!));
   const now = new Date();
-  const event = (eventType: string, id: string, before: unknown, after: unknown) => appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-punch', aggregateId: id, eventType, actor: actorOf(ctx), subjectEmploymentId: p.employmentId, payload: { correctionId: p.correctionId, reason: p.reason, before, after } });
+  const auditEntry = (eventType: string, id: string, before: unknown, after: unknown): AppendEventArgs => ({
+    tenantId: ctx.tenantId, aggregateType: 'attendance-punch', aggregateId: id, eventType,
+    actor: actorOf(ctx), subjectEmploymentId: p.employmentId,
+    payload: { correctionId: p.correctionId, reason: p.reason, before, after },
+  });
+  const event = (eventType: string, id: string, before: unknown, after: unknown) =>
+    appendEvent(tx, auditEntry(eventType, id, before, after));
   // Void superseded entries before restoring/inserting, so the live unique index sees the final set.
   for (const row of rows.filter(r => !r.voidedAt && !unchanged.has(r.id))) {
     const metadata = { voidedAt: now, voidedBy: ctx.userId ?? 'system', voidReason: p.reason };
@@ -89,11 +95,12 @@ export async function applyClockChangesTx(tx: Tx, ctx: SessionContext, p: {
       id: attendancePunch.id, punchAt: attendancePunch.punchAt, direction: attendancePunch.direction,
     });
     const ids = new Map(added.map(row => [row.punchAt + ':' + row.direction, row.id]));
-    for (const entry of entries) {
+    const events = entries.map(entry => {
       const id = ids.get(entry.punchAt + ':' + entry.direction);
       if (!id) throw new Error('The replacement clocking could not be recorded.');
-      await event('attendance.punch.added', id, null, { punchAt: entry.punchAt, direction: entry.direction, method: 'admin' });
-    }
+      return auditEntry('attendance.punch.added', id, null, { punchAt: entry.punchAt, direction: entry.direction, method: 'admin' });
+    });
+    await appendEvents(tx, events);
     return;
   }
   for (const e of entries) {
