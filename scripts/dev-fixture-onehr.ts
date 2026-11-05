@@ -17,10 +17,12 @@ import { setCompensation } from '../core/comp';
 import * as perf from '../packs/performance/service';
 import { defaultPolicy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
-import { createRewardUnit, getRewardUnit, importOnehrRewardResults } from '../packs/rewards/service';
+import { getRewardUnit, importOnehrRewardResults } from '../packs/rewards/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 const refusal=demoSeedRefusal(process.env);if(refusal)throw Error(refusal);
+import {approvedRewardFixtures} from './fixtures/reward-approved';
+
 const owner=createDb(process.env.MIGRATION_DATABASE_URL!);
 const tenantId=DEMO_TENANT_ID,companyName='OneHR native (dev fixture)',cycleName='OneHR annual (dev fixture)';
 async function main(){
@@ -85,7 +87,7 @@ async function main(){
  await perf.freezeOnehrReview(a,rid,(await view(a)).revision);
  for(const c of ['performance','potential','talent','feedback'] as const)await perf.releaseOnehrResult(a,rid,c,true);
  await setCompensation(a,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
- const uid=await createRewardUnit(a,{name:'OneHR rewards (dev fixture)',year,companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});
+ const uid=await approvedRewardFixtures(owner).createApprovedRewardUnit(a,{name:'OneHR rewards (dev fixture)',year,companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});
  await importOnehrRewardResults(a,uid,(await getRewardUnit(a,uid)).unit.revision);
  // Leave a second assessment's peer cards pending so the actual rater screen can be verified.
  const [pendingReview]=await owner.db.select().from(s.onehrReview).where(and(eq(s.onehrReview.cycleId,cycleId),eq(s.onehrReview.employmentId,peers[0].employmentId)));

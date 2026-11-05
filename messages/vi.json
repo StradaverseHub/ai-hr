@@ -35460,7 +35460,7 @@
     "newVersion": "Tạo phiên bản tiếp theo",
     "companyPatOwner": "Dữ liệu PAT được quản lý tại màn hình PAT theo công ty và năm.",
     "adoptPat": "Áp dụng PAT công ty đã xác nhận",
-    "patChanged": "PAT công ty đã thay đổi. Áp dụng phiên bản đã xác nhận trong bản nháp trước khi gửi.",
+    "patChanged": "PAT công ty đã thay đổi. Nhóm Đãi ngộ tập đoàn phải áp dụng phiên bản đã xác nhận trong Bản nháp trước khi đợt đánh giá có thể tiếp tục.",
     "patHistory": "Các phiên bản đã xác nhận trước đó được giữ trong lịch sử kiểm toán.",
     "uncoveredPlans": "Công ty chưa được bao phủ",
     "previewUncovered": "Xem trước kế hoạch nháp",
@@ -35490,7 +35490,12 @@
     "saveSettings": "Lưu thiết lập thành phiên bản nháp mới",
     "newPlanVersion": "Tạo phiên bản kế hoạch tiếp theo",
     "successorHelp": "Tạo bản nháp kế tiếp để thay đổi thiết lập tương lai. Bản chụp đợt đánh giá hiện có giữ nguyên phiên bản đã ghi nhận.",
-    "structure-not-ready": "Chưa có phân công đơn vị kinh doanh theo ngày có hiệu lực rõ ràng. Kiểm tra cơ cấu công ty trước khi phân bổ thư viện."
+    "structure-not-ready": "Chưa có phân công đơn vị kinh doanh theo ngày có hiệu lực rõ ràng. Kiểm tra cơ cấu công ty trước khi phân bổ thư viện.",
+    "newPlan": "Kế hoạch đãi ngộ mới",
+    "draftOnly": "Thao tác này chỉ tạo bản nháp. Một người khác trong Nhóm Đãi ngộ tập đoàn phải phê duyệt kế hoạch trước khi tạo đợt đánh giá.",
+    "createDraftPlan": "Tạo kế hoạch nháp",
+    "already-assigned": "Đã được phân công vào kế hoạch khác cho năm đãi ngộ này.",
+    "branchAllAcknowledged": "Mọi công ty đã chọn đều được cấu hình để dùng hệ số chi nhánh"
   },
   "jobArchitecture": {
     "title": "Kiến trúc công việc",
