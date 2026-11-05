@@ -40,15 +40,30 @@ export async function exerciseMovement({base,page,actor,subject,fixture,db,repor
    const marker='Fictional performance Movement save '+phase;
    await form.locator('select').first().selectOption('secondment',{timeout});
    await form.getByRole('textbox',{name:'Remarks',exact:true}).fill(marker,{timeout});
-   await measure('save',async()=>{
-    await form.getByRole('button',{name:'Save Event',exact:true}).click({timeout});
-    await page.waitForURL(url=>url.pathname===path&&url.searchParams.get('tab')==='careerMovement',{timeout});
-    await history.getByRole('cell',{name:'Secondment',exact:true}).waitFor({state:'visible',timeout});
-   });
-   const rows=await db`select actor_id from domain_event where tenant_id=${fixture.tenants[actor.tenant].tenantId}::uuid
-     and subject_employment_id=${subject.employmentId}::uuid and event_type='employment.movement.recorded'
-     and payload->>'type'='secondment' and payload->>'remarks'=${marker}`;
-   assert.deepEqual(rows.map(row=>row.actor_id),[actor.userId],'Movement save did not produce one audited event for the expected actor');
+   try {
+    await measure('save',async()=>{
+     await form.getByRole('button',{name:'Save Event',exact:true}).click({timeout});
+     evidence.steps.save.submitted=true;
+     save();
+     await page.waitForURL(url=>url.pathname===path&&url.searchParams.get('tab')==='careerMovement',{timeout});
+     evidence.steps.save.returnedToHistory=true;
+     save();
+     await history.getByRole('cell',{name:'Secondment',exact:true}).waitFor({state:'visible',timeout});
+    });
+   } finally {
+    // Record persistence even if the page failed to return or show the row. A database observation
+    // failure must not replace the original browser failure or turn it into a passing journey.
+    try {
+     const rows=await db`select actor_id from domain_event where tenant_id=${fixture.tenants[actor.tenant].tenantId}::uuid
+       and subject_employment_id=${subject.employmentId}::uuid and event_type='employment.movement.recorded'
+       and payload->>'type'='secondment' and payload->>'remarks'=${marker}`;
+     evidence.auditObservation={rows:rows.length,expectedActor:rows.length===1&&rows[0].actor_id===actor.userId};
+    } catch {
+     evidence.auditObservation={unavailable:true};
+    }
+    save();
+   }
+   assert.equal(evidence.auditObservation.expectedActor,true,'Movement save did not produce one audited event for the expected actor');
    evidence.auditVerified=true;
    save();
   }
