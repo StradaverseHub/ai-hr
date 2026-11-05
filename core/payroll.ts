@@ -31,7 +31,6 @@ import { payrollHistoryEffectiveBatch } from '../db/schema';
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
-import type { SelectedFields } from 'drizzle-orm/pg-core';
 import { pageState, type PageQuery } from '../lib/pagination';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withPayrollTenant` — all 38 exported entry
@@ -11445,27 +11444,34 @@ const batchRegisterSlipColumns = {
   version: payslip.version,
 };
 
-function batchPayslipRead<T extends SelectedFields>(tx: Tx, batchId: string, columns: T, employmentIds?: readonly string[]) {
-  const selectedIds = employmentIds && '{' + employmentIds.join(',') + '}';
-  return tx.select(columns)
-    .from(payslip)
-    .innerJoin(employment, eq(employment.id, payslip.employmentId))
-    .innerJoin(person, eq(person.id, employment.personId))
-    .where(and(eq(payslip.batchId, batchId), selectedIds && sql`${payslip.employmentId} = any(${selectedIds}::uuid[])`));
-}
-
 export function batchDetail(ctx: SessionContext, batchId: string) {
-  return withTenant(ctx, async tx => {
+  return withTenant(ctx, async (tx) => {
     const batch = await readBatchHeaderTx(tx, batchId);
     if (!batch) return null;
-    const { net, version, ...columns } = batchRegisterSlipColumns;
-    const slips = await batchPayslipRead(tx, batchId, {
-      ...columns,
-      totalDeductions: payslip.totalDeductions,
-      net,
-      employerCost: payslip.employerCost,
-      version,
-    }).orderBy(person.fullName);
+    const slips = await tx
+      .select({
+        id: payslip.id,
+        employmentId: payslip.employmentId,
+        name: person.fullName,
+        employeeCode: employment.employeeCode,
+        basic: payslip.basicSalary,
+        bonus: payslip.bonus,
+        daysWorked: payslip.daysWorked,
+        gross: payslip.grossPay,
+        statutory: payslip.statutory,
+        totalDeductions: payslip.totalDeductions,
+        net: payslip.netPay,
+        employerCost: payslip.employerCost,
+        // 97a9b0ab — the revision counter (1 = as first generated, >1 = selectively reprocessed).
+        // It has always been stored and never shown, which is why a moved figure looked unexplainable.
+        // The RULESET version rides `statutory.version` (already selected above) — no column, no DDL.
+        version: payslip.version,
+      })
+      .from(payslip)
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(payslip.batchId, batchId))
+      .orderBy(person.fullName);
     return { batch, slips };
   });
 }
@@ -11475,10 +11481,16 @@ export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, pag
   return withTenant(ctx, async tx => {
     const batch = await readBatchHeaderTx(tx, batchId);
     if (!batch) return null;
-    const registerTotal = batchPayslipRead(tx, batchId, {
-      total: sql<number>`count(*)`.mapWith(Number).as('total'),
-    }).as('register_total');
-    const registerPage = batchPayslipRead(tx, batchId, batchRegisterSlipColumns)
+    const registerTotal = tx.select({ total: sql<number>`count(*)`.mapWith(Number).as('total') })
+      .from(payslip)
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(payslip.batchId, batchId)).as('register_total');
+    const registerPage = tx.select(batchRegisterSlipColumns)
+      .from(payslip)
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(payslip.batchId, batchId))
       .orderBy(asc(person.fullName), asc(payslip.id)).limit(page.limit)
       .offset(Math.min(page.offset, Number.MAX_SAFE_INTEGER))
       .as('register_page');
@@ -11515,11 +11527,16 @@ export function listBatchRecalcPayslipIdentities(ctx: SessionContext, batchId: s
   return withTenant(ctx, async tx => {
     const batch = await readBatchHeaderTx(tx, batchId);
     if (!batch) return [];
-    return batchPayslipRead(tx, batchId, {
+    const selectedIds = '{' + ids.join(',') + '}';
+    return tx.select({
       employmentId: payslip.employmentId,
       name: person.fullName,
       employeeCode: employment.employeeCode,
-    }, ids).orderBy(asc(person.fullName), asc(payslip.id));
+    }).from(payslip)
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(and(eq(payslip.batchId, batchId), sql`${payslip.employmentId} = any(${selectedIds}::uuid[])`))
+      .orderBy(asc(person.fullName), asc(payslip.id));
   });
 }
 
