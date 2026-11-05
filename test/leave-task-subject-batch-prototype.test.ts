@@ -1,4 +1,4 @@
-/** Native candidate-query comparison only; current step/decision owners remain real and unchanged. */
+/** Native installed consumer plus frozen scalar candidate-query control; step/decision owners remain real. */
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -44,12 +44,16 @@ it('preserves native visible headers and live assignments while batching repeate
  const login=async(personId:string,role:'employee'|'manager'):Promise<SessionContext>=>({...admin,userId:await createAppUser(b.tenantId,personId,role),personId,roles:[role],grants:[{role,companyId:null}]});
  const self=await login(applicant.personId,'employee'),reviewer=await login(manager.personId,'manager'),delegate=await login(standIn.personId,'employee');
  const requests=await owner.db.insert(s.leaveRequest).values(Array.from({length:211},()=>({tenantId:b.tenantId,employmentId:applicant.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:today,endDate:today,days:'1',reason:'PRIVATE_LEAVE_BATCH_REASON'}))).returning({id:s.leaveRequest.id});
+ const profile=process.env.AIHR_CI_PG_STATEMENTS==='1';if(profile)await owner.client.unsafe('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');
+ const groupedCalls=async()=>Number((await owner.client`select coalesce(sum(calls),0)::int as calls from pg_stat_statements where dbid=(select oid from pg_database where datname=current_database()) and position('as pending_leave' in query)>0 and position('subject_batches' in query)>0`)[0].calls);
  const expected=await readCandidates(admin,false,[b.companyId]);expect(expected).toHaveLength(211);expect(new Set(expected.map(row=>row.id))).toEqual(new Set(requests.map(row=>row.id)));
  const controls:string[]=[];
  for(const [label,ctx,scope]of [['admin',admin,[b.companyId]],['manager',reviewer,[b.companyId]],['self',self,[b.companyId]],['unscoped',admin,undefined],['empty',admin,[]]]as const){
   const ids=scope===undefined?undefined:[...scope];expect(await readCandidates(ctx,true,ids)).toEqual(await readCandidates(ctx,false,ids));controls.push(label);
  }
- expect(await pendingLeaveTaskMetadata(admin,[b.companyId])).toEqual(expected);expect(await pendingLeaveTaskMetadata(reviewer,[b.companyId])).toEqual(expected);expect(await pendingLeaveTaskMetadata(self,[b.companyId])).toEqual([]);
+ const shapeBefore=profile?await groupedCalls():null;
+ expect(await pendingLeaveTaskMetadata(admin,[b.companyId])).toEqual(expected);const shapeAfter=profile?await groupedCalls():null;
+ if(profile)expect(shapeAfter!-shapeBefore!).toBe(1);expect(await pendingLeaveTaskMetadata(reviewer,[b.companyId])).toEqual(expected);expect(await pendingLeaveTaskMetadata(self,[b.companyId])).toEqual([]);
  const foreign=await seedBase();expect(await readCandidates(adminCtx(foreign),true,[b.companyId])).toEqual([]);controls.push('foreignTenant');
  for(const shape of [false,true]){
   await expect(readCandidates({...self,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]},shape)).rejects.toThrow();
@@ -89,7 +93,7 @@ it('preserves native visible headers and live assignments while batching repeate
  expect((await pendingLeaveTaskMetadata(reviewer,[b.companyId])).map(row=>row.id)).toEqual(expected.filter(row=>![requests[0].id,requests[2].id,requests[3].id].includes(row.id)).map(row=>row.id));
  expect((await pendingLeaveTaskMetadata(admin,[b.companyId])).map(row=>row.id)).toEqual(expected.filter(row=>row.id!==requests[2].id).map(row=>row.id));controls.push('currentStep','completedChainOmitted','namedAlternate');
  const ratios=Object.fromEntries(['admin','manager'].map(actor=>{const m=measurements.filter(row=>row.actor===actor);return[actor,Math.max(m[1].elapsedMs,m[2].elapsedMs)/Math.min(m[0].elapsedMs,m[3].elapsedMs)];}));
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'leave-task-subject-batch-prototype.json'),JSON.stringify({kind:'NATIVE_LEAVE_CANDIDATE_QUERY_COMPONENT_ONLY',releaseEligible:false,fixtureRequests:211,fixtureSubjects:1,measurements,ratios,controls,currentDecisionOwnerUnchanged:true,limitations:'Candidate-query comparison only; no500-user or whole-page speed claim; retained native owner fixtures, not application throughput'},null,2));
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'leave-task-subject-batch-prototype.json'),JSON.stringify({kind:'NATIVE_LEAVE_CANDIDATE_QUERY_COMPONENT_ONLY',releaseEligible:false,fixtureRequests:211,fixtureSubjects:1,measurements,ratios,controls,currentDecisionOwnerUnchanged:true,actualConsumerGroupedQueryCalls:shapeBefore===null||shapeAfter===null?null:shapeAfter-shapeBefore,limitations:'Candidate-query comparison only; no500-user or whole-page speed claim; retained native owner fixtures, not application throughput'},null,2));
  expect(ratios.admin).toBeLessThan(.8);expect(ratios.manager).toBeLessThan(.8);
 },600000);
 

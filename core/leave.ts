@@ -12280,12 +12280,21 @@ export async function pendingLeaveDecisionChoiceMetadataTx(tx:Tx,ctx:SessionCont
 export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  return withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const candidates=await tx.select({id:leaveRequest.id,employmentId:leaveRequest.employmentId,personId:sql<string>`approval_subject.person_id`,
-   employee:sql<string>`approval_subject.employee`,createdAt:leaveRequest.createdAt}).from(leaveRequest)
-   .innerJoin(sql`LATERAL app.delegated_approval_subject(${leaveRequest.employmentId},'leave','leave.application') AS approval_subject`,sql`true`)
-   .where(and(eq(leaveRequest.tenantId,ctx.tenantId),eq(leaveRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
-    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
-   .orderBy(desc(leaveRequest.createdAt),asc(leaveRequest.id));
+  // Resolve each native subject once per bounded batch, rather than once for every
+  // pending request. These are candidates only: all live current-step/alternate and
+  // decision checks below remain unchanged, including when the queue exceeds1000.
+  const source=sql`(
+   with headers as materialized(select q.id,q.employment_id,q.created_at from public.leave_request q where q.tenant_id=${ctx.tenantId}::uuid and q.status='pending'),
+   distinct_subjects as(select distinct employment_id from headers),
+   numbered_subjects as(select employment_id,(row_number()over(order by employment_id)-1)/1000 as bucket from distinct_subjects),
+   subject_batches as(select array_agg(employment_id order by employment_id)as ids from numbered_subjects group by bucket),
+   subject_rows as materialized(select r.* from subject_batches b cross join lateral app.delegated_approval_subjects(b.ids,'leave','leave.application')r)
+   select h.id,h.employment_id,h.created_at,r.person_id,r.employee,r.company_id from headers h join subject_rows r on r.employment_id=h.employment_id
+  ) as pending_leave`;
+  const id=sql<string>`pending_leave.id`,createdAt=sql<Date>`pending_leave.created_at`.mapWith(leaveRequest.createdAt);
+  const candidates=await tx.select({id,employmentId:sql<string>`pending_leave.employment_id`,personId:sql<string>`pending_leave.person_id`,employee:sql<string>`pending_leave.employee`,createdAt}).from(source)
+   .where(and(sql`NOT app.is_self_person(pending_leave.person_id)`,companyIds===undefined?undefined:sql`pending_leave.company_id=ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
+   .orderBy(desc(createdAt),asc(id));
   const result:AssignedApprovalMetadata[]=[];
   for(let offset=0;offset<candidates.length;offset+=1000){
    const batch=candidates.slice(offset,offset+1000);
