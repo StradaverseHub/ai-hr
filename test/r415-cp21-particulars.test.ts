@@ -368,7 +368,16 @@ export function eaIncomePartsForSource(source:{basic:unknown;overtime:unknown;bo
         expect(addedEnd).toBeGreaterThan(addedStart);
         const displayAddition = payrollDisplay.slice(addedStart, addedEnd);
         expect(payrollDisplay.replace(displayAddition, '')).toBe(gitSource(approved));
-        expect(unchanged).toBe(payrollDisplay);
+        const followup = gitSource('211e4aa36');
+        const overtimeReader = (source: string) => {
+          const start = source.indexOf('export function payslipOvertimeLines(');
+          const end = source.indexOf('\n}\n', start);
+          expect(start).toBeGreaterThanOrEqual(0);
+          expect(end).toBeGreaterThan(start);
+          return source.slice(start, end + 2);
+        };
+        // The follow-up changes only the overtime presentation reader, outside EA's financial path.
+        expect(unchanged.replace(overtimeReader(followup), overtimeReader(payrollDisplay))).toBe(payrollDisplay);
       }else expect(unchanged === show(f), f).toBe(true);
     }
     const slice = (src: string) => {
