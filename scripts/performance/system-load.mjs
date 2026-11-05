@@ -6,6 +6,7 @@ import {browserFailureLocation} from './browser-failure.ts';
 import {routeLatency} from './route-latency.mjs';
 import {navigationRoutesForIteration} from './route-scheduling.mjs';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
+import {exerciseLetterDraft} from './letter-draft-browser.mjs';
 import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
 import {exercisePayrollBrowser} from './payroll-browser.mjs';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
@@ -546,6 +547,7 @@ try{
   await request(victim,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:victim.employmentId,[deleteTemplate.prefix+'id']:protectedDraft.id},deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
   assert.equal((await db`select id from claim_request where id=${protectedDraft.id}::uuid`).length,0);
  }
+ if(suite==='workflow-preflight')await exerciseLetterDraft({base,context,visit,fixture,db,report,save});
  if(suite!=='claims-heavy')runMixedWorkflow=await prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs});
  if(suite!=='claims-heavy'){
   const ctx=await context(employee),page=await ctx.newPage();let automaticPdfRequests=0;
