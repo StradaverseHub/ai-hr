@@ -313,6 +313,7 @@ describe.each(ROLES)('Ask is chat-only for %s', (_role, session) => {
 
   it('moves the shortcuts and tools to More tools', async () => {
     await showAsk({ view: 'tools' });
+    expect(state.readChatRetention).not.toHaveBeenCalled();
     expect(screen.getByRole('heading', { level: 1, name: ask.tools.title })).toBeTruthy();
     expect(document.querySelector('[data-tool="review-an-action"]')).toBeTruthy();
     expect(document.querySelector('[data-tool="module-jobs"]')).toBeTruthy();

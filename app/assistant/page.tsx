@@ -77,9 +77,7 @@ export default async function AssistantPage({
 }: {
   searchParams: Promise<{ view?: string; recommend?: string; e?: string; chat?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string }>;
 }) {
-  const s = await getSession();
-  const t = await getTranslations('assistant');
-  const sp = await searchParams;
+  const [s, sp] = await Promise.all([getSession(), searchParams]);
   // AI centre (docs/design/ai-centre/PLAN.md): Delegated jobs and How it works are views of this route, behind
   // the same layout session check. They read nothing that depends on the Assistant grant; the conversation
   // below keeps its own checks. (The Inbox view read native owners as the caller; Today now does.)
@@ -88,7 +86,7 @@ export default async function AssistantPage({
   // for good (308), carrying only an approver's recommendation request when it is a well-formed id.
   if (sp.view === 'inbox') permanentRedirect(todayInboxRedirect(sp.recommend));
   if (isCentreView(sp.view)) {
-    const tc = await getTranslations('aiCentre.how');
+    const tc = sp.view === 'how' ? await getTranslations('aiCentre.how') : null;
     const insightsScope = sp.view === 'insights' ? await scopedSession().then(scoped => scoped.scopeIds).catch(() => undefined) : undefined;
     return (
       <div data-ai-centre={sp.view} className="mx-auto max-w-6xl space-y-6">
@@ -98,11 +96,11 @@ export default async function AssistantPage({
             section only for HR and group administrators, guarded inside the view. Approvals follow the viewer's company
             scope, as Today's do. */}
         {sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} capacityQuery={sp as Readonly<Record<string, string | undefined>>} qualityQuery={sp as Readonly<Record<string, string | undefined>>} />}
-        {sp.view === 'how' && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '#ai-centre-live-status' : undefined} />{admin && <AiCentreLiveStatus session={s} />}</>}
+        {tc && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '#ai-centre-live-status' : undefined} />{admin && <AiCentreLiveStatus session={s} />}</>}
       </div>
     );
   }
-  const a = await getTranslations('aiAsk');
+  const [a, t] = await Promise.all([getTranslations('aiAsk'), getTranslations('assistant')]);
   // AI v2 W4 (issue 14): Ask is chat-only. What sat beside the chat moved, nothing deleted: the own-data controls to
   // Your data and privacy (?view=privacy, ADR-0169 rights), the tools and shortcuts to More tools (?view=tools).
   // Their actions still return to /assistant with their closed status codes, so those addresses open the view
@@ -110,8 +108,8 @@ export default async function AssistantPage({
   const privacyOutcome = Boolean(sp.historyPrivacy || sp.importHistory || sp.ownClear || (sp.nativeOutcome && !sp.governed));
   const toolsRequested = sp.view === 'tools' || sp.job !== undefined || Boolean(sp.governed || sp.proposal || sp.planning);
   // Your data and privacy works without the Assistant grant: own-data erasure survives access removal.
-  const keepDays = await readChatRetention(s).then(value => value.keepDays).catch(() => null);
-  const privacyControls = (
+  const retentionDays = () => readChatRetention(s).then(value => value.keepDays).catch(() => null);
+  const privacyControls = (keepDays: number | null) => (
     <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-3">
       <h2 id="assistant-privacy-heading" className="text-base font-semibold">{a('privacy.title')}</h2>
       <p className="text-sm text-muted-foreground">{t('home.privacyHelp')}</p>
@@ -134,7 +132,7 @@ export default async function AssistantPage({
         <AiCentreTabs active={null} isAdmin={admin} />
         <div className="mx-auto max-w-3xl space-y-5">
           <PageHeader title={a('privacy.title')} description={a('privacy.description')} back={{ href: '/assistant', label: a('backToAsk') }} />
-          <Card className="p-5">{privacyControls}</Card>
+          <Card className="p-5">{privacyControls(await retentionDays())}</Card>
         </div>
       </div>
     );
@@ -147,18 +145,21 @@ export default async function AssistantPage({
 
   // The denied-access fallback retains own work/calendar. The active chat never preloads those
   // unrelated records; More tools links to the dashboard instead.
-  const clock = homeDisplayClock(new Date(), 'Asia/Kuala_Lumpur');
-  const name = !access.allowed?await viewerIdentity(s).then(viewer => viewer.name?.trim() || null).catch(() => null):null;
-  const greeting = clock.hour < 12 ? (name ? t('home.morning', { name }) : t('home.morningNoName'))
-    : clock.hour < 18 ? (name ? t('home.afternoon', { name }) : t('home.afternoonNoName'))
-    : (name ? t('home.evening', { name }) : t('home.eveningNoName'));
-  const employmentId = !access.allowed?await readEmployeeHomeIdentity(s).then(identity => identity.selectedEmploymentId).catch(() => null):null;
-  const homeTabs = employmentId ? <AssistantHomeTabs labels={{tabs:t('home.tabs'),work:t('home.myWork'),calendar:t('home.calendar')}}
-    work={<HomeTasksCard employmentId={employmentId}/>}
-    calendar={<HomeCalendarCard employmentId={employmentId} initialMonth={clock.date.slice(0,7)}/>}/>
-    : <p className="text-center text-sm text-muted-foreground">{t('home.noEmployment')}</p>;
-
   if (!access.allowed) {
+    const [name, employmentId, keepDays] = await Promise.all([
+      viewerIdentity(s).then(viewer => viewer.name?.trim() || null).catch(() => null),
+      readEmployeeHomeIdentity(s).then(identity => identity.selectedEmploymentId).catch(() => null),
+      retentionDays(),
+    ]);
+    const clock = homeDisplayClock(new Date(), 'Asia/Kuala_Lumpur');
+    const greeting = clock.hour < 12 ? (name ? t('home.morning', { name }) : t('home.morningNoName'))
+      : clock.hour < 18 ? (name ? t('home.afternoon', { name }) : t('home.afternoonNoName'))
+      : (name ? t('home.evening', { name }) : t('home.eveningNoName'));
+    const homeTabs = employmentId ? <AssistantHomeTabs labels={{tabs:t('home.tabs'),work:t('home.myWork'),calendar:t('home.calendar')}}
+      work={<HomeTasksCard employmentId={employmentId}/>}
+      calendar={<HomeCalendarCard employmentId={employmentId} initialMonth={clock.date.slice(0,7)}/>}/>
+      : <p className="text-center text-sm text-muted-foreground">{t('home.noEmployment')}</p>;
+
     // Same home as the full view, without the question box: why the Assistant is unavailable and who can
     // change it (three reasons, three next steps), the person's own work and calendar, and every own-data
     // control, which stays usable after access is removed.
@@ -176,7 +177,7 @@ export default async function AssistantPage({
           {homeTabs}
           <PersonnelReviewNavigation ctx={s}/>
         </div>
-        <div className="border-t border-border pt-4">{privacyControls}</div>
+        <div className="border-t border-border pt-4">{privacyControls(keepDays)}</div>
       </div>
     );
   }
@@ -220,12 +221,13 @@ export default async function AssistantPage({
   const scopeReset=assistantConversationScopeDigest(s,conversationScope);
   // Each owner re-authorizes its own read. Once scope is known these reads are independent;
   // no chat row or permission decision is cached between requests.
-  const [savedChats,selectedChat,storedChats,storedChat,chatImport]=await Promise.all([
+  const [savedChats,selectedChat,storedChats,storedChat,chatImport,keepDays]=await Promise.all([
     listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null),
     sp.e?loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null):Promise.resolve(null),
     listOwnChats(s,{},conversationScope).catch(()=>null),
     sp.chat&&!sp.e?import('./launcher-actions').then(owner=>owner.openStoredChatAction({chatId:sp.chat})).then(reply=>reply.ok?reply:null).catch(()=>null):Promise.resolve(null),
     import('./launcher-actions').then(owner=>owner.chatImportOfferedAction()).catch(()=>false),
+    retentionDays(),
   ]);
   const chatSummaries:AskChatSummary[]=(storedChats?.chats??[]).map(chat=>({chatId:chat.chatId,title:chat.title,lastMessageAt:chat.lastMessageAt.toISOString(),turns:chat.turns,withheldTurns:chat.withheldTurns}));
   // AI Centre issue 18: the floating panel's "Open in AI Centre" opens its stored chat here (?chat=<id>) and, while the
