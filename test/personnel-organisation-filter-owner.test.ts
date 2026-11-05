@@ -116,6 +116,18 @@ it('refuses queued Personnel scope, list and export reads while the tenant acces
   await expect(readPersonnelOverview(ctx, input, {})).resolves.toHaveProperty('employees.rows');
 });
 
+it('creates private searches alongside Personnel readers and retains only the native token limit', async () => {
+  await hire('Fictional Shared Search');
+  const tokens = await owner.withTenant(ctx, async tx => {
+    await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+    return Promise.all(Array.from({ length: 10 }, () =>
+      createPersonnelPrivateSearch(ctx, { text: 'Fictional Shared Search', companyIds: [b.companyId] })));
+  });
+  expect(new Set(tokens).size).toBe(10);
+  const available = await Promise.all(tokens.map(token => personnelPrivateSearchAvailable(ctx, token, [b.companyId])));
+  expect(available.filter(Boolean)).toHaveLength(8);
+});
+
 it('recovers a standalone Personnel read when a brief Access writer releases its lock', async () => {
   let read: ReturnType<typeof workforceViewScope> | undefined;
   await owner.withTenant(ctx, async tx => {
