@@ -172,6 +172,11 @@ try{
    await fixturePhase(t,'historical-payroll-close',()=>closeBatch(ctx,{batchId:company.historicalBatchId}));
    operationTimings.payrollClose50.push(performance.now()-started);
   }
+  if(process.env.PERF_HTTP_SUITE==='workflow-preflight'&&t===0){
+   const {prepareRewardDraftFixture}=await import('./reward-draft-fixture.mjs');
+   tenants[t].rewardDraft=await fixturePhase(t,'rewards-draft-prerequisites',()=>
+    prepareRewardDraftFixture({owner,schema:s,ctx,tenant:tenants[t],company:companies[4],today}));
+  }
   for(const company of companies){
    const approver=cohort.find(u=>u.companyId===company.companyId&&['companyHR','groupHR'].includes(u.role));assert(approver);
    await saveAttendanceWorkflow(ctx,{companyId:company.companyId,applicationType:'irregularity',routingVersion:4,code:'PERF',name:'Fictional performance approval',priority:100,active:true,criteria:{employeeIds:cohort.filter(u=>u.companyId===company.companyId&&u.role==='employee').map(u=>u.employmentId)},stages:[{name:'HR',mode:'any_one',sources:[{kind:'specific_employee',employmentIds:[approver.employmentId]}],hrAlternative:false}],cc:[]});
