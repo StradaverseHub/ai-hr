@@ -9,7 +9,6 @@ import {workforceMaintenanceFields} from '@/lib/workforce-maintenance-fields';
 import {WorkforceValueForm} from './workforce-value-form';
 import {saveWorkforceCodeAction} from './workforce-record-actions';
 import {EMPLOYEE_CODE_MAX_LEN} from '@/lib/employee-code';
-import {listWorkforcePickOptions} from '@/core/read';
 import {deriveEmploymentStatus} from '@/core/employment-status';
 import {personnelField} from '@/lib/personnel-field-registry';
 import {personnelInput} from '@/lib/personnel-form-contract';
@@ -28,8 +27,8 @@ export async function WorkforceScopedRecord({session, employmentId, scopeIds,fee
  session: SessionContext; employmentId: string; scopeIds: string[]; feedback?:string;editFeedback?:string;
 }) {
  if(!UUID.test(employmentId))notFound();
- const [record,employees,root,t,list,status,access,canMaintainCode,editorState]=await Promise.all([
-  workforceRecord(session,employmentId),listWorkforcePickOptions(session,scopeIds),getTranslations(),
+ const [record,root,t,list,status,access,canMaintainCode,editorState]=await Promise.all([
+  workforceRecord(session,employmentId),getTranslations(),
   getTranslations('people.detail'),getTranslations('people.list'),getTranslations('people.employeeStatus'),
   getTranslations('accessConfiguration'),workforceCommandAccess(session,employmentId),
   workforceEditor(session,employmentId).then(editor=>({editor,unavailable:false})).catch(error=>{
@@ -58,7 +57,7 @@ export async function WorkforceScopedRecord({session, employmentId, scopeIds,fee
  ];
  return <div className="space-y-6">
   <Link href="/admin/personnel" className="text-sm text-muted-foreground hover:underline">{t('backToPersonnelAdmin')}</Link>
-  <PageHeader title={employment.name} actions={<EmployeeSwitcher employees={employees}/>}/>
+  <PageHeader title={employment.name} actions={<EmployeeSwitcher remote key={scopeIds.join(',')}/>}/>
   <p role="status" className="text-sm text-muted-foreground">{access(editor&&(editor.sharedMaintain||editor.employmentMaintain)?'workforceEdit.hint':canMaintainCode?'workforceCommandHint':'workforceReadOnly')}</p>
   {feedbackKey&&<p role={feedback==='saved'?'status':'alert'} className="text-sm">{access(feedbackKey)}</p>}
   {editKey&&<p role={editFeedback==='saved'?'status':'alert'} className="text-sm">{access(editKey)}</p>}

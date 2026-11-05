@@ -52,8 +52,9 @@ describe('c002b3c3 · the switcher is mounted on both screens and stays an RSC-s
     expect(src).toContain('<EmployeeSwitcher');
     expect(src).toContain("from '../employee-switcher'");
     expect(src).toContain('tab={tab ?? null}');
-    // NO NEW READ: the switcher list is the already-loaded listEmployees set, narrowed by scope.
-    expect(src).toContain('scopeIds.includes(e.companyId)');
+    // The header requests only typed search results; the API re-resolves the company scope.
+    expect(src).toMatch(/<EmployeeSwitcher\s+remote\s+key=/);
+    expect(src).not.toContain('switcherEmployees');
     // …and the route's own guard is untouched: this is what refuses an out-of-scope id.
     expect(src).toContain("const emp = await employeeDetail(s,employmentId,'workforce');");
     expect(src).toContain('if(!emp)return <WorkforceScopedRecord');

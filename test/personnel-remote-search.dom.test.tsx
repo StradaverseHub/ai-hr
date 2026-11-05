@@ -2,9 +2,10 @@ import {afterEach,expect,it,vi} from 'vitest';
 import {act,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {EmployeeSwitcher} from '../app/admin/personnel/employee-switcher';
 vi.mock('next-intl',()=>({useTranslations:()=> (key:string)=>key}));
-vi.mock('next/navigation',()=>({useRouter:()=>({push:vi.fn()})}));
+const navigation=vi.hoisted(()=>({push:vi.fn()}));
+vi.mock('next/navigation',()=>({useRouter:()=>navigation}));
 vi.mock('../components/ui',()=>({inputCls:'',EmployeeName:({name}:{name:string})=><span>{name}</span>}));
-afterEach(()=>vi.unstubAllGlobals());
+afterEach(()=>{vi.unstubAllGlobals();navigation.push.mockClear();});
 it('debounces searches, hides stale results and distinguishes failure from no matches',async()=>{
  const calls:{url:string;resolve:(value:unknown)=>void}[]=[];
  vi.stubGlobal('fetch',vi.fn((url:string)=>new Promise(resolve=>calls.push({url,resolve}))));
@@ -27,4 +28,16 @@ it('debounces searches, hides stale results and distinguishes failure from no ma
  await act(async()=>{calls[2].resolve({ok:false});});
  expect(await screen.findByText('loadFailed')).toBeInTheDocument();expect(screen.queryByText('noMatches')).not.toBeInTheDocument();
  fireEvent.change(box,{target:{value:''}});expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+});
+
+it('marks the current record and keeps the profile tab when selecting a remote result',async()=>{
+ const match=(employmentId:string,name:string)=>({employmentId,name,employeeCode:null,company:'Fictional',department:null});
+ const fetch=vi.fn(async()=>({ok:true,json:async()=>({rows:[match('current','Current employee'),match('next','Next employee')]})}));
+ vi.stubGlobal('fetch',fetch);
+ render(<EmployeeSwitcher remote currentEmploymentId="current" tab="job"/>);
+ expect(fetch).not.toHaveBeenCalled();
+ fireEvent.change(screen.getByRole('combobox'),{target:{value:'employee'}});
+ expect(await screen.findByRole('option',{name:/Current employee.*currentTag/})).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('option',{name:/Next employee/}));
+ await waitFor(()=>expect(navigation.push).toHaveBeenCalledWith('/admin/personnel/next?tab=job'));
 });

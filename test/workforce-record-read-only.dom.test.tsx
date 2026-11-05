@@ -30,8 +30,8 @@ vi.mock('../core/workforce-access',()=>({workforceCommandAccess:vi.fn(async()=>f
 vi.mock('../core/workforce-maintenance',()=>({workforceEditor:vi.fn(async()=>null),WorkforceMaintenanceUnavailableError:class extends Error{}}));
 vi.mock('../app/admin/personnel/[employmentId]/workforce-record-actions',()=>({saveWorkforceCodeAction:vi.fn(),saveWorkforceRecordAction:vi.fn()}));
 vi.mock('../core/workforce-record',()=>({workforceRecord:vi.fn()}));
-vi.mock('../core/read',()=>({listWorkforcePickOptions:vi.fn()}));
-vi.mock('../app/admin/personnel/employee-switcher',()=>({EmployeeSwitcher:()=> <span>Fictional authorized picker</span>}));
+vi.mock('../core/read',()=>({listWorkforcePickOptions:vi.fn(async()=>{throw new Error('Workforce record must not preload the employee directory');})}));
+vi.mock('../app/admin/personnel/employee-switcher',()=>({EmployeeSwitcher:({remote}:{remote?:boolean})=> <span data-picker-mode={remote?'on-demand':'preloaded'}>Fictional authorized picker</span>}));
 const id='11111111-1111-4111-8111-111111111111';
 const ctx={tenantId:id,userId:id,personId:id,roles:['employee'],grants:[{role:'employee',companyId:null}]};
 const profile=Object.fromEntries(WORKFORCE_PROFILE_FIELDS.map(({key})=>[key,null])) as WorkforceProfile;
@@ -42,22 +42,24 @@ const detail:WorkforceRecord={employment:{employmentId:id,name:'Fictional view-o
  profile:{...profile,fullName:'Fictional view-only colleague',primaryEmail:'wf-profile@example.invalid',gender:'female',permanentCity:'Fictional city'}};
 
 describe('grant-based Workforce record view',()=>{
- beforeEach(()=>{vi.mocked(workforceCommandAccess).mockResolvedValue(false);vi.mocked(workforceEditor).mockResolvedValue(null);});
+ beforeEach(()=>{vi.mocked(listWorkforcePickOptions).mockClear();vi.mocked(workforceCommandAccess).mockResolvedValue(false);vi.mocked(workforceEditor).mockResolvedValue(null);});
  it.each(Object.keys(catalogues))('renders the bounded profile in %s without a hidden maintenance form',async locale=>{
   language.current=locale;
-  vi.mocked(workforceRecord).mockResolvedValue(detail);vi.mocked(listWorkforcePickOptions).mockResolvedValue([]);
+  vi.mocked(workforceRecord).mockResolvedValue(detail);
   const root=createTranslator({locale,messages:catalogues[locale as keyof typeof catalogues],onError:error=>{throw error;}});
   for(const {fieldId}of WORKFORCE_PROFILE_FIELDS)expect(root.has(personnelField(fieldId)!.labelKey)).toBe(true);
   const {container}=render(await WorkforceScopedRecord({session:ctx,employmentId:id,scopeIds:[id]}));
   expect(screen.getByRole('heading',{name:'Fictional view-only colleague'})).toBeInTheDocument();
   expect(screen.getByText('wf-profile@example.invalid')).toBeInTheDocument();
   expect(screen.getByText('Fictional company')).toBeInTheDocument();
+  expect(screen.getByText('Fictional authorized picker')).toHaveAttribute('data-picker-mode','on-demand');
+  expect(listWorkforcePickOptions).not.toHaveBeenCalled();
   expect(screen.getByRole('status')).toHaveTextContent(root('accessConfiguration.workforceReadOnly'));
   expect(container.querySelector('form')).toBeNull();expect(container.querySelector('input[type="file"]')).toBeNull();
   expect(container.querySelector('[name="fullName"]')).toBeNull();
  });
  it('refuses a revoked/missing projection and a malformed URL rather than rendering a partial record',async()=>{
-  vi.mocked(workforceRecord).mockResolvedValue(null);vi.mocked(listWorkforcePickOptions).mockResolvedValue([]);
+  vi.mocked(workforceRecord).mockResolvedValue(null);
   await expect(WorkforceScopedRecord({session:ctx,employmentId:id,scopeIds:[id]})).rejects.toThrow('not_found');
   vi.mocked(workforceRecord).mockClear();
   await expect(WorkforceScopedRecord({session:ctx,employmentId:'not-an-id',scopeIds:[id]})).rejects.toThrow('not_found');
@@ -65,7 +67,7 @@ describe('grant-based Workforce record view',()=>{
  });
  it.each(Object.keys(catalogues))('offers only the implemented fixed command in %s, with translated durable feedback',async locale=>{
   language.current=locale;vi.mocked(workforceCommandAccess).mockResolvedValue(true);
-  vi.mocked(workforceRecord).mockResolvedValue(detail);vi.mocked(listWorkforcePickOptions).mockResolvedValue([]);
+  vi.mocked(workforceRecord).mockResolvedValue(detail);
   const root=createTranslator({locale,messages:catalogues[locale as keyof typeof catalogues],onError:error=>{throw error;}});
   const {container}=render(await WorkforceScopedRecord({session:ctx,employmentId:id,scopeIds:[id],feedback:'saved'}));
   expect(screen.getByRole('button',{name:root('accessConfiguration.workforceCode.save')})).toBeInTheDocument();
@@ -77,7 +79,7 @@ describe('grant-based Workforce record view',()=>{
   expect(container.querySelector('[name="salary"]')).toBeNull();
  });
  it.each(Object.keys(catalogues))('renders bounded profile/register editors and real row revisions in %s',async locale=>{
-  language.current=locale;vi.mocked(workforceRecord).mockResolvedValue(detail);vi.mocked(listWorkforcePickOptions).mockResolvedValue([]);
+  language.current=locale;vi.mocked(workforceRecord).mockResolvedValue(detail);
   const editor:WorkforceEditor={profileVersion:'1042',profile:detail.profile,sharedMaintain:true,employmentMaintain:true,options:[],registers:[
    {kind:'qualification',id,version:'1043',values:{qualification:'Legacy retained level',description:null,fromYm:'2020-01',toYm:'2023-01',institute:null,major:null,graduationDate:null,result:null,isHighest:true}},
    {kind:'emergency',id:'22222222-2222-4222-8222-222222222222',version:'1044',values:{fullName:'Fictional contact',relationship:null,mobilePhone:null,homePhone:null,address:null,priority:'primary'}},
@@ -99,7 +101,7 @@ describe('grant-based Workforce record view',()=>{
   expect(container.querySelector('input[type="file"]')).toBeNull();
  });
  it('keeps shared Person forms closed independently from employment Qualification maintenance',async()=>{
-  language.current='en';vi.mocked(workforceRecord).mockResolvedValue(detail);vi.mocked(listWorkforcePickOptions).mockResolvedValue([]);
+  language.current='en';vi.mocked(workforceRecord).mockResolvedValue(detail);
   vi.mocked(workforceEditor).mockResolvedValue({profileVersion:'42',profile:detail.profile,sharedMaintain:false,employmentMaintain:true,registers:[],options:[]});
   const {container}=render(await WorkforceScopedRecord({session:ctx,employmentId:id,scopeIds:[id]}));
   expect(container.querySelector('[name="fullName"]')).toBeNull();
@@ -107,14 +109,14 @@ describe('grant-based Workforce record view',()=>{
   expect(container.querySelector('[name="kind"][value="emergency"]')).toBeNull();
  });
  it('binds form values to the versioned snapshot rather than the independent page summary',async()=>{
-  language.current='en';vi.mocked(workforceRecord).mockResolvedValue(detail);vi.mocked(listWorkforcePickOptions).mockResolvedValue([]);
+  language.current='en';vi.mocked(workforceRecord).mockResolvedValue(detail);
   vi.mocked(workforceEditor).mockResolvedValue({profileVersion:'1050',profile:{...detail.profile,fullName:'Fictional coherent snapshot'},sharedMaintain:true,employmentMaintain:false,registers:[],options:[]});
   const {container}=render(await WorkforceScopedRecord({session:ctx,employmentId:id,scopeIds:[id]}));
   expect(container.querySelector('[name="fullName"]')).toHaveValue('Fictional coherent snapshot');
   expect(container.querySelector('[name="expectedVersion"]')).toHaveValue('1050');
  });
  it('keeps a bounded unavailable editor from crashing the ordinary record view',async()=>{
-  language.current='en';vi.mocked(workforceRecord).mockResolvedValue(detail);vi.mocked(listWorkforcePickOptions).mockResolvedValue([]);
+  language.current='en';vi.mocked(workforceRecord).mockResolvedValue(detail);
   vi.mocked(workforceEditor).mockRejectedValue(new WorkforceMaintenanceUnavailableError());
   const {container}=render(await WorkforceScopedRecord({session:ctx,employmentId:id,scopeIds:[id]}));
   expect(screen.getByRole('alert')).toHaveTextContent(en.accessConfiguration.workforceEdit.unavailable);
