@@ -23,6 +23,7 @@ export default async function RewardApprovalsPage({ searchParams }: { searchPara
   const { s } = await scopedSession();const companies=await rewardVisibleCompanies(s),allowedIds=companies.map(c=>c.id),scopeIds=companies.some(c=>c.wholeGroup)?allowedIds:await getScopeIds(allowedIds);
   const sp = await searchParams;
   const t = await getTranslations('rewards');
+  const nav = await getTranslations('nav');
   const locale = await getLocale();
   const [all, companyGroups] = await Promise.all([rewardApprovalsBoard(s, scopeIds), rewardReviewCompanyGroups(s, scopeIds)]);
   const choices = {
@@ -75,8 +76,8 @@ export default async function RewardApprovalsPage({ searchParams }: { searchPara
   const section = (list: RewardBoardRow[], name: string) => view === 'matrix' ? <RewardBoardMatrix rows={list} section={name} /> : table(list);
 
   return <div className="w-full space-y-6">
-    <Link href="/rewards" className="text-sm text-primary hover:underline">← {t('title')}</Link>
-    <PageHeader title={(await getTranslations('nav'))('rewardsApprovalsBoard')} description={steps.length ? t('board.yourStep', { steps: steps.join('; ') }) : t('board.nothingYours')}
+    <Link href="/rewards" className="text-sm text-primary hover:underline">← {nav('rewardsReviewing')}</Link>
+    <PageHeader title={nav('rewardsApprovalsBoard')} description={steps.length ? t('board.yourStep', { steps: steps.join('; ') }) : t('board.nothingYours')}
       actions={<>
         {all.length > 0 && <nav aria-label={t('board.view.label')} className={SEGMENTED_GROUP}>{(['matrix', 'list'] as const).map(v =>
           <Link key={v} href={href({ view: v, group })} aria-current={view === v ? 'page' : undefined} className={`${SEGMENTED_BTN} ${view === v ? SEGMENTED_BTN_ACTIVE : SEGMENTED_BTN_INACTIVE}`}>{t(`board.view.${v}`)}</Link>)}</nav>}
