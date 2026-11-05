@@ -67,6 +67,7 @@ import {
   INTERCHANGEABLE_COMPARISON_KINDS,
   MOVEMENT_KINDS,
   isComparisonKind,
+  movementNeedsEntitlementReprojection,
   type ComparisonKind,
   type MovementKind,
 } from './movement-kinds';
@@ -3081,22 +3082,22 @@ async function resolveInputTypeTx<T extends CreateMovementInput>(
  * state. NOTE (ADR-0015): subject-scoped events are readable by the employee themselves — like the
  * existing termination reason, movement remarks are staff-visible by design.
  */
-export function createMovementEvent(ctx: SessionContext, rawInput: CreateMovementInput) {
-  return withTenant(ctx,tx=>createMovementEventTx(tx,ctx,rawInput));
+export function createMovementEvent(ctx: SessionContext, rawInput: CreateMovementInput, options?: {captureGradeBefore?:boolean}) {
+  return withTenant(ctx,tx=>createMovementEventTx(tx,ctx,rawInput,options));
 }
 
 /** Canonical dispatcher in a caller-owned transaction; every writer/ledger leg shares this Tx. */
-export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput){
+export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,options?:{captureGradeBefore?:boolean}){
   rawInput = { ...rawInput };
   await assertWorkforceEmploymentTx(tx,ctx,rawInput.employmentId,'maintain');
   // The tenant catalogue resolves custom codes to their actual effect. Own configuration before
   // that resolution and before current-state planning, not merely when the termination leg writes.
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
-  return dispatchMovementEventTx(tx,ctx,rawInput);
+  return dispatchMovementEventTx(tx,ctx,rawInput,undefined,undefined,options?.captureGradeBefore);
 }
 
 /** Private admission data never comes from a form or caller-supplied baseline. */
-async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,futureAdmission?:{baseline?:MovementCurrentState;capture?:(baseline:MovementCurrentState)=>void;expectedBehaviour?:string},correction?:{fromGroupId:string|null;allowInactive?:boolean}){
+async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,futureAdmission?:{baseline?:MovementCurrentState;capture?:(baseline:MovementCurrentState)=>void;expectedBehaviour?:string},correction?:{fromGroupId:string|null;allowInactive?:boolean},captureGradeBefore=false){
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))&&!probationMovementAuthorityTx(tx,rawInput)) {
     throw new Error('Only an admin can record a movement.');
@@ -3107,6 +3108,10 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
   // switched off is refused here rather than silently applied — that is the whole point of switching it off.
   const p = await resolveInputTypeTx(tx, ctx, rawInput, 'record', {allowInactive:correction?.allowInactive===true});
   if(futureAdmission?.expectedBehaviour!==undefined&&p.kind!==futureAdmission.expectedBehaviour)throw new Error('preview_stale_revalidate');
+  const needsGradeBefore = captureGradeBefore && movementNeedsEntitlementReprojection(p.kind);
+  const [previousGrade] = needsGradeBefore
+    ? await tx.select({gradeId:employment.gradeId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1)
+    : [];
   const execute=async()=>{
   if (p.kind !== 'blacklist' && !/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
     throw new Error('A valid effective date (YYYY-MM-DD) is required.');
@@ -3231,7 +3236,10 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
   };
   const result=await execute();
   if(!result)throw new Error('Unsupported movement event type.');
-  return {...result,behaviourKind:p.kind};
+  const gradeBefore = needsGradeBefore
+    ? {gradeId:previousGrade?.gradeId??null}
+    : undefined;
+  return {...result,behaviourKind:p.kind,...(gradeBefore?{gradeBefore}:{})};
 }
 
 /** A single ordered create function; no caller can pass a comparison baseline or replay token. */
