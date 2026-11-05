@@ -5,36 +5,41 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
-## Tenant-isolation follow-up (ADR-0174) — 5 November 2026 (provisional source claim, renumbered)
+## Tenant-isolation follow-up (ADR-0174) — 5 November 2026 (provisional source claim, renumbered twice)
 
-`claude/pensive-hofstadter-d1bf14` appends four migrations to main's 672-entry journal, after the AI Centre's
-`2013_payroll_learned_baseline` (idx 1350 / when 1793330001503). They were first claimed as 2120–2123
-(when 1793330001520–523) on 4 November. Staging then installed Codex's `b84f6e269` (STAGING_DEPLOYED_SHA, not on
-main), whose journal ends at `2130_approved_company_retention` (idx 1383 / when 1793330001530), so those
-timestamps would have been skipped there. A read-only scan on 5 November 2026 of 4763 local and remote refs, 446
-journal blobs and every registered worktree found claims up to 2141 (idx 1394 / when 1793330001541) in the 21xx
-series and 2200–2209 (idx 1400–1409 / when 1793330001600–609), with nothing in 2142–2159 or idx 1395–1399. The
-block therefore moves to 2150–2153, `when` = 1793330000000 + (file − 600), idx 1395–1398, leaving 2142–2149 for
-the active 21xx series and the relocated 2013. The live staging ledger was not queried directly; recheck it at
-admission.
+`claude/pensive-hofstadter-d1bf14` appends three migrations to main's 694-entry journal at `56de1037e`, which is
+also staging's deployed SHA and ends at `2211_company_retention_approved_expansion`
+(idx 1422 / when 1793330001622). The block was first claimed as 2120–2123 and then 2150–2153; both fell below
+the combined release's watermark. A read-only scan on 5 November 2026 of every local and remote ref (450
+journal blobs) and every registered worktree found one later claim, `2212_payroll_audit_claim_lookup_indexes`
+(idx 1395 / when 1793330001623), and nothing from 2213 up or above idx 1422. The block therefore takes 2240–2242:
+`when` = 1793330000000 + (file − 600) and idx = file − 800, the 22xx convention. That leaves 2212–2239 for
+others. The former tenant filter for `app.is_company_descendant` is dropped, because 2126 already provides it.
 
 | Tag | idx | when | SQL SHA256 |
 | --- | ---: | ---: | --- |
-|2150_definer_search_path_pin|1395|1793330001550|d3154b1a705b519b3df8263492338253d3a445126e0e29aae8d228658b176238|
-|2151_company_descendant_tenant_pin|1396|1793330001551|3d96ad8d0ffa688fda4ba70737c16dda2a89acb27a9299a9881fa910fef6b239|
-|2152_company_reference_tenant_fk_not_valid|1397|1793330001552|4af62e556b49a6af7021db5cb45a63c6767fc6d83857ed5ea41b9c869dc3997d|
-|2153_company_reference_tenant_fk_validate|1398|1793330001553|fc41c330e3f188abc183c5983dde402ebd877e51ea5cae897c83ed15ac705856|
+|2240_definer_search_path_pin|1440|1793330001640|c5ded8ca417c4d007f554bf1b2c2ae921137ad52607d87a51e222140cbca0198|
+|2241_company_reference_tenant_fk_not_valid|1441|1793330001641|37da9438cd8e81f71bada50e523b314c67ef150ce1921abf61862cb4e6c2e684|
+|2242_company_reference_tenant_fk_validate|1442|1793330001642|88376b2bf6fde6e10d6a08fc577397ee76a057e662be188a0efb136812f655a4|
 
-2150 appends pg_temp to every unpinned function path and re-issues the four visibility helpers; 2151
-tenant-filters `app.is_company_descendant`; 2152 adds seven company/tenant keys NOT VALID (the seventh,
-`teras_chat.company_id`, ON DELETE NO ACTION by owner decision); 2153 checks the data and validates them.
-Unapplied source only: re-check main's and staging's highest file, idx and `when` immediately before merge and
-keep each timestamp above every earlier-applied migration.
+2240 appends pg_temp to every unpinned function path (assuming each dedicated owner role for its own functions)
+and re-issues the four visibility helpers. 2241 adds seven company/tenant keys NOT VALID; the seventh,
+`teras_chat.company_id`, is ON DELETE NO ACTION by owner decision. 2242 checks the data and validates them.
+These are unapplied source only: immediately before merge, re-check the highest file, idx and `when` on main
+and staging, and keep each timestamp above every earlier-applied migration. At staging admission, confirm the
+migrator can SET ROLE to each dedicated owner, and count chats whose company is missing or belongs to another
+tenant.
 
-Integration notes: Codex's 2103 and 2105 re-issue `app.visible_employment_ids` with `SET search_path = public`.
-If they land first, 2150's ALTER pins their body; if this lands first, `test/definer-search-path-pin.test.ts`
-fails their branch until that path ends with pg_temp. 2150 assumes `ai_hr_rewards_post_reader` for two
-statements, which the migrator could already do when 0689 installed; confirm at staging admission.
+## Approved expansion — 5 November 2026 (unapplied source reservation)
+
+Branch codex/approved-expansion-20261105 reserves 2200–2209, journal idx1400–1409,
+when1793330001600–1793330001609 for the approved Job Architecture, Rewards libraries/PAT/plan,
+and statutory-readiness work. The initial read-only audit found 2437 distinct branch heads,
+443 journal blobs and maximum file2141/idx1394/when1793330001541; registered worktree
+journals were checked separately. No 2200-or-higher source claim was observed.
+The complete main prefix through 2102 is preserved. These are source reservations only:
+recheck current main/alpha, worktree WIP, peer claims and the actual installed ledger before
+integration or installation. No live re-tag, future grade-track activation or deployment is authorized.
 
 ## Tenant-isolation hardening (ADR-0174) — 4 November 2026 (provisional source claim)
 
@@ -1571,6 +1576,83 @@ main's 0631 versions of these functions. No statement added or removed; owner an
 SHA256 above, the `lifecycle-v9` journal pin and the `board-nine` applied-ledger pin are the new file's. Same number, idx
 and `when`.
 
+## Approved feedback candidate reservations — 4 November 2026
+
+2107_probation_module_permission: idx1354, timestamp1793330001507, owned by codex/approved-ui-20261104. Checked main/alpha b6077019 and staging watermark1793330001502; discovered competing source claims through2105/1352/1505. Keep preceding journal bytes; gaps are intentional. Source reservation only, unapplied. Security2106, Rewards2108, Org Chart2109 and Personnel registry2110 are coordinated separately. Reconcile ledger/source divergence before release.
+
+## Approved Personnel formula registry — 4 November 2026 (unapplied)
+
+Coordinator reserved `2110_pay_formula_personnel_registry`, idx1357 / when1793330001510,
+after sibling Rewards2108/1355/1508 and Organization2109/1356/1509. This source branch preserves
+the complete b6077019c journal prefix through2011/811/1411. Registration metadata selects only
+closed typed source keys: it cannot supply executable SQL, table names, columns or source code.
+No production registration or migration has been applied. Reconcile all then-applied prefixes
+and concurrent allocations before release admission.
+
+## 2026-11-04 Probation organisation mapping source reservation
+
+`2111_probation_personnel_mapping`, idx `1358`, when `1793330001511`, reserved by the root approved-item coordinator. No tenant mapping enabled, no live migration applied. This source creates a dormant owner-only reviewed mapping register; release and any per-tenant switch require reporter inventory review. Existing journal prefix remains unchanged.
+
+## Approved Rewards entity picker — 4 November 2026 (unapplied)
+
+Coordinator reserved `2108_rewards_entity_classification`, idx1355 / when1793330001508, above
+the audited staging watermark1502 and sibling provisional claims through2105/idx1352/1505.
+The Rewards branch preserves the complete main/alpha b6077019c journal prefix through2011/idx811/1411.
+This additive Rewards-only designation stores explicitly reviewed company UUIDs and canonical alias
+UUIDs; no name inference, backfill, company merge, saved-policy rewrite or production data action.
+Recheck every then-applied prefix and competing claim at integration/release admission.
+
+### Approved Org Chart roots (4 November2026)
+
+Parent allocation reserves2109_org_chart_roots / idx1356 / when1793330001509 above discovered main/live claims. This adds explicit effective-dated roots and guards their reporting-line consistency; no roots are inferred or backfilled. Source allocation grants no deployment or live application authority. SQL SHA256: `244664d78a5d54017e7c28b063bc627cc0af7d9a524ba6fc2d710d70d845dfdd`.
+
+## 2026-11-04 approved Security Center reservation
+
+`2106_account_management_subject`, journal idx `1353`, when `1793330001506`, reserved by root delivery coordinator after read-only ref/live-ledger audit. Canonical prefix is unchanged. Recent source tail2105/idx1352/when1793330001505 and staging max1793330001502 precede this claim. No migration deployed. Live-ahead reconciliation remains a release prerequisite.
+
+## Approved Personnel organisation tagging and filters — 4 November 2026 (unapplied)
+
+Coordinator `codex/approved-ui-20261104` reserves `2126_company_organisation_tagging`, idx1373 /
+when1793330001526, for the shared explicit dated mapping, independent structure/re-tag review and
+published classification owner; and `2127_personnel_filter_search`, idx1374 / when1793330001527,
+for the authorised Personnel projection and private sensitive-search state. The implementation worktrees
+are `codex/approved-organisation-owner-20261104`, `codex/approved-organisation-writers-20261104` and
+`codex/approved-personnel-filters-20261104`.
+
+A fresh read-only audit covered 4,256 local/remote heads, 429 distinct journals and every registered
+worktree, including uncommitted migration filenames. Competing source claims end at2125/idx1372/
+when1793330001525. Main/alpha and the independently observed healthy staging source are
+74db3bb7621c33de256372162a1961ee320baf6e; its canonical journal ends at2102/idx1349/when1793330001502.
+The candidate already preserves this complete prefix and reserves2106–2111. Gaps remain intentional;
+no competing unapplied branch is silently included. Recheck the actual ordered installation ledger,
+canonical refs and competing reservations at release admission. These reservations apply no live data
+or schema and do not execute the separately reviewed employee re-tag operation.
+
+The same coordinator additionally reserves `2128_organisation_account_admission`, idx1375 /
+when1793330001528, for native account-availability reproof of the reviewed organisation operation.
+A refreshed 4,264-ref / 429-journal plus registered-worktree audit found no competing claim at2128
+or higher (2126/2127 are this coordinated source). This introduces no plaintext credential or
+employee re-tag. Its purpose-derived verifier requires explicit private technical provisioning;
+the server authentication master key is neither moved nor rotated. Installation ledger remains
+independently verified at671rows / max1793330001502. Revalidate all identities at release admission.
+
+Final index reconciliation for this still-unapplied source: a later concurrent source claim
+`2129_personnel_native_paging` uses idx1373 / when1793330001529. The approved Personnel coordinator
+therefore reserves idx1380–1383 for2126,2127,2128 and new2130_approved_company_retention respectively,
+with timestamps1793330001526,1527,1528 and1530. These supersede the earlier provisional1373–1375
+indices above; no applied row changes. 2129 is not silently included. The2130 helper declares retention
+for the new company/Business Unit references and keeps deletion/status authority on the reviewed
+current parent. Refresh the actual installation prefix/watermark again before application; lower
+unapplied timestamps must be reallocated if a competing release reaches staging first.
+
+Focused-development repair checkpoint5ea39a20d changes only still-unapplied2126/2127 bytes. Reserved indices/timestamps remain1380/1526 and1381/1527. Source SQL SHA256s: 2126_company_organisation_tagging `180d9ae5e937ecd6dc1f92505097f7c6bc72a7f20756660229586948624b794e`, 2127_personnel_filter_search `ea5f6a7ae8b84116e143ffa0849712f78f4f93dae18548a1239e5cac6bbafa2b`. No installation ledger byte is rewritten; release preflight must verify the actual then-applied prefix.
+
+The still-unapplied2127 grant correction explicitly revokes bootstrap default table privileges before the declared column-specific SELECT/INSERT/DELETE grants. Its final SQL SHA256 is `ce56780cd696e805c4a217316b9d36bc411cfa0f8a5015c53a46e7ff9b606283`; allocation1381/1793330001527 is unchanged. No applied migration is edited. Native denial checks cover matches reads, membership updates and expiry extension.
+
+## Personnel projection availability repair
+
+Staging was verified at b84f6e269 with a 681-row ledger ending at 1793330001530. Reserve `2210_personnel_projection_reuse` at index 1410 and timestamp 1793330001610, above the previously surveyed claims. SQL SHA-256 is `84665a381ed31061437c601197d9a9f8da5f8a5573abef5c09c0603b4546d613`. The existing entries and SQL are preserved. Other pending branches must reconcile their reservations against the actual ledger before installation. The unrelated payroll learning relocation remains a draft.
+
 ## AI Centre block 2000–2019: payroll history learning, P1 — 4 November 2026 (unapplied source reservation)
 
 Branch `claude/payroll-history-learning` (from main `b6077019c`, the AI v2 release, whose journal has 668 entries ending idx811
@@ -1643,3 +1725,20 @@ file 2012–2019.
 `test/payroll-tax-basis-upgrade.test.ts` pin the journal tail; `test/payroll-learning-math.test.ts` pins it as the last entry.
 Development source only: no installation priority, no deployment. At installation the number and `when` value are re-checked
 against staging's applied watermark and re-frozen above it if it has reached them.
+
+
+## Combined EPF and approved feedback staging candidate
+
+The installed staging baseline `1aeed6fbcb7d2d73c390a6abb014d7d62151252b` has an
+authenticated ordered ledger of 682 entries ending at `2210_personnel_projection_reuse`
+(idx 1410, timestamp 1793330001610). Keep that prefix and its SQL bytes intact.
+The unapplied learning and approved expansion SQL files retain their names and bytes.
+Reassign their journal positions above that watermark: `2013_payroll_learned_baseline`
+at idx 1411 / 1793330001611, then `2200`–`2209` at idx 1412–1421 /
+1793330001612–1793330001621 in dependency order. Verify the installed ledger again at
+admission. Production requires a separate exact-ledger check and release decision.
+
+The release gate found additional company retention references from the approved expansion.
+Append `2211_company_retention_approved_expansion` at idx 1422 / timestamp 1793330001622.
+SHA256 `5e336a948b9490d9355eba65d6f341618334a031c7bdc66562ed9139b7c5f0c4`. The migration adds scoped retention checks and validated tenant keys for the new owners.
+It preserves earlier SQL and the original staging ledger.

@@ -1,3 +1,4 @@
+import {migrateApprovedUpgrade,retainedUpgradeSnapshot} from './helpers/approved-upgrade';
 /** Ordinary journal upgrades on disposable owner-created localhost databases; no fixture schema or ledger rewriting. */
 import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -48,9 +49,9 @@ it.each(['clean','populated'] as const)('rehearses the %s ordinary Formula Build
    await storage.client`insert into payslip(id,tenant_id,batch_id,employment_id,basic_salary,gross_pay,total_deductions,net_pay,employer_cost,statutory) values(${slip},${tenant},${batch},${employment},3000.01,3125.51,355.50,2770.01,3530.51,'{"epfEmployee":330,"epfEmployer":390,"pcb":25.50}'::jsonb)`;
    before=await native();prefix=await ledger();expect(prefix).toHaveLength(boundary);expect(before.pay_component).toHaveLength(1);expect(before.payslip).toHaveLength(1);expect(before.payroll_input).toHaveLength(1);
   }
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});const after=await ledger();expect(after).toHaveLength(journal.entries.length);
+  const approvedUpgrade=await migrateApprovedUpgrade(storage);const after=await ledger();expect(after).toHaveLength(journal.entries.length);
   expect(after.map(row=>({hash:row.hash,when:row.created_at}))).toEqual(journal.entries.map(entry=>({hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex'),when:String(entry.when)})));
-  if(prefix){expect(after.slice(0,boundary)).toEqual(prefix);expect(await native()).toEqual(before);expect(await storage.client`select formula_context,rule,prorates,kind::text from pay_component where id=${component}`).toEqual([{formula_context:null,rule:nativeRule,prorates:false,kind:'allowance'}]);}
+  if(prefix){expect(after.slice(0,boundary)).toEqual(prefix);expect(retainedUpgradeSnapshot(await native(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));expect(await storage.client`select formula_context,rule,prorates,kind::text from pay_component where id=${component}`).toEqual([{formula_context:null,rule:nativeRule,prorates:false,kind:'allowance'}]);}
   for(const table of formulaTables){expect(await storage.client.unsafe(`select count(*)::int as count from public.${table}`)).toEqual([{count:0}]);
    expect(await storage.client`select has_table_privilege('ai_hr_app',${table},'SELECT') as readable,has_table_privilege('ai_hr_app',${table},'INSERT') as insertable,has_table_privilege('ai_hr_app',${table},'UPDATE') as mutable,has_table_privilege('ai_hr_app',${table},'DELETE') as deletable,has_table_privilege('ai_hr_app',${table},'TRUNCATE') as truncatable`).toEqual([{readable:true,insertable:true,mutable:false,deletable:false,truncatable:false}]);
    expect(await storage.client`select relrowsecurity,relforcerowsecurity,relowner=(select proowner from pg_proc where oid='app.pay_formula_company_in_use(uuid)'::regprocedure) as same_definer_owner,relowner=(select oid from pg_roles where rolname='ai_hr_app') as app_owned from pg_class where oid=${'public.'+table}::regclass`).toEqual([{relrowsecurity:true,relforcerowsecurity:false,same_definer_owner:true,app_owned:false}]);
@@ -67,13 +68,14 @@ it.each(['clean','populated'] as const)('rehearses the %s ordinary Formula Build
     has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app_execute,
     not exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_revoked
     from pg_proc p where p.oid='app.pay_formula_company_in_use(uuid)'::regprocedure`;
-  // 2150 (ADR-0174 follow-up) appends pg_temp to every definer path; nothing else about the function changes.
+  // 2240 (ADR-0174 follow-up) appends pg_temp to every definer path; nothing else about the function changes.
   expect(retention).toEqual({prosecdef:true,provolatile:'s',result:'boolean',proconfig:['search_path=pg_catalog, public, app, pg_temp'],app_owned:false,app_execute:true,public_revoked:true});
   expect(await storage.client`select rolsuper,rolbypassrls from pg_roles where rolname='ai_hr_app'`).toEqual([{rolsuper:false,rolbypassrls:false}]);
   expect(await application.client`select app.pay_formula_company_in_use(${company}::uuid) as retained`).toEqual([{retained:false}]);
   // An unbound application session receives no activation metadata or private test/evaluation rows.
   expect(await application.client`select * from app.pay_formula_active('UPGRADE_OT')`).toEqual([]);
   expect(await application.client`select * from pay_formula_test`).toEqual([]);expect(await application.client`select * from pay_formula_evaluation`).toEqual([]);
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});expect(await ledger()).toEqual(after);if(before)expect(await native()).toEqual(before);
+  const terminal=await native();
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});expect(await native()).toEqual(terminal);expect(await ledger()).toEqual(after);if(before)expect(retainedUpgradeSnapshot(await native(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));
  }finally{await application.client.end();await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);await admin.end();rmSync(directory,{recursive:true,force:true});}
 },180000);

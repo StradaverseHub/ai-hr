@@ -1,11 +1,11 @@
 /**
  * ADR-0174 follow-up — every SECURITY DEFINER function names pg_temp LAST in its search_path, and the
- * visibility walks answer only inside the session tenant (migrations 2150/2151).
+ * visibility walks answer only inside the session tenant (migration 2240; app.is_company_descendant since 2126).
  *
  * A path that does not name pg_temp still searches the session's temporary schema FIRST for relation and
  * type names, so an ai_hr_app session could put a TEMP `employment` in front of public.employment, or a
  * TEMP table named `jsonb` in front of the jsonb type, inside a definer body. Each shadow test first runs
- * the installed body under its pre-2150 path as a control, proving the shadow is live, before asserting
+ * the installed body under its pre-2240 path as a control, proving the shadow is live, before asserting
  * that the installed function ignores it. The catalog guard keeps future definers pinned.
  */
 import { randomUUID } from 'node:crypto';
@@ -15,6 +15,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
+import { setCompanyParent } from '../core/admin';
 import { pgSqlState } from '../lib/db-error';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -36,14 +37,14 @@ const employeeCtx = async (b: Base, personId: string): Promise<SessionContext> =
   personId,
 });
 
-/** The body `fn` had before 2150, taken from the latest migration that defined it. */
+/** The body `fn` had before 2240, taken from the latest migration that defined it. */
 const migrationBody = (migration: string, fn: string) => {
   const text = readFileSync(`db/migrations/${migration}.sql`, 'utf8');
   const start = text.lastIndexOf(`CREATE OR REPLACE FUNCTION app.${fn}(`);
   const open = text.indexOf('AS $$', start) + 'AS $$'.length;
   const body = text.slice(open, text.indexOf('$$;', open));
   expect(start, fn).toBeGreaterThanOrEqual(0);
-  expect(body, `${fn} must be the unqualified pre-2150 body`).toMatch(/FROM employment e/);
+  expect(body, `${fn} must be the unqualified pre-2240 body`).toMatch(/FROM employment e/);
   return body;
 };
 
@@ -53,7 +54,7 @@ const installedBody = async (fn: string) => {
   return row.body;
 };
 
-/** `body` as an invoker pg_temp function under the pre-2150 path `public`. A pg_temp function outlives a
+/** `body` as an invoker pg_temp function under the pre-2240 path `public`. A pg_temp function outlives a
  *  committed transaction on a pooled connection, so callers drop it before committing (a rollback removes it). */
 const controlOf = (tx: Tx, name: string, args: string, returns: string, body: string) =>
   tx.execute(sql.raw(`CREATE FUNCTION pg_temp.${name}(${args}) RETURNS ${returns} LANGUAGE sql STABLE SET search_path = public AS $control$${body}$control$`));
@@ -126,7 +127,7 @@ describe('ADR-0174 follow-up — pinned definer search paths', () => {
 
   it('a TEMP table cannot shadow a relation or a type name inside app.principal', async () => {
     const ctx = adminCtx(a);
-    // 2150 changed only this function's path, so the installed body is also the pre-2150 body.
+    // 2240 changed only this function's path, so the installed body is also the pre-2240 body.
     const body = await installedBody('app.principal(uuid)');
     const control = (tx: Tx) => controlOf(tx, 'old_principal', 'p_user_id uuid', 'TABLE (tenant_id uuid, person_id uuid, grants jsonb)', body);
     const shadowRelation = await withTenant(ctx, async (tx) => {
@@ -183,11 +184,9 @@ describe('ADR-0174 follow-up — visibility walks stay in the session tenant', (
     expect(await walks(adminCtx(a))).toEqual({ reports: false, heads: false, descends: false });
   });
 
-  it('without a session tenant the company walk stays inside one tenant, so the cycle trigger still holds', async () => {
-    const [walk] = rowsOf<{ descends: boolean }>(await owner.db.execute(
-      sql`SELECT app.is_company_descendant(${child}::uuid, ${b.companyId}::uuid) AS descends`));
-    expect(walk.descends).toBe(true);
-    const cycle = await owner.db.execute(sql`UPDATE public.company SET parent_company_id = ${child}::uuid WHERE id = ${b.companyId}::uuid`).catch((e) => e);
+  it('the company cycle trigger still refuses a cycle in the session tenant', async () => {
+    // 2126 walks only the session tenant, so the cycle check is exercised the way the application writes.
+    const cycle = await setCompanyParent(adminCtx(b), { companyId: b.companyId, parentCompanyId: child }).catch((e) => e);
     expect(pgSqlState(cycle)).toBe('23514');
   });
 });

@@ -732,7 +732,7 @@ export function pivotHistoryGrid(p: {
     // fully accounted for by item rows. Marked here, dropped in `filterGridRows`, so the pivot's own
     // reconciliation invariants (Σ earnings = Σ gross, Σ deductions = Σ total deductions) are
     // computed over the complete row set exactly as before.
-    if (r.kind === 'synthetic' && r.labelKey === 'allowance' && lumpFor(r).allowance) r.itemised = true;
+    // ALLOW remains visible as the stored Summary total even when its individual items are complete.
     if (r.kind === 'synthetic' && r.labelKey === 'otherDeductions' && lumpFor(r).otherDeductions) {
       r.itemised = true;
     }

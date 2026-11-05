@@ -1,3 +1,4 @@
+vi.mock('../components/derived-organisation-fields',()=>({useDerivedOrganisation:()=>({data:{status:'legacy'},loading:false,failed:false}),DerivedOrganisationFields:()=>null}));
 /**
  * ITEM da7463b4, ON THE SCREEN — the Create New Employee draft's Profile tab, rendered and typed into.
  *

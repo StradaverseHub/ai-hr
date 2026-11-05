@@ -20,6 +20,19 @@ const governedCallers:Record<string,{features:readonly string[];seams:readonly R
  'core/ai-domain-analysis.ts':{features:['report_insight'],seams:[/resolveActiveAiConfig\(tx,await authorizeSourceTx\(tx,ctx,selected\),'report_insight'\)/,/generatePrivateAiTaskAnalysis\(configuration,'aggregate_snapshot_analysis_v1',/,/await authorizeSourceTx\(tx,current,selected\)/,/return domainAnalysisProjection\(selected.domain,source\)/]},
  'core/ai-workforce-analysis.ts':{features:['report_insight'],seams:[/resolveActiveAiConfig\(tx,fresh,'report_insight'\)/,/authorizeSourceTx\(tx,current,selected\)/,/generatePrivateAiAnalysis\(configuration,/]},
  'core/ai-governance.ts':{features:AI_FEATURES.map(feature=>feature.id),seams:[/const issued=issuedConfigurations.get\(configuration\)/,/prepareProviderAnalysis\(binding,source\)/,/bindProviderPrivacyRequest\(next,/,/generateDraft\(prepared.configuration,prepared.args\)/]},
+ // Native proposal-only flows admit the exact source through the shared private-task gateway.
+ 'packs/job-architecture/owner.ts':{features:['module_agent_planning'],seams:[
+  /resolveActiveAiConfig\(tx,ctx,'module_agent_planning'\)/,
+  /preparePrivateAiTask\(initial\.configuration,policy\.JOB_ARCHITECTURE_AI_CONTRACT,async\(tx,current\)=>\{const d=await adviceSourceTx\(tx,current,p\);return d\.source;\}\)/,
+  /prepared\.operation!=='draft'/,/generateDraft\(prepared\.configuration,prepared\.args\)/,/prepared\.dispose\(\)/,
+ ]},
+ 'packs/rewards/advisor.ts':{features:['report_insight'],seams:[
+  /resolveActiveAiConfig\(tx,ctx,'report_insight'\)/,
+  /preparePrivateAiTask\(configuration,'rewards_advisor_outline_v1',async tx=>/,
+  /advisorFingerprintTx\(tx,id\)!==before\.sourceDigest/,
+  /return\{sourceFingerprint:before\.sourceDigest,reasonRefs:before\.candidate\.reasons\}/,
+  /task\.operation!=='draft'/,/generateDraft\(task\.configuration,task\.args\)/,/task\?\.dispose\(\)/,
+ ]},
  'core/assistant-import.ts':{features:['hr_assistant'],seams:[/const FEATURE\s*=\s*'hr_assistant'/,/resolveActiveAiConfig\(tx,\s*ctx,\s*FEATURE\)/,/withAiAdmissionCheck\(cfg,FEATURE/]},
  'lib/ai/provider-protocol.ts':{features:['provider_evaluation'],seams:[/if \(configuration\.provider !== 'openrouter' \|\| !configuration\.governance\) return unavailable\(\);/,/import \{preparePrivateAiTask,withAiRunObserver\} from '\.\.\/\.\.\/core\/ai-governance';/,/const cfg=withAiRunObserver\(configuration,\{/,/return preparePrivateAiTask\(cfg,id,async\(\)=>source\)/,/preparedCall\('synthetic_protocol_echo_v1',\{marker\}\)/,/preparedCall\('synthetic_protocol_tools_v1',\{marker,stage:'first',callId:null\}\)/,/preparedCall\('synthetic_protocol_tools_v1',\{marker,stage:'final',callId:call.id\}\)/],issuedBy:'core/ai-provider-readiness.ts',issuerImport:"from '../lib/ai/provider-protocol'"},
  'core/assistant-conversation-harness.ts':{features:['module_agent_evaluation'],seams:[/withAiAdmissionLifecycle\(cfg,\s*'module_agent_evaluation'/],issuedBy:'core/module-agent-releases.ts'},
@@ -121,6 +134,10 @@ const performanceOwners:Record<string,Record<string,string>>={
     "getAssessmentWrittenRemarks": "generatePerformanceNativeOutline"
   }
 };
+const protectedOwners:Record<string,Record<string,string>>={
+ 'packs/job-architecture/owner.ts':{generateArchitectureAdvice:'generateDraft'},
+ 'packs/rewards/advisor.ts':{generateRewardAdvisor:'generateDraft'},
+};
 const analysisCalls=['generatePrivateAiAnalysis','generatePrivateAiTaskAnalysis'];
 const workloadCalls=['generateDraft','readImage','converse',...analysisCalls,...performanceSeam.calls];
 const importOwner=(file:string,specifier:string)=>{
@@ -134,20 +151,49 @@ function workloadSource(file:string,src:string){
   if(ts.isNamedImports(bindings))for(const name of bindings.elements)aliases.set(name.name.text,{name:(name.propertyName??name.name).text,owner});
   else if(ts.isNamespaceImport(bindings))namespaces.set(bindings.name.text,owner);
  }
- const calls:{name:string;owner?:string}[]=[];let admission=false,shared=false;
+ // A literal lazy import retains canonical ownership inside its own lexical block. Do not
+ // attribute the same local name elsewhere in the file to that import.
+ const lazy=new Map<ts.Node,Map<string,{name:string;owner:string}>>();
+ const bindLazy=(node:ts.Node)=>{
+  if(ts.isVariableDeclaration(node)&&ts.isObjectBindingPattern(node.name)&&node.initializer&&ts.isAwaitExpression(node.initializer)){
+   const load=node.initializer.expression;
+   if(ts.isCallExpression(load)&&load.expression.kind===ts.SyntaxKind.ImportKeyword&&load.arguments.length===1&&ts.isStringLiteral(load.arguments[0])){
+    let scope:ts.Node=node.parent;
+    while(!ts.isBlock(scope)&&!ts.isSourceFile(scope))scope=scope.parent;
+    const bindings=lazy.get(scope)??new Map<string,{name:string;owner:string}>();
+    for(const element of node.name.elements){
+     const imported=element.propertyName??element.name;
+     if(ts.isIdentifier(element.name)&&!element.dotDotDotToken&&!element.initializer&&(ts.isIdentifier(imported)||ts.isStringLiteral(imported)))
+      bindings.set(element.name.text,{name:imported.text,owner:importOwner(file,load.arguments[0].text)});
+    }
+    lazy.set(scope,bindings);
+   }
+  }
+  ts.forEachChild(node,bindLazy);
+ };
+ bindLazy(tree);
+ const identifierOwner=(node:ts.Identifier)=>{
+  for(let scope:ts.Node|undefined=node.parent;scope;scope=scope.parent){
+   const imported=lazy.get(scope)?.get(node.text);
+   if(imported)return imported;
+  }
+  return aliases.get(node.text)??{name:node.text};
+ };
+ const calls:{name:string;owner?:string}[]=[];let admission=false,shared=false,privatePreparation=false;
  const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)){
-  const call:{name:string;owner?:string}|undefined=ts.isIdentifier(node.expression)?aliases.get(node.expression.text)??{name:node.expression.text}:
+  const call:{name:string;owner?:string}|undefined=ts.isIdentifier(node.expression)?identifierOwner(node.expression):
    ts.isPropertyAccessExpression(node.expression)&&ts.isIdentifier(node.expression.expression)&&namespaces.has(node.expression.expression.text)?{name:node.expression.name.text,owner:namespaces.get(node.expression.expression.text)}:undefined;
   if(call){
    if(workloadCalls.includes(call.name))calls.push(call);
+   if(call.name==='preparePrivateAiTask'&&call.owner==='core/ai-governance.ts')privatePreparation=true;
    if(call.name==='withAiAdmissionCheck'&&call.owner==='core/ai-governance.ts')admission=true;
    if(performanceSeam.calls.includes(call.name)&&call.owner===performanceSeam.file)shared=true;
   }
  }ts.forEachChild(node,visit);};visit(tree);
- return {calls,admission,shared};
+ return {calls,admission,shared,privatePreparation};
 }
 function assertWorkloadOwner(file:string,src:string){
- const {calls,admission,shared}=workloadSource(file,src);
+ const {calls,admission,shared,privatePreparation}=workloadSource(file,src);
  expect(aiBoundaryViolations(file,src),file).toEqual([]);
  if(!calls.length)return {kind:null,count:0};
  for(const call of calls){
@@ -157,6 +203,10 @@ function assertWorkloadOwner(file:string,src:string){
  if(file.startsWith('core/')||governedCallers[file]){
   const governed=governedCallers[file];
   if(governed){
+   if(protectedOwners[file]){
+    expect(calls,`${file} has one protected native dispatch per owner`).toHaveLength(Object.keys(protectedOwners[file]).length);
+    expect(privatePreparation,`${file} must use the canonical private-task preparation owner`).toBe(true);
+   }
    for(const feature of governed.features)expect(AI_FEATURES.some(f=>f.id===feature),`${file}:${feature}`).toBe(true);
    for(const seam of governed.seams)expect(src,`${file} ${seam}`).toMatch(seam);
    if(governed.issuedBy){const issuer=read(governed.issuedBy);expect(issuer,`${governed.issuedBy} issues ${file}`).toContain(governed.issuerImport??`from './${file.slice('core/'.length,-'.ts'.length)}'`);
@@ -186,7 +236,7 @@ describe('complete AI management inventory and boundary',()=>{
   expect(packFound).toEqual(performanceCallers);expect(Object.keys(packFound)).toHaveLength(18);expect(packCalls).toBe(20);
   // Check the concrete named caller body too, so keeping a file/import while dropping its supported
   // operation cannot satisfy the inventory. Nested functions remain inside their real native owner.
-  for(const [file,owners] of Object.entries(performanceOwners)){
+  for(const [file,owners] of Object.entries({...performanceOwners,...protectedOwners})){
    const src=read(file),tree=parseAiSource(file,src);
    const declarations=new Map<string,ts.FunctionDeclaration>();
    const collect=(node:ts.Node)=>{if(ts.isFunctionDeclaration(node)&&node.name)declarations.set(node.name.text,node);ts.forEachChild(node,collect);};collect(tree);
@@ -205,6 +255,9 @@ describe('complete AI management inventory and boundary',()=>{
   const admin=workloadSource('packs/performance/onehr/admin-agent-service.ts',read('packs/performance/onehr/admin-agent-service.ts'));
   expect(admin.calls).toEqual([{name:'generateDraft',owner:'lib/ai/index.ts'}]);expect(admin.admission).toBe(true);
   expect(workloadSource('core/fixture.ts',`import {generateDraft as draft} from '../lib/ai'; ${generic} draft(cfg,args);`).calls).toEqual([{name:'generateDraft',owner:'lib/ai/index.ts'}]);
+  const lazyDraft="async function scoped(){const {generateDraft:draft}=await import('../lib/ai'); draft(cfg,args);} function outside(){generateDraft(cfg,args);}";
+  expect(workloadSource('core/fixture.ts',lazyDraft).calls).toEqual([{name:'generateDraft',owner:'lib/ai/index.ts'},{name:'generateDraft'}]);
+  expect(workloadSource('core/fixture.ts',lazyDraft.replace('../lib/ai','./rogue')).calls[0]).toEqual({name:'generateDraft',owner:'core/rogue.ts'});
   expect(workloadSource('core/fixture.tsx',`import * as ai from '../lib/ai'; const view=<div/>; ai.converse(cfg,args);`).calls).toEqual([{name:'converse',owner:'lib/ai/index.ts'}]);
   expect(workloadSource('core/fixture.ts',"import {generatePrivateAiTaskAnalysis as analyse} from './ai-governance'; analyse(cfg,id,read);").calls).toEqual([{name:'generatePrivateAiTaskAnalysis',owner:'core/ai-governance.ts'}]);
   const file='packs/performance/onehr/idp-fit-service.ts';

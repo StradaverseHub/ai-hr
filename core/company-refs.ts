@@ -78,6 +78,14 @@ export type CompanyRef = {
 };
 
 export const COMPANY_REFERRERS: readonly CompanyRef[] = [
+  {table:'probation_activation_request',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'reward_company_classification',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'reward_company_classification',column:'canonical_company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'company_organisation_mapping',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'company_organisation_mapping',column:'parent_company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'company_organisation_mapping',column:'business_group_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'company_organisation_run_row',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'employment_organisation_classification',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
   {table:'contract_case',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
   {table:'contract_configuration',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
   {table:'contract_retirement_custody',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
@@ -114,7 +122,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   {table:'ai_agent_promotion',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'Company-scoped promotion history retains its company without exposing private candidate or promotion rows.'},
   {table:'assistant_own_leave_review',column:'allocation_effective_company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'A retained cost-allocation review preserves its effective-dated company as well as its original company; expose only a scoped retention boolean.'},
   {table:'assistant_own_leave_review',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'A reviewed Assistant action custody record scoped to this company is retained audit; expose only a scoped retention boolean.'},
-  {table:'teras_chat',column:'company_id',disposition:'other',note:'A login\'s own Noveri chat or chat tombstone (2000) for the company, keyed to it since 2152 with ON DELETE NO ACTION by the owner\'s decision. Chats are readable only by their owner, so a chat the deleting administrator cannot see makes the step-4 foreign key fire, reported as this same refusal; chats leave only through their retention expiry, person erasure or their owner.'},
+  {table:'teras_chat',column:'company_id',disposition:'other',note:'A login\'s own Noveri chat or chat tombstone (2000) for the company, keyed to it since 2241 with ON DELETE NO ACTION by the owner\'s decision. Chats are readable only by their owner, so a chat the deleting administrator cannot see makes the step-4 foreign key fire, reported as this same refusal; chats leave only through their retention expiry, person erasure or their owner.'},
   {table:'teras_outcome_record',column:'company_id',disposition:'other',note:'The Noveri outcome record (migration 0924) is append-only audit of one AI run: no DELETE privilege and a trigger refuses UPDATE and DELETE, so it is never cascaded. Turns private to their asker (0928) are invisible to other callers; a row the caller cannot see makes the step-4 foreign key fire, which is reported as this same refusal.'},
   // AI v2 Phase 1 (migrations 0959, 0960, 0961; P2-2b run 41623360049 found them undeclared). Each is FORCE row-level
   // security and the application role holds no DELETE on any of them, so none can be cascaded: each refuses. Where a
@@ -253,6 +261,22 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'reward_calendar', column: 'company_id', disposition: 'payroll', note: 'The reward approval deadlines set for a cycle in this company. They belong to the reward review history; preserve them with the reviews.' },
   { table: 'reward_company_exclusion', column: 'company_id', disposition: 'other', note: 'Company-year participation decisions retain their exclusion and ending reasons as audit history, including after a company is brought back.' },
 
+  { table: 'reward_company_year_review', column: 'company_id', disposition: 'payroll', existsFunction: 'app.expansion_reward_company_in_use', note: 'Company-year admission retains every planned or uploaded annual review.' },
+
+  // Approval, access and preview history can be hidden from the deleting administrator. Expose only a scoped boolean.
+  { table: 'company_registration_classification', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Explicit statutory-readiness classification and its recorded actor retain the employer identity.' },
+  { table: 'job_architecture_import_preview', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'A private preview retains its company and file/source fingerprints, including after consumption.' },
+  { table: 'job_architecture_jd_publication', column: 'variant_company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'A current company-specific publication retains its company.' },
+  { table: 'job_architecture_jd_publication_history', column: 'variant_company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Historical company-specific publications retain their company.' },
+  { table: 'job_architecture_position_revision', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'An approved position mapping retains its company and source position.' },
+  { table: 'job_architecture_proposal', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Pending and decided proposals retain the company and all affected scopes.' },
+  { table: 'job_architecture_seat', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Dated access seat history is never removed with company setup.' },
+  { table: 'job_architecture_suggestion', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Advisory source and reviewer provenance retain the original company.' },
+  { table: 'reward_page_grant', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Dated Rewards page access is deliberately ended and retained.' },
+  { table: 'reward_pat_version', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Company PAT versions retain setup, maker and checker provenance.' },
+  { table: 'reward_plan_company', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Plan participation and historical versions retain their company.' },
+  { table: 'reward_setup_grant', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Dated Rewards setup authority retains its company scope.' },
+
   // ── other links: any row refuses until the link is removed ───────────────────────────────────────────
   { table: 'company', column: 'parent_company_id', disposition: 'other', note: 'A sub-company. Re-parent or delete it first; deleting a parent must never orphan a subtree.' },
   { table: 'role_assignment', column: 'company_id', disposition: 'other', note: 'A user given a role scoped to this company. Access is removed deliberately, never as a side effect.' },
@@ -346,11 +370,14 @@ export type CompanyConfigDependent = {
 };
 
 export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  {table:'company_organisation_mapping',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.approved_feedback_company_in_use',note:'Reviewed dated company mappings retain the actual Business Unit identity, including shared units created by another company.'},
   {table:'contract_role_assignment',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.replan_retained_company_in_use',note:'Retain scoped lifecycle role mappings.'},
   {table:'probation_access',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.replan_retained_company_in_use',note:'Retain scoped lifecycle role mappings.'},
   {table:'probation_access',column:'department_id',references:'department',effect:'blocks',existsFunction:'app.replan_retained_company_in_use',note:'Retain scoped lifecycle role mappings.'},
   {table:'payroll_history_import_record',column:'cycle_id',references:'payroll_cycle',effect:'blocks',note:'Imported payroll identities retain the exact configured cycle even after every effective value is retired.'},
   { table: 'employment_cost_allocation_row', column: 'cost_center_id', references: 'cost_center', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
+  { table: 'job_architecture_outlier', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', existsFunction: 'app.expansion_other_company_in_use', note: 'An outlier retains the Business Unit referenced by its investigation.' },
+  { table: 'job_architecture_position_revision', column: 'position_id', references: 'position', effect: 'blocks', existsFunction: 'app.expansion_other_company_in_use', note: 'An approved mapping retains the exact source position.' },
   { table: 'job_document_revision', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
   { table: 'job_document_revision', column: 'department_id', references: 'department', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
   { table: 'job_document_revision', column: 'location_id', references: 'location', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
@@ -455,6 +482,6 @@ export function companyDeleteBlockSqlText(idExpr: string): string {
         `where ${own}.${q(cascadedColumn(d.references))} = ${idExpr}${outside})`,
     );
   });
-  const when = (reason: CompanyDeleteBlock) => `when ${groups[reason].join(' or ')} then '${reason}'`;
+  const when = (reason: CompanyDeleteBlock) => `when ${[...new Set(groups[reason])].join(' or ')} then '${reason}'`;
   return `case ${when('employees')} ${when('payroll')} ${when('other')} else null end`;
 }

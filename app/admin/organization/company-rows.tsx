@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { Badge } from '@/components/ui';
+import type { CompanyRegistrationStatus } from '@/lib/company-registration-readiness';
 
 /**
  * Organization → Companies: the LISTING row model (item defd4644).
@@ -40,6 +42,8 @@ export type CompanyRow = {
   parentId: string | null;
   parentName: string | null;
   archived: boolean;
+  statutoryStatus?: CompanyRegistrationStatus;
+  activeEmployees?: number;
 };
 
 /** Sort keys are a CLOSED set — an unknown `?sort=` falls back to name rather than throwing or
@@ -158,6 +162,7 @@ export function CompanyRows({
     edit: string;
     archive: string;
     unarchive: string;
+    registration?:{complete:string;missing:string;not_required:string;completeAction:string};
   };
   /** The server action behind the Archive / Unarchive button. Bound by the page that owns the route. */
   archiveAction: (fd: FormData) => void | Promise<void>;
@@ -166,7 +171,7 @@ export function CompanyRows({
   if (rows.length === 0) {
     return (
       <tr>
-        <td colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">
+        <td colSpan={labels.registration?7:6} className="px-3 py-8 text-center text-sm text-muted-foreground">
           {labels.empty}
         </td>
       </tr>
@@ -176,13 +181,20 @@ export function CompanyRows({
     <>
       {rows.map((r) => (
         <tr key={r.id} className={r.archived ? 'opacity-60 hover:bg-muted/40' : 'hover:bg-muted/40'}>
-          <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{r.code ?? '—'}</td>
+          <td className="hidden px-3 py-2 font-mono text-xs text-muted-foreground sm:table-cell">{r.code ?? '—'}</td>
           <td className="px-3 py-2">
             <Link href={`${basePath}/${r.id}/view`} className="font-medium text-foreground hover:text-primary">
               {r.name}
             </Link>
+            {r.code && <span className="mt-1 block whitespace-nowrap font-mono text-xs text-muted-foreground sm:hidden">{r.code}</span>}
           </td>
           <td className="px-3 py-2 text-muted-foreground">{r.registrationNo ?? '—'}</td>
+          {labels.registration && <td className="whitespace-nowrap px-3 py-2">
+            <div className="flex flex-col items-start sm:flex-row sm:items-center sm:gap-2">
+              <Badge variant={r.statutoryStatus==='complete'?'success':r.statutoryStatus==='missing'?'danger':'default'}>{labels.registration[r.statutoryStatus??'missing']}</Badge>
+              {r.statutoryStatus==='missing' && <Link href={`${basePath}/${r.id}?tab=statutory`} className="inline-flex min-h-11 items-center text-xs text-primary underline underline-offset-2 sm:min-h-7">{labels.registration.completeAction}</Link>}
+            </div>
+          </td>}
           <td className="px-3 py-2 text-muted-foreground">{r.parentName ?? '—'}</td>
           <td className="px-3 py-2">
             <span
@@ -209,9 +221,7 @@ export function CompanyRows({
               <Link href={`${basePath}/${r.id}`} className="text-primary underline underline-offset-2">
                 {labels.edit}
               </Link>
-              <span aria-hidden className="text-border">
-                |
-              </span>
+              <span aria-hidden className="text-border">|</span>
               <form action={archiveAction} className="inline">
                 <input type="hidden" name="id" value={r.id} />
                 <input type="hidden" name="archived" value={r.archived ? 'false' : 'true'} />

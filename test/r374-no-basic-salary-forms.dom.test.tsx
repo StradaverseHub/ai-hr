@@ -1,3 +1,4 @@
+vi.mock('../components/derived-organisation-fields',()=>({useDerivedOrganisation:()=>({data:{status:'legacy'},loading:false,failed:false}),DerivedOrganisationFields:()=>null}));
 /**
  * r374 (item 7dbaf677) — THE TWO SALARY FORMS, ON SCREEN. A KEY IS NOT A SCREEN (CLAUDE.md §8).
  *

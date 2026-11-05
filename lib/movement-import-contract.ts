@@ -14,7 +14,7 @@ export const MOVEMENT_IMPORT_HEADERS=['Employee ID',...MOVEMENT_IMPORT_FIELDS.ma
 /** 646355e5 slice C — `action` (blank = create) and `movementId`/`reason` come from the version 4 columns; an
  * Update or Delete names ONE existing movement, resolved only within the row's tenant, company and employee. */
 export type MovementImportAction='create'|'update'|'delete';
-export type MovementImportRecord={row:number;employeeCode:string;cells:Partial<Record<MovementFormField,string>>;errors:string[];incrementAmount?:string;importVersion?:2;source?:{sheet:string;row:number};companyCode?:string;companyId?:string;employeeName?:string;before?:Record<string,string>;sourceRows?:number[];action?:MovementImportAction;movementId?:string;reason?:string};
+export type MovementImportRecord={row:number;employeeCode:string;cells:Partial<Record<MovementFormField,string>>;ignoredOrganisation?:{parentCompany?:string;businessUnit?:string};errors:string[];incrementAmount?:string;importVersion?:2;source?:{sheet:string;row:number};companyCode?:string;companyId?:string;employeeName?:string;before?:Record<string,string>;sourceRows?:number[];action?:MovementImportAction;movementId?:string;reason?:string};
 export type MovementImportRow={row:number;employeeCode:string;eventType:string;effectiveDate:string;status:'valid'|'invalid'|'excluded'|'imported'|'failed';errors:string[];warnings?:string[];source?:{sheet:string;row:number};sourceRows?:number[];companyCode?:string;baselineDate?:string;before?:Record<string,string|null>;proposed?:Record<string,string|null>;scheduled?:boolean;payrollFlaggedPeriods?:string[];action?:MovementImportAction;movementId?:string;closedPayrollPeriods?:string[]};
 /** `key` identifies one employee of one company in a multi-company file (selection and fingerprints). */
 export type MovementImportEmployee={employeeCode:string;employmentId:string|null;name:string|null;rows:MovementImportRow[];fingerprint:string|null;key?:string;companyId?:string|null;companyName?:string|null};
@@ -45,9 +45,10 @@ export function parseMovementImport(text:string):{records:MovementImportRecord[]
  const grid=parseCsv(source);if(!grid.length)return {records:[],fileErrors:['empty_file']};
  const normalize=(value:string)=>value.trim().toLowerCase().replace(/[\s_]+/g,'');
  const aliases=new Map<string,string>();MOVEMENT_IMPORT_COLUMNS.forEach((column,index)=>{aliases.set(normalize(column),column);aliases.set(normalize(MOVEMENT_IMPORT_HEADERS[index]),column);});
+ aliases.set(normalize('Parent company'),'parent_company');aliases.set(normalize('parent_company'),'parent_company');
  const headers=grid[0].map(value=>aliases.get(normalize(value))??value.trim());const errors:string[]=[];
  if(new Set(headers).size!==headers.length)errors.push('duplicate_headers');
- for(const header of headers)if(!MOVEMENT_IMPORT_COLUMNS.includes(header))errors.push(`unknown_column:${header}`);
+ for(const header of headers)if(header!=='parent_company'&&!MOVEMENT_IMPORT_COLUMNS.includes(header))errors.push(`unknown_column:${header}`);
  for(const header of ['employee_code','event_type','effective_date'])if(!headers.includes(header))errors.push(`missing_column:${header}`);
  if(grid.length-1>MOVEMENT_IMPORT_LIMITS.rows)errors.push('too_many_rows');
  if(grid.length===1)errors.push('no_data_rows');
@@ -60,7 +61,7 @@ export function parseMovementImport(text:string):{records:MovementImportRecord[]
   if(!isValidEmployeeCode(employeeCode))rowErrors.push('invalid_employee_code');
   if(!cells.kind)rowErrors.push('event_type_required');
   if(!cells.effectiveDate||!movementImportDate(cells.effectiveDate))rowErrors.push('invalid_effective_date');
-  return {row:index+2,employeeCode,cells,errors:rowErrors};
+  return {row:index+2,employeeCode,cells,errors:rowErrors,...(raw.parent_company?{ignoredOrganisation:{parentCompany:raw.parent_company}}:{})};
  });
  const counts=new Map<string,number>();for(const row of records)counts.set(row.employeeCode,(counts.get(row.employeeCode)??0)+1);
  if(counts.size>MOVEMENT_IMPORT_LIMITS.employees)errors.push('too_many_employees');

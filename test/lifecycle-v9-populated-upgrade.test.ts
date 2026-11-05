@@ -1,3 +1,4 @@
+import {migrateApprovedUpgrade,retainedUpgradeSnapshot,assertApprovedUpgradeTail} from './helpers/approved-upgrade';
 /** Ordinary journal rehearsal against an owned populated pre-V9 database. */
 import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -14,9 +15,8 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(676); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors, the four AI v2 Phase 1 migrations 2000-2003 and the seven AI v2 Phase 2 migrations 2004-2010, the Phase 2 hardening migration 2011, the ADR-0174 tenant-isolation hardening 2100-2102, the payroll history learning migration 2013 and the ADR-0174 follow-up 2150-2153 below.
+ assertApprovedUpgradeTail(journal.entries); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors, the four AI v2 Phase 1 migrations 2000-2003 and the seven AI v2 Phase 2 migrations 2004-2010, the Phase 2 hardening migration 2011 and the ADR-0174 tenant-isolation hardening 2100-2102 below.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
- expect(journal.entries.slice(boundary)).toHaveLength(105);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
  // The accepted V9 prefix and coordinated Feedback/Bank identities are immutable; the two coordinated Formula appends follow.
  expect(createHash('sha256').update(JSON.stringify(journal.entries.slice(0,579).map(migrationIdentity))).digest('hex')).toBe('11e5295ce4e60acb1f13c009a78098b043c862b6412ed2bbc2e102f142a87f85');
@@ -27,7 +27,7 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:697,version:'7',when:1793330000211,tag:'0811_pay_formula_company_retention',breakpoints:true,hash:'b3bea8f1c646e0989ac1cf161cc4950e4956439693961c2d8c00aba1c21aae5b'},
  ]);
  // Independently frozen b813 appended identities; never derive this expectation from the live journal.
- expect(journal.entries.slice(636).map(migrationIdentity)).toEqual([
+ expect(journal.entries.slice(636,671).map(migrationIdentity)).toEqual([
   {idx:751,version:'7',when:1793330000273,tag:'0873_movement_exit_payroll_preservation',breakpoints:true,hash:'39b6020262382d7c68dab60135837b6fc8b132f6b94afecd3892ba87cdbad440'},
   {idx:752,version:'7',when:1793330000274,tag:'0874_payroll_tax_basis_corrections',breakpoints:true,hash:'9177fcd20fa1706ccc8077f50083270b9f03acb126b729e6af725082ed5d5745'},
   {idx:753,version:'7',when:1793330000275,tag:'0875_reward_access_request_read_role',breakpoints:true,hash:'06190afbe171fffa7baa1c27b6fc6417499c50f1e8a7ec9a702a536e5acb41a1'},
@@ -80,12 +80,6 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:1347,version:'7',when:1793330001500,tag:'2100_employment_helper_tenant_pin',breakpoints:true,hash:'f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a'},
   {idx:1348,version:'7',when:1793330001501,tag:'2101_company_tenant_fk_not_valid',breakpoints:true,hash:'5aaf9b7e1f06514771e46ae3303e2e375eb461ba3acf0f8bb21af510bf49eb18'},
   {idx:1349,version:'7',when:1793330001502,tag:'2102_company_tenant_fk_validate',breakpoints:true,hash:'b2a6af380bb89765c2b32b6edaf8b5c7707ca23901f22806cd9f8888856983b4'},
-  // Payroll history learning P1 (claude/payroll-history-learning), frozen here.
-  {idx:1350,version:'7',when:1793330001503,tag:'2013_payroll_learned_baseline',breakpoints:true,hash:'bd490fda5f21c713262ecc6c8a29e8ed5dc88e0c963e201be7745bdc5a351da3'},
-  {idx:1395,version:'7',when:1793330001550,tag:'2150_definer_search_path_pin',breakpoints:true,hash:'d3154b1a705b519b3df8263492338253d3a445126e0e29aae8d228658b176238'},
-  {idx:1396,version:'7',when:1793330001551,tag:'2151_company_descendant_tenant_pin',breakpoints:true,hash:'3d96ad8d0ffa688fda4ba70737c16dda2a89acb27a9299a9881fa910fef6b239'},
-  {idx:1397,version:'7',when:1793330001552,tag:'2152_company_reference_tenant_fk_not_valid',breakpoints:true,hash:'4af62e556b49a6af7021db5cb45a63c6767fc6d83857ed5ea41b9c869dc3997d'},
-  {idx:1398,version:'7',when:1793330001553,tag:'2153_company_reference_tenant_fk_validate',breakpoints:true,hash:'fc41c330e3f188abc183c5983dde402ebd877e51ea5cae897c83ed15ac705856'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {
@@ -569,12 +563,13 @@ it('preserves populated Native issuance, private data, identity and every applie
    expect(receiptAfter.at(-1)).toMatchObject({hash:migrationIdentity(journal.entries[checkpoint.index]).hash,created_at:String(journal.entries[checkpoint.index].when)});
    expect(await original()).toEqual(before);
   }
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  expect(await original()).toEqual(before);
+  const approvedUpgrade=await migrateApprovedUpgrade(storage);
+  expect(retainedUpgradeSnapshot(await original(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));
   const after=await ledger();expect(after.slice(0,boundary)).toEqual(prefix);expect(after).toHaveLength(journal.entries.length);
   expect(after.slice(boundary).map(row=>({hash:row.hash,when:row.created_at}))).toEqual(journal.entries.slice(boundary).map((entry:{tag:string;when:number})=>({hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex'),when:String(entry.when)})));
   expect(await storage.client`select count(*)::int as count from lc_v9_case`).toEqual([{count:0}]);
   expect(await storage.client`select to_regnamespace('v9_test_fixture') as fixture,has_function_privilege('ai_hr_app','app.lc_v9_assigned_item(uuid,integer,text)','EXECUTE') as assigned`).toEqual([{fixture:null,assigned:true}]);
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});expect(await ledger()).toEqual(after);expect(await original()).toEqual(before);
+  const terminal=await original();
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});expect(await original()).toEqual(terminal);expect(await ledger()).toEqual(after);expect(retainedUpgradeSnapshot(await original(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));
  }finally{await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);await admin.end();rmSync(directory,{recursive:true,force:true});}
 },180000);

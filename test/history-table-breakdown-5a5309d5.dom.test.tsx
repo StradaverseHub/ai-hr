@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
+import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
 import messages from '../messages/en.json';
 import { HistoryTable } from '../app/payroll/transaction-view/history-table';
 import type { ProcessedPayslipViewRow } from '../core/payroll-view';
@@ -175,3 +176,23 @@ describe('5a5309d5 — History breakdown, rendered', () => {
     expect(screen.getAllByText('RM 250.00').length).toBeGreaterThan(0);
   });
 });
+
+it('9808e638/7de6fc4e: captures the real expanded History categories and dated source panel',async()=>{
+ const row:ProcessedPayslipViewRow={...itemised,id:'fictional-slip',batchId:'fictional-batch',employeeName:'Fictional employee',employeeCode:'E-FIXTURE',company:'Fictional Company',overtime:'0.00',bonus:'740.00',otherDeductions:'40.00',totalDeductions:'478.60',net:'4411.40',statutory:{
+  epfEmployee:380,socsoEmployee:20,eisEmployee:8,pcb:30.6,
+  displayEarnings:{basic:4000,allowance:150,overtime:240,bonus:500,claim:0},componentLines:[
+   {code:'A0010',name:'Travel Allowance',amount:100,buckets:[{bucket:'wage',amount:100}]},
+   {code:'A0011',name:'Phone Allowance',amount:50,buckets:[{bucket:'wage',amount:50}]},
+   {code:'B0001',name:'Performance Bonus',amount:500,buckets:[{bucket:'bonus',amount:500}]},
+   {code:'OT1_5',name:'Overtime 1.5',amount:240,displayCategory:'overtime',buckets:[{bucket:'bonus',amount:240}],detail:{qty:12,rate:20,unit:'hours'}},
+   {code:'ABSENT',name:'ABSENT',amount:40,buckets:[{bucket:'deduct',amount:40}],detail:{qty:2,rate:20,unit:'days'}},
+  ]
+ }};
+ const source=(id:string,date:string,qty:string,amount:string,notes:string)=>({id,batchId:row.batchId!,employmentId:row.employmentId,txnDate:date,kind:'earning' as const,componentCode:'OT1_5',componentName:'Overtime 1.5',quantity:qty,unit:'hours',amount,notes,source:'manual' as const,consumedBatchId:row.batchId!,consumedByThisRun:true});
+ const view=render(<NextIntlClientProvider locale="en" messages={messages}><HistoryTable rows={[row]} hrdfRegisteredCompanyIds={[row.companyId]} sourceTxnsByPayslip={{[`${row.batchId}:${row.employmentId}`]:[source('first','2026-10-03','4.00','80.00','Fictional first dated input'),source('second','2026-10-14','8.00','160.00','Fictional second dated input')]}}/></NextIntlClientProvider>);
+ for(const button of screen.getAllByRole('button',{name:/show/i}))await userEvent.click(button);
+ await userEvent.click(screen.getByRole('link',{name:'OT1_5 · Overtime 1.5'}));
+ expect(view.container.querySelector('details')!.open).toBe(true);
+ expect(screen.getByText('ABSENT · ABSENT')).toBeVisible();
+ await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en','payroll-history-detail','Actual HistoryTable and shared SourceTxnBlock; one fictional saved payroll snapshot and separate dated source-input rows; original totals retained; mobile table intentionally scrolls horizontally; no authenticated server journey or installed acceptance.','atelier');
+},120000);

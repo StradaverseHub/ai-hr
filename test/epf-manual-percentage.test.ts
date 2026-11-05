@@ -2,13 +2,13 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {createBatch,generatePayslips} from '../core/payroll';
+import {createAdditionalRun,createBatch,generatePayslips,setPayrollInput} from '../core/payroll';
 import {getStatutoryProfileMY,setStatutoryProfileMY,InvalidEpfElectionError} from '../localization/my/statutory';
 import {mapEpfUiMode,retainLegacyTotalTopup} from '../lib/epf-mode-map';
 import {clientPackFor} from '../localization/registry.client';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {payslip} from '../db/schema';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 describe('5e204d56 manual percentage persistence and payroll',()=>{
  let base:Base;
@@ -19,7 +19,7 @@ describe('5e204d56 manual percentage persistence and payroll',()=>{
  const hire=()=>hireEmployee(adminCtx(base),{person:{fullName:'Manual percentage fixture',primaryEmail:'manual-percentage@example.invalid'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:start});
  it('saves, reopens and generates the independently expected below-schedule contributions',async()=>{
   const a=adminCtx(base),employee=await hire();
-  await setCompensation(a,{employmentId:employee.employmentId,basicSalary:6000,monthlyAllowance:0,effectiveFrom:start});
+  await setCompensation(a,{employmentId:employee.employmentId,basicSalary:6001.10,monthlyAllowance:35.75,effectiveFrom:start});
   await setStatutoryProfileMY(a,{personId:employee.personId,icNumber:'900101011234',...mapEpfUiMode('manual_percentage','5.5','6.5')});
   const saved=await getStatutoryProfileMY(a,employee.personId);
   expect(saved).toMatchObject({epfMode:'manual_percentage',epfEmployeeRate:'0.0550',epfEmployerRate:'0.0650'});
@@ -27,7 +27,17 @@ describe('5e204d56 manual percentage persistence and payroll',()=>{
   await generatePayslips(a,{batchId});
   const rows=await owner.db.select().from(payslip).where(eq(payslip.batchId,batchId)).orderBy(payslip.id);
   expect(rows).toHaveLength(1);
-  expect(rows[0].statutory).toMatchObject({epfMode:'manual_percentage',epfEmployee:330,epfEmployer:390});
+  expect(rows[0].statutory).toMatchObject({
+   epfMode:'manual_percentage',epfEmployee:336,epfEmployer:397,
+   epfWorking:{
+    actualWage:6036.85,roundedWage:6100,increment:100,
+    items:[{label:'Basic salary',amount:6001.10},{label:'Allowance',amount:35.75}],
+    employee:{method:'entered_rate',rate:0.055,amount:336},
+    employer:{method:'entered_rate',rate:0.065,amount:397},
+    employeeThisRun:336,employerThisRun:397,
+   },
+  });
+  expect(rows[0].statutory).not.toHaveProperty('epfWorking.employeeEarlierRuns');
  });
  it('1058ced1 saves employee 0% / employer 4%, reopens 0 as 0 (not blank) and pays exactly those percentages',async()=>{
   const a=adminCtx(base),employee=await hire(),display=clientPackFor('MY')!.payroll.epfRateToPercent!;
@@ -41,6 +51,23 @@ describe('5e204d56 manual percentage persistence and payroll',()=>{
   const rows=await owner.db.select().from(payslip).where(eq(payslip.batchId,batchId)).orderBy(payslip.id);
   expect(rows).toHaveLength(1);
   expect(rows[0].statutory).toMatchObject({epfMode:'manual_percentage',epfEmployee:0,epfEmployer:240});
+ });
+ it('records earlier paid EPF separately from the additional run, including a genuine zero',async()=>{
+  await setModule(base.tenantId,'multi_cycle_payroll','active');
+  const a=await entitledCtx(base),employee=await hire();
+  await setCompensation(a,{employmentId:employee.employmentId,basicSalary:6000,effectiveFrom:start});
+  await setStatutoryProfileMY(a,{personId:employee.personId,icNumber:'900101011234',...mapEpfUiMode('manual_percentage','0','4')});
+  const regular=await createBatch(a,{companyId:base.companyId,payPeriod:period});
+  await generatePayslips(a,{batchId:regular.batchId});
+  const additional=await createAdditionalRun(a,{companyId:base.companyId,payPeriod:period,runType:'bonus'});
+  await setPayrollInput(a,{batchId:additional.batchId,employmentId:employee.employmentId,overtimeAmount:0,bonusAmount:250});
+  await generatePayslips(a,{batchId:additional.batchId});
+  const [slip]=await owner.db.select().from(payslip).where(eq(payslip.batchId,additional.batchId));
+  expect(slip.statutory).toMatchObject({
+   epfEmployee:0,epfEmployer:12,
+   epfWorking:{actualWage:6250,roundedWage:6300,employeeEarlierRuns:0,employerEarlierRuns:240,
+    employeeThisRun:0,employerThisRun:12},
+  });
  });
  it('1058ced1 the database rule accepts 0 and 100% and still refuses below 0, above 100% and blank',async()=>{
   const a=adminCtx(base),employee=await hire();

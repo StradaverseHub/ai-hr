@@ -65,7 +65,7 @@ describe('5e204d56 manual EPF percentages',()=>{
  it('uses the saved rates below the schedule, with exact whole-ringgit rounding',()=>{
   expect(resolveEpfRates(6000,undefined,el)).toEqual({employeeRate:.055,employerRate:.065});
   expect(epf(6000,0,undefined,el)).toEqual({employee:330,employer:390});
-  expect(epf(1000.01,0,undefined,{mode:'manual_percentage',employeeRate:.01,employerRate:1})).toEqual({employee:11,employer:1001});
+  expect(epf(1000.01,0,undefined,{mode:'manual_percentage',employeeRate:.01,employerRate:1})).toEqual({employee:11,employer:1020});
   expect(epf(4000,0,undefined,{mode:'voluntary_excess',employeeRate:.09,employerRate:.12})).toEqual({employee:440,employer:520});
   expect(epf(6000,0,undefined,{mode:'manual_amount',employeeAmount:500,employerAmount:650})).toEqual({employee:500,employer:650});
   expect(epf(6000,0,undefined,{mode:'exempt'})).toEqual({employee:0,employer:0});

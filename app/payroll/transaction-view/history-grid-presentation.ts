@@ -2,7 +2,7 @@ import type { GridRowGroup, HistoryGridRow } from './history-pivot';
 
 /** Display placement is independent of the accounting groups used to reconcile gross pay. */
 export function historyGridDisplayGroup(row: HistoryGridRow): GridRowGroup {
-  return row.kind === 'synthetic' && row.labelKey === 'overtime' ? 'summary' : row.group;
+  return row.kind === 'synthetic' && (row.labelKey === 'overtime' || row.labelKey === 'allowance') ? 'summary' : row.group;
 }
 
 export function historyGridLabelKey(row: HistoryGridRow): string | undefined {

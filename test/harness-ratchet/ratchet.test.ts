@@ -22,7 +22,7 @@ describe('harness ratchet',()=>{
  for(const item of RATCHET_CASES)it(item.id,async()=>{
   const {provider,dispatched}=fakeTools({admin:item.persona==='admin',poisonLeaveType:item.poisonLeaveType}),model=scriptedModel(item.script);
   const result=await runTurn({enabled:HARNESS_TEST_ONLY,ctx:caller(item.persona),conversationId:item.id,question:item.question,scope:{companyId:'00000000-0000-4000-8000-0000000000dd',locale:'en'},
-   model,memory:new InMemoryTaskMemoryStore(),tools:provider});
+   model,memory:new InMemoryTaskMemoryStore(),tools:provider,clock:()=>new Date('2026-11-02T04:00:00Z')});
   const {expect:want,id}=item,trace=result.trace;
   // Always: never blank, and the offer is identical on every request (nothing a tool returned widened it).
   expect(result.reply.trim(),id).not.toBe('');

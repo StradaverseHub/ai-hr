@@ -242,10 +242,10 @@ describe('migration 2013 (first claimed as 2012)',()=>{
   expect(SETTABLE_LEARNING_MODES).toEqual(['off','evidence']);expect(LEARNING_MODES).toEqual(['off','evidence','classify']);
   expect(BASELINE_METHOD).toMatch(/^[a-z_]{1,40}@v[0-9]{1,4}$/);
  });
- it('is the journal\'s last entry, after main\'s 2102: 2013, idx 1350, when 1793330001503',()=>{
+ it('appends the unchanged learning migration after the installed Personnel baseline',()=>{
   const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{idx:number;when:number;tag:string}[]};
-  expect(journal.entries.at(-1)).toMatchObject({idx:1350,when:1793330001503,tag:'2013_payroll_learned_baseline'});
-  expect(journal.entries.at(-2)).toMatchObject({idx:1349,when:1793330001502,tag:'2102_company_tenant_fk_validate'});
+  expect(journal.entries[682]).toMatchObject({idx:1411,when:1793330001611,tag:'2013_payroll_learned_baseline'});
+  expect(journal.entries[681]).toMatchObject({idx:1410,when:1793330001610,tag:'2210_personnel_projection_reuse'});
  });
 });
 

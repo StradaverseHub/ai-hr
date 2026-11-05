@@ -22,11 +22,18 @@ describe('Users directory desktop/mobile experience',()=>{
    const email=screen.getByText('alexandra.christina.consultant@external-company.example.test');
    expect(email.scrollWidth).toBeLessThanOrEqual(email.clientWidth+1);
    const first=document.querySelector('[data-directory-row]')!;
-   const accessCell=first.querySelectorAll('td')[1] as HTMLElement;
+   const cellByHeading=(label:string)=>{
+    const headings=[...first.closest('table')!.querySelectorAll('thead th')];
+    const index=headings.findIndex(heading=>heading.textContent?.trim()===label);
+    expect(index,label).toBeGreaterThanOrEqual(0);
+    return first.children[index] as HTMLElement;
+   };
+   const accessCell=cellByHeading(d.access);
    const lastGrant=accessCell.querySelector('li:last-child')!;
+   expect(lastGrant).toBeTruthy();
    expect(lastGrant.getBoundingClientRect().bottom).toBeLessThanOrEqual(accessCell.getBoundingClientRect().bottom);
    if(width<768){
-    const assistantCell=first.querySelectorAll('td')[2] as HTMLElement;
+    const assistantCell=cellByHeading(d.assistant);
     expect(accessCell.getBoundingClientRect().bottom).toBeLessThanOrEqual(assistantCell.getBoundingClientRect().top);
    }
    for(const control of first.querySelectorAll('button'))expect(control.getBoundingClientRect().height).toBeGreaterThanOrEqual(width<768?44:24);

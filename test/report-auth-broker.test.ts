@@ -88,6 +88,12 @@ describe('application-token handoff and fresh authorization after token acquisit
  });
 });
 describe('closed model and canonical credential structural projection',()=>{
+ it('preserves an existing PostgreSQL tenant ID without relaxing Auth subject/version validation',()=>{
+  const tenantId='11111111-1111-1111-1111-111111111111';
+  const original={...credential(ownerSubject,'owner@example.test'),tenantId,issuer:origin+'/auth/'+tenantId};
+  expect(parseCredential(original)).toEqual(original);
+  for(const bad of [{...original,tenantId:'not-a-uuid'},{...original,tenantId:' '+tenantId},{...original,tenantId:tenantId+' '},{...original,tenantId:tenantId.replaceAll('-','')},{...original,subject:tenantId},{...original,version:tenantId}])expect(parseCredential(bad)).toBeNull();
+ });
  it.each([{phase:'inspect',...nonce,email:target.email},{phase:'start',...nonce,inspectionProof:'A',expectedArtifact:artifact,verified:true},{phase:'status',occurrenceId:nonce.occurrenceId},{phase:'read',key:'email-state'}])('refuses extra authority/unknown variants: %j',value=>{expect(reportBrokerRequest.safeParse(value).success).toBe(false);});
  it('retains canonical nullable/false values and rejects malformed private records without inventing defaults',()=>{
   const original=credential(ownerSubject,'owner@example.test');expect(parseCredential(original)).toEqual(original);

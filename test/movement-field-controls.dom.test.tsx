@@ -1,3 +1,4 @@
+vi.mock('../components/derived-organisation-fields',()=>({useDerivedOrganisation:()=>({data:{status:'legacy'},loading:false,failed:false}),DerivedOrganisationFields:()=>null}));
 /**
  * 1d58019a Step 2 (ADR-0166) — the Field Controls, Classification and Termination Reasons cards of the
  * event-type configuration page, and the New Event form under a type's Field Controls, PROVED BY RENDERING.

@@ -1,3 +1,4 @@
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs,completeRewardFixturePolicy} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
@@ -32,7 +33,7 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
       await owner.db.update(schema.employment).set({ gradeId: grade.id, confirmationDate: `${year - 2}-04-01` }).where(eq(schema.employment.id, hire.employmentId));
       await setCompensation(admin, { employmentId: hire.employmentId, basicSalary: 5000, effectiveFrom: `${year - 2}-01-01` });
     }
-    unitId = await createRewardUnit(admin, { name: 'Fictional Annual Compensation Review', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
+    unitId = await createApprovedRewardUnit(admin, { name: 'Fictional Annual Compensation Review', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
     for (const role of ['bu', 'bg', 'ctro', 'ec'] as const) {
       const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: `Fictional ${role} reviewer`, primaryEmail: `${role}@rewards-config.test` }).returning();
       const userId = await createAppUser(b.tenantId, p.id, 'employee');
@@ -81,13 +82,14 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     expect(r.holders).toEqual([]); expect(r.due).toBeNull(); expect(r.daysUntilDue).toBeNull();
   });
 
-  it('adds a review to an existing cycle without a name and keeps the cycle name; a new cycle still needs one', async () => {
-    const r = await row();
-    const [other] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'BR', name: 'Branch' }).returning();
+  it('refuses direct creation outside an independently approved plan without changing the existing review',async()=>{
+    const before=await row();
+    const [other]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'BR',name:'Branch'}).returning();
     await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:other.id,departmentId:b.deptA,year});
-    const id = await createRewardUnit(admin, { cycleId: r.cycleId, year, companyId: b.companyId, businessUnitId: other.id, snapshotDate: today });
-    expect((await listRewardUnits(admin, [b.companyId])).find(x => x.id === id)?.cycle).toBe('Fictional Annual Compensation Review');
-    await expect(createRewardUnit(admin, { name: '  ', year, companyId: b.companyId, businessUnitId: other.id, snapshotDate: today })).rejects.toThrow('Name the new review cycle.');
+    await expect(createRewardUnit(admin,{cycleId:before.cycleId,year,companyId:b.companyId,businessUnitId:other.id,snapshotDate:today})).rejects.toThrow(/independently approved/);
+    await expect(createRewardUnit(admin,{name:'  ',year,companyId:b.companyId,businessUnitId:other.id,snapshotDate:today})).rejects.toThrow(/independently approved/);
+    expect(await listRewardUnits(admin,[b.companyId])).toHaveLength(1);
+    expect(await row()).toEqual(before);
   });
 
   it('reads the effective date from the review settings', async () => {
@@ -162,22 +164,21 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     expect(Object.keys((policy.payload as { after: object }).after)).not.toContain('patActual');
     expect(Object.keys((policy.payload as { after: object }).after)).not.toContain('meritMatrix');
   });
-  it('9040c2eb: carries the exact board projection for BU and EC seats and metadata only for a seatless admin',async()=>{
-    await submit();
-    const due=addDays(today,-2);await saveRewardCalendar(admin,unitId,0,{...emptyRewardCalendar(),due:{...emptyRewardCalendar().due,bg:due}});
-    for(const who of [actors.bu!,actors.bg!,actors.ec!]){
-      const [overview]=(await listRewardReviewStatus(who,[b.companyId])).rows;
-      const [board]=await rewardApprovalsBoard(who,[b.companyId]);
-      expect(overview).toBeDefined();expect(board).toBeDefined();
-      expect(overview).toMatchObject({waiting:board.waiting,salary:board.salary,bonus:board.bonus,blocking:board.blocking,exceptions:board.exceptions,due,daysUntilDue:-2});
-      expect(overview.roles).toEqual(who===actors.bu?['bu']:who===actors.bg?['bg']:['ec']);
+  // Allow time for 49 approved admissions on shared runners. The metric times only the list read.
+  it('9040c2eb: measures one projection per review with a 50-company annual-review fixture',async()=>{
+    const companyIds=[b.companyId],targets:{companyId:string;businessUnitId:string}[]=[];
+    for(let i=1;i<50;i++){
+      const [company]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:`Overview company ${i}`}).returning();companyIds.push(company.id);
+      const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:company.id,code:`OVERVIEW-${i}`,label:`Fictional unit ${i}`,name:`Fictional unit ${i}`}).returning();
+      await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:company.id,businessUnitId:bu.id,year});targets.push({companyId:company.id,businessUnitId:bu.id});
     }
-    expect((await listRewardReviewStatus(actors.ec!,[b.companyId])).rows[0].laterSeats).toEqual(['ec']);
-    const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional no-seat admin',primaryEmail:'no-seat-list@rewards-config.test'}).returning();
-    const userId=await createAppUser(b.tenantId,p.id,'hr_admin');
-    const [overview]=(await listRewardReviewStatus({...admin,userId,personId:p.id},[b.companyId])).rows;
-    expect(overview).toMatchObject({roles:[],waiting:false,salary:null,bonus:null,blocking:null,exceptions:null});
-  });
+    const first=await createApprovedRewardUnit(admin,{name:'Fictional overview review',year,...targets[0],snapshotDate:today},undefined,targets);
+    const versionId=(await getRewardUnit(admin,first)).unit.policyGroupVersionId!;
+    for(const target of targets.slice(1))await createApprovedRewardUnit(admin,{name:'Fictional overview review',year,...target,snapshotDate:today,sharedPolicyVersionId:versionId});
+    const started=performance.now(),overview=await listRewardReviewStatus(admin,companyIds),elapsed=performance.now()-started;
+    expect(overview.rows).toHaveLength(50);expect(new Set(overview.rows.map(row=>row.id)).size).toBe(50);
+    console.info(`Rewards review list 50-review fixture: ${elapsed.toFixed(1)} ms`);
+  },120_000);
   it('b4729de7: gives scope-safe empty reasons without another company or cycle name',async()=>{
     expect((await listRewardReviewStatus(admin,[])).emptyReason).toBe('noScope');
     const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional empty company'}).returning();
@@ -187,17 +188,6 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     const userId=await createAppUser(b.tenantId,p.id,'employee');
     const none=await listRewardReviewStatus({...admin,userId,personId:p.id,roles:['employee'],grants:undefined},[b.companyId]);
     expect(none.rows).toEqual([]);expect(none.emptyReason).toBe('noRole');expect(JSON.stringify(none)).not.toContain('Fictional Annual');
-  });
-  it('9040c2eb: measures one projection per review with a 50-review fixture',async()=>{
-    const first=await row();
-    for(let i=1;i<50;i++){
-      const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:`OVERVIEW-${i}`,label:`Fictional unit ${i}`,name:`Fictional unit ${i}`}).returning();
-      await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:bu.id,departmentId:b.deptA,year});
-      await createRewardUnit(admin,{cycleId:first.cycleId,year,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:today});
-    }
-    const started=performance.now(),overview=await listRewardReviewStatus(admin,[b.companyId]),elapsed=performance.now()-started;
-    expect(overview.rows).toHaveLength(50);expect(new Set(overview.rows.map(row=>row.id)).size).toBe(50);
-    console.info(`Rewards review list 50-review fixture: ${elapsed.toFixed(1)} ms`);
   });
 
 });

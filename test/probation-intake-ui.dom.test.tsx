@@ -5,8 +5,8 @@ import messages from '../messages/en.json';
 import type {ProbationIntakeWorkspace,ProbationCutoverPlan} from '../packs/probation/service';
 import {Intake} from '../app/lifecycle/probation/intake/intake';
 import {CutoverPreparation} from '../app/lifecycle/probation/intake/cutover-preparation';
-const m=vi.hoisted(()=>({stage:vi.fn(),prepare:vi.fn(),approve:vi.fn(),refresh:vi.fn()}));
-vi.mock('../app/lifecycle/probation/actions',()=>({stageIntake:m.stage,prepareCutover:m.prepare,approveCutover:m.approve}));
+const m=vi.hoisted(()=>({stage:vi.fn(),prepare:vi.fn(),approve:vi.fn(),request:vi.fn(),status:vi.fn(),refresh:vi.fn()}));
+vi.mock('../app/lifecycle/probation/actions',()=>({stageIntake:m.stage,prepareCutover:m.prepare,approveCutover:m.approve,requestActivation:m.request,activationStatus:m.status}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:m.refresh,push:vi.fn()})}));
 const company={id:'company',name:'Fictional Company'};
 function workspace(canReview=true):ProbationIntakeWorkspace{return{truncated:false,excludedCount:12,candidates:[{source:{employmentId:'employment',personId:'person',companyId:'company',companyName:'Fictional Company',gradeId:'grade',currentGradeId:'grade',employmentType:'full_time',probationMonths:6,probationUnit:'month',probationValue:6,explicitNoProbation:false,eligibilityReviewRequired:false,originalEndOn:'2026-12-31',extendedEndOn:null,extensionHistory:[],confirmationOn:null,resignationOn:null,terminatedOn:null,departmentId:'department',businessUnitId:'unit',businessGroupId:'group',title:'Fictional Position',division:null,holders:{employee:'employee',lm:'manager',hod:'head',pbp:'pbp'},employeeName:'Fictional Employee',employeeCode:'F001',startOn:'2026-07-01',endOn:'2026-12-31',grade:'15',businessGroup:'Fictional Group',businessUnit:'Fictional Unit',department:'Fictional Department',unknownPeriod:false},classification:'held',offlineDecisionReady:false,offlineDecision:null,requiredParts:[{type:1,cycle:0,requiresOffline:false},{type:3,cycle:0,requiresOffline:false}],stageOptions:[{extensionCount:0,requiredParts:[{type:1,cycle:0,requiresOffline:false},{type:3,cycle:0,requiresOffline:false}]}],canReview,canValidate:canReview,holders:[{role:'pbp',userId:'pbp',name:'Fictional PBP'}],sourceDigest:'a'.repeat(64),disposition:null,issues:[],evidence:[{id:'original',name:'Original signed review.pdf',reason:'Historical source reviewed',createdAt:'2026-11-03'}]}] };}
@@ -22,4 +22,19 @@ describe('probation intake review boundaries',()=>{
   const data=workspace(),c=data.candidates[0];c.source.extendedEndOn='2027-03-31';c.source.extensionHistory=[{id:'actual-extension',kind:'probation_extension',oldEndOn:'2026-12-31',newEndOn:'2027-03-31',months:3,recordedAt:'2026-12-30T03:00:00Z'},{id:'leave-adjustment',kind:'date_shift',oldEndOn:'2026-12-31',newEndOn:'2027-03-31',months:3,recordedAt:'2026-12-29T03:00:00Z'}];c.stageOptions.push({extensionCount:1,requiredParts:[{type:1,cycle:0,requiresOffline:false},{type:3,cycle:0,requiresOffline:true},{type:3,cycle:1,requiresOffline:false}]});show(true,data);
   fireEvent.change(screen.getByRole('combobox',{name:'Intake decision'}),{target:{value:'unfinished'}});expect(screen.getByRole('checkbox',{name:/Long-leave date adjustment/})).toBeDisabled();fireEvent.click(screen.getByRole('checkbox',{name:/Recorded probation extension/}));expect(screen.getByRole('combobox',{name:'Part 3 · Review cycle 1'})).toBeInTheDocument();expect(within(screen.getByRole('combobox',{name:'Part 3'})).getByRole('option',{name:'Continue unfinished work'})).toBeDisabled();expect(screen.queryByDisplayValue('2027-03-31')).not.toBeInTheDocument();expect(m.stage).not.toHaveBeenCalled();
  });
+ it('keeps queued and failed activation states distinct after explicit installation confirmation',async()=>{
+  const t=messages.probation.intake;
+  m.prepare.mockResolvedValue({ok:true,result:{id:'review',digest:'d'.repeat(64),sends:false,snapshot:{companyId:'company',environment:{configuredOrigin:'https://fictional.invalid',verification:'configured_origin_only'},activationOn:'2026-11-04',historicalExcludedCount:0,exportTruncated:false,planComplete:true,holds:[],cohort:[],imports:[],wouldFire:[],excludedPast:[],eventDriven:[]} as unknown as ProbationCutoverPlan}});
+  m.approve.mockResolvedValue({ok:true,result:{}});m.request.mockResolvedValue({ok:true,result:{id:'activation-ref',state:'pending'}});m.status.mockResolvedValue({ok:true,result:{id:'activation-ref',state:'failed'}});
+  render(<NextIntlClientProvider locale="en" messages={messages}><CutoverPreparation companyId="company" blocked={false}/></NextIntlClientProvider>);
+  fireEvent.click(screen.getByRole('button',{name:t.prepare}));await screen.findByRole('button',{name:t.approve});
+  fireEvent.change(screen.getByRole('textbox',{name:t.approvalReason}),{target:{value:'Reviewed the exact fictional plan.'}});fireEvent.click(screen.getByRole('button',{name:t.approve}));
+  await screen.findByRole('button',{name:t.requestActivation});expect(m.request).not.toHaveBeenCalled();
+  expect(screen.getByRole('button',{name:t.requestActivation})).toBeDisabled();
+  fireEvent.change(screen.getByRole('textbox',{name:t.installationReference}),{target:{value:'Verified fictional installation'}});fireEvent.click(screen.getByRole('button',{name:t.requestActivation}));
+  await screen.findByRole('button',{name:t.checkActivation});expect(m.request).toHaveBeenCalledWith({id:'review',digest:'d'.repeat(64),installationReference:'Verified fictional installation'});
+  fireEvent.click(screen.getByRole('button',{name:t.checkActivation}));await screen.findByText(t.activationStates.failed.replace('{reference}','activation-ref'));
+  expect(screen.queryByRole('button',{name:t.checkActivation})).toBeNull();expect(screen.queryByText(t.activationStates.pending.replace('{reference}','activation-ref'))).toBeNull();
+ });
+
 });

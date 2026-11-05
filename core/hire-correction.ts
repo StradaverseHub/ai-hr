@@ -1,3 +1,5 @@
+import {organisationManagedTx} from './organisation-write-policy';
+import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx} from './company-organisation';
 import {assertWorkforceEmploymentTx} from './workforce-access';
 /**
  * c063eea9 — "Correct hire details" on the Hired movement event.
@@ -721,6 +723,7 @@ export async function correctHireDetails(
 
     const plan = await loadPlanTx(tx, ctx.tenantId, input.employmentId);
 
+    if(await organisationManagedTx(tx))delete requested.businessUnitId;
     // The effective change set: a requested value equal to the hire's own value is not a change.
     const changes: { field: HireCorrectionField; before: string | null; after: string | null }[] = [];
     for (const f of HIRE_CORRECTION_FIELDS) {
@@ -777,17 +780,12 @@ export async function correctHireDetails(
         if (manager === input.employmentId) throw new HireCorrectionError('An employee cannot report to themselves.');
         const [m] = await tx.select({ id: employment.id }).from(employment).where(eq(employment.id, manager)).limit(1);
         if (!m) throw new HireCorrectionError('The selected reporting manager could not be found.');
-        // The SAME cycle rule setReportingLine applies, asked at the start of the range and, for a range
-        // that is still running, today as well (the chain above the manager may have moved since hire).
-        const today = todayInKualaLumpur();
-        const checkDates = [from];
-        if (from < today && (to === null || to > today)) checkDates.push(today);
-        for (const d of checkDates) {
-          if (await wouldCreateAdminCycle(tx, input.employmentId, manager, d)) {
-            throw new HireCorrectionError(
-              'This reporting manager would create a reporting cycle (they report, directly or indirectly, to this employee).',
-            );
-          }
+        // Use the canonical temporal rule over this correction's actual finite/open range. A cycle
+        // arising only AFTER its historical end must not veto a safe correction to the hire record.
+        if (await wouldCreateAdminCycle(tx, input.employmentId, manager, from, to)) {
+          throw new HireCorrectionError(
+            'This reporting manager would create a reporting cycle (they report, directly or indirectly, to this employee).',
+          );
         }
       }
       rlPlan = { supersede: plan.rlV1, insert: manager ? { from, to, manager } : null };
@@ -818,6 +816,7 @@ export async function correctHireDetails(
       if (done.length !== 1) throw new HireCorrectionError('The hire record changed while it was being corrected. Reload and try again.');
       const next: Partial<Record<HireCorrectionAssignmentField, string | null>> = {};
       for (const f of fields) next[f] = changed.get(f) ?? null;
+      const tags=await deriveCompanyOrganisationTx(tx,ctx,{companyId:v.companyId,asOf:v.row.validFrom});
       const [ins] = await tx
         .insert(assignment)
         .values({
@@ -825,7 +824,7 @@ export async function correctHireDetails(
           employmentId: v.row.employmentId,
           departmentId: (next.departmentId ?? v.row.departmentId) as string,
           positionId: 'positionId' in next ? (next.positionId ?? null) : v.row.positionId,
-          businessUnitId: 'businessUnitId' in next ? (next.businessUnitId ?? null) : v.row.businessUnitId,
+          businessUnitId: tags.status==='legacy'?('businessUnitId' in next ? (next.businessUnitId ?? null) : v.row.businessUnitId):tags.businessUnitId,
           costCenterId: 'costCenterId' in next ? (next.costCenterId ?? null) : v.row.costCenterId,
           locationId: 'locationId' in next ? (next.locationId ?? null) : v.row.locationId,
           companyId: v.row.companyId,
@@ -834,6 +833,7 @@ export async function correctHireDetails(
           validTo: v.row.validTo,
         })
         .returning({ id: assignment.id });
+      await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:input.employmentId,companyId:v.companyId,asOf:v.row.validFrom,trigger:'correction'});
       replaced.push({
         supersededId: v.row.id,
         replacementId: ins.id,

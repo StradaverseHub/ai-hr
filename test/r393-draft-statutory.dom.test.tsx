@@ -1,3 +1,4 @@
+vi.mock('../components/derived-organisation-fields',()=>({useDerivedOrganisation:()=>({data:{status:'legacy'},loading:false,failed:false}),DerivedOrganisationFields:()=>null}));
 import { personnelMarkupContract, personnelCaption } from './helpers/personnel-markup';
 /**
  * r393 — item 685d2380 STEP 3b, the draft's Statutory (Malaysia) section ON THE SCREEN, and the Active

@@ -80,8 +80,8 @@ describe('579255c3 — the opt-in columns are read from information Personnel al
       .returning({ id: schema.jobGrade.id });
     const [bu] = await owner.db
       .insert(schema.businessUnit)
-      // Canonical Labels text owns display; a different legacy name must not win.
-      .values({ tenantId: b.tenantId, companyId: b.companyId, code: 'BU1', name: 'Legacy BU name', label: 'Construction' })
+      // Personnel shows the full Business Unit name, even when a shorter label exists.
+      .values({ tenantId: b.tenantId, companyId: b.companyId, code: 'BU1', name: 'Construction full Business Unit name', label: 'Construction' })
       .returning({ id: schema.businessUnit.id });
     const [loc] = await owner.db
       .insert(schema.location)
@@ -114,7 +114,7 @@ describe('579255c3 — the opt-in columns are read from information Personnel al
     const row = rows.find((r) => r.employmentId === carrier.employmentId);
     expect(row).toBeDefined();
     expect(row!.jobGrade).toBe('GRADE 17 (PERMANENT)');
-    expect(row!.businessUnit).toBe('Construction');
+    expect(row!.businessUnit).toBe('Construction full Business Unit name');
     expect(row!.costCenter).toBe('HQ');
     expect(row!.workLocation).toBe('Kuala Lumpur HQ');
     expect(row!.employmentType).toBe('full_time');
