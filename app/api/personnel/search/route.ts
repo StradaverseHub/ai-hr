@@ -1,8 +1,7 @@
 import {getSession} from '@/lib/session';
 import {getScopeIds} from '@/lib/scope';
 import {workforceViewScope} from '@/core/workforce-access';
-import {searchWorkforceEmployeesTx} from '@/core/read';
-import {withTenant} from '@/db/client';
+import {searchWorkforceEmployees} from '@/core/read';
 
 export async function GET(request:Request){
   const session=await getSession();
@@ -12,6 +11,6 @@ export async function GET(request:Request){
   const query=new URL(request.url).searchParams.get('q')??'';
   if(query.length>200)return respond({error:'invalid_query'},400);
   const companyIds=await getScopeIds(allowed.companyIds);
-  const rows=await withTenant(session,tx=>searchWorkforceEmployeesTx(session,tx,companyIds,query));
+  const rows=await searchWorkforceEmployees(session,companyIds,query);
   return respond({rows:rows.map(({employmentId,name,employeeCode,company,department})=>({employmentId,name,employeeCode,company,department}))});
 }
