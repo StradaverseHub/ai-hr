@@ -105,7 +105,7 @@ describe('private by design: no AI semantic surface',()=>{
  const pages=Object.keys(PRIVATE_BY_DESIGN);
  const root=fileURLToPath(new URL('..',import.meta.url));
  const names=(path:string)=>new RegExp('(?<![A-Za-z0-9/_-])'+path.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![A-Za-z0-9/_-])');
- it('keeps the private case pages and own job description linkable with explicit read boundaries',()=>{
+ it('keeps the private case pages linkable with explicit read boundaries',()=>{
   const casePages=['/admin/privacy/case-handlers','/cases','/me/cases','/me/cases/new'];
   expect(pages.sort()).toEqual(casePages);
   const linkable=new Set(LINKABLE_PAGES.map(([path])=>path));
