@@ -245,7 +245,11 @@ export function epf(
   cfg: StatutoryRuleset['epf'] = DEFAULT_MY_STATUTORY.epf,
   election?: EpfElection,
 ) {
-  if ((election?.mode ?? 'auto') === 'exempt') return { employee: 0, employer: 0 };
+  if (election?.mode === 'exempt') return { employee: 0, employer: 0 };
+  if (election?.mode === 'topup_percentage') {
+    const { employee, employer } = epfTopupWorking(wage, additional, cfg, election);
+    return { employee: employee.amount, employer: employer.amount };
+  }
 
   const partA = cfg.partA ?? MY_EPF_THIRD_SCHEDULE_PART_A;
   const scheduleMax = cfg.scheduleMax ?? EPF_SCHEDULE_MAX;
@@ -270,10 +274,7 @@ export function epf(
   // i-Topup / voluntary excess can only RAISE a side above the statutory floor. `resolveEpfRates`
   // floors the elected rate at statutory, and the schedule amount is itself ≥ the statutory percentage
   // of the base, so `max` here is what makes an under-floor election a no-op rather than a reduction.
-  // b6dbadc5 — the additive top-up uses the same raise: the elected rate is statutory + increment, so with
-  // a 0% (or blank) increment the schedule amount stands, and a converted legacy row computes exactly what
-  // max(total, statutory) computed before.
-  if ((election?.mode ?? 'auto') === 'voluntary_excess' || election?.mode === 'topup_percentage') {
+  if (election?.mode === 'voluntary_excess') {
     const { employeeRate, employerRate } = resolveEpfRates(base, cfg, election);
     if (election?.employeeRate != null) employee = Math.max(employee, ceilRinggit(base * employeeRate));
     if (election?.employerRate != null) employer = Math.max(employer, ceilRinggit(base * employerRate));
@@ -310,6 +311,62 @@ function epfSemiAutoEmployeeRate(election?: EpfElection): number | null {
 
 function epfContributionAtRate(cents: number, rate: number): number {
   return Number((BigInt(cents) * BigInt(Math.round(rate * 10000)) + BigInt(999999)) / BigInt(1000000));
+}
+
+type EpfTopupSide = {
+  savedRate: number | null;
+  amount: number;
+  statutoryAmount: number;
+  rate?: number;
+  formulaAmount?: number;
+  parts?: { wage: number; amount: number }[];
+};
+
+/** Calculate and record the same i-Topup decision, including any statutory floor.
+ * Actual wages feed the rate formula. Some existing rule branches charge the normal
+ * and additional streams separately, so keep both inputs when they were used. */
+function epfTopupWorking(
+  wage: number, additional: number, cfg: StatutoryRuleset['epf'], election: EpfElection, sel?: EpfSelection,
+) {
+  const normal = round2(Math.max(0, wage));
+  const bonus = round2(Math.max(0, additional));
+  const actualWage = round2(normal + bonus);
+  const age = sel?.age ?? 0;
+  const citizenship = sel?.citizenship ?? 'citizen';
+  const senior = age >= EPF_SENIOR_AGE;
+  const flat = citizenship === 'non_citizen' || (citizenship === 'pr' && senior);
+  const statutory = epfContributionByRule(normal, bonus, cfg, undefined, sel);
+  const statEmployerRate = flat ? cfg.nonCitizenEmployerRate ?? 0.02
+    : senior ? cfg.seniorEmployerRate ?? 0.04
+    : actualWage <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
+  const statEmployeeRate = flat ? cfg.nonCitizenEmployeeRate ?? 0.02 : senior ? 0 : cfg.employeeRate;
+  const schedulePart = flat ? undefined : senior ? 'E' : 'A';
+  const side = (savedRate: number | null | undefined, statutoryAmount: number, statRate: number): EpfTopupSide => {
+    const trace = { savedRate: savedRate ?? null, statutoryAmount };
+    if (!(savedRate != null && savedRate > 0) || age >= EPF_NO_CONTRIB_AGE || actualWage === 0) {
+      return { ...trace, amount: statutoryAmount };
+    }
+    const rate = topupRate(statRate, savedRate);
+    const bases = (senior || flat) && normal > 0 && bonus > 0 ? [normal, bonus] : [actualWage];
+    const parts = bases.map(base => ({ wage: base, amount: epfContributionAtRate(Math.round(base * 100), rate) }));
+    const formulaAmount = parts.reduce((total, part) => total + part.amount, 0);
+    // Part E applies its published band to the normal stream. Additional wages are
+    // charged separately, so retain the floor on the normal share when it binds.
+    const floor = senior && !flat && parts.length === 2
+      ? Math.max(0, statutoryAmount - ceilRinggit(bonus * statRate) - parts[0].amount)
+      : Math.max(0, statutoryAmount - formulaAmount);
+    return { ...trace, rate, formulaAmount, amount: formulaAmount + floor, ...(parts.length > 1 ? { parts } : {}) };
+  };
+  return {
+    category: 'topup_percentage' as const,
+    actualWage,
+    employee: side(election.employeeRate, statutory.employee, statEmployeeRate),
+    employer: side(election.employerRate, statutory.employer, statEmployerRate),
+    ...(schedulePart ? { schedulePart } : {}),
+    scheduleEffectiveFrom: schedulePart && sel?.wageMonth && sel.wageMonth >= '2022-07'
+      ? sel.wageMonth >= EPF_PART_F_START ? '2025-10-01' : '2022-07-01'
+      : undefined,
+  };
 }
 
 // KWSP Part C shares the A/E wage bands. Verified against all 401 employer rows in the
@@ -393,7 +450,7 @@ function epfEnteredRateWorking(
 function epfFlatSide(base: number, statRate: number, electedRate: number | null | undefined, mode: string): number {
   if (mode === 'exempt' || statRate === 0 || base <= 0) return 0;
   const rate = mode === 'voluntary_excess' && electedRate != null ? Math.max(electedRate, statRate)
-    : mode === 'topup_percentage' ? topupRate(statRate, electedRate) : statRate;
+    : statRate;
   return ceilRinggit(base * rate);
 }
 
@@ -419,6 +476,17 @@ export function epfContribution(
 function epfContributionWithWorking(
   wage: number, additional: number, cfg: StatutoryRuleset['epf'], election?: EpfElection, sel?: EpfSelection,
 ) {
+  if (election?.mode === 'topup_percentage') {
+    const working = epfTopupWorking(wage, additional, cfg, election, sel);
+    const normal = additional > 0 ? epfTopupWorking(wage, 0, cfg, election, sel) : working;
+    return {
+      working,
+      contribution: {
+        employee: working.employee.amount, employer: working.employer.amount,
+        employeeOnBonus: Math.max(0, working.employee.amount - normal.employee.amount),
+      },
+    };
+  }
   const working = epfEnteredRateWorking(wage, additional, cfg, election, sel);
   if (working) {
     const normal = additional > 0 ? epfEnteredRateWorking(wage, 0, cfg, election, sel)! : working;
@@ -496,19 +564,6 @@ function epfContributionByRule(
     const erRate = cfg.seniorEmployerRate ?? 0.04;
     const band = wage <= scheduleMax ? bandFor(partE, wage) : null;
     const wageEmployer = band ? band.employer : ceilRinggit(wage * erRate);
-    // b6dbadc5 — the additive top-up applies on Part E as well: employee 0% + increment, employer 4% +
-    // increment (never below the Part E band). With no increment this is exactly the statutory branch below.
-    // `voluntary_excess` still does not reach Part E, as before.
-    if (mode === 'topup_percentage' && (election?.employeeRate != null || election?.employerRate != null)) {
-      const side = (amount: number, statRate: number, increment: number | null | undefined) =>
-        amount > 0 ? ceilRinggit(amount * topupRate(statRate, increment)) : 0;
-      const employeeOnBonus = side(bonus, 0, election?.employeeRate);
-      return {
-        employee: side(wage, 0, election?.employeeRate) + employeeOnBonus,
-        employer: Math.max(wageEmployer, side(wage, erRate, election?.employerRate)) + (bonus > 0 ? side(bonus, erRate, election?.employerRate) : 0),
-        employeeOnBonus,
-      };
-    }
     return {
       employee: 0,
       employer: wageEmployer + (bonus > 0 ? ceilRinggit(bonus * erRate) : 0),

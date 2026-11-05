@@ -8366,6 +8366,11 @@
       }
     },
     "statutoryDetail": {
+      "epfCategory": "ประเภท EPF",
+      "epfTopupCategory": "เงินสมทบเพิ่ม (อัตราร้อยละที่เลือกไว้)",
+      "epfSavedTopupRate": "อัตราเงินสมทบเพิ่มที่บันทึกไว้",
+      "epfStatutoryAmount": "เงินสมทบตามกฎหมาย",
+      "epfTopupFormula": "การคำนวณเงินสมทบเพิ่ม (ปัดเงินสมทบขึ้นเป็นริงกิตเต็ม)",
       "epfWorkingTitle": "การคำนวณ EPF ที่บันทึกไว้",
       "epfActualWage": "ค่าจ้างจริงที่ใช้คำนวณ EPF",
       "epfRoundingIncrement": "ช่วงการปัดเศษค่าจ้าง",

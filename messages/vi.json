@@ -8366,6 +8366,11 @@
       }
     },
     "statutoryDetail": {
+      "epfCategory": "Loại EPF",
+      "epfTopupCategory": "Đóng thêm (tỷ lệ đã đăng ký)",
+      "epfSavedTopupRate": "Tỷ lệ đóng thêm đã lưu",
+      "epfStatutoryAmount": "Mức đóng theo luật định",
+      "epfTopupFormula": "Tính mức đóng thêm (làm tròn mức đóng lên ringgit nguyên)",
       "epfWorkingTitle": "Phép tính EPF đã lưu",
       "epfActualWage": "Lương thực tế tính EPF",
       "epfRoundingIncrement": "Bước làm tròn lương",

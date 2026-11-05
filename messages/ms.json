@@ -8366,6 +8366,11 @@
       }
     },
     "statutoryDetail": {
+      "epfCategory": "Kategori KWSP",
+      "epfTopupCategory": "Caruman tambahan (pilihan peratusan sedia ada)",
+      "epfSavedTopupRate": "Kadar caruman tambahan yang disimpan",
+      "epfStatutoryAmount": "Caruman berkanun",
+      "epfTopupFormula": "Pengiraan caruman tambahan (caruman dibundarkan ke atas kepada ringgit penuh)",
       "epfWorkingTitle": "Pengiraan KWSP direkodkan",
       "epfActualWage": "Upah KWSP sebenar",
       "epfRoundingIncrement": "Selang pembundaran upah",

@@ -265,7 +265,7 @@ export type StatutoryItemExplanation = {
   provenance: StatutoryProvenance;
 };
 
-const epfWorkingSchema = z.object({
+const epfEnteredWorkingSchema = z.object({
   actualWage: z.number().nonnegative(),
   roundedWage: z.number().nonnegative(),
   increment: z.number().positive(),
@@ -292,12 +292,36 @@ const epfWorkingSchema = z.object({
     z.object({ method: z.literal('no_contribution'), amount: z.number().nonnegative() }),
   ]),
   scheduleEffectiveFrom: z.iso.date().optional(),
+});
+
+const epfTopupSideSchema = z.object({
+  savedRate: z.number().nonnegative().nullable(),
+  statutoryAmount: z.number().nonnegative(),
+  amount: z.number().nonnegative(),
+  rate: z.number().nonnegative().optional(),
+  formulaAmount: z.number().nonnegative().optional(),
+  parts: z.array(z.object({ wage: z.number().positive(), amount: z.number().nonnegative() })).optional(),
+});
+
+const epfSavedRunSchema = z.object({
   items: z.array(z.object({ label: z.string(), amount: z.number() })),
   employeeEarlierRuns: z.number().optional(),
   employerEarlierRuns: z.number().optional(),
   employeeThisRun: z.number(),
   employerThisRun: z.number(),
 });
+
+const epfWorkingSchema = z.union([
+  epfEnteredWorkingSchema.extend(epfSavedRunSchema.shape),
+  z.object({
+    category: z.literal('topup_percentage'),
+    actualWage: z.number().nonnegative(),
+    employee: epfTopupSideSchema,
+    employer: epfTopupSideSchema,
+    schedulePart: z.enum(['A', 'E']).optional(),
+    scheduleEffectiveFrom: z.iso.date().optional(),
+  }).extend(epfSavedRunSchema.shape),
+]);
 
 /** The recorded calculation plus the final EPF amounts from the same payslip. */
 export type EpfWorkingExplanation = z.infer<typeof epfWorkingSchema> & {
