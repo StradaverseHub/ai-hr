@@ -291,11 +291,10 @@ export default async function BatchPage({
   // requireAdmin-gated and unlockClosedBatch re-asserts the granular payroll.unlock permission
   // (hr_admin + super_admin by default, per-company configurable — feedback 62e85140).
   const unlockOn = settingEnabledOrDefault(s, 'payroll.unlock_enabled');
-  // This batch's lifecycle events. e440991b point 4 took the History CARD off this screen (the Audit
-  // Trail renders the same `domain_event` rows), but the read stays: the "published by X on Y" line
-  // below finds the most recent `payroll-batch.closed` event in it, and without it every closed run
-  // would report "no publication record". Kept at the same limit so that lookup is unchanged.
-  const history = await auditEvents(s, { aggregateId: batchId, limit: 50 });
+  // Access events share the run ID, so look up the latest actual close independently of view traffic.
+  const [closeEv] = pubState === 'published' || pubState === 'scheduled'
+    ? await auditEvents(s, { aggregateType: 'payroll-batch', aggregateId: batchId, eventType: 'payroll-batch.closed', limit: 1 })
+    : [];
   // Feedback efece4ce — this run's company HRDF registration. The levy tile was shown only when the total
   // was > 0, so "this company pays no HRDF because it is not registered" and "the levy failed to compute"
   // rendered identically: as nothing at all. That ambiguity IS the reported bug. Read for display only —
@@ -625,15 +624,9 @@ export default async function BatchPage({
         </div>
       )}
 
-      {/* ef31d251 — who published this run and when. Read off the batch's own `payroll-batch.closed`
-          domain event, already fetched above for the History card; no new read and no new column.
-          `history` is desc(occurredAt), so .find() yields the MOST RECENT close, which is the right one
-          after an unlock → re-close cycle. The no-record branch is NOT optional: core/payroll-history-
-          import.ts sets status='closed' directly with closed_at/released_at NULL and appends no close
-          event, so an imported run would otherwise render "Published by undefined on Invalid Date". */}
+      {/* Imported runs may have no close event. Keep the existing scheduled or no-record fallback. */}
       {(pubState === 'published' || pubState === 'scheduled') &&
         (() => {
-          const closeEv = history.find((ev) => ev.eventType === 'payroll-batch.closed');
           const releasedOn = batch.releasedAt ? new Date(batch.releasedAt).toLocaleDateString() : null;
           return (
             <div className="text-xs text-muted-foreground">

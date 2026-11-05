@@ -6045,6 +6045,7 @@ export type AuditFilters = {
    *  same map components/audit-table.tsx chips each row with. The caller passes a validated ModuleKey
    *  (isModuleKey); an out-of-set `?module=` is dropped by the caller, never narrowed to nothing. */
   module?: ModuleKey;
+  eventType?: string; // exact event type for server-owned lookups
   eventQuery?: string; // matches event type / aggregate type
   actorId?: string;
   /** 4ec5a940 — action filter: matches the event's last dot-segment (created/updated/deleted/…). The
@@ -6068,6 +6069,7 @@ function auditWhere(f: AuditFilters) {
   return and(
     f.aggregateType ? eq(domainEvent.aggregateType, f.aggregateType) : undefined,
     f.aggregateId ? eq(domainEvent.aggregateId, f.aggregateId) : undefined,
+    f.eventType ? eq(domainEvent.eventType, f.eventType) : undefined,
     f.employmentId ? sql`exists (
       select 1 from employment audit_subject
       where audit_subject.id=${f.employmentId}::uuid
