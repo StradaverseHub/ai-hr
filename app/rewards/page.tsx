@@ -17,6 +17,7 @@ export default async function RewardsPage({searchParams}:{searchParams:Promise<R
   <Link href="/rewards/approvals" className="inline-flex text-sm font-medium text-primary hover:underline">{t('board.open')}</Link>
   {accessScopes.length>0&&<Link href="/admin/rewards/access" className="inline-flex text-sm font-medium text-primary hover:underline">{(await getTranslations('rewardsAccess'))('title')}</Link>}
   {(canConfigure||setupEntry.manage)&&<Link href={setupEntry.manage?'/admin/rewards/plans':'/admin/rewards'} className="inline-flex text-sm font-medium text-primary hover:underline">{t('adminTitle')}</Link>}
+  {setupEntry.bootstrap&&<Link href="/admin/rewards/setup-access" className="text-sm font-medium text-primary hover:underline">{(await getTranslations('rewardSetupAccess'))('title')}</Link>}
   {setupEntry.libraries&&<><Link href="/admin/rewards/salary-structures" className="text-sm font-medium text-primary hover:underline">{(await getTranslations('rewardAccessPolicy'))('permissions.salary.view')}</Link><Link href="/admin/rewards/bonus-matrices" className="text-sm font-medium text-primary hover:underline">{(await getTranslations('rewardAccessPolicy'))('permissions.bonus.view')}</Link></>}
  </>}/><ErrorBanner message={sp.error}/><RewardReviewList {...list} filters={sp} canConfigure={canConfigure}/></div>;
 }

@@ -35998,6 +35998,9 @@
     }
   },
   "rewardUploaded": {
+    "refreshSources": "Refresh Payroll sources",
+    "refreshHelp": "Refreshing keeps the old file in history. Download a new template, replace the file and ask another Group Rewards reviewer to check it.",
+    "newUploadRequired": "New upload required",
     "title": "Uploaded awards",
     "back": "Compensation review",
     "configuration": "Rewards configuration",
@@ -36052,7 +36055,8 @@
     "readyNotificationBody": "Group Rewards independently checked this upload. Open the review to assess the awards.",
     "participation": "Participation",
     "excludedNoAwards": "Excluded – no awards this year",
-    "excludedUploaded": "Excluded – awards uploaded"
+    "excludedUploaded": "Excluded – awards uploaded",
+    "cycleName": "New cycle name (when creating a cycle)"
   },
   "accountManagement": {
     "title": "Manage account",
@@ -36202,5 +36206,16 @@
     "terminated": "Terminated",
     "duplicateHint": "Duplicate checks cover only companies with administrator and identity-data access.",
     "duplicateUnavailable": "Duplicate evidence is unavailable in this scope. Remove this filter or choose an authorised scope."
+  },
+  "rewardSetupAccess": {
+    "title": "Rewards setup authority",
+    "help": "Explicit module-only grants for Group Rewards and CTRO. Only a Group Administrator can assign scope and dates. This grants no HR, login or employee-record permissions.",
+    "back": "Rewards",
+    "role": "Role",
+    "scope": "Scope",
+    "groupWide": "Group-wide",
+    "newGrant": "New grant",
+    "grants": "Existing grants",
+    "edit": "Edit grant"
   }
 }

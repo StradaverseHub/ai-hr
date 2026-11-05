@@ -35998,6 +35998,9 @@
     }
   },
   "rewardUploaded": {
+    "refreshSources": "刷新薪资来源",
+    "refreshHelp": "旧文件将保留在历史记录中。请下载新模板、替换文件，并请另一位集团薪酬审核人员复核。",
+    "newUploadRequired": "需要重新上传",
     "title": "上传奖励",
     "back": "薪酬审查",
     "configuration": "薪酬配置",
@@ -36052,7 +36055,8 @@
     "readyNotificationBody": "集团薪酬已独立核查此上传。请打开审核评估奖励。",
     "participation": "参与方式",
     "excludedNoAwards": "已排除 — 本年不发放奖励",
-    "excludedUploaded": "已排除 — 奖励通过上传"
+    "excludedUploaded": "已排除 — 奖励通过上传",
+    "cycleName": "新周期名称（新建周期时填写）"
   },
   "accountManagement": {
     "title": "管理账户",
@@ -36202,5 +36206,16 @@
     "terminated": "已离职",
     "duplicateHint": "重复检查仅涵盖您拥有管理员权限及身份资料访问权的公司。",
     "duplicateUnavailable": "此范围内无法查看重复证据。请移除此筛选或选择获准范围。"
+  },
+  "rewardSetupAccess": {
+    "title": "薪酬配置权限",
+    "help": "仅适用于集团薪酬及 CTRO 的明确模块授权。只有集团管理员可设置范围和日期。此授权不授予人力资源、登录或员工记录权限。",
+    "back": "薪酬",
+    "role": "角色",
+    "scope": "范围",
+    "groupWide": "全集团",
+    "newGrant": "新增授权",
+    "grants": "现有授权",
+    "edit": "编辑授权"
   }
 }

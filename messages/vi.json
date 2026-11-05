@@ -35998,6 +35998,9 @@
     }
   },
   "rewardUploaded": {
+    "refreshSources": "Làm mới dữ liệu bảng lương",
+    "refreshHelp": "Tệp cũ được giữ trong lịch sử. Hãy tải mẫu mới, thay thế tệp và nhờ một người khác thuộc bộ phận Lương thưởng Tập đoàn kiểm tra.",
+    "newUploadRequired": "Cần tải lên tệp mới",
     "title": "Khoản thưởng tải lên",
     "back": "Rà soát đãi ngộ",
     "configuration": "Cấu hình đãi ngộ",
@@ -36052,7 +36055,8 @@
     "readyNotificationBody": "Bộ phận Đãi ngộ Tập đoàn đã kiểm tra độc lập. Mở đợt rà soát để đánh giá khoản đãi ngộ.",
     "participation": "Hình thức tham gia",
     "excludedNoAwards": "Loại trừ – không có đãi ngộ năm nay",
-    "excludedUploaded": "Loại trừ – khoản đãi ngộ tải lên"
+    "excludedUploaded": "Loại trừ – khoản đãi ngộ tải lên",
+    "cycleName": "Tên chu kỳ mới (khi tạo chu kỳ)"
   },
   "accountManagement": {
     "title": "Quản lý tài khoản",
@@ -36202,5 +36206,16 @@
     "terminated": "Đã chấm dứt việc làm",
     "duplicateHint": "Chỉ kiểm tra trùng lặp tại các công ty có quyền quản trị và truy cập dữ liệu định danh.",
     "duplicateUnavailable": "Không có quyền xem bằng chứng trùng lặp trong phạm vi này. Hãy bỏ bộ lọc hoặc chọn phạm vi được phép."
+  },
+  "rewardSetupAccess": {
+    "title": "Quyền cấu hình đãi ngộ",
+    "help": "Quyền riêng cho mô-đun dành cho Bộ phận Đãi ngộ Tập đoàn và CTRO. Chỉ Quản trị viên Tập đoàn được đặt phạm vi và ngày hiệu lực. Không cấp quyền nhân sự, đăng nhập hoặc hồ sơ nhân viên.",
+    "back": "Đãi ngộ",
+    "role": "Vai trò",
+    "scope": "Phạm vi",
+    "groupWide": "Toàn tập đoàn",
+    "newGrant": "Cấp quyền mới",
+    "grants": "Quyền hiện có",
+    "edit": "Sửa quyền"
   }
 }
