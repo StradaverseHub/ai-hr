@@ -8,10 +8,12 @@ import { generate } from 'otplib';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { bootstrapInternalOwner } from '../lib/internal-auth/bootstrap';
-import { digest } from '../lib/internal-auth/crypto';
+import { AuthRecordExpiredError, decryptRecord, digest } from '../lib/internal-auth/crypto';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { readRecord, writeRecord } from '../lib/internal-auth/store';
 import { client } from '../db/client';
-import { changeInitialPassword, readSession, startLogin, touchSession, verifyMfa, type AuthReply } from '../lib/internal-auth/service';
+import { changeInitialPassword, readSession, revokeSession, startLogin, touchSession, verifyMfa, type AuthReply } from '../lib/internal-auth/service';
 import { saveSessionPolicy } from '../core/session-policy';
 import { forgetIdleTimeout } from '../lib/session-policy-server';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -106,4 +108,50 @@ describe('ADR-0171 idle sign-out in the embedded sign-in service', () => {
     expect(await readSession(token, true)).not.toBeNull();
     expect(await idleEvents()).toEqual([]);
   });
+});
+
+
+it('profiles a paired native credential and family read without changing session handling',async()=>{
+  const token=await signIn();
+  const admitted=await readSession(token);
+  expect(admitted).not.toBeNull();
+  const credentialKey='credential:'+admitted!.subject,familyKey='family:'+admitted!.family;
+  const sequential=async()=>[await readRecord(client,credentialKey),await readRecord(client,familyKey)];
+  const decode=(sealed:unknown,key:string)=>{
+    if(sealed===null||sealed===undefined)return null;
+    if(typeof sealed!=='string')throw Error('Invalid fixture record');
+    try{return decryptRecord(sealed,key);}catch(error){if(error instanceof AuthRecordExpiredError)return null;throw error;}
+  };
+  const paired=async()=>{
+    const [row]=await client.unsafe(`select
+      (select sealed from app.internal_auth_read($1,false)) as credential,
+      (select sealed from app.internal_auth_read($2,false)) as family`,[credentialKey,familyKey]);
+    return [decode(row.credential,credentialKey),decode(row.family,familyKey)];
+  };
+  const expected=await sequential();
+  expect(expected.every(Boolean)).toBe(true);
+  expect(await paired()).toEqual(expected);
+  const measure=async(read:typeof paired)=>{
+    const start=performance.now();
+    const rows=await Promise.all(Array.from({length:40},()=>read()));
+    const elapsedMs=performance.now()-start;
+    expect(rows.every(row=>row[1]!==null)).toBe(true);
+    return elapsedMs;
+  };
+  const before=await measure(sequential),candidate=await measure(paired),warm=await measure(paired),restored=await measure(sequential);
+  await revokeSession(token);
+  expect(await readSession(token)).toBeNull();
+  expect(await paired()).toEqual(await sequential());
+  expect((await paired())[1]).toBeNull();
+  // A storage expiry must be invisible to both query shapes; no new persistence or cache.
+  const expired=Date.now()-1000;
+  await writeRecord(owner.client,familyKey,{expired:true},admitted!.subject,expired);
+  expect((await paired())[1]).toBeNull();
+  expect(await paired()).toEqual(await sequential());
+  const directory=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+  if(directory)writeFileSync(join(directory,'internal-auth-record-pair-prototype.json'),JSON.stringify({
+    kind:'NATIVE_AUTH_RECORD_LOOKUP_PROTOTYPE',releaseEligible:false,concurrentReads:40,
+    originalRoundTrips:80,pairedRoundTrips:40,before,candidate,warm,restored,realPasswordMfa:true,revocationAndExpiryPreserved:true,
+    scope:'Read pair only. Session handling, login, identity checks and all writes remain outside the prototype.',
+  },null,2));
 });
