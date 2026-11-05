@@ -183,11 +183,14 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(metadata.find(task => task.id === beforeTech.find(task => task.taskId === 'welcome')?.id)).toMatchObject({ kind: 'onboarding', dueDate: beforeTech.find(task => task.taskId === 'welcome')?.due });
         expect(metadata.find(task => task.id === beforeTech.find(task => task.kind === 'mention')?.id)).not.toHaveProperty('dueDate');
         const candidateReads = reads.filter(text => text.includes('from "lc_onboarding_case"') || text.includes('from "lc_onboarding_note"'));
-        expect(candidateReads).toHaveLength(1);
-        expect(candidateReads[0]).toContain('with actor_mentions as materialized');
-        expect(candidateReads[0]).toContain('jsonb_array_elements(');
+        expect(candidateReads).toHaveLength(2);
+        expect(candidateReads[0]).toContain("->>'state' = 'submitted'");
+        expect(candidateReads[1]).toContain('= any(');
+        expect(candidateReads[1]).toContain("->'mentions'");
         const nativeCandidates = await withTenant(admin, tx => readOnboardingTaskQueueInputsTx(tx, b.tenantId, { id: admin.userId!, module: true }));
-        expect(nativeCandidates.list.map(row => row.data.id)).toEqual([active.case.id]);
+        expect(nativeCandidates.list).toHaveLength(901);
+        expect(nativeCandidates.list.some(row => row.data.id === active.case.id)).toBe(true);
+        expect(nativeCandidates.list.every(row => row.data.state === 'submitted')).toBe(true);
         expect(nativeCandidates.notesByCase.size).toBe(0);
         const compare = async (principal: SessionContext, module: boolean) => {
             const baseline = () => withTenant(principal, async tx => {
@@ -212,7 +215,7 @@ describe('V3.1 onboarding database and authorization', () => {
         };
         const sameRunReadProfile = { admin: await compare(admin, true), assignedActor: await compare(tech, false) };
         expect(sameRunReadProfile.admin.old.every(sample => sample.rows[0] === 1201 && sample.rows[1] === 1201)).toBe(true);
-        expect(sameRunReadProfile.admin.next.every(sample => sample.rows[0] === 1 && sample.rows[1] === 0)).toBe(true);
+        expect(sameRunReadProfile.admin.next.every(sample => sample.rows[0] === 901 && sample.rows[1] === 0)).toBe(true);
         // The interpreter must see a newly posted mention even when the case has no open task or equipment.
         const mentionOnly = retained[3]!;
         await onboardingNote(admin, mentionOnly.id, { context: 'requisition', body: 'Fictional mention on completed work', mentions: [tech.userId!] });

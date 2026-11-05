@@ -1,73 +1,37 @@
-/** Candidate selection for the existing task interpreter. These predicates never grant row access. */
-import { sql, type SQL } from 'drizzle-orm';
+/** Narrow case and note reads for the existing task interpreter; table RLS is unchanged. */
+import { and, asc, eq, sql } from 'drizzle-orm';
 import type { Tx } from '../../../db/client';
-import type { Case, Note } from '../../../lib/onboarding-model';
 import { lcOnboardingCase as cases, lcOnboardingNote as notes } from '../../../db/schema';
+import type { Note } from '../../../lib/onboarding-model';
 
-const jsonFalsy = (value: SQL) => sql`
-  coalesce(${value}, 'null'::jsonb) in ('null'::jsonb, 'false'::jsonb, '0'::jsonb, '""'::jsonb)
-`;
-const malformedArray = (value: SQL) => sql`
-  (jsonb_typeof(${value}) is distinct from 'array' or ${value} @> '[null]'::jsonb)
-`;
+const canonicalUuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
 
-/** Older malformed mention values still reach the canonical interpreter; a valid unrelated note cannot. */
-function possibleOnboardingMention(userId: string) {
-  const mentions = sql`${notes.data}->'mentions'`;
-  return sql`(jsonb_typeof(${mentions}) is distinct from 'array' or ${mentions} ? ${userId})`;
-}
-
-function possibleOnboardingTaskCase(module: boolean) {
-  const data = cases.data;
-  const tasks = sql`${data}->'tasks'`;
-  const reqs = sql`${data}->'requisitions'`;
-  return sql`case
-    when jsonb_typeof(${data}) is distinct from 'object' or ${malformedArray(reqs)} then true
-    when ${data}->>'state' = 'pending' then ${module}::boolean
-    when ${data}->>'state' is distinct from 'submitted' then false
-    when ${malformedArray(tasks)} then true
-    when exists (select 1 from jsonb_array_elements(${tasks}) t(value)
-      where t.value->'status' is distinct from '"done"'::jsonb) then true
-    when exists (select 1 from jsonb_array_elements(${reqs}) r(value)
-      where ${jsonFalsy(sql`r.value->'cancelledAt'`)} and ${jsonFalsy(sql`r.value->'handedAt'`)}) then true
-    -- Any eligible requisition is a conservative candidate. The existing interpreter still owns
-    -- first-active selection, role/step/group tests, locks, deadlines and exact emitted tasks.
-    when ${data}->>'id' is distinct from ${cases.id}::text then true
-    -- Build one current-actor mention set; do not rescan note RLS for every historical case.
-    else ${cases.id} in (select case_id from actor_mentions) end`;
-}
-
-
-type QueueInputRow =
-  | { kind: 'case'; target: string; revision: number; data: Case }
-  | { kind: 'mention'; target: string; revision: null; data: Note };
-
-/** Read once under the existing tenant, case and note RLS, after the caller's live actor check. */
+/** The caller already checked the live actor. The native query excludes only states the interpreter
+ * cannot emit, then reads potential mentions for the admitted case IDs under the original note RLS. */
 export async function readOnboardingTaskQueueInputsTx(tx: Tx, tenantId: string, actor: { id: string; module: boolean }) {
-  const rows = await tx.execute<QueueInputRow>(sql`
-    with actor_mentions as materialized (
-      select ${notes.caseId} as case_id, ${notes.data} as data, ${notes.createdAt} as created_at, ${notes.id} as id
-      from ${notes} where ${notes.tenantId} = ${tenantId}::uuid and ${possibleOnboardingMention(actor.id)}
-    ), candidate_cases as materialized (
-      select ${cases.id} as id, ${cases.revision} as revision, ${cases.data} as data from ${cases}
-      where ${cases.tenantId} = ${tenantId}::uuid and ${possibleOnboardingTaskCase(actor.module)}
-    )
-    select 'case'::text as kind, id::text as target, revision, data, null::timestamptz as sort_date, id as sort_id
-      from candidate_cases
-    union all
-    select 'mention', case_id::text, null::integer, data, created_at, id from actor_mentions
-      where exists (select 1 from candidate_cases where candidate_cases.data->>'id' = actor_mentions.case_id::text)
-    order by kind, sort_date, sort_id
-  `);
-  const list: { revision: number; data: Case }[] = [];
+  const data = cases.data;
+  const reqs = sql`${data}->'requisitions'`;
+  const list = await tx.select({ revision: cases.revision, data }).from(cases).where(and(eq(cases.tenantId, tenantId), sql`case
+    -- Preserve historical parse failures that can occur before the interpreter looks at the state.
+    when jsonb_typeof(${data}) is distinct from 'object'
+      or jsonb_typeof(${reqs}) is distinct from 'array' or ${reqs} @> '[null]'::jsonb then true
+    when ${data}->>'state' = 'pending' then ${actor.module}::boolean
+    else ${data}->>'state' = 'submitted' end`)).orderBy(asc(cases.id));
   const notesByCase = new Map<string, Note[]>();
-  for (const row of rows) {
-    if (row.kind === 'case') list.push({ revision: row.revision, data: row.data });
-    else {
-      const matching = notesByCase.get(row.target);
-      if (matching) matching.push(row.data);
-      else notesByCase.set(row.target, [row.data]);
-    }
+  // The interpreter compares exact case JSON IDs to PostgreSQL UUID strings. A differently shaped
+  // historical ID never matched a note; do not cast it or drop the case itself.
+  const ids = [...new Set(list.flatMap(row => typeof row.data?.id === 'string' && canonicalUuid.test(row.data.id) ? [row.data.id] : []))];
+  if (!ids.length) return { list, notesByCase };
+  const mentions = sql`${notes.data}->'mentions'`;
+  const candidateNotes = await tx.select({ caseId: notes.caseId, data: notes.data }).from(notes).where(and(
+    eq(notes.tenantId, tenantId), sql`${notes.caseId} = any(${'{' + ids.join(',') + '}'}::uuid[])`,
+    // An unusual retained shape still reaches the canonical checks; valid unrelated notes cannot.
+    sql`(jsonb_typeof(${mentions}) is distinct from 'array' or ${mentions} ? ${actor.id})`,
+  )).orderBy(asc(notes.createdAt), asc(notes.id));
+  for (const row of candidateNotes) {
+    const matching = notesByCase.get(row.caseId);
+    if (matching) matching.push(row.data);
+    else notesByCase.set(row.caseId, [row.data]);
   }
   return { list, notesByCase };
 }
