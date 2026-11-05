@@ -7,6 +7,8 @@ import {routeLatency} from './route-latency.mjs';
 import {navigationRoutesForIteration} from './route-scheduling.mjs';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
 import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
+import {exercisePayrollBrowser} from './payroll-browser.mjs';
+import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {actionFormData} from './action-form.ts';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
@@ -428,7 +430,11 @@ try{
  }));
  if(suite==='whole-system'){
   const ctx=await context(group),page=await ctx.newPage();
-  try{await exerciseOrgExplorer({page,user:group,fixture,report,save,phase:'baseline'});}finally{await ctx.close();}
+  try{
+   await exerciseOrgExplorer({page,user:group,fixture,report,save,phase:'baseline'});
+   await exercisePersonnelSwitcher({page,user:group,fixture,report,save,phase:'baseline'});
+   await exercisePayrollBrowser({base,page,user:group,fixture,report,save,phase:'baseline'});
+  }finally{await ctx.close();}
  }
  // Tenant-wide AI spend and provider configuration keep their group-administrator guards.
  {
@@ -437,7 +443,9 @@ try{
    await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});
    await page.waitForURL(url=>url.pathname==='/control-tower/agents',{timeout:90000});
    report.boundaries.push({kind:'AI group-administrator-only route',role:hr.role,path,redirectDenied:true});save();
-  }}finally{await ctx.close();}
+  }
+  if(suite==='whole-system')await exercisePayrollBrowser({base,page,user:hr,fixture,report,save,phase:'baseline'});
+  }finally{await ctx.close();}
  }
  // Locale projection and real client navigation must work before any capacity claim.
  for(const locale of ['en','ms','zh','ta','th','vi']){
@@ -656,6 +664,11 @@ try{
   if(suite==='whole-system'&&user.index===group.index)await exerciseOrgExplorer({page,user,fixture,report,save,phase:'loaded'});
   if(fixture.assistantHistory?.[user.index]||user.index===employee.index||user.index===hr.index)await aiCentreJourney(page,user,'loaded');
   if(user.role==='employee')await browserClaimJourney(page,user,'PERF_BROWSER_LOADED_'+user.index,'loaded');
+  if(suite==='whole-system'&&user.index===group.index){
+   const loadState=()=>({active:progress.active,launched:progress.launched});
+   await exercisePersonnelSwitcher({page,user,fixture,report,save,phase:'loaded',loadState});
+   await exercisePayrollBrowser({base,page,user,fixture,report,save,phase:'loaded',loadState});
+  }
   }catch(error){
    (report.browserJourneyFailures??=[]).push({role:user.role,user:user.index,phase:'loaded',errorType:error.name,...browserFailureLocation(error),timeout:error.name==='TimeoutError'});save();throw error;
   }finally{await ctx.close();}
