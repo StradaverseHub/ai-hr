@@ -211,15 +211,20 @@ async function funding(tx: Tx, unitId: string, lock = false): Promise<Funding & 
   const [r] = await tx.execute<{ value: Funding & { duplicate: boolean } }>(sql`select app.reward_funding(${unitId}::uuid, ${lock}) as value`);
   return r.value;
 }
+export async function annualRewardCalculationTx(tx:Tx,unit:typeof rewardUnit.$inferSelect,entries:RewardEntry[],posting=false){
+    const state=await governanceStateTx(tx,unit.id),publicState=await governancePublicTx(tx,unit.id),awards=await seniorAwardsTx(tx,unit.id,posting);
+    const calculationState=state?{...state,awards}: {...emptyGovernance(),awards};
+    const policy=state?effectiveRewardPolicy(unit.policy,state):publicState?{...unit.policy,patActual:0,patTarget:100,targetMonthsBp:publicState.targetMonthsBp,multiplierBp:publicState.multiplierBp,branchRatings:publicState.branchRatings,exemptReason:''}:unit.policy;
+    const controls:NonNullable<Parameters<typeof calculateRewards>[2]>={poolStatus:publicState?.status??'legacy',...(publicState?{bonusPools:publicState.pools}:{}),seniorAwards:confirmedSeniorAwards(calculationState,entries)};
+    return {policy,controls,publicState};
+}
 async function calculateUnit(tx: Tx, unit: typeof rewardUnit.$inferSelect, entries: RewardEntry[],posting=false) {
   const [upload]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from reward_uploaded_review where unit_id=${unit.id}::uuid and tenant_id=app.current_tenant_id()) as present`);
   if(upload?.present){const awards=posting?(await tx.execute<{value:import('./uploaded-awards-model').UploadedAward[]}>(sql`select app.reward_uploaded_awards_for_post(${unit.id}::uuid) as value`))[0]?.value??[]:(await tx.execute<{award:import('./uploaded-awards-model').UploadedAward}>(sql`select award from reward_uploaded_award where unit_id=${unit.id}::uuid and tenant_id=app.current_tenant_id()`)).map(r=>r.award);const grades=await tx.execute<{code:string}>(sql`select app.architecture_grade(code) as code from job_grade where tenant_id=app.current_tenant_id() and app.architecture_grade_assignable(id) and app.architecture_grade(code) is not null group by app.architecture_grade(code) having count(*)=1`);const result=calculateUploadedRewards(entries,unit.policy,awards,grades.map(g=>g.code));const [validation]=await tx.execute<{value:{valid:boolean;warnings:boolean}}>(sql`select app.reward_uploaded_validation(${unit.id}::uuid) as value`);if(validation?.value.valid)result.flags=result.flags.filter(f=>f.code!=='UPL-01'||!f.message.startsWith('Upload and independently'));else if(!result.flags.some(f=>f.severity==='block'))result.flags.push({severity:'block',code:'UPL-01',message:'An uploaded record needs correction by its authorized reviewer.'});if(validation?.value.warnings&&!result.flags.some(f=>f.code==='UPL-02'))result.flags.push({severity:'warning',code:'UPL-02',message:'restricted'});return result;}
 
   if (unit.kind === 'annual') {
-    const state=await governanceStateTx(tx,unit.id),publicState=await governancePublicTx(tx,unit.id),awards=await seniorAwardsTx(tx,unit.id,posting);
-    const calculationState=state?{...state,awards}: {...emptyGovernance(),awards};
-    const policy=state?effectiveRewardPolicy(unit.policy,state):publicState?{...unit.policy,patActual:0,patTarget:100,targetMonthsBp:publicState.targetMonthsBp,multiplierBp:publicState.multiplierBp,branchRatings:publicState.branchRatings,exemptReason:''}:unit.policy;
-    const result=calculateRewards(entries,policy,{poolStatus:publicState?.status??'legacy',...(publicState?{bonusPools:publicState.pools}:{}),seniorAwards:confirmedSeniorAwards(calculationState,entries)});
+    const {policy,controls,publicState}=await annualRewardCalculationTx(tx,unit,entries,posting);
+    const result=calculateRewards(entries,policy,controls);
     if(publicState&&publicState.basis!==governanceBasis(unit.policy,entries))result.flags.push({severity:'block',code:'PAT-STALE',message:'Eligibility or employee source facts changed. Group Rewards must review and refresh the unit budget inputs.'});
     return result;
   }
@@ -1712,8 +1717,8 @@ export async function adoptConfirmedCompanyPat(ctx:SessionContext,unitId:string,
  });
 }
 /** Internal extension seam: scoped read or locked mutation with native state/calculation ownership. */
-export async function withRewardReviewExtension<T>(ctx:SessionContext,unitId:string,mutating:boolean,fn:(tx:Tx,state:Awaited<ReturnType<typeof load>>,calculated:Awaited<ReturnType<typeof calculateUnit>>,commands:{touch:()=>Promise<void>;stamp:(action:string,payload:Record<string,unknown>)=>Promise<unknown>})=>Promise<T>):Promise<T>{
- return withRewardsTenant(ctx,async tx=>{if(mutating)await tx.execute(sql`select app.access_workforce_write_lock()`);const state=await load(tx,unitId,mutating);const calculated=await calculateUnit(tx,state.unit,state.entries);return fn(tx,state,calculated,{touch:()=>touch(tx,unitId),stamp:(action,payload)=>stamp(tx,ctx,unitId,action,payload)});});
+export async function withRewardReviewExtension<T>(ctx:SessionContext,unitId:string,mutating:boolean,fn:(tx:Tx,state:Awaited<ReturnType<typeof load>>,calculated:Awaited<ReturnType<typeof calculateUnit>>,commands:{recalculate:(entries:RewardEntry[])=>ReturnType<typeof calculateUnit>;touch:()=>Promise<void>;stamp:(action:string,payload:Record<string,unknown>)=>Promise<unknown>})=>Promise<T>):Promise<T>{
+ return withRewardsTenant(ctx,async tx=>{if(mutating)await tx.execute(sql`select app.access_workforce_write_lock()`);const state=await load(tx,unitId,mutating);const calculated=await calculateUnit(tx,state.unit,state.entries);return fn(tx,state,calculated,{recalculate:(entries)=>calculateUnit(tx,state.unit,entries),touch:()=>touch(tx,unitId),stamp:(action,payload)=>stamp(tx,ctx,unitId,action,payload)});});
 }
 /** Read-only extension projection; unlike getRewardUnit it performs no access-observation write. */
 export function readOnlyRewardProjection(ctx:SessionContext,unitId:string){return withRewardsTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return reviewProjectionTx(tx,ctx,unitId);});}
