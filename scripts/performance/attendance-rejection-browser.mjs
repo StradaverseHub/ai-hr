@@ -65,14 +65,28 @@ export async function prepareAttendanceRejection({context,visit,fixture,db,repor
    page.waitForResponse(result=>result.request().method()==='POST'&&new URL(result.url()).pathname===path,{timeout}),
    form.locator('button[type="submit"]').click({timeout}),
   ]);
+  const redirect=response.headers()['x-action-redirect']??response.headers().location;
+  if(redirect){
+   const outcome=new URL(redirect.split(';',1)[0],page.url()).searchParams;
+   evidence.creationOutcome={
+    corrected:outcome.get('corrected')==='1',
+    correctionError:outcome.get('correctionError'),
+    workflowProblem:outcome.has('workflowProblem'),
+   };
+  }
+  evidence.creationStatus=response.status();
+  save();
   assert([200,303].includes(response.status()),'Native Attendance creation response failed');
+  if(evidence.creationOutcome)assert(evidence.creationOutcome.corrected,
+   'Native Attendance creation did not report success: '+JSON.stringify(evidence.creationOutcome));
  }finally{await employeeContext.close();}
  const rows=await db`select c.id,c.request_kind,c.requested_ot_minutes,c.status,w.id as workflow_id,w.routing_version,w.current_stage
-   from attendance_correction c join attendance_workflow_request w on w.correction_id=c.id and w.tenant_id=c.tenant_id
+   from attendance_correction c left join attendance_workflow_request w on w.correction_id=c.id and w.tenant_id=c.tenant_id
    where c.tenant_id=${tenantId}::uuid and c.employment_id=${subject.employmentId}::uuid
      and c.attendance_date=${date}::date and c.reason=${marker}`;
- assert.equal(rows.length,1);
+ assert.equal(rows.length,1,'Expected one persisted Attendance correction for the submitted marker');
  const correction=rows[0];
+ assert(correction.workflow_id,'Persisted Attendance correction has no workflow snapshot');
  assert.deepEqual([correction.request_kind,correction.requested_ot_minutes,correction.status,correction.routing_version,correction.current_stage],
   ['other',null,'pending',4,0]);
  const reviewerContext=await context(approver);
