@@ -73,7 +73,7 @@ describe('Home greeting uses current own facts and saved templates',()=>{
    value=await readEmployeeHomeGreeting(e.ctx,e.employmentId,'en',at(monday));
    expect(value.templateKey).toBe('greetingMorning');
   }finally{observer.mockRestore();}
-  expect(statements.some(query=>query.includes('"leave_request"'))).toBe(true);
+  expect(statements.some(query=>query.includes('app.leave_calendar_presence('))).toBe(true);
   expect(statements.some(query=>query.includes('"attendance_policy"'))).toBe(false);
  });
  it('does not invent a substitute birthday in a non-leap year',async()=>{

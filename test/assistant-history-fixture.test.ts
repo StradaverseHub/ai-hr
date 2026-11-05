@@ -45,7 +45,7 @@ it('seeds four real identity-bound principals with twenty retained authenticated
    const diagnostic=(child.stderr??'').split('\n')
     .filter(line=>/^\s*(?:[A-Za-z]+Error[: ]|at )/.test(line))
     .slice(0,12).join('\n');
-   console.error('Saved history child failed',child.status,child.signal,child.error?.code,diagnostic);
+   console.error('Saved history child failed',child.status,child.signal,child.error?.name,diagnostic);
   }
   expect(child.status).toBe(0);
   const result=JSON.parse(readFileSync(path,'utf8')).assistantHistory as Record<number,AssistantHistoryFixture>;
