@@ -99,6 +99,9 @@ it('profiles active and retained seated units with independent financial and pri
  expect(find(pbpRead.value.rows)).toMatchObject({waiting:false,salary:null,bonus:null});
  for(const row of metadata.value.rows)expect(row).toMatchObject({roles:[],people:null,verified:null,waiting:false,salary:null,bonus:null,blocking:null,exceptions:null,laterSeats:[]});
  expect(metadata.counts.fullRosterReads??0).toBe(0);
+ let fullDetailDtoBytes=0,fullDetailVisibleRows=0;
+ for(const id of units){const row=await getRewardUnit(admin,id);fullDetailDtoBytes+=Buffer.byteLength(JSON.stringify(row));fullDetailVisibleRows+=row.rows.length;}
+ expect(fullDetailVisibleRows).toBe(115);
  const bu=await listRewardReviewStatus(actors.bu,[b.companyId]),bg=await listRewardReviewStatus(actors.bg,[b.companyId]);
  expect(find(bu.rows)).toMatchObject({waiting:false,salary:{increaseCents:25000,poolCents:84000},bonus:{totalCents:0}});
  expect(find(bg.rows)).toMatchObject({waiting:true,blocking:0,salary:{increaseCents:60000,poolCents:84000},bonus:{totalCents:0}});
@@ -107,11 +110,9 @@ it('profiles active and retained seated units with independent financial and pri
   const waiting=next==='gr'?admin:next==='ctro'?actors.ctro:next==='ec'?actors.ec:admin;
   expect(find((await listRewardReviewStatus(waiting,[b.companyId])).rows)).toMatchObject({status:next,waiting:true});
  }
- expect(find((await listRewardReviewStatus(actors.payroll,[b.companyId])).rows)).waiting).toBe(false);
+ expect(find((await listRewardReviewStatus(actors.payroll,[b.companyId])).rows).waiting).toBe(false);
  const foreign=await seedBase();await setModule(foreign.tenantId,'rewards','active');expect((await listRewardReviewStatus(await entitledCtx(foreign),[b.companyId])).rows).toEqual([]);
  expect(await listRewardReviewStatus(admin,[])).toMatchObject({rows:[],emptyReason:'noScope'});
- let fullDetailDtoBytes=0,fullDetailVisibleRows=0;
- for(const id of units){const row=await getRewardUnit(admin,id);fullDetailDtoBytes+=Buffer.byteLength(JSON.stringify(row));fullDetailVisibleRows+=row.rows.length;}
  const evidence={kind:'NATIVE_REWARDS_SEATED_LIST_PROFILE_ONLY',releaseEligible:false,units:8,retainedCancelledUnits:4,activeUnits:4,snappedEmployees:115,independentSpecialIncreaseCents:{bu:25000,bg:60000,gr:60000,pbp:null},zeroBonusBudgetAndAward:true,stageRouteVerified:true,noSeatMetadataOnly:true,crossTenantRefused:true,emptyScopeRefused:true,gr:{elapsedMs:gr.elapsedMs,queryCounts:gr.counts,summaryDtoBytes:gr.dtoBytes},pbp:{elapsedMs:pbpRead.elapsedMs,queryCounts:pbpRead.counts,summaryDtoBytes:pbpRead.dtoBytes},seatless:{elapsedMs:metadata.elapsedMs,queryCounts:metadata.counts,summaryDtoBytes:metadata.dtoBytes},fullDetailReference:{visibleRows:fullDetailVisibleRows,dtoBytes:fullDetailDtoBytes,scope:'separate canonical detail reads, not measured allocation bytes inside list'},providerCalls:0,limitations:'Native component only; not browser, whole-module or500-user acceptance.'};
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'rewards-review-list-profile.json'),JSON.stringify(evidence,null,2));
 },300000);
