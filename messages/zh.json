@@ -35410,6 +35410,7 @@
     "noRange": "无范围",
     "segments": "分行分组",
     "segment": "分组",
+    "removeSegment": "移除分组",
     "addSegment": "添加分组",
     "reason": "原因",
     "saveDraft": "保存草稿",
