@@ -1386,9 +1386,11 @@ export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{compan
    order by headers.created_at desc,headers.id
   `);
   const {allowed}=await decisionEmploymentAuthorityTx(tx,ctx,rows.map(row=>row.employmentId),scopeOf('leave.replacement'));
-  return rows.filter(row=>allowed.has(row.employmentId)).map(({id,personId,employee,createdAt})=>({
-   id,personId,employee,createdAt:createdAt instanceof Date?createdAt:replacementLeaveRequest.createdAt.mapFromDriverValue(createdAt),
-  }));
+  return rows.filter(row=>allowed.has(row.employmentId)).map(({id,personId,employee,createdAt})=>{
+   const timestamp=createdAt instanceof Date?createdAt:replacementLeaveRequest.createdAt.mapFromDriverValue(createdAt);
+   if(!(timestamp instanceof Date)||!Number.isFinite(timestamp.getTime()))throw new TypeError('Invalid Leave Credit task timestamp');
+   return {id,personId,employee,createdAt:timestamp};
+  });
  });
 }
 
