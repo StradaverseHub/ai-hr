@@ -17,6 +17,7 @@ afterAll(closeAll);
 
 const dialect=new PgDialect();
 const accessStatement='select pg_advisory_xact_lock(hashtextextended($1,0))';
+const attendanceSubjectStatement='select pg_advisory_xact_lock(hashtextextended($1, 0))';
 const leaveStatement="select case when app.current_tenant_id()=$1::uuid and current_setting('transaction_isolation')='read committed' and current_setting('transaction_read_only')='off' then pg_try_advisory_xact_lock(hashtextextended($2,0)) else false end as acquired";
 
 function observedCarrier(tx:Tx,tenantId:string,employmentId:string,shared:boolean,onSubjectLocked?:()=>Promise<void>){
@@ -40,7 +41,7 @@ function observedCarrier(tx:Tx,tenantId:string,employmentId:string,shared:boolea
           else false end as acquired`);
       }
       const result=await target.execute(statement);
-      if(text===accessStatement&&params.length===1&&params[0]===tenantId+':'+employmentId){
+      if(text===attendanceSubjectStatement&&params.length===1&&params[0]===tenantId+':'+employmentId){
         subject++;
         if(onSubjectLocked)await onSubjectLocked();
       }
@@ -101,7 +102,7 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
   const rollback=new Error('rollback only');
   async function reject(request:typeof first,shared:boolean,onSubjectLocked?:()=>Promise<void>){
     let snapshot:unknown;
-    await expect(withAttendanceTenant(admin,async tx=>{
+    await withAttendanceTenant(admin,async tx=>{
       await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);
       const {carrier,counts}=observedCarrier(tx,base.tenantId,request.employmentId,shared,onSubjectLocked);
       const result=await decideAttendanceCorrection(admin,{correctionId:request.correctionId,decision:'rejected',
@@ -130,7 +131,7 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
       expect(decidedAt).toBeInstanceOf(Date);
       snapshot={result,stableRow,events};
       throw rollback;
-    })).rejects.toBe(rollback);
+    }).catch(error=>{if(error!==rollback)throw error;});
     return snapshot;
   }
   expect(await reject(first,true)).toEqual(await reject(first,false));
@@ -154,7 +155,7 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
       await expect(decideAttendanceCorrection(admin,{correctionId:first.correctionId,decision:'rejected',
         rejectReason:'Conflicting fictional same-subject rejection'},carrier)).rejects.toBeInstanceOf(LeaveDependencyUnavailable);
       throw rollback;
-    }).catch(error=>{expect(error).toBe(rollback);}));
+    }).catch(error=>{if(error!==rollback)throw error;}));
   }finally{
     release.resolve();
     await Promise.all(concurrent);
