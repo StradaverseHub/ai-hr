@@ -53,23 +53,45 @@ export async function saveEmployeeMasterReport(ctx:SessionContext,scopeIds:reado
     return row;
   });
 }
-async function templateTx(tx:Tx,ctx:SessionContext,scopeIds:readonly string[],id:string,purpose:'definition'|'execution'):Promise<MasterTemplate>{
+async function readTemplateDefinitionTx(tx:Tx,ctx:SessionContext,scopeIds:readonly string[],id:string,purpose:'definition'|'execution'){
   const row=await visibleTx(tx,id);const {spec}=await checkedTx(tx,ctx,legacyEmployeeMasterSpec(row.spec,[...scopeIds],todayInKualaLumpur()),scopeIds,purpose);
+  return {row,spec};
+}
+async function projectTemplateTx(tx:Tx,ctx:SessionContext,{row,spec}:Awaited<ReturnType<typeof readTemplateDefinitionTx>>):Promise<MasterTemplate>{
   const [admin]=await tx.execute(sql`select app.is_admin() as admin`) as unknown as {admin:boolean}[];
   const names=await tx.execute(sql`select p.full_name as name from app_user u left join person p on p.id=u.person_id where u.id=${row.createdByUserId}::uuid`) as unknown as {name:string|null}[];
   const [schedule]=await tx.select({enabled:customReportSchedule.enabled}).from(customReportSchedule).where(eq(customReportSchedule.reportId,row.id)).limit(1);
   return {id:row.id,name:row.name,description:row.description,ownerUserId:row.createdByUserId,ownerName:names[0]?.name??null,shared:row.shared,sharedRoleIds:row.sharedRoleIds,version:row.version,lastRunAt:row.lastRunAt?.toISOString()??null,scheduleEnabled:schedule?.enabled??false,updatedAt:row.updatedAt.toISOString(),spec,canEdit:row.createdByUserId===ctx.userId||!!admin?.admin};
 }
+async function templateTx(tx:Tx,ctx:SessionContext,scopeIds:readonly string[],id:string,purpose:'definition'|'execution'):Promise<MasterTemplate>{
+  return projectTemplateTx(tx,ctx,await readTemplateDefinitionTx(tx,ctx,scopeIds,id,purpose));
+}
 /** Read the unchanged authorised definition so an expired condition can be repaired in the builder. */
 export async function getEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string):Promise<MasterTemplate>{return withTenant(ctx,tx=>templateTx(tx,ctx,scopeIds,id,'definition'));}
 /** Scheduling and delivery consumers retain the same strict validation as an actual run. */
 export async function getExecutableEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string):Promise<MasterTemplate>{return withTenant(ctx,tx=>templateTx(tx,ctx,scopeIds,id,'execution'));}
-export async function listEmployeeMasterReports(ctx:SessionContext,scopeIds:readonly string[],input:{all?:boolean;search?:string;id?:string}={}):Promise<MasterTemplate[]>{
-  // A saved-toast lookup still passes through the same native visibility and per-definition
-  // field checks. Invalid IDs select no rows without casting untrusted text or masking DB errors.
-  const idFilter=input.id===undefined?undefined:z.uuid().safeParse(input.id).success?eq(customReport.id,input.id):sql`false`;
-  const ids=await withTenant(ctx,async tx=>(await tx.select({id:customReport.id,name:customReport.name}).from(customReport).where(and(eq(customReport.datasetId,'master'),sql`${customReport.spec} ? 'employeeMaster'`,idFilter)).orderBy(sql`${customReport.lastRunAt} desc nulls last`,desc(customReport.updatedAt),asc(customReport.id))).filter(row=>!input.search||row.name.toLocaleLowerCase().includes(input.search.toLocaleLowerCase())).map(row=>row.id));
+async function templateIds(ctx:SessionContext,search?:string){
+  return withTenant(ctx,async tx=>(await tx.select({id:customReport.id,name:customReport.name}).from(customReport).where(and(eq(customReport.datasetId,'master'),sql`${customReport.spec} ? 'employeeMaster'`)).orderBy(sql`${customReport.lastRunAt} desc nulls last`,desc(customReport.updatedAt),asc(customReport.id))).filter(row=>!search||row.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map(row=>row.id));
+}
+export async function listEmployeeMasterReports(ctx:SessionContext,scopeIds:readonly string[],input:{all?:boolean;search?:string}={}):Promise<MasterTemplate[]>{
+  const ids=await templateIds(ctx,input.search);
   const reports:MasterTemplate[]=[];for(const id of ids){try{reports.push(await getEmployeeMasterReport(ctx,scopeIds,id));}catch(error){if(!(error instanceof MasterReportAccessError))throw error;}if(!input.all&&reports.length===5)break;}return reports;
+}
+/** Exact authorized full count plus the hub's existing five rows and optional saved confirmation.
+ * Re-read and validate every definition under its own current owner/carrier, as the full API does.
+ * Only displayed rows need owner-name, editability and schedule metadata; no permission result is cached. */
+export async function readEmployeeMasterReportHub(ctx:SessionContext,scopeIds:readonly string[],savedId?:string):Promise<{reports:MasterTemplate[];total:number;savedReport:MasterTemplate|undefined}>{
+  const ids=await templateIds(ctx),reports:MasterTemplate[]=[];let total=0,savedReport:MasterTemplate|undefined;
+  for(const id of ids){
+    try{
+      const template=await withTenant(ctx,async tx=>{
+        const definition=await readTemplateDefinitionTx(tx,ctx,scopeIds,id,'definition');
+        return reports.length<5||id===savedId?projectTemplateTx(tx,ctx,definition):null;
+      });
+      total++;if(template){if(reports.length<5)reports.push(template);if(id===savedId)savedReport=template;}
+    }catch(error){if(!(error instanceof MasterReportAccessError))throw error;}
+  }
+  return {reports,total,savedReport};
 }
 export async function duplicateEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string){const source=await getEmployeeMasterReport(ctx,scopeIds,id);return saveEmployeeMasterReport(ctx,scopeIds,{name:source.name+' (copy)',description:source.description,sharedRoleIds:[],spec:source.spec});}
 export async function deleteEmployeeMasterReport(ctx:SessionContext,id:string){return withTenant(ctx,async tx=>{const row=await visibleTx(tx,id);await editableTx(tx,ctx,row);await tx.delete(customReport).where(eq(customReport.id,id));await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'custom-report',aggregateId:id,eventType:'custom-report.deleted',actor:actorOf(ctx),payload:{datasetId:'master'}});});}
