@@ -37,8 +37,7 @@ import { CompanySwitcher } from '@/components/company-switcher';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { AssistantLauncher } from '@/components/assistant/assistant-launcher';
 import {AssistantReplyClientEntry} from '@/components/assistant/chat-reply-boundary';
-import { assistantLauncherFor } from '@/core/assistant-launcher';
-import { mayUseAssistant } from '@/core/assistant-grant';
+import { assistantShellFor } from '@/core/assistant-launcher';
 import { NoticePopupSlot } from '@/components/notice/notice-surfaces';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -203,7 +202,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const notifEnabled = isModuleEnabledOrFalse(session, 'notifications');
   const letterNotificationCompanies=scopeIds.filter(id=>isModuleEnabledOrFalse(session,'notifications',id));
   const bellNotificationsEnabled=notifEnabled||letterNotificationCompanies.length>0,notificationScope=notifEnabled?{}:{letterCompanyIds:letterNotificationCompanies};
-  if (notifEnabled && isAdmin(session)) await dispatchNotifications(session).catch(() => {});
+  if (notifEnabled && isAdmin(session) && (session.grants === undefined || isGroupAdmin(session))) {
+    await dispatchNotifications(session).catch(() => {});
+  }
   // D-P1-32 PT-X5 — where the sidebar's Performance admin entry opens: the admin area's first tab for the latest
   // cycle this OneHR administrator administers, started here so it overlaps the task-list reads below. No cycle, a
   // viewer who is not a OneHR administrator, the module off or a failed read all leave the pack's /performance.
@@ -258,17 +259,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         }),
       )
     : [];
-  // The floating Assistant: null unless the tenant switched it on, this login may use the Assistant and a
-  // provider is active (core/assistant-launcher.ts). Presentation only; every question is re-checked.
-  const launcherPromise = assistantLauncherFor(session);
-  // The Assistant row is offered only with actual access; any failure hides it (never fails open).
-  const [launcher,assistantAccess] = await Promise.all([launcherPromise,
-    mayUseAssistant(session).then(access => access.allowed).catch(() => false),
+  // Navigation and the floating launcher share the current Assistant grant read.
+  const [{launcher,allowed:assistantAccess},privateCaseHandler] = await Promise.all([
+    assistantShellFor(session),
+    handlesPrivateCases(session).catch(() => false),
   ]);
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
-  // AI v2 W11: the "Private cases" queue row only for a login that handles private cases; any failure hides it.
-  const privateCaseHandler = await handlesPrivateCases(session).catch(() => false);
   return (
     <html
       lang={locale}
