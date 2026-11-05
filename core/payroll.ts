@@ -30,7 +30,7 @@ import { payrollHistoryEffectiveBatch } from '../db/schema';
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import type { SelectedFields } from 'drizzle-orm/pg-core';
 import { pageState, type PageQuery } from '../lib/pagination';
 import { type SessionContext, type Tx } from '../db/client';
@@ -11470,18 +11470,40 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
   });
 }
 
-/** Count and page the exact joined register in one read-only snapshot. Stored batch totals are unchanged. */
+/** Count and page the exact joined register in one SQL snapshot after the history barrier. */
 export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, page: PageQuery) {
   return withTenant(ctx, async tx => {
     const batch = await readBatchHeaderTx(tx, batchId);
     if (!batch) return null;
-    const [count] = await batchPayslipRead(tx, batchId, { total: sql<number>`count(*)`.mapWith(Number) });
-    const total = count.total;
-    // An address past the end still has the exact total and an empty page.
-    const rows = page.offset >= total ? [] : await batchPayslipRead(tx, batchId, batchRegisterSlipColumns)
-      .orderBy(asc(person.fullName), asc(payslip.id)).limit(page.limit).offset(page.offset);
-    return { batch, slipPage: { rows, state: pageState(page, total, rows.length) } };
-  }, { readOnlySnapshot: true });
+    const registerTotal = batchPayslipRead(tx, batchId, {
+      total: sql<number>`count(*)`.mapWith(Number).as('total'),
+    }).as('register_total');
+    const registerPage = batchPayslipRead(tx, batchId, batchRegisterSlipColumns)
+      .orderBy(asc(person.fullName), asc(payslip.id)).limit(page.limit)
+      .offset(Math.min(page.offset, Number.MAX_SAFE_INTEGER))
+      .as('register_page');
+    // A page past the end still has its exact count. Clamp oversized URL offsets to a valid
+    // bigint argument before executing SQL. They cannot address a real row in this register.
+    const entries = await tx.select({
+      total: registerTotal.total,
+      row: {
+        id: registerPage.id,
+        employmentId: registerPage.employmentId,
+        name: registerPage.name,
+        employeeCode: registerPage.employeeCode,
+        basic: registerPage.basic,
+        bonus: registerPage.bonus,
+        daysWorked: registerPage.daysWorked,
+        gross: registerPage.gross,
+        statutory: registerPage.statutory,
+        net: registerPage.net,
+        version: registerPage.version,
+      },
+    }).from(registerTotal).leftJoin(registerPage, sql`true`)
+      .orderBy(asc(registerPage.name), asc(registerPage.id));
+    const rows = entries.flatMap(({ row }) => row === null ? [] : [row]);
+    return { batch, slipPage: { rows, state: pageState(page, entries[0].total, rows.length) } };
+  });
 }
 
 /** Run-wide stale banner identities, including people outside the visible register page. */

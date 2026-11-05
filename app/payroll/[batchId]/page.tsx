@@ -100,7 +100,7 @@ export default async function BatchPage({
   // Feedback ef31d251 — this header used to render the RAW status enum, and "Processed" reads as
   // finished. It is not: payslips stay invisible to employees until Close, which is why eighteen runs
   // were calculated and never published. Derived through the shared helper the payroll LIST also uses,
-  // so the two screens cannot start disagreeing about what "published" means. the register reader does a bare
+  // so the two screens cannot start disagreeing about what "published" means. The register reader does a bare
   // select() of the batch row, so releasedAt is already in hand — no extra read.
   const pubState = payrollPublicationState(batch);
   // 49e7e0a2 — the run's recalculation mark. Set when a one-off transaction is added, changed or removed

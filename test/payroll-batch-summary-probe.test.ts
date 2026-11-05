@@ -6,6 +6,7 @@ import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {withPayrollTenant} from '../core/module-gate';
+import {lockPayrollHistoryWriteTx} from '../core/payroll-history-lock';
 import {batchDetail,batchHeader,createBatch,generatePayslips,listBatchRecalcPayslipIdentities,payrollRunRegisterPage} from '../core/payroll';
 import {GET as exportRun} from '../app/payroll/[batchId]/export/route';
 import {rowsForRun,transactionDetailReport} from '../app/payroll/[batchId]/transaction-detail-report';
@@ -78,7 +79,7 @@ it('reads the exact effective header and visible slip count without exporting di
  const registerRows=ordered.map(({totalDeductions:_deductions,employerCost:_cost,...row})=>row);
  const tied=registerRows.filter(row=>row.name==='Fictional duplicate payee');
  expect(tied).toHaveLength(2);
- for(const raw of [{},{page:'1',size:'50'},{page:'200',size:'200'},{size:'all'}]){
+ for(const raw of [{},{page:'1',size:'50'},{page:'200',size:'200'},{page:String(Number.MAX_SAFE_INTEGER),size:'200'},{size:'all'}]){
   const page=parsePageQuery(raw);
   expect(await payrollRunRegisterPage(root,batchId,page)).toEqual({batch:exact!.batch,slipPage:paginateRows(registerRows,page)});
  }
@@ -91,7 +92,7 @@ it('reads the exact effective header and visible slip count without exporting di
  expect(await listBatchRecalcPayslipIdentities(foreign,batchId,bannerIds)).toEqual([]);
  const phases=[];
  for(const [name,read,statements]of [
-  ['original',()=>batchDetail(root,batchId),2],['register-page',()=>payrollRunRegisterPage(root,batchId,parsePageQuery()),3],['header',()=>batchHeader(root,batchId),1],
+  ['original',()=>batchDetail(root,batchId),2],['register-page',()=>payrollRunRegisterPage(root,batchId,parsePageQuery()),2],['header',()=>batchHeader(root,batchId),1],
   ['header-warm',()=>batchHeader(root,batchId),1],['count',()=>countProbe(root,batchId),2],
   ['count-warm',()=>countProbe(root,batchId),2],['restored-original',()=>batchDetail(root,batchId),2],
  ] as const){
@@ -116,5 +117,33 @@ it('reads the exact effective header and visible slip count without exporting di
  const bytes=new Uint8Array(await response.arrayBuffer());expect(bytes).toEqual(new Uint8Array(expected.bytes));
  const audit=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.tenantId,b.tenantId),eq(s.domainEvent.eventType,PAYROLL_ACCESS_EVENT)));
  expect(audit.map(event=>event.payload)).toEqual([expect.objectContaining({action:'export',surface:'run_export',batchId,rows:rows.length,bytes:bytes.byteLength,fileSha256:createHash('sha256').update(bytes).digest('hex')})]);
+ // The ordinary tenant bootstrap runs before the History lock. A queued register read must
+ // use the snapshot after the holder commits, including the joined count and the displayed page.
+ let waitingRead: ReturnType<typeof payrollRunRegisterPage> | undefined;
+ try {
+  await owner.db.transaction(async tx => {
+   await lockPayrollHistoryWriteTx(tx, b.tenantId);
+   const [holder] = await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
+   await tx.update(s.employment).set({
+    voidedAt:new Date(), voidedBy:b.adminUserId, voidReason:'Fictional concurrent history change', voidedImportAttemptId:randomUUID(),
+   }).where(eq(s.employment.id, firstPage[0].employmentId));
+   waitingRead = payrollRunRegisterPage(root, batchId, parsePageQuery());
+   void waitingRead.catch(() => undefined);
+   const deadline = performance.now() + 7_000;
+   let blocked = false;
+   while (!blocked && performance.now() < deadline) {
+    const [lock] = await owner.db.execute<{blocked:boolean}>(sql`select exists (
+     select 1 from pg_locks l where l.locktype='advisory' and not l.granted
+     and ${holder.pid}::integer=any(pg_blocking_pids(l.pid))
+    ) as blocked`);
+    blocked = lock.blocked;
+    if (!blocked) await new Promise(resolve => setTimeout(resolve, 15));
+   }
+   expect(blocked, 'register read must wait for the history writer').toBe(true);
+  });
+  expect((await waitingRead)?.slipPage).toEqual(paginateRows(registerRows.slice(1), parsePageQuery()));
+ } finally {
+  await waitingRead?.catch(() => undefined);
+ }
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'payroll-batch-summary-probe.json'),JSON.stringify({kind:'NATIVE_PAYROLL_BATCH_SUMMARY',releaseEligible:false,physicalMembers:1001,visibleDetailRows:exact?.slips.length,readsPerPhase:5,phases,numericalPayrollCalculationClaim:false},null,2));
 },600000);
