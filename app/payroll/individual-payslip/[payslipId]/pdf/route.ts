@@ -25,7 +25,7 @@ import { payslipInformationLabels } from '@/lib/payslip-information-labels';
 import { scopedAdmin } from '@/lib/scope';
 import { getTranslations } from 'next-intl/server';
 import { listReprocessEmployeeOutcomes } from '@/packs/payroll/service';
-import { listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd, sumPayslipEmployerPeriodTotals } from '@/core/payroll-view';
+import { listPayslipSourceTxns, listProcessedPayslipsAcross, payslipForReview, sumPayslipYtd, sumPayslipEmployerPeriodTotals } from '@/core/payroll-view';
 import { getCompanyLogo } from '@/core/admin';
 import { buildPayslipPdfData, renderPayslipPdf } from '@/lib/payslip-pdf';
 import { payslipPdfStrings } from '@/lib/payslip-pdf-strings';
@@ -56,9 +56,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
   // with, through the SAME helper, so the screen and the document cannot disagree about the year.
   // The logo is the company's own uploaded file — the same bytes the Organization screen and the on-screen
   // letterhead show. Absent ⇒ the legal name stands alone; no placeholder mark is invented.
-  const [ytdRows, logo] = await Promise.all([
+  const [ytdRows, logo, quantitySources] = await Promise.all([
     listProcessedPayslipsAcross(s, { companyIds: scopeIds, year: Number(year), employmentId: p.employmentId }),
     getCompanyLogo(s, p.companyId),
+    p.batchId ? listPayslipSourceTxns(s, {
+      companyIds: [p.companyId],
+      batchIds: [p.batchId],
+      employmentIds: [p.employmentId],
+    }) : [],
   ]);
 
   const strings = await payslipPdfStrings({
@@ -84,7 +89,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ payslipI
   // `payslipForReview` names the employee `employeeName` (the list-read convention); the PDF builder takes
   // `employee` (the payslipDetail convention). Bridged here rather than renaming either, so neither the
   // ESS route nor the History screen has to change for this one.
-  const data = buildPayslipPdfData({ ...p, employee: p.employeeName }, strings.borneLabels, {
+  const data = buildPayslipPdfData({ ...p, employee: p.employeeName, quantitySources }, strings.borneLabels, {
+    adminReview: true,
     // r392 (23bd49d9) — the payment facts are setting fields now: the translated method (never the raw
     // enum), the FULL account number and the cycle label, exactly as the review screen feeds them.
     informationRows: selectPayslipInformation(payslipInformationData(p, { employee: p.employeeName, employmentType: strings.employmentType,

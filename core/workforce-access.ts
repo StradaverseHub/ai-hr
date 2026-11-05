@@ -31,15 +31,23 @@ export async function assertWorkforcePersonTx(tx:Tx,ctx:SessionContext,personId:
  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_person(${personId}::uuid,${'workforce.'+operation}) as allowed`);
  if(!row?.allowed)throw new WorkforceAccessError();
 }
+async function readWorkforceCompanyIds(tx:Tx,operation:WorkforceOperation){
+ const allowed=operation==='view'?sql`app.access_workforce_projection_company(id)`:sql`app.access_workforce_company(id,'workforce.maintain')`;
+ const rows=await tx.execute<{id:string}>(sql`select id from company where tenant_id=app.current_tenant_id() and ${allowed} order by id`);
+ return rows.map(row=>row.id);
+}
+
 /** Scope metadata only. Actual reads/writes repeat their check under the same access lock. */
 export function workforceCompanies(ctx:SessionContext,operation:WorkforceOperation='view', outerTx?:Tx){
-  const run=async (tx:Tx)=>{
+ const run=async (tx:Tx)=>{
   await lockAccessConfigurationTx(tx,ctx.tenantId);
-  const allowed=operation==='view'?sql`app.access_workforce_projection_company(id)`:sql`app.access_workforce_company(id,'workforce.maintain')`;
-  const rows=await tx.execute<{id:string}>(sql`select id from company where tenant_id=app.current_tenant_id() and ${allowed} order by id`);
-  return rows.map(row=>row.id);
+  return readWorkforceCompanyIds(tx,operation);
  };
-  return outerTx?run(outerTx):withTenant(ctx,run);
+ return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+export function personnelMaintenanceCompanyIds(ctx:SessionContext){
+ return withPersonnelRead(ctx,tx=>readWorkforceCompanyIds(tx,'maintain'));
 }
 
 export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string,operation:WorkforceOperation){

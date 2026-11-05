@@ -348,6 +348,89 @@ export function payItemLinesForCategory(lines: StoredComponentLine[], category: 
   });
 }
 
+export type PayslipQuantitySource = {
+  componentCode: string | null;
+  consumedByThisRun: boolean;
+  quantityEvidenceCurrent?: boolean;
+  kind: string;
+  amount: string;
+  quantity?: string | null;
+  unit?: string | null;
+};
+
+/** Older slips can use dated inputs when the exact paid results and consumed
+ * entries agree by code, count and amount. Input amounts only match evidence. */
+export function restorePayItemQuantities(
+  lines: NamedPayItemLine[],
+  sources: readonly PayslipQuantitySource[],
+  kind: 'earning' | 'deduction',
+): NamedPayItemLine[] {
+  if (sources.length === 0) return lines;
+  const restored = new Map<string, PayItemInputQuantity[]>();
+  for (const code of new Set(lines.map(line => line.code))) {
+    if (!code || (kind === 'deduction' && code !== 'ABSENT')) continue;
+    const items = lines.filter(line => line.code === code);
+    if (items.some(line => line.detail || line.inputQuantity)) continue;
+    const inputs = sources.filter(row => row.consumedByThisRun && row.kind === kind && row.componentCode === code);
+    if (items.length !== inputs.length) continue;
+    const expectedUnit = kind === 'earning' ? 'hours' : 'days';
+    if (inputs.some(row => row.quantityEvidenceCurrent !== true || row.quantity == null || !Number.isFinite(Number(row.quantity)) || Number(row.quantity) < 0 ||
+      (row.unit !== expectedUnit && !(code === 'ABSENT' && row.unit == null)))) continue;
+
+    const match = items.map(line => {
+      const index = inputs.findIndex(row => round2(Number(row.amount)) === line.amount);
+      return index < 0 ? null : inputs.splice(index, 1)[0];
+    });
+    if (match.some(row => row == null)) continue;
+    restored.set(code, match.map(row => ({ qty: Number(row!.quantity), unit: expectedUnit })));
+  }
+  return lines.map(line => {
+    const inputQuantity = line.code ? restored.get(line.code)?.shift() : undefined;
+    return inputQuantity ? { ...line, inputQuantity } : line;
+  });
+}
+
+/** Group saved results by code within one payslip. A quantity is usable only when
+ * every contributing result recorded the same unit. Keep a rate only if it still
+ * explains the grouped amount. */
+export function groupNamedPayItemLines(lines: NamedPayItemLine[], onlyCode?: string): NamedPayItemLine[] {
+  const byCode = new Map<string, NamedPayItemLine[]>();
+  for (const line of lines) {
+    if (!line.code || (onlyCode && line.code !== onlyCode)) continue;
+    const group = byCode.get(line.code) ?? [];
+    group.push(line);
+    byCode.set(line.code, group);
+  }
+
+  return lines.flatMap(line => {
+    const group = line.code ? byCode.get(line.code) : undefined;
+    if (!group || group.length === 1) return [line];
+    if (group.length === 0) return [];
+    if (group[0] !== line) return [];
+    byCode.set(line.code!, []);
+
+    const amount = group.reduce((sum, entry) => sum + Math.round(entry.amount * 100), 0) / 100;
+    const combined: NamedPayItemLine = { code: line.code, name: line.name, amount };
+    const quantities = group.map(entry => entry.detail ?? entry.inputQuantity);
+    const first = quantities[0];
+    if (!first || quantities.some(entry => !entry || entry.unit !== first.unit)) return [combined];
+
+    const qty = Number(quantities.reduce((sum, entry) => sum + (entry?.qty ?? 0), 0).toPrecision(15));
+    const rate = line.detail?.rate;
+    if (rate != null && group.every(entry => entry.detail?.rate === rate) && round2(qty * rate) === amount) {
+      combined.detail = { ...line.detail!, qty };
+    } else {
+      combined.inputQuantity = { qty, unit: first.unit };
+    }
+    return [combined];
+  });
+}
+
+export function payslipOvertimeLines(lines: StoredComponentLine[], statutory: unknown, sources: readonly PayslipQuantitySource[] = []): NamedPayItemLine[] {
+  const recorded = payItemLinesForCategory(lines, 'overtime');
+  return recorded.length ? groupNamedPayItemLines(restorePayItemQuantities(recorded, sources, 'earning')) : storedOvertimeLines(statutory);
+}
+
 /** Descriptive transaction quantity, not a rate or a calculated paid allocation. Only a whole saved
  * contribution may carry it; never repeat a whole input beside a partial bucket amount. */
 function storedInputQuantity(line: StoredComponentLine, amount: number): PayItemInputQuantity | null {

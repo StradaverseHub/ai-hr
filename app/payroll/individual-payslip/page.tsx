@@ -145,7 +145,7 @@ import {
   sumPayslipYtd,
   sumPayslipEmployerPeriodTotals,
 } from '@/core/payroll-view';
-import { absenceDaysLabel, payslipAbsenceLines } from '@/core/payslip-absence-lines';
+import { absenceDaysLabel } from '@/core/payslip-absence-lines';
 import { payslipEmployerBorne, type EmployerBorneKey } from '@/core/payslip-employer-borne';
 import { payslipSkbbkLineShown, payslipSkbbkSubject } from '@/core/payslip-skbbk-line';
 // 3c88d593 — the part of the month THIS employer employed the person for, when a mid-month entity
@@ -183,8 +183,7 @@ import { SourceTxnBlock, SourceTxnLink } from '../transaction-view/source-txn-bl
 // own code and description, never the category it was classified into.
 // 417d4937 — and the read-time repair for RECORD lines, whose stored name was a free-text remark until
 // r196 and stays wrong on every run calculated before that deploy unless the screen reads the catalogue.
-import { displayComponentLines } from '@/core/payslip-imported-lines';
-import { earningRowShown, payItemLabel, recordLineIdentity, storedComponentLines, payItemLinesForBuckets, payItemLinesForCategory, storedOvertimeLines, payItemLinesReconcile } from '@/core/payslip-earning-lines';
+import { earningRowShown, recordLineIdentity } from '@/core/payslip-earning-lines';
 
 /** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
 export const PAYSLIP_PANEL_COOKIE = 'payslip_panel';
@@ -434,28 +433,13 @@ export default async function IndividualPayslipPage({
   const ytd = sumPayslipYtd(ytdRows);
   const employerPeriodTotals = row ? sumPayslipEmployerPeriodTotals(ytdRows,row.payPeriod) : null;
 
-  const b = row ? deriveHistoryBreakdown(row) : null;
-  // Rate evidence comes from the same validated snapshot reader as the PDF. The review's historical
-  // grouped row may combine several components, so attach a rate only to one exact saved identity.
-  // Ambiguous/partial evidence stays blank; no attendance or current catalogue is consulted.
-  const components=displayComponentLines(row?.statutory);
-  const recordedDetails={allowance:payItemLinesForCategory(components,'allowance'),overtime:payItemLinesForCategory(components,'overtime'),bonus:payItemLinesForCategory(components,'bonus')};
-  const detailFor=(line:{code:string;name:string;amount:number},kind:keyof typeof recordedDetails)=>{
-    const matches=recordedDetails[kind].filter(candidate=>(candidate.code??'')===line.code&&candidate.name===line.name&&candidate.amount===line.amount);
-    return matches.length===1?matches[0].detail:null;
-  };
-  const savedOvertime = recordedDetails.overtime.length===0 ? storedOvertimeLines(row?.statutory) : [];
-  const statutoryOvertimeRows = b && b.overtimeLines.length===0 && payItemLinesReconcile(savedOvertime,b.overtime) ? savedOvertime : [];
+  const b = row ? deriveHistoryBreakdown(row, sourceTxns) : null;
   const quantityFor = (line:{ detail?: {qty:number;unit:string|null}|null; inputQuantity?: {qty:number;unit:string|null} }) => {
     const q=line.detail ?? line.inputQuantity;
-    return q ? `${q.qty}${q.unit==='hours'?' '+tSlip(q.qty===1?'hourUnit':'hoursUnit'):q.unit==='days'?' '+tSlip(q.qty===1?'dayUnit':'daysUnit'):''}` : '';
+    return q ? `${q.qty}${q.unit==='hours'?' '+tSlip(q.qty===1?'hourUnit':'hoursUnit'):q.unit==='days'?' '+tSlip(q.qty===1?'dayUnit':'daysUnit'):''}` : '—';
   };
   const otLegLabels = {workday:'otLegWorkday',rest_day:'otLegRestDay',rest_day_excess:'otLegRestDayExcess',holiday:'otLegHoliday',holiday_excess:'otLegHolidayExcess'} as const;
   const eb = row ? payslipEmployerBorne(row.statutory) : null;
-  // e2632276 — split "Other deductions" into its named unpaid-leave / absence lines plus the residual.
-  // Derived from the PAYSLIP'S OWN stamp, never from today's policy: a slip run before this shipped has no
-  // stamp and renders the single lumped row exactly as it always has.
-  const absence = payslipAbsenceLines(row?.statutory, row?.otherDeductions);
   // 45df860a — the PCB working (and the relief fallback it needs) is read by app/payroll/pcb-detail, the
   // ONE screen that shows it. This screen links there.
   const prov = row ? payslipProvenance(row.statutory) : null;
@@ -753,13 +737,10 @@ export default async function IndividualPayslipPage({
             {(earningRowShown(b.allowanceNet) || b.allowanceLines.length > 0) && (
               <Row label={tSlip('allowances')} value={rm(b.allowanceNet)} />
             )}
-            {/* 417d4937 — wage AND reimburse (a PCB-exempt allowance is stamped into `reimburse`, is
-                paid, and is inside this figure), and 6b134681 — labelled by CODE · DESCRIPTION, the same
-                identification the Recorded items rows and the printed payslip use. This screen reads the
-                identical derivation the History grid does, so the two cannot name one item differently. */}
-            {b.allowanceLines.map((l, i) => {const detail=detailFor(l,'allowance');return (
+            {/* Show the saved description here. Recorded items and dated entries retain the code. */}
+            {b.allowanceLines.map((l, i) => {const detail=l.detail;return (
               <p key={`w${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
-                <span className="min-w-0 break-words"><SourceTxnLink code={l.code} rows={sourceTxns}>{payItemLabel(l)}</SourceTxnLink>{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
+                <span className="min-w-0 break-words"><SourceTxnLink code={l.code} rows={sourceTxns}>{l.name.trim() || l.code}</SourceTxnLink>{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
                 <span className="text-right tabular-nums">{quantityFor(l)}</span>
                 <span className="text-right tabular-nums">{rm(l.amount)}</span>
               </p>
@@ -773,20 +754,13 @@ export default async function IndividualPayslipPage({
                 the figure is the DISPLAY box (3c473773) while the bucket is the KERNEL's statutory
                 routing, and an item declared into the Overtime box but bucketed as `bonus` would
                 otherwise print an itemised row under a zero Bonus total. */}
-            {b.overtimeLines.map((l, i) => {const detail=detailFor(l,'overtime');return (
+            {b.overtimeLines.map((l, i) => {const detail=l.detail;return (
               <p key={`o${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
-                <span className="min-w-0 break-words"><SourceTxnLink code={l.code} rows={sourceTxns}>{payItemLabel(l)}</SourceTxnLink>{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
+                <span className="min-w-0 break-words"><SourceTxnLink code={l.code} rows={sourceTxns}>{l.otLeg ? tSlip(otLegLabels[l.otLeg]) : l.name.trim() || l.code}</SourceTxnLink>{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
                 <span className="text-right tabular-nums">{quantityFor(l)}</span>
                 <span className="text-right tabular-nums">{rm(l.amount)}</span>
               </p>
             );})}
-            {statutoryOvertimeRows.map((line,i)=>(
-              <p key={`stat-ot${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
-                <span className="min-w-0 break-words">{line.otLeg ? tSlip(otLegLabels[line.otLeg]) : tSlip('overtime')}<span className="block">{line.detail && formatRate(line.detail.rate,cur)}</span></span>
-                <span className="text-right tabular-nums">{line.detail ? `${line.detail.qty} ${line.detail.unit==='hours'?tSlip(line.detail.qty===1?'hourUnit':'hoursUnit'):tSlip(line.detail.qty===1?'dayUnit':'daysUnit')}` : ''}</span>
-                <span className="text-right tabular-nums">{rm(line.amount)}</span>
-              </p>
-            ))}
             {b.otConvertAmount > 0 && (
               <Row
                 label={tSlip('otConverted', { item: (b.st.otConvert?.name ?? '') })}
@@ -799,9 +773,9 @@ export default async function IndividualPayslipPage({
             {/* 6b134681 — "B0001 · ANGPOW" under Bonus. The bonus box is a statutory classification
                 (additional remuneration for EPF/PCB); it never gets to replace the pay item's own name.
                 Reconciled in the derivation, as above. */}
-            {b.bonusLines.map((l, i) => {const detail=detailFor(l,'bonus');return (
+            {b.bonusLines.map((l, i) => {const detail=l.detail;return (
               <p key={`b${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
-                <span className="min-w-0 break-words"><SourceTxnLink code={l.code} rows={sourceTxns}>{payItemLabel(l)}</SourceTxnLink>{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
+                <span className="min-w-0 break-words"><SourceTxnLink code={l.code} rows={sourceTxns}>{l.name.trim() || l.code}</SourceTxnLink>{detail && <span className="block">{formatRate(detail.rate,cur)}</span>}</span>
                 <span className="text-right tabular-nums">{quantityFor(l)}</span>
                 <span className="text-right tabular-nums">{rm(l.amount)}</span>
               </p>
@@ -844,7 +818,7 @@ export default async function IndividualPayslipPage({
                 deductions". Never `b.st.cp38` (the pre-clamp figure the direction asked for); the row and
                 the residual are ONE decision and it is made in core/payslip-absence-lines.ts, shared with
                 the employee's own payslip and the printed document. */}
-            {absence.cp38.show && <Row label={tSlip('cp38')} value={rm(absence.cp38.amount)} />}
+            {b.absence.cp38.show && <Row label={tSlip('cp38')} value={rm(b.absence.cp38.amount)} />}
             {/* 3a092cf0 — a real deduction line now, un-muted, with the amount alone in the figure column
                 and the offset note on the label. See app/me/payslip/[payslipId]/page.tsx for the full
                 note; the two surfaces render one payslip and must not print it differently. */}
@@ -855,24 +829,24 @@ export default async function IndividualPayslipPage({
                 day count. `residual` is what is left of Other deductions once they come out of it, so
                 the section still sums to Total deductions; a payslip with no stamp takes the `any:false`
                 path and prints the single lumped row exactly as before. */}
-            {absence.unpaidLeave && (
+            {b.absence.unpaidLeave && (
               <Row
-                label={`${tSlip('unpaidLeaveLine')} · ${absenceDaysLabel(absence.unpaidLeave.days, tSlip('dayUnit'), tSlip('daysUnit'))}`}
-                value={rm(absence.unpaidLeave.amount)}
+                label={`${tSlip('unpaidLeaveLine')} · ${absenceDaysLabel(b.absence.unpaidLeave.days, tSlip('dayUnit'), tSlip('daysUnit'))}`}
+                value={rm(b.absence.unpaidLeave.amount)}
               />
             )}
-            {absence.absent && (
+            {b.absence.absent && (
               <Row
-                label={`${tSlip('absentLine')} · ${absenceDaysLabel(absence.absent.days, tSlip('dayUnit'), tSlip('daysUnit'))}`}
-                value={rm(absence.absent.amount)}
+                label={`${tSlip('absentLine')} · ${absenceDaysLabel(b.absence.absent.days, tSlip('dayUnit'), tSlip('daysUnit'))}`}
+                value={rm(b.absence.absent.amount)}
               />
             )}
-            {absence.showResidual && <Row label={tSlip('otherDeductions')} value={rm(absence.residual)} />}
+            {b.absence.showResidual && b.deductionLines.length === 0 && <Row label={tSlip('otherDeductions')} value={rm(b.absence.residual)} />}
             {/* b240c0ff — the named deduction items behind the row above (imported payroll history keeps
                 each line), only when they add up to it. Reconciled in the derivation. */}
-            {absence.showResidual && b.deductionLines.map((l, i) => (
+            {b.absence.showResidual && b.deductionLines.map((l, i) => (
               <p key={`d${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
-                <span className="min-w-0 break-words"><SourceTxnLink code={l.code} rows={sourceTxns}>{payItemLabel(l)}</SourceTxnLink></span>
+                <span className="min-w-0 break-words"><SourceTxnLink code={l.code} rows={sourceTxns}>{l.name.trim() || l.code}</SourceTxnLink></span>
                 <span className="text-right tabular-nums">{quantityFor(l)}</span>
                 <span className="text-right tabular-nums">{rm(l.amount)}</span>
               </p>
