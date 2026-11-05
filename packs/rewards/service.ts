@@ -1,3 +1,4 @@
+import {rewardArchitectureForSourceTx} from './architecture-source';
 import {mobileRewardPersonBlock} from './mobile-review-projection';
 import type { Tx as AiReadTx } from '../../db/client';
 import { withCanonicalAiReadTx } from '../../core/ai-read-transaction';
@@ -485,7 +486,7 @@ export async function getRewardConfiguration(ctx: SessionContext, unitId: string
 /** The unit's roster as Personnel and Compensation stand on `at`. Read-only; refresh preview and save share it. */
 async function snapshotRoster(tx: Tx, unit: typeof rewardUnit.$inferSelect, at: string) {
   await requireAdmin(tx, unit.companyId);
-  const records = await tx.select({ employmentId: employment.id, personId: employment.personId, companyId: employment.companyId, employeeCode: employment.employeeCode, name: person.fullName, grade: jobGrade.code, gradeId: employment.gradeId, hiredOn: employment.hiredOn, confirmedOn: employment.confirmationDate, tenderDate: employment.tenderResignationDate, resignedOn: employment.resignationDate, assignmentId: assignment.id })
+  const records = await tx.select({ employmentId: employment.id, personId: employment.personId, companyId: employment.companyId, employeeCode: employment.employeeCode, name: person.fullName, grade: jobGrade.code, gradeId: employment.gradeId, hiredOn: employment.hiredOn, confirmedOn: employment.confirmationDate, tenderDate: employment.tenderResignationDate, resignedOn: employment.resignationDate, assignmentId: assignment.id, positionId:assignment.positionId })
     .from(employment).innerJoin(person, eq(person.id, employment.personId)).innerJoin(assignment, eq(assignment.employmentId, employment.id)).leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
     .where(and(eq(employment.companyId, unit.companyId), eq(assignment.businessUnitId, unit.businessUnitId), lte(employment.hiredOn, at), or(isNull(employment.terminatedOn), gt(employment.terminatedOn, at)), lte(assignment.validFrom, at), or(isNull(assignment.validTo), gt(assignment.validTo, at)), isNull(assignment.supersededAt)))
     .orderBy(asc(employment.employeeCode), asc(employment.id));
@@ -497,6 +498,7 @@ async function snapshotRoster(tx: Tx, unit: typeof rewardUnit.$inferSelect, at: 
     const [review] = await tx.select({ id: performanceReview.id, rating: performanceReview.overallRating }).from(performanceReview).innerJoin(reviewCycle, eq(reviewCycle.id, performanceReview.cycleId)).where(and(eq(performanceReview.employmentId, e.employmentId), lte(reviewCycle.periodStart, `${unit.policy.year}-12-31`), sql`${reviewCycle.periodEnd} >= ${`${unit.policy.year}-01-01`}`, sql`${performanceReview.closedAt} is not null`)).orderBy(desc(performanceReview.closedAt), desc(performanceReview.id)).limit(1);
     roster.set(e.employmentId, {
       employmentId: e.employmentId, personId: e.personId, compensationId: comp?.id ?? null,
+      assignmentId:e.assignmentId,positionId:e.positionId,architecture:await rewardArchitectureForSourceTx(tx,unit.id,e.employmentId,e.positionId,at),
       employeeCode: e.employeeCode ?? e.employmentId, name: e.name, grade: (e.grade ?? '').replace(/^JG\s*/i, ''), gradeId: e.gradeId,
       basicCents: comp ? moneyToCents(comp.basicSalary) : 0, currency: comp?.currency ?? 'MYR', payMode: comp?.payMode ?? 'monthly',
       hiredOn: e.hiredOn, confirmedOn: e.confirmedOn, notice: !!((e.tenderDate && e.tenderDate <= at) || (e.resignedOn && e.resignedOn <= at)),

@@ -104,6 +104,7 @@ export type RewardArchitectureSource = {
 };
 export type RewardSource = {
   architecture?:RewardArchitectureSource|null;
+  assignmentId?:string;positionId?:string|null;
   employmentId: string; personId: string; compensationId: string | null;
   employeeCode: string; name: string; grade: string; gradeId: string | null;
   basicCents: number; currency: string; payMode: string;
