@@ -14,12 +14,13 @@ it('preserves canonical native DTOs and snapshot while bounded and overflow sear
  await owner.db.insert(schema.employment).values(people.map((p,n)=>({id:p.employmentId,tenantId:b.tenantId,personId:p.id,companyId:b.companyId,hiredOn:'2020-01-01',employeeCode:n===0?'DUPMARK':'CODE-'+n,blacklistedAt:n===0?'2025-01-01':null,terminatedOn:n%5===0?'2024-01-01':null})));
  await owner.db.insert(schema.assignment).values(people.map(p=>({tenantId:b.tenantId,employmentId:p.employmentId,companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time' as const,validFrom:'2020-01-01'})));
  const [isolation]=await withTenant(ctx,tx=>tx.execute<{level:string}>(sql`select current_setting('transaction_isolation')as level`));expect(isolation.level).toBe('read committed');
- const probe=await installPersonnelSearchProbe();
+ const probe=await installPersonnelSearchProbe(true);
  try{
   for(const q of ['DUPMARK',' \nDUPMARK\t ','\\%\\_','END\\','\\\\','not-found','Common Needle','%']){
    const filters={companyIds:[b.companyId],q},page={...filters,limit:25,offset:0};
    const reference=await personnelListPage(ctx,page,filters),actual=await readWithPersonnelSearchProbe(ctx,page,filters,probe,undefined,true);
    expect(actual.dto).toEqual(reference);
+   expect(actual.usedSampleOverflow).toBe(q==='Common Needle'||q==='%');
    if(q==='DUPMARK'){expect(actual.rawHits).toBe(2);expect(actual.usedBounded).toBe(true);expect(actual.dto.total).toBe(1);}
    if(q==='Common Needle'){expect(actual.rawHits).toBe(26);expect(actual.usedBounded).toBe(false);expect(actual.dto.total).toBe(46);}
    const functionScans:Record<string,unknown>[]=[];
