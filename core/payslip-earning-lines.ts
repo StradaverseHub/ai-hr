@@ -351,6 +351,7 @@ export function payItemLinesForCategory(lines: StoredComponentLine[], category: 
 export type PayslipQuantitySource = {
   componentCode: string | null;
   consumedByThisRun: boolean;
+  quantityEvidenceCurrent?: boolean;
   kind: string;
   amount: string;
   quantity?: string | null;
@@ -373,7 +374,7 @@ export function restorePayItemQuantities(
     const inputs = sources.filter(row => row.consumedByThisRun && row.kind === kind && row.componentCode === code);
     if (items.length !== inputs.length) continue;
     const expectedUnit = kind === 'earning' ? 'hours' : 'days';
-    if (inputs.some(row => row.quantity == null || !Number.isFinite(Number(row.quantity)) || Number(row.quantity) < 0 ||
+    if (inputs.some(row => row.quantityEvidenceCurrent !== true || row.quantity == null || !Number.isFinite(Number(row.quantity)) || Number(row.quantity) < 0 ||
       (row.unit !== expectedUnit && !(code === 'ABSENT' && row.unit == null)))) continue;
 
     const match = items.map(line => {

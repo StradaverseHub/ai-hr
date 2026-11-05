@@ -531,8 +531,8 @@ it('uses matching consumed dated inputs to recover missing legacy quantities', (
       { code: 'ABSENT', name: 'Absent', amount: 20, buckets: [{ bucket: 'deduct', amount: 20 }] },
     ] },
   });
-  const overtime = { componentCode: 'OT1_5', consumedByThisRun: true, kind: 'earning', amount: '30', unit: 'hours' };
-  const absent = { componentCode: 'ABSENT', consumedByThisRun: true, kind: 'deduction', amount: '20', quantity: '1', unit: null };
+  const overtime = { componentCode: 'OT1_5', consumedByThisRun: true, quantityEvidenceCurrent: true, kind: 'earning', amount: '30', unit: 'hours' };
+  const absent = { componentCode: 'ABSENT', consumedByThisRun: true, quantityEvidenceCurrent: true, kind: 'deduction', amount: '20', quantity: '1', unit: null };
   const sources = [{ ...overtime, quantity: '2' }, { ...overtime, quantity: '3' }, absent];
   const breakdown = deriveHistoryBreakdown(slip, [...sources, { ...overtime, consumedByThisRun: false, quantity: '100' }]);
   expect(breakdown.overtimeLines).toEqual([
@@ -541,6 +541,8 @@ it('uses matching consumed dated inputs to recover missing legacy quantities', (
   expect(breakdown.deductionLines).toEqual([
     { code: 'ABSENT', name: 'Absent', amount: 20, inputQuantity: { qty: 1, unit: 'days' } },
   ]);
+  const edited = deriveHistoryBreakdown(slip, [{ ...sources[0], quantityEvidenceCurrent: false }, ...sources.slice(1)]);
+  expect(edited.overtimeLines).toEqual([{ code: 'OT1_5', name: 'Overtime 1.5', amount: 60 }]);
   const mismatched = deriveHistoryBreakdown(slip, [{ ...sources[0], amount: '31' }, ...sources.slice(1)]);
   expect(mismatched.overtimeLines).toEqual([{ code: 'OT1_5', name: 'Overtime 1.5', amount: 60 }]);
 });
