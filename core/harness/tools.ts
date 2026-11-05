@@ -48,7 +48,7 @@ import {asksToBypassReview,assignedLeaveDecisionChoices,pendingStarts,prepareSug
 import {approvalQueueWithLeaveIdsFor} from '../product-context/approval-queue';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {LEAVE_APPLY_FORM_ROUTE} from '../proposals/leave-apply';
-import {requestDatesView} from '../proposals/request-dates';
+import {requestDates,requestDatesView} from '../proposals/request-dates';
 import type {Proposal} from '../proposals/proposal';
 import {HARNESS_SPEC} from './spec';
 import {PRODUCT_CAPABILITIES_SPEC,productCapabilities} from '../product-context/capability-catalogue';
@@ -95,6 +95,17 @@ const SUGGEST_DESCRIPTION='Point the person to the page where they complete and 
  +' For toil.replacement.request, details may carry workedDate (YYYY-MM-DD), claimStart and claimEnd (HH:MM, 24-hour) and reason, only what the person said. The system counts any days credited; never state or work out a credit, rate or pay, and never put anything about agreement or consent in details: only the person can agree, on the card.'
  // AI v2 W2 (slice 3): an assigned approver's claim or attendance decision (core/proposals/assigned-decide.ts).
  +' For approvals.claim.decide and approvals.attendance.decide, details may carry request (the number the person chose from a list), date (YYYY-MM-DD) and, for a rejection, reason in the person\'s own words. Never put a name, an amount or a decision in details: the system reads whose request it is and whether to approve or reject from the person\'s own message, and the approver confirms it on the card.';
+/** The details the native hint check sees for one suggestion. The overtime card's hint is its selectors only, without the
+ * person's reason, and its date is a date (lib/ai/assistant-action-proposal-hints.ts): a day the person named in their own
+ * words is worked out first by the HR date owner's rule (core/proposals/request-dates.ts), the same rule its preparer runs,
+ * so "this Saturday" is never refused as a missing date (eval on ef479b55c, mgr-overtime-1). Every other action's
+ * details pass unchanged. Pure apart from the clock. */
+export function suggestHint(action:unknown,details:unknown,personWords:string|undefined,now:Date=new Date()):unknown{
+ if(action!=='attendance.overtime.request'||!details||typeof details!=='object'||Array.isArray(details))return details;
+ const hint:Record<string,unknown>=Object.fromEntries(Object.entries(details as Record<string,unknown>).filter(([key])=>key!=='reason'));
+ if(typeof hint.date==='string'){const day=requestDates(hint.date,'',personWords,{now,singleDay:true});if(day.kind==='dates')hint.date=day.dates.startDate;}
+ return hint;
+}
 /** Spec v13 (aiv2-speed-findings-20261103, cause 1b): suggest_action is called without available_actions when the action is
  * clear, so its description names the purpose of each declared action (core/semantic-model/entities.ts SEMANTIC_ACTIONS)
  * this caller holds, from the same catalogue rows available_actions returns. Only those (eight at v13; eleven with the
@@ -205,8 +216,8 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
     return{ok:false,refusal:'review_required',content:{ok:false,note:'The person asked to skip the review or to decide in bulk. Nothing is suggested: every decision is checked and confirmed one at a time on its review page. Say so briefly.'}};
    // AI v2 W2: the overtime card's native hint shape is its selectors only (date and window); the person's own reason is
    // for the native preparer (core/proposals/attendance-request.ts), never a hint, so it is left out of the hint check.
-   const hinted=input.action==='attendance.overtime.request'&&input.details&&typeof input.details==='object'&&!Array.isArray(input.details)
-    ?Object.fromEntries(Object.entries(input.details as Record<string,unknown>).filter(([key])=>key!=='reason')):input.details;
+   // A day the person named ("this Saturday") is worked out by the HR date owner first (suggestHint above).
+   const hinted=suggestHint(input.action,input.details,scope.personWords);
    // AI v2 W2 (slice 3): an assigned decision card has no hint selectors; the request number, date and reason are for the
    // native preparer (core/proposals/assigned-decide.ts), which counts them only when the person said them.
    const decideHint=input.action==='approvals.claim.decide'||input.action==='approvals.attendance.decide'?{}:hinted;
