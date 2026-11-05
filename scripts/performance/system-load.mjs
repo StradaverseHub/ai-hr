@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHomeHttpReplay} from './home-http.mjs';
+import {browserFailureLocation} from './browser-failure.ts';
 import {routeLatency} from './route-latency.mjs';
 import {navigationRoutesForIteration} from './route-scheduling.mjs';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
@@ -28,7 +29,7 @@ const measuredRoutePools=suite==='whole-system'?routePools:{employee:['/me','/cl
 const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000].includes(thinkTimeMs));
 const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
 const report={suite,kind:suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
- assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',navigationScheduling:'disjoint role lanes; groupHR6reads per complete mutation cycle, other roles3; same activity pauses',driverMaxSockets:4000,tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,preflightBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
+ assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',navigationScheduling:'disjoint role lanes; groupHR6reads per complete mutation cycle, other roles3; same activity pauses',driverMaxSockets:4000,preflightHttpActorLanes:4,browserVisitReadiness:'domcontentloaded followed by unchanged heading, fixture data and complete Home card assertions',tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,preflightBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
  workloadManifest:{readRoutes:wholeSystemRouteCount,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['concurrent Payroll close/publish','Lifecycle mutations','Performance mutations','Rewards mutations','large Personnel imports','report-definition CRUD','long-running document jobs','external email delivery'],productionEquivalent:false},
  coverage:[],boundaries:[],browser:[],homeCardFailures:[],browserHomeRequests:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
@@ -149,7 +150,8 @@ async function main(){
 try{
  save();await db`select pg_stat_statements_reset()`;
  const anonymous=await request(null,'/claims',undefined,307,false);assert(String(anonymous.headers.location).includes('/login'));report.boundaries.push({kind:'anonymous',passed:true});
- for(const user of [employee,manager,hr,group]){
+ // Bound independent preflight roles to four lanes; every role still visits its full route pool.
+ const pilotResults=await Promise.allSettled([employee,manager,hr,group].map(async user=>{
   const routes=routePool(user);
   for(const route of routes){
    const diagnostic=setTimeout(()=>{databaseSnapshot('slow-pilot').catch(()=>{});},10000);
@@ -157,7 +159,9 @@ try{
    catch(error){report.coverage.push({role:user.role,route,status:'failed',reason:String(error.message).slice(0,180)});save();throw error;}finally{clearTimeout(diagnostic);}
    save();
   }
- }
+ }));
+ const pilotFailure=pilotResults.find(result=>result.status==='rejected');
+ if(pilotFailure)throw pilotFailure.reason;
  // Direct record and search fences exercise ordinary web authorization, not a test-only endpoint.
  for(const [actor,target]of [[hr,fixture.users[50]],[group,fixture.users[250]]]){
   const response=await request(actor,'/api/personnel/search?q='+encodeURIComponent(target.name));
@@ -221,17 +225,22 @@ try{
  }
  async function visit(page,user,path,phase='baseline',signIn=false){
   lastPage=page;const stopHomeTracking=homeHttp.track(page,user,path);
-  const start=performance.now();let response,signInTiming;
+  const start=performance.now();let response,signInTiming,visitStage=signIn?'sign-in':'navigation';
   try{
    if(signIn)signInTiming=await signInToHome(page,user);
-   else response=await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});
+   // Readiness is proved below. Network-idle adds an unrelated500ms quiet window.
+   else response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:90000});
+  visitStage='page-content';
   if(response)assert.equal(response.status(),200);
   assert(!new URL(page.url()).pathname.startsWith('/login'));await page.locator('main').waitFor();assert((await page.locator('body').innerText()).includes(user.name));
+  visitStage='heading';
   const heading=(await page.locator('h1').first().innerText()).trim();assert(heading.length>0&&!/^404\b/.test(heading),'missing or not-found page heading');
   const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});
   if(await skip.isVisible()){await skip.click();await skip.waitFor({state:'hidden'});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
+  visitStage='table-data';
   if(['/claims','/admin/personnel','/payroll'].includes(path))assert(await page.locator('main tbody tr').count()>0,'expected fictional table rows');
   let homeCards=null,homeCardIds=[],todaySectionIds=[];
+  visitStage='home-cards';
   if(path==='/'||(path==='/me/calendar'&&['employee','manager'].includes(user.role))){
    const personal=['employee','manager'].includes(user.role),attribute=personal?'data-home-card':'data-dashboard-card';
    const cards=page.locator('main ['+attribute+']');
@@ -259,6 +268,7 @@ try{
     assert.deepEqual(todaySectionIds,baseline?.todaySectionIds,'loaded sign-in Today section inventory changed');
    }
   }
+  visitStage='navigation-timing';
   const timing=await page.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return {ttfbMs:n.responseStart-n.requestStart,domInteractiveMs:n.domInteractive,decodedBytes:n.decodedBodySize,transferBytes:n.transferSize};});
   if(signIn){
    const cardsCheckedAt=performance.now();
@@ -275,12 +285,12 @@ try{
   }
   report.browser.push({phase,role:user.role,path,heading,homeCards,homeCardIds,todaySectionIds,elapsedMs:performance.now()-start,...timing});save();
   }catch(error){
-   const detail={phase,role:user.role,user:user.index,path,errorType:error.name,elapsedMs:performance.now()-start,
+   const detail={phase,role:user.role,user:user.index,path,errorType:error.name,visitStage,...browserFailureLocation(error),elapsedMs:performance.now()-start,
     pdfRequests:browserPdfRequests.get(page)??[],
     frames:page.frames().map(frame=>{try{const url=new URL(frame.url());return {sameOrigin:url.origin===base,path:url.origin===base?url.pathname:'<other>'};}catch{return {path:'<unavailable>'};}}),dom:null};
    // Promise.all shutdown can make other pages fail later. Preserve the actual first visit.
    report.browserFailedNavigation??=detail;
-   (report.browserVisitFailures??=[]).push({phase,role:user.role,user:user.index,path,errorType:error.name});
+   (report.browserVisitFailures??=[]).push({phase,role:user.role,user:user.index,path,errorType:error.name,visitStage,...browserFailureLocation(error)});
    report.browserPendingRequests=[...(pendingBrowserRequests.get(page)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));
    detail.dom=await page.locator('body').evaluate(body=>({readyState:document.readyState,headingCount:body.querySelectorAll('h1').length,mainCount:body.querySelectorAll('main').length,
     iframeCount:body.querySelectorAll('iframe').length,busyCount:body.querySelectorAll('[aria-busy="true"]').length,alertCount:body.querySelectorAll('[role="alert"]').length}),undefined,{timeout:3000}).catch(()=>null);
@@ -554,10 +564,25 @@ try{
  const progress={launched:0,active:0,peakActive:0,completed:0,failed:0,iterations:0};
  report.trafficSettled=false;report.functionalAccountingComplete=false;
  report.measurementWindow={startPerformanceMs:started,steadyStartPerformanceMs:steadyStart,steadyUntilPerformanceMs:steadyUntil};
- report.telemetry={querySnapshotIntervalMs:30000,holderQueries:'bounded native pid/state/query-id; up to128normalizedrootquerytexts withoutparameters',partialSamplesAreAcceptance:false};
+ report.telemetry={querySnapshotIntervalMs:30000,resourceCounterIntervalMs:30000,holderQueries:'bounded native pid/state/query-id; up to128normalizedrootquerytexts withoutparameters',partialSamplesAreAcceptance:false};
  let sqlSnapshotBusy=false;
  sqlSnapshotTimer=setInterval(async()=>{
   if(sqlSnapshotBusy)return;sqlSnapshotBusy=true;
+  // Persist CPU counters during traffic too: a timed-out driver never reaches the final delta.
+  // Keep the same bounded30s observation cadence; this does not extend the acceptance window.
+  const captureStarted=performance.now();
+  try{
+   const counters=resourceCpu(),elapsedSeconds=(performance.now()-started)/1000;
+   const delta=Object.fromEntries(Object.keys(resourceCpuBefore).map(key=>{
+    const before=resourceCpuBefore[key],after=counters[key];
+    return [key,before!==null&&after!==null&&after>=before?after-before:null];
+   }));
+   (report.resourceCpuProgress??=[]).push({kind:'INCOMPLETE_PROGRESS_SNAPSHOT',complete:false,elapsedSeconds,
+    captureMs:performance.now()-captureStarted,counterDelta:delta,
+    countersAvailable:Object.values(delta).every(value=>value!==null),countersOverlap:true,
+    scope:'PostgreSQL cgroup includes capture helpers; host counters overlap all components. Not completed-window acceptance.'});
+   save();
+  }catch{report.resourceCpuProgressFailures=(report.resourceCpuProgressFailures??0)+1;save();}
   try{await databaseSnapshot('loaded-progress');report.sqlProgressSnapshots=(report.sqlProgressSnapshots??0)+1;}
   catch{report.sqlProgressSnapshotFailures=(report.sqlProgressSnapshotFailures??0)+1;}
   finally{sqlSnapshotBusy=false;}
@@ -583,7 +608,7 @@ try{
   if(user.index===employee.index||user.index===hr.index)await aiCentreJourney(page,user,'loaded');
   if(user.role==='employee')await browserClaimJourney(page,user,'PERF_BROWSER_LOADED_'+user.index,'loaded');
   }catch(error){
-   (report.browserJourneyFailures??=[]).push({role:user.role,user:user.index,phase:'loaded',errorType:error.name,timeout:error.name==='TimeoutError'});save();throw error;
+   (report.browserJourneyFailures??=[]).push({role:user.role,user:user.index,phase:'loaded',errorType:error.name,...browserFailureLocation(error),timeout:error.name==='TimeoutError'});save();throw error;
   }finally{await ctx.close();}
  }));
  const results=await Promise.allSettled(fixture.users.map(async(user,i)=>{
