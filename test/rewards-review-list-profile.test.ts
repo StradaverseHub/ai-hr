@@ -23,7 +23,7 @@ it('profiles active and retained seated units with independent financial and pri
  const person=async(label:string)=>(await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional '+label,primaryEmail:randomUUID()+'@example.invalid'}).returning())[0];
  const adminPerson=await person('Rewards operator');await owner.db.update(s.appUser).set({personId:adminPerson.id}).where(eq(s.appUser.id,b.adminUserId));
  const admin={...await entitledCtx(b),personId:adminPerson.id};
- const account=async(label:string,personId?:string,role='employee')=>{
+ const account=async(label:string,personId?:string,role:Parameters<typeof createAppUser>[2]='employee')=>{
   const id=personId??(await person(label)).id,userId=await createAppUser(b.tenantId,id,role);
   return {...admin,userId,personId:id,roles:[role],grants:[{role,companyId:null}]} satisfies SessionContext;
  };

@@ -1,11 +1,11 @@
 /** Only an owned GitHub fixture database. Session records use canonical encrypted storage. */
 import assert from 'node:assert/strict';
 import {randomUUID,randomBytes} from 'node:crypto';
-import {writeFileSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
 import {fixtureAuditCounts,assertFixtureAudit} from './fixture-audit.ts';
 import {performanceFixtureCalendar,clockingFixtureText} from './fixture-workload.mjs';
-import {seedAssistantHistoryFixture} from './assistant-history-fixture.ts';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.AUTH_PROVIDER,'internal');
 for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
  const url=new URL(process.env[key]);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'5433');assert.equal(url.pathname,'/ai_hr_dev');
@@ -170,17 +170,14 @@ try{
   const expected=new Set(users.filter(user=>user.tenant===tenantIndex&&user.company===hr.company).map(user=>user.employmentId));
   assert(preview.validRows.every(row=>expected.has(row.employmentId)),'clocking fixture crossed company/tenant');
  }
- const assistantHistory={};
- await fixturePhase(null,'assistant-saved-history',async()=>{
-  for(const [tenantIndex,tenant]of tenants.entries())for(const role of ['employee','companyHR']){
-   const actor=users.find(user=>user.tenant===tenantIndex&&user.role===role);assert(actor);
-   assistantHistory[actor.index]=await seedAssistantHistoryFixture(owner,{index:actor.index,tenantId:tenant.tenantId,userId:actor.userId,personId:actor.personId,issuer:internalIssuer(tenant.tenantId),subject:actor.subject});
-  }
- });
- assert.equal(Object.keys(assistantHistory).length,4);
  const modules=await owner.client`select tenant_id,array_agg(module_code order by module_code)as modules from tenant_module where tenant_id=any(${tenants.map(t=>t.tenantId)}::uuid[])and status='active'group by tenant_id`;
 
- writeFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),JSON.stringify({today,month,users,tenants,assistantHistory}),{mode:0o600});
+ const fixturePath=join(process.env.PERF_PRIVATE_DIR,'fixture.json');
+ writeFileSync(fixturePath,JSON.stringify({today,month,users,tenants}),{mode:0o600});
+ // Use the actual server-only package export only for this child; the existing fixture stays in ordinary Node.
+ await fixturePhase(null,'assistant-saved-history',()=>execFileSync(process.execPath,['--conditions=react-server','--import','tsx','scripts/performance/assistant-history-seed.mjs'],{stdio:'inherit',timeout:120000}));
+ const seededHistory=JSON.parse(readFileSync(fixturePath,'utf8')).assistantHistory;
+ assert.equal(Object.keys(seededHistory).length,4);assert(Object.values(seededHistory).every(history=>history.nativeVerified===true));
  writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,operationTimingScope:'sequential fictional native fixture commands, not HTTP concurrency',operationTimings:Object.fromEntries(Object.entries(operationTimings).map(([key,values])=>[key,timingSummary(values)])),tenants:2,companies:10,users:500,claimsPerEmployee,fixtureVolumeKind:claimsPerEmployee===2000?'full-load':'workflow-preflight-only',historicalMonth,publicationMonth,monthlyBasicSalary:5000,fixtureCommandContext:'native database-resolved entitlements',payslipFixture:'500 native-generated/closed historical slips; current processing drafts start empty',attendanceDays,attendanceBounds,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.chained>0&&row.events===row.chained+row.initialization_prefix),auditPolicy:'All post-initialization events chained; one canonical initialization prefix per tenant',auditCounts,notificationFixture:'Enabled in-app projection; no external email delivery worker or relay',aiCentreFixture:'Assistant module and native user grants active; four representative owned sealed histories,640retained exchanges; no provider created or prompt submitted',assistantHistoryFixture:{actors:4,tenants:2,threadsPerActor:20,exchangesPerActor:160,nativeVerified:true,scope:'representative browser actors, notall500users'},explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
  console.log('[system-perf-fixture] complete; private sessions are outside artifact directory');
 }finally{await closeAll();}
