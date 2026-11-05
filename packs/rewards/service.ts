@@ -91,6 +91,7 @@ async function projectGovernanceTx(tx:Tx,ctx:SessionContext,unitId:string,state:
  // Derived amount projection has stricter SELECT custody than the public budget snapshot.
  await tx.delete(rewardSeniorAward).where(eq(rewardSeniorAward.unitId,unitId));
  for(const [entryId,award]of Object.entries(state.awards))await tx.insert(rewardSeniorAward).values({tenantId:ctx.tenantId,unitId,entryId,award});
+ await tx.execute(sql`select app.reward_record_pat_basis(${unitId}::uuid,${snapshot.basis},${result.budgets.standard.bonusPayrollCents}::bigint,${result.budgets.h.bonusPayrollCents}::bigint)`);
 }
 async function saveGovernanceTx(tx:Tx,ctx:SessionContext,unitId:string,before:RewardGovernance|null,after:RewardGovernance,kind:string,reason:string){
  const actor=idSchema.parse(ctx.userId);
@@ -359,7 +360,8 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
     const [lumpDecision] = unit.policy.lumpUnitCents === 0 ? await tx.select({ at: domainEvent.occurredAt, actorName: person.fullName }).from(domainEvent)
       .leftJoin(appUser, eq(appUser.id, domainEvent.actorId)).leftJoin(person, and(eq(person.id, appUser.personId), visibleSeatHolder))
       .where(and(eq(domainEvent.aggregateType, 'reward-unit'), eq(domainEvent.aggregateId, unitId), eq(domainEvent.eventType, 'reward-unit.lump-updated'))).orderBy(desc(domainEvent.occurredAt)).limit(1) : [];
-    return { uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
+    const [libraryBinding]=await tx.execute<{bound:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as bound`);
+    return { libraryBound:libraryBinding?.bound??false,uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
       rows: visible.map(e=>{const {uploadedAward:_award,...safe}=e as typeof e&{uploadedAward?:unknown};return safe;}), flags, hiddenCount: entries.length - visible.length,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
       bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
@@ -589,6 +591,7 @@ export async function saveRewardPolicy(ctx: SessionContext, unitId: string, revi
     const policy: RewardPolicy = { ...settings, multiplierBp: unit.policy.multiplierBp, ...(unit.policy.unitGovernanceDigest?{unitGovernanceDigest:unit.policy.unitGovernanceDigest}:{}),
       ...(unit.policy.lumpReason ? { lumpReason: unit.policy.lumpReason } : {}), ...(unit.policy.payWindowKeep ? { payWindowKeep: unit.policy.payWindowKeep } : {}) };
     if (!roles.includes('gr')) throw new RewardError('Only Group Rewards may change policy.');
+    const [libraryBinding]=await tx.execute<{bound:boolean}>(sql`select exists(select 1 from reward_unit_setup where unit_id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid) as bound`);if(libraryBinding?.bound&&(['ranges','bonusMatrix','bonusStructure','branchFactors']as const).some(key=>!isDeepStrictEqual(policy[key],unit.policy[key])))throw new RewardError('Consumed salary and bonus libraries are read-only. Approve a new plan version for future reviews.');
     assertRewardPolicyGrids(policy);
     const governance=await governanceStateTx(tx,unitId);
     for(const key of ['patActual','patTarget','targetMonthsBp','multiplierBp','branchRatings','exemptReason'] as const)Object.assign(policy,{[key]:unit.policy[key]});

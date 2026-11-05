@@ -35463,7 +35463,23 @@
     "chooseSalary": "Salary library needs a choice",
     "chooseBonus": "Bonus library needs a choice",
     "noUncovered": "Every eligible company is already covered by a shared plan.",
-    "createDraftPlans": "Create suggested draft plans"
+    "createDraftPlans": "Create suggested draft plans",
+    "splitDraft": "Split draft by library combination",
+    "splitHelp": "Review each company group below. Splitting replaces the current draft with separate drafts; every resulting plan still needs independent approval.",
+    "confirmSplit": "Create these draft splits",
+    "choiceForAll": "Choose one combination for all companies",
+    "compareCompanies": "Compare companies",
+    "applyAll": "Apply to all companies",
+    "viewLibrary": "View library",
+    "newerVersion": "A newer confirmed version is available. This plan keeps its chosen version until you explicitly change it.",
+    "suggestion": {
+      "previous-year": "Rolled forward from last year",
+      "business-unit": "Matched Business unit tag",
+      "group-default": "Group default",
+      "multiple-matches": "Multiple matches; choose a version",
+      "none": "No unambiguous suggestion; choose a version"
+    },
+    "libraryReadOnly": "Consumed salary and bonus library values are read only. Approve a new plan version for future reviews."
   },
   "jobArchitecture": {
     "title": "Job Architecture",

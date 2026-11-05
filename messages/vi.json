@@ -35463,7 +35463,23 @@
     "chooseSalary": "Cần chọn thư viện lương",
     "chooseBonus": "Cần chọn thư viện thưởng",
     "noUncovered": "Mọi công ty đủ điều kiện đã có kế hoạch dùng chung.",
-    "createDraftPlans": "Tạo kế hoạch nháp được đề xuất"
+    "createDraftPlans": "Tạo kế hoạch nháp được đề xuất",
+    "splitDraft": "Tách bản nháp theo tổ hợp thư viện",
+    "splitHelp": "Kiểm tra từng nhóm công ty bên dưới. Việc tách thay bản nháp hiện tại bằng các bản nháp riêng; mỗi kế hoạch vẫn cần phê duyệt độc lập.",
+    "confirmSplit": "Tạo các bản nháp được tách này",
+    "choiceForAll": "Chọn một tổ hợp cho tất cả công ty",
+    "compareCompanies": "So sánh các công ty",
+    "applyAll": "Áp dụng cho tất cả công ty",
+    "viewLibrary": "Xem thư viện",
+    "newerVersion": "Có phiên bản đã xác nhận mới hơn. Kế hoạch giữ phiên bản đã chọn cho đến khi bạn chủ động thay đổi.",
+    "suggestion": {
+      "previous-year": "Chuyển tiếp lựa chọn năm trước",
+      "business-unit": "Khớp nhãn đơn vị kinh doanh",
+      "group-default": "Mặc định tập đoàn",
+      "multiple-matches": "Nhiều kết quả phù hợp; chọn phiên bản",
+      "none": "Không có đề xuất rõ ràng; chọn phiên bản"
+    },
+    "libraryReadOnly": "Giá trị thư viện lương và thưởng đã dùng chỉ cho phép xem. Phê duyệt phiên bản kế hoạch mới cho đợt đánh giá sau."
   },
   "jobArchitecture": {
     "title": "Kiến trúc công việc",
