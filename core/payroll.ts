@@ -10622,6 +10622,22 @@ export async function removeEmployeePayrollTx(
 // period; an EMPTY array means "no period can match" and is honoured as such (`inArray(…, [])` ⇒ no
 // rows) rather than being quietly widened to "all" — a caller that computed an empty set wants an
 // empty result, and silently returning everything is how a filter becomes a data leak.
+/** All-time dashboard warning/empty-state counts without materialising payroll money and run DTOs.
+ * Same effective-history source, company visibility and empty company-filter semantics as listBatches.
+ * Publication follows payrollPublicationState: imported history, drafts and closed runs are excluded. */
+export function payrollDashboardCounts(ctx:SessionContext,companyIds?:string[]){
+ return withTenant(ctx,async tx=>{
+  const [row]=await tx.select({
+   totalCount:sql<number>`count(*)`.mapWith(Number),
+   unpublishedCount:sql<number>`count(*) filter (where ${payrollBatch.historyImportAttemptId} is null and ${payrollBatch.status} not in ('draft','closed'))`.mapWith(Number),
+  }).from(payrollHistoryEffectiveBatch)
+   .innerJoin(company,eq(company.id,payrollBatch.companyId))
+   .leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId))
+   .where(and(companyIds&&companyIds.length?inArray(payrollBatch.companyId,companyIds):undefined,or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0))));
+  return row??{totalCount:0,unpublishedCount:0};
+ });
+}
+
 export function listBatches(
   ctx: SessionContext,
   companyIds?: string[],
