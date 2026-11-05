@@ -96,6 +96,7 @@ import {
 } from './hire-correction';
 import {
   closedPeriodsTx,
+  movementPayrollPeriodsTx,
   nextMonthStart,
   overlapsClosedPeriod,
   processedPeriodsTx,
@@ -1544,8 +1545,7 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
     const { emp, events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, employmentId);
     // 66a63bd6 — the two payroll period sets come from core/comp.ts, so the per-row affordance runs the
     // SAME rule the service refuses on (the Basic Salary card's precedent).
-    const closed = await closedPeriodsTx(tx, employmentId);
-    const processed = await processedPeriodsTx(tx, employmentId);
+    const { closed, processed } = await movementPayrollPeriodsTx(tx, employmentId);
     const placementAt = await placementColumnsTx(tx, employmentId, emp.companyId, events);
     // c063eea9 — one trace, resolved once, worn by the Hired row only.
     const hireTrace = await hireCorrectionTraceTx(
