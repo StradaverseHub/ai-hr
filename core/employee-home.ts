@@ -129,7 +129,9 @@ export async function readEmployeeHomeIdentityContextTx(tx:Tx,ctx:SessionContext
  * Null means no recorded name/photo, never a swallowed read failure or a guessed fallback value.
  */
 export async function readEmployeeHomeGreetingIdentity(ctx:SessionContext,requestedEmploymentId?:string):Promise<EmployeeHomeGreetingIdentity>{
- const subject=await requireOwnHomeSubject(ctx,requestedEmploymentId);
+ const employmentId=requestedEmploymentId===undefined
+  ? (await requireOwnHomeSubject(ctx)).employmentId
+  : await requireSelectedOwnHomeEmploymentId(ctx,requestedEmploymentId);
  const personId=ctx.personId;
  const [name,photo]=await Promise.all([
   personId?withTenant(ctx,async tx=>{
@@ -139,7 +141,7 @@ export async function readEmployeeHomeGreetingIdentity(ctx:SessionContext,reques
   }):Promise.resolve(null),
   personId?hasPersonPhoto(ctx,personId):Promise.resolve(false),
  ]);
- return {version:1,employmentId:subject.employmentId,name,photoHref:photo&&personId?`/personnel/photo/${encodeURIComponent(personId)}`:null};
+ return {version:1,employmentId,name,photoHref:photo&&personId?`/personnel/photo/${encodeURIComponent(personId)}`:null};
 }
 
 /** Independent pay hint reader. Payroll repeats own-active/login and publication enforcement and

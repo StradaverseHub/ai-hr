@@ -1,14 +1,14 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const state=vi.hoisted(()=>({subjects:vi.fn(),lines:vi.fn(),photo:vi.fn(),tenant:vi.fn(),proof:vi.fn(),names:vi.fn()}));
+const state=vi.hoisted(()=>({subjects:vi.fn(),lines:vi.fn(),photo:vi.fn(),selected:vi.fn(),tenant:vi.fn(),proof:vi.fn(),names:vi.fn()}));
 vi.mock('../db/client',()=>({withTenant:state.tenant}));
-vi.mock('../core/read',()=>({myOwnEmploymentSubjectsTx:state.subjects,reportingLinesFor:state.lines}));
+vi.mock('../core/read',()=>({myOwnEmploymentSubjectsTx:state.subjects,isCurrentOwnHomeEmploymentTx:state.selected,reportingLinesFor:state.lines}));
 vi.mock('../core/person-photo',()=>({hasPersonPhoto:state.photo}));
 import {readEmployeeHomeIdentity,readEmployeeHomeGreetingIdentity} from '../core/employee-home';
 
 const ctx={tenantId:'fictional-tenant',userId:'fictional-login',personId:'fictional-person',roles:['employee']};
 beforeEach(()=>{
   vi.resetAllMocks();state.subjects.mockResolvedValue([{employmentId:'own',employeeCode:'0007',company:'Fictional company',companyProof:{companyId:'company'}}]);
-  state.lines.mockResolvedValue({reports:[]});state.photo.mockResolvedValue(false);
+  state.lines.mockResolvedValue({reports:[]});state.photo.mockResolvedValue(false);state.selected.mockResolvedValue(false);
   state.proof.mockResolvedValue([{safe:true,ok:true,role:'employee'}]);
   state.names.mockReturnValue({from:()=>({where:()=>({limit:async()=>[{preferredName:'Fictional recorded name'}]})})});
   const tx={execute:state.proof,select:state.names};
@@ -28,7 +28,8 @@ describe('Home identity versus greeting presentation failure',()=>{
   });
   it('refuses a non-own selector before reading any greeting facts',async()=>{
     await expect(readEmployeeHomeGreetingIdentity(ctx,'not-own')).rejects.toMatchObject({code:'employmentUnavailable'});
-    expect(state.photo).not.toHaveBeenCalled();expect(state.names).not.toHaveBeenCalled();expect(state.proof).toHaveBeenCalledTimes(1);
+    expect(state.photo).not.toHaveBeenCalled();expect(state.names).not.toHaveBeenCalled();
+    expect(state.selected).toHaveBeenCalledWith(expect.anything(),ctx,'not-own');expect(state.subjects).not.toHaveBeenCalled();
   });
   it('does not load subject or greeting data when the canonical principal proof refuses',async()=>{
     state.proof.mockResolvedValueOnce([{safe:true}]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ok:false}]);
