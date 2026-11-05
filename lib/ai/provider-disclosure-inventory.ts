@@ -13,6 +13,7 @@ export type ProviderOutgoingField=typeof PROVIDER_OUTGOING_FIELDS[number];
 /** Exhaustive reviewed classification of actual captures, NOT the raw native input or legacy prompt.
  * New descriptor IDs must receive an explicit disclosure classification; there is no default. */
 export const WORKLOAD_DISCLOSURE_FIELDS=Object.freeze({
+ rewards_advisor_outline_v1:'closed_references',
  performance_native_outline_v1:'closed_references',
  performance_explicit_commands_v1:'closed_references',
  performance_starter_selection_v1:'closed_references',

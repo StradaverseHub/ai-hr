@@ -35144,5 +35144,281 @@
     },
     "noReader": "该公司尚未设置符合条件的阅读人，因此目前没有人可以阅读此个案。请联系{channel}。",
     "externalChannel": "[公司指定的外部渠道，例如道德热线]"
+  },
+  "rewardRules": {
+    "title": "规则",
+    "intro": "本周期系统采用的规则，由 Group Rewards 设置。",
+    "legend": "硬性限制会阻止提交 · 软性限制作为例外随审查传递",
+    "rule": "规则",
+    "description": "作用",
+    "control": "限制 / 控制",
+    "reference": "参考",
+    "hard": "硬性限制",
+    "soft": "软性限制",
+    "notification": "仅通知",
+    "ruleControl": "规则",
+    "pools": "调薪预算",
+    "individual": "个人调薪限制",
+    "bonus": "奖金",
+    "eligibility": "资格",
+    "access": "审批与权限",
+    "print": "打印 / PDF",
+    "versions": "已应用版本",
+    "legacy": "已保存的审查依据",
+    "newer": "存在更新的设置；本页说明此审查采用的版本。",
+    "uploaded": "上传奖励—不适用一般方案规则；适用标准审批路线。",
+    "descriptions": {
+      "POOL-01": "调薪按人才及薪资区间矩阵计算，上限为合资格工资的 {percent}%。",
+      "PRO-01": "标准晋升加薪 {percent}%；可升一至 {grades} 级，最高 JG {maximum}。独立预算为 {pool}%。",
+      "PRO-02": "校准名单以外的晋升须提供业务理由。",
+      "POOL-04": "CR 低于 {cr} 的 STAR/SSTAR 可获追补及补至区间最低值，受 {percent}% 预算限制。",
+      "POOL-03": "各公司及各类预算独立。超支会阻止提交。",
+      "POOL-10": "JG H 独立使用绩效调薪 {merit}%、晋升 {promotion}% 及特别调整 {special}% 预算。",
+      "POOL-09": "EC 直属员工使用独立酌情方案；矩阵仅供参考。",
+      "SNR-01": "指定 Senior 方案成员采用经复核的线下奖励，不计入一般预算。",
+      "SAL-02": "无晋升的加薪超过 {limit}% 时须复核。",
+      "SAL-03": "有晋升的加薪达到或超过 {limit}% 时须复核。",
+      "SAL-01": "新基本工资不得低于现有基本工资。",
+      "SAL-04": "超过最高值或仍低于最低值的工资须复核。",
+      "BUD-01": "奖金为 PAT 达成率 × 目标 {targetMonths} 月 × 合资格工资；超过 100% 会阻止，低于 {minimum}% 会警告。",
+      "BUD-02": "奖金按职级 × 绩效 × 单位倍数 × 比例计算。个人调整属于例外。",
+      "BUD-03": "奖金向下取整；超过 {months} 个月属于例外。",
+      "BUD-05": "一次性奖励使用余额的 {share}%，向下取整至 MYR {step}；上限 {cap}。MYR 0 表示不发放。",
+      "MTX-04": "使用已应用的标准或分行系数矩阵。分行系数替代单位倍数。",
+      "ELIG-03": "调薪须于 {joinedBefore} 前入职、{confirmedBy} 前转正并于 {activeAsOf} 在职。IMPRO/PIP 不适用。",
+      "ELIG-04": "{from} 至 {to} 的薪资调整会排除调薪资格及预算基数；奖金采用调整后基本工资。",
+      "ELIG-05": "最低奖金评级：{rating}。排除离职通知期：{excludeNotice}；排除 ER 案件：{excludeEr}。",
+      "ELIG-02": "未决定的 PIP/ER 案件会阻止提交。BU CEO 与 PBP 记录决定及理由。",
+      "ACC-02": "审批路线：BU CEO → BG CEO → Group Rewards → CTRO → Executive Chairman → Payroll。",
+      "ACC-01": "任何人都不能查看自己的奖励。所有角色仍受范围及保密限制。",
+      "ACC-03": "BU CEO 不可查看 BG CEO 直属员工。EC 直属员工及 Senior 奖励受限制。",
+      "ACC-05": "EC 已批准的奖励会锁定。更改须走授权退回流程。",
+      "OC-01": "{from} 至 {to} 禁止周期外调整。",
+      "UPL-01": "上传奖励须使用有效公司员工、在用职级及非负金额，不可减薪。",
+      "UPL-02": "上传奖励的一般资格仅作警告，包括入职截止日 {cutoff} 及 {from} 至 {to} 的薪资调整。"
+    }
+  },
+  "rewardAccessPolicy": {
+    "intro": "每个阶段谁可以查看及操作，以及谁担任各角色。",
+    "tabs": "奖励权限标签",
+    "rolePermissions": "角色权限",
+    "users": "用户（{count} 名在用）",
+    "permission": "权限",
+    "groupOnly": "仅 Group Rewards 可见",
+    "editable": "可编辑",
+    "fixedHelp": "范围、路线及保密规则不可在此更改。",
+    "changed": "{count} 个角色偏离默认值。每项更改均记录。",
+    "reset": "恢复角色默认值",
+    "confirmChange": "确认权限更改",
+    "reason": "更改理由",
+    "cancel": "取消",
+    "saving": "正在保存…",
+    "save": "保存",
+    "error": "无法保存更改。请刷新并检查权限。",
+    "stepHelp": "在自己的阶段：BU CEO（草稿或退回）→ BG CEO → Group Rewards → CTRO → Executive Chairman → Payroll。",
+    "enable": "启用",
+    "disable": "停用",
+    "viewAs": "以此用户查看",
+    "viewingAs": "正以 {name} 查看—只读",
+    "readOnlyHelp": "显示目标用户可查看的行，并排除您自己的行。结束此会话前不可更改奖励。",
+    "endView": "结束代看",
+    "noSession": "没有在用的代看会话。",
+    "levels": {
+      "full": "全部",
+      "step": "在自己的阶段",
+      "view": "仅查看",
+      "none": "—",
+      "never": "绝不",
+      "always": "是",
+      "fixed": "固定"
+    },
+    "categories": {
+      "pages": "可见页面",
+      "annual": "年度周期",
+      "offcycle": "周期外审查",
+      "data": "数据",
+      "governance": "治理"
+    },
+    "roles": {
+      "bu": "BU CEO",
+      "bg": "BG CEO / authorised proxy",
+      "gr": "Group Rewards",
+      "ctro": "CTRO",
+      "ec": "Executive Chairman",
+      "pbp": "PBP (read only)",
+      "payroll": "Payroll handoff",
+      "proxy_bg": "代理 BG CEO",
+      "hr_admin": "Administrator account"
+    },
+    "permissions": {
+      "review": {
+        "view": "薪酬审查",
+        "decide": "提交或批准",
+        "batch": "批量批准审查"
+      },
+      "analytics": {
+        "view": "奖励分析"
+      },
+      "approvals": {
+        "view": "审批看板"
+      },
+      "rules": {
+        "view": "规则"
+      },
+      "cycles": {
+        "view": "审查周期"
+      },
+      "plans": {
+        "manage": "共享奖励设置"
+      },
+      "salary": {
+        "view": "薪资结构"
+      },
+      "bonus": {
+        "view": "奖金矩阵"
+      },
+      "pat": {
+        "manage": "PAT 输入"
+      },
+      "access": {
+        "manage": "奖励权限"
+      },
+      "figures": {
+        "edit": "在自己的阶段修改金额"
+      },
+      "cases": {
+        "decide": "决定 PIP / ER 案件"
+      },
+      "notes": {
+        "add": "给下一级审批者的备注"
+      },
+      "senior": {
+        "manage": "Senior 方案金额"
+      },
+      "restricted": {
+        "view": "受限直属员工"
+      },
+      "offcycle": {
+        "raise": "发起周期外申请",
+        "decide": "批准周期外申请"
+      },
+      "data": {
+        "check": "启动前数据检查"
+      },
+      "snapshot": {
+        "refresh": "刷新员工快照"
+      },
+      "scope": "范围内单位",
+      "route": "审批路线",
+      "own": {
+        "never": "查看或设置自己的奖励"
+      },
+      "audit": {
+        "always": "记录每项更改"
+      }
+    }
+  },
+  "rewardAdvisor": {
+    "title": "Recommendation advisor",
+    "back": "Compensation review",
+    "advisory": "Advisory only. The deterministic rules calculate every figure. A human decides and the normal approvals still apply.",
+    "enabled": "Enable advisor for this review",
+    "overrideThresholdBp": "Override reason threshold (basis points)",
+    "longWithoutIncreaseYears": "Years without an increase",
+    "equityGapBp": "Internal equity gap threshold (basis points)",
+    "fairnessGapBp": "Fairness alert threshold (basis points)",
+    "save": "Save settings",
+    "ready": "Request a validated suggestion for an employee. No figures change until you accept or adjust.",
+    "disabled": "The advisor is off. Group Rewards can enable it for this review.",
+    "insights": "Review insights",
+    "insightCounts": "{below} high-talent employees remain below target; {long} employees have gone without an increase for the configured period.",
+    "rangeChange": "Within range: {before} before → {after} after the current recommendations.",
+    "standard": "Standard plan",
+    "h": "JG H",
+    "poolUse": "Suggested salary pool use: {salary}; bonus pool use: {bonus}.",
+    "empty": "No employee lines are available in your scope.",
+    "figures": "Suggested basic: {salary} · Bonus: {bonus}",
+    "confidence": "Confidence",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "withheld": "Suggestion withheld:",
+    "reason": "Decision reason",
+    "accept": "Accept suggestion",
+    "ignore": "Ignore suggestion",
+    "adjust": "Adjust recommendation",
+    "generate": "Generate suggestion",
+    "reasons": {
+      "matrix": "Uses the review’s frozen talent and performance matrix.",
+      "below_midpoint": "Current pay is below the review’s midpoint target.",
+      "above_range": "Current pay is above the applied salary range.",
+      "promotion_nomination": "Retains the human promotion nomination for review.",
+      "separate_pools": "Salary and bonus remain in their own approved plan pools.",
+      "bonus_matrix": "Bonus uses the applied grade and performance matrix.",
+      "long_without_increase": "The pay history meets the configured period without an increase."
+    },
+    "missing": {
+      "talent": "talent rating",
+      "performance": "performance rating",
+      "grade": "supported grade",
+      "salary_range": "salary range",
+      "salary": "verified MYR salary",
+      "duplicate": "duplicate identity",
+      "unverified": "verified employee inputs",
+      "separate_plan": "separate Senior or EC decision",
+      "ineligible": "general-plan eligibility",
+      "rules": "blocking checks",
+      "budget": "pool capacity",
+      "final_pool": "final pool"
+    }
+  },
+  "rewardUploaded": {
+    "title": "Uploaded awards",
+    "back": "Compensation review",
+    "configuration": "Rewards configuration",
+    "description": "Awards prepared outside general plans use the standard approval route. General-plan eligibility warnings do not remove uploaded amounts.",
+    "chooseFile": "Upload completed template (CSV or Excel)",
+    "fileError": "Use a supported file up to 5 MB.",
+    "error": "The upload could not be processed.",
+    "preview": "Accepted: {accepted} · Rejected: {rejected} · Warnings: {warnings}",
+    "totals": "Increment: MYR {increment} ({percent}% of payroll) · Bonus: MYR {bonus}",
+    "supportingDocument": "Supporting document (optional PDF, PNG or JPEG)",
+    "reason": "Reason (at least 10 characters)",
+    "saving": "Saving…",
+    "save": "Save new upload version",
+    "version": "Version {version}",
+    "checked": "Independently checked",
+    "awaitingCheck": "Awaiting a second Group Rewards checker",
+    "downloadTemplate": "Download employee template",
+    "confirm": "Confirm current upload",
+    "incrementType": "Increment type",
+    "newBasic": "New basic salary (MYR)",
+    "newGrade": "New job grade",
+    "bonus": "Bonus (MYR)",
+    "lump": "Lump sum (MYR)",
+    "merit": "Merit",
+    "promotion": "Promotion",
+    "special": "Special adjustment",
+    "adjust": "Save adjustment",
+    "readOnly": "This line is read-only at the current stage.",
+    "history": "Upload history",
+    "createTitle": "Create Uploaded awards review",
+    "create": "Create uploaded review",
+    "company": "Company",
+    "unit": "Business unit",
+    "cycle": "Review cycle",
+    "year": "Reward year",
+    "snapshotDate": "Snapshot date",
+    "summary": "Uploaded awards (outside plans): {people} people, MYR {increment} increment, MYR {bonus} bonus",
+    "open": "Manage uploaded awards",
+    "label": "Uploaded",
+    "warnings": {
+      "notice": "Serving notice: general-plan eligibility warning.",
+      "er": "ER case: general-plan eligibility warning.",
+      "joined": "Joined on or after 1 October.",
+      "pay_change": "Salary adjusted between 1 October and 31 December.",
+      "increase": "Increase exceeds the normal warning threshold.",
+      "bonus": "Bonus is above nine months of current basic salary."
+    }
   }
 }

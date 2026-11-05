@@ -65,7 +65,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   return <div className="w-full space-y-5">
     <Link href="/rewards" className="text-sm text-primary hover:underline">← {t('title')}</Link>
     <PageHeader title={rewardReviewTitle(v.cycle?.name ?? t('title'), v.companyName, v.name)} description={`${t(`kinds.${unit.kind}`)} · ${v.returned ? t(`returnedTo.${v.returned.toSeat}`) : t(`stages.${unit.status}`)}${v.due ? ` · ${t('dueOn', { date: v.due })}` : ''} · ${t('snapshotDate')}: ${unit.snapshotDate}`} />
-    <ErrorBanner message={sp.error} />
+    <ErrorBanner message={sp.error} /><Link href={`/rewards/rules?unit=${unitId}`} className="inline-block text-sm text-primary underline underline-offset-2">{t('rules')}</Link>
     {v.returned && <ReturnedBanner returned={v.returned} />}
     {(v.roles.includes('gr') || choices.companies.some(c => c.id === unit.companyId)) && <Link href={`/admin/rewards/${unitId}`} className="inline-block text-sm font-medium text-primary hover:underline">{t('adminTitle')}</Link>}
     {!annual&&<nav aria-label={t('sections')} className="flex flex-wrap gap-1 border-b border-border pb-2">{['review', 'budget', 'approvals', ...(v.roles.includes('gr') ? ['data'] : []), ...(v.roles.includes('gr') && annual ? ['excluded'] : []), 'rules'].map(key => <Link key={key} href={`/rewards/${unitId}?view=${key}`} aria-current={tab === key ? 'page' : undefined} className={`rounded-md px-3 py-2 text-sm ${tab === key ? 'bg-primary/10 font-semibold text-primary' : 'text-muted-foreground hover:bg-accent'}`}>{t(key)}</Link>)}</nav>}
