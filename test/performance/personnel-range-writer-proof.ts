@@ -16,6 +16,10 @@ export async function installDisposableRangeWriter(create:Create){
   ' order by tenant_id,name_block,name,employment_id','drop table '+nameBounds);
  await create('create table '+companyBounds+' as select distinct on(tenant_id,company_block) tenant_id,company_block,company_folded,name_folded,employment_id from '+orderTable+
   ' order by tenant_id,company_block,company_folded,name_folded,employment_id','drop table '+companyBounds);
+ await create('create index performance_personnel_name_boundary on '+nameBounds+'(tenant_id,name,employment_id) include(name_block)',
+  'drop index app.performance_personnel_name_boundary');
+ await create('create index performance_personnel_company_boundary on '+companyBounds+'(tenant_id,company_folded,name_folded,employment_id) include(company_block)',
+  'drop index app.performance_personnel_company_boundary');
  const refresh='app.performance_personnel_refresh_order';
  const columns=lifecycleDates.join(','),employmentDates=lifecycleDates.map(date=>'e.'+date).join(',');
  const scopeGroups='tenant_id,company_id',signature=scopeGroups+','+columns;
@@ -33,10 +37,10 @@ export async function installDisposableRangeWriter(create:Create){
   INSERT INTO ${orderTable}(tenant_id,company_id,employment_id,name,name_folded,company_folded,name_block,company_block,${columns})
   SELECT e.tenant_id,e.company_id,e.id,p.full_name,lower(p.full_name),lower(c.legal_name),
    coalesce((select b.name_block from ${nameBounds} b where b.tenant_id=e.tenant_id
-    and (b.name,b.employment_id)<=(p.full_name,e.id) order by b.name_block desc limit 1),0),
+    and (b.name,b.employment_id)<=(p.full_name,e.id) order by b.name desc,b.employment_id desc limit 1),0),
    coalesce((select b.company_block from ${companyBounds} b where b.tenant_id=e.tenant_id
     and (b.company_folded,b.name_folded,b.employment_id)<=(lower(c.legal_name),lower(p.full_name),e.id)
-    order by b.company_block desc limit 1),0),
+    order by b.company_folded desc,b.name_folded desc,b.employment_id desc limit 1),0),
    ${employmentDates}
   FROM public.employment e JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
   JOIN public.company c ON c.id=e.company_id AND c.tenant_id=e.tenant_id

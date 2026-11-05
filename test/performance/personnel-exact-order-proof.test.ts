@@ -19,8 +19,8 @@ const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&se
 beforeAll(migrateTestDb);
 afterAll(closeAll);
 
-it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using ordered index entries and compact date signatures',async()=>{
- const report:Record<string,unknown>={kind:'SMALL_PERSONNEL_EXACT_ORDER_RANGES_ROLLBACK_WRITER_ONLY',releaseEligible:false,
+it.skipIf(!requested)('measures 50k exact initial and deep Personnel pages across skewed authorized scopes',async()=>{
+ const report:Record<string,unknown>={kind:'PERSONNEL_50K_EXACT_ORDER_RANGES_ROLLBACK_WRITER_ONLY',releaseEligible:false,
   limitations:'Disposable owner-driven projection, rollback-only writer and overlapping reader, no live trigger or same-key contention proof, no assignment/text/status filters or retained-million proof.'};
  const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-exact-order-proof.json'),JSON.stringify(report,null,2));
  const modeNames=['name','company'] as const;
@@ -38,17 +38,44 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
   // The second company deliberately ties the first in case-folded company ordering.
   const [other]=await owner.client<{id:string}[]>`insert into company(tenant_id,legal_name) select tenant_id,upper(legal_name) from company where id=${b.companyId}::uuid returning id`;
   const today=todayInKualaLumpur(), p=randomUUID().slice(0,24),e=randomUUID().slice(0,24);
-  const count=2_000, blockSize=128;
-  await owner.client`insert into person(id,tenant_id,full_name,primary_email)
-   select (${p}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,
-    case when n%11=0 then 'Accent Á' when n%7=0 then 'accent á' else 'Person '||lpad(n::text,6,'0') end,
-    (${p}||n::text)||'@example.invalid' from generate_series(1,${count}::integer)n`;
-  await owner.client`insert into employment(id,tenant_id,person_id,company_id,hired_on,terminated_on,resignation_date,final_confirmation_date,provisional_end_on,blacklisted_at)
-   select (${e}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,
-    (${p}||lpad(n::text,12,'0'))::uuid,case when n%4=0 then ${other.id}::uuid else ${b.companyId}::uuid end,
-    date '2020-01-01',case when n%9=0 then ${today}::date end,case when n%10=0 then ${today}::date+1 end,
-    case when n%13=0 then ${today}::date end,case when n%13<2 then ${today}::date+1 end,case when n%23=0 then ${today}::date end
-    from generate_series(1,${count}::integer)n`;
+  const count=50_000, blockSize=128, fixtureStarted=performance.now();
+  const sparseCount=Math.floor(count/101)-Math.floor(count/404);
+  const [sparse]=await owner.client<{id:string}[]>`insert into company(tenant_id,legal_name)
+   values(${b.tenantId}::uuid,'ZZZ Fictional sparse company') returning id`;
+  const department=async(companyId:string)=>{
+   const [row]=await owner.client<{id:string}[]>`insert into department(tenant_id,company_id,name)
+    values(${b.tenantId}::uuid,${companyId}::uuid,'Fictional scale department') returning id`;
+   return row.id;
+  };
+  const otherDepartment=await department(other.id),sparseDepartment=await department(sparse.id);
+  report.fixture={count,blockSize,companies:3,sparseCount,secondCompanyCount:count/4,
+   ties:'Case-folded company ties, repeated accented/case-sensitive names; sparse company interleaves in name order'};
+  const batches=Array.from({length:count/5000},(_,i)=>({from:i*5000+1,to:(i+1)*5000}));
+  for(const {from,to} of batches){
+   await owner.client.begin(async tx=>{
+    await tx`insert into person(id,tenant_id,full_name,primary_email)
+     select (${p}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,
+      case when n%11=0 then 'Accent Á' when n%7=0 then 'accent á' else 'Person '||lpad(n::text,6,'0') end,
+      (${p}||n::text)||'@example.invalid' from generate_series(${from}::integer,${to}::integer)n`;
+    await tx`insert into employment(id,tenant_id,person_id,company_id,employee_code,hired_on,terminated_on,resignation_date,final_confirmation_date,provisional_end_on,blacklisted_at)
+     select (${e}||lpad(n::text,12,'0'))::uuid,${b.tenantId}::uuid,
+      (${p}||lpad(n::text,12,'0'))::uuid,case when n%4=0 then ${other.id}::uuid when n%101=0 then ${sparse.id}::uuid else ${b.companyId}::uuid end,
+      'ORDER-'||lpad(n::text,8,'0'),date '2020-01-01',case when n%9=0 then ${today}::date end,case when n%10=0 then ${today}::date+1 end,
+      case when n%13=0 then ${today}::date when n%19=0 then ${today}::date-(n%547) end,case when n%13<2 then ${today}::date+1 end,case when n%23=0 then ${today}::date end
+      from generate_series(${from}::integer,${to}::integer)n`;
+    await tx`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from)
+     select ${b.tenantId}::uuid,(${e}||lpad(n::text,12,'0'))::uuid,
+      case when n%4=0 then ${other.id}::uuid when n%101=0 then ${sparse.id}::uuid else ${b.companyId}::uuid end,
+      case when n%4=0 then ${otherDepartment}::uuid when n%101=0 then ${sparseDepartment}::uuid else ${b.deptA}::uuid end,
+      'full_time',date '2020-01-01' from generate_series(${from}::integer,${to}::integer)n where n%23<>0`;
+   });
+   report.committedFixtureEmployees=to;save();
+  }
+  for(const table of ['person','employment','assignment','company','department','app_user','role_assignment']){
+   await owner.client.unsafe('analyze '+table);
+  }
+  report.fixturePreparationMs=performance.now()-fixtureStarted;
+  const projectionStarted=performance.now();
   const fp=randomUUID(),fe=randomUUID();
   await owner.client`insert into person(id,tenant_id,full_name,primary_email) values(${fp}::uuid,${foreign.tenantId}::uuid,'AAA outside',${fp+'@example.invalid'})`;
   await owner.client`insert into employment(id,tenant_id,person_id,company_id,hired_on) values(${fe}::uuid,${foreign.tenantId}::uuid,${fp}::uuid,${foreign.companyId}::uuid,date '2020-01-01')`;
@@ -73,9 +100,15 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
   await owner.client`analyze app.performance_personnel_blocks`;
   await owner.client`analyze app.performance_personnel_count`;
   const [sizes]=await owner.client`select (select count(*)::int from app.performance_personnel_order) as ordered,(select count(*)::int from app.performance_personnel_count) as signatures,
-   pg_total_relation_size('app.performance_personnel_order'::regclass) as order_bytes,pg_total_relation_size('app.performance_personnel_count'::regclass) as count_bytes,pg_total_relation_size('app.performance_personnel_blocks'::regclass) as block_bytes`;
+   (select count(*)::int from app.performance_personnel_blocks) as range_signatures,
+   pg_total_relation_size('app.performance_personnel_order'::regclass) as order_bytes,
+   pg_total_relation_size('app.performance_personnel_count'::regclass) as count_bytes,
+   pg_total_relation_size('app.performance_personnel_blocks'::regclass) as block_bytes,
+   pg_total_relation_size('app.performance_personnel_name_bounds'::regclass)+
+    pg_total_relation_size('app.performance_personnel_company_bounds'::regclass) as bound_bytes`;
+  report.sizes=sizes;report.projectionPreparationMs=performance.now()-projectionStarted;save();
+  expect(Number(sizes.ordered)).toBe(count+1);
   expect(Number(sizes.signatures)).toBeLessThan(Number(sizes.ordered)/10);
-  report.sizes=sizes;save();
   const namespace='app.performance_personnel_exact_';
   for(const mode of modeNames)for(const ranged of [false,true]){
    const order=mode==='name'?'o.name,o.employment_id':'o.company_folded,o.name_folded,o.employment_id';
@@ -125,22 +158,31 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
    has_table_privilege('ai_hr_app','app.performance_personnel_blocks','SELECT') as raw_blocks,
    not exists(select 1 from pg_proc p cross join lateral aclexplode(p.proacl) a where p.pronamespace='app'::regnamespace and p.proname like 'performance_personnel_exact_%' and a.grantee=0) as no_public`;
   expect(acl).toEqual({raw_order:false,raw_count:false,raw_blocks:false,no_public:true});report.acl=acl;
-  const all=[b.companyId,other.id,foreign.companyId], narrow=[b.companyId];
+  const all=[b.companyId,other.id,sparse.id,foreign.companyId], narrow=[b.companyId];
   const scopedUser=await createAppUser(b.tenantId,null,'hr_admin');
   await owner.client`update role_assignment set company_id=${b.companyId}::uuid where app_user_id=${scopedUser}::uuid`;
   const scoped:SessionContext={...ctx,userId:scopedUser,grants:[{role:'hr_admin',companyId:b.companyId}]};
   const comparisons:Record<string,unknown>[]=[];
-  const compare=async(actor:SessionContext,mode:typeof modeNames[number],pageCompanies:string[],facetCompanies:string[],limit:number,offset:number,explain:boolean,ranged=false)=>{
-   const before=await personnelListPage(actor,{companyIds:pageCompanies,limit,offset,sort:mode},{companyIds:facetCompanies});
-   const uuidArray=(ids:string[])=>sql`array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+  type PageResult={rows:unknown[];total:number;status_counts:{status:string;count:number}[]};
+  type Comparison={rows:unknown[];total:number;statusCounts:Partial<Record<string,number>>};
+  const normalize=(row:PageResult):Comparison=>({
+   rows:row.rows,total:Number(row.total),statusCounts:Object.fromEntries(row.status_counts.map(x=>[x.status,Number(x.count)])),
+  });
+  const uuidArray=(ids:string[])=>sql`array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+  const queryCandidate=async(actor:SessionContext,mode:typeof modeNames[number],pageCompanies:string[],facetCompanies:string[],
+    limit:number,offset:number,ranged:boolean,explain=false)=>{
    const params=sql`${uuidArray(pageCompanies)},${uuidArray(facetCompanies)},${limit}::integer,${offset}::integer,${today}::date`;
    const functionName=namespace+mode+(ranged?'_range':'');
-   const {row,plan}=await withTenant(actor,async tx=>{
+   return withTenant(actor,async tx=>{
     await lockAccessConfigurationReadTx(tx,actor.tenantId);
-    const [row]=await tx.execute<{rows:unknown[];total:number;status_counts:{status:string;count:number}[]}>(sql`select * from ${sql.raw(functionName)}(${params})`);
+    const [row]=await tx.execute<PageResult>(sql`select * from ${sql.raw(functionName)}(${params})`);
     const [result]=explain?await tx.execute<{plan:unknown}>(sql`select ${sql.raw(functionName+'_plan')}(${params}) as plan`):[];
     return {row,plan:result?.plan};
    });
+  };
+  const compare=async(actor:SessionContext,mode:typeof modeNames[number],pageCompanies:string[],facetCompanies:string[],limit:number,offset:number,explain:boolean,ranged=false)=>{
+   const before=await personnelListPage(actor,{companyIds:pageCompanies,limit,offset,sort:mode},{companyIds:facetCompanies});
+   const {row,plan}=await queryCandidate(actor,mode,pageCompanies,facetCompanies,limit,offset,ranged,explain);
    const byStatus=Object.fromEntries(row.status_counts.map(v=>[v.status,Number(v.count)]));
    expect({rows:row.rows,total:Number(row.total),headcount:{byStatus,total:Object.values(byStatus).reduce((n,v)=>n+v,0)}}).toEqual(before);
    comparisons.push({mode,ranged,limit,offset,rows:row.rows.length,total:row.total,plan});report.comparisons=comparisons;save();
@@ -161,6 +203,7 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
    await compare(ctx,mode,all,all,25,0,true,true);
    await compare(ctx,mode,all,narrow,25,count-25,true,true);
    await compare(ctx,mode,[other.id],all,25,count/4-25,true,true);
+   await compare(ctx,mode,[sparse.id],all,25,sparseCount-25,true,true);
    await compare(ctx,mode,all,all,25,blockSize-1,false,true);
    await compare(ctx,mode,all,all,25,blockSize,false,true);
    await compare(ctx,mode,all,all,25,count+1,false,true);
@@ -196,8 +239,8 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
 
   // All base and projection mutations below are rolled back. No live trigger or grant is installed.
   const suffix=(n:number)=>String(n).padStart(12,'0');
-  const duplicateId=randomUUID(),renameId=p+suffix(1999),existingRenameEmployment=e+suffix(1999),
-   transferId=e+suffix(2000),lifecycleId=e+suffix(1997);
+  const duplicateId=randomUUID(),renameId=p+suffix(count-1),existingRenameEmployment=e+suffix(count-1),
+   transferId=e+suffix(count),lifecycleId=e+suffix(count-3);
   const changedIds=[duplicateId,existingRenameEmployment,transferId,lifecycleId];
   const writeSet=async(tx:NativeWriterTx)=>{
    // A person can hold jobs in multiple companies; both ordered keys must reflect a rename.
@@ -207,9 +250,6 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
    await tx`update employment set company_id=${b.companyId}::uuid where id=${transferId}::uuid`;
    await tx`update employment set resignation_date=${today}::date+2 where id=${lifecycleId}::uuid`;
   };
-  const normalize=(row:{rows:unknown[];total:number;status_counts:{status:string;count:number}[]})=>({
-   rows:row.rows,total:Number(row.total),statusCounts:Object.fromEntries(row.status_counts.map(x=>[x.status,Number(x.count)])),
-  });
   const dialect=new PgDialect();
   const asNativeReader=async(tx:NativeWriterTx,run:()=>Promise<void>)=>{
    await tx`set local role ai_hr_app`;
@@ -221,7 +261,7 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
     expect(role).toEqual({role:'ai_hr_app',allowed:true});await run();
    }finally{await tx`reset role`;}
   };
-  const readWithinWriter=async(tx:NativeWriterTx)=>{
+  const readWithinWriter=async(tx:NativeWriterTx,expectedTotal:number)=>{
    await asNativeReader(tx,async()=>{
     const [writerAccess]=await tx`select has_function_privilege(current_user,'app.performance_personnel_refresh_order(uuid[])','EXECUTE') as execute`;
     expect(writerAccess.execute).toBe(false);
@@ -237,7 +277,7 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
      const [actual]=await tx.unsafe<Row[]>('select * from '+namespace+mode+'_range($1::uuid[],$2::uuid[],$3::int,$4::int,$5::date)',
       [pageIds,facetIds,limit,offset,today]);
      expect(normalize(actual)).toEqual(normalize(expected));
-     if(pageIds.length===all.length)expect(Number(actual.total)).toBe(count+1);
+     if(pageIds.length===all.length)expect(Number(actual.total)).toBe(expectedTotal);
     }
    });
   };
@@ -264,7 +304,7 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
   const writer=rollback(async tx=>{
    const [identity]=await tx`select pg_backend_pid() as pid`;writerPid=identity.pid;
    await writeSet(tx);await refresh(tx,changedIds);
-   await readWithinWriter(tx);
+   await readWithinWriter(tx,count+1);
    report.insideWriterExact=true;save();
    entered.resolve();await release.promise;
   });
@@ -321,15 +361,67 @@ it.skipIf(!requested)('preserves native unfiltered Personnel pages/counts using 
    (select full_name from person where id=${renameId}::uuid) as restored_name,
    (select company_id from employment where id=${transferId}::uuid) as restored_company,
    (select resignation_date from employment where id=${lifecycleId}::uuid) as restored_date`;
-  expect(restored).toEqual({source_insert:false,projection_insert:false,other_name:'AAA outside',restored_name:'Person 001999',restored_company:other.id,restored_date:null});
+  expect(restored).toEqual({source_insert:false,projection_insert:false,other_name:'AAA outside',restored_name:'Person '+String(count-1).padStart(6,'0'),restored_company:other.id,restored_date:null});
   for(const mode of modeNames)await compare(ctx,mode,all,narrow,25,count-25,false,true);
+  // A company rename can rewrite every owned order key. Measure that amplification on the
+  // sparse company and prove both orders against the canonical reader before rolling it back.
+  const companyRename:Record<string,unknown>={};
+  for(const stage of ['original','with-deltas','restored']){
+   await rollback(async tx=>{
+    const [subjects]=await tx<{ids:string[]}[]>`select array_agg(id order by id) as ids from employment where company_id=${sparse.id}::uuid`;
+    expect(subjects.ids).toHaveLength(sparseCount);
+    const started=performance.now();
+    await tx`update company set legal_name='AAA Fictional renamed company' where id=${sparse.id}::uuid`;
+    if(stage==='with-deltas')await refresh(tx,subjects.ids);
+    companyRename[stage]=performance.now()-started;
+    if(stage==='with-deltas')await readWithinWriter(tx,count);
+   });
+  }
+  report.companyRename={records:sparseCount,timingsMs:companyRename,exactEightNativeWindows:true,rolledBack:true};
   report.writer={exactEightNativeWindowsDuringWrite:true,bothReadersWaitedOnExistingAccessWriterAndResumedExactly:true,
    independentTenantReaderOverlapped:true,independentTenantWriterOverlapped:true,outsideReaderMs,independentWriterMs,timings,rolledBack:true,
    scope:'Four owner fixture writes + one explicit delta refresh; not actual application write throughput, same-key contention, or live triggers.'};
   save();
+
+  const measured:{scenario:string;stage:string;elapsedMs:number}[]=[];
+  const qualifications:{scenario:string;candidateMs:number;baselineMs:number;ratio:number;passed:boolean}[]=[];
+  for(const mode of modeNames){
+   for(const [shape,scope,offset] of [
+    ['initial',all,0],['deep',all,count-25],['sparse-deep',[sparse.id],sparseCount-25],
+   ] as const){
+    const scenario=mode+'-'+shape;
+    let oracle:ReturnType<typeof normalize>|undefined;
+    const times:number[]=[];
+    for(const stage of ['original','candidate','candidate-warm','restored']){
+     const started=performance.now();
+     let actual:ReturnType<typeof normalize>;
+     if(stage.startsWith('candidate')){
+      actual=normalize((await queryCandidate(ctx,mode,[...scope],narrow,25,offset,offset>0)).row);
+     }else{
+      const result=await personnelListPage(ctx,{companyIds:[...scope],sort:mode,limit:25,offset},{companyIds:narrow});
+      actual={rows:result.rows,total:result.total,statusCounts:result.headcount.byStatus};
+     }
+     const elapsedMs=performance.now()-started;
+     if(!oracle)oracle=actual;
+     expect(actual).toEqual(oracle);
+     expect(actual.rows).toHaveLength(25);
+     times.push(elapsedMs);
+     measured.push({scenario,stage,elapsedMs});report.readTimings=measured;save();
+    }
+    const candidateMs=Math.max(times[1],times[2]),baselineMs=Math.min(times[0],times[3]),ratio=candidateMs/baselineMs;
+    qualifications.push({scenario,candidateMs,baselineMs,ratio,passed:candidateMs<1000&&ratio<=.8});
+    report.readQualifications=qualifications;save();
+   }
+  }
+  report.qualification={allScopedReadScenariosPassed:qualifications.every(row=>row.passed),
+   criteria:'Each worst candidate <1000ms and >=20% better than the best fresh canonical control. Isolated native 50k evidence only.',
+   writeScope:'Rollback owner timings and writer barrier, including sparse company rename. No production maintenance or throughput claim.',
+   excluded:'Arbitrary broad text, assignment and lifecycle status filters keep canonical fallback. Million broad, initial and deep still unqualified.'};
+  save();
+  expect(qualifications.every(row=>row.passed),'all exact 50k read scenarios must meet the fixed latency gate').toBe(true);
  }finally{
   for(const statement of ddl)await owner.client.unsafe(statement);
   if(before)expect(Array.from(await native())).toEqual(before);
   report.nativeProjectionsUnchanged=!!before;report.prototypeObjectsRemoved=true;save();
  }
-},120000);
+},660000);
