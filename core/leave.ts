@@ -851,6 +851,20 @@ export function isEmergencyReasonCategory(v: unknown): v is EmergencyReasonCateg
 // half=0.5, hourly = round(hours / DEFAULT_STANDARD_HOURS, 2). The denominator "hours in a workday" is a
 // company-wide constant (matches core/toil.ts STD_DAY_MINUTES = 480 = 8h), not a per-type column.
 export type LeaveDurationType = 'full_day' | 'half_day_am' | 'half_day_pm' | 'hourly';
+
+async function assertNoLeaveSlotConflictTx(tx:Tx,p:{
+  employmentId:string;startDate:string;endDate:string;durationType:LeaveDurationType;excludeRequestId?:string;
+}){
+  const [conflict]=await tx.select({id:leaveRequest.id}).from(leaveRequest).where(and(
+    eq(leaveRequest.employmentId,p.employmentId),
+    eq(leaveRequest.startDate,p.startDate),
+    eq(leaveRequest.endDate,p.endDate),
+    inArray(leaveRequest.status,['pending','approved']),
+    p.excludeRequestId===undefined?undefined:sql`${leaveRequest.id} <> ${p.excludeRequestId}`,
+    p.durationType==='hourly'?undefined:inArray(leaveRequest.durationType,[p.durationType,'full_day','hourly']),
+  )).limit(1);
+  if(conflict)throw new Error('This date already has a conflicting leave request');
+}
 export const LEAVE_DURATION_TYPES: readonly LeaveDurationType[] = [
   'full_day',
   'half_day_am',
@@ -3806,8 +3820,11 @@ export async function requestLeave(
       // workingDayCount is the LIST count of deductible days — byte-identical to workingDays() when incl is
       // undefined (a Full/Half day weighs > 0, a holiday/rest day 0), and additionally counts re-included
       // day types when a vector is set.
-      workingDayCount = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols, incl)).length;
-      workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
+      if (durationType === 'full_day') {
+        workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
+      } else {
+        workingDayCount = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols, incl)).length;
+      }
       if (leaveTypeIs(lt, 'replacement') && durationType === 'full_day' && dayCount(p.startDate, p.endDate) <= 400)
         creditDateWeights = eachDate(p.startDate, p.endDate).map(date => ({date, days: dayWeight(date, sched, hols, incl)})).filter(row => row.days > 0);
     }
@@ -3835,25 +3852,7 @@ export async function requestLeave(
       // AM/PM same-date conflict (ADR-0048): a non-rejected request already covering this slot blocks a new
       // one. Complementary AM + PM on the same date is allowed; everything else (same slot, a full_day, or
       // an hourly) conflicts. This is the only overlap logic — general range overlap stays out of scope.
-      const existing = await tx
-        .select({ durationType: leaveRequest.durationType })
-        .from(leaveRequest)
-        .where(
-          and(
-            eq(leaveRequest.employmentId, p.employmentId),
-            eq(leaveRequest.startDate, p.startDate),
-            eq(leaveRequest.endDate, p.endDate),
-            inArray(leaveRequest.status, ['pending', 'approved']),
-          ),
-        );
-      for (const e of existing) {
-        const conflicts =
-          e.durationType === durationType || // same slot (or hourly vs hourly)
-          e.durationType === 'full_day' ||
-          e.durationType === 'hourly' ||
-          durationType === 'hourly';
-        if (conflicts) throw new Error('This date already has a conflicting leave request');
-      }
+      await assertNoLeaveSlotConflictTx(tx,{employmentId:p.employmentId,startDate:p.startDate,endDate:p.endDate,durationType});
     }
 
     // Duplicate Leave Application Restriction (d5e51c34): AFTER the narrow AM/PM same-slot clash above, apply
@@ -8025,8 +8024,11 @@ async function editLeaveRequestInTransaction(
       const hols = await resolveHolidaySet(tx, req.employmentId, p.startDate, p.endDate);
       const sched = editNoticeSchedule ?? await resolveSchedule(tx, req.employmentId);
       const incl = normalizeDayTypeInclusion(lt.dayTypeInclusion);
-      workingDayCount = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols, incl)).length;
-      workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
+      if (durationType === 'full_day') {
+        workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
+      } else {
+        workingDayCount = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols, incl)).length;
+      }
     }
 
     let days: number;
@@ -8042,26 +8044,7 @@ async function editLeaveRequestInTransaction(
         days = 0.5;
       }
       // AM/PM same-date conflict guard, EXCLUDING this very request (an edit must not clash with itself).
-      const existing = await tx
-        .select({ durationType: leaveRequest.durationType })
-        .from(leaveRequest)
-        .where(
-          and(
-            eq(leaveRequest.employmentId, req.employmentId),
-            eq(leaveRequest.startDate, p.startDate),
-            eq(leaveRequest.endDate, p.endDate),
-            inArray(leaveRequest.status, ['pending', 'approved']),
-            sql`${leaveRequest.id} <> ${req.id}`,
-          ),
-        );
-      for (const e of existing) {
-        const conflicts =
-          e.durationType === durationType ||
-          e.durationType === 'full_day' ||
-          e.durationType === 'hourly' ||
-          durationType === 'hourly';
-        if (conflicts) throw new Error('This date already has a conflicting leave request');
-      }
+      await assertNoLeaveSlotConflictTx(tx,{employmentId:req.employmentId,startDate:p.startDate,endDate:p.endDate,durationType,excludeRequestId:req.id});
     }
 
     // Duplicate Leave Application Restriction (d5e51c34): mirror of the requestLeave guard, EXCLUDING this very
