@@ -1085,17 +1085,26 @@ export type OnboardingNotice = {
     createdAt: Date;
     readAt: Date | null;
 };
-export async function onboardingNotices(ctx: SessionContext, read = false): Promise<OnboardingNotice[]> {
-    return withTenant(ctx, async (tx) => {
-        const result = rows<{
-            id: string;
-            kind: string;
-            created_at: Date;
-            read_at: Date | null;
-        }>(await tx.execute(sql `select id,kind,created_at,read_at from lc_onboarding_notice where tenant_id=app.current_tenant_id() and user_id=app.current_user_id() and kind<>'digest' and (read_at is not null)=${read} order by created_at desc,id desc limit 50`));
-        const titles: Record<string, string> = { sync: 'New joiner synced', due: 'Onboarding task due soon', overdue: 'Onboarding work is overdue', owner: 'An onboarding task needs an owner', assignment_failed: 'A task could not be assigned', mention: 'You were mentioned in onboarding', digest: 'Your daily onboarding digest' };
-        return result.map(n => ({ id: 'onb:' + n.id, title: titles[n.kind] ?? 'Onboarding update', body: 'Open My tasks to review the work you can access.', severity: n.kind === 'overdue' || n.kind === 'assignment_failed' ? 'warning' : 'info', linkPath: '/tasks', createdAt: n.created_at, readAt: n.read_at }));
-    });
+async function onboardingNoticesTx(tx: Tx, read: boolean): Promise<OnboardingNotice[]> {
+    const result = rows<{
+        id: string;
+        kind: string;
+        created_at: Date;
+        read_at: Date | null;
+    }>(await tx.execute(sql `select id,kind,created_at,read_at from lc_onboarding_notice where tenant_id=app.current_tenant_id() and user_id=app.current_user_id() and kind<>'digest' and (read_at is not null)=${read} order by created_at desc,id desc limit 50`));
+    const titles: Record<string, string> = { sync: 'New joiner synced', due: 'Onboarding task due soon', overdue: 'Onboarding work is overdue', owner: 'An onboarding task needs an owner', assignment_failed: 'A task could not be assigned', mention: 'You were mentioned in onboarding', digest: 'Your daily onboarding digest' };
+    return result.map(n => ({ id: 'onb:' + n.id, title: titles[n.kind] ?? 'Onboarding update', body: 'Open My tasks to review the work you can access.', severity: n.kind === 'overdue' || n.kind === 'assignment_failed' ? 'warning' : 'info', linkPath: '/tasks', createdAt: n.created_at, readAt: n.read_at }));
+}
+export function onboardingNotices(ctx: SessionContext, read = false): Promise<OnboardingNotice[]> {
+    return withTenant(ctx, tx => onboardingNoticesTx(tx, read));
+}
+
+export function onboardingNoticeSummary(ctx: SessionContext) {
+    return withTenant(ctx, async tx => ({
+        unread: await onboardingNoticesTx(tx, false),
+        read: await onboardingNoticesTx(tx, true),
+        unreadCount: await onboardingUnreadNoticeCountTx(tx),
+    }));
 }
 export async function onboardingReadNotice(ctx: SessionContext, id?: string) {
     return withTenant(ctx, async (tx) => {
@@ -1317,10 +1326,11 @@ export async function onboardingRequisitions(ctx: SessionContext) {
         })));
     });
 }
-export async function onboardingUnreadNoticeCount(ctx: SessionContext): Promise<number> {
-    return withTenant(ctx, async (tx) => Number(rows<{
-        count: string;
-    }>(await tx.execute(sql `select count(*)::text as count from lc_onboarding_notice where tenant_id=app.current_tenant_id() and user_id=app.current_user_id() and read_at is null and kind<>'digest'`))[0]?.count ?? 0));
+async function onboardingUnreadNoticeCountTx(tx: Tx): Promise<number> {
+    return Number(rows<{ count: string }>(await tx.execute(sql `select count(*)::text as count from lc_onboarding_notice where tenant_id=app.current_tenant_id() and user_id=app.current_user_id() and read_at is null and kind<>'digest'`))[0]?.count ?? 0);
+}
+export function onboardingUnreadNoticeCount(ctx: SessionContext): Promise<number> {
+    return withTenant(ctx, onboardingUnreadNoticeCountTx);
 }
 
 /** Explicit V9 initialisation enables its initiating administrator, through the existing access owner. */

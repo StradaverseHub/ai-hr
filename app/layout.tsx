@@ -59,7 +59,7 @@ import { getOnboardingStatus } from '@/core/onboarding';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
-import { onboardingTasks, onboardingUnreadNoticeCount, onboardingNotices, onboardingNavigation } from '@/packs/lifecycle/service';
+import { onboardingTasks, onboardingNoticeSummary, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
 import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
@@ -230,12 +230,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const approvalTasks=approvalSummary.items;
   const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
   const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  const [onboardingNav,onboardingQueue,onboardingUnread,onboardingRead,onboardingUnreadCount,scopedLifecycleNavigation]=await Promise.all([
+  const [onboardingNav,onboardingQueue,onboardingNotices,scopedLifecycleNavigation]=await Promise.all([
     lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
     lifecycleEnabled?onboardingTasks(session):Promise.resolve([]),
-    lifecycleEnabled?onboardingNotices(session):Promise.resolve([]),
-    lifecycleEnabled?onboardingNotices(session,true):Promise.resolve([]),
-    lifecycleEnabled?onboardingUnreadNoticeCount(session):Promise.resolve(0),
+    lifecycleEnabled?onboardingNoticeSummary(session):Promise.resolve({unread:[],read:[],unreadCount:0}),
     lifecycleModuleNavigation(session),
   ]);
   const onboardingAccess=onboardingNav.module;
@@ -472,13 +470,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       Task tab covers its purpose (and works even with NOTIFICATIONS_ENABLED off, where
                       only the notification reads are dark). */}
                   <NotificationCenter
-                    unread={notifUnread + onboardingUnreadCount}
-                    items={[...notifItems,...onboardingUnread]}
+                    unread={notifUnread + onboardingNotices.unreadCount}
+                    items={[...notifItems,...onboardingNotices.unread]}
                     tasks={pendingTasks}
                     taskNotifications={taskNotifs}
                     claimTaskCount={approvalSummary.claimTotal}
                     taskCount={pendingTaskCount+taskNotifCount}
-                    readItems={[...readNotifs,...onboardingRead]}
+                    readItems={[...readNotifs,...onboardingNotices.read]}
                     history={approvalHistory}
                     canApprove={canApprove}
                   />

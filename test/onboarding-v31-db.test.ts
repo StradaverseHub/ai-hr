@@ -7,7 +7,7 @@ import { client, withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { saveEmployeeDraft, discardEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { hireEmployee } from '../core/org';
-import { onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingAssignedTaskMetadata, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingSyncDraftTx, onboardingRequisitions, onboardingNavigation } from '../packs/lifecycle/service';
+import { onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingAssignedTaskMetadata, onboardingNote, sweepOnboarding, onboardingNotices, onboardingNoticeSummary, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingSyncDraftTx, onboardingRequisitions, onboardingNavigation } from '../packs/lifecycle/service';
 import { appendEvent, actorOf } from '../db/events';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -561,8 +561,13 @@ describe('V3.1 onboarding database and authorization', () => {
         await sweepOnboarding(admin);
         const notices = await onboardingNotices(admin);
         expect(notices.length).toBeGreaterThan(0);
+        expect(await onboardingNoticeSummary(admin)).toEqual({
+            unread: notices, read: await onboardingNotices(admin, true), unreadCount: notices.length,
+        });
         await onboardingReadNotice(admin);
-        expect(await onboardingNotices(admin)).toHaveLength(0);
+        expect(await onboardingNoticeSummary(admin)).toEqual({
+            unread: [], read: await onboardingNotices(admin, true), unreadCount: 0,
+        });
     });
     it('retains note bodies through edits and deletion', async () => {
         const row = await prepared();
