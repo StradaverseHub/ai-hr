@@ -83,12 +83,17 @@ const NUMBER_RANGE = [
  *  would be wrong for half of their refusals.) */
 const TEXT_LENGTH = ['clocking_import_line_raw_ck', 'pay_component_description_length'];
 
-export const CHECK_CONSTRAINT_REASONS: Readonly<Record<string, DatabaseErrorReason>> = Object.freeze({
-  ...Object.fromEntries(DATE_ORDER.map((n) => [n, 'dateOrder'])),
-  ...Object.fromEntries(REQUIRED.map((n) => [n, 'required'])),
-  ...Object.fromEntries(NUMBER_RANGE.map((n) => [n, 'numberOutOfRange'])),
-  ...Object.fromEntries(TEXT_LENGTH.map((n) => [n, 'textTooLong'])),
-});
+const entries = (names: string[], reason: DatabaseErrorReason): [string, DatabaseErrorReason][] =>
+  names.map((n) => [n, reason]);
+
+export const CHECK_CONSTRAINT_REASONS: Readonly<Record<string, DatabaseErrorReason>> = Object.freeze(
+  Object.fromEntries([
+    ...entries(DATE_ORDER, 'dateOrder'),
+    ...entries(REQUIRED, 'required'),
+    ...entries(NUMBER_RANGE, 'numberOutOfRange'),
+    ...entries(TEXT_LENGTH, 'textTooLong'),
+  ]),
+);
 
 /**
  * A pick-list rule — `status IN ('draft','active')` — named by our convention `<table>_<attribute>_check`.

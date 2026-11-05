@@ -54,7 +54,7 @@ afterEach(() => vi.restoreAllMocks());
 describe('publicErrorMessage', () => {
   it('replaces a drizzle failure with a plain sentence carrying a reference, and logs the original', () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const text = publicErrorMessage(drizzleError('42501'));
+    const text = publicErrorMessage(drizzleError('42501', `permission denied for table person ${ID}`));
     noLeak(text);
     const parsed = parseDatabaseErrorRef(text);
     expect(parsed?.kind).toBe('permission');
