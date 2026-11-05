@@ -5,7 +5,6 @@ import {and,eq} from 'drizzle-orm';
 import {client,type createDb,type Grant} from '../../db/client';
 import {assistantExchange} from '../../db/schema';
 import {allowedCompanies} from '../../core/read';
-import {listOwnAssistantChats,loadOwnAssistantChat} from '../../core/assistant-threads';
 import {assistantConversationScopeDigest} from '../../core/assistant-conversation-context';
 import {resolveWorkosPrincipal,withEntitlements} from '../../lib/session';
 import {sealAssistantDisclosure} from '../../lib/ai/assistant-disclosure';
@@ -14,7 +13,7 @@ type FixtureStore=ReturnType<typeof createDb>;
 type PrincipalByIdentity={app_user_id:string;tenant_id:string;person_id:string|null;grants:Grant[]|null};
 export type AssistantHistoryActor={index:number;tenantId:string;userId:string;personId:string;issuer:string;subject:string};
 /** PRIVATE fixture expectations only. Public evidence must contain counts, never this object. */
-export type AssistantHistoryFixture={version:1;userIndex:number;threads:20;exchanges:160;conversationScope:string;rootIds:string[];leafIds:string[];rootTitles:string[];selectedQuestions:[string,string];defaultCompanyScopeOnly:true;nativeVerified:true};
+export type AssistantHistoryFixture={version:1;userIndex:number;threads:20;exchanges:160;conversationScope:string;rootIds:string[];leafIds:string[];rootTitles:string[];selectedQuestions:[string,string];defaultCompanyScopeOnly:true;rowsVerified:true};
 function assertOwnedFixtureStore(store:FixtureStore){
  assert.equal(process.env.GITHUB_ACTIONS,'true','Saved history fixtures require hosted CI.');
  assert.equal(process.env.AUTH_PROVIDER,'internal','Saved history fixtures require the internal fixture identity owner.');
@@ -44,10 +43,11 @@ export async function seedAssistantHistoryFixture(store:FixtureStore,actor:Assis
  }
  for(let index=0;index<120;index++)rows.push({tenantId:actor.tenantId,appUserId:actor.userId,question:`PERF saved ${actor.index} older scan filler ${index}`,answer:null,disclosureReceipt:null,stop:'other',askedAt:new Date(now-day-index*1000)});
  assert.equal(rows.length,160);await store.db.insert(assistantExchange).values(rows);
- // Read back through actual current authority and receipt/retention owners, not fixture assumptions.
- const listed=await listOwnAssistantChats(context,{},conversationScope);
- assert.deepEqual(listed.chats.map(chat=>chat.title),rootTitles);assert.deepEqual(listed.chats.map(chat=>chat.exchangeId),leafIds);
- const selected=await loadOwnAssistantChat(context,{exchangeId:leafIds[0]},conversationScope);
- assert.deepEqual(selected.turns.map(turn=>turn.question),[rootTitles[0],questions[0]]);assert(selected.resume);assert.equal(selected.olderCursor,null);
- return {version:1,userIndex:actor.index,threads:20,exchanges:160,conversationScope,rootIds,leafIds,rootTitles,selectedQuestions:[rootTitles[0],questions[0]],defaultCompanyScopeOnly:true,nativeVerified:true};
+ // Check the committed fixture here. The hosted native test and the browser
+ // independently read it through the application's authorization and receipt owners.
+ const written=await store.db.select({id:assistantExchange.id}).from(assistantExchange)
+  .where(and(eq(assistantExchange.tenantId,actor.tenantId),eq(assistantExchange.appUserId,actor.userId)));
+ assert.equal(written.length,160);
+ const ids=new Set(written.map(row=>row.id));assert([...rootIds,...leafIds].every(id=>ids.has(id)));
+ return {version:1,userIndex:actor.index,threads:20,exchanges:160,conversationScope,rootIds,leafIds,rootTitles,selectedQuestions:[rootTitles[0],questions[0]],defaultCompanyScopeOnly:true,rowsVerified:true};
 }

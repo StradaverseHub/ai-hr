@@ -5,7 +5,6 @@ import {join} from 'node:path';
 assert.equal(process.env.GITHUB_ACTIONS,'true');
 assert.equal(process.env.AUTH_PROVIDER,'internal');
 assert.equal(process.env.AUTH_PUBLIC_ORIGIN,'https://localhost:3443');
-assert(process.execArgv.includes('--conditions=react-server'),'Use the installed server module export.');
 for(const name of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
  const url=new URL(process.env[name]);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'5433');
  assert.match(url.pathname,/^\/ai_hr_(dev|test(?:_[a-z0-9_]+)?)$/);
@@ -24,5 +23,5 @@ try{
  }
  assert.equal(Object.keys(assistantHistory).length,4);
  const pending=path+'.assistant-history.tmp';writeFileSync(pending,JSON.stringify({...fixture,assistantHistory}),{mode:0o600,flag:'wx'});renameSync(pending,path);
- console.log('[system-perf-fixture] Four owned saved histories verified in the server runtime.');
+ console.log('[system-perf-fixture] Four owned saved histories inserted and verified in the fixture database.');
 }finally{await Promise.all([owner.client.end(),client.end()]);}
