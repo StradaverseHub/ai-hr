@@ -318,7 +318,7 @@ const epfWorkingSchema = z.union([
     actualWage: z.number().nonnegative(),
     employee: epfTopupSideSchema,
     employer: epfTopupSideSchema,
-    schedulePart: z.enum(['A', 'E']).optional(),
+    schedulePart: z.enum(['A', 'C', 'E', 'F']).optional(),
     scheduleEffectiveFrom: z.iso.date().optional(),
   }).extend(epfSavedRunSchema.shape),
 ]);

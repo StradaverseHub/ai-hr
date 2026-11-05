@@ -322,58 +322,64 @@ type EpfTopupSide = {
   parts?: { wage: number; amount: number }[];
 };
 
-/** Calculate and record the same i-Topup decision, including any statutory floor.
- * Actual wages feed the rate formula. Some existing rule branches charge the normal
- * and additional streams separately, so keep both inputs when they were used. */
+/** Calculate and record the same i-Topup decision on the actual monthly wage. */
 function epfTopupWorking(
   wage: number, additional: number, cfg: StatutoryRuleset['epf'], election: EpfElection, sel?: EpfSelection,
 ) {
-  const normal = round2(Math.max(0, wage));
-  const bonus = round2(Math.max(0, additional));
+  const normal = Math.max(0, wage);
+  const bonus = Math.max(0, additional);
   const actualWage = round2(normal + bonus);
+  const cents = Math.round(actualWage * 100);
   const age = sel?.age ?? 0;
   const citizenship = sel?.citizenship ?? 'citizen';
   const senior = age >= EPF_SENIOR_AGE;
-  const flat = citizenship === 'non_citizen' || (citizenship === 'pr' && senior);
-  const statutory = epfContributionByRule(normal, bonus, cfg, undefined, sel);
-  const statEmployerRate = flat ? cfg.nonCitizenEmployerRate ?? 0.02
-    : senior ? cfg.seniorEmployerRate ?? 0.04
+  const part = citizenship === 'non_citizen' ? 'F' : !senior ? 'A' : citizenship === 'pr' ? 'C' : 'E';
+  const legacyForeign = part === 'F' && sel?.wageMonth != null && sel.wageMonth < EPF_PART_F_START;
+  const employeeRate = part === 'F' ? cfg.nonCitizenEmployeeRate ?? 0.02
+    : part === 'C' ? 0.055 : part === 'E' ? 0 : cfg.employeeRate;
+  const employerRate = part === 'F' ? cfg.nonCitizenEmployerRate ?? 0.02
+    : part === 'E' ? cfg.seniorEmployerRate ?? 0.04
+    : part === 'C' ? (actualWage <= 5000 ? 0.065 : 0.06)
     : actualWage <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
-  const statEmployeeRate = flat ? cfg.nonCitizenEmployeeRate ?? 0.02 : senior ? 0 : cfg.employeeRate;
-  const schedulePart = flat ? undefined : senior ? 'E' : 'A';
-  const side = (savedRate: number | null | undefined, statutoryAmount: number, statRate: number): EpfTopupSide => {
+  const bands = part === 'C' ? EPF_PART_C : part === 'A' ? cfg.partA ?? MY_EPF_THIRD_SCHEDULE_PART_A
+    : part === 'E' ? cfg.partE ?? MY_EPF_THIRD_SCHEDULE_PART_E : null;
+  const scheduleMax = part === 'C' ? EPF_SCHEDULE_MAX : cfg.scheduleMax ?? EPF_SCHEDULE_MAX;
+  const band = bands && actualWage <= scheduleMax ? bandFor(bands, actualWage) : null;
+  const eligible = actualWage > 0 && age < EPF_NO_CONTRIB_AGE;
+
+  const side = (savedRate: number | null | undefined, statRate: number, bandAmount?: number): EpfTopupSide => {
+    const bases = legacyForeign && normal > 0 && bonus > 0 ? [normal, bonus] : [actualWage];
+    const atRate = (rate: number) => bases.map(base => ({
+      wage: base,
+      amount: epfContributionAtRate(Math.round(base * 100), rate),
+    }));
+    const statutoryAmount = !eligible ? 0 : bandAmount ?? atRate(statRate).reduce((sum, part) => sum + part.amount, 0);
     const trace = { savedRate: savedRate ?? null, statutoryAmount };
-    if (!(savedRate != null && savedRate > 0) || age >= EPF_NO_CONTRIB_AGE || actualWage === 0) {
+    if (!(savedRate != null && savedRate > 0) || !eligible) {
       return { ...trace, amount: statutoryAmount };
     }
     const rate = topupRate(statRate, savedRate);
-    const bases = (senior || flat) && normal > 0 && bonus > 0 ? [normal, bonus] : [actualWage];
-    const parts = bases.map(base => ({ wage: base, amount: epfContributionAtRate(Math.round(base * 100), rate) }));
-    const formulaAmount = parts.reduce((total, part) => total + part.amount, 0);
-    // Part E applies its published band to the normal stream. Additional wages are
-    // charged separately, so retain the floor on the normal share when it binds.
-    const floor = senior && !flat && parts.length === 2
-      ? Math.max(0, statutoryAmount - ceilRinggit(bonus * statRate) - parts[0].amount)
-      : Math.max(0, statutoryAmount - formulaAmount);
-    return { ...trace, rate, formulaAmount, amount: formulaAmount + floor, ...(parts.length > 1 ? { parts } : {}) };
+    const parts = atRate(rate);
+    const formulaAmount = parts.reduce((sum, part) => sum + part.amount, 0);
+    return { ...trace, rate, formulaAmount, amount: Math.max(statutoryAmount, formulaAmount), ...(parts.length > 1 ? { parts } : {}) };
   };
   return {
     category: 'topup_percentage' as const,
     actualWage,
-    employee: side(election.employeeRate, statutory.employee, statEmployeeRate),
-    employer: side(election.employerRate, statutory.employer, statEmployerRate),
-    ...(schedulePart ? { schedulePart } : {}),
-    scheduleEffectiveFrom: schedulePart && sel?.wageMonth && sel.wageMonth >= '2022-07'
+    employee: side(election.employeeRate, employeeRate, band?.employee),
+    employer: side(election.employerRate, employerRate, band?.employer),
+    schedulePart: legacyForeign ? undefined : part,
+    scheduleEffectiveFrom: !legacyForeign && sel?.wageMonth && sel.wageMonth >= '2022-07'
       ? sel.wageMonth >= EPF_PART_F_START ? '2025-10-01' : '2022-07-01'
       : undefined,
   };
 }
 
-// KWSP Part C shares the A/E wage bands. Verified against all 401 employer rows in the
-// October 2025 Third Schedule. The employer rates on the band ceiling are 6.5% and 6%.
-const EPF_PART_C_EMPLOYER = MY_EPF_THIRD_SCHEDULE_PART_A.map(({ upTo }) => ({
+// KWSP Part C shares the A/E wage bands and uses 5.5% employee and 6.5% / 6% employer
+// on the band ceiling. The first wage band is NIL on both sides.
+const EPF_PART_C = MY_EPF_THIRD_SCHEDULE_PART_A.map(({ upTo }) => ({
   upTo,
-  employee: 0,
+  employee: upTo <= 10 ? 0 : epfContributionAtRate(upTo * 100, 0.055),
   employer: upTo <= 10 ? 0 : epfContributionAtRate(upTo * 100, upTo <= 5000 ? 0.065 : 0.06),
 }));
 
@@ -410,7 +416,7 @@ function semiAutoEmployer(
   if (part === 'F' || base > scheduleMax || crossesWithBonus) {
     return { method: 'schedule_formula', schedulePart: part, rate, amount: epfContributionAtRate(Math.round(base * 100), rate) };
   }
-  const bands = part === 'C' ? EPF_PART_C_EMPLOYER : part === 'E' ? cfg.partE ?? MY_EPF_THIRD_SCHEDULE_PART_E : cfg.partA ?? MY_EPF_THIRD_SCHEDULE_PART_A;
+  const bands = part === 'C' ? EPF_PART_C : part === 'E' ? cfg.partE ?? MY_EPF_THIRD_SCHEDULE_PART_E : cfg.partA ?? MY_EPF_THIRD_SCHEDULE_PART_A;
   const row = bandFor(bands, base);
   const previous = bands[bands.indexOf(row) - 1];
   return {

@@ -69,15 +69,24 @@ describe('b6dbadc5 additive Top-up — calculator',()=>{
   expect(epfContribution(6000,2000,undefined,topup(.01,.01),{age:30,citizenship:'citizen'})).toEqual({employee:960,employer:1040,employeeOnBonus:240});
   expect(epfContribution(6000,2000,undefined,undefined,{age:30,citizenship:'citizen'})).toEqual({employee:880,employer:960,employeeOnBonus:220});
  });
- it('applies on the non-citizen / PR 60+ flat 2% rate',()=>{
+ it('applies Part F for non-citizens and Part C for permanent residents aged 60 and over',()=>{
   expect(epfContribution(3000,0,undefined,undefined,{age:30,citizenship:'non_citizen'})).toEqual({employee:60,employer:60,employeeOnBonus:0});
   expect(epfContribution(3000,0,undefined,topup(.01,.01),{age:30,citizenship:'non_citizen'})).toEqual({employee:90,employer:90,employeeOnBonus:0});
-  expect(epfContribution(3000,0,undefined,topup(.01,.01),{age:65,citizenship:'pr'})).toEqual({employee:90,employer:90,employeeOnBonus:0});
+  expect(epfContribution(3000,0,undefined,topup(.01,.01),{age:65,citizenship:'pr'})).toEqual({employee:195,employer:225,employeeOnBonus:0});
  });
  it('applies on Part E (citizen 60 to under 75): employee 0% + top-up, employer 4% + top-up',()=>{
   expect(epfContribution(3000,0,undefined,undefined,{age:65,citizenship:'citizen'})).toEqual({employee:0,employer:120,employeeOnBonus:0});
   expect(epfContribution(3000,0,undefined,topup(.01,.01),{age:65,citizenship:'citizen'})).toEqual({employee:30,employer:150,employeeOnBonus:0});
   expect(epfContribution(3000,0,undefined,topup(null,null),{age:65,citizenship:'citizen'})).toEqual({employee:0,employer:120,employeeOnBonus:0});
+ });
+ it('uses the combined monthly Part F wage before rounding the elected contribution', () => {
+  const slip = statutory(1001, undefined, 1, 0, undefined, {
+   epfElection: topup(.01, null), epfAge: 35, epfCitizenship: 'non_citizen', epfWageMonth: '2026-01',
+  });
+  expect(slip).toMatchObject({
+   epfEmployee: 31, epfEmployer: 21,
+   epfWorking: { schedulePart: 'F', actualWage: 1002, employee: { rate: .03, amount: 31 } },
+  });
  });
  it('adds nothing from 75, where there is no contribution',()=>{
   expect(epfContribution(3000,0,undefined,topup(.05,.05),{age:78,citizenship:'citizen'})).toEqual({employee:0,employer:0,employeeOnBonus:0});
