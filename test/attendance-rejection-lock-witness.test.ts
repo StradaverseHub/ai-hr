@@ -4,10 +4,11 @@ import {and,asc,eq,sql} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import type {SessionContext,Tx} from '../db/client';
-import {attendance,attendanceCorrection,attendancePunch,domainEvent} from '../db/schema';
+import {attendance,attendanceCorrection,attendancePunch,attendanceWorkflowRequest,attendanceWorkflowDecision,attendanceWorkflowParticipantDecision,domainEvent} from '../db/schema';
 import {decideAttendanceCorrection,requestAttendanceCorrection} from '../core/attendance';
+import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 import {withAttendanceTenant} from '../core/module-gate';
-import {hireEmployee} from '../core/org';
+import {endReportingLine,hireEmployee,setReportingLine} from '../core/org';
 import {LeaveDependencyUnavailable} from '../core/leave-dependency-lock';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
@@ -166,4 +167,127 @@ it('proves legacy non-OT rejection native writes and audit require no configurat
   expect(retained.every(row=>row.status==='pending')).toBe(true);
   expect(await owner.db.select({id:domainEvent.id}).from(domainEvent)
     .where(and(eq(domainEvent.tenantId,base.tenantId),eq(domainEvent.eventType,'attendance-correction.rejected')))).toEqual([]);
+},30000);
+
+it.each([1,2,3,4,'delegated-v2'] as const)('keeps versioned non-OT rejection and audit under shared configuration: %s',async route=>{
+  await resetDb();
+  const base=await seedBase(),admin=adminCtx(base),today=todayInKualaLumpur();
+  await setModule(base.tenantId,'attendance','active');
+  async function person(name:string,role:'manager'|'employee'){
+    const hired=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},
+      companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+    const ctx:SessionContext={...admin,userId:await createAppUser(base.tenantId,hired.personId,role),
+      personId:hired.personId,roles:[role],grants:[{role,companyId:base.companyId}]};
+    return {...hired,ctx};
+  }
+  const worker=await person('Fictional workflow applicant','employee');
+  const manager=await person('Fictional assigned manager','manager');
+  await setReportingLine(admin,{subordinateEmploymentId:worker.employmentId,managerEmploymentId:manager.employmentId,
+    lineType:'administrative',validFrom:'2020-01-01'});
+  let reviewer=manager,delegationId:string|undefined;
+  if(route==='delegated-v2'){
+    reviewer=await person('Fictional live delegate','manager');
+    const downline=await person('Fictional delegate downline','employee');
+    await setReportingLine(admin,{subordinateEmploymentId:downline.employmentId,managerEmploymentId:reviewer.employmentId,
+      lineType:'administrative',validFrom:'2020-01-01'});
+    const delegation=await setReportingLine(admin,{subordinateEmploymentId:manager.employmentId,
+      managerEmploymentId:reviewer.employmentId,lineType:'delegate',validFrom:'2020-01-01',
+      scopes:[{module:'attendance',taskType:'attendance.correction'}]});
+    delegationId=delegation.reportingLineId;
+  }
+  const common={companyId:base.companyId,code:'REJECT_WITNESS',name:'Fictional rejection workflow',
+    applicationType:'irregularity' as const,priority:100,active:true,criteria:{employeeIds:[worker.employmentId]}};
+  const participant={kind:'specific_employee' as const,employmentIds:[manager.employmentId]};
+  if(route===3){
+    await saveAttendanceWorkflow(admin,{...common,routingVersion:3,
+      stages:[{name:'Review',mode:'sequential',source:participant,hrAlternative:false}]});
+  }else if(route===4){
+    await saveAttendanceWorkflow(admin,{...common,routingVersion:4,cc:[],
+      stages:[{name:'Review',mode:'sequential',sources:[participant],hrAlternative:false}]});
+  }else{
+    await saveAttendanceWorkflow(admin,{...common,routingVersion:route===1?1:2,
+      stages:[{name:'Review',level:{kind:'direct_manager',employmentId:null,alternates:[]}}]});
+  }
+  await setAttendanceWorkflowEnabled(admin,base.companyId,'irregularity',true);
+  const {correctionId}=await requestAttendanceCorrection(worker.ctx,{employmentId:worker.employmentId,date:today,
+    checkIn:'09:00',checkOut:'18:00',reason:'Fictional versioned non-overtime request'});
+  const input={correctionId,decision:'rejected' as const,rejectReason:'Fictional native rejection witness',
+    expectedStageIndex:0,...(route===3||route===4?{expectedParticipantSlot:'0:0'}:{})};
+  const rollback=new Error('rollback only');
+  async function reject(shared:boolean,onSubjectLocked?:(pid:number)=>Promise<void>){
+    let snapshot:unknown;
+    await withAttendanceTenant(reviewer.ctx,async tx=>{
+      await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);
+      const [connection]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
+      const {carrier,counts}=observedCarrier(tx,base.tenantId,worker.employmentId,shared,
+        onSubjectLocked?()=>onSubjectLocked(connection.pid):undefined);
+      expect(await decideAttendanceCorrection(reviewer.ctx,input,carrier)).toEqual({status:'rejected',deferred:false});
+      expect(counts()).toEqual({access:1,leave:1,subject:1});
+      const modes=await lockModes(tx,base.tenantId,worker.employmentId);
+      expect(modes.filter(row=>row.key==='access').map(row=>row.mode)).toEqual([shared?'ShareLock':'ExclusiveLock']);
+      expect(modes.filter(row=>row.key==='leaveConfiguration').map(row=>row.mode))
+        .toEqual(shared?['ShareLock']:['ExclusiveLock','ShareLock']);
+      expect(modes.filter(row=>row.key==='audit')).toEqual([{key:'audit',mode:'ExclusiveLock'}]);
+      const [row]=await tx.select({status:attendanceCorrection.status,reason:attendanceCorrection.rejectReason})
+        .from(attendanceCorrection).where(eq(attendanceCorrection.id,correctionId));
+      expect(row).toEqual({status:'rejected',reason:input.rejectReason});
+      const [flow]=await tx.select().from(attendanceWorkflowRequest).where(eq(attendanceWorkflowRequest.correctionId,correctionId));
+      expect(flow).toMatchObject({routingVersion:typeof route==='number'?route:2,currentStage:1});
+      const decisions=await tx.select({actualUserId:attendanceWorkflowDecision.actualUserId,
+        actingMode:attendanceWorkflowDecision.actingMode,decision:attendanceWorkflowDecision.decision})
+        .from(attendanceWorkflowDecision).where(eq(attendanceWorkflowDecision.requestId,flow.id));
+      expect(decisions).toEqual([{actualUserId:reviewer.ctx.userId,actingMode:delegationId?'delegate':'assigned',decision:'rejected'}]);
+      const participants=await tx.select({decision:attendanceWorkflowParticipantDecision.decision,
+        slot:attendanceWorkflowParticipantDecision.participantSlot}).from(attendanceWorkflowParticipantDecision)
+        .where(eq(attendanceWorkflowParticipantDecision.requestId,flow.id));
+      expect(participants).toEqual(route===3||route===4?[{decision:'rejected',slot:'0:0'}]:[]);
+      const events=await tx.select({type:domainEvent.eventType,actor:domainEvent.actorId,hash:domainEvent.hash,
+        prevHash:domainEvent.prevHash,sequence:domainEvent.chainSeq}).from(domainEvent)
+        .where(and(eq(domainEvent.aggregateId,correctionId),eq(domainEvent.actorId,reviewer.ctx.userId!)))
+        .orderBy(asc(domainEvent.chainSeq));
+      expect(events.map(event=>event.type)).toEqual(['attendance-workflow.stage.decided','attendance-correction.rejected']);
+      expect(events[0].hash).toMatch(/^[a-f0-9]{64}$/);
+      expect(events[1].hash).toMatch(/^[a-f0-9]{64}$/);
+      expect(events[1].prevHash).toBe(events[0].hash);
+      expect(events[1].sequence).toBe(events[0].sequence!+1);
+      snapshot={row,stage:flow.currentStage,decisions,participants,events:events.map(({type,actor,sequence})=>({type,actor,sequence}))};
+      throw rollback;
+    }).catch(error=>{if(error!==rollback)throw error;});
+    return snapshot;
+  }
+  expect(await reject(true)).toEqual(await reject(false));
+  if(delegationId){
+    const entered=barrier(),release=barrier();
+    let pid=0;
+    const pending=reject(true,async connectionPid=>{pid=connectionPid;entered.resolve();await release.promise;});
+    let revocation:Promise<unknown>|undefined;
+    try{
+      await within(Promise.race([entered.promise,pending]));
+      revocation=endReportingLine(admin,{reportingLineId:delegationId,endDate:new Date(Date.parse(today+'T00:00:00Z')-86400000).toISOString().slice(0,10)});
+      await within((async()=>{
+        for(let attempt=0;attempt<100;attempt++){
+          const [lock]=await owner.client`select exists(select 1 from pg_locks l
+            where l.locktype='advisory' and l.mode='ExclusiveLock' and not l.granted
+              and ${pid}::integer=any(pg_blocking_pids(l.pid))) as waiting`;
+          if(lock.waiting)return;
+          await new Promise(resolve=>setTimeout(resolve,25));
+        }
+        throw new Error('Live delegation revocation did not wait behind the shared configuration lock');
+      })());
+    }finally{
+      release.resolve();
+      await Promise.all([pending,...(revocation?[revocation]:[])]);
+    }
+    await expect(withAttendanceTenant(reviewer.ctx,tx=>{
+      const {carrier}=observedCarrier(tx,base.tenantId,worker.employmentId,true);
+      return decideAttendanceCorrection(reviewer.ctx,input,carrier);
+    })).rejects.toThrow();
+    await expect(decideAttendanceCorrection(reviewer.ctx,input)).rejects.toThrow();
+  }
+  const [retained]=await owner.db.select().from(attendanceCorrection).where(eq(attendanceCorrection.id,correctionId));
+  expect(retained.status).toBe('pending');
+  expect(await owner.db.select({id:attendance.id}).from(attendance).where(eq(attendance.employmentId,worker.employmentId))).toEqual([]);
+  expect(await owner.db.select({id:attendancePunch.id}).from(attendancePunch).where(eq(attendancePunch.employmentId,worker.employmentId))).toEqual([]);
+  expect(await owner.db.select({id:domainEvent.id}).from(domainEvent)
+    .where(and(eq(domainEvent.aggregateId,correctionId),eq(domainEvent.eventType,'attendance-correction.rejected')))).toEqual([]);
 },30000);
