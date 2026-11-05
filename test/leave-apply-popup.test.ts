@@ -145,16 +145,12 @@ describe('core/leave.ts: the new read-only exports', () => {
     // balance (the borrowers), so an Emergency Leave request in flight reduces the Annual figure the
     // popup shows. Asserting the shared helpers rather than one literal argument list, so the next
     // legitimate signature change does not fail a test whose subject is agreement, not spelling.
-    expect(core.includes('async function pendingLeaveDays(')).toBe(true);
-    expect(core.includes('async function balanceSpenderTypeIds(')).toBe(true);
     const avail = core.slice(core.indexOf('export async function availableLeaveBalance'));
     const availBody = avail.slice(0, avail.indexOf('\n}\n'));
     const summary = core.slice(core.indexOf('export async function leaveTypeApplySummary'));
     const summaryBody = summary.slice(0, summary.indexOf('\n}\n'));
     for (const body of [availBody, summaryBody]) {
-      expect(body.includes('resolveBalanceSourceTypeId')).toBe(true);
-      expect(body.includes('balanceSpenderTypeIds')).toBe(true);
-      expect(body.includes('pendingLeaveDays(')).toBe(true);
+      expect(body).toContain('readLeaveBalancePositionTx(');
     }
   });
 
@@ -244,15 +240,14 @@ describe('LeaveDurationFields: summary + day-by-day disclosure', () => {
     expect(body.includes('view.taken ? s.taken : null')).toBe(true);
     expect(body.includes('balance: s.balance')).toBe(true);
     // The r72 (cdf9ca48) invariant: Available on the popup is derived exactly as availableLeaveBalance
-    // derives the submit-time guard's figure — same pendingLeaveDays over the same balanceSpenderTypeIds,
+    // derives the submit-time guard's figure — the same pooled reservation read and the
     // same unclamped subtraction. (The end-to-end equality is asserted against a real DB in
     // test/r75-leave-apply-available.test.ts: popup.available === availableLeaveBalance. Removing two
     // columns must not have gone near either.)
     const core = read('core/leave.ts');
     const summaryFn = core.slice(core.indexOf('export async function leaveTypeApplySummary'));
     const summaryBody = summaryFn.slice(0, summaryFn.indexOf('\n}\n'));
-    expect(summaryBody.includes('pendingLeaveDays(')).toBe(true);
-    expect(summaryBody.includes('balanceSpenderTypeIds(')).toBe(true);
+    expect(summaryBody).toContain('readLeaveBalancePositionTx(');
     expect(summaryBody.includes('available: round2(balance - pending),')).toBe(true);
   });
 

@@ -1754,69 +1754,42 @@ export async function resolveBalanceSourceTypeId(tx: Tx, leaveTypeId: string): P
   return row?.src ?? leaveTypeId;
 }
 
-/** Every leave type that SPENDS `sourceTypeId`'s balance — the source itself plus each type configured to
- *  deduct from it. The pending reservation has to cover all of them: once Emergency Leave draws on Annual,
- *  a pending Emergency application reserves Annual days just as surely as a pending Annual one does, and
- *  counting only one of the two would let a stack of applications collectively overshoot the balance.
- *  Returns just [sourceTypeId] when nothing borrows (today's shape). */
-async function balanceSpenderTypeIds(tx: Tx, sourceTypeId: string): Promise<string[]> {
-  const borrowers = await tx
-    .select({ id: leaveType.id })
-    .from(leaveType)
-    .where(eq(leaveType.balanceSourceTypeId, sourceTypeId));
-  return [sourceTypeId, ...borrowers.map((b) => b.id)];
+/** Read the source ledger and every borrowing type's pending reservations in one snapshot. */
+async function readLeaveBalancePositionTx(tx:Tx,employmentId:string,leaveTypeId:string,excludeRequestId?:string){
+  const [row]=await tx.execute<{balance:string;taken:string;pending:string}>(sql`
+    with source as (
+      select coalesce((select balance_source_type_id from public.leave_type where id=${leaveTypeId}::uuid),${leaveTypeId}::uuid) as id
+    ), ledger as (
+      select coalesce(sum(l.days),0) as balance,
+        coalesce(-sum(l.days) filter (where l.entry_type='debit'),0) as taken
+      from public.leave_ledger l
+      where l.employment_id=${employmentId}::uuid and l.leave_type_id=(select id from source)
+    ), reserved as (
+      select coalesce(sum(r.days-coalesce(r.unpaid_days,0)),0) as pending
+      from public.leave_request r
+      where r.employment_id=${employmentId}::uuid and r.status='pending'
+        ${excludeRequestId?sql`and r.id<>${excludeRequestId}::uuid`:sql``}
+        and r.leave_type_id in (
+          select id from source
+          union all
+          select id from public.leave_type where balance_source_type_id=(select id from source)
+        )
+    )
+    select ledger.balance,ledger.taken,reserved.pending from ledger cross join reserved
+  `);
+  return {balance:Number(row.balance),taken:Number(row.taken),pending:Number(row.pending)};
 }
 
-// Configurable Negative Leave Balance Validation (0ef0defd): the "available" balance for the SUBMIT/EDIT-time
-// guard = leaveBalance (approved ledger only) MINUS the sum of this employee's OTHER PENDING requests of the
-// same leave type (days already reserved but not yet approved, so they post no ledger entry). Subtracting the
-// pending reservation stops an employee stacking several pending applications that individually pass but
-// collectively overshoot. `excludeRequestId` drops the request being edited from its own pending sum (the edit
-// path re-checks the NEW days against everything else). Rounded to 2dp to match the rest of the leave math.
-//
-// Balance Deduction Source (cdf9ca48): the ledger read and the pending reservation both move to the RESOLVED
-// source type, so a borrowing type is measured against the balance it will actually spend. With no source
-// configured anywhere this resolves to leaveTypeId and one spender, i.e. exactly the query it ran before.
+/** The submission and edit guard uses the same source ledger and reservations as the Apply form.
+ * An edit excludes its own pending request so only the new amount is tested. */
 export async function availableLeaveBalance(
   tx: Tx,
   employmentId: string,
   leaveTypeId: string,
   excludeRequestId?: string,
 ): Promise<number> {
-  const sourceTypeId = await resolveBalanceSourceTypeId(tx, leaveTypeId);
-  const bal = await leaveBalance(tx, employmentId, sourceTypeId);
-  const spenders = await balanceSpenderTypeIds(tx, sourceTypeId);
-  return round2(bal - (await pendingLeaveDays(tx, employmentId, spenders, excludeRequestId)));
-}
-
-/** The days already RESERVED by this employee's other PENDING requests of the given leave type(s) — extracted
- *  verbatim from availableLeaveBalance (no behaviour change) so the apply-popup summary's "Pending" figure is
- *  byte-identical to what the submit-time negative-balance guard reserves. substrate: read-only, no event.
- *
- *  Allow Unpaid Leave (a7fab30b): a request reserves days - unpaid_days, not days. Its unpaid portion was
- *  never going to touch the balance, so reserving it would understate what is still available and refuse a
- *  later application that in fact fits. unpaid_days is NULL on every pre-existing row ⇒ the sum is unchanged. */
-async function pendingLeaveDays(
-  tx: Tx,
-  employmentId: string,
-  leaveTypeIds: string | string[],
-  excludeRequestId?: string,
-): Promise<number> {
-  const ids = Array.isArray(leaveTypeIds) ? leaveTypeIds : [leaveTypeIds];
-  const [row] = await tx
-    .select({
-      pending: sql<string>`coalesce(sum(${leaveRequest.days} - coalesce(${leaveRequest.unpaidDays}, 0)), 0)`,
-    })
-    .from(leaveRequest)
-    .where(
-      and(
-        eq(leaveRequest.employmentId, employmentId),
-        inArray(leaveRequest.leaveTypeId, ids),
-        eq(leaveRequest.status, 'pending'),
-        ...(excludeRequestId ? [sql`${leaveRequest.id} <> ${excludeRequestId}`] : []),
-      ),
-    );
-  return Number(row?.pending ?? 0);
+  const {balance,pending}=await readLeaveBalancePositionTx(tx,employmentId,leaveTypeId,excludeRequestId);
+  return round2(balance-pending);
 }
 
 /**
@@ -1835,7 +1808,7 @@ async function pendingLeaveDays(
  * popup's third column from Balance to Available and left the value alone, so the popup read 13.5 where the
  * leave type's own Leave Summary card read 8.5; the 5.0 difference was the employee's own submitted-but-
  * undecided request, which the word "Available" promises has already been taken off. It is computed from the
- * SAME `balance` and the SAME pendingLeaveDays() the guard uses, so it is availableLeaveBalance() by
+ * SAME ledger and pending reservation projection the guard uses, so it is availableLeaveBalance() by
  * construction rather than by coincidence — the r72 (cdf9ca48) invariant that the popup and the submit-time
  * guard cannot diverge now covers the figure the employee actually reads, not just the Pending line. Both are
  * returned so the popup can show the subtraction (Balance − Pending Approval = Available) rather than a bare
@@ -1864,16 +1837,7 @@ export async function leaveTypeApplySummary(
     // Balance Deduction Source (cdf9ca48): report the balance the employee will actually spend. A borrowing
     // type has no ledger of its own, so reading its own would show a flat 0.0 Available directly above a real
     // day count — the same "0.0 / 0.0 / 0.0" nonsense the panel already suppresses for Emergency Leave.
-    const sourceTypeId = await resolveBalanceSourceTypeId(tx, p.leaveTypeId);
-    const balance = await leaveBalance(tx, p.employmentId, sourceTypeId);
-    const pending = await pendingLeaveDays(tx, p.employmentId, await balanceSpenderTypeIds(tx, sourceTypeId));
-    // Same expression core/read.ts leaveBalances uses for `taken`, so the two never disagree.
-    const [tk] = await tx
-      .select({
-        taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
-      })
-      .from(leaveLedger)
-      .where(and(eq(leaveLedger.employmentId, p.employmentId), eq(leaveLedger.leaveTypeId, sourceTypeId)));
+    const {balance,taken,pending}=await readLeaveBalancePositionTx(tx,p.employmentId,p.leaveTypeId);
     const [lt] = await tx
       .select({ essViewConfig: leaveType.essViewConfig, role: leaveType.role, code: leaveType.code })
       .from(leaveType)
@@ -1881,7 +1845,7 @@ export async function leaveTypeApplySummary(
       .limit(1);
     return {
       pending: round2(pending),
-      taken: round2(Number(tk?.taken ?? 0)),
+      taken: round2(taken),
       balance: round2(balance),
       // Not clamped at zero: an overdrawn type must read the same negative figure the guard measures, or the
       // popup would understate how far the employee is already committed.
@@ -1912,9 +1876,9 @@ export type LeaveTypeApplySummary = Awaited<ReturnType<typeof leaveTypeApplySumm
  *                                    the type's own id when it has no source or is not visible);
  *   · balance                     — `coalesce(sum(days), 0)` per SOURCE, `group by leave_type_id` (leaveBalance);
  *   · taken                       — `coalesce(-sum(days) filter (where entry_type = 'debit'), 0)` per source;
- *   · the spenders of each source — the source plus every type whose source it is (balanceSpenderTypeIds);
+ *   · the spenders of each source — the source plus every type whose source it is;
  *   · pending                     — `coalesce(sum(days - coalesce(unpaid_days, 0)), 0)` over each source's OWN
- *                                    spender set, summed in SQL per source (pendingLeaveDays), so a request
+ *                                    spender set, summed in SQL per source; so a request
  *                                    is counted for every source whose set holds its type, exactly as the
  *                                    per-source read counted it — and never twice within one set;
  *   · essViewConfig / role / code — the asked type's own row (the same select, `id in (…)`);
