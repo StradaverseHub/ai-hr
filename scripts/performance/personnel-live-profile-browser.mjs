@@ -79,9 +79,9 @@ export async function exerciseLivePersonnelProfile({page,user,fixture,db,request
   // This fixture begins blank, so a failed authority boundary cannot overwrite other contact values.
   assert.equal(row.home_phone,null);assert(Object.values(row.other_contact).every(value=>value===null));
  }
- const updates=subject=>db`select id,actor_id,subject_employment_id,actor_type,(payload->'fields')?'homePhone' as phone_field
+ const updates=async subject=>Array.from(await db`select id,actor_id,subject_employment_id,actor_type,(payload->'fields')?'homePhone' as phone_field
   from domain_event where tenant_id=${tenantId}::uuid and aggregate_type='person' and aggregate_id=${subject.personId}::uuid
-   and event_type='person.updated' order by sequence`;
+   and event_type='person.updated' order by sequence`);
  const beforeAudit=await updates(owned),outsideAudit=await updates(outside);
  const marker='03-9000'+String(user.index).padStart(4,'0');
  const deniedMarker='03-9111'+String(user.index).padStart(4,'0');
