@@ -3,7 +3,7 @@ import {afterAll,beforeAll,expect,it} from 'vitest';
 import {withTenant} from '../db/client';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {discardEmployeeDraft,saveEmployeeDraft} from '../core/employee-draft';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
+import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
 function signal(){let resolve!:()=>void;const promise=new Promise<void>(r=>{resolve=r;});return{promise,resolve};}
 it('takes Workforce authority before Onboarding audit custody during native draft deletion',async()=>{
@@ -39,4 +39,42 @@ it('takes Workforce authority before Onboarding audit custody during native draf
   const [events]=await owner.client`select count(*)::int as count from domain_event where aggregate_id=${draft.id}::uuid and event_type='employee-draft.discarded'`;
   expect(events.count).toBe(1);
  }finally{allowAudit.resolve();await Promise.allSettled([holder,...(worker?[worker]:[])]);}
+});
+
+it('retries an owned draft discard after an audit lock timeout and commits one delete event',async()=>{
+ await resetDb();const b=await seedBase();await setModule(b.tenantId,'lifecycle','active');const ctx=await entitledCtx(adminCtx(b));
+ const draft=await saveEmployeeDraft(ctx,{data:{},currentStep:1});
+ const holding=signal(),release=signal();let holderPid=0;
+ const holder=withTenant(ctx,async tx=>{
+  const [row]=await tx.execute<{pid:number}>(sql`select pg_backend_pid()as pid`);
+  holderPid=row.pid;
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${'audit-chain:'+b.tenantId}))`);
+  holding.resolve();await release.promise;
+ });
+ let discard:Promise<void>|undefined;
+ try{
+  await holding.promise;
+  discard=discardEmployeeDraft(ctx,draft.id);
+  void discard.catch(()=>undefined);
+  let blocked=false;
+  for(let attempt=0;attempt<100&&!blocked;attempt++){
+   const [row]=await owner.client`select exists(select 1 from pg_stat_activity
+    where datname=current_database() and ${holderPid}=any(pg_blocking_pids(pid))) as waiting`;
+   blocked=row.waiting;
+   if(!blocked)await new Promise(resolve=>setTimeout(resolve,5));
+  }
+  expect(blocked,'standalone discard reached the audit fence after Workforce authority').toBe(true);
+  // Exceed the native 500 ms lock budget, then release during the retry window.
+  await new Promise(resolve=>setTimeout(resolve,650));
+  release.resolve();
+  await discard;
+  const [result]=await owner.client`select
+   (select count(*)::int from employee_draft where id=${draft.id}::uuid) as drafts,
+   (select count(*)::int from domain_event where aggregate_id=${draft.id}::uuid
+    and event_type='employee-draft.discarded') as events`;
+  expect(result).toEqual({drafts:0,events:1});
+ }finally{
+  release.resolve();
+  await Promise.allSettled([holder,...(discard?[discard]:[])]);
+ }
 });

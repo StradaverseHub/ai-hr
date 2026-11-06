@@ -729,18 +729,12 @@ export async function discardEmployeeDraft(
   const capture = options?.returnResult === true;
   if (capture && !outerTx) throw new Error('Draft discard result requires an enclosing transaction.');
   const accessBusy = new Error('Draft discard is waiting for Workforce access.');
-  let admissionFailure: unknown;
   const run = async (tx: Tx): Promise<void | EmployeeDraftDiscardResult> => {
     await boundNativeOutcomeTransactionTx(tx);
     // Match create/save: authority precedes Onboarding's audit and case locks.
     // The closed delete port repeats this native barrier; taking it here prevents
     // a discard from holding audit custody while another writer holds authority.
-    try {
-      await tx.execute(sql`select app.access_workforce_write_lock()`);
-    } catch (error) {
-      if (!outerTx && pgSqlState(error) === '55P03') admissionFailure = error;
-      throw error;
-    }
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     const [row] = await tx
       .select({
         reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
@@ -786,18 +780,24 @@ export async function discardEmployeeDraft(
   if (outerTx) return run(outerTx);
   return queueDraftWrite(ctx.tenantId, async () => {
     for (const backoff of [75, 200, 400, 800]) {
-      admissionFailure = undefined;
+      let transactionLockFailure: unknown;
       try {
         return await withTenant(ctx, async tx => {
           // Give up the connection while another transaction holds the tenant fence.
           // The native port still checks policy generation and executes the delete.
           if (!await tryLockAccessConfigurationTx(tx, ctx.tenantId)) throw accessBusy;
-          return run(tx);
+          try {
+            return await run(tx);
+          } catch (error) {
+            // The effects (including Onboarding, number release and audit) all
+            // belong to this transaction. Capture only a PostgreSQL lock failure
+            // inside its body, so a commit or transport failure cannot trigger replay.
+            if (pgSqlState(error) === '55P03') transactionLockFailure = error;
+            throw error;
+          }
         });
       } catch (error) {
-        // The failed transaction is already closed. Only a refusal before
-        // the first native effect can retry, with no connection held here.
-        if (error !== accessBusy && (admissionFailure === undefined || error !== admissionFailure)) throw error;
+        if (error !== accessBusy && (transactionLockFailure === undefined || error !== transactionLockFailure)) throw error;
         await delay(backoff);
       }
     }
