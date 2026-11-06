@@ -25,14 +25,12 @@ function compactPersonnelProjection(ddl:string){
   if(!find.test(source))throw Error('Unexpected Personnel benchmark definition');
   return source.replace(find,next);
  };
- let body=replace(ddl,/SELECT jsonb_build_object\('employmentId',e.id[\s\S]+?e.final_confirmation_date
-   FROM public.employment/,`
+ let body=replace(ddl,/SELECT jsonb_build_object\('employmentId',e.id[\s\S]+?e.final_confirmation_date\n   FROM public.employment/,`
    SELECT e.id,e.tenant_id,e.company_id,e.hired_on,e.grade_id,e.confirmation_date,e.final_confirmation_date,
           p.full_name,p.primary_email,e.employee_code,e.probation_end_date,e.provisional_end_on,
           e.resignation_date,e.last_working_date,e.terminated_on,e.blacklisted_at
    FROM public.employment`);
- body=replace(body,/SELECT d.value,d.id,[\s\S]+?          CASE
-/,`SELECT d.*,
+ body=replace(body,/SELECT d.value,d.id,[\s\S]+?          CASE\n/,`SELECT d.*,
           CASE
 `);
  body=replace(body,/SELECT b.value,b.id,[\s\S]+?          dated.id AS dated_company_id,/,`SELECT b.*,
