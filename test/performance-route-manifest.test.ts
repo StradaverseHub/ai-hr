@@ -13,7 +13,12 @@ it('counts the actual distinct route pools and binds every concrete path to an e
 
 it('covers the installed AI Centre tabs and administrator sections without granting employees admin routes',()=>{
  for(const tab of CENTRE_TABS){expect(routePools.companyHR).toContain(tab.href);if(!tab.adminOnly)expect(routePools.employee).toContain(tab.href);else expect(routePools.employee).not.toContain(tab.href);}
- for(const section of Object.values(CENTRE_SECTIONS).flat())expect(routePools.companyHR).toContain(section.href);
+ for(const section of Object.values(CENTRE_SECTIONS).flat()){
+  expect(routePools.groupHR).toContain(section.href);
+  if(section.groupAdmin)expect(routePools.companyHR).not.toContain(section.href);
+  else expect(routePools.companyHR).toContain(section.href);
+  expect(routePools.employee).not.toContain(section.href);
+ }
  expect(routePools.companyHR).not.toContain('/control-tower/agents/spending');
  expect(routePools.groupHR).toContain('/control-tower/agents/spending');
  expect(routePools.companyHR).not.toContain('/control-tower/agents/provider');
@@ -26,7 +31,8 @@ it('includes the default Home in every role workload',()=>{
 
 it('counts each known AI view separately without retaining arbitrary query values',()=>{
  for(const path of new Set(Object.values(routePools).flat()))expect(readRouteForMeasurement(path)).toBe(path);
- expect(readRouteForMeasurement('/assistant?view=jobs')).not.toBe(readRouteForMeasurement('/assistant?view=tools'));
+ expect(readRouteForMeasurement('/assistant?view=insights')).not.toBe(readRouteForMeasurement('/assistant?view=tools'));
+ expect(readRouteForMeasurement('/assistant?view=jobs')).toBe('/assistant');
  expect(readRouteForMeasurement('/assistant?question=PRIVATE_SENTINEL')).toBe('/assistant');
  expect(readRouteForMeasurement('/api/home/tasks?employmentId=PRIVATE_SENTINEL')).toBe('/api/home/tasks');
 });

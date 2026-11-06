@@ -30,7 +30,7 @@ const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 const src = read(BELL);
 /** The bell trigger only — from its aria-label through its closing tag (excludes the panel below). */
 const bellButton = (() => {
-  const start = src.indexOf("aria-label={t('ariaBell'");
+  const start = src.indexOf("aria-label={tasksKnown?t('ariaBell'");
   if (start < 0) throw new Error(`${BELL}: bell trigger (aria-label ariaBell) not found`);
   const end = src.indexOf('</button>', start);
   if (end < 0) throw new Error(`${BELL}: bell trigger has no closing </button>`);
@@ -39,7 +39,7 @@ const bellButton = (() => {
 
 describe('Notification bell: a single combined count badge', () => {
   it('sums the two counts into one total', () => {
-    expect(src).toMatch(/const total = unread \+ taskCount;/);
+    expect(src).toMatch(/const total = unread \+ \(tasksKnown\?taskCount:0\);/);
   });
 
   it('renders exactly ONE absolutely-positioned badge on the bell', () => {
@@ -74,12 +74,12 @@ describe('Notification bell: a single combined count badge', () => {
   });
 
   it('the accessible name is given the same total the badge shows (a11y parity)', () => {
-    expect(bellButton).toMatch(/aria-label=\{t\('ariaBell', \{ total, unread, tasks: taskCount \}\)\}/);
+    expect(bellButton).toMatch(/aria-label=\{tasksKnown\?t\('ariaBell', \{ total, unread, tasks: taskCount \}\):t\('aria',\{count:unread\}\)\}/);
   });
 
   it('the per-tab pills still receive the two counts separately', () => {
     expect(src).toMatch(/tabBtn\('notifications', t\('tabNotifications'\), unread\)/);
-    expect(src).toMatch(/tabBtn\('tasks', t\('tabTasks'\), taskCount\)/);
+    expect(src).toMatch(/tabBtn\('tasks', t\('tabTasks'\), tasksKnown\?taskCount:undefined\)/);
   });
 });
 

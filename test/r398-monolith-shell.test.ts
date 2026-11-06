@@ -140,7 +140,8 @@ describe('Classic shell baseline, with the approved mobile notification position
           ? RESPONSIVE_NOTIFICATION_PANEL
           : file === 'components/sidebar.tsx' && cls === KINGDEE_BRAND_BADGE ? HR_BRAND_BADGE : CLASSIC_APPROVED_MOBILE_REPAIRS[file]?.[cls]??cls;
         // Either the exact attribute is still there, or the same string with `monolith:` utilities appended.
-        const kept = now.includes(`className="${expected}"`) || now.includes(`className="${expected} monolith:`);
+        const kept = now.includes(`className="${expected}"`) || now.includes(`className="${expected} monolith:`)
+          || (file === 'components/company-switcher.tsx' && now.includes(`'${expected} monolith:`));
         expect(kept, `Classic class string changed in ${file}: "${cls}"`).toBe(true);
       }
     });

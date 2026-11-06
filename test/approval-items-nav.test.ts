@@ -156,7 +156,8 @@ describe('the count is the viewer\'s own pending queue, computed once', () => {
   it('it is NOT the bell\'s taskCount (which also folds in action notifications)', () => {
     // Deliberate divergence: the bell counts unread action-severity notifications too, which are not
     // approval records. The nav badge is strictly approval items.
-    expect(layout).toContain('taskCount={lifecycleTaskCount+taskNotifCount}');
+    const bellSlot=readFileSync(new URL('../app/shell-notification-center.tsx',import.meta.url),'utf8');
+    expect(bellSlot).toContain('taskCount={taskCount + bell.taskCount}');
     expect(layout).not.toMatch(/approvalCount[:=][^\n]+taskNotifCount/);
     // Onboarding work joins My tasks/the bell, never the legacy Approval Items count.
     expect(layout).toContain('const lifecycleTasks:NotificationTaskItem[]=[...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];');

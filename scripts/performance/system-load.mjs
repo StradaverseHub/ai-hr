@@ -75,6 +75,14 @@ function appMemory(){
  });}catch{return null;}
 }
 const samples=[],pageInteractions=[];
+const busyScreenSelector='main[data-personnel-busy], main[data-page-busy], main [data-personnel-busy], main [data-page-busy]';
+report.pageBusyResponses=[];
+function rejectBusyPage(user,path,channel){
+ report.pageBusyResponses.push({role:user.role,route:readRouteForMeasurement(path),channel});
+ save();
+ assert.fail('A page returned a Busy response before becoming usable');
+}
+
 const homeHttp=createHomeHttpReplay({base,request,report});
 async function request(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[],action){
  assert(path.startsWith('/')&&!path.startsWith('//'));const started=performance.now();let body,contentType;
@@ -102,6 +110,7 @@ async function request(user,path,fields,expectedStatus=200,record=true,actionHea
   assert(String(response.headers['content-disposition']).includes('attachment'),'personal document download disposition');
  }else if(!fields&&expectedStatus===200&&!path.startsWith('/api/')&&!String(response.headers['content-type']).includes('text/csv')){
   assert(!/NEXT_HTTP_ERROR_FALLBACK;(404|500)/.test(response.content)&&!/<h1[^>]*>\s*404(?:\s|<)/.test(response.content),'streamed error boundary');
+  if(/<[a-z][^<>]*\sdata-(?:personnel|page)-busy(?:\s|=|>)/i.test(response.content))rejectBusyPage(user,path,'http');
   assert(response.content.includes(user.name),'signed-in principal marker missing');
   assert(!response.content.includes('PERF Person '+String(user.tenant?0:250).padStart(4,'0')),'cross-tenant person leaked');
  }
@@ -338,6 +347,7 @@ try{
   const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});
   if(await skip.isVisible()){await skip.click();await skip.waitFor({state:'hidden'});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
   visitStage='table-data';
+  if(await page.locator(busyScreenSelector).count())rejectBusyPage(user,path,'browser');
   if(['/claims','/admin/personnel','/payroll'].includes(path)){
    // A streamed page can expose its heading/form before the actual table is attached.
    // Await the same required source rows; count() alone does not retry DOM readiness.
@@ -348,7 +358,7 @@ try{
     if(await busy.count()){
      const reason=await busy.getAttribute('data-personnel-busy');
      visitStage=reason==='access-lock'?'personnel-access-lock':'personnel-statement-timeout';
-     assert.fail('Personnel returned a busy screen before its rows rendered');
+     rejectBusyPage(user,path,'browser');
     }
    }else await rows.first().waitFor({state:'attached',timeout:90000});
    assert(await rows.count()>0,'expected fictional table rows');
@@ -756,9 +766,20 @@ try{
   const {exercisePerformanceRewardsDrafts}=await import('./performance-rewards-draft-browser.mjs');
   await exercisePerformanceRewardsDrafts({base,context,fixture,db,report,save});
   await verifyAudit();save();
+  const redirectContext=await context(employee);
+  try{
+   const page=await redirectContext.newPage();
+   for(const [alias,target] of [['/assistant?view=jobs','/assistant'],['/assistant?view=insights','/me/payroll-readiness']]){
+    await visit(page,employee,alias);
+    assert.equal(new URL(page.url()).pathname,target,'AI Centre compatibility redirect changed');
+    assert.equal(new URL(page.url()).search,'','AI Centre compatibility redirect kept stale view');
+   }
+   report.aiCompatibilityRedirectsVerified=true;save();
+  }finally{await redirectContext.close();}
   assert(report.preflightHomeReady,'all four preflight sign-ins must load their dashboards');
   assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure');
   assert.equal(report.browserErrors.length,0,'all preflight journeys must finish without browser runtime errors');
+  assert.equal(report.pageBusyResponses.length,0,'preflight page Busy responses');
   report.preflightPassed=true;save();return;
  }
  clearInterval(sampling);
@@ -994,6 +1015,7 @@ try{
   )),'saved Reports create, edit and delete must start during steady 500-user load');
  }
  if(suite==='whole-system')assert(report.concurrentHomeApiCoverage.length>0&&report.concurrentHomeApiCoverage.every(row=>row.requests>0),'observed Home fetches missing from concurrent traffic');if(mixedWorkflows)assert(Object.values(report.mixedWorkflows.completed).every(count=>count>0),'a required mixed mutation/processing scenario did not complete');if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure during baseline or load');assert(report.loadedBrowserSignIn?.homeCards>0,'real loaded browser sign-in did not finish');
+ assert.equal(report.pageBusyResponses.length,0,'page Busy responses under load');
  assert.equal(report.aiBaselineFailures.length,0,'AI Centre baseline browser journeys failed');
  assert(['employee','manager','companyHR','groupHR'].every(role=>report.loadedBrowserSignIns?.some(row=>
   row.role===role&&row.homeCards>0&&row.todaySectionIds.length>0&&row.cardFailures===0
