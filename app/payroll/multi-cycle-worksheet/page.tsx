@@ -75,7 +75,7 @@ export default async function MultiCycleWorksheetPage({
       <PageHeader
         title={t('title')}
         description={t('subtitle')}
-        back={{ href: '/payroll/reports', label: t('backToReports') }}
+        back={{ href: '/payroll/statutory-forms/filing-history', label: t('backToReports') }}
       />
 
       <TaxBasisCorrectionNotice references={correctionReferences} strings={correctionStrings}/>
@@ -277,7 +277,7 @@ export default async function MultiCycleWorksheetPage({
               <p>{t('signOffBody')}</p>
               <p>
                 {t('signOffAdr')}{' '}
-                <Link href="/payroll/reports" className="text-primary hover:underline">
+                <Link href="/payroll/statutory-forms/filing-history" className="text-primary hover:underline">
                   {t('backToReports')}
                 </Link>
               </p>

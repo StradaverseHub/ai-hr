@@ -56,7 +56,7 @@ const code = (p: string) =>
 const PAGE = code('app/payroll/statutory-forms/page.tsx');
 const FORM_PAGE = code('app/payroll/statutory-forms/[formId]/page.tsx');
 const EXPORT_ROUTE = code('app/payroll/statutory-forms/[formId]/export/route.ts');
-const REPORTS_PAGE = code('app/payroll/reports/page.tsx');
+const REPORTS_PAGE = code('app/payroll/statutory-forms/filing-history/page.tsx');
 const byId = new Map(MY_REPORTS.map((r) => [r.id, r]));
 
 describe('the pack declares where each form is filed, and by when', () => {

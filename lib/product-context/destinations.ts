@@ -262,7 +262,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/payroll/income-tax-recalculation','admin','payroll'],['/payroll/individual-payslip','admin','payroll'],
  ['/payroll/multi-cycle-worksheet','admin','payroll'],['/payroll/payment-submission','admin','payroll'],
  ['/payroll/payslip-information','admin','payroll'],['/payroll/pcb-detail','admin','payroll'],['/payroll/process','admin','payroll'],
- ['/payroll/process/result','admin','payroll'],['/payroll/reports','admin','payroll'],['/payroll/setup','admin','payroll'],['/payroll/setup/correction-controls','admin','payroll'],
+ ['/payroll/process/result','admin','payroll'],['/payroll/statutory-forms/filing-history','admin','payroll'],['/payroll/setup','admin','payroll'],['/payroll/setup/correction-controls','admin','payroll'],
  ['/payroll/sip-contribution/preview','admin','payroll'],['/payroll/statutory-adjustment','admin','payroll'],
  ['/payroll/statutory-detail','admin','payroll'],['/payroll/statutory-forms','admin','payroll'],['/payroll/statutory-forms/ea','admin','payroll'],
  ['/payroll/statutory-forms/ea/view','admin','payroll'],['/payroll/statutory-forms/event','admin','payroll'],

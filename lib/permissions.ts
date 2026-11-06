@@ -1269,7 +1269,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/statutory-detail',
       '/payroll/process',
       '/payroll/process/result',
-      '/payroll/reports',
+      '/payroll/statutory-forms/filing-history',
       // bdf7d248 (r209): the ADR-0024 §7 Multi-Cycle Statutory Worksheet. Registered on the SAME
       // scopedAdmin key as the Reports screen that links to it — it lists per-employee EPF/SOCSO/EIS/PCB
       // figures for months that had more than one payroll run, so it is admin-scoped exactly like Reports

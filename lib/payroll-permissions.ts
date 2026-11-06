@@ -97,7 +97,7 @@ export const PAYROLL_PERMISSION_KEYS = [
   //
   // ⚠️ THE SHIPPED LIMIT, STATED PLAINLY (same honesty leave.apply_on_behalf documents above): the key is
   // enforced in the SERVICE, so it refuses whatever screen or script calls markReportFiled. But the only
-  // screen that OFFERS the control today is app/payroll/reports/page.tsx, which is `requireAdmin()`.
+  // screen that OFFERS the control today is app/payroll/statutory-forms/filing-history/page.tsx, which is `requireAdmin()`.
   // Granting this key to payroll_partner therefore authorises the action without yet giving that role a
   // way to reach it. Widening that page is a separate decision about who may read every statutory report
   // for a company, and it was deliberately not smuggled into this one.

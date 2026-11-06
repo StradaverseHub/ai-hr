@@ -237,7 +237,7 @@ export default async function EaStatementPage({
     <div className="mx-auto max-w-3xl space-y-5">
       <TaxBasisCorrectionNotice references={correctionReferences} strings={correctionStrings}/>
       <div className="flex items-start justify-between gap-4 print:hidden">
-        <Link href="/payroll/reports" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+        <Link href="/payroll/statutory-forms" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
           ← {t('backToReports')}
         </Link>
         <div className="flex items-center gap-3">

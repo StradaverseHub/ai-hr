@@ -345,7 +345,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/payroll/pcb-payment-actions.ts":{"recordPcbPaymentAction":"backlog:approve"},
  "app/payroll/process/registration-warning-action.ts":{"checkRegistrationReadiness":"backlog:automatic"},
  "app/payroll/process/actions.ts":{"checkPayrollCycleReadiness":"backlog:automatic","checkUnattachedForSelection":"backlog:automatic","createRunAction":"registered:multi_cycle_payroll.create_run","fetchPayrollRunEmployees":"backlog:automatic","resumeRunAction":"backlog:approve","runMultiCompanyAction":"backlog:approve","savePayrollDraftsAction":"backlog:approve","validatePayrollSelection":"backlog:automatic"},
- "app/payroll/reports/actions.ts":{"markFiledAction":"backlog:approve","recordReportAction":"backlog:approve","reverseFilingAction":"handoff:payroll_reversal"},
+ "app/payroll/statutory-forms/filing-history/actions.ts":{"markFiledAction":"backlog:approve","recordReportAction":"backlog:approve","reverseFilingAction":"handoff:payroll_reversal"},
  "app/payroll/reports/ea/[employmentId]/actions.ts":{"amendEaFieldAction":"backlog:approve","clearEaFieldAction":"backlog:approve"},
  "app/payroll/statutory-adjustment/actions.ts":{"previewAdjustmentAction":"backlog:automatic","revertAdjustmentAction":"backlog:approve","saveAdjustmentAction":"backlog:approve"},
  "app/payroll/statutory-forms/[formId]/actions.ts":{"recordReportAction":"backlog:approve"},

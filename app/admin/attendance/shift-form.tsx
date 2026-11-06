@@ -215,7 +215,6 @@ export async function ShiftForm({
           lockedBreakPeriodsJson={JSON.stringify(editing?.breakPeriods ?? [])}
         />
 
-        <p className="text-sm text-muted-foreground"><Link className="text-primary hover:underline" href="/admin/attendance/settings/work-schedule-overtime#shift-pay">{t('shiftOvertimePayLegend')}</Link></p>
 
         <div className="flex items-center gap-3">
           <button className={btnPrimary}>{editing ? t('saveShift') : t('addShift')}</button>

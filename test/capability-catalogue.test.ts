@@ -114,8 +114,8 @@ describe('the capability catalogue per role',()=>{
   for(const list of [asEmployee,asManager,asPayroll])
    expect(list.filter(path=>/^\/(admin|control-tower|payroll|reports|analytics)(\/|\?|$)/.test(path)),'no administrator page').toEqual([]);
   // The payroll pages guard with requireAdmin (scopedAdmin): a payroll partner is not sent there.
-  expect(asPayroll).not.toContain('/payroll');expect(asPayroll).not.toContain('/payroll/reports');
-  expect(asAdmin).toEqual(expect.arrayContaining(['/payroll','/payroll/reports','/admin/organization','/control-tower/readiness','/admin/security-center']));
+  expect(asPayroll).not.toContain('/payroll');expect(asPayroll).not.toContain('/payroll/statutory-forms/filing-history');
+  expect(asAdmin).toEqual(expect.arrayContaining(['/payroll','/payroll/statutory-forms/filing-history','/admin/organization','/control-tower/readiness','/admin/security-center']));
   // Creating logins is a group administrator's (requireGroupAdministration); access configuration is never assumed.
   expect(asAdmin).not.toContain('/admin/users/create');expect(asGroup).toContain('/admin/users/create');
   for(const list of [asAdmin,asGroup])expect(list).not.toContain('/admin/users/access');
