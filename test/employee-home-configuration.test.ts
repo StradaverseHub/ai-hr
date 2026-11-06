@@ -1,7 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import * as database from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -45,6 +46,25 @@ describe('validated deterministic Home configuration',()=>{
  });
 });
 describe('scoped immutable company/role Home versions',()=>{
+ it('reads the same authorized presentation snapshot while an Access edit owns its lock',async()=>{
+  const employee=await worker(),foreign=await worker();
+  const expected=await readOwnEmployeeHomeConfiguration(employee.ctx,employee.employmentId);
+  const actual=database.withTenant;
+  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(ctx:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof actual>[2])=>actual(ctx,async tx=>{
+   await tx.execute(sql`set local lock_timeout='300ms'`);
+   return read(tx);
+  },options));
+  try{
+   await owner.client.begin(async holder=>{
+    await holder`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+    await expect(readOwnEmployeeHomeConfiguration(employee.ctx,employee.employmentId)).resolves.toEqual(expected);
+    await expect(readOwnEmployeeHomeConfiguration(employee.ctx,foreign.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
+   });
+   await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,employee.ctx.userId!));
+   await expect(readOwnEmployeeHomeConfiguration(employee.ctx,employee.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
+  }finally{spy.mockRestore();}
+ });
+
  it('reuses only the exact request principal and selected subject proof',async()=>{
   const employee=await worker(),other=await worker();
   const read=new OwnHomeConfigurationRead(employee.ctx,employee.employmentId);

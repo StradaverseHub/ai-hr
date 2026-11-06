@@ -50,7 +50,7 @@ export function readOwnPayrollHomeMetadata(ctx:SessionContext,employmentId:strin
 }
 
 /** Earliest recorded payment date for the own Today card, without loading payslip history. */
-export function readOwnNextPayrollPaymentDate(ctx:SessionContext,employmentId:string):Promise<string|null>{
+export function readOwnNextPayrollPaymentDate(ctx:SessionContext,employmentId:string,signal?:AbortSignal):Promise<string|null>{
  return withPayrollTenant(ctx,async tx=>{
   await requireOwnPayrollSubjectTx(tx,ctx,employmentId);
   const [payment]=await tx.select({date:payrollBatch.batchDate})
@@ -59,12 +59,12 @@ export function readOwnNextPayrollPaymentDate(ctx:SessionContext,employmentId:st
     ne(payrollBatch.status,'draft'),isNull(payrollBatch.needsRecalcAt),gte(payrollBatch.batchDate,todayInKualaLumpur())))
    .orderBy(asc(payrollBatch.batchDate)).limit(1);
   return payment?.date??null;
- });
+ },{readSignal:signal});
 }
 
 /** Recorded run dates for a bounded own calendar. Actual result membership is required; a draft,
  * stale calculation or company cycle alone supplies no payday. Never selects an amount or bank fact. */
-export function readOwnPayrollCalendarPayments(ctx:SessionContext,employmentId:string,from:string,to:string){
+export function readOwnPayrollCalendarPayments(ctx:SessionContext,employmentId:string,from:string,to:string,signal?:AbortSignal){
  calendarWindowDates(from,to);
  return withPayrollTenant(ctx,async tx=>{
   await requireOwnPayrollSubjectTx(tx,ctx,employmentId);
@@ -74,5 +74,5 @@ export function readOwnPayrollCalendarPayments(ctx:SessionContext,employmentId:s
     ne(payrollBatch.status,'draft'),isNull(payrollBatch.needsRecalcAt),gte(payrollBatch.batchDate,from),lte(payrollBatch.batchDate,to)))
    .orderBy(asc(payrollBatch.batchDate));
   return rows.map(row=>row.date);
- });
+ },{readSignal:signal});
 }

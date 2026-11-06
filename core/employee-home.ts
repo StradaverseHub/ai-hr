@@ -1,7 +1,6 @@
 /** Salary-free self identity for employee Home. This is a read projection, not another personnel owner. */
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {lockAccessConfigurationReadTx} from './access-configuration-lock';
 import {isAiPrincipalCurrentTx} from './ai-principal';
 import {person} from '../db/schema';
 import {isCurrentOwnHomeEmploymentTx,isOwnProfileEditEmploymentTx,myOwnEmploymentSubjectsTx,type OwnEmploymentSubject} from './read';
@@ -107,9 +106,8 @@ export async function readEmployeeHomeIdentityContextTx(tx:Tx,ctx:SessionContext
  const [snapshot]=await tx.execute<{safe:boolean}>(sql`select current_setting('transaction_isolation')='repeatable read'
   and current_setting('transaction_read_only')='on' as safe`);
  if(snapshot?.safe!==true)throw new HomeAccessError('employmentUnavailable');
- // This barrier belongs to the composed read. Ordinary subject preflight is also used by
- // greeting commands, whose canonical native command must retain its original first lock.
- await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+ // The repeatable read snapshot admits this presentation once. Its login, role,
+ // subject and dated-company facts use the same committed view. Writers retain their barriers.
  const selection=await ownHomeSubjectSelectionTx(tx,ctx,requestedEmploymentId);
  // Flattened roles discard their company scope. For a selected employment use the canonical SQL
  // grant/subtree predicates so a manager or HR grant elsewhere cannot choose this company's policy.

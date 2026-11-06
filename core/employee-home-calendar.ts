@@ -37,7 +37,7 @@ export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:s
  signal?.throwIfAborted();
  const payrollEnabled=isModuleEnabled(ctx,'payroll');
  const [paymentDates,team]=await Promise.all([
-  payrollEnabled?readOwnPayrollCalendarPayments(ctx,subjectId,from,to):Promise.resolve([]),
+  payrollEnabled?readOwnPayrollCalendarPayments(ctx,subjectId,from,to,signal):Promise.resolve([]),
   readHomeTeamCalendar(ctx,subjectId,from,to,signal),
  ]);
  const canApply=facts.active&&facts.eligible;

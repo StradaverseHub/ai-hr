@@ -7493,6 +7493,9 @@ export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:str
     // request RLS and live decision proof below; this result never authorizes a command or is cached.
     const [candidate]=await tx.execute<{possible:boolean}>(sql`select app.may_have_attendance_task_metadata() as possible`);
     if(candidate?.possible===false)return [];
+    // The hot Home/Approvals metadata query pays substantial JIT compile time, even
+    // for an empty queue. Limit the setting to this owned read transaction.
+    await tx.execute(sql`set local jit=off`);
     // The role hint chooses a query shape only. Every fast-path company is proved by
     // the existing native administrator owner; other subjects retain the exact scalar
     // frozen-workflow/delegation reader. RLS and the final decision owner remain live.

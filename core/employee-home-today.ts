@@ -27,7 +27,7 @@ export async function readEmployeeHomeToday(ctx:SessionContext,employmentId:stri
    attendance:{clock,businessDate,dayKind,leavePresence:presence.get(subjectId)?.get(businessDate)??null,workLocations}};
  },{readOnlySnapshot:true,readSignal:signal});
  signal?.throwIfAborted();
- const paymentDate=payrollEnabled?await readOwnNextPayrollPaymentDate(ctx,subjectId):null;
+ const paymentDate=payrollEnabled?await readOwnNextPayrollPaymentDate(ctx,subjectId,signal):null;
  const clock=attendance?.clock??null;
  const serverNow=clock?.serverNow??new Date().toISOString();
  const businessDate=attendance?.businessDate??todayInKualaLumpur(new Date(serverNow));
