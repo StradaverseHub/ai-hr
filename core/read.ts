@@ -650,14 +650,17 @@ export function explainPersonnelOverview(
   ctx: SessionContext,
   input: PersonnelOverviewInput,
   headcount: Omit<EmployeeListFilters, 'companyIds'>,
+  mode: 'estimate' | 'analyze' = 'analyze',
 ) {
   return withPersonnelRead(ctx, async tx => {
     const [identity] = await tx.execute<{ role: string }>(sql`select current_user as role`);
     if (identity.role !== 'ai_hr_app') throw new Error('Personnel plan must use the application role');
     const { query } = await personnelOverviewQueryTx(tx, ctx, input, headcount);
-    // Allow a bounded plan capture even when the live reader hits its 20-second statement ceiling.
-    await tx.execute(sql`select set_config('statement_timeout', '45000', true)`);
-    const rows = await tx.execute<{ 'QUERY PLAN': unknown }>(sql`explain (analyze, buffers, format json) ${query}`);
+    // Allow a bounded analyzed capture even when the live reader hits its 20-second statement ceiling.
+    if (mode === 'analyze') await tx.execute(sql`select set_config('statement_timeout', '45000', true)`);
+    const rows = await tx.execute<{ 'QUERY PLAN': unknown }>(mode === 'analyze'
+      ? sql`explain (analyze, buffers, format json) ${query}`
+      : sql`explain (format json) ${query}`);
     return { role: identity.role, plan: rows[0]?.['QUERY PLAN'] };
   }, { sharedAccessLock: true });
 }

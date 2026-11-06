@@ -7,6 +7,8 @@ import {sql} from 'drizzle-orm';
 import {explainPersonnelOverview,personnelListPage,personnelListPageSql,readPersonnelOverview,searchWorkforceEmployeesTx,readWorkforcePickRowsTx} from '../../core/read';
 import {foldEmployeeCode,EMPLOYEE_SEARCH_RESULT_CAP} from '../../lib/employee-search';
 import {pgSqlState} from '../../lib/db-error';
+import {todayInKualaLumpur} from '../../lib/hr-date';
+import {withPersonnelRead} from '../../core/personnel-read-bounds';
 import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from '../../core/access-configuration-lock';
 import {withTenant,type SessionContext} from '../../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
@@ -25,7 +27,7 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
   expect(process.env.AIHR_FOCUSED_EVIDENCE_DIR).toBeTruthy();
   await resetDb();const b=await seedBase(),foreign=await seedBase();
   const ctx:SessionContext={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
-  const expectedFirst:string[]=[],expectedLast:string[]=[];
+  const expectedFirst:string[]=[],expectedLast:string[]=[],organisationTagSample:string[]=[];
   for(let offset=0;offset<count;offset+=5000){
    const end=offset+5000,personPrefix=randomUUID().slice(0,24),employmentPrefix=randomUUID().slice(0,24);
    report.currentFixtureBatch={from:offset+1,to:end};phase('fixture');
@@ -42,7 +44,10 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
      select ${b.tenantId}::uuid,(${employmentPrefix}||lpad(n::text,12,'0'))::uuid,${b.companyId}::uuid,
       ${b.deptA}::uuid,'full_time','2020-01-01'::date from generate_series(${offset+1}::integer,${end}::integer)n`;
    });
-   if(offset===0)for(let n=1;n<=25;n++)expectedFirst.push(employmentPrefix+String(n).padStart(12,'0'));
+   if(offset===0){
+    for(let n=1;n<=500;n++)organisationTagSample.push(employmentPrefix+String(n).padStart(12,'0'));
+    expectedFirst.push(...organisationTagSample.slice(0,25));
+   }
    if(end===count)for(let n=count-24;n<=count;n++)expectedLast.push(employmentPrefix+String(n).padStart(12,'0'));
    report.committedFixtureEmployees=end;save();
   }
@@ -66,13 +71,14 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
   }
   const overviewMeasurements:typeof measurements=[];
   const overviewPlans:{mode:string;role:string;plan:unknown}[]=[];
-  const overviewFailures:{mode:string;step:'native-read'|'explain';elapsedMs:number;errorType:string;sqlState:string|null}[]=[];
+  type OverviewStep='native-read'|'explain-estimate'|'explain-analyze'|'projection-stage';
+  const overviewFailures:{mode:string;step:OverviewStep;elapsedMs:number;errorType:string;sqlState:string|null}[]=[];
   const liveOverviewCases=[
    {mode:'initial',offset:0,expectedIds:expectedFirst},
    {mode:'selective-search',q:'PERF000050000',offset:0,expectedIds:[expectedLast.at(-1)!]},
    {mode:'deep-page',offset:count-25,expectedIds:expectedLast},
   ];
-  const recordOverviewFailure=(mode:string,step:'native-read'|'explain',began:number,error:unknown)=>{
+  const recordOverviewFailure=(mode:string,step:OverviewStep,began:number,error:unknown)=>{
    overviewFailures.push({mode,step,elapsedMs:performance.now()-began,errorType:error instanceof Error?error.name:typeof error,sqlState:pgSqlState(error)??null});
    report.liveOverviewFailures=overviewFailures;save();
   };
@@ -92,16 +98,62 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
    overviewMeasurements.push({mode,elapsedMs,total:result.employees.total,pageRows:result.employees.rows.length,targetMet:elapsedMs<1000});
    report.liveOverview=overviewMeasurements;save();
   }
+  const overviewEstimatedPlans:typeof overviewPlans=[];
+  for(const {mode,q,offset} of liveOverviewCases){
+   phase('live-overview-estimate-'+mode);
+   const began=performance.now();
+   let explained;
+   try{explained=await explainPersonnelOverview(ctx,{companyIds:[b.companyId],q,limit:25,offset},{q},'estimate');}
+   catch(error){recordOverviewFailure(mode,'explain-estimate',began,error);continue;}
+   const {role,plan}=explained;
+   expect(role).toBe('ai_hr_app');
+   expect(plan).toEqual([expect.objectContaining({Plan:expect.any(Object)})]);
+   overviewEstimatedPlans.push({mode,role,plan});report.liveOverviewEstimatedPlans=overviewEstimatedPlans;save();
+  }
+  // Time the production source and its guarded per-employee tag dependency separately. This
+  // exposes time spent inside the opaque SECURITY DEFINER function even if EXPLAIN ANALYZE times out.
+  const asOf=todayInKualaLumpur();
+  const projectionStages:{mode:string;elapsedMs:number;rows:number}[]=[];
+  const measureProjectionStage=async(mode:string,query:ReturnType<typeof sql>,expectedRows:number)=>{
+   phase('live-overview-stage-'+mode);
+   const began=performance.now();
+   let observed;
+   try{
+    observed=await withPersonnelRead(ctx,async tx=>{
+     const [identity]=await tx.execute<{role:string}>(sql`select current_user as role`);
+     expect(identity.role).toBe('ai_hr_app');
+     const [result]=await tx.execute<{rows:number}>(query);
+     return result.rows;
+    },{sharedAccessLock:true});
+   }catch(error){recordOverviewFailure(mode,'projection-stage',began,error);return;}
+   const elapsedMs=performance.now()-began;
+   expect(observed).toBe(expectedRows);
+   projectionStages.push({mode,elapsedMs,rows:observed});report.liveOverviewProjectionStages=projectionStages;save();
+  };
+  await measureProjectionStage('base-workforce-json',sql`
+   select count(*)::int as rows from app.access_workforce_list_rows() r(value)
+   where (r.value->>'companyId')::uuid=${b.companyId}::uuid
+  `,count);
+  for(const sampleSize of [25,500]){
+   const ids=sql.join(organisationTagSample.slice(0,sampleSize).map(id=>sql`${id}::uuid`),sql`, `);
+   await measureProjectionStage('dated-organisation-tags-'+sampleSize,sql`
+    select count(app.employment_organisation_tags(s.id,${asOf}::date)->>'companyId')::int as rows
+    from unnest(array[${ids}]) s(id)
+   `,sampleSize);
+  }
+  await measureProjectionStage('dated-directory-json',sql`
+   select count(*)::int as rows from app.personnel_filter_rows(${asOf}::date,array[${b.companyId}::uuid])
+  `,count);
   report.liveOverviewExplainStatementTimeoutMs=45000;
   for(const {mode,q,offset} of liveOverviewCases){
    phase('live-overview-plan-'+mode);
    const began=performance.now();
    let explained;
    try{explained=await explainPersonnelOverview(ctx,{companyIds:[b.companyId],q,limit:25,offset},{q});}
-   catch(error){recordOverviewFailure(mode,'explain',began,error);continue;}
+   catch(error){recordOverviewFailure(mode,'explain-analyze',began,error);continue;}
    const {role,plan}=explained;
    expect(role).toBe('ai_hr_app');
-   expect(plan).toEqual([expect.objectContaining({'Plan':expect.any(Object),'Execution Time':expect.any(Number)})]);
+   expect(plan).toEqual([expect.objectContaining({Plan:expect.any(Object),'Execution Time':expect.any(Number)})]);
    overviewPlans.push({mode,role,plan});report.liveOverviewPlans=overviewPlans;save();
   }
   phase('live-overview-foreign-company');
