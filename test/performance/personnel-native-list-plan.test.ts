@@ -13,6 +13,7 @@ import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from '../../cor
 import {withTenant,type SessionContext} from '../../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 import {personnelNativeAggregatePrototype} from './personnel-native-aggregate-prototype';
+import {personnelDatedTagsPrototype} from './personnel-dated-tags-prototype';
 const file='test/performance/personnel-native-list-plan.test.ts';
 const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
 const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&selected.length===1&&selected[0]===file;
@@ -144,6 +145,33 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
   await measureProjectionStage('dated-directory-json',sql`
    select count(*)::int as rows from app.personnel_filter_rows(${asOf}::date,array[${b.companyId}::uuid])
   `,count);
+  phase('live-overview-batched-dated-tags');
+  const prototype=await personnelDatedTagsPrototype();
+  try{
+   const sample=organisationTagSample.slice(0,25);
+   const parityCases=[
+    {mode:'current',date:asOf,scope:[b.companyId],ids:sample,expected:sample},
+    {mode:'historical',date:'2020-01-01',scope:[b.companyId],ids:sample,expected:sample},
+    {mode:'requested-foreign',date:asOf,scope:[b.companyId,foreign.companyId],ids:[...sample,foreignEmployment],expected:sample},
+    {mode:'foreign-only',date:asOf,scope:[foreign.companyId],ids:[foreignEmployment],expected:[]},
+   ];
+   const parity:{mode:string;baselineMs:number;candidateMs:number;rows:number}[]=[];
+   for(const {mode,date,scope,ids,expected} of parityCases){
+    const read=(variant:'baseline'|'candidate')=>withPersonnelRead(ctx,tx=>tx.execute<{role:string;value:{employmentId:string}}>(sql`
+     select current_user as role,value from ${prototype.source(variant,date,scope,ids)}
+     order by value->>'employmentId'
+    `),{sharedAccessLock:true});
+    const baselineStart=performance.now(),original=Array.from(await read('baseline')),baselineMs=performance.now()-baselineStart;
+    const candidateStart=performance.now(),candidate=Array.from(await read('candidate')),candidateMs=performance.now()-candidateStart;
+    expect(candidate).toEqual(original);
+    expect(candidate.map(row=>row.value.employmentId)).toEqual([...expected].sort());
+    expect(candidate.every(row=>row.role==='ai_hr_app')).toBe(true);
+    parity.push({mode,baselineMs,candidateMs,rows:candidate.length});report.liveOverviewDatedPrototypeParity=parity;save();
+   }
+   await measureProjectionStage('batched-dated-directory-json',sql`
+    select count(*)::int as rows from ${prototype.source('candidate',asOf,[b.companyId],null)}
+   `,count);
+  }finally{await prototype.drop();}
   report.liveOverviewExplainStatementTimeoutMs=45000;
   for(const {mode,q,offset} of liveOverviewCases){
    phase('live-overview-plan-'+mode);
