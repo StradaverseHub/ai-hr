@@ -1,20 +1,23 @@
 import {getSession} from '@/lib/session';
 import {
- HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,HOME_SHARING_STREAM,type HomeSharingFrame,
+ DEFAULT_HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,isHomeSharingCard,HOME_SHARING_STREAM,type HomeSharingFrame,
 } from '@/lib/employee-home-sharing-cohort';
-import {celebrationsResponse,sharingError,sharingHeaders,teamResponse} from '../sharing-responses';
+import {celebrationsResponse,noticesResponse,sharingError,sharingHeaders,teamResponse,timeOffResponse} from '../sharing-responses';
 
-const readers={team:teamResponse,celebrations:celebrationsResponse};
+const readers={team:teamResponse,celebrations:celebrationsResponse,notices:noticesResponse,timeOff:timeOffResponse};
 
-/** One fresh web session and two independent live sharing reads for default Home cards. */
+/** One fresh web session and independent live reads for the requested Home cards. */
 export async function GET(request:Request){
  try{
   const session=await getSession();
   const query=new URL(request.url).searchParams;
   const employmentId=query.get('employmentId');
-  if(!employmentId||[...query.keys()].length!==1){
+  const selected=query.getAll('card');
+  if(!employmentId||query.getAll('employmentId').length!==1||[...query.keys()].some(key=>key!=='employmentId'&&key!=='card')
+    || (selected.length>0&&(selected.length<2||new Set(selected).size!==selected.length||!selected.every(isHomeSharingCard)))){
    return Response.json({error:'invalid'},{status:400,headers:sharingHeaders});
   }
+  const cards=selected.length?selected.filter(isHomeSharingCard):DEFAULT_HOME_SHARING_CARDS;
   const encoder=new TextEncoder();
   let detach=()=>{};
   const body=new ReadableStream<Uint8Array>({
@@ -29,7 +32,7 @@ export async function GET(request:Request){
     detach=()=>{open=false;request.signal.removeEventListener('abort',stop);};
     if(request.signal.aborted){stop();return;}
     request.signal.addEventListener('abort',stop,{once:true});
-    const reads=HOME_SHARING_CARDS.map(async card=>{
+    const reads=cards.map(async card=>{
      let encoded:Uint8Array;
      try{
       const value=await readers[card](session,employmentId);

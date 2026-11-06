@@ -4,22 +4,24 @@ import {validateEmployeeHomeSummary} from '../../lib/employee-home-summary.ts';
 import {validateEmployeeHomeToday} from '../../lib/employee-home-today.ts';
 import {validateHomeCalendar} from '../../lib/employee-home-calendar.ts';
 import {validateHomeTeamResponse,validateHomeCelebrationResponse} from '../../lib/employee-home-sharing.ts';
-import {HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,HOME_SHARING_STREAM} from '../../lib/employee-home-sharing-cohort.ts';
+import {DEFAULT_HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,HOME_SHARING_STREAM} from '../../lib/employee-home-sharing-cohort.ts';
 import {todayInKualaLumpur} from '../../lib/hr-date.ts';
 import {calendarWindowDates} from '../../lib/calendar-window.ts';
 const sharingPath='/api/home/sharing-initial';
 const paths=new Set(['summary','today','calendar','team','celebrations','time-off','tasks','notices','greeting-message','sharing-initial'].map(name=>'/api/home/'+name));
-function sharingFrames(response,expectedStatus){
+function sharingFrames(response,expectedStatus,url){
+ const selected=url.searchParams.getAll('card');
+ const expectedCards=selected.length?selected:DEFAULT_HOME_SHARING_CARDS;
  assert.equal(String(response.headers['content-type']).split(';')[0],HOME_SHARING_STREAM);
  assert(String(response.headers['cache-control']).includes('no-store'));
  const lines=response.content.split('\n');
  assert.equal(lines.pop(),'','Home sharing stream ended mid-frame');
- assert.equal(lines.length,HOME_SHARING_CARDS.length,'Home sharing stream did not deliver both card frames');
+ assert.equal(lines.length,expectedCards.length,'Home sharing stream did not deliver all requested card frames');
  const cards=new Map();
  for(const line of lines){
   assert(Buffer.byteLength(line)+1<=HOME_SHARING_MAX_FRAME_BYTES,'Home sharing frame exceeded its wire limit');
   const frame=JSON.parse(line);
-  assert(HOME_SHARING_CARDS.includes(frame.card)&&!cards.has(frame.card),'Home sharing frame key was unexpected or repeated');
+  assert(expectedCards.includes(frame.card)&&!cards.has(frame.card),'Home sharing frame key was unexpected or repeated');
   assert.deepEqual(Object.keys(frame).sort(),expectedStatus===200?['card','status','value','version']:['card','status','version']);
   assert.equal(frame.version,1);assert.equal(frame.status,expectedStatus);
   cards.set(frame.card,frame.value);
@@ -55,11 +57,14 @@ export function createHomeHttpReplay({base,request,report}){
    const liveDate=(date,label)=>{assert(liveDays.includes(date),label+' outside live HR request dates '+liveDays.join('..'));return date;};
    const key=user.role+':'+url.pathname;
    if(url.pathname===sharingPath){
-    const cards=sharingFrames(response,200);
-    const team=cards.get('team');
-    validateHomeTeamResponse(team,user.employmentId,liveDate(team?.page?.date,'team.date'));
-    validateHomeCelebrationResponse(cards.get('celebrations'),user.employmentId);
-    for(const card of cards.keys()){
+    const cards=sharingFrames(response,200,url);
+    for(const [card,value] of cards){
+     assert.equal(value.version,1);assert.equal(value.employmentId,user.employmentId);
+     if(card==='team')validateHomeTeamResponse(value,user.employmentId,liveDate(value.page?.date,'team.date'));
+     else if(card==='celebrations')validateHomeCelebrationResponse(value,user.employmentId);
+     else if(card==='notices'){assert(Array.isArray(value.items));assert(Number.isSafeInteger(value.total)&&value.total>=value.items.length);}
+     else if(card==='timeOff'){assert(Array.isArray(value.balances));assert.equal(typeof value.canApply,'boolean');liveDate(value.asOf,'asOf');}
+     else assert.fail('Unknown Home card');
      const frameKey=user.role+':'+card;
      report.homeApiTraffic.sharingFrames[frameKey]=(report.homeApiTraffic.sharingFrames[frameKey]??0)+1;
     }
@@ -100,7 +105,7 @@ export function createHomeHttpReplay({base,request,report}){
   if(sharing){
    const url=new URL(sharing,base);url.searchParams.set('employmentId',target.employmentId);
    const response=await request(actor,url.pathname+url.search,undefined,200,false);
-   sharingFrames(response,403);
+   sharingFrames(response,403,url);
    report.boundaries.push({kind:'foreign-own-home-sharing-cohort',role:actor.role,passed:true});
   }
  }

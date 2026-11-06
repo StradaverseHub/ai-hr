@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import {useHomeInitialSharing} from './sharing-cohort';
 import Link from 'next/link';
 import {useLocale,useTranslations} from 'next-intl';
 import {IndependentHomeCard,useHomeCardRefresh} from './home-card';
@@ -9,10 +10,14 @@ import type {EmployeeHomeNotices} from '@/lib/employee-home-read-model';
 export function HomeNoticesCard({employmentId,timeZone='Asia/Kuala_Lumpur'}:{employmentId:string;timeZone?:string}){
  const t=useTranslations('employeeHome.notices'),n=useTranslations('notices'),locale=useLocale();
  const refresh=useHomeCardRefresh(30000);
- const read=React.useCallback(async(signal:AbortSignal):Promise<EmployeeHomeNotices>=>{
+ const subscribe=useHomeInitialSharing();
+ const readResponse=React.useCallback(async(signal:AbortSignal):Promise<unknown>=>{
   const response=await fetch('/api/home/notices?'+new URLSearchParams({employmentId}),{signal,cache:'no-store',credentials:'same-origin'});
   if(!response.ok)throw Error('Notice Board unavailable');
-  const value:EmployeeHomeNotices=await response.json();
+  return response.json() as Promise<unknown>;
+ },[employmentId]);
+ const parse=React.useCallback((input:unknown):EmployeeHomeNotices=>{
+  const value=input as EmployeeHomeNotices;
   const count=(n:unknown)=>typeof n==='number'&&Number.isSafeInteger(n)&&n>=0;
   const text=(value:unknown,max:number)=>typeof value==='string'&&value.length<=max;
   const date=(value:unknown)=>value===null||typeof value==='string'&&Number.isFinite(Date.parse(value));
@@ -25,10 +30,13 @@ export function HomeNoticesCard({employmentId,timeZone='Asia/Kuala_Lumpur'}:{emp
     ||![row.publishedAt,row.firstViewedAt,row.acknowledgedAt].every(date)))throw Error('Notice Board unavailable');
   return value;
  },[employmentId]);
+ const read=React.useCallback(async(signal:AbortSignal)=>parse(await readResponse(signal)),[parse,readResponse]);
+ const initialRead=React.useCallback(async(signal:AbortSignal)=>
+  subscribe?parse(await subscribe('notices',signal,()=>readResponse(signal))):read(signal),[subscribe,parse,read,readResponse]);
  const date=(instant:string)=>new Intl.DateTimeFormat(locale,{day:'numeric',month:'short',year:'numeric',timeZone}).format(new Date(instant));
  const stamp=(instant:string)=>new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone}).format(new Date(instant));
  return <IndependentHomeCard card="notices" title={n('myTitle')} labels={{loading:t('loading'),failed:t('failed'),timeout:t('timeout'),retry:t('retry'),refresh:t('refresh')}}
-  requestKey={`${employmentId}:${locale}:${timeZone}:${refresh}`} read={read}>{value=><div className="space-y-4">
+  requestKey={`${employmentId}:${locale}:${timeZone}:${refresh}`} read={read} initialRead={refresh===0?initialRead:undefined}>{value=><div className="space-y-4">
    <p role="status" className="text-sm text-muted-foreground">{n('matchingCounts',{total:value.total,unread:value.unread,required:value.acknowledgementRequired})}</p>
    {value.total===0?<p className="text-sm leading-relaxed text-muted-foreground">{n('myEmpty')}</p>:
     <ul className="divide-y divide-border">{value.items.map(item=>{

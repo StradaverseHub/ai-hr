@@ -3,7 +3,7 @@
 import * as React from 'react';
 import {useLocale} from 'next-intl';
 import {
- HOME_SHARING_MAX_FRAME_BYTES,HOME_SHARING_STREAM,type HomeSharingCard,
+ DEFAULT_HOME_SHARING_CARDS,HOME_SHARING_MAX_FRAME_BYTES,HOME_SHARING_STREAM,isHomeSharingCard,type HomeSharingCard,
 } from '@/lib/employee-home-sharing-cohort';
 
 type Subscribe=(card:HomeSharingCard,signal:AbortSignal,fallback:()=>Promise<unknown>)=>Promise<unknown>;
@@ -21,11 +21,12 @@ async function streamSharing(
  subscribers:Map<HomeSharingCard,Subscriber>,
  controller:AbortController,
 ){
+ const requested=[...subscribers.keys()];
  const seen=new Set<HomeSharingCard>();
  function deliver(line:string){
   const frame:unknown=JSON.parse(line);
   if(!frame||typeof frame!=='object'||!('card' in frame)||!('version' in frame)||!('status' in frame)||
-    frame.version!==1||(frame.card!=='team'&&frame.card!=='celebrations')||seen.has(frame.card)){
+    frame.version!==1||!isHomeSharingCard(frame.card)||!requested.includes(frame.card)||seen.has(frame.card)){
    throw unavailable();
   }
   if(frame.status===200){
@@ -43,6 +44,9 @@ async function streamSharing(
  let reader:ReadableStreamDefaultReader<Uint8Array>|undefined;
  try{
   const query=new URLSearchParams({employmentId});
+  if(requested.length!==DEFAULT_HOME_SHARING_CARDS.length||!DEFAULT_HOME_SHARING_CARDS.every(card=>requested.includes(card))){
+   for(const card of requested)query.append('card',card);
+  }
   const response=await fetch('/api/home/sharing-initial?'+query,{signal:controller.signal,cache:'no-store',credentials:'same-origin'});
   if(!response.ok||!response.body||response.headers.get('content-type')!==HOME_SHARING_STREAM)throw unavailable();
   reader=response.body.getReader();
@@ -56,7 +60,7 @@ async function streamSharing(
     break;
    }
    received+=value.byteLength;
-   if(received>2*HOME_SHARING_MAX_FRAME_BYTES)throw unavailable();
+   if(received>requested.length*HOME_SHARING_MAX_FRAME_BYTES)throw unavailable();
    buffer+=decoder.decode(value,{stream:true});
    let end=buffer.indexOf('\n');
    while(end!==-1){
@@ -90,7 +94,7 @@ function createSharingSubscription(employmentId:string):Subscribe {
      for(const subscriber of batch.values()){
       void subscriber.fallback().then(subscriber.complete,subscriber.fail);
      }
-    }else if(batch.size===2){
+    }else if(batch.size>1){
      const controller=new AbortController();
      for(const subscriber of batch.values()){
       subscriber.signal.addEventListener('abort',()=>{

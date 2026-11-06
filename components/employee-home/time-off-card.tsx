@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import {useHomeInitialSharing} from './sharing-cohort';
 import Link from 'next/link';
 import {useLocale,useTranslations} from 'next-intl';
 import {IndependentHomeCard} from './home-card';
@@ -11,20 +12,27 @@ import {formatDays} from '@/lib/day-format';
  * available value never subtracts a pending commitment a second time or creates a leave allocation. */
 export function HomeTimeOffCard({employmentId}:{employmentId:string}){
  const t=useTranslations('employeeHome.timeOff'),locale=useLocale();
- const read=React.useCallback(async(signal:AbortSignal):Promise<EmployeeHomeTimeOff>=>{
+ const subscribe=useHomeInitialSharing();
+ const readResponse=React.useCallback(async(signal:AbortSignal):Promise<unknown>=>{
   const response=await fetch('/api/home/time-off?'+new URLSearchParams({employmentId}),{signal,cache:'no-store',credentials:'same-origin'});
   if(!response.ok)throw Error('Time Off unavailable');
-  const value:EmployeeHomeTimeOff=await response.json();
+  return response.json() as Promise<unknown>;
+ },[employmentId]);
+ const parse=React.useCallback((input:unknown):EmployeeHomeTimeOff=>{
+  const value=input as EmployeeHomeTimeOff;
   const figure=(n:unknown)=>n===null||typeof n==='number'&&Number.isFinite(n);
   if(value.version!==1||value.employmentId!==employmentId||!/^\d{4}-\d{2}-\d{2}$/.test(value.asOf)||typeof value.canApply!=='boolean'
    ||!Array.isArray(value.balances)||value.balances.length>100||value.balances.some(row=>!row||typeof row.id!=='string'||!row.id||typeof row.name!=='string'||!row.name.trim()||!figure(row.available)||!figure(row.pending))
    ||new Set(value.balances.map(row=>row.id)).size!==value.balances.length
    ||value.nextApproved!==null&&(!value.nextApproved||typeof value.nextApproved.requestId!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value.nextApproved.date)||!['full_day','part_day'].includes(value.nextApproved.duration)))throw Error('Time Off unavailable');
   return value;
- },[employmentId,locale]);
+ },[employmentId]);
+ const read=React.useCallback(async(signal:AbortSignal)=>parse(await readResponse(signal)),[parse,readResponse]);
+ const initialRead=React.useCallback(async(signal:AbortSignal)=>
+  subscribe?parse(await subscribe('timeOff',signal,()=>readResponse(signal))):read(signal),[subscribe,parse,read,readResponse]);
  const fmtDate=(date:string)=>new Intl.DateTimeFormat(locale,{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(date+'T00:00:00Z'));
  return <IndependentHomeCard card="timeOff" title={t('title')} labels={{loading:t('loading'),failed:t('failed'),timeout:t('timeout'),retry:t('retry'),refresh:t('refresh')}}
-  requestKey={`${employmentId}:${locale}`} read={read}>{value=><div className="space-y-5">
+  requestKey={`${employmentId}:${locale}`} read={read} initialRead={initialRead}>{value=><div className="space-y-5">
    {value.balances.length===0?<p className="text-sm leading-relaxed text-muted-foreground">{t('empty')}</p>:
     <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">{value.balances.slice(0,4).map(row=><div key={row.id} className="min-w-0 rounded-lg border p-4">
      <dt className="break-words text-sm font-medium">{row.name}</dt>

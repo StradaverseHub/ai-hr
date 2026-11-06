@@ -1,3 +1,6 @@
+import {getLocale} from 'next-intl/server';
+import {readEmployeeHomeNotices} from '@/core/employee-home-notices';
+import {readEmployeeHomeTimeOff} from '@/core/employee-home-time-off';
 import type {SessionContext} from '@/db/client';
 import {AuthRequiredError} from '@/lib/auth-errors';
 import {HomeAccessError} from '@/core/employee-home';
@@ -19,4 +22,19 @@ export async function teamResponse(session:SessionContext,employmentId:string,in
 export async function celebrationsResponse(session:SessionContext,employmentId:string,input:Parameters<typeof readHomeCelebrationPage>[2]={}){
  const page=await readHomeCelebrationPage(session,employmentId,input);
  return validateHomeCelebrationResponse({version:1,employmentId,page},employmentId);
+}
+
+export async function noticesResponse(session:SessionContext,employmentId:string){
+ const value=await readEmployeeHomeNotices(session,employmentId);
+ return {version:value.version,employmentId:value.employmentId,total:value.total,unread:value.unread,
+   acknowledgementRequired:value.acknowledgementRequired,items:value.items.map(row=>({id:row.id,title:row.title,
+    summary:row.summary,category:row.category,pinned:row.pinned,requiresAcknowledgement:row.requiresAcknowledgement,
+    publishedAt:row.publishedAt,publishedBy:row.publishedBy,firstViewedAt:row.firstViewedAt,acknowledgedAt:row.acknowledgedAt}))};
+}
+
+export async function timeOffResponse(session:SessionContext,employmentId:string|undefined){
+ const value=await readEmployeeHomeTimeOff(session,employmentId,await getLocale());
+ return {version:value.version,employmentId:value.employmentId,asOf:value.asOf,canApply:value.canApply,
+   balances:value.balances.map(row=>({id:row.id,name:row.name,annualLeave:row.annualLeave,available:row.available,pending:row.pending})),
+   nextApproved:value.nextApproved?{requestId:value.nextApproved.requestId,date:value.nextApproved.date,duration:value.nextApproved.duration}:null};
 }
