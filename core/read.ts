@@ -713,9 +713,17 @@ export function readPersonnelOverview(
     const narrowQuery = options?.compareExact ? null : personnelNarrowOverviewQuery(
       input, { ...headcount, companyIds: input.companyIds }, choices.companies.map(company => company.id), asOf,
     );
-    const [narrow] = narrowQuery
-      ? await tx.execute<PersonnelPageResult & { pageDetailsComplete: boolean }>(narrowQuery)
-      : [];
+    let narrow: (PersonnelPageResult & { pageDetailsComplete: boolean }) | undefined;
+    if (narrowQuery) {
+      // The bounded overview's measured compile cost dominates the small page. Keep the
+      // setting local to this snapshot and restore it before the unqualified exact fallback.
+      const [jit] = await tx.execute<{ previous: string }>(sql`
+        with previous_setting as materialized (select current_setting('jit') as previous)
+        select previous, set_config('jit', 'off', true) from previous_setting
+      `);
+      [narrow] = await tx.execute<PersonnelPageResult & { pageDetailsComplete: boolean }>(narrowQuery);
+      if (!narrow?.pageDetailsComplete) await tx.execute(sql`select set_config('jit', ${jit.previous}, true)`);
+    }
     const result = narrow?.pageDetailsComplete ? narrow : (await tx.execute<PersonnelPageResult>(query))[0];
     return {
       employees: { rows: result.rows, total: result.total },
