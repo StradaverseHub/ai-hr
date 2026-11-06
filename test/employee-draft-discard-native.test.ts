@@ -211,3 +211,40 @@ describe('native draft discard transaction seam', () => {
     }
   });
 });
+
+
+it('keeps a queued draft edit out of PostgreSQL and lets it proceed after an earlier edit fails', async () => {
+  const { id } = await saveEmployeeDraft(ctx, { data: {}, currentStep: 1 });
+  const accessKey = 'access-configuration:' + b.tenantId;
+  let writes: Promise<PromiseSettledResult<{ id: string }>[]> | undefined;
+
+  try {
+    await owner.db.transaction(async tx => {
+      const [holder] = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${accessKey}, 0))`);
+      writes = Promise.allSettled([
+        saveEmployeeDraft(ctx, { id: randomUUID(), data: {}, currentStep: 2 }),
+        saveEmployeeDraft(ctx, { id, data: {}, currentStep: 3 }),
+      ]);
+      const readWaiters = async () => {
+        const [result] = await tx.execute<{ n: number }>(sql`select count(*)::int as n
+          from pg_locks l where l.locktype = 'advisory' and not l.granted
+           and ${holder.pid}::int = any(pg_blocking_pids(l.pid))`);
+        return result.n;
+      };
+      await expect.poll(readWaiters, { timeout: 5000 }).toBe(1);
+      // Recheck while the first edit stays blocked so a second pool borrower
+      // cannot pass by reaching PostgreSQL just after the first observation.
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(await readWaiters()).toBe(1);
+    });
+    const [missing, saved] = await writes!;
+    expect(missing.status).toBe('rejected');
+    expect(saved).toEqual({ status: 'fulfilled', value: { id } });
+    const state = await snapshot();
+    expect(state.drafts).toMatchObject([{ id, currentStep: 3 }]);
+    expect(state.events.filter(event => event.eventType === 'employee-draft.updated')).toHaveLength(1);
+  } finally {
+    await writes;
+  }
+}, 15000);

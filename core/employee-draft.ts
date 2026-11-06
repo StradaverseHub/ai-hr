@@ -433,6 +433,10 @@ async function draftCreationDefaultsTx(tx:Tx,ctx:SessionContext,input:EmployeeDr
  return next;
 }
 
+// The database already serializes draft writes by tenant. Queue standalone edits
+// before borrowing a connection so other application work can still use the pool.
+const pendingDraftEdits = new Map<string, Promise<unknown>>();
+
 export async function saveEmployeeDraft(
   ctx: SessionContext,
   p: { id?: string; data: EmployeeDraftData; currentStep: number },
@@ -491,7 +495,20 @@ export async function saveEmployeeDraft(
     await onboardingSyncDraftTx(ctx,tx,id,'save');
     return { id };
   };
-  return outerTx?run(outerTx):withTenant(ctx,run);
+  if (outerTx) return run(outerTx);
+  if (!p.id) return withTenant(ctx, run);
+
+  const key = ctx.tenantId.toLowerCase();
+  const preceding = pendingDraftEdits.get(key);
+  const pending = preceding
+    ? preceding.catch(() => undefined).then(() => withTenant(ctx, run))
+    : withTenant(ctx, run);
+  pendingDraftEdits.set(key, pending);
+  try {
+    return await pending;
+  } finally {
+    if (pendingDraftEdits.get(key) === pending) pendingDraftEdits.delete(key);
+  }
 }
 
 /**
