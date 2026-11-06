@@ -17,7 +17,7 @@ import {sweepLetterAutomationFromSweep} from '../core/letter-automation';
 import {readLetterAutomationSourcesTx} from '../core/letter-automation-sources';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {LetterWorkflowError,type LetterPolicy} from '../lib/letter-workflow';
-import {setupCompanyStructureFixture} from './rewards-setup-fixture';
+import {companyOrganisationRunReport,decideCompanyOrganisationRun,prepareCompanyOrganisationRun,processCompanyOrganisationRun} from '../core/company-organisation';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,reviewer:SessionContext,templateId:string,templateVersionId:string,templateRevision:number,employees:string[];
 const today=()=>todayInKualaLumpur();
@@ -40,7 +40,13 @@ describe('letter generation snapshots and complete-batch readiness',()=>{
   await owner.db.update(s.appUser).set({personId:maker.id}).where(eq(s.appUser.id,ctx.userId!));
   ctx={...ctx,personId:maker.id};
   const [businessUnit]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'LETTER-MAPPED',name:'Fictional mapped unit'}).returning();
-  await setupCompanyStructureFixture(ctx,[{companyId:b.companyId,businessUnitId:businessUnit.id}],today(),reviewer);
+  const id=await prepareCompanyOrganisationRun(ctx,{kind:'mapping',companyIds:[b.companyId],effectiveOn:today(),
+   changes:[{companyId:b.companyId,businessUnitId:businessUnit.id,parentCompanyId:null}]});
+  const {run}=await companyOrganisationRunReport(reviewer,id);
+  await decideCompanyOrganisationRun(reviewer,{id,digest:run.digest,approve:true,reason:'Independently verify the fictional company mapping'});
+  let publication=await processCompanyOrganisationRun(ctx,id);
+  if(publication.state==='staging')publication=await processCompanyOrganisationRun(ctx,id);
+  expect(publication.state).toBe('published');
   const employmentId=employees[0];
   const overlapping=await owner.db.select().from(s.assignment).where(and(eq(s.assignment.employmentId,employmentId),
    sq`${s.assignment.validFrom}<=${today()}::date and (${s.assignment.validTo} is null or ${s.assignment.validTo}>${today()}::date)`));
