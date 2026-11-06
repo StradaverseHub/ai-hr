@@ -605,6 +605,11 @@ const narrowPersonnelFilters = new Set([
   'companyIds', 'companyId', 'filterCompanyIds', 'q', 'status', 'employmentStatuses',
   'sort', 'limit', 'offset',
 ]);
+// The route parser supplies these arrays even when nothing is selected. The
+// exact Workforce predicate only applies them when they have at least one item.
+const optionalPersonnelMultiFilters = new Set([
+  'businessUnitIds', 'parentCompanyIds', 'businessGroupIds', 'jobGrades', 'positionIds', 'qualityFlags',
+]);
 
 function personnelNarrowOverviewQuery(
   input: PersonnelOverviewInput, facets: EmployeeListFilters, choiceIds: string[], asOf: string,
@@ -614,7 +619,8 @@ function personnelNarrowOverviewQuery(
       input.companyIds.length === 0 || input.companyIds.length !== choiceIds.length ||
       !input.companyIds.every(id => choiceIds.includes(id)) ||
       ![input, facets].every(filters => Object.entries(filters)
-        .every(([key, value]) => value === undefined || narrowPersonnelFilters.has(key)))) return null;
+        .every(([key, value]) => value === undefined || narrowPersonnelFilters.has(key) ||
+          (optionalPersonnelMultiFilters.has(key) && Array.isArray(value) && value.length === 0)))) return null;
 
   const columns = workforceListColumns(asOf);
   const scope = sql`array[${sql.join(input.companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`;

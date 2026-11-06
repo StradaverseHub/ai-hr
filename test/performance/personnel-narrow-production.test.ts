@@ -7,6 +7,7 @@ import {afterAll,beforeAll,expect,it} from 'vitest';
 import {hireEmployee,setEmploymentAssignment} from '../../core/org';
 import {createPersonnelPrivateSearch} from '../../core/personnel-private-search';
 import {readPersonnelOverview} from '../../core/read';
+import {headcountFilters,parsePersonnelListQuery} from '../../app/admin/personnel/list-query';
 import {withTenant} from '../../db/client';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {pgSqlState} from '../../lib/db-error';
@@ -33,7 +34,8 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
  const first=await hire('Fictional first','A-01');
  const second=await hire('Fictional second','B-02');
  await setEmploymentAssignment(ctx,{employmentId:second.employmentId,effectiveDate:'2099-01-01',departmentId:base.deptB});
- const scope={companyIds:[base.companyId],limit:25,offset:0};
+ const defaultQuery=parsePersonnelListQuery({});
+ const scope={companyIds:[base.companyId],limit:25,offset:0,...defaultQuery.filters};
  const privateSearch=await createPersonnelPrivateSearch(ctx,{text:'Fictional second',companyIds:scope.companyIds});
  const mode={hostedNarrowProbe:true} as const;
  const normalize=(data:Awaited<ReturnType<typeof readPersonnelOverview>>)=>({
@@ -54,7 +56,7 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
   expect(normalize(await readPersonnelOverview(ctx,input,{},mode))).toEqual(normalize(exact));
  }
 
- await expect(readPersonnelOverview(ctx,scope,{},mode)).rejects.toThrow();
+ await expect(readPersonnelOverview(ctx,scope,headcountFilters(defaultQuery),mode)).rejects.toThrow();
  await expect(owner.client.begin(async tx=>{
   await tx`alter table public.assignment rename constraint assignment_no_overlap to assignment_unreviewed`;
   await tx.unsafe(draftSql);
@@ -125,22 +127,22 @@ it.skipIf(!requested)('times the real Personnel overview at fifty thousand emplo
  report.assignmentConstraint = await provePersonnelSingleAssignmentConstraint();
  const base = {companyIds:[b.companyId],limit:25,offset:0};
  const cases = [
-  {name:'initial',input:base,ids:expectedFirst,total:count},
-  {name:'selective-search',input:{...base,q:'PERF000050000'},ids:expectedLast.slice(-1),total:1},
-  {name:'deep-page',input:{...base,offset:count-25},ids:expectedLast,total:count},
+  {name:'initial',input:base,query:parsePersonnelListQuery({}),ids:expectedFirst,total:count},
+  {name:'selective-search',input:base,query:parsePersonnelListQuery({q:'PERF000050000'}),ids:expectedLast.slice(-1),total:1},
+  {name:'deep-page',input:{...base,offset:count-25},query:parsePersonnelListQuery({}),ids:expectedLast,total:count},
  ];
  const results: {name:string;reader:string;ms:number;status:string;rows?:number}[] = [];
  report.results = results;
  await owner.client.unsafe(draftSql);
  try {
-  for (const {name,input,ids,total} of cases) {
+  for (const {name,input,query,ids,total} of cases) {
    let baseline: Awaited<ReturnType<typeof readPersonnelOverview>> | undefined;
    for (const reader of ['existing','narrow'] as const) {
     phase(name+'-'+reader);
     const begin = performance.now();
     let overview;
     try {
-     overview = await readPersonnelOverview(ctx,input,{},reader==='narrow'?{hostedNarrowProbe:true}:undefined);
+     overview = await readPersonnelOverview(ctx,{...input,...query.filters},headcountFilters(query),reader==='narrow'?{hostedNarrowProbe:true}:undefined);
     } catch (error) {
      if (reader!=='existing' || pgSqlState(error)!=='57014') throw error;
      results.push({name,reader,ms:performance.now()-begin,status:'statement-timeout'});
