@@ -34,6 +34,8 @@ export async function exerciseSavedReport({ page, user, fixture, db, base, phase
       await skip.waitFor({ state: 'hidden', timeout });
     }
   };
+  // Match the route's confirmation banner. The global notification can display the same text.
+  const confirmation = message => page.getByRole('main').getByText(message, { exact: true });
   const reportName = page.getByRole('textbox', { name: 'Report name', exact: true });
   const saveButton = page.getByRole('button', { name: 'Save report', exact: true });
   const link = id => page.locator('main').getByRole('link', { name: edited, exact: false })
@@ -75,7 +77,7 @@ export async function exerciseSavedReport({ page, user, fixture, db, base, phase
           page.waitForURL(url => url.pathname === '/reports' && url.searchParams.get('toast') === 'Report deleted', { timeout }),
           deleteButton.click({ timeout }),
         ]);
-        await page.getByText('Report deleted', { exact: true }).waitFor({ state: 'visible', timeout });
+        await confirmation('Report deleted').waitFor({ state: 'visible', timeout });
       } finally {
         page.off('dialog', confirm);
       }
@@ -97,7 +99,7 @@ export async function exerciseSavedReport({ page, user, fixture, db, base, phase
         page.waitForURL(url => builderPath.test(url.pathname) && url.searchParams.get('toast') === 'Report created', { timeout }),
         saveButton.click({ timeout }),
       ]);
-      await page.getByText('Report created', { exact: true }).waitFor({ state: 'visible', timeout });
+      await confirmation('Report created').waitFor({ state: 'visible', timeout });
     });
     reportId = builderPath.exec(new URL(page.url()).pathname)?.[1];
     assert(reportId);
@@ -118,7 +120,7 @@ export async function exerciseSavedReport({ page, user, fixture, db, base, phase
         page.waitForURL(url => url.pathname === '/reports/builder/' + reportId && url.searchParams.get('toast') === 'Report saved', { timeout }),
         saveButton.click({ timeout }),
       ]);
-      await page.getByText('Report saved', { exact: true }).waitFor({ state: 'visible', timeout });
+      await confirmation('Report saved').waitFor({ state: 'visible', timeout });
     });
     const [updated, unexpected] = await owned();
     assert(updated && !unexpected && updated.id === reportId && updated.name === edited);
