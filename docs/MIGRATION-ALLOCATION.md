@@ -5,6 +5,16 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Payroll reconciliation remarks — 6 November 2026 (provisional)
+
+The feedback candidate reserves `2404_payroll_reconciliation_remark`, idx `1604`,
+when `1793330001804`, SQL SHA-256
+`a0b5e3df73af733fd19ec72c1333cbdf21e9a932123be476ea86b4bfafda3974`.
+The fresh main/alpha source and exact read-only staging ledger match at 697 entries
+with installed maximum `1793330001700`. Readable peer worktree claims extend
+through 2403 / idx 1603. Recheck the integration refs, peer claims and installed
+ledger again before merging or applying. No migration has been deployed.
+
 ## Rewards whole-group grant foundation — 5 November 2026 (unapplied)
 
 Branch codex/movement-organization-feedback-20261105 provisionally reserves

@@ -7,7 +7,7 @@ import { type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { createRewardUnit, getRewardUnit, previewRewardLump, saveRewardEntry, saveRewardPolicy, setRewardPayWindowKeep, setRewardUnitLump } from '../packs/rewards/service';
+import { createRewardUnit, getRewardUnit, previewRewardLump, rewardPromotionNominations, saveRewardEntry, saveRewardPolicy, setRewardPayWindowKeep, setRewardUnitLump } from '../packs/rewards/service';
 import { rewardReviewActivity } from '../packs/rewards/activity';
 import { emptyFacts } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -55,6 +55,17 @@ describe('Rewards board items 8ad87ae8, 4e3e1af7, c28db2f0', () => {
     expect(entries).toEqual([expect.objectContaining({ unitId, subjectId: employmentId, subjectName: 'Reward Employee', eventType: 'reward-unit.recommendation-updated' })]);
     expect(entries[0]).not.toHaveProperty('payload');
     expect(await rewardReviewActivity(bu, [unitId], undefined, employmentId)).toEqual([]);
+  });
+
+  it('lists a saved promotion across reviews using the same visible person and grade as the unit', async () => {
+    const review = await view();
+    const row = review.rows[0];
+    await saveRewardEntry(admin, unitId, review.unit.revision, row.id, {
+      ...row.recommendation, promotionGrade: '13', promotionBp: 1000, reason: 'Fictional promotion case',
+    });
+    const result = await rewardPromotionNominations(admin, [b.companyId], { companyId: '', year, page: 1 });
+    expect(result.nominations).toEqual([expect.objectContaining({ id: row.id, reviewId: unitId, name: 'Reward Employee', grade: '12', proposed: '13' })]);
+    expect(await rewardPromotionNominations(admin, [], { companyId: '', year, page: 1 })).toMatchObject({ nominations: [] });
   });
 
   describe('8ad87ae8 pay-change exclusion', () => {

@@ -23426,6 +23426,10 @@
     }
   },
   "rewards": {
+    "promotionNominations": "晋升提名",
+    "noPromotionNominations": "这些评审没有可查看的提名。",
+    "promotionPrevious": "上一批评审",
+    "promotionNext": "下一批评审",
     "prelaunchDataCheck": "数据就绪检查",
     "dataCheckReady": "已就绪",
     "recommendationSaved": "建议已保存。",

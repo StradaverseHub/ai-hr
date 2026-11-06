@@ -23426,6 +23426,10 @@
     }
   },
   "rewards": {
+    "promotionNominations": "Đề cử thăng chức",
+    "noPromotionNominations": "Không có đề cử nào được phép xem trong các đợt đánh giá này.",
+    "promotionPrevious": "Các đợt trước",
+    "promotionNext": "Các đợt tiếp theo",
     "prelaunchDataCheck": "Kiểm tra dữ liệu",
     "dataCheckReady": "Sẵn sàng",
     "recommendationSaved": "Đã lưu đề xuất.",

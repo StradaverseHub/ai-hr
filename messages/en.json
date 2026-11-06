@@ -23426,6 +23426,10 @@
     }
   },
   "rewards": {
+    "promotionNominations": "Promotion nominations",
+    "noPromotionNominations": "No visible nominations for these reviews.",
+    "promotionPrevious": "Previous reviews",
+    "promotionNext": "Next reviews",
     "prelaunchDataCheck": "Data readiness check",
     "dataCheckReady": "Ready",
     "recommendationSaved": "Recommendation saved.",

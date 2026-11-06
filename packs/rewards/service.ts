@@ -1785,3 +1785,48 @@ export async function withRewardReviewExtension<T>(ctx:SessionContext,unitId:str
 export function readOnlyRewardProjection(ctx:SessionContext,unitId:string){return withRewardsTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return reviewProjectionTx(tx,ctx,unitId);});}
 
 export async function rewardAnalyticsProjection(ctx:SessionContext,id:string){return withRewardsTenant(ctx,tx=>reviewProjectionTx(tx,ctx,id,'analytics.view'));}
+
+/** Cross-unit nominations reuse the unit review's native row and senior confidentiality rules. */
+export async function rewardPromotionNominations(ctx: SessionContext, companyIds: string[], filters: {
+  companyId: string; year?: number; page: number;
+}) {
+  const year = filters.year ?? Number(todayInKualaLumpur().slice(0, 4));
+  const perPage = 8;
+  if (!companyIds.length) return { year, page: 1, maxPage: 1, companies: [], nominations: [] };
+  return withRewardsTenant(ctx, async tx => {
+    const companies = await tx.selectDistinct({ id: company.id, name: company.legalName })
+      .from(company).innerJoin(rewardUnit, eq(rewardUnit.companyId, company.id))
+      .where(and(inArray(company.id, companyIds), eq(rewardUnit.tenantId, ctx.tenantId), isNull(rewardUnit.deletedAt),
+        sql`app.reward_capability(${rewardUnit.id},'review.view') and exists(select 1 from app.reward_roles(${rewardUnit.id}))`))
+      .orderBy(asc(company.legalName), asc(company.id));
+    const ids = companies.map(c => c.id);
+    if (!ids.length) return { year, page: 1, maxPage: 1, companies, nominations: [] };
+    const where = and(inArray(rewardUnit.companyId, ids), eq(rewardUnit.tenantId, ctx.tenantId), isNull(rewardUnit.deletedAt),
+      eq(rewardUnit.kind, 'annual'), eq(rewardCycle.year, year),
+      filters.companyId ? eq(rewardUnit.companyId, filters.companyId) : undefined,
+      sql`app.reward_capability(${rewardUnit.id},'review.view') and exists(select 1 from app.reward_roles(${rewardUnit.id}))`);
+    const [count] = await tx.select({ n: sql<number>`count(*)::int` }).from(rewardUnit)
+      .innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).where(where);
+    const maxPage = Math.max(1, Math.ceil((count?.n ?? 0) / perPage));
+    const page = Math.max(1, Math.min(maxPage, filters.page));
+    const units = await tx.select({ id: rewardUnit.id, cycle: rewardCycle.name }).from(rewardUnit)
+      .innerJoin(rewardCycle, eq(rewardCycle.id, rewardUnit.cycleId)).where(where)
+      .orderBy(asc(rewardCycle.name), asc(rewardUnit.companyId), asc(rewardUnit.businessUnitId), asc(rewardUnit.id))
+      .limit(perPage).offset((page - 1) * perPage);
+    const nominations: { id: string; reviewId: string; company: string; unit: string; cycle: string; name: string; grade: string; proposed: string }[] = [];
+    for (const unit of units) {
+      try {
+        const review = await reviewProjectionTx(tx, ctx, unit.id);
+        for (const row of review.rows) {
+          const proposed = row.recommendation.promotionGrade;
+          if (proposed) nominations.push({ id: row.id, reviewId: unit.id, company: review.companyName,
+            unit: review.name, cycle: unit.cycle, name: row.source.name, grade: row.source.grade, proposed });
+        }
+      } catch (error) {
+        // A seat can be unavailable until uploads or senior selection are independently checked.
+        if (!(error instanceof RewardError)) throw error;
+      }
+    }
+    return { year, page, maxPage, companies, nominations };
+  });
+}

@@ -23426,6 +23426,10 @@
     }
   },
   "rewards": {
+    "promotionNominations": "பதவி உயர்வுப் பரிந்துரைகள்",
+    "noPromotionNominations": "இந்த மதிப்பாய்வுகளுக்குக் காணக்கூடிய பரிந்துரைகள் இல்லை.",
+    "promotionPrevious": "முந்தைய மதிப்பாய்வுகள்",
+    "promotionNext": "அடுத்த மதிப்பாய்வுகள்",
     "prelaunchDataCheck": "தரவுத் தயார்நிலைச் சரிபார்ப்பு",
     "dataCheckReady": "தயார்",
     "recommendationSaved": "பரிந்துரை சேமிக்கப்பட்டது.",

@@ -162,6 +162,7 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  '/admin/rewards/setup-access',
  '/admin/rewards/uploaded',
  '/rewards/analytics',
+ '/rewards/promotions',
  '/rewards/rules',
 ]);
 export function classifyPage(route:string,source:string):Readonly<{audience:DestinationAudience;module:string|null}>|null{

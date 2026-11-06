@@ -23426,6 +23426,10 @@
     }
   },
   "rewards": {
+    "promotionNominations": "การเสนอชื่อเพื่อเลื่อนตำแหน่ง",
+    "noPromotionNominations": "ไม่มีการเสนอชื่อที่ดูได้สำหรับรอบประเมินเหล่านี้",
+    "promotionPrevious": "รอบประเมินก่อนหน้า",
+    "promotionNext": "รอบประเมินถัดไป",
     "prelaunchDataCheck": "ตรวจสอบความพร้อมของข้อมูล",
     "dataCheckReady": "พร้อม",
     "recommendationSaved": "บันทึกข้อเสนอแนะแล้ว",

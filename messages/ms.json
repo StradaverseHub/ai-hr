@@ -23426,6 +23426,10 @@
     }
   },
   "rewards": {
+    "promotionNominations": "Pencalonan kenaikan pangkat",
+    "noPromotionNominations": "Tiada pencalonan yang boleh dilihat untuk semakan ini.",
+    "promotionPrevious": "Semakan sebelumnya",
+    "promotionNext": "Semakan seterusnya",
     "prelaunchDataCheck": "Semakan kesediaan data",
     "dataCheckReady": "Sedia",
     "recommendationSaved": "Cadangan disimpan.",
