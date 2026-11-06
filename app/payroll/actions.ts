@@ -61,7 +61,7 @@ import { ModuleNotEnabledError, SettingNotEnabledError } from '@/core/entitlemen
 import '@/packs/claims/payroll';
 import { payrollInputContributorById } from '@/packs/contracts';
 import { prefillLoansForBatch } from '@/core/loans';
-import { transferAllowancesToBatch } from '@/core/attendance-allowance';
+import { transferAllowancesToBatch } from '@/packs/attendance/service';
 // 7076f8af — the draft-adjustment panel is no longer a fixture of the run screen (it is rendered on the
 // Payroll Process wizard's Review step and on a screen under Transactions), so the eight actions it drives
 // return to the screen they were pressed on. The destination is whitelisted, never echoed raw. See

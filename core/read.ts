@@ -611,7 +611,7 @@ type PersonnelOverviewInput = PersonnelListInput & { companyIds: string[] };
 
 const narrowPersonnelFilters = new Set([
   'companyIds', 'companyId', 'filterCompanyIds', 'q', 'status', 'employmentStatuses',
-  'sort', 'limit', 'offset',
+  'sort', 'limit', 'offset', 'privateSearch',
 ]);
 // The route parser supplies these arrays even when nothing is selected. The
 // exact Workforce predicate only applies them when they have at least one item.

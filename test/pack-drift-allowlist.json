@@ -51,14 +51,10 @@
     "core/employment-review.ts"
   ],
   "claims": [
-    "app/approvals/actions.ts",
     "core/report-registry.ts"
   ],
   "lifecycle": [],
   "attendance": [
-    "app/approvals/actions.ts",
-    "app/approvals/page.tsx",
-    "app/payroll/actions.ts",
     "core/leave.ts",
     "core/read.ts",
     "core/reporting.ts",

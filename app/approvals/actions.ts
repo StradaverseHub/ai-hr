@@ -17,9 +17,9 @@ import { decideLeave, decideLeaveDate, decideLeaveDates, decideLeaveCancellation
 import { parseBulkItems, runBulkDecide, type BulkDecideItem } from '@/lib/approvals-bulk';
 import { approvalsReturnUrl } from '@/lib/approvals-categories';
 import { localizeLeaveError } from '@/app/me/actions';
-import { decideAttendanceCorrection, MissingAttendanceRejectReasonError } from '@/core/attendance';
+import { decideAttendanceCorrection, MissingAttendanceRejectReasonError } from '@/packs/attendance/service';
 import { decideProfileChange } from '@/core/profile';
-import { ClaimError, decideClaim } from '@/core/claims';
+import { ClaimError, decideClaim } from '@/packs/claims/service';
 import { decideResignation } from '@/core/offboarding';
 import {
   decideReview,

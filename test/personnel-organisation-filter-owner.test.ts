@@ -16,7 +16,16 @@ import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,typ
 let b:Base,ctx:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();ctx=adminCtx(b);});
 const hire=(name:string,extra:Partial<Parameters<typeof hireEmployee>[1]>={})=>hireEmployee(ctx,{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01',...extra});
-const list=(filters:Partial<Parameters<typeof listEmployeesPage>[1]>={})=>listEmployeesPage(ctx,{companyIds:[b.companyId],limit:100,offset:0,...filters},'workforce');
+const list=async(filters:Partial<Parameters<typeof listEmployeesPage>[1]>={})=>{
+ const input={companyIds:[b.companyId],limit:100,offset:0,...filters};
+ const exact=await listEmployeesPage(ctx,input,'workforce');
+ if(input.privateSearch&&input.companyIds){
+  const overview=await readPersonnelOverview(ctx,{...input,companyIds:input.companyIds},filters);
+  expect(overview.employees).toEqual(exact);
+  expect(overview.headcount.total).toBe(exact.total);
+ }
+ return exact;
+};
 async function identity(personId:string,icNumber:string){await owner.db.insert(s.employeeStatutoryMy).values({tenantId:b.tenantId,personId,icNumber}).onConflictDoUpdate({target:s.employeeStatutoryMy.personId,set:{icNumber}});}
 it('searches permitted identity only through private results; page/count/export-size read agree and no identity enters row JSON',async()=>{
  const employee=await hire('Fictional Identity Owner',{employeeCode:'FILTER-1'});await identity(employee.personId,'900101-01-4321');

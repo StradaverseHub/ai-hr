@@ -45,7 +45,6 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
    .map(row=>JSON.stringify(row)).sort()},
  });
  const fallbackCases=[
-  {name:'private search',input:{...scope,privateSearch},expected:[second.employmentId]},
   {name:'quality',input:{...scope,qualityFlags:['missing_business_unit' as const]},expected:[first.employmentId,second.employmentId]},
   {name:'foreign requested scope',input:{...scope,companyIds:[base.companyId,foreign.companyId]},expected:[first.employmentId,second.employmentId]},
   {name:'unbounded page',input:{...scope,limit:2000},expected:[first.employmentId,second.employmentId]},
@@ -77,6 +76,7 @@ it.skipIf(!requested)('preserves the real overview rows, facets, scope, dated as
  try{
   const cases=[
    {name:'first page',input:scope,expected:[first.employmentId,second.employmentId],total:2},
+   {name:'private search with independent facets',input:{...scope,privateSearch},expected:[second.employmentId],total:1},
    {name:'literal wildcard and independent facets',input:{...scope,q:'B-02',sort:'company' as const},expected:[second.employmentId],total:1},
    {name:'second page',input:{...scope,limit:1,offset:1},expected:[second.employmentId],total:2},
    {name:'empty page',input:{...scope,offset:10},expected:[],total:2},

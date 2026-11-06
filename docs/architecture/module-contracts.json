@@ -1,0 +1,12 @@
+{
+  "formatVersion": 1,
+  "modules": {
+    "attendance": {"facade":"packs/attendance/service","boundaryProof":"test/attendance-pack-drift.test.ts","behaviorProofs":["test/attendance-workflow-v4-owner.test.ts","test/attendance-allowance.test.ts","test/attendance-mobile-kernel-seams.test.ts"]},
+    "claims": {"facade":"packs/claims/service","boundaryProof":"test/claims-pack-drift.test.ts","behaviorProofs":["test/claims-pack.test.ts","test/payroll-claims-scope.test.ts","test/claims-mobile-kernel-seams.test.ts"]},
+    "leave": {"facade":"packs/leave/service","boundaryProof":"test/leave-pack-drift.test.ts","behaviorProofs":["test/leave-pack.test.ts","test/leave-mobile-kernel-seams.test.ts"]},
+    "payroll": {"facade":"packs/payroll/service","boundaryProof":"test/payroll-pack-drift.test.ts","behaviorProofs":["test/payroll-pack.test.ts","test/payroll-claims-scope.test.ts"]},
+    "performance": {"facade":"packs/performance/service","boundaryProof":"test/performance-pack-drift.test.ts","behaviorProofs":["test/performance-pack.test.ts"]},
+    "rewards": {"facade":"packs/rewards/service","boundaryProof":"test/rewards-pack-drift.test.ts","behaviorProofs":["test/rewards-setup-owner.test.ts"]},
+    "lifecycle": {"facade":"packs/lifecycle/service","boundaryProof":"test/lifecycle-pack-drift.test.ts","behaviorProofs":["test/lifecycle-v9-delivery-wire-db.test.ts"]}
+  }
+}

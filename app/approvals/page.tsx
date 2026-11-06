@@ -20,7 +20,7 @@ import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreak
 // cross-module substrate awaiting an approvals contract, ADR-0080 open decision 6) — this widens no
 // allowlist and copies no new pattern.
 import { AttendanceWorkflowProgress } from '@/components/attendance-workflow-progress';
-import { dayTypesForPairs, listAttendanceCorrections, type PlanOtDayType } from '@/core/attendance';
+import { dayTypesForPairs, listAttendanceCorrections, type PlanOtDayType } from '@/packs/attendance/service';
 // r261 stage three — the tenant's answer to "who approves a profile change?" (ess.profile_change_approver),
 // read the quiet page way and resolved by the one shared interpretation.
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
