@@ -5,6 +5,7 @@ import {getTranslations} from 'next-intl/server';
 import {scopedAdmin} from '@/lib/scope';
 import {getCustomReport,runPayrollComparisonReport,recordPayrollComparisonRun} from '@/core/custom-reports';
 import {payrollComparisonOptions} from '@/core/report-payroll-comparison';
+import {EMPLOYMENT_STATUSES} from '@/core/employment-status';
 import {MasterReportAccessError} from '@/core/employee-master-access';
 import {PageHeader,Card,ErrorBanner} from '@/components/ui';
 import {payrollComparisonColumns,payrollComparisonCell} from '@/lib/payroll-comparison-presentation';
@@ -28,7 +29,7 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
   let run:Awaited<ReturnType<typeof runPayrollComparisonReport>>;
   try{run=await runPayrollComparisonReport(s,scopeIds,{id,filters:raw});await recordPayrollComparisonRun(s,run,builtIn?'preview':'run');}
   catch(error){if(error instanceof MasterReportAccessError)notFound();return <div className="space-y-4"><PageHeader title={t('title')} back={{href:'/reports?cat=payroll',label:t('back')}}/><ErrorBanner message={publicErrorMessage(error)}/><Link href={'/reports/payroll-comparison/'+id}>{t('reset')}</Link></div>;}
-  const people=await getTranslations('people.detail.employmentInfo');
+  const [people,status]=await Promise.all([getTranslations('people.detail.employmentInfo'),getTranslations('people.employeeStatus')]);
   const {result,filters}=run,columns=payrollComparisonColumns(run.definition);
   const query=(changes:Record<string,string|number|null>={})=>{
     const values={...filters,...(builtIn?{payItemCode:run.definition.payItemCode}:{}),onlyVariances:filters.onlyVariances?'1':'0',...changes},search=new URLSearchParams();
@@ -55,14 +56,21 @@ export default async function PayrollComparisonPage({params,searchParams}:{param
       </select></label>}
       <label className="text-sm font-medium">{t('runs')}<select className={input} name="runType" defaultValue={filters.runType}><option value="regular">{t('regular')}</option><option value="all">{t('allRuns')}</option></select></label>
       <label className="text-sm font-medium">{t('payCycles')}
-        <select className={input} name="cycleIds" multiple size={Math.min(4, Math.max(2, options.cycles.length))} defaultValue={filters.cycleIds ?? []}>
+        <input type="hidden" name="cycleIds" value=""/><select className={input} name="cycleIds" multiple size={Math.min(4, Math.max(2, options.cycles.length))} defaultValue={filters.cycleIds ?? []}>
           {options.cycles.map(cycle => <option key={cycle.id} value={cycle.id}>{cycle.name} · {options.companies.find(company => company.id === cycle.companyId)?.name}</option>)}
         </select>
+      </label>
+      <label className="text-sm font-medium">{t('previousPayCycles')}
+        <input type="hidden" name="previousCycleIds" value=""/><select className={input} name="previousCycleIds" multiple size={Math.min(4, Math.max(2, options.cycles.length))} defaultValue={filters.previousCycleIds ?? []}>
+          {options.cycles.map(cycle => <option key={cycle.id} value={cycle.id}>{cycle.name} · {options.companies.find(company => company.id === cycle.companyId)?.name}</option>)}
+        </select>
+        <span className="mt-1 block text-xs text-muted-foreground">{t('previousPayCyclesHelp')}</span>
       </label>
       <label className="text-sm font-medium">{t('department')}<select className={input} name="departmentId" defaultValue={filters.departmentId??''}><option value="">{t('allDepartments')}</option>{options.departments.map(department=><option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
       <label className="text-sm font-medium">{t('businessUnit')}<select className={input} name="businessUnitId" defaultValue={filters.businessUnitId??''}><option value="">{t('noGrouping')}</option>{options.businessUnits.map(unit=><option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label>
       <label className="text-sm font-medium">{t('position')}<select className={input} name="positionId" defaultValue={filters.positionId??''}><option value="">{t('noGrouping')}</option>{options.positions.map(position=><option key={position.id} value={position.id}>{position.name}</option>)}</select></label>
       <label className="text-sm font-medium">{t('employmentType')}<select className={input} name="employmentType" defaultValue={filters.employmentType??''}><option value="">{t('noGrouping')}</option>{PAYROLL_COMPARISON_EMPLOYMENT_TYPES.map(type=><option key={type} value={type}>{people(`employmentType_${type}`)}</option>)}</select></label>
+      <label className="text-sm font-medium">{t('employmentStatus')}<select className={input} name="employmentStatus" defaultValue={filters.employmentStatus??''}><option value="">{t('noGrouping')}</option>{EMPLOYMENT_STATUSES.map(value=><option key={value} value={value}>{status(value)}</option>)}</select></label>
       {filters.employmentId&&<input type="hidden" name="employmentId" value={filters.employmentId}/>}
       <label className="text-sm font-medium">{t('employeeSearch')}<input className={input} type="search" name="employeeSearch" maxLength={100} defaultValue={filters.employeeSearch??''}/></label>
       <label className="text-sm font-medium">{t('groupBy')}<select className={input} name="groupBy" defaultValue={filters.groupBy??''}><option value="">{t('noGrouping')}</option>{PAYROLL_COMPARISON_GROUPS.map(group=><option key={group} value={group}>{group==='businessUnit'?t('businessUnit'):t(`columns.${group}`)}</option>)}</select></label>

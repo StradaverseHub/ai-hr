@@ -10,7 +10,7 @@ import type { ComparisonRow } from '../lib/payroll-comparison-result';
 
 function scopeDigest(run: PayrollComparisonExecution, row: ComparisonRow) {
   return createHash('sha256').update(JSON.stringify([row.payItemCode??run.definition.payItemCode,
-    run.filters.runType, [...(run.filters.cycleIds ?? [])].sort(), row.currency])).digest('hex');
+    run.filters.runType, [...(run.filters.cycleIds ?? [])].sort(), row.currency, ...(run.filters.previousCycleIds?.length?[[...run.filters.previousCycleIds].sort()]:[])])).digest('hex');
 }
 
 function keys(run: PayrollComparisonExecution, row: ComparisonRow) {

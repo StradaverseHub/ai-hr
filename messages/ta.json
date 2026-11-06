@@ -31295,6 +31295,9 @@
     }
   },
   "payrollComparison": {
+    "employmentStatus": "கால முடிவிலான வேலை நிலை",
+    "previousPayCycles": "ஒப்பீட்டுக் கால ஊதியச் சுழற்சிகள்",
+    "previousPayCyclesHelp": "அதே சுழற்சிகளைப் பயன்படுத்த காலியாக விடவும்.",
     "sourceVersionHistory": "முந்தைய மூலப் பதிப்புகள்",
     "newComparison": "புதிய ஒப்பீடு",
     "allRecordedItems": "பதிவான அனைத்து ஊதிய உருப்படிகள்",

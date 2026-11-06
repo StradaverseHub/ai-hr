@@ -5,10 +5,11 @@ import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import { withTenant, type SessionContext } from '../db/client';
-import { PayrollReconciliationRemarkConflict, savePayrollReconciliationRemark } from '../core/payroll-reconciliation-remarks';
+import { PayrollReconciliationRemarkConflict, savePayrollReconciliationRemark } from '../core/report-payroll-reconciliation-remarks';
 import * as s from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
+import { listPayrollCycles, setPayrollCycleActive, upsertPayrollCycle } from '../core/payroll-cycle';
 import { createMovementEvent } from '../core/movement';
 import {
   getCustomReport, recordPayrollComparisonRun, runPayrollComparisonReport,
@@ -39,7 +40,7 @@ beforeEach(async () => {
   previousPeriod = previousPayrollComparisonPeriod(currentPeriod);
 });
 
-async function fixture(options: { typed?: boolean; allowance?: number } = {}) {
+async function fixture(options: { typed?: boolean; allowance?: number; distinctCycles?: boolean } = {}) {
   const employee = await hireEmployee(ctx, {
     person: { fullName: 'Fictional Paid Result', primaryEmail: randomUUID() + '@fixture.test' },
     companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time',
@@ -53,14 +54,23 @@ async function fixture(options: { typed?: boolean; allowance?: number } = {}) {
     await setModule(b.tenantId, 'typed_pay_components', 'active');
     ctx = { ...await entitledCtx(b), grants: [{ role: 'hr_admin', companyId: null }] };
   }
-  const previous = await createBatch(ctx, { companyId: b.companyId, payPeriod: previousPeriod });
+  const previousCycleId = options.distinctCycles
+    ? ((await listPayrollCycles(ctx, b.companyId, {activeOnly:true})).find(cycle => cycle.runType==='regular')?.id ??
+      (await upsertPayrollCycle(ctx,{companyId:b.companyId,runType:'regular',name:'Fictional original regular cycle'})).id) : undefined;
+  const previous = await createBatch(ctx, { companyId: b.companyId, payPeriod: previousPeriod, payrollCycleId: previousCycleId });
   await generatePayslips(ctx, { batchId: previous.batchId });
-  const current = await createBatch(ctx, { companyId: b.companyId, payPeriod: currentPeriod });
+  let currentCycleId: string | undefined;
+  if(previousCycleId){
+    await closeBatch(ctx, { batchId: previous.batchId });
+    await setPayrollCycleActive(ctx, {id:previousCycleId,active:false});
+    currentCycleId=(await upsertPayrollCycle(ctx,{companyId:b.companyId,runType:'regular',name:'Fictional new regular cycle'})).id;
+  }
+  const current = await createBatch(ctx, { companyId: b.companyId, payPeriod: currentPeriod, payrollCycleId: currentCycleId });
   const report = await saveCustomReport(ctx, {
     name: 'Fictional Basic comparison', datasetId: 'payroll_period_comparison',
     spec: payrollComparisonSpec(), companyIds: [b.companyId],
   });
-  return { employee, previous, current, report };
+  return { employee, previous, current, report, previousCycleId, currentCycleId };
 }
 function run(id: string, verb: 'view' | 'export' = 'view', actor = ctx) {
   return runPayrollComparisonReport(actor, [b.companyId], {
@@ -90,6 +100,18 @@ describe('Payroll comparison consumes generated paid results under the saved rep
     const builtIn = await runPayrollComparisonReport(ctx, [b.companyId], { id: 'reconciliation', filters: { currentPeriod, previousPeriod } });
     expect(builtIn.result.available).toBe(true);
   });
+  it('compares periods on different named cycles and filters the native period-end employment status', async () => {
+    const f = await fixture({ distinctCycles: true });
+    await generatePayslips(ctx, { batchId: f.current.batchId });
+    const filters = { currentPeriod, previousPeriod, cycleIds: [f.currentCycleId!],
+      previousCycleIds: [f.previousCycleId!], onlyVariances: '0', employmentStatus:'active' };
+    const result = await runPayrollComparisonReport(ctx, [b.companyId], {id:'reconciliation', filters});
+    expect(result.result.runs.map(run=>run.id).sort()).toEqual([f.previous.batchId,f.current.batchId].sort());
+    expect(result.result.rows).toEqual([expect.objectContaining({employmentId:f.employee.employmentId,employmentStatus:'active'})]);
+    const sameCycle = await runPayrollComparisonReport(ctx, [b.companyId], {id:'reconciliation',filters:{...filters,previousCycleIds:[]}});
+    expect(sameCycle.result.available).toBe(false);
+  });
+
   it('keeps private HR remarks with the same comparison, refusing stale writes and revoked access', async () => {
     const f = await fixture();
     await closeBatch(ctx, { batchId: f.previous.batchId });

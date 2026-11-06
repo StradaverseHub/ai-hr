@@ -31295,6 +31295,9 @@
     }
   },
   "payrollComparison": {
+    "employmentStatus": "期末雇佣状态",
+    "previousPayCycles": "比较期间的发薪周期",
+    "previousPayCyclesHelp": "留空则沿用当前薪资期间的周期。",
     "sourceVersionHistory": "早期来源版本",
     "newComparison": "新建比较",
     "allRecordedItems": "所有已记录薪资项目",

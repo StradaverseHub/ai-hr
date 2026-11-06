@@ -31295,6 +31295,9 @@
     }
   },
   "payrollComparison": {
+    "employmentStatus": "Status pekerjaan pada akhir tempoh",
+    "previousPayCycles": "Kitaran gaji dalam tempoh perbandingan",
+    "previousPayCyclesHelp": "Biarkan kosong untuk menggunakan kitaran yang sama.",
     "sourceVersionHistory": "Versi sumber terdahulu",
     "newComparison": "Perbandingan baharu",
     "allRecordedItems": "Semua item gaji yang direkodkan",

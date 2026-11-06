@@ -31295,6 +31295,9 @@
     }
   },
   "payrollComparison": {
+    "employmentStatus": "สถานะการจ้างเมื่อสิ้นงวด",
+    "previousPayCycles": "รอบจ่ายในงวดเปรียบเทียบ",
+    "previousPayCyclesHelp": "เว้นว่างเพื่อใช้รอบจ่ายเดียวกับงวดปัจจุบัน",
     "sourceVersionHistory": "เวอร์ชันต้นทางก่อนหน้า",
     "newComparison": "การเปรียบเทียบใหม่",
     "allRecordedItems": "รายการจ่ายที่บันทึกไว้ทั้งหมด",

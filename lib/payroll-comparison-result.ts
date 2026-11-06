@@ -22,7 +22,7 @@ export type ComparisonSource = {
 };
 export type ComparisonIdentity = {
   employmentId: string; companyId: string; employeeCode: string | null; employeeName: string;
-  businessUnitId?: string | null; businessUnit?: string | null; positionId?: string | null; employmentType?: string | null;
+  businessUnitId?: string | null; businessUnit?: string | null; positionId?: string | null; employmentType?: string | null; employmentStatus?: string | null;
   departmentId: string | null; department: string | null; grade: string | null;
   company: string; costCentre: string | null; hireDate: string; exitDate: string | null;
   movements: readonly PayrollComparisonMovement[];
@@ -147,6 +147,7 @@ export function comparePayrollResults(input: {
     if (filters.businessUnitId && identity.businessUnitId !== filters.businessUnitId) continue;
     if (filters.positionId && identity.positionId !== filters.positionId) continue;
     if (filters.employmentType && identity.employmentType !== filters.employmentType) continue;
+    if (filters.employmentStatus && identity.employmentStatus !== filters.employmentStatus) continue;
     if (filters.employeeSearch) {
       const query = filters.employeeSearch.normalize('NFKC').toLocaleLowerCase();
       if (![identity.employeeName, identity.employeeCode].some(text => text?.normalize('NFKC').toLocaleLowerCase().includes(query))) continue;

@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import { attachPayrollReconciliationRemarks, builtInPayrollReconciliationSpec } from './payroll-reconciliation-remarks';
+import { attachPayrollReconciliationRemarks, builtInPayrollReconciliationSpec } from './report-payroll-reconciliation-remarks';
 import {executePayrollComparisonTx,payrollComparisonSpec} from './report-payroll-comparison';
 import {payrollComparisonAccessTx} from './report-payroll-access';
 import {MasterReportAccessError} from './employee-master-access';

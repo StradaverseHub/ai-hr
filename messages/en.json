@@ -31295,6 +31295,9 @@
     }
   },
   "payrollComparison": {
+    "employmentStatus": "Employment status at period end",
+    "previousPayCycles": "Pay cycles in the comparison period",
+    "previousPayCyclesHelp": "Leave blank to use the same cycles as the payroll period.",
     "sourceVersionHistory": "Earlier source versions",
     "newComparison": "New comparison",
     "allRecordedItems": "All recorded pay items",

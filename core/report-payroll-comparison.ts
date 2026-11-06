@@ -6,6 +6,7 @@ import { businessUnit, position, company, department, employment, jobGrade, pers
 import { payrollComparisonSourcesTx, listPayComponents } from '../packs/payroll/service';
 import { assignmentVersionsForReportTx } from './org';
 import { provenCompanyDatesTx, dayBefore } from './employment-company';
+import { employmentStatusSql } from './employment-status-sql';
 import { movementReportFactsTx } from './movement';
 import { payrollComparisonAccessTx } from './report-payroll-access';
 import { visibleLabelIdsCondition } from './system-labels';
@@ -22,7 +23,7 @@ import { comparePayrollResults, type ComparisonIdentity, type ComparisonResult }
 import { MasterReportAccessError } from './employee-master-access';
 const object=(value:unknown):Record<string,unknown>=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
 export const payrollComparisonSpec=(definition=DEFAULT_PAYROLL_COMPARISON):CustomReportSpec=>({
-  datasetId:PAYROLL_COMPARISON_DATASET,payrollComparison:definition,
+  datasetId:PAYROLL_COMPARISON_DATASET,payrollComparison:structuredClone(definition),
   columns:[...definition.columns,'previous','current','variance','reason','currency'],
 });
 export async function payrollComparisonOptions(ctx:SessionContext,scope:readonly string[]){
@@ -54,10 +55,11 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
   const scopeIds=filters.companyId?[filters.companyId]:[...scope];
   if(scopeIds.some(id=>!scope.includes(id)))throw new MasterReportAccessError();
   const ids=await payrollComparisonAccessTx(tx,ctx,spec,verb,scopeIds);
-  if (filters.cycleIds?.length) {
+  const requestedCycles=[...new Set([...(filters.cycleIds??[]),...(filters.previousCycleIds??[])])];
+  if (requestedCycles.length) {
     const cycles = await tx.select({ id: payrollCycle.id }).from(payrollCycle)
-      .where(and(inArray(payrollCycle.companyId, ids), inArray(payrollCycle.id, filters.cycleIds)));
-    if (cycles.length !== filters.cycleIds.length) throw new MasterReportAccessError();
+      .where(and(inArray(payrollCycle.companyId, ids), inArray(payrollCycle.id, requestedCycles)));
+    if (cycles.length !== requestedCycles.length) throw new MasterReportAccessError();
   }
   if(!filters.currentPeriod){
     const [latest]=await tx.select({period:payrollBatch.payPeriod}).from(payrollBatch)
@@ -69,13 +71,13 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
   }
   const previous=payPeriodBounds(filters.previousPeriod!),current=payPeriodBounds(filters.currentPeriod!);
   if(!previous||!current)throw new Error('Choose valid payroll periods.');
-  const {runs,sources}=await payrollComparisonSourcesTx(tx,ctx,{companyIds:ids,previousPeriod:filters.previousPeriod!,currentPeriod:filters.currentPeriod!,runType:filters.runType,cycleIds:filters.cycleIds,payItemCode:definition.payItemCode});
+  const {runs,sources}=await payrollComparisonSourcesTx(tx,ctx,{companyIds:ids,previousPeriod:filters.previousPeriod!,currentPeriod:filters.currentPeriod!,runType:filters.runType,cycleIds:filters.cycleIds,previousCycleIds:filters.previousCycleIds,payItemCode:definition.payItemCode});
   const employmentIds=[...new Set(sources.map(source=>source.employmentId))];
   if(employmentIds.length>10000)throw new Error('This comparison exceeds 10000 employments. Narrow the company scope.');
   const identities:ComparisonIdentity[]=[];
   let contextUnavailable=false;
   if(employmentIds.length){
-    const employees=await tx.select({id:employment.id,employeeCode:employment.employeeCode,employeeName:person.fullName,hiredOn:employment.hiredOn})
+    const employees=await tx.select({id:employment.id,employeeCode:employment.employeeCode,employeeName:person.fullName,hiredOn:employment.hiredOn,employmentStatus:employmentStatusSql(current.to)})
       .from(employment).innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.id,employmentIds)).orderBy(asc(employment.id));
     const people=new Map(employees.map(row=>[row.id,row]));
     const pairs=payrollComparisonDatedSubjects(sources,runs,filters.previousPeriod!,filters.currentPeriod!);
@@ -131,7 +133,7 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
         employeeName:employee.employeeName,company:companyNames.get(pair.companyId)??'',hireDate:employee.hiredOn,exitDate,
         businessUnitId:placement?.businessUnitId??null,
         businessUnit:placement?.businessUnitId?unitNames.get(placement.businessUnitId)??null:null,
-        positionId:placement?.positionId??null,employmentType:placement?.employmentType??null,
+        positionId:placement?.positionId??null,employmentType:placement?.employmentType??null,employmentStatus:employee.employmentStatus,
         departmentId:placement?.departmentId??null,department:placement?departmentNames.get(placement.departmentId)??null:null,
         costCentre:placement?.costCenterId?centreNames.get(placement.costCenterId)??null:null,
         grade:placement&&grade?.gradeId?gradeNames.get(grade.gradeId)??null:null,movements,verifiedTransferIds});

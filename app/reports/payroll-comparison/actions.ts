@@ -3,7 +3,7 @@ import {redirect} from 'next/navigation';
 import {revalidatePath} from 'next/cache';
 import {scopedAdmin} from '@/lib/scope';
 import {saveCustomReport,updateCustomReport,getCustomReport,ensurePayrollBasicVarianceSample} from '@/core/custom-reports';
-import {PayrollReconciliationRemarkConflict,savePayrollReconciliationRemark} from '@/core/payroll-reconciliation-remarks';
+import {PayrollReconciliationRemarkConflict,savePayrollReconciliationRemark} from '@/core/report-payroll-reconciliation-remarks';
 import {payrollComparisonSpec} from '@/core/report-payroll-comparison';
 import {DEFAULT_PAYROLL_COMPARISON,payrollComparisonFilters,validatePayrollComparisonDefinition} from '@/lib/payroll-period-comparison';
 import {publicErrorMessage} from '@/lib/public-error';
@@ -74,7 +74,7 @@ export async function saveReconciliationTemplateAction(query: string, form: Form
       runType:filters.runType,minVariance:filters.minVariance,onlyVariances:filters.onlyVariances,
       defaults:{currentPeriod:filters.currentPeriod,companyId:filters.companyId,departmentId:filters.departmentId,
         businessUnitId:filters.businessUnitId,positionId:filters.positionId,employmentId:filters.employmentId,
-        employmentType:filters.employmentType,groupBy:filters.groupBy,cycleIds:filters.cycleIds}});
+        employmentType:filters.employmentType,employmentStatus:filters.employmentStatus,groupBy:filters.groupBy,cycleIds:filters.cycleIds,previousCycleIds:filters.previousCycleIds}});
     const spec=payrollComparisonSpec(definition);
     const saved=await saveCustomReport(s,{name:name.trim(),datasetId:spec.datasetId,spec,companyIds:scopeIds});
     revalidatePath('/payroll/reconciliation');

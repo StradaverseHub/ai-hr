@@ -31295,6 +31295,9 @@
     }
   },
   "payrollComparison": {
+    "employmentStatus": "Tình trạng việc làm cuối kỳ",
+    "previousPayCycles": "Chu kỳ lương của kỳ so sánh",
+    "previousPayCyclesHelp": "Để trống để dùng cùng chu kỳ với kỳ lương hiện tại.",
     "sourceVersionHistory": "Các phiên bản nguồn trước",
     "newComparison": "So sánh mới",
     "allRecordedItems": "Tất cả khoản lương đã ghi",
