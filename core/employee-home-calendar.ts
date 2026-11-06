@@ -17,26 +17,24 @@ import {readHomeTeamCalendar} from './employee-home-sharing';
 export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:string,requestedMonth?:string,now=new Date()):Promise<EmployeeHomeCalendar>{
  if (!ctx.userId) throw new HomeAccessError('authentication');
  const subjectId = employmentId;
- const preferences = await withTenant(ctx, async tx => {
+ const {preferences,display,month,dates,from,to,facts}=await withTenant(ctx,async tx=>{
   if (!await isCurrentOwnHomeEmploymentTx(tx, ctx, subjectId)) throw new HomeAccessError('employmentUnavailable');
-  return getEmployeeHomeDisplayPreferences(ctx, tx);
- }, {readOnlySnapshot: true});
- const display=homeDisplayClock(now,preferences.timeZone??'Asia/Kuala_Lumpur');
- const month=requestedMonth??display.date.slice(0,7),dates=homeCalendarGrid(month,preferences.weekStartsOn);
- const from=dates[0],to=dates[dates.length-1];
+  const preferences=await getEmployeeHomeDisplayPreferences(ctx,tx);
+  const display=homeDisplayClock(now,preferences.timeZone??'Asia/Kuala_Lumpur');
+  const month=requestedMonth??display.date.slice(0,7),dates=homeCalendarGrid(month,preferences.weekStartsOn);
+  const from=dates[0],to=dates[dates.length-1];
+  const [leave,holidays,replacements,coverage,eligible,active]=await Promise.all([
+   leaveCalendarPresenceByEmploymentTx(tx,[subjectId],from,to),
+   originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:from,endDate:to}),
+   replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:from,endDate:to}),
+   provenCompanyDatesTx(tx,dates.map(date=>({employmentId:subjectId,date}))),
+   hasEligibleLeaveTypeForTx(tx,subjectId),
+   isOwnProfileEditEmploymentTx(tx,ctx,subjectId),
+  ]);
+  return {preferences,display,month,dates,from,to,facts:{leave,holidays,replacements,coverage,eligible,active}};
+ },{readOnlySnapshot:true});
  const payrollEnabled=isModuleEnabled(ctx,'payroll');
- const [facts,paymentDates,team]=await Promise.all([
-  withTenant(ctx,async tx=>{
-   const [leave,holidays,replacements,coverage,eligible,active]=await Promise.all([
-    leaveCalendarPresenceByEmploymentTx(tx,[subjectId],from,to),
-    originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:from,endDate:to}),
-    replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:from,endDate:to}),
-    provenCompanyDatesTx(tx,dates.map(date=>({employmentId:subjectId,date}))),
-    hasEligibleLeaveTypeForTx(tx,subjectId),
-    isOwnProfileEditEmploymentTx(tx,ctx,subjectId),
-   ]);
-   return {leave,holidays,replacements,coverage,eligible,active};
-  }),
+ const [paymentDates,team]=await Promise.all([
   payrollEnabled?readOwnPayrollCalendarPayments(ctx,subjectId,from,to):Promise.resolve([]),
   readHomeTeamCalendar(ctx,subjectId,from,to),
  ]);
