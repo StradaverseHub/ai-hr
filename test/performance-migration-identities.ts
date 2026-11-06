@@ -1,4 +1,4 @@
-/** Independently frozen unapplied performance identities; never derive expectations from the journal. */
+/** Independently frozen unapplied combined performance/correctness identities; never derive expectations from the journal. */
 export const PERFORMANCE_MIGRATION_IDENTITIES = [
  {idx:1800,version:'7',when:1793330002100,tag:'2103_system_performance_read_guards',breakpoints:true,hash:'0f9ec0dfac05dfd46db765cdc868b0dfc14637e4c6266d229dea12f3691f8111'},
  {idx:1801,version:'7',when:1793330002101,tag:'2104_contract_navigation_role_guards',breakpoints:true,hash:'6aa941d06156cd4112ed9bd5ee6974323e96dc57b000e67f4ab21776f4459fcc'},
@@ -24,4 +24,5 @@ export const PERFORMANCE_MIGRATION_IDENTITIES = [
  {idx:1821,version:'7',when:1793330002121,tag:'2304_payroll_grant_direct_scan',breakpoints:true,hash:'ef02f03fbb1f3634d8b9535ce2d98ffddac024e6f5a2f868cbb9513d8085a006'},
  {idx:1822,version:'7',when:1793330002122,tag:'2403_personnel_bounded_overview',breakpoints:true,hash:'1eac5d0a075e4505f69ac75f19e99e19f24fd189c93f82fd35b1c49f97ba228f'},
  {idx:1823,version:'7',when:1793330002123,tag:'2503_attendance_pending_visible_headers',breakpoints:true,hash:'fca8d6436f259f4955e78da75155836083f5f970d9f5640377ffb89ce7ca7718'},
+ {idx:1824,version:'7',when:1793330002124,tag:'2504_notification_event_processing',breakpoints:true,hash:'a473a533cd967d7ad2ac971e24b5141af87d25967b84b3ca491e42fa9f1d81ce'},
 ] as const;

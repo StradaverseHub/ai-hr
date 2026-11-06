@@ -1,5 +1,17 @@
 # Coordinated migration reservations
 
+## Complete notification consumption — 6 November 2026 (uninstalled candidate)
+
+`codex/architecture-correctness-20261106` reserves `2504_notification_event_processing`,
+idx 1824 / when 1793330002124 / SQL SHA-256 `a473a533cd967d7ad2ac971e24b5141af87d25967b84b3ca491e42fa9f1d81ce`.
+Freshly fetched refs and local worktrees covered 5412 refs, 467 distinct journals,
+659 migration trees and 329 readable worktrees. Observed maxima: tag 2503, idx 1823,
+when 1793330002123. One foreign invalid journal was preserved; literal claims were included.
+This preserves the candidate's existing journal prefix and appends above all observed claims.
+Recheck reservations and the installed ledger before integration; no installation or deployment
+is authorized. Cutover preserves legacy cursor history without automatically replaying it.
+
+
 ## Pending Attendance headers — 6 November 2026 (provisional source reservation)
 
 `codex/performance-staging-integration-20261105` reserves
