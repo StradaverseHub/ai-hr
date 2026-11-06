@@ -23426,6 +23426,9 @@
     }
   },
   "rewards": {
+    "compaRatio": "อัตราส่วนเงินเดือน",
+    "compaRatioBefore": "เงินเดือนเทียบจุดกึ่งกลางก่อนปรับ",
+    "compaRatioAfter": "เงินเดือนเทียบจุดกึ่งกลางหลังปรับ",
     "promotionNominations": "การเสนอชื่อเพื่อเลื่อนตำแหน่ง",
     "noPromotionNominations": "ไม่มีการเสนอชื่อที่ดูได้สำหรับรอบประเมินเหล่านี้",
     "promotionPrevious": "รอบประเมินก่อนหน้า",
@@ -31292,6 +31295,7 @@
     }
   },
   "payrollComparison": {
+    "sourceVersionHistory": "เวอร์ชันต้นทางก่อนหน้า",
     "newComparison": "การเปรียบเทียบใหม่",
     "allRecordedItems": "รายการจ่ายที่บันทึกไว้ทั้งหมด",
     "itemsUnavailable": "ไม่สามารถเปรียบเทียบรายการจ่ายบางรายการจากข้อมูลที่บันทึกไว้: {codes}",

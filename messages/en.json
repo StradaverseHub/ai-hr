@@ -23426,6 +23426,9 @@
     }
   },
   "rewards": {
+    "compaRatio": "Compa-ratio",
+    "compaRatioBefore": "Salary vs midpoint before",
+    "compaRatioAfter": "Salary vs midpoint after",
     "promotionNominations": "Promotion nominations",
     "noPromotionNominations": "No visible nominations for these reviews.",
     "promotionPrevious": "Previous reviews",
@@ -31292,6 +31295,7 @@
     }
   },
   "payrollComparison": {
+    "sourceVersionHistory": "Earlier source versions",
     "newComparison": "New comparison",
     "allRecordedItems": "All recorded pay items",
     "itemsUnavailable": "Some pay items could not be compared from the recorded payroll: {codes}",

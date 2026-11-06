@@ -23426,6 +23426,9 @@
     }
   },
   "rewards": {
+    "compaRatio": "Nisbah kompa",
+    "compaRatioBefore": "Gaji berbanding titik tengah sebelum",
+    "compaRatioAfter": "Gaji berbanding titik tengah selepas",
     "promotionNominations": "Pencalonan kenaikan pangkat",
     "noPromotionNominations": "Tiada pencalonan yang boleh dilihat untuk semakan ini.",
     "promotionPrevious": "Semakan sebelumnya",
@@ -31292,6 +31295,7 @@
     }
   },
   "payrollComparison": {
+    "sourceVersionHistory": "Versi sumber terdahulu",
     "newComparison": "Perbandingan baharu",
     "allRecordedItems": "Semua item gaji yang direkodkan",
     "itemsUnavailable": "Sesetengah item gaji tidak dapat dibandingkan daripada rekod gaji: {codes}",

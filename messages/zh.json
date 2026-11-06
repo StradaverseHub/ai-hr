@@ -23426,6 +23426,9 @@
     }
   },
   "rewards": {
+    "compaRatio": "薪资比率",
+    "compaRatioBefore": "调整前薪资相对中点",
+    "compaRatioAfter": "调整后薪资相对中点",
     "promotionNominations": "晋升提名",
     "noPromotionNominations": "这些评审没有可查看的提名。",
     "promotionPrevious": "上一批评审",
@@ -31292,6 +31295,7 @@
     }
   },
   "payrollComparison": {
+    "sourceVersionHistory": "早期来源版本",
     "newComparison": "新建比较",
     "allRecordedItems": "所有已记录薪资项目",
     "itemsUnavailable": "部分薪资项目无法根据记录进行比较：{codes}",

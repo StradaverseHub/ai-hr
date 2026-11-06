@@ -23426,6 +23426,9 @@
     }
   },
   "rewards": {
+    "compaRatio": "Tỷ lệ lương so với trung điểm",
+    "compaRatioBefore": "Lương so với trung điểm trước điều chỉnh",
+    "compaRatioAfter": "Lương so với trung điểm sau điều chỉnh",
     "promotionNominations": "Đề cử thăng chức",
     "noPromotionNominations": "Không có đề cử nào được phép xem trong các đợt đánh giá này.",
     "promotionPrevious": "Các đợt trước",
@@ -31292,6 +31295,7 @@
     }
   },
   "payrollComparison": {
+    "sourceVersionHistory": "Các phiên bản nguồn trước",
     "newComparison": "So sánh mới",
     "allRecordedItems": "Tất cả khoản lương đã ghi",
     "itemsUnavailable": "Không thể so sánh một số khoản lương từ dữ liệu đã ghi: {codes}",

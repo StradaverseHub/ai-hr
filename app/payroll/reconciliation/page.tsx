@@ -66,7 +66,11 @@ export default async function PayrollReconciliationPage({
                   <td className="p-3 tabular-nums">{row.runCount}
                     {row.cycles.length > 0 && <div className="text-xs text-muted-foreground">{row.cycles.join(' · ')}</div>}
                   </td>
-                  <td className="p-3">{row.generatedAt ? timestamp.format(new Date(row.generatedAt)) : '—'}</td>
+                  <td className="p-3">{row.generatedAt ? timestamp.format(new Date(row.generatedAt)) : '—'}
+                    {row.captures.length > 1 && <details className="mt-1 text-xs text-muted-foreground"><summary className="cursor-pointer">{t('sourceVersionHistory')}</summary>
+                      <ul>{row.captures.slice(1).map((capture,index)=><li key={capture+index}>{timestamp.format(new Date(capture))}</li>)}</ul>
+                    </details>}
+                  </td>
                   <td className="p-3">{row.requiresReprocessing ? t('needsReview') : !row.previousReady ? t('unavailable') : t('reconciliationReady')}</td>
                   <td className="p-3">{row.requiresReprocessing ? t('needsReview') : !row.previousReady ? t('notAvailable') : <Link className="text-primary underline" href={`/reports/payroll-comparison/${chosen?.id ?? 'reconciliation'}?${query}`}>{t('comparisonTable')}</Link>}</td>
                 </tr>;

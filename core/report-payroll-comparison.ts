@@ -215,6 +215,11 @@ export async function payrollReconciliationPeriods(ctx: SessionContext, scope: r
         select max(g.generated_at)::text from payroll_reconciliation_generation g
         where g.tenant_id = ${ctx.tenantId}::uuid and g.company_id = ${groups.companyId} and g.current_period = ${groups.period}
       )`,
+      captures: sql<string[]>`array(
+        select g.generated_at::text from payroll_reconciliation_generation g
+        where g.tenant_id = ${ctx.tenantId}::uuid and g.company_id = ${groups.companyId} and g.current_period = ${groups.period}
+        order by g.generated_at desc,g.id limit 8
+      )`,
       lastProcessed: sql<string | null>`max(${domainEvent.occurredAt})::text`,
       cycles: sql<string[]>`coalesce(array_agg(distinct ${payrollCycle.name} order by ${payrollCycle.name}) filter (where ${payrollCycle.name} is not null), '{}'::text[])`,
     }).from(groups).innerJoin(payrollHistoryEffectiveBatch, and(

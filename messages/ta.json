@@ -23426,6 +23426,9 @@
     }
   },
   "rewards": {
+    "compaRatio": "சம்பள ஒப்பீட்டு விகிதம்",
+    "compaRatioBefore": "மாற்றத்திற்கு முன் நடுப்புள்ளியுடன் சம்பள ஒப்பீடு",
+    "compaRatioAfter": "மாற்றத்திற்குப் பின் நடுப்புள்ளியுடன் சம்பள ஒப்பீடு",
     "promotionNominations": "பதவி உயர்வுப் பரிந்துரைகள்",
     "noPromotionNominations": "இந்த மதிப்பாய்வுகளுக்குக் காணக்கூடிய பரிந்துரைகள் இல்லை.",
     "promotionPrevious": "முந்தைய மதிப்பாய்வுகள்",
@@ -31292,6 +31295,7 @@
     }
   },
   "payrollComparison": {
+    "sourceVersionHistory": "முந்தைய மூலப் பதிப்புகள்",
     "newComparison": "புதிய ஒப்பீடு",
     "allRecordedItems": "பதிவான அனைத்து ஊதிய உருப்படிகள்",
     "itemsUnavailable": "சில ஊதிய உருப்படிகளைப் பதிவிலிருந்து ஒப்பிட முடியவில்லை: {codes}",

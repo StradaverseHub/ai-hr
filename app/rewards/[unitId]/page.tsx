@@ -29,7 +29,7 @@ import {BonusPoolWorking} from './desk/bonus-pool-working';
 import {changedRewardMatrixCells} from './desk/reference-matrix';
 import {DecisionPanel} from './desk/decision-panel';
 import { InlineRewardIncrease } from './desk/inline-increase';
-import { payWindowReasons } from '@/packs/rewards/engine';
+import { payWindowReasons, ratio } from '@/packs/rewards/engine';
 import {PersonDrawer} from './desk/person-drawer';
 import {transition} from '@/packs/rewards/model';
 
@@ -62,6 +62,11 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   // 5d34d00d Step 2: per-person flags, the open person (side panel) and the stage each decision moves to.
   const rowFlags = (id: string) => v.flags.filter(f => f.entryId === id);
   const hidden = (r: typeof v.rows[number]) => isSeniorPlanMember(unit.policy, r.facts, r.source.grade) && !v.seniorAmountsVisible;
+  // The reference compares both figures with the approved midpoint for the proposed grade (or the current grade).
+  const payPosition = (row: typeof v.rows[number], cents: number) => {
+    const midpoint = unit.policy.ranges?.[row.recommendation.promotionGrade ?? row.source.grade]?.[1];
+    return hidden(row) || !midpoint ? null : ratio(cents, 10000, midpoint, 'nearest');
+  };
   const pct = (bp: number) => `${(bp / 100).toFixed(1)}%`;
   const personHref = (id: string) => { const q = new URLSearchParams({ ...(sp.q ? { q: sp.q } : {}), ...(sp.check ? { check: sp.check } : {}), person: id }); return `/rewards/${encodeURIComponent(unitId)}?${q}`; };
   const visibleRowIds = new Set(rows.map(row => row.id));
@@ -116,7 +121,10 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     </>}
     {(annual||tab === 'review') && <>
       <section id="people" className="scroll-mt-6 space-y-3"><h2 className="text-base font-semibold">{t('people')}</h2><form className="flex max-w-lg gap-2"><input name="q" defaultValue={sp.q} aria-label={t('search')} placeholder={t('search')} className={inputCls} /><RewardSubmit type="submit" variant="secondary">{t('search')}</RewardSubmit></form>
-        <div className={tableWrapCls}><table className="w-full whitespace-nowrap text-sm"><thead className={theadCls}><tr>{['employee', 'grade', 'talent', 'performance', 'currentPay', ...(annual ? ['desk.increase'] : []), 'newPay', 'bonus', 'lumpSum', ...(annual ? ['desk.flags'] : []), 'action'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead><tbody className={tbodyCls}>{rows.map(r => <tr key={r.id}><td className="px-3 py-3"><span className="mr-2 font-mono text-xs text-muted-foreground">{r.source.employeeCode}</span>{annual ? <Link scroll={false} href={personHref(r.id)} aria-current={open?.id === r.id ? 'true' : undefined} className="font-medium text-primary hover:underline">{r.source.name}</Link> : r.source.name}{!r.facts.reviewed && <span className="ml-2 text-xs text-destructive">{t('unverified')}</span>}{r.source.leftOn && <span className="ml-2 text-xs text-muted-foreground">{t('sourceRefresh.leftMarker', { date: r.source.leftOn })}</span>}{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&<span className="ml-2 text-xs font-medium">{t('governance.seniorTag')}</span>}<PayWindowTag row={r} window={{ from: unit.policy.blockedFrom, to: unit.policy.blockedTo }} /></td><td className="px-3 py-3">{r.source.grade}{r.recommendation.promotionGrade && ` → ${r.recommendation.promotionGrade}`}</td><td className="px-3 py-3">{r.facts.talent ?? '—'}</td><td className="px-3 py-3">{r.facts.performance ?? '—'}</td><td className="px-3 py-3 text-right tabular-nums">{rm(r.source.basicCents)}</td>{annual && <td className="px-3 py-3 text-right tabular-nums">{hidden(r) ? '—' : pct(r.meritBp + r.promotionBp + r.specialBp)}{editable && !v.uploaded && !isSeniorPlanMember(unit.policy,r.facts,r.source.grade) && !(r.payChange && payWindowReasons.includes(r.incrementReason)) && <InlineRewardIncrease unitId={unitId} entryId={r.id} revision={unit.revision} values={{meritBp:r.recommendation.meritBp,promotionBp:r.recommendation.promotionBp,specialBp:r.recommendation.specialBp}}/>}</td>}<td className="px-3 py-3 text-right tabular-nums">{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible?t('governance.handledSeparately'):rm(r.newBasicCents)}</td><td className="px-3 py-3 text-right tabular-nums">{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible?t('governance.handledSeparately'):rm(r.bonusCents)}</td><td className="px-3 py-3 text-right tabular-nums">{rm(r.lumpCents)}</td>{annual && <td className="px-3 py-3"><FlagChips flags={rowFlags(r.id)} label={s => t(`severity.${s}`)} /></td>}<td className="px-3 py-3"><Link className="text-primary hover:underline" href={`/rewards/${unitId}/people/${r.id}`}>{t('reviewPerson')}</Link>{annual&&!v.uploaded&&<Link className="mt-1 block text-xs text-primary underline" href={`/rewards/${unitId}/advisor#entry-${r.id}`}>{a('title')}</Link>}</td></tr>)}</tbody></table>{!rows.length && <p className="p-6 text-sm text-muted-foreground">{t('noPeople')}</p>}</div>
+        <div className={tableWrapCls}><table className="w-full whitespace-nowrap text-sm"><thead className={theadCls}><tr>{['employee', 'grade', 'talent', 'performance', 'currentPay', ...(annual ? ['compaRatio','merit','promotion','special','desk.increase'] : []), 'newPay', 'bonus', 'lumpSum', ...(annual ? ['desk.flags'] : []), 'action'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead><tbody className={tbodyCls}>{rows.map(r => <tr key={r.id}><td className="px-3 py-3"><span className="mr-2 font-mono text-xs text-muted-foreground">{r.source.employeeCode}</span>{annual ? <Link scroll={false} href={personHref(r.id)} aria-current={open?.id === r.id ? 'true' : undefined} className="font-medium text-primary hover:underline">{r.source.name}</Link> : r.source.name}{!r.facts.reviewed && <span className="ml-2 text-xs text-destructive">{t('unverified')}</span>}{r.source.leftOn && <span className="ml-2 text-xs text-muted-foreground">{t('sourceRefresh.leftMarker', { date: r.source.leftOn })}</span>}{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&<span className="ml-2 text-xs font-medium">{t('governance.seniorTag')}</span>}<PayWindowTag row={r} window={{ from: unit.policy.blockedFrom, to: unit.policy.blockedTo }} /></td><td className="px-3 py-3">{r.source.grade}{r.recommendation.promotionGrade && ` → ${r.recommendation.promotionGrade}`}</td><td className="px-3 py-3">{r.facts.talent ?? '—'}</td><td className="px-3 py-3">{r.facts.performance ?? '—'}</td><td className="px-3 py-3 text-right tabular-nums">{rm(r.source.basicCents)}</td>{annual && <>
+          <td className="px-3 py-3 text-right tabular-nums">{payPosition(r,r.source.basicCents)===null?'—':pct(payPosition(r,r.source.basicCents)!)}</td>
+          {[r.meritBp,r.promotionBp,r.specialBp].map((bp,index)=><td key={index} className="px-3 py-3 text-right tabular-nums">{hidden(r)?'—':pct(bp)}</td>)}
+        </>}{annual && <td className="px-3 py-3 text-right tabular-nums">{hidden(r) ? '—' : pct(r.meritBp + r.promotionBp + r.specialBp)}{editable && !v.uploaded && !isSeniorPlanMember(unit.policy,r.facts,r.source.grade) && !(r.payChange && payWindowReasons.includes(r.incrementReason)) && <InlineRewardIncrease unitId={unitId} entryId={r.id} revision={unit.revision} values={{meritBp:r.recommendation.meritBp,promotionBp:r.recommendation.promotionBp,specialBp:r.recommendation.specialBp}}/>}</td>}<td className="px-3 py-3 text-right tabular-nums">{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible?t('governance.handledSeparately'):rm(r.newBasicCents)}</td><td className="px-3 py-3 text-right tabular-nums">{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible?t('governance.handledSeparately'):rm(r.bonusCents)}</td><td className="px-3 py-3 text-right tabular-nums">{rm(r.lumpCents)}</td>{annual && <td className="px-3 py-3"><FlagChips flags={rowFlags(r.id)} label={s => t(`severity.${s}`)} /></td>}<td className="px-3 py-3"><Link className="text-primary hover:underline" href={`/rewards/${unitId}/people/${r.id}`}>{t('reviewPerson')}</Link>{annual&&!v.uploaded&&<Link className="mt-1 block text-xs text-primary underline" href={`/rewards/${unitId}/advisor#entry-${r.id}`}>{a('title')}</Link>}</td></tr>)}</tbody></table>{!rows.length && <p className="p-6 text-sm text-muted-foreground">{t('noPeople')}</p>}</div>
       </section>
       {annual && nominations.length > 0 && <section id="promotions" className="scroll-mt-6 space-y-3">
         <h2 className="text-base font-semibold">{t('promotion')}</h2>
@@ -146,7 +154,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     {(annual||tab === 'rules') && <section id="rules" className="max-w-3xl space-y-4"><h2 className="font-semibold">{t('rules')}</h2>{['rulePools', 'ruleBonus', 'ruleEC', 'ruleExemption', 'ruleLump', 'rulePrivacy', 'ruleApproval', 'rulePosting'].map(k => <p key={k} className="text-sm leading-6">{t(k)}</p>)}</section>}
     </div>{annual&&<FlagsPanel personLinks={flagPersonLinks} promotionEntryIds={v.rows.filter(r=>r.recommendation.promotionGrade).map(r=>r.id)} unitId={unitId} flags={checks} filtered={!!sp.check}/>}</div>
     {open && <PersonDrawer title={open.source.name} description={`${open.source.employeeCode} · ${t('grade')} ${open.source.grade} · ${t(open.plan === 'ec' ? 'ecPlan' : open.plan)}`} prevId={rows[openIndex - 1]?.id ?? null} nextId={rows[openIndex + 1]?.id ?? null} position={{ index: openIndex + 1, total: rows.length }} editHref={`/rewards/${unitId}/people/${open.id}`}>
-      <PersonCalculation row={open} hidden={hidden(open)} flags={rowFlags(open.id)} t={t} rm={rm} pct={pct} />
+      <PersonCalculation row={open} hidden={hidden(open)} flags={rowFlags(open.id)} t={t} rm={rm} pct={pct} payPosition={[payPosition(open,open.source.basicCents),payPosition(open,open.newBasicCents)]} />
     </PersonDrawer>}
   </div>;
 }
@@ -161,17 +169,19 @@ function FlagChips({ flags, label }: { flags: Flag[]; label: (s: Flag['severity'
 }
 /** 5d34d00d Step 2 — the full calculation for one person, read only. Every figure comes from the server's
  *  calculated row (getRewardUnit); nothing is worked out here. Editing stays on the person record. */
-function PersonCalculation({ row: r, hidden, flags, t, rm, pct }: { row: Row; hidden: boolean; flags: Flag[]; t: (key: string) => string; rm: (cents: number) => string; pct: (bp: number) => string }) {
+function PersonCalculation({ row: r, hidden, flags, t, rm, pct, payPosition }: { row: Row; hidden: boolean; flags: Flag[]; t: (key: string) => string; rm: (cents: number) => string; pct: (bp: number) => string; payPosition: [number|null,number|null] }) {
   const money = (cents: number) => hidden ? t('governance.handledSeparately') : rm(cents);
   const line = (label: string, value: string, strong = false) => <div key={label} className="flex items-baseline justify-between gap-4 py-1.5"><dt className="text-muted-foreground">{label}</dt><dd className={`text-right tabular-nums ${strong ? 'font-semibold' : 'font-medium'}`}>{value}</dd></div>;
   return <div className="space-y-5 text-sm">
     <dl className="divide-y divide-border">{line(t('talent'), r.facts.talent ?? '—')}{line(t('performance'), r.facts.performance ?? '—')}</dl>
     <section><h3 className="mb-1 font-semibold">{t('desk.salary')}</h3><dl className="divide-y divide-border">
       {line(t('currentPay'), rm(r.source.basicCents))}
+      {payPosition[0]!==null&&line(t('compaRatioBefore'),pct(payPosition[0]))}
       {line(`${t('merit')} ${hidden ? '' : pct(r.meritBp)}`, money(r.meritCents))}
       {line(`${t('promotion')} ${hidden ? '' : pct(r.promotionBp)}${r.recommendation.promotionGrade ? ` → ${r.recommendation.promotionGrade}` : ''}`, money(r.promotionCents))}
       {line(`${t('special')} ${hidden ? '' : pct(r.specialBp)}`, money(r.specialCents))}
       {line(t('newPay'), money(r.newBasicCents), true)}
+      {payPosition[1]!==null&&line(t('compaRatioAfter'),pct(payPosition[1]))}
       {line(t('incrementEligibility'), r.incrementReason || t('eligible'))}
     </dl></section>
     <section><h3 className="mb-1 font-semibold">{t('desk.bonus')}</h3><dl className="divide-y divide-border">
