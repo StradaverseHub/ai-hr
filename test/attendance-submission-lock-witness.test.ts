@@ -230,3 +230,39 @@ it('allows independent ordinary submissions to overlap before audit while retain
  // A retained request outside the known dated employment preserves the original unavailable contract.
  expect(await observedStandalone('2019-12-31','ExclusiveLock')).toMatchObject({kind:'unavailable',companyId:null,visibleEpoch:null});
 },30000);
+
+it('limits standalone submissions waiting on Access without dropping or duplicating a request',async()=>{
+ await resetDb();
+ const base=await seedBase();
+ await setModule(base.tenantId,'attendance','active');
+ const admin=await entitledCtx(base);
+ const worker=await hireEmployee(admin,{person:{fullName:'Fictional admission applicant',primaryEmail:randomUUID()+'@example.invalid'},
+  companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const ctx:SessionContext={...admin,userId:await createAppUser(base.tenantId,worker.personId,'employee'),
+  personId:worker.personId,roles:['employee'],grants:[{role:'employee',companyId:base.companyId}]};
+ const today=Date.parse(todayInKualaLumpur()+'T00:00:00Z');
+ const dates=[1,2,3].map(days=>new Date(today-days*86400000).toISOString().slice(0,10));
+ let submissions:Promise<PromiseSettledResult<{correctionId:string}>[]>|undefined;
+ try{
+  await owner.db.transaction(async tx=>{
+   const [holder]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
+   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+base.tenantId},0))`);
+   submissions=Promise.allSettled(dates.map(date=>requestAttendanceCorrection(ctx,{
+    employmentId:worker.employmentId,date,checkIn:'09:00',checkOut:'18:00',reason:'Fictional admission test',
+   })));
+   const countWaiters=async()=>{
+    const [row]=await tx.execute<{n:number}>(sql`select count(*)::int as n from pg_locks l
+     where l.locktype='advisory' and not l.granted and ${holder.pid}::int=any(pg_blocking_pids(l.pid))`);
+    return row.n;
+   };
+   await expect.poll(countWaiters,{timeout:5000}).toBe(2);
+   await new Promise(resolve=>setTimeout(resolve,100));
+   expect(await countWaiters()).toBe(2);
+  });
+  const outcomes=await submissions!;
+  expect(outcomes).toEqual(dates.map(()=>({status:'fulfilled',value:{correctionId:expect.any(String)}})));
+  const rows=await owner.db.select({date:s.attendanceCorrection.attendanceDate}).from(s.attendanceCorrection)
+   .where(eq(s.attendanceCorrection.employmentId,worker.employmentId)).orderBy(asc(s.attendanceCorrection.attendanceDate));
+  expect(rows.map(row=>row.date)).toEqual([...dates].sort());
+ }finally{await submissions;}
+},20000);

@@ -3799,19 +3799,21 @@ export async function requestAttendanceCorrection(ctx:SessionContext,p:Attendanc
   !normalized.clockChanges&&normalized.requestedOtMinutes===null&&!normalized.unclockedWork&&
   normalized.plannedStartTime===null&&normalized.plannedEndTime===null&&normalized.otReasonCategory===null&&
   ['short_hours','incomplete_entry','absent','other'].includes(normalized.requestKind);
- if(sharedCandidate){
-  try{
-   return await withTenant(current,async tx=>{
-    const data=await prepareAttendanceCorrectionInputTx(tx,current,captured,true);
-    const {correctionId}=await insertAttendanceCorrectionRequestTx(tx,current,data);
-    return {correctionId};
-   });
-  }catch(error){
-   if(error!==retryAttendanceSubmissionExclusively)attendanceCorrectionSubmissionFailure(error);
-   // The shared attempt has rolled back. Never upgrade Access or retry an effect failure.
+ return queueAttendanceWrite(attendanceSubmissionQueues,current.tenantId,async()=>{
+  if(sharedCandidate){
+   try{
+    return await withTenant(current,async tx=>{
+     const data=await prepareAttendanceCorrectionInputTx(tx,current,captured,true);
+     const {correctionId}=await insertAttendanceCorrectionRequestTx(tx,current,data);
+     return {correctionId};
+    });
+   }catch(error){
+    if(error!==retryAttendanceSubmissionExclusively)attendanceCorrectionSubmissionFailure(error);
+    // The shared attempt has rolled back. Never upgrade Access or retry an effect failure.
+   }
   }
- }
- return withTenant(current,run).catch(attendanceCorrectionSubmissionFailure);
+  return withTenant(current,run).catch(attendanceCorrectionSubmissionFailure);
+ });
 }
 
 /**
@@ -4093,31 +4095,34 @@ export class MissingAttendanceRejectReasonError extends Error {
 
 // Bound application admission before borrowing a connection. PostgreSQL still serializes each
 // employee and excludes configuration writers across all application processes.
-const attendanceApprovalConcurrency = 2;
-const attendanceApprovalQueues = new Map<string, { active: number; waiting: Array<() => void> }>();
+type AttendanceWriteQueues = Map<string, { active: number; waiting: Array<() => void> }>;
+const attendanceApprovalQueues: AttendanceWriteQueues = new Map();
+const attendanceSubmissionQueues: AttendanceWriteQueues = new Map();
 const attendancePerformance = globalThis as typeof globalThis & {
   __aihrPerfBeginAttendanceApproval?: () => { acquired: () => void; finished: () => void };
 };
 
-async function queueNativeAttendanceApproval<T>(tenantId: string, approve: () => Promise<T>): Promise<T> {
-  const timing = attendancePerformance.__aihrPerfBeginAttendanceApproval?.();
+async function queueAttendanceWrite<T>(
+  queues: AttendanceWriteQueues, tenantId: string, write: () => Promise<T>,
+  timing?: { acquired: () => void; finished: () => void },
+): Promise<T> {
   const key = tenantId.toLowerCase();
-  const queue = attendanceApprovalQueues.get(key) ?? { active: 0, waiting: [] };
-  attendanceApprovalQueues.set(key, queue);
-  if (queue.active < attendanceApprovalConcurrency) {
+  const queue = queues.get(key) ?? { active: 0, waiting: [] };
+  queues.set(key, queue);
+  if (queue.active < 2) {
     queue.active++;
   } else {
     await new Promise<void>(resolve => queue.waiting.push(resolve));
   }
   try {
     timing?.acquired();
-    return await approve();
+    return await write();
   } finally {
     const next = queue.waiting.shift();
     if (next) {
       next();
     } else if (--queue.active === 0) {
-      attendanceApprovalQueues.delete(key);
+      queues.delete(key);
     }
     timing?.finished();
   }
@@ -4710,7 +4715,7 @@ export async function decideAttendanceCorrection(
   if (existingTx) return decide(existingTx);
   const correctionIdIsCanonical = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(p.correctionId);
   if (p.decision === 'approved') {
-    return queueNativeAttendanceApproval(ctx.tenantId, async () => {
+    return queueAttendanceWrite(attendanceApprovalQueues, ctx.tenantId, async () => {
       // Ordinary corrections with TOIL disabled cannot create leave configuration. They can
       // share both configuration locks while retaining the subject, Payroll and audit fences.
       let toilDisabled = false;
@@ -4731,7 +4736,7 @@ export async function decideAttendanceCorrection(
       }
       // The shared attempt rolled back before any effect. Acquire exclusive Access in a fresh Tx.
       return withTenant(ctx, decide);
-    });
+    }, attendancePerformance.__aihrPerfBeginAttendanceApproval?.());
   }
   if (p.decision !== 'rejected' || !ctx.userId || ctx.agent || !correctionIdIsCanonical) return withTenant(ctx, decide);
   try {
