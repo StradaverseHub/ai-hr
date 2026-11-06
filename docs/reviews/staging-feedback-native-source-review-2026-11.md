@@ -18,9 +18,9 @@ This candidate computes
 `ddfdd95e41caa57e468007a7c97564ead57bfcf1d4a0c1b1f2aa3628edd81603`
 over 1,456 files. The module-agent digest is
 `9ad6948e9436012f9fa14f8c91903bacdc5f0e63bd3a920c33e7203bf33f597c`
-over 467 files. The existing approval records remain unchanged. Tests that
-require current provider approval fail closed while the exact source has no
-approved binding.
+over 467 files before recording the owner decision. The prior candidate failed
+closed because the active disclosure records still pointed to the installed
+baseline.
 
 The covered changes affect Attendance calculation and configuration, Payroll
 result reads and report navigation, Lifecycle document generation and preview,
@@ -48,6 +48,18 @@ Before renewing any approval, inspect the covered-source diff against the
 approved baseline, verify the old contract and its refusal cases on the exact
 candidate, and record the actual source-binding decision. Do not move agent
 evaluation or promotion records to a new hash.
+
+### Fictional-data staging binding
+
+On 6 November 2026 at approximately 08:42 UTC, the repository owner answered
+“Yes” in the Codex feedback-board chat to the request to bind the existing
+AI disclosure contracts to digest `ddfdd95e41caa57e468007a7c97564ead57bfcf1d4a0c1b1f2aa3628edd81603` for fictional-data staging
+verification. The request expressly excluded real HR data and production use.
+
+The registry refresh changes only the source digest of the 28 previously
+approved records. Historical reviewer, evidence and review timestamps are
+preserved. Pending records, disclosure contracts and the admission logic stay
+as before. This is the exact-source decision record for the staging refresh.
 
 ## Reward Desk evidence
 
