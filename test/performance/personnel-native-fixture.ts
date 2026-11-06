@@ -1,6 +1,10 @@
 import {randomUUID} from 'node:crypto';
 import {expect} from 'vitest';
 import {sql} from 'drizzle-orm';
+import {hireEmployee} from '../../core/org';
+import {correctInformationTx,previewInformationCorrection} from '../../core/information-correction';
+import {assignLabelToCompanies} from '../../core/system-labels';
+import {company} from '../../db/schema';
 import {withTenant,type SessionContext} from '../../db/client';
 import {adminCtx,owner,resetDb,seedBase} from '../harness';
 
@@ -41,4 +45,30 @@ export async function seedPersonnelNativeFixture(
   expect(counts).toEqual({employees:count,assignments:count});report.retainedCounts=counts;
   const [identity]=await withTenant(ctx,tx=>tx.execute<{role:string}>(sql`select current_user as role`));expect(identity.role).toBe('ai_hr_app');
   return {b,foreign,ctx,foreignEmployment,expectedFirst,expectedLast,organisationTagSample};
+}
+
+/** Real information-correction writer witness, isolated from the retained workload. */
+export async function seedPersonnelCorrectionFixture(){
+ await resetDb();
+ const base=await seedBase();
+ const ctx:SessionContext={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
+ const destinations=await owner.db.insert(company).values([
+  {tenantId:base.tenantId,legalName:'Fictional intermediate Personnel company',companyLabel:'INTERMEDIATE'},
+  {tenantId:base.tenantId,legalName:'Fictional final Personnel company',companyLabel:'FINAL'},
+ ]).returning({id:company.id});
+ expect(destinations).toHaveLength(2);
+ const companies=[base.companyId,...destinations.map(destination=>destination.id)];
+ await assignLabelToCompanies(ctx,{kind:'department',labelId:base.deptA,companyIds:companies});
+ const hiredOn='2020-01-01';
+ const {employmentId}=await hireEmployee(ctx,{
+  person:{fullName:'Fictional corrected Personnel employee',primaryEmail:randomUUID()+'@example.test'},
+  companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn,
+ });
+ for(const destination of destinations){
+  const correction={employmentId,changes:{companyId:destination.id},reason:'Verify the original dated company after correction'};
+  const preview=await previewInformationCorrection(ctx,correction);
+  const result=await withTenant(ctx,tx=>correctInformationTx(tx,ctx,{...correction,fingerprint:preview.fingerprint,method:'manual'}));
+  expect(result.changed).toBe(true);
+ }
+ return {ctx,companies,employmentId,hiredOn,beforeCompanyId:base.companyId,afterCompanyId:destinations[1].id};
 }

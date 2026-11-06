@@ -9,16 +9,12 @@ import {foldEmployeeCode,EMPLOYEE_SEARCH_RESULT_CAP} from '../../lib/employee-se
 import {pgSqlState} from '../../lib/db-error';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {withPersonnelRead} from '../../core/personnel-read-bounds';
-import {hireEmployee} from '../../core/org';
-import {correctInformationTx,previewInformationCorrection} from '../../core/information-correction';
-import {assignLabelToCompanies} from '../../core/system-labels';
-import {company} from '../../db/schema';
 import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from '../../core/access-configuration-lock';
-import {withTenant,type SessionContext} from '../../db/client';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
+import {withTenant} from '../../db/client';
+import {adminCtx,closeAll,migrateTestDb,owner} from '../harness';
 import {personnelNativeAggregatePrototype} from './personnel-native-aggregate-prototype';
 import {personnelDatedTagsPrototype} from './personnel-dated-tags-prototype';
-import {seedPersonnelNativeFixture} from './personnel-native-fixture';
+import {seedPersonnelCorrectionFixture,seedPersonnelNativeFixture} from './personnel-native-fixture';
 const file='test/performance/personnel-native-list-plan.test.ts';
 const selected:unknown=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]');
 const requested=process.env.GITHUB_ACTIONS==='true'&&Array.isArray(selected)&&selected.length===1&&selected[0]===file;
@@ -295,30 +291,10 @@ it.skipIf(!requested)('profiles initial/search/deep Personnel pages with fifty t
 },600000);
 
 it.skipIf(!requested)('preserves the first future information correction for a dated Personnel read',async()=>{
- await resetDb();
- const base=await seedBase();
- const ctx:SessionContext={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
- const destinations=await owner.db.insert(company).values([
-  {tenantId:base.tenantId,legalName:'Fictional intermediate Personnel company',companyLabel:'INTERMEDIATE'},
-  {tenantId:base.tenantId,legalName:'Fictional final Personnel company',companyLabel:'FINAL'},
- ]).returning({id:company.id});
- expect(destinations).toHaveLength(2);
- const companies=[base.companyId,...destinations.map(destination=>destination.id)];
- await assignLabelToCompanies(ctx,{kind:'department',labelId:base.deptA,companyIds:companies});
- const hiredOn='2020-01-01';
- const {employmentId}=await hireEmployee(ctx,{
-  person:{fullName:'Fictional corrected Personnel employee',primaryEmail:randomUUID()+'@example.test'},
-  companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn,
- });
- for(const destination of destinations){
-  const correction={employmentId,changes:{companyId:destination.id},reason:'Verify the original dated company after correction'};
-  const preview=await previewInformationCorrection(ctx,correction);
-  const result=await withTenant(ctx,tx=>correctInformationTx(tx,ctx,{...correction,fingerprint:preview.fingerprint,method:'manual'}));
-  expect(result.changed).toBe(true);
- }
+ const {ctx,companies,employmentId,hiredOn,beforeCompanyId,afterCompanyId}=await seedPersonnelCorrectionFixture();
  const prototype=await personnelDatedTagsPrototype();
  try{
-  for(const [date,companyId] of [[hiredOn,base.companyId],[todayInKualaLumpur(),destinations[1].id]]){
+  for(const [date,companyId] of [[hiredOn,beforeCompanyId],[todayInKualaLumpur(),afterCompanyId]]){
    const read=(variant:'baseline'|'effectiveCompany')=>withPersonnelRead(ctx,tx=>tx.execute<{value:{companyId:string}}>(sql`
     select value from ${prototype.source(variant,date,companies,[employmentId])}
    `),{sharedAccessLock:true});

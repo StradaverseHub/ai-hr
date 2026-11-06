@@ -64,6 +64,35 @@ const scalarDated = ` dated AS MATERIALIZED (
    FROM candidates b
  ),`;
 
+// Resolve corrections only if this tenant has a future correction on the requested day.
+// Per employee, keep the first event by sequence even if its company value is null.
+const inlineDated = ` future_correction_presence AS MATERIALIZED (
+   SELECT EXISTS (
+     SELECT 1 FROM public.domain_event ev
+     WHERE ev.tenant_id=app.current_tenant_id() AND ev.event_type='employment.information.corrected'
+       AND ev.payload->>'effectiveOn'>p_as_of::text
+   ) AS present
+ ),
+ dated AS MATERIALIZED (
+   SELECT b.*,a.business_unit_id AS legacy_business_unit_id,
+          coalesce(c.previous_company,a.company_id,b.company_id) AS dated_company
+   FROM candidates b
+   CROSS JOIN future_correction_presence presence
+   LEFT JOIN LATERAL (
+     SELECT nullif(ev.payload->'before'->>'companyId','')::uuid AS previous_company
+     FROM public.domain_event ev
+     WHERE presence.present AND ev.tenant_id=b.tenant_id AND ev.subject_employment_id=b.id
+       AND ev.event_type='employment.information.corrected' AND ev.payload->>'effectiveOn'>p_as_of::text
+     ORDER BY ev.sequence LIMIT 1
+   ) c ON true
+   LEFT JOIN LATERAL (
+     SELECT a.company_id,a.business_unit_id FROM public.assignment a
+     WHERE a.tenant_id=b.tenant_id AND a.employment_id=b.id AND a.superseded_at IS NULL
+       AND a.valid_from<=p_as_of AND (a.valid_to IS NULL OR a.valid_to>p_as_of)
+     ORDER BY a.valid_from DESC,a.id LIMIT 1
+   ) a ON true
+ ),`;
+
 const effectiveCompanyDated = ` dated_assignments AS MATERIALIZED (
    SELECT a.id,a.employment_id,a.company_id,a.business_unit_id,a.valid_from,
           a.department_id,a.position_id,a.cost_center_id,a.location_id,a.employment_type
@@ -152,6 +181,7 @@ export async function personnelDatedTagsPrototype() {
   candidate:'app.perf_personnel_dated_batch_'+suffix,
   effectiveCompany:'app.perf_personnel_dated_set_'+suffix,
   narrow:'app.perf_personnel_dated_narrow_'+suffix,
+  inlineNarrow:'app.perf_personnel_dated_inline_'+suffix,
   pageDetails:'app.perf_personnel_page_details_'+suffix,
  };
  const signature='(date,uuid[],uuid[])';
@@ -180,12 +210,14 @@ export async function personnelDatedTagsPrototype() {
   expect(datedStart).toBeGreaterThan(admissionStart);
   expect(outputStart).toBeGreaterThan(datedStart);
   const narrow=batched.slice(0,admissionStart)+narrowCandidates+batched.slice(datedStart,outputStart)+narrowOutput;
+  const inline=narrow.replace(scalarDated,inlineDated)
+   .replace(legacyAssignment,'').replace('legacy.business_unit_id','d.legacy_business_unit_id');
   const baseCall='app.access_workforce_list_rows() AS a(value)';
   expect(sampled.split(baseCall)).toHaveLength(2);
   // Keep the complete native DTO; the canonical private row owner sees only the chosen page IDs.
   const pageDetails=sampled.replace(baseCall,'app._access_workforce_list_rows(p_subjects) AS a(value)');
   for(const [name,body] of [[names.baseline,sampled],[names.candidate,batched],[names.effectiveCompany,effective],
-      [names.narrow,narrow],[names.pageDetails,pageDetails]]){
+      [names.narrow,narrow],[names.inlineNarrow,inline],[names.pageDetails,pageDetails]]){
    await tx.unsafe('create function '+name+'(p_as_of date,p_scope uuid[],p_subjects uuid[]) returns setof jsonb language sql stable security definer set search_path=pg_catalog,public,app as $prototype$'+body+'$prototype$');
    await tx.unsafe('revoke all on function '+name+signature+' from public; grant execute on function '+name+signature+' to ai_hr_app');
    const [properties]=await tx<{owner:string;definer:boolean;app:boolean;public_execute:boolean}[]>`select proowner::regrole::text as owner,prosecdef as definer,

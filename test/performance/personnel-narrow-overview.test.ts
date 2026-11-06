@@ -5,7 +5,7 @@ import {afterAll,beforeAll,expect,it} from 'vitest';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {pgSqlState} from '../../lib/db-error';
 import {closeAll,migrateTestDb} from '../harness';
-import {seedPersonnelNativeFixture} from './personnel-native-fixture';
+import {seedPersonnelCorrectionFixture,seedPersonnelNativeFixture} from './personnel-native-fixture';
 import {personnelDatedTagsPrototype} from './personnel-dated-tags-prototype';
 import {personnelNarrowOverviewProbe} from './personnel-narrow-overview-probe';
 
@@ -47,7 +47,9 @@ it.skipIf(!requested)('measures narrow dated Personnel facts and bounded native 
     const query={...input,date:asOf,scope:[b.companyId],subjects:sample};
     const baseline=await personnelNarrowOverviewProbe(ctx,prototype,'baseline',query);
     const candidate=await personnelNarrowOverviewProbe(ctx,prototype,'narrow',query);
+    const inline=await personnelNarrowOverviewProbe(ctx,prototype,'inlineNarrow',query);
     expect(candidate).toEqual(baseline);
+    expect(inline).toEqual(baseline);
     expect(candidate.pageIds).toEqual(ids);
     expect(candidate.rows.map(row=>row?.employmentId)).toEqual(ids);
     expect(candidate.total).toBe(total);
@@ -55,27 +57,43 @@ it.skipIf(!requested)('measures narrow dated Personnel facts and bounded native 
     expect(candidate.options).not.toHaveLength(0);
    }
    report.liveOverviewNarrowSampleParity=narrowParity.map(({mode})=>mode);save();
-   const narrowMeasurements:{mode:string;elapsedMs:number;total:number;pageRows:number;targetMet:boolean}[]=[];
-   for(const {mode,q,offset,expectedIds} of liveOverviewCases){
-    phase('live-overview-narrow-'+mode);
-    const began=performance.now();
-    let result;
-    try{result=await personnelNarrowOverviewProbe(ctx,prototype,'narrow',{
-     date:asOf,scope:[b.companyId],subjects:null,pageQuery:q,facetQuery:q,limit:25,offset,
-    });}
-    catch(error){
-     failures.push({mode,elapsedMs:performance.now()-began,errorType:error instanceof Error?error.name:typeof error,sqlState:pgSqlState(error)??null});
-     report.liveOverviewNarrowFailures=failures;save();continue;
+   const narrowMeasurements:{variant:string;mode:string;elapsedMs:number;total:number;pageRows:number;targetMet:boolean}[]=[];
+   for(const variant of ['narrow','inlineNarrow'] as const){
+    for(const {mode,q,offset,expectedIds} of liveOverviewCases){
+     if(variant==='narrow'&&mode!=='initial')continue; // Same-run control, prior full control has all three modes.
+     phase('live-overview-'+variant+'-'+mode);
+     const began=performance.now();
+     let result;
+     try{result=await personnelNarrowOverviewProbe(ctx,prototype,variant,{
+      date:asOf,scope:[b.companyId],subjects:null,pageQuery:q,facetQuery:q,limit:25,offset,
+     });}
+     catch(error){
+      failures.push({mode:variant+'-'+mode,elapsedMs:performance.now()-began,errorType:error instanceof Error?error.name:typeof error,sqlState:pgSqlState(error)??null});
+      report.liveOverviewNarrowFailures=failures;save();continue;
+     }
+     const elapsedMs=performance.now()-began,expectedTotal=q?1:count;
+     expect(result.pageIds).toEqual(expectedIds);
+     expect(result.rows.map(row=>row?.employmentId)).toEqual(expectedIds);
+     expect(result.total).toBe(expectedTotal);
+     expect(Object.values(result.byStatus).reduce((sum,value)=>sum+value,0)).toBe(expectedTotal);
+     narrowMeasurements.push({variant,mode,elapsedMs,total:result.total,pageRows:result.rows.length,targetMet:elapsedMs<1000});
+     report.liveOverviewNarrow=narrowMeasurements;save();
     }
-    const elapsedMs=performance.now()-began,expectedTotal=q?1:count;
-    expect(result.pageIds).toEqual(expectedIds);
-    expect(result.rows.map(row=>row?.employmentId)).toEqual(expectedIds);
-    expect(result.total).toBe(expectedTotal);
-    expect(Object.values(result.byStatus).reduce((sum,value)=>sum+value,0)).toBe(expectedTotal);
-    narrowMeasurements.push({mode,elapsedMs,total:result.total,pageRows:result.rows.length,targetMet:elapsedMs<1000});
-    report.liveOverviewNarrow=narrowMeasurements;save();
    }
   }finally{await prototype.drop();}
+  phase('inline-effective-company-correction-parity');
+  const correction=await seedPersonnelCorrectionFixture();
+  const correctionPrototype=await personnelDatedTagsPrototype();
+  try{
+   for(const [date,expectedCompanyId] of [[correction.hiredOn,correction.beforeCompanyId],[todayInKualaLumpur(),correction.afterCompanyId]]){
+    const query={date,scope:correction.companies,subjects:[correction.employmentId],limit:25,offset:0};
+    const baseline=await personnelNarrowOverviewProbe(correction.ctx,correctionPrototype,'baseline',query);
+    const inline=await personnelNarrowOverviewProbe(correction.ctx,correctionPrototype,'inlineNarrow',query);
+    expect(baseline.rows).toEqual([expect.objectContaining({companyId:expectedCompanyId})]);
+    expect(inline).toEqual(baseline);
+   }
+   report.liveOverviewInlineCorrectionParity=true;save();
+  }finally{await correctionPrototype.drop();}
   expect(failures,'Narrow Personnel observations').toEqual([]);
   phase('complete');
  }catch(error){

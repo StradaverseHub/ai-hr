@@ -14,7 +14,7 @@ type Summary={pageIds:string[];total:number;byStatus:Record<string,number>;optio
 type Detail={employmentId:string};
 
 export function personnelNarrowOverviewProbe(
- ctx:SessionContext,prototype:Prototype,variant:'baseline'|'narrow',input:ProbeInput,
+ ctx:SessionContext,prototype:Prototype,variant:'baseline'|'narrow'|'inlineNarrow',input:ProbeInput,
 ) {
  const {date,scope,subjects,limit,offset,pageQuery,facetQuery,companySort}=input;
  const field=(key:string)=>sql`value->>${key}`;
