@@ -26,7 +26,7 @@ const {grantAssistant}=await import('../../core/assistant-grant.ts');
 const {createClockingMapping,validateClockingImport}=await import('../../packs/attendance/service.ts');
 const {createClaimType}=await import('../../packs/claims/service.ts');
 const {saveAttendanceWorkflow,setAttendanceWorkflowEnabled}=await import('../../core/attendance-workflow.ts');
-const {createBatch,generatePayslips,closeBatch}=await import('../../packs/payroll/service.ts');
+const {createBatch,generatePayslips,closeBatch,preProcessAdvisory}=await import('../../packs/payroll/service.ts');
 const {MODULE_CATALOG}=await import('../../packs/catalog.ts');
 const {todayInKualaLumpur}=await import('../../lib/hr-date.ts');
 const {passwordHash,opaque,digest}=await import('../../lib/internal-auth/crypto.ts');
@@ -177,7 +177,18 @@ try{
    // Company 2's historical register is already closed. Leave the active
    // processing and publication rosters in companies 1, 3 and 4 intact.
    tenants[t].rewardDraft=await fixturePhase(t,'rewards-draft-prerequisites',()=>
-    prepareRewardDraftFixture({owner,schema:s,ctx,tenant:tenants[t],company:companies[2],today,actor:cohort.find(u=>u.role==='groupHR'),expectedCompanyEmploymentIds:cohort.filter(u=>u.companyId===companies[2].companyId).map(u=>u.employmentId)}));
+    prepareRewardDraftFixture({owner,schema:s,ctx,tenant:tenants[t],companies,company:companies[2],today,actor:cohort.find(u=>u.role==='groupHR'),expectedCompanyEmploymentIds:cohort.filter(u=>u.companyId===companies[2].companyId).map(u=>u.employmentId)}));
+   // Check the actual drafts used by the browser. Earlier periods retain legacy
+   // grouping while the current period uses the approved mapping.
+   await fixturePhase(t,'payroll-readiness-after-organisation-publication',async()=>{
+    for(const company of companies){
+     for(const batchId of [company.batchId,company.publicationBatchId,company.concurrentCloseBatchId].filter(Boolean)){
+      const checks=await preProcessAdvisory(ctx,batchId);
+      assert.equal(checks.missingCompensation.length,0,'Fictional payroll salary coverage is incomplete');
+      assert.equal(checks.organisationGrouping?.length??0,0,'Fictional payroll organisation grouping is incomplete');
+     }
+    }
+   });
   }
   for(const company of companies){
    const approver=cohort.find(u=>u.companyId===company.companyId&&['companyHR','groupHR'].includes(u.role));assert(approver);

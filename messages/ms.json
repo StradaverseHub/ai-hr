@@ -6779,6 +6779,7 @@
       },
       "preChecksOpenProfile": "Buka profil",
       "preChecksBlockedError": "Payroll tidak boleh diproses: {n} pekerja tiada rekod gaji semasa. Selesaikan semakan pra-pemprosesan dahulu.",
+      "preChecksNotReady": "Selesaikan semakan pra-pemprosesan yang menghalang pemprosesan gaji.",
       "preChecksBlockedPayModeError": "Payroll tidak boleh diproses: {n} pekerja mempunyai struktur gaji Tempoh Tersuai yang tidak boleh dikira oleh payroll. Tukar Mod Gaji pada rekod Gaji Asas mereka, atau keluarkan mereka daripada larian ini.",
       "preChecksBlockedTp3Error": "Payroll tidak boleh diproses: {n} pekerja mempunyai Borang TP3 untuk tahun ini yang belum sampai kepada angka payroll mereka. Buka Borang TP3 bagi setiap seorang dan simpan dahulu.",
       "generatedWithSkipped": "Slip gaji dijana — {n} pekerja dilangkau. Senarai di bawah menamakan mereka dan sebabnya.",

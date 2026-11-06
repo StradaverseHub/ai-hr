@@ -6779,6 +6779,7 @@
       },
       "preChecksOpenProfile": "打开档案",
       "preChecksBlockedError": "无法处理薪资：{n} 名员工没有当前薪资记录。请先解决处理前检查问题。",
+      "preChecksNotReady": "请先解决预处理检查中的阻止项，再处理薪资。",
       "preChecksBlockedPayModeError": "无法处理薪资：{n} 名员工采用薪资无法计算的自定义周期薪酬结构。请更改其基本薪资记录上的薪资模式，或将他们排除在本次运行之外。",
       "preChecksBlockedTp3Error": "无法处理薪资：{n} 名员工本年度的 TP3 表格尚未进入其薪资数字。请先逐一打开并保存其 TP3 表格。",
       "generatedWithSkipped": "已生成工资单 — 跳过 {n} 名员工。下方列表列出姓名与原因。",

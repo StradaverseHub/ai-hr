@@ -146,6 +146,11 @@ describe('e440991b point 4 — History came off the run screen, the live control
     expect(BATCH_PAGE).toContain("const [closeEv] = pubState === 'published' || pubState === 'scheduled'");
   });
 
+  it('does not label every readiness blocker as a missing salary', () => {
+    expect(BATCH_PAGE).toContain("disabled title={t('preChecksNotReady')}");
+    expect(BATCH_PAGE).toContain('<DerivedOrganisationPayroll rows={preChecks.organisationGrouping??[]}/>');
+  });
+
   it('the recalculation banner and the Close-blocked-by-recalc guard survive (49e7e0a2)', () => {
     // These are LIVE CONTROLS, not history: without them a run can be closed owing a recalculation,
     // publishing figures the system already knows are stale.

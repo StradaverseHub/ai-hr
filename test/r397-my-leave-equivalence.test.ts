@@ -350,8 +350,10 @@ describe('r397 · the batched per-type reads answer what the single reads answer
 
 describe('r397 · statement budget for one My Leave load', () => {
   it.each([
-    {counting:'calendar_days',beforeStatements:263,afterStatements:130,calendarReads:0},
-    {counting:'working_days',beforeStatements:281,afterStatements:139,calendarReads:2},
+    // The reference path uses the current readers. Hosted parity measured 40 fewer
+    // statements in both reference variants with identical data and transactions.
+    {counting:'calendar_days',beforeStatements:223,afterStatements:130,calendarReads:0},
+    {counting:'working_days',beforeStatements:241,afterStatements:139,calendarReads:2},
   ] as const)('$counting: exact statement and transaction budgets retain batched calendar context', async budget => {
     const [original]=await owner.db.select({counting:schema.leaveType.counting}).from(schema.leaveType).where(eq(schema.leaveType.id,types.annual));
     await owner.db.update(schema.leaveType).set({counting:budget.counting}).where(eq(schema.leaveType.id,types.annual));
@@ -385,8 +387,8 @@ describe('r397 · statement budget for one My Leave load', () => {
     expect(datedReads(before.statements)).toBe(budget.calendarReads);
     expect(datedReads(after.statements)).toBe(budget.calendarReads/2);
     expect(txCount(before.statements)).toBe(46);
-    expect.soft(before.statements.length).toBe(budget.beforeStatements);
-    expect.soft(txCount(after.statements), 'transactions').toBe(18);
+    expect(before.statements.length).toBe(budget.beforeStatements);
+    expect(txCount(after.statements), 'transactions').toBe(18);
     expect(after.statements.length, 'statements').toBe(budget.afterStatements);
     } finally { await owner.db.update(schema.leaveType).set({counting:original.counting}).where(eq(schema.leaveType.id,types.annual)); }
   }, 60_000);

@@ -423,8 +423,8 @@ export default async function BatchPage({
                     `backHref`, exactly as the reset form below does. */}
                 <input type="hidden" name="from" value={backHref} />
                 {preBlockers > 0 ? (
-                  // Blocked: employees with no salary record — server re-asserts (PreProcessBlockedError).
-                  <Button type="submit" disabled title={t('preChecksBlockedError', { n: preBlockers })}>
+                  // The checks below identify the actual blocker. The write path rechecks all of them.
+                  <Button type="submit" disabled title={t('preChecksNotReady')}>
                     {t('generatePayslips')}
                   </Button>
                 ) : preWarnings > 0 ? (

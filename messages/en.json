@@ -6055,6 +6055,7 @@
       },
       "preChecksOpenProfile": "Open profile",
       "preChecksBlockedError": "Cannot process payroll: {n} employee(s) have no current salary record. Fix the pre-processing checks first.",
+      "preChecksNotReady": "Resolve the blocking pre-processing checks before processing payroll.",
       "preChecksBlockedPayModeError": "Cannot process payroll: {n} employee(s) have a Custom Period pay structure that payroll cannot calculate. Change the Pay Mode on their Basic Salary record, or leave them out of this run.",
       "preChecksBlockedTp3Error": "Cannot process payroll: {n} employee(s) have a Form TP3 for this year that has not reached their payroll figures. Open Form TP3 for each of them and save it first.",
       "generatedWithSkipped": "Payslips generated — {n} employee(s) skipped. The list below names them and says why.",
