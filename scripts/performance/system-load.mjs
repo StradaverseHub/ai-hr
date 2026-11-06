@@ -294,12 +294,11 @@ try{
   await code.waitFor({state:'visible',timeout:90000});
   await code.fill(await generate({strategy:'totp',secret:user.secret}));
   const mfaTransport={};
-  // App Router may carry the redirected Home render in the action response.
-  // Record a separate Home request only when the browser actually makes one.
+  // Embedded authentication posts to the MFA API before navigating to Home.
   function observeMfaResponse(response){
    const request=response.request(),url=new URL(request.url());
    if(url.origin!==base)return;
-   if(url.pathname==='/login'&&request.method()==='POST'){
+   if(url.pathname==='/login/api/mfa'&&request.method()==='POST'){
     mfaTransport.loginPostResponseMs??=performance.now()-mfaSubmittedAt;
    }else if(url.pathname==='/'&&request.method()==='GET'){
     mfaTransport.homeGetResponseMs??=performance.now()-mfaSubmittedAt;
