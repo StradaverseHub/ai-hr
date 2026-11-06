@@ -11132,6 +11132,22 @@ async function preProcessChecksTx(
       ),
     )
     .orderBy(person.fullName);
+  if (process.env.GITHUB_ACTIONS === 'true' && rows.some(row => row.compId == null)) {
+    const population = '{' + rows.map(row => row.employmentId).join(',') + '}';
+    const [diagnostic] = await tx.execute(sql`
+      SELECT app.principal_snapshot_current() AS principal_current,
+        app.is_admin_for(${batch.companyId}::uuid) AS company_admin,
+        app.can_admin_payroll_for(${batch.companyId}::uuid) AS company_payroll,
+        (SELECT count(*)::int FROM app.current_grants() WHERE company_id IS NULL) AS global_grants,
+        (SELECT count(*)::int FROM compensation WHERE employment_id=any(${population}::uuid[])) AS visible_salary_rows,
+        (SELECT count(*)::int FROM employment JOIN compensation ON compensation.employment_id=employment.id
+          WHERE employment.id=any(${population}::uuid[]) AND ${payrollCompensationEffectiveOn(batch.payPeriod)}) AS effective_salary_rows
+    `);
+    console.info('[fictional-payroll-diagnostic]', JSON.stringify({
+      payPeriod: batch.payPeriod, population: rows.length,
+      missing: rows.filter(row => row.compId == null).length, ...diagnostic,
+    }));
+  }
   // Salary coverage, amount, rate, mode and currency all come from the same period-effective row.
   // A missing row remains a blocker; future history is never a fallback for calculation or validation.
   // Feedback 64fb5e48 (supersedes the R37 62e370b0 missingBasicComponent blocker) — typed path only: the
