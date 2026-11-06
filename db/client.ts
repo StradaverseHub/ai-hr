@@ -194,6 +194,16 @@ export function createDb(connectionString: string, options?: { max?: number }) {
   const poolAdmission = admission;
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+  /** For existing raw SQL owners only. This adds no transaction, GUC, retry or authority.
+   * Open queries inside work; do not pass an already-running promise or nest withTenant here.
+   */
+  async function withPoolWork<T>(tenant: string, work: () => PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+    const release = await poolAdmission.acquire(tenant, currentDatabaseWorkload(), signal);
+    try { signal?.throwIfAborted(); return await work(); }
+    finally { release(); }
+  }
+
+
   /** Run `fn` in a transaction scoped to the session's tenant/user/roles.
    * Explicit readOnlySnapshot starts REPEATABLE READ / READ ONLY at BEGIN, before session GUCs.
    * Owner readers must receive this tx explicitly; nested withTenant calls never auto-join.
@@ -304,7 +314,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     }
   }
 
-  return { db, client, withTenant };
+  return { db, client, withTenant, withPoolWork };
 }
 
 export type Db = ReturnType<typeof createDb>['db'];
@@ -315,4 +325,4 @@ if (!url) throw new Error('DATABASE_URL is not set');
 
 // App singleton (non-privileged role). Keep the default for deployments that do
 // not explicitly divide a connection budget among application workers.
-export const { db, client, withTenant } = createDb(url, {max: applicationBudget.poolMax});
+export const { db, client, withTenant, withPoolWork } = createDb(url, {max: applicationBudget.poolMax});

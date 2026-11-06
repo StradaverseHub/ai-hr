@@ -4,7 +4,7 @@ import {withBackgroundDatabaseWork} from '../db/workload';
 import {DatabaseAdmissionError} from '../db/admission';
 import {sql} from 'drizzle-orm';
 import type postgres from 'postgres';
-import {client,withTenant,type SessionContext,type Tx} from '../db/client';
+import {client,withTenant,withPoolWork,type SessionContext,type Tx} from '../db/client';
 import {resolveEntitlementsInTenantTx} from './entitlements';
 import {bankJobTx,type BankImportJobRow} from './bank-import-job';
 import {ImportFileError} from '../lib/import-file';
@@ -22,7 +22,7 @@ type QueueRow={ordinal:number;record:ImportRecord;preview:SectionRowResult;compa
 async function sourceTx(tx:Tx,id:string){const parts=await tx.execute<{content:Buffer}>(sql`select content from bank_import_chunk where job_id=${id}::uuid order by part`);return Buffer.concat(parts.map(p=>p.content));}
 async function freshContext(context:SessionContext):Promise<SessionContext>{
  const ctx=structuredClone(context);
- ctx.entitlements=await client.begin(async transaction=>resolveEntitlementsInTenantTx(async(q,params)=>[...await transaction.unsafe(q,params as postgres.ParameterOrJSON<never>[])],ctx.tenantId));
+ ctx.entitlements=await withBackgroundDatabaseWork(()=>withPoolWork(ctx.tenantId,()=>client.begin(async transaction=>resolveEntitlementsInTenantTx(async(q,params)=>[...await transaction.unsafe(q,params as postgres.ParameterOrJSON<never>[])],ctx.tenantId))));
  return ctx;
 }
 /** One bounded phase. Exported for real DB recovery/concurrency tests. */

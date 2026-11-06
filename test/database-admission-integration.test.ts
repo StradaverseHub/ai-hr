@@ -25,6 +25,21 @@ describe('physical pool admission with real tenant transactions',()=>{
   const rows=await Promise.all(pages);await held;const backgroundRow=await waiting;
   expect(new Set(rows.map(r=>r.pid)).size).toBe(3);expect(rows.every(r=>r.tenant===base.tenantId)).toBe(true);expect(backgroundRow.tenant).toBe(base.tenantId);
  });
+ it('shares the same physical budget with raw connection owners and releases their failures',async()=>{
+  const ctx=adminCtx(base),entered=deferred(),finish=deferred();
+  const holding=withBackgroundDatabaseWork(()=>database.withTenant(ctx,async tx=>{await tx.execute(sql`select 1`);entered.resolve();await finish.promise;}));
+  await entered.promise;
+  const controller=new AbortController(),reason=new Error('raw work cancelled');let ran=false;
+  const queued=withBackgroundDatabaseWork(()=>database.withPoolWork(ctx.tenantId,async()=>{ran=true;return database.client`select 1`;},controller.signal));
+  const rejected=expect(queued).rejects.toBe(reason);controller.abort(reason);
+  try{
+   await rejected;expect(ran).toBe(false);
+   const [raw]=await database.withPoolWork(ctx.tenantId,()=>database.client`select current_user as role`);
+   expect(raw.role).toBe('ai_hr_app');
+  }finally{finish.resolve();await holding;}
+  await expect(database.withPoolWork(ctx.tenantId,()=>database.client`select 1/0`)).rejects.toMatchObject({code:'22012'});
+  expect(await database.withPoolWork(ctx.tenantId,()=>Promise.resolve('released'))).toBe('released');
+ });
  it('does not start an abandoned queued read and frees admission after rollback',async()=>{
   const ctx=adminCtx(base),finish=deferred(),entered=Array.from({length:4},deferred);
   const held=entered.map((entry)=>database.withTenant(ctx,async tx=>{await tx.execute(sql`select 1`);entry.resolve();await finish.promise;}));
