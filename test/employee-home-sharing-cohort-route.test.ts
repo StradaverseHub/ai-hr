@@ -48,8 +48,8 @@ it('authenticates once and delivers a healthy card before the failed sibling set
  expect(decode((await reader.read()).value)).toEqual({version:1,card:'team',status:403});
  expect((await reader.read()).done).toBe(true);
  expect(state.session).toHaveBeenCalledOnce();
- expect(state.team).toHaveBeenCalledWith(ctx,'own',{});
- expect(state.celebrations).toHaveBeenCalledWith(ctx,'own',{});
+ expect(state.team).toHaveBeenCalledWith(ctx,'own',{},expect.any(AbortSignal));
+ expect(state.celebrations).toHaveBeenCalledWith(ctx,'own',{},expect.any(AbortSignal));
 });
 
 it.each(['employmentId=own&employmentId=other','employmentId=own&after=anything','employmentId=own&card=team','employmentId=own&card=team&card=team','employmentId=own&card=team&card=unknown','employmentId='])(
@@ -102,13 +102,18 @@ it('reuses the exact request configuration carrier while independently projectin
  expect(state.team).not.toHaveBeenCalled();
 });
 
-it('drops unfinished output when the browser cancels the stream',async()=>{
+it.each(['body','request'])('cancels unfinished readers when the browser disconnects via %s',async method=>{
  let finishTeam:(value:unknown)=>void=()=>{};
  state.team.mockImplementation(()=>new Promise(resolve=>{finishTeam=resolve;}));
- const response=await GET(request());
+ const controller=new AbortController();
+ const response=await GET(request(undefined,controller.signal));
  const reader=response.body!.getReader();
  await reader.read();
- await expect(reader.cancel()).resolves.toBeUndefined();
+ const signal=state.team.mock.calls[0][3] as AbortSignal;
+ expect(signal.aborted).toBe(false);
+ if(method==='body')await reader.cancel();
+ else controller.abort();
+ expect(signal.aborted).toBe(true);
  finishTeam(team);
  expect((await reader.read()).done).toBe(true);
 });
@@ -124,8 +129,8 @@ it('authenticates selected personal cards once without reading unrequested cards
   {version:1,card:'timeOff',status:200,value:{version:1,employmentId:'own',asOf:date,canApply:false,balances:[],nextApproved:null}},
  ]);
  expect(state.session).toHaveBeenCalledOnce();
- expect(state.notices).toHaveBeenCalledWith(ctx,'own');
- expect(state.timeOff).toHaveBeenCalledWith(ctx,'own','en');
+ expect(state.notices).toHaveBeenCalledWith(ctx,'own',expect.any(AbortSignal));
+ expect(state.timeOff).toHaveBeenCalledWith(ctx,'own','en',expect.any(AbortSignal));
  expect(state.team).not.toHaveBeenCalled();
  expect(state.celebrations).not.toHaveBeenCalled();
 });

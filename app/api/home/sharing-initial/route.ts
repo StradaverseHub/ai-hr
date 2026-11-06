@@ -33,11 +33,13 @@ export async function GET(request:Request){
   };
   let language:ReturnType<typeof readLocale>|undefined;
   const locale=()=>language??=readLocale();
+  const readLifetime=new AbortController();
+  const signal=readLifetime.signal;
   const readers:Record<HomeSharingCard,()=>Promise<unknown>>={
-   team:()=>teamResponse(session,employmentId),
-   celebrations:()=>celebrationsResponse(session,employmentId),
-   notices:()=>noticesResponse(session,employmentId),
-   timeOff:()=>timeOffResponse(session,employmentId),
+   team:()=>teamResponse(session,employmentId,{},signal),
+   celebrations:()=>celebrationsResponse(session,employmentId,{},signal),
+   notices:()=>noticesResponse(session,employmentId,signal),
+   timeOff:()=>timeOffResponse(session,employmentId,signal),
    greeting:async()=>greetingProjection(await readEmployeeHomeGreeting(session,employmentId,await locale(),undefined,configurationRead)),
    summary:async()=>{
     const [language,t]=await Promise.all([locale(),getTranslations('employeeHome.calendar')]);
@@ -54,12 +56,13 @@ export async function GET(request:Request){
     const stop=()=>{
      if(!open)return;
      open=false;
-     request.signal.removeEventListener('abort',stop);
+     request.signal.removeEventListener('abort',disconnect);
      controller.close();
     };
-    detach=()=>{open=false;request.signal.removeEventListener('abort',stop);};
-    if(request.signal.aborted){stop();return;}
-    request.signal.addEventListener('abort',stop,{once:true});
+    const disconnect=()=>{readLifetime.abort();stop();};
+    detach=()=>{readLifetime.abort();open=false;request.signal.removeEventListener('abort',disconnect);};
+    if(request.signal.aborted){disconnect();return;}
+    request.signal.addEventListener('abort',disconnect,{once:true});
     const reads=cards.map(async card=>{
      let encoded:Uint8Array;
      try{
@@ -74,7 +77,7 @@ export async function GET(request:Request){
      }
      if(open)controller.enqueue(encoded);
     });
-    // A disconnected response drops pending values. Current native owners do not accept AbortSignal.
+    // Disconnect stops eligible readers at their next admission check and drops pending values.
     void Promise.allSettled(reads).then(stop);
    },
    cancel(){detach();},

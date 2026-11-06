@@ -9,10 +9,11 @@ import {myCurrentLeaveCards,nextApprovedLeavePresenceTx} from '../packs/leave/se
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {EmployeeHomeTimeOff} from '../lib/employee-home-read-model';
 export type {EmployeeHomeTimeOff} from '../lib/employee-home-read-model';
-export async function readEmployeeHomeTimeOff(ctx:SessionContext,employmentId?:string,locale?:string):Promise<EmployeeHomeTimeOff>{
+export async function readEmployeeHomeTimeOff(ctx:SessionContext,employmentId?:string,locale?:string,signal?:AbortSignal):Promise<EmployeeHomeTimeOff>{
  return withTenant(ctx,async tx=>{
   await tx.execute(sql`set transaction read only`);
   const subjectId=await requireActiveOwnHomeEmploymentIdTx(tx,ctx,employmentId);
+  signal?.throwIfAborted();
   const today=todayInKualaLumpur();
   const [cards,nextApproved,eligible]=await Promise.all([
    myCurrentLeaveCards(ctx,subjectId,{today,locale},tx),
@@ -23,5 +24,5 @@ export async function readEmployeeHomeTimeOff(ctx:SessionContext,employmentId?:s
   return {version:1,employmentId:subjectId,asOf:today,canApply:eligible,
    balances:cards.map(card=>({id:card.leaveTypeId,name:card.leaveType,annualLeave:card.annualLeave,available:card.canApplyFor,pending:card.pending})),
    nextApproved};
- });
+ },{readSignal:signal});
 }

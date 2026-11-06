@@ -9,15 +9,16 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {calendarWindowDates} from '../lib/calendar-window';
 import {homeSharingPageInput,validateHomeTeamPage,validateHomeCelebrationPage,validateHomeTeamCalendar} from '../lib/employee-home-sharing';
 
-function withOwnHomeSharingRead<T>(ctx:SessionContext,employmentId:string,read:(tx:Tx)=>Promise<T>){
+function withOwnHomeSharingRead<T>(ctx:SessionContext,employmentId:string,read:(tx:Tx)=>Promise<T>,signal?:AbortSignal){
  if(!ctx.userId)throw new HomeAccessError('authentication');
  return withTenant(ctx,async tx=>{
   if(!await isCurrentOwnHomeEmploymentTx(tx,ctx,employmentId))throw new HomeAccessError('employmentUnavailable');
+  signal?.throwIfAborted();
   return read(tx);
- });
+ },{readSignal:signal});
 }
 
-export async function readHomeTeamPage(ctx:SessionContext,employmentId:string,p:{date?:string;after?:string;limit?:number;onlyLeave?:boolean}={}){
+export async function readHomeTeamPage(ctx:SessionContext,employmentId:string,p:{date?:string;after?:string;limit?:number;onlyLeave?:boolean}={},signal?:AbortSignal){
  return withOwnHomeSharingRead(ctx,employmentId,async tx=>{
   const on=p.date??todayInKualaLumpur();
   calendarWindowDates(on,on);const input=homeSharingPageInput(p.after,p.limit);
@@ -25,7 +26,7 @@ export async function readHomeTeamPage(ctx:SessionContext,employmentId:string,p:
    sql`SELECT app.home_team_page(${employmentId}::uuid,${on}::date,${input.after}::uuid,${input.limit}::integer) AS projection`;
   const [row]=await tx.execute(query) as unknown as {projection:unknown}[];
   return validateHomeTeamPage(row?.projection,on);
- });
+ },signal);
 }
 export async function readHomeTeamCalendar(ctx:SessionContext,employmentId:string,from:string,to:string){
  return withOwnHomeSharingRead(ctx,employmentId,async tx=>{
@@ -34,11 +35,11 @@ export async function readHomeTeamCalendar(ctx:SessionContext,employmentId:strin
   return validateHomeTeamCalendar(row?.projection,from,to);
  });
 }
-export async function readHomeCelebrationPage(ctx:SessionContext,employmentId:string,p:{after?:string;limit?:number}={}){
+export async function readHomeCelebrationPage(ctx:SessionContext,employmentId:string,p:{after?:string;limit?:number}={},signal?:AbortSignal){
  return withOwnHomeSharingRead(ctx,employmentId,async tx=>{
   const input=homeSharingPageInput(p.after,p.limit,'celebration');
   const [row]=await tx.execute(sql`SELECT app.home_celebration_page(${employmentId}::uuid,
    ${input.after}::text,${input.limit}::integer) AS projection`) as unknown as {projection:unknown}[];
   return validateHomeCelebrationPage(row?.projection);
- });
+ },signal);
 }
