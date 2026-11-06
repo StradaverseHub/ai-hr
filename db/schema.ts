@@ -233,6 +233,8 @@ export const company = pgTable(
     id: id(),
     tenantId: tenantId(),
     legalName: text('legal_name').notNull(),
+    displayGroupField: text('display_group_field'),
+    displayGroupOptionId: uuid('display_group_option_id'),
     country: text('country').notNull().default('MY'), // ISO-3166 alpha-2
     // ISO-4217. r79a (4fb8b75a step 3): this is now the company's ONE currency — Organization → General
     // owns it, and the Basic Salary form preselects it for a brand-new salary record (the job that

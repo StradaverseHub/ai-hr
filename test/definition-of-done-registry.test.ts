@@ -105,13 +105,12 @@ describe('private by design: no AI semantic surface',()=>{
  const pages=Object.keys(PRIVATE_BY_DESIGN);
  const root=fileURLToPath(new URL('..',import.meta.url));
  const names=(path:string)=>new RegExp('(?<![A-Za-z0-9/_-])'+path.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![A-Za-z0-9/_-])');
- it('keeps the private case pages and own job description linkable with explicit read boundaries',()=>{
+ it('keeps the private case pages linkable with explicit read boundaries',()=>{
   const casePages=['/admin/privacy/case-handlers','/cases','/me/cases','/me/cases/new'];
-  expect(pages.sort()).toEqual([...casePages,'/me/job-description']);
+  expect(pages.sort()).toEqual(casePages);
   const linkable=new Set(LINKABLE_PAGES.map(([path])=>path));
   for(const page of pages)expect(linkable.has(page),page).toBe(true);
   for(const page of casePages)expect(PRIVATE_BY_DESIGN[page]).toMatch(/^ADR-0173: /);
-  expect(PRIVATE_BY_DESIGN['/me/job-description']).toMatch(/native owner alone reads/);
  });
  it('gives none of them a semantic entity, a declared action or a read',()=>{
   const entityPages=new Set(terasEntities().map(entity=>entity.page));

@@ -15,7 +15,6 @@ import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/der
 //
 // Every option list is pre-loaded and pre-translated by the server page; this island owns only the form
 // state. The tab shell injects the hidden `tab` field on submit, so the save lands back on the Movement tab.
-import {ApprovedPositionArchitecture} from '@/components/approved-position-architecture';
 import { useRef, useState, useActionState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
@@ -241,7 +240,6 @@ export function MovementNewEvent({
   const after = {...current,...saved};
   const initialFields=useRef<Map<string,string>|null>(null);
   const touched=useRef(new Set<string>());
-  const movementForm=useRef<HTMLFormElement|null>(null);
   const [pageError,pageAction,pagePending]=useActionState(async(previous:string|null,data:FormData)=>{
     if(saved)for(const key of MOVEMENT_PENDING_INPUT_FIELDS){
       if(Object.prototype.hasOwnProperty.call(saved,key)||touched.current.has(key))continue;
@@ -274,6 +272,7 @@ export function MovementNewEvent({
       case 'probationExtension': return t('eventType.probationExtension');
       case 'secondment': return t('eventType.secondment');
       case 'actingPosition': return t('eventType.actingPosition');
+      case 'historicalHire': return t('eventType.historicalHire');
       case 'resignation': return t('eventType.resignation');
       case 'termination': return t('eventType.termination');
       case 'blacklist': return t('eventType.blacklist');
@@ -303,7 +302,6 @@ export function MovementNewEvent({
   const scopeCompanyId = isEntityTransfer ? destCompanyId : current.companyId;
   const derivedOrganisation=useDerivedOrganisation({companyId:scopeCompanyId,asOf:correctionDate});
   const scopeChanged = scopeCompanyId !== current.companyId;
-  const [previewPosition,setPreviewPosition]=useState({companyId:scopeCompanyId,positionId:after.positionId});
   const scoped: MovementOrgScope = orgByCompany?.[scopeCompanyId] ?? {
     departments,
     positions,
@@ -555,7 +553,7 @@ export function MovementNewEvent({
 
   return (
     <form aria-busy={pagePending} action={pageContext ? pageAction : saved ? submitPendingCorrection : edit ? editMovementEventAction : createMovementEventAction}
-      ref={form=>{movementForm.current=form;if(saved&&form&&!initialFields.current)initialFields.current=new Map(Array.from(new FormData(form).entries()).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));}}
+      ref={form=>{if(saved&&form&&!initialFields.current)initialFields.current=new Map(Array.from(new FormData(form).entries()).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));}}
       onSubmit={event=>{
         if(pagePending){event.preventDefault();return;}
         // 1d58019a Step 2 — Required to Change, checked before the round trip (the server checks it too).
@@ -576,7 +574,6 @@ export function MovementNewEvent({
         } else setRuleError(null);
       }}
       onChangeCapture={event=>{
-        if(event.target instanceof HTMLSelectElement&&event.target.name==='positionId')setPreviewPosition({companyId:scopeCompanyId,positionId:event.target.value||null});
         if (!saved) return;
         const target: EventTarget = event.target;
         if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
@@ -752,7 +749,7 @@ export function MovementNewEvent({
 
         <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
           {label(movementField('remarks'))}
-          <input {...personnelWorkflowInput(movementField('remarks'), 'movement', 'edit')} maxLength={200} defaultValue={edit?.remarks ?? ''} className={inputCls} />
+          <input {...personnelWorkflowInput(movementField('remarks'), 'movement', 'edit', { historicalHireRemarks: behaviour === 'historicalHire' })} maxLength={200} defaultValue={edit?.remarks ?? ''} className={inputCls} />
         </label>
 
         {edit && (
@@ -777,7 +774,6 @@ export function MovementNewEvent({
             <div className="font-medium">{t('form.afterInformation')}</div>
           </div>
           {comparisonRows}
-          {ruleFor('positionId').included&&<div className="px-4 py-3"><ApprovedPositionArchitecture companyId={scopeCompanyId} positionId={previewPosition.companyId===scopeCompanyId?previewPosition.positionId:scoped.positions.some(p=>p.id===after.positionId)?after.positionId:null} gradeIds={grades.map(g=>g.id)} movement onUseGrade={ruleFor('gradeId').included&&ruleFor('gradeId').editable?gradeId=>{const field=movementForm.current?.elements.namedItem('gradeId');if(field instanceof HTMLSelectElement&&Array.from(field.options).some(o=>o.value===gradeId)){field.value=gradeId;touched.current.add('gradeId');field.dispatchEvent(new Event('change',{bubbles:true}));}}:undefined}/></div>}
           <p className="px-4 py-3 text-xs text-muted-foreground">
             {/* b7b22514 — an Entity Transfer needs to say what the other kinds do not: that the org
                 choices above it now belong to the DESTINATION company, and that group service is not

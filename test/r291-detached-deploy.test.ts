@@ -166,6 +166,7 @@ function makeBox(envProduction = DEMO_ENV): Box {
   fs.writeFileSync(path.join(bin, 'psql'), `#!/bin/sh
 printf '%s\\n' "psql $*" >> "$DEPLOY_TRACE"
 case " $* " in *" -f - "*) cat >> "$DEPLOY_SQL_TRACE" ;; esac
+case "$*" in *reward_setup_allowed*) printf "t\\n" ;; esac
 exit 0
 `);
   fs.chmodSync(path.join(bin, 'psql'), 0o755);

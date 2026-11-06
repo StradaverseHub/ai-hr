@@ -25,7 +25,7 @@ export async function createPersonnelPrivateSearch(ctx:SessionContext,p:{text:st
   await tx.execute(sql`delete from personnel_private_search where tenant_id=${ctx.tenantId}::uuid and actor_id=${ctx.userId}::uuid and (expires_at<=now() or token_hash in(select token_hash from personnel_private_search where tenant_id=${ctx.tenantId}::uuid and actor_id=${ctx.userId}::uuid order by created_at desc offset 7))`);
   await tx.execute(sql`insert into personnel_private_search(token_hash,tenant_id,actor_id,scope_ids,matches) values(${hash},${ctx.tenantId}::uuid,${ctx.userId}::uuid,ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${JSON.stringify(matches)}::jsonb)`);
   return token;
- });
+ }, { writesSearchToken: true });
 }
 
 export async function personnelPrivateSearchAvailable(ctx:SessionContext,token:string,companyIds:string[]):Promise<boolean>{

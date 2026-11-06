@@ -59,7 +59,15 @@ it('applies the pinned payroll and authentication successor tail through the ord
   const preview=await previewPayrollHistoryUpload(ctx,{name:'upgrade-history.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows])),operationKey:randomUUID()});
   expect(preview.plan.counts).toMatchObject({created:1,invalid:0});await confirmPayrollHistoryUpload(ctx,{attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:true});
   const tables:PgTable[]=[schema.tenant,schema.company,schema.department,schema.position,schema.costCenter,schema.person,schema.appUser,schema.roleAssignment,schema.employment,schema.payrollCycle,schema.payPeriod,schema.payrollHistoryImportAttempt,schema.payrollBatch,schema.payslip,schema.payrollHistoryImportRecord,schema.payrollHistoryImportSnapshot,schema.payrollHistoryImportRevision,schema.payrollHistoryImportEvent,schema.domainEvent];
-  for(const table of tables){const rows=await owner.db.select().from(table).where(table===schema.tenant?eq(schema.tenant.id,b.tenantId):sql`tenant_id=${b.tenantId}::uuid`);if(rows.length)await target.db.insert(table).values(rows);}
+  for(const table of tables){
+   if(table===schema.company){
+    const [company]=await owner.db.select({name:schema.company.legalName}).from(schema.company).where(eq(schema.company.id,b.companyId));
+    await target.client`insert into public.company(id,tenant_id,legal_name) values(${b.companyId},${b.tenantId},${company.name})`;
+    continue;
+   }
+   const rows=await owner.db.select().from(table).where(table===schema.tenant?eq(schema.tenant.id,b.tenantId):sql`tenant_id=${b.tenantId}::uuid`);
+   if(rows.length)await target.db.insert(table).values(rows);
+  }
   const snapshot=async()=>{
    const out:Record<string,unknown>={};
    for(const table of ['payslip','payroll_batch','payroll_history_import_attempt','payroll_history_import_record','payroll_history_import_snapshot','payroll_history_import_revision','payroll_history_import_event','domain_event'])out[table]=await target!.client.unsafe(`select to_jsonb(t) as value from public.${table} t order by id`);

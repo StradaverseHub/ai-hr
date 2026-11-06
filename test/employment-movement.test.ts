@@ -28,6 +28,7 @@ import {
   type Base,
 } from './harness';
 import { hireEmployee, setEmploymentAssignment, transferEmployee } from '../core/org';
+import { correctHireDetails } from '../core/hire-correction';
 import { setCompensation } from '../core/comp';
 import { createBusinessUnit, createPosition, createJobGrade } from '../core/admin';
 import { createLocation } from '../core/location';
@@ -494,4 +495,48 @@ describe('createMovementEvent — the New Event dispatcher', () => {
       ),
     ).rejects.toBeInstanceOf(WorkforceAccessError);
   });
+});
+
+it('records a Historical Hire before the current employment without changing the active hire or compensation', async () => {
+  const {employmentId} = await hireOne();
+  const ctx = adminCtx(b);
+  const entry = {employmentId,kind:'historicalHire',effectiveDate:'2025-03-01',remarks:'Record the original hire from prior records'};
+  const before = await movementCurrentState(ctx,employmentId);
+  await createMovementEvent(ctx,entry);
+  await expect(createMovementEvent(ctx,entry)).rejects.toThrow();
+  const history = await movementHistory(ctx,employmentId);
+  expect(history.filter(row=>row.kind==='historicalHire')).toMatchObject([
+    {effectiveDate:'2025-03-01',remarks:entry.remarks},
+  ]);
+  expect(history.find(row=>row.kind==='hired')?.effectiveDate).toBe('2026-01-01');
+  expect(await movementCurrentState(ctx,employmentId)).toEqual(before);
+});
+
+it('inserts a backdated salary movement while keeping the later salary current', async () => {
+  const {employmentId} = await hireOne();
+  const ctx = adminCtx(b);
+  await setCompensation(ctx,{employmentId,basicSalary:3000,effectiveFrom:'2026-01-01'});
+  await createMovementEvent(ctx,{employmentId,kind:'salaryAdjustment',basicSalary:4500,effectiveDate:'2026-05-01',remarks:'Later approved salary'});
+  await createMovementEvent(ctx,{employmentId,kind:'salaryAdjustment',basicSalary:3800,effectiveDate:'2026-03-01',remarks:'Insert missing salary movement'});
+  const active = await owner.db.select({
+    from:schema.compensation.validFrom,to:schema.compensation.validTo,basic:schema.compensation.basicSalary,
+  }).from(schema.compensation).where(and(eq(schema.compensation.employmentId,employmentId),isNull(schema.compensation.supersededAt)))
+    .orderBy(schema.compensation.validFrom);
+  expect(active).toEqual([
+    {from:'2026-01-01',to:'2026-03-01',basic:'3000.00'},
+    {from:'2026-03-01',to:'2026-05-01',basic:'3800.00'},
+    {from:'2026-05-01',to:null,basic:'4500.00'},
+  ]);
+});
+
+it('corrects only the hire salary interval and leaves later salary current', async () => {
+  const {employmentId} = await hireOne();
+  const ctx = adminCtx(b);
+  await setCompensation(ctx,{employmentId,basicSalary:3000,effectiveFrom:'2026-01-01'});
+  await createMovementEvent(ctx,{employmentId,kind:'salaryAdjustment',basicSalary:4500,effectiveDate:'2026-05-01',remarks:'Later approved salary'});
+  await correctHireDetails(ctx,{employmentId,changes:{},basicSalary:3200,reason:'Correct recorded hire amount'});
+  const rows = await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,employmentId));
+  expect(rows.find(row=>row.validFrom==='2026-01-01'&&row.supersededAt)?.basicSalary).toBe('3000.00');
+  expect(rows.find(row=>row.validFrom==='2026-01-01'&&!row.supersededAt)).toMatchObject({basicSalary:'3200.00',validTo:'2026-05-01'});
+  expect(rows.find(row=>!row.validTo&&!row.supersededAt)?.basicSalary).toBe('4500.00');
 });

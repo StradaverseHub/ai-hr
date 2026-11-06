@@ -7319,7 +7319,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // difference when a deduction exceeds its stream rather than overstating eligible pay.
         add('EPF wage adjustment', epfWorking.actualWage - items.reduce((sum, item) => sum + item.amount, 0));
 
-        const usesSchedule = epfWorking.employer.method === 'schedule_row' || epfWorking.employer.method === 'schedule_formula';
+        const usesSchedule = 'category' in epfWorking
+          ? epfWorking.schedulePart != null
+          : epfWorking.employer.method === 'schedule_row' || epfWorking.employer.method === 'schedule_formula';
         const scheduleEffectiveFrom = usesSchedule
           ? resolved.components.epf.effectiveFrom ?? epfWorking.scheduleEffectiveFrom : undefined;
         const earlierEpf = earlierEpfByEmp.get(e.employmentId);

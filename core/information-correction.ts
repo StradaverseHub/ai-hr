@@ -55,23 +55,25 @@ async function labelsTx(tx:Tx,v:InformationValues):Promise<InformationValues>{
  const [grade]=v.gradeId?await tx.select({name:jobGrade.name}).from(jobGrade).where(eq(jobGrade.id,v.gradeId)):[];
  return {...v,companyId:co?.name??v.companyId,gradeId:grade?.name??v.gradeId};
 }
+/** Loading the form may expose invalid legacy values so the user can correct them. */
+export function readInformationCorrection(ctx:SessionContext,employmentId:string){
+ return withTenant(ctx,async tx=>{
+  const state=await stateTx(tx,ctx,employmentId),before=values(state),beforeLabels=await labelsTx(tx,before);
+  return {effectiveOn:todayInKualaLumpur(),before,beforeLabels};
+ });
+}
 async function validateTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof stateTx>>,changes:InformationChanges){
  const before=values(s),after={...before};
  for(const field of INFORMATION_FIELDS){const value=changes[field];if(value!==undefined){if(typeof value!=='string'||!value.trim())fail('Empty correction values cannot clear existing information.');after[field]=value.trim();}}
- // Each rule judges only what this correction changes. An existing gap elsewhere (a legacy contract with no end
- // date) must not stop HR opening the correction or fixing an unrelated field; the read-only preview passes no changes.
- const changed=(field:keyof InformationValues)=>after[field]!==before[field];
- if(changed('hiredOn')||changed('joinDate')){
-  for(const key of ['hiredOn','joinDate'] as const)if(after[key]&&!isCalendarDate(after[key]!))fail('Use a valid date in YYYY-MM-DD format.');
-  if(after.hiredOn!>todayInKualaLumpur()||(after.joinDate&&after.joinDate>todayInKualaLumpur()))fail('Joining dates cannot be in the future.');
-  if(after.joinDate&&after.joinDate<after.hiredOn!)fail('Join Date cannot precede Group Join Date.');
- }
- if(changed('hiredOn')){
-  const endDates=[s.emp.terminatedOn,s.emp.probationEndDate,s.emp.contractStartDate,s.emp.contractEndDate,s.emp.internshipEndDate,s.emp.confirmationDate,s.emp.resignationDate,s.emp.lastWorkingDate].filter((x):x is string=>!!x);
-  if(endDates.some(date=>date<after.hiredOn!))fail('The corrected date conflicts with existing employment dates. Use the relevant workflow.');
- }
- if(changed('employmentType')){
-  if(!PERSONNEL_EMPLOYMENT_TYPES.includes(after.employmentType as typeof PERSONNEL_EMPLOYMENT_TYPES[number]))fail('Employment Type is not a valid system code.');
+ for(const key of ['hiredOn','joinDate'] as const)if(after[key]&&!isCalendarDate(after[key]!))fail('Use a valid date in YYYY-MM-DD format.');
+ if(after.hiredOn!>todayInKualaLumpur()||(after.joinDate&&after.joinDate>todayInKualaLumpur()))fail('Joining dates cannot be in the future.');
+ if(after.joinDate&&after.joinDate<after.hiredOn!)fail('Join Date cannot precede Group Join Date.');
+ const endDates=[s.emp.terminatedOn,s.emp.probationEndDate,s.emp.contractStartDate,s.emp.contractEndDate,s.emp.internshipEndDate,s.emp.confirmationDate,s.emp.resignationDate,s.emp.lastWorkingDate].filter((x):x is string=>!!x);
+ if(endDates.some(date=>date<after.hiredOn!))fail('The corrected date conflicts with existing employment dates. Use the relevant workflow.');
+ if(!PERSONNEL_EMPLOYMENT_TYPES.includes(after.employmentType as typeof PERSONNEL_EMPLOYMENT_TYPES[number]))fail('Employment Type is not a valid system code.');
+ // Contract/intern dates are not editable here, so their prerequisites apply only when this correction changes
+ // Employment Type: a legacy contract with no end date can still have its grade, dates or company corrected.
+ if(after.employmentType!==before.employmentType){
   if(after.employmentType==='contract'&&(!s.emp.contractStartDate||!s.emp.contractEndDate))fail('Contract employment requires valid contract start and end dates.');
   if(after.employmentType==='intern'&&!s.emp.internshipEndDate)fail('Intern employment requires an internship end date.');
  }

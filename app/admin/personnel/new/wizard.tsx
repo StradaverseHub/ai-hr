@@ -53,7 +53,6 @@ import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/der
  * `CrossCompanyError` guard in `core/org.ts` remains the last line of defence, exactly as before.
  */
 
-import {ApprovedPositionArchitecture} from '@/components/approved-position-architecture';
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
@@ -752,7 +751,6 @@ export function EmployeeWizard({
                 <p className="mt-1 text-xs text-muted-foreground">{t('orgLabelsEmptyForCompany')}</p>
               )}
             </PersonnelField>
-            <div className="sm:col-span-2"><ApprovedPositionArchitecture companyId={companyId} positionId={data.employment?.positionId} gradeIds={grades.map(g=>g.id)} onUseGrade={gradeId=>set('employment',{gradeId})}/></div>
             <PersonnelField fieldId={"employment.draft_only_employment_fields.costcenterid"} mode="draft">
               <select {...personnelControl("employment.draft_only_employment_fields.costcenterid", 'draft')}
                 className={inputCls}

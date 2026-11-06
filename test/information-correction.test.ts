@@ -9,7 +9,7 @@ import {assignLabelToCompanies} from '../core/system-labels';
 import {createMovementEvent,movementHistory,movementDetail,reverseMovementEvent} from '../core/movement';
 import {withTenant} from '../db/client';
 import * as schema from '../db/schema';
-import {previewInformationCorrection,correctInformation,informationCorrectionHistory,informationCorrectionOptions} from '../core/information-correction';
+import {readInformationCorrection,previewInformationCorrection,correctInformation,informationCorrectionHistory,informationCorrectionOptions} from '../core/information-correction';
 import {previewInformationUpload,confirmInformationUpload} from '../core/information-correction-import';
 import {openLeaveYear,accrueEarnedLeave,reprojectEntitlementForEmployment} from '../core/leave';
 import {reconcileInformationSnapshots} from '../scripts/reconcile-information-snapshots';
@@ -82,6 +82,16 @@ describe('8550b282 information-only corrections',()=>{
   await apply(id,{hiredOn:'2025-01-02'});
   await expect(correctInformation(ctx(),{employmentId:id,changes:{hiredOn:'2025-01-01'},reason:'Correct offer date',fingerprint:review.fingerprint,method:'manual'})).rejects.toThrow('changed after your review');
   await apply(id,{hiredOn:'2025-01-03'});expect((await owner.db.select().from(schema.informationPayslipSnapshot).where(eq(schema.informationPayslipSnapshot.payslipId,slip.id)))[0].hiredOn).toBe('2025-01-15');
+ });
+ it('loads legacy values for correction before validating proposed changes', async () => {
+  const id = await fixture();
+  await owner.db.update(schema.employment).set({ joinDate: '2025-01-14' }).where(eq(schema.employment.id, id));
+  const current = await readInformationCorrection(ctx(), id);
+  expect(current.before).toMatchObject({ hiredOn: '2025-01-15', joinDate: '2025-01-14' });
+  await expect(previewInformationCorrection(ctx(), {
+    employmentId: id, changes: {}, reason: 'Review legacy dates',
+  })).rejects.toThrow('Join Date cannot precede Group Join Date');
+  await expect(apply(id, { joinDate: '2025-01-16' })).resolves.toMatchObject({ changed: true });
  });
  it('validates reasons, calendar dates and contract prerequisites without partial writes',async()=>{
   const id=await fixture();

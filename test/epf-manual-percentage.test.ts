@@ -8,6 +8,8 @@ import {mapEpfUiMode,retainLegacyTotalTopup} from '../lib/epf-mode-map';
 import {clientPackFor} from '../localization/registry.client';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {payslip} from '../db/schema';
+import {explainStatutory} from '../core/statutory-explain';
+import {epfWorkingRows} from '../app/payroll/statutory-detail/epf-working';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 describe('5e204d56 manual percentage persistence and payroll',()=>{
@@ -68,6 +70,32 @@ describe('5e204d56 manual percentage persistence and payroll',()=>{
    epfWorking:{actualWage:6250,roundedWage:6300,employeeEarlierRuns:0,employerEarlierRuns:240,
     employeeThisRun:0,employerThisRun:12},
   });
+ });
+ it('keeps the saved Top-up formula and prior charges together for the screen and export', async () => {
+  await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+  const a = await entitledCtx(base), employee = await hire();
+  await setCompensation(a, { employmentId: employee.employmentId, basicSalary: 6000, effectiveFrom: start });
+  await setStatutoryProfileMY(a, {
+   personId: employee.personId, icNumber: '900101011234',
+   ...mapEpfUiMode('voluntary_percentage', '5', ''),
+  });
+  const regular = await createBatch(a, { companyId: base.companyId, payPeriod: period });
+  await generatePayslips(a, { batchId: regular.batchId });
+  const additional = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: period, runType: 'bonus' });
+  await setPayrollInput(a, { batchId: additional.batchId, employmentId: employee.employmentId, overtimeAmount: 0, bonusAmount: 250 });
+  await generatePayslips(a, { batchId: additional.batchId });
+  const [slip] = await owner.db.select().from(payslip).where(eq(payslip.batchId, additional.batchId));
+  const { epfWorking } = explainStatutory(slip.statutory, 'bonus');
+  expect(epfWorking).toMatchObject({
+   category: 'topup_percentage', actualWage: 6250,
+   employee: { savedRate: 0.05, rate: 0.16, amount: 1000 },
+   employer: { savedRate: null, statutoryAmount: 756, amount: 756 },
+   employeeEarlierRuns: 960, employerEarlierRuns: 720,
+   employeeThisRun: 40, employerThisRun: 36, finalEmployee: 40, finalEmployer: 36,
+  });
+  const rows = epfWorkingRows(epfWorking!, key => key, amount => String(amount), 'en-MY');
+  expect(rows).toContainEqual({ label: 'epfTopupFormula', value: '6250 × 16% → 1000' });
+  expect(rows.some(row => row.label === 'epfRoundedWage')).toBe(false);
  });
  it('1058ced1 the database rule accepts 0 and 100% and still refuses below 0, above 100% and blank',async()=>{
   const a=adminCtx(base),employee=await hire();

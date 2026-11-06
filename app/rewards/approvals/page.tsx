@@ -1,3 +1,4 @@
+import {rewardReviewCompanyGroups} from '@/packs/rewards/group-roles';
 import {rewardVisibleCompanies} from '@/packs/rewards/access-policy';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -17,21 +18,28 @@ const COLUMNS = ['unit', 'stage', 'due', 'people', 'salary', 'bonus', 'exception
  * through the review page's own projection: a row shows only what this viewer may see on that review.
  * Two views of the same rows: Matrix (default; one column per step of each route) and List.
  */
-export default async function RewardApprovalsPage({ searchParams }: { searchParams: Promise<{ view?: string; group?: string; error?: string; decided?: string; sent?: string; skipped?: string; refused?: string; refusedDetail?: string }> }) {
+export default async function RewardApprovalsPage({ searchParams }: { searchParams: Promise<{ view?: string; group?: string; cycle?:string; unit?:string; businessGroup?:string; error?: string; decided?: string; sent?: string; skipped?: string; refused?: string; refusedDetail?: string }> }) {
   await requireModule('rewards');
-  const { s } = await scopedSession();const scopeIds=await getScopeIds((await rewardVisibleCompanies(s)).map(c=>c.id));
+  const { s } = await scopedSession();const companies=await rewardVisibleCompanies(s),allowedIds=companies.map(c=>c.id),scopeIds=companies.some(c=>c.wholeGroup)?allowedIds:await getScopeIds(allowedIds);
   const sp = await searchParams;
   const t = await getTranslations('rewards');
+  const nav = await getTranslations('nav');
   const locale = await getLocale();
-  const all = await rewardApprovalsBoard(s, scopeIds);
+  const [all, companyGroups] = await Promise.all([rewardApprovalsBoard(s, scopeIds), rewardReviewCompanyGroups(s, scopeIds)]);
+  const choices = {
+    cycle: [...new Map(all.flatMap(row=>row.cycleId?[[row.cycleId,row.cycle] as const]:[])).entries()],
+    unit: [...new Map(all.flatMap(row=>row.businessUnitId?[[row.businessUnitId,row.name] as const]:[])).entries()],
+    businessGroup: [...new Map(Object.values(companyGroups).map(row=>[row.groupId,row.groupName])).entries()],
+  };
   const groups = [...new Map(all.map(r => [r.companyId, r.company])).entries()].sort((a, b) => a[1].localeCompare(b[1]) || a[0].localeCompare(b[0]));
   const group = groups.some(([id]) => id === sp.group) ? sp.group : undefined;
   const view: 'matrix' | 'list' = sp.view === 'list' ? 'list' : 'matrix';
   const href = (next: { view: 'matrix' | 'list'; group: string | undefined }) => {
-    const q = new URLSearchParams({ ...(next.view === 'list' ? { view: 'list' } : {}), ...(next.group ? { group: next.group } : {}) }).toString();
+    const q = new URLSearchParams({ ...(next.view === 'list' ? { view: 'list' } : {}), ...(next.group ? { group: next.group } : {}), ...(sp.cycle ? { cycle:sp.cycle } : {}), ...(sp.unit ? { unit:sp.unit } : {}), ...(sp.businessGroup ? { businessGroup:sp.businessGroup } : {}) }).toString();
     return q ? `/rewards/approvals?${q}` : '/rewards/approvals';
   };
-  const rows = group ? all.filter(r => r.companyId === group) : all;
+  const rows = all.filter(row=>(!group||row.companyId===group)&&(!sp.cycle||row.cycleId===sp.cycle)
+    &&(!sp.unit||row.businessUnitId===sp.unit)&&(!sp.businessGroup||companyGroups[row.companyId]?.groupId===sp.businessGroup));
   const waiting = rows.filter(r => r.waiting), elsewhere = rows.filter(r => !r.waiting);
   const sendable = waiting.filter(r => r.action === 'approve'&&r.batchAllowed!==false);
   const ready = sendable.filter(r => r.ready);
@@ -68,8 +76,8 @@ export default async function RewardApprovalsPage({ searchParams }: { searchPara
   const section = (list: RewardBoardRow[], name: string) => view === 'matrix' ? <RewardBoardMatrix rows={list} section={name} /> : table(list);
 
   return <div className="w-full space-y-6">
-    <Link href="/rewards" className="text-sm text-primary hover:underline">← {t('title')}</Link>
-    <PageHeader title={t('board.title')} description={steps.length ? t('board.yourStep', { steps: steps.join('; ') }) : t('board.nothingYours')}
+    <Link href="/rewards" className="text-sm text-primary hover:underline">← {nav('rewardsReviewing')}</Link>
+    <PageHeader title={nav('rewardsApprovalsBoard')} description={steps.length ? t('board.yourStep', { steps: steps.join('; ') }) : t('board.nothingYours')}
       actions={<>
         {all.length > 0 && <nav aria-label={t('board.view.label')} className={SEGMENTED_GROUP}>{(['matrix', 'list'] as const).map(v =>
           <Link key={v} href={href({ view: v, group })} aria-current={view === v ? 'page' : undefined} className={`${SEGMENTED_BTN} ${view === v ? SEGMENTED_BTN_ACTIVE : SEGMENTED_BTN_INACTIVE}`}>{t(`board.view.${v}`)}</Link>)}</nav>}
@@ -81,6 +89,18 @@ export default async function RewardApprovalsPage({ searchParams }: { searchPara
       <p>{t('board.sendResult', { sent: Number(sp.sent) || 0, skipped: Number(sp.skipped) || 0, refused: Number(sp.refused) || 0 })}</p>
       {refusedDetail.length > 0 && <ul className="list-disc pl-5 text-muted-foreground">{refusedDetail.map(([name, message], i) => <li key={i}>{t('board.refusedItem', { name, message })}</li>)}</ul>}
     </div>}
+    {all.length>0&&<form method="get" className="flex flex-wrap items-end gap-3">
+      {view==='list'&&<input type="hidden" name="view" value={view}/>}
+      {group&&<input type="hidden" name="group" value={group}/>}
+      {(['cycle','unit','businessGroup'] as const).map(key=><label className="space-y-1 text-sm" key={key}>
+        <span className="block">{key==='businessGroup'?t('reviewList.businessGroup'):t(key)}</span>
+        <select className="rounded-md border border-border bg-background px-3 py-2" name={key} defaultValue={sp[key]??''}>
+          <option value="">{t('reviewList.all')}</option>
+          {choices[key].map(([id,name])=><option key={id} value={id}>{name}</option>)}
+        </select>
+      </label>)}
+      <RewardSubmit type="submit">{t('reviewList.apply')}</RewardSubmit>
+    </form>}
     {groups.length > 1 && <nav aria-label={t('board.groups')} className="flex flex-wrap gap-2">
       {[[undefined, t('board.allGroups'), all.length] as const, ...groups.map(([id, name]) => [id, name, all.filter(r => r.companyId === id).length] as const)].map(([id, name, count]) =>
         <Link key={id ?? 'all'} href={href({ view, group: id })} aria-current={group === id ? 'page' : undefined}

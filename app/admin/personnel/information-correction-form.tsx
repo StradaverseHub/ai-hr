@@ -8,24 +8,32 @@ import {personnelWorkflowControl,personnelWorkflowInput} from '@/lib/personnel-f
 import {INFORMATION_FIELDS,INFORMATION_FIELD_IDS,type InformationPreview,type InformationChanges} from '@/lib/information-correction';
 const control='w-full rounded-md border border-input bg-card px-3 py-2 text-sm';
 const button='rounded-md border px-4 py-2 text-sm font-medium disabled:opacity-50 active:scale-[.98]';
+type CorrectionContext = Exclude<Awaited<ReturnType<typeof informationContextAction>>, { correctionError: string }>;
+
+function correctionValue<T extends object>(result: T | { correctionError: string }): T {
+  if ('correctionError' in result && typeof result.correctionError === 'string') {
+    throw new Error(result.correctionError);
+  }
+  return result as T;
+}
+
 export function InformationChangesTable({preview}:{preview:InformationPreview}){
  const t=useTranslations('people.informationCorrection');
  return <div className="overflow-x-auto rounded-md border"><table className="w-full text-left text-sm">{preview.effectiveOn&&<caption className="caption-bottom p-3 text-left text-xs text-muted-foreground">{t('effective',{date:preview.effectiveOn})}</caption>}<thead className="bg-muted/50 text-muted-foreground"><tr><th className="p-3">{t('field')}</th><th className="p-3">{t('before')}</th><th className="p-3">{t('after')}</th></tr></thead><tbody>{preview.changed.map(field=><tr key={field} className="border-t"><th className="p-3 font-normal">{t(`fields.${field}`)}</th><td className="p-3">{preview.beforeLabels[field]??'—'}</td><td className="p-3 font-semibold">{preview.afterLabels[field]??'—'}</td></tr>)}</tbody></table></div>;
 }
 /** The same audit presentation serves correction entry and read-only movement details. */
-type InformationContext=Extract<Awaited<ReturnType<typeof informationContextAction>>,{ok:true}>['value'];
-export function InformationCorrectionAudit({history}:{history:InformationContext['history']}){
+export function InformationCorrectionAudit({history}:{history:CorrectionContext['history']}){
  const t=useTranslations('people.informationCorrection'),format=useFormatter();
  return <details id="information-correction-history" className="rounded-lg border p-3"><summary className="cursor-pointer text-sm font-medium">{t('history')}</summary>{history.length?history.map(event=>{const p=event.payload as {beforeLabels:InformationPreview['beforeLabels'];afterLabels:InformationPreview['afterLabels'];fields:InformationPreview['changed'];reason:string;method:string;filename?:string;batchId?:string;effectiveOn:string};return <article className="space-y-2 border-t py-3 text-sm" key={event.id}><p>{format.dateTime(new Date(event.at),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})} · {event.actorName??event.actorId} · {p.method}</p><p>{p.reason}</p>{p.filename&&<p>{p.filename} · {p.batchId}</p>}<InformationChangesTable preview={{effectiveOn:p.effectiveOn,changed:p.fields,beforeLabels:p.beforeLabels,afterLabels:p.afterLabels} as InformationPreview}/></article>;}):<p className="pt-3 text-sm text-muted-foreground">{t('noHistory')}</p>}</details>;
 }
 function InformationForm({employmentId,onPendingChange,returnHref}:{employmentId:string;onPendingChange:(pending:boolean)=>void;returnHref?:string}){
  const t=useTranslations('people.informationCorrection'),router=useRouter();
- const [context,setContext]=useState<InformationContext|null>(null),[changes,setChanges]=useState<InformationChanges>({}),[reason,setReason]=useState(''),[review,setReview]=useState<InformationPreview|null>(null),[pending,setPending]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false);
+ const [context,setContext]=useState<CorrectionContext|null>(null),[changes,setChanges]=useState<InformationChanges>({}),[reason,setReason]=useState(''),[review,setReview]=useState<InformationPreview|null>(null),[pending,setPending]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false);
  useEffect(()=>{onPendingChange(pending);return()=>onPendingChange(false);},[pending,onPendingChange]);
- useEffect(()=>{let active=true;informationContextAction(employmentId).then(result=>{if(!active)return;if(result.ok)setContext(result.value);else setError(result.error);}).catch(e=>{if(active)setError(e instanceof Error?e.message:String(e));});return()=>{active=false;};},[employmentId]);
+ useEffect(()=>{let active=true;informationContextAction(employmentId).then(data=>{if(active)setContext(correctionValue<CorrectionContext>(data));}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[employmentId]);
  const derivedOrganisation=useDerivedOrganisation({companyId:changes.companyId??context?.preview.before.companyId??undefined,asOf:context?.preview.effectiveOn});
- async function submit(){setPending(true);setError('');try{const result=await previewInformationAction({employmentId,changes,reason});if(result.ok)setReview(result.value);else setError(result.error);}catch(e){setError(e instanceof Error?e.message:String(e));}finally{setPending(false);}}
- async function confirm(){if(!review)return;setPending(true);setError('');try{const result=await saveInformationAction({employmentId,changes,reason,fingerprint:review.fingerprint});if(!result.ok){setError(result.error);setReview(null);return;}setSaved(true);if(returnHref){document.querySelector('[data-personnel-movement-page]')?.dispatchEvent(new Event('personnel-movement-saved'));router.push(returnHref);router.refresh();return;}setReview(null);setChanges({});setReason('');const next=await informationContextAction(employmentId);if(next.ok)setContext(next.value);else setError(next.error);router.refresh();}catch(e){setError(e instanceof Error?e.message:String(e));setReview(null);}finally{setPending(false);}}
+ async function submit(){setPending(true);setError('');try{const result=await previewInformationAction({employmentId,changes,reason});setReview(correctionValue<InformationPreview>(result));}catch(e){setError(e instanceof Error?e.message:String(e));}finally{setPending(false);}}
+ async function confirm(){if(!review)return;setPending(true);setError('');try{correctionValue(await saveInformationAction({employmentId,changes,reason,fingerprint:review.fingerprint}));setSaved(true);if(returnHref){document.querySelector('[data-personnel-movement-page]')?.dispatchEvent(new Event('personnel-movement-saved'));router.push(returnHref);router.refresh();return;}setReview(null);setChanges({});setReason('');setContext(correctionValue<CorrectionContext>(await informationContextAction(employmentId)));router.refresh();}catch(e){setError(e instanceof Error?e.message:String(e));setReview(null);}finally{setPending(false);}}
  return <section className="space-y-4 p-4" aria-label={t('title')}>
   <p className="rounded-lg bg-muted p-3 text-sm">{t('protection')}</p>
   <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100">{t('warning')}</p>

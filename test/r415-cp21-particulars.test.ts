@@ -361,7 +361,23 @@ export function eaIncomePartsForSource(source:{basic:unknown;overtime:unknown;bo
         const approved='940ea7246e44900b58f0d1c9671f08aee254d331';
         const gitSource=(ref:string)=>execFileSync('git',['show',`${ref}:${f}`],{cwd:ROOT,encoding:'utf8',maxBuffer:1<<26});
         expect(gitSource(approved+'^')).toBe(show(f));
-        expect(unchanged).toBe(gitSource(approved));
+        const payrollDisplay = gitSource('e895de97d49738068d9009c00413441447607892');
+        const addedStart = payrollDisplay.indexOf('export type PayslipQuantitySource =');
+        const addedEnd = payrollDisplay.indexOf('/** Descriptive transaction quantity', addedStart);
+        expect(addedStart).toBeGreaterThan(0);
+        expect(addedEnd).toBeGreaterThan(addedStart);
+        const displayAddition = payrollDisplay.slice(addedStart, addedEnd);
+        expect(payrollDisplay.replace(displayAddition, '')).toBe(gitSource(approved));
+        const followup = gitSource('211e4aa36');
+        const overtimeReader = (source: string) => {
+          const start = source.indexOf('export function payslipOvertimeLines(');
+          const end = source.indexOf('\n}\n', start);
+          expect(start).toBeGreaterThanOrEqual(0);
+          expect(end).toBeGreaterThan(start);
+          return source.slice(start, end + 2);
+        };
+        // The follow-up changes only the overtime presentation reader, outside EA's financial path.
+        expect(unchanged.replace(overtimeReader(followup), overtimeReader(payrollDisplay))).toBe(payrollDisplay);
       }else expect(unchanged === show(f), f).toBe(true);
     }
     const slice = (src: string) => {

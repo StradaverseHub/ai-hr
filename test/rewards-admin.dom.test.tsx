@@ -4,12 +4,14 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 
-const ports = vi.hoisted(() => ({ scopedAdmin: vi.fn(), scopedSession: vi.fn(), scope: vi.fn(), visibleCompanies: vi.fn(), setupEntry: vi.fn(), requireModule: vi.fn(), list: vi.fn(), reviewStatus: vi.fn(), choices: vi.fn(), configuration: vi.fn(), shared: vi.fn(), memberships: vi.fn(), requests: vi.fn(), accessCompanies: vi.fn() }));
+const ports = vi.hoisted(() => ({ scopedAdmin: vi.fn(), scopedSession: vi.fn(), scope: vi.fn(), visibleCompanies: vi.fn(), navigation: vi.fn(), requireModule: vi.fn(), list: vi.fn(), reviewStatus: vi.fn(), choices: vi.fn(), configuration: vi.fn(), shared: vi.fn(), memberships: vi.fn(), requests: vi.fn(), accessCompanies: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async (namespace: keyof typeof en = 'rewards') => (key: string) => key.split('.').reduce((v: any, k) => v[k], en[namespace]) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: ports.scopedAdmin, scopedSession: ports.scopedSession, getScopeIds: ports.scope }));
-vi.mock('../packs/rewards/access-policy', () => ({ rewardVisibleCompanies: ports.visibleCompanies, rewardSetupEntry: ports.setupEntry, rewardAccessPageCompanies: ports.accessCompanies }));
-vi.mock('../lib/authz', () => ({ requireModule: ports.requireModule }));
+vi.mock('../packs/rewards/access-policy', () => ({ rewardVisibleCompanies: ports.visibleCompanies, rewardNavigation: ports.navigation, rewardAccessPageCompanies: ports.accessCompanies }));
+vi.mock('../packs/rewards/group-roles', () => ({ rewardWholeGroupPlans: async () => [], rewardReviewCompanyGroups: async () => ({}), rewardWholeGroupSetupCompanies: async () => [] }));
+vi.mock('../lib/session', () => ({ getSession: async () => ({ tenantId: 'tenant' }) }));
+vi.mock('../lib/authz', () => ({ requireModule: ports.requireModule, isAdmin: () => false }));
 vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, listRewardReviewStatus: ports.reviewStatus, rewardCoverageForUnits: async () => [], rewardSetupChoices: ports.choices, getRewardConfiguration: ports.configuration, getRewardSeniorMembership: vi.fn(), rewardSharedPolicyChoices: ports.shared, rewardPolicyMemberships: ports.memberships, getRewardCalendar: async () => ({ revision: 1, canEdit: true, values: { due: { bu: '2026-12-11' }, caseDue: null, offcycleDays: {} } }), rewardAccessRequests: ports.requests, rewardCalendarStages: ['bu'], rewardOffcycleSlaStages: ['bg'] }));
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), memberAction: vi.fn(), policyAction: vi.fn(), deleteRewardAction: vi.fn(), calendarAction: vi.fn() }));
 vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
@@ -43,14 +45,14 @@ beforeEach(() => {
   ports.accessCompanies.mockResolvedValue([]);
   ports.visibleCompanies.mockResolvedValue([{ id: 'company' }]);
   ports.scope.mockResolvedValue(['company']);
-  ports.setupEntry.mockResolvedValue({ manage: true, libraries: false, bootstrap: false });
+  ports.navigation.mockResolvedValue(['/rewards', '/rewards/rules']);
 });
 afterEach(cleanup);
 
 describe('Rewards administration and review destinations', () => {
   it('links the admin hub to approved plan creation and scopes existing reviews to administrative companies', async () => {
     show(await resolvePolicyFields(await AdminPage({ searchParams: Promise.resolve({}) })));
-    expect(screen.getByRole('heading', { name: 'Rewards configuration' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Review Cycles' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'View' }).getAttribute('href')).toBe('/admin/rewards/review?mode=view');
     expect(screen.getByRole('link', { name: 'Edit' }).getAttribute('href')).toBe('/admin/rewards/review');
     expect(screen.getByRole('button', { name: 'Delete' })).toBeTruthy();
@@ -63,17 +65,18 @@ describe('Rewards administration and review destinations', () => {
     expect(ports.shared).toHaveBeenCalledWith(session, ['company']);
     expect(ports.memberships).toHaveBeenCalledWith(session, ['company']);
   });
-  it('keeps review links in Manage and directs setup to Administration', async () => {
+  it('shows authorized review shortcuts and leaves configuration in the menu', async () => {
     show(await ReviewsPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByRole('link', { name: 'Open review' }).getAttribute('href')).toBe('/rewards/review');
-    expect(screen.getByRole('link', { name: 'Rewards configuration' }).getAttribute('href')).toBe('/admin/rewards/plans');
+    expect(screen.getByRole('heading', { name: 'Reviewing Team Rewards' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Rules' }).getAttribute('href')).toBe('/rewards/rules');
+    expect(screen.queryByRole('link', { name: 'Rewards Analytics' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Review Cycles' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Create unit review' })).toBeNull();
     expect(ports.scopedSession).toHaveBeenCalledOnce();
     expect(ports.visibleCompanies).toHaveBeenCalledWith(session);
     expect(ports.scope).toHaveBeenCalledWith(['company']);
-    expect(ports.setupEntry).toHaveBeenCalledWith(session);
     expect(ports.reviewStatus).toHaveBeenCalledWith(session, ['company']);
-    expect(ports.accessCompanies).toHaveBeenCalledWith(session);
     expect(ports.choices).toHaveBeenCalledWith(session, ['company']);
     expect(ports.list).not.toHaveBeenCalled();
   });

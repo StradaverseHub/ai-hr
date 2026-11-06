@@ -443,7 +443,7 @@ const GROUPS: Group[] = [
     items: [
       { href: '/tasks', labelKey: 'myTasks', icon: ListChecks },
       { href: '/admin/personnel', labelKey: 'personnelAdmin', icon: Users, adminOnly: true },
-      { href: '/admin/job-architecture', labelKey: 'jobDescriptions', icon: BookOpen, adminOnly: true },
+      { href: '/admin/job-descriptions', labelKey: 'jobDescriptions', icon: BookOpen, adminOnly: true },
       ONBOARDING_NODE,
       ONBOARDING_REQUISITIONS_NODE,
       ...LIFECYCLE_LINKS.filter(link=>link.group==='manage'&&link.href!=='/lifecycle/requisitions/onboarding'),
@@ -452,7 +452,6 @@ const GROUPS: Group[] = [
       MY_TEAM_ROW,
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
       PERFORMANCE_ADMIN_ROW,
-      ...modulePackById('rewards')!.navLinks!.filter(l => l.group === 'manage'),
       // a324a4b3 rev3: Roster + Import come back here as FLAT rows. rev2 put them inside the Attendance
       // node, which was safe while that node sat in the ungated group; it is not safe now the node has
       // moved into admin-gated Administration, because the group gate would hide them from every
@@ -518,7 +517,6 @@ const GROUPS: Group[] = [
       // Since ADR-0080 rung 7 the payroll nav lives on the payroll pack and mounts here by const
       // reference (PAYROLL_NODE — a flyout node since 1459e116, a flat row before that).
       PAYROLL_NODE,
-      ...modulePackById('rewards')!.navLinks!.filter(l => l.group === 'admin'),
       // 6e122302 — Notice Board. A flat row rather than a node: it is one screen (its detail/new pages are
       // routes on the same screen), and requireAdmin on every page is the enforcement — this row and the
       // group's adminOnly flag are the courtesy. Deliberately NOT in MODULE_OF_HREF: the notice board is
@@ -558,6 +556,7 @@ export function Sidebar({
   canConfigureAiProvider = false,
   canAccessTeam = false,
   letterDestinations = [],
+  rewardDestinations = [],
   canAdministerOnehr = false,
   performanceAdminHref,
   approvalCount = 0,
@@ -575,13 +574,11 @@ export function Sidebar({
   assistantAccess = true,
   feedbackAccess = true,
   privateCaseHandler = false,
-  canViewJobArchitecture = false,
   defaultCollapsed,
   viewerName = null,
   viewerCode = null,
 }: {
   isAdmin: boolean;
-  canViewJobArchitecture?: boolean;
   canAdministerSecurity?: boolean;
   canConfigureAccess?: boolean;
   canProvisionUsers?: boolean;
@@ -606,6 +603,7 @@ export function Sidebar({
   /** Actual My Team role authority, independent of the broader partner administration rail. */
   canAccessTeam?: boolean;
   letterDestinations?: readonly string[];
+  rewardDestinations?: readonly string[];
   /**
    * ADR-0142 — OneHR performance administration (admins, perf-comp partners, OneHR performance partners).
    * The ONLY gate of the Performance admin entry (D-P1-32 PT-X5); it never opens the admin rail, approvals or My Team.
@@ -744,7 +742,7 @@ export function Sidebar({
   // administrator (whose requireAdmin pages those are) keeps it without the Assistant grant or module; /assistant
   // then shows its unavailable home with the centre's tabs, and every page still checks for itself.
   const canSeeChild = (c: ChildItem) => (c.href === '/assistant' && canAdministerAi) ||
-    (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (c.href !== '/cases' || privateCaseHandler) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === '/admin/job-architecture' ? canViewJobArchitecture : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
+    (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (c.href !== '/cases' || privateCaseHandler) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS
@@ -795,10 +793,12 @@ export function Sidebar({
     ...(contractStaffAccess.intake===true?[{href:'/lifecycle/contracts/intake',labelKey:'contractIntake',icon:ScrollText}]:[]),
     ...(contractStaffAccess.configure?[['settings','contractSettings'],['workflows','contractWorkflows'],['templates','contractTemplates']].map(([path,labelKey])=>({href:`/lifecycle/contracts/${path}`,labelKey,icon:ScrollText})):[]),
   ];
+  const rewardRows = modulePackById('rewards')!.navLinks!
+    .filter(row => rewardDestinations.includes(row.href) && moduleAllows(row.href));
   const destinations: ChildItem[] = [...authorizedRows.filter(row => {
     const placement = navigationPlacement(row.href);
     return !placement || !('module' in placement) || placement.module !== 'onboarding';
-  }), ...additionalRows.filter(canSeeChild), ...lifecycleNavigation, ...lifecycleShared, ...scopedLifecycleRows];
+  }), ...additionalRows.filter(canSeeChild), ...lifecycleNavigation, ...lifecycleShared, ...scopedLifecycleRows, ...rewardRows];
   const navigation = placeNavigation(destinations);
   const availableWorkspaces = (['ops','strata'] as const).filter(workspace =>
     navigation.placed.some(row => row.placement.area === workspace),
@@ -812,7 +812,7 @@ export function Sidebar({
       'module' in row.placement && row.placement.module === module.id && row.placement.section === section,
     ).map(row => row.destination));
     if (!children.length) return [];
-    if (children.length === 1 && !['onboarding','probation','contracts'].includes(module.id)) return [{...children[0],labelKey:module.labelKey}];
+    if (children.length === 1 && !['onboarding','probation','contracts','rewards'].includes(module.id)) return [{...children[0],labelKey:module.labelKey}];
     return [{collapsible:true,activeMatch:'children',labelKey:module.labelKey,icon:children[0].icon,
       children,tour:children.some(child=>child.tour==='nav-admin')?'nav-admin':undefined} satisfies CollapsibleGroupItem];
   });
@@ -848,6 +848,7 @@ export function Sidebar({
     const lifecycle = lifecycleNavigation.find(item => item.href === href);
     if (lifecycle) return lifecycle.submenuKey;
     const placement=navigationPlacement(href);
+    if (placement && 'module' in placement && placement.module === 'rewards' && placement.section === 'mine') return 'sectionManagingRewards';
     if (placement && 'module' in placement && ['probation','contracts'].includes(placement.module) && placement.section === 'hr') return undefined;
     return placement && 'section' in placement ? `section${placement.section==='hr'?'HR':placement.section==='ai'?'AiManagement':placement.section==='config'?'Configuration':placement.section==='mine'?'Mine':'Team'}` : undefined;
   };

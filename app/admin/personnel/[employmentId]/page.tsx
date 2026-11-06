@@ -3684,6 +3684,7 @@ export default async function EmployeePage({
                 employmentId={employmentId}
                 heading={`${movementKindLabel('hired')} · ${formatDmy(hireCorrection.hiredOn)}`}
                 fields={fields}
+                salaryAtHire={hireCorrection.salaryAtHire}
                 readOnly={readOnly}
                 cancelHref={historyHref}
                 pageContext={movementPage?movementContext:undefined}

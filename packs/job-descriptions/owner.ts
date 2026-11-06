@@ -1,4 +1,3 @@
-import {architectureGrade,cataloguePath,gradeInRange,type ArchitectureCatalogue} from '../job-architecture/model';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '@/db/client';
 import { actorOf, appendEvent } from '@/db/events';
@@ -34,7 +33,6 @@ export type JobRevision = {
     job_id: string;
     version: number;
     status: 'draft' | 'submitted' | 'approved' | 'superseded';
-    architecture: {catalogueRevision:number;jobUnitId:string;companyVariant:boolean;path:ArchitectureCatalogue['nodes'];grade:string} | null;
     lock_version: number;
     title: string;
     document_owner: string;
@@ -49,7 +47,6 @@ export type JobRevision = {
     prepared_by: string;
     last_edited_by: string;
     contributor_ids: string[];
-    contributor_person_ids:string[];
     submitted_by: string | null;
     submitted_at: string | null;
     approved_by: string | null;
@@ -58,8 +55,6 @@ export type JobRevision = {
     updated_at: string;
 };
 export type Job = {
-    job_unit_id: string | null;
-    company_variant: boolean;
     id: string;
     company_id: string;
     job_code: string;
@@ -94,34 +89,35 @@ export type Attachment = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function uuid(x: string): string { if (!UUID.test(x))
     throw new JobDocumentError('Choose a valid record'); return x; }
-function actor(ctx: SessionContext) { if(!ctx.userId||!UUID.test(ctx.userId))throw new JobDocumentError('Job documentation requires an authorized HR user');return ctx.userId; }
+function actor(ctx: SessionContext) { if (!ctx.userId || !UUID.test(ctx.userId) || !(ctx.grants ?? ctx.roles?.map(role => ({ role, companyId: null })) ?? []).some(g => ['hr_admin', 'super_admin'].includes(g.role)))
+    throw new JobDocumentError('Job documentation requires an authorized HR user'); return ctx.userId; }
 /** Access decisions are read under the same configuration lock used by revocation writers. */
 async function jobTenant<T>(ctx:SessionContext, fn:(tx:Tx)=>Promise<T>):Promise<T>{
- return withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);const [eligible]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and (app.job_architecture_can(null,'view') or exists(select 1 from role_assignment ra join app_user u on u.id=ra.app_user_id and u.tenant_id=ra.tenant_id where ra.tenant_id=${ctx.tenantId}::uuid and ra.app_user_id=${ctx.userId}::uuid and ra.role::text in('hr_admin','super_admin') and u.archived_at is null and not app.login_blocked(u.id))) as ok`);if(!eligible?.ok)throw new JobDocumentError('Job documentation requires an authorized HR user');return fn(tx);});
+ return withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);return fn(tx);});
 }
 async function rows<T>(tx: Tx, q: ReturnType<typeof sql>): Promise<T[]> { return await tx.execute(q) as unknown as T[]; }
 async function scope(tx: Tx, ctx: SessionContext, companyId: string, operation: 'view'|'maintain'='maintain'): Promise<void> { uuid(companyId); const [r] = await rows<{
     ok: boolean;
-}>(tx, sql `select exists(select 1 from company where id=${companyId}::uuid and tenant_id=${ctx.tenantId}::uuid and (app.access_workforce_company(id,${'workforce.'+operation}) OR app.job_architecture_can(id,${operation==='view'?'view':'propose'}) OR ${operation==='maintain'} AND app.job_architecture_can(id,'check'))) as ok`); if (!r?.ok)
+}>(tx, sql `select exists(select 1 from company where id=${companyId}::uuid and tenant_id=${ctx.tenantId}::uuid and app.access_workforce_company(id,${'workforce.'+operation})) as ok`); if (!r?.ok)
     throw new JobDocumentError('Job record not available'); }
 export async function getJobMasters(ctx: SessionContext): Promise<Masters> {
     actor(ctx);
     return jobTenant(ctx, async (tx) => {
-        const companies = await tx.select({ value: company.id, label: company.legalName }).from(company).where(and(eq(company.tenantId, ctx.tenantId), isNull(company.archivedAt), sql `(app.access_workforce_company(${company.id},'workforce.view') OR app.job_architecture_can(${company.id},'view'))`)).orderBy(asc(company.legalName), asc(company.id));
+        const companies = await tx.select({ value: company.id, label: company.legalName }).from(company).where(and(eq(company.tenantId, ctx.tenantId), isNull(company.archivedAt), sql `app.access_workforce_company(${company.id},'workforce.view')`)).orderBy(asc(company.legalName), asc(company.id));
         if(!companies.length)return{companies:[],businessUnit:[],department:[],position:[],grade:[],location:[],section:[],team:[],family:[],employmentType:[],people:[]};
         const ids = companies.map(v => v.value);
         const bus = await tx.select({ id: businessUnit.id, name: businessUnit.name, label: businessUnit.label, code: businessUnit.code, companyIds: labelCompanyIdsSql(businessUnit, 'business_unit'), isGlobal: businessUnit.isGlobal }).from(businessUnit).where(and(eq(businessUnit.tenantId, ctx.tenantId), isNull(businessUnit.archivedAt), visibleLabelIdsCondition(businessUnit, 'business_unit', ids))).orderBy(asc(businessUnit.name), asc(businessUnit.id));
         const departments = await tx.select({ id: department.id, name: department.name, code: department.name, label: department.label, description: department.description, businessUnitId: department.businessUnitId, companyIds: labelCompanyIdsSql(department, 'department'), isGlobal: department.isGlobal }).from(department).where(and(eq(department.tenantId, ctx.tenantId), isNull(department.archivedAt), visibleLabelIdsCondition(department, 'department', ids))).orderBy(asc(department.name), asc(department.id));
         const positions = await tx.select({ id: position.id, title: position.title, code: position.title, label: position.label, description: position.description, family: position.jobFamily, companyIds: labelCompanyIdsSql(position, 'position'), isGlobal: position.isGlobal }).from(position).where(and(eq(position.tenantId, ctx.tenantId), isNull(position.archivedAt), visibleLabelIdsCondition(position, 'position', ids))).orderBy(asc(position.title), asc(position.id));
-        const grades = await tx.select({ id: jobGrade.id, name: jobGrade.name, code: jobGrade.code }).from(jobGrade).where(and(eq(jobGrade.tenantId, ctx.tenantId), isNull(jobGrade.archivedAt),sql`app.architecture_grade_assignable(${jobGrade.id})`)).orderBy(asc(jobGrade.rank), asc(jobGrade.id));
-        const locations = await tx.select({ id: location.id, name: location.name, companyId: location.companyId }).from(location).where(and(eq(location.tenantId, ctx.tenantId), isNull(location.archivedAt), sql `(app.access_workforce_company(${location.companyId},'workforce.view') OR app.job_architecture_can(${location.companyId},'view'))`)).orderBy(asc(location.name), asc(location.id));
+        const grades = await tx.select({ id: jobGrade.id, name: jobGrade.name, code: jobGrade.code }).from(jobGrade).where(and(eq(jobGrade.tenantId, ctx.tenantId), isNull(jobGrade.archivedAt))).orderBy(asc(jobGrade.rank), asc(jobGrade.id));
+        const locations = await tx.select({ id: location.id, name: location.name, companyId: location.companyId }).from(location).where(and(eq(location.tenantId, ctx.tenantId), isNull(location.archivedAt), sql `app.access_workforce_company(${location.companyId},'workforce.view')`)).orderBy(asc(location.name), asc(location.id));
         const profiles = await tx.select().from(profileOption).where(and(eq(profileOption.tenantId, ctx.tenantId), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.id));
         const people = await rows<{value:string;label:string;companyIds:string[];isGlobal:boolean}>(tx,sql`
           select u.id::text as value,coalesce(p.full_name,u.id::text) as label,false as "isGlobal",
-           array(select c.id::text from company c where c.tenant_id=u.tenant_id and app.job_architecture_can(c.id,'view') and app.job_document_reviewer_eligible(c.id,u.id) order by c.id) as "companyIds"
+           array(select c.id::text from company c where c.tenant_id=u.tenant_id and app.access_workforce_company(c.id,'workforce.view') and app.job_document_reviewer_eligible(c.id,u.id) order by c.id) as "companyIds"
           from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id
           where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)
-           and exists(select 1 from company c where c.tenant_id=u.tenant_id and app.job_architecture_can(c.id,'view') and app.job_document_reviewer_eligible(c.id,u.id))
+           and exists(select 1 from company c where c.tenant_id=u.tenant_id and app.access_workforce_company(c.id,'workforce.view') and app.job_document_reviewer_eligible(c.id,u.id))
           order by label,u.id`);
 
         const map = (rs: readonly ((typeof bus)[number] | (typeof departments)[number] | (typeof positions)[number])[]) => organisationChoiceLabels(rs).map(v => ({ ...v, value: v.id, label: v.displayLabel }));
@@ -168,7 +164,7 @@ async function orgLabels(tx: Tx, ctx: SessionContext, x: JobInput, previous?: Jo
         }
         else if (key === 'grade') {
             uuid(id);
-            const [r] = await tx.select().from(jobGrade).where(and(eq(jobGrade.id, id), eq(jobGrade.tenantId, ctx.tenantId), isNull(jobGrade.archivedAt),sql`app.architecture_grade_assignable(${jobGrade.id})`)).for('share');
+            const [r] = await tx.select().from(jobGrade).where(and(eq(jobGrade.id, id), eq(jobGrade.tenantId, ctx.tenantId), isNull(jobGrade.archivedAt))).for('share');
             if (!r)
                 throw new JobDocumentError('Choose an active job grade');
             labels[key] = label(r);
@@ -234,28 +230,26 @@ export async function saveJobDraft(ctx: SessionContext, input: JobInput, existin
             old = found.revision;
             if (found.job.inactive || old.status !== 'draft' || old.lock_version !== existing.lockVersion)
                 throw new JobDocumentError('This draft changed or is read-only. Reopen it before saving');
-            if (found.job.company_id !== input.companyId || found.job.job_code !== input.jobCode || found.job.job_unit_id !== (input.jobUnitId??null) || found.job.company_variant !== !!input.companyVariant)
+            if (found.job.company_id !== input.companyId || found.job.job_code !== input.jobCode)
                 throw new JobDocumentError('Company and common Job ID cannot change');
         }
         const definition = old?.definition ?? await definitionTx(tx, ctx, input.companyId);
         validateInput(input, definition);
         const labels = await orgLabels(tx, ctx, input, old);
-        const architecture=await jobArchitectureBinding(tx,ctx,input,labels);
-        if(!existing&&!input.jobUnitId){const [ready]=await tx.execute<{yes:boolean}>(sql`select exists(select 1 from job_architecture_catalogue_revision c cross join lateral jsonb_array_elements(c.catalogue->'nodes') n where c.tenant_id=${ctx.tenantId}::uuid and n->>'kind'='unit') as yes`);if(ready?.yes)throw new JobDocumentError('Choose an approved job unit before creating a job description.');}
         if (!jobId) {
             const [j] = await rows<{
                 id: string;
-            }>(tx, sql `insert into job_document(tenant_id,company_id,job_code,normalized_code,created_by,job_unit_id,company_variant) values(${ctx.tenantId}::uuid,${input.companyId}::uuid,${input.jobCode.trim()},${normalizedJobCode(input.jobCode)},${by}::uuid,${input.jobUnitId??null}::uuid,${!!input.companyVariant}) on conflict(tenant_id,company_id,normalized_code) do nothing returning id`);
+            }>(tx, sql `insert into job_document(tenant_id,company_id,job_code,normalized_code,created_by) values(${ctx.tenantId}::uuid,${input.companyId}::uuid,${input.jobCode.trim()},${normalizedJobCode(input.jobCode)},${by}::uuid) on conflict(tenant_id,company_id,normalized_code) do nothing returning id`);
             if (!j)
                 throw new JobDocumentError('This company already has that common Job ID');
             jobId = j.id;
         }
         let saved: JobRevision;
         if (old) {
-            [saved] = await rows<JobRevision>(tx, sql `update job_document_revision set architecture=${architecture?JSON.stringify(architecture):null}::jsonb,title=${input.title.trim()},document_owner=${input.owner},org=${JSON.stringify(input.org)}::jsonb,org_labels=${JSON.stringify(labels)}::jsonb,answers=${JSON.stringify(input.answers)}::jsonb,effective_on=${input.effectiveOn || null}::date,review_on=${input.reviewOn || null}::date,reason=${input.reason},approver_id=${input.approverId || null}::uuid,last_edited_by=${by}::uuid,lock_version=lock_version+1,updated_at=now() where id=${old.id}::uuid returning *`);
+            [saved] = await rows<JobRevision>(tx, sql `update job_document_revision set title=${input.title.trim()},document_owner=${input.owner},org=${JSON.stringify(input.org)}::jsonb,org_labels=${JSON.stringify(labels)}::jsonb,answers=${JSON.stringify(input.answers)}::jsonb,effective_on=${input.effectiveOn || null}::date,review_on=${input.reviewOn || null}::date,reason=${input.reason},approver_id=${input.approverId || null}::uuid,last_edited_by=${by}::uuid,lock_version=lock_version+1,updated_at=now() where id=${old.id}::uuid returning *`);
         }
         else {
-            [saved] = await rows<JobRevision>(tx, sql `insert into job_document_revision(tenant_id,job_id,version,architecture,title,document_owner,org,org_labels,answers,definition,effective_on,review_on,reason,approver_id,prepared_by,last_edited_by) values(${ctx.tenantId}::uuid,${jobId}::uuid,1,${architecture?JSON.stringify(architecture):null}::jsonb,${input.title.trim()},${input.owner},${JSON.stringify(input.org)}::jsonb,${JSON.stringify(labels)}::jsonb,${JSON.stringify(input.answers)}::jsonb,${JSON.stringify(definition)}::jsonb,${input.effectiveOn || null}::date,${input.reviewOn || null}::date,${input.reason},${input.approverId || null}::uuid,${by}::uuid,${by}::uuid) returning *`);
+            [saved] = await rows<JobRevision>(tx, sql `insert into job_document_revision(tenant_id,job_id,version,title,document_owner,org,org_labels,answers,definition,effective_on,review_on,reason,approver_id,prepared_by,last_edited_by) values(${ctx.tenantId}::uuid,${jobId}::uuid,1,${input.title.trim()},${input.owner},${JSON.stringify(input.org)}::jsonb,${JSON.stringify(labels)}::jsonb,${JSON.stringify(input.answers)}::jsonb,${JSON.stringify(definition)}::jsonb,${input.effectiveOn || null}::date,${input.reviewOn || null}::date,${input.reason},${input.approverId || null}::uuid,${by}::uuid,${by}::uuid) returning *`);
         }
         await assignments(tx, ctx, input, saved.id);
         await tx.execute(sql `update job_document set updated_at=now() where id=${jobId}::uuid`);
@@ -287,8 +281,7 @@ export async function getJobDocumentPage(ctx:SessionContext,filters:JobFilters={
 /** Compatibility read returns one explicit page of bounded summary rows, never answers or bytes. */
 export async function listJobDocuments(ctx:SessionContext,filters:JobFilters={}){return(await getJobDocumentPage(ctx,filters)).rows;}
 
-function revisionInput(job: Job, r: JobRevision, reviews: Review[]): JobInput { return { jobUnitId:job.job_unit_id??undefined,companyVariant:job.company_variant,companyId: job.company_id, jobCode: job.job_code, title: r.title, owner: r.document_owner, org: r.org, answers: r.answers, effectiveOn: r.effective_on ?? '', reviewOn: r.review_on ?? '', reason: r.reason, approverId: r.approver_id ?? '', reviewerIds: reviews.map(v => v.reviewer_id) }; }
-async function independentJobPerson(tx:Tx,r:JobRevision){const [same]=await tx.execute<{same:boolean}>(sql`select exists(select 1 from unnest(array(select jsonb_array_elements_text(${JSON.stringify(r.contributor_ids)}::jsonb))::uuid[]) actor where app.same_known_person_as_current_user(actor,null)) or exists(select 1 from app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.person_id=any(array(select jsonb_array_elements_text(${JSON.stringify(r.contributor_person_ids??[])}::jsonb))::uuid[])) as same`);if(same?.same)throw new JobDocumentError('A different independent person must review or approve this revision.');}
+function revisionInput(job: Job, r: JobRevision, reviews: Review[]): JobInput { return { companyId: job.company_id, jobCode: job.job_code, title: r.title, owner: r.document_owner, org: r.org, answers: r.answers, effectiveOn: r.effective_on ?? '', reviewOn: r.review_on ?? '', reason: r.reason, approverId: r.approver_id ?? '', reviewerIds: reviews.map(v => v.reviewer_id) }; }
 export async function transitionJob(ctx: SessionContext, p: {
     jobId: string;
     revisionId: string;
@@ -296,7 +289,6 @@ export async function transitionJob(ctx: SessionContext, p: {
     action: 'submit' | 'review' | 'return' | 'approve' | 'revise' | 'inactivate' | 'reactivate' | 'delete' | 'acknowledge';
     comments?: string;
     receiptOn?: string;
-    scopeGrade?: string;
 }) {
     const by = actor(ctx);
     return jobTenant(ctx, async (tx) => {
@@ -336,7 +328,7 @@ export async function transitionJob(ctx: SessionContext, p: {
             if (latest.version !== r.version)
                 throw new JobDocumentError('Revise the latest version');
             const def = await definitionTx(tx, ctx, job.company_id);
-            const [next] = await rows<JobRevision>(tx, sql `insert into job_document_revision(tenant_id,job_id,version,architecture,title,document_owner,org,org_labels,answers,definition,reason,approver_id,prepared_by,last_edited_by) values(${ctx.tenantId}::uuid,${job.id}::uuid,${r.version + 1},${r.architecture?JSON.stringify(r.architecture):null}::jsonb,${r.title},${r.document_owner},${JSON.stringify(r.org)}::jsonb,${JSON.stringify(r.org_labels)}::jsonb,${JSON.stringify(projectJobAnswers(r.definition,def,r.answers))}::jsonb,${JSON.stringify(def)}::jsonb,${p.comments},${r.approver_id}::uuid,${by}::uuid,${by}::uuid) returning *`);
+            const [next] = await rows<JobRevision>(tx, sql `insert into job_document_revision(tenant_id,job_id,version,title,document_owner,org,org_labels,answers,definition,reason,approver_id,prepared_by,last_edited_by) values(${ctx.tenantId}::uuid,${job.id}::uuid,${r.version + 1},${r.title},${r.document_owner},${JSON.stringify(r.org)}::jsonb,${JSON.stringify(r.org_labels)}::jsonb,${JSON.stringify(projectJobAnswers(r.definition,def,r.answers))}::jsonb,${JSON.stringify(def)}::jsonb,${p.comments},${r.approver_id}::uuid,${by}::uuid,${by}::uuid) returning *`);
             for (const review of reviews)
                 await tx.execute(sql `insert into job_document_review(tenant_id,revision_id,reviewer_id) values(${ctx.tenantId}::uuid,${next.id}::uuid,${review.reviewer_id}::uuid)`);
             await tx.execute(sql `insert into job_document_attachment(tenant_id,revision_id,filename,mime_type,content,created_by) select tenant_id,${next.id}::uuid,filename,mime_type,content,${by}::uuid from job_document_attachment where revision_id=${r.id}::uuid`);
@@ -357,7 +349,6 @@ export async function transitionJob(ctx: SessionContext, p: {
             await tx.execute(sql `update job_document_revision set status='submitted',submitted_by=${by}::uuid,submitted_at=now(),updated_at=now(),lock_version=lock_version+1 where id=${r.id}::uuid`);
         }
         else if (p.action === 'review' || p.action === 'return') {
-            await independentJobPerson(tx,r);
             if (r.status !== 'submitted' || !reviews.some(v => v.reviewer_id === by) || [...r.contributor_ids, r.submitted_by].includes(by))
                 throw new JobDocumentError('Only an assigned independent reviewer may review / return this revision');
             if (!p.comments?.trim() || p.comments.length > 4000)
@@ -367,19 +358,10 @@ export async function transitionJob(ctx: SessionContext, p: {
             await tx.execute(sql `update job_document_revision set status=${p.action === 'return' ? 'draft' : 'submitted'},updated_at=now(),lock_version=lock_version+1 where id=${r.id}::uuid`);
         }
         else if (p.action === 'approve') {
-            await independentJobPerson(tx,r);
-            if(r.architecture){const [permission]=await tx.execute<{ok:boolean}>(sql`select app.job_architecture_can(${job.company_variant?job.company_id:null}::uuid,'check') as ok`);if(!permission?.ok)throw new JobDocumentError('An authorized Group Rewards or Org Design checker must approve a linked job description.');await validateJobScopeForApproval(tx,ctx,job,r);}
             if (r.status !== 'submitted' || r.approver_id !== by || [...r.contributor_ids, r.submitted_by].includes(by) || !reviews.length || reviews.some(v => v.decision !== 'reviewed'))
                 throw new JobDocumentError('The named independent approver may approve after all reviews are complete');
             await assignedUser(tx, ctx, by, job.company_id);
             validateInput(revisionInput(job, r, reviews), r.definition, true);
-            if(r.architecture&&p.scopeGrade&&p.scopeGrade!==r.architecture.grade){
-                const proposed=architectureGrade(p.scopeGrade);if(!proposed)throw new JobDocumentError('Choose an active grade for the scope review.');
-                const fingerprint='jd_scope:'+r.id,detail={fingerprint,type:'unit_grade',companyIds:[job.company_id],recordIds:[job.id,r.id],migrationOnly:false};
-                await tx.execute(sql`insert into job_architecture_outlier(tenant_id,fingerprint,company_ids,detail,description,proposed_fix) values(${ctx.tenantId}::uuid,${fingerprint},array[${job.company_id}::uuid],${JSON.stringify(detail)}::jsonb,${'JD scope review indicates JG '+proposed+' rather than JG '+r.architecture.grade},${'Review the job unit and dated grade proposal before approving this JD.'}) on conflict(tenant_id,fingerprint) do update set state='open',description=excluded.description,proposed_fix=excluded.proposed_fix,revision=job_architecture_outlier.revision+1`);
-                await audit(tx,ctx,job.id,r.id,'scope.flagged',null,{proposedGrade:proposed,reviewedGrade:r.architecture.grade});return {outlier:true as const};
-            }
-            if(r.architecture)await publishArchitectureJob(tx,ctx,job,r);
             await tx.execute(sql `update job_document_revision set status='approved',approved_by=${by}::uuid,approved_at=now(),updated_at=now(),lock_version=lock_version+1 where id=${r.id}::uuid`);
         }
         const [after] = await rows<JobRevision>(tx, sql `select * from job_document_revision where id=${r.id}::uuid`);
@@ -426,28 +408,3 @@ export async function downloadJobAttachment(ctx: SessionContext, id: string) { a
     hex: string;
 }>(tx, sql `select filename,mime_type,encode(content,'hex') as hex from job_document_attachment where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`); if (!a)
     throw new JobDocumentError('Attachment not available'); return { filename: a.filename, mimeType: a.mime_type, bytes: Buffer.from(a.hex, 'hex') }; }); }
-
-async function jobArchitectureBinding(tx:Tx,ctx:SessionContext,input:JobInput,labels:Record<string,string>):Promise<JobRevision['architecture']>{
- if(!input.jobUnitId)return null;uuid(input.jobUnitId);
- const [current]=await tx.execute<{revision:number;catalogue:ArchitectureCatalogue}>(sql`select revision,catalogue from job_architecture_catalogue_revision where tenant_id=${ctx.tenantId}::uuid order by revision desc limit 1`);
- const unit=current?.catalogue.nodes.find(n=>n.id===input.jobUnitId&&n.kind==='unit');if(!unit||!unit.minGrade||!unit.maxGrade)throw new JobDocumentError('Choose an approved job unit.');
- const [grade]=await tx.execute<{code:string}>(sql`select code from job_grade where id=${input.org.grade??null}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null and app.architecture_grade_assignable(id)`);
- const code=grade&&architectureGrade(grade.code);if(!code||!gradeInRange(code,unit.minGrade,unit.maxGrade))throw new JobDocumentError('Choose an active grade within the job unit range.');
- if(input.title.trim()!==unit.title)throw new JobDocumentError('The job title is set by the approved job unit.');
- const path=cataloguePath(current.catalogue.nodes,unit.id);for(const n of path)labels[n.kind==='unit'?'jobUnit':n.kind]=n.title;
- return {catalogueRevision:current.revision,jobUnitId:unit.id,companyVariant:!!input.companyVariant,path,grade:code};
-}
-async function validateJobScopeForApproval(tx:Tx,ctx:SessionContext,job:Job,r:JobRevision){
- const binding=r.architecture;if(!binding)return;
- const [unresolved]=await tx.execute(sql`select id from job_architecture_outlier where tenant_id=${ctx.tenantId}::uuid and fingerprint=${'jd_scope:'+r.id} and state<>'resolved' limit 1`);if(unresolved)throw new JobDocumentError('Resolve the linked scope Outlier before approval.');
- const unit=binding.path.find(n=>n.kind==='unit');const [g]=await tx.execute<{code:string}>(sql`select code from job_grade where id=${r.org.grade??null}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null and app.architecture_grade_assignable(id)`);
- const code=g&&architectureGrade(g.code);if(!unit?.minGrade||!unit.maxGrade||!code||!gradeInRange(code,unit.minGrade,unit.maxGrade)||code!==binding.grade)throw new JobDocumentError('The grade differs from the reviewed job-unit scope. Resolve the linked Outlier before approval.');
-}
-async function publishArchitectureJob(tx:Tx,ctx:SessionContext,job:Job,r:JobRevision){
- await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+job.job_unit_id+':'+(job.company_variant?job.company_id:'group')},2201))`);
- const variant=job.company_variant?job.company_id:null;
- await tx.execute(sql`insert into job_architecture_jd_publication_history(tenant_id,job_unit_id,variant_company_id,job_id,revision_id,published_by) values(${ctx.tenantId}::uuid,${job.job_unit_id}::uuid,${variant}::uuid,${job.id}::uuid,${r.id}::uuid,${ctx.userId}::uuid)`);
- const [prior]=await tx.execute<{revision_id:string}>(sql`select revision_id from job_architecture_jd_publication where tenant_id=${ctx.tenantId}::uuid and job_unit_id=${job.job_unit_id}::uuid and variant_company_id is not distinct from ${variant}::uuid for update`);
- if(prior&&prior.revision_id!==r.id)await tx.execute(sql`update job_document_revision set status='superseded',updated_at=now(),lock_version=lock_version+1 where id=${prior.revision_id}::uuid and tenant_id=${ctx.tenantId}::uuid and status='approved'`);
- await tx.execute(sql`insert into job_architecture_jd_publication(tenant_id,job_unit_id,variant_company_id,job_id,revision_id,published_by) values(${ctx.tenantId}::uuid,${job.job_unit_id}::uuid,${variant}::uuid,${job.id}::uuid,${r.id}::uuid,${ctx.userId}::uuid) on conflict(tenant_id,job_unit_id,(coalesce(variant_company_id,'00000000-0000-0000-0000-000000000000'::uuid))) do update set job_id=excluded.job_id,revision_id=excluded.revision_id,published_by=excluded.published_by,published_at=now()`);
-}

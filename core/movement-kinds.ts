@@ -47,6 +47,7 @@ export const MOVEMENT_KINDS = [
   // after creation (setEmploymentInfo ignores both fields without the matching tag).
   'joinDateChange',
   'groupJoinDateCorrection',
+  'historicalHire',
 ] as const;
 export type MovementKind = (typeof MOVEMENT_KINDS)[number];
 

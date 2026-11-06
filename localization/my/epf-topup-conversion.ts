@@ -2,33 +2,26 @@
  * b6dbadc5 — THE ONE-OFF CONVERSION OF PRE-ADDITIVE TOP-UP ELECTIONS, as pure arithmetic (no db imports).
  *
  * Before b6dbadc5 a Top-up (existing percentage election) row was `voluntary_excess` holding TOTAL per-side
- * rates, paid as max(total, statutory). It is now `topup_percentage` holding INCREMENTS, paid as
- * statutory + increment (localization/my/payroll.ts `topupRate`). A row keeps paying exactly what it pays
- * today when increment = max(0, total − statutory) for the statutory rate of the rule and wage band that
- * applied to it, because statutory + max(0, total − statutory) = max(total, statutory) — the old formula,
- * term for term, inside the same whole-ringgit round-up.
+ * rates, paid as max(total, statutory). It is now `topup_percentage` holding increments. Subtract
+ * the applicable Top-up statutory rate from the old elected total, with zero as the lower bound.
+ * A new conversion preserves the elected total rate wherever the statutory rate permits. The new
+ * statutory floor and exact whole-ringgit rounding can change the calculated contribution.
  *
- * WHICH STATUTORY RATE. The rule the employee's latest processed regular payslip was charged under (its
- * combined EPF base, the employee's age at that period end, their EPF citizenship), or the rule for their
- * current salary when no such payslip exists. Where the OLD election had no effect at all — Part E
- * (citizen 60–<75), which never read `voluntary_excess`, and age 75+ — the increment is 0, so the result
- * is unchanged there too.
- *
- * WHAT IS NOT GUARANTEED, and is why HR gets the CSV: equality holds at the wage band the increment was
- * derived from. If the combined wage later crosses the RM5,000 employer step, the employer side pays the new
- * step's statutory rate + the increment, not the old total (e.g. a stored 13% employer total at RM4,800 is a
- * 0% top-up; at RM5,200 it pays 12%, where the old row paid 13%).
+ * Use the employee's combined base, age and citizenship at their latest processed regular payslip,
+ * or their current salary basis when no such payslip exists. Part E and age 75+ had no prior election
+ * effect and remain zero increments. A later move across the RM5,000 step can change the employer rate.
+ * Already converted elections retain their saved increments.
  *
  * The database side (candidates, basis, the audited write) is ./epf-topup-conversion-db.ts; the operator
  * entry point is scripts/convert-epf-topup-percentage.ts.
  */
 import { DEFAULT_MY_STATUTORY, EPF_NO_CONTRIB_AGE, EPF_SENIOR_AGE, type StatutoryRuleset } from './statutory-tables';
-import type { EpfCitizenship } from './payroll';
+import { EPF_PART_C_EMPLOYEE_RATE, epfPartCEmployerRate, type EpfCitizenship } from './payroll';
 
 type EpfConfig = StatutoryRuleset['epf'];
 
 /** The Third Schedule rule a month falls under, as `epfContribution` selects it. */
-export type EpfStatutoryRule = 'part_a' | 'flat' | 'part_e' | 'none';
+export type EpfStatutoryRule = 'part_a' | 'flat' | 'part_c' | 'part_e' | 'none';
 
 /** The statutory per-side rates of the rule `epfContribution` would apply to this base, age and citizenship. */
 export function epfStatutoryRule(
@@ -39,7 +32,9 @@ export function epfStatutoryRule(
   const age = sel.age;
   if (age != null && age >= EPF_NO_CONTRIB_AGE) return { rule: 'none', employeeRate: 0, employerRate: 0 };
   const senior = age != null && age >= EPF_SENIOR_AGE;
-  if (sel.citizenship === 'non_citizen' || (sel.citizenship === 'pr' && senior))
+  if (sel.citizenship === 'pr' && senior)
+    return { rule: 'part_c', employeeRate: EPF_PART_C_EMPLOYEE_RATE, employerRate: epfPartCEmployerRate(base) };
+  if (sel.citizenship === 'non_citizen')
     return { rule: 'flat', employeeRate: cfg.nonCitizenEmployeeRate ?? 0.02, employerRate: cfg.nonCitizenEmployerRate ?? 0.02 };
   if (sel.citizenship === 'citizen' && senior) return { rule: 'part_e', employeeRate: 0, employerRate: cfg.seniorEmployerRate ?? 0.04 };
   return {

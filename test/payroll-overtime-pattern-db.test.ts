@@ -1,5 +1,5 @@
 /** Real canonical source -> cash claim -> Payroll kernel regressions. Written during hold; not executed. */
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
@@ -17,6 +17,9 @@ import {parseRecordedOvertimeEvaluation} from '../lib/overtime-pattern-result';
 import type {OvertimePattern} from '../lib/overtime-pattern-model';
 let b:Base;const day=()=>todayInKualaLumpur();
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'typed_pay_components',null);await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);});
+// Clocking and the current-only formula owner must see the same Malaysia date throughout each test.
+beforeEach(() => vi.setSystemTime(new Date(`${day()}T12:00:00+08:00`)));
+afterEach(() => vi.useRealTimers());
 async function fixture(amount='60',options:{salary?:number;cappedBase?:boolean}={}){
  const ctx=await entitledCtx(b);
  const e=await hireEmployee(ctx,{person:{fullName:'Fictional formula cash worker',primaryEmail:'fictional-formula-cash@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});

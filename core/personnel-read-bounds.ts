@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { tryLockAccessConfigurationTx } from './access-configuration-lock';
+import { tryLockAccessConfigurationReadTx, tryLockAccessConfigurationTx } from './access-configuration-lock';
 
 export class PersonnelReadBusyError extends Error {
   constructor(options?: ErrorOptions) {
@@ -9,9 +9,10 @@ export class PersonnelReadBusyError extends Error {
   }
 }
 
-export async function withPersonnelRead<T>(ctx: SessionContext, read: (tx: Tx) => Promise<T>, existingTx?: Tx): Promise<T> {
+export async function withPersonnelRead<T>(ctx: SessionContext, read: (tx: Tx) => Promise<T>, options: { existingTx?: Tx; writesSearchToken?: true } = {}): Promise<T> {
   const boundedRead = async (tx: Tx) => {
-    if (!await tryLockAccessConfigurationTx(tx, ctx.tenantId)) throw new PersonnelReadBusyError();
+    const admit = options.writesSearchToken ? tryLockAccessConfigurationTx : tryLockAccessConfigurationReadTx;
+    if (!await admit(tx, ctx.tenantId)) throw new PersonnelReadBusyError();
     // Keep any tighter caller deadline. SET LOCAL is cleared with this transaction.
     await tx.execute(sql`select set_config('statement_timeout', least(
       coalesce(nullif(setting::int, 0), 20000), 20000)::text, true)
@@ -19,7 +20,7 @@ export async function withPersonnelRead<T>(ctx: SessionContext, read: (tx: Tx) =
     return read(tx);
   };
   try {
-    return await (existingTx ? boundedRead(existingTx) : withTenant(ctx, boundedRead));
+    return await (options.existingTx ? boundedRead(options.existingTx) : withTenant(ctx, boundedRead));
   } catch (error) {
     for (let cause = error; cause instanceof Error; cause = cause.cause) {
       if ('code' in cause && cause.code === '57014') throw new PersonnelReadBusyError({ cause: error });

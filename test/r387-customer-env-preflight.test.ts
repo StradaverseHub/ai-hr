@@ -62,6 +62,7 @@ function runDeploy(
   for (const command of ['pnpm', 'node', 'psql', 'sudo', 'systemctl', 'sha256sum']) {
     const body = command === 'node'
       ? `if [ "$1" = "deploy/check-customer-env.mjs" ]; then exec ${quote(process.execPath)}${versionImport} "$@"; fi\n`
+      : command === 'psql' ? 'case "$*" in *reward_setup_allowed*) echo t ;; esac\n'
       : command === 'sha256sum' ? "printf 'fixturehash  %s\\n' \"$1\"\n" : '';
     const file = path.join(bin, command);
     fs.writeFileSync(file, `#!/bin/sh\nprintf '%s\\n' "${command} $*" >> "$DEPLOY_TRACE"\n${body}exit 0\n`);
