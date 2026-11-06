@@ -1,3 +1,4 @@
+import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import {joinerPageSections} from '../../../lib/onboarding-page-access';
 import type {Config as NativeConfig} from '../../../lib/onboarding-model';
 import { v9CompanySigners, v9SignatoryTitle } from '../../../lib/lifecycle-v9-signatories';
@@ -136,6 +137,19 @@ export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<Cas
     const row = await load(tx, ctx, id), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
     return { ...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data)}:{}), case: row.data, calculation: await readSettlementTx(tx, ctx, row.data, config), personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
+  });
+}
+
+export async function v9PreviewPersonnelValues(ctx: SessionContext, caseId: string, module: M.Module) {
+  const selectedModule = z.enum(['onb', 'off']).parse(module);
+  return withLifecycleTenant(ctx, async tx => {
+    await admin(tx);
+    const row = await load(tx, ctx, caseId);
+    if (row.data.module !== selectedModule) throw new M.V9Error('Choose a case from this module.', 'not_found');
+    const config = await configTx(tx, ctx);
+    if (!config) throw new M.V9Error('V9 configuration is not available.');
+    const { mergeValues } = await environment(tx, ctx, row.data, config);
+    return Object.fromEntries([...personnelMergeLabels.keys()].map(key => [key, mergeValues[key] ?? '']));
   });
 }
 
@@ -540,7 +554,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       M.signDocument(c, config, command.id, 'hr', { ...command.signature, by: env.actor, at: env.now }, env);
       if(c.documents.find(document=>document.id===command.id)?.status==='hrsigned')for(const workflow of config.workflows)M.runWorkflow(c,config,workflow,env,'hrSigned');
     }
-    else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft' || M.documentDeliveryReserved(c, command.id)) throw new M.V9Error('Only an unsigned draft not reserved for email delivery can refresh its source values.'); document.signatoryUserId ??= env.signatoryUserId ?? null; document.mergeValues = M.documentMergeValues(document,{...env.mergeValues,'signatory.name':document.signatoryUserId?env.userName(document.signatoryUserId):'','signatory.title':v9SignatoryTitle(config,document.signatoryUserId,c.facts.company)}); for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = document.mergeValues[field.pmKey] ?? ''; M.appendLog(c, env, 'document.refreshed', document.name); }
+    else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft' || M.documentDeliveryReserved(c, command.id)) throw new M.V9Error('Only an unsigned draft not reserved for email delivery can refresh its source values.'); document.signatoryUserId ??= env.signatoryUserId ?? null; document.mergeValues = M.documentMergeValues(document,{...env.mergeValues,'signatory.name':document.signatoryUserId?env.userName(document.signatoryUserId):'','signatory.title':v9SignatoryTitle(config,document.signatoryUserId,c.facts.company)}); for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = M.personnelFieldSourceValue(field, document.mergeValues); M.appendLog(c, env, 'document.refreshed', document.name); }
     else if (command.type === 'settlementOptions') { if (!['pending', 'submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before changing its figures.'); c.settlementOptions = command.options; M.appendLog(c, env, 'settlement.adjusted', command.reason); }
     else if (command.type === 'clear') {
       const calculation = await readSettlementTx(tx, ctx, c, config);

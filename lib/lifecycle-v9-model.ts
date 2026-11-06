@@ -299,6 +299,13 @@ export function documentMergeValues(document: Pick<Document,'blocks'|'fields'> &
   for(const field of document.fields)if(field.pmKey?.startsWith('case.'))used.add(field.pmKey);
   return Object.fromEntries(Object.entries(values).filter(([key])=>!key.startsWith('case.')||used.has(key)));
 }
+export function personnelFieldSourceValue(field: Field, values: Readonly<Record<string, string>>): string {
+  const value = field.pmKey ? values[field.pmKey] ?? '' : '';
+  if (field.type !== 'date') return value;
+  const date = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+  const iso = date ? `${date[3]}-${date[2]}-${date[1]}` : value;
+  return validDate(iso) ? iso : '';
+}
 export function generate(c: Case, config: Config, templateId: string, env: Environment): Document {
   const existing = activeDocument(c, templateId); if (existing) return existing;
   const template = config.templates.find(t => t.id === templateId && t.module === c.module);
@@ -307,7 +314,7 @@ export function generate(c: Case, config: Config, templateId: string, env: Envir
   if (!template) throw new V9Error('No document template is available for this module.');
   const version = currentVersion(template); if (!version) throw new V9Error('Publish the document template before using it.');
   const values: Record<string, string> = {};
-  for (const field of version.fields) if (field.pmKey) values[field.id] = env.mergeValues[field.pmKey] ?? '';
+  for (const field of version.fields) if (field.pmKey) values[field.id] = personnelFieldSourceValue(field, env.mergeValues);
   const doc: Document = { id: env.nextId(), templateId, version: version.version, name: template.name, status: 'draft', blocks: structuredClone(version.blocks), fields: structuredClone(version.fields), values, edits: {}, hrSignature: null, employeeSignature: null, createdAt: env.now, sentAt: null, mergeValues: documentMergeValues(version,env.mergeValues), templateType: template.type, hrStep: template.hrStep, employeeAck: template.employeeAck, signatoryUserId: env.signatoryUserId ?? null };
   c.documents.push(doc); appendLog(c, env, 'document.generated', `${doc.name} version ${doc.version}`); return doc;
 }

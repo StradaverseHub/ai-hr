@@ -2,20 +2,36 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { personnelMergeGroups, personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import { DocumentBody } from '@/components/lifecycle-v9/document-body';
-import { merge } from '@/lib/lifecycle-v9-model';
+import { merge, personnelFieldSourceValue } from '@/lib/lifecycle-v9-model';
 import type { Block, Document, Field, TemplateVersion } from '@/lib/lifecycle-v9-model';
 
 function Input({ label, children }: { label: string; children: ReactNode }) { return <label className="v9-field"><span>{label}</span>{children}</label>; }
 function Button({ children, disabled, click }: { children: ReactNode; disabled?: boolean; click: () => void }) { return <button type="button" className="v9-button" disabled={disabled} onClick={click}>{children}</button>; }
 const defaultLabels = {"newField": "New field", "version": "Template version", "content": "Content", "fields": "Fields", "preview": "Preview", "fieldForBlock": "Field for block {n}", "choose": "Choose…", "sectionForBlock": "Section for block {n}", "columnsForBlock": "Columns for block {n}", "rowsForBlock": "Rows for block {n}", "columnPlaceholder": "Name | Description", "rowsPlaceholder": "One row per line; separate cells with |", "signatureLabel": "Signature label {n}", "signer": "Signer {n}", "employee": "Employee", "hr": "HR", "up": "Move block {n} up", "down": "Move block {n} down", "removeBlock": "Remove block {n}", "addBlock": "Add block", "chooseBlock": "Choose a block…", "employeeSignature": "Employee signature", "ownershipHelp": "Personnel locked fields are read-only. Employee and HR fields are completed by their named owner. Corrections to Personnel require HR review before they are applied.", "fieldLabel": "Field {n} label", "fieldType": "Field {n} type", "fieldOwner": "Field {n} completed by", "locked": "Personnel locked", "fieldWidth": "Field {n} width", "full": "Full width", "half": "Half width", "fieldSection": "Field {n} section", "fieldPersonnel": "Field {n} Personnel field", "required": "Required", "sensitive": "Sensitive", "fieldOptions": "Field {n} options", "fieldColumns": "Field {n} columns", "fieldWhen": "Field {n} show when", "always": "Always show", "fieldEquals": "Field {n} equals", "removeField": "Remove field {n}", "addField": "Add field", "letterhead": "Letterhead", "heading": "Heading", "subheading": "Subheading", "text": "Text", "fieldSectionBlock": "Field section", "formField": "Form field", "table": "Table", "signature": "Signature", "typeText": "text", "typeTextarea": "textarea", "typeSelect": "select", "typeDate": "date", "typeCheckbox": "checkbox", "typePhone": "phone", "typeEmail": "email", "typeNumber": "number", "typeTable": "table"};
 export type TemplateEditorLabels=typeof defaultLabels;
-export function TemplateVersionEditor({ version, name, disabled, change,labels=defaultLabels,fieldOwners=['employee','hr','pmLocked'],defaultFieldOwner='employee',previewValues, personnelPicker = false }: { labels?:TemplateEditorLabels;fieldOwners?:Field['owner'][];defaultFieldOwner?:Field['owner'];previewValues?:Record<string,string>;personnelPicker?:boolean;version: TemplateVersion; name: string; disabled: boolean; change: (change: (version: TemplateVersion) => void) => void }) {
+export function TemplateVersionEditor({ version, name, disabled, change,labels=defaultLabels,fieldOwners=['employee','hr','pmLocked'],defaultFieldOwner='employee',previewValues, previewCases = [], loadPreview, personnelPicker = false }: { labels?:TemplateEditorLabels;fieldOwners?:Field['owner'][];defaultFieldOwner?:Field['owner'];previewValues?:Record<string,string>;previewCases?:{id:string;label:string}[];loadPreview?:(id:string)=>Promise<{ok:true;values:Record<string,string>}|{ok:false;error:string}>;personnelPicker?:boolean;version: TemplateVersion; name: string; disabled: boolean; change: (change: (version: TemplateVersion) => void) => void }) {
   const l=(key:keyof TemplateEditorLabels,n?:number)=>labels[key].replace('{n}',String(n??''));
   const blockNames:Record<Block['type'],string>={letterhead:l('letterhead'),heading:l('heading'),subheading:l('subheading'),text:l('text'),fields:l('fieldSectionBlock'),field:l('formField'),table:l('table'),signature:l('signature')};
   const [tab, setTab] = useState<'content' | 'fields' | 'preview'>('content');
   const selection = useRef<{ blockId: string; node: HTMLTextAreaElement } | null>(null);
   const [search, setSearch] = useState('');
   const [message, setMessage] = useState('');
+  const [previewCase, setPreviewCase] = useState('');
+  const [loadedValues, setLoadedValues] = useState<Record<string, string>>();
+  const [previewError, setPreviewError] = useState('');
+  const previewRequest = useRef(0);
+  async function choosePreview(id: string) {
+    const request = ++previewRequest.current;
+    setPreviewCase(id);
+    setLoadedValues(undefined);
+    setPreviewError('');
+    if (!id || !loadPreview) return;
+    const result = await loadPreview(id);
+    if (request !== previewRequest.current) return;
+    if (result.ok) setLoadedValues(result.values);
+    else setPreviewError(result.error);
+  }
+  const effectivePreviewValues = loadedValues ?? previewValues;
   const selectedIndex = () => version.blocks.findIndex(block => block.id === selection.current?.blockId);
   function insertMergeField(key: string, label: string) {
     const index = selectedIndex();
@@ -46,12 +62,18 @@ export function TemplateVersionEditor({ version, name, disabled, change,labels=d
   const updateBlock = (index: number, patch: Partial<Block>) => change(v => { Object.assign(v.blocks[index], patch); });
   const updateField = (index: number, patch: Partial<Field>) => change(v => { Object.assign(v.fields[index], patch); });
   function addField() { change(v => { const id = crypto.randomUUID(); v.fields.push({ id, label: l('newField'), type: 'text', owner: defaultFieldOwner, pmKey: null, required: false, sensitive: false, options: [], section: 'main', width: 'full', columns: [], when: null }); v.blocks.push({ id: crypto.randomUUID(), type: 'field', fieldId: id, text: '', section: 'main' }); }); }
-  const preview: Document = { id: 'preview', templateId: 'preview', version: version.version, name, status: 'draft', mergeValues: previewValues??{ 'company.name': '[Employee’s company]' }, blocks: version.blocks, fields: version.fields, values: {}, edits: {}, hrSignature: null, employeeSignature: null, createdAt: '', sentAt: null };
-  const missing = personnelPicker && previewValues ? Array.from(new Set([
-    ...version.blocks.flatMap(block => merge(block.text, previewValues).missing),
-    ...version.fields.flatMap(field => field.owner === 'pmLocked' && field.pmKey && !previewValues[field.pmKey] ? [field.pmKey] : []),
+  const preview: Document = { id: 'preview', templateId: 'preview', version: version.version, name, status: 'draft', mergeValues: effectivePreviewValues??{ 'company.name': '[Employee’s company]' }, blocks: version.blocks, fields: version.fields, values: Object.fromEntries(version.fields.filter(field => field.pmKey).map(field => [field.id, personnelFieldSourceValue(field, effectivePreviewValues ?? {})])), edits: {}, hrSignature: null, employeeSignature: null, createdAt: '', sentAt: null };
+  const missing = personnelPicker && effectivePreviewValues ? Array.from(new Set([
+    ...version.blocks.flatMap(block => merge(block.text, effectivePreviewValues).missing),
+    ...version.fields.flatMap(field => field.owner === 'pmLocked' && field.pmKey && !effectivePreviewValues[field.pmKey] ? [field.pmKey] : []),
   ])) : [];
   return <div className="v9-stack"><div role="tablist" aria-label={l('version')} className="v9-tabs">{(['content', 'fields', 'preview'] as const).map(t => <button type="button" role="tab" aria-selected={tab === t} key={t} onClick={() => setTab(t)}>{l(t)}</button>)}</div>
+    {personnelPicker && previewCases.length > 0 && (tab === 'content' || tab === 'preview') &&
+      <Input label="Preview values for"><select value={previewCase} onChange={event => void choosePreview(event.target.value)}>
+        <option value="">Choose a case</option>
+        {previewCases.map(item => <option value={item.id} key={item.id}>{item.label}</option>)}
+      </select></Input>}
+    {previewError && <p className="v9-notice v9-error" role="alert">{previewError}</p>}
     {tab === 'preview' ? <>{missing.length > 0 && <aside className="v9-panel" role="status"><strong>Missing Personnel values</strong><ul>{missing.map(key => <li key={key}>{personnelMergeLabels.get(key) ?? key}</li>)}</ul></aside>}<DocumentBody document={preview}/></> : tab === 'content' ? <div className={personnelPicker ? 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]' : ''}><div><ol className="v9-list">{version.blocks.map((block, index) => <li className="v9-stack" key={block.id}><h3>{index + 1}. {blockNames[block.type]}</h3>{['heading', 'subheading', 'text'].includes(block.type) && <Input label={`${blockNames[block.type]} ${index + 1}`}><textarea rows={block.type === 'text' ? 5 : 2} value={block.text} disabled={disabled} onFocus={event => { selection.current = { blockId: block.id, node: event.currentTarget }; }} onChange={e => updateBlock(index, { text: e.target.value })}/></Input>}
       {block.type === 'field' && <Input label={l('fieldForBlock',index+1)}><select value={block.fieldId ?? ''} disabled={disabled} onChange={e => updateBlock(index, { fieldId: e.target.value })}><option value="">{l('choose')}</option>{version.fields.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}</select></Input>}
       {block.type === 'fields' && <Input label={l('sectionForBlock',index+1)}><input className="v9-input" disabled={disabled} value={block.section} onChange={e => updateBlock(index, { section: e.target.value })}/></Input>}
