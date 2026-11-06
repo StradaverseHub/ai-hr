@@ -1105,6 +1105,8 @@ export async function analyzeBankImportBatch(ctx:SessionContext,records:ImportRe
  const {preview,resolved}=await analyze(ctx,'bank_statutory',records);
  return{fileErrors:preview.fileErrors,rows:resolved.map(row=>({preview:row.result,companyId:row.subject?.companyId??null,employmentId:row.subject?.employmentId??null,binding:sectionBinding(row)}))};
 }
+/** Only a deterministic row rejection may be counted as bad import data. */
+export class BankImportRowRejectedError extends Error {}
 /** Caller commits the HR mutation, history item and queue checkpoint in ONE transaction. */
 export async function applyBankImportRowTx(tx:Tx,ctx:SessionContext,input:{record:ImportRecord;binding:string;employmentId:string;companyId:string;attemptId:string;ordinal:number}){
  await tx.execute(sql`select app.access_workforce_write_lock()`);
@@ -1112,13 +1114,13 @@ export async function applyBankImportRowTx(tx:Tx,ctx:SessionContext,input:{recor
  await lockImportAttemptHeaderTx(tx,ctx,input.attemptId,'bank_statutory');
  const current=await analyze(ctx,'bank_statutory',[input.record],tx);
  const row=current.resolved[0],subject=row?.subject;
- if(current.preview.fileErrors.length||!subject||subject.employmentId!==input.employmentId||subject.companyId!==input.companyId||row.result.errors.length)throw new Error('Personnel changed or access was removed. Validate this row again.');
+ if(current.preview.fileErrors.length||!subject||subject.employmentId!==input.employmentId||subject.companyId!==input.companyId||row.result.errors.length)throw new BankImportRowRejectedError('Personnel changed or access was removed. Validate this row again.');
  if(row.result.verdict==='skip')return false;
- if(!row.result.ok||sectionBinding(row)!==input.binding)throw new Error('Personnel changed after validation. Validate this row again.');
+ if(!row.result.ok||sectionBinding(row)!==input.binding)throw new BankImportRowRejectedError('Personnel changed after validation. Validate this row again.');
  await assertWorkforceEmploymentTx(tx,ctx,subject.employmentId,'maintain');
  await assertWorkforcePersonTx(tx,ctx,subject.personId,'maintain');
  const [stored]=await tx.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,subject.personId)).for('update');
- if(!stored)throw new Error('Statutory setup is unavailable.');
+ if(!stored)throw new BankImportRowRejectedError('Statutory setup is unavailable.');
  const historySubject={employmentId:subject.employmentId,personId:subject.personId,pack:subject.pack,country:subject.country};
  const before=(await readBankStatutoryStateTx(tx,ctx,historySubject)).state;
  if(row.bank){
@@ -1126,7 +1128,7 @@ export async function applyBankImportRowTx(tx:Tx,ctx:SessionContext,input:{recor
   for(const field of PERSONNEL_BANK_FIELDS){const key=field.import.writerField! as keyof PersonnelBankValues;if(!row.bankSupplied?.includes(key))(bank as unknown as Record<string,unknown>)[key]=(stored as unknown as Record<string,unknown>)[key]??(field.type==='boolean'?false:null);}
   await subject.pack.statutory.setBank(ctx,{personId:subject.personId,...bank},tx);
  }
- if(row.registrations){const setter=subject.pack.statutory.setRegistrationNumbers;if(!setter)throw new Error('Registration updates are unavailable.');await setter(ctx,{personId:subject.personId,...row.registrations},tx);}
+ if(row.registrations){const setter=subject.pack.statutory.setRegistrationNumbers;if(!setter)throw new BankImportRowRejectedError('Registration updates are unavailable.');await setter(ctx,{personId:subject.personId,...row.registrations},tx);}
  if(row.statutoryPatch)await applyBankStatutoryPatchTx(tx,ctx,historySubject,row.statutoryPatch);
  if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,subject.employmentId,row.operations);
  const diff=bankStatutoryDiff(before,(await readBankStatutoryStateTx(tx,ctx,historySubject)).state);

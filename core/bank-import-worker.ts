@@ -12,7 +12,7 @@ import {PersonnelImportHeaderError} from '../lib/personnel-import-contract';
 import {PersonnelCsvError} from '../lib/personnel-csv';
 import {decodeBankImportSource} from '../lib/bank-import-source.server';
 import {BANK_IMPORT_BATCH_ROWS,BANK_IMPORT_VALIDATION_ROWS} from '../lib/bank-import-job';
-import {analyzeBankImportBatch,applyBankImportRowTx} from './import-sections';
+import {analyzeBankImportBatch,applyBankImportRowTx,BankImportRowRejectedError} from './import-sections';
 import {createImportAttemptTx,recordImportEventTx,sealImportPlan} from './import-history';
 import type {ImportPlanBase} from '../lib/import-history';
 import type {ImportRecord} from '../lib/import-schema';
@@ -95,8 +95,9 @@ async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void
     await tx.execute(sql`update bank_import_job set processed=processed+1,saved=saved+${saved?1:0},updated_at=now() where id=${id}::uuid`);
    });
   }catch(error){
-   // No transaction began: retain the row and its durable checkpoint for the next tick.
-   if(error instanceof DatabaseAdmissionError)throw error;
+   // Only the canonical analyzer can reject employee data. SQL/connection/unknown failures
+   // stop the job with its atomic checkpoints intact; they must never consume a valid row.
+   if(!(error instanceof BankImportRowRejectedError))throw error;
    // Permission revocation/infrastructure faults fail the job rather than pretending every row failed.
    await withTenant(ctx,async tx=>{
     const [proof]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() as ok`);if(!proof?.ok)throw error;
