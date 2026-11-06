@@ -18,7 +18,7 @@ it('uses transaction-local JIT off for real pending metadata and restores the ap
  await owner.db.insert(claimRequest).values(ids.map(id=>({id,tenantId:b.tenantId,employmentId:subject.employmentId,claimTypeId:type.id,amount:'1.00',incurredOn:'2026-01-01',status:'pending' as const,createdAt:new Date('2026-01-02T00:00:00Z')})));
  const actual=database.withTenant,[before]=await actual(ctx,tx=>tx.execute<{jit:string}>(sql`select current_setting('jit')as jit`));
  const states:{jit:string;readOnly:boolean;isolation:string;role:string}[]=[];
- const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:{readOnlySnapshot:true})=>actual(context,async tx=>{
+ const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?: Parameters<typeof database.withTenant>[2])=>actual(context,async tx=>{
   // Controlled incoming transaction state, not a global database configuration change.
   await tx.execute(sql`set local jit=on`);
   return read(new Proxy(tx,{get(target,property,receiver){const value=Reflect.get(target,property,receiver);

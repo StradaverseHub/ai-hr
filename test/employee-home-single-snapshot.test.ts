@@ -14,7 +14,7 @@ it('reads selected Home role, active own employment and configuration in one rea
  const employee=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional Home snapshot',primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const ctx:SessionContext={tenantId:b.tenantId,userId:await createAppUser(b.tenantId,employee.personId,'employee'),personId:employee.personId,roles:['employee']};
  const actual=database.withTenant,observed:{role:string;isolation:string;readOnly:boolean}[]=[];
- const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:{readOnlySnapshot:true})=>actual(context,async tx=>{
+ const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?: Parameters<typeof database.withTenant>[2])=>actual(context,async tx=>{
   const [properties]=await tx.execute<{role:string;isolation:string;readOnly:boolean}>(sql`select current_user as role,current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')='on'as "readOnly"`);
   observed.push(properties);return read(tx);
  },options));

@@ -35,7 +35,7 @@ it('lets actual Home card aggregations coexist with an access reader',async()=>{
  await owner.client.begin(async holder=>{
   await holder`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
   const actual=database.withTenant;
-  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:{readOnlySnapshot:true})=>actual(context,async tx=>{
+  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?: Parameters<typeof database.withTenant>[2])=>actual(context,async tx=>{
    await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`set local statement_timeout='3s'`);return read(tx);
   },options));
   try{

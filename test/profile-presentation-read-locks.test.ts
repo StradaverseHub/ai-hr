@@ -25,7 +25,7 @@ it('overlaps real profile presentation and Home photo checks with an independent
   // The observer delegates to real withTenant and native business readers. Only bounded native
   // diagnostic timeouts are added; identity, permission, policy and data queries are never mocked.
   const actual=database.withTenant;
-  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:{readOnlySnapshot:true})=>actual(context,async tx=>{
+  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?: Parameters<typeof database.withTenant>[2])=>actual(context,async tx=>{
    await tx.execute(sql`set local lock_timeout='300ms'`);await tx.execute(sql`set local statement_timeout='3s'`);
    const result=await read(tx),[mode]=await tx.execute<{readOnly:boolean}>(sql`select current_setting('transaction_read_only')='on' as "readOnly"`);
    modes.push(mode.readOnly);return result;

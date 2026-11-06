@@ -89,7 +89,7 @@ describe('movementHistory — projection over the domain_event ledger', () => {
     const key = 'access-configuration:' + b.tenantId;
     const withTenant = database.withTenant;
     const spy = vi.spyOn(database, 'withTenant').mockImplementation(
-      <T>(context: database.SessionContext, run: (tx: database.Tx) => Promise<T>, options?: { readOnlySnapshot: true }) =>
+      <T>(context: database.SessionContext, run: (tx: database.Tx) => Promise<T>, options?: Parameters<typeof database.withTenant>[2]) =>
         withTenant(context, async tx => {
           await tx.execute(sql`set local lock_timeout='500ms'`);
           return run(tx);

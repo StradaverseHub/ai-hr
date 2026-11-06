@@ -24,7 +24,7 @@ it('retains exact canonical current figures without loading historical ledger da
  let historicalReads=0,transactions=0;const transactionStates:{role:string;readOnly:boolean;isolation:string}[]=[];const actual=database.withTenant;
  // The observer delegates every builder and query to the real app-role transaction. It counts
  // only the historical date-list projection; identity, eligibility and figures are never mocked.
- const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?:{readOnlySnapshot:true})=>actual(context,async tx=>{transactions++;
+ const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(context:SessionContext,read:(tx:Tx)=>Promise<T>,options?: Parameters<typeof database.withTenant>[2])=>actual(context,async tx=>{transactions++;
   const result=await read(new Proxy(tx,{
   get(target,property,receiver){const value=Reflect.get(target,property,receiver);if(property==='selectDistinct')return(...args:unknown[])=>{
    const fields=args[0] as Record<string,unknown>|undefined;if(fields?.d===schema.leaveLedger.effectiveOn)historicalReads++;
