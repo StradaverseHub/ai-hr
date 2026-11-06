@@ -73,6 +73,15 @@ export async function exerciseMovement({base,page,actor,subject,fixture,db,repor
       const visibility=await Promise.allSettled([history.isVisible(),savedRow.isVisible(),savedLabel.isVisible()]);
       const [historyVisible,auditedRowVisible,expectedLabelVisible]=visibility.map(result=>result.status==='fulfilled'?result.value:null);
       evidence.steps.save.visibilityOnFailure={historyVisible,auditedRowVisible,expectedLabelVisible};
+      evidence.steps.save.viewOnFailure=await page.evaluate(()=>{
+       const panel=document.querySelector('[data-tabpanel="careerMovement"]');
+       const active=document.querySelector('[role="tab"][aria-selected="true"]');
+       return {historyAttached:!!document.querySelector('#section-assignment-history'),
+        panelAttached:!!panel,panelHidden:panel?.hasAttribute('hidden')??null,
+        activeTab:active?.id.split('-tab-').at(-1)??null,
+        editorAttached:!!document.querySelector('#section-movement-new-event'),
+        routeError:!!document.querySelector('main [data-read-unavailable], main [role="alert"]')};
+      }).catch(()=>null);
       save();
       throw error;
      }

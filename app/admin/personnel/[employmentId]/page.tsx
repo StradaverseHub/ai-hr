@@ -364,17 +364,26 @@ export default async function EmployeePage({
   // The org-assignment dropdowns scope to the PENDING company when one is chosen, else the current company.
   const orgScopeCompanyId = pendingCompany?.id ?? emp.companyId;
 
-  const [history, departments, reporting, employees, grades, delegations] = await Promise.all([
+  // The assignment and Movement forms share the same company-scoped label readers.
+  const readOrganisationOptions = (companyId: string) => {
+    const companyIds = [companyId];
+    return withTenant(s, tx => Promise.all([
+      listDepartments(s, { companyIds }, tx),
+      listPositions(s, { companyIds }, tx),
+      listBusinessUnits(s, { companyIds }, tx),
+      listLocations(s, companyIds, {}, tx),
+    ]));
+  };
+  const emptyOrganisationOptions: Awaited<ReturnType<typeof readOrganisationOptions>> = [[], [], [], []];
+  const [history, currentOrganisationOptions, reporting, employees, grades, delegations] = await Promise.all([
     readProfileCards ? assignmentHistory(s, employmentId) : [],
-    // 570e3311 — departments scoped to THIS employee's company (origin ∪ shared-in ∪ global via the
-    // System Labels resolver), matching the Position/BU/Location pickers. Feeds exactly two places:
-    // the Organisation Assignment department select and the MovementNewEvent departments prop.
-    readMovementEditorChoices ? listDepartments(s, { companyIds: [emp.companyId] }) : [],
+    readMovementEditorChoices ? readOrganisationOptions(emp.companyId) : emptyOrganisationOptions,
     readProfileCards ? reportingLinesFor(s, employmentId) : {managers:[],reports:[]},
     readMovementEditorChoices || movementPage === 'correct-hire' ? listWorkforcePickOptions(s) : [],
     readMovementEditorChoices ? listJobGrades(s) : [],
     readProfileCards ? delegationsFor(s, employmentId) : [],
   ]);
+  const [departments, positions, businessUnits, locations] = currentOrganisationOptions;
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
@@ -454,21 +463,10 @@ export default async function EmployeePage({
   const scheduleGroupOptions = attendanceRules.filter(
     (r) => r.status === 'active' || r.id === scheduleGroupCurrentId,
   );
-  // Employment tab org-info edit (594323a6): position catalog for the editable Position dropdown. Scoped to
-  // THIS employee's company (the assignment's position must belong to the same company). Admin-only.
-  const positions = readMovementEditorChoices ? await listPositions(s, { companyIds: [emp.companyId] }) : [];
-  // 1001ff61 — Business Units for THIS employee's company (admin-only) — the Organisation Assignment BU picker
-  // options. Sourced company-scoped (origin ∪ shared ∪ global), mirroring the Position/Location pickers.
-  const businessUnits = readMovementEditorChoices ? await listBusinessUnits(s, { companyIds: [emp.companyId] }) : [];
-  // ADR-0054: locations for THIS employee's company (admin-only) — the "Set location" picker options.
-  const locations = readMovementEditorChoices ? await listLocations(s, [emp.companyId]) : [];
-  // Company change (9464bd56) — the Organisation Assignment selects re-scope to the PENDING company during a
-  // company change; everything else (MovementNewEvent, the Set-location picker) keeps the current-company
-  // lists. When no company is pending these ARE the current-company lists (byte-identical to before).
-  const orgDepartments = pendingCompany ? await listDepartments(s, { companyIds: [orgScopeCompanyId] }) : departments;
-  const orgPositions = pendingCompany ? await listPositions(s, { companyIds: [orgScopeCompanyId] }) : positions;
-  const orgBusinessUnits = pendingCompany ? await listBusinessUnits(s, { companyIds: [orgScopeCompanyId] }) : businessUnits;
-  const orgLocations = pendingCompany ? await listLocations(s, [orgScopeCompanyId]) : locations;
+  // A pending company changes only the Organisation Assignment picker scope.
+  const [orgDepartments, orgPositions, orgBusinessUnits, orgLocations] = pendingCompany
+    ? await readOrganisationOptions(orgScopeCompanyId)
+    : currentOrganisationOptions;
   // Typed pay components (Wave 3 #9) — recurring components for this employee + the catalog to add from.
   // r298 — Payroll-owned: not read at all for a tenant without Payroll (see `payrollOn`).
   const payComps = readProfileCards && payrollOn ? await listEmploymentPayComponents(s, employmentId) : [];
@@ -698,13 +696,8 @@ export default async function EmployeePage({
       movementCompanies.map(async (c) => {
         // The current-company form already loaded these exact scoped lists.
         const [deps, poss, bus, locs] = c.id === emp.companyId
-          ? [departments, positions, businessUnits, locations] as const
-          : await withTenant(s, (tx) => Promise.all([
-              listDepartments(s, { companyIds: [c.id] }, tx),
-              listPositions(s, { companyIds: [c.id] }, tx),
-              listBusinessUnits(s, { companyIds: [c.id] }, tx),
-              listLocations(s, [c.id], {}, tx),
-            ]));
+          ? currentOrganisationOptions
+          : await readOrganisationOptions(c.id);
         return [
           c.id,
           {
