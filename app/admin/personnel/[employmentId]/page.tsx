@@ -284,7 +284,9 @@ export default async function EmployeePage({
   const readProfileCards = admin && !movementPage;
   const readMovementEditorChoices = admin && (!movementPage || movementPage === 'new' || movementPage === 'edit');
   const movementContext={showCorrected:rawSearchParams.showCorrected,from:rawSearchParams.from};
-  const historyHref=movementHistoryHref(employmentId,movementContext);
+  const historyHref=movementPage
+    ? movementPageHref(employmentId,'history',undefined,movementContext)
+    : movementHistoryHref(employmentId,movementContext);
   if(!movementPage){
     const legacy=rawSearchParams.newEvent?'new':rawSearchParams.correctHire?'correct-hire':rawSearchParams.editMovement?'edit':rawSearchParams.movement?'view':null;
     if(legacy)redirect(movementPageHref(employmentId,legacy,rawSearchParams.editMovement??rawSearchParams.movement,movementContext));
@@ -571,7 +573,7 @@ export default async function EmployeePage({
   // domain_event ledger — Hired-first, date-ascending, no second record-keeping system. The detail view
   // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
   // Only the history table, the pending banner, and the edit lookup need the full projection.
-  const movementProjection = admin && (!movementPage || movementPage === 'edit')
+  const movementProjection = admin && (!movementPage || movementPage === 'history' || movementPage === 'edit')
     ? await movementHistoryWithTypes(s, employmentId, { includeResignation: readProfileCards })
     : null;
   const movements = movementProjection?.movements ?? [];
@@ -587,6 +589,9 @@ export default async function EmployeePage({
   // The Show / Hide link keeps the reader exactly where they are: same tab, same open detail view, same
   // every other param. Only `showCorrected` is rewritten.
   const movementVisibilityHref = (show: boolean): string => {
+    if(movementPage==='history')return movementPageHref(employmentId,'history',undefined,{
+      ...movementContext,showCorrected:show?'1':undefined,
+    });
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(rawSearchParams)) {
       if (k === 'showCorrected' || v === undefined) continue;
@@ -3273,7 +3278,7 @@ export default async function EmployeePage({
               <td className="px-4 py-2.5 text-muted-foreground">{m.jobTitle ?? '—'}</td>
               <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{m.basic ?? '—'}</td>
               <td className="px-4 py-2.5">
-                <MovementHistoryActions context={movementContext} employmentId={employmentId} row={m}
+                <MovementHistoryActions context={movementContext} employmentId={employmentId} row={m} standalone={movementPage==='history'}
                   eventLabel={`${movementKindLabel(m.kind)} · ${formatDmy(m.effectiveDate)}`}
                   canCorrect={canCorrectMovement} reverseAction={reverseMovementEventAction}
                   labels={{
@@ -3685,6 +3690,15 @@ export default async function EmployeePage({
           );
         })()
       : null;
+
+  if(movementPage==='history'){
+    return <div className="mx-auto max-w-[100rem] space-y-6">
+      <PageHeader back={{href:`/admin/personnel/${employmentId}${from==='org'?'?from=org':''}`,label:t('tabs.profile')}}
+        title={emp.name} description={`${emp.employeeCode??'—'} · ${emp.company}`}/>
+      <ErrorBanner message={error}/>
+      {employmentHistoryCard}
+    </div>;
+  }
 
   if(movementPage){
     const actionCard=movementPage==='new'?newEventCard:movementPage==='edit'?editEventCard:movementPage==='correct-hire'?hireCorrectionCard:movementPage==='view'?movementDetailCard:null;

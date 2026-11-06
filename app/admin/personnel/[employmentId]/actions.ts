@@ -6,7 +6,7 @@ import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect,unstable_rethrow } from 'next/navigation';
-import {movementHistoryHref} from '@/lib/personnel-movement-navigation';
+import {movementPageHref} from '@/lib/personnel-movement-navigation';
 import { getTranslations } from 'next-intl/server';
 import { setEmploymentCardId } from '@/core/attendance-card';
 import { requireAdmin } from '@/lib/authz';
@@ -90,9 +90,10 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 function withTab(formData: FormData, url: string): string {
   if(formData.get('movementPage')){
     const id=String(formData.get('employmentId')??'');
-    const destination=movementHistoryHref(id,{showCorrected:String(formData.get('showCorrected')??''),from:String(formData.get('from')??'')});
+    const destination=movementPageHref(id,'history',undefined,{showCorrected:String(formData.get('showCorrected')??''),from:String(formData.get('from')??'')});
     const parsed=new URL(url,'https://personnel.invalid'),target=new URL(destination,'https://personnel.invalid');
     if(parsed.searchParams.has('toast'))target.searchParams.set('toast',parsed.searchParams.get('toast')!);
+    if(parsed.searchParams.has('error'))target.searchParams.set('error',parsed.searchParams.get('error')!);
     return target.pathname+target.search+target.hash;
   }
   const tab = String(formData.get('tab') ?? '').trim();

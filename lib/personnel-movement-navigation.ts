@@ -1,4 +1,4 @@
-export type MovementPageMode='new'|'correct-hire'|'edit'|'view';
+export type MovementPageMode='history'|'new'|'correct-hire'|'edit'|'view';
 export type MovementPageContext={showCorrected?:string;from?:string};
 export function movementHistoryHref(employmentId:string,context:MovementPageContext={}){
  const query=new URLSearchParams({tab:'careerMovement'});

@@ -59,7 +59,7 @@ export async function exerciseMovement({base,page,actor,subject,fixture,db,repor
      await form.getByRole('button',{name:'Save Event',exact:true}).click({timeout});
      evidence.steps.save.submitted=true;
      save();
-     await page.waitForURL(url=>url.pathname===path&&url.searchParams.get('tab')==='careerMovement',{timeout});
+     await page.waitForURL(url=>url.pathname===path+'/movement/history',{timeout});
      evidence.steps.save.returnedToHistory=true;
      save();
      const eventId=await observeAudit();
