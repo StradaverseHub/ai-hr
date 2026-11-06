@@ -456,7 +456,11 @@ try{
   const ctx=await context(user,'en',true),page=await ctx.newPage();
   try{await visit(page,user,'/','sign-in-preflight',true);}finally{await ctx.close();}
  }));
- assert(['employee','manager','companyHR','groupHR'].every(role=>report.preflightBrowserSignIns?.some(row=>row.role===role&&row.homeCards>0&&row.todaySectionIds.length>0&&row.cardFailures===0)),'all four preflight sign-ins must load their dashboards');
+ // Handled card failures remain a failed acceptance gate. Keep collecting the
+ // isolated workload evidence after every role completed a real sign-in.
+ report.preflightHomeReady=['employee','manager','companyHR','groupHR'].every(role=>
+  report.preflightBrowserSignIns?.some(row=>row.role===role&&row.homeCards>0&&row.todaySectionIds.length>0&&row.cardFailures===0));
+ save();
  const aiBrowserActors=fixture.assistantHistory?[employee,hr,fixture.users[254],fixture.users[251]]:[employee,hr];
  const aiBaseline=await Promise.allSettled(aiBrowserActors.map(async user=>{
   const ctx=await context(user),page=await ctx.newPage();
@@ -650,6 +654,7 @@ try{
   const {exercisePerformanceRewardsDrafts}=await import('./performance-rewards-draft-browser.mjs');
   await exercisePerformanceRewardsDrafts({base,context,fixture,db,report,save});
   await verifyAudit();save();
+  assert(report.preflightHomeReady,'all four preflight sign-ins must load their dashboards');
   assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure');
   report.preflightPassed=true;save();return;
  }
@@ -863,6 +868,7 @@ try{
  writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
  report.concurrentHomeApiCoverage=report.homeApiTraffic.templates.flatMap(({role,requests})=>requests.map(({path})=>({role,path,requests:loaded.filter(sample=>sample.role===role&&sample.method==='GET'&&sample.route===path).length})));
  await databaseSnapshot('loaded');await verifyAudit();save();
+ assert(report.preflightHomeReady,'all four preflight sign-ins must load their dashboards');
  if(rejectionResults?.[0].status==='rejected')throw rejectionResults[0].reason;
  if(suite==='whole-system'){
   const movement=report.browserMovementJourneys?.find(row=>row.phase==='loaded');
