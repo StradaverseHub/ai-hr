@@ -18,6 +18,8 @@ export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure
  const relative=(days:number)=>{const phrase=rewardDueWording(days);return t(`board.${phrase.key}`,{days:phrase.days});};
  const budgetRows = overview ? rows.filter(row => row.kind === 'annual' &&
    row.roles.some(role => role === 'gr' || role === 'ctro' || role === 'ec') && (row.salary || row.bonus)) : [];
+ const flaggedReviews = overview ? rows.flatMap(row =>
+   'flagSummary' in row && row.flagSummary?.length ? [{row, flags: row.flagSummary}] : []) : [];
  return <>
   <Link href={rewardReviewHref({...filters,waiting:filters.waiting==='1'?undefined:'1'})} aria-current={filters.waiting==='1'?'page':undefined} className="inline-flex rounded-md border px-4 py-3 font-medium text-primary hover:bg-accent">{t('reviewList.waiting',{count:waiting})}</Link>
   {rewardReviewUpcoming(all).map(({seat,count})=><p key={seat} className="text-sm text-muted-foreground">{t('reviewList.upcoming',{count,stage:t(`board.seat.${seat}`)})}</p>)}
@@ -78,11 +80,11 @@ export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure
       </Card></li>;
     })}
   </ul>}
-  {overview&&rows.some(row=>row.flagSummary?.length)&&<details className="rounded-lg border border-border p-4">
+  {flaggedReviews.length>0&&<details className="rounded-lg border border-border p-4">
     <summary className="cursor-pointer font-semibold">{t('desk.flags')}</summary>
-    <ul className="mt-3 divide-y divide-border">{rows.filter(row=>row.flagSummary?.length).map(row=><li key={row.id} className="space-y-2 py-3 text-sm">
+    <ul className="mt-3 divide-y divide-border">{flaggedReviews.map(({row,flags})=><li key={row.id} className="space-y-2 py-3 text-sm">
       <p className="font-medium">{row.unit} · {row.company} · {row.cycle}</p>
-      <div className="flex flex-wrap gap-2">{row.flagSummary!.map(flag=><Link key={flag.severity+flag.code}
+      <div className="flex flex-wrap gap-2">{flags.map(flag=><Link key={flag.severity+flag.code}
         href={`/rewards/${row.id}?${new URLSearchParams({flag:flag.code})}#checks`}
         className={`rounded-full border border-border px-2 py-1 hover:underline ${flag.severity==='block'?'font-semibold text-destructive':''}`}>
         {t(`severity.${flag.severity}`)} · {flag.code} · {flag.count}
