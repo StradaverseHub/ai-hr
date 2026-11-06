@@ -209,11 +209,13 @@ describe('Attendance approval routing and exactly-once effects', () => {
                         from pg_stat_activity where ${blocker.pid}=any(pg_blocking_pids(pid)) and wait_event='advisory'`);
                     return row.count;
                 };
-                await expect.poll(directWaiters, {timeout:5000}).toBe(1);
+                // Both admitted approvals can wait for the exclusive Access writer. The
+                // remaining burst must stay queued outside the database pool.
+                await expect.poll(directWaiters, {timeout:5000}).toBe(2);
                 let readFinished = false;
                 reader = withTenant(a, tx => tx.execute(sql`select 1`)).then(() => { readFinished = true; }, () => {});
                 await expect.poll(() => readFinished, {timeout:5000}).toBe(true);
-                expect(await directWaiters()).toBe(1);
+                expect(await directWaiters()).toBe(2);
             });
         } finally {
             await reader;
