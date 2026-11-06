@@ -23426,6 +23426,8 @@
     }
   },
   "rewards": {
+    "prelaunchDataCheck": "ตรวจสอบความพร้อมของข้อมูล",
+    "dataCheckReady": "พร้อม",
     "recommendationSaved": "บันทึกข้อเสนอแนะแล้ว",
     "recommendationSaveFailed": "ไม่สามารถบันทึกข้อเสนอแนะได้",
     "resetRecommendation": "รีเซ็ต",

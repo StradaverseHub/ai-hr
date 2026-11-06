@@ -23426,6 +23426,8 @@
     }
   },
   "rewards": {
+    "prelaunchDataCheck": "数据就绪检查",
+    "dataCheckReady": "已就绪",
     "recommendationSaved": "建议已保存。",
     "recommendationSaveFailed": "无法保存建议。",
     "resetRecommendation": "重置",

@@ -23426,6 +23426,8 @@
     }
   },
   "rewards": {
+    "prelaunchDataCheck": "Data readiness check",
+    "dataCheckReady": "Ready",
     "recommendationSaved": "Recommendation saved.",
     "recommendationSaveFailed": "The recommendation could not be saved.",
     "resetRecommendation": "Reset",

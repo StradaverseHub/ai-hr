@@ -23426,6 +23426,8 @@
     }
   },
   "rewards": {
+    "prelaunchDataCheck": "Kiểm tra dữ liệu",
+    "dataCheckReady": "Sẵn sàng",
     "recommendationSaved": "Đã lưu đề xuất.",
     "recommendationSaveFailed": "Không thể lưu đề xuất.",
     "resetRecommendation": "Đặt lại",

@@ -161,7 +161,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'emailTemplates',href:'/admin/settings/email-templates',labelKey:'nav.emailTemplates',guard:'scopedAdmin',routes:['/admin/settings/email-templates'],hasScopeNote:true},
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },
   {screenKey:'rewards',href:'/rewards',labelKey:'nav.rewards',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:[
-    '/rewards','/rewards/[unitId]','/rewards/[unitId]/people/[entryId]','/rewards/[unitId]/advisor',
+    '/rewards','/rewards/[unitId]','/rewards/[unitId]/data-check','/rewards/[unitId]/people/[entryId]','/rewards/[unitId]/advisor',
     '/rewards/[unitId]/advisor/fairness','/rewards/[unitId]/uploaded','/rewards/analytics','/rewards/rules',
   ]},
   { screenKey: 'rewardsApprovals', href: '/rewards/approvals', labelKey: 'rewards.board.title', guard: 'scopedSession', routes: ['/rewards/approvals'] },

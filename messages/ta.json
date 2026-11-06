@@ -23426,6 +23426,8 @@
     }
   },
   "rewards": {
+    "prelaunchDataCheck": "தரவுத் தயார்நிலைச் சரிபார்ப்பு",
+    "dataCheckReady": "தயார்",
     "recommendationSaved": "பரிந்துரை சேமிக்கப்பட்டது.",
     "recommendationSaveFailed": "பரிந்துரையைச் சேமிக்க முடியவில்லை.",
     "resetRecommendation": "மீட்டமை",

@@ -76,6 +76,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   return <div className="w-full space-y-5">
     <Link href="/rewards" className="text-sm text-primary hover:underline">← {nav('rewardsReviewing')}</Link>
     <PageHeader title={rewardReviewTitle(v.cycle?.name ?? t('title'), v.companyName, v.name)} description={`${t(`kinds.${unit.kind}`)} · ${v.returned ? t(`returnedTo.${v.returned.toSeat}`) : t(`stages.${unit.status}`)}${v.due ? ` · ${t('dueOn', { date: v.due })}` : ''} · ${t('snapshotDate')}: ${unit.snapshotDate}`} />
+    {(v.roles.includes('gr') || v.roles.includes('pbp')) && <Link href={`/rewards/${unitId}/data-check`} className="text-sm font-medium text-primary hover:underline">{t('prelaunchDataCheck')}</Link>}
     <ErrorBanner message={sp.error} /><Link href={`/rewards/rules?unit=${unitId}`} className="inline-block text-sm text-primary underline underline-offset-2">{t('rules')}</Link>
     <div className="flex flex-wrap gap-4 text-sm">{v.uploaded?<Link href={`/rewards/${unitId}/uploaded`} className="text-primary underline">{u('open')}</Link>:annual&&v.libraryBound&&<Link href={`/rewards/${unitId}/advisor`} className="text-primary underline">{a('title')}</Link>}</div>
     {v.uploadedSummary&&<Card className="p-5"><h2 className="font-semibold">{u('summary',{people:v.uploadedSummary.people,increment:(v.uploadedSummary.incrementCents/100).toFixed(2),bonus:(v.uploadedSummary.bonusCents/100).toFixed(2)})}</h2><p className="mt-1 text-sm tabular-nums">{u('lump')}: {(v.uploadedSummary.lumpCents/100).toFixed(2)}</p></Card>}

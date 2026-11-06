@@ -23426,6 +23426,8 @@
     }
   },
   "rewards": {
+    "prelaunchDataCheck": "Semakan kesediaan data",
+    "dataCheckReady": "Sedia",
     "recommendationSaved": "Cadangan disimpan.",
     "recommendationSaveFailed": "Cadangan tidak dapat disimpan.",
     "resetRecommendation": "Tetapkan semula",
