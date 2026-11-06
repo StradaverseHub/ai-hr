@@ -4882,24 +4882,31 @@
       "breakpoints": true
     },
     {
-      "idx": 1600,
+      "idx": 1550,
       "version": "7",
-      "when": 1793330001800,
-      "tag": "2400_definer_search_path_pin",
+      "when": 1793330001850,
+      "tag": "2450_personnel_search_projection",
       "breakpoints": true
     },
     {
-      "idx": 1601,
+      "idx": 1700,
       "version": "7",
-      "when": 1793330001801,
-      "tag": "2401_company_reference_tenant_fk_not_valid",
+      "when": 1793330001900,
+      "tag": "2500_definer_search_path_pin",
       "breakpoints": true
     },
     {
-      "idx": 1602,
+      "idx": 1701,
       "version": "7",
-      "when": 1793330001802,
-      "tag": "2402_company_reference_tenant_fk_validate",
+      "when": 1793330001901,
+      "tag": "2501_company_reference_tenant_fk_not_valid",
+      "breakpoints": true
+    },
+    {
+      "idx": 1702,
+      "version": "7",
+      "when": 1793330001902,
+      "tag": "2502_company_reference_tenant_fk_validate",
       "breakpoints": true
     }
   ]

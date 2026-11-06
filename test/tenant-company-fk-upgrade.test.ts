@@ -136,7 +136,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'reward_pat_version', 'reward_plan_company', 'reward_setup_grant',
   ];
   const expansionNames = new Set(expansionRelations.map(rel => rel + '_company_tenant_fk'));
-  // The ADR-0174 follow-up (2401/2402) keys the seven company references not called company_id.
+  // The ADR-0174 follow-up (2501/2502) keys the seven company references not called company_id.
   const followUp = [
    ['company', 'company_parent_company_tenant_fk'], ['notice', 'notice_owner_company_tenant_fk'],
    ['overtime_pattern', 'overtime_pattern_creation_company_tenant_fk'],

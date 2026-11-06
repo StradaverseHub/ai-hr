@@ -20,8 +20,8 @@
 --    or reads a TEMP relation of its own (catalog checks, 4 to 6 November 2026). Invokers are included because a
 --    definer that calls one runs it with the definer's privileges under the invoker's own path.
 --    The set is read from the catalog when this runs, not listed here, so a function another migration re-issued
---    earlier in the same upgrade keeps that migration's path with pg_temp added. On main's 697-entry journal it
---    is 259 functions besides the four above (6 November 2026).
+--    earlier in the same upgrade keeps that migration's path with pg_temp added (2450 re-issues one such). On
+--    main's 698-entry journal it is 259 functions besides the four above (6 November 2026).
 -- 3. About sixty of them are owned by dedicated NOLOGIN roles (ai_hr_rewards_post_reader from 0689, and the
 --    Architecture and Rewards readers and guard from 2200 onwards). Each owning migration gave its functions to
 --    that role with ALTER FUNCTION ... OWNER TO, which PostgreSQL 16 allows only to a superuser or a member with
@@ -218,5 +218,5 @@ BEGIN
   IF remaining IS NOT NULL THEN
     RAISE EXCEPTION 'Functions still lack a trailing pg_temp: %', remaining;
   END IF;
-  RAISE NOTICE '2400 pinned % function search paths', pinned;
+  RAISE NOTICE '2500 pinned % function search paths', pinned;
 END $definer_search_path_pin$;

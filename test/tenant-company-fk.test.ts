@@ -5,7 +5,7 @@
  * the department policy asks `app.is_admin_for(company_id)`, which answers from grants alone, and the
  * plain `company(id)` FK accepts any company. Nothing of B was readable, but the row was a dangling
  * cross-tenant reference. These tests assert the database refusal directly as `ai_hr_app`, plus a
- * catalog guard so a future company-stamped table cannot ship without the composite key. 2401/2402 extend the
+ * catalog guard so a future company-stamped table cannot ship without the composite key. 2501/2502 extend the
  * rule to the six company references not called company_id (parent company, reporting-line scope, notice
  * owner, overtime creation company, KPI group) and to teras_chat.company_id, which had no company key at all;
  * the second guard covers every single-column company key.

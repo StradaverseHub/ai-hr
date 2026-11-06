@@ -10,7 +10,7 @@
 -- tombstones refuses deletion as `other` until retention removes them (at most the tenant's "Keep chats for",
 -- 1 to 365 days). A chat whose company is refused is simply not stored; the reply is still shown.
 --
--- NOT VALID: existing rows are not scanned here; 2402 checks the data and validates. Every INSERT and every
+-- NOT VALID: existing rows are not scanned here; 2502 checks the data and validates. Every INSERT and every
 -- UPDATE of the column or tenant_id is checked from this migration on. Writers were reviewed: application
 -- writes stamp the session tenant under RLS with a company the actor administers, and reparenting stays
 -- inside one tenant. MATCH SIMPLE keeps a NULL reference valid. Every existing key is ON DELETE NO ACTION and

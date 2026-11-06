@@ -71,8 +71,12 @@ async function validateTx(tx:Tx,ctx:SessionContext,s:Awaited<ReturnType<typeof s
  const endDates=[s.emp.terminatedOn,s.emp.probationEndDate,s.emp.contractStartDate,s.emp.contractEndDate,s.emp.internshipEndDate,s.emp.confirmationDate,s.emp.resignationDate,s.emp.lastWorkingDate].filter((x):x is string=>!!x);
  if(endDates.some(date=>date<after.hiredOn!))fail('The corrected date conflicts with existing employment dates. Use the relevant workflow.');
  if(!PERSONNEL_EMPLOYMENT_TYPES.includes(after.employmentType as typeof PERSONNEL_EMPLOYMENT_TYPES[number]))fail('Employment Type is not a valid system code.');
- if(after.employmentType==='contract'&&(!s.emp.contractStartDate||!s.emp.contractEndDate))fail('Contract employment requires valid contract start and end dates.');
- if(after.employmentType==='intern'&&!s.emp.internshipEndDate)fail('Intern employment requires an internship end date.');
+ // Contract/intern dates are not editable here, so their prerequisites apply only when this correction changes
+ // Employment Type: a legacy contract with no end date can still have its grade, dates or company corrected.
+ if(after.employmentType!==before.employmentType){
+  if(after.employmentType==='contract'&&(!s.emp.contractStartDate||!s.emp.contractEndDate))fail('Contract employment requires valid contract start and end dates.');
+  if(after.employmentType==='intern'&&!s.emp.internshipEndDate)fail('Intern employment requires an internship end date.');
+ }
  await administratorTx(tx,ctx,after.companyId!);
  const companies=await tx.select().from(company).where(and(eq(company.tenantId,ctx.tenantId),inArray(company.id,[before.companyId!,after.companyId!]),isNull(company.archivedAt)));
  const source=companies.find(c=>c.id===before.companyId),destination=companies.find(c=>c.id===after.companyId);

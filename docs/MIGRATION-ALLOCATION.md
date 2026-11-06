@@ -7,24 +7,24 @@ owning release gate.
 
 ## Tenant-isolation follow-up (ADR-0174) — 6 November 2026 (provisional source claim)
 
-`claude/pensive-hofstadter-d1bf14` appends three migrations to main's 697-entry journal at `2dcb7fbe7`. That
-commit is also staging's deployed SHA and ends at `2300_retire_job_architecture_workflows` (idx 1500 / when
-1793330001700). The block was claimed in turn as 2120–2123, 2150–2153 and 2240–2242. Each time the combined
-release rose above it, and the 2240–2242 claim is withdrawn here.
+`claude/pensive-hofstadter-d1bf14` appends three migrations to main's 698-entry journal at `dc36b7f02`, which
+ends at `2450_personnel_search_projection` (idx 1550 / when 1793330001850). The block was claimed in turn as
+2120–2123, 2150–2153, 2240–2242 and 2400–2402. Each time later work landed above it, and the 2400–2402 claim
+is withdrawn here.
 
-A read-only scan on 6 November 2026 of every local and remote ref (457 journal blobs) and every registered
-worktree found claims up to `2304_payroll_grant_direct_scan` (idx 1504 / when 1793330001704) and nothing above.
-The block therefore takes 2400–2402, with `when` = 1793330000000 + (file − 600) and idx = file − 800, which
-leaves 2305–2399 free.
+A read-only scan on 6 November 2026 of every local and remote ref (463 journal blobs) and every registered
+worktree found claims up to `2451_personnel_company_filter_choices` (when 1793330001851) and idx 1606 (2406), and
+nothing above. The block therefore takes 2500–2502, with `when` = 1793330000000 + (file − 600) and idx =
+file − 800, which leaves 2452–2499 free.
 
-2400's search-path sweep reads the catalog when it runs, so a function re-issued earlier in the same upgrade
-keeps its own path with pg_temp added.
+2500's search-path sweep reads the catalog when it runs, so a function re-issued earlier in the same upgrade
+keeps its own path with pg_temp added. 2450's re-issued `app.personnel_search_rows` is an example.
 
 | Tag | idx | when | SQL SHA256 |
 | --- | ---: | ---: | --- |
-|2400_definer_search_path_pin|1600|1793330001800|9d650b032c52171869ca270f3d718dc813091bac8896254380bf4232db5ec018|
-|2401_company_reference_tenant_fk_not_valid|1601|1793330001801|26796e4dc9238c9232d9a2271b9a972215d043ddfc723c54585b54dea6c7d965|
-|2402_company_reference_tenant_fk_validate|1602|1793330001802|e31b5a4b6567fd7f32a616a9ce7d59c68697faad87dfed689b6745aa5c0f4e28|
+|2500_definer_search_path_pin|1700|1793330001900|1c66bfa73251bdb7af51ecf4dbd2ac217046811571177d798618a3e3fefed97c|
+|2501_company_reference_tenant_fk_not_valid|1701|1793330001901|6db68a8003089b9ef47142ac4d3fc5cdb00c494976ce76ee3d5180c40d650f94|
+|2502_company_reference_tenant_fk_validate|1702|1793330001902|4817ea72e069690e370d36ff9e483916888ed282ff344267c9d678a856eb8546|
 
 These are unapplied source only. Immediately before merge, re-check the highest file, idx and `when` on main and
 staging. At staging admission, confirm the migrator can SET ROLE to each dedicated owner, and count chats whose

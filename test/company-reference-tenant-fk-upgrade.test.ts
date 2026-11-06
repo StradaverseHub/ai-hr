@@ -1,5 +1,5 @@
-/** ADR-0174 follow-up populated upgrade through 2400–2402, on an owned disposable localhost database only.
- * Cross-tenant references present at the 697-entry boundary must stop the whole upgrade with a report naming
+/** ADR-0174 follow-up populated upgrade through 2500–2502, on an owned disposable localhost database only.
+ * Cross-tenant references present at the 698-entry boundary must stop the whole upgrade with a report naming
  * every offending table and leave the ledger and every function untouched. Once the owner resolves them, the
  * upgrade validates the seven keys, rewrites no row, changes no grant or policy, appends pg_temp to every
  * unpinned path and changes only the four function bodies it re-issues. This supplies no staging acceptance. */
@@ -16,17 +16,17 @@ type Entry={idx:number;version:string;when:number;tag:string;breakpoints:boolean
 type Fn={fn:string;body:string;owner:string;acl:string|null;config:string[]|null;definer:boolean};
 const hash=(bytes:string|Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const TAIL=[
- {idx:1600,version:'7',when:1793330001800,tag:'2400_definer_search_path_pin',breakpoints:true},
- {idx:1601,version:'7',when:1793330001801,tag:'2401_company_reference_tenant_fk_not_valid',breakpoints:true},
- {idx:1602,version:'7',when:1793330001802,tag:'2402_company_reference_tenant_fk_validate',breakpoints:true},
+ {idx:1700,version:'7',when:1793330001900,tag:'2500_definer_search_path_pin',breakpoints:true},
+ {idx:1701,version:'7',when:1793330001901,tag:'2501_company_reference_tenant_fk_not_valid',breakpoints:true},
+ {idx:1702,version:'7',when:1793330001902,tag:'2502_company_reference_tenant_fk_validate',breakpoints:true},
 ];
-/** Unpinned functions in the 697-entry prefix (catalog, 6 November 2026); 2400 pins every one of them. */
+/** Unpinned functions in the 698-entry prefix (catalog, 6 November 2026); 2500 pins every one of them. */
 const UNPINNED_AT_BOUNDARY=263;
 const KEYS=['company_parent_company_tenant_fk','notice_owner_company_tenant_fk','overtime_pattern_creation_company_tenant_fk',
  'overtime_pattern_version_creation_company_tenant_fk','performance_kpi_library_group_company_tenant_fk','reporting_line_scope_company_tenant_fk',
  'teras_chat_company_tenant_fk'];
 const REISSUED=['app.can_see_employment(uuid)','app.can_see_person(uuid)','app.heads_department_of(uuid,uuid)','app.is_admin_report_of(uuid,uuid)'];
-/** What 2400 does to a path: append pg_temp; a bare `public` resolves identically as `pg_catalog, public, pg_temp`. */
+/** What 2500 does to a path: append pg_temp; a bare `public` resolves identically as `pg_catalog, public, pg_temp`. */
 const pinned=(config:string[]|null)=>config?.map(setting=>{
  if(!setting.startsWith('search_path='))return setting;
  const parts=setting.slice('search_path='.length).split(',').map(part=>part.trim());
@@ -37,9 +37,9 @@ const pinned=(config:string[]|null)=>config?.map(setting=>{
 it('stops on cross-tenant references, then pins every definer and validates the seven keys without changing data or grants',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:Entry[]};
  const boundary=journal.entries.findIndex(row=>row.tag===TAIL[0].tag);
- expect(boundary).toBe(697);
+ expect(boundary).toBe(698);
  expect(journal.entries.slice(boundary,boundary+TAIL.length)).toEqual(TAIL);
- expect(journal.entries[boundary-1]).toEqual({idx:1500,version:'7',when:1793330001700,tag:'2300_retire_job_architecture_workflows',breakpoints:true});
+ expect(journal.entries[boundary-1]).toEqual({idx:1550,version:'7',when:1793330001850,tag:'2450_personnel_search_projection',breakpoints:true});
  const prefix=journal.entries.slice(0,boundary),through=journal.entries.slice(0,boundary+TAIL.length);
  const root=mkdtempSync(join(tmpdir(),'company-reference-fk-upgrade-')),database='ai_hr_company_ref_upgrade_'+randomUUID().replaceAll('-','');
  const folder=(name:string,entries:Entry[])=>{
@@ -93,7 +93,7 @@ it('stops on cross-tenant references, then pins every definer and validates the 
  try{
   await admin.unsafe(`CREATE DATABASE "${database}"`);created=true;
   await migrate(storage.db,{migrationsFolder:folder('prefix',prefix)});
-  const beforeLedger=await ledger();expect(beforeLedger).toHaveLength(697);
+  const beforeLedger=await ledger();expect(beforeLedger).toHaveLength(698);
   expect(beforeLedger.map(row=>row.hash)).toEqual(prefix.map(row=>hash(readFileSync('db/migrations/'+row.tag+'.sql'))));
   expect(await keys()).toEqual([]);
   expect(await unpinned()).toBe(UNPINNED_AT_BOUNDARY);
@@ -117,7 +117,7 @@ it('stops on cross-tenant references, then pins every definer and validates the 
    (${tenantA},${reportA},${managerA},'administrative','2024-01-01',${holdingA}),(${tenantB},${reportB},${managerB},'administrative','2024-01-01',null)`;
   await storage.client`insert into performance_kpi_library(tenant_id,name,template,group_company_id) values(${tenantA},'Fictional group KPI','{}'::jsonb,${holdingA})`;
   await storage.client`insert into teras_chat(id,tenant_id,app_user_id,person_id,company_id,scope_digest) values(${ownChat},${tenantA},${userManagerA},${persons[0]},${holdingA},${'a'.repeat(64)})`;
-  // The gap 2400 closes: tenant A's session still sees tenant B's department-head walk, whose seed department is
+  // The gap 2500 closes: tenant A's session still sees tenant B's department-head walk, whose seed department is
   // never company-checked. 2126 already pinned the company tree to the session tenant, which incidentally stops
   // the reporting-line walk (each hop asks app.is_company_descendant).
   expect(await answers()).toEqual([{own_report:true,own_line:true,foreign_line:false,foreign_head:true,foreign_tree:false,own_tree:true}]);
@@ -149,8 +149,8 @@ it('stops on cross-tenant references, then pins every definer and validates the 
   const upgradeNative=await native();
   await migrate(storage.db,{migrationsFolder:folder('through-resolved',through)});
   const afterLedger=await ledger();
-  expect(afterLedger).toHaveLength(700);expect(afterLedger.slice(0,697)).toEqual(beforeLedger);
-  expect(afterLedger.slice(697).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(
+  expect(afterLedger).toHaveLength(701);expect(afterLedger.slice(0,698)).toEqual(beforeLedger);
+  expect(afterLedger.slice(698).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(
    TAIL.map(row=>({hash:hash(readFileSync('db/migrations/'+row.tag+'.sql')),created_at:String(row.when)})));
   expect(await native()).toEqual(upgradeNative);
   expect(await privileges()).toEqual(beforePrivileges);

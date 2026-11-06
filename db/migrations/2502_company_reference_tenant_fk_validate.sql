@@ -1,4 +1,4 @@
--- Tenant-isolation defence in depth, ADR-0174 follow-up part 3 of 3: check the data, then validate the 2401
+-- Tenant-isolation defence in depth, ADR-0174 follow-up part 3 of 3: check the data, then validate the 2501
 -- company/tenant keys, exactly as 2102 did for company_id.
 --
 -- Each key is validated in its own subtransaction, so one offending table does not hide the others. A row
@@ -7,7 +7,7 @@
 -- row. Nothing is rewritten or deleted automatically; such a row is a data defect for its owner to review.
 -- VALIDATE reads past row-level security, as every foreign-key check does.
 --
--- VALIDATE takes SHARE UPDATE EXCLUSIVE on each table and ROW SHARE on company; when 2401 lands in the same
+-- VALIDATE takes SHARE UPDATE EXCLUSIVE on each table and ROW SHARE on company; when 2501 lands in the same
 -- run its locks are held until the commit (writes to these seven tables wait, reads continue).
 DO $company_reference_validate$
 DECLARE

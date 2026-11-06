@@ -1,18 +1,21 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { tryLockAccessConfigurationReadTx, tryLockAccessConfigurationTx } from './access-configuration-lock';
+import { tryLockAccessConfigurationReadTx } from './access-configuration-lock';
 
 export class PersonnelReadBusyError extends Error {
-  constructor(options?: ErrorOptions) {
+  constructor(readonly reason: 'access-lock' | 'statement-timeout', options?: ErrorOptions) {
     super('Personnel is temporarily busy.', options);
     this.name = 'PersonnelReadBusyError';
   }
 }
 
-export async function withPersonnelRead<T>(ctx: SessionContext, read: (tx: Tx) => Promise<T>, options: { existingTx?: Tx; writesSearchToken?: true } = {}): Promise<T> {
+// Retry admission misses after the transaction returns its connection to the pool.
+const retryDelays = [40, 100, 220];
+
+export async function withPersonnelRead<T>(ctx: SessionContext, read: (tx: Tx) => Promise<T>, options: { existingTx?: Tx } = {}): Promise<T> {
   const boundedRead = async (tx: Tx) => {
-    const admit = options.writesSearchToken ? tryLockAccessConfigurationTx : tryLockAccessConfigurationReadTx;
-    if (!await admit(tx, ctx.tenantId)) throw new PersonnelReadBusyError();
+    if (!await tryLockAccessConfigurationReadTx(tx, ctx.tenantId)) throw new PersonnelReadBusyError('access-lock');
     // Keep any tighter caller deadline. SET LOCAL is cleared with this transaction.
     await tx.execute(sql`select set_config('statement_timeout', least(
       coalesce(nullif(setting::int, 0), 20000), 20000)::text, true)
@@ -20,10 +23,19 @@ export async function withPersonnelRead<T>(ctx: SessionContext, read: (tx: Tx) =
     return read(tx);
   };
   try {
-    return await (options.existingTx ? boundedRead(options.existingTx) : withTenant(ctx, boundedRead));
+    if (options.existingTx) return await boundedRead(options.existingTx);
+    for (const retryDelay of retryDelays) {
+      try {
+        return await withTenant(ctx, boundedRead);
+      } catch (error) {
+        if (!(error instanceof PersonnelReadBusyError) || error.reason !== 'access-lock') throw error;
+        await delay(retryDelay);
+      }
+    }
+    return await withTenant(ctx, boundedRead);
   } catch (error) {
     for (let cause = error; cause instanceof Error; cause = cause.cause) {
-      if ('code' in cause && cause.code === '57014') throw new PersonnelReadBusyError({ cause: error });
+      if ('code' in cause && cause.code === '57014') throw new PersonnelReadBusyError('statement-timeout', { cause: error });
       if (cause.cause === cause) break;
     }
     throw error;

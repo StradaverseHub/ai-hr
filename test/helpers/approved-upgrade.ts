@@ -37,10 +37,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:1450,when:1793330001650,tag:'2250_rewards_whole_group_grants'},
  {idx:1451,when:1793330001651,tag:'2251_company_display_group'},
  {idx:1500,when:1793330001700,tag:'2300_retire_job_architecture_workflows'},
+ {idx:1550,when:1793330001850,tag:'2450_personnel_search_projection'},
  // ADR-0174 follow-up: every definer path ends with pg_temp, and the remaining company references keep their tenant.
- {idx:1600,when:1793330001800,tag:'2400_definer_search_path_pin'},
- {idx:1601,when:1793330001801,tag:'2401_company_reference_tenant_fk_not_valid'},
- {idx:1602,when:1793330001802,tag:'2402_company_reference_tenant_fk_validate'},
+ {idx:1700,when:1793330001900,tag:'2500_definer_search_path_pin'},
+ {idx:1701,when:1793330001901,tag:'2501_company_reference_tenant_fk_not_valid'},
+ {idx:1702,when:1793330001902,tag:'2502_company_reference_tenant_fk_validate'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -70,9 +71,10 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '2250_rewards_whole_group_grants':'dc3437a768104a0be69f38adc395d7d814efb01f0feb66d7fc1af84c971f9e27',
  '2251_company_display_group':'3015af6a8183b9e01fbb42c165fe2ce83eb6d167d0b7cd61210144cd6d292a8a',
  '2300_retire_job_architecture_workflows':'0baf5adae50036cb20634ec362c1302b8c6c45f38ec8610f68e5c1bdc9ebedda',
- '2400_definer_search_path_pin':'9d650b032c52171869ca270f3d718dc813091bac8896254380bf4232db5ec018',
- '2401_company_reference_tenant_fk_not_valid':'26796e4dc9238c9232d9a2271b9a972215d043ddfc723c54585b54dea6c7d965',
- '2402_company_reference_tenant_fk_validate':'e31b5a4b6567fd7f32a616a9ce7d59c68697faad87dfed689b6745aa5c0f4e28',
+ '2450_personnel_search_projection':'4e349dd20f6d55562ada2709b092543abab69390a5903a89b49407ed29357fe8',
+ '2500_definer_search_path_pin':'1c66bfa73251bdb7af51ecf4dbd2ac217046811571177d798618a3e3fefed97c',
+ '2501_company_reference_tenant_fk_not_valid':'6db68a8003089b9ef47142ac4d3fc5cdb00c494976ce76ee3d5180c40d650f94',
+ '2502_company_reference_tenant_fk_validate':'4817ea72e069690e370d36ff9e483916888ed282ff344267c9d678a856eb8546',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);
