@@ -20,7 +20,7 @@ describe('Rewards review overview',()=>{
   expect(screen.getByText(/1 review is in progress.*Executive Chairman/)).toBeTruthy();
  });
  it('opens each visible overview card and only offers approvals to an admitted viewer', () => {
-  render(<NextIntlClientProvider locale="en" messages={en}><RewardReviewList rows={[base, {...second, roles: [], blocking: null}]} filters={{}} emptyReason={null} canConfigure={false} year={2026} overview canOpenApprovals/></NextIntlClientProvider>);
+  render(<NextIntlClientProvider locale="en" messages={en}><RewardReviewList rows={[base, {...second, roles: [], salary: null, bonus: null, blocking: null, exceptions: null}]} filters={{}} emptyReason={null} canConfigure={false} year={2026} overview canOpenApprovals/></NextIntlClientProvider>);
   const [retail, wholesale] = screen.getAllByRole('listitem');
   expect(within(retail).getByRole('link', { name: 'Open review' })).toHaveAttribute('href', '/rewards/r1');
   expect(within(retail).getByRole('link', { name: 'Approvals Board' })).toHaveAttribute('href', '/rewards/approvals?group=co&cycle=cycle&unit=bu');
