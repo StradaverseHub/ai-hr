@@ -1,3 +1,4 @@
+import {verifyWorkflowOnlyAttendanceHeader} from './helpers/attendance-task-header-prototype';
 import {restorePreOrgRootReportingLines} from './helpers/pre-org-root-reporting-fixture';
 import {listPendingTasks} from '../core/approvals-inbox';
 import { randomUUID } from 'node:crypto';
@@ -267,6 +268,7 @@ describe('request-bound delegated final effects', () => {
         await expect(withTenant(delegate, tx => tx.update(schema.attendanceCorrection).set({ reason: 'Forged delegate edit' }).where(eq(schema.attendanceCorrection.id, id)))).rejects.toThrow();
         expect((await correction(id)).reason).toBe('Verified clock correction');
         expect(await read()).toHaveLength(0); // Non-vacuity: the actor really has delegation-only access.
+        await verifyWorkflowOnlyAttendanceHeader(delegate,id,worker.employmentId);
         await decideAttendanceCorrection(delegate, { correctionId: id, decision: 'approved', expectedStageIndex: 0 });
         expect(await read()).toHaveLength(0);
         expect(await withTenant(delegate, tx => tx.select().from(schema.payslip).where(eq(schema.payslip.employmentId, worker.employmentId)))).toHaveLength(0);

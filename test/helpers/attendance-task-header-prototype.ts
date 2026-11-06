@@ -66,3 +66,11 @@ export async function comparePendingHeaderPrototype(actors:Record<string,Session
  }
 }
 
+export async function verifyWorkflowOnlyAttendanceHeader(actor:SessionContext,requestId:string,subjectId:string){
+ const [visibility]=await withTenant(actor,tx=>tx.execute<{ordinary:boolean}>(sql`
+  select ${subjectId}::uuid=any(app.visible_employment_ids()) as ordinary
+ `));
+ expect(visibility.ordinary).toBe(false);
+ const result=await comparePendingHeaderPrototype({assigned:actor},requestId);
+ expect(result).toMatchObject({assigned:{rows:1,differences:0}});
+}

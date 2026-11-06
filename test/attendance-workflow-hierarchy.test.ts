@@ -1,3 +1,4 @@
+import {verifyWorkflowOnlyAttendanceHeader} from './helpers/attendance-task-header-prototype';
 import {restorePreOrgRootReportingLines} from './helpers/pre-org-root-reporting-fixture';
 import {legacyPendingAttendanceTaskMetadata} from './helpers/attendance-task-original';
 import { randomUUID } from 'node:crypto';
@@ -388,6 +389,7 @@ describe('797ba70b: Personnel-owned assignment criteria and request-bound delega
     const delegatedTasks=await pendingAttendanceTaskMetadata(delegate,[b.companyId]);
     expect(delegatedTasks.map(row=>row.id)).toContain(id);
     expect(delegatedTasks).toEqual(await legacyPendingAttendanceTaskMetadata(delegate,[b.companyId]));
+    await verifyWorkflowOnlyAttendanceHeader(delegate,id,f.d.employmentId);
     await decideAttendanceCorrection(delegate,{correctionId:id,decision:'approved',expectedStageIndex:1});
     const decision=(await readDecisions()).find(d=>d.stageIndex===1)!;
     expect(decision).toMatchObject({assignedEmploymentId:f.second.employmentId,actualUserId:delegate.userId,actualPersonId:stand.personId,actualEmploymentId:null,actingMode:'delegate'});

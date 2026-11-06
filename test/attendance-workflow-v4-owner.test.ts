@@ -1,3 +1,4 @@
+import {verifyWorkflowOnlyAttendanceHeader} from './helpers/attendance-task-header-prototype';
 import {legacyPendingAttendanceTaskMetadata} from './helpers/attendance-task-original';
 import {assignedApprovalHref} from '../lib/assigned-approval-focus';
 import {listPendingTasks} from '../core/approvals-inbox';
@@ -93,6 +94,7 @@ describe('v4 uses the immutable participant and final Attendance owners',()=>{
   const f=await fixture('all_required');
   const modules={attendance:true,claims:true,performance:false,rewards:false};
   expect(await pendingAttendanceTaskMetadata(f.second.ctx,[base.companyId])).toEqual(await legacyPendingAttendanceTaskMetadata(f.second.ctx,[base.companyId]));
+  await verifyWorkflowOnlyAttendanceHeader(f.second.ctx,f.id,f.worker.employmentId);
   expect(await listPendingTasks(f.second.ctx,[base.companyId],modules)).toEqual([
    expect.objectContaining({id:f.id,kind:'attendance',linkPath:assignedApprovalHref({kind:'attendance',id:f.id})})
   ]);
