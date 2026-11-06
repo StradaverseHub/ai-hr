@@ -78,6 +78,17 @@ export function RewardReviewList({rows:all,filters,emptyReason,year,canConfigure
       </Card></li>;
     })}
   </ul>}
+  {overview&&rows.some(row=>row.flagSummary?.length)&&<details className="rounded-lg border border-border p-4">
+    <summary className="cursor-pointer font-semibold">{t('desk.flags')}</summary>
+    <ul className="mt-3 divide-y divide-border">{rows.filter(row=>row.flagSummary?.length).map(row=><li key={row.id} className="space-y-2 py-3 text-sm">
+      <p className="font-medium">{row.unit} · {row.company} · {row.cycle}</p>
+      <div className="flex flex-wrap gap-2">{row.flagSummary!.map(flag=><Link key={flag.severity+flag.code}
+        href={`/rewards/${row.id}?${new URLSearchParams({flag:flag.code})}#checks`}
+        className={`rounded-full border border-border px-2 py-1 hover:underline ${flag.severity==='block'?'font-semibold text-destructive':''}`}>
+        {t(`severity.${flag.severity}`)} · {flag.code} · {flag.count}
+      </Link>)}</div>
+    </li>)}</ul>
+  </details>}
   <div data-tour="rewards-review-units" className={tableWrapCls}>{rows.length>0?<table className="w-full text-sm"><thead className={theadCls}><tr>{['cycle','company','unit','myRole','with','due','salary','bonus','blocks','action'].map(key=><th scope="col" key={key} className={thCls}>{['cycle','company','unit','action'].includes(key)?t(key):t(`reviewList.${key}`)}</th>)}</tr></thead>
    <tbody className={tbodyCls}>{rows.map(row=><tr key={row.id} className="align-top"><td className="px-3 py-3 font-medium">{row.cycle} · {row.uploaded?u('label'):t(`kinds.${row.kind}`)}<span className="ml-2 text-muted-foreground">{row.year}</span></td><td className="px-3 py-3">{row.company}</td><td className="px-3 py-3">{row.unit}</td><td className="px-3 py-3">{row.roles.length?row.roles.map(role=>t(`board.seat.${role}`)).join(', '):t('reviewList.unavailable')}</td>
     <td className="px-3 py-3"><RewardStageLabel status={row.status} returnedTo={row.returnedTo}/>{row.seat&&<p className="mt-1 text-muted-foreground">{t(`board.seat.${row.seat}`)}</p>}{row.holders.length>0&&<p className="mt-1 text-muted-foreground">{row.holders.map(name=>name??t('reviewList.restrictedName')).join(', ')}</p>}</td>

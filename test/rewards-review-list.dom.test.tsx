@@ -27,6 +27,15 @@ describe('Rewards review overview',()=>{
   expect(within(wholesale).queryByRole('link', { name: 'Approvals Board' })).toBeNull();
   expect(within(wholesale).queryByText('76.2%')).toBeNull();
  });
+ it('links unit flag counts to the matching native checks without listing individuals',()=>{
+  const row={...base,flagSummary:[{severity:'block' as const,code:'POOL-03',count:2}]};
+  const view=render(<NextIntlClientProvider locale="en" messages={en}><RewardReviewList rows={[row]} filters={{}} emptyReason={null} canConfigure={false} year={2026} overview/></NextIntlClientProvider>);
+  const flagPanel=[...view.container.querySelectorAll('details')].find(details=>details.querySelector('summary')?.textContent===en.rewards.desk.flags);
+  expect(flagPanel).toBeTruthy();
+  flagPanel!.open=true;
+  expect(within(flagPanel!).getByRole('link',{name:/POOL-03/})).toHaveAttribute('href','/rewards/r1?flag=POOL-03#checks');
+  expect(within(flagPanel!).queryByText('Fictional Reviewer')).toBeNull();
+ });
  it('keeps the walkthrough anchor on the rendered review table and empty state',()=>{
   const populated=show([base]);
   const tableAnchor=populated.container.querySelector('[data-tour="rewards-review-units"]');

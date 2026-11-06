@@ -34,7 +34,7 @@ import {PersonDrawer} from './desk/person-drawer';
 import {transition} from '@/packs/rewards/model';
 
 const rm = (cents: number) => new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(cents / 100);
-export default async function RewardUnitPage({ params, searchParams }: { params: Promise<{ unitId: string }>; searchParams: Promise<{ view?: string; q?: string; error?: string; check?: string; person?: string }> }) {
+export default async function RewardUnitPage({ params, searchParams }: { params: Promise<{ unitId: string }>; searchParams: Promise<{ view?: string; q?: string; error?: string; check?: string; flag?: string; person?: string }> }) {
   await requireModule('rewards'); const { s, scopeIds } = await scopedSession();
   const { unitId } = await params; const sp = await searchParams; const t = await getTranslations('rewards');
   if (sp.view === 'configuration') redirect(`/admin/rewards/${encodeURIComponent(unitId)}`);
@@ -56,7 +56,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   const locale=await getLocale();
   const canSubmit = unit.status==='draft' &&v.capabilities?.reviewDecide!==false&& v.roles.includes(v.route[0]);
   // c28db2f0: the lump-sum card links here with check=BUD-05 to list only the individual lump-sum amendments.
-  const checks = sp.check ? v.flags.filter(f => f.code === sp.check && f.severity === 'exception') : v.flags;
+  const checks = sp.check ? v.flags.filter(f => f.code === sp.check && f.severity === 'exception') : sp.flag ? v.flags.filter(f=>f.code===sp.flag) : v.flags;
   const scope = t('unitBonus.appliesOnlyTo', { company: v.companyName, unit: v.name });
   const canApprove = v.capabilities?.reviewDecide!==false&&['bg', 'gr', 'ctro', 'ec'].some(role => role === unit.status && v.roles.includes(role as 'bg' | 'gr' | 'ctro' | 'ec'));
   // 5d34d00d Step 2: per-person flags, the open person (side panel) and the stage each decision moves to.
@@ -68,13 +68,13 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     return hidden(row) || !midpoint ? null : ratio(cents, 10000, midpoint, 'nearest');
   };
   const pct = (bp: number) => `${(bp / 100).toFixed(1)}%`;
-  const personHref = (id: string) => { const q = new URLSearchParams({ ...(sp.q ? { q: sp.q } : {}), ...(sp.check ? { check: sp.check } : {}), person: id }); return `/rewards/${encodeURIComponent(unitId)}?${q}`; };
+  const personHref = (id: string) => { const q = new URLSearchParams({ ...(sp.q ? { q: sp.q } : {}), ...(sp.check ? { check: sp.check } : {}), ...(sp.flag ? {flag:sp.flag} : {}), person: id }); return `/rewards/${encodeURIComponent(unitId)}?${q}`; };
   const visibleRowIds = new Set(rows.map(row => row.id));
   const flaggedRowIds = new Set(checks.map(flag => flag.entryId));
   const flagPersonLinks = Object.fromEntries(v.rows.filter(row => flaggedRowIds.has(row.id)).map(row => [
     row.id,
     visibleRowIds.has(row.id) ? personHref(row.id) :
-      `/rewards/${encodeURIComponent(unitId)}?${new URLSearchParams({ ...(sp.check ? { check: sp.check } : {}), person: row.id })}`,
+      `/rewards/${encodeURIComponent(unitId)}?${new URLSearchParams({ ...(sp.check ? { check: sp.check } : {}), ...(sp.flag ? {flag:sp.flag} : {}), person: row.id })}`,
   ]));
   const openIndex = sp.person ? rows.findIndex(r => r.id === sp.person) : -1; const open = openIndex >= 0 ? rows[openIndex] : null;
   const nominations = annual ? rows.filter(row => row.recommendation.promotionGrade && !hidden(row)) : [];
@@ -152,7 +152,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     {(annual||tab === 'data') && v.roles.includes('gr') && <section id="data" className="max-w-3xl space-y-5"><h2 className="font-semibold">{t('data')}</h2><p className="text-sm text-muted-foreground">{t('dataHelp')}</p><Link href={`/rewards/${unitId}/export?template=1`} className="inline-block text-sm font-medium text-primary hover:underline">{t('downloadTemplate')}</Link>{unit.status === 'draft' && annual && <><form action={importOnehrAction} className="space-y-3">{fields}<p className="text-sm text-muted-foreground">{onehrText('rewardImportHelp')}</p><RewardSubmit type="submit" variant="secondary">{onehrText('rewardImport')}</RewardSubmit></form><form action={importFactsAction} className="space-y-3">{fields}<Field label={t('completedTemplate')}><input type="file" name="file" accept=".csv" required className="text-sm" /></Field><RewardSubmit type="submit">{t('import')}</RewardSubmit></form><SourceRefresh unitId={unitId} revision={unit.revision} snapshotDate={unit.snapshotDate} today={todayInKualaLumpur()} /></>}<Link className="inline-block text-sm text-primary hover:underline" href={`/rewards/${unitId}/export`}>{t('export')}</Link></section>}
     {annual && v.roles.includes('gr') && <section id="excluded" className="scroll-mt-6"><PayWindowExcluded unitId={unitId} revision={unit.revision} canEdit={v.canConfigure} window={{ from: unit.policy.blockedFrom, to: unit.policy.blockedTo }} rows={v.rows} kept={unit.policy.payWindowKeep ?? {}} /></section>}
     {(annual||tab === 'rules') && <section id="rules" className="max-w-3xl space-y-4"><h2 className="font-semibold">{t('rules')}</h2>{['rulePools', 'ruleBonus', 'ruleEC', 'ruleExemption', 'ruleLump', 'rulePrivacy', 'ruleApproval', 'rulePosting'].map(k => <p key={k} className="text-sm leading-6">{t(k)}</p>)}</section>}
-    </div>{annual&&<FlagsPanel personLinks={flagPersonLinks} promotionEntryIds={v.rows.filter(r=>r.recommendation.promotionGrade).map(r=>r.id)} unitId={unitId} flags={checks} filtered={!!sp.check}/>}</div>
+    </div>{annual&&<FlagsPanel personLinks={flagPersonLinks} promotionEntryIds={v.rows.filter(r=>r.recommendation.promotionGrade).map(r=>r.id)} unitId={unitId} flags={checks} filtered={!!(sp.check||sp.flag)}/>}</div>
     {open && <PersonDrawer title={open.source.name} description={`${open.source.employeeCode} · ${t('grade')} ${open.source.grade} · ${t(open.plan === 'ec' ? 'ecPlan' : open.plan)}`} prevId={rows[openIndex - 1]?.id ?? null} nextId={rows[openIndex + 1]?.id ?? null} position={{ index: openIndex + 1, total: rows.length }} editHref={`/rewards/${unitId}/people/${open.id}`}>
       <PersonCalculation row={open} hidden={hidden(open)} flags={rowFlags(open.id)} t={t} rm={rm} pct={pct} payPosition={[payPosition(open,open.source.basicCents),payPosition(open,open.newBasicCents)]} />
     </PersonDrawer>}

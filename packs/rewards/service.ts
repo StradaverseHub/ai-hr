@@ -1654,7 +1654,16 @@ export async function listRewardReviewStatus(ctx:SessionContext,companyIds:strin
    const projection=await reviewProjectionTx(tx,ctx,unit.id),board=boardRow(projection,{cycle:unit.cycle,company:unit.company},today);
    const step=rewardStageStep(projection.unit.status,projection.route);
    const laterSeats=step?([...projection.route,'payroll'] as RewardRole[]).filter((seat,index)=>index>=step.step&&roles.includes(seat)):[];
-   rows.push({...unit,people:projection.rows.length,verified:projection.rows.filter(row=>row.facts.reviewed).length,roles,waiting:board.waiting,salary:board.salary,bonus:board.bonus,blocking:board.blocking,exceptions:board.exceptions,laterSeats});
+   const byRule=new Map<string,{code:string;severity:(typeof projection.flags)[number]['severity'];count:number}>();
+   for(const flag of projection.flags){
+    const key=flag.severity+':'+flag.code;
+    const group=byRule.get(key)??{code:flag.code,severity:flag.severity,count:0};
+    group.count++;
+    byRule.set(key,group);
+   }
+   const priority={block:0,exception:1,warning:2,review:3};
+   const flagSummary=[...byRule.values()].sort((a,b)=>priority[a.severity]-priority[b.severity]||a.code.localeCompare(b.code));
+   rows.push({...unit,people:projection.rows.length,verified:projection.rows.filter(row=>row.facts.reviewed).length,roles,waiting:board.waiting,salary:board.salary,bonus:board.bonus,blocking:board.blocking,exceptions:board.exceptions,laterSeats,flagSummary});
   }
   let emptyReason:'noScope'|'noCycle'|'noRole'|'otherScope'|null=null;
   if(!rows.length){

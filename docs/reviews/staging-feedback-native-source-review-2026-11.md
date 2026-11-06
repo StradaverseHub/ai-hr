@@ -15,9 +15,9 @@ for the exact filenames, timestamps, and hashes.
 The baseline provider transform digest is
 `e6d8787efa5cd0051baad6afe5b59cc3c6f27d7b2ff2e3dc03b757e1decec907`.
 This candidate computes
-`8152667372789bb0f82f837a824f3eed57487c4318902cacd63d3d4aabecc232`
+`ddfdd95e41caa57e468007a7c97564ead57bfcf1d4a0c1b1f2aa3628edd81603`
 over 1,456 files. The module-agent digest is
-`e703990e5dc540ed649e0e9bcaf7c9857aca677af776fd78d177f10c76a98984`
+`9ad6948e9436012f9fa14f8c91903bacdc5f0e63bd3a920c33e7203bf33f597c`
 over 467 files. The existing approval records remain unchanged. Tests that
 require current provider approval fail closed while the exact source has no
 approved binding.
@@ -64,7 +64,7 @@ selection, uploaded awards, and the no-salary-reduction rule.
 | --- | --- |
 | Home and budget | Review cards and authorized all-unit budget list |
 | Team Review | Salary/bonus sections, individual recommendation edits, person drawer |
-| Flags | Blockers first, with links to a person, section or applied rule |
+| Flags | Unit counts and links from the landing page; blockers first in the unit, with links to a person, section or applied rule |
 | Approvals and matrix | Approvals board and cycle coverage matrix |
 | Promotions | Unit nominations and the Group Rewards cross-unit list |
 | Data Check and Data Centre | No-pay pre-launch projection, native refresh and imports |
