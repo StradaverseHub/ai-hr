@@ -104,7 +104,6 @@ import {
   movementDetail,
   movementAttachments,
   movementPendingEditInput,
-  resignationInformation,
   MOVEMENT_FLAT_FIELDS,
 } from '@/core/movement';
 // 95d17761 — the DEFAULT Employment History view drops the correction artefacts. A pure view filter, so
@@ -573,7 +572,7 @@ export default async function EmployeePage({
   // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
   // Only the history table, the pending banner, and the edit lookup need the full projection.
   const movementProjection = admin && (!movementPage || movementPage === 'edit')
-    ? await movementHistoryWithTypes(s, employmentId)
+    ? await movementHistoryWithTypes(s, employmentId, { includeResignation: readProfileCards })
     : null;
   const movements = movementProjection?.movements ?? [];
   // 95d17761 — the DEFAULT view drops the correction artefacts (rolled back / corrected / cancelled /
@@ -606,7 +605,7 @@ export default async function EmployeePage({
   // 1d58019a Step 2 — the movement's supporting documents; the service applies history visibility and the
   // table's pay rule, so a document this admin may not see is simply not listed.
   const movementDocuments = movementDetailData && spMovement ? await movementAttachments(s, employmentId, spMovement) : [];
-  const resignationInfo = readProfileCards ? await resignationInformation(s, employmentId) : null;
+  const resignationInfo = movementProjection?.resignation ?? null;
   const costAllocationView = readProfileCards && emp.companyId ? await getEmploymentCostAllocations(s, employmentId) : null;
   /**
    * c063eea9 — the Correct hire details form (?correctHire=1). Read ONLY while it is open, and only where

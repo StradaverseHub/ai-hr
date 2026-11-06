@@ -1528,12 +1528,12 @@ export async function movementHistory(ctx: SessionContext, employmentId: string)
   return (await readWorkforceMovementHistory(ctx,employmentId)).movements;
 }
 
-export async function movementHistoryWithTypes(ctx:SessionContext,employmentId:string){
-  const {movements,catalogue}=await readWorkforceMovementHistory(ctx,employmentId);
-  return {movements,movementTypes:movementEventTypeChoices(catalogue)};
+export async function movementHistoryWithTypes(ctx:SessionContext,employmentId:string,options:{includeResignation?:boolean}={}){
+  const {movements,catalogue,resignation}=await readWorkforceMovementHistory(ctx,employmentId,options.includeResignation);
+  return {movements,movementTypes:movementEventTypeChoices(catalogue),resignation};
 }
 
-function readWorkforceMovementHistory(ctx:SessionContext,employmentId:string){
+function readWorkforceMovementHistory(ctx:SessionContext,employmentId:string,includeResignation=false){
   return withTenant(ctx, async tx => {
     // This entry point owns a read-only operation. Caller-owned transactions
     // continue through movementHistoryTx and its exclusive barrier.
@@ -1542,7 +1542,7 @@ function readWorkforceMovementHistory(ctx:SessionContext,employmentId:string){
       sql`select ${workforceEmploymentPredicate(sql`${employmentId}::uuid`)} as allowed`,
     );
     if (!row?.allowed) throw new WorkforceAccessError();
-    return projectMovementHistoryTx(tx, ctx, employmentId);
+    return projectMovementHistoryTx(tx, ctx, employmentId, includeResignation);
   });
 }
 
@@ -1569,8 +1569,9 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
   return (await projectMovementHistoryTx(tx,ctx,employmentId)).movements;
 }
 
-async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string){
-    const { emp, events, rows, statusOf, resolvedTypes, catalogue } = await projectRows(tx, ctx.tenantId, employmentId);
+async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string,includeResignation=false){
+    const projection = await projectRows(tx, ctx.tenantId, employmentId);
+    const { emp, events, rows, statusOf, resolvedTypes, catalogue } = projection;
     // 66a63bd6 — the two payroll period sets come from core/comp.ts, so the per-row affordance runs the
     // SAME rule the service refuses on (the Basic Salary card's precedent).
     const { closed, processed } = await movementPayrollPeriodsTx(tx, employmentId);
@@ -1640,7 +1641,8 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
         recordedResignation:primaryEvent?movementRecordedResignationOf(primaryEvent):null,
       };
     });
-    return {movements,catalogue};
+    const resignation=includeResignation?await resignationInformationFromProjection(tx,employmentId,projection):null;
+    return {movements,catalogue,resignation};
   }
 
 /** The grade in force just before/at an event, replayed from employment.grade.changed events (gradeId is
@@ -4731,27 +4733,32 @@ export type ResignationInformation = Record<typeof RESIGNATION_INFO_FIELDS[numbe
 export function resignationInformation(ctx:SessionContext,employmentId:string):Promise<ResignationInformation>{
   return withTenant(ctx,async tx=>{
     await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
-    const [current]=await tx.select({tenderResignationDate:employment.tenderResignationDate,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate}).from(employment).where(eq(employment.id,employmentId));
-    if(!current)throw new Error('Employment not found.');
-    const {events,rows,statusOf}=await projectRows(tx,ctx.tenantId,employmentId);
-    const eventOwners=new Map<string,ProjectedRow>();
-    for(const movement of rows)for(const event of groupEventsOf(events,movement))eventOwners.set(event.id,movement);
-    return Object.fromEntries(RESIGNATION_INFO_FIELDS.map(field=>{
-      const value=current[field];
-      const latest=[...events].reverse().find(event=>{
-        if(event.eventType!=='employment.info.updated')return false;
-        const payload=event.payload as {fields?:unknown};if(!Array.isArray(payload?.fields)||!payload.fields.includes(field))return false;
-        const source=eventOwners.get(event.id),tag=tagOf(event);
-        // A compensating companion restores the prior ledger owner; reversed effects do not own today.
-        if(tag?.secondary&&!source)return false;
-        return !source||statusOf(source)==='applied';
-      });
-      const source=latest?eventOwners.get(latest.id):undefined;
-      const after=(latest?.payload as {after?:Record<string,unknown>})?.after;
-      const owner=source&&after?.[field]===value?source:undefined;
-      return [field,{value,source:owner?{kind:'movement',movementId:owner.id,effectiveDate:owner.effectiveDate}:value?{kind:'legacy'}:{kind:'empty'}}];
-    })) as ResignationInformation;
+    return resignationInformationFromProjection(tx,employmentId,await projectRows(tx,ctx.tenantId,employmentId));
   });
+}
+
+async function resignationInformationFromProjection(
+  tx:Tx,employmentId:string,{events,rows,statusOf}:Awaited<ReturnType<typeof projectRows>>,
+):Promise<ResignationInformation>{
+  const [current]=await tx.select({tenderResignationDate:employment.tenderResignationDate,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate}).from(employment).where(eq(employment.id,employmentId));
+  if(!current)throw new Error('Employment not found.');
+  const eventOwners=new Map<string,ProjectedRow>();
+  for(const movement of rows)for(const event of groupEventsOf(events,movement))eventOwners.set(event.id,movement);
+  return Object.fromEntries(RESIGNATION_INFO_FIELDS.map(field=>{
+    const value=current[field];
+    const latest=[...events].reverse().find(event=>{
+      if(event.eventType!=='employment.info.updated')return false;
+      const payload=event.payload as {fields?:unknown};if(!Array.isArray(payload?.fields)||!payload.fields.includes(field))return false;
+      const source=eventOwners.get(event.id),tag=tagOf(event);
+      // A compensating companion restores the prior ledger owner; reversed effects do not own today.
+      if(tag?.secondary&&!source)return false;
+      return !source||statusOf(source)==='applied';
+    });
+    const source=latest?eventOwners.get(latest.id):undefined;
+    const after=(latest?.payload as {after?:Record<string,unknown>})?.after;
+    const owner=source&&after?.[field]===value?source:undefined;
+    return [field,{value,source:owner?{kind:'movement',movementId:owner.id,effectiveDate:owner.effectiveDate}:value?{kind:'legacy'}:{kind:'empty'}}];
+  })) as ResignationInformation;
 }
 
 /** Fixed source port: no arbitrary movement payload, authority role or field set is accepted. */
