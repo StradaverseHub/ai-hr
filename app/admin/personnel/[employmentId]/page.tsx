@@ -2452,7 +2452,7 @@ export default async function EmployeePage({
           <p className="text-xs text-muted-foreground">
             {t('gradeMovementOnlyNote')}{' '}
             <Link
-              href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&newEvent=1`}
+              href={movementPageHref(emp.employmentId, 'new')}
               className="text-primary hover:underline"
             >
               {t('movement.newEvent')}
@@ -3791,9 +3791,8 @@ export default async function EmployeePage({
     />
   );
   // Movement → New Event, pre-opened. Every "change this through Movement" pointer on the tab links here so
-  // the administrator lands on the form that actually performs the change rather than on a tab they must
-  // then navigate. Tab-qualified so the panel is already selected.
-  const newMovementHref = `/admin/personnel/${emp.employmentId}?tab=careerMovement&newEvent=1`;
+  // the administrator lands directly on the dedicated form.
+  const newMovementHref = movementPageHref(emp.employmentId, 'new');
   const currentGrade=emp.gradeId?grades.find(g=>g.id===emp.gradeId):undefined;
   const gradeName=currentGrade?.name?.trim() || currentGrade?.code || null;
   const employmentTypeLabel =
@@ -4213,15 +4212,15 @@ export default async function EmployeePage({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <PersonnelField fieldId="employment.employment_dates_and_service.tenderresignationdate" mode="record">
                 {readOnlyValue("employment.employment_dates_and_service.tenderresignationdate", resignationInfo?.tenderResignationDate.value ? formatDmy(resignationInfo.tenderResignationDate.value) : null)}
-                {resignationInfo?.tenderResignationDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&movement=${resignationInfo.tenderResignationDate.source.movementId}`}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.tenderResignationDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.tenderResignationDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
+                {resignationInfo?.tenderResignationDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={movementPageHref(emp.employmentId, 'view', resignationInfo.tenderResignationDate.source.movementId)}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.tenderResignationDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.tenderResignationDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
               </PersonnelField>
               <PersonnelField fieldId="employment.employment_dates_and_service.resignationdate" mode="record">
                 {readOnlyValue("employment.employment_dates_and_service.resignationdate", resignationInfo?.resignationDate.value ? formatDmy(resignationInfo.resignationDate.value) : null)}
-                {resignationInfo?.resignationDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&movement=${resignationInfo.resignationDate.source.movementId}`}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.resignationDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.resignationDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
+                {resignationInfo?.resignationDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={movementPageHref(emp.employmentId, 'view', resignationInfo.resignationDate.source.movementId)}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.resignationDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.resignationDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
               </PersonnelField>
               <PersonnelField fieldId="employment.employment_dates_and_service.lastworkingdate" mode="record">
                 {readOnlyValue("employment.employment_dates_and_service.lastworkingdate", resignationInfo?.lastWorkingDate.value ? formatDmy(resignationInfo.lastWorkingDate.value) : null)}
-                {resignationInfo?.lastWorkingDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&movement=${resignationInfo.lastWorkingDate.source.movementId}`}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.lastWorkingDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.lastWorkingDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
+                {resignationInfo?.lastWorkingDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={movementPageHref(emp.employmentId, 'view', resignationInfo.lastWorkingDate.source.movementId)}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.lastWorkingDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.lastWorkingDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
               </PersonnelField>
             </div>
             <p className="text-xs text-muted-foreground">{t('employmentInfo.resignationMovementNote')}</p>
