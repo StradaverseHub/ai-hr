@@ -7373,10 +7373,11 @@ export async function rawScheduleDaysTx(tx:Tx,employmentId:string,from:string,to
 }
 
 
-export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:string[],requestId?:string):Promise<AssignedApprovalMetadata[]>{
   return withTenant(ctx,async tx=>{
     await assertAssignedWorkPrincipalTx(tx,ctx);
     if(companyIds?.length===0)return [];
+    if(requestId!==undefined&&!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestId))return [];
     // A negative result proves no possible assignment source. Positives retain every native
     // request RLS and live decision proof below; this result never authorizes a command or is cached.
     const [candidate]=await tx.execute<{possible:boolean}>(sql`select app.may_have_attendance_task_metadata() as possible`);
@@ -7385,7 +7386,8 @@ export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:str
     // the existing native administrator owner; other subjects retain the exact scalar
     // frozen-workflow/delegation reader. RLS and the final decision owner remain live.
     const nativeHeaders=sql`select q.id,q.employment_id,q.created_at
-      from public.attendance_correction q where q.tenant_id=${ctx.tenantId}::uuid and q.status='pending'`;
+      from public.attendance_correction q where q.tenant_id=${ctx.tenantId}::uuid and q.status='pending'
+      ${requestId===undefined?sql``:sql`and q.id=${requestId}::uuid`}`;
     const administratorHint=ctx.roles?.some(role=>role==='hr_admin'||role==='super_admin')===true;
     // Ordinary visibility is one arm of the native subject predicate. Only those
     // subjects can reuse metadata across requests. Frozen participants and delegates
