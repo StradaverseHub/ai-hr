@@ -31,6 +31,25 @@ describe('annual Reward Desk page composition',()=>{
   const salary=document.getElementById('salary-increase')!,bonus=document.getElementById('bonus')!,people=document.getElementById('people')!;
   expect(salary.compareDocumentPosition(bonus)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();expect(bonus.compareDocumentPosition(people)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
  });
+ it.each([
+  ['BU CEO', 'bu', 'draft', true, false],
+  ['BG CEO', 'bg', 'bg', false, true],
+  ['Proxy BG CEO', 'bg', 'bg', false, true],
+  ['Group Rewards', 'gr', 'gr', false, true],
+  ['CTRO', 'ctro', 'ctro', false, true],
+  ['Executive Chairman', 'ec', 'ec', false, true],
+  ['People Business Partner', 'pbp', 'bg', false, false],
+ ] as const)('renders the %s decision controls at its stage', async (_label, role, stage, submit, approve) => {
+  const review = view();
+  ports.read.mockResolvedValue({...review, unit: {...review.unit, status: stage}, roles: [role], flags: [], canEdit: role !== 'pbp'});
+  const element = await RewardUnitPage({params: Promise.resolve({unitId: 'unit'}), searchParams: Promise.resolve({})});
+  render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
+  expect(screen.getByRole('heading', {name: en.rewards.approvals})).toBeTruthy();
+  expect(Boolean(screen.queryByRole('button', {name: en.rewards.submit}))).toBe(submit);
+  expect(Boolean(screen.queryByRole('button', {name: en.rewards.approve}))).toBe(approve);
+  expect(Boolean(screen.queryByRole('button', {name: en.rewards.return}))).toBe(approve);
+  expect(Boolean(document.getElementById('data'))).toBe(role === 'gr');
+ });
  it('redirects old annual budget links to the canonical section while keeping search and check parameters',async()=>{
   ports.read.mockResolvedValue(view());await expect(RewardUnitPage({params:Promise.resolve({unitId:'unit'}),searchParams:Promise.resolve({view:'budget',q:'Fictional person'})})).rejects.toThrow('/rewards/unit?q=Fictional+person#salary-increase');
   await expect(RewardUnitPage({params:Promise.resolve({unitId:'unit'}),searchParams:Promise.resolve({view:'review',check:'BUD-05'})})).rejects.toThrow('/rewards/unit?check=BUD-05#checks');
