@@ -264,7 +264,8 @@ async function letterSources(tx:Tx,ctx:SessionContext,co:string,employmentId:str
  const [employee]=await tx.select().from(employment).where(and(eq(employment.id,employmentId),eq(employment.companyId,co))).for('share');if(!employee)throw new LetterWorkflowError('permission');
  const [employeePerson]=await tx.select().from(person).where(eq(person.id,employee.personId)).for('share');
  const [entity]=await tx.select().from(company).where(eq(company.id,co)).for('share');if(!employeePerson||!entity)throw new LetterWorkflowError('permission');
- const records=await tx.select().from(assignment).where(and(eq(assignment.employmentId,employmentId),lte(assignment.validFrom,referenceDate),or(isNull(assignment.validTo),gt(assignment.validTo,referenceDate)))).limit(2).for('share');
+ // Published organisation changes retain the superseded interval as audit history.
+ const records=await tx.select().from(assignment).where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt),lte(assignment.validFrom,referenceDate),or(isNull(assignment.validTo),gt(assignment.validTo,referenceDate)))).limit(2).for('share');
  if(records.length>1)throw new LetterWorkflowError('configuration','ambiguousAssignment');const current=records[0];
  const [job]=current?.positionId?await tx.select().from(position).where(eq(position.id,current.positionId)).for('share'):[];
  const [team]=current?.departmentId?await tx.select().from(department).where(eq(department.id,current.departmentId)).for('share'):[];

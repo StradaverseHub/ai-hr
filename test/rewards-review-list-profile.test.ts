@@ -8,11 +8,12 @@ import {client,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {cancelRewardReview,createRewardUnit,decideRewardUnit,getRewardUnit,listRewardReviewStatus,postRewardUnit,saveRewardEntry} from '../packs/rewards/service';
-import {emptyFacts,emptyRecommendation} from '../packs/rewards/model';
+import {cancelRewardReview,decideRewardUnit,getRewardUnit,listRewardReviewStatus,postRewardUnit,saveRewardEntry} from '../packs/rewards/service';
+import {defaultPolicy,emptyFacts,emptyRecommendation} from '../packs/rewards/model';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {setRewardMember} from './rewards-access-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget} from './rewards-governance-fixture';
+import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule} from './harness';
 
@@ -30,20 +31,22 @@ it('profiles active and retained seated units with independent financial and pri
  const actors={bu:await account('BU reviewer'),bg:await account('BG reviewer'),ctro:await account('CTRO reviewer'),ec:await account('EC reviewer'),payroll:await account('payroll handoff')};
  const seatless=await account('seatless HR',undefined,'hr_admin');
  const [grade]=await owner.db.insert(s.jobGrade).values({tenantId:b.tenantId,code:'12',name:'Fictional grade12'}).returning();
- const hire=async(businessUnitId:string,salary:number)=>{
-  const employment=await hireEmployee(admin,{person:{fullName:'Fictional Rewards employee '+serial++,primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,businessUnitId,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const hire=async(businessUnitId:string,salary:number,companyId=b.companyId,departmentId=b.deptA)=>{
+  const employment=await hireEmployee(admin,{person:{fullName:'Fictional Rewards employee '+serial++,primaryEmail:randomUUID()+'@example.invalid'},companyId,departmentId,businessUnitId,employmentType:'full_time',hiredOn:'2020-01-01'});
   await owner.db.update(s.employment).set({gradeId:grade.id,confirmationDate:'2020-04-01'}).where(eq(s.employment.id,employment.employmentId));
   await setCompensation(admin,{employmentId:employment.employmentId,basicSalary:salary,effectiveFrom:'2020-01-01'});return employment;
  };
  const [specialBu]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'ACTIVE-SPECIAL',name:'Fictional active special'}).returning();
  const specialPeople=[];for(const salary of [5000,7000,9100])specialPeople.push(await hire(specialBu.id,salary));
  const pbp=await account('own-person PBP',specialPeople[0].personId);
- const special=await createRewardUnit(admin,{name:'Fictional active cycle',year,companyId:b.companyId,businessUnitId:specialBu.id,snapshotDate:today});
+ const basePolicy=defaultPolicy(year);
+ const specialPolicy={...basePolicy,patActual:100,patTarget:100,targetMonthsBp:0,ranges:{...basePolicy.ranges,'12':[300000,600000,1200000] as [number,number,number]},meritMatrix:{...basePolicy.meritMatrix,SCORE:[500,500,500] as [number,number,number]}};
+ const special=await createApprovedRewardUnit(admin,{name:'Fictional active cycle',year,companyId:b.companyId,businessUnitId:specialBu.id,snapshotDate:today},specialPolicy);
  const revision=async(id:string)=>(await getRewardUnit(admin,id)).unit.revision;
  for(const role of ['bu','bg','ctro','ec','payroll'] as const)await setRewardMember(admin,special,await revision(special),actors[role].userId!,role);
  await setRewardMember(admin,special,await revision(special),admin.userId!,'payroll');await setRewardMember(admin,special,await revision(special),pbp.userId!,'pbp');
  let detail=await getRewardUnit(admin,special);
- await configureRewardFixture(admin,special,detail.unit.revision,{...detail.unit.policy,patActual:100,patTarget:100,targetMonthsBp:0,ranges:{'12':[300000,600000,1200000]},meritMatrix:{...detail.unit.policy.meritMatrix,SCORE:[500,500,500]}});
+ await configureRewardFixture(admin,special,detail.unit.revision,{...detail.unit.policy,patActual:100,patTarget:100,targetMonthsBp:0});
  detail=await getRewardUnit(admin,special);
  for(const row of detail.rows){
   const index=specialPeople.findIndex(person=>person.employmentId===row.source.employmentId);
@@ -52,12 +55,15 @@ it('profiles active and retained seated units with independent financial and pri
  await refreshRewardFixtureBudget(admin,special);
  expect((await getRewardUnit(admin,special)).flags.filter(flag=>flag.severity==='block').map(flag=>flag.code)).toEqual([]);
  expect(await decideRewardUnit(actors.bu,special,(await getRewardUnit(actors.bu,special)).unit.revision,'submit','Reviewed fictional zero-bonus recommendations')).toBe('bg');
- const units=[special],expectedStages=new Map([[special,'bg']]);
+ const units=[special],companyIds=[b.companyId],expectedStages=new Map([[special,'bg']]);
  for(let unit=0;unit<7;unit++){
-  const [bu]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'RETAINED-'+unit,name:'Fictional cohort '+unit}).returning();
-  for(let employee=0;employee<16;employee++)await hire(bu.id,5000);
+  const [company]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional profile company '+unit}).returning();
+  const [department]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:company.id,name:'Profile department'}).returning();
+  const [bu]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:company.id,code:'RETAINED-'+unit,name:'Fictional cohort '+unit}).returning();
+  companyIds.push(company.id);
+  for(let employee=0;employee<16;employee++)await hire(bu.id,5000,company.id,department.id);
   const retained=unit>=3,reviewYear=retained?year-1:year;
-  const id=await createRewardUnit(admin,{name:retained?'Fictional retained cycle '+unit:'Fictional active cycle '+unit,year:reviewYear,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:retained?`${reviewYear}-12-31`:today});
+  const id=await createApprovedRewardUnit(admin,{name:retained?'Fictional retained cycle '+unit:'Fictional active cycle '+unit,year:reviewYear,companyId:company.id,businessUnitId:bu.id,snapshotDate:retained?`${reviewYear}-12-31`:today});
   await setRewardMember(admin,id,await revision(id),pbp.userId!,'pbp');
   if(retained)await cancelRewardReview(admin,id,await revision(id),'Fictional prior-year review retained after cancellation');
   units.push(id);expectedStages.set(id,retained?'withdrawn':'draft');
@@ -89,7 +95,7 @@ it('profiles active and retained seated units with independent financial and pri
  })as typeof client.begin);
  const measure=async(who:SessionContext)=>{
   counts={};active=true;const began=performance.now();
-  try{const value=await listRewardReviewStatus(who,[b.companyId]);return {value,elapsedMs:performance.now()-began,counts:{...counts},dtoBytes:Buffer.byteLength(JSON.stringify(value))};}finally{active=false;}
+  try{const value=await listRewardReviewStatus(who,companyIds);return {value,elapsedMs:performance.now()-began,counts:{...counts},dtoBytes:Buffer.byteLength(JSON.stringify(value))};}finally{active=false;}
  };
  const gr=await measure(admin),pbpRead=await measure(pbp),metadata=await measure(seatless);
  expect(gr.value.rows).toHaveLength(8);expect(pbpRead.value.rows).toHaveLength(8);expect(metadata.value.rows).toHaveLength(8);
