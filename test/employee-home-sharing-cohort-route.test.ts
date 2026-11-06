@@ -9,7 +9,7 @@ vi.mock('@/core/employee-home-notices',()=>({readEmployeeHomeNotices:state.notic
 vi.mock('@/core/employee-home-time-off',()=>({readEmployeeHomeTimeOff:state.timeOff}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>()=> 'Replacement holiday'}));
 vi.mock('@/core/employee-home-configuration',()=>({OwnHomeConfigurationRead:class{
- constructor(readonly session:unknown,readonly employmentId:string){}
+ constructor(readonly session:unknown,readonly employmentId:string,readonly signal?:AbortSignal){}
 }}));
 vi.mock('@/core/employee-home-greeting',()=>({readEmployeeHomeGreeting:state.greeting}));
 vi.mock('@/core/employee-home-summary',()=>({readEmployeeHomeSummary:state.summary}));
@@ -90,7 +90,7 @@ it('reuses the exact request configuration carrier while independently projectin
  expect(state.session).toHaveBeenCalledOnce();
  const carrier=state.greeting.mock.calls[0][4];
  const taskCarrier=state.summary.mock.calls[0][5];
- expect(carrier).toMatchObject({session:ctx,employmentId:'own'});
+ expect(carrier).toMatchObject({session:ctx,employmentId:'own',signal:expect.any(AbortSignal)});
  expect(taskCarrier).toMatchObject({session:ctx,employmentId:'own'});
  expect(taskCarrier).not.toBe(carrier);
  expect(state.greeting).toHaveBeenCalledWith(ctx,'own','en',undefined,carrier);

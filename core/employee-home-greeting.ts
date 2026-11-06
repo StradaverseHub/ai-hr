@@ -51,8 +51,9 @@ export async function readEmployeeHomeGreeting(ctx:SessionContext,employmentId:s
     .from(person).where(and(eq(person.id,ctx.personId!),eq(person.tenantId,ctx.tenantId),sql`app.principal_snapshot_current() AND app.is_self_person(${person.id})`)).limit(1);
    if(!row)throw Error('Own greeting identity unavailable');
    return {identity,display,birthday:row.birthday};
-  }),
+  },{readSignal:configurationRead?.signal}),
  ]);
+ configurationRead?.signal?.throwIfAborted();
  const returnedFromLeave=await returnFromLeave(ctx,view.employmentId,today);
  const firstDay=view.hiredOn===today,years=Number(today.slice(0,4))-Number(view.hiredOn.slice(0,4));
  const anniversary=years>0&&view.hiredOn.slice(5)===today.slice(5);

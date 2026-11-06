@@ -71,6 +71,7 @@ function readTaskPage(ctx:SessionContext,page:number|undefined){
 
 export async function readEmployeeHomeTasks(ctx:SessionContext,employmentId?:string,page?:number,configurationRead?:OwnHomeConfigurationRead,taskSourceRead?:OwnHomeTaskSourceRead):Promise<EmployeeHomeTasks>{
  const {configuration, employmentId: subjectId} = await (configurationRead?.read(ctx,employmentId)??readOwnEmployeeHomeConfiguration(ctx,employmentId));
+ configurationRead?.signal?.throwIfAborted();
  // Selection chooses the company's presentation configuration. Work remains account-grained: a
  // selected own employment must not hide assignments addressed to another of the actor's employments.
  // listPendingTasks already carries replacement-leave decisions; reading them again here duplicated every one,

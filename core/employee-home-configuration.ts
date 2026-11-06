@@ -47,7 +47,7 @@ export function readEmployeeHomeConfigurationEditor(ctx:SessionContext,p:{compan
 }
 /** A caller cannot choose a different company or role. Both come from current own active employment
  * and the same deterministic dashboard-role resolver used by the shell. No salary projection is read. */
-export async function readOwnEmployeeHomeConfiguration(ctx:SessionContext,requestedEmploymentId?:string){
+export async function readOwnEmployeeHomeConfiguration(ctx:SessionContext,requestedEmploymentId?:string,signal?:AbortSignal){
  return withTenant(ctx,async tx=>{
   const {identity,companyId,hiredOn}=await readEmployeeHomeIdentityContextTx(tx,ctx,requestedEmploymentId);
   if(identity.employmentState!=='selected')throw new HomeAccessError(identity.employmentState==='choose'?'chooseEmployment':'employmentUnavailable');
@@ -56,19 +56,21 @@ export async function readOwnEmployeeHomeConfiguration(ctx:SessionContext,reques
    throw new HomeAccessError('employmentUnavailable');
   const [proof]=await tx.execute(sql`SELECT app.principal_snapshot_current() AS allowed`) as unknown as {allowed:boolean}[];
   if(!proof?.allowed)throw new HomeConfigurationAccessError();
+  signal?.throwIfAborted();
   const view=await currentTx(tx,ctx,companyId,identity.role);
   return {...view,employmentId,hiredOn};
- },{readOnlySnapshot:true});
+ },{readOnlySnapshot:true,readSignal:signal});
 }
 
 /** A single response can reuse the native proof for the exact session and subject that requested it. */
 export class OwnHomeConfigurationRead {
  private pending?: ReturnType<typeof readOwnEmployeeHomeConfiguration>;
- constructor(private readonly session:SessionContext,private readonly employmentId:string){}
+ constructor(private readonly session:SessionContext,private readonly employmentId:string,readonly signal?:AbortSignal){}
 
  read(session:SessionContext,employmentId?:string){
   if(session!==this.session||employmentId!==this.employmentId)throw new HomeAccessError('employmentUnavailable');
-  return this.pending??=readOwnEmployeeHomeConfiguration(session,employmentId);
+  this.signal?.throwIfAborted();
+  return this.pending??=readOwnEmployeeHomeConfiguration(session,employmentId,this.signal);
  }
 }
 export async function saveEmployeeHomeConfiguration(ctx:SessionContext,p:{companyId:string;audienceRole:string;expectedOrdinal:number;configuration:unknown;reason:string}){

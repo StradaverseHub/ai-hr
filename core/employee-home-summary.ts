@@ -21,6 +21,7 @@ export const HOME_SUMMARY_LOOKAHEAD_DAYS=7;
 export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:string,locale:Locale,replacementHolidayName:string,configurationRead?:OwnHomeConfigurationRead,taskSourceRead?:OwnHomeTaskSourceRead):Promise<EmployeeHomeSummary>{
  // The configuration owner already proves the exact current own employment and its company role.
  const {configuration,employmentId:subjectId}=await (configurationRead?.read(ctx,employmentId)??readOwnEmployeeHomeConfiguration(ctx,employmentId));
+ configurationRead?.signal?.throwIfAborted();
  const now=new Date(),today=todayInKualaLumpur(now),through=new Date(Date.parse(today+'T00:00:00Z')+HOME_SUMMARY_LOOKAHEAD_DAYS*86400000).toISOString().slice(0,10);
  const leaveOn=isModuleEnabled(ctx,'leave'),payrollOn=isModuleEnabled(ctx,'payroll'),claimsOn=isModuleEnabled(ctx,'claims');
  const configured=new Set(configuration.quickActions);
@@ -31,7 +32,7 @@ export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:st
    originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:today,endDate:through}),
    replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:today,endDate:through}),
    leaveOn&&configured.has('leave')?hasEligibleLeaveTypeForTx(tx,subjectId):false,
-  ])),
+  ]),{readSignal:configurationRead?.signal}),
   payrollOn?readOwnPayrollHomeMetadata(ctx,subjectId):Promise.resolve(null),
   claimsOn&&configured.has('claim')?ownClaimFormAvailable(ctx,subjectId):Promise.resolve(false),
   configured.has('profile')?readProfilePresentationPolicy(ctx):Promise.resolve(null),

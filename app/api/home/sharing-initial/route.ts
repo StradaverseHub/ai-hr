@@ -24,7 +24,9 @@ export async function GET(request:Request){
    return Response.json({error:'invalid'},{status:400,headers:sharingHeaders});
   }
   const cards:readonly HomeSharingCard[]=selected.length?selected.filter(isHomeSharingCard):DEFAULT_HOME_SHARING_CARDS;
-  const configurationRead=new OwnHomeConfigurationRead(session,employmentId);
+  const readLifetime=new AbortController();
+  const signal=readLifetime.signal;
+  const configurationRead=new OwnHomeConfigurationRead(session,employmentId,signal);
   const taskSourceRead=cards.includes('summary')&&cards.includes('tasks')?new OwnHomeTaskSourceRead(session,employmentId):undefined;
   const readLocale=async()=>{
    const value=await getLocale();
@@ -33,8 +35,6 @@ export async function GET(request:Request){
   };
   let language:ReturnType<typeof readLocale>|undefined;
   const locale=()=>language??=readLocale();
-  const readLifetime=new AbortController();
-  const signal=readLifetime.signal;
   const readers:Record<HomeSharingCard,()=>Promise<unknown>>={
    team:()=>teamResponse(session,employmentId,{},signal),
    celebrations:()=>celebrationsResponse(session,employmentId,{},signal),
