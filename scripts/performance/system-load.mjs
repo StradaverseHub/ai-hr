@@ -343,25 +343,28 @@ try{
   if(response)assert.equal(response.status(),200);
   assert(!new URL(page.url()).pathname.startsWith('/login'));await page.locator('main').waitFor();assert((await page.locator('body').innerText()).includes(user.name));
   visitStage='heading';
-  const heading=(await page.locator('h1').first().innerText()).trim();assert(heading.length>0&&!/^404\b/.test(heading),'missing or not-found page heading');
+  const headingElement=page.locator('main h1:visible').first();
+  await headingElement.waitFor({state:'visible',timeout:90000});
+  const heading=(await headingElement.innerText()).trim();assert(heading.length>0&&!/^404\b/.test(heading),'missing or not-found page heading');
   const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});
   if(await skip.isVisible()){await skip.click();await skip.waitFor({state:'hidden'});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
   visitStage='table-data';
   if(await page.locator(busyScreenSelector).count())rejectBusyPage(user,path,'browser');
   if(['/claims','/admin/personnel','/payroll'].includes(path)){
-   // A streamed page can expose its heading/form before the actual table is attached.
-   // Await the same required source rows; count() alone does not retry DOM readiness.
-   const rows=page.locator('main tbody tr');
+   // Next can attach the streamed table in a hidden subtree before replacing
+   // the loading shell. Only rendered rows establish user-visible readiness.
+   const rows=page.locator('main tbody tr:visible');
    if(path==='/admin/personnel'){
-    const busy=page.locator('main [data-personnel-busy]');
+    const busy=page.locator(busyScreenSelector);
     await rows.or(busy).first().waitFor({state:'attached',timeout:90000});
     if(await busy.count()){
-     const reason=await busy.getAttribute('data-personnel-busy');
+     const reason=await busy.first().getAttribute('data-personnel-busy');
      visitStage=reason==='access-lock'?'personnel-access-lock':'personnel-statement-timeout';
      rejectBusyPage(user,path,'browser');
     }
-   }else await rows.first().waitFor({state:'attached',timeout:90000});
-   assert(await rows.count()>0,'expected fictional table rows');
+   }
+   await rows.first().waitFor({state:'visible',timeout:90000});
+   if(await page.locator(busyScreenSelector).count())rejectBusyPage(user,path,'browser');
   }
   if(path==='/me/payslip'){
    visitStage='payslip-statement';
