@@ -565,6 +565,37 @@ describe('restore-rehearsal.sh — a good backup', () => {
 // 6. …AND FAILS ON A DAMAGED ONE. This is the half the box has never had.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
+describe('restore preserves executable authority',()=>{
+ it('keeps a restricted definer scoped to one tenant after restoration',async()=>{
+  const restored=rehearse(GOOD_DUMP,{},['--keep']);
+  expect(restored.status,restored.out).toBe(0);
+  expect(restored.out).toContain('object owners, function authority and forced row security match');
+  const app=postgres(withDb(SRC_APP_URL,SCRATCH_DB),{max:1});
+  const admin=postgres(withDb(ADMIN_URL,SCRATCH_DB),{max:1});
+  try{
+   const [properties]=await admin`select pg_get_userbyid(proowner) as owner,prosecdef as definer from pg_proc where oid='app.rehearsal_employment_count()'::regprocedure`;
+   expect(properties).toEqual({owner:'aihr_r291_definer',definer:true});
+   const [row]=await app.begin(async tx=>{await tx`select set_config('app.tenant_id','11111111-1111-1111-1111-111111111111',true)`;return tx`select app.rehearsal_employment_count()::int as count`;});
+   expect(row.count).toBe(40);
+   const [empty]=await app`select app.rehearsal_employment_count()::int as count`;expect(empty.count).toBe(0);
+  }finally{await app.end();await admin.end();}
+ },180_000);
+ it('rejects a valid archive whose definer owner was elevated despite unchanged rows and app SELECT grants',async()=>{
+  const source=postgres(SRC_ADMIN_URL,{max:1}),bad=path.join(TMP,'elevated-owner.dump');
+  try{
+   await source.unsafe('ALTER FUNCTION app.rehearsal_employment_count() OWNER TO CURRENT_USER');
+   pgDumpSource(bad,[]);
+  }finally{
+   await source.unsafe('ALTER FUNCTION app.rehearsal_employment_count() OWNER TO aihr_r291_definer');
+   await source.end();
+  }
+  restamp(GOOD_MANIFEST,bad,path.join(TMP,'elevated-owner.manifest'));
+  const result=rehearse(bad);
+  expect(result.status,result.out).toBe(8);
+  expect(result.out).toContain('restored object authority differs');
+ },180_000);
+});
+
 describe('restore-rehearsal.sh — a rehearsal that cannot fail is not a rehearsal', () => {
   it('a TRUNCATED dump is rejected before it is restored', () => {
     const bad = path.join(TMP, 'trunc.dump');

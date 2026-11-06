@@ -275,7 +275,7 @@ cleanup_work() { rm -rf "$WORK"; }
 trap 'rc=$?; cleanup_work; finish "$rc"' EXIT
 
 DUMP_RC="$WORK/dump.rc"; PROBE_RC="$WORK/probe.rc"
-TABLES_OUT="$WORK/tables.tsv"; ROLES_OUT="$WORK/roles.tsv"; HEAD_OUT="$WORK/head.tsv"
+SECURITY_OUT="$WORK/security.tsv"; TABLES_OUT="$WORK/tables.tsv"; ROLES_OUT="$WORK/roles.tsv"; HEAD_OUT="$WORK/head.tsv"
 PROBE_OUT="$WORK/probe.tsv"; PROBE_ERR="$WORK/probe.err"
 : > "$DUMP_RC"; : > "$PROBE_RC"; : > "$PROBE_OUT"
 
@@ -298,6 +298,8 @@ SELECT coalesce((SELECT id::text FROM public.tenant ORDER BY id LIMIT 1), '') AS
 \! if [ -n "\$AIHR_APP_URL" ]; then python3 "\$AIHR_CONNECTION_HELPER" --url-env AIHR_APP_URL -- "\$AIHR_PGBIN/psql" -X -q -At -v ON_ERROR_STOP=1 -v snap="\$AIHR_SNAP" -v tenant="\$AIHR_TENANT" -f "\$AIHR_PROBE_SQL" > "\$AIHR_PROBE_OUT" 2> "\$AIHR_PROBE_ERR"; echo \$? > "\$AIHR_PROBE_RC"; else echo skipped > "\$AIHR_PROBE_RC"; fi
 \o $TABLES_OUT
 $(blib_tables_sql)
+\o $SECURITY_OUT
+$(blib_security_sql)
 \o $ROLES_OUT
 $(blib_roles_sql)
 \o $HEAD_OUT
@@ -364,6 +366,7 @@ TABLE_COUNT=$(grep -c '^table' "$TABLES_OUT" 2>/dev/null || echo 0)
   cat "$HEAD_OUT"
   sort "$ROLES_OUT"
   sort "$TABLES_OUT"
+  sort "$SECURITY_OUT"
   [ "$PROBE_STATUS" = "ok" ] && sort "$PROBE_OUT"
 } > "$MANIFEST"
 ok "manifest written ($TABLE_COUNT tables, $(grep -c '^role' "$MANIFEST" || echo 0) ACL roles)"

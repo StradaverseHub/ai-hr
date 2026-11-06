@@ -168,14 +168,8 @@ SELECT 'table' || E'\t' || n.nspname || E'\t' || c.relname || E'\t'
 SQL
 }
 
-# Every role named as a GRANTEE anywhere in the dumped schema.
-#
-# This is a PREFLIGHT list for the rehearsal, not part of the diff, and the distinction is load-bearing:
-# pg_restore --no-owner rewrites ownership to whoever is restoring, so the owner's own ACL entry comes
-# back under a different name and a diff would report a difference that is not one. What the rehearsal
-# does with this list is check the roles EXIST before it starts — because a GRANT to a role the target
-# cluster has never heard of aborts the restore halfway through with an error that reads like a dump
-# corruption and is not.
+# Roles needed to restore grants AND original object ownership. Security-definer owners
+# are part of the permission boundary; mapping them to the restoring superuser is unsafe.
 blib_roles_sql() {
 cat <<'SQL'
 SELECT DISTINCT 'role' || E'\t' || CASE WHEN x.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(x.grantee) END
@@ -188,8 +182,42 @@ SELECT DISTINCT 'role' || E'\t' || CASE WHEN x.grantee = 0 THEN 'PUBLIC' ELSE pg
     SELECT (aclexplode(n.nspacl)).grantee
       FROM pg_namespace n
      WHERE n.nspacl IS NOT NULL AND n.nspname NOT IN ('pg_catalog','information_schema')
+    UNION
+    SELECT c.relowner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+     WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_%'
+    UNION
+    SELECT p.proowner FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+     WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_%'
+    UNION
+    SELECT (aclexplode(p.proacl)).grantee FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+     WHERE p.proacl IS NOT NULL AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_%'
+    UNION
+    SELECT n.nspowner FROM pg_namespace n
+     WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_%'
+    UNION
+    SELECT t.typowner FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
+     WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_%'
   ) x
  ORDER BY 1;
+SQL
+}
+
+# Stable JSON escapes identifiers/configuration so tabs and newlines cannot forge records.
+# Owners, definer/invoker mode, search_path settings and FORCE RLS are executable authority.
+blib_security_sql() {
+cat <<'SQL'
+SELECT 'security' || E'\t' || value FROM (
+ SELECT json_build_array('relation',n.nspname,c.relname,pg_get_userbyid(c.relowner),c.relrowsecurity,c.relforcerowsecurity)::text AS value
+ FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE c.relkind IN ('r','p','v','m','S','f') AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_%'
+ UNION ALL
+ SELECT json_build_array('function',n.nspname,p.proname,pg_get_function_identity_arguments(p.oid),pg_get_userbyid(p.proowner),p.prosecdef,p.proconfig)::text
+ FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_%'
+ UNION ALL
+ SELECT json_build_array('schema',n.nspname,pg_get_userbyid(n.nspowner))::text FROM pg_namespace n
+ WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_%'
+) security_facts ORDER BY value;
 SQL
 }
 

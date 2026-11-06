@@ -265,7 +265,7 @@ scratch() { blib_pg_run_db "$ADMIN_URL" "$SCRATCH" "$PSQL" -X -q -At -v ON_ERROR
 # A GRANT to a role this cluster has never heard of aborts the restore part-way with an error that
 # reads like archive corruption. Checking first turns it into one clear sentence.
 STAGE=roles
-say "3/6  roles the dump's grants refer to"
+say "3/6  roles required by original owners and grants"
 MISSING=''
 while read -r _ role; do
   [ -z "$role" ] && continue
@@ -313,10 +313,10 @@ say "5/6  restoring"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ai-hr-rehearsal.XXXXXX")"
 R0="$(blib_now)"
 # --exit-on-error, because the default is to keep going and exit 0 after printing errors nobody reads —
-# which is how you get a "successful" restore that is missing objects. --no-owner, because the roles
-# that own objects on the source need not exist here and ownership is not what is being rehearsed;
-# PRIVILEGES are, so --no-privileges is deliberately NOT passed.
-blib_pg_run_db "$ADMIN_URL" "$SCRATCH" "$PGBIN/pg_restore" --exit-on-error --no-owner --dbname "$SCRATCH" "$DUMP" > "$WORK/restore.log" 2>&1
+# which is how you get a "successful" restore that is missing objects. Preserve original
+# owners: restricted SECURITY DEFINER functions must not become superuser functions.
+# Missing owner roles are a prerequisite failure, never permission to elevate authority.
+blib_pg_run_db "$ADMIN_URL" "$SCRATCH" "$PGBIN/pg_restore" --exit-on-error --dbname "$SCRATCH" "$DUMP" > "$WORK/restore.log" 2>&1
 RESTORE_RC=$?
 RESTORE_SECONDS="$(blib_elapsed "$R0" "$(blib_now)")"
 if [ "$RESTORE_RC" != "0" ]; then
@@ -340,6 +340,25 @@ if diff -u "$WORK/expected.tsv" "$WORK/actual.tsv" > "$WORK/schema.diff"; then
 else
   bad "the restored database does not match the manifest:"
   sed 's/^/        /' "$WORK/schema.diff"
+fi
+
+# Older manifests may still be restored, but cannot receive the current full verdict.
+SECURITY_VERDICT=weak
+if grep -q '^security' "$MANIFEST"; then
+  if scratch -c "$(blib_security_sql)" | sort > "$WORK/security-actual.tsv"; then
+    grep '^security' "$MANIFEST" | sort > "$WORK/security-expected.tsv"
+    if diff -u "$WORK/security-expected.tsv" "$WORK/security-actual.tsv" > "$WORK/security.diff"; then
+      SECURITY_VERDICT=ok
+      ok "object owners, function authority and forced row security match"
+    else
+      bad "restored object authority differs from the manifest"
+      sed 's/^/        /' "$WORK/security.diff"
+    fi
+  else
+    bad "could not measure restored object authority"
+  fi
+else
+  warn "legacy manifest has no object authority snapshot; full recovery qualification is unavailable"
 fi
 
 # 7b. the application role. Present is not usable; this is the difference.
@@ -399,6 +418,7 @@ STAGE=verdict
 if [ "$FAILURES" -eq 0 ]; then
   if [ "$SKIP_CHECKSUM" = "1" ]; then RESULT=PASS-UNCHECKSUMMED
   elif [ "${PROBE_VERDICT:-weak}" != "ok" ]; then RESULT=PASS-WEAK-PROBE
+  elif [ "$SECURITY_VERDICT" != "ok" ]; then RESULT=PASS-WEAK-SECURITY
   else RESULT=PASS; fi
   MESSAGE="restored $M_DB from $(basename "$DUMP") and verified it against its manifest"
   if [ "$KEEP" = "1" ]; then

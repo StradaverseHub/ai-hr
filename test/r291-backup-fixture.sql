@@ -63,3 +63,19 @@ CREATE POLICY tenant_isolation ON public.payslip FOR ALL USING (tenant_id = app.
 
 GRANT USAGE ON SCHEMA app, public TO ai_hr_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tenant, public.company, public.employment, public.payslip TO ai_hr_app;
+
+-- A restricted definer is a real permission boundary: restoring it as the superuser
+-- would expose both tenants even though the app's direct table probes still pass.
+DO $$ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='aihr_r291_definer') THEN
+  CREATE ROLE aihr_r291_definer NOLOGIN NOSUPERUSER NOBYPASSRLS NOINHERIT;
+ END IF;
+END $$;
+GRANT USAGE ON SCHEMA app,public TO aihr_r291_definer;
+GRANT SELECT ON public.employment TO aihr_r291_definer;
+CREATE FUNCTION app.rehearsal_employment_count() RETURNS bigint
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp
+AS $$ SELECT count(*) FROM public.employment $$;
+ALTER FUNCTION app.rehearsal_employment_count() OWNER TO aihr_r291_definer;
+REVOKE ALL ON FUNCTION app.rehearsal_employment_count() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.rehearsal_employment_count() TO ai_hr_app;
