@@ -6,6 +6,7 @@ import {attendanceCorrectionForm} from './attendance-rejection-browser.mjs';
 import {exerciseConcurrentPayrollClose} from './payroll-close-concurrency.mjs';
 export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs}){
  const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0,clockingImport:0},failures:[],capturedTransport:[],captureProtocol:'new click request and response headers; UI and persisted outcomes checked separately'};
+ const failedAttendanceActions=[];
  async function capture(page,click,kind){
   report.mixedWorkflows.currentStage=kind;save();
   const marker={attendanceCreate:'PERF_ATTENDANCE_BROWSER',leaveCreate:'PERF_LEAVE_BROWSER',leaveEdit:'PERF_LEAVE_BROWSER_EDITED',personnelCreate:'PERF_PERSONNEL_BROWSER',personnelEdit:'PERF_PERSONNEL_BROWSER_EDITED'}[kind];
@@ -226,7 +227,23 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    evidence.push({workflow:'clocking file validate/import',persisted:true,lines:100,employees:50});save();
   }finally{await ctx.close();}
  }
- return async function run(user,iteration){
+ async function sendAttendance(user,template,fields,effect){
+  try{return await send(user,template,fields);}
+  catch(error){failedAttendanceActions.push(effect);throw error;}
+ }
+ async function verifyFailedAttendanceActions(){
+  if(!failedAttendanceActions.length)return [];
+  return db`select action,count(*)::int as attempts,count(*) filter(where case
+   when action='attendanceCreate' then exists(select 1 from public.attendance_correction c
+    where c.employment_id=f.employment_id and c.attendance_date=${fixture.today}::date and c.reason=f.marker)
+   when action='attendanceApprove' then exists(select 1 from public.attendance_correction c
+    where c.id=f.correction_id and c.employment_id=f.employment_id and c.status='approved')
+   end)::int as visible
+   from jsonb_to_recordset(${JSON.stringify(failedAttendanceActions)}::jsonb)
+    as f(action text,employment_id uuid,marker text,correction_id uuid)
+   group by action order by action`;
+ }
+ async function run(user,iteration){
   const marker=`PERF_MIXED_${user.index}_${iteration}`;
   if(user.role==='groupHR'&&iteration===0){
    await send(user,{...templates.payrollProcess,path:'/payroll/'+user.batchId},formFields(templates.payrollProcess,{batchId:user.batchId}));
@@ -234,10 +251,10 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   }
   if(user.role==='employee'&&user.index%2===1){
    const checkIn=iteration%2?'09:30':'09:15',checkOut=iteration%2?'18:30':'18:15';
-   await send(user,{...templates.attendanceCreate,path:'/attendance/my-records/'+fixture.today},formFields(templates.attendanceCreate,{date:fixture.today,employmentId:user.employmentId,checkIn,checkOut,reason:marker}));
+   await sendAttendance(user,{...templates.attendanceCreate,path:'/attendance/my-records/'+fixture.today},formFields(templates.attendanceCreate,{date:fixture.today,employmentId:user.employmentId,checkIn,checkOut,reason:marker}),{action:'attendanceCreate',employment_id:user.employmentId,marker});
    const rows=await db`select id,status from attendance_correction where employment_id=${user.employmentId}::uuid and reason=${marker}`;assert.equal(rows.length,1);assert.equal(rows[0].status,'pending');
    await pause(thinkTimeMs);const approver=approverFor(user);assert(approver);
-   await send(approver,{...templates.attendanceApprove,path:'/attendance/application-history/'+rows[0].id},formFields(templates.attendanceApprove,{id:rows[0].id,action:'approved',workflowStage:'0',workflowParticipant:'0:0',reason:marker+'_APPROVED'}));
+   await sendAttendance(approver,{...templates.attendanceApprove,path:'/attendance/application-history/'+rows[0].id},formFields(templates.attendanceApprove,{id:rows[0].id,action:'approved',workflowStage:'0',workflowParticipant:'0:0',reason:marker+'_APPROVED'}),{action:'attendanceApprove',employment_id:user.employmentId,correction_id:rows[0].id});
    const [approved]=await db`select status from attendance_correction where id=${rows[0].id}::uuid`;assert.equal(approved.status,'approved');
    const [day]=await db`select check_in_at,check_out_at from attendance where employment_id=${user.employmentId}::uuid and attendance_date=${fixture.today}::date`;assert.equal(day.check_in_at,checkIn+':00');assert.equal(day.check_out_at,checkOut+':00');
    report.mixedWorkflows.completed.attendance++;return true;
@@ -271,5 +288,6 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    const [cancelled]=await db`select status from leave_request where id=${rows[0].id}::uuid`;assert.equal(cancelled.status,'cancelled');report.mixedWorkflows.completed.leave++;return true;
   }
   return false;
- };
+ }
+ return {run,verifyFailedAttendanceActions};
 }
