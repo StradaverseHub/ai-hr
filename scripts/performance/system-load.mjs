@@ -11,7 +11,7 @@ import {exerciseMovement} from './movement-browser.mjs';
 import {exerciseLetterDraft} from './letter-draft-browser.mjs';
 import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
 import {exerciseSavedReport} from './reports-browser.mjs';
-import {exercisePayrollBrowser} from './payroll-browser.mjs';
+import {exercisePayrollBrowser,payrollReadinessSurfaces} from './payroll-browser.mjs';
 import {exercisePayrollRegister,verifyPayrollRegisterBoundary} from './payroll-register-browser.mjs';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
 import {exerciseLivePersonnelProfile} from './personnel-live-profile-browser.mjs';
@@ -779,12 +779,24 @@ try{
   if(suite==='whole-system'&&user.index===group.index){
    const loadState=()=>({active:progress.active,launched:progress.launched});
    await exercisePersonnelSwitcher({page,user,fixture,report,save,phase:'loaded',loadState});
-   await exercisePayrollBrowser({base,page,user,fixture,report,save,phase:'loaded',loadState});
   }
   }catch(error){
    (report.browserJourneyFailures??=[]).push({role:user.role,user:user.index,phase:'loaded',errorType:error.name,...browserFailureLocation(error),timeout:error.name==='TimeoutError'});save();throw error;
   }finally{await ctx.close();}
  }));
+ // Independent pages let each Payroll readiness surface start at steady load.
+ const payrollBrowserLoad=suite==='whole-system'?Promise.allSettled([(async()=>{
+  const ctx=await context(group);
+  try{
+   const pages=await Promise.all(payrollReadinessSurfaces.map(()=>ctx.newPage()));
+   await waitForSteadyUsers();
+   const start=loadState();
+   assert(start.active===500&&start.inSteadyWindow,'Payroll browser did not reach steady 500-user load');
+   return await Promise.allSettled(payrollReadinessSurfaces.map((surface,index)=>
+    exercisePayrollBrowser({base,page:pages[index],user:group,fixture,report,save,phase:'loaded',loadState,surface})
+   ));
+  }finally{await ctx.close();}
+ })()]):null;
  const attendanceRejectionLoad=loadedAttendanceRejection
   ?Promise.allSettled([loadedAttendanceRejection.run({loadState:()=>({active:progress.active,launched:progress.launched}),steadyUntil})])
   :null;
@@ -844,6 +856,19 @@ try{
   }
  }));
  const browserResults=await browserLoad;
+ const payrollBrowserResults=await payrollBrowserLoad;
+ if(payrollBrowserResults){
+  const [result]=payrollBrowserResults;
+  const rows=report.browserPayrollReadiness?.filter(row=>row.phase==='loaded')??[];
+  const duringSteady500=state=>state?.active===500&&state.inSteadyWindow===true;
+  report.payrollBrowserLoad={
+   surfaces:payrollReadinessSurfaces,
+   startedAtSteady500:rows.filter(row=>duringSteady500(row.loadAtStart)).map(row=>row.surface),
+   readyAtSteady500:rows.filter(row=>row.usable&&duringSteady500(row.loadAtReady)).map(row=>row.surface),
+   failures:result.status==='rejected'?[{error:String(result.reason.message).slice(0,180)}]:
+    result.value.flatMap((row,index)=>row.status==='rejected'?[{surface:payrollReadinessSurfaces[index],error:String(row.reason.message).slice(0,180)}]:[]),
+  };
+ }
  const rejectionResults=await attendanceRejectionLoad;
  const movementResults=await movementLoad;
  const savedReportResults=await savedReportsLoad;
@@ -893,6 +918,12 @@ try{
    const evidence=movement.steps[step];
    return evidence?.status==='passed'&&evidence.startedWith?.active===500&&evidence.startedWith.inSteadyWindow;
   }),'Movement history, New Event and audited save must start during steady 500-user load');
+ }
+ if(report.payrollBrowserLoad){
+  const {surfaces,startedAtSteady500,readyAtSteady500,failures}=report.payrollBrowserLoad;
+  assert.equal(failures.length,0,'loaded Payroll browser readiness failed');
+  assert(surfaces.every(surface=>startedAtSteady500.includes(surface)&&readyAtSteady500.includes(surface)),
+   'all Payroll readiness surfaces must start and finish during steady 500-user load');
  }
  if(savedReportResults?.[0].status==='rejected')throw savedReportResults[0].reason;
  if(suite==='whole-system'){

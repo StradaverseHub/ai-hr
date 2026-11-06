@@ -8,6 +8,7 @@ const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const adjustPath=id=>'/payroll/transactions/adjustments?batchId='+id;
 const resumePath=id=>'/payroll/process?resume='+id;
 const anomalyPath=id=>'/payroll/'+id+'/anomalies';
+export const payrollReadinessSurfaces=['resume','anomalies','draft-adjustments'];
 
 function ownedTarget(fixture,user){
  // Company 0 is processed by the loaded group-HR action, and 1 by the baseline calculation/publication.
@@ -22,9 +23,10 @@ function ownedTarget(fixture,user){
  return{...target,own,other,foreign,companyLabel:`PERF Company ${user.tenant}-${companyIndex}`};
 }
 
-export async function exercisePayrollBrowser({base,page,user,fixture,report,save,phase,loadState,timeout=90000}){
+export async function exercisePayrollBrowser({base,page,user,fixture,report,save,phase,loadState,surface,timeout=90000}){
  assert(['groupHR','companyHR'].includes(user.role));
  assert(user.role!=='companyHR'||phase==='baseline','do not add negative boundary requests to the loaded window');
+ assert(surface===undefined||payrollReadinessSurfaces.includes(surface),'unknown Payroll readiness surface');
  const target=ownedTarget(fixture,user),main=page.locator('main');
  const {process:processCopy,batch:batchCopy,transactions}=english.payroll,anomaly=english.anomaly;
  const data=report.browserPayrollReadiness??=[];
@@ -43,7 +45,7 @@ export async function exercisePayrollBrowser({base,page,user,fixture,report,save
   }catch(error){data.push({phase,role:user.role,surface,elapsedMs:performance.now()-start,loadAtStart,loadAtFailure:loadState?.(),usable:false,failed:true,errorType:error.name});save();throw error;}
  }
  if(user.role==='groupHR'){
-  await check('resume',resumePath(target.batchId),async(status,remaining)=>{
+  if(surface===undefined||surface==='resume')await check('resume',resumePath(target.batchId),async(status,remaining)=>{
    assert.equal(status,200);
    await heading(processCopy.title).waitFor({state:'visible',timeout:remaining()});
    await main.getByText(processCopy.resumeStep1Note,{exact:true}).waitFor({state:'visible',timeout:remaining()});
@@ -59,7 +61,7 @@ export async function exercisePayrollBrowser({base,page,user,fixture,report,save
    assert.equal(await labels.filter({hasText:target.other.name}).count(),0,'Payroll wizard exposed an employee from another company');
    assert.equal(await labels.filter({hasText:target.foreign.name}).count(),0,'Payroll wizard exposed an employee from another tenant');
   });
-  await check('anomalies',anomalyPath(target.historicalBatchId),async(status,remaining)=>{
+  if(surface===undefined||surface==='anomalies')await check('anomalies',anomalyPath(target.historicalBatchId),async(status,remaining)=>{
    assert.equal(status,200);
    await heading(anomaly.title).waitFor({state:'visible',timeout:remaining()});
    // The shared PageHeader prepends a visible arrow to the localized link label.
@@ -70,7 +72,7 @@ export async function exercisePayrollBrowser({base,page,user,fixture,report,save
    const verdict=main.getByText(anomaly.metricAutoClear,{exact:true});
    await initial.or(verdict).first().waitFor({state:'visible',timeout:remaining()});
   });
-  await check('draft-adjustments',adjustPath(target.batchId),async(status,remaining)=>{
+  if(surface===undefined||surface==='draft-adjustments')await check('draft-adjustments',adjustPath(target.batchId),async(status,remaining)=>{
    assert.equal(status,200);
    await heading(transactions.adjustments.title).waitFor({state:'visible',timeout:remaining()});
    const overtime=action(target.batchId,batchCopy.prefillOt),claims=action(target.batchId,batchCopy.prefillClaims);
