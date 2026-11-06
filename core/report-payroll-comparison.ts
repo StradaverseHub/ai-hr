@@ -1,6 +1,6 @@
 /** Execution adapter under the existing saved-report owner. It consumes Payroll, Movement and dated
  * Organisation reads; there is no second pay calculator or saved-definition store. */
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { company, department, employment, jobGrade, person, costCenter, payrollBatch, type CustomReportSpec } from '../db/schema';
 import { payrollComparisonSourcesTx, listPayComponents } from '../packs/payroll/service';
@@ -123,4 +123,23 @@ export async function executePayrollComparisonTx(tx:Tx,ctx:SessionContext,spec:C
   const result=comparePayrollResults({definition,filters,companyIds:ids,runs,sources,identities,
     previousFrom:previous.from,currentFrom:current.from,currentTo:current.to,paginate:verb!=='export'});
   return {definition,filters,result,companyIds:ids,sourceRevisions:sources.map(({id,version,runId})=>({id,version,runId})),contextUnavailable};
+}
+
+/** Processed periods visible to a caller with current financial report authority. */
+export async function payrollReconciliationPeriods(ctx: SessionContext, scope: readonly string[]) {
+  return withTenant(ctx, async tx => {
+    const ids = await payrollComparisonAccessTx(tx, ctx, payrollComparisonSpec(), 'view', scope);
+    return tx.select({
+      companyId: payrollBatch.companyId,
+      companyName: company.legalName,
+      period: payrollBatch.payPeriod,
+      runCount: sql<number>`count(*)::int`,
+      requiresReprocessing: sql<boolean>`bool_or(${payrollBatch.needsRecalcAt} is not null)`,
+    }).from(payrollBatch)
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(and(inArray(payrollBatch.companyId, ids), inArray(payrollBatch.status, ['processed', 'closed'])))
+      .groupBy(payrollBatch.companyId, company.legalName, payrollBatch.payPeriod)
+      .orderBy(desc(payrollBatch.payPeriod), asc(company.legalName), asc(payrollBatch.companyId))
+      .limit(120);
+  }, { readOnlySnapshot: true });
 }
