@@ -3,15 +3,17 @@ import {eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
 import {withTenant} from '../db/client';
+import * as database from '../db/client';
 import {appUser,employment,leaveType,leaveLedger} from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {readEmployeeHomeTimeOff} from '../core/employee-home-time-off';
 import {requestLeave,decideLeave,decideLeaveDates,requestLeaveCancellation,decideLeaveCancellation,myLeaveDashboard,
  leaveTypeApplySummary,approvedLeavePresenceByEmploymentTx,leaveCalendarPresenceByEmploymentTx,setLeaveApprovalPolicy} from '../packs/leave/service';
 import {readEmployeeHomeCalendar} from '../core/employee-home-calendar';
+import {readHomeTeamCalendar} from '../core/employee-home-sharing';
 import {isOwnProfileEditEmploymentTx,myOwnEmploymentSubjectsTx} from '../core/read';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,CALLER:SessionContext;
 vi.mock('../lib/session',()=>({getSession:async()=>CALLER}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en'}));
@@ -54,6 +56,21 @@ describe('Home Time Off consumes canonical own leave facts',()=>{
   expect(response.status).toBe(200);expect(await response.json()).toEqual(result);
   expect(response.headers.get('cache-control')).toBe('private, no-store');
   for(const field of ['Private fictional','reason','leaveTypeId','medical','personId','4321'])expect(JSON.stringify(result)).not.toContain(field);
+ });
+ it('shares the own and team Calendar checkout while retaining the separate Payroll read',async()=>{
+  await setModule(b.tenantId,'payroll','active');
+  const own=await worker();
+  const month=today().slice(0,7);
+  const read=vi.spyOn(database,'withTenant');
+  try{
+   const result=await readEmployeeHomeCalendar(own.ctx,own.employmentId,month);
+   expect(result).toMatchObject({employmentId:own.employmentId,month,payrollEnabled:true,team:{days:expect.any(Array)}});
+   expect(read).toHaveBeenCalledTimes(2);
+   expect(read.mock.calls[0]?.[2]).toMatchObject({readOnlySnapshot:true});
+   expect(read.mock.calls[1]?.[2]?.readOnlySnapshot).toBeUndefined();
+   const from=result.days[0].date,to=result.days[result.days.length-1].date;
+   expect(await readHomeTeamCalendar(own.ctx,own.employmentId,from,to)).toEqual(result.team);
+  }finally{read.mockRestore();}
  });
  it('refuses foreign and forged calendar subjects, scope injection and malformed or oversized windows',async()=>{
   const own=await worker('hr_admin'),other=await worker();CALLER=own.ctx;

@@ -9,13 +9,14 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {calendarWindowDates} from '../lib/calendar-window';
 import {homeSharingPageInput,validateHomeTeamPage,validateHomeCelebrationPage,validateHomeTeamCalendar} from '../lib/employee-home-sharing';
 
-function withOwnHomeSharingRead<T>(ctx:SessionContext,employmentId:string,read:(tx:Tx)=>Promise<T>,signal?:AbortSignal){
+function withOwnHomeSharingRead<T>(ctx:SessionContext,employmentId:string,read:(tx:Tx)=>Promise<T>,signal?:AbortSignal,outerTx?:Tx){
  if(!ctx.userId)throw new HomeAccessError('authentication');
- return withTenant(ctx,async tx=>{
+ const scopedRead=async(tx:Tx)=>{
   if(!await isCurrentOwnHomeEmploymentTx(tx,ctx,employmentId))throw new HomeAccessError('employmentUnavailable');
   signal?.throwIfAborted();
   return read(tx);
- },{readSignal:signal});
+ };
+ return outerTx?scopedRead(outerTx):withTenant(ctx,scopedRead,{readSignal:signal});
 }
 
 export async function readHomeTeamPage(ctx:SessionContext,employmentId:string,p:{date?:string;after?:string;limit?:number;onlyLeave?:boolean}={},signal?:AbortSignal){
@@ -28,12 +29,12 @@ export async function readHomeTeamPage(ctx:SessionContext,employmentId:string,p:
   return validateHomeTeamPage(row?.projection,on);
  },signal);
 }
-export async function readHomeTeamCalendar(ctx:SessionContext,employmentId:string,from:string,to:string,signal?:AbortSignal){
+export async function readHomeTeamCalendar(ctx:SessionContext,employmentId:string,from:string,to:string,signal?:AbortSignal,outerTx?:Tx){
  return withOwnHomeSharingRead(ctx,employmentId,async tx=>{
   calendarWindowDates(from,to);
   const [row]=await tx.execute(sql`SELECT app.home_team_calendar(${employmentId}::uuid,${from}::date,${to}::date) AS projection`) as unknown as {projection:unknown}[];
   return validateHomeTeamCalendar(row?.projection,from,to);
- },signal);
+ },signal,outerTx);
 }
 export async function readHomeCelebrationPage(ctx:SessionContext,employmentId:string,p:{after?:string;limit?:number}={},signal?:AbortSignal){
  return withOwnHomeSharingRead(ctx,employmentId,async tx=>{

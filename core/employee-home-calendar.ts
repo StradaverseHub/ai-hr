@@ -17,29 +17,30 @@ import {readHomeTeamCalendar} from './employee-home-sharing';
 export async function readEmployeeHomeCalendar(ctx:SessionContext,employmentId:string,requestedMonth?:string,now=new Date(),signal?:AbortSignal):Promise<EmployeeHomeCalendar>{
  if (!ctx.userId) throw new HomeAccessError('authentication');
  const subjectId = employmentId;
- const {preferences,display,month,dates,from,to,facts}=await withTenant(ctx,async tx=>{
+ const {preferences,display,month,dates,from,to,facts,team}=await withTenant(ctx,async tx=>{
   if (!await isCurrentOwnHomeEmploymentTx(tx, ctx, subjectId)) throw new HomeAccessError('employmentUnavailable');
   const preferences=await getEmployeeHomeDisplayPreferences(ctx,tx);
   const display=homeDisplayClock(now,preferences.timeZone??'Asia/Kuala_Lumpur');
   const month=requestedMonth??display.date.slice(0,7),dates=homeCalendarGrid(month,preferences.weekStartsOn);
   const from=dates[0],to=dates[dates.length-1];
   signal?.throwIfAborted();
-  const [leave,holidays,replacements,coverage,eligible,active]=await Promise.all([
+  const [leave,holidays,replacements,coverage,eligible,active,team]=await Promise.all([
    leaveCalendarPresenceByEmploymentTx(tx,[subjectId],from,to),
    originalHolidayCalendarFor(tx,{employmentId:subjectId,startDate:from,endDate:to}),
    replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subjectId],startDate:from,endDate:to}),
    provenCompanyDatesTx(tx,dates.map(date=>({employmentId:subjectId,date}))),
    hasEligibleLeaveTypeForTx(tx,subjectId),
    isOwnProfileEditEmploymentTx(tx,ctx,subjectId),
+   // The native team projection keeps its own authority check on the same snapshot.
+   readHomeTeamCalendar(ctx,subjectId,from,to,signal,tx),
   ]);
-  return {preferences,display,month,dates,from,to,facts:{leave,holidays,replacements,coverage,eligible,active}};
+  return {preferences,display,month,dates,from,to,facts:{leave,holidays,replacements,coverage,eligible,active},team};
  },{readOnlySnapshot:true,readSignal:signal});
  signal?.throwIfAborted();
+ // Payroll owns a separate history barrier and must read after acquiring it.
  const payrollEnabled=isModuleEnabled(ctx,'payroll');
- const [paymentDates,team]=await Promise.all([
-  payrollEnabled?readOwnPayrollCalendarPayments(ctx,subjectId,from,to,signal):Promise.resolve([]),
-  readHomeTeamCalendar(ctx,subjectId,from,to,signal),
- ]);
+ const paymentDates=payrollEnabled?await readOwnPayrollCalendarPayments(ctx,subjectId,from,to,signal):[];
+ signal?.throwIfAborted();
  const canApply=facts.active&&facts.eligible;
  const payments=new Set(paymentDates);
  return {version:1,employmentId:subjectId,month,today:display.date,weekStartsOn:preferences.weekStartsOn,payrollEnabled,team,
