@@ -8,6 +8,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createRewardUnit, getRewardUnit, previewRewardLump, rewardPromotionNominations, saveRewardEntry, saveRewardPolicy, setRewardPayWindowKeep, setRewardUnitLump } from '../packs/rewards/service';
+import { rewardPrelaunchDataCheck } from '../packs/rewards/data-check';
 import { rewardReviewActivity } from '../packs/rewards/activity';
 import { emptyFacts } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -63,6 +64,18 @@ describe('Rewards board items 8ad87ae8, 4e3e1af7, c28db2f0', () => {
       expect.objectContaining({ unitId, subjectId: employmentId, subjectName: 'Reward Employee' }),
     ]);
 
+  });
+
+  it('shows a PBP readiness facts without pay figures, and denies an unrelated unit role', async () => {
+    const [operator] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: 'Fictional PBP',
+      primaryEmail: 'pbp-readiness@rewards.test' }).returning();
+    const userId = await createAppUser(b.tenantId, operator.id, 'employee');
+    await owner.db.insert(schema.rewardMember).values({ tenantId: b.tenantId, unitId, userId, role: 'pbp' });
+    const pbp = { ...admin, userId, personId: operator.id, roles: ['employee'], grants: [{role:'employee',companyId:null}] } satisfies SessionContext;
+    const data = await rewardPrelaunchDataCheck(pbp, unitId);
+    expect(data?.rows).toEqual([expect.objectContaining({ name: 'Reward Employee', reviewed:true, hasRatings:true })]);
+    expect(Object.keys(data!.rows[0]).sort()).toEqual(['employeeCode','grade','hasRatings','id','name','reviewed']);
+    expect(await rewardPrelaunchDataCheck(bu, unitId)).toBeNull();
   });
 
   it('lists a saved promotion across reviews using the same visible person and grade as the unit', async () => {

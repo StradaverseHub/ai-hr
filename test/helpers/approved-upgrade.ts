@@ -37,6 +37,10 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:1450,when:1793330001650,tag:'2250_rewards_whole_group_grants'},
  {idx:1451,when:1793330001651,tag:'2251_company_display_group'},
  {idx:1500,when:1793330001700,tag:'2300_retire_job_architecture_workflows'},
+ // The feedback candidate appends these exact successors after the approved historical tail.
+ {idx:1604,when:1793330001804,tag:'2404_payroll_reconciliation_remark'},
+ {idx:1605,when:1793330001805,tag:'2405_rewards_review_activity'},
+ {idx:1606,when:1793330001806,tag:'2406_payroll_reconciliation_generation'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -66,6 +70,9 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '2250_rewards_whole_group_grants':'dc3437a768104a0be69f38adc395d7d814efb01f0feb66d7fc1af84c971f9e27',
  '2251_company_display_group':'3015af6a8183b9e01fbb42c165fe2ce83eb6d167d0b7cd61210144cd6d292a8a',
  '2300_retire_job_architecture_workflows':'0baf5adae50036cb20634ec362c1302b8c6c45f38ec8610f68e5c1bdc9ebedda',
+ '2404_payroll_reconciliation_remark':'a0b5e3df73af733fd19ec72c1333cbdf21e9a932123be476ea86b4bfafda3974',
+ '2405_rewards_review_activity':'fb8f6d1be9e24589969329324174f74a2c3516dedf041ae8dad37f60d19afc20',
+ '2406_payroll_reconciliation_generation':'38979689c8df2b486fdd1c104de7dd94e872ba8e0838e1d51cc8be119fa99113',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);

@@ -29,7 +29,6 @@ export type ComparisonIdentity = {
   verifiedTransferIds: readonly string[];
 };
 export type ComparisonIssue = {
-  payItemCode?: string;
   code: 'missingPayroll' | 'draftPayroll' | 'previousNotClosed' | 'stalePayroll' | 'itemNotRecorded';
   period: string; companyId: string; runId?: string; resultId?: string;
 };
@@ -75,8 +74,7 @@ export function payrollComparisonAvailability(
   for (const companyId of companyIds) {
     for (const period of [previousPeriod, currentPeriod]) {
       const periodRuns = selected.filter(run => run.companyId === companyId && run.period === period);
-      if (!periodRuns.length) issues.push({ payItemCode?: string;
-  code: 'missingPayroll', period, companyId });
+      if (!periodRuns.length) issues.push({ code: 'missingPayroll', period, companyId });
       for (const run of periodRuns) {
         const base = { period, companyId, runId: run.id };
         if (run.stale) issues.push({ ...base, code: 'stalePayroll' });
